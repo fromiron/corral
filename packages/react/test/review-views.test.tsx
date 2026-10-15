@@ -106,3 +106,159 @@ describe('approvals and reviews in Studio (C-029, C-030)', () => {
     expect(reviewView.container).toHaveTextContent(draft1?.artifactVersionId ?? 'missing');
   });
 });
+
+describe('Reins artifact input paths (C-036)', () => {
+  it('[TC-RNS-010-N] does not link a later accepted instruction to an older request result', async () => {
+    const { session, projection } = await teamAwaitingApproval();
+    const artifact = Object.values(projection.artifacts).find((a) => a.modelCallId);
+    if (!artifact) throw new Error('artifact fixture');
+    const call = projection.modelCalls[artifact.modelCallId ?? ''];
+    if (!call) throw new Error('call fixture');
+    session.setState({
+      projection: {
+        ...projection,
+        directives: {
+          ...projection.directives,
+          dir_late: {
+            directiveId: 'dir_late',
+            targetExecutionId: artifact.authorExecutionId,
+            text: 'Late instruction must stay out',
+            status: 'queued',
+            commandId: 'cmd_late',
+            acceptedSeq: projection.lastSeq,
+            contextSnapshotId: null,
+            modelCallId: null,
+            reason: null,
+          },
+        },
+      },
+    });
+    wrap(
+      <ArtifactViewer session={session} versionId={artifact.artifactVersionId} onClose={vi.fn()} />,
+    );
+    const paths = screen.getByTestId('artifact-lineage');
+    expect(paths).toHaveTextContent(call.modelCallId);
+    expect(paths).toHaveTextContent(call.contextSnapshotId);
+    expect(paths).not.toHaveTextContent('Late instruction must stay out');
+    expect(
+      within(paths).getByText('Instructions in the producing request').nextSibling,
+    ).toHaveTextContent('None recorded');
+  });
+
+  it('[TC-RNS-010-H] separates request directives from directives carried through an input artifact', async () => {
+    const { session, projection } = await teamAwaitingApproval();
+    const drafts = Object.values(projection.artifacts)
+      .filter((a) => a.name === 'draft')
+      .sort((a, b) => a.version - b.version);
+    const [first, second] = drafts;
+    if (!first?.modelCallId || !second?.modelCallId) throw new Error('draft fixtures');
+    const firstCall = projection.modelCalls[first.modelCallId];
+    const secondCall = projection.modelCalls[second.modelCallId];
+    if (!firstCall || !secondCall) throw new Error('call fixtures');
+    session.setState({
+      projection: {
+        ...projection,
+        directives: {
+          ...projection.directives,
+          dir_indirect: {
+            directiveId: 'dir_indirect',
+            targetExecutionId: first.authorExecutionId,
+            text: 'Earlier instruction',
+            status: 'delivered',
+            commandId: 'cmd_indirect',
+            acceptedSeq: 1,
+            modelCallId: firstCall.modelCallId,
+            contextSnapshotId: firstCall.contextSnapshotId,
+            reason: null,
+          },
+          dir_direct: {
+            directiveId: 'dir_direct',
+            targetExecutionId: second.authorExecutionId,
+            text: 'Current instruction',
+            status: 'delivered',
+            commandId: 'cmd_direct',
+            acceptedSeq: 2,
+            modelCallId: secondCall.modelCallId,
+            contextSnapshotId: secondCall.contextSnapshotId,
+            reason: null,
+          },
+        },
+        modelCalls: {
+          ...projection.modelCalls,
+          [firstCall.modelCallId]: { ...firstCall, directiveIds: ['dir_indirect'] },
+          [secondCall.modelCallId]: { ...secondCall, directiveIds: ['dir_direct'] },
+        },
+      },
+    });
+    wrap(
+      <ArtifactViewer session={session} versionId={second.artifactVersionId} onClose={vi.fn()} />,
+    );
+    const paths = screen.getByTestId('artifact-lineage');
+    expect(
+      within(paths).getByText('Instructions in the producing request').nextSibling,
+    ).toHaveTextContent('dir_direct');
+    expect(
+      within(paths).getByText('Instructions through input versions').nextSibling,
+    ).toHaveTextContent('dir_indirect');
+    expect(
+      within(paths).getByText('Instructions in the producing request').nextSibling,
+    ).not.toHaveTextContent('dir_indirect');
+  });
+});
+
+it('opens the recorded criteria version as safe text and keeps Close available', async () => {
+  const { session, projection } = await teamAwaitingApproval();
+  const artifact = Object.values(projection.artifacts).find(
+    (a) => a.criteriaVersionId && a.modelCallId,
+  );
+  if (!artifact?.criteriaVersionId) throw new Error('criteria fixture');
+  const onClose = vi.fn();
+  wrap(
+    <ArtifactViewer session={session} versionId={artifact.artifactVersionId} onClose={onClose} />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: artifact.criteriaVersionId }));
+  const viewer = await screen.findByTestId('artifact-viewer');
+  await waitFor(() =>
+    expect(viewer).toHaveTextContent(researchTeam.input.criteria[0] ?? 'missing'),
+  );
+  expect(viewer).toHaveTextContent('Recorded reference');
+  fireEvent.click(within(viewer).getByRole('button', { name: 'Close' }));
+  expect(onClose).toHaveBeenCalledOnce();
+});
+
+it('opens a durable tool-result input reference as literal text', async () => {
+  const { session, projection } = await teamAwaitingApproval();
+  const artifact = Object.values(projection.artifacts).find((a) => a.modelCallId);
+  if (!artifact) throw new Error('artifact fixture');
+  session.setState({
+    projection: {
+      ...projection,
+      artifacts: {
+        ...projection.artifacts,
+        [artifact.artifactVersionId]: { ...artifact, inputArtifactVersionIds: ['source_1'] },
+      },
+      toolCalls: {
+        ...projection.toolCalls,
+        tool_source: {
+          toolCallId: 'tool_source',
+          executionId: artifact.authorExecutionId,
+          name: 'read_url',
+          status: 'requested',
+          reason: null,
+          resultRef: 'source_1',
+        },
+      },
+    },
+    artifactTexts: {
+      ...session.getState().artifactTexts,
+      source_1: '<script>bad()</script> Verified document source',
+    },
+  });
+  wrap(
+    <ArtifactViewer session={session} versionId={artifact.artifactVersionId} onClose={vi.fn()} />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'source_1' }));
+  const viewer = await screen.findByTestId('artifact-viewer');
+  expect(viewer).toHaveTextContent('<script>bad()</script> Verified document source');
+  expect(viewer.querySelector('script')).toBeNull();
+});

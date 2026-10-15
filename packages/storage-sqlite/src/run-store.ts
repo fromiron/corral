@@ -1,5 +1,13 @@
 import type { RunEvent, RunStatus } from '@corral/contracts';
-import type { RunProjection, RunStore, RunSummary, StoredCommand, StoredRun } from '@corral/core';
+import {
+  applyEvent,
+  emptyProjection,
+  type RunProjection,
+  type RunStore,
+  type RunSummary,
+  type StoredCommand,
+  type StoredRun,
+} from '@corral/core';
 import type { Db } from './database.ts';
 
 /** RunStore over SQLite (C-011). Every method runs inside the caller's transaction. */
@@ -121,11 +129,13 @@ export class SqliteRunStore implements RunStore {
       | { snapshot_json: string; projection_json: string }
       | undefined;
     if (!row) return null;
-    return {
-      runId,
-      snapshot: JSON.parse(row.snapshot_json),
-      projection: JSON.parse(row.projection_json),
-    };
+    let projection = JSON.parse(row.projection_json) as RunProjection;
+    const initial = emptyProjection(runId);
+    // Cached projections from older phases are rebuilt; committed snapshots and events stay immutable.
+    if (!projection || Object.keys(initial).some((key) => !Object.hasOwn(projection, key))) {
+      projection = this.readEvents(runId, 0).reduce(applyEvent, initial);
+    }
+    return { runId, snapshot: JSON.parse(row.snapshot_json), projection };
   }
 
   listRuns(): RunSummary[] {

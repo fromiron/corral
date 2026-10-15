@@ -56,12 +56,19 @@ test('a live run is refused until sign-in, then runs on the signed-in model', as
 
   // Sign in through the API the Settings page uses (as this tab), then run again.
   await page.evaluate(async (redirect) => {
-    await fetch('/api/v1/model-auth/openai/login', { method: 'POST' });
-    await fetch('/api/v1/model-auth/openai/login/callback', {
+    const { csrfToken } = await (await fetch('/api/v1/session')).json();
+    const headers = { 'x-corral-csrf': csrfToken };
+    const login = await fetch('/api/v1/model-auth/openai/login', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers,
+    });
+    if (!login.ok) throw new Error(`Sign-in request failed: ${login.status}`);
+    const callback = await fetch('/api/v1/model-auth/openai/login/callback', {
+      method: 'POST',
+      headers: { ...headers, 'content-type': 'application/json' },
       body: JSON.stringify({ url: redirect }),
     });
+    if (!callback.ok) throw new Error(`Sign-in callback failed: ${callback.status}`);
   }, FAKE_REDIRECT_OK);
   await expect
     .poll(() =>

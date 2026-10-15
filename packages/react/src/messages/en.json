@@ -192,7 +192,9 @@
     "streamGap": "(some text was missed; the full output appears when it is submitted)",
     "agents": "Agents",
     "modeMock": "Simulated (no model calls)",
-    "modeLive": "Live models (uses your sign-in)"
+    "modeLive": "Live models (uses your sign-in)",
+    "reason": "Reason: {reason}",
+    "completedResponse": "Last completed response"
   },
   "Reins": {
     "heading": "Reins",
@@ -218,7 +220,36 @@
       "expired": "Not delivered: the execution finished first",
       "cancelled": "Not delivered: cancelled"
     },
-    "finished": "This execution has finished. New instructions can no longer be delivered."
+    "finished": "This execution has finished. New instructions can no longer be delivered.",
+    "runControls": "Run controls",
+    "runScope": "Target: Run {runId} · Scope: the whole run",
+    "safeBoundary": "Pause closes new admissions, then waits for active requests and tools to settle. Resume keeps pending approvals.",
+    "pause": "Pause run",
+    "resume": "Resume run",
+    "cancelRun": "Cancel whole run",
+    "cancelRunExplain": "Cancel all executions and their owned work. Cancellation is confirmed only after cleanup; remote processing and charges may continue.",
+    "confirmCancelRun": "Confirm whole run cancellation",
+    "keepRunning": "Keep running",
+    "receipts": "Command receipts",
+    "connectionUnknown": "Receipt not confirmed: {message}. Check the run before retrying.",
+    "retrySameCommand": "Check receipt and retry safely",
+    "draftTargetChanged": "This draft belongs to {target}. Choose that execution or explicitly move the draft before sending.",
+    "useDraftHere": "Use draft for this execution",
+    "resumeBeforeRestart": "Resume the run before restarting this task.",
+    "boundary": {
+      "immediate": "Boundary: future admissions immediately",
+      "next_request": "Boundary: next model request",
+      "next_activation": "Boundary: future activation",
+      "safe_boundary": "Boundary: after active work is settled"
+    },
+    "cancelExecution": "Cancel selected execution",
+    "cancelExecutionExplain": "Target: {executionId} and its owned descendants. New work is blocked, then active work is cleaned up. Required work waits for restart or run cancellation.",
+    "confirmCancelExecution": "Confirm selected cancellation",
+    "restart": "Restart task with a new attempt",
+    "restartInstruction": "Instruction for the new attempt",
+    "restartExplain": "Creates a new execution for the same unfinished task after this attempt has terminated. The coordinator checks that its parent still waits for it.",
+    "requestLink": "Request {request} · Snapshot {snapshot}",
+    "produced": "Produced: {versions}"
   },
   "Status": {
     "created": "Created",
@@ -251,7 +282,9 @@
     "completed": "Completed",
     "open": "Open",
     "answered": "Answered",
-    "timed_out": "Timed out"
+    "timed_out": "Timed out",
+    "applied": "Applied",
+    "superseded": "Superseded"
   },
   "Toolbar": {
     "undo": "Undo",
@@ -295,6 +328,7 @@
     "openRun": "Open run page"
   },
   "RunPage": {
+    "retry": "Retry loading run",
     "heading": "Run {runId}",
     "missing": "This run is not available here. Runs of the in-browser demo end when the page reloads.",
     "openCorral": "Open the Corral",
@@ -368,7 +402,8 @@
     "heading": "Questions",
     "about": "About",
     "evidence": "Evidence",
-    "waiting": "Waiting for an answer until {deadline}"
+    "waiting": "Waiting for an answer until {deadline}",
+    "paused": "The question timeout is paused. The whole-run deadline still applies."
   },
   "Artifact": {
     "version": "Version {version}",
@@ -386,7 +421,18 @@
     },
     "reviewOf": "Review of",
     "issues": "Issues",
-    "notAReview": "This review could not be read as review JSON; it was recorded as inconclusive."
+    "notAReview": "This review could not be read as review JSON; it was recorded as inconclusive.",
+    "lineage": "Recorded input paths",
+    "request": "Request: {request} · Snapshot: {snapshot}",
+    "configRevision": "Settings revision: {revision}",
+    "criteria": "Criteria version:",
+    "direct": "Instructions in the producing request",
+    "indirect": "Instructions through input versions",
+    "noDirectives": "None recorded",
+    "lineageNote": "These links show observed input paths. They do not prove that the model followed an instruction or why it wrote a particular sentence.",
+    "staleReview": "Stale review: evaluated against {previous}; current criteria is {current}.",
+    "reference": "Recorded reference",
+    "unavailable": "This recorded reference is unavailable."
   },
   "Approvals": {
     "heading": "Waiting for you",
@@ -405,5 +451,74 @@
     "approve": "Approve",
     "reject": "Reject",
     "refused": "Not applied: {message}"
+  },
+  "Budget": {
+    "heading": "Budget and usage",
+    "confirmed": "Confirmed output tokens",
+    "reserved": "Reserved output tokens",
+    "unknownHeld": "Unconfirmed output tokens held",
+    "remaining": "Available for future requests",
+    "limit": "Output token allowance",
+    "modelCalls": "Model calls admitted",
+    "spawns": "Child executions created",
+    "cost": "Estimated cost",
+    "costUnavailable": "Unavailable — no verified price snapshot",
+    "tokens": "{count, number}",
+    "unknownNote": "Unknown usage remains charged against the allowance until actual usage arrives. A cancelled request can still incur provider charges.",
+    "capNote": "This is the local admission allowance. A strict provider token cap is only available for supported models.",
+    "requests": "Usage by request",
+    "state": {
+      "reserved": "Reserved",
+      "unknown": "Unknown",
+      "settled": "Confirmed"
+    },
+    "usageUnknown": "Actual usage unknown",
+    "held": "{count, number} tokens held"
+  },
+  "SettingsPatch": {
+    "heading": "Change settings",
+    "scope": "Change scope",
+    "kind": {
+      "run_limits": "Run allowances",
+      "node_future": "Future executions of one node",
+      "loop_limit": "Future loop rounds",
+      "criteria": "Review criteria"
+    },
+    "node": "Target node",
+    "fieldLabel": "Setting",
+    "field": {
+      "prompt": "Role prompt",
+      "modelProfile": "Model profile",
+      "maxIterations": "Automatic loop rounds",
+      "criteria": "Review criteria (one per line)",
+      "maxOutputTokens": "Output token allowance",
+      "maxModelCalls": "Model call allowance",
+      "maxSpawns": "Child execution allowance"
+    },
+    "current": "Current",
+    "proposed": "Proposed value",
+    "preview": "Preview changes",
+    "confirm": "Confirm settings change",
+    "invalid": "Enter a valid value within the supported limits.",
+    "diff": "Current → Proposed",
+    "target": "Target: {target}",
+    "boundary": {
+      "run_limits": "Applies immediately to future admissions. Already spent and held usage is retained.",
+      "node_future": "Applies when this node creates a future execution. Existing executions and other nodes using the same role stay unchanged.",
+      "loop_limit": "Applies at the next round boundary of this loop.",
+      "criteria": "Creates a new criteria version. Earlier reviews retain their original criteria and are marked stale."
+    },
+    "futureNodes": "Future target nodes: {count, number}",
+    "dynamicCount": "The number of future executions depends on remaining branches, loop rounds and dynamic calls.",
+    "unchanged": "Current executions unaffected: {count, number}",
+    "spent": "{spent, number} confirmed tokens already spent · {held, number} reserved or unconfirmed tokens held",
+    "stale": "The run changed after this preview. Preview again before confirming.",
+    "history": "Settings history",
+    "committed": "Policy committed at control revision {revision}.",
+    "activated": "Used by: {targets}",
+    "notActivated": "No execution or iteration activation recorded yet.",
+    "loadingCriteria": "Loading current criteria…",
+    "finished": "This run has ended. Its settings history remains available.",
+    "snapshotsUnchanged": "Requests already prepared retain their recorded input snapshots."
   }
 }

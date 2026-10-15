@@ -2,7 +2,7 @@
 // For every direct, non-workspace dependency: exact version, license, registry integrity,
 // publish date, engines and peer ranges, and the workspace packages that use it.
 import { execFileSync } from 'node:child_process';
-import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const ROOT = join(import.meta.dirname, '..', '..');
@@ -55,12 +55,18 @@ const records = [...direct.entries()]
     };
   });
 
+const evidencePath = join(ROOT, 'docs/dependency-lock.json');
+// Registry refreshes never create or replace the separately reviewed prerelease exceptions.
+const reviewedPrereleases = existsSync(evidencePath)
+  ? JSON.parse(readFileSync(evidencePath, 'utf8')).reviewedPrereleases
+  : undefined;
 const out = {
   generatedAt: new Date().toISOString(),
   node: process.version,
   packageManager: JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf-8')).packageManager,
   note: 'Registry facts for pinned direct dependencies. Compatibility evidence is the CI gate result, not this file.',
   dependencies: records,
+  ...(reviewedPrereleases ? { reviewedPrereleases } : {}),
 };
-writeFileSync(join(ROOT, 'docs/dependency-lock.json'), `${JSON.stringify(out, null, 2)}\n`);
+writeFileSync(evidencePath, `${JSON.stringify(out, null, 2)}\n`);
 console.log(`recorded ${records.length} direct dependencies`);

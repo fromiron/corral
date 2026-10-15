@@ -99,7 +99,36 @@ ${IMMUTABLE('run_events')}
 ${IMMUTABLE('artifact_texts')}
 `,
   },
+  {
+    name: '0002_imported_inputs',
+    sql: `
+CREATE TABLE imported_inputs (
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL CHECK (kind IN ('document', 'source')),
+  title TEXT NOT NULL,
+  mime_type TEXT NOT NULL,
+  text TEXT NOT NULL,
+  url TEXT
+) STRICT;
+${IMMUTABLE('imported_inputs')}
+`,
+  },
 ];
+
+/** History queries must neither recover active runs nor migrate the workspace. */
+export function openReadOnlyDatabase(path: string): Db {
+  const db = new Database(path, { readonly: true, fileMustExist: true });
+  try {
+    const version = Number(db.pragma('user_version', { simple: true }));
+    if (version < 1 || version > MIGRATIONS.length)
+      throw new Error('unsupported history database schema');
+    db.pragma('query_only = ON');
+    return db;
+  } catch (error) {
+    db.close();
+    throw error;
+  }
+}
 
 export function openDatabase(path: string): Db {
   const db = new Database(path);

@@ -68,7 +68,7 @@ test('[TC-RNS-001-H] an instruction sent during a request reaches the next reque
   const box = page.getByLabel('Instruction');
   await box.fill('Use primary sources only.');
   await box.press('Enter');
-  await expect(page.getByText('Waiting for the next model request')).toBeVisible();
+  await expect(page.getByText('Boundary: next model request', { exact: true })).toBeVisible();
   const instruction = page.getByRole('listitem').filter({ hasText: 'Use primary sources only.' });
   await expect(instruction).toContainText('Queued');
 

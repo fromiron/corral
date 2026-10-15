@@ -1,49 +1,50 @@
-# Corral — SDD / TDD 설계 패키지 v0.1
+# Corral
 
-**D&D로 설계하고, 자율 협업을 관찰하며, Reins로 실시간 조율하는 로컬 우선 AI 팀 도구.**
+**D&D로 설계하고, 자율 협업을 관찰하며, Reins로 실행 중인 팀을 조율하는 로컬 우선 AI 도구.**
 
-2026-10-14 · Bell 개인 프로젝트 · 구현 착수용 설계안
+React Studio, 명령·이벤트 Coordinator, SQLite 기록, 격리된 Pi worker, 모의 공개 데모를 포함한 TypeScript 모노레포다. 설계 자료와 실행된 검증 증거를 함께 관리한다. 테스트 목록은 통과 결과가 아니며, 현재 후보의 준비 상태는 [release gate](docs/Release.md)로 확인한다.
 
-[통합 PDF — 스펙·기술 설계·구현 플랜](Corral-SDD-TDD-Blueprint-v0.1.pdf)
+## 실행
 
-## 먼저 읽을 문서
+Node 24.15.0 이상인 24.x와 pnpm 10.30.3이 필요하다. 검증·CI 기준은 `.node-version`의 24.19.0이다.
 
-| 순서 | 문서 | 목적 |
-|---|---|---|
-| 1 | [제품·실행 스펙](Corral-Spec-v0.1.md) | 목표, 용어, 범위, 네 노드, 협업, Reins, 상한, 20개 수용 기준 |
-| 2 | [구현 플랜](Corral-Implementation-Plan-v0.1.md) | SDD·TDD 절차, P0~P9, 50개 태스크, 의존·완료 게이트 |
-| 3 | [기술 설계](docs/Technical-Design.md) | 상태 소유, GraphRunner/Pi worker, 데이터·IPC·SSE·보안 |
-| 4 | [API 계약](docs/API-Contract.md) | 명령·receipt·오류·이벤트 payload 목록 |
-| 5 | [테스트 전략](docs/Test-Strategy.md) | 불변식·반례·경합·실모델 평가 분리 |
-| 6 | [의존성과 출처](docs/Dependencies-and-Sources.md) | OSS 선정, 유지보수 관측, 버전/라이선스 미검증 구분 |
-| 7 | [ADR](docs/Decisions.md) | 범위·스택·상태·스티어링에 대한 13개 결정 |
-
-## 첨부 자료
-
-- `contracts/`: 48개 요구, 50개 백로그, seed JSON Schema 4종, 이벤트 목록.
-- `tests/`: 112개 **계획된** 테스트 시나리오, 추적 매트릭스, Gherkin, 문서 검사 결과.
-- `examples/`: 그래프·레이아웃·개입 명령·검토 산출물 fixture.
-- `templates/`, `AGENTS.md`: 기능 명세·변경 요청·PR과 에이전트 구현 규칙.
-- `diagrams/`: 편집 가능한 Mermaid 원본. PDF의 도식은 같은 관계를 문서용으로 배치한 것.
-- `tools/validate_pack.py`: 문서·스키마·참조 일관성 검사.
-
-## 지금 생성한 것과 아직 하지 않은 것
-
-**생성:** 명세, 구현 계획, 용어/상태/개입 계약, 태스크·테스트 설계, 예제 JSON과 검사용 스크립트.
-
-**아직 하지 않음:** Corral 앱 구현, npm 패키지 발행, 이름/상표 확보, 라이브러리 조합 설치·통합 검증, 실제 LLM 실행, 제품 테스트 실행, 성능 측정. 테스트 목록은 통과 결과가 아니다. 문서 검사 결과와 제품 구현 결과를 혼동하지 않는다.
-
-## 문서 팩 검사
-
-```bash
-python -m pip install -r tools/requirements.txt
-python tools/validate_pack.py
+```sh
+pnpm install --frozen-lockfile
+pnpm dev          # 브라우저의 모의 runtime
+pnpm serve        # production Studio + 로컬 서버, 출력된 bootstrap 링크로 접속
+pnpm storybook    # 상태별 component와 접근성 검사
 ```
 
-이 명령은 계획 문서의 링크·스키마·예제·추적성을 검사한다. 향후 제품 저장소의 `pnpm test:*`를 대체하지 않는다.
+`/demo`는 키나 로컬 서버 없이 모의 에이전트를 실행한다. 실제 모델 연결은 로컬 서버의 Models 설정에서 사용자가 완료한다. provider credential은 서버 측 설정에 보관하며 Corral 정의나 이벤트에 포함하지 않는다. 공개 호스팅이나 npm 발행은 이 저장소에 포함된 실행 사실이 아니다.
 
-## 구현의 출발점
+## 검증
 
-P0부터 실제 D&D 캔버스와 mock 실행을 연결한다. 작업판과 runtime 계약을 검증하는 동안 UI는 기다리지 않는다. 첫 릴리스의 필수 기능은 D&D + 협업 + 제한된 Loop + subagents + Reins이며, 실행 중 구조 변경·crash resume·Local/Jev는 별도 후속 범위다.
+```sh
+python -m pip install -r tools/requirements.txt
+pnpm --filter @corral/studio exec playwright install --with-deps chromium firefox
+pnpm test
+pnpm build
+pnpm test:e2e
+pnpm test:performance
+pnpm release:gate
+```
 
-설정한 이름은 **Corral(실행 경계) / Loop(반복) / Reins(제어 패널) / Steer(지시)**다. Task Board와 Artifacts는 이해하기 쉬운 일반 용어를 유지한다.
+일반 테스트·release gate는 유료 모델/검색을 호출하지 않는다. 실제 공급자 smoke에는 별도 opt-in과 상한이 있으며, `release:check`는 같은 후보의 live 증거가 없으면 실패한다. 자세한 절차는 [출시 증거](docs/Release.md), 장비·build hash·원본 sample은 [성능 측정](docs/Performance.md), 설계 판단과 미구현 범위는 [사례 문서](docs/Case-Study.md)를 참고한다.
+
+## 구조와 명세
+
+| 위치 | 역할 |
+|---|---|
+| `apps/studio`, `packages/react` | 그래프 편집, 실행/산출물/지시 패널, 번역 메시지, Storybook |
+| `apps/server`, `packages/client` | loopback session, REST/SSE, 안전한 외부 입력 |
+| `packages/core`, `packages/contracts` | Coordinator, 예산·취소·version 규칙, Zod/JSON Schema |
+| `packages/storage-sqlite`, `packages/adapter-pi` | 기록·재열람, 실제 모델 worker |
+| `packages/cli`, `packages/testkit` | CLI와 결정적인 모의 agent/clock/ID |
+| `tools/release`, `tests/live` | 후보별 gate·라이선스·SPDX와 opt-in live 증거 |
+
+- [제품·실행 스펙](Corral-Spec-v0.1.md), [구현 플랜](Corral-Implementation-Plan-v0.1.md), [추가 태스크와 의존](docs/plans/Corral-Implementation-Plan-v0.2-Supplement.md)
+- [기술 설계](docs/Technical-Design.md), [API 계약](docs/API-Contract.md), [ADR](docs/Decisions.md)
+- [테스트 전략](docs/Test-Strategy.md), [추적 매트릭스](tests/traceability.json), [P6–P9 셀프 리뷰 수정 근거](specs/001-canvas/evidence/review-fixes.md)
+- [선정 근거](docs/Dependencies-and-Sources.md), [고정 버전 기록](docs/dependency-lock.json), [MIT 라이선스](LICENSE)
+
+MVP 범위는 D&D·협업·제한된 Loop·subagents·Reins다. Local/Jev DecisionProvider, Corral 중첩, crash resume은 후속 범위이며 현재 기능으로 표시하지 않는다.

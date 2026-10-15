@@ -28,6 +28,7 @@ export const WorkerUsage = z.strictObject({
 export const WorkerFrame = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('ready'), protocolVersion: z.literal(PROTOCOL_VERSION) }),
   z.strictObject({ type: z.literal('prepare_request'), ...head, requestId: RequestId }),
+  z.strictObject({ type: z.literal('request_dispatched'), ...head, modelCallId: Identifier }),
   z.strictObject({
     type: z.literal('authorize_tool'),
     ...head,
@@ -68,6 +69,8 @@ export type WorkerFrame = z.infer<typeof WorkerFrame>;
 // ── host → worker ────────────────────────────────────────────────────────────
 
 export const WorkerTool = z.enum([
+  'search',
+  'read_document',
   'write_artifact',
   'submit_result',
   'spawn_subagents',

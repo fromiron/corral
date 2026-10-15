@@ -93,17 +93,24 @@ export async function waitForProjection(
   return new Promise((resolve, reject) => {
     let current = projection;
     let done = false;
-    const unsubscribe = transport.subscribe(runId, seq, {
+    let unsubscribe: (() => void) | undefined;
+    unsubscribe = transport.subscribe(runId, seq, {
       onEvent(event) {
         if (done) return;
         current = applyEvent(current, event);
         if (predicate(current)) {
           done = true;
-          unsubscribe();
+          unsubscribe?.();
           resolve(current);
         }
       },
-      onError: reject,
+      onError(error) {
+        if (done) return;
+        done = true;
+        unsubscribe?.();
+        reject(error);
+      },
     });
+    if (done) unsubscribe();
   });
 }

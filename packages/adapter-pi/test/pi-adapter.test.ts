@@ -4,7 +4,7 @@ import { collaborationCorral, Gate, linearCorral } from '@corral/testkit';
 import { fauxAssistantMessage, fauxToolCall, getCurrentTools } from '@earendil-works/pi-ai';
 import { describe, expect, it } from 'vitest';
 import { PiAgentAdapter } from '../src/adapter.ts';
-import { memoryChannelPair } from '../src/channel.ts';
+import { type Channel, memoryChannelPair } from '../src/channel.ts';
 import { PROTOCOL_VERSION } from '../src/protocol.ts';
 import { ACCESS_TOKEN, liveRuntime, recordingHost } from './harness.ts';
 
@@ -146,6 +146,21 @@ describe('Pi adapter under the Coordinator (C-017–C-019)', () => {
     expect(offered).toEqual([['submit_result']]);
   });
 
+  it('[TC-SEC-003-H] exposes registered document and search tools only when allowed', async () => {
+    const offered: string[][] = [];
+    const { transport } = liveRuntime([
+      (context) => {
+        offered.push(getCurrentTools(context.messages).map((tool) => tool.name));
+        return fauxAssistantMessage('No external request needed.');
+      },
+    ]);
+    const { runId } = await liveRun(transport, (definition) => {
+      for (const role of definition.roles) role.allowedWorkTools = ['search', 'read_document'];
+    });
+    await waitForProjection(transport, runId, settled);
+    expect(offered).toEqual([['search', 'read_document', 'submit_result']]);
+  });
+
   it('[TC-SEC-001-H] the model sees only Corral tools: no shell or code tool exists', async () => {
     const offered: string[][] = [];
     const { transport } = liveRuntime([
@@ -220,6 +235,85 @@ const tick = async () => {
 };
 
 describe('worker lifecycle and protocol checks (C-017)', () => {
+  it('[TC-SEC-002-N] never persists a provider error containing request text or credentials', async () => {
+    const { adapter, worker } = scriptedWorker();
+    const handle = await adapter.start(startInput(), recordingHost().host);
+    worker.send({ type: 'ready', protocolVersion: PROTOCOL_VERSION });
+    await tick();
+    worker.send({
+      type: 'settled',
+      protocolVersion: PROTOCOL_VERSION,
+      executionId: 'exec_1',
+      outcome: 'failed',
+      error: 'credential=opaque-provider-secret body=private-user-text /home/private/input.md',
+    });
+    await tick();
+    worker.kill();
+    const result = await handle.waitForSettlement();
+    expect(result.outcome).toBe('failed');
+    expect(JSON.stringify(result)).not.toMatch(/opaque-provider-secret|private-user-text|\/home\//);
+  });
+
+  it('[TC-RNS-004-N] a settled frame does not confirm worker termination before exit', async () => {
+    let receive!: (frame: unknown) => void;
+    let exit!: (code: number | null) => void;
+    const channel: Channel = {
+      send: () => {},
+      onFrame: (listener) => {
+        receive = listener;
+      },
+      onExit: (listener) => {
+        exit = listener;
+      },
+      kill: () => {},
+    };
+    const adapter = new PiAgentAdapter({ spawn: () => channel, credentials: async () => null });
+    const handle = await adapter.start(startInput(), recordingHost().host);
+    receive({ type: 'ready', protocolVersion: PROTOCOL_VERSION });
+    await tick();
+    receive({
+      type: 'settled',
+      protocolVersion: PROTOCOL_VERSION,
+      executionId: 'exec_1',
+      outcome: 'cancelled',
+    });
+    let complete = false;
+    void handle.waitForSettlement().then(() => {
+      complete = true;
+    });
+    await tick();
+    expect(complete).toBe(false);
+    exit(0);
+    await expect(handle.waitForSettlement()).resolves.toMatchObject({ outcome: 'cancelled' });
+  });
+
+  it('[TC-RNS-002-H] observes dispatch separately from preparing a request', async () => {
+    const { adapter, worker } = scriptedWorker();
+    const dispatched: string[] = [];
+    const { host, calls } = recordingHost({
+      modelRequestDispatched: async (id) => void dispatched.push(id),
+    });
+    await adapter.start(startInput(), host);
+    worker.send({ type: 'ready', protocolVersion: PROTOCOL_VERSION });
+    worker.send({
+      type: 'prepare_request',
+      protocolVersion: PROTOCOL_VERSION,
+      executionId: 'exec_1',
+      requestId: 'req_1',
+    });
+    await tick();
+    expect(calls).toEqual(['prepare']);
+    expect(dispatched).toEqual([]);
+    worker.send({
+      type: 'request_dispatched',
+      protocolVersion: PROTOCOL_VERSION,
+      executionId: 'exec_1',
+      modelCallId: 'call_1',
+    });
+    await tick();
+    expect(dispatched).toEqual(['call_1']);
+  });
+
   it('starts the worker only after it says it is ready, bound to one execution', async () => {
     const { adapter, worker, received } = scriptedWorker();
     await adapter.start(startInput(), recordingHost().host);
@@ -279,6 +373,7 @@ describe('worker lifecycle and protocol checks (C-017)', () => {
     expect(await handle.waitForSettlement()).toEqual({
       outcome: 'cancelled',
       error: 'the model worker did not stop in time and was terminated',
+      terminationMode: 'forced',
     });
   });
 

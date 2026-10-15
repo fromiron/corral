@@ -1,17 +1,19 @@
+import { addNode, connect, emptyDraft } from '@corral/react';
 import {
   createRootRouteWithContext,
   createRoute,
   createRouter,
   notFound,
 } from '@tanstack/react-router';
-import { EditorPage } from './pages/EditorPage.tsx';
+import { lazy, Suspense } from 'react';
+import { DemoPage, EditorPage } from './pages/EditorPage.tsx';
 import { ModelSettingsPage } from './pages/ModelSettingsPage.tsx';
 import { ErrorView, NotFoundView, RootLayout } from './pages/RootLayout.tsx';
 import { RunPage } from './pages/RunPage.tsx';
 import { WorkspacePage } from './pages/WorkspacePage.tsx';
 import type { StudioServices } from './services.tsx';
 
-// Routes from Spec §4.1. /demo arrives with C-046 (P9).
+// Routes from Spec §4.1.
 
 const rootRoute = createRootRouteWithContext<{ services: StudioServices }>()({
   component: RootLayout,
@@ -30,6 +32,32 @@ export const workspaceRoute = createRoute({
     return { corrals, runs };
   },
   component: WorkspacePage,
+});
+
+export const demoRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/demo',
+  loader: async ({ context }) => {
+    const repository = context.services.repository;
+    const agent = addNode(emptyDraft('public_demo', 'Demo Corral'), 'agent', { x: 80, y: 120 });
+    const output = addNode(agent.draft, 'output', { x: 360, y: 120 });
+    const connected = connect(output.draft, {
+      source: agent.nodeId,
+      sourcePort: 'out',
+      target: output.nodeId,
+      targetPort: 'in',
+    });
+    if (!connected.ok) throw new Error('Invalid demo fixture.');
+    const draft = connected.draft;
+    const result = await repository.save({
+      definition: draft.definition,
+      layout: { nodes: draft.layout, viewport: draft.viewport },
+      expectedDefinitionRevision: null,
+    });
+    if (!result.ok) throw new Error(result.message);
+    return result.record;
+  },
+  component: DemoPage,
 });
 
 export const editorRoute = createRoute({
@@ -65,9 +93,29 @@ export const modelSettingsRoute = createRoute({
   component: ModelSettingsPage,
 });
 
+function createPerformanceRoute() {
+  const PerformancePage = lazy(() => import('./pages/PerformancePage.tsx'));
+  return createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/performance',
+    component: () => (
+      <Suspense fallback={<p>Loading fixture…</p>}>
+        <PerformancePage />
+      </Suspense>
+    ),
+  });
+}
+
 export function createStudioRouter(services: StudioServices) {
   return createRouter({
-    routeTree: rootRoute.addChildren([workspaceRoute, editorRoute, runRoute, modelSettingsRoute]),
+    routeTree: rootRoute.addChildren([
+      workspaceRoute,
+      demoRoute,
+      editorRoute,
+      runRoute,
+      modelSettingsRoute,
+      ...(import.meta.env.MODE === 'performance' ? [createPerformanceRoute()] : []),
+    ]),
     context: { services },
     defaultPreload: false,
   });

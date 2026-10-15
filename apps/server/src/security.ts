@@ -59,7 +59,7 @@ export function boundaryFor(port: () => number, extraOrigins: readonly string[] 
 /** One bootstrap token, redeemable once, for any number of sessions sharing its cookie. */
 export class Sessions {
   private token: Buffer | null;
-  private readonly sessions = new Set<string>();
+  private readonly sessions = new Map<string, string>();
 
   constructor(token: string) {
     this.token = Buffer.from(token, 'utf-8');
@@ -71,8 +71,20 @@ export class Sessions {
     if (given.length !== this.token.length || !timingSafeEqual(given, this.token)) return null;
     this.token = null;
     const session = randomBytes(32).toString('hex');
-    this.sessions.add(session);
+    this.sessions.set(session, randomBytes(32).toString('hex'));
     return session;
+  }
+
+  csrfToken(cookieHeader: string | undefined): string | null {
+    return this.sessions.get(parseCookies(cookieHeader)[SESSION_COOKIE] ?? '') ?? null;
+  }
+
+  validCsrf(cookieHeader: string | undefined, candidate: unknown): boolean {
+    const token = this.csrfToken(cookieHeader);
+    if (!token || typeof candidate !== 'string') return false;
+    const given = Buffer.from(candidate);
+    const expected = Buffer.from(token);
+    return given.length === expected.length && timingSafeEqual(given, expected);
   }
 
   valid(cookieHeader: string | undefined): boolean {
@@ -97,4 +109,24 @@ export function parseCookies(header: string | undefined): Record<string, string>
     cookies[part.slice(0, eq).trim()] = part.slice(eq + 1).trim();
   }
   return cookies;
+}
+
+/** One local workspace session: fixed windows avoid an attacker-controlled key map. */
+export class RequestLimiter {
+  private began = Number.NEGATIVE_INFINITY;
+  private reads = 0;
+  private writes = 0;
+  private readonly now: () => number;
+  constructor(now: () => number) {
+    this.now = now;
+  }
+  allow(write: boolean): boolean {
+    const now = this.now();
+    if (now - this.began >= 60_000) {
+      this.began = now;
+      this.reads = 0;
+      this.writes = 0;
+    }
+    return write ? ++this.writes <= 120 : ++this.reads <= 1200;
+  }
 }

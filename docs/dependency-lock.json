@@ -407,6 +407,21 @@
       ]
     },
     {
+      "name": "@types/semver",
+      "version": "7.8.0",
+      "license": "MIT",
+      "integrity": "sha512-1mAINjtQCXXeLkJ9ehXkwOcBpqtLxiVtKhpUf83DdRNdQKV0iXZpaHYqRr7nj+wvxuJzoAmAwXI+sCNMv1CzLQ==",
+      "published": "2026-08-02T08:01:52.124Z",
+      "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+      "gitHead": null,
+      "engines": null,
+      "peerDependencies": {},
+      "scope": "development",
+      "usedBy": [
+        "corral"
+      ]
+    },
+    {
       "name": "@vitejs/plugin-react",
       "version": "6.1.2",
       "license": "MIT",
@@ -658,6 +673,23 @@
       ]
     },
     {
+      "name": "semver",
+      "version": "7.8.5",
+      "license": "ISC",
+      "integrity": "sha512-Y7/KDsb8LjooZpwaqGyulO6DQlksgCncchHGk+sZIY4SBvUocMBEFH5Ur1fI4dV+Jvl0w6cjvucaIi40puRioA==",
+      "published": "2026-06-19T18:32:48.972Z",
+      "repository": "git+https://github.com/npm/node-semver.git",
+      "gitHead": "6e05b7637396ac66522cff8731f07cfe0ef49a29",
+      "engines": {
+        "node": ">=10"
+      },
+      "peerDependencies": null,
+      "scope": "development",
+      "usedBy": [
+        "corral"
+      ]
+    },
+    {
       "name": "storybook",
       "version": "10.6.2",
       "license": "MIT",
@@ -832,6 +864,38 @@
         "@corral/react",
         "@corral/studio"
       ]
+    }
+  ],
+  "reviewedPrereleases": [
+    {
+      "name": "@polka/url",
+      "version": "1.0.0-next.29",
+      "license": "MIT",
+      "integrity": "sha512-wwQAWhWSuHaag8c4q/KN/vCoeOJYshAIvMQwD4GpSb3OiZklFfvAgmj0VCBBImRpuF/aFgIRzllXlVX93Jevww==",
+      "published": "2025-04-09T18:41:21.389Z",
+      "repository": "git+https://github.com/lukeed/polka.git",
+      "gitHead": "02cbdb529ddca0a9f3d225e2abb2931924219cc3",
+      "engines": null,
+      "peerDependencies": null,
+      "scope": "development",
+      "reviewedAt": "2026-10-15",
+      "review": "Existing sirv/Vitest browser development dependency. Installed README declares MIT; npm source points to lukeed/polka at the recorded commit. Small URL parser using Node querystring, no Node engine or peers declared. Keep only this pinned version; no known advisories in pnpm audit on review date."
+    },
+    {
+      "name": "gensync",
+      "version": "1.0.0-beta.2",
+      "license": "MIT",
+      "integrity": "sha512-3hN7NaskYvMDLQY55gnW3NQ+mesEAepTqlg+VEbj7zzqEMBVNhzcGYYeqFo/TlYz6eQiFcp1HcsCZO+nGgS8zg==",
+      "published": "2020-10-27T20:43:40.443Z",
+      "repository": "git+https://github.com/loganfsmyth/gensync.git",
+      "gitHead": "a182868db47da283a1a044cb15bfd388697a632f",
+      "engines": {
+        "node": ">=6.9.0"
+      },
+      "peerDependencies": null,
+      "scope": "development",
+      "reviewedAt": "2026-10-15",
+      "review": "Existing Babel/react-docgen/Storybook development dependency. Installed MIT LICENSE and source match generator sync/async orchestration. Node >=6.9.0 and no peers; old beta retained as pinned upstream tooling dependency, not adopted for app runtime. No known advisories in pnpm audit on review date."
     }
   ]
 }

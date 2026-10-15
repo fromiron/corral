@@ -12,6 +12,7 @@ import type {
   CorralRecord,
   CorralRepository,
   CorralSummary,
+  RunArchive,
   RunProjection,
   RunSummary,
   RuntimeTransport,
@@ -46,14 +47,25 @@ export class ApiError extends Error {
 class Http {
   readonly baseUrl: string;
   private readonly fetchImpl: typeof fetch;
+  private csrfToken: string | null = null;
 
   constructor(options: HttpOptions) {
     this.baseUrl = options.baseUrl.replace(/\/$/, '');
     this.fetchImpl = options.fetch ?? ((input, init) => fetch(input, init));
   }
 
-  request(path: string, init: RequestInit = {}): Promise<Response> {
+  async request(path: string, init: RequestInit = {}): Promise<Response> {
+    const method = (init.method ?? 'GET').toUpperCase();
+    const needsCsrf = path !== '/session' && !['GET', 'HEAD', 'OPTIONS'].includes(method);
+    if (needsCsrf && !this.csrfToken) {
+      const session = await this.request('/session');
+      if (!session.ok) throw await apiError(session);
+      const body = (await session.json()) as { csrfToken?: string };
+      if (!body.csrfToken) throw new ApiError(403, 'SESSION_INVALID', 'session has no CSRF token');
+      this.csrfToken = body.csrfToken;
+    }
     const headers = new Headers(init.headers);
+    if (needsCsrf && this.csrfToken) headers.set('x-corral-csrf', this.csrfToken);
     if (init.body !== undefined) headers.set('content-type', 'application/json');
     headers.set('accept', headers.get('accept') ?? 'application/json');
     return this.fetchImpl(`${this.baseUrl}/api/v1${path}`, {
@@ -194,9 +206,16 @@ export class HttpSseTransport implements RuntimeTransport {
     return ((await response.json()) as { definition: CorralDefinition }).definition;
   }
 
+  exportRun(runId: string, options: { privateTranscript?: boolean } = {}): Promise<RunArchive> {
+    return this.http.json(`/runs/${encodeURIComponent(runId)}/export`, {
+      method: 'POST',
+      body: JSON.stringify(options),
+    });
+  }
+
   /**
    * SSE over fetch, so the cursor travels as Last-Event-ID on every reconnect. Events arrive
-   * once and in order: duplicates after a reconnect are dropped, a gap stops the stream.
+   * once and in order: duplicates are dropped and gaps reconnect at the committed cursor.
    */
   subscribe(runId: string, afterSeq: number, handlers: TransportHandlers): () => void {
     const controller = new AbortController();
@@ -210,10 +229,13 @@ export class HttpSseTransport implements RuntimeTransport {
     };
 
     const deliver = (event: RunEvent) => {
+      if (event.runId !== runId) {
+        stop(new Error('event belongs to a different run'));
+        return;
+      }
       if (event.runSeq <= lastSeq) return;
       if (event.runSeq !== lastSeq + 1) {
-        stop(new Error(`event gap: expected runSeq ${lastSeq + 1}, received ${event.runSeq}`));
-        return;
+        throw new Error(`event gap: expected runSeq ${lastSeq + 1}, received ${event.runSeq}`);
       }
       lastSeq = event.runSeq;
       try {
@@ -246,6 +268,10 @@ export class HttpSseTransport implements RuntimeTransport {
         if (!stopped) await reconnect(0);
       } catch (error) {
         if (stopped) return;
+        if (error instanceof InvalidEventStream) {
+          stop(error);
+          return;
+        }
         await reconnect(attempt, error);
       }
     };
@@ -255,7 +281,16 @@ export class HttpSseTransport implements RuntimeTransport {
         stop(error ?? new Error('the event stream could not be resumed'));
         return;
       }
-      await new Promise((resolve) => setTimeout(resolve, delay));
+      await new Promise<void>((resolve) => {
+        const finish = () => {
+          clearTimeout(timer);
+          controller.signal.removeEventListener('abort', finish);
+          resolve();
+        };
+        const timer = setTimeout(finish, delay);
+        controller.signal.addEventListener('abort', finish, { once: true });
+        if (stopped) finish();
+      });
       if (!stopped) await connect(attempt + 1);
     };
 
@@ -277,20 +312,40 @@ async function readEvents(
     while (!stopped()) {
       const { value, done } = await reader.read();
       if (done) return;
-      buffer += decoder.decode(value, { stream: true }).replaceAll('\r\n', '\n');
+      buffer = (buffer + decoder.decode(value, { stream: true })).replaceAll('\r\n', '\n');
       let end = buffer.indexOf('\n\n');
       while (end >= 0 && !stopped()) {
         const block = buffer.slice(0, end);
+        checkFrameSize(block);
         buffer = buffer.slice(end + 2);
         const frame = parseFrame(block);
-        if (frame?.event === 'domain') deliver(RunEvent.parse(JSON.parse(frame.data)));
+        if (frame?.event === 'domain') {
+          let event: RunEvent;
+          try {
+            event = RunEvent.parse(JSON.parse(frame.data));
+          } catch {
+            throw new InvalidEventStream('invalid domain event');
+          }
+          deliver(event);
+        }
         if (frame?.event === 'stream') stream(JSON.parse(frame.data) as StreamFrame);
         end = buffer.indexOf('\n\n');
       }
+      checkFrameSize(buffer);
     }
   } finally {
     await reader.cancel().catch(() => {});
   }
+}
+
+class InvalidEventStream extends Error {}
+
+function checkFrameSize(block: string) {
+  // A committed record can exceed its HTTP input (patches contain before + after).
+  const header = /^(?:id: \d+\n)?event: domain\ndata: /.exec(block.slice(0, 128));
+  if (header && block.indexOf('\n', header[0].length) === -1) return;
+  if (new TextEncoder().encode(block).byteLength > 2 * 1024 * 1024)
+    throw new InvalidEventStream('event stream frame exceeds the size limit');
 }
 
 function parseFrame(block: string): { event: string; data: string } | null {

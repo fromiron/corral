@@ -24,6 +24,7 @@ export function RunPage() {
   const { session } = useServices();
   const activeRunId = useStore(session, (s) => s.runId);
   const missing = useStore(session, (s) => s.missingRunId === runId);
+  const error = useStore(session, (s) => s.streamError);
   const corralId = useStore(session, (s) => s.definition?.id ?? null);
   const target = useSteerTarget(session, execution ?? null);
   const openArtifact = (id: string) => void navigate({ search: (s) => ({ ...s, artifact: id }) });
@@ -38,8 +39,17 @@ export function RunPage() {
       <main className="flex flex-col items-start gap-3 p-6">
         <h2 className="text-lg font-semibold">{t('heading', { runId })}</h2>
         <p role="status" className="text-sm text-muted">
-          {missing ? t('missing') : t('loading')}
+          {error ?? (missing ? t('missing') : t('loading'))}
         </p>
+        {error ? (
+          <button
+            type="button"
+            className="rounded border border-line px-2 py-1 text-sm"
+            onClick={() => void session.getState().open(runId)}
+          >
+            {t('retry')}
+          </button>
+        ) : null}
         <Link to="/" className="text-sm underline">
           ←
         </Link>

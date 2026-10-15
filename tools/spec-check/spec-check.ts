@@ -67,7 +67,7 @@ function checkTags(): boolean {
     id: string;
   }[];
   // Product tests only; tools/ holds fixtures that look like tags on purpose.
-  const roots = ['apps', 'packages', 'tests'].map((dir) => join(ROOT, dir));
+  const roots = ['apps', 'packages', 'tests', 'tools/release'].map((dir) => join(ROOT, dir));
   const files: TaggedFile[] = roots.flatMap(findTestFiles).map((path) => ({
     file: relative(ROOT, path),
     tags: extractTcTags(readFileSync(path, 'utf-8')),

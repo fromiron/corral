@@ -1,3 +1,4 @@
+export * from './budget.ts';
 export { canonicalJson } from './canonical-json.ts';
 export * from './compiler/index.ts';
 export * from './config.ts';
@@ -13,6 +14,8 @@ export {
   type StartRunResult,
 } from './coordinator.ts';
 export { definitionHash } from './definition-hash.ts';
+export * from './history.ts';
+export * from './limits.ts';
 export * from './projection.ts';
 export * from './repository/index.ts';
 export * from './run-plan.ts';

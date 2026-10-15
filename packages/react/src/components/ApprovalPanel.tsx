@@ -36,6 +36,8 @@ export function ApprovalPanel({
     try {
       const receipt = await session.getState().resolveApproval(approvalId, decision);
       setRefused(receipt.error ? receipt : null);
+    } catch {
+      // The session preserves the unconfirmed receipt; approval stays pending.
     } finally {
       setBusy(false);
     }

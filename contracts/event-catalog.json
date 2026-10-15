@@ -190,6 +190,11 @@
     "status": "payload_schema_to_implement"
   },
   {
+    "type": "model.usage_reconciled",
+    "requiredContent": "executionId,modelCallId,rawUsage,normalizedUsage,certainty",
+    "status": "implemented"
+  },
+  {
     "type": "budget.reserved",
     "requiredContent": "reservationId,amount,scope",
     "status": "payload_schema_to_implement"

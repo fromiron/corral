@@ -24,12 +24,21 @@ import { ReactFlowProvider } from '@xyflow/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
-import { editorRoute } from '../router.tsx';
+import { demoRoute, editorRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
 
 export function EditorPage() {
   const record = editorRoute.useLoaderData();
   // A fresh editor (and undo history) for each Corral.
+  const editor = useMemo(
+    () => createEditorStore(draftFromDefinition(record.definition, record.layout)),
+    [record],
+  );
+  return <Editor key={record.corralId} record={record} editor={editor} />;
+}
+
+export function DemoPage() {
+  const record = demoRoute.useLoaderData();
   const editor = useMemo(
     () => createEditorStore(draftFromDefinition(record.definition, record.layout)),
     [record],

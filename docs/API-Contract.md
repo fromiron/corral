@@ -26,12 +26,27 @@
 |---|---|---|
 | GET /health | — | `ok`, schemaVersion, version, backendSessionId, agents(`mock`). secret 없음 |
 | POST /session | `{token}` | 일회성 bootstrap token을 교환해 HttpOnly·SameSite=Strict 세션 cookie. 재사용은 401 |
-| GET /session | — | 세션 cookie가 유효하면 200 |
+| GET /session | — | 세션 cookie가 유효하면 `{ok:true,csrfToken}`. 모든 변경 요청은 `x-corral-csrf` 헤더로 이 값을 보낸다 |
 | GET /runs | — | 실행 이력(최신 먼저): runId, status, corralId, startedAt |
 | GET /runs/:id | — | RunSnapshot: 실행에 쓴 정의·definitionHash·출처 revision·criteriaVersionId·mode |
 | GET /runs/:id/artifact-versions/:artifactVersionId | — | 불변 본문 `{text}`. 이 run의 산출물 버전과 기준 버전만 |
 | POST /corrals/:id/duplicate | `{name}` | 새 id의 사본(revision 1) |
 | DELETE /corrals/:id | — | 저장 정의 삭제. 이미 시작한 Run의 snapshot에는 영향 없음 |
+
+P8 입력·기록 주소. 문서 도구에는 이 주소에서 받은 ID만 전달하며 로컬 경로나 원시 URL을 전달하지 않는다.
+
+| Method/path | 요청 | 응답·효과 |
+|---|---|---|
+| GET /documents | — | 등록 입력의 ID, 종류, 제목, MIME, 바이트 수. 원문·원시 URL 없음 |
+| POST /documents/import | `{title,mimeType,text}` 또는 `{url}` | `text/plain`·`text/markdown` 문서를 불변 `documentId`로 저장하거나 공개 HTTPS DNS를 확인하고 `sourceId`로 등록. 중복 입력은 같은 ID |
+| POST /runs/:id/export | `{privateTranscript?:boolean}` | 기본은 원문 없는 공개 요약. 명시적 `true`만 비공개 원문 archive |
+| POST /history/import | archive | 검증한 읽기 전용 기록. 실행·effect 재전송·현재 workspace 기록 삽입 없음 |
+
+`POST /session`은 기존 204 응답과 함께 `x-corral-csrf` 헤더도 반환한다. 그 외 API 변경 요청은 세션 cookie, 허용 Origin, 세션 CSRF token을 모두 요구한다. API query string의 credential 키 이름은 거절하며 값은 오류에 반영하지 않는다. 요청 본문은 2 MiB(초과 413), 등록 문서는 UTF-8 1 MiB, workspace 입력은 32 MiB·1,000개로 제한한다. 로컬 서버 전체에서 분당 읽기 1,200회·변경 120회(bootstrap 포함), 동시 SSE 16개를 허용하며 초과 시 429다.
+
+`read_document`는 `{documentId}` 또는 `{sourceId}`만 받는다. URL 읽기는 live Run에서만 실행하며 각 연결·redirect에서 모든 DNS 주소를 검사하고 검사한 IP로 연결을 고정한다. HTTPS 443·정상 TLS 인증서·최대 3회 redirect·전체 30초·1 MiB·UTF-8 text/Markdown만 허용한다. HTML·압축 응답·사설/특수 주소·URL 자격 증명은 거절한다. 원격 본문도 불변 documentId로 저장한다.
+
+`search`는 `{query,provider?:"corpus"|"brave",limit?:1..10}`이며 기본은 등록 문서의 키 없는 corpus 검색이다. Brave는 live Run, 명시적 `provider:"brave"`, 서버의 `--allow-live-search`, backend 환경의 `BRAVE_SEARCH_API_KEY`를 모두 요구한다. `--search-request-limit`은 서버 세션 전체의 요청 수(실패 포함)를 제한하며 기본 10·최대 100이다. 자동 재시도·provider 전환은 없고, 결과 URL은 검증 후 sourceId로만 반환한다. Provider 인증 헤더는 redirect에 전달하지 않는다.
 
 모델 로그인 주소(P3, C-058). 응답은 상태와 만료만 담고 token·키·콜백 주소는 담지 않는다([ADR-019](Decisions.md)).
 
@@ -125,6 +140,7 @@ provider/network error는 사용자 키 원문·응답 헤더를 포함하지 �
 | `tool.finished` | resultRef,error |
 | `model.request_prepared` | modelCallId,contextSnapshotId,profile,configRevision |
 | `model.finished` | responseRef,rawUsage,normalizedUsage,certainty |
+| `model.usage_reconciled` | executionId,modelCallId,rawUsage,normalizedUsage,certainty. 종료 후 새로 확인된 사용량만 보충하며 응답 본문·실행 상태는 바꾸지 않음 |
 | `budget.reserved` | reservationId,amount,scope |
 | `budget.settled` | reservationId,actual,unknownOutstanding |
 | `limit.reached` | limitKind,used,reserved,max |
@@ -146,3 +162,7 @@ provider/network error는 사용자 키 원문·응답 헤더를 포함하지 �
 브라우저 timeout은 서버 명령 실패와 같지 않다. 같은 commandId로 receipt를 조회/재전송한다. 새 ID로 취소/승인을 재시도하면 이중 의미가 생길 수 있으므로 client SDK가 처리한다.
 
 workspace의 활성 Run은 하나지만 탭은 여러 개일 수 있다. 탭별 controlRevision 갱신과 conflict UI가 필요하다. SSE가 끊겼다고 Run을 자동 취소하지 않는다. Run-level wall deadline과 승인 대기 상태를 유지한다.
+
+SSE의 일반 미전송 데이터는 다음 UTF-8 frame을 포함해 1 MiB로 제한한다. 초과하면 이미 쓴 prefix를 flush하고 연결을 종료하여 재접속 cursor가 앞으로 진행한다. 단일 committed domain event가 1 MiB보다 크면 구독을 먼저 해제하고 기존 prefix를 flush한 뒤, 그 이벤트 하나를 64 KiB 이하의 UTF-8 바이트 조각으로 순차 전송한다. 각 쓰기의 완료를 기다리며, 완전한 frame을 보낸 뒤 연결을 닫는다. 10초 동안 flush되지 않는 소켓은 강제 종료한다. 다음 연결은 완전히 받은 이벤트의 cursor부터 재개한다. 기존에 저장한 큰 이벤트도 생략·축약하지 않는다([CR-002](change-requests/CR-002-oversized-domain-replay.md), [ADR-023](Decisions.md)).
+
+추가 전송 큐는 1 MiB 이내이고, 큰 이벤트 전송·파싱에는 현재 domain record 하나의 직렬화 크기에 비례하는 메모리가 필요하다. HTTP 입력의 2 MiB 제한이 patch의 before+after나 기존 내부 기록의 event 크기를 제한하지는 않는다. 클라이언트는 서버 형식의 domain frame 하나를 끝까지 조립한 뒤 RunEvent schema를 검사한다. 잘못된 domain event는 오류로 중지하고 무한 재시도하지 않는다. 고정 상한 예외는 128자 이내의 서버 형식 domain 헤더에만 적용한다. domain이 아닌 frame·주석·불완전 헤더는 2 MiB UTF-8 이내다. 비영속 텍스트 frame·heartbeat는 큰 domain event의 예외를 사용하지 않는다.

@@ -97,8 +97,17 @@ describe('Coordinator model-based property (C-012)', () => {
             expect(receipt.error?.code).toBe('IDEMPOTENCY_CONFLICT');
             expect((await transport.getSnapshot(id)).projection.lastSeq).toBe(before);
           } else {
-            // A resend answers with the first receipt (status may have moved on).
-            expect({ ...receipt, status: null }).toEqual({ ...first.receipt, status: null });
+            // Acceptance is stable; delivery adds status and causal event references.
+            expect({ ...receipt, status: null, relatedEventIds: [] }).toEqual({
+              ...first.receipt,
+              status: null,
+              relatedEventIds: [],
+            });
+            expect(receipt.relatedEventIds.slice(0, first.receipt.relatedEventIds.length)).toEqual(
+              first.receipt.relatedEventIds,
+            );
+            expect(new Set(receipt.relatedEventIds).size).toBe(receipt.relatedEventIds.length);
+            expect((await transport.getSnapshot(id)).projection.lastSeq).toBe(before);
           }
         }
         for (const gate of gates) gate.open();

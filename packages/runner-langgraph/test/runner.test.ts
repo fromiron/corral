@@ -61,6 +61,38 @@ function scripted(decisions: string[], failing: Set<string>) {
 }
 
 describe('LangGraph runner parity with the reference runner (C-014)', () => {
+  it.each(['patch', 'approval'] as const)(
+    '[TC-RNS-006-H] a runtime Loop %s can use all ten permitted rounds',
+    async (extension) => {
+      const run = async (runner: GraphRunner) => {
+        const plan = planOf(researchTeam);
+        const rounds: number[] = [];
+        const { callbacks } = scripted(['revise'], new Set());
+        callbacks.loopEntered = async (id, no) => {
+          rounds.push(no);
+          if (no === 1 && extension === 'patch') {
+            const loop = plan.loops[id];
+            const step = plan.steps[id];
+            if (!loop || step?.kind !== 'loop') throw new Error('loop expected');
+            loop.maxIterations = 10;
+            step.maxIterations = 10;
+          }
+        };
+        callbacks.decide = async (nodeId, iteration) =>
+          nodeId === 'review_decision'
+            ? (iteration?.no ?? 0) < 10
+              ? 'revise'
+              : 'pass'
+            : 'approve';
+        callbacks.loopCapReached = async () => 'continue';
+        return { result: await runner.run(plan, callbacks), rounds };
+      };
+      const expected = await run(new SequentialPlanRunner());
+      expect(expected.rounds).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+      expect(await run(new LangGraphRunner())).toEqual(expected);
+    },
+  );
+
   it('takes the same steps for any decision and failure script', async () => {
     const definition = CorralDefinition.parse(researchTeam);
     const branch = fc.constantFrom('pass', 'revise', 'inconclusive', 'approve', 'reject');

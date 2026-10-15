@@ -5,6 +5,7 @@ import { defineProject } from 'vitest/config';
 
 // Every story renders in Chromium and must pass the a11y addon's axe checks.
 export default defineProject({
+  optimizeDeps: { include: ['react-markdown'] },
   plugins: [storybookTest({ configDir: join(import.meta.dirname, '.storybook') })],
   test: {
     name: 'storybook',

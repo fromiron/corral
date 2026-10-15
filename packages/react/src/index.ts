@@ -1,11 +1,13 @@
 export { ApprovalPanel } from './components/ApprovalPanel.tsx';
 export { ArtifactViewer } from './components/ArtifactViewer.tsx';
+export { BudgetInspector } from './components/BudgetInspector.tsx';
 export { CorralCanvas, NODE_DRAG_TYPE } from './components/CorralCanvas.tsx';
 export { EditorToolbar, isTextEditingEvent } from './components/EditorToolbar.tsx';
 export { NodeInspector } from './components/NodeInspector.tsx';
 export { NodePalette } from './components/NodePalette.tsx';
 export { QuestionsPanel } from './components/QuestionsPanel.tsx';
 export { ReinsPanel, type SteerTarget } from './components/ReinsPanel.tsx';
+export { RunActions } from './components/RunActions.tsx';
 export { RunControls } from './components/RunControls.tsx';
 export { RunView } from './components/RunView.tsx';
 export { SafeMarkdown } from './components/SafeMarkdown.tsx';
@@ -28,5 +30,6 @@ export {
   type RunSessionState,
   type RunSessionStore,
   type SavedRevision,
+  type SessionCommand,
 } from './run/session.ts';
 export { useSteerTarget } from './run/steer-target.ts';

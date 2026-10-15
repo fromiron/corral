@@ -73,6 +73,8 @@ export class ScriptedAgentAdapter implements AgentAdapter {
     const request = async (turn: number, extra: string[]): Promise<string> => {
       checkpoint();
       const permit = await host.prepareModelRequest();
+      checkpoint();
+      await host.modelRequestDispatched?.(permit.modelCallId);
       await this.options.beforeReply?.(turn, input);
       checkpoint();
       const text = [reply(turn, input, permit), ...extra].join('\n');

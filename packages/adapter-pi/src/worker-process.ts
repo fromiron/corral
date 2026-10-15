@@ -2,6 +2,8 @@ import type { Channel } from './channel.ts';
 
 /** The worker's end of the IPC channel, inside the child process. */
 export function processPort(): Channel {
+  // A worker cannot outlive the Coordinator that owns its permissions and budget.
+  process.once('disconnect', () => process.exit(1));
   let last: Promise<void> = Promise.resolve();
   return {
     send: (frame) => {
