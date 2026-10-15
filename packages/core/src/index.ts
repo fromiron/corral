@@ -1,8 +1,18 @@
 export { canonicalJson } from './canonical-json.ts';
 export * from './compiler/index.ts';
-export { type CoordinatorDeps, InMemoryCoordinator, type StartRunResult } from './coordinator.ts';
+export * from './config.ts';
+export {
+  Coordinator,
+  type CoordinatorDeps,
+  type DecisionInput,
+  type DecisionPolicy,
+  type DefinitionSource,
+  type StartRunResult,
+} from './coordinator.ts';
 export { definitionHash } from './definition-hash.ts';
-export { type LinearPlan, type PlanIssue, planLinearRun } from './linear-plan.ts';
 export * from './projection.ts';
 export * from './repository/index.ts';
+export * from './run-plan.ts';
+export * from './runner.ts';
+export * from './store/run-store.ts';
 export * from './transport.ts';

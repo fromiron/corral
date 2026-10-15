@@ -1,4 +1,4 @@
-import { InMemoryCoordinator, InProcessTransport } from '@corral/core';
+import { applyEvent, Coordinator, emptyProjection, InProcessTransport } from '@corral/core';
 import {
   FakeClock,
   Gate,
@@ -12,7 +12,7 @@ import { createRunSession, type RunSessionState } from '../src/run/session.ts';
 function session(gates: Gate[] = []) {
   let reply = 0;
   const transport = new InProcessTransport(
-    new InMemoryCoordinator({
+    new Coordinator({
       clock: new FakeClock(),
       ids: new SequentialIdFactory(),
       agents: new ScriptedAgentAdapter({
@@ -71,6 +71,77 @@ describe('run session', () => {
       (s) => s.projection?.directives[directiveId]?.status === 'delivered',
     );
     expect(delivered.projection?.directives[directiveId]?.modelCallId).toBeTruthy();
+  });
+
+  it('reopens a finished run from the runtime, with its definition and output', async () => {
+    const transport = new InProcessTransport(
+      new Coordinator({
+        clock: new FakeClock(),
+        ids: new SequentialIdFactory(),
+        agents: new ScriptedAgentAdapter({ turns: 1 }),
+      }),
+    );
+    const first = createRunSession(transport, () => 'cmd_first');
+    await first.getState().start(linearCorral(['writer']));
+    const runId = (await until(first, (s) => s.outputText !== null)).runId ?? '';
+
+    // A reloaded page: a new session that only knows the run id.
+    const reopened = createRunSession(transport);
+    await reopened.getState().open(runId);
+    // Opening follows the run's stream; the state arrives as its events replay.
+    const state = await until(reopened, (s) => s.outputText !== null);
+    expect(state.runId).toBe(runId);
+    expect(state.projection?.status).toBe('succeeded');
+    expect(state.definition?.id).toBe('linear');
+    expect(state.outputText).toContain('writer (writer) turn 1');
+
+    const missing = createRunSession(transport);
+    await missing.getState().open('run_gone');
+    expect(missing.getState().runId).toBeNull();
+    expect(missing.getState().missingRunId).toBe('run_gone');
+  });
+
+  it('starts from a saved revision when one is given', async () => {
+    const requests: unknown[] = [];
+    const inner = new InProcessTransport(
+      new Coordinator({
+        clock: new FakeClock(),
+        ids: new SequentialIdFactory(),
+        agents: new ScriptedAgentAdapter({ turns: 1 }),
+        corrals: { getDefinition: () => linearCorral(['writer'], 'saved') },
+      }),
+    );
+    const transport = Object.assign(Object.create(inner), {
+      startRun: (request: Parameters<typeof inner.startRun>[0]) => {
+        requests.push(request);
+        return inner.startRun(request);
+      },
+    }) as typeof inner;
+    const store = createRunSession(transport, () => 'cmd_saved');
+    await store
+      .getState()
+      .start(linearCorral(['writer'], 'saved'), { corralId: 'saved', definitionRevision: 3 });
+    expect(requests).toEqual([
+      {
+        schemaVersion: '0.1',
+        commandId: 'cmd_saved',
+        corralId: 'saved',
+        definitionRevision: 3,
+        mode: 'mock',
+      },
+    ]);
+    expect(store.getState().runId).toMatch(/^run_/);
+  });
+
+  it('keeps every committed event, in order, next to the projection they build', async () => {
+    const store = session();
+    await store.getState().start(linearCorral(['research', 'writer']));
+    const done = await until(store, (s) => s.projection?.status === 'succeeded');
+    expect(done.events.map((e) => e.runSeq)).toEqual(done.events.map((_, i) => i + 1));
+    expect(done.events.at(-1)?.runSeq).toBe(done.projection?.lastSeq);
+    expect(done.events.reduce(applyEvent, emptyProjection(done.runId ?? ''))).toEqual(
+      done.projection,
+    );
   });
 
   it('keeps a rejected start visible instead of pretending a run exists', async () => {

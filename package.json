@@ -15,6 +15,7 @@
     "build": "pnpm -r build",
     "test:e2e": "pnpm --filter @corral/studio test:e2e",
     "dev": "pnpm --filter @corral/studio dev",
+    "serve": "pnpm --filter @corral/studio build && node apps/server/src/main.ts --static apps/studio/dist",
     "storybook": "pnpm --filter @corral/react storybook",
     "deps:record": "node tools/deps/record.ts",
     "contracts:generate": "node tools/contracts/generate.ts",

@@ -7,6 +7,7 @@ import type {
   RunEvent,
   RunStatus,
   TaskStatus,
+  WaitingOn,
 } from '@corral/contracts';
 
 // Read model rebuilt only from committed events (INV-14). The same reducer runs in the
@@ -23,6 +24,8 @@ export interface ExecutionView {
   modelProfile: string;
   status: ExecutionStatus;
   activity: ExecutionActivity | null;
+  /** What a waiting execution waits for, with the ids to link to (OBS-001). */
+  waitingOn: WaitingOn | null;
   modelCallIds: string[];
   error: string | null;
 }
@@ -84,6 +87,23 @@ export interface ToolCallView {
   reason: string | null;
 }
 
+export interface EffectView {
+  effectId: string;
+  kind: 'model_request' | 'tool' | 'spawn';
+  scope: string;
+  epoch: number;
+  status: 'admitted' | 'settled';
+  outcome: 'succeeded' | 'failed' | 'cancelled' | 'unknown' | null;
+}
+
+export interface IterationView {
+  iterationId: string;
+  loopNodeId: string;
+  no: number;
+  criteriaVersionId: string;
+  outcome: 'pass' | 'revise' | 'inconclusive' | 'cap_reached' | 'cancelled' | null;
+}
+
 export interface RunProjection {
   runId: string;
   corralId: string | null;
@@ -101,6 +121,12 @@ export interface RunProjection {
   modelCalls: Record<string, ModelCallView>;
   artifacts: Record<string, ArtifactVersionView>;
   toolCalls: Record<string, ToolCallView>;
+  effects: Record<string, EffectView>;
+  iterations: Record<string, IterationView>;
+  /** Iteration ids per Loop node, in round order. */
+  loopIterations: Record<string, string[]>;
+  /** Set when a backend restart ended the run (RUN-007). */
+  interruptedBy: string | null;
   output: { nodeId: string; artifactVersionIds: string[] } | null;
 }
 
@@ -133,6 +159,10 @@ export function emptyProjection(runId: string): RunProjection {
     modelCalls: {},
     artifacts: {},
     toolCalls: {},
+    effects: {},
+    iterations: {},
+    loopIterations: {},
+    interruptedBy: null,
     output: null,
   };
 }
@@ -186,6 +216,7 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
       return updateExecution(p, event.payload.executionId, {
         status: event.payload.to,
         activity: event.payload.activity,
+        waitingOn: event.payload.waitingOn,
       });
     case 'execution.settled':
       return executionSettled(p, event);
@@ -293,9 +324,52 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
           artifactVersionIds: event.payload.artifactVersionIds,
         },
       };
-    // Committed facts that later phases project (collaboration P4, review P5, Reins P6,
-    // budget and recovery P7). Until then they are kept in the log only.
     case 'run.interrupted':
+      return { ...p, interruptedBy: event.payload.backendSessionId };
+    case 'effect.admitted': {
+      const { effectId, kind, scope, epoch } = event.payload;
+      const effect: EffectView = {
+        effectId,
+        kind,
+        scope,
+        epoch,
+        status: 'admitted',
+        outcome: null,
+      };
+      return { ...p, effects: { ...p.effects, [effectId]: effect } };
+    }
+    case 'effect.settled': {
+      const effect = p.effects[event.payload.effectId];
+      if (!effect) return p;
+      const settled: EffectView = { ...effect, status: 'settled', outcome: event.payload.outcome };
+      return { ...p, effects: { ...p.effects, [effect.effectId]: settled } };
+    }
+    case 'loop.iteration_started': {
+      const { iterationId, loopNodeId, no, criteriaVersionId } = event.payload;
+      const iteration: IterationView = {
+        iterationId,
+        loopNodeId,
+        no,
+        criteriaVersionId,
+        outcome: null,
+      };
+      return {
+        ...p,
+        iterations: { ...p.iterations, [iterationId]: iteration },
+        loopIterations: {
+          ...p.loopIterations,
+          [loopNodeId]: [...(p.loopIterations[loopNodeId] ?? []), iterationId],
+        },
+      };
+    }
+    case 'loop.iteration_finished': {
+      const iteration = p.iterations[event.payload.iterationId];
+      if (!iteration) return p;
+      const finished: IterationView = { ...iteration, outcome: event.payload.outcome };
+      return { ...p, iterations: { ...p.iterations, [iteration.iterationId]: finished } };
+    }
+    // Committed facts that later phases project (collaboration P4, review P5, Reins P6,
+    // budget P7). Until then they are kept in the log only.
     case 'task.blocked':
     case 'message.question_created':
     case 'message.answer_committed':
@@ -303,15 +377,11 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
     case 'artifact.read':
     case 'review.recorded':
     case 'review.stale':
-    case 'loop.iteration_started':
-    case 'loop.iteration_finished':
     case 'approval.requested':
     case 'approval.resolved':
     case 'patch.committed':
     case 'patch.activated':
-    case 'effect.admitted':
     case 'effect.dispatch_observed':
-    case 'effect.settled':
     case 'tool.allowed':
     case 'tool.started':
     case 'tool.finished':
@@ -339,6 +409,7 @@ function executionCreated(p: RunProjection, event: EventOf<'execution.created'>)
     modelProfile: event.payload.modelProfile,
     status: 'queued',
     activity: null,
+    waitingOn: null,
     modelCallIds: [],
     error: null,
   };
@@ -358,6 +429,7 @@ function executionSettled(p: RunProjection, event: EventOf<'execution.settled'>)
   const settled = updateExecution(p, executionId, {
     status: outcome,
     activity: null,
+    waitingOn: null,
     error: error ?? null,
   });
   const execution = settled.executions[executionId];

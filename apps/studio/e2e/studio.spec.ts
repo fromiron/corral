@@ -127,7 +127,7 @@ test('direct links, reload and back navigation keep the right screen', async ({ 
   await page.goto('/corrals/corral_missing/edit');
   await expect(page.getByText('This page does not exist.')).toBeVisible();
   await page.goto('/runs/run_gone');
-  await expect(page.getByText('no longer available', { exact: false })).toBeVisible();
+  await expect(page.getByText('This run is not available here.', { exact: false })).toBeVisible();
 });
 
 test('[TC-CAN-004-H] an imported team with a Loop validates but says it cannot run here yet', async ({

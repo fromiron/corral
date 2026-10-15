@@ -20,6 +20,21 @@
 | GET /model-profiles | — | public profileId·지원 capability·keyConfigured, secret 없음 |
 | POST /runs/:id/export | redaction policy | 공개용 bundle. 원문 비공개가 기본 |
 
+구현 중 추가한 주소(P2, [ADR-022](Decisions.md)). 모두 같은 세션·Host/Origin 검사를 거친다. `health`와 `POST /session`만 세션 없이 받는다.
+
+| Method/path | 요청 | 응답·효과 |
+|---|---|---|
+| GET /health | — | `ok`, schemaVersion, version, backendSessionId, agents(`mock`). secret 없음 |
+| POST /session | `{token}` | 일회성 bootstrap token을 교환해 HttpOnly·SameSite=Strict 세션 cookie. 재사용은 401 |
+| GET /session | — | 세션 cookie가 유효하면 200 |
+| GET /runs | — | 실행 이력(최신 먼저): runId, status, corralId, startedAt |
+| GET /runs/:id | — | RunSnapshot: 실행에 쓴 정의·definitionHash·출처 revision·criteriaVersionId·mode |
+| GET /runs/:id/artifact-versions/:artifactVersionId | — | 불변 본문 `{text}`. 이 run의 산출물 버전과 기준 버전만 |
+| POST /corrals/:id/duplicate | `{name}` | 새 id의 사본(revision 1) |
+| DELETE /corrals/:id | — | 저장 정의 삭제. 이미 시작한 Run의 snapshot에는 영향 없음 |
+
+`POST /runs`는 `CreateRunRequest`만 받는다(정의 본문을 직접 보내면 400). 같은 commandId의 재전송은 200과 처음 receipt, 새 Run은 201이다. 두 번째 활성 Run은 409 `RUN_ALREADY_ACTIVE`다. `PUT /corrals/:id`는 `If-Match`에 기준 definition revision이 없으면 400, 다르면 409 `REVISION_CONFLICT`다. 명령 응답의 HTTP 상태는 receipt를 따른다: 거절은 오류 코드의 상태, `accepted`·`queued`는 202, 그 밖은 200이다.
+
 SSE event는 `id: runSeq`, `event: domain`을 가진다. SnapshotSeq 이하 event는 재적용하지 않는다. Last-Event-ID와 after가 충돌하면 서버 계약으로 하나를 선택하고 오류/우선순위를 문서화한다. 첫 구현은 Last-Event-ID가 유효하면 우선한다. 범위 밖 cursor·다른 Run cursor는 400이다.
 
 ## 2. Receipt
@@ -40,6 +55,8 @@ steer receipt의 applied는 입력 dispatch 확인을 의미한다. 품질 준�
 | TARGET_NOT_FOUND | 404 | 대상 Run·실행·작업이 없음 (구현 중 추가, P0 C-053) |
 | COMMAND_NOT_SUPPORTED | 501 | 형식은 올바르지만 현재 runtime 단계에서 아직 처리하지 않는 명령. 효과 없음 (구현 중 추가, P1 C-005) |
 | TARGET_TERMINAL | 409 | 종료된 실행에 지시 등 적용 불가 |
+| REVISION_CONFLICT | 409 | Corral 저장의 기준 definition revision이 현재와 다름(다른 탭에서 저장). 저장하지 않음 (구현 중 추가, P2 C-015) |
+| RUN_ALREADY_ACTIVE | 409 | workspace에 이미 활성 Run이 있음(스펙 §6.2). 새 Run과 effect 없음 (구현 중 추가, P2 C-057) |
 | RESOURCE_CAPACITY | 409 | 동적 자식/응답 worker 용량 예약 실패. 부모를 무기한 대기에 넣지 않음 |
 | CRITERIA_CHANGE_REQUIRES_NEW_RUN | 409 | Loop가 이미 종료되어 완료 기준 변경은 새 Run 필요 |
 | RESTART_NOT_ALLOWED | 409 | 부모가 더 이상 대기하지 않거나 downstream 진행 |

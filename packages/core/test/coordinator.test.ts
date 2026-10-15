@@ -9,9 +9,9 @@ import {
 import { describe, expect, it } from 'vitest';
 import {
   applyEvent,
+  Coordinator,
   directDirectivesForArtifact,
   emptyProjection,
-  InMemoryCoordinator,
   InProcessTransport,
   type RunProjection,
   waitForProjection,
@@ -24,7 +24,7 @@ function setup(options: { turns?: number; gates?: Gate[] } = {}) {
     turns: options.turns ?? 1,
     beforeReply: () => gates[replies++]?.wait() ?? Promise.resolve(),
   });
-  const coordinator = new InMemoryCoordinator({
+  const coordinator = new Coordinator({
     clock: new FakeClock(),
     ids: new SequentialIdFactory(),
     agents,
@@ -63,7 +63,7 @@ async function collectEvents(transport: InProcessTransport, runId: string): Prom
   return events;
 }
 
-describe('InMemoryCoordinator: linear mock run', () => {
+describe('Coordinator: linear mock run', () => {
   it('runs agents in edge order and finalizes the last submitted version', async () => {
     const transport = setup();
     const { runId, receipt } = await transport.startRun(startRequest(['research', 'writer']));
@@ -167,7 +167,7 @@ describe('InMemoryCoordinator: linear mock run', () => {
   });
 });
 
-describe('InMemoryCoordinator: steering', () => {
+describe('Coordinator: steering', () => {
   async function runningWriter(turns: number, gates: Gate[]) {
     const transport = setup({ turns, gates });
     const { runId } = await transport.startRun(startRequest(['writer']));

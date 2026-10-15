@@ -1,0 +1,245 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { type CanvasLayout, CorralDefinition } from '@corral/contracts';
+import {
+  Coordinator,
+  InProcessTransport,
+  type RunProjection,
+  waitForProjection,
+} from '@corral/core';
+import {
+  describeCorralRepositoryContract,
+  describeRunStoreContract,
+  describeTransportContract,
+} from '@corral/core/testing';
+import {
+  FakeClock,
+  Gate,
+  linearCorral,
+  ScriptedAgentAdapter,
+  SequentialIdFactory,
+} from '@corral/testkit';
+import Database from 'better-sqlite3';
+import { afterEach, describe, expect, it } from 'vitest';
+import researchTeam from '../../../examples/research-team.corral.json' with { type: 'json' };
+import researchLayout from '../../../examples/research-team.layout.json' with { type: 'json' };
+import { MIGRATIONS, openDatabase, SqliteCorralRepository, SqliteRunStore } from '../src/index.ts';
+
+const dirs: string[] = [];
+function tempFile(name = 'corral.db') {
+  const dir = mkdtempSync(join(tmpdir(), 'corral-sqlite-'));
+  dirs.push(dir);
+  return join(dir, name);
+}
+afterEach(() => {
+  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+});
+
+function repository(db: Database.Database) {
+  const ids = new SequentialIdFactory();
+  return new SqliteCorralRepository(db, {
+    clock: new FakeClock(),
+    newCorralId: () => ids.next('run').replace('run', 'corral'),
+  });
+}
+
+describeRunStoreContract('sqlite', () => new SqliteRunStore(openDatabase(':memory:')));
+describeCorralRepositoryContract('sqlite', () => repository(openDatabase(':memory:')));
+describeTransportContract(
+  'in-process over SQLite',
+  (agents) =>
+    new InProcessTransport(
+      new Coordinator({
+        clock: new FakeClock(),
+        ids: new SequentialIdFactory(),
+        agents,
+        store: new SqliteRunStore(openDatabase(':memory:')),
+      }),
+    ),
+);
+
+const settled = (p: RunProjection) =>
+  ['succeeded', 'failed', 'cancelled', 'interrupted'].includes(p.status);
+
+describe('SQLite database', () => {
+  it('migrates a new file to the latest schema with durable settings', () => {
+    const db = openDatabase(tempFile());
+    expect(db.pragma('user_version', { simple: true })).toBe(MIGRATIONS.length);
+    expect(db.pragma('foreign_keys', { simple: true })).toBe(1);
+    expect(db.pragma('journal_mode', { simple: true })).toBe('wal');
+    expect(db.pragma('synchronous', { simple: true })).toBe(2);
+    db.close();
+  });
+
+  it('reopens an existing file without migrating again', () => {
+    const file = tempFile();
+    openDatabase(file).close();
+    const db = openDatabase(file);
+    expect(db.pragma('user_version', { simple: true })).toBe(MIGRATIONS.length);
+    db.close();
+  });
+
+  it('refuses a database written by a newer Corral instead of guessing', () => {
+    const file = tempFile();
+    const raw = new Database(file);
+    raw.pragma(`user_version = ${MIGRATIONS.length + 1}`);
+    raw.close();
+    expect(() => openDatabase(file)).toThrow(/newer/);
+  });
+
+  it('rejects edits to committed events and artifact bodies at the database level', () => {
+    const db = openDatabase(':memory:');
+    const store = new SqliteRunStore(db);
+    describeOnce(store);
+    expect(() => db.prepare("UPDATE run_events SET type = 'x'").run()).toThrow(/immutable/);
+    expect(() => db.prepare('DELETE FROM run_events').run()).toThrow(/immutable/);
+    expect(() => db.prepare("UPDATE artifact_texts SET text_body = 'x'").run()).toThrow(
+      /immutable/,
+    );
+  });
+});
+
+/** Commits one small run through a real coordinator. */
+function describeOnce(store: SqliteRunStore) {
+  const coordinator = new Coordinator({
+    clock: new FakeClock(),
+    ids: new SequentialIdFactory(),
+    agents: new ScriptedAgentAdapter({ turns: 1 }),
+    store,
+  });
+  coordinator.startRun({
+    schemaVersion: '0.1',
+    commandId: 'cmd_once',
+    definition: linearCorral(['writer']),
+    mode: 'mock',
+  });
+}
+
+describe('SQLite Corral repository', () => {
+  const layout = () => ({
+    nodes: JSON.parse(JSON.stringify((researchLayout as unknown as CanvasLayout).nodes)),
+    viewport: { x: 0, y: 0, zoom: 1 },
+  });
+
+  it('[TC-CAN-002-N] keeps every saved definition revision for runs to start from', async () => {
+    const repo = repository(openDatabase(':memory:'));
+    const created = await repo.save({
+      definition: CorralDefinition.parse(researchTeam),
+      layout: layout(),
+      expectedDefinitionRevision: null,
+    });
+    if (!created.ok) throw new Error(created.message);
+    const id = created.record.corralId;
+    const edited = JSON.parse(JSON.stringify(created.record.definition)) as CorralDefinition;
+    const role = edited.roles[0];
+    if (role) role.prompt = 'Changed.';
+    const saved = await repo.save({
+      definition: edited,
+      layout: layout(),
+      expectedDefinitionRevision: 1,
+    });
+    expect(saved.ok && saved.record.definitionRevision).toBe(2);
+
+    expect(repo.getDefinition(id, 1)?.roles[0]?.prompt).toBe(
+      created.record.definition.roles[0]?.prompt,
+    );
+    expect(repo.getDefinition(id, 2)?.roles[0]?.prompt).toBe('Changed.');
+    expect(repo.getDefinition(id, 3)).toBeNull();
+  });
+
+  it('refuses a stored row it cannot read instead of guessing', async () => {
+    const db = openDatabase(':memory:');
+    const repo = repository(db);
+    const created = await repo.save({
+      definition: CorralDefinition.parse(researchTeam),
+      layout: layout(),
+      expectedDefinitionRevision: null,
+    });
+    if (!created.ok) throw new Error(created.message);
+    db.prepare('UPDATE layouts SET layout_json = \'{"broken":\'').run();
+    await expect(repo.get(created.record.corralId)).rejects.toThrow(/cannot be read/);
+  });
+});
+
+describe('Coordinator over a SQLite file', () => {
+  it('[TC-RUN-007-H] [TC-RUN-007-N] a new process marks the run interrupted and calls no agent', async () => {
+    const file = tempFile();
+    const gate = new Gate();
+    const dbA = openDatabase(file);
+    const first = new Coordinator({
+      clock: new FakeClock(),
+      ids: new SequentialIdFactory('a'),
+      agents: new ScriptedAgentAdapter({ turns: 1, beforeReply: () => gate.wait() }),
+      store: new SqliteRunStore(dbA),
+      sessionId: 'backend_a',
+    });
+    const transportA = new InProcessTransport(first);
+    const { runId } = await transportA.startRun({
+      schemaVersion: '0.1',
+      commandId: 'cmd_start',
+      definition: linearCorral(['writer']),
+      mode: 'mock',
+    });
+    await waitForProjection(transportA, runId ?? '', (p) =>
+      Object.values(p.effects).some((e) => e.kind === 'model_request'),
+    );
+    // The process dies: its connection is gone; the late reply cannot record anything.
+    dbA.close();
+    gate.open();
+    for (let i = 0; i < 100; i++) await Promise.resolve();
+
+    let starts = 0;
+    const second = new Coordinator({
+      clock: new FakeClock(),
+      ids: new SequentialIdFactory('b'),
+      agents: {
+        start: async (...args) => {
+          starts += 1;
+          return new ScriptedAgentAdapter({ turns: 1 }).start(...args);
+        },
+      },
+      store: new SqliteRunStore(openDatabase(file)),
+      sessionId: 'backend_b',
+    });
+    const projection = second.getSnapshot(runId ?? '').projection;
+    expect(projection.status).toBe('interrupted');
+    expect(projection.interruptedBy).toBe('backend_b');
+    expect(starts).toBe(0);
+    expect(first.admitting).toBe(false);
+  });
+
+  it('reads a finished run from a new process without any agent', async () => {
+    const file = tempFile();
+    const dbA = openDatabase(file);
+    const transportA = new InProcessTransport(
+      new Coordinator({
+        clock: new FakeClock(),
+        ids: new SequentialIdFactory('a'),
+        agents: new ScriptedAgentAdapter({ turns: 1 }),
+        store: new SqliteRunStore(dbA),
+      }),
+    );
+    const { runId } = await transportA.startRun({
+      schemaVersion: '0.1',
+      commandId: 'cmd_start',
+      definition: linearCorral(['research', 'writer']),
+      mode: 'mock',
+    });
+    const done = await waitForProjection(transportA, runId ?? '', settled);
+    dbA.close();
+
+    const reader = new Coordinator({
+      clock: new FakeClock(),
+      ids: new SequentialIdFactory('b'),
+      agents: {
+        start: () => Promise.reject(new Error('no agent may run while reading')),
+      },
+      store: new SqliteRunStore(openDatabase(file)),
+    });
+    expect(reader.getSnapshot(runId ?? '').projection).toEqual(done);
+    const output = done.output?.artifactVersionIds[0] ?? '';
+    expect(reader.getArtifactText(runId ?? '', output)).toContain('writer (writer) turn 1');
+    expect(reader.listRuns().map((r) => [r.runId, r.status])).toEqual([[runId, 'succeeded']]);
+  });
+});

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { CorralDefinition } from './definition.ts';
+import { CorralDefinition, RunInput } from './definition.ts';
 import { Identifier, SchemaVersion } from './ids.ts';
 
 // Commands from contracts/command.schema.json. A command is an intent; the Coordinator
@@ -135,3 +135,17 @@ export const StartRunRequest = z.strictObject({
   mode: z.enum(['mock', 'live']),
 });
 export type StartRunRequest = z.infer<typeof StartRunRequest>;
+
+/**
+ * POST /api/v1/runs (API-Contract §1): start a run from a saved definition revision. The
+ * runtime resolves and snapshots the definition; `input` replaces the saved brief and criteria.
+ */
+export const CreateRunRequest = z.strictObject({
+  schemaVersion: SchemaVersion,
+  commandId: Identifier,
+  corralId: Identifier,
+  definitionRevision: z.int().min(1),
+  input: RunInput.optional(),
+  mode: z.enum(['mock', 'live']),
+});
+export type CreateRunRequest = z.infer<typeof CreateRunRequest>;

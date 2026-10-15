@@ -55,6 +55,7 @@ export const AgentRunning: Story = {
             modelProfile: 'model-a',
             status: 'active',
             activity: 'model',
+            waitingOn: null,
             modelCallIds: ['call_0001'],
             error: null,
           },

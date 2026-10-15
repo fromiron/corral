@@ -4,9 +4,20 @@ import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { useStudioStores } from '../context.tsx';
 import { compileDraft } from '../editor/model.ts';
+import type { SavedRevision } from '../run/session.ts';
 
-/** Starts a run of the current draft, or says why it cannot run. */
-export function RunControls({ onStarted }: { onStarted?: (runId: string) => void }) {
+/**
+ * Starts a run of the current draft, or says why it cannot run. With `beforeStart` the run
+ * starts from the revision it returns (the local server runs saved revisions only); null means
+ * the draft could not be saved and nothing starts.
+ */
+export function RunControls({
+  onStarted,
+  beforeStart,
+}: {
+  onStarted?: (runId: string) => void;
+  beforeStart?: () => Promise<SavedRevision | null>;
+}) {
   const t = useTranslations('Run');
   const { editor, session } = useStudioStores();
   const draft = useStore(editor, (s) => s.draft);
@@ -19,7 +30,9 @@ export function RunControls({ onStarted }: { onStarted?: (runId: string) => void
     if (!compiled.definition || !compiled.runnable) return;
     setStarting(true);
     try {
-      await session.getState().start(compiled.definition);
+      const saved = beforeStart ? await beforeStart() : undefined;
+      if (saved === null) return;
+      await session.getState().start(compiled.definition, saved);
       const runId = session.getState().runId;
       if (runId) onStarted?.(runId);
     } finally {

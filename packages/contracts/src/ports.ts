@@ -20,7 +20,10 @@ export type IdKind =
   | 'directive'
   | 'tool_call'
   | 'artifact'
-  | 'artifact_version';
+  | 'artifact_version'
+  | 'criteria_version'
+  | 'iteration'
+  | 'effect';
 
 export interface IdFactory {
   next(kind: IdKind): string;

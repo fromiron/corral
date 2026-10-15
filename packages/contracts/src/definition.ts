@@ -159,15 +159,19 @@ export const DEFAULT_LIMITS: RunLimits = {
   runDeadlineMs: 3600000,
 };
 
+/** What a run works on: the brief and the completion criteria (Spec §5.1). */
+export const RunInput = z.strictObject({
+  brief: z.string().min(1),
+  criteria: z.array(z.string().min(1)).min(1).max(20),
+});
+export type RunInput = z.infer<typeof RunInput>;
+
 export const CorralDefinition = z.strictObject({
   schemaVersion: SchemaVersion,
   id: Identifier,
   name: z.string().min(1),
   entryNodeId: Identifier,
-  input: z.strictObject({
-    brief: z.string().min(1),
-    criteria: z.array(z.string().min(1)).min(1).max(20),
-  }),
+  input: RunInput,
   roles: z.array(AgentRole).min(1).max(20),
   nodes: z.array(CorralNode).min(2).max(20),
   controlEdges: z.array(ControlEdge).min(1).max(40),

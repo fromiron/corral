@@ -175,3 +175,23 @@
 **이유:** Pi agent-core·pi-ai·LangGraph.js가 TypeScript다. Zod 계약 한 곳에서 서버·클라이언트·데모 타입을 만들고, 같은 Coordinator를 브라우저 데모에서 실행할 수 있다. 성능 목표는 I/O 위주라 Node로 충분하다.
 
 **결과·제약:** 데스크톱 셸이나 도구 샌드박스처럼 MVP 밖의 기능이 필요해질 때 다른 언어를 다시 검토한다.
+
+## ADR-021: SQLite는 ORM 없이 better-sqlite3와 번호 붙은 SQL migration으로 쓴다
+
+**상태:** 채택 (2026-10-15, C-011). 기술 설계 §2의 `storage-sqlite/ # Drizzle schema` 표기를 대체한다.
+
+**결정:** `@corral/storage-sqlite`는 better-sqlite3(13.0.3)의 prepared statement와 동기 transaction을 직접 쓴다. schema는 `MIGRATIONS` 배열의 SQL이고 적용 번호는 `PRAGMA user_version`에 남는다. 이 build보다 새 번호의 파일은 열지 않는다. 이벤트·산출물 본문 테이블은 trigger로 UPDATE·DELETE를 거절한다.
+
+**이유:** Coordinator의 commit은 동기 RunStore transaction 하나다(ADR-003). 테이블이 8개뿐이고 질의는 키 조회와 seq 범위 읽기뿐이라 ORM의 타입 질의 이점이 작다. Drizzle을 넣으면 의존성과 migration 생성 도구(drizzle-kit)가 함께 늘어난다. 메모리 store와 SQLite store가 같은 `RunStore` 계약 테스트를 통과하므로 저장 방식은 포트 뒤에 숨는다.
+
+**결과·제약:** 읽기 모델은 run마다 JSON 투영 한 행(`runs.projection_json`)이며 이벤트 재생으로 다시 만들 수 있다. 실행·작업 단위 정규화 테이블(기술 설계 §11의 executions·tasks 등)은 질의가 필요해지는 단계(P7 inspect)에서 migration으로 추가한다. effect intent는 `effect_intents` 테이블에 같은 transaction으로 기록한다.
+
+## ADR-022: 로컬 세션은 URL fragment의 일회성 token으로 연다
+
+**상태:** 채택 (2026-10-15, C-055)
+
+**결정:** 서버는 시작할 때 무작위 bootstrap token을 만들고 `http://127.0.0.1:<port>/#bootstrap=<token>`을 터미널에 출력한다. Studio는 fragment의 token을 `POST /api/v1/session`으로 한 번 교환해 `HttpOnly; SameSite=Strict` 세션 cookie를 받고, 주소창에서 token을 지운다. 같은 token의 두 번째 교환은 401이다. 모든 API는 Host 허용 목록과 Origin 검사를 먼저 통과해야 하고, 상태 변경 요청은 Studio origin의 Origin header가 반드시 있어야 한다. CORS header는 보내지 않는다. 서버가 내보내는 Studio 페이지에는 `<meta name="corral-runtime" content="server">`를 넣어, 그 표시가 있을 때만 Studio가 서버 runtime을 쓴다. 표시가 없으면 브라우저 안의 데모 runtime을 쓴다(ADR-016).
+
+**이유:** fragment는 서버 로그·Referer로 전달되지 않는다. 다른 사이트의 페이지도 loopback port에 요청을 보낼 수 있으므로, 세션 없이 읽기를 허용하거나 Origin 없는 쓰기를 허용하면 안 된다. 표시 없는 health probe는 데모 hosting에서 404 console 오류를 만든다.
+
+**결과·제약:** 서버를 재시작하면 세션이 끝나고 새 링크가 필요하다. 브라우저를 다시 열어도 cookie가 사라진다(session cookie). CSRF token, 요청 빈도 제한, DNS rebinding 전체 감사는 C-042(P8)다. CSP에 `unsafe-eval`이 없으므로 Studio는 Zod를 jitless 모드로 실행한다.

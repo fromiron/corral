@@ -18,7 +18,16 @@ export default defineConfig({
   },
   projects: [
     {
+      // The in-browser runtime (demo): Vite dev server, simulated agents in the page.
       name: 'chromium',
+      testIgnore: 'server/**',
+      use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 } },
+    },
+    {
+      // Against the local server (C-059): each test starts its own server, workspace and DB
+      // through the harness, serving the production build of Studio (`pnpm build` first).
+      name: 'server',
+      testMatch: 'server/**/*.spec.ts',
       use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 } },
     },
   ],
