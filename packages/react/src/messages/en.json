@@ -520,5 +520,32 @@
     "loadingCriteria": "Loading current criteria…",
     "finished": "This run has ended. Its settings history remains available.",
     "snapshotsUnchanged": "Requests already prepared retain their recorded input snapshots."
+  },
+  "Demo": {
+    "template": "Demo template",
+    "templates": {
+      "research-team": "Research team: delegate, ask, review",
+      "starter": "Starter: one agent"
+    },
+    "guide": {
+      "heading": "Demo guide",
+      "intro": "Each step is checked off from what the simulated run actually recorded.",
+      "state": {
+        "done": "Done",
+        "current": "Now",
+        "pending": "Not yet",
+        "missed": "Didn't happen in this run"
+      },
+      "steps": {
+        "start": "Start the run with Run.",
+        "delegate": "Research hands two parts to Research Helpers. They appear under it in Executions.",
+        "ask": "The Writer asks the Source Responder a question and gets an answer.",
+        "revise": "The Reviewer asks for a revision, so the Writer runs a second round.",
+        "steer": "Optional: steer the round 2 Writer. Your instruction reaches its next request, not the draft it already submitted.",
+        "finish": "Approve the reviewed draft, then the final output."
+      },
+      "steerAction": "Steer the round 2 Writer",
+      "pauseAtRound2": "Pause the run when the round 2 Writer starts"
+    }
   }
 }

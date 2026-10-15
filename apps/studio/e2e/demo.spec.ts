@@ -1,5 +1,5 @@
 import { linearCorral } from '@corral/testkit';
-import { expect, test } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 
 test('[TC-DEV-005-H] /demo starts a key-free worker runtime and steering changes its output offline', async ({
   page,
@@ -18,7 +18,7 @@ test('[TC-DEV-005-H] /demo starts a key-free worker runtime and steering changes
     document.documentElement.append(meta);
   });
   const workerReady = page.waitForEvent('worker');
-  await page.goto('/demo?delay=600');
+  await page.goto('/demo?template=starter&delay=600');
   await expect(page.getByLabel('Corral name')).toHaveValue('Demo Corral');
   await workerReady;
   await expect(page.getByText('Demo / Simulated agents')).toBeVisible();
@@ -39,7 +39,7 @@ test('[TC-DEV-005-H] /demo starts a key-free worker runtime and steering changes
 test('[TC-DEV-005-N] the worker preserves receipts, replay ordering and cancellation boundaries', async ({
   page,
 }) => {
-  await page.goto('/demo?delay=150');
+  await page.goto('/demo?template=starter&delay=150');
   await expect(page.getByText('Ready to run.')).toBeVisible();
   const result = await page.evaluate(
     async (definition) => {
@@ -137,7 +137,7 @@ test('[TC-DEV-005-N] the worker preserves receipts, replay ordering and cancella
 test('[TC-DEV-005-H] a previewed future prompt patch changes only the downstream simulated activation', async ({
   page,
 }) => {
-  await page.goto('/demo?delay=500');
+  await page.goto('/demo?template=starter&delay=500');
   await page.getByRole('button', { name: 'Add Agent', exact: true }).click();
   await page.getByLabel('From out').selectOption({ label: 'Output · in' });
   await page.getByRole('button', { name: 'Connect', exact: true }).click();
@@ -169,4 +169,140 @@ test('[TC-DEV-005-H] a previewed future prompt patch changes only the downstream
     'role prompt: Summarize the evidence as three bullet points.',
   );
   await expect(page.locator('[data-execution-id]')).toHaveCount(2);
+});
+
+const approve = async (page: Page, kind: 'Your decision' | 'Final output') => {
+  const card = page.locator('[data-testid^="approval-"]').filter({ hasText: kind });
+  await expect(card).toBeVisible({ timeout: 20_000 });
+  await card.getByRole('button', { name: 'Approve' }).click();
+};
+
+const step = (page: Page, id: string) =>
+  page.getByRole('region', { name: 'Demo guide' }).locator(`[data-step="${id}"]`);
+
+test('[TC-DEV-005-H] the default demo team delegates, asks, revises once and finishes after approval offline', async ({
+  page,
+  context,
+}) => {
+  const runtimeRequests: string[] = [];
+  page.on('request', (request) => {
+    if (['fetch', 'xhr', 'eventsource'].includes(request.resourceType()))
+      runtimeRequests.push(request.url());
+  });
+  await page.goto('/demo?delay=200');
+  await expect(page.getByLabel('Corral name')).toHaveValue('Research team');
+  await expect(page.getByText('Demo / Simulated agents')).toBeVisible();
+  await expect(page.getByText('Ready to run.')).toBeVisible();
+  await expect(step(page, 'start')).toHaveAttribute('data-state', 'current');
+  await context.setOffline(true);
+  await page.getByRole('button', { name: 'Run', exact: true }).click();
+
+  // Research hands two parts to helpers, which appear under it in the call tree.
+  const nested = page.locator('li[data-execution-id] li[data-execution-id]');
+  await expect(nested.filter({ hasText: 'Research Helper' })).toHaveCount(2);
+  await expect(step(page, 'delegate')).toHaveAttribute('data-state', 'done');
+  // The Writer's question gets its own responder execution under the Writer.
+  await expect(nested.filter({ hasText: 'Source Responder' }).first()).toBeVisible();
+  await expect(step(page, 'ask')).toHaveAttribute('data-state', 'done', { timeout: 10_000 });
+  // The first review asks for a revision, so the Writer runs a second round.
+  const writers = page.locator('li[data-execution-id]').filter({ hasText: /^Writer ·/ });
+  await expect(writers.filter({ hasText: 'Round 2' })).toHaveCount(1, { timeout: 15_000 });
+  await expect(step(page, 'revise')).toHaveAttribute('data-state', 'done');
+
+  await approve(page, 'Your decision');
+  await approve(page, 'Final output');
+  await expect(page.getByTestId('run-status')).toContainText('Succeeded');
+  const output = page.getByTestId('run-output');
+  await expect(output).toContainText('Simulated');
+  await expect(output).not.toContainText(/^read artv_/m);
+  await expect(step(page, 'finish')).toHaveAttribute('data-state', 'done');
+  expect(runtimeRequests).toEqual([]);
+});
+
+test('[TC-DEV-005-N] steering the second-round Writer changes that draft, not the submitted first one', async ({
+  page,
+}) => {
+  await page.goto('/demo?delay=700');
+  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  const writers = page.locator('li[data-execution-id]').filter({ hasText: /^Writer ·/ });
+  await expect(writers.filter({ hasText: 'Round 2' })).toHaveCount(1, { timeout: 30_000 });
+  // The guide offers the second-round Writer as the target; Reins confirm it.
+  await step(page, 'steer').getByRole('button', { name: 'Steer the round 2 Writer' }).click();
+  const reins = page.getByRole('region', { name: 'Reins', exact: true });
+  await expect(reins).toContainText('Writer');
+  await page.getByLabel('Instruction').fill('Lead with the cost difference.');
+  await page.getByLabel('Instruction').press('Enter');
+  await expect(step(page, 'steer')).toHaveAttribute('data-state', 'done', { timeout: 15_000 });
+
+  await approve(page, 'Your decision');
+  await approve(page, 'Final output');
+  await expect(page.getByTestId('run-status')).toContainText('Succeeded');
+  await expect(page.getByTestId('run-output')).toContainText('Lead with the cost difference.');
+  await expect(writers.filter({ hasText: 'Round 1' })).not.toContainText(
+    'Lead with the cost difference.',
+  );
+});
+
+test('[TC-DEV-005-N] a rejected approval does not finish the run or the guide', async ({
+  page,
+}) => {
+  await page.goto('/demo?delay=150');
+  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  const card = page.locator('[data-testid^="approval-"]').filter({ hasText: 'Your decision' });
+  await expect(card).toBeVisible({ timeout: 20_000 });
+  await card.getByRole('button', { name: 'Reject' }).click();
+  await expect(page.getByTestId('run-status')).not.toContainText(/Running|Waiting/, {
+    timeout: 10_000,
+  });
+  await expect(page.getByTestId('run-status')).not.toContainText('Succeeded');
+  await expect(step(page, 'finish')).toHaveAttribute('data-state', 'missed');
+  await expect(step(page, 'finish')).toContainText("Didn't happen in this run");
+});
+
+test('[TC-DEV-005-N] cancelling mid-run leaves the remaining guide steps missed, not done', async ({
+  page,
+}) => {
+  await page.goto('/demo?delay=1500');
+  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await expect(step(page, 'start')).toHaveAttribute('data-state', 'done');
+  await page.getByRole('button', { name: 'Cancel whole run', exact: true }).click();
+  await page.getByRole('button', { name: 'Confirm whole run cancellation', exact: true }).click();
+  await expect(page.getByTestId('run-status')).toContainText('Cancelled', { timeout: 15_000 });
+  for (const id of ['revise', 'steer', 'finish']) {
+    await expect(step(page, id)).toHaveAttribute('data-state', 'missed');
+  }
+});
+
+test('[TC-DEV-005-N] an unknown template name opens the default team, and the picker switches templates', async ({
+  page,
+}) => {
+  await page.goto('/demo?template=bogus');
+  await expect(page.getByLabel('Corral name')).toHaveValue('Research team');
+  await page.getByLabel('Demo template').selectOption({ label: 'Starter: one agent' });
+  await expect(page).toHaveURL(/template=starter/);
+  await expect(page.getByLabel('Corral name')).toHaveValue('Demo Corral');
+  await expect(page.getByRole('region', { name: 'Demo guide' })).toHaveCount(0);
+});
+
+test('[TC-DEV-005-H] the guide can pause at round 2 so a visitor has time to steer at normal speed', async ({
+  page,
+}) => {
+  await page.goto('/demo?delay=300');
+  const arm = step(page, 'steer').getByLabel('Pause the run when the round 2 Writer starts');
+  await arm.check();
+  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  // The guide pauses through the normal run command, and points Reins at the round 2 Writer.
+  await expect(page.getByTestId('run-status')).toContainText('Paused', { timeout: 20_000 });
+  await expect(arm).toHaveCount(0);
+  const reins = page.getByRole('region', { name: 'Reins', exact: true });
+  const writers = page.locator('li[data-execution-id]').filter({ hasText: /^Writer ·/ });
+  const round2 = await writers.filter({ hasText: 'Round 2' }).getAttribute('data-execution-id');
+  await expect(reins).toContainText(`execution ${round2}`);
+  await page.getByLabel('Instruction').fill('Lead with the cost difference.');
+  await page.getByLabel('Instruction').press('Enter');
+  await page.getByRole('button', { name: 'Resume run', exact: true }).click();
+  await expect(step(page, 'steer')).toHaveAttribute('data-state', 'done', { timeout: 15_000 });
+  await approve(page, 'Your decision');
+  await approve(page, 'Final output');
+  await expect(page.getByTestId('run-output')).toContainText('Lead with the cost difference.');
 });

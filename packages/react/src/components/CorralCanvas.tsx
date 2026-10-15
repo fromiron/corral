@@ -275,6 +275,8 @@ export function CorralCanvas() {
         onDrop={onDrop}
         deleteKeyCode={['Backspace', 'Delete']}
         elevateNodesOnSelect={false}
+        // The saved viewport frames the Corral when it opens; later pans stay local.
+        defaultViewport={draft.viewport}
         colorMode="system"
       >
         <Background />

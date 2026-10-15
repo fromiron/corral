@@ -25,7 +25,7 @@ async function activate(page: Page, target: Locator) {
 test('[TC-UX-001-H] keyboard alone adds, selects, moves, connects, deletes, undoes and steers a run', async ({
   page,
 }) => {
-  await page.goto('/demo?delay=2500');
+  await page.goto('/demo?template=starter&delay=2500');
   await activate(page, page.getByRole('button', { name: 'Add Agent', exact: true }));
   await expect(page.locator('.react-flow__node')).toHaveCount(3);
   await activate(page, page.getByRole('button', { name: 'Delete node', exact: true }));
@@ -66,7 +66,7 @@ for (const instruction of [
   test(`[TC-UX-001-N] IME composition Enter does not submit ${instruction.slice(0, 4)}`, async ({
     page,
   }) => {
-    await page.goto('/demo?delay=3000');
+    await page.goto('/demo?template=starter&delay=3000');
     await page.getByRole('button', { name: 'Run', exact: true }).click();
     await page.getByRole('button', { name: 'Pause run', exact: true }).click();
     await expect(page.getByTestId('run-status')).toContainText('Paused', { timeout: 10_000 });
@@ -97,7 +97,7 @@ test('[TC-UX-001-H] wide layouts and reduced motion keep the editor controls rea
   await page.emulateMedia({ reducedMotion: 'reduce' });
   for (const width of [1280, 1440, 1920]) {
     await page.setViewportSize({ width, height: 900 });
-    await page.goto('/demo');
+    await page.goto('/demo?template=starter');
     await expect(page.getByRole('button', { name: 'Run', exact: true })).toBeVisible();
     await expect(page.getByLabel('Corral name')).toBeVisible();
     expect(
