@@ -1,0 +1,18 @@
+stateDiagram-v2
+  [*] --> created
+  created --> validating
+  validating --> running
+  validating --> failed
+  running --> pausing: pause
+  pausing --> paused: effects drained
+  paused --> running: resume
+  running --> awaiting_user: gate or required task blocked
+  awaiting_user --> running: resolved
+  running --> cancelling: cancel
+  pausing --> cancelling: cancel
+  paused --> cancelling: cancel
+  awaiting_user --> cancelling: cancel
+  cancelling --> cancelled: all owned effects settled
+  cancelling --> failed: termination unconfirmed
+  running --> succeeded: output verified
+  running --> failed: unrecoverable error

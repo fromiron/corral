@@ -1,0 +1,575 @@
+[
+  {
+    "requirementId": "CRL-CAN-001",
+    "tests": [
+      "TC-CAN-001-H",
+      "TC-CAN-001-N"
+    ],
+    "tasks": [
+      "C-004",
+      "C-006",
+      "C-056",
+      "C-014",
+      "C-057"
+    ]
+  },
+  {
+    "requirementId": "CRL-CAN-002",
+    "tests": [
+      "TC-CAN-002-H",
+      "TC-CAN-002-N"
+    ],
+    "tasks": [
+      "C-005",
+      "C-009",
+      "C-054",
+      "C-057"
+    ]
+  },
+  {
+    "requirementId": "CRL-CAN-003",
+    "tests": [
+      "TC-CAN-003-H",
+      "TC-CAN-003-N"
+    ],
+    "tasks": [
+      "C-006"
+    ]
+  },
+  {
+    "requirementId": "CRL-CAN-004",
+    "tests": [
+      "TC-CAN-004-H",
+      "TC-CAN-004-N"
+    ],
+    "tasks": [
+      "C-007",
+      "C-008"
+    ]
+  },
+  {
+    "requirementId": "CRL-CAN-005",
+    "tests": [
+      "TC-CAN-005-H",
+      "TC-CAN-005-N"
+    ],
+    "tasks": [
+      "C-009",
+      "C-010"
+    ]
+  },
+  {
+    "requirementId": "CRL-RUN-001",
+    "tests": [
+      "TC-RUN-001-H",
+      "TC-RUN-001-N",
+      "TC-RACE-09"
+    ],
+    "tasks": [
+      "C-011",
+      "C-012",
+      "C-057"
+    ]
+  },
+  {
+    "requirementId": "CRL-RUN-002",
+    "tests": [
+      "TC-RUN-002-H",
+      "TC-RUN-002-N"
+    ],
+    "tasks": [
+      "C-013",
+      "C-016"
+    ]
+  },
+  {
+    "requirementId": "CRL-RUN-003",
+    "tests": [
+      "TC-RUN-003-H",
+      "TC-RUN-003-N"
+    ],
+    "tasks": [
+      "C-007",
+      "C-008",
+      "C-014",
+      "C-028"
+    ]
+  },
+  {
+    "requirementId": "CRL-RUN-004",
+    "tests": [
+      "TC-RUN-004-H",
+      "TC-RUN-004-N"
+    ],
+    "tasks": [
+      "C-022"
+    ]
+  },
+  {
+    "requirementId": "CRL-RUN-005",
+    "tests": [
+      "TC-RUN-005-H",
+      "TC-RUN-005-N",
+      "TC-RACE-06",
+      "TC-RACE-12"
+    ],
+    "tasks": [
+      "C-022",
+      "C-038"
+    ]
+  },
+  {
+    "requirementId": "CRL-RUN-006",
+    "tests": [
+      "TC-RUN-006-H",
+      "TC-RUN-006-N",
+      "TC-RACE-05"
+    ],
+    "tasks": [
+      "C-028",
+      "C-037",
+      "C-038",
+      "C-061",
+      "C-062"
+    ]
+  },
+  {
+    "requirementId": "CRL-RUN-007",
+    "tests": [
+      "TC-RUN-007-H",
+      "TC-RUN-007-N",
+      "TC-RACE-10"
+    ],
+    "tasks": [
+      "C-040"
+    ]
+  },
+  {
+    "requirementId": "CRL-COL-001",
+    "tests": [
+      "TC-COL-001-H",
+      "TC-COL-001-N"
+    ],
+    "tasks": [
+      "C-021",
+      "C-034"
+    ]
+  },
+  {
+    "requirementId": "CRL-COL-002",
+    "tests": [
+      "TC-COL-002-H",
+      "TC-COL-002-N"
+    ],
+    "tasks": [
+      "C-023",
+      "C-025"
+    ]
+  },
+  {
+    "requirementId": "CRL-COL-003",
+    "tests": [
+      "TC-COL-003-H",
+      "TC-COL-003-N",
+      "TC-RACE-12"
+    ],
+    "tasks": [
+      "C-023"
+    ]
+  },
+  {
+    "requirementId": "CRL-COL-004",
+    "tests": [
+      "TC-COL-004-H",
+      "TC-COL-004-N",
+      "TC-RACE-03"
+    ],
+    "tasks": [
+      "C-021",
+      "C-023",
+      "C-033"
+    ]
+  },
+  {
+    "requirementId": "CRL-ART-001",
+    "tests": [
+      "TC-ART-001-H",
+      "TC-ART-001-N"
+    ],
+    "tasks": [
+      "C-024"
+    ]
+  },
+  {
+    "requirementId": "CRL-ART-002",
+    "tests": [
+      "TC-ART-002-H",
+      "TC-ART-002-N"
+    ],
+    "tasks": [
+      "C-026"
+    ]
+  },
+  {
+    "requirementId": "CRL-ART-003",
+    "tests": [
+      "TC-ART-003-H",
+      "TC-ART-003-N"
+    ],
+    "tasks": [
+      "C-027",
+      "C-036"
+    ]
+  },
+  {
+    "requirementId": "CRL-ART-004",
+    "tests": [
+      "TC-ART-004-H",
+      "TC-ART-004-N",
+      "TC-RACE-04"
+    ],
+    "tasks": [
+      "C-027",
+      "C-029"
+    ]
+  },
+  {
+    "requirementId": "CRL-RNS-001",
+    "tests": [
+      "TC-RNS-001-H",
+      "TC-RNS-001-N",
+      "TC-RACE-01",
+      "TC-RACE-13"
+    ],
+    "tasks": [
+      "C-031"
+    ]
+  },
+  {
+    "requirementId": "CRL-RNS-002",
+    "tests": [
+      "TC-RNS-002-H",
+      "TC-RNS-002-N",
+      "TC-RACE-13"
+    ],
+    "tasks": [
+      "C-001",
+      "C-018",
+      "C-031"
+    ]
+  },
+  {
+    "requirementId": "CRL-RNS-003",
+    "tests": [
+      "TC-RNS-003-H",
+      "TC-RNS-003-N",
+      "TC-RACE-06",
+      "TC-RACE-14"
+    ],
+    "tasks": [
+      "C-032"
+    ]
+  },
+  {
+    "requirementId": "CRL-RNS-004",
+    "tests": [
+      "TC-RNS-004-H",
+      "TC-RNS-004-N",
+      "TC-RACE-02"
+    ],
+    "tasks": [
+      "C-033"
+    ]
+  },
+  {
+    "requirementId": "CRL-RNS-005",
+    "tests": [
+      "TC-RNS-005-H",
+      "TC-RNS-005-N",
+      "TC-RACE-11"
+    ],
+    "tasks": [
+      "C-034"
+    ]
+  },
+  {
+    "requirementId": "CRL-RNS-006",
+    "tests": [
+      "TC-RNS-006-H",
+      "TC-RNS-006-N",
+      "TC-RACE-15"
+    ],
+    "tasks": [
+      "C-035"
+    ]
+  },
+  {
+    "requirementId": "CRL-RNS-007",
+    "tests": [
+      "TC-RNS-007-H",
+      "TC-RNS-007-N",
+      "TC-RACE-05"
+    ],
+    "tasks": [
+      "C-037"
+    ]
+  },
+  {
+    "requirementId": "CRL-RNS-008",
+    "tests": [
+      "TC-RNS-008-H",
+      "TC-RNS-008-N",
+      "TC-RACE-04",
+      "TC-RACE-14"
+    ],
+    "tasks": [
+      "C-029"
+    ]
+  },
+  {
+    "requirementId": "CRL-RNS-009",
+    "tests": [
+      "TC-RNS-009-H",
+      "TC-RNS-009-N"
+    ],
+    "tasks": [
+      "C-035"
+    ]
+  },
+  {
+    "requirementId": "CRL-RNS-010",
+    "tests": [
+      "TC-RNS-010-H",
+      "TC-RNS-010-N",
+      "TC-RACE-01"
+    ],
+    "tasks": [
+      "C-018",
+      "C-030",
+      "C-036"
+    ]
+  },
+  {
+    "requirementId": "CRL-OBS-001",
+    "tests": [
+      "TC-OBS-001-H",
+      "TC-OBS-001-N"
+    ],
+    "tasks": [
+      "C-016",
+      "C-025",
+      "C-030",
+      "C-056",
+      "C-060"
+    ]
+  },
+  {
+    "requirementId": "CRL-OBS-002",
+    "tests": [
+      "TC-OBS-002-H",
+      "TC-OBS-002-N",
+      "TC-RACE-07"
+    ],
+    "tasks": [
+      "C-015",
+      "C-041",
+      "C-053"
+    ]
+  },
+  {
+    "requirementId": "CRL-OBS-003",
+    "tests": [
+      "TC-OBS-003-H",
+      "TC-OBS-003-N"
+    ],
+    "tasks": [
+      "C-011",
+      "C-040",
+      "C-050"
+    ]
+  },
+  {
+    "requirementId": "CRL-OBS-004",
+    "tests": [
+      "TC-OBS-004-H",
+      "TC-OBS-004-N",
+      "TC-RACE-16"
+    ],
+    "tasks": [
+      "C-020",
+      "C-037",
+      "C-058",
+      "C-061"
+    ]
+  },
+  {
+    "requirementId": "CRL-SEC-001",
+    "tests": [
+      "TC-SEC-001-H",
+      "TC-SEC-001-N"
+    ],
+    "tasks": [
+      "C-017",
+      "C-019"
+    ]
+  },
+  {
+    "requirementId": "CRL-SEC-002",
+    "tests": [
+      "TC-SEC-002-H",
+      "TC-SEC-002-N"
+    ],
+    "tasks": [
+      "C-042",
+      "C-055",
+      "C-058",
+      "C-062"
+    ]
+  },
+  {
+    "requirementId": "CRL-SEC-003",
+    "tests": [
+      "TC-SEC-003-H",
+      "TC-SEC-003-N"
+    ],
+    "tasks": [
+      "C-043",
+      "C-044"
+    ]
+  },
+  {
+    "requirementId": "CRL-SEC-004",
+    "tests": [
+      "TC-SEC-004-H",
+      "TC-SEC-004-N",
+      "TC-RACE-02",
+      "TC-RACE-11"
+    ],
+    "tasks": [
+      "C-013",
+      "C-033",
+      "C-039"
+    ]
+  },
+  {
+    "requirementId": "CRL-DEV-001",
+    "tests": [
+      "TC-DEV-001-H",
+      "TC-DEV-001-N",
+      "TC-RACE-08"
+    ],
+    "tasks": [
+      "C-005",
+      "C-012",
+      "C-015"
+    ]
+  },
+  {
+    "requirementId": "CRL-DEV-002",
+    "tests": [
+      "TC-DEV-002-H",
+      "TC-DEV-002-N"
+    ],
+    "tasks": [
+      "C-003",
+      "C-039",
+      "C-053",
+      "C-059"
+    ]
+  },
+  {
+    "requirementId": "CRL-DEV-003",
+    "tests": [
+      "TC-DEV-003-H",
+      "TC-DEV-003-N"
+    ],
+    "tasks": [
+      "C-001",
+      "C-049",
+      "C-051"
+    ]
+  },
+  {
+    "requirementId": "CRL-DEV-004",
+    "tests": [
+      "TC-DEV-004-H",
+      "TC-DEV-004-N"
+    ],
+    "tasks": [
+      "C-003",
+      "C-017",
+      "C-020",
+      "C-052",
+      "C-059"
+    ]
+  },
+  {
+    "requirementId": "CRL-DEV-005",
+    "tests": [
+      "TC-DEV-005-H",
+      "TC-DEV-005-N"
+    ],
+    "tasks": [
+      "C-046",
+      "C-050",
+      "C-053"
+    ]
+  },
+  {
+    "requirementId": "CRL-UX-001",
+    "tests": [
+      "TC-UX-001-H",
+      "TC-UX-001-N"
+    ],
+    "tasks": [
+      "C-004",
+      "C-010",
+      "C-047"
+    ]
+  },
+  {
+    "requirementId": "CRL-UX-002",
+    "tests": [
+      "TC-UX-002-H",
+      "TC-UX-002-N"
+    ],
+    "tasks": [
+      "C-048",
+      "C-060"
+    ]
+  },
+  {
+    "requirementId": "CRL-DX-001",
+    "tests": [
+      "TC-DX-001-H",
+      "TC-DX-001-N"
+    ],
+    "tasks": [
+      "C-045"
+    ]
+  },
+  {
+    "requirementId": "CRL-DX-002",
+    "tests": [
+      "TC-DX-002-H",
+      "TC-DX-002-N"
+    ],
+    "tasks": [
+      "C-002",
+      "C-049",
+      "C-051",
+      "C-052"
+    ]
+  },
+  {
+    "requirementId": "CRL-DX-003",
+    "tests": [
+      "TC-DX-003-H",
+      "TC-DX-003-N"
+    ],
+    "tasks": [
+      "C-044",
+      "C-046"
+    ]
+  }
+]

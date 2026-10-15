@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:corral:event-envelope:0.1",
+  "title": "RunEvent envelope only",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "const": "0.1"
+    },
+    "eventId": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+    },
+    "runId": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+    },
+    "runSeq": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000000
+    },
+    "recordedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "type": {
+      "type": "string",
+      "pattern": "^[a-z][a-z_.]+$"
+    },
+    "actor": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "user",
+            "runtime",
+            "agent"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+        }
+      },
+      "required": [
+        "kind",
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "executionId": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+    },
+    "taskId": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+    },
+    "commandId": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+    },
+    "causedByEventIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+      },
+      "minItems": 0,
+      "maxItems": 30
+    },
+    "payload": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "eventId",
+    "runId",
+    "runSeq",
+    "recordedAt",
+    "type",
+    "actor",
+    "causedByEventIds",
+    "payload"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,227 @@
+[
+  {
+    "type": "run.started",
+    "requiredContent": "정의/입력/모델 snapshot과 최초 limits",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "run.state_changed",
+    "requiredContent": "from,to,reasonCode",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "run.interrupted",
+    "requiredContent": "previousStatus,backendSessionId",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "execution.created",
+    "requiredContent": "parentExecutionId,nodeId,taskId,attemptNo,depth,iterationId",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "execution.state_changed",
+    "requiredContent": "from,to,activity,waitingOn",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "execution.settled",
+    "requiredContent": "outcome,terminationMode,error",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "task.created",
+    "requiredContent": "role,node,contract,dependencies",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "task.attempt_assigned",
+    "requiredContent": "executionId,attemptNo",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "task.submitted",
+    "requiredContent": "artifactVersionIds",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "task.completed",
+    "requiredContent": "completionEvidence",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "task.blocked",
+    "requiredContent": "cause,requiredUserAction",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "message.question_created",
+    "requiredContent": "questionId,taskId,sender,targetRole,body,refs,deadline",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "message.answer_committed",
+    "requiredContent": "questionId,responseTaskId,body,refs",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "message.closed",
+    "requiredContent": "questionId,answer|cancel|timeout",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "artifact.version_created",
+    "requiredContent": "artifactId,version,bodyRef,hash,parentVersion,authorExecutionId,modelCallId,contextSnapshotId",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "artifact.read",
+    "requiredContent": "requestedRef,resolvedVersionId,consumerExecutionId",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "review.recorded",
+    "requiredContent": "reviewVersion,targetVersion,criteriaVersion,verdict,issues",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "review.stale",
+    "requiredContent": "reviewVersion,newCriteriaVersion,cause",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "loop.iteration_started",
+    "requiredContent": "iterationId,no,pinnedCarryInputs,criteriaVersion",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "loop.iteration_finished",
+    "requiredContent": "outcome,submittedVersions",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "approval.requested",
+    "requiredContent": "approvalId,kind,subjectVersions,criteriaVersion",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "approval.resolved",
+    "requiredContent": "decision,actor,subjectVersions",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "directive.accepted",
+    "requiredContent": "directiveId,target,body,commandId",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "directive.attached",
+    "requiredContent": "contextSnapshotId,modelCallId",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "directive.dispatched",
+    "requiredContent": "modelCallId,executionEpoch",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "directive.undelivered",
+    "requiredContent": "reason",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "patch.committed",
+    "requiredContent": "patchId,scope,before,after,controlRevision",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "patch.activated",
+    "requiredContent": "patchId,executionId|iterationId",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "effect.admitted",
+    "requiredContent": "effectId,scope,epoch,reservationId",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "effect.dispatch_observed",
+    "requiredContent": "effectId,providerRequestId",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "effect.settled",
+    "requiredContent": "effectId,outcome",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "tool.requested",
+    "requiredContent": "toolCallId,name,validatedArgs",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "tool.allowed",
+    "requiredContent": "toolCallId,policyVersion",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "tool.blocked",
+    "requiredContent": "toolCallId,reason",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "tool.started",
+    "requiredContent": "effectId,toolCallId",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "tool.finished",
+    "requiredContent": "resultRef,error",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "model.request_prepared",
+    "requiredContent": "modelCallId,contextSnapshotId,profile,configRevision",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "model.finished",
+    "requiredContent": "responseRef,rawUsage,normalizedUsage,certainty",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "budget.reserved",
+    "requiredContent": "reservationId,amount,scope",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "budget.settled",
+    "requiredContent": "reservationId,actual,unknownOutstanding",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "limit.reached",
+    "requiredContent": "limitKind,used,reserved,max",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "cancel.requested",
+    "requiredContent": "scope,fenceSeq,reason",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "cancel.confirmed",
+    "requiredContent": "scope,settlementRefs",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "observation.late",
+    "requiredContent": "originalEvent,whyIgnored",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "output.finalized",
+    "requiredContent": "artifactVersionIds,approvalId",
+    "status": "payload_schema_to_implement"
+  }
+]

@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:corral:review:0.1",
+  "title": "ReviewArtifact",
+  "type": "object",
+  "properties": {
+    "targetArtifactVersionId": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+    },
+    "criteriaVersionId": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+    },
+    "verdict": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "revise",
+        "inconclusive"
+      ]
+    },
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "criterionId": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "required",
+              "advisory"
+            ]
+          },
+          "evidenceRefs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+            },
+            "minItems": 0,
+            "maxItems": 30
+          }
+        },
+        "required": [
+          "criterionId",
+          "reason",
+          "severity",
+          "evidenceRefs"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 0,
+      "maxItems": 20
+    },
+    "evidenceRefs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+      },
+      "minItems": 0,
+      "maxItems": 30
+    }
+  },
+  "required": [
+    "targetArtifactVersionId",
+    "criteriaVersionId",
+    "verdict",
+    "issues",
+    "evidenceRefs"
+  ],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "verdict": {
+            "const": "revise"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "issues": {
+            "minItems": 1
+          }
+        }
+      }
+    }
+  ]
+}

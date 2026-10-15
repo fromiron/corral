@@ -1,0 +1,22 @@
+flowchart TB
+  UI[Corral Studio: Canvas / Reins / Run views]
+  API[Fastify: commands / queries / SSE]
+  C[Run Coordinator: serial command admission]
+  DB[(SQLite: events + projections + artifacts)]
+  G[LangGraph GraphRunner]
+  FX[Effect dispatcher]
+  P[Pi workers]
+  T[Registered tools]
+  M[Model providers]
+  UI --> API --> C
+  C --> DB
+  DB -->|committed events| API
+  C --> FX
+  G -->|node requests| C
+  FX --> G
+  FX --> P
+  P -->|tool and context RPC| C
+  P --> M
+  FX --> T
+  P -->|observations| C
+  T -->|results| C
