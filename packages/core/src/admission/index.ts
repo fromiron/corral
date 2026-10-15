@@ -91,11 +91,34 @@ export interface ObserverView {
   event: RunEvent;
 }
 
+/** Events an observer may commit, fenced by the Coordinator (CR-003). */
+export type ObserverDraft = {
+  type: 'decision.requested' | 'decision.observed' | 'decision.failed' | 'limit.reached';
+  executionId?: string;
+  payload: Record<string, unknown>;
+};
+
+/**
+ * What the Coordinator lends an observer. Writes go through `record`, which refuses anything
+ * but decision facts and commits nothing once the run has ended.
+ */
+export interface ObserverContext {
+  runId: string;
+  /** Commits the drafts if the run is still open; false when they were dropped. */
+  record(drafts: ObserverDraft[]): boolean;
+  isOpen(): boolean;
+  /** Calls `fn` when the execution's cancel is requested (or already was). */
+  onCancel(executionId: string, fn: () => void): () => void;
+  after(ms: number, fn: () => void): () => void;
+  monotonicMs(): number;
+  nextId(): string;
+}
+
 export interface AdmissionObserver {
   id: string;
   version: number;
   on: ObservedEvent;
-  handle(view: ObserverView): void | Promise<void>;
+  handle(view: ObserverView, context: ObserverContext): void | Promise<void>;
 }
 
 export interface AdmissionConfig {
@@ -175,6 +198,7 @@ export function notifyObservers(
   observers: readonly AdmissionObserver[],
   projection: RunProjection,
   events: readonly RunEvent[],
+  context: () => ObserverContext,
 ): void {
   if (observers.length === 0) return;
   for (const event of events) {
@@ -184,7 +208,7 @@ export function notifyObservers(
       if (observer.on !== on) continue;
       const view = readOnly({ projection, event });
       void Promise.resolve()
-        .then(() => observer.handle(view))
+        .then(() => observer.handle(view, context()))
         .catch(() => {
           // An observer's failure is its own; the run does not depend on it.
         });

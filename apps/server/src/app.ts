@@ -7,6 +7,7 @@ import {
   type CommandError,
   CorralDefinitionDraft,
   CreateRunRequest,
+  type DecisionProvider,
   type ErrorCode,
   type IdFactory,
   type Receipt,
@@ -19,6 +20,8 @@ import {
   compileDefinition,
   exportRunArchive,
   type InstallationPolicy,
+  judgmentSettings,
+  LocalHeuristicProvider,
   openRunArchive,
   planRun,
   type SaveResult,
@@ -52,6 +55,8 @@ import { acquireWorkspaceOwnership } from './workspace-ownership.ts';
 
 export interface ServerOptions {
   workspace: string;
+  /** Judgment providers beyond the built-in local-heuristic@1 (CR-003), e.g. the local model. */
+  decisionProviders?: DecisionProvider[];
   host?: string;
   /** 0 picks a free port. */
   port?: number;
@@ -213,6 +218,10 @@ async function createCorralServer(
     corrals,
     policy: workspace.policy,
     sessionId: backendSessionId,
+    judgments: {
+      providers: [new LocalHeuristicProvider(), ...(options.decisionProviders ?? [])],
+      settings: judgmentSettings(workspace.config),
+    },
   });
 
   const token = options.bootstrapToken ?? newBootstrapToken();

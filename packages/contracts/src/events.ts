@@ -1,5 +1,15 @@
 import { z } from 'zod';
 import { CancelScope } from './commands.ts';
+import {
+  DecisionFailureReason,
+  DecisionPrivacy,
+  DecisionQuestionKind,
+  DecisionSubject,
+  EffortFeatures,
+  EffortLevel,
+  EvidenceLevel,
+  RunDecisionSettings,
+} from './decisions.ts';
 import { OutputContract, RunLimits } from './definition.ts';
 import { Identifier, SchemaVersion } from './ids.ts';
 import { ReviewIssue } from './review.ts';
@@ -68,6 +78,8 @@ export const RunStarted = event(
     modelProfiles: z.array(ModelProfileSnapshot),
     limits: RunLimits,
     criteriaVersionId: Identifier.optional(),
+    /** Judgment settings fixed for the run (CR-003). Absent when the runtime has none. */
+    decisions: RunDecisionSettings.optional(),
   }),
 );
 export const RunStateChanged = event(
@@ -336,7 +348,7 @@ export const EffectAdmitted = event(
   'effect.admitted',
   z.strictObject({
     effectId: Identifier,
-    kind: z.enum(['model_request', 'tool', 'spawn']),
+    kind: z.enum(['model_request', 'tool', 'spawn', 'decision']),
     scope: Identifier,
     epoch: z.int().min(1),
     reservationId: Identifier.nullable(),
@@ -444,6 +456,7 @@ export const LimitReached = event(
       'loop_iterations',
       'deadline',
       'no_progress',
+      'decision_calls',
     ]),
     used: Count,
     reserved: Count,
@@ -457,6 +470,48 @@ export const ObservationLate = event(
     originalRef: Identifier.nullable(),
     whyIgnored: z.string().min(1),
   }),
+);
+
+// ── decisions (CR-003, observe only) ─────────────────────────────────────────
+const decisionHead = {
+  decisionId: Identifier,
+  questionKind: DecisionQuestionKind,
+  questionVersion: z.int().min(1),
+  provider: z.string().min(1),
+  subject: DecisionSubject,
+};
+export const DecisionRequested = event(
+  'decision.requested',
+  z.strictObject({
+    ...decisionHead,
+    privacy: DecisionPrivacy,
+    inputHash: Sha256Hex,
+    features: EffortFeatures,
+  }),
+);
+export const DecisionObserved = event(
+  'decision.observed',
+  z.strictObject({
+    ...decisionHead,
+    answer: EffortLevel,
+    probabilities: z
+      .strictObject({
+        low: z.number(),
+        medium: z.number(),
+        high: z.number(),
+        xhigh: z.number(),
+      })
+      .nullable(),
+    evidenceLevel: EvidenceLevel,
+    latencyMs: Count,
+    /** The judgment was ready before the request it is about was sent. */
+    readyBeforeDispatch: z.boolean(),
+    afterRequestFinished: z.boolean(),
+  }),
+);
+export const DecisionFailed = event(
+  'decision.failed',
+  z.strictObject({ ...decisionHead, reason: DecisionFailureReason, latencyMs: Count }),
 );
 
 export const RunEvent = z.discriminatedUnion('type', [
@@ -506,6 +561,9 @@ export const RunEvent = z.discriminatedUnion('type', [
   CancelConfirmed,
   ObservationLate,
   OutputFinalized,
+  DecisionRequested,
+  DecisionObserved,
+  DecisionFailed,
 ]);
 export type RunEvent = z.infer<typeof RunEvent>;
 export type RunEventType = RunEvent['type'];

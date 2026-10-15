@@ -62,8 +62,24 @@ export const WorkspaceConfig = z.strictObject({
     )
     .max(20)
     .optional(),
+  /** reasoning_effort judgments (CR-003): observe only, off unless asked for. */
+  decisions: z
+    .strictObject({
+      reasoning_effort: z.strictObject({
+        mode: z.enum(['off', 'observe']),
+        providers: z.array(Identifier).min(1).max(2),
+        maxCalls: z.int().min(0).max(100).optional(),
+        allowExternal: z.boolean().optional(),
+      }),
+    })
+    .optional(),
 });
 export type WorkspaceConfig = z.infer<typeof WorkspaceConfig>;
+
+/** The workspace's judgment settings; none configured means off. */
+export function judgmentSettings(config: WorkspaceConfig) {
+  return config.decisions ?? { reasoning_effort: { mode: 'off' as const, providers: [] } };
+}
 
 const CREDENTIAL_KEY = /key|token|secret|password|credential|auth/i;
 

@@ -228,5 +228,20 @@
     "type": "output.finalized",
     "requiredContent": "artifactVersionIds,approvalId",
     "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "decision.requested",
+    "requiredContent": "decisionId,questionKind,questionVersion,provider,subject,privacy,inputHash,features",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "decision.observed",
+    "requiredContent": "decisionId,answer,probabilities,evidenceLevel,latencyMs,readyBeforeDispatch,afterRequestFinished",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "decision.failed",
+    "requiredContent": "decisionId,reason,latencyMs",
+    "status": "payload_schema_to_implement"
   }
 ]
