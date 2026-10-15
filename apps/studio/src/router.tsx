@@ -46,8 +46,10 @@ export const editorRoute = createRoute({
 export const runRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/runs/$runId',
-  validateSearch: (search: Record<string, unknown>): { execution?: string } =>
-    typeof search.execution === 'string' ? { execution: search.execution } : {},
+  validateSearch: (search: Record<string, unknown>): { execution?: string; artifact?: string } => ({
+    ...(typeof search.execution === 'string' ? { execution: search.execution } : {}),
+    ...(typeof search.artifact === 'string' ? { artifact: search.artifact } : {}),
+  }),
   component: RunPage,
 });
 

@@ -14,6 +14,13 @@ export interface ScriptedAgentOptions {
   beforeReply?: (turn: number, input: AgentStartInput) => Promise<void>;
   /** Reply text. The default echoes inputs and delivered directives so steering is observable. */
   reply?: (turn: number, input: AgentStartInput, permit: RequestPermit) => string;
+  /**
+   * Takes over one execution when it returns a settlement (tests that need a specific move);
+   * returning null leaves the default behaviour.
+   */
+  script?: (input: AgentStartInput, host: AgentHost) => Promise<AgentSettlement | null>;
+  /** Use the protocol tools a role and its links allow (spawn/await, ask, reply). Default on. */
+  collaborate?: boolean;
 }
 
 export function defaultReply(turn: number, input: AgentStartInput, permit: RequestPermit): string {
@@ -47,25 +54,101 @@ export class ScriptedAgentAdapter implements AgentAdapter {
     };
     const reply = this.options.reply ?? defaultReply;
 
+    const collaboration = this.options.collaborate ?? true;
+    const tools = input.role.allowedCollaborationTools;
+
+    /** One model request through the host: permit, reply, streamed text, observation. */
+    const request = async (turn: number, extra: string[]): Promise<string> => {
+      checkpoint();
+      const permit = await host.prepareModelRequest();
+      await this.options.beforeReply?.(turn, input);
+      checkpoint();
+      const text = [reply(turn, input, permit), ...extra].join('\n');
+      // Stream the reply in a few pieces, as a model would, before reporting it.
+      for (const [chunkIndex, piece] of chunks(text).entries()) {
+        host.streamText({ modelCallId: permit.modelCallId, chunkIndex, text: piece });
+      }
+      await host.observe({
+        kind: 'model_completed',
+        modelCallId: permit.modelCallId,
+        text,
+        usage: { inputTokens: null, outputTokens: text.length },
+      });
+      return text;
+    };
+
     const run = async (): Promise<AgentSettlement> => {
       try {
+        const scripted = await this.options.script?.(input, host);
+        if (scripted) return scripted;
+        const notes: string[] = [];
+
+        // A responder answers its question and is done (Spec §6 step 5–6).
+        if (collaboration && input.assignment.kind === 'question' && tools.includes('reply')) {
+          const answer = await request(1, [`answers ${input.assignment.questionId}`]);
+          checkpoint();
+          const replied = await host.invokeTool({
+            name: 'reply',
+            args: { questionId: input.assignment.questionId, body: answer, evidenceRefs: [] },
+          });
+          return replied.ok ? { outcome: 'succeeded' } : failed(replied.error);
+        }
+
+        // Delegate two parts to the first callable helper, then read what they submitted.
+        const delegateTo = input.capabilities.delegateTo[0];
+        if (collaboration && delegateTo && tools.includes('spawn_subagents')) {
+          const spawned = await host.invokeTool({
+            name: 'spawn_subagents',
+            args: {
+              tasks: [1, 2].map((part) => ({
+                targetNodeId: delegateTo.nodeId,
+                brief: `Find primary sources for part ${part}.`,
+              })),
+            },
+          });
+          if (!spawned.ok) return failed(spawned.error);
+          checkpoint();
+          const awaited = await host.invokeTool({
+            name: 'await_tasks',
+            args: { taskIds: spawned.result.taskIds as string[] },
+          });
+          if (!awaited.ok) return failed(awaited.error);
+          const children = awaited.result.tasks as { artifactVersionIds: string[] }[];
+          for (const versionId of children.flatMap((c) => c.artifactVersionIds)) {
+            const read = await host.invokeTool({
+              name: 'read_artifact',
+              args: { artifactVersionId: versionId },
+            });
+            if (read.ok) notes.push(`read ${versionId}`);
+          }
+        }
+
+        // Ask the first callable responder, and use the answer.
+        const askTo = input.capabilities.askTo[0];
+        if (collaboration && askTo && tools.includes('ask')) {
+          checkpoint();
+          const asked = await host.invokeTool({
+            name: 'ask',
+            args: {
+              targetNodeId: askTo.nodeId,
+              body: 'Which source supports the main claim?',
+              artifactRefs: input.inputs.flatMap((i) =>
+                i.artifactVersionId ? [i.artifactVersionId] : [],
+              ),
+            },
+          });
+          if (!asked.ok) return failed(asked.error);
+          const result = asked.result as { outcome: string; body?: string };
+          notes.push(
+            result.outcome === 'answered'
+              ? `answer: ${result.body}`
+              : `no answer (${result.outcome})`,
+          );
+        }
+
         let text = '';
         for (let turn = 1; turn <= this.options.turns; turn++) {
-          checkpoint();
-          const permit = await host.prepareModelRequest();
-          await this.options.beforeReply?.(turn, input);
-          checkpoint();
-          text = reply(turn, input, permit);
-          // Stream the reply in a few pieces, as a model would, before reporting it.
-          for (const [chunkIndex, piece] of chunks(text).entries()) {
-            host.streamText({ modelCallId: permit.modelCallId, chunkIndex, text: piece });
-          }
-          await host.observe({
-            kind: 'model_completed',
-            modelCallId: permit.modelCallId,
-            text,
-            usage: { inputTokens: null, outputTokens: text.length },
-          });
+          text = await request(turn, turn === this.options.turns ? notes : []);
         }
         checkpoint();
         const written = await host.invokeTool({ name: 'write_artifact', args: { text } });

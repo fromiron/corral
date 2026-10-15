@@ -248,7 +248,10 @@
     "in_progress": "In progress",
     "blocked": "Blocked",
     "submitted": "Submitted",
-    "completed": "Completed"
+    "completed": "Completed",
+    "open": "Open",
+    "answered": "Answered",
+    "timed_out": "Timed out"
   },
   "Toolbar": {
     "undo": "Undo",
@@ -345,5 +348,32 @@
     "tokens": "{count, number} tokens",
     "unknown": "—",
     "notWithSubscription": "Not available with a subscription sign-in; change the model in .corral/config.json"
+  },
+  "Markdown": {
+    "imageNotLoaded": "Image not loaded: {alt} ({host})",
+    "image": "image"
+  },
+  "Tasks": {
+    "heading": "Tasks",
+    "empty": "No tasks yet.",
+    "task": "Task",
+    "owner": "Owner",
+    "startedBy": "Started by",
+    "status": "Status",
+    "submitted": "Submitted",
+    "graph": "the graph",
+    "attempts": "{count} attempts"
+  },
+  "Questions": {
+    "heading": "Questions",
+    "about": "About",
+    "evidence": "Evidence",
+    "waiting": "Waiting for an answer until {deadline}"
+  },
+  "Artifact": {
+    "version": "Version {version}",
+    "close": "Close",
+    "loading": "Loading…",
+    "meta": "By {author} · {contract} · {bytes, number} bytes · {submitted, select, true {submitted} other {not submitted}}"
   }
 }

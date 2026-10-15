@@ -98,9 +98,9 @@ provider/network error는 사용자 키 원문·응답 헤더를 포함하지 �
 | `task.submitted` | artifactVersionIds |
 | `task.completed` | completionEvidence |
 | `task.blocked` | cause,requiredUserAction |
-| `message.question_created` | questionId,taskId,sender,targetRole,body,refs,deadline |
+| `message.question_created` | questionId,taskId,sender,targetRole,body,refs,deadline. 구현(P4): taskId는 이 질문에 답하려고 만든 응답 Task이며, 응답 실행은 질문자의 자식이다 |
 | `message.answer_committed` | questionId,responseTaskId,body,refs |
-| `message.closed` | questionId,answer|cancel|timeout |
+| `message.closed` | questionId,answer|cancel|timeout. 닫힌 뒤의 reply는 `observation.late`(originalEventType `reply`)로만 남는다 |
 | `artifact.version_created` | artifactId,version,bodyRef,hash,parentVersion,authorExecutionId,modelCallId,contextSnapshotId |
 | `artifact.read` | requestedRef,resolvedVersionId,consumerExecutionId |
 | `review.recorded` | reviewVersion,targetVersion,criteriaVersion,verdict,issues |

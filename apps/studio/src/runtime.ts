@@ -1,13 +1,20 @@
-import type { Clock } from '@corral/contracts';
+import type { Clock, Scheduler } from '@corral/contracts';
 import { Coordinator, InProcessTransport, type RuntimeTransport } from '@corral/core';
 import { ScriptedAgentAdapter, SequentialIdFactory } from '@corral/testkit';
 
-// P0 runtime: the real coordinator running in the browser with simulated agents (ADR-012,
-// ADR-016). Nothing leaves the page. The local server replaces this in P2 (C-015).
+// The in-browser runtime: the real coordinator with simulated agents (ADR-012, ADR-016).
+// Nothing leaves the page. Studio uses the local server instead when it served the page.
 
 const systemClock: Clock = {
   nowIso: () => new Date().toISOString(),
   monotonicMs: () => performance.now(),
+};
+
+const browserTimers: Scheduler = {
+  after: (ms, fn) => {
+    const timer = setTimeout(fn, ms);
+    return () => clearTimeout(timer);
+  },
 };
 
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -23,6 +30,7 @@ export function createDemoTransport(): RuntimeTransport {
   const coordinator = new Coordinator({
     clock: systemClock,
     ids: new SequentialIdFactory(),
+    timers: browserTimers,
     agents: new ScriptedAgentAdapter({ turns: 2, beforeReply: () => delay(ms) }),
   });
   return new InProcessTransport(coordinator);

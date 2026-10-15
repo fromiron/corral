@@ -174,6 +174,9 @@ describe.skipIf(!enabled)('OpenAI sign-in live smoke (C-020)', () => {
       modelProfile: 'model-a',
       mode: 'live',
       model: resolution.snapshot,
+      depth: 0,
+      assignment: { kind: 'scheduled' },
+      capabilities: { delegateTo: [], askTo: [] },
       inputs: [
         { name: 'brief', kind: 'run_input', artifactVersionId: null, text: 'Start counting.' },
       ],

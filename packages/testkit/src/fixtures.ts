@@ -61,3 +61,96 @@ export function linearCorral(agentIds: string[], id = 'linear'): CorralDefinitio
     limits: DEFAULT_LIMITS,
   };
 }
+
+/**
+ * Research → Writer → Output, where Research may delegate to a callable Helper and the
+ * Writer may ask a callable Responder (Spec §6 without the review Loop, which is P5).
+ */
+export function collaborationCorral(id = 'collab'): CorralDefinition {
+  const role = (
+    roleId: string,
+    name: string,
+    collaboration: CorralDefinition['roles'][number]['allowedCollaborationTools'],
+    outputContract: CorralDefinition['roles'][number]['outputContract'] = 'notes',
+  ): CorralDefinition['roles'][number] => ({
+    id: roleId,
+    name,
+    prompt: `Act as the ${name}.`,
+    modelProfile: 'model-a',
+    allowedWorkTools: ['write_artifact'],
+    allowedCollaborationTools: collaboration,
+    outputContract,
+  });
+  return {
+    schemaVersion: '0.1',
+    id,
+    name: 'Research brief',
+    entryNodeId: 'research',
+    input: { brief: 'Compare two options using primary sources.', criteria: ['Cite sources.'] },
+    roles: [
+      role('researcher', 'Researcher', [
+        'spawn_subagents',
+        'await_tasks',
+        'read_artifact',
+        'submit_result',
+      ]),
+      role('helper', 'Research Helper', ['read_artifact', 'submit_result']),
+      role('writer', 'Writer', ['ask', 'read_artifact', 'submit_result'], 'draft'),
+      role('responder', 'Source Responder', ['reply', 'read_artifact']),
+    ],
+    nodes: [
+      {
+        id: 'research',
+        type: 'agent',
+        label: 'Research',
+        roleId: 'researcher',
+        invocation: 'scheduled',
+        inputBindings: [{ kind: 'run_input', name: 'brief' }],
+        outputName: 'notes',
+      },
+      {
+        id: 'helper',
+        type: 'agent',
+        label: 'Research Helper',
+        roleId: 'helper',
+        invocation: 'callable',
+        inputBindings: [{ kind: 'run_input', name: 'brief' }],
+        outputName: 'notes-part',
+      },
+      {
+        id: 'write',
+        type: 'agent',
+        label: 'Writer',
+        roleId: 'writer',
+        invocation: 'scheduled',
+        inputBindings: [{ kind: 'task_output', name: 'notes', sourceNodeId: 'research' }],
+        outputName: 'draft',
+      },
+      {
+        id: 'respond',
+        type: 'agent',
+        label: 'Source Responder',
+        roleId: 'responder',
+        invocation: 'callable',
+        inputBindings: [{ kind: 'run_input', name: 'brief' }],
+        outputName: 'answer',
+      },
+      {
+        id: 'output',
+        type: 'output',
+        label: 'Output',
+        inputBindings: [{ kind: 'task_output', name: 'final', sourceNodeId: 'write' }],
+        requireApproval: false,
+      },
+    ],
+    controlEdges: [
+      { id: 'e1', source: 'research', sourcePort: 'out', target: 'write', targetPort: 'in' },
+      { id: 'e2', source: 'write', sourcePort: 'out', target: 'output', targetPort: 'in' },
+    ],
+    capabilityLinks: [
+      { id: 'cap1', kind: 'delegate', sourceNodeId: 'research', targetNodeId: 'helper' },
+      { id: 'cap2', kind: 'question', sourceNodeId: 'write', targetNodeId: 'respond' },
+    ],
+    limits: DEFAULT_LIMITS,
+  };
+}

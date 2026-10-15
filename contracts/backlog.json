@@ -393,7 +393,8 @@
       "packages/core/tasks/"
     ],
     "done": "한 Task에 활성 시도 2개 불가, 자동 재할당 없음",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P4.md"
   },
   {
     "id": "C-022",
@@ -412,7 +413,8 @@
       "packages/core/collaboration/"
     ],
     "done": "두 child 병렬, parent wait는 모델 permit 미점유",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P4.md"
   },
   {
     "id": "C-023",
@@ -431,7 +433,8 @@
       "packages/core/messages/"
     ],
     "done": "끝난 역할 새 responder, 답변/timeout/cancel 단회 종결",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P4.md"
   },
   {
     "id": "C-024",
@@ -448,7 +451,8 @@
       "packages/core/artifacts/"
     ],
     "done": "동시 helper 출력 이름 충돌 없음, 미제출 버전의 control 전달 없음",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P4.md"
   },
   {
     "id": "C-025",
@@ -468,7 +472,8 @@
       "packages/react/collaboration/"
     ],
     "done": "질문에서 responder와 근거 버전으로 이동 가능, SafeMarkdown이 raw HTML·위험 URL·원격 이미지를 차단",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P4.md"
   },
   {
     "id": "C-026",

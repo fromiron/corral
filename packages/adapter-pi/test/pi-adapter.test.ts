@@ -1,6 +1,6 @@
 import type { AgentStartInput, RunEvent, StreamFrame } from '@corral/contracts';
 import { type RunProjection, waitForProjection } from '@corral/core';
-import { Gate, linearCorral } from '@corral/testkit';
+import { collaborationCorral, Gate, linearCorral } from '@corral/testkit';
 import { fauxAssistantMessage, fauxToolCall, getCurrentTools } from '@earendil-works/pi-ai';
 import { describe, expect, it } from 'vitest';
 import { PiAgentAdapter } from '../src/adapter.ts';
@@ -193,6 +193,9 @@ function startInput(): AgentStartInput {
     modelProfile: 'model-a',
     mode: 'live',
     model: { profile: 'model-a', provider: 'openai', modelId: 'faux-1', auth: 'oauth' },
+    depth: 0,
+    assignment: { kind: 'scheduled' },
+    capabilities: { delegateTo: [], askTo: [] },
     inputs: [{ name: 'brief', kind: 'run_input', artifactVersionId: null, text: 'Brief.' }],
   };
 }
@@ -281,5 +284,87 @@ describe('worker lifecycle and protocol checks (C-017)', () => {
     const { adapter } = scriptedWorker();
     const input = { ...startInput(), mode: 'mock' as const };
     await expect(adapter.start(input, recordingHost().host)).rejects.toThrow(/live/);
+  });
+});
+
+describe('collaboration tools through Pi (C-025)', () => {
+  /** One faux model playing every role, choosing its next move from the transcript. */
+  const team = (context: { messages: unknown[] }) => {
+    const messages = context.messages as {
+      role: string;
+      toolName?: string;
+      content?: { type: string; text?: string }[] | string;
+    }[];
+    const all = JSON.stringify(messages);
+    const role = /Act as the ([A-Za-z ]+)\./.exec(all)?.[1];
+    const results = messages.filter((m) => m.role === 'toolResult');
+    const resultOf = (name: string) => {
+      const found = results.find((r) => r.toolName === name);
+      const text = Array.isArray(found?.content)
+        ? found.content.map((c) => c.text ?? '').join('')
+        : '';
+      return found ? (JSON.parse(text || '{}') as Record<string, unknown>) : null;
+    };
+    const call = (name: string, args: Record<string, unknown>) =>
+      fauxAssistantMessage([fauxToolCall(name, args as Parameters<typeof fauxToolCall>[1])], {
+        stopReason: 'toolUse',
+      });
+    const writeThenSubmit = (text: string) => {
+      const written = resultOf('write_artifact');
+      if (!written) return call('write_artifact', { text });
+      if (!resultOf('submit_result')) {
+        return call('submit_result', { artifactVersionIds: [written.artifactVersionId] });
+      }
+      return fauxAssistantMessage('Done.');
+    };
+    switch (role) {
+      case 'Researcher': {
+        const spawned = resultOf('spawn_subagents');
+        if (!spawned) {
+          return call('spawn_subagents', {
+            tasks: [
+              { targetNodeId: 'helper', brief: 'Sources for option A.' },
+              { targetNodeId: 'helper', brief: 'Sources for option B.' },
+            ],
+          });
+        }
+        if (!resultOf('await_tasks')) return call('await_tasks', { taskIds: spawned.taskIds });
+        return writeThenSubmit('Notes from both helpers.');
+      }
+      case 'Research Helper':
+        return writeThenSubmit('One part of the notes.');
+      case 'Writer': {
+        const asked = resultOf('ask');
+        if (!asked)
+          return call('ask', { targetNodeId: 'respond', body: 'Which source is primary?' });
+        return writeThenSubmit(`Draft. Primary source: ${String(asked.body)}`);
+      }
+      case 'Source Responder':
+        if (!resultOf('reply')) return call('reply', { body: 'The 2024 statistics report.' });
+        return fauxAssistantMessage('Answered.');
+      default:
+        return fauxAssistantMessage(`unexpected role ${role}`);
+    }
+  };
+
+  it('[TC-RUN-004-H] [TC-COL-002-H] a live team delegates, asks and answers through Pi tools', async () => {
+    const { transport } = liveRuntime(Array.from({ length: 60 }, () => team));
+    const { runId, events } = await liveRun(transport, (d) => {
+      const collab = collaborationCorral();
+      Object.assign(d, collab);
+    });
+    const final = await waitForProjection(transport, runId, settled);
+    await Promise.resolve();
+    expect(final.status).toBe('succeeded');
+    const helpers = (final.nodeExecutions.helper ?? []).map((id) => final.executions[id]);
+    expect(helpers).toHaveLength(2);
+    expect(helpers.every((h) => h?.parentExecutionId === final.nodeExecutions.research?.[0])).toBe(
+      true,
+    );
+    const [question] = Object.values(final.questions);
+    expect(question?.answer?.body).toBe('The 2024 statistics report.');
+    const draft = await transport.getArtifactText(runId, final.output?.artifactVersionIds[0] ?? '');
+    expect(draft).toBe('Draft. Primary source: The 2024 statistics report.');
+    expect(events.some((e) => e.type === 'tool.blocked')).toBe(false);
   });
 });

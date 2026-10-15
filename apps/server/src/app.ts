@@ -12,6 +12,7 @@ import {
   type Receipt,
   type RunEvent,
   SCHEMA_VERSION,
+  type Scheduler,
 } from '@corral/contracts';
 import {
   Coordinator,
@@ -28,7 +29,7 @@ import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import packageJson from '../package.json' with { type: 'json' };
 import { assertOutsideWorkspace, DEFAULT_PROFILES, ModelRegistry } from './models/index.ts';
-import { RandomIdFactory, systemClock } from './runtime.ts';
+import { RandomIdFactory, systemClock, systemTimers } from './runtime.ts';
 import {
   assertLoopback,
   boundaryFor,
@@ -50,6 +51,7 @@ export interface ServerOptions {
   agents: AgentAdapter;
   clock?: Clock;
   ids?: IdFactory;
+  timers?: Scheduler;
   /** Built Studio to serve; omitted when Studio runs elsewhere (Vite dev with a proxy). */
   staticDir?: string;
   /** Normally random; the E2E harness passes one so tests can open a session. */
@@ -172,6 +174,7 @@ export async function startCorralServer(options: ServerOptions): Promise<CorralS
   const coordinator = new Coordinator({
     clock,
     ids,
+    timers: options.timers ?? systemTimers,
     agents: routeByMode(
       options.agents,
       registry && options.live ? options.live.agents(registry) : null,

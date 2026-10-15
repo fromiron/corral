@@ -67,6 +67,17 @@ export type WorkerFrame = z.infer<typeof WorkerFrame>;
 
 // ── host → worker ────────────────────────────────────────────────────────────
 
+export const WorkerTool = z.enum([
+  'write_artifact',
+  'submit_result',
+  'spawn_subagents',
+  'await_tasks',
+  'ask',
+  'reply',
+  'read_artifact',
+]);
+export type WorkerTool = z.infer<typeof WorkerTool>;
+
 export const StartFrame = z.strictObject({
   type: z.literal('start'),
   ...head,
@@ -78,7 +89,16 @@ export const StartFrame = z.strictObject({
   }),
   inputs: z.array(z.strictObject({ name: z.string().min(1), text: Text })),
   /** Tools this execution may propose. The host still checks every call. */
-  tools: z.array(z.enum(['write_artifact', 'submit_result'])),
+  tools: z.array(WorkerTool),
+  /** Why the execution exists: its own step, a delegated task, or a question to answer. */
+  assignment: z.discriminatedUnion('kind', [
+    z.strictObject({ kind: z.literal('scheduled') }),
+    z.strictObject({ kind: z.literal('delegated'), brief: Text }),
+    z.strictObject({ kind: z.literal('question'), questionId: Identifier, body: Text }),
+  ]),
+  /** Callable nodes it may delegate to or ask, as named in the definition. */
+  delegateTo: z.array(z.strictObject({ nodeId: Identifier, label: z.string() })),
+  askTo: z.array(z.strictObject({ nodeId: Identifier, label: z.string() })),
 });
 
 export const HostFrame = z.discriminatedUnion('type', [

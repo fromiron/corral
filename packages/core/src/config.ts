@@ -17,6 +17,8 @@ export interface InstallationPolicy {
   runDeadlineMs: number;
   maxLoopIterations: number;
   maxArtifactBytes: number;
+  /** Executions alive at once in a run, waiting ones included (Technical-Design §8.1). */
+  maxResidentExecutions: number;
 }
 
 /**
@@ -35,6 +37,7 @@ export const SPEC_HARD_CAPS: InstallationPolicy = {
   runDeadlineMs: 3_600_000,
   maxLoopIterations: 10,
   maxArtifactBytes: 1024 * 1024,
+  maxResidentExecutions: 12,
 };
 
 const cap = (max: number) => z.int().min(1).max(max).optional();

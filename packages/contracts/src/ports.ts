@@ -24,10 +24,17 @@ export type IdKind =
   | 'artifact_version'
   | 'criteria_version'
   | 'iteration'
-  | 'effect';
+  | 'effect'
+  | 'question';
 
 export interface IdFactory {
   next(kind: IdKind): string;
+}
+
+/** Deadlines (question timeouts). Injected so tests decide when time passes. */
+export interface Scheduler {
+  /** Runs `fn` once after `ms`; the returned function cancels it. */
+  after(ms: number, fn: () => void): () => void;
 }
 
 // Agent adapter port (Technical-Design §7.2). Workers never decide domain state;
@@ -38,6 +45,18 @@ export interface ResolvedInput {
   kind: InputBindingKind;
   artifactVersionId: string | null;
   text: string;
+}
+
+/** Why this execution exists (Spec §7.2, Technical-Design §8). */
+export type Assignment =
+  | { kind: 'scheduled' }
+  | { kind: 'delegated'; brief: string; parentExecutionId: string }
+  | { kind: 'question'; questionId: string; body: string; askerExecutionId: string };
+
+/** A callable node this execution may delegate to or ask (capability links). */
+export interface CallableTarget {
+  nodeId: string;
+  label: string;
 }
 
 export interface AgentStartInput {
@@ -52,6 +71,10 @@ export interface AgentStartInput {
   mode: 'mock' | 'live';
   /** The model the profile resolved to when the run started (run.started). */
   model: ModelProfileSnapshot;
+  /** 0 for scheduled steps; children and responders are one deeper than their caller. */
+  depth: number;
+  assignment: Assignment;
+  capabilities: { delegateTo: CallableTarget[]; askTo: CallableTarget[] };
   inputs: ResolvedInput[];
 }
 
