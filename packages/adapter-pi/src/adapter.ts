@@ -7,7 +7,7 @@ import type {
   ModelProfileSnapshot,
 } from '@corral/contracts';
 import type { Channel } from './channel.ts';
-import { PROTOCOL_VERSION, WorkerFrame } from './protocol.ts';
+import { PROTOCOL_VERSION, WorkerFrame, type WorkerTool } from './protocol.ts';
 
 // Host side of the Pi worker (C-017). The adapter turns worker frames into AgentHost calls,
 // one at a time and in order, so a request permit is committed before the next frame runs.
@@ -132,11 +132,21 @@ class WorkerExecution {
         model: this.model,
         role: { name: role.name, prompt: role.prompt, outputContract: role.outputContract },
         inputs: this.input.inputs.map(({ name, text }) => ({ name, text })),
-        // Only the tools this role may use are offered; the host still checks every call.
-        tools: [
-          ...(role.allowedWorkTools.includes('write_artifact') ? ['write_artifact'] : []),
-          ...(role.allowedCollaborationTools.includes('submit_result') ? ['submit_result'] : []),
-        ],
+        // Only the tools this role may use, and that its links make meaningful, are offered;
+        // the host still checks every call.
+        tools: offeredTools(this.input),
+        assignment:
+          this.input.assignment.kind === 'delegated'
+            ? { kind: 'delegated', brief: this.input.assignment.brief }
+            : this.input.assignment.kind === 'question'
+              ? {
+                  kind: 'question',
+                  questionId: this.input.assignment.questionId,
+                  body: this.input.assignment.body,
+                }
+              : { kind: 'scheduled' },
+        delegateTo: this.input.capabilities.delegateTo,
+        askTo: this.input.capabilities.askTo,
       });
       return;
     }
@@ -225,6 +235,21 @@ class WorkerExecution {
         return;
     }
   }
+}
+
+function offeredTools(input: AgentStartInput): WorkerTool[] {
+  const { role, capabilities, assignment } = input;
+  const may = (tool: string) =>
+    (role.allowedCollaborationTools as readonly string[]).includes(tool);
+  const tools: WorkerTool[] = [];
+  if (role.allowedWorkTools.includes('write_artifact')) tools.push('write_artifact');
+  if (may('read_artifact')) tools.push('read_artifact');
+  if (may('spawn_subagents') && capabilities.delegateTo.length > 0) tools.push('spawn_subagents');
+  if (may('await_tasks') && capabilities.delegateTo.length > 0) tools.push('await_tasks');
+  if (may('ask') && capabilities.askTo.length > 0) tools.push('ask');
+  if (may('reply') && assignment.kind === 'question') tools.push('reply');
+  if (may('submit_result') && assignment.kind !== 'question') tools.push('submit_result');
+  return tools;
 }
 
 function reasonOf(error: unknown): string {

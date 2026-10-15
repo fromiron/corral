@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-15T08:39:03.320Z",
+  "generatedAt": "2026-10-15T09:38:11.397Z",
   "node": "v24.14.0",
   "packageManager": "pnpm@10.30.3",
   "note": "Registry facts for pinned direct dependencies. Compatibility evidence is the CI gate result, not this file.",
@@ -637,6 +637,24 @@
       "usedBy": [
         "@corral/react",
         "@corral/studio"
+      ]
+    },
+    {
+      "name": "react-markdown",
+      "version": "10.1.0",
+      "license": "MIT",
+      "integrity": "sha512-qKxVopLT/TyA6BX3Ue5NwabOsAzm0Q7kAPwq6L+wWDwisYs7R8vZ0nRXqq6rkueboxpkjvLGU9fWifiX/ZZFxQ==",
+      "published": "2025-03-07T10:32:53.222Z",
+      "repository": "git+https://github.com/remarkjs/react-markdown.git",
+      "gitHead": "44d2e4a44b37461ab7778d6870c1a9eb36393ad2",
+      "engines": null,
+      "peerDependencies": {
+        "@types/react": ">=18",
+        "react": ">=18"
+      },
+      "scope": "runtime",
+      "usedBy": [
+        "@corral/react"
       ]
     },
     {

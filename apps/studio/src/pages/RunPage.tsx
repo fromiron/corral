@@ -1,4 +1,12 @@
-import { ReinsPanel, RunView, Timeline, useSteerTarget } from '@corral/react';
+import {
+  ArtifactViewer,
+  QuestionsPanel,
+  ReinsPanel,
+  RunView,
+  TaskBoard,
+  Timeline,
+  useSteerTarget,
+} from '@corral/react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useEffect } from 'react';
 import { useTranslations } from 'use-intl';
@@ -10,13 +18,14 @@ import { useServices } from '../services.tsx';
 export function RunPage() {
   const t = useTranslations('RunPage');
   const { runId } = runRoute.useParams();
-  const { execution } = runRoute.useSearch();
+  const { execution, artifact } = runRoute.useSearch();
   const navigate = useNavigate({ from: '/runs/$runId' });
   const { session } = useServices();
   const activeRunId = useStore(session, (s) => s.runId);
   const missing = useStore(session, (s) => s.missingRunId === runId);
   const corralId = useStore(session, (s) => s.definition?.id ?? null);
   const target = useSteerTarget(session, execution ?? null);
+  const openArtifact = (id: string) => void navigate({ search: (s) => ({ ...s, artifact: id }) });
 
   // A direct link or a reload: follow the run from the runtime's record.
   useEffect(() => {
@@ -48,10 +57,24 @@ export function RunPage() {
             {t('openCorral')}
           </Link>
         ) : null}
-        <RunView session={session} onSteer={(id) => void navigate({ search: { execution: id } })} />
+        <RunView
+          session={session}
+          onSteer={(id) => void navigate({ search: (s) => ({ ...s, execution: id }) })}
+        />
+        <TaskBoard session={session} onOpenArtifact={openArtifact} />
+        <QuestionsPanel session={session} onOpenArtifact={openArtifact} />
         <Timeline session={session} />
       </section>
-      <ReinsPanel session={session} target={target} />
+      <div className="flex flex-col gap-4">
+        {artifact ? (
+          <ArtifactViewer
+            session={session}
+            versionId={artifact}
+            onClose={() => void navigate({ search: (s) => ({ ...s, artifact: undefined }) })}
+          />
+        ) : null}
+        <ReinsPanel session={session} target={target} />
+      </div>
     </main>
   );
 }

@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "0.1",
+  "corralId": "research_brief",
+  "layoutRevision": 1,
+  "nodes": {
+    "research": {
+      "x": 80,
+      "y": 120
+    },
+    "helper": {
+      "x": 80,
+      "y": 320
+    },
+    "write": {
+      "x": 380,
+      "y": 120
+    },
+    "respond": {
+      "x": 380,
+      "y": 320
+    },
+    "output": {
+      "x": 680,
+      "y": 120
+    }
+  },
+  "viewport": {
+    "x": 0,
+    "y": 0,
+    "zoom": 1
+  }
+}

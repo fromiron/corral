@@ -29,6 +29,8 @@ export interface RunSessionState {
    * (`broken`), and the committed output replaces it (Technical-Design §12).
    */
   streams: Record<string, StreamText>;
+  /** Artifact bodies loaded for viewing, by version id (immutable once loaded). */
+  artifactTexts: Record<string, string>;
   outputText: string | null;
   startError: CommandError | null;
   streamError: string | null;
@@ -40,6 +42,8 @@ export interface RunSessionState {
   start(definition: CorralDefinition, saved?: SavedRevision, mode?: 'mock' | 'live'): Promise<void>;
   /** Follows an existing run, such as after a reload or from a link. */
   open(runId: string): Promise<void>;
+  /** Loads one version's text for viewing; versions never change, so once is enough. */
+  loadArtifact(artifactVersionId: string): Promise<void>;
   steer(executionId: string, text: string): Promise<Receipt>;
   refreshReceipt(commandId: string): Promise<void>;
   dispose(): void;
@@ -138,6 +142,7 @@ export function createRunSession(
         projection: null,
         events: [],
         streams: {},
+        artifactTexts: {},
         outputText: null,
         startError: null,
         streamError: null,
@@ -164,6 +169,7 @@ export function createRunSession(
       projection: null,
       events: [],
       streams: {},
+      artifactTexts: {},
       outputText: null,
       startError: null,
       streamError: null,
@@ -185,6 +191,15 @@ export function createRunSession(
         }
         set({ runId, definition });
         await follow(runId);
+      },
+
+      async loadArtifact(artifactVersionId) {
+        const runId = get().runId;
+        if (!runId || artifactVersionId in get().artifactTexts) return;
+        const text = await transport.getArtifactText(runId, artifactVersionId);
+        if (text !== null && get().runId === runId) {
+          set({ artifactTexts: { ...get().artifactTexts, [artifactVersionId]: text } });
+        }
       },
 
       async open(runId) {

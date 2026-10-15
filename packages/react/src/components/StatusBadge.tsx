@@ -22,6 +22,11 @@ const TONE: Record<string, Tone> = {
   not_delivered: 'warning',
   delivery_unknown: 'warning',
   awaiting_user: 'warning',
+  open: 'active',
+  answered: 'success',
+  timed_out: 'warning',
+  waiting_children: 'active',
+  waiting_message: 'active',
 };
 
 const SYMBOL: Record<Tone, string> = {

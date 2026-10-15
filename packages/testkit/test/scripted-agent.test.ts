@@ -20,6 +20,9 @@ const input: AgentStartInput = {
   modelProfile: 'model-a',
   mode: 'mock',
   model: { profile: 'model-a', provider: null, modelId: null, auth: 'mock' },
+  depth: 0,
+  assignment: { kind: 'scheduled' },
+  capabilities: { delegateTo: [], askTo: [] },
   role: {
     id: 'writer_role',
     name: 'Writer',

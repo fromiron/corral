@@ -81,6 +81,9 @@ describe('worker in a child process (C-017, ADR-017)', () => {
           role: { name: 'Writer', prompt: 'Write.', outputContract: 'text' },
           inputs: [{ name: 'brief', text: 'Brief.' }],
           tools: ['write_artifact', 'submit_result'],
+          assignment: { kind: 'scheduled' },
+          delegateTo: [],
+          askTo: [],
         });
       }
     });

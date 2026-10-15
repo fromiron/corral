@@ -1,0 +1,188 @@
+{
+  "schemaVersion": "0.1",
+  "id": "research_brief",
+  "name": "Research brief (collaboration)",
+  "entryNodeId": "research",
+  "input": {
+    "brief": "Compare two note-taking methods for students, using primary sources where possible.",
+    "criteria": [
+      "Cite at least two sources.",
+      "Name one limitation of each method."
+    ]
+  },
+  "roles": [
+    {
+      "id": "researcher",
+      "name": "Researcher",
+      "prompt": "Plan the research, delegate one part per helper, read what they submit, and write consolidated notes with sources.",
+      "modelProfile": "model-a",
+      "allowedWorkTools": [
+        "write_artifact"
+      ],
+      "allowedCollaborationTools": [
+        "spawn_subagents",
+        "await_tasks",
+        "read_artifact",
+        "submit_result"
+      ],
+      "outputContract": "notes"
+    },
+    {
+      "id": "helper",
+      "name": "Research Helper",
+      "prompt": "Research the task you are given and write short notes with the sources you used.",
+      "modelProfile": "model-a",
+      "allowedWorkTools": [
+        "write_artifact"
+      ],
+      "allowedCollaborationTools": [
+        "read_artifact",
+        "submit_result"
+      ],
+      "outputContract": "notes"
+    },
+    {
+      "id": "writer",
+      "name": "Writer",
+      "prompt": "Write a one-page draft from the notes. If a claim needs a source check, ask the Source Responder first.",
+      "modelProfile": "model-a",
+      "allowedWorkTools": [
+        "write_artifact"
+      ],
+      "allowedCollaborationTools": [
+        "ask",
+        "read_artifact",
+        "submit_result"
+      ],
+      "outputContract": "draft"
+    },
+    {
+      "id": "responder",
+      "name": "Source Responder",
+      "prompt": "Answer the question you are asked briefly, naming the source that supports the answer.",
+      "modelProfile": "model-a",
+      "allowedWorkTools": [
+        "write_artifact"
+      ],
+      "allowedCollaborationTools": [
+        "reply",
+        "read_artifact"
+      ],
+      "outputContract": "notes"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "research",
+      "type": "agent",
+      "label": "Research",
+      "roleId": "researcher",
+      "invocation": "scheduled",
+      "inputBindings": [
+        {
+          "kind": "run_input",
+          "name": "brief"
+        }
+      ],
+      "outputName": "notes"
+    },
+    {
+      "id": "helper",
+      "type": "agent",
+      "label": "Research Helper",
+      "roleId": "helper",
+      "invocation": "callable",
+      "inputBindings": [
+        {
+          "kind": "run_input",
+          "name": "brief"
+        }
+      ],
+      "outputName": "notes-part"
+    },
+    {
+      "id": "write",
+      "type": "agent",
+      "label": "Writer",
+      "roleId": "writer",
+      "invocation": "scheduled",
+      "inputBindings": [
+        {
+          "kind": "task_output",
+          "name": "notes",
+          "sourceNodeId": "research"
+        }
+      ],
+      "outputName": "draft"
+    },
+    {
+      "id": "respond",
+      "type": "agent",
+      "label": "Source Responder",
+      "roleId": "responder",
+      "invocation": "callable",
+      "inputBindings": [
+        {
+          "kind": "run_input",
+          "name": "brief"
+        }
+      ],
+      "outputName": "answer"
+    },
+    {
+      "id": "output",
+      "type": "output",
+      "label": "Output",
+      "inputBindings": [
+        {
+          "kind": "task_output",
+          "name": "final",
+          "sourceNodeId": "write"
+        }
+      ],
+      "requireApproval": false
+    }
+  ],
+  "controlEdges": [
+    {
+      "id": "e1",
+      "source": "research",
+      "sourcePort": "out",
+      "target": "write",
+      "targetPort": "in"
+    },
+    {
+      "id": "e2",
+      "source": "write",
+      "sourcePort": "out",
+      "target": "output",
+      "targetPort": "in"
+    }
+  ],
+  "capabilityLinks": [
+    {
+      "id": "cap1",
+      "kind": "delegate",
+      "sourceNodeId": "research",
+      "targetNodeId": "helper"
+    },
+    {
+      "id": "cap2",
+      "kind": "question",
+      "sourceNodeId": "write",
+      "targetNodeId": "respond"
+    }
+  ],
+  "limits": {
+    "maxDelegationDepth": 2,
+    "maxModelConcurrency": 3,
+    "maxSpawns": 12,
+    "maxModelCalls": 40,
+    "maxOutputTokens": 64000,
+    "maxOutputTokensPerCall": 4096,
+    "maxQuestions": 6,
+    "questionTimeoutMs": 120000,
+    "modelTimeoutMs": 180000,
+    "runDeadlineMs": 3600000
+  }
+}

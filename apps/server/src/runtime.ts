@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { Clock, IdFactory, IdKind } from '@corral/contracts';
+import type { Clock, IdFactory, IdKind, Scheduler } from '@corral/contracts';
 
 // Process-level capabilities the core receives by injection (CRL-DEV-002).
 
@@ -17,6 +17,7 @@ const PREFIX: Record<IdKind, string> = {
   criteria_version: 'crit',
   iteration: 'iter',
   effect: 'eff',
+  question: 'q',
 };
 
 /** Random ids: a restarted process must never reuse an id the previous one handed out. */
@@ -25,6 +26,15 @@ export class RandomIdFactory implements IdFactory {
     return `${PREFIX[kind]}_${randomUUID().replaceAll('-', '')}`;
   }
 }
+
+/** Wall-clock deadlines (question timeouts). */
+export const systemTimers: Scheduler = {
+  after: (ms, fn) => {
+    const timer = setTimeout(fn, ms);
+    timer.unref?.();
+    return () => clearTimeout(timer);
+  },
+};
 
 export const systemClock: Clock = {
   nowIso: () => new Date().toISOString(),

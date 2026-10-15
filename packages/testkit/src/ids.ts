@@ -14,6 +14,7 @@ const PREFIX: Record<IdKind, string> = {
   criteria_version: 'crit',
   iteration: 'iter',
   effect: 'eff',
+  question: 'q',
 };
 
 /**

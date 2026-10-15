@@ -104,6 +104,21 @@ export interface IterationView {
   outcome: 'pass' | 'revise' | 'inconclusive' | 'cap_reached' | 'cancelled' | null;
 }
 
+/** A question from one execution to a callable role, answered by a new responder task. */
+export interface QuestionView {
+  questionId: string;
+  /** The responder's task. */
+  taskId: string;
+  senderExecutionId: string;
+  targetNodeId: string;
+  targetRoleId: string;
+  body: string;
+  artifactRefs: string[];
+  deadline: string;
+  status: 'open' | 'answered' | 'cancelled' | 'timed_out';
+  answer: { responderExecutionId: string; body: string; evidenceRefs: string[] } | null;
+}
+
 export interface RunProjection {
   runId: string;
   corralId: string | null;
@@ -123,6 +138,9 @@ export interface RunProjection {
   toolCalls: Record<string, ToolCallView>;
   effects: Record<string, EffectView>;
   iterations: Record<string, IterationView>;
+  questions: Record<string, QuestionView>;
+  /** Versions each execution read through read_artifact, in order. */
+  artifactReads: Record<string, string[]>;
   /** Iteration ids per Loop node, in round order. */
   loopIterations: Record<string, string[]>;
   /** Set when a backend restart ended the run (RUN-007). */
@@ -161,6 +179,8 @@ export function emptyProjection(runId: string): RunProjection {
     toolCalls: {},
     effects: {},
     iterations: {},
+    questions: {},
+    artifactReads: {},
     loopIterations: {},
     interruptedBy: null,
     output: null,
@@ -368,13 +388,46 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
       const finished: IterationView = { ...iteration, outcome: event.payload.outcome };
       return { ...p, iterations: { ...p.iterations, [iteration.iterationId]: finished } };
     }
-    // Committed facts that later phases project (collaboration P4, review P5, Reins P6,
-    // budget P7). Until then they are kept in the log only.
+    case 'message.question_created': {
+      const { questionId, ...rest } = event.payload;
+      const question: QuestionView = { questionId, ...rest, status: 'open', answer: null };
+      return { ...p, questions: { ...p.questions, [questionId]: question } };
+    }
+    case 'message.answer_committed': {
+      const question = p.questions[event.payload.questionId];
+      if (!question) return p;
+      const { responderExecutionId, body, evidenceRefs } = event.payload;
+      const answered: QuestionView = {
+        ...question,
+        answer: { responderExecutionId, body, evidenceRefs },
+      };
+      return { ...p, questions: { ...p.questions, [question.questionId]: answered } };
+    }
+    case 'message.closed': {
+      const question = p.questions[event.payload.questionId];
+      if (!question) return p;
+      const status = event.payload.outcome === 'answered' ? 'answered' : event.payload.outcome;
+      return {
+        ...p,
+        questions: { ...p.questions, [question.questionId]: { ...question, status } },
+      };
+    }
+    case 'artifact.read': {
+      const { consumerExecutionId, resolvedVersionId } = event.payload;
+      return {
+        ...p,
+        artifactReads: {
+          ...p.artifactReads,
+          [consumerExecutionId]: [
+            ...(p.artifactReads[consumerExecutionId] ?? []),
+            resolvedVersionId,
+          ],
+        },
+      };
+    }
+    // Committed facts that later phases project (review P5, Reins P6, budget P7). Until then
+    // they are kept in the log only.
     case 'task.blocked':
-    case 'message.question_created':
-    case 'message.answer_committed':
-    case 'message.closed':
-    case 'artifact.read':
     case 'review.recorded':
     case 'review.stale':
     case 'approval.requested':

@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import type { RunSessionStore, StreamText } from '../run/session.ts';
+import { SafeMarkdown } from './SafeMarkdown.tsx';
 import { StatusBadge } from './StatusBadge.tsx';
 
 /** Run status, executions and output, from committed events only. Needs no editor. */
@@ -62,12 +63,12 @@ export function RunView({
             {outputText === null ? (
               <p className="text-xs text-muted">{t('outputPending')}</p>
             ) : (
-              <pre
+              <div
                 data-testid="run-output"
-                className="max-h-64 overflow-auto whitespace-pre-wrap rounded-md border border-line bg-surface p-2 text-xs"
+                className="max-h-64 overflow-auto rounded-md border border-line bg-surface p-2"
               >
-                {outputText}
-              </pre>
+                <SafeMarkdown text={outputText} />
+              </div>
             )}
           </div>
         </>

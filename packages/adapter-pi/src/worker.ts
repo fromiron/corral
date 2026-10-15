@@ -1,7 +1,7 @@
 import { Agent, type AgentTool, type StreamFn } from '@earendil-works/pi-agent-core';
 import { type AssistantMessage, type Model, Type } from '@earendil-works/pi-ai';
 import type { Channel } from './channel.ts';
-import { HostFrame, PROTOCOL_VERSION, type StartFrame } from './protocol.ts';
+import { HostFrame, PROTOCOL_VERSION, type StartFrame, type WorkerTool } from './protocol.ts';
 import { normalizeUsage } from './usage.ts';
 
 // One Pi execution in a worker (C-017–C-019). The worker owns a Pi Agent and a provider
@@ -18,11 +18,52 @@ export interface WorkerDeps {
 
 type Reply = Exclude<HostFrame, StartFrame | { type: 'cancel' }>;
 
-const TOOL_TEXT: Record<StartFrame['tools'][number], string> = {
+const TOOL_TEXT: Record<WorkerTool, string> = {
   write_artifact:
     'Save your output text as a new immutable version. Returns its artifactVersionId.',
   submit_result: 'Submit the versions that complete your task. Call it once, after write_artifact.',
+  spawn_subagents:
+    'Start callable agents on separate tasks, in parallel. Returns their taskIds; then call await_tasks.',
+  await_tasks:
+    'Wait until the given tasks you started finish. Returns each status and the versions it submitted.',
+  ask: 'Ask a callable agent a question and wait for its answer (or a timeout).',
+  reply: 'Answer the question you were given. Call it once; your task ends with the answer.',
+  read_artifact: 'Read the text of an artifact version you are allowed to see.',
 };
+
+/** Parameters the model fills in; ids of the run, owner and question come from Corral. */
+function parametersOf(name: WorkerTool, start: StartFrame) {
+  const node = (targets: { nodeId: string }[]) =>
+    Type.Union(targets.map((t) => Type.Literal(t.nodeId)));
+  switch (name) {
+    case 'write_artifact':
+      return Type.Object({ text: Type.String() });
+    case 'submit_result':
+      return Type.Object({ artifactVersionIds: Type.Array(Type.String(), { minItems: 1 }) });
+    case 'spawn_subagents':
+      return Type.Object({
+        tasks: Type.Array(
+          Type.Object({ targetNodeId: node(start.delegateTo), brief: Type.String() }),
+          { minItems: 1, maxItems: 4 },
+        ),
+      });
+    case 'await_tasks':
+      return Type.Object({ taskIds: Type.Array(Type.String(), { minItems: 1 }) });
+    case 'ask':
+      return Type.Object({
+        targetNodeId: node(start.askTo),
+        body: Type.String(),
+        artifactRefs: Type.Optional(Type.Array(Type.String())),
+      });
+    case 'reply':
+      return Type.Object({
+        body: Type.String(),
+        evidenceRefs: Type.Optional(Type.Array(Type.String())),
+      });
+    case 'read_artifact':
+      return Type.Object({ artifactVersionId: Type.String() });
+  }
+}
 
 export function runWorker(port: Channel, deps: WorkerDeps): void {
   let executionId: string | null = null;
@@ -82,10 +123,7 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
       name,
       label: name,
       description: TOOL_TEXT[name],
-      parameters:
-        name === 'write_artifact'
-          ? Type.Object({ text: Type.String() })
-          : Type.Object({ artifactVersionIds: Type.Array(Type.String(), { minItems: 1 }) }),
+      parameters: parametersOf(name, start),
       executionMode: 'sequential',
       // Runs only after the host authorized this call; the host records tool.started.
       execute: async (piCallId) => {
@@ -134,11 +172,12 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
         return { context: { ...context, messages: [...context.messages, directive] } };
       },
       beforeToolCall: async ({ toolCall }) => {
-        const reply = await call({
-          type: 'authorize_tool',
-          name: toolCall.name,
-          args: (toolCall.arguments ?? {}) as Record<string, unknown>,
-        });
+        const args = { ...((toolCall.arguments ?? {}) as Record<string, unknown>) };
+        // The question being answered is this execution's, never the model's choice.
+        if (toolCall.name === 'reply' && start.assignment.kind === 'question') {
+          args.questionId = start.assignment.questionId;
+        }
+        const reply = await call({ type: 'authorize_tool', name: toolCall.name, args });
         if (reply.type !== 'tool_authorization' || !reply.ok) {
           return {
             block: true,
@@ -191,13 +230,35 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
 }
 
 function systemPrompt(start: StartFrame): string {
-  return [
+  const names = (targets: { nodeId: string; label: string }[]) =>
+    targets.map((t) => `${t.label} (${t.nodeId})`).join(', ');
+  const lines = [
     start.role.prompt,
     '',
     `You are ${start.role.name}, one step of a Corral team. Your output contract is "${start.role.outputContract}".`,
-    'When your work is complete, call write_artifact with the full output text, then call submit_result with the artifactVersionId it returned.',
+  ];
+  if (start.assignment.kind === 'delegated') {
+    lines.push('Another agent delegated a task to you; it is given as "task" below.');
+  }
+  if (start.assignment.kind === 'question') {
+    lines.push(
+      'Another agent asked you the question given as "question" below. Answer it with reply.',
+    );
+  } else {
+    lines.push(
+      'When your work is complete, call write_artifact with the full output text, then call submit_result with the artifactVersionId it returned.',
+    );
+  }
+  if (start.tools.includes('spawn_subagents')) {
+    lines.push(
+      `You may delegate tasks to: ${names(start.delegateTo)}. Use spawn_subagents, then await_tasks.`,
+    );
+  }
+  if (start.tools.includes('ask')) lines.push(`You may ask: ${names(start.askTo)}. Use ask.`);
+  lines.push(
     'Instructions from the person supervising this run may arrive during your work; follow them.',
-  ].join('\n');
+  );
+  return lines.join('\n');
 }
 
 function userPrompt(start: StartFrame): string {

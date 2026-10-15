@@ -5,6 +5,7 @@ import {
   type AgentObservation,
   type AgentSettlement,
   type AgentStartInput,
+  type Assignment,
   type Clock,
   type CommandError,
   type CorralDefinition,
@@ -20,6 +21,7 @@ import {
   RunCommand,
   RunEvent,
   type RunEventType,
+  type Scheduler,
   StartRunRequest,
   type SteerCommand,
   type StreamFrame,
@@ -118,7 +120,11 @@ export interface CoordinatorDeps {
   policy?: InstallationPolicy;
   /** Model profiles per run mode (C-058). Defaults to simulated agents only. */
   models?: ModelResolver;
+  /** Deadlines such as question timeouts. Without it, nothing times out. */
+  timers?: Scheduler;
 }
+
+const NO_DEADLINES: Scheduler = { after: () => () => {} };
 
 export type ModelResolution =
   | { ok: true; snapshot: ModelProfileSnapshot }
@@ -166,7 +172,54 @@ interface LiveRun {
   handles: Map<string, AgentHandle>;
   /** The open round of each Loop node. */
   rounds: Map<string, { no: number; iterationId: string }>;
+  /**
+   * Model concurrency (Spec §9, CRL-RUN-005): a slot is held only while a model request is
+   * open. A parent waiting for children or an answer holds none.
+   */
+  slots: { free: number; waiters: (() => void)[]; held: Map<string, string> };
+  /** How every started execution ended, by task (await_tasks, a parent's own end). */
+  taskOutcomes: Map<string, Promise<StepOutcome>>;
+  /** Open questions and how to wake their askers. */
+  questions: Map<string, OpenQuestion>;
+  /** Executions whose cancel the Coordinator asked for: they settle as cancelled. */
+  cancelRequested: Set<string>;
 }
+
+interface OpenQuestion {
+  askerExecutionId: string;
+  responderExecutionId: string;
+  wake(result: Record<string, unknown>): void;
+  cancelTimer(): void;
+}
+
+/** What starts an execution: its node, place in the call tree and reason to exist. */
+interface ExecutionSpec {
+  nodeId: string;
+  iterationId: string | null;
+  parentExecutionId: string | null;
+  depth: number;
+  assignment: Assignment;
+  /** Inputs given by the caller (task brief, question), before the node's own bindings. */
+  given: ResolvedInput[];
+}
+
+interface PreparedExecution {
+  input: AgentStartInput;
+  effectId: string;
+  drafts: EventDraft[];
+}
+
+/** A refused tool call; `limit` marks the refusals that also record `limit.reached`. */
+/** The opening and closing events every executed tool call commits. */
+interface ToolFrame {
+  toolCallId: string;
+  opening: EventDraft[];
+  closing(resultRef: string | null, error?: string | null): EventDraft[];
+}
+
+type Refusal = CommandError & {
+  limit?: { kind: 'spawns' | 'questions' | 'depth'; used: number; max: number };
+};
 
 class StorageUnavailableError extends Error {}
 
@@ -181,6 +234,7 @@ export class Coordinator {
   private readonly sessionId: string;
   private readonly policy: InstallationPolicy;
   private readonly models: ModelResolver;
+  private readonly timers: Scheduler;
   private readonly live = new Map<string, LiveRun>();
   private readonly subscribers = new Set<Subscriber>();
   private storageError: string | null = null;
@@ -196,6 +250,7 @@ export class Coordinator {
     this.sessionId = deps.sessionId ?? 'backend_local';
     this.policy = deps.policy ?? SPEC_HARD_CAPS;
     this.models = deps.models ?? SIMULATED_MODELS;
+    this.timers = deps.timers ?? NO_DEADLINES;
     this.recover();
   }
 
@@ -298,6 +353,10 @@ export class Coordinator {
       activations: new Map(),
       handles: new Map(),
       rounds: new Map(),
+      slots: { free: definition.limits.maxModelConcurrency, waiters: [], held: new Map() },
+      taskOutcomes: new Map(),
+      questions: new Map(),
+      cancelRequested: new Set(),
     };
 
     const { events, projection } = this.prepare(run, [
@@ -890,10 +949,31 @@ export class Coordinator {
     nodeId: string,
     iterationId: string | null,
   ): Promise<StepOutcome> {
+    const prepared = this.prepareExecution(run, {
+      nodeId,
+      iterationId,
+      parentExecutionId: null,
+      depth: 0,
+      assignment: { kind: 'scheduled' },
+      given: [],
+    });
+    this.commit(run, prepared.drafts);
+    return this.launch(run, prepared);
+  }
+
+  /** The Task, Execution and start effect of one step, child or responder; not committed. */
+  private prepareExecution(run: LiveRun, spec: ExecutionSpec): PreparedExecution {
     const definition = run.snapshot.definition;
-    const node = definition.nodes.find((n) => n.id === nodeId);
+    const node = definition.nodes.find((n) => n.id === spec.nodeId);
     const role = node?.type === 'agent' && definition.roles.find((r) => r.id === node.roleId);
-    if (node?.type !== 'agent' || !role) throw new Error(`plan references missing agent ${nodeId}`);
+    if (node?.type !== 'agent' || !role) {
+      throw new Error(`plan references missing agent ${spec.nodeId}`);
+    }
+    const label = (id: string) => {
+      const target = definition.nodes.find((n) => n.id === id);
+      return { nodeId: id, label: target?.label ?? id };
+    };
+    const callables = run.plan.callables[spec.nodeId] ?? { delegate: [], question: [] };
 
     const taskId = this.ids.next('task');
     const executionId = this.ids.next('execution');
@@ -903,7 +983,7 @@ export class Coordinator {
       runId: run.runId,
       executionId,
       taskId,
-      nodeId,
+      nodeId: spec.nodeId,
       attemptNo,
       role,
       modelProfile: role.modelProfile,
@@ -914,15 +994,21 @@ export class Coordinator {
         modelId: null,
         auth: 'mock',
       },
-      inputs: this.resolveInputs(run, node.inputBindings, iterationId),
+      depth: spec.depth,
+      assignment: spec.assignment,
+      capabilities: {
+        delegateTo: callables.delegate.map(label),
+        askTo: callables.question.map(label),
+      },
+      inputs: [...spec.given, ...this.resolveInputs(run, node.inputBindings, spec.iterationId)],
     };
-    this.commit(run, [
+    const drafts: EventDraft[] = [
       {
         type: 'task.created',
         taskId,
         payload: {
           taskId,
-          nodeId,
+          nodeId: spec.nodeId,
           roleId: role.id,
           contract: role.outputContract,
           dependsOnTaskIds: [],
@@ -934,12 +1020,12 @@ export class Coordinator {
         taskId,
         payload: {
           executionId,
-          parentExecutionId: null,
-          nodeId,
+          parentExecutionId: spec.parentExecutionId,
+          nodeId: spec.nodeId,
           taskId,
           attemptNo,
-          depth: 0,
-          iterationId,
+          depth: spec.depth,
+          iterationId: spec.iterationId,
           modelProfile: role.modelProfile,
         },
       },
@@ -965,20 +1051,52 @@ export class Coordinator {
         executionId,
         payload: { executionId, from: 'queued', to: 'active', activity: 'model', waitingOn: null },
       },
-    ]);
+    ];
+    return { input, effectId, drafts };
+  }
 
-    // Committed: only now does work leave the coordinator.
-    let settlement: AgentSettlement;
-    try {
-      const handle = await this.agents.start(input, this.hostFor(run, input));
-      run.handles.set(executionId, handle);
-      settlement = await handle.waitForSettlement();
-    } catch (error) {
-      settlement = { outcome: 'failed', error: String(error) };
-    } finally {
-      run.handles.delete(executionId);
-    }
-    return this.settle(run, input, effectId, settlement);
+  /** Starts a committed execution; resolves with how it ended. */
+  private launch(run: LiveRun, prepared: PreparedExecution): Promise<StepOutcome> {
+    const { input, effectId } = prepared;
+    const outcome = (async () => {
+      // Committed: only now does work leave the coordinator.
+      let settlement: AgentSettlement;
+      try {
+        const handle = await this.agents.start(input, this.hostFor(run, input));
+        run.handles.set(input.executionId, handle);
+        if (run.cancelRequested.has(input.executionId)) await handle.cancel('cancelled');
+        settlement = await handle.waitForSettlement();
+      } catch (error) {
+        settlement = { outcome: 'failed', error: String(error) };
+      } finally {
+        run.handles.delete(input.executionId);
+      }
+      // An execution owns its children: they end before it does (Spec §7.2).
+      await this.cancelChildren(run, input.executionId, 'the parent execution ended');
+      return this.settle(run, input, effectId, settlement);
+    })();
+    run.taskOutcomes.set(input.taskId, outcome);
+    return outcome;
+  }
+
+  private liveChildren(run: LiveRun, executionId: string) {
+    return Object.values(run.projection.executions).filter(
+      (e) => e.parentExecutionId === executionId && !TERMINAL_EXECUTION_STATUSES.has(e.status),
+    );
+  }
+
+  private async cancelChildren(run: LiveRun, executionId: string, reason: string) {
+    const children = this.liveChildren(run, executionId);
+    for (const child of children) this.requestCancel(run, child.executionId, reason);
+    await Promise.all(children.map((child) => run.taskOutcomes.get(child.taskId)));
+  }
+
+  private requestCancel(run: LiveRun, executionId: string, reason: string) {
+    run.cancelRequested.add(executionId);
+    void run.handles
+      .get(executionId)
+      ?.cancel(reason)
+      .catch(() => {});
   }
 
   private resolveInputs(
@@ -1041,12 +1159,20 @@ export class Coordinator {
     }
     const task = run.projection.tasks[input.taskId];
     const submitted = task?.status === 'completed';
-    const outcome =
-      settlement.outcome === 'succeeded' && !submitted ? ('failed' as const) : settlement.outcome;
+    // The Coordinator decides: an execution it cancelled ends cancelled unless it finished.
+    const cancelled = run.cancelRequested.has(input.executionId) && !submitted;
+    const outcome = cancelled
+      ? ('cancelled' as const)
+      : settlement.outcome === 'succeeded' && !submitted
+        ? ('failed' as const)
+        : settlement.outcome;
     const error =
-      settlement.outcome === 'succeeded' && !submitted
-        ? 'the agent finished without submit_result'
+      !cancelled && settlement.outcome === 'succeeded' && !submitted
+        ? input.assignment.kind === 'question'
+          ? 'the responder finished without reply'
+          : 'the agent finished without submit_result'
         : settlement.error;
+    this.releaseSlots(run, input.executionId);
 
     const drafts: EventDraft[] = [
       {
@@ -1086,10 +1212,47 @@ export class Coordinator {
         },
       });
     }
-    this.commit(run, drafts);
+    // A responder that ends without answering closes its question; the asker is told.
+    const unanswered = [...run.questions].find(
+      ([, q]) => q.responderExecutionId === input.executionId,
+    );
+    if (unanswered) {
+      const [questionId, question] = unanswered;
+      run.questions.delete(questionId);
+      question.cancelTimer();
+      drafts.push(...this.askerResumes(run, question.askerExecutionId, questionId, 'cancelled'));
+      this.commit(run, drafts);
+      question.wake({ questionId, outcome: 'cancelled' });
+    } else {
+      this.commit(run, drafts);
+    }
     return outcome === 'succeeded'
       ? { ok: true }
       : { ok: false, reason: error ?? `execution ${outcome}` };
+  }
+
+  // ── model slots ───────────────────────────────────────────────────────────
+
+  private acquireSlot(run: LiveRun): Promise<void> {
+    if (run.slots.free > 0) {
+      run.slots.free -= 1;
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => run.slots.waiters.push(resolve));
+  }
+
+  private releaseSlot(run: LiveRun) {
+    const next = run.slots.waiters.shift();
+    if (next) next();
+    else run.slots.free += 1;
+  }
+
+  private releaseSlots(run: LiveRun, executionId: string) {
+    for (const [modelCallId, owner] of run.slots.held) {
+      if (owner !== executionId) continue;
+      run.slots.held.delete(modelCallId);
+      this.releaseSlot(run);
+    }
   }
 
   private finalizeOutput(run: LiveRun, outputNodeId: string) {
@@ -1130,7 +1293,16 @@ export class Coordinator {
     const authorizeTool = async (proposal: ToolProposal): Promise<ToolAuthorization> => {
       requireActive();
       const toolCallId = this.ids.next('tool_call');
-      const error = this.toolRefusal(run, input, proposal);
+      const refusal = this.toolRefusal(run, input, proposal);
+      const error: CommandError | null = refusal
+        ? { code: refusal.code, message: refusal.message }
+        : null;
+      const questionId = proposal.args.questionId;
+      const late =
+        proposal.name === 'reply' &&
+        typeof questionId === 'string' &&
+        run.projection.questions[questionId] &&
+        run.projection.questions[questionId]?.status !== 'open';
       this.commit(run, [
         {
           type: 'tool.requested',
@@ -1154,6 +1326,34 @@ export class Coordinator {
               executionId,
               payload: { executionId, toolCallId, policyVersion: TOOL_POLICY_VERSION },
             },
+        ...(refusal?.limit
+          ? [
+              {
+                type: 'limit.reached',
+                executionId,
+                payload: {
+                  limitKind: refusal.limit.kind,
+                  used: refusal.limit.used,
+                  reserved: 0,
+                  max: refusal.limit.max,
+                },
+              } satisfies EventDraft,
+            ]
+          : []),
+        // A reply after the question closed is kept as an audit fact only (Technical-Design §8.3).
+        ...(late
+          ? [
+              {
+                type: 'observation.late',
+                executionId,
+                payload: {
+                  originalEventType: 'reply',
+                  originalRef: questionId as string,
+                  whyIgnored: `the question was already ${run.projection.questions[questionId as string]?.status}`,
+                },
+              } satisfies EventDraft,
+            ]
+          : []),
       ]);
       if (error) return { ok: false, toolCallId, error };
       authorized.set(toolCallId, { proposal, ran: false });
@@ -1174,13 +1374,53 @@ export class Coordinator {
         };
       }
       call.ran = true;
+      const effectId = this.ids.next('effect');
+      const opening: EventDraft[] = [
+        {
+          type: 'effect.admitted',
+          executionId,
+          payload: {
+            effectId,
+            kind: 'tool',
+            scope: executionId,
+            epoch: input.attemptNo,
+            reservationId: null,
+          },
+        },
+        { type: 'tool.started', executionId, payload: { executionId, toolCallId, effectId } },
+      ];
+      const closing = (resultRef: string | null, error: string | null = null): EventDraft[] => [
+        {
+          type: 'tool.finished',
+          executionId,
+          payload: { executionId, toolCallId, resultRef, error },
+        },
+        {
+          type: 'effect.settled',
+          executionId,
+          payload: { effectId, outcome: error ? 'failed' : 'succeeded' },
+        },
+      ];
+      const tool = { opening, closing, toolCallId };
+      switch (call.proposal.name) {
+        case 'spawn_subagents':
+          return this.spawnTool(run, input, call.proposal, tool);
+        case 'await_tasks':
+          return this.awaitTool(run, input, call.proposal, tool);
+        case 'ask':
+          return this.askTool(run, input, call.proposal, tool);
+        case 'reply':
+          return this.replyTool(run, input, call.proposal, tool);
+        case 'read_artifact':
+          return this.readTool(run, input, call.proposal, tool);
+      }
       const { drafts, result, extra } = this.toolDrafts(
         run,
         input,
         call.proposal,
-        toolCallId,
         lastCall,
         agent,
+        tool,
       );
       this.commit(run, drafts, extra);
       return { ok: true, toolCallId, result };
@@ -1193,9 +1433,18 @@ export class Coordinator {
         if (Object.keys(run.projection.modelCalls).length >= limits.maxModelCalls) {
           throw new Error(`LIMIT_REACHED: ${limits.maxModelCalls} model calls`);
         }
+        // Wait for a model slot; a waiting execution is not in a request and holds none.
+        await this.acquireSlot(run);
+        try {
+          requireActive();
+        } catch (error) {
+          this.releaseSlot(run);
+          throw error;
+        }
         const modelCallId = this.ids.next('model_call');
         const contextSnapshotId = this.ids.next('context_snapshot');
         const effectId = this.ids.next('effect');
+        run.slots.held.set(modelCallId, executionId);
         // The snapshot takes every directive queued for this execution right now.
         const queued = run.projection.directiveOrder
           .map((id) => run.projection.directives[id])
@@ -1257,6 +1506,7 @@ export class Coordinator {
 
       observe: async (observation: AgentObservation) => {
         requireActive();
+        if (run.slots.held.delete(observation.modelCallId)) this.releaseSlot(run);
         const effectId =
           lastCall?.modelCallId === observation.modelCallId ? lastCall.effectId : null;
         const settled: EventDraft[] = effectId
@@ -1306,87 +1556,216 @@ export class Coordinator {
   }
 
   /**
-   * Every check that decides whether a tool call may run (CRL-SEC-001). Pure: nothing happens
-   * until an authorized call is executed. Unknown tools, shell or code tools included, are
-   * refused because the role allowlists name only Corral's own tools.
+   * Every check that decides whether a tool call may run (CRL-SEC-001, CRL-RUN-004,
+   * CRL-COL-002/003). Pure: nothing happens until an authorized call is executed. Unknown
+   * tools, shell or code tools included, are refused: role allowlists name only Corral tools.
    */
   private toolRefusal(
     run: LiveRun,
     input: AgentStartInput,
     proposal: ToolProposal,
-  ): CommandError | null {
-    if (proposal.name === 'write_artifact') {
-      if (!input.role.allowedWorkTools.includes('write_artifact')) {
-        return { code: 'CAPABILITY_DENIED', message: 'role may not write artifacts' };
+  ): Refusal | null {
+    const { args } = proposal;
+    const p = run.projection;
+    const limits = run.snapshot.definition.limits;
+    const collaboration = input.role.allowedCollaborationTools as readonly string[];
+    const denied = (message: string): Refusal => ({ code: 'CAPABILITY_DENIED', message });
+    if (proposal.name !== 'write_artifact' && proposal.name !== 'submit_result') {
+      if (!collaboration.includes(proposal.name)) {
+        return denied(
+          ['spawn_subagents', 'await_tasks', 'ask', 'reply', 'read_artifact'].includes(
+            proposal.name,
+          )
+            ? `role may not use ${proposal.name}`
+            : `unknown tool ${proposal.name}`,
+        );
       }
-      const text = proposal.args.text;
-      if (typeof text !== 'string')
-        return { code: 'SCHEMA_INVALID', message: 'text must be a string' };
-      if (utf8ToBytes(text).length > this.policy.maxArtifactBytes) {
+    }
+    const callables = run.plan.callables[input.nodeId] ?? { delegate: [], question: [] };
+    // Children and responders share one budget of dynamic executions (Spec §7.2).
+    const spawned = Object.values(p.executions).filter((e) => e.parentExecutionId !== null).length;
+    const live = Object.values(p.executions).filter(
+      (e) => !TERMINAL_EXECUTION_STATUSES.has(e.status),
+    ).length;
+    const capacity = (count: number): Refusal | null => {
+      if (input.depth + 1 > limits.maxDelegationDepth) {
         return {
           code: 'LIMIT_REACHED',
-          message: `artifact versions are limited to ${this.policy.maxArtifactBytes} bytes`,
+          message: `delegation depth is limited to ${limits.maxDelegationDepth}`,
+          limit: { kind: 'depth', used: input.depth, max: limits.maxDelegationDepth },
+        };
+      }
+      if (spawned + count > limits.maxSpawns) {
+        return {
+          code: 'LIMIT_REACHED',
+          message: `this run may start ${limits.maxSpawns} delegated or responding executions`,
+          limit: { kind: 'spawns', used: spawned, max: limits.maxSpawns },
+        };
+      }
+      // Reserve resident capacity for the whole batch, or none of it (Technical-Design §8.1).
+      if (live + count > this.policy.maxResidentExecutions) {
+        return {
+          code: 'RESOURCE_CAPACITY',
+          message: `at most ${this.policy.maxResidentExecutions} executions may be alive at once`,
         };
       }
       return null;
-    }
-    if (proposal.name === 'submit_result') {
-      if (!input.role.allowedCollaborationTools.includes('submit_result')) {
-        return { code: 'CAPABILITY_DENIED', message: 'role may not submit results' };
-      }
-      const ids = proposal.args.artifactVersionIds;
-      const owned =
-        Array.isArray(ids) &&
-        ids.length > 0 &&
-        ids.every(
-          (id) =>
-            typeof id === 'string' &&
-            run.projection.artifacts[id]?.authorExecutionId === input.executionId,
-        );
-      return owned
-        ? null
-        : {
-            code: 'CAPABILITY_DENIED',
-            message: 'only versions written by this execution can be submitted',
+    };
+
+    switch (proposal.name) {
+      case 'write_artifact': {
+        if (!input.role.allowedWorkTools.includes('write_artifact')) {
+          return denied('role may not write artifacts');
+        }
+        if (typeof args.text !== 'string') {
+          return { code: 'SCHEMA_INVALID', message: 'text must be a string' };
+        }
+        if (utf8ToBytes(args.text).length > this.policy.maxArtifactBytes) {
+          return {
+            code: 'LIMIT_REACHED',
+            message: `artifact versions are limited to ${this.policy.maxArtifactBytes} bytes`,
           };
+        }
+        return null;
+      }
+      case 'submit_result': {
+        if (!input.role.allowedCollaborationTools.includes('submit_result')) {
+          return denied('role may not submit results');
+        }
+        const ids = args.artifactVersionIds;
+        const owned =
+          Array.isArray(ids) &&
+          ids.length > 0 &&
+          ids.every(
+            (id) =>
+              typeof id === 'string' && p.artifacts[id]?.authorExecutionId === input.executionId,
+          );
+        return owned ? null : denied('only versions written by this execution can be submitted');
+      }
+      case 'spawn_subagents': {
+        const tasks = args.tasks;
+        if (!Array.isArray(tasks) || tasks.length === 0 || tasks.length > 4) {
+          return { code: 'SCHEMA_INVALID', message: 'tasks must list 1 to 4 tasks' };
+        }
+        for (const task of tasks as { targetNodeId?: unknown; brief?: unknown }[]) {
+          if (typeof task?.brief !== 'string' || !task.brief.trim() || task.brief.length > 4000) {
+            return {
+              code: 'SCHEMA_INVALID',
+              message: 'each task needs a brief of 1 to 4000 characters',
+            };
+          }
+          if (
+            typeof task.targetNodeId !== 'string' ||
+            !callables.delegate.includes(task.targetNodeId)
+          ) {
+            return denied(
+              `${input.nodeId} may not delegate to ${String(task?.targetNodeId)}: no capability link`,
+            );
+          }
+        }
+        return capacity(tasks.length);
+      }
+      case 'await_tasks': {
+        const ids = args.taskIds;
+        if (!Array.isArray(ids) || ids.length === 0) {
+          return { code: 'SCHEMA_INVALID', message: 'taskIds must list the tasks to wait for' };
+        }
+        const mine = new Set(
+          Object.values(p.executions)
+            .filter((e) => e.parentExecutionId === input.executionId)
+            .map((e) => e.taskId),
+        );
+        return ids.every((id) => typeof id === 'string' && mine.has(id))
+          ? null
+          : denied('only tasks this execution started can be awaited');
+      }
+      case 'ask': {
+        if (typeof args.body !== 'string' || !args.body.trim() || args.body.length > 12000) {
+          return { code: 'SCHEMA_INVALID', message: 'body must be 1 to 12000 characters' };
+        }
+        if (
+          typeof args.targetNodeId !== 'string' ||
+          !callables.question.includes(args.targetNodeId)
+        ) {
+          return denied(
+            `${input.nodeId} may not ask ${String(args.targetNodeId)}: no capability link`,
+          );
+        }
+        const asked = Object.keys(p.questions).length;
+        if (asked >= limits.maxQuestions) {
+          return {
+            code: 'LIMIT_REACHED',
+            message: `this run may ask ${limits.maxQuestions} questions`,
+            limit: { kind: 'questions', used: asked, max: limits.maxQuestions },
+          };
+        }
+        return capacity(1);
+      }
+      case 'reply': {
+        const question = p.questions[String(args.questionId)];
+        if (typeof args.body !== 'string' || !args.body.trim() || args.body.length > 12000) {
+          return { code: 'SCHEMA_INVALID', message: 'body must be 1 to 12000 characters' };
+        }
+        const open =
+          typeof args.questionId === 'string' ? run.questions.get(args.questionId) : undefined;
+        if (!question || open?.responderExecutionId !== input.executionId) {
+          return question && question.status !== 'open'
+            ? {
+                code: 'TARGET_TERMINAL',
+                message: `question ${question.questionId} is already ${question.status}`,
+              }
+            : denied('this execution was not asked that question');
+        }
+        return null;
+      }
+      case 'read_artifact': {
+        const id = args.artifactVersionId;
+        if (typeof id !== 'string' || !p.artifacts[id]) {
+          return { code: 'TARGET_NOT_FOUND', message: 'no such artifact version' };
+        }
+        return this.readable(run, input).has(id)
+          ? null
+          : denied('this version is not in this execution’s scope');
+      }
     }
-    return { code: 'CAPABILITY_DENIED', message: `unknown tool ${proposal.name}` };
+    return denied(`unknown tool ${proposal.name}`);
   }
 
-  /** The commit for one executed tool call: its effect, lifecycle and result, together. */
+  /**
+   * What an execution may read: its own versions, its inputs, what its children submitted,
+   * the versions a question to it refers to, and the evidence of answers it received.
+   */
+  private readable(run: LiveRun, input: AgentStartInput): Set<string> {
+    const p = run.projection;
+    const ids = new Set<string>();
+    for (const a of Object.values(p.artifacts))
+      if (a.authorExecutionId === input.executionId) ids.add(a.artifactVersionId);
+    for (const i of input.inputs) if (i.artifactVersionId) ids.add(i.artifactVersionId);
+    for (const child of Object.values(p.executions)) {
+      if (child.parentExecutionId !== input.executionId) continue;
+      for (const id of p.tasks[child.taskId]?.submittedArtifactVersionIds ?? []) ids.add(id);
+    }
+    for (const q of Object.values(p.questions)) {
+      if (input.assignment.kind === 'question' && q.questionId === input.assignment.questionId) {
+        for (const id of q.artifactRefs) ids.add(id);
+      }
+      if (q.senderExecutionId === input.executionId) {
+        for (const id of q.answer?.evidenceRefs ?? []) ids.add(id);
+      }
+    }
+    return ids;
+  }
+
+  /** The commit for write_artifact or submit_result: its effect, lifecycle and result. */
   private toolDrafts(
     run: LiveRun,
     input: AgentStartInput,
     proposal: ToolProposal,
-    toolCallId: string,
     lastCall: { modelCallId: string; contextSnapshotId: string } | null,
     agent: Actor,
+    tool: ToolFrame,
   ): { drafts: EventDraft[]; result: Record<string, unknown>; extra?: () => void } {
     const { executionId, taskId } = input;
-    const effectId = this.ids.next('effect');
-    const opening: EventDraft[] = [
-      {
-        type: 'effect.admitted',
-        executionId,
-        payload: {
-          effectId,
-          kind: 'tool',
-          scope: executionId,
-          epoch: input.attemptNo,
-          reservationId: null,
-        },
-      },
-      { type: 'tool.started', executionId, payload: { executionId, toolCallId, effectId } },
-    ];
-    const closing = (resultRef: string | null): EventDraft[] => [
-      {
-        type: 'tool.finished',
-        executionId,
-        payload: { executionId, toolCallId, resultRef, error: null },
-      },
-      { type: 'effect.settled', executionId, payload: { effectId, outcome: 'succeeded' } },
-    ];
-
     if (proposal.name === 'write_artifact') {
       const text = proposal.args.text as string;
       const bytes = utf8ToBytes(text);
@@ -1397,7 +1776,7 @@ export class Coordinator {
       const artifactVersionId = this.ids.next('artifact_version');
       return {
         drafts: [
-          ...opening,
+          ...tool.opening,
           {
             type: 'artifact.version_created',
             actor: agent,
@@ -1417,18 +1796,17 @@ export class Coordinator {
               contextSnapshotId: lastCall?.contextSnapshotId ?? null,
             },
           },
-          ...closing(artifactVersionId),
+          ...tool.closing(artifactVersionId),
         ],
         result: { artifactVersionId },
         // The body is written in the same transaction as the event that names it.
         extra: () => this.store.putArtifactText(run.runId, artifactVersionId, text),
       };
     }
-
     const ids = proposal.args.artifactVersionIds as string[];
     return {
       drafts: [
-        ...opening,
+        ...tool.opening,
         {
           type: 'task.submitted',
           actor: agent,
@@ -1444,10 +1822,308 @@ export class Coordinator {
             completionEvidence: `${input.role.outputContract} contract: non-empty submission`,
           },
         },
-        ...closing(null),
+        ...tool.closing(null),
       ],
       result: {},
     };
+  }
+
+  // ── collaboration tools (C-022–C-024) ─────────────────────────────────────
+
+  /** Starts children of the caller in one commit, then each child's agent. */
+  private async spawnTool(
+    run: LiveRun,
+    input: AgentStartInput,
+    proposal: ToolProposal,
+    tool: ToolFrame,
+  ): Promise<ToolOutcome> {
+    const tasks = proposal.args.tasks as { targetNodeId: string; brief: string }[];
+    const children = tasks.map((task) =>
+      this.prepareExecution(run, {
+        nodeId: task.targetNodeId,
+        iterationId: run.projection.executions[input.executionId]?.iterationId ?? null,
+        parentExecutionId: input.executionId,
+        depth: input.depth + 1,
+        assignment: { kind: 'delegated', brief: task.brief, parentExecutionId: input.executionId },
+        given: [{ name: 'task', kind: 'run_input', artifactVersionId: null, text: task.brief }],
+      }),
+    );
+    this.commit(run, [
+      ...tool.opening,
+      ...children.flatMap((child) => child.drafts),
+      ...tool.closing(null),
+    ]);
+    for (const child of children) void this.launch(run, child);
+    return {
+      ok: true,
+      toolCallId: tool.toolCallId,
+      result: { taskIds: children.map((c) => c.input.taskId) },
+    };
+  }
+
+  /** Waits for the caller's children; the caller holds no model slot meanwhile. */
+  private async awaitTool(
+    run: LiveRun,
+    input: AgentStartInput,
+    proposal: ToolProposal,
+    tool: ToolFrame,
+  ): Promise<ToolOutcome> {
+    const { executionId } = input;
+    const taskIds = proposal.args.taskIds as string[];
+    const p = run.projection;
+    const targetIds = taskIds.map(
+      (taskId) =>
+        Object.values(p.executions).find((e) => e.taskId === taskId)?.executionId ?? taskId,
+    );
+    this.commit(run, [
+      ...tool.opening,
+      {
+        type: 'execution.state_changed',
+        executionId,
+        payload: {
+          executionId,
+          from: 'active',
+          to: 'waiting_children',
+          activity: null,
+          waitingOn: {
+            kind: 'children',
+            targetIds,
+            reasonCode: 'awaiting_delegated_tasks',
+            since: this.clock.nowIso(),
+            deadline: null,
+            required: true,
+          },
+        },
+      },
+    ]);
+    await Promise.all(taskIds.map((taskId) => run.taskOutcomes.get(taskId)));
+    const results = taskIds.map((taskId) => {
+      const task = run.projection.tasks[taskId];
+      return {
+        taskId,
+        status: task?.status ?? 'failed',
+        artifactVersionIds: task?.status === 'completed' ? task.submittedArtifactVersionIds : [],
+      };
+    });
+    this.commit(run, [
+      {
+        type: 'execution.state_changed',
+        executionId,
+        payload: {
+          executionId,
+          from: 'waiting_children',
+          to: 'active',
+          activity: 'model',
+          waitingOn: null,
+        },
+      },
+      ...tool.closing(null),
+    ]);
+    return { ok: true, toolCallId: tool.toolCallId, result: { tasks: results } };
+  }
+
+  /** A question becomes a new responder task under the asker, answered once or closed. */
+  private async askTool(
+    run: LiveRun,
+    input: AgentStartInput,
+    proposal: ToolProposal,
+    tool: ToolFrame,
+  ): Promise<ToolOutcome> {
+    const { executionId } = input;
+    const targetNodeId = proposal.args.targetNodeId as string;
+    const body = proposal.args.body as string;
+    const artifactRefs = (
+      Array.isArray(proposal.args.artifactRefs) ? proposal.args.artifactRefs : []
+    ).filter((id): id is string => typeof id === 'string' && Boolean(run.projection.artifacts[id]));
+    const questionId = this.ids.next('question');
+    const timeoutMs = run.snapshot.definition.limits.questionTimeoutMs;
+    const deadline = new Date(Date.parse(this.clock.nowIso()) + timeoutMs).toISOString();
+    const responder = this.prepareExecution(run, {
+      nodeId: targetNodeId,
+      iterationId: run.projection.executions[executionId]?.iterationId ?? null,
+      parentExecutionId: executionId,
+      depth: input.depth + 1,
+      assignment: { kind: 'question', questionId, body, askerExecutionId: executionId },
+      given: [
+        { name: 'question', kind: 'run_input', artifactVersionId: null, text: body },
+        ...artifactRefs.map((id) => ({
+          name: 'reference',
+          kind: 'explicit_version' as const,
+          artifactVersionId: id,
+          text: this.store.getArtifactText(run.runId, id) ?? '',
+        })),
+      ],
+    });
+    const role = run.snapshot.definition.nodes.find((n) => n.id === targetNodeId);
+
+    const answer = new Promise<Record<string, unknown>>((resolve) => {
+      run.questions.set(questionId, {
+        askerExecutionId: executionId,
+        responderExecutionId: responder.input.executionId,
+        wake: resolve,
+        cancelTimer: this.timers.after(timeoutMs, () => this.timeOut(run, questionId)),
+      });
+    });
+    this.commit(run, [
+      ...tool.opening,
+      {
+        type: 'message.question_created',
+        actor: { kind: 'agent', id: executionId },
+        executionId,
+        payload: {
+          questionId,
+          taskId: responder.input.taskId,
+          senderExecutionId: executionId,
+          targetRoleId: role?.type === 'agent' ? role.roleId : targetNodeId,
+          targetNodeId,
+          body,
+          artifactRefs,
+          deadline,
+        },
+      },
+      ...responder.drafts,
+      {
+        type: 'execution.state_changed',
+        executionId,
+        payload: {
+          executionId,
+          from: 'active',
+          to: 'waiting_message',
+          activity: null,
+          waitingOn: {
+            kind: 'message',
+            targetIds: [questionId],
+            reasonCode: 'awaiting_answer',
+            since: this.clock.nowIso(),
+            deadline,
+            required: true,
+          },
+        },
+      },
+    ]);
+    void this.launch(run, responder);
+    const result = await answer;
+    const closed = result.outcome === 'answered' ? questionId : null;
+    this.commit(run, tool.closing(closed, closed ? null : `question ${result.outcome}`));
+    return { ok: true, toolCallId: tool.toolCallId, result };
+  }
+
+  /** The asker leaves waiting_message in the commit that closes its question. */
+  private askerResumes(
+    run: LiveRun,
+    askerExecutionId: string,
+    questionId: string,
+    outcome: 'answered' | 'cancelled' | 'timed_out',
+    answerRef: string | null = null,
+  ): EventDraft[] {
+    const asker = run.projection.executions[askerExecutionId];
+    return [
+      { type: 'message.closed', payload: { questionId, outcome, answerRef } },
+      ...(asker?.status === 'waiting_message'
+        ? [
+            {
+              type: 'execution.state_changed',
+              executionId: askerExecutionId,
+              payload: {
+                executionId: askerExecutionId,
+                from: 'waiting_message',
+                to: 'active',
+                activity: 'model',
+                waitingOn: null,
+              },
+            } satisfies EventDraft,
+          ]
+        : []),
+    ];
+  }
+
+  private timeOut(run: LiveRun, questionId: string) {
+    const question = run.questions.get(questionId);
+    if (!question || this.storageError) return;
+    run.questions.delete(questionId);
+    try {
+      this.commit(run, this.askerResumes(run, question.askerExecutionId, questionId, 'timed_out'));
+    } catch {
+      return;
+    }
+    // The responder's work is no longer wanted; a reply it still sends is only audited.
+    this.requestCancel(run, question.responderExecutionId, 'the question timed out');
+    question.wake({ questionId, outcome: 'timed_out' });
+  }
+
+  /** The single answer to an open question; the responder's task completes with it. */
+  private async replyTool(
+    run: LiveRun,
+    input: AgentStartInput,
+    proposal: ToolProposal,
+    tool: ToolFrame,
+  ): Promise<ToolOutcome> {
+    const questionId = proposal.args.questionId as string;
+    const question = run.questions.get(questionId);
+    if (!question) {
+      // Closed between authorization and execution (a timeout won the race).
+      this.commit(run, tool.closing(null, 'the question already closed'));
+      return {
+        ok: false,
+        toolCallId: tool.toolCallId,
+        error: { code: 'TARGET_TERMINAL', message: 'the question already closed' },
+      };
+    }
+    run.questions.delete(questionId);
+    question.cancelTimer();
+    const body = proposal.args.body as string;
+    const evidenceRefs = (
+      Array.isArray(proposal.args.evidenceRefs) ? proposal.args.evidenceRefs : []
+    ).filter((id): id is string => typeof id === 'string' && Boolean(run.projection.artifacts[id]));
+    this.commit(run, [
+      ...tool.opening,
+      {
+        type: 'message.answer_committed',
+        actor: { kind: 'agent', id: input.executionId },
+        executionId: input.executionId,
+        payload: {
+          questionId,
+          responseTaskId: input.taskId,
+          responderExecutionId: input.executionId,
+          body,
+          evidenceRefs,
+        },
+      },
+      {
+        type: 'task.completed',
+        taskId: input.taskId,
+        payload: { taskId: input.taskId, completionEvidence: `answered question ${questionId}` },
+      },
+      ...this.askerResumes(run, question.askerExecutionId, questionId, 'answered', questionId),
+      ...tool.closing(questionId),
+    ]);
+    question.wake({ questionId, outcome: 'answered', body, evidenceRefs });
+    return { ok: true, toolCallId: tool.toolCallId, result: { questionId } };
+  }
+
+  /** Returns a version's text and records who read it (C-024). */
+  private async readTool(
+    run: LiveRun,
+    input: AgentStartInput,
+    proposal: ToolProposal,
+    tool: ToolFrame,
+  ): Promise<ToolOutcome> {
+    const id = proposal.args.artifactVersionId as string;
+    const text = this.store.getArtifactText(run.runId, id) ?? '';
+    this.commit(run, [
+      ...tool.opening,
+      {
+        type: 'artifact.read',
+        executionId: input.executionId,
+        payload: {
+          requestedRef: id,
+          resolvedVersionId: id,
+          consumerExecutionId: input.executionId,
+        },
+      },
+      ...tool.closing(id),
+    ]);
+    return { ok: true, toolCallId: tool.toolCallId, result: { artifactVersionId: id, text } };
   }
 
   private publishFrame(frame: StreamFrame) {
