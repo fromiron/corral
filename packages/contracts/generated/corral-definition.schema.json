@@ -1,0 +1,566 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "0.1"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "entryNodeId": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+    },
+    "input": {
+      "type": "object",
+      "properties": {
+        "brief": {
+          "type": "string",
+          "minLength": 1
+        },
+        "criteria": {
+          "minItems": 1,
+          "maxItems": 20,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "brief",
+        "criteria"
+      ],
+      "additionalProperties": false
+    },
+    "roles": {
+      "minItems": 1,
+      "maxItems": 20,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "prompt": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "modelProfile": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+          },
+          "allowedWorkTools": {
+            "maxItems": 3,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "search",
+                "read_document",
+                "write_artifact"
+              ]
+            }
+          },
+          "allowedCollaborationTools": {
+            "maxItems": 6,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "spawn_subagents",
+                "await_tasks",
+                "ask",
+                "reply",
+                "read_artifact",
+                "submit_result"
+              ]
+            }
+          },
+          "outputContract": {
+            "type": "string",
+            "enum": [
+              "text",
+              "notes",
+              "draft",
+              "review"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "prompt",
+          "modelProfile",
+          "allowedWorkTools",
+          "allowedCollaborationTools",
+          "outputContract"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "nodes": {
+      "minItems": 2,
+      "maxItems": 20,
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+              },
+              "type": {
+                "type": "string",
+                "const": "agent"
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1
+              },
+              "loopId": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+              },
+              "roleId": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+              },
+              "invocation": {
+                "type": "string",
+                "enum": [
+                  "scheduled",
+                  "callable"
+                ]
+              },
+              "inputBindings": {
+                "minItems": 0,
+                "maxItems": 20,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "run_input",
+                        "task_output",
+                        "previous_iteration_output",
+                        "explicit_version",
+                        "question_answer"
+                      ]
+                    },
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "sourceNodeId": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                    },
+                    "artifactVersionId": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                    },
+                    "optional": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "name"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "outputName": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "id",
+              "type",
+              "label",
+              "roleId",
+              "invocation",
+              "inputBindings",
+              "outputName"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+              },
+              "type": {
+                "type": "string",
+                "const": "decision"
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1
+              },
+              "loopId": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+              },
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "review",
+                  "approval",
+                  "rule"
+                ]
+              },
+              "rule": {
+                "type": "string",
+                "enum": [
+                  "review_verdict",
+                  "required_tasks_submitted",
+                  "human_approval"
+                ]
+              },
+              "inputBindings": {
+                "minItems": 1,
+                "maxItems": 20,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "run_input",
+                        "task_output",
+                        "previous_iteration_output",
+                        "explicit_version",
+                        "question_answer"
+                      ]
+                    },
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "sourceNodeId": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                    },
+                    "artifactVersionId": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                    },
+                    "optional": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "name"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "id",
+              "type",
+              "label",
+              "mode",
+              "rule",
+              "inputBindings"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+              },
+              "type": {
+                "type": "string",
+                "const": "loop"
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1
+              },
+              "maxIterations": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10
+              }
+            },
+            "required": [
+              "id",
+              "type",
+              "label",
+              "maxIterations"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+              },
+              "type": {
+                "type": "string",
+                "const": "output"
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1
+              },
+              "inputBindings": {
+                "minItems": 1,
+                "maxItems": 20,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "run_input",
+                        "task_output",
+                        "previous_iteration_output",
+                        "explicit_version",
+                        "question_answer"
+                      ]
+                    },
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "sourceNodeId": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                    },
+                    "artifactVersionId": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                    },
+                    "optional": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "name"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "requireApproval": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "id",
+              "type",
+              "label",
+              "inputBindings",
+              "requireApproval"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "controlEdges": {
+      "minItems": 1,
+      "maxItems": 40,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+          },
+          "source": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+          },
+          "sourcePort": {
+            "type": "string",
+            "enum": [
+              "out",
+              "body",
+              "next",
+              "pass",
+              "revise",
+              "approve",
+              "reject",
+              "yes",
+              "no"
+            ]
+          },
+          "target": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+          },
+          "targetPort": {
+            "type": "string",
+            "enum": [
+              "in",
+              "enter",
+              "repeat",
+              "exit"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "source",
+          "sourcePort",
+          "target",
+          "targetPort"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "capabilityLinks": {
+      "maxItems": 40,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "delegate",
+              "question"
+            ]
+          },
+          "sourceNodeId": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+          },
+          "targetNodeId": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "sourceNodeId",
+          "targetNodeId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "limits": {
+      "type": "object",
+      "properties": {
+        "maxDelegationDepth": {
+          "type": "number",
+          "const": 2
+        },
+        "maxModelConcurrency": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3
+        },
+        "maxSpawns": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32
+        },
+        "maxModelCalls": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "maxOutputTokens": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 256000
+        },
+        "maxOutputTokensPerCall": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4096
+        },
+        "maxQuestions": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 6
+        },
+        "questionTimeoutMs": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 300000
+        },
+        "modelTimeoutMs": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 300000
+        },
+        "runDeadlineMs": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 3600000
+        }
+      },
+      "required": [
+        "maxDelegationDepth",
+        "maxModelConcurrency",
+        "maxSpawns",
+        "maxModelCalls",
+        "maxOutputTokens",
+        "maxOutputTokensPerCall",
+        "maxQuestions",
+        "questionTimeoutMs",
+        "modelTimeoutMs",
+        "runDeadlineMs"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "id",
+    "name",
+    "entryNodeId",
+    "input",
+    "roles",
+    "nodes",
+    "controlEdges",
+    "capabilityLinks",
+    "limits"
+  ],
+  "additionalProperties": false,
+  "$id": "urn:corral:definition:0.1",
+  "title": "CorralDefinition"
+}

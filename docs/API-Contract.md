@@ -37,6 +37,8 @@ steer receipt의 applied는 입력 dispatch 확인을 의미한다. 품질 준�
 | CAPABILITY_DENIED | 403 | 도구/질문/위임 관계가 허용되지 않음 |
 | STALE_CONTROL_REVISION | 409 | 준비 중 다른 제어 변경이 발생 |
 | IDEMPOTENCY_CONFLICT | 409 | 같은 commandId에 다른 payload |
+| TARGET_NOT_FOUND | 404 | 대상 Run·실행·작업이 없음 (구현 중 추가, P0 C-053) |
+| COMMAND_NOT_SUPPORTED | 501 | 형식은 올바르지만 현재 runtime 단계에서 아직 처리하지 않는 명령. 효과 없음 (구현 중 추가, P1 C-005) |
 | TARGET_TERMINAL | 409 | 종료된 실행에 지시 등 적용 불가 |
 | RESOURCE_CAPACITY | 409 | 동적 자식/응답 worker 용량 예약 실패. 부모를 무기한 대기에 넣지 않음 |
 | CRITERIA_CHANGE_REQUIRES_NEW_RUN | 409 | Loop가 이미 종료되어 완료 기준 변경은 새 Run 필요 |

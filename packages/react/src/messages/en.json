@@ -2,29 +2,67 @@
   "Studio": {
     "title": "Corral Studio",
     "demoBadge": "Demo / Simulated agents",
-    "demoNote": "Agents are simulated in your browser. No model or network calls are made."
+    "demoNote": "Agents are simulated in your browser. No model or network calls are made.",
+    "nav": "Corrals",
+    "notFound": "This page does not exist.",
+    "notFoundCorral": "This Corral does not exist in this browser.",
+    "backToCorrals": "Back to Corrals",
+    "error": "Something went wrong: {message}"
   },
   "Palette": {
     "heading": "Nodes",
     "hint": "Drag a node onto the canvas, or use Add.",
+    "add": "Add {kind}",
     "agent": "Agent",
     "agentDescription": "Does one task with a role and prompt",
+    "decision": "Decision",
+    "decisionDescription": "Branches on a review verdict, an approval or a rule",
+    "loop": "Loop",
+    "loopDescription": "Repeats the steps inside it up to a limit",
     "output": "Output",
-    "outputDescription": "Receives the final submitted version",
-    "add": "Add {kind}"
+    "outputDescription": "Receives the final submitted version"
   },
   "Canvas": {
     "label": "Corral canvas",
     "empty": "Drop an Agent and an Output here, then connect them.",
+    "connected": "Connected {source} to {target}.",
+    "callableAgent": "Callable agent",
+    "ports": {
+      "in": "in",
+      "out": "out",
+      "pass": "pass",
+      "revise": "revise",
+      "approve": "approve",
+      "reject": "reject",
+      "yes": "yes",
+      "no": "no",
+      "enter": "enter",
+      "repeat": "repeat",
+      "exit": "exit",
+      "body": "body",
+      "next": "next",
+      "delegate": "delegate",
+      "question": "ask",
+      "callable": "callable"
+    },
+    "linkLabel": {
+      "delegate": "delegates",
+      "question": "asks"
+    },
+    "loopMembers": "{count, plural, =0 {empty} one {# step inside} other {# steps inside}} · up to {max} rounds",
     "rejected": {
       "unknownNode": "That node no longer exists.",
-      "outputHasNoOutgoingPort": "An Output is the end of the flow; it has no next step.",
       "selfConnection": "A node cannot connect to itself.",
-      "duplicateOutgoing": "This node already has a next step. Delete that connection first.",
-      "duplicateIncoming": "This node already has an input connection.",
-      "cycle": "This connection would create a loop. Loops come with the Loop node."
+      "callableInControlFlow": "Callable agents are not part of the flow. Use a delegate or ask link instead.",
+      "invalidSourcePort": "That node has no such output.",
+      "invalidTargetPort": "That node has no such input.",
+      "duplicateOutgoing": "This output already leads somewhere. Delete that connection first.",
+      "loopBoundary": "Connections cross a Loop only through its ports: enter, body, repeat, exit and next.",
+      "cycle": "This connection would create a cycle. Repeat work with a Loop.",
+      "sourceNotAgent": "Only agents can call other agents.",
+      "targetNotCallable": "Calls go to callable agents. Set the target agent to Callable first.",
+      "duplicateLink": "That call link already exists."
     },
-    "connected": "Connected {source} to {target}.",
     "nodeStatus": {
       "idle": "Not run",
       "active": "Running",
@@ -36,15 +74,91 @@
     "heading": "Properties",
     "none": "Select a node to edit it.",
     "label": "Name",
-    "prompt": "Role prompt",
     "brief": "Run brief",
     "delete": "Delete node",
-    "outputNote": "The Output receives the version submitted by the agent connected into it."
+    "duplicate": "Duplicate",
+    "invocation": "Runs",
+    "scheduled": "In the flow",
+    "callable": "Only when called",
+    "prompt": "Role prompt",
+    "contract": "Output",
+    "contracts": {
+      "text": "Text",
+      "notes": "Notes",
+      "draft": "Draft",
+      "review": "Review"
+    },
+    "modelProfile": "Model profile",
+    "sharedRole": "This role is shared by {count} nodes. Changes apply to all of them.",
+    "mode": "Decides by",
+    "modes": {
+      "review": "Review verdict",
+      "approval": "Your approval",
+      "rule": "Required tasks submitted"
+    },
+    "maxIterations": "Automatic rounds (1–10)",
+    "requireApproval": "Ask for final approval",
+    "outputNote": "The Output receives the version submitted by the agent connected into it.",
+    "loopMembership": "Inside Loop",
+    "notInLoop": "Not in a Loop",
+    "inputs": "Inputs",
+    "noInputs": "No inputs.",
+    "removeInput": "Remove input {name}",
+    "addInput": "Add input",
+    "inputKind": "Kind",
+    "inputSource": "From",
+    "inputName": "Name",
+    "add": "Add",
+    "inputKinds": {
+      "run_input": "Run input",
+      "task_output": "Submitted output",
+      "previous_iteration_output": "Previous round",
+      "explicit_version": "Specific version",
+      "question_answer": "Answer to a question"
+    },
+    "connections": "Next steps",
+    "connectFrom": "From {port}",
+    "connectTo": "Connect to",
+    "connect": "Connect",
+    "chooseTarget": "Choose a step",
+    "removeConnection": "Remove connection to {target}",
+    "calls": "May call",
+    "callKind": "Kind",
+    "callTarget": "Callable agent",
+    "addCall": "Allow",
+    "removeCall": "Remove link to {target}",
+    "noCallableAgents": "Add an agent and set it to Only when called."
   },
   "Validation": {
     "heading": "Before running",
     "ok": "Ready to run.",
-    "show": "Show"
+    "show": "Show",
+    "runtimeHeading": "Not runnable here yet",
+    "runtimeNote": "This structure is valid, but this runtime runs only Agent → Output flows. Loops and decisions run from P2/P5.",
+    "codes": {
+      "SCHEMA_INVALID": "{message}",
+      "DUPLICATE_ID": "Two items share an ID.",
+      "UNKNOWN_REFERENCE": "Something refers to an item that does not exist.",
+      "TOO_MANY_LOOPS": "Only one Loop is supported.",
+      "INVALID_PORT": "This connection uses a port the node does not have.",
+      "DUPLICATE_PORT_EDGE": "An output leads to two places.",
+      "CALLABLE_IN_CONTROL_FLOW": "A callable agent is connected into the flow.",
+      "ENTRY_INVALID": "The flow must start at an agent outside any Loop.",
+      "DEAD_END": "This agent has no next step.",
+      "DECISION_RULE": "This decision's rule does not match its mode.",
+      "DECISION_BRANCH_MISSING": "A branch of this decision is not connected.",
+      "LOOP_STRUCTURE": "The Loop is incomplete: {message}",
+      "LOOP_BOUNDARY": "This connection crosses the Loop boundary outside its ports.",
+      "CYCLE_OUTSIDE_LOOP": "This connection closes a cycle. Use a Loop to repeat work.",
+      "UNREACHABLE": "The flow never reaches this node.",
+      "NO_OUTPUT": "The flow never reaches an Output.",
+      "CAPABILITY_TARGET": "Calls go from an agent to a callable agent.",
+      "CAPABILITY_NOT_ALLOWED": "The calling role is not allowed to make this call.",
+      "DEPTH_EXCEEDED": "This agent is only reachable beyond the delegation depth limit.",
+      "BINDING_SOURCE": "An input reads from a step that cannot provide it: {message}",
+      "REVIEW_CONTRACT": "A review decision must read a reviewer's output.",
+      "UNKNOWN_MODEL_PROFILE": "A role uses a model profile that is not configured."
+    }
   },
   "Run": {
     "heading": "Run",
@@ -58,7 +172,9 @@
     "steerThis": "Steer",
     "output": "Output",
     "outputPending": "The output appears when the run finishes.",
-    "streamError": "Live updates stopped: {message}"
+    "streamError": "Live updates stopped: {message}",
+    "notRunnable": "Fix the problems listed under Before running to enable Run.",
+    "notRunnableHere": "This Corral is valid but uses steps this runtime cannot run yet."
   },
   "Reins": {
     "heading": "Reins",
@@ -115,5 +231,47 @@
     "blocked": "Blocked",
     "submitted": "Submitted",
     "completed": "Completed"
+  },
+  "Toolbar": {
+    "undo": "Undo",
+    "redo": "Redo",
+    "shortcuts": "Undo: Ctrl+Z · Redo: Ctrl+Shift+Z"
+  },
+  "Workspace": {
+    "heading": "Corrals",
+    "new": "New Corral",
+    "newName": "Untitled Corral",
+    "import": "Import JSON",
+    "importHint": "Choose a .corral.json file, optionally with its layout file.",
+    "importFailed": "Import failed:",
+    "empty": "No Corrals yet. Create one or import a JSON file.",
+    "storedLocally": "Corrals are saved in this browser only until the local server arrives (P2).",
+    "notPersistent": "This browser does not allow saving. Corrals last until you close this tab.",
+    "revisions": "Definition r{definition} · Layout r{layout} · {nodes, plural, =0 {no nodes} one {# node} other {# nodes}}",
+    "updated": "Saved {time}",
+    "open": "Open",
+    "duplicate": "Duplicate",
+    "duplicateName": "{name} copy",
+    "delete": "Delete",
+    "confirmDelete": "Confirm delete",
+    "cancel": "Cancel"
+  },
+  "Editor": {
+    "name": "Corral name",
+    "revisions": "Definition r{definition} · Layout r{layout}",
+    "unsaved": "Unsaved changes",
+    "saved": "All changes saved",
+    "save": "Save",
+    "saving": "Saving…",
+    "savedResult": "Saved. {definition, select, true {New definition revision.} other {Definition unchanged.}} {layout, select, true {New layout revision.} other {Layout unchanged.}}",
+    "noChanges": "Nothing to save.",
+    "export": "Export JSON",
+    "leaveUnsaved": "Leave without saving? Your unsaved changes will be lost.",
+    "openRun": "Open run page"
+  },
+  "RunPage": {
+    "heading": "Run {runId}",
+    "missing": "This run lived in the in-browser runtime and is no longer available. Saved runs arrive with the local server (P2).",
+    "openCorral": "Open the Corral"
   }
 }

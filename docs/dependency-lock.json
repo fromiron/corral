@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-15T00:09:48.284Z",
+  "generatedAt": "2026-10-15T03:35:21.963Z",
   "node": "v24.14.0",
   "packageManager": "pnpm@10.30.3",
   "note": "Registry facts for pinned direct dependencies. Compatibility evidence is the CI gate result, not this file.",
@@ -146,6 +146,26 @@
       "scope": "development",
       "usedBy": [
         "@corral/react",
+        "@corral/studio"
+      ]
+    },
+    {
+      "name": "@tanstack/react-router",
+      "version": "1.170.44",
+      "license": "MIT",
+      "integrity": "sha512-uIIZ3CHU1yWlkMkmbnGFX3WIfZozF+tNrOMMEoM9lo+jzPInCRq80LBqW3DH9ixNHWjB3TM/cNIvr05uGIlP3A==",
+      "published": "2026-10-12T23:58:15.565Z",
+      "repository": "git+https://github.com/TanStack/router.git",
+      "gitHead": null,
+      "engines": {
+        "node": ">=20.19"
+      },
+      "peerDependencies": {
+        "react": ">=18.0.0 || >=19.0.0",
+        "react-dom": ">=18.0.0 || >=19.0.0"
+      },
+      "scope": "runtime",
+      "usedBy": [
         "@corral/studio"
       ]
     },
@@ -590,7 +610,8 @@
       "peerDependencies": null,
       "scope": "runtime",
       "usedBy": [
-        "@corral/contracts"
+        "@corral/contracts",
+        "@corral/core"
       ]
     },
     {

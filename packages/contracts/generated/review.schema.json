@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "targetArtifactVersionId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+        },
+        "criteriaVersionId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+        },
+        "evidenceRefs": {
+          "maxItems": 30,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+          }
+        },
+        "verdict": {
+          "type": "string",
+          "const": "revise"
+        },
+        "issues": {
+          "minItems": 1,
+          "maxItems": 20,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "criterionId": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              },
+              "severity": {
+                "type": "string",
+                "enum": [
+                  "required",
+                  "advisory"
+                ]
+              },
+              "evidenceRefs": {
+                "maxItems": 30,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                }
+              }
+            },
+            "required": [
+              "criterionId",
+              "reason",
+              "severity",
+              "evidenceRefs"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "targetArtifactVersionId",
+        "criteriaVersionId",
+        "evidenceRefs",
+        "verdict",
+        "issues"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "targetArtifactVersionId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+        },
+        "criteriaVersionId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+        },
+        "evidenceRefs": {
+          "maxItems": 30,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+          }
+        },
+        "verdict": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "inconclusive"
+          ]
+        },
+        "issues": {
+          "maxItems": 20,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "criterionId": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              },
+              "severity": {
+                "type": "string",
+                "enum": [
+                  "required",
+                  "advisory"
+                ]
+              },
+              "evidenceRefs": {
+                "maxItems": 30,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                }
+              }
+            },
+            "required": [
+              "criterionId",
+              "reason",
+              "severity",
+              "evidenceRefs"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "targetArtifactVersionId",
+        "criteriaVersionId",
+        "evidenceRefs",
+        "verdict",
+        "issues"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "$id": "urn:corral:review:0.1",
+  "title": "ReviewArtifact"
+}

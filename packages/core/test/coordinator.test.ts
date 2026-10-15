@@ -1,4 +1,4 @@
-import { type RunCommand, RunEvent, type StartRunRequest } from '@corral/contracts';
+import { RunEvent, type StartRunRequest, type SteerCommand } from '@corral/contracts';
 import {
   FakeClock,
   Gate,
@@ -39,7 +39,7 @@ const startRequest = (agentIds: string[], commandId = 'cmd_start'): StartRunRequ
   mode: 'mock',
 });
 
-const steer = (runId: string, executionId: string, commandId = 'cmd_steer'): RunCommand => ({
+const steer = (runId: string, executionId: string, commandId = 'cmd_steer'): SteerCommand => ({
   schemaVersion: '0.1',
   commandId,
   runId,

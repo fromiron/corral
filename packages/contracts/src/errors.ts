@@ -1,12 +1,14 @@
 import { z } from 'zod';
 
-// API-Contract §3. TARGET_NOT_FOUND was added for unknown run/execution/task targets.
+// API-Contract §3. Added in implementation: TARGET_NOT_FOUND (unknown target) and
+// COMMAND_NOT_SUPPORTED (valid command whose runtime support arrives in a later phase).
 export const ErrorCode = z.enum([
   'SCHEMA_INVALID',
   'GRAPH_INVALID',
   'CAPABILITY_DENIED',
   'STALE_CONTROL_REVISION',
   'IDEMPOTENCY_CONFLICT',
+  'COMMAND_NOT_SUPPORTED',
   'TARGET_NOT_FOUND',
   'TARGET_TERMINAL',
   'RESOURCE_CAPACITY',

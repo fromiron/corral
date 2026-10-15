@@ -150,7 +150,11 @@ export class InMemoryCoordinator {
         payload: {
           corralId: request.definition.id,
           definitionHash: definitionHash(request.definition),
+          inputHash: hashOf(request.definition.input),
           mode: request.mode,
+          modelProfiles: [...new Set(request.definition.roles.map((r) => r.modelProfile))].map(
+            (profile) => ({ profile, provider: null, modelId: null, auth: 'mock' as const }),
+          ),
           limits: request.definition.limits,
         },
       },
@@ -188,7 +192,16 @@ export class InMemoryCoordinator {
       if (previous.payloadHash !== payloadHash) return conflict(command.commandId, run.runId);
       return this.currentReceipt(run, previous);
     }
-    const record = this.steer(run, command, payloadHash);
+    const record: CommandRecord =
+      command.type === 'steer'
+        ? this.steer(run, command, payloadHash)
+        : {
+            payloadHash,
+            receipt: rejected(command.commandId, run.runId, {
+              code: 'COMMAND_NOT_SUPPORTED',
+              message: `${command.type} is not available in this runtime yet`,
+            }),
+          };
     run.commands.set(command.commandId, record);
     return this.currentReceipt(run, record);
   }
@@ -403,7 +416,7 @@ export class InMemoryCoordinator {
       {
         type: 'execution.state_changed',
         executionId,
-        payload: { executionId, from: 'queued', to: 'active', activity: 'model' },
+        payload: { executionId, from: 'queued', to: 'active', activity: 'model', waitingOn: null },
       },
     ]);
 
@@ -412,6 +425,7 @@ export class InMemoryCoordinator {
       executionId,
       taskId,
       nodeId,
+      attemptNo: 1,
       role,
       modelProfile: role.modelProfile,
       inputs: this.resolveInputs(run, node.inputBindings),
@@ -580,7 +594,7 @@ export class InMemoryCoordinator {
             (directiveId): EventDraft => ({
               type: 'directive.dispatched',
               executionId,
-              payload: { directiveId, modelCallId },
+              payload: { directiveId, modelCallId, executionEpoch: input.attemptNo },
             }),
           ),
         ]);
@@ -605,8 +619,18 @@ export class InMemoryCoordinator {
             payload: {
               executionId,
               modelCallId: observation.modelCallId,
-              usage: observation.usage,
-              certainty: 'reported',
+              responseRef: null,
+              rawUsage: observation.rawUsage ?? null,
+              normalizedUsage: {
+                inputTokens: observation.usage.inputTokens,
+                outputTokens: observation.usage.outputTokens,
+                cachedInputTokens: null,
+                reasoningTokens: null,
+              },
+              certainty:
+                observation.usage.inputTokens === null && observation.usage.outputTokens === null
+                  ? 'unknown'
+                  : 'reported',
             },
           },
         ]);
@@ -620,7 +644,12 @@ export class InMemoryCoordinator {
             type: 'tool.requested',
             actor: agent,
             executionId,
-            payload: { executionId, toolCallId, name: proposal.name },
+            payload: {
+              executionId,
+              toolCallId,
+              name: proposal.name,
+              validatedArgs: summarizeArgs(proposal.args),
+            },
           },
         ]);
         const block = (error: CommandError): ToolOutcome => {
@@ -709,6 +738,7 @@ export class InMemoryCoordinator {
       (a) => a.authorExecutionId === input.executionId,
     );
     const artifactId = existing[0]?.artifactId ?? this.ids.next('artifact');
+    const parent = existing.at(-1)?.artifactVersionId ?? null;
     const artifactVersionId = this.ids.next('artifact_version');
     run.artifactTexts.set(artifactVersionId, text);
     this.commit(run, [
@@ -721,6 +751,7 @@ export class InMemoryCoordinator {
           artifactId,
           version: existing.length + 1,
           artifactVersionId,
+          parentVersionId: parent,
           name: outputNameOf(run.definition, input.nodeId),
           contract: input.role.outputContract,
           contentHash: bytesToHex(sha256(bytes)),
@@ -748,6 +779,20 @@ function runState(from: RunProjection['status'], to: RunProjection['status'], re
 function outputNameOf(definition: CorralDefinition, nodeId: string): string {
   const node = definition.nodes.find((n) => n.id === nodeId);
   return node?.type === 'agent' ? node.outputName : nodeId;
+}
+
+/** Tool arguments for the audit log; long strings become their size and hash. */
+function summarizeArgs(args: Record<string, unknown>): Record<string, unknown> {
+  const summary: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(args)) {
+    if (typeof value === 'string' && value.length > 256) {
+      const bytes = utf8ToBytes(value);
+      summary[key] = { bytes: bytes.length, sha256: bytesToHex(sha256(bytes)) };
+    } else {
+      summary[key] = value;
+    }
+  }
+  return summary;
 }
 
 function hashOf(value: unknown): string {

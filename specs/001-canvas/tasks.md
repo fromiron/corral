@@ -1,6 +1,6 @@
 # 001-canvas 태스크 상태
 
-`implemented`는 로컬 게이트를 통과했지만 CI 증거가 아직 없다는 뜻이다. CI에서 연결된 테스트가 통과하면 `done`으로 바꾼다. 증거: [evidence/P0.md](evidence/P0.md).
+`implemented`는 로컬 게이트를 통과했지만 CI 증거가 아직 없다는 뜻이다. CI에서 연결된 테스트가 통과하면 `done`으로 바꾼다. 증거: [P0](evidence/P0.md), [P1](evidence/P1.md).
 
 | 태스크 | 상태 | 결과물 |
 |---|---|---|
@@ -12,16 +12,15 @@
 | C-052 | implemented | [스파이크 보고서](../../docs/spikes/C-052-p0-spikes.md). 실제 OAuth 로그인은 C-020 |
 | C-053 | implemented | `RuntimeTransport`, `InProcessTransport`, `@corral/core/testing` 공통 계약 suite |
 | C-054 | implemented | 정의 schema, JCS, definitionHash |
+| C-005 | implemented | 명령·이벤트·검토 Zod, JSON Schema 생성과 `contracts:check` ([P1 증거](evidence/P1.md)) |
+| C-006 | implemented | 4종 노드, 포트 핸들, 호출 링크 |
+| C-007 | implemented | Loop 영역, 본문 편입·이탈, 멤버 동반 이동 |
+| C-008 | implemented | `compileDefinition` 진단과 IR |
+| C-009 | implemented | 정의 중심 편집 모델, import/export, 브라우저 저장소(별도 revision) |
+| C-010 | implemented | Undo/Redo, 키보드 연결, IME·입력란 예외 |
+| C-056 | implemented | 라우팅과 작업 공간. `/settings/models`는 C-058, `/demo`는 C-046 |
 
-## P1을 위해 미리 만든 것
+## 다음 단계를 위해 미리 만든 것
 
-다음은 P0 세로 절편에 필요해 일부를 먼저 만들었다. 해당 태스크는 아직 `planned`다.
-
-- C-005: 정의 schema 전체(4종 노드), steer 명령, P0 이벤트 19종. 나머지 명령·이벤트와 JSON Schema 생성은 남았다.
-- C-006: Agent·Output 노드와 연결 규칙. Decision·Loop 노드와 capability link는 남았다.
-- C-008: P0 선형 runner 계획(`planLinearRun`). 정식 compiler·IR은 남았다.
-- C-012: in-memory Coordinator(명령 dedupe, 원자 commit, 구독). SQLite와 순수 decide/reduce 분리는 남았다.
-
-## P1 시작 시 할 일
-
-이 기능 묶음의 `spec.md`, `plan.md`, `acceptance.feature`를 P1 착수 때 작성한다([헌장 §6](../constitution.md)).
+- C-012: in-memory Coordinator(명령 dedupe, 원자 commit, 구독). SQLite와 순수 decide/reduce 분리는 P2에서 한다.
+- C-057 일부: Run 시작 시 정의·입력·모델 프로필 snapshot 기록(`run.started`). 활성 Run 1개 제약은 브라우저 세션 단위로만 적용된다.

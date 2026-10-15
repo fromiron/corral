@@ -1,4 +1,4 @@
-import type { AgentAdapter, RunCommand, RunEvent, StartRunRequest } from '@corral/contracts';
+import type { AgentAdapter, RunEvent, StartRunRequest, SteerCommand } from '@corral/contracts';
 import { Gate, linearCorral, ScriptedAgentAdapter } from '@corral/testkit';
 import { describe, expect, it } from 'vitest';
 import type { RunProjection } from '../projection.ts';
@@ -33,7 +33,7 @@ export function describeTransportContract(
     mode: 'mock',
   };
 
-  const steerCommand = (runId: string, targetExecutionId: string): RunCommand => ({
+  const steerCommand = (runId: string, targetExecutionId: string): SteerCommand => ({
     schemaVersion: '0.1',
     commandId: 'cmd_contract_steer',
     runId,

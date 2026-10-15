@@ -7,6 +7,8 @@ import { createStore, type StoreApi } from 'zustand/vanilla';
 
 export interface RunSessionState {
   runId: string | null;
+  /** The definition this run started from (labels for the run view). */
+  definition: CorralDefinition | null;
   projection: RunProjection | null;
   outputText: string | null;
   startError: CommandError | null;
@@ -63,6 +65,7 @@ export function createRunSession(
 
     return {
       runId: null,
+      definition: null,
       projection: null,
       outputText: null,
       startError: null,
@@ -72,7 +75,14 @@ export function createRunSession(
 
       async start(definition) {
         unsubscribe?.();
-        set({ runId: null, projection: null, outputText: null, startError: null, receipts: {} });
+        set({
+          runId: null,
+          definition: null,
+          projection: null,
+          outputText: null,
+          startError: null,
+          receipts: {},
+        });
         const { runId, receipt } = await transport.startRun({
           schemaVersion: '0.1',
           commandId: newCommandId(),
@@ -83,7 +93,7 @@ export function createRunSession(
           set({ startError: receipt.error ?? { code: 'SCHEMA_INVALID', message: 'run rejected' } });
           return;
         }
-        set({ runId });
+        set({ runId, definition });
         await follow(runId);
       },
 

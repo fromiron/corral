@@ -1,50 +1,28 @@
-import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
-import { useMemo, useState } from 'react';
+import { TERMINAL_EXECUTION_STATUSES } from '@corral/contracts';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
-import { useStudioStores } from '../context.tsx';
-import { compileDraft } from '../editor/model.ts';
+import type { RunSessionStore } from '../run/session.ts';
 import { StatusBadge } from './StatusBadge.tsx';
 
-export function RunPanel({ onSteer }: { onSteer: (executionId: string) => void }) {
+/** Run status, executions and output, from committed events only. Needs no editor. */
+export function RunView({
+  session,
+  onSteer,
+}: {
+  session: RunSessionStore;
+  onSteer: (executionId: string) => void;
+}) {
   const t = useTranslations('Run');
-  const { editor, session } = useStudioStores();
-  const draft = useStore(editor, (s) => s.draft);
   const projection = useStore(session, (s) => s.projection);
+  const definition = useStore(session, (s) => s.definition);
   const outputText = useStore(session, (s) => s.outputText);
   const startError = useStore(session, (s) => s.startError);
   const streamError = useStore(session, (s) => s.streamError);
-  const [starting, setStarting] = useState(false);
-  const compiled = useMemo(() => compileDraft(draft), [draft]);
-
-  const running = projection !== null && !TERMINAL_RUN_STATUSES.has(projection.status);
-  const labelOf = (nodeId: string) => draft.nodes.find((n) => n.id === nodeId)?.label ?? nodeId;
-
-  const start = async () => {
-    if (!compiled.definition) return;
-    setStarting(true);
-    try {
-      await session.getState().start(compiled.definition);
-    } finally {
-      setStarting(false);
-    }
-  };
+  const labelOf = (nodeId: string) =>
+    definition?.nodes.find((n) => n.id === nodeId)?.label ?? nodeId;
 
   return (
-    <section aria-labelledby="run-heading" className="flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-2">
-        <h2 id="run-heading" className="text-sm font-semibold">
-          {t('heading')}
-        </h2>
-        <button
-          type="button"
-          onClick={start}
-          disabled={!compiled.definition || running || starting}
-          className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent disabled:opacity-50"
-        >
-          {starting ? t('starting') : t('start')}
-        </button>
-      </div>
+    <div className="flex flex-col gap-3">
       {startError ? (
         <p role="alert" className="text-xs text-danger">
           {t('rejected', { message: startError.message })}
@@ -72,7 +50,7 @@ export function RunPanel({ onSteer }: { onSteer: (executionId: string) => void }
                 {projection.executionOrder.map((id) => {
                   const execution = projection.executions[id];
                   if (!execution) return null;
-                  const done = ['succeeded', 'failed', 'cancelled'].includes(execution.status);
+                  const done = TERMINAL_EXECUTION_STATUSES.has(execution.status);
                   return (
                     <li
                       key={id}
@@ -120,6 +98,6 @@ export function RunPanel({ onSteer }: { onSteer: (executionId: string) => void }
           </div>
         </>
       ) : null}
-    </section>
+    </div>
   );
 }

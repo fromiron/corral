@@ -4,7 +4,7 @@ import { useStudioStores } from '../context.tsx';
 import type { EditorNodeType } from '../editor/model.ts';
 import { NODE_DRAG_TYPE } from './CorralCanvas.tsx';
 
-const KINDS: EditorNodeType[] = ['agent', 'output'];
+const KINDS: EditorNodeType[] = ['agent', 'decision', 'loop', 'output'];
 
 export function NodePalette() {
   const t = useTranslations('Palette');
@@ -15,9 +15,11 @@ export function NodePalette() {
     event.dataTransfer.effectAllowed = 'move';
   };
   // Keyboard and pointer-free alternative to dragging (Technical-Design §13.4).
+  // New nodes go to the right of what is already there, so they never land on a Loop area.
   const add = (kind: EditorNodeType) => {
-    const count = editor.getState().draft.nodes.length;
-    editor.getState().addNode(kind, { x: 80 + count * 220, y: 120 });
+    const boxes = Object.values(editor.getState().draft.layout);
+    const right = Math.max(40, ...boxes.map((b) => b.x + (b.width ?? 180)));
+    editor.getState().addNode(kind, { x: right + 40, y: 100 });
   };
 
   return (

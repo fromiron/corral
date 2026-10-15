@@ -14,7 +14,8 @@
       "*.ts",
       "biome.json",
       "package.json",
-      "tsconfig.base.json"
+      "tsconfig.base.json",
+      "!packages/contracts/generated"
     ]
   },
   "formatter": {

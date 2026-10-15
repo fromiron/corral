@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import {
   agentToOutputDraft,
   projectionWith,
+  researchTeamDraft,
   StudioFrame,
   sessionStore,
 } from '../stories/fixtures.tsx';
@@ -68,4 +69,14 @@ export const AgentRunning: Story = {
       </StudioFrame>
     );
   },
+};
+
+export const ResearchTeamWithLoop: Story = {
+  render: () => (
+    <StudioFrame draft={researchTeamDraft()}>
+      <div className="h-[36rem] w-full">
+        <CorralCanvas />
+      </div>
+    </StudioFrame>
+  ),
 };

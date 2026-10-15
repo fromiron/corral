@@ -175,3 +175,16 @@ export const CorralDefinition = z.strictObject({
   limits: RunLimits,
 });
 export type CorralDefinition = z.infer<typeof CorralDefinition>;
+
+/**
+ * A definition still being drawn: same fields and the same refusal of unknown fields and
+ * versions, but without the minimum counts a runnable definition needs. Saving and importing
+ * use this; starting a run always compiles the strict CorralDefinition.
+ */
+export const CorralDefinitionDraft = CorralDefinition.extend({
+  entryNodeId: z.union([Identifier, z.literal('')]),
+  roles: z.array(AgentRole).max(20),
+  nodes: z.array(CorralNode).max(20),
+  controlEdges: z.array(ControlEdge).max(40),
+});
+export type CorralDefinitionDraft = z.infer<typeof CorralDefinitionDraft>;

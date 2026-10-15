@@ -91,7 +91,8 @@
       "packages/contracts/"
     ],
     "done": "JSON Schema와 TS type의 fixture parity, unknown field 거절",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P1.md"
   },
   {
     "id": "C-006",
@@ -109,7 +110,8 @@
       "packages/react/canvas/"
     ],
     "done": "control과 delegate/question을 구별하고 연결 허용을 드러냄, 노드·연결 story의 axe 검사가 PR gate에서 실행",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P1.md"
   },
   {
     "id": "C-007",
@@ -126,7 +128,8 @@
       "packages/react/canvas/LoopGroup.tsx"
     ],
     "done": "그룹 이동과 loopId 편집을 구별하고 경계 위반 표시",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P1.md"
   },
   {
     "id": "C-008",
@@ -144,7 +147,8 @@
       "packages/core/compiler/"
     ],
     "done": "유효 정의는 IR, 잘못된 cycle/port/ref는 위치 포함 오류",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P1.md"
   },
   {
     "id": "C-009",
@@ -163,7 +167,8 @@
       "apps/studio/features/editor/"
     ],
     "done": "좌표 변경은 실행 hash 불변, ID 복제 충돌 없음",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P1.md"
   },
   {
     "id": "C-010",
@@ -181,7 +186,8 @@
       "packages/react/editor/"
     ],
     "done": "한 번 드래그를 한 undo로 처리, IME Enter 오동작 없음",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P1.md"
   },
   {
     "id": "C-011",
@@ -1033,7 +1039,8 @@
       "apps/studio/features/workspace/"
     ],
     "done": "스펙 §4.1 경로가 직접 URL 진입·새로고침·뒤로가기에서 동작, 1280px 미만에서 핵심 버튼이 가려지지 않음, 렌더 오류가 error boundary에 머묾, UI 문자열은 메시지 카탈로그로 분리(영어 단일 locale로 시작)",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P1.md"
   },
   {
     "id": "C-057",

@@ -209,12 +209,14 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
         modelCallIds: [...execution.modelCallIds, modelCallId],
       });
     }
-    case 'model.finished':
+    case 'model.finished': {
+      const { inputTokens, outputTokens } = event.payload.normalizedUsage;
       return updateModelCall(p, event.payload.modelCallId, {
         finished: true,
-        usage: event.payload.usage,
+        usage: { inputTokens, outputTokens },
         certainty: event.payload.certainty,
       });
+    }
     case 'directive.accepted': {
       const { directiveId, targetExecutionId, text } = event.payload;
       const directive: DirectiveView = {
@@ -291,6 +293,35 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
           artifactVersionIds: event.payload.artifactVersionIds,
         },
       };
+    // Committed facts that later phases project (collaboration P4, review P5, Reins P6,
+    // budget and recovery P7). Until then they are kept in the log only.
+    case 'run.interrupted':
+    case 'task.blocked':
+    case 'message.question_created':
+    case 'message.answer_committed':
+    case 'message.closed':
+    case 'artifact.read':
+    case 'review.recorded':
+    case 'review.stale':
+    case 'loop.iteration_started':
+    case 'loop.iteration_finished':
+    case 'approval.requested':
+    case 'approval.resolved':
+    case 'patch.committed':
+    case 'patch.activated':
+    case 'effect.admitted':
+    case 'effect.dispatch_observed':
+    case 'effect.settled':
+    case 'tool.allowed':
+    case 'tool.started':
+    case 'tool.finished':
+    case 'budget.reserved':
+    case 'budget.settled':
+    case 'limit.reached':
+    case 'cancel.requested':
+    case 'cancel.confirmed':
+    case 'observation.late':
+      return p;
   }
 }
 

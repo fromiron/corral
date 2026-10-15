@@ -10,6 +10,7 @@ import type { RunSessionState, RunSessionStore } from '../src/run/session.ts';
 function fakeSession(steer = vi.fn(async () => ({}) as never)): RunSessionStore {
   return createStore<RunSessionState>(() => ({
     runId: 'run_0001',
+    definition: null,
     projection: null,
     outputText: null,
     startError: null,

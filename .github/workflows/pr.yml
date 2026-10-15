@@ -27,6 +27,7 @@ jobs:
       # Chromium for Storybook story tests (Vitest browser mode) and Studio E2E.
       - run: pnpm --filter @corral/studio exec playwright install --with-deps chromium
       - run: pnpm spec:check
+      - run: pnpm contracts:check
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test

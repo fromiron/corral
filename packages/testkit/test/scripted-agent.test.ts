@@ -14,6 +14,7 @@ const input: AgentStartInput = {
   executionId: 'exec_0001',
   taskId: 'task_0001',
   nodeId: 'writer',
+  attemptNo: 1,
   modelProfile: 'model-a',
   role: {
     id: 'writer_role',

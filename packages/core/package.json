@@ -12,7 +12,8 @@
   },
   "dependencies": {
     "@corral/contracts": "workspace:*",
-    "@noble/hashes": "2.4.0"
+    "@noble/hashes": "2.4.0",
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@corral/testkit": "workspace:*"

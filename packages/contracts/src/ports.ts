@@ -41,6 +41,7 @@ export interface AgentStartInput {
   executionId: string;
   taskId: string;
   nodeId: string;
+  attemptNo: number;
   role: AgentRole;
   modelProfile: string;
   inputs: ResolvedInput[];
@@ -70,6 +71,8 @@ export type AgentObservation = {
   modelCallId: string;
   text: string;
   usage: ModelUsage;
+  /** Provider usage exactly as reported, when available. */
+  rawUsage?: Record<string, unknown>;
 };
 
 export interface ToolProposal {

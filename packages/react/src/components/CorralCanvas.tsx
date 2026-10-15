@@ -1,3 +1,4 @@
+import type { CapabilityLink, SourcePort, TargetPort } from '@corral/contracts';
 import {
   Background,
   type Connection,
@@ -5,11 +6,9 @@ import {
   type Edge,
   type EdgeChange,
   type FinalConnectionState,
-  Handle,
+  MarkerType,
   type Node,
   type NodeChange,
-  type NodeProps,
-  Position,
   ReactFlow,
   useReactFlow,
 } from '@xyflow/react';
@@ -17,77 +16,50 @@ import { type DragEvent, useCallback, useMemo } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { useStudioStores } from '../context.tsx';
-import { checkConnection, type EditorNodeType } from '../editor/model.ts';
-import { nodeRunStatus } from '../run/selectors.ts';
+import {
+  checkConnection,
+  connectCapability,
+  type EditorDraft,
+  type EditorNodeType,
+  findNode,
+} from '../editor/model.ts';
+import { type CanvasNodeData, FLOW_TYPES, nodeTypes } from './NodeViews.tsx';
 
 export const NODE_DRAG_TYPE = 'application/x-corral-node';
+const NODE_KINDS: EditorNodeType[] = ['agent', 'decision', 'loop', 'output'];
+const CALL_KINDS = new Set(['delegate', 'question']);
+const LINK_PREFIX = 'link:';
 
-type CanvasNodeData = { label: string };
-// React Flow reserves 'input'/'output'/'default'/'group' for built-in styles, so map our kinds.
-const FLOW_TYPE = { agent: 'corralAgent', output: 'corralOutput' } as const;
-type AgentFlowNode = Node<CanvasNodeData, 'corralAgent'>;
-type OutputFlowNode = Node<CanvasNodeData, 'corralOutput'>;
-
-function RunOverlay({ nodeId }: { nodeId: string }) {
-  const t = useTranslations('Canvas.nodeStatus');
-  const { session } = useStudioStores();
-  // Each node subscribes to its own status only, so stream updates do not re-render the canvas.
-  const status = useStore(session, (s) => nodeRunStatus(s.projection, nodeId));
-  if (status === 'idle') return null;
-  const symbol = { active: '◐', done: '✓', failed: '✕' }[status];
-  return (
-    <span className="mt-1 inline-flex items-center gap-1 text-xs" data-run-status={status}>
-      <span aria-hidden="true">{symbol}</span>
-      {t(status)}
-    </span>
-  );
+/** The Loop whose area contains the point, if any. */
+function loopAt(draft: EditorDraft, point: { x: number; y: number }): string | null {
+  for (const node of draft.definition.nodes) {
+    const box = draft.layout[node.id];
+    if (node.type !== 'loop' || !box?.width || !box.height) continue;
+    if (
+      point.x >= box.x &&
+      point.x <= box.x + box.width &&
+      point.y >= box.y &&
+      point.y <= box.y + box.height
+    ) {
+      return node.id;
+    }
+  }
+  return null;
 }
 
-function NodeShell({
-  id,
-  kind,
-  label,
-  selected,
-}: {
-  id: string;
-  kind: EditorNodeType;
-  label: string;
-  selected: boolean;
+function asRequest(connection: {
+  source: string;
+  sourceHandle?: string | null;
+  target: string;
+  targetHandle?: string | null;
 }) {
-  const t = useTranslations('Palette');
-  return (
-    <div
-      className={`min-w-36 rounded-lg border bg-raised px-3 py-2 shadow-sm ${
-        selected ? 'border-accent ring-2 ring-accent/40' : 'border-line'
-      }`}
-    >
-      <div className="text-[10px] font-semibold uppercase tracking-wide text-muted">{t(kind)}</div>
-      <div className="text-sm font-medium">{label}</div>
-      <RunOverlay nodeId={id} />
-    </div>
-  );
+  return {
+    source: connection.source,
+    sourcePort: (connection.sourceHandle ?? 'out') as SourcePort,
+    target: connection.target,
+    targetPort: (connection.targetHandle ?? 'in') as TargetPort,
+  };
 }
-
-function AgentNodeView({ id, data, selected }: NodeProps<AgentFlowNode>) {
-  return (
-    <>
-      <Handle type="target" position={Position.Left} id="in" />
-      <NodeShell id={id} kind="agent" label={data.label} selected={selected} />
-      <Handle type="source" position={Position.Right} id="out" />
-    </>
-  );
-}
-
-function OutputNodeView({ id, data, selected }: NodeProps<OutputFlowNode>) {
-  return (
-    <>
-      <Handle type="target" position={Position.Left} id="in" />
-      <NodeShell id={id} kind="output" label={data.label} selected={selected} />
-    </>
-  );
-}
-
-const nodeTypes = { corralAgent: AgentNodeView, corralOutput: OutputNodeView };
 
 export function CorralCanvas() {
   const t = useTranslations('Canvas');
@@ -95,64 +67,172 @@ export function CorralCanvas() {
   const draft = useStore(editor, (s) => s.draft);
   const selectedNodeId = useStore(editor, (s) => s.selectedNodeId);
   const { screenToFlowPosition } = useReactFlow();
+  const { definition, layout } = draft;
 
   const nodes = useMemo<Node<CanvasNodeData>[]>(
     () =>
-      draft.nodes.map((node) => ({
-        id: node.id,
-        type: FLOW_TYPE[node.type],
-        position: draft.layout[node.id] ?? { x: 0, y: 0 },
-        data: { label: node.label },
-        selected: node.id === selectedNodeId,
-      })),
-    [draft.nodes, draft.layout, selectedNodeId],
+      definition.nodes.map((node) => {
+        const box = layout[node.id] ?? { x: 0, y: 0 };
+        return {
+          id: node.id,
+          type: FLOW_TYPES[node.type],
+          position: { x: box.x, y: box.y },
+          data: {},
+          selected: node.id === selectedNodeId,
+          ariaLabel: `${node.type}: ${node.label}`,
+          // Loop areas sit behind their members so members stay clickable.
+          zIndex: node.type === 'loop' ? 0 : 1,
+          ...(node.type === 'loop' ? { width: box.width ?? 460, height: box.height ?? 260 } : {}),
+        };
+      }),
+    [definition.nodes, layout, selectedNodeId],
   );
-  const edges = useMemo<Edge[]>(
-    () =>
-      draft.edges.map((edge) => ({
-        id: edge.id,
-        source: edge.source,
-        target: edge.target,
-        sourceHandle: 'out',
-        targetHandle: 'in',
-      })),
-    [draft.edges],
-  );
+
+  const edges = useMemo<Edge[]>(() => {
+    // Port names are printed at each handle, so control edges carry no labels of their own.
+    const control = definition.controlEdges.map((edge) => ({
+      id: edge.id,
+      source: edge.source,
+      sourceHandle: edge.sourcePort,
+      target: edge.target,
+      targetHandle: edge.targetPort,
+      markerEnd: { type: MarkerType.ArrowClosed },
+    }));
+    const links = definition.capabilityLinks.map((link) => ({
+      id: `${LINK_PREFIX}${link.id}`,
+      source: link.sourceNodeId,
+      sourceHandle: link.kind,
+      target: link.targetNodeId,
+      targetHandle: 'callable',
+      label: t(`linkLabel.${link.kind}`),
+      className: 'corral-call-link',
+      style: { strokeDasharray: '6 4' },
+      markerEnd: { type: MarkerType.Arrow },
+    }));
+    return [...control, ...links];
+  }, [definition.controlEdges, definition.capabilityLinks, t]);
 
   const onNodesChange = useCallback(
     (changes: NodeChange<Node<CanvasNodeData>>[]) => {
       const state = editor.getState();
+      const movingLoops = new Set<string>();
       for (const change of changes) {
-        if (change.type === 'position' && change.position)
+        if (change.type === 'position' && findNode(state.draft, change.id)?.type === 'loop') {
+          movingLoops.add(change.id);
+        }
+      }
+      for (const change of changes) {
+        if (change.type === 'position' && change.position) {
+          const node = findNode(editor.getState().draft, change.id);
+          // A moving Loop carries its members; ignore their own position changes in that case.
+          if (node && 'loopId' in node && node.loopId && movingLoops.has(node.loopId)) continue;
           state.moveNode(change.id, change.position);
+        }
         if (change.type === 'select' && change.selected) state.select(change.id);
         if (change.type === 'remove') state.removeNode(change.id);
       }
     },
     [editor],
   );
+
   const onEdgesChange = useCallback(
     (changes: EdgeChange[]) => {
       for (const change of changes) {
-        if (change.type === 'remove') editor.getState().removeEdge(change.id);
+        if (change.type !== 'remove') continue;
+        if (change.id.startsWith(LINK_PREFIX))
+          editor.getState().removeLink(change.id.slice(LINK_PREFIX.length));
+        else editor.getState().removeEdge(change.id);
       }
     },
     [editor],
   );
+
   const isValidConnection = useCallback(
-    (connection: Connection | Edge) =>
-      checkConnection(editor.getState().draft, connection.source, connection.target).ok,
+    (connection: Connection | Edge) => {
+      const draft = editor.getState().draft;
+      if (connection.sourceHandle && CALL_KINDS.has(connection.sourceHandle)) {
+        if (connection.targetHandle !== 'callable') return false;
+        const kind = connection.sourceHandle as CapabilityLink['kind'];
+        return connectCapability(draft, connection.source, connection.target, kind).ok;
+      }
+      return checkConnection(draft, asRequest(connection)).ok;
+    },
     [editor],
   );
+
   const onConnect = useCallback(
-    (connection: Connection) => editor.getState().connect(connection.source, connection.target),
+    (connection: Connection) => {
+      const state = editor.getState();
+      if (connection.sourceHandle && CALL_KINDS.has(connection.sourceHandle)) {
+        state.connectCapability(
+          connection.source,
+          connection.target,
+          connection.sourceHandle as CapabilityLink['kind'],
+        );
+      } else {
+        state.connect(asRequest(connection));
+      }
+    },
     [editor],
   );
+
+  // A refused drop explains itself instead of silently doing nothing (Spec §4.2).
   const onConnectEnd = useCallback(
     (_event: MouseEvent | TouchEvent, state: FinalConnectionState) => {
-      if (state.isValid === false && state.fromNode && state.toNode) {
-        editor.getState().explainRejectedConnection(state.fromNode.id, state.toNode.id);
+      if (state.isValid !== false || !state.fromNode || !state.toNode || !state.fromHandle) return;
+      const from = {
+        node: state.fromNode.id,
+        handle: state.fromHandle.id ?? null,
+        type: state.fromHandle.type,
+      };
+      const to = { node: state.toNode.id, handle: state.toHandle?.id ?? null };
+      // Users may start the drag from either end; normalize to source → target.
+      const [source, target] = from.type === 'source' ? [from, to] : [to, from];
+      const store = editor.getState();
+      if (source.handle && CALL_KINDS.has(source.handle)) {
+        const result = connectCapability(
+          store.draft,
+          source.node,
+          target.node,
+          source.handle as CapabilityLink['kind'],
+        );
+        if (!result.ok)
+          store.connectCapability(
+            source.node,
+            target.node,
+            source.handle as CapabilityLink['kind'],
+          );
+        return;
       }
+      store.explainRejectedConnection(
+        asRequest({
+          source: source.node,
+          sourceHandle: source.handle,
+          target: target.node,
+          targetHandle: target.handle,
+        }),
+      );
+    },
+    [editor],
+  );
+
+  const onNodeDragStart = useCallback(() => editor.getState().beginBatch(), [editor]);
+  const onNodeDragStop = useCallback(
+    (_event: unknown, node: Node) => {
+      const state = editor.getState();
+      const current = findNode(state.draft, node.id);
+      if (
+        current &&
+        (current.type === 'agent' || current.type === 'decision') &&
+        !(current.type === 'agent' && current.invocation === 'callable')
+      ) {
+        const width = node.measured?.width ?? 160;
+        const height = node.measured?.height ?? 60;
+        const center = { x: node.position.x + width / 2, y: node.position.y + height / 2 };
+        const inside = loopAt(state.draft, center);
+        if (inside !== (current.loopId ?? null)) state.setLoopMembership(node.id, inside);
+      }
+      state.endBatch();
     },
     [editor],
   );
@@ -163,11 +243,16 @@ export function CorralCanvas() {
   }, []);
   const onDrop = useCallback(
     (event: DragEvent) => {
-      const kind = event.dataTransfer.getData(NODE_DRAG_TYPE);
-      if (kind !== 'agent' && kind !== 'output') return;
+      const kind = event.dataTransfer.getData(NODE_DRAG_TYPE) as EditorNodeType;
+      if (!NODE_KINDS.includes(kind)) return;
       event.preventDefault();
       const position = screenToFlowPosition({ x: event.clientX, y: event.clientY });
-      editor.getState().addNode(kind, position);
+      const state = editor.getState();
+      state.beginBatch();
+      const id = state.addNode(kind, position);
+      const inside = kind === 'agent' || kind === 'decision' ? loopAt(state.draft, position) : null;
+      if (inside) state.setLoopMembership(id, inside);
+      state.endBatch();
     },
     [editor, screenToFlowPosition],
   );
@@ -183,17 +268,19 @@ export function CorralCanvas() {
         onConnect={onConnect}
         onConnectEnd={onConnectEnd}
         isValidConnection={isValidConnection}
+        onNodeDragStart={onNodeDragStart}
+        onNodeDragStop={onNodeDragStop}
         onPaneClick={() => editor.getState().select(null)}
         onDragOver={onDragOver}
         onDrop={onDrop}
         deleteKeyCode={['Backspace', 'Delete']}
-        fitView={false}
+        elevateNodesOnSelect={false}
         colorMode="system"
       >
         <Background />
         <Controls />
       </ReactFlow>
-      {draft.nodes.length === 0 ? (
+      {definition.nodes.length === 0 ? (
         <p className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-muted">
           {t('empty')}
         </p>
