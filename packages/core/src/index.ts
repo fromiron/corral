@@ -7,6 +7,9 @@ export {
   type DecisionInput,
   type DecisionPolicy,
   type DefinitionSource,
+  type ModelResolution,
+  type ModelResolver,
+  SIMULATED_MODELS,
   type StartRunResult,
 } from './coordinator.ts';
 export { definitionHash } from './definition-hash.ts';

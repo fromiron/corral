@@ -13,3 +13,5 @@ blob-report/
 *.db-shm
 .env
 .env.*
+# Manual live smoke results (copied into evidence by hand)
+tests/live/.last-run.json

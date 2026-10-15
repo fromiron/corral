@@ -77,6 +77,7 @@ export class InProcessTransport implements RuntimeTransport {
       afterSeq,
       (event) => handlers.onEvent(event),
       (error) => handlers.onError?.(error),
+      handlers.onFrame ? (frame) => handlers.onFrame?.(frame) : undefined,
     );
   }
 }

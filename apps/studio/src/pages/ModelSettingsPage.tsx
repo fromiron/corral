@@ -1,0 +1,247 @@
+import type { ModelProfileView, ProviderAuthView } from '@corral/client';
+import { useRouter } from '@tanstack/react-router';
+import { type FormEvent, useEffect, useState } from 'react';
+import { useFormatter, useTranslations } from 'use-intl';
+import { modelSettingsRoute } from '../router.tsx';
+import { useServices } from '../services.tsx';
+
+/**
+ * /settings/models (Spec §4.1, C-058). Sign-in happens on the provider's own page, opened by
+ * the person; this page only shows status and expiry. No token is ever sent here.
+ */
+export function ModelSettingsPage() {
+  const t = useTranslations('Models');
+  const { models, mode, live } = useServices();
+  const { profiles, providers } = modelSettingsRoute.useLoaderData();
+  const router = useRouter();
+  const pending = providers.some((p) => p.login && p.login.state !== 'failed');
+
+  // While a sign-in is open in another tab, follow its progress.
+  useEffect(() => {
+    if (!pending) return;
+    const timer = setInterval(() => void router.invalidate(), 1500);
+    return () => clearInterval(timer);
+  }, [pending, router]);
+
+  return (
+    <main className="mx-auto flex max-w-4xl flex-col gap-4 p-6">
+      <h2 className="text-lg font-semibold">{t('heading')}</h2>
+      {mode !== 'server' || !models ? (
+        <p className="text-sm text-muted">{t('browserOnly')}</p>
+      ) : !live ? (
+        <p className="text-sm text-muted">{t('noLive')}</p>
+      ) : (
+        <>
+          <p className="text-sm text-muted">{t('intro')}</p>
+          <section aria-labelledby="providers-heading" className="flex flex-col gap-2">
+            <h3 id="providers-heading" className="text-sm font-semibold">
+              {t('providers')}
+            </h3>
+            {providers.map((provider) => (
+              <ProviderCard key={provider.providerId} provider={provider} />
+            ))}
+          </section>
+          <ProfilesTable profiles={profiles} />
+        </>
+      )}
+    </main>
+  );
+}
+
+function ProviderCard({ provider }: { provider: ProviderAuthView }) {
+  const t = useTranslations('Models');
+  const format = useFormatter();
+  const { models } = useServices();
+  const router = useRouter();
+  const [redirect, setRedirect] = useState('');
+  const [busy, setBusy] = useState(false);
+  const login = provider.login;
+
+  const act = async (action: () => Promise<unknown>) => {
+    setBusy(true);
+    try {
+      await action();
+      await router.invalidate();
+    } finally {
+      setBusy(false);
+    }
+  };
+  const submitRedirect = (event: FormEvent) => {
+    event.preventDefault();
+    if (!redirect.trim()) return;
+    void act(async () => {
+      await models?.submitRedirect(provider.providerId, redirect.trim());
+      setRedirect('');
+    });
+  };
+
+  return (
+    <article
+      className="flex flex-col gap-2 rounded-lg border border-line bg-raised p-3"
+      data-testid={`provider-${provider.providerId}`}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h4 className="font-medium">{provider.name}</h4>
+        <div className="flex items-center gap-2 text-xs">
+          {provider.signedIn && provider.method === 'oauth' ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() =>
+                void act(() => models?.logout(provider.providerId) ?? Promise.resolve())
+              }
+              className="rounded border border-line px-2 py-1"
+            >
+              {t('signOut')}
+            </button>
+          ) : null}
+          {!provider.signedIn && !login ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() =>
+                void act(() => models?.startLogin(provider.providerId) ?? Promise.resolve())
+              }
+              className="rounded-md bg-accent px-3 py-1.5 font-medium text-on-accent"
+            >
+              {t('signIn')}
+            </button>
+          ) : null}
+        </div>
+      </div>
+      <p role="status" className="text-sm" data-testid="auth-status">
+        {provider.method === 'oauth'
+          ? t('signedInOauth', { subscription: String(provider.subscription) })
+          : provider.method === 'api_key'
+            ? t('signedInKey')
+            : t('notSignedIn')}
+      </p>
+      {provider.expiresAt && provider.method === 'oauth' ? (
+        <p className="text-xs text-muted">
+          {t('expires', {
+            time: format.dateTime(new Date(provider.expiresAt), {
+              dateStyle: 'medium',
+              timeStyle: 'short',
+            }),
+          })}
+        </p>
+      ) : null}
+
+      {login && login.state !== 'failed' ? (
+        <div className="flex flex-col gap-2 rounded-md border border-line p-2 text-sm">
+          {login.authUrl ? (
+            <a
+              href={login.authUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="self-start rounded-md bg-accent px-3 py-1.5 font-medium text-on-accent"
+            >
+              {t('openSignIn')}
+            </a>
+          ) : null}
+          <p className="text-xs text-muted">
+            {login.state === 'exchanging' ? t('exchanging') : t('openHint')}
+          </p>
+          <form onSubmit={submitRedirect} className="flex flex-col gap-1">
+            <label htmlFor={`redirect-${provider.providerId}`} className="text-xs text-muted">
+              {t('pasteLabel')}
+            </label>
+            <div className="flex gap-2">
+              <input
+                id={`redirect-${provider.providerId}`}
+                value={redirect}
+                onChange={(e) => setRedirect(e.target.value)}
+                autoComplete="off"
+                spellCheck={false}
+                className="min-w-0 flex-1 rounded border border-line bg-surface px-2 py-1 font-mono text-xs"
+              />
+              <button
+                type="submit"
+                disabled={busy}
+                className="rounded border border-line px-2 py-1 text-xs"
+              >
+                {t('paste')}
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() =>
+                  void act(() => models?.cancelLogin(provider.providerId) ?? Promise.resolve())
+                }
+                className="rounded border border-line px-2 py-1 text-xs"
+              >
+                {t('cancel')}
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+      {login?.state === 'failed' ? (
+        <div role="alert" className="flex items-center gap-2 text-sm text-danger">
+          {t('failed', { message: login.error ?? '' })}
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() =>
+              void act(() => models?.startLogin(provider.providerId) ?? Promise.resolve())
+            }
+            className="rounded border border-line px-2 py-1 text-xs text-text"
+          >
+            {t('tryAgain')}
+          </button>
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+function ProfilesTable({ profiles }: { profiles: ModelProfileView[] }) {
+  const t = useTranslations('Models');
+  const tokens = (count: number | null) => (count === null ? t('unknown') : t('tokens', { count }));
+  return (
+    <section aria-labelledby="profiles-heading" className="flex flex-col gap-2">
+      <h3 id="profiles-heading" className="text-sm font-semibold">
+        {t('profiles')}
+      </h3>
+      <table className="w-full text-left text-sm">
+        <thead className="text-xs text-muted">
+          <tr>
+            <th className="py-1">{t('profile')}</th>
+            <th>{t('model')}</th>
+            <th>{t('context')}</th>
+            <th>{t('maxOutput')}</th>
+            <th>{t('status')}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {profiles.map((profile) => (
+            <tr
+              key={profile.profileId}
+              className="border-t border-line"
+              data-testid={`profile-${profile.profileId}`}
+            >
+              <td className="py-1 font-mono text-xs">{profile.profileId}</td>
+              <td>
+                {profile.modelName ?? profile.modelId}{' '}
+                <span className="font-mono text-xs text-muted">
+                  {profile.provider}/{profile.modelId}
+                </span>
+              </td>
+              <td>{tokens(profile.contextWindow)}</td>
+              <td>{tokens(profile.maxOutputTokens)}</td>
+              <td>
+                {!profile.available
+                  ? t('unknownModel')
+                  : profile.method === 'oauth' && profile.subscriptionSupported === false
+                    ? t('notWithSubscription')
+                    : profile.keyConfigured
+                      ? t('ready')
+                      : t('needsSignIn')}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  );
+}

@@ -4,18 +4,21 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./testing": "./src/testing.ts"
   },
   "scripts": {
     "start": "node src/main.ts",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@corral/adapter-pi": "workspace:*",
     "@corral/contracts": "workspace:*",
     "@corral/core": "workspace:*",
     "@corral/runner-langgraph": "workspace:*",
     "@corral/storage-sqlite": "workspace:*",
     "@corral/testkit": "workspace:*",
+    "@earendil-works/pi-ai": "1.2.0",
     "@fastify/static": "10.1.6",
     "fastify": "5.12.7",
     "zod": "4.6.7"

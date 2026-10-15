@@ -1,6 +1,7 @@
 import {
   HttpSseTransport,
   hasSession,
+  ModelsApi,
   openSession,
   probeServer,
   RestCorralRepository,
@@ -29,6 +30,9 @@ export interface StudioServices {
   persistent: boolean;
   /** Server mode without a valid session: the bootstrap link must be opened again. */
   sessionMissing: boolean;
+  /** The server can run real models (C-058); null in the in-browser runtime. */
+  models: ModelsApi | null;
+  live: boolean;
 }
 
 const systemClock: Clock = {
@@ -73,7 +77,8 @@ function servedByLocalServer(): boolean {
 
 export async function createStudioServices(): Promise<StudioServices> {
   const http = { baseUrl: '' };
-  if (servedByLocalServer() && (await probeServer(http))) {
+  const health = servedByLocalServer() ? await probeServer(http) : null;
+  if (health) {
     const token = takeBootstrapToken();
     if (token) await openSession(http, token);
     const transport = new HttpSseTransport(http);
@@ -84,6 +89,8 @@ export async function createStudioServices(): Promise<StudioServices> {
       session: createRunSession(transport),
       persistent: true,
       sessionMissing: !(await hasSession(http)),
+      models: new ModelsApi(http),
+      live: health.live,
     };
   }
   const { store, persistent } = browserStore();
@@ -92,6 +99,8 @@ export async function createStudioServices(): Promise<StudioServices> {
     mode: 'browser',
     persistent,
     sessionMissing: false,
+    models: null,
+    live: false,
     repository: createKeyValueCorralRepository(store, {
       clock: systemClock,
       newCorralId: () => `corral_${crypto.randomUUID().slice(0, 8)}`,

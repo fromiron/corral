@@ -1,6 +1,6 @@
 # 001-canvas 태스크 상태
 
-`implemented`는 로컬 게이트를 통과했지만 CI 증거가 아직 없다는 뜻이다. CI에서 연결된 테스트가 통과하면 `done`으로 바꾼다. 증거: [P0](evidence/P0.md), [P1](evidence/P1.md), [P2](evidence/P2.md).
+`implemented`는 로컬 게이트를 통과했지만 CI 증거가 아직 없다는 뜻이다. CI에서 연결된 테스트가 통과하면 `done`으로 바꾼다. 증거: [P0](evidence/P0.md), [P1](evidence/P1.md), [P2](evidence/P2.md), [P3](evidence/P3.md).
 
 | 태스크 | 상태 | 결과물 |
 |---|---|---|
@@ -30,8 +30,12 @@
 | C-016 | implemented | 실행 트리·대기 이유·실행 이력·render budget. 캔버스 배지의 대기 이유는 P4 |
 | C-060 | implemented | 가상화 Timeline과 필터 |
 | C-059 | implemented | Playwright `server` project와 harness |
+| C-017 | implemented | `packages/adapter-pi` IPC schema, 실행당 worker 프로세스, 생명주기 검사 |
+| C-018 | implemented | 요청별 permit·지시 snapshot·access token, 비영속 text stream(SSE `event: stream`) |
+| C-019 | implemented | `authorizeTool`/`executeTool` 분리, 역할이 허용한 도구만 노출 |
+| C-020 | implemented | usage normalization, 실행 모드·모델 고정. **실제 호출 smoke는 수동 opt-in, 미실행** ([P3](evidence/P3.md) §5) |
+| C-058 | implemented | `ModelRegistry`, 자격 증명 파일(workspace 밖), Sign in with ChatGPT 흐름, `/settings/models` |
 
 ## 다음 단계를 위해 미리 만든 것
 
 - C-030(P5): Coordinator의 decision policy 포트. 지금은 테스트만 주입한다. 정책이 없으면 Decision 단계와 최종 승인이 있는 정의는 이유와 함께 시작을 거절한다.
-- C-058(P3): 설정 파일의 `modelProfiles`(이름과 모델만, 자격 증명 없음).

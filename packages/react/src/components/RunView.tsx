@@ -3,7 +3,7 @@ import type { RunProjection } from '@corral/core';
 import type { ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
-import type { RunSessionStore } from '../run/session.ts';
+import type { RunSessionStore, StreamText } from '../run/session.ts';
 import { StatusBadge } from './StatusBadge.tsx';
 
 /** Run status, executions and output, from committed events only. Needs no editor. */
@@ -20,6 +20,7 @@ export function RunView({
   const outputText = useStore(session, (s) => s.outputText);
   const startError = useStore(session, (s) => s.startError);
   const streamError = useStore(session, (s) => s.streamError);
+  const streams = useStore(session, (s) => s.streams);
   const labelOf = (nodeId: string) =>
     definition?.nodes.find((n) => n.id === nodeId)?.label ?? nodeId;
 
@@ -48,7 +49,12 @@ export function RunView({
             {projection.executionOrder.length === 0 ? (
               <p className="text-xs text-muted">{t('noExecutions')}</p>
             ) : (
-              <ExecutionTree projection={projection} labelOf={labelOf} onSteer={onSteer} />
+              <ExecutionTree
+                projection={projection}
+                streams={streams}
+                labelOf={labelOf}
+                onSteer={onSteer}
+              />
             )}
           </div>
           <div className="flex flex-col gap-1">
@@ -77,10 +83,12 @@ export function RunView({
  */
 function ExecutionTree({
   projection,
+  streams,
   labelOf,
   onSteer,
 }: {
   projection: RunProjection;
+  streams: Record<string, StreamText>;
   labelOf: (nodeId: string) => string;
   onSteer: (executionId: string) => void;
 }) {
@@ -96,6 +104,7 @@ function ExecutionTree({
           key={id}
           id={id}
           projection={projection}
+          streams={streams}
           labelOf={labelOf}
           onSteer={onSteer}
           nested={childrenOf.has(id) ? rows(id) : null}
@@ -109,12 +118,14 @@ function ExecutionTree({
 function ExecutionRow({
   id,
   projection,
+  streams,
   labelOf,
   onSteer,
   nested,
 }: {
   id: string;
   projection: RunProjection;
+  streams: Record<string, StreamText>;
   labelOf: (nodeId: string) => string;
   onSteer: (executionId: string) => void;
   nested: ReactNode;
@@ -125,6 +136,10 @@ function ExecutionRow({
   const done = TERMINAL_EXECUTION_STATUSES.has(execution.status);
   const round = execution.iterationId ? projection.iterations[execution.iterationId]?.no : null;
   const waiting = execution.waitingOn;
+  // While a request streams, its text so far; it is replaced by the submitted output.
+  const openCall = execution.modelCallIds.at(-1);
+  const live =
+    !done && openCall && !projection.modelCalls[openCall]?.finished ? streams[openCall] : undefined;
   return (
     <li
       id={`execution-${id}`}
@@ -171,6 +186,16 @@ function ExecutionRow({
               )}
             </span>
           ))}
+        </p>
+      ) : null}
+      {live?.text ? (
+        <p
+          data-testid="live-text"
+          aria-live="off"
+          className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap rounded border border-line bg-surface p-1 text-muted"
+        >
+          {live.text}
+          {live.broken ? ` ${t('streamGap')}` : ''}
         </p>
       ) : null}
       {nested}

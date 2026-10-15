@@ -6,6 +6,7 @@ import {
   type RunCommand,
   RunEvent,
   type StartRunRequest,
+  type StreamFrame,
 } from '@corral/contracts';
 import type {
   CorralRecord,
@@ -87,7 +88,8 @@ export interface ServerHealth {
   schemaVersion: string;
   version: string;
   backendSessionId: string;
-  agents: 'mock' | 'live';
+  /** Whether this server can run real models (signed in or not). */
+  live: boolean;
 }
 
 /** The local server, if this page was served by one; null for the in-browser runtime. */
@@ -234,7 +236,12 @@ export class HttpSseTransport implements RuntimeTransport {
           stop(await apiError(response));
           return;
         }
-        await readEvents(response.body, deliver, () => stopped);
+        await readEvents(
+          response.body,
+          deliver,
+          (frame) => handlers.onFrame?.(frame),
+          () => stopped,
+        );
         // The server closed a healthy stream (restart, slow client): resume from lastSeq.
         if (!stopped) await reconnect(0);
       } catch (error) {
@@ -260,6 +267,7 @@ export class HttpSseTransport implements RuntimeTransport {
 async function readEvents(
   body: ReadableStream<Uint8Array>,
   deliver: (event: RunEvent) => void,
+  stream: (frame: StreamFrame) => void,
   stopped: () => boolean,
 ) {
   const reader = body.getReader();
@@ -276,6 +284,7 @@ async function readEvents(
         buffer = buffer.slice(end + 2);
         const frame = parseFrame(block);
         if (frame?.event === 'domain') deliver(RunEvent.parse(JSON.parse(frame.data)));
+        if (frame?.event === 'stream') stream(JSON.parse(frame.data) as StreamFrame);
         end = buffer.indexOf('\n\n');
       }
     }
@@ -382,5 +391,81 @@ export class RestCorralRepository implements CorralRepository {
       return { ok: false, error: 'revision_conflict', message: error.message };
     }
     return { ok: false, error: 'storage_unavailable', message: error.message };
+  }
+}
+
+// ── models (C-058) ───────────────────────────────────────────────────────────
+
+export interface LoginView {
+  state: 'waiting' | 'exchanging' | 'failed';
+  authUrl: string | null;
+  error: string | null;
+}
+
+export interface ProviderAuthView {
+  providerId: string;
+  name: string;
+  signedIn: boolean;
+  method: 'oauth' | 'api_key' | null;
+  subscription: boolean;
+  expiresAt: string | null;
+  login: LoginView | null;
+}
+
+export interface ModelProfileView {
+  profileId: string;
+  provider: string;
+  providerName: string;
+  modelId: string;
+  modelName: string | null;
+  available: boolean;
+  reasoning: boolean | null;
+  contextWindow: number | null;
+  maxOutputTokens: number | null;
+  method: 'oauth' | 'api_key' | null;
+  keyConfigured: boolean;
+  /** Whether a subscription sign-in may use this model; null when no list is known. */
+  subscriptionSupported: boolean | null;
+}
+
+/** Sign-in status and model profiles. Answers carry status and expiry only, never tokens. */
+export class ModelsApi {
+  private readonly http: Http;
+
+  constructor(options: HttpOptions) {
+    this.http = new Http(options);
+  }
+
+  profiles(): Promise<ModelProfileView[]> {
+    return this.http.json('/model-profiles');
+  }
+
+  auth(): Promise<ProviderAuthView[]> {
+    return this.http.json('/model-auth');
+  }
+
+  startLogin(providerId: string): Promise<LoginView> {
+    return this.http.json(`/model-auth/${encodeURIComponent(providerId)}/login`, {
+      method: 'POST',
+    });
+  }
+
+  /** The browser's final redirect URL, when the automatic callback could not complete. */
+  async submitRedirect(providerId: string, url: string): Promise<boolean> {
+    const response = await this.http.request(
+      `/model-auth/${encodeURIComponent(providerId)}/login/callback`,
+      { method: 'POST', body: JSON.stringify({ url }) },
+    );
+    return response.ok;
+  }
+
+  cancelLogin(providerId: string): Promise<ProviderAuthView[]> {
+    return this.http.json(`/model-auth/${encodeURIComponent(providerId)}/login`, {
+      method: 'DELETE',
+    });
+  }
+
+  logout(providerId: string): Promise<ProviderAuthView[]> {
+    return this.http.json(`/model-auth/${encodeURIComponent(providerId)}`, { method: 'DELETE' });
   }
 }

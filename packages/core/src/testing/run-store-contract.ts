@@ -21,6 +21,7 @@ export function describeRunStoreContract(name: string, makeStore: () => RunStore
         source: null,
         criteriaVersionId: 'crit_0001',
         mode: 'mock',
+        models: {},
         startedAt: '2026-10-15T00:00:00.000Z',
       },
       projection: emptyProjection(runId),

@@ -22,10 +22,12 @@ import {
 } from '@corral/core';
 import { LangGraphRunner } from '@corral/runner-langgraph';
 import { openDatabase, SqliteCorralRepository, SqliteRunStore } from '@corral/storage-sqlite';
+import type { CredentialStore, Models } from '@earendil-works/pi-ai';
 import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import packageJson from '../package.json' with { type: 'json' };
+import { assertOutsideWorkspace, DEFAULT_PROFILES, ModelRegistry } from './models/index.ts';
 import { RandomIdFactory, systemClock } from './runtime.ts';
 import {
   assertLoopback,
@@ -54,6 +56,32 @@ export interface ServerOptions {
   bootstrapToken?: string;
   /** Extra Studio origins, such as the Vite dev server. Opt-in only. */
   extraOrigins?: string[];
+  /** Real model calls (C-020, C-058). Without it, every run uses the simulated agents. */
+  live?: LiveModels;
+}
+
+export interface LiveModels {
+  /** pi-ai's model catalog, resolving request auth from `credentials`. */
+  models: Models;
+  credentials: CredentialStore;
+  /** The user's config directory holding `credentials`; must be outside the workspace. */
+  configDir: string;
+  getDeviceId(): string;
+  /** Models a subscription sign-in may call (pi-ai's ChatGPT-account catalog for OpenAI). */
+  subscriptionModels?: (providerId: string) => ReadonlySet<string> | null;
+  /** The agent adapter for live runs; it asks the registry for each request's token. */
+  agents(registry: ModelRegistry): AgentAdapter;
+}
+
+/** Simulated agents for mock runs, real ones for live runs (fixed per run in its snapshot). */
+function routeByMode(mock: AgentAdapter, live: AgentAdapter | null): AgentAdapter {
+  return {
+    start: (input, host) => {
+      if (input.mode === 'mock') return mock.start(input, host);
+      if (!live) return Promise.reject(new Error('this server has no live model connection'));
+      return live.start(input, host);
+    },
+  };
 }
 
 export interface CorralServer {
@@ -125,10 +153,30 @@ export async function startCorralServer(options: ServerOptions): Promise<CorralS
     newCorralId: () => ids.next('artifact').replace(/^art_/, 'corral_'),
   });
   const backendSessionId = ids.next('run').replace(/^run_/, 'backend_');
+  let registry: ModelRegistry | null = null;
+  if (options.live) {
+    assertOutsideWorkspace(options.live.configDir, workspace.root);
+    registry = new ModelRegistry(
+      options.live.models,
+      workspace.config.modelProfiles ?? DEFAULT_PROFILES,
+      {
+        credentials: options.live.credentials,
+        getDeviceId: options.live.getDeviceId,
+        ...(options.live.subscriptionModels
+          ? { subscriptionModels: options.live.subscriptionModels }
+          : {}),
+      },
+    );
+    await registry.refreshStatus();
+  }
   const coordinator = new Coordinator({
     clock,
     ids,
-    agents: options.agents,
+    agents: routeByMode(
+      options.agents,
+      registry && options.live ? options.live.agents(registry) : null,
+    ),
+    ...(registry ? { models: registry } : {}),
     store: new SqliteRunStore(db),
     runner: new LangGraphRunner(),
     corrals,
@@ -181,7 +229,7 @@ export async function startCorralServer(options: ServerOptions): Promise<CorralS
     schemaVersion: SCHEMA_VERSION,
     version: packageJson.version,
     backendSessionId,
-    agents: 'mock',
+    live: registry !== null,
   }));
   app.post('/api/v1/session', async (request, reply) => {
     const session = sessions.redeem((request.body as { token?: unknown } | null)?.token);
@@ -263,6 +311,43 @@ export async function startCorralServer(options: ServerOptions): Promise<CorralS
       runtimeLimits: runnable && !runnable.ok ? runnable.issues : [],
       summary: compiled.ok ? compiled.plan.summary : null,
     };
+  });
+
+  // ── models (C-058) ─────────────────────────────────────────────────────────
+  // Status and expiry only; tokens never appear in these answers (ADR-019).
+  app.get('/api/v1/model-profiles', async () => registry?.profilesView() ?? []);
+  app.get('/api/v1/model-auth', async () => registry?.authView() ?? []);
+  type ProviderParams = { Params: { providerId: string } };
+  const noLive = (reply: FastifyReply) =>
+    fail(reply, 'COMMAND_NOT_SUPPORTED', 'this server has no live model connection');
+  app.post<ProviderParams>('/api/v1/model-auth/:providerId/login', async (request, reply) => {
+    if (!registry) return noLive(reply);
+    try {
+      return reply.code(202).send(await registry.startLogin(request.params.providerId));
+    } catch {
+      return fail(reply, 'TARGET_NOT_FOUND', 'no model profile uses this provider');
+    }
+  });
+  app.post<ProviderParams>(
+    '/api/v1/model-auth/:providerId/login/callback',
+    async (request, reply) => {
+      if (!registry) return noLive(reply);
+      const body = parse(z.strictObject({ url: z.string().url().max(4096) }), request, reply);
+      if (!body) return reply;
+      return registry.submitRedirect(request.params.providerId, body.url)
+        ? { accepted: true }
+        : fail(reply, 'TARGET_NOT_FOUND', 'no sign-in is waiting for this provider');
+    },
+  );
+  app.delete<ProviderParams>('/api/v1/model-auth/:providerId/login', async (request, reply) => {
+    if (!registry) return noLive(reply);
+    registry.cancelLogin(request.params.providerId);
+    return registry.authView();
+  });
+  app.delete<ProviderParams>('/api/v1/model-auth/:providerId', async (request, reply) => {
+    if (!registry) return noLive(reply);
+    await registry.logout(request.params.providerId);
+    return registry.authView();
   });
 
   // ── runs ───────────────────────────────────────────────────────────────────
@@ -382,6 +467,12 @@ export async function startCorralServer(options: ServerOptions): Promise<CorralS
           res.write(`id: ${event.runSeq}\nevent: domain\ndata: ${JSON.stringify(event)}\n\n`);
         },
         close,
+        // Text deltas: no id, so they never move the client's cursor; never stored (ADR-011).
+        (frame) => {
+          if (!closed && res.writableLength <= MAX_SSE_BUFFER_BYTES) {
+            res.write(`event: stream\ndata: ${JSON.stringify(frame)}\n\n`);
+          }
+        },
       );
       const heartbeat = setInterval(() => res.write(': ping\n\n'), HEARTBEAT_MS);
       streams.add(close);

@@ -1,4 +1,10 @@
-import type { CorralDefinition, Receipt, RunEvent, RunStatus } from '@corral/contracts';
+import type {
+  CorralDefinition,
+  ModelProfileSnapshot,
+  Receipt,
+  RunEvent,
+  RunStatus,
+} from '@corral/contracts';
 import type { RunProjection } from '../projection.ts';
 
 // Where committed run facts live (C-011, ADR-003). One commit = one transaction that writes
@@ -16,6 +22,8 @@ export interface RunSnapshot {
   /** Immutable version of the completion criteria the run started with. */
   criteriaVersionId: string;
   mode: 'mock' | 'live';
+  /** What each model profile resolved to at start (C-058); the run never re-resolves. */
+  models: Record<string, ModelProfileSnapshot>;
   startedAt: string;
 }
 

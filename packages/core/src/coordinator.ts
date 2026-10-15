@@ -13,6 +13,7 @@ import {
   type EventPayload,
   type IdFactory,
   type InputBinding,
+  type ModelProfileSnapshot,
   type Receipt,
   type RequestPermit,
   type ResolvedInput,
@@ -21,8 +22,10 @@ import {
   type RunEventType,
   StartRunRequest,
   type SteerCommand,
+  type StreamFrame,
   TERMINAL_EXECUTION_STATUSES,
   TERMINAL_RUN_STATUSES,
+  type ToolAuthorization,
   type ToolOutcome,
   type ToolProposal,
 } from '@corral/contracts';
@@ -62,6 +65,8 @@ const USER = { kind: 'user', id: 'local_user' } as const;
 const RUNTIME = { kind: 'runtime', id: 'coordinator' } as const;
 /** Scope for run-creation commands, which have no run yet. */
 const START_SCOPE = '*';
+/** Recorded with every allowed tool call: role allowlists plus argument checks. */
+const TOOL_POLICY_VERSION = 'role-allowlist@1';
 
 type Actor = { kind: 'user' | 'runtime' | 'agent'; id: string };
 type EventDraft = {
@@ -111,13 +116,42 @@ export interface CoordinatorDeps {
   corrals?: DefinitionSource;
   /** Installation hard caps (C-062). Defaults to Spec §9. */
   policy?: InstallationPolicy;
+  /** Model profiles per run mode (C-058). Defaults to simulated agents only. */
+  models?: ModelResolver;
 }
+
+export type ModelResolution =
+  | { ok: true; snapshot: ModelProfileSnapshot }
+  | {
+      ok: false;
+      code: 'GRAPH_INVALID' | 'CAPABILITY_DENIED' | 'COMMAND_NOT_SUPPORTED';
+      reason: string;
+    };
+
+/** Turns a role's model profile into the model a run will use, or says why it cannot. */
+export interface ModelResolver {
+  resolve(profile: string, mode: 'mock' | 'live'): ModelResolution;
+}
+
+/** The browser runtime and tests: every profile runs simulated; nothing runs live. */
+export const SIMULATED_MODELS: ModelResolver = {
+  resolve: (profile, mode) =>
+    mode === 'mock'
+      ? { ok: true, snapshot: { profile, provider: null, modelId: null, auth: 'mock' } }
+      : {
+          ok: false,
+          code: 'COMMAND_NOT_SUPPORTED',
+          reason: 'this runtime has no live model connection',
+        },
+};
 
 interface Subscriber {
   runId: string;
   nextSeq: number;
   onEvent: (event: RunEvent) => void;
   onError: ((error: unknown) => void) | undefined;
+  /** Transient text; only for subscribers present while it streams. */
+  onFrame: ((frame: StreamFrame) => void) | undefined;
 }
 
 interface LiveRun {
@@ -146,6 +180,7 @@ export class Coordinator {
   private readonly corrals: DefinitionSource | undefined;
   private readonly sessionId: string;
   private readonly policy: InstallationPolicy;
+  private readonly models: ModelResolver;
   private readonly live = new Map<string, LiveRun>();
   private readonly subscribers = new Set<Subscriber>();
   private storageError: string | null = null;
@@ -160,6 +195,7 @@ export class Coordinator {
     this.corrals = deps.corrals;
     this.sessionId = deps.sessionId ?? 'backend_local';
     this.policy = deps.policy ?? SPEC_HARD_CAPS;
+    this.models = deps.models ?? SIMULATED_MODELS;
     this.recover();
   }
 
@@ -216,6 +252,21 @@ export class Coordinator {
     );
     const overCaps = limitViolations(planned.definition.limits, loopRounds, this.policy);
     if (overCaps.length > 0) return refuse({ code: 'GRAPH_INVALID', message: overCaps.join('; ') });
+    // Every profile resolves now, so the run never meets an unusable model halfway.
+    const models: Record<string, ModelProfileSnapshot> = {};
+    const unusable: { code: CommandError['code']; message: string }[] = [];
+    for (const profile of new Set(planned.definition.roles.map((r) => r.modelProfile))) {
+      const resolution = this.models.resolve(profile, request.mode);
+      if (resolution.ok) models[profile] = resolution.snapshot;
+      else unusable.push({ code: resolution.code, message: `${profile}: ${resolution.reason}` });
+    }
+    const [firstUnusable] = unusable;
+    if (firstUnusable) {
+      return refuse({
+        code: firstUnusable.code,
+        message: unusable.map((u) => u.message).join('; '),
+      });
+    }
     const active = this.store.listRuns().find((r) => !TERMINAL_RUN_STATUSES.has(r.status));
     if (active) {
       return refuse({
@@ -235,6 +286,7 @@ export class Coordinator {
           : null,
       criteriaVersionId: this.ids.next('criteria_version'),
       mode: request.mode,
+      models,
       startedAt: this.clock.nowIso(),
     };
     const run: LiveRun = {
@@ -258,9 +310,7 @@ export class Coordinator {
           definitionHash: snapshot.definitionHash,
           inputHash: hashOf(definition.input),
           mode: request.mode,
-          modelProfiles: [...new Set(definition.roles.map((r) => r.modelProfile))].map(
-            (profile) => ({ profile, provider: null, modelId: null, auth: 'mock' as const }),
-          ),
+          modelProfiles: Object.values(models),
           limits: definition.limits,
         },
       },
@@ -513,9 +563,10 @@ export class Coordinator {
     afterSeq: number,
     onEvent: (event: RunEvent) => void,
     onError?: (error: unknown) => void,
+    onFrame?: (frame: StreamFrame) => void,
   ): () => void {
     if (!this.store.getRun(runId)) throw new Error(`run ${runId} does not exist`);
-    const subscriber: Subscriber = { runId, nextSeq: afterSeq + 1, onEvent, onError };
+    const subscriber: Subscriber = { runId, nextSeq: afterSeq + 1, onEvent, onError, onFrame };
     this.subscribers.add(subscriber);
     void Promise.resolve().then(() => this.pump(subscriber));
     return () => {
@@ -856,6 +907,13 @@ export class Coordinator {
       attemptNo,
       role,
       modelProfile: role.modelProfile,
+      mode: run.snapshot.mode,
+      model: run.snapshot.models[role.modelProfile] ?? {
+        profile: role.modelProfile,
+        provider: null,
+        modelId: null,
+        auth: 'mock',
+      },
       inputs: this.resolveInputs(run, node.inputBindings, iterationId),
     };
     this.commit(run, [
@@ -1066,6 +1124,68 @@ export class Coordinator {
       }
     };
 
+    // Authorized calls of this execution; each may run once.
+    const authorized = new Map<string, { proposal: ToolProposal; ran: boolean }>();
+
+    const authorizeTool = async (proposal: ToolProposal): Promise<ToolAuthorization> => {
+      requireActive();
+      const toolCallId = this.ids.next('tool_call');
+      const error = this.toolRefusal(run, input, proposal);
+      this.commit(run, [
+        {
+          type: 'tool.requested',
+          actor: agent,
+          executionId,
+          payload: {
+            executionId,
+            toolCallId,
+            name: proposal.name,
+            validatedArgs: summarizeArgs(proposal.args),
+          },
+        },
+        error
+          ? {
+              type: 'tool.blocked',
+              executionId,
+              payload: { executionId, toolCallId, reason: `${error.code}: ${error.message}` },
+            }
+          : {
+              type: 'tool.allowed',
+              executionId,
+              payload: { executionId, toolCallId, policyVersion: TOOL_POLICY_VERSION },
+            },
+      ]);
+      if (error) return { ok: false, toolCallId, error };
+      authorized.set(toolCallId, { proposal, ran: false });
+      return { ok: true, toolCallId };
+    };
+
+    const executeTool = async (toolCallId: string): Promise<ToolOutcome> => {
+      requireActive();
+      const call = authorized.get(toolCallId);
+      if (!call || call.ran) {
+        return {
+          ok: false,
+          toolCallId,
+          error: {
+            code: 'CAPABILITY_DENIED',
+            message: call ? 'this tool call already ran' : 'this tool call was not authorized',
+          },
+        };
+      }
+      call.ran = true;
+      const { drafts, result, extra } = this.toolDrafts(
+        run,
+        input,
+        call.proposal,
+        toolCallId,
+        lastCall,
+        agent,
+      );
+      this.commit(run, drafts, extra);
+      return { ok: true, toolCallId, result };
+    };
+
     return {
       prepareModelRequest: async (): Promise<RequestPermit> => {
         requireActive();
@@ -1155,8 +1275,8 @@ export class Coordinator {
               normalizedUsage: {
                 inputTokens: observation.usage.inputTokens,
                 outputTokens: observation.usage.outputTokens,
-                cachedInputTokens: null,
-                reasoningTokens: null,
+                cachedInputTokens: observation.usage.cachedInputTokens ?? null,
+                reasoningTokens: observation.usage.reasoningTokens ?? null,
               },
               certainty:
                 observation.usage.inputTokens === null && observation.usage.outputTokens === null
@@ -1169,139 +1289,178 @@ export class Coordinator {
       },
 
       invokeTool: async (proposal: ToolProposal): Promise<ToolOutcome> => {
-        requireActive();
-        const toolCallId = this.ids.next('tool_call');
-        this.commit(run, [
-          {
-            type: 'tool.requested',
-            actor: agent,
-            executionId,
-            payload: {
-              executionId,
-              toolCallId,
-              name: proposal.name,
-              validatedArgs: summarizeArgs(proposal.args),
-            },
-          },
-        ]);
-        const block = (error: CommandError): ToolOutcome => {
-          this.commit(run, [
-            {
-              type: 'tool.blocked',
-              executionId,
-              payload: { executionId, toolCallId, reason: `${error.code}: ${error.message}` },
-            },
-          ]);
-          return { ok: false, toolCallId, error };
-        };
+        const authorization = await authorizeTool(proposal);
+        return authorization.ok ? executeTool(authorization.toolCallId) : authorization;
+      },
+      authorizeTool: (proposal) => authorizeTool(proposal),
+      executeTool: (toolCallId) => executeTool(toolCallId),
 
-        if (proposal.name === 'write_artifact') {
-          if (!input.role.allowedWorkTools.includes('write_artifact')) {
-            return block({ code: 'CAPABILITY_DENIED', message: 'role may not write artifacts' });
-          }
-          const text = proposal.args.text;
-          if (typeof text !== 'string') {
-            return block({ code: 'SCHEMA_INVALID', message: 'text must be a string' });
-          }
-          const bytes = utf8ToBytes(text);
-          if (bytes.length > this.policy.maxArtifactBytes) {
-            return block({
-              code: 'LIMIT_REACHED',
-              message: `artifact versions are limited to ${this.policy.maxArtifactBytes} bytes`,
-            });
-          }
-          const artifactVersionId = this.writeArtifact(run, input, text, bytes, lastCall, agent);
-          return { ok: true, toolCallId, result: { artifactVersionId } };
-        }
-
-        if (proposal.name === 'submit_result') {
-          if (!input.role.allowedCollaborationTools.includes('submit_result')) {
-            return block({ code: 'CAPABILITY_DENIED', message: 'role may not submit results' });
-          }
-          const ids = proposal.args.artifactVersionIds;
-          const owned =
-            Array.isArray(ids) &&
-            ids.length > 0 &&
-            ids.every(
-              (id) =>
-                typeof id === 'string' &&
-                run.projection.artifacts[id]?.authorExecutionId === executionId,
-            );
-          if (!owned) {
-            return block({
-              code: 'CAPABILITY_DENIED',
-              message: 'only versions written by this execution can be submitted',
-            });
-          }
-          this.commit(run, [
-            {
-              type: 'task.submitted',
-              actor: agent,
-              executionId,
-              taskId: input.taskId,
-              payload: { taskId: input.taskId, artifactVersionIds: ids as string[] },
-            },
-            {
-              type: 'task.completed',
-              taskId: input.taskId,
-              payload: {
-                taskId: input.taskId,
-                completionEvidence: `${input.role.outputContract} contract: non-empty submission`,
-              },
-            },
-          ]);
-          return { ok: true, toolCallId, result: {} };
-        }
-
-        return block({ code: 'CAPABILITY_DENIED', message: `unknown tool ${proposal.name}` });
+      streamText: (delta) => {
+        // Only the open request of this execution streams; anything else is dropped.
+        const call = run.projection.modelCalls[delta.modelCallId];
+        if (lastCall?.modelCallId !== delta.modelCallId || !call || call.finished) return;
+        if (run.projection.executions[executionId]?.status !== 'active') return;
+        this.publishFrame({ runId: run.runId, ...delta });
       },
     };
   }
 
-  private writeArtifact(
+  /**
+   * Every check that decides whether a tool call may run (CRL-SEC-001). Pure: nothing happens
+   * until an authorized call is executed. Unknown tools, shell or code tools included, are
+   * refused because the role allowlists name only Corral's own tools.
+   */
+  private toolRefusal(
     run: LiveRun,
     input: AgentStartInput,
-    text: string,
-    bytes: Uint8Array,
+    proposal: ToolProposal,
+  ): CommandError | null {
+    if (proposal.name === 'write_artifact') {
+      if (!input.role.allowedWorkTools.includes('write_artifact')) {
+        return { code: 'CAPABILITY_DENIED', message: 'role may not write artifacts' };
+      }
+      const text = proposal.args.text;
+      if (typeof text !== 'string')
+        return { code: 'SCHEMA_INVALID', message: 'text must be a string' };
+      if (utf8ToBytes(text).length > this.policy.maxArtifactBytes) {
+        return {
+          code: 'LIMIT_REACHED',
+          message: `artifact versions are limited to ${this.policy.maxArtifactBytes} bytes`,
+        };
+      }
+      return null;
+    }
+    if (proposal.name === 'submit_result') {
+      if (!input.role.allowedCollaborationTools.includes('submit_result')) {
+        return { code: 'CAPABILITY_DENIED', message: 'role may not submit results' };
+      }
+      const ids = proposal.args.artifactVersionIds;
+      const owned =
+        Array.isArray(ids) &&
+        ids.length > 0 &&
+        ids.every(
+          (id) =>
+            typeof id === 'string' &&
+            run.projection.artifacts[id]?.authorExecutionId === input.executionId,
+        );
+      return owned
+        ? null
+        : {
+            code: 'CAPABILITY_DENIED',
+            message: 'only versions written by this execution can be submitted',
+          };
+    }
+    return { code: 'CAPABILITY_DENIED', message: `unknown tool ${proposal.name}` };
+  }
+
+  /** The commit for one executed tool call: its effect, lifecycle and result, together. */
+  private toolDrafts(
+    run: LiveRun,
+    input: AgentStartInput,
+    proposal: ToolProposal,
+    toolCallId: string,
     lastCall: { modelCallId: string; contextSnapshotId: string } | null,
     agent: Actor,
-  ): string {
-    const existing = Object.values(run.projection.artifacts).filter(
-      (a) => a.authorExecutionId === input.executionId,
-    );
-    const artifactId = existing[0]?.artifactId ?? this.ids.next('artifact');
-    const parent = existing.at(-1)?.artifactVersionId ?? null;
-    const artifactVersionId = this.ids.next('artifact_version');
-    this.commit(
-      run,
-      [
+  ): { drafts: EventDraft[]; result: Record<string, unknown>; extra?: () => void } {
+    const { executionId, taskId } = input;
+    const effectId = this.ids.next('effect');
+    const opening: EventDraft[] = [
+      {
+        type: 'effect.admitted',
+        executionId,
+        payload: {
+          effectId,
+          kind: 'tool',
+          scope: executionId,
+          epoch: input.attemptNo,
+          reservationId: null,
+        },
+      },
+      { type: 'tool.started', executionId, payload: { executionId, toolCallId, effectId } },
+    ];
+    const closing = (resultRef: string | null): EventDraft[] => [
+      {
+        type: 'tool.finished',
+        executionId,
+        payload: { executionId, toolCallId, resultRef, error: null },
+      },
+      { type: 'effect.settled', executionId, payload: { effectId, outcome: 'succeeded' } },
+    ];
+
+    if (proposal.name === 'write_artifact') {
+      const text = proposal.args.text as string;
+      const bytes = utf8ToBytes(text);
+      const existing = Object.values(run.projection.artifacts).filter(
+        (a) => a.authorExecutionId === executionId,
+      );
+      const artifactId = existing[0]?.artifactId ?? this.ids.next('artifact');
+      const artifactVersionId = this.ids.next('artifact_version');
+      return {
+        drafts: [
+          ...opening,
+          {
+            type: 'artifact.version_created',
+            actor: agent,
+            executionId,
+            taskId,
+            payload: {
+              artifactId,
+              version: existing.length + 1,
+              artifactVersionId,
+              parentVersionId: existing.at(-1)?.artifactVersionId ?? null,
+              name: outputNameOf(run.snapshot.definition, input.nodeId),
+              contract: input.role.outputContract,
+              contentHash: bytesToHex(sha256(bytes)),
+              byteLength: bytes.length,
+              authorExecutionId: executionId,
+              modelCallId: lastCall?.modelCallId ?? null,
+              contextSnapshotId: lastCall?.contextSnapshotId ?? null,
+            },
+          },
+          ...closing(artifactVersionId),
+        ],
+        result: { artifactVersionId },
+        // The body is written in the same transaction as the event that names it.
+        extra: () => this.store.putArtifactText(run.runId, artifactVersionId, text),
+      };
+    }
+
+    const ids = proposal.args.artifactVersionIds as string[];
+    return {
+      drafts: [
+        ...opening,
         {
-          type: 'artifact.version_created',
+          type: 'task.submitted',
           actor: agent,
-          executionId: input.executionId,
-          taskId: input.taskId,
+          executionId,
+          taskId,
+          payload: { taskId, artifactVersionIds: ids },
+        },
+        {
+          type: 'task.completed',
+          taskId,
           payload: {
-            artifactId,
-            version: existing.length + 1,
-            artifactVersionId,
-            parentVersionId: parent,
-            name: outputNameOf(run.snapshot.definition, input.nodeId),
-            contract: input.role.outputContract,
-            contentHash: bytesToHex(sha256(bytes)),
-            byteLength: bytes.length,
-            authorExecutionId: input.executionId,
-            modelCallId: lastCall?.modelCallId ?? null,
-            contextSnapshotId: lastCall?.contextSnapshotId ?? null,
+            taskId,
+            completionEvidence: `${input.role.outputContract} contract: non-empty submission`,
           },
         },
+        ...closing(null),
       ],
-      // The body is written in the same transaction as the event that names it.
-      () => this.store.putArtifactText(run.runId, artifactVersionId, text),
-    );
-    return artifactVersionId;
+      result: {},
+    };
+  }
+
+  private publishFrame(frame: StreamFrame) {
+    for (const subscriber of this.subscribers) {
+      if (subscriber.runId !== frame.runId || !subscriber.onFrame) continue;
+      try {
+        subscriber.onFrame(frame);
+      } catch {
+        // Frames are best effort; the committed log is the record.
+      }
+    }
   }
 }
-
 function runState(from: RunProjection['status'], to: RunProjection['status'], reasonCode: string) {
   return { type: 'run.state_changed', payload: { from, to, reasonCode } } satisfies EventDraft;
 }

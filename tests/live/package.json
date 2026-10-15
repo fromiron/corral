@@ -1,0 +1,18 @@
+{
+  "name": "@corral/live-tests",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Manual opt-in tests against real model providers. Not part of CI.",
+  "dependencies": {
+    "@corral/adapter-pi": "workspace:*",
+    "@corral/contracts": "workspace:*",
+    "@corral/core": "workspace:*",
+    "@corral/server": "workspace:*",
+    "@corral/testkit": "workspace:*",
+    "@earendil-works/pi-ai": "1.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2"
+  }
+}

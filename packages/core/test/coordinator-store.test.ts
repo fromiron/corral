@@ -166,12 +166,12 @@ describe('Coordinator over a RunStore: commit before effect', () => {
     }
   });
 
-  it('records each agent start and model request as an admitted, then settled, effect', async () => {
+  it('records each agent start, model request and tool call as an admitted, then settled, effect', async () => {
     const { transport } = coordinator();
     const { runId } = await transport.startRun(start(linearCorral(['research'])));
     const final = await waitForProjection(transport, runId ?? '', settled);
     const effects = Object.values(final.effects);
-    expect(effects.map((e) => e.kind).sort()).toEqual(['model_request', 'spawn']);
+    expect(effects.map((e) => e.kind).sort()).toEqual(['model_request', 'spawn', 'tool', 'tool']);
     expect(effects.every((e) => e.status === 'settled' && e.outcome === 'succeeded')).toBe(true);
   });
 });

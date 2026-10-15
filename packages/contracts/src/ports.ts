@@ -1,5 +1,6 @@
 import type { AgentRole, InputBindingKind } from './definition.ts';
 import type { CommandError } from './errors.ts';
+import type { ModelProfileSnapshot } from './events.ts';
 
 // Injectable runtime ports (Implementation Plan §4, CRL-DEV-002). Types only.
 
@@ -47,6 +48,10 @@ export interface AgentStartInput {
   attemptNo: number;
   role: AgentRole;
   modelProfile: string;
+  /** Simulated agents or real model calls; fixed for the whole run. */
+  mode: 'mock' | 'live';
+  /** The model the profile resolved to when the run started (run.started). */
+  model: ModelProfileSnapshot;
   inputs: ResolvedInput[];
 }
 
@@ -64,9 +69,12 @@ export interface RequestPermit {
   directives: DeliveredDirective[];
 }
 
+/** Token counts as the provider reported them; null when it did not (never 0 by default). */
 export interface ModelUsage {
   inputTokens: number | null;
   outputTokens: number | null;
+  cachedInputTokens?: number | null;
+  reasoningTokens?: number | null;
 }
 
 export type AgentObservation = {
@@ -87,10 +95,27 @@ export type ToolOutcome =
   | { ok: true; toolCallId: string; result: Record<string, unknown> }
   | { ok: false; toolCallId: string; error: CommandError };
 
+export type ToolAuthorization =
+  | { ok: true; toolCallId: string }
+  | { ok: false; toolCallId: string; error: CommandError };
+
+/** A piece of model output while it streams. Transient: never stored (ADR-011). */
+export interface TextDelta {
+  modelCallId: string;
+  chunkIndex: number;
+  text: string;
+}
+
 export interface AgentHost {
   prepareModelRequest(): Promise<RequestPermit>;
+  /** Authorizes and runs a tool in one step, for agents without a separate tool phase. */
   invokeTool(proposal: ToolProposal): Promise<ToolOutcome>;
+  /** Records the request and decides on it; nothing runs (Technical-Design §7.3). */
+  authorizeTool(proposal: ToolProposal): Promise<ToolAuthorization>;
+  /** Runs an authorized call, at most once. Only this records `tool.started`. */
+  executeTool(toolCallId: string): Promise<ToolOutcome>;
   observe(observation: AgentObservation): Promise<void>;
+  streamText(delta: TextDelta): void;
 }
 
 export interface AgentSettlement {

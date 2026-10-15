@@ -10,7 +10,10 @@
     "error": "Something went wrong: {message}",
     "serverBadge": "Local server / Simulated agents",
     "serverNote": "Corrals and runs are saved in this workspace. Agents are simulated; nothing is sent to a model.",
-    "sessionMissing": "This tab has no session with the local server. Open the link the Corral server printed when it started."
+    "sessionMissing": "This tab has no session with the local server. Open the link the Corral server printed when it started.",
+    "navModels": "Models",
+    "liveBadge": "Local server / Simulated or live agents",
+    "liveNote": "Runs are simulated unless you choose live models; live runs use your own sign-in."
   },
   "Palette": {
     "heading": "Nodes",
@@ -185,7 +188,11 @@
       "message": "Waiting for an answer",
       "approval": "Waiting for approval",
       "user": "Waiting for you"
-    }
+    },
+    "streamGap": "(some text was missed; the full output appears when it is submitted)",
+    "agents": "Agents",
+    "modeMock": "Simulated (no model calls)",
+    "modeLive": "Live models (uses your sign-in)"
   },
   "Reins": {
     "heading": "Reins",
@@ -305,5 +312,38 @@
     "empty": "No events match these filters.",
     "selected": "Selected event",
     "none": "Choose an event to see its details."
+  },
+  "Models": {
+    "heading": "Models",
+    "intro": "Corral signs in through the provider’s own page. Your sign-in is kept on this computer, outside the workspace. Corral never shows, logs or exports the token.",
+    "browserOnly": "Model settings need the local server. The in-browser demo always uses simulated agents.",
+    "noLive": "This server runs simulated agents only.",
+    "providers": "Sign-in",
+    "profiles": "Model profiles",
+    "signedInOauth": "Signed in{subscription, select, true { (subscription)} other {}}. The token renews automatically.",
+    "signedInKey": "Using an API key from the server environment.",
+    "notSignedIn": "Not signed in. Live runs with this provider are refused until you sign in.",
+    "expires": "Current token valid until {time}",
+    "signIn": "Sign in",
+    "signOut": "Sign out",
+    "cancel": "Cancel",
+    "openSignIn": "Open the sign-in page",
+    "openHint": "Finish signing in on the provider’s page; this page updates by itself.",
+    "pasteLabel": "If the browser ends on an address starting with http://127.0.0.1:1455 that does not load, paste it here",
+    "paste": "Use this address",
+    "exchanging": "Finishing sign-in…",
+    "failed": "Sign-in did not finish: {message}",
+    "tryAgain": "Try again",
+    "profile": "Profile",
+    "model": "Model",
+    "context": "Context",
+    "maxOutput": "Max output",
+    "status": "Status",
+    "ready": "Ready",
+    "needsSignIn": "Sign-in needed",
+    "unknownModel": "Model not found",
+    "tokens": "{count, number} tokens",
+    "unknown": "—",
+    "notWithSubscription": "Not available with a subscription sign-in; change the model in .corral/config.json"
   }
 }

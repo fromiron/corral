@@ -5,12 +5,13 @@ import {
   notFound,
 } from '@tanstack/react-router';
 import { EditorPage } from './pages/EditorPage.tsx';
+import { ModelSettingsPage } from './pages/ModelSettingsPage.tsx';
 import { ErrorView, NotFoundView, RootLayout } from './pages/RootLayout.tsx';
 import { RunPage } from './pages/RunPage.tsx';
 import { WorkspacePage } from './pages/WorkspacePage.tsx';
 import type { StudioServices } from './services.tsx';
 
-// Routes from Spec §4.1. /settings/models arrives with C-058 (P3) and /demo with C-046 (P9).
+// Routes from Spec §4.1. /demo arrives with C-046 (P9).
 
 const rootRoute = createRootRouteWithContext<{ services: StudioServices }>()({
   component: RootLayout,
@@ -50,9 +51,21 @@ export const runRoute = createRoute({
   component: RunPage,
 });
 
+export const modelSettingsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/settings/models',
+  loader: async ({ context }) => {
+    const api = context.services.models;
+    if (!api) return { profiles: [], providers: [] };
+    const [profiles, providers] = await Promise.all([api.profiles(), api.auth()]);
+    return { profiles, providers };
+  },
+  component: ModelSettingsPage,
+});
+
 export function createStudioRouter(services: StudioServices) {
   return createRouter({
-    routeTree: rootRoute.addChildren([workspaceRoute, editorRoute, runRoute]),
+    routeTree: rootRoute.addChildren([workspaceRoute, editorRoute, runRoute, modelSettingsRoute]),
     context: { services },
     defaultPreload: false,
   });
