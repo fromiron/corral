@@ -286,5 +286,35 @@
     "requirement": "기본 데모는 유료 SaaS 없이 가능하며 실모델·웹검색 비용은 명시한다.",
     "owner": "distribution",
     "phase": "P9"
+  },
+  {
+    "id": "CRL-RUN-008",
+    "requirement": "Coordinator의 모델 요청·도구 승인 검사는 생성 시 정적으로 등록한 순서의 gate로 수행한다. gate는 상태를 바꾸지 않고 예외는 거절로 처리하며, 기본 gate 집합은 기존 이벤트 열을 바꾸지 않는다. observer는 commit 뒤에만 실행되어 요청을 막거나 바꾸지 못한다.",
+    "owner": "runtime",
+    "phase": "P11"
+  },
+  {
+    "id": "CRL-DEC-001",
+    "requirement": "DecisionProvider의 reasoning_effort 질문은 고정 후보·응답 schema·capability 선언을 지키며, 선언하지 않은 질문을 보내지 않고 잘못된 응답을 실패로 기록한다.",
+    "owner": "runtime",
+    "phase": "P11"
+  },
+  {
+    "id": "CRL-DEC-002",
+    "requirement": "reasoning_effort 판정은 관찰 전용이다. 판정 여부와 결과가 요청 permit·예산 예약·worker 요청·Run 진행을 바꾸지 않으며, 설정은 Run 시작 시 고정된다.",
+    "owner": "runtime",
+    "phase": "P11"
+  },
+  {
+    "id": "CRL-DEC-003",
+    "requirement": "외부 decision provider는 live Run의 명시적 opt-in에서만 쓰고, 전송 전 effect를 기록하며, 입력 본문·자격 증명·로컬 경로를 이벤트·로그·export에 남기지 않는다.",
+    "owner": "security",
+    "phase": "P11"
+  },
+  {
+    "id": "CRL-DEC-004",
+    "requirement": "같은 요청에 대한 provider별 판정·지연·실패를 비교 가능한 형태로 기록하고, 화면과 inspect에서 적용되지 않은 관찰임을 표시한다.",
+    "owner": "studio",
+    "phase": "P11"
   }
 ]

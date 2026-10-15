@@ -1,0 +1,487 @@
+import {
+  type AgentStartInput,
+  type ErrorCode,
+  type RunEvent,
+  type RunLimits,
+  TERMINAL_EXECUTION_STATUSES,
+  type ToolProposal,
+} from '@corral/contracts';
+import { utf8ToBytes } from '@noble/hashes/utils.js';
+import { admitModelRequest } from '../budget.ts';
+import type { InstallationPolicy } from '../config.ts';
+import { createsWaitCycle, NO_PROGRESS_TURNS, noProgressReached } from '../limits.ts';
+import type { RunProjection } from '../projection.ts';
+
+// Admission gates and observers (CR-003, ADR-024, Technical-Design §5.4).
+//
+// A gate is a synchronous, read-only check at one admission point. Gates of a stage run in
+// registration order and the first refusal stops the stage; a gate that throws refuses the call
+// (fail closed). Observers run after a commit, may not block or change anything, and their
+// failures never reach the run. Both are registered once, when the Coordinator is created.
+
+export type AdmissionStage =
+  /** Before a model slot is taken: whether this execution may make another request. */
+  | 'model.request'
+  /** After the slot: whether the run's budget admits the request. */
+  | 'model.admit'
+  /** Before waiting for the safe boundary: checks whose outcome a pause cannot change. */
+  | 'tool.pre_boundary'
+  /** At the safe boundary, when the agent proposes a call. */
+  | 'tool.authorize'
+  /** Again right before an authorized call runs. */
+  | 'tool.execute';
+
+export interface LimitHit {
+  kind: 'model_calls' | 'output_tokens' | 'spawns' | 'questions' | 'depth' | 'no_progress';
+  used: number;
+  reserved?: number;
+  max: number;
+}
+
+export type GateDecision =
+  | { kind: 'allow' }
+  | {
+      kind: 'refuse';
+      code: ErrorCode;
+      message: string;
+      limit?: LimitHit;
+    }
+  /** Only the person can let this request through (no progress, Spec §9). */
+  | { kind: 'require_approval'; approval: 'user_action'; limit: LimitHit };
+
+export interface ModelGateView {
+  projection: RunProjection;
+  limits: RunLimits;
+  input: AgentStartInput;
+}
+
+export interface ToolGateView extends ModelGateView {
+  proposal: ToolProposal;
+  policy: InstallationPolicy;
+  /** Callable nodes this node may delegate to or ask (capability links). */
+  callables: { delegate: readonly string[]; question: readonly string[] };
+  /** Whether search/read_document have a backend in this runtime. */
+  externalTools: boolean;
+  /** The execution answering an open question, if the question is open. */
+  responderOf(questionId: string): string | undefined;
+  /** Versions this execution may read (its own, its inputs, its children's, …). */
+  readable(): ReadonlySet<string>;
+}
+
+export interface StageViews {
+  'model.request': ModelGateView;
+  'model.admit': ModelGateView;
+  'tool.pre_boundary': ToolGateView;
+  'tool.authorize': ToolGateView;
+  'tool.execute': ToolGateView;
+}
+
+export interface Gate<V> {
+  id: string;
+  version: number;
+  check(view: V): GateDecision;
+}
+
+export type AdmissionGates = { [S in AdmissionStage]: readonly Gate<StageViews[S]>[] };
+
+export type ObservedEvent = 'model.prepared' | 'model.finished' | 'tool.finished';
+
+export interface ObserverView {
+  projection: RunProjection;
+  event: RunEvent;
+}
+
+export interface AdmissionObserver {
+  id: string;
+  version: number;
+  on: ObservedEvent;
+  handle(view: ObserverView): void | Promise<void>;
+}
+
+export interface AdmissionConfig {
+  /** Replaces the default gates of the stages it names. */
+  gates?: Partial<AdmissionGates>;
+  observers?: readonly AdmissionObserver[];
+}
+
+const OBSERVED: Record<string, ObservedEvent> = {
+  'model.request_prepared': 'model.prepared',
+  'model.finished': 'model.finished',
+  'tool.finished': 'tool.finished',
+};
+
+/** A deep read-only view: reads pass through, every write throws. */
+function readOnly<T>(value: T, seen = new WeakMap<object, unknown>()): T {
+  if (typeof value !== 'object' || value === null) return value;
+  const cached = seen.get(value);
+  if (cached) return cached as T;
+  const refuse = () => {
+    throw new TypeError('admission views are read-only');
+  };
+  // Committed facts are frozen, and a Proxy may not hand out a different object for a frozen
+  // property of its target. The proxy therefore wraps an empty shadow of the same kind and
+  // reads through to the real value, so nested values can be wrapped too.
+  const real = value as object;
+  const shadow: object = Array.isArray(value) ? [] : Object.create(Object.getPrototypeOf(real));
+  const proxy = new Proxy(shadow, {
+    get: (_shadow, key) => readOnly(Reflect.get(real, key), seen),
+    has: (_shadow, key) => Reflect.has(real, key),
+    ownKeys: () => Reflect.ownKeys(real),
+    getOwnPropertyDescriptor: (_shadow, key) => {
+      const found = Reflect.getOwnPropertyDescriptor(real, key);
+      if (!found) return undefined;
+      // Report what the shadow can honour: only its own fixed keys (an array's length) stay
+      // non-configurable.
+      const fixed = Reflect.getOwnPropertyDescriptor(shadow, key);
+      const configurable = fixed ? fixed.configurable : true;
+      return 'value' in found
+        ? { ...found, value: readOnly(found.value, seen), configurable }
+        : { ...found, configurable };
+    },
+    getPrototypeOf: () => Object.getPrototypeOf(real),
+    set: refuse,
+    defineProperty: refuse,
+    deleteProperty: refuse,
+    setPrototypeOf: refuse,
+    preventExtensions: refuse,
+  });
+  seen.set(value, proxy);
+  return proxy as T;
+}
+
+/** Runs one stage. Returns the first non-allow decision, or allow. */
+export function runGates<V>(gates: readonly Gate<V>[], view: V): GateDecision {
+  if (gates.length === 0) return { kind: 'allow' };
+  const shown = readOnly(view);
+  for (const gate of gates) {
+    let decision: GateDecision;
+    try {
+      decision = gate.check(shown);
+    } catch {
+      // Fail closed: a broken check never lets a call through.
+      return {
+        kind: 'refuse',
+        code: 'POLICY_ERROR',
+        message: `policy check ${gate.id}@${gate.version} failed`,
+      };
+    }
+    if (decision.kind !== 'allow') return decision;
+  }
+  return { kind: 'allow' };
+}
+
+/** Hands committed events to the observers that asked for them, after the commit. */
+export function notifyObservers(
+  observers: readonly AdmissionObserver[],
+  projection: RunProjection,
+  events: readonly RunEvent[],
+): void {
+  if (observers.length === 0) return;
+  for (const event of events) {
+    const on = OBSERVED[event.type];
+    if (!on) continue;
+    for (const observer of observers) {
+      if (observer.on !== on) continue;
+      const view = readOnly({ projection, event });
+      void Promise.resolve()
+        .then(() => observer.handle(view))
+        .catch(() => {
+          // An observer's failure is its own; the run does not depend on it.
+        });
+    }
+  }
+}
+
+// ── default gates: today's checks, unchanged ────────────────────────────────
+
+const noProgress: Gate<ModelGateView> = {
+  id: 'no_progress',
+  version: 1,
+  check: ({ projection }) =>
+    noProgressReached(projection.progress)
+      ? {
+          kind: 'require_approval',
+          approval: 'user_action',
+          limit: { kind: 'no_progress', used: projection.progress.turns, max: NO_PROGRESS_TURNS },
+        }
+      : { kind: 'allow' },
+};
+
+const budget: Gate<ModelGateView> = {
+  id: 'budget',
+  version: 1,
+  check: ({ projection, limits }) => {
+    const admitted = admitModelRequest(projection.budget, limits);
+    return admitted.ok
+      ? { kind: 'allow' }
+      : {
+          kind: 'refuse',
+          code: 'LIMIT_REACHED',
+          message: `LIMIT_REACHED: ${admitted.limitKind}`,
+          limit: {
+            kind: admitted.limitKind,
+            used: admitted.used,
+            reserved: admitted.reserved,
+            max: admitted.max,
+          },
+        };
+  },
+};
+
+/** A reply to a question that has already closed (Technical-Design §8.3). */
+const questionOpen: Gate<ToolGateView> = {
+  id: 'question_open',
+  version: 1,
+  check: ({ proposal, projection }) => {
+    const questionId = proposal.name === 'reply' ? proposal.args.questionId : null;
+    return typeof questionId === 'string' &&
+      projection.questions[questionId] &&
+      projection.questions[questionId]?.status !== 'open'
+      ? { kind: 'refuse', code: 'TARGET_TERMINAL', message: 'the question has closed' }
+      : { kind: 'allow' };
+  },
+};
+
+type Refusal = Extract<GateDecision, { kind: 'refuse' }>;
+const refuse = (code: ErrorCode, message: string, limit?: LimitHit): Refusal =>
+  limit ? { kind: 'refuse', code, message, limit } : { kind: 'refuse', code, message };
+const denied = (message: string) => refuse('CAPABILITY_DENIED', message);
+
+/**
+ * Which tools a role may use and whether the call is well formed and in scope (CRL-SEC-001,
+ * CRL-COL-002/003). Unknown tools, shell or code tools included, are refused: role allowlists
+ * name only Corral tools.
+ */
+const roleAllowlist: Gate<ToolGateView> = {
+  id: 'role_allowlist',
+  version: 1,
+  check: (view) => {
+    const { input, proposal, projection: p, callables } = view;
+    const { args } = proposal;
+    const collaboration = input.role.allowedCollaborationTools as readonly string[];
+    const allow: GateDecision = { kind: 'allow' };
+    if (['search', 'read_document'].includes(proposal.name)) {
+      if (
+        !(input.role.allowedWorkTools as readonly string[]).includes(proposal.name) ||
+        !view.externalTools
+      )
+        return denied(`role may not use ${proposal.name}`);
+      const keys = Object.keys(args);
+      if (proposal.name === 'search')
+        return typeof args.query === 'string' &&
+          args.query.trim().length > 0 &&
+          args.query.length <= 500 &&
+          keys.every((k) => ['query', 'provider', 'limit'].includes(k)) &&
+          (args.provider === undefined ||
+            args.provider === 'corpus' ||
+            args.provider === 'brave') &&
+          (args.limit === undefined ||
+            (Number.isInteger(args.limit) && Number(args.limit) >= 1 && Number(args.limit) <= 10))
+          ? allow
+          : refuse('SCHEMA_INVALID', 'invalid search arguments');
+      return keys.length === 1 &&
+        ['documentId', 'sourceId'].includes(keys[0] ?? '') &&
+        typeof args[keys[0] ?? ''] === 'string' &&
+        String(args[keys[0] ?? '']).length > 0
+        ? allow
+        : refuse('SCHEMA_INVALID', 'read_document requires one documentId or sourceId');
+    }
+    if (proposal.name !== 'write_artifact' && proposal.name !== 'submit_result') {
+      if (!collaboration.includes(proposal.name)) {
+        return denied(
+          ['spawn_subagents', 'await_tasks', 'ask', 'reply', 'read_artifact'].includes(
+            proposal.name,
+          )
+            ? `role may not use ${proposal.name}`
+            : `unknown tool ${proposal.name}`,
+        );
+      }
+    }
+    switch (proposal.name) {
+      case 'write_artifact':
+        if (!input.role.allowedWorkTools.includes('write_artifact')) {
+          return denied('role may not write artifacts');
+        }
+        return typeof args.text === 'string'
+          ? allow
+          : refuse('SCHEMA_INVALID', 'text must be a string');
+      case 'submit_result': {
+        if (!input.role.allowedCollaborationTools.includes('submit_result')) {
+          return denied('role may not submit results');
+        }
+        const ids = args.artifactVersionIds;
+        const owned =
+          Array.isArray(ids) &&
+          ids.length > 0 &&
+          ids.every(
+            (id) =>
+              typeof id === 'string' && p.artifacts[id]?.authorExecutionId === input.executionId,
+          );
+        return owned ? allow : denied('only versions written by this execution can be submitted');
+      }
+      case 'spawn_subagents': {
+        const tasks = args.tasks;
+        if (!Array.isArray(tasks) || tasks.length === 0 || tasks.length > 4) {
+          return refuse('SCHEMA_INVALID', 'tasks must list 1 to 4 tasks');
+        }
+        for (const task of tasks as { targetNodeId?: unknown; brief?: unknown }[]) {
+          if (typeof task?.brief !== 'string' || !task.brief.trim() || task.brief.length > 4000) {
+            return refuse('SCHEMA_INVALID', 'each task needs a brief of 1 to 4000 characters');
+          }
+          if (
+            typeof task.targetNodeId !== 'string' ||
+            !callables.delegate.includes(task.targetNodeId)
+          ) {
+            return denied(
+              `${input.nodeId} may not delegate to ${String(task?.targetNodeId)}: no capability link`,
+            );
+          }
+        }
+        return allow;
+      }
+      case 'await_tasks': {
+        if (
+          Array.isArray(args.taskIds) &&
+          createsWaitCycle(
+            p,
+            input.executionId,
+            args.taskIds.flatMap((id) => {
+              const active = typeof id === 'string' ? p.tasks[id]?.activeExecutionId : null;
+              return active ? [active] : [];
+            }),
+          )
+        )
+          return denied('waiting would create a cycle');
+        const ids = args.taskIds;
+        if (!Array.isArray(ids) || ids.length === 0) {
+          return refuse('SCHEMA_INVALID', 'taskIds must list the tasks to wait for');
+        }
+        const mine = new Set(
+          Object.values(p.executions)
+            .filter((e) => e.parentExecutionId === input.executionId)
+            .map((e) => e.taskId),
+        );
+        return ids.every((id) => typeof id === 'string' && mine.has(id))
+          ? allow
+          : denied('only tasks this execution started can be awaited');
+      }
+      case 'ask':
+        if (typeof args.body !== 'string' || !args.body.trim() || args.body.length > 12000) {
+          return refuse('SCHEMA_INVALID', 'body must be 1 to 12000 characters');
+        }
+        if (
+          typeof args.targetNodeId !== 'string' ||
+          !callables.question.includes(args.targetNodeId)
+        ) {
+          return denied(
+            `${input.nodeId} may not ask ${String(args.targetNodeId)}: no capability link`,
+          );
+        }
+        return allow;
+      case 'reply': {
+        const question = p.questions[String(args.questionId)];
+        if (typeof args.body !== 'string' || !args.body.trim() || args.body.length > 12000) {
+          return refuse('SCHEMA_INVALID', 'body must be 1 to 12000 characters');
+        }
+        const responder =
+          typeof args.questionId === 'string' ? view.responderOf(args.questionId) : undefined;
+        if (!question || responder !== input.executionId) {
+          return question && question.status !== 'open'
+            ? refuse(
+                'TARGET_TERMINAL',
+                `question ${question.questionId} is already ${question.status}`,
+              )
+            : denied('this execution was not asked that question');
+        }
+        return allow;
+      }
+      case 'read_artifact': {
+        const id = args.artifactVersionId;
+        if (typeof id !== 'string' || !p.artifacts[id]) {
+          return refuse('TARGET_NOT_FOUND', 'no such artifact version');
+        }
+        return view.readable().has(id)
+          ? allow
+          : denied('this version is not in this execution’s scope');
+      }
+    }
+    return denied(`unknown tool ${proposal.name}`);
+  },
+};
+
+/** Run-wide and installation limits on what a call may start or write (Spec §9). */
+const limits: Gate<ToolGateView> = {
+  id: 'limits',
+  version: 1,
+  check: ({ input, proposal, projection: p, limits, policy }) => {
+    const { args } = proposal;
+    // Children and responders share one budget of dynamic executions (Spec §7.2).
+    const capacity = (count: number): GateDecision => {
+      const spawned = Object.values(p.executions).filter(
+        (e) => e.parentExecutionId !== null,
+      ).length;
+      const live = Object.values(p.executions).filter(
+        (e) => !TERMINAL_EXECUTION_STATUSES.has(e.status),
+      ).length;
+      if (input.depth + 1 > limits.maxDelegationDepth) {
+        return refuse(
+          'LIMIT_REACHED',
+          `delegation depth is limited to ${limits.maxDelegationDepth}`,
+          { kind: 'depth', used: input.depth, max: limits.maxDelegationDepth },
+        );
+      }
+      if (spawned + count > limits.maxSpawns) {
+        return refuse(
+          'LIMIT_REACHED',
+          `this run may start ${limits.maxSpawns} delegated or responding executions`,
+          { kind: 'spawns', used: spawned, max: limits.maxSpawns },
+        );
+      }
+      // Reserve resident capacity for the whole batch, or none of it (Technical-Design §8.1).
+      if (live + count > policy.maxResidentExecutions) {
+        return refuse(
+          'RESOURCE_CAPACITY',
+          `at most ${policy.maxResidentExecutions} executions may be alive at once`,
+        );
+      }
+      return { kind: 'allow' };
+    };
+    switch (proposal.name) {
+      case 'write_artifact':
+        return typeof args.text === 'string' &&
+          utf8ToBytes(args.text).length > policy.maxArtifactBytes
+          ? refuse(
+              'LIMIT_REACHED',
+              `artifact versions are limited to ${policy.maxArtifactBytes} bytes`,
+            )
+          : { kind: 'allow' };
+      case 'spawn_subagents':
+        return capacity(Array.isArray(args.tasks) ? args.tasks.length : 0);
+      case 'ask': {
+        const asked = Object.keys(p.questions).length;
+        if (asked >= limits.maxQuestions) {
+          return refuse('LIMIT_REACHED', `this run may ask ${limits.maxQuestions} questions`, {
+            kind: 'questions',
+            used: asked,
+            max: limits.maxQuestions,
+          });
+        }
+        return capacity(1);
+      }
+    }
+    return { kind: 'allow' };
+  },
+};
+
+/** Today's checks as gates, in today's order. */
+export const DEFAULT_GATES: AdmissionGates = {
+  'model.request': [noProgress],
+  'model.admit': [budget],
+  'tool.pre_boundary': [questionOpen],
+  'tool.authorize': [roleAllowlist, limits],
+  'tool.execute': [roleAllowlist, limits],
+};
+
+export function resolveGates(config: AdmissionConfig | undefined): AdmissionGates {
+  return { ...DEFAULT_GATES, ...(config?.gates ?? {}) };
+}

@@ -1239,5 +1239,115 @@
     "status": "planned",
     "adapter": "scripted mock + seeded scheduler",
     "evidence": null
+  },
+  {
+    "id": "TC-RUN-008-H",
+    "requirements": [
+      "CRL-RUN-008"
+    ],
+    "suite": "integration",
+    "scenario": "기본 gate 집합으로 기존 시나리오(선형·협업·검토 Loop와 승인·도구 거절·한도·취소)의 이벤트 열이 리팩터 전 golden과 바이트 단위로 같고, gate는 등록 순서로 실행된다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-RUN-008-N",
+    "requirements": [
+      "CRL-RUN-008"
+    ],
+    "suite": "integration",
+    "scenario": "예외를 던지는 gate는 POLICY_ERROR 거절로 끝나고 아무것도 admit하지 않는다. 거절 뒤 gate는 실행되지 않고, view를 바꾸려는 gate와 예외를 던지는 observer는 Run 상태를 바꾸지 못한다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-DEC-001-H",
+    "requirements": [
+      "CRL-DEC-001"
+    ],
+    "suite": "contract",
+    "scenario": "reasoning_effort 질문은 그 종류·버전을 선언한 provider에만 가고, 유효한 응답은 provider@version·확률·지연과 함께 decision.observed로 기록된다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-DEC-001-N",
+    "requirements": [
+      "CRL-DEC-001"
+    ],
+    "suite": "contract",
+    "scenario": "후보 밖 answer·확률 범위나 합 오류·추가 필드는 decision.failed(invalid_response)이고, 미선언 질문은 호출 0회, 같은 요청의 중복 응답은 한 건만 기록된다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-DEC-002-H",
+    "requirements": [
+      "CRL-DEC-002"
+    ],
+    "suite": "integration",
+    "scenario": "같은 seed에서 observe와 off의 RequestPermit·budget.reserved·worker 요청이 같고, 판정 설정은 run.started에 고정된다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-DEC-002-N",
+    "requirements": [
+      "CRL-DEC-002"
+    ],
+    "suite": "integration",
+    "scenario": "timeout·요청 종료 뒤 결과·pause·execution 취소·maxDecisionCalls 도달이 Run 진행을 바꾸지 않으며, Run 종결 뒤 도착한 결과는 commit되지 않는다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-DEC-003-H",
+    "requirements": [
+      "CRL-DEC-003"
+    ],
+    "suite": "integration",
+    "scenario": "외부 provider는 live Run의 opt-in에서만 호출되고, 호출 전 effect.admitted(kind: decision)가 commit되며 이벤트에는 inputHash와 특징 값만 남는다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-DEC-003-N",
+    "requirements": [
+      "CRL-DEC-003"
+    ],
+    "suite": "integration",
+    "scenario": "mock Run·공개 데모·CI 설정의 외부 provider는 시작 시 거절되고, 이벤트·로그·export에 입력 발췌·자격 증명·로컬 경로가 없다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-DEC-004-H",
+    "requirements": [
+      "CRL-DEC-004"
+    ],
+    "suite": "e2e",
+    "scenario": "provider 두 개는 같은 inputHash로 판정 두 건을 남기고, Run 화면과 corral inspect가 둘을 나란히 \"not applied\"로 보인다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-DEC-004-N",
+    "requirements": [
+      "CRL-DEC-004"
+    ],
+    "suite": "e2e",
+    "scenario": "실패·timeout 판정도 성공과 같은 위치·무게로 보이고, 어떤 판정도 적용된 것으로 표시되지 않는다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
   }
 ]

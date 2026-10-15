@@ -1,3 +1,15 @@
+export {
+  type AdmissionConfig,
+  type AdmissionGates,
+  type AdmissionObserver,
+  type AdmissionStage,
+  DEFAULT_GATES,
+  type Gate,
+  type GateDecision,
+  type ModelGateView,
+  type ObserverView,
+  type ToolGateView,
+} from './admission/index.ts';
 export * from './budget.ts';
 export { canonicalJson } from './canonical-json.ts';
 export * from './compiler/index.ts';

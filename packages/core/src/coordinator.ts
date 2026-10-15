@@ -36,12 +36,23 @@ import {
 } from '@corral/contracts';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js';
+import {
+  type AdmissionConfig,
+  type AdmissionGates,
+  type AdmissionObserver,
+  type GateDecision,
+  type ModelGateView,
+  notifyObservers,
+  resolveGates,
+  runGates,
+  type ToolGateView,
+} from './admission/index.ts';
 import { admitModelRequest, settlementFor } from './budget.ts';
 import { canonicalJson } from './canonical-json.ts';
 import type { CompiledPlan } from './compiler/index.ts';
 import { type InstallationPolicy, limitViolations, SPEC_HARD_CAPS } from './config.ts';
 import { definitionHash } from './definition-hash.ts';
-import { createsWaitCycle, LogicalDeadline, noProgressReached } from './limits.ts';
+import { LogicalDeadline } from './limits.ts';
 import { applyEvent, emptyProjection, type RunProjection } from './projection.ts';
 import { planRun } from './run-plan.ts';
 import {
@@ -145,6 +156,8 @@ export interface CoordinatorDeps {
   models?: ModelResolver;
   /** Deadlines such as question timeouts. Without it, nothing times out. */
   timers?: Scheduler;
+  /** Admission gates and observers (ADR-024). Defaults to today's checks, no observers. */
+  admission?: AdmissionConfig;
 }
 
 const NO_DEADLINES: Scheduler = { after: () => () => {} };
@@ -266,9 +279,18 @@ interface ToolFrame {
   closing(resultRef: string | null, error?: string | null): EventDraft[];
 }
 
-type Refusal = CommandError & {
-  limit?: { kind: 'spawns' | 'questions' | 'depth'; used: number; max: number };
-};
+type Refusal = Extract<GateDecision, { kind: 'refuse' }>;
+
+/** Tool stages admit or refuse; a gate asking for a person's approval is a refusal there. */
+function toolRefusal(decision: GateDecision): Refusal | null {
+  if (decision.kind === 'allow') return null;
+  if (decision.kind === 'refuse') return decision;
+  return {
+    kind: 'refuse',
+    code: 'CAPABILITY_DENIED',
+    message: 'a tool call cannot wait for a person’s approval',
+  };
+}
 
 class StorageUnavailableError extends Error {}
 
@@ -279,6 +301,8 @@ export class Coordinator {
   private readonly store: RunStore;
   private readonly runner: GraphRunner;
   private readonly decisions: DecisionPolicy | undefined;
+  private readonly gates: AdmissionGates;
+  private readonly observers: readonly AdmissionObserver[];
   private readonly corrals: DefinitionSource | undefined;
   private readonly sessionId: string;
   private readonly policy: InstallationPolicy;
@@ -304,6 +328,8 @@ export class Coordinator {
     this.models = deps.models ?? SIMULATED_MODELS;
     this.timers = deps.timers ?? NO_DEADLINES;
     this.tools = deps.tools;
+    this.gates = resolveGates(deps.admission);
+    this.observers = deps.admission?.observers ?? [];
     this.recover();
   }
 
@@ -1473,6 +1499,7 @@ export class Coordinator {
       extra?.(events);
     });
     this.publish(run, projection);
+    notifyObservers(this.observers, projection, events);
     return events;
   }
 
@@ -2531,34 +2558,51 @@ export class Coordinator {
 
     const authorizeTool = async (proposal: ToolProposal): Promise<ToolAuthorization> => {
       const questionId = proposal.name === 'reply' ? proposal.args.questionId : null;
-      if (
-        typeof questionId === 'string' &&
-        run.projection.questions[questionId]?.status !== 'open' &&
-        run.projection.questions[questionId]
-      ) {
+      // Checks a pause cannot change run before the safe boundary (Technical-Design §5.4).
+      const early = toolRefusal(
+        runGates(this.gates['tool.pre_boundary'], this.toolView(run, input, proposal)),
+      );
+      if (early) {
+        const error: CommandError = { code: early.code, message: early.message };
+        if (proposal.name === 'reply') {
+          // A reply after the question closed is kept as an audit fact only.
+          this.commit(run, [
+            {
+              type: 'observation.late',
+              executionId,
+              payload: {
+                originalEventType: 'reply',
+                originalRef: typeof questionId === 'string' ? questionId : null,
+                whyIgnored: early.message,
+              },
+            },
+          ]);
+          return { ok: false, toolCallId: this.ids.next('tool_call'), error };
+        }
+        const toolCallId = this.ids.next('tool_call');
         this.commit(run, [
           {
-            type: 'observation.late',
+            type: 'tool.requested',
+            actor: agent,
             executionId,
-            payload: {
-              originalEventType: 'reply',
-              originalRef: questionId,
-              whyIgnored: 'the question has closed',
-            },
+            payload: { executionId, toolCallId, name: proposal.name, validatedArgs: {} },
+          },
+          {
+            type: 'tool.blocked',
+            executionId,
+            payload: { executionId, toolCallId, reason: `${error.code}: ${error.message}` },
           },
         ]);
-        return {
-          ok: false,
-          toolCallId: this.ids.next('tool_call'),
-          error: { code: 'TARGET_TERMINAL', message: 'the question has closed' },
-        };
+        return { ok: false, toolCallId, error };
       }
       do {
         await this.boundary(run, executionId);
       } while (run.projection.status !== 'running');
       requireActive();
       const toolCallId = this.ids.next('tool_call');
-      const refusal = this.toolRefusal(run, input, proposal);
+      const refusal = toolRefusal(
+        runGates(this.gates['tool.authorize'], this.toolView(run, input, proposal)),
+      );
       const error: CommandError | null = refusal
         ? { code: refusal.code, message: refusal.message }
         : null;
@@ -2599,7 +2643,7 @@ export class Coordinator {
                 payload: {
                   limitKind: refusal.limit.kind,
                   used: refusal.limit.used,
-                  reserved: 0,
+                  reserved: refusal.limit.reserved ?? 0,
                   max: refusal.limit.max,
                 },
               } satisfies EventDraft,
@@ -2641,7 +2685,9 @@ export class Coordinator {
           },
         };
       }
-      const refusal = this.toolRefusal(run, input, call.proposal);
+      const refusal = toolRefusal(
+        runGates(this.gates['tool.execute'], this.toolView(run, input, call.proposal)),
+      );
       if (refusal)
         return { ok: false, toolCallId, error: { code: refusal.code, message: refusal.message } };
       call.ran = true;
@@ -2717,22 +2763,26 @@ export class Coordinator {
           await this.boundary(run, executionId);
         } while (run.projection.status !== 'running');
         requireActive();
-        if (noProgressReached(run.projection.progress)) {
+        const view: ModelGateView = { projection: run.projection, limits: run.limits, input };
+        const request = runGates(this.gates['model.request'], view);
+        if (request.kind === 'refuse') this.refuseModelRequest(run, request);
+        if (request.kind === 'require_approval') {
           this.commit(run, [
             {
               type: 'limit.reached',
               payload: {
-                limitKind: 'no_progress',
-                used: run.projection.progress.turns,
-                reserved: 0,
-                max: 6,
+                limitKind: request.limit.kind,
+                used: request.limit.used,
+                reserved: request.limit.reserved ?? 0,
+                max: request.limit.max,
               },
             },
           ]);
           const requested = this.requestApproval(run, 'user_action', [run.criteriaVersionId]);
           run.boundaries.add(executionId);
           try {
-            if ((await requested.decision) !== 'approve') throw new Error('no_progress stopped');
+            if ((await requested.decision) !== 'approve')
+              throw new Error(`${request.limit.kind} stopped`);
           } finally {
             run.boundaries.delete(executionId);
           }
@@ -2753,6 +2803,26 @@ export class Coordinator {
           throw error;
         }
         const limits = run.limits;
+        const admit = runGates(this.gates['model.admit'], {
+          projection: run.projection,
+          limits,
+          input,
+        });
+        if (admit.kind !== 'allow') {
+          this.releaseSlot(run);
+          this.refuseModelRequest(
+            run,
+            admit.kind === 'refuse'
+              ? admit
+              : {
+                  kind: 'refuse',
+                  code: 'CAPABILITY_DENIED',
+                  message: 'admission cannot wait for approval after a slot is held',
+                },
+          );
+        }
+        // The reservation itself is the Coordinator's: even without a budget gate, a request the
+        // budget cannot cover is not admitted.
         const admitted = admitModelRequest(run.projection.budget, limits);
         if (!admitted.ok) {
           this.releaseSlot(run);
@@ -3003,218 +3073,38 @@ export class Coordinator {
     };
   }
 
-  /**
-   * Every check that decides whether a tool call may run (CRL-SEC-001, CRL-RUN-004,
-   * CRL-COL-002/003). Pure: nothing happens until an authorized call is executed. Unknown
-   * tools, shell or code tools included, are refused: role allowlists name only Corral tools.
-   */
-  private toolRefusal(
-    run: LiveRun,
-    input: AgentStartInput,
-    proposal: ToolProposal,
-  ): Refusal | null {
-    const { args } = proposal;
-    const p = run.projection;
-    const limits = run.limits;
-    const collaboration = input.role.allowedCollaborationTools as readonly string[];
-    const denied = (message: string): Refusal => ({ code: 'CAPABILITY_DENIED', message });
-    if (['search', 'read_document'].includes(proposal.name)) {
-      if (
-        !(input.role.allowedWorkTools as readonly string[]).includes(proposal.name) ||
-        !this.tools
-      )
-        return denied(`role may not use ${proposal.name}`);
-      const keys = Object.keys(args);
-      if (proposal.name === 'search')
-        return typeof args.query === 'string' &&
-          args.query.trim().length > 0 &&
-          args.query.length <= 500 &&
-          keys.every((k) => ['query', 'provider', 'limit'].includes(k)) &&
-          (args.provider === undefined ||
-            args.provider === 'corpus' ||
-            args.provider === 'brave') &&
-          (args.limit === undefined ||
-            (Number.isInteger(args.limit) && Number(args.limit) >= 1 && Number(args.limit) <= 10))
-          ? null
-          : { code: 'SCHEMA_INVALID', message: 'invalid search arguments' };
-      return keys.length === 1 &&
-        ['documentId', 'sourceId'].includes(keys[0] ?? '') &&
-        typeof args[keys[0] ?? ''] === 'string' &&
-        String(args[keys[0] ?? '']).length > 0
-        ? null
-        : { code: 'SCHEMA_INVALID', message: 'read_document requires one documentId or sourceId' };
-    }
-    if (proposal.name !== 'write_artifact' && proposal.name !== 'submit_result') {
-      if (!collaboration.includes(proposal.name)) {
-        return denied(
-          ['spawn_subagents', 'await_tasks', 'ask', 'reply', 'read_artifact'].includes(
-            proposal.name,
-          )
-            ? `role may not use ${proposal.name}`
-            : `unknown tool ${proposal.name}`,
-        );
-      }
-    }
-    const callables = run.plan.callables[input.nodeId] ?? { delegate: [], question: [] };
-    // Children and responders share one budget of dynamic executions (Spec §7.2).
-    const spawned = Object.values(p.executions).filter((e) => e.parentExecutionId !== null).length;
-    const live = Object.values(p.executions).filter(
-      (e) => !TERMINAL_EXECUTION_STATUSES.has(e.status),
-    ).length;
-    const capacity = (count: number): Refusal | null => {
-      if (input.depth + 1 > limits.maxDelegationDepth) {
-        return {
-          code: 'LIMIT_REACHED',
-          message: `delegation depth is limited to ${limits.maxDelegationDepth}`,
-          limit: { kind: 'depth', used: input.depth, max: limits.maxDelegationDepth },
-        };
-      }
-      if (spawned + count > limits.maxSpawns) {
-        return {
-          code: 'LIMIT_REACHED',
-          message: `this run may start ${limits.maxSpawns} delegated or responding executions`,
-          limit: { kind: 'spawns', used: spawned, max: limits.maxSpawns },
-        };
-      }
-      // Reserve resident capacity for the whole batch, or none of it (Technical-Design §8.1).
-      if (live + count > this.policy.maxResidentExecutions) {
-        return {
-          code: 'RESOURCE_CAPACITY',
-          message: `at most ${this.policy.maxResidentExecutions} executions may be alive at once`,
-        };
-      }
-      return null;
+  /** What tool gates see: the run as committed, this execution and the proposed call. */
+  private toolView(run: LiveRun, input: AgentStartInput, proposal: ToolProposal): ToolGateView {
+    return {
+      projection: run.projection,
+      limits: run.limits,
+      input,
+      proposal,
+      policy: this.policy,
+      callables: run.plan.callables[input.nodeId] ?? { delegate: [], question: [] },
+      externalTools: Boolean(this.tools),
+      responderOf: (questionId) => run.questions.get(questionId)?.responderExecutionId,
+      readable: () => this.readable(run, input),
     };
+  }
 
-    switch (proposal.name) {
-      case 'write_artifact': {
-        if (!input.role.allowedWorkTools.includes('write_artifact')) {
-          return denied('role may not write artifacts');
-        }
-        if (typeof args.text !== 'string') {
-          return { code: 'SCHEMA_INVALID', message: 'text must be a string' };
-        }
-        if (utf8ToBytes(args.text).length > this.policy.maxArtifactBytes) {
-          return {
-            code: 'LIMIT_REACHED',
-            message: `artifact versions are limited to ${this.policy.maxArtifactBytes} bytes`,
-          };
-        }
-        return null;
-      }
-      case 'submit_result': {
-        if (!input.role.allowedCollaborationTools.includes('submit_result')) {
-          return denied('role may not submit results');
-        }
-        const ids = args.artifactVersionIds;
-        const owned =
-          Array.isArray(ids) &&
-          ids.length > 0 &&
-          ids.every(
-            (id) =>
-              typeof id === 'string' && p.artifacts[id]?.authorExecutionId === input.executionId,
-          );
-        return owned ? null : denied('only versions written by this execution can be submitted');
-      }
-      case 'spawn_subagents': {
-        const tasks = args.tasks;
-        if (!Array.isArray(tasks) || tasks.length === 0 || tasks.length > 4) {
-          return { code: 'SCHEMA_INVALID', message: 'tasks must list 1 to 4 tasks' };
-        }
-        for (const task of tasks as { targetNodeId?: unknown; brief?: unknown }[]) {
-          if (typeof task?.brief !== 'string' || !task.brief.trim() || task.brief.length > 4000) {
-            return {
-              code: 'SCHEMA_INVALID',
-              message: 'each task needs a brief of 1 to 4000 characters',
-            };
-          }
-          if (
-            typeof task.targetNodeId !== 'string' ||
-            !callables.delegate.includes(task.targetNodeId)
-          ) {
-            return denied(
-              `${input.nodeId} may not delegate to ${String(task?.targetNodeId)}: no capability link`,
-            );
-          }
-        }
-        return capacity(tasks.length);
-      }
-      case 'await_tasks': {
-        if (
-          Array.isArray(args.taskIds) &&
-          createsWaitCycle(
-            p,
-            input.executionId,
-            args.taskIds.flatMap((id) => {
-              const active = typeof id === 'string' ? p.tasks[id]?.activeExecutionId : null;
-              return active ? [active] : [];
-            }),
-          )
-        )
-          return denied('waiting would create a cycle');
-        const ids = args.taskIds;
-        if (!Array.isArray(ids) || ids.length === 0) {
-          return { code: 'SCHEMA_INVALID', message: 'taskIds must list the tasks to wait for' };
-        }
-        const mine = new Set(
-          Object.values(p.executions)
-            .filter((e) => e.parentExecutionId === input.executionId)
-            .map((e) => e.taskId),
-        );
-        return ids.every((id) => typeof id === 'string' && mine.has(id))
-          ? null
-          : denied('only tasks this execution started can be awaited');
-      }
-      case 'ask': {
-        if (typeof args.body !== 'string' || !args.body.trim() || args.body.length > 12000) {
-          return { code: 'SCHEMA_INVALID', message: 'body must be 1 to 12000 characters' };
-        }
-        if (
-          typeof args.targetNodeId !== 'string' ||
-          !callables.question.includes(args.targetNodeId)
-        ) {
-          return denied(
-            `${input.nodeId} may not ask ${String(args.targetNodeId)}: no capability link`,
-          );
-        }
-        const asked = Object.keys(p.questions).length;
-        if (asked >= limits.maxQuestions) {
-          return {
-            code: 'LIMIT_REACHED',
-            message: `this run may ask ${limits.maxQuestions} questions`,
-            limit: { kind: 'questions', used: asked, max: limits.maxQuestions },
-          };
-        }
-        return capacity(1);
-      }
-      case 'reply': {
-        const question = p.questions[String(args.questionId)];
-        if (typeof args.body !== 'string' || !args.body.trim() || args.body.length > 12000) {
-          return { code: 'SCHEMA_INVALID', message: 'body must be 1 to 12000 characters' };
-        }
-        const open =
-          typeof args.questionId === 'string' ? run.questions.get(args.questionId) : undefined;
-        if (!question || open?.responderExecutionId !== input.executionId) {
-          return question && question.status !== 'open'
-            ? {
-                code: 'TARGET_TERMINAL',
-                message: `question ${question.questionId} is already ${question.status}`,
-              }
-            : denied('this execution was not asked that question');
-        }
-        return null;
-      }
-      case 'read_artifact': {
-        const id = args.artifactVersionId;
-        if (typeof id !== 'string' || !p.artifacts[id]) {
-          return { code: 'TARGET_NOT_FOUND', message: 'no such artifact version' };
-        }
-        return this.readable(run, input).has(id)
-          ? null
-          : denied('this version is not in this execution’s scope');
-      }
+  /** A refused model request: the limit it reached, if any, is a fact; the agent gets an error. */
+  private refuseModelRequest(run: LiveRun, refusal: Refusal): never {
+    if (refusal.limit) {
+      this.commit(run, [
+        {
+          type: 'limit.reached',
+          payload: {
+            limitKind: refusal.limit.kind,
+            used: refusal.limit.used,
+            reserved: refusal.limit.reserved ?? 0,
+            max: refusal.limit.max,
+          },
+        },
+      ]);
+      throw new Error(`LIMIT_REACHED: ${refusal.limit.kind}`);
     }
-    return denied(`unknown tool ${proposal.name}`);
+    throw new Error(`${refusal.code}: ${refusal.message}`);
   }
 
   /**

@@ -23,6 +23,8 @@ export const ErrorCode = z.enum([
   'STORAGE_UNAVAILABLE',
   'SESSION_INVALID',
   'ORIGIN_REJECTED',
+  /** An admission gate failed; the call is refused, never let through (ADR-024). */
+  'POLICY_ERROR',
 ]);
 export type ErrorCode = z.infer<typeof ErrorCode>;
 

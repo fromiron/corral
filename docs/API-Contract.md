@@ -93,6 +93,7 @@ steer receipt의 applied는 입력 dispatch 확인을 의미한다. 품질 준�
 | STORAGE_UNAVAILABLE | 503 | 사실 기록이 불가하므로 신규 admission 닫음 |
 | SESSION_INVALID | 401 | 세션/부트스트랩 오류 |
 | ORIGIN_REJECTED | 403 | 허용하지 않는 Origin/Host/CSRF |
+| POLICY_ERROR | 500 | admission gate가 예외로 실패해 요청·도구 호출을 거절함(fail closed). 통과로 처리하지 않음 (CR-003, ADR-024, C-067) |
 
 provider/network error는 사용자 키 원문·응답 헤더를 포함하지 않는다. trace용 errorId와 마스킹된 이유를 제공한다. 도구 실행 중 실패는 HTTP success/error와 별개로 ToolOutcome에 structured error를 넣는다.
 
@@ -148,6 +149,11 @@ provider/network error는 사용자 키 원문·응답 헤더를 포함하지 �
 | `cancel.confirmed` | scope,settlementRefs |
 | `observation.late` | originalEvent,whyIgnored |
 | `output.finalized` | artifactVersionIds,approvalId |
+| `decision.requested` | decisionId,questionKind,questionVersion,provider@version,privacy,subject(runId,executionId,attemptNo,modelCallId,contextSnapshotId),inputHash. **CR-003, C-068에서 구현 예정** |
+| `decision.observed` | decisionId,answer,probabilities,evidenceLevel,latencyMs,readyBeforeDispatch,afterRequestFinished. 관찰 전용이며 요청에 적용되지 않음. **구현 예정** |
+| `decision.failed` | decisionId,reason(`timeout`·`invalid_response`·`provider_error`·`unavailable`·`cancelled`),latencyMs. **구현 예정** |
+
+CR-003(C-068)에서 함께 바뀌는 기존 payload: `effect.admitted.kind`에 `decision`(외부 provider만), `limit.reached.limitKind`에 `decision_calls`, `run.started`에 `decisions`(모드·provider·사용 가능 여부). 구현 전까지 Zod·JSON Schema·event catalog에는 없다.
 
 구현(P5)에서 정한 검토·승인 규칙:
 

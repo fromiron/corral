@@ -165,6 +165,22 @@ command는 의도, event는 확정된 사실, effect는 프로그램 밖에서 �
 
 crash 이후 pending effect를 자동 재발행하지 않는다. 실행 기록용 effect intent는 남기지만 recovery 정책은 Run interrupted다. 향후 crash resume을 도입할 때 별도 설계해야 한다.
 
+### 5.4 Admission gate와 observer
+
+모델 요청·도구 승인·도구 실행 검사는 Coordinator 생성 시 등록한 gate 목록으로 수행한다([ADR-024](Decisions.md), [CR-003](change-requests/CR-003-admission-hooks-effort-observe.md)).
+
+| stage | 시점 | 기본 gate (등록 순서) | 거절 결과 |
+|---|---|---|---|
+| `model.request` | 모델 슬롯을 잡기 전 | `no_progress@1`(사용자 승인 요구) | `limit.reached` 후 승인 대기, 반려 시 실행 실패 |
+| `model.admit` | 슬롯을 잡은 뒤 | `budget@1` | 슬롯 반환, `limit.reached` |
+| `tool.pre_boundary` | 안전 경계 대기 전 | `question_open@1` | reply는 `observation.late` + `TARGET_TERMINAL`, 그 밖은 `tool.blocked` |
+| `tool.authorize` | 경계에서 제안 시 | `role_allowlist@1`, `limits@1` | `tool.blocked`, 필요 시 `limit.reached` |
+| `tool.execute` | 실행 직전 재검사 | `role_allowlist@1`, `limits@1` | 실행 거절 |
+
+`role_allowlist`는 도구 이름·인자 형식·capability link·소유·읽기 범위를, `limits`는 위임 깊이·spawn·상주 용량·질문 수·산출물 크기를 본다. 도구마다 형식·권한 검사가 한도 검사보다 먼저였으므로 둘로 나눠도 검사 순서는 그대로다. 예산 예약량(maxOutputTokens)은 gate가 아니라 Coordinator가 계산하며, budget gate가 빠진 설정에서도 예산을 넘는 요청은 admit하지 않는다.
+
+gate는 읽기 전용 view를 받는 동기 순수 함수다. 첫 거절에서 멈추고, 예외는 `POLICY_ERROR` 거절이다. view는 깊은 읽기 전용 proxy이며 쓰기는 예외가 된다. commit된 사실은 frozen이라 proxy는 같은 종류의 빈 shadow를 감싸고 실제 값을 읽어 온다(frozen 속성에 다른 객체를 돌려줄 수 없는 Proxy 불변식 때문). observer(`model.prepared`, `model.finished`, `tool.finished`)는 commit 뒤 비동기로 실행되며 Coordinator가 fence를 확인한 sink로만 기록한다. 안전 경계·슬롯·승인 생성·ID·commit은 gate가 아니다. 기본 집합은 리팩터 전 golden 이벤트 열(`packages/core/test/golden/`)과 바이트 단위로 같아야 한다.
+
 ## 6. Run·Execution·Task 상태
 
 ### 6.1 Run
@@ -447,6 +463,8 @@ MVP 자료는 등록한 text/Markdown와 안전하게 추출한 HTML text다. PD
 ## 15. 확장 포트와 보류 기준
 
 `DecisionProvider`는 이번 단계에서 플러그인 시스템으로 만들지 않고, DecisionNode에서 결과를 받는 작은 내부 포트만 유지한다. v0.2에 동일 질문 계약의 `Local`/`Jev` adapter를 넣는다. Node.js↔Python 실행 경계를 지금부터 강제하지 않는다.
+
+v0.2 첫 질문 종류는 `reasoning_effort` v1이다([ADR-025](Decisions.md)). 이것은 Decision 노드의 `DecisionPolicy`와 별개인 `DecisionProvider` 계약이며, provider는 질문 종류·버전·privacy·timeout을 선언하고 Coordinator는 선언하지 않은 질문을 보내지 않는다. 판정은 `model.request_prepared` commit 뒤 observer가 실행하고 `decision.requested/observed/failed`로만 기록한다. 모드는 `off | observe`이며 Run 시작 시 고정한다. 요청 적용, ONNX 모델, Jev adapter는 후속 CR이다.
 
 `GraphRunner`와 `AgentAdapter`는 분리한다. LangGraph가 맡는 순회와 Pi가 맡는 모델/도구 세션을 변경해도 public command/event contract가 변하지 않게 한다. 다만 adapter 교체만으로 모든 프레임워크 내부를 관측할 수 있다고 약속하지 않는다.
 
