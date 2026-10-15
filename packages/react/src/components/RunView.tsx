@@ -4,6 +4,8 @@ import type { ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import type { RunSessionStore, StreamText } from '../run/session.ts';
+import { BudgetInspector } from './BudgetInspector.tsx';
+import { RunActions } from './RunActions.tsx';
 import { SafeMarkdown } from './SafeMarkdown.tsx';
 import { StatusBadge } from './StatusBadge.tsx';
 
@@ -39,12 +41,17 @@ export function RunView({
       ) : null}
       {projection ? (
         <>
+          <RunActions key={projection.runId} session={session} />
+          <BudgetInspector session={session} />
           <div className="flex items-center gap-2 text-xs">
             <span className="text-muted">{t('status')}</span>
             <span aria-live="polite" data-testid="run-status">
               <StatusBadge status={projection.status} />
             </span>
           </div>
+          {projection.statusReason ? (
+            <p className="text-xs text-muted">{t('reason', { reason: projection.statusReason })}</p>
+          ) : null}
           <div className="flex flex-col gap-1">
             <h3 className="text-xs font-semibold">{t('executions')}</h3>
             {projection.executionOrder.length === 0 ? (
@@ -139,8 +146,11 @@ function ExecutionRow({
   const waiting = execution.waitingOn;
   // While a request streams, its text so far; it is replaced by the submitted output.
   const openCall = execution.modelCallIds.at(-1);
+  const lastResponse = openCall ? streams[openCall] : undefined;
   const live =
-    !done && openCall && !projection.modelCalls[openCall]?.finished ? streams[openCall] : undefined;
+    lastResponse?.completed || (!done && openCall && !projection.modelCalls[openCall]?.finished)
+      ? lastResponse
+      : undefined;
   return (
     <li
       id={`execution-${id}`}
@@ -161,15 +171,13 @@ function ExecutionRow({
         </span>
         <span className="flex items-center gap-2">
           <StatusBadge status={execution.status} />
-          {!done ? (
-            <button
-              type="button"
-              onClick={() => onSteer(id)}
-              className="rounded border border-line px-1.5 py-0.5"
-            >
-              {t('steerThis')}
-            </button>
-          ) : null}
+          <button
+            type="button"
+            onClick={() => onSteer(id)}
+            className="rounded border border-line px-1.5 py-0.5"
+          >
+            {t('steerThis')}
+          </button>
         </span>
       </div>
       {waiting ? (
@@ -189,6 +197,8 @@ function ExecutionRow({
           ))}
         </p>
       ) : null}
+      {execution.error ? <p className="mt-1 text-danger">{execution.error}</p> : null}
+      {live?.completed ? <p className="mt-1 font-medium">{t('completedResponse')}</p> : null}
       {live?.text ? (
         <p
           data-testid="live-text"

@@ -1,6 +1,6 @@
 # 001-canvas 태스크 상태
 
-`implemented`는 로컬 게이트를 통과했지만 CI 증거가 아직 없다는 뜻이다. CI에서 연결된 테스트가 통과하면 `done`으로 바꾼다. 증거: [P0](evidence/P0.md), [P1](evidence/P1.md), [P2](evidence/P2.md), [P3](evidence/P3.md), [P4](evidence/P4.md), [P5](evidence/P5.md).
+`implemented`는 로컬 게이트를 통과했지만 CI 증거가 아직 없다는 뜻이다. CI에서 연결된 테스트가 통과하면 `done`으로 바꾼다. 증거: [P0](evidence/P0.md), [P1](evidence/P1.md), [P2](evidence/P2.md), [P3](evidence/P3.md), [P4](evidence/P4.md), [P5](evidence/P5.md), [P6](evidence/P6.md), [P7](evidence/P7.md), [P8](evidence/P8.md), [P9](evidence/P9.md), [셀프 리뷰 수정·실제 동작 점검](evidence/review-fixes.md).
 
 | 태스크 | 상태 | 결과물 |
 |---|---|---|
@@ -45,6 +45,27 @@
 | C-028 | implemented | Loop 상한에서 `loop_cap` 승인, 설치 hard cap은 승인으로 넘을 수 없음(`limit.reached`) |
 | C-029 | implemented | `approval.requested/resolved`, `resolve_approval`(대상 버전·control revision·재전송), Output `requireApproval`의 최종 승인, Studio 승인 패널 |
 | C-030 | implemented | 산출물 보기의 계보(수정 대상·입력 버전), 이전 버전과 줄 diff, 검토 판정·이슈. 지시 경로(CRL-RNS-010)는 P6 |
+| C-031 | implemented | Steer enqueue·delivery receipt ([P6 증거](evidence/P6.md)) |
+| C-032 | implemented | Pause/drain/resume 경계 ([P6 증거](evidence/P6.md)) |
+| C-033 | implemented | 전체·개별 cancel과 후손 정리 ([P6 증거](evidence/P6.md)) |
+| C-034 | implemented | 명시적 재시작과 이전 epoch 차단 ([P6 증거](evidence/P6.md)) |
+| C-035 | implemented | 미래 config patch·범위 미리보기 ([P6 증거](evidence/P6.md)) |
+| C-036 | implemented | 지시/기준 변경과 산출물 연결 ([P6 증거](evidence/P6.md)) |
+| C-037 | implemented | 예산 예약·정산·설정 변경 ([P7 증거](evidence/P7.md)) |
+| C-038 | implemented | wait graph·총량·deadline·no progress ([P7 증거](evidence/P7.md)) |
+| C-039 | implemented | 경합 property test·late results ([P7 증거](evidence/P7.md)) |
+| C-040 | implemented | crash interrupted·기록 export/reopen ([P7 증거](evidence/P7.md)) |
+| C-041 | implemented | backpressure·재접속·마지막 텍스트 복구 ([P7 증거](evidence/P7.md)) |
+| C-042 | implemented | CSRF·rate/size·키 누출·DNS rebinding 전체 감사 ([P8 증거](evidence/P8.md)) |
+| C-043 | implemented | 문서 import·안전 URL reader ([P8 증거](evidence/P8.md)) |
+| C-044 | implemented | SearchProvider mock+Brave live ([P8 증거](evidence/P8.md)) |
+| C-045 | implemented | CLI 동일 command/query 경로 ([P8 증거](evidence/P8.md)) |
+| C-046 | implemented | public DemoDriver와 fixture pack ([P9 증거](evidence/P9.md)) |
+| C-047 | implemented | Storybook 상태·Playwright 키보드/IME ([P9 증거](evidence/P9.md)) |
+| C-048 | implemented | 부하·가상화·profiling 예산 ([P9 증거](evidence/P9.md)) |
+| C-049 | implemented | release gate·SBOM·라이선스 ([P9 증거](evidence/P9.md)) |
+| C-050 | implemented | 포트폴리오 사례 문서·known limitations ([P9 증거](evidence/P9.md)) |
+| C-061 | implemented | BudgetInspector·usage 표시 ([P7 증거](evidence/P7.md)) |
 
 ## 다음 단계를 위해 미리 만든 것
 

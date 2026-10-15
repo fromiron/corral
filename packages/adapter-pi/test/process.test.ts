@@ -1,3 +1,4 @@
+import { fork } from 'node:child_process';
 import { join } from 'node:path';
 import {
   Coordinator,
@@ -46,6 +47,29 @@ async function run(transport: InProcessTransport) {
 }
 
 describe('worker in a child process (C-017, ADR-017)', () => {
+  it('[TC-RUN-007-N] exits when the owning coordinator process disconnects', async () => {
+    const child = fork(join(import.meta.dirname, 'fixtures', 'orphan-worker.ts'), [], {
+      stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
+    });
+    const exited = new Promise<number | null>((resolve) => child.once('exit', resolve));
+    try {
+      await new Promise<void>((resolve) => child.once('message', () => resolve()));
+      child.disconnect();
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      const result = await Promise.race([
+        exited,
+        new Promise<string>((resolve) => {
+          timeout = setTimeout(() => resolve('still alive'), 500);
+        }),
+      ]);
+      clearTimeout(timeout);
+      expect(result).toBe(1);
+    } finally {
+      child.kill('SIGKILL');
+      await exited;
+    }
+  });
+
   it('completes a live step over IPC, and the worker gets no secret from the environment', async () => {
     process.env.OPENAI_API_KEY = 'sk-must-not-reach-the-worker';
     const transport = runtime('complete');

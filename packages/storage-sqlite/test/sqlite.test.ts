@@ -184,6 +184,13 @@ describe('Coordinator over a SQLite file', () => {
     await waitForProjection(transportA, runId ?? '', (p) =>
       Object.values(p.effects).some((e) => e.kind === 'model_request'),
     );
+    const cached = new SqliteRunStore(dbA).getRun(runId ?? '')?.projection;
+    if (!cached) throw new Error('expected running projection');
+    const oldProjection: Partial<RunProjection> = { ...cached };
+    delete oldProjection.budget;
+    dbA
+      .prepare('UPDATE runs SET projection_json = ? WHERE id = ?')
+      .run(JSON.stringify(oldProjection), runId);
     // The process dies: its connection is gone; the late reply cannot record anything.
     dbA.close();
     gate.open();
@@ -207,6 +214,39 @@ describe('Coordinator over a SQLite file', () => {
     expect(projection.interruptedBy).toBe('backend_b');
     expect(starts).toBe(0);
     expect(first.admitting).toBe(false);
+  });
+
+  it('[TC-RUN-007-H] rebuilds a P5 cached projection from events without changing persisted history', async () => {
+    const file = tempFile();
+    const db = openDatabase(file);
+    const store = new SqliteRunStore(db);
+    const transport = new InProcessTransport(
+      new Coordinator({
+        clock: new FakeClock(),
+        ids: new SequentialIdFactory(),
+        agents: new ScriptedAgentAdapter({ turns: 1 }),
+        store,
+      }),
+    );
+    const { runId } = await transport.startRun({
+      schemaVersion: '0.1',
+      commandId: 'cmd_legacy',
+      definition: linearCorral(['writer']),
+      mode: 'mock',
+    });
+    if (!runId) throw new Error('expected run');
+    const done = await waitForProjection(transport, runId, settled);
+    const legacy: Partial<RunProjection> = { ...done };
+    delete legacy.budget;
+    const cached = JSON.stringify(legacy);
+    db.prepare('UPDATE runs SET projection_json = ? WHERE id = ?').run(cached, runId);
+    const events = store.readEvents(runId, 0);
+    expect(store.getRun(runId)?.projection).toEqual(done);
+    expect(db.prepare('SELECT projection_json FROM runs WHERE id = ?').get(runId)).toEqual({
+      projection_json: cached,
+    });
+    expect(store.readEvents(runId, 0)).toEqual(events);
+    db.close();
   });
 
   it('reads a finished run from a new process without any agent', async () => {
@@ -241,5 +281,21 @@ describe('Coordinator over a SQLite file', () => {
     const output = done.output?.artifactVersionIds[0] ?? '';
     expect(reader.getArtifactText(runId ?? '', output)).toContain('writer (writer) turn 1');
     expect(reader.listRuns().map((r) => [r.runId, r.status])).toEqual([[runId, 'succeeded']]);
+  });
+});
+
+describe('read-only history', () => {
+  it('[TC-RUN-007-H] opens records without migration or modifying a running run', async () => {
+    const { openReadOnlyDatabase } = await import('../src/database.ts');
+    const file = tempFile();
+    const writable = openDatabase(file);
+    describeOnce(new SqliteRunStore(writable));
+    const before = writable.prepare('SELECT status, last_seq FROM runs').all();
+    const reader = openReadOnlyDatabase(file);
+    expect(new SqliteRunStore(reader).listRuns()).toHaveLength(1);
+    expect(() => reader.prepare("UPDATE runs SET status = 'interrupted'").run()).toThrow();
+    expect(writable.prepare('SELECT status, last_seq FROM runs').all()).toEqual(before);
+    reader.close();
+    writable.close();
   });
 });

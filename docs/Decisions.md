@@ -195,3 +195,14 @@
 **이유:** fragment는 서버 로그·Referer로 전달되지 않는다. 다른 사이트의 페이지도 loopback port에 요청을 보낼 수 있으므로, 세션 없이 읽기를 허용하거나 Origin 없는 쓰기를 허용하면 안 된다. 표시 없는 health probe는 데모 hosting에서 404 console 오류를 만든다.
 
 **결과·제약:** 서버를 재시작하면 세션이 끝나고 새 링크가 필요하다. 브라우저를 다시 열어도 cookie가 사라진다(session cookie). CSRF token, 요청 빈도 제한, DNS rebinding 전체 감사는 C-042(P8)다. CSP에 `unsafe-eval`이 없으므로 Studio는 Zod를 jitless 모드로 실행한다.
+
+
+## ADR-023: 큰 영속 이벤트는 한 건씩 배압을 지키며 재생한다
+
+**상태:** 채택 (2026-10-15, C-041 결함 수정, [CR-002](change-requests/CR-002-oversized-domain-replay.md))
+
+**결정:** 1 MiB보다 큰 committed domain frame은 구독을 해제한 연결에서 prefix를 먼저 flush하고 64 KiB 이하의 바이트 조각을 순차 전송한 뒤 연결을 종료한다. 현재 이벤트 한 건 외 후속 이벤트를 큐에 쌓지 않는다. 클라이언트는 완전한 frame만 schema 검사·적용하고 그 runSeq를 재접속 cursor로 쓴다.
+
+**이유:** 2 MiB 이하인 정상 취소 요청과 before+after를 함께 가진 미래 설정 patch가 기존 1 MiB 전송 상한을 넘을 수 있다. 입력을 제한해도 이미 저장한 이벤트의 재생 불능은 해결되지 않는다.
+
+**결과·제약:** 일반 outgoing 큐 1 MiB와 10초 flush deadline을 유지한다. 전송·파싱 중 현재 domain record 한 건의 메모리는 필요하다. 주석·헤더·비영속 frame에는 고정 상한을 유지한다. 이벤트·저장 schema, receipt 의미와 cursor 규칙은 바꾸지 않는다.

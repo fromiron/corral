@@ -15,3 +15,6 @@ blob-report/
 .env.*
 # Manual live smoke results (copied into evidence by hand)
 tests/live/.last-run.json
+
+# Production-only performance fixture output
+dist-performance/

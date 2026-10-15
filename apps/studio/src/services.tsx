@@ -40,24 +40,27 @@ const systemClock: Clock = {
   monotonicMs: () => performance.now(),
 };
 
-function browserStore(): { store: KeyValueStore; persistent: boolean } {
-  try {
-    const store = window.localStorage;
-    const probe = 'corral:probe';
-    store.setItem(probe, '1');
-    store.removeItem(probe);
-    return { store, persistent: true };
-  } catch {
-    const memory = new Map<string, string>();
-    return {
-      persistent: false,
-      store: {
-        getItem: (key) => memory.get(key) ?? null,
-        setItem: (key, value) => void memory.set(key, value),
-        removeItem: (key) => void memory.delete(key),
-      },
-    };
+function browserStore(memoryOnly = false): { store: KeyValueStore; persistent: boolean } {
+  if (!memoryOnly) {
+    try {
+      const store = window.localStorage;
+      const probe = 'corral:probe';
+      store.setItem(probe, '1');
+      store.removeItem(probe);
+      return { store, persistent: true };
+    } catch {
+      // Storage can be refused in private browsing; keep the editor usable in memory.
+    }
   }
+  const memory = new Map<string, string>();
+  return {
+    persistent: false,
+    store: {
+      getItem: (key) => memory.get(key) ?? null,
+      setItem: (key, value) => void memory.set(key, value),
+      removeItem: (key) => void memory.delete(key),
+    },
+  };
 }
 
 /** Takes `#bootstrap=<token>` off the address so it is neither reused nor shared. */
@@ -77,7 +80,8 @@ function servedByLocalServer(): boolean {
 
 export async function createStudioServices(): Promise<StudioServices> {
   const http = { baseUrl: '' };
-  const health = servedByLocalServer() ? await probeServer(http) : null;
+  const health =
+    window.location.pathname !== '/demo' && servedByLocalServer() ? await probeServer(http) : null;
   if (health) {
     const token = takeBootstrapToken();
     if (token) await openSession(http, token);
@@ -93,7 +97,7 @@ export async function createStudioServices(): Promise<StudioServices> {
       live: health.live,
     };
   }
-  const { store, persistent } = browserStore();
+  const { store, persistent } = browserStore(window.location.pathname === '/demo');
   const transport = createDemoTransport();
   return {
     mode: 'browser',

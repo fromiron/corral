@@ -49,6 +49,7 @@ class WorkerExecution {
   private readonly settlement: Promise<AgentSettlement>;
   private resolve!: (settlement: AgentSettlement) => void;
   private timer: ReturnType<typeof setTimeout> | null = null;
+  private pendingSettlement: AgentSettlement | null = null;
 
   private readonly input: AgentStartInput;
   private readonly host: AgentHost;
@@ -73,9 +74,14 @@ class WorkerExecution {
       this.queue = this.queue.then(() => this.receive(raw)).catch(() => this.violation());
     });
     this.channel.onExit((code) => {
-      this.finish({
-        outcome: 'failed',
-        error: `the model worker stopped unexpectedly (${code === null ? 'killed' : `exit ${code}`})`,
+      // Drain already-received IPC before deciding whether the worker supplied a result.
+      void this.queue.finally(() => {
+        this.finish(
+          this.pendingSettlement ?? {
+            outcome: 'failed',
+            error: `the model worker stopped unexpectedly (${code === null ? 'killed' : `exit ${code}`})`,
+          },
+        );
       });
     });
     this.handle = {
@@ -101,25 +107,45 @@ class WorkerExecution {
 
   private violation() {
     if (this.state === 'done') return;
-    this.finish({ outcome: 'failed', error: INVALID });
+    this.pendingSettlement = { outcome: 'failed', error: INVALID };
+    this.waitForExit();
     this.channel.kill();
   }
 
+  private waitForExit() {
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = setTimeout(
+      () => {
+        this.finish({
+          outcome: 'failed',
+          terminationMode: 'unconfirmed',
+          error: 'termination_unconfirmed',
+        });
+      },
+      Math.min(this.options.cancelGraceMs ?? 1_000, 1_000),
+    );
+  }
+
   private async cancel(reason: string) {
-    if (this.state === 'done') return;
+    if (this.state === 'done' || this.pendingSettlement) return;
     this.send({ type: 'cancel', reason });
-    this.timer = setTimeout(() => {
-      if (this.state === 'done') return;
-      this.finish({
-        outcome: 'cancelled',
-        error: 'the model worker did not stop in time and was terminated',
-      });
-      this.channel.kill();
-    }, this.options.cancelGraceMs ?? 10_000);
+    this.timer = setTimeout(
+      () => {
+        if (this.state === 'done') return;
+        this.pendingSettlement = {
+          outcome: 'cancelled',
+          error: 'the model worker did not stop in time and was terminated',
+          terminationMode: 'forced',
+        };
+        this.waitForExit();
+        this.channel.kill();
+      },
+      Math.min(this.options.cancelGraceMs ?? 9_000, 9_000),
+    );
   }
 
   private async receive(raw: unknown) {
-    if (this.state === 'done') return;
+    if (this.state === 'done' || this.pendingSettlement) return;
     const parsed = WorkerFrame.safeParse(raw);
     if (!parsed.success) return this.violation();
     const frame = parsed.data;
@@ -161,6 +187,9 @@ class WorkerExecution {
     }
 
     switch (frame.type) {
+      case 'request_dispatched':
+        await this.host.modelRequestDispatched?.(frame.modelCallId);
+        return;
       case 'prepare_request': {
         try {
           const permit = await this.host.prepareModelRequest();
@@ -237,7 +266,11 @@ class WorkerExecution {
         });
         return;
       case 'settled':
-        this.finish({ outcome: frame.outcome, ...(frame.error ? { error: frame.error } : {}) });
+        this.pendingSettlement = {
+          outcome: frame.outcome,
+          ...(frame.error ? { error: 'the model worker reported a request failure' } : {}),
+        };
+        this.waitForExit();
         return;
     }
   }
@@ -248,6 +281,8 @@ function offeredTools(input: AgentStartInput): WorkerTool[] {
   const may = (tool: string) =>
     (role.allowedCollaborationTools as readonly string[]).includes(tool);
   const tools: WorkerTool[] = [];
+  if (role.allowedWorkTools.includes('search')) tools.push('search');
+  if (role.allowedWorkTools.includes('read_document')) tools.push('read_document');
   if (role.allowedWorkTools.includes('write_artifact')) tools.push('write_artifact');
   if (may('read_artifact')) tools.push('read_artifact');
   if (may('spawn_subagents') && capabilities.delegateTo.length > 0) tools.push('spawn_subagents');
@@ -258,6 +293,7 @@ function offeredTools(input: AgentStartInput): WorkerTool[] {
   return tools;
 }
 
-function reasonOf(error: unknown): string {
-  return (error instanceof Error ? error.message : String(error)).slice(0, 300) || 'refused';
+function reasonOf(_error: unknown): string {
+  // Provider exceptions may echo credentials, local paths or the full request body.
+  return 'the host could not complete this request';
 }

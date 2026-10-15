@@ -67,6 +67,7 @@ export const RunStarted = event(
     mode: z.enum(['mock', 'live']),
     modelProfiles: z.array(ModelProfileSnapshot),
     limits: RunLimits,
+    criteriaVersionId: Identifier.optional(),
   }),
 );
 export const RunStateChanged = event(
@@ -84,12 +85,15 @@ export const ExecutionCreated = event(
   z.strictObject({
     executionId: Identifier,
     parentExecutionId: Identifier.nullable(),
+    previousExecutionId: Identifier.optional(),
     nodeId: Identifier,
     taskId: Identifier,
     attemptNo: z.int().min(1),
     depth: z.int().min(0).max(2),
     iterationId: Identifier.nullable(),
     modelProfile: Identifier,
+    configRevision: z.int().min(0).optional(),
+    criteriaVersionId: Identifier.optional(),
   }),
 );
 export const ExecutionStateChanged = event(
@@ -407,6 +411,10 @@ export const ModelFinished = event(
     certainty: z.enum(['reported', 'estimated', 'unknown']),
   }),
 );
+export const ModelUsageReconciled = event(
+  'model.usage_reconciled',
+  ModelFinished.shape.payload.omit({ responseRef: true }),
+);
 export const BudgetReserved = event(
   'budget.reserved',
   z.strictObject({
@@ -490,6 +498,7 @@ export const RunEvent = z.discriminatedUnion('type', [
   ToolFinished,
   ModelRequestPrepared,
   ModelFinished,
+  ModelUsageReconciled,
   BudgetReserved,
   BudgetSettled,
   LimitReached,

@@ -586,7 +586,8 @@
       "packages/react/reins/"
     ],
     "done": "실행 중 접수되고 다음 request에 정확한 directive IDs 포함",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P6.md"
   },
   {
     "id": "C-032",
@@ -603,7 +604,8 @@
       "packages/core/reins/"
     ],
     "done": "대기 child 때문에 pause 교착 없음, paused 후 신규 effects 없음",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P6.md"
   },
   {
     "id": "C-033",
@@ -623,7 +625,8 @@
       "packages/core/cancellation/"
     ],
     "done": "후손/도구/질문 resolver 종료 후 취소 완료",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P6.md"
   },
   {
     "id": "C-034",
@@ -640,7 +643,8 @@
       "packages/core/reins/restart.ts"
     ],
     "done": "부모가 대기하는 Task만 새 시도, 이전 결과는 감사만",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P6.md"
   },
   {
     "id": "C-035",
@@ -658,7 +662,8 @@
       "packages/react/reins/"
     ],
     "done": "active config 불변, future node activation에만 반영",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P6.md"
   },
   {
     "id": "C-036",
@@ -678,7 +683,8 @@
       "packages/react/artifacts/"
     ],
     "done": "접수 시각만으로 이전 요청 결과를 지시에 연결하지 않음",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P6.md"
   },
   {
     "id": "C-037",
@@ -697,7 +703,8 @@
       "packages/core/budget/"
     ],
     "done": "동시 요청 초과 admission 방지, unknown usage의 거짓 환급 없음",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P7.md"
   },
   {
     "id": "C-038",
@@ -715,7 +722,8 @@
       "packages/core/limits/"
     ],
     "done": "대기 cycle과 새 responder pingpong 모두 유한 상한",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P7.md"
   },
   {
     "id": "C-039",
@@ -736,7 +744,8 @@
       "tests/integration/races/"
     ],
     "done": "seed 재현 가능한 명령 interleaving에 불변식 유지",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P7.md"
   },
   {
     "id": "C-040",
@@ -754,7 +763,8 @@
       "packages/storage-sqlite/recovery/"
     ],
     "done": "재시작 후 pending effect 실행 없음, read-only 기록 복원",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P7.md"
   },
   {
     "id": "C-041",
@@ -772,7 +782,8 @@
       "packages/react/stream/"
     ],
     "done": "slow client 메모리 제한, 누락 domain event 재조회",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P7.md"
   },
   {
     "id": "C-042",
@@ -790,7 +801,8 @@
       "apps/server/security/"
     ],
     "done": "C-055 경계 위에서 CSRF 토큰·요청 크기/빈도 제한·DNS rebinding·query/log/export 키 누출 검사",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P8.md"
   },
   {
     "id": "C-043",
@@ -808,7 +820,8 @@
       "packages/core/tools/read-document/"
     ],
     "done": "IPv4/IPv6/redirect/DNS pinning/size/MIME/HTML 실행 차단",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P8.md"
   },
   {
     "id": "C-044",
@@ -825,7 +838,8 @@
       "packages/core/tools/search/"
     ],
     "done": "키 없는 corpus search와 명시적 외부 검색 선택 구분",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P8.md"
   },
   {
     "id": "C-045",
@@ -842,7 +856,8 @@
       "packages/cli/"
     ],
     "done": "validate/dev/run/inspect/export, 승인 대기와 SIGINT 계약",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P8.md"
   },
   {
     "id": "C-046",
@@ -863,7 +878,8 @@
       "examples/"
     ],
     "done": "비밀키/로컬 서버 없이 D&D와 Reins가 모의 결과를 바꿈",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P9.md"
   },
   {
     "id": "C-047",
@@ -883,7 +899,8 @@
       "tests/e2e/"
     ],
     "done": "포인터 없이 핵심 흐름 완주, 단순 axe 검사 외 수동 검증",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P9.md"
   },
   {
     "id": "C-048",
@@ -901,7 +918,8 @@
       "docs/performance/"
     ],
     "done": "고정 fixture/장비/build에서 수치와 flamegraph 기록",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P9.md"
   },
   {
     "id": "C-049",
@@ -924,7 +942,8 @@
       "docs/release/"
     ],
     "done": "PR gate(C-051)에 a11y·performance·라이선스·SBOM·live smoke 결과를 더한 release gate, 모든 요구 테스트 연결",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P9.md"
   },
   {
     "id": "C-050",
@@ -942,7 +961,8 @@
       "README.md"
     ],
     "done": "성능/기능 주장을 증거와 연결, 미구현 v0.2 기능 혼동 없음",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P9.md"
   },
   {
     "id": "C-051",
@@ -1158,7 +1178,8 @@
       "packages/react/budget/"
     ],
     "done": "spentKnown·reserved·spentUnknown과 추정 금액을 문구로 구분, unknown을 0으로 표시하지 않음, 상한 변경 후 누적값 유지",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P7.md"
   },
   {
     "id": "C-062",

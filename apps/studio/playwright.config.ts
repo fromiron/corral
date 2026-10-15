@@ -1,6 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
-const PORT = 5179;
+const STATIC_DEMO = process.env.CORRAL_STATIC_DEMO === '1';
+const PORT = STATIC_DEMO ? 5181 : 5179;
 
 export default defineConfig({
   testDir: './e2e',
@@ -18,10 +19,15 @@ export default defineConfig({
   },
   projects: [
     {
-      // The in-browser runtime (demo): Vite dev server, simulated agents in the page.
+      // The in-browser runtime (demo): Vite dev server, simulated agents in a worker.
       name: 'chromium',
-      testIgnore: 'server/**',
+      testIgnore: ['server/**', 'performance/**'],
       use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 } },
+    },
+    {
+      name: 'firefox',
+      testIgnore: ['server/**', 'performance/**'],
+      use: { ...devices['Desktop Firefox'], viewport: { width: 1280, height: 800 } },
     },
     {
       // Against the local server (C-059): each test starts its own server, workspace and DB
@@ -32,9 +38,9 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `pnpm exec vite --port ${PORT} --strictPort`,
+    command: `pnpm exec vite ${STATIC_DEMO ? 'preview ' : ''}--port ${PORT} --strictPort`,
     url: `http://localhost:${PORT}`,
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: !process.env.CI && !STATIC_DEMO,
     timeout: 60_000,
   },
 });

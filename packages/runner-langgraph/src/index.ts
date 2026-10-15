@@ -5,6 +5,7 @@ import {
   type PlanTarget,
   type RunnerCallbacks,
   type RunnerResult,
+  SPEC_HARD_CAPS,
   type StopSignal,
   targetsOf,
 } from '@corral/core';
@@ -68,7 +69,8 @@ export class LangGraphRunner implements GraphRunner {
     }
 
     const app = graph.compile();
-    const maxRounds = Math.max(1, ...Object.values(plan.loops).map((l) => l.maxIterations));
+    // A runtime patch or approval can extend the Loop beyond its initial automatic cap.
+    const maxRounds = Object.keys(plan.loops).length ? SPEC_HARD_CAPS.maxLoopIterations : 1;
     const final = (await app.invoke(
       { target: { nodeId: plan.entryNodeId, port: 'in' }, rounds: {}, result: null },
       // Each round can visit every step once; leave room for the steps around the Loop.

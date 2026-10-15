@@ -1,14 +1,19 @@
 import type {
   DirectiveStatus,
   EventOf,
+  EventPayload,
   ExecutionActivity,
   ExecutionStatus,
+  NormalizedUsage,
   OutputContract,
   RunEvent,
+  RunLimits,
   RunStatus,
   TaskStatus,
   WaitingOn,
 } from '@corral/contracts';
+import { applyBudgetEvent, type BudgetState, emptyBudget } from './budget.ts';
+import { applyProgressEvent, emptyProgress, type ProgressState } from './limits.ts';
 
 // Read model rebuilt only from committed events (INV-14). The same reducer runs in the
 // coordinator and in every client, so a replayed log and a live view cannot drift.
@@ -19,9 +24,12 @@ export interface ExecutionView {
   taskId: string;
   attemptNo: number;
   parentExecutionId: string | null;
+  previousExecutionId: string | null;
   depth: number;
   iterationId: string | null;
   modelProfile: string;
+  configRevision: number;
+  criteriaVersionId: string | null;
   status: ExecutionStatus;
   activity: ExecutionActivity | null;
   /** What a waiting execution waits for, with the ids to link to (OBS-001). */
@@ -58,11 +66,15 @@ export interface ModelCallView {
   executionId: string;
   contextSnapshotId: string;
   profile: string;
+  configRevision: number;
   directiveIds: string[];
   inputArtifactVersionIds: string[];
   finished: boolean;
-  usage: { inputTokens: number | null; outputTokens: number | null } | null;
+  usage: NormalizedUsage | null;
+  rawUsage: Record<string, unknown> | null;
   certainty: 'reported' | 'estimated' | 'unknown' | null;
+  /** Committed response text, available after reconnect even without an output artifact. */
+  responseRef?: string | null;
 }
 
 export interface ArtifactVersionView {
@@ -79,6 +91,9 @@ export interface ArtifactVersionView {
   modelCallId: string | null;
   contextSnapshotId: string | null;
   submitted: boolean;
+  configRevision: number;
+  criteriaVersionId: string | null;
+  inputArtifactVersionIds: string[];
 }
 
 export interface ToolCallView {
@@ -87,6 +102,7 @@ export interface ToolCallView {
   name: string;
   status: 'requested' | 'blocked';
   reason: string | null;
+  resultRef?: string | null;
 }
 
 export interface EffectView {
@@ -94,6 +110,8 @@ export interface EffectView {
   kind: 'model_request' | 'tool' | 'spawn';
   scope: string;
   epoch: number;
+  dispatched: boolean;
+  reservationId: string | null;
   status: 'admitted' | 'settled';
   outcome: 'succeeded' | 'failed' | 'cancelled' | 'unknown' | null;
 }
@@ -127,10 +145,17 @@ export interface ApprovalView {
   /** The exact versions this decision is about; the first is the one being approved. */
   subjectVersionIds: string[];
   criteriaVersionId: string | null;
-  status: 'pending' | 'approved' | 'rejected';
+  status: 'pending' | 'approved' | 'rejected' | 'stale';
+}
+
+export interface PatchView extends EventPayload<'patch.committed'> {
+  executionIds: string[];
+  iterationIds: string[];
 }
 
 export interface ReviewView {
+  stale: boolean;
+  newCriteriaVersionId: string | null;
   reviewVersionId: string;
   targetVersionId: string;
   criteriaVersionId: string;
@@ -145,6 +170,8 @@ export interface RunProjection {
   mode: 'mock' | 'live' | null;
   status: RunStatus;
   statusReason: string | null;
+  /** Logical question deadlines exclude the time spent under a user pause. */
+  userPauseStartedAt: string | null;
   lastSeq: number;
   executions: Record<string, ExecutionView>;
   executionOrder: string[];
@@ -163,6 +190,11 @@ export interface RunProjection {
   reviews: Record<string, ReviewView>;
   /** Bumped by control changes (patches, P6); approvals and patches must name it. */
   controlRevision: number;
+  patches: Record<string, PatchView>;
+  currentCriteriaVersionId: string | null;
+  limits: RunLimits | null;
+  budget: BudgetState;
+  progress: ProgressState;
   /** The final approval behind the output, when the Output required one. */
   outputApprovalId: string | null;
   /** Versions each execution read through read_artifact, in order. */
@@ -193,6 +225,7 @@ export function emptyProjection(runId: string): RunProjection {
     mode: null,
     status: 'created',
     statusReason: null,
+    userPauseStartedAt: null,
     lastSeq: 0,
     executions: {},
     executionOrder: [],
@@ -209,6 +242,11 @@ export function emptyProjection(runId: string): RunProjection {
     approvals: {},
     reviews: {},
     controlRevision: 0,
+    patches: {},
+    currentCriteriaVersionId: null,
+    limits: null,
+    budget: emptyBudget(),
+    progress: emptyProgress(),
     outputApprovalId: null,
     artifactReads: {},
     loopIterations: {},
@@ -226,7 +264,12 @@ export function applyEvent(projection: RunProjection, event: RunEvent): RunProje
   if (event.runSeq !== projection.lastSeq + 1) {
     throw new ProjectionGapError(projection.lastSeq + 1, event.runSeq);
   }
-  return { ...reduce(projection, event), lastSeq: event.runSeq };
+  const next = reduce(projection, event);
+  return {
+    ...next,
+    progress: applyProgressEvent(projection.progress, event, next),
+    lastSeq: event.runSeq,
+  };
 }
 
 function reduce(p: RunProjection, event: RunEvent): RunProjection {
@@ -237,9 +280,45 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
         corralId: event.payload.corralId,
         definitionHash: event.payload.definitionHash,
         mode: event.payload.mode,
+        limits: event.payload.limits,
+        currentCriteriaVersionId: event.payload.criteriaVersionId ?? null,
       };
-    case 'run.state_changed':
-      return { ...p, status: event.payload.to, statusReason: event.payload.reasonCode };
+    case 'run.state_changed': {
+      const { to, reasonCode } = event.payload;
+      const next = { ...p, status: to, statusReason: reasonCode };
+      if (to === 'pausing' && p.userPauseStartedAt === null) {
+        return { ...next, userPauseStartedAt: event.recordedAt };
+      }
+      if (reasonCode !== 'resumed' || p.userPauseStartedAt === null) return next;
+      const pausedMs = Math.max(0, Date.parse(event.recordedAt) - Date.parse(p.userPauseStartedAt));
+      const extend = (deadline: string) => new Date(Date.parse(deadline) + pausedMs).toISOString();
+      return {
+        ...next,
+        userPauseStartedAt: null,
+        questions: Object.fromEntries(
+          Object.entries(p.questions).map(([id, question]) => [
+            id,
+            question.status === 'open'
+              ? { ...question, deadline: extend(question.deadline) }
+              : question,
+          ]),
+        ),
+        executions: Object.fromEntries(
+          Object.entries(p.executions).map(([id, execution]) => [
+            id,
+            execution.waitingOn?.kind === 'message' && execution.waitingOn.deadline
+              ? {
+                  ...execution,
+                  waitingOn: {
+                    ...execution.waitingOn,
+                    deadline: extend(execution.waitingOn.deadline),
+                  },
+                }
+              : execution,
+          ]),
+        ),
+      };
+    }
     case 'task.created': {
       const { taskId, nodeId, roleId, contract } = event.payload;
       const task: TaskView = {
@@ -277,11 +356,14 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
         executionId,
         contextSnapshotId,
         profile,
+        configRevision: event.payload.configRevision,
         directiveIds: event.payload.directiveIds,
         inputArtifactVersionIds: event.payload.inputArtifactVersionIds,
         finished: false,
         usage: null,
+        rawUsage: null,
         certainty: null,
+        responseRef: null,
       };
       const execution = p.executions[executionId];
       const withCall = { ...p, modelCalls: { ...p.modelCalls, [modelCallId]: call } };
@@ -291,11 +373,30 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
       });
     }
     case 'model.finished': {
-      const { inputTokens, outputTokens } = event.payload.normalizedUsage;
       return updateModelCall(p, event.payload.modelCallId, {
         finished: true,
-        usage: { inputTokens, outputTokens },
+        usage: event.payload.normalizedUsage,
+        rawUsage: event.payload.rawUsage,
         certainty: event.payload.certainty,
+        responseRef: event.payload.responseRef,
+      });
+    }
+    case 'model.usage_reconciled': {
+      const call = p.modelCalls[event.payload.modelCallId];
+      if (!call) return p;
+      const usage = event.payload.normalizedUsage;
+      return updateModelCall(p, call.modelCallId, {
+        usage: {
+          inputTokens: call.usage?.inputTokens ?? usage.inputTokens,
+          outputTokens: call.usage?.outputTokens ?? usage.outputTokens,
+          cachedInputTokens: call.usage?.cachedInputTokens ?? usage.cachedInputTokens,
+          reasoningTokens: call.usage?.reasoningTokens ?? usage.reasoningTokens,
+        },
+        rawUsage: event.payload.rawUsage ?? call.rawUsage,
+        certainty:
+          event.payload.certainty === 'unknown'
+            ? (call.certainty ?? 'unknown')
+            : event.payload.certainty,
       });
     }
     case 'directive.accepted': {
@@ -347,9 +448,35 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
       const blocked: ToolCallView = { ...call, status: 'blocked', reason: event.payload.reason };
       return { ...p, toolCalls: { ...p.toolCalls, [call.toolCallId]: blocked } };
     }
+    case 'tool.finished': {
+      const call = p.toolCalls[event.payload.toolCallId];
+      if (!call) return p;
+      return {
+        ...p,
+        toolCalls: {
+          ...p.toolCalls,
+          [call.toolCallId]: {
+            ...call,
+            resultRef: event.payload.resultRef,
+            reason: event.payload.error,
+          },
+        },
+      };
+    }
     case 'artifact.version_created': {
       const { artifactVersionId, ...rest } = event.payload;
-      const artifact: ArtifactVersionView = { artifactVersionId, ...rest, submitted: false };
+      const call = rest.modelCallId ? p.modelCalls[rest.modelCallId] : undefined;
+      const author = p.executions[rest.authorExecutionId];
+      const artifact: ArtifactVersionView = {
+        artifactVersionId,
+        ...rest,
+        submitted: false,
+        configRevision: call?.configRevision ?? author?.configRevision ?? 0,
+        criteriaVersionId: author?.criteriaVersionId ?? null,
+        inputArtifactVersionIds: call?.inputArtifactVersionIds ?? [
+          ...new Set(p.artifactReads[rest.authorExecutionId] ?? []),
+        ],
+      };
       return { ...p, artifacts: { ...p.artifacts, [artifactVersionId]: artifact } };
     }
     case 'task.submitted': {
@@ -399,6 +526,8 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
       const { reviewVersionId, targetVersionId, criteriaVersionId, verdict, issues } =
         event.payload;
       const review: ReviewView = {
+        stale: false,
+        newCriteriaVersionId: null,
         reviewVersionId,
         targetVersionId,
         criteriaVersionId,
@@ -412,7 +541,16 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
       return { ...p, reviews: { ...p.reviews, [reviewVersionId]: review } };
     }
     case 'run.interrupted':
-      return { ...p, interruptedBy: event.payload.backendSessionId };
+      return {
+        ...p,
+        interruptedBy: event.payload.backendSessionId,
+        approvals: Object.fromEntries(
+          Object.entries(p.approvals).map(([id, approval]) => [
+            id,
+            approval.status === 'pending' ? { ...approval, status: 'stale' as const } : approval,
+          ]),
+        ),
+      };
     case 'effect.admitted': {
       const { effectId, kind, scope, epoch } = event.payload;
       const effect: EffectView = {
@@ -420,10 +558,18 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
         kind,
         scope,
         epoch,
+        dispatched: false,
+        reservationId: event.payload.reservationId,
         status: 'admitted',
         outcome: null,
       };
       return { ...p, effects: { ...p.effects, [effectId]: effect } };
+    }
+    case 'effect.dispatch_observed': {
+      const effect = p.effects[event.payload.effectId];
+      return effect
+        ? { ...p, effects: { ...p.effects, [effect.effectId]: { ...effect, dispatched: true } } }
+        : p;
     }
     case 'effect.settled': {
       const effect = p.effects[event.payload.effectId];
@@ -492,18 +638,65 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
         },
       };
     }
-    // Committed facts that later phases project (review P5, Reins P6, budget P7). Until then
-    // they are kept in the log only.
     case 'task.blocked':
-    case 'review.stale':
-    case 'patch.committed':
-    case 'patch.activated':
-    case 'effect.dispatch_observed':
-    case 'tool.allowed':
-    case 'tool.started':
-    case 'tool.finished':
+      return updateTask(p, event.payload.taskId, { status: 'blocked' });
+    case 'review.stale': {
+      const review = p.reviews[event.payload.reviewVersionId];
+      return review
+        ? {
+            ...p,
+            reviews: {
+              ...p.reviews,
+              [review.reviewVersionId]: {
+                ...review,
+                stale: true,
+                newCriteriaVersionId: event.payload.newCriteriaVersionId,
+              },
+            },
+          }
+        : p;
+    }
+    case 'patch.committed': {
+      const patch = event.payload;
+      return {
+        ...p,
+        controlRevision: patch.controlRevision,
+        patches: {
+          ...p.patches,
+          [patch.patchId]: { ...patch, executionIds: [], iterationIds: [] },
+        },
+        ...(patch.kind === 'criteria'
+          ? {
+              currentCriteriaVersionId: String(patch.after.criteriaVersionId),
+              approvals: Object.fromEntries(
+                Object.entries(p.approvals).map(([id, a]) => [
+                  id,
+                  a.status === 'pending' ? { ...a, status: 'stale' as const } : a,
+                ]),
+              ),
+            }
+          : {}),
+        ...(patch.kind === 'run_limits' && p.limits
+          ? { limits: { ...p.limits, ...patch.after } }
+          : {}),
+      };
+    }
+    case 'patch.activated': {
+      const patch = p.patches[event.payload.patchId];
+      if (!patch) return p;
+      const activation =
+        'executionId' in event.payload
+          ? { executionIds: [...patch.executionIds, event.payload.executionId] }
+          : { iterationIds: [...patch.iterationIds, event.payload.iterationId] };
+      return { ...p, patches: { ...p.patches, [patch.patchId]: { ...patch, ...activation } } };
+    }
     case 'budget.reserved':
     case 'budget.settled':
+      return { ...p, budget: applyBudgetEvent(p.budget, event) };
+    // Committed facts that later phases project (review P5, Reins P6, budget P7). Until then
+    // they are kept in the log only.
+    case 'tool.allowed':
+    case 'tool.started':
     case 'limit.reached':
     case 'cancel.requested':
     case 'cancel.confirmed':
@@ -521,9 +714,12 @@ function executionCreated(p: RunProjection, event: EventOf<'execution.created'>)
     taskId,
     attemptNo,
     parentExecutionId,
+    previousExecutionId: event.payload.previousExecutionId ?? null,
     depth,
     iterationId,
     modelProfile: event.payload.modelProfile,
+    configRevision: event.payload.configRevision ?? 0,
+    criteriaVersionId: event.payload.criteriaVersionId ?? p.currentCriteriaVersionId,
     status: 'queued',
     activity: null,
     waitingOn: null,
@@ -605,5 +801,31 @@ export function directDirectivesForArtifact(
 ): string[] {
   const modelCallId = projection.artifacts[artifactVersionId]?.modelCallId;
   if (!modelCallId) return [];
-  return projection.modelCalls[modelCallId]?.directiveIds ?? [];
+  return (projection.modelCalls[modelCallId]?.directiveIds ?? []).filter(
+    (id) =>
+      projection.directives[id]?.status === 'delivered' &&
+      projection.directives[id]?.modelCallId === modelCallId,
+  );
+}
+
+/** Data paths only: direct request directives and indirect input version ancestry. */
+export function artifactLineage(projection: RunProjection, artifactVersionId: string) {
+  const artifact = projection.artifacts[artifactVersionId];
+  const directDirectiveIds = directDirectivesForArtifact(projection, artifactVersionId);
+  const indirect = new Set<string>();
+  const visited = new Set<string>([artifactVersionId]);
+  const walk = (id: string) => {
+    if (visited.has(id)) return;
+    visited.add(id);
+    for (const directive of directDirectivesForArtifact(projection, id)) indirect.add(directive);
+    for (const input of projection.artifacts[id]?.inputArtifactVersionIds ?? []) walk(input);
+  };
+  for (const id of artifact?.inputArtifactVersionIds ?? []) walk(id);
+  return {
+    directDirectiveIds,
+    indirectDirectiveIds: [...indirect].filter((id) => !directDirectiveIds.includes(id)),
+    inputArtifactVersionIds: artifact?.inputArtifactVersionIds ?? [],
+    configRevision: artifact?.configRevision ?? 0,
+    criteriaVersionId: artifact?.criteriaVersionId ?? null,
+  };
 }

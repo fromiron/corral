@@ -1,0 +1,21 @@
+{
+  "injectedServerDelayMs": 500,
+  "receiptMs": [
+    528,
+    516.8999999985099,
+    518,
+    515.3999999985099,
+    516.0999999940395
+  ],
+  "domainMs": [
+    623,
+    628,
+    624,
+    622,
+    507
+  ],
+  "failures": [
+    "receipt p95 exceeds 200ms",
+    "committed event to UI p95 exceeds 300ms"
+  ]
+}

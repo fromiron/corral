@@ -211,6 +211,20 @@ describe('Coordinator over a RunStore: restart', () => {
     expect(Object.values(projection.effects).find((e) => e.kind === 'model_request')?.outcome).toBe(
       'unknown',
     );
+    expect(projection.budget).toMatchObject({
+      spent: 0,
+      reserved: 0,
+      unknownOutstanding: 4_096,
+      modelCalls: 1,
+    });
+    const recoveredAgain = coordinator({
+      store,
+      sessionId: 'backend_c',
+      ids: new SequentialIdFactory('c'),
+    });
+    expect((await recoveredAgain.transport.getSnapshot(runId)).projection.budget).toEqual(
+      projection.budget,
+    );
     const events = store.readEvents(runId, 0);
     for (const event of events) expect(RunEvent.safeParse(event).success).toBe(true);
     expect(events.reduce(applyEvent, emptyProjection(runId))).toEqual(projection);

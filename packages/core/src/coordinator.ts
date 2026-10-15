@@ -23,6 +23,7 @@ import {
   RunCommand,
   RunEvent,
   type RunEventType,
+  type RunLimits,
   type Scheduler,
   StartRunRequest,
   type SteerCommand,
@@ -35,10 +36,12 @@ import {
 } from '@corral/contracts';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js';
+import { admitModelRequest, settlementFor } from './budget.ts';
 import { canonicalJson } from './canonical-json.ts';
 import type { CompiledPlan } from './compiler/index.ts';
 import { type InstallationPolicy, limitViolations, SPEC_HARD_CAPS } from './config.ts';
 import { definitionHash } from './definition-hash.ts';
+import { createsWaitCycle, LogicalDeadline, noProgressReached } from './limits.ts';
 import { applyEvent, emptyProjection, type RunProjection } from './projection.ts';
 import { planRun } from './run-plan.ts';
 import {
@@ -107,7 +110,25 @@ export interface DecisionPolicy {
   decide(input: DecisionInput): Promise<string>;
 }
 
+export interface ToolCancellation {
+  readonly aborted: boolean;
+  onCancel(fn: () => void): () => void;
+}
+export interface ExternalTools {
+  execute(
+    input: {
+      name: 'search' | 'read_document';
+      args: Record<string, unknown>;
+      mode: 'mock' | 'live';
+      runId: string;
+      executionId: string;
+    },
+    cancellation: ToolCancellation,
+  ): Promise<Record<string, unknown>>;
+}
+
 export interface CoordinatorDeps {
+  tools?: ExternalTools;
   clock: Clock;
   ids: IdFactory;
   agents: AgentAdapter;
@@ -191,6 +212,21 @@ interface LiveRun {
   /** The inputs each execution was started with: what a reviewer actually reviewed. */
   inputsByExecution: Map<string, ResolvedInput[]>;
   /** Why a Loop stopped at its cap: the person declined, or the hard cap was reached. */
+  limits: RunLimits;
+  criteriaVersionId: string;
+  pendingCriteriaVersionId: string | null;
+  cancelDeadline: () => void;
+  requestDeadlines: Map<string, () => void>;
+  nodePatches: Map<
+    string,
+    { patchId: string; modelProfile: string; prompt: string; revision: number }
+  >;
+  assignments: Map<string, ExecutionSpec>;
+  executionOutcomes: Map<string, Promise<StepOutcome>>;
+  boundaries: Set<string>;
+  boundaryWaiters: Set<() => void>;
+  cancelListeners: Map<string, Set<() => void>>;
+  toolOutcomes: Map<string, Set<Promise<ToolOutcome>>>;
   capStop: 'declined' | 'hard_cap' | null;
 }
 
@@ -199,10 +235,14 @@ interface OpenQuestion {
   responderExecutionId: string;
   wake(result: Record<string, unknown>): void;
   cancelTimer(): void;
+  deadline: LogicalDeadline;
 }
 
 /** What starts an execution: its node, place in the call tree and reason to exist. */
 interface ExecutionSpec {
+  previousExecutionId?: string;
+  taskId?: string;
+  attemptNo?: number;
   nodeId: string;
   iterationId: string | null;
   parentExecutionId: string | null;
@@ -244,9 +284,12 @@ export class Coordinator {
   private readonly policy: InstallationPolicy;
   private readonly models: ModelResolver;
   private readonly timers: Scheduler;
+  private readonly tools: ExternalTools | undefined;
   private readonly live = new Map<string, LiveRun>();
   private readonly subscribers = new Set<Subscriber>();
   private storageError: string | null = null;
+  private terminationUnconfirmed = false;
+  private readonly drainingRuns = new Set<LiveRun>();
 
   constructor(deps: CoordinatorDeps) {
     this.clock = deps.clock;
@@ -260,12 +303,15 @@ export class Coordinator {
     this.policy = deps.policy ?? SPEC_HARD_CAPS;
     this.models = deps.models ?? SIMULATED_MODELS;
     this.timers = deps.timers ?? NO_DEADLINES;
+    this.tools = deps.tools;
     this.recover();
   }
 
   /** False once a commit failed; reads keep working, nothing new is admitted. */
   get admitting(): boolean {
-    return this.storageError === null;
+    return (
+      this.storageError === null && !this.terminationUnconfirmed && this.drainingRuns.size === 0
+    );
   }
 
   // ── run creation (C-057) ──────────────────────────────────────────────────
@@ -298,6 +344,12 @@ export class Coordinator {
       return { runId: null, receipt };
     };
 
+    if (this.terminationUnconfirmed || this.drainingRuns.size > 0)
+      return refuse({
+        code: 'RESOURCE_CAPACITY',
+        message:
+          'a worker termination is unconfirmed; restart the backend before starting another run',
+      });
     const resolved = this.resolveDefinition(request);
     if ('error' in resolved) return refuse(resolved.error);
     const planned = planRun(resolved.definition);
@@ -369,6 +421,18 @@ export class Coordinator {
       approvals: new Map(),
       inputsByExecution: new Map(),
       capStop: null,
+      limits: { ...definition.limits },
+      criteriaVersionId: snapshot.criteriaVersionId,
+      pendingCriteriaVersionId: null,
+      cancelDeadline: () => {},
+      requestDeadlines: new Map(),
+      nodePatches: new Map(),
+      assignments: new Map(),
+      executionOutcomes: new Map(),
+      boundaries: new Set(),
+      boundaryWaiters: new Set(),
+      cancelListeners: new Map(),
+      toolOutcomes: new Map(),
     };
 
     const { events, projection } = this.prepare(run, [
@@ -383,6 +447,7 @@ export class Coordinator {
           mode: request.mode,
           modelProfiles: Object.values(models),
           limits: definition.limits,
+          criteriaVersionId: snapshot.criteriaVersionId,
         },
       },
       runState('created', 'validating', 'run_requested'),
@@ -421,6 +486,27 @@ export class Coordinator {
     }
     this.live.set(runId, run);
     this.publish(run, projection);
+    run.cancelDeadline = this.timers.after(run.limits.runDeadlineMs, () => {
+      if (TERMINAL_RUN_STATUSES.has(run.projection.status)) return;
+      this.commit(run, [
+        {
+          type: 'limit.reached',
+          payload: {
+            limitKind: 'deadline',
+            used: run.limits.runDeadlineMs,
+            reserved: 0,
+            max: run.limits.runDeadlineMs,
+          },
+        },
+      ]);
+      this.submit({
+        schemaVersion: '0.1',
+        runId,
+        commandId: `deadline_${runId}`,
+        type: 'cancel',
+        payload: { scope: { kind: 'run' }, reason: 'run_deadline' },
+      });
+    });
     this.schedule(run, () => this.drive(run));
     return { runId, receipt };
   }
@@ -482,24 +568,639 @@ export class Coordinator {
     try {
       if (command.type === 'steer') return this.steer(command, payloadHash);
       if (command.type === 'resolve_approval') return this.resolveApproval(command, payloadHash);
-      const receipt = rejected(command.commandId, command.runId, {
-        code: 'COMMAND_NOT_SUPPORTED',
-        message: `${command.type} is not available in this runtime yet`,
-      });
-      this.persist(() =>
-        this.store.putCommand({
-          scope: command.runId,
-          commandId: command.commandId,
-          payloadHash,
-          receipt,
-          runId: command.runId,
-          directiveId: null,
-        }),
-      );
-      return receipt;
+      return this.control(command, payloadHash);
     } catch {
       return unavailable(command.commandId, command.runId, this.storageError);
     }
+  }
+
+  /** Persist command identity together with its control facts. */
+  private controlReceipt(
+    run: LiveRun,
+    command: RunCommand,
+    payloadHash: string,
+    drafts: EventDraft[],
+    status: Receipt['status'],
+    boundary: Receipt['requestedBoundary'],
+    extra?: () => void,
+  ): Receipt {
+    let receipt!: Receipt;
+    this.commit(
+      run,
+      drafts.map((d) => ({ ...d, commandId: command.commandId, actor: USER })),
+      (events) => {
+        receipt = {
+          commandId: command.commandId,
+          runId: run.runId,
+          status,
+          acceptedSeq: events[0]?.runSeq ?? run.projection.lastSeq,
+          target:
+            command.type === 'cancel' && command.payload.scope.kind !== 'run'
+              ? command.payload.scope.kind === 'execution'
+                ? `execution:${command.payload.scope.executionId}`
+                : `task:${command.payload.scope.taskId}`
+              : command.type === 'restart_task'
+                ? `task:${command.payload.taskId}`
+                : `run:${run.runId}`,
+          requestedBoundary: boundary,
+          relatedEventIds: events.map((e) => e.eventId),
+        };
+        this.store.putCommand({
+          scope: run.runId,
+          commandId: command.commandId,
+          payloadHash,
+          receipt,
+          runId: run.runId,
+          directiveId: null,
+        });
+        extra?.();
+      },
+    );
+    return receipt;
+  }
+
+  private refuseControl(command: RunCommand, payloadHash: string, error: CommandError): Receipt {
+    const receipt = rejected(command.commandId, command.runId, error);
+    this.persist(() =>
+      this.store.putCommand({
+        scope: command.runId,
+        commandId: command.commandId,
+        payloadHash,
+        receipt,
+        runId: command.runId,
+        directiveId: null,
+      }),
+    );
+    return receipt;
+  }
+
+  private control(
+    command: Exclude<RunCommand, SteerCommand | ResolveApprovalCommand>,
+    payloadHash: string,
+  ): Receipt {
+    const run = this.live.get(command.runId);
+    const refuse = (code: CommandError['code'], message: string) =>
+      this.refuseControl(command, payloadHash, { code, message });
+    if (!run || TERMINAL_RUN_STATUSES.has(run.projection.status))
+      return refuse('TARGET_TERMINAL', 'the run has ended');
+    if (
+      command.expectedControlRevision !== undefined &&
+      command.expectedControlRevision !== run.projection.controlRevision
+    )
+      return refuse(
+        'STALE_CONTROL_REVISION',
+        `control revision is ${run.projection.controlRevision}`,
+      );
+    if (run.projection.status === 'cancelling' && command.type !== 'cancel')
+      return refuse('TARGET_TERMINAL', 'the run is cancelling');
+    if (command.type === 'patch') return this.patch(run, command, payloadHash);
+    if (command.type === 'restart_task') return this.restart(run, command, payloadHash);
+    if (command.type === 'pause') {
+      const current = run.projection.status;
+      if (current === 'cancelling') return refuse('TARGET_TERMINAL', 'the run is cancelling');
+      const receipt = this.controlReceipt(
+        run,
+        command,
+        payloadHash,
+        current === 'paused' || current === 'pausing'
+          ? []
+          : [runState(current, 'pausing', 'pause_requested')],
+        current === 'paused' ? 'applied' : 'accepted',
+        'safe_boundary',
+      );
+      for (const q of run.questions.values()) q.deadline.pause();
+      this.maybePaused(run);
+      return receipt;
+    }
+    if (command.type === 'resume') {
+      if (run.projection.status === 'cancelling')
+        return refuse('TARGET_TERMINAL', 'the run is cancelling');
+      const drafts: EventDraft[] = [];
+      if (run.projection.status === 'paused' || run.projection.status === 'pausing') {
+        const waiting =
+          run.approvals.size > 0 ||
+          Object.values(run.projection.tasks).some((t) => t.status === 'blocked');
+        drafts.push(
+          runState(run.projection.status, waiting ? 'awaiting_user' : 'running', 'resumed'),
+        );
+        for (const e of Object.values(run.projection.executions))
+          if (e.status === 'paused')
+            drafts.push({
+              type: 'execution.state_changed',
+              executionId: e.executionId,
+              payload: {
+                executionId: e.executionId,
+                from: e.status,
+                to: 'active',
+                activity: 'model',
+                waitingOn: null,
+              },
+            });
+      }
+      const receipt = this.controlReceipt(
+        run,
+        command,
+        payloadHash,
+        drafts,
+        'applied',
+        'immediate',
+      );
+      for (const q of run.questions.values()) q.deadline.resume();
+      this.wake(run);
+      return receipt;
+    }
+    const scope = command.payload.scope;
+    const target =
+      scope.kind === 'run'
+        ? null
+        : scope.kind === 'execution'
+          ? run.projection.executions[scope.executionId]
+          : Object.values(run.projection.executions)
+              .filter((e) => e.taskId === scope.taskId)
+              .at(-1);
+    if (scope.kind !== 'run' && !target)
+      return refuse('TARGET_NOT_FOUND', 'the cancellation target does not exist');
+    if (target && TERMINAL_EXECUTION_STATUSES.has(target.status))
+      return refuse('TARGET_TERMINAL', 'the cancellation target has ended');
+    const affected = new Set<string>(
+      scope.kind === 'run'
+        ? Object.values(run.projection.executions)
+            .filter((e) => !TERMINAL_EXECUTION_STATUSES.has(e.status))
+            .map((e) => e.executionId)
+        : target
+          ? [target.executionId]
+          : [],
+    );
+    for (const id of affected)
+      for (const e of Object.values(run.projection.executions))
+        if (e.parentExecutionId === id && !TERMINAL_EXECUTION_STATUSES.has(e.status))
+          affected.add(e.executionId);
+    const drafts: EventDraft[] = [
+      {
+        type: 'cancel.requested',
+        payload: { scope, fenceSeq: run.projection.lastSeq + 1, reason: command.payload.reason },
+      },
+    ];
+    if (scope.kind === 'run')
+      drafts.push(runState(run.projection.status, 'cancelling', 'cancel_requested'));
+    else if (
+      target &&
+      run.projection.tasks[target.taskId]?.status !== 'completed' &&
+      run.assignments.get(target.executionId)?.assignment.kind !== 'question' &&
+      !['pausing', 'paused'].includes(run.projection.status)
+    )
+      drafts.push(runState(run.projection.status, 'awaiting_user', 'required_task_cancelling'));
+    for (const id of affected) {
+      const e = run.projection.executions[id];
+      if (!e) continue;
+      drafts.push({
+        type: 'execution.state_changed',
+        executionId: id,
+        payload: {
+          executionId: id,
+          from: e.status,
+          to: 'cancelling',
+          activity: null,
+          waitingOn: null,
+        },
+      });
+      for (const d of Object.values(run.projection.directives))
+        if (d.targetExecutionId === id && d.status === 'queued')
+          drafts.push({
+            type: 'directive.undelivered',
+            executionId: id,
+            payload: {
+              directiveId: d.directiveId,
+              status: 'not_delivered',
+              reason: 'the scope was cancelled before dispatch',
+            },
+          });
+    }
+    const receipt = this.controlReceipt(
+      run,
+      command,
+      payloadHash,
+      drafts,
+      'accepted',
+      'safe_boundary',
+    );
+    if (scope.kind === 'run') run.stop.aborted = true;
+    for (const id of affected) this.requestCancel(run, id, command.payload.reason);
+    for (const [questionId, q] of run.questions)
+      if (affected.has(q.askerExecutionId) || affected.has(q.responderExecutionId)) {
+        run.questions.delete(questionId);
+        q.cancelTimer();
+        this.commit(run, this.askerResumes(run, q.askerExecutionId, questionId, 'cancelled'));
+        q.wake({ questionId, outcome: 'cancelled' });
+      }
+    if (scope.kind === 'run') {
+      for (const resolve of run.approvals.values()) resolve('reject');
+      run.approvals.clear();
+    }
+    this.wake(run);
+    const ids = [...affected];
+    // The adapter forces shutdown after 10s, then has 10s to confirm process exit.
+    const cancelTimeout = this.timers.after(10_000, () => {
+      const unsettled = ids.filter((id) => {
+        const execution = run.projection.executions[id];
+        return execution && !TERMINAL_EXECUTION_STATUSES.has(execution.status);
+      });
+      if (!unsettled.length || TERMINAL_RUN_STATUSES.has(run.projection.status)) return;
+      const timedOut: EventDraft[] = unsettled.map((executionId) => ({
+        type: 'execution.settled',
+        executionId,
+        payload: {
+          executionId,
+          outcome: 'failed',
+          terminationMode: 'unconfirmed',
+          error: 'termination_unconfirmed',
+        },
+      }));
+      for (const executionId of unsettled) {
+        this.releaseSlots(run, executionId);
+        for (const call of Object.values(run.projection.modelCalls))
+          if (call.executionId === executionId) {
+            run.requestDeadlines.get(call.modelCallId)?.();
+            run.requestDeadlines.delete(call.modelCallId);
+            const settled = settlementFor(run.projection.budget, call.modelCallId, null);
+            if (settled) timedOut.push({ type: 'budget.settled', payload: settled });
+          }
+        for (const effect of Object.values(run.projection.effects))
+          if (effect.scope === executionId && effect.status === 'admitted')
+            timedOut.push({
+              type: 'effect.settled',
+              payload: { effectId: effect.effectId, outcome: 'unknown' },
+            });
+      }
+      this.commit(run, timedOut);
+      this.terminationUnconfirmed = true;
+      this.failRun(run, 'termination_unconfirmed');
+      this.wake(run);
+    });
+    void Promise.all(ids.map((id) => run.executionOutcomes.get(id)))
+      .then(() => {
+        cancelTimeout();
+        if (TERMINAL_RUN_STATUSES.has(run.projection.status) || this.storageError) return;
+        const settlements = this.store
+          .readEvents(run.runId, 0)
+          .filter((e) => e.type === 'execution.settled' && ids.includes(e.payload.executionId));
+        if (
+          settlements.some(
+            (e) => e.type === 'execution.settled' && e.payload.terminationMode === 'unconfirmed',
+          )
+        )
+          return;
+        const confirmed: EventDraft[] = [
+          {
+            type: 'cancel.confirmed',
+            commandId: command.commandId,
+            payload: {
+              scope,
+              settlementRefs: settlements.map((e) => e.eventId),
+              forced: settlements.some(
+                (e) => e.type === 'execution.settled' && e.payload.terminationMode === 'forced',
+              ),
+            },
+          },
+        ];
+        if (scope.kind === 'run')
+          confirmed.push(
+            ...this.closeRounds(run),
+            runState(run.projection.status, 'cancelled', 'cancel_confirmed'),
+          );
+        else if (
+          target &&
+          run.projection.tasks[target.taskId]?.status !== 'completed' &&
+          run.assignments.get(target.executionId)?.assignment.kind !== 'question'
+        ) {
+          confirmed.push({
+            type: 'task.blocked',
+            taskId: target.taskId,
+            payload: {
+              taskId: target.taskId,
+              cause: 'required_task_cancelled',
+              requiredUserAction: 'restart_or_cancel',
+            },
+          });
+          if (!['pausing', 'paused'].includes(run.projection.status))
+            confirmed.push(
+              runState(run.projection.status, 'awaiting_user', 'required_task_cancelled'),
+            );
+        }
+        this.commit(run, confirmed);
+      })
+      .catch(() => this.failRun(run, 'cancellation_cleanup_failed'));
+    return receipt;
+  }
+
+  private patch(
+    run: LiveRun,
+    command: Extract<RunCommand, { type: 'patch' }>,
+    payloadHash: string,
+  ): Receipt {
+    const change = command.payload;
+    const refuse = (code: CommandError['code'], message: string) =>
+      this.refuseControl(command, payloadHash, { code, message });
+    let before: Record<string, unknown> = {},
+      after: Record<string, unknown> = {};
+    const node =
+      'nodeId' in change ? run.snapshot.definition.nodes.find((n) => n.id === change.nodeId) : null;
+    if ('nodeId' in change && !node)
+      return refuse('TARGET_NOT_FOUND', 'the patch node does not exist');
+    if (change.kind === 'node_future') {
+      if (node?.type !== 'agent')
+        return refuse('SCHEMA_INVALID', 'node_future requires an agent node');
+      const role = run.snapshot.definition.roles.find((r) => r.id === node.roleId);
+      if (!role) return refuse('TARGET_NOT_FOUND', 'the node role does not exist');
+      const current = run.nodePatches.get(node.id);
+      before = {
+        modelProfile: current?.modelProfile ?? role.modelProfile,
+        prompt: current?.prompt ?? role.prompt,
+      };
+      after = {
+        ...before,
+        ...(change.modelProfile ? { modelProfile: change.modelProfile } : {}),
+        ...(change.prompt ? { prompt: change.prompt } : {}),
+      };
+      const resolved = this.models.resolve(String(after.modelProfile), run.snapshot.mode);
+      if (!resolved.ok) return refuse(resolved.code, resolved.reason);
+    } else if (change.kind === 'loop_limit') {
+      if (node?.type !== 'loop') return refuse('SCHEMA_INVALID', 'loop_limit requires a Loop node');
+      if (change.maxIterations > this.policy.maxLoopIterations)
+        return refuse('LIMIT_REACHED', 'loop cap exceeds installation policy');
+      before = { maxIterations: run.plan.loops[node.id]?.maxIterations ?? node.maxIterations };
+      after = { maxIterations: change.maxIterations };
+    } else if (change.kind === 'run_limits') {
+      for (const [key, value] of Object.entries(change.changes))
+        if (value > this.policy[key as keyof InstallationPolicy])
+          return refuse('LIMIT_REACHED', `${key} exceeds installation policy`);
+      before = Object.fromEntries(
+        Object.keys(change.changes).map((k) => [k, run.limits[k as keyof typeof run.limits]]),
+      );
+      after = { ...change.changes };
+    } else {
+      const current = run.pendingCriteriaVersionId ?? run.criteriaVersionId;
+      if (change.baseCriteriaVersionId !== current)
+        return refuse('STALE_CONTROL_REVISION', 'the criteria version changed');
+      if (!run.rounds.size)
+        return refuse(
+          'CRITERIA_CHANGE_REQUIRES_NEW_RUN',
+          'criteria can change only inside an unfinished Loop',
+        );
+      before = { criteriaVersionId: current };
+      after = { criteriaVersionId: this.ids.next('criteria_version'), criteria: change.criteria };
+    }
+    const patchId = command.commandId;
+    const drafts: EventDraft[] = [
+      {
+        type: 'patch.committed',
+        payload: {
+          patchId,
+          kind: change.kind,
+          scope: { nodeId: 'nodeId' in change ? change.nodeId : null },
+          before,
+          after,
+          controlRevision: run.projection.controlRevision + 1,
+        },
+      },
+    ];
+    if (change.kind === 'criteria')
+      for (const r of Object.values(run.projection.reviews))
+        if (!r.stale)
+          drafts.push({
+            type: 'review.stale',
+            payload: {
+              reviewVersionId: r.reviewVersionId,
+              newCriteriaVersionId: String(after.criteriaVersionId),
+              cause: 'criteria_changed',
+            },
+          });
+    const receipt = this.controlReceipt(
+      run,
+      command,
+      payloadHash,
+      drafts,
+      'applied',
+      change.kind === 'run_limits' ? 'immediate' : 'next_activation',
+      () => {
+        if (change.kind === 'criteria')
+          this.store.putArtifactText(
+            run.runId,
+            String(after.criteriaVersionId),
+            change.criteria.join('\n'),
+          );
+      },
+    );
+    if (change.kind === 'node_future')
+      run.nodePatches.set(change.nodeId, {
+        patchId,
+        modelProfile: String(after.modelProfile),
+        prompt: String(after.prompt),
+        revision: run.projection.controlRevision,
+      });
+    else if (change.kind === 'loop_limit') {
+      const step = run.plan.steps[change.nodeId];
+      if (step?.kind === 'loop') step.maxIterations = change.maxIterations;
+      const loop = run.plan.loops[change.nodeId];
+      if (loop) loop.maxIterations = change.maxIterations;
+    } else if (change.kind === 'run_limits') run.limits = { ...run.limits, ...change.changes };
+    else {
+      run.pendingCriteriaVersionId = String(after.criteriaVersionId);
+      for (const [oldId, resolve] of [...run.approvals]) {
+        const old = run.projection.approvals[oldId];
+        if (old?.status !== 'stale') continue;
+        run.approvals.delete(oldId);
+        const nextId = this.ids.next('approval');
+        run.approvals.set(nextId, resolve);
+        this.commit(run, [
+          {
+            type: 'approval.requested',
+            payload: {
+              approvalId: nextId,
+              kind: old.kind,
+              subjectVersionIds: old.subjectVersionIds,
+              criteriaVersionId: run.pendingCriteriaVersionId,
+            },
+          },
+        ]);
+      }
+    }
+    return receipt;
+  }
+
+  private restart(
+    run: LiveRun,
+    command: Extract<RunCommand, { type: 'restart_task' }>,
+    payloadHash: string,
+  ): Receipt {
+    const { taskId, previousExecutionId, instruction } = command.payload;
+    if (['pausing', 'paused'].includes(run.projection.status))
+      return this.refuseControl(command, payloadHash, {
+        code: 'RESTART_NOT_ALLOWED',
+        message: 'Resume the run before restarting this task',
+      });
+    const task = run.projection.tasks[taskId],
+      previous = run.projection.executions[previousExecutionId],
+      spec = run.assignments.get(previousExecutionId);
+    const parent = previous?.parentExecutionId
+      ? run.projection.executions[previous.parentExecutionId]
+      : null;
+    if (!task || !previous)
+      return this.refuseControl(command, payloadHash, {
+        code: 'TARGET_NOT_FOUND',
+        message: 'the task or execution does not exist',
+      });
+    if (
+      previous.taskId !== taskId ||
+      previous.status !== 'cancelled' ||
+      task.status !== 'blocked' ||
+      task.attemptCount !== previous.attemptNo ||
+      !spec ||
+      parent?.status !== 'waiting_children' ||
+      !parent.waitingOn?.targetIds.includes(previousExecutionId)
+    )
+      return this.refuseControl(command, payloadHash, {
+        code: 'RESTART_NOT_ALLOWED',
+        message: 'the parent must still be waiting for this cancelled current task',
+      });
+    const spawned = Object.values(run.projection.executions).filter(
+      (e) => e.parentExecutionId !== null,
+    ).length;
+    if (spawned >= run.limits.maxSpawns)
+      return this.refuseControl(command, payloadHash, {
+        code: 'LIMIT_REACHED',
+        message: 'the spawn attempt limit was reached',
+      });
+    const prepared = this.prepareExecution(run, {
+      ...spec,
+      taskId,
+      previousExecutionId,
+      attemptNo: previous.attemptNo + 1,
+      given: [
+        ...spec.given.filter(
+          (i) => i.name !== 'restart_instruction' && i.name !== 'previous_attempt_result',
+        ),
+        ...Object.values(run.projection.artifacts)
+          .filter((a) => a.authorExecutionId === previousExecutionId)
+          .map((a) => ({
+            name: 'previous_attempt_result',
+            kind: 'explicit_version' as const,
+            artifactVersionId: a.artifactVersionId,
+            text: this.store.getArtifactText(run.runId, a.artifactVersionId) ?? '',
+          })),
+        {
+          name: 'restart_instruction',
+          kind: 'run_input',
+          artifactVersionId: null,
+          text: instruction,
+        },
+      ],
+    });
+    const waiting =
+      run.approvals.size > 0 ||
+      Object.values(run.projection.tasks).some(
+        (t) => t.taskId !== taskId && t.status === 'blocked',
+      );
+    const receipt = this.controlReceipt(
+      run,
+      command,
+      payloadHash,
+      [
+        ...prepared.drafts,
+        {
+          type: 'execution.state_changed',
+          executionId: parent.executionId,
+          payload: {
+            executionId: parent.executionId,
+            from: parent.status,
+            to: parent.status,
+            activity: parent.activity,
+            waitingOn: {
+              ...parent.waitingOn,
+              targetIds: parent.waitingOn.targetIds.map((id) =>
+                id === previousExecutionId ? prepared.input.executionId : id,
+              ),
+            },
+          },
+        },
+        runState(run.projection.status, waiting ? 'awaiting_user' : 'running', 'task_restarted'),
+      ],
+      'applied',
+      'immediate',
+    );
+    const outcome = this.launch(run, prepared);
+    void outcome.then(() => this.wake(run));
+    this.wake(run);
+    return receipt;
+  }
+
+  private wake(run: LiveRun) {
+    for (const wake of run.boundaryWaiters) wake();
+    run.boundaryWaiters.clear();
+  }
+
+  private async boundary(run: LiveRun, executionId?: string): Promise<void> {
+    if (executionId) run.boundaries.add(executionId);
+    try {
+      while (
+        run.projection.status === 'pausing' ||
+        run.projection.status === 'paused' ||
+        run.projection.status === 'awaiting_user'
+      ) {
+        this.maybePaused(run);
+        if (run.stop.aborted || (executionId && run.cancelRequested.has(executionId)))
+          throw new Error('scope cancelled');
+        await new Promise<void>((resolve) => run.boundaryWaiters.add(resolve));
+      }
+      if (
+        run.stop.aborted ||
+        TERMINAL_RUN_STATUSES.has(run.projection.status) ||
+        (executionId && run.cancelRequested.has(executionId))
+      )
+        throw new Error('scope cancelled');
+    } finally {
+      if (executionId) run.boundaries.delete(executionId);
+    }
+  }
+
+  private maybePaused(run: LiveRun) {
+    if (run.projection.status !== 'pausing') return;
+    const activeEffects = Object.values(run.projection.effects).some(
+      (e) =>
+        e.status === 'admitted' &&
+        e.kind !== 'spawn' &&
+        !(
+          e.kind === 'tool' &&
+          ['waiting_children', 'waiting_message', 'waiting_approval'].includes(
+            run.projection.executions[e.scope]?.status ?? '',
+          )
+        ),
+    );
+    const workerAway = Object.values(run.projection.executions).some(
+      (e) =>
+        !TERMINAL_EXECUTION_STATUSES.has(e.status) &&
+        !run.boundaries.has(e.executionId) &&
+        !['waiting_children', 'waiting_message', 'waiting_approval', 'paused'].includes(e.status),
+    );
+    if (activeEffects || workerAway) return;
+    const drafts: EventDraft[] = [];
+    for (const id of run.boundaries) {
+      const e = run.projection.executions[id];
+      if (e?.status === 'active')
+        drafts.push({
+          type: 'execution.state_changed',
+          executionId: id,
+          payload: {
+            executionId: id,
+            from: e.status,
+            to: 'paused',
+            activity: null,
+            waitingOn: null,
+          },
+        });
+    }
+    drafts.push(runState('pausing', 'paused', 'safe_boundary_reached'));
+    this.commit(run, drafts);
   }
 
   private steer(command: SteerCommand, payloadHash: string): Receipt {
@@ -533,6 +1234,16 @@ export class Coordinator {
     ) {
       return refuse({ code: 'TARGET_TERMINAL', message: `execution ${executionId} has finished` });
     }
+    if (
+      command.expectedControlRevision !== undefined &&
+      command.expectedControlRevision !== run.projection.controlRevision
+    )
+      return refuse({
+        code: 'STALE_CONTROL_REVISION',
+        message: `control revision is ${run.projection.controlRevision}`,
+      });
+    if (run.cancelRequested.has(executionId) || run.projection.status === 'cancelling')
+      return refuse({ code: 'TARGET_TERMINAL', message: 'the scope is cancelling' });
     const directiveId = this.ids.next('directive');
     this.commit(
       run,
@@ -571,7 +1282,45 @@ export class Coordinator {
 
   /** A steer receipt follows its directive: queued until a request carries it. */
   private currentReceipt(record: StoredCommand): Receipt {
-    if (!record.directiveId || !record.runId) return record.receipt;
+    if (!record.directiveId || !record.runId) {
+      if (!record.runId || record.receipt.status !== 'accepted') return record.receipt;
+      const events = this.store.readEvents(record.runId, 0);
+      const own = events.filter((e) => e.commandId === record.commandId);
+      const cancel = own.find((e) => e.type === 'cancel.requested');
+      const pause =
+        record.receipt.requestedBoundary === 'safe_boundary' && !cancel
+          ? events.findLast(
+              (e) =>
+                e.type === 'run.state_changed' &&
+                e.payload.to === 'pausing' &&
+                e.runSeq <= (record.receipt.acceptedSeq ?? 0),
+            )
+          : undefined;
+      const applied = cancel
+        ? own.some((e) => e.type === 'cancel.confirmed')
+        : pause
+          ? events.some(
+              (e) =>
+                e.runSeq > pause.runSeq &&
+                e.type === 'run.state_changed' &&
+                e.payload.to === 'paused',
+            )
+          : false;
+      const superseded =
+        pause &&
+        !applied &&
+        events.some(
+          (e) =>
+            e.runSeq > pause.runSeq &&
+            e.type === 'run.state_changed' &&
+            e.payload.reasonCode === 'resumed',
+        );
+      return {
+        ...record.receipt,
+        status: applied ? 'applied' : superseded ? 'superseded' : record.receipt.status,
+        relatedEventIds: own.map((e) => e.eventId),
+      };
+    }
     const directive = this.projectionOf(record.runId)?.directives[record.directiveId];
     const status = (() => {
       switch (directive?.status) {
@@ -588,7 +1337,12 @@ export class Coordinator {
           return 'queued' as const;
       }
     })();
-    return { ...record.receipt, status };
+    const related = this.store
+      // A directive cannot precede its acceptance, even when this run has a long history.
+      .readEvents(record.runId, Math.max(0, (record.receipt.acceptedSeq ?? 1) - 1))
+      .filter((e) => 'directiveId' in e.payload && e.payload.directiveId === record.directiveId)
+      .map((e) => e.eventId);
+    return { ...record.receipt, status, relatedEventIds: related };
   }
 
   // ── queries ───────────────────────────────────────────────────────────────
@@ -697,9 +1451,17 @@ export class Coordinator {
     this.storageError = `facts can no longer be recorded: ${String(error)}`;
     for (const run of this.live.values()) {
       run.stop.aborted = true;
-      for (const handle of run.handles.values()) {
-        void handle.cancel('storage unavailable').catch(() => {});
+      for (const execution of Object.values(run.projection.executions))
+        if (!TERMINAL_EXECUTION_STATUSES.has(execution.status))
+          this.requestCancel(run, execution.executionId, 'storage unavailable');
+      for (const [questionId, q] of run.questions) {
+        q.cancelTimer();
+        q.wake({ questionId, outcome: 'cancelled' });
       }
+      run.questions.clear();
+      for (const resolve of run.approvals.values()) resolve('reject');
+      run.approvals.clear();
+      this.wake(run);
     }
   }
 
@@ -721,7 +1483,11 @@ export class Coordinator {
         void Promise.resolve().then(() => this.pump(subscriber));
       }
     }
-    if (TERMINAL_RUN_STATUSES.has(projection.status)) this.live.delete(run.runId);
+    if (TERMINAL_RUN_STATUSES.has(projection.status)) {
+      this.live.delete(run.runId);
+      run.cancelDeadline();
+      this.wake(run);
+    }
   }
 
   private pump(subscriber: Subscriber) {
@@ -742,14 +1508,45 @@ export class Coordinator {
   private schedule(run: LiveRun, effect: () => Promise<void>) {
     void Promise.resolve()
       .then(effect)
-      .catch((error: unknown) => this.failRun(run, `internal_error: ${String(error)}`));
+      .catch((error: unknown) => {
+        if (!run.stop.aborted) this.failRun(run, `internal_error: ${String(error)}`);
+      });
   }
 
   private failRun(run: LiveRun, reason: string) {
     const status = run.projection.status;
     if (TERMINAL_RUN_STATUSES.has(status) || this.storageError) return;
+    run.stop.aborted = true;
+    const active = Object.values(run.projection.executions).filter(
+      (e) => !TERMINAL_EXECUTION_STATUSES.has(e.status),
+    );
+    if (active.length) this.drainingRuns.add(run);
+    const drafts: EventDraft[] = active.map((e) => ({
+      type: 'execution.state_changed',
+      executionId: e.executionId,
+      payload: {
+        executionId: e.executionId,
+        from: e.status,
+        to: 'cancelling',
+        activity: null,
+        waitingOn: null,
+      },
+    }));
+    for (const e of active) this.requestCancel(run, e.executionId, 'run failed');
+    for (const [questionId, q] of run.questions) {
+      q.cancelTimer();
+      drafts.push({
+        type: 'message.closed',
+        payload: { questionId, outcome: 'cancelled', answerRef: null },
+      });
+      q.wake({ questionId, outcome: 'cancelled' });
+    }
+    run.questions.clear();
+    for (const resolve of run.approvals.values()) resolve('reject');
+    run.approvals.clear();
+    this.wake(run);
     try {
-      this.commit(run, [...this.closeRounds(run), runState(status, 'failed', reason)]);
+      this.commit(run, [...drafts, ...this.closeRounds(run), runState(status, 'failed', reason)]);
     } catch {
       // Storage is gone; the next start marks this run interrupted.
     }
@@ -777,6 +1574,10 @@ export class Coordinator {
   /** Ends what a dead process left open, without starting anything again. */
   private interruption(p: RunProjection): EventDraft[] {
     const drafts: EventDraft[] = [];
+    for (const reservationId of Object.keys(p.budget.reservations)) {
+      const settled = settlementFor(p.budget, reservationId, null);
+      if (settled) drafts.push({ type: 'budget.settled', payload: settled });
+    }
     for (const effect of Object.values(p.effects)) {
       if (effect.status !== 'admitted') continue;
       // It may have reached the provider; nobody knows. It is never dispatched again.
@@ -812,6 +1613,13 @@ export class Coordinator {
         },
       });
     }
+    for (const question of Object.values(p.questions)) {
+      if (question.status !== 'open') continue;
+      drafts.push({
+        type: 'message.closed',
+        payload: { questionId: question.questionId, outcome: 'cancelled', answerRef: null },
+      });
+    }
     for (const iterations of Object.values(p.loopIterations)) {
       const open = iterations.map((id) => p.iterations[id]).find((i) => i && !i.outcome);
       if (!open) continue;
@@ -839,6 +1647,7 @@ export class Coordinator {
 
   private async drive(run: LiveRun): Promise<void> {
     const result = await this.runner.run(run.plan, this.callbacksFor(run), run.stop);
+    if (['pausing', 'paused'].includes(run.projection.status)) await this.boundary(run);
     this.conclude(run, result);
   }
 
@@ -873,6 +1682,7 @@ export class Coordinator {
     return {
       activate: (nodeId, iteration) => this.activate(run, nodeId, iteration),
       decide: async (nodeId, iteration) => {
+        await this.boundary(run);
         const step = run.plan.steps[nodeId];
         if (step?.kind !== 'decision') throw new Error(`${nodeId} is not a decision`);
         if (this.decisions) {
@@ -889,8 +1699,13 @@ export class Coordinator {
       loopCapReached: async (loopId, rounds) => this.atLoopCap(run, loopId, rounds),
       finalize: async (outputNodeId) => this.finalizeOutput(run, outputNodeId),
       loopEntered: async (loopId, no) => {
+        await this.boundary(run);
         const loop = run.plan.loops[loopId];
         if (!loop) throw new Error(`plan has no Loop ${loopId}`);
+        if (run.pendingCriteriaVersionId) {
+          run.criteriaVersionId = run.pendingCriteriaVersionId;
+          run.pendingCriteriaVersionId = null;
+        }
         const iterationId = this.ids.next('iteration');
         this.commit(run, [
           {
@@ -901,10 +1716,25 @@ export class Coordinator {
               no,
               // What the previous round hands to this one, fixed now (C-026).
               pinnedCarryInputs: this.carriedInto(run, loop.members, loopId),
-              criteriaVersionId: run.snapshot.criteriaVersionId,
+              criteriaVersionId: run.criteriaVersionId,
             },
           },
         ]);
+        const policyPatches = Object.values(run.projection.patches);
+        const patches = [
+          policyPatches.findLast(
+            (p) => p.kind === 'criteria' && p.after.criteriaVersionId === run.criteriaVersionId,
+          ),
+          policyPatches.findLast((p) => p.kind === 'loop_limit' && p.scope.nodeId === loopId),
+        ].filter((p) => p !== undefined);
+        if (patches.length)
+          this.commit(
+            run,
+            patches.map((p) => ({
+              type: 'patch.activated',
+              payload: { patchId: p.patchId, iterationId },
+            })),
+          );
         run.rounds.set(loopId, { no, iterationId });
       },
       loopLeft: async (loopId, no, outcome) => {
@@ -967,6 +1797,7 @@ export class Coordinator {
     nodeId: string,
     iterationId: string | null,
   ): Promise<StepOutcome> {
+    await this.boundary(run);
     const prepared = this.prepareExecution(run, {
       nodeId,
       iterationId,
@@ -983,20 +1814,25 @@ export class Coordinator {
   private prepareExecution(run: LiveRun, spec: ExecutionSpec): PreparedExecution {
     const definition = run.snapshot.definition;
     const node = definition.nodes.find((n) => n.id === spec.nodeId);
-    const role = node?.type === 'agent' && definition.roles.find((r) => r.id === node.roleId);
-    if (node?.type !== 'agent' || !role) {
+    const baseRole = node?.type === 'agent' && definition.roles.find((r) => r.id === node.roleId);
+    if (node?.type !== 'agent' || !baseRole) {
       throw new Error(`plan references missing agent ${spec.nodeId}`);
     }
+    const patch = run.nodePatches.get(spec.nodeId);
+    const role = patch
+      ? { ...baseRole, modelProfile: patch.modelProfile, prompt: patch.prompt }
+      : baseRole;
+    const model = this.models.resolve(role.modelProfile, run.snapshot.mode);
     const label = (id: string) => {
       const target = definition.nodes.find((n) => n.id === id);
       return { nodeId: id, label: target?.label ?? id };
     };
     const callables = run.plan.callables[spec.nodeId] ?? { delegate: [], question: [] };
 
-    const taskId = this.ids.next('task');
+    const taskId = spec.taskId ?? this.ids.next('task');
     const executionId = this.ids.next('execution');
     const effectId = this.ids.next('effect');
-    const attemptNo = 1;
+    const attemptNo = spec.attemptNo ?? 1;
     const input: AgentStartInput = {
       runId: run.runId,
       executionId,
@@ -1006,15 +1842,17 @@ export class Coordinator {
       role,
       modelProfile: role.modelProfile,
       mode: run.snapshot.mode,
-      model: run.snapshot.models[role.modelProfile] ?? {
-        profile: role.modelProfile,
-        provider: null,
-        modelId: null,
-        auth: 'mock',
-      },
+      model: model.ok
+        ? model.snapshot
+        : (run.snapshot.models[role.modelProfile] ?? {
+            profile: role.modelProfile,
+            provider: null,
+            modelId: null,
+            auth: 'mock',
+          }),
       depth: spec.depth,
       round: spec.iterationId ? (run.projection.iterations[spec.iterationId]?.no ?? null) : null,
-      criteriaVersionId: run.snapshot.criteriaVersionId,
+      criteriaVersionId: run.criteriaVersionId,
       assignment: spec.assignment,
       capabilities: {
         delegateTo: callables.delegate.map(label),
@@ -1023,6 +1861,7 @@ export class Coordinator {
       inputs: [...spec.given, ...this.resolveInputs(run, node.inputBindings, spec.iterationId)],
     };
     run.inputsByExecution.set(executionId, input.inputs);
+    run.assignments.set(executionId, spec);
     const drafts: EventDraft[] = [
       {
         type: 'task.created',
@@ -1042,12 +1881,15 @@ export class Coordinator {
         payload: {
           executionId,
           parentExecutionId: spec.parentExecutionId,
+          ...(spec.previousExecutionId ? { previousExecutionId: spec.previousExecutionId } : {}),
           nodeId: spec.nodeId,
           taskId,
           attemptNo,
           depth: spec.depth,
           iterationId: spec.iterationId,
           modelProfile: role.modelProfile,
+          configRevision: patch?.revision ?? run.projection.controlRevision,
+          criteriaVersionId: run.criteriaVersionId,
         },
       },
       {
@@ -1073,6 +1915,9 @@ export class Coordinator {
         payload: { executionId, from: 'queued', to: 'active', activity: 'model', waitingOn: null },
       },
     ];
+    if (spec.taskId) drafts.splice(0, 1);
+    if (patch)
+      drafts.push({ type: 'patch.activated', payload: { patchId: patch.patchId, executionId } });
     return { input, effectId, drafts };
   }
 
@@ -1087,6 +1932,7 @@ export class Coordinator {
         run.handles.set(input.executionId, handle);
         if (run.cancelRequested.has(input.executionId)) await handle.cancel('cancelled');
         settlement = await handle.waitForSettlement();
+        await Promise.all(run.toolOutcomes.get(input.executionId) ?? []);
       } catch (error) {
         settlement = { outcome: 'failed', error: String(error) };
       } finally {
@@ -1097,6 +1943,7 @@ export class Coordinator {
       return this.settle(run, input, effectId, settlement);
     })();
     run.taskOutcomes.set(input.taskId, outcome);
+    run.executionOutcomes.set(input.executionId, outcome);
     return outcome;
   }
 
@@ -1114,6 +1961,10 @@ export class Coordinator {
 
   private requestCancel(run: LiveRun, executionId: string, reason: string) {
     run.cancelRequested.add(executionId);
+    for (const listener of run.cancelListeners.get(executionId) ?? []) listener();
+    for (const child of this.liveChildren(run, executionId))
+      this.requestCancel(run, child.executionId, reason);
+    this.wake(run);
     void run.handles
       .get(executionId)
       ?.cancel(reason)
@@ -1129,7 +1980,10 @@ export class Coordinator {
     const previousRound = iterationId ? this.previousRound(run, iterationId) : null;
     return bindings.flatMap((binding): ResolvedInput[] => {
       if (binding.kind === 'run_input') {
-        const text = binding.name === 'criteria' ? criteria.join('\n') : brief;
+        const text =
+          binding.name === 'criteria'
+            ? (this.store.getArtifactText(run.runId, run.criteriaVersionId) ?? criteria.join('\n'))
+            : brief;
         return [{ name: binding.name, kind: 'run_input', artifactVersionId: null, text }];
       }
       const source = binding.sourceNodeId ?? '';
@@ -1186,11 +2040,14 @@ export class Coordinator {
     const submitted = task?.status === 'completed';
     // The Coordinator decides: an execution it cancelled ends cancelled unless it finished.
     const cancelled = run.cancelRequested.has(input.executionId) && !submitted;
-    const outcome = cancelled
-      ? ('cancelled' as const)
-      : settlement.outcome === 'succeeded' && !submitted
+    const outcome =
+      settlement.terminationMode === 'unconfirmed'
         ? ('failed' as const)
-        : settlement.outcome;
+        : cancelled
+          ? ('cancelled' as const)
+          : settlement.outcome === 'succeeded' && !submitted
+            ? ('failed' as const)
+            : settlement.outcome;
     const error =
       !cancelled && settlement.outcome === 'succeeded' && !submitted
         ? input.assignment.kind === 'question'
@@ -1198,20 +2055,31 @@ export class Coordinator {
           : 'the agent finished without submit_result'
         : settlement.error;
     this.releaseSlots(run, input.executionId);
+    for (const call of Object.values(run.projection.modelCalls))
+      if (call.executionId === input.executionId) {
+        run.requestDeadlines.get(call.modelCallId)?.();
+        run.requestDeadlines.delete(call.modelCallId);
+      }
 
-    const drafts: EventDraft[] = [
+    const drafts: EventDraft[] = [];
+    for (const call of Object.values(run.projection.modelCalls))
+      if (call.executionId === input.executionId) {
+        const settled = settlementFor(run.projection.budget, call.modelCallId, null);
+        if (settled) drafts.push({ type: 'budget.settled', payload: settled });
+      }
+    drafts.push(
       {
         type: 'execution.settled',
         executionId: input.executionId,
         payload: {
           executionId: input.executionId,
           outcome,
-          terminationMode: 'normal',
+          terminationMode: settlement.terminationMode ?? 'normal',
           ...(error ? { error } : {}),
         },
       },
       { type: 'effect.settled', executionId: input.executionId, payload: { effectId, outcome } },
-    ];
+    );
     for (const effect of Object.values(run.projection.effects)) {
       // A model request still open when its agent stopped may or may not have been billed.
       if (effect.kind !== 'model_request' || effect.scope !== input.executionId) continue;
@@ -1224,7 +2092,10 @@ export class Coordinator {
     }
     for (const directiveId of run.projection.directiveOrder) {
       const directive = run.projection.directives[directiveId];
-      if (directive?.targetExecutionId !== input.executionId || directive.status !== 'queued') {
+      if (
+        directive?.targetExecutionId !== input.executionId ||
+        !['queued', 'attached_to_request'].includes(directive.status)
+      ) {
         continue;
       }
       drafts.push({
@@ -1232,7 +2103,12 @@ export class Coordinator {
         executionId: input.executionId,
         payload: {
           directiveId,
-          status: 'expired',
+          status:
+            directive.status === 'attached_to_request'
+              ? 'delivery_unknown'
+              : cancelled
+                ? 'not_delivered'
+                : 'expired',
           reason: 'the target execution finished before another model request',
         },
       });
@@ -1251,7 +2127,18 @@ export class Coordinator {
     } else {
       this.commit(run, drafts);
     }
-    return outcome === 'succeeded'
+    if (
+      Object.values(run.projection.executions).every((e) =>
+        TERMINAL_EXECUTION_STATUSES.has(e.status),
+      )
+    )
+      this.drainingRuns.delete(run);
+    this.maybePaused(run);
+    if (settlement.terminationMode === 'unconfirmed') {
+      this.terminationUnconfirmed = true;
+      this.failRun(run, 'termination_unconfirmed');
+    }
+    return outcome === 'succeeded' || submitted
       ? { ok: true }
       : { ok: false, reason: error ?? `execution ${outcome}` };
   }
@@ -1281,6 +2168,7 @@ export class Coordinator {
   }
 
   private async finalizeOutput(run: LiveRun, outputNodeId: string) {
+    await this.boundary(run);
     const output = run.snapshot.definition.nodes.find((n) => n.id === outputNodeId);
     if (output?.type !== 'output') throw new Error('plan references a missing output node');
     const versions = output.inputBindings.flatMap((b) =>
@@ -1301,6 +2189,8 @@ export class Coordinator {
         return;
       }
     }
+    if (run.stop.aborted || TERMINAL_RUN_STATUSES.has(run.projection.status)) return;
+    await this.boundary(run);
     // The output and the run's success are one fact: readers never see one without the other.
     this.commit(run, [
       {
@@ -1346,13 +2236,24 @@ export class Coordinator {
     const reviewVersionId = bound[0];
     if (!reviewVersionId) throw new Error(`${nodeId} has no review to read`);
     const recorded = this.recordReview(run, reviewVersionId);
+    if (run.pendingCriteriaVersionId) {
+      const requested = this.requestApproval(run, 'user_action', [
+        recorded.targetVersionId,
+        reviewVersionId,
+      ]);
+      return (await requested.decision) === 'approve' ? 'revise' : 'reject';
+    }
     if (recorded.verdict !== 'inconclusive') return recorded.verdict;
     // Not a usable verdict: the person decides whether the draft goes on.
     const requested = this.requestApproval(run, 'user_action', [
       recorded.targetVersionId,
       reviewVersionId,
     ]);
-    return (await requested.decision) === 'approve' ? 'pass' : 'reject';
+    return (await requested.decision) === 'approve'
+      ? run.pendingCriteriaVersionId
+        ? 'revise'
+        : 'pass'
+      : 'reject';
   }
 
   /** Validates a submitted review against what its reviewer was given (CRL-ART-003). */
@@ -1361,7 +2262,7 @@ export class Coordinator {
     const reviewed = (run.inputsByExecution.get(author) ?? []).flatMap((i) =>
       i.artifactVersionId ? [i.artifactVersionId] : [],
     );
-    const criteriaVersionId = run.snapshot.criteriaVersionId;
+    const criteriaVersionId = run.criteriaVersionId;
     const text = this.store.getArtifactText(run.runId, reviewVersionId) ?? '';
     let parsed: ReturnType<typeof ReviewArtifact.safeParse> | null = null;
     try {
@@ -1393,7 +2294,21 @@ export class Coordinator {
             },
           ],
     };
-    this.commit(run, [{ type: 'review.recorded', payload }]);
+    this.commit(run, [
+      { type: 'review.recorded', payload },
+      ...(run.pendingCriteriaVersionId
+        ? [
+            {
+              type: 'review.stale' as const,
+              payload: {
+                reviewVersionId,
+                newCriteriaVersionId: run.pendingCriteriaVersionId,
+                cause: 'criteria_changed',
+              },
+            },
+          ]
+        : []),
+    ]);
     return payload;
   }
 
@@ -1418,7 +2333,7 @@ export class Coordinator {
           approvalId,
           kind,
           subjectVersionIds,
-          criteriaVersionId: run.snapshot.criteriaVersionId,
+          criteriaVersionId: run.pendingCriteriaVersionId ?? run.criteriaVersionId,
         },
       },
       runState(run.projection.status, 'awaiting_user', `approval_requested: ${kind}`),
@@ -1451,7 +2366,10 @@ export class Coordinator {
     const round = run.rounds.get(loopId)?.iterationId;
     const latest = members.flatMap((m) => this.submittedOutputOf(run, m, round));
     const requested = this.requestApproval(run, 'loop_cap', latest);
-    if ((await requested.decision) === 'approve') return 'continue';
+    if ((await requested.decision) === 'approve') {
+      await this.boundary(run);
+      return 'continue';
+    }
     run.capStop = 'declined';
     return 'stop';
   }
@@ -1491,6 +2409,11 @@ export class Coordinator {
         message: `control revision is ${run.projection.controlRevision}`,
       });
     }
+    if (
+      approval.criteriaVersionId &&
+      approval.criteriaVersionId !== (run.pendingCriteriaVersionId ?? run.criteriaVersionId)
+    )
+      return refuse({ code: 'APPROVAL_STALE', message: 'the completion criteria changed' });
     if (subjectVersionId !== approval.subjectVersionIds[0]) {
       return refuse({
         code: 'APPROVAL_STALE',
@@ -1511,7 +2434,17 @@ export class Coordinator {
             subjectVersionIds: approval.subjectVersionIds,
           },
         },
-        runState('awaiting_user', 'running', 'approval_resolved'),
+        ...(['paused', 'pausing'].includes(run.projection.status)
+          ? []
+          : [
+              runState(
+                run.projection.status,
+                Object.values(run.projection.tasks).some((t) => t.status === 'blocked')
+                  ? 'awaiting_user'
+                  : 'running',
+                'approval_resolved',
+              ),
+            ]),
       ],
       (committed) => {
         const first = committed[0];
@@ -1530,6 +2463,7 @@ export class Coordinator {
     );
     run.approvals.delete(approvalId);
     resume(decision);
+    this.wake(run);
     const stored = this.store.getCommand(runId, command.commandId);
     if (!stored) throw new Error(`command ${command.commandId} was not recorded`);
     return stored.receipt;
@@ -1564,6 +2498,8 @@ export class Coordinator {
 
   /** Ends a running (or waiting) run by the person's decision. */
   private endRun(run: LiveRun, to: 'cancelled', reason: string) {
+    if (run.projection.status === 'cancelling' || TERMINAL_RUN_STATUSES.has(run.projection.status))
+      return;
     const status = run.projection.status;
     if (TERMINAL_RUN_STATUSES.has(status)) return;
     this.commit(run, [...this.closeRounds(run), runState(status, to, reason)]);
@@ -1579,7 +2515,13 @@ export class Coordinator {
 
     const requireActive = () => {
       const status = run.projection.executions[executionId]?.status;
-      if (status !== 'active' || run.projection.status !== 'running' || this.storageError) {
+      if (
+        status !== 'active' ||
+        run.projection.status !== 'running' ||
+        run.cancelRequested.has(executionId) ||
+        run.projection.tasks[input.taskId]?.activeExecutionId !== executionId ||
+        this.storageError
+      ) {
         throw new Error(`execution ${executionId} is not active`);
       }
     };
@@ -1588,13 +2530,39 @@ export class Coordinator {
     const authorized = new Map<string, { proposal: ToolProposal; ran: boolean }>();
 
     const authorizeTool = async (proposal: ToolProposal): Promise<ToolAuthorization> => {
+      const questionId = proposal.name === 'reply' ? proposal.args.questionId : null;
+      if (
+        typeof questionId === 'string' &&
+        run.projection.questions[questionId]?.status !== 'open' &&
+        run.projection.questions[questionId]
+      ) {
+        this.commit(run, [
+          {
+            type: 'observation.late',
+            executionId,
+            payload: {
+              originalEventType: 'reply',
+              originalRef: questionId,
+              whyIgnored: 'the question has closed',
+            },
+          },
+        ]);
+        return {
+          ok: false,
+          toolCallId: this.ids.next('tool_call'),
+          error: { code: 'TARGET_TERMINAL', message: 'the question has closed' },
+        };
+      }
+      do {
+        await this.boundary(run, executionId);
+      } while (run.projection.status !== 'running');
       requireActive();
       const toolCallId = this.ids.next('tool_call');
       const refusal = this.toolRefusal(run, input, proposal);
       const error: CommandError | null = refusal
         ? { code: refusal.code, message: refusal.message }
         : null;
-      const questionId = proposal.args.questionId;
+
       const late =
         proposal.name === 'reply' &&
         typeof questionId === 'string' &&
@@ -1609,7 +2577,7 @@ export class Coordinator {
             executionId,
             toolCallId,
             name: proposal.name,
-            validatedArgs: summarizeArgs(proposal.args),
+            validatedArgs: error ? {} : summarizeArgs(proposal.args),
           },
         },
         error
@@ -1658,6 +2626,9 @@ export class Coordinator {
     };
 
     const executeTool = async (toolCallId: string): Promise<ToolOutcome> => {
+      do {
+        await this.boundary(run, executionId);
+      } while (run.projection.status !== 'running');
       requireActive();
       const call = authorized.get(toolCallId);
       if (!call || call.ran) {
@@ -1670,6 +2641,9 @@ export class Coordinator {
           },
         };
       }
+      const refusal = this.toolRefusal(run, input, call.proposal);
+      if (refusal)
+        return { ok: false, toolCallId, error: { code: refusal.code, message: refusal.message } };
       call.ran = true;
       const effectId = this.ids.next('effect');
       const opening: EventDraft[] = [
@@ -1700,6 +2674,9 @@ export class Coordinator {
       ];
       const tool = { opening, closing, toolCallId };
       switch (call.proposal.name) {
+        case 'search':
+        case 'read_document':
+          return this.externalTool(run, input, call.proposal, tool);
         case 'spawn_subagents':
           return this.spawnTool(run, input, call.proposal, tool);
         case 'await_tasks':
@@ -1723,20 +2700,74 @@ export class Coordinator {
       return { ok: true, toolCallId, result };
     };
 
+    const trackedExecute = (toolCallId: string) => {
+      const pending = run.toolOutcomes.get(executionId) ?? new Set<Promise<ToolOutcome>>();
+      run.toolOutcomes.set(executionId, pending);
+      const outcome = executeTool(toolCallId);
+      pending.add(outcome);
+      void outcome.then(
+        () => pending.delete(outcome),
+        () => pending.delete(outcome),
+      );
+      return outcome;
+    };
     return {
       prepareModelRequest: async (): Promise<RequestPermit> => {
+        do {
+          await this.boundary(run, executionId);
+        } while (run.projection.status !== 'running');
         requireActive();
-        const limits = run.snapshot.definition.limits;
-        if (Object.keys(run.projection.modelCalls).length >= limits.maxModelCalls) {
-          throw new Error(`LIMIT_REACHED: ${limits.maxModelCalls} model calls`);
+        if (noProgressReached(run.projection.progress)) {
+          this.commit(run, [
+            {
+              type: 'limit.reached',
+              payload: {
+                limitKind: 'no_progress',
+                used: run.projection.progress.turns,
+                reserved: 0,
+                max: 6,
+              },
+            },
+          ]);
+          const requested = this.requestApproval(run, 'user_action', [run.criteriaVersionId]);
+          run.boundaries.add(executionId);
+          try {
+            if ((await requested.decision) !== 'approve') throw new Error('no_progress stopped');
+          } finally {
+            run.boundaries.delete(executionId);
+          }
+          do {
+            await this.boundary(run, executionId);
+          } while (run.projection.status !== 'running');
+          requireActive();
         }
         // Wait for a model slot; a waiting execution is not in a request and holds none.
         await this.acquireSlot(run);
         try {
+          do {
+            await this.boundary(run, executionId);
+          } while (run.projection.status !== 'running');
           requireActive();
         } catch (error) {
           this.releaseSlot(run);
           throw error;
+        }
+        const limits = run.limits;
+        const admitted = admitModelRequest(run.projection.budget, limits);
+        if (!admitted.ok) {
+          this.releaseSlot(run);
+          this.commit(run, [
+            {
+              type: 'limit.reached',
+              payload: {
+                limitKind: admitted.limitKind,
+                used: admitted.used,
+                reserved: admitted.reserved,
+                max: admitted.max,
+              },
+            },
+          ]);
+          throw new Error(`LIMIT_REACHED: ${admitted.limitKind}`);
         }
         const modelCallId = this.ids.next('model_call');
         const contextSnapshotId = this.ids.next('context_snapshot');
@@ -1749,6 +2780,16 @@ export class Coordinator {
           .map((d) => ({ directiveId: d?.directiveId ?? '', text: d?.text ?? '' }));
         const directiveIds = queued.map((d) => d.directiveId);
         this.commit(run, [
+          {
+            type: 'budget.reserved',
+            executionId,
+            payload: {
+              reservationId: modelCallId,
+              modelCallId,
+              scope: executionId,
+              amount: { outputTokens: admitted.maxOutputTokens, modelCalls: 1 },
+            },
+          },
           ...directiveIds.map(
             (directiveId): EventDraft => ({
               type: 'directive.attached',
@@ -1764,11 +2805,16 @@ export class Coordinator {
               modelCallId,
               contextSnapshotId,
               profile: input.modelProfile,
-              configRevision: 0,
+              configRevision: run.projection.executions[executionId]?.configRevision ?? 0,
               directiveIds,
-              inputArtifactVersionIds: input.inputs.flatMap((i) =>
-                i.artifactVersionId ? [i.artifactVersionId] : [],
-              ),
+              inputArtifactVersionIds: [
+                ...new Set([
+                  ...(run.inputsByExecution.get(executionId) ?? input.inputs).flatMap((i) =>
+                    i.artifactVersionId ? [i.artifactVersionId] : [],
+                  ),
+                  ...(run.projection.artifactReads[executionId] ?? []),
+                ]),
+              ],
             },
           },
           {
@@ -1779,68 +2825,173 @@ export class Coordinator {
               kind: 'model_request',
               scope: executionId,
               epoch: input.attemptNo,
-              reservationId: null,
+              reservationId: modelCallId,
             },
           },
-          // The mock transport starts the request synchronously with the permit.
-          ...directiveIds.map(
-            (directiveId): EventDraft => ({
-              type: 'directive.dispatched',
-              executionId,
-              payload: { directiveId, modelCallId, executionEpoch: input.attemptNo },
-            }),
-          ),
         ]);
         lastCall = { modelCallId, contextSnapshotId, effectId };
+        run.requestDeadlines.set(
+          modelCallId,
+          this.timers.after(run.limits.modelTimeoutMs, () => {
+            if (
+              run.projection.effects[effectId]?.status !== 'admitted' ||
+              TERMINAL_RUN_STATUSES.has(run.projection.status)
+            )
+              return;
+            this.submit({
+              schemaVersion: '0.1',
+              runId: run.runId,
+              commandId: `timeout_${modelCallId}`,
+              type: 'cancel',
+              payload: {
+                scope: { kind: 'execution', executionId },
+                reason: 'model_request_timeout',
+              },
+            });
+          }),
+        );
         return {
           modelCallId,
           contextSnapshotId,
           profile: input.modelProfile,
-          maxOutputTokens: limits.maxOutputTokensPerCall,
+          maxOutputTokens: admitted.maxOutputTokens,
           directives: queued,
         };
       },
 
+      modelRequestDispatched: async (modelCallId: string) => {
+        const call = run.projection.modelCalls[modelCallId];
+        if (
+          !call ||
+          call.executionId !== executionId ||
+          call.finished ||
+          lastCall?.modelCallId !== modelCallId
+        )
+          throw new Error('unknown or closed model request');
+        if (
+          run.cancelRequested.has(executionId) ||
+          TERMINAL_RUN_STATUSES.has(run.projection.status)
+        ) {
+          this.commit(run, [
+            {
+              type: 'observation.late',
+              executionId,
+              payload: {
+                originalEventType: 'model.dispatch',
+                originalRef: modelCallId,
+                whyIgnored: 'scope cancelled',
+              },
+            },
+          ]);
+          throw new Error('scope cancelled');
+        }
+        const drafts: EventDraft[] = call.directiveIds
+          .filter((id) => run.projection.directives[id]?.status === 'attached_to_request')
+          .map((directiveId) => ({
+            type: 'directive.dispatched',
+            executionId,
+            payload: { directiveId, modelCallId, executionEpoch: input.attemptNo },
+          }));
+        if (!run.projection.effects[lastCall.effectId]?.dispatched)
+          drafts.unshift({
+            type: 'effect.dispatch_observed',
+            executionId,
+            payload: { effectId: lastCall.effectId, providerRequestId: null },
+          });
+        if (drafts.length) this.commit(run, drafts);
+      },
+
       observe: async (observation: AgentObservation) => {
-        requireActive();
+        const call = run.projection.modelCalls[observation.modelCallId];
+        if (!call || call.executionId !== executionId) throw new Error('unknown model call');
+        run.requestDeadlines.get(observation.modelCallId)?.();
+        run.requestDeadlines.delete(observation.modelCallId);
         if (run.slots.held.delete(observation.modelCallId)) this.releaseSlot(run);
         const effectId =
-          lastCall?.modelCallId === observation.modelCallId ? lastCall.effectId : null;
-        const settled: EventDraft[] = effectId
-          ? [{ type: 'effect.settled', executionId, payload: { effectId, outcome: 'succeeded' } }]
+          Object.values(run.projection.effects).find(
+            (effect) =>
+              effect.kind === 'model_request' &&
+              effect.scope === executionId &&
+              effect.reservationId === observation.modelCallId,
+          )?.effectId ?? null;
+        const budget = settlementFor(
+          run.projection.budget,
+          observation.modelCallId,
+          observation.usage.outputTokens,
+        );
+        const late =
+          call.finished ||
+          run.cancelRequested.has(executionId) ||
+          TERMINAL_EXECUTION_STATUSES.has(
+            run.projection.executions[executionId]?.status ?? 'failed',
+          ) ||
+          TERMINAL_RUN_STATUSES.has(run.projection.status) ||
+          run.projection.tasks[input.taskId]?.activeExecutionId !== executionId;
+        const responseRef = late ? null : `response_${observation.modelCallId}`;
+        const normalizedUsage = {
+          inputTokens: observation.usage.inputTokens,
+          outputTokens: observation.usage.outputTokens,
+          cachedInputTokens: observation.usage.cachedInputTokens ?? null,
+          reasoningTokens: observation.usage.reasoningTokens ?? null,
+        };
+        const usage = {
+          executionId,
+          modelCallId: observation.modelCallId,
+          rawUsage: observation.rawUsage ?? null,
+          normalizedUsage,
+          certainty: Object.values(normalizedUsage).some((count) => count !== null)
+            ? ('reported' as const)
+            : ('unknown' as const),
+        };
+        const drafts: EventDraft[] = budget
+          ? [{ type: 'budget.settled', executionId, payload: budget }]
           : [];
-        this.commit(run, [
-          {
+        if (late) {
+          const addsUsage =
+            call.usage === null ||
+            (call.rawUsage == null && usage.rawUsage !== null) ||
+            (['inputTokens', 'outputTokens', 'cachedInputTokens', 'reasoningTokens'] as const).some(
+              (key) => call.usage?.[key] == null && normalizedUsage[key] !== null,
+            );
+          if (addsUsage)
+            drafts.push({ type: 'model.usage_reconciled', executionId, payload: usage });
+          drafts.push({
+            type: 'observation.late',
+            executionId,
+            payload: {
+              originalEventType: 'model.finished',
+              originalRef: observation.modelCallId,
+              whyIgnored: 'the request or scope has ended',
+            },
+          });
+        } else
+          drafts.push({
             type: 'model.finished',
             actor: agent,
             executionId,
             payload: {
-              executionId,
-              modelCallId: observation.modelCallId,
-              responseRef: null,
-              rawUsage: observation.rawUsage ?? null,
-              normalizedUsage: {
-                inputTokens: observation.usage.inputTokens,
-                outputTokens: observation.usage.outputTokens,
-                cachedInputTokens: observation.usage.cachedInputTokens ?? null,
-                reasoningTokens: observation.usage.reasoningTokens ?? null,
-              },
-              certainty:
-                observation.usage.inputTokens === null && observation.usage.outputTokens === null
-                  ? 'unknown'
-                  : 'reported',
+              ...usage,
+              responseRef,
             },
-          },
-          ...settled,
-        ]);
+          });
+        if (effectId && run.projection.effects[effectId]?.status === 'admitted')
+          drafts.push({
+            type: 'effect.settled',
+            executionId,
+            payload: { effectId, outcome: late ? 'unknown' : 'succeeded' },
+          });
+        this.commit(run, drafts, () => {
+          if (responseRef) this.store.putArtifactText(run.runId, responseRef, observation.text);
+        });
+        this.maybePaused(run);
       },
 
       invokeTool: async (proposal: ToolProposal): Promise<ToolOutcome> => {
         const authorization = await authorizeTool(proposal);
-        return authorization.ok ? executeTool(authorization.toolCallId) : authorization;
+        return authorization.ok ? trackedExecute(authorization.toolCallId) : authorization;
       },
       authorizeTool: (proposal) => authorizeTool(proposal),
-      executeTool: (toolCallId) => executeTool(toolCallId),
+      executeTool: (toolCallId) => trackedExecute(toolCallId),
 
       streamText: (delta) => {
         // Only the open request of this execution streams; anything else is dropped.
@@ -1864,9 +3015,35 @@ export class Coordinator {
   ): Refusal | null {
     const { args } = proposal;
     const p = run.projection;
-    const limits = run.snapshot.definition.limits;
+    const limits = run.limits;
     const collaboration = input.role.allowedCollaborationTools as readonly string[];
     const denied = (message: string): Refusal => ({ code: 'CAPABILITY_DENIED', message });
+    if (['search', 'read_document'].includes(proposal.name)) {
+      if (
+        !(input.role.allowedWorkTools as readonly string[]).includes(proposal.name) ||
+        !this.tools
+      )
+        return denied(`role may not use ${proposal.name}`);
+      const keys = Object.keys(args);
+      if (proposal.name === 'search')
+        return typeof args.query === 'string' &&
+          args.query.trim().length > 0 &&
+          args.query.length <= 500 &&
+          keys.every((k) => ['query', 'provider', 'limit'].includes(k)) &&
+          (args.provider === undefined ||
+            args.provider === 'corpus' ||
+            args.provider === 'brave') &&
+          (args.limit === undefined ||
+            (Number.isInteger(args.limit) && Number(args.limit) >= 1 && Number(args.limit) <= 10))
+          ? null
+          : { code: 'SCHEMA_INVALID', message: 'invalid search arguments' };
+      return keys.length === 1 &&
+        ['documentId', 'sourceId'].includes(keys[0] ?? '') &&
+        typeof args[keys[0] ?? ''] === 'string' &&
+        String(args[keys[0] ?? '']).length > 0
+        ? null
+        : { code: 'SCHEMA_INVALID', message: 'read_document requires one documentId or sourceId' };
+    }
     if (proposal.name !== 'write_artifact' && proposal.name !== 'submit_result') {
       if (!collaboration.includes(proposal.name)) {
         return denied(
@@ -1963,6 +3140,18 @@ export class Coordinator {
         return capacity(tasks.length);
       }
       case 'await_tasks': {
+        if (
+          Array.isArray(args.taskIds) &&
+          createsWaitCycle(
+            p,
+            input.executionId,
+            args.taskIds.flatMap((id) => {
+              const active = typeof id === 'string' ? p.tasks[id]?.activeExecutionId : null;
+              return active ? [active] : [];
+            }),
+          )
+        )
+          return denied('waiting would create a cycle');
         const ids = args.taskIds;
         if (!Array.isArray(ids) || ids.length === 0) {
           return { code: 'SCHEMA_INVALID', message: 'taskIds must list the tasks to wait for' };
@@ -2074,7 +3263,7 @@ export class Coordinator {
       const previous = existing.length === 0 ? this.previousRoundOutput(run, input) : null;
       const artifactId =
         existing[0]?.artifactId ?? previous?.artifactId ?? this.ids.next('artifact');
-      const versionBase = previous && existing.length === 0 ? previous.version : 0;
+      const versionBase = existing.at(-1)?.version ?? previous?.version ?? 0;
       const artifactVersionId = this.ids.next('artifact_version');
       return {
         drafts: [
@@ -2086,7 +3275,7 @@ export class Coordinator {
             taskId,
             payload: {
               artifactId,
-              version: versionBase + existing.length + 1,
+              version: versionBase + 1,
               artifactVersionId,
               parentVersionId:
                 existing.at(-1)?.artifactVersionId ?? previous?.artifactVersionId ?? null,
@@ -2193,7 +3382,11 @@ export class Coordinator {
     const p = run.projection;
     const targetIds = taskIds.map(
       (taskId) =>
-        Object.values(p.executions).find((e) => e.taskId === taskId)?.executionId ?? taskId,
+        p.tasks[taskId]?.activeExecutionId ??
+        Object.values(p.executions)
+          .filter((e) => e.taskId === taskId)
+          .at(-1)?.executionId ??
+        taskId,
     );
     this.commit(run, [
       ...tool.opening,
@@ -2216,7 +3409,17 @@ export class Coordinator {
         },
       },
     ]);
-    await Promise.all(taskIds.map((taskId) => run.taskOutcomes.get(taskId)));
+    for (const taskId of taskIds) {
+      for (;;) {
+        const pending = run.taskOutcomes.get(taskId);
+        await pending;
+        if (run.stop.aborted || run.cancelRequested.has(executionId)) break;
+        const task = run.projection.tasks[taskId];
+        if (task?.status === 'completed' || task?.status === 'failed') break;
+        if (task?.status === 'in_progress' && run.taskOutcomes.get(taskId) !== pending) continue;
+        await new Promise<void>((resolve) => run.boundaryWaiters.add(resolve));
+      }
+    }
     const results = taskIds.map((taskId) => {
       const task = run.projection.tasks[taskId];
       return {
@@ -2225,6 +3428,14 @@ export class Coordinator {
         artifactVersionIds: task?.status === 'completed' ? task.submittedArtifactVersionIds : [],
       };
     });
+    if (run.cancelRequested.has(executionId) || run.stop.aborted) {
+      this.commit(run, tool.closing(null, 'scope cancelled'));
+      return {
+        ok: false,
+        toolCallId: tool.toolCallId,
+        error: { code: 'TARGET_TERMINAL', message: 'scope cancelled' },
+      };
+    }
     this.commit(run, [
       {
         type: 'execution.state_changed',
@@ -2256,7 +3467,7 @@ export class Coordinator {
       Array.isArray(proposal.args.artifactRefs) ? proposal.args.artifactRefs : []
     ).filter((id): id is string => typeof id === 'string' && Boolean(run.projection.artifacts[id]));
     const questionId = this.ids.next('question');
-    const timeoutMs = run.snapshot.definition.limits.questionTimeoutMs;
+    const timeoutMs = run.limits.questionTimeoutMs;
     const deadline = new Date(Date.parse(this.clock.nowIso()) + timeoutMs).toISOString();
     const responder = this.prepareExecution(run, {
       nodeId: targetNodeId,
@@ -2276,12 +3487,16 @@ export class Coordinator {
     });
     const role = run.snapshot.definition.nodes.find((n) => n.id === targetNodeId);
 
+    const logicalDeadline = new LogicalDeadline(this.clock, this.timers, timeoutMs, () =>
+      this.timeOut(run, questionId),
+    );
     const answer = new Promise<Record<string, unknown>>((resolve) => {
       run.questions.set(questionId, {
         askerExecutionId: executionId,
         responderExecutionId: responder.input.executionId,
         wake: resolve,
-        cancelTimer: this.timers.after(timeoutMs, () => this.timeOut(run, questionId)),
+        cancelTimer: () => logicalDeadline.cancel(),
+        deadline: logicalDeadline,
       });
     });
     this.commit(run, [
@@ -2446,6 +3661,102 @@ export class Coordinator {
     return { ok: true, toolCallId: tool.toolCallId, result: { artifactVersionId: id, text } };
   }
 
+  private async externalTool(
+    run: LiveRun,
+    input: AgentStartInput,
+    proposal: ToolProposal,
+    tool: ToolFrame,
+  ): Promise<ToolOutcome> {
+    const executionId = input.executionId;
+    const scopeListeners = run.cancelListeners.get(executionId) ?? new Set<() => void>();
+    run.cancelListeners.set(executionId, scopeListeners);
+    const listeners = new Set<() => void>();
+    let timedOut = false;
+    const abort = () => {
+      for (const listener of listeners) listener();
+    };
+    scopeListeners.add(abort);
+    const cancellation: ToolCancellation = {
+      get aborted() {
+        return timedOut || run.cancelRequested.has(executionId);
+      },
+      onCancel(fn) {
+        listeners.add(fn);
+        if (this.aborted) fn();
+        return () => {
+          listeners.delete(fn);
+        };
+      },
+    };
+    const cancelTimer = this.timers.after(30_000, () => {
+      timedOut = true;
+      abort();
+      this.submit({
+        schemaVersion: '0.1',
+        runId: run.runId,
+        commandId: `timeout_${tool.toolCallId}`,
+        type: 'cancel',
+        payload: { scope: { kind: 'execution', executionId }, reason: 'tool_timeout' },
+      });
+    });
+    this.commit(run, tool.opening);
+    try {
+      const tools = this.tools;
+      if (!tools) throw new Error('external tools unavailable');
+      const result = await tools.execute(
+        {
+          name: proposal.name as 'search' | 'read_document',
+          args: proposal.args,
+          mode: input.mode,
+          runId: run.runId,
+          executionId,
+        },
+        cancellation,
+      );
+      if (cancellation.aborted || TERMINAL_RUN_STATUSES.has(run.projection.status)) {
+        this.commit(run, [
+          ...tool.closing(null, 'scope cancelled'),
+          {
+            type: 'observation.late',
+            executionId,
+            payload: {
+              originalEventType: 'tool.finished',
+              originalRef: tool.toolCallId,
+              whyIgnored: 'scope cancelled',
+            },
+          },
+        ]);
+        return {
+          ok: false,
+          toolCallId: tool.toolCallId,
+          error: { code: 'TARGET_TERMINAL', message: 'scope cancelled' },
+        };
+      }
+      const resultRef = `result_${tool.toolCallId}`;
+      const text = JSON.stringify(result);
+      this.commit(run, tool.closing(resultRef), () =>
+        this.store.putArtifactText(run.runId, resultRef, text),
+      );
+      const inputs = run.inputsByExecution.get(executionId) ?? input.inputs;
+      run.inputsByExecution.set(executionId, [
+        ...inputs,
+        { name: proposal.name, kind: 'explicit_version', artifactVersionId: resultRef, text },
+      ]);
+      return { ok: true, toolCallId: tool.toolCallId, result };
+    } catch {
+      this.commit(run, tool.closing(null, 'external tool failed'));
+      return {
+        ok: false,
+        toolCallId: tool.toolCallId,
+        error: { code: 'CAPABILITY_DENIED', message: 'external tool failed' },
+      };
+    } finally {
+      cancelTimer();
+      scopeListeners.delete(abort);
+      listeners.clear();
+    }
+  }
+
   private publishFrame(frame: StreamFrame) {
     for (const subscriber of this.subscribers) {
       if (subscriber.runId !== frame.runId || !subscriber.onFrame) continue;
@@ -2470,7 +3781,10 @@ function outputNameOf(definition: CorralDefinition, nodeId: string): string {
 function summarizeArgs(args: Record<string, unknown>): Record<string, unknown> {
   const summary: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(args)) {
-    if (typeof value === 'string' && value.length > 256) {
+    if (
+      typeof value === 'string' &&
+      (value.length > 256 || ['query', 'text', 'body', 'brief', 'instruction'].includes(key))
+    ) {
       const bytes = utf8ToBytes(value);
       summary[key] = { bytes: bytes.length, sha256: bytesToHex(sha256(bytes)) };
     } else {

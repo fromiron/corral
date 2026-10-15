@@ -96,3 +96,24 @@ describe('Task Board and questions (C-025)', () => {
     );
   });
 });
+
+it('shows that the logical question timeout stops during a user pause', async () => {
+  const session = await finishedRun();
+  const p = session.getState().projection;
+  const question = Object.values(p?.questions ?? {})[0];
+  if (!p || !question) throw new Error('question fixture');
+  session.setState({
+    projection: {
+      ...p,
+      status: 'paused',
+      questions: {
+        ...p.questions,
+        [question.questionId]: { ...question, status: 'open', answer: null },
+      },
+    },
+  });
+  wrap(<QuestionsPanel session={session} onOpenArtifact={vi.fn()} />);
+  const row = screen.getByTestId(`question-${question.questionId}`);
+  expect(row).toHaveTextContent('The question timeout is paused.');
+  expect(row).not.toHaveTextContent(`Waiting for an answer until ${question.deadline}`);
+});

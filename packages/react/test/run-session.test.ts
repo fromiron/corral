@@ -1,4 +1,10 @@
-import type { StreamFrame } from '@corral/contracts';
+import type {
+  CorralDefinition,
+  Receipt,
+  RunCommand,
+  RunEvent,
+  StreamFrame,
+} from '@corral/contracts';
 import {
   applyEvent,
   Coordinator,
@@ -13,7 +19,7 @@ import {
   ScriptedAgentAdapter,
   SequentialIdFactory,
 } from '@corral/testkit';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createRunSession, type RunSessionState } from '../src/run/session.ts';
 
 function session(gates: Gate[] = []) {
@@ -191,4 +197,431 @@ describe('run session', () => {
     expect(store.getState().runId).toBeNull();
     expect(store.getState().startError?.code).toBe('GRAPH_INVALID');
   });
+});
+
+describe('Reins command session (C-032–C-035)', () => {
+  it('sends the reviewed revision and preserves a rejected receipt without changing status', async () => {
+    const store = session();
+    store.setState({
+      runId: 'run_control',
+      projection: { ...emptyProjection('run_control'), status: 'paused', controlRevision: 7 },
+    });
+    const receipt = await store.getState().sendCommand({
+      type: 'patch',
+      expectedControlRevision: 6,
+      payload: { kind: 'run_limits', changes: { maxOutputTokens: 500 } },
+    });
+    expect(receipt.status).toBe('rejected');
+    expect(store.getState().receipts[receipt.commandId]).toEqual(receipt);
+    expect(store.getState().projection?.status).toBe('paused');
+    expect(store.getState().pendingCommandIds).toEqual([]);
+  });
+
+  it('reports transport failure and clears pending without claiming rejection or application', async () => {
+    const transport = {
+      sendCommand: vi.fn(async () => {
+        throw new Error('connection lost');
+      }),
+    } as never;
+    const store = createRunSession(transport, () => 'cmd_offline');
+    store.setState({ runId: 'run_control', projection: emptyProjection('run_control') });
+    await expect(
+      store.getState().sendCommand({ type: 'pause', payload: { scope: 'run' } }),
+    ).rejects.toThrow('connection lost');
+    expect(store.getState().commandError).toBe('connection lost');
+    expect(store.getState().pendingCommandIds).toEqual([]);
+    expect(store.getState().receipts).toEqual({});
+  });
+
+  it('recovers a committed command with its original ID instead of duplicating the directive', async () => {
+    const gate = new Gate();
+    const inner = new InProcessTransport(
+      new Coordinator({
+        clock: new FakeClock(),
+        ids: new SequentialIdFactory(),
+        agents: new ScriptedAgentAdapter({ turns: 2, beforeReply: () => gate.wait() }),
+      }),
+    );
+    const sent: RunCommand[] = [];
+    let loseResponse = true;
+    const transport = Object.assign(Object.create(inner), {
+      async sendCommand(command: RunCommand) {
+        sent.push(command);
+        const receipt = await inner.sendCommand(command);
+        if (loseResponse) {
+          loseResponse = false;
+          throw new Error('response lost');
+        }
+        return receipt;
+      },
+    });
+    let id = 0;
+    const store = createRunSession(transport, () => `cmd_recover_${++id}`);
+    await store.getState().start(linearCorral(['writer']));
+    const ready = await until(store, (s) => Boolean(s.projection?.executionOrder.length));
+    const execution = ready.projection?.executionOrder[0] ?? '';
+    await expect(store.getState().steer(execution, 'Use sources')).rejects.toThrow('response lost');
+    const first = sent[0];
+    const receipt = await store.getState().steer(execution, 'Use sources');
+    expect(receipt.commandId).toBe(first?.commandId);
+    expect(sent).toHaveLength(1);
+    expect(store.getState().projection?.directiveOrder).toHaveLength(1);
+    expect(store.getState().unconfirmedCommands).toEqual({});
+    gate.open();
+    await until(store, (s) => s.projection?.status === 'succeeded');
+    store.getState().dispose();
+  });
+
+  it('retries an uncommitted command with the same ID and payload, but edits create a new command', async () => {
+    const sent: RunCommand[] = [];
+    let offline = true;
+    const transport = {
+      getReceipt: vi.fn(async () => null),
+      getRunDefinition: async () => linearCorral(['writer']),
+      subscribe: () => () => {},
+      async sendCommand(command: RunCommand): Promise<Receipt> {
+        sent.push(command);
+        if (offline) throw new Error('offline');
+        return {
+          commandId: command.commandId,
+          runId: command.runId,
+          status: 'applied',
+          target: 'run:run_retry',
+          requestedBoundary: 'immediate',
+          acceptedSeq: 1,
+          relatedEventIds: [],
+        };
+      },
+    } as never;
+    let id = 0;
+    const store = createRunSession(transport, () => `cmd_retry_${++id}`);
+    store.setState({ runId: 'run_retry' });
+    await expect(store.getState().steer('exec_a', 'Original')).rejects.toThrow();
+    await expect(store.getState().steer('exec_b', 'Edited')).rejects.toThrow();
+    expect(sent[0]?.commandId).not.toBe(sent[1]?.commandId);
+    offline = false;
+    await store.getState().steer('exec_a', 'Original');
+    expect(sent[2]).toEqual(sent[0]);
+    expect(Object.keys(store.getState().unconfirmedCommands)).toEqual([sent[1]?.commandId]);
+    await store.getState().open('run_other');
+    await store.getState().open('run_retry');
+    await store.getState().retryCommand(sent[1]?.commandId ?? '');
+    expect(sent[3]).toEqual(sent[1]);
+    expect(store.getState().unconfirmedCommands).toEqual({});
+    store.getState().dispose();
+  });
+});
+
+describe('run selection races', () => {
+  it('ignores an old open response and never subscribes it after the current run', async () => {
+    const replies = new Map<string, (definition: CorralDefinition) => void>();
+    const stopped: string[] = [];
+    const subscribe = vi.fn((runId: string) => () => stopped.push(runId));
+    const store = createRunSession({
+      getRunDefinition: (runId: string) => new Promise((resolve) => replies.set(runId, resolve)),
+      subscribe,
+    } as never);
+    const older = store.getState().open('run_old');
+    const current = store.getState().open('run_current');
+    replies.get('run_current')?.(linearCorral(['writer']));
+    await current;
+    replies.get('run_old')?.(linearCorral(['writer']));
+    await older;
+    expect(store.getState().runId).toBe('run_current');
+    expect(subscribe.mock.calls.map(([id]) => id)).toEqual(['run_current']);
+    store.getState().dispose();
+    expect(stopped).toEqual(['run_current']);
+  });
+
+  it('does not follow a start that completes after another open or dispose', async () => {
+    let finish: ((value: { runId: string; receipt: Receipt }) => void) | undefined;
+    const subscribe = vi.fn(() => () => {});
+    const store = createRunSession({
+      startRun: () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+      getRunDefinition: async () => linearCorral(['writer']),
+      subscribe,
+    } as never);
+    const starting = store.getState().start(linearCorral(['writer']));
+    await store.getState().open('run_current');
+    finish?.({ runId: 'run_old', receipt: {} as Receipt });
+    await starting;
+    expect(store.getState().runId).toBe('run_current');
+    const late = store.getState().start(linearCorral(['writer']));
+    store.getState().dispose();
+    finish?.({ runId: 'run_disposed', receipt: {} as Receipt });
+    await late;
+    expect(subscribe).toHaveBeenCalledTimes(1);
+  });
+
+  it('contains stale open failures and ignores callbacks from a disposed same-run subscription', async () => {
+    let rejectOld: ((reason: Error) => void) | undefined;
+    const handlers: TransportHandlers[] = [];
+    const store = createRunSession({
+      getRunDefinition: (id: string) =>
+        id === 'old'
+          ? new Promise((_resolve, reject) => {
+              rejectOld = reject;
+            })
+          : Promise.resolve(linearCorral(['writer'])),
+      subscribe: (_run: string, _after: number, next: TransportHandlers) => {
+        handlers.push(next);
+        return () => {};
+      },
+    } as never);
+    const old = store.getState().open('old');
+    await store.getState().open('current');
+    rejectOld?.(new Error('old unavailable'));
+    await expect(old).resolves.toBeUndefined();
+    expect(store.getState().streamError).toBeNull();
+    store.getState().dispose();
+    await store.getState().open('current');
+    handlers[0]?.onError?.(new Error('disposed failure'));
+    expect(store.getState().streamError).toBeNull();
+    store.getState().dispose();
+  });
+});
+
+describe('receipt refresh boundaries', () => {
+  const queued = (id: string): Receipt => ({
+    commandId: id,
+    runId: 'run_receipts',
+    status: 'queued',
+    acceptedSeq: 1,
+    target: 'execution:exec_writer',
+    requestedBoundary: 'next_request',
+    relatedEventIds: [],
+  });
+  async function setup(
+    getReceipt = vi.fn(async (_run: string, id: string) => queued(id)),
+    sendCommand = vi.fn(async (command: RunCommand) => queued(command.commandId)),
+  ) {
+    let handlers: TransportHandlers | undefined;
+    let sequence = 0;
+    const store = createRunSession({
+      getRunDefinition: async () => linearCorral(['writer']),
+      getReceipt,
+      sendCommand,
+      subscribe: (_run: string, _after: number, next: TransportHandlers) => {
+        handlers = next;
+        return () => {};
+      },
+    } as never);
+    await store.getState().open('run_receipts');
+    store.setState({
+      receipts: Object.fromEntries(
+        Array.from({ length: 100 }, (_, i) => [`cmd_${i}`, queued(`cmd_${i}`)]),
+      ),
+    });
+    const emit = async (event: Pick<RunEvent, 'type' | 'payload'> & { commandId?: string }) => {
+      handlers?.onEvent({
+        schemaVersion: '0.1',
+        runId: 'run_receipts',
+        eventId: `event_${++sequence}`,
+        runSeq: sequence,
+        recordedAt: '2026-10-15T00:00:00.000Z',
+        actor: { kind: 'runtime', id: 'runtime' },
+        causedByEventIds: [],
+        ...event,
+      } as RunEvent);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    };
+    return { store, emit, getReceipt };
+  }
+
+  it('does not query queued steers for unrelated model events or another accepted instruction', async () => {
+    const { store, emit, getReceipt } = await setup();
+    await emit({
+      type: 'model.request_prepared',
+      payload: {
+        executionId: 'exec_writer',
+        modelCallId: 'call_1',
+        contextSnapshotId: 'ctx_1',
+        profile: 'model-a',
+        configRevision: 0,
+        directiveIds: [],
+        inputArtifactVersionIds: [],
+      },
+    });
+    await emit({
+      type: 'directive.accepted',
+      commandId: 'cmd_0',
+      payload: { directiveId: 'dir_0', targetExecutionId: 'exec_writer', text: 'First' },
+    });
+    expect(getReceipt).not.toHaveBeenCalled();
+    await emit({
+      type: 'directive.attached',
+      payload: { directiveId: 'dir_0', contextSnapshotId: 'ctx_1', modelCallId: 'call_1' },
+    });
+    expect(getReceipt.mock.calls).toEqual([['run_receipts', 'cmd_0']]);
+    store.getState().dispose();
+  });
+
+  it('refreshes only safe-boundary commands at pause/resume and the confirmed cancel command', async () => {
+    const { store, emit, getReceipt } = await setup();
+    getReceipt.mockImplementation(async (_run, id) =>
+      id === 'cmd_pause'
+        ? {
+            ...queued(id),
+            status: 'accepted',
+            requestedBoundary: 'safe_boundary',
+          }
+        : queued(id),
+    );
+    store.setState({
+      receipts: {
+        ...store.getState().receipts,
+        cmd_pause: {
+          ...queued('cmd_pause'),
+          status: 'accepted',
+          requestedBoundary: 'safe_boundary',
+          target: 'run:run_receipts',
+        },
+      },
+    });
+    await emit({
+      type: 'run.state_changed',
+      payload: { from: 'pausing', to: 'paused', reasonCode: 'drained' },
+    });
+    await emit({
+      type: 'run.state_changed',
+      payload: { from: 'paused', to: 'running', reasonCode: 'resumed' },
+    });
+    await emit({
+      type: 'cancel.confirmed',
+      commandId: 'cmd_1',
+      payload: {
+        scope: { kind: 'execution', executionId: 'exec_writer' },
+        settlementRefs: [],
+        forced: false,
+      },
+    });
+    expect(getReceipt.mock.calls.map(([, id]) => id)).toEqual(['cmd_pause', 'cmd_pause', 'cmd_1']);
+    store.getState().dispose();
+  });
+
+  it('coalesces a refresh in flight and reads once more if a directive advances before the response', async () => {
+    const replies: ((value: Receipt) => void)[] = [];
+    const getReceipt = vi.fn(
+      (_run: string, _id: string) => new Promise<Receipt>((resolve) => replies.push(resolve)),
+    );
+    const { store, emit } = await setup(getReceipt);
+    await emit({
+      type: 'directive.accepted',
+      commandId: 'cmd_0',
+      payload: { directiveId: 'dir_0', targetExecutionId: 'exec_writer', text: 'First' },
+    });
+    const refresh = store.getState().refreshReceipt('cmd_0');
+    await emit({
+      type: 'directive.attached',
+      payload: { directiveId: 'dir_0', contextSnapshotId: 'ctx_1', modelCallId: 'call_1' },
+    });
+    await emit({
+      type: 'directive.dispatched',
+      payload: { directiveId: 'dir_0', modelCallId: 'call_1', executionEpoch: 1 },
+    });
+    expect(getReceipt).toHaveBeenCalledTimes(1);
+    replies[0]?.(queued('cmd_0'));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(getReceipt).toHaveBeenCalledTimes(2);
+    replies[1]?.({ ...queued('cmd_0'), status: 'applied' });
+    await refresh;
+    expect(store.getState().receipts.cmd_0?.status).toBe('applied');
+    store.getState().dispose();
+  });
+
+  it('reads back once when delivery arrives before the original HTTP receipt', async () => {
+    let respond: ((receipt: Receipt) => void) | undefined;
+    const sendCommand = vi.fn(
+      (_command: RunCommand) =>
+        new Promise<Receipt>((resolve) => {
+          respond = resolve;
+        }),
+    );
+    const getReceipt = vi.fn(
+      async (_run: string, id: string): Promise<Receipt> => ({ ...queued(id), status: 'applied' }),
+    );
+    const { store, emit } = await setup(getReceipt, sendCommand);
+    const sending = store.getState().steer('exec_writer', 'Already delivered');
+    const commandId = sendCommand.mock.calls[0]?.[0].commandId ?? '';
+    await emit({
+      type: 'directive.accepted',
+      commandId,
+      payload: {
+        directiveId: 'dir_race',
+        targetExecutionId: 'exec_writer',
+        text: 'Already delivered',
+      },
+    });
+    await emit({
+      type: 'directive.dispatched',
+      payload: { directiveId: 'dir_race', modelCallId: 'call_race', executionEpoch: 1 },
+    });
+    expect(getReceipt).not.toHaveBeenCalled();
+    respond?.(queued(commandId));
+    await sending;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(getReceipt).toHaveBeenCalledTimes(1);
+    expect(store.getState().receipts[commandId]?.status).toBe('applied');
+    store.getState().dispose();
+  });
+});
+
+it('[TC-RUN-008] repairs a broken stream from a committed completed response on replay', async () => {
+  let handlers: TransportHandlers | undefined;
+  const transport = {
+    getRunDefinition: async () => linearCorral(['writer']),
+    subscribe: (_runId: string, _after: number, next: TransportHandlers) => {
+      handlers = next;
+      return () => {};
+    },
+    getArtifactText: async (_runId: string, ref: string) =>
+      ref === 'response_1' ? 'The complete response' : null,
+  } as never;
+  const store = createRunSession(transport);
+  await store.getState().open('run_recovery');
+  handlers?.onFrame?.({
+    runId: 'run_recovery',
+    modelCallId: 'call_1',
+    chunkIndex: 0,
+    text: 'The ',
+  });
+  handlers?.onFrame?.({
+    runId: 'run_recovery',
+    modelCallId: 'call_1',
+    chunkIndex: 2,
+    text: 'response',
+  });
+  await until(store, (s) => Boolean(s.streams.call_1?.broken));
+  handlers?.onEvent({
+    schemaVersion: '0.1',
+    eventId: 'event_1',
+    runId: 'run_recovery',
+    runSeq: 1,
+    type: 'model.finished',
+    at: '2026-10-15T00:00:00.000Z',
+    actor: { kind: 'runtime', id: 'runtime' },
+    payload: {
+      executionId: 'exec_1',
+      modelCallId: 'call_1',
+      responseRef: 'response_1',
+      rawUsage: null,
+      normalizedUsage: {
+        inputTokens: null,
+        outputTokens: null,
+        cachedInputTokens: null,
+        reasoningTokens: null,
+      },
+      certainty: 'unknown',
+    },
+  } as never);
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  expect(store.getState().streams.call_1).toMatchObject({
+    text: 'The complete response',
+    broken: false,
+    completed: true,
+  });
+  store.getState().dispose();
 });

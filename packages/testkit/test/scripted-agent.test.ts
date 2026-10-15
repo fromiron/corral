@@ -59,6 +59,10 @@ class RecordingHost implements AgentHost {
     return permit;
   }
 
+  async modelRequestDispatched(modelCallId: string): Promise<void> {
+    this.calls.push(`dispatch:${modelCallId}`);
+  }
+
   async invokeTool(proposal: ToolProposal): Promise<ToolOutcome> {
     this.calls.push(`tool:${proposal.name}`);
     if (proposal.name === this.denyTool) {
@@ -97,11 +101,13 @@ describe('ScriptedAgentAdapter', () => {
     await expect(handle.waitForSettlement()).resolves.toEqual({ outcome: 'succeeded' });
     expect(host.calls).toEqual([
       'prepare',
+      'dispatch:call_0001',
       'stream:0',
       'stream:1',
       'stream:2',
       'observe',
       'prepare',
+      'dispatch:call_0002',
       'stream:0',
       'stream:1',
       'stream:2',
@@ -134,7 +140,7 @@ describe('ScriptedAgentAdapter', () => {
     await handle.cancel('user cancelled');
     gate.open();
     await expect(handle.waitForSettlement()).resolves.toEqual({ outcome: 'cancelled' });
-    expect(host.calls).toEqual(['prepare']);
+    expect(host.calls).toEqual(['prepare', 'dispatch:call_0001']);
   });
 
   it('settles as failed when the host refuses a tool', async () => {

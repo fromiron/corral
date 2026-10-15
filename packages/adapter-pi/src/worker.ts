@@ -19,6 +19,10 @@ export interface WorkerDeps {
 type Reply = Exclude<HostFrame, StartFrame | { type: 'cancel' }>;
 
 const TOOL_TEXT: Record<WorkerTool, string> = {
+  search:
+    'Search registered documents, or explicitly choose Brave for an enabled live run. Returns registered source references.',
+  read_document:
+    'Read a registered documentId or sourceId. Raw URLs and filesystem paths are not accepted.',
   write_artifact:
     'Save your output text as a new immutable version. Returns its artifactVersionId.',
   submit_result: 'Submit the versions that complete your task. Call it once, after write_artifact.',
@@ -36,6 +40,17 @@ function parametersOf(name: WorkerTool, start: StartFrame) {
   const node = (targets: { nodeId: string }[]) =>
     Type.Union(targets.map((t) => Type.Literal(t.nodeId)));
   switch (name) {
+    case 'search':
+      return Type.Object({
+        query: Type.String({ minLength: 1, maxLength: 1000 }),
+        provider: Type.Optional(Type.Union([Type.Literal('corpus'), Type.Literal('brave')])),
+        limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 10 })),
+      });
+    case 'read_document':
+      return Type.Union([
+        Type.Object({ documentId: Type.String({ minLength: 1 }) }, { additionalProperties: false }),
+        Type.Object({ sourceId: Type.String({ minLength: 1 }) }, { additionalProperties: false }),
+      ]);
     case 'write_artifact':
       return Type.Object({ text: Type.String() });
     case 'submit_result':
@@ -143,12 +158,16 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
     agent = new Agent({
       initialState: { model, systemPrompt: systemPrompt(start), tools },
       // Each request carries the token and output cap from its own permit.
-      streamFn: (m, context, options) =>
-        deps.streamFn(m, context, {
+      streamFn: (m, context, options) => {
+        const stream = deps.streamFn(m, context, {
           ...options,
           ...(permit?.apiKey ? { apiKey: permit.apiKey } : {}),
           ...(permit ? { maxTokens: permit.maxOutputTokens } : {}),
-        }),
+        });
+        if (permit)
+          port.send({ type: 'request_dispatched', ...head, modelCallId: permit.modelCallId });
+        return stream;
+      },
       getApiKey: () => permit?.apiKey ?? undefined,
       toolExecution: 'sequential',
       prepareRequest: async ({ context }) => {

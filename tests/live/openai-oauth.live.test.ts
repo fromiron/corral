@@ -16,6 +16,7 @@ import {
 import { linearCorral } from '@corral/testkit';
 import { builtinModels, getBuiltinModels } from '@earendil-works/pi-ai/providers/all';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { candidateHash } from '../../tools/release/candidate.ts';
 
 // C-020 live smoke (manual opt-in, never in CI): real OpenAI requests with the sign-in stored
 // by Studio (Settings → Models). Run with:
@@ -25,6 +26,9 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 // quality, only for runtime behaviour (CRL-DEV-004).
 
 const enabled = process.env.CORRAL_LIVE === '1';
+const candidate = enabled ? candidateHash() : '';
+let passedProfiles = 0;
+let passedAbort = false;
 const configDir = userConfigDir();
 const credentials = new FileCredentialStore(configDir);
 const models = builtinModels({ credentials });
@@ -37,11 +41,11 @@ const registry = new ModelRegistry(models, DEFAULT_PROFILES, {
 const workspaceDirs: string[] = [];
 afterAll(() => {
   for (const dir of workspaceDirs) rmSync(dir, { recursive: true, force: true });
-  // For copying into the P3 evidence; ignored by git.
+  // Separate live proof for this exact source candidate; ignored by git.
   if (enabled) {
     writeFileSync(
       join(import.meta.dirname, '.last-run.json'),
-      `${JSON.stringify({ ranAt: new Date().toISOString(), results }, null, 2)}\n`,
+      `${JSON.stringify({ ranAt: new Date().toISOString(), results, releaseProof: { candidate, passed: passedProfiles === DEFAULT_PROFILES.length && passedAbort && candidate === candidateHash(), completedAt: new Date().toISOString(), callsCap: DEFAULT_PROFILES.length * 3 + 1, outputTokensPerCall: 256 } }, null, 2)}\n`,
     );
   }
 });
@@ -56,12 +60,14 @@ function report(label: string, value: unknown) {
 
 describe.skipIf(!enabled)('OpenAI sign-in live smoke (C-020)', () => {
   beforeAll(async () => {
+    if (DEFAULT_PROFILES.length * 3 + 1 > 10)
+      throw new Error('Live smoke exceeds its 10 model-call cap');
     await registry.refreshStatus();
     const [openai] = registry.authView();
     if (!openai?.signedIn) {
       throw new Error(
         [
-          `No OpenAI sign-in is saved in ${configDir}.`,
+          'No OpenAI sign-in is saved in the server credential store.',
           'Run `pnpm serve`, open the printed link, sign in under Models, stop the server,',
           'then run `CORRAL_LIVE=1 pnpm test:live` again.',
         ].join(' '),
@@ -107,7 +113,7 @@ describe.skipIf(!enabled)('OpenAI sign-in live smoke (C-020)', () => {
       report(`${profile} status`, {
         status: final.status,
         reason: final.statusReason,
-        errors: Object.values(final.executions).map((e) => e.error),
+        failedExecutions: Object.values(final.executions).filter((e) => e.error !== null).length,
       });
       report(
         `${profile} model`,
@@ -117,9 +123,12 @@ describe.skipIf(!enabled)('OpenAI sign-in live smoke (C-020)', () => {
         `${profile} usage`,
         usage.map((u) => ({ ...u.normalizedUsage, certainty: u.certainty })),
       );
+      expect(final.status).toBe('succeeded');
       expect(usage.length).toBeGreaterThan(0);
+      expect(usage.length).toBeLessThanOrEqual(3);
       expect(usage.every((u) => u.certainty === 'reported')).toBe(true);
       expect(JSON.stringify(events)).not.toMatch(/eyJ|Bearer/);
+      passedProfiles += 1;
     },
     120_000,
   );
@@ -133,13 +142,16 @@ describe.skipIf(!enabled)('OpenAI sign-in live smoke (C-020)', () => {
     let call = 0;
     let handle: Awaited<ReturnType<PiAgentAdapter['start']>> | null = null;
     const host: AgentHost = {
-      prepareModelRequest: async () => ({
-        modelCallId: `call_${++call}`,
-        contextSnapshotId: `ctx_${call}`,
-        profile: 'model-a',
-        maxOutputTokens: 256,
-        directives: [],
-      }),
+      prepareModelRequest: async () => {
+        if (++call > 1) throw new Error('Live abort smoke allows one model request');
+        return {
+          modelCallId: `call_${call}`,
+          contextSnapshotId: `ctx_${call}`,
+          profile: 'model-a',
+          maxOutputTokens: 256,
+          directives: [],
+        };
+      },
       invokeTool: async () => ({
         ok: false,
         toolCallId: 'tool_x',
@@ -170,7 +182,13 @@ describe.skipIf(!enabled)('OpenAI sign-in live smoke (C-020)', () => {
       taskId: 'task_live',
       nodeId: 'writer',
       attemptNo: 1,
-      role: { ...role, prompt: 'Count slowly from one to two hundred, one number per line.' },
+      role: {
+        ...role,
+        prompt: 'Count slowly from one to two hundred, one number per line.',
+        // The cancellation trigger observes text, not tool-argument deltas.
+        allowedWorkTools: [],
+        allowedCollaborationTools: [],
+      },
       modelProfile: 'model-a',
       mode: 'live',
       model: resolution.snapshot,
@@ -190,7 +208,11 @@ describe.skipIf(!enabled)('OpenAI sign-in live smoke (C-020)', () => {
     const settlement = await handle.waitForSettlement();
     report('abort settlement', settlement);
     report('abort usage', observed);
+    report('abort trigger', { modelRequests: call, textChunks: streamed });
+    expect(call).toBe(1);
+    expect(streamed).toBeGreaterThanOrEqual(3);
     expect(settlement.outcome).toBe('cancelled');
+    passedAbort = true;
   }, 120_000);
 });
 

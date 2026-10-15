@@ -17,7 +17,9 @@ import {
 import {
   Coordinator,
   compileDefinition,
+  exportRunArchive,
   type InstallationPolicy,
+  openRunArchive,
   planRun,
   type SaveResult,
 } from '@corral/core';
@@ -28,17 +30,22 @@ import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import packageJson from '../package.json' with { type: 'json' };
+import { ImportInput, type InputOptions, InputRegistry } from './inputs.ts';
 import { assertOutsideWorkspace, DEFAULT_PROFILES, ModelRegistry } from './models/index.ts';
 import { RandomIdFactory, systemClock, systemTimers } from './runtime.ts';
+import { InputError } from './safe-http.ts';
 import {
   assertLoopback,
   boundaryFor,
   newBootstrapToken,
+  RequestLimiter,
   SECURITY_HEADERS,
   Sessions,
   sessionCookie,
 } from './security.ts';
+import { boundedSseWriter, flushSseRecord, MAX_SSE_BUFFER_BYTES } from './sse.ts';
 import { prepareWorkspace } from './workspace.ts';
+import { acquireWorkspaceOwnership } from './workspace-ownership.ts';
 
 // The local server (C-015, C-055, C-057): REST commands and queries, SSE for committed events,
 // and Studio's static files, all on one loopback origin. The Coordinator is the only writer.
@@ -60,6 +67,8 @@ export interface ServerOptions {
   extraOrigins?: string[];
   /** Real model calls (C-020, C-058). Without it, every run uses the simulated agents. */
   live?: LiveModels;
+  /** Input network injection and explicit bounded search opt-in; credentials stay server-side. */
+  inputs?: InputOptions;
 }
 
 export interface LiveModels {
@@ -115,8 +124,6 @@ const STATUS: Record<ErrorCode, number> = {
   ORIGIN_REJECTED: 403,
 };
 
-/** A slow SSE reader is cut off past this much unsent data; it resumes from its cursor. */
-const MAX_SSE_BUFFER_BYTES = 1024 * 1024;
 const HEARTBEAT_MS = 15_000;
 
 const LayoutInput = z.strictObject({
@@ -144,12 +151,29 @@ const receiptStatus = (receipt: Receipt) => {
 };
 
 export async function startCorralServer(options: ServerOptions): Promise<CorralServer> {
+  const resources = new AsyncDisposableStack();
+  try {
+    return await createCorralServer(options, resources);
+  } catch (error) {
+    await resources.disposeAsync();
+    throw error;
+  }
+}
+
+async function createCorralServer(
+  options: ServerOptions,
+  resources: AsyncDisposableStack,
+): Promise<CorralServer> {
   const host = options.host ?? '127.0.0.1';
   assertLoopback(host);
+  resources.defer(acquireWorkspaceOwnership(options.workspace));
   const workspace = prepareWorkspace(options.workspace);
   const clock = options.clock ?? systemClock;
   const ids = options.ids ?? new RandomIdFactory();
   const db = openDatabase(workspace.dbPath);
+  resources.defer(() => {
+    db.close();
+  });
   const corrals = new SqliteCorralRepository(db, {
     clock,
     newCorralId: () => ids.next('artifact').replace(/^art_/, 'corral_'),
@@ -171,6 +195,8 @@ export async function startCorralServer(options: ServerOptions): Promise<CorralS
     );
     await registry.refreshStatus();
   }
+  const store = new SqliteRunStore(db);
+  const inputs = new InputRegistry(db, options.inputs);
   const coordinator = new Coordinator({
     clock,
     ids,
@@ -180,7 +206,8 @@ export async function startCorralServer(options: ServerOptions): Promise<CorralS
       registry && options.live ? options.live.agents(registry) : null,
     ),
     ...(registry ? { models: registry } : {}),
-    store: new SqliteRunStore(db),
+    store,
+    tools: inputs,
     runner: new LangGraphRunner(),
     corrals,
     policy: workspace.policy,
@@ -192,13 +219,16 @@ export async function startCorralServer(options: ServerOptions): Promise<CorralS
   let port = options.port ?? 0;
   const boundary = boundaryFor(() => port, options.extraOrigins);
   const streams = new Set<() => void>();
+  const limiter = new RequestLimiter(() => clock.monotonicMs());
 
   const app = Fastify({
     logger: false,
     bodyLimit: 2 * 1024 * 1024,
+    requestTimeout: 30_000,
     forceCloseConnections: true,
     return503OnClosing: true,
   });
+  resources.defer(() => app.close());
 
   app.addHook('onRequest', async (request, reply) => {
     if (!boundary.hostAllowed(request.headers.host)) {
@@ -209,10 +239,32 @@ export async function startCorralServer(options: ServerOptions): Promise<CorralS
     if ((origin !== undefined || !safe) && !boundary.originAllowed(origin)) {
       return fail(reply, 'ORIGIN_REJECTED', 'requests must come from Studio');
     }
-    const path = request.url.split('?')[0] ?? '';
+    const path = request.routeOptions.url ?? request.url.split('?')[0] ?? '';
+    if (path.startsWith('/api/')) {
+      const queryKeys = Object.keys(request.query ?? {});
+      if (queryKeys.some((key) => /token|key|secret|authorization|password/i.test(key))) {
+        return fail(reply, 'SCHEMA_INVALID', 'credentials are not accepted in query strings');
+      }
+      if (!limiter.allow(!safe)) {
+        return reply
+          .header('retry-after', '60')
+          .code(429)
+          .send({
+            error: { code: 'LIMIT_REACHED', message: 'local request rate exceeded' },
+          });
+      }
+    }
     const open = path === '/api/v1/health' || (path === '/api/v1/session' && !safe);
     if (path.startsWith('/api/') && !open && !sessions.valid(request.headers.cookie)) {
       return fail(reply, 'SESSION_INVALID', 'open the link printed by the Corral server');
+    }
+    if (
+      path.startsWith('/api/') &&
+      !open &&
+      !safe &&
+      !sessions.validCsrf(request.headers.cookie, request.headers['x-corral-csrf'])
+    ) {
+      return fail(reply, 'ORIGIN_REJECTED', 'a session CSRF token is required');
     }
   });
   app.addHook('onSend', async (_request, reply, payload) => {
@@ -220,6 +272,10 @@ export async function startCorralServer(options: ServerOptions): Promise<CorralS
     return payload;
   });
   app.setErrorHandler((error: { statusCode?: number; message?: string }, _request, reply) => {
+    if (error.statusCode === 413)
+      return reply
+        .code(413)
+        .send({ error: { code: 'SCHEMA_INVALID', message: 'request body exceeds 2 MiB' } });
     if (error.statusCode && error.statusCode < 500) {
       return fail(reply, 'SCHEMA_INVALID', 'the request body could not be read');
     }
@@ -237,9 +293,16 @@ export async function startCorralServer(options: ServerOptions): Promise<CorralS
   app.post('/api/v1/session', async (request, reply) => {
     const session = sessions.redeem((request.body as { token?: unknown } | null)?.token);
     if (!session) return fail(reply, 'SESSION_INVALID', 'this link was already used or is wrong');
-    return reply.header('set-cookie', sessionCookie(session)).code(204).send();
+    return reply
+      .header('set-cookie', sessionCookie(session))
+      .header('x-corral-csrf', sessions.csrfToken(sessionCookie(session)))
+      .code(204)
+      .send();
   });
-  app.get('/api/v1/session', async () => ({ ok: true }));
+  app.get('/api/v1/session', async (request) => ({
+    ok: true,
+    csrfToken: sessions.csrfToken(request.headers.cookie),
+  }));
 
   // ── Corrals ────────────────────────────────────────────────────────────────
   const saveReply = (reply: FastifyReply, result: SaveResult, created: boolean) => {
@@ -255,12 +318,7 @@ export async function startCorralServer(options: ServerOptions): Promise<CorralS
   const parse = <T>(schema: z.ZodType<T>, request: FastifyRequest, reply: FastifyReply) => {
     const parsed = schema.safeParse(request.body);
     if (parsed.success) return parsed.data;
-    const issue = parsed.error.issues[0];
-    void fail(
-      reply,
-      'SCHEMA_INVALID',
-      issue ? `${issue.path.map(String).join('.') || '(root)'}: ${issue.message}` : 'invalid',
-    );
+    void fail(reply, 'SCHEMA_INVALID', 'request does not match the schema');
     return null;
   };
 
@@ -316,6 +374,36 @@ export async function startCorralServer(options: ServerOptions): Promise<CorralS
     };
   });
 
+  // Registered document IDs are stable across server restarts; raw paths never enter tools.
+  app.get('/api/v1/documents', async () => inputs.list());
+  app.post('/api/v1/documents/import', async (request, reply) => {
+    const body = parse(ImportInput, request, reply);
+    if (!body) return reply;
+    try {
+      if ('url' in body) return reply.code(201).send(await inputs.importSource(body));
+      const document = inputs.importDocument(body);
+      return reply.code(201).send({
+        documentId: document.documentId,
+        title: document.title,
+        mimeType: document.mimeType,
+        bytes: Buffer.byteLength(document.text),
+      });
+    } catch (error) {
+      return fail(
+        reply,
+        'SCHEMA_INVALID',
+        error instanceof InputError ? error.message : 'input registration failed',
+      );
+    }
+  });
+  app.post('/api/v1/history/import', async (request, reply) => {
+    try {
+      return openRunArchive(request.body);
+    } catch {
+      return fail(reply, 'SCHEMA_INVALID', 'invalid history archive');
+    }
+  });
+
   // ── models (C-058) ─────────────────────────────────────────────────────────
   // Status and expiry only; tokens never appear in these answers (ADR-019).
   app.get('/api/v1/model-profiles', async () => registry?.profilesView() ?? []);
@@ -358,10 +446,7 @@ export async function startCorralServer(options: ServerOptions): Promise<CorralS
   app.post('/api/v1/runs', async (request, reply) => {
     const parsed = CreateRunRequest.safeParse(request.body);
     if (!parsed.success) {
-      const issue = parsed.error.issues[0];
-      const message = issue
-        ? `${issue.path.map(String).join('.') || '(root)'}: ${issue.message}`
-        : 'invalid';
+      const message = 'request does not match the schema';
       return reply.code(400).send({
         runId: null,
         receipt: refusedStart(request.body, { code: 'SCHEMA_INVALID', message }),
@@ -374,6 +459,17 @@ export async function startCorralServer(options: ServerOptions): Promise<CorralS
   });
 
   type RunParams = { Params: { runId: string } };
+  app.post<RunParams>('/api/v1/runs/:runId/export', async (request, reply) => {
+    const body = parse(
+      z.strictObject({ privateTranscript: z.boolean().optional() }),
+      request,
+      reply,
+    );
+    if (!body) return reply;
+    if (!coordinator.getRunSnapshot(request.params.runId))
+      return fail(reply, 'TARGET_NOT_FOUND', 'no such run');
+    return exportRunArchive(store, request.params.runId, body);
+  });
   app.get<RunParams>('/api/v1/runs/:runId', async (request, reply) => {
     const snapshot = coordinator.getRunSnapshot(request.params.runId);
     if (!snapshot) return fail(reply, 'TARGET_NOT_FOUND', 'no such run');
@@ -403,9 +499,21 @@ export async function startCorralServer(options: ServerOptions): Promise<CorralS
     '/api/v1/runs/:runId/artifact-versions/:versionId',
     async (request, reply) => {
       const { runId, versionId } = request.params;
-      const known = coordinator.findSnapshot(runId)?.projection.artifacts[versionId];
-      const isCriteria = coordinator.getRunSnapshot(runId)?.criteriaVersionId === versionId;
-      const text = known || isCriteria ? coordinator.getArtifactText(runId, versionId) : null;
+      const projection = coordinator.findSnapshot(runId)?.projection;
+      const known =
+        projection &&
+        (projection.artifacts[versionId] ||
+          Object.values(projection.modelCalls).some((call) => call.responseRef === versionId) ||
+          Object.values(projection.toolCalls).some((call) => call.resultRef === versionId) ||
+          projection.currentCriteriaVersionId === versionId ||
+          Object.values(projection.patches).some(
+            (patch) =>
+              patch.kind === 'criteria' &&
+              (patch.before.criteriaVersionId === versionId ||
+                patch.after.criteriaVersionId === versionId),
+          ) ||
+          coordinator.getRunSnapshot(runId)?.criteriaVersionId === versionId);
+      const text = known ? coordinator.getArtifactText(runId, versionId) : null;
       return text === null ? fail(reply, 'TARGET_NOT_FOUND', 'no such version') : { text };
     },
   );
@@ -438,6 +546,10 @@ export async function startCorralServer(options: ServerOptions): Promise<CorralS
         return fail(reply, 'SCHEMA_INVALID', `cursor must be 0..${snapshot.seq}`);
       }
 
+      if (streams.size >= 16)
+        return reply.code(429).send({
+          error: { code: 'LIMIT_REACHED', message: 'at most 16 event streams may be open' },
+        });
       reply.hijack();
       const res = reply.raw;
       res.writeHead(200, {
@@ -447,39 +559,59 @@ export async function startCorralServer(options: ServerOptions): Promise<CorralS
         'x-accel-buffering': 'no',
         ...SECURITY_HEADERS,
       });
-      res.write(': stream open\n\n');
       let closed = false;
+      let heartbeat: ReturnType<typeof setInterval> | undefined;
+      let flushDeadline: ReturnType<typeof setTimeout> | undefined;
+      let unsubscribe = () => {};
+      const release = () => {
+        clearInterval(heartbeat);
+        clearTimeout(flushDeadline);
+        unsubscribe();
+        streams.delete(close);
+      };
       const close = () => {
-        if (closed) return;
+        closed = true;
+        release();
+        res.destroy();
+      };
+      const send = boundedSseWriter(res, () => {
         closed = true;
         clearInterval(heartbeat);
         unsubscribe();
-        streams.delete(close);
+        // Flush the bounded prefix so a replay larger than the cap advances its cursor.
         res.end();
-      };
-      const unsubscribe = coordinator.subscribe(
+        flushDeadline = setTimeout(close, 10_000);
+        flushDeadline.unref();
+      });
+      streams.add(close);
+      res.on('close', release);
+      request.raw.on('close', close);
+      send(': stream open\n\n');
+      // Replay may synchronously overflow before subscribe returns its disposer.
+      unsubscribe = coordinator.subscribe(
         request.params.runId,
         cursor,
         (event: RunEvent) => {
           if (closed) return;
-          if (res.writableLength > MAX_SSE_BUFFER_BYTES) {
-            // Too far behind: drop the connection; the client resumes from its cursor.
-            close();
+          const frame = `id: ${event.runSeq}\nevent: domain\ndata: ${JSON.stringify(event)}\n\n`;
+          if (Buffer.byteLength(frame) <= MAX_SSE_BUFFER_BYTES) {
+            send(frame);
             return;
           }
-          res.write(`id: ${event.runSeq}\nevent: domain\ndata: ${JSON.stringify(event)}\n\n`);
+          closed = true;
+          clearInterval(heartbeat);
+          unsubscribe();
+          flushDeadline = setTimeout(close, 10_000);
+          flushDeadline.unref();
+          void flushSseRecord(res, frame).then(() => res.end(), close);
         },
         close,
-        // Text deltas: no id, so they never move the client's cursor; never stored (ADR-011).
         (frame) => {
-          if (!closed && res.writableLength <= MAX_SSE_BUFFER_BYTES) {
-            res.write(`event: stream\ndata: ${JSON.stringify(frame)}\n\n`);
-          }
+          if (!closed) send(`event: stream\ndata: ${JSON.stringify(frame)}\n\n`);
         },
       );
-      const heartbeat = setInterval(() => res.write(': ping\n\n'), HEARTBEAT_MS);
-      streams.add(close);
-      request.raw.on('close', close);
+      if (closed) unsubscribe();
+      else heartbeat = setInterval(() => send(': ping\n\n'), HEARTBEAT_MS);
     },
   );
 
@@ -515,8 +647,7 @@ export async function startCorralServer(options: ServerOptions): Promise<CorralS
     coordinator,
     async close() {
       for (const close of [...streams]) close();
-      await app.close();
-      db.close();
+      await resources.disposeAsync();
     },
   };
 }

@@ -86,7 +86,11 @@ export function QuestionsPanel({
                   ) : null}
                 </div>
               ) : question.status === 'open' ? (
-                <p className="text-muted">{t('waiting', { deadline: question.deadline })}</p>
+                <p className="text-muted">
+                  {projection.status === 'paused' || projection.status === 'pausing'
+                    ? t('paused')
+                    : t('waiting', { deadline: question.deadline })}
+                </p>
               ) : null}
             </li>
           );

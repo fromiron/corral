@@ -57,6 +57,7 @@ async function start(fake: ReturnType<typeof makeFake>, profiles = FAKE_PROFILES
   const call: typeof fetch = async (input, init = {}) => {
     const headers = new Headers(init.headers);
     headers.set('cookie', cookie);
+    headers.set('x-corral-csrf', login.headers.get('x-corral-csrf') ?? '');
     headers.set('origin', server.url);
     if (init.body) headers.set('content-type', 'application/json');
     const response = await fetch(input, { ...init, headers });

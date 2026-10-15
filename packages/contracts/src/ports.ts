@@ -136,6 +136,8 @@ export interface TextDelta {
 
 export interface AgentHost {
   prepareModelRequest(): Promise<RequestPermit>;
+  /** Reports local transport dispatch; a prepared request alone is never delivery. */
+  modelRequestDispatched?(modelCallId: string): Promise<void>;
   /** Authorizes and runs a tool in one step, for agents without a separate tool phase. */
   invokeTool(proposal: ToolProposal): Promise<ToolOutcome>;
   /** Records the request and decides on it; nothing runs (Technical-Design §7.3). */
@@ -149,6 +151,7 @@ export interface AgentHost {
 export interface AgentSettlement {
   outcome: 'succeeded' | 'failed' | 'cancelled';
   error?: string;
+  terminationMode?: 'normal' | 'forced' | 'unconfirmed';
 }
 
 export interface AgentHandle {
