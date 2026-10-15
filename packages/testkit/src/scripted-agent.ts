@@ -21,6 +21,11 @@ export interface ScriptedAgentOptions {
   script?: (input: AgentStartInput, host: AgentHost) => Promise<AgentSettlement | null>;
   /** Use the protocol tools a role and its links allow (spawn/await, ask, reply). Default on. */
   collaborate?: boolean;
+  /**
+   * What a reviewer submits: a verdict (written as a valid review of the draft it was given),
+   * or raw text. Default: revise in round 1, pass after (demos and tests only, Spec §6).
+   */
+  review?: (input: AgentStartInput) => 'pass' | 'revise' | 'inconclusive' | string;
 }
 
 export function defaultReply(turn: number, input: AgentStartInput, permit: RequestPermit): string {
@@ -45,6 +50,13 @@ export class ScriptedAgentAdapter implements AgentAdapter {
 
   constructor(options: ScriptedAgentOptions) {
     this.options = options;
+  }
+
+  private reviewOf(input: AgentStartInput): string {
+    const chosen = this.options.review?.(input);
+    if (chosen !== undefined && !VERDICTS.has(chosen)) return chosen;
+    const verdict = chosen ?? (input.round !== null && input.round <= 1 ? 'revise' : 'pass');
+    return scriptedReview(input, verdict);
   }
 
   async start(input: AgentStartInput, host: AgentHost): Promise<AgentHandle> {
@@ -150,6 +162,7 @@ export class ScriptedAgentAdapter implements AgentAdapter {
         for (let turn = 1; turn <= this.options.turns; turn++) {
           text = await request(turn, turn === this.options.turns ? notes : []);
         }
+        if (input.role.outputContract === 'review') text = this.reviewOf(input);
         checkpoint();
         const written = await host.invokeTool({ name: 'write_artifact', args: { text } });
         if (!written.ok) return failed(written.error);
@@ -175,6 +188,31 @@ export class ScriptedAgentAdapter implements AgentAdapter {
       waitForSettlement: () => settlement,
     };
   }
+}
+
+const VERDICTS = new Set(['pass', 'revise', 'inconclusive']);
+
+function scriptedReview(input: AgentStartInput, verdict: string): string {
+  const target =
+    input.inputs.find((i) => i.name === 'draft' && i.artifactVersionId)?.artifactVersionId ??
+    input.inputs.find((i) => i.artifactVersionId)?.artifactVersionId;
+  return JSON.stringify({
+    targetArtifactVersionId: target,
+    criteriaVersionId: input.criteriaVersionId,
+    verdict,
+    issues:
+      verdict === 'revise'
+        ? [
+            {
+              criterionId: 'criterion_1',
+              reason: 'Cite a primary source for the main claim.',
+              severity: 'required',
+              evidenceRefs: [],
+            },
+          ]
+        : [],
+    evidenceRefs: [],
+  });
 }
 
 function failed(error: { code: string; message: string }): AgentSettlement {

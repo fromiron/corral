@@ -1,9 +1,8 @@
 import type { CorralDefinition } from '@corral/contracts';
 import { type CompiledPlan, compileDefinition } from './compiler/index.ts';
 
-// What the runtime can execute today. It runs the same compiler as the editor; anything the
-// compiler accepts but this runtime cannot run yet is refused with the node named, never run
-// another way (Decision steps need review verdicts and approvals, P5).
+// What the runtime executes: the same compiler as the editor (the editor is not a trust
+// boundary). Since P5 every step the compiler accepts can run, Decisions and approvals included.
 
 export interface PlanIssue {
   code: 'GRAPH_INVALID' | 'COMMAND_NOT_SUPPORTED';
@@ -13,16 +12,11 @@ export interface PlanIssue {
   linkId?: string;
 }
 
-export interface RunPlanOptions {
-  /** True when a decision policy is installed (tests today, review and approvals in P5). */
-  decisions?: boolean;
-}
-
 export type RunPlan =
   | { ok: true; definition: CorralDefinition; plan: CompiledPlan }
   | { ok: false; issues: PlanIssue[] };
 
-export function planRun(definition: unknown, options: RunPlanOptions = {}): RunPlan {
+export function planRun(definition: unknown): RunPlan {
   const compiled = compileDefinition(definition);
   if (!compiled.ok) {
     return {
@@ -40,24 +34,5 @@ export function planRun(definition: unknown, options: RunPlanOptions = {}): RunP
   }
 
   const { plan } = compiled;
-  const issues: PlanIssue[] = [];
-  for (const id of plan.order) {
-    const step = plan.steps[id];
-    if (step?.kind === 'decision' && !options.decisions) {
-      issues.push({
-        code: 'COMMAND_NOT_SUPPORTED',
-        message: `Decision ${id} needs reviews and approvals, which this version cannot run yet`,
-        nodeId: id,
-      });
-    }
-    if (step?.kind === 'output' && step.requireApproval) {
-      issues.push({
-        code: 'COMMAND_NOT_SUPPORTED',
-        message: `final approval on ${id} needs approvals, which this version cannot run yet`,
-        nodeId: id,
-      });
-    }
-  }
-  if (issues.length > 0) return { ok: false, issues };
   return { ok: true, definition: compiled.definition, plan };
 }

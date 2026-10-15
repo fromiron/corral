@@ -1,6 +1,6 @@
 # 001-canvas 태스크 상태
 
-`implemented`는 로컬 게이트를 통과했지만 CI 증거가 아직 없다는 뜻이다. CI에서 연결된 테스트가 통과하면 `done`으로 바꾼다. 증거: [P0](evidence/P0.md), [P1](evidence/P1.md), [P2](evidence/P2.md), [P3](evidence/P3.md), [P4](evidence/P4.md).
+`implemented`는 로컬 게이트를 통과했지만 CI 증거가 아직 없다는 뜻이다. CI에서 연결된 테스트가 통과하면 `done`으로 바꾼다. 증거: [P0](evidence/P0.md), [P1](evidence/P1.md), [P2](evidence/P2.md), [P3](evidence/P3.md), [P4](evidence/P4.md), [P5](evidence/P5.md).
 
 | 태스크 | 상태 | 결과물 |
 |---|---|---|
@@ -33,14 +33,19 @@
 | C-017 | implemented | `packages/adapter-pi` IPC schema, 실행당 worker 프로세스, 생명주기 검사 |
 | C-018 | implemented | 요청별 permit·지시 snapshot·access token, 비영속 text stream(SSE `event: stream`) |
 | C-019 | implemented | `authorizeTool`/`executeTool` 분리, 역할이 허용한 도구만 노출 |
-| C-020 | implemented | usage normalization, 실행 모드·모델 고정. **실제 호출 smoke는 수동 opt-in, 미실행** ([P3](evidence/P3.md) §5) |
+| C-020 | implemented | usage normalization, 실행 모드·모델 고정. 실제 호출 smoke는 수동 opt-in이며 2026-10-15에 한 번 실행해 통과 ([P3](evidence/P3.md) §5) |
 | C-058 | implemented | `ModelRegistry`, 자격 증명 파일(workspace 밖), Sign in with ChatGPT 흐름, `/settings/models` |
 | C-021 | implemented | Task당 활성 시도 하나, 재배정 없음, Coordinator가 결정하는 취소 결과 |
 | C-022 | implemented | `spawn_subagents`·`await_tasks`, 모델 슬롯(대기 중 미점유), 상주 실행 상한, 부모 종료 시 자식 정리 |
 | C-023 | implemented | `ask`·`reply`, 새 응답 Task, 단회 종결(답·타임아웃·종료), 늦은 reply 감사 기록 |
 | C-024 | implemented | 실행별 artifactId, 제출 버전만 전달, `read_artifact` 범위·기록 |
 | C-025 | implemented | Pi 협업 도구, Task Board·질문 패널·산출물 보기, SafeMarkdown, `examples/research-brief` |
+| C-026 | implemented | 같은 Loop 안의 `task_output`은 이번 라운드 버전만, `previous_iteration_output`은 라운드 시작에 고정(`pinnedCarryInputs`). 다음 라운드의 draft는 같은 artifactId의 다음 version |
+| C-027 | implemented | 기본 Decision 정책: 검토 JSON·대상(검토자가 받은 입력)·기준 버전 검사, 실패는 `inconclusive`와 사람 승인 |
+| C-028 | implemented | Loop 상한에서 `loop_cap` 승인, 설치 hard cap은 승인으로 넘을 수 없음(`limit.reached`) |
+| C-029 | implemented | `approval.requested/resolved`, `resolve_approval`(대상 버전·control revision·재전송), Output `requireApproval`의 최종 승인, Studio 승인 패널 |
+| C-030 | implemented | 산출물 보기의 계보(수정 대상·입력 버전), 이전 버전과 줄 diff, 검토 판정·이슈. 지시 경로(CRL-RNS-010)는 P6 |
 
 ## 다음 단계를 위해 미리 만든 것
 
-- C-030(P5): Coordinator의 decision policy 포트. 지금은 테스트만 주입한다. 정책이 없으면 Decision 단계와 최종 승인이 있는 정의는 이유와 함께 시작을 거절한다.
+- Coordinator의 `decisions` 포트는 테스트가 분기를 직접 정할 때만 주입한다. 주입하지 않으면 C-027·C-029의 기본 정책이 쓰인다.

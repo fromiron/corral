@@ -1,3 +1,4 @@
+export { ApprovalPanel } from './components/ApprovalPanel.tsx';
 export { ArtifactViewer } from './components/ArtifactViewer.tsx';
 export { CorralCanvas, NODE_DRAG_TYPE } from './components/CorralCanvas.tsx';
 export { EditorToolbar, isTextEditingEvent } from './components/EditorToolbar.tsx';

@@ -18,6 +18,7 @@ const PREFIX: Record<IdKind, string> = {
   iteration: 'iter',
   effect: 'eff',
   question: 'q',
+  approval: 'appr',
 };
 
 /** Random ids: a restarted process must never reuse an id the previous one handed out. */

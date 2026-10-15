@@ -1,5 +1,7 @@
 import type { CorralRecord } from '@corral/core';
 import {
+  ApprovalPanel,
+  ArtifactViewer,
   CorralCanvas,
   createEditorStore,
   draftFromDefinition,
@@ -205,14 +207,22 @@ function RunSide({
   const runId = useStore(session, (s) => s.runId);
   const [chosen, setChosen] = useState<string | null>(null);
   const target = useSteerTarget(session, chosen);
+  const [viewing, setViewing] = useState<string | null>(null);
   return (
     <section aria-labelledby="run-heading" className="flex flex-col gap-3">
       <RunControls
-        onStarted={() => setChosen(null)}
+        onStarted={() => {
+          setChosen(null);
+          setViewing(null);
+        }}
         liveAvailable={liveAvailable}
         {...(beforeStart ? { beforeStart } : {})}
       />
       <RunView session={session} onSteer={setChosen} />
+      <ApprovalPanel session={session} onOpenArtifact={setViewing} />
+      {viewing ? (
+        <ArtifactViewer session={session} versionId={viewing} onClose={() => setViewing(null)} />
+      ) : null}
       {runId ? (
         <Link to="/runs/$runId" params={{ runId }} className="text-xs underline">
           {t('openRun')}

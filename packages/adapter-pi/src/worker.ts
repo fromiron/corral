@@ -249,6 +249,19 @@ function systemPrompt(start: StartFrame): string {
       'When your work is complete, call write_artifact with the full output text, then call submit_result with the artifactVersionId it returned.',
     );
   }
+  if (start.role.outputContract === 'review') {
+    // Corral checks this exact shape; anything else counts as inconclusive, never as a pass.
+    const target =
+      start.inputs.find((i) => i.name === 'draft' && i.artifactVersionId) ??
+      start.inputs.find((i) => i.artifactVersionId);
+    lines.push(
+      'Your output text must be a JSON review object and nothing else: ' +
+        `{"targetArtifactVersionId": "${target?.artifactVersionId ?? '<the draft version>'}", ` +
+        `"criteriaVersionId": "${start.criteriaVersionId}", "verdict": "pass" | "revise" | "inconclusive", ` +
+        '"issues": [{"criterionId": "...", "reason": "...", "severity": "required" | "advisory", "evidenceRefs": []}], ' +
+        '"evidenceRefs": []}. A revise verdict needs at least one issue.',
+    );
+  }
   if (start.tools.includes('spawn_subagents')) {
     lines.push(
       `You may delegate tasks to: ${names(start.delegateTo)}. Use spawn_subagents, then await_tasks.`,
@@ -262,7 +275,17 @@ function systemPrompt(start: StartFrame): string {
 }
 
 function userPrompt(start: StartFrame): string {
-  return start.inputs.map((input) => `## ${input.name}\n\n${input.text}`).join('\n\n');
+  const round = start.round ? `This is round ${start.round} of a review loop.\n\n` : '';
+  return (
+    round +
+    start.inputs
+      .map((input) =>
+        input.artifactVersionId
+          ? `## ${input.name} (version ${input.artifactVersionId})\n\n${input.text}`
+          : `## ${input.name}\n\n${input.text}`,
+      )
+      .join('\n\n')
+  );
 }
 
 function directiveText(directives: { directiveId: string; text: string }[]): string {

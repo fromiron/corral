@@ -16,7 +16,11 @@ export function describeGraphRunnerContract(name: string, makeRunner: () => Grap
   };
 
   /** Records every callback and answers decisions from a script, in order. */
-  function recorder(decisions: Record<string, string[]> = {}, failAt?: string) {
+  function recorder(
+    decisions: Record<string, string[]> = {},
+    failAt?: string,
+    capAnswers: ('continue' | 'stop')[] = [],
+  ) {
     const log: string[] = [];
     const tag = (nodeId: string, iteration: IterationRef | null) =>
       iteration ? `${nodeId}#${iteration.no}` : nodeId;
@@ -39,6 +43,11 @@ export function describeGraphRunnerContract(name: string, makeRunner: () => Grap
       },
       async loopLeft(loopId, no, outcome) {
         log.push(`leave ${loopId}#${no} ${outcome}`);
+      },
+      async loopCapReached(loopId, rounds) {
+        const answer = capAnswers.shift() ?? 'stop';
+        log.push(`cap ${loopId}#${rounds} ${answer}`);
+        return answer;
       },
     };
     return { log, callbacks };
@@ -91,6 +100,22 @@ export function describeGraphRunnerContract(name: string, makeRunner: () => Grap
         'leave review_loop#2 cap_reached',
       ]);
       expect(result).toEqual({ kind: 'cap_reached', loopId: 'review_loop', iterations: 2 });
+    });
+
+    it('[TC-RUN-003-H] runs one more round past the cap only when told to continue', async () => {
+      const { log, callbacks } = recorder(
+        { review_decision: ['revise', 'revise', 'pass'], approval: ['approve'] },
+        undefined,
+        ['continue'],
+      );
+      const result = await makeRunner().run(planOf(researchTeam), callbacks);
+      expect(log.filter((line) => line.startsWith('activate write'))).toEqual([
+        'activate write#1',
+        'activate write#2',
+        'activate write#3',
+      ]);
+      expect(log).toContain('cap review_loop#2 continue');
+      expect(result).toEqual({ kind: 'finished', outputNodeId: 'output' });
     });
 
     it('ends as rejected when an approval is rejected', async () => {

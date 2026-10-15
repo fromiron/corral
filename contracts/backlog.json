@@ -490,7 +490,8 @@
       "packages/core/context/"
     ],
     "done": "reviewer가 이전 draft가 아닌 이번 제출 draft를 읽음",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P5.md"
   },
   {
     "id": "C-027",
@@ -507,7 +508,8 @@
       "packages/core/review/"
     ],
     "done": "잘못된 target/criteria/JSON은 pass로 승격 안 됨",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P5.md"
   },
   {
     "id": "C-028",
@@ -525,7 +527,8 @@
       "packages/core/loops/"
     ],
     "done": "cap에서 approval, 승인만으로 한도 우회 불가",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P5.md"
   },
   {
     "id": "C-029",
@@ -544,7 +547,8 @@
       "packages/react/approvals/"
     ],
     "done": "동일 승인 2회 실행 없음, stale 대상 거절",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P5.md"
   },
   {
     "id": "C-030",
@@ -562,7 +566,8 @@
       "packages/react/artifacts/"
     ],
     "done": "draft@1→review@1→draft@2 경로를 확인",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P5.md"
   },
   {
     "id": "C-031",

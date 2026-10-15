@@ -140,7 +140,7 @@
     "ok": "Ready to run.",
     "show": "Show",
     "runtimeHeading": "Not runnable here yet",
-    "runtimeNote": "This structure is valid. Decisions and final approval need reviews and approvals, which this version cannot run yet.",
+    "runtimeNote": "This structure is valid, but this runtime refuses to run it:",
     "codes": {
       "SCHEMA_INVALID": "{message}",
       "DUPLICATE_ID": "Two items share an ID.",
@@ -374,6 +374,36 @@
     "version": "Version {version}",
     "close": "Close",
     "loading": "Loading…",
-    "meta": "By {author} · {contract} · {bytes, number} bytes · {submitted, select, true {submitted} other {not submitted}}"
+    "meta": "By {author} · {contract} · {bytes, number} bytes · {submitted, select, true {submitted} other {not submitted}}",
+    "revises": "Revises",
+    "madeFrom": "Made from",
+    "compare": "Compare with {version}",
+    "hideCompare": "Hide comparison",
+    "verdict": {
+      "pass": "Pass",
+      "revise": "Revise",
+      "inconclusive": "Inconclusive"
+    },
+    "reviewOf": "Review of",
+    "issues": "Issues",
+    "notAReview": "This review could not be read as review JSON; it was recorded as inconclusive."
+  },
+  "Approvals": {
+    "heading": "Waiting for you",
+    "kind": {
+      "final_output": "Final output",
+      "loop_cap": "Another review round?",
+      "user_action": "Your decision"
+    },
+    "explain": {
+      "final_output": "Approve to make this exact version the output. A newer version would need its own approval.",
+      "loop_cap": "The Loop reached its round limit. Approve to run one more round, or reject to stop the run.",
+      "user_action": "The run waits for you. Approve to continue with these versions, or reject to stop."
+    },
+    "subject": "About",
+    "criteria": "Criteria",
+    "approve": "Approve",
+    "reject": "Reject",
+    "refused": "Not applied: {message}"
   }
 }

@@ -115,9 +115,9 @@ describe('editor model: drawing a definition', () => {
     expect(outputNode?.type === 'output' && outputNode.inputBindings).toEqual([
       { kind: 'task_output', name: 'text', sourceNodeId: writer },
     ]);
-    // Loops run, but Decisions wait for reviews and approvals (P5): say which nodes.
-    expect(result.runnable).toBe(false);
-    expect(result.runtimeLimits.map((issue) => issue.nodeId)).toEqual([decision, approval]);
+    // Since P5 the whole team runs: Loop, Decisions and the final approval.
+    expect(result.runnable).toBe(true);
+    expect(result.runtimeLimits).toEqual([]);
   });
 });
 
@@ -268,6 +268,6 @@ describe('editor model: import and export', () => {
         .nodes.map((n) => n.id)
         .sort(),
     );
-    expect(planRun(draftToDefinition(without.draft)).ok).toBe(false);
+    expect(planRun(draftToDefinition(without.draft)).ok).toBe(true);
   });
 });

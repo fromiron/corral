@@ -69,6 +69,8 @@ export interface ArtifactVersionView {
   artifactVersionId: string;
   artifactId: string;
   version: number;
+  /** The version this one revises (the same node's draft in the previous Loop round). */
+  parentVersionId: string | null;
   name: string;
   contract: OutputContract;
   contentHash: string;
@@ -119,6 +121,23 @@ export interface QuestionView {
   answer: { responderExecutionId: string; body: string; evidenceRefs: string[] } | null;
 }
 
+export interface ApprovalView {
+  approvalId: string;
+  kind: 'final_output' | 'loop_cap' | 'user_action';
+  /** The exact versions this decision is about; the first is the one being approved. */
+  subjectVersionIds: string[];
+  criteriaVersionId: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+}
+
+export interface ReviewView {
+  reviewVersionId: string;
+  targetVersionId: string;
+  criteriaVersionId: string;
+  verdict: 'pass' | 'revise' | 'inconclusive';
+  issues: { criterionId: string; reason: string; severity: 'required' | 'advisory' }[];
+}
+
 export interface RunProjection {
   runId: string;
   corralId: string | null;
@@ -139,6 +158,13 @@ export interface RunProjection {
   effects: Record<string, EffectView>;
   iterations: Record<string, IterationView>;
   questions: Record<string, QuestionView>;
+  approvals: Record<string, ApprovalView>;
+  /** Reviews as recorded by the runtime (C-027), in order. */
+  reviews: Record<string, ReviewView>;
+  /** Bumped by control changes (patches, P6); approvals and patches must name it. */
+  controlRevision: number;
+  /** The final approval behind the output, when the Output required one. */
+  outputApprovalId: string | null;
   /** Versions each execution read through read_artifact, in order. */
   artifactReads: Record<string, string[]>;
   /** Iteration ids per Loop node, in round order. */
@@ -180,6 +206,10 @@ export function emptyProjection(runId: string): RunProjection {
     effects: {},
     iterations: {},
     questions: {},
+    approvals: {},
+    reviews: {},
+    controlRevision: 0,
+    outputApprovalId: null,
     artifactReads: {},
     loopIterations: {},
     interruptedBy: null,
@@ -343,7 +373,44 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
           nodeId: event.payload.nodeId,
           artifactVersionIds: event.payload.artifactVersionIds,
         },
+        outputApprovalId: event.payload.approvalId,
       };
+    case 'approval.requested': {
+      const { approvalId, kind, subjectVersionIds, criteriaVersionId } = event.payload;
+      const approval: ApprovalView = {
+        approvalId,
+        kind,
+        subjectVersionIds,
+        criteriaVersionId,
+        status: 'pending',
+      };
+      return { ...p, approvals: { ...p.approvals, [approvalId]: approval } };
+    }
+    case 'approval.resolved': {
+      const approval = p.approvals[event.payload.approvalId];
+      if (!approval) return p;
+      const status = event.payload.decision === 'approve' ? 'approved' : 'rejected';
+      return {
+        ...p,
+        approvals: { ...p.approvals, [approval.approvalId]: { ...approval, status } },
+      };
+    }
+    case 'review.recorded': {
+      const { reviewVersionId, targetVersionId, criteriaVersionId, verdict, issues } =
+        event.payload;
+      const review: ReviewView = {
+        reviewVersionId,
+        targetVersionId,
+        criteriaVersionId,
+        verdict,
+        issues: issues.map(({ criterionId, reason, severity }) => ({
+          criterionId,
+          reason,
+          severity,
+        })),
+      };
+      return { ...p, reviews: { ...p.reviews, [reviewVersionId]: review } };
+    }
     case 'run.interrupted':
       return { ...p, interruptedBy: event.payload.backendSessionId };
     case 'effect.admitted': {
@@ -428,10 +495,7 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
     // Committed facts that later phases project (review P5, Reins P6, budget P7). Until then
     // they are kept in the log only.
     case 'task.blocked':
-    case 'review.recorded':
     case 'review.stale':
-    case 'approval.requested':
-    case 'approval.resolved':
     case 'patch.committed':
     case 'patch.activated':
     case 'effect.dispatch_observed':

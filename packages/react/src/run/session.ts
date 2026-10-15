@@ -45,6 +45,8 @@ export interface RunSessionState {
   /** Loads one version's text for viewing; versions never change, so once is enough. */
   loadArtifact(artifactVersionId: string): Promise<void>;
   steer(executionId: string, text: string): Promise<Receipt>;
+  /** Approves or rejects a pending approval, for the exact subject the person was shown. */
+  resolveApproval(approvalId: string, decision: 'approve' | 'reject'): Promise<Receipt>;
   refreshReceipt(commandId: string): Promise<void>;
   dispose(): void;
 }
@@ -226,6 +228,32 @@ export function createRunSession(
             runId,
             type: 'steer',
             payload: { targetExecutionId: executionId, text, delivery: 'next_request' },
+          });
+          set({ receipts: { ...get().receipts, [commandId]: receipt } });
+          return receipt;
+        } finally {
+          set({ pendingCommandIds: get().pendingCommandIds.filter((id) => id !== commandId) });
+        }
+      },
+
+      async resolveApproval(approvalId, decision) {
+        const runId = get().runId;
+        const approval = get().projection?.approvals[approvalId];
+        if (!runId || !approval) throw new Error('no such approval');
+        const commandId = newCommandId();
+        set({ pendingCommandIds: [...get().pendingCommandIds, commandId] });
+        try {
+          const receipt = await transport.sendCommand({
+            schemaVersion: '0.1',
+            commandId,
+            runId,
+            type: 'resolve_approval',
+            expectedControlRevision: get().projection?.controlRevision ?? 0,
+            payload: {
+              approvalId,
+              decision,
+              subjectVersionId: approval.subjectVersionIds[0] ?? '',
+            },
           });
           set({ receipts: { ...get().receipts, [commandId]: receipt } });
           return receipt;

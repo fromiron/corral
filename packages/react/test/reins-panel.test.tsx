@@ -24,6 +24,7 @@ function fakeSession(steer = vi.fn(async () => ({}) as never)): RunSessionStore 
     start: vi.fn(),
     open: vi.fn(),
     loadArtifact: vi.fn(),
+    resolveApproval: vi.fn(),
     steer,
     refreshReceipt: vi.fn(),
     dispose: vi.fn(),

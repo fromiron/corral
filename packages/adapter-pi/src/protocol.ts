@@ -87,7 +87,16 @@ export const StartFrame = z.strictObject({
     prompt: z.string().min(1),
     outputContract: z.string().min(1),
   }),
-  inputs: z.array(z.strictObject({ name: z.string().min(1), text: Text })),
+  inputs: z.array(
+    z.strictObject({
+      name: z.string().min(1),
+      artifactVersionId: Identifier.nullable(),
+      text: Text,
+    }),
+  ),
+  /** The criteria version reviews must name, and the Loop round (null outside a Loop). */
+  criteriaVersionId: Identifier,
+  round: z.int().min(1).nullable(),
   /** Tools this execution may propose. The host still checks every call. */
   tools: z.array(WorkerTool),
   /** Why the execution exists: its own step, a delegated task, or a question to answer. */
