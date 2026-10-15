@@ -140,7 +140,7 @@ export interface CliIO {
 }
 
 const usage =
-  'corral dev [--demo] | validate <file> | run <file> [--input <brief>] [--watch] [--demo] | inspect <run-id> | inspect --archive <file> | export <run-id> [--redact | --private] | judge install|status [--model-dir <dir>]';
+  'corral dev [--demo] | validate <file> | run <file> [--input <brief>] [--watch] [--demo] | inspect <run-id> [--judgments] | inspect --archive <file> | export <run-id> [--redact | --private] | judge install|status [--model-dir <dir>]';
 
 export async function runCli(args: string[], io: CliIO): Promise<number> {
   let server: import('@corral/server').CorralServer | undefined;
@@ -160,6 +160,7 @@ export async function runCli(args: string[], io: CliIO): Promise<number> {
         private: { type: 'boolean', default: false },
         archive: { type: 'string' },
         'model-dir': { type: 'string' },
+        judgments: { type: 'boolean', default: false },
         help: { type: 'boolean', short: 'h' },
       },
     });
@@ -259,7 +260,11 @@ export async function runCli(args: string[], io: CliIO): Promise<number> {
           io.write('No such run.');
           return 1;
         }
-        io.write(JSON.stringify(run.projection, null, 2));
+        io.write(
+          values.judgments
+            ? judgmentReport(run.projection)
+            : JSON.stringify(run.projection, null, 2),
+        );
       }
       return 0;
     } finally {
@@ -323,6 +328,45 @@ async function judge(action: string | undefined, modelDir: string | undefined, i
   });
   io.write(`${manifest.release} installed.`);
   return 0;
+}
+
+/** `inspect --judgments`: each request's effort judgments side by side (CR-003, C-071). */
+function judgmentReport(projection: RunProjection): string {
+  const settings = projection.decisionSettings?.reasoning_effort;
+  if (!settings) return `Run ${projection.runId} recorded no judgment settings.`;
+  const lines = [
+    `Effort judgments for ${projection.runId} (${settings.mode === 'observe' ? 'observe only, not applied' : 'off'})`,
+  ];
+  for (const p of settings.providers.filter((p) => !p.available))
+    lines.push(`  ${p.id}: ${p.reason ?? 'unavailable'}`);
+  const calls = projection.executionOrder.flatMap((id) =>
+    (projection.executions[id]?.modelCallIds ?? []).map((call) => ({
+      call,
+      node: projection.executions[id]?.nodeId ?? id,
+    })),
+  );
+  const decisions = Object.values(projection.decisions ?? {});
+  for (const { call, node } of calls) {
+    for (const d of decisions.filter((x) => x.modelCallId === call)) {
+      const result =
+        d.status === 'observed'
+          ? `${d.answer}${d.evidenceLevel === 'rule' ? ' (rule)' : ''}${
+              d.probabilities
+                ? ` [${(['low', 'medium', 'high', 'xhigh'] as const)
+                    .map((l) => `${l} ${Math.round((d.probabilities?.[l] ?? 0) * 100)}%`)
+                    .join(', ')}]`
+                : ''
+            }`
+          : d.status === 'failed'
+            ? `failed: ${d.reason}`
+            : 'pending';
+      lines.push(
+        `${call} ${node} ${d.provider} ${result}${d.latencyMs === null ? '' : ` ${d.latencyMs} ms`}`,
+      );
+    }
+  }
+  if (decisions.length === 0) lines.push('No requests were judged.');
+  return lines.join('\n');
 }
 
 async function startServer(

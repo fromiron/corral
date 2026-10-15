@@ -1348,7 +1348,7 @@
       "apps/server/src/"
     ],
     "done": "mock·데모·CI의 외부 provider 시작 거절. 이벤트·로그·export에 입력 발췌·자격 증명·로컬 경로 없음. Jev adapter는 포함하지 않음(CR-003 D2)",
-    "status": "planned",
+    "status": "implemented",
     "evidence": "docs/change-requests/CR-003-admission-hooks-effort-observe.md"
   },
   {
@@ -1366,7 +1366,7 @@
       "packages/cli/src/"
     ],
     "done": "요청별 provider 판정·지연·실패를 \"not applied\"와 함께 표시. 실패도 같은 무게. axe 위반 0",
-    "status": "planned",
+    "status": "implemented",
     "evidence": "docs/change-requests/CR-003-admission-hooks-effort-observe.md"
   },
   {

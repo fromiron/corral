@@ -229,6 +229,36 @@ function judge(provider: DecisionProvider, question: EffortQuestion, context: Ob
     },
   ]);
   if (!recorded) return;
+  // An external provider receives the excerpt: that send is an effect, admitted only while the
+  // run is running and recorded before anything leaves (CR-003 §3.5).
+  let effectId: string | null = null;
+  if (provider.privacy === 'external') {
+    if (context.status() !== 'running') {
+      context.record([
+        {
+          type: 'decision.failed',
+          executionId: subject.executionId,
+          payload: { ...headFields, reason: 'unavailable', latencyMs: 0 },
+        },
+      ]);
+      return;
+    }
+    effectId = context.nextEffectId();
+    const admitted = context.record([
+      {
+        type: 'effect.admitted',
+        executionId: subject.executionId,
+        payload: {
+          effectId,
+          kind: 'decision',
+          scope: subject.executionId,
+          epoch: subject.attemptNo,
+          reservationId: null,
+        },
+      },
+    ]);
+    if (!admitted) return;
+  }
   const started = context.monotonicMs();
   const listeners = new Set<() => void>();
   let settled = false;
@@ -244,7 +274,24 @@ function judge(provider: DecisionProvider, question: EffortQuestion, context: Ob
     stopTimer();
     stopCancel();
     abort();
-    context.record([draft]);
+    const outcome =
+      draft.type === 'decision.observed'
+        ? 'succeeded'
+        : (draft.payload as { reason?: string }).reason === 'cancelled'
+          ? 'cancelled'
+          : 'failed';
+    context.record(
+      effectId
+        ? [
+            draft,
+            {
+              type: 'effect.settled',
+              executionId: subject.executionId,
+              payload: { effectId, outcome },
+            },
+          ]
+        : [draft],
+    );
   };
   const fail = (reason: DecisionFailureReason) =>
     settle({

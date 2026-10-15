@@ -1551,7 +1551,17 @@ export class Coordinator {
           'decision.observed',
           'decision.failed',
           'limit.reached',
+          'effect.admitted',
+          'effect.settled',
         ]);
+        // Only decision effects: an observer can never admit model or tool work.
+        if (
+          drafts.some(
+            (d) =>
+              d.type === 'effect.admitted' && (d.payload as { kind?: unknown }).kind !== 'decision',
+          )
+        )
+          return false;
         if (drafts.some((d) => !allowed.has(d.type))) return false;
         const timed = drafts.map((d) =>
           d.type === 'decision.observed'
@@ -1586,6 +1596,8 @@ export class Coordinator {
       after: (ms, fn) => this.timers.after(ms, fn),
       monotonicMs: () => this.clock.monotonicMs(),
       nextId: () => this.ids.next('decision'),
+      nextEffectId: () => this.ids.next('effect'),
+      status: () => run.projection.status,
     };
   }
 

@@ -5,6 +5,7 @@ import {
   ApprovalPanel,
   ArtifactViewer,
   BudgetInspector,
+  EffortJudgments,
   ExecutionTree,
   QuestionsPanel,
   ReinsPanel,
@@ -402,7 +403,12 @@ function RunDetails({
           <QuestionsPanel session={session} onOpenArtifact={openArtifact} />
         ) : null}
         {tab === 'activity' ? <Timeline session={session} /> : null}
-        {tab === 'budget' ? <BudgetInspector session={session} /> : null}
+        {tab === 'budget' ? (
+          <div className="flex flex-col gap-3">
+            <BudgetInspector session={session} />
+            <EffortJudgments session={session} />
+          </div>
+        ) : null}
       </div>
     </>
   );

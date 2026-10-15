@@ -93,7 +93,13 @@ export interface ObserverView {
 
 /** Events an observer may commit, fenced by the Coordinator (CR-003). */
 export type ObserverDraft = {
-  type: 'decision.requested' | 'decision.observed' | 'decision.failed' | 'limit.reached';
+  type:
+    | 'decision.requested'
+    | 'decision.observed'
+    | 'decision.failed'
+    | 'limit.reached'
+    | 'effect.admitted'
+    | 'effect.settled';
   executionId?: string;
   payload: Record<string, unknown>;
 };
@@ -112,6 +118,9 @@ export interface ObserverContext {
   after(ms: number, fn: () => void): () => void;
   monotonicMs(): number;
   nextId(): string;
+  nextEffectId(): string;
+  /** The run's status as committed right now. */
+  status(): string;
 }
 
 export interface AdmissionObserver {
