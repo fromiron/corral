@@ -1384,7 +1384,7 @@
       "packages/effort-judge/"
     ],
     "done": "manifest의 sha256·크기로 검증한 설치만 로드. 미설치·지원하지 않는 플랫폼은 available=false 사유 기록. CI는 모델을 내려받지 않고 fake session으로 검증, 실모델은 opt-in",
-    "status": "planned",
+    "status": "implemented",
     "evidence": "docs/change-requests/CR-003-admission-hooks-effort-observe.md"
   }
 ]

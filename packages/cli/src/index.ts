@@ -140,7 +140,7 @@ export interface CliIO {
 }
 
 const usage =
-  'corral dev [--demo] | validate <file> | run <file> [--input <brief>] [--watch] [--demo] | inspect <run-id> | inspect --archive <file> | export <run-id> [--redact | --private]';
+  'corral dev [--demo] | validate <file> | run <file> [--input <brief>] [--watch] [--demo] | inspect <run-id> | inspect --archive <file> | export <run-id> [--redact | --private] | judge install|status [--model-dir <dir>]';
 
 export async function runCli(args: string[], io: CliIO): Promise<number> {
   let server: import('@corral/server').CorralServer | undefined;
@@ -159,6 +159,7 @@ export async function runCli(args: string[], io: CliIO): Promise<number> {
         redact: { type: 'boolean', default: false },
         private: { type: 'boolean', default: false },
         archive: { type: 'string' },
+        'model-dir': { type: 'string' },
         help: { type: 'boolean', short: 'h' },
       },
     });
@@ -167,10 +168,11 @@ export async function runCli(args: string[], io: CliIO): Promise<number> {
       io.write(usage);
       return 0;
     }
-    if (extra || !['dev', 'validate', 'run', 'inspect', 'export'].includes(command)) {
+    if (extra || !['dev', 'validate', 'run', 'inspect', 'export', 'judge'].includes(command)) {
       io.write(usage);
       return 1;
     }
+    if (command === 'judge') return await judge(target, values['model-dir'], io);
     const workspace = resolve(io.cwd, values.workspace ?? '.');
     if (command === 'validate' || command === 'run') {
       if (!target) {
@@ -288,6 +290,41 @@ function readInput(path: string, maximumBytes = 2 * 1024 * 1024): string {
   return readFileSync(path, 'utf8');
 }
 
+/**
+ * `corral judge install|status` (C-072): the local effort judge model lives in the OS's standard
+ * per-user data directory. Installing downloads ≈185 MB from the release in the bundled
+ * manifest and checks every file's size and sha256.
+ */
+async function judge(action: string | undefined, modelDir: string | undefined, io: CliIO) {
+  const { bundledManifest, defaultModelDir, installModel, installState } = await import(
+    '@corral/effort-judge'
+  );
+  const dir = modelDir ? resolve(io.cwd, modelDir) : defaultModelDir();
+  const manifest = bundledManifest();
+  if (action === 'status') {
+    const state = installState(dir, manifest);
+    io.write(
+      state === 'current'
+        ? `${manifest.release} installed in ${dir}`
+        : state === 'stale'
+          ? `an older release is installed in ${dir}; run \`corral judge install\``
+          : `not installed (${dir}); run \`corral judge install\``,
+    );
+    return 0;
+  }
+  if (action !== 'install') {
+    io.write(usage);
+    return 1;
+  }
+  io.write(`Installing ${manifest.release} into ${dir}.`);
+  await installModel(dir, {
+    manifest,
+    onFile: (name, size) => io.write(`Downloading ${name} (${Math.round(size / 1e6)} MB).`),
+  });
+  io.write(`${manifest.release} installed.`);
+  return 0;
+}
+
 async function startServer(
   values: { demo?: boolean; port?: string; static?: string },
   workspace: string,
@@ -314,10 +351,12 @@ async function startServer(
   }
   const { createLiveModels, startCorralServer } = await import('@corral/server');
   const { ScriptedAgentAdapter } = await import('@corral/testkit');
+  const { defaultModelDir, OnnxEffortProvider } = await import('@corral/effort-judge');
   return startCorralServer({
     workspace,
     port,
     staticDir,
+    decisionProviders: [new OnnxEffortProvider({ dir: defaultModelDir() })],
     agents: new ScriptedAgentAdapter({ turns: 2 }),
     ...(values.demo ? {} : { live: createLiveModels() }),
   });

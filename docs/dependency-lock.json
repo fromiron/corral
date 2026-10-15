@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-15T09:38:11.397Z",
+  "generatedAt": "2026-10-15T15:18:57.237Z",
   "node": "v24.14.0",
   "packageManager": "pnpm@10.30.3",
   "note": "Registry facts for pinned direct dependencies. Compatibility evidence is the CI gate result, not this file.",
@@ -367,6 +367,7 @@
       "scope": "development",
       "usedBy": [
         "@corral/adapter-pi",
+        "@corral/effort-judge",
         "@corral/server",
         "@corral/storage-sqlite",
         "corral"
@@ -599,6 +600,21 @@
       "scope": "development",
       "usedBy": [
         "@corral/react"
+      ]
+    },
+    {
+      "name": "onnxruntime-node",
+      "version": "1.30.0",
+      "license": "MIT",
+      "integrity": "sha512-twhs1C2C/BFkz1yc5OY0KIU2GUq6DURO7hD4bx5Q2Qy3nAMJwRXW8xU3NVczE29VA9lolLOYepoD8fjTGOfIqw==",
+      "published": "2026-09-14T20:05:58.862Z",
+      "repository": "git+https://github.com/Microsoft/onnxruntime.git",
+      "gitHead": null,
+      "engines": null,
+      "peerDependencies": null,
+      "scope": "runtime",
+      "usedBy": [
+        "@corral/effort-judge"
       ]
     },
     {

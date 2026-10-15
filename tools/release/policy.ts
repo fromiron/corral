@@ -15,6 +15,9 @@ const REVIEWED = new Set([
   'BlueOak-1.0.0',
   'CC0-1.0',
   '0BSD',
+  // type-fest via onnxruntime-node → global-agent → serialize-error (C-072). Either license is
+  // permissive; the MIT terms apply.
+  '(MIT OR CC0-1.0)',
 ]);
 
 export interface LicensedPackage {
