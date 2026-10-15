@@ -5,7 +5,7 @@ import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { useStudioStores } from '../context.tsx';
 import { findNode } from '../editor/model.ts';
-import { nodeRunStatus } from '../run/selectors.ts';
+import { nodeExecutionCount, nodeRunStatus } from '../run/selectors.ts';
 
 // One view per node kind. Handle ids are the compiler's port names, so a drawn connection is
 // exactly the ControlEdge it creates. Call links use separate handles below/above agents.
@@ -29,12 +29,15 @@ function RunOverlay({ nodeId }: { nodeId: string }) {
   const { session } = useStudioStores();
   // Each node subscribes to its own status only, so stream updates do not re-render the canvas.
   const status = useStore(session, (s) => nodeRunStatus(s.projection, nodeId));
+  const count = useStore(session, (s) => nodeExecutionCount(s.projection, nodeId));
   if (status === 'idle') return null;
   const symbol = { active: '◐', done: '✓', failed: '✕' }[status];
   return (
     <span className="mt-1 inline-flex items-center gap-1 text-xs" data-run-status={status}>
       <span aria-hidden="true">{symbol}</span>
       {t(status)}
+      {/* A node is not one execution: Loop rounds and calls each add one (Spec §4.3). */}
+      {count > 1 ? <span className="text-muted">· {t('executions', { count })}</span> : null}
     </span>
   );
 }
@@ -77,7 +80,7 @@ function Shell({
   );
 }
 
-export function AgentNodeView({ id, selected }: NodeProps<Node<CanvasNodeData>>) {
+export function AgentNodeView({ id, selected, isConnectable }: NodeProps<Node<CanvasNodeData>>) {
   const t = useTranslations();
   const node = useNode(id);
   if (node?.type !== 'agent') return null;
@@ -92,6 +95,7 @@ export function AgentNodeView({ id, selected }: NodeProps<Node<CanvasNodeData>>)
       />
       {callable ? (
         <Handle
+          isConnectable={isConnectable}
           type="target"
           position={Position.Top}
           id="callable"
@@ -99,11 +103,12 @@ export function AgentNodeView({ id, selected }: NodeProps<Node<CanvasNodeData>>)
         />
       ) : (
         <>
-          <Handle type="target" position={Position.Left} id="in" />
-          <Handle type="source" position={Position.Right} id="out" />
+          <Handle isConnectable={isConnectable} type="target" position={Position.Left} id="in" />
+          <Handle isConnectable={isConnectable} type="source" position={Position.Right} id="out" />
         </>
       )}
       <Handle
+        isConnectable={isConnectable}
         type="source"
         position={Position.Bottom}
         id="delegate"
@@ -114,6 +119,7 @@ export function AgentNodeView({ id, selected }: NodeProps<Node<CanvasNodeData>>)
         {t('Canvas.ports.delegate')}
       </PortLabel>
       <Handle
+        isConnectable={isConnectable}
         type="source"
         position={Position.Bottom}
         id="question"
@@ -127,7 +133,7 @@ export function AgentNodeView({ id, selected }: NodeProps<Node<CanvasNodeData>>)
   );
 }
 
-export function DecisionNodeView({ id, selected }: NodeProps<Node<CanvasNodeData>>) {
+export function DecisionNodeView({ id, selected, isConnectable }: NodeProps<Node<CanvasNodeData>>) {
   const t = useTranslations();
   const node = useNode(id);
   if (node?.type !== 'decision') return null;
@@ -137,12 +143,18 @@ export function DecisionNodeView({ id, selected }: NodeProps<Node<CanvasNodeData
       <Shell id={id} kind={t('Palette.decision')} label={node.label} selected={selected}>
         <div className="text-xs text-muted">{t(`Inspector.modes.${node.mode}`)}</div>
       </Shell>
-      <Handle type="target" position={Position.Left} id="in" />
+      <Handle isConnectable={isConnectable} type="target" position={Position.Left} id="in" />
       {ports.map((port, index) => {
         const top = `${((index + 1) / (ports.length + 1)) * 100}%`;
         return (
           <span key={port}>
-            <Handle type="source" position={Position.Right} id={port} style={{ top }} />
+            <Handle
+              isConnectable={isConnectable}
+              type="source"
+              position={Position.Right}
+              id={port}
+              style={{ top }}
+            />
             <PortLabel
               style={{ right: -6, top, transform: 'translate(100%, -50%)', paddingLeft: 8 }}
             >
@@ -155,14 +167,14 @@ export function DecisionNodeView({ id, selected }: NodeProps<Node<CanvasNodeData
   );
 }
 
-export function OutputNodeView({ id, selected }: NodeProps<Node<CanvasNodeData>>) {
+export function OutputNodeView({ id, selected, isConnectable }: NodeProps<Node<CanvasNodeData>>) {
   const t = useTranslations('Palette');
   const node = useNode(id);
   if (node?.type !== 'output') return null;
   return (
     <>
       <Shell id={id} kind={t('output')} label={node.label} selected={selected} />
-      <Handle type="target" position={Position.Left} id="in" />
+      <Handle isConnectable={isConnectable} type="target" position={Position.Left} id="in" />
     </>
   );
 }
@@ -175,9 +187,9 @@ const LOOP_PORTS = [
   { id: 'next', type: 'source', position: Position.Right, top: '78%', inside: false },
 ] as const;
 
-export function LoopNodeView({ id, selected }: NodeProps<Node<CanvasNodeData>>) {
+export function LoopNodeView({ id, selected, isConnectable }: NodeProps<Node<CanvasNodeData>>) {
   const t = useTranslations();
-  const { editor } = useStudioStores();
+  const { editor, readOnly } = useStudioStores();
   const node = useNode(id);
   const members = useStore(
     editor,
@@ -187,7 +199,7 @@ export function LoopNodeView({ id, selected }: NodeProps<Node<CanvasNodeData>>) 
   return (
     <>
       <NodeResizer
-        isVisible={selected}
+        isVisible={selected && !readOnly}
         minWidth={240}
         minHeight={160}
         onResizeStart={() => editor.getState().beginBatch()}
@@ -211,6 +223,7 @@ export function LoopNodeView({ id, selected }: NodeProps<Node<CanvasNodeData>>) 
       {LOOP_PORTS.map((port) => (
         <span key={port.id}>
           <Handle
+            isConnectable={isConnectable}
             type={port.type}
             position={port.position}
             id={port.id}

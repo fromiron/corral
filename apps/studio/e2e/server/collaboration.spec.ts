@@ -29,6 +29,8 @@ test('[TC-RUN-004-H] [TC-COL-002-H] one run shows two delegated helpers and a qu
   ).toHaveCount(2);
 
   // The question: from the Writer to a responder execution of its own, answered.
+  const details = page.getByRole('tablist', { name: 'Run details' });
+  await details.getByRole('tab', { name: 'Questions' }).click();
   const question = page.locator('[data-testid^="question-"]');
   await expect(question).toHaveCount(1);
   await expect(question).toContainText('Writer');
@@ -38,6 +40,7 @@ test('[TC-RUN-004-H] [TC-COL-002-H] one run shows two delegated helpers and a qu
   await expect(page.locator(href ?? '#none')).toContainText('Source Responder');
 
   // A helper's submitted version opens from the Task Board, rendered safely.
+  await details.getByRole('tab', { name: 'Tasks' }).click();
   const helperTask = page
     .locator('[data-testid^="task-"]')
     .filter({ hasText: 'Research Helper' })

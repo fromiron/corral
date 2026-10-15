@@ -5,6 +5,8 @@ import type { RunSessionStore } from './run/session.ts';
 interface StudioStores {
   editor: EditorStore;
   session: RunSessionStore;
+  /** The Run graph: node views show run state but offer no editing (C-065). */
+  readOnly?: boolean;
 }
 
 const StudioContext = createContext<StudioStores | null>(null);

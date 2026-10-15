@@ -1201,6 +1201,80 @@
     "evidence": "specs/001-canvas/evidence/P2.md"
   },
   {
+    "id": "C-063",
+    "phase": "P10",
+    "title": "데모 Research team 템플릿·시나리오 응답·?template=",
+    "dependsOn": [
+      "C-046"
+    ],
+    "requirements": [
+      "CRL-DEV-005"
+    ],
+    "files": [
+      "apps/studio/src/demo/",
+      "apps/studio/src/demo.worker.ts",
+      "apps/studio/src/router.tsx"
+    ],
+    "done": "/demo 기본값이 위임·질문·검토 Loop·승인을 포함한 영어 템플릿이고 offline에서 끝까지 실행된다. 기존 데모는 ?template=starter. Steer가 해당 실행의 다음 요청 결과에만 반영된다",
+    "status": "implemented",
+    "evidence": "specs/010-first-run/plan.md"
+  },
+  {
+    "id": "C-064",
+    "phase": "P10",
+    "title": "데모 진행 가이드",
+    "dependsOn": [
+      "C-063"
+    ],
+    "requirements": [
+      "CRL-DEV-005",
+      "CRL-UX-001"
+    ],
+    "files": [
+      "apps/studio/src/demo/"
+    ],
+    "done": "가이드 단계는 commit된 projection에서만 완료된다. 취소·반려·실패로 끝난 Run의 남은 단계는 완료로 표시하지 않는다. 키보드로 접기·이동 가능",
+    "status": "implemented",
+    "evidence": "specs/010-first-run/plan.md"
+  },
+  {
+    "id": "C-065",
+    "phase": "P10",
+    "title": "읽기 전용 Run 캔버스·레이아웃 fallback",
+    "dependsOn": [
+      "C-063"
+    ],
+    "requirements": [
+      "CRL-OBS-001",
+      "CRL-UX-002"
+    ],
+    "files": [
+      "packages/react/src/components/"
+    ],
+    "done": "스냅샷의 모든 노드가 보이고 상태·인스턴스 수가 projection과 일치한다. 편집 불가. 스트림 프레임에 캔버스 commit 0",
+    "status": "implemented",
+    "evidence": "specs/010-first-run/plan.md"
+  },
+  {
+    "id": "C-066",
+    "phase": "P10",
+    "title": "Run 화면 레이아웃 재구성",
+    "dependsOn": [
+      "C-065"
+    ],
+    "requirements": [
+      "CRL-OBS-001",
+      "CRL-UX-001"
+    ],
+    "files": [
+      "apps/studio/src/pages/RunPage.tsx",
+      "packages/react/src/components/"
+    ],
+    "done": "헤더의 Run 전체 Pause/Cancel, 그래프·실행 트리·우측 컨텍스트 패널·하단 탭. 1280·1024px에서 핵심 버튼이 보이고 axe 위반 0",
+    "status": "implemented",
+    "evidence": "specs/010-first-run/plan.md"
+  },
+  {
     "id": "C-067",
     "phase": "P11",
     "title": "리팩터 전 golden 이벤트 열 고정·admission gate/observer 포트·기존 검사 이전",

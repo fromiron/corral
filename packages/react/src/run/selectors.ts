@@ -11,3 +11,8 @@ export function nodeRunStatus(projection: RunProjection | null, nodeId: string):
   if (statuses.every((s) => s === 'succeeded')) return 'done';
   return 'active';
 }
+
+/** How many executions one design node has had in this run (Spec §4.3). */
+export function nodeExecutionCount(projection: RunProjection | null, nodeId: string): number {
+  return projection?.nodeExecutions[nodeId]?.length ?? 0;
+}

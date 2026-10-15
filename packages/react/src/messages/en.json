@@ -73,7 +73,8 @@
       "idle": "Not run",
       "active": "Running",
       "done": "Done",
-      "failed": "Failed"
+      "failed": "Failed",
+      "executions": "{count, plural, one {# execution} other {# executions}}"
     }
   },
   "Inspector": {
@@ -332,7 +333,26 @@
     "heading": "Run {runId}",
     "missing": "This run is not available here. Runs of the in-browser demo end when the page reloads.",
     "openCorral": "Open the Corral",
-    "loading": "Loading the run…"
+    "loading": "Loading the run…",
+    "summary": "Run summary",
+    "working": "Working now: {labels}",
+    "idle": "Nothing is running",
+    "loopRound": "{label}: round {round} of {max}",
+    "tasks": "Tasks completed: {done} of {total}",
+    "requests": "{count, plural, one {# model request} other {# model requests}} in flight",
+    "executions": "Executions",
+    "nodeExecutions": "{label} executions",
+    "noNodeExecutions": "This node has not run in this run.",
+    "closeNode": "Close",
+    "executionMissing": "{executionId} is not part of this run. Choose an execution from the list.",
+    "tabs": {
+      "label": "Run details",
+      "output": "Output",
+      "tasks": "Tasks",
+      "questions": "Questions",
+      "activity": "Activity",
+      "budget": "Budget"
+    }
   },
   "Timeline": {
     "heading": "Timeline",
@@ -520,5 +540,40 @@
     "loadingCriteria": "Loading current criteria…",
     "finished": "This run has ended. Its settings history remains available.",
     "snapshotsUnchanged": "Requests already prepared retain their recorded input snapshots."
+  },
+  "Demo": {
+    "template": "Demo template",
+    "templates": {
+      "research-team": "Research team: delegate, ask, review",
+      "starter": "Starter: one agent"
+    },
+    "guide": {
+      "heading": "Demo guide",
+      "intro": "Each step is checked off from what the simulated run actually recorded.",
+      "state": {
+        "done": "Done",
+        "current": "Now",
+        "pending": "Not yet",
+        "missed": "Didn't happen in this run"
+      },
+      "steps": {
+        "start": "Start the run with Run.",
+        "delegate": "Research hands two parts to Research Helpers. They appear under it in Executions.",
+        "ask": "The Writer asks the Source Responder a question and gets an answer.",
+        "revise": "The Reviewer asks for a revision, so the Writer runs a second round.",
+        "steer": "Optional: steer the round 2 Writer. Your instruction reaches its next request, not the draft it already submitted.",
+        "finish": "Approve the reviewed draft, then the final output."
+      },
+      "steerAction": "Steer the round 2 Writer",
+      "pauseAtRound2": "Pause the run when the round 2 Writer starts"
+    }
+  },
+  "RunCanvas": {
+    "label": "Run graph",
+    "layout": {
+      "saved": "Layout from the saved Corral",
+      "auto": "Arranged automatically"
+    },
+    "layoutNote": "Positions only; they do not change what ran."
   }
 }

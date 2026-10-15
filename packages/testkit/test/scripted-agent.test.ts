@@ -151,4 +151,49 @@ describe('ScriptedAgentAdapter', () => {
     expect(settlement.outcome).toBe('failed');
     expect(settlement.error).toContain('CAPABILITY_DENIED');
   });
+  it('hands collaboration notes to the reply instead of appending them when told to', async () => {
+    const host = new RecordingHost();
+    const seen: (readonly string[])[] = [];
+    const responder: AgentStartInput = {
+      ...input,
+      assignment: {
+        kind: 'question',
+        questionId: 'q_0001',
+        body: 'Which source?',
+        askerExecutionId: 'exec_0002',
+      },
+      role: { ...input.role, allowedCollaborationTools: ['reply'] },
+    };
+    const handle = await new ScriptedAgentAdapter({
+      turns: 1,
+      appendNotes: false,
+      reply: (_turn, _input, _permit, notes) => {
+        seen.push(notes);
+        return 'Answer in prose.';
+      },
+    }).start(responder, host);
+    await expect(handle.waitForSettlement()).resolves.toEqual({ outcome: 'succeeded' });
+    expect(seen).toEqual([['answers q_0001']]);
+    expect(host.observations[0]?.text).toBe('Answer in prose.');
+  });
+
+  it('still appends the notes by default', async () => {
+    const host = new RecordingHost();
+    const responder: AgentStartInput = {
+      ...input,
+      assignment: {
+        kind: 'question',
+        questionId: 'q_0001',
+        body: 'Which source?',
+        askerExecutionId: 'exec_0002',
+      },
+      role: { ...input.role, allowedCollaborationTools: ['reply'] },
+    };
+    const handle = await new ScriptedAgentAdapter({ turns: 1, reply: () => 'Answer.' }).start(
+      responder,
+      host,
+    );
+    await handle.waitForSettlement();
+    expect(host.observations[0]?.text).toBe('Answer.\nanswers q_0001');
+  });
 });

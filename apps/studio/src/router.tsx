@@ -1,4 +1,3 @@
-import { addNode, connect, emptyDraft } from '@corral/react';
 import {
   createRootRouteWithContext,
   createRoute,
@@ -6,6 +5,7 @@ import {
   notFound,
 } from '@tanstack/react-router';
 import { lazy, Suspense } from 'react';
+import { type DemoTemplateId, demoTemplate } from './demo/templates.ts';
 import { DemoPage, EditorPage } from './pages/EditorPage.tsx';
 import { ModelSettingsPage } from './pages/ModelSettingsPage.tsx';
 import { ErrorView, NotFoundView, RootLayout } from './pages/RootLayout.tsx';
@@ -37,25 +37,21 @@ export const workspaceRoute = createRoute({
 export const demoRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/demo',
-  loader: async ({ context }) => {
-    const repository = context.services.repository;
-    const agent = addNode(emptyDraft('public_demo', 'Demo Corral'), 'agent', { x: 80, y: 120 });
-    const output = addNode(agent.draft, 'output', { x: 360, y: 120 });
-    const connected = connect(output.draft, {
-      source: agent.nodeId,
-      sourcePort: 'out',
-      target: output.nodeId,
-      targetPort: 'in',
-    });
-    if (!connected.ok) throw new Error('Invalid demo fixture.');
-    const draft = connected.draft;
-    const result = await repository.save({
-      definition: draft.definition,
-      layout: { nodes: draft.layout, viewport: draft.viewport },
+  validateSearch: (search: Record<string, unknown>): { template?: DemoTemplateId } =>
+    search.template === 'starter' ? { template: 'starter' } : {},
+  loaderDeps: ({ search }) => ({ template: search.template }),
+  loader: async ({ context, deps }) => {
+    const template = demoTemplate(deps.template);
+    // Switching back to a template opened earlier in this tab keeps what was saved there.
+    const existing = await context.services.repository.get(template.definition.id);
+    if (existing) return { record: existing, template: template.id };
+    const result = await context.services.repository.save({
+      definition: template.definition,
+      layout: template.layout,
       expectedDefinitionRevision: null,
     });
     if (!result.ok) throw new Error(result.message);
-    return result.record;
+    return { record: result.record, template: template.id };
   },
   component: DemoPage,
 });

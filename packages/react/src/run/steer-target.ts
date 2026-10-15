@@ -18,6 +18,8 @@ export function useSteerTarget(
   return useMemo(() => {
     if (!projection) return null;
     const executions = projection.executionOrder.map((id) => projection.executions[id]);
+    // A chosen execution the run does not have targets nothing, never a different one.
+    if (chosen && !projection.executions[chosen]) return null;
     const execution =
       (chosen ? projection.executions[chosen] : undefined) ??
       [...executions].reverse().find((e) => e && !TERMINAL_EXECUTION_STATUSES.has(e.status)) ??
