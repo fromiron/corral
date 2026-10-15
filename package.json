@@ -1,0 +1,29 @@
+{
+  "name": "corral",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.30.3",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "spec:check": "node tools/spec-check/spec-check.ts",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "typecheck": "pnpm -r --no-bail typecheck && tsc -p tools/tsconfig.json",
+    "test": "vitest run",
+    "build": "pnpm -r build",
+    "test:e2e": "pnpm --filter @corral/studio test:e2e",
+    "dev": "pnpm --filter @corral/studio dev",
+    "storybook": "pnpm --filter @corral/react storybook",
+    "deps:record": "node tools/deps/record.ts",
+    "contracts:generate": "node tools/contracts/generate.ts",
+    "contracts:check": "node tools/contracts/generate.ts --check"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "@types/node": "24.19.2",
+    "typescript": "6.0.3",
+    "vitest": "5.0.4"
+  }
+}

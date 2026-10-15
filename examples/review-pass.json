@@ -1,0 +1,10 @@
+{
+  "targetArtifactVersionId": "artifact_draft_v2",
+  "criteriaVersionId": "criteria_02",
+  "verdict": "pass",
+  "issues": [],
+  "evidenceRefs": [
+    "source_01",
+    "source_02"
+  ]
+}

@@ -1,0 +1,1156 @@
+[
+  {
+    "id": "C-001",
+    "phase": "P0",
+    "title": "제품 헌장·상태/개입 계약·ADR 동결",
+    "dependsOn": [],
+    "requirements": [
+      "CRL-DEV-003",
+      "CRL-RNS-002"
+    ],
+    "files": [
+      "specs/constitution.md",
+      "specs/reins/spec.md"
+    ],
+    "done": "접수/전달/종료의 뜻을 정의하고 테스트 이름까지 매핑",
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P0.md"
+  },
+  {
+    "id": "C-002",
+    "phase": "P0",
+    "title": "의존성 lock·OSS 근거·호환성 스파이크",
+    "dependsOn": [
+      "C-001"
+    ],
+    "requirements": [
+      "CRL-DX-002"
+    ],
+    "files": [
+      "pnpm-lock.yaml",
+      "docs/dependency-lock.json"
+    ],
+    "done": "정확한 버전과 Node24, React, Pi, Vitest peer 검사 기록",
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P0.md"
+  },
+  {
+    "id": "C-003",
+    "phase": "P0",
+    "title": "MockClock·IdFactory·ScriptedAgent 만들기",
+    "dependsOn": [
+      "C-001"
+    ],
+    "requirements": [
+      "CRL-DEV-002",
+      "CRL-DEV-004"
+    ],
+    "files": [
+      "packages/testkit/src/"
+    ],
+    "done": "네트워크 없이 동일 입력/seed에 동일 확정 이벤트",
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P0.md"
+  },
+  {
+    "id": "C-004",
+    "phase": "P0",
+    "title": "React Flow 첫 Canvas+Reins story",
+    "dependsOn": [
+      "C-002",
+      "C-003",
+      "C-051",
+      "C-053",
+      "C-054"
+    ],
+    "requirements": [
+      "CRL-CAN-001",
+      "CRL-UX-001"
+    ],
+    "files": [
+      "apps/studio/",
+      "packages/react/"
+    ],
+    "done": "Agent/Output을 실제 드롭·연결하고 mock run 진행 및 지시 접수 표시, Storybook axe 검사가 PR gate에서 실행",
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P0.md"
+  },
+  {
+    "id": "C-005",
+    "phase": "P1",
+    "title": "Zod 정의·명령·이벤트 schema 및 codegen",
+    "dependsOn": [
+      "C-001",
+      "C-054"
+    ],
+    "requirements": [
+      "CRL-CAN-002",
+      "CRL-DEV-001"
+    ],
+    "files": [
+      "packages/contracts/"
+    ],
+    "done": "JSON Schema와 TS type의 fixture parity, unknown field 거절",
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P1.md"
+  },
+  {
+    "id": "C-006",
+    "phase": "P1",
+    "title": "4종 노드·포트·capability 링크",
+    "dependsOn": [
+      "C-004",
+      "C-005"
+    ],
+    "requirements": [
+      "CRL-CAN-001",
+      "CRL-CAN-003"
+    ],
+    "files": [
+      "packages/react/canvas/"
+    ],
+    "done": "control과 delegate/question을 구별하고 연결 허용을 드러냄, 노드·연결 story의 axe 검사가 PR gate에서 실행",
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P1.md"
+  },
+  {
+    "id": "C-007",
+    "phase": "P1",
+    "title": "Loop 영역·본문 membership 편집",
+    "dependsOn": [
+      "C-006"
+    ],
+    "requirements": [
+      "CRL-RUN-003",
+      "CRL-CAN-004"
+    ],
+    "files": [
+      "packages/react/canvas/LoopGroup.tsx"
+    ],
+    "done": "그룹 이동과 loopId 편집을 구별하고 경계 위반 표시",
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P1.md"
+  },
+  {
+    "id": "C-008",
+    "phase": "P1",
+    "title": "정적 검증기·IR compiler",
+    "dependsOn": [
+      "C-005",
+      "C-007"
+    ],
+    "requirements": [
+      "CRL-CAN-004",
+      "CRL-RUN-003"
+    ],
+    "files": [
+      "packages/core/compiler/"
+    ],
+    "done": "유효 정의는 IR, 잘못된 cycle/port/ref는 위치 포함 오류",
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P1.md"
+  },
+  {
+    "id": "C-009",
+    "phase": "P1",
+    "title": "저장/복제/import/export·정의/layout 분리",
+    "dependsOn": [
+      "C-005",
+      "C-006"
+    ],
+    "requirements": [
+      "CRL-CAN-002",
+      "CRL-CAN-005"
+    ],
+    "files": [
+      "packages/core/definitions/",
+      "apps/studio/features/editor/"
+    ],
+    "done": "좌표 변경은 실행 hash 불변, ID 복제 충돌 없음",
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P1.md"
+  },
+  {
+    "id": "C-010",
+    "phase": "P1",
+    "title": "Undo/Redo·키보드 연결·폼·IME",
+    "dependsOn": [
+      "C-006",
+      "C-009"
+    ],
+    "requirements": [
+      "CRL-CAN-005",
+      "CRL-UX-001"
+    ],
+    "files": [
+      "packages/react/editor/"
+    ],
+    "done": "한 번 드래그를 한 undo로 처리, IME Enter 오동작 없음",
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P1.md"
+  },
+  {
+    "id": "C-011",
+    "phase": "P2",
+    "title": "SQLite migrations·Repository·트랜잭션",
+    "dependsOn": [
+      "C-005",
+      "C-062"
+    ],
+    "requirements": [
+      "CRL-RUN-001",
+      "CRL-OBS-003"
+    ],
+    "files": [
+      "packages/storage-sqlite/"
+    ],
+    "done": "event/projection/artifact 원자 commit과 rollback 테스트",
+    "status": "planned"
+  },
+  {
+    "id": "C-012",
+    "phase": "P2",
+    "title": "Coordinator decide/reduce·명령 dedupe",
+    "dependsOn": [
+      "C-005",
+      "C-003"
+    ],
+    "requirements": [
+      "CRL-RUN-001",
+      "CRL-DEV-001"
+    ],
+    "files": [
+      "packages/core/coordinator/"
+    ],
+    "done": "동일 command 재전송과 충돌/취소 fence의 순서가 결정적, fast-check model-based reducer 테스트 seed 보관",
+    "status": "planned"
+  },
+  {
+    "id": "C-013",
+    "phase": "P2",
+    "title": "EffectDispatcher·epoch·activation key",
+    "dependsOn": [
+      "C-012",
+      "C-011"
+    ],
+    "requirements": [
+      "CRL-RUN-002",
+      "CRL-SEC-004"
+    ],
+    "files": [
+      "packages/core/effects/"
+    ],
+    "done": "commit 전 effect 없음, duplicate activation 중복 Task 없음",
+    "status": "planned"
+  },
+  {
+    "id": "C-014",
+    "phase": "P2",
+    "title": "LangGraph GraphRunner 제한 IR 실행",
+    "dependsOn": [
+      "C-008",
+      "C-013",
+      "C-057"
+    ],
+    "requirements": [
+      "CRL-RUN-003"
+    ],
+    "files": [
+      "packages/runner-langgraph/"
+    ],
+    "done": "GraphRunner 결과가 Coordinator 경로를 거쳐야 완료됨",
+    "status": "planned"
+  },
+  {
+    "id": "C-015",
+    "phase": "P2",
+    "title": "REST receipt·snapshot·SSE watermark",
+    "dependsOn": [
+      "C-012"
+    ],
+    "requirements": [
+      "CRL-OBS-002",
+      "CRL-DEV-001"
+    ],
+    "files": [
+      "apps/server/routes/",
+      "packages/contracts/api/"
+    ],
+    "done": "replay/live 전환 gap 없이 중복 제거, 202를 완료로 오인 안 함",
+    "status": "planned"
+  },
+  {
+    "id": "C-016",
+    "phase": "P2",
+    "title": "실행 트리·노드 집계·WaitingReason",
+    "dependsOn": [
+      "C-015"
+    ],
+    "requirements": [
+      "CRL-OBS-001",
+      "CRL-RUN-002"
+    ],
+    "files": [
+      "packages/react/run/"
+    ],
+    "done": "같은 node의 두 execution과 대기 링크를 별도 표시, stream delta 수신 중 캔버스 노드 재렌더 0, run history 목록 표시",
+    "status": "planned"
+  },
+  {
+    "id": "C-017",
+    "phase": "P3",
+    "title": "Pi worker 생명주기와 IPC schema",
+    "dependsOn": [
+      "C-002",
+      "C-013"
+    ],
+    "requirements": [
+      "CRL-DEV-004",
+      "CRL-SEC-001"
+    ],
+    "files": [
+      "packages/adapter-pi/"
+    ],
+    "done": "unexpected exit/invalid IPC/worker binding 검증",
+    "status": "planned"
+  },
+  {
+    "id": "C-018",
+    "phase": "P3",
+    "title": "request permit·context snapshot·stream bridge",
+    "dependsOn": [
+      "C-017",
+      "C-012"
+    ],
+    "requirements": [
+      "CRL-RNS-002",
+      "CRL-RNS-010"
+    ],
+    "files": [
+      "packages/adapter-pi/request/"
+    ],
+    "done": "request 전에 확정된 snapshot을 실제 provider 호출에 사용",
+    "status": "planned"
+  },
+  {
+    "id": "C-019",
+    "phase": "P3",
+    "title": "도구 훅 mapping·실행 allowlist",
+    "dependsOn": [
+      "C-017"
+    ],
+    "requirements": [
+      "CRL-SEC-001"
+    ],
+    "files": [
+      "packages/adapter-pi/tools/"
+    ],
+    "done": "Pi start 이후 block돼도 실제 tool.started 없음",
+    "status": "planned"
+  },
+  {
+    "id": "C-020",
+    "phase": "P3",
+    "title": "OpenAI OAuth 모델 2프로필·usage normalization·live smoke",
+    "dependsOn": [
+      "C-018",
+      "C-019",
+      "C-055"
+    ],
+    "requirements": [
+      "CRL-DEV-004",
+      "CRL-OBS-004"
+    ],
+    "files": [
+      "packages/adapter-pi/providers/",
+      "tests/live/"
+    ],
+    "done": "OpenAI OAuth 프로필 2개로 지원 기능·모델ID·usage·abort 검사(수동 opt-in), usage normalization은 2종 이상 provider fixture로 검사",
+    "status": "planned"
+  },
+  {
+    "id": "C-021",
+    "phase": "P4",
+    "title": "Task 담당·시도 소유권·취소 결과",
+    "dependsOn": [
+      "C-012"
+    ],
+    "requirements": [
+      "CRL-COL-001",
+      "CRL-COL-004"
+    ],
+    "files": [
+      "packages/core/tasks/"
+    ],
+    "done": "한 Task에 활성 시도 2개 불가, 자동 재할당 없음",
+    "status": "planned"
+  },
+  {
+    "id": "C-022",
+    "phase": "P4",
+    "title": "spawn/await·부모 자식 registry",
+    "dependsOn": [
+      "C-021",
+      "C-003",
+      "C-013"
+    ],
+    "requirements": [
+      "CRL-RUN-004",
+      "CRL-RUN-005"
+    ],
+    "files": [
+      "packages/core/collaboration/"
+    ],
+    "done": "두 child 병렬, parent wait는 모델 permit 미점유",
+    "status": "planned"
+  },
+  {
+    "id": "C-023",
+    "phase": "P4",
+    "title": "질문·응답 Task·reply resolver",
+    "dependsOn": [
+      "C-021",
+      "C-022"
+    ],
+    "requirements": [
+      "CRL-COL-002",
+      "CRL-COL-003",
+      "CRL-COL-004"
+    ],
+    "files": [
+      "packages/core/messages/"
+    ],
+    "done": "끝난 역할 새 responder, 답변/timeout/cancel 단회 종결",
+    "status": "planned"
+  },
+  {
+    "id": "C-024",
+    "phase": "P4",
+    "title": "산출물 버전·제출·read 추적",
+    "dependsOn": [
+      "C-011",
+      "C-021"
+    ],
+    "requirements": [
+      "CRL-ART-001"
+    ],
+    "files": [
+      "packages/core/artifacts/"
+    ],
+    "done": "동시 helper 출력 이름 충돌 없음, 미제출 버전의 control 전달 없음",
+    "status": "planned"
+  },
+  {
+    "id": "C-025",
+    "phase": "P4",
+    "title": "협업 도구와 Task Board/메시지 UI",
+    "dependsOn": [
+      "C-022",
+      "C-023",
+      "C-024"
+    ],
+    "requirements": [
+      "CRL-COL-002",
+      "CRL-OBS-001"
+    ],
+    "files": [
+      "packages/adapter-pi/tools/",
+      "packages/react/collaboration/"
+    ],
+    "done": "질문에서 responder와 근거 버전으로 이동 가능, SafeMarkdown이 raw HTML·위험 URL·원격 이미지를 차단",
+    "status": "planned"
+  },
+  {
+    "id": "C-026",
+    "phase": "P5",
+    "title": "입력 바인딩·회차 pinning",
+    "dependsOn": [
+      "C-024",
+      "C-014"
+    ],
+    "requirements": [
+      "CRL-ART-002"
+    ],
+    "files": [
+      "packages/core/context/"
+    ],
+    "done": "reviewer가 이전 draft가 아닌 이번 제출 draft를 읽음",
+    "status": "planned"
+  },
+  {
+    "id": "C-027",
+    "phase": "P5",
+    "title": "review schema·기준 버전·stale 판정",
+    "dependsOn": [
+      "C-026"
+    ],
+    "requirements": [
+      "CRL-ART-003",
+      "CRL-ART-004"
+    ],
+    "files": [
+      "packages/core/review/"
+    ],
+    "done": "잘못된 target/criteria/JSON은 pass로 승격 안 됨",
+    "status": "planned"
+  },
+  {
+    "id": "C-028",
+    "phase": "P5",
+    "title": "Loop cap·다음 회차·수정 작업",
+    "dependsOn": [
+      "C-027"
+    ],
+    "requirements": [
+      "CRL-RUN-003",
+      "CRL-RUN-006"
+    ],
+    "files": [
+      "packages/runner-langgraph/",
+      "packages/core/loops/"
+    ],
+    "done": "cap에서 approval, 승인만으로 한도 우회 불가",
+    "status": "planned"
+  },
+  {
+    "id": "C-029",
+    "phase": "P5",
+    "title": "Approval snapshot과 최종 Output",
+    "dependsOn": [
+      "C-027",
+      "C-028"
+    ],
+    "requirements": [
+      "CRL-ART-004",
+      "CRL-RNS-008"
+    ],
+    "files": [
+      "packages/core/approvals/",
+      "packages/react/approvals/"
+    ],
+    "done": "동일 승인 2회 실행 없음, stale 대상 거절",
+    "status": "planned"
+  },
+  {
+    "id": "C-030",
+    "phase": "P5",
+    "title": "Artifact diff·lineage 기반 상세 화면",
+    "dependsOn": [
+      "C-024",
+      "C-027"
+    ],
+    "requirements": [
+      "CRL-OBS-001",
+      "CRL-RNS-010"
+    ],
+    "files": [
+      "packages/react/artifacts/"
+    ],
+    "done": "draft@1→review@1→draft@2 경로를 확인",
+    "status": "planned"
+  },
+  {
+    "id": "C-031",
+    "phase": "P6",
+    "title": "Steer enqueue·delivery receipt",
+    "dependsOn": [
+      "C-018",
+      "C-025"
+    ],
+    "requirements": [
+      "CRL-RNS-001",
+      "CRL-RNS-002"
+    ],
+    "files": [
+      "packages/core/reins/",
+      "packages/react/reins/"
+    ],
+    "done": "실행 중 접수되고 다음 request에 정확한 directive IDs 포함",
+    "status": "planned"
+  },
+  {
+    "id": "C-032",
+    "phase": "P6",
+    "title": "Pause/drain/resume 경계",
+    "dependsOn": [
+      "C-022",
+      "C-031"
+    ],
+    "requirements": [
+      "CRL-RNS-003"
+    ],
+    "files": [
+      "packages/core/reins/"
+    ],
+    "done": "대기 child 때문에 pause 교착 없음, paused 후 신규 effects 없음",
+    "status": "planned"
+  },
+  {
+    "id": "C-033",
+    "phase": "P6",
+    "title": "전체·개별 cancel과 후손 정리",
+    "dependsOn": [
+      "C-021",
+      "C-022",
+      "C-023"
+    ],
+    "requirements": [
+      "CRL-RNS-004",
+      "CRL-COL-004",
+      "CRL-SEC-004"
+    ],
+    "files": [
+      "packages/core/cancellation/"
+    ],
+    "done": "후손/도구/질문 resolver 종료 후 취소 완료",
+    "status": "planned"
+  },
+  {
+    "id": "C-034",
+    "phase": "P6",
+    "title": "명시적 재시작과 이전 epoch 차단",
+    "dependsOn": [
+      "C-033"
+    ],
+    "requirements": [
+      "CRL-RNS-005",
+      "CRL-COL-001"
+    ],
+    "files": [
+      "packages/core/reins/restart.ts"
+    ],
+    "done": "부모가 대기하는 Task만 새 시도, 이전 결과는 감사만",
+    "status": "planned"
+  },
+  {
+    "id": "C-035",
+    "phase": "P6",
+    "title": "미래 config patch·범위 미리보기",
+    "dependsOn": [
+      "C-031"
+    ],
+    "requirements": [
+      "CRL-RNS-006",
+      "CRL-RNS-009"
+    ],
+    "files": [
+      "packages/core/reins/patch.ts",
+      "packages/react/reins/"
+    ],
+    "done": "active config 불변, future node activation에만 반영",
+    "status": "planned"
+  },
+  {
+    "id": "C-036",
+    "phase": "P6",
+    "title": "지시/기준 변경과 산출물 연결",
+    "dependsOn": [
+      "C-027",
+      "C-030",
+      "C-031"
+    ],
+    "requirements": [
+      "CRL-RNS-010",
+      "CRL-ART-003"
+    ],
+    "files": [
+      "packages/core/lineage/",
+      "packages/react/artifacts/"
+    ],
+    "done": "접수 시각만으로 이전 요청 결과를 지시에 연결하지 않음",
+    "status": "planned"
+  },
+  {
+    "id": "C-037",
+    "phase": "P7",
+    "title": "예산 예약·정산·설정 변경",
+    "dependsOn": [
+      "C-020",
+      "C-035"
+    ],
+    "requirements": [
+      "CRL-RUN-006",
+      "CRL-RNS-007",
+      "CRL-OBS-004"
+    ],
+    "files": [
+      "packages/core/budget/"
+    ],
+    "done": "동시 요청 초과 admission 방지, unknown usage의 거짓 환급 없음",
+    "status": "planned"
+  },
+  {
+    "id": "C-038",
+    "phase": "P7",
+    "title": "wait graph·총량·deadline·no progress",
+    "dependsOn": [
+      "C-023",
+      "C-028"
+    ],
+    "requirements": [
+      "CRL-RUN-005",
+      "CRL-RUN-006"
+    ],
+    "files": [
+      "packages/core/limits/"
+    ],
+    "done": "대기 cycle과 새 responder pingpong 모두 유한 상한",
+    "status": "planned"
+  },
+  {
+    "id": "C-039",
+    "phase": "P7",
+    "title": "경합 property test·late results",
+    "dependsOn": [
+      "C-031",
+      "C-032",
+      "C-033",
+      "C-034",
+      "C-037"
+    ],
+    "requirements": [
+      "CRL-SEC-004",
+      "CRL-DEV-002"
+    ],
+    "files": [
+      "tests/integration/races/"
+    ],
+    "done": "seed 재현 가능한 명령 interleaving에 불변식 유지",
+    "status": "planned"
+  },
+  {
+    "id": "C-040",
+    "phase": "P7",
+    "title": "crash interrupted·기록 export/reopen",
+    "dependsOn": [
+      "C-011",
+      "C-033"
+    ],
+    "requirements": [
+      "CRL-RUN-007",
+      "CRL-OBS-003"
+    ],
+    "files": [
+      "packages/storage-sqlite/recovery/"
+    ],
+    "done": "재시작 후 pending effect 실행 없음, read-only 기록 복원",
+    "status": "planned"
+  },
+  {
+    "id": "C-041",
+    "phase": "P7",
+    "title": "backpressure·재접속·마지막 텍스트 복구",
+    "dependsOn": [
+      "C-015",
+      "C-016"
+    ],
+    "requirements": [
+      "CRL-OBS-002"
+    ],
+    "files": [
+      "apps/server/stream/",
+      "packages/react/stream/"
+    ],
+    "done": "slow client 메모리 제한, 누락 domain event 재조회",
+    "status": "planned"
+  },
+  {
+    "id": "C-042",
+    "phase": "P8",
+    "title": "CSRF·rate/size·키 누출·DNS rebinding 전체 감사",
+    "dependsOn": [
+      "C-015",
+      "C-017",
+      "C-055"
+    ],
+    "requirements": [
+      "CRL-SEC-002"
+    ],
+    "files": [
+      "apps/server/security/"
+    ],
+    "done": "C-055 경계 위에서 CSRF 토큰·요청 크기/빈도 제한·DNS rebinding·query/log/export 키 누출 검사",
+    "status": "planned"
+  },
+  {
+    "id": "C-043",
+    "phase": "P8",
+    "title": "문서 import·안전 URL reader",
+    "dependsOn": [
+      "C-019",
+      "C-024",
+      "C-042"
+    ],
+    "requirements": [
+      "CRL-SEC-003"
+    ],
+    "files": [
+      "packages/core/tools/read-document/"
+    ],
+    "done": "IPv4/IPv6/redirect/DNS pinning/size/MIME/HTML 실행 차단",
+    "status": "planned"
+  },
+  {
+    "id": "C-044",
+    "phase": "P8",
+    "title": "SearchProvider mock+Brave live",
+    "dependsOn": [
+      "C-043"
+    ],
+    "requirements": [
+      "CRL-DX-003",
+      "CRL-SEC-003"
+    ],
+    "files": [
+      "packages/core/tools/search/"
+    ],
+    "done": "키 없는 corpus search와 명시적 외부 검색 선택 구분",
+    "status": "planned"
+  },
+  {
+    "id": "C-045",
+    "phase": "P8",
+    "title": "CLI 동일 command/query 경로",
+    "dependsOn": [
+      "C-015",
+      "C-040"
+    ],
+    "requirements": [
+      "CRL-DX-001"
+    ],
+    "files": [
+      "packages/cli/"
+    ],
+    "done": "validate/dev/run/inspect/export, 승인 대기와 SIGINT 계약",
+    "status": "planned"
+  },
+  {
+    "id": "C-046",
+    "phase": "P9",
+    "title": "public DemoDriver와 fixture pack",
+    "dependsOn": [
+      "C-004",
+      "C-031",
+      "C-029",
+      "C-053"
+    ],
+    "requirements": [
+      "CRL-DEV-005",
+      "CRL-DX-003"
+    ],
+    "files": [
+      "apps/studio/demo/",
+      "examples/"
+    ],
+    "done": "비밀키/로컬 서버 없이 D&D와 Reins가 모의 결과를 바꿈",
+    "status": "planned"
+  },
+  {
+    "id": "C-047",
+    "phase": "P9",
+    "title": "Storybook 상태·Playwright 키보드/IME",
+    "dependsOn": [
+      "C-010",
+      "C-016",
+      "C-025",
+      "C-031"
+    ],
+    "requirements": [
+      "CRL-UX-001"
+    ],
+    "files": [
+      "packages/react/stories/",
+      "tests/e2e/"
+    ],
+    "done": "포인터 없이 핵심 흐름 완주, 단순 axe 검사 외 수동 검증",
+    "status": "planned"
+  },
+  {
+    "id": "C-048",
+    "phase": "P9",
+    "title": "부하·가상화·profiling 예산",
+    "dependsOn": [
+      "C-041",
+      "C-047"
+    ],
+    "requirements": [
+      "CRL-UX-002"
+    ],
+    "files": [
+      "tests/performance/",
+      "docs/performance/"
+    ],
+    "done": "고정 fixture/장비/build에서 수치와 flamegraph 기록",
+    "status": "planned"
+  },
+  {
+    "id": "C-049",
+    "phase": "P9",
+    "title": "release gate·SBOM·라이선스",
+    "dependsOn": [
+      "C-039",
+      "C-040",
+      "C-042",
+      "C-046",
+      "C-047",
+      "C-048"
+    ],
+    "requirements": [
+      "CRL-DEV-003",
+      "CRL-DX-002"
+    ],
+    "files": [
+      "./.github/workflows/",
+      "docs/release/"
+    ],
+    "done": "PR gate(C-051)에 a11y·performance·라이선스·SBOM·live smoke 결과를 더한 release gate, 모든 요구 테스트 연결",
+    "status": "planned"
+  },
+  {
+    "id": "C-050",
+    "phase": "P9",
+    "title": "포트폴리오 사례 문서·known limitations",
+    "dependsOn": [
+      "C-049"
+    ],
+    "requirements": [
+      "CRL-DEV-005",
+      "CRL-OBS-003"
+    ],
+    "files": [
+      "docs/case-study/",
+      "README.md"
+    ],
+    "done": "성능/기능 주장을 증거와 연결, 미구현 v0.2 기능 혼동 없음",
+    "status": "planned"
+  },
+  {
+    "id": "C-051",
+    "phase": "P0",
+    "title": "모노레포 스캐폴드·PR gate CI·spec:check",
+    "dependsOn": [
+      "C-001"
+    ],
+    "requirements": [
+      "CRL-DEV-003",
+      "CRL-DX-002"
+    ],
+    "files": [
+      "package.json",
+      "pnpm-workspace.yaml",
+      ".github/workflows/pr.yml",
+      "tools/spec-check/",
+      "LICENSE",
+      "CLAUDE.md"
+    ],
+    "done": "빈 패키지에서 install --frozen-lockfile·spec:check·lint·typecheck·test:unit이 CI에서 실제 실행되고, 의도적 ID 오류 PR이 실패",
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P0.md"
+  },
+  {
+    "id": "C-052",
+    "phase": "P0",
+    "title": "기술 스파이크 go/no-go 판정(Pi·LangGraph·SQLite·worker)",
+    "dependsOn": [
+      "C-002"
+    ],
+    "requirements": [
+      "CRL-DX-002",
+      "CRL-DEV-004"
+    ],
+    "files": [
+      "spikes/",
+      "docs/adr/"
+    ],
+    "done": "판정표의 모든 항목에 pass/fail과 근거(버전·commit·측정값)를 기록하고 ADR-014~017 상태를 결정",
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P0.md"
+  },
+  {
+    "id": "C-053",
+    "phase": "P0",
+    "title": "RuntimeTransport 포트·InProcessTransport·transport 계약 테스트",
+    "dependsOn": [
+      "C-003",
+      "C-054"
+    ],
+    "requirements": [
+      "CRL-DEV-005",
+      "CRL-OBS-002",
+      "CRL-DEV-002"
+    ],
+    "files": [
+      "packages/contracts/transport/",
+      "packages/core/transport/",
+      "packages/testkit/transport-contract/"
+    ],
+    "done": "같은 ScriptedAgent 스크립트에 대해 transport 구현과 무관하게 동일한 receipt·event 순서를 내는 공통 테스트 통과",
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P0.md"
+  },
+  {
+    "id": "C-054",
+    "phase": "P0",
+    "title": "최소 정의 schema slice·JCS 정규화·definitionHash",
+    "dependsOn": [
+      "C-001"
+    ],
+    "requirements": [
+      "CRL-CAN-002"
+    ],
+    "files": [
+      "packages/contracts/definition/",
+      "packages/core/definitions/hash.ts"
+    ],
+    "done": "Agent→Output 정의가 seed JSON Schema와 parity, 키 순서·좌표가 달라도 같은 hash, 프롬프트 변경은 다른 hash",
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P0.md"
+  },
+  {
+    "id": "C-055",
+    "phase": "P2",
+    "title": "최소 로컬 보안 경계(bind·Host·Origin·bootstrap 세션·CSP)",
+    "dependsOn": [
+      "C-015"
+    ],
+    "requirements": [
+      "CRL-SEC-002"
+    ],
+    "files": [
+      "apps/server/security/"
+    ],
+    "done": "127.0.0.1 외 bind 거부, 허용 외 Host/Origin 403, bootstrap token 재사용 거부, CORS 헤더 없음, CSP 적용 상태에서 Studio E2E 통과",
+    "status": "planned"
+  },
+  {
+    "id": "C-056",
+    "phase": "P1",
+    "title": "Studio 셸·라우팅·Workspace 화면",
+    "dependsOn": [
+      "C-004",
+      "C-009"
+    ],
+    "requirements": [
+      "CRL-OBS-001",
+      "CRL-CAN-001"
+    ],
+    "files": [
+      "apps/studio/routes/",
+      "apps/studio/features/workspace/"
+    ],
+    "done": "스펙 §4.1 경로가 직접 URL 진입·새로고침·뒤로가기에서 동작, 1280px 미만에서 핵심 버튼이 가려지지 않음, 렌더 오류가 error boundary에 머묾, UI 문자열은 메시지 카탈로그로 분리(영어 단일 locale로 시작)",
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P1.md"
+  },
+  {
+    "id": "C-057",
+    "phase": "P2",
+    "title": "Run 생성 멱등·RunSnapshot 고정·활성 Run 1개",
+    "dependsOn": [
+      "C-008",
+      "C-011",
+      "C-012"
+    ],
+    "requirements": [
+      "CRL-CAN-002",
+      "CRL-RUN-001"
+    ],
+    "files": [
+      "packages/core/runs/",
+      "apps/server/routes/runs.ts"
+    ],
+    "done": "같은 commandId 재전송은 같은 runId, 두 번째 활성 Run은 409, 시작 후 정의·프롬프트를 수정해도 RunSnapshot hash 불변",
+    "status": "planned"
+  },
+  {
+    "id": "C-058",
+    "phase": "P3",
+    "title": "ModelRegistry·모델 설정 화면·OAuth 로그인",
+    "dependsOn": [
+      "C-020",
+      "C-056"
+    ],
+    "requirements": [
+      "CRL-SEC-002",
+      "CRL-OBS-004"
+    ],
+    "files": [
+      "apps/server/models/",
+      "apps/studio/features/settings/"
+    ],
+    "done": "로그인 상태·만료만 표시, 응답·번들·로그·이벤트에 토큰 원문 없음, 로그인·로그아웃·만료 흐름, 구독 사용은 금액 null",
+    "status": "planned"
+  },
+  {
+    "id": "C-059",
+    "phase": "P2",
+    "title": "E2E 하네스(ScriptedAgent 서버·임시 DB·네트워크 차단)",
+    "dependsOn": [
+      "C-003",
+      "C-015"
+    ],
+    "requirements": [
+      "CRL-DEV-002",
+      "CRL-DEV-004"
+    ],
+    "files": [
+      "tests/e2e/harness/",
+      "playwright.config.ts"
+    ],
+    "done": "테스트마다 독립 DB, 외부 host fetch 시 테스트 실패, 실패 시 trace 보존, 같은 seed에서 같은 이벤트 순서",
+    "status": "planned"
+  },
+  {
+    "id": "C-060",
+    "phase": "P2",
+    "title": "Timeline 가상 목록·필터",
+    "dependsOn": [
+      "C-015"
+    ],
+    "requirements": [
+      "CRL-OBS-001",
+      "CRL-UX-002"
+    ],
+    "files": [
+      "packages/react/timeline/"
+    ],
+    "done": "10,000개 이벤트 fixture에서 DOM 행 수가 화면 크기에 비례, actor/kind/execution 필터, 새 이벤트 도착 시 선택·스크롤 위치 유지",
+    "status": "planned"
+  },
+  {
+    "id": "C-061",
+    "phase": "P7",
+    "title": "BudgetInspector·usage 표시",
+    "dependsOn": [
+      "C-037",
+      "C-060"
+    ],
+    "requirements": [
+      "CRL-OBS-004",
+      "CRL-RUN-006"
+    ],
+    "files": [
+      "packages/react/budget/"
+    ],
+    "done": "spentKnown·reserved·spentUnknown과 추정 금액을 문구로 구분, unknown을 0으로 표시하지 않음, 상한 변경 후 누적값 유지",
+    "status": "planned"
+  },
+  {
+    "id": "C-062",
+    "phase": "P2",
+    "title": "Workspace 디스크 레이아웃·설정·설치 정책 hard cap",
+    "dependsOn": [
+      "C-005"
+    ],
+    "requirements": [
+      "CRL-RUN-006",
+      "CRL-SEC-002"
+    ],
+    "files": [
+      "packages/core/config/",
+      "apps/server/config/"
+    ],
+    "done": "알 수 없는 설정 키 거절, hard cap 초과 값 거절, 키를 설정 파일에서 읽지 않음, 스펙 §9 기본값 fixture와 일치",
+    "status": "planned"
+  }
+]

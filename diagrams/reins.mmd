@@ -1,0 +1,19 @@
+sequenceDiagram
+    actor U as User
+    participant UI as Reins Panel
+    participant C as Coordinator
+    participant DB as Event Store
+    participant A as Pi Worker
+    U->>UI: Steer selected execution
+    UI->>C: commandId + target + text
+    C->>DB: Commit directive.accepted
+    C-->>UI: Receipt: queued
+    A->>C: Prepare next model request
+    C->>DB: Snapshot + budget reservation + effect.admitted
+    C-->>A: Request permit + directive IDs
+    A->>C: Dispatch observation
+    C->>DB: Commit directive.dispatched
+    C-->>UI: Delivered to request, not compliance
+    A->>C: Result / artifact submission
+    C->>DB: Version + snapshot lineage
+    C-->>UI: Artifact with applied-input lineage

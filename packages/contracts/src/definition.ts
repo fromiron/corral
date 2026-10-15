@@ -1,0 +1,190 @@
+import { z } from 'zod';
+import { Identifier, SchemaVersion } from './ids.ts';
+
+// Canonical definition of a Corral (Technical-Design §4.1). Layout lives in CanvasLayout.
+
+export const InputBindingKind = z.enum([
+  'run_input',
+  'task_output',
+  'previous_iteration_output',
+  'explicit_version',
+  'question_answer',
+]);
+export type InputBindingKind = z.infer<typeof InputBindingKind>;
+
+export const InputBinding = z.strictObject({
+  kind: InputBindingKind,
+  name: z.string().min(1),
+  sourceNodeId: Identifier.optional(),
+  artifactVersionId: Identifier.optional(),
+  optional: z.boolean().optional(),
+});
+export type InputBinding = z.infer<typeof InputBinding>;
+
+export const WorkTool = z.enum(['search', 'read_document', 'write_artifact']);
+export type WorkTool = z.infer<typeof WorkTool>;
+
+export const CollaborationTool = z.enum([
+  'spawn_subagents',
+  'await_tasks',
+  'ask',
+  'reply',
+  'read_artifact',
+  'submit_result',
+]);
+export type CollaborationTool = z.infer<typeof CollaborationTool>;
+
+export const OutputContract = z.enum(['text', 'notes', 'draft', 'review']);
+export type OutputContract = z.infer<typeof OutputContract>;
+
+export const AgentRole = z.strictObject({
+  id: Identifier,
+  name: z.string().min(1),
+  prompt: z.string().min(1).max(20000),
+  modelProfile: Identifier,
+  allowedWorkTools: z.array(WorkTool).max(3),
+  allowedCollaborationTools: z.array(CollaborationTool).max(6),
+  outputContract: OutputContract,
+});
+export type AgentRole = z.infer<typeof AgentRole>;
+
+const bindings = (min: number) => z.array(InputBinding).min(min).max(20);
+
+export const AgentNode = z.strictObject({
+  id: Identifier,
+  type: z.literal('agent'),
+  label: z.string().min(1),
+  loopId: Identifier.optional(),
+  roleId: Identifier,
+  invocation: z.enum(['scheduled', 'callable']),
+  inputBindings: bindings(0),
+  outputName: z.string().min(1),
+});
+export type AgentNode = z.infer<typeof AgentNode>;
+
+export const DecisionNode = z.strictObject({
+  id: Identifier,
+  type: z.literal('decision'),
+  label: z.string().min(1),
+  loopId: Identifier.optional(),
+  mode: z.enum(['review', 'approval', 'rule']),
+  rule: z.enum(['review_verdict', 'required_tasks_submitted', 'human_approval']),
+  inputBindings: bindings(1),
+});
+export type DecisionNode = z.infer<typeof DecisionNode>;
+
+export const LoopNode = z.strictObject({
+  id: Identifier,
+  type: z.literal('loop'),
+  label: z.string().min(1),
+  maxIterations: z.int().min(1).max(10),
+});
+export type LoopNode = z.infer<typeof LoopNode>;
+
+export const OutputNode = z.strictObject({
+  id: Identifier,
+  type: z.literal('output'),
+  label: z.string().min(1),
+  inputBindings: bindings(1),
+  requireApproval: z.boolean(),
+});
+export type OutputNode = z.infer<typeof OutputNode>;
+
+export const CorralNode = z.discriminatedUnion('type', [
+  AgentNode,
+  DecisionNode,
+  LoopNode,
+  OutputNode,
+]);
+export type CorralNode = z.infer<typeof CorralNode>;
+export type NodeType = CorralNode['type'];
+
+export const SourcePort = z.enum([
+  'out',
+  'body',
+  'next',
+  'pass',
+  'revise',
+  'approve',
+  'reject',
+  'yes',
+  'no',
+]);
+export type SourcePort = z.infer<typeof SourcePort>;
+export const TargetPort = z.enum(['in', 'enter', 'repeat', 'exit']);
+export type TargetPort = z.infer<typeof TargetPort>;
+
+export const ControlEdge = z.strictObject({
+  id: Identifier,
+  source: Identifier,
+  sourcePort: SourcePort,
+  target: Identifier,
+  targetPort: TargetPort,
+});
+export type ControlEdge = z.infer<typeof ControlEdge>;
+
+export const CapabilityLink = z.strictObject({
+  id: Identifier,
+  kind: z.enum(['delegate', 'question']),
+  sourceNodeId: Identifier,
+  targetNodeId: Identifier,
+});
+export type CapabilityLink = z.infer<typeof CapabilityLink>;
+
+export const RunLimits = z.strictObject({
+  maxDelegationDepth: z.literal(2),
+  maxModelConcurrency: z.int().min(1).max(3),
+  maxSpawns: z.int().min(1).max(32),
+  maxModelCalls: z.int().min(1).max(100),
+  maxOutputTokens: z.int().min(1).max(256000),
+  maxOutputTokensPerCall: z.int().min(1).max(4096),
+  maxQuestions: z.int().min(0).max(6),
+  questionTimeoutMs: z.int().min(1000).max(300000),
+  modelTimeoutMs: z.int().min(1000).max(300000),
+  runDeadlineMs: z.int().min(1000).max(3600000),
+});
+export type RunLimits = z.infer<typeof RunLimits>;
+
+/** Starting limits from Spec §9; hard caps are enforced by the installation policy. */
+export const DEFAULT_LIMITS: RunLimits = {
+  maxDelegationDepth: 2,
+  maxModelConcurrency: 3,
+  maxSpawns: 12,
+  maxModelCalls: 40,
+  maxOutputTokens: 64000,
+  maxOutputTokensPerCall: 4096,
+  maxQuestions: 6,
+  questionTimeoutMs: 120000,
+  modelTimeoutMs: 180000,
+  runDeadlineMs: 3600000,
+};
+
+export const CorralDefinition = z.strictObject({
+  schemaVersion: SchemaVersion,
+  id: Identifier,
+  name: z.string().min(1),
+  entryNodeId: Identifier,
+  input: z.strictObject({
+    brief: z.string().min(1),
+    criteria: z.array(z.string().min(1)).min(1).max(20),
+  }),
+  roles: z.array(AgentRole).min(1).max(20),
+  nodes: z.array(CorralNode).min(2).max(20),
+  controlEdges: z.array(ControlEdge).min(1).max(40),
+  capabilityLinks: z.array(CapabilityLink).max(40),
+  limits: RunLimits,
+});
+export type CorralDefinition = z.infer<typeof CorralDefinition>;
+
+/**
+ * A definition still being drawn: same fields and the same refusal of unknown fields and
+ * versions, but without the minimum counts a runnable definition needs. Saving and importing
+ * use this; starting a run always compiles the strict CorralDefinition.
+ */
+export const CorralDefinitionDraft = CorralDefinition.extend({
+  entryNodeId: z.union([Identifier, z.literal('')]),
+  roles: z.array(AgentRole).max(20),
+  nodes: z.array(CorralNode).max(20),
+  controlEdges: z.array(ControlEdge).max(40),
+});
+export type CorralDefinitionDraft = z.infer<typeof CorralDefinitionDraft>;

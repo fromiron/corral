@@ -1,0 +1,18 @@
+{
+  "targetArtifactVersionId": "artifact_draft_v1",
+  "criteriaVersionId": "criteria_01",
+  "verdict": "revise",
+  "issues": [
+    {
+      "criterionId": "source_primary",
+      "reason": "비교 수치의 원문 근거가 부족함",
+      "severity": "required",
+      "evidenceRefs": [
+        "source_01"
+      ]
+    }
+  ],
+  "evidenceRefs": [
+    "source_01"
+  ]
+}

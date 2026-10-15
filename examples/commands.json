@@ -1,0 +1,120 @@
+[
+  {
+    "schemaVersion": "0.1",
+    "commandId": "cmd_01",
+    "runId": "run_demo_01",
+    "type": "steer",
+    "payload": {
+      "targetExecutionId": "exec_writer_01",
+      "text": "근거는 1차 자료만 사용하고 미확인 항목은 구분해 주세요.",
+      "delivery": "next_request"
+    }
+  },
+  {
+    "schemaVersion": "0.1",
+    "commandId": "cmd_02",
+    "runId": "run_demo_01",
+    "type": "pause",
+    "payload": {
+      "scope": "run"
+    }
+  },
+  {
+    "schemaVersion": "0.1",
+    "commandId": "cmd_03",
+    "runId": "run_demo_01",
+    "type": "patch",
+    "payload": {
+      "kind": "node_future",
+      "nodeId": "write",
+      "modelProfile": "model-b"
+    },
+    "expectedControlRevision": 2
+  },
+  {
+    "schemaVersion": "0.1",
+    "commandId": "cmd_04",
+    "runId": "run_demo_01",
+    "type": "patch",
+    "payload": {
+      "kind": "loop_limit",
+      "nodeId": "review_loop",
+      "maxIterations": 3
+    },
+    "expectedControlRevision": 3
+  },
+  {
+    "schemaVersion": "0.1",
+    "commandId": "cmd_05",
+    "runId": "run_demo_01",
+    "type": "patch",
+    "payload": {
+      "kind": "run_limits",
+      "changes": {
+        "maxSpawns": 16
+      }
+    },
+    "expectedControlRevision": 4
+  },
+  {
+    "schemaVersion": "0.1",
+    "commandId": "cmd_06",
+    "runId": "run_demo_01",
+    "type": "patch",
+    "payload": {
+      "kind": "criteria",
+      "baseCriteriaVersionId": "criteria_01",
+      "criteria": [
+        "모든 사실의 근거는 1차 자료를 참조한다.",
+        "미확인 사실은 따로 표시한다."
+      ]
+    },
+    "expectedControlRevision": 4
+  },
+  {
+    "schemaVersion": "0.1",
+    "commandId": "cmd_07",
+    "runId": "run_demo_01",
+    "type": "resume",
+    "payload": {
+      "scope": "run"
+    }
+  },
+  {
+    "schemaVersion": "0.1",
+    "commandId": "cmd_08",
+    "runId": "run_demo_01",
+    "type": "cancel",
+    "payload": {
+      "scope": {
+        "kind": "execution",
+        "executionId": "exec_helper_02"
+      },
+      "reason": "추가 조사는 불필요함"
+    }
+  },
+  {
+    "schemaVersion": "0.1",
+    "commandId": "cmd_09",
+    "runId": "run_demo_01",
+    "type": "resolve_approval",
+    "payload": {
+      "approvalId": "approval_01",
+      "decision": "approve",
+      "subjectVersionId": "artifact_draft_v2"
+    },
+    "expectedControlRevision": 5
+  },
+  {
+    "schemaVersion": "0.1",
+    "commandId": "cmd_10",
+    "runId": "run_demo_01",
+    "type": "restart_task",
+    "payload": {
+      "taskId": "task_writer_01",
+      "previousExecutionId": "exec_writer_01",
+      "instruction": "정정한 기준으로 다시 진행한다."
+    },
+    "expectedControlRevision": 6
+  }
+]

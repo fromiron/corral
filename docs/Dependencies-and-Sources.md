@@ -1,0 +1,332 @@
+# Corral — 의존성 선정·유지보수·출처
+
+> 기준일 2026-10-14. **선정안이며 설치된 lockfile·호환성 검사 결과가 아니다.** 공식 문서와 일부 릴리스 API를 직접 확인했다. 조회한 저장소의 최근 릴리스와 npm 패키지의 최신 버전을 혼동하지 않는다. 실시간 정보는 착수 시 다시 확인한다.
+
+## 1. 선정 정책
+
+핵심 의존성은 오픈소스 라이선스, 공개 소스·문서·변경 이력, 교체 가능한 경계, TypeScript·로컬 실행 적합성을 기준으로 선정했다. star 수를 품질 지표로 사용하지 않는다. 빈번한 릴리스만으로 안정성도 보장되지 않는다.
+
+**릴리스 날짜까지 확인한 핵심군:** Pi, xyflow, LangGraph.js 저장소, Fastify, Vitest. 나머지는 공식 문서·저장소를 확인한 후보이며 모두 같은 수준으로 최신 활동을 검증했다고 주장하지 않는다. P0의 버전 잠금 게이트에서 각 패키지의 최신 안정 릴리스·최근 변경·보안 공지·라이선스를 보충한다.
+
+## 2. 도입할 라이브러리
+
+| 계층 | 채택 | 역할·선택 이유 | 라이선스/주의 | 근거 |
+|---|---|---|---|---|
+| 실행 환경 | Node.js 24 LTS, pnpm workspace | 브라우저/서버/worker의 TS 모노레포 | 배포판·전이 의존성 라이선스 별도 확인 | S26,S29 |
+| UI | React 19.2 계열, TypeScript, Vite 8.1 계열 | SEO보다 상호작용 중심 SPA; 서버 수명과 UI build 분리 | React/Vite MIT, TS Apache-2.0; 정확한 patch 잠금 | S27,S28 |
+| 캔버스 | @xyflow/react | 노드·포트·연결·선택·뷰포트. 도메인 그래프는 자체 정의 | MIT OSS core. Pro 예제 코드 구매를 전제로 하지 않음 | S01~03,S35 |
+| UI 상태 | Zustand | editor / live projection / Reins / stream store 분리 | MIT; React Flow 내부 상태와 중복 mutable truth 금지 | S08 |
+| 조회 캐시 | @tanstack/react-query | 정의 목록, 과거 Run, 산출물 요청 | MIT; live run projection은 별도 store | S09 |
+| 가상화 | @tanstack/react-virtual | 긴 타임라인·트리 행 | MIT; 현재 focus/선택 행이 사라지는 경우 처리 | S10 |
+| UI primitives | Radix Primitives + Tailwind CSS | 접근 가능한 Dialog, Tabs, Tooltip; Corral만의 컴포넌트 디자인 | MIT 계열; 전체 템플릿 복사보다 필요한 primitive만 | S11,S30 |
+| 폼 | react-hook-form | 역할·모델·한도·Reins 폼의 dirty/validation 상태 | MIT; 서버 validation은 별도 필수 | S12 |
+| 계약 | Zod 4 | REST/IPC/정의/command validation 및 JSON Schema 생성 | MIT; TypeBox는 Pi 어댑터 내부 경계에 제한 | S13,S07 |
+| 로컬 API | Fastify 5 | 세션, 명령, 조회, SSE, 일관된 오류 | MIT; SSE 취소/정적 UI/보안 plugin 호환성 검사 | S14,S38 |
+| 그래프 실행 | @langchain/langgraph | 검증된 정적 그래프/제한된 loop 실행 | MIT. 제품의 authoritative task/patch 상태를 중복 소유하지 않음 | S04,S05,S40 |
+| 에이전트 | @earendil-works/pi-agent-core + pi-ai | 모델 tool loop·stream·훅·취소 | MIT, 확인 릴리스1.2.0; coding-agent의 임의 shell loader는 제외 | S06,S07,S36 |
+| 저장 | SQLite + better-sqlite3 + Drizzle | 로컬 영속 이벤트·투영·텍스트 산출물의 atomic commit | SQLite public domain / driver MIT / ORM Apache-2.0 | S15,S20~23,S34 |
+| 단위·통합 | Vitest | pure reducer, timeout·fake timer, DB/API 통합 | MIT; 관측 릴리스5.0.4를 무조건 채택하지 말고 호환 검증 | S16,S39 |
+| 성질 테스트 | fast-check | 무작위 command interleaving·예산·취소 불변식 | MIT; seed와 shrink 결과 보존 | S17 |
+| 브라우저 | Playwright + axe 통합 | 실제 D&D·IME·재접속·접근성·취소 경합 | Playwright Apache-2.0. axe 전이 라이선스 P0 기록 | S18 |
+| HTTP mock | MSW | Studio 단독 개발, 실패·지연·충돌 응답 | MIT; 런타임 테스트의 Agent mock과 역할 구분 | S19 |
+| 컴포넌트 | Storybook + Testing Library | 상태별 Reins·노드·대기 행 테스트 | 각 패키지 라이선스 P0 잠금. 유료 hosted CI 불필요 | S31 |
+| 코드 품질 | Biome, TypeScript strict | 일관된 formatting, lint, type check | 문서/JSON/Mermaid 검사도 별도 스크립트 | S32 |
+
+`react-markdown + remark-gfm`, 텍스트 diff 라이브러리, CLI 인자 파서는 작은 보조 의존성으로만 추가한다. P0에서 라이선스·최근 유지보수 확인 후 정확한 버전을 결정한다. HTML passthrough·실행 가능한 Markdown 확장은 사용하지 않는다. 필요 없는 편집기 SDK·거대한 아이콘 패키지는 초기 필수 의존성으로 두지 않는다.
+
+### 2.1 두 종류의 schema 도구를 무분별하게 섞지 않는다
+
+Corral 도메인 스키마의 원본은 Zod다. Pi가 요구하는 TypeBox 도구 parameter는 어댑터 안에서 생성하거나 얇게 매핑한다. 양쪽을 별개 수작업 사양으로 유지하지 않는다. 변환 가능한 제한된 JSON Schema subset을 정하고 golden round-trip test로 동등성을 확인한다. 이 팩의 JSON Schema는 그 전 단계의 **계약 초안**이며, 구현 착수 후 Zod 원본에서 생성하도록 이동한다.
+
+## 3. 유지보수 증거와 버전 잠금
+
+| 프로젝트 | 조회에서 관측한 것 | 이 사실이 보장하지 않는 것 |
+|---|---|---|
+| Pi | v1.2.0, 2026-10-12. 태그의 agent-core package는 MIT·Node >=22.19.0 | Corral worker/steering 어댑터의 완성, 모든 provider 취소 품질 |
+| xyflow | @xyflow/system@0.0.83, 2026-09-24 | @xyflow/react의 현재 버전이 0.0.83이라는 뜻이 아님 |
+| LangGraph.js | @langchain/vue@1.2.4, 2026-10-12 | @langchain/langgraph 런타임이 같은 버전이라는 뜻이 아님 |
+| Fastify | v5.12.7, 2026-10-13 | 모든 SSE/static/session plugin과의 자동 호환 |
+| Vitest | v5.0.4, 2026-10-12 | Pi repo의 개발용 Vitest와 동일할 필요 없음; Vite/Node 호환 검증 필요 |
+| React / Vite | 공식 페이지 React19.2, Vite8.1 발표 확인 | 이후 patch의 최신성이나 무결함 보장 아님 |
+
+정확한 설치 버전은 P0에서 `package.json + pnpm-lock.yaml + runtime version file + dependency-evidence.json`으로 고정한다. 버전 evidence에는 license, integrity, upstream tag/commit, release date, 확인일, peer/Node 요구, 검사한 테스트를 적는다. `latest`, 무제한 `*`, RC 문서 예시를 그대로 설치하지 않는다.
+
+특히 Drizzle 공식 SQLite 문서에 `@rc` 설치 예시가 있으므로, 최신 웹 문서를 읽었다는 이유로 pre-release를 제품 기본값으로 채택하지 않는다. 안정판 태그의 migration/API를 검증한다. 드라이버는 Node24/Linux/Windows WSL 환경에서 설치·transaction·shutdown 테스트한다.
+
+## 4. 넣지 않는 것과 이유
+
+| 의존성/기능 | MVP 처리 | 재검토 조건 |
+|---|---|---|
+| Next.js | 사용하지 않음 | 공개 콘텐츠 SEO나 서버 렌더링이 실제 요구일 때. 로컬 장수 Run의 수명은 Next 요청 수명에 묶지 않음 |
+| Tauri / Electron | 사용하지 않음 | 로컬 웹 MVP 후 설치·OS 통합이 필요할 때 |
+| XState / Redux / RxJS | 추가하지 않음 | 이미 정의한 Coordinator·Zustand를 대체할 구체적 이익이 있을 때 |
+| Redis / BullMQ / Kafka / Temporal | 추가하지 않음 | 분산 실행·durable resume·멀티유저가 실제 요구일 때 |
+| LiteLLM | 후속 | provider/유저 비용 운영 필요가 커졌을 때 |
+| Local / Jev | v0.2 명시 마일스톤 | 협업·Reins MVP 완료 후 동일 질문 계약을 갖춘 수동 전환부터 |
+| Langfuse | 자체 Run 기록을 대체하지 않음 | 외부 observability export 필요 시 |
+| Spec Kit / OpenSpec | 선택 문서 도우미 | 저장소 명세·테스트 규칙을 훼손하지 않는 경우. 필수 런타임 없음 |
+| React Flow Pro / Chromatic | 필수 아님 | 유료 예제·서비스의 가치를 별도로 판단할 때 |
+
+## 5. 오픈소스와 외부 서비스의 경계
+
+Corral 소스의 배포 라이선스는 **MIT를 제안**한다. 아직 실제 저장소의 소유자·저작권 고지·배포 절차를 확정했다는 뜻은 아니다. npm scope `@corral/*`, CLI bin, 상표·도메인 사용 가능성도 이 조사에서 검증하지 않았다. 우선 private workspace로 사용한다.
+
+자체 실행·UI·저장·테스트 경로는 OSS 구성으로 만든다. 실제 LLM 호출과 Brave Search는 별도의 외부 서비스이며 키·이용조건·과금이 적용될 수 있다. mock/corpus demo는 그 비용 없이 작동해야 한다. 서비스 구독의 비공식 OAuth 재사용을 기본 인증으로 설계하지 않는다.
+
+배포 전 직접·전이 의존성의 SPDX 목록, 원문 license/NOTICE, 공급망 audit를 만든다. 보조 패키지의 라이선스는 여기서 미검증인 경우 그 사실을 유지한다. 법률상 사용 가능성 전체를 이 표가 보장하지 않는다.
+
+## 6. 출처와 증거 원장
+
+아래 출처는 기능 사실 확인용이다. 제품의 새 상태 모델·예산 정책·작업 분해·일정은 Corral 설계 판단이다. 사용자 PDF는 원문을 이 ZIP에 중복 포함하지 않고 문서명·절을 참조한다.
+
+### [B1] 합의 기준: agent-harness-mvp-spec_v1.1.pdf
+
+사용자 첨부, 2026-10-14, 14쪽
+
+확인일: 2026-10-14. 원문 1부 §1~8 기준. 이 문서 팩의 새 결정은 명시적으로 구분한다.
+
+### [B2] 이전 리뷰와 역제안
+
+사용자 첨부 plan-review.md / mvp-spec.md / v1.0 PDF
+
+확인일: 2026-10-14. D&D 연기·YAML-only 부분은 최신 합의로 대체됨. 상태·테스트 분석만 참고.
+
+### [S01] React Flow 공식 문서
+
+https://reactflow.dev/learn
+
+확인일: 2026-10-14. D&D 캔버스 기반. 그래프 실행기는 아님.
+
+### [S02] React Flow 성능
+
+https://reactflow.dev/learn/advanced-use/performance
+
+확인일: 2026-10-14. 컴포넌트 메모이제이션과 좁은 상태 구독.
+
+### [S03] React Flow 접근성
+
+https://reactflow.dev/learn/advanced-use/accessibility
+
+확인일: 2026-10-14. 키보드·스크린리더 구성.
+
+### [S04] LangGraph 영속성
+
+https://docs.langchain.com/oss/javascript/langgraph/persistence
+
+확인일: 2026-10-14. checkpointer와 store의 다른 책임.
+
+### [S05] LangGraph interrupts
+
+https://docs.langchain.com/oss/javascript/langgraph/interrupts
+
+확인일: 2026-10-14. resume 시 노드 재진입과 부작용 주의.
+
+### [S06] Pi agent-core, 확인한 릴리스 v1.2.0
+
+https://github.com/earendil-works/pi/blob/v1.2.0/packages/agent/README.md
+
+확인일: 2026-10-14. 훅·요청 준비·도구 이벤트·취소. main 문서도 함께 확인, 태그 차이는 P0 검사.
+
+### [S07] Pi package metadata v1.2.0
+
+https://github.com/earendil-works/pi/blob/v1.2.0/packages/agent/package.json
+
+확인일: 2026-10-14. MIT, Node >=22.19.0, pi-ai와 typebox 의존.
+
+### [S08] Zustand 공식 저장소
+
+https://github.com/pmndrs/zustand
+
+확인일: 2026-10-14. MIT; vanilla store와 selector 기반 상태.
+
+### [S09] TanStack Query
+
+https://tanstack.com/query/latest/docs/framework/react/overview
+
+확인일: 2026-10-14. 서버 조회 상태. 라이선스: https://github.com/TanStack/query
+
+### [S10] TanStack Virtual
+
+https://tanstack.com/virtual/latest
+
+확인일: 2026-10-14. 긴 실행 트리·타임라인 가상화. 라이선스: https://github.com/TanStack/virtual
+
+### [S11] Radix Primitives
+
+https://www.radix-ui.com/primitives/docs/overview/introduction
+
+확인일: 2026-10-14. Dialog·Tabs 등 저수준 UI. MIT: https://github.com/radix-ui/primitives
+
+### [S12] React Hook Form
+
+https://github.com/react-hook-form/react-hook-form
+
+확인일: 2026-10-14. 폼 상태·검증, MIT.
+
+### [S13] Zod
+
+https://zod.dev/
+
+확인일: 2026-10-14. v4 stable, JSON Schema 지원. MIT: https://github.com/colinhacks/zod
+
+### [S14] Fastify
+
+https://fastify.dev/
+
+확인일: 2026-10-14. 로컬 Node API 기반. MIT: https://github.com/fastify/fastify
+
+### [S15] Drizzle SQLite
+
+https://orm.drizzle.team/docs/sqlite/get-started-sqlite
+
+확인일: 2026-10-14. 드라이버·타입 SQL. 문서 @rc 예시는 안정판 확정 전 복사 금지.
+
+### [S16] Vitest
+
+https://vitest.dev/guide/
+
+확인일: 2026-10-14. 단위·통합 테스트. MIT: https://github.com/vitest-dev/vitest
+
+### [S17] fast-check 모델 기반 테스트
+
+https://fast-check.dev/docs/advanced/model-based-testing/
+
+확인일: 2026-10-14. 명령 순서/상태 전이 성질 검증. MIT: https://github.com/dubzzz/fast-check
+
+### [S18] Playwright 접근성 테스트
+
+https://playwright.dev/docs/accessibility-testing
+
+확인일: 2026-10-14. 실브라우저/a11y 테스트. Apache-2.0: https://github.com/microsoft/playwright
+
+### [S19] MSW
+
+https://mswjs.io/
+
+확인일: 2026-10-14. 브라우저·Node 요청 mock. MIT: https://github.com/mswjs/msw
+
+### [S20] SQLite WAL
+
+https://sqlite.org/wal.html
+
+확인일: 2026-10-14. WAL 작동·제약. SQLite는 public domain.
+
+### [S21] SQLite transaction
+
+https://sqlite.org/lang_transaction.html
+
+확인일: 2026-10-14. 원자적 명령·이벤트·투영 갱신의 저장 기반.
+
+### [S22] SQLite foreign keys
+
+https://sqlite.org/foreignkeys.html
+
+확인일: 2026-10-14. 연결 제약 활성화·검증.
+
+### [S23] better-sqlite3
+
+https://github.com/WiseLibs/better-sqlite3
+
+확인일: 2026-10-14. MIT, 동기 SQL driver. native binary 호환성은 P0 검증.
+
+### [S24] OWASP SSRF Prevention
+
+https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html
+
+확인일: 2026-10-14. 외부 URL·리다이렉트·내부 주소 접근 방어 근거.
+
+### [S25] Brave Search API
+
+https://api-dashboard.search.brave.com/app/documentation/web-search/get-started
+
+확인일: 2026-10-14. 선택적인 실검색 Provider. 유료/정책 의존 SaaS이며 OSS로 분류하지 않음.
+
+### [S26] Node release schedule
+
+https://nodejs.org/en/about/previous-releases
+
+확인일: 2026-10-14. Node24 LTS를 기본 런타임 후보로 선택.
+
+### [S27] React versions
+
+https://react.dev/versions
+
+확인일: 2026-10-14. 확인 페이지 React19.2. 정확한 patch는 잠금 단계에서 선택.
+
+### [S28] Vite 공식 블로그
+
+https://vite.dev/blog
+
+확인일: 2026-10-14. 8.1 발표 2026-06-23 확인. 최신 patch 보장 아님.
+
+### [S29] pnpm workspaces
+
+https://pnpm.io/workspaces
+
+확인일: 2026-10-14. 내부 모노레포 패키지 연결.
+
+### [S30] Tailwind Vite 설치
+
+https://tailwindcss.com/docs/installation/using-vite
+
+확인일: 2026-10-14. 스타일 토큰·유틸리티 기반.
+
+### [S31] Storybook 테스트
+
+https://storybook.js.org/docs/writing-tests
+
+확인일: 2026-10-14. 상태별 컴포넌트 검증. Chromatic 유료 서비스는 필수 아님.
+
+### [S32] Biome
+
+https://biomejs.dev/
+
+확인일: 2026-10-14. 포맷·정적 품질 도구. lock 단계에 정확한 패키지 라이선스 확인.
+
+### [S33] GitHub Spec Kit
+
+https://github.github.io/spec-kit/
+
+확인일: 2026-10-14. 선택적인 SDD 문서 작업 도우미. Corral 명세/테스트를 대체하지 않음.
+
+### [S34] Drizzle 공식 저장소
+
+https://github.com/drizzle-team/drizzle-orm
+
+확인일: 2026-10-14. Apache-2.0. 안정판 태그·migration 호환성 검증.
+
+### [S35] xyflow 릴리스 조회
+
+https://api.github.com/repos/xyflow/xyflow/releases?per_page=1
+
+확인일: 2026-10-14. 2026-09-24 @xyflow/system@0.0.83 관측; React package version이 아님.
+
+### [S36] Pi 릴리스 조회
+
+https://api.github.com/repos/earendil-works/pi/releases?per_page=1
+
+확인일: 2026-10-14. 2026-10-12 v1.2.0 관측.
+
+### [S37] LangGraph.js 릴리스 조회
+
+https://api.github.com/repos/langchain-ai/langgraphjs/releases?per_page=1
+
+확인일: 2026-10-14. 2026-10-12 @langchain/vue@1.2.4 관측; runtime package version이 아님.
+
+### [S38] Fastify 릴리스 조회
+
+https://api.github.com/repos/fastify/fastify/releases?per_page=1
+
+확인일: 2026-10-14. 2026-10-13 v5.12.7 관측.
+
+### [S39] Vitest 릴리스 조회
+
+https://api.github.com/repos/vitest-dev/vitest/releases?per_page=1
+
+확인일: 2026-10-14. 2026-10-12 v5.0.4 관측.
+
+### [S40] LangGraph core license
+
+https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/LICENSE
+
+확인일: 2026-10-14. MIT, 해당 OSS 라이브러리 범위. 외부 호스팅 서비스 조건과 구별.

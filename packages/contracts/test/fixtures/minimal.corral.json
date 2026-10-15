@@ -1,0 +1,55 @@
+{
+  "schemaVersion": "0.1",
+  "id": "minimal",
+  "name": "Minimal Corral",
+  "entryNodeId": "writer",
+  "input": {
+    "brief": "Summarize the brief.",
+    "criteria": ["Cite the brief."]
+  },
+  "roles": [
+    {
+      "id": "writer_role",
+      "name": "Writer",
+      "prompt": "Write a short answer to the brief.",
+      "modelProfile": "model-a",
+      "allowedWorkTools": ["write_artifact"],
+      "allowedCollaborationTools": ["submit_result"],
+      "outputContract": "text"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "writer",
+      "type": "agent",
+      "label": "Writer",
+      "roleId": "writer_role",
+      "invocation": "scheduled",
+      "inputBindings": [{ "kind": "run_input", "name": "brief" }],
+      "outputName": "text"
+    },
+    {
+      "id": "output",
+      "type": "output",
+      "label": "Output",
+      "inputBindings": [{ "kind": "task_output", "name": "text", "sourceNodeId": "writer" }],
+      "requireApproval": false
+    }
+  ],
+  "controlEdges": [
+    { "id": "e1", "source": "writer", "sourcePort": "out", "target": "output", "targetPort": "in" }
+  ],
+  "capabilityLinks": [],
+  "limits": {
+    "maxDelegationDepth": 2,
+    "maxModelConcurrency": 3,
+    "maxSpawns": 12,
+    "maxModelCalls": 40,
+    "maxOutputTokens": 64000,
+    "maxOutputTokensPerCall": 4096,
+    "maxQuestions": 6,
+    "questionTimeoutMs": 120000,
+    "modelTimeoutMs": 180000,
+    "runDeadlineMs": 3600000
+  }
+}

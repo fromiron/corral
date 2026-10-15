@@ -1,0 +1,15 @@
+node_modules/
+dist/
+coverage/
+storybook-static/
+playwright-report/
+test-results/
+blob-report/
+.vite/
+*.tsbuildinfo
+.corral/
+*.db
+*.db-wal
+*.db-shm
+.env
+.env.*

@@ -1,0 +1,525 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:corral:definition:0.1",
+  "title": "CorralDefinition draft 0.1",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "const": "0.1"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "entryNodeId": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+    },
+    "input": {
+      "type": "object",
+      "properties": {
+        "brief": {
+          "type": "string",
+          "minLength": 1
+        },
+        "criteria": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1,
+          "maxItems": 20
+        }
+      },
+      "required": [
+        "brief",
+        "criteria"
+      ],
+      "additionalProperties": false
+    },
+    "roles": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/role"
+      },
+      "minItems": 1,
+      "maxItems": 20
+    },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "#/$defs/agent"
+          },
+          {
+            "$ref": "#/$defs/decision"
+          },
+          {
+            "$ref": "#/$defs/loop"
+          },
+          {
+            "$ref": "#/$defs/output"
+          }
+        ]
+      },
+      "minItems": 2,
+      "maxItems": 20
+    },
+    "controlEdges": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/edge"
+      },
+      "minItems": 1,
+      "maxItems": 40
+    },
+    "capabilityLinks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/capability"
+      },
+      "minItems": 0,
+      "maxItems": 40
+    },
+    "limits": {
+      "type": "object",
+      "properties": {
+        "maxDelegationDepth": {
+          "const": 2
+        },
+        "maxModelConcurrency": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3
+        },
+        "maxSpawns": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32
+        },
+        "maxModelCalls": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "maxOutputTokens": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 256000
+        },
+        "maxOutputTokensPerCall": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4096
+        },
+        "maxQuestions": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 6
+        },
+        "questionTimeoutMs": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 300000
+        },
+        "modelTimeoutMs": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 300000
+        },
+        "runDeadlineMs": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 3600000
+        }
+      },
+      "required": [
+        "maxDelegationDepth",
+        "maxModelConcurrency",
+        "maxSpawns",
+        "maxModelCalls",
+        "maxOutputTokens",
+        "maxOutputTokensPerCall",
+        "maxQuestions",
+        "questionTimeoutMs",
+        "modelTimeoutMs",
+        "runDeadlineMs"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "id",
+    "name",
+    "entryNodeId",
+    "input",
+    "roles",
+    "nodes",
+    "controlEdges",
+    "capabilityLinks",
+    "limits"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "inputBinding": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "run_input",
+            "task_output",
+            "previous_iteration_output",
+            "explicit_version",
+            "question_answer"
+          ]
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourceNodeId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+        },
+        "artifactVersionId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+        },
+        "optional": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "kind",
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "role": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "prompt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20000
+        },
+        "modelProfile": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+        },
+        "allowedWorkTools": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "search",
+              "read_document",
+              "write_artifact"
+            ]
+          },
+          "minItems": 0,
+          "maxItems": 3
+        },
+        "allowedCollaborationTools": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "spawn_subagents",
+              "await_tasks",
+              "ask",
+              "reply",
+              "read_artifact",
+              "submit_result"
+            ]
+          },
+          "minItems": 0,
+          "maxItems": 6
+        },
+        "outputContract": {
+          "type": "string",
+          "enum": [
+            "text",
+            "notes",
+            "draft",
+            "review"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "prompt",
+        "modelProfile",
+        "allowedWorkTools",
+        "allowedCollaborationTools",
+        "outputContract"
+      ],
+      "additionalProperties": false
+    },
+    "agent": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+        },
+        "type": {
+          "const": "agent"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "loopId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+        },
+        "roleId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+        },
+        "invocation": {
+          "type": "string",
+          "enum": [
+            "scheduled",
+            "callable"
+          ]
+        },
+        "inputBindings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/inputBinding"
+          },
+          "minItems": 0,
+          "maxItems": 20
+        },
+        "outputName": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "label",
+        "roleId",
+        "invocation",
+        "inputBindings",
+        "outputName"
+      ],
+      "additionalProperties": false
+    },
+    "decision": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+        },
+        "type": {
+          "const": "decision"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "loopId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "review",
+            "approval",
+            "rule"
+          ]
+        },
+        "rule": {
+          "type": "string",
+          "enum": [
+            "review_verdict",
+            "required_tasks_submitted",
+            "human_approval"
+          ]
+        },
+        "inputBindings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/inputBinding"
+          },
+          "minItems": 1,
+          "maxItems": 20
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "label",
+        "mode",
+        "rule",
+        "inputBindings"
+      ],
+      "additionalProperties": false
+    },
+    "loop": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+        },
+        "type": {
+          "const": "loop"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "maxIterations": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "label",
+        "maxIterations"
+      ],
+      "additionalProperties": false
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+        },
+        "type": {
+          "const": "output"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "inputBindings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/inputBinding"
+          },
+          "minItems": 1,
+          "maxItems": 20
+        },
+        "requireApproval": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "label",
+        "inputBindings",
+        "requireApproval"
+      ],
+      "additionalProperties": false
+    },
+    "edge": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+        },
+        "source": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+        },
+        "sourcePort": {
+          "type": "string",
+          "enum": [
+            "out",
+            "body",
+            "next",
+            "pass",
+            "revise",
+            "approve",
+            "reject",
+            "yes",
+            "no"
+          ]
+        },
+        "target": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+        },
+        "targetPort": {
+          "type": "string",
+          "enum": [
+            "in",
+            "enter",
+            "repeat",
+            "exit"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "source",
+        "sourcePort",
+        "target",
+        "targetPort"
+      ],
+      "additionalProperties": false
+    },
+    "capability": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "delegate",
+            "question"
+          ]
+        },
+        "sourceNodeId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+        },
+        "targetNodeId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "sourceNodeId",
+        "targetNodeId"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

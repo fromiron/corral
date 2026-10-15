@@ -1,0 +1,9 @@
+flowchart LR
+  R[Research] --> L[Loop: enter]
+  L -->|body| W[Writer]
+  W --> V[Reviewer]
+  V --> D{Review Decision}
+  D -->|revise: repeat| L
+  D -->|pass: exit| E[Loop completed]
+  E -->|next| A{Final approval}
+  A -->|approve| O[Output]

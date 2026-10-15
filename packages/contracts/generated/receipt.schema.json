@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "commandId": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+    },
+    "runId": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "accepted",
+        "queued",
+        "applied",
+        "rejected",
+        "superseded",
+        "expired",
+        "cancelled"
+      ]
+    },
+    "acceptedSeq": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "target": {
+      "type": "string",
+      "minLength": 1
+    },
+    "requestedBoundary": {
+      "type": "string",
+      "enum": [
+        "immediate",
+        "next_request",
+        "next_activation",
+        "safe_boundary"
+      ]
+    },
+    "relatedEventIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+      }
+    },
+    "error": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": [
+            "SCHEMA_INVALID",
+            "GRAPH_INVALID",
+            "CAPABILITY_DENIED",
+            "STALE_CONTROL_REVISION",
+            "IDEMPOTENCY_CONFLICT",
+            "COMMAND_NOT_SUPPORTED",
+            "TARGET_NOT_FOUND",
+            "TARGET_TERMINAL",
+            "RESOURCE_CAPACITY",
+            "CRITERIA_CHANGE_REQUIRES_NEW_RUN",
+            "RESTART_NOT_ALLOWED",
+            "APPROVAL_STALE",
+            "LIMIT_REACHED",
+            "STORAGE_UNAVAILABLE",
+            "SESSION_INVALID",
+            "ORIGIN_REJECTED"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "commandId",
+    "runId",
+    "status",
+    "acceptedSeq",
+    "target",
+    "requestedBoundary",
+    "relatedEventIds"
+  ],
+  "additionalProperties": false,
+  "$id": "urn:corral:receipt:0.1",
+  "title": "Receipt"
+}

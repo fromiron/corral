@@ -1,0 +1,50 @@
+{
+  "schemaVersion": "0.1",
+  "corralId": "research_write_review",
+  "layoutRevision": 1,
+  "viewport": {
+    "x": 0,
+    "y": 0,
+    "zoom": 0.8
+  },
+  "nodes": {
+    "research": {
+      "x": 40,
+      "y": 160
+    },
+    "helper": {
+      "x": 50,
+      "y": 430
+    },
+    "respond": {
+      "x": 320,
+      "y": 450
+    },
+    "review_loop": {
+      "x": 320,
+      "y": 80,
+      "width": 810,
+      "height": 300
+    },
+    "write": {
+      "x": 370,
+      "y": 160
+    },
+    "review": {
+      "x": 620,
+      "y": 160
+    },
+    "review_decision": {
+      "x": 870,
+      "y": 160
+    },
+    "approval": {
+      "x": 1190,
+      "y": 160
+    },
+    "output": {
+      "x": 1450,
+      "y": 160
+    }
+  }
+}

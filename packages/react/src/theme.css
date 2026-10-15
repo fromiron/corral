@@ -1,0 +1,71 @@
+/* Corral design tokens. Consumers add `@import "tailwindcss"` before this file. */
+
+:root {
+  --surface: #f7f7f5;
+  --raised: #ffffff;
+  --line: #d6d6d0;
+  --text: #1d1d1b;
+  --muted: #5c5c57;
+  --accent: #1f6f5c;
+  --on-accent: #ffffff;
+  --success: #1d7a3b;
+  --warning: #8a5a00;
+  --danger: #b42318;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface: #151615;
+    --raised: #1f201f;
+    --line: #3a3b39;
+    --text: #ececea;
+    --muted: #a8a8a2;
+    --accent: #5cc4a8;
+    --on-accent: #0b1f1a;
+    --success: #6fcf8f;
+    --warning: #f0b45c;
+    --danger: #ff8a80;
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-surface: var(--surface);
+  --color-raised: var(--raised);
+  --color-line: var(--line);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-on-accent: var(--on-accent);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--surface);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    /* biome-ignore lint/complexity/noImportantStyles: reduced motion overrides every animation */
+    animation-duration: 0.01ms !important;
+    /* biome-ignore lint/complexity/noImportantStyles: reduced motion overrides every transition */
+    transition-duration: 0.01ms !important;
+  }
+}
