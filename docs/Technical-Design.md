@@ -63,7 +63,7 @@ corral/
     core/                   # Coordinator, limits, tasks, messages, pure reducers
     runner-langgraph/       # 정적 control-flow lowering과 node callback
     adapter-pi/             # parent/worker 프로토콜, Pi API mapping
-    storage-sqlite/         # Drizzle schema, migrations, repositories
+    storage-sqlite/         # SQL migrations, RunStore·Corral repository (ADR-021)
     react/                  # Canvas/Reins/RunView의 내부 재사용 컴포넌트
     testkit/                # clock/id/agent/search/store test doubles
     cli/                    # corral dev/run/validate/inspect/export

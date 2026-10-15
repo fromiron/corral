@@ -1,0 +1,27 @@
+{
+  "name": "@corral/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "start": "node src/main.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@corral/contracts": "workspace:*",
+    "@corral/core": "workspace:*",
+    "@corral/runner-langgraph": "workspace:*",
+    "@corral/storage-sqlite": "workspace:*",
+    "@corral/testkit": "workspace:*",
+    "@fastify/static": "10.1.6",
+    "fastify": "5.12.7",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@corral/client": "workspace:*",
+    "@types/node": "24.19.2"
+  }
+}

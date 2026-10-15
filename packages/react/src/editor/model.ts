@@ -24,7 +24,7 @@ import {
   loopBoundaryViolation,
   outputPortsOf,
   type PlanIssue,
-  planLinearRun,
+  planRun,
   wouldCreateCycle,
 } from '@corral/core';
 
@@ -673,7 +673,7 @@ export function compileDraft(draft: EditorDraft): DraftCompilation {
   const compiled = compileDefinition(draft.definition);
   if (!compiled.ok)
     return { diagnostics: compiled.diagnostics, runnable: false, runtimeLimits: [] };
-  const plan = planLinearRun(compiled.definition);
+  const plan = planRun(compiled.definition);
   return {
     definition: compiled.definition,
     diagnostics: compiled.diagnostics,

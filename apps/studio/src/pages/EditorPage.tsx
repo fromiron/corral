@@ -11,6 +11,7 @@ import {
   ReinsPanel,
   RunControls,
   RunView,
+  type SavedRevision,
   StudioStoresProvider,
   useSteerTarget,
   useStudioStores,
@@ -45,7 +46,7 @@ function download(name: string, text: string) {
 
 function Editor({ record, editor }: { record: CorralRecord; editor: EditorStore }) {
   const t = useTranslations('Editor');
-  const { repository, session } = useServices();
+  const { repository, session, mode } = useServices();
   const draft = useStore(editor, (s) => s.draft);
   const [saved, setSaved] = useState({ record, draft: editor.getState().draft });
   const [saving, setSaving] = useState(false);
@@ -60,11 +61,12 @@ function Editor({ record, editor }: { record: CorralRecord; editor: EditorStore 
     enableBeforeUnload: () => dirtyRef.current,
   });
 
-  const save = useCallback(async () => {
+  /** Saves the draft; resolves to the saved record, or null when saving failed. */
+  const save = useCallback(async (): Promise<CorralRecord | null> => {
     const current = editor.getState().draft;
     if (current === saved.draft) {
       setMessage({ text: t('noChanges'), error: false });
-      return;
+      return saved.record;
     }
     setSaving(true);
     try {
@@ -75,7 +77,7 @@ function Editor({ record, editor }: { record: CorralRecord; editor: EditorStore 
       });
       if (!result.ok) {
         setMessage({ text: result.message, error: true });
-        return;
+        return null;
       }
       setSaved({ record: result.record, draft: current });
       setMessage({
@@ -85,10 +87,22 @@ function Editor({ record, editor }: { record: CorralRecord; editor: EditorStore 
         }),
         error: false,
       });
+      return result.record;
     } finally {
       setSaving(false);
     }
   }, [editor, repository, saved, t]);
+
+  // The local server runs saved revisions only, so a run saves first (C-057).
+  const beforeStart =
+    mode === 'server'
+      ? async () => {
+          const record = await save();
+          return record
+            ? { corralId: record.corralId, definitionRevision: record.definitionRevision }
+            : null;
+        }
+      : undefined;
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -170,7 +184,7 @@ function Editor({ record, editor }: { record: CorralRecord; editor: EditorStore 
             </div>
             <aside className="flex min-h-0 flex-col gap-6 overflow-auto border-l border-line p-3">
               <NodeInspector />
-              <RunSide />
+              <RunSide beforeStart={beforeStart} />
             </aside>
           </main>
         </div>
@@ -179,7 +193,11 @@ function Editor({ record, editor }: { record: CorralRecord; editor: EditorStore 
   );
 }
 
-function RunSide() {
+function RunSide({
+  beforeStart,
+}: {
+  beforeStart?: (() => Promise<SavedRevision | null>) | undefined;
+}) {
   const t = useTranslations('Editor');
   const { session } = useStudioStores();
   const runId = useStore(session, (s) => s.runId);
@@ -187,7 +205,7 @@ function RunSide() {
   const target = useSteerTarget(session, chosen);
   return (
     <section aria-labelledby="run-heading" className="flex flex-col gap-3">
-      <RunControls onStarted={() => setChosen(null)} />
+      <RunControls onStarted={() => setChosen(null)} {...(beforeStart ? { beforeStart } : {})} />
       <RunView session={session} onSteer={setChosen} />
       {runId ? (
         <Link to="/runs/$runId" params={{ runId }} className="text-xs underline">

@@ -1,5 +1,5 @@
 import type { Clock } from '@corral/contracts';
-import { InMemoryCoordinator, InProcessTransport, type RuntimeTransport } from '@corral/core';
+import { Coordinator, InProcessTransport, type RuntimeTransport } from '@corral/core';
 import { ScriptedAgentAdapter, SequentialIdFactory } from '@corral/testkit';
 
 // P0 runtime: the real coordinator running in the browser with simulated agents (ADR-012,
@@ -20,7 +20,7 @@ function replyDelayMs(): number {
 
 export function createDemoTransport(): RuntimeTransport {
   const ms = replyDelayMs();
-  const coordinator = new InMemoryCoordinator({
+  const coordinator = new Coordinator({
     clock: systemClock,
     ids: new SequentialIdFactory(),
     agents: new ScriptedAgentAdapter({ turns: 2, beforeReply: () => delay(ms) }),

@@ -68,6 +68,8 @@
             "COMMAND_NOT_SUPPORTED",
             "TARGET_NOT_FOUND",
             "TARGET_TERMINAL",
+            "RUN_ALREADY_ACTIVE",
+            "REVISION_CONFLICT",
             "RESOURCE_CAPACITY",
             "CRITERIA_CHANGE_REQUIRES_NEW_RUN",
             "RESTART_NOT_ALLOWED",

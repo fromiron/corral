@@ -1,5 +1,6 @@
-import { ReinsPanel, RunView, useSteerTarget } from '@corral/react';
+import { ReinsPanel, RunView, Timeline, useSteerTarget } from '@corral/react';
 import { Link, useNavigate } from '@tanstack/react-router';
+import { useEffect } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { runRoute } from '../router.tsx';
@@ -13,15 +14,21 @@ export function RunPage() {
   const navigate = useNavigate({ from: '/runs/$runId' });
   const { session } = useServices();
   const activeRunId = useStore(session, (s) => s.runId);
+  const missing = useStore(session, (s) => s.missingRunId === runId);
   const corralId = useStore(session, (s) => s.definition?.id ?? null);
   const target = useSteerTarget(session, execution ?? null);
+
+  // A direct link or a reload: follow the run from the runtime's record.
+  useEffect(() => {
+    void session.getState().open(runId);
+  }, [session, runId]);
 
   if (activeRunId !== runId) {
     return (
       <main className="flex flex-col items-start gap-3 p-6">
         <h2 className="text-lg font-semibold">{t('heading', { runId })}</h2>
         <p role="status" className="text-sm text-muted">
-          {t('missing')}
+          {missing ? t('missing') : t('loading')}
         </p>
         <Link to="/" className="text-sm underline">
           ←
@@ -42,6 +49,7 @@ export function RunPage() {
           </Link>
         ) : null}
         <RunView session={session} onSteer={(id) => void navigate({ search: { execution: id } })} />
+        <Timeline session={session} />
       </section>
       <ReinsPanel session={session} target={target} />
     </main>

@@ -1,7 +1,7 @@
-import { draftLayout, emptyDraft, importDocuments } from '@corral/react';
+import { draftLayout, emptyDraft, importDocuments, StatusBadge } from '@corral/react';
 import { Link, useNavigate, useRouter } from '@tanstack/react-router';
 import { type ChangeEvent, useState } from 'react';
-import { useFormatter, useTranslations } from 'use-intl';
+import { useFormatter, useNow, useTranslations } from 'use-intl';
 import { workspaceRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
 
@@ -18,8 +18,9 @@ function isLayoutFile(text: string): boolean {
 export function WorkspacePage() {
   const t = useTranslations('Workspace');
   const format = useFormatter();
-  const corrals = workspaceRoute.useLoaderData();
-  const { repository, persistent } = useServices();
+  const now = useNow({ updateInterval: 60_000 });
+  const { corrals, runs } = workspaceRoute.useLoaderData();
+  const { repository, persistent, mode } = useServices();
   const router = useRouter();
   const navigate = useNavigate();
   const [errors, setErrors] = useState<string[]>([]);
@@ -90,7 +91,13 @@ export function WorkspacePage() {
           </button>
         </div>
       </div>
-      <p className="text-xs text-muted">{persistent ? t('storedLocally') : t('notPersistent')}</p>
+      <p className="text-xs text-muted">
+        {mode === 'server'
+          ? t('storedOnServer')
+          : persistent
+            ? t('storedLocally')
+            : t('notPersistent')}
+      </p>
       <p className="text-xs text-muted">{t('importHint')}</p>
       {errors.length > 0 ? (
         <div role="alert" className="rounded-md border border-danger p-3 text-sm text-danger">
@@ -125,7 +132,7 @@ export function WorkspacePage() {
                     layout: corral.layoutRevision,
                     nodes: corral.nodeCount,
                   })}{' '}
-                  · {t('updated', { time: format.relativeTime(new Date(corral.updatedAt)) })}
+                  · {t('updated', { time: format.relativeTime(new Date(corral.updatedAt), now) })}
                 </span>
               </div>
               <div className="flex items-center gap-2 text-xs">
@@ -167,6 +174,39 @@ export function WorkspacePage() {
           ))}
         </ul>
       )}
+      <section aria-labelledby="runs-heading" className="flex flex-col gap-2">
+        <h2 id="runs-heading" className="text-lg font-semibold">
+          {t('runsHeading')}
+        </h2>
+        {runs.length === 0 ? (
+          <p className="text-sm text-muted">{t('runsEmpty')}</p>
+        ) : (
+          <ul className="flex flex-col gap-1" aria-labelledby="runs-heading">
+            {runs.map((run) => {
+              const corral = corrals.find((c) => c.corralId === run.corralId);
+              return (
+                <li
+                  key={run.runId}
+                  className="flex flex-wrap items-center gap-3 rounded-md border border-line px-3 py-2 text-sm"
+                >
+                  <StatusBadge status={run.status} />
+                  <Link
+                    to="/runs/$runId"
+                    params={{ runId: run.runId }}
+                    className="font-mono text-xs underline"
+                  >
+                    {run.runId}
+                  </Link>
+                  <span className="text-xs text-muted">
+                    {corral?.name ?? run.corralId} ·{' '}
+                    {t('runStarted', { time: format.relativeTime(new Date(run.startedAt), now) })}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
     </main>
   );
 }
