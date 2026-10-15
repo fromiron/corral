@@ -1216,7 +1216,7 @@
       "packages/core/test/golden/"
     ],
     "done": "리팩터 전에 고정한 golden 이벤트 열과 기본 gate 집합의 결과가 바이트 단위로 같고, 기존 테스트를 수정 없이 통과한다. 예외 gate는 fail closed",
-    "status": "planned",
+    "status": "implemented",
     "evidence": "docs/change-requests/CR-003-admission-hooks-effort-observe.md"
   },
   {

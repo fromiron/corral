@@ -77,7 +77,8 @@
             "LIMIT_REACHED",
             "STORAGE_UNAVAILABLE",
             "SESSION_INVALID",
-            "ORIGIN_REJECTED"
+            "ORIGIN_REJECTED",
+            "POLICY_ERROR"
           ]
         },
         "message": {
