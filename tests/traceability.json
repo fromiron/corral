@@ -571,5 +571,57 @@
       "C-044",
       "C-046"
     ]
+  },
+  {
+    "requirementId": "CRL-RUN-008",
+    "tests": [
+      "TC-RUN-008-H",
+      "TC-RUN-008-N"
+    ],
+    "tasks": [
+      "C-067"
+    ]
+  },
+  {
+    "requirementId": "CRL-DEC-001",
+    "tests": [
+      "TC-DEC-001-H",
+      "TC-DEC-001-N"
+    ],
+    "tasks": [
+      "C-068",
+      "C-069"
+    ]
+  },
+  {
+    "requirementId": "CRL-DEC-002",
+    "tests": [
+      "TC-DEC-002-H",
+      "TC-DEC-002-N"
+    ],
+    "tasks": [
+      "C-068",
+      "C-069"
+    ]
+  },
+  {
+    "requirementId": "CRL-DEC-003",
+    "tests": [
+      "TC-DEC-003-H",
+      "TC-DEC-003-N"
+    ],
+    "tasks": [
+      "C-070"
+    ]
+  },
+  {
+    "requirementId": "CRL-DEC-004",
+    "tests": [
+      "TC-DEC-004-H",
+      "TC-DEC-004-N"
+    ],
+    "tasks": [
+      "C-071"
+    ]
   }
 ]

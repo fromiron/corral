@@ -108,7 +108,9 @@ MVP의 캔버스 전체가 하나의 Corral이다. 그 안에 Loop 영역과 Age
 
 ### 3.2 이번 MVP에 넣지 않을 것
 
-실행 중 노드 추가/삭제/재연결, 임의 역할 생성, 자유로운 병렬 그래프와 `join:any`, 다중 사용자 편집, 다른 사람의 원격 에이전트, A2A/MCP 확장 로딩, 셸/코딩/파일 동시 수정, 프로세스 재시작 후 자동 재개, 임의 시점의 외부 작업 재실행, 중첩 Corral/Subflow, 자동 판단 라우팅, Local/Jev/Hybrid, LiteLLM, 과거 산출물의 직접 수정은 제외한다.
+실행 중 노드 추가/삭제/재연결, 임의 역할 생성, 자유로운 병렬 그래프와 `join:any`, 다중 사용자 편집, 다른 사람의 원격 에이전트, A2A/MCP 확장 로딩, 셸/코딩/파일 동시 수정, 프로세스 재시작 후 자동 재개, 임의 시점의 외부 작업 재실행, 중첩 Corral/Subflow, 자동 판단 라우팅, Local/Jev 판정의 요청 적용과 Hybrid, LiteLLM, 과거 산출물의 직접 수정은 제외한다.
+
+v0.2의 관찰 전용 `reasoning_effort` 판정은 요청을 바꾸지 않으므로 위 제외와 별개로 §13과 [CR-003](docs/change-requests/CR-003-admission-hooks-effort-observe.md)에서 다룬다.
 
 브라우저 재접속은 지원한다. 이는 **살아 있는 로컬 실행에 다시 연결하는 것**이며, 죽은 실행을 살리는 crash resume이 아니다.
 
@@ -325,6 +327,8 @@ Run이 실제 `paused`가 되는 조건은 **활성 외부 효과가 0이고, �
 | 전체 wall deadline | 60분 | 사람 대기 포함. 만료하면 신규 실행 차단·정리 |
 | 산출물/입력 문서 | 버전당 UTF-8 1 MiB | workspace 총량 제한 별도 |
 | 무진전 | 6턴 | 단순 메시지 왕복은 진전으로 간주하지 않음 |
+| 추론 강도 판정 호출(v0.2, 관찰 전용) | Run당 모델 요청 상한과 같음 | hard cap 100. 모델 호출·토큰 예산과 별도로 센다. 도달하면 판정만 멈춤 ([CR-003](docs/change-requests/CR-003-admission-hooks-effort-observe.md)) |
+| 판정 timeout | local 1초 / external 3초 | 초과는 판정 실패로 기록하고 요청에는 영향 없음 |
 
 예산은 요청 전 예약하고 종료 후 실제 usage로 정산한다. 취소 등으로 실제 usage가 없으면 예약량을 임의로 0으로 환급하지 않고 미확인 항목으로 남긴다. 모델이 엄격한 토큰 상한을 지원하지 않으면 UI가 이를 hard cap으로 주장해서는 안 된다.
 
@@ -341,6 +345,8 @@ SQLite에 정의 revision, 레이아웃, 실행 이벤트, Task/Execution 투영
 ### 10.2 기본 보안
 
 localhost만 bind하더라도 임의 웹페이지의 요청을 신뢰하지 않는다. 시작 시 발급한 세션, Host/Origin 검사, 상태 변경 요청의 CSRF 방어, rate/size 제한을 적용한다. API 키와 OAuth 토큰은 backend 환경/서버 측 credential store에서만 읽으며 Corral JSON·SQLite·클라이언트 번들·이벤트 payload·export·로그에 저장하지 않는다. OAuth 로그인은 provider 자체 흐름에서 사용자가 완료한다([CR-001](docs/change-requests/CR-001-openai-oauth-first.md)).
+
+외부 decision provider(v0.2)는 live Run에서 workspace의 명시적 opt-in이 있을 때만 쓴다. mock Run·공개 데모·CI에서는 시작 시 거절한다. 보내는 입력은 정해진 특징 값과 UTF-8 1,500자 이하 발췌로 제한하고, 전송 전에 그 사실을 effect로 기록한다. 이벤트·export에는 발췌 본문 대신 hash만 남긴다([CR-003](docs/change-requests/CR-003-admission-hooks-effort-observe.md)).
 
 MVP worker에는 read/write shell 도구가 없고, 승인된 원격 모델 요청 외 기능은 Coordinator RPC를 거친다. 프로세스 분리는 정리·장애 격리를 위한 것이며 완전한 보안 sandbox라고 주장하지 않는다.
 
@@ -396,7 +402,7 @@ CLI 실행도 같은 Coordinator를 사용한다. 승인 대기 시 --watch 터�
 
 ## 13. 이후 확장
 
-v0.2는 **Local/Jev의 수동 교체 가능한 DecisionProvider**를 구현한다. 질문 종류·후보·응답 검증이 같은 범위에서만 전환하고, 성능 우열이나 자동 절감은 별도 평가한다. v0.3은 Corral 중첩/재사용과 더 넓은 그래프, 이후는 외부 AgentAdapter/A2A·LiteLLM·crash resume을 다룬다. 모델 연결은 Pi가 지원하는 provider·인증 방식 전체로 확장한다. Anthropic 구독 OAuth는 Anthropic 정책상 제외하고 API 키로 지원한다([CR-001](docs/change-requests/CR-001-openai-oauth-first.md)).
+v0.2는 **Local/Jev의 수동 교체 가능한 DecisionProvider**를 구현한다. 질문 종류·후보·응답 검증이 같은 범위에서만 전환하고, 성능 우열이나 자동 절감은 별도 평가한다. 첫 질문 종류는 모델 요청별 `reasoning_effort`(후보 `low | medium | high | xhigh`)이며 **관찰 전용**으로 시작한다. 판정은 기록만 하고 요청 permit·예산·worker 요청을 바꾸지 않는다. 적용은 관찰 데이터 평가 뒤 별도 CR로 다룬다([CR-003](docs/change-requests/CR-003-admission-hooks-effort-observe.md), [ADR-025](docs/Decisions.md)). v0.3은 Corral 중첩/재사용과 더 넓은 그래프, 이후는 외부 AgentAdapter/A2A·LiteLLM·crash resume을 다룬다. 모델 연결은 Pi가 지원하는 provider·인증 방식 전체로 확장한다. Anthropic 구독 OAuth는 Anthropic 정책상 제외하고 API 키로 지원한다([CR-001](docs/change-requests/CR-001-openai-oauth-first.md)).
 
 현재 스펙의 MVP 게이트를 후속 기능으로 대신하지 않는다. 비용 최적화가 없더라도 D&D와 협업·Reins를 검증하면 MVP는 성립한다.
 

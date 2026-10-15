@@ -1199,5 +1199,100 @@
     "done": "알 수 없는 설정 키 거절, hard cap 초과 값 거절, 키를 설정 파일에서 읽지 않음, 스펙 §9 기본값 fixture와 일치",
     "status": "implemented",
     "evidence": "specs/001-canvas/evidence/P2.md"
+  },
+  {
+    "id": "C-067",
+    "phase": "P11",
+    "title": "리팩터 전 golden 이벤트 열 고정·admission gate/observer 포트·기존 검사 이전",
+    "dependsOn": [
+      "C-012"
+    ],
+    "requirements": [
+      "CRL-RUN-008"
+    ],
+    "files": [
+      "packages/core/src/coordinator.ts",
+      "packages/core/src/admission/",
+      "packages/core/test/golden/"
+    ],
+    "done": "리팩터 전에 고정한 golden 이벤트 열과 기본 gate 집합의 결과가 바이트 단위로 같고, 기존 테스트를 수정 없이 통과한다. 예외 gate는 fail closed",
+    "status": "planned",
+    "evidence": "docs/change-requests/CR-003-admission-hooks-effort-observe.md"
+  },
+  {
+    "id": "C-068",
+    "phase": "P11",
+    "title": "DecisionQuestion·응답 검증·capability registry·decision 이벤트·projection·설정",
+    "dependsOn": [
+      "C-067",
+      "C-062"
+    ],
+    "requirements": [
+      "CRL-DEC-001",
+      "CRL-DEC-002"
+    ],
+    "files": [
+      "packages/contracts/src/",
+      "packages/core/src/decisions/",
+      "contracts/event-catalog.json"
+    ],
+    "done": "decision.requested/observed/failed, effect kind decision, limit decision_calls, run.started.decisions가 Zod·JSON Schema·catalog 3자 parity. 잘못된 응답은 invalid_response",
+    "status": "planned",
+    "evidence": "docs/change-requests/CR-003-admission-hooks-effort-observe.md"
+  },
+  {
+    "id": "C-069",
+    "phase": "P11",
+    "title": "scripted@1·local-heuristic@1 provider와 observe observer(timeout·cancel·pause·한도·늦은 결과)",
+    "dependsOn": [
+      "C-068"
+    ],
+    "requirements": [
+      "CRL-DEC-001",
+      "CRL-DEC-002"
+    ],
+    "files": [
+      "packages/core/src/decisions/",
+      "packages/testkit/src/"
+    ],
+    "done": "observe와 off의 permit·예약·worker 요청 동일. Run 종결 뒤 결과 미기록. local-heuristic은 정확도를 주장하지 않는 규칙 기준선",
+    "status": "planned",
+    "evidence": "docs/change-requests/CR-003-admission-hooks-effort-observe.md"
+  },
+  {
+    "id": "C-070",
+    "phase": "P11",
+    "title": "외부 decision provider 경계(live 전용 opt-in·전송 전 effect·입력 범위)",
+    "dependsOn": [
+      "C-069"
+    ],
+    "requirements": [
+      "CRL-DEC-003"
+    ],
+    "files": [
+      "packages/core/src/decisions/",
+      "apps/server/src/"
+    ],
+    "done": "mock·데모·CI의 외부 provider 시작 거절. 이벤트·로그·export에 입력 발췌·자격 증명·로컬 경로 없음. Jev adapter는 포함하지 않음(CR-003 D2)",
+    "status": "planned",
+    "evidence": "docs/change-requests/CR-003-admission-hooks-effort-observe.md"
+  },
+  {
+    "id": "C-071",
+    "phase": "P11",
+    "title": "판정 표시(Run 화면 Budget·Activity)와 corral inspect 비교",
+    "dependsOn": [
+      "C-069"
+    ],
+    "requirements": [
+      "CRL-DEC-004"
+    ],
+    "files": [
+      "packages/react/src/components/",
+      "packages/cli/src/"
+    ],
+    "done": "요청별 provider 판정·지연·실패를 \"not applied\"와 함께 표시. 실패도 같은 무게. axe 위반 0",
+    "status": "planned",
+    "evidence": "docs/change-requests/CR-003-admission-hooks-effort-observe.md"
   }
 ]

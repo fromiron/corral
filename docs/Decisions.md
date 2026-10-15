@@ -206,3 +206,23 @@
 **이유:** 2 MiB 이하인 정상 취소 요청과 before+after를 함께 가진 미래 설정 patch가 기존 1 MiB 전송 상한을 넘을 수 있다. 입력을 제한해도 이미 저장한 이벤트의 재생 불능은 해결되지 않는다.
 
 **결과·제약:** 일반 outgoing 큐 1 MiB와 10초 flush deadline을 유지한다. 전송·파싱 중 현재 domain record 한 건의 메모리는 필요하다. 주석·헤더·비영속 frame에는 고정 상한을 유지한다. 이벤트·저장 schema, receipt 의미와 cursor 규칙은 바꾸지 않는다.
+
+## ADR-024: Admission은 정적 등록 gate와 commit 뒤 observer로 나눈다
+
+**상태:** 채택 (2026-10-15, [CR-003](change-requests/CR-003-admission-hooks-effort-observe.md), C-067)
+
+**결정:** Coordinator의 모델 요청(`model.admit`)·도구 승인(`tool.authorize`)·도구 실행(`tool.execute`) 검사는 `{id, version, stage, check}` gate의 순서 있는 목록으로 수행한다. gate는 읽기 전용 view만 받고 I/O·시계·난수를 쓰지 않는 동기 함수이며, 첫 거절에서 멈춘다. 예외는 `POLICY_ERROR` 거절(fail closed)이다. commit 뒤에 실행되는 observer는 비동기로 돌고 요청을 막거나 바꾸지 못하며, 결과는 Coordinator가 run·execution·attempt·modelCallId fence를 확인한 sink로만 남긴다. gate와 observer는 `new Coordinator({ admission })`에서 한 번 등록한다. 안전 경계 대기·슬롯·승인 요청 생성·ID·commit은 Coordinator가 계속 소유한다.
+
+**이유:** 검사가 `coordinator.ts` 곳곳에 흩어져 있어 새 정책(추론 강도 판정, 이후 도구 권한)을 넣을 자리가 없고 단위 시험도 어렵다. 동기 gate는 기술 설계 §5.1의 "검사와 commit 사이에 비동기 작업 없음"을 지킨다.
+
+**결과·제약:** 기본 gate 집합은 리팩터 전 golden 이벤트 열과 바이트 단위로 같아야 하며 `tool.allowed.policyVersion`도 `role-allowlist@1`을 유지한다. 닫힌 질문에 대한 reply 검사는 지금처럼 안전 경계 대기 앞에 둔다. 사용자 정의 hook, 런타임 로딩, 공개 플러그인 API는 만들지 않는다(기술 설계 §15). Cordis식 동적 효과 스코프는 채택하지 않는다.
+
+## ADR-025: DecisionProvider는 관찰 전용 reasoning_effort로 시작하고 Run 시작 시 고정한다
+
+**상태:** 채택 (2026-10-15, [CR-003](change-requests/CR-003-admission-hooks-effort-observe.md), C-068~C-071)
+
+**결정:** 스펙 §13의 v0.2 `DecisionProvider` 첫 질문 종류는 `reasoning_effort` v1이다. 후보는 추상 4단계 `low | medium | high | xhigh`, 응답은 answer·확률(선택)·evidenceLevel·provider@version이다. provider는 지원하는 질문 종류·버전, privacy(`local | external`), timeout을 선언하며 Coordinator는 선언하지 않은 질문을 보내지 않는다. 모드는 `off | observe`이고 workspace 설정으로 provider를 1~2개 고르며 Run 시작 시 `run.started`에 고정한다. 판정은 `model.request_prepared` commit 뒤 observer로 실행하고 결과만 기록한다. 처음 제공하는 provider는 `scripted@1`과 규칙 기반 `local-heuristic@1`이다. 이벤트에는 입력 본문 대신 `inputHash`와 본문 외 특징 값만 남긴다.
+
+**이유:** 구현 플랜 v0.1 §11은 적용 전에 질문·후보·응답·registry·timeout·privacy를 먼저 명세하고 두 adapter의 결과를 비교 기록하라고 정했다. 관찰 데이터 없이 적용하면 Reins의 "무엇이 왜 바뀌었는가"를 설명할 수 없다.
+
+**결과·제약:** 판정은 `RequestPermit`·예산 예약·worker 요청을 바꾸지 않는다. `apply` 모드, 자동 라우팅, Hybrid, 비용 절감 주장, ONNX 모델과 Jev adapter는 각각 후속 CR이다(CR-003 D1·D2). 외부 provider는 live Run의 opt-in에서만 쓰고 전송 전에 `effect.admitted(kind: decision)`를 남긴다. 기존 `DecisionPolicy` 포트(Decision 노드 판정)는 이번에 바꾸지 않는다.
