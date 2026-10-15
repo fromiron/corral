@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-15T03:35:21.963Z",
+  "generatedAt": "2026-10-15T05:23:59.016Z",
   "node": "v24.14.0",
   "packageManager": "pnpm@10.30.3",
   "note": "Registry facts for pinned direct dependencies. Compatibility evidence is the CI gate result, not this file.",
@@ -36,6 +36,58 @@
       "scope": "development",
       "usedBy": [
         "corral"
+      ]
+    },
+    {
+      "name": "@fastify/static",
+      "version": "10.1.6",
+      "license": "MIT",
+      "integrity": "sha512-f3x9XisI+y6AIhIfA/+Q3SFsuXeqNNk5HQh5htgHsPxmMLb4pLFskV6eFaLSW3IbI4azrS5np+/tkzXNH99LyQ==",
+      "published": "2026-10-09T15:09:12.283Z",
+      "repository": "git+https://github.com/fastify/fastify-static.git",
+      "gitHead": "b38a463df891157215b81fbecdb80ed828299f86",
+      "engines": null,
+      "peerDependencies": null,
+      "scope": "runtime",
+      "usedBy": [
+        "@corral/server"
+      ]
+    },
+    {
+      "name": "@langchain/core",
+      "version": "1.2.17",
+      "license": "MIT",
+      "integrity": "sha512-aLQLSed6oLCMLtJHrINhnFmsu79G2UiDlRslbOx+TSN9NmU+WuDv1OtVxrLpYglhXNy53elSduMVk3XBPG9ulw==",
+      "published": "2026-10-06T20:15:48.980Z",
+      "repository": "git+ssh://git@github.com/langchain-ai/langchainjs.git",
+      "gitHead": null,
+      "engines": {
+        "node": ">=20"
+      },
+      "peerDependencies": null,
+      "scope": "runtime",
+      "usedBy": [
+        "@corral/runner-langgraph"
+      ]
+    },
+    {
+      "name": "@langchain/langgraph",
+      "version": "1.5.0",
+      "license": "MIT",
+      "integrity": "sha512-nYBV1vkWtAdU9GFDzdnPKiEMZVXerqCadRcyRtjTnd6Z4nIPmyB4SGSKioQFjSWBZK6nd/RIoyQVhjnLpw9oxQ==",
+      "published": "2026-10-12T23:19:38.677Z",
+      "repository": "git+ssh://git@github.com/langchain-ai/langgraphjs.git",
+      "gitHead": null,
+      "engines": {
+        "node": ">=18"
+      },
+      "peerDependencies": {
+        "zod": "^3.25.32 || ^4.2.0",
+        "@langchain/core": "^1.1.48"
+      },
+      "scope": "runtime",
+      "usedBy": [
+        "@corral/runner-langgraph"
       ]
     },
     {
@@ -170,6 +222,24 @@
       ]
     },
     {
+      "name": "@tanstack/react-virtual",
+      "version": "3.14.19",
+      "license": "MIT",
+      "integrity": "sha512-zmVdJO8DDqHphZ2H6SnTmgpVXcUy5DprB+clZF0ik679/d0MQ1UPEb2jtaX6F5VTAX4o3ozSLQaRCnybS2KYLA==",
+      "published": "2026-10-13T18:25:23.539Z",
+      "repository": "git+https://github.com/TanStack/virtual.git",
+      "gitHead": null,
+      "engines": null,
+      "peerDependencies": {
+        "react": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0",
+        "react-dom": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0"
+      },
+      "scope": "runtime",
+      "usedBy": [
+        "@corral/react"
+      ]
+    },
+    {
       "name": "@testing-library/jest-dom",
       "version": "7.0.1",
       "license": "MIT",
@@ -235,6 +305,21 @@
       ]
     },
     {
+      "name": "@types/better-sqlite3",
+      "version": "9.6.0",
+      "license": "MIT",
+      "integrity": "sha512-ZEEwBSgMu7GYJOynoagg5X9JbxfL6dTJDsgViJIqh67jV44kyOr9RXfmFjLK5rzC4MWssP06t9hu/JwGDnUbCg==",
+      "published": "2026-08-01T06:19:40.247Z",
+      "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+      "gitHead": null,
+      "engines": null,
+      "peerDependencies": {},
+      "scope": "development",
+      "usedBy": [
+        "@corral/storage-sqlite"
+      ]
+    },
+    {
       "name": "@types/node",
       "version": "24.19.2",
       "license": "MIT",
@@ -246,6 +331,8 @@
       "peerDependencies": {},
       "scope": "development",
       "usedBy": [
+        "@corral/server",
+        "@corral/storage-sqlite",
         "corral"
       ]
     },
@@ -392,6 +479,56 @@
       "scope": "development",
       "usedBy": [
         "@corral/contracts"
+      ]
+    },
+    {
+      "name": "better-sqlite3",
+      "version": "13.0.3",
+      "license": "MIT",
+      "integrity": "sha512-RbOBxmLBG8uvFUc15X9+9SFemKcQ0WBuISBVkpuiaUB2qblC8UWlHEjdWVoZ8AdhSwmoEgsiXKfopX0CQxaACQ==",
+      "published": "2026-08-05T03:47:44.751Z",
+      "repository": "git://github.com/WiseLibs/better-sqlite3.git",
+      "gitHead": "dbc2ea1165fef1f599b9be12faea33fa5e9d7ffb",
+      "engines": {
+        "node": ">=22"
+      },
+      "peerDependencies": null,
+      "scope": "runtime",
+      "usedBy": [
+        "@corral/storage-sqlite"
+      ]
+    },
+    {
+      "name": "fast-check",
+      "version": "4.10.2",
+      "license": "MIT",
+      "integrity": "sha512-iK2f+YrcmoeGqk6fA0ea2bptcu/itMIm4NfEozq6N25+aG6h7s5HZbB/k1aV7b5w5sFLMCbbtRUsTVR+BgC3xw==",
+      "published": "2026-09-19T19:34:54.991Z",
+      "repository": "git+https://github.com/dubzzz/fast-check.git",
+      "gitHead": null,
+      "engines": {
+        "node": ">=12.17.0"
+      },
+      "peerDependencies": null,
+      "scope": "development",
+      "usedBy": [
+        "@corral/core",
+        "@corral/runner-langgraph"
+      ]
+    },
+    {
+      "name": "fastify",
+      "version": "5.12.7",
+      "license": "MIT",
+      "integrity": "sha512-v4pEPsTRPuqlDIYiQFB+BHjVN4SdHX9u0ABk0ZDUKbbdY1vsNryUd1j4Z+jQEZajvYIVk047Kimva9/AJ79GYw==",
+      "published": "2026-10-13T08:07:53.258Z",
+      "repository": "git+https://github.com/fastify/fastify.git",
+      "gitHead": "9f400035ebaf572b95989db5040ebb09c01e4e77",
+      "engines": null,
+      "peerDependencies": null,
+      "scope": "runtime",
+      "usedBy": [
+        "@corral/server"
       ]
     },
     {
@@ -611,7 +748,11 @@
       "scope": "runtime",
       "usedBy": [
         "@corral/contracts",
-        "@corral/core"
+        "@corral/core",
+        "@corral/runner-langgraph",
+        "@corral/server",
+        "@corral/storage-sqlite",
+        "@corral/studio"
       ]
     },
     {

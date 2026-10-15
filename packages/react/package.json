@@ -15,6 +15,7 @@
   "dependencies": {
     "@corral/contracts": "workspace:*",
     "@corral/core": "workspace:*",
+    "@tanstack/react-virtual": "3.14.19",
     "@xyflow/react": "12.12.0",
     "use-intl": "4.14.9",
     "zustand": "5.0.15"

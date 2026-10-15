@@ -79,6 +79,99 @@ const StoredRecord = z.strictObject({
   updatedAt: z.string(),
 });
 
+/** Validates a stored record; storage adapters call it so bad rows fail loudly. */
+export function parseCorralRecord(value: unknown, corralId: string): CorralRecord {
+  const parsed = StoredRecord.safeParse(value);
+  if (!parsed.success) throw new Error(`Saved Corral ${corralId} cannot be read.`);
+  return parsed.data;
+}
+
+/**
+ * The revision rules every repository applies (CRL-CAN-002): what a save produces from the
+ * current record, or why it is refused. Pure, so every storage adapter means the same thing.
+ */
+export function planSave(
+  current: CorralRecord | null,
+  request: SaveRequest,
+  context: { now: string; newCorralId: () => string },
+): SaveResult {
+  if (request.expectedDefinitionRevision === null) {
+    // A new Corral always gets its own id, even when imported from a file.
+    return planCreate(request.definition, request.layout, context.newCorralId(), context.now);
+  }
+  if (!current)
+    return {
+      ok: false,
+      error: 'not_found',
+      message: `Corral ${request.definition.id} does not exist.`,
+    };
+  if (current.definitionRevision !== request.expectedDefinitionRevision) {
+    return {
+      ok: false,
+      error: 'revision_conflict',
+      message: `This Corral was saved elsewhere (revision ${current.definitionRevision}). Reload before saving.`,
+    };
+  }
+  const hash = definitionHash(request.definition);
+  const definitionChanged = hash !== current.definitionHash;
+  const layoutChanged =
+    canonicalJson({ nodes: request.layout.nodes, viewport: request.layout.viewport }) !==
+    canonicalJson({ nodes: current.layout.nodes, viewport: current.layout.viewport });
+  if (!definitionChanged && !layoutChanged) {
+    return { ok: true, record: current, changed: { definition: false, layout: false } };
+  }
+  const definitionRevision = current.definitionRevision + (definitionChanged ? 1 : 0);
+  const layoutRevision = current.layoutRevision + (layoutChanged ? 1 : 0);
+  const record: CorralRecord = {
+    ...current,
+    name: request.definition.name,
+    definition: request.definition,
+    definitionRevision,
+    definitionHash: hash,
+    layout: { ...current.layout, ...request.layout, layoutRevision },
+    layoutRevision,
+    updatedAt: context.now,
+  };
+  return { ok: true, record, changed: { definition: definitionChanged, layout: layoutChanged } };
+}
+
+/** A copy under a new id, starting again at revision 1. */
+export function planDuplicate(
+  source: CorralRecord | null,
+  corralId: string,
+  name: string,
+  context: { now: string; newCorralId: () => string },
+): SaveResult {
+  if (!source)
+    return { ok: false, error: 'not_found', message: `Corral ${corralId} does not exist.` };
+  return planCreate(
+    { ...source.definition, name },
+    { nodes: source.layout.nodes, viewport: source.layout.viewport },
+    context.newCorralId(),
+    context.now,
+  );
+}
+
+function planCreate(
+  definition: CorralDefinition,
+  layout: SaveRequest['layout'],
+  corralId: string,
+  now: string,
+): SaveResult {
+  const owned = { ...definition, id: corralId };
+  const record: CorralRecord = {
+    corralId,
+    name: owned.name,
+    definition: owned,
+    definitionRevision: 1,
+    definitionHash: definitionHash(owned),
+    layout: { schemaVersion: '0.1', corralId, layoutRevision: 1, ...layout },
+    layoutRevision: 1,
+    updatedAt: now,
+  };
+  return { ok: true, record, changed: { definition: true, layout: true } };
+}
+
 export function createKeyValueCorralRepository(
   store: KeyValueStore,
   options: { clock: Clock; newCorralId: () => string },
@@ -92,10 +185,7 @@ export function createKeyValueCorralRepository(
   };
   const read = (corralId: string): CorralRecord | null => {
     const raw = store.getItem(recordKey(corralId));
-    if (raw === null) return null;
-    const parsed = StoredRecord.safeParse(safeJson(raw));
-    if (!parsed.success) throw new Error(`Saved Corral ${corralId} cannot be read.`);
-    return parsed.data;
+    return raw === null ? null : parseCorralRecord(safeJson(raw), corralId);
   };
   const write = (record: CorralRecord): SaveResult | null => {
     try {
@@ -113,24 +203,11 @@ export function createKeyValueCorralRepository(
     }
   };
 
-  const create = (
-    definition: CorralDefinition,
-    layout: SaveRequest['layout'],
-    corralId: string,
-  ): SaveResult => {
-    const owned = { ...definition, id: corralId };
-    const record: CorralRecord = {
-      corralId,
-      name: owned.name,
-      definition: owned,
-      definitionRevision: 1,
-      definitionHash: definitionHash(owned),
-      layout: { schemaVersion: '0.1', corralId, layoutRevision: 1, ...layout },
-      layoutRevision: 1,
-      updatedAt: options.clock.nowIso(),
-    };
-    return write(record) ?? { ok: true, record, changed: { definition: true, layout: true } };
-  };
+  const context = () => ({ now: options.clock.nowIso(), newCorralId: options.newCorralId });
+  const persist = (result: SaveResult): SaveResult =>
+    result.ok && (result.changed.definition || result.changed.layout)
+      ? (write(result.record) ?? result)
+      : result;
 
   return {
     async list() {
@@ -153,62 +230,13 @@ export function createKeyValueCorralRepository(
     },
 
     async save(request) {
-      if (request.expectedDefinitionRevision === null) {
-        // A new Corral always gets its own id, even when imported from a file.
-        return create(request.definition, request.layout, options.newCorralId());
-      }
-      const current = read(request.definition.id);
-      if (!current)
-        return {
-          ok: false,
-          error: 'not_found',
-          message: `Corral ${request.definition.id} does not exist.`,
-        };
-      if (current.definitionRevision !== request.expectedDefinitionRevision) {
-        return {
-          ok: false,
-          error: 'revision_conflict',
-          message: `This Corral was saved elsewhere (revision ${current.definitionRevision}). Reload before saving.`,
-        };
-      }
-      const hash = definitionHash(request.definition);
-      const definitionChanged = hash !== current.definitionHash;
-      const layoutChanged =
-        canonicalJson({ nodes: request.layout.nodes, viewport: request.layout.viewport }) !==
-        canonicalJson({ nodes: current.layout.nodes, viewport: current.layout.viewport });
-      if (!definitionChanged && !layoutChanged) {
-        return { ok: true, record: current, changed: { definition: false, layout: false } };
-      }
-      const definitionRevision = current.definitionRevision + (definitionChanged ? 1 : 0);
-      const layoutRevision = current.layoutRevision + (layoutChanged ? 1 : 0);
-      const record: CorralRecord = {
-        ...current,
-        name: request.definition.name,
-        definition: request.definition,
-        definitionRevision,
-        definitionHash: hash,
-        layout: { ...current.layout, ...request.layout, layoutRevision },
-        layoutRevision,
-        updatedAt: options.clock.nowIso(),
-      };
-      return (
-        write(record) ?? {
-          ok: true,
-          record,
-          changed: { definition: definitionChanged, layout: layoutChanged },
-        }
-      );
+      const current =
+        request.expectedDefinitionRevision === null ? null : read(request.definition.id);
+      return persist(planSave(current, request, context()));
     },
 
     async duplicate(corralId, name) {
-      const source = read(corralId);
-      if (!source)
-        return { ok: false, error: 'not_found', message: `Corral ${corralId} does not exist.` };
-      return create(
-        { ...source.definition, name },
-        { nodes: source.layout.nodes, viewport: source.layout.viewport },
-        options.newCorralId(),
-      );
+      return persist(planDuplicate(read(corralId), corralId, name, context()));
     },
 
     async remove(corralId) {

@@ -1,20 +1,34 @@
+import {
+  HttpSseTransport,
+  hasSession,
+  openSession,
+  probeServer,
+  RestCorralRepository,
+} from '@corral/client';
 import type { Clock } from '@corral/contracts';
 import {
   type CorralRepository,
   createKeyValueCorralRepository,
   type KeyValueStore,
+  type RuntimeTransport,
 } from '@corral/core';
 import { createRunSession, type RunSessionStore } from '@corral/react';
 import { createContext, type ReactNode, useContext } from 'react';
 import { createDemoTransport } from './runtime.ts';
 
-// App-wide services. One run session per page: a workspace has at most one active run.
+// App-wide services. Studio served by the local server talks to it (saved Corrals, persistent
+// runs); opened any other way it runs the in-browser runtime with simulated agents (ADR-016).
+// One run session per page: a workspace has at most one active run.
 
 export interface StudioServices {
+  mode: 'server' | 'browser';
   repository: CorralRepository;
+  transport: RuntimeTransport;
   session: RunSessionStore;
-  /** False when the browser refuses localStorage; Corrals then last for this tab only. */
+  /** False when Corrals do not outlive this tab (browser storage refused). */
   persistent: boolean;
+  /** Server mode without a valid session: the bootstrap link must be opened again. */
+  sessionMissing: boolean;
 }
 
 const systemClock: Clock = {
@@ -42,15 +56,48 @@ function browserStore(): { store: KeyValueStore; persistent: boolean } {
   }
 }
 
-export function createStudioServices(): StudioServices {
+/** Takes `#bootstrap=<token>` off the address so it is neither reused nor shared. */
+function takeBootstrapToken(): string | null {
+  const match = /^#bootstrap=([A-Za-z0-9_-]+)$/.exec(window.location.hash);
+  if (!match) return null;
+  window.history.replaceState(null, '', window.location.pathname + window.location.search);
+  return match[1] ?? null;
+}
+
+/** Set by the local server on the page it serves; the demo build has no such tag. */
+function servedByLocalServer(): boolean {
+  return (
+    document.querySelector('meta[name="corral-runtime"]')?.getAttribute('content') === 'server'
+  );
+}
+
+export async function createStudioServices(): Promise<StudioServices> {
+  const http = { baseUrl: '' };
+  if (servedByLocalServer() && (await probeServer(http))) {
+    const token = takeBootstrapToken();
+    if (token) await openSession(http, token);
+    const transport = new HttpSseTransport(http);
+    return {
+      mode: 'server',
+      repository: new RestCorralRepository(http),
+      transport,
+      session: createRunSession(transport),
+      persistent: true,
+      sessionMissing: !(await hasSession(http)),
+    };
+  }
   const { store, persistent } = browserStore();
+  const transport = createDemoTransport();
   return {
+    mode: 'browser',
     persistent,
+    sessionMissing: false,
     repository: createKeyValueCorralRepository(store, {
       clock: systemClock,
       newCorralId: () => `corral_${crypto.randomUUID().slice(0, 8)}`,
     }),
-    session: createRunSession(createDemoTransport()),
+    transport,
+    session: createRunSession(transport),
   };
 }
 

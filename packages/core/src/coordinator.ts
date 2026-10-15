@@ -1,5 +1,6 @@
 import {
   type AgentAdapter,
+  type AgentHandle,
   type AgentHost,
   type AgentObservation,
   type AgentSettlement,
@@ -7,8 +8,11 @@ import {
   type Clock,
   type CommandError,
   type CorralDefinition,
+  CreateRunRequest,
+  type DecisionNode,
   type EventPayload,
   type IdFactory,
+  type InputBinding,
   type Receipt,
   type RequestPermit,
   type ResolvedInput,
@@ -25,18 +29,39 @@ import {
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js';
 import { canonicalJson } from './canonical-json.ts';
+import type { CompiledPlan } from './compiler/index.ts';
+import { type InstallationPolicy, limitViolations, SPEC_HARD_CAPS } from './config.ts';
 import { definitionHash } from './definition-hash.ts';
-import { planLinearRun } from './linear-plan.ts';
 import { applyEvent, emptyProjection, type RunProjection } from './projection.ts';
+import { planRun } from './run-plan.ts';
+import {
+  type GraphRunner,
+  type IterationRef,
+  type RoundOutcome,
+  type RunnerCallbacks,
+  type RunnerResult,
+  SequentialPlanRunner,
+  type StepOutcome,
+} from './runner.ts';
+import {
+  InMemoryRunStore,
+  type RunSnapshot,
+  type RunStore,
+  type RunSummary,
+  type StoredCommand,
+} from './store/run-store.ts';
 
-// P0 in-memory Coordinator (ADR-003). Only this class decides domain state: commands are
-// validated, turned into events, committed atomically to the run log, and only then are
-// effects (agent work) scheduled. Agents report back through the host, which re-enters here.
-// C-011/C-012 move the log to SQLite and split pure decide/reduce; the contract stays.
+// The single place domain state is decided (ADR-003, C-012/C-013). A command is validated and
+// turned into events; the events, the projection they produce, the command record and artifact
+// bodies are written in one RunStore transaction; only after that commit are effects (agent
+// work) dispatched. If a commit fails, admission closes: nothing new starts while facts cannot
+// be recorded. On start-up every run left unfinished by a previous process is marked
+// interrupted and never re-run (RUN-007).
 
-const MAX_ARTIFACT_BYTES = 1024 * 1024;
 const USER = { kind: 'user', id: 'local_user' } as const;
 const RUNTIME = { kind: 'runtime', id: 'coordinator' } as const;
+/** Scope for run-creation commands, which have no run yet. */
+const START_SCOPE = '*';
 
 type Actor = { kind: 'user' | 'runtime' | 'agent'; id: string };
 type EventDraft = {
@@ -55,112 +80,194 @@ export interface StartRunResult {
   receipt: Receipt;
 }
 
-interface CommandRecord {
-  payloadHash: string;
-  receipt: Receipt;
-  directiveId?: string;
+/** Resolves saved Corral revisions for `CreateRunRequest` (the server's repository). */
+export interface DefinitionSource {
+  getDefinition(corralId: string, definitionRevision: number): CorralDefinition | null;
 }
 
-interface Subscriber {
-  nextSeq: number;
-  onEvent: (event: RunEvent) => void;
-  onError: ((error: unknown) => void) | undefined;
-}
-
-interface RunRecord {
+export interface DecisionInput {
   runId: string;
-  definition: CorralDefinition;
-  agentNodeIds: string[];
-  outputNodeId: string;
-  step: number;
-  events: RunEvent[];
+  nodeId: string;
+  mode: DecisionNode['mode'];
+  iteration: IterationRef | null;
   projection: RunProjection;
-  artifactTexts: Map<string, string>;
-  commands: Map<string, CommandRecord>;
-  subscribers: Set<Subscriber>;
-  modelCalls: number;
+}
+
+/** Chooses a Decision branch. Reviews and approvals provide it in P5; tests script it. */
+export interface DecisionPolicy {
+  decide(input: DecisionInput): Promise<string>;
 }
 
 export interface CoordinatorDeps {
   clock: Clock;
   ids: IdFactory;
   agents: AgentAdapter;
+  /** Where facts are committed. Defaults to memory (browser runtime, tests). */
+  store?: RunStore;
+  runner?: GraphRunner;
+  decisions?: DecisionPolicy;
+  /** Names this backend process in `run.interrupted` when it recovers older runs. */
+  sessionId?: string;
+  corrals?: DefinitionSource;
+  /** Installation hard caps (C-062). Defaults to Spec §9. */
+  policy?: InstallationPolicy;
 }
 
-export class InMemoryCoordinator {
+interface Subscriber {
+  runId: string;
+  nextSeq: number;
+  onEvent: (event: RunEvent) => void;
+  onError: ((error: unknown) => void) | undefined;
+}
+
+interface LiveRun {
+  runId: string;
+  snapshot: RunSnapshot;
+  plan: CompiledPlan;
+  projection: RunProjection;
+  /** Set when the run must not take another step (storage closed). */
+  stop: { aborted: boolean };
+  /** One promise per activation key: a replayed step joins the first one (C-013). */
+  activations: Map<string, Promise<StepOutcome>>;
+  handles: Map<string, AgentHandle>;
+  /** The open round of each Loop node. */
+  rounds: Map<string, { no: number; iterationId: string }>;
+}
+
+class StorageUnavailableError extends Error {}
+
+export class Coordinator {
   private readonly clock: Clock;
   private readonly ids: IdFactory;
   private readonly agents: AgentAdapter;
-  private readonly runs = new Map<string, RunRecord>();
-  private readonly startCommands = new Map<string, CommandRecord & { runId: string | null }>();
+  private readonly store: RunStore;
+  private readonly runner: GraphRunner;
+  private readonly decisions: DecisionPolicy | undefined;
+  private readonly corrals: DefinitionSource | undefined;
+  private readonly sessionId: string;
+  private readonly policy: InstallationPolicy;
+  private readonly live = new Map<string, LiveRun>();
+  private readonly subscribers = new Set<Subscriber>();
+  private storageError: string | null = null;
 
   constructor(deps: CoordinatorDeps) {
     this.clock = deps.clock;
     this.ids = deps.ids;
     this.agents = deps.agents;
+    this.store = deps.store ?? new InMemoryRunStore();
+    this.runner = deps.runner ?? new SequentialPlanRunner();
+    this.decisions = deps.decisions;
+    this.corrals = deps.corrals;
+    this.sessionId = deps.sessionId ?? 'backend_local';
+    this.policy = deps.policy ?? SPEC_HARD_CAPS;
+    this.recover();
   }
 
-  // ── commands ──────────────────────────────────────────────────────────────
+  /** False once a commit failed; reads keep working, nothing new is admitted. */
+  get admitting(): boolean {
+    return this.storageError === null;
+  }
 
-  startRun(raw: StartRunRequest): StartRunResult {
-    const parsed = StartRunRequest.safeParse(raw);
+  // ── run creation (C-057) ──────────────────────────────────────────────────
+
+  startRun(raw: StartRunRequest | CreateRunRequest): StartRunResult {
+    const parsed =
+      'definition' in raw ? StartRunRequest.safeParse(raw) : CreateRunRequest.safeParse(raw);
     if (!parsed.success) {
       return { runId: null, receipt: rejected(raw.commandId, 'none', schemaError(parsed.error)) };
     }
     const request = parsed.data;
     const payloadHash = hashOf(request);
-    const previous = this.startCommands.get(request.commandId);
+    const previous = this.store.getCommand(START_SCOPE, request.commandId);
     if (previous) {
       if (previous.payloadHash !== payloadHash) {
         return { runId: null, receipt: conflict(request.commandId, previous.receipt.runId) };
       }
       return { runId: previous.runId, receipt: previous.receipt };
     }
+    if (this.storageError) {
+      return { runId: null, receipt: unavailable(request.commandId, 'none', this.storageError) };
+    }
 
-    const plan = planLinearRun(request.definition);
-    if (!plan.ok) {
-      const message = plan.issues
-        .map((i) => `${i.nodeId ?? i.edgeId ?? 'graph'}: ${i.message}`)
-        .join('; ');
-      const receipt = rejected(request.commandId, 'none', { code: 'GRAPH_INVALID', message });
-      this.startCommands.set(request.commandId, { payloadHash, receipt, runId: null });
+    const refuse = (error: CommandError): StartRunResult => {
+      const receipt = rejected(request.commandId, 'none', error);
+      // A definition that cannot run stays refused for this commandId; a busy workspace not.
+      if (error.code !== 'RUN_ALREADY_ACTIVE') {
+        this.recordStart({ payloadHash, receipt, runId: null });
+      }
       return { runId: null, receipt };
+    };
+
+    const resolved = this.resolveDefinition(request);
+    if ('error' in resolved) return refuse(resolved.error);
+    const planned = planRun(resolved.definition, { decisions: this.decisions !== undefined });
+    if (!planned.ok) {
+      const code = planned.issues.some((i) => i.code === 'GRAPH_INVALID')
+        ? 'GRAPH_INVALID'
+        : 'COMMAND_NOT_SUPPORTED';
+      const message = planned.issues
+        .map((i) => `${i.nodeId ?? i.edgeId ?? i.linkId ?? 'graph'}: ${i.message}`)
+        .join('; ');
+      return refuse({ code, message });
+    }
+    const loopRounds = Math.max(
+      0,
+      ...Object.values(planned.plan.loops).map((l) => l.maxIterations),
+    );
+    const overCaps = limitViolations(planned.definition.limits, loopRounds, this.policy);
+    if (overCaps.length > 0) return refuse({ code: 'GRAPH_INVALID', message: overCaps.join('; ') });
+    const active = this.store.listRuns().find((r) => !TERMINAL_RUN_STATUSES.has(r.status));
+    if (active) {
+      return refuse({
+        code: 'RUN_ALREADY_ACTIVE',
+        message: `run ${active.runId} is still ${active.status}; one run at a time`,
+      });
     }
 
     const runId = this.ids.next('run');
-    const run: RunRecord = {
-      runId,
-      definition: request.definition,
-      agentNodeIds: plan.agentNodeIds,
-      outputNodeId: plan.outputNodeId,
-      step: 0,
-      events: [],
-      projection: emptyProjection(runId),
-      artifactTexts: new Map(),
-      commands: new Map(),
-      subscribers: new Set(),
-      modelCalls: 0,
+    const definition = planned.definition;
+    const snapshot: RunSnapshot = {
+      definition,
+      definitionHash: definitionHash(definition),
+      source:
+        'corralId' in request
+          ? { corralId: request.corralId, definitionRevision: request.definitionRevision }
+          : null,
+      criteriaVersionId: this.ids.next('criteria_version'),
+      mode: request.mode,
+      startedAt: this.clock.nowIso(),
     };
-    this.runs.set(runId, run);
-    const [started] = this.commit(run, [
+    const run: LiveRun = {
+      runId,
+      snapshot,
+      plan: planned.plan,
+      projection: emptyProjection(runId),
+      stop: { aborted: false },
+      activations: new Map(),
+      handles: new Map(),
+      rounds: new Map(),
+    };
+
+    const { events, projection } = this.prepare(run, [
       {
         type: 'run.started',
         actor: USER,
         commandId: request.commandId,
         payload: {
-          corralId: request.definition.id,
-          definitionHash: definitionHash(request.definition),
-          inputHash: hashOf(request.definition.input),
+          corralId: definition.id,
+          definitionHash: snapshot.definitionHash,
+          inputHash: hashOf(definition.input),
           mode: request.mode,
-          modelProfiles: [...new Set(request.definition.roles.map((r) => r.modelProfile))].map(
+          modelProfiles: [...new Set(definition.roles.map((r) => r.modelProfile))].map(
             (profile) => ({ profile, provider: null, modelId: null, auth: 'mock' as const }),
           ),
-          limits: request.definition.limits,
+          limits: definition.limits,
         },
       },
       runState('created', 'validating', 'run_requested'),
       runState('validating', 'running', 'validation_passed'),
     ]);
+    const started = events[0];
     const receipt: Receipt = {
       commandId: request.commandId,
       runId,
@@ -170,49 +277,127 @@ export class InMemoryCoordinator {
       requestedBoundary: 'immediate',
       relatedEventIds: started ? [started.eventId] : [],
     };
-    this.startCommands.set(request.commandId, { payloadHash, receipt, runId });
-    this.schedule(run, () => this.advance(run));
+    try {
+      this.persist(() => {
+        this.store.insertRun({ runId, snapshot, projection: emptyProjection(runId) });
+        this.write(runId, events, projection);
+        this.store.putArtifactText(
+          runId,
+          snapshot.criteriaVersionId,
+          definition.input.criteria.join('\n'),
+        );
+        this.store.putCommand({
+          scope: START_SCOPE,
+          commandId: request.commandId,
+          payloadHash,
+          receipt,
+          runId,
+          directiveId: null,
+        });
+      });
+    } catch {
+      return { runId: null, receipt: unavailable(request.commandId, 'none', this.storageError) };
+    }
+    this.live.set(runId, run);
+    this.publish(run, projection);
+    this.schedule(run, () => this.drive(run));
     return { runId, receipt };
   }
+
+  private resolveDefinition(
+    request: StartRunRequest | CreateRunRequest,
+  ): { definition: unknown } | { error: CommandError } {
+    if ('definition' in request) return { definition: request.definition };
+    const saved = this.corrals?.getDefinition(request.corralId, request.definitionRevision);
+    if (!saved) {
+      return {
+        error: {
+          code: 'TARGET_NOT_FOUND',
+          message: `Corral ${request.corralId} has no revision ${request.definitionRevision}`,
+        },
+      };
+    }
+    // Copy, so later changes to the caller's object cannot reach the snapshot.
+    const copy = JSON.parse(JSON.stringify(saved)) as CorralDefinition;
+    return { definition: request.input ? { ...copy, input: request.input } : copy };
+  }
+
+  private recordStart(record: { payloadHash: string; receipt: Receipt; runId: string | null }) {
+    try {
+      this.persist(() =>
+        this.store.putCommand({
+          scope: START_SCOPE,
+          commandId: record.receipt.commandId,
+          directiveId: null,
+          ...record,
+        }),
+      );
+    } catch {
+      // Admission is closed; the caller still gets the refusal.
+    }
+  }
+
+  // ── run commands ──────────────────────────────────────────────────────────
 
   submit(raw: RunCommand): Receipt {
     const parsed = RunCommand.safeParse(raw);
     if (!parsed.success) return rejected(raw.commandId, raw.runId, schemaError(parsed.error));
     const command = parsed.data;
-    const run = this.runs.get(command.runId);
-    if (!run) {
+    if (!this.store.getRun(command.runId)) {
       return rejected(command.commandId, command.runId, {
         code: 'TARGET_NOT_FOUND',
         message: `run ${command.runId} does not exist`,
       });
     }
     const payloadHash = hashOf(command);
-    const previous = run.commands.get(command.commandId);
+    const previous = this.store.getCommand(command.runId, command.commandId);
     if (previous) {
-      if (previous.payloadHash !== payloadHash) return conflict(command.commandId, run.runId);
-      return this.currentReceipt(run, previous);
+      if (previous.payloadHash !== payloadHash) return conflict(command.commandId, command.runId);
+      return this.currentReceipt(previous);
     }
-    const record: CommandRecord =
-      command.type === 'steer'
-        ? this.steer(run, command, payloadHash)
-        : {
-            payloadHash,
-            receipt: rejected(command.commandId, run.runId, {
-              code: 'COMMAND_NOT_SUPPORTED',
-              message: `${command.type} is not available in this runtime yet`,
-            }),
-          };
-    run.commands.set(command.commandId, record);
-    return this.currentReceipt(run, record);
+    if (this.storageError) {
+      return unavailable(command.commandId, command.runId, this.storageError);
+    }
+    try {
+      if (command.type === 'steer') return this.steer(command, payloadHash);
+      const receipt = rejected(command.commandId, command.runId, {
+        code: 'COMMAND_NOT_SUPPORTED',
+        message: `${command.type} is not available in this runtime yet`,
+      });
+      this.persist(() =>
+        this.store.putCommand({
+          scope: command.runId,
+          commandId: command.commandId,
+          payloadHash,
+          receipt,
+          runId: command.runId,
+          directiveId: null,
+        }),
+      );
+      return receipt;
+    } catch {
+      return unavailable(command.commandId, command.runId, this.storageError);
+    }
   }
 
-  private steer(run: RunRecord, command: SteerCommand, payloadHash: string): CommandRecord {
+  private steer(command: SteerCommand, payloadHash: string): Receipt {
+    const { runId } = command;
     const executionId = command.payload.targetExecutionId;
-    const execution = run.projection.executions[executionId];
-    const refuse = (error: CommandError): CommandRecord => ({
+    const run = this.live.get(runId);
+    const execution = this.projectionOf(runId)?.executions[executionId];
+    const record = (receipt: Receipt, directiveId: string | null = null): StoredCommand => ({
+      scope: runId,
+      commandId: command.commandId,
       payloadHash,
-      receipt: rejected(command.commandId, run.runId, error, `execution:${executionId}`),
+      receipt,
+      runId,
+      directiveId,
     });
+    const refuse = (error: CommandError): Receipt => {
+      const receipt = rejected(command.commandId, runId, error, `execution:${executionId}`);
+      this.persist(() => this.store.putCommand(record(receipt)));
+      return receipt;
+    };
     if (!execution) {
       return refuse({
         code: 'TARGET_NOT_FOUND',
@@ -220,40 +405,52 @@ export class InMemoryCoordinator {
       });
     }
     if (
+      !run ||
       TERMINAL_EXECUTION_STATUSES.has(execution.status) ||
       TERMINAL_RUN_STATUSES.has(run.projection.status)
     ) {
       return refuse({ code: 'TARGET_TERMINAL', message: `execution ${executionId} has finished` });
     }
     const directiveId = this.ids.next('directive');
-    const [accepted] = this.commit(run, [
-      {
-        type: 'directive.accepted',
-        actor: USER,
-        commandId: command.commandId,
-        executionId,
-        payload: { directiveId, targetExecutionId: executionId, text: command.payload.text },
+    this.commit(
+      run,
+      [
+        {
+          type: 'directive.accepted',
+          actor: USER,
+          commandId: command.commandId,
+          executionId,
+          payload: { directiveId, targetExecutionId: executionId, text: command.payload.text },
+        },
+      ],
+      // The receipt is stored with the event, so a lost response can be asked for again.
+      (events) => {
+        const accepted = events[0];
+        this.store.putCommand(
+          record(
+            {
+              commandId: command.commandId,
+              runId,
+              status: 'queued',
+              acceptedSeq: accepted?.runSeq ?? null,
+              target: `execution:${executionId}`,
+              requestedBoundary: 'next_request',
+              relatedEventIds: accepted ? [accepted.eventId] : [],
+            },
+            directiveId,
+          ),
+        );
       },
-    ]);
-    return {
-      payloadHash,
-      directiveId,
-      receipt: {
-        commandId: command.commandId,
-        runId: run.runId,
-        status: 'queued',
-        acceptedSeq: accepted?.runSeq ?? null,
-        target: `execution:${executionId}`,
-        requestedBoundary: 'next_request',
-        relatedEventIds: accepted ? [accepted.eventId] : [],
-      },
-    };
+    );
+    const stored = this.store.getCommand(runId, command.commandId);
+    if (!stored) throw new Error(`command ${command.commandId} was not recorded`);
+    return this.currentReceipt(stored);
   }
 
   /** A steer receipt follows its directive: queued until a request carries it. */
-  private currentReceipt(run: RunRecord, record: CommandRecord): Receipt {
-    if (!record.directiveId) return record.receipt;
-    const directive = run.projection.directives[record.directiveId];
+  private currentReceipt(record: StoredCommand): Receipt {
+    if (!record.directiveId || !record.runId) return record.receipt;
+    const directive = this.projectionOf(record.runId)?.directives[record.directiveId];
     const status = (() => {
       switch (directive?.status) {
         case 'delivered':
@@ -261,6 +458,7 @@ export class InMemoryCoordinator {
         case 'expired':
           return 'expired' as const;
         case 'not_delivered':
+        case 'delivery_unknown':
           return 'cancelled' as const;
         case 'rejected':
           return 'rejected' as const;
@@ -273,21 +471,40 @@ export class InMemoryCoordinator {
 
   // ── queries ───────────────────────────────────────────────────────────────
 
+  listRuns(): RunSummary[] {
+    return this.store.listRuns();
+  }
+
+  /** Whether a run-creation command is already recorded (a resend, not a new run). */
+  hasStartCommand(commandId: string): boolean {
+    return this.store.getCommand(START_SCOPE, commandId) !== null;
+  }
+
   getReceipt(runId: string, commandId: string): Receipt | null {
-    const run = this.runs.get(runId);
-    const record = run?.commands.get(commandId);
-    if (run && record) return this.currentReceipt(run, record);
-    const start = this.startCommands.get(commandId);
+    const record = this.store.getCommand(runId, commandId);
+    if (record) return this.currentReceipt(record);
+    const start = this.store.getCommand(START_SCOPE, commandId);
     return start?.runId === runId ? start.receipt : null;
   }
 
+  /** Null when the run does not exist. */
+  findSnapshot(runId: string): { projection: RunProjection; seq: number } | null {
+    const projection = this.projectionOf(runId);
+    return projection ? { projection, seq: projection.lastSeq } : null;
+  }
+
   getSnapshot(runId: string): { projection: RunProjection; seq: number } {
-    const run = this.requireRun(runId);
-    return { projection: run.projection, seq: run.projection.lastSeq };
+    const snapshot = this.findSnapshot(runId);
+    if (!snapshot) throw new Error(`run ${runId} does not exist`);
+    return snapshot;
+  }
+
+  getRunSnapshot(runId: string): RunSnapshot | null {
+    return this.store.getRun(runId)?.snapshot ?? null;
   }
 
   getArtifactText(runId: string, artifactVersionId: string): string | null {
-    return this.runs.get(runId)?.artifactTexts.get(artifactVersionId) ?? null;
+    return this.store.getArtifactText(runId, artifactVersionId);
   }
 
   /** Delivers every event after `afterSeq` exactly once, in order, then follows live commits. */
@@ -297,20 +514,27 @@ export class InMemoryCoordinator {
     onEvent: (event: RunEvent) => void,
     onError?: (error: unknown) => void,
   ): () => void {
-    const run = this.requireRun(runId);
-    const subscriber: Subscriber = { nextSeq: afterSeq + 1, onEvent, onError };
-    run.subscribers.add(subscriber);
-    void Promise.resolve().then(() => this.pump(run, subscriber));
+    if (!this.store.getRun(runId)) throw new Error(`run ${runId} does not exist`);
+    const subscriber: Subscriber = { runId, nextSeq: afterSeq + 1, onEvent, onError };
+    this.subscribers.add(subscriber);
+    void Promise.resolve().then(() => this.pump(subscriber));
     return () => {
-      run.subscribers.delete(subscriber);
+      this.subscribers.delete(subscriber);
     };
+  }
+
+  private projectionOf(runId: string): RunProjection | null {
+    return this.live.get(runId)?.projection ?? this.store.getRun(runId)?.projection ?? null;
   }
 
   // ── commit and fan-out ────────────────────────────────────────────────────
 
-  private commit(run: RunRecord, drafts: EventDraft[]): RunEvent[] {
+  private prepare(
+    run: { runId: string; projection: RunProjection },
+    drafts: EventDraft[],
+  ): { events: RunEvent[]; projection: RunProjection } {
     let projection = run.projection;
-    const committed: RunEvent[] = [];
+    const events: RunEvent[] = [];
     for (const draft of drafts) {
       const { actor, ...rest } = draft;
       const event = RunEvent.parse({
@@ -324,62 +548,316 @@ export class InMemoryCoordinator {
         ...rest,
       });
       projection = applyEvent(projection, event);
-      committed.push(deepFreeze(event));
+      events.push(deepFreeze(event));
     }
-    // All drafts are valid; publish them together (the in-memory transaction boundary).
-    run.events.push(...committed);
-    run.projection = projection;
-    for (const subscriber of run.subscribers) {
-      void Promise.resolve().then(() => this.pump(run, subscriber));
-    }
-    return committed;
+    return { events, projection };
   }
 
-  private pump(run: RunRecord, subscriber: Subscriber) {
-    while (run.subscribers.has(subscriber) && subscriber.nextSeq <= run.events.length) {
-      const event = run.events[subscriber.nextSeq - 1] as RunEvent;
+  private write(runId: string, events: RunEvent[], projection: RunProjection) {
+    this.store.appendEvents(runId, events);
+    this.store.saveProjection(runId, projection);
+  }
+
+  /** Runs one transaction; a failure closes admission and stops every live run. */
+  private persist(write: () => void) {
+    if (this.storageError) throw new StorageUnavailableError(this.storageError);
+    try {
+      this.store.transaction(write);
+    } catch (error) {
+      this.closeAdmission(error);
+      throw new StorageUnavailableError(this.storageError ?? 'storage failed');
+    }
+  }
+
+  private closeAdmission(error: unknown) {
+    if (this.storageError) return;
+    this.storageError = `facts can no longer be recorded: ${String(error)}`;
+    for (const run of this.live.values()) {
+      run.stop.aborted = true;
+      for (const handle of run.handles.values()) {
+        void handle.cancel('storage unavailable').catch(() => {});
+      }
+    }
+  }
+
+  /** Commits drafts (plus `extra` writes) atomically, then updates readers. */
+  private commit(run: LiveRun, drafts: EventDraft[], extra?: (events: RunEvent[]) => void) {
+    const { events, projection } = this.prepare(run, drafts);
+    this.persist(() => {
+      this.write(run.runId, events, projection);
+      extra?.(events);
+    });
+    this.publish(run, projection);
+    return events;
+  }
+
+  private publish(run: LiveRun, projection: RunProjection) {
+    run.projection = projection;
+    for (const subscriber of this.subscribers) {
+      if (subscriber.runId === run.runId) {
+        void Promise.resolve().then(() => this.pump(subscriber));
+      }
+    }
+    if (TERMINAL_RUN_STATUSES.has(projection.status)) this.live.delete(run.runId);
+  }
+
+  private pump(subscriber: Subscriber) {
+    while (this.subscribers.has(subscriber)) {
+      const [event] = this.store.readEvents(subscriber.runId, subscriber.nextSeq - 1, 1);
+      if (!event) return;
       subscriber.nextSeq += 1;
       try {
         subscriber.onEvent(event);
       } catch (error) {
         // A failing consumer is detached and told why; it must re-read from a snapshot.
-        run.subscribers.delete(subscriber);
+        this.subscribers.delete(subscriber);
         subscriber.onError?.(error);
       }
     }
   }
 
-  private schedule(run: RunRecord, effect: () => Promise<void>) {
+  private schedule(run: LiveRun, effect: () => Promise<void>) {
     void Promise.resolve()
       .then(effect)
       .catch((error: unknown) => this.failRun(run, `internal_error: ${String(error)}`));
   }
 
-  private failRun(run: RunRecord, reason: string) {
+  private failRun(run: LiveRun, reason: string) {
     const status = run.projection.status;
-    if (TERMINAL_RUN_STATUSES.has(status)) return;
-    this.commit(run, [runState(status, 'failed', reason)]);
-  }
-
-  // ── P0 linear runner ──────────────────────────────────────────────────────
-
-  private async advance(run: RunRecord): Promise<void> {
-    if (run.projection.status !== 'running') return;
-    const nodeId = run.agentNodeIds[run.step];
-    if (nodeId === undefined) {
-      this.finalizeOutput(run);
-      return;
+    if (TERMINAL_RUN_STATUSES.has(status) || this.storageError) return;
+    try {
+      this.commit(run, [...this.closeRounds(run), runState(status, 'failed', reason)]);
+    } catch {
+      // Storage is gone; the next start marks this run interrupted.
     }
-    await this.runAgent(run, nodeId);
   }
 
-  private async runAgent(run: RunRecord, nodeId: string): Promise<void> {
-    const node = run.definition.nodes.find((n) => n.id === nodeId);
-    const role = node?.type === 'agent' && run.definition.roles.find((r) => r.id === node.roleId);
+  // ── recovery (RUN-007) ────────────────────────────────────────────────────
+
+  private recover() {
+    for (const summary of this.store.listRuns()) {
+      if (TERMINAL_RUN_STATUSES.has(summary.status)) continue;
+      const stored = this.store.getRun(summary.runId);
+      if (!stored) continue;
+      const { events, projection } = this.prepare(
+        { runId: summary.runId, projection: stored.projection },
+        this.interruption(stored.projection),
+      );
+      try {
+        this.persist(() => this.write(summary.runId, events, projection));
+      } catch {
+        return;
+      }
+    }
+  }
+
+  /** Ends what a dead process left open, without starting anything again. */
+  private interruption(p: RunProjection): EventDraft[] {
+    const drafts: EventDraft[] = [];
+    for (const effect of Object.values(p.effects)) {
+      if (effect.status !== 'admitted') continue;
+      // It may have reached the provider; nobody knows. It is never dispatched again.
+      drafts.push({
+        type: 'effect.settled',
+        payload: { effectId: effect.effectId, outcome: 'unknown' },
+      });
+    }
+    for (const executionId of p.executionOrder) {
+      const execution = p.executions[executionId];
+      if (!execution || TERMINAL_EXECUTION_STATUSES.has(execution.status)) continue;
+      drafts.push({
+        type: 'execution.settled',
+        executionId,
+        payload: {
+          executionId,
+          outcome: 'failed',
+          terminationMode: 'unconfirmed',
+          error: 'interrupted: the backend restarted',
+        },
+      });
+    }
+    for (const directiveId of p.directiveOrder) {
+      const directive = p.directives[directiveId];
+      if (directive?.status !== 'queued' && directive?.status !== 'attached_to_request') continue;
+      drafts.push({
+        type: 'directive.undelivered',
+        executionId: directive.targetExecutionId,
+        payload: {
+          directiveId,
+          status: directive.status === 'queued' ? 'not_delivered' : 'delivery_unknown',
+          reason: 'the backend restarted before the directive was delivered',
+        },
+      });
+    }
+    for (const iterations of Object.values(p.loopIterations)) {
+      const open = iterations.map((id) => p.iterations[id]).find((i) => i && !i.outcome);
+      if (!open) continue;
+      drafts.push({
+        type: 'loop.iteration_finished',
+        payload: {
+          loopNodeId: open.loopNodeId,
+          iterationId: open.iterationId,
+          outcome: 'cancelled',
+          submittedVersionIds: [],
+        },
+      });
+    }
+    drafts.push(
+      {
+        type: 'run.interrupted',
+        payload: { previousStatus: p.status, backendSessionId: this.sessionId },
+      },
+      runState(p.status, 'interrupted', 'backend_restarted'),
+    );
+    return drafts;
+  }
+
+  // ── graph execution ───────────────────────────────────────────────────────
+
+  private async drive(run: LiveRun): Promise<void> {
+    const result = await this.runner.run(run.plan, this.callbacksFor(run), run.stop);
+    this.conclude(run, result);
+  }
+
+  private conclude(run: LiveRun, result: RunnerResult) {
+    if (run.projection.status !== 'running') return;
+    switch (result.kind) {
+      case 'finished':
+        // finalizeOutput already ended the run; reaching here still running is a runner bug.
+        this.failRun(run, `runner_finished_without_output: ${result.outputNodeId}`);
+        return;
+      case 'failed':
+        this.failRun(run, `execution_failed: ${result.nodeId}`);
+        return;
+      case 'stopped':
+        return;
+      // Loop caps, rejections and inconclusive reviews ask the user through approvals (P5).
+      // Only an injected decision policy reaches them today; they end the run plainly.
+      case 'cap_reached':
+        this.failRun(run, `loop_cap_reached: ${result.loopId}`);
+        return;
+      case 'rejected':
+        this.failRun(run, `rejected: ${result.nodeId}`);
+        return;
+      case 'needs_user':
+        this.failRun(run, `needs_user: ${result.nodeId} ${result.branch}`);
+        return;
+    }
+  }
+
+  private callbacksFor(run: LiveRun): RunnerCallbacks {
+    return {
+      activate: (nodeId, iteration) => this.activate(run, nodeId, iteration),
+      decide: async (nodeId, iteration) => {
+        const step = run.plan.steps[nodeId];
+        if (step?.kind !== 'decision' || !this.decisions) {
+          throw new Error(`no decision policy for ${nodeId}`);
+        }
+        return this.decisions.decide({
+          runId: run.runId,
+          nodeId,
+          mode: step.mode,
+          iteration,
+          projection: run.projection,
+        });
+      },
+      finalize: async (outputNodeId) => this.finalizeOutput(run, outputNodeId),
+      loopEntered: async (loopId, no) => {
+        if (!run.plan.loops[loopId]) throw new Error(`plan has no Loop ${loopId}`);
+        const iterationId = this.ids.next('iteration');
+        this.commit(run, [
+          {
+            type: 'loop.iteration_started',
+            payload: {
+              loopNodeId: loopId,
+              iterationId,
+              no,
+              pinnedCarryInputs: [],
+              criteriaVersionId: run.snapshot.criteriaVersionId,
+            },
+          },
+        ]);
+        run.rounds.set(loopId, { no, iterationId });
+      },
+      loopLeft: async (loopId, no, outcome) => {
+        const round = run.rounds.get(loopId);
+        if (round?.no !== no) throw new Error(`Loop ${loopId} round ${no} is not open`);
+        this.commit(run, [this.roundFinished(run, loopId, round.iterationId, outcome)]);
+        run.rounds.delete(loopId);
+      },
+    };
+  }
+
+  private roundFinished(
+    run: LiveRun,
+    loopNodeId: string,
+    iterationId: string,
+    outcome: RoundOutcome | 'cancelled',
+  ): EventDraft {
+    const submittedVersionIds = Object.values(run.projection.executions)
+      .filter((e) => e.iterationId === iterationId)
+      .flatMap((e) => run.projection.tasks[e.taskId]?.submittedArtifactVersionIds ?? []);
+    return {
+      type: 'loop.iteration_finished',
+      payload: { loopNodeId, iterationId, outcome, submittedVersionIds },
+    };
+  }
+
+  private closeRounds(run: LiveRun): EventDraft[] {
+    const drafts = [...run.rounds].map(([loopId, round]) =>
+      this.roundFinished(run, loopId, round.iterationId, 'cancelled'),
+    );
+    run.rounds.clear();
+    return drafts;
+  }
+
+  /**
+   * Starts one scheduled step. The activation key is (node, Loop round): calling again with
+   * the same key returns the first activation's outcome instead of creating another Task.
+   */
+  private activate(
+    run: LiveRun,
+    nodeId: string,
+    iteration: IterationRef | null,
+  ): Promise<StepOutcome> {
+    const round = iteration ? run.rounds.get(iteration.loopId) : undefined;
+    if (iteration && round?.no !== iteration.no) {
+      return Promise.reject(
+        new Error(`Loop ${iteration.loopId} round ${iteration.no} is not open`),
+      );
+    }
+    const key = `${nodeId}@${round?.iterationId ?? '-'}`;
+    const existing = run.activations.get(key);
+    if (existing) return existing;
+    const outcome = this.runAgent(run, nodeId, round?.iterationId ?? null);
+    run.activations.set(key, outcome);
+    return outcome;
+  }
+
+  private async runAgent(
+    run: LiveRun,
+    nodeId: string,
+    iterationId: string | null,
+  ): Promise<StepOutcome> {
+    const definition = run.snapshot.definition;
+    const node = definition.nodes.find((n) => n.id === nodeId);
+    const role = node?.type === 'agent' && definition.roles.find((r) => r.id === node.roleId);
     if (node?.type !== 'agent' || !role) throw new Error(`plan references missing agent ${nodeId}`);
 
     const taskId = this.ids.next('task');
     const executionId = this.ids.next('execution');
+    const effectId = this.ids.next('effect');
+    const attemptNo = 1;
+    const input: AgentStartInput = {
+      runId: run.runId,
+      executionId,
+      taskId,
+      nodeId,
+      attemptNo,
+      role,
+      modelProfile: role.modelProfile,
+      inputs: this.resolveInputs(run, node.inputBindings, iterationId),
+    };
     this.commit(run, [
       {
         type: 'task.created',
@@ -401,9 +879,9 @@ export class InMemoryCoordinator {
           parentExecutionId: null,
           nodeId,
           taskId,
-          attemptNo: 1,
+          attemptNo,
           depth: 0,
-          iterationId: null,
+          iterationId,
           modelProfile: role.modelProfile,
         },
       },
@@ -411,7 +889,18 @@ export class InMemoryCoordinator {
         type: 'task.attempt_assigned',
         taskId,
         executionId,
-        payload: { taskId, executionId, attemptNo: 1 },
+        payload: { taskId, executionId, attemptNo },
+      },
+      {
+        type: 'effect.admitted',
+        executionId,
+        payload: {
+          effectId,
+          kind: 'spawn',
+          scope: executionId,
+          epoch: attemptNo,
+          reservationId: null,
+        },
       },
       {
         type: 'execution.state_changed',
@@ -420,58 +909,78 @@ export class InMemoryCoordinator {
       },
     ]);
 
-    const input: AgentStartInput = {
-      runId: run.runId,
-      executionId,
-      taskId,
-      nodeId,
-      attemptNo: 1,
-      role,
-      modelProfile: role.modelProfile,
-      inputs: this.resolveInputs(run, node.inputBindings),
-    };
+    // Committed: only now does work leave the coordinator.
     let settlement: AgentSettlement;
     try {
       const handle = await this.agents.start(input, this.hostFor(run, input));
+      run.handles.set(executionId, handle);
       settlement = await handle.waitForSettlement();
     } catch (error) {
       settlement = { outcome: 'failed', error: String(error) };
+    } finally {
+      run.handles.delete(executionId);
     }
-    this.settle(run, input, settlement);
+    return this.settle(run, input, effectId, settlement);
   }
 
   private resolveInputs(
-    run: RunRecord,
-    bindings: { kind: string; name: string; sourceNodeId?: string | undefined }[],
+    run: LiveRun,
+    bindings: InputBinding[],
+    iterationId: string | null,
   ): ResolvedInput[] {
-    const { brief, criteria } = run.definition.input;
-    return bindings.map((binding): ResolvedInput => {
+    const { brief, criteria } = run.snapshot.definition.input;
+    const previousRound = iterationId ? this.previousRound(run, iterationId) : null;
+    return bindings.flatMap((binding): ResolvedInput[] => {
       if (binding.kind === 'run_input') {
         const text = binding.name === 'criteria' ? criteria.join('\n') : brief;
-        return { name: binding.name, kind: 'run_input', artifactVersionId: null, text };
+        return [{ name: binding.name, kind: 'run_input', artifactVersionId: null, text }];
       }
-      const versionId = this.submittedOutputOf(run, binding.sourceNodeId ?? '')[0];
-      if (!versionId) throw new Error(`input "${binding.name}" has no submitted version`);
-      return {
-        name: binding.name,
-        kind: 'task_output',
-        artifactVersionId: versionId,
-        text: run.artifactTexts.get(versionId) ?? '',
-      };
+      const source = binding.sourceNodeId ?? '';
+      let versionId: string | undefined;
+      if (binding.kind === 'task_output') versionId = this.submittedOutputOf(run, source)[0];
+      if (binding.kind === 'previous_iteration_output' && previousRound) {
+        versionId = this.submittedOutputOf(run, source, previousRound)[0];
+      }
+      if (binding.kind === 'explicit_version') versionId = binding.artifactVersionId;
+      const text = versionId ? this.store.getArtifactText(run.runId, versionId) : null;
+      if (!versionId || text === null) {
+        if (binding.optional) return [];
+        throw new Error(`input "${binding.name}" (${binding.kind}) has no submitted version`);
+      }
+      return [{ name: binding.name, kind: binding.kind, artifactVersionId: versionId, text }];
     });
   }
 
-  private submittedOutputOf(run: RunRecord, nodeId: string): string[] {
+  private previousRound(run: LiveRun, iterationId: string): string | null {
+    const current = run.projection.iterations[iterationId];
+    if (!current) return null;
+    const rounds = run.projection.loopIterations[current.loopNodeId] ?? [];
+    return rounds[rounds.indexOf(iterationId) - 1] ?? null;
+  }
+
+  /** The latest completed submission of a node, optionally within one Loop round. */
+  private submittedOutputOf(run: LiveRun, nodeId: string, iterationId?: string): string[] {
     const executions = run.projection.nodeExecutions[nodeId] ?? [];
     for (const executionId of [...executions].reverse()) {
-      const taskId = run.projection.executions[executionId]?.taskId ?? '';
-      const task = run.projection.tasks[taskId];
+      const execution = run.projection.executions[executionId];
+      if (iterationId !== undefined && execution?.iterationId !== iterationId) continue;
+      const task = run.projection.tasks[execution?.taskId ?? ''];
       if (task?.status === 'completed') return task.submittedArtifactVersionIds;
     }
     return [];
   }
 
-  private settle(run: RunRecord, input: AgentStartInput, settlement: AgentSettlement) {
+  private settle(
+    run: LiveRun,
+    input: AgentStartInput,
+    effectId: string,
+    settlement: AgentSettlement,
+  ): StepOutcome {
+    const execution = run.projection.executions[input.executionId];
+    if (!execution || TERMINAL_EXECUTION_STATUSES.has(execution.status) || this.storageError) {
+      // Already ended elsewhere (run over, storage closed): a late report changes nothing.
+      return { ok: false, reason: 'the execution had already ended' };
+    }
     const task = run.projection.tasks[input.taskId];
     const submitted = task?.status === 'completed';
     const outcome =
@@ -492,7 +1001,18 @@ export class InMemoryCoordinator {
           ...(error ? { error } : {}),
         },
       },
+      { type: 'effect.settled', executionId: input.executionId, payload: { effectId, outcome } },
     ];
+    for (const effect of Object.values(run.projection.effects)) {
+      // A model request still open when its agent stopped may or may not have been billed.
+      if (effect.kind !== 'model_request' || effect.scope !== input.executionId) continue;
+      if (effect.status !== 'admitted') continue;
+      drafts.push({
+        type: 'effect.settled',
+        executionId: input.executionId,
+        payload: { effectId: effect.effectId, outcome: 'unknown' },
+      });
+    }
     for (const directiveId of run.projection.directiveOrder) {
       const directive = run.projection.directives[directiveId];
       if (directive?.targetExecutionId !== input.executionId || directive.status !== 'queued') {
@@ -509,25 +1029,19 @@ export class InMemoryCoordinator {
       });
     }
     this.commit(run, drafts);
-
-    if (outcome === 'succeeded') {
-      run.step += 1;
-      this.schedule(run, () => this.advance(run));
-    } else {
-      this.failRun(run, `execution_${outcome}`);
-    }
+    return outcome === 'succeeded'
+      ? { ok: true }
+      : { ok: false, reason: error ?? `execution ${outcome}` };
   }
 
-  private finalizeOutput(run: RunRecord) {
-    const output = run.definition.nodes.find((n) => n.id === run.outputNodeId);
+  private finalizeOutput(run: LiveRun, outputNodeId: string) {
+    const output = run.snapshot.definition.nodes.find((n) => n.id === outputNodeId);
     if (output?.type !== 'output') throw new Error('plan references a missing output node');
     const versions = output.inputBindings.flatMap((b) =>
       b.kind === 'task_output' ? this.submittedOutputOf(run, b.sourceNodeId ?? '') : [],
     );
-    if (versions.length === 0) {
-      this.failRun(run, 'output_has_no_submitted_version');
-      return;
-    }
+    if (versions.length === 0) throw new Error('output has no submitted version');
+    // The output and the run's success are one fact: readers never see one without the other.
     this.commit(run, [
       {
         type: 'output.finalized',
@@ -539,14 +1053,15 @@ export class InMemoryCoordinator {
 
   // ── agent host: the only way an agent affects the run ─────────────────────
 
-  private hostFor(run: RunRecord, input: AgentStartInput): AgentHost {
+  private hostFor(run: LiveRun, input: AgentStartInput): AgentHost {
     const { executionId } = input;
     const agent: Actor = { kind: 'agent', id: executionId };
-    let lastCall: { modelCallId: string; contextSnapshotId: string } | null = null;
+    let lastCall: { modelCallId: string; contextSnapshotId: string; effectId: string } | null =
+      null;
 
     const requireActive = () => {
       const status = run.projection.executions[executionId]?.status;
-      if (status !== 'active' || run.projection.status !== 'running') {
+      if (status !== 'active' || run.projection.status !== 'running' || this.storageError) {
         throw new Error(`execution ${executionId} is not active`);
       }
     };
@@ -554,12 +1069,13 @@ export class InMemoryCoordinator {
     return {
       prepareModelRequest: async (): Promise<RequestPermit> => {
         requireActive();
-        const limits = run.definition.limits;
-        if (run.modelCalls >= limits.maxModelCalls) {
+        const limits = run.snapshot.definition.limits;
+        if (Object.keys(run.projection.modelCalls).length >= limits.maxModelCalls) {
           throw new Error(`LIMIT_REACHED: ${limits.maxModelCalls} model calls`);
         }
         const modelCallId = this.ids.next('model_call');
         const contextSnapshotId = this.ids.next('context_snapshot');
+        const effectId = this.ids.next('effect');
         // The snapshot takes every directive queued for this execution right now.
         const queued = run.projection.directiveOrder
           .map((id) => run.projection.directives[id])
@@ -589,7 +1105,18 @@ export class InMemoryCoordinator {
               ),
             },
           },
-          // P0 mock transport starts the request synchronously with the permit.
+          {
+            type: 'effect.admitted',
+            executionId,
+            payload: {
+              effectId,
+              kind: 'model_request',
+              scope: executionId,
+              epoch: input.attemptNo,
+              reservationId: null,
+            },
+          },
+          // The mock transport starts the request synchronously with the permit.
           ...directiveIds.map(
             (directiveId): EventDraft => ({
               type: 'directive.dispatched',
@@ -598,8 +1125,7 @@ export class InMemoryCoordinator {
             }),
           ),
         ]);
-        run.modelCalls += 1;
-        lastCall = { modelCallId, contextSnapshotId };
+        lastCall = { modelCallId, contextSnapshotId, effectId };
         return {
           modelCallId,
           contextSnapshotId,
@@ -611,6 +1137,11 @@ export class InMemoryCoordinator {
 
       observe: async (observation: AgentObservation) => {
         requireActive();
+        const effectId =
+          lastCall?.modelCallId === observation.modelCallId ? lastCall.effectId : null;
+        const settled: EventDraft[] = effectId
+          ? [{ type: 'effect.settled', executionId, payload: { effectId, outcome: 'succeeded' } }]
+          : [];
         this.commit(run, [
           {
             type: 'model.finished',
@@ -633,6 +1164,7 @@ export class InMemoryCoordinator {
                   : 'reported',
             },
           },
+          ...settled,
         ]);
       },
 
@@ -672,10 +1204,10 @@ export class InMemoryCoordinator {
             return block({ code: 'SCHEMA_INVALID', message: 'text must be a string' });
           }
           const bytes = utf8ToBytes(text);
-          if (bytes.length > MAX_ARTIFACT_BYTES) {
+          if (bytes.length > this.policy.maxArtifactBytes) {
             return block({
               code: 'LIMIT_REACHED',
-              message: 'artifact versions are limited to 1 MiB',
+              message: `artifact versions are limited to ${this.policy.maxArtifactBytes} bytes`,
             });
           }
           const artifactVersionId = this.writeArtifact(run, input, text, bytes, lastCall, agent);
@@ -727,7 +1259,7 @@ export class InMemoryCoordinator {
   }
 
   private writeArtifact(
-    run: RunRecord,
+    run: LiveRun,
     input: AgentStartInput,
     text: string,
     bytes: Uint8Array,
@@ -740,35 +1272,33 @@ export class InMemoryCoordinator {
     const artifactId = existing[0]?.artifactId ?? this.ids.next('artifact');
     const parent = existing.at(-1)?.artifactVersionId ?? null;
     const artifactVersionId = this.ids.next('artifact_version');
-    run.artifactTexts.set(artifactVersionId, text);
-    this.commit(run, [
-      {
-        type: 'artifact.version_created',
-        actor: agent,
-        executionId: input.executionId,
-        taskId: input.taskId,
-        payload: {
-          artifactId,
-          version: existing.length + 1,
-          artifactVersionId,
-          parentVersionId: parent,
-          name: outputNameOf(run.definition, input.nodeId),
-          contract: input.role.outputContract,
-          contentHash: bytesToHex(sha256(bytes)),
-          byteLength: bytes.length,
-          authorExecutionId: input.executionId,
-          modelCallId: lastCall?.modelCallId ?? null,
-          contextSnapshotId: lastCall?.contextSnapshotId ?? null,
+    this.commit(
+      run,
+      [
+        {
+          type: 'artifact.version_created',
+          actor: agent,
+          executionId: input.executionId,
+          taskId: input.taskId,
+          payload: {
+            artifactId,
+            version: existing.length + 1,
+            artifactVersionId,
+            parentVersionId: parent,
+            name: outputNameOf(run.snapshot.definition, input.nodeId),
+            contract: input.role.outputContract,
+            contentHash: bytesToHex(sha256(bytes)),
+            byteLength: bytes.length,
+            authorExecutionId: input.executionId,
+            modelCallId: lastCall?.modelCallId ?? null,
+            contextSnapshotId: lastCall?.contextSnapshotId ?? null,
+          },
         },
-      },
-    ]);
+      ],
+      // The body is written in the same transaction as the event that names it.
+      () => this.store.putArtifactText(run.runId, artifactVersionId, text),
+    );
     return artifactVersionId;
-  }
-
-  private requireRun(runId: string): RunRecord {
-    const run = this.runs.get(runId);
-    if (!run) throw new Error(`run ${runId} does not exist`);
-    return run;
   }
 }
 
@@ -821,6 +1351,13 @@ function conflict(commandId: string, runId: string): Receipt {
   return rejected(commandId, runId, {
     code: 'IDEMPOTENCY_CONFLICT',
     message: `command ${commandId} was already used with a different payload`,
+  });
+}
+
+function unavailable(commandId: string, runId: string, reason: string | null): Receipt {
+  return rejected(commandId, runId, {
+    code: 'STORAGE_UNAVAILABLE',
+    message: reason ?? 'facts can no longer be recorded',
   });
 }
 

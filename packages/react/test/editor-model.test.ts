@@ -1,5 +1,5 @@
 import { type CanvasLayout, CorralDefinition } from '@corral/contracts';
-import { compileDefinition, definitionHash, planLinearRun } from '@corral/core';
+import { compileDefinition, definitionHash, planRun } from '@corral/core';
 import { describe, expect, it } from 'vitest';
 import researchTeam from '../../../examples/research-team.corral.json' with { type: 'json' };
 import researchLayout from '../../../examples/research-team.layout.json' with { type: 'json' };
@@ -115,9 +115,9 @@ describe('editor model: drawing a definition', () => {
     expect(outputNode?.type === 'output' && outputNode.inputBindings).toEqual([
       { kind: 'task_output', name: 'text', sourceNodeId: writer },
     ]);
-    // Loops and decisions compile, but this runtime cannot run them yet: say so.
+    // Loops run, but Decisions wait for reviews and approvals (P5): say which nodes.
     expect(result.runnable).toBe(false);
-    expect(result.runtimeLimits.map((issue) => issue.nodeId)).toContain(loop);
+    expect(result.runtimeLimits.map((issue) => issue.nodeId)).toEqual([decision, approval]);
   });
 });
 
@@ -268,6 +268,6 @@ describe('editor model: import and export', () => {
         .nodes.map((n) => n.id)
         .sort(),
     );
-    expect(planLinearRun(draftToDefinition(without.draft)).ok).toBe(false);
+    expect(planRun(draftToDefinition(without.draft)).ok).toBe(false);
   });
 });

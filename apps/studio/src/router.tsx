@@ -21,7 +21,13 @@ const rootRoute = createRootRouteWithContext<{ services: StudioServices }>()({
 export const workspaceRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
-  loader: ({ context }) => context.services.repository.list(),
+  loader: async ({ context }) => {
+    const [corrals, runs] = await Promise.all([
+      context.services.repository.list(),
+      context.services.transport.listRuns(),
+    ]);
+    return { corrals, runs };
+  },
   component: WorkspacePage,
 });
 
