@@ -388,13 +388,17 @@ describe('Coordinator: activations', () => {
     expect(iterations[0]?.criteriaVersionId).toBe(iterations[1]?.criteriaVersionId);
   });
 
-  it('refuses Decision steps when no decision policy is installed, naming the node', async () => {
+  it('runs Decision steps with the built-in review and approval decisions (P5)', async () => {
     const { transport } = coordinator();
     const { runId, receipt } = await transport.startRun(
       start(CorralDefinition.parse(researchTeam)),
     );
-    expect(runId).toBeNull();
-    expect(receipt.error?.code).toBe('COMMAND_NOT_SUPPORTED');
-    expect(receipt.error?.message).toContain('review_decision');
+    expect(receipt.status).toBe('applied');
+    const waiting = await waitForProjection(
+      transport,
+      runId ?? '',
+      (p) => p.status === 'awaiting_user',
+    );
+    expect(Object.values(waiting.approvals)[0]?.kind).toBe('user_action');
   });
 });

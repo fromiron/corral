@@ -17,7 +17,9 @@ import {
   type ModelProfileSnapshot,
   type Receipt,
   type RequestPermit,
+  type ResolveApprovalCommand,
   type ResolvedInput,
+  ReviewArtifact,
   RunCommand,
   RunEvent,
   type RunEventType,
@@ -125,6 +127,7 @@ export interface CoordinatorDeps {
 }
 
 const NO_DEADLINES: Scheduler = { after: () => () => {} };
+const TERMINAL_TASK = new Set(['failed', 'cancelled']);
 
 export type ModelResolution =
   | { ok: true; snapshot: ModelProfileSnapshot }
@@ -183,6 +186,12 @@ interface LiveRun {
   questions: Map<string, OpenQuestion>;
   /** Executions whose cancel the Coordinator asked for: they settle as cancelled. */
   cancelRequested: Set<string>;
+  /** Pending approvals and how to continue once the person decides (C-029). */
+  approvals: Map<string, (decision: 'approve' | 'reject') => void>;
+  /** The inputs each execution was started with: what a reviewer actually reviewed. */
+  inputsByExecution: Map<string, ResolvedInput[]>;
+  /** Why a Loop stopped at its cap: the person declined, or the hard cap was reached. */
+  capStop: 'declined' | 'hard_cap' | null;
 }
 
 interface OpenQuestion {
@@ -291,7 +300,7 @@ export class Coordinator {
 
     const resolved = this.resolveDefinition(request);
     if ('error' in resolved) return refuse(resolved.error);
-    const planned = planRun(resolved.definition, { decisions: this.decisions !== undefined });
+    const planned = planRun(resolved.definition);
     if (!planned.ok) {
       const code = planned.issues.some((i) => i.code === 'GRAPH_INVALID')
         ? 'GRAPH_INVALID'
@@ -357,6 +366,9 @@ export class Coordinator {
       taskOutcomes: new Map(),
       questions: new Map(),
       cancelRequested: new Set(),
+      approvals: new Map(),
+      inputsByExecution: new Map(),
+      capStop: null,
     };
 
     const { events, projection } = this.prepare(run, [
@@ -469,6 +481,7 @@ export class Coordinator {
     }
     try {
       if (command.type === 'steer') return this.steer(command, payloadHash);
+      if (command.type === 'resolve_approval') return this.resolveApproval(command, payloadHash);
       const receipt = rejected(command.commandId, command.runId, {
         code: 'COMMAND_NOT_SUPPORTED',
         message: `${command.type} is not available in this runtime yet`,
@@ -841,13 +854,14 @@ export class Coordinator {
         return;
       case 'stopped':
         return;
-      // Loop caps, rejections and inconclusive reviews ask the user through approvals (P5).
-      // Only an injected decision policy reaches them today; they end the run plainly.
+      // The person stopped it: at the Loop cap, at an approval, or after an inconclusive review.
       case 'cap_reached':
-        this.failRun(run, `loop_cap_reached: ${result.loopId}`);
+        if (run.capStop === 'hard_cap')
+          this.failRun(run, `loop_hard_cap_reached: ${result.loopId}`);
+        else this.endRun(run, 'cancelled', `loop_cap_declined: ${result.loopId}`);
         return;
       case 'rejected':
-        this.failRun(run, `rejected: ${result.nodeId}`);
+        this.endRun(run, 'cancelled', `rejected: ${result.nodeId}`);
         return;
       case 'needs_user':
         this.failRun(run, `needs_user: ${result.nodeId} ${result.branch}`);
@@ -860,20 +874,23 @@ export class Coordinator {
       activate: (nodeId, iteration) => this.activate(run, nodeId, iteration),
       decide: async (nodeId, iteration) => {
         const step = run.plan.steps[nodeId];
-        if (step?.kind !== 'decision' || !this.decisions) {
-          throw new Error(`no decision policy for ${nodeId}`);
+        if (step?.kind !== 'decision') throw new Error(`${nodeId} is not a decision`);
+        if (this.decisions) {
+          return this.decisions.decide({
+            runId: run.runId,
+            nodeId,
+            mode: step.mode,
+            iteration,
+            projection: run.projection,
+          });
         }
-        return this.decisions.decide({
-          runId: run.runId,
-          nodeId,
-          mode: step.mode,
-          iteration,
-          projection: run.projection,
-        });
+        return this.decide(run, nodeId, step.mode);
       },
+      loopCapReached: async (loopId, rounds) => this.atLoopCap(run, loopId, rounds),
       finalize: async (outputNodeId) => this.finalizeOutput(run, outputNodeId),
       loopEntered: async (loopId, no) => {
-        if (!run.plan.loops[loopId]) throw new Error(`plan has no Loop ${loopId}`);
+        const loop = run.plan.loops[loopId];
+        if (!loop) throw new Error(`plan has no Loop ${loopId}`);
         const iterationId = this.ids.next('iteration');
         this.commit(run, [
           {
@@ -882,7 +899,8 @@ export class Coordinator {
               loopNodeId: loopId,
               iterationId,
               no,
-              pinnedCarryInputs: [],
+              // What the previous round hands to this one, fixed now (C-026).
+              pinnedCarryInputs: this.carriedInto(run, loop.members, loopId),
               criteriaVersionId: run.snapshot.criteriaVersionId,
             },
           },
@@ -995,6 +1013,8 @@ export class Coordinator {
         auth: 'mock',
       },
       depth: spec.depth,
+      round: spec.iterationId ? (run.projection.iterations[spec.iterationId]?.no ?? null) : null,
+      criteriaVersionId: run.snapshot.criteriaVersionId,
       assignment: spec.assignment,
       capabilities: {
         delegateTo: callables.delegate.map(label),
@@ -1002,6 +1022,7 @@ export class Coordinator {
       },
       inputs: [...spec.given, ...this.resolveInputs(run, node.inputBindings, spec.iterationId)],
     };
+    run.inputsByExecution.set(executionId, input.inputs);
     const drafts: EventDraft[] = [
       {
         type: 'task.created',
@@ -1113,7 +1134,11 @@ export class Coordinator {
       }
       const source = binding.sourceNodeId ?? '';
       let versionId: string | undefined;
-      if (binding.kind === 'task_output') versionId = this.submittedOutputOf(run, source)[0];
+      if (binding.kind === 'task_output') {
+        // Inside a Loop, a producer in the same round is read from this round (C-026).
+        const sameRound = iterationId !== null && this.loopOf(run, source) !== null;
+        versionId = this.submittedOutputOf(run, source, sameRound ? iterationId : undefined)[0];
+      }
       if (binding.kind === 'previous_iteration_output' && previousRound) {
         versionId = this.submittedOutputOf(run, source, previousRound)[0];
       }
@@ -1255,21 +1280,293 @@ export class Coordinator {
     }
   }
 
-  private finalizeOutput(run: LiveRun, outputNodeId: string) {
+  private async finalizeOutput(run: LiveRun, outputNodeId: string) {
     const output = run.snapshot.definition.nodes.find((n) => n.id === outputNodeId);
     if (output?.type !== 'output') throw new Error('plan references a missing output node');
     const versions = output.inputBindings.flatMap((b) =>
       b.kind === 'task_output' ? this.submittedOutputOf(run, b.sourceNodeId ?? '') : [],
     );
     if (versions.length === 0) throw new Error('output has no submitted version');
+    let approvalId: string | null = null;
+    if (output.requireApproval) {
+      // Final approval binds the exact draft, its latest review and the criteria (Technical-Design §9.3).
+      const review = this.latestReview(run);
+      const requested = this.requestApproval(run, 'final_output', [
+        ...versions,
+        ...(review ? [review] : []),
+      ]);
+      approvalId = requested.approvalId;
+      if ((await requested.decision) === 'reject') {
+        this.endRun(run, 'cancelled', 'final_output_rejected');
+        return;
+      }
+    }
     // The output and the run's success are one fact: readers never see one without the other.
     this.commit(run, [
       {
         type: 'output.finalized',
-        payload: { nodeId: output.id, artifactVersionIds: versions, approvalId: null },
+        payload: { nodeId: output.id, artifactVersionIds: versions, approvalId },
       },
       runState('running', 'succeeded', 'output_finalized'),
     ]);
+  }
+
+  // ── reviews and approvals (C-027–C-029) ───────────────────────────────────
+
+  /** The built-in decisions: review verdicts, the person's approvals, and simple rules. */
+  private async decide(run: LiveRun, nodeId: string, mode: DecisionNode['mode']): Promise<string> {
+    const node = run.snapshot.definition.nodes.find((n) => n.id === nodeId);
+    const round = this.openRoundOf(run, nodeId);
+    if (mode === 'rule') {
+      const p = run.projection;
+      const unfinished = Object.values(p.tasks).some(
+        (t) => t.status !== 'completed' && !TERMINAL_TASK.has(t.status),
+      );
+      return unfinished ? 'no' : 'yes';
+    }
+    const bound = (node?.type === 'decision' ? node.inputBindings : []).flatMap((b) =>
+      b.kind === 'task_output' && b.sourceNodeId
+        ? this.submittedOutputOf(
+            run,
+            b.sourceNodeId,
+            round && this.loopOf(run, b.sourceNodeId) ? round : undefined,
+          )
+        : [],
+    );
+    if (mode === 'approval') {
+      const review = this.latestReview(run);
+      const requested = this.requestApproval(run, 'user_action', [
+        ...bound,
+        ...(review ? [review] : []),
+      ]);
+      return requested.decision;
+    }
+
+    // Review: the verdict counts only for the draft and criteria actually reviewed.
+    const reviewVersionId = bound[0];
+    if (!reviewVersionId) throw new Error(`${nodeId} has no review to read`);
+    const recorded = this.recordReview(run, reviewVersionId);
+    if (recorded.verdict !== 'inconclusive') return recorded.verdict;
+    // Not a usable verdict: the person decides whether the draft goes on.
+    const requested = this.requestApproval(run, 'user_action', [
+      recorded.targetVersionId,
+      reviewVersionId,
+    ]);
+    return (await requested.decision) === 'approve' ? 'pass' : 'reject';
+  }
+
+  /** Validates a submitted review against what its reviewer was given (CRL-ART-003). */
+  private recordReview(run: LiveRun, reviewVersionId: string) {
+    const author = run.projection.artifacts[reviewVersionId]?.authorExecutionId ?? '';
+    const reviewed = (run.inputsByExecution.get(author) ?? []).flatMap((i) =>
+      i.artifactVersionId ? [i.artifactVersionId] : [],
+    );
+    const criteriaVersionId = run.snapshot.criteriaVersionId;
+    const text = this.store.getArtifactText(run.runId, reviewVersionId) ?? '';
+    let parsed: ReturnType<typeof ReviewArtifact.safeParse> | null = null;
+    try {
+      parsed = ReviewArtifact.safeParse(JSON.parse(text));
+    } catch {
+      parsed = null;
+    }
+    const problem = !parsed?.success
+      ? 'the review is not valid review JSON'
+      : !reviewed.includes(parsed.data.targetArtifactVersionId)
+        ? `the review names ${parsed.data.targetArtifactVersionId}, not the version it was given`
+        : parsed.data.criteriaVersionId !== criteriaVersionId
+          ? `the review uses criteria ${parsed.data.criteriaVersionId}, not ${criteriaVersionId}`
+          : null;
+    const review = problem || !parsed?.success ? null : parsed.data;
+    const payload = {
+      reviewVersionId,
+      targetVersionId: review?.targetArtifactVersionId ?? reviewed[0] ?? reviewVersionId,
+      criteriaVersionId,
+      verdict: review?.verdict ?? ('inconclusive' as const),
+      issues: review
+        ? review.issues
+        : [
+            {
+              criterionId: 'review_format',
+              reason: problem ?? 'invalid review',
+              severity: 'required' as const,
+              evidenceRefs: [],
+            },
+          ],
+    };
+    this.commit(run, [{ type: 'review.recorded', payload }]);
+    return payload;
+  }
+
+  private latestReview(run: LiveRun): string | null {
+    return Object.keys(run.projection.reviews).at(-1) ?? null;
+  }
+
+  /** Asks the person; the run waits in `awaiting_user` until resolve_approval. */
+  private requestApproval(
+    run: LiveRun,
+    kind: 'final_output' | 'loop_cap' | 'user_action',
+    subjectVersionIds: string[],
+  ): { approvalId: string; decision: Promise<'approve' | 'reject'> } {
+    const approvalId = this.ids.next('approval');
+    const decision = new Promise<'approve' | 'reject'>((resolve) => {
+      run.approvals.set(approvalId, resolve);
+    });
+    this.commit(run, [
+      {
+        type: 'approval.requested',
+        payload: {
+          approvalId,
+          kind,
+          subjectVersionIds,
+          criteriaVersionId: run.snapshot.criteriaVersionId,
+        },
+      },
+      runState(run.projection.status, 'awaiting_user', `approval_requested: ${kind}`),
+    ]);
+    return { approvalId, decision };
+  }
+
+  /** At the Loop cap: ask for one more round, unless the installation's hard cap is reached. */
+  private async atLoopCap(
+    run: LiveRun,
+    loopId: string,
+    rounds: number,
+  ): Promise<'continue' | 'stop'> {
+    if (rounds >= this.policy.maxLoopIterations) {
+      run.capStop = 'hard_cap';
+      this.commit(run, [
+        {
+          type: 'limit.reached',
+          payload: {
+            limitKind: 'loop_iterations',
+            used: rounds,
+            reserved: 0,
+            max: this.policy.maxLoopIterations,
+          },
+        },
+      ]);
+      return 'stop';
+    }
+    const members = run.plan.loops[loopId]?.members ?? [];
+    const round = run.rounds.get(loopId)?.iterationId;
+    const latest = members.flatMap((m) => this.submittedOutputOf(run, m, round));
+    const requested = this.requestApproval(run, 'loop_cap', latest);
+    if ((await requested.decision) === 'approve') return 'continue';
+    run.capStop = 'declined';
+    return 'stop';
+  }
+
+  /** The person's answer to a pending approval: once, for the exact subject (CRL-RNS-008). */
+  private resolveApproval(command: ResolveApprovalCommand, payloadHash: string): Receipt {
+    const { runId } = command;
+    const { approvalId, decision, subjectVersionId } = command.payload;
+    const run = this.live.get(runId);
+    const projection = this.projectionOf(runId);
+    const approval = projection?.approvals[approvalId];
+    const record = (receipt: Receipt): StoredCommand => ({
+      scope: runId,
+      commandId: command.commandId,
+      payloadHash,
+      receipt,
+      runId,
+      directiveId: null,
+    });
+    const refuse = (error: CommandError): Receipt => {
+      const receipt = rejected(command.commandId, runId, error, `approval:${approvalId}`);
+      this.persist(() => this.store.putCommand(record(receipt)));
+      return receipt;
+    };
+    if (!approval)
+      return refuse({ code: 'TARGET_NOT_FOUND', message: `no approval ${approvalId}` });
+    const resume = run?.approvals.get(approvalId);
+    if (approval.status !== 'pending' || !run || !resume) {
+      return refuse({
+        code: 'APPROVAL_STALE',
+        message: `approval ${approvalId} is already ${approval.status}`,
+      });
+    }
+    if (command.expectedControlRevision !== run.projection.controlRevision) {
+      return refuse({
+        code: 'STALE_CONTROL_REVISION',
+        message: `control revision is ${run.projection.controlRevision}`,
+      });
+    }
+    if (subjectVersionId !== approval.subjectVersionIds[0]) {
+      return refuse({
+        code: 'APPROVAL_STALE',
+        message: `approval ${approvalId} is for ${approval.subjectVersionIds[0]}, not ${subjectVersionId}`,
+      });
+    }
+    this.commit(
+      run,
+      [
+        {
+          type: 'approval.resolved',
+          actor: USER,
+          commandId: command.commandId,
+          payload: {
+            approvalId,
+            decision,
+            actor: USER.id,
+            subjectVersionIds: approval.subjectVersionIds,
+          },
+        },
+        runState('awaiting_user', 'running', 'approval_resolved'),
+      ],
+      (committed) => {
+        const first = committed[0];
+        this.store.putCommand(
+          record({
+            commandId: command.commandId,
+            runId,
+            status: 'applied',
+            acceptedSeq: first?.runSeq ?? null,
+            target: `approval:${approvalId}`,
+            requestedBoundary: 'immediate',
+            relatedEventIds: first ? [first.eventId] : [],
+          }),
+        );
+      },
+    );
+    run.approvals.delete(approvalId);
+    resume(decision);
+    const stored = this.store.getCommand(runId, command.commandId);
+    if (!stored) throw new Error(`command ${command.commandId} was not recorded`);
+    return stored.receipt;
+  }
+
+  /** Versions the previous round hands to the next through previous_iteration_output. */
+  private carriedInto(run: LiveRun, members: string[], loopId: string): string[] {
+    const previous =
+      run.rounds.get(loopId)?.iterationId ?? run.projection.loopIterations[loopId]?.at(-1);
+    if (!previous) return [];
+    const definition = run.snapshot.definition;
+    return members.flatMap((memberId) => {
+      const node = definition.nodes.find((n) => n.id === memberId);
+      const bindings = node && 'inputBindings' in node ? node.inputBindings : [];
+      return bindings.flatMap((b) =>
+        b.kind === 'previous_iteration_output' && b.sourceNodeId
+          ? this.submittedOutputOf(run, b.sourceNodeId, previous)
+          : [],
+      );
+    });
+  }
+
+  private loopOf(run: LiveRun, nodeId: string): string | null {
+    const node = run.snapshot.definition.nodes.find((n) => n.id === nodeId);
+    return node && 'loopId' in node && node.loopId ? node.loopId : null;
+  }
+
+  private openRoundOf(run: LiveRun, nodeId: string): string | null {
+    const loopId = this.loopOf(run, nodeId);
+    return loopId ? (run.rounds.get(loopId)?.iterationId ?? null) : null;
+  }
+
+  /** Ends a running (or waiting) run by the person's decision. */
+  private endRun(run: LiveRun, to: 'cancelled', reason: string) {
+    const status = run.projection.status;
+    if (TERMINAL_RUN_STATUSES.has(status)) return;
+    this.commit(run, [...this.closeRounds(run), runState(status, to, reason)]);
   }
 
   // ── agent host: the only way an agent affects the run ─────────────────────
@@ -1772,7 +2069,12 @@ export class Coordinator {
       const existing = Object.values(run.projection.artifacts).filter(
         (a) => a.authorExecutionId === executionId,
       );
-      const artifactId = existing[0]?.artifactId ?? this.ids.next('artifact');
+      // The same node's output in the previous Loop round is the version this one revises,
+      // so draft@1 → draft@2 is one artifact (C-030). Parallel helpers stay separate.
+      const previous = existing.length === 0 ? this.previousRoundOutput(run, input) : null;
+      const artifactId =
+        existing[0]?.artifactId ?? previous?.artifactId ?? this.ids.next('artifact');
+      const versionBase = previous && existing.length === 0 ? previous.version : 0;
       const artifactVersionId = this.ids.next('artifact_version');
       return {
         drafts: [
@@ -1784,9 +2086,10 @@ export class Coordinator {
             taskId,
             payload: {
               artifactId,
-              version: existing.length + 1,
+              version: versionBase + existing.length + 1,
               artifactVersionId,
-              parentVersionId: existing.at(-1)?.artifactVersionId ?? null,
+              parentVersionId:
+                existing.at(-1)?.artifactVersionId ?? previous?.artifactVersionId ?? null,
               name: outputNameOf(run.snapshot.definition, input.nodeId),
               contract: input.role.outputContract,
               contentHash: bytesToHex(sha256(bytes)),
@@ -1826,6 +2129,23 @@ export class Coordinator {
       ],
       result: {},
     };
+  }
+
+  /** The latest version the same node wrote in the previous round of its Loop. */
+  private previousRoundOutput(run: LiveRun, input: AgentStartInput) {
+    const iterationId = run.projection.executions[input.executionId]?.iterationId;
+    const previous = iterationId ? this.previousRound(run, iterationId) : null;
+    if (!previous) return null;
+    const authors = new Set(
+      Object.values(run.projection.executions)
+        .filter((e) => e.nodeId === input.nodeId && e.iterationId === previous)
+        .map((e) => e.executionId),
+    );
+    return (
+      Object.values(run.projection.artifacts)
+        .filter((a) => authors.has(a.authorExecutionId))
+        .at(-1) ?? null
+    );
   }
 
   // ── collaboration tools (C-022–C-024) ─────────────────────────────────────

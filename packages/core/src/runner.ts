@@ -23,6 +23,11 @@ export interface RunnerCallbacks {
   decide(nodeId: string, iteration: IterationRef | null): Promise<string>;
   finalize(outputNodeId: string): Promise<void>;
   loopEntered(loopId: string, no: number): Promise<void>;
+  /**
+   * A Loop asked for another round past its cap (Spec §5.3): `continue` runs one more round,
+   * `stop` ends the walk with `cap_reached`. The Coordinator asks the person.
+   */
+  loopCapReached(loopId: string, rounds: number): Promise<'continue' | 'stop'>;
   loopLeft(loopId: string, no: number, outcome: RoundOutcome): Promise<void>;
 }
 
@@ -102,7 +107,10 @@ export async function executeStep(
         return { next: step.body };
       }
       if (port === 'repeat') {
-        if (done >= step.maxIterations) {
+        if (
+          done >= step.maxIterations &&
+          (await callbacks.loopCapReached(loopId, done)) === 'stop'
+        ) {
           await callbacks.loopLeft(loopId, done, 'cap_reached');
           return { end: { kind: 'cap_reached', loopId, iterations: done } };
         }

@@ -133,6 +133,14 @@ provider/network error는 사용자 키 원문·응답 헤더를 포함하지 �
 | `observation.late` | originalEvent,whyIgnored |
 | `output.finalized` | artifactVersionIds,approvalId |
 
+구현(P5)에서 정한 검토·승인 규칙:
+
+- `approval.requested.kind`는 `user_action`(approval 모드 Decision, 또는 판정할 수 없는 검토), `loop_cap`(Loop 상한에서 한 라운드 더), `final_output`(Output의 `requireApproval`) 중 하나다. `subjectVersions`의 첫 항목이 승인 대상 버전이고, 뒤에 마지막 검토 버전이 붙는다.
+- `resolve_approval`의 `subjectVersionId`는 `subjectVersions[0]`이어야 한다. 검사 순서: 없는 승인 `TARGET_NOT_FOUND` → 이미 해결 `APPROVAL_STALE` → `expectedControlRevision` 불일치 `STALE_CONTROL_REVISION` → 다른 버전 `APPROVAL_STALE`. 같은 commandId 재전송은 처음 receipt를 돌려준다.
+- 검토 본문이 `review.schema.json`이 아니거나, 대상이 검토자가 받은 입력이 아니거나, 기준이 Run의 `criteriaVersionId`가 아니면 `review.recorded.verdict`는 `inconclusive`이고 `user_action` 승인으로 넘어간다. 통과로 처리하지 않는다.
+- 설치 정책의 Loop hard cap에 닿으면 승인 없이 `limit.reached`(`loop_iterations`)와 함께 Run이 실패한다. 거절한 `loop_cap`·`final_output`은 Run을 취소로 끝낸다.
+- 같은 Agent가 다음 Loop 라운드에 쓴 버전은 같은 artifactId의 다음 version이다. 투영의 `parentVersionId`가 이전 버전을 가리킨다.
+
 ## 5. timeout·재연결·다중 탭
 
 브라우저 timeout은 서버 명령 실패와 같지 않다. 같은 commandId로 receipt를 조회/재전송한다. 새 ID로 취소/승인을 재시도하면 이중 의미가 생길 수 있으므로 client SDK가 처리한다.

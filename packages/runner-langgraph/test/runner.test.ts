@@ -49,6 +49,13 @@ function scripted(decisions: string[], failing: Set<string>) {
     loopLeft: async (loopId, no, outcome) => {
       log.push(`leave ${loopId}#${no} ${outcome}`);
     },
+    loopCapReached: async (loopId, rounds) => {
+      // Continue past the cap once in a while, driven by the same script.
+      const answer =
+        decisions[next % decisions.length] === 'revise' && rounds < 4 ? 'continue' : 'stop';
+      log.push(`cap ${loopId}#${rounds} ${answer}`);
+      return answer;
+    },
   };
   return { log, callbacks };
 }

@@ -130,10 +130,12 @@ test('direct links, reload and back navigation keep the right screen', async ({ 
   await expect(page.getByText('This run is not available here.', { exact: false })).toBeVisible();
 });
 
-test('[TC-CAN-004-H] an imported team with a Loop validates but says it cannot run here yet', async ({
+test('[TC-CAN-004-H] [TC-RUN-003-H] an imported team with a Loop validates and runs through its review and approvals', async ({
   page,
 }) => {
-  await page.goto('/');
+  const errors = await trackErrors(page);
+  // Short simulated replies: the team makes about thirty model requests over two rounds.
+  await page.goto('/?delay=50');
   await page
     .locator('input[type=file]')
     .setInputFiles([
@@ -143,8 +145,20 @@ test('[TC-CAN-004-H] an imported team with a Loop validates but says it cannot r
   await expect(page).toHaveURL(/\/edit$/);
   await expect(page.locator('.react-flow__node')).toHaveCount(9);
   await expect(page.locator('.corral-call-link')).toHaveCount(3);
-  await expect(page.getByTestId('runtime-limits')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Run', exact: true })).toBeDisabled();
+  await expect(page.getByTestId('runtime-limits')).toHaveCount(0);
+  await expect(page.getByText('Ready to run.')).toBeVisible();
+
+  // Two review rounds, then the person approves the decision and the final output.
+  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  const decision = page.locator('[data-testid^="approval-"]').filter({ hasText: 'Your decision' });
+  await expect(decision).toBeVisible({ timeout: 15_000 });
+  await decision.getByRole('button', { name: 'Approve' }).click();
+  const final = page.locator('[data-testid^="approval-"]').filter({ hasText: 'Final output' });
+  await expect(final).toBeVisible();
+  await final.getByRole('button', { name: 'Approve' }).click();
+  await expect(page.getByTestId('run-status')).toContainText('Succeeded');
+  await expect(page.locator('[data-testid^="approval-"]')).toHaveCount(0);
+  expect(errors).toEqual([]);
 
   // Break the Loop boundary with the keyboard path: research → write skips "enter".
   await page.locator('.react-flow__node[data-id="research"]').click();

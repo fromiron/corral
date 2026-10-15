@@ -25,7 +25,8 @@ export type IdKind =
   | 'criteria_version'
   | 'iteration'
   | 'effect'
-  | 'question';
+  | 'question'
+  | 'approval';
 
 export interface IdFactory {
   next(kind: IdKind): string;
@@ -73,6 +74,10 @@ export interface AgentStartInput {
   model: ModelProfileSnapshot;
   /** 0 for scheduled steps; children and responders are one deeper than their caller. */
   depth: number;
+  /** The Loop round this execution belongs to (1-based), or null outside a Loop. */
+  round: number | null;
+  /** The completion criteria version the run works against; reviews must name it. */
+  criteriaVersionId: string;
   assignment: Assignment;
   capabilities: { delegateTo: CallableTarget[]; askTo: CallableTarget[] };
   inputs: ResolvedInput[];

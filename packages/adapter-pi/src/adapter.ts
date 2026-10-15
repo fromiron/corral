@@ -131,7 +131,13 @@ class WorkerExecution {
         type: 'start',
         model: this.model,
         role: { name: role.name, prompt: role.prompt, outputContract: role.outputContract },
-        inputs: this.input.inputs.map(({ name, text }) => ({ name, text })),
+        inputs: this.input.inputs.map(({ name, artifactVersionId, text }) => ({
+          name,
+          artifactVersionId,
+          text,
+        })),
+        criteriaVersionId: this.input.criteriaVersionId,
+        round: this.input.round,
         // Only the tools this role may use, and that its links make meaningful, are offered;
         // the host still checks every call.
         tools: offeredTools(this.input),

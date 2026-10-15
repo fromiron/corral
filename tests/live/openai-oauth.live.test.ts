@@ -175,6 +175,8 @@ describe.skipIf(!enabled)('OpenAI sign-in live smoke (C-020)', () => {
       mode: 'live',
       model: resolution.snapshot,
       depth: 0,
+      round: null,
+      criteriaVersionId: 'crit_0001',
       assignment: { kind: 'scheduled' },
       capabilities: { delegateTo: [], askTo: [] },
       inputs: [

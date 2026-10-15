@@ -21,6 +21,8 @@ const input: AgentStartInput = {
   mode: 'mock',
   model: { profile: 'model-a', provider: null, modelId: null, auth: 'mock' },
   depth: 0,
+  round: null,
+  criteriaVersionId: 'crit_0001',
   assignment: { kind: 'scheduled' },
   capabilities: { delegateTo: [], askTo: [] },
   role: {

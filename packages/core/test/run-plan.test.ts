@@ -15,26 +15,12 @@ describe('planRun: what this runtime can execute', () => {
     expect(orderOf(linearCorral(['writer', 'research']))).toEqual(['writer', 'research', 'output']);
   });
 
-  it('refuses Decision steps until a decision policy exists, naming the node', () => {
+  it('plans the whole research team: Loop, Decisions and the final approval (P5)', () => {
     const plan = planRun(CorralDefinition.parse(researchTeam));
-    expect(plan.ok).toBe(false);
-    if (plan.ok) return;
-    expect(plan.issues).toContainEqual(
-      expect.objectContaining({ code: 'COMMAND_NOT_SUPPORTED', nodeId: 'review_decision' }),
-    );
-    expect(plan.issues.some((i) => i.code === 'GRAPH_INVALID')).toBe(false);
-  });
-
-  it('accepts a Loop with Decisions when a policy is installed, but not a final approval yet', () => {
-    const definition = CorralDefinition.parse(researchTeam);
-    const withApproval = planRun(definition, { decisions: true });
-    expect(withApproval.ok).toBe(false);
-    if (!withApproval.ok) {
-      expect(withApproval.issues.map((i) => i.nodeId)).toEqual(['output']);
-    }
-    const output = definition.nodes.find((n) => n.type === 'output');
-    if (output?.type === 'output') output.requireApproval = false;
-    expect(planRun(definition, { decisions: true }).ok).toBe(true);
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.plan.order).toContain('review_decision');
+    expect(plan.plan.order).toContain('approval');
   });
 
   it('rejects a scheduled agent that the control flow never reaches', () => {

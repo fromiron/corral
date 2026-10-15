@@ -1,4 +1,5 @@
 import {
+  ApprovalPanel,
   ArtifactViewer,
   QuestionsPanel,
   ReinsPanel,
@@ -66,10 +67,12 @@ export function RunPage() {
         <Timeline session={session} />
       </section>
       <div className="flex flex-col gap-4">
+        <ApprovalPanel session={session} onOpenArtifact={openArtifact} />
         {artifact ? (
           <ArtifactViewer
             session={session}
             versionId={artifact}
+            onOpen={openArtifact}
             onClose={() => void navigate({ search: (s) => ({ ...s, artifact: undefined }) })}
           />
         ) : null}

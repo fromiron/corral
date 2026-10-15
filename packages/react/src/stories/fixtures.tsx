@@ -56,6 +56,7 @@ export function sessionStore(state: Partial<RunSessionState> = {}): RunSessionSt
     start: noop,
     open: noop,
     loadArtifact: noop,
+    resolveApproval: async () => ({}) as Receipt,
     steer: async () => ({}) as Receipt,
     refreshReceipt: noop,
     dispose: () => {},

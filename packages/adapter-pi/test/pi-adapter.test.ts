@@ -194,6 +194,8 @@ function startInput(): AgentStartInput {
     mode: 'live',
     model: { profile: 'model-a', provider: 'openai', modelId: 'faux-1', auth: 'oauth' },
     depth: 0,
+    round: null,
+    criteriaVersionId: 'crit_0001',
     assignment: { kind: 'scheduled' },
     capabilities: { delegateTo: [], askTo: [] },
     inputs: [{ name: 'brief', kind: 'run_input', artifactVersionId: null, text: 'Brief.' }],
@@ -366,5 +368,24 @@ describe('collaboration tools through Pi (C-025)', () => {
     const draft = await transport.getArtifactText(runId, final.output?.artifactVersionIds[0] ?? '');
     expect(draft).toBe('Draft. Primary source: The 2024 statistics report.');
     expect(events.some((e) => e.type === 'tool.blocked')).toBe(false);
+  });
+});
+
+describe('reviews through Pi (C-027)', () => {
+  it('tells a reviewer the exact target and criteria its review must name', async () => {
+    const prompts: string[] = [];
+    const { transport } = liveRuntime([
+      (context) => {
+        prompts.push(JSON.stringify(context.messages));
+        return fauxAssistantMessage('Nothing.');
+      },
+    ]);
+    const { runId } = await liveRun(transport, (d) => {
+      for (const role of d.roles) role.outputContract = 'review';
+    });
+    await waitForProjection(transport, runId, settled);
+    expect(prompts[0]).toContain('targetArtifactVersionId');
+    // The run's criteria version (crit_0001 with sequential ids) is spelled out for the model.
+    expect(prompts[0]).toContain('crit_0001');
   });
 });
