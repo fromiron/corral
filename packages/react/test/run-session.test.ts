@@ -1,4 +1,11 @@
-import { applyEvent, Coordinator, emptyProjection, InProcessTransport } from '@corral/core';
+import type { StreamFrame } from '@corral/contracts';
+import {
+  applyEvent,
+  Coordinator,
+  emptyProjection,
+  InProcessTransport,
+  type TransportHandlers,
+} from '@corral/core';
 import {
   FakeClock,
   Gate,
@@ -142,6 +149,38 @@ describe('run session', () => {
     expect(done.events.reduce(applyEvent, emptyProjection(done.runId ?? ''))).toEqual(
       done.projection,
     );
+  });
+
+  it('collects streamed text per model call, in order, and stops at a gap', async () => {
+    const frames: ((frame: StreamFrame) => void)[] = [];
+    const inner = new InProcessTransport(
+      new Coordinator({
+        clock: new FakeClock(),
+        ids: new SequentialIdFactory(),
+        agents: new ScriptedAgentAdapter({ turns: 1, beforeReply: () => new Gate().wait() }),
+      }),
+    );
+    const transport = Object.assign(Object.create(inner), {
+      subscribe: (runId: string, after: number, handlers: TransportHandlers) => {
+        if (handlers.onFrame) frames.push(handlers.onFrame);
+        return inner.subscribe(runId, after, handlers);
+      },
+    }) as typeof inner;
+    const store = createRunSession(transport);
+    await store.getState().start(linearCorral(['writer']));
+    const send = (modelCallId: string, chunkIndex: number, text: string) =>
+      frames[0]?.({ runId: store.getState().runId ?? '', modelCallId, chunkIndex, text });
+    send('call_a', 0, 'Hel');
+    send('call_a', 1, 'lo');
+    send('call_a', 1, 'lo');
+    send('call_b', 0, 'x');
+    send('call_b', 2, 'z');
+    send('call_b', 3, 'w');
+    await until(store, (s) => s.streams.call_a?.text === 'Hello');
+    expect(store.getState().streams).toEqual({
+      call_a: { text: 'Hello', next: 2, broken: false },
+      call_b: { text: 'x', next: 1, broken: true },
+    });
   });
 
   it('keeps a rejected start visible instead of pretending a run exists', async () => {

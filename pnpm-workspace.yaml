@@ -2,6 +2,7 @@ packages:
   - apps/*
   - packages/*
   - spikes/*
+  - tests/live
 
 # Install scripts stay blocked (pnpm 10 default). better-sqlite3 13 ships prebuilt binaries;
 # its implicit node-gyp step is not needed. The rest come from the C-052 spike dependencies.

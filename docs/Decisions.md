@@ -158,7 +158,7 @@
 
 ## ADR-019: 모델 자격 증명은 서버 측에만 둔다
 
-**상태:** 확정 (Bell, 2026-10-15, [CR-001](change-requests/CR-001-openai-oauth-first.md))
+**상태:** 확정 (Bell, 2026-10-15, [CR-001](change-requests/CR-001-openai-oauth-first.md)). 구현(C-058): `FileCredentialStore`(사용자 설정 디렉터리 `credentials.json`, 0600, workspace 안이면 시작 거부), 설치 ID `device-id`, 요청마다 host가 access token을 permit에 실어 worker로 보냄. 실제 로그인은 미시험([P3 증거](../specs/001-canvas/evidence/P3.md)).
 
 **결정:** MVP는 pi-ai의 OpenAI 구독 OAuth로 시작한다. 토큰은 workspace 밖 사용자 설정 디렉터리의 credential store(파일 권한 0600)에 두고, 갱신은 host가 한다. API 키는 서버 프로세스 환경 변수에서 읽는다. Anthropic 구독(Pro/Max) OAuth는 지원하지 않는다.
 

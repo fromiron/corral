@@ -119,6 +119,39 @@ describe('RunView execution tree (C-016)', () => {
     }
   });
 
+  it('shows what an active execution is writing while its request streams', () => {
+    const p = projection();
+    const active = p.executions.exec_w2;
+    if (!active) throw new Error('fixture');
+    active.modelCallIds = ['call_live'];
+    p.modelCalls.call_live = {
+      modelCallId: 'call_live',
+      executionId: 'exec_w2',
+      contextSnapshotId: 'ctx',
+      profile: 'model-a',
+      directiveIds: [],
+      inputArtifactVersionIds: [],
+      finished: false,
+      usage: null,
+      certainty: null,
+    };
+    const session = sessionStore({
+      runId: 'run_view',
+      definition: linearCorral(['research', 'writer']),
+      projection: p,
+      streams: { call_live: { text: 'Partial answer', next: 1, broken: false } },
+    });
+    render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <RunView session={session} onSteer={vi.fn()} />
+      </IntlProvider>,
+    );
+    expect(
+      within(screen.getByTestId('execution-exec_w2')).getByTestId('live-text'),
+    ).toHaveTextContent('Partial answer');
+    expect(within(screen.getByTestId('execution-exec_w1')).queryByTestId('live-text')).toBeNull();
+  });
+
   it('exposes the run status for people and tests', () => {
     renderView();
     expect(screen.getByTestId('run-status')).toHaveTextContent('Running');

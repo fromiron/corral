@@ -13,6 +13,7 @@ function fakeSession(steer = vi.fn(async () => ({}) as never)): RunSessionStore 
     definition: null,
     projection: null,
     events: [],
+    streams: {},
     outputText: null,
     startError: null,
     streamError: null,

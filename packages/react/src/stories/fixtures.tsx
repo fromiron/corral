@@ -45,6 +45,7 @@ export function sessionStore(state: Partial<RunSessionState> = {}): RunSessionSt
     definition: null,
     projection: null,
     events: [],
+    streams: {},
     outputText: null,
     startError: null,
     streamError: null,

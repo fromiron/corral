@@ -56,6 +56,10 @@ export class ScriptedAgentAdapter implements AgentAdapter {
           await this.options.beforeReply?.(turn, input);
           checkpoint();
           text = reply(turn, input, permit);
+          // Stream the reply in a few pieces, as a model would, before reporting it.
+          for (const [chunkIndex, piece] of chunks(text).entries()) {
+            host.streamText({ modelCallId: permit.modelCallId, chunkIndex, text: piece });
+          }
           await host.observe({
             kind: 'model_completed',
             modelCallId: permit.modelCallId,
@@ -92,4 +96,11 @@ export class ScriptedAgentAdapter implements AgentAdapter {
 
 function failed(error: { code: string; message: string }): AgentSettlement {
   return { outcome: 'failed', error: `${error.code}: ${error.message}` };
+}
+
+function chunks(text: string, count = 3): string[] {
+  const size = Math.max(1, Math.ceil(text.length / count));
+  const out: string[] = [];
+  for (let i = 0; i < text.length; i += size) out.push(text.slice(i, i + size));
+  return out;
 }

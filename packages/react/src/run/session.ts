@@ -1,4 +1,11 @@
-import type { CommandError, CorralDefinition, EventOf, Receipt, RunEvent } from '@corral/contracts';
+import type {
+  CommandError,
+  CorralDefinition,
+  EventOf,
+  Receipt,
+  RunEvent,
+  StreamFrame,
+} from '@corral/contracts';
 import {
   applyEvent,
   emptyProjection,
@@ -17,6 +24,11 @@ export interface RunSessionState {
   projection: RunProjection | null;
   /** Every committed event of the run, in order (Timeline, C-060). */
   events: RunEvent[];
+  /**
+   * Text of model calls while they stream (C-018). Never a fact: a gap stops a call's text
+   * (`broken`), and the committed output replaces it (Technical-Design §12).
+   */
+  streams: Record<string, StreamText>;
   outputText: string | null;
   startError: CommandError | null;
   streamError: string | null;
@@ -25,7 +37,7 @@ export interface RunSessionState {
   pendingCommandIds: string[];
   receipts: Record<string, Receipt>;
   /** Starts a run; with `saved`, from that saved revision (the local server's way). */
-  start(definition: CorralDefinition, saved?: SavedRevision): Promise<void>;
+  start(definition: CorralDefinition, saved?: SavedRevision, mode?: 'mock' | 'live'): Promise<void>;
   /** Follows an existing run, such as after a reload or from a link. */
   open(runId: string): Promise<void>;
   steer(executionId: string, text: string): Promise<Receipt>;
@@ -34,6 +46,13 @@ export interface RunSessionState {
 }
 
 export type RunSessionStore = StoreApi<RunSessionState>;
+
+export interface StreamText {
+  text: string;
+  /** The chunk index expected next. */
+  next: number;
+  broken: boolean;
+}
 
 export interface SavedRevision {
   corralId: string;
@@ -56,7 +75,7 @@ export function createRunSession(
      * the Timeline's event list. Events are applied in batches, so a long replay renders once.
      */
     const follow = async (runId: string) => {
-      set({ projection: emptyProjection(runId), events: [] });
+      set({ projection: emptyProjection(runId), events: [], streams: {} });
       let pending: RunEvent[] = [];
       let scheduled = false;
       const flush = () => {
@@ -73,12 +92,37 @@ export function createRunSession(
         if (finalized) void loadOutput(runId, finalized.payload.artifactVersionIds);
         if (batch.some((e) => e.type.startsWith('directive.'))) void refreshSteerReceipts();
       };
+      let frames: StreamFrame[] = [];
+      let framesScheduled = false;
+      const flushFrames = () => {
+        framesScheduled = false;
+        const batch = frames;
+        frames = [];
+        if (get().runId !== runId) return;
+        const streams = { ...get().streams };
+        for (const frame of batch) {
+          const current = streams[frame.modelCallId] ?? { text: '', next: 0, broken: false };
+          if (current.broken || frame.chunkIndex < current.next) continue;
+          streams[frame.modelCallId] =
+            frame.chunkIndex === current.next
+              ? { text: current.text + frame.text, next: current.next + 1, broken: false }
+              : { ...current, broken: true };
+        }
+        set({ streams });
+      };
       unsubscribe = transport.subscribe(runId, 0, {
         onEvent: (event: RunEvent) => {
           pending.push(event);
           if (!scheduled) {
             scheduled = true;
             queueMicrotask(flush);
+          }
+        },
+        onFrame: (frame: StreamFrame) => {
+          frames.push(frame);
+          if (!framesScheduled) {
+            framesScheduled = true;
+            queueMicrotask(flushFrames);
           }
         },
         onError: (error) => set({ streamError: String(error) }),
@@ -93,6 +137,7 @@ export function createRunSession(
         definition: null,
         projection: null,
         events: [],
+        streams: {},
         outputText: null,
         startError: null,
         streamError: null,
@@ -118,6 +163,7 @@ export function createRunSession(
       definition: null,
       projection: null,
       events: [],
+      streams: {},
       outputText: null,
       startError: null,
       streamError: null,
@@ -125,13 +171,13 @@ export function createRunSession(
       pendingCommandIds: [],
       receipts: {},
 
-      async start(definition, saved) {
+      async start(definition, saved, mode = 'mock') {
         reset();
         const commandId = newCommandId();
         const { runId, receipt } = await transport.startRun(
           saved
-            ? { schemaVersion: '0.1', commandId, ...saved, mode: 'mock' }
-            : { schemaVersion: '0.1', commandId, definition, mode: 'mock' },
+            ? { schemaVersion: '0.1', commandId, ...saved, mode }
+            : { schemaVersion: '0.1', commandId, definition, mode },
         );
         if (!runId) {
           set({ startError: receipt.error ?? { code: 'SCHEMA_INVALID', message: 'run rejected' } });

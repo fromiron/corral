@@ -11,6 +11,8 @@
       "packages/**",
       "tools/**/*.ts",
       "tools/**/*.json",
+      "tests/live/**/*.ts",
+      "tests/live/**/*.json",
       "*.ts",
       "biome.json",
       "package.json",

@@ -3,6 +3,8 @@ import type {
   AgentObservation,
   AgentStartInput,
   RequestPermit,
+  TextDelta,
+  ToolAuthorization,
   ToolOutcome,
   ToolProposal,
 } from '@corral/contracts';
@@ -16,6 +18,8 @@ const input: AgentStartInput = {
   nodeId: 'writer',
   attemptNo: 1,
   modelProfile: 'model-a',
+  mode: 'mock',
+  model: { profile: 'model-a', provider: null, modelId: null, auth: 'mock' },
   role: {
     id: 'writer_role',
     name: 'Writer',
@@ -61,9 +65,23 @@ class RecordingHost implements AgentHost {
     return { ok: true, toolCallId: 'tc_2', result: {} };
   }
 
+  async authorizeTool(proposal: ToolProposal): Promise<ToolAuthorization> {
+    this.calls.push(`authorize:${proposal.name}`);
+    return { ok: true, toolCallId: 'tc_1' };
+  }
+
+  async executeTool(toolCallId: string): Promise<ToolOutcome> {
+    this.calls.push(`execute:${toolCallId}`);
+    return { ok: true, toolCallId, result: {} };
+  }
+
   async observe(observation: AgentObservation): Promise<void> {
     this.calls.push('observe');
     this.observations.push(observation);
+  }
+
+  streamText(delta: TextDelta): void {
+    this.calls.push(`stream:${delta.chunkIndex}`);
   }
 }
 
@@ -74,8 +92,14 @@ describe('ScriptedAgentAdapter', () => {
     await expect(handle.waitForSettlement()).resolves.toEqual({ outcome: 'succeeded' });
     expect(host.calls).toEqual([
       'prepare',
+      'stream:0',
+      'stream:1',
+      'stream:2',
       'observe',
       'prepare',
+      'stream:0',
+      'stream:1',
+      'stream:2',
       'observe',
       'tool:write_artifact',
       'tool:submit_result',

@@ -466,6 +466,43 @@ describe('SSE event stream (C-015)', () => {
     expect((await call(`${server.url}/api/v1/runs/run_missing/events`)).status).toBe(404);
   });
 
+  it('streams text frames to a live subscriber, without ids and without storing them', async () => {
+    const gate = new Gate();
+    const server = await start({
+      agents: new ScriptedAgentAdapter({ turns: 1, beforeReply: () => gate.wait() }),
+    });
+    const { call } = await browser(server);
+    const transport = new HttpSseTransport({ baseUrl: server.url, fetch: call });
+    const record = await saved(server, linearCorral(['writer']), call);
+    const { runId } = await transport.startRun({
+      schemaVersion: '0.1',
+      commandId: 'cmd_stream',
+      corralId: record.corralId,
+      definitionRevision: 1,
+      mode: 'mock',
+    });
+    const frames: string[] = [];
+    transport.subscribe(runId ?? '', 0, { onEvent: () => {}, onFrame: (f) => frames.push(f.text) });
+    await waitForProjection(transport, runId ?? '', (p) => Object.keys(p.modelCalls).length === 1);
+    gate.open();
+    const final = await waitForProjection(transport, runId ?? '', (p) => p.status === 'succeeded');
+    while (frames.length < 3) await new Promise((r) => setTimeout(r, 10));
+    const output = await transport.getArtifactText(
+      runId ?? '',
+      final.output?.artifactVersionIds[0] ?? '',
+    );
+    expect(frames.join('')).toBe(output);
+    const replay = await call(`${server.url}/api/v1/runs/${runId}/events?after=0`);
+    const text = await (async () => {
+      const reader = replay.body?.getReader();
+      if (!reader) return '';
+      const { value } = await reader.read();
+      await reader.cancel();
+      return new TextDecoder().decode(value);
+    })();
+    expect(text).not.toContain('event: stream');
+  });
+
   it('serves artifact bodies and snapshots of finished runs', async () => {
     const { server, call, runId, final } = await finishedRun();
     const versionId = final.output?.artifactVersionIds[0] ?? '';

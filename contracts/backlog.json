@@ -318,7 +318,8 @@
       "packages/adapter-pi/"
     ],
     "done": "unexpected exit/invalid IPC/worker binding 검증",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P3.md"
   },
   {
     "id": "C-018",
@@ -336,7 +337,8 @@
       "packages/adapter-pi/request/"
     ],
     "done": "request 전에 확정된 snapshot을 실제 provider 호출에 사용",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P3.md"
   },
   {
     "id": "C-019",
@@ -352,7 +354,8 @@
       "packages/adapter-pi/tools/"
     ],
     "done": "Pi start 이후 block돼도 실제 tool.started 없음",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P3.md"
   },
   {
     "id": "C-020",
@@ -372,7 +375,8 @@
       "tests/live/"
     ],
     "done": "OpenAI OAuth 프로필 2개로 지원 기능·모델ID·usage·abort 검사(수동 opt-in), usage normalization은 2종 이상 provider fixture로 검사",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P3.md"
   },
   {
     "id": "C-021",
@@ -1087,7 +1091,8 @@
       "apps/studio/features/settings/"
     ],
     "done": "로그인 상태·만료만 표시, 응답·번들·로그·이벤트에 토큰 원문 없음, 로그인·로그아웃·만료 흐름, 구독 사용은 금액 null",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "specs/001-canvas/evidence/P3.md"
   },
   {
     "id": "C-059",

@@ -14,15 +14,19 @@ import type { SavedRevision } from '../run/session.ts';
 export function RunControls({
   onStarted,
   beforeStart,
+  liveAvailable = false,
 }: {
   onStarted?: (runId: string) => void;
   beforeStart?: () => Promise<SavedRevision | null>;
+  /** The runtime can call real models; the person chooses per run (default: simulated). */
+  liveAvailable?: boolean;
 }) {
   const t = useTranslations('Run');
   const { editor, session } = useStudioStores();
   const draft = useStore(editor, (s) => s.draft);
   const projection = useStore(session, (s) => s.projection);
   const [starting, setStarting] = useState(false);
+  const [mode, setMode] = useState<'mock' | 'live'>('mock');
   const compiled = useMemo(() => compileDraft(draft), [draft]);
   const running = projection !== null && !TERMINAL_RUN_STATUSES.has(projection.status);
 
@@ -32,7 +36,7 @@ export function RunControls({
     try {
       const saved = beforeStart ? await beforeStart() : undefined;
       if (saved === null) return;
-      await session.getState().start(compiled.definition, saved);
+      await session.getState().start(compiled.definition, saved, liveAvailable ? mode : 'mock');
       const runId = session.getState().runId;
       if (runId) onStarted?.(runId);
     } finally {
@@ -55,6 +59,19 @@ export function RunControls({
           {starting ? t('starting') : t('start')}
         </button>
       </div>
+      {liveAvailable ? (
+        <label className="flex items-center gap-2 text-xs">
+          <span className="text-muted">{t('agents')}</span>
+          <select
+            value={mode}
+            onChange={(e) => setMode(e.target.value as 'mock' | 'live')}
+            className="rounded border border-line bg-surface px-1 py-0.5"
+          >
+            <option value="mock">{t('modeMock')}</option>
+            <option value="live">{t('modeLive')}</option>
+          </select>
+        </label>
+      ) : null}
       {!compiled.runnable ? (
         <p className="text-xs text-muted">
           {compiled.definition ? t('notRunnableHere') : t('notRunnable')}

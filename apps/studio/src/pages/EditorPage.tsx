@@ -46,7 +46,7 @@ function download(name: string, text: string) {
 
 function Editor({ record, editor }: { record: CorralRecord; editor: EditorStore }) {
   const t = useTranslations('Editor');
-  const { repository, session, mode } = useServices();
+  const { repository, session, mode, live } = useServices();
   const draft = useStore(editor, (s) => s.draft);
   const [saved, setSaved] = useState({ record, draft: editor.getState().draft });
   const [saving, setSaving] = useState(false);
@@ -184,7 +184,7 @@ function Editor({ record, editor }: { record: CorralRecord; editor: EditorStore 
             </div>
             <aside className="flex min-h-0 flex-col gap-6 overflow-auto border-l border-line p-3">
               <NodeInspector />
-              <RunSide beforeStart={beforeStart} />
+              <RunSide beforeStart={beforeStart} liveAvailable={live} />
             </aside>
           </main>
         </div>
@@ -195,8 +195,10 @@ function Editor({ record, editor }: { record: CorralRecord; editor: EditorStore 
 
 function RunSide({
   beforeStart,
+  liveAvailable,
 }: {
   beforeStart?: (() => Promise<SavedRevision | null>) | undefined;
+  liveAvailable: boolean;
 }) {
   const t = useTranslations('Editor');
   const { session } = useStudioStores();
@@ -205,7 +207,11 @@ function RunSide({
   const target = useSteerTarget(session, chosen);
   return (
     <section aria-labelledby="run-heading" className="flex flex-col gap-3">
-      <RunControls onStarted={() => setChosen(null)} {...(beforeStart ? { beforeStart } : {})} />
+      <RunControls
+        onStarted={() => setChosen(null)}
+        liveAvailable={liveAvailable}
+        {...(beforeStart ? { beforeStart } : {})}
+      />
       <RunView session={session} onSteer={setChosen} />
       {runId ? (
         <Link to="/runs/$runId" params={{ runId }} className="text-xs underline">
