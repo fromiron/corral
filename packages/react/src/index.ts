@@ -3,6 +3,7 @@ export { ArtifactViewer } from './components/ArtifactViewer.tsx';
 export { BudgetInspector } from './components/BudgetInspector.tsx';
 export { CorralCanvas, NODE_DRAG_TYPE } from './components/CorralCanvas.tsx';
 export { EditorToolbar, isTextEditingEvent } from './components/EditorToolbar.tsx';
+export { EffortJudgments } from './components/EffortJudgments.tsx';
 export { NodeInspector } from './components/NodeInspector.tsx';
 export { NodePalette } from './components/NodePalette.tsx';
 export { QuestionsPanel } from './components/QuestionsPanel.tsx';

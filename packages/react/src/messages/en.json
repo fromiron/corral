@@ -575,5 +575,30 @@
       "auto": "Arranged automatically"
     },
     "layoutNote": "Positions only; they do not change what ran."
+  },
+  "Judgments": {
+    "heading": "Effort judgments",
+    "observeOnly": "Observe only. Not applied to any request.",
+    "off": "Effort judgments are off for this run.",
+    "none": "No requests judged yet.",
+    "pending": "Judging…",
+    "failed": "Failed: {reason}",
+    "rule": "rule",
+    "probabilities": "Probabilities",
+    "latency": "{ms} ms",
+    "late": "Arrived after the request finished",
+    "level": {
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High",
+      "xhigh": "Extra high"
+    },
+    "reason": {
+      "timeout": "timed out",
+      "invalid_response": "invalid answer",
+      "provider_error": "provider error",
+      "unavailable": "unavailable",
+      "cancelled": "cancelled"
+    }
   }
 }

@@ -377,3 +377,102 @@ describe('workspace judgment settings (C-068)', () => {
     });
   });
 });
+
+describe('external providers (C-070)', () => {
+  const liveModels = {
+    resolve: (profile: string, mode: 'mock' | 'live') =>
+      mode === 'mock'
+        ? {
+            ok: true as const,
+            snapshot: { profile, provider: null, modelId: null, auth: 'mock' as const },
+          }
+        : {
+            ok: true as const,
+            snapshot: { profile, provider: 'openai', modelId: 'gpt-test', auth: 'oauth' as const },
+          },
+  };
+
+  async function liveRun(judgments: JudgmentConfig) {
+    const clock = new FakeClock();
+    const coordinator = new Coordinator({
+      clock,
+      timers: clock,
+      ids: new SequentialIdFactory(),
+      agents: new ScriptedAgentAdapter({ turns: 1 }),
+      policy: SPEC_HARD_CAPS,
+      models: liveModels,
+      judgments,
+    });
+    const transport = new InProcessTransport(coordinator);
+    const definition = linearCorral(['writer']);
+    definition.input = { ...definition.input, brief: BRIEF };
+    const { runId, receipt } = await transport.startRun({
+      schemaVersion: '0.1',
+      commandId: 'cmd_live',
+      definition,
+      mode: 'live',
+    });
+    if (!runId) throw new Error(JSON.stringify(receipt.error));
+    const events: RunEvent[] = [];
+    transport.subscribe(runId, 0, { onEvent: (e) => events.push(e) });
+    await waitForProjection(transport, runId, terminal);
+    await drain();
+    return events;
+  }
+
+  it('[TC-DEC-003-H] an opted-in external provider runs only in a live run, behind an admitted decision effect', async () => {
+    const external = new ScriptedDecisionProvider({ id: 'remote', privacy: 'external' });
+    const events = await liveRun({
+      providers: [external],
+      settings: {
+        reasoning_effort: { mode: 'observe', providers: ['remote'], allowExternal: true },
+      },
+    });
+    expect(external.asked).toHaveLength(1);
+    const order = events
+      .filter(
+        (e) =>
+          e.type.startsWith('decision.') ||
+          (e.type === 'effect.admitted' && e.payload.kind === 'decision') ||
+          e.type === 'effect.settled',
+      )
+      .map((e) => (e.type === 'effect.admitted' ? `admitted:${e.payload.kind}` : e.type));
+    // The send is admitted before the provider is asked, and settled with the answer.
+    expect(order.slice(order.indexOf('decision.requested'))).toEqual(
+      expect.arrayContaining(['decision.requested', 'admitted:decision', 'decision.observed']),
+    );
+    expect(order.indexOf('admitted:decision')).toBeLessThan(order.indexOf('decision.observed'));
+    const admitted = events.find(
+      (e) => e.type === 'effect.admitted' && e.payload.kind === 'decision',
+    );
+    const effectId = admitted?.type === 'effect.admitted' ? admitted.payload.effectId : '';
+    expect(events.some((e) => e.type === 'effect.settled' && e.payload.effectId === effectId)).toBe(
+      true,
+    );
+    for (const e of events) expect(canonicalJson(e)).not.toContain('vendors');
+  });
+
+  it('[TC-DEC-003-N] external providers are refused in mock runs and in live runs without the opt-in', async () => {
+    const external = new ScriptedDecisionProvider({ id: 'remote', privacy: 'external' });
+    const mock = await run({
+      providers: [external],
+      settings: {
+        reasoning_effort: { mode: 'observe', providers: ['remote'], allowExternal: true },
+      },
+    });
+    await finished(mock);
+    const notOptedIn = await liveRun({
+      providers: [external],
+      settings: { reasoning_effort: { mode: 'observe', providers: ['remote'] } },
+    });
+    expect(external.asked).toHaveLength(0);
+    for (const events of [mock.events, notOptedIn]) {
+      expect(decisionEvents(events)).toHaveLength(0);
+      const started = events.find((e) => e.type === 'run.started');
+      expect(
+        started?.type === 'run.started' &&
+          started.payload.decisions?.reasoning_effort.providers[0]?.reason,
+      ).toBe('external providers run only in live runs the workspace opted in to');
+    }
+  });
+});

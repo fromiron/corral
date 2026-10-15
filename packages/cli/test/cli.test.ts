@@ -270,3 +270,35 @@ describe('CLI command/query parity', () => {
     expect(await runCli(['judge', 'remove'], io)).toBe(1);
   });
 });
+
+describe('judgments in inspect (C-071)', () => {
+  it('[TC-DEC-004-H] inspect --judgments lists each request with its provider and level', async () => {
+    const cwd = workspace();
+    mkdirSync(join(cwd, '.corral'), { recursive: true });
+    writeFileSync(
+      join(cwd, '.corral', 'config.json'),
+      JSON.stringify({
+        schemaVersion: '0.1',
+        decisions: { reasoning_effort: { mode: 'observe', providers: ['local-heuristic'] } },
+      }),
+    );
+    const path = join(cwd, 'workflow.json');
+    writeFileSync(path, JSON.stringify(linearCorral(['writer'])));
+    const output: string[] = [];
+    const io = {
+      cwd,
+      write: (line: string) => output.push(line),
+      signal: new AbortController().signal,
+    };
+    expect(await runCli(['run', path, '--demo', '--port', '0'], io)).toBe(0);
+    const db = openReadOnlyDatabase(join(cwd, '.corral', 'corral.db'));
+    const run = new SqliteRunStore(db).listRuns()[0];
+    db.close();
+    if (!run) throw new Error('expected recorded run');
+    output.length = 0;
+    expect(await runCli(['inspect', run.runId, '--judgments'], io)).toBe(0);
+    const text = output.join('\n');
+    expect(text).toContain('observe only, not applied');
+    expect(text).toMatch(/call_\S+ .*local-heuristic@1 medium/);
+  });
+});

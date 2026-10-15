@@ -135,3 +135,18 @@ test('[TC-UX-001-H] whole-run controls stay reachable at 1280 and 1024px, withou
     .map((v) => `${v.id}: ${v.nodes.length} nodes`);
   expect(serious).toEqual([]);
 });
+
+test('[TC-DEC-004-H] the Budget tab lists each request’s effort judgment as observe only', async ({
+  page,
+}) => {
+  await finishedTeamRun(page);
+  const tabs = page.getByRole('tablist', { name: 'Run details' });
+  await tabs.getByRole('tab', { name: 'Budget' }).click();
+  const judgments = page.getByRole('region', { name: 'Effort judgments' });
+  await expect(judgments).toContainText('Observe only. Not applied to any request.');
+  await expect(judgments.locator('[data-testid^="judgment-call_"]').first()).toContainText(
+    'local-heuristic@1',
+  );
+  // The demo's rule baseline is labelled as a rule, not a model probability.
+  await expect(judgments).toContainText('(rule)');
+});

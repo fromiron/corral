@@ -1,5 +1,5 @@
 import './csp.ts';
-import { Coordinator, InProcessTransport } from '@corral/core';
+import { Coordinator, InProcessTransport, LocalHeuristicProvider } from '@corral/core';
 import { ScriptedAgentAdapter, SequentialIdFactory } from '@corral/testkit';
 import { createDemoReply, DEMO_TURNS } from './demo/script.ts';
 import type { DemoMessage, DemoRequest, DemoResponse } from './demo-protocol.ts';
@@ -14,6 +14,12 @@ const transport = new InProcessTransport(
         const timer = setTimeout(fn, ms);
         return () => clearTimeout(timer);
       },
+    },
+    // The demo shows effort judgments with the rule baseline; the ONNX model runs only in the
+    // local server (CR-003). Observe only: nothing changes what the simulated agents do.
+    judgments: {
+      providers: [new LocalHeuristicProvider()],
+      settings: { reasoning_effort: { mode: 'observe', providers: ['local-heuristic'] } },
     },
     agents: new ScriptedAgentAdapter({
       turns: DEMO_TURNS,
