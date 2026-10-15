@@ -61,6 +61,56 @@ function asRequest(connection: {
   };
 }
 
+/** React Flow nodes for a definition's nodes at the given positions (editor and Run graph). */
+export function flowNodes(
+  definitionNodes: EditorDraft['definition']['nodes'],
+  layout: EditorDraft['layout'],
+  selectedNodeId: string | null,
+): Node<CanvasNodeData>[] {
+  return definitionNodes.map((node) => {
+    const box = layout[node.id] ?? { x: 0, y: 0 };
+    return {
+      id: node.id,
+      type: FLOW_TYPES[node.type],
+      position: { x: box.x, y: box.y },
+      data: {},
+      selected: node.id === selectedNodeId,
+      ariaLabel: `${node.type}: ${node.label}`,
+      // Loop areas sit behind their members so members stay clickable.
+      zIndex: node.type === 'loop' ? 0 : 1,
+      ...(node.type === 'loop' ? { width: box.width ?? 460, height: box.height ?? 260 } : {}),
+    };
+  });
+}
+
+/** Control edges, and call links drawn apart from them (Spec §5.2). */
+export function flowEdges(
+  definition: Pick<EditorDraft['definition'], 'controlEdges' | 'capabilityLinks'>,
+  linkLabel: (kind: CapabilityLink['kind']) => string,
+): Edge[] {
+  // Port names are printed at each handle, so control edges carry no labels of their own.
+  const control = definition.controlEdges.map((edge) => ({
+    id: edge.id,
+    source: edge.source,
+    sourceHandle: edge.sourcePort,
+    target: edge.target,
+    targetHandle: edge.targetPort,
+    markerEnd: { type: MarkerType.ArrowClosed },
+  }));
+  const links = definition.capabilityLinks.map((link) => ({
+    id: `${LINK_PREFIX}${link.id}`,
+    source: link.sourceNodeId,
+    sourceHandle: link.kind,
+    target: link.targetNodeId,
+    targetHandle: 'callable',
+    label: linkLabel(link.kind),
+    className: 'corral-call-link',
+    style: { strokeDasharray: '6 4' },
+    markerEnd: { type: MarkerType.Arrow },
+  }));
+  return [...control, ...links];
+}
+
 export function CorralCanvas() {
   const t = useTranslations('Canvas');
   const { editor } = useStudioStores();
@@ -69,48 +119,15 @@ export function CorralCanvas() {
   const { screenToFlowPosition } = useReactFlow();
   const { definition, layout } = draft;
 
-  const nodes = useMemo<Node<CanvasNodeData>[]>(
-    () =>
-      definition.nodes.map((node) => {
-        const box = layout[node.id] ?? { x: 0, y: 0 };
-        return {
-          id: node.id,
-          type: FLOW_TYPES[node.type],
-          position: { x: box.x, y: box.y },
-          data: {},
-          selected: node.id === selectedNodeId,
-          ariaLabel: `${node.type}: ${node.label}`,
-          // Loop areas sit behind their members so members stay clickable.
-          zIndex: node.type === 'loop' ? 0 : 1,
-          ...(node.type === 'loop' ? { width: box.width ?? 460, height: box.height ?? 260 } : {}),
-        };
-      }),
+  const nodes = useMemo(
+    () => flowNodes(definition.nodes, layout, selectedNodeId),
     [definition.nodes, layout, selectedNodeId],
   );
-
-  const edges = useMemo<Edge[]>(() => {
-    // Port names are printed at each handle, so control edges carry no labels of their own.
-    const control = definition.controlEdges.map((edge) => ({
-      id: edge.id,
-      source: edge.source,
-      sourceHandle: edge.sourcePort,
-      target: edge.target,
-      targetHandle: edge.targetPort,
-      markerEnd: { type: MarkerType.ArrowClosed },
-    }));
-    const links = definition.capabilityLinks.map((link) => ({
-      id: `${LINK_PREFIX}${link.id}`,
-      source: link.sourceNodeId,
-      sourceHandle: link.kind,
-      target: link.targetNodeId,
-      targetHandle: 'callable',
-      label: t(`linkLabel.${link.kind}`),
-      className: 'corral-call-link',
-      style: { strokeDasharray: '6 4' },
-      markerEnd: { type: MarkerType.Arrow },
-    }));
-    return [...control, ...links];
-  }, [definition.controlEdges, definition.capabilityLinks, t]);
+  const { controlEdges, capabilityLinks } = definition;
+  const edges = useMemo(
+    () => flowEdges({ controlEdges, capabilityLinks }, (kind) => t(`linkLabel.${kind}`)),
+    [controlEdges, capabilityLinks, t],
+  );
 
   const onNodesChange = useCallback(
     (changes: NodeChange<Node<CanvasNodeData>>[]) => {

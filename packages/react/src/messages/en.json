@@ -73,7 +73,8 @@
       "idle": "Not run",
       "active": "Running",
       "done": "Done",
-      "failed": "Failed"
+      "failed": "Failed",
+      "executions": "{count, plural, one {# execution} other {# executions}}"
     }
   },
   "Inspector": {
@@ -332,7 +333,26 @@
     "heading": "Run {runId}",
     "missing": "This run is not available here. Runs of the in-browser demo end when the page reloads.",
     "openCorral": "Open the Corral",
-    "loading": "Loading the run…"
+    "loading": "Loading the run…",
+    "summary": "Run summary",
+    "working": "Working now: {labels}",
+    "idle": "Nothing is running",
+    "loopRound": "{label}: round {round} of {max}",
+    "tasks": "Tasks completed: {done} of {total}",
+    "requests": "{count, plural, one {# model request} other {# model requests}} in flight",
+    "executions": "Executions",
+    "nodeExecutions": "{label} executions",
+    "noNodeExecutions": "This node has not run in this run.",
+    "closeNode": "Close",
+    "executionMissing": "{executionId} is not part of this run. Choose an execution from the list.",
+    "tabs": {
+      "label": "Run details",
+      "output": "Output",
+      "tasks": "Tasks",
+      "questions": "Questions",
+      "activity": "Activity",
+      "budget": "Budget"
+    }
   },
   "Timeline": {
     "heading": "Timeline",
@@ -547,5 +567,13 @@
       "steerAction": "Steer the round 2 Writer",
       "pauseAtRound2": "Pause the run when the round 2 Writer starts"
     }
+  },
+  "RunCanvas": {
+    "label": "Run graph",
+    "layout": {
+      "saved": "Layout from the saved Corral",
+      "auto": "Arranged automatically"
+    },
+    "layoutNote": "Positions only; they do not change what ran."
   }
 }

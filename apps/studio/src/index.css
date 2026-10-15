@@ -2,3 +2,26 @@
 @import "@xyflow/react/dist/style.css";
 @import "@corral/react/theme.css";
 @source "../../../packages/react/src";
+
+/* Run page (C-066): graph in the middle, call tree beside it, details docked below, and the
+   selected item's context on the right. Below 1280px the tree moves under the graph. */
+.run-layout {
+  display: grid;
+  min-height: 0;
+  grid-template-columns: 18rem minmax(0, 1fr) 22rem;
+  grid-template-rows: minmax(0, 1fr) 15rem;
+  grid-template-areas:
+    "tree canvas side"
+    "dock dock side";
+}
+
+@media (max-width: 1279px) {
+  .run-layout {
+    grid-template-columns: minmax(0, 1fr) 20rem;
+    grid-template-rows: minmax(14rem, 1fr) 9rem 13rem;
+    grid-template-areas:
+      "canvas side"
+      "tree side"
+      "dock side";
+  }
+}

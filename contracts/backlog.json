@@ -1252,8 +1252,8 @@
       "packages/react/src/components/"
     ],
     "done": "스냅샷의 모든 노드가 보이고 상태·인스턴스 수가 projection과 일치한다. 편집 불가. 스트림 프레임에 캔버스 commit 0",
-    "status": "planned",
-    "evidence": null
+    "status": "implemented",
+    "evidence": "specs/010-first-run/plan.md"
   },
   {
     "id": "C-066",
@@ -1271,7 +1271,7 @@
       "packages/react/src/components/"
     ],
     "done": "헤더의 Run 전체 Pause/Cancel, 그래프·실행 트리·우측 컨텍스트 패널·하단 탭. 1280·1024px에서 핵심 버튼이 보이고 axe 위반 0",
-    "status": "planned",
-    "evidence": null
+    "status": "implemented",
+    "evidence": "specs/010-first-run/plan.md"
   }
 ]

@@ -134,3 +134,27 @@ A1(1–3)만 먼저 PR로 낼 수 있다. A2는 A1의 템플릿이 있어야 의
 | 브라우저 수동 확인(1280×800) | 기본 속도에서 체크박스로 2회차 Writer 시작 시 Paused, Steer 단계 Now 확인 |
 
 `pnpm release:gate`와 `pnpm test:performance`는 아직 실행하지 않았다. A2 후 함께 실행한다.
+
+## 9. 구현 메모 (A2)
+
+- **기존 결함 수정:** `useSteerTarget`은 `?execution=`이 Run에 없는 실행을 가리키면 다른 실행(최근 활성 실행)으로 조용히 대체했다. 오래된 링크가 Reins를 엉뚱한 대상으로 향하게 할 수 있어(AGENTS 6) 이제 null을 돌려주고, Run 화면은 "이 Run에 없는 실행"이라는 alert를 보인다.
+- **읽기 전용 그래프:** `RunCanvas`는 노드 드래그·연결·삭제·Loop 크기 조절을 모두 끈다. React Flow의 custom handle은 노드의 `connectable`을 따르지 않으므로 `NodeViews`가 `isConnectable`을 handle에 전달하도록 바꿨다. 편집기는 기본값 true라 동작이 같다.
+- **노드별 실행 수:** 노드에 "N executions"를 표시한다(2개 이상일 때). 편집기 캔버스의 실행 상태 겹침에도 함께 나온다. 노드마다 자기 숫자만 구독하므로 스트림 프레임은 캔버스를 다시 그리지 않는다.
+- **레이아웃:** 저장된 레이아웃이 Run의 모든 노드를 덮으면 그대로 쓰고, 하나라도 없으면 전체를 자동 배치한다. 섞어 쓰면 겹칠 수 있어서다. 화면 오른쪽 위에 어느 쪽인지 표시한다.
+- **헤더:** 진행률(%) 없이 지금 일하는 노드, Loop 회차(마지막 loop_limit 패치 반영), 완료 Task 수, 진행 중 모델 요청 수를 보인다. Run 전체 Pause/Cancel은 헤더에만 있다.
+- **하단 탭:** Output·Tasks·Questions·Activity·Budget. WAI-ARIA tabs(화살표·Home·End). Run이 성공하면 사용자가 탭을 고르지 않은 한 Output이 열린다. 기존 server E2E `collaboration.spec.ts`는 Questions·Tasks 탭을 여는 클릭만 추가했고 단언은 바꾸지 않았다.
+- **알려진 한계:** 그래프는 처음 열 때만 화면에 맞춘다(fitView). 창 크기를 바꾸면 "fit view" 버튼을 눌러야 한다. Decision 노드는 실행이 없어 상태 표시가 없다. 헤더의 `Reason: validation_passed` 같은 내부 코드 문구와 Timeline 이벤트명 문장화는 A4 범위다.
+
+## 10. 검증 기록 (A2, 2026-10-15)
+
+| 검사 | 결과 |
+|---|---|
+| 새 테스트를 구현 전에 실행 | unit(모듈 없음), E2E 8개 실패 확인(demo 5, server 2, 탭이 필요한 기존 collaboration 1) |
+| `pnpm test` | 470 passed (69 files) |
+| `pnpm exec playwright test` chromium·firefox·server | 66 passed. 마지막 CSS 폭 조정 후 demo·accessibility·run-page 36 passed |
+| `pnpm test:performance` | 2 passed (production fixed load, 500ms stall 반례) |
+| `pnpm typecheck`, `biome check .`, `pnpm build` | 통과 |
+| `pnpm spec:check` | PASS (764 checks), 112/112 |
+| 브라우저 수동 확인 | 1280×800, 1024×768에서 헤더 Pause/Cancel 표시, 노드 클릭 → 실행 목록, 승인 대기 표시 |
+
+`pnpm release:gate`(SBOM·라이선스 포함 전체 gate)는 실행하지 않았다.
