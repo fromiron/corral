@@ -1,4 +1,5 @@
 export * from './commands.ts';
+export * from './decisions.ts';
 export * from './definition.ts';
 export * from './errors.ts';
 export * from './events.ts';

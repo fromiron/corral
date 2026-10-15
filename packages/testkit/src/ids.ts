@@ -16,6 +16,7 @@ const PREFIX: Record<IdKind, string> = {
   effect: 'eff',
   question: 'q',
   approval: 'appr',
+  decision: 'dec',
 };
 
 /**

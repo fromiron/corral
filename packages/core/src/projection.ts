@@ -6,6 +6,7 @@ import type {
   ExecutionStatus,
   NormalizedUsage,
   OutputContract,
+  RunDecisionSettings,
   RunEvent,
   RunLimits,
   RunStatus,
@@ -105,9 +106,26 @@ export interface ToolCallView {
   resultRef?: string | null;
 }
 
+/** One reasoning_effort judgment of one request (CR-003). Observed, never applied. */
+export interface DecisionView {
+  decisionId: string;
+  provider: string;
+  privacy: 'local' | 'external';
+  executionId: string;
+  modelCallId: string;
+  status: 'requested' | 'observed' | 'failed';
+  answer: 'low' | 'medium' | 'high' | 'xhigh' | null;
+  probabilities: { low: number; medium: number; high: number; xhigh: number } | null;
+  evidenceLevel: 'model_probability' | 'rule' | 'none' | null;
+  reason: string | null;
+  latencyMs: number | null;
+  readyBeforeDispatch: boolean | null;
+  afterRequestFinished: boolean | null;
+}
+
 export interface EffectView {
   effectId: string;
-  kind: 'model_request' | 'tool' | 'spawn';
+  kind: 'model_request' | 'tool' | 'spawn' | 'decision';
   scope: string;
   epoch: number;
   dispatched: boolean;
@@ -204,6 +222,10 @@ export interface RunProjection {
   /** Set when a backend restart ended the run (RUN-007). */
   interruptedBy: string | null;
   output: { nodeId: string; artifactVersionIds: string[] } | null;
+  /** Judgment settings fixed at run start; null when the runtime had none (CR-003). */
+  decisionSettings: RunDecisionSettings | null;
+  /** reasoning_effort judgments by decisionId, in commit order. */
+  decisions: Record<string, DecisionView>;
 }
 
 export class ProjectionGapError extends Error {
@@ -252,6 +274,8 @@ export function emptyProjection(runId: string): RunProjection {
     loopIterations: {},
     interruptedBy: null,
     output: null,
+    decisionSettings: null,
+    decisions: {},
   };
 }
 
@@ -282,6 +306,7 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
         mode: event.payload.mode,
         limits: event.payload.limits,
         currentCriteriaVersionId: event.payload.criteriaVersionId ?? null,
+        decisionSettings: event.payload.decisions ?? null,
       };
     case 'run.state_changed': {
       const { to, reasonCode } = event.payload;
@@ -702,6 +727,62 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
     case 'cancel.confirmed':
     case 'observation.late':
       return p;
+    case 'decision.requested': {
+      const { decisionId, provider, privacy, subject } = event.payload;
+      const view: DecisionView = {
+        decisionId,
+        provider,
+        privacy,
+        executionId: subject.executionId,
+        modelCallId: subject.modelCallId,
+        status: 'requested',
+        answer: null,
+        probabilities: null,
+        evidenceLevel: null,
+        reason: null,
+        latencyMs: null,
+        readyBeforeDispatch: null,
+        afterRequestFinished: null,
+      };
+      return { ...p, decisions: { ...(p.decisions ?? {}), [decisionId]: view } };
+    }
+    case 'decision.observed': {
+      const current = p.decisions?.[event.payload.decisionId];
+      if (!current) return p;
+      const o = event.payload;
+      return {
+        ...p,
+        decisions: {
+          ...p.decisions,
+          [o.decisionId]: {
+            ...current,
+            status: 'observed',
+            answer: o.answer,
+            probabilities: o.probabilities,
+            evidenceLevel: o.evidenceLevel,
+            latencyMs: o.latencyMs,
+            readyBeforeDispatch: o.readyBeforeDispatch,
+            afterRequestFinished: o.afterRequestFinished,
+          },
+        },
+      };
+    }
+    case 'decision.failed': {
+      const current = p.decisions?.[event.payload.decisionId];
+      if (!current) return p;
+      return {
+        ...p,
+        decisions: {
+          ...p.decisions,
+          [event.payload.decisionId]: {
+            ...current,
+            status: 'failed',
+            reason: event.payload.reason,
+            latencyMs: event.payload.latencyMs,
+          },
+        },
+      };
+    }
   }
 }
 

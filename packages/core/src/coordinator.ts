@@ -43,6 +43,7 @@ import {
   type GateDecision,
   type ModelGateView,
   notifyObservers,
+  type ObserverContext,
   resolveGates,
   runGates,
   type ToolGateView,
@@ -51,6 +52,12 @@ import { admitModelRequest, settlementFor } from './budget.ts';
 import { canonicalJson } from './canonical-json.ts';
 import type { CompiledPlan } from './compiler/index.ts';
 import { type InstallationPolicy, limitViolations, SPEC_HARD_CAPS } from './config.ts';
+import {
+  createDecisionHub,
+  type JudgmentConfig,
+  requestTiming,
+  resolveDecisionSettings,
+} from './decisions/index.ts';
 import { definitionHash } from './definition-hash.ts';
 import { LogicalDeadline } from './limits.ts';
 import { applyEvent, emptyProjection, type RunProjection } from './projection.ts';
@@ -158,6 +165,8 @@ export interface CoordinatorDeps {
   timers?: Scheduler;
   /** Admission gates and observers (ADR-024). Defaults to today's checks, no observers. */
   admission?: AdmissionConfig;
+  /** reasoning_effort judgment providers and workspace settings (CR-003). Observe only. */
+  judgments?: JudgmentConfig;
 }
 
 const NO_DEADLINES: Scheduler = { after: () => () => {} };
@@ -224,6 +233,8 @@ interface LiveRun {
   approvals: Map<string, (decision: 'approve' | 'reject') => void>;
   /** The inputs each execution was started with: what a reviewer actually reviewed. */
   inputsByExecution: Map<string, ResolvedInput[]>;
+  /** What each execution was started with, for judgments of its requests (CR-003). */
+  startInputs: Map<string, AgentStartInput>;
   /** Why a Loop stopped at its cap: the person declined, or the hard cap was reached. */
   limits: RunLimits;
   criteriaVersionId: string;
@@ -303,6 +314,7 @@ export class Coordinator {
   private readonly decisions: DecisionPolicy | undefined;
   private readonly gates: AdmissionGates;
   private readonly observers: readonly AdmissionObserver[];
+  private readonly judgments: JudgmentConfig | undefined;
   private readonly corrals: DefinitionSource | undefined;
   private readonly sessionId: string;
   private readonly policy: InstallationPolicy;
@@ -329,7 +341,20 @@ export class Coordinator {
     this.timers = deps.timers ?? NO_DEADLINES;
     this.tools = deps.tools;
     this.gates = resolveGates(deps.admission);
-    this.observers = deps.admission?.observers ?? [];
+    this.judgments = deps.judgments;
+    this.observers = [
+      ...(deps.admission?.observers ?? []),
+      ...(deps.judgments
+        ? [
+            createDecisionHub({
+              providers: deps.judgments.providers,
+              settingsOf: (runId) => this.live.get(runId)?.projection.decisionSettings ?? null,
+              startInputOf: (runId, executionId) =>
+                this.live.get(runId)?.startInputs.get(executionId) ?? null,
+            }),
+          ]
+        : []),
+    ];
     this.recover();
   }
 
@@ -446,6 +471,7 @@ export class Coordinator {
       cancelRequested: new Set(),
       approvals: new Map(),
       inputsByExecution: new Map(),
+      startInputs: new Map(),
       capStop: null,
       limits: { ...definition.limits },
       criteriaVersionId: snapshot.criteriaVersionId,
@@ -474,6 +500,14 @@ export class Coordinator {
           modelProfiles: Object.values(models),
           limits: definition.limits,
           criteriaVersionId: snapshot.criteriaVersionId,
+          ...(this.judgments
+            ? {
+                decisions: resolveDecisionSettings(this.judgments, {
+                  mode: request.mode,
+                  maxModelCalls: definition.limits.maxModelCalls,
+                }),
+              }
+            : {}),
         },
       },
       runState('created', 'validating', 'run_requested'),
@@ -1499,8 +1533,60 @@ export class Coordinator {
       extra?.(events);
     });
     this.publish(run, projection);
-    notifyObservers(this.observers, projection, events);
+    notifyObservers(this.observers, projection, events, () => this.observerContext(run));
     return events;
+  }
+
+  /** What observers may do: record decision facts while the run is open (ADR-024). */
+  private observerContext(run: LiveRun): ObserverContext {
+    const open = () =>
+      this.live.get(run.runId) === run && !TERMINAL_RUN_STATUSES.has(run.projection.status);
+    return {
+      runId: run.runId,
+      isOpen: open,
+      record: (drafts) => {
+        if (!open() || this.storageError) return false;
+        const allowed = new Set([
+          'decision.requested',
+          'decision.observed',
+          'decision.failed',
+          'limit.reached',
+        ]);
+        if (drafts.some((d) => !allowed.has(d.type))) return false;
+        const timed = drafts.map((d) =>
+          d.type === 'decision.observed'
+            ? {
+                ...d,
+                payload: {
+                  ...d.payload,
+                  ...requestTiming(
+                    run.projection,
+                    String((d.payload.subject as { modelCallId: string }).modelCallId),
+                  ),
+                },
+              }
+            : d,
+        );
+        try {
+          this.commit(run, timed as unknown as EventDraft[]);
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      onCancel: (executionId, fn) => {
+        const listeners = run.cancelListeners.get(executionId) ?? new Set<() => void>();
+        run.cancelListeners.set(executionId, listeners);
+        listeners.add(fn);
+        if (run.cancelRequested.has(executionId)) fn();
+        return () => {
+          listeners.delete(fn);
+        };
+      },
+      after: (ms, fn) => this.timers.after(ms, fn),
+      monotonicMs: () => this.clock.monotonicMs(),
+      nextId: () => this.ids.next('decision'),
+    };
   }
 
   private publish(run: LiveRun, projection: RunProjection) {
@@ -1888,6 +1974,7 @@ export class Coordinator {
       inputs: [...spec.given, ...this.resolveInputs(run, node.inputBindings, spec.iterationId)],
     };
     run.inputsByExecution.set(executionId, input.inputs);
+    run.startInputs.set(executionId, input);
     run.assignments.set(executionId, spec);
     const drafts: EventDraft[] = [
       {

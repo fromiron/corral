@@ -1,3 +1,10 @@
+import type {
+  DecisionPrivacy,
+  DecisionQuestionKind,
+  DecisionSubject,
+  EffortFeatures,
+  EffortLevel,
+} from './decisions.ts';
 import type { AgentRole, InputBindingKind } from './definition.ts';
 import type { CommandError } from './errors.ts';
 import type { ModelProfileSnapshot } from './events.ts';
@@ -26,7 +33,8 @@ export type IdKind =
   | 'iteration'
   | 'effect'
   | 'question'
-  | 'approval';
+  | 'approval'
+  | 'decision';
 
 export interface IdFactory {
   next(kind: IdKind): string;
@@ -161,4 +169,40 @@ export interface AgentHandle {
 
 export interface AgentAdapter {
   start(input: AgentStartInput, host: AgentHost): Promise<AgentHandle>;
+}
+
+// ── decision providers (CR-003, ADR-025) ───────────────────────────────────
+
+/** The question a provider gets for one model request. The excerpt never reaches events. */
+export interface EffortQuestion {
+  questionKind: 'reasoning_effort';
+  questionVersion: 1;
+  candidates: readonly EffortLevel[];
+  subject: DecisionSubject & { runId: string };
+  input: {
+    features: EffortFeatures;
+    /** Brief, assignment, question and delivered directives, at most 1,500 characters. */
+    excerpt: string;
+  };
+}
+
+/**
+ * Answers decision questions. Declares what it answers; the Coordinator never sends anything
+ * else. `decide` returns the raw answer, which the Coordinator validates (DecisionAnswer).
+ */
+export interface DecisionProvider {
+  id: string;
+  version: string;
+  privacy: DecisionPrivacy;
+  timeoutMs: number;
+  questions: readonly { kind: DecisionQuestionKind; version: number }[];
+  /** True, or why it cannot answer right now (not installed, unsupported platform, …). */
+  available(): true | string;
+  decide(question: EffortQuestion, cancellation: DecisionCancellation): Promise<unknown>;
+}
+
+/** Set when the judgment is no longer wanted (timeout, cancelled execution, run ended). */
+export interface DecisionCancellation {
+  readonly aborted: boolean;
+  onCancel(fn: () => void): () => void;
 }

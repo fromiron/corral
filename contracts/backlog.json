@@ -1311,7 +1311,7 @@
       "contracts/event-catalog.json"
     ],
     "done": "decision.requested/observed/failed, effect kind decision, limit decision_calls, run.started.decisions가 Zod·JSON Schema·catalog 3자 parity. 잘못된 응답은 invalid_response",
-    "status": "planned",
+    "status": "implemented",
     "evidence": "docs/change-requests/CR-003-admission-hooks-effort-observe.md"
   },
   {
@@ -1330,7 +1330,7 @@
       "packages/testkit/src/"
     ],
     "done": "observe와 off의 permit·예약·worker 요청 동일. Run 종결 뒤 결과 미기록. local-heuristic은 정확도를 주장하지 않는 규칙 기준선",
-    "status": "planned",
+    "status": "implemented",
     "evidence": "docs/change-requests/CR-003-admission-hooks-effort-observe.md"
   },
   {
@@ -1366,6 +1366,24 @@
       "packages/cli/src/"
     ],
     "done": "요청별 provider 판정·지연·실패를 \"not applied\"와 함께 표시. 실패도 같은 무게. axe 위반 0",
+    "status": "planned",
+    "evidence": "docs/change-requests/CR-003-admission-hooks-effort-observe.md"
+  },
+  {
+    "id": "C-072",
+    "phase": "P11",
+    "title": "mixdog effort judge ONNX provider(local-model)·모델 설치·sha256 검증·NOTICE",
+    "dependsOn": [
+      "C-069"
+    ],
+    "requirements": [
+      "CRL-DEC-001",
+      "CRL-DEC-002"
+    ],
+    "files": [
+      "packages/effort-judge/"
+    ],
+    "done": "manifest의 sha256·크기로 검증한 설치만 로드. 미설치·지원하지 않는 플랫폼은 available=false 사유 기록. CI는 모델을 내려받지 않고 fake session으로 검증, 실모델은 opt-in",
     "status": "planned",
     "evidence": "docs/change-requests/CR-003-admission-hooks-effort-observe.md"
   }

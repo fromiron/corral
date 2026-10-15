@@ -25,6 +25,13 @@ export {
   SIMULATED_MODELS,
   type StartRunResult,
 } from './coordinator.ts';
+export { LocalHeuristicProvider } from './decisions/heuristic.ts';
+export {
+  createDecisionHub,
+  effortInput,
+  type JudgmentConfig,
+  resolveDecisionSettings,
+} from './decisions/index.ts';
 export { definitionHash } from './definition-hash.ts';
 export * from './history.ts';
 export * from './limits.ts';
