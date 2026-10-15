@@ -1,0 +1,86 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "includes": [
+      "apps/**",
+      "packages/**",
+      "tools/**/*.ts",
+      "tools/**/*.json",
+      "*.ts",
+      "biome.json",
+      "package.json",
+      "tsconfig.base.json"
+    ]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single"
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended"
+    }
+  },
+  "assist": {
+    "enabled": true
+  },
+  "overrides": [
+    {
+      "includes": ["packages/contracts/**", "packages/core/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["node:*"],
+                    "message": "contracts/core must stay runtime-neutral (ADR-014). Inject the capability instead."
+                  }
+                ],
+                "paths": {
+                  "react": "contracts/core must not depend on React (ADR-014).",
+                  "react-dom": "contracts/core must not depend on React (ADR-014).",
+                  "fs": "contracts/core must stay runtime-neutral (ADR-014).",
+                  "path": "contracts/core must stay runtime-neutral (ADR-014).",
+                  "crypto": "contracts/core must stay runtime-neutral (ADR-014).",
+                  "buffer": "contracts/core must stay runtime-neutral (ADR-014).",
+                  "child_process": "contracts/core must stay runtime-neutral (ADR-014)."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["**/test/**", "**/*.test.ts", "**/*.test.tsx"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noExplicitAny": "off"
+          }
+        }
+      }
+    }
+  ],
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    }
+  }
+}

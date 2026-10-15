@@ -1,0 +1,119 @@
+{
+  "Studio": {
+    "title": "Corral Studio",
+    "demoBadge": "Demo / Simulated agents",
+    "demoNote": "Agents are simulated in your browser. No model or network calls are made."
+  },
+  "Palette": {
+    "heading": "Nodes",
+    "hint": "Drag a node onto the canvas, or use Add.",
+    "agent": "Agent",
+    "agentDescription": "Does one task with a role and prompt",
+    "output": "Output",
+    "outputDescription": "Receives the final submitted version",
+    "add": "Add {kind}"
+  },
+  "Canvas": {
+    "label": "Corral canvas",
+    "empty": "Drop an Agent and an Output here, then connect them.",
+    "rejected": {
+      "unknownNode": "That node no longer exists.",
+      "outputHasNoOutgoingPort": "An Output is the end of the flow; it has no next step.",
+      "selfConnection": "A node cannot connect to itself.",
+      "duplicateOutgoing": "This node already has a next step. Delete that connection first.",
+      "duplicateIncoming": "This node already has an input connection.",
+      "cycle": "This connection would create a loop. Loops come with the Loop node."
+    },
+    "connected": "Connected {source} to {target}.",
+    "nodeStatus": {
+      "idle": "Not run",
+      "active": "Running",
+      "done": "Done",
+      "failed": "Failed"
+    }
+  },
+  "Inspector": {
+    "heading": "Properties",
+    "none": "Select a node to edit it.",
+    "label": "Name",
+    "prompt": "Role prompt",
+    "brief": "Run brief",
+    "delete": "Delete node",
+    "outputNote": "The Output receives the version submitted by the agent connected into it."
+  },
+  "Validation": {
+    "heading": "Before running",
+    "ok": "Ready to run.",
+    "show": "Show"
+  },
+  "Run": {
+    "heading": "Run",
+    "start": "Run",
+    "starting": "Starting…",
+    "rejected": "The run was not started: {message}",
+    "status": "Run status",
+    "executions": "Executions",
+    "noExecutions": "No executions yet.",
+    "requests": "{count, plural, =0 {no model requests} one {# model request} other {# model requests}}",
+    "steerThis": "Steer",
+    "output": "Output",
+    "outputPending": "The output appears when the run finishes.",
+    "streamError": "Live updates stopped: {message}"
+  },
+  "Reins": {
+    "heading": "Reins",
+    "noTarget": "Start a run and choose an execution to steer.",
+    "target": "Target",
+    "delivery": "Delivery",
+    "deliveryValue": "next model request",
+    "scope": "Scope",
+    "scopeValue": "this execution only",
+    "instruction": "Instruction",
+    "instructionHint": "Enter sends, Shift+Enter adds a line.",
+    "send": "Send",
+    "sending": "Sending…",
+    "history": "Instructions for this execution",
+    "noHistory": "No instructions yet.",
+    "deliveredNote": "Delivered means the instruction was included in a model request. It does not mean the model followed it.",
+    "receipt": {
+      "accepted": "Accepted",
+      "queued": "Waiting for the next model request",
+      "applied": "Included in a model request",
+      "rejected": "Rejected: {message}",
+      "superseded": "Superseded",
+      "expired": "Not delivered: the execution finished first",
+      "cancelled": "Not delivered: cancelled"
+    },
+    "finished": "This execution has finished. New instructions can no longer be delivered."
+  },
+  "Status": {
+    "created": "Created",
+    "validating": "Validating",
+    "running": "Running",
+    "pausing": "Pausing",
+    "paused": "Paused",
+    "awaiting_user": "Waiting for you",
+    "cancelling": "Cancelling",
+    "succeeded": "Succeeded",
+    "failed": "Failed",
+    "cancelled": "Cancelled",
+    "interrupted": "Interrupted",
+    "queued": "Queued",
+    "ready": "Ready",
+    "active": "Active",
+    "waiting_children": "Waiting for sub-agents",
+    "waiting_message": "Waiting for an answer",
+    "waiting_approval": "Waiting for approval",
+    "accepted": "Accepted",
+    "attached_to_request": "Attached to request",
+    "delivered": "Delivered",
+    "not_delivered": "Not delivered",
+    "expired": "Expired",
+    "rejected": "Rejected",
+    "delivery_unknown": "Delivery unknown",
+    "in_progress": "In progress",
+    "blocked": "Blocked",
+    "submitted": "Submitted",
+    "completed": "Completed"
+  }
+}
