@@ -12,6 +12,7 @@ import {
   NodePalette,
   ReinsPanel,
   RunControls,
+  type RunSessionStore,
   RunView,
   type SavedRevision,
   StudioStoresProvider,
@@ -19,11 +20,13 @@ import {
   useStudioStores,
   ValidationPanel,
 } from '@corral/react';
-import { Link, useBlocker } from '@tanstack/react-router';
+import { Link, useBlocker, useNavigate } from '@tanstack/react-router';
 import { ReactFlowProvider } from '@xyflow/react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
+import { DemoGuide } from '../demo/DemoGuide.tsx';
+import { DEMO_TEMPLATE_IDS, type DemoTemplateId } from '../demo/templates.ts';
 import { demoRoute, editorRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
 
@@ -38,13 +41,58 @@ export function EditorPage() {
 }
 
 export function DemoPage() {
-  const record = demoRoute.useLoaderData();
+  const { record, template } = demoRoute.useLoaderData();
   const editor = useMemo(
     () => createEditorStore(draftFromDefinition(record.definition, record.layout)),
     [record],
   );
-  return <Editor key={record.corralId} record={record} editor={editor} />;
+  return (
+    <Editor
+      key={record.corralId}
+      record={record}
+      editor={editor}
+      toolbar={<TemplatePicker current={template} />}
+      guide={
+        template === 'research-team'
+          ? (session, onSteer) => (
+              <DemoGuide session={session} corralId={record.corralId} onSteer={onSteer} />
+            )
+          : undefined
+      }
+    />
+  );
 }
+
+/** Switches the demo between its templates (C-063). */
+function TemplatePicker({ current }: { current: DemoTemplateId }) {
+  const t = useTranslations('Demo');
+  const navigate = useNavigate();
+  return (
+    <label className="flex items-center gap-2 text-xs">
+      <span className="text-muted">{t('template')}</span>
+      <select
+        value={current}
+        onChange={(event) => {
+          const template = event.target.value as DemoTemplateId;
+          void navigate({
+            to: '/demo',
+            search: (search) =>
+              template === 'starter' ? { ...search, template } : { ...search, template: undefined },
+          });
+        }}
+        className="rounded-md border border-line bg-surface px-2 py-1"
+      >
+        {DEMO_TEMPLATE_IDS.map((id) => (
+          <option key={id} value={id}>
+            {t(`templates.${id}`)}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+type GuideSlot = (session: RunSessionStore, onSteer: (executionId: string) => void) => ReactNode;
 
 function download(name: string, text: string) {
   const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
@@ -55,7 +103,19 @@ function download(name: string, text: string) {
   URL.revokeObjectURL(url);
 }
 
-function Editor({ record, editor }: { record: CorralRecord; editor: EditorStore }) {
+function Editor({
+  record,
+  editor,
+  toolbar,
+  guide,
+}: {
+  record: CorralRecord;
+  editor: EditorStore;
+  /** Extra controls for the toolbar (the demo's template picker). */
+  toolbar?: ReactNode;
+  /** A guide shown above the run controls (the demo team's guide). */
+  guide?: GuideSlot | undefined;
+}) {
   const t = useTranslations('Editor');
   const { repository, session, mode, live } = useServices();
   const draft = useStore(editor, (s) => s.draft);
@@ -158,6 +218,7 @@ function Editor({ record, editor }: { record: CorralRecord; editor: EditorStore 
               {dirty ? `● ${t('unsaved')}` : t('saved')}
             </span>
             <EditorToolbar />
+            {toolbar}
             <div className="ml-auto flex items-center gap-2">
               <button
                 type="button"
@@ -195,7 +256,7 @@ function Editor({ record, editor }: { record: CorralRecord; editor: EditorStore 
             </div>
             <aside className="flex min-h-0 flex-col gap-6 overflow-auto border-l border-line p-3">
               <NodeInspector />
-              <RunSide beforeStart={beforeStart} liveAvailable={live} />
+              <RunSide beforeStart={beforeStart} liveAvailable={live} guide={guide} />
             </aside>
           </main>
         </div>
@@ -207,9 +268,11 @@ function Editor({ record, editor }: { record: CorralRecord; editor: EditorStore 
 function RunSide({
   beforeStart,
   liveAvailable,
+  guide,
 }: {
   beforeStart?: (() => Promise<SavedRevision | null>) | undefined;
   liveAvailable: boolean;
+  guide?: GuideSlot | undefined;
 }) {
   const t = useTranslations('Editor');
   const { session } = useStudioStores();
@@ -219,6 +282,7 @@ function RunSide({
   const [viewing, setViewing] = useState<string | null>(null);
   return (
     <section aria-labelledby="run-heading" className="flex flex-col gap-3">
+      {guide?.(session, setChosen)}
       <RunControls
         onStarted={() => {
           setChosen(null);

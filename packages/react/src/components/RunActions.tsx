@@ -5,7 +5,14 @@ import { useStore } from 'zustand';
 import type { RunSessionStore, SessionCommand } from '../run/session.ts';
 import { CommandReceipts } from './CommandReceipts.tsx';
 
-export function RunActions({ session }: { session: RunSessionStore }) {
+/** Whole-run Pause/Resume and Cancel. `compact` drops the explanations (the Run page header). */
+export function RunActions({
+  session,
+  compact = false,
+}: {
+  session: RunSessionStore;
+  compact?: boolean;
+}) {
   const t = useTranslations('Reins');
   const projection = useStore(session, (s) => s.projection);
   const pending = useStore(session, (s) => s.pendingCommandIds.length > 0);
@@ -23,8 +30,12 @@ export function RunActions({ session }: { session: RunSessionStore }) {
       aria-label={t('runControls')}
       className="flex flex-col gap-2 rounded border border-line p-2 text-xs"
     >
-      <p>{t('runScope', { runId: projection.runId })}</p>
-      <p className="text-muted">{t('safeBoundary')}</p>
+      {compact ? null : (
+        <>
+          <p>{t('runScope', { runId: projection.runId })}</p>
+          <p className="text-muted">{t('safeBoundary')}</p>
+        </>
+      )}
       {!terminal ? (
         <div className="flex flex-wrap gap-2">
           <button

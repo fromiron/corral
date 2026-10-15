@@ -12,8 +12,18 @@ export interface ScriptedAgentOptions {
   turns: number;
   /** Awaited before each reply; tests pass a Gate to pin interleavings, demos pass a delay. */
   beforeReply?: (turn: number, input: AgentStartInput) => Promise<void>;
-  /** Reply text. The default echoes inputs and delivered directives so steering is observable. */
-  reply?: (turn: number, input: AgentStartInput, permit: RequestPermit) => string;
+  /**
+   * Reply text. The default echoes inputs and delivered directives so steering is observable.
+   * `notes` are what collaboration produced so far (answers, versions read) on the last turn.
+   */
+  reply?: (
+    turn: number,
+    input: AgentStartInput,
+    permit: RequestPermit,
+    notes: readonly string[],
+  ) => string;
+  /** Append the collaboration notes after the reply as raw lines. Default on; demos write them. */
+  appendNotes?: boolean;
   /**
    * Takes over one execution when it returns a settlement (tests that need a specific move);
    * returning null leaves the default behaviour.
@@ -77,7 +87,8 @@ export class ScriptedAgentAdapter implements AgentAdapter {
       await host.modelRequestDispatched?.(permit.modelCallId);
       await this.options.beforeReply?.(turn, input);
       checkpoint();
-      const text = [reply(turn, input, permit), ...extra].join('\n');
+      const appended = this.options.appendNotes ?? true;
+      const text = [reply(turn, input, permit, extra), ...(appended ? extra : [])].join('\n');
       // Stream the reply in a few pieces, as a model would, before reporting it.
       for (const [chunkIndex, piece] of chunks(text).entries()) {
         host.streamText({ modelCallId: permit.modelCallId, chunkIndex, text: piece });

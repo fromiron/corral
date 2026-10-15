@@ -1,6 +1,7 @@
 import './csp.ts';
 import { Coordinator, InProcessTransport } from '@corral/core';
-import { defaultReply, ScriptedAgentAdapter, SequentialIdFactory } from '@corral/testkit';
+import { ScriptedAgentAdapter, SequentialIdFactory } from '@corral/testkit';
+import { createDemoReply, DEMO_TURNS } from './demo/script.ts';
 import type { DemoMessage, DemoRequest, DemoResponse } from './demo-protocol.ts';
 
 let delayMs = 1500;
@@ -15,14 +16,10 @@ const transport = new InProcessTransport(
       },
     },
     agents: new ScriptedAgentAdapter({
-      turns: 2,
-      reply: (turn, input, permit) =>
-        [
-          defaultReply(turn, input, permit),
-          `role prompt: ${input.role.prompt}`,
-          `model profile: ${input.modelProfile}`,
-          ...input.inputs.map((value) => `${value.name}: ${value.text}`),
-        ].join('\n'),
+      turns: DEMO_TURNS,
+      reply: createDemoReply(),
+      // The demo writes answers and versions read into its replies (demo/script.ts).
+      appendNotes: false,
       beforeReply: () => new Promise((resolve) => setTimeout(resolve, delayMs)),
     }),
   }),

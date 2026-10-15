@@ -20,7 +20,6 @@ export function RunView({
   const t = useTranslations('Run');
   const projection = useStore(session, (s) => s.projection);
   const definition = useStore(session, (s) => s.definition);
-  const outputText = useStore(session, (s) => s.outputText);
   const startError = useStore(session, (s) => s.startError);
   const streamError = useStore(session, (s) => s.streamError);
   const streams = useStore(session, (s) => s.streams);
@@ -57,7 +56,7 @@ export function RunView({
             {projection.executionOrder.length === 0 ? (
               <p className="text-xs text-muted">{t('noExecutions')}</p>
             ) : (
-              <ExecutionTree
+              <ExecutionRows
                 projection={projection}
                 streams={streams}
                 labelOf={labelOf}
@@ -65,22 +64,65 @@ export function RunView({
               />
             )}
           </div>
-          <div className="flex flex-col gap-1">
-            <h3 className="text-xs font-semibold">{t('output')}</h3>
-            {outputText === null ? (
-              <p className="text-xs text-muted">{t('outputPending')}</p>
-            ) : (
-              <div
-                data-testid="run-output"
-                className="max-h-64 overflow-auto rounded-md border border-line bg-surface p-2"
-              >
-                <SafeMarkdown text={outputText} />
-              </div>
-            )}
-          </div>
+          <RunOutput session={session} />
         </>
       ) : null}
     </div>
+  );
+}
+
+/** The run's final output, once the Output node has it (Markdown, rendered safely). */
+export function RunOutput({
+  session,
+  heading = true,
+}: {
+  session: RunSessionStore;
+  heading?: boolean;
+}) {
+  const t = useTranslations('Run');
+  const outputText = useStore(session, (s) => s.outputText);
+  return (
+    <div className="flex flex-col gap-1">
+      {heading ? <h3 className="text-xs font-semibold">{t('output')}</h3> : null}
+      {outputText === null ? (
+        <p className="text-xs text-muted">{t('outputPending')}</p>
+      ) : (
+        <div
+          data-testid="run-output"
+          className={`overflow-auto rounded-md border border-line bg-surface p-2 ${heading ? 'max-h-64' : ''}`}
+        >
+          <SafeMarkdown text={outputText} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The call tree of one run, for pages that lay out the run's parts themselves (Run page). */
+export function ExecutionTree({
+  session,
+  onSteer,
+  selectedExecutionId = null,
+}: {
+  session: RunSessionStore;
+  onSteer: (executionId: string) => void;
+  selectedExecutionId?: string | null;
+}) {
+  const t = useTranslations('Run');
+  const projection = useStore(session, (s) => s.projection);
+  const definition = useStore(session, (s) => s.definition);
+  const streams = useStore(session, (s) => s.streams);
+  if (!projection) return null;
+  if (projection.executionOrder.length === 0)
+    return <p className="text-xs text-muted">{t('noExecutions')}</p>;
+  return (
+    <ExecutionRows
+      projection={projection}
+      streams={streams}
+      labelOf={(nodeId) => definition?.nodes.find((n) => n.id === nodeId)?.label ?? nodeId}
+      onSteer={onSteer}
+      selectedExecutionId={selectedExecutionId}
+    />
   );
 }
 
@@ -89,16 +131,18 @@ export function RunView({
  * and attempt as its own row (a node is not one execution, C-016). A waiting execution names
  * what it waits for and links to those rows.
  */
-function ExecutionTree({
+function ExecutionRows({
   projection,
   streams,
   labelOf,
   onSteer,
+  selectedExecutionId = null,
 }: {
   projection: RunProjection;
   streams: Record<string, StreamText>;
   labelOf: (nodeId: string) => string;
   onSteer: (executionId: string) => void;
+  selectedExecutionId?: string | null;
 }) {
   const childrenOf = new Map<string | null, string[]>();
   for (const id of projection.executionOrder) {
@@ -115,6 +159,7 @@ function ExecutionTree({
           streams={streams}
           labelOf={labelOf}
           onSteer={onSteer}
+          selected={id === selectedExecutionId}
           nested={childrenOf.has(id) ? rows(id) : null}
         />
       ))}
@@ -129,6 +174,7 @@ function ExecutionRow({
   streams,
   labelOf,
   onSteer,
+  selected,
   nested,
 }: {
   id: string;
@@ -136,6 +182,7 @@ function ExecutionRow({
   streams: Record<string, StreamText>;
   labelOf: (nodeId: string) => string;
   onSteer: (executionId: string) => void;
+  selected: boolean;
   nested: ReactNode;
 }) {
   const t = useTranslations('Run');
@@ -156,7 +203,8 @@ function ExecutionRow({
       id={`execution-${id}`}
       data-testid={`execution-${id}`}
       data-execution-id={id}
-      className="rounded-md border border-line p-2 text-xs"
+      aria-current={selected ? 'true' : undefined}
+      className={`rounded-md border p-2 text-xs ${selected ? 'border-accent ring-1 ring-accent/40' : 'border-line'}`}
     >
       <div className="flex items-center justify-between gap-2">
         <span className="flex flex-col">
