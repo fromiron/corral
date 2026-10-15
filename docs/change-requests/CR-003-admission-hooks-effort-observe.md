@@ -219,3 +219,8 @@ provider는 `{ providerId, version, questionKinds: [{ kind, version }], privacy:
 승인(Bell, 2026-10-15): "Approve CR-003 with D1–D4 as proposed." D1 `local-heuristic@1`부터, D2 Jev는 계약만 맞추고 별도 spike, D3 추상 4단계, D4 hash와 특징 값만 저장.
 
 반영: [ADR-024](../Decisions.md), [ADR-025](../Decisions.md), 요구 `CRL-RUN-008`·`CRL-DEC-001`~`004`, 태스크 C-067~C-071.
+
+## 13. 진행 기록
+
+- 2026-10-15: §9의 1–3단계 완료(요구·시나리오·태스크·traceability, ADR-024·025, 스펙·기술 설계·API 계약).
+- 2026-10-15: C-067 시작. 리팩터 **전** Coordinator로 golden 이벤트 열 10개(898 events)를 `packages/core/test/golden/`에 고정했다(`admission-golden.test.ts`, `[TC-RUN-008-H]`). 시나리오는 모든 승인 지점을 지난다: 예산(`model_calls`), 무진전 승인, 역할 허용 목록(`CAPABILITY_DENIED`), spawn 한도, 닫힌 질문 reply(`observation.late`), 지시 전달, 취소, 검토 Loop와 승인 2회, 협업. 각 시나리오는 두 번 실행해 결정적인지 먼저 확인한다. 민감도 확인: `TOOL_POLICY_VERSION`을 `@2`로 바꾸면 `tool.allowed`가 있는 6개가 실패하고, 무진전 기준을 7로 바꾸면 해당 시나리오가 실패했다(되돌림 확인). core는 런타임 중립(ADR-014)이라 파일은 Vite raw import로 읽고 Vitest file snapshot으로 기록한다. 재기록은 `CORRAL_UPDATE_GOLDEN=1 … -u`로만 한다.
