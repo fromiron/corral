@@ -201,6 +201,15 @@ async function createCorralServer(
     );
     await registry.refreshStatus();
   }
+  const decisionProviders = [new LocalHeuristicProvider(), ...(options.decisionProviders ?? [])];
+  // A configured, installed provider loads ahead of the first judgment (the local model takes
+  // a few seconds to load). A failed load only makes its judgments fail; the server keeps going.
+  for (const id of judgmentSettings(workspace.config).reasoning_effort.providers) {
+    const provider = decisionProviders.find((p) => p.id === id) as
+      | (DecisionProvider & { warmUp?: () => Promise<unknown> })
+      | undefined;
+    if (provider?.available() === true) void provider.warmUp?.().catch(() => {});
+  }
   const store = new SqliteRunStore(db);
   const inputs = new InputRegistry(db, options.inputs);
   const coordinator = new Coordinator({
@@ -219,7 +228,7 @@ async function createCorralServer(
     policy: workspace.policy,
     sessionId: backendSessionId,
     judgments: {
-      providers: [new LocalHeuristicProvider(), ...(options.decisionProviders ?? [])],
+      providers: decisionProviders,
       settings: judgmentSettings(workspace.config),
     },
   });

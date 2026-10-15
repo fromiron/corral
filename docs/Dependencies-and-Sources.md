@@ -20,6 +20,7 @@
 | 가상화 | @tanstack/react-virtual | 긴 타임라인·트리 행 | MIT; 현재 focus/선택 행이 사라지는 경우 처리 | S10 |
 | UI primitives | Radix Primitives + Tailwind CSS | 접근 가능한 Dialog, Tabs, Tooltip; Corral만의 컴포넌트 디자인 | MIT 계열; 전체 템플릿 복사보다 필요한 primitive만 | S11,S30 |
 | 폼 | react-hook-form | 역할·모델·한도·Reins 폼의 dirty/validation 상태 | MIT; 서버 validation은 별도 필수 | S12 |
+| 판정 모델 런타임(v0.2) | onnxruntime-node 1.30.0 (`@corral/effort-judge`) | mixdog effort judge ONNX 모델을 worker thread에서 실행(CR-003 C-072). 2026-09-14 배포, Node ≥ 24에서 CPU 바인딩 로드 확인 | MIT. npm 패키지가 모든 플랫폼 CPU 바이너리를 포함(≈301 MB unpacked). postinstall(선택 GPU 빌드 다운로드)은 실행하지 않음. macOS Intel 바인딩 없음 → provider unavailable. 전이 의존성 global-agent BSD-3-Clause, type-fest `(MIT OR CC0-1.0)`(정책에 검토 추가) | npm registry, `packages/effort-judge/NOTICE.md` |
 | 계약 | Zod 4 | REST/IPC/정의/command validation 및 JSON Schema 생성 | MIT; TypeBox는 Pi 어댑터 내부 경계에 제한 | S13,S07 |
 | 로컬 API | Fastify 5 | 세션, 명령, 조회, SSE, 일관된 오류 | MIT; SSE 취소/정적 UI/보안 plugin 호환성 검사 | S14,S38 |
 | 그래프 실행 | @langchain/langgraph | 검증된 정적 그래프/제한된 loop 실행 | MIT. 제품의 authoritative task/patch 상태를 중복 소유하지 않음 | S04,S05,S40 |
@@ -62,7 +63,7 @@ Corral 도메인 스키마의 원본은 Zod다. Pi가 요구하는 TypeBox 도�
 | XState / Redux / RxJS | 추가하지 않음 | 이미 정의한 Coordinator·Zustand를 대체할 구체적 이익이 있을 때 |
 | Redis / BullMQ / Kafka / Temporal | 추가하지 않음 | 분산 실행·durable resume·멀티유저가 실제 요구일 때 |
 | LiteLLM | 후속 | provider/유저 비용 운영 필요가 커졌을 때 |
-| Local / Jev | v0.2 명시 마일스톤 | 협업·Reins MVP 완료 후 동일 질문 계약을 갖춘 수동 전환부터 |
+| Local / Jev | v0.2: Local은 관찰 전용 `reasoning_effort`로 구현(CR-003). Jev는 별도 spike | 적용(apply)·자동 라우팅은 관찰 데이터 평가 뒤 별도 CR |
 | Langfuse | 자체 Run 기록을 대체하지 않음 | 외부 observability export 필요 시 |
 | Spec Kit / OpenSpec | 선택 문서 도우미 | 저장소 명세·테스트 규칙을 훼손하지 않는 경우. 필수 런타임 없음 |
 | React Flow Pro / Chromatic | 필수 아님 | 유료 예제·서비스의 가치를 별도로 판단할 때 |

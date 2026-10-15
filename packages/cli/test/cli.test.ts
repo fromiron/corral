@@ -251,4 +251,22 @@ describe('CLI command/query parity', () => {
     gate.open();
     expect((await done).status).toBe('cancelled');
   });
+
+  it('[TC-DEC-001-N] judge status reports where the model is and whether it is installed, without downloading', async () => {
+    const dir = workspace();
+    const output: string[] = [];
+    const io = {
+      cwd: dir,
+      write: (line: string) => output.push(line),
+      signal: new AbortController().signal,
+    };
+    expect(await runCli(['judge', 'status', '--model-dir', dir], io)).toBe(0);
+    expect(output.join('\n')).toContain('not installed');
+    expect(output.join('\n')).toContain(dir);
+    writeFileSync(join(dir, 'install.json'), JSON.stringify({ release: 'effort-judge-v6' }));
+    output.length = 0;
+    expect(await runCli(['judge', 'status', '--model-dir', dir], io)).toBe(0);
+    expect(output.join('\n')).toContain('effort-judge-v6 installed');
+    expect(await runCli(['judge', 'remove'], io)).toBe(1);
+  });
 });

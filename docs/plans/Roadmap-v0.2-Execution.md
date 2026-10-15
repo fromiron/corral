@@ -13,9 +13,9 @@
 | # | 항목 | 범위 | 상태 |
 |---|---|---|---|
 | 0 | PR #9 병합 | CR-003 문서, golden, C-067 | 완료 |
-| 1 | C-068 | DecisionQuestion·검증·registry·decision 이벤트·projection·설정 | 완료(PR 대기) |
-| 2 | C-069 | `scripted@1`·`local-heuristic@1`, observe observer(timeout·cancel·pause·한도·늦은 결과) | 완료(PR 대기) |
-| 3 | C-072 | mixdog effort judge ONNX provider(`local-model`), 모델 다운로드·sha256 검증·NOTICE | 대기 |
+| 1 | C-068 | DecisionQuestion·검증·registry·decision 이벤트·projection·설정 | 완료 |
+| 2 | C-069 | `scripted@1`·`local-heuristic@1`, observe observer(timeout·cancel·pause·한도·늦은 결과) | 완료 |
+| 3 | C-072 | mixdog effort judge ONNX provider(`local-model`), 모델 다운로드·sha256 검증·NOTICE | 완료(PR 대기) |
 | 4 | C-070·C-071 | 외부 provider 경계, Run 화면 판정 표시, `corral inspect` 비교 | 대기 |
 | 5 | UX-A3 | 실행별 대화(transcript) 뷰: 모델 턴·도구·질문/답변·지시 배지 스트리밍 | 대기 |
 | 6 | UX-A4 | Timeline 문장화, 상태 reason 문구, 예산 미터 축약, Decision 노드 상태, 그래프 fitView | 대기 |
@@ -31,3 +31,6 @@
 - 2026-10-16 Bell 요청: 인증은 OS 기본 인증 디렉터리 파일을 쓰는 편이 좋다. GPT OAuth 파일은 `/home/bell/.codex/auth.json`(Codex CLI). → 12번 항목으로 추가. 파일 내용은 출력하지 않는다.
 
 (항목이 끝날 때마다 PR 링크와 검증 결과를 한 줄로 남긴다.)
+
+- C-068·C-069: PR #10 병합. 504 unit, E2E chromium·server 39.
+- C-072: 실모델 opt-in 테스트 통과, 판정 ≈20 ms.

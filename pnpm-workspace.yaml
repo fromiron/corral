@@ -5,9 +5,11 @@ packages:
   - tests/live
 
 # Install scripts stay blocked (pnpm 10 default). better-sqlite3 13 ships prebuilt binaries;
-# its implicit node-gyp step is not needed. The rest come from the C-052 spike dependencies.
+# its implicit node-gyp step is not needed. onnxruntime-node 1.30 bundles its CPU binaries; its
+# postinstall only fetches optional GPU builds (C-072). The rest come from the C-052 spike dependencies.
 ignoredBuiltDependencies:
   - '@google/genai'
   - better-sqlite3
   - esbuild
+  - onnxruntime-node
   - protobufjs
