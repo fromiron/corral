@@ -44,6 +44,71 @@ export type ProjectResult =
       message: string;
     };
 
+/** What a person asked for in a session (CR-011). */
+export type SessionIntent = 'next' | 'queue' | 'steer' | 'explain';
+export type SessionEntryState =
+  | 'started'
+  | 'queued'
+  | 'sent'
+  | 'refused'
+  | 'undelivered'
+  | 'dismissed';
+
+export interface SessionEntry {
+  entryId: string;
+  intent: SessionIntent;
+  /** What the person wrote; never changed once saved. */
+  text: string;
+  createdAt: string;
+  state: SessionEntryState;
+  /** The run it started (next, explain) or went to (steer). */
+  runId: string | null;
+  executionId: string | null;
+  /** Why it was refused or not delivered, in the runtime's words. */
+  detail: string | null;
+}
+
+export interface WorkSession {
+  sessionId: string;
+  projectId: string;
+  /** The team follow-ups run with; null until one is chosen. */
+  corralId: string | null;
+  title: string;
+  objective: string;
+  pinned: boolean;
+  revision: number;
+  createdAt: string;
+  updatedAt: string;
+  archivedAt: string | null;
+  entries: SessionEntry[];
+}
+
+export interface SessionChange {
+  title?: string;
+  objective?: string;
+  corralId?: string | null;
+  pinned?: boolean;
+  archived?: boolean;
+  expectedRevision: number;
+}
+
+export type SessionResult =
+  | { ok: true; session: WorkSession }
+  | {
+      ok: false;
+      error: 'not_found' | 'revision_conflict' | 'invalid' | 'storage_unavailable';
+      message: string;
+    };
+
+export interface NewSessionEntry {
+  intent: SessionIntent;
+  text: string;
+  state: SessionEntryState;
+  runId?: string | null;
+  executionId?: string | null;
+  detail?: string | null;
+}
+
 export interface CorralRecord {
   corralId: string;
   projectId: string;
@@ -95,7 +160,177 @@ export interface CorralRepository {
   updateProject(projectId: string, change: ProjectChange): Promise<ProjectResult>;
   /** Moves a Corral; runs already started stay in the project they started in. */
   moveCorral(corralId: string, projectId: string): Promise<SaveResult>;
+  /** Pinned first, then most recently active (CR-011). */
+  listSessions(projectId: string): Promise<WorkSession[]>;
+  getSession(sessionId: string): Promise<WorkSession | null>;
+  createSession(input: {
+    projectId: string;
+    title: string;
+    objective?: string;
+    corralId?: string | null;
+  }): Promise<SessionResult>;
+  updateSession(sessionId: string, change: SessionChange): Promise<SessionResult>;
+  addSessionEntry(sessionId: string, entry: NewSessionEntry): Promise<SessionResult>;
+  /** Only the state, run and detail of an entry change; its text never does. */
+  updateSessionEntry(
+    sessionId: string,
+    entryId: string,
+    change: { state: SessionEntryState; runId?: string | null; detail?: string | null },
+  ): Promise<SessionResult>;
 }
+
+const TITLE_MAX = 120;
+const ENTRY_MAX = 20_000;
+const ENTRIES_MAX = 1_000;
+
+export function planSessionCreate(
+  input: { projectId: string; title: string; objective?: string; corralId?: string | null },
+  context: { now: string; sessionId: string },
+): SessionResult {
+  const objective = (input.objective ?? '').trim();
+  // A session may start from its purpose alone; the title is then its first line.
+  const title = (input.title.trim() || objective.split('\n')[0]?.slice(0, 60) || '').trim();
+  if (!title || title.length > TITLE_MAX)
+    return {
+      ok: false,
+      error: 'invalid',
+      message: `A session title has 1 to ${TITLE_MAX} characters.`,
+    };
+  if (objective.length > ENTRY_MAX)
+    return { ok: false, error: 'invalid', message: 'The session purpose is too long.' };
+  return {
+    ok: true,
+    session: {
+      sessionId: context.sessionId,
+      projectId: input.projectId,
+      corralId: input.corralId ?? null,
+      title,
+      objective,
+      pinned: false,
+      revision: 1,
+      createdAt: context.now,
+      updatedAt: context.now,
+      archivedAt: null,
+      entries: [],
+    },
+  };
+}
+
+export function planSessionUpdate(
+  current: WorkSession | null,
+  sessionId: string,
+  change: SessionChange,
+  now: string,
+): SessionResult {
+  if (!current)
+    return { ok: false, error: 'not_found', message: `Session ${sessionId} does not exist.` };
+  if (current.revision !== change.expectedRevision)
+    return {
+      ok: false,
+      error: 'revision_conflict',
+      message: `This session was changed elsewhere (revision ${current.revision}). Reload first.`,
+    };
+  const title = change.title?.trim();
+  if (title !== undefined && (!title || title.length > TITLE_MAX))
+    return {
+      ok: false,
+      error: 'invalid',
+      message: `A session title has 1 to ${TITLE_MAX} characters.`,
+    };
+  return {
+    ok: true,
+    session: {
+      ...current,
+      ...(title !== undefined ? { title } : {}),
+      ...(change.objective !== undefined ? { objective: change.objective.trim() } : {}),
+      ...(change.corralId !== undefined ? { corralId: change.corralId } : {}),
+      ...(change.pinned !== undefined ? { pinned: change.pinned } : {}),
+      ...(change.archived === undefined
+        ? {}
+        : { archivedAt: change.archived ? (current.archivedAt ?? now) : null }),
+      revision: current.revision + 1,
+      updatedAt: now,
+    },
+  };
+}
+
+/** A new entry at the end; entries are not revision-checked, they only append (CR-011). */
+export function planSessionEntry(
+  current: WorkSession | null,
+  sessionId: string,
+  entry: NewSessionEntry,
+  context: { now: string; entryId: string },
+): SessionResult {
+  if (!current)
+    return { ok: false, error: 'not_found', message: `Session ${sessionId} does not exist.` };
+  const text = entry.text.trim();
+  if (!text || text.length > ENTRY_MAX)
+    return { ok: false, error: 'invalid', message: `A request has 1 to ${ENTRY_MAX} characters.` };
+  if (current.entries.length >= ENTRIES_MAX)
+    return { ok: false, error: 'invalid', message: 'This session is full; start a new one.' };
+  return {
+    ok: true,
+    session: {
+      ...current,
+      updatedAt: context.now,
+      entries: [
+        ...current.entries,
+        {
+          entryId: context.entryId,
+          intent: entry.intent,
+          text,
+          createdAt: context.now,
+          state: entry.state,
+          runId: entry.runId ?? null,
+          executionId: entry.executionId ?? null,
+          detail: entry.detail ?? null,
+        },
+      ],
+    },
+  };
+}
+
+export function planSessionEntryUpdate(
+  current: WorkSession | null,
+  sessionId: string,
+  entryId: string,
+  change: { state: SessionEntryState; runId?: string | null; detail?: string | null },
+  now: string,
+): SessionResult {
+  if (!current)
+    return { ok: false, error: 'not_found', message: `Session ${sessionId} does not exist.` };
+  if (!current.entries.some((e) => e.entryId === entryId))
+    return { ok: false, error: 'not_found', message: `Session ${sessionId} has no ${entryId}.` };
+  return {
+    ok: true,
+    session: {
+      ...current,
+      updatedAt: now,
+      entries: current.entries.map((e) =>
+        e.entryId === entryId
+          ? {
+              ...e,
+              state: change.state,
+              ...(change.runId !== undefined ? { runId: change.runId } : {}),
+              ...(change.detail !== undefined ? { detail: change.detail } : {}),
+            }
+          : e,
+      ),
+    },
+  };
+}
+
+export function sortSessions(sessions: WorkSession[]): WorkSession[] {
+  return [...sessions].sort(
+    (a, b) =>
+      Number(b.pinned) - Number(a.pinned) ||
+      b.updatedAt.localeCompare(a.updatedAt) ||
+      a.sessionId.localeCompare(b.sessionId),
+  );
+}
+
+const randomId = (prefix: string) =>
+  `${prefix}_${(globalThis as unknown as { crypto: { randomUUID(): string } }).crypto.randomUUID().slice(0, 8)}`;
 
 const NAME_MAX = 80;
 const DESCRIPTION_MAX = 500;
@@ -229,6 +464,7 @@ export interface KeyValueStore {
 const PREFIX = 'corral:v1:';
 const INDEX_KEY = `${PREFIX}index`;
 const PROJECTS_KEY = `${PREFIX}projects`;
+const SESSIONS_KEY = `${PREFIX}sessions`;
 const recordKey = (corralId: string) => `${PREFIX}corral:${corralId}`;
 
 const StoredRecord = z.strictObject({
@@ -362,8 +598,37 @@ const newProjectIdDefault = () =>
 
 export function createKeyValueCorralRepository(
   store: KeyValueStore,
-  options: { clock: Clock; newCorralId: () => string; newProjectId?: () => string },
+  options: {
+    clock: Clock;
+    newCorralId: () => string;
+    newProjectId?: () => string;
+    newSessionId?: () => string;
+  },
 ): CorralRepository {
+  const newSessionId = options.newSessionId ?? (() => randomId('session'));
+  const readSessions = (): WorkSession[] => {
+    const raw = store.getItem(SESSIONS_KEY);
+    if (raw === null) return [];
+    const parsed = safeJson(raw);
+    if (!Array.isArray(parsed)) throw new Error('The saved session list cannot be read.');
+    return parsed as WorkSession[];
+  };
+  const findSession = (sessionId: string) =>
+    readSessions().find((x) => x.sessionId === sessionId) ?? null;
+  const writeSession = (result: SessionResult): SessionResult => {
+    if (!result.ok) return result;
+    try {
+      const others = readSessions().filter((x) => x.sessionId !== result.session.sessionId);
+      store.setItem(SESSIONS_KEY, JSON.stringify([...others, result.session]));
+      return result;
+    } catch (error) {
+      return {
+        ok: false,
+        error: 'storage_unavailable',
+        message: `Could not save: ${String(error)}`,
+      };
+    }
+  };
   const newProjectId = options.newProjectId ?? newProjectIdDefault;
   // Projects live in one key; the default project exists even before anything is written.
   const readProjects = (): ProjectSummary[] => {
@@ -483,6 +748,50 @@ export function createKeyValueCorralRepository(
         options.clock.nowIso(),
       );
       return planned.ok ? writeProject(planned.project) : planned;
+    },
+
+    async listSessions(projectId) {
+      return sortSessions(readSessions().filter((x) => x.projectId === projectId));
+    },
+
+    async getSession(sessionId) {
+      return findSession(sessionId);
+    },
+
+    async createSession(input) {
+      const refused = projectRefusal(findProject(input.projectId), input.projectId);
+      if (refused && !refused.ok)
+        return { ok: false, error: 'not_found', message: refused.message };
+      return writeSession(
+        planSessionCreate(input, { now: options.clock.nowIso(), sessionId: newSessionId() }),
+      );
+    },
+
+    async updateSession(sessionId, change) {
+      return writeSession(
+        planSessionUpdate(findSession(sessionId), sessionId, change, options.clock.nowIso()),
+      );
+    },
+
+    async addSessionEntry(sessionId, entry) {
+      return writeSession(
+        planSessionEntry(findSession(sessionId), sessionId, entry, {
+          now: options.clock.nowIso(),
+          entryId: randomId('entry'),
+        }),
+      );
+    },
+
+    async updateSessionEntry(sessionId, entryId, change) {
+      return writeSession(
+        planSessionEntryUpdate(
+          findSession(sessionId),
+          sessionId,
+          entryId,
+          change,
+          options.clock.nowIso(),
+        ),
+      );
     },
 
     async moveCorral(corralId, projectId) {

@@ -19,13 +19,15 @@ export class SqliteRunStore implements RunStore {
     this.db = db;
     this.sql = {
       insertRun: db.prepare(
-        // The run joins its saved Corral's project as it is now (CR-010); inline
-        // definitions have none and go to the default project.
+        // The run joins its session's project (CR-011), else its saved Corral's project as it
+        // is now (CR-010); inline definitions without a session go to the default project.
         `INSERT INTO runs (id, corral_id, definition_hash, snapshot_json, status, last_seq,
-           projection_json, started_at, project_id)
+           projection_json, started_at, project_id, session_id)
          VALUES (@id, @corralId, @definitionHash, @snapshot, @status, @lastSeq, @projection,
            @startedAt,
-           COALESCE((SELECT project_id FROM corrals WHERE id = @sourceCorralId), 'default'))`,
+           COALESCE((SELECT project_id FROM work_sessions WHERE id = @sessionId),
+             (SELECT project_id FROM corrals WHERE id = @sourceCorralId), 'default'),
+           @sessionId)`,
       ),
       saveProjection: db.prepare(
         'UPDATE runs SET projection_json = ?, status = ?, last_seq = ? WHERE id = ?',
@@ -50,7 +52,7 @@ export class SqliteRunStore implements RunStore {
       ),
       getRun: db.prepare('SELECT snapshot_json, projection_json FROM runs WHERE id = ?'),
       listRuns: db.prepare(
-        `SELECT id, status, corral_id, started_at, project_id FROM runs
+        `SELECT id, status, corral_id, started_at, project_id, session_id FROM runs
          ORDER BY started_at DESC, rowid DESC`,
       ),
       readEvents: db.prepare(
@@ -81,6 +83,7 @@ export class SqliteRunStore implements RunStore {
       projection: JSON.stringify(run.projection),
       startedAt: run.snapshot.startedAt,
       sourceCorralId: run.snapshot.source?.corralId ?? null,
+      sessionId: run.sessionId ?? null,
     });
   }
 
@@ -150,6 +153,7 @@ export class SqliteRunStore implements RunStore {
       corral_id: string;
       started_at: string;
       project_id: string | null;
+      session_id: string | null;
     }[];
     return rows.map((row) => ({
       runId: row.id,
@@ -157,6 +161,7 @@ export class SqliteRunStore implements RunStore {
       corralId: row.corral_id,
       startedAt: row.started_at,
       projectId: row.project_id ?? 'default',
+      sessionId: row.session_id,
     }));
   }
 

@@ -209,6 +209,7 @@ export function describeRunStoreContract(
           startedAt: '2026-10-15T00:00:00.000Z',
           // An inline definition has no saved Corral: the default project, where recorded.
           projectId: options.recordsProject ? 'default' : null,
+          sessionId: null,
         },
       ]);
       expect(store.getRun(run.runId)?.snapshot).toEqual(run.snapshot);

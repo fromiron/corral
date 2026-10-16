@@ -1127,3 +1127,83 @@ describe('REST: projects (CR-010)', () => {
     expect(extra.status).toBe(400);
   });
 });
+
+describe('REST: work sessions (CR-011)', () => {
+  it('[WBTST-004] a follow-up and a question join the session; another project’s session is refused', async () => {
+    const server = await start();
+    const { call } = await browser(server);
+    const repo = new RestCorralRepository({ baseUrl: server.url, fetch: call });
+    const transport = new HttpSseTransport({ baseUrl: server.url, fetch: call });
+    const project = await repo.createProject({ name: 'P' });
+    if (!project.ok) throw new Error(project.message);
+    const projectId = project.project.projectId;
+    const corral = await repo.save({
+      definition: linearCorral(['writer']),
+      layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
+      expectedDefinitionRevision: null,
+      projectId,
+    });
+    if (!corral.ok) throw new Error(corral.message);
+    const session = await repo.createSession({
+      projectId,
+      title: '',
+      objective: 'Compare two databases',
+      corralId: corral.record.corralId,
+    });
+    if (!session.ok) throw new Error(session.message);
+    const sessionId = session.session.sessionId;
+
+    const first = await transport.startRun({
+      schemaVersion: '0.1',
+      commandId: 'cmd_s1',
+      corralId: corral.record.corralId,
+      definitionRevision: 1,
+      input: { brief: 'Compare SQLite and Postgres', criteria: ['Cite sources.'] },
+      mode: 'mock',
+      sessionId,
+    });
+    const done = await waitForProjection(
+      transport,
+      first.runId ?? '',
+      (p) => p.status === 'succeeded',
+    );
+    const resultId = done.output?.artifactVersionIds[0] ?? '';
+    const asked = await transport.startExplain({
+      commandId: 'cmd_q1',
+      sessionId,
+      question: 'Which one for one writer?',
+      modelProfile: 'model-a',
+      mode: 'mock',
+      startFrom: { runId: first.runId ?? '', artifactVersionId: resultId },
+    });
+    expect(asked.receipt.status).toBe('applied');
+    await waitForProjection(transport, asked.runId ?? '', (p) => p.status === 'succeeded');
+    const runs = await transport.listRuns();
+    expect(runs.filter((r) => r.sessionId === sessionId).map((r) => r.projectId)).toEqual([
+      projectId,
+      projectId,
+    ]);
+
+    const entry = await repo.addSessionEntry(sessionId, {
+      intent: 'next',
+      text: 'Compare SQLite and Postgres',
+      state: 'started',
+      runId: first.runId,
+    });
+    expect(entry.ok && entry.session.entries).toHaveLength(1);
+
+    // A session from another project cannot take this Corral's run.
+    const other = await repo.createSession({ projectId: 'default', title: 'Elsewhere' });
+    if (!other.ok) throw new Error(other.message);
+    const refused = await transport.startRun({
+      schemaVersion: '0.1',
+      commandId: 'cmd_s2',
+      corralId: corral.record.corralId,
+      definitionRevision: 1,
+      mode: 'mock',
+      sessionId: other.session.sessionId,
+    });
+    expect(refused.runId).toBeNull();
+    expect(refused.receipt.error?.code).toBe('TARGET_NOT_FOUND');
+  });
+});

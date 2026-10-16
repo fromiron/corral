@@ -31,6 +31,8 @@ export interface StoredRun {
   runId: string;
   snapshot: RunSnapshot;
   projection: RunProjection;
+  /** The work session the run continues (CR-011); kept beside the snapshot, not in it. */
+  sessionId?: string | null;
 }
 
 export interface StoredCommand {
@@ -53,6 +55,8 @@ export interface RunSummary {
    * record it (the in-browser runtime): the Corral's project stands in.
    */
   projectId: string | null;
+  /** The work session it belongs to (CR-011), or null. */
+  sessionId: string | null;
 }
 
 export interface RunStore {
@@ -145,6 +149,7 @@ export class InMemoryRunStore implements RunStore {
       corralId: run.snapshot.definition.id,
       startedAt: run.snapshot.startedAt,
       projectId: null,
+      sessionId: run.sessionId ?? null,
     }));
   }
 

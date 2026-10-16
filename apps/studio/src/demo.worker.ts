@@ -8,7 +8,9 @@ let delayMs = 1500;
 const transport = new InProcessTransport(
   new Coordinator({
     clock: { nowIso: () => new Date().toISOString(), monotonicMs: () => performance.now() },
-    ids: new SequentialIdFactory(),
+    // A namespace per page load: demo runs vanish on reload, and a session saved in this
+    // browser must not mistake a new run for an old one with the same number (CR-011).
+    ids: new SequentialIdFactory(crypto.randomUUID().slice(0, 4)),
     timers: {
       after(ms, fn) {
         const timer = setTimeout(fn, ms);

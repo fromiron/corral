@@ -39,5 +39,6 @@ export * from './projection.ts';
 export * from './repository/index.ts';
 export * from './run-plan.ts';
 export * from './runner.ts';
+export * from './session-runs.ts';
 export * from './store/run-store.ts';
 export * from './transport.ts';

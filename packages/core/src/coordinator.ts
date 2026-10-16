@@ -530,7 +530,12 @@ export class Coordinator {
     };
     try {
       this.persist(() => {
-        this.store.insertRun({ runId, snapshot, projection: emptyProjection(runId) });
+        this.store.insertRun({
+          runId,
+          snapshot,
+          projection: emptyProjection(runId),
+          sessionId: request.sessionId ?? null,
+        });
         this.write(runId, events, projection);
         this.store.putArtifactText(
           runId,

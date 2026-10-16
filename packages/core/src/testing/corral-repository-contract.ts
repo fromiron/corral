@@ -237,5 +237,74 @@ export function describeCorralRepositoryContract(
         });
       });
     });
+    describe('work sessions (CR-011)', () => {
+      it('[WBTST-003] creates sessions from a purpose alone, pins, archives, and keeps entries', async () => {
+        const repo = makeRepository();
+        const project = await repo.createProject({ name: 'P' });
+        if (!project.ok) throw new Error(project.message);
+        const projectId = project.project.projectId;
+        const a = await repo.createSession({
+          projectId,
+          title: '',
+          objective: 'Compare two DBs\nmore',
+        });
+        const b = await repo.createSession({ projectId, title: 'Second' });
+        if (!a.ok || !b.ok) throw new Error('create failed');
+        expect(a.session).toMatchObject({ title: 'Compare two DBs', pinned: false, revision: 1 });
+        expect(await repo.createSession({ projectId, title: ' ' })).toMatchObject({
+          ok: false,
+          error: 'invalid',
+        });
+        expect(
+          await repo.createSession({ projectId: 'project_missing', title: 'x' }),
+        ).toMatchObject({
+          ok: false,
+          error: 'not_found',
+        });
+
+        const pinned = await repo.updateSession(a.session.sessionId, {
+          pinned: true,
+          expectedRevision: 1,
+        });
+        expect(pinned.ok && pinned.session.pinned).toBe(true);
+        expect((await repo.listSessions(projectId)).map((x) => x.sessionId)[0]).toBe(
+          a.session.sessionId,
+        );
+        expect(
+          await repo.updateSession(a.session.sessionId, { title: 'x', expectedRevision: 1 }),
+        ).toMatchObject({ ok: false, error: 'revision_conflict' });
+        expect(await repo.listSessions('default')).toEqual([]);
+
+        const added = await repo.addSessionEntry(b.session.sessionId, {
+          intent: 'queue',
+          text: 'Then summarise it',
+          state: 'queued',
+        });
+        if (!added.ok) throw new Error(added.message);
+        const entry = added.session.entries[0];
+        expect(entry).toMatchObject({
+          intent: 'queue',
+          text: 'Then summarise it',
+          state: 'queued',
+        });
+        const started = await repo.updateSessionEntry(b.session.sessionId, entry?.entryId ?? '', {
+          state: 'started',
+          runId: 'run_1',
+        });
+        expect(started.ok && started.session.entries[0]).toMatchObject({
+          text: 'Then summarise it',
+          state: 'started',
+          runId: 'run_1',
+        });
+        const reread = await repo.getSession(b.session.sessionId);
+        expect(reread?.entries).toHaveLength(1);
+        const archived = await repo.updateSession(b.session.sessionId, {
+          archived: true,
+          expectedRevision: reread?.revision ?? 0,
+        });
+        expect(archived.ok && archived.session.archivedAt).toBeTruthy();
+        expect((await repo.getSession(b.session.sessionId))?.entries).toHaveLength(1);
+      });
+    });
   });
 }

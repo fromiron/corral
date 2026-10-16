@@ -13,6 +13,7 @@ import type {
   CorralRecord,
   CorralRepository,
   CorralSummary,
+  NewSessionEntry,
   ProjectChange,
   ProjectResult,
   ProjectSummary,
@@ -22,8 +23,12 @@ import type {
   RuntimeTransport,
   SaveRequest,
   SaveResult,
+  SessionChange,
+  SessionEntryState,
+  SessionResult,
   StartRunResult,
   TransportHandlers,
+  WorkSession,
 } from '@corral/core';
 
 // Studio's side of the local server (C-015, ADR-016). Same contracts as the in-process
@@ -188,6 +193,24 @@ export class HttpSseTransport implements RuntimeTransport {
 
   getSnapshot(runId: string): Promise<{ projection: RunProjection; seq: number }> {
     return this.http.json(`/runs/${encodeURIComponent(runId)}/snapshot`);
+  }
+
+  /** A question about a result as its own run in a session (CR-011). */
+  async startExplain(request: {
+    commandId: string;
+    sessionId: string;
+    question: string;
+    modelProfile: string;
+    mode: 'mock' | 'live';
+    startFrom?: { runId: string; artifactVersionId: string };
+  }): Promise<StartRunResult> {
+    const response = await this.http.request('/runs/explain', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
+    const body = (await response.json()) as Partial<StartRunResult> & { error?: ApiError };
+    if (!body.receipt) throw await apiErrorFrom(response, body);
+    return { runId: body.runId ?? null, receipt: body.receipt };
   }
 
   /** Where an HTML result opens as a sandboxed document (CR-009); framed by Studio only. */
@@ -441,18 +464,75 @@ export class RestCorralRepository implements CorralRepository {
   }
 
   createProject(input: { name: string; description?: string }): Promise<ProjectResult> {
-    return this.projectWrite('/projects', 'POST', input);
+    return this.projectWrite('/projects', 'POST', input) as Promise<ProjectResult>;
   }
 
   updateProject(projectId: string, change: ProjectChange): Promise<ProjectResult> {
-    return this.projectWrite(`/projects/${encodeURIComponent(projectId)}`, 'PATCH', change);
+    return this.projectWrite(
+      `/projects/${encodeURIComponent(projectId)}`,
+      'PATCH',
+      change,
+    ) as Promise<ProjectResult>;
   }
 
   moveCorral(corralId: string, projectId: string): Promise<SaveResult> {
     return this.write(`/corrals/${encodeURIComponent(corralId)}/project`, 'PUT', { projectId });
   }
 
-  private async projectWrite(path: string, method: string, body: unknown): Promise<ProjectResult> {
+  listSessions(projectId: string): Promise<WorkSession[]> {
+    return this.http.json(`/sessions?projectId=${encodeURIComponent(projectId)}`);
+  }
+
+  async getSession(sessionId: string): Promise<WorkSession | null> {
+    const response = await this.http.request(`/sessions/${encodeURIComponent(sessionId)}`);
+    if (response.status === 404) return null;
+    if (!response.ok) throw await apiError(response);
+    return (await response.json()) as WorkSession;
+  }
+
+  createSession(input: {
+    projectId: string;
+    title: string;
+    objective?: string;
+    corralId?: string | null;
+  }): Promise<SessionResult> {
+    return this.projectWrite('/sessions', 'POST', input) as Promise<SessionResult>;
+  }
+
+  updateSession(sessionId: string, change: SessionChange): Promise<SessionResult> {
+    return this.projectWrite(
+      `/sessions/${encodeURIComponent(sessionId)}`,
+      'PATCH',
+      change,
+    ) as Promise<SessionResult>;
+  }
+
+  addSessionEntry(sessionId: string, entry: NewSessionEntry): Promise<SessionResult> {
+    return this.projectWrite(
+      `/sessions/${encodeURIComponent(sessionId)}/entries`,
+      'POST',
+      entry,
+    ) as Promise<SessionResult>;
+  }
+
+  updateSessionEntry(
+    sessionId: string,
+    entryId: string,
+    change: { state: SessionEntryState; runId?: string | null; detail?: string | null },
+  ): Promise<SessionResult> {
+    return this.projectWrite(
+      `/sessions/${encodeURIComponent(sessionId)}/entries/${encodeURIComponent(entryId)}`,
+      'PATCH',
+      change,
+    ) as Promise<SessionResult>;
+  }
+
+  /** Same body, errors mapped like project writes (sessions and projects share codes). */
+  private async projectWrite(
+    path: string,
+    method: string,
+    body: unknown,
+  ): Promise<ProjectResult | SessionResult> {
     let response: Response;
     try {
       response = await this.http.request(path, { method, body: JSON.stringify(body) });
@@ -463,7 +543,7 @@ export class RestCorralRepository implements CorralRepository {
         message: `Could not save: ${String(error)}`,
       };
     }
-    if (response.ok) return (await response.json()) as ProjectResult;
+    if (response.ok) return (await response.json()) as ProjectResult | SessionResult;
     const error = await apiError(response);
     const kind =
       response.status === 404
