@@ -4,6 +4,7 @@ import type {
   EventPayload,
   ExecutionActivity,
   ExecutionStatus,
+  ModelProfileSnapshot,
   NormalizedUsage,
   OutputContract,
   RunDecisionSettings,
@@ -187,6 +188,8 @@ export interface ReviewView {
 }
 
 export interface RunProjection {
+  /** The model each profile resolved to when the run started (run.started). */
+  modelProfiles: Record<string, ModelProfileSnapshot>;
   /** The earlier version this run's brief starts from (CR-007); null otherwise. */
   startedFrom: { runId: string; artifactVersionId: string } | null;
   runId: string;
@@ -283,6 +286,7 @@ export function emptyProjection(runId: string): RunProjection {
     output: null,
     decisionSettings: null,
     startedFrom: null,
+    modelProfiles: {},
     decisions: {},
   };
 }
@@ -313,6 +317,7 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
         definitionHash: event.payload.definitionHash,
         mode: event.payload.mode,
         startedFrom: event.payload.startedFrom ?? null,
+        modelProfiles: Object.fromEntries(event.payload.modelProfiles.map((m) => [m.profile, m])),
         limits: event.payload.limits,
         currentCriteriaVersionId: event.payload.criteriaVersionId ?? null,
         decisionSettings: event.payload.decisions ?? null,

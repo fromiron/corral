@@ -26,6 +26,7 @@ import { Link, useNavigate } from '@tanstack/react-router';
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
+import { useModelPrices } from '../prices.ts';
 import { runRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
 
@@ -381,6 +382,7 @@ function RunDetails({
   openArtifact: (id: string) => void;
 }) {
   const t = useTranslations('RunPage.tabs');
+  const prices = useModelPrices();
   const succeeded = useStore(session, (s) => s.projection?.status === 'succeeded');
   const [chosen, setChosen] = useState<Tab | null>(null);
   const tab: Tab = chosen ?? (succeeded ? 'output' : 'activity');
@@ -447,7 +449,7 @@ function RunDetails({
         {tab === 'activity' ? <Timeline session={session} /> : null}
         {tab === 'budget' ? (
           <div className="flex flex-col gap-3">
-            <BudgetInspector session={session} />
+            <BudgetInspector session={session} prices={prices} />
             <EffortJudgments session={session} />
           </div>
         ) : null}

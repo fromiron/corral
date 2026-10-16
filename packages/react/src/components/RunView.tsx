@@ -3,6 +3,7 @@ import type { RunProjection } from '@corral/core';
 import type { ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
+import type { ModelPrices } from '../run/cost.ts';
 import type { RunSessionStore, StreamText } from '../run/session.ts';
 import { BudgetInspector } from './BudgetInspector.tsx';
 import { RunActions } from './RunActions.tsx';
@@ -15,10 +16,13 @@ export function RunView({
   session,
   onSteer,
   onStartFrom,
+  prices,
 }: {
   session: RunSessionStore;
   onSteer: (executionId: string) => void;
   onStartFrom?: Parameters<typeof RunOutput>[0]['onStartFrom'];
+  /** List prices for the cost estimate (roadmap 15). */
+  prices?: ModelPrices | undefined;
 }) {
   const t = useTranslations('Run');
   const projection = useStore(session, (s) => s.projection);
@@ -44,7 +48,7 @@ export function RunView({
       {projection ? (
         <>
           <RunActions key={projection.runId} session={session} />
-          <BudgetInspector session={session} />
+          <BudgetInspector session={session} prices={prices} />
           <div className="flex items-center gap-2 text-xs">
             <span className="text-muted">{t('status')}</span>
             <span aria-live="polite" data-testid="run-status">

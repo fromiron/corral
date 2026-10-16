@@ -27,6 +27,7 @@ import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { DemoGuide } from '../demo/DemoGuide.tsx';
 import { DEMO_TEMPLATE_IDS, type DemoTemplateId } from '../demo/templates.ts';
+import { useModelPrices } from '../prices.ts';
 import { demoRoute, editorRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
 
@@ -304,6 +305,7 @@ function RunSide({
   const [chosen, setChosen] = useState<string | null>(null);
   const target = useSteerTarget(session, chosen);
   const [viewing, setViewing] = useState<string | null>(null);
+  const prices = useModelPrices();
   // CR-007: the next run's starting point, until it starts or the person clears it.
   const [startFrom, setStartFrom] = useState<StartFromChoice | null>(initialStartFrom);
   return (
@@ -320,7 +322,7 @@ function RunSide({
         onClearStartFrom={() => setStartFrom(null)}
         {...(beforeStart ? { beforeStart } : {})}
       />
-      <RunView session={session} onSteer={setChosen} onStartFrom={setStartFrom} />
+      <RunView session={session} onSteer={setChosen} onStartFrom={setStartFrom} prices={prices} />
       <ApprovalPanel session={session} onOpenArtifact={setViewing} />
       {viewing ? (
         <ArtifactViewer
