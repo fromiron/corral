@@ -150,3 +150,33 @@ test('[TC-DEC-004-H] the Budget tab lists each request’s effort judgment as ob
   // The demo's rule baseline is labelled as a rule, not a model probability.
   await expect(judgments).toContainText('(rule)');
 });
+
+test('[TC-OBS-001-H] the chosen execution’s conversation shows its question, replies and your instruction', async ({
+  page,
+}) => {
+  await page.goto('/demo?delay=300');
+  const arm = page
+    .getByRole('region', { name: 'Demo guide' })
+    .getByLabel('Pause the run when the round 2 Writer starts');
+  await arm.check();
+  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await expect(page.getByTestId('run-status')).toContainText('Paused', { timeout: 20_000 });
+  await page.getByLabel('Instruction').fill('Lead with the cost difference.');
+  await page.getByLabel('Instruction').press('Enter');
+  await page.getByRole('link', { name: 'Open run page' }).click();
+  const log = page.getByRole('log', { name: 'Conversation' });
+  await expect(log).toContainText('Writer started');
+  await expect(log).toContainText('Asked Source Responder');
+  await expect(log.getByTestId(/^transcript-instruction-/)).toContainText(
+    'Lead with the cost difference.',
+  );
+  await page
+    .getByRole('region', { name: 'Run summary' })
+    .getByRole('button', { name: 'Resume run' })
+    .click();
+  await expect(log.getByTestId(/^transcript-instruction-/)).toContainText(
+    'Included in a model request',
+    { timeout: 15_000 },
+  );
+  await expect(log).toContainText('Lead with the cost difference.');
+});
