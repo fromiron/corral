@@ -1,6 +1,7 @@
 import { Agent, type AgentTool, type StreamFn } from '@earendil-works/pi-agent-core';
 import { type AssistantMessage, type Model, Type } from '@earendil-works/pi-ai';
 import type { Channel } from './channel.ts';
+import type { EndpointSpec } from './endpoint.ts';
 import { HostFrame, PROTOCOL_VERSION, type StartFrame, type WorkerTool } from './protocol.ts';
 import { normalizeUsage } from './usage.ts';
 
@@ -13,7 +14,12 @@ import { normalizeUsage } from './usage.ts';
 export interface WorkerDeps {
   /** pi-ai streaming, e.g. `models.streamSimple`; tests pass the faux provider. */
   streamFn: StreamFn;
-  resolveModel(provider: string, modelId: string): Model<string> | undefined;
+  /** `endpoint` is the definition of an OpenAI-compatible endpoint (CR-005), when it is one. */
+  resolveModel(
+    provider: string,
+    modelId: string,
+    endpoint?: EndpointSpec,
+  ): Model<string> | undefined;
 }
 
 type Reply = Exclude<HostFrame, StartFrame | { type: 'cancel' }>;
@@ -123,7 +129,15 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
         port.send({ ...frame, ...head, requestId });
       });
 
-    const model = deps.resolveModel(start.model.provider, start.model.modelId);
+    const model = deps.resolveModel(
+      start.model.provider,
+      start.model.modelId,
+      start.model.endpoint,
+    );
+    // A keyless endpoint never gets a key, whatever a permit carries (CR-005 §4).
+    const keyless = start.model.endpoint?.keyless === true;
+    const keyOf = (apiKey: string | null | undefined) =>
+      keyless ? undefined : (apiKey ?? undefined);
     if (!model) {
       settle('failed', `model ${start.model.provider}/${start.model.modelId} is not available`);
       return;
@@ -161,14 +175,14 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
       streamFn: (m, context, options) => {
         const stream = deps.streamFn(m, context, {
           ...options,
-          ...(permit?.apiKey ? { apiKey: permit.apiKey } : {}),
+          ...(keyOf(permit?.apiKey) ? { apiKey: keyOf(permit?.apiKey) } : {}),
           ...(permit ? { maxTokens: permit.maxOutputTokens } : {}),
         });
         if (permit)
           port.send({ type: 'request_dispatched', ...head, modelCallId: permit.modelCallId });
         return stream;
       },
-      getApiKey: () => permit?.apiKey ?? undefined,
+      getApiKey: () => keyOf(permit?.apiKey),
       toolExecution: 'sequential',
       prepareRequest: async ({ context }) => {
         const reply = await call({ type: 'prepare_request' });

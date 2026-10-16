@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { memoryChannelPair, PiAgentAdapter, runWorker } from '@corral/adapter-pi';
+import { endpointProvider, memoryChannelPair, PiAgentAdapter, runWorker } from '@corral/adapter-pi';
 import {
   createFauxCore,
   createModels,
@@ -127,6 +127,36 @@ export function fakeOpenAI(
     }),
   );
 
+  // Anthropic as pi-ai has it: an API key, and a subscription OAuth Corral must never start.
+  const anthropic = createFauxCore({
+    provider: 'anthropic',
+    models: [{ id: 'claude-test', name: 'Claude Test' }],
+  });
+  models.setProvider(
+    createProvider({
+      id: 'anthropic',
+      name: 'Anthropic',
+      auth: {
+        apiKey: envApiKeyAuth('Anthropic API key', ['ANTHROPIC_API_KEY']),
+        oauth: {
+          name: 'Anthropic (Claude Pro/Max)',
+          isSubscription: true,
+          async login() {
+            throw new Error('Corral must not start Anthropic subscription sign-in');
+          },
+          async refresh(credential) {
+            return credential;
+          },
+          async toAuth(credential) {
+            return { apiKey: credential.access };
+          },
+        },
+      },
+      models: anthropic.models,
+      api: { stream: anthropic.stream, streamSimple: anthropic.streamSimple },
+    }),
+  );
+
   const live: LiveModels = {
     models,
     credentials,
@@ -139,16 +169,26 @@ export function fakeOpenAI(
       new PiAgentAdapter({
         spawn: () => {
           const { host, worker } = memoryChannelPair();
+          // Like the real worker: an endpoint (CR-005) is built from its start frame alone.
+          const workerModels = createModels();
           runWorker(worker, {
             streamFn: (model, context, streamOptions) => {
+              if (model.provider !== 'openai') {
+                return workerModels.streamSimple(model, context, streamOptions);
+              }
               seen.tokens.push(streamOptions?.apiKey);
               return faux.streamSimple(model, context, streamOptions);
             },
-            resolveModel: (provider, id) => models.getModel(provider, id),
+            resolveModel: (provider, id, endpoint) => {
+              if (!endpoint) return models.getModel(provider, id);
+              workerModels.setProvider(endpointProvider(provider, endpoint));
+              return workerModels.getModel(provider, id);
+            },
           });
           return host;
         },
         credentials: (model) => registry.credentials(model),
+        endpoint: (model) => registry.endpointOf(model),
       }),
   };
 

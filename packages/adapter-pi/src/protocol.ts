@@ -1,5 +1,6 @@
 import { Identifier } from '@corral/contracts';
 import { z } from 'zod';
+import { EndpointSpec } from './endpoint.ts';
 
 // Host ↔ worker frames (Technical-Design §7.4, C-017). Every frame names the protocol version
 // and the execution the worker is bound to; the host checks both and drops the worker on any
@@ -84,7 +85,12 @@ export type WorkerTool = z.infer<typeof WorkerTool>;
 export const StartFrame = z.strictObject({
   type: z.literal('start'),
   ...head,
-  model: z.strictObject({ provider: Identifier, modelId: z.string().min(1).max(200) }),
+  model: z.strictObject({
+    provider: Identifier,
+    modelId: z.string().min(1).max(200),
+    /** An OpenAI-compatible endpoint's non-secret definition (CR-005); absent for pi-ai's own. */
+    endpoint: EndpointSpec.optional(),
+  }),
   role: z.strictObject({
     name: z.string().min(1),
     prompt: z.string().min(1),

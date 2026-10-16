@@ -461,12 +461,18 @@ export interface ProviderAuthView {
   providerId: string;
   name: string;
   signedIn: boolean;
-  method: 'oauth' | 'api_key' | null;
+  method: 'oauth' | 'api_key' | 'none' | null;
+  /** Ways this provider can be signed in to here (CR-005). */
+  methods: { oauth: boolean; apiKey: boolean };
+  /** host[:port] of an OpenAI-compatible endpoint; null for built-in providers. */
+  endpoint: string | null;
+  /** A key was entered for another address than the one the workspace names now. */
+  endpointChanged: boolean;
   subscription: boolean;
   expiresAt: string | null;
   login: LoginView | null;
   /** Where the sign-in comes from: Corral's own, or the Codex CLI login read only (CR-004). */
-  source: 'corral' | 'codex-cli' | null;
+  source: 'corral' | 'codex-cli' | 'environment' | null;
   /** False when the borrowed Codex login file is readable by other users. */
   permissionsOk: boolean;
 }
@@ -481,7 +487,7 @@ export interface ModelProfileView {
   reasoning: boolean | null;
   contextWindow: number | null;
   maxOutputTokens: number | null;
-  method: 'oauth' | 'api_key' | null;
+  method: 'oauth' | 'api_key' | 'none' | null;
   keyConfigured: boolean;
   /** Whether a subscription sign-in may use this model; null when no list is known. */
   subscriptionSupported: boolean | null;
@@ -521,6 +527,14 @@ export class ModelsApi {
   cancelLogin(providerId: string): Promise<ProviderAuthView[]> {
     return this.http.json(`/model-auth/${encodeURIComponent(providerId)}/login`, {
       method: 'DELETE',
+    });
+  }
+
+  /** Stores an API key on the server (CR-005); the answer never contains it. */
+  setApiKey(providerId: string, key: string): Promise<ProviderAuthView[]> {
+    return this.http.json(`/model-auth/${encodeURIComponent(providerId)}/api-key`, {
+      method: 'PUT',
+      body: JSON.stringify({ key }),
     });
   }
 

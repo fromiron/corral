@@ -119,3 +119,72 @@ test.describe('a borrowed Codex CLI login (CR-004)', () => {
     expect(corral.errors).toEqual([]);
   });
 });
+
+test('[TC-SEC-002-H] an API key typed under Models runs live, is never shown, and can be removed (CR-005)', async ({
+  page,
+  corral,
+}) => {
+  corral.fake?.answerWith('Answer with an entered key.');
+  await corral.open('/');
+  await page.getByRole('link', { name: 'Models' }).click();
+  const openai = page.getByTestId('provider-openai');
+  await openai.getByLabel('API key').fill('sk-e2e-entered-secret');
+  await openai.getByRole('button', { name: 'Save key' }).click();
+  await expect(openai.getByTestId('auth-status')).toContainText('Using the API key you entered');
+  // The key field gives way to "Remove key"; the key is not kept in the page.
+  await expect(openai.getByLabel('API key')).toHaveCount(0);
+  await expect(page.getByTestId('profile-model-a')).toContainText('Ready');
+  expect(await page.content()).not.toContain('sk-e2e-entered-secret');
+
+  await page.getByRole('link', { name: 'Corrals' }).click();
+  await agentToOutput(page);
+  await page.getByLabel('Agents').selectOption({ label: 'Live models (uses your sign-in)' });
+  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await expect(page.getByTestId('run-output')).toHaveText('Answer with an entered key.');
+  expect(corral.fake?.seen.tokens.every((token) => token === 'sk-e2e-entered-secret')).toBe(true);
+
+  await page.getByRole('link', { name: 'Models' }).click();
+  await openai.getByRole('button', { name: 'Remove key' }).click();
+  await expect(openai.getByTestId('auth-status')).toContainText('Not signed in');
+  expect(corral.errors).toEqual([]);
+});
+
+test.describe('a keyless OpenAI-compatible endpoint (CR-005)', () => {
+  test.use({ compatibleEndpoint: true });
+
+  test('[TC-SEC-002-H] shows the endpoint and runs live without a key', async ({
+    page,
+    corral,
+  }) => {
+    let calls = 0;
+    corral.endpoint?.setReply((body) => {
+      calls += 1;
+      const written = [...JSON.stringify(body).matchAll(/artv_[a-f0-9]{32}/g)].at(-1)?.[0];
+      if (calls === 1) {
+        return {
+          toolCall: { name: 'write_artifact', args: { text: 'Answer from the local model.' } },
+        };
+      }
+      if (calls === 2) {
+        return { toolCall: { name: 'submit_result', args: { artifactVersionIds: [written] } } };
+      }
+      return 'Done.';
+    });
+    await corral.open('/');
+    await page.getByRole('link', { name: 'Models' }).click();
+    const local = page.getByTestId('provider-local');
+    await expect(local.getByTestId('auth-status')).toContainText('No key needed');
+    await expect(local).toContainText(new URL(corral.endpoint?.baseUrl ?? '').host);
+    await expect(local.getByLabel('API key')).toHaveCount(0);
+    await expect(local.getByRole('button', { name: 'Sign in' })).toHaveCount(0);
+    await expect(page.getByTestId('profile-model-a')).toContainText('Ready');
+
+    await page.getByRole('link', { name: 'Corrals' }).click();
+    await agentToOutput(page);
+    await page.getByLabel('Agents').selectOption({ label: 'Live models (uses your sign-in)' });
+    await page.getByRole('button', { name: 'Run', exact: true }).click();
+    await expect(page.getByTestId('run-output')).toHaveText('Answer from the local model.');
+    expect(corral.endpoint?.authorizations.every((a) => a === 'Bearer no-key')).toBe(true);
+    expect(corral.errors).toEqual([]);
+  });
+});

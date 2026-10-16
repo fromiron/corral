@@ -42,6 +42,57 @@ export const SPEC_HARD_CAPS: InstallationPolicy = {
 
 const cap = (max: number) => z.int().min(1).max(max).optional();
 
+// The WHATWG URL parser, present in Node and browsers; core's type library is plain ES2023.
+declare const URL: new (
+  value: string,
+) => {
+  protocol: string;
+  hostname: string;
+  username: string;
+  password: string;
+  search: string;
+  hash: string;
+};
+
+const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+/** An endpoint address: https, or http on this computer; no credentials, query or fragment. */
+const EndpointUrl = z
+  .string()
+  .max(500)
+  .refine((value) => {
+    let url: InstanceType<typeof URL>;
+    try {
+      url = new URL(value);
+    } catch {
+      return false;
+    }
+    if (url.username || url.password || url.search || url.hash) return false;
+    return url.protocol === 'https:' || (url.protocol === 'http:' && LOOPBACK.has(url.hostname));
+  }, 'use https, or http only for localhost, 127.0.0.1 or [::1]; no user, query or fragment');
+
+/** An OpenAI-compatible endpoint (CR-005): Ollama, LM Studio, OpenRouter and the like. */
+export const ModelProviderConfig = z.strictObject({
+  id: Identifier,
+  name: z.string().min(1).max(80),
+  baseUrl: EndpointUrl,
+  /** `api_key`: a key entered under Settings → Models; `none`: a local server without keys. */
+  access: z.enum(['api_key', 'none']),
+  models: z
+    .array(
+      z.strictObject({
+        id: z.string().min(1).max(200),
+        name: z.string().min(1).max(200).optional(),
+        contextWindow: z.int().min(1).max(10_000_000).optional(),
+        maxOutput: z.int().min(1).max(1_000_000).optional(),
+        reasoning: z.boolean().optional(),
+      }),
+    )
+    .min(1)
+    .max(50),
+});
+export type ModelProviderConfig = z.infer<typeof ModelProviderConfig>;
+
 export const WorkspaceConfig = z.strictObject({
   schemaVersion: SchemaVersion,
   hardCaps: z
@@ -62,6 +113,8 @@ export const WorkspaceConfig = z.strictObject({
     )
     .max(20)
     .optional(),
+  /** OpenAI-compatible endpoints the profiles may name (CR-005). Keys are not configuration. */
+  modelProviders: z.array(ModelProviderConfig).max(10).optional(),
   /** reasoning_effort judgments (CR-003): observe only, off unless asked for. */
   decisions: z
     .strictObject({
@@ -103,7 +156,7 @@ export function parseWorkspaceConfig(value: unknown): ConfigResult {
       ok: false,
       errors: secrets.map(
         (path) =>
-          `${path}: credentials are read from the server environment, not from the config file`,
+          `${path}: credentials are entered under Settings → Models or read from the server environment, not from the config file`,
       ),
     };
   }

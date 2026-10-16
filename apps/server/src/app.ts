@@ -28,7 +28,7 @@ import {
 } from '@corral/core';
 import { LangGraphRunner } from '@corral/runner-langgraph';
 import { openDatabase, SqliteCorralRepository, SqliteRunStore } from '@corral/storage-sqlite';
-import type { CredentialStore, Models } from '@earendil-works/pi-ai';
+import type { CredentialStore, MutableModels } from '@earendil-works/pi-ai';
 import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
@@ -37,8 +37,11 @@ import { ImportInput, type InputOptions, InputRegistry } from './inputs.ts';
 import {
   assertOutsideWorkspace,
   DEFAULT_PROFILES,
+  endpointsFrom,
   ModelRegistry,
   type ProfileConfig,
+  RegistryError,
+  registerEndpoints,
 } from './models/index.ts';
 import { RandomIdFactory, systemClock, systemTimers } from './runtime.ts';
 import { InputError } from './safe-http.ts';
@@ -83,7 +86,7 @@ export interface ServerOptions {
 
 export interface LiveModels {
   /** pi-ai's model catalog, resolving request auth from `credentials`. */
-  models: Models;
+  models: MutableModels;
   credentials: CredentialStore;
   /** The user's config directory holding `credentials`; must be outside the workspace. */
   configDir: string;
@@ -195,6 +198,8 @@ async function createCorralServer(
   let registry: ModelRegistry | null = null;
   if (options.live) {
     assertOutsideWorkspace(options.live.configDir, workspace.root);
+    const endpoints = endpointsFrom(workspace.config.modelProviders);
+    registerEndpoints(options.live.models, endpoints);
     registry = new ModelRegistry(
       options.live.models,
       workspace.config.modelProfiles ??
@@ -206,6 +211,7 @@ async function createCorralServer(
         ...(options.live.subscriptionModels
           ? { subscriptionModels: options.live.subscriptionModels }
           : {}),
+        endpoints,
       },
     );
     await registry.refreshStatus();
@@ -437,15 +443,31 @@ async function createCorralServer(
   app.get('/api/v1/model-profiles', async () => registry?.profilesView() ?? []);
   app.get('/api/v1/model-auth', async () => registry?.authView() ?? []);
   type ProviderParams = { Params: { providerId: string } };
+  const registryFailure = (reply: FastifyReply, error: unknown) =>
+    error instanceof RegistryError && error.code === 'unsupported'
+      ? fail(reply, 'COMMAND_NOT_SUPPORTED', error.message)
+      : fail(reply, 'TARGET_NOT_FOUND', 'no model profile uses this provider');
   const noLive = (reply: FastifyReply) =>
     fail(reply, 'COMMAND_NOT_SUPPORTED', 'this server has no live model connection');
   app.post<ProviderParams>('/api/v1/model-auth/:providerId/login', async (request, reply) => {
     if (!registry) return noLive(reply);
     try {
       return reply.code(202).send(await registry.startLogin(request.params.providerId));
-    } catch {
-      return fail(reply, 'TARGET_NOT_FOUND', 'no model profile uses this provider');
+    } catch (error) {
+      return registryFailure(reply, error);
     }
+  });
+  // CR-005: a key typed under Settings → Models; stored on this computer, never sent back.
+  app.put<ProviderParams>('/api/v1/model-auth/:providerId/api-key', async (request, reply) => {
+    if (!registry) return noLive(reply);
+    const body = parse(z.strictObject({ key: z.string().trim().min(1).max(1000) }), request, reply);
+    if (!body) return reply;
+    try {
+      await registry.setApiKey(request.params.providerId, body.key);
+    } catch (error) {
+      return registryFailure(reply, error);
+    }
+    return registry.authView();
   });
   app.post<ProviderParams>(
     '/api/v1/model-auth/:providerId/login/callback',
