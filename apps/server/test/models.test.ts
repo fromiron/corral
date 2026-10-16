@@ -434,3 +434,84 @@ describe('API keys and OpenAI-compatible endpoints (CR-005)', () => {
     );
   });
 });
+
+describe('team drafts from a goal (CR-006)', () => {
+  const PLAN = {
+    name: 'Help desk vendors',
+    pattern: 'research_write_review',
+    brief: 'Compare three help desk vendors.',
+    criteria: ['Name the source behind each main claim.'],
+    roles: [
+      { slot: 'researcher', name: 'Analyst', duty: 'Collect pricing and limits.' },
+      { slot: 'writer', name: 'Author', duty: 'Write the comparison.' },
+      { slot: 'reviewer', name: 'Critic', duty: 'Check each claim.' },
+    ],
+    reviewRounds: 2,
+    finalApproval: true,
+  };
+  const draft = (json: Awaited<ReturnType<typeof start>>['json'], goal: string) =>
+    json('/team-drafts', { method: 'POST', body: JSON.stringify({ goal }) });
+
+  it('[TC-UX-003-H] asks the first profile’s model once, with an output cap, and returns the checked plan', async () => {
+    const fake = makeFake();
+    const context = await start(fake);
+    await signIn(context.json);
+    fake.replyText(`Here is the team:\n\`\`\`json\n${JSON.stringify(PLAN)}\n\`\`\``);
+    const answer = await draft(context.json, 'Compare three help desk vendors.');
+    expect(answer.status).toBe(200);
+    expect(answer.body).toEqual({
+      plan: PLAN,
+      model: { provider: 'openai', modelId: 'gpt-test-a' },
+    });
+    expect(fake.seen.hostRequests).toHaveLength(1);
+    expect(fake.seen.hostRequests[0]?.maxTokens).toBe(1500);
+    expect(fake.seen.hostRequests[0]?.text).toContain('Compare three help desk vendors.');
+    expect(context.responses.join('\n')).not.toContain('secret');
+  });
+
+  it('[TC-UX-003-N] an answer that does not fit is refused without its text; no sign-in, no live models and long goals are refused', async () => {
+    const fake = makeFake();
+    const context = await start(fake);
+    expect((await draft(context.json, 'Compare vendors.')).status).toBe(403);
+    await signIn(context.json);
+    for (const reply of [
+      'I cannot help with that, but here is a poem: roses-are-red',
+      JSON.stringify({ ...PLAN, roles: PLAN.roles.slice(0, 1) }),
+      JSON.stringify({ ...PLAN, tools: ['shell'] }),
+    ]) {
+      fake.replyText(reply);
+      const answer = await draft(context.json, 'Compare vendors.');
+      expect(answer.status).toBe(502);
+      expect(answer.body.error.code).toBe('MODEL_UNAVAILABLE');
+      expect(JSON.stringify(answer.body)).not.toContain('roses-are-red');
+      expect(JSON.stringify(answer.body)).not.toContain('shell');
+    }
+    expect((await draft(context.json, '')).status).toBe(400);
+    expect((await draft(context.json, 'x'.repeat(2001))).status).toBe(400);
+
+    const workspace = temp('workspace');
+    const server = await startCorralServer({
+      workspace,
+      port: 0,
+      bootstrapToken: TOKEN,
+      agents: new ScriptedAgentAdapter({ turns: 1 }),
+    });
+    servers.push(server);
+    const session = await fetch(`${server.url}/api/v1/session`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: server.url },
+      body: JSON.stringify({ token: TOKEN }),
+    });
+    const noLive = await fetch(`${server.url}/api/v1/team-drafts`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        origin: server.url,
+        cookie: (session.headers.get('set-cookie') ?? '').split(';')[0] ?? '',
+        'x-corral-csrf': session.headers.get('x-corral-csrf') ?? '',
+      },
+      body: JSON.stringify({ goal: 'Compare vendors.' }),
+    });
+    expect(noLive.status).toBe(501);
+  });
+});

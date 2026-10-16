@@ -333,8 +333,13 @@
       "blank": {
         "name": "빈 캔버스",
         "body": "빈 캔버스입니다. 팔레트에서 노드를 끌어 와 연결하세요."
+      },
+      "goal": {
+        "name": "목표에서 시작",
+        "body": "팀이 할 일을 적으면, 열기 전에 검토할 팀 구성을 제안합니다."
       }
-    }
+    },
+    "draftFromGoal": "목표에서 초안 만들기"
   },
   "Editor": {
     "name": "Corral 이름",
@@ -789,7 +794,8 @@
       "corrals": "Corral",
       "runs": "Run",
       "help": "도움말"
-    }
+    },
+    "draftTeam": "목표에서 팀 초안 만들기"
   },
   "Shortcuts": {
     "label": "키보드 단축키",
@@ -804,5 +810,65 @@
     "newline": "지시에서 줄바꿈",
     "close": "대화상자 닫기",
     "closeButton": "닫기"
+  },
+  "TeamDraft": {
+    "title": "목표에서 팀 초안 만들기",
+    "goalLabel": "팀이 무엇을 해야 하나요?",
+    "goalPlaceholder": "예: 20명 팀이 쓸 헬프데스크 도구 세 가지 비교",
+    "suggest": "팀 제안 받기",
+    "suggestHint": "적은 낱말로 팀 모양을 고릅니다. 모델을 호출하지 않습니다.",
+    "ask": "모델에게 묻기",
+    "asking": "모델에게 묻는 중…",
+    "askHint": "로그인한 모델 요청을 1회 씁니다.",
+    "patterns": {
+      "single": "에이전트 하나",
+      "write_review": "기획 후 작성·검토",
+      "research_write_review": "조사 후 작성·검토"
+    },
+    "nameLabel": "팀 이름",
+    "briefLabel": "브리프",
+    "rolesLabel": "역할",
+    "roleName": "역할 {n} 이름",
+    "roleDuty": "역할 {n} 할 일",
+    "criteriaLabel": "기준(한 줄에 하나)",
+    "rounds": "검토 회차",
+    "approval": "최종 결과를 내가 승인",
+    "invalid": "이름·할 일·브리프에는 글이 있어야 하고, 기준은 하나 이상 필요합니다.",
+    "back": "뒤로",
+    "cancel": "취소",
+    "open": "편집기에서 열기",
+    "wording": {
+      "roles": {
+        "worker": {
+          "name": "도우미",
+          "duty": "브리프의 작업을 하고 결과를 작성한다."
+        },
+        "planner": {
+          "name": "기획자",
+          "duty": "브리프에 필요한 요점과 구성을 작성자를 위한 짧은 노트로 정리한다."
+        },
+        "researcher": {
+          "name": "조사자",
+          "duty": "브리프에 필요한 사실과 출처를 모아 노트로 정리한다."
+        },
+        "writer": {
+          "name": "작성자",
+          "duty": "노트를 바탕으로 브리프가 요구하는 결과물을 쓰고, 검토마다 고친다."
+        },
+        "reviewer": {
+          "name": "검토자",
+          "duty": "받은 초안을 기준에 맞춰 검토하고 통과 또는 이유와 함께 수정 요청으로 답한다."
+        }
+      },
+      "criteria": {
+        "direct": "브리프에 직접 답한다.",
+        "sources": "주요 주장마다 근거 출처를 밝힌다."
+      },
+      "labels": {
+        "loop": "검토 루프",
+        "decision": "검토 판정",
+        "output": "출력"
+      }
+    }
   }
 }

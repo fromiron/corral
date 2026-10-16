@@ -78,7 +78,8 @@
             "STORAGE_UNAVAILABLE",
             "SESSION_INVALID",
             "ORIGIN_REJECTED",
-            "POLICY_ERROR"
+            "POLICY_ERROR",
+            "MODEL_UNAVAILABLE"
           ]
         },
         "message": {

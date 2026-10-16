@@ -1,8 +1,14 @@
 import type { EndpointSpec } from '@corral/adapter-pi';
-import type { ModelProfileSnapshot } from '@corral/contracts';
+import type { ModelProfileSnapshot, TeamPlan } from '@corral/contracts';
 import type { ModelResolution, ModelResolver } from '@corral/core';
 import type { AuthEvent, AuthPrompt, CredentialStore, Models } from '@earendil-works/pi-ai';
 import { ENDPOINT_ORIGIN, type Endpoint } from './endpoints.ts';
+import {
+  DRAFT_MAX_OUTPUT_TOKENS,
+  DRAFT_SYSTEM_PROMPT,
+  DRAFT_TIMEOUT_MS,
+  planFromAnswer,
+} from './team-draft.ts';
 
 // Model profiles and sign-in for the local server (C-058, ADR-019). Profiles name a provider
 // and model; credentials stay in pi-ai's credential store on this computer. Views and errors
@@ -215,6 +221,57 @@ export class ModelRegistry implements ModelResolver {
       void this.refreshStatus();
     }
     return auth?.auth.apiKey ?? null;
+  }
+
+  /**
+   * A team plan for a goal from one request to the first profile's model (CR-006). Outside any
+   * Run: the person asked for it, and it is capped in output tokens and time.
+   */
+  async draftTeam(
+    goal: string,
+  ): Promise<
+    | { ok: true; plan: TeamPlan; model: { provider: string; modelId: string } }
+    | { ok: false; code: 'CAPABILITY_DENIED' | 'MODEL_UNAVAILABLE'; message: string }
+  > {
+    const profile = this.profiles[0];
+    const resolution = profile ? this.resolve(profile.id, 'live') : null;
+    if (!resolution?.ok || !resolution.snapshot.provider || !resolution.snapshot.modelId) {
+      return {
+        ok: false,
+        code: 'CAPABILITY_DENIED',
+        message: resolution && !resolution.ok ? resolution.reason : 'no model profile',
+      };
+    }
+    const { provider, modelId } = resolution.snapshot;
+    const model = this.models.getModel(provider, modelId);
+    if (!model) return { ok: false, code: 'CAPABILITY_DENIED', message: 'no such model' };
+    const unavailable = (message: string) =>
+      ({ ok: false, code: 'MODEL_UNAVAILABLE', message }) as const;
+    let text: string;
+    try {
+      const answer = await this.models
+        .streamSimple(
+          model,
+          {
+            systemPrompt: DRAFT_SYSTEM_PROMPT,
+            messages: [{ role: 'user', content: goal, timestamp: Date.now() }],
+          },
+          { maxTokens: DRAFT_MAX_OUTPUT_TOKENS, signal: AbortSignal.timeout(DRAFT_TIMEOUT_MS) },
+        )
+        .result();
+      if (answer.stopReason === 'error' || answer.stopReason === 'aborted') {
+        return unavailable('the model request failed; try again or use the local suggestion');
+      }
+      text = answer.content.map((part) => (part.type === 'text' ? part.text : '')).join('');
+    } catch {
+      return unavailable('the model request failed; try again or use the local suggestion');
+    } finally {
+      void this.refreshStatus();
+    }
+    const plan = planFromAnswer(text);
+    return plan
+      ? { ok: true, plan, model: { provider, modelId } }
+      : unavailable("the model's answer was not a usable team plan; use the local suggestion");
   }
 
   /** The non-secret definition of the endpoint behind a model, for its worker (CR-005). */

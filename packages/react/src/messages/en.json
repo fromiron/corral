@@ -333,8 +333,13 @@
       "blank": {
         "name": "Empty",
         "body": "An empty canvas: drag nodes from the palette and connect them."
+      },
+      "goal": {
+        "name": "From a goal",
+        "body": "Describe what the team should do; get a team shape to review before it opens."
       }
-    }
+    },
+    "draftFromGoal": "Draft from a goal"
   },
   "Editor": {
     "name": "Corral name",
@@ -789,7 +794,8 @@
       "corrals": "Corrals",
       "runs": "Runs",
       "help": "Help"
-    }
+    },
+    "draftTeam": "Draft a team from a goal"
   },
   "Shortcuts": {
     "label": "Keyboard shortcuts",
@@ -804,5 +810,65 @@
     "newline": "New line in an instruction",
     "close": "Close a dialog",
     "closeButton": "Close"
+  },
+  "TeamDraft": {
+    "title": "Draft a team from a goal",
+    "goalLabel": "What should the team do?",
+    "goalPlaceholder": "e.g. Compare three help desk tools for a 20-person team",
+    "suggest": "Suggest a team",
+    "suggestHint": "Picks a team shape from your words. No model call.",
+    "ask": "Ask the model",
+    "asking": "Asking the model…",
+    "askHint": "Uses one model request with your sign-in.",
+    "patterns": {
+      "single": "One agent",
+      "write_review": "Plan, then write and review",
+      "research_write_review": "Research, then write and review"
+    },
+    "nameLabel": "Team name",
+    "briefLabel": "Brief",
+    "rolesLabel": "Roles",
+    "roleName": "Name of role {n}",
+    "roleDuty": "Duty of role {n}",
+    "criteriaLabel": "Criteria (one per line)",
+    "rounds": "Rounds of review",
+    "approval": "Ask me to approve the final result",
+    "invalid": "Every name, duty and the brief need text, and at least one criterion.",
+    "back": "Back",
+    "cancel": "Cancel",
+    "open": "Open in editor",
+    "wording": {
+      "roles": {
+        "worker": {
+          "name": "Assistant",
+          "duty": "Do the task in the brief and write the result."
+        },
+        "planner": {
+          "name": "Planner",
+          "duty": "Outline the points and structure the brief needs, as short notes for the writer."
+        },
+        "researcher": {
+          "name": "Researcher",
+          "duty": "Gather the facts and sources the brief needs and write them up as notes."
+        },
+        "writer": {
+          "name": "Writer",
+          "duty": "Write what the brief asks for from the notes, and revise it after each review."
+        },
+        "reviewer": {
+          "name": "Reviewer",
+          "duty": "Review the exact draft against the criteria and answer pass, or revise with reasons."
+        }
+      },
+      "criteria": {
+        "direct": "Answer the brief directly.",
+        "sources": "Name the source behind each main claim."
+      },
+      "labels": {
+        "loop": "Review loop",
+        "decision": "Review decision",
+        "output": "Output"
+      }
+    }
   }
 }

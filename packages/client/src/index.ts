@@ -7,6 +7,7 @@ import {
   RunEvent,
   type StartRunRequest,
   type StreamFrame,
+  type TeamPlan,
 } from '@corral/contracts';
 import type {
   CorralRecord,
@@ -528,6 +529,13 @@ export class ModelsApi {
     return this.http.json(`/model-auth/${encodeURIComponent(providerId)}/login`, {
       method: 'DELETE',
     });
+  }
+
+  /** A team plan for a goal from one model request (CR-006); only a checked plan comes back. */
+  draftTeam(
+    goal: string,
+  ): Promise<{ plan: TeamPlan; model: { provider: string; modelId: string } }> {
+    return this.http.json('/team-drafts', { method: 'POST', body: JSON.stringify({ goal }) });
   }
 
   /** Stores an API key on the server (CR-005); the answer never contains it. */

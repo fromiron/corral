@@ -25,6 +25,8 @@ export const ErrorCode = z.enum([
   'ORIGIN_REJECTED',
   /** An admission gate failed; the call is refused, never let through (ADR-024). */
   'POLICY_ERROR',
+  /** A model request outside a Run failed, or its answer did not fit the contract (CR-006). */
+  'MODEL_UNAVAILABLE',
 ]);
 export type ErrorCode = z.infer<typeof ErrorCode>;
 
