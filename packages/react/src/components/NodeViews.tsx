@@ -5,7 +5,7 @@ import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { useStudioStores } from '../context.tsx';
 import { findNode } from '../editor/model.ts';
-import { nodeExecutionCount, nodeRunStatus } from '../run/selectors.ts';
+import { decisionRunStatus, nodeExecutionCount, nodeRunStatus } from '../run/selectors.ts';
 
 // One view per node kind. Handle ids are the compiler's port names, so a drawn connection is
 // exactly the ControlEdge it creates. Call links use separate handles below/above agents.
@@ -27,17 +27,29 @@ function useNode(id: string) {
 function RunOverlay({ nodeId }: { nodeId: string }) {
   const t = useTranslations('Canvas.nodeStatus');
   const { session } = useStudioStores();
+  const node = useNode(nodeId);
+  const judged = node?.type === 'decision' || node?.type === 'output';
   // Each node subscribes to its own status only, so stream updates do not re-render the canvas.
-  const status = useStore(session, (s) => nodeRunStatus(s.projection, nodeId));
-  const count = useStore(session, (s) => nodeExecutionCount(s.projection, nodeId));
+  // Decision and Output nodes have no executions: they report decisions instead (UX-A4).
+  const summary = useStore(session, (s) => {
+    if (judged && node) {
+      const d = decisionRunStatus(s.projection, node);
+      return `${d.status}:${d.count}:decisions`;
+    }
+    return `${nodeRunStatus(s.projection, nodeId)}:${nodeExecutionCount(s.projection, nodeId)}:executions`;
+  });
+  const [status = 'idle', countText = '0', unit = 'executions'] = summary.split(':');
+  const count = Number(countText);
   if (status === 'idle') return null;
-  const symbol = { active: '◐', done: '✓', failed: '✕' }[status];
+  const symbol = { active: '◐', done: '✓', failed: '✕', waiting: '!' }[status] ?? '•';
   return (
     <span className="mt-1 inline-flex items-center gap-1 text-xs" data-run-status={status}>
       <span aria-hidden="true">{symbol}</span>
       {t(status)}
       {/* A node is not one execution: Loop rounds and calls each add one (Spec §4.3). */}
-      {count > 1 ? <span className="text-muted">· {t('executions', { count })}</span> : null}
+      {count > (unit === 'executions' ? 1 : 0) ? (
+        <span className="text-muted">· {t(unit, { count })}</span>
+      ) : null}
     </span>
   );
 }

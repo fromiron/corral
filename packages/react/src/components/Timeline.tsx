@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import type { RunSessionStore } from '../run/session.ts';
+import { EventText } from './RunText.tsx';
 
 // Committed events of one run (C-060, OBS-001). Only the rows in view are in the DOM, so a run
 // with 10,000 events costs the same as one with 50 (Spec §10.3). New events are appended
@@ -21,6 +22,14 @@ function kindOf(event: RunEvent): string {
 export function Timeline({ session }: { session: RunSessionStore }) {
   const t = useTranslations('Timeline');
   const events = useStore(session, (s) => s.events);
+  const executionViews = useStore(session, (s) => s.projection?.executions);
+  const definition = useStore(session, (s) => s.definition);
+  const nodeLabel = (nodeId: string) =>
+    definition?.nodes.find((n) => n.id === nodeId)?.label ?? nodeId;
+  const labelOf = (executionId: string | undefined) => {
+    const nodeId = executionId ? executionViews?.[executionId]?.nodeId : undefined;
+    return nodeId ? nodeLabel(nodeId) : (executionId ?? '');
+  };
   const [actor, setActor] = useState<ActorFilter>('all');
   const [kind, setKind] = useState('all');
   const [execution, setExecution] = useState('all');
@@ -133,16 +142,16 @@ export function Timeline({ session }: { session: RunSessionStore }) {
                     type="button"
                     aria-pressed={isSelected}
                     onClick={() => setSelectedId(event.eventId)}
-                    className={`flex h-full w-full items-center gap-2 px-2 text-left font-mono text-xs ${
+                    className={`flex h-full w-full items-center gap-2 px-2 text-left text-xs ${
                       isSelected ? 'bg-accent/15' : 'hover:bg-surface'
                     }`}
                   >
-                    <span className="w-12 shrink-0 text-muted">#{event.runSeq}</span>
+                    <span className="w-12 shrink-0 font-mono text-muted">#{event.runSeq}</span>
                     <span className="w-16 shrink-0">{t(`actors.${event.actor.kind}`)}</span>
-                    <span className="truncate">{event.type}</span>
-                    {event.executionId ? (
-                      <span className="ml-auto shrink-0 text-muted">{event.executionId}</span>
-                    ) : null}
+                    <span className="truncate">
+                      <EventText event={event} labelOf={labelOf} nodeLabel={nodeLabel} />
+                    </span>
+                    <span className="ml-auto shrink-0 font-mono text-muted">{event.type}</span>
                   </button>
                 </li>
               );

@@ -1,6 +1,13 @@
 import type { CorralDefinition } from '@corral/contracts';
-import { Background, Controls, type Node, ReactFlow, ReactFlowProvider } from '@xyflow/react';
-import { useMemo } from 'react';
+import {
+  Background,
+  Controls,
+  type Node,
+  ReactFlow,
+  ReactFlowProvider,
+  useReactFlow,
+} from '@xyflow/react';
+import { type RefObject, useEffect, useMemo, useRef } from 'react';
 import { useTranslations } from 'use-intl';
 import { StudioStoresProvider } from '../context.tsx';
 import { draftFromDefinition } from '../editor/model.ts';
@@ -30,6 +37,7 @@ export function RunCanvas({
 }) {
   const t = useTranslations('RunCanvas');
   const tc = useTranslations('Canvas');
+  const frame = useRef<HTMLDivElement>(null);
   // Node views read node settings from an editor store; this one is never edited.
   const editor = useMemo(
     () => createEditorStore({ ...draftFromDefinition(definition), layout: layout.nodes }),
@@ -57,7 +65,12 @@ export function RunCanvas({
   return (
     <StudioStoresProvider editor={editor} session={session} readOnly>
       <ReactFlowProvider>
-        <div className="relative h-full w-full" role="application" aria-label={t('label')}>
+        <div
+          ref={frame}
+          className="relative h-full w-full"
+          role="application"
+          aria-label={t('label')}
+        >
           <ReactFlow
             nodes={nodes}
             edges={edges}
@@ -76,6 +89,7 @@ export function RunCanvas({
           >
             <Background />
             <Controls showInteractive={false} />
+            <FitOnResize frame={frame} />
           </ReactFlow>
           <p className="pointer-events-none absolute right-2 top-2 rounded bg-raised/90 px-2 py-0.5 text-[11px] text-muted">
             {t(`layout.${layout.source}`)} · {t('layoutNote')}
@@ -84,4 +98,26 @@ export function RunCanvas({
       </ReactFlowProvider>
     </StudioStoresProvider>
   );
+}
+
+/** Keeps the whole graph in view when its area changes size (window resize, layout switch). */
+function FitOnResize({ frame }: { frame: RefObject<HTMLDivElement | null> }) {
+  const { fitView } = useReactFlow();
+  useEffect(() => {
+    const el = frame.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    let last = '';
+    const observer = new ResizeObserver(([entry]) => {
+      if (!entry) return;
+      const size = `${Math.round(entry.contentRect.width)}x${Math.round(entry.contentRect.height)}`;
+      if (size === last) return;
+      const first = last === '';
+      last = size;
+      // The first size is the initial fitView's job.
+      if (!first) void fitView({ padding: 0.08, maxZoom: 1 });
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [frame, fitView]);
+  return null;
 }

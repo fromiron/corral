@@ -180,3 +180,47 @@ test('[TC-OBS-001-H] the chosen execution’s conversation shows its question, r
   );
   await expect(log).toContainText('Lead with the cost difference.');
 });
+
+test('[TC-OBS-001-H] the run reads in sentences: reason, timeline and decision nodes', async ({
+  page,
+}) => {
+  await finishedTeamRun(page);
+  await expect(page.getByRole('region', { name: 'Run summary' })).toContainText(
+    'Reason: The final output was produced',
+  );
+  await page
+    .getByRole('tablist', { name: 'Run details' })
+    .getByRole('tab', { name: 'Activity' })
+    .click();
+  await expect(
+    page.getByTestId('timeline-row').filter({ hasText: 'Research started' }),
+  ).toHaveCount(1);
+  const node = (id: string) => graph(page).locator(`.react-flow__node[data-id="${id}"]`);
+  await expect(node('review_decision')).toContainText('2 decisions');
+  await expect(node('approval').locator('[data-run-status]')).toHaveAttribute(
+    'data-run-status',
+    'done',
+  );
+  await expect(node('output').locator('[data-run-status]')).toHaveAttribute(
+    'data-run-status',
+    'done',
+  );
+});
+
+test('[TC-UX-001-H] the graph refits when its area shrinks, so every node stays in view', async ({
+  page,
+}) => {
+  // Wide first, so the initial fit uses a large area; then shrink the graph area itself.
+  await page.setViewportSize({ width: 1920, height: 1000 });
+  await finishedTeamRun(page);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.waitForTimeout(400);
+  const area = await graph(page).boundingBox();
+  if (!area) throw new Error('no graph area');
+  for (const box of await graph(page)
+    .locator('.react-flow__node')
+    .evaluateAll((nodes) => nodes.map((n) => n.getBoundingClientRect().toJSON() as DOMRect))) {
+    expect(box.left).toBeGreaterThanOrEqual(area.x - 1);
+    expect(box.right).toBeLessThanOrEqual(area.x + area.width + 1);
+  }
+});

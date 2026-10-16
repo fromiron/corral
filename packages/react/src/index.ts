@@ -12,6 +12,7 @@ export { ReinsPanel, type SteerTarget } from './components/ReinsPanel.tsx';
 export { RunActions } from './components/RunActions.tsx';
 export { RunCanvas } from './components/RunCanvas.tsx';
 export { RunControls } from './components/RunControls.tsx';
+export { describeEvent, EventText, RunReason } from './components/RunText.tsx';
 export { ExecutionTree, RunOutput, RunView } from './components/RunView.tsx';
 export { SafeMarkdown } from './components/SafeMarkdown.tsx';
 export { StatusBadge } from './components/StatusBadge.tsx';
@@ -28,7 +29,12 @@ export {
 } from './editor/store.ts';
 export { default as enMessages } from './messages/en.json' with { type: 'json' };
 export { type RunCanvasLayout, runCanvasLayout } from './run/layout.ts';
-export { type NodeRunStatus, nodeExecutionCount, nodeRunStatus } from './run/selectors.ts';
+export {
+  decisionRunStatus,
+  type NodeRunStatus,
+  nodeExecutionCount,
+  nodeRunStatus,
+} from './run/selectors.ts';
 export {
   createRunSession,
   type RunSessionState,
