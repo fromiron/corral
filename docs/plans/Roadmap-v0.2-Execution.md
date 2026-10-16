@@ -19,12 +19,24 @@
 | 4 | C-070·C-071 | 외부 provider 경계, Run 화면 판정 표시, `corral inspect` 비교 | 완료 |
 | 5 | UX-A3 | 실행별 대화(transcript) 뷰: 모델 턴·도구·질문/답변·지시 배지 스트리밍 | 완료 |
 | 6 | UX-A4 | Timeline 문장화, 상태 reason 문구, 예산 미터 축약, Decision 노드 상태, 그래프 fitView | 완료 |
-| 7 | UX-A5 | 명령 팔레트(⌘K)·단축키 도움말·빈 상태·템플릿 갤러리·한국어 locale | 완료(PR #15, 2부 PR 대기) |
-| 8 | Core-③ | `corral exec` headless + 단일 에이전트 vs 팀 비교 eval harness | 완료(PR 대기) |
-| 9 | Core | 특정 버전에서 새 Run 시작(fork from version) | 완료(PR 대기, [CR-007](../change-requests/CR-007-new-run-from-version.md)) |
-| 10 | Core | Goal → 팀 초안 생성(사람 승인 후 편집기) | 완료(PR 대기, [CR-006](../change-requests/CR-006-goal-team-draft.md)) |
-| 11 | Core | Pi provider 확장(API key: OpenAI·Anthropic·OpenAI 호환·Ollama) | 완료(PR 대기, [CR-005](../change-requests/CR-005-api-keys-and-compatible-endpoints.md)) |
-| 12 | Core·보안 | OS 표준 인증 파일 사용: Codex CLI 로그인(`~/.codex/auth.json`) 재사용과 Corral 자격 증명의 OS 표준 설정 디렉터리. CR-001 변경이므로 CR-004 먼저 | 완료(PR 대기, [CR-004](../change-requests/CR-004-codex-login-reuse.md)) |
+| 7 | UX-A5 | 명령 팔레트(⌘K)·단축키 도움말·빈 상태·템플릿 갤러리·한국어 locale | 완료(PR #15·#16 병합) |
+| 8 | Core-③ | `corral exec` headless + 단일 에이전트 vs 팀 비교 eval harness | 완료(PR #17 병합) |
+| 9 | Core | 특정 버전에서 새 Run 시작(fork from version) | 완료(PR #25 병합, [CR-007](../change-requests/CR-007-new-run-from-version.md)) |
+| 10 | Core | Goal → 팀 초안 생성(사람 승인 후 편집기) | 완료(PR #23 병합, [CR-006](../change-requests/CR-006-goal-team-draft.md)) |
+| 11 | Core | Pi provider 확장(API key: OpenAI·Anthropic·OpenAI 호환·Ollama) | 완료(PR #19 병합, [CR-005](../change-requests/CR-005-api-keys-and-compatible-endpoints.md)) |
+| 12 | Core·보안 | OS 표준 인증 파일 사용: Codex CLI 로그인(`~/.codex/auth.json`) 재사용과 Corral 자격 증명의 OS 표준 설정 디렉터리. CR-001 변경이므로 CR-004 먼저 | 완료(PR #18 병합, [CR-004](../change-requests/CR-004-codex-login-reuse.md)) |
+
+## 다음 단계 (v0.2 이후, 2026-10-16)
+
+v0.2 로드맵 0–12번은 모두 main에 병합됐다. 다음은 같은 원칙(UX/UI와 코어 우선)으로 고른 후속 항목이다. 위에서부터 진행한다.
+
+| # | 항목 | 범위 | 상태 |
+|---|---|---|---|
+| 13 | Core | 판정 모델 준비 대기: 서버 시작 직후 첫 판정이 모델 로딩 때문에 timeout(1.5 s)으로 실패하는 문제. 로딩 시간을 판정 시간과 구분 | 진행 |
+| 14 | UX | 모델 화면에서 프로필·엔드포인트 편집(`.corral/config.json` 직접 수정 없이). CR 필요 | 대기 |
+| 15 | UX·Core | Run 예상 비용: API 키 Run은 모델 가격으로 추정 비용, 구독 로그인은 "구독에 포함" 표시 | 대기 |
+| 16 | UX | Run 비교 화면: 두 Run의 비용·시간·호출·결과를 나란히(eval 보고서와 같은 기준) | 대기 |
+| 17 | UX | 첫 실행 안내: 모델 연결 → 팀 초안 → 첫 Run 체크리스트 | 대기 |
 
 ## 진행 기록
 
@@ -46,3 +58,5 @@
 - CR-006(10번): 목표 → TeamPlan(로컬 제안·모델 1회) → 미리보기 수정 → 편집기. 실제 모델 1회 11.7초, 계약 통과.
 - 이슈 #20·#21·#22 수정(PR #24). CR-007(9번): 이전 결과·버전에서 새 Run, 본문 복사·출처 기록. 580 unit.
 - PR #17·#18·#19 main 병합. CI 실패 원인은 데모 E2E의 2회차 조향 경합(느린 CI에서 Writer가 먼저 끝남)으로, 지연 폭만 넓혔다.
+- PR #23·#24·#25 main 병합. 이슈 #20–#22 종료. 큰 SSE replay 테스트는 부하 걸린 CI에서 기본 5 s를 넘겨 30 s로 늘림(단정 동일).
+- 2026-10-16 Bell: 열린 PR은 CI 실패를 조사·수정한 뒤 병합까지 진행한다. Bell이 등록한 GitHub 이슈도 확인하며 개선한다. (앞의 "PR마다 CI를 기다리지 않음, 병합은 Bell"을 대신한다.)

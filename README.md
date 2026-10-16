@@ -47,4 +47,12 @@ pnpm release:gate
 - [테스트 전략](docs/Test-Strategy.md), [추적 매트릭스](tests/traceability.json), [P6–P9 셀프 리뷰 수정 근거](specs/001-canvas/evidence/review-fixes.md)
 - [선정 근거](docs/Dependencies-and-Sources.md), [고정 버전 기록](docs/dependency-lock.json), [MIT 라이선스](LICENSE)
 
-MVP 범위는 D&D·협업·제한된 Loop·subagents·Reins다. Local/Jev DecisionProvider, Corral 중첩, crash resume은 후속 범위이며 현재 기능으로 표시하지 않는다.
+MVP 범위는 D&D·협업·제한된 Loop·subagents·Reins다. v0.2에서 추가된 기능:
+
+- 모델 연결: ChatGPT 로그인, Codex CLI 로그인 읽기 전용 재사용, 화면에서 넣는 API 키, Ollama 같은 OpenAI 호환 엔드포인트 ([모델 연결](docs/Models.md))
+- 목표 한 줄에서 팀 초안 만들기([CR-006](docs/change-requests/CR-006-goal-team-draft.md)), 이전 결과·버전에서 새 Run 시작([CR-007](docs/change-requests/CR-007-new-run-from-version.md))
+- 실행별 대화 보기, 문장으로 읽는 Timeline, 명령 팔레트(⌘K), 한국어 UI
+- `corral exec`·`corral eval`로 Studio 없이 실행·비교 ([평가](docs/Evaluation.md))
+- 추론 강도(reasoning_effort) 판정 관찰 모드: 로컬 규칙과 로컬 ONNX 모델, 요청에는 적용하지 않음 ([CR-003](docs/change-requests/CR-003-admission-hooks-effort-observe.md))
+
+Corral 중첩, 판정 적용, crash resume은 후속 범위이며 현재 기능으로 표시하지 않는다. 진행 상황은 [v0.2 실행 로드맵](docs/plans/Roadmap-v0.2-Execution.md)에 있다.
