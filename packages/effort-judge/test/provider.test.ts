@@ -70,6 +70,41 @@ describe('local-model provider (C-072)', () => {
     expect(seen[0]?.length).toBeLessThanOrEqual(16);
   });
 
+  it('[TC-DEC-001-H] allows for loading the model on the first judgment, then holds judgments to 1.5 s', async () => {
+    let finishLoad!: () => void;
+    const loading = new Promise<void>((resolve) => {
+      finishLoad = resolve;
+    });
+    const provider = new OnnxEffortProvider({
+      dir: installed(),
+      release: 'effort-judge-v6',
+      session: async () => {
+        await loading;
+        return { run: async () => [0, 2, 1, -1] };
+      },
+    });
+    // Not loaded yet: a judgment may wait for the load (observe only, nothing waits on it).
+    expect(provider.timeoutMs).toBe(20_000);
+    const warming = provider.warmUp();
+    expect(provider.timeoutMs).toBe(20_000);
+    finishLoad();
+    await warming;
+    expect(provider.timeoutMs).toBe(1_500);
+  });
+
+  it('[TC-DEC-001-N] a failed load goes back to allowing for the next load', async () => {
+    const provider = new OnnxEffortProvider({
+      dir: installed(),
+      release: 'effort-judge-v6',
+      session: async () => {
+        throw new Error('no runtime');
+      },
+    });
+    await expect(provider.warmUp()).rejects.toThrow('no runtime');
+    await Promise.resolve();
+    expect(provider.timeoutMs).toBe(20_000);
+  });
+
   it('[TC-DEC-001-N] an under-call costs more than an over-call', () => {
     // Even odds between easy and hard: never answer easy.
     expect(chooseLevel([0.5, 0, 0.5, 0])).not.toBe(0);
