@@ -138,6 +138,29 @@ CREATE INDEX corrals_by_project ON corrals (project_id);
 CREATE INDEX runs_by_project ON runs (project_id, started_at DESC);
 `,
   },
+  {
+    // CR-011: work sessions continue a purpose over several runs. A run names its session in
+    // a new column; snapshots and events are untouched.
+    name: '0004_sessions',
+    sql: `
+CREATE TABLE work_sessions (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(id),
+  corral_id TEXT,
+  title TEXT NOT NULL,
+  objective TEXT NOT NULL,
+  pinned INTEGER NOT NULL CHECK (pinned IN (0, 1)),
+  revision INTEGER NOT NULL CHECK (revision >= 1),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  archived_at TEXT,
+  entries_json TEXT NOT NULL
+) STRICT;
+CREATE INDEX work_sessions_by_project ON work_sessions (project_id, updated_at DESC);
+ALTER TABLE runs ADD COLUMN session_id TEXT;
+CREATE INDEX runs_by_session ON runs (session_id);
+`,
+  },
 ];
 
 /** History queries must neither recover active runs nor migrate the workspace. */

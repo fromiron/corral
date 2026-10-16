@@ -14,6 +14,7 @@ import { ModelSettingsPage } from './pages/ModelSettingsPage.tsx';
 import { ProjectsPage } from './pages/ProjectsPage.tsx';
 import { ErrorView, NotFoundView, RootLayout } from './pages/RootLayout.tsx';
 import { RunPage } from './pages/RunPage.tsx';
+import { SessionPage } from './pages/SessionPage.tsx';
 import { WorkspacePage } from './pages/WorkspacePage.tsx';
 import { currentProject, projectOfRun } from './projects.ts';
 import type { StudioServices } from './services.tsx';
@@ -56,6 +57,13 @@ export const workspaceRoute = createRoute({
       context.services.repository.list(),
       context.services.transport.listRuns(),
     ]);
+    // Every project's sessions: in-browser runs find their project through them (CR-011).
+    const sessionLists = await Promise.all(
+      projects.map((p) => context.services.repository.listSessions(p.projectId)),
+    );
+    const sessionProjects = new Map(
+      sessionLists.flat().map((x) => [x.sessionId, x.projectId] as const),
+    );
     const project = projects.find((p) => p.projectId === params.projectId);
     if (!project) {
       // A remembered project that is gone: back to the default one.
@@ -70,11 +78,34 @@ export const workspaceRoute = createRoute({
       project,
       projects,
       corrals: allCorrals.filter((c) => c.projectId === project.projectId),
-      runs: allRuns.filter((r) => projectOfRun(r, allCorrals) === project.projectId),
+      runs: allRuns.filter(
+        (r) => projectOfRun(r, allCorrals, sessionProjects) === project.projectId,
+      ),
+      sessions: sessionLists.flat().filter((x) => x.projectId === project.projectId),
       totals: { corrals: allCorrals.length, runs: allRuns.length },
     };
   },
   component: WorkspacePage,
+});
+
+/** One work session (CR-011): its requests, runs, queue and the input box. */
+export const sessionRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/sessions/$sessionId',
+  loader: async ({ context, params }) => {
+    const session = await context.services.repository.getSession(params.sessionId);
+    if (!session) throw notFound();
+    const [projects, corrals] = await Promise.all([
+      context.services.repository.listProjects(),
+      context.services.repository.list(),
+    ]);
+    return {
+      session,
+      project: projects.find((p) => p.projectId === session.projectId) ?? null,
+      corrals: corrals.filter((c) => c.projectId === session.projectId),
+    };
+  },
+  component: SessionPage,
 });
 
 export const projectsRoute = createRoute({
@@ -192,6 +223,7 @@ export function createStudioRouter(services: StudioServices) {
       indexRoute,
       projectsRoute,
       workspaceRoute,
+      sessionRoute,
       demoRoute,
       editorRoute,
       runRoute,

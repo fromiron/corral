@@ -1,4 +1,10 @@
-import { DEFAULT_PROJECT_ID, type ProjectSummary } from '@corral/core';
+import {
+  type CorralSummary,
+  DEFAULT_PROJECT_ID,
+  type ProjectSummary,
+  type RunSummary,
+  type WorkSession,
+} from '@corral/core';
 import { arrangeDraft, draftLayout, emptyDraft, importDocuments, StatusBadge } from '@corral/react';
 import { Link, useNavigate, useRouter } from '@tanstack/react-router';
 import { type ChangeEvent, type FormEvent, useEffect, useState } from 'react';
@@ -24,7 +30,7 @@ export function WorkspacePage() {
   const t = useTranslations('Workspace');
   const format = useFormatter();
   const now = useNow({ updateInterval: 60_000 });
-  const { project, projects, corrals, runs, totals } = workspaceRoute.useLoaderData();
+  const { project, projects, corrals, runs, sessions, totals } = workspaceRoute.useLoaderData();
   const projectId = project.projectId;
   const archived = project.archivedAt !== null;
   useEffect(() => setCurrentProject(projectId), [projectId]);
@@ -109,6 +115,13 @@ export function WorkspacePage() {
   return (
     <main className="mx-auto flex max-w-4xl flex-col gap-4 p-6">
       <ProjectHeader project={project} onError={(message) => setErrors([message])} />
+      <SessionsSection
+        projectId={projectId}
+        archived={archived}
+        sessions={sessions}
+        corrals={corrals}
+        runs={runs}
+      />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-semibold">{t('heading')}</h2>
         <div className={`flex items-center gap-2 ${archived ? 'hidden' : ''}`}>
@@ -484,5 +497,187 @@ function MoveCorral({
         </option>
       ))}
     </select>
+  );
+}
+
+/** The project's work sessions (CR-011): pinned first, searchable, and a new one. */
+function SessionsSection({
+  projectId,
+  archived,
+  sessions,
+  corrals,
+  runs,
+}: {
+  projectId: string;
+  archived: boolean;
+  sessions: WorkSession[];
+  corrals: CorralSummary[];
+  runs: RunSummary[];
+}) {
+  const t = useTranslations('Sessions');
+  const tw = useTranslations('Workspace');
+  const format = useFormatter();
+  const now = useNow({ updateInterval: 60_000 });
+  const { repository } = useServices();
+  const navigate = useNavigate();
+  const [query, setQuery] = useState('');
+  const [showArchived, setShowArchived] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [title, setTitle] = useState('');
+  const [objective, setObjective] = useState('');
+  const [corralId, setCorralId] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const needle = query.trim().toLowerCase();
+  const archivedCount = sessions.filter((x) => x.archivedAt).length;
+  const shown = sessions.filter(
+    (x) =>
+      (showArchived || !x.archivedAt) &&
+      (!needle || `${x.title}\n${x.objective}`.toLowerCase().includes(needle)),
+  );
+  const team = corrals.some((c) => c.corralId === corralId)
+    ? corralId
+    : (corrals[0]?.corralId ?? '');
+
+  const create = async (event: FormEvent) => {
+    event.preventDefault();
+    const result = await repository.createSession({
+      projectId,
+      title,
+      objective,
+      corralId: team || null,
+    });
+    if (!result.ok) return setError(result.message);
+    await navigate({ to: '/sessions/$sessionId', params: { sessionId: result.session.sessionId } });
+  };
+
+  return (
+    <section aria-labelledby="sessions-heading" className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 id="sessions-heading" className="text-lg font-semibold">
+          {t('heading')}
+        </h2>
+        <div className="flex items-center gap-2">
+          {sessions.length > 0 ? (
+            <input
+              type="search"
+              aria-label={t('search')}
+              placeholder={t('search')}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="rounded border border-line bg-surface px-2 py-1 text-sm"
+            />
+          ) : null}
+          {archived ? null : (
+            <button
+              type="button"
+              aria-expanded={creating}
+              onClick={() => setCreating(!creating)}
+              className="rounded-md border border-accent px-3 py-1.5 text-sm text-accent"
+            >
+              {t('new')}
+            </button>
+          )}
+        </div>
+      </div>
+      {creating ? (
+        <form
+          onSubmit={create}
+          aria-label={t('new')}
+          className="flex flex-col gap-2 rounded-md border border-line bg-raised p-3"
+        >
+          <label className="flex flex-col gap-1 text-xs">
+            {t('objectiveLabel')}
+            <textarea
+              value={objective}
+              rows={2}
+              onChange={(e) => setObjective(e.target.value)}
+              className="rounded border border-line bg-surface px-2 py-1 text-sm"
+            />
+          </label>
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="flex min-w-48 flex-1 flex-col gap-1 text-xs">
+              {t('titleLabel')}
+              <input
+                value={title}
+                maxLength={120}
+                onChange={(e) => setTitle(e.target.value)}
+                className="rounded border border-line bg-surface px-2 py-1 text-sm"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs">
+              {t('teamLabel')}
+              <select
+                value={team}
+                onChange={(e) => setCorralId(e.target.value)}
+                className="rounded border border-line bg-surface px-2 py-1 text-sm"
+              >
+                {corrals.length === 0 ? <option value="">{t('noTeam')}</option> : null}
+                {corrals.map((c) => (
+                  <option key={c.corralId} value={c.corralId}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="submit"
+              disabled={!title.trim() && !objective.trim()}
+              className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent disabled:opacity-50"
+            >
+              {t('create')}
+            </button>
+          </div>
+          {error ? (
+            <p role="alert" className="text-sm text-danger">
+              {error}
+            </p>
+          ) : null}
+        </form>
+      ) : null}
+      {sessions.length === 0 ? (
+        <p className="text-sm text-muted">{t('empty')}</p>
+      ) : (
+        <ul aria-label={t('heading')} className="flex flex-col gap-1">
+          {shown.map((x) => (
+            <li
+              key={x.sessionId}
+              className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-line bg-raised px-3 py-2"
+            >
+              <div className="flex min-w-0 flex-col">
+                <Link
+                  to="/sessions/$sessionId"
+                  params={{ sessionId: x.sessionId }}
+                  className="font-medium underline-offset-4 hover:underline"
+                >
+                  {x.title}
+                </Link>
+                <span className="text-xs text-muted">
+                  {[
+                    x.pinned ? t('pinned') : null,
+                    x.archivedAt ? t('archived') : null,
+                    t('runCount', {
+                      count: runs.filter((r) => r.sessionId === x.sessionId).length,
+                    }),
+                    tw('updated', { time: format.relativeTime(new Date(x.updatedAt), now) }),
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      {archivedCount > 0 ? (
+        <button
+          type="button"
+          aria-pressed={showArchived}
+          onClick={() => setShowArchived(!showArchived)}
+          className="self-start text-xs underline"
+        >
+          {showArchived ? t('hideArchived') : t('showArchived', { count: archivedCount })}
+        </button>
+      ) : null}
+    </section>
   );
 }

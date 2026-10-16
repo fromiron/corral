@@ -15,10 +15,12 @@ import {
   type RunEvent,
   SCHEMA_VERSION,
   type Scheduler,
+  StartFrom,
 } from '@corral/contracts';
 import {
   Coordinator,
   compileDefinition,
+  explainDefinition,
   exportRunArchive,
   type InstallationPolicy,
   judgmentSettings,
@@ -27,6 +29,7 @@ import {
   type ProjectResult,
   planRun,
   type SaveResult,
+  type SessionResult,
 } from '@corral/core';
 import { LangGraphRunner } from '@corral/runner-langgraph';
 import { openDatabase, SqliteCorralRepository, SqliteRunStore } from '@corral/storage-sqlite';
@@ -156,6 +159,42 @@ const CreateCorral = z.strictObject({
   definition: CorralDefinitionDraft,
   layout: LayoutInput,
   projectId: Identifier.optional(),
+});
+const EntryState = z.enum(['started', 'queued', 'sent', 'refused', 'undelivered', 'dismissed']);
+const CreateSession = z.strictObject({
+  projectId: Identifier,
+  title: z.string().max(200),
+  objective: z.string().max(20_000).optional(),
+  corralId: Identifier.nullable().optional(),
+});
+const UpdateSession = z.strictObject({
+  title: z.string().max(200).optional(),
+  objective: z.string().max(20_000).optional(),
+  corralId: Identifier.nullable().optional(),
+  pinned: z.boolean().optional(),
+  archived: z.boolean().optional(),
+  expectedRevision: z.int().min(1),
+});
+const NewEntry = z.strictObject({
+  intent: z.enum(['next', 'queue', 'steer', 'explain']),
+  text: z.string().max(20_000),
+  state: EntryState,
+  runId: Identifier.nullable().optional(),
+  executionId: Identifier.nullable().optional(),
+  detail: z.string().max(2000).nullable().optional(),
+});
+const EntryChange = z.strictObject({
+  state: EntryState,
+  runId: Identifier.nullable().optional(),
+  detail: z.string().max(2000).nullable().optional(),
+});
+const ExplainRequest = z.strictObject({
+  commandId: Identifier,
+  sessionId: Identifier,
+  question: z.string().min(1).max(12_000),
+  modelProfile: Identifier,
+  mode: z.enum(['mock', 'live']),
+  startFrom: StartFrom.optional(),
 });
 const CreateProject = z.strictObject({
   name: z.string().max(200),
@@ -644,10 +683,112 @@ async function createCorralServer(
       });
     }
     const resend = coordinator.hasStartCommand(parsed.data.commandId);
+    // CR-011: a run joins a session of its Corral's project only.
+    if (parsed.data.sessionId && !resend) {
+      const session = await corrals.getSession(parsed.data.sessionId);
+      const corral = await corrals.get(parsed.data.corralId);
+      if (!session || (corral && corral.projectId !== session.projectId)) {
+        const message = 'the session does not exist in this Corral’s project';
+        return reply.code(404).send({
+          runId: null,
+          receipt: refusedStart(request.body, { code: 'TARGET_NOT_FOUND', message }),
+        });
+      }
+    }
     const result = coordinator.startRun(parsed.data);
     const status = result.receipt.error ? STATUS[result.receipt.error.code] : resend ? 200 : 201;
     return reply.code(status).send(result);
   });
+  // A question about a result (CR-011): its own one-agent run, in the asking session.
+  app.post('/api/v1/runs/explain', async (request, reply) => {
+    const body = parse(ExplainRequest, request, reply);
+    if (!body) return reply;
+    const resend = coordinator.hasStartCommand(body.commandId);
+    if (!resend && !(await corrals.getSession(body.sessionId))) {
+      return fail(reply, 'TARGET_NOT_FOUND', 'no such session');
+    }
+    const result = coordinator.startRun({
+      schemaVersion: SCHEMA_VERSION,
+      commandId: body.commandId,
+      definition: explainDefinition({
+        id: `explain_${body.sessionId.replace(/^session_/, '')}`,
+        question: body.question,
+        modelProfile: body.modelProfile,
+      }),
+      mode: body.mode,
+      sessionId: body.sessionId,
+      ...(body.startFrom ? { startFrom: body.startFrom } : {}),
+    });
+    const status = result.receipt.error ? STATUS[result.receipt.error.code] : resend ? 200 : 201;
+    return reply.code(status).send(result);
+  });
+
+  // ── Work sessions (CR-011) ───────────────────────────────────────────────────
+  const sessionReply = (reply: FastifyReply, result: SessionResult, created: boolean) => {
+    if (result.ok) return reply.code(created ? 201 : 200).send(result);
+    const code: ErrorCode =
+      result.error === 'not_found'
+        ? 'TARGET_NOT_FOUND'
+        : result.error === 'revision_conflict'
+          ? 'REVISION_CONFLICT'
+          : result.error === 'invalid'
+            ? 'SCHEMA_INVALID'
+            : 'STORAGE_UNAVAILABLE';
+    return fail(reply, code, result.message);
+  };
+  app.get<{ Querystring: { projectId?: string } }>('/api/v1/sessions', async (request, reply) => {
+    const projectId = request.query.projectId;
+    if (!projectId) return fail(reply, 'SCHEMA_INVALID', 'projectId is required');
+    return corrals.listSessions(projectId);
+  });
+  app.post('/api/v1/sessions', async (request, reply) => {
+    const body = parse(CreateSession, request, reply);
+    if (!body) return reply;
+    return sessionReply(reply, await corrals.createSession(body), true);
+  });
+  app.get<{ Params: { sessionId: string } }>(
+    '/api/v1/sessions/:sessionId',
+    async (request, reply) => {
+      const session = await corrals.getSession(request.params.sessionId);
+      return session ?? fail(reply, 'TARGET_NOT_FOUND', 'no such session');
+    },
+  );
+  app.patch<{ Params: { sessionId: string } }>(
+    '/api/v1/sessions/:sessionId',
+    async (request, reply) => {
+      const body = parse(UpdateSession, request, reply);
+      if (!body) return reply;
+      return sessionReply(
+        reply,
+        await corrals.updateSession(request.params.sessionId, body),
+        false,
+      );
+    },
+  );
+  app.post<{ Params: { sessionId: string } }>(
+    '/api/v1/sessions/:sessionId/entries',
+    async (request, reply) => {
+      const body = parse(NewEntry, request, reply);
+      if (!body) return reply;
+      return sessionReply(
+        reply,
+        await corrals.addSessionEntry(request.params.sessionId, body),
+        true,
+      );
+    },
+  );
+  app.patch<{ Params: { sessionId: string; entryId: string } }>(
+    '/api/v1/sessions/:sessionId/entries/:entryId',
+    async (request, reply) => {
+      const body = parse(EntryChange, request, reply);
+      if (!body) return reply;
+      return sessionReply(
+        reply,
+        await corrals.updateSessionEntry(request.params.sessionId, request.params.entryId, body),
+        false,
+      );
+    },
+  );
 
   type RunParams = { Params: { runId: string } };
   app.post<RunParams>('/api/v1/runs/:runId/export', async (request, reply) => {

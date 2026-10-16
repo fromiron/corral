@@ -61,10 +61,18 @@ export function useProjectsVersion(): number {
   return useSyncExternalStore(subscribe, () => version);
 }
 
-/** A run's project: as recorded at start, else its Corral's (in-browser runs), else default. */
-export function projectOfRun(run: RunSummary, corrals: CorralSummary[]): string {
+/**
+ * A run's project: as recorded at start; else (in-browser runs) its session's, then its
+ * Corral's; else the default project.
+ */
+export function projectOfRun(
+  run: RunSummary,
+  corrals: CorralSummary[],
+  sessionProjects: ReadonlyMap<string, string> = new Map(),
+): string {
   return (
     run.projectId ??
+    (run.sessionId ? sessionProjects.get(run.sessionId) : undefined) ??
     corrals.find((c) => c.corralId === run.corralId)?.projectId ??
     DEFAULT_PROJECT_ID
   );

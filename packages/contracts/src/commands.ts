@@ -141,6 +141,8 @@ export const StartRunRequest = z.strictObject({
   definition: CorralDefinition,
   mode: z.enum(['mock', 'live']),
   startFrom: StartFrom.optional(),
+  /** The work session this run continues (CR-011); recorded with the run, not in its snapshot. */
+  sessionId: Identifier.optional(),
 });
 export type StartRunRequest = z.infer<typeof StartRunRequest>;
 
@@ -156,5 +158,6 @@ export const CreateRunRequest = z.strictObject({
   input: RunInput.optional(),
   mode: z.enum(['mock', 'live']),
   startFrom: StartFrom.optional(),
+  sessionId: Identifier.optional(),
 });
 export type CreateRunRequest = z.infer<typeof CreateRunRequest>;

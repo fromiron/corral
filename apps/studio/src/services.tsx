@@ -10,8 +10,10 @@ import type { Clock } from '@corral/contracts';
 import {
   type CorralRepository,
   createKeyValueCorralRepository,
+  explainDefinition,
   type KeyValueStore,
   type RuntimeTransport,
+  type StartRunResult,
 } from '@corral/core';
 import { createRunSession, type RunSessionStore } from '@corral/react';
 import { createContext, type ReactNode, useContext } from 'react';
@@ -35,6 +37,17 @@ export interface StudioServices {
   live: boolean;
   /** A sandboxed address for HTML result previews (CR-009); the browser runtime has none. */
   previewUrl?: (runId: string, artifactVersionId: string) => string;
+  /** A question about a result, as its own run in a session (CR-011). */
+  startExplain: (request: ExplainStart) => Promise<StartRunResult>;
+}
+
+export interface ExplainStart {
+  commandId: string;
+  sessionId: string;
+  question: string;
+  modelProfile: string;
+  mode: 'mock' | 'live';
+  startFrom?: { runId: string; artifactVersionId: string };
 }
 
 const systemClock: Clock = {
@@ -98,6 +111,7 @@ export async function createStudioServices(): Promise<StudioServices> {
       models: new ModelsApi(http),
       live: health.live,
       previewUrl: (runId, artifactVersionId) => transport.previewUrl(runId, artifactVersionId),
+      startExplain: (request) => transport.startExplain(request),
     };
   }
   const { store, persistent } = browserStore(window.location.pathname === '/demo');
@@ -114,6 +128,19 @@ export async function createStudioServices(): Promise<StudioServices> {
     }),
     transport,
     session: createRunSession(transport),
+    // The in-browser runtime runs inline definitions itself.
+    startExplain: ({ question, modelProfile, sessionId, startFrom, ...rest }) =>
+      transport.startRun({
+        schemaVersion: '0.1',
+        ...rest,
+        sessionId,
+        definition: explainDefinition({
+          id: `explain_${sessionId.replace(/^session_/, '')}`,
+          question,
+          modelProfile,
+        }),
+        ...(startFrom ? { startFrom } : {}),
+      }),
   };
 }
 

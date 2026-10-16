@@ -5,6 +5,7 @@ import {
   type CorralSummary,
   DEFAULT_PROJECT_ID,
   type DefinitionSource,
+  type NewSessionEntry,
   type ProjectChange,
   type ProjectResult,
   type ProjectSummary,
@@ -14,10 +15,19 @@ import {
   planProjectCreate,
   planProjectUpdate,
   planSave,
+  planSessionCreate,
+  planSessionEntry,
+  planSessionEntryUpdate,
+  planSessionUpdate,
   projectRefusal,
   type SaveRequest,
   type SaveResult,
+  type SessionChange,
+  type SessionEntryState,
+  type SessionResult,
   sortProjects,
+  sortSessions,
+  type WorkSession,
 } from '@corral/core';
 import type { Db } from './database.ts';
 
@@ -94,6 +104,24 @@ export class SqliteCorralRepository implements CorralRepository, DefinitionSourc
            updated_at = excluded.updated_at, archived_at = excluded.archived_at`,
       ),
       moveCorral: db.prepare('UPDATE corrals SET project_id = ?, updated_at = ? WHERE id = ?'),
+      sessions: db.prepare(
+        `SELECT id, project_id, corral_id, title, objective, pinned, revision, created_at,
+           updated_at, archived_at, entries_json FROM work_sessions WHERE project_id = ?`,
+      ),
+      session: db.prepare(
+        `SELECT id, project_id, corral_id, title, objective, pinned, revision, created_at,
+           updated_at, archived_at, entries_json FROM work_sessions WHERE id = ?`,
+      ),
+      upsertSession: db.prepare(
+        `INSERT INTO work_sessions (id, project_id, corral_id, title, objective, pinned, revision,
+           created_at, updated_at, archived_at, entries_json)
+         VALUES (@sessionId, @projectId, @corralId, @title, @objective, @pinned, @revision,
+           @createdAt, @updatedAt, @archivedAt, @entries)
+         ON CONFLICT (id) DO UPDATE SET corral_id = excluded.corral_id, title = excluded.title,
+           objective = excluded.objective, pinned = excluded.pinned,
+           revision = excluded.revision, updated_at = excluded.updated_at,
+           archived_at = excluded.archived_at, entries_json = excluded.entries_json`,
+      ),
     };
   }
 
@@ -179,6 +207,87 @@ export class SqliteCorralRepository implements CorralRepository, DefinitionSourc
       if (moved.ok) this.sql.moveCorral.run(projectId, moved.record.updatedAt, corralId);
       return moved;
     })();
+  }
+
+  async listSessions(projectId: string): Promise<WorkSession[]> {
+    return sortSessions((this.sql.sessions.all(projectId) as SessionRow[]).map(sessionFromRow));
+  }
+
+  async getSession(sessionId: string): Promise<WorkSession | null> {
+    return this.session(sessionId);
+  }
+
+  async createSession(input: {
+    projectId: string;
+    title: string;
+    objective?: string;
+    corralId?: string | null;
+  }): Promise<SessionResult> {
+    return this.db.transaction((): SessionResult => {
+      const refused = projectRefusal(this.project(input.projectId), input.projectId);
+      if (refused && !refused.ok)
+        return { ok: false, error: 'not_found', message: refused.message };
+      return this.saveSession(
+        planSessionCreate(input, { now: this.clock.nowIso(), sessionId: this.newId('session') }),
+      );
+    })();
+  }
+
+  async updateSession(sessionId: string, change: SessionChange): Promise<SessionResult> {
+    return this.db.transaction(() =>
+      this.saveSession(
+        planSessionUpdate(this.session(sessionId), sessionId, change, this.clock.nowIso()),
+      ),
+    )();
+  }
+
+  async addSessionEntry(sessionId: string, entry: NewSessionEntry): Promise<SessionResult> {
+    return this.db.transaction(() =>
+      this.saveSession(
+        planSessionEntry(this.session(sessionId), sessionId, entry, {
+          now: this.clock.nowIso(),
+          entryId: this.newId('entry'),
+        }),
+      ),
+    )();
+  }
+
+  async updateSessionEntry(
+    sessionId: string,
+    entryId: string,
+    change: { state: SessionEntryState; runId?: string | null; detail?: string | null },
+  ): Promise<SessionResult> {
+    return this.db.transaction(() =>
+      this.saveSession(
+        planSessionEntryUpdate(
+          this.session(sessionId),
+          sessionId,
+          entryId,
+          change,
+          this.clock.nowIso(),
+        ),
+      ),
+    )();
+  }
+
+  private newId(prefix: string) {
+    return `${prefix}_${globalThis.crypto.randomUUID().slice(0, 8)}`;
+  }
+
+  private saveSession(result: SessionResult): SessionResult {
+    if (!result.ok) return result;
+    const s = result.session;
+    this.sql.upsertSession.run({
+      ...s,
+      pinned: s.pinned ? 1 : 0,
+      entries: JSON.stringify(s.entries),
+    });
+    return result;
+  }
+
+  private session(sessionId: string): WorkSession | null {
+    const row = this.sql.session.get(sessionId) as SessionRow | undefined;
+    return row ? sessionFromRow(row) : null;
   }
 
   private project(projectId: string): ProjectSummary | null {
@@ -271,6 +380,36 @@ interface ProjectRow {
   created_at: string;
   updated_at: string;
   archived_at: string | null;
+}
+
+interface SessionRow {
+  id: string;
+  project_id: string;
+  corral_id: string | null;
+  title: string;
+  objective: string;
+  pinned: number;
+  revision: number;
+  created_at: string;
+  updated_at: string;
+  archived_at: string | null;
+  entries_json: string;
+}
+
+function sessionFromRow(row: SessionRow): WorkSession {
+  return {
+    sessionId: row.id,
+    projectId: row.project_id,
+    corralId: row.corral_id,
+    title: row.title,
+    objective: row.objective,
+    pinned: row.pinned === 1,
+    revision: row.revision,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    archivedAt: row.archived_at,
+    entries: readJson(row.entries_json, row.id),
+  };
 }
 
 function projectFromRow(row: ProjectRow): ProjectSummary {
