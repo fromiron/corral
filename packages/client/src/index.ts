@@ -13,6 +13,9 @@ import type {
   CorralRecord,
   CorralRepository,
   CorralSummary,
+  ProjectChange,
+  ProjectResult,
+  ProjectSummary,
   RunArchive,
   RunProjection,
   RunSummary,
@@ -412,7 +415,11 @@ export class RestCorralRepository implements CorralRepository {
 
   save(request: SaveRequest): Promise<SaveResult> {
     const body = { definition: request.definition, layout: request.layout };
-    if (request.expectedDefinitionRevision === null) return this.write('/corrals', 'POST', body);
+    if (request.expectedDefinitionRevision === null)
+      return this.write('/corrals', 'POST', {
+        ...body,
+        ...(request.projectId ? { projectId: request.projectId } : {}),
+      });
     return this.write(`/corrals/${encodeURIComponent(request.definition.id)}`, 'PUT', body, {
       'if-match': `"${request.expectedDefinitionRevision}"`,
     });
@@ -427,6 +434,46 @@ export class RestCorralRepository implements CorralRepository {
       method: 'DELETE',
     });
     if (!response.ok && response.status !== 404) throw await apiError(response);
+  }
+
+  listProjects(): Promise<ProjectSummary[]> {
+    return this.http.json('/projects');
+  }
+
+  createProject(input: { name: string; description?: string }): Promise<ProjectResult> {
+    return this.projectWrite('/projects', 'POST', input);
+  }
+
+  updateProject(projectId: string, change: ProjectChange): Promise<ProjectResult> {
+    return this.projectWrite(`/projects/${encodeURIComponent(projectId)}`, 'PATCH', change);
+  }
+
+  moveCorral(corralId: string, projectId: string): Promise<SaveResult> {
+    return this.write(`/corrals/${encodeURIComponent(corralId)}/project`, 'PUT', { projectId });
+  }
+
+  private async projectWrite(path: string, method: string, body: unknown): Promise<ProjectResult> {
+    let response: Response;
+    try {
+      response = await this.http.request(path, { method, body: JSON.stringify(body) });
+    } catch (error) {
+      return {
+        ok: false,
+        error: 'storage_unavailable',
+        message: `Could not save: ${String(error)}`,
+      };
+    }
+    if (response.ok) return (await response.json()) as ProjectResult;
+    const error = await apiError(response);
+    const kind =
+      response.status === 404
+        ? 'not_found'
+        : response.status === 409
+          ? 'revision_conflict'
+          : response.status === 400
+            ? 'invalid'
+            : 'storage_unavailable';
+    return { ok: false, error: kind, message: error.message };
   }
 
   private async write(

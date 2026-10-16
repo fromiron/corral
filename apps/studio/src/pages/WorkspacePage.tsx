@@ -1,7 +1,9 @@
+import { DEFAULT_PROJECT_ID, type ProjectSummary } from '@corral/core';
 import { arrangeDraft, draftLayout, emptyDraft, importDocuments, StatusBadge } from '@corral/react';
 import { Link, useNavigate, useRouter } from '@tanstack/react-router';
-import { type ChangeEvent, useState } from 'react';
+import { type ChangeEvent, type FormEvent, useEffect, useState } from 'react';
 import { useFormatter, useNow, useTranslations } from 'use-intl';
+import { projectName, projectsChanged, setCurrentProject } from '../projects.ts';
 import { workspaceRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
 import { TeamDraftDialog } from '../TeamDraftDialog.tsx';
@@ -22,7 +24,10 @@ export function WorkspacePage() {
   const t = useTranslations('Workspace');
   const format = useFormatter();
   const now = useNow({ updateInterval: 60_000 });
-  const { corrals, runs } = workspaceRoute.useLoaderData();
+  const { project, projects, corrals, runs, totals } = workspaceRoute.useLoaderData();
+  const projectId = project.projectId;
+  const archived = project.archivedAt !== null;
+  useEffect(() => setCurrentProject(projectId), [projectId]);
   const { repository, persistent, mode } = useServices();
   const router = useRouter();
   const navigate = useNavigate();
@@ -41,7 +46,13 @@ export function WorkspacePage() {
   const [drafting, setDrafting] = useState(Boolean(draft));
   const closeDraft = () => {
     setDrafting(false);
-    if (draft) void navigate({ to: '/', search: {}, replace: true });
+    if (draft)
+      void navigate({
+        to: '/projects/$projectId',
+        params: { projectId },
+        search: {},
+        replace: true,
+      });
   };
 
   const openNew = async () => {
@@ -50,6 +61,7 @@ export function WorkspacePage() {
       definition: draft.definition,
       layout: { nodes: draft.layout, viewport: draft.viewport },
       expectedDefinitionRevision: null,
+      projectId,
     });
     if (!result.ok) return setErrors([result.message]);
     await navigate({ to: '/corrals/$corralId/edit', params: { corralId: result.record.corralId } });
@@ -70,6 +82,7 @@ export function WorkspacePage() {
       definition: draft.definition,
       layout: { nodes: layoutDoc.nodes, viewport: layoutDoc.viewport },
       expectedDefinitionRevision: null,
+      projectId,
     });
     if (!result.ok) return setErrors([result.message]);
     await navigate({ to: '/corrals/$corralId/edit', params: { corralId: result.record.corralId } });
@@ -77,6 +90,12 @@ export function WorkspacePage() {
 
   const duplicate = async (corralId: string, name: string) => {
     const result = await repository.duplicate(corralId, t('duplicateName', { name }));
+    if (!result.ok) return setErrors([result.message]);
+    await router.invalidate();
+  };
+
+  const move = async (corralId: string, to: string) => {
+    const result = await repository.moveCorral(corralId, to);
     if (!result.ok) return setErrors([result.message]);
     await router.invalidate();
   };
@@ -89,9 +108,10 @@ export function WorkspacePage() {
 
   return (
     <main className="mx-auto flex max-w-4xl flex-col gap-4 p-6">
+      <ProjectHeader project={project} onError={(message) => setErrors([message])} />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-semibold">{t('heading')}</h2>
-        <div className="flex items-center gap-2">
+        <div className={`flex items-center gap-2 ${archived ? 'hidden' : ''}`}>
           <label className="cursor-pointer rounded-md border border-line px-3 py-1.5 text-sm focus-within:outline-2 focus-within:outline-accent">
             {t('import')}
             <input
@@ -120,8 +140,8 @@ export function WorkspacePage() {
       </p>
       <p className="text-xs text-muted">{t('importHint')}</p>
       <GettingStarted
-        corrals={corrals.length}
-        runs={runs.length}
+        corrals={totals.corrals}
+        runs={totals.runs}
         onDraft={() => setDrafting(true)}
       />
       {errors.length > 0 ? (
@@ -164,6 +184,12 @@ export function WorkspacePage() {
                 </span>
               </div>
               <div className="flex items-center gap-2 text-xs">
+                <MoveCorral
+                  name={corral.name}
+                  current={projectId}
+                  projects={projects}
+                  onMove={(to) => void move(corral.corralId, to)}
+                />
                 <button
                   type="button"
                   onClick={() => duplicate(corral.corralId, corral.name)}
@@ -204,6 +230,7 @@ export function WorkspacePage() {
       )}
       <section
         aria-labelledby="goal-heading"
+        hidden={archived}
         className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-accent/60 bg-raised p-3"
       >
         <div className="flex flex-col gap-1">
@@ -220,7 +247,11 @@ export function WorkspacePage() {
           {t('draftFromGoal')}
         </button>
       </section>
-      <section aria-labelledby="templates-heading" className="flex flex-col gap-2">
+      <section
+        aria-labelledby="templates-heading"
+        hidden={archived}
+        className="flex flex-col gap-2"
+      >
         <h2 id="templates-heading" className="text-lg font-semibold">
           {t('templatesHeading')}
         </h2>
@@ -238,7 +269,7 @@ export function WorkspacePage() {
               <button
                 type="button"
                 onClick={async () => {
-                  const created = await createFromTemplate(repository, id, t('newName'));
+                  const created = await createFromTemplate(repository, id, t('newName'), projectId);
                   if (!created.ok) return setErrors([created.message]);
                   await navigate({
                     to: '/corrals/$corralId/edit',
@@ -303,7 +334,155 @@ export function WorkspacePage() {
           </ul>
         )}
       </section>
-      {drafting ? <TeamDraftDialog onClose={closeDraft} /> : null}
+      {drafting ? <TeamDraftDialog onClose={closeDraft} projectId={projectId} /> : null}
     </main>
+  );
+}
+
+/** The project's name and description, rename and archive (CR-010). */
+function ProjectHeader({
+  project,
+  onError,
+}: {
+  project: ProjectSummary;
+  onError: (message: string) => void;
+}) {
+  const t = useTranslations('Projects');
+  const { repository } = useServices();
+  const router = useRouter();
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const shown = projectName(project, t('defaultName'));
+
+  const update = async (change: { name?: string; description?: string; archived?: boolean }) => {
+    const result = await repository.updateProject(project.projectId, {
+      ...change,
+      expectedRevision: project.revision,
+    });
+    if (!result.ok) return onError(t('failed', { message: result.message }));
+    setEditing(false);
+    projectsChanged();
+    await router.invalidate();
+  };
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    void update({ name, description });
+  };
+
+  return (
+    <section aria-labelledby="project-heading" className="flex flex-col gap-1">
+      <p className="text-xs text-muted">{t('label')}</p>
+      {editing ? (
+        <form onSubmit={submit} className="flex flex-wrap items-end gap-2">
+          <label className="flex flex-col gap-1 text-xs">
+            {t('nameLabel')}
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              maxLength={80}
+              required
+              className="rounded border border-line bg-surface px-2 py-1 text-sm"
+            />
+          </label>
+          <label className="flex min-w-48 flex-1 flex-col gap-1 text-xs">
+            {t('descriptionLabel')}
+            <input
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              maxLength={500}
+              className="rounded border border-line bg-surface px-2 py-1 text-sm"
+            />
+          </label>
+          <button
+            type="submit"
+            className="rounded border border-accent px-2 py-1 text-xs text-accent"
+          >
+            {t('save')}
+          </button>
+          <button
+            type="button"
+            onClick={() => setEditing(false)}
+            className="rounded border border-line px-2 py-1 text-xs"
+          >
+            {t('cancel')}
+          </button>
+        </form>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 id="project-heading" className="text-xl font-semibold">
+            {shown}
+          </h2>
+          {project.archivedAt ? (
+            <span className="rounded-full border border-line px-2 py-0.5 text-xs text-muted">
+              {t('archived')}
+            </span>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => {
+              setName(shown);
+              setDescription(project.description);
+              setEditing(true);
+            }}
+            className="rounded border border-line px-2 py-0.5 text-xs"
+          >
+            {t('rename')}
+          </button>
+          {project.projectId === DEFAULT_PROJECT_ID ? null : (
+            <button
+              type="button"
+              onClick={() => void update({ archived: !project.archivedAt })}
+              className="rounded border border-line px-2 py-0.5 text-xs"
+            >
+              {project.archivedAt ? t('restore') : t('archive')}
+            </button>
+          )}
+          <Link to="/projects" className="text-xs underline">
+            {t('allProjects')}
+          </Link>
+        </div>
+      )}
+      {project.description && !editing ? (
+        <p className="text-sm text-muted">{project.description}</p>
+      ) : null}
+      {project.archivedAt ? (
+        <p role="note" className="text-sm text-warning">
+          {t('archivedNote')}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+/** Moves a Corral to another active project; its finished runs stay here (CR-010). */
+function MoveCorral({
+  name,
+  current,
+  projects,
+  onMove,
+}: {
+  name: string;
+  current: string;
+  projects: ProjectSummary[];
+  onMove: (projectId: string) => void;
+}) {
+  const t = useTranslations('Projects');
+  const targets = projects.filter((p) => p.projectId !== current && !p.archivedAt);
+  if (targets.length === 0) return null;
+  return (
+    <select
+      aria-label={t('moveTo', { name })}
+      value=""
+      onChange={(event) => event.target.value && onMove(event.target.value)}
+      className="rounded border border-line bg-surface px-1 py-1"
+    >
+      <option value="">{t('moveChoose')}</option>
+      {targets.map((p) => (
+        <option key={p.projectId} value={p.projectId}>
+          {projectName(p, t('defaultName'))}
+        </option>
+      ))}
+    </select>
   );
 }

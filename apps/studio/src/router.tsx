@@ -1,17 +1,21 @@
+import { DEFAULT_PROJECT_ID } from '@corral/core';
 import {
   createRootRouteWithContext,
   createRoute,
   createRouter,
   notFound,
+  redirect,
 } from '@tanstack/react-router';
 import { lazy, Suspense } from 'react';
 import { type DemoTemplateId, demoTemplate } from './demo/templates.ts';
 import { ComparePage } from './pages/ComparePage.tsx';
 import { DemoPage, EditorPage } from './pages/EditorPage.tsx';
 import { ModelSettingsPage } from './pages/ModelSettingsPage.tsx';
+import { ProjectsPage } from './pages/ProjectsPage.tsx';
 import { ErrorView, NotFoundView, RootLayout } from './pages/RootLayout.tsx';
 import { RunPage } from './pages/RunPage.tsx';
 import { WorkspacePage } from './pages/WorkspacePage.tsx';
+import { currentProject, projectOfRun } from './projects.ts';
 import type { StudioServices } from './services.tsx';
 
 // Routes from Spec §4.1.
@@ -22,20 +26,69 @@ const rootRoute = createRootRouteWithContext<{ services: StudioServices }>()({
   errorComponent: ErrorView,
 });
 
-export const workspaceRoute = createRoute({
+// `?draft=1` opens "Draft a team from a goal" (CR-006).
+const draftSearch = (search: Record<string, unknown>): { draft?: boolean } =>
+  search.draft === true || search.draft === 1 || search.draft === '1' ? { draft: true } : {};
+
+/** `/` is the project worked in last (CR-010); old links to it keep working. */
+const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
-  // `?draft=1` opens "Draft a team from a goal" (CR-006).
-  validateSearch: (search: Record<string, unknown>): { draft?: boolean } =>
-    search.draft === true || search.draft === 1 || search.draft === '1' ? { draft: true } : {},
-  loader: async ({ context }) => {
-    const [corrals, runs] = await Promise.all([
+  validateSearch: draftSearch,
+  beforeLoad: ({ search }) => {
+    throw redirect({
+      to: '/projects/$projectId',
+      params: { projectId: currentProject() },
+      search,
+      replace: true,
+    });
+  },
+});
+
+/** One project's Corrals and runs (CR-010): what `/` showed before projects. */
+export const workspaceRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/projects/$projectId',
+  validateSearch: draftSearch,
+  loader: async ({ context, params }) => {
+    const [projects, allCorrals, allRuns] = await Promise.all([
+      context.services.repository.listProjects(),
       context.services.repository.list(),
       context.services.transport.listRuns(),
     ]);
-    return { corrals, runs };
+    const project = projects.find((p) => p.projectId === params.projectId);
+    if (!project) {
+      // A remembered project that is gone: back to the default one.
+      if (params.projectId === DEFAULT_PROJECT_ID) throw notFound();
+      throw redirect({
+        to: '/projects/$projectId',
+        params: { projectId: DEFAULT_PROJECT_ID },
+        replace: true,
+      });
+    }
+    return {
+      project,
+      projects,
+      corrals: allCorrals.filter((c) => c.projectId === project.projectId),
+      runs: allRuns.filter((r) => projectOfRun(r, allCorrals) === project.projectId),
+      totals: { corrals: allCorrals.length, runs: allRuns.length },
+    };
   },
   component: WorkspacePage,
+});
+
+export const projectsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/projects',
+  loader: async ({ context }) => {
+    const [projects, corrals, runs] = await Promise.all([
+      context.services.repository.listProjects(),
+      context.services.repository.list(),
+      context.services.transport.listRuns(),
+    ]);
+    return { projects, corrals, runs };
+  },
+  component: ProjectsPage,
 });
 
 export const demoRoute = createRoute({
@@ -136,6 +189,8 @@ function createPerformanceRoute() {
 export function createStudioRouter(services: StudioServices) {
   return createRouter({
     routeTree: rootRoute.addChildren([
+      indexRoute,
+      projectsRoute,
       workspaceRoute,
       demoRoute,
       editorRoute,

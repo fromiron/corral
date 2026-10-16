@@ -48,6 +48,11 @@ export interface RunSummary {
   status: RunStatus;
   corralId: string;
   startedAt: string;
+  /**
+   * The project the run started in (CR-010), fixed at start. Null where the store does not
+   * record it (the in-browser runtime): the Corral's project stands in.
+   */
+  projectId: string | null;
 }
 
 export interface RunStore {
@@ -139,6 +144,7 @@ export class InMemoryRunStore implements RunStore {
       status: run.projection.status,
       corralId: run.snapshot.definition.id,
       startedAt: run.snapshot.startedAt,
+      projectId: null,
     }));
   }
 

@@ -1,7 +1,16 @@
-import { type ErrorComponentProps, Link, Outlet, useRouter } from '@tanstack/react-router';
+import type { ProjectSummary } from '@corral/core';
+import {
+  type ErrorComponentProps,
+  Link,
+  Outlet,
+  useNavigate,
+  useRouter,
+} from '@tanstack/react-router';
+import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { CommandLayer, modKey } from '../CommandPalette.tsx';
 import { LOCALES, type Locale, useLocale } from '../locale.tsx';
+import { projectName, useCurrentProject, useProjectsVersion } from '../projects.ts';
 import { useServices } from '../services.tsx';
 
 export function RootLayout() {
@@ -14,6 +23,7 @@ export function RootLayout() {
       <header className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-raised px-4 py-2">
         <nav className="flex items-center gap-4">
           <h1 className="text-base font-semibold">{t('title')}</h1>
+          <ProjectSwitcher />
           <Link to="/" className="text-sm underline-offset-4 hover:underline">
             {t('nav')}
           </Link>
@@ -61,6 +71,55 @@ export function RootLayout() {
       </div>
       <CommandLayer />
     </div>
+  );
+}
+
+const ALL = '__all';
+
+/** The project Studio works in (CR-010); choosing one opens it, or the list of all. */
+function ProjectSwitcher() {
+  const t = useTranslations('Projects');
+  const { repository } = useServices();
+  const navigate = useNavigate();
+  const current = useCurrentProject();
+  const version = useProjectsVersion();
+  const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
+  useEffect(() => {
+    void version;
+    let live = true;
+    repository.listProjects().then(
+      (list) => live && setProjects(list),
+      () => live && setProjects(null),
+    );
+    return () => {
+      live = false;
+    };
+  }, [repository, version]);
+  if (!projects) return null;
+  const options = projects.filter((p) => !p.archivedAt || p.projectId === current);
+  return (
+    <label className="flex items-center gap-1 text-xs text-muted">
+      <span aria-hidden="true">{t('label')}</span>
+      <select
+        aria-label={t('label')}
+        value={options.some((p) => p.projectId === current) ? current : ''}
+        onChange={(event) => {
+          const value = event.target.value;
+          if (value === ALL) void navigate({ to: '/projects' });
+          else if (value)
+            void navigate({ to: '/projects/$projectId', params: { projectId: value } });
+        }}
+        className="max-w-48 rounded border border-line bg-surface px-1 py-0.5 text-text"
+      >
+        {options.some((p) => p.projectId === current) ? null : <option value="">—</option>}
+        {options.map((p) => (
+          <option key={p.projectId} value={p.projectId}>
+            {projectName(p, t('defaultName'))}
+          </option>
+        ))}
+        <option value={ALL}>{t('allProjects')}</option>
+      </select>
+    </label>
   );
 }
 

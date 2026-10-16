@@ -15,6 +15,7 @@ export async function createFromTemplate(
   repository: CorralRepository,
   id: WorkspaceTemplateId,
   blankName: string,
+  projectId?: string,
 ): Promise<{ ok: true; corralId: string } | { ok: false; message: string }> {
   const suffix = globalThis.crypto.randomUUID().slice(0, 8);
   const draft =
@@ -30,7 +31,11 @@ export async function createFromTemplate(
           const template = templateForWorkspace(id, `${id.replace('-', '_')}_${suffix}`);
           return { definition: template.definition, layout: template.layout };
         })();
-  const result = await repository.save({ ...draft, expectedDefinitionRevision: null });
+  const result = await repository.save({
+    ...draft,
+    expectedDefinitionRevision: null,
+    ...(projectId ? { projectId } : {}),
+  });
   return result.ok
     ? { ok: true, corralId: result.record.corralId }
     : { ok: false, message: result.message };

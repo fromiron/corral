@@ -66,3 +66,12 @@
 ## 일정·영향
 
 새 의존성 없음. react(결과 계산·화면), studio(Run 화면·CSP), server(미리보기 route·header), client(미리보기 주소)가 바뀐다.
+
+## 진행 결과 (2026-10-16)
+
+- 구현: `runResults`(projection에서 계산), `RunResults` 화면, Run 화면 보기 전환, Output 탭 최종 결과 목록, 미리보기 route·header, Markdown 표(`remark-gfm` 4.0.1).
+- 테스트:
+  - unit: 결과 계산 5, 화면 5, Output 탭 1, Markdown 표 1, 서버 미리보기 2. Output 탭·표·서버 테스트는 변경 전 실패를 확인했다.
+  - E2E: 데모 3(결과 3종 탐색·부분 결과·보기 유지), 서버 2(새로고침 유지·HTML 격리).
+- 바뀐 기존 테스트: 끝난 Run의 실행 보기를 검사하던 E2E에 "실행" 탭 선택 한 단계를 더했다. 단정은 같다.
+- 확인 못 한 것: 실제 모델이 만든 HTML 결과로는 확인하지 않았다.

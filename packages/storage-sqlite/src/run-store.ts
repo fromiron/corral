@@ -19,10 +19,13 @@ export class SqliteRunStore implements RunStore {
     this.db = db;
     this.sql = {
       insertRun: db.prepare(
+        // The run joins its saved Corral's project as it is now (CR-010); inline
+        // definitions have none and go to the default project.
         `INSERT INTO runs (id, corral_id, definition_hash, snapshot_json, status, last_seq,
-           projection_json, started_at)
+           projection_json, started_at, project_id)
          VALUES (@id, @corralId, @definitionHash, @snapshot, @status, @lastSeq, @projection,
-           @startedAt)`,
+           @startedAt,
+           COALESCE((SELECT project_id FROM corrals WHERE id = @sourceCorralId), 'default'))`,
       ),
       saveProjection: db.prepare(
         'UPDATE runs SET projection_json = ?, status = ?, last_seq = ? WHERE id = ?',
@@ -47,7 +50,8 @@ export class SqliteRunStore implements RunStore {
       ),
       getRun: db.prepare('SELECT snapshot_json, projection_json FROM runs WHERE id = ?'),
       listRuns: db.prepare(
-        'SELECT id, status, corral_id, started_at FROM runs ORDER BY started_at DESC, rowid DESC',
+        `SELECT id, status, corral_id, started_at, project_id FROM runs
+         ORDER BY started_at DESC, rowid DESC`,
       ),
       readEvents: db.prepare(
         'SELECT event_json FROM run_events WHERE run_id = ? AND seq > ? ORDER BY seq LIMIT ?',
@@ -76,6 +80,7 @@ export class SqliteRunStore implements RunStore {
       lastSeq: run.projection.lastSeq,
       projection: JSON.stringify(run.projection),
       startedAt: run.snapshot.startedAt,
+      sourceCorralId: run.snapshot.source?.corralId ?? null,
     });
   }
 
@@ -144,12 +149,14 @@ export class SqliteRunStore implements RunStore {
       status: RunStatus;
       corral_id: string;
       started_at: string;
+      project_id: string | null;
     }[];
     return rows.map((row) => ({
       runId: row.id,
       status: row.status,
       corralId: row.corral_id,
       startedAt: row.started_at,
+      projectId: row.project_id ?? 'default',
     }));
   }
 

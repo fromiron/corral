@@ -1055,3 +1055,75 @@ describe('workspace configuration (C-062)', () => {
     expect(number(row('동적 위임 깊이')[2] ?? '')).toBe(DEFAULT_LIMITS.maxDelegationDepth);
   });
 });
+
+describe('REST: projects (CR-010)', () => {
+  it('[WBTST-001] creates, renames and archives projects; Corrals and runs carry theirs', async () => {
+    const server = await start();
+    const { call } = await browser(server);
+    const repo = new RestCorralRepository({ baseUrl: server.url, fetch: call });
+    expect((await repo.listProjects()).map((p) => p.projectId)).toEqual(['default']);
+
+    const created = await repo.createProject({ name: 'Docs', description: 'Writing' });
+    if (!created.ok) throw new Error(created.message);
+    const projectId = created.project.projectId;
+    const corral = await repo.save({
+      definition: linearCorral(['writer']),
+      layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
+      expectedDefinitionRevision: null,
+      projectId,
+    });
+    if (!corral.ok) throw new Error(corral.message);
+    expect(corral.record.projectId).toBe(projectId);
+    expect((await repo.list())[0]?.projectId).toBe(projectId);
+
+    const transport = new HttpSseTransport({ baseUrl: server.url, fetch: call });
+    const { runId } = await transport.startRun({
+      schemaVersion: '0.1',
+      commandId: 'cmd_project_run',
+      corralId: corral.record.corralId,
+      definitionRevision: 1,
+      mode: 'mock',
+    });
+    await waitForProjection(transport, runId ?? '', (p) => p.status === 'succeeded');
+    expect((await transport.listRuns())[0]).toMatchObject({ runId, projectId });
+
+    // Moved: the Corral goes, the finished run stays where it started.
+    const moved = await repo.moveCorral(corral.record.corralId, 'default');
+    expect(moved.ok && moved.record.projectId).toBe('default');
+    expect((await transport.listRuns())[0]?.projectId).toBe(projectId);
+
+    expect(
+      await repo.updateProject(projectId, { name: 'Docs 2', expectedRevision: 1 }),
+    ).toMatchObject({ ok: true, project: { name: 'Docs 2', revision: 2 } });
+    expect(await repo.updateProject(projectId, { name: 'x', expectedRevision: 1 })).toMatchObject({
+      ok: false,
+      error: 'revision_conflict',
+    });
+    expect(
+      await repo.updateProject('default', { archived: true, expectedRevision: 1 }),
+    ).toMatchObject({ ok: false, error: 'invalid' });
+    expect(await repo.createProject({ name: ' ' })).toMatchObject({ ok: false, error: 'invalid' });
+    expect(await repo.moveCorral(corral.record.corralId, 'project_missing')).toMatchObject({
+      ok: false,
+      error: 'not_found',
+    });
+  });
+
+  it('refuses project changes without a session or from another origin', async () => {
+    const server = await start();
+    const { call } = await browser(server);
+    expect((await fetch(`${server.url}/api/v1/projects`)).status).toBe(401);
+    const foreign = await call(`${server.url}/api/v1/projects`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: 'https://evil.example' },
+      body: JSON.stringify({ name: 'x' }),
+    });
+    expect(foreign.status).toBe(403);
+    const extra = await call(`${server.url}/api/v1/projects`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'x', path: '/home/someone' }),
+    });
+    expect(extra.status).toBe(400);
+  });
+});
