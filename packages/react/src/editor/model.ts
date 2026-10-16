@@ -9,6 +9,7 @@ import {
   type CorralNode,
   DEFAULT_LIMITS,
   type DecisionNode,
+  FILE_TOOLS,
   type InputBinding,
   type NodeLayout,
   type OutputContract,
@@ -81,6 +82,8 @@ export interface NodeChange {
   maxIterations?: number;
   requireApproval?: boolean;
   inputBindings?: InputBinding[];
+  /** Lets the role change files in the session's working copy (CR-012): all file tools. */
+  fileTools?: boolean;
 }
 
 export interface DraftCompilation {
@@ -330,6 +333,11 @@ export function updateNode(draft: EditorDraft, nodeId: string, change: NodeChang
     if (change.prompt !== undefined) roleChange.prompt = change.prompt;
     if (change.outputContract) roleChange.outputContract = change.outputContract;
     if (change.modelProfile) roleChange.modelProfile = change.modelProfile;
+    if (change.fileTools !== undefined) {
+      const current = roles.find((r) => r.id === roleId)?.allowedWorkTools ?? [];
+      const others = current.filter((tool) => !(FILE_TOOLS as readonly string[]).includes(tool));
+      roleChange.allowedWorkTools = change.fileTools ? [...others, ...FILE_TOOLS] : others;
+    }
     if (change.label !== undefined) {
       const sharedBy = nodes.filter((n) => n.type === 'agent' && n.roleId === roleId);
       if (sharedBy.length === 1) roleChange.name = change.label;

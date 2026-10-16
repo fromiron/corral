@@ -137,7 +137,9 @@
     "callTarget": "호출형 에이전트",
     "addCall": "허용",
     "removeCall": "{target}로의 링크 제거",
-    "noCallableAgents": "에이전트를 추가하고 '호출될 때만'으로 바꾸세요."
+    "noCallableAgents": "에이전트를 추가하고 '호출될 때만'으로 바꾸세요.",
+    "fileTools": "파일을 바꿀 수 있음",
+    "fileToolsHint": "Corral 파일 도구로 세션 작업 복사본 안에서만 파일을 읽고 씁니다. 작업 복사본이 없으면 도구는 거절됩니다."
   },
   "Validation": {
     "heading": "실행 전 확인",
