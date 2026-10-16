@@ -671,7 +671,7 @@ describe('SSE event stream (C-015)', () => {
     expect(cursor).toBe(end);
     gate.open();
     await waitForProjection(transport, runId, (p) => p.status === 'succeeded');
-  });
+  }, 30_000); // Over 1 MiB of events through SSE: room for a loaded CI runner (#25); assertions unchanged.
 
   it('[TC-OBS-002-N] replays an accepted cancellation larger than the outgoing buffer', async () => {
     const gate = new Gate();
