@@ -388,7 +388,14 @@
     },
     "conversation": "대화",
     "startedFrom": "시작점",
-    "startedFromLink": "{runId} Run의 {name}"
+    "startedFromLink": "{runId} Run의 {name}",
+    "views": {
+      "label": "Run 보기",
+      "canvas": "그래프",
+      "tree": "호출",
+      "side": "대화·Reins",
+      "dock": "상세"
+    }
   },
   "Timeline": {
     "heading": "타임라인",

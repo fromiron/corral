@@ -388,7 +388,14 @@
     },
     "conversation": "Conversation",
     "startedFrom": "Started from",
-    "startedFromLink": "{name} of run {runId}"
+    "startedFromLink": "{name} of run {runId}",
+    "views": {
+      "label": "Run view",
+      "canvas": "Graph",
+      "tree": "Calls",
+      "side": "Conversation & Reins",
+      "dock": "Details"
+    }
   },
   "Timeline": {
     "heading": "Timeline",
