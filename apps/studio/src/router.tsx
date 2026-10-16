@@ -62,6 +62,11 @@ export const demoRoute = createRoute({
 export const editorRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/corrals/$corralId/edit',
+  // A version of an earlier run the next run starts from (CR-007), from the Run page.
+  validateSearch: (search: Record<string, unknown>): { fromRun?: string; fromVersion?: string } =>
+    typeof search.fromRun === 'string' && typeof search.fromVersion === 'string'
+      ? { fromRun: search.fromRun, fromVersion: search.fromVersion }
+      : {},
   loader: async ({ context, params }) => {
     const record = await context.services.repository.get(params.corralId);
     if (!record) throw notFound();

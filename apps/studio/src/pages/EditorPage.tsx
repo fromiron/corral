@@ -32,12 +32,24 @@ import { useServices } from '../services.tsx';
 
 export function EditorPage() {
   const record = editorRoute.useLoaderData();
+  const { fromRun, fromVersion } = editorRoute.useSearch();
   // A fresh editor (and undo history) for each Corral.
   const editor = useMemo(
     () => createEditorStore(draftFromDefinition(record.definition, record.layout)),
     [record],
   );
-  return <Editor key={record.corralId} record={record} editor={editor} />;
+  return (
+    <Editor
+      key={record.corralId}
+      record={record}
+      editor={editor}
+      startFrom={
+        fromRun && fromVersion
+          ? { runId: fromRun, artifactVersionId: fromVersion, label: fromVersion }
+          : null
+      }
+    />
+  );
 }
 
 export function DemoPage() {
@@ -103,11 +115,14 @@ function download(name: string, text: string) {
   URL.revokeObjectURL(url);
 }
 
+type StartFromChoice = { runId: string; artifactVersionId: string; label: string };
+
 function Editor({
   record,
   editor,
   toolbar,
   guide,
+  startFrom = null,
 }: {
   record: CorralRecord;
   editor: EditorStore;
@@ -115,6 +130,8 @@ function Editor({
   toolbar?: ReactNode;
   /** A guide shown above the run controls (the demo team's guide). */
   guide?: GuideSlot | undefined;
+  /** A version the next run starts from, chosen on a Run page (CR-007). */
+  startFrom?: StartFromChoice | null;
 }) {
   const t = useTranslations('Editor');
   const { repository, session, mode, live } = useServices();
@@ -256,7 +273,12 @@ function Editor({
             </div>
             <aside className="flex min-h-0 flex-col gap-6 overflow-auto border-l border-line p-3">
               <NodeInspector />
-              <RunSide beforeStart={beforeStart} liveAvailable={live} guide={guide} />
+              <RunSide
+                beforeStart={beforeStart}
+                liveAvailable={live}
+                guide={guide}
+                initialStartFrom={startFrom}
+              />
             </aside>
           </main>
         </div>
@@ -269,10 +291,12 @@ function RunSide({
   beforeStart,
   liveAvailable,
   guide,
+  initialStartFrom,
 }: {
   beforeStart?: (() => Promise<SavedRevision | null>) | undefined;
   liveAvailable: boolean;
   guide?: GuideSlot | undefined;
+  initialStartFrom: StartFromChoice | null;
 }) {
   const t = useTranslations('Editor');
   const { session } = useStudioStores();
@@ -280,6 +304,8 @@ function RunSide({
   const [chosen, setChosen] = useState<string | null>(null);
   const target = useSteerTarget(session, chosen);
   const [viewing, setViewing] = useState<string | null>(null);
+  // CR-007: the next run's starting point, until it starts or the person clears it.
+  const [startFrom, setStartFrom] = useState<StartFromChoice | null>(initialStartFrom);
   return (
     <section aria-labelledby="run-heading" className="flex flex-col gap-3">
       {guide?.(session, setChosen)}
@@ -287,14 +313,22 @@ function RunSide({
         onStarted={() => {
           setChosen(null);
           setViewing(null);
+          setStartFrom(null);
         }}
         liveAvailable={liveAvailable}
+        startFrom={startFrom}
+        onClearStartFrom={() => setStartFrom(null)}
         {...(beforeStart ? { beforeStart } : {})}
       />
-      <RunView session={session} onSteer={setChosen} />
+      <RunView session={session} onSteer={setChosen} onStartFrom={setStartFrom} />
       <ApprovalPanel session={session} onOpenArtifact={setViewing} />
       {viewing ? (
-        <ArtifactViewer session={session} versionId={viewing} onClose={() => setViewing(null)} />
+        <ArtifactViewer
+          session={session}
+          versionId={viewing}
+          onClose={() => setViewing(null)}
+          onStartFrom={setStartFrom}
+        />
       ) : null}
       {runId ? (
         <Link

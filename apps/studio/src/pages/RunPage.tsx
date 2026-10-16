@@ -142,6 +142,16 @@ function RunWorkspace({
               session={session}
               versionId={artifact}
               onOpen={openArtifact}
+              {...(projection?.corralId
+                ? {
+                    onStartFrom: (from: { runId: string; artifactVersionId: string }) =>
+                      void navigate({
+                        to: '/corrals/$corralId/edit',
+                        params: { corralId: projection.corralId ?? '' },
+                        search: { fromRun: from.runId, fromVersion: from.artifactVersionId },
+                      }),
+                  }
+                : {})}
               onClose={() => void navigate({ search: (s) => ({ ...s, artifact: undefined }) })}
             />
           ) : null}
@@ -244,6 +254,22 @@ function RunSummary({
             <Link to="/corrals/$corralId/edit" params={{ corralId }} className="text-xs underline">
               {t('openCorral')}
             </Link>
+          ) : null}
+          {projection.startedFrom ? (
+            <span className="text-xs text-muted">
+              {t('startedFrom')}:{' '}
+              <Link
+                to="/runs/$runId"
+                params={{ runId: projection.startedFrom.runId }}
+                search={{ artifact: projection.startedFrom.artifactVersionId }}
+                className="underline"
+              >
+                {t('startedFromLink', {
+                  name: projection.startedFrom.artifactVersionId,
+                  runId: projection.startedFrom.runId,
+                })}
+              </Link>
+            </span>
           ) : null}
         </div>
         <p className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted">

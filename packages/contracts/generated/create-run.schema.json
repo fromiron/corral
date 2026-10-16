@@ -48,6 +48,24 @@
         "mock",
         "live"
       ]
+    },
+    "startFrom": {
+      "type": "object",
+      "properties": {
+        "runId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+        },
+        "artifactVersionId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+        }
+      },
+      "required": [
+        "runId",
+        "artifactVersionId"
+      ],
+      "additionalProperties": false
     }
   },
   "required": [

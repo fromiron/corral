@@ -403,7 +403,11 @@ export class Coordinator {
       });
     const resolved = this.resolveDefinition(request);
     if ('error' in resolved) return refuse(resolved.error);
-    const planned = planRun(resolved.definition);
+    const seeded = request.startFrom
+      ? this.startFromVersion(resolved.definition, request.startFrom)
+      : resolved;
+    if ('error' in seeded) return refuse(seeded.error);
+    const planned = planRun(seeded.definition);
     if (!planned.ok) {
       const code = planned.issues.some((i) => i.code === 'GRAPH_INVALID')
         ? 'GRAPH_INVALID'
@@ -500,6 +504,7 @@ export class Coordinator {
           modelProfiles: Object.values(models),
           limits: definition.limits,
           criteriaVersionId: snapshot.criteriaVersionId,
+          ...(request.startFrom ? { startedFrom: request.startFrom } : {}),
           ...(this.judgments
             ? {
                 decisions: resolveDecisionSettings(this.judgments, {
@@ -587,6 +592,46 @@ export class Coordinator {
     // Copy, so later changes to the caller's object cannot reach the snapshot.
     const copy = JSON.parse(JSON.stringify(saved)) as CorralDefinition;
     return { definition: request.input ? { ...copy, input: request.input } : copy };
+  }
+
+  /**
+   * CR-007: the brief of a run that starts from an earlier version, read from that run's own
+   * record. The text is copied, so the new run never refers to the old run's versions.
+   */
+  private startFromVersion(
+    definition: unknown,
+    from: { runId: string; artifactVersionId: string },
+  ): { definition: unknown } | { error: CommandError } {
+    const source = this.findSnapshot(from.runId);
+    const version = source?.projection.artifacts[from.artifactVersionId];
+    const text = version ? this.store.getArtifactText(from.runId, from.artifactVersionId) : null;
+    if (!version || text === null) {
+      return {
+        error: {
+          code: 'TARGET_NOT_FOUND',
+          message: `run ${from.runId} has no version ${from.artifactVersionId}`,
+        },
+      };
+    }
+    if (utf8ToBytes(text).length > this.policy.maxArtifactBytes) {
+      return {
+        error: {
+          code: 'LIMIT_REACHED',
+          message: `the version is larger than this installation's ${this.policy.maxArtifactBytes} byte artifact cap`,
+        },
+      };
+    }
+    const parsed = definition as CorralDefinition;
+    if (!parsed?.input || typeof parsed.input.brief !== 'string') return { definition };
+    const brief = [
+      parsed.input.brief,
+      '',
+      'Start from this earlier version:',
+      `(${version.name} v${version.version} from run ${from.runId})`,
+      '',
+      text,
+    ].join('\n');
+    return { definition: { ...parsed, input: { ...parsed.input, brief } } };
   }
 
   private recordStart(record: { payloadHash: string; receipt: Receipt; runId: string | null }) {

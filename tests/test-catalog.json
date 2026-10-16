@@ -1371,5 +1371,27 @@
     "status": "planned",
     "adapter": "mock unless explicitly live",
     "evidence": null
+  },
+  {
+    "id": "TC-ART-005-H",
+    "requirements": [
+      "CRL-ART-005"
+    ],
+    "suite": "unit+e2e",
+    "scenario": "끝난 Run의 버전 본문이 새 Run 브리프에 붙고 run.started.startedFrom이 남으며, 원래 Run 기록은 그대로다. 산출물 보기에서 새 Run을 시작하면 새 Run 화면에 출처 링크가 보인다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-ART-005-N",
+    "requirements": [
+      "CRL-ART-005"
+    ],
+    "suite": "unit",
+    "scenario": "없는 Run, 다른 Run의 버전, 산출물 크기 한도를 넘는 본문은 거절하고 새 Run을 만들지 않는다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
   }
 ]

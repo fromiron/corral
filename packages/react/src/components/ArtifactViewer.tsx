@@ -16,12 +16,15 @@ export function ArtifactViewer({
   versionId,
   onClose,
   onOpen,
+  onStartFrom,
 }: {
   session: RunSessionStore;
   versionId: string;
   onClose: () => void;
   /** Opens another version; without it, lineage links open in this viewer. */
   onOpen?: (artifactVersionId: string) => void;
+  /** Offers "New run from this version" (CR-007). */
+  onStartFrom?: (from: { runId: string; artifactVersionId: string; label: string }) => void;
 }) {
   const t = useTranslations('Artifact');
   const headingId = useId();
@@ -143,6 +146,21 @@ export function ArtifactViewer({
         <h3 id={headingId} className="text-xs font-semibold">
           {artifact.name} · {t('version', { version: artifact.version })}
         </h3>
+        {onStartFrom && projection ? (
+          <button
+            type="button"
+            onClick={() =>
+              onStartFrom({
+                runId: projection.runId,
+                artifactVersionId: artifact.artifactVersionId,
+                label: `${artifact.name} v${artifact.version}`,
+              })
+            }
+            className="ml-auto rounded border border-line px-1.5 py-0.5 text-xs"
+          >
+            {t('newRunFromVersion')}
+          </button>
+        ) : null}
         <button
           type="button"
           onClick={onClose}

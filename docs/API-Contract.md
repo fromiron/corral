@@ -11,7 +11,7 @@
 | GET /corrals/:id | — | definition/layout/revisions |
 | PUT /corrals/:id | If-Match definition revision,definition | conflict 검사 후 저장; 실행 중 Run 원본에는 영향 없음 |
 | POST /corrals/validate | 현재 draft definition | diagnostics + executable IR summary; side effect 없음 |
-| POST /runs | commandId,corralId,definitionRevision,input,mode | runId+receipt; validation 완료 전 모델 호출 없음 |
+| POST /runs | commandId,corralId,definitionRevision,input,mode,startFrom? | runId+receipt; validation 완료 전 모델 호출 없음. `startFrom {runId, artifactVersionId}`는 그 버전 본문을 브리프 뒤에 붙이고 `run.started.startedFrom`에 남김. 없는 Run·다른 Run의 버전은 `TARGET_NOT_FOUND`, 산출물 크기 한도 초과는 `LIMIT_REACHED` (CR-007) |
 | GET /runs/:id/snapshot | — | read model + snapshotSeq |
 | GET /runs/:id/events?after=N | cursor | commit된 domain events의 SSE; token frames 별도 type |
 | POST /runs/:id/commands | command.schema.json | accepted receipt 또는 4xx; HTTP202는 적용 완료가 아님 |

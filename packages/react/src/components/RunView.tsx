@@ -14,9 +14,11 @@ import { StatusBadge } from './StatusBadge.tsx';
 export function RunView({
   session,
   onSteer,
+  onStartFrom,
 }: {
   session: RunSessionStore;
   onSteer: (executionId: string) => void;
+  onStartFrom?: Parameters<typeof RunOutput>[0]['onStartFrom'];
 }) {
   const t = useTranslations('Run');
   const projection = useStore(session, (s) => s.projection);
@@ -71,7 +73,7 @@ export function RunView({
               />
             )}
           </div>
-          <RunOutput session={session} />
+          <RunOutput session={session} {...(onStartFrom ? { onStartFrom } : {})} />
         </>
       ) : null}
     </div>
@@ -82,12 +84,20 @@ export function RunView({
 export function RunOutput({
   session,
   heading = true,
+  onStartFrom,
 }: {
   session: RunSessionStore;
   heading?: boolean;
+  /** Offers "New run from this result" for the final output (CR-007). */
+  onStartFrom?: (from: { runId: string; artifactVersionId: string; label: string }) => void;
 }) {
   const t = useTranslations('Run');
   const outputText = useStore(session, (s) => s.outputText);
+  const runId = useStore(session, (s) => s.runId);
+  const resultId = useStore(session, (s) => s.projection?.output?.artifactVersionIds[0] ?? null);
+  const result = useStore(session, (s) =>
+    resultId ? s.projection?.artifacts[resultId] : undefined,
+  );
   return (
     <div className="flex flex-col gap-1">
       {heading ? <h3 className="text-xs font-semibold">{t('output')}</h3> : null}
@@ -101,6 +111,21 @@ export function RunOutput({
           <SafeMarkdown text={outputText} />
         </div>
       )}
+      {onStartFrom && runId && result && outputText !== null ? (
+        <button
+          type="button"
+          onClick={() =>
+            onStartFrom({
+              runId,
+              artifactVersionId: result.artifactVersionId,
+              label: `${result.name} v${result.version}`,
+            })
+          }
+          className="self-start rounded border border-line px-2 py-1 text-xs"
+        >
+          {t('newRunFromResult')}
+        </button>
+      ) : null}
     </div>
   );
 }
