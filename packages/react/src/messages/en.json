@@ -302,7 +302,7 @@
     "import": "Import JSON",
     "importHint": "Choose a .corral.json file, optionally with its layout file.",
     "importFailed": "Import failed:",
-    "empty": "No Corrals yet. Create one or import a JSON file.",
+    "empty": "No Corrals yet.",
     "storedLocally": "Corrals are saved in this browser only, and runs last until you reload.",
     "notPersistent": "This browser does not allow saving. Corrals last until you close this tab.",
     "revisions": "Definition r{definition} · Layout r{layout} · {nodes, plural, =0 {no nodes} one {# node} other {# nodes}}",
@@ -316,7 +316,24 @@
     "storedOnServer": "Corrals and runs are saved in this workspace on your computer.",
     "runsHeading": "Runs",
     "runsEmpty": "No runs yet.",
-    "runStarted": "Started {time}"
+    "runStarted": "Started {time}",
+    "emptyHint": "Start from a template below, create an empty Corral or import a JSON file.",
+    "templatesHeading": "Start from a template",
+    "useTemplate": "Use this template",
+    "template": {
+      "research-team": {
+        "name": "Research team",
+        "body": "Research delegates to two helpers, the Writer asks a question, a reviewer sends one draft back, and you approve the result."
+      },
+      "starter": {
+        "name": "Single agent",
+        "body": "One agent answers the brief. The smallest Corral that runs."
+      },
+      "blank": {
+        "name": "Empty",
+        "body": "An empty canvas: drag nodes from the palette and connect them."
+      }
+    }
   },
   "Editor": {
     "name": "Corral name",
@@ -732,5 +749,47 @@
     "loop_cap_declined": "You declined another round of {node}",
     "rejected": "You rejected {node}",
     "final_output_rejected": "You rejected the final output"
+  },
+  "CommandPalette": {
+    "label": "Command palette",
+    "search": "Search commands",
+    "placeholder": "Type a command, a Corral or a run…",
+    "results": "Commands",
+    "none": "No matching commands.",
+    "openCorral": "Open Corral: {name}",
+    "openRun": "Open run {runId}",
+    "newBlank": "New empty Corral",
+    "newFromTemplate": "New Corral from template: {name}",
+    "templates": {
+      "research-team": "Research team",
+      "starter": "Single agent",
+      "blank": "Empty"
+    },
+    "goCorrals": "Go to Corrals",
+    "goDemo": "Open the public demo",
+    "goModels": "Go to model settings",
+    "shortcuts": "Keyboard shortcuts",
+    "button": "Search",
+    "groups": {
+      "create": "Create",
+      "go": "Go to",
+      "corrals": "Corrals",
+      "runs": "Runs",
+      "help": "Help"
+    }
+  },
+  "Shortcuts": {
+    "label": "Keyboard shortcuts",
+    "palette": "Command palette",
+    "help": "Show these shortcuts",
+    "save": "Save the Corral",
+    "undo": "Undo an edit",
+    "redo": "Redo",
+    "delete": "Delete the selected node or connection",
+    "move": "Move the selected node",
+    "send": "Send an instruction",
+    "newline": "New line in an instruction",
+    "close": "Close a dialog",
+    "closeButton": "Close"
   }
 }

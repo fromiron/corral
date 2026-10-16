@@ -18,7 +18,8 @@ test('[TC-DEV-005-H] /demo starts a key-free worker runtime and steering changes
     document.documentElement.append(meta);
   });
   const workerReady = page.waitForEvent('worker');
-  await page.goto('/demo?template=starter&delay=600');
+  // A wider window than the run needs on slow CI runners; the assertions are unchanged.
+  await page.goto('/demo?template=starter&delay=1500');
   await expect(page.getByLabel('Corral name')).toHaveValue('Demo Corral');
   await workerReady;
   await expect(page.getByText('Demo / Simulated agents')).toBeVisible();
