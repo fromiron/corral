@@ -3,12 +3,21 @@ import {
   type CorralRecord,
   type CorralRepository,
   type CorralSummary,
+  DEFAULT_PROJECT_ID,
   type DefinitionSource,
+  type ProjectChange,
+  type ProjectResult,
+  type ProjectSummary,
   parseCorralRecord,
   planDuplicate,
+  planMove,
+  planProjectCreate,
+  planProjectUpdate,
   planSave,
+  projectRefusal,
   type SaveRequest,
   type SaveResult,
+  sortProjects,
 } from '@corral/core';
 import type { Db } from './database.ts';
 
@@ -19,23 +28,29 @@ export class SqliteCorralRepository implements CorralRepository, DefinitionSourc
   private readonly db: Db;
   private readonly clock: Clock;
   private readonly newCorralId: () => string;
+  private readonly newProjectId: () => string;
   private readonly sql;
 
-  constructor(db: Db, options: { clock: Clock; newCorralId: () => string }) {
+  constructor(
+    db: Db,
+    options: { clock: Clock; newCorralId: () => string; newProjectId?: () => string },
+  ) {
     this.db = db;
     this.clock = options.clock;
     this.newCorralId = options.newCorralId;
+    this.newProjectId =
+      options.newProjectId ?? (() => `project_${globalThis.crypto.randomUUID().slice(0, 8)}`);
     this.sql = {
       list: db.prepare(
         `SELECT c.id, c.name, c.definition_revision, c.layout_revision, c.updated_at,
-           d.definition_json
+           c.project_id, d.definition_json
          FROM corrals c JOIN definition_versions d
            ON d.corral_id = c.id AND d.revision = c.definition_revision
          ORDER BY c.updated_at DESC, c.name`,
       ),
       corral: db.prepare(
         `SELECT c.id, c.name, c.definition_revision, c.layout_revision, c.updated_at,
-           d.definition_json, d.definition_hash, l.layout_json
+           c.project_id, d.definition_json, d.definition_hash, l.layout_json
          FROM corrals c
          JOIN definition_versions d ON d.corral_id = c.id AND d.revision = c.definition_revision
          JOIN layouts l ON l.corral_id = c.id AND l.layout_revision = c.layout_revision
@@ -45,11 +60,13 @@ export class SqliteCorralRepository implements CorralRepository, DefinitionSourc
         'SELECT definition_json FROM definition_versions WHERE corral_id = ? AND revision = ?',
       ),
       upsertCorral: db.prepare(
-        `INSERT INTO corrals (id, name, definition_revision, layout_revision, updated_at)
-         VALUES (@id, @name, @definitionRevision, @layoutRevision, @updatedAt)
+        `INSERT INTO corrals (id, name, definition_revision, layout_revision, updated_at,
+           project_id)
+         VALUES (@id, @name, @definitionRevision, @layoutRevision, @updatedAt, @projectId)
          ON CONFLICT (id) DO UPDATE SET name = excluded.name,
            definition_revision = excluded.definition_revision,
-           layout_revision = excluded.layout_revision, updated_at = excluded.updated_at`,
+           layout_revision = excluded.layout_revision, updated_at = excluded.updated_at,
+           project_id = excluded.project_id`,
       ),
       insertDefinition: db.prepare(
         `INSERT INTO definition_versions (corral_id, revision, definition_hash, definition_json,
@@ -60,6 +77,23 @@ export class SqliteCorralRepository implements CorralRepository, DefinitionSourc
          VALUES (?, ?, ?, ?)`,
       ),
       remove: db.prepare('DELETE FROM corrals WHERE id = ?'),
+      projects: db.prepare(
+        `SELECT id, name, description, revision, created_at, updated_at, archived_at
+         FROM projects`,
+      ),
+      project: db.prepare(
+        `SELECT id, name, description, revision, created_at, updated_at, archived_at
+         FROM projects WHERE id = ?`,
+      ),
+      upsertProject: db.prepare(
+        `INSERT INTO projects (id, name, description, revision, created_at, updated_at,
+           archived_at)
+         VALUES (@projectId, @name, @description, @revision, @createdAt, @updatedAt, @archivedAt)
+         ON CONFLICT (id) DO UPDATE SET name = excluded.name,
+           description = excluded.description, revision = excluded.revision,
+           updated_at = excluded.updated_at, archived_at = excluded.archived_at`,
+      ),
+      moveCorral: db.prepare('UPDATE corrals SET project_id = ?, updated_at = ? WHERE id = ?'),
     };
   }
 
@@ -70,10 +104,12 @@ export class SqliteCorralRepository implements CorralRepository, DefinitionSourc
       definition_revision: number;
       layout_revision: number;
       updated_at: string;
+      project_id: string | null;
       definition_json: string;
     }[];
     return rows.map((row) => ({
       corralId: row.id,
+      projectId: row.project_id ?? DEFAULT_PROJECT_ID,
       name: row.name,
       definitionRevision: row.definition_revision,
       layoutRevision: row.layout_revision,
@@ -88,6 +124,11 @@ export class SqliteCorralRepository implements CorralRepository, DefinitionSourc
 
   async save(request: SaveRequest): Promise<SaveResult> {
     return this.db.transaction(() => {
+      if (request.expectedDefinitionRevision === null) {
+        const projectId = request.projectId ?? DEFAULT_PROJECT_ID;
+        const refused = projectRefusal(this.project(projectId), projectId);
+        if (refused) return refused;
+      }
       const current =
         request.expectedDefinitionRevision === null ? null : this.read(request.definition.id);
       return this.persist(planSave(current, request, this.context()), current);
@@ -102,6 +143,47 @@ export class SqliteCorralRepository implements CorralRepository, DefinitionSourc
 
   async remove(corralId: string): Promise<void> {
     this.sql.remove.run(corralId);
+  }
+
+  async listProjects(): Promise<ProjectSummary[]> {
+    return sortProjects((this.sql.projects.all() as ProjectRow[]).map(projectFromRow));
+  }
+
+  async createProject(input: { name: string; description?: string }): Promise<ProjectResult> {
+    const planned = planProjectCreate(input, {
+      now: this.clock.nowIso(),
+      projectId: this.newProjectId(),
+    });
+    if (planned.ok) this.sql.upsertProject.run(planned.project);
+    return planned;
+  }
+
+  async updateProject(projectId: string, change: ProjectChange): Promise<ProjectResult> {
+    return this.db.transaction(() => {
+      const planned = planProjectUpdate(
+        this.project(projectId),
+        projectId,
+        change,
+        this.clock.nowIso(),
+      );
+      if (planned.ok) this.sql.upsertProject.run(planned.project);
+      return planned;
+    })();
+  }
+
+  async moveCorral(corralId: string, projectId: string): Promise<SaveResult> {
+    return this.db.transaction(() => {
+      const refused = projectRefusal(this.project(projectId), projectId);
+      if (refused) return refused;
+      const moved = planMove(this.read(corralId), corralId, projectId, this.clock.nowIso());
+      if (moved.ok) this.sql.moveCorral.run(projectId, moved.record.updatedAt, corralId);
+      return moved;
+    })();
+  }
+
+  private project(projectId: string): ProjectSummary | null {
+    const row = this.sql.project.get(projectId) as ProjectRow | undefined;
+    return row ? projectFromRow(row) : null;
   }
 
   /** A saved revision as a runnable definition, or null if it is missing or unfinished. */
@@ -126,6 +208,7 @@ export class SqliteCorralRepository implements CorralRepository, DefinitionSourc
           definition_revision: number;
           layout_revision: number;
           updated_at: string;
+          project_id: string | null;
           definition_json: string;
           definition_hash: string;
           layout_json: string;
@@ -135,6 +218,7 @@ export class SqliteCorralRepository implements CorralRepository, DefinitionSourc
     return parseCorralRecord(
       {
         corralId: row.id,
+        projectId: row.project_id ?? DEFAULT_PROJECT_ID,
         name: row.name,
         definition: CorralDefinitionDraft.safeParse(readJson(row.definition_json, row.id)).data,
         definitionRevision: row.definition_revision,
@@ -156,6 +240,7 @@ export class SqliteCorralRepository implements CorralRepository, DefinitionSourc
       definitionRevision: record.definitionRevision,
       layoutRevision: record.layoutRevision,
       updatedAt: record.updatedAt,
+      projectId: record.projectId,
     });
     if (!current || result.changed.definition) {
       this.sql.insertDefinition.run(
@@ -176,6 +261,28 @@ export class SqliteCorralRepository implements CorralRepository, DefinitionSourc
     }
     return result;
   }
+}
+
+interface ProjectRow {
+  id: string;
+  name: string;
+  description: string;
+  revision: number;
+  created_at: string;
+  updated_at: string;
+  archived_at: string | null;
+}
+
+function projectFromRow(row: ProjectRow): ProjectSummary {
+  return {
+    projectId: row.id,
+    name: row.name,
+    description: row.description,
+    revision: row.revision,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    archivedAt: row.archived_at,
+  };
 }
 
 function readJson<T = unknown>(text: string, corralId: string): T {

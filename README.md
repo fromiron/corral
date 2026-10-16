@@ -51,6 +51,8 @@ MVP 범위는 D&D·협업·제한된 Loop·subagents·Reins다. v0.2에서 추�
 
 - 모델 연결: ChatGPT 로그인, Codex CLI 로그인 읽기 전용 재사용, 화면에서 넣는 API 키, Ollama 같은 OpenAI 호환 엔드포인트 ([모델 연결](docs/Models.md))
 - 목표 한 줄에서 팀 초안 만들기([CR-006](docs/change-requests/CR-006-goal-team-draft.md)), 이전 결과·버전에서 새 Run 시작([CR-007](docs/change-requests/CR-007-new-run-from-version.md))
+- Run 결과 화면: 모든 최종 결과·중간 산출물·부분 결과를 넓게 읽고 복사·내려받기, HTML 결과는 격리된 미리보기([CR-009](docs/change-requests/CR-009-run-results-view.md))
+- 프로젝트: 팀과 Run을 일별로 나누고 헤더에서 전환, 팀 이동·보관([CR-010](docs/change-requests/CR-010-projects.md))
 - 실행별 대화 보기, 문장으로 읽는 Timeline, 명령 팔레트(⌘K), 한국어 UI
 - `corral exec`·`corral eval`로 Studio 없이 실행·비교 ([평가](docs/Evaluation.md))
 - 추론 강도(reasoning_effort) 판정 관찰 모드: 로컬 규칙과 로컬 ONNX 모델, 요청에는 적용하지 않음 ([CR-003](docs/change-requests/CR-003-admission-hooks-effort-observe.md))

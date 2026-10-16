@@ -6,8 +6,8 @@
 
 | Method/path | 요청 | 응답·효과 |
 |---|---|---|
-| GET /corrals | cursor? | 정의 목록; 본문·레이아웃은 필요 시 조회 |
-| POST /corrals | 정의+레이아웃 | 새 저장 정의. clone 시 ID 재발급 |
+| GET /corrals | cursor? | 정의 목록(각 `projectId` 포함); 본문·레이아웃은 필요 시 조회 |
+| POST /corrals | 정의+레이아웃, `projectId?` | 새 저장 정의(프로젝트 없으면 기본 프로젝트, CR-010). 없거나 보관한 프로젝트는 `TARGET_NOT_FOUND`. clone 시 ID 재발급 |
 | GET /corrals/:id | — | definition/layout/revisions |
 | PUT /corrals/:id | If-Match definition revision,definition | conflict 검사 후 저장; 실행 중 Run 원본에는 영향 없음 |
 | POST /corrals/validate | 현재 draft definition | diagnostics + executable IR summary; side effect 없음 |
@@ -27,14 +27,18 @@
 | GET /health | — | `ok`, schemaVersion, version, backendSessionId, agents(`mock`). secret 없음 |
 | POST /session | `{token}` | 일회성 bootstrap token을 교환해 HttpOnly·SameSite=Strict 세션 cookie. 재사용은 401 |
 | GET /session | — | 세션 cookie가 유효하면 `{ok:true,csrfToken}`. 모든 변경 요청은 `x-corral-csrf` 헤더로 이 값을 보낸다 |
-| GET /runs | — | 실행 이력(최신 먼저): runId, status, corralId, startedAt |
+| GET /runs | — | 실행 이력(최신 먼저): runId, status, corralId, startedAt, projectId(시작할 때의 프로젝트, CR-010) |
 | GET /model-catalog | — | 내장 provider·엔드포인트와 모델 목록. 자격 증명·상태 없음 (CR-008) |
 | GET /model-config | — | `modelProfiles`, `modelProviders`, `usingDefaults`, `revision`(설정 파일 내용 해시) |
 | PUT /model-config | revision, modelProfiles, modelProviders | 두 키만 교체해 저장·즉시 반영. 검사 실패 `SCHEMA_INVALID`(필드 이름만), 다른 revision `REVISION_CONFLICT` |
 | GET /runs/:id | — | RunSnapshot: 실행에 쓴 정의·definitionHash·출처 revision·criteriaVersionId·mode |
 | GET /runs/:id/artifact-versions/:artifactVersionId | — | 불변 본문 `{text}`. 이 run의 산출물 버전과 기준 버전만 |
 | GET /runs/:id/artifact-versions/:artifactVersionId/preview | — | 산출물 버전이 HTML 문서일 때만 `text/html` 본문(CR-009). 응답 CSP `sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:` 등, `frame-ancestors 'self'`. 그 밖에는 `TARGET_NOT_FOUND` |
-| POST /corrals/:id/duplicate | `{name}` | 새 id의 사본(revision 1) |
+| POST /corrals/:id/duplicate | `{name}` | 새 id의 사본(revision 1), 원본과 같은 프로젝트 |
+| PUT /corrals/:id/project | `{projectId}` | 팀을 다른 프로젝트로 이동(revision 그대로). 지난 Run은 원래 프로젝트에 남음. 없거나 보관한 프로젝트는 `TARGET_NOT_FOUND` |
+| GET /projects | — | 프로젝트 목록: 기본 프로젝트 먼저, 보관 포함(`archivedAt`) |
+| POST /projects | `{name, description?}` | 폴더 없는 새 프로젝트(이름 1–80자, 같은 이름 허용) |
+| PATCH /projects/:id | `{name?, description?, archived?, expectedRevision}` | 이름·설명·보관. 다른 revision `REVISION_CONFLICT`, 기본 프로젝트 보관·빈 이름 `SCHEMA_INVALID` |
 | DELETE /corrals/:id | — | 저장 정의 삭제. 이미 시작한 Run의 snapshot에는 영향 없음 |
 
 P8 입력·기록 주소. 문서 도구에는 이 주소에서 받은 ID만 전달하며 로컬 경로나 원시 URL을 전달하지 않는다.

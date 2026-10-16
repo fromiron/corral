@@ -823,7 +823,8 @@
       "corrals": "Corral",
       "runs": "Run",
       "help": "도움말",
-      "editor": "편집기"
+      "editor": "편집기",
+      "projects": "프로젝트"
     },
     "draftTeam": "목표에서 팀 초안 만들기",
     "tidy": "캔버스 정리하기"
@@ -1010,5 +1011,35 @@
     "previewOf": "{label} 미리보기",
     "openResults": "결과 화면에서 보기",
     "finalCount": "{count, plural, other {최종 결과 #개}}"
+  },
+  "Projects": {
+    "defaultName": "기본 프로젝트",
+    "label": "프로젝트",
+    "switcher": "현재 프로젝트",
+    "allProjects": "모든 프로젝트…",
+    "heading": "프로젝트",
+    "new": "새 프로젝트",
+    "nameLabel": "이름",
+    "descriptionLabel": "설명(선택)",
+    "create": "프로젝트 만들기",
+    "intro": "프로젝트는 Corral과 Run을 다른 일과 나눠 둡니다. 폴더가 아니므로 컴퓨터의 파일을 읽거나 바꾸지 않습니다.",
+    "counts": "Corral {corrals, plural, other {#개}} · Run {runs, plural, other {#개}}",
+    "archived": "보관됨",
+    "archive": "보관",
+    "restore": "되살리기",
+    "showArchived": "보관한 프로젝트 보기({count})",
+    "hideArchived": "보관한 프로젝트 숨기기",
+    "rename": "이름 바꾸기",
+    "save": "저장",
+    "cancel": "취소",
+    "open": "열기",
+    "moveTo": "{name}을(를) 다른 프로젝트로 옮기기",
+    "moveChoose": "옮길 프로젝트…",
+    "archivedNote": "보관한 프로젝트입니다. Run은 그대로 열립니다. Corral을 더하려면 되살리세요.",
+    "runIn": "프로젝트: {name}",
+    "failed": "저장하지 못했습니다: {message}",
+    "switchTo": "프로젝트로 전환: {name}",
+    "openAll": "모든 프로젝트 열기",
+    "current": "현재"
   }
 }

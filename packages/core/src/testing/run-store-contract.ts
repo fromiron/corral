@@ -9,7 +9,15 @@ import type { RunStore, StoredRun } from '../store/run-store.ts';
  * Behaviour every RunStore must share (C-011). The in-memory store and the SQLite store run
  * the same cases, so the coordinator's commit path means the same thing in both.
  */
-export function describeRunStoreContract(name: string, makeStore: () => RunStore) {
+/**
+ * `recordsProject`: the store records the project a run started in (CR-010; SQLite). Others
+ * report null and leave it to the Corral's project.
+ */
+export function describeRunStoreContract(
+  name: string,
+  makeStore: () => RunStore,
+  options: { recordsProject?: boolean } = {},
+) {
   const definition = linearCorral(['writer'], 'store');
 
   function newRun(runId = 'run_store_1'): StoredRun {
@@ -199,6 +207,8 @@ export function describeRunStoreContract(name: string, makeStore: () => RunStore
           status: 'running',
           corralId: definition.id,
           startedAt: '2026-10-15T00:00:00.000Z',
+          // An inline definition has no saved Corral: the default project, where recorded.
+          projectId: options.recordsProject ? 'default' : null,
         },
       ]);
       expect(store.getRun(run.runId)?.snapshot).toEqual(run.snapshot);

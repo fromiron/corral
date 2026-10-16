@@ -9,6 +9,7 @@ import {
   CreateRunRequest,
   type DecisionProvider,
   type ErrorCode,
+  Identifier,
   type IdFactory,
   type Receipt,
   type RunEvent,
@@ -23,6 +24,7 @@ import {
   judgmentSettings,
   LocalHeuristicProvider,
   openRunArchive,
+  type ProjectResult,
   planRun,
   type SaveResult,
 } from '@corral/core';
@@ -150,7 +152,21 @@ const LayoutInput = z.strictObject({
   nodes: CanvasLayout.shape.nodes,
   viewport: CanvasLayout.shape.viewport,
 });
-const CreateCorral = z.strictObject({ definition: CorralDefinitionDraft, layout: LayoutInput });
+const CreateCorral = z.strictObject({
+  definition: CorralDefinitionDraft,
+  layout: LayoutInput,
+  projectId: Identifier.optional(),
+});
+const CreateProject = z.strictObject({
+  name: z.string().max(200),
+  description: z.string().max(2000).optional(),
+});
+const UpdateProject = z.strictObject({
+  name: z.string().max(200).optional(),
+  description: z.string().max(2000).optional(),
+  archived: z.boolean().optional(),
+  expectedRevision: z.int().min(1),
+});
 const UpdateCorral = z.strictObject({ definition: CorralDefinitionDraft, layout: LayoutInput });
 
 /** `If-Match: 3` or `If-Match: "3"`: the definition revision the edit started from. */
@@ -403,6 +419,50 @@ async function createCorralServer(
       return reply.code(204).send();
     },
   );
+  // ── Projects (CR-010) ───────────────────────────────────────────────────────
+  const projectReply = (reply: FastifyReply, result: ProjectResult, created: boolean) => {
+    if (result.ok) return reply.code(created ? 201 : 200).send(result);
+    const code: ErrorCode =
+      result.error === 'not_found'
+        ? 'TARGET_NOT_FOUND'
+        : result.error === 'revision_conflict'
+          ? 'REVISION_CONFLICT'
+          : result.error === 'invalid'
+            ? 'SCHEMA_INVALID'
+            : 'STORAGE_UNAVAILABLE';
+    return fail(reply, code, result.message);
+  };
+  app.get('/api/v1/projects', async () => corrals.listProjects());
+  app.post('/api/v1/projects', async (request, reply) => {
+    const body = parse(CreateProject, request, reply);
+    if (!body) return reply;
+    return projectReply(reply, await corrals.createProject(body), true);
+  });
+  app.patch<{ Params: { projectId: string } }>(
+    '/api/v1/projects/:projectId',
+    async (request, reply) => {
+      const body = parse(UpdateProject, request, reply);
+      if (!body) return reply;
+      return projectReply(
+        reply,
+        await corrals.updateProject(request.params.projectId, body),
+        false,
+      );
+    },
+  );
+  app.put<{ Params: { corralId: string } }>(
+    '/api/v1/corrals/:corralId/project',
+    async (request, reply) => {
+      const body = parse(z.strictObject({ projectId: Identifier }), request, reply);
+      if (!body) return reply;
+      return saveReply(
+        reply,
+        await corrals.moveCorral(request.params.corralId, body.projectId),
+        false,
+      );
+    },
+  );
+
   app.post('/api/v1/corrals/validate', async (request, reply) => {
     const body = parse(z.strictObject({ definition: z.unknown() }), request, reply);
     if (!body) return reply;

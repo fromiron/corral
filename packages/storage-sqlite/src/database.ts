@@ -113,6 +113,31 @@ CREATE TABLE imported_inputs (
 ${IMMUTABLE('imported_inputs')}
 `,
   },
+  {
+    // CR-010: projects group Corrals and runs. Existing rows join the default project; no
+    // row of an immutable table is touched, and no id changes.
+    name: '0003_projects',
+    sql: `
+CREATE TABLE projects (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL,
+  revision INTEGER NOT NULL CHECK (revision >= 1),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  archived_at TEXT
+) STRICT;
+INSERT INTO projects (id, name, description, revision, created_at, updated_at, archived_at)
+VALUES ('default', '', '', 1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+  strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), NULL);
+ALTER TABLE corrals ADD COLUMN project_id TEXT REFERENCES projects(id);
+UPDATE corrals SET project_id = 'default';
+ALTER TABLE runs ADD COLUMN project_id TEXT REFERENCES projects(id);
+UPDATE runs SET project_id = 'default';
+CREATE INDEX corrals_by_project ON corrals (project_id);
+CREATE INDEX runs_by_project ON runs (project_id, started_at DESC);
+`,
+  },
 ];
 
 /** History queries must neither recover active runs nor migrate the workspace. */

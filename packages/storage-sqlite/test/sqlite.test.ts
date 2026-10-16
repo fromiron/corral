@@ -44,7 +44,9 @@ function repository(db: Database.Database) {
   });
 }
 
-describeRunStoreContract('sqlite', () => new SqliteRunStore(openDatabase(':memory:')));
+describeRunStoreContract('sqlite', () => new SqliteRunStore(openDatabase(':memory:')), {
+  recordsProject: true,
+});
 describeCorralRepositoryContract('sqlite', () => repository(openDatabase(':memory:')));
 describeTransportContract(
   'in-process over SQLite',
@@ -297,5 +299,128 @@ describe('read-only history', () => {
     expect(writable.prepare('SELECT status, last_seq FROM runs').all()).toEqual(before);
     reader.close();
     writable.close();
+  });
+});
+
+describe('projects in SQLite (CR-010)', () => {
+  // One agent: runs end on their own, with no person to approve anything.
+  const layout = () => ({ nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } });
+
+  async function runOf(db: Database.Database, corralId: string, commandId: string) {
+    const repo = repository(db);
+    const transport = new InProcessTransport(
+      new Coordinator({
+        clock: new FakeClock(),
+        ids: new SequentialIdFactory(commandId),
+        agents: new ScriptedAgentAdapter({ turns: 1 }),
+        store: new SqliteRunStore(db),
+        corrals: repo,
+      }),
+    );
+    const { runId } = await transport.startRun({
+      schemaVersion: '0.1',
+      commandId,
+      corralId,
+      definitionRevision: 1,
+      mode: 'mock',
+    });
+    if (!runId) throw new Error('run refused');
+    await waitForProjection(transport, runId, (p) => p.status === 'succeeded');
+    return runId;
+  }
+
+  it('records the project a run started in; a moved Corral leaves old runs where they were', async () => {
+    const db = openDatabase(':memory:');
+    const repo = repository(db);
+    const project = await repo.createProject({ name: 'Research' });
+    if (!project.ok) throw new Error(project.message);
+    const created = await repo.save({
+      definition: linearCorral(['writer']),
+      layout: layout(),
+      expectedDefinitionRevision: null,
+      projectId: project.project.projectId,
+    });
+    if (!created.ok) throw new Error(created.message);
+    const first = await runOf(db, created.record.corralId, 'cmd_a');
+    await repo.moveCorral(created.record.corralId, 'default');
+    const second = await runOf(db, created.record.corralId, 'cmd_b');
+    const store = new SqliteRunStore(db);
+    const projectOf = (runId: string) => store.listRuns().find((r) => r.runId === runId)?.projectId;
+    expect(projectOf(first)).toBe(project.project.projectId);
+    expect(projectOf(second)).toBe('default');
+  });
+
+  it('[WBTST-036] an older file gains the default project; runs and events keep their ids', async () => {
+    // A finished run and a saved Corral, copied into a file at schema 2 (before projects).
+    const source = openDatabase(':memory:');
+    const repo = repository(source);
+    const created = await repo.save({
+      definition: linearCorral(['writer']),
+      layout: layout(),
+      expectedDefinitionRevision: null,
+    });
+    if (!created.ok) throw new Error(created.message);
+    const runId = await runOf(source, created.record.corralId, 'cmd_old');
+    const path = tempFile();
+    const old = new Database(path);
+    old.exec((MIGRATIONS[0] as { sql: string }).sql);
+    old.exec((MIGRATIONS[1] as { sql: string }).sql);
+    old.pragma('user_version = 2');
+    old.close();
+    source.exec(`ATTACH DATABASE '${path}' AS old`);
+    const copy = (table: string, columns: string) =>
+      source.exec(`INSERT INTO old.${table} (${columns}) SELECT ${columns} FROM main.${table}`);
+    copy('corrals', 'id, name, definition_revision, layout_revision, updated_at');
+    copy(
+      'definition_versions',
+      'corral_id, revision, definition_hash, definition_json, created_at',
+    );
+    copy('layouts', 'corral_id, layout_revision, definition_revision, layout_json');
+    copy(
+      'runs',
+      'id, corral_id, definition_hash, snapshot_json, status, last_seq, projection_json, started_at',
+    );
+    copy('run_events', 'run_id, seq, event_id, type, event_json');
+    copy('artifact_texts', 'run_id, artifact_version_id, text_body');
+    const eventIds = (db: Database.Database, schema = 'main') =>
+      (
+        db.prepare(`SELECT event_id FROM ${schema}.run_events ORDER BY seq`).all() as {
+          event_id: string;
+        }[]
+      ).map((row) => row.event_id);
+    const before = eventIds(source, 'old');
+    source.exec('DETACH DATABASE old');
+
+    const migrated = openDatabase(path);
+    expect(migrated.pragma('user_version', { simple: true })).toBe(MIGRATIONS.length);
+    const reopened = repository(migrated);
+    expect((await reopened.listProjects()).map((p) => p.projectId)).toEqual(['default']);
+    expect((await reopened.list()).map((c) => [c.corralId, c.projectId])).toEqual([
+      [created.record.corralId, 'default'],
+    ]);
+    const runs = new SqliteRunStore(migrated).listRuns();
+    expect(runs.map((r) => [r.runId, r.projectId])).toEqual([[runId, 'default']]);
+    expect(eventIds(migrated)).toEqual(before);
+    expect(before.length).toBeGreaterThan(0);
+  });
+
+  it('puts runs of inline definitions in the default project', async () => {
+    const db = openDatabase(':memory:');
+    const transport = new InProcessTransport(
+      new Coordinator({
+        clock: new FakeClock(),
+        ids: new SequentialIdFactory(),
+        agents: new ScriptedAgentAdapter({ turns: 1 }),
+        store: new SqliteRunStore(db),
+      }),
+    );
+    const { runId } = await transport.startRun({
+      schemaVersion: '0.1',
+      commandId: 'cmd_inline',
+      definition: linearCorral(['writer']),
+      mode: 'mock',
+    });
+    await waitForProjection(transport, runId ?? '', (p) => p.status === 'succeeded');
+    expect(new SqliteRunStore(db).listRuns()[0]?.projectId).toBe('default');
   });
 });

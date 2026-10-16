@@ -28,6 +28,7 @@ import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { useModelPrices } from '../prices.ts';
+import { projectOfRun, setCurrentProject } from '../projects.ts';
 import { runRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
 import { markRunReviewed } from './GettingStarted.tsx';
@@ -36,7 +37,7 @@ import { markRunReviewed } from './GettingStarted.tsx';
 export function RunPage() {
   const t = useTranslations('RunPage');
   const { runId } = runRoute.useParams();
-  const { session } = useServices();
+  const { session, transport, repository } = useServices();
   const activeRunId = useStore(session, (s) => s.runId);
   const missing = useStore(session, (s) => s.missingRunId === runId);
   const error = useStore(session, (s) => s.streamError);
@@ -47,9 +48,23 @@ export function RunPage() {
     void session.getState().open(runId);
   }, [session, runId]);
 
+  // CR-010: the header shows the project this run started in.
+  useEffect(() => {
+    let live = true;
+    Promise.all([transport.listRuns(), repository.list()]).then(
+      ([runs, corrals]) => {
+        const run = runs.find((r) => r.runId === runId);
+        if (live && run) setCurrentProject(projectOfRun(run, corrals));
+      },
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+  }, [transport, repository, runId]);
+
   // CR-009: whether the run had already ended when the page opened. Decided once, so a run
   // that ends while it is watched never moves the page to its results.
-  const { transport } = useServices();
   const [openedEnded, setOpenedEnded] = useState<{ runId: string; ended: boolean } | null>(null);
   useEffect(() => {
     let live = true;

@@ -11,7 +11,14 @@ import { useServices } from './services.tsx';
  * one model request, edits it, and only "Open in editor" saves it. Tools and wiring come from
  * the pattern (draftFromPlan), never from the plan's text.
  */
-export function TeamDraftDialog({ onClose }: { onClose: () => void }) {
+export function TeamDraftDialog({
+  onClose,
+  projectId,
+}: {
+  onClose: () => void;
+  /** The project the drafted Corral is saved in (CR-010). */
+  projectId?: string;
+}) {
   const t = useTranslations('TeamDraft');
   const messages = useMessages() as { TeamDraft: { wording: TeamWording } };
   const { repository, models, live } = useServices();
@@ -60,7 +67,11 @@ export function TeamDraftDialog({ onClose }: { onClose: () => void }) {
       `team_${globalThis.crypto.randomUUID().slice(0, 8)}`,
       messages.TeamDraft.wording.labels,
     );
-    const saved = await repository.save({ ...draft, expectedDefinitionRevision: null });
+    const saved = await repository.save({
+      ...draft,
+      expectedDefinitionRevision: null,
+      ...(projectId ? { projectId } : {}),
+    });
     setBusy(false);
     if (!saved.ok) return setError(saved.message);
     onClose();

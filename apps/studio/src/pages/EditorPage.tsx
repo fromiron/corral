@@ -28,12 +28,15 @@ import { useStore } from 'zustand';
 import { DemoGuide } from '../demo/DemoGuide.tsx';
 import { DEMO_TEMPLATE_IDS, type DemoTemplateId } from '../demo/templates.ts';
 import { useModelPrices } from '../prices.ts';
+import { setCurrentProject } from '../projects.ts';
 import { demoRoute, editorRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
 
 export function EditorPage() {
   const record = editorRoute.useLoaderData();
   const { fromRun, fromVersion } = editorRoute.useSearch();
+  // CR-010: the header shows the Corral's project, and `/` returns to it.
+  useEffect(() => setCurrentProject(record.projectId), [record.projectId]);
   // A fresh editor (and undo history) for each Corral.
   const editor = useMemo(
     () => createEditorStore(draftFromDefinition(record.definition, record.layout)),

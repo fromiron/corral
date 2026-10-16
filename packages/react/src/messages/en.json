@@ -823,7 +823,8 @@
       "corrals": "Corrals",
       "runs": "Runs",
       "help": "Help",
-      "editor": "Editor"
+      "editor": "Editor",
+      "projects": "Projects"
     },
     "draftTeam": "Draft a team from a goal",
     "tidy": "Tidy up the canvas"
@@ -1010,5 +1011,35 @@
     "previewOf": "Preview of {label}",
     "openResults": "Open in Results",
     "finalCount": "{count, plural, one {# final result} other {# final results}}"
+  },
+  "Projects": {
+    "defaultName": "My project",
+    "label": "Project",
+    "switcher": "Current project",
+    "allProjects": "All projects…",
+    "heading": "Projects",
+    "new": "New project",
+    "nameLabel": "Name",
+    "descriptionLabel": "Description (optional)",
+    "create": "Create project",
+    "intro": "A project keeps its Corrals and runs apart from other work. It is not a folder: nothing on your computer is read or changed.",
+    "counts": "{corrals, plural, =0 {no Corrals} one {# Corral} other {# Corrals}} · {runs, plural, =0 {no runs} one {# run} other {# runs}}",
+    "archived": "Archived",
+    "archive": "Archive",
+    "restore": "Restore",
+    "showArchived": "Show archived ({count})",
+    "hideArchived": "Hide archived",
+    "rename": "Rename",
+    "save": "Save",
+    "cancel": "Cancel",
+    "open": "Open",
+    "moveTo": "Move {name} to another project",
+    "moveChoose": "Move to…",
+    "archivedNote": "This project is archived. Its runs still open; restore it to add Corrals.",
+    "runIn": "Project: {name}",
+    "failed": "Could not save: {message}",
+    "switchTo": "Switch to project: {name}",
+    "openAll": "Open all projects",
+    "current": "Current"
   }
 }

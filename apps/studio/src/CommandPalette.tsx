@@ -11,6 +11,7 @@ import {
 } from 'react';
 import { useTranslations } from 'use-intl';
 import { type Command, rankCommands } from './commands.ts';
+import { currentProject, projectName } from './projects.ts';
 import { useServices } from './services.tsx';
 import { createFromTemplate, WORKSPACE_TEMPLATES } from './templates.ts';
 
@@ -115,6 +116,7 @@ export function Modal({
 function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void }) {
   const t = useTranslations('CommandPalette');
   const tw = useTranslations('Workspace');
+  const tp = useTranslations('Projects');
   const navigate = useNavigate();
   const services = useServices();
   const [query, setQuery] = useState('');
@@ -126,10 +128,27 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
   useEffect(() => {
     inputRef.current?.focus();
     let live = true;
-    void Promise.all([services.repository.list(), services.transport.listRuns()]).then(
-      ([corrals, runs]) => {
+    void Promise.all([
+      services.repository.list(),
+      services.transport.listRuns(),
+      services.repository.listProjects(),
+    ]).then(
+      ([corrals, runs, projects]) => {
         if (!live) return;
         setDynamic([
+          // CR-010: switch to any active project but the current one.
+          ...projects
+            .filter((p) => !p.archivedAt && p.projectId !== currentProject())
+            .map(
+              (p): Command => ({
+                id: `project:${p.projectId}`,
+                title: tp('switchTo', { name: projectName(p, tp('defaultName')) }),
+                group: t('groups.projects'),
+                keywords: ['project', '프로젝트'],
+                run: () =>
+                  navigate({ to: '/projects/$projectId', params: { projectId: p.projectId } }),
+              }),
+            ),
           ...corrals.map(
             (c): Command => ({
               id: `corral:${c.corralId}`,
@@ -155,7 +174,7 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
     return () => {
       live = false;
     };
-  }, [services, navigate, t]);
+  }, [services, navigate, t, tp]);
 
   const commands = useMemo<Command[]>(() => {
     const fromTemplate = WORKSPACE_TEMPLATES.map(
@@ -165,7 +184,12 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
           id === 'blank' ? t('newBlank') : t('newFromTemplate', { name: t(`templates.${id}`) }),
         group: t('groups.create'),
         run: async () => {
-          const created = await createFromTemplate(services.repository, id, tw('newName'));
+          const created = await createFromTemplate(
+            services.repository,
+            id,
+            tw('newName'),
+            currentProject(),
+          );
           if (created.ok)
             await navigate({
               to: '/corrals/$corralId/edit',
@@ -204,6 +228,13 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
         run: () => navigate({ to: '/' }),
       },
       {
+        id: 'go:projects',
+        title: tp('openAll'),
+        group: t('groups.go'),
+        keywords: ['projects', '프로젝트'],
+        run: () => navigate({ to: '/projects' }),
+      },
+      {
         id: 'go:demo',
         title: t('goDemo'),
         group: t('groups.go'),
@@ -224,7 +255,7 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
       { id: 'help', title: t('shortcuts'), group: t('groups.help'), shortcut: '?', run: onHelp },
     ];
     return [...tidy, draftTeam, ...fromTemplate, ...go, ...dynamic];
-  }, [dynamic, services, navigate, t, tw, onHelp]);
+  }, [dynamic, services, navigate, t, tw, tp, onHelp]);
 
   const shown = rankCommands(query, commands);
   const current = Math.min(active, Math.max(0, shown.length - 1));

@@ -70,3 +70,15 @@
 ## 일정·영향
 
 새 의존성 없음. contracts(오류 코드는 기존 것 사용), core(저장소 계약), storage-sqlite(migration·표), server(API), client, studio(라우트·헤더·홈)가 바뀐다.
+
+## 진행 결과 (2026-10-16)
+
+- 구현:
+  - 저장: 저장소 계약(`listProjects`·`createProject`·`updateProject`·`moveCorral`, `projectId`), SQLite migration `0003_projects`, Run 시작 시 프로젝트 기록.
+  - 서버 API 4개와 REST client.
+  - Studio: `/projects`·`/projects/$projectId`·`/` 이동, 헤더 전환, 팀 이동, ⌘K.
+- 테스트:
+  - 저장소 계약 5개(브라우저·SQLite). SQLite 쪽은 구현 전 실패를 확인했다.
+  - migration·Run 소속 3, REST 2.
+  - E2E 데모 2(구분·`/` 복귀, 같은 이름·이동·보관), 서버 1(이동 후 지난 Run 유지·새로고침).
+- 바뀐 기존 테스트: 팔레트 E2E의 "URL이 `/`로 끝남"을 "누르기 전 URL과 같음"으로 바꿨다. `/`가 프로젝트 주소로 이동하기 때문이다.

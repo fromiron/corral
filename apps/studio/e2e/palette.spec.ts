@@ -26,6 +26,8 @@ test('[TC-UX-001-N] the palette closes with Escape, and an IME composition Enter
   await page.goto('/');
   const opener = page.getByRole('button', { name: 'New Corral' });
   await opener.focus();
+  // CR-010: `/` opens the current project; the page must stay exactly where it is.
+  const before = page.url();
   await page.keyboard.press('Control+k');
   const palette = page.getByRole('dialog', { name: 'Command palette' });
   const input = palette.getByRole('combobox', { name: 'Search commands' });
@@ -36,7 +38,7 @@ test('[TC-UX-001-N] the palette closes with Escape, and an IME composition Enter
     keyCode: 229,
     bubbles: true,
   });
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(before);
   await expect(palette).toBeVisible();
   await input.press('Escape');
   await expect(palette).toBeHidden();
