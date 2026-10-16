@@ -533,6 +533,15 @@ describe('editing profiles and endpoints from the Models page (CR-008)', () => {
     const openai = catalog.find((p) => p.providerId === 'openai');
     expect(openai?.models.map((m) => m.id)).toContain('gpt-test-b');
     expect(openai?.methods).toEqual({ oauth: true, apiKey: true });
+    // List prices per million tokens, for the run cost estimate (roadmap 15).
+    expect(openai?.models[0]).toMatchObject({
+      cost: {
+        input: expect.any(Number),
+        output: expect.any(Number),
+        cacheRead: expect.any(Number),
+        cacheWrite: expect.any(Number),
+      },
+    });
     expect(catalog.find((p) => p.providerId === 'anthropic')?.methods.oauth).toBe(false);
 
     const current = await context.json('/model-config');

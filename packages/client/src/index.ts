@@ -501,7 +501,12 @@ export interface CatalogProvider {
   /** An OpenAI-compatible endpoint from the workspace config. */
   endpoint: boolean;
   methods: { oauth: boolean; apiKey: boolean };
-  models: { id: string; name: string }[];
+  /** `cost`: list prices in USD per million tokens, for estimates (roadmap 15). */
+  models: {
+    id: string;
+    name: string;
+    cost: { input: number; output: number; cacheRead: number; cacheWrite: number };
+  }[];
 }
 
 export interface ProfileConfig {

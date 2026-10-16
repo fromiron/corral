@@ -78,7 +78,11 @@ export interface CatalogProvider {
   /** An OpenAI-compatible endpoint from the workspace config (CR-005). */
   endpoint: boolean;
   methods: { oauth: boolean; apiKey: boolean };
-  models: { id: string; name: string }[];
+  models: {
+    id: string;
+    name: string;
+    cost: { input: number; output: number; cacheRead: number; cacheWrite: number };
+  }[];
 }
 
 export interface LoginView {
@@ -319,7 +323,17 @@ export class ModelRegistry implements ModelResolver {
         name: provider.name,
         endpoint: this.options.endpoints?.has(provider.id) ?? false,
         methods: this.methods(provider.id),
-        models: provider.getModels().map((m) => ({ id: m.id, name: m.name })),
+        models: provider.getModels().map((m) => ({
+          id: m.id,
+          name: m.name,
+          // pi-ai's list prices (USD per million tokens), for estimates only (roadmap 15).
+          cost: {
+            input: m.cost.input,
+            output: m.cost.output,
+            cacheRead: m.cost.cacheRead,
+            cacheWrite: m.cost.cacheWrite,
+          },
+        })),
       }))
       .filter((p) => p.models.length > 0)
       .sort((a, b) => Number(b.endpoint) - Number(a.endpoint) || a.name.localeCompare(b.name));

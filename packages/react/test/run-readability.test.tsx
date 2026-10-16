@@ -134,6 +134,47 @@ describe('budget meter (UX-A4)', () => {
     const details = screen.getByText('All budget figures').closest('details');
     expect(details?.open).toBe(false);
   });
+
+  it('[TC-OBS-004-H] shows the estimated cost at list prices, or says a subscription covers it (roadmap 15)', () => {
+    const { definition } = researchTeamDraft();
+    const call = (profile: string) => ({
+      modelCallId: `c_${profile}`,
+      executionId: 'e',
+      contextSnapshotId: 'x',
+      profile,
+      configRevision: 0,
+      directiveIds: [],
+      inputArtifactVersionIds: [],
+      finished: true,
+      usage: null,
+      rawUsage: { input: 1_000_000, output: 250_000, cacheRead: 0, cacheWrite: 0 },
+      certainty: 'reported' as const,
+    });
+    const render = (auth: 'api_key' | 'oauth') => {
+      const session = sessionStore({
+        runId: 'r',
+        definition,
+        projection: projectionWith({
+          limits: definition.limits,
+          modelProfiles: {
+            'model-a': { profile: 'model-a', provider: 'openai', modelId: 'gpt-a', auth },
+          },
+          modelCalls: { c: call('model-a') },
+        }),
+      });
+      const view = intl(
+        <BudgetInspector
+          session={session}
+          prices={() => ({ input: 2, output: 8, cacheRead: 0, cacheWrite: 0 })}
+        />,
+      );
+      const text = screen.getByTestId('cost-estimate').textContent;
+      view.unmount();
+      return text;
+    };
+    expect(render('api_key')).toContain('$4.00');
+    expect(render('oauth')).toContain('Included in your subscription');
+  });
 });
 
 describe('decision and output node status (UX-A4)', () => {

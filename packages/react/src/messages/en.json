@@ -547,7 +547,12 @@
     "meterTokensText": "{used, number} used · {held, number} held · {max, number} allowed",
     "meterCalls": "Model calls",
     "meterCallsText": "{used} of {max}",
-    "allFigures": "All budget figures"
+    "allFigures": "All budget figures",
+    "costEstimate": "Estimated cost {usd} at list prices",
+    "costSubscription": "Included in your subscription",
+    "costUnknown": "{count, plural, one {# call} other {# calls}} without a known price",
+    "costSimulated": "Simulated: no cost",
+    "costNone": "No model calls yet"
   },
   "SettingsPatch": {
     "heading": "Change settings",
