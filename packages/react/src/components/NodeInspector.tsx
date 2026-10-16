@@ -146,6 +146,17 @@ function NodeProperties({ node }: { node: CorralNode }) {
               className={field}
             />
           </label>
+          <label className="flex items-start gap-2 text-xs">
+            <input
+              type="checkbox"
+              checked={role.allowedWorkTools.includes('write_file')}
+              onChange={(e) => update(node.id, { fileTools: e.target.checked })}
+            />
+            <span>
+              <span className="font-medium">{t('fileTools')}</span>
+              <span className="block text-muted">{t('fileToolsHint')}</span>
+            </span>
+          </label>
         </>
       ) : null}
 

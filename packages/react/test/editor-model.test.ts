@@ -312,3 +312,21 @@ describe('arranging the canvas (roadmap 18)', () => {
     expect(arrangeDraft(empty)).toBe(empty);
   });
 });
+
+describe('file tools switch (CR-012)', () => {
+  it('gives a role every file tool, and takes them all away again', () => {
+    const added = addNode(emptyDraft(), 'agent', { x: 0, y: 0 });
+    const roleOf = (draft: EditorDraft) => draft.definition.roles[0]?.allowedWorkTools;
+    const on = updateNode(added.draft, added.nodeId, { fileTools: true });
+    expect(roleOf(on)).toEqual([
+      'write_artifact',
+      'list_files',
+      'read_file',
+      'write_file',
+      'delete_file',
+      'move_file',
+    ]);
+    const off = updateNode(on, added.nodeId, { fileTools: false });
+    expect(roleOf(off)).toEqual(['write_artifact']);
+  });
+});

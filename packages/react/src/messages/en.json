@@ -137,7 +137,9 @@
     "callTarget": "Callable agent",
     "addCall": "Allow",
     "removeCall": "Remove link to {target}",
-    "noCallableAgents": "Add an agent and set it to Only when called."
+    "noCallableAgents": "Add an agent and set it to Only when called.",
+    "fileTools": "Can change files",
+    "fileToolsHint": "Reads and writes files only in the session's working copy, through Corral's file tools. Without a working copy the tools are refused."
   },
   "Validation": {
     "heading": "Before running",
