@@ -6,6 +6,7 @@ import { workspaceRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
 import { TeamDraftDialog } from '../TeamDraftDialog.tsx';
 import { createFromTemplate, WORKSPACE_TEMPLATES } from '../templates.ts';
+import { GettingStarted } from './GettingStarted.tsx';
 
 /** A layout file is recognised by its shape; everything else is treated as a definition. */
 function isLayoutFile(text: string): boolean {
@@ -116,6 +117,11 @@ export function WorkspacePage() {
             : t('notPersistent')}
       </p>
       <p className="text-xs text-muted">{t('importHint')}</p>
+      <GettingStarted
+        corrals={corrals.length}
+        runs={runs.length}
+        onDraft={() => setDrafting(true)}
+      />
       {errors.length > 0 ? (
         <div role="alert" className="rounded-md border border-danger p-3 text-sm text-danger">
           <p>{t('importFailed')}</p>

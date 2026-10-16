@@ -945,5 +945,19 @@
     "choose": "Run {count}개 비교",
     "select": "비교할 Run {runId} 선택",
     "back": "Corral 목록으로"
+  },
+  "GettingStarted": {
+    "heading": "시작하기",
+    "hide": "숨기기",
+    "done": "완료",
+    "model": "모델 연결",
+    "modelAction": "모델 연결하기",
+    "corral": "Corral 만들기",
+    "corralAction": "목표에서 시작하기",
+    "corralOr": "또는 아래 템플릿 고르기",
+    "run": "실행하기",
+    "runAction": "Corral을 열고 실행을 누르세요",
+    "review": "결과 읽기",
+    "reviewAction": "아래 목록에서 Run 화면을 여세요"
   }
 }
