@@ -912,4 +912,130 @@ export class WorkspacesApi {
   fileOperations(sessionId: string): Promise<FileOperationView[]> {
     return this.send(`/sessions/${encodeURIComponent(sessionId)}/file-operations`);
   }
+
+  // CR-013: comments, decisions, applying, reverting, inbox.
+  private s(sessionId: string) {
+    return `/sessions/${encodeURIComponent(sessionId)}`;
+  }
+  comments(sessionId: string): Promise<ReviewCommentView[]> {
+    return this.send(`${this.s(sessionId)}/comments`);
+  }
+  addComment(
+    sessionId: string,
+    comment: Omit<ReviewCommentView, 'commentId' | 'state' | 'batchId' | 'createdAt'>,
+  ): Promise<ReviewCommentView> {
+    return this.send(`${this.s(sessionId)}/comments`, 'POST', comment);
+  }
+  setCommentState(
+    sessionId: string,
+    commentId: string,
+    state: 'addressed' | 'obsolete' | 'draft' | 'deleted',
+  ): Promise<null> {
+    return this.send(`${this.s(sessionId)}/comments/${encodeURIComponent(commentId)}`, 'PATCH', {
+      state,
+    });
+  }
+  async feedbackText(sessionId: string, commentIds: string[]): Promise<string> {
+    return (
+      await this.send<{ text: string }>(`${this.s(sessionId)}/feedback/text`, 'POST', {
+        commentIds,
+      })
+    ).text;
+  }
+  recordFeedback(
+    sessionId: string,
+    batch: {
+      commentIds: string[];
+      intent: 'steer' | 'next';
+      runId: string | null;
+      executionId: string | null;
+      text: string;
+      sent: boolean;
+      detail: string | null;
+    },
+  ): Promise<{ batchId: string }> {
+    return this.send(`${this.s(sessionId)}/feedback`, 'POST', batch);
+  }
+  decisions(sessionId: string): Promise<ReviewDecisionView[]> {
+    return this.send(`${this.s(sessionId)}/decisions`);
+  }
+  decide(
+    sessionId: string,
+    decision: {
+      from: string;
+      to: string;
+      decision: 'approved' | 'changes_requested';
+      note: string;
+    },
+  ): Promise<{ decisionId: string }> {
+    return this.send(`${this.s(sessionId)}/decisions`, 'POST', decision);
+  }
+  integrationPlan(sessionId: string, decisionId: string): Promise<IntegrationPlanFile[]> {
+    return this.send(
+      `${this.s(sessionId)}/integration-plan?decisionId=${encodeURIComponent(decisionId)}`,
+    );
+  }
+  integrate(sessionId: string, decisionId: string): Promise<IntegrationResultView> {
+    return this.send(`${this.s(sessionId)}/integrations`, 'POST', { decisionId });
+  }
+  integrations(sessionId: string): Promise<IntegrationResultView[]> {
+    return this.send(`${this.s(sessionId)}/integrations`);
+  }
+  revert(sessionId: string, integrationId: string): Promise<IntegrationResultView> {
+    return this.send(
+      `${this.s(sessionId)}/integrations/${encodeURIComponent(integrationId)}/revert`,
+      'POST',
+    );
+  }
+  inbox(projectId: string): Promise<InboxItemView[]> {
+    return this.send(`/projects/${encodeURIComponent(projectId)}/inbox`);
+  }
+}
+
+export interface ReviewCommentView {
+  commentId: string;
+  from: string;
+  to: string;
+  path: string;
+  side: 'before' | 'after';
+  startLine: number;
+  endLine: number;
+  quote: string;
+  body: string;
+  state: 'draft' | 'submitted' | 'addressed' | 'obsolete';
+  batchId: string | null;
+  createdAt: string;
+}
+
+export interface ReviewDecisionView {
+  decisionId: string;
+  from: string;
+  to: string;
+  decision: 'approved' | 'changes_requested';
+  note: string;
+  createdAt: string;
+  stale: boolean;
+}
+
+export interface IntegrationPlanFile {
+  path: string;
+  action: 'write' | 'delete';
+  outcome: 'apply' | 'skip' | 'conflict';
+  reason: string | null;
+}
+
+export interface IntegrationResultView {
+  integrationId: string;
+  decisionId: string;
+  state: 'applying' | 'applied' | 'partial' | 'conflict' | 'reverted' | 'failed';
+  createdAt: string;
+  files: { path: string; action: string; outcome: string; detail: string | null }[];
+}
+
+export interface InboxItemView {
+  kind: 'decision' | 'queued' | 'uncertain_write' | 'integration' | 'check_failed' | 'unreviewed';
+  sessionId: string;
+  sessionTitle: string;
+  runId: string | null;
+  detail: string | null;
 }

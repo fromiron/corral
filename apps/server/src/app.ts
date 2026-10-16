@@ -41,6 +41,7 @@ import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import packageJson from '../package.json' with { type: 'json' };
+import { ReviewService } from './files/review.ts';
 import { type ChangeScope, WorkspaceError, WorkspaceService } from './files/service.ts';
 import { ImportInput, type InputOptions, InputRegistry } from './inputs.ts';
 import {
@@ -306,6 +307,8 @@ async function createCorralServer(
     worktreeRoot: options.worktreeRoot ?? defaultWorktreeRoot(),
     forbidden: [join(workspace.root, '.corral'), userConfigDir()],
   });
+
+  const review = new ReviewService({ db, clock, files });
 
   const coordinator = new Coordinator({
     clock,
@@ -933,6 +936,160 @@ async function createCorralServer(
   app.get<SessionParams>('/api/v1/sessions/:sessionId/file-operations', async (request) =>
     files.fileOperations(request.params.sessionId),
   );
+
+  // ── Review comments, decisions, applying and reverting (CR-013) ──────────────
+  const Tree = z.string().regex(/^[0-9a-f]{40,64}$/);
+  const guarded =
+    <T>(
+      work: (
+        request: FastifyRequest<{ Params: { sessionId: string } }>,
+        reply: FastifyReply,
+      ) => Promise<T>,
+    ) =>
+    async (request: FastifyRequest<{ Params: { sessionId: string } }>, reply: FastifyReply) => {
+      try {
+        return await work(request, reply);
+      } catch (error) {
+        return workspaceFail(reply, error);
+      }
+    };
+  app.get<SessionParams>(
+    '/api/v1/sessions/:sessionId/comments',
+    guarded(async (request) => review.comments(request.params.sessionId)),
+  );
+  app.post<SessionParams>(
+    '/api/v1/sessions/:sessionId/comments',
+    guarded(async (request, reply) => {
+      const body = parse(
+        z.strictObject({
+          from: Tree,
+          to: Tree,
+          path: z.string().min(1).max(500),
+          side: z.enum(['before', 'after']),
+          startLine: z.int().min(1),
+          endLine: z.int().min(1),
+          quote: z.string().max(10_000),
+          body: z.string().min(1).max(10_000),
+        }),
+        request,
+        reply,
+      );
+      if (!body) return reply;
+      return reply.code(201).send(review.addComment(request.params.sessionId, body));
+    }),
+  );
+  app.patch<{ Params: { sessionId: string; commentId: string } }>(
+    '/api/v1/sessions/:sessionId/comments/:commentId',
+    async (request, reply) => {
+      const body = parse(
+        z.strictObject({ state: z.enum(['addressed', 'obsolete', 'draft', 'deleted']) }),
+        request,
+        reply,
+      );
+      if (!body) return reply;
+      try {
+        review.setCommentState(request.params.sessionId, request.params.commentId, body.state);
+        return reply.code(204).send();
+      } catch (error) {
+        return workspaceFail(reply, error);
+      }
+    },
+  );
+  app.post<SessionParams>(
+    '/api/v1/sessions/:sessionId/feedback/text',
+    guarded(async (request, reply) => {
+      const body = parse(
+        z.strictObject({ commentIds: z.array(Identifier).min(1).max(100) }),
+        request,
+        reply,
+      );
+      if (!body) return reply;
+      return { text: review.batchText(request.params.sessionId, body.commentIds) };
+    }),
+  );
+  app.post<SessionParams>(
+    '/api/v1/sessions/:sessionId/feedback',
+    guarded(async (request, reply) => {
+      const body = parse(
+        z.strictObject({
+          commentIds: z.array(Identifier).min(1).max(100),
+          intent: z.enum(['steer', 'next']),
+          runId: Identifier.nullable(),
+          executionId: Identifier.nullable(),
+          text: z.string().min(1).max(20_000),
+          sent: z.boolean(),
+          detail: z.string().max(2000).nullable(),
+        }),
+        request,
+        reply,
+      );
+      if (!body) return reply;
+      return reply.code(201).send({ batchId: review.recordBatch(request.params.sessionId, body) });
+    }),
+  );
+  app.get<SessionParams>(
+    '/api/v1/sessions/:sessionId/decisions',
+    guarded(async (request) => review.decisions(request.params.sessionId)),
+  );
+  app.post<SessionParams>(
+    '/api/v1/sessions/:sessionId/decisions',
+    guarded(async (request, reply) => {
+      const body = parse(
+        z.strictObject({
+          from: Tree,
+          to: Tree,
+          decision: z.enum(['approved', 'changes_requested']),
+          note: z.string().max(2000),
+        }),
+        request,
+        reply,
+      );
+      if (!body) return reply;
+      return reply.code(201).send({ decisionId: review.decide(request.params.sessionId, body) });
+    }),
+  );
+  app.get<SessionParams & { Querystring: { decisionId?: string } }>(
+    '/api/v1/sessions/:sessionId/integration-plan',
+    async (request, reply) => {
+      if (!request.query.decisionId) return fail(reply, 'SCHEMA_INVALID', 'decisionId is required');
+      try {
+        return await review.plan(request.params.sessionId, request.query.decisionId);
+      } catch (error) {
+        return workspaceFail(reply, error);
+      }
+    },
+  );
+  app.get<SessionParams>(
+    '/api/v1/sessions/:sessionId/integrations',
+    guarded(async (request) => review.integrations(request.params.sessionId)),
+  );
+  app.post<SessionParams>(
+    '/api/v1/sessions/:sessionId/integrations',
+    guarded(async (request, reply) => {
+      const body = parse(z.strictObject({ decisionId: Identifier }), request, reply);
+      if (!body) return reply;
+      return reply
+        .code(201)
+        .send(await review.integrate(request.params.sessionId, body.decisionId));
+    }),
+  );
+  app.post<{ Params: { sessionId: string; integrationId: string } }>(
+    '/api/v1/sessions/:sessionId/integrations/:integrationId/revert',
+    async (request, reply) => {
+      try {
+        return await review.revert(request.params.sessionId, request.params.integrationId);
+      } catch (error) {
+        return workspaceFail(reply, error);
+      }
+    },
+  );
+  app.get<ProjectParams>('/api/v1/projects/:projectId/inbox', async (request) => {
+    const sessions = await corrals.listSessions(request.params.projectId);
+    return review.inbox(
+      sessions.filter((x) => !x.archivedAt),
+      coordinator.listRuns(),
+    );
+  });
 
   // ── Work sessions (CR-011) ───────────────────────────────────────────────────
   const sessionReply = (reply: FastifyReply, result: SessionResult, created: boolean) => {

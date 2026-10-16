@@ -464,8 +464,10 @@ export class WorkspaceService implements FileTools {
     const tree = await this.lease(row.worktree_path, () => this.snapshotTree(row.worktree_path));
     await this.pin(row.worktree_path, `refs/corral/${sessionId}/reviewed`, tree);
     this.db
-      .prepare('UPDATE session_worktrees SET reviewed_tree = ? WHERE session_id = ?')
-      .run(tree, sessionId);
+      .prepare(
+        'UPDATE session_worktrees SET reviewed_tree = ?, reviewed_at = ? WHERE session_id = ?',
+      )
+      .run(tree, this.clock.nowIso(), sessionId);
   }
 
   // ── comparing ───────────────────────────────────────────────────────────────
@@ -942,6 +944,63 @@ export class WorkspaceService implements FileTools {
     reads.delete(from);
     reads.set(to, before);
     return { from, to, moved: true };
+  }
+
+  // ── helpers for review and integration (CR-013) ─────────────────────────────
+
+  /** The session's working copy and the folder it came from, for the review service. */
+  copyOf(sessionId: string): {
+    worktree: string;
+    root: string;
+    baseTree: string;
+    reviewedAt: string | null;
+  } | null {
+    const row = this.worktree(sessionId) as (WorktreeRow & { reviewed_at?: string | null }) | null;
+    if (!row) return null;
+    const binding = this.db
+      .prepare('SELECT * FROM workspace_bindings WHERE id = ?')
+      .get(row.binding_id) as BindingRow | undefined;
+    if (!binding) return null;
+    return {
+      worktree: row.worktree_path,
+      root: binding.root_path,
+      baseTree: row.base_tree,
+      reviewedAt: row.reviewed_at ?? null,
+    };
+  }
+
+  /** Paths that differ between two trees, with what happened to each. */
+  async changedPaths(worktree: string, from: string, to: string) {
+    const raw = (
+      await git(worktree, ['diff-tree', '-r', '-z', '--no-renames', '--name-status', from, to])
+    ).stdout
+      .toString('utf8')
+      .split('\0');
+    const out: { path: string; status: string }[] = [];
+    for (let i = 0; i < raw.length - 1; i += 2) {
+      if (raw[i] && raw[i + 1])
+        out.push({ status: (raw[i] as string)[0] as string, path: raw[i + 1] as string });
+    }
+    return out;
+  }
+
+  /** A file's bytes in a tree, or null when the tree has no such file. */
+  async blob(worktree: string, tree: string, path: string): Promise<Buffer | null> {
+    try {
+      const sha = await gitText(worktree, ['rev-parse', '--verify', '--quiet', `${tree}:${path}`]);
+      return (await git(worktree, ['cat-file', 'blob', sha])).stdout;
+    } catch {
+      return null;
+    }
+  }
+
+  /** The working copy's tree now, pinned as the session's latest. */
+  async latestTree(sessionId: string): Promise<string | null> {
+    const row = this.worktree(sessionId);
+    if (!row) return null;
+    const tree = await this.lease(row.worktree_path, () => this.snapshotTree(row.worktree_path));
+    await this.pin(row.worktree_path, `refs/corral/${sessionId}/latest`, tree);
+    return tree;
   }
 
   fileOperations(sessionId: string) {

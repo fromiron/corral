@@ -82,6 +82,8 @@ test('[WBTST-016] a session works in its own copy, and its changes are reviewed 
   page,
   corral,
 }) => {
+  // The whole loop: link, copy, run, review, a second run, approve, apply, revert.
+  test.setTimeout(60_000);
   const original = gitRepo();
   const scratch = mkdtempSync(join(tmpdir(), 'corral-e2e-def-'));
   try {
@@ -129,8 +131,29 @@ test('[WBTST-016] a session works in its own copy, and its changes are reviewed 
       timeout: 20_000,
     });
 
-    // The linked folder itself was never written.
+    // The linked folder itself was never written by the run.
     expect(existsSync(join(original, 'notes'))).toBe(false);
+
+    // CR-013: a comment on a line goes out as a request for changes, as a new run.
+    await page.getByRole('button', { name: 'Comment on line 1' }).first().click();
+    await page.getByRole('textbox', { name: 'Comment on line 1' }).fill('Start with a title.');
+    await page.getByRole('button', { name: 'Add comment' }).click();
+    await expect(page.getByTestId('inline-comment')).toContainText('Start with a title.');
+    await page.getByRole('button', { name: 'Send for changes' }).click();
+    await expect(page.getByRole('status').filter({ hasText: 'Sent.' })).toBeVisible();
+
+    // Approve, see the plan, apply to the folder, then revert.
+    await page.reload();
+    await page.getByRole('button', { name: 'Approve these changes' }).click();
+    await expect(page.getByTestId('decision')).toContainText('Approved');
+    await page.getByRole('button', { name: 'Plan applying the approved changes' }).click();
+    await expect(page.getByTestId('integration-plan')).toContainText('notes/writer.md · Will write');
+    await page.getByRole('button', { name: /^Apply \d+ files?$/ }).click();
+    await expect(page.getByTestId('integration').first()).toContainText('Applied');
+    expect(existsSync(join(original, 'notes', 'writer.md'))).toBe(true);
+    await page.getByRole('button', { name: 'Revert' }).click();
+    await expect(page.getByTestId('integration').first()).toContainText('Reverted');
+    expect(existsSync(join(original, 'notes', 'writer.md'))).toBe(false);
     expect(corral.errors).toEqual([]);
   } finally {
     rmSync(original, { recursive: true, force: true });

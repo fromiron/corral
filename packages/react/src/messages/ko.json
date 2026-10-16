@@ -1181,5 +1181,76 @@
     "operations": "파일 쓰기 기록",
     "uncertain": "결과 모름: 이 쓰기 중에 서버가 멈췄습니다. 계속하기 전에 파일을 확인하세요.",
     "failed": "하지 못했습니다: {message}"
+  },
+  "Review": {
+    "commentLine": "{line}번째 줄에 의견",
+    "commentPlaceholder": "여기서 무엇을 바꿔야 하나요?",
+    "addComment": "의견 추가",
+    "cancel": "취소",
+    "commentsHeading": "의견",
+    "draftCount": "{count, plural, =0 {보낼 의견 없음} other {보낼 의견 #개}}",
+    "sendReview": "수정 요청 보내기",
+    "sendTo": "보낼 곳",
+    "sendNext": "이 세션의 새 Run",
+    "sendSteer": "실행 중인 {label}",
+    "sent": "보냈습니다.",
+    "earlier": "이전 비교의 의견",
+    "commentState": {
+      "draft": "초안",
+      "submitted": "보냄",
+      "addressed": "반영됨",
+      "obsolete": "쓸모없음"
+    },
+    "markAddressed": "반영됨",
+    "markObsolete": "쓸모없음",
+    "deleteDraft": "지우기",
+    "decisionHeading": "판단",
+    "approve": "이 변경 승인",
+    "requestChanges": "수정 요청",
+    "decisionState": {
+      "approved": "승인",
+      "changes_requested": "수정 요청"
+    },
+    "staleDecision": "이전 버전 기준",
+    "decisionScope": "판단과 반영은 세션 전체 변경을 기준으로 합니다.",
+    "integrateHeading": "원본 폴더에 반영",
+    "integrateNote": "승인한 내용을 연결한 폴더에 파일마다 씁니다. 커밋·푸시는 하지 않습니다. 폴더에서 바뀐 파일은 덮어쓰지 않습니다.",
+    "plan": "승인한 변경의 반영 계획 보기",
+    "planOutcome": {
+      "apply": "씀",
+      "skip": "이미 같음",
+      "conflict": "충돌: 쓰지 않음"
+    },
+    "apply": "파일 {count, plural, other {#개}} 반영",
+    "integrationState": {
+      "applying": "반영 중",
+      "applied": "반영됨",
+      "partial": "일부 반영",
+      "conflict": "반영 안 됨: 충돌",
+      "reverted": "되돌림",
+      "failed": "실패"
+    },
+    "fileOutcome": {
+      "planned": "계획",
+      "applied": "씀",
+      "skipped": "이미 같음",
+      "conflict": "충돌",
+      "failed": "실패",
+      "reverted": "되돌림",
+      "revert_conflict": "그 뒤 바뀜: 그대로 둠",
+      "uncertain": "모름"
+    },
+    "revert": "되돌리기",
+    "revertNote": "반영한 그대로인 파일만 되돌립니다.",
+    "inboxHeading": "확인 필요",
+    "inbox": {
+      "decision": "Run이 결정을 기다립니다",
+      "queued": "대기 중인 다음 작업: {detail}",
+      "uncertain_write": "결과를 모르는 파일 쓰기",
+      "integration": "반영이 깔끔하게 끝나지 않음({detail})",
+      "check_failed": "최근 검증 실패: {detail}",
+      "unreviewed": "마지막 검토 뒤 파일 쓰기 {detail}개"
+    },
+    "open": "열기"
   }
 }

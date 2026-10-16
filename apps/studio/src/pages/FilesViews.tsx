@@ -1,4 +1,9 @@
-import type { VerifyCommand, WorkspaceBindingView, WorktreeView } from '@corral/client';
+import type {
+  InboxItemView,
+  VerifyCommand,
+  WorkspaceBindingView,
+  WorktreeView,
+} from '@corral/client';
 import { Link } from '@tanstack/react-router';
 import { type FormEvent, useCallback, useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -274,6 +279,78 @@ export function WorkingCopyPanel({
           {error}
         </p>
       ) : null}
+    </section>
+  );
+}
+
+/** What needs a person in this project (CR-013, WB-OBS-002); it empties as things are handled. */
+export function InboxSection({ projectId }: { projectId: string }) {
+  const t = useTranslations('Review');
+  const { workspaces } = useServices();
+  const [items, setItems] = useState<InboxItemView[]>([]);
+  useEffect(() => {
+    if (!workspaces) return;
+    let live = true;
+    const load = () =>
+      workspaces.inbox(projectId).then(
+        (list) => live && setItems(list),
+        () => {},
+      );
+    void load();
+    const timer = setInterval(load, 5000);
+    return () => {
+      live = false;
+      clearInterval(timer);
+    };
+  }, [workspaces, projectId]);
+  if (items.length === 0) return null;
+  return (
+    <section
+      aria-labelledby="inbox-heading"
+      className="flex flex-col gap-2 rounded-md border border-warning p-3"
+    >
+      <h2 id="inbox-heading" className="text-sm font-semibold">
+        {t('inboxHeading')} ({items.length})
+      </h2>
+      <ul className="flex flex-col gap-1 text-sm">
+        {items.map((item, index) => (
+          <li
+            // biome-ignore lint/suspicious/noArrayIndexKey: items repeat per session and kind
+            key={`${item.kind}-${item.sessionId}-${index}`}
+            className="flex flex-wrap items-center justify-between gap-2"
+          >
+            <span>
+              <span className="font-medium">{item.sessionTitle}</span> ·{' '}
+              {t(`inbox.${item.kind}`, { detail: item.detail ?? '' })}
+            </span>
+            {item.kind === 'decision' && item.runId ? (
+              <Link
+                to="/sessions/$sessionId"
+                params={{ sessionId: item.sessionId }}
+                className="text-xs underline"
+              >
+                {t('open')}
+              </Link>
+            ) : item.kind === 'queued' ? (
+              <Link
+                to="/sessions/$sessionId"
+                params={{ sessionId: item.sessionId }}
+                className="text-xs underline"
+              >
+                {t('open')}
+              </Link>
+            ) : (
+              <Link
+                to="/sessions/$sessionId/review"
+                params={{ sessionId: item.sessionId }}
+                className="text-xs underline"
+              >
+                {t('open')}
+              </Link>
+            )}
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

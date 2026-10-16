@@ -229,6 +229,72 @@ CREATE TABLE verifications (
 CREATE INDEX verifications_by_session ON verifications (session_id, started_at);
 `,
   },
+  {
+    // CR-013: review comments fixed to two trees, review decisions, applying an approved
+    // change set to the linked folder and reverting it, file by file.
+    name: '0006_review',
+    sql: `
+ALTER TABLE session_worktrees ADD COLUMN reviewed_at TEXT;
+CREATE TABLE review_comments (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  from_tree TEXT NOT NULL,
+  to_tree TEXT NOT NULL,
+  path TEXT NOT NULL,
+  side TEXT NOT NULL CHECK (side IN ('before', 'after')),
+  start_line INTEGER NOT NULL CHECK (start_line >= 1),
+  end_line INTEGER NOT NULL CHECK (end_line >= start_line),
+  quote TEXT NOT NULL,
+  body TEXT NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('draft', 'submitted', 'addressed', 'obsolete')),
+  batch_id TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+) STRICT;
+CREATE INDEX review_comments_by_session ON review_comments (session_id, created_at);
+CREATE TABLE feedback_batches (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  intent TEXT NOT NULL CHECK (intent IN ('steer', 'next')),
+  run_id TEXT,
+  execution_id TEXT,
+  text TEXT NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('sent', 'refused')),
+  detail TEXT,
+  created_at TEXT NOT NULL
+) STRICT;
+CREATE TABLE review_decisions (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  from_tree TEXT NOT NULL,
+  to_tree TEXT NOT NULL,
+  decision TEXT NOT NULL CHECK (decision IN ('approved', 'changes_requested')),
+  note TEXT NOT NULL,
+  created_at TEXT NOT NULL
+) STRICT;
+CREATE TABLE integrations (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  decision_id TEXT NOT NULL REFERENCES review_decisions(id),
+  from_tree TEXT NOT NULL,
+  to_tree TEXT NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('applying', 'applied', 'partial', 'conflict', 'reverted', 'failed')),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+) STRICT;
+CREATE TABLE integration_files (
+  integration_id TEXT NOT NULL REFERENCES integrations(id),
+  path TEXT NOT NULL,
+  action TEXT NOT NULL CHECK (action IN ('write', 'delete')),
+  expected_hash TEXT,
+  after_hash TEXT,
+  outcome TEXT NOT NULL CHECK (outcome IN ('planned', 'applied', 'skipped', 'conflict', 'failed',
+    'reverted', 'revert_conflict', 'uncertain')),
+  detail TEXT,
+  PRIMARY KEY (integration_id, path)
+) STRICT;
+`,
+  },
 ];
 
 /** History queries must neither recover active runs nor migrate the workspace. */
