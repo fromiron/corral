@@ -60,6 +60,18 @@ function boundKeyAuth(endpoint: Endpoint): ApiKeyAuth {
 
 const registered = new WeakMap<MutableModels, Set<string>>();
 
+/** Endpoints that would take the name of a provider pi-ai has (CR-005, CR-008). */
+export function endpointClashes(models: MutableModels, endpoints: ReadonlyMap<string, Endpoint>) {
+  const ours = registered.get(models) ?? new Set<string>();
+  return [...endpoints.values()].flatMap((endpoint, index) =>
+    models.getProvider(endpoint.providerId) && !ours.has(endpoint.providerId)
+      ? [
+          `modelProviders.${index}.id: "${endpoint.providerId}" is a built-in provider; choose another id`,
+        ]
+      : [],
+  );
+}
+
 /** Adds the endpoints as providers; one may not take the name of a provider pi-ai has. */
 export function registerEndpoints(models: MutableModels, endpoints: ReadonlyMap<string, Endpoint>) {
   const ours = registered.get(models) ?? new Set<string>();

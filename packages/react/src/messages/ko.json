@@ -448,7 +448,8 @@
     "unknownModel": "모델을 찾을 수 없음",
     "tokens": "{count, number} 토큰",
     "unknown": "—",
-    "notWithSubscription": "구독 로그인으로는 쓸 수 없습니다. .corral/config.json에서 모델을 바꾸세요"
+    "notWithSubscription": "구독 로그인으로는 쓸 수 없습니다. .corral/config.json에서 모델을 바꾸세요",
+    "editModels": "모델 편집"
   },
   "Markdown": {
     "imageNotLoaded": "이미지를 불러오지 않음: {alt} ({host})",
@@ -880,5 +881,33 @@
         "output": "출력"
       }
     }
+  },
+  "ModelConfig": {
+    "heading": "모델 편집",
+    "usingDefaults": "이 작업 공간에는 아직 프로필이 없어 기본값을 쓰고 있습니다. 저장하면 .corral/config.json에 기록합니다.",
+    "profiles": "프로필",
+    "profilesHint": "에이전트는 프로필 이름으로 모델을 고릅니다. 프로필마다 공급자와 모델을 정합니다.",
+    "newProfile": "새 프로필 {n}",
+    "profileId": "프로필 이름 {n}",
+    "providerOf": "{profile}의 공급자",
+    "modelOf": "{profile}의 모델",
+    "notInCatalog": "{id} (목록에 없음)",
+    "removeProfile": "{profile} 지우기",
+    "addProfile": "프로필 추가",
+    "endpoints": "OpenAI 호환 엔드포인트",
+    "endpointsHint": "Ollama, LM Studio, OpenRouter 등. 주소는 HTTPS를 쓰고, HTTP는 이 컴퓨터(127.0.0.1)에만 씁니다. 키는 저장한 뒤 로그인 영역에서 넣으며 여기에는 넣지 않습니다.",
+    "endpointId": "엔드포인트 id {n}",
+    "endpointName": "엔드포인트 이름 {n}",
+    "endpointAddress": "엔드포인트 {n} 주소",
+    "endpointAccess": "엔드포인트 {n} 접근 방식",
+    "accessNone": "키 없음(로컬 서버)",
+    "accessKey": "API 키",
+    "removeEndpoint": "엔드포인트 지우기",
+    "endpointModels": "엔드포인트 {n} 모델",
+    "addEndpoint": "엔드포인트 추가",
+    "originChanged": "{names}: 주소가 바뀌어 저장된 키는 새 주소로 보내지 않습니다. 저장한 뒤 키를 다시 넣으세요.",
+    "refused": "저장하지 않았습니다: {message}",
+    "cancel": "취소",
+    "save": "모델 저장"
   }
 }

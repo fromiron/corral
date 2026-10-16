@@ -15,7 +15,7 @@ Anthropic 구독(Pro/Max) 로그인은 지원하지 않는다. Anthropic은 API 
 
 ## 프로필
 
-에이전트는 프로필 이름(`model-a`, `model-b` 등)으로 모델을 고른다. 작업 공간의 `.corral/config.json`에서 정한다.
+에이전트는 프로필 이름(`model-a`, `model-b` 등)으로 모델을 고른다. Models 화면의 **모델 편집**에서 고르거나, 작업 공간의 `.corral/config.json`을 직접 고친다. 화면에서 저장하면 두 키(`modelProfiles`, `modelProviders`)만 바뀌고 서버를 다시 시작하지 않아도 다음 Run부터 쓰인다([CR-008](change-requests/CR-008-model-settings-editing.md)).
 
 ```json
 {

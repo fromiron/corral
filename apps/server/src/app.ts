@@ -37,6 +37,7 @@ import { ImportInput, type InputOptions, InputRegistry } from './inputs.ts';
 import {
   assertOutsideWorkspace,
   DEFAULT_PROFILES,
+  endpointClashes,
   endpointsFrom,
   ModelRegistry,
   type ProfileConfig,
@@ -55,7 +56,7 @@ import {
   sessionCookie,
 } from './security.ts';
 import { boundedSseWriter, flushSseRecord, MAX_SSE_BUFFER_BYTES } from './sse.ts';
-import { prepareWorkspace } from './workspace.ts';
+import { configRevision, prepareWorkspace, writeModelConfig } from './workspace.ts';
 import { acquireWorkspaceOwnership } from './workspace-ownership.ts';
 
 // The local server (C-015, C-055, C-057): REST commands and queries, SSE for committed events,
@@ -490,6 +491,63 @@ async function createCorralServer(
     if (!registry) return noLive(reply);
     await registry.logout(request.params.providerId);
     return registry.authView();
+  });
+
+  // ── model settings (CR-008) ────────────────────────────────────────────────
+  // Providers and models to choose from; never credentials or sign-in status.
+  app.get('/api/v1/model-catalog', async () => registry?.catalog() ?? []);
+  app.get('/api/v1/model-config', async (_request, reply) => {
+    if (!registry) return noLive(reply);
+    return {
+      modelProfiles: registry.profileConfigs(),
+      modelProviders: workspace.config.modelProviders ?? [],
+      usingDefaults: workspace.config.modelProfiles === undefined,
+      revision: configRevision(workspace.root),
+    };
+  });
+  app.put('/api/v1/model-config', async (request, reply) => {
+    const live = options.live;
+    if (!registry || !live) return noLive(reply);
+    const body = parse(
+      z.strictObject({
+        revision: z.string().min(1).max(100),
+        modelProfiles: z.array(z.unknown()).max(20),
+        modelProviders: z.array(z.unknown()).max(10),
+      }),
+      request,
+      reply,
+    );
+    if (!body) return reply;
+    const current = registry;
+    const written = writeModelConfig(
+      workspace.root,
+      { modelProfiles: body.modelProfiles, modelProviders: body.modelProviders },
+      body.revision,
+      (config) => {
+        const next = endpointsFrom(config.modelProviders);
+        return [
+          ...endpointClashes(live.models, next),
+          ...current.unknownProviders(config.modelProfiles ?? [], next),
+        ];
+      },
+    );
+    if (!written.ok) {
+      return fail(
+        reply,
+        written.conflict ? 'REVISION_CONFLICT' : 'SCHEMA_INVALID',
+        written.errors.join('; '),
+      );
+    }
+    workspace.config = written.config;
+    const endpoints = endpointsFrom(written.config.modelProviders);
+    registerEndpoints(live.models, endpoints);
+    await current.reconfigure(written.config.modelProfiles ?? DEFAULT_PROFILES, endpoints);
+    return {
+      modelProfiles: current.profileConfigs(),
+      modelProviders: written.config.modelProviders ?? [],
+      usingDefaults: false,
+      revision: written.revision,
+    };
   });
 
   // ── team drafts (CR-006) ───────────────────────────────────────────────────

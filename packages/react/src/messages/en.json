@@ -448,7 +448,8 @@
     "unknownModel": "Model not found",
     "tokens": "{count, number} tokens",
     "unknown": "—",
-    "notWithSubscription": "Not available with a subscription sign-in; change the model in .corral/config.json"
+    "notWithSubscription": "Not available with a subscription sign-in; change the model in .corral/config.json",
+    "editModels": "Edit models"
   },
   "Markdown": {
     "imageNotLoaded": "Image not loaded: {alt} ({host})",
@@ -880,5 +881,33 @@
         "output": "Output"
       }
     }
+  },
+  "ModelConfig": {
+    "heading": "Edit models",
+    "usingDefaults": "No profiles are set for this workspace yet; these are the defaults. Saving writes them to .corral/config.json.",
+    "profiles": "Profiles",
+    "profilesHint": "Agents choose a profile by name; each profile names a provider and a model.",
+    "newProfile": "new profile {n}",
+    "profileId": "Profile name {n}",
+    "providerOf": "Provider of {profile}",
+    "modelOf": "Model of {profile}",
+    "notInCatalog": "{id} (not in the catalog)",
+    "removeProfile": "Remove {profile}",
+    "addProfile": "Add profile",
+    "endpoints": "OpenAI-compatible endpoints",
+    "endpointsHint": "Ollama, LM Studio, OpenRouter and the like. Use https, or http only on this computer (localhost, 127.0.0.1). Keys are entered under Sign-in after saving, never here.",
+    "endpointId": "Endpoint id {n}",
+    "endpointName": "Endpoint name {n}",
+    "endpointAddress": "Address of endpoint {n}",
+    "endpointAccess": "Access of endpoint {n}",
+    "accessNone": "No key (local server)",
+    "accessKey": "API key",
+    "removeEndpoint": "Remove endpoint",
+    "endpointModels": "Models of endpoint {n}",
+    "addEndpoint": "Add endpoint",
+    "originChanged": "{names}: the address points somewhere new, so its saved key will not be sent there. Enter the key again after saving.",
+    "refused": "Not saved: {message}",
+    "cancel": "Cancel",
+    "save": "Save models"
   }
 }

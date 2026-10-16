@@ -28,6 +28,9 @@
 | POST /session | `{token}` | 일회성 bootstrap token을 교환해 HttpOnly·SameSite=Strict 세션 cookie. 재사용은 401 |
 | GET /session | — | 세션 cookie가 유효하면 `{ok:true,csrfToken}`. 모든 변경 요청은 `x-corral-csrf` 헤더로 이 값을 보낸다 |
 | GET /runs | — | 실행 이력(최신 먼저): runId, status, corralId, startedAt |
+| GET /model-catalog | — | 내장 provider·엔드포인트와 모델 목록. 자격 증명·상태 없음 (CR-008) |
+| GET /model-config | — | `modelProfiles`, `modelProviders`, `usingDefaults`, `revision`(설정 파일 내용 해시) |
+| PUT /model-config | revision, modelProfiles, modelProviders | 두 키만 교체해 저장·즉시 반영. 검사 실패 `SCHEMA_INVALID`(필드 이름만), 다른 revision `REVISION_CONFLICT` |
 | GET /runs/:id | — | RunSnapshot: 실행에 쓴 정의·definitionHash·출처 revision·criteriaVersionId·mode |
 | GET /runs/:id/artifact-versions/:artifactVersionId | — | 불변 본문 `{text}`. 이 run의 산출물 버전과 기준 버전만 |
 | POST /corrals/:id/duplicate | `{name}` | 새 id의 사본(revision 1) |
