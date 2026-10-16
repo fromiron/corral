@@ -465,6 +465,10 @@ export interface ProviderAuthView {
   subscription: boolean;
   expiresAt: string | null;
   login: LoginView | null;
+  /** Where the sign-in comes from: Corral's own, or the Codex CLI login read only (CR-004). */
+  source: 'corral' | 'codex-cli' | null;
+  /** False when the borrowed Codex login file is readable by other users. */
+  permissionsOk: boolean;
 }
 
 export interface ModelProfileView {

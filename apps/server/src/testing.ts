@@ -1,4 +1,4 @@
-import { mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { memoryChannelPair, PiAgentAdapter, runWorker } from '@corral/adapter-pi';
@@ -12,19 +12,34 @@ import {
   type OAuthAuth,
 } from '@earendil-works/pi-ai';
 import type { LiveModels } from './app.ts';
-import { FileCredentialStore } from './models/index.ts';
+import { FileCredentialStore, LayeredCredentialStore } from './models/index.ts';
 
 // OpenAI as pi-ai sees it, with a sign-in flow and models that never touch the network. The
 // server tests and the E2E harness use it to exercise sign-in, refresh and live runs.
 
 export const FAKE_REDIRECT_OK = 'http://127.0.0.1:1455/auth/callback?code=ok&state=s1';
 export const FAKE_REDIRECT_BAD = 'http://127.0.0.1:1455/auth/callback?code=bad&state=s1';
+/** The access token in the fake Codex CLI login (a JWT; the page must never show it). */
+export const FAKE_CODEX_ACCESS = fakeJwt(Math.floor(Date.UTC(2099, 0, 1) / 1000));
+
+function fakeJwt(exp: number): string {
+  const part = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
+  return `${part({ alg: 'none' })}.${part({ exp, 'https://api.openai.com/auth': { chatgpt_account_id: 'acct-test' } })}.sig`;
+}
+
 export const FAKE_PROFILES = [
   { id: 'model-a', provider: 'openai', model: 'gpt-test-a' },
   { id: 'model-b', provider: 'openai', model: 'gpt-test-b' },
 ];
 
-export function fakeOpenAI(options: { env?: Record<string, string>; configDir?: string } = {}) {
+export function fakeOpenAI(
+  options: {
+    env?: Record<string, string>;
+    configDir?: string;
+    /** Also lay a Codex CLI login (CR-004) under the config directory, read only. */
+    codexLogin?: { mode?: number };
+  } = {},
+) {
   const seen = {
     deviceIds: [] as (string | undefined)[],
     agentNames: [] as (string | undefined)[],
@@ -76,7 +91,28 @@ export function fakeOpenAI(options: { env?: Record<string, string>; configDir?: 
     ],
   });
   const configDir = options.configDir ?? mkdtempSync(join(tmpdir(), 'corral-config-'));
-  const credentials = new FileCredentialStore(configDir);
+  const own = new FileCredentialStore(configDir);
+  const codexPath = join(configDir, 'codex', 'auth.json');
+  if (options.codexLogin) {
+    mkdirSync(join(configDir, 'codex'), { recursive: true });
+    writeFileSync(
+      codexPath,
+      JSON.stringify({
+        auth_mode: 'chatgpt',
+        OPENAI_API_KEY: null,
+        tokens: {
+          id_token: 'codex-id-secret',
+          access_token: FAKE_CODEX_ACCESS,
+          refresh_token: 'codex-refresh-secret',
+          account_id: 'acct-test',
+        },
+        last_refresh: '2026-10-16T00:00:00Z',
+      }),
+      { mode: options.codexLogin.mode ?? 0o600 },
+    );
+  }
+  // The fake provider is `openai`, so the borrowed login serves it here.
+  const credentials = new LayeredCredentialStore(own, codexPath, 'openai');
   const models = createModels({
     credentials,
     authContext: { env: async (name) => options.env?.[name], fileExists: async () => false },

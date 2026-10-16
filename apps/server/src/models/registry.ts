@@ -31,6 +31,10 @@ export interface ProviderAuthView {
   /** When the current access token stops working; refreshed before requests. */
   expiresAt: string | null;
   login: LoginView | null;
+  /** Where the sign-in comes from: Corral's own, or the Codex CLI login read only (CR-004). */
+  source: 'corral' | 'codex-cli' | null;
+  /** False when the borrowed Codex login file is readable by other users. */
+  permissionsOk: boolean;
 }
 
 export interface LoginView {
@@ -149,6 +153,12 @@ export class ModelRegistry implements ModelResolver {
       auth = await this.models.getAuth(resolved);
     } catch {
       // The provider's message can include request details; keep ours.
+      if (sourceAware(this.options.credentials)?.sourceOf(model.provider) === 'codex-cli') {
+        // Corral never refreshes a borrowed login (CR-004); Codex does that itself.
+        throw new Error(
+          'the Codex CLI login has expired; run codex to sign in again, or sign in to Corral under Settings → Models',
+        );
+      }
       throw new Error(`sign-in to ${this.providerName(model.provider)} failed; sign in again`);
     } finally {
       void this.refreshStatus();
@@ -166,6 +176,7 @@ export class ModelRegistry implements ModelResolver {
 
   authView(): ProviderAuthView[] {
     const now = this.options.now?.() ?? Date.now();
+    const layered = sourceAware(this.options.credentials);
     return this.providers().map((providerId) => {
       const status = this.status.get(providerId);
       const login = this.logins.get(providerId);
@@ -177,6 +188,9 @@ export class ModelRegistry implements ModelResolver {
         subscription: status?.method === 'oauth' && this.subscription(providerId),
         expiresAt: status?.expires ? new Date(Math.max(status.expires, now)).toISOString() : null,
         login: login ? { ...login.view } : null,
+        source: status?.method ? (layered?.sourceOf(providerId) ?? 'corral') : null,
+        permissionsOk:
+          layered?.sourceOf(providerId) !== 'codex-cli' || layered.codexPermissionsOk(),
       };
     });
   }
@@ -294,4 +308,18 @@ function loginError(error: unknown): string {
     return 'The sign-in callback did not match. Start again.';
   }
   return 'Sign-in failed. Try again.';
+}
+
+/** A credential store that knows where each sign-in came from (the CR-004 layered store). */
+interface SourceAware {
+  sourceOf(providerId: string): 'corral' | 'codex-cli' | null;
+  codexPermissionsOk(): boolean;
+}
+
+function sourceAware(store: unknown): SourceAware | undefined {
+  const candidate = store as Partial<SourceAware> | undefined;
+  return typeof candidate?.sourceOf === 'function' &&
+    typeof candidate.codexPermissionsOk === 'function'
+    ? (candidate as SourceAware)
+    : undefined;
 }

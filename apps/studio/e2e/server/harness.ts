@@ -59,10 +59,17 @@ function watchErrors(page: Page): string[] {
   return errors;
 }
 
-export const test = base.extend<{ replyDelayMs: number; live: boolean; corral: Harness }>({
+export const test = base.extend<{
+  replyDelayMs: number;
+  live: boolean;
+  codexLogin: boolean;
+  corral: Harness;
+}>({
   replyDelayMs: [50, { option: true }],
   live: [false, { option: true }],
-  corral: async ({ page, replyDelayMs, live }, use) => {
+  /** Lay a Codex CLI login (CR-004) for the fake OpenAI to borrow. */
+  codexLogin: [false, { option: true }],
+  corral: async ({ page, replyDelayMs, live, codexLogin }, use) => {
     const workspace = mkdtempSync(join(tmpdir(), 'corral-e2e-'));
     const external: string[] = [];
     await page.route('**/*', (route) => {
@@ -72,7 +79,10 @@ export const test = base.extend<{ replyDelayMs: number; live: boolean; corral: H
       return route.abort('blockedbyclient');
     });
     const fake = live
-      ? fakeOpenAI({ configDir: join(workspace, '..', `${workspace.split('/').at(-1)}-config`) })
+      ? fakeOpenAI({
+          configDir: join(workspace, '..', `${workspace.split('/').at(-1)}-config`),
+          ...(codexLogin ? { codexLogin: {} } : {}),
+        })
       : null;
     let server = await serve(workspace, replyDelayMs, fake);
     const harness: Harness = {
