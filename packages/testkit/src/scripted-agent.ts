@@ -177,6 +177,18 @@ export class ScriptedAgentAdapter implements AgentAdapter {
         }
         if (input.role.outputContract === 'review') text = this.reviewOf(input);
         checkpoint();
+        // A role with file tools (CR-012) keeps its reply in the working copy as well: it reads
+        // the file first when it exists, as the broker requires, then writes it.
+        if ((input.role.allowedWorkTools as readonly string[]).includes('write_file')) {
+          const path = `notes/${input.nodeId}.md`;
+          const listed = await host.invokeTool({ name: 'list_files', args: { path: 'notes' } });
+          const exists =
+            listed.ok &&
+            ((listed.result.files ?? []) as { path: string }[]).some((f) => f.path === path);
+          if (exists) await host.invokeTool({ name: 'read_file', args: { path } });
+          checkpoint();
+          await host.invokeTool({ name: 'write_file', args: { path, text: `${text}\n` } });
+        }
         const written = await host.invokeTool({ name: 'write_artifact', args: { text } });
         if (!written.ok) return failed(written.error);
         checkpoint();

@@ -5,6 +5,7 @@ import {
   openSession,
   probeServer,
   RestCorralRepository,
+  WorkspacesApi,
 } from '@corral/client';
 import type { Clock } from '@corral/contracts';
 import {
@@ -39,6 +40,8 @@ export interface StudioServices {
   previewUrl?: (runId: string, artifactVersionId: string) => string;
   /** A question about a result, as its own run in a session (CR-011). */
   startExplain: (request: ExplainStart) => Promise<StartRunResult>;
+  /** Work folders and file changes (CR-012); the browser runtime has none. */
+  workspaces: WorkspacesApi | null;
 }
 
 export interface ExplainStart {
@@ -112,6 +115,7 @@ export async function createStudioServices(): Promise<StudioServices> {
       live: health.live,
       previewUrl: (runId, artifactVersionId) => transport.previewUrl(runId, artifactVersionId),
       startExplain: (request) => transport.startExplain(request),
+      workspaces: new WorkspacesApi(http),
     };
   }
   const { store, persistent } = browserStore(window.location.pathname === '/demo');
@@ -128,6 +132,7 @@ export async function createStudioServices(): Promise<StudioServices> {
     }),
     transport,
     session: createRunSession(transport),
+    workspaces: null,
     // The in-browser runtime runs inline definitions itself.
     startExplain: ({ question, modelProfile, sessionId, startFrom, ...rest }) =>
       transport.startRun({

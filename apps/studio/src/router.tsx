@@ -12,6 +12,7 @@ import { ComparePage } from './pages/ComparePage.tsx';
 import { DemoPage, EditorPage } from './pages/EditorPage.tsx';
 import { ModelSettingsPage } from './pages/ModelSettingsPage.tsx';
 import { ProjectsPage } from './pages/ProjectsPage.tsx';
+import { ReviewPage } from './pages/ReviewPage.tsx';
 import { ErrorView, NotFoundView, RootLayout } from './pages/RootLayout.tsx';
 import { RunPage } from './pages/RunPage.tsx';
 import { SessionPage } from './pages/SessionPage.tsx';
@@ -106,6 +107,27 @@ export const sessionRoute = createRoute({
     };
   },
   component: SessionPage,
+});
+
+/** A session's file changes, checks and writes (CR-012). */
+export const reviewRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/sessions/$sessionId/review',
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { scope?: 'session' | 'review' | 'run'; runId?: string; file?: string } => ({
+    ...(search.scope === 'session' || search.scope === 'review' || search.scope === 'run'
+      ? { scope: search.scope }
+      : {}),
+    ...(typeof search.runId === 'string' ? { runId: search.runId } : {}),
+    ...(typeof search.file === 'string' ? { file: search.file } : {}),
+  }),
+  loader: async ({ context, params }) => {
+    const session = await context.services.repository.getSession(params.sessionId);
+    if (!session) throw notFound();
+    return { session };
+  },
+  component: ReviewPage,
 });
 
 export const projectsRoute = createRoute({
@@ -224,6 +246,7 @@ export function createStudioRouter(services: StudioServices) {
       projectsRoute,
       workspaceRoute,
       sessionRoute,
+      reviewRoute,
       demoRoute,
       editorRoute,
       runRoute,

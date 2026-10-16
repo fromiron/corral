@@ -14,6 +14,7 @@ import { workspaceRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
 import { TeamDraftDialog } from '../TeamDraftDialog.tsx';
 import { createFromTemplate, WORKSPACE_TEMPLATES } from '../templates.ts';
+import { WorkFolderSection } from './FilesViews.tsx';
 import { GettingStarted } from './GettingStarted.tsx';
 
 /** A layout file is recognised by its shape; everything else is treated as a definition. */
@@ -115,6 +116,7 @@ export function WorkspacePage() {
   return (
     <main className="mx-auto flex max-w-4xl flex-col gap-4 p-6">
       <ProjectHeader project={project} onError={(message) => setErrors([message])} />
+      <WorkFolderSection projectId={projectId} />
       <SessionsSection
         projectId={projectId}
         archived={archived}

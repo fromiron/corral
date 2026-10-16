@@ -1,3 +1,4 @@
+export { type DiffLine, diffLines } from './artifacts/diff.ts';
 export { ApprovalPanel } from './components/ApprovalPanel.tsx';
 export { ArtifactViewer } from './components/ArtifactViewer.tsx';
 export { BudgetInspector } from './components/BudgetInspector.tsx';

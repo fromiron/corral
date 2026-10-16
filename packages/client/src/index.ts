@@ -741,3 +741,175 @@ export class ModelsApi {
     return this.http.json(`/model-auth/${encodeURIComponent(providerId)}`, { method: 'DELETE' });
   }
 }
+
+// ── work folders and file changes (CR-012) ──────────────────────────────────
+
+export interface VerifyCommand {
+  id: string;
+  name: string;
+  argv: string[];
+  timeoutMs: number;
+}
+
+export interface WorkspaceBindingView {
+  bindingId: string;
+  projectId: string;
+  path: string;
+  isGit: boolean;
+  trusted: boolean;
+  verifyCommands: VerifyCommand[];
+  status: { branch: string | null; head: string | null; changed: number } | null;
+}
+
+export interface WorktreeView {
+  sessionId: string;
+  baseCommit: string;
+  createdAt: string;
+  removedAt: string | null;
+  reviewed: boolean;
+}
+
+export type ChangeScopeQuery =
+  | { kind: 'session' }
+  | { kind: 'review' }
+  | { kind: 'run'; runId: string };
+
+export interface FileChangeView {
+  path: string;
+  status: 'added' | 'modified' | 'deleted' | 'type_changed';
+  additions: number | null;
+  deletions: number | null;
+  binary: boolean;
+  provenance: 'managed_agent' | 'external_observed';
+}
+
+export interface ChangeSetView {
+  from: string | null;
+  to: string | null;
+  unavailable: string | null;
+  files: FileChangeView[];
+}
+
+export type FileSideView =
+  | { kind: 'absent' }
+  | { kind: 'text'; text: string }
+  | { kind: 'binary'; bytes: number }
+  | { kind: 'too_large'; bytes: number };
+
+export interface VerificationResultView {
+  verificationId: string;
+  commandId: string;
+  name: string;
+  argv: string[];
+  tree: string;
+  state: 'running' | 'passed' | 'failed' | 'error';
+  exitCode: number | null;
+  signal: string | null;
+  timedOut: boolean;
+  durationMs: number | null;
+  output: string;
+  startedAt: string;
+  endedAt: string | null;
+  stale: boolean;
+}
+
+export interface FileOperationView {
+  id: string;
+  run_id: string;
+  kind: string;
+  path: string;
+  to_path: string | null;
+  state: 'planned' | 'applied' | 'failed' | 'uncertain';
+  detail: string | null;
+  created_at: string;
+}
+
+/** Folders, working copies, changes and checks on the local server (CR-012). */
+export class WorkspacesApi {
+  private readonly http: Http;
+
+  constructor(options: HttpOptions) {
+    this.http = new Http(options);
+  }
+
+  private async send<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
+    const response = await this.http.request(path, {
+      method,
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+    if (!response.ok) throw await apiError(response);
+    return (response.status === 204 ? null : await response.json()) as T;
+  }
+
+  async binding(projectId: string): Promise<WorkspaceBindingView | null> {
+    const p = encodeURIComponent(projectId);
+    return (await this.send<{ binding: WorkspaceBindingView | null }>(`/projects/${p}/workspace`))
+      .binding;
+  }
+  async bind(projectId: string, path: string): Promise<WorkspaceBindingView> {
+    const p = encodeURIComponent(projectId);
+    return (
+      await this.send<{ binding: WorkspaceBindingView }>(`/projects/${p}/workspace`, 'PUT', {
+        path,
+      })
+    ).binding;
+  }
+  async configure(
+    projectId: string,
+    change: { trusted?: boolean; verifyCommands?: VerifyCommand[] },
+  ): Promise<WorkspaceBindingView> {
+    const p = encodeURIComponent(projectId);
+    return (
+      await this.send<{ binding: WorkspaceBindingView }>(
+        `/projects/${p}/workspace`,
+        'PATCH',
+        change,
+      )
+    ).binding;
+  }
+  unbind(projectId: string): Promise<null> {
+    return this.send(`/projects/${encodeURIComponent(projectId)}/workspace`, 'DELETE');
+  }
+  async worktree(sessionId: string): Promise<WorktreeView | null> {
+    const s = encodeURIComponent(sessionId);
+    return (await this.send<{ worktree: WorktreeView | null }>(`/sessions/${s}/worktree`)).worktree;
+  }
+  async createWorktree(sessionId: string): Promise<WorktreeView> {
+    const s = encodeURIComponent(sessionId);
+    return (await this.send<{ worktree: WorktreeView }>(`/sessions/${s}/worktree`, 'POST'))
+      .worktree;
+  }
+  removeWorktree(sessionId: string): Promise<null> {
+    return this.send(`/sessions/${encodeURIComponent(sessionId)}/worktree`, 'DELETE');
+  }
+  changes(sessionId: string, scope: ChangeScopeQuery): Promise<ChangeSetView> {
+    const query =
+      scope.kind === 'run'
+        ? `scope=run&runId=${encodeURIComponent(scope.runId)}`
+        : `scope=${scope.kind}`;
+    return this.send(`/sessions/${encodeURIComponent(sessionId)}/changes?${query}`);
+  }
+  fileVersions(
+    sessionId: string,
+    from: string,
+    to: string,
+    path: string,
+  ): Promise<{ path: string; before: FileSideView; after: FileSideView }> {
+    const query = new URLSearchParams({ from, to, path }).toString();
+    return this.send(`/sessions/${encodeURIComponent(sessionId)}/changes/file?${query}`);
+  }
+  markReviewed(sessionId: string): Promise<null> {
+    return this.send(`/sessions/${encodeURIComponent(sessionId)}/reviewed`, 'POST');
+  }
+  verifications(sessionId: string): Promise<VerificationResultView[]> {
+    return this.send(`/sessions/${encodeURIComponent(sessionId)}/verifications`);
+  }
+  verify(sessionId: string, commandId: string): Promise<{ verificationId: string }> {
+    return this.send(`/sessions/${encodeURIComponent(sessionId)}/verifications`, 'POST', {
+      commandId,
+    });
+  }
+  fileOperations(sessionId: string): Promise<FileOperationView[]> {
+    return this.send(`/sessions/${encodeURIComponent(sessionId)}/file-operations`);
+  }
+}
