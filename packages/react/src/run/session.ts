@@ -1,12 +1,13 @@
-import type {
-  CommandError,
-  CorralDefinition,
-  EventOf,
-  Receipt,
-  RunCommand,
-  RunEvent,
-  StartFrom,
-  StreamFrame,
+import {
+  type CommandError,
+  type CorralDefinition,
+  type EventOf,
+  type Receipt,
+  type RunCommand,
+  type RunEvent,
+  type StartFrom,
+  type StreamFrame,
+  TERMINAL_RUN_STATUSES,
 } from '@corral/contracts';
 import {
   applyEvent,
@@ -252,7 +253,9 @@ export function createRunSession(
           affected.add(event.commandId);
         } else if (
           event.type === 'run.state_changed' &&
-          (event.payload.to === 'paused' || event.payload.reasonCode === 'resumed')
+          (event.payload.to === 'paused' ||
+            event.payload.reasonCode === 'resumed' ||
+            TERMINAL_RUN_STATUSES.has(event.payload.to))
         ) {
           for (const receipt of Object.values(get().receipts))
             if (receipt.status === 'accepted' && receipt.requestedBoundary === 'safe_boundary')

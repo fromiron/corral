@@ -88,6 +88,9 @@ export async function workerSession(dir: string): Promise<JudgeSession> {
         }
       },
     );
+  }).catch(async (error: unknown) => {
+    await worker.terminate();
+    throw error;
   });
   worker.unref();
   return {

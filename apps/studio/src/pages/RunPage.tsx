@@ -33,8 +33,6 @@ import { markRunReviewed } from './GettingStarted.tsx';
 
 /** /runs/$runId?execution=…&artifact=… — one run: graph, call tree, details and Reins (C-066). */
 export function RunPage() {
-  // Reading a run's result is the last first-run step (roadmap 17).
-  useEffect(() => markRunReviewed(), []);
   const t = useTranslations('RunPage');
   const { runId } = runRoute.useParams();
   const { session } = useServices();
@@ -84,6 +82,10 @@ function RunWorkspace({
   const { execution, artifact } = runRoute.useSearch();
   const navigate = useNavigate({ from: '/runs/$runId' });
   const projection = useStore(session, (s) => s.projection);
+  const hasOutput = useStore(session, (s) => s.outputText !== null);
+  useEffect(() => {
+    if (hasOutput) markRunReviewed();
+  }, [hasOutput]);
   const target = useSteerTarget(session, execution ?? null);
   const layout = useSavedLayout(definition, projection?.corralId ?? null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -92,6 +94,7 @@ function RunWorkspace({
   const shown = (name: NarrowPanel) => (panel === name ? '' : 'max-md:hidden');
 
   const chooseExecution = (id: string) => {
+    setSelectedNodeId(null);
     setPanel('side');
     void navigate({ search: (s) => ({ ...s, execution: id }) });
   };
@@ -129,7 +132,10 @@ function RunWorkspace({
               definition={definition}
               layout={layout}
               selectedNodeId={highlightedNode}
-              onSelectNode={setSelectedNodeId}
+              onSelectNode={(id) => {
+                setSelectedNodeId(id);
+                if (id) setPanel('side');
+              }}
             />
           ) : null}
         </div>

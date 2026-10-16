@@ -14,7 +14,8 @@ import {
   ScriptedAgentAdapter,
   SequentialIdFactory,
 } from '@corral/testkit';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { executeOnce } from '../src/exec.ts';
 import { runCli, watchRun } from '../src/index.ts';
 
 const directories: string[] = [];
@@ -342,6 +343,33 @@ describe('headless exec and eval (roadmap Core-③)', () => {
     cwd,
     write: (line: string) => output.push(line),
     signal: new AbortController().signal,
+  });
+
+  it('[TC-DX-001-N] exec does not start a run after interruption', async () => {
+    const transport = runtime();
+    const start = vi.spyOn(transport, 'startRun');
+    const controller = new AbortController();
+    controller.abort();
+    await expect(
+      executeOnce(transport, linearCorral(['writer']), 'mock', { signal: controller.signal }),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(start).not.toHaveBeenCalled();
+  });
+
+  it('[TC-DX-001-N] exec settles cancellation when interruption arrives while starting a run', async () => {
+    const transport = runtime();
+    const controller = new AbortController();
+    const start = transport.startRun.bind(transport);
+    vi.spyOn(transport, 'startRun').mockImplementationOnce(async (request) => {
+      const result = await start(request);
+      controller.abort();
+      return result;
+    });
+    const result = await executeOnce(transport, linearCorral(['writer']), 'mock', {
+      signal: controller.signal,
+    });
+    expect(result.status).toBe('cancelled');
+    expect((await transport.getSnapshot(result.runId)).projection.status).toBe('cancelled');
   });
 
   it('[TC-DX-001-H] exec runs one Corral without Studio and reports the result as JSON', async () => {

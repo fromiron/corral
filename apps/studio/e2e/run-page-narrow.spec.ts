@@ -12,6 +12,21 @@ async function finishedRun(page: import('@playwright/test').Page) {
   await expect(page).toHaveURL(/\/runs\//);
 }
 
+test('[TC-OBS-001-H] choosing a graph node opens its executions on a narrow Run page', async ({
+  page,
+}) => {
+  await finishedRun(page);
+  await page.locator('.react-flow__node[data-id="agent_1"]').click();
+  const list = page.getByRole('region', { name: 'Agent 1 executions' });
+  await expect(list).toBeVisible();
+  await expect(list.getByRole('listitem')).toHaveCount(1);
+  await list.getByRole('listitem').getByRole('button').click();
+  const executionId = new URL(page.url()).searchParams.get('execution');
+  await expect(page.getByRole('region', { name: 'Reins', exact: true })).toContainText(
+    `execution ${executionId}`,
+  );
+});
+
 test('[TC-UX-001-H] a narrow Run page shows one panel at a time and never scrolls sideways', async ({
   page,
 }) => {

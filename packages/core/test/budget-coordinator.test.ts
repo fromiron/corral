@@ -137,6 +137,121 @@ describe('Coordinator budget and deadline integration (C-037–C-039)', () => {
     expect(s.projection().budget.modelCalls).toBe(1);
   });
 
+  it('[TC-RACE-06] workers queued for a model slot pause and resume within the concurrency limit', async () => {
+    const definition = collaborationCorral();
+    definition.limits = { ...definition.limits, maxModelConcurrency: 1 };
+    const s = await setup(definition);
+    await s.host().invokeTool({
+      name: 'spawn_subagents',
+      args: { tasks: [1, 2].map((part) => ({ targetNodeId: 'helper', brief: `Part ${part}` })) },
+    });
+    await drain();
+    const first = await s.host().prepareModelRequest();
+    const order = [s.host(1), s.host(2), s.host()];
+    const pending = order.slice(0, 2).map((host) => host.prepareModelRequest().catch(() => null));
+    await drain();
+    s.send('pause', { scope: 'run' }, 'pause');
+    await observe(s.host(), first.modelCallId, 10);
+    pending.push(
+      s
+        .host()
+        .prepareModelRequest()
+        .catch(() => null),
+    );
+    await drain();
+    const paused = s.projection();
+    s.send('resume', { scope: 'run' }, 'resume');
+    for (const [index, request] of pending.entries()) {
+      const permit = await request;
+      if (!permit) throw new Error('queued request was rejected after resume');
+      expect(s.projection().budget.modelCalls).toBe(index + 2);
+      expect(s.projection().budget.reserved).toBe(permit.maxOutputTokens);
+      await observe(order[index] as AgentHost, permit.modelCallId, 10);
+    }
+    s.send('cancel', { scope: { kind: 'run' }, reason: 'cleanup' }, 'cancel');
+    await drain();
+    expect(paused.status).toBe('paused');
+    expect(paused.budget.modelCalls).toBe(1);
+  });
+
+  it('[TC-RNS-004-H] cancelling a worker queued for a model slot rejects its request without consuming a slot', async () => {
+    const definition = collaborationCorral();
+    definition.limits = { ...definition.limits, maxModelConcurrency: 1 };
+    const s = await setup(definition);
+    await s.host().invokeTool({
+      name: 'spawn_subagents',
+      args: { tasks: [1, 2].map((part) => ({ targetNodeId: 'helper', brief: `Part ${part}` })) },
+    });
+    await drain();
+    const children = Object.values(s.projection().executions).filter((e) => e.depth === 1);
+    const child = children[1];
+    if (!child) throw new Error('second child did not start');
+    const waiting = s.host().invokeTool({
+      name: 'await_tasks',
+      args: { taskIds: children.map((e) => e.taskId) },
+    });
+    const first = await s.host(1).prepareModelRequest();
+    let state = 'pending';
+    const pending = s
+      .host(2)
+      .prepareModelRequest()
+      .then(
+        () => {
+          state = 'permitted';
+        },
+        () => {
+          state = 'cancelled';
+        },
+      );
+    await drain();
+    s.send(
+      'cancel',
+      {
+        scope: { kind: 'execution', executionId: child.executionId },
+        reason: 'Stop the waiting child',
+      },
+      'cancel_child',
+    );
+    await drain();
+    const afterChildCancel = state;
+    expect(
+      s.send(
+        'restart_task',
+        {
+          taskId: child.taskId,
+          previousExecutionId: child.executionId,
+          instruction: 'Try again',
+        },
+        'restart',
+        s.projection().controlRevision,
+      ),
+    ).toMatchObject({ status: 'applied' });
+    await drain();
+    const restarted = s.host(3).prepareModelRequest();
+    await drain();
+    expect(s.projection().budget.modelCalls).toBe(1);
+    await observe(s.host(1), first.modelCallId, 10);
+    const permit = await restarted;
+    let nextState = 'pending';
+    const next = s
+      .host(1)
+      .prepareModelRequest()
+      .then((result) => {
+        nextState = 'permitted';
+        return result;
+      });
+    await drain();
+    expect(nextState).toBe('pending');
+    expect(s.projection().budget.modelCalls).toBe(2);
+    expect(s.projection().budget.reserved).toBe(permit.maxOutputTokens);
+    await observe(s.host(3), permit.modelCallId, 10);
+    await next;
+    s.send('cancel', { scope: { kind: 'run' }, reason: 'cleanup' }, 'cancel');
+    await pending;
+    await waiting;
+    expect(afterChildCancel).toBe('cancelled');
+  });
+
   it('[TC-RNS-007-H] [TC-RNS-007-N] decreasing and increasing budgets preserve live reservations and reject hard-cap escalation', async () => {
     const definition = linearCorral(['writer']);
     definition.limits = { ...definition.limits, maxOutputTokens: 200, maxOutputTokensPerCall: 100 };
