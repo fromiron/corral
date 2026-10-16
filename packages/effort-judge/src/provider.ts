@@ -109,8 +109,15 @@ export class OnnxEffortProvider implements DecisionProvider {
   readonly id = 'local-model';
   readonly version: string;
   readonly privacy = 'local' as const;
-  /** The first judgment after start loads the model; `warmUp` hides that. */
-  readonly timeoutMs = 1_500;
+  /**
+   * 1.5 s per judgment once the model is loaded. Until then a judgment also waits for the load
+   * (a few seconds after start), so it is not counted as a timeout: judgments are observed only
+   * and no request waits for them (CR-003).
+   */
+  get timeoutMs(): number {
+    return this.ready ? 1_500 : 20_000;
+  }
+  private ready = false;
   readonly questions = [{ kind: 'reasoning_effort' as const, version: 1 }];
   private readonly options: OnnxEffortOptions;
   private loaded: Promise<{
@@ -143,9 +150,15 @@ export class OnnxEffortProvider implements DecisionProvider {
       return { session, tokenizer, cal: calibration(dir) };
     })();
     // A failed load is retried on the next judgment.
-    this.loaded.catch(() => {
-      this.loaded = null;
-    });
+    this.loaded.then(
+      () => {
+        this.ready = true;
+      },
+      () => {
+        this.loaded = null;
+        this.ready = false;
+      },
+    );
     return this.loaded;
   }
 
