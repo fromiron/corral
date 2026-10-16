@@ -297,7 +297,13 @@ function RunSide({
         <ArtifactViewer session={session} versionId={viewing} onClose={() => setViewing(null)} />
       ) : null}
       {runId ? (
-        <Link to="/runs/$runId" params={{ runId }} className="text-xs underline">
+        <Link
+          to="/runs/$runId"
+          params={{ runId }}
+          // Keep the execution chosen here: the Run page opens on the same one.
+          search={chosen ? { execution: chosen } : {}}
+          className="text-xs underline"
+        >
           {t('openRun')}
         </Link>
       ) : null}

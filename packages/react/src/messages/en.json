@@ -352,7 +352,8 @@
       "questions": "Questions",
       "activity": "Activity",
       "budget": "Budget"
-    }
+    },
+    "conversation": "Conversation"
   },
   "Timeline": {
     "heading": "Timeline",
@@ -599,6 +600,51 @@
       "provider_error": "provider error",
       "unavailable": "unavailable",
       "cancelled": "cancelled"
+    }
+  },
+  "Transcript": {
+    "label": "Conversation",
+    "empty": "Nothing has happened in this execution yet.",
+    "started": "{label} started",
+    "round": "Round {no}",
+    "attempt": "Attempt {no}",
+    "you": "You",
+    "instruction": {
+      "accepted": "Accepted",
+      "queued": "Waiting for the next model request",
+      "attached_to_request": "Attached to a model request",
+      "delivered": "Included in a model request",
+      "not_delivered": "Not delivered",
+      "expired": "Not delivered: the execution finished first",
+      "rejected": "Rejected",
+      "delivery_unknown": "Delivery unknown"
+    },
+    "request": "Request {no}",
+    "withInstructions": "{count, plural, one {with your instruction} other {with # instructions}}",
+    "effort": "Effort {level} · {provider}",
+    "waiting": "Waiting for the model…",
+    "streaming": "Still streaming. Not final until the request finishes.",
+    "gap": "Part of the stream was lost; the final reply replaces it.",
+    "tool": {
+      "requested": "requested",
+      "allowed": "running",
+      "blocked": "refused",
+      "finished": "done",
+      "failed": "failed"
+    },
+    "asked": "Asked {target}",
+    "answer": "Answer",
+    "question": {
+      "open": "Waiting for an answer",
+      "answered": "Answered",
+      "cancelled": "Cancelled",
+      "timed_out": "Timed out"
+    },
+    "wrote": "Wrote {name} v{version}",
+    "settled": {
+      "succeeded": "Finished",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
     }
   }
 }

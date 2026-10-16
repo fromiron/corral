@@ -4,6 +4,7 @@ export { BudgetInspector } from './components/BudgetInspector.tsx';
 export { CorralCanvas, NODE_DRAG_TYPE } from './components/CorralCanvas.tsx';
 export { EditorToolbar, isTextEditingEvent } from './components/EditorToolbar.tsx';
 export { EffortJudgments } from './components/EffortJudgments.tsx';
+export { ExecutionTranscript } from './components/ExecutionTranscript.tsx';
 export { NodeInspector } from './components/NodeInspector.tsx';
 export { NodePalette } from './components/NodePalette.tsx';
 export { QuestionsPanel } from './components/QuestionsPanel.tsx';
@@ -36,3 +37,4 @@ export {
   type SessionCommand,
 } from './run/session.ts';
 export { useSteerTarget } from './run/steer-target.ts';
+export { buildTranscript, type TranscriptEntry } from './run/transcript.ts';

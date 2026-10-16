@@ -6,6 +6,7 @@ import {
   ArtifactViewer,
   BudgetInspector,
   EffortJudgments,
+  ExecutionTranscript,
   ExecutionTree,
   QuestionsPanel,
   ReinsPanel,
@@ -142,6 +143,18 @@ function RunWorkspace({
               onOpen={openArtifact}
               onClose={() => void navigate({ search: (s) => ({ ...s, artifact: undefined }) })}
             />
+          ) : null}
+          {target ? (
+            <section aria-label={t('conversation')} className="flex shrink-0 flex-col gap-1">
+              <h2 className="text-sm font-semibold">{t('conversation')}</h2>
+              <div className="flex h-[40vh] min-h-40 flex-col">
+                <ExecutionTranscript
+                  session={session}
+                  executionId={target.executionId}
+                  onOpenArtifact={openArtifact}
+                />
+              </div>
+            </section>
           ) : null}
           <ReinsPanel session={session} target={target} />
         </aside>
