@@ -629,6 +629,7 @@
     "off": "Effort judgments are off for this run.",
     "none": "No requests judged yet.",
     "pending": "Judging…",
+    "notCollected": "Not collected: the run ended first",
     "failed": "Failed: {reason}",
     "rule": "rule",
     "probabilities": "Probabilities",

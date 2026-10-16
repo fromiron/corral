@@ -629,6 +629,7 @@
     "off": "이 Run에서는 추론 강도 판정이 꺼져 있습니다.",
     "none": "아직 판정한 요청이 없습니다.",
     "pending": "판정하는 중…",
+    "notCollected": "수집 안 됨: Run이 먼저 끝남",
     "failed": "실패: {reason}",
     "rule": "규칙",
     "probabilities": "확률",

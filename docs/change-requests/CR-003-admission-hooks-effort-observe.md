@@ -95,7 +95,7 @@ provider는 `{ providerId, version, questionKinds: [{ kind, version }], privacy:
 - **모드:** `off | observe` 두 가지만 둔다. 기본값은 `off`다. `apply`는 이 CR에 없다.
 - **수동 전환:** workspace 설정 `decisions.reasoning_effort = { mode, providers: [...] }`. provider는 1개 또는 2개다. 2개면 같은 요청에 두 판정을 모두 남긴다(구현 플랜 §11 1차 수용 기준). 설정은 **Run 시작 시 고정**한다. Run 도중 바꾸지 않는다(스펙 §8.3의 미래 패치 대상도 아니다).
 - **시점:** `model.request_prepared` commit 직후 observer가 시작한다. 입력은 그 commit의 스냅샷에서만 만든다. permit 발급을 기다리게 하지 않는다.
-- **늦은 결과:** 요청이 끝난 뒤 도착한 판정도 기록한다. `readyBeforeDispatch`(판정 완료가 해당 요청의 `request_dispatched` 전이었는지)를 함께 남긴다. 나중에 `apply`가 가능한지 판단할 근거다. Run이 종결된 뒤 도착한 결과는 commit하지 않는다.
+- **늦은 결과:** 요청이 끝난 뒤 도착한 판정도 기록한다. `readyBeforeDispatch`(판정 완료가 해당 요청의 `request_dispatched` 전이었는지)를 함께 남긴다. 나중에 `apply`가 가능한지 판단할 근거다. Run이 종결된 뒤 도착한 결과는 commit하지 않는다. 종결 시점에 답이 없던 판정은 projection에서 `not_collected`(Run이 먼저 끝나 수집 안 됨)로 보인다. 이 상태는 terminal `run.state_changed`에서 파생하며 이벤트를 새로 쓰지 않고 답도 만들지 않는다(2026-10-16, [#22](https://github.com/fromiron/corral/issues/22)).
 - **pause·cancel:** pause 중에는 새 **외부** 판정 호출을 시작하지 않는다(외부 효과 admission 차단과 같다). execution 취소 시 진행 중 판정은 AbortSignal로 중단하고 `decision.failed(reason: cancelled)`를 남긴다(Run이 종결되기 전인 경우만).
 - **한도:** Run당 판정 호출 상한 `maxDecisionCalls`(기본 = `maxModelCalls`, hard cap 100), provider별 timeout(기본 local 1,000ms, external 3,000ms). 판정 호출은 모델 호출·토큰 예산에 포함하지 않는다. 상한에 닿으면 `limit.reached(decision_calls)`를 남기고 그 Run의 판정만 멈춘다.
 

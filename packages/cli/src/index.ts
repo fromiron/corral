@@ -393,7 +393,7 @@ async function judge(action: string | undefined, modelDir: string | undefined, i
 }
 
 /** `inspect --judgments`: each request's effort judgments side by side (CR-003, C-071). */
-function judgmentReport(projection: RunProjection): string {
+export function judgmentReport(projection: RunProjection): string {
   const settings = projection.decisionSettings?.reasoning_effort;
   if (!settings) return `Run ${projection.runId} recorded no judgment settings.`;
   const lines = [
@@ -421,7 +421,9 @@ function judgmentReport(projection: RunProjection): string {
             }`
           : d.status === 'failed'
             ? `failed: ${d.reason}`
-            : 'pending';
+            : d.status === 'not_collected'
+              ? 'not collected (the run ended first)'
+              : 'pending';
       lines.push(
         `${call} ${node} ${d.provider} ${result}${d.latencyMs === null ? '' : ` ${d.latencyMs} ms`}`,
       );
