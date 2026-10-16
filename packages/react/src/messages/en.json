@@ -13,7 +13,8 @@
     "sessionMissing": "This tab has no session with the local server. Open the link the Corral server printed when it started.",
     "navModels": "Models",
     "liveBadge": "Local server / Simulated or live agents",
-    "liveNote": "Runs are simulated unless you choose live models; live runs use your own sign-in."
+    "liveNote": "Runs are simulated unless you choose live models; live runs use your own sign-in.",
+    "language": "Language"
   },
   "Palette": {
     "heading": "Nodes",

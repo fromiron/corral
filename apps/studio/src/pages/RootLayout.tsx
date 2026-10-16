@@ -1,12 +1,14 @@
 import { type ErrorComponentProps, Link, Outlet, useRouter } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
 import { CommandLayer, modKey } from '../CommandPalette.tsx';
+import { LOCALES, type Locale, useLocale } from '../locale.tsx';
 import { useServices } from '../services.tsx';
 
 export function RootLayout() {
   const t = useTranslations('Studio');
   const tp = useTranslations('CommandPalette');
   const { mode, live } = useServices();
+  const { locale, setLocale } = useLocale();
   return (
     <div className="grid h-full grid-rows-[auto_1fr]">
       <header className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-raised px-4 py-2">
@@ -31,6 +33,20 @@ export function RootLayout() {
           {tp('button')}
           <kbd className="font-mono">{modKey()} K</kbd>
         </button>
+        <label className="flex items-center gap-1 text-xs text-muted">
+          <span>{t('language')}</span>
+          <select
+            value={locale}
+            onChange={(event) => setLocale(event.target.value as Locale)}
+            className="rounded border border-line bg-surface px-1 py-0.5 text-text"
+          >
+            {LOCALES.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.name}
+              </option>
+            ))}
+          </select>
+        </label>
         <p className="flex items-center gap-2 text-xs">
           <span className="rounded-full border border-warning px-2 py-0.5 font-semibold text-warning">
             {mode === 'server' ? (live ? t('liveBadge') : t('serverBadge')) : t('demoBadge')}

@@ -28,6 +28,7 @@ export {
   type EditorStore,
 } from './editor/store.ts';
 export { default as enMessages } from './messages/en.json' with { type: 'json' };
+export { default as koMessages } from './messages/ko.json' with { type: 'json' };
 export { type RunCanvasLayout, runCanvasLayout } from './run/layout.ts';
 export {
   decisionRunStatus,
