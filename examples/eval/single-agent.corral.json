@@ -1,0 +1,79 @@
+{
+  "schemaVersion": "0.1",
+  "id": "eval_single",
+  "name": "Single agent",
+  "entryNodeId": "answer",
+  "input": {
+    "brief": "(set by the suite)",
+    "criteria": [
+      "Answer the brief directly.",
+      "Name the source behind each main claim."
+    ]
+  },
+  "roles": [
+    {
+      "id": "answerer",
+      "name": "Answerer",
+      "prompt": "Answer the brief clearly and completely. Say which inputs you used.",
+      "modelProfile": "model-a",
+      "allowedWorkTools": [
+        "write_artifact"
+      ],
+      "allowedCollaborationTools": [
+        "submit_result"
+      ],
+      "outputContract": "text"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "answer",
+      "type": "agent",
+      "label": "Answer",
+      "roleId": "answerer",
+      "invocation": "scheduled",
+      "inputBindings": [
+        {
+          "kind": "run_input",
+          "name": "brief"
+        }
+      ],
+      "outputName": "answer"
+    },
+    {
+      "id": "output",
+      "type": "output",
+      "label": "Output",
+      "inputBindings": [
+        {
+          "kind": "task_output",
+          "name": "answer",
+          "sourceNodeId": "answer"
+        }
+      ],
+      "requireApproval": false
+    }
+  ],
+  "controlEdges": [
+    {
+      "id": "e1",
+      "source": "answer",
+      "sourcePort": "out",
+      "target": "output",
+      "targetPort": "in"
+    }
+  ],
+  "capabilityLinks": [],
+  "limits": {
+    "maxDelegationDepth": 2,
+    "maxModelConcurrency": 3,
+    "maxSpawns": 12,
+    "maxModelCalls": 40,
+    "maxOutputTokens": 64000,
+    "maxOutputTokensPerCall": 4096,
+    "maxQuestions": 6,
+    "questionTimeoutMs": 120000,
+    "modelTimeoutMs": 180000,
+    "runDeadlineMs": 3600000
+  }
+}

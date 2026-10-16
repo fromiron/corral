@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -14,6 +14,7 @@ import {
   type RuntimeTransport,
 } from '@corral/core';
 import { openReadOnlyDatabase, SqliteRunStore } from '@corral/storage-sqlite';
+import { executeOnce, loadSuite, runSuite, summaryTable } from './exec.ts';
 
 const terminal = (p: RunProjection) =>
   ['succeeded', 'failed', 'cancelled', 'interrupted'].includes(p.status);
@@ -140,7 +141,7 @@ export interface CliIO {
 }
 
 const usage =
-  'corral dev [--demo] | validate <file> | run <file> [--input <brief>] [--watch] [--demo] | inspect <run-id> [--judgments] | inspect --archive <file> | export <run-id> [--redact | --private] | judge install|status [--model-dir <dir>]';
+  'corral dev [--demo] | validate <file> | run <file> [--input <brief>] [--watch] [--demo] | inspect <run-id> [--judgments] | inspect --archive <file> | export <run-id> [--redact | --private] | judge install|status [--model-dir <dir>] | exec <file> [--input <brief>] [--demo] [--json] | eval <suite.json> [--demo] [--out <file>]';
 
 export async function runCli(args: string[], io: CliIO): Promise<number> {
   let server: import('@corral/server').CorralServer | undefined;
@@ -161,6 +162,8 @@ export async function runCli(args: string[], io: CliIO): Promise<number> {
         archive: { type: 'string' },
         'model-dir': { type: 'string' },
         judgments: { type: 'boolean', default: false },
+        json: { type: 'boolean', default: false },
+        out: { type: 'string' },
         help: { type: 'boolean', short: 'h' },
       },
     });
@@ -169,12 +172,71 @@ export async function runCli(args: string[], io: CliIO): Promise<number> {
       io.write(usage);
       return 0;
     }
-    if (extra || !['dev', 'validate', 'run', 'inspect', 'export', 'judge'].includes(command)) {
+    if (
+      extra ||
+      !['dev', 'validate', 'run', 'inspect', 'export', 'judge', 'exec', 'eval'].includes(command)
+    ) {
       io.write(usage);
       return 1;
     }
     if (command === 'judge') return await judge(target, values['model-dir'], io);
     const workspace = resolve(io.cwd, values.workspace ?? '.');
+    if (command === 'exec' || command === 'eval') {
+      if (!target) {
+        io.write(usage);
+        return 1;
+      }
+      const mode = values.demo ? 'mock' : 'live';
+      if (command === 'eval') {
+        const loaded = loadSuite(resolve(io.cwd, target));
+        if (!loaded.ok) {
+          for (const error of loaded.errors) io.write(`Suite: ${error}`);
+          return 1;
+        }
+        server = await startHeadless(values, workspace);
+        const report = await runSuite(
+          new InProcessTransport(server.coordinator),
+          loaded.suite,
+          mode,
+          {
+            signal: io.signal,
+            onResult: io.write,
+          },
+        );
+        io.write(summaryTable(report));
+        io.write('Cost and time only: this table does not judge answer quality.');
+        if (values.out)
+          writeFileSync(resolve(io.cwd, values.out), `${JSON.stringify(report, null, 2)}\n`);
+        return report.summary.every((s) => s.runs > 0) ? 0 : 1;
+      }
+      const compiled = compileDefinition(JSON.parse(readInput(resolve(io.cwd, target))));
+      if (!compiled.ok) {
+        io.write(`Invalid Corral: ${compiled.diagnostics.map((d) => d.code).join(', ')}`);
+        return 1;
+      }
+      if (values.input) compiled.definition.input.brief = readInput(resolve(io.cwd, values.input));
+      server = await startHeadless(values, workspace);
+      const result = await executeOnce(
+        new InProcessTransport(server.coordinator),
+        compiled.definition,
+        mode,
+        { signal: io.signal },
+      );
+      if (values.json) io.write(JSON.stringify(result));
+      else {
+        if (result.output) io.write(result.output);
+        io.write(
+          `Run ${result.runId}: ${result.status} · ${result.modelCalls} model calls · ${result.outputTokens} output tokens · ${result.wallMs} ms`,
+        );
+      }
+      if (result.needsUser) {
+        io.write(
+          'This Corral needs a person to approve or decide; exec never decides for you, so the run was cancelled. Use Studio or `corral run --watch`.',
+        );
+        return 3;
+      }
+      return result.status === 'succeeded' ? 0 : 1;
+    }
     if (command === 'validate' || command === 'run') {
       if (!target) {
         io.write(usage);
@@ -367,6 +429,20 @@ function judgmentReport(projection: RunProjection): string {
   }
   if (decisions.length === 0) lines.push('No requests were judged.');
   return lines.join('\n');
+}
+
+/** The local server without Studio: nothing is built or served (exec, eval). */
+async function startHeadless(values: { demo?: boolean }, workspace: string) {
+  const { createLiveModels, startCorralServer } = await import('@corral/server');
+  const { ScriptedAgentAdapter } = await import('@corral/testkit');
+  const { defaultModelDir, OnnxEffortProvider } = await import('@corral/effort-judge');
+  return startCorralServer({
+    workspace,
+    port: 0,
+    agents: new ScriptedAgentAdapter({ turns: 2 }),
+    decisionProviders: [new OnnxEffortProvider({ dir: defaultModelDir() })],
+    ...(values.demo ? {} : { live: createLiveModels() }),
+  });
 }
 
 async function startServer(

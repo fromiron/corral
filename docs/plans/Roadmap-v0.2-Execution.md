@@ -20,7 +20,7 @@
 | 5 | UX-A3 | 실행별 대화(transcript) 뷰: 모델 턴·도구·질문/답변·지시 배지 스트리밍 | 완료 |
 | 6 | UX-A4 | Timeline 문장화, 상태 reason 문구, 예산 미터 축약, Decision 노드 상태, 그래프 fitView | 완료 |
 | 7 | UX-A5 | 명령 팔레트(⌘K)·단축키 도움말·빈 상태·템플릿 갤러리·한국어 locale | 완료(PR #15, 2부 PR 대기) |
-| 8 | Core-③ | `corral exec` headless + 단일 에이전트 vs 팀 비교 eval harness | 대기 |
+| 8 | Core-③ | `corral exec` headless + 단일 에이전트 vs 팀 비교 eval harness | 완료(PR 대기) |
 | 9 | Core | 특정 버전에서 새 Run 시작(fork from version) | 대기 |
 | 10 | Core | Goal → 팀 초안 생성(사람 승인 후 편집기) | 대기 |
 | 11 | Core | Pi provider 확장(API key: OpenAI·Anthropic·OpenAI 호환·Ollama) | 대기 |
@@ -40,3 +40,4 @@
 - UX-A5 1부: ⌘K/Ctrl+K 팔레트(템플릿으로 새 Corral·이동·Corral·Run 열기, IME 안전, 포커스 복귀), ? 단축키 도움말(입력 중엔 열리지 않음), 작업 공간 빈 상태와 템플릿 갤러리(Research team·Single agent·Empty). 타이밍에 민감한 E2E 2개는 지연 폭만 넓힘. 533 unit, E2E 82.
 - 2026-10-16 Bell: 품질이 오를 때까지 PR마다 CI를 기다리지 않는다. 로컬 검사 후 PR을 열고 다음 항목으로 진행, 병합은 Bell.
 - UX-A5 2부: 한국어 locale(메시지 662개, 키·ICU 인자 일치와 형식 오류·영어 잔존 검사), 헤더 언어 선택, 브라우저 언어 기본값, localStorage 기억, `html lang`. 536 unit, E2E 86.
+- Core-③: `corral exec`(Studio 없이 실행, 사람 결정 필요 시 취소·종료 코드 3, `--json`)와 `corral eval`(지시문×변형, 비용·시간 표와 JSON 보고서). 예제 suite `examples/eval/`. 실제 모델 exec 1회 확인(10.6 s, 호출 3). 문서 `docs/Evaluation.md`.
