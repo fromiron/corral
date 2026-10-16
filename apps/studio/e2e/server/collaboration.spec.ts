@@ -21,6 +21,8 @@ test('[TC-RUN-004-H] [TC-COL-002-H] one run shows two delegated helpers and a qu
 
   await page.getByRole('link', { name: 'Open run page' }).click();
   await expect(page.getByTestId('run-status')).toContainText('Succeeded');
+  // CR-009: a finished run opens on its results; these checks are about the run view.
+  await page.getByRole('tab', { name: 'Run', exact: true }).click();
 
   // Two helper executions nested under Research in the call tree.
   const research = page.locator('[data-execution-id]').filter({ hasText: 'Research ·' }).first();

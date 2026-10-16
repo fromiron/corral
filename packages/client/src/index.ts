@@ -187,6 +187,11 @@ export class HttpSseTransport implements RuntimeTransport {
     return this.http.json(`/runs/${encodeURIComponent(runId)}/snapshot`);
   }
 
+  /** Where an HTML result opens as a sandboxed document (CR-009); framed by Studio only. */
+  previewUrl(runId: string, artifactVersionId: string): string {
+    return `${this.http.baseUrl}/api/v1/runs/${encodeURIComponent(runId)}/artifact-versions/${encodeURIComponent(artifactVersionId)}/preview`;
+  }
+
   async getArtifactText(runId: string, artifactVersionId: string): Promise<string | null> {
     const response = await this.http.request(
       `/runs/${encodeURIComponent(runId)}/artifact-versions/${encodeURIComponent(artifactVersionId)}`,

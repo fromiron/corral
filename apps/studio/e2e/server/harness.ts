@@ -35,6 +35,7 @@ async function serve(
   replyDelayMs: number,
   fake: Fake | null,
   endpoint: CompatibleEndpoint | null,
+  agentReply: string | null,
 ) {
   if (!existsSync(join(STUDIO, 'index.html'))) {
     throw new Error('Studio is not built: run `pnpm build` before the server E2E tests.');
@@ -70,6 +71,7 @@ async function serve(
     agents: new ScriptedAgentAdapter({
       turns: 2,
       beforeReply: () => new Promise((done) => setTimeout(done, replyDelayMs)),
+      ...(agentReply === null ? {} : { reply: () => agentReply, appendNotes: false }),
     }),
   });
 }
@@ -88,6 +90,7 @@ export const test = base.extend<{
   live: boolean;
   codexLogin: boolean;
   compatibleEndpoint: boolean;
+  agentReply: string | null;
   corral: Harness;
 }>({
   replyDelayMs: [50, { option: true }],
@@ -96,7 +99,9 @@ export const test = base.extend<{
   codexLogin: [false, { option: true }],
   /** Profiles on a keyless OpenAI-compatible endpoint instead of the fake OpenAI (CR-005). */
   compatibleEndpoint: [false, { option: true }],
-  corral: async ({ page, replyDelayMs, live, codexLogin, compatibleEndpoint }, use) => {
+  /** Every simulated agent replies with exactly this text (CR-009 HTML results). */
+  agentReply: [null, { option: true }],
+  corral: async ({ page, replyDelayMs, live, codexLogin, compatibleEndpoint, agentReply }, use) => {
     const workspace = mkdtempSync(join(tmpdir(), 'corral-e2e-'));
     const external: string[] = [];
     await page.route('**/*', (route) => {
@@ -112,7 +117,7 @@ export const test = base.extend<{
         })
       : null;
     const endpoint = compatibleEndpoint ? await startCompatibleEndpoint() : null;
-    let server = await serve(workspace, replyDelayMs, fake, endpoint);
+    let server = await serve(workspace, replyDelayMs, fake, endpoint, agentReply);
     const harness: Harness = {
       get server() {
         return server;
@@ -127,7 +132,7 @@ export const test = base.extend<{
       },
       async restart() {
         await server.close();
-        server = await serve(workspace, replyDelayMs, fake, endpoint);
+        server = await serve(workspace, replyDelayMs, fake, endpoint, agentReply);
       },
     };
     try {

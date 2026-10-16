@@ -12,6 +12,23 @@ const show = (text: string) =>
   ).container;
 
 describe('SafeMarkdown (C-025, Spec §10.2)', () => {
+  it.each(['<!DOCTYPE html>\n<html lang="en">', '  <html>'])(
+    '[TC-OBS-001-H] keeps an HTML document readable as source without executing it (%s)',
+    (opening) => {
+      const text = `${opening}<head><style>body { display: none }</style></head><body><h1>Generated page</h1><img src="https://tracker.example/pixel.png" onerror="alert(1)"><script>alert(2)</script></body></html>`;
+      const view = show(text);
+      expect(view.querySelector('pre code')?.textContent).toBe(text);
+      expect(view.querySelector('script, style, img, h1')).toBeNull();
+    },
+  );
+
+  it('[CR-009] renders Markdown tables, still without raw HTML in cells', () => {
+    const view = show('| a | b |\n|---|---|\n| 1 | <b onclick="x()">2</b> |');
+    expect(view.querySelectorAll('table th')).toHaveLength(2);
+    expect(view.querySelectorAll('table td')).toHaveLength(2);
+    expect(view.querySelector('b')).toBeNull();
+  });
+
   it('renders no raw HTML from model output', () => {
     const view = show('Hello <script>alert(1)</script><img src=x onerror="alert(2)"> <b>bold</b>');
     expect(view.querySelector('script')).toBeNull();

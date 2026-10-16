@@ -1,5 +1,5 @@
 import type { CorralDefinition, NodeLayout } from '@corral/contracts';
-import { TERMINAL_EXECUTION_STATUSES } from '@corral/contracts';
+import { TERMINAL_EXECUTION_STATUSES, TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import type { RunProjection } from '@corral/core';
 import {
   ApprovalPanel,
@@ -15,6 +15,7 @@ import {
   type RunCanvasLayout,
   RunOutput,
   RunReason,
+  RunResults,
   type RunSessionStore,
   runCanvasLayout,
   StatusBadge,
@@ -46,6 +47,22 @@ export function RunPage() {
     void session.getState().open(runId);
   }, [session, runId]);
 
+  // CR-009: whether the run had already ended when the page opened. Decided once, so a run
+  // that ends while it is watched never moves the page to its results.
+  const { transport } = useServices();
+  const [openedEnded, setOpenedEnded] = useState<{ runId: string; ended: boolean } | null>(null);
+  useEffect(() => {
+    let live = true;
+    transport.getSnapshot(runId).then(
+      ({ projection }) =>
+        live && setOpenedEnded({ runId, ended: TERMINAL_RUN_STATUSES.has(projection.status) }),
+      () => live && setOpenedEnded({ runId, ended: false }),
+    );
+    return () => {
+      live = false;
+    };
+  }, [transport, runId]);
+
   if (activeRunId !== runId || !definition) {
     return (
       <main className="flex flex-col items-start gap-3 p-6">
@@ -68,20 +85,42 @@ export function RunPage() {
       </main>
     );
   }
-  return <RunWorkspace key={runId} session={session} definition={definition} />;
+  const opened = openedEnded?.runId === runId ? openedEnded.ended : null;
+  return (
+    <RunWorkspace key={runId} session={session} definition={definition} openedEnded={opened} />
+  );
 }
 
 function RunWorkspace({
   session,
   definition,
+  openedEnded,
 }: {
   session: RunSessionStore;
   definition: CorralDefinition;
+  /** Whether the run had ended when the page opened; null until known. */
+  openedEnded: boolean | null;
 }) {
   const t = useTranslations('RunPage');
-  const { execution, artifact } = runRoute.useSearch();
+  const { execution, artifact, view: chosenView, result } = runRoute.useSearch();
   const navigate = useNavigate({ from: '/runs/$runId' });
+  const { previewUrl } = useServices();
   const projection = useStore(session, (s) => s.projection);
+  // CR-009: a run that had ended when the page opened shows its results first. A chosen
+  // view, or something picked in the run view, is kept; results arriving later never move it.
+  const view: RunPageView | null =
+    chosenView ??
+    (execution || artifact ? 'run' : openedEnded === null ? null : openedEnded ? 'results' : 'run');
+  const chooseView = (next: RunPageView) =>
+    void navigate({ search: (s) => ({ ...s, view: next }) });
+  const startFrom = projection?.corralId
+    ? (from: { runId: string; artifactVersionId: string }) =>
+        void navigate({
+          to: '/corrals/$corralId/edit',
+          params: { corralId: projection.corralId ?? '' },
+          search: { fromRun: from.runId, fromVersion: from.artifactVersionId },
+        })
+    : null;
   const hasOutput = useStore(session, (s) => s.outputText !== null);
   useEffect(() => {
     if (hasOutput) markRunReviewed();
@@ -107,9 +146,36 @@ function RunWorkspace({
   const highlightedNode =
     selectedNodeId ?? (execution ? (projection?.executions[execution]?.nodeId ?? null) : null);
 
+  if (view === null) {
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        <RunSummary session={session} definition={definition} view="run" onView={chooseView} />
+      </div>
+    );
+  }
+
+  if (view === 'results') {
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        <RunSummary session={session} definition={definition} view={view} onView={chooseView} />
+        <main className="min-h-0 flex-1">
+          <RunResults
+            session={session}
+            selectedId={result ?? null}
+            onSelect={(id) =>
+              void navigate({ search: (s) => ({ ...s, view: 'results', result: id }) })
+            }
+            {...(previewUrl ? { previewUrl } : {})}
+            {...(startFrom ? { onStartFrom: startFrom } : {})}
+          />
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <RunSummary session={session} definition={definition} />
+      <RunSummary session={session} definition={definition} view={view} onView={chooseView} />
       <NarrowViews panel={panel} onChoose={setPanel} />
       <main className="run-layout min-h-0 flex-1">
         <aside
@@ -163,16 +229,7 @@ function RunWorkspace({
               session={session}
               versionId={artifact}
               onOpen={openArtifact}
-              {...(projection?.corralId
-                ? {
-                    onStartFrom: (from: { runId: string; artifactVersionId: string }) =>
-                      void navigate({
-                        to: '/corrals/$corralId/edit',
-                        params: { corralId: projection.corralId ?? '' },
-                        search: { fromRun: from.runId, fromVersion: from.artifactVersionId },
-                      }),
-                  }
-                : {})}
+              {...(startFrom ? { onStartFrom: startFrom } : {})}
               onClose={() => void navigate({ search: (s) => ({ ...s, artifact: undefined }) })}
             />
           ) : null}
@@ -193,7 +250,13 @@ function RunWorkspace({
         <div
           className={`flex min-h-0 flex-col border-t border-line [grid-area:dock] ${shown('dock')}`}
         >
-          <RunDetails session={session} openArtifact={openArtifact} />
+          <RunDetails
+            session={session}
+            openArtifact={openArtifact}
+            openResult={(id) =>
+              void navigate({ search: (s) => ({ ...s, view: 'results', result: id }) })
+            }
+          />
         </div>
       </main>
     </div>
@@ -229,9 +292,13 @@ function useSavedLayout(definition: CorralDefinition, corralId: string | null) {
 function RunSummary({
   session,
   definition,
+  view,
+  onView,
 }: {
   session: RunSessionStore;
   definition: CorralDefinition;
+  view: RunPageView;
+  onView: (view: RunPageView) => void;
 }) {
   const t = useTranslations('RunPage');
   const tr = useTranslations('Run');
@@ -268,6 +335,7 @@ function RunSummary({
     >
       <div className="flex min-w-0 flex-col gap-1">
         <div className="flex flex-wrap items-center gap-2">
+          <ViewSwitch view={view} onView={onView} />
           <h2 className="text-base font-semibold">{definition.name}</h2>
           <span className="font-mono text-xs text-muted">{projection.runId}</span>
           <span aria-live="polite" data-testid="run-status">
@@ -392,6 +460,49 @@ function NodeExecutions({
   );
 }
 
+type RunPageView = 'results' | 'run';
+const VIEWS: RunPageView[] = ['results', 'run'];
+
+/** Results or the run itself (CR-009): two tabs in the summary bar, arrow keys move between. */
+function ViewSwitch({ view, onView }: { view: RunPageView; onView: (view: RunPageView) => void }) {
+  const t = useTranslations('RunPage.view');
+  const refs = useRef<Partial<Record<RunPageView, HTMLButtonElement | null>>>({});
+  const move = (event: KeyboardEvent, index: number) => {
+    const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
+    if (!step) return;
+    event.preventDefault();
+    const next = VIEWS[(index + step + VIEWS.length) % VIEWS.length];
+    if (!next) return;
+    onView(next);
+    refs.current[next]?.focus();
+  };
+  return (
+    <div
+      role="tablist"
+      aria-label={t('label')}
+      className="flex rounded-md border border-line p-0.5"
+    >
+      {VIEWS.map((name, index) => (
+        <button
+          key={name}
+          ref={(el) => {
+            refs.current[name] = el;
+          }}
+          type="button"
+          role="tab"
+          aria-selected={view === name}
+          tabIndex={view === name ? 0 : -1}
+          onClick={() => onView(name)}
+          onKeyDown={(event) => move(event, index)}
+          className={`rounded px-2 py-0.5 text-xs ${view === name ? 'bg-accent text-on-accent' : 'text-muted'}`}
+        >
+          {t(name)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 const TABS = ['output', 'tasks', 'questions', 'activity', 'budget'] as const;
 type Tab = (typeof TABS)[number];
 
@@ -448,9 +559,11 @@ function NarrowViews({
 function RunDetails({
   session,
   openArtifact,
+  openResult,
 }: {
   session: RunSessionStore;
   openArtifact: (id: string) => void;
+  openResult: (id: string) => void;
 }) {
   const t = useTranslations('RunPage.tabs');
   const prices = useModelPrices();
@@ -512,7 +625,9 @@ function RunDetails({
         tabIndex={0}
         className="min-h-0 flex-1 overflow-auto p-3"
       >
-        {tab === 'output' ? <RunOutput session={session} heading={false} /> : null}
+        {tab === 'output' ? (
+          <RunOutput session={session} heading={false} onOpenResults={openResult} />
+        ) : null}
         {tab === 'tasks' ? <TaskBoard session={session} onOpenArtifact={openArtifact} /> : null}
         {tab === 'questions' ? (
           <QuestionsPanel session={session} onOpenArtifact={openArtifact} />

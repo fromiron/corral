@@ -504,7 +504,7 @@ describe('REST: Corrals and runs (C-015, C-057)', () => {
 describe('SSE event stream (C-015)', () => {
   async function finishedRun() {
     const server = await start();
-    const { call } = await browser(server);
+    const { call, cookie } = await browser(server);
     const transport = new HttpSseTransport({ baseUrl: server.url, fetch: call });
     const record = await saved(server, linearCorral(['writer']), call);
     const { runId } = await transport.startRun({
@@ -515,7 +515,7 @@ describe('SSE event stream (C-015)', () => {
       mode: 'mock',
     });
     const final = await waitForProjection(transport, runId ?? '', (p) => p.status === 'succeeded');
-    return { server, call, runId: runId ?? '', final };
+    return { server, call, cookie, runId: runId ?? '', final };
   }
 
   /** Reads `count` SSE frames from a response body. */
@@ -837,6 +837,73 @@ describe('SSE event stream (C-015)', () => {
     });
     gate.open();
     await waitForProjection(transport, runId, (p) => p.status === 'cancelled');
+  });
+
+  it('[WBTST-034] serves an HTML result as an isolated preview (CR-009)', async () => {
+    const page =
+      '<!doctype html><html><body><h1>Page</h1><img src="https://tracker.example/p.png"><script>alert(1)</script></body></html>';
+    const server = await start({
+      agents: new ScriptedAgentAdapter({ turns: 1, appendNotes: false, reply: () => page }),
+    });
+    const { call, cookie } = await browser(server);
+    const transport = new HttpSseTransport({ baseUrl: server.url, fetch: call });
+    const record = await saved(server, linearCorral(['writer']), call);
+    const { runId } = await transport.startRun({
+      schemaVersion: '0.1',
+      commandId: 'cmd_preview',
+      corralId: record.corralId,
+      definitionRevision: 1,
+      mode: 'mock',
+    });
+    const final = await waitForProjection(transport, runId ?? '', (p) => p.status === 'succeeded');
+    const versionId = final.output?.artifactVersionIds[0] ?? '';
+    const url = `${server.url}/api/v1/runs/${runId}/artifact-versions/${versionId}/preview`;
+    // An iframe load: same-site GET with the cookie and no Origin header.
+    const preview = await fetch(url, { headers: { cookie } });
+    expect(preview.status).toBe(200);
+    expect(preview.headers.get('content-type')).toContain('text/html');
+    expect(await preview.text()).toBe(page);
+    const csp = preview.headers.get('content-security-policy') ?? '';
+    expect(csp.split(';').map((d) => d.trim())).toEqual(
+      expect.arrayContaining(['sandbox', "default-src 'none'", "frame-ancestors 'self'"]),
+    );
+    expect(csp).not.toContain('script-src');
+    expect(csp).not.toContain('allow-');
+    expect(preview.headers.get('x-frame-options')).toBe('SAMEORIGIN');
+    expect(preview.headers.get('x-content-type-options')).toBe('nosniff');
+    // Studio itself may frame its own origin, nothing else.
+    const studioCsp = (await call(`${server.url}/api/v1/health`)).headers.get(
+      'content-security-policy',
+    );
+    expect(studioCsp).toContain("frame-src 'self'");
+    expect(studioCsp).toContain("frame-ancestors 'none'");
+    // No session, no preview; unknown versions and non-HTML bodies are not previews.
+    expect((await fetch(url)).status).toBe(401);
+    expect(
+      (
+        await fetch(`${server.url}/api/v1/runs/${runId}/artifact-versions/nope/preview`, {
+          headers: { cookie },
+        })
+      ).status,
+    ).toBe(404);
+    const responseRef = Object.values(final.modelCalls)[0]?.responseRef ?? '';
+    expect(
+      (
+        await fetch(`${server.url}/api/v1/runs/${runId}/artifact-versions/${responseRef}/preview`, {
+          headers: { cookie },
+        })
+      ).status,
+    ).toBe(404);
+  });
+
+  it('[WBTST-034] does not preview a result that is not an HTML document', async () => {
+    const { server, runId, final, cookie } = await finishedRun();
+    const versionId = final.output?.artifactVersionIds[0] ?? '';
+    const response = await fetch(
+      `${server.url}/api/v1/runs/${runId}/artifact-versions/${versionId}/preview`,
+      { headers: { cookie } },
+    );
+    expect(response.status).toBe(404);
   });
 
   it('serves artifact bodies and snapshots of finished runs', async () => {

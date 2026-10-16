@@ -30,6 +30,8 @@ test('[TC-CAN-001-H] a run on the local server saves first, finishes, and surviv
 
   await page.getByRole('link', { name: 'Open run page' }).click();
   await expect(page).toHaveURL(/\/runs\/run_[a-f0-9]+/);
+  // CR-009: a finished run opens on its results; these checks are about the run view.
+  await page.getByRole('tab', { name: 'Run', exact: true }).click();
   await page.reload();
   await expect(page.getByTestId('run-output')).toContainText('Agent 1 (agent_1) turn 2');
   expect(corral.errors).toEqual([]);
@@ -46,6 +48,8 @@ test('the workspace lists past runs with their status and opens them', async ({ 
   await expect(runs.getByRole('listitem')).toHaveCount(1);
   await expect(runs).toContainText('Succeeded');
   await runs.getByRole('link').click();
+  // CR-009: a finished run opens on its results; this check is about the run view's Output tab.
+  await page.getByRole('tab', { name: 'Run', exact: true }).click();
   await expect(page.getByTestId('run-output')).toContainText('turn 2');
 });
 

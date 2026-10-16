@@ -18,6 +18,8 @@ async function finishedTeamRun(page: Page) {
   await expect(page.getByTestId('run-status')).toContainText('Succeeded');
   await page.getByRole('link', { name: 'Open run page' }).click();
   await expect(page).toHaveURL(/\/runs\/run_/);
+  // CR-009: a finished run opens on its results; these checks are about the run view.
+  await page.getByRole('tab', { name: 'Run', exact: true }).click();
 }
 
 const graph = (page: Page) => page.getByRole('application', { name: 'Run graph' });
@@ -127,6 +129,8 @@ test('[TC-OBS-001-N] a run whose nodes the saved layout does not cover is arrang
   page.once('dialog', (dialog) => void dialog.accept());
   await page.getByRole('link', { name: 'Open run page' }).click();
   await expect(page).toHaveURL(/\/runs\/run_/);
+  // CR-009: a finished run opens on its results; these checks are about the run view.
+  await page.getByRole('tab', { name: 'Run', exact: true }).click();
   await expect(page.getByText('Arranged automatically')).toBeVisible();
   await expect(graph(page).locator('.react-flow__node')).toHaveCount(3);
 });

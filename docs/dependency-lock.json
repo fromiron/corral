@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-15T15:18:57.237Z",
+  "generatedAt": "2026-10-16T11:23:15.661Z",
   "node": "v24.14.0",
   "packageManager": "pnpm@10.30.3",
   "note": "Registry facts for pinned direct dependencies. Compatibility evidence is the CI gate result, not this file.",
@@ -370,6 +370,7 @@
         "@corral/effort-judge",
         "@corral/server",
         "@corral/storage-sqlite",
+        "@corral/testkit",
         "corral"
       ]
     },
@@ -683,6 +684,21 @@
         "@types/react": ">=18",
         "react": ">=18"
       },
+      "scope": "runtime",
+      "usedBy": [
+        "@corral/react"
+      ]
+    },
+    {
+      "name": "remark-gfm",
+      "version": "4.0.1",
+      "license": "MIT",
+      "integrity": "sha512-1quofZ2RQ9EWdeN34S79+KExV1764+wCUGop5CPL1WGdD0ocPpu91lzPGbwWMECpEpd42kJGQwzRfyov9j4yNg==",
+      "published": "2025-02-10T12:43:10.735Z",
+      "repository": "git+https://github.com/remarkjs/remark-gfm.git",
+      "gitHead": "109972e8a773bf5dac1d6d2da0776557f36971aa",
+      "engines": null,
+      "peerDependencies": null,
       "scope": "runtime",
       "usedBy": [
         "@corral/react"

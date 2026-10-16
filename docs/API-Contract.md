@@ -33,6 +33,7 @@
 | PUT /model-config | revision, modelProfiles, modelProviders | 두 키만 교체해 저장·즉시 반영. 검사 실패 `SCHEMA_INVALID`(필드 이름만), 다른 revision `REVISION_CONFLICT` |
 | GET /runs/:id | — | RunSnapshot: 실행에 쓴 정의·definitionHash·출처 revision·criteriaVersionId·mode |
 | GET /runs/:id/artifact-versions/:artifactVersionId | — | 불변 본문 `{text}`. 이 run의 산출물 버전과 기준 버전만 |
+| GET /runs/:id/artifact-versions/:artifactVersionId/preview | — | 산출물 버전이 HTML 문서일 때만 `text/html` 본문(CR-009). 응답 CSP `sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:` 등, `frame-ancestors 'self'`. 그 밖에는 `TARGET_NOT_FOUND` |
 | POST /corrals/:id/duplicate | `{name}` | 새 id의 사본(revision 1) |
 | DELETE /corrals/:id | — | 저장 정의 삭제. 이미 시작한 Run의 snapshot에는 영향 없음 |
 
