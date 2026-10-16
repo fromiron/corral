@@ -11,6 +11,7 @@ export { QuestionsPanel } from './components/QuestionsPanel.tsx';
 export { ReinsPanel, type SteerTarget } from './components/ReinsPanel.tsx';
 export { RunActions } from './components/RunActions.tsx';
 export { RunCanvas } from './components/RunCanvas.tsx';
+export { type ComparedRun, RunComparison } from './components/RunComparison.tsx';
 export { RunControls } from './components/RunControls.tsx';
 export { describeEvent, EventText, RunReason } from './components/RunText.tsx';
 export { ExecutionTree, RunOutput, RunView } from './components/RunView.tsx';
@@ -29,6 +30,7 @@ export {
 } from './editor/store.ts';
 export { default as enMessages } from './messages/en.json' with { type: 'json' };
 export { default as koMessages } from './messages/ko.json' with { type: 'json' };
+export { type CompareRow, compareRuns } from './run/compare.ts';
 export {
   estimateRunCost,
   type ModelPrice,

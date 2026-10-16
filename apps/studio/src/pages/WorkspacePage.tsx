@@ -27,6 +27,15 @@ export function WorkspacePage() {
   const navigate = useNavigate();
   const [errors, setErrors] = useState<string[]>([]);
   const [confirming, setConfirming] = useState<string | null>(null);
+  // Roadmap 16: two runs picked for comparison, oldest choice dropped past two.
+  const [picked, setPicked] = useState<string[]>([]);
+  const tc = useTranslations('Compare');
+  const pick = (runId: string, on: boolean) =>
+    setPicked(
+      on
+        ? [...picked.filter((id) => id !== runId), runId].slice(-2)
+        : picked.filter((id) => id !== runId),
+    );
   const { draft } = workspaceRoute.useSearch();
   const [drafting, setDrafting] = useState(Boolean(draft));
   const closeDraft = () => {
@@ -240,6 +249,17 @@ export function WorkspacePage() {
         <h2 id="runs-heading" className="text-lg font-semibold">
           {t('runsHeading')}
         </h2>
+        {picked.length === 2 ? (
+          <button
+            type="button"
+            onClick={() =>
+              void navigate({ to: '/compare', search: { a: picked[0], b: picked[1] } })
+            }
+            className="self-start rounded-md border border-accent px-3 py-1.5 text-sm text-accent"
+          >
+            {tc('choose', { count: 2 })}
+          </button>
+        ) : null}
         {runs.length === 0 ? (
           <p className="text-sm text-muted">{t('runsEmpty')}</p>
         ) : (
@@ -251,6 +271,12 @@ export function WorkspacePage() {
                   key={run.runId}
                   className="flex flex-wrap items-center gap-3 rounded-md border border-line px-3 py-2 text-sm"
                 >
+                  <input
+                    type="checkbox"
+                    aria-label={tc('select', { runId: run.runId })}
+                    checked={picked.includes(run.runId)}
+                    onChange={(e) => pick(run.runId, e.target.checked)}
+                  />
                   <StatusBadge status={run.status} />
                   <Link
                     to="/runs/$runId"

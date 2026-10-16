@@ -1,0 +1,159 @@
+import type { RunProjection } from '@corral/core';
+import { useId, useMemo, useState } from 'react';
+import { useFormatter, useTranslations } from 'use-intl';
+import { diffLines } from '../artifacts/diff.ts';
+import { type CompareKey, compareRuns } from '../run/compare.ts';
+import { estimateRunCost, type ModelPrices } from '../run/cost.ts';
+import { SafeMarkdown } from './SafeMarkdown.tsx';
+
+export interface ComparedRun {
+  projection: RunProjection;
+  /** The Corral's name, when known. */
+  name: string | null;
+  /** The final output text; null when the run produced none. */
+  output: string | null;
+}
+
+/** Two runs side by side (roadmap 16): the eval report's figures and the two outputs. */
+export function RunComparison({
+  a,
+  b,
+  prices,
+}: {
+  a: ComparedRun;
+  b: ComparedRun;
+  prices?: ModelPrices | undefined;
+}) {
+  const t = useTranslations('Compare');
+  const tStatus = useTranslations('Status');
+  const format = useFormatter();
+  const tableId = useId();
+  const outputsId = useId();
+  const [showDiff, setShowDiff] = useState(false);
+  const rows = compareRuns(a.projection, b.projection);
+  const diff = useMemo(
+    () =>
+      showDiff && a.output !== null && b.output !== null ? diffLines(a.output, b.output) : null,
+    [showDiff, a.output, b.output],
+  );
+
+  const value = (key: CompareKey, v: string | number | null) => {
+    if (v === null) return '—';
+    if (key === 'elapsed' && typeof v === 'number')
+      return t('seconds', { value: Math.round(v / 100) / 10 });
+    if (key === 'status') return tStatus(String(v));
+    if (key === 'mode') return t(`mode.${v}`);
+    return typeof v === 'number' ? format.number(v) : v;
+  };
+  const cost = (run: ComparedRun) => {
+    if (!prices) return null;
+    const e = estimateRunCost(run.projection, prices);
+    if (e.pricedCalls > 0)
+      return format.number(e.usd, {
+        style: 'currency',
+        currency: 'USD',
+        maximumFractionDigits: e.usd < 1 ? 4 : 2,
+      });
+    if (e.subscriptionCalls > 0) return t('subscription');
+    return e.simulated ? t('simulated') : '—';
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      <table aria-labelledby={tableId} className="w-full text-left text-sm">
+        <caption id={tableId} className="text-left text-sm font-semibold">
+          {t('figures')}
+        </caption>
+        <thead className="text-xs text-muted">
+          <tr>
+            <th className="py-1" />
+            <th>
+              {a.name ?? '—'} <span className="font-mono">{a.projection.runId}</span>
+            </th>
+            <th>
+              {b.name ?? '—'} <span className="font-mono">{b.projection.runId}</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr
+              key={row.key}
+              className={`border-t border-line ${row.differs ? 'bg-accent/10' : ''}`}
+              data-differs={row.differs}
+            >
+              <th scope="row" className="py-1 pr-3 font-normal text-muted">
+                {t(`row.${row.key}`)}
+              </th>
+              <td className="break-words">{value(row.key, row.a)}</td>
+              <td className="break-words">{value(row.key, row.b)}</td>
+            </tr>
+          ))}
+          {prices ? (
+            <tr className="border-t border-line">
+              <th scope="row" className="py-1 pr-3 font-normal text-muted">
+                {t('row.cost')}
+              </th>
+              <td>{cost(a)}</td>
+              <td>{cost(b)}</td>
+            </tr>
+          ) : null}
+        </tbody>
+      </table>
+
+      <section aria-labelledby={outputsId} className="flex flex-col gap-2">
+        <div className="flex items-center justify-between gap-2">
+          <h3 id={outputsId} className="text-sm font-semibold">
+            {t('outputs')}
+          </h3>
+          {a.output !== null && b.output !== null ? (
+            <button
+              type="button"
+              aria-pressed={showDiff}
+              onClick={() => setShowDiff(!showDiff)}
+              className="rounded border border-line px-2 py-1 text-xs"
+            >
+              {showDiff ? t('sideBySide') : t('showDiff')}
+            </button>
+          ) : null}
+        </div>
+        {diff ? (
+          <pre className="overflow-x-auto rounded border border-line text-xs">
+            {diff.map((line, i) => (
+              <div
+                // biome-ignore lint/suspicious/noArrayIndexKey: positional diff rows
+                key={i}
+                data-diff={line.kind}
+                className={
+                  line.kind === 'added'
+                    ? 'bg-success/15'
+                    : line.kind === 'removed'
+                      ? 'bg-danger/15 line-through'
+                      : undefined
+                }
+              >
+                {line.kind === 'added' ? '+ ' : line.kind === 'removed' ? '- ' : '  '}
+                {line.text}
+              </div>
+            ))}
+          </pre>
+        ) : (
+          <div className="grid gap-3 md:grid-cols-2">
+            {[a, b].map((run) => (
+              <div
+                key={run.projection.runId}
+                className="max-h-[60vh] overflow-auto rounded-md border border-line bg-surface p-2"
+              >
+                {run.output === null ? (
+                  <p className="text-xs text-muted">{t('noOutput')}</p>
+                ) : (
+                  <SafeMarkdown text={run.output} />
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}

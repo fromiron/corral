@@ -914,5 +914,36 @@
     "refused": "Not saved: {message}",
     "cancel": "Cancel",
     "save": "Save models"
+  },
+  "Compare": {
+    "heading": "Compare runs",
+    "figures": "Run figures",
+    "seconds": "{value, number} s",
+    "subscription": "Included in your subscription",
+    "simulated": "Simulated",
+    "mode": {
+      "mock": "Simulated agents",
+      "live": "Live models"
+    },
+    "row": {
+      "status": "Status",
+      "mode": "Agents",
+      "models": "Models",
+      "elapsed": "Elapsed",
+      "modelCalls": "Model calls",
+      "outputTokens": "Output tokens",
+      "executions": "Executions",
+      "reviewRounds": "Review rounds",
+      "approvals": "Decisions made",
+      "cost": "Estimated cost"
+    },
+    "outputs": "Outputs",
+    "showDiff": "Show differences",
+    "sideBySide": "Side by side",
+    "noOutput": "No output.",
+    "notFound": "Run {runId} could not be found.",
+    "choose": "Compare {count} runs",
+    "select": "Select run {runId} to compare",
+    "back": "Back to Corrals"
   }
 }
