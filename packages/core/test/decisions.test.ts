@@ -287,6 +287,30 @@ describe('observe only (C-069)', () => {
     expect(r.events.some((e) => e.type === 'decision.observed')).toBe(false);
   });
 
+  it('[TC-DEC-002-N] a judgment the run ended before is shown as not collected, never as pending (#22)', async () => {
+    const hold = new Gate();
+    const provider = new ScriptedDecisionProvider({ timeoutMs: 60_000, before: () => hold.wait() });
+    const r = await run(observe(provider), { turns: 1 });
+    const final = await finished(r);
+    const before = r.events.length;
+    expect(Object.values(final.decisions ?? {}).map((d) => [d.status, d.answer])).toEqual([
+      ['not_collected', null],
+    ]);
+    // Read back from the log, the same; and the late answer still adds nothing.
+    hold.open();
+    await drain();
+    expect(r.events.length).toBe(before);
+    const reread = (await r.transport.getSnapshot(r.runId)).projection;
+    expect(Object.values(reread.decisions ?? {}).map((d) => d.status)).toEqual(['not_collected']);
+  });
+
+  it('[TC-DEC-002-H] a judgment that finished before the run ended keeps its answer (#22)', async () => {
+    const provider = new ScriptedDecisionProvider();
+    const r = await run(observe(provider), { turns: 1, beforeReply: () => drain() });
+    const final = await finished(r);
+    expect(Object.values(final.decisions ?? {}).map((d) => d.status)).toEqual(['observed']);
+  });
+
   it('[TC-DEC-002-N] cancelling the execution aborts its pending judgment as cancelled', async () => {
     const hold = new Gate();
     let aborted = false;

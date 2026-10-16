@@ -304,6 +304,39 @@ describe('judgments in inspect (C-071)', () => {
   });
 });
 
+describe('judgments the run ended before (#22)', () => {
+  it('[TC-DEC-004-N] inspect says "not collected", not "pending"', async () => {
+    const { judgmentReport } = await import('../src/index.ts');
+    const projection = {
+      runId: 'run_1',
+      decisionSettings: {
+        reasoning_effort: {
+          mode: 'observe',
+          providers: [{ id: 'local-model', version: 'v6', available: true, reason: null }],
+        },
+      },
+      executionOrder: ['exec_1'],
+      executions: { exec_1: { nodeId: 'write', modelCallIds: ['call_1'] } },
+      decisions: {
+        dec_1: {
+          decisionId: 'dec_1',
+          provider: 'local-model@v6',
+          modelCallId: 'call_1',
+          status: 'not_collected',
+          answer: null,
+          probabilities: null,
+          evidenceLevel: null,
+          reason: null,
+          latencyMs: null,
+        },
+      },
+    } as unknown as Parameters<typeof judgmentReport>[0];
+    const text = judgmentReport(projection);
+    expect(text).toContain('call_1 write local-model@v6 not collected (the run ended first)');
+    expect(text).not.toContain('pending');
+  });
+});
+
 describe('headless exec and eval (roadmap Core-③)', () => {
   const io = (cwd: string, output: string[]) => ({
     cwd,

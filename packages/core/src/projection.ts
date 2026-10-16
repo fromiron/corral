@@ -13,6 +13,7 @@ import type {
   TaskStatus,
   WaitingOn,
 } from '@corral/contracts';
+import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import { applyBudgetEvent, type BudgetState, emptyBudget } from './budget.ts';
 import { applyProgressEvent, emptyProgress, type ProgressState } from './limits.ts';
 
@@ -113,7 +114,11 @@ export interface DecisionView {
   privacy: 'local' | 'external';
   executionId: string;
   modelCallId: string;
-  status: 'requested' | 'observed' | 'failed';
+  /**
+   * `not_collected`: the run ended before the provider answered (#22). Derived from the run's
+   * terminal state; no event is written after the end, and no answer is made up.
+   */
+  status: 'requested' | 'observed' | 'failed' | 'not_collected';
   answer: 'low' | 'medium' | 'high' | 'xhigh' | null;
   probabilities: { low: number; medium: number; high: number; xhigh: number } | null;
   evidenceLevel: 'model_probability' | 'rule' | 'none' | null;
@@ -310,7 +315,21 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
       };
     case 'run.state_changed': {
       const { to, reasonCode } = event.payload;
-      const next = { ...p, status: to, statusReason: reasonCode };
+      const next = {
+        ...p,
+        status: to,
+        statusReason: reasonCode,
+        ...(TERMINAL_RUN_STATUSES.has(to) && p.decisions
+          ? {
+              decisions: Object.fromEntries(
+                Object.entries(p.decisions).map(([id, d]) => [
+                  id,
+                  d.status === 'requested' ? { ...d, status: 'not_collected' as const } : d,
+                ]),
+              ),
+            }
+          : {}),
+      };
       if (to === 'pausing' && p.userPauseStartedAt === null) {
         return { ...next, userPauseStartedAt: event.recordedAt };
       }

@@ -92,6 +92,9 @@ function Judgment({ decision: d }: { decision: Decision }) {
         </span>
       ) : null}
       {d.status === 'requested' ? <span className="text-muted">{t('pending')}</span> : null}
+      {d.status === 'not_collected' ? (
+        <span className="text-muted">{t('notCollected')}</span>
+      ) : null}
       {d.probabilities ? (
         <span className="text-muted">
           <span className="sr-only">{t('probabilities')}: </span>

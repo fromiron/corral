@@ -4,6 +4,7 @@ export {
   type ServerOptions,
   startCorralServer,
 } from './app.ts';
+export { defaultDecisionProviders } from './decision-providers.ts';
 export { createLiveModels } from './live-models.ts';
 export * from './models/index.ts';
 export { RandomIdFactory, systemClock, systemTimers } from './runtime.ts';

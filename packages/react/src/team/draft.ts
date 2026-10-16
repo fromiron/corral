@@ -202,7 +202,11 @@ export function draftFromPlan(
       loopId: 'review_loop',
       roleId: 'reviewer',
       invocation: 'scheduled',
-      inputBindings: [{ kind: 'task_output', name: 'draft', sourceNodeId: 'write' }],
+      // The criteria text, so the review is against what the person asked for (#20).
+      inputBindings: [
+        { kind: 'task_output', name: 'draft', sourceNodeId: 'write' },
+        { kind: 'run_input', name: 'criteria' },
+      ],
       outputName: 'review',
     },
     {

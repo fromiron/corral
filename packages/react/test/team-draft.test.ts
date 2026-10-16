@@ -81,6 +81,8 @@ describe('draftFromPlan (CR-006)', () => {
       const { definition, layout } = draftFromPlan(p, 'drafted_1');
       const compiled = compileDefinition(definition);
       expect(compiled.ok, `${p.pattern}: ${JSON.stringify(compiled)}`).toBe(true);
+      // No warnings either: a reviewer gets the criteria text (#20).
+      expect(compiled.diagnostics).toEqual([]);
       expect(definition.id).toBe('drafted_1');
       expect(definition.name).toBe(p.name);
       expect(definition.input).toEqual({ brief: p.brief, criteria: p.criteria });

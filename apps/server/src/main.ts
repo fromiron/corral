@@ -2,6 +2,7 @@ import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { ScriptedAgentAdapter } from '@corral/testkit';
 import { startCorralServer } from './app.ts';
+import { defaultDecisionProviders } from './decision-providers.ts';
 import { createLiveModels } from './live-models.ts';
 
 // `pnpm --filter @corral/server start -- --workspace <dir>`
@@ -30,6 +31,8 @@ const server = await startCorralServer({
     beforeReply: () => new Promise((done) => setTimeout(done, delayMs)),
   }),
   ...(values.static ? { staticDir: resolve(values.static) } : {}),
+  // The same judgment providers as `corral dev` (#21).
+  decisionProviders: defaultDecisionProviders(),
   extraOrigins: values['allow-origin'],
   ...(values['no-live'] ? {} : { live: createLiveModels() }),
   ...(values['allow-live-search']

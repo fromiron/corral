@@ -13,6 +13,8 @@ describe('demo templates', () => {
     const { definition, layout } = template;
     const compiled = compileDefinition(definition);
     expect(compiled.ok).toBe(true);
+    // No warnings either: the reviewer gets the criteria text (#20).
+    expect(compiled.diagnostics).toEqual([]);
     expect(definition.capabilityLinks.map((l) => l.kind).sort()).toEqual([
       'delegate',
       'delegate',

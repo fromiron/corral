@@ -393,7 +393,7 @@ async function judge(action: string | undefined, modelDir: string | undefined, i
 }
 
 /** `inspect --judgments`: each request's effort judgments side by side (CR-003, C-071). */
-function judgmentReport(projection: RunProjection): string {
+export function judgmentReport(projection: RunProjection): string {
   const settings = projection.decisionSettings?.reasoning_effort;
   if (!settings) return `Run ${projection.runId} recorded no judgment settings.`;
   const lines = [
@@ -421,7 +421,9 @@ function judgmentReport(projection: RunProjection): string {
             }`
           : d.status === 'failed'
             ? `failed: ${d.reason}`
-            : 'pending';
+            : d.status === 'not_collected'
+              ? 'not collected (the run ended first)'
+              : 'pending';
       lines.push(
         `${call} ${node} ${d.provider} ${result}${d.latencyMs === null ? '' : ` ${d.latencyMs} ms`}`,
       );
@@ -433,14 +435,15 @@ function judgmentReport(projection: RunProjection): string {
 
 /** The local server without Studio: nothing is built or served (exec, eval). */
 async function startHeadless(values: { demo?: boolean }, workspace: string) {
-  const { createLiveModels, startCorralServer } = await import('@corral/server');
+  const { createLiveModels, defaultDecisionProviders, startCorralServer } = await import(
+    '@corral/server'
+  );
   const { ScriptedAgentAdapter } = await import('@corral/testkit');
-  const { defaultModelDir, OnnxEffortProvider } = await import('@corral/effort-judge');
   return startCorralServer({
     workspace,
     port: 0,
     agents: new ScriptedAgentAdapter({ turns: 2 }),
-    decisionProviders: [new OnnxEffortProvider({ dir: defaultModelDir() })],
+    decisionProviders: defaultDecisionProviders(),
     ...(values.demo ? {} : { live: createLiveModels() }),
   });
 }
@@ -469,14 +472,15 @@ async function startServer(
       );
     });
   }
-  const { createLiveModels, startCorralServer } = await import('@corral/server');
+  const { createLiveModels, defaultDecisionProviders, startCorralServer } = await import(
+    '@corral/server'
+  );
   const { ScriptedAgentAdapter } = await import('@corral/testkit');
-  const { defaultModelDir, OnnxEffortProvider } = await import('@corral/effort-judge');
   return startCorralServer({
     workspace,
     port,
     staticDir,
-    decisionProviders: [new OnnxEffortProvider({ dir: defaultModelDir() })],
+    decisionProviders: defaultDecisionProviders(),
     agents: new ScriptedAgentAdapter({ turns: 2 }),
     ...(values.demo ? {} : { live: createLiveModels() }),
   });

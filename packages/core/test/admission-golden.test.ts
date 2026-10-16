@@ -17,7 +17,6 @@ import {
   SequentialIdFactory,
 } from '@corral/testkit';
 import { describe, expect, it } from 'vitest';
-import researchTeam from '../../../examples/research-team.corral.json' with { type: 'json' };
 import {
   Coordinator,
   canonicalJson,
@@ -26,6 +25,10 @@ import {
   SPEC_HARD_CAPS,
   waitForProjection,
 } from '../src/index.ts';
+// The recorded streams were made from this definition; the shipped example has moved on (#20).
+import researchTeam from './fixtures/research-team.before-criteria-input.corral.json' with {
+  type: 'json',
+};
 
 // Golden event streams for the admission refactor (CR-003, C-067, ADR-024). They were recorded
 // from the Coordinator *before* its checks moved into gates, and the default gate set must

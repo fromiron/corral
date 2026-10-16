@@ -204,3 +204,34 @@ test('the workspace and editor have no serious automated accessibility violation
   await page.locator('.react-flow__node[data-id="agent_1"]').click();
   expect(await serious()).toEqual([]);
 });
+
+test('[TC-ART-003-N] a reviewer without the criteria is flagged, and one click gives it them (#20)', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page
+    .locator('input[type=file]')
+    .setInputFiles([
+      join(
+        import.meta.dirname,
+        '..',
+        '..',
+        '..',
+        'packages',
+        'core',
+        'test',
+        'fixtures',
+        'research-team.before-criteria-input.corral.json',
+      ),
+      join(EXAMPLES, 'research-team.layout.json'),
+    ]);
+  await expect(page).toHaveURL(/\/edit$/);
+  const warnings = page.getByTestId('warnings');
+  await expect(warnings).toContainText('does not get the criteria');
+  // The Corral still runs; the warning says what the review will miss.
+  await expect(page.getByText('Ready to run.')).toBeVisible();
+  await warnings.getByRole('button', { name: 'Give it the criteria' }).click();
+  await expect(warnings).toHaveCount(0);
+  await page.locator('.react-flow__node[data-id="review"]').click();
+  await expect(page.getByText('criteria · Run input')).toBeVisible();
+});
