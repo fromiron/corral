@@ -74,7 +74,9 @@
       "active": "Running",
       "done": "Done",
       "failed": "Failed",
-      "executions": "{count, plural, one {# execution} other {# executions}}"
+      "executions": "{count, plural, one {# execution} other {# executions}}",
+      "waiting": "Waiting for you",
+      "decisions": "{count, plural, one {# decision} other {# decisions}}"
     }
   },
   "Inspector": {
@@ -195,7 +197,8 @@
     "modeMock": "Simulated (no model calls)",
     "modeLive": "Live models (uses your sign-in)",
     "reason": "Reason: {reason}",
-    "completedResponse": "Last completed response"
+    "completedResponse": "Last completed response",
+    "reasonPrefix": "Reason:"
   },
   "Reins": {
     "heading": "Reins",
@@ -494,7 +497,12 @@
       "settled": "Confirmed"
     },
     "usageUnknown": "Actual usage unknown",
-    "held": "{count, number} tokens held"
+    "held": "{count, number} tokens held",
+    "meterTokens": "Output tokens",
+    "meterTokensText": "{used, number} used · {held, number} held · {max, number} allowed",
+    "meterCalls": "Model calls",
+    "meterCallsText": "{used} of {max}",
+    "allFigures": "All budget figures"
   },
   "SettingsPatch": {
     "heading": "Change settings",
@@ -646,5 +654,83 @@
       "failed": "Failed",
       "cancelled": "Cancelled"
     }
+  },
+  "Events": {
+    "runStartedMock": "Run started (simulated agents)",
+    "runStartedLive": "Run started (live models)",
+    "runState": "Run is now {to, select, running {running} pausing {pausing} paused {paused} awaiting_user {waiting for you} cancelling {cancelling} succeeded {succeeded} failed {failed} cancelled {cancelled} interrupted {interrupted} validating {validating} other {{to}}}",
+    "runInterrupted": "Run interrupted by a backend restart",
+    "executionCreated": "{node} started",
+    "executionState": "{node}: {to, select, active {working} waiting_children {waiting for its helpers} waiting_message {waiting for an answer} waiting_approval {waiting for approval} paused {paused} cancelling {cancelling} ready {ready} queued {queued} other {{to}}}",
+    "executionSettled": "{node} {outcome, select, succeeded {finished} failed {failed} cancelled {was cancelled} other {ended ({outcome})}}",
+    "taskCreated": "Task for {node} created",
+    "taskAssigned": "{node} took its task",
+    "taskSubmitted": "{node} submitted its result",
+    "taskCompleted": "A task was completed",
+    "taskBlocked": "A task is blocked: {cause}",
+    "questionCreated": "{node} asked {target}",
+    "answerCommitted": "{node} answered",
+    "questionClosed": "Question {outcome, select, answered {answered} cancelled {cancelled} timed_out {timed out} other {closed}}",
+    "versionCreated": "{node} wrote {name} v{version}",
+    "versionRead": "{node} read a version",
+    "reviewRecorded": "Review: {verdict, select, pass {pass} revise {revise} inconclusive {inconclusive} other {{verdict}}}",
+    "reviewStale": "A review became stale",
+    "roundStarted": "{loop}: round {no} started",
+    "roundFinished": "{loop}: round finished ({outcome})",
+    "approvalRequested": "Waiting for your {kind, select, user_action {decision} final_output {approval of the final output} loop_cap {decision on another round} other {decision}}",
+    "approvalResolved": "You {decision, select, approve {approved} reject {rejected} other {decided}}",
+    "directiveAccepted": "Your instruction for {node} was accepted",
+    "directiveAttached": "Your instruction was attached to a request",
+    "directiveDispatched": "Your instruction was sent",
+    "directiveUndelivered": "Your instruction was not delivered ({status})",
+    "patchCommitted": "Settings changed ({kind})",
+    "patchActivated": "A settings change took effect",
+    "effectAdmitted": "Started {kind, select, model_request {a model request} tool {a tool} spawn {helpers} decision {an external judgment} other {work}}",
+    "effectDispatched": "Request sent",
+    "effectSettled": "Work ended ({outcome})",
+    "toolRequested": "{node} called {name}",
+    "toolAllowed": "Tool call allowed",
+    "toolBlocked": "Tool call refused: {reason}",
+    "toolStarted": "Tool running",
+    "toolFinished": "Tool finished",
+    "toolFailed": "Tool failed",
+    "modelRequest": "{node} sent a model request",
+    "modelFinished": "{node} received a reply",
+    "usageReconciled": "Usage confirmed",
+    "budgetReserved": "Budget reserved",
+    "budgetSettled": "Budget settled",
+    "limitReached": "Limit reached: {kind} ({used} of {max})",
+    "cancelRequested": "Cancellation requested",
+    "cancelConfirmed": "Cancellation confirmed",
+    "observationLate": "A late {what} was ignored",
+    "outputFinalized": "Final output ready",
+    "decisionRequested": "Effort judgment asked of {provider}",
+    "decisionObserved": "{provider} judged effort {level} (not applied)",
+    "decisionFailed": "{provider} could not judge: {reason}"
+  },
+  "RunReasons": {
+    "run_requested": "The run was requested",
+    "validation_passed": "The Corral passed validation",
+    "output_finalized": "The final output was produced",
+    "approval_requested": "{detail, select, final_output {Waiting for your approval of the final output} loop_cap {Waiting for your decision on another round} other {Waiting for your decision}}",
+    "pause_requested": "You asked to pause",
+    "safe_boundary_reached": "Paused at a safe point",
+    "resumed": "You resumed the run",
+    "cancel_requested": "You asked to cancel",
+    "cancel_confirmed": "Cancellation confirmed",
+    "backend_restarted": "The local server restarted; nothing was resumed automatically",
+    "required_task_cancelled": "A required task was cancelled; restart it or cancel the run",
+    "required_task_cancelling": "A required task is being cancelled",
+    "task_restarted": "A task was restarted",
+    "cancellation_cleanup_failed": "Cancellation could not clean up",
+    "termination_unconfirmed": "Stopping could not be confirmed",
+    "execution_failed": "{node} failed",
+    "internal_error": "An internal error stopped the run",
+    "loop_hard_cap_reached": "{node} reached the installation's round limit",
+    "needs_user": "{node} needs your decision",
+    "runner_finished_without_output": "The graph ended without an output",
+    "loop_cap_declined": "You declined another round of {node}",
+    "rejected": "You rejected {node}",
+    "final_output_rejected": "You rejected the final output"
   }
 }

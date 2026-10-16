@@ -6,6 +6,7 @@ import { useStore } from 'zustand';
 import type { RunSessionStore, StreamText } from '../run/session.ts';
 import { BudgetInspector } from './BudgetInspector.tsx';
 import { RunActions } from './RunActions.tsx';
+import { RunReason } from './RunText.tsx';
 import { SafeMarkdown } from './SafeMarkdown.tsx';
 import { StatusBadge } from './StatusBadge.tsx';
 
@@ -49,7 +50,13 @@ export function RunView({
             </span>
           </div>
           {projection.statusReason ? (
-            <p className="text-xs text-muted">{t('reason', { reason: projection.statusReason })}</p>
+            <p className="text-xs text-muted">
+              {t('reasonPrefix')}{' '}
+              <RunReason
+                code={projection.statusReason}
+                nodeLabel={(id) => definition?.nodes.find((n) => n.id === id)?.label ?? id}
+              />
+            </p>
           ) : null}
           <div className="flex flex-col gap-1">
             <h3 className="text-xs font-semibold">{t('executions')}</h3>

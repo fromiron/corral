@@ -14,6 +14,7 @@ import {
   RunCanvas,
   type RunCanvasLayout,
   RunOutput,
+  RunReason,
   type RunSessionStore,
   runCanvasLayout,
   StatusBadge,
@@ -258,7 +259,9 @@ function RunSummary({
           </span>
           <span>{t('requests', { count: inFlight })}</span>
           {projection.statusReason ? (
-            <span>{tr('reason', { reason: projection.statusReason })}</span>
+            <span>
+              {tr('reasonPrefix')} <RunReason code={projection.statusReason} nodeLabel={labelOf} />
+            </span>
           ) : null}
         </p>
       </div>
