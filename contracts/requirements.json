@@ -120,6 +120,12 @@
     "phase": "P5"
   },
   {
+    "id": "CRL-ART-005",
+    "requirement": "이전 Run의 산출물 버전에서 새 Run을 시작할 수 있다. 본문은 새 Run의 브리프로 복사되고 새 Run은 다른 Run의 버전을 참조하지 않으며, run.started에 출처가 남는다.",
+    "owner": "review",
+    "phase": "P11"
+  },
+  {
     "id": "CRL-RNS-001",
     "requirement": "실행 중 선택한 인스턴스에 지시를 접수하고 다음 적용 가능한 요청에 전달한다.",
     "owner": "reins",

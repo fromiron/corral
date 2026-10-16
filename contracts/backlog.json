@@ -1406,5 +1406,24 @@
     "done": "세 패턴 컴파일 통과, 계획이 도구 권한을 정하지 못함, 모델 응답은 계약 검증 후에만 사용, 사람이 '편집기에서 열기'를 눌러야 저장",
     "status": "implemented",
     "evidence": "docs/change-requests/CR-006-goal-team-draft.md"
+  },
+  {
+    "id": "C-074",
+    "phase": "P11",
+    "title": "이전 버전에서 새 Run 시작(startFrom·run.started.startedFrom·산출물 보기 버튼)",
+    "dependsOn": [
+      "C-057"
+    ],
+    "requirements": [
+      "CRL-ART-005"
+    ],
+    "files": [
+      "packages/contracts/src/commands.ts",
+      "packages/core/src/coordinator.ts",
+      "packages/react/src/components/ArtifactViewer.tsx"
+    ],
+    "done": "본문 복사·출처 기록·거절 3종, 서버·브라우저 runtime 동일",
+    "status": "implemented",
+    "evidence": "docs/change-requests/CR-007-new-run-from-version.md"
   }
 ]

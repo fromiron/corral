@@ -128,11 +128,19 @@ export type RunCommand = z.infer<typeof RunCommand>;
 export type RunCommandType = RunCommand['type'];
 
 /** POST /runs: start a run from a validated definition snapshot. */
+/**
+ * Start from a version of an earlier Run (CR-007): its text is copied into the new brief. The
+ * new Run never refers to the old Run's versions.
+ */
+export const StartFrom = z.strictObject({ runId: Identifier, artifactVersionId: Identifier });
+export type StartFrom = z.infer<typeof StartFrom>;
+
 export const StartRunRequest = z.strictObject({
   schemaVersion: SchemaVersion,
   commandId: Identifier,
   definition: CorralDefinition,
   mode: z.enum(['mock', 'live']),
+  startFrom: StartFrom.optional(),
 });
 export type StartRunRequest = z.infer<typeof StartRunRequest>;
 
@@ -147,5 +155,6 @@ export const CreateRunRequest = z.strictObject({
   definitionRevision: z.int().min(1),
   input: RunInput.optional(),
   mode: z.enum(['mock', 'live']),
+  startFrom: StartFrom.optional(),
 });
 export type CreateRunRequest = z.infer<typeof CreateRunRequest>;

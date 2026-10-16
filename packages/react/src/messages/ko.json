@@ -202,7 +202,10 @@
     "modeLive": "실제 모델(본인 로그인 사용)",
     "reason": "이유: {reason}",
     "completedResponse": "마지막으로 끝난 응답",
-    "reasonPrefix": "이유:"
+    "reasonPrefix": "이유:",
+    "newRunFromResult": "이 결과에서 새 Run",
+    "startFrom": "다음 Run은 {runId} Run의 {label}에서 시작합니다. 그 본문이 브리프에 붙습니다.",
+    "clearStartFrom": "지우기"
   },
   "Reins": {
     "heading": "Reins",
@@ -382,7 +385,9 @@
       "activity": "활동",
       "budget": "예산"
     },
-    "conversation": "대화"
+    "conversation": "대화",
+    "startedFrom": "시작점",
+    "startedFromLink": "{runId} Run의 {name}"
   },
   "Timeline": {
     "heading": "타임라인",
@@ -494,7 +499,8 @@
     "lineageNote": "이 연결은 관측된 입력 경로입니다. 모델이 지시를 따랐는지, 왜 특정 문장을 썼는지를 증명하지는 않습니다.",
     "staleReview": "오래된 검토: {previous} 기준으로 평가했고, 현재 기준은 {current}입니다.",
     "reference": "기록된 참조",
-    "unavailable": "이 기록된 참조는 볼 수 없습니다."
+    "unavailable": "이 기록된 참조는 볼 수 없습니다.",
+    "newRunFromVersion": "이 버전에서 새 Run"
   },
   "Approvals": {
     "heading": "결정 대기",

@@ -202,7 +202,10 @@
     "modeLive": "Live models (uses your sign-in)",
     "reason": "Reason: {reason}",
     "completedResponse": "Last completed response",
-    "reasonPrefix": "Reason:"
+    "reasonPrefix": "Reason:",
+    "newRunFromResult": "New run from this result",
+    "startFrom": "The next run starts from {label} of run {runId}: its text is added to the brief.",
+    "clearStartFrom": "Clear"
   },
   "Reins": {
     "heading": "Reins",
@@ -382,7 +385,9 @@
       "activity": "Activity",
       "budget": "Budget"
     },
-    "conversation": "Conversation"
+    "conversation": "Conversation",
+    "startedFrom": "Started from",
+    "startedFromLink": "{name} of run {runId}"
   },
   "Timeline": {
     "heading": "Timeline",
@@ -494,7 +499,8 @@
     "lineageNote": "These links show observed input paths. They do not prove that the model followed an instruction or why it wrote a particular sentence.",
     "staleReview": "Stale review: evaluated against {previous}; current criteria is {current}.",
     "reference": "Recorded reference",
-    "unavailable": "This recorded reference is unavailable."
+    "unavailable": "This recorded reference is unavailable.",
+    "newRunFromVersion": "New run from this version"
   },
   "Approvals": {
     "heading": "Waiting for you",

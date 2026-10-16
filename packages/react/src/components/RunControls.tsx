@@ -1,4 +1,4 @@
-import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
+import { type StartFrom, TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import { useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
@@ -15,11 +15,16 @@ export function RunControls({
   onStarted,
   beforeStart,
   liveAvailable = false,
+  startFrom = null,
+  onClearStartFrom,
 }: {
   onStarted?: (runId: string) => void;
   beforeStart?: () => Promise<SavedRevision | null>;
   /** The runtime can call real models; the person chooses per run (default: simulated). */
   liveAvailable?: boolean;
+  /** The earlier version the next run starts from (CR-007), with a label for it. */
+  startFrom?: (StartFrom & { label: string }) | null;
+  onClearStartFrom?: () => void;
 }) {
   const t = useTranslations('Run');
   const { editor, session } = useStudioStores();
@@ -36,7 +41,16 @@ export function RunControls({
     try {
       const saved = beforeStart ? await beforeStart() : undefined;
       if (saved === null) return;
-      await session.getState().start(compiled.definition, saved, liveAvailable ? mode : 'mock');
+      await session
+        .getState()
+        .start(
+          compiled.definition,
+          saved,
+          liveAvailable ? mode : 'mock',
+          startFrom
+            ? { runId: startFrom.runId, artifactVersionId: startFrom.artifactVersionId }
+            : undefined,
+        );
       const runId = session.getState().runId;
       if (runId) onStarted?.(runId);
     } finally {
@@ -59,6 +73,21 @@ export function RunControls({
           {starting ? t('starting') : t('start')}
         </button>
       </div>
+      {startFrom ? (
+        <div
+          data-testid="start-from"
+          className="flex flex-wrap items-center justify-between gap-2 rounded border border-accent/50 bg-accent/10 px-2 py-1 text-xs"
+        >
+          <span>{t('startFrom', { label: startFrom.label, runId: startFrom.runId })}</span>
+          <button
+            type="button"
+            onClick={onClearStartFrom}
+            className="rounded border border-line px-1.5 py-0.5"
+          >
+            {t('clearStartFrom')}
+          </button>
+        </div>
+      ) : null}
       {liveAvailable ? (
         <label className="flex items-center gap-2 text-xs">
           <span className="text-muted">{t('agents')}</span>

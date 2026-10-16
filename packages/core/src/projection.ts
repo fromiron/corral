@@ -187,6 +187,8 @@ export interface ReviewView {
 }
 
 export interface RunProjection {
+  /** The earlier version this run's brief starts from (CR-007); null otherwise. */
+  startedFrom: { runId: string; artifactVersionId: string } | null;
   runId: string;
   corralId: string | null;
   definitionHash: string | null;
@@ -280,6 +282,7 @@ export function emptyProjection(runId: string): RunProjection {
     interruptedBy: null,
     output: null,
     decisionSettings: null,
+    startedFrom: null,
     decisions: {},
   };
 }
@@ -309,6 +312,7 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
         corralId: event.payload.corralId,
         definitionHash: event.payload.definitionHash,
         mode: event.payload.mode,
+        startedFrom: event.payload.startedFrom ?? null,
         limits: event.payload.limits,
         currentCriteriaVersionId: event.payload.criteriaVersionId ?? null,
         decisionSettings: event.payload.decisions ?? null,

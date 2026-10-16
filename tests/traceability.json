@@ -642,5 +642,15 @@
     "tasks": [
       "C-073"
     ]
+  },
+  {
+    "requirementId": "CRL-ART-005",
+    "tests": [
+      "TC-ART-005-H",
+      "TC-ART-005-N"
+    ],
+    "tasks": [
+      "C-074"
+    ]
   }
 ]

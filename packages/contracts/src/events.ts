@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { CancelScope } from './commands.ts';
+import { CancelScope, StartFrom } from './commands.ts';
 import {
   DecisionFailureReason,
   DecisionPrivacy,
@@ -80,6 +80,8 @@ export const RunStarted = event(
     criteriaVersionId: Identifier.optional(),
     /** Judgment settings fixed for the run (CR-003). Absent when the runtime has none. */
     decisions: RunDecisionSettings.optional(),
+    /** The earlier version whose text this run's brief starts from (CR-007). */
+    startedFrom: StartFrom.optional(),
   }),
 );
 export const RunStateChanged = event(

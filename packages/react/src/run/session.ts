@@ -5,6 +5,7 @@ import type {
   Receipt,
   RunCommand,
   RunEvent,
+  StartFrom,
   StreamFrame,
 } from '@corral/contracts';
 import {
@@ -46,7 +47,13 @@ export interface RunSessionState {
   sendCommand(command: SessionCommand): Promise<Receipt>;
   retryCommand(commandId: string): Promise<Receipt>;
   /** Starts a run; with `saved`, from that saved revision (the local server's way). */
-  start(definition: CorralDefinition, saved?: SavedRevision, mode?: 'mock' | 'live'): Promise<void>;
+  /** `startFrom`: an earlier version whose text the new run's brief starts from (CR-007). */
+  start(
+    definition: CorralDefinition,
+    saved?: SavedRevision,
+    mode?: 'mock' | 'live',
+    startFrom?: StartFrom,
+  ): Promise<void>;
   /** Follows an existing run, such as after a reload or from a link. */
   open(runId: string): Promise<void>;
   /** Loads one version's text for viewing; versions never change, so once is enough. */
@@ -312,15 +319,16 @@ export function createRunSession(
       commandError: null,
       unconfirmedCommands: {},
 
-      async start(definition, saved, mode = 'mock') {
+      async start(definition, saved, mode = 'mock', startFrom) {
         reset();
         const version = generation;
         const commandId = newCommandId();
+        const from = startFrom ? { startFrom } : {};
         try {
           const { runId, receipt } = await transport.startRun(
             saved
-              ? { schemaVersion: '0.1', commandId, ...saved, mode }
-              : { schemaVersion: '0.1', commandId, definition, mode },
+              ? { schemaVersion: '0.1', commandId, ...saved, mode, ...from }
+              : { schemaVersion: '0.1', commandId, definition, mode, ...from },
           );
           if (generation !== version) return;
           if (!runId) {
