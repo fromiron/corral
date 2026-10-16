@@ -1181,5 +1181,76 @@
     "operations": "File writes",
     "uncertain": "Outcome unknown: the server stopped during this write. Check the file before continuing.",
     "failed": "Could not do that: {message}"
+  },
+  "Review": {
+    "commentLine": "Comment on line {line}",
+    "commentPlaceholder": "What should change here?",
+    "addComment": "Add comment",
+    "cancel": "Cancel",
+    "commentsHeading": "Comments",
+    "draftCount": "{count, plural, =0 {No draft comments} one {# draft comment} other {# draft comments}}",
+    "sendReview": "Send for changes",
+    "sendTo": "Send to",
+    "sendNext": "A new run in this session",
+    "sendSteer": "The running execution {label}",
+    "sent": "Sent.",
+    "earlier": "Comments on earlier comparisons",
+    "commentState": {
+      "draft": "Draft",
+      "submitted": "Sent",
+      "addressed": "Addressed",
+      "obsolete": "Obsolete"
+    },
+    "markAddressed": "Addressed",
+    "markObsolete": "Obsolete",
+    "deleteDraft": "Delete",
+    "decisionHeading": "Decision",
+    "approve": "Approve these changes",
+    "requestChanges": "Request changes",
+    "decisionState": {
+      "approved": "Approved",
+      "changes_requested": "Changes requested"
+    },
+    "staleDecision": "for an earlier version",
+    "decisionScope": "Decisions and applying use the whole session's changes.",
+    "integrateHeading": "Apply to the folder",
+    "integrateNote": "Writes the approved contents into the linked folder, file by file. No commit or push. A file changed in the folder is not overwritten.",
+    "plan": "Plan applying the approved changes",
+    "planOutcome": {
+      "apply": "Will write",
+      "skip": "Already so",
+      "conflict": "Conflict: not written"
+    },
+    "apply": "Apply {count, plural, one {# file} other {# files}}",
+    "integrationState": {
+      "applying": "Applying",
+      "applied": "Applied",
+      "partial": "Partly applied",
+      "conflict": "Not applied: conflicts",
+      "reverted": "Reverted",
+      "failed": "Failed"
+    },
+    "fileOutcome": {
+      "planned": "Planned",
+      "applied": "Written",
+      "skipped": "Already so",
+      "conflict": "Conflict",
+      "failed": "Failed",
+      "reverted": "Reverted",
+      "revert_conflict": "Changed since: left as is",
+      "uncertain": "Unknown"
+    },
+    "revert": "Revert",
+    "revertNote": "Only files still as applied are reverted.",
+    "inboxHeading": "Needs you",
+    "inbox": {
+      "decision": "A run waits for your decision",
+      "queued": "Queued next task: {detail}",
+      "uncertain_write": "File writes with unknown outcome",
+      "integration": "Applying did not finish cleanly ({detail})",
+      "check_failed": "Latest check failed: {detail}",
+      "unreviewed": "{detail} file writes since your last review"
+    },
+    "open": "Open"
   }
 }

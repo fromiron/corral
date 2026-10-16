@@ -3,16 +3,22 @@ import type {
   ChangeSetView,
   FileOperationView,
   FileSideView,
+  IntegrationPlanFile,
+  IntegrationResultView,
+  ReviewCommentView,
+  ReviewDecisionView,
   VerificationResultView,
   WorkspaceBindingView,
 } from '@corral/client';
-import type { RunSummary } from '@corral/core';
+import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
+import type { RunSummary, WorkSession } from '@corral/core';
 import { type DiffLine, diffLines } from '@corral/react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { reviewRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
+import { latestResult, startFollowUp, steer, steerTargets } from '../sessionActions.ts';
 import { useBinding } from './FilesViews.tsx';
 
 // Reviewing a session's file changes (CR-012; WBT-15): a fixed comparison range, the files it
@@ -38,6 +44,13 @@ export function ReviewPage() {
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [version, setVersion] = useState(0);
   const { binding } = useBinding(session.projectId);
+  const [comments, setComments] = useState<ReviewCommentView[]>([]);
+  const reloadComments = useCallback(async () => {
+    if (workspaces) setComments(await workspaces.comments(session.sessionId).catch(() => []));
+  }, [workspaces, session.sessionId]);
+  useEffect(() => {
+    void reloadComments();
+  }, [reloadComments]);
 
   useEffect(() => {
     void transport
@@ -161,12 +174,40 @@ export function ReviewPage() {
               from={changes.from}
               to={changes.to}
               path={selected}
+              comments={comments.filter(
+                (c) => c.from === changes.from && c.to === changes.to && c.path === selected,
+              )}
+              onComment={async (comment) => {
+                await workspaces?.addComment(session.sessionId, {
+                  ...comment,
+                  from: changes.from as string,
+                  to: changes.to as string,
+                  path: selected,
+                });
+                await reloadComments();
+              }}
             />
           ) : (
             <p className="text-sm text-muted">{t('chooseFile')}</p>
           )}
         </section>
         <aside className="flex min-h-0 flex-col gap-3 overflow-auto border-line p-3 md:border-l">
+          <CommentsPanel
+            session={session}
+            runs={runs}
+            comments={comments}
+            current={changes}
+            onChange={reloadComments}
+          />
+          {scope.kind === 'session' && changes?.from && changes.to ? (
+            <DecisionPanel
+              sessionId={session.sessionId}
+              from={changes.from}
+              to={changes.to}
+              changed={version}
+              linked={Boolean(binding)}
+            />
+          ) : null}
           <Checks sessionId={session.sessionId} binding={binding ?? null} changed={version} />
           <Operations sessionId={session.sessionId} />
         </aside>
@@ -178,16 +219,22 @@ export function ReviewPage() {
 const sideText = (side: FileSideView) =>
   side.kind === 'text' ? side.text : side.kind === 'absent' ? '' : null;
 
+type NewComment = Pick<ReviewCommentView, 'side' | 'startLine' | 'endLine' | 'quote' | 'body'>;
+
 function FileDiff({
   sessionId,
   from,
   to,
   path,
+  comments,
+  onComment,
 }: {
   sessionId: string;
   from: string;
   to: string;
   path: string;
+  comments: ReviewCommentView[];
+  onComment: (comment: NewComment) => Promise<void>;
 }) {
   const t = useTranslations('Files');
   const { workspaces } = useServices();
@@ -232,7 +279,7 @@ function FileDiff({
         <p className="text-sm text-muted">{notText(sides.after) ?? notText(sides.before)}</p>
       ) : lines ? (
         layout === 'unified' ? (
-          <Unified lines={lines} />
+          <Unified lines={lines} comments={comments} onComment={onComment} />
         ) : (
           <Split lines={lines} />
         )
@@ -244,17 +291,100 @@ function FileDiff({
 const lineClass = (kind: DiffLine['kind']) =>
   kind === 'added' ? 'bg-success/15' : kind === 'removed' ? 'bg-danger/15' : '';
 
-function Unified({ lines }: { lines: DiffLine[] }) {
+/** One column; each line can take a comment, fixed to its side and number (WB-REV-001). */
+function Unified({
+  lines,
+  comments,
+  onComment,
+}: {
+  lines: DiffLine[];
+  comments: ReviewCommentView[];
+  onComment: (comment: NewComment) => Promise<void>;
+}) {
+  const t = useTranslations('Review');
+  const [open, setOpen] = useState<number | null>(null);
+  const [body, setBody] = useState('');
+  let before = 0;
+  let after = 0;
+  const numbered = lines.map((line) => {
+    if (line.kind !== 'added') before++;
+    if (line.kind !== 'removed') after++;
+    return {
+      line,
+      side: line.kind === 'removed' ? ('before' as const) : ('after' as const),
+      no: line.kind === 'removed' ? before : after,
+    };
+  });
   return (
-    <pre className="overflow-auto rounded border border-line bg-surface font-mono text-[13px]">
-      {lines.map((line, index) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: diff rows have no identity beyond their place
-        <div key={index} data-diff={line.kind} className={`px-2 ${lineClass(line.kind)}`}>
-          {line.kind === 'added' ? '+ ' : line.kind === 'removed' ? '- ' : '  '}
-          {line.text}
-        </div>
-      ))}
-    </pre>
+    <div className="overflow-auto rounded border border-line bg-surface font-mono text-[13px]">
+      {numbered.map(({ line, side, no }, index) => {
+        const here = comments.filter((c) => c.side === side && c.startLine === no);
+        return (
+          // biome-ignore lint/suspicious/noArrayIndexKey: diff rows have no identity beyond their place
+          <div key={index}>
+            <div data-diff={line.kind} className={`group flex ${lineClass(line.kind)}`}>
+              <button
+                type="button"
+                aria-label={t('commentLine', { line: no })}
+                onClick={() => {
+                  setOpen(open === index ? null : index);
+                  setBody('');
+                }}
+                className="w-12 shrink-0 select-none px-1 text-right text-muted hover:text-accent"
+              >
+                {no}
+              </button>
+              <span className="whitespace-pre-wrap break-all px-2">
+                {line.kind === 'added' ? '+ ' : line.kind === 'removed' ? '- ' : '  '}
+                {line.text}
+              </span>
+            </div>
+            {here.map((c) => (
+              <p
+                key={c.commentId}
+                data-testid="inline-comment"
+                className="ml-12 border-l-2 border-accent bg-raised px-2 py-1 font-sans text-xs"
+              >
+                {c.body} <span className="text-muted">· {t(`commentState.${c.state}`)}</span>
+              </p>
+            ))}
+            {open === index ? (
+              <form
+                className="ml-12 flex flex-col gap-1 bg-raised p-2 font-sans"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  if (!body.trim()) return;
+                  void onComment({ side, startLine: no, endLine: no, quote: line.text, body }).then(
+                    () => setOpen(null),
+                  );
+                }}
+              >
+                <textarea
+                  aria-label={t('commentLine', { line: no })}
+                  placeholder={t('commentPlaceholder')}
+                  value={body}
+                  rows={2}
+                  onChange={(e) => setBody(e.target.value)}
+                  className="rounded border border-line bg-surface p-1 text-xs"
+                />
+                <div className="flex gap-1 text-xs">
+                  <button type="submit" className="rounded bg-accent px-2 py-0.5 text-on-accent">
+                    {t('addComment')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOpen(null)}
+                    className="rounded border border-line px-2 py-0.5"
+                  >
+                    {t('cancel')}
+                  </button>
+                </div>
+              </form>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -407,6 +537,331 @@ function Operations({ sessionId }: { sessionId: string }) {
           </li>
         ))}
       </ul>
+    </section>
+  );
+}
+
+/** Draft comments go out together, to the running execution or as a new run (WB-REV-002). */
+function CommentsPanel({
+  session,
+  runs,
+  comments,
+  current,
+  onChange,
+}: {
+  session: WorkSession;
+  runs: RunSummary[];
+  comments: ReviewCommentView[];
+  current: ChangeSetView | null;
+  onChange: () => Promise<void>;
+}) {
+  const t = useTranslations('Review');
+  const services = useServices();
+  const { workspaces } = services;
+  const active = runs.find((r) => !TERMINAL_RUN_STATUSES.has(r.status)) ?? null;
+  const [targets, setTargets] = useState<{ id: string; label: string }[]>([]);
+  const [target, setTarget] = useState('next');
+  const [note, setNote] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!active) return setTargets([]);
+    void steerTargets(services, active.runId).then(setTargets);
+  }, [services, active]);
+  const drafts = comments.filter((c) => c.state === 'draft');
+  const earlier = comments.filter(
+    (c) => c.state !== 'draft' && (!current || c.from !== current.from || c.to !== current.to),
+  );
+  const steerTo = targets.find((x) => x.id === target);
+
+  const send = async () => {
+    if (!workspaces || drafts.length === 0) return;
+    setBusy(true);
+    setNote(null);
+    try {
+      const ids = drafts.map((c) => c.commentId);
+      const text = await workspaces.feedbackText(session.sessionId, ids);
+      let runId: string | null = null;
+      let executionId: string | null = null;
+      let sent = false;
+      let detail: string | null = null;
+      if (active && steerTo) {
+        ({ sent, detail } = await steer(services, active.runId, steerTo.id, text));
+        runId = active.runId;
+        executionId = steerTo.id;
+      } else if (!active) {
+        const latest = await latestResult(services, runs);
+        ({ runId, detail } = await startFollowUp(services, session, text, {
+          mode: 'mock',
+          startFrom: latest ? { runId: latest.runId, artifactVersionId: latest.id } : null,
+        }));
+        sent = runId !== null;
+      } else {
+        detail = 'choose an execution';
+      }
+      await workspaces.recordFeedback(session.sessionId, {
+        commentIds: ids,
+        intent: steerTo ? 'steer' : 'next',
+        runId,
+        executionId,
+        text,
+        sent,
+        detail,
+      });
+      await services.repository.addSessionEntry(session.sessionId, {
+        intent: steerTo ? 'steer' : 'next',
+        text,
+        state: sent ? (steerTo ? 'sent' : 'started') : 'refused',
+        runId,
+        executionId,
+        detail,
+      });
+      setNote(sent ? t('sent') : detail);
+      await onChange();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section aria-labelledby="comments-heading" className="flex flex-col gap-2">
+      <h3 id="comments-heading" className="text-sm font-semibold">
+        {t('commentsHeading')}
+      </h3>
+      <p className="text-xs text-muted">{t('draftCount', { count: drafts.length })}</p>
+      {drafts.length > 0 ? (
+        <>
+          <ul className="flex flex-col gap-1 text-xs">
+            {drafts.map((c) => (
+              <li key={c.commentId} className="flex items-start justify-between gap-1">
+                <span>
+                  <span className="font-mono">
+                    {c.path}:{c.startLine}
+                  </span>{' '}
+                  {c.body}
+                </span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    void workspaces
+                      ?.setCommentState(session.sessionId, c.commentId, 'deleted')
+                      .then(onChange)
+                  }
+                  className="rounded border border-line px-1"
+                >
+                  {t('deleteDraft')}
+                </button>
+              </li>
+            ))}
+          </ul>
+          <label className="flex flex-col gap-1 text-xs">
+            {t('sendTo')}
+            <select
+              value={active ? target : 'next'}
+              onChange={(e) => setTarget(e.target.value)}
+              className="rounded border border-line bg-surface px-1 py-0.5"
+            >
+              {active ? null : <option value="next">{t('sendNext')}</option>}
+              {targets.map((x) => (
+                <option key={x.id} value={x.id}>
+                  {t('sendSteer', { label: x.label })}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            disabled={busy || (Boolean(active) && !steerTo)}
+            onClick={() => void send()}
+            className="self-start rounded-md bg-accent px-3 py-1 text-xs font-medium text-on-accent disabled:opacity-50"
+          >
+            {t('sendReview')}
+          </button>
+        </>
+      ) : null}
+      {note ? (
+        <p role="status" className="text-xs">
+          {note}
+        </p>
+      ) : null}
+      {comments.filter((c) => c.state !== 'draft').length > 0 ? (
+        <details open={earlier.length > 0}>
+          <summary className="cursor-pointer text-xs text-muted">{t('earlier')}</summary>
+          <ul className="mt-1 flex flex-col gap-1 text-xs">
+            {comments
+              .filter((c) => c.state !== 'draft')
+              .map((c) => (
+                <li key={c.commentId} className="rounded border border-line p-1">
+                  <span className="font-mono">
+                    {c.path}:{c.startLine}
+                  </span>{' '}
+                  · {t(`commentState.${c.state}`)}
+                  <blockquote className="border-l-2 border-line pl-1 font-mono text-muted">
+                    {c.quote}
+                  </blockquote>
+                  <p>{c.body}</p>
+                  {c.state === 'submitted' ? (
+                    <div className="flex gap-1">
+                      {(['addressed', 'obsolete'] as const).map((state) => (
+                        <button
+                          key={state}
+                          type="button"
+                          onClick={() =>
+                            void workspaces
+                              ?.setCommentState(session.sessionId, c.commentId, state)
+                              .then(onChange)
+                          }
+                          className="rounded border border-line px-1"
+                        >
+                          {state === 'addressed' ? t('markAddressed') : t('markObsolete')}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </li>
+              ))}
+          </ul>
+        </details>
+      ) : null}
+    </section>
+  );
+}
+
+/** Approve or ask for changes to exactly these two trees; applying follows an approval. */
+function DecisionPanel({
+  sessionId,
+  from,
+  to,
+  changed,
+  linked,
+}: {
+  sessionId: string;
+  from: string;
+  to: string;
+  changed: number;
+  linked: boolean;
+}) {
+  const t = useTranslations('Review');
+  const { workspaces } = useServices();
+  const [decisions, setDecisions] = useState<ReviewDecisionView[]>([]);
+  const [integrations, setIntegrations] = useState<IntegrationResultView[]>([]);
+  const [plan, setPlan] = useState<IntegrationPlanFile[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const reload = useCallback(async () => {
+    if (!workspaces) return;
+    setDecisions(await workspaces.decisions(sessionId).catch(() => []));
+    setIntegrations(await workspaces.integrations(sessionId).catch(() => []));
+  }, [workspaces, sessionId]);
+  useEffect(() => {
+    void changed;
+    void to;
+    void reload();
+  }, [reload, changed, to]);
+  const latest = decisions[0] ?? null;
+  const approved = latest && latest.decision === 'approved' ? latest : null;
+  const decide = async (decision: 'approved' | 'changes_requested') => {
+    await workspaces?.decide(sessionId, { from, to, decision, note: '' });
+    setPlan(null);
+    await reload();
+  };
+  const applying = plan?.filter((f) => f.outcome === 'apply').length ?? 0;
+
+  return (
+    <section aria-labelledby="decision-heading" className="flex flex-col gap-2">
+      <h3 id="decision-heading" className="text-sm font-semibold">
+        {t('decisionHeading')}
+      </h3>
+      <p className="text-xs text-muted">{t('decisionScope')}</p>
+      {latest ? (
+        <p className="text-xs" data-testid="decision">
+          {t(`decisionState.${latest.decision}`)}
+          {latest.stale ? <span className="text-warning"> · {t('staleDecision')}</span> : null}
+        </p>
+      ) : null}
+      <div className="flex flex-wrap gap-1 text-xs">
+        <button
+          type="button"
+          onClick={() => void decide('approved')}
+          className="rounded border border-accent px-2 py-0.5 text-accent"
+        >
+          {t('approve')}
+        </button>
+        <button
+          type="button"
+          onClick={() => void decide('changes_requested')}
+          className="rounded border border-line px-2 py-0.5"
+        >
+          {t('requestChanges')}
+        </button>
+      </div>
+      {approved && linked ? (
+        <div className="flex flex-col gap-1 rounded border border-line p-2 text-xs">
+          <h4 className="font-semibold">{t('integrateHeading')}</h4>
+          <p className="text-muted">{t('integrateNote')}</p>
+          <button
+            type="button"
+            onClick={() =>
+              void workspaces?.integrationPlan(sessionId, approved.decisionId).then(setPlan)
+            }
+            className="self-start rounded border border-line px-2 py-0.5"
+          >
+            {t('plan')}
+          </button>
+          {plan ? (
+            <>
+              <ul data-testid="integration-plan">
+                {plan.map((f) => (
+                  <li key={f.path} className={f.outcome === 'conflict' ? 'text-warning' : ''}>
+                    <span className="font-mono">{f.path}</span> · {t(`planOutcome.${f.outcome}`)}
+                  </li>
+                ))}
+              </ul>
+              <button
+                type="button"
+                disabled={busy || applying === 0}
+                onClick={() => {
+                  setBusy(true);
+                  void workspaces
+                    ?.integrate(sessionId, approved.decisionId)
+                    .then(() => setPlan(null))
+                    .then(reload)
+                    .finally(() => setBusy(false));
+                }}
+                className="self-start rounded-md bg-accent px-2 py-1 font-medium text-on-accent disabled:opacity-50"
+              >
+                {t('apply', { count: applying })}
+              </button>
+            </>
+          ) : null}
+        </div>
+      ) : null}
+      {integrations.map((integration) => (
+        <div
+          key={integration.integrationId}
+          data-testid="integration"
+          className="flex flex-col gap-1 rounded border border-line p-2 text-xs"
+        >
+          <span className="font-medium">{t(`integrationState.${integration.state}`)}</span>
+          <ul>
+            {integration.files.map((f) => (
+              <li key={f.path}>
+                <span className="font-mono">{f.path}</span> · {t(`fileOutcome.${f.outcome}`)}
+              </li>
+            ))}
+          </ul>
+          {integration.files.some((f) => f.outcome === 'applied') ? (
+            <button
+              type="button"
+              title={t('revertNote')}
+              onClick={() =>
+                void workspaces?.revert(sessionId, integration.integrationId).then(reload)
+              }
+              className="self-start rounded border border-line px-2 py-0.5"
+            >
+              {t('revert')}
+            </button>
+          ) : null}
+        </div>
+      ))}
     </section>
   );
 }

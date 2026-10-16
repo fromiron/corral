@@ -50,6 +50,12 @@
 | POST /sessions/:id/reviewed | — | 지금 상태를 "마지막 검토"로 기록(승인 아님) |
 | GET·POST /sessions/:id/verifications | POST `{commandId}` | 검증 명령 실행(202)과 결과 목록(지난 버전 표시) |
 | GET /sessions/:id/file-operations | — | broker가 한 파일 쓰기 기록(planned·applied·failed·uncertain) |
+| GET·POST /sessions/:id/comments, PATCH …/comments/:commentId | `{from, to, path, side, startLine, endLine, quote, body}` / `{state}` | 두 tree에 묶인 검토 의견(CR-013). 초안만 지울 수 있음 |
+| POST /sessions/:id/feedback/text, POST /sessions/:id/feedback | `{commentIds}` / 보낸 결과 | 의견 묶음의 본문과, 지시·새 Run으로 보낸 기록 |
+| GET·POST /sessions/:id/decisions | `{from, to, decision, note}` | 승인·수정 요청. 작업 복사본이 바뀌면 `stale` |
+| GET /sessions/:id/integration-plan?decisionId= | — | 파일별 apply·skip·conflict |
+| GET·POST /sessions/:id/integrations, POST …/:integrationId/revert | `{decisionId}` | 원본 폴더 반영·되돌리기, 파일별 결과 |
+| GET /projects/:id/inbox | — | 사람이 처리할 항목(결정 대기·대기열·결과 모르는 쓰기·반영 문제·검증 실패·검토 뒤 쓰기) |
 | POST /projects | `{name, description?}` | 폴더 없는 새 프로젝트(이름 1–80자, 같은 이름 허용) |
 | PATCH /projects/:id | `{name?, description?, archived?, expectedRevision}` | 이름·설명·보관. 다른 revision `REVISION_CONFLICT`, 기본 프로젝트 보관·빈 이름 `SCHEMA_INVALID` |
 | DELETE /corrals/:id | — | 저장 정의 삭제. 이미 시작한 Run의 snapshot에는 영향 없음 |

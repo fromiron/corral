@@ -110,3 +110,87 @@ describe('file broker (CR-012)', () => {
     });
   });
 });
+
+describe('review, applying and reverting (CR-013)', () => {
+  it('[WB-REV-004/005] applies the approved tree, skips or refuses conflicts, and reverts only what is unchanged', async () => {
+    const { db, service, call, original } = await setup();
+    const { ReviewService } = await import('../src/files/review.ts');
+    const review = new ReviewService({ db, clock: new FakeClock(), files: service });
+    await call('read_file', { path: 'a.txt' });
+    await call('write_file', { path: 'a.txt', text: 'two\n' });
+    await call('write_file', { path: 'b.txt', text: 'bee\n' });
+    await call('write_file', { path: 'c.txt', text: 'sea\n' });
+    const copy = service.copyOf('session_1');
+    if (!copy) throw new Error('no copy');
+    const to = (await service.latestTree('session_1')) as string;
+
+    // A comment fixed to these trees, sent as a batch.
+    const comment = review.addComment('session_1', {
+      from: copy.baseTree,
+      to,
+      path: 'a.txt',
+      side: 'after',
+      startLine: 1,
+      endLine: 1,
+      quote: 'two',
+      body: 'Say three instead.',
+    });
+    expect(review.batchText('session_1', [comment.commentId])).toContain('a.txt lines 1–1');
+    review.recordBatch('session_1', {
+      commentIds: [comment.commentId],
+      intent: 'next',
+      runId: 'run_2',
+      executionId: null,
+      text: 'x',
+      sent: true,
+      detail: null,
+    });
+    expect(review.comments('session_1')[0]?.state).toBe('submitted');
+
+    // c.txt already exists in the folder with other content: a conflict, never overwritten.
+    writeFileSync(join(original, 'c.txt'), 'mine\n');
+    const decisionId = review.decide('session_1', {
+      from: copy.baseTree,
+      to,
+      decision: 'approved',
+      note: '',
+    });
+    const plan = await review.plan('session_1', decisionId);
+    expect(Object.fromEntries(plan.map((p) => [p.path, p.outcome]))).toEqual({
+      'a.txt': 'apply',
+      'b.txt': 'apply',
+      'c.txt': 'conflict',
+    });
+    const applied = await review.integrate('session_1', decisionId);
+    expect(applied.state).toBe('partial');
+    const { readFileSync } = await import('node:fs');
+    expect(readFileSync(join(original, 'a.txt'), 'utf8')).toBe('two\n');
+    expect(readFileSync(join(original, 'b.txt'), 'utf8')).toBe('bee\n');
+    expect(readFileSync(join(original, 'c.txt'), 'utf8')).toBe('mine\n');
+
+    // A person edits b.txt afterwards: reverting leaves it, and undoes a.txt.
+    writeFileSync(join(original, 'b.txt'), 'edited\n');
+    const reverted = await review.revert('session_1', applied.integrationId);
+    expect(Object.fromEntries(reverted.files.map((f) => [f.path, f.outcome]))).toEqual({
+      'a.txt': 'reverted',
+      'b.txt': 'revert_conflict',
+      'c.txt': 'conflict',
+    });
+    expect(readFileSync(join(original, 'a.txt'), 'utf8')).toBe('one\n');
+    expect(readFileSync(join(original, 'b.txt'), 'utf8')).toBe('edited\n');
+
+    // Decisions go stale when the copy changes; unreviewed writes show in the inbox.
+    await call('write_file', { path: 'd.txt', text: 'dee\n' });
+    expect((await review.decisions('session_1'))[0]?.stale).toBe(true);
+    const inbox = review.inbox(
+      [{ sessionId: 'session_1', title: 't', entries: [{ state: 'queued', text: 'next' }] }],
+      [{ runId: 'run_1', status: 'awaiting_user', sessionId: 'session_1' }],
+    );
+    expect(inbox.map((i) => i.kind).sort()).toEqual([
+      'decision',
+      'integration',
+      'queued',
+      'unreviewed',
+    ]);
+  });
+});
