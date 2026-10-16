@@ -1,4 +1,4 @@
-import { draftLayout, emptyDraft, importDocuments, StatusBadge } from '@corral/react';
+import { arrangeDraft, draftLayout, emptyDraft, importDocuments, StatusBadge } from '@corral/react';
 import { Link, useNavigate, useRouter } from '@tanstack/react-router';
 import { type ChangeEvent, useState } from 'react';
 import { useFormatter, useNow, useTranslations } from 'use-intl';
@@ -63,9 +63,11 @@ export function WorkspacePage() {
     if (!definition) return setErrors(['Choose a definition file (.corral.json).']);
     const imported = importDocuments(definition, layout);
     if (!imported.ok) return setErrors(imported.errors);
-    const layoutDoc = draftLayout(imported.draft, 1);
+    // Without a layout file, arrange the nodes by the flow (roadmap 18).
+    const draft = layout ? imported.draft : arrangeDraft(imported.draft);
+    const layoutDoc = draftLayout(draft, 1);
     const result = await repository.save({
-      definition: imported.draft.definition,
+      definition: draft.definition,
       layout: { nodes: layoutDoc.nodes, viewport: layoutDoc.viewport },
       expectedDefinitionRevision: null,
     });

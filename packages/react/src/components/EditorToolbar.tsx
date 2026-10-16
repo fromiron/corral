@@ -1,4 +1,5 @@
-import { useEffect } from 'react';
+import { useReactFlow } from '@xyflow/react';
+import { useCallback, useEffect } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { useStudioStores } from '../context.tsx';
@@ -11,11 +12,26 @@ export function isTextEditingEvent(event: KeyboardEvent): boolean {
   return target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
 }
 
+/** Dispatched on `window` to tidy up the open editor's canvas (the command palette uses it). */
+export const TIDY_EVENT = 'corral:tidy-canvas';
+
 export function EditorToolbar() {
   const t = useTranslations('Toolbar');
   const { editor } = useStudioStores();
   const canUndo = useStore(editor, (s) => s.canUndo);
   const canRedo = useStore(editor, (s) => s.canRedo);
+  const empty = useStore(editor, (s) => s.draft.definition.nodes.length === 0);
+  const { fitView } = useReactFlow();
+  // Tidy up (roadmap 18), then show the whole result once React Flow has the new positions.
+  const tidy = useCallback(() => {
+    editor.getState().arrange();
+    requestAnimationFrame(() => void fitView({ duration: 200, padding: 0.1 }));
+  }, [editor, fitView]);
+  useEffect(() => {
+    // The command palette lives outside the editor; it asks through this event.
+    window.addEventListener(TIDY_EVENT, tidy);
+    return () => window.removeEventListener(TIDY_EVENT, tidy);
+  }, [tidy]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -51,6 +67,14 @@ export function EditorToolbar() {
         className="rounded-md border border-line px-2 py-1 text-xs disabled:opacity-40"
       >
         {t('redo')}
+      </button>
+      <button
+        type="button"
+        onClick={tidy}
+        disabled={empty}
+        className="rounded-md border border-line px-2 py-1 text-xs disabled:opacity-40"
+      >
+        {t('tidy')}
       </button>
     </div>
   );

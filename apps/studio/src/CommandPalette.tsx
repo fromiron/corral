@@ -1,3 +1,4 @@
+import { TIDY_EVENT } from '@corral/react';
 import { useNavigate } from '@tanstack/react-router';
 import {
   type KeyboardEvent,
@@ -173,6 +174,21 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
         },
       }),
     );
+    // Only in the editor: the canvas listens for the tidy event (roadmap 18).
+    const editing = /\/corrals\/[^/]+\/edit$|^\/demo$/.test(window.location.pathname);
+    const tidy: Command[] = editing
+      ? [
+          {
+            id: 'editor:tidy',
+            title: t('tidy'),
+            group: t('groups.editor'),
+            keywords: ['arrange', 'layout', 'tidy', '정리', '배치'],
+            run: () => {
+              window.dispatchEvent(new Event(TIDY_EVENT));
+            },
+          },
+        ]
+      : [];
     const draftTeam: Command = {
       id: 'create:team-draft',
       title: t('draftTeam'),
@@ -207,7 +223,7 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
         : []),
       { id: 'help', title: t('shortcuts'), group: t('groups.help'), shortcut: '?', run: onHelp },
     ];
-    return [draftTeam, ...fromTemplate, ...go, ...dynamic];
+    return [...tidy, draftTeam, ...fromTemplate, ...go, ...dynamic];
   }, [dynamic, services, navigate, t, tw, onHelp]);
 
   const shown = rankCommands(query, commands);
