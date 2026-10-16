@@ -1,0 +1,280 @@
+{
+  "schemaVersion": "0.1",
+  "id": "eval_team",
+  "name": "Research team (no approval)",
+  "entryNodeId": "research",
+  "input": {
+    "brief": "(set by the suite)",
+    "criteria": [
+      "Answer the brief directly.",
+      "Name the source behind each main claim."
+    ]
+  },
+  "roles": [
+    {
+      "id": "researcher",
+      "name": "Researcher",
+      "prompt": "Act as the Researcher. Use only the task and inputs you were given, keep exact artifact versions and evidence references, and submit with submit_result.",
+      "modelProfile": "model-a",
+      "allowedWorkTools": [
+        "write_artifact"
+      ],
+      "allowedCollaborationTools": [
+        "spawn_subagents",
+        "await_tasks",
+        "read_artifact",
+        "reply",
+        "submit_result"
+      ],
+      "outputContract": "notes"
+    },
+    {
+      "id": "helper",
+      "name": "Research Helper",
+      "prompt": "Act as the Research Helper. Use only the task and inputs you were given, keep exact artifact versions and evidence references, and submit with submit_result.",
+      "modelProfile": "model-b",
+      "allowedWorkTools": [
+        "write_artifact"
+      ],
+      "allowedCollaborationTools": [
+        "read_artifact",
+        "submit_result"
+      ],
+      "outputContract": "notes"
+    },
+    {
+      "id": "writer",
+      "name": "Writer",
+      "prompt": "Act as the Writer. Use only the task and inputs you were given, keep exact artifact versions and evidence references, and submit with submit_result.",
+      "modelProfile": "model-a",
+      "allowedWorkTools": [
+        "write_artifact"
+      ],
+      "allowedCollaborationTools": [
+        "ask",
+        "read_artifact",
+        "submit_result"
+      ],
+      "outputContract": "draft"
+    },
+    {
+      "id": "reviewer",
+      "name": "Reviewer",
+      "prompt": "Act as the Reviewer. Use only the task and inputs you were given, keep exact artifact versions and evidence references, and submit with submit_result.",
+      "modelProfile": "model-b",
+      "allowedWorkTools": [
+        "write_artifact"
+      ],
+      "allowedCollaborationTools": [
+        "read_artifact",
+        "submit_result"
+      ],
+      "outputContract": "review"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "research",
+      "type": "agent",
+      "label": "Research",
+      "roleId": "researcher",
+      "invocation": "scheduled",
+      "inputBindings": [
+        {
+          "kind": "run_input",
+          "name": "brief"
+        }
+      ],
+      "outputName": "notes"
+    },
+    {
+      "id": "helper",
+      "type": "agent",
+      "label": "Research Helper",
+      "roleId": "helper",
+      "invocation": "callable",
+      "inputBindings": [
+        {
+          "kind": "run_input",
+          "name": "brief"
+        }
+      ],
+      "outputName": "notes_part"
+    },
+    {
+      "id": "respond",
+      "type": "agent",
+      "label": "Source Responder",
+      "roleId": "researcher",
+      "invocation": "callable",
+      "inputBindings": [
+        {
+          "kind": "run_input",
+          "name": "brief"
+        }
+      ],
+      "outputName": "answer_notes"
+    },
+    {
+      "id": "review_loop",
+      "type": "loop",
+      "label": "Review loop",
+      "maxIterations": 2
+    },
+    {
+      "id": "write",
+      "type": "agent",
+      "label": "Writer",
+      "loopId": "review_loop",
+      "roleId": "writer",
+      "invocation": "scheduled",
+      "inputBindings": [
+        {
+          "kind": "task_output",
+          "name": "notes",
+          "sourceNodeId": "research"
+        },
+        {
+          "kind": "previous_iteration_output",
+          "name": "draft",
+          "sourceNodeId": "write",
+          "optional": true
+        },
+        {
+          "kind": "previous_iteration_output",
+          "name": "review",
+          "sourceNodeId": "review",
+          "optional": true
+        }
+      ],
+      "outputName": "draft"
+    },
+    {
+      "id": "review",
+      "type": "agent",
+      "label": "Reviewer",
+      "loopId": "review_loop",
+      "roleId": "reviewer",
+      "invocation": "scheduled",
+      "inputBindings": [
+        {
+          "kind": "task_output",
+          "name": "draft",
+          "sourceNodeId": "write"
+        }
+      ],
+      "outputName": "review"
+    },
+    {
+      "id": "review_decision",
+      "type": "decision",
+      "label": "Review decision",
+      "loopId": "review_loop",
+      "mode": "review",
+      "rule": "review_verdict",
+      "inputBindings": [
+        {
+          "kind": "task_output",
+          "name": "review",
+          "sourceNodeId": "review"
+        }
+      ]
+    },
+    {
+      "id": "output",
+      "type": "output",
+      "label": "Output",
+      "inputBindings": [
+        {
+          "kind": "task_output",
+          "name": "draft",
+          "sourceNodeId": "write"
+        }
+      ],
+      "requireApproval": false
+    }
+  ],
+  "controlEdges": [
+    {
+      "id": "e1",
+      "source": "research",
+      "sourcePort": "out",
+      "target": "review_loop",
+      "targetPort": "enter"
+    },
+    {
+      "id": "e2",
+      "source": "review_loop",
+      "sourcePort": "body",
+      "target": "write",
+      "targetPort": "in"
+    },
+    {
+      "id": "e3",
+      "source": "write",
+      "sourcePort": "out",
+      "target": "review",
+      "targetPort": "in"
+    },
+    {
+      "id": "e4",
+      "source": "review",
+      "sourcePort": "out",
+      "target": "review_decision",
+      "targetPort": "in"
+    },
+    {
+      "id": "e5",
+      "source": "review_decision",
+      "sourcePort": "revise",
+      "target": "review_loop",
+      "targetPort": "repeat"
+    },
+    {
+      "id": "e6",
+      "source": "review_decision",
+      "sourcePort": "pass",
+      "target": "review_loop",
+      "targetPort": "exit"
+    },
+    {
+      "id": "e7",
+      "source": "review_loop",
+      "sourcePort": "next",
+      "target": "output",
+      "targetPort": "in"
+    }
+  ],
+  "capabilityLinks": [
+    {
+      "id": "cap1",
+      "kind": "delegate",
+      "sourceNodeId": "research",
+      "targetNodeId": "helper"
+    },
+    {
+      "id": "cap2",
+      "kind": "question",
+      "sourceNodeId": "write",
+      "targetNodeId": "respond"
+    },
+    {
+      "id": "cap3",
+      "kind": "delegate",
+      "sourceNodeId": "respond",
+      "targetNodeId": "helper"
+    }
+  ],
+  "limits": {
+    "maxDelegationDepth": 2,
+    "maxModelConcurrency": 3,
+    "maxSpawns": 12,
+    "maxModelCalls": 40,
+    "maxOutputTokens": 64000,
+    "maxOutputTokensPerCall": 4096,
+    "maxQuestions": 6,
+    "questionTimeoutMs": 120000,
+    "modelTimeoutMs": 180000,
+    "runDeadlineMs": 3600000
+  }
+}

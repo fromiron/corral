@@ -1,0 +1,61 @@
+#!/usr/bin/env python3
+"""Remove known AI coauthors while preserving human attribution and message bytes."""
+import re
+import sys
+from pathlib import Path
+
+# shortcut: known AI identities only; extend the patterns when adopting another tool.
+AI_TRAILER = re.compile(
+    rb"^[ \t]*Co-authored-by:[ \t]*"
+    rb"(?:Claude(?: Code| (?:Opus|Sonnet|Haiku)(?: [\w.-]+)*(?: \(\d+[KM] context\))?)?|"
+    rb"(?:OpenAI )?Codex|ChatGPT|(?:GitHub )?Copilot|Cursor(?: Agent)?|"
+    rb"Gemini(?: CLI)?|Grok|AI)[ \t]*"
+    rb"<(?:noreply|no-reply|claude|codex|chatgpt|copilot|cursor|cursoragent|gemini|grok|ai|bot|\d+\+copilot)"
+    rb"@(?:anthropic\.com|openai\.com|github\.com|users\.noreply\.github\.com|cursor\.com|google\.com|x\.ai)>[ \t]*$",
+    re.IGNORECASE,
+)
+
+
+def clean_message(message: bytes) -> bytes:
+    return b"".join(
+        line for line in message.splitlines(keepends=True)
+        if not AI_TRAILER.fullmatch(line.rstrip(b"\r\n"))
+    )
+
+
+def self_test() -> None:
+    people = b"Co-authored-by: Alice <alice@example.com>\nCo-authored-by: Claude <claude@example.com>\nCo-authored-by: Claude Smith <claude@anthropic.com>\n"
+    assert clean_message(people) == people
+    body = "Fix attribution\n\n본문: Co-authored-by: Claude <noreply@anthropic.com>\n".encode()
+    assert clean_message(body) == body
+    for author in (
+        b"Claude <noreply@anthropic.com>",
+        b"Claude Opus 4.6 <noreply@anthropic.com>",
+        b"Claude Opus 5.5 <noreply@anthropic.com>",
+        b"Claude Opus 4.7 (1M context) <noreply@anthropic.com>",
+        b"Codex <codex@openai.com>",
+        b"GitHub Copilot <copilot@github.com>",
+        b"Copilot <223556219+Copilot@users.noreply.github.com>",
+        b"Cursor <cursoragent@cursor.com>",
+        b"Gemini CLI <gemini@google.com>",
+        b"Grok <grok@x.ai>",
+    ):
+        for ending in (b"\n", b"\r\n", b""):
+            message = body + people + b"cO-aUtHoReD-bY: " + author + ending
+            assert clean_message(message) == body + people
+    duplicate = b"Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>\n" * 2
+    assert clean_message(body + duplicate) == body
+    assert clean_message(clean_message(body + duplicate)) == body
+    assert clean_message(b"No attribution\r\n\xff") == b"No attribution\r\n\xff"
+    print("PASS: AI removal, human/body preservation, case, CRLF, and raw bytes")
+
+
+if __name__ == "__main__":
+    if sys.argv[1:] == ["--self-test"]:
+        self_test()
+    else:
+        path = Path(sys.argv[1])
+        original = path.read_bytes()
+        cleaned = clean_message(original)
+        if cleaned != original:
+            path.write_bytes(cleaned)

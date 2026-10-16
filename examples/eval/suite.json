@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "0.1",
+  "briefs": [
+    {
+      "id": "compare-db",
+      "brief": "Compare SQLite and PostgreSQL for a small team's internal tool."
+    },
+    {
+      "id": "explain-cache",
+      "brief": "Explain when an HTTP cache helps and when it hurts."
+    }
+  ],
+  "variants": [
+    {
+      "id": "single",
+      "corral": "single-agent.corral.json"
+    },
+    {
+      "id": "team",
+      "corral": "research-team-headless.corral.json"
+    }
+  ]
+}

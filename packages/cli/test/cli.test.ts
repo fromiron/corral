@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -7,6 +7,7 @@ import { Coordinator, InProcessTransport, waitForProjection } from '@corral/core
 import { startCorralServer } from '@corral/server';
 import { openReadOnlyDatabase, SqliteRunStore } from '@corral/storage-sqlite';
 import {
+  collaborationCorral,
   FakeClock,
   Gate,
   linearCorral,
@@ -300,5 +301,99 @@ describe('judgments in inspect (C-071)', () => {
     const text = output.join('\n');
     expect(text).toContain('observe only, not applied');
     expect(text).toMatch(/call_\S+ .*local-heuristic@1 medium/);
+  });
+});
+
+describe('headless exec and eval (roadmap Core-③)', () => {
+  const io = (cwd: string, output: string[]) => ({
+    cwd,
+    write: (line: string) => output.push(line),
+    signal: new AbortController().signal,
+  });
+
+  it('[TC-DX-001-H] exec runs one Corral without Studio and reports the result as JSON', async () => {
+    const cwd = workspace();
+    const path = join(cwd, 'one.corral.json');
+    writeFileSync(path, JSON.stringify(linearCorral(['writer'])));
+    const output: string[] = [];
+    expect(await runCli(['exec', path, '--demo', '--json'], io(cwd, output))).toBe(0);
+    expect(output.some((line) => line.includes('Building Studio'))).toBe(false);
+    const result = JSON.parse(output.at(-1) ?? '{}');
+    expect(result).toMatchObject({ status: 'succeeded', needsUser: false });
+    expect(result.output).toContain('writer');
+    expect(result.modelCalls).toBe(2);
+    expect(result.executions).toBe(1);
+    expect(typeof result.wallMs).toBe('number');
+  });
+
+  it('[TC-DX-001-N] exec never approves for a person: a run that needs a decision is cancelled with exit 3', async () => {
+    const cwd = workspace();
+    const definition = linearCorral(['writer']);
+    const output = definition.nodes.find((n) => n.type === 'output');
+    if (output?.type === 'output') output.requireApproval = true;
+    const path = join(cwd, 'approval.corral.json');
+    writeFileSync(path, JSON.stringify(definition));
+    const lines: string[] = [];
+    expect(await runCli(['exec', path, '--demo'], io(cwd, lines))).toBe(3);
+    expect(lines.join('\n')).toContain('needs a person');
+    const db = openReadOnlyDatabase(join(cwd, '.corral', 'corral.db'));
+    const run = new SqliteRunStore(db).listRuns()[0];
+    db.close();
+    expect(run?.status).toBe('cancelled');
+  });
+
+  it('[TC-DX-001-H] eval runs every variant on every brief and summarises calls, tokens and time', async () => {
+    const cwd = workspace();
+    writeFileSync(join(cwd, 'single.corral.json'), JSON.stringify(linearCorral(['writer'])));
+    writeFileSync(join(cwd, 'team.corral.json'), JSON.stringify(collaborationCorral()));
+    writeFileSync(
+      join(cwd, 'suite.json'),
+      JSON.stringify({
+        schemaVersion: '0.1',
+        briefs: [
+          { id: 'compare', brief: 'Compare two databases.' },
+          { id: 'explain', brief: 'Explain a cache.' },
+        ],
+        variants: [
+          { id: 'single', corral: 'single.corral.json' },
+          { id: 'team', corral: 'team.corral.json' },
+        ],
+      }),
+    );
+    const lines: string[] = [];
+    expect(
+      await runCli(['eval', 'suite.json', '--demo', '--out', 'report.json'], io(cwd, lines)),
+    ).toBe(0);
+    const report = JSON.parse(readFileSync(join(cwd, 'report.json'), 'utf8'));
+    expect(report.results).toHaveLength(4);
+    expect(
+      report.results.map((r: { variant: string; brief: string }) => `${r.variant}:${r.brief}`),
+    ).toEqual(['single:compare', 'team:compare', 'single:explain', 'team:explain']);
+    const team = report.summary.find((s: { variant: string }) => s.variant === 'team');
+    const single = report.summary.find((s: { variant: string }) => s.variant === 'single');
+    expect(team.succeeded).toBe(2);
+    expect(team.meanModelCalls).toBeGreaterThan(single.meanModelCalls);
+    expect(lines.join('\n')).toMatch(/\| single \|/);
+    expect(lines.join('\n')).toMatch(/\| team \|/);
+  });
+
+  it('[TC-DX-001-N] an invalid suite is refused before any run starts', async () => {
+    const cwd = workspace();
+    writeFileSync(join(cwd, 'single.corral.json'), JSON.stringify(linearCorral(['writer'])));
+    writeFileSync(
+      join(cwd, 'suite.json'),
+      JSON.stringify({
+        schemaVersion: '0.1',
+        briefs: [{ id: 'a', brief: 'x' }],
+        variants: [
+          { id: 'v', corral: 'single.corral.json' },
+          { id: 'v', corral: 'missing.corral.json' },
+        ],
+      }),
+    );
+    const lines: string[] = [];
+    expect(await runCli(['eval', 'suite.json', '--demo'], io(cwd, lines))).toBe(1);
+    expect(lines.join('\n')).toMatch(/duplicate variant id v|missing\.corral\.json/);
+    expect(existsSync(join(cwd, '.corral', 'corral.db'))).toBe(false);
   });
 });
