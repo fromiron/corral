@@ -19,6 +19,10 @@ export function RunActions({
   const [confirmCancel, setConfirmCancel] = useState(false);
   if (!projection) return null;
   const terminal = TERMINAL_RUN_STATUSES.has(projection.status);
+  // A finished run in the page header has no controls: only its receipts, if any.
+  if (compact && terminal) {
+    return <CommandReceipts session={session} target={`run:${projection.runId}`} />;
+  }
   const send = (command: SessionCommand) => {
     void session
       .getState()

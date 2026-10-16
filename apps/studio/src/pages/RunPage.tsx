@@ -87,22 +87,31 @@ function RunWorkspace({
   const target = useSteerTarget(session, execution ?? null);
   const layout = useSavedLayout(definition, projection?.corralId ?? null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  // Below 768px one panel shows at a time (roadmap 19); wider screens show them all.
+  const [panel, setPanel] = useState<NarrowPanel>('canvas');
+  const shown = (name: NarrowPanel) => (panel === name ? '' : 'max-md:hidden');
 
-  const chooseExecution = (id: string) =>
+  const chooseExecution = (id: string) => {
+    setPanel('side');
     void navigate({ search: (s) => ({ ...s, execution: id }) });
-  const openArtifact = (id: string) => void navigate({ search: (s) => ({ ...s, artifact: id }) });
+  };
+  const openArtifact = (id: string) => {
+    setPanel('side');
+    void navigate({ search: (s) => ({ ...s, artifact: id }) });
+  };
   const unknownExecution =
     execution && projection && !projection.executions[execution] ? execution : null;
   const highlightedNode =
     selectedNodeId ?? (execution ? (projection?.executions[execution]?.nodeId ?? null) : null);
 
   return (
-    <div className="grid h-full grid-rows-[auto_minmax(0,1fr)]">
+    <div className="flex h-full min-h-0 flex-col">
       <RunSummary session={session} definition={definition} />
-      <main className="run-layout">
+      <NarrowViews panel={panel} onChoose={setPanel} />
+      <main className="run-layout min-h-0 flex-1">
         <aside
           aria-labelledby="run-executions-heading"
-          className="flex min-h-0 flex-col gap-2 overflow-auto border-r border-line p-3 [grid-area:tree] max-[1279px]:border-t"
+          className={`flex min-h-0 flex-col gap-2 overflow-auto border-r border-line p-3 [grid-area:tree] max-[1279px]:border-t ${shown('tree')}`}
         >
           <h2 id="run-executions-heading" className="text-sm font-semibold">
             {t('executions')}
@@ -113,7 +122,7 @@ function RunWorkspace({
             selectedExecutionId={execution ?? null}
           />
         </aside>
-        <div className="relative min-h-0 [grid-area:canvas]">
+        <div className={`relative min-h-0 [grid-area:canvas] ${shown('canvas')}`}>
           {layout ? (
             <RunCanvas
               session={session}
@@ -124,7 +133,9 @@ function RunWorkspace({
             />
           ) : null}
         </div>
-        <aside className="flex min-h-0 flex-col gap-4 overflow-auto border-l border-line p-3 [grid-area:side]">
+        <aside
+          className={`flex min-h-0 flex-col gap-4 overflow-auto border-l border-line p-3 [grid-area:side] ${shown('side')}`}
+        >
           {unknownExecution ? (
             <p role="alert" className="rounded border border-warning p-2 text-xs text-warning">
               {t('executionMissing', { executionId: unknownExecution })}
@@ -173,7 +184,9 @@ function RunWorkspace({
           ) : null}
           <ReinsPanel session={session} target={target} />
         </aside>
-        <div className="flex min-h-0 flex-col border-t border-line [grid-area:dock]">
+        <div
+          className={`flex min-h-0 flex-col border-t border-line [grid-area:dock] ${shown('dock')}`}
+        >
           <RunDetails session={session} openArtifact={openArtifact} />
         </div>
       </main>
@@ -377,6 +390,55 @@ const TABS = ['output', 'tasks', 'questions', 'activity', 'budget'] as const;
 type Tab = (typeof TABS)[number];
 
 /** The run's details as tabs (WAI-ARIA tabs). The Output tab opens once the run succeeds. */
+type NarrowPanel = 'canvas' | 'tree' | 'side' | 'dock';
+const NARROW_PANELS: NarrowPanel[] = ['canvas', 'tree', 'side', 'dock'];
+
+/** The panel switcher of a narrow Run page (roadmap 19); hidden from 768px up. */
+function NarrowViews({
+  panel,
+  onChoose,
+}: {
+  panel: NarrowPanel;
+  onChoose: (panel: NarrowPanel) => void;
+}) {
+  const t = useTranslations('RunPage.views');
+  const refs = useRef<Partial<Record<NarrowPanel, HTMLButtonElement | null>>>({});
+  const move = (event: KeyboardEvent, index: number) => {
+    const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
+    if (!step) return;
+    event.preventDefault();
+    const next = NARROW_PANELS[(index + step + NARROW_PANELS.length) % NARROW_PANELS.length];
+    if (!next) return;
+    onChoose(next);
+    refs.current[next]?.focus();
+  };
+  return (
+    <div
+      role="tablist"
+      aria-label={t('label')}
+      className="flex gap-1 overflow-x-auto border-b border-line px-2 py-1 md:hidden"
+    >
+      {NARROW_PANELS.map((name, index) => (
+        <button
+          key={name}
+          ref={(el) => {
+            refs.current[name] = el;
+          }}
+          type="button"
+          role="tab"
+          aria-selected={panel === name}
+          tabIndex={panel === name ? 0 : -1}
+          onClick={() => onChoose(name)}
+          onKeyDown={(event) => move(event, index)}
+          className={`shrink-0 rounded px-2 py-1 text-xs ${panel === name ? 'bg-accent text-on-accent' : 'border border-line'}`}
+        >
+          {t(name)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function RunDetails({
   session,
   openArtifact,

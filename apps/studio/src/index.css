@@ -25,3 +25,16 @@
       "dock side";
   }
 }
+/* Phones and split screens (roadmap 19): one panel at a time, chosen above. */
+@media (max-width: 767px) {
+  .run-layout {
+    display: flex;
+    flex-direction: column;
+  }
+  .run-layout > * {
+    flex: 1 1 auto;
+    min-height: 0;
+    border-left-width: 0;
+    border-right-width: 0;
+  }
+}
