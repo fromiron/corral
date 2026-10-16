@@ -227,10 +227,13 @@ test('[TC-DEV-005-H] the default demo team delegates, asks, revises once and fin
 test('[TC-DEV-005-N] steering the second-round Writer changes that draft, not the submitted first one', async ({
   page,
 }) => {
-  await page.goto('/demo?delay=700');
+  // The steer has to land while the round 2 Writer runs: a wider reply window for slow CI
+  // runners (firefox missed it at 700 ms in #18); assertions unchanged.
+  test.setTimeout(120_000);
+  await page.goto('/demo?delay=1500');
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   const writers = page.locator('li[data-execution-id]').filter({ hasText: /^Writer ·/ });
-  await expect(writers.filter({ hasText: 'Round 2' })).toHaveCount(1, { timeout: 30_000 });
+  await expect(writers.filter({ hasText: 'Round 2' })).toHaveCount(1, { timeout: 60_000 });
   // The guide offers the second-round Writer as the target; Reins confirm it.
   await step(page, 'steer').getByRole('button', { name: 'Steer the round 2 Writer' }).click();
   const reins = page.getByRole('region', { name: 'Reins', exact: true });
