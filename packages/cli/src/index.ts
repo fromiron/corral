@@ -433,14 +433,15 @@ function judgmentReport(projection: RunProjection): string {
 
 /** The local server without Studio: nothing is built or served (exec, eval). */
 async function startHeadless(values: { demo?: boolean }, workspace: string) {
-  const { createLiveModels, startCorralServer } = await import('@corral/server');
+  const { createLiveModels, defaultDecisionProviders, startCorralServer } = await import(
+    '@corral/server'
+  );
   const { ScriptedAgentAdapter } = await import('@corral/testkit');
-  const { defaultModelDir, OnnxEffortProvider } = await import('@corral/effort-judge');
   return startCorralServer({
     workspace,
     port: 0,
     agents: new ScriptedAgentAdapter({ turns: 2 }),
-    decisionProviders: [new OnnxEffortProvider({ dir: defaultModelDir() })],
+    decisionProviders: defaultDecisionProviders(),
     ...(values.demo ? {} : { live: createLiveModels() }),
   });
 }
@@ -469,14 +470,15 @@ async function startServer(
       );
     });
   }
-  const { createLiveModels, startCorralServer } = await import('@corral/server');
+  const { createLiveModels, defaultDecisionProviders, startCorralServer } = await import(
+    '@corral/server'
+  );
   const { ScriptedAgentAdapter } = await import('@corral/testkit');
-  const { defaultModelDir, OnnxEffortProvider } = await import('@corral/effort-judge');
   return startCorralServer({
     workspace,
     port,
     staticDir,
-    decisionProviders: [new OnnxEffortProvider({ dir: defaultModelDir() })],
+    decisionProviders: defaultDecisionProviders(),
     agents: new ScriptedAgentAdapter({ turns: 2 }),
     ...(values.demo ? {} : { live: createLiveModels() }),
   });

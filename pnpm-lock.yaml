@@ -38,6 +38,9 @@ importers:
       '@corral/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@corral/effort-judge':
+        specifier: workspace:*
+        version: link:../../packages/effort-judge
       '@corral/runner-langgraph':
         specifier: workspace:*
         version: link:../../packages/runner-langgraph
