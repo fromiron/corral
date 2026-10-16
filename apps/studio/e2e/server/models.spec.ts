@@ -281,3 +281,15 @@ test.describe('editing models on the Models page (CR-008)', () => {
     expect(corral.errors.filter((e) => !e.includes('400'))).toEqual([]);
   });
 });
+
+test('[TC-UX-001-H] the first-run checklist asks for a model on a live server until one is signed in (roadmap 17)', async ({
+  page,
+  corral,
+}) => {
+  await corral.open('/');
+  const list = page.getByRole('region', { name: 'Getting started' });
+  const model = list.getByTestId('step-model');
+  await expect(model).toHaveAttribute('data-done', 'false');
+  await model.getByRole('link', { name: 'Connect a model' }).click();
+  await expect(page).toHaveURL(/\/settings\/models$/);
+});

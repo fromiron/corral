@@ -945,5 +945,19 @@
     "choose": "Compare {count} runs",
     "select": "Select run {runId} to compare",
     "back": "Back to Corrals"
+  },
+  "GettingStarted": {
+    "heading": "Getting started",
+    "hide": "Hide this",
+    "done": "done",
+    "model": "Connect a model",
+    "modelAction": "Connect a model",
+    "corral": "Make a Corral",
+    "corralAction": "Start from a goal",
+    "corralOr": "or pick a template below",
+    "run": "Run it",
+    "runAction": "Open a Corral and press Run",
+    "review": "Read the result",
+    "reviewAction": "Open a run's page from the list below"
   }
 }

@@ -29,9 +29,12 @@ import { useStore } from 'zustand';
 import { useModelPrices } from '../prices.ts';
 import { runRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
+import { markRunReviewed } from './GettingStarted.tsx';
 
 /** /runs/$runId?execution=…&artifact=… — one run: graph, call tree, details and Reins (C-066). */
 export function RunPage() {
+  // Reading a run's result is the last first-run step (roadmap 17).
+  useEffect(() => markRunReviewed(), []);
   const t = useTranslations('RunPage');
   const { runId } = runRoute.useParams();
   const { session } = useServices();
