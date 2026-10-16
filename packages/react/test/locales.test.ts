@@ -108,7 +108,7 @@ describe('Korean messages (UX-A5)', () => {
     // Text that should be translated: anything with a lowercase English word of 4+ letters
     // outside placeholders, except product terms and technical tokens.
     const allowed =
-      /\b(Corral|Corrals|Run|Reins|Loop|Coordinator|Research|Writer|Reviewer|Helper|Source|Responder|JSON|corral|json|config|revision|control|http|Ctrl|Shift|Enter)\b/g;
+      /\b(Corral|Corrals|Run|Reins|Loop|Coordinator|Research|Writer|Reviewer|Helper|Source|Responder|JSON|corral|json|config|revision|control|http|Ctrl|Shift|Enter|codex|chmod|auth)\b/g;
     const untranslated = [...koLeaves].filter(([, message]) =>
       /\b[a-z]{4,}\b/.test(parseIcu(message).text.replace(allowed, '')),
     );

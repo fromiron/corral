@@ -34,7 +34,12 @@ import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import packageJson from '../package.json' with { type: 'json' };
 import { ImportInput, type InputOptions, InputRegistry } from './inputs.ts';
-import { assertOutsideWorkspace, DEFAULT_PROFILES, ModelRegistry } from './models/index.ts';
+import {
+  assertOutsideWorkspace,
+  DEFAULT_PROFILES,
+  ModelRegistry,
+  type ProfileConfig,
+} from './models/index.ts';
 import { RandomIdFactory, systemClock, systemTimers } from './runtime.ts';
 import { InputError } from './safe-http.ts';
 import {
@@ -87,6 +92,8 @@ export interface LiveModels {
   subscriptionModels?: (providerId: string) => ReadonlySet<string> | null;
   /** The agent adapter for live runs; it asks the registry for each request's token. */
   agents(registry: ModelRegistry): AgentAdapter;
+  /** Profiles when the workspace names none; they follow the available sign-in (CR-004). */
+  defaultProfiles?: () => Promise<ProfileConfig[]>;
 }
 
 /** Simulated agents for mock runs, real ones for live runs (fixed per run in its snapshot). */
@@ -190,7 +197,9 @@ async function createCorralServer(
     assertOutsideWorkspace(options.live.configDir, workspace.root);
     registry = new ModelRegistry(
       options.live.models,
-      workspace.config.modelProfiles ?? DEFAULT_PROFILES,
+      workspace.config.modelProfiles ??
+        (await options.live.defaultProfiles?.()) ??
+        DEFAULT_PROFILES,
       {
         credentials: options.live.credentials,
         getDeviceId: options.live.getDeviceId,

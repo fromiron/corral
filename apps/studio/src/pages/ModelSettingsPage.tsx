@@ -56,6 +56,7 @@ function ProviderCard({ provider }: { provider: ProviderAuthView }) {
   const [redirect, setRedirect] = useState('');
   const [busy, setBusy] = useState(false);
   const login = provider.login;
+  const borrowed = provider.source === 'codex-cli';
 
   const act = async (action: () => Promise<unknown>) => {
     setBusy(true);
@@ -83,7 +84,7 @@ function ProviderCard({ provider }: { provider: ProviderAuthView }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h4 className="font-medium">{provider.name}</h4>
         <div className="flex items-center gap-2 text-xs">
-          {provider.signedIn && provider.method === 'oauth' ? (
+          {provider.signedIn && provider.method === 'oauth' && !borrowed ? (
             <button
               type="button"
               disabled={busy}
@@ -95,26 +96,32 @@ function ProviderCard({ provider }: { provider: ProviderAuthView }) {
               {t('signOut')}
             </button>
           ) : null}
-          {!provider.signedIn && !login ? (
+          {(!provider.signedIn || borrowed) && !login ? (
             <button
               type="button"
               disabled={busy}
               onClick={() =>
                 void act(() => models?.startLogin(provider.providerId) ?? Promise.resolve())
               }
-              className="rounded-md bg-accent px-3 py-1.5 font-medium text-on-accent"
+              className={
+                borrowed
+                  ? 'rounded border border-line px-2 py-1'
+                  : 'rounded-md bg-accent px-3 py-1.5 font-medium text-on-accent'
+              }
             >
-              {t('signIn')}
+              {borrowed ? t('signInInstead') : t('signIn')}
             </button>
           ) : null}
         </div>
       </div>
       <p role="status" className="text-sm" data-testid="auth-status">
-        {provider.method === 'oauth'
-          ? t('signedInOauth', { subscription: String(provider.subscription) })
-          : provider.method === 'api_key'
-            ? t('signedInKey')
-            : t('notSignedIn')}
+        {borrowed
+          ? t('signedInCodex')
+          : provider.method === 'oauth'
+            ? t('signedInOauth', { subscription: String(provider.subscription) })
+            : provider.method === 'api_key'
+              ? t('signedInKey')
+              : t('notSignedIn')}
       </p>
       {provider.expiresAt && provider.method === 'oauth' ? (
         <p className="text-xs text-muted">
@@ -124,6 +131,12 @@ function ProviderCard({ provider }: { provider: ProviderAuthView }) {
               timeStyle: 'short',
             }),
           })}
+        </p>
+      ) : null}
+      {borrowed ? <p className="text-xs text-muted">{t('codexHint')}</p> : null}
+      {borrowed && !provider.permissionsOk ? (
+        <p role="alert" className="text-xs text-danger">
+          {t('codexPermissions')}
         </p>
       ) : null}
 

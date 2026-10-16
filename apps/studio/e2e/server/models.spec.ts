@@ -1,4 +1,4 @@
-import { FAKE_REDIRECT_OK } from '@corral/server/testing';
+import { FAKE_CODEX_ACCESS, FAKE_REDIRECT_OK } from '@corral/server/testing';
 import type { Page } from '@playwright/test';
 import { expect, test } from './harness.ts';
 
@@ -82,4 +82,40 @@ test('a live run is refused until sign-in, then runs on the signed-in model', as
   await expect(page.getByTestId('run-output')).toHaveText('Live answer from the model.');
   await expect(page.getByTestId('run-status')).toContainText('Succeeded');
   expect(corral.fake?.seen.tokens.every((token) => token === 'access-1-secret')).toBe(true);
+});
+
+test.describe('a borrowed Codex CLI login (CR-004)', () => {
+  test.use({ codexLogin: true });
+
+  test('[TC-SEC-002-H] is shown as the Codex login, read only, and live runs use it', async ({
+    page,
+    corral,
+  }) => {
+    corral.fake?.answerWith('Answer through the Codex login.');
+    await corral.open('/');
+    await page.getByRole('link', { name: 'Models' }).click();
+    const openai = page.getByTestId('provider-openai');
+    await expect(openai.getByTestId('auth-status')).toContainText(
+      'Using your Codex CLI login (read only)',
+    );
+    await expect(openai).toContainText('Corral does not renew it');
+    await expect(openai).toContainText('Current token valid until');
+    // Signing out of Codex happens in Codex; a Corral sign-in can take over instead.
+    await expect(openai.getByRole('button', { name: 'Sign out' })).toHaveCount(0);
+    await expect(openai.getByRole('button', { name: 'Sign in to Corral instead' })).toBeVisible();
+    await expect(page.getByTestId('profile-model-a')).toContainText('Ready');
+    const content = await page.content();
+    expect(content).not.toContain(FAKE_CODEX_ACCESS);
+    expect(content).not.toContain('secret');
+    expect(content).not.toContain('auth.json');
+
+    await page.getByRole('link', { name: 'Corrals' }).click();
+    await agentToOutput(page);
+    await page.getByLabel('Agents').selectOption({ label: 'Live models (uses your sign-in)' });
+    await page.getByRole('button', { name: 'Run', exact: true }).click();
+    await expect(page.getByTestId('run-output')).toHaveText('Answer through the Codex login.');
+    expect(corral.fake?.seen.tokens.length).toBeGreaterThan(0);
+    expect(corral.fake?.seen.tokens.every((token) => token === FAKE_CODEX_ACCESS)).toBe(true);
+    expect(corral.errors).toEqual([]);
+  });
 });

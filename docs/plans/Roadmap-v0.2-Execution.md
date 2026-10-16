@@ -24,7 +24,7 @@
 | 9 | Core | 특정 버전에서 새 Run 시작(fork from version) | 대기 |
 | 10 | Core | Goal → 팀 초안 생성(사람 승인 후 편집기) | 대기 |
 | 11 | Core | Pi provider 확장(API key: OpenAI·Anthropic·OpenAI 호환·Ollama) | 대기 |
-| 12 | Core·보안 | OS 표준 인증 파일 사용: Codex CLI 로그인(`~/.codex/auth.json`) 재사용과 Corral 자격 증명의 OS 표준 설정 디렉터리. CR-001 변경이므로 CR-004 먼저 | 대기 |
+| 12 | Core·보안 | OS 표준 인증 파일 사용: Codex CLI 로그인(`~/.codex/auth.json`) 재사용과 Corral 자격 증명의 OS 표준 설정 디렉터리. CR-001 변경이므로 CR-004 먼저 | 완료(PR 대기, [CR-004](../change-requests/CR-004-codex-login-reuse.md)) |
 
 ## 진행 기록
 
