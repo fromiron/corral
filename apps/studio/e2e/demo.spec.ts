@@ -5,8 +5,9 @@ test('[TC-DEV-005-H] /demo starts a key-free worker runtime and steering changes
   page,
   context,
 }) => {
-  // The steer must land before the simulated agent's last request; slow CI runners need room.
-  test.setTimeout(60_000);
+  // The steer must land before the simulated agent's last request; slow CI runners need room
+  // (chromium missed a 3000 ms window in #27).
+  test.setTimeout(120_000);
   const runtimeRequests: string[] = [];
   page.on('request', (request) => {
     if (['fetch', 'xhr', 'eventsource'].includes(request.resourceType()))
@@ -21,7 +22,7 @@ test('[TC-DEV-005-H] /demo starts a key-free worker runtime and steering changes
   });
   const workerReady = page.waitForEvent('worker');
   // A wider window than the run needs on slow CI runners; the assertions are unchanged.
-  await page.goto('/demo?template=starter&delay=3000');
+  await page.goto('/demo?template=starter&delay=6000');
   await expect(page.getByLabel('Corral name')).toHaveValue('Demo Corral');
   await workerReady;
   await expect(page.getByText('Demo / Simulated agents')).toBeVisible();
@@ -34,7 +35,7 @@ test('[TC-DEV-005-H] /demo starts a key-free worker runtime and steering changes
   await page.getByLabel('Instruction').fill('Use primary sources only.');
   await page.getByLabel('Instruction').press('Enter');
   await expect(page.getByTestId('run-output')).toContainText('Use primary sources only.', {
-    timeout: 30_000,
+    timeout: 60_000,
   });
   await expect(page.getByTestId('run-output')).toContainText('Compare fountain pens.');
   await expect(page.getByTestId('run-status')).toContainText('Succeeded');
