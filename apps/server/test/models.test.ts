@@ -515,3 +515,105 @@ describe('team drafts from a goal (CR-006)', () => {
     expect(noLive.status).toBe(501);
   });
 });
+
+describe('editing profiles and endpoints from the Models page (CR-008)', () => {
+  const configOf = (workspace: string) =>
+    JSON.parse(readFileSync(join(workspace, '.corral', 'config.json'), 'utf-8'));
+
+  it('[TC-SEC-002-H] lists the catalog without credentials, and saving changes only the two model keys', async () => {
+    const fake = makeFake();
+    fake.respond();
+    const context = await start(fake, FAKE_PROFILES, { hardCaps: { maxModelCalls: 50 } });
+    await signIn(context.json);
+    const catalog = (await context.json('/model-catalog')).body as {
+      providerId: string;
+      models: { id: string }[];
+      methods: { oauth: boolean; apiKey: boolean };
+    }[];
+    const openai = catalog.find((p) => p.providerId === 'openai');
+    expect(openai?.models.map((m) => m.id)).toContain('gpt-test-b');
+    expect(openai?.methods).toEqual({ oauth: true, apiKey: true });
+    expect(catalog.find((p) => p.providerId === 'anthropic')?.methods.oauth).toBe(false);
+
+    const current = await context.json('/model-config');
+    expect(current.body).toMatchObject({
+      modelProfiles: FAKE_PROFILES,
+      modelProviders: [],
+      usingDefaults: false,
+    });
+    const saved = await context.json('/model-config', {
+      method: 'PUT',
+      body: JSON.stringify({
+        revision: current.body.revision,
+        modelProfiles: [
+          { id: 'model-a', provider: 'openai', model: 'gpt-test-b' },
+          { id: 'model-b', provider: 'openai', model: 'gpt-test-a' },
+        ],
+        modelProviders: [],
+      }),
+    });
+    expect(saved.status).toBe(200);
+    expect(saved.body.revision).not.toBe(current.body.revision);
+    const file = configOf(context.workspace);
+    expect(file.hardCaps).toEqual({ maxModelCalls: 50 });
+    expect(file.modelProfiles[0]).toEqual({
+      id: 'model-a',
+      provider: 'openai',
+      model: 'gpt-test-b',
+    });
+    // The running server uses the new profile for the next run.
+    const profiles = (await context.json('/model-profiles')).body;
+    expect(profiles[0]).toMatchObject({ profileId: 'model-a', modelId: 'gpt-test-b' });
+    const { transport, runId } = await liveRun(context);
+    const events: RunEvent[] = [];
+    transport.subscribe(runId ?? '', 0, { onEvent: (e) => events.push(e) });
+    await waitForProjection(transport, runId ?? '', (p) => p.status !== 'running');
+    while (!events.some((e) => e.type === 'run.started'))
+      await new Promise((r) => setTimeout(r, 10));
+    const started = events.find((e) => e.type === 'run.started');
+    expect(started?.type === 'run.started' && started.payload.modelProfiles[0]?.modelId).toBe(
+      'gpt-test-b',
+    );
+    expect(context.responses.join('\n')).not.toContain('secret');
+  });
+
+  it('[TC-SEC-002-N] refuses an unknown provider, a built-in name, plain http elsewhere, a key and a stale revision; the file stays', async () => {
+    const context = await start(makeFake());
+    const { revision } = (await context.json('/model-config')).body;
+    const before = readFileSync(join(context.workspace, '.corral', 'config.json'), 'utf-8');
+    const endpoint = (patch: Record<string, unknown>) => ({
+      id: 'local',
+      name: 'Local',
+      baseUrl: 'http://127.0.0.1:11434/v1',
+      access: 'none',
+      models: [{ id: 'llama3.2' }],
+      ...patch,
+    });
+    const attempts: [number, Record<string, unknown>][] = [
+      [400, { modelProfiles: [{ id: 'a', provider: 'nobody', model: 'm' }], modelProviders: [] }],
+      [400, { modelProfiles: FAKE_PROFILES, modelProviders: [endpoint({ id: 'openai' })] }],
+      [
+        400,
+        {
+          modelProfiles: FAKE_PROFILES,
+          modelProviders: [endpoint({ baseUrl: 'http://10.0.0.5/v1' })],
+        },
+      ],
+      [400, { modelProfiles: FAKE_PROFILES, modelProviders: [endpoint({ apiKey: 'sk-x' })] }],
+    ];
+    for (const [status, body] of attempts) {
+      const answer = await context.json('/model-config', {
+        method: 'PUT',
+        body: JSON.stringify({ revision, ...body }),
+      });
+      expect(answer.status, JSON.stringify(body)).toBe(status);
+      expect(JSON.stringify(answer.body)).not.toContain('sk-x');
+    }
+    const stale = await context.json('/model-config', {
+      method: 'PUT',
+      body: JSON.stringify({ revision: 'old', modelProfiles: FAKE_PROFILES, modelProviders: [] }),
+    });
+    expect(stale.status).toBe(409);
+    expect(readFileSync(join(context.workspace, '.corral', 'config.json'), 'utf-8')).toBe(before);
+  });
+});

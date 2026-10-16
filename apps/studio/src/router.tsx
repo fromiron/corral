@@ -90,9 +90,15 @@ export const modelSettingsRoute = createRoute({
   path: '/settings/models',
   loader: async ({ context }) => {
     const api = context.services.models;
-    if (!api) return { profiles: [], providers: [] };
-    const [profiles, providers] = await Promise.all([api.profiles(), api.auth()]);
-    return { profiles, providers };
+    if (!api) return { profiles: [], providers: [], catalog: [], config: null };
+    const [profiles, providers, catalog, config] = await Promise.all([
+      api.profiles(),
+      api.auth(),
+      api.catalog(),
+      // Simulated-only servers have no model config to edit.
+      api.config().catch(() => null),
+    ]);
+    return { profiles, providers, catalog, config };
   },
   component: ModelSettingsPage,
 });

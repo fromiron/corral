@@ -4,6 +4,7 @@ import { type FormEvent, useEffect, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { modelSettingsRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
+import { ModelConfigEditor } from './ModelConfigEditor.tsx';
 
 /**
  * /settings/models (Spec §4.1, C-058). Sign-in happens on the provider's own page, opened by
@@ -12,7 +13,8 @@ import { useServices } from '../services.tsx';
 export function ModelSettingsPage() {
   const t = useTranslations('Models');
   const { models, mode, live } = useServices();
-  const { profiles, providers } = modelSettingsRoute.useLoaderData();
+  const { profiles, providers, catalog, config } = modelSettingsRoute.useLoaderData();
+  const [editing, setEditing] = useState(false);
   const router = useRouter();
   const pending = providers.some((p) => p.login && p.login.state !== 'failed');
 
@@ -41,7 +43,22 @@ export function ModelSettingsPage() {
               <ProviderCard key={provider.providerId} provider={provider} />
             ))}
           </section>
-          <ProfilesTable profiles={profiles} />
+          {editing && config ? (
+            <ModelConfigEditor config={config} catalog={catalog} onDone={() => setEditing(false)} />
+          ) : (
+            <>
+              <ProfilesTable profiles={profiles} />
+              {config ? (
+                <button
+                  type="button"
+                  onClick={() => setEditing(true)}
+                  className="self-start rounded-md border border-accent px-3 py-1.5 text-sm text-accent"
+                >
+                  {t('editModels')}
+                </button>
+              ) : null}
+            </>
+          )}
         </>
       )}
     </main>
@@ -165,7 +182,7 @@ function ProviderCard({ provider }: { provider: ProviderAuthView }) {
         </p>
       ) : null}
 
-      {provider.methods.apiKey && !ownKey && !login ? (
+      {provider.methods.apiKey && (!provider.signedIn || borrowed) && !login ? (
         <form onSubmit={saveKey} className="flex flex-col gap-1">
           <label htmlFor={`key-${provider.providerId}`} className="text-xs text-muted">
             {t('apiKeyLabel')}

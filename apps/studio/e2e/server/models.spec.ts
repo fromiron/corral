@@ -233,3 +233,51 @@ test('[TC-UX-003-H] asks the signed-in model for a team draft once and opens it 
   expect(corral.fake?.seen.hostRequests).toHaveLength(1);
   expect(corral.errors).toEqual([]);
 });
+
+test.describe('editing models on the Models page (CR-008)', () => {
+  test('[TC-SEC-002-H] changes a profile’s model and adds a local endpoint, saved to the workspace', async ({
+    page,
+    corral,
+  }) => {
+    await corral.open('/settings/models');
+    await page.getByRole('button', { name: 'Edit models' }).click();
+    const editor = page.getByRole('region', { name: 'Edit models' });
+    await editor.getByLabel('Model of model-a').selectOption({ label: 'Test B' });
+
+    await editor.getByRole('button', { name: 'Add endpoint' }).click();
+    await editor.getByLabel('Endpoint id 1').fill('ollama');
+    await editor.getByLabel('Endpoint name 1').fill('Ollama');
+    await editor.getByLabel('Address of endpoint 1').fill('http://127.0.0.1:11434/v1');
+    await editor.getByLabel('Models of endpoint 1').fill('llama3.2');
+    await editor.getByLabel('Provider of model-b').selectOption({ label: 'Ollama' });
+    await editor.getByLabel('Model of model-b').selectOption({ label: 'llama3.2' });
+    await editor.getByRole('button', { name: 'Save models' }).click();
+
+    await expect(page.getByRole('region', { name: 'Edit models' })).toHaveCount(0);
+    await expect(page.getByTestId('profile-model-a')).toContainText('openai/gpt-test-b');
+    await expect(page.getByTestId('profile-model-b')).toContainText('ollama/llama3.2');
+    await expect(page.getByTestId('provider-ollama')).toContainText('No key needed');
+    await page.reload();
+    await expect(page.getByTestId('profile-model-a')).toContainText('openai/gpt-test-b');
+    expect(corral.errors).toEqual([]);
+  });
+
+  test('[TC-SEC-002-N] an address off this computer over http is refused by field, and nothing changes', async ({
+    page,
+    corral,
+  }) => {
+    await corral.open('/settings/models');
+    await page.getByRole('button', { name: 'Edit models' }).click();
+    const editor = page.getByRole('region', { name: 'Edit models' });
+    await editor.getByRole('button', { name: 'Add endpoint' }).click();
+    await editor.getByLabel('Endpoint id 1').fill('lan');
+    await editor.getByLabel('Endpoint name 1').fill('LAN box');
+    await editor.getByLabel('Address of endpoint 1').fill('http://10.0.0.5/v1');
+    await editor.getByLabel('Models of endpoint 1').fill('llama3.2');
+    await editor.getByRole('button', { name: 'Save models' }).click();
+    await expect(editor.getByRole('alert')).toContainText('modelProviders.0.baseUrl');
+    await editor.getByRole('button', { name: 'Cancel' }).click();
+    await expect(page.getByTestId('provider-lan')).toHaveCount(0);
+    expect(corral.errors.filter((e) => !e.includes('400'))).toEqual([]);
+  });
+});

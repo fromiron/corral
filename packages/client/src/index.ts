@@ -494,6 +494,45 @@ export interface ModelProfileView {
   subscriptionSupported: boolean | null;
 }
 
+/** A provider and its models, for the profile editor (CR-008). No credentials or status. */
+export interface CatalogProvider {
+  providerId: string;
+  name: string;
+  /** An OpenAI-compatible endpoint from the workspace config. */
+  endpoint: boolean;
+  methods: { oauth: boolean; apiKey: boolean };
+  models: { id: string; name: string }[];
+}
+
+export interface ProfileConfig {
+  id: string;
+  provider: string;
+  model: string;
+}
+
+export interface EndpointConfig {
+  id: string;
+  name: string;
+  baseUrl: string;
+  access: 'api_key' | 'none';
+  models: {
+    id: string;
+    name?: string;
+    contextWindow?: number;
+    maxOutput?: number;
+    reasoning?: boolean;
+  }[];
+}
+
+/** `.corral/config.json`'s model keys, with the revision a save must start from (CR-008). */
+export interface ModelConfig {
+  modelProfiles: ProfileConfig[];
+  modelProviders: EndpointConfig[];
+  /** No profiles are configured; the defaults are in use. */
+  usingDefaults: boolean;
+  revision: string;
+}
+
 /** Sign-in status and model profiles. Answers carry status and expiry only, never tokens. */
 export class ModelsApi {
   private readonly http: Http;
@@ -529,6 +568,21 @@ export class ModelsApi {
     return this.http.json(`/model-auth/${encodeURIComponent(providerId)}/login`, {
       method: 'DELETE',
     });
+  }
+
+  catalog(): Promise<CatalogProvider[]> {
+    return this.http.json('/model-catalog');
+  }
+
+  config(): Promise<ModelConfig> {
+    return this.http.json('/model-config');
+  }
+
+  /** Saves profiles and endpoints; refused with field-named errors, never values (CR-008). */
+  saveConfig(
+    change: Pick<ModelConfig, 'modelProfiles' | 'modelProviders' | 'revision'>,
+  ): Promise<ModelConfig> {
+    return this.http.json('/model-config', { method: 'PUT', body: JSON.stringify(change) });
   }
 
   /** A team plan for a goal from one model request (CR-006); only a checked plan comes back. */

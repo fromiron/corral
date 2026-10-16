@@ -72,6 +72,15 @@ export interface ProviderAuthView {
   permissionsOk: boolean;
 }
 
+export interface CatalogProvider {
+  providerId: string;
+  name: string;
+  /** An OpenAI-compatible endpoint from the workspace config (CR-005). */
+  endpoint: boolean;
+  methods: { oauth: boolean; apiKey: boolean };
+  models: { id: string; name: string }[];
+}
+
 export interface LoginView {
   state: 'waiting' | 'exchanging' | 'failed';
   /** The provider's sign-in page; opening it is the person's own step. */
@@ -124,8 +133,8 @@ export class ModelRegistry implements ModelResolver {
   private readonly logins = new Map<string, PendingLogin>();
 
   private readonly models: Models;
-  private readonly profiles: readonly ProfileConfig[];
-  private readonly options: RegistryOptions;
+  private profiles: readonly ProfileConfig[];
+  private options: RegistryOptions;
 
   constructor(models: Models, profiles: readonly ProfileConfig[], options: RegistryOptions) {
     this.models = models;
@@ -272,6 +281,48 @@ export class ModelRegistry implements ModelResolver {
     return plan
       ? { ok: true, plan, model: { provider, modelId } }
       : unavailable("the model's answer was not a usable team plan; use the local suggestion");
+  }
+
+  /** The profiles in use (what `.corral/config.json` names, or the defaults). */
+  profileConfigs(): readonly ProfileConfig[] {
+    return this.profiles;
+  }
+
+  /**
+   * Profiles and endpoints saved from the Models page (CR-008). Runs already started keep the
+   * profile snapshot they started with.
+   */
+  async reconfigure(profiles: readonly ProfileConfig[], endpoints: ReadonlyMap<string, Endpoint>) {
+    this.profiles = profiles;
+    this.options = { ...this.options, endpoints };
+    await this.refreshStatus();
+  }
+
+  /** Profiles that name a provider neither pi-ai nor the given endpoints know. */
+  unknownProviders(profiles: readonly ProfileConfig[], endpoints: ReadonlyMap<string, Endpoint>) {
+    return profiles
+      .map((p, index) => ({ p, index }))
+      .filter(({ p }) => !endpoints.has(p.provider) && !this.isBuiltin(p.provider))
+      .map(({ p, index }) => `modelProfiles.${index}.provider: no provider "${p.provider}"`);
+  }
+
+  private isBuiltin(providerId: string): boolean {
+    return Boolean(this.models.getProvider(providerId)) && !this.options.endpoints?.has(providerId);
+  }
+
+  /** Providers and their models for the profile editor (CR-008); no credentials or status. */
+  catalog(): CatalogProvider[] {
+    return this.models
+      .getProviders()
+      .map((provider) => ({
+        providerId: provider.id,
+        name: provider.name,
+        endpoint: this.options.endpoints?.has(provider.id) ?? false,
+        methods: this.methods(provider.id),
+        models: provider.getModels().map((m) => ({ id: m.id, name: m.name })),
+      }))
+      .filter((p) => p.models.length > 0)
+      .sort((a, b) => Number(b.endpoint) - Number(a.endpoint) || a.name.localeCompare(b.name));
   }
 
   /** The non-secret definition of the endpoint behind a model, for its worker (CR-005). */

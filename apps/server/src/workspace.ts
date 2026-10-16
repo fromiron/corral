@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   type InstallationPolicy,
@@ -40,4 +41,48 @@ export function prepareWorkspace(root: string): Workspace {
     config: parsed.config,
     policy: installationPolicy(parsed.config),
   };
+}
+
+/** The config file's content hash; `none` when there is no file (CR-008 save guard). */
+export function configRevision(root: string): string {
+  const path = join(root, CONFIG);
+  return existsSync(path) ? createHash('sha256').update(readFileSync(path)).digest('hex') : 'none';
+}
+
+export type ModelConfigChange = { modelProfiles: unknown[]; modelProviders: unknown[] };
+
+/**
+ * Replaces `modelProfiles` and `modelProviders` in `.corral/config.json`, keeping every other
+ * key (CR-008). Checked like a config read; written to a temporary file and renamed into place.
+ * Errors name fields, never values.
+ */
+export function writeModelConfig(
+  root: string,
+  change: ModelConfigChange,
+  expectedRevision: string,
+  /** Checks that need the runtime (known providers); errors stop the write. */
+  check: (config: WorkspaceConfig) => string[] = () => [],
+):
+  | { ok: true; config: WorkspaceConfig; revision: string }
+  | { ok: false; conflict: boolean; errors: string[] } {
+  if (configRevision(root) !== expectedRevision) {
+    return { ok: false, conflict: true, errors: ['the config changed since it was read'] };
+  }
+  const path = join(root, CONFIG);
+  const raw = existsSync(path)
+    ? (JSON.parse(readFileSync(path, 'utf-8')) as Record<string, unknown>)
+    : { schemaVersion: '0.1' };
+  const next = {
+    ...raw,
+    modelProfiles: change.modelProfiles,
+    modelProviders: change.modelProviders,
+  };
+  const parsed = parseWorkspaceConfig(next);
+  if (!parsed.ok) return { ok: false, conflict: false, errors: parsed.errors };
+  const refused = check(parsed.config);
+  if (refused.length > 0) return { ok: false, conflict: false, errors: refused };
+  const temporary = `${path}.${process.pid}.tmp`;
+  writeFileSync(temporary, `${JSON.stringify(next, null, 2)}\n`);
+  renameSync(temporary, path);
+  return { ok: true, config: parsed.config, revision: configRevision(root) };
 }
