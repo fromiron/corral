@@ -154,13 +154,16 @@ test('[TC-DEC-004-H] the Budget tab lists each request’s effort judgment as ob
 test('[TC-OBS-001-H] the chosen execution’s conversation shows its question, replies and your instruction', async ({
   page,
 }) => {
-  await page.goto('/demo?delay=300');
+  // The guide's pause must land while the round 2 Writer runs; slow CI runners missed it at
+  // 300 ms per reply (firefox, #19). A wider window; assertions unchanged.
+  test.setTimeout(90_000);
+  await page.goto('/demo?delay=1200');
   const arm = page
     .getByRole('region', { name: 'Demo guide' })
     .getByLabel('Pause the run when the round 2 Writer starts');
   await arm.check();
   await page.getByRole('button', { name: 'Run', exact: true }).click();
-  await expect(page.getByTestId('run-status')).toContainText('Paused', { timeout: 20_000 });
+  await expect(page.getByTestId('run-status')).toContainText('Paused', { timeout: 60_000 });
   await page.getByLabel('Instruction').fill('Lead with the cost difference.');
   await page.getByLabel('Instruction').press('Enter');
   await page.getByRole('link', { name: 'Open run page' }).click();
