@@ -5,6 +5,7 @@ import researchTeam from '../../../examples/research-team.corral.json' with { ty
 import researchLayout from '../../../examples/research-team.layout.json' with { type: 'json' };
 import {
   addNode,
+  arrangeDraft,
   checkConnection,
   compileDraft,
   connect,
@@ -269,5 +270,45 @@ describe('editor model: import and export', () => {
         .sort(),
     );
     expect(planRun(draftToDefinition(without.draft)).ok).toBe(true);
+  });
+});
+
+describe('arranging the canvas (roadmap 18)', () => {
+  it('[TC-CAN-002-H] places every node without overlaps, Loop members inside their Loop, in flow order', () => {
+    const scrambled = draftFromDefinition(team(), {
+      ...layout(),
+      nodes: Object.fromEntries(team().nodes.map((n) => [n.id, { x: 5, y: 5 }])),
+    });
+    const arranged = arrangeDraft(scrambled);
+    const box = (id: string) => {
+      const at = arranged.layout[id];
+      if (!at) throw new Error(id);
+      return { x: at.x, y: at.y, w: at.width ?? 190, h: at.height ?? 80 };
+    };
+    const loop = box('review_loop');
+    for (const id of ['write', 'review', 'review_decision']) {
+      const b = box(id);
+      expect(b.x).toBeGreaterThanOrEqual(loop.x);
+      expect(b.x + b.w).toBeLessThanOrEqual(loop.x + loop.w);
+      expect(b.y).toBeGreaterThanOrEqual(loop.y);
+    }
+    // Top-level nodes and the Loop box do not overlap one another.
+    const top = team()
+      .nodes.filter((n) => !('loopId' in n && n.loopId))
+      .map((n) => box(n.id));
+    for (const [i, a] of top.entries()) {
+      for (const b of top.slice(i + 1)) {
+        const apart = a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y;
+        expect(apart).toBe(true);
+      }
+    }
+    expect(box('research').x).toBeLessThan(loop.x);
+    // Layout only: the definition is the same Corral.
+    expect(definitionHash(arranged.definition)).toBe(definitionHash(scrambled.definition));
+  });
+
+  it('[TC-CAN-002-N] an empty canvas stays as it is', () => {
+    const empty = emptyDraft();
+    expect(arrangeDraft(empty)).toBe(empty);
   });
 });

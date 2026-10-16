@@ -2,6 +2,7 @@ import type { CapabilityLink } from '@corral/contracts';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import {
   addNode,
+  arrangeDraft,
   type CapabilityRejection,
   type ConnectionRejection,
   type ConnectionRequest,
@@ -50,6 +51,8 @@ export interface EditorState {
   addNode(type: EditorNodeType, position: Point): string;
   duplicateNode(nodeId: string): string;
   moveNode(nodeId: string, position: Point): void;
+  /** Tidy up (roadmap 18): arrange every node by the flow, as one undo step. */
+  arrange(): void;
   resizeNode(nodeId: string, box: { x?: number; y?: number; width: number; height: number }): void;
   setViewport(viewport: EditorDraft['viewport']): void;
   setLoopMembership(nodeId: string, loopId: string | null): void;
@@ -134,6 +137,7 @@ export function createEditorStore(initial: EditorDraft = emptyDraft()): EditorSt
         return copy.nodeId;
       },
       moveNode: (nodeId, position) => apply(moveNode(get().draft, nodeId, position)),
+      arrange: () => apply(arrangeDraft(get().draft)),
       resizeNode: (nodeId, box) => apply(resizeNode(get().draft, nodeId, box)),
       // Panning and zooming are not edits: they never enter the undo history.
       setViewport: (viewport) => set({ draft: setViewport(get().draft, viewport) }),

@@ -300,7 +300,8 @@
   "Toolbar": {
     "undo": "실행 취소",
     "redo": "다시 실행",
-    "shortcuts": "실행 취소: Ctrl+Z · 다시 실행: Ctrl+Shift+Z"
+    "shortcuts": "실행 취소: Ctrl+Z · 다시 실행: Ctrl+Shift+Z",
+    "tidy": "정리하기"
   },
   "Workspace": {
     "heading": "Corral 목록",
@@ -809,9 +810,11 @@
       "go": "이동",
       "corrals": "Corral",
       "runs": "Run",
-      "help": "도움말"
+      "help": "도움말",
+      "editor": "편집기"
     },
-    "draftTeam": "목표에서 팀 초안 만들기"
+    "draftTeam": "목표에서 팀 초안 만들기",
+    "tidy": "캔버스 정리하기"
   },
   "Shortcuts": {
     "label": "키보드 단축키",

@@ -27,6 +27,7 @@ import {
   planRun,
   wouldCreateCycle,
 } from '@corral/core';
+import { autoLayout } from '../run/layout.ts';
 
 // Editor draft = the definition being drawn + where each node sits. Every gesture is a pure
 // function here, so the canvas only translates pointer and keyboard input into these calls.
@@ -259,6 +260,21 @@ export function moveNode(draft: EditorDraft, nodeId: string, position: Point): E
         layout[member.id] = { ...at, x: at.x + dx, y: at.y + dy };
       }
     }
+  }
+  return { ...draft, layout };
+}
+
+/**
+ * Tidy up (roadmap 18): places every node by the control flow, Loops around their members.
+ * Layout only; one step for undo.
+ */
+export function arrangeDraft(draft: EditorDraft): EditorDraft {
+  if (draft.definition.nodes.length === 0) return draft;
+  const placed = autoLayout(draft.definition);
+  const layout: Record<string, NodeLayout> = {};
+  for (const node of draft.definition.nodes) {
+    const at = placed[node.id] ?? draft.layout[node.id];
+    if (at) layout[node.id] = { ...draft.layout[node.id], ...at };
   }
   return { ...draft, layout };
 }

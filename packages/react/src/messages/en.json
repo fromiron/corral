@@ -300,7 +300,8 @@
   "Toolbar": {
     "undo": "Undo",
     "redo": "Redo",
-    "shortcuts": "Undo: Ctrl+Z · Redo: Ctrl+Shift+Z"
+    "shortcuts": "Undo: Ctrl+Z · Redo: Ctrl+Shift+Z",
+    "tidy": "Tidy up"
   },
   "Workspace": {
     "heading": "Corrals",
@@ -809,9 +810,11 @@
       "go": "Go to",
       "corrals": "Corrals",
       "runs": "Runs",
-      "help": "Help"
+      "help": "Help",
+      "editor": "Editor"
     },
-    "draftTeam": "Draft a team from a goal"
+    "draftTeam": "Draft a team from a goal",
+    "tidy": "Tidy up the canvas"
   },
   "Shortcuts": {
     "label": "Keyboard shortcuts",

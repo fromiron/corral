@@ -63,7 +63,12 @@ function columns(rank: Map<string, number>): string[][] {
   return cols.filter(Boolean);
 }
 
-function autoLayout(definition: CorralDefinition): Record<string, NodeLayout> {
+/**
+ * Positions for every node: the control flow left to right, each Loop as a box around its
+ * members, callable agents in a row underneath. Shared by the Run page and the editor's
+ * "Tidy up" (roadmap 18).
+ */
+export function autoLayout(definition: CorralDefinition): Record<string, NodeLayout> {
   const nodes = new Map(definition.nodes.map((n) => [n.id, n]));
   const loopOf = (id: string) => {
     const node = nodes.get(id);
