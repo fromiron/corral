@@ -914,5 +914,36 @@
     "refused": "저장하지 않았습니다: {message}",
     "cancel": "취소",
     "save": "모델 저장"
+  },
+  "Compare": {
+    "heading": "Run 비교",
+    "figures": "Run 수치",
+    "seconds": "{value, number}초",
+    "subscription": "구독에 포함",
+    "simulated": "시뮬레이션",
+    "mode": {
+      "mock": "시뮬레이션 에이전트",
+      "live": "실제 모델"
+    },
+    "row": {
+      "status": "상태",
+      "mode": "에이전트",
+      "models": "모델",
+      "elapsed": "걸린 시간",
+      "modelCalls": "모델 호출",
+      "outputTokens": "출력 토큰",
+      "executions": "실행",
+      "reviewRounds": "검토 회차",
+      "approvals": "내린 결정",
+      "cost": "예상 비용"
+    },
+    "outputs": "출력",
+    "showDiff": "차이 보기",
+    "sideBySide": "나란히 보기",
+    "noOutput": "출력 없음.",
+    "notFound": "Run {runId}을 찾을 수 없습니다.",
+    "choose": "Run {count}개 비교",
+    "select": "비교할 Run {runId} 선택",
+    "back": "Corral 목록으로"
   }
 }

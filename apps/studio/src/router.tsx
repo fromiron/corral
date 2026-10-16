@@ -6,6 +6,7 @@ import {
 } from '@tanstack/react-router';
 import { lazy, Suspense } from 'react';
 import { type DemoTemplateId, demoTemplate } from './demo/templates.ts';
+import { ComparePage } from './pages/ComparePage.tsx';
 import { DemoPage, EditorPage } from './pages/EditorPage.tsx';
 import { ModelSettingsPage } from './pages/ModelSettingsPage.tsx';
 import { ErrorView, NotFoundView, RootLayout } from './pages/RootLayout.tsx';
@@ -103,6 +104,17 @@ export const modelSettingsRoute = createRoute({
   component: ModelSettingsPage,
 });
 
+/** Two runs side by side (roadmap 16). */
+export const compareRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/compare',
+  validateSearch: (search: Record<string, unknown>): { a?: string; b?: string } => ({
+    ...(typeof search.a === 'string' ? { a: search.a } : {}),
+    ...(typeof search.b === 'string' ? { b: search.b } : {}),
+  }),
+  component: ComparePage,
+});
+
 function createPerformanceRoute() {
   const PerformancePage = lazy(() => import('./pages/PerformancePage.tsx'));
   return createRoute({
@@ -124,6 +136,7 @@ export function createStudioRouter(services: StudioServices) {
       editorRoute,
       runRoute,
       modelSettingsRoute,
+      compareRoute,
       ...(import.meta.env.MODE === 'performance' ? [createPerformanceRoute()] : []),
     ]),
     context: { services },

@@ -188,6 +188,9 @@ export interface ReviewView {
 }
 
 export interface RunProjection {
+  /** When run.started and the terminal state change were recorded; null until then. */
+  startedAt: string | null;
+  endedAt: string | null;
   /** The model each profile resolved to when the run started (run.started). */
   modelProfiles: Record<string, ModelProfileSnapshot>;
   /** The earlier version this run's brief starts from (CR-007); null otherwise. */
@@ -287,6 +290,8 @@ export function emptyProjection(runId: string): RunProjection {
     decisionSettings: null,
     startedFrom: null,
     modelProfiles: {},
+    startedAt: null,
+    endedAt: null,
     decisions: {},
   };
 }
@@ -317,6 +322,7 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
         definitionHash: event.payload.definitionHash,
         mode: event.payload.mode,
         startedFrom: event.payload.startedFrom ?? null,
+        startedAt: event.recordedAt,
         modelProfiles: Object.fromEntries(event.payload.modelProfiles.map((m) => [m.profile, m])),
         limits: event.payload.limits,
         currentCriteriaVersionId: event.payload.criteriaVersionId ?? null,
@@ -328,6 +334,9 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
         ...p,
         status: to,
         statusReason: reasonCode,
+        ...(TERMINAL_RUN_STATUSES.has(to) && p.endedAt === null
+          ? { endedAt: event.recordedAt }
+          : {}),
         ...(TERMINAL_RUN_STATUSES.has(to) && p.decisions
           ? {
               decisions: Object.fromEntries(
