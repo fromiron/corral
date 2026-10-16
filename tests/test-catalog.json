@@ -1349,5 +1349,27 @@
     "status": "planned",
     "adapter": "mock unless explicitly live",
     "evidence": null
+  },
+  {
+    "id": "TC-UX-003-H",
+    "requirements": [
+      "CRL-UX-003"
+    ],
+    "suite": "unit+e2e",
+    "scenario": "세 패턴의 TeamPlan이 컴파일되는 정의가 되고, 로컬 제안이 영어·한국어 목표에서 패턴을 고르며, 미리보기에서 고친 내용으로 편집기가 열린다. 모델 초안은 가짜 모델의 JSON에서 1회 요청으로 만든다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-UX-003-N",
+    "requirements": [
+      "CRL-UX-003"
+    ],
+    "suite": "unit+e2e",
+    "scenario": "패턴과 맞지 않는 역할·길이 초과·추가 필드·도구 권한을 담은 계획은 거절되고, 깨진 모델 응답은 원문 없이 422, 취소하면 아무것도 저장되지 않는다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
   }
 ]

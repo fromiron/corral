@@ -188,3 +188,48 @@ test.describe('a keyless OpenAI-compatible endpoint (CR-005)', () => {
     expect(corral.errors).toEqual([]);
   });
 });
+
+test('[TC-UX-003-H] asks the signed-in model for a team draft once and opens it after review (CR-006)', async ({
+  page,
+  corral,
+}) => {
+  corral.fake?.replyText(
+    JSON.stringify({
+      name: 'Launch note',
+      pattern: 'write_review',
+      brief: 'Announce the new API.',
+      criteria: ['Mention the release date.'],
+      roles: [
+        { slot: 'planner', name: 'Outliner', duty: 'List the key points.' },
+        { slot: 'writer', name: 'Copywriter', duty: 'Write the announcement.' },
+        { slot: 'reviewer', name: 'Editor', duty: 'Check tone and facts.' },
+      ],
+      reviewRounds: 1,
+      finalApproval: false,
+    }),
+  );
+  await corral.open('/');
+  await page.evaluate(async (redirect) => {
+    const { csrfToken } = await (await fetch('/api/v1/session')).json();
+    const headers = { 'x-corral-csrf': csrfToken };
+    await fetch('/api/v1/model-auth/openai/login', { method: 'POST', headers });
+    await fetch('/api/v1/model-auth/openai/login/callback', {
+      method: 'POST',
+      headers: { ...headers, 'content-type': 'application/json' },
+      body: JSON.stringify({ url: redirect }),
+    });
+  }, FAKE_REDIRECT_OK);
+  await page.reload();
+  await page.getByRole('button', { name: 'Draft from a goal' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Draft a team from a goal' });
+  await dialog.getByLabel('What should the team do?').fill('Announce the new API');
+  await expect(dialog).toContainText('Uses one model request');
+  await dialog.getByRole('button', { name: 'Ask the model' }).click();
+  await expect(dialog.getByLabel('Team name')).toHaveValue('Launch note');
+  await expect(dialog.getByLabel('Name of role 2')).toHaveValue('Copywriter');
+  await dialog.getByRole('button', { name: 'Open in editor' }).click();
+  await expect(page).toHaveURL(/\/corrals\/[^/]+\/edit$/);
+  await expect(page.locator('.react-flow__node', { hasText: 'Copywriter' })).toHaveCount(1);
+  expect(corral.fake?.seen.hostRequests).toHaveLength(1);
+  expect(corral.errors).toEqual([]);
+});

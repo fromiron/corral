@@ -81,7 +81,7 @@ export function CommandLayer() {
   );
 }
 
-function Modal({
+export function Modal({
   label,
   onClose,
   children,
@@ -173,6 +173,13 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
         },
       }),
     );
+    const draftTeam: Command = {
+      id: 'create:team-draft',
+      title: t('draftTeam'),
+      group: t('groups.create'),
+      keywords: ['goal', 'team', 'draft', '목표', '팀', '초안'],
+      run: () => navigate({ to: '/', search: { draft: true } }),
+    };
     const go: Command[] = [
       {
         id: 'go:corrals',
@@ -200,7 +207,7 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
         : []),
       { id: 'help', title: t('shortcuts'), group: t('groups.help'), shortcut: '?', run: onHelp },
     ];
-    return [...fromTemplate, ...go, ...dynamic];
+    return [draftTeam, ...fromTemplate, ...go, ...dynamic];
   }, [dynamic, services, navigate, t, tw, onHelp]);
 
   const shown = rankCommands(query, commands);

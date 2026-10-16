@@ -4,6 +4,7 @@ import { type ChangeEvent, useState } from 'react';
 import { useFormatter, useNow, useTranslations } from 'use-intl';
 import { workspaceRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
+import { TeamDraftDialog } from '../TeamDraftDialog.tsx';
 import { createFromTemplate, WORKSPACE_TEMPLATES } from '../templates.ts';
 
 /** A layout file is recognised by its shape; everything else is treated as a definition. */
@@ -26,6 +27,12 @@ export function WorkspacePage() {
   const navigate = useNavigate();
   const [errors, setErrors] = useState<string[]>([]);
   const [confirming, setConfirming] = useState<string | null>(null);
+  const { draft } = workspaceRoute.useSearch();
+  const [drafting, setDrafting] = useState(Boolean(draft));
+  const closeDraft = () => {
+    setDrafting(false);
+    if (draft) void navigate({ to: '/', search: {}, replace: true });
+  };
 
   const openNew = async () => {
     const draft = emptyDraft('untitled', t('newName'));
@@ -178,6 +185,24 @@ export function WorkspacePage() {
           ))}
         </ul>
       )}
+      <section
+        aria-labelledby="goal-heading"
+        className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-accent/60 bg-raised p-3"
+      >
+        <div className="flex flex-col gap-1">
+          <h2 id="goal-heading" className="text-sm font-semibold">
+            {t('template.goal.name')}
+          </h2>
+          <p className="text-xs text-muted">{t('template.goal.body')}</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setDrafting(true)}
+          className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent"
+        >
+          {t('draftFromGoal')}
+        </button>
+      </section>
       <section aria-labelledby="templates-heading" className="flex flex-col gap-2">
         <h2 id="templates-heading" className="text-lg font-semibold">
           {t('templatesHeading')}
@@ -244,6 +269,7 @@ export function WorkspacePage() {
           </ul>
         )}
       </section>
+      {drafting ? <TeamDraftDialog onClose={closeDraft} /> : null}
     </main>
   );
 }

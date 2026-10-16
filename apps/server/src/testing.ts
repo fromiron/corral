@@ -45,6 +45,8 @@ export function fakeOpenAI(
     agentNames: [] as (string | undefined)[],
     refreshes: 0,
     tokens: [] as (string | undefined)[],
+    /** Requests the host made itself (team drafts, CR-006), not a worker. */
+    hostRequests: [] as { maxTokens: number | undefined; text: string }[],
   };
   const oauth: OAuthAuth = {
     name: 'OpenAI (ChatGPT subscription)',
@@ -123,7 +125,16 @@ export function fakeOpenAI(
       name: 'OpenAI',
       auth: { apiKey: envApiKeyAuth('OpenAI API key', ['OPENAI_API_KEY']), oauth },
       models: faux.models,
-      api: { stream: faux.stream, streamSimple: faux.streamSimple },
+      api: {
+        stream: faux.stream,
+        streamSimple: (model, context, streamOptions) => {
+          seen.hostRequests.push({
+            maxTokens: streamOptions?.maxTokens,
+            text: JSON.stringify(context.messages),
+          });
+          return faux.streamSimple(model, context, streamOptions);
+        },
+      },
     }),
   );
 
@@ -208,5 +219,8 @@ export function fakeOpenAI(
     ]);
   };
 
-  return { live, credentials, configDir, seen, answerWith };
+  /** Scripts one plain text answer (for a host request such as a team draft). */
+  const replyText = (text: string) => faux.setResponses([fauxAssistantMessage(text)]);
+
+  return { live, credentials, configDir, seen, answerWith, replyText };
 }

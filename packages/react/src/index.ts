@@ -45,3 +45,10 @@ export {
 } from './run/session.ts';
 export { useSteerTarget } from './run/steer-target.ts';
 export { buildTranscript, type TranscriptEntry } from './run/transcript.ts';
+export {
+  draftFromPlan,
+  planFromGoal,
+  type TeamDraft,
+  type TeamLabels,
+  type TeamWording,
+} from './team/draft.ts';

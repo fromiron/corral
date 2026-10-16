@@ -94,6 +94,7 @@ steer receipt의 applied는 입력 dispatch 확인을 의미한다. 품질 준�
 | SESSION_INVALID | 401 | 세션/부트스트랩 오류 |
 | ORIGIN_REJECTED | 403 | 허용하지 않는 Origin/Host/CSRF |
 | POLICY_ERROR | 500 | admission gate가 예외로 실패해 요청·도구 호출을 거절함(fail closed). 통과로 처리하지 않음 (CR-003, ADR-024, C-067) |
+| MODEL_UNAVAILABLE | 502 | Run 밖의 모델 요청(팀 초안)이 실패했거나 응답이 계약에 맞지 않음. 응답 원문은 보내지 않음 (CR-006) |
 
 provider/network error는 사용자 키 원문·응답 헤더를 포함하지 않는다. trace용 errorId와 마스킹된 이유를 제공한다. 도구 실행 중 실패는 HTTP success/error와 별개로 ToolOutcome에 structured error를 넣는다.
 

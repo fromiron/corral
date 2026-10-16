@@ -138,6 +138,7 @@ const STATUS: Record<ErrorCode, number> = {
   SESSION_INVALID: 401,
   ORIGIN_REJECTED: 403,
   POLICY_ERROR: 500,
+  MODEL_UNAVAILABLE: 502,
 };
 
 const HEARTBEAT_MS = 15_000;
@@ -489,6 +490,22 @@ async function createCorralServer(
     if (!registry) return noLive(reply);
     await registry.logout(request.params.providerId);
     return registry.authView();
+  });
+
+  // ── team drafts (CR-006) ───────────────────────────────────────────────────
+  // One model request for a goal; only a plan that passes the contract comes back.
+  app.post('/api/v1/team-drafts', async (request, reply) => {
+    if (!registry) return noLive(reply);
+    const body = parse(
+      z.strictObject({ goal: z.string().trim().min(1).max(2000) }),
+      request,
+      reply,
+    );
+    if (!body) return reply;
+    const result = await registry.draftTeam(body.goal);
+    return result.ok
+      ? { plan: result.plan, model: result.model }
+      : fail(reply, result.code, result.message);
   });
 
   // ── runs ───────────────────────────────────────────────────────────────────

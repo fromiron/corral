@@ -24,6 +24,9 @@ const rootRoute = createRootRouteWithContext<{ services: StudioServices }>()({
 export const workspaceRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
+  // `?draft=1` opens "Draft a team from a goal" (CR-006).
+  validateSearch: (search: Record<string, unknown>): { draft?: boolean } =>
+    search.draft === true || search.draft === 1 || search.draft === '1' ? { draft: true } : {},
   loader: async ({ context }) => {
     const [corrals, runs] = await Promise.all([
       context.services.repository.list(),

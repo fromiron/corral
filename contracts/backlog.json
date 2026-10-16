@@ -1386,5 +1386,25 @@
     "done": "manifest의 sha256·크기로 검증한 설치만 로드. 미설치·지원하지 않는 플랫폼은 available=false 사유 기록. CI는 모델을 내려받지 않고 fake session으로 검증, 실모델은 opt-in",
     "status": "implemented",
     "evidence": "docs/change-requests/CR-003-admission-hooks-effort-observe.md"
+  },
+  {
+    "id": "C-073",
+    "phase": "P11",
+    "title": "목표 → 팀 초안(TeamPlan 계약·정의 변환·로컬 제안·모델 초안 API·미리보기 대화상자)",
+    "dependsOn": [
+      "C-063"
+    ],
+    "requirements": [
+      "CRL-UX-003"
+    ],
+    "files": [
+      "packages/contracts/src/team-plan.ts",
+      "packages/react/src/team/",
+      "apps/server/src/models/team-draft.ts",
+      "apps/studio/src/TeamDraftDialog.tsx"
+    ],
+    "done": "세 패턴 컴파일 통과, 계획이 도구 권한을 정하지 못함, 모델 응답은 계약 검증 후에만 사용, 사람이 '편집기에서 열기'를 눌러야 저장",
+    "status": "implemented",
+    "evidence": "docs/change-requests/CR-006-goal-team-draft.md"
   }
 ]
