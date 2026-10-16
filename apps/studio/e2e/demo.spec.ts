@@ -5,6 +5,8 @@ test('[TC-DEV-005-H] /demo starts a key-free worker runtime and steering changes
   page,
   context,
 }) => {
+  // The steer must land before the simulated agent's last request; slow CI runners need room.
+  test.setTimeout(60_000);
   const runtimeRequests: string[] = [];
   page.on('request', (request) => {
     if (['fetch', 'xhr', 'eventsource'].includes(request.resourceType()))
@@ -19,7 +21,7 @@ test('[TC-DEV-005-H] /demo starts a key-free worker runtime and steering changes
   });
   const workerReady = page.waitForEvent('worker');
   // A wider window than the run needs on slow CI runners; the assertions are unchanged.
-  await page.goto('/demo?template=starter&delay=1500');
+  await page.goto('/demo?template=starter&delay=3000');
   await expect(page.getByLabel('Corral name')).toHaveValue('Demo Corral');
   await workerReady;
   await expect(page.getByText('Demo / Simulated agents')).toBeVisible();
@@ -31,7 +33,9 @@ test('[TC-DEV-005-H] /demo starts a key-free worker runtime and steering changes
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   await page.getByLabel('Instruction').fill('Use primary sources only.');
   await page.getByLabel('Instruction').press('Enter');
-  await expect(page.getByTestId('run-output')).toContainText('Use primary sources only.');
+  await expect(page.getByTestId('run-output')).toContainText('Use primary sources only.', {
+    timeout: 30_000,
+  });
   await expect(page.getByTestId('run-output')).toContainText('Compare fountain pens.');
   await expect(page.getByTestId('run-status')).toContainText('Succeeded');
   expect(runtimeRequests).toEqual([]);
@@ -288,7 +292,10 @@ test('[TC-DEV-005-N] an unknown template name opens the default team, and the pi
 test('[TC-DEV-005-H] the guide can pause at round 2 so a visitor has time to steer at normal speed', async ({
   page,
 }) => {
-  await page.goto('/demo?delay=300');
+  // The pause travels worker → page → worker; on slow CI runners a 300 ms reply let the round 2
+  // Writer finish first (its target then closes). A wider reply window; assertions unchanged.
+  test.setTimeout(90_000);
+  await page.goto('/demo?delay=1200');
   const arm = step(page, 'steer').getByLabel('Pause the run when the round 2 Writer starts');
   await arm.check();
   await page.getByRole('button', { name: 'Run', exact: true }).click();
