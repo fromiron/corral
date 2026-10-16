@@ -4,6 +4,7 @@ import { type ChangeEvent, useState } from 'react';
 import { useFormatter, useNow, useTranslations } from 'use-intl';
 import { workspaceRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
+import { createFromTemplate, WORKSPACE_TEMPLATES } from '../templates.ts';
 
 /** A layout file is recognised by its shape; everything else is treated as a definition. */
 function isLayoutFile(text: string): boolean {
@@ -110,7 +111,10 @@ export function WorkspacePage() {
         </div>
       ) : null}
       {corrals.length === 0 ? (
-        <p className="text-sm text-muted">{t('empty')}</p>
+        <div className="flex flex-col gap-1 rounded-md border border-dashed border-line p-4">
+          <p className="text-sm font-medium">{t('empty')}</p>
+          <p className="text-sm text-muted">{t('emptyHint')}</p>
+        </div>
       ) : (
         <ul className="flex flex-col gap-2" aria-label={t('heading')}>
           {corrals.map((corral) => (
@@ -174,6 +178,39 @@ export function WorkspacePage() {
           ))}
         </ul>
       )}
+      <section aria-labelledby="templates-heading" className="flex flex-col gap-2">
+        <h2 id="templates-heading" className="text-lg font-semibold">
+          {t('templatesHeading')}
+        </h2>
+        <div className="grid gap-2 sm:grid-cols-3">
+          {WORKSPACE_TEMPLATES.map((id) => (
+            <article
+              key={id}
+              aria-labelledby={`template-${id}`}
+              className="flex flex-col gap-2 rounded-md border border-line bg-raised p-3"
+            >
+              <h3 id={`template-${id}`} className="text-sm font-semibold">
+                {t(`template.${id}.name`)}
+              </h3>
+              <p className="flex-1 text-xs text-muted">{t(`template.${id}.body`)}</p>
+              <button
+                type="button"
+                onClick={async () => {
+                  const created = await createFromTemplate(repository, id, t('newName'));
+                  if (!created.ok) return setErrors([created.message]);
+                  await navigate({
+                    to: '/corrals/$corralId/edit',
+                    params: { corralId: created.corralId },
+                  });
+                }}
+                className="self-start rounded-md border border-accent px-2 py-1 text-xs text-accent"
+              >
+                {t('useTemplate')}
+              </button>
+            </article>
+          ))}
+        </div>
+      </section>
       <section aria-labelledby="runs-heading" className="flex flex-col gap-2">
         <h2 id="runs-heading" className="text-lg font-semibold">
           {t('runsHeading')}

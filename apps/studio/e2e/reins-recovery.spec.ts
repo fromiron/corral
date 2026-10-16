@@ -4,7 +4,9 @@ import { expect, test } from '@playwright/test';
 test('[TC-RNS-001-N] an unsent instruction stays bound to its original execution', async ({
   page,
 }) => {
-  await page.goto('/?delay=700');
+  // The reviewer must still be running when the run is paused: a wide window for slow,
+  // loaded runners (seen failing under a full parallel run). Assertions are unchanged.
+  await page.goto('/?delay=1500');
   await page.locator('input[type="file"]').setInputFiles({
     name: 'draft-binding.corral.json',
     mimeType: 'application/json',

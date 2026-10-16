@@ -18,8 +18,8 @@
 | 3 | C-072 | mixdog effort judge ONNX provider(`local-model`), 모델 다운로드·sha256 검증·NOTICE | 완료 |
 | 4 | C-070·C-071 | 외부 provider 경계, Run 화면 판정 표시, `corral inspect` 비교 | 완료 |
 | 5 | UX-A3 | 실행별 대화(transcript) 뷰: 모델 턴·도구·질문/답변·지시 배지 스트리밍 | 완료 |
-| 6 | UX-A4 | Timeline 문장화, 상태 reason 문구, 예산 미터 축약, Decision 노드 상태, 그래프 fitView | 완료(PR 대기) |
-| 7 | UX-A5 | 명령 팔레트(⌘K)·단축키 도움말·빈 상태·템플릿 갤러리·한국어 locale | 대기 |
+| 6 | UX-A4 | Timeline 문장화, 상태 reason 문구, 예산 미터 축약, Decision 노드 상태, 그래프 fitView | 완료 |
+| 7 | UX-A5 | 명령 팔레트(⌘K)·단축키 도움말·빈 상태·템플릿 갤러리·한국어 locale | 완료(PR #15, 2부 PR 대기) |
 | 8 | Core-③ | `corral exec` headless + 단일 에이전트 vs 팀 비교 eval harness | 대기 |
 | 9 | Core | 특정 버전에서 새 Run 시작(fork from version) | 대기 |
 | 10 | Core | Goal → 팀 초안 생성(사람 승인 후 편집기) | 대기 |
@@ -37,3 +37,6 @@
 - C-070·C-071: PR #12 병합. 520 unit, E2E 68(chromium·firefox·server). CR-003 완료.
 - UX-A3: Run 화면 오른쪽 `Conversation`(선택 실행의 요청·스트리밍 답·도구·질문/답변·지시와 전달 상태·판정 배지). 편집기의 "Open run page"가 선택 실행을 `?execution=`으로 넘김. 524 unit, E2E 70.
 - UX-A4: Timeline 문장(이벤트 49종, 모르는 타입은 그대로), 상태 reason 문장, 예산 meter 2개 + 접힌 전체 표, Decision/Output 노드 상태(판정 횟수·"Waiting for you"), 그래프 크기 변화 시 재맞춤. 531 unit, E2E 74. resize E2E는 기능을 끄면 실패하는 것을 확인.
+- UX-A5 1부: ⌘K/Ctrl+K 팔레트(템플릿으로 새 Corral·이동·Corral·Run 열기, IME 안전, 포커스 복귀), ? 단축키 도움말(입력 중엔 열리지 않음), 작업 공간 빈 상태와 템플릿 갤러리(Research team·Single agent·Empty). 타이밍에 민감한 E2E 2개는 지연 폭만 넓힘. 533 unit, E2E 82.
+- 2026-10-16 Bell: 품질이 오를 때까지 PR마다 CI를 기다리지 않는다. 로컬 검사 후 PR을 열고 다음 항목으로 진행, 병합은 Bell.
+- UX-A5 2부: 한국어 locale(메시지 662개, 키·ICU 인자 일치와 형식 오류·영어 잔존 검사), 헤더 언어 선택, 브라우저 언어 기본값, localStorage 기억, `html lang`. 536 unit, E2E 86.

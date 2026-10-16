@@ -245,3 +245,19 @@ function researchTeam(): DemoTemplate {
     },
   };
 }
+
+/**
+ * A template as a new Corral of the workspace: a fresh id (so using a template twice gives two
+ * Corrals) and the workspace name. The demo keeps its fixed ids.
+ */
+export function templateForWorkspace(id: DemoTemplateId, newId: string): DemoTemplate {
+  const template = demoTemplate(id);
+  return {
+    ...template,
+    definition: {
+      ...template.definition,
+      id: newId,
+      name: id === 'starter' ? 'Single agent' : template.definition.name,
+    },
+  };
+}
