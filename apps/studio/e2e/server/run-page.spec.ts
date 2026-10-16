@@ -19,6 +19,8 @@ async function finishedRun(
   await expect(page.getByTestId('run-status')).toContainText('Succeeded', { timeout: 15_000 });
   await page.getByRole('link', { name: 'Open run page' }).click();
   await expect(page).toHaveURL(/\/runs\/run_[a-f0-9]+$/);
+  // CR-009: a finished run opens on its results; these checks are about the run view.
+  await page.getByRole('tab', { name: 'Run', exact: true }).click();
   return new URL(page.url()).pathname;
 }
 

@@ -395,6 +395,11 @@
       "tree": "Calls",
       "side": "Conversation & Reins",
       "dock": "Details"
+    },
+    "view": {
+      "label": "Run page view",
+      "results": "Results",
+      "run": "Run"
     }
   },
   "Timeline": {
@@ -969,5 +974,41 @@
     "runAction": "Open a Corral and press Run",
     "review": "Read the result",
     "reviewAction": "Open a run's page from the list below"
+  },
+  "Results": {
+    "label": "Results",
+    "kind": {
+      "pending": "The run is still working. Results appear here as they are made.",
+      "partial": "The run ended before its Output. These are partial results: what it made before it stopped.",
+      "none": "The run ended without results."
+    },
+    "final": "Final results",
+    "intermediate": "Work in between",
+    "partial": "Partial results",
+    "earlier": "{count, plural, one {# earlier version} other {# earlier versions}}",
+    "itemName": "{name} v{version}",
+    "bytes": "{bytes, number} bytes",
+    "stateLabel": "Result state",
+    "runState": "Run: {status}",
+    "reviewState": "Review: {verdict}",
+    "noReview": "Review: none",
+    "stale": "stale",
+    "submitted": "Submitted",
+    "notSubmitted": "Not submitted",
+    "noFileWork": "No file changes or checks in this run",
+    "format": "Show as",
+    "formats": {
+      "document": "Document",
+      "source": "Source",
+      "preview": "Preview"
+    },
+    "copy": "Copy",
+    "copied": "Copied",
+    "download": "Download",
+    "comparePrevious": "Compare with previous version",
+    "unavailable": "This result could not be loaded.",
+    "previewOf": "Preview of {label}",
+    "openResults": "Open in Results",
+    "finalCount": "{count, plural, one {# final result} other {# final results}}"
   }
 }

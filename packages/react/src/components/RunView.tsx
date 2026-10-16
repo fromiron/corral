@@ -89,13 +89,21 @@ export function RunOutput({
   session,
   heading = true,
   onStartFrom,
+  onOpenResults,
 }: {
   session: RunSessionStore;
   heading?: boolean;
   /** Offers "New run from this result" for the final output (CR-007). */
   onStartFrom?: (from: { runId: string; artifactVersionId: string; label: string }) => void;
+  /** Opens one final result in the Results view (CR-009). */
+  onOpenResults?: (artifactVersionId: string) => void;
 }) {
   const t = useTranslations('Run');
+  const tr = useTranslations('Results');
+  const projection = useStore(session, (s) => s.projection);
+  const finals = (projection?.output?.artifactVersionIds ?? []).flatMap(
+    (id) => projection?.artifacts[id] ?? [],
+  );
   const outputText = useStore(session, (s) => s.outputText);
   const runId = useStore(session, (s) => s.runId);
   const resultId = useStore(session, (s) => s.projection?.output?.artifactVersionIds[0] ?? null);
@@ -105,6 +113,27 @@ export function RunOutput({
   return (
     <div className="flex flex-col gap-1">
       {heading ? <h3 className="text-xs font-semibold">{t('output')}</h3> : null}
+      {onOpenResults && finals.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          {finals.length > 1 ? (
+            <span className="text-muted">{tr('finalCount', { count: finals.length })}</span>
+          ) : null}
+          {finals.map((artifact) => {
+            const label = tr('itemName', { name: artifact.name, version: artifact.version });
+            return (
+              <button
+                key={artifact.artifactVersionId}
+                type="button"
+                onClick={() => onOpenResults(artifact.artifactVersionId)}
+                aria-label={label}
+                className="rounded border border-line px-2 py-0.5"
+              >
+                {label} ↗
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
       {outputText === null ? (
         <p className="text-xs text-muted">{t('outputPending')}</p>
       ) : (

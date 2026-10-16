@@ -395,6 +395,11 @@
       "tree": "호출",
       "side": "대화·Reins",
       "dock": "상세"
+    },
+    "view": {
+      "label": "Run 화면 보기",
+      "results": "결과",
+      "run": "실행"
     }
   },
   "Timeline": {
@@ -969,5 +974,41 @@
     "runAction": "Corral을 열고 실행을 누르세요",
     "review": "결과 읽기",
     "reviewAction": "아래 목록에서 Run 화면을 여세요"
+  },
+  "Results": {
+    "label": "결과",
+    "kind": {
+      "pending": "Run이 아직 진행 중입니다. 결과가 만들어지면 여기에 나타납니다.",
+      "partial": "Run이 Output에 닿기 전에 끝났습니다. 멈추기 전까지 만든 부분 결과입니다.",
+      "none": "Run이 결과 없이 끝났습니다."
+    },
+    "final": "최종 결과",
+    "intermediate": "중간 산출물",
+    "partial": "부분 결과",
+    "earlier": "{count, plural, other {이전 버전 #개}}",
+    "itemName": "{name} v{version}",
+    "bytes": "{bytes, number}바이트",
+    "stateLabel": "결과 상태",
+    "runState": "실행: {status}",
+    "reviewState": "검토: {verdict}",
+    "noReview": "검토: 없음",
+    "stale": "기준 바뀜",
+    "submitted": "제출됨",
+    "notSubmitted": "제출 안 됨",
+    "noFileWork": "이 Run에는 파일 변경·검증 명령이 없음",
+    "format": "보기 형식",
+    "formats": {
+      "document": "문서",
+      "source": "원문",
+      "preview": "미리보기"
+    },
+    "copy": "복사",
+    "copied": "복사됨",
+    "download": "내려받기",
+    "comparePrevious": "이전 버전과 비교",
+    "unavailable": "이 결과를 불러오지 못했습니다.",
+    "previewOf": "{label} 미리보기",
+    "openResults": "결과 화면에서 보기",
+    "finalCount": "{count, plural, other {최종 결과 #개}}"
   }
 }

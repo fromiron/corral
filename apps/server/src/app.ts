@@ -50,6 +50,7 @@ import {
   assertLoopback,
   boundaryFor,
   newBootstrapToken,
+  PREVIEW_HEADERS,
   RequestLimiter,
   SECURITY_HEADERS,
   Sessions,
@@ -62,6 +63,7 @@ import { acquireWorkspaceOwnership } from './workspace-ownership.ts';
 // The local server (C-015, C-055, C-057): REST commands and queries, SSE for committed events,
 // and Studio's static files, all on one loopback origin. The Coordinator is the only writer.
 
+const PREVIEW_ROUTE = '/api/v1/runs/:runId/artifact-versions/:versionId/preview';
 export interface ServerOptions {
   workspace: string;
   /** Judgment providers beyond the built-in local-heuristic@1 (CR-003), e.g. the local model. */
@@ -303,8 +305,12 @@ async function createCorralServer(
       return fail(reply, 'ORIGIN_REJECTED', 'a session CSRF token is required');
     }
   });
-  app.addHook('onSend', async (_request, reply, payload) => {
-    for (const [name, value] of Object.entries(SECURITY_HEADERS)) reply.header(name, value);
+  app.addHook('onSend', async (request, reply, payload) => {
+    const headers =
+      request.routeOptions.url === PREVIEW_ROUTE && reply.statusCode === 200
+        ? PREVIEW_HEADERS
+        : SECURITY_HEADERS;
+    for (const [name, value] of Object.entries(headers)) reply.header(name, value);
     return payload;
   });
   app.setErrorHandler((error: { statusCode?: number; message?: string }, _request, reply) => {
@@ -640,6 +646,20 @@ async function createCorralServer(
           coordinator.getRunSnapshot(runId)?.criteriaVersionId === versionId);
       const text = known ? coordinator.getArtifactText(runId, versionId) : null;
       return text === null ? fail(reply, 'TARGET_NOT_FOUND', 'no such version') : { text };
+    },
+  );
+  // An HTML result as its own sandboxed document (CR-009). Only artifact versions qualify,
+  // and only whole HTML documents; everything else stays text.
+  app.get<{ Params: { runId: string; versionId: string } }>(
+    PREVIEW_ROUTE,
+    async (request, reply) => {
+      const { runId, versionId } = request.params;
+      const known = coordinator.findSnapshot(runId)?.projection.artifacts[versionId];
+      const text = known ? coordinator.getArtifactText(runId, versionId) : null;
+      if (text === null || !/^\s*(?:<!doctype\s+html\b|<html\b)/i.test(text)) {
+        return fail(reply, 'TARGET_NOT_FOUND', 'no HTML document for this version');
+      }
+      return reply.type('text/html; charset=utf-8').send(text);
     },
   );
   app.get<{ Params: { runId: string; artifactId: string; version: string } }>(

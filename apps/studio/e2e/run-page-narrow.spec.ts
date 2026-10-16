@@ -10,6 +10,8 @@ async function finishedRun(page: import('@playwright/test').Page) {
   await expect(page.getByTestId('run-status')).toContainText('Succeeded', { timeout: 20_000 });
   await page.getByRole('link', { name: 'Open run page' }).click();
   await expect(page).toHaveURL(/\/runs\//);
+  // CR-009: a finished run opens on its results; these checks are about the run view.
+  await page.getByRole('tab', { name: 'Run', exact: true }).click();
 }
 
 test('[TC-OBS-001-H] choosing a graph node opens its executions on a narrow Run page', async ({

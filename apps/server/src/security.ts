@@ -15,6 +15,8 @@ export const SECURITY_HEADERS: Record<string, string> = {
     "img-src 'self' data:",
     "font-src 'self'",
     "connect-src 'self'",
+    // HTML result previews are framed from this origin only (CR-009).
+    "frame-src 'self'",
     "base-uri 'none'",
     "form-action 'self'",
     "frame-ancestors 'none'",
@@ -24,6 +26,27 @@ export const SECURITY_HEADERS: Record<string, string> = {
   'cross-origin-opener-policy': 'same-origin',
   'cross-origin-resource-policy': 'same-origin',
   'x-frame-options': 'DENY',
+};
+
+/**
+ * An HTML result preview (CR-009): a sandboxed document with an opaque origin, no scripts,
+ * forms or network, inline styles and data: images only. Only Studio may frame it.
+ */
+export const PREVIEW_HEADERS: Record<string, string> = {
+  'content-security-policy': [
+    'sandbox',
+    "default-src 'none'",
+    "style-src 'unsafe-inline'",
+    'img-src data:',
+    'font-src data:',
+    "base-uri 'none'",
+    "form-action 'none'",
+    "frame-ancestors 'self'",
+  ].join('; '),
+  'x-content-type-options': 'nosniff',
+  'referrer-policy': 'no-referrer',
+  'cross-origin-resource-policy': 'same-origin',
+  'x-frame-options': 'SAMEORIGIN',
 };
 
 const LOOPBACK = new Set(['127.0.0.1', '::1', 'localhost']);

@@ -83,6 +83,13 @@ test('[TC-UX-001-H] keyboard only: a Corral from a template, a node moved and de
   await tabTo(page, /^Open run page$/);
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/\/runs\//);
+  // CR-009: the finished run opens on Results; arrow keys move to the run view.
+  await tabTo(page, /^Results$/);
+  await page.keyboard.press('ArrowRight');
+  await expect(page.getByRole('tab', { name: 'Run', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
   await tabTo(page, /^Output$/);
   await page.keyboard.press('ArrowRight');
   await expect(page.getByRole('tab', { name: 'Tasks' })).toBeFocused();

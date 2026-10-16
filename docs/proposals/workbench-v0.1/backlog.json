@@ -1,0 +1,563 @@
+[
+  {
+    "id": "WBT-01",
+    "stage": "U0",
+    "title": "기준 커밋·CR·계약 잠금",
+    "size": "S",
+    "dependencies": [],
+    "requirements": [
+      "WB-DEV-001",
+      "WB-MIG-002"
+    ],
+    "done": "현재 baseline과 기존 규칙을 기록하고 변경범위·feature spec·불변식을 승인한다.",
+    "affected_paths": "specs/workbench-upgrade; docs/change-requests (신규)",
+    "status": "planned"
+  },
+  {
+    "id": "WBT-02",
+    "stage": "U0",
+    "title": "WorkbenchShell 모의 세로 슬라이스",
+    "size": "M",
+    "dependencies": [
+      "WBT-01"
+    ],
+    "requirements": [
+      "WB-UX-001",
+      "WB-UX-002",
+      "WB-UX-004"
+    ],
+    "done": "프로젝트·세션 전환, 기존 Canvas 진입, 복수 결과, Reins 접수·미전달 상태를 클릭 가능한 fixture로 만든다.",
+    "affected_paths": "apps/studio/src/pages; packages/react/src/components",
+    "status": "planned"
+  },
+  {
+    "id": "WBT-03",
+    "stage": "U1",
+    "title": "AppStore schema와 repository",
+    "size": "M",
+    "dependencies": [
+      "WBT-01"
+    ],
+    "requirements": [
+      "WB-PRJ-001",
+      "WB-PRJ-002",
+      "WB-SES-001",
+      "WB-MIG-002"
+    ],
+    "done": "Project/WorkSession/WorkspaceBinding/SessionEntry/RunLink 및 versioned migration을 추가한다.",
+    "affected_paths": "packages/storage-sqlite/src/database.ts; packages/contracts",
+    "status": "planned"
+  },
+  {
+    "id": "WBT-04",
+    "stage": "U1",
+    "title": "Project·Session 서비스와 API",
+    "size": "M",
+    "dependencies": [
+      "WBT-03"
+    ],
+    "requirements": [
+      "WB-PRJ-001",
+      "WB-PRJ-002",
+      "WB-SES-001"
+    ],
+    "done": "생성·목록·검색·고정·보관·팀 선택과 null workspace를 지원한다.",
+    "affected_paths": "apps/server/src; packages/client",
+    "status": "planned"
+  },
+  {
+    "id": "WBT-05",
+    "stage": "U1",
+    "title": "RunInput·ContextSnapshot 분리",
+    "size": "M",
+    "dependencies": [
+      "WBT-03"
+    ],
+    "requirements": [
+      "WB-SES-004",
+      "WB-UX-003"
+    ],
+    "done": "재사용 팀과 Run 요청을 분리하고 legacy input 변환·지침 선택·피드백 참조를 구현한다.",
+    "affected_paths": "packages/contracts/src/definition.ts; packages/core",
+    "status": "planned"
+  },
+  {
+    "id": "WBT-06",
+    "stage": "U1",
+    "title": "후속 요청·대기열·멱등 시작",
+    "size": "L",
+    "dependencies": [
+      "WBT-04",
+      "WBT-05"
+    ],
+    "requirements": [
+      "WB-SES-002",
+      "WB-SES-003",
+      "WB-SES-005"
+    ],
+    "done": "SessionRequest→start intent→Coordinator→RunLink가 응답 유실에도 중복 Run을 만들지 않게 한다.",
+    "affected_paths": "packages/core/src/coordinator.ts; packages/storage-sqlite; apps/server",
+    "status": "planned"
+  },
+  {
+    "id": "WBT-07",
+    "stage": "U1",
+    "title": "프로젝트 탐색·세션 라우트",
+    "size": "M",
+    "dependencies": [
+      "WBT-02",
+      "WBT-04"
+    ],
+    "requirements": [
+      "WB-UX-001",
+      "WB-UX-002",
+      "WB-SES-001"
+    ],
+    "done": "새 라우트·세션 제목·핀·보관·검색과 팀 설계를 연결하고 기존 deep link를 보존한다.",
+    "affected_paths": "apps/studio/src/router.tsx; pages/WorkspacePage.tsx; pages/RootLayout.tsx",
+    "status": "planned"
+  },
+  {
+    "id": "WBT-08",
+    "stage": "U1",
+    "title": "다중 결과·부분 결과",
+    "size": "M",
+    "dependencies": [
+      "WBT-03"
+    ],
+    "requirements": [
+      "WB-RES-001",
+      "WB-RES-002",
+      "WB-RES-003"
+    ],
+    "done": "첫 artifact 선택을 제거하고 output 전체/중간 artifacts/실패 결과를 ResultRevision 투영으로 제공한다.",
+    "affected_paths": "packages/react/src/components/RunView.tsx; packages/react/src/run/session.ts; core",
+    "status": "planned"
+  },
+  {
+    "id": "WBT-09",
+    "stage": "U1",
+    "title": "Session 작업 흐름·Composer",
+    "size": "M",
+    "dependencies": [
+      "WBT-06",
+      "WBT-07",
+      "WBT-08"
+    ],
+    "requirements": [
+      "WB-SES-002",
+      "WB-SES-003",
+      "WB-UX-004"
+    ],
+    "done": "실행 카드·후속 요청·target chip·queue/explain·초안 보존과 Reins receipt를 연결한다.",
+    "affected_paths": "SessionWorkspace/SessionComposer (신규); existing ReinsPanel",
+    "status": "planned"
+  },
+  {
+    "id": "WBT-10",
+    "stage": "U1",
+    "title": "과거 데이터 이관·호환 reader",
+    "size": "M",
+    "dependencies": [
+      "WBT-03",
+      "WBT-07",
+      "WBT-08"
+    ],
+    "requirements": [
+      "WB-MIG-001",
+      "WB-MIG-002"
+    ],
+    "done": "기존 ID·이벤트를 보존하며 1 Run→1 Session을 기본 이관하고 기준 없는 diff를 unavailable로 표시한다.",
+    "affected_paths": "packages/storage-sqlite; packages/core; apps/studio router",
+    "status": "planned"
+  },
+  {
+    "id": "WBT-11",
+    "stage": "U1",
+    "title": "Store 분리·요약 feed·재접속",
+    "size": "L",
+    "dependencies": [
+      "WBT-06",
+      "WBT-07"
+    ],
+    "requirements": [
+      "WB-UX-004",
+      "WB-OBS-002"
+    ],
+    "done": "RunViewStore 명칭/구독을 정리하고 프로젝트 summary feed와 cursor 기반 재접속을 추가한다.",
+    "affected_paths": "packages/react/src/run/session.ts; apps/server/src/sse.ts; packages/client",
+    "status": "planned"
+  },
+  {
+    "id": "WBT-12",
+    "stage": "U2",
+    "title": "Workspace·안전한 Git 조회",
+    "size": "M",
+    "dependencies": [
+      "WBT-04"
+    ],
+    "requirements": [
+      "WB-WSP-001",
+      "WB-SEC-001",
+      "WB-DIF-005"
+    ],
+    "done": "등록 root·trust·Git capabilities와 status/HEAD/index/untracked 조회를 제한된 argv 경로로 제공한다.",
+    "affected_paths": "workspace service + git adapter (신규)",
+    "status": "planned"
+  },
+  {
+    "id": "WBT-13",
+    "stage": "U2",
+    "title": "불변 파일 revision·snapshot",
+    "size": "L",
+    "dependencies": [
+      "WBT-12",
+      "WBT-03"
+    ],
+    "requirements": [
+      "WB-DIF-001",
+      "WB-DIF-004",
+      "WB-DIF-005"
+    ],
+    "done": "raw bytes·mode·include/exclude·생략/unstable 정보를 저장하고 과거 비교를 재현한다.",
+    "affected_paths": "packages/storage-sqlite; workspace snapshot service (신규)",
+    "status": "planned"
+  },
+  {
+    "id": "WBT-14",
+    "stage": "U2",
+    "title": "ChangeSet 범위·출처·집계",
+    "size": "L",
+    "dependencies": [
+      "WBT-13",
+      "WBT-08"
+    ],
+    "requirements": [
+      "WB-DIF-002",
+      "WB-DIF-003",
+      "WB-DIF-004"
+    ],
+    "done": "Run/Session epoch/review/Git scope를 계산하고 관측과 관리된 변경을 구분한다.",
+    "affected_paths": "change-set service/contracts (신규)",
+    "status": "planned"
+  },
+  {
+    "id": "WBT-15",
+    "stage": "U2",
+    "title": "검토 화면·Diff adapter",
+    "size": "M",
+    "dependencies": [
+      "WBT-14",
+      "WBT-02"
+    ],
+    "requirements": [
+      "WB-UX-001",
+      "WB-DIF-001",
+      "WB-DIF-004",
+      "WB-UX-006"
+    ],
+    "done": "Monaco lazy route·파일 tree·통합/나란히 diff·모델 해제·대형/바이너리 fallback을 구현한다.",
+    "affected_paths": "ReviewWorkspace/DiffViewer/FileChangeTree (신규)",
+    "status": "planned"
+  },
+  {
+    "id": "WBT-16",
+    "stage": "U2",
+    "title": "격리 작업 복사본 생명주기",
+    "size": "L",
+    "dependencies": [
+      "WBT-12",
+      "WBT-13"
+    ],
+    "requirements": [
+      "WB-WSP-002",
+      "WB-SEC-001"
+    ],
+    "done": "기준 commit·dirty 제외 확인·managed worktree 생성·재연결·안전한 제거 guard를 구현한다.",
+    "affected_paths": "workspace lifecycle service (신규)",
+    "status": "planned"
+  },
+  {
+    "id": "WBT-17",
+    "stage": "U2",
+    "title": "파일 효과 intent·reconciliation",
+    "size": "L",
+    "dependencies": [
+      "WBT-13"
+    ],
+    "requirements": [
+      "WB-WSP-003",
+      "WB-WSP-005"
+    ],
+    "done": "planned/dispatched/outcome, before/after 보존, 중간 종료·디스크 실패의 uncertain 처리를 구현한다.",
+    "affected_paths": "file_operations store + file broker (신규)",
+    "status": "planned"
+  },
+  {
+    "id": "WBT-18",
+    "stage": "U2",
+    "title": "경로·파일 쓰기 정책",
+    "size": "L",
+    "dependencies": [
+      "WBT-16",
+      "WBT-17"
+    ],
+    "requirements": [
+      "WB-WSP-003",
+      "WB-WSP-004",
+      "WB-SEC-001"
+    ],
+    "done": "workspace lease·expected hash·취소 fence·경로 탈출 방지와 add/edit/delete/move를 구현한다.",
+    "affected_paths": "file broker + Coordinator admission (신규/수정)",
+    "status": "planned"
+  },
+  {
+    "id": "WBT-19",
+    "stage": "U2",
+    "title": "Pi 파일 도구 연결",
+    "size": "M",
+    "dependencies": [
+      "WBT-18",
+      "WBT-14"
+    ],
+    "requirements": [
+      "WB-WSP-003",
+      "WB-DIF-003",
+      "WB-OBS-001"
+    ],
+    "done": "관리된 파일 도구만 Pi에 노출하고 실제 operation과 run/execution/task/request를 연결한다.",
+    "affected_paths": "packages/adapter-pi; packages/contracts; packages/core",
+    "status": "planned"
+  },
+  {
+    "id": "WBT-20",
+    "stage": "U2",
+    "title": "동의한 검증 명령·결과",
+    "size": "L",
+    "dependencies": [
+      "WBT-19"
+    ],
+    "requirements": [
+      "WB-WSP-006",
+      "WB-RES-003",
+      "WB-SEC-001"
+    ],
+    "done": "trusted project 명령 preset·환경·timeout·프로세스 종료·snapshot 검증을 기록한다.",
+    "affected_paths": "VerificationService/process host (신규)",
+    "status": "planned"
+  },
+  {
+    "id": "WBT-21",
+    "stage": "U3",
+    "title": "버전 고정 review comments",
+    "size": "M",
+    "dependencies": [
+      "WBT-15"
+    ],
+    "requirements": [
+      "WB-REV-001"
+    ],
+    "done": "side/range/before/after snapshot에 의견을 고정하고 draft/obsolete 상태를 표시한다.",
+    "affected_paths": "review contracts/store/UI (신규)",
+    "status": "planned"
+  },
+  {
+    "id": "WBT-22",
+    "stage": "U3",
+    "title": "FeedbackBatch→Reins·후속 Run",
+    "size": "L",
+    "dependencies": [
+      "WBT-21",
+      "WBT-09",
+      "WBT-19"
+    ],
+    "requirements": [
+      "WB-REV-002",
+      "WB-OBS-001",
+      "WB-SES-003"
+    ],
+    "done": "일괄 제출·명시 target·safe boundary·종료 경합·새 수정 Run과 directive lineage를 연결한다.",
+    "affected_paths": "existing Reins path + feedback dispatcher (신규)",
+    "status": "planned"
+  },
+  {
+    "id": "WBT-23",
+    "stage": "U3",
+    "title": "검토·검증 validity",
+    "size": "M",
+    "dependencies": [
+      "WBT-20",
+      "WBT-21"
+    ],
+    "requirements": [
+      "WB-REV-003",
+      "WB-RES-003"
+    ],
+    "done": "읽음·approval·verification을 분리하고 기준/파일/환경 변경 후 stale 정책을 적용한다.",
+    "affected_paths": "review validity service + Result UI (신규)",
+    "status": "planned"
+  },
+  {
+    "id": "WBT-24",
+    "stage": "U3",
+    "title": "원본 반영 계획",
+    "size": "M",
+    "dependencies": [
+      "WBT-23",
+      "WBT-18"
+    ],
+    "requirements": [
+      "WB-REV-004"
+    ],
+    "done": "정확한 source/target snapshot·승인 버전·파일별 작업 preview와 충돌 검사를 구현한다.",
+    "affected_paths": "integration planner (신규)",
+    "status": "planned"
+  },
+  {
+    "id": "WBT-25",
+    "stage": "U3",
+    "title": "반영·역변경·중간 실패",
+    "size": "L",
+    "dependencies": [
+      "WBT-24",
+      "WBT-17"
+    ],
+    "requirements": [
+      "WB-REV-004",
+      "WB-REV-005",
+      "WB-WSP-005"
+    ],
+    "done": "파일별 durable outcome과 partial/uncertain을 보존하고 실제 반영분만 역계획한다.",
+    "affected_paths": "integration executor/store/UI (신규)",
+    "status": "planned"
+  },
+  {
+    "id": "WBT-26",
+    "stage": "U3",
+    "title": "확인 필요 Inbox",
+    "size": "M",
+    "dependencies": [
+      "WBT-11",
+      "WBT-22",
+      "WBT-23",
+      "WBT-25"
+    ],
+    "requirements": [
+      "WB-OBS-002"
+    ],
+    "done": "질문·승인·충돌·불명 작업·재검토를 source revision에 연결하고 처리 명령 결과로 닫는다.",
+    "affected_paths": "AttentionPage/projection (신규)",
+    "status": "planned"
+  },
+  {
+    "id": "WBT-27",
+    "stage": "U2",
+    "title": "산출물·HTML 안전 미리보기",
+    "size": "M",
+    "dependencies": [
+      "WBT-08",
+      "WBT-15"
+    ],
+    "requirements": [
+      "WB-SEC-002"
+    ],
+    "done": "raw HTML/외부 image 차단, script-disabled preview와 MIME별 fallback을 구현한다.",
+    "affected_paths": "ArtifactViewer/SafeMarkdown; PreviewHost (신규)",
+    "status": "planned"
+  },
+  {
+    "id": "WBT-28",
+    "stage": "U3",
+    "title": "보관·제거·삭제·export 계약",
+    "size": "L",
+    "dependencies": [
+      "WBT-10",
+      "WBT-16",
+      "WBT-25"
+    ],
+    "requirements": [
+      "WB-SEC-003",
+      "WB-MIG-001"
+    ],
+    "done": "archive와 cleanup/erasure를 분리하고 참조·미반영 변경·백업 안내·secret 제외 export를 구현한다.",
+    "affected_paths": "maintenance/export service + settings (신규)",
+    "status": "planned"
+  },
+  {
+    "id": "WBT-29",
+    "stage": "U3",
+    "title": "성능·접근성·한국어 입력",
+    "size": "M",
+    "dependencies": [
+      "WBT-09",
+      "WBT-15",
+      "WBT-22",
+      "WBT-26"
+    ],
+    "requirements": [
+      "WB-UX-005",
+      "WB-UX-006"
+    ],
+    "done": "대표 fixture의 전환·diff·메모리·keyboard·IME·screen reader 동작을 측정/수정한다.",
+    "affected_paths": "tests/performance; apps/studio E2E; stories",
+    "status": "planned"
+  },
+  {
+    "id": "WBT-30",
+    "stage": "U3",
+    "title": "비밀정보 없는 공개 데모",
+    "size": "M",
+    "dependencies": [
+      "WBT-22",
+      "WBT-23",
+      "WBT-29"
+    ],
+    "requirements": [
+      "WB-UX-001",
+      "WB-DEV-001",
+      "WB-SEC-002"
+    ],
+    "done": "프로젝트·세션·다중 diff·스티어링·실패/취소 모의 흐름을 실제 UI에서 제공한다.",
+    "affected_paths": "packages/testkit; apps/studio/src/demo",
+    "status": "planned"
+  },
+  {
+    "id": "WBT-31",
+    "stage": "U3",
+    "title": "통합·이관·장애 테스트",
+    "size": "L",
+    "dependencies": [
+      "WBT-25",
+      "WBT-28",
+      "WBT-29"
+    ],
+    "requirements": [
+      "WB-DEV-001",
+      "WB-MIG-001",
+      "WB-MIG-002",
+      "WB-WSP-005"
+    ],
+    "done": "리뷰·새 Run·취소·복구·기존 DB·여러 OS 경합 시나리오를 실행해 증거를 수집한다.",
+    "affected_paths": "test fixtures; integration/e2e/live gates",
+    "status": "planned"
+  },
+  {
+    "id": "WBT-32",
+    "stage": "U3",
+    "title": "출시 gate·지원 범위 문서",
+    "size": "M",
+    "dependencies": [
+      "WBT-30",
+      "WBT-31",
+      "WBT-27"
+    ],
+    "requirements": [
+      "WB-DEV-001",
+      "WB-SEC-001",
+      "WB-RES-003"
+    ],
+    "done": "실제 지원/미지원·알려진 한계·data recovery·dependency lock·실측 결과를 공개한다.",
+    "affected_paths": "docs/Release.md; docs/Case-Study.md; release tooling",
+    "status": "planned"
+  }
+]
