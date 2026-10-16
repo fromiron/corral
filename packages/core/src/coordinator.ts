@@ -12,6 +12,8 @@ import {
   CreateRunRequest,
   type DecisionNode,
   type EventPayload,
+  FILE_TOOLS,
+  type FileToolName,
   type IdFactory,
   type InputBinding,
   type ModelProfileSnapshot,
@@ -145,8 +147,36 @@ export interface ExternalTools {
   ): Promise<Record<string, unknown>>;
 }
 
+/**
+ * Files in a session's managed worktree (CR-012). The runtime that has worktrees provides it;
+ * a run may use file tools only when `available` says its session has one.
+ */
+export interface FileTools {
+  available(runId: string): boolean;
+  execute(
+    input: {
+      name: FileToolName;
+      args: Record<string, unknown>;
+      runId: string;
+      executionId: string;
+      toolCallId: string;
+    },
+    cancellation: ToolCancellation,
+  ): Promise<Record<string, unknown>>;
+}
+
+/** A refusal a tool backend explains to the agent (no local paths in the message). */
+export class ToolRefusal extends Error {
+  readonly code: CommandError['code'];
+  constructor(code: CommandError['code'], message: string) {
+    super(message);
+    this.code = code;
+  }
+}
+
 export interface CoordinatorDeps {
   tools?: ExternalTools;
+  files?: FileTools;
   clock: Clock;
   ids: IdFactory;
   agents: AgentAdapter;
@@ -321,6 +351,7 @@ export class Coordinator {
   private readonly models: ModelResolver;
   private readonly timers: Scheduler;
   private readonly tools: ExternalTools | undefined;
+  private readonly files: FileTools | undefined;
   private readonly live = new Map<string, LiveRun>();
   private readonly subscribers = new Set<Subscriber>();
   private storageError: string | null = null;
@@ -340,6 +371,7 @@ export class Coordinator {
     this.models = deps.models ?? SIMULATED_MODELS;
     this.timers = deps.timers ?? NO_DEADLINES;
     this.tools = deps.tools;
+    this.files = deps.files;
     this.gates = resolveGates(deps.admission);
     this.judgments = deps.judgments;
     this.observers = [
@@ -2897,6 +2929,11 @@ export class Coordinator {
       switch (call.proposal.name) {
         case 'search':
         case 'read_document':
+        case 'list_files':
+        case 'read_file':
+        case 'write_file':
+        case 'delete_file':
+        case 'move_file':
           return this.externalTool(run, input, call.proposal, tool);
         case 'spawn_subagents':
           return this.spawnTool(run, input, call.proposal, tool);
@@ -3258,6 +3295,7 @@ export class Coordinator {
       policy: this.policy,
       callables: run.plan.callables[input.nodeId] ?? { delegate: [], question: [] },
       externalTools: Boolean(this.tools),
+      fileTools: this.files?.available(run.runId) ?? false,
       responderOf: (questionId) => run.questions.get(questionId)?.responderExecutionId,
       readable: () => this.readable(run, input),
     };
@@ -3766,18 +3804,35 @@ export class Coordinator {
     });
     this.commit(run, tool.opening);
     try {
-      const tools = this.tools;
-      if (!tools) throw new Error('external tools unavailable');
-      const result = await tools.execute(
-        {
-          name: proposal.name as 'search' | 'read_document',
-          args: proposal.args,
-          mode: input.mode,
-          runId: run.runId,
-          executionId,
-        },
-        cancellation,
-      );
+      const fileTool = (FILE_TOOLS as readonly string[]).includes(proposal.name);
+      let result: Record<string, unknown>;
+      if (fileTool) {
+        const files = this.files;
+        if (!files) throw new ToolRefusal('CAPABILITY_DENIED', 'no worktree for this run');
+        result = await files.execute(
+          {
+            name: proposal.name as FileToolName,
+            args: proposal.args,
+            runId: run.runId,
+            executionId,
+            toolCallId: tool.toolCallId,
+          },
+          cancellation,
+        );
+      } else {
+        const tools = this.tools;
+        if (!tools) throw new Error('external tools unavailable');
+        result = await tools.execute(
+          {
+            name: proposal.name as 'search' | 'read_document',
+            args: proposal.args,
+            mode: input.mode,
+            runId: run.runId,
+            executionId,
+          },
+          cancellation,
+        );
+      }
       if (cancellation.aborted || TERMINAL_RUN_STATUSES.has(run.projection.status)) {
         this.commit(run, [
           ...tool.closing(null, 'scope cancelled'),
@@ -3808,12 +3863,15 @@ export class Coordinator {
         { name: proposal.name, kind: 'explicit_version', artifactVersionId: resultRef, text },
       ]);
       return { ok: true, toolCallId: tool.toolCallId, result };
-    } catch {
-      this.commit(run, tool.closing(null, 'external tool failed'));
+    } catch (error) {
+      // A file backend's refusal (conflict, path policy) is told to the agent as it is.
+      const refusal = error instanceof ToolRefusal ? error : null;
+      const message = refusal?.message ?? 'external tool failed';
+      this.commit(run, tool.closing(null, message));
       return {
         ok: false,
         toolCallId: tool.toolCallId,
-        error: { code: 'CAPABILITY_DENIED', message: 'external tool failed' },
+        error: { code: refusal?.code ?? 'CAPABILITY_DENIED', message },
       };
     } finally {
       cancelTimer();

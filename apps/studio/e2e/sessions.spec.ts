@@ -16,7 +16,9 @@ async function sessionWithTeam(page: Page, delay: number) {
   await page.getByLabel('Purpose').fill('Compare two databases');
   await page.getByRole('button', { name: 'Start session' }).click();
   await expect(page).toHaveURL(/\/sessions\/session_/);
-  await expect(page.getByRole('heading', { level: 2, name: 'Compare two databases' })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { level: 2, name: 'Compare two databases' }),
+  ).toBeVisible();
 }
 
 const box = (page: Page) => page.getByRole('textbox', { name: 'Request' });

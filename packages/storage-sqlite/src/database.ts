@@ -161,6 +161,74 @@ ALTER TABLE runs ADD COLUMN session_id TEXT;
 CREATE INDEX runs_by_session ON runs (session_id);
 `,
   },
+  {
+    // CR-012: a project's linked folder, sessions' managed worktrees, snapshots (git trees),
+    // every file write the broker made, and verification results.
+    name: '0005_workspaces',
+    sql: `
+CREATE TABLE workspace_bindings (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL UNIQUE REFERENCES projects(id),
+  root_path TEXT NOT NULL,
+  is_git INTEGER NOT NULL CHECK (is_git IN (0, 1)),
+  trusted INTEGER NOT NULL CHECK (trusted IN (0, 1)),
+  verify_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+) STRICT;
+CREATE TABLE session_worktrees (
+  session_id TEXT PRIMARY KEY REFERENCES work_sessions(id),
+  binding_id TEXT NOT NULL REFERENCES workspace_bindings(id),
+  worktree_path TEXT NOT NULL,
+  base_commit TEXT NOT NULL,
+  base_tree TEXT NOT NULL,
+  reviewed_tree TEXT,
+  created_at TEXT NOT NULL,
+  removed_at TEXT
+) STRICT;
+CREATE TABLE run_snapshots (
+  run_id TEXT NOT NULL,
+  phase TEXT NOT NULL CHECK (phase IN ('start', 'end')),
+  session_id TEXT NOT NULL,
+  tree TEXT NOT NULL,
+  captured_at TEXT NOT NULL,
+  PRIMARY KEY (run_id, phase)
+) STRICT;
+CREATE TABLE file_operations (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  execution_id TEXT NOT NULL,
+  tool_call_id TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('write', 'delete', 'move')),
+  path TEXT NOT NULL,
+  to_path TEXT,
+  before_hash TEXT,
+  after_hash TEXT,
+  state TEXT NOT NULL CHECK (state IN ('planned', 'applied', 'failed', 'uncertain')),
+  detail TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+) STRICT;
+CREATE INDEX file_operations_by_session ON file_operations (session_id, created_at);
+CREATE TABLE verifications (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  command_id TEXT NOT NULL,
+  command_json TEXT NOT NULL,
+  tree TEXT NOT NULL,
+  exit_code INTEGER,
+  signal TEXT,
+  timed_out INTEGER NOT NULL CHECK (timed_out IN (0, 1)),
+  duration_ms INTEGER,
+  output_tail TEXT NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('running', 'passed', 'failed', 'error')),
+  started_at TEXT NOT NULL,
+  ended_at TEXT
+) STRICT;
+CREATE INDEX verifications_by_session ON verifications (session_id, started_at);
+`,
+  },
 ];
 
 /** History queries must neither recover active runs nor migrate the workspace. */

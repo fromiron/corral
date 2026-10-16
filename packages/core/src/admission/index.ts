@@ -1,6 +1,7 @@
 import {
   type AgentStartInput,
   type ErrorCode,
+  FILE_TOOLS,
   type RunEvent,
   type RunLimits,
   TERMINAL_EXECUTION_STATUSES,
@@ -62,6 +63,8 @@ export interface ToolGateView extends ModelGateView {
   callables: { delegate: readonly string[]; question: readonly string[] };
   /** Whether search/read_document have a backend in this runtime. */
   externalTools: boolean;
+  /** Whether this run's session has a managed worktree for file tools (CR-012). */
+  fileTools: boolean;
   /** The execution answering an open question, if the question is open. */
   responderOf(questionId: string): string | undefined;
   /** Versions this execution may read (its own, its inputs, its children's, …). */
@@ -319,6 +322,16 @@ const roleAllowlist: Gate<ToolGateView> = {
         ? allow
         : refuse('SCHEMA_INVALID', 'read_document requires one documentId or sourceId');
     }
+    if ((FILE_TOOLS as readonly string[]).includes(proposal.name)) {
+      if (
+        !(input.role.allowedWorkTools as readonly string[]).includes(proposal.name) ||
+        !view.fileTools
+      )
+        return denied(`role may not use ${proposal.name} here`);
+      return fileArgsValid(proposal.name, args)
+        ? allow
+        : refuse('SCHEMA_INVALID', `invalid ${proposal.name} arguments`);
+    }
     if (proposal.name !== 'write_artifact' && proposal.name !== 'submit_result') {
       if (!collaboration.includes(proposal.name)) {
         return denied(
@@ -517,4 +530,32 @@ export const DEFAULT_GATES: AdmissionGates = {
 
 export function resolveGates(config: AdmissionConfig | undefined): AdmissionGates {
   return { ...DEFAULT_GATES, ...(config?.gates ?? {}) };
+}
+
+const MAX_FILE_TEXT = 1024 * 1024;
+const isPath = (value: unknown) =>
+  typeof value === 'string' && value.length > 0 && value.length <= 500;
+
+/** Shapes of file tool arguments (CR-012); the backend checks the paths themselves. */
+function fileArgsValid(name: string, args: Record<string, unknown>): boolean {
+  const keys = Object.keys(args);
+  const only = (...allowed: string[]) => keys.every((k) => allowed.includes(k));
+  switch (name) {
+    case 'list_files':
+      return only('path') && (args.path === undefined || args.path === '' || isPath(args.path));
+    case 'read_file':
+    case 'delete_file':
+      return only('path') && isPath(args.path);
+    case 'write_file':
+      return (
+        only('path', 'text') &&
+        isPath(args.path) &&
+        typeof args.text === 'string' &&
+        args.text.length <= MAX_FILE_TEXT
+      );
+    case 'move_file':
+      return only('from', 'to') && isPath(args.from) && isPath(args.to);
+    default:
+      return false;
+  }
 }

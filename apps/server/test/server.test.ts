@@ -1,4 +1,5 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { request } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -40,6 +41,7 @@ async function start(
     port: 0,
     agents: options.agents ?? new ScriptedAgentAdapter({ turns: 1 }),
     bootstrapToken: TOKEN,
+    worktreeRoot: join(tempWorkspace(), 'worktrees'),
     ...(options.staticDir ? { staticDir: options.staticDir } : {}),
   });
   servers.push(server);
@@ -1205,5 +1207,149 @@ describe('REST: work sessions (CR-011)', () => {
     });
     expect(refused.runId).toBeNull();
     expect(refused.receipt.error?.code).toBe('TARGET_NOT_FOUND');
+  });
+});
+
+describe('work folders and file changes (CR-012)', () => {
+  function repo() {
+    const dir = tempWorkspace();
+    const run = (...args: string[]) =>
+      execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args], {
+        cwd: dir,
+      });
+    run('init', '-q', '-b', 'main');
+    writeFileSync(join(dir, 'README.md'), 'hello\n');
+    run('add', '.');
+    run('commit', '-q', '-m', 'first');
+    // Uncommitted work in the original stays out of the copy.
+    writeFileSync(join(dir, 'draft.txt'), 'not committed\n');
+    return dir;
+  }
+
+  it('[WBTST-016] links, copies, lets a run write through the broker, and compares', async () => {
+    const original = repo();
+    let replies = 0;
+    const server = await start({
+      agents: new ScriptedAgentAdapter({
+        turns: 1,
+        reply: (turn, input) =>
+          `${input.role.name} (${input.nodeId}) turn ${turn}, reply ${++replies}`,
+      }),
+    });
+    const { call } = await browser(server);
+    const rest = new RestCorralRepository({ baseUrl: server.url, fetch: call });
+    const transport = new HttpSseTransport({ baseUrl: server.url, fetch: call });
+    const json = async (path: string, method = 'GET', body?: unknown) => {
+      const response = await call(`${server.url}/api/v1${path}`, {
+        method,
+        ...(body === undefined
+          ? {}
+          : { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }),
+      });
+      return {
+        status: response.status,
+        body: response.status === 204 ? null : await response.json(),
+      };
+    };
+    const linked = await json('/projects/default/workspace', 'PUT', { path: original });
+    expect(linked.status).toBe(201);
+    expect(linked.body.binding).toMatchObject({ isGit: true, trusted: false });
+    expect(linked.body.binding.status.changed).toBe(1);
+
+    const session = await rest.createSession({ projectId: 'default', title: 'Files' });
+    if (!session.ok) throw new Error(session.message);
+    const sessionId = session.session.sessionId;
+    // No copy before the person trusts the repository.
+    expect((await json(`/sessions/${sessionId}/worktree`, 'POST')).status).toBe(403);
+    await json('/projects/default/workspace', 'PATCH', { trusted: true });
+    const copy = await json(`/sessions/${sessionId}/worktree`, 'POST');
+    expect(copy.status).toBe(201);
+
+    const definition = linearCorral(['writer']);
+    (definition.roles[0] as { allowedWorkTools: string[] }).allowedWorkTools = [
+      'write_artifact',
+      'list_files',
+      'read_file',
+      'write_file',
+    ];
+    const corral = await rest.save({
+      definition,
+      layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
+      expectedDefinitionRevision: null,
+    });
+    if (!corral.ok) throw new Error(corral.message);
+    const startOne = async (commandId: string, brief: string) => {
+      const started = await transport.startRun({
+        schemaVersion: '0.1',
+        commandId,
+        corralId: corral.record.corralId,
+        definitionRevision: 1,
+        input: { brief, criteria: ['Cite sources.'] },
+        mode: 'mock',
+        sessionId,
+      });
+      await waitForProjection(transport, started.runId ?? '', (p) => p.status === 'succeeded');
+      return started.runId ?? '';
+    };
+    const first = await startOne('cmd_files_1', 'Compare two options.');
+    const changes = await json(`/sessions/${sessionId}/changes?scope=session`);
+    expect(changes.body.files).toEqual([
+      expect.objectContaining({
+        path: 'notes/writer.md',
+        status: 'added',
+        provenance: 'managed_agent',
+      }),
+    ]);
+    // The original folder is untouched.
+    expect(existsSync(join(original, 'notes'))).toBe(false);
+
+    // A second run reads the file before changing it; its own changes are its run's scope.
+    const second = await startOne('cmd_files_2', 'Now for one writer only.');
+    const runScope = await json(`/sessions/${sessionId}/changes?scope=run&runId=${second}`);
+    expect(
+      runScope.body.files.map((f: { path: string; status: string }) => [f.path, f.status]),
+    ).toEqual([['notes/writer.md', 'modified']]);
+    const versions = await json(
+      `/sessions/${sessionId}/changes/file?from=${runScope.body.from}&to=${runScope.body.to}&path=notes/writer.md`,
+    );
+    expect(versions.body.before.kind).toBe('text');
+    expect(versions.body.after.text).toContain('writer (writer) turn 1');
+    const ops = await json(`/sessions/${sessionId}/file-operations`);
+    expect(ops.body.map((o: { run_id: string; state: string }) => [o.run_id, o.state])).toEqual([
+      [second, 'applied'],
+      [first, 'applied'],
+    ]);
+
+    // Since the last review: nothing until something changes.
+    expect((await json(`/sessions/${sessionId}/reviewed`, 'POST')).status).toBe(204);
+    expect((await json(`/sessions/${sessionId}/changes?scope=review`)).body.files).toEqual([]);
+
+    // An agreed check runs in the copy, without a shell, and records its result.
+    await json('/projects/default/workspace', 'PATCH', {
+      verifyCommands: [
+        {
+          id: 'ok',
+          name: 'Exists',
+          argv: ['node', '-e', "require('fs').statSync('notes/writer.md')"],
+          timeoutMs: 20_000,
+        },
+        { id: 'bad', name: 'Fails', argv: ['node', '-e', 'process.exit(3)'], timeoutMs: 20_000 },
+      ],
+    });
+    await json(`/sessions/${sessionId}/verifications`, 'POST', { commandId: 'ok' });
+    await json(`/sessions/${sessionId}/verifications`, 'POST', { commandId: 'bad' });
+    let checks: { commandId: string; state: string; exitCode: number | null; stale: boolean }[] =
+      [];
+    for (let i = 0; i < 100; i++) {
+      checks = (await json(`/sessions/${sessionId}/verifications`)).body;
+      if (checks.every((c) => c.state !== 'running')) break;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    expect(
+      Object.fromEntries(checks.map((c) => [c.commandId, [c.state, c.exitCode, c.stale]])),
+    ).toEqual({
+      ok: ['passed', 0, false],
+      bad: ['failed', 3, false],
+    });
   });
 });

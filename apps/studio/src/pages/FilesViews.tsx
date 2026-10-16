@@ -1,0 +1,279 @@
+import type { VerifyCommand, WorkspaceBindingView, WorktreeView } from '@corral/client';
+import { Link } from '@tanstack/react-router';
+import { type FormEvent, useCallback, useEffect, useState } from 'react';
+import { useTranslations } from 'use-intl';
+import { useServices } from '../services.tsx';
+
+// Work folders and working copies in Studio (CR-012). Shown on the local server only.
+
+/** "Name = command args" per line; quotes keep spaces inside one argument. */
+export function parseChecks(text: string): VerifyCommand[] {
+  return text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .flatMap((line, index) => {
+      const at = line.indexOf('=');
+      if (at <= 0) return [];
+      const name = line.slice(0, at).trim();
+      const argv = [...line.slice(at + 1).matchAll(/"([^"]*)"|'([^']*)'|(\S+)/g)].map(
+        (m) => m[1] ?? m[2] ?? m[3] ?? '',
+      );
+      return name && argv.length > 0
+        ? [{ id: `check_${index + 1}`, name: name.slice(0, 80), argv, timeoutMs: 10 * 60_000 }]
+        : [];
+    });
+}
+
+const formatChecks = (checks: VerifyCommand[]) =>
+  checks
+    .map((c) => `${c.name} = ${c.argv.map((a) => (/\s/.test(a) ? `"${a}"` : a)).join(' ')}`)
+    .join('\n');
+
+export function useBinding(projectId: string | null) {
+  const { workspaces } = useServices();
+  const [binding, setBinding] = useState<WorkspaceBindingView | null | undefined>(undefined);
+  const reload = useCallback(async () => {
+    if (!workspaces || !projectId) return setBinding(null);
+    try {
+      setBinding(await workspaces.binding(projectId));
+    } catch {
+      setBinding(null);
+    }
+  }, [workspaces, projectId]);
+  useEffect(() => {
+    void reload();
+  }, [reload]);
+  return { binding, reload };
+}
+
+/** The project's linked folder, its trust and checks (project page). */
+export function WorkFolderSection({ projectId }: { projectId: string }) {
+  const t = useTranslations('Files');
+  const { workspaces } = useServices();
+  const { binding, reload } = useBinding(projectId);
+  const [path, setPath] = useState('');
+  const [checks, setChecks] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  if (!workspaces || binding === undefined) return null;
+  const act = async (work: () => Promise<unknown>) => {
+    setError(null);
+    try {
+      await work();
+      await reload();
+    } catch (failure) {
+      setError(
+        t('failed', { message: failure instanceof Error ? failure.message : String(failure) }),
+      );
+    }
+  };
+  const link = (event: FormEvent) => {
+    event.preventDefault();
+    void act(() => workspaces.bind(projectId, path.trim()));
+  };
+
+  return (
+    <section
+      aria-labelledby="folder-heading"
+      className="flex flex-col gap-2 rounded-md border border-line p-3"
+    >
+      <h2 id="folder-heading" className="text-sm font-semibold">
+        {t('folderHeading')}
+      </h2>
+      <p className="text-xs text-muted">{t('folderIntro')}</p>
+      {!binding ? (
+        <form onSubmit={link} className="flex flex-wrap items-end gap-2">
+          <label className="flex min-w-64 flex-1 flex-col gap-1 text-xs">
+            {t('pathLabel')}
+            <input
+              value={path}
+              onChange={(e) => setPath(e.target.value)}
+              spellCheck={false}
+              className="rounded border border-line bg-surface px-2 py-1 font-mono text-sm"
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={!path.trim()}
+            className="rounded-md border border-accent px-3 py-1.5 text-sm text-accent disabled:opacity-50"
+          >
+            {t('link')}
+          </button>
+        </form>
+      ) : (
+        <div className="flex flex-col gap-2 text-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <code className="rounded bg-surface px-1 text-xs" title={binding.path}>
+              {binding.path.split('/').slice(-2).join('/')}
+            </code>
+            <button
+              type="button"
+              onClick={() => void act(() => workspaces.unbind(projectId))}
+              className="rounded border border-line px-2 py-0.5 text-xs"
+            >
+              {t('unlink')}
+            </button>
+          </div>
+          {binding.isGit && binding.status ? (
+            <p className="text-xs text-muted">
+              {t('gitStatus', {
+                branch: binding.status.branch ?? '—',
+                head: binding.status.head ?? '—',
+                changed: binding.status.changed,
+              })}
+            </p>
+          ) : null}
+          {!binding.isGit ? <p className="text-xs text-warning">{t('notGit')}</p> : null}
+          {binding.isGit ? (
+            <label className="flex items-start gap-2 text-xs">
+              <input
+                type="checkbox"
+                checked={binding.trusted}
+                onChange={(e) =>
+                  void act(() => workspaces.configure(projectId, { trusted: e.target.checked }))
+                }
+              />
+              <span>
+                <span className="font-medium">{t('trust')}</span>
+                <span className="block text-muted">{t('trustHint')}</span>
+              </span>
+            </label>
+          ) : null}
+          {binding.trusted ? (
+            <div className="flex flex-col gap-1">
+              <label className="flex flex-col gap-1 text-xs">
+                <span className="font-medium">{t('checksHeading')}</span>
+                <span className="text-muted">{t('checksHint')}</span>
+                <textarea
+                  rows={3}
+                  value={checks ?? formatChecks(binding.verifyCommands)}
+                  placeholder={t('checksPlaceholder')}
+                  onChange={(e) => setChecks(e.target.value)}
+                  spellCheck={false}
+                  className="rounded border border-line bg-surface px-2 py-1 font-mono text-xs"
+                />
+              </label>
+              <button
+                type="button"
+                disabled={checks === null}
+                onClick={() =>
+                  void act(async () => {
+                    await workspaces.configure(projectId, {
+                      verifyCommands: parseChecks(checks ?? ''),
+                    });
+                    setChecks(null);
+                  })
+                }
+                className="self-start rounded border border-line px-2 py-1 text-xs disabled:opacity-50"
+              >
+                {t('saveChecks')}
+              </button>
+            </div>
+          ) : null}
+        </div>
+      )}
+      {error ? (
+        <p role="alert" className="text-sm text-danger">
+          {error}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+/** The session's working copy: make one, open the review, or remove it (session page). */
+export function WorkingCopyPanel({
+  sessionId,
+  projectId,
+}: {
+  sessionId: string;
+  projectId: string;
+}) {
+  const t = useTranslations('Files');
+  const { workspaces } = useServices();
+  const { binding } = useBinding(projectId);
+  const [worktree, setWorktree] = useState<WorktreeView | null | undefined>(undefined);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const reload = useCallback(async () => {
+    if (!workspaces) return setWorktree(null);
+    setWorktree(await workspaces.worktree(sessionId).catch(() => null));
+  }, [workspaces, sessionId]);
+  useEffect(() => {
+    void reload();
+  }, [reload]);
+  if (!workspaces || worktree === undefined || binding === undefined) return null;
+  const act = async (work: () => Promise<unknown>) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await work();
+      await reload();
+    } catch (failure) {
+      setError(
+        t('failed', { message: failure instanceof Error ? failure.message : String(failure) }),
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <section
+      aria-labelledby="copy-heading"
+      className="flex flex-col gap-2 rounded-md border border-line p-3 text-sm"
+    >
+      <h3 id="copy-heading" className="text-sm font-semibold">
+        {t('copyHeading')}
+      </h3>
+      {worktree ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-muted">
+            {t('ready', { commit: worktree.baseCommit.slice(0, 8) })}
+          </span>
+          <Link
+            to="/sessions/$sessionId/review"
+            params={{ sessionId }}
+            className="rounded-md bg-accent px-3 py-1 text-xs font-medium text-on-accent"
+          >
+            {t('review')}
+          </Link>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              if (window.confirm(t('removeConfirm')))
+                void act(() => workspaces.removeWorktree(sessionId));
+            }}
+            className="rounded border border-line px-2 py-1 text-xs"
+          >
+            {t('remove')}
+          </button>
+        </div>
+      ) : !binding ? (
+        <p className="text-xs text-muted">{t('noFolder')}</p>
+      ) : !binding.trusted ? (
+        <p className="text-xs text-warning">{t('notTrusted')}</p>
+      ) : (
+        <div className="flex flex-col gap-1">
+          <p className="text-xs text-muted">{t('copyIntro')}</p>
+          <p className="text-xs text-warning">
+            {t('createHint', { changed: binding.status?.changed ?? 0 })}
+          </p>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void act(() => workspaces.createWorktree(sessionId))}
+            className="self-start rounded-md border border-accent px-3 py-1 text-xs text-accent"
+          >
+            {t('create', { head: binding.status?.head ?? 'HEAD' })}
+          </button>
+        </div>
+      )}
+      {error ? (
+        <p role="alert" className="text-sm text-danger">
+          {error}
+        </p>
+      ) : null}
+    </section>
+  );
+}

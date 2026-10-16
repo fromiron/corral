@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 import {
   type AgentAdapter,
@@ -16,6 +17,7 @@ import {
   SCHEMA_VERSION,
   type Scheduler,
   StartFrom,
+  TERMINAL_RUN_STATUSES,
 } from '@corral/contracts';
 import {
   Coordinator,
@@ -30,6 +32,7 @@ import {
   planRun,
   type SaveResult,
   type SessionResult,
+  ToolRefusal,
 } from '@corral/core';
 import { LangGraphRunner } from '@corral/runner-langgraph';
 import { openDatabase, SqliteCorralRepository, SqliteRunStore } from '@corral/storage-sqlite';
@@ -38,6 +41,7 @@ import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import packageJson from '../package.json' with { type: 'json' };
+import { type ChangeScope, WorkspaceError, WorkspaceService } from './files/service.ts';
 import { ImportInput, type InputOptions, InputRegistry } from './inputs.ts';
 import {
   assertOutsideWorkspace,
@@ -48,6 +52,7 @@ import {
   type ProfileConfig,
   RegistryError,
   registerEndpoints,
+  userConfigDir,
 } from './models/index.ts';
 import { RandomIdFactory, systemClock, systemTimers } from './runtime.ts';
 import { InputError } from './safe-http.ts';
@@ -69,6 +74,12 @@ import { acquireWorkspaceOwnership } from './workspace-ownership.ts';
 // and Studio's static files, all on one loopback origin. The Coordinator is the only writer.
 
 const PREVIEW_ROUTE = '/api/v1/runs/:runId/artifact-versions/:versionId/preview';
+
+/** Sessions' worktrees: `$CORRAL_DATA_DIR/worktrees`, else the user's data directory. */
+function defaultWorktreeRoot(env: NodeJS.ProcessEnv = process.env): string {
+  if (env.CORRAL_DATA_DIR) return join(env.CORRAL_DATA_DIR, 'worktrees');
+  return join(env.XDG_DATA_HOME || join(homedir(), '.local', 'share'), 'corral', 'worktrees');
+}
 export interface ServerOptions {
   workspace: string;
   /** Judgment providers beyond the built-in local-heuristic@1 (CR-003), e.g. the local model. */
@@ -90,6 +101,8 @@ export interface ServerOptions {
   live?: LiveModels;
   /** Input network injection and explicit bounded search opt-in; credentials stay server-side. */
   inputs?: InputOptions;
+  /** Where sessions' git worktrees live (CR-012); outside every linked folder. */
+  worktreeRoot?: string;
 }
 
 export interface LiveModels {
@@ -286,6 +299,14 @@ async function createCorralServer(
   }
   const store = new SqliteRunStore(db);
   const inputs = new InputRegistry(db, options.inputs);
+  // CR-012: linked folders, session worktrees and the file broker.
+  const files = new WorkspaceService({
+    db,
+    clock,
+    worktreeRoot: options.worktreeRoot ?? defaultWorktreeRoot(),
+    forbidden: [join(workspace.root, '.corral'), userConfigDir()],
+  });
+
   const coordinator = new Coordinator({
     clock,
     ids,
@@ -297,6 +318,7 @@ async function createCorralServer(
     ...(registry ? { models: registry } : {}),
     store,
     tools: inputs,
+    files,
     runner: new LangGraphRunner(),
     corrals,
     policy: workspace.policy,
@@ -695,7 +717,11 @@ async function createCorralServer(
         });
       }
     }
+    const startTree =
+      parsed.data.sessionId && !resend ? await files.currentTree(parsed.data.sessionId) : null;
     const result = coordinator.startRun(parsed.data);
+    if (result.runId && startTree && parsed.data.sessionId)
+      await trackRunFiles(result.runId, parsed.data.sessionId, startTree);
     const status = result.receipt.error ? STATUS[result.receipt.error.code] : resend ? 200 : 201;
     return reply.code(status).send(result);
   });
@@ -707,6 +733,7 @@ async function createCorralServer(
     if (!resend && !(await corrals.getSession(body.sessionId))) {
       return fail(reply, 'TARGET_NOT_FOUND', 'no such session');
     }
+    const explainTree = resend ? null : await files.currentTree(body.sessionId);
     const result = coordinator.startRun({
       schemaVersion: SCHEMA_VERSION,
       commandId: body.commandId,
@@ -719,9 +746,193 @@ async function createCorralServer(
       sessionId: body.sessionId,
       ...(body.startFrom ? { startFrom: body.startFrom } : {}),
     });
+    if (result.runId && explainTree) await trackRunFiles(result.runId, body.sessionId, explainTree);
     const status = result.receipt.error ? STATUS[result.receipt.error.code] : resend ? 200 : 201;
     return reply.code(status).send(result);
   });
+
+  // ── Work folders and file changes (CR-012) ───────────────────────────────────
+  /** A run's start snapshot is recorded, and its end snapshot taken when it ends. */
+  async function trackRunFiles(runId: string, sessionId: string, startTree: string) {
+    await files.recordRunStart(runId, sessionId, startTree);
+    const stop = coordinator.subscribe(runId, 0, (event) => {
+      if (event.type === 'run.state_changed' && TERMINAL_RUN_STATUSES.has(event.payload.to)) {
+        stop();
+        void files.snapshotRun(runId, sessionId, 'end').catch(() => undefined);
+      }
+    });
+  }
+  const workspaceFail = (reply: FastifyReply, error: unknown) => {
+    if (error instanceof WorkspaceError) return fail(reply, error.code, error.message);
+    if (error instanceof ToolRefusal) return fail(reply, 'SCHEMA_INVALID', error.message);
+    // Git's message can name local paths; only the step is reported.
+    return fail(reply, 'STORAGE_UNAVAILABLE', 'the folder operation failed');
+  };
+  const sessionOr404 = async (reply: FastifyReply, sessionId: string) => {
+    const session = await corrals.getSession(sessionId);
+    if (!session) void fail(reply, 'TARGET_NOT_FOUND', 'no such session');
+    return session;
+  };
+  const runEnded = (runId: string) => {
+    const status = coordinator.listRuns().find((r) => r.runId === runId)?.status;
+    return status ? TERMINAL_RUN_STATUSES.has(status) : true;
+  };
+  type ProjectParams = { Params: { projectId: string } };
+  type SessionParams = { Params: { sessionId: string } };
+
+  app.get<ProjectParams>('/api/v1/projects/:projectId/workspace', async (request, reply) => {
+    try {
+      return { binding: await files.view(request.params.projectId) };
+    } catch (error) {
+      return workspaceFail(reply, error);
+    }
+  });
+  app.put<ProjectParams>('/api/v1/projects/:projectId/workspace', async (request, reply) => {
+    const body = parse(z.strictObject({ path: z.string().min(1).max(4096) }), request, reply);
+    if (!body) return reply;
+    const project = (await corrals.listProjects()).find(
+      (p) => p.projectId === request.params.projectId,
+    );
+    if (!project) return fail(reply, 'TARGET_NOT_FOUND', 'no such project');
+    try {
+      return reply.code(201).send({ binding: await files.bind(project.projectId, body.path) });
+    } catch (error) {
+      return workspaceFail(reply, error);
+    }
+  });
+  app.patch<ProjectParams>('/api/v1/projects/:projectId/workspace', async (request, reply) => {
+    const body = parse(
+      z.strictObject({
+        trusted: z.boolean().optional(),
+        verifyCommands: z
+          .array(
+            z.strictObject({
+              id: Identifier,
+              name: z.string().min(1).max(80),
+              argv: z.array(z.string().min(1).max(500)).min(1).max(30),
+              timeoutMs: z
+                .int()
+                .min(1000)
+                .max(30 * 60_000),
+            }),
+          )
+          .max(10)
+          .optional(),
+      }),
+      request,
+      reply,
+    );
+    if (!body) return reply;
+    try {
+      return { binding: await files.configure(request.params.projectId, body) };
+    } catch (error) {
+      return workspaceFail(reply, error);
+    }
+  });
+  app.delete<ProjectParams>('/api/v1/projects/:projectId/workspace', async (request, reply) => {
+    try {
+      await files.unbind(request.params.projectId);
+      return reply.code(204).send();
+    } catch (error) {
+      return workspaceFail(reply, error);
+    }
+  });
+
+  app.get<SessionParams>('/api/v1/sessions/:sessionId/worktree', async (request, reply) => {
+    if (!(await sessionOr404(reply, request.params.sessionId))) return reply;
+    return { worktree: files.worktreeView(request.params.sessionId) };
+  });
+  app.post<SessionParams>('/api/v1/sessions/:sessionId/worktree', async (request, reply) => {
+    const session = await sessionOr404(reply, request.params.sessionId);
+    if (!session) return reply;
+    try {
+      return reply
+        .code(201)
+        .send({ worktree: await files.createWorktree(session.sessionId, session.projectId) });
+    } catch (error) {
+      return workspaceFail(reply, error);
+    }
+  });
+  app.delete<SessionParams>('/api/v1/sessions/:sessionId/worktree', async (request, reply) => {
+    if (!(await sessionOr404(reply, request.params.sessionId))) return reply;
+    try {
+      await files.removeWorktree(request.params.sessionId);
+      return reply.code(204).send();
+    } catch (error) {
+      return workspaceFail(reply, error);
+    }
+  });
+  const ScopeQuery = z.object({
+    scope: z.enum(['session', 'review', 'run']).default('session'),
+    runId: Identifier.optional(),
+  });
+  const scopeOf = (query: z.infer<typeof ScopeQuery>): ChangeScope | null =>
+    query.scope === 'run'
+      ? query.runId
+        ? { kind: 'run', runId: query.runId }
+        : null
+      : { kind: query.scope };
+  app.get<SessionParams>('/api/v1/sessions/:sessionId/changes', async (request, reply) => {
+    const query = ScopeQuery.safeParse(request.query);
+    const scope = query.success ? scopeOf(query.data) : null;
+    if (!scope) return fail(reply, 'SCHEMA_INVALID', 'scope=session|review|run (with runId)');
+    try {
+      return await files.changes(request.params.sessionId, scope, runEnded);
+    } catch (error) {
+      return workspaceFail(reply, error);
+    }
+  });
+  app.get<SessionParams>('/api/v1/sessions/:sessionId/changes/file', async (request, reply) => {
+    const query = z
+      .object({
+        from: z.string().regex(/^[0-9a-f]{40,64}$/),
+        to: z.string().regex(/^[0-9a-f]{40,64}$/),
+        path: z.string().min(1).max(500),
+      })
+      .safeParse(request.query);
+    if (!query.success) return fail(reply, 'SCHEMA_INVALID', 'from, to and path are required');
+    try {
+      return await files.fileVersions(
+        request.params.sessionId,
+        query.data.from,
+        query.data.to,
+        query.data.path,
+      );
+    } catch (error) {
+      return workspaceFail(reply, error);
+    }
+  });
+  app.post<SessionParams>('/api/v1/sessions/:sessionId/reviewed', async (request, reply) => {
+    try {
+      await files.markReviewed(request.params.sessionId);
+      return reply.code(204).send();
+    } catch (error) {
+      return workspaceFail(reply, error);
+    }
+  });
+  app.get<SessionParams>('/api/v1/sessions/:sessionId/verifications', async (request, reply) => {
+    try {
+      const tree = await files.currentTree(request.params.sessionId);
+      return files.verifications(request.params.sessionId, tree);
+    } catch (error) {
+      return workspaceFail(reply, error);
+    }
+  });
+  app.post<SessionParams>('/api/v1/sessions/:sessionId/verifications', async (request, reply) => {
+    const body = parse(z.strictObject({ commandId: Identifier }), request, reply);
+    if (!body) return reply;
+    const session = await sessionOr404(reply, request.params.sessionId);
+    if (!session) return reply;
+    try {
+      const id = await files.verify(session.sessionId, session.projectId, body.commandId);
+      return reply.code(202).send({ verificationId: id });
+    } catch (error) {
+      return workspaceFail(reply, error);
+    }
+  });
+  app.get<SessionParams>('/api/v1/sessions/:sessionId/file-operations', async (request) =>
+    files.fileOperations(request.params.sessionId),
+  );
 
   // ── Work sessions (CR-011) ───────────────────────────────────────────────────
   const sessionReply = (reply: FastifyReply, result: SessionResult, created: boolean) => {

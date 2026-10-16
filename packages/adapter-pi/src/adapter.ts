@@ -1,10 +1,11 @@
-import type {
-  AgentAdapter,
-  AgentHandle,
-  AgentHost,
-  AgentSettlement,
-  AgentStartInput,
-  ModelProfileSnapshot,
+import {
+  type AgentAdapter,
+  type AgentHandle,
+  type AgentHost,
+  type AgentSettlement,
+  type AgentStartInput,
+  FILE_TOOLS,
+  type ModelProfileSnapshot,
 } from '@corral/contracts';
 import type { Channel } from './channel.ts';
 import type { EndpointSpec } from './endpoint.ts';
@@ -294,6 +295,7 @@ function offeredTools(input: AgentStartInput): WorkerTool[] {
   if (role.allowedWorkTools.includes('search')) tools.push('search');
   if (role.allowedWorkTools.includes('read_document')) tools.push('read_document');
   if (role.allowedWorkTools.includes('write_artifact')) tools.push('write_artifact');
+  for (const file of FILE_TOOLS) if (role.allowedWorkTools.includes(file)) tools.push(file);
   if (may('read_artifact')) tools.push('read_artifact');
   if (may('spawn_subagents') && capabilities.delegateTo.length > 0) tools.push('spawn_subagents');
   if (may('await_tasks') && capabilities.delegateTo.length > 0) tools.push('await_tasks');

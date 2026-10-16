@@ -21,7 +21,25 @@ export const InputBinding = z.strictObject({
 });
 export type InputBinding = z.infer<typeof InputBinding>;
 
-export const WorkTool = z.enum(['search', 'read_document', 'write_artifact']);
+// File tools (CR-012) work only inside a session's managed worktree.
+export const WorkTool = z.enum([
+  'search',
+  'read_document',
+  'write_artifact',
+  'list_files',
+  'read_file',
+  'write_file',
+  'delete_file',
+  'move_file',
+]);
+export const FILE_TOOLS = [
+  'list_files',
+  'read_file',
+  'write_file',
+  'delete_file',
+  'move_file',
+] as const;
+export type FileToolName = (typeof FILE_TOOLS)[number];
 export type WorkTool = z.infer<typeof WorkTool>;
 
 export const CollaborationTool = z.enum([
@@ -42,7 +60,7 @@ export const AgentRole = z.strictObject({
   name: z.string().min(1),
   prompt: z.string().min(1).max(20000),
   modelProfile: Identifier,
-  allowedWorkTools: z.array(WorkTool).max(3),
+  allowedWorkTools: z.array(WorkTool).max(8),
   allowedCollaborationTools: z.array(CollaborationTool).max(6),
   outputContract: OutputContract,
 });

@@ -31,6 +31,14 @@ const TOOL_TEXT: Record<WorkerTool, string> = {
     'Read a registered documentId or sourceId. Raw URLs and filesystem paths are not accepted.',
   write_artifact:
     'Save your output text as a new immutable version. Returns its artifactVersionId.',
+  list_files:
+    'List files of the working copy under a relative folder (default: the root). Returns paths and sizes.',
+  read_file:
+    'Read a UTF-8 text file of the working copy by relative path. Read a file before changing it.',
+  write_file:
+    'Create or replace a UTF-8 text file by relative path. An existing file must be read first; if it changed since, the write is refused.',
+  delete_file: 'Delete a file you have read, by relative path.',
+  move_file: 'Move or rename a file you have read, from one relative path to another.',
   submit_result: 'Submit the versions that complete your task. Call it once, after write_artifact.',
   spawn_subagents:
     'Start callable agents on separate tasks, in parallel. Returns their taskIds; then call await_tasks.',
@@ -59,6 +67,21 @@ function parametersOf(name: WorkerTool, start: StartFrame) {
       ]);
     case 'write_artifact':
       return Type.Object({ text: Type.String() });
+    case 'list_files':
+      return Type.Object({ path: Type.Optional(Type.String({ maxLength: 500 })) });
+    case 'read_file':
+    case 'delete_file':
+      return Type.Object({ path: Type.String({ minLength: 1, maxLength: 500 }) });
+    case 'write_file':
+      return Type.Object({
+        path: Type.String({ minLength: 1, maxLength: 500 }),
+        text: Type.String(),
+      });
+    case 'move_file':
+      return Type.Object({
+        from: Type.String({ minLength: 1, maxLength: 500 }),
+        to: Type.String({ minLength: 1, maxLength: 500 }),
+      });
     case 'submit_result':
       return Type.Object({ artifactVersionIds: Type.Array(Type.String(), { minItems: 1 }) });
     case 'spawn_subagents':

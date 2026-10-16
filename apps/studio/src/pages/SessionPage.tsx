@@ -14,6 +14,7 @@ import { useFormatter, useTranslations } from 'use-intl';
 import { projectName, setCurrentProject } from '../projects.ts';
 import { sessionRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
+import { WorkingCopyPanel } from './FilesViews.tsx';
 
 // A work session (CR-011, roadmap 23–24): what was asked, the runs it started, the queue, and
 // one input box whose intent is chosen, never guessed.
@@ -70,6 +71,7 @@ export function SessionPage() {
         {t('backTo', { name: projectName(project ?? undefined, tp('defaultName')) })}
       </Link>
       <SessionHeader session={session} corrals={corrals} team={team} />
+      <WorkingCopyPanel sessionId={session.sessionId} projectId={session.projectId} />
       <section aria-label={t('heading')} className="flex flex-col gap-3">
         {session.entries.length === 0 && loose.length === 0 ? (
           <p className="rounded-md border border-dashed border-line p-4 text-sm text-muted">

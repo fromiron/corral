@@ -20,10 +20,13 @@ export {
   type DecisionInput,
   type DecisionPolicy,
   type DefinitionSource,
+  type FileTools,
   type ModelResolution,
   type ModelResolver,
   SIMULATED_MODELS,
   type StartRunResult,
+  type ToolCancellation,
+  ToolRefusal,
 } from './coordinator.ts';
 export { LocalHeuristicProvider } from './decisions/heuristic.ts';
 export {
