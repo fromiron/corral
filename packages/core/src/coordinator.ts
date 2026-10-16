@@ -1401,28 +1401,33 @@ export class Coordinator {
                 e.runSeq <= (record.receipt.acceptedSeq ?? 0),
             )
           : undefined;
-      const applied = cancel
-        ? own.some((e) => e.type === 'cancel.confirmed')
-        : pause
-          ? events.some(
-              (e) =>
-                e.runSeq > pause.runSeq &&
-                e.type === 'run.state_changed' &&
-                e.payload.to === 'paused',
-            )
-          : false;
-      const superseded =
-        pause &&
-        !applied &&
-        events.some(
-          (e) =>
-            e.runSeq > pause.runSeq &&
-            e.type === 'run.state_changed' &&
-            e.payload.reasonCode === 'resumed',
-        );
+      const pauseResolution = pause
+        ? events.find(
+            (e) =>
+              e.runSeq > pause.runSeq &&
+              e.type === 'run.state_changed' &&
+              (e.payload.to === 'paused' ||
+                e.payload.reasonCode === 'resumed' ||
+                TERMINAL_RUN_STATUSES.has(e.payload.to)),
+          )
+        : undefined;
+      let status: Receipt['status'] = record.receipt.status;
+      if (cancel) {
+        if (own.some((e) => e.type === 'cancel.confirmed')) status = 'applied';
+      } else if (pauseResolution?.type === 'run.state_changed') {
+        const { to, reasonCode } = pauseResolution.payload;
+        status =
+          to === 'paused'
+            ? 'applied'
+            : reasonCode === 'resumed'
+              ? 'superseded'
+              : to === 'cancelled'
+                ? 'cancelled'
+                : 'expired';
+      }
       return {
         ...record.receipt,
-        status: applied ? 'applied' : superseded ? 'superseded' : record.receipt.status,
+        status,
         relatedEventIds: own.map((e) => e.eventId),
       };
     }
@@ -2316,12 +2321,33 @@ export class Coordinator {
 
   // ── model slots ───────────────────────────────────────────────────────────
 
-  private acquireSlot(run: LiveRun): Promise<void> {
+  private async acquireSlot(run: LiveRun, executionId: string): Promise<void> {
     if (run.slots.free > 0) {
       run.slots.free -= 1;
-      return Promise.resolve();
+      return;
     }
-    return new Promise((resolve) => run.slots.waiters.push(resolve));
+    const listeners = run.cancelListeners.get(executionId) ?? new Set<() => void>();
+    run.cancelListeners.set(executionId, listeners);
+    run.boundaries.add(executionId);
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const granted = () => {
+          listeners.delete(cancel);
+          resolve();
+        };
+        const cancel = () => {
+          const index = run.slots.waiters.indexOf(granted);
+          if (index !== -1) run.slots.waiters.splice(index, 1);
+          listeners.delete(cancel);
+          reject(new Error('scope cancelled'));
+        };
+        listeners.add(cancel);
+        run.slots.waiters.push(granted);
+        this.maybePaused(run);
+      });
+    } finally {
+      run.boundaries.delete(executionId);
+    }
   }
 
   private releaseSlot(run: LiveRun) {
@@ -2936,7 +2962,7 @@ export class Coordinator {
           requireActive();
         }
         // Wait for a model slot; a waiting execution is not in a request and holds none.
-        await this.acquireSlot(run);
+        await this.acquireSlot(run, executionId);
         try {
           do {
             await this.boundary(run, executionId);

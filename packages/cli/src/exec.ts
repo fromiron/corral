@@ -39,6 +39,7 @@ export async function executeOnce(
   mode: 'mock' | 'live',
   { signal, now = () => performance.now() }: { signal: AbortSignal; now?: () => number },
 ): Promise<ExecResult> {
+  signal.throwIfAborted();
   const started = now();
   const { runId, receipt } = await transport.startRun({
     schemaVersion: '0.1',
@@ -60,6 +61,7 @@ export async function executeOnce(
     });
   const onAbort = () => void cancel('interrupted by the user').catch(() => {});
   signal.addEventListener('abort', onAbort, { once: true });
+  if (signal.aborted) onAbort();
   let projection: RunProjection;
   let needsUser = false;
   try {

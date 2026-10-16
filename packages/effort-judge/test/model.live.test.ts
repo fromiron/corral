@@ -1,3 +1,8 @@
+import { execFile } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { promisify } from 'node:util';
 import type { EffortQuestion } from '@corral/contracts';
 import { DecisionAnswer } from '@corral/contracts';
 import { describe, expect, it } from 'vitest';
@@ -29,6 +34,23 @@ const ask = (excerpt: string): EffortQuestion => ({
 });
 
 describe.skipIf(!live)('local-model on the installed release (opt-in)', () => {
+  it('[TC-DEC-001-N] releases the worker after a real model load fails', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'corral-judge-missing-'));
+    const moduleUrl = new URL('../src/provider.ts', import.meta.url).href;
+    try {
+      await promisify(execFile)(
+        process.execPath,
+        [
+          '-e',
+          `process.exitCode = 2; import(${JSON.stringify(moduleUrl)}).then(({ workerSession }) => workerSession(${JSON.stringify(dir)})).then(() => { process.exitCode = 1; }, error => { process.exitCode = /NO_SUCHFILE|File.*exist/.test(error.message) ? 0 : 3; });`,
+        ],
+        { timeout: 5_000 },
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 10_000);
+
   it('[TC-DEC-001-H] judges a trivial request lower than a hard design task, in a worker thread', async () => {
     const dir = defaultModelDir();
     expect(installState(dir)).toBe('current');

@@ -45,6 +45,26 @@ test('[TC-OBS-001-H] the Run page shows the graph with execution counts, and a n
     'aria-current',
     'true',
   );
+
+  // Choosing another role from the tree must also update the previously selected graph node.
+  await page
+    .locator('li[data-execution-id]')
+    .filter({ hasText: /^Research ·/ })
+    .getByRole('button', { name: 'Steer', exact: true })
+    .first()
+    .click();
+  await expect(graph(page).locator('.react-flow__node[data-id="research"]')).toHaveClass(
+    /selected/,
+  );
+  await expect(writer).not.toHaveClass(/selected/);
+  await page.goBack();
+  await expect(writer).toHaveClass(/selected/);
+  await expect(reins).toContainText(`execution ${executionId}`);
+  await page.goForward();
+  await expect(graph(page).locator('.react-flow__node[data-id="research"]')).toHaveClass(
+    /selected/,
+  );
+  await expect(writer).not.toHaveClass(/selected/);
 });
 
 test('[TC-OBS-001-H] the header states the run, its progress and the whole-run controls; the output tab opens on success', async ({

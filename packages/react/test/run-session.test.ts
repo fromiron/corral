@@ -86,6 +86,25 @@ describe('run session', () => {
     expect(delivered.projection?.directives[directiveId]?.modelCallId).toBeTruthy();
   });
 
+  it('[TC-RNS-003-H] refreshes a pending pause receipt when the run is cancelled before pausing', async () => {
+    const gate = new Gate();
+    const store = session([gate]);
+    await store.getState().start(linearCorral(['writer']));
+    await until(store, (s) => Object.keys(s.projection?.modelCalls ?? {}).length === 1);
+    const pause = await store.getState().sendCommand({ type: 'pause', payload: { scope: 'run' } });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(store.getState().receipts[pause.commandId]?.status).toBe('accepted');
+    await store.getState().sendCommand({
+      type: 'cancel',
+      payload: { scope: { kind: 'run' }, reason: 'Stop before pause boundary' },
+    });
+    gate.open();
+    await until(store, (s) => s.projection?.status === 'cancelled');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(store.getState().receipts[pause.commandId]?.status).toBe('cancelled');
+    store.getState().dispose();
+  });
+
   it('reopens a finished run from the runtime, with its definition and output', async () => {
     const transport = new InProcessTransport(
       new Coordinator({

@@ -473,4 +473,78 @@ describe('Reins integration counterexamples', () => {
     s.send('cancel', { scope: { kind: 'run' }, reason: 'Test complete' }, 'cleanup');
     await blocked;
   });
+
+  it('[TC-RUN-007-H] recovery expires a pause that never reached its boundary', async () => {
+    const store = new InMemoryRunStore();
+    const s = controlled(linearCorral(['writer']), { store });
+    await drain();
+    await required(s.hosts.get(required(s.projection().executionOrder[0]))).prepareModelRequest();
+    s.send('pause', { scope: 'run' });
+    const recovered = new Coordinator({
+      store,
+      clock: new FakeClock(),
+      ids: new SequentialIdFactory(),
+      agents: new ScriptedAgentAdapter({ turns: 1 }),
+    });
+    expect(recovered.getSnapshot(s.runId).projection.status).toBe('interrupted');
+    expect(recovered.getReceipt(s.runId, 'pause')?.status).toBe('expired');
+  });
+
+  it.each([false, true])(
+    '[TC-RNS-003-H] run cancellation settles pending pause receipts and preserves applied pauses (paused=%s)',
+    async (reachedBoundary) => {
+      const s = controlled(linearCorral(['writer']));
+      await drain();
+      const host = required(s.hosts.get(required(s.projection().executionOrder[0])));
+      const request = await host.prepareModelRequest();
+      s.send('pause', { scope: 'run' });
+      let blocked: Promise<unknown> | undefined;
+      if (reachedBoundary) {
+        await host.observe({
+          kind: 'model_completed',
+          modelCallId: request.modelCallId,
+          text: 'Finished',
+          usage: { inputTokens: 1, outputTokens: 1 },
+        });
+        blocked = host.prepareModelRequest().catch(() => null);
+        await drain();
+        expect(s.projection().status).toBe('paused');
+      }
+      s.send('cancel', { scope: { kind: 'run' }, reason: 'Stop' });
+      await blocked;
+      await drain();
+      expect(s.projection().status).toBe('cancelled');
+      expect(s.coordinator.getReceipt(s.runId, 'pause')?.status).toBe(
+        reachedBoundary ? 'applied' : 'cancelled',
+      );
+    },
+  );
+
+  it('[TC-RNS-003-H] a superseded pause stays superseded after a later pause reaches its boundary', async () => {
+    const s = controlled(linearCorral(['writer']));
+    await drain();
+    const host = required(s.hosts.get(required(s.projection().executionOrder[0])));
+    const request = await host.prepareModelRequest();
+    s.send('pause', { scope: 'run' }, 'pause_first');
+    s.send('pause', { scope: 'run' }, 'pause_duplicate');
+    s.send('resume', { scope: 'run' });
+    expect(s.coordinator.getReceipt(s.runId, 'pause_first')?.status).toBe('superseded');
+    expect(s.coordinator.getReceipt(s.runId, 'pause_duplicate')?.status).toBe('superseded');
+    s.send('pause', { scope: 'run' }, 'pause_later');
+    await host.observe({
+      kind: 'model_completed',
+      modelCallId: request.modelCallId,
+      text: 'Finished',
+      usage: { inputTokens: 1, outputTokens: 1 },
+    });
+    const blocked = host.prepareModelRequest().catch(() => null);
+    await drain();
+    expect(s.projection().status).toBe('paused');
+    const statuses = ['pause_first', 'pause_duplicate', 'pause_later'].map(
+      (commandId) => s.coordinator.getReceipt(s.runId, commandId)?.status,
+    );
+    s.send('cancel', { scope: { kind: 'run' }, reason: 'Test complete' }, 'cleanup');
+    await blocked;
+    expect(statuses).toEqual(['superseded', 'superseded', 'applied']);
+  });
 });

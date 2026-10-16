@@ -7,12 +7,17 @@ import { expect, type Page, test } from '@playwright/test';
 const EXAMPLES = join(import.meta.dirname, '..', '..', '..', 'examples');
 
 async function boxes(page: Page, ids: string[]) {
-  const out: Record<string, { x: number; y: number; width: number; height: number }> = {};
-  for (const id of ids) {
-    const box = await page.locator(`.react-flow__node[data-id="${id}"]`).boundingBox();
-    if (!box) throw new Error(`no box for ${id}`);
-    out[id] = box;
-  }
+  // Sample one frame: fitView can move the viewport between separate boundingBox calls.
+  const out = await page
+    .locator(ids.map((id) => `.react-flow__node[data-id="${id}"]`).join(', '))
+    .evaluateAll((nodes) =>
+      Object.fromEntries(
+        nodes.map((node) => {
+          const { x, y, width, height } = node.getBoundingClientRect();
+          return [node.getAttribute('data-id'), { x, y, width, height }];
+        }),
+      ),
+    );
   return (id: string) => {
     const box = out[id];
     if (!box) throw new Error(`no box for ${id}`);
