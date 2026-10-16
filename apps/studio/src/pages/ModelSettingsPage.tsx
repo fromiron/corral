@@ -54,9 +54,12 @@ function ProviderCard({ provider }: { provider: ProviderAuthView }) {
   const { models } = useServices();
   const router = useRouter();
   const [redirect, setRedirect] = useState('');
+  const [apiKey, setApiKey] = useState('');
   const [busy, setBusy] = useState(false);
   const login = provider.login;
   const borrowed = provider.source === 'codex-cli';
+  // A key the page can remove: one entered here, not one from the server environment.
+  const ownKey = provider.method === 'api_key' && provider.source === 'corral';
 
   const act = async (action: () => Promise<unknown>) => {
     setBusy(true);
@@ -76,6 +79,16 @@ function ProviderCard({ provider }: { provider: ProviderAuthView }) {
     });
   };
 
+  const saveKey = (event: FormEvent) => {
+    event.preventDefault();
+    const key = apiKey.trim();
+    if (!key) return;
+    void act(async () => {
+      await models?.setApiKey(provider.providerId, key);
+      setApiKey('');
+    });
+  };
+
   return (
     <article
       className="flex flex-col gap-2 rounded-lg border border-line bg-raised p-3"
@@ -84,7 +97,7 @@ function ProviderCard({ provider }: { provider: ProviderAuthView }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h4 className="font-medium">{provider.name}</h4>
         <div className="flex items-center gap-2 text-xs">
-          {provider.signedIn && provider.method === 'oauth' && !borrowed ? (
+          {(provider.method === 'oauth' && !borrowed) || ownKey ? (
             <button
               type="button"
               disabled={busy}
@@ -93,10 +106,10 @@ function ProviderCard({ provider }: { provider: ProviderAuthView }) {
               }
               className="rounded border border-line px-2 py-1"
             >
-              {t('signOut')}
+              {ownKey ? t('removeKey') : t('signOut')}
             </button>
           ) : null}
-          {(!provider.signedIn || borrowed) && !login ? (
+          {provider.methods.oauth && (!provider.signedIn || borrowed) && !login ? (
             <button
               type="button"
               disabled={busy}
@@ -119,10 +132,22 @@ function ProviderCard({ provider }: { provider: ProviderAuthView }) {
           ? t('signedInCodex')
           : provider.method === 'oauth'
             ? t('signedInOauth', { subscription: String(provider.subscription) })
-            : provider.method === 'api_key'
-              ? t('signedInKey')
-              : t('notSignedIn')}
+            : provider.method === 'none'
+              ? t('keyless')
+              : provider.method === 'api_key'
+                ? provider.source === 'environment'
+                  ? t('signedInEnvKey')
+                  : t('signedInKey')
+                : t('notSignedIn')}
       </p>
+      {provider.endpoint ? (
+        <p className="text-xs text-muted">{t('endpoint', { host: provider.endpoint })}</p>
+      ) : null}
+      {provider.endpointChanged ? (
+        <p role="alert" className="text-xs text-danger">
+          {t('endpointChanged')}
+        </p>
+      ) : null}
       {provider.expiresAt && provider.method === 'oauth' ? (
         <p className="text-xs text-muted">
           {t('expires', {
@@ -138,6 +163,33 @@ function ProviderCard({ provider }: { provider: ProviderAuthView }) {
         <p role="alert" className="text-xs text-danger">
           {t('codexPermissions')}
         </p>
+      ) : null}
+
+      {provider.methods.apiKey && !ownKey && !login ? (
+        <form onSubmit={saveKey} className="flex flex-col gap-1">
+          <label htmlFor={`key-${provider.providerId}`} className="text-xs text-muted">
+            {t('apiKeyLabel')}
+          </label>
+          <div className="flex gap-2">
+            <input
+              id={`key-${provider.providerId}`}
+              type="password"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              autoComplete="off"
+              spellCheck={false}
+              className="min-w-0 flex-1 rounded border border-line bg-surface px-2 py-1 font-mono text-xs"
+            />
+            <button
+              type="submit"
+              disabled={busy || !apiKey.trim()}
+              className="rounded border border-line px-2 py-1 text-xs"
+            >
+              {t('saveKey')}
+            </button>
+          </div>
+          <p className="text-xs text-muted">{t('keyHint')}</p>
+        </form>
       ) : null}
 
       {login && login.state !== 'failed' ? (

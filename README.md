@@ -15,7 +15,7 @@ pnpm serve        # production Studio + 로컬 서버, 출력된 bootstrap 링�
 pnpm storybook    # 상태별 component와 접근성 검사
 ```
 
-`/demo`는 키나 로컬 서버 없이 모의 에이전트를 실행한다. 실제 모델 연결은 로컬 서버의 Models 설정에서 사용자가 완료한다. provider credential은 서버 측 설정에 보관하며 Corral 정의나 이벤트에 포함하지 않는다. 공개 호스팅이나 npm 발행은 이 저장소에 포함된 실행 사실이 아니다.
+`/demo`는 키나 로컬 서버 없이 모의 에이전트를 실행한다. 실제 모델 연결은 로컬 서버의 Models 설정에서 사용자가 완료한다(로그인, API 키, Codex CLI 로그인, Ollama 같은 OpenAI 호환 엔드포인트: [모델 연결](docs/Models.md)). provider credential은 서버 측 설정에 보관하며 Corral 정의나 이벤트에 포함하지 않는다. 공개 호스팅이나 npm 발행은 이 저장소에 포함된 실행 사실이 아니다.
 
 ## 검증
 

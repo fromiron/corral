@@ -6,6 +6,7 @@ import { HttpSseTransport, RestCorralRepository } from '@corral/client';
 import type { RunEvent } from '@corral/contracts';
 import { waitForProjection } from '@corral/core';
 import { linearCorral, ScriptedAgentAdapter } from '@corral/testkit';
+import { startCompatibleEndpoint } from '@corral/testkit/endpoint';
 import { afterEach, describe, expect, it } from 'vitest';
 import { type CorralServer, startCorralServer } from '../src/index.ts';
 import { assertOutsideWorkspace } from '../src/models/index.ts';
@@ -29,14 +30,19 @@ function makeFake(options: { env?: Record<string, string> } = {}) {
   return { ...made, respond: () => made.answerWith('Live answer.') };
 }
 
-async function start(fake: ReturnType<typeof makeFake>, profiles = FAKE_PROFILES) {
-  const workspace = temp('workspace');
-  await mkdir(join(workspace, '.corral'));
+async function start(
+  fake: ReturnType<typeof makeFake>,
+  profiles: { id: string; provider: string; model: string }[] = FAKE_PROFILES,
+  extra: Record<string, unknown> = {},
+  workspace = temp('workspace'),
+) {
+  await mkdir(join(workspace, '.corral'), { recursive: true });
   writeFileSync(
     join(workspace, '.corral', 'config.json'),
     JSON.stringify({
       schemaVersion: '0.1',
       modelProfiles: profiles,
+      ...extra,
     }),
   );
   const server = await startCorralServer({
@@ -268,5 +274,163 @@ describe('model sign-in and profiles (C-058, ADR-019)', () => {
     const [openai] = (await context.json('/model-auth')).body;
     expect(openai).toMatchObject({ signedIn: true, method: 'api_key', subscription: false });
     expect(context.responses.join('\n')).not.toContain('sk-env-key-secret');
+  });
+});
+
+describe('API keys and OpenAI-compatible endpoints (CR-005)', () => {
+  const setKey = (json: Awaited<ReturnType<typeof start>>['json'], provider: string, key: string) =>
+    json(`/model-auth/${provider}/api-key`, { method: 'PUT', body: JSON.stringify({ key }) });
+
+  async function finish(context: Awaited<ReturnType<typeof start>>) {
+    const { transport, runId, receipt } = await liveRun(context);
+    if (!runId) return { status: 'refused', message: receipt.error?.message ?? '' };
+    const final = await waitForProjection(transport, runId, (p) => p.status !== 'running');
+    return { status: final.status, message: '' };
+  }
+
+  const endpointConfig = (baseUrl: string, access: 'api_key' | 'none') => ({
+    modelProviders: [
+      {
+        id: 'local',
+        name: 'Local server',
+        baseUrl,
+        access,
+        models: [{ id: 'llama3.2', contextWindow: 8000, maxOutput: 512 }],
+      },
+    ],
+  });
+  const LOCAL_PROFILES = [{ id: 'model-a', provider: 'local', model: 'llama3.2' }];
+
+  function scriptEndpoint(endpoint: Awaited<ReturnType<typeof startCompatibleEndpoint>>) {
+    let calls = 0;
+    endpoint.setReply((body) => {
+      calls += 1;
+      const written = [...JSON.stringify(body).matchAll(/artv_[a-f0-9]{32}/g)].at(-1)?.[0];
+      if (calls % 3 === 1)
+        return { toolCall: { name: 'write_artifact', args: { text: 'Local answer.' } } };
+      if (calls % 3 === 2)
+        return { toolCall: { name: 'submit_result', args: { artifactVersionIds: [written] } } };
+      return 'Done.';
+    });
+  }
+
+  it('[TC-SEC-002-H] an API key entered in Settings is used for live runs and never shown', async () => {
+    const fake = makeFake();
+    fake.respond();
+    const context = await start(fake);
+    const saved = await setKey(context.json, 'openai', 'sk-entered-key-secret');
+    expect(saved.status).toBe(200);
+    expect(saved.body[0]).toMatchObject({ signedIn: true, method: 'api_key', source: 'corral' });
+    expect((await finish(context)).status).toBe('succeeded');
+    expect(fake.seen.tokens.every((t) => t === 'sk-entered-key-secret')).toBe(true);
+    expect(context.responses.join('\n')).not.toContain('sk-entered-key-secret');
+    const file = join(fake.configDir, 'credentials.json');
+    expect(statSync(file).mode & 0o777).toBe(0o600);
+
+    const removed = await context.json('/model-auth/openai', { method: 'DELETE' });
+    expect(removed.body[0]).toMatchObject({ signedIn: false, method: null });
+    expect(readFileSync(file, 'utf-8')).not.toContain('sk-entered-key-secret');
+    expect((await finish(context)).status).toBe('refused');
+  });
+
+  it('[TC-SEC-002-N] refuses an empty or oversized key, a provider no profile uses, and Anthropic subscription sign-in', async () => {
+    const context = await start(makeFake(), [
+      ...FAKE_PROFILES,
+      { id: 'claude', provider: 'anthropic', model: 'claude-test' },
+    ]);
+    expect((await setKey(context.json, 'openai', '')).status).toBe(400);
+    expect((await setKey(context.json, 'openai', 'x'.repeat(2000))).status).toBe(400);
+    expect((await setKey(context.json, 'nobody', 'sk-x')).status).toBe(404);
+    const login = await context.json('/model-auth/anthropic/login', { method: 'POST' });
+    expect(login.status).toBe(501);
+    expect(login.body.error).toMatchObject({ code: 'COMMAND_NOT_SUPPORTED' });
+    expect(login.body.error.message).toMatch(/API key/);
+    const anthropic = (await context.json('/model-auth')).body.find(
+      (p: { providerId: string }) => p.providerId === 'anthropic',
+    );
+    expect(anthropic).toMatchObject({ methods: { oauth: false, apiKey: true } });
+  });
+
+  it('[TC-SEC-002-H] a keyless local endpoint runs without a key; a keyed one gets the entered key', async () => {
+    const endpoint = await startCompatibleEndpoint();
+    try {
+      scriptEndpoint(endpoint);
+      const keyless = await start(
+        makeFake(),
+        LOCAL_PROFILES,
+        endpointConfig(endpoint.baseUrl, 'none'),
+      );
+      const [local] = (await keyless.json('/model-auth')).body;
+      expect(local).toMatchObject({
+        providerId: 'local',
+        name: 'Local server',
+        signedIn: true,
+        method: 'none',
+        endpoint: new URL(endpoint.baseUrl).host,
+        methods: { oauth: false, apiKey: false },
+      });
+      expect((await finish(keyless)).status).toBe('succeeded');
+      expect(endpoint.authorizations.every((a) => a === 'Bearer no-key')).toBe(true);
+
+      const before = endpoint.authorizations.length;
+      const keyed = await start(
+        makeFake(),
+        LOCAL_PROFILES,
+        endpointConfig(endpoint.baseUrl, 'api_key'),
+      );
+      expect((await finish(keyed)).status).toBe('refused');
+      expect(endpoint.authorizations.length).toBe(before);
+      await setKey(keyed.json, 'local', 'sk-local-secret');
+      expect((await finish(keyed)).status).toBe('succeeded');
+      expect(
+        endpoint.authorizations.slice(before).every((a) => a === 'Bearer sk-local-secret'),
+      ).toBe(true);
+      expect(keyed.responses.join('\n')).not.toContain('sk-local-secret');
+    } finally {
+      await endpoint.close();
+    }
+  });
+
+  it('[TC-SEC-002-N] a key stays with the address it was entered for: a config pointing elsewhere does not get it', async () => {
+    const first = await startCompatibleEndpoint();
+    const second = await startCompatibleEndpoint();
+    try {
+      scriptEndpoint(first);
+      scriptEndpoint(second);
+      const fake = makeFake();
+      const workspace = temp('workspace');
+      const context = await start(
+        fake,
+        LOCAL_PROFILES,
+        endpointConfig(first.baseUrl, 'api_key'),
+        workspace,
+      );
+      await setKey(context.json, 'local', 'sk-bound-secret');
+      await context.server.close();
+      servers.splice(servers.indexOf(context.server), 1);
+      // The same config directory (same stored key), but the workspace now names another host.
+      const moved = await start(
+        fake,
+        LOCAL_PROFILES,
+        endpointConfig(second.baseUrl, 'api_key'),
+        workspace,
+      );
+      const [local] = (await moved.json('/model-auth')).body;
+      expect(local).toMatchObject({ signedIn: false, endpointChanged: true });
+      const result = await finish(moved);
+      expect(result.status).toBe('refused');
+      expect(second.authorizations).toEqual([]);
+    } finally {
+      await first.close();
+      await second.close();
+    }
+  });
+
+  it('[TC-SEC-002-N] an endpoint may not take the name of a built-in provider', async () => {
+    const clash = endpointConfig('https://x.test/v1', 'api_key');
+    const provider = { ...clash.modelProviders[0], id: 'openai' };
+    await expect(start(makeFake(), FAKE_PROFILES, { modelProviders: [provider] })).rejects.toThrow(
+      /modelProviders/,
+    );
   });
 });

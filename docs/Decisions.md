@@ -166,6 +166,10 @@
 
 **결과·제약:** 자격 증명은 Corral JSON·SQLite·이벤트·export·클라이언트·로그에 없다. 로그인은 provider 자체 흐름에서 사용자가 완료한다. OS keychain은 후속이다.
 
+**갱신(2026-10-16):**
+- [CR-004](change-requests/CR-004-codex-login-reuse.md): Corral 자체 로그인이 없으면 Codex CLI 로그인(`~/.codex/auth.json`)을 읽기 전용으로 쓴다. 갱신·쓰기·삭제하지 않는다.
+- [CR-005](change-requests/CR-005-api-keys-and-compatible-endpoints.md): API 키는 환경 변수 **또는** 모델 화면에서 입력해 같은 credential store에 둔다. 사용자 정의 엔드포인트 키는 입력할 때의 origin에 묶인다. Anthropic 구독 OAuth 요청은 서버가 거절한다.
+
 ## ADR-020: 서버·runtime·CLI 언어는 TypeScript
 
 **상태:** 확정 (Bell, 2026-10-15)

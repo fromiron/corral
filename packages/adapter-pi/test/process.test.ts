@@ -7,6 +7,7 @@ import {
   waitForProjection,
 } from '@corral/core';
 import { FakeClock, linearCorral, SequentialIdFactory } from '@corral/testkit';
+import { startCompatibleEndpoint } from '@corral/testkit/endpoint';
 import { afterEach, describe, expect, it } from 'vitest';
 import { PiAgentAdapter } from '../src/adapter.ts';
 import { processChannel } from '../src/channel.ts';
@@ -120,4 +121,75 @@ describe('worker in a child process (C-017, ADR-017)', () => {
       error: 'model openai/no-such-model is not available',
     });
   }, 30_000);
+
+  it.each([
+    ['keyless', true, 'Bearer no-key'],
+    ['keyed', false, 'Bearer per-request-key'],
+  ])(
+    '[TC-SEC-002-H] runs a live step on a %s OpenAI-compatible endpoint, with only the right key (CR-005)',
+    async (_name, keyless, authorization) => {
+      const endpoint = await startCompatibleEndpoint();
+      try {
+        let calls = 0;
+        endpoint.setReply((body) => {
+          calls += 1;
+          const written = [...JSON.stringify(body).matchAll(/artv_[A-Za-z0-9]+/g)].at(-1)?.[0];
+          if (calls === 1)
+            return { toolCall: { name: 'write_artifact', args: { text: 'Hi from the endpoint' } } };
+          if (calls === 2)
+            return { toolCall: { name: 'submit_result', args: { artifactVersionIds: [written] } } };
+          return 'Done.';
+        });
+        const transport = new InProcessTransport(
+          new Coordinator({
+            clock: new FakeClock(),
+            ids: new SequentialIdFactory(),
+            agents: new PiAgentAdapter({
+              spawn: () => processChannel(WORKER_ENTRY),
+              // The host never hands a key for a keyless endpoint; the worker drops one anyway.
+              credentials: async () => 'per-request-key',
+              endpoint: (model) =>
+                model.provider === 'local'
+                  ? {
+                      name: 'Local',
+                      baseUrl: endpoint.baseUrl,
+                      keyless,
+                      models: [
+                        { id: 'llama3.2', contextWindow: 8000, maxOutput: 512, reasoning: false },
+                      ],
+                    }
+                  : null,
+            }),
+            models: {
+              resolve: (profile, mode) =>
+                mode === 'live'
+                  ? {
+                      ok: true,
+                      snapshot: {
+                        profile,
+                        provider: 'local',
+                        modelId: 'llama3.2',
+                        auth: 'api_key',
+                      },
+                    }
+                  : {
+                      ok: true,
+                      snapshot: { profile, provider: null, modelId: null, auth: 'mock' },
+                    },
+            },
+          }),
+        );
+        const { runId, final } = await run(transport);
+        expect(final.status).toBe('succeeded');
+        const output = final.output?.artifactVersionIds[0] ?? '';
+        expect(await transport.getArtifactText(runId, output)).toBe('Hi from the endpoint');
+        expect(endpoint.models.every((m) => m === 'llama3.2')).toBe(true);
+        expect(endpoint.authorizations.length).toBeGreaterThan(1);
+        expect(endpoint.authorizations.every((a) => a === authorization)).toBe(true);
+      } finally {
+        await endpoint.close();
+      }
+    },
+    30_000,
+  );
 });

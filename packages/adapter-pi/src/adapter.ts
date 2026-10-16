@@ -7,6 +7,7 @@ import type {
   ModelProfileSnapshot,
 } from '@corral/contracts';
 import type { Channel } from './channel.ts';
+import type { EndpointSpec } from './endpoint.ts';
 import { PROTOCOL_VERSION, WorkerFrame, type WorkerTool } from './protocol.ts';
 
 // Host side of the Pi worker (C-017). The adapter turns worker frames into AgentHost calls,
@@ -21,7 +22,11 @@ export interface PiAdapterOptions {
   credentials(model: ModelProfileSnapshot): Promise<string | null>;
   /** How long a cancelled worker may take to stop before it is terminated. */
   cancelGraceMs?: number;
+  /** The OpenAI-compatible endpoint behind this model, if it is one (CR-005); no keys in it. */
+  endpoint?(model: ModelProfileSnapshot): EndpointSpec | null;
 }
+
+type WorkerModel = { provider: string; modelId: string; endpoint?: EndpointSpec };
 
 const INVALID = 'the model worker sent an invalid message';
 
@@ -37,7 +42,12 @@ export class PiAgentAdapter implements AgentAdapter {
     if (input.mode !== 'live' || !provider || !modelId) {
       throw new Error('the Pi adapter runs live models only');
     }
-    return new WorkerExecution(input, host, this.options, { provider, modelId }).handle;
+    const endpoint = this.options.endpoint?.(input.model) ?? undefined;
+    return new WorkerExecution(input, host, this.options, {
+      provider,
+      modelId,
+      ...(endpoint ? { endpoint } : {}),
+    }).handle;
   }
 }
 
@@ -54,13 +64,13 @@ class WorkerExecution {
   private readonly input: AgentStartInput;
   private readonly host: AgentHost;
   private readonly options: PiAdapterOptions;
-  private readonly model: { provider: string; modelId: string };
+  private readonly model: WorkerModel;
 
   constructor(
     input: AgentStartInput,
     host: AgentHost,
     options: PiAdapterOptions,
-    model: { provider: string; modelId: string },
+    model: WorkerModel,
   ) {
     this.input = input;
     this.host = host;

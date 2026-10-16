@@ -1,6 +1,8 @@
+import type { EndpointSpec } from '@corral/adapter-pi';
 import type { ModelProfileSnapshot } from '@corral/contracts';
 import type { ModelResolution, ModelResolver } from '@corral/core';
 import type { AuthEvent, AuthPrompt, CredentialStore, Models } from '@earendil-works/pi-ai';
+import { ENDPOINT_ORIGIN, type Endpoint } from './endpoints.ts';
 
 // Model profiles and sign-in for the local server (C-058, ADR-019). Profiles name a provider
 // and model; credentials stay in pi-ai's credential store on this computer. Views and errors
@@ -21,18 +23,45 @@ export const DEFAULT_PROFILES: readonly ProfileConfig[] = [
   { id: 'model-b', provider: 'openai', model: 'gpt-6.1-sol' },
 ];
 
+/**
+ * Providers whose subscription OAuth Corral does not start: Anthropic does not allow third-party
+ * apps to use subscription credentials (CR-001 §2). They take an API key instead.
+ */
+const NO_SUBSCRIPTION_OAUTH = new Set(['anthropic']);
+
+/** How a provider is reached: `none` is a keyless local endpoint (CR-005). */
+export type AuthMethod = 'oauth' | 'api_key' | 'none';
+
+/** A sign-in request the registry cannot serve; `code` picks the HTTP answer. */
+export class RegistryError extends Error {
+  readonly code: 'not_found' | 'unsupported';
+  constructor(code: 'not_found' | 'unsupported', message: string) {
+    super(message);
+    this.code = code;
+  }
+}
+
 export interface ProviderAuthView {
   providerId: string;
   name: string;
   signedIn: boolean;
-  method: 'oauth' | 'api_key' | null;
+  method: AuthMethod | null;
+  /** Ways this provider can be signed in to here (CR-005). */
+  methods: { oauth: boolean; apiKey: boolean };
+  /** host[:port] of an OpenAI-compatible endpoint; null for pi-ai's own providers. */
+  endpoint: string | null;
+  /** A key was entered for another address than the one the workspace names now. */
+  endpointChanged: boolean;
   /** Subscription access (no per-request price is known). */
   subscription: boolean;
   /** When the current access token stops working; refreshed before requests. */
   expiresAt: string | null;
   login: LoginView | null;
-  /** Where the sign-in comes from: Corral's own, or the Codex CLI login read only (CR-004). */
-  source: 'corral' | 'codex-cli' | null;
+  /**
+   * Where the sign-in comes from: Corral's own store, the Codex CLI login read only (CR-004),
+   * or a key in the server environment (which the page cannot remove).
+   */
+  source: 'corral' | 'codex-cli' | 'environment' | null;
   /** False when the borrowed Codex login file is readable by other users. */
   permissionsOk: boolean;
 }
@@ -54,7 +83,7 @@ export interface ModelProfileView {
   reasoning: boolean | null;
   contextWindow: number | null;
   maxOutputTokens: number | null;
-  method: 'oauth' | 'api_key' | null;
+  method: AuthMethod | null;
   keyConfigured: boolean;
   /** Whether a subscription sign-in may use this model; null when no list is known. */
   subscriptionSupported: boolean | null;
@@ -66,6 +95,8 @@ export interface RegistryOptions {
   now?: () => number;
   /** Models a subscription sign-in may call, per provider; null when no list is known. */
   subscriptionModels?: (providerId: string) => ReadonlySet<string> | null;
+  /** OpenAI-compatible endpoints from the workspace config (CR-005), already registered. */
+  endpoints?: ReadonlyMap<string, Endpoint>;
 }
 
 interface PendingLogin {
@@ -77,7 +108,12 @@ interface PendingLogin {
 export class ModelRegistry implements ModelResolver {
   private readonly status = new Map<
     string,
-    { method: 'oauth' | 'api_key' | null; expires: number | null }
+    {
+      method: AuthMethod | null;
+      expires: number | null;
+      endpointChanged: boolean;
+      stored: boolean;
+    }
   >();
   private readonly logins = new Map<string, PendingLogin>();
 
@@ -100,9 +136,16 @@ export class ModelRegistry implements ModelResolver {
     for (const providerId of this.providers()) {
       const check = await this.models.checkAuth(providerId).catch(() => undefined);
       const stored = await this.options.credentials.read(providerId).catch(() => undefined);
+      const endpoint = this.options.endpoints?.get(providerId);
       this.status.set(providerId, {
-        method: check?.type ?? null,
+        method: endpoint?.spec.keyless && check ? 'none' : (check?.type ?? null),
         expires: stored?.type === 'oauth' ? stored.expires : null,
+        stored: stored !== undefined,
+        endpointChanged: Boolean(
+          endpoint &&
+            stored?.type === 'api_key' &&
+            stored.env?.[ENDPOINT_ORIGIN] !== endpoint.origin,
+        ),
       });
     }
   }
@@ -139,13 +182,21 @@ export class ModelRegistry implements ModelResolver {
     }
     return {
       ok: true,
-      snapshot: { profile, provider: config.provider, modelId: config.model, auth: method },
+      snapshot: {
+        profile,
+        provider: config.provider,
+        modelId: config.model,
+        // The run record knows oauth and api_key; a keyless endpoint is recorded as api_key.
+        auth: method === 'none' ? 'api_key' : method,
+      },
     };
   }
 
   /** The access token for one request; pi-ai refreshes an expired OAuth token first. */
   async credentials(model: ModelProfileSnapshot): Promise<string | null> {
     if (!model.provider || !model.modelId) return null;
+    // A keyless endpoint gets no key from this computer (CR-005 §4).
+    if (this.options.endpoints?.get(model.provider)?.spec.keyless) return null;
     const resolved = this.models.getModel(model.provider, model.modelId);
     if (!resolved) throw new Error(`${model.provider} has no model ${model.modelId}`);
     let auth: Awaited<ReturnType<Models['getAuth']>>;
@@ -164,6 +215,38 @@ export class ModelRegistry implements ModelResolver {
       void this.refreshStatus();
     }
     return auth?.auth.apiKey ?? null;
+  }
+
+  /** The non-secret definition of the endpoint behind a model, for its worker (CR-005). */
+  endpointOf(model: ModelProfileSnapshot): EndpointSpec | null {
+    return (model.provider && this.options.endpoints?.get(model.provider)?.spec) || null;
+  }
+
+  private methods(providerId: string): { oauth: boolean; apiKey: boolean } {
+    const auth = this.models.getProvider(providerId)?.auth;
+    return {
+      oauth: Boolean(auth?.oauth) && !NO_SUBSCRIPTION_OAUTH.has(providerId),
+      apiKey: Boolean(auth?.apiKey) && !this.options.endpoints?.get(providerId)?.spec.keyless,
+    };
+  }
+
+  /** Stores an API key entered under Settings → Models; it is never returned (CR-005). */
+  async setApiKey(providerId: string, key: string): Promise<void> {
+    if (!this.providers().includes(providerId)) {
+      throw new RegistryError('not_found', 'no model profile uses this provider');
+    }
+    if (!this.methods(providerId).apiKey) {
+      throw new RegistryError('unsupported', 'this provider does not take an API key');
+    }
+    const endpoint = this.options.endpoints?.get(providerId);
+    this.cancelLogin(providerId);
+    await this.options.credentials.modify(providerId, async () => ({
+      type: 'api_key',
+      key,
+      // An endpoint key is bound to the address it was entered for.
+      ...(endpoint ? { env: { [ENDPOINT_ORIGIN]: endpoint.origin } } : {}),
+    }));
+    await this.refreshStatus();
   }
 
   private providerName(providerId: string): string {
@@ -185,10 +268,13 @@ export class ModelRegistry implements ModelResolver {
         name: this.providerName(providerId),
         signedIn: Boolean(status?.method),
         method: status?.method ?? null,
+        methods: this.methods(providerId),
+        endpoint: this.options.endpoints?.get(providerId)?.host ?? null,
+        endpointChanged: status?.endpointChanged ?? false,
         subscription: status?.method === 'oauth' && this.subscription(providerId),
         expiresAt: status?.expires ? new Date(Math.max(status.expires, now)).toISOString() : null,
         login: login ? { ...login.view } : null,
-        source: status?.method ? (layered?.sourceOf(providerId) ?? 'corral') : null,
+        source: sourceOf(status, () => layered?.sourceOf(providerId) ?? 'corral'),
         permissionsOk:
           layered?.sourceOf(providerId) !== 'codex-cli' || layered.codexPermissionsOk(),
       };
@@ -223,7 +309,17 @@ export class ModelRegistry implements ModelResolver {
    * completes it. Resolves once the sign-in page is known.
    */
   async startLogin(providerId: string): Promise<LoginView> {
-    if (!this.providers().includes(providerId)) throw new Error('no profile uses this provider');
+    if (!this.providers().includes(providerId)) {
+      throw new RegistryError('not_found', 'no model profile uses this provider');
+    }
+    if (!this.methods(providerId).oauth) {
+      throw new RegistryError(
+        'unsupported',
+        NO_SUBSCRIPTION_OAUTH.has(providerId)
+          ? `${this.providerName(providerId)} subscription sign-in is not supported; enter an API key`
+          : `${this.providerName(providerId)} signs in with an API key here`,
+      );
+    }
     const running = this.logins.get(providerId);
     if (running && running.view.state !== 'failed') return { ...running.view };
 
@@ -322,4 +418,12 @@ function sourceAware(store: unknown): SourceAware | undefined {
     typeof candidate.codexPermissionsOk === 'function'
     ? (candidate as SourceAware)
     : undefined;
+}
+
+function sourceOf(
+  status: { method: AuthMethod | null; stored: boolean } | undefined,
+  stored: () => 'corral' | 'codex-cli' | null,
+): ProviderAuthView['source'] {
+  if (!status?.method || status.method === 'none') return null;
+  return status.stored ? (stored() ?? 'corral') : 'environment';
 }

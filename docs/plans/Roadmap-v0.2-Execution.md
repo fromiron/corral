@@ -23,7 +23,7 @@
 | 8 | Core-③ | `corral exec` headless + 단일 에이전트 vs 팀 비교 eval harness | 완료(PR 대기) |
 | 9 | Core | 특정 버전에서 새 Run 시작(fork from version) | 대기 |
 | 10 | Core | Goal → 팀 초안 생성(사람 승인 후 편집기) | 대기 |
-| 11 | Core | Pi provider 확장(API key: OpenAI·Anthropic·OpenAI 호환·Ollama) | 대기 |
+| 11 | Core | Pi provider 확장(API key: OpenAI·Anthropic·OpenAI 호환·Ollama) | 완료(PR 대기, [CR-005](../change-requests/CR-005-api-keys-and-compatible-endpoints.md)) |
 | 12 | Core·보안 | OS 표준 인증 파일 사용: Codex CLI 로그인(`~/.codex/auth.json`) 재사용과 Corral 자격 증명의 OS 표준 설정 디렉터리. CR-001 변경이므로 CR-004 먼저 | 완료(PR 대기, [CR-004](../change-requests/CR-004-codex-login-reuse.md)) |
 
 ## 진행 기록
@@ -41,3 +41,5 @@
 - 2026-10-16 Bell: 품질이 오를 때까지 PR마다 CI를 기다리지 않는다. 로컬 검사 후 PR을 열고 다음 항목으로 진행, 병합은 Bell.
 - UX-A5 2부: 한국어 locale(메시지 662개, 키·ICU 인자 일치와 형식 오류·영어 잔존 검사), 헤더 언어 선택, 브라우저 언어 기본값, localStorage 기억, `html lang`. 536 unit, E2E 86.
 - Core-③: `corral exec`(Studio 없이 실행, 사람 결정 필요 시 취소·종료 코드 3, `--json`)와 `corral eval`(지시문×변형, 비용·시간 표와 JSON 보고서). 예제 suite `examples/eval/`. 실제 모델 exec 1회 확인(10.6 s, 호출 3). 문서 `docs/Evaluation.md`.
+- CR-004(12번): Codex CLI 로그인 읽기 전용 재사용, 모델 화면 출처 표시, worker 요청 토큰 store. PR #18. 550 unit, E2E 87. 실제 `corral exec` 1회 성공(호출 3, 출력 128 토큰), Codex 파일 변화 없음.
+- CR-005(11번): 모델 화면 API 키 입력·지우기, Anthropic은 키만, `modelProviders`(OpenAI 호환·Ollama, https 또는 loopback http), 키-origin 묶음, worker 엔드포인트 정의. 561 unit, models E2E 7. 실제 엔드포인트 확인은 로컬 서버가 없어 하지 않음.

@@ -40,6 +40,7 @@ export function createLiveModels(): LiveModels {
         spawn: () => processChannel(WORKER_ENTRY),
         cancelGraceMs: 9_000,
         credentials: (model) => registry.credentials(model),
+        endpoint: (model) => registry.endpointOf(model),
       }),
   };
 }
