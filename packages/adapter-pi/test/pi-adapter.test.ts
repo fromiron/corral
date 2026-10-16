@@ -483,4 +483,19 @@ describe('reviews through Pi (C-027)', () => {
     // The run's criteria version (crit_0001 with sequential ids) is spelled out for the model.
     expect(prompts[0]).toContain('crit_0001');
   });
+
+  it('[TC-ART-003-H] tells a reviewer which criterion ids are valid, so its issues pass the schema (#20)', async () => {
+    const prompts: string[] = [];
+    const { transport } = liveRuntime([
+      (context) => {
+        prompts.push(JSON.stringify(context.messages));
+        return fauxAssistantMessage('Nothing.');
+      },
+    ]);
+    const { runId } = await liveRun(transport, (d) => {
+      for (const role of d.roles) role.outputContract = 'review';
+    });
+    await waitForProjection(transport, runId, settled);
+    expect(prompts[0]).toContain('c1 for the first criterion');
+  });
 });

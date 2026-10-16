@@ -321,6 +321,16 @@ export function updateNode(draft: EditorDraft, nodeId: string, change: NodeChang
     if (Object.keys(roleChange).length > 0) {
       roles = roles.map((r) => (r.id === roleId ? { ...r, ...roleChange } : r));
     }
+    // A reviewer reviews against the criteria: give it their text when it becomes one (#20).
+    const hasCriteria = next.inputBindings.some(
+      (b) => b.kind === 'run_input' && b.name === 'criteria',
+    );
+    if (change.outputContract === 'review' && !change.inputBindings && !hasCriteria) {
+      next = {
+        ...next,
+        inputBindings: [...next.inputBindings, { kind: 'run_input', name: 'criteria' }],
+      };
+    }
     if (change.invocation && change.invocation !== next.invocation) {
       if (change.invocation === 'callable') {
         // Callable agents run only when called: they leave the control flow and any Loop.

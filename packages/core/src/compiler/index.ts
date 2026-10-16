@@ -45,6 +45,7 @@ export type DiagnosticCode =
   | 'DEPTH_EXCEEDED'
   | 'BINDING_SOURCE'
   | 'REVIEW_CONTRACT'
+  | 'REVIEW_WITHOUT_CRITERIA'
   | 'UNKNOWN_MODEL_PROFILE';
 
 export interface Diagnostic {
@@ -131,6 +132,7 @@ export function compileDefinition(input: unknown, options: CompileOptions = {}):
   if (context.hasErrors() || !graph) return fail(context.diagnostics);
   checkCapabilities(context, graph);
   checkBindings(context, graph);
+  checkReviewerCriteria(context);
   checkModelProfiles(context, options);
   if (context.hasErrors()) return fail(context.diagnostics);
 
@@ -149,6 +151,24 @@ const BLOCKING = new Set<DiagnosticCode>([
   'LOOP_BOUNDARY',
   'ENTRY_INVALID',
 ]);
+
+/**
+ * A reviewer that is not given the criteria text can only guess what to check (#20). A warning:
+ * the Corral still runs, and the editor offers to add the input.
+ */
+function checkReviewerCriteria(c: Context) {
+  const contracts = new Map(c.definition.roles.map((r) => [r.id, r.outputContract]));
+  for (const node of c.definition.nodes) {
+    if (node.type !== 'agent' || contracts.get(node.roleId) !== 'review') continue;
+    if (node.inputBindings.some((b) => b.kind === 'run_input' && b.name === 'criteria')) continue;
+    c.diagnostics.push({
+      code: 'REVIEW_WITHOUT_CRITERIA',
+      severity: 'warning',
+      message: 'this reviewer does not receive the criteria; add the run input "criteria"',
+      nodeId: node.id,
+    });
+  }
+}
 
 // ── context ───────────────────────────────────────────────────────────────────
 

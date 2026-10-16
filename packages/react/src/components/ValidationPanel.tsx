@@ -34,6 +34,15 @@ export function ValidationPanel() {
       : d.message;
 
   const errors = diagnostics.filter((d) => d.severity === 'error');
+  const warnings = diagnostics.filter((d) => d.severity === 'warning');
+  // A reviewer without the criteria (#20): add the run input "criteria" to that node.
+  const giveCriteria = (nodeId: string) => {
+    const node = draft.definition.nodes.find((n) => n.id === nodeId);
+    if (!node || node.type === 'loop') return;
+    editor.getState().updateNode(nodeId, {
+      inputBindings: [...node.inputBindings, { kind: 'run_input', name: 'criteria' }],
+    });
+  };
   return (
     <section aria-labelledby="validation-heading" className="flex flex-col gap-2">
       <h2 id="validation-heading" className="text-sm font-semibold">
@@ -53,6 +62,40 @@ export function ValidationPanel() {
             />
           ))}
         </ul>
+      ) : null}
+      {warnings.length > 0 ? (
+        <div className="flex flex-col gap-1" data-testid="warnings">
+          <h3 className="text-xs font-semibold">{t('warningsHeading')}</h3>
+          <ul className="flex flex-col gap-1">
+            {warnings.map((d) => (
+              <li
+                key={`${d.code}:${d.nodeId ?? ''}`}
+                className="flex flex-col gap-1 rounded border border-warning/50 p-2 text-xs"
+              >
+                <span className="text-warning">
+                  {t.has(`codes.${d.code}`)
+                    ? t(`codes.${d.code}`, {
+                        message: d.message,
+                        node:
+                          draft.definition.nodes.find((n) => n.id === d.nodeId)?.label ??
+                          d.nodeId ??
+                          '',
+                      })
+                    : d.message}
+                </span>
+                {d.code === 'REVIEW_WITHOUT_CRITERIA' && d.nodeId ? (
+                  <button
+                    type="button"
+                    onClick={() => giveCriteria(d.nodeId ?? '')}
+                    className="self-start rounded border border-line px-2 py-0.5"
+                  >
+                    {t('giveCriteria')}
+                  </button>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
       ) : null}
       {errors.length === 0 && runtimeLimits.length > 0 ? (
         <div className="flex flex-col gap-1" data-testid="runtime-limits">

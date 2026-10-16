@@ -167,8 +167,11 @@
       "DEPTH_EXCEEDED": "This agent is only reachable beyond the delegation depth limit.",
       "BINDING_SOURCE": "An input reads from a step that cannot provide it: {message}",
       "REVIEW_CONTRACT": "A review decision must read a reviewer's output.",
-      "UNKNOWN_MODEL_PROFILE": "A role uses a model profile that is not configured."
-    }
+      "UNKNOWN_MODEL_PROFILE": "A role uses a model profile that is not configured.",
+      "REVIEW_WITHOUT_CRITERIA": "{node} does not get the criteria, so its review cannot check them."
+    },
+    "warningsHeading": "Worth a look",
+    "giveCriteria": "Give it the criteria"
   },
   "Run": {
     "heading": "Run",

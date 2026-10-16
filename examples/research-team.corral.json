@@ -165,6 +165,10 @@
           "kind": "task_output",
           "name": "draft",
           "sourceNodeId": "write"
+        },
+        {
+          "kind": "run_input",
+          "name": "criteria"
         }
       ],
       "outputName": "review"

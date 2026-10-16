@@ -293,6 +293,8 @@ function systemPrompt(start: StartFrame): string {
         `"criteriaVersionId": "${start.criteriaVersionId}", "verdict": "pass" | "revise" | "inconclusive", ` +
         '"issues": [{"criterionId": "...", "reason": "...", "severity": "required" | "advisory", "evidenceRefs": []}], ' +
         '"evidenceRefs": []}. A revise verdict needs at least one issue.',
+      // Ids the schema accepts, tied to the criteria text in the "criteria" input (#20).
+      'For criterionId use c1 for the first criterion in the criteria input, c2 for the second, and so on; use "general" for an issue no criterion covers.',
     );
   }
   if (start.tools.includes('spawn_subagents')) {

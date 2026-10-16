@@ -167,8 +167,11 @@
       "DEPTH_EXCEEDED": "이 에이전트는 위임 깊이 한도를 넘어야만 닿습니다.",
       "BINDING_SOURCE": "입력이 그 값을 줄 수 없는 단계에서 읽습니다: {message}",
       "REVIEW_CONTRACT": "검토 판단은 검토자의 출력을 읽어야 합니다.",
-      "UNKNOWN_MODEL_PROFILE": "설정되지 않은 모델 프로필을 쓰는 역할이 있습니다."
-    }
+      "UNKNOWN_MODEL_PROFILE": "설정되지 않은 모델 프로필을 쓰는 역할이 있습니다.",
+      "REVIEW_WITHOUT_CRITERIA": "{node}에 완료 기준이 전달되지 않아 기준대로 검토할 수 없습니다."
+    },
+    "warningsHeading": "확인해 볼 점",
+    "giveCriteria": "기준 전달하기"
   },
   "Run": {
     "heading": "Run",
