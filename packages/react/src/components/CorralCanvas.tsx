@@ -146,19 +146,36 @@ export function CorralCanvas() {
           state.moveNode(change.id, change.position);
         }
         if (change.type === 'select' && change.selected) state.select(change.id);
-        if (change.type === 'remove') state.removeNode(change.id);
+        // Removals arrive together in onDelete, so they are one undo step.
       }
     },
     [editor],
   );
 
-  const onEdgesChange = useCallback(
-    (changes: EdgeChange[]) => {
-      for (const change of changes) {
-        if (change.type !== 'remove') continue;
-        if (change.id.startsWith(LINK_PREFIX))
-          editor.getState().removeLink(change.id.slice(LINK_PREFIX.length));
-        else editor.getState().removeEdge(change.id);
+  const onEdgesChange = useCallback((changes: EdgeChange[]) => {
+    // Removals arrive together in onDelete, so they are one undo step.
+    void changes;
+  }, []);
+
+  /**
+   * One deletion (Delete or Backspace) as one undo step: React Flow reports a node's connected
+   * edges separately, and one Undo must bring the node back with its links (roadmap 20).
+   */
+  const onDelete = useCallback(
+    ({ nodes, edges }: { nodes: Node[]; edges: Edge[] }) => {
+      const state = editor.getState();
+      const removed = new Set(nodes.map((n) => n.id));
+      state.beginBatch();
+      try {
+        for (const edge of edges) {
+          // A removed node takes its own edges and links with it.
+          if (removed.has(edge.source) || removed.has(edge.target)) continue;
+          if (edge.id.startsWith(LINK_PREFIX)) state.removeLink(edge.id.slice(LINK_PREFIX.length));
+          else state.removeEdge(edge.id);
+        }
+        for (const node of nodes) state.removeNode(node.id);
+      } finally {
+        state.endBatch();
       }
     },
     [editor],
@@ -282,6 +299,7 @@ export function CorralCanvas() {
         nodeTypes={nodeTypes}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
+        onDelete={onDelete}
         onConnect={onConnect}
         onConnectEnd={onConnectEnd}
         isValidConnection={isValidConnection}
