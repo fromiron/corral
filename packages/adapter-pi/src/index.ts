@@ -22,6 +22,7 @@ export {
 } from './protocol.ts';
 export { normalizeUsage, type UsageObservation } from './usage.ts';
 export { runWorker, type WorkerDeps } from './worker.ts';
+export { recoverSdkWorkers } from './worker-leases.ts';
 
 /** The live worker's entry file, for `processChannel` (one child process per execution). */
 export const WORKER_ENTRY = fileURLToPath(new URL('./worker-main.ts', import.meta.url));

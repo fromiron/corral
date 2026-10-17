@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { recoverSdkWorkers } from '@corral/adapter-pi';
 import {
   type AgentAdapter,
   CanvasLayout,
@@ -118,7 +119,11 @@ export interface LiveModels {
   /** Models a subscription sign-in may call (pi-ai's ChatGPT-account catalog for OpenAI). */
   subscriptionModels?: (providerId: string) => ReadonlySet<string> | null;
   /** The agent adapter for live runs; it asks the registry for each request's token. */
-  agents(registry: ModelRegistry, harnesses: HarnessService): AgentAdapter;
+  agents(
+    registry: ModelRegistry,
+    harnesses: HarnessService,
+    workerLeaseDirectory: string,
+  ): AgentAdapter;
   /** Profiles when the workspace names none; they follow the available sign-in (CR-004). */
   defaultProfiles?: () => Promise<ProfileConfig[]>;
 }
@@ -264,6 +269,8 @@ async function createCorralServer(
   assertLoopback(host);
   resources.defer(acquireWorkspaceOwnership(options.workspace));
   const workspace = prepareWorkspace(options.workspace);
+  const workerLeaseDirectory = join(workspace.root, '.corral', 'sdk-workers');
+  await recoverSdkWorkers(workerLeaseDirectory);
   const clock = options.clock ?? systemClock;
   const ids = options.ids ?? new RandomIdFactory();
   const db = openDatabase(workspace.dbPath);
@@ -331,7 +338,9 @@ async function createCorralServer(
     timers: options.timers ?? systemTimers,
     agents: routeByMode(
       options.agents,
-      registry && options.live ? options.live.agents(registry, harnesses) : null,
+      registry && options.live
+        ? options.live.agents(registry, harnesses, workerLeaseDirectory)
+        : null,
     ),
     ...(registry ? { models: registry } : {}),
     store,

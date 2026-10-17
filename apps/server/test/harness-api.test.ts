@@ -2,12 +2,43 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { processChannel } from '@corral/adapter-pi';
 import { ScriptedAgentAdapter } from '@corral/testkit';
 import { afterEach, expect, it } from 'vitest';
 import { type CorralServer, startCorralServer } from '../src/app.ts';
 
 let server: CorralServer | undefined;
 let root: string;
+it.skipIf(process.platform !== 'linux')(
+  '[TC-HAR-017-N] server startup reaps the previous SDK owner before accepting work',
+  async () => {
+    root = mkdtempSync(join(tmpdir(), 'corral-server-recovery-'));
+    const workspace = join(root, 'workspace');
+    const worker = processChannel(
+      join(import.meta.dirname, '../../../packages/adapter-pi/test/fixtures/orphan-worker.ts'),
+      { leaseDirectory: join(workspace, '.corral', 'sdk-workers') },
+    );
+    let ended = false;
+    const exited = new Promise<void>((resolve) =>
+      worker.onExit(() => {
+        ended = true;
+        resolve();
+      }),
+    );
+    try {
+      await new Promise<void>((resolve) => worker.onFrame(() => resolve()));
+      server = await startCorralServer({
+        workspace,
+        agents: new ScriptedAgentAdapter({ turns: 1 }),
+      });
+      await exited;
+      expect(ended).toBe(true);
+    } finally {
+      worker.kill();
+      await exited;
+    }
+  },
+);
 afterEach(async () => {
   await server?.close();
   if (root) rmSync(root, { recursive: true, force: true });

@@ -41,10 +41,11 @@ export function createLiveModels(): LiveModels {
         ownOpenAI: (await own.read('openai').catch(() => undefined)) !== undefined,
         codexLogin: readCodexLogin(codexPath).state === 'found',
       }),
-    agents: (registry, harnesses) =>
+    agents: (registry, harnesses, workerLeaseDirectory) =>
       new PiAgentAdapter({
         spawn: () => processChannel(WORKER_ENTRY),
-        spawnSdk: () => sdkProcessChannel(SDK_WORKER_ENTRY),
+        spawnSdk: () =>
+          sdkProcessChannel(SDK_WORKER_ENTRY, { leaseDirectory: workerLeaseDirectory }),
         harness: (input) => harnesses.runtimeResources(input),
         cancelGraceMs: 9_000,
         credentials: (model) => registry.credentials(model),

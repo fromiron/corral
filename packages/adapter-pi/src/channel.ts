@@ -2,6 +2,7 @@ import { type ChildProcess, fork } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { recordWorkerLease } from './worker-leases.ts';
 
 // The transport between host and one worker (ADR-017: one child process per execution,
 // spawned when needed). The protocol does not depend on it, so tests use a memory pair and
@@ -56,7 +57,10 @@ export function memoryChannelPair(): { host: Channel; worker: Channel } {
  * A worker in its own Node process over the IPC channel. stdout is ignored and stderr is
  * kept only as a short diagnostic tail, never parsed as protocol (Technical-Design §7.4).
  */
-export function processChannel(entry: string, options: { env?: NodeJS.ProcessEnv } = {}): Channel {
+export function processChannel(
+  entry: string,
+  options: { env?: NodeJS.ProcessEnv; leaseDirectory?: string } = {},
+): Channel {
   const child: ChildProcess = fork(entry, [], {
     stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
     serialization: 'json',
@@ -73,6 +77,7 @@ export function processChannel(entry: string, options: { env?: NodeJS.ProcessEnv
   });
   child.stderr?.on('data', () => {});
   let exited = false;
+  let releaseLease = () => {};
   const exitHandlers: ((code: number | null) => void)[] = [];
   const stopChildren = () => {
     if (process.platform !== 'win32' && child.pid) {
@@ -87,10 +92,30 @@ export function processChannel(entry: string, options: { env?: NodeJS.ProcessEnv
     if (exited) return;
     stopChildren();
     exited = true;
+    try {
+      releaseLease();
+    } catch {
+      /* A remaining record is rechecked at next startup. */
+    }
     for (const handler of exitHandlers) handler(code);
   };
   child.on('exit', ended);
-  child.on('error', () => ended(null));
+  child.on('error', () => {
+    if (!child.pid) ended(null);
+    else {
+      stopChildren();
+      child.kill('SIGKILL');
+    }
+  });
+  if (options.leaseDirectory && child.pid) {
+    try {
+      releaseLease = recordWorkerLease(options.leaseDirectory, child.pid);
+    } catch (error) {
+      stopChildren();
+      child.kill('SIGKILL');
+      throw error;
+    }
+  }
   return {
     send: (frame) => {
       if (!exited && child.connected) child.send(frame as never, () => {});
@@ -107,10 +132,14 @@ export function processChannel(entry: string, options: { env?: NodeJS.ProcessEnv
 }
 
 /** Compatibility isolation for trusted native extensions; this is not an OS sandbox. */
-export function sdkProcessChannel(entry: string): Channel {
+export function sdkProcessChannel(
+  entry: string,
+  options: { leaseDirectory?: string } = {},
+): Channel {
   const directory = mkdtempSync(join(tmpdir(), 'corral-sdk-'));
   try {
     const channel = processChannel(entry, {
+      ...options,
       env: {
         CORRAL_WORKER_DIR: directory,
         HOME: directory,
