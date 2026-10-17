@@ -75,14 +75,52 @@ async function setup(
 }
 
 describe('file broker (CR-012)', () => {
-  it('[TC-HAR-016-N] changing legacy check settings retains MCP definitions',async()=>{
+  it('[TC-HAR-016-N] MCP launch trust is tied to pinned configuration, working copy code and authentication scope',async()=>{
     const s=await setup();
     try {
-      const mcp={id:'docs',name:'Docs',transport:'http' as const,url:'https://example.invalid/mcp',exposure:'direct' as const,timeoutMs:10000,auth:{kind:'none' as const}};
-      s.service.configureProjectTools('default',0,{checks:[],lspServers:[],mcpServers:[mcp]});
-      await s.service.configure('default',{verifyCommands:[]});
-      expect(s.service.projectTools.latest('default')?.mcpServers).toEqual([mcp]);
+      const local={id:'local',name:'Local',transport:'stdio' as const,argv:[process.execPath,'a.txt'],exposure:'direct' as const,timeoutMs:10000};
+      const remote={id:'docs',name:'Docs',transport:'http' as const,url:'https://example.invalid/mcp',exposure:'direct' as const,timeoutMs:10000,auth:{kind:'oauth' as const,credentialRef:'docs_login',scope:'read:docs'}};
+      const config=s.service.configureProjectTools('default',0,{checks:[],lspServers:[],mcpServers:[local,remote]});
+      const selection={projectId:'default',revision:config.revision,hash:config.hash,checkIds:[],lspServerIds:[],mcpServerIds:['local','docs']};
+      await expect(s.service.runtimeMcp('run_1',selection)).rejects.toThrow(/trust/);
+      for(const id of ['local','docs']) {
+        const inspected=await s.service.inspectMcpServer('default',id);
+        await s.service.trustMcpServer('default',id,inspected.fingerprint,true);
+      }
+      const runtime=await s.service.runtimeMcp('run_1',selection);
+      expect(runtime.servers.map(row=>row.server.id)).toEqual(['local','docs']);
+      expect(runtime.cwd).toBe(s.service.copyOf('session_1')!.worktree);
+      await expect(s.service.runtimeMcp('run_1',{...selection,projectId:'other'})).rejects.toThrow();
+      const oldRemote=await s.service.inspectMcpServer('default','docs');
+      s.service.configureProjectTools('default',1,{checks:[],lspServers:[],mcpServers:[local,{...remote,auth:{...remote.auth,scope:'write:docs'}}]});
+      expect((await s.service.inspectMcpServer('default','docs')).fingerprint).not.toBe(oldRemote.fingerprint);
+      expect((await s.service.runtimeMcp('run_1',selection)).servers[1]!.server).toEqual(remote);
+      writeFileSync(join(runtime.cwd,'a.txt'),'changed server code');
+      await expect(s.service.runtimeMcp('run_1',selection)).rejects.toThrow(/trust/);
     } finally {s.db.close();}
+  });
+  it('[TC-HAR-016-N] changing legacy check settings retains MCP definitions', async () => {
+    const s = await setup();
+    try {
+      const mcp = {
+        id: 'docs',
+        name: 'Docs',
+        transport: 'http' as const,
+        url: 'https://example.invalid/mcp',
+        exposure: 'direct' as const,
+        timeoutMs: 10000,
+        auth: { kind: 'none' as const },
+      };
+      s.service.configureProjectTools('default', 0, {
+        checks: [],
+        lspServers: [],
+        mcpServers: [mcp],
+      });
+      await s.service.configure('default', { verifyCommands: [] });
+      expect(s.service.projectTools.latest('default')?.mcpServers).toEqual([mcp]);
+    } finally {
+      s.db.close();
+    }
   });
   it('[TC-HAR-014-H] creates comparison copies from the exact requested commit even after the source HEAD moves', async () => {
     const s = await setup();
