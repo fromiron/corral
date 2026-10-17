@@ -537,7 +537,23 @@
     "criteria": "Criteria",
     "approve": "Approve",
     "reject": "Reject",
-    "refused": "Not applied: {message}"
+    "refused": "Not applied: {message}",
+    "done": "✓ {step} approved ({subject})",
+    "then": {
+      "user_action": "Approving continues the run with these versions; rejecting stops it.",
+      "final_output": "Approving makes this version the run's final result; rejecting leaves the run without one.",
+      "loop_cap": "Approving runs the review once more; rejecting stops the run."
+    },
+    "approveAs": {
+      "user_action": "Continue with this version",
+      "final_output": "Confirm as final result",
+      "loop_cap": "Review once more"
+    },
+    "rejectAs": {
+      "user_action": "Reject and stop",
+      "final_output": "Do not confirm",
+      "loop_cap": "Stop here"
+    }
   },
   "Budget": {
     "heading": "Budget and usage",
@@ -1275,7 +1291,14 @@
     "gitScopeNote": "Your linked folder, HEAD to what is on disk now (staged and not). Read only; comments and decisions apply to the session's working copy.",
     "demoFolder": "Demo: any path links an example folder kept in this page's memory (demo://example-repo). A reload starts it again.",
     "checksServerOnly": "Checks run commands on your computer, so they need the local server.",
-    "chooseFolder": "Choose folder…"
+    "chooseFolder": "Choose folder…",
+    "noCopyTitle": "This session has no working copy",
+    "noCopyBody": "Its runs did not work on files, so there are no file changes to compare. Their results are in the Results panel. To let a run change files, make a working copy first.",
+    "openResults": "Open results",
+    "makeCopyThere": "Set up a working copy",
+    "retry": "Try again",
+    "runChangedNothing": "This run did not change any files.",
+    "nothingChanged": "No files changed."
   },
   "Review": {
     "commentLine": "Comment on line {line}",

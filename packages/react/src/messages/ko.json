@@ -537,7 +537,23 @@
     "criteria": "기준",
     "approve": "승인",
     "reject": "반려",
-    "refused": "적용 안 됨: {message}"
+    "refused": "적용 안 됨: {message}",
+    "done": "✓ {step} 승인함 ({subject})",
+    "then": {
+      "user_action": "승인하면 이 버전으로 Run을 계속하고, 반려하면 멈춰요.",
+      "final_output": "승인하면 이 버전이 Run의 최종 결과가 돼요. 반려하면 최종 결과 없이 끝나요.",
+      "loop_cap": "승인하면 검토를 한 번 더 하고, 반려하면 Run을 멈춰요."
+    },
+    "approveAs": {
+      "user_action": "이 버전으로 계속",
+      "final_output": "최종 결과로 확정",
+      "loop_cap": "한 번 더 검토"
+    },
+    "rejectAs": {
+      "user_action": "반려하고 멈춤",
+      "final_output": "확정하지 않음",
+      "loop_cap": "여기서 멈춤"
+    }
   },
   "Budget": {
     "heading": "예산과 사용량",
@@ -1275,7 +1291,14 @@
     "gitScopeNote": "연결한 원본 폴더의 HEAD와 지금 디스크 내용(스테이징 여부 포함)을 비교합니다. 읽기만 하며, 의견과 판단은 세션 작업 복사본에 대해서만 합니다.",
     "demoFolder": "데모: 경로와 관계없이 이 페이지 메모리에 있는 예시 폴더(DEMO://EXAMPLE-REPO)를 연결합니다. 새로고침하면 처음으로 돌아갑니다.",
     "checksServerOnly": "검증 명령은 컴퓨터에서 명령을 실행하므로 로컬 서버에서만 됩니다.",
-    "chooseFolder": "폴더 선택…"
+    "chooseFolder": "폴더 선택…",
+    "noCopyTitle": "이 세션에는 작업 복사본이 없어요",
+    "noCopyBody": "이 세션의 Run은 파일을 다루지 않아 비교할 파일 변경이 없어요. 결과는 결과 패널에서 볼 수 있어요. Run이 파일을 바꾸게 하려면 먼저 작업 복사본을 만드세요.",
+    "openResults": "결과 보기",
+    "makeCopyThere": "작업 복사본 준비",
+    "retry": "다시 시도",
+    "runChangedNothing": "이 Run은 파일을 바꾸지 않았어요.",
+    "nothingChanged": "바뀐 파일이 없어요."
   },
   "Review": {
     "commentLine": "{line}번째 줄에 의견",

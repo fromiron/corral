@@ -1,5 +1,5 @@
 import type { Receipt } from '@corral/contracts';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import type { RunSessionStore } from '../run/session.ts';
@@ -12,15 +12,26 @@ import { Button } from '../ui/button.tsx';
 export function ApprovalPanel({
   session,
   onOpenArtifact,
+  className,
+  compact = false,
 }: {
   session: RunSessionStore;
   onOpenArtifact: (artifactVersionId: string) => void;
+  /** Placement around the cards; nothing is drawn while no approval waits. */
+  className?: string;
+  /** A one-row strip beside what is being read (the results view): no explanations. */
+  compact?: boolean;
 }) {
   const t = useTranslations('Approvals');
+  const headingId = useId();
   const all = useStore(session, (s) => s.projection?.approvals);
   const artifacts = useStore(session, (s) => s.projection?.artifacts);
   const approvals = useMemo(
     () => Object.values(all ?? {}).filter((a) => a.status === 'pending'),
+    [all],
+  );
+  const done = useMemo(
+    () => Object.values(all ?? {}).filter((a) => a.status === 'approved'),
     [all],
   );
   const criteriaId = approvals[0]?.criteriaVersionId;
@@ -33,6 +44,8 @@ export function ApprovalPanel({
   }, [session, criteriaId]);
 
   if (approvals.length === 0) return null;
+  const label = (id: string) =>
+    artifacts?.[id] ? `${artifacts[id].name} v${artifacts[id].version}` : id;
   const decide = async (approvalId: string, decision: 'approve' | 'reject') => {
     setBusy(true);
     try {
@@ -46,18 +59,36 @@ export function ApprovalPanel({
   };
 
   return (
-    <section aria-labelledby="approvals-heading" className="flex flex-col gap-2">
-      <h3 id="approvals-heading" className="text-ui font-semibold">
+    <section aria-labelledby={headingId} className={`flex flex-col gap-2 ${className ?? ''}`}>
+      <h3 id={headingId} className={compact ? 'sr-only' : 'text-ui font-semibold'}>
         {t('heading')}
       </h3>
+      {/* UX-11: decisions already made in this run stay in view, so the next one reads as a
+          new step rather than a retry of the last. */}
+      {(compact ? [] : done).map((approval) => (
+        <p
+          key={approval.approvalId}
+          data-testid={`approved-${approval.approvalId}`}
+          className="text-xs text-muted"
+        >
+          {t('done', {
+            step: t(`kind.${approval.kind}`),
+            subject: label(approval.subjectVersionIds[0] ?? ''),
+          })}
+        </p>
+      ))}
       {approvals.map((approval) => (
         <article
           key={approval.approvalId}
           data-testid={`approval-${approval.approvalId}`}
-          className="flex flex-col gap-2 rounded-xl border border-warning/50 bg-warning/5 p-3 text-xs"
+          className={
+            compact
+              ? 'flex flex-wrap items-center gap-2 rounded-lg border border-warning/50 bg-warning/5 px-2.5 py-2 text-xs'
+              : 'flex flex-col gap-2 rounded-xl border border-warning/50 bg-warning/5 p-3 text-xs'
+          }
         >
           <p className="font-medium">{t(`kind.${approval.kind}`)}</p>
-          <p className="text-muted">{t(`explain.${approval.kind}`)}</p>
+          {compact ? null : <p className="text-muted">{t(`explain.${approval.kind}`)}</p>}
           <div className="flex flex-wrap items-center gap-1">
             <span className="text-muted">{t('subject')}</span>
             {approval.subjectVersionIds.map((id) => (
@@ -68,11 +99,11 @@ export function ApprovalPanel({
                 title={id}
                 onClick={() => onOpenArtifact(id)}
               >
-                {artifacts?.[id] ? `${artifacts[id].name} v${artifacts[id].version}` : id}
+                {label(id)}
               </Button>
             ))}
           </div>
-          {criteria ? (
+          {criteria && !compact ? (
             <div className="text-muted">
               {t('criteria')}
               <ul className="list-disc pl-5">
@@ -82,13 +113,14 @@ export function ApprovalPanel({
               </ul>
             </div>
           ) : null}
-          <div className="flex gap-2">
+          <div className={`flex gap-2 ${compact ? 'ml-auto' : ''}`}>
             <Button
               size="sm"
               disabled={busy}
+              title={t(`then.${approval.kind}`)}
               onClick={() => void decide(approval.approvalId, 'approve')}
             >
-              {t('approve')}
+              {t(`approveAs.${approval.kind}`)}
             </Button>
             <Button
               variant="outline"
@@ -96,7 +128,7 @@ export function ApprovalPanel({
               disabled={busy}
               onClick={() => void decide(approval.approvalId, 'reject')}
             >
-              {t('reject')}
+              {t(`rejectAs.${approval.kind}`)}
             </Button>
           </div>
           {refused?.error ? (

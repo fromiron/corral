@@ -149,7 +149,7 @@
     "dock dock side";
 }
 
-@media (max-width: 1279px) {
+@container (max-width: 1279px) {
   .run-layout {
     grid-template-columns: minmax(0, 1fr) 20rem;
     grid-template-rows: minmax(14rem, 1fr) 9rem 13rem;
@@ -159,8 +159,9 @@
       "dock side";
   }
 }
-/* Phones and split screens (roadmap 19): one panel at a time, chosen above. */
-@media (max-width: 767px) {
+/* Phones, split screens and the side panel (roadmap 19, UX-03): one panel at a time, chosen
+   above. Measured on the run view's own width, not the window's. */
+@container (max-width: 767px) {
   .run-layout {
     display: flex;
     flex-direction: column;
