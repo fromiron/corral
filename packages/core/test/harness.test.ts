@@ -124,6 +124,23 @@ async function loaded() {
 }
 
 describe('Coordinator harness boundary (H2)', () => {
+  it('[TC-HAR-016-N] revisions dynamic descriptors and refuses old approvals, duplicate updates and unbound sources',async()=>{
+    const s=await loaded();
+    const approved=await s.host().authorizeTool({name:'echo',args:{text:'hello'}});
+    expect(approved.ok).toBe(true);
+    const updated={...descriptor,schemaHash:'f'.repeat(64)};
+    const update={snapshotHash:snapshot.snapshotHash,expectedRevision:1,tools:[updated]};
+    await s.host().updateHarnessTools!(update);
+    await expect(s.host().updateHarnessTools!(update)).rejects.toThrow(/revision/i);
+    await expect(s.host().beginNativeTool!(approved.toolCallId,hash({text:'hello'}))).rejects.toThrow();
+    const next=await s.host().authorizeTool({name:'echo',args:{text:'hello'}});
+    expect(next.ok).toBe(true);
+    await s.host().beginNativeTool!(next.toolCallId,hash({text:'hello'}));
+    await s.host().finishNativeTool!(next.toolCallId,'succeeded');
+    await expect(s.host().updateHarnessTools!({...update,expectedRevision:2,tools:[{...updated,source:'extension:unbound@1.0.0'}]})).rejects.toThrow(/unbound/i);
+    expect(s.events().filter(e=>e.type==='harness.tools_updated')).toHaveLength(1);
+    s.done.open();
+  });
   it('[TC-HAR-003-H] pins a run-only harness layer and refuses unknown or unbound role overrides', () => {
     const definition = linearCorral(['writer']);
     const role = definition.roles[0]!;
