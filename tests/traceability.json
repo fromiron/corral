@@ -689,5 +689,85 @@
     "tasks": [
       "C-075"
     ]
+  },
+  {
+    "requirementId": "CRL-HAR-001",
+    "tests": [
+      "TC-HAR-001-H",
+      "TC-HAR-001-N"
+    ],
+    "tasks": [
+      "C-076"
+    ]
+  },
+  {
+    "requirementId": "CRL-HAR-002",
+    "tests": [
+      "TC-HAR-002-H",
+      "TC-HAR-002-N"
+    ],
+    "tasks": [
+      "C-076"
+    ]
+  },
+  {
+    "requirementId": "CRL-HAR-003",
+    "tests": [
+      "TC-HAR-003-H",
+      "TC-HAR-003-N"
+    ],
+    "tasks": [
+      "C-076"
+    ]
+  },
+  {
+    "requirementId": "CRL-HAR-004",
+    "tests": [
+      "TC-HAR-004-H",
+      "TC-HAR-004-N"
+    ],
+    "tasks": [
+      "C-076"
+    ]
+  },
+  {
+    "requirementId": "CRL-HAR-005",
+    "tests": [
+      "TC-HAR-005-H",
+      "TC-HAR-005-N"
+    ],
+    "tasks": [
+      "C-076"
+    ]
+  },
+  {
+    "requirementId": "CRL-HAR-006",
+    "tests": [
+      "TC-HAR-006-H",
+      "TC-HAR-006-N"
+    ],
+    "tasks": [
+      "C-076"
+    ]
+  },
+  {
+    "requirementId": "CRL-HAR-007",
+    "tests": [
+      "TC-HAR-007-H",
+      "TC-HAR-007-N"
+    ],
+    "tasks": [
+      "C-076"
+    ]
+  },
+  {
+    "requirementId": "CRL-HAR-008",
+    "tests": [
+      "TC-HAR-008-H",
+      "TC-HAR-008-N"
+    ],
+    "tasks": [
+      "C-076"
+    ]
   }
 ]

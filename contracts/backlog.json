@@ -1449,5 +1449,31 @@
     "done": "참조 포인터·버전 고정 복사·거절 3종·멱등, 서버 fuzzy 검색, `/`·`@` 메뉴와 토큰",
     "status": "implemented",
     "evidence": "docs/change-requests/CR-016-composer-commands-and-references.md"
+  },
+  {
+    "id": "C-076",
+    "phase": "P12",
+    "title": "Pi SDK 하네스 스파이크 S1–S8(permit·도구 승인·지시·리소스 격리·스킬·패키지·명령·worker 환경)",
+    "dependsOn": [
+      "C-075"
+    ],
+    "requirements": [
+      "CRL-HAR-001",
+      "CRL-HAR-002",
+      "CRL-HAR-003",
+      "CRL-HAR-004",
+      "CRL-HAR-005",
+      "CRL-HAR-006",
+      "CRL-HAR-007",
+      "CRL-HAR-008"
+    ],
+    "files": [
+      "packages/adapter-pi/test/spike/sdk-session.ts",
+      "docs/spikes/HAR-pi-sdk-spikes.md",
+      "docs/change-requests/CR-018-pi-standard-harness.md"
+    ],
+    "done": "S1·S2·S4 통과(Go 조건), S3·S5·S6·S7·S8 결과와 범위 축소를 보고서에 기록",
+    "status": "implemented",
+    "evidence": "docs/spikes/HAR-pi-sdk-spikes.md"
   }
 ]

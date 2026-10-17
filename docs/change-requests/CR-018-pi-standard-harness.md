@@ -5,7 +5,7 @@
 - 기준: `f17338f`(PR #54 병합).
 - 관련: ADR-005(agent-core worker), ADR-024(admission gate), C-052(worker 규칙), CR-012(파일 broker), CR-016(명령 레지스트리).
 - 결정: [ADR-027](../Decisions.md#adr-027-pi-coding-agent-sdk를-역할별-실행-방식으로-추가한다).
-- 상태: **제안. H1 스파이크 진행 중.**
+- 상태: **제안. H1 스파이크 완료**([보고서](../spikes/HAR-pi-sdk-spikes.md), S1·S2·S4 통과). Bell의 Go 승인을 기다린다.
   - 스펙·기술 설계 본문(아래 "문서 변경")은 S1·S2·S4가 통과하고 Bell이 Go를 승인한 뒤 고친다.
   - 그 전까지 제품 실행 경로는 바뀌지 않는다. 스파이크 코드는 테스트에만 있다.
 
@@ -20,6 +20,8 @@
 | 모델 요청 | worker가 요청마다 host permit을 받는다 | 같다. SDK 실행은 Corral provider 하나로만 요청한다. 세션·재시도·압축·확장 중첩 호출이 모두 permit을 받는다. Pi 런타임에 실제 자격 증명을 넣지 않는다 |
 | 도구 | 역할 허용 목록의 Corral 도구 | Pi 내장 도구(`read/bash/edit/write/grep/find/ls`)는 끈다. 확장 도구는 **최종 인자**로 host 승인을 받는다. 실행은 worker 안이며 "관리되지 않은 실행"으로 기록한다 |
 | 지시(Reins) | 요청 준비 시 context에 넣는다 | SDK 실행에서는 Pi steer 메시지로 보내고, 요청 단위로 묶는다(S3 결과에 따름) |
+
+확장 명령은 **실행 시작 옵션**으로만 지원한다(역할 바인딩의 초기 명령, 또는 Run 시작 전 입력). Pi가 실행 중 확장 명령을 거절하기 때문이다(스파이크 F5).
 
 R2(검증·개선)와 R3(MCP·codemode·항목 반복)는 이 CR 범위가 아니다. 각각 별도 CR로 한다.
 
@@ -65,8 +67,9 @@ R2(검증·개선)와 R3(MCP·codemode·항목 반복)는 이 CR 범위가 아�
 | TC-HAR-001-H/N | 모든 모델 요청(일반·재시도·압축·확장 중첩)이 permit을 받는다. permit 없는 dispatch는 없다 | `packages/adapter-pi/test/spike/permit.test.ts`(S1) |
 | TC-HAR-002-H/N | 최종 인자로 승인, 핸들러 예외는 차단, 중첩 호출도 승인 | `packages/adapter-pi/test/spike/tools.test.ts`(S2) |
 | TC-HAR-004-H/N | 바인딩한 리소스만 로드, 함정 HOME과 cwd의 리소스는 로드하지 않음 | `packages/adapter-pi/test/spike/resources.test.ts`(S4) |
+| TC-HAR-003·005·007 | 요청 기록·지시, 스킬, 명령·대화상자 | `test/spike/{permit,directives,skills,commands-ui}.test.ts` |
 | 나머지 TC-HAR | H2–H3에서 추가한다 | 플랜 §7 |
 
 ## 검증하지 못한 것
 
-[스파이크 보고서](../spikes/HAR-pi-sdk-spikes.md)에 단계마다 적는다.
+[스파이크 보고서](../spikes/HAR-pi-sdk-spikes.md)의 "확인하지 못한 것"을 본다. 이후 단계마다 덧붙인다.

@@ -251,6 +251,7 @@ Electron은 창·OS 대화상자·서버 수명을 소유한다. 서버와 Pi wo
 - `pi-sdk`는 기존과 같은 실행 단위 worker 프로세스 안에서만 돈다.
 - 모델 요청은 자격 증명 없는 `ModelRuntime`에 등록한 Corral provider 하나로만 보낸다. 이 provider는 요청마다 host permit을 받는다.
 - 리소스는 핀 고정한 경로만 로드한다(`noExtensions`·`noSkills`·`noContextFiles` + 명시 경로).
+- system prompt는 `systemPromptOverride`·`appendSystemPromptOverride`로 Corral 값에 고정한다. SDK 경로는 project trust를 적용하지 않아서, 이것이 없으면 프로젝트 `.pi/SYSTEM.md`가 들어간다(스파이크 F1).
 - 설정은 in-memory로 둔다(`cacheWarming: off`). 세션도 in-memory다.
 - Pi 내장 도구는 끈다.
 - Corral 확장을 마지막에 로드한다. 이 확장이 `tool_call`에서 최종 인자를 host에 승인받는다.
@@ -263,4 +264,5 @@ Electron은 창·OS 대화상자·서버 수명을 소유한다. 서버와 Pi wo
 - 확장 코드는 worker 권한으로 직접 fs·network·process를 쓸 수 있다. 이것을 "신뢰한 네이티브 코드"로 표시하고 통제를 약속하지 않는다.
 - OS 격리는 제공하지 않는다.
 - `pi-core` 역할의 이벤트·hash·골든은 바뀌지 않는다.
-- Pi 업그레이드는 별도 변경으로 하고, S1·S2·S4 회귀 테스트를 통과해야 한다.
+- Pi 업그레이드는 별도 변경으로 하고, S1·S2·S4 회귀 테스트(`packages/adapter-pi/test/spike/`)를 통과해야 한다.
+- 스파이크 결과는 [HAR-pi-sdk-spikes](spikes/HAR-pi-sdk-spikes.md)에 있다.

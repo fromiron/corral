@@ -196,7 +196,7 @@ Workbench / CLI
 
 **스파이크**
 
-모두 fake provider와 로컬 fixture로 한다. 모델 호출과 네트워크는 쓰지 않는다. 코드는 `packages/adapter-pi/spike/`에 두고 테스트로 남긴다.
+모두 fake provider와 로컬 fixture로 한다. 모델 호출과 네트워크는 쓰지 않는다. 코드는 `packages/adapter-pi/test/spike/`에 두고 테스트로 남긴다. **결과: [HAR-pi-sdk-spikes](../spikes/HAR-pi-sdk-spikes.md)(2026-10-17, 8개 모두 통과 또는 부분 통과, Go 조건 충족).**
 
 | ID | 질문 | 통과 조건 | 실패 시 |
 |---|---|---|---|
