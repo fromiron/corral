@@ -47,3 +47,11 @@ SDK worker는 실행 시작 IPC를 보내기 전에 private 프로세스 소유 
 - SDK의 공개 `createMcpExtension` factory만 활성화하고 설정 파일 자동 탐색·확장의 미등록 서버 연결·내장 `/mcp` 설정 변경 경로를 막는다. 실제 관리 사본 cwd를 private IPC로 전달하며 사용자 원본 cwd를 대체 실행 위치로 쓰지 않는다. native 서버 자체는 OS sandbox가 아니다.
 - Bearer/OAuth 비밀과 갱신 토큰은 workspace 밖의 Corral private 저장소에 둔다. OAuth는 공개 pi-mcp flow와 loopback PKCE callback을 사용하고 사용자 설정 화면에서만 시작/취소한다. worker는 고정 서버 ID로 해당 요청에 필요한 bearer token만 host에 요청한다. 권한 scope 변경·다른 endpoint에 기존 credential을 재사용하지 않는다. 임의 provider key 조회나 모델 자격 증명 전달을 허용하지 않는다.
 - SDK native descriptor/중첩 호출 경계를 MCP에도 적용한다. 종료 시 `session_shutdown`으로 서버 연결을 닫고 worker 프로세스 정리도 확인한다. 일반 CI/로컬 검증은 로컬 MCP·OAuth fixture만 사용한다.
+
+## LSP 변경 제안의 적용 의미
+
+- 기존 `lsp_query`에 `rename`(위치·새 이름)과 `code_actions`(범위·선택적 kind)를 추가한다. 읽기 질의와 같은 등록 서버·고정 설정·launch 승인 경로다. 서버의 `workspace/applyEdit` 요청은 계속 거절한다.
+- 서버는 기존 UTF-8 파일의 TextEdit/버전 있는 TextDocumentEdit를 제안할 수 있다. 열어 동기화한 문서는 version 1만 인정하고 다른 문서는 version null이어야 한다. 경로·원본 hash·전체 작업 tree를 확인한다. 겹치는 edit, 잘못된 UTF-16 위치·서로게이트 분할, 미지원 resource operation/annotation/snippet은 거절한다. 코드 액션의 command 실행은 하지 않는다. edit가 없는 지원 불가 액션은 이유를 표시한다.
+- 제안은 ID·본문 hash·소유 run/execution/attempt/effect·기준 tree·설정 revision·서버 fingerprint와 함께 불변 보관한다. diff 본문은 로컬 파일 검토 API에서만 읽고 이벤트/공개 export에는 넣지 않는다. 제안 생성만으로 파일이 바뀌거나 agent 읽기 원장이 생기지 않는다.
+- 사용자가 세션 파일 검토 화면에서 제안 hash를 지정해 명시 적용한다. 해당 세션에 미종료 Run이 있으면 거절한다. 하나의 사본 lease 아래 모든 파일의 경로/hash/tree를 사전 확인한 뒤 기존 파일 broker를 사용한다. 적용 도중 외부 변경/새 Run/IO 실패가 생기면 남은 파일을 멈추고 파일별 applied/failed/uncertain을 보존한다. 여러 파일의 원자성이나 자동 rollback을 보장하지 않는다. 이미 적용/부분 적용한 요청을 다시 실행하지 않는다.
+- 정상 다중 파일·BOM/CRLF/유니코드, 범위 밖 URI·잘못된 문서 버전·중복/겹침·stale, 취소·늦은 응답, 실패 뒤 부분 상태·재시작·중복 적용 및 실제 UI 명시 적용을 검증한다.
