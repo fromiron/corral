@@ -76,6 +76,14 @@ async function setup(
 }
 
 describe('file broker (CR-012)', () => {
+  it('[TC-HAR-014-N] concurrent criteria pinning cannot replace the first immutable set',async()=>{
+    const s=await setup();
+    const file=await s.call('read_file',{path:'a.txt'});
+    const results=await Promise.allSettled([s.service.pinCriteria('run_1',[{path:'a.txt',sha256:String(file.sha256)}]),s.service.pinCriteria('run_1',[])]);
+    expect(results.map(result=>result.status)).toEqual(['fulfilled','rejected']);
+    await expect(s.call('write_file',{path:'a.txt',text:'changed'})).rejects.toThrow(/criteria/);
+    s.db.close();
+  });
   it('[TC-HAR-016-N] MCP launch trust is tied to pinned configuration, working copy code and authentication scope', async () => {
     const s = await setup();
     try {
