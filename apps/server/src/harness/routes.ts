@@ -1,3 +1,5 @@
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { ContentHash, HarnessBindingRef, HarnessProfile, Identifier } from '@corral/contracts';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
@@ -43,8 +45,15 @@ export function registerHarnessRoutes(app: FastifyInstance, service: HarnessServ
   app.post(`${prefix}/reviews`, (request, reply) =>
     action(reply, () => {
       const input = z
-        .strictObject({ kind: z.enum(['local', 'package']), source: z.string().min(1).max(1000) })
+        .union([
+          z.strictObject({
+            kind: z.enum(['local', 'package']),
+            source: z.string().min(1).max(1000),
+          }),
+          z.strictObject({ kind: z.literal('pi-home') }),
+        ])
         .parse(request.body);
+      if (input.kind === 'pi-home') return service.discoverPiHome(join(homedir(), '.pi', 'agent'));
       return input.kind === 'local'
         ? service.discoverLocal(input.source)
         : service.discoverPackage(input.source);

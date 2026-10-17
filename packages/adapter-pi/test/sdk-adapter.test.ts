@@ -175,10 +175,37 @@ function runtime(
 describe('SDK worker through the product adapter (H2)', () => {
   it('[TC-HAR-007-H] records extension command origins and resolves a package-qualified startup command', async () => {
     let seen = '';
-    const run = runtime([context => { seen = JSON.stringify(context.messages); return fauxAssistantMessage('Done.'); }], `export default pi => { let mode='off'; pi.registerCommand('pause',{description:'Fixture mode',handler:async args=>{mode=args;}}); pi.on('before_agent_start', event=>{event.systemPromptOptions.sections.fixture='Fixture mode: '+mode;}); };`, {}, undefined, undefined, ['/fixture:pause ultra']);
-    expect(await (await run.adapter.start(run.input, run.host)).waitForSettlement()).toMatchObject({ outcome: 'succeeded' });
+    const run = runtime(
+      [
+        (context) => {
+          seen = JSON.stringify(context.messages);
+          return fauxAssistantMessage('Done.');
+        },
+      ],
+      `export default pi => { let mode='off'; pi.registerCommand('pause',{description:'Fixture mode',handler:async args=>{mode=args;}}); pi.on('before_agent_start', event=>{event.systemPromptOptions.sections.fixture='Fixture mode: '+mode;}); };`,
+      {},
+      undefined,
+      undefined,
+      ['/fixture:pause ultra'],
+    );
+    expect(await (await run.adapter.start(run.input, run.host)).waitForSettlement()).toMatchObject({
+      outcome: 'succeeded',
+    });
     expect(seen).toContain('Fixture mode: ultra');
-    expect(run.reports).toContainEqual(expect.objectContaining({ commands: [{ name: 'pause', invocation: 'pause', alias: 'fixture:pause', source: 'extension:fixture@1.0.0', description: 'Fixture mode', condition: 'startup' }] }));
+    expect(run.reports).toContainEqual(
+      expect.objectContaining({
+        commands: [
+          {
+            name: 'pause',
+            invocation: 'pause',
+            alias: 'fixture:pause',
+            source: 'extension:fixture@1.0.0',
+            description: 'Fixture mode',
+            condition: 'startup',
+          },
+        ],
+      }),
+    );
     expect(JSON.stringify(run.reports)).not.toContain(run.directory);
   });
   it('[TC-HAR-006-N] a required extension session-start error fails before any provider request', async () => {

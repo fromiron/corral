@@ -1721,6 +1721,9 @@
     "confirmNo": "Decline",
     "sendAnswer": "Send answer",
     "dismissPrompt": "Dismiss request",
-    "uiHistory": "Extension UI history"
+    "uiHistory": "Extension UI history",
+    "piHome": "Copy Pi resource folders",
+    "piHomeHint": "Explicitly copy skills and extensions from {folder}. Credentials, settings and sessions are excluded. Install packages referenced only by Pi settings separately with a pinned version.",
+    "startupOnly": "Startup only. Add this command in the role’s work style settings for a future run."
   }
 }

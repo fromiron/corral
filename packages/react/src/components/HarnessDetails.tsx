@@ -81,6 +81,11 @@ export function HarnessDetails({ session }: { session: RunSessionStore }) {
                     {tool.name} · {tool.source} · {tool.sideEffect}
                   </li>
                 ))}
+                {(event.payload.commands ?? []).map((command) => (
+                  <li key={command.alias}>
+                    /{command.alias} · {command.source} · {t('startupOnly')}
+                  </li>
+                ))}
               </ul>
             ) : (
               <p className="text-xs text-danger">{event.payload.code}</p>

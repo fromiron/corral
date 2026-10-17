@@ -94,7 +94,7 @@ export function HarnessSettingsPage() {
   const [profile, setProfile] = useState<HarnessProfile>(emptyProfile);
   const [toolNames, setToolNames] = useState(emptyProfile().allowedTools.join(', '));
   const [commands, setCommands] = useState('');
-  const [kind, setKind] = useState<'local' | 'package'>('local');
+  const [kind, setKind] = useState<'local' | 'package' | 'pi-home'>('local');
   const [source, setSource] = useState('');
   const [review, setReview] = useState<{ reviewId: string; resource: HarnessResource } | null>(
     null,
@@ -194,11 +194,13 @@ export function HarnessSettingsPage() {
                 >
                   <option value="local">{t('local')}</option>
                   <option value="package">{t('package')}</option>
+                  <option value="pi-home">{t('piHome')}</option>
                 </select>
               </label>
               <label className="flex flex-col gap-1 text-sm">
                 {t('source')}
                 <input
+                  disabled={kind === 'pi-home'}
                   className={field}
                   value={source}
                   onChange={(e) => {
@@ -209,11 +211,11 @@ export function HarnessSettingsPage() {
                 />
               </label>
               <p id={`${id}-source-hint`} className="text-xs text-muted">
-                {t('sourceHint')}
+                {kind === 'pi-home' ? t('piHomeHint', { folder: '~/.pi/agent' }) : t('sourceHint')}
               </p>
               <Button
                 className="self-start"
-                disabled={!source.trim()}
+                disabled={kind !== 'pi-home' && !source.trim()}
                 onClick={() =>
                   void work(async () => {
                     setReview(await api.review(kind, source.trim()));

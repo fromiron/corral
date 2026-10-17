@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 import {
   canonicalJson,
   type DeliveredDirective,
+  HarnessCommand,
   type HarnessReport,
   ModelRequestRecord,
   ToolDescriptor,
@@ -614,6 +615,26 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
       const diagnostics = runtime.getRegisteredProviderIds().some((id) => id !== 'corral')
         ? ['unmanaged_provider_registered']
         : [];
+      const commands = session.extensionRunner.getRegisteredCommands().map((command) => {
+        const resource = start.resources.extensions.find(
+          (extension) => resolve(extension.path) === resolve(command.sourceInfo.path),
+        );
+        if (!resource) throw new Error('unbound extension command');
+        const packageName = resource.source
+          .slice('extension:'.length, resource.source.lastIndexOf('@'))
+          .replace(/^@/, '')
+          .replaceAll('/', '-');
+        return HarnessCommand.parse({
+          name: command.name,
+          invocation: command.invocationName,
+          alias: `${packageName}:${command.name}`,
+          source: resource.source,
+          description: command.description ?? '',
+          condition: 'startup',
+        });
+      });
+      if (new Set(commands.map((command) => command.alias)).size !== commands.length)
+        throw new Error('ambiguous extension command alias');
       await ack({
         type: 'harness_report',
         report: {
@@ -621,6 +642,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
           snapshotHash: start.harness.snapshotHash,
           tools: [...descriptors.values()],
           diagnostics,
+          ...(commands.length ? { commands } : {}),
         },
       });
       reported = true;
@@ -633,15 +655,15 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
         if (event.type === 'auto_retry_end' || event.type === 'compaction_end') purpose = 'turn';
       });
       for (const command of start.resources.startupCommands) {
-        if (
-          !/^\/[a-zA-Z][\w:-]*(?:\s|$)/.test(command) ||
-          /^\/(reload|login|logout)(?:\s|$)/.test(command)
-        )
+        const match = /^\/([\w][\w:.-]*)([\s\S]*)$/.exec(command);
+        if (!match || (match[2] && !/^\s/.test(match[2])))
           throw new Error('unsupported startup command');
-        const name = command.slice(1).split(/\s/)[0];
-        if (!session.extensionRunner.getRegisteredCommands().some((c) => c.name === name))
-          throw new Error('unknown startup command');
-        await session.prompt(command);
+        const selected =
+          commands.find((item) => item.alias === match[1]) ??
+          commands.find((item) => item.invocation === match[1]);
+        if (!selected || ['reload', 'login', 'logout'].includes(selected.invocation))
+          throw new Error('unknown or unsupported startup command');
+        await session.prompt(`/${selected.invocation}${match[2]}`);
       }
       if (cancelled) throw new Error('cancelled');
       start = {

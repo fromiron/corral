@@ -71,13 +71,7 @@ export class HarnessService {
 
   async discoverLocal(source: string) {
     this.expireReviews();
-    const original = realpathSync(source);
-    if (
-      !statSync(original).isDirectory() ||
-      inside(original, this.root) ||
-      inside(this.root, original)
-    )
-      throw new Error('choose a resource directory outside Corral data');
+    const original = this.sourceDirectory(source);
     const directory = mkdtempSync(join(this.root, 'reviews', 'copy-'));
     try {
       const files = scan(original, directory);
@@ -90,20 +84,44 @@ export class HarnessService {
         files,
         createdAt: this.clock.nowIso(),
       });
-      this.checkEntries(resource);
-      const reviewId = `review_${resource.hash}`;
-      const existing = this.reviews.get(reviewId);
-      if (existing) {
-        rmSync(directory, { recursive: true, force: true });
-        return { reviewId, resource: existing.resource };
+      return this.retainReview(directory, resource);
+    } catch (error) {
+      rmSync(directory, { recursive: true, force: true });
+      throw error;
+    }
+  }
+
+  /** Explicit import copies resource directories only; Pi auth/settings/session files stay put. */
+  async discoverPiHome(source: string) {
+    this.expireReviews();
+    const directory = mkdtempSync(join(this.root, 'reviews', 'pi-copy-'));
+    try {
+      const selected = ['extensions', 'skills'].filter((name) => existsSync(join(source, name)));
+      if (!selected.length) throw new Error('package contains no supported skills or extensions');
+      for (const name of selected) {
+        mkdirSync(join(directory, name), { recursive: true, mode: 0o700 });
+        scan(this.sourceDirectory(join(source, name)), join(directory, name));
       }
-      this.reviews.set(reviewId, {
-        reviewId,
-        resource,
-        directory,
-        expiresAt: this.clock.monotonicMs() + 30 * 60_000,
+      writeFileSync(
+        join(directory, 'package.json'),
+        JSON.stringify({
+          name: 'pi-home-copy',
+          version: 'local',
+          pi: Object.fromEntries(selected.map((name) => [name, [`./${name}`]])),
+        }),
+        { mode: 0o600 },
+      );
+      const files = scan(directory);
+      const inspection = await this.inspect(directory);
+      const resource = HarnessResource.parse({
+        ...inspection,
+        hash: treeHash(files),
+        sourceKind: 'local',
+        sourceLabel: 'Pi resource folders (copy)',
+        files,
+        createdAt: this.clock.nowIso(),
       });
-      return { reviewId, resource };
+      return this.retainReview(directory, resource);
     } catch (error) {
       rmSync(directory, { recursive: true, force: true });
       throw error;
@@ -127,26 +145,41 @@ export class HarnessService {
         sourceLabel: parsed.data,
         createdAt: this.clock.nowIso(),
       });
-      this.checkEntries(resource);
-      const reviewId = `review_${resource.hash}`;
-      const existing = this.reviews.get(reviewId);
-      if (existing) {
-        rmSync(directory, { recursive: true, force: true });
-        return { reviewId, resource: existing.resource };
-      }
-      this.reviews.set(reviewId, {
-        reviewId,
-        resource,
-        directory,
-        expiresAt: this.clock.monotonicMs() + 30 * 60_000,
-      });
-      return { reviewId, resource };
+      return this.retainReview(directory, resource);
     } catch (error) {
       rmSync(directory, { recursive: true, force: true });
       throw error;
     } finally {
       rmSync(downloaded, { recursive: true, force: true });
     }
+  }
+
+  private retainReview(directory: string, resource: HarnessResource) {
+    this.checkEntries(resource);
+    const reviewId = `review_${resource.hash}`;
+    const existing = this.reviews.get(reviewId);
+    if (existing) {
+      rmSync(directory, { recursive: true, force: true });
+      return { reviewId, resource: existing.resource };
+    }
+    this.reviews.set(reviewId, {
+      reviewId,
+      resource,
+      directory,
+      expiresAt: this.clock.monotonicMs() + 30 * 60_000,
+    });
+    return { reviewId, resource };
+  }
+
+  private sourceDirectory(source: string) {
+    const original = realpathSync(source);
+    if (
+      !statSync(original).isDirectory() ||
+      inside(original, this.root) ||
+      inside(this.root, original)
+    )
+      throw new Error('choose a resource directory outside Corral data');
+    return original;
   }
 
   async runtimeResources(

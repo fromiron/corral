@@ -91,14 +91,25 @@ describe('resource discovery, trust and resolution (H3)', () => {
     writeFileSync(join(s.source, 'auth.json'), secret);
     writeFileSync(join(s.source, 'settings.json'), '{"packages":["npm:unselected@1.0.0"]}');
     const review = await s.service.discoverPiHome(s.source);
-    expect(review.resource.files.map(file => file.path)).toContain('skills/writing/SKILL.md');
-    expect(review.resource.files.map(file => file.path)).toContain('extensions/echo.ts');
-    expect(review.resource.files.map(file => file.path)).not.toContain('auth.json');
-    expect(review.resource.files.map(file => file.path)).not.toContain('settings.json');
+    expect(review.resource.files.map((file) => file.path)).toContain('skills/writing/SKILL.md');
+    expect(review.resource.files.map((file) => file.path)).toContain('extensions/echo.ts');
+    expect(review.resource.files.map((file) => file.path)).not.toContain('auth.json');
+    expect(review.resource.files.map((file) => file.path)).not.toContain('settings.json');
     expect(JSON.stringify(review)).not.toContain('do-not-copy');
     expect(readFileSync(join(s.source, 'auth.json'), 'utf8')).toBe(secret);
     expect(existsSync(s.marker)).toBe(false);
     expect(s.service.install(review.reviewId).trustedAt).toBeNull();
+    const db = openDatabase(':memory:');
+    databases.push(db);
+    const actual = new HarnessService({ root: `${s.resourceRoot}-pi`, db, clock: new FakeClock() });
+    try {
+      const inspected = await actual.discoverPiHome(s.source);
+      expect(inspected.resource.extensions).toEqual(['extensions/echo.ts']);
+      expect(inspected.resource.skills[0]?.name).toBe('writing');
+      expect(existsSync(s.marker)).toBe(false);
+    } finally {
+      actual.dispose();
+    }
   });
   it('[TC-HAR-004-H] downloaded package links become verified regular files in the reviewed copy', async () => {
     const s = setup(undefined, async (_source, directory) => {

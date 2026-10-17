@@ -663,6 +663,56 @@
                 "type": "string",
                 "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
               }
+            },
+            "commands": {
+              "maxItems": 128,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "pattern": "^[\\w][\\w:.-]{0,119}$"
+                  },
+                  "invocation": {
+                    "type": "string",
+                    "pattern": "^[\\w][\\w:.-]{0,239}$"
+                  },
+                  "alias": {
+                    "type": "string",
+                    "pattern": "^[\\w][\\w:.-]{0,239}$"
+                  },
+                  "source": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "const": "corral"
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^extension:[@a-zA-Z0-9_./-]+@[a-zA-Z0-9_.+-]+$"
+                      }
+                    ]
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "condition": {
+                    "type": "string",
+                    "const": "startup"
+                  }
+                },
+                "required": [
+                  "name",
+                  "invocation",
+                  "alias",
+                  "source",
+                  "description",
+                  "condition"
+                ],
+                "additionalProperties": false
+              }
             }
           },
           "required": [

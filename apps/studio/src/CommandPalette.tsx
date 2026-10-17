@@ -11,8 +11,10 @@ import {
   useState,
 } from 'react';
 import { useTranslations } from 'use-intl';
+import { useStore } from 'zustand';
 import {
   type AppCommand,
+  harnessCommands,
   runShortcut,
   useRegisterCommands,
   useRegisteredCommands,
@@ -108,8 +110,14 @@ export function CommandLayer() {
 /** Commands that work everywhere in Studio: new session, the sidebar, settings, history. */
 function useGlobalCommands(showHelp: () => void) {
   const t = useTranslations('Commands');
+  const th = useTranslations('Harness');
   const navigate = useNavigate();
-  const { repository } = useServices();
+  const { repository, session } = useServices();
+  const events = useStore(session, (state) => state.events);
+  useRegisterCommands(
+    'extensions',
+    harnessCommands(events, th('extensionNotice'), th('startupOnly')),
+  );
   const prefs = usePreferences();
   const go = t('groups.go');
   useRegisterCommands('global', [

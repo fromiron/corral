@@ -1,3 +1,4 @@
+import type { RunEvent } from '@corral/contracts';
 import { useLayoutEffect, useSyncExternalStore } from 'react';
 import type { Command } from './commands.ts';
 import type { ShortcutId } from './shortcuts.ts';
@@ -7,6 +8,9 @@ import type { ShortcutId } from './shortcuts.ts';
 // this one list, so a command works the same way from everywhere it shows up.
 
 export interface AppCommand extends Command {
+  source?: 'extension';
+  targetExecutionId?: string;
+  condition?: 'startup';
   /** The global shortcut that runs it. */
   shortcutId?: ShortcutId;
   /** Shown in the composer's `/` menu under this name, e.g. `pause`. */
@@ -16,6 +20,29 @@ export interface AppCommand extends Command {
   hint?: string;
   /** For `session.jump`: the digit pressed. */
   jump?: (digit: number) => void;
+}
+
+/** Observed commands stay attached to the execution that loaded them; R1 runs them at startup only. */
+export function harnessCommands(events: RunEvent[], group: string, hint: string): AppCommand[] {
+  return events
+    .filter((event) => event.type === 'harness.loaded')
+    .flatMap((event) =>
+      event.executionId
+        ? (event.payload.commands ?? []).map((command) => ({
+            id: `extension:${event.runId}:${event.executionId}:${command.alias}`,
+            source: 'extension' as const,
+            targetExecutionId: event.executionId,
+            condition: command.condition,
+            title: `/${command.alias} · ${event.executionId}`,
+            group,
+            keywords: [command.name, command.description, command.source],
+            slash: command.alias,
+            disabled: true,
+            hint,
+            run: () => {},
+          }))
+        : [],
+    );
 }
 
 const sources = new Map<string, AppCommand[]>();

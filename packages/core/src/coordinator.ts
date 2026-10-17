@@ -3454,6 +3454,17 @@ export class Coordinator {
                 )
                   throw new Error('unbound native tool');
               }
+              for (const command of report.commands ?? []) {
+                if (
+                  harness.policy === 'strict' ||
+                  !harness.resources.some(
+                    (resource) =>
+                      resource.kind === 'extension' &&
+                      command.source === `extension:${resource.name}@${resource.version}`,
+                  )
+                )
+                  throw new Error('unbound extension command');
+              }
               this.commit(run, [
                 {
                   type: 'harness.loaded',
@@ -3462,6 +3473,7 @@ export class Coordinator {
                     snapshotHash: report.snapshotHash,
                     tools: report.tools,
                     diagnostics: report.diagnostics,
+                    ...(report.commands ? { commands: report.commands } : {}),
                   },
                 },
               ]);

@@ -75,12 +75,23 @@ export const EffectiveHarnessSnapshot = z.strictObject({
 });
 export type EffectiveHarnessSnapshot = z.infer<typeof EffectiveHarnessSnapshot>;
 
+export const HarnessCommand = z.strictObject({
+  name: z.string().regex(/^[\w][\w:.-]{0,119}$/),
+  invocation: z.string().regex(/^[\w][\w:.-]{0,239}$/),
+  alias: z.string().regex(/^[\w][\w:.-]{0,239}$/),
+  source: ToolDescriptor.shape.source,
+  description: z.string().max(1000),
+  condition: z.literal('startup'),
+});
+export type HarnessCommand = z.infer<typeof HarnessCommand>;
+
 export const HarnessReport = z.discriminatedUnion('ok', [
   z.strictObject({
     ok: z.literal(true),
     snapshotHash: ContentHash,
     tools: z.array(ToolDescriptor).max(128),
     diagnostics: z.array(Identifier).max(64),
+    commands: z.array(HarnessCommand).max(128).optional(),
   }),
   z.strictObject({
     ok: z.literal(false),

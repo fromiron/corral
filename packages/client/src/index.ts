@@ -774,12 +774,12 @@ export class HarnessApi {
     );
   }
   review(
-    kind: 'local' | 'package',
+    kind: 'local' | 'package' | 'pi-home',
     source: string,
   ): Promise<{ reviewId: string; resource: HarnessResource }> {
     return this.http.json('/harness/reviews', {
       method: 'POST',
-      body: JSON.stringify({ kind, source }),
+      body: JSON.stringify(kind === 'pi-home' ? { kind } : { kind, source }),
     });
   }
   install(reviewId: string): Promise<HarnessResourceView> {
