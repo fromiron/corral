@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { Transform } from 'node:stream';
 import { pathToFileURL } from 'node:url';
 import type { Clock, Scheduler } from '@corral/contracts';
-import { type ToolCancellation, ToolTerminationUnconfirmed } from '@corral/core';
+import { type ToolCancellation, ToolRefusal, ToolTerminationUnconfirmed } from '@corral/core';
 import {
   ApplyWorkspaceEditRequest,
   CancellationTokenSource,
@@ -26,6 +26,12 @@ import {
   ShutdownRequest,
 } from 'vscode-languageserver-protocol/node';
 import { killProcessGroup, processGroupGone } from './process-group.ts';
+
+class LspFailure extends ToolRefusal {
+  constructor(message: string) {
+    super('CAPABILITY_DENIED', message);
+  }
+}
 
 interface LspInput {
   cwd: string;
@@ -61,14 +67,14 @@ export class LspRunner {
       promise,
       new Promise<T>((_resolve, reject) => {
         cancel = this.timers.after(ms, () =>
-          reject(new Error('language server termination timeout')),
+          reject(new LspFailure('language server termination timeout')),
         );
       }),
     ]).finally(() => cancel());
   }
 
   async query(input: LspInput, cancellation: ToolCancellation): Promise<LspResponse> {
-    if (cancellation.aborted) throw new Error('language server query cancelled');
+    if (cancellation.aborted) throw new LspFailure('language server query cancelled');
     if (
       !input.argv.length ||
       input.argv.some((arg) => arg.includes('\0')) ||
@@ -78,9 +84,9 @@ export class LspRunner {
       input.timeoutMs < 1 ||
       input.timeoutMs > 1800000
     )
-      throw new Error('language server input exceeds limits');
+      throw new LspFailure('language server input exceeds limits');
     if (input.operation !== 'diagnostics' && !input.position)
-      throw new Error('language server position is required');
+      throw new LspFailure('language server position is required');
     const home = await mkdtemp(join(tmpdir(), 'corral-lsp-home-'));
     const started = this.clock.monotonicMs();
     let child: ChildProcess | undefined, connection: ProtocolConnection | undefined;
@@ -99,7 +105,7 @@ export class LspRunner {
     const stop = (message: string) => {
       if (stopped || finishing) return;
       stopped = true;
-      rejectStop(new Error(message));
+      rejectStop(new LspFailure(message));
       token.cancel();
       if (child) killProcessGroup(child);
     };
@@ -109,7 +115,7 @@ export class LspRunner {
         total += chunk.length;
         if (total > 8 * 1024 * 1024) {
           stop('language server response limit exceeded');
-          done(new Error('language server response limit exceeded'));
+          done(new LspFailure('language server response limit exceeded'));
         } else done(null, chunk);
       },
     });
@@ -119,7 +125,7 @@ export class LspRunner {
     let failure: Error | undefined;
     let truncated = false;
     try {
-      if (cancellation.aborted) throw new Error('language server query cancelled');
+      if (cancellation.aborted) throw new LspFailure('language server query cancelled');
       child = this.spawn(input.argv[0] as string, input.argv.slice(1), {
         cwd: input.cwd,
         shell: false,
@@ -146,7 +152,7 @@ export class LspRunner {
         if (child) killProcessGroup(child);
       });
       child.stderr?.on('data', () => {});
-      if (!child.stdout || !child.stdin) throw new Error('language server pipes unavailable');
+      if (!child.stdout || !child.stdin) throw new LspFailure('language server pipes unavailable');
       child.stdout.pipe(bounded);
       connection = createProtocolConnection(bounded, child.stdin, {
         error: () => {},
@@ -164,7 +170,7 @@ export class LspRunner {
       }));
       connection.onRequest('workspace/configuration', (params: { items: unknown[] }) => {
         if (!Array.isArray(params.items) || params.items.length > 100)
-          throw new Error('configuration request limit');
+          throw new LspFailure('configuration request limit');
         return params.items.map(() => null);
       });
       connection.onRequest('workspace/workspaceFolders', () => [
@@ -223,7 +229,7 @@ export class LspRunner {
         initialized.capabilities.positionEncoding &&
         initialized.capabilities.positionEncoding !== 'utf-16'
       )
-        throw new Error('language server must negotiate UTF-16 positions');
+        throw new LspFailure('language server must negotiate UTF-16 positions');
       await wait(connection.sendNotification(InitializedNotification.type, {}));
       opened = true;
       await wait(
@@ -242,10 +248,12 @@ export class LspRunner {
             ),
           );
           if (result.kind !== 'full')
-            throw new Error('language server returned unchanged diagnostics without a baseline');
+            throw new LspFailure(
+              'language server returned unchanged diagnostics without a baseline',
+            );
           items = result.items;
         } else items = await wait(diagnostics);
-        if (!Array.isArray(items)) throw new Error('invalid language server diagnostics');
+        if (!Array.isArray(items)) throw new LspFailure('invalid language server diagnostics');
         truncated = items.length > 256;
         response = { kind: 'diagnostics', diagnostics: items.slice(0, 256) };
       } else {
@@ -257,7 +265,7 @@ export class LspRunner {
           (input.operation === 'definition' && !initialized.capabilities.definitionProvider) ||
           (input.operation === 'references' && !initialized.capabilities.referencesProvider)
         )
-          throw new Error('language server does not support this query');
+          throw new LspFailure('language server does not support this query');
         const result =
           input.operation === 'definition'
             ? await wait(connection.sendRequest(DefinitionRequest.type, params, token.token))
@@ -273,12 +281,8 @@ export class LspRunner {
         response = { kind: 'locations', locations: items.slice(0, 256) };
       }
     } catch (error) {
-      if (
-        error instanceof Error &&
-        /^(language server|diagnostic|invalid language server)/.test(error.message)
-      )
-        failure = error;
-      else failure = new Error('language server query failed');
+      failure =
+        error instanceof LspFailure ? error : new LspFailure('language server query failed');
     } finally {
       finishing = true;
       cancelDeadline();
@@ -300,13 +304,13 @@ export class LspRunner {
       const groupClosed = !child?.pid || (await processGroupGone(child.pid, this.timers));
       if (processClosed && groupClosed)
         await rm(home, { recursive: true, force: true }).catch(() => {
-          failure = new Error('language server configuration cleanup failed');
+          failure = new LspFailure('language server configuration cleanup failed');
         });
       else failure = new ToolTerminationUnconfirmed('language server termination unconfirmed');
     }
     if (failure) throw failure;
-    if (cancellation.aborted) throw new Error('language server query cancelled');
-    if (!response) throw new Error('language server returned no response');
+    if (cancellation.aborted) throw new LspFailure('language server query cancelled');
+    if (!response) throw new LspFailure('language server returned no response');
     return {
       ...response,
       durationMs: Math.max(0, Math.round(this.clock.monotonicMs() - started)),
