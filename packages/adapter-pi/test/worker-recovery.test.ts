@@ -2,7 +2,26 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'n
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
+import { fork } from 'node:child_process';
+import { recordWorkerLease } from '../src/worker-leases.ts';
 import { processChannel, recoverSdkWorkers } from '../src/index.ts';
+
+it.skipIf(process.platform !== 'linux')('[TC-HAR-016-N] recovers the server group after its recorded leader has already exited', async () => {
+  const directory = mkdtempSync(join(tmpdir(),'corral-mcp-recovery-'));
+  const leader = fork(join(import.meta.dirname,'fixtures/process-group.ts'),[],{detached:true,execArgv:[],stdio:['ignore','ignore','ignore','ipc']});
+  const info = await new Promise<{port:number;pid:number}>(resolve=>leader.once('message',resolve));
+  const pid = leader.pid!;
+  try {
+    recordWorkerLease(directory,pid);
+    const exited = new Promise<void>(resolve=>leader.once('exit',()=>resolve()));
+    leader.send({exit:true});await exited;
+    expect(()=>process.kill(info.pid,0)).not.toThrow();
+    await recoverSdkWorkers(directory);
+    const state = ()=>{try{return readFileSync(`/proc/${info.pid}/stat`,'utf8').split(') ')[1]?.[0];}catch{return null;}};
+    expect([null,'Z','X']).toContain(state());
+    expect(readdirSync(directory)).toEqual([]);
+  } finally {try{process.kill(-pid,'SIGKILL');}catch{}leader.kill('SIGKILL');rmSync(directory,{recursive:true,force:true});}
+});
 
 it.skipIf(process.platform !== 'linux')(
   '[TC-HAR-017-N] recovers an owned SDK process before new worker capacity is available',
