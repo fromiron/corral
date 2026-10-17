@@ -59,6 +59,7 @@ function runtime(
   extension = '',
   overrides: Partial<AgentHost> = {},
   skill?: { text: string; mode: 'auto' | 'explicit' | 'mandatory'; brief?: string },
+  contextWindow?: number,
 ) {
   const directory = mkdtempSync(join(tmpdir(), 'corral-sdk-test-'));
   scratch.push(directory);
@@ -78,7 +79,7 @@ function runtime(
     start.harness.resources.push({ hash: resourceHash, name: 'fixture', version: '1.0.0', kind: 'skill', entry: 'SKILL.md', required: true, skillName: 'writing', skillMode: skill.mode });
     if (skill.brief) start.inputs[0]!.text = skill.brief;
   }
-  const faux = createFauxCore({});
+  const faux = createFauxCore(contextWindow ? { models: [{ id: 'faux-1', contextWindow }] } : {});
   faux.setResponses(responses);
   const frames: unknown[] = [];
   const reports: unknown[] = [];
@@ -132,6 +133,41 @@ function runtime(
 }
 
 describe('SDK worker through the product adapter (H2)', () => {
+  it('[TC-HAR-001-H] keeps the SDK proxy identity while dispatching the actual provider identity', async () => {
+    let seen = '';
+    let originMatches = false;
+    const run = runtime([
+      fauxAssistantMessage([fauxToolCall('write_artifact', { text: 'Draft' })], { stopReason: 'toolUse' }),
+      (context, _options, _state, model) => {
+        seen = JSON.stringify(context.messages);
+        originMatches = context.messages.find(message => message.role === 'assistant')?.provider === model.provider;
+        return fauxAssistantMessage('Done.');
+      },
+    ], `export default pi => pi.on('context_with_system', event => { const assistant=event.messages.find(message=>message.role==='assistant'); return assistant?{messages:event.messages.map(message=>message.role==='system'?{...message,sections:{...message.sections,sdk_identity:'SDK provider: '+assistant.provider}}:message)}:undefined; });`);
+    await (await run.adapter.start(run.input, run.host)).waitForSettlement();
+    expect(seen).toContain('SDK provider: corral');
+    expect(originMatches).toBe(true);
+  });
+  it('[TC-HAR-005-N] an extension cannot strip mandatory instructions from the final context', async () => {
+    let seen = '';
+    const run = runtime([context => { seen = JSON.stringify(context.messages); return fauxAssistantMessage('Done.'); }], `export default pi => pi.on('context_with_system', event => ({messages:event.messages.map(message=>message.role==='system'?{...message,sections:{...message.sections,skill_writing:null}}:message)}));`, {}, { text: 'Always cite sources.', mode: 'mandatory' });
+    await (await run.adapter.start(run.input, run.host)).waitForSettlement();
+    expect(seen).toContain('Always cite sources.');
+  });
+
+  it('[TC-HAR-001-H] automatic threshold compaction uses permits and mandatory skills remain in the following turn', async () => {
+    const seen: { purpose: string; text: string }[] = [];
+    const responses: FauxResponseStep[] = Array.from({ length: 8 }, () => context => {
+      seen.push({ purpose: (run.requests.at(-1) as { purpose: string }).purpose, text: JSON.stringify(context.messages) });
+      return fauxAssistantMessage('A short summary or answer.');
+    });
+    const run = runtime(responses, `export default pi => pi.on('session_start', ()=>pi.sendMessage({customType:'fixture_history',content:'Context history. '.repeat(6000),display:false}));`, {}, { text: 'Always cite sources.', mode: 'mandatory' }, 32768);
+    expect(await (await run.adapter.start(run.input, run.host)).waitForSettlement()).toMatchObject({ outcome: 'succeeded' });
+    expect(seen.some(request => request.purpose === 'compaction')).toBe(true);
+    expect(seen.at(-1)).toMatchObject({ purpose: 'turn', text: expect.stringContaining('Always cite sources.') });
+    expect(run.credentials).toHaveBeenCalledTimes(seen.length);
+    expect(run.calls.filter(call => call.startsWith('observe'))).toHaveLength(seen.length);
+  });
   it('[TC-HAR-005-H] lists auto skills virtually and formats broker reads with Pi offset and limit behavior', async () => {
     let observed = '';
     const run = runtime([
