@@ -1452,6 +1452,8 @@
     "revealWorkspace": "Show in file manager",
     "toggleProject": "Toggle {name} sessions",
     "resultUnavailable": "This result could not be read.",
-    "retryResult": "Try again"
+    "retryResult": "Try again",
+    "teamActivity": "Team activity",
+    "moreResults": "Show {count} earlier runs"
   }
 }

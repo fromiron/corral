@@ -8,7 +8,7 @@ import type {
   SessionIntent,
   WorkSession,
 } from '@corral/core';
-import { ApprovalPanel, RunActions, StatusBadge } from '@corral/react';
+import { ApprovalPanel, RunActions, runResults, StatusBadge } from '@corral/react';
 import { ArrowUp, ChevronDown, MessageSquare } from '@corral/react/icons';
 import { Link, useNavigate, useRouter } from '@tanstack/react-router';
 import {
@@ -30,6 +30,7 @@ import { ComposerSurface } from '../workbench/ComposerSurface.tsx';
 import { FilePanel, type FileReference } from '../workbench/FilePanel.tsx';
 import { RequestInput } from '../workbench/RequestInput.tsx';
 import { RunMessage } from '../workbench/RunMessage.tsx';
+import { readDraft, writeDraft } from '../workbench/sessionDraft.ts';
 import { TeamDesign } from './EditorPage.tsx';
 import { useBinding, WORKSPACE_CHANGED, WorkingCopyPanel } from './FilesViews.tsx';
 import { Checks } from './ReviewPage.tsx';
@@ -408,7 +409,7 @@ function WorkTab({
           ))}
         </section>
         {active && active.sessionId === session.sessionId ? (
-          <ActiveDecisions runId={active.runId} />
+          <ActiveDecisions runId={active.runId} sessionId={session.sessionId} />
         ) : null}
       </ChatView>
     </RunChecks.Provider>
@@ -534,7 +535,7 @@ function ChangesPanel({ session, runs }: { session: WorkSession; runs: RunSummar
   );
 }
 
-/** Results: final results of the session's ended runs, newest first, opened in Run detail. */
+/** Results use the same final/partial classification as the conversation. */
 function ArtifactsPanel({
   runs,
   onOpen,
@@ -543,48 +544,116 @@ function ArtifactsPanel({
   onOpen: (runId: string, artifactVersionId: string) => void;
 }) {
   const tw = useTranslations('Workbench');
+  const tr = useTranslations('Results');
+  const td = useTranslations('Desktop');
+  const ta = useTranslations('Artifact');
   const { transport } = useServices();
-  const [items, setItems] = useState<{ runId: string; id: string; label: string }[]>([]);
-  // Ended runs, newest first, as one key: the lookup reruns only when they change.
-  const key = [...runs]
-    .reverse()
-    .filter((r) => TERMINAL_RUN_STATUSES.has(r.status))
-    .slice(0, 10)
-    .map((r) => r.runId)
+  type Item = {
+    runId: string;
+    id: string;
+    label: string;
+    kind: 'final' | 'partial' | 'intermediate';
+  };
+  const [items, setItems] = useState<Item[]>([]);
+  const [count, setCount] = useState(10);
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+  const [retry, setRetry] = useState(0);
+  const ended = [...runs].reverse().filter((run) => TERMINAL_RUN_STATUSES.has(run.status));
+  const key = ended
+    .slice(0, count)
+    .map((run) => run.runId)
     .join(',');
   useEffect(() => {
+    void retry;
     let live = true;
+    setLoading(true);
+    setFailed(false);
     void (async () => {
-      const found: { runId: string; id: string; label: string }[] = [];
+      const found: Item[] = [];
       for (const runId of key ? key.split(',') : []) {
         const { projection } = await transport.getSnapshot(runId);
-        for (const id of projection.output?.artifactVersionIds ?? []) {
-          const a = projection.artifacts[id];
-          if (a) found.push({ runId, id, label: `${a.name} v${a.version}` });
+        if (!live) return;
+        const results = runResults(projection);
+        for (const artifact of [
+          ...results.final,
+          ...results.intermediate.map((group) => group.latest),
+        ]) {
+          found.push({
+            runId,
+            id: artifact.artifactVersionId,
+            label: `${artifact.name} v${artifact.version}`,
+            kind: results.final.includes(artifact)
+              ? 'final'
+              : results.kind === 'partial'
+                ? 'partial'
+                : 'intermediate',
+          });
         }
       }
       if (live) setItems(found);
-    })().catch(() => {});
+    })()
+      .catch(() => {
+        if (live) setFailed(true);
+      })
+      .finally(() => {
+        if (live) setLoading(false);
+      });
     return () => {
       live = false;
     };
-  }, [transport, key]);
-  if (items.length === 0) return <p className="text-xs text-muted">{tw('artifactsEmpty')}</p>;
+  }, [transport, key, retry]);
+  if (loading)
+    return (
+      <p role="status" className="text-xs text-muted">
+        {ta('loading')}
+      </p>
+    );
+  if (failed)
+    return (
+      <div role="alert" className="space-y-2 text-xs text-danger">
+        <p>{td('resultUnavailable')}</p>
+        <button type="button" className="underline" onClick={() => setRetry((value) => value + 1)}>
+          {td('retryResult')}
+        </button>
+      </div>
+    );
   return (
-    <ul className="flex flex-col gap-1 text-sm">
-      {items.map((item) => (
-        <li key={`${item.runId}:${item.id}`}>
-          <button
-            type="button"
-            onClick={() => onOpen(item.runId, item.id)}
-            className="flex w-full flex-col rounded border border-line px-2 py-1 text-left"
-          >
-            <span className="font-medium">{item.label}</span>
-            <span className="font-mono text-xs text-muted">{item.runId}</span>
-          </button>
-        </li>
-      ))}
-    </ul>
+    <div className="space-y-3">
+      {items.length === 0 ? (
+        <p className="text-xs text-muted">{tw('artifactsEmpty')}</p>
+      ) : (
+        <ul className="flex flex-col gap-1 text-sm">
+          {items.map((item) => (
+            <li key={`${item.runId}:${item.id}`}>
+              <button
+                type="button"
+                onClick={() => onOpen(item.runId, item.id)}
+                className="flex w-full flex-col rounded border border-line px-2 py-2 text-left"
+              >
+                <span className="text-xs text-muted">{tr(item.kind)}</span>
+                <span className="font-medium">{item.label}</span>
+                <span
+                  className="max-w-full truncate font-mono text-xs text-muted"
+                  title={item.runId}
+                >
+                  {item.runId}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {ended.length > count ? (
+        <button
+          type="button"
+          className="text-xs underline"
+          onClick={() => setCount((value) => value + 10)}
+        >
+          {td('moreResults', { count: ended.length - count })}
+        </button>
+      ) : null}
+    </div>
   );
 }
 
@@ -609,7 +678,7 @@ function ChecksPanel({ session }: { session: WorkSession }) {
 }
 
 /** Decisions the session's working run waits for, answered here (WB-OBS-002). */
-function ActiveDecisions({ runId }: { runId: string }) {
+function ActiveDecisions({ runId, sessionId }: { runId: string; sessionId: string }) {
   const { session } = useServices();
   const navigate = useNavigate();
   useEffect(() => {
@@ -622,9 +691,9 @@ function ActiveDecisions({ runId }: { runId: string }) {
         session={session}
         onOpenArtifact={(id) =>
           void navigate({
-            to: '/runs/$runId',
-            params: { runId },
-            search: { view: 'results', result: id },
+            to: '/sessions/$sessionId',
+            params: { sessionId },
+            search: { tab: 'run', run: runId, view: 'results', result: id },
           })
         }
       />
@@ -858,7 +927,7 @@ function RunCard({ run, nested = false }: { run: RunSummary; nested?: boolean })
         {inSession('results')}
         {inSession('run')}
       </div>
-      {!ended ? <p className="text-xs text-muted">{t('working')}</p> : null}
+      {run.status === 'running' ? <p className="text-xs text-muted">{t('working')}</p> : null}
       {ended && run.status === 'succeeded' ? (
         <p className="text-xs font-medium">{t('didFinish')}</p>
       ) : null}
@@ -895,7 +964,7 @@ function RunCard({ run, nested = false }: { run: RunSummary; nested?: boolean })
 /** Where an instruction is now, from the run's own record of it (02-UX-Spec §7). */
 function DeliveryStatus({ runId, commandId }: { runId: string; commandId: string }) {
   const t = useTranslations('Sessions');
-  const ts = useTranslations('Status');
+  const ts = useTranslations('Transcript.instruction');
   const { transport } = useServices();
   const [status, setStatus] = useState<string | null>(null);
   useEffect(() => {
@@ -914,7 +983,8 @@ function DeliveryStatus({ runId, commandId }: { runId: string; commandId: string
     void read();
     const timer = setInterval(() => {
       void read().then((now) => {
-        if (now && !['accepted', 'attached_to_request'].includes(now)) clearInterval(timer);
+        if (now && !['accepted', 'queued', 'attached_to_request'].includes(now))
+          clearInterval(timer);
       });
     }, 2000);
     return () => {
@@ -931,23 +1001,6 @@ function DeliveryStatus({ runId, commandId }: { runId: string; commandId: string
 
 function finalResultId(projection: RunProjection): string | null {
   return projection.output?.artifactVersionIds[0] ?? null;
-}
-
-const draftKey = (sessionId: string) => `corral:session-draft:${sessionId}`;
-function readDraft(sessionId: string) {
-  try {
-    return window.localStorage.getItem(draftKey(sessionId)) ?? '';
-  } catch {
-    return '';
-  }
-}
-function writeDraft(sessionId: string, text: string) {
-  try {
-    if (text) window.localStorage.setItem(draftKey(sessionId), text);
-    else window.localStorage.removeItem(draftKey(sessionId));
-  } catch {
-    // The draft lives only in this page then.
-  }
 }
 
 function Composer({
@@ -998,7 +1051,9 @@ function Composer({
     ? ownActive
       ? ['steer', 'queue']
       : ['queue']
-    : ['next', 'explain'];
+    : latest
+      ? ['next', 'explain']
+      : ['next'];
   const intent: SessionIntent =
     chosen && allowed.includes(chosen) ? chosen : (allowed[0] as SessionIntent);
 
@@ -1021,7 +1076,7 @@ function Composer({
             ? [
                 {
                   id: e.executionId,
-                  label: `${definition?.nodes.find((n) => n.id === e.nodeId)?.label ?? e.nodeId} · ${e.executionId}`,
+                  label: `${definition?.nodes.find((n) => n.id === e.nodeId)?.label ?? e.nodeId} · #${projection.executionOrder.indexOf(e.executionId) + 1}`,
                 },
               ]
             : [],
@@ -1422,10 +1477,17 @@ function PreRunSummary({
   const t = useTranslations('Sessions');
   const { repository, workspaces } = useServices();
   const [text, setText] = useState<string | null>(null);
+  const [workspaceRevision, setWorkspaceRevision] = useState(0);
+  useEffect(() => {
+    const changed = () => setWorkspaceRevision((value) => value + 1);
+    window.addEventListener(WORKSPACE_CHANGED, changed);
+    return () => window.removeEventListener(WORKSPACE_CHANGED, changed);
+  }, []);
   // A new team revision changes what the next run would use.
   const revision = team.definitionRevision;
   useEffect(() => {
     void revision;
+    void workspaceRevision;
     let live = true;
     void (async () => {
       const record = await repository.get(team.corralId);
@@ -1453,7 +1515,17 @@ function PreRunSummary({
     return () => {
       live = false;
     };
-  }, [repository, workspaces, session.sessionId, team.corralId, revision, mode, intent, t]);
+  }, [
+    repository,
+    workspaces,
+    session.sessionId,
+    team.corralId,
+    revision,
+    workspaceRevision,
+    mode,
+    intent,
+    t,
+  ]);
   return text ? (
     <p data-testid="pre-run" className="text-xs text-muted">
       {text}

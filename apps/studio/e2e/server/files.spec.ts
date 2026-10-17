@@ -121,6 +121,7 @@ test('[WBTST-016] a session works in its own copy, and its changes are reviewed 
     const copy = page.getByRole('region', { name: 'Working copy' });
     await copy.getByRole('button', { name: /Make a working copy from/ }).click();
     await expect(copy.getByRole('link', { name: 'Review changes' })).toBeVisible();
+    await expect(page.getByTestId('pre-run')).toContainText('can change the working copy');
 
     await page.getByRole('textbox', { name: 'Request' }).fill('Write the notes');
     await page.getByRole('button', { name: 'Send' }).click();

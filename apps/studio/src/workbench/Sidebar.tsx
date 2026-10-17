@@ -124,6 +124,7 @@ export const Sidebar = memo(function Sidebar() {
   const tw = useTranslations('Workbench');
   const tp = useTranslations('Projects');
   const ts = useTranslations('Sessions');
+  const status = useTranslations('Status');
   const { repository } = useServices();
   const router = useRouter();
   const navigate = useNavigate();
@@ -382,7 +383,7 @@ export const Sidebar = memo(function Sidebar() {
                     {session.pinned ? <Pin size={12} className="shrink-0 text-muted" /> : null}
                   </span>
                   <span className="mt-1 flex items-center gap-1.5 text-[11px] text-muted">
-                    {working ? (
+                    {run?.status === 'running' ? (
                       <LoaderCircle size={11} className="animate-spin motion-reduce:animate-none" />
                     ) : run?.status === 'failed' ? (
                       <CircleAlert size={11} className="text-danger" />
@@ -390,7 +391,7 @@ export const Sidebar = memo(function Sidebar() {
                       <span className="h-1 w-1 rounded-full bg-muted/50" />
                     )}
                     {working
-                      ? t('working')
+                      ? status(run.status)
                       : run
                         ? t('runCount', {
                             count: model.runs.filter((r) => r.sessionId === session.sessionId)

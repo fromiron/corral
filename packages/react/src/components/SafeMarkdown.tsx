@@ -32,7 +32,7 @@ export function SafeMarkdown({
   }
   return (
     <div
-      className={`corral-markdown flex flex-col ${reader ? 'gap-3 text-[15px] leading-7' : 'gap-2 text-sm leading-relaxed'}`}
+      className={`corral-markdown flex min-w-0 max-w-full flex-col wrap-anywhere ${reader ? 'gap-3 text-[15px] leading-7' : 'gap-2 text-sm leading-relaxed'}`}
     >
       <Markdown
         skipHtml
@@ -96,7 +96,7 @@ export function SafeMarkdown({
           ),
           pre: ({ children }) => (
             <pre
-              className={`overflow-auto rounded border border-line bg-surface p-2 ${reader ? 'text-[13px]' : 'text-xs'}`}
+              className={`max-w-full overflow-auto rounded border border-line bg-surface p-2 ${reader ? 'text-[13px]' : 'text-xs'}`}
             >
               {children}
             </pre>

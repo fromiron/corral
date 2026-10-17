@@ -17,6 +17,7 @@ export function ApprovalPanel({
 }) {
   const t = useTranslations('Approvals');
   const all = useStore(session, (s) => s.projection?.approvals);
+  const artifacts = useStore(session, (s) => s.projection?.artifacts);
   const approvals = useMemo(
     () => Object.values(all ?? {}).filter((a) => a.status === 'pending'),
     [all],
@@ -62,10 +63,11 @@ export function ApprovalPanel({
               <button
                 key={id}
                 type="button"
+                title={id}
                 onClick={() => onOpenArtifact(id)}
                 className="rounded border border-line px-1 font-mono"
               >
-                {id}
+                {artifacts?.[id] ? `${artifacts[id].name} v${artifacts[id].version}` : id}
               </button>
             ))}
           </div>

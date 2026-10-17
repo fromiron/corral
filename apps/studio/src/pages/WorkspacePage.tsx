@@ -14,9 +14,10 @@ import { workspaceRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
 import { TeamDraftDialog } from '../TeamDraftDialog.tsx';
 import { createFromTemplate, WORKSPACE_TEMPLATES } from '../templates.ts';
+import { writeDraft } from '../workbench/sessionDraft.ts';
 import { InboxSection, WorkFolderSection } from './FilesViews.tsx';
 import { GettingStarted } from './GettingStarted.tsx';
-import { WorkbenchLayout } from './Workbench.tsx';
+import { useRemembered, WorkbenchLayout } from './Workbench.tsx';
 
 /** A layout file is recognised by its shape; everything else is treated as a definition. */
 function isLayoutFile(text: string): boolean {
@@ -549,9 +550,15 @@ function SessionsSection({
   const [query, setQuery] = useState('');
   const [showArchived, setShowArchived] = useState(false);
   const [creating, setCreating] = useState(openForm);
-  const [title, setTitle] = useState('');
-  const [objective, setObjective] = useState('');
-  const [corralId, setCorralId] = useState('');
+  const [draft, saveDraft] = useRemembered(`corral:new-session:v1:${projectId}`, {
+    title: '',
+    objective: '',
+    corralId: '',
+  });
+  const title = typeof draft?.title === 'string' ? draft.title : '';
+  const objective = typeof draft?.objective === 'string' ? draft.objective : '';
+  const corralId = typeof draft?.corralId === 'string' ? draft.corralId : '';
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const needle = query.trim().toLowerCase();
   const archivedCount = sessions.filter((x) => x.archivedAt).length;
@@ -566,14 +573,28 @@ function SessionsSection({
 
   const create = async (event: FormEvent) => {
     event.preventDefault();
-    const result = await repository.createSession({
-      projectId,
-      title,
-      objective,
-      corralId: team || null,
-    });
-    if (!result.ok) return setError(result.message);
-    await navigate({ to: '/sessions/$sessionId', params: { sessionId: result.session.sessionId } });
+    if (saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const result = await repository.createSession({
+        projectId,
+        title,
+        objective,
+        corralId: team || null,
+      });
+      if (!result.ok) return setError(result.message);
+      writeDraft(result.session.sessionId, objective);
+      saveDraft({ title: '', objective: '', corralId: '' });
+      await navigate({
+        to: '/sessions/$sessionId',
+        params: { sessionId: result.session.sessionId },
+      });
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : String(failure));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -616,7 +637,7 @@ function SessionsSection({
             <textarea
               value={objective}
               rows={2}
-              onChange={(e) => setObjective(e.target.value)}
+              onChange={(e) => saveDraft({ title, objective: e.target.value, corralId })}
               className="rounded border border-line bg-surface px-2 py-1 text-sm"
             />
           </label>
@@ -626,7 +647,7 @@ function SessionsSection({
               <input
                 value={title}
                 maxLength={120}
-                onChange={(e) => setTitle(e.target.value)}
+                onChange={(e) => saveDraft({ title: e.target.value, objective, corralId })}
                 className="rounded border border-line bg-surface px-2 py-1 text-sm"
               />
             </label>
@@ -634,7 +655,7 @@ function SessionsSection({
               {t('teamLabel')}
               <select
                 value={team}
-                onChange={(e) => setCorralId(e.target.value)}
+                onChange={(e) => saveDraft({ title, objective, corralId: e.target.value })}
                 className="rounded border border-line bg-surface px-2 py-1 text-sm"
               >
                 {corrals.length === 0 ? <option value="">{t('noTeam')}</option> : null}
@@ -647,7 +668,7 @@ function SessionsSection({
             </label>
             <button
               type="submit"
-              disabled={!title.trim() && !objective.trim()}
+              disabled={saving || (!title.trim() && !objective.trim())}
               className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent disabled:opacity-50"
             >
               {t('create')}

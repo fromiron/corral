@@ -1,5 +1,5 @@
-import { artifactLineage } from '@corral/core';
-import { useEffect, useId, useMemo, useState } from 'react';
+import { artifactLineage, type RunProjection } from '@corral/core';
+import { type ReactNode, useEffect, useId, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { diffLines } from '../artifacts/diff.ts';
@@ -244,38 +244,7 @@ export function ArtifactViewer({
           <p className="text-muted">{t('lineageNote')}</p>
         </div>
       ) : null}
-      {review ? (
-        <div className="flex flex-col gap-1 text-xs" data-testid="review-verdict">
-          <p>
-            <span className="font-semibold">{t(`verdict.${review.verdict}`)}</span>
-            <span className="text-muted"> · {t('reviewOf')} </span>
-            {link(review.targetVersionId)}
-          </p>
-          {review.stale ? (
-            <p role="status" className="text-warning">
-              {t('staleReview', {
-                previous: review.criteriaVersionId,
-                current: review.newCriteriaVersionId ?? '—',
-              })}
-            </p>
-          ) : null}
-          {review.issues.length > 0 ? (
-            <div>
-              <p className="text-muted">{t('issues')}</p>
-              <ul className="list-disc pl-5">
-                {review.issues.map((issue) => (
-                  <li key={`${issue.criterionId}:${issue.reason}`}>
-                    <span className="text-muted">[{issue.severity}]</span> {issue.reason}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-          {review.verdict === 'inconclusive' && review.issues.length === 0 ? (
-            <p className="text-muted">{t('notAReview')}</p>
-          ) : null}
-        </div>
-      ) : null}
+      {review ? <ReviewSummary review={review} target={link(review.targetVersionId)} /> : null}
       {parentId ? (
         <button
           type="button"
@@ -319,5 +288,48 @@ export function ArtifactViewer({
         <SafeMarkdown text={text} />
       )}
     </section>
+  );
+}
+
+/** The same committed verdict in artifact detail and the conversation. */
+export function ReviewSummary({
+  review,
+  target,
+}: {
+  review: RunProjection['reviews'][string];
+  target: ReactNode;
+}) {
+  const t = useTranslations('Artifact');
+  return (
+    <div className="flex flex-col gap-1 text-xs" data-testid="review-verdict">
+      <p>
+        <span className="font-semibold">{t(`verdict.${review.verdict}`)}</span>
+        <span className="text-muted"> · {t('reviewOf')} </span>
+        {target}
+      </p>
+      {review.stale ? (
+        <p role="status" className="text-warning">
+          {t('staleReview', {
+            previous: review.criteriaVersionId,
+            current: review.newCriteriaVersionId ?? '—',
+          })}
+        </p>
+      ) : null}
+      {review.issues.length > 0 ? (
+        <div>
+          <p className="text-muted">{t('issues')}</p>
+          <ul className="list-disc pl-5">
+            {review.issues.map((issue) => (
+              <li key={`${issue.criterionId}:${issue.reason}`}>
+                <span className="text-muted">[{issue.severity}]</span> {issue.reason}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {review.verdict === 'inconclusive' && review.issues.length === 0 ? (
+        <p className="text-muted">{t('notAReview')}</p>
+      ) : null}
+    </div>
   );
 }
