@@ -10,6 +10,7 @@ import { lazy, Suspense } from 'react';
 import { type DemoTemplateId, demoTemplate } from './demo/templates.ts';
 import { ComparePage } from './pages/ComparePage.tsx';
 import { DemoPage, EditorPage } from './pages/EditorPage.tsx';
+import { HarnessSettingsPage } from './pages/HarnessSettingsPage.tsx';
 import { ModelSettingsPage } from './pages/ModelSettingsPage.tsx';
 import { ProjectsPage } from './pages/ProjectsPage.tsx';
 import { ReviewPage } from './pages/ReviewPage.tsx';
@@ -262,6 +263,12 @@ export const settingsRoute = createRoute({
   component: SettingsPage,
 });
 
+export const harnessSettingsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/settings/harness',
+  component: HarnessSettingsPage,
+});
+
 export const modelSettingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/settings/models',
@@ -316,6 +323,7 @@ export function createStudioRouter(services: StudioServices) {
       editorRoute,
       runRoute,
       modelSettingsRoute,
+      harnessSettingsRoute,
       settingsRoute,
       compareRoute,
       ...(import.meta.env.MODE === 'performance' ? [createPerformanceRoute()] : []),

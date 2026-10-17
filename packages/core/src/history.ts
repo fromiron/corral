@@ -1,5 +1,6 @@
 import {
   CorralDefinition,
+  EffectiveHarnessSnapshot,
   Identifier,
   ModelProfileSnapshot,
   RunEvent,
@@ -22,6 +23,7 @@ const Snapshot = z.strictObject({
   criteriaVersionId: Identifier,
   mode: z.enum(['mock', 'live']),
   models: z.record(Identifier, ModelProfileSnapshot),
+  harnesses: z.record(Identifier, EffectiveHarnessSnapshot).optional(),
   startedAt: z.iso.datetime(),
 });
 const PublicArchive = z.strictObject({

@@ -1,6 +1,12 @@
-import type { CorralNode, InputBinding, InputBindingKind, OutputContract } from '@corral/contracts';
+import type {
+  AgentRole,
+  CorralNode,
+  InputBinding,
+  InputBindingKind,
+  OutputContract,
+} from '@corral/contracts';
 import { inputPortsOf, outputPortsOf } from '@corral/core';
-import { useId, useState } from 'react';
+import { type ReactNode, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { useStudioStores } from '../context.tsx';
@@ -37,7 +43,14 @@ export interface ProfileOption {
  * The team's defaults and the selected node (UX-10): what applies to every run of the team is
  * kept apart from the selected role, and rarely changed settings are folded away.
  */
-export function NodeInspector({ profiles = null }: { profiles?: ProfileOption[] | null } = {}) {
+type RoleSettings = (role: AgentRole, nodeId: string) => ReactNode;
+export function NodeInspector({
+  profiles = null,
+  roleSettings,
+}: {
+  profiles?: ProfileOption[] | null;
+  roleSettings?: RoleSettings;
+} = {}) {
   const t = useTranslations('Inspector');
   const id = useId();
   const { editor } = useStudioStores();
@@ -68,7 +81,7 @@ export function NodeInspector({ profiles = null }: { profiles?: ProfileOption[] 
         />
       </div>
       {node ? (
-        <NodeProperties node={node} profiles={profiles} />
+        <NodeProperties node={node} profiles={profiles} roleSettings={roleSettings} />
       ) : (
         <p className="text-sm text-muted">{t('none')}</p>
       )}
@@ -79,9 +92,11 @@ export function NodeInspector({ profiles = null }: { profiles?: ProfileOption[] 
 function NodeProperties({
   node,
   profiles,
+  roleSettings,
 }: {
   node: CorralNode;
   profiles: ProfileOption[] | null;
+  roleSettings: RoleSettings | undefined;
 }) {
   const t = useTranslations('Inspector');
   const id = useId();
@@ -142,6 +157,7 @@ function NodeProperties({
           {sharedBy > 1 ? (
             <p className="text-xs text-warning">{t('sharedRole', { count: sharedBy })}</p>
           ) : null}
+          {roleSettings?.(role, node.id)}
           <label htmlFor={`${id}-profile`} className="flex flex-col gap-1 text-xs font-medium">
             {t('modelProfile')}
             {profiles?.length ? (

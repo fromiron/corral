@@ -8,6 +8,7 @@ import {
   EffortJudgments,
   ExecutionTranscript,
   ExecutionTree,
+  HarnessDetails,
   QuestionsPanel,
   ReinsPanel,
   RunActions,
@@ -699,7 +700,12 @@ function RunDetails({
         {tab === 'questions' ? (
           <QuestionsPanel session={session} onOpenArtifact={openArtifact} />
         ) : null}
-        {tab === 'activity' ? <Timeline session={session} /> : null}
+        {tab === 'activity' ? (
+          <>
+            <HarnessDetails session={session} />
+            <Timeline session={session} />
+          </>
+        ) : null}
         {tab === 'budget' ? (
           <div className="flex flex-col gap-3">
             <BudgetInspector session={session} prices={prices} />

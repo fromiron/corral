@@ -3,12 +3,26 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, test } from './harness.ts';
 
-test('[TC-HAR-004-H] install, trust, save and preview a mandatory skill through Settings', async ({ page, corral }) => {
+test('[TC-HAR-004-H] install, trust, save and preview a mandatory skill through Settings', async ({
+  page,
+  corral,
+}) => {
   const source = mkdtempSync(join(tmpdir(), 'corral-skill-ui-'));
   try {
     mkdirSync(join(source, 'skills', 'writing'), { recursive: true });
-    writeFileSync(join(source, 'package.json'), JSON.stringify({ name: 'writing-pack', version: '1.0.0', license: 'MIT', pi: { skills: ['./skills'] } }));
-    writeFileSync(join(source, 'skills', 'writing', 'SKILL.md'), '---\nname: writing\ndescription: Write with sources.\n---\nAlways cite the source.');
+    writeFileSync(
+      join(source, 'package.json'),
+      JSON.stringify({
+        name: 'writing-pack',
+        version: '1.0.0',
+        license: 'MIT',
+        pi: { skills: ['./skills'] },
+      }),
+    );
+    writeFileSync(
+      join(source, 'skills', 'writing', 'SKILL.md'),
+      '---\nname: writing\ndescription: Write with sources.\n---\nAlways cite the source.',
+    );
     await corral.open('/settings/harness');
     await expect(page.getByRole('heading', { name: 'Work styles', exact: true })).toBeVisible();
     await page.getByLabel('Resource source').fill(source);
@@ -26,8 +40,12 @@ test('[TC-HAR-004-H] install, trust, save and preview a mandatory skill through 
     await page.getByRole('button', { name: 'Preview effective settings', exact: true }).click();
     await expect(page.getByTestId('harness-preview')).toContainText('Always cite the source.');
     await page.reload();
-    await page.getByLabel('Saved work style', { exact: true }).selectOption({ label: 'Evidence writer · r1' });
+    await page
+      .getByLabel('Saved work style', { exact: true })
+      .selectOption({ label: 'Evidence writer · r1' });
     await expect(page.getByLabel('Use skill writing', { exact: true })).toBeChecked();
     expect(corral.errors).toEqual([]);
-  } finally { rmSync(source, { recursive: true, force: true }); }
+  } finally {
+    rmSync(source, { recursive: true, force: true });
+  }
 });

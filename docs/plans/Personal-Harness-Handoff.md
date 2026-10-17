@@ -137,3 +137,12 @@ CORRAL_SPIKE_NODE=~/.local/share/fnm/node-versions/v24.19.0/installation/bin/nod
 - main CI(PR #54 병합 커밋)의 실제 결과: 확인하지 않았다.
 - 앞 세션에서 제안만 한 별도 과제: "Fix editor showing 'Unsaved changes' after a run". 시작하지 않았다.
 - Bell의 5인 사용성 평가(`docs/evaluation/Workbench-Usability-Results.md`): Bell이 채우면 문제를 플랜 항목으로 옮긴다.
+
+## 2026-10-18 추가 체크포인트: H2 및 H3 설정 연결
+
+- H2의 SDK worker, permit/요청 기록, 최종 도구 인자 승인, 기본 worker 호환 경로를 구현했다.
+- H3의 불변 프로필, 리소스 검토·복사 설치·hash 신뢰, 개인/프로젝트 상속, 스킬 broker 읽기, 실행별 리소스 복사본을 구현했다. 원본 Ponytail 5.3.2의 역할 A/B 격리는 임시 설치와 fake provider로 확인했다.
+- 서버 API와 `/settings/harness`, 역할 Inspector의 작업 방식 바인딩, 적용 미리보기, 실행 기록의 스냅샷/요청 해시를 연결했다. 기본값 교체 시 이전 기본값을 재상속하던 오류도 수정했다.
+- 자동 임계치 압축을 실제 SDK worker에서 유도했고, 압축 permit 및 압축 후 필수 스킬 유지가 통과했다. 네이티브 확장이 최종 context에서 필수 구획을 제거하는 경우와 proxy provider 응답 식별자 회귀도 검증했다.
+- 검증: adapter/Core/server 관련 40 tests, 새 설정 E2E 1개(설치→신뢰→필수 스킬 저장→미리보기→새로고침), 전체 workspace typecheck 통과. 인앱 브라우저에서도 한국어 설정으로 같은 동작을 직접 확인했다. 이 기록은 당시 체크포인트이며 최종 gate 결과가 아니다.
+- **아직 H3 완료 아님:** 확장 UI 왕복·명령 레지스트리·Pi 홈 선택 import, SDK 실제 실행을 포함한 최종 UI 검증을 계속한다. H4–H8 전체 구현과 마지막 Computer Use 검증도 사용자 요청 범위에 남아 있다.

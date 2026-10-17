@@ -78,6 +78,7 @@ export interface NodeChange {
   invocation?: AgentNode['invocation'];
   outputContract?: OutputContract;
   modelProfile?: string;
+  harness?: AgentRole['harness'] | null;
   mode?: DecisionNode['mode'];
   maxIterations?: number;
   requireApproval?: boolean;
@@ -333,6 +334,7 @@ export function updateNode(draft: EditorDraft, nodeId: string, change: NodeChang
     if (change.prompt !== undefined) roleChange.prompt = change.prompt;
     if (change.outputContract) roleChange.outputContract = change.outputContract;
     if (change.modelProfile) roleChange.modelProfile = change.modelProfile;
+    if (change.harness) roleChange.harness = change.harness;
     if (change.fileTools !== undefined) {
       const current = roles.find((r) => r.id === roleId)?.allowedWorkTools ?? [];
       const others = current.filter((tool) => !(FILE_TOOLS as readonly string[]).includes(tool));
@@ -344,6 +346,13 @@ export function updateNode(draft: EditorDraft, nodeId: string, change: NodeChang
     }
     if (Object.keys(roleChange).length > 0) {
       roles = roles.map((r) => (r.id === roleId ? { ...r, ...roleChange } : r));
+    }
+    if (change.harness === null) {
+      roles = roles.map((r) => {
+        if (r.id !== roleId) return r;
+        const { harness: _removed, ...basic } = r;
+        return basic;
+      });
     }
     // A reviewer reviews against the criteria: give it their text when it becomes one (#20).
     const hasCriteria = next.inputBindings.some(

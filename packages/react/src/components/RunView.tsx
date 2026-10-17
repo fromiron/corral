@@ -6,6 +6,7 @@ import { useStore } from 'zustand';
 import type { ModelPrices } from '../run/cost.ts';
 import type { RunSessionStore, StreamText } from '../run/session.ts';
 import { BudgetInspector } from './BudgetInspector.tsx';
+import { HarnessDetails } from './HarnessDetails.tsx';
 import { RunActions } from './RunActions.tsx';
 import { RunReason } from './RunText.tsx';
 import { SafeMarkdown } from './SafeMarkdown.tsx';
@@ -49,6 +50,7 @@ export function RunView({
         <>
           <RunActions key={projection.runId} session={session} />
           <BudgetInspector session={session} prices={prices} />
+          <HarnessDetails session={session} />
           <div className="flex items-center gap-2 text-xs">
             <span className="text-muted">{t('status')}</span>
             <span aria-live="polite" data-testid="run-status">

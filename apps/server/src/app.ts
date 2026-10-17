@@ -43,6 +43,8 @@ import { z } from 'zod';
 import packageJson from '../package.json' with { type: 'json' };
 import { ReviewService } from './files/review.ts';
 import { type ChangeScope, WorkspaceError, WorkspaceService } from './files/service.ts';
+import { registerHarnessRoutes } from './harness/routes.ts';
+import { HarnessService } from './harness/service.ts';
 import { ImportInput, type InputOptions, InputRegistry } from './inputs.ts';
 import {
   assertOutsideWorkspace,
@@ -116,7 +118,7 @@ export interface LiveModels {
   /** Models a subscription sign-in may call (pi-ai's ChatGPT-account catalog for OpenAI). */
   subscriptionModels?: (providerId: string) => ReadonlySet<string> | null;
   /** The agent adapter for live runs; it asks the registry for each request's token. */
-  agents(registry: ModelRegistry): AgentAdapter;
+  agents(registry: ModelRegistry, harnesses: HarnessService): AgentAdapter;
   /** Profiles when the workspace names none; they follow the available sign-in (CR-004). */
   defaultProfiles?: () => Promise<ProfileConfig[]>;
 }
@@ -310,6 +312,12 @@ async function createCorralServer(
   });
 
   const review = new ReviewService({ db, clock, files });
+  const harnesses = new HarnessService({
+    db,
+    clock,
+    root: join(workspace.root, '.corral', 'harness'),
+  });
+  resources.defer(() => harnesses.dispose());
 
   const coordinator = new Coordinator({
     clock,
@@ -317,12 +325,13 @@ async function createCorralServer(
     timers: options.timers ?? systemTimers,
     agents: routeByMode(
       options.agents,
-      registry && options.live ? options.live.agents(registry) : null,
+      registry && options.live ? options.live.agents(registry, harnesses) : null,
     ),
     ...(registry ? { models: registry } : {}),
     store,
     tools: inputs,
     files,
+    harnesses,
     runner: new LangGraphRunner(),
     corrals,
     policy: workspace.policy,
@@ -570,6 +579,8 @@ async function createCorralServer(
       return fail(reply, 'SCHEMA_INVALID', 'invalid history archive');
     }
   });
+
+  registerHarnessRoutes(app, harnesses);
 
   // ── models (C-058) ─────────────────────────────────────────────────────────
   // Status and expiry only; tokens never appear in these answers (ADR-019).

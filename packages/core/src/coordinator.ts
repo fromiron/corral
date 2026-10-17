@@ -582,6 +582,7 @@ export class Coordinator {
           modelProfiles: Object.values(models),
           limits: definition.limits,
           criteriaVersionId: snapshot.criteriaVersionId,
+          ...(snapshot.harnesses ? { harnesses: snapshot.harnesses } : {}),
           ...(request.startFrom ? { startedFrom: request.startFrom } : {}),
           ...(this.judgments
             ? {

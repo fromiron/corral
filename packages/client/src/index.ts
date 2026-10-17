@@ -1,7 +1,14 @@
 import {
   type CorralDefinition,
   type CreateRunRequest,
+  type EffectiveHarnessSnapshot,
   type ErrorCode,
+  type HarnessBindingRef,
+  type HarnessDefault,
+  type HarnessProfile,
+  type HarnessProfileRevision,
+  type HarnessResource,
+  type HarnessResourceView,
   type Receipt,
   type RunCommand,
   RunEvent,
@@ -743,6 +750,76 @@ export class ModelsApi {
 }
 
 // ── work folders and file changes (CR-012) ──────────────────────────────────
+
+export interface HarnessPreview {
+  snapshot: EffectiveHarnessSnapshot;
+  sections: { source: 'skill'; name: string; text: string }[];
+  dynamic: boolean;
+}
+
+export class HarnessApi {
+  private readonly http: Http;
+  constructor(options: HttpOptions) {
+    this.http = new Http(options);
+  }
+  resources(): Promise<HarnessResourceView[]> {
+    return this.http.json('/harness/resources');
+  }
+  profiles(): Promise<HarnessProfileRevision[]> {
+    return this.http.json('/harness/profiles');
+  }
+  profile(binding: HarnessBindingRef): Promise<HarnessProfileRevision> {
+    return this.http.json(
+      `/harness/profiles/${encodeURIComponent(binding.profileId)}/${binding.revision}`,
+    );
+  }
+  review(
+    kind: 'local' | 'package',
+    source: string,
+  ): Promise<{ reviewId: string; resource: HarnessResource }> {
+    return this.http.json('/harness/reviews', {
+      method: 'POST',
+      body: JSON.stringify({ kind, source }),
+    });
+  }
+  install(reviewId: string): Promise<HarnessResourceView> {
+    return this.http.json('/harness/resources', {
+      method: 'POST',
+      body: JSON.stringify({ reviewId }),
+    });
+  }
+  trust(hash: string, trusted: boolean): Promise<HarnessResourceView> {
+    return this.http.json(`/harness/resources/${encodeURIComponent(hash)}/trust`, {
+      method: 'PUT',
+      body: JSON.stringify({ trusted }),
+    });
+  }
+  save(
+    profileId: string,
+    expectedRevision: number,
+    profile: HarnessProfile,
+  ): Promise<HarnessProfileRevision> {
+    return this.http.json(`/harness/profiles/${encodeURIComponent(profileId)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ expectedRevision, profile }),
+    });
+  }
+  preview(binding: HarnessBindingRef, projectId: string): Promise<HarnessPreview> {
+    return this.http.json('/harness/preview', {
+      method: 'POST',
+      body: JSON.stringify({ binding, projectId }),
+    });
+  }
+  default(scope: HarnessDefault['scope'], scopeId: string): Promise<HarnessDefault> {
+    return this.http.json(`/harness/defaults/${scope}/${encodeURIComponent(scopeId)}`);
+  }
+  setDefault(current: HarnessDefault, binding: HarnessBindingRef | null): Promise<HarnessDefault> {
+    return this.http.json(
+      `/harness/defaults/${current.scope}/${encodeURIComponent(current.scopeId)}`,
+      { method: 'PUT', body: JSON.stringify({ expectedRevision: current.revision, binding }) },
+    );
+  }
+}
 
 export interface VerifyCommand {
   id: string;

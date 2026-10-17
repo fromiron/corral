@@ -5,6 +5,7 @@ export { BudgetInspector } from './components/BudgetInspector.tsx';
 export { CorralCanvas, NODE_DRAG_TYPE } from './components/CorralCanvas.tsx';
 export { EditorToolbar, isTextEditingEvent, TIDY_EVENT } from './components/EditorToolbar.tsx';
 export { EffortJudgments } from './components/EffortJudgments.tsx';
+export { HarnessDetails } from './components/HarnessDetails.tsx';
 export { ExecutionTranscript } from './components/ExecutionTranscript.tsx';
 export { NodeInspector } from './components/NodeInspector.tsx';
 export { NodePalette } from './components/NodePalette.tsx';

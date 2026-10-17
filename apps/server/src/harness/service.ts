@@ -20,6 +20,7 @@ import {
   canonicalJson,
   EffectiveHarnessSnapshot,
   type HarnessBindingRef,
+  type HarnessDefault,
   HarnessProfile,
   type HarnessProfileRevision,
   HarnessResource,
@@ -293,6 +294,23 @@ export class HarnessService {
     layers.push({ scope: 'role', profile: this.profile(binding) });
     if (runOverride) layers.push({ scope: 'run', profile: this.profile(runOverride) });
     return this.compose(layers, binding);
+  }
+
+  setDefault(
+    scope: HarnessDefault['scope'],
+    scopeId: string,
+    expectedRevision: number,
+    binding: HarnessBindingRef | null,
+  ) {
+    if (binding) {
+      const layers: { scope: 'personal' | 'project'; profile: HarnessProfileRevision }[] = [];
+      const personal = this.store.getDefault('personal', 'default').binding;
+      if (scope === 'project' && personal)
+        layers.push({ scope: 'personal', profile: this.profile(personal) });
+      layers.push({ scope, profile: this.profile(binding) });
+      this.compose(layers, binding);
+    }
+    return this.store.setDefault(scope, scopeId, expectedRevision, binding);
   }
 
   resolve(

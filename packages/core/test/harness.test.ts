@@ -10,7 +10,7 @@ import { FakeClock, Gate, linearCorral, SequentialIdFactory } from '@corral/test
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js';
 import { describe, expect, it } from 'vitest';
-import { Coordinator, InMemoryRunStore, exportRunArchive, openRunArchive } from '../src/index.ts';
+import { Coordinator, exportRunArchive, InMemoryRunStore, openRunArchive } from '../src/index.ts';
 
 const hash = (value: unknown) => bytesToHex(sha256(utf8ToBytes(canonicalJson(value))));
 const descriptor: ToolDescriptor = {
@@ -54,8 +54,8 @@ function setup(resolve = true, selected = snapshot) {
     ...(resolve
       ? {
           harnesses: {
-              resolve: () => JSON.parse(JSON.stringify(selected)) as EffectiveHarnessSnapshot,
-              readSkill: () => ({ text: 'first\nsecond\nthird', sha256: 'e'.repeat(64) }),
+            resolve: () => JSON.parse(JSON.stringify(selected)) as EffectiveHarnessSnapshot,
+            readSkill: () => ({ text: 'first\nsecond\nthird', sha256: 'e'.repeat(64) }),
           },
         }
       : {}),
@@ -107,16 +107,47 @@ async function loaded() {
 
 describe('Coordinator harness boundary (H2)', () => {
   it('[TC-HAR-005-H] [TC-HAR-005-N] read uses the skill broker and cannot read an unbound skill or worktree without role permission', async () => {
-    const selected: EffectiveHarnessSnapshot = { ...snapshot, policy: 'strict', allowedTools: ['read'], resources: [{ hash: 'c'.repeat(64), name: 'fixture', version: '1.0.0', kind: 'skill', required: true, entry: 'skills/writing/SKILL.md', skillName: 'writing', skillMode: 'auto' }] };
+    const selected: EffectiveHarnessSnapshot = {
+      ...snapshot,
+      policy: 'strict',
+      allowedTools: ['read'],
+      resources: [
+        {
+          hash: 'c'.repeat(64),
+          name: 'fixture',
+          version: '1.0.0',
+          kind: 'skill',
+          required: true,
+          entry: 'skills/writing/SKILL.md',
+          skillName: 'writing',
+          skillMode: 'auto',
+        },
+      ],
+    };
     const s = setup(true, selected);
     await s.started.wait();
-    await s.host().reportHarness!({ ok: true, snapshotHash: selected.snapshotHash, tools: [{ ...descriptor, name: 'read', source: 'corral' }], diagnostics: [] });
-    const result = await s.host().invokeTool({ name: 'read', args: { path: 'skills/writing/SKILL.md', offset: 2, limit: 1 } });
+    await s.host().reportHarness!({
+      ok: true,
+      snapshotHash: selected.snapshotHash,
+      tools: [{ ...descriptor, name: 'read', source: 'corral' }],
+      diagnostics: [],
+    });
+    const result = await s
+      .host()
+      .invokeTool({ name: 'read', args: { path: 'skills/writing/SKILL.md', offset: 2, limit: 1 } });
     expect(result.ok).toBe(true);
-    if (result.ok) expect(result.result).toMatchObject({ text: 'first\nsecond\nthird', sha256: 'e'.repeat(64) });
-    for (const path of ['skills/other/SKILL.md', 'skills/writing/../other', 'source.ts', '/etc/passwd'])
+    if (result.ok)
+      expect(result.result).toMatchObject({ text: 'first\nsecond\nthird', sha256: 'e'.repeat(64) });
+    for (const path of [
+      'skills/other/SKILL.md',
+      'skills/writing/../other',
+      'source.ts',
+      '/etc/passwd',
+    ])
       expect((await s.host().authorizeTool({ name: 'read', args: { path } })).ok).toBe(false);
-    const outOfRange = await s.host().invokeTool({ name: 'read', args: { path: 'skills/writing/SKILL.md', offset: 20 } });
+    const outOfRange = await s
+      .host()
+      .invokeTool({ name: 'read', args: { path: 'skills/writing/SKILL.md', offset: 20 } });
     expect(outOfRange.ok).toBe(false);
     s.done.open();
   });
@@ -131,7 +162,9 @@ describe('Coordinator harness boundary (H2)', () => {
     const s = setup();
     await s.started.wait();
     expect(s.input().harness).toEqual(snapshot);
-    expect(s.events().find(event => event.type === 'run.started')?.payload).toMatchObject({ harnesses: { [s.input().role.id]: snapshot } });
+    expect(s.events().find((event) => event.type === 'run.started')?.payload).toMatchObject({
+      harnesses: { [s.input().role.id]: snapshot },
+    });
     await expect(s.host().prepareModelRequest(record)).rejects.toThrow(/harness/i);
     await s.host().reportHarness!({
       ok: true,
@@ -144,8 +177,12 @@ describe('Coordinator harness boundary (H2)', () => {
       { payload: { modelCallId: permit.modelCallId, ...record } },
     ]);
     expect(s.events().filter((e) => e.type === 'budget.reserved')).toHaveLength(1);
-    const archived = openRunArchive(exportRunArchive(s.store, s.input().runId, { privateTranscript: true }));
-    expect(archived.visibility === 'private' && archived.snapshot.harnesses).toEqual({ [s.input().role.id]: snapshot });
+    const archived = openRunArchive(
+      exportRunArchive(s.store, s.input().runId, { privateTranscript: true }),
+    );
+    expect(archived.visibility === 'private' && archived.snapshot.harnesses).toEqual({
+      [s.input().role.id]: snapshot,
+    });
     await expect(s.host().prepareModelRequest()).rejects.toThrow(/record/i);
     s.done.open();
   });

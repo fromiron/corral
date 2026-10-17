@@ -879,6 +879,260 @@
                 "artifactVersionId"
               ],
               "additionalProperties": false
+            },
+            "harnesses": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+              },
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "binding": {
+                    "type": "object",
+                    "properties": {
+                      "profileId": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                      },
+                      "revision": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "required": [
+                      "profileId",
+                      "revision"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "snapshotHash": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  },
+                  "piVersion": {
+                    "type": "string",
+                    "const": "1.3.0"
+                  },
+                  "policyRevision": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "policy": {
+                    "type": "string",
+                    "enum": [
+                      "strict",
+                      "trusted-native"
+                    ]
+                  },
+                  "resources": {
+                    "maxItems": 64,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "hash": {
+                          "type": "string",
+                          "pattern": "^[a-f0-9]{64}$"
+                        },
+                        "name": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 100
+                        },
+                        "version": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 100
+                        },
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "skill",
+                            "extension"
+                          ]
+                        },
+                        "required": {
+                          "type": "boolean"
+                        },
+                        "skillMode": {
+                          "type": "string",
+                          "enum": [
+                            "auto",
+                            "explicit",
+                            "mandatory"
+                          ]
+                        },
+                        "entry": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 500,
+                          "pattern": "^(?!\\/)(?![A-Za-z]:)(?!.*(?:^|\\/)\\.{1,2}(?:\\/|$))(?!.*\\/\\/)[^\\\\\\p{Cc}]+$"
+                        },
+                        "skillName": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                        }
+                      },
+                      "required": [
+                        "hash",
+                        "name",
+                        "version",
+                        "kind",
+                        "required"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "allowedTools": {
+                    "maxItems": 128,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[a-zA-Z][a-zA-Z0-9_-]{0,63}$"
+                    }
+                  },
+                  "tools": {
+                    "maxItems": 128,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "source": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "const": "corral"
+                            },
+                            {
+                              "type": "string",
+                              "pattern": "^extension:[@a-zA-Z0-9_./-]+@[a-zA-Z0-9_.+-]+$"
+                            }
+                          ]
+                        },
+                        "name": {
+                          "type": "string",
+                          "pattern": "^[a-zA-Z][a-zA-Z0-9_-]{0,63}$"
+                        },
+                        "schemaHash": {
+                          "type": "string",
+                          "pattern": "^[a-f0-9]{64}$"
+                        },
+                        "annotations": {
+                          "type": "object",
+                          "properties": {
+                            "readOnlyHint": {
+                              "type": "boolean"
+                            },
+                            "destructiveHint": {
+                              "type": "boolean"
+                            },
+                            "idempotentHint": {
+                              "type": "boolean"
+                            },
+                            "openWorldHint": {
+                              "type": "boolean"
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "exposure": {
+                          "type": "string",
+                          "enum": [
+                            "direct",
+                            "model-only",
+                            "codemode",
+                            "deferred",
+                            "hidden"
+                          ]
+                        },
+                        "sideEffect": {
+                          "type": "string",
+                          "enum": [
+                            "none",
+                            "workspace",
+                            "external",
+                            "unknown"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "source",
+                        "name",
+                        "schemaHash",
+                        "exposure",
+                        "sideEffect"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "diagnostics": {
+                    "maxItems": 64,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                    }
+                  },
+                  "layers": {
+                    "maxItems": 4,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "scope": {
+                          "type": "string",
+                          "enum": [
+                            "personal",
+                            "project",
+                            "role",
+                            "run"
+                          ]
+                        },
+                        "binding": {
+                          "type": "object",
+                          "properties": {
+                            "profileId": {
+                              "type": "string",
+                              "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                            },
+                            "revision": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 9007199254740991
+                            }
+                          },
+                          "required": [
+                            "profileId",
+                            "revision"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": [
+                        "scope",
+                        "binding"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "binding",
+                  "snapshotHash",
+                  "piVersion",
+                  "policyRevision",
+                  "policy",
+                  "resources",
+                  "allowedTools",
+                  "tools",
+                  "diagnostics"
+                ],
+                "additionalProperties": false
+              }
             }
           },
           "required": [

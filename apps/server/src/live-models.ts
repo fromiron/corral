@@ -1,4 +1,10 @@
-import { PiAgentAdapter, processChannel, WORKER_ENTRY } from '@corral/adapter-pi';
+import {
+  PiAgentAdapter,
+  processChannel,
+  SDK_WORKER_ENTRY,
+  sdkProcessChannel,
+  WORKER_ENTRY,
+} from '@corral/adapter-pi';
 import { builtinModels, getBuiltinModels } from '@earendil-works/pi-ai/providers/all';
 import type { LiveModels } from './app.ts';
 import {
@@ -35,9 +41,11 @@ export function createLiveModels(): LiveModels {
         ownOpenAI: (await own.read('openai').catch(() => undefined)) !== undefined,
         codexLogin: readCodexLogin(codexPath).state === 'found',
       }),
-    agents: (registry) =>
+    agents: (registry, harnesses) =>
       new PiAgentAdapter({
         spawn: () => processChannel(WORKER_ENTRY),
+        spawnSdk: () => sdkProcessChannel(SDK_WORKER_ENTRY),
+        harness: (input) => harnesses.runtimeResources(input),
         cancelGraceMs: 9_000,
         credentials: (model) => registry.credentials(model),
         endpoint: (model) => registry.endpointOf(model),

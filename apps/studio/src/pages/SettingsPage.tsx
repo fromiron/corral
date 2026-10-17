@@ -13,6 +13,7 @@ import { WorkFolderSection } from './FilesViews.tsx';
 
 export function SettingsLayout({ children, active }: { children: ReactNode; active: string }) {
   const t = useTranslations('Desktop');
+  const harness = useTranslations('Harness');
   return (
     <div className="settings-layout flex h-full min-h-0 flex-col overflow-auto md:flex-row">
       <nav
@@ -42,6 +43,13 @@ export function SettingsLayout({ children, active }: { children: ReactNode; acti
         >
           <Monitor size={16} />
           {t('models')}
+        </Link>
+        <Link
+          to="/settings/harness"
+          className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${active === 'harness' ? 'bg-sidebar-selected font-medium' : 'text-muted hover:bg-raised'}`}
+        >
+          <Settings size={16} />
+          {harness('heading')}
         </Link>
       </nav>
       <div className="min-w-0 flex-1 overflow-y-auto">{children}</div>

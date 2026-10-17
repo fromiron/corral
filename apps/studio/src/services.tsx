@@ -1,4 +1,5 @@
 import {
+  HarnessApi,
   HttpSseTransport,
   hasSession,
   ModelsApi,
@@ -38,6 +39,7 @@ export interface StudioServices {
   sessionMissing: boolean;
   /** The server can run real models (C-058); null in the in-browser runtime. */
   models: ModelsApi | null;
+  harnesses: HarnessApi | null;
   live: boolean;
   /** A sandboxed address for HTML result previews (CR-009); the browser runtime has none. */
   previewUrl?: (runId: string, artifactVersionId: string) => string;
@@ -116,6 +118,7 @@ export async function createStudioServices(): Promise<StudioServices> {
       persistent: true,
       sessionMissing: !(await hasSession(http)),
       models: new ModelsApi(http),
+      harnesses: new HarnessApi(http),
       live: health.live,
       previewUrl: (runId, artifactVersionId) => transport.previewUrl(runId, artifactVersionId),
       startExplain: (request) => transport.startExplain(request),
@@ -133,6 +136,7 @@ export async function createStudioServices(): Promise<StudioServices> {
     persistent,
     sessionMissing: false,
     models: null,
+    harnesses: null,
     live: false,
     repository,
     transport,

@@ -13,6 +13,7 @@ import {
 import { OutputContract, RunLimits } from './definition.ts';
 import {
   ContentHash,
+  EffectiveHarnessSnapshot,
   HarnessReport,
   ModelRequestRecord,
   ProviderPayloadRecord,
@@ -88,6 +89,7 @@ export const RunStarted = event(
     decisions: RunDecisionSettings.optional(),
     /** The earlier version whose text this run's brief starts from (CR-007). */
     startedFrom: StartFrom.optional(),
+    harnesses: z.record(Identifier, EffectiveHarnessSnapshot).optional(),
   }),
 );
 export const RunStateChanged = event(
