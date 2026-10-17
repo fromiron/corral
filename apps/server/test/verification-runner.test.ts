@@ -93,7 +93,7 @@ describe('owned verification runner', () => {
       clock: f.clock,
       timers: systemTimers,
       spawn: (...args: Parameters<typeof spawn>) => {
-        f.clock.advance(250);
+        f.clock.advance(250.75);
         return spawn(...args);
       },
     });
