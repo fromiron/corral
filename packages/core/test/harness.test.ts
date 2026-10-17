@@ -45,10 +45,12 @@ function setup(resolve = true, selected = snapshot) {
   const started = new Gate();
   const done = new Gate();
   const store = new InMemoryRunStore();
+  const clock = new FakeClock();
   let host!: AgentHost;
   let input!: AgentStartInput;
   const coordinator = new Coordinator({
-    clock: new FakeClock(),
+    clock,
+    timers: clock,
     ids: new SequentialIdFactory(),
     store,
     ...(resolve
@@ -84,6 +86,7 @@ function setup(resolve = true, selected = snapshot) {
   });
   return {
     coordinator,
+    clock,
     store,
     result,
     started,
@@ -106,6 +109,40 @@ async function loaded() {
 }
 
 describe('Coordinator harness boundary (H2)', () => {
+  it('[TC-HAR-007-H] UI answers match the execution attempt and command replay is idempotent; bodies stay in private records', async () => {
+    const s = await loaded();
+    const answer = s.host().requestExtensionUi!({ kind: 'select', title: 'Private question', options: ['One', 'Two'], timeoutMs: 1000 });
+    const event = s.events().find(e => e.type === 'extension.ui_requested');
+    if (!event || event.type !== 'extension.ui_requested') throw new Error('request missing');
+    expect(JSON.stringify(s.events())).not.toContain('Private question');
+    expect(s.store.getArtifactText(s.input().runId, event.payload.bodyRef)).toContain('Private question');
+    const command = { schemaVersion: '0.1' as const, commandId: 'answer', runId: s.input().runId, expectedControlRevision: 0, type: 'answer_extension_ui' as const, payload: { requestId: event.payload.requestId, executionId: s.input().executionId, attemptNo: s.input().attemptNo, value: 'One' } };
+    expect(s.coordinator.submit({ ...command, commandId: 'wrong_attempt', payload: { ...command.payload, attemptNo: 999 } }).status).toBe('rejected');
+    expect(s.coordinator.submit({ ...command, commandId: 'wrong_option', payload: { ...command.payload, value: 'Other' } }).status).toBe('rejected');
+    expect(s.coordinator.submit({ ...command, commandId: 'wrong_revision', expectedControlRevision: 99 }).error?.code).toBe('STALE_CONTROL_REVISION');
+    const receipt = s.coordinator.submit(command);
+    expect(receipt.status).toBe('applied');
+    expect(await answer).toEqual({ status: 'answered', value: 'One' });
+    expect(s.coordinator.submit(command)).toEqual(receipt);
+    expect(s.coordinator.submit({ ...command, commandId: 'late_answer' }).status).toBe('rejected');
+    expect(s.events().filter(e => e.type === 'extension.ui_answered')).toHaveLength(1);
+    expect(() => openRunArchive(exportRunArchive(s.store, s.input().runId, { privateTranscript: true }))).not.toThrow();
+    s.done.open();
+  });
+
+  it('[TC-HAR-007-N] UI timeouts and cancellation close the exact request and reject a late reply', async () => {
+    const s = await loaded();
+    const timed = s.host().requestExtensionUi!({ kind: 'confirm', title: 'Continue?', message: 'Confirm.', timeoutMs: 100 });
+    s.clock.advance(101);
+    expect(await timed).toEqual({ status: 'expired' });
+    const waiting = s.host().requestExtensionUi!({ kind: 'input', title: 'Name', placeholder: '', timeoutMs: 1000 });
+    const event = s.events().findLast(e => e.type === 'extension.ui_requested');
+    if (!event || event.type !== 'extension.ui_requested') throw new Error('request missing');
+    s.coordinator.submit({ schemaVersion: '0.1', commandId: 'cancel_ui_run', runId: s.input().runId, type: 'cancel', payload: { scope: { kind: 'run' }, reason: 'cancel test' } });
+    expect(await waiting).toEqual({ status: 'cancelled' });
+    expect(s.coordinator.submit({ schemaVersion: '0.1', commandId: 'late_ui', runId: s.input().runId, expectedControlRevision: 0, type: 'answer_extension_ui', payload: { requestId: event.payload.requestId, executionId: s.input().executionId, attemptNo: s.input().attemptNo, value: 'Too late' } }).status).toBe('rejected');
+    expect(s.events().filter(e => e.type === 'extension.ui_expired')).toHaveLength(2);
+  });
   it('[TC-HAR-005-H] [TC-HAR-005-N] read uses the skill broker and cannot read an unbound skill or worktree without role permission', async () => {
     const selected: EffectiveHarnessSnapshot = {
       ...snapshot,

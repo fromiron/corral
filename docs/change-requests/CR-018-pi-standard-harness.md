@@ -71,3 +71,13 @@ R2(검증·개선)와 R3(MCP·codemode·항목 반복)는 이 CR 범위가 아�
 ## 검증하지 못한 것
 
 [스파이크 보고서](../spikes/HAR-pi-sdk-spikes.md)의 "확인하지 못한 것"을 본다. 이후 단계마다 덧붙인다.
+
+## H3 확장 UI 계약 (2026-10-18)
+
+- 지원 입력은 `select`, `confirm`, `input`이고, `notify`와 `setStatus`는 알림·상태 기록이다. 터미널 입력, custom UI, 위젯은 비지원 사실을 표시한다.
+- Coordinator가 요청 ID를 발급하고 Run·execution·attempt에 고정한다. 동시에 execution당 1개, Run당 누적 100개까지 허용한다. 기본 기한은 120초, 최대 300초이며 주입한 시계·타이머로 판단한다.
+- 답변은 `answer_extension_ui` 명령으로 보낸다. 현재 control revision, 요청 대상, 시도, 미종결 상태, 기한, 답변의 종류/선택지를 모두 검증한다. 같은 command ID 재전송은 기존 영수증을 반환한다.
+- 대기 중인 execution은 `waiting_approval`, Run은 `awaiting_user`로 표시한다. 다른 승인·차단이 남아 있거나 사용자가 일시 정지한 경우 마지막 답변도 Run을 임의로 재개하지 않는다.
+- 취소·실행 종료·기한 만료는 요청을 닫고 SDK에 취소/빈 결과를 돌려준다. 실행이 끝난 요청을 새 execution으로 옮기지 않는다. 서버 재시작 후 이전 입력은 응답 불가다.
+- `extension.ui_requested/answered/expired/notified`에는 대상·종류·기한·본문 참조와 해시만 기록한다. 제목·선택지·입력·알림 본문은 기존 private record 저장소에 보관한다. 공개 archive에는 기존 허용 목록의 메타데이터만 내보낸다.
+- IPC의 UI 대기는 수신 큐를 점유하지 않아야 한다. 확장의 AbortSignal 취소와 Run 취소가 응답 대기 중에도 처리되어야 한다.
