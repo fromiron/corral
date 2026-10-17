@@ -173,6 +173,26 @@ function runtime(
 }
 
 describe('SDK worker through the product adapter (H2)', () => {
+  it('[TC-HAR-012-H] exposes only selected registered check IDs and returns the owned report through the host', async () => {
+    const proposals: {name:string;args:Record<string,unknown>}[]=[];
+    const run=runtime([
+      context=>{
+        const tools=context.messages.flatMap(message=>message.role==='system'?(message.toolsAdded??[]):[]);
+        expect(tools.some(tool=>tool.name==='run_check')).toBe(true);
+        return fauxAssistantMessage([fauxToolCall('run_check',{commandId:'types'})],{stopReason:'toolUse'});
+      },
+      context=>{expect(JSON.stringify(context.messages)).toContain('inconclusive');return fauxAssistantMessage('Check could not prove a pass.');},
+    ],'',{
+      authorizeTool:async proposal=>{proposals.push(proposal);return {ok:true,toolCallId:'tool_check'};},
+      executeTool:async toolCallId=>({ok:true,toolCallId,result:{state:'completed',verdict:'inconclusive',stale:true}}),
+    });
+    if(!run.input.harness)throw new Error('missing harness');
+    run.input.harness.allowedTools=['run_check'];
+    run.input.harness.projectTools={projectId:'default',revision:1,hash:'c'.repeat(64),checkIds:['types'],lspServerIds:[]};
+    expect(await(await run.adapter.start(run.input,run.host)).waitForSettlement()).toMatchObject({outcome:'succeeded'});
+    expect(proposals).toEqual([{name:'run_check',args:{commandId:'types'}}]);
+    expect(run.reports).toContainEqual(expect.objectContaining({tools:expect.arrayContaining([expect.objectContaining({name:'run_check',source:'corral',sideEffect:'external'})])}));
+  });
   it('[TC-HAR-010-H] exposes authorized Pi coding tools and returns their standard result text', async () => {
     const proposals: { name: string; args: Record<string, unknown> }[] = [];
     const run = runtime(
