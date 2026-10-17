@@ -28,7 +28,7 @@ const snapshot: EffectiveHarnessSnapshot = {
   policyRevision: 1,
   policy: 'trusted-native',
   resources: [{ hash, name: 'fixture', version: '1.0.0', kind: 'extension', required: true }],
-  allowedTools: ['echo'],
+  allowedTools: ['echo', 'write_artifact', 'submit_result'],
   tools: [],
   diagnostics: [],
 };
@@ -58,6 +58,7 @@ function runtime(
   responses: FauxResponseStep[],
   extension = '',
   overrides: Partial<AgentHost> = {},
+  skill?: { text: string; mode: 'auto' | 'explicit' | 'mandatory'; brief?: string },
 ) {
   const directory = mkdtempSync(join(tmpdir(), 'corral-sdk-test-'));
   scratch.push(directory);
@@ -65,9 +66,18 @@ function runtime(
   const content = extension || 'export default () => {}';
   writeFileSync(path, content);
   const files = [{ path: 'fixture.ts', hash: createHash('sha256').update(content).digest('hex'), bytes: Buffer.byteLength(content) }];
+  if (skill) {
+    writeFileSync(join(directory, 'SKILL.md'), skill.text);
+    files.push({ path: 'SKILL.md', hash: createHash('sha256').update(skill.text).digest('hex'), bytes: Buffer.byteLength(skill.text) });
+  }
   const resourceHash = createHash('sha256').update(canonicalJson(files)).digest('hex');
   const start = input();
   start.harness = { ...snapshot, resources: [{ ...snapshot.resources[0]!, hash: resourceHash, entry: 'fixture.ts' }] };
+  if (skill) {
+    start.harness.allowedTools = [...start.harness.allowedTools, 'read'];
+    start.harness.resources.push({ hash: resourceHash, name: 'fixture', version: '1.0.0', kind: 'skill', entry: 'SKILL.md', required: true, skillName: 'writing', skillMode: skill.mode });
+    if (skill.brief) start.inputs[0]!.text = skill.brief;
+  }
   const faux = createFauxCore({});
   faux.setResponses(responses);
   const frames: unknown[] = [];
@@ -112,7 +122,7 @@ function runtime(
     harness: async () => ({
       extensions: [{ path, hash: resourceHash, source: 'extension:fixture@1.0.0' }],
       bundles: [{ root: directory, hash: resourceHash, files }],
-      skills: [],
+      skills: skill ? [{ name: 'writing', description: 'Writing with sources.', hash: resourceHash, entry: 'SKILL.md', mode: skill.mode, content: skill.mode === 'mandatory' || skill.brief?.startsWith('/skill:') ? skill.text : '' }] : [],
       startupCommands: [],
     }),
     credentials,
@@ -122,6 +132,34 @@ function runtime(
 }
 
 describe('SDK worker through the product adapter (H2)', () => {
+  it('[TC-HAR-005-H] lists auto skills virtually and formats broker reads with Pi offset and limit behavior', async () => {
+    let observed = '';
+    const run = runtime([
+      context => {
+        expect(JSON.stringify(context.messages)).toContain('skills/writing/SKILL.md');
+        return fauxAssistantMessage([fauxToolCall('read', { path: 'skills/writing/SKILL.md', offset: 2, limit: 1 })], { stopReason: 'toolUse' });
+      },
+      context => {
+        const result = context.messages.filter(message => message.role === 'toolResult').at(-1);
+        observed = JSON.stringify(result?.content);
+        return fauxAssistantMessage('Done.');
+      },
+    ], '', { executeTool: async toolCallId => ({ ok: true, toolCallId, result: { path: 'skills/writing/SKILL.md', text: 'one\ntwo\nthree', sha256: 'c'.repeat(64) } }) }, { text: 'one\ntwo\nthree', mode: 'auto' });
+    expect(await (await run.adapter.start(run.input, run.host)).waitForSettlement()).toMatchObject({ outcome: 'succeeded' });
+    expect(observed).toContain('two');
+    expect(observed).not.toContain('one');
+    expect(observed).not.toContain('three');
+  });
+
+  it('[TC-HAR-005-H] expands an explicit skill command in Corral without exposing a local path', async () => {
+    let seen = '';
+    const run = runtime([context => { seen = JSON.stringify(context.messages); return fauxAssistantMessage('Done.'); }], '', {}, { text: 'Use verified evidence.', mode: 'explicit', brief: '/skill:writing Write a note.' });
+    expect(await (await run.adapter.start(run.input, run.host)).waitForSettlement()).toMatchObject({ outcome: 'succeeded' });
+    expect(seen).toContain('Use verified evidence.');
+    expect(seen).toContain('Write a note.');
+    expect(seen).not.toContain(run.directory);
+    expect(seen).not.toContain('/skill:writing');
+  });
   it('[TC-HAR-003-N] resource preparation errors never disclose a local path or body', async () => {
     const run = runtime([]);
     const spawn = vi.fn();
