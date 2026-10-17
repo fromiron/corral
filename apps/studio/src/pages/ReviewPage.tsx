@@ -583,6 +583,9 @@ export function Checks({
                 {!r.report.cleanupConfirmed && r.report.endedAt ? (
                   <p className="text-warning">{t('checkCleanupUnknown')}</p>
                 ) : null}
+                {r.report.targetUnchanged === false ? (
+                  <p className="text-warning">{t('checkTargetChanged')}</p>
+                ) : null}
               </details>
             ) : null}
             {r.output ? (

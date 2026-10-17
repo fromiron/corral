@@ -1752,6 +1752,18 @@
     "piHome": "Pi 리소스 폴더 복사",
     "piHomeHint": "{folder}의 스킬·확장 폴더를 명시적으로 복사합니다. 인증 정보·설정·세션은 가져오지 않습니다. Pi 설정에만 등록된 패키지는 버전을 고정하여 별도로 설치하세요.",
     "startupOnly": "시작 시에만 실행합니다. 다음 실행에 쓰려면 역할의 작업 방식 설정에 시작 명령을 추가하세요.",
-    "saveBeforePreview": "변경 내용을 저장한 뒤 실행에 적용될 설정을 미리 확인하세요."
+    "saveBeforePreview": "변경 내용을 저장한 뒤 실행에 적용될 설정을 미리 확인하세요.",
+    "selectChecks": "이 작업 방식의 등록 검사 선택",
+    "checkSelectionHint": "끄면 상위 설정을 상속합니다. 켠 상태에서 아무것도 선택하지 않으면 검사를 사용하지 않습니다. 상위 설정의 도구 제한은 그대로 적용됩니다.",
+    "useCheck": "{name} 검사 사용",
+    "selectedChecks": "프로젝트 설정 r{revision} · 검사: {ids}",
+    "unregisteredCheck": "등록되지 않은 검사: {id}",
+    "noProjectChecks": "이 프로젝트에는 등록한 검사가 없습니다.",
+    "projectChecks": "현재 프로젝트의 검사",
+    "manageChecks": "작업 폴더 설정에서 명령 등록",
+    "checkTrustHint": "실행할 명령을 확인한 뒤 신뢰하세요. 이 컴퓨터에서 네이티브 코드를 실행합니다. 실행 파일·스크립트·의존성 잠금 파일이 바뀌면 다시 승인을 받습니다.",
+    "reviewCheck": "{name} 실행 검토",
+    "trustCheck": "이 실행 신뢰",
+    "revokeCheckTrust": "실행 신뢰 철회"
   }
 }

@@ -225,8 +225,15 @@ export function fakeOpenAI(
   };
 
   /** Scripts one live step: write `text`, submit it, finish. */
-  const answerWith = (text: string) => {
+  const answerWith = (text: string, options: { checkId?: string } = {}) => {
     faux.setResponses([
+      ...(options.checkId
+        ? [
+            fauxAssistantMessage([fauxToolCall('run_check', { commandId: options.checkId })], {
+              stopReason: 'toolUse',
+            }),
+          ]
+        : []),
       fauxAssistantMessage([fauxToolCall('write_artifact', { text })], { stopReason: 'toolUse' }),
       (context) => {
         const written =

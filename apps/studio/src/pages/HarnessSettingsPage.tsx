@@ -1,13 +1,15 @@
-import type { HarnessPreview } from '@corral/client';
+import type { HarnessApi, HarnessPreview } from '@corral/client';
 import type {
   HarnessDefault,
   HarnessProfile,
   HarnessProfileRevision,
   HarnessResource,
   HarnessResourceView,
+  ProjectToolConfigRevision,
 } from '@corral/contracts';
 import { WorkTool } from '@corral/contracts';
 import { Button } from '@corral/react/ui';
+import { Link } from '@tanstack/react-router';
 import { useEffect, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useCurrentProject } from '../projects.ts';
@@ -23,6 +25,7 @@ const emptyProfile = (): HarnessProfile => ({
     'read',
     'edit',
     'write',
+    'run_check',
     'submit_result',
     'spawn_subagents',
     'await_tasks',
@@ -80,6 +83,14 @@ export function HarnessPreviewView({ preview }: { preview: HarnessPreview }) {
       <p className="break-all font-mono text-2xs text-muted">
         SHA-256 {preview.snapshot.snapshotHash}
       </p>
+      {preview.snapshot.projectTools ? (
+        <p className="text-xs">
+          {t('selectedChecks', {
+            revision: preview.snapshot.projectTools.revision,
+            ids: preview.snapshot.projectTools.checkIds.join(', ') || '—',
+          })}
+        </p>
+      ) : null}
     </section>
   );
 }
@@ -92,6 +103,10 @@ export function HarnessSettingsPage() {
   const [resources, setResources] = useState<HarnessResourceView[]>([]);
   const [profiles, setProfiles] = useState<HarnessProfileRevision[]>([]);
   const [defaults, setDefaults] = useState<HarnessDefault[]>([]);
+  const [projectTools, setProjectTools] = useState<ProjectToolConfigRevision | null>(null);
+  const [launches, setLaunches] = useState<
+    Record<string, Awaited<ReturnType<HarnessApi['inspectCheck']>>>
+  >({});
   const [selected, setSelected] = useState<HarnessProfileRevision | null>(null);
   const [profile, setProfile] = useState<HarnessProfile>(emptyProfile);
   const [toolNames, setToolNames] = useState(emptyProfile().allowedTools.join(', '));
@@ -114,12 +129,15 @@ export function HarnessSettingsPage() {
       api.profiles(),
       api.default('personal', 'default'),
       api.default('project', projectId),
+      api.projectTools(projectId),
     ]).then(
-      ([r, p, personal, project]) => {
+      ([r, p, personal, project, tools]) => {
         if (active) {
           setResources(r);
           setProfiles(p);
           setDefaults([personal, project]);
+          setProjectTools(tools);
+          setLaunches({});
         }
       },
       () => active && setError(t('loadFailed')),
@@ -167,6 +185,8 @@ export function HarnessSettingsPage() {
     name: profile.name,
     policy: profile.policy,
     resources: profile.resources,
+    ...(profile.checkIds !== undefined ? { checkIds: profile.checkIds } : {}),
+    ...(profile.lspServerIds !== undefined ? { lspServerIds: profile.lspServerIds } : {}),
     allowedTools: [...new Set(toolNames.split(/[\s,]+/).filter(Boolean))],
     startupCommands: commands
       .split('\n')
@@ -486,6 +506,71 @@ export function HarnessSettingsPage() {
                 </div>
               ))}
               <p className="text-xs text-muted">{t('skillScripts')}</p>
+              <div className="flex flex-col gap-2 border-t border-line pt-3">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={profile.checkIds !== undefined}
+                    onChange={(event) => {
+                      const checked = event.target.checked;
+                      if (checked)
+                        setToolNames((current) =>
+                          [
+                            ...new Set([...current.split(/[\s,]+/).filter(Boolean), 'run_check']),
+                          ].join(', '),
+                        );
+                      setProfile((current) => {
+                        const { checkIds: _checks, ...rest } = current;
+                        return checked ? { ...rest, checkIds: [] } : rest;
+                      });
+                    }}
+                  />
+                  {t('selectChecks')}
+                </label>
+                <p className="text-xs text-muted">{t('checkSelectionHint')}</p>
+                {profile.checkIds !== undefined ? (
+                  <div className="flex flex-col gap-2 pl-5">
+                    {(projectTools?.checks ?? []).map((check) => (
+                      <label key={check.id} className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={profile.checkIds?.includes(check.id) ?? false}
+                          onChange={(event) => {
+                            const checked = event.target.checked;
+                            setProfile((current) => ({
+                              ...current,
+                              checkIds: checked
+                                ? [...(current.checkIds ?? []), check.id]
+                                : (current.checkIds ?? []).filter((id) => id !== check.id),
+                            }));
+                          }}
+                        />
+                        {t('useCheck', { name: check.name })}
+                      </label>
+                    ))}
+                    {profile.checkIds
+                      .filter((id) => !projectTools?.checks.some((check) => check.id === id))
+                      .map((id) => (
+                        <label key={id} className="flex items-center gap-2 text-sm text-warning">
+                          <input
+                            type="checkbox"
+                            checked
+                            onChange={() =>
+                              setProfile((current) => ({
+                                ...current,
+                                checkIds: current.checkIds?.filter((value) => value !== id),
+                              }))
+                            }
+                          />
+                          {t('unregisteredCheck', { id })}
+                        </label>
+                      ))}
+                    {!projectTools?.checks.length ? (
+                      <p className="text-xs text-muted">{t('noProjectChecks')}</p>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
               <details>
                 <summary className="cursor-pointer text-sm">{t('allowedTools')}</summary>
                 <label className="mt-2 flex flex-col gap-1 text-sm">
@@ -547,6 +632,74 @@ export function HarnessSettingsPage() {
               ) : null}
               {preview && canPreview ? <HarnessPreviewView preview={preview} /> : null}
             </fieldset>
+            <section
+              className="flex flex-col gap-3 border-t border-line pt-5"
+              aria-labelledby={`${id}-project-checks`}
+            >
+              <h3 id={`${id}-project-checks`} className="text-lg font-semibold">
+                {t('projectChecks')}
+              </h3>
+              <Link
+                to="/settings"
+                search={{ section: 'workspace' }}
+                className="text-sm text-accent underline"
+              >
+                {t('manageChecks')}
+              </Link>
+              <p className="text-xs text-muted">{t('checkTrustHint')}</p>
+              {!projectTools?.checks.length ? (
+                <p className="text-xs text-muted">{t('noProjectChecks')}</p>
+              ) : null}
+              {(projectTools?.checks ?? []).map((check) => (
+                <div key={check.id} className="flex flex-col gap-2 border-b border-line pb-3">
+                  <p className="text-sm font-medium">{check.name}</p>
+                  <Button
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() =>
+                      void work(async () => {
+                        const launch = await api.inspectCheck(projectId, check.id);
+                        setLaunches((current) => ({ ...current, [check.id]: launch }));
+                      })
+                    }
+                  >
+                    {t('reviewCheck', { name: check.name })}
+                  </Button>
+                  {launches[check.id] ? (
+                    <>
+                      <code className="break-all text-xs">
+                        {JSON.stringify(launches[check.id]?.command.argv)}
+                      </code>
+                      <p className="break-all font-mono text-2xs text-muted">
+                        SHA-256 {launches[check.id]?.fingerprint}
+                      </p>
+                      <Button
+                        variant="outline"
+                        disabled={busy}
+                        onClick={() =>
+                          void work(async () => {
+                            const launch = launches[check.id];
+                            if (!launch) return;
+                            const saved = await api.trustCheck(
+                              projectId,
+                              check.id,
+                              launch.fingerprint,
+                              !launch.trustedAt,
+                            );
+                            setLaunches((current) => ({
+                              ...current,
+                              [check.id]: { ...launch, ...saved },
+                            }));
+                          })
+                        }
+                      >
+                        {t(launches[check.id]?.trustedAt ? 'revokeCheckTrust' : 'trustCheck')}
+                      </Button>
+                    </>
+                  ) : null}
+                </div>
+              ))}
+            </section>
             <fieldset disabled={busy} className="flex flex-col gap-3 border-t border-line pt-5">
               <legend className="px-1 text-lg font-semibold">{t('defaults')}</legend>
               <p className="text-xs text-muted">{t('defaultsHint')}</p>
