@@ -170,7 +170,10 @@ test('[WBTST-004] UX-015-07 approvals name exact versions and keep review inside
   await session(page, corral, definition);
   const sessionUrl = new URL(page.url()).pathname;
   await page.getByRole('button', { name: 'Send', exact: true }).click();
-  const decision = page.locator('[data-testid^="approval-"]').filter({ hasText: 'Your decision' });
+  // The decision shows in the conversation and, while its result is open, beside it (UX-03).
+  const decision = timeline(page)
+    .locator('[data-testid^="approval-"]')
+    .filter({ hasText: 'Your decision' });
   await expect(decision).toBeVisible({ timeout: 15000 });
   await expect(
     page.getByTestId('app-sidebar').getByRole('img', { name: 'Waiting for you', exact: true }),
@@ -178,10 +181,12 @@ test('[WBTST-004] UX-015-07 approvals name exact versions and keep review inside
   await decision.getByRole('button', { name: 'draft v2', exact: true }).click();
   await expect.poll(() => new URL(page.url()).pathname).toBe(sessionUrl);
   await expect(page.getByRole('article', { name: 'draft v2', exact: true })).toBeVisible();
-  await decision.getByRole('button', { name: 'Approve', exact: true }).click();
-  const final = page.locator('[data-testid^="approval-"]').filter({ hasText: 'Final output' });
+  await decision.getByRole('button', { name: 'Continue with this version' }).click();
+  const final = timeline(page)
+    .locator('[data-testid^="approval-"]')
+    .filter({ hasText: 'Final output' });
   await expect(final).toBeVisible();
-  await final.getByRole('button', { name: 'Approve', exact: true }).click();
+  await final.getByRole('button', { name: 'Confirm as final result' }).click();
   await expect(timeline(page).getByText('Succeeded').first()).toBeVisible();
   expect(corral.errors).toEqual([]);
 });

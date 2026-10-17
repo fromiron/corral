@@ -152,10 +152,10 @@ test('[TC-CAN-004-H] [TC-RUN-003-H] an imported team with a Loop validates and r
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   const decision = page.locator('[data-testid^="approval-"]').filter({ hasText: 'Your decision' });
   await expect(decision).toBeVisible({ timeout: 15_000 });
-  await decision.getByRole('button', { name: 'Approve' }).click();
+  await decision.getByRole('button', { name: 'Continue with this version' }).click();
   const final = page.locator('[data-testid^="approval-"]').filter({ hasText: 'Final output' });
   await expect(final).toBeVisible();
-  await final.getByRole('button', { name: 'Approve' }).click();
+  await final.getByRole('button', { name: 'Confirm as final result' }).click();
   await expect(page.getByTestId('run-status')).toContainText('Succeeded');
   await expect(page.locator('[data-testid^="approval-"]')).toHaveCount(0);
   expect(errors).toEqual([]);

@@ -39,10 +39,10 @@ test('[TC-RUN-003-H] [TC-ART-004-H] [TC-OBS-001-H] a review loop revises the dra
   await expect(page.getByTestId('review-verdict')).toContainText('Revise');
   await expect(page.getByTestId('review-verdict')).toContainText(parentId ?? 'missing');
 
-  await card.getByRole('button', { name: 'Approve' }).click();
+  await card.getByRole('button', { name: 'Continue with this version' }).click();
   const final = page.locator('[data-testid^="approval-"]').filter({ hasText: 'Final output' });
   await expect(final).toBeVisible();
-  await final.getByRole('button', { name: 'Approve' }).click();
+  await final.getByRole('button', { name: 'Confirm as final result' }).click();
   await expect(page.getByTestId('run-status')).toContainText('Succeeded');
   await expect(page.getByTestId('run-output')).toBeVisible();
   expect(corral.errors).toEqual([]);

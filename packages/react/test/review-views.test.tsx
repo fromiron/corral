@@ -88,7 +88,12 @@ describe('approvals and reviews in Studio (C-029, C-030)', () => {
     await waitFor(() =>
       expect(card).toHaveTextContent(researchTeam.input.criteria[0] ?? 'missing'),
     );
-    fireEvent.click(within(card).getByRole('button', { name: 'Approve' }));
+    // UX-11: the approve button names what approving this step does.
+    fireEvent.click(
+      within(card).getByRole('button', {
+        name: /^(Continue with this version|Confirm as final result|Review once more)$/,
+      }),
+    );
     await until(session, (p) => p.approvals[approval?.approvalId ?? '']?.status === 'approved');
     await until(session, (p) => Object.values(p.approvals).some((a) => a.kind === 'final_output'));
   });
