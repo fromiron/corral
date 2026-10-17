@@ -131,8 +131,14 @@ export interface LiveModels {
 /** Simulated agents for mock runs, real ones for live runs (fixed per run in its snapshot). */
 function routeByMode(mock: AgentAdapter, live: AgentAdapter | null): AgentAdapter {
   return {
-    start: (input, host) => {
-      if (input.mode === 'mock') return mock.start(input, host);
+    start: async (input, host) => {
+      if (input.mode === 'mock') {
+        if (input.harness) {
+          if (!host.simulateHarness) throw new Error('harness simulation is unavailable');
+          await host.simulateHarness();
+        }
+        return mock.start(input, host);
+      }
       if (!live) return Promise.reject(new Error('this server has no live model connection'));
       return live.start(input, host);
     },

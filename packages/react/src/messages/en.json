@@ -210,7 +210,7 @@
     },
     "streamGap": "(some text was missed; the full output appears when it is submitted)",
     "agents": "Agents",
-    "modeMock": "Simulated (no model calls)",
+    "modeMock": "Simulated (no model or extension calls)",
     "modeLive": "Live models (uses your sign-in)",
     "reason": "Reason: {reason}",
     "completedResponse": "Last completed response",
@@ -218,7 +218,8 @@
     "newRunFromResult": "New run from this result",
     "startFrom": "The next run starts from {label} of run {runId}: its text is added to the brief.",
     "clearStartFrom": "Clear",
-    "item": "Item {index} of {total}"
+    "item": "Item {index} of {total}",
+    "harnessSimulation": "Simulated flow only. Skills, extensions and workspace tools were not executed."
   },
   "Reins": {
     "heading": "Reins",

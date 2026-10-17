@@ -3739,7 +3739,7 @@ export class Coordinator {
     const agent: Actor = { kind: 'agent', id: executionId };
     let lastCall: { modelCallId: string; contextSnapshotId: string; effectId: string } | null =
       null;
-    let harnessState: 'unloaded' | 'loaded' | 'failed' = 'unloaded';
+    let harnessState: 'unloaded' | 'loaded' | 'simulated' | 'failed' = 'unloaded';
     let toolsRevision = 1;
     const descriptors = new Map<string, ToolDescriptor>();
     const validateDescriptors = (tools: ToolDescriptor[]) => {
@@ -3783,6 +3783,7 @@ export class Coordinator {
     const recordedPayloads = new Set<string>();
     const toolView = (proposal: ToolProposal): ToolGateView => ({
       ...this.toolView(run, input, proposal),
+      ...(harnessState === 'simulated' ? { simulation: true } : {}),
       ...(descriptors.has(proposal.name) ? { descriptor: descriptors.get(proposal.name)! } : {}),
     });
 
@@ -3824,7 +3825,8 @@ export class Coordinator {
       proposal: ToolProposal,
       automatic = false,
     ): Promise<ToolAuthorization> => {
-      if (harness && harnessState !== 'loaded') throw new Error('harness not loaded');
+      if (harness && harnessState !== 'loaded' && harnessState !== 'simulated')
+        throw new Error('harness not loaded');
       // A caller cannot change the approved object while awaiting execution.
       if (harness) proposal = JSON.parse(canonicalJson(proposal)) as ToolProposal;
       const questionId = proposal.name === 'reply' ? proposal.args.questionId : null;
@@ -4175,6 +4177,8 @@ export class Coordinator {
             },
             recordProviderPayload: async (raw: ProviderPayloadRecord) => {
               requireActive();
+              if (harnessState === 'simulated')
+                throw new Error('simulation cannot report a provider payload');
               const record = ProviderPayloadRecord.parse(raw);
               const call = run.projection.modelCalls[record.modelCallId];
               if (
@@ -4195,6 +4199,19 @@ export class Coordinator {
                   ? [{ directiveId: id, text: d.text }]
                   : [];
               }),
+            simulateHarness: async () => {
+              requireActive();
+              if (input.mode !== 'mock' || harnessState !== 'unloaded')
+                throw new Error('unexpected harness simulation');
+              this.commit(run, [
+                {
+                  type: 'harness.simulated',
+                  executionId,
+                  payload: { snapshotHash: harness.snapshotHash },
+                },
+              ]);
+              harnessState = 'simulated';
+            },
             reportHarness: async (raw: HarnessReport) => {
               requireActive();
               const report = HarnessReport.parse(raw);
@@ -4333,8 +4350,12 @@ export class Coordinator {
           }
         : {}),
       prepareModelRequest: async (rawRecord?: ModelRequestRecord): Promise<RequestPermit> => {
-        if (harness && harnessState !== 'loaded') throw new Error('harness not loaded');
-        if (harness && !rawRecord) throw new Error('SDK request record is required');
+        if (harness && harnessState !== 'loaded' && harnessState !== 'simulated')
+          throw new Error('harness not loaded');
+        if (harness && harnessState === 'loaded' && !rawRecord)
+          throw new Error('SDK request record is required');
+        if (harnessState === 'simulated' && rawRecord)
+          throw new Error('simulation cannot report an SDK request');
         const record = rawRecord ? ModelRequestRecord.parse(rawRecord) : undefined;
         if (record && !harness) throw new Error('unexpected SDK request record');
         for (const id of record?.directiveIds ?? []) {

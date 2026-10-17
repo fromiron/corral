@@ -298,5 +298,10 @@
     "type": "harness.tools_updated",
     "requiredContent": "snapshotHash,revision,tools (no paths or bodies)",
     "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "harness.simulated",
+    "requiredContent": "snapshotHash (declared settings only, no SDK loading claim)",
+    "status": "payload_schema_to_implement"
   }
 ]

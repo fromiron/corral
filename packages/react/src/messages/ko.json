@@ -210,7 +210,7 @@
     },
     "streamGap": "(일부 텍스트를 놓쳤습니다. 제출되면 전체 출력이 보입니다)",
     "agents": "에이전트",
-    "modeMock": "시뮬레이션(모델 호출 없음)",
+    "modeMock": "모의 실행 (모델·확장 호출 없음)",
     "modeLive": "실제 모델(본인 로그인 사용)",
     "reason": "이유: {reason}",
     "completedResponse": "마지막으로 끝난 응답",
@@ -218,7 +218,8 @@
     "newRunFromResult": "이 결과에서 새 Run",
     "startFrom": "다음 Run은 {runId} Run의 {label}에서 시작합니다. 그 본문이 브리프에 붙습니다.",
     "clearStartFrom": "지우기",
-    "item": "항목 {index}/{total}"
+    "item": "항목 {index}/{total}",
+    "harnessSimulation": "기본 흐름만 모의 실행했습니다. 스킬·확장·작업 사본 도구는 실행하지 않았습니다."
   },
   "Reins": {
     "heading": "Reins",

@@ -578,6 +578,10 @@ export const DecisionFailed = event(
 );
 
 export const HarnessLoaded = event('harness.loaded', HarnessReport.options[0].omit({ ok: true }));
+export const HarnessSimulated = event(
+  'harness.simulated',
+  z.strictObject({ snapshotHash: ContentHash }),
+);
 export const HarnessToolsUpdated = event(
   'harness.tools_updated',
   HarnessToolsUpdate.omit({ expectedRevision: true }).extend({ revision: z.int().min(2) }),
@@ -629,6 +633,7 @@ export const RunEvent = z.discriminatedUnion('type', [
   ExtensionUiExpired,
   ExtensionUiNotified,
   HarnessLoaded,
+  HarnessSimulated,
   HarnessToolsUpdated,
   HarnessLoadFailed,
   ModelRequestRecorded,

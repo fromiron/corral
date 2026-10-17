@@ -160,6 +160,7 @@ export interface AgentHost {
   prepareModelRequest(record?: ModelRequestRecord): Promise<RequestPermit>;
   /** SDK-only: unsupported hosts must refuse SDK execution. */
   reportHarness?(report: HarnessReport): Promise<void>;
+  simulateHarness?(): Promise<void>;
   updateHarnessTools?(update: HarnessToolsUpdate): Promise<void>;
   requestExtensionUi?(
     request: ExtensionUiRequest,

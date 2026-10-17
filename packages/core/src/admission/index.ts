@@ -61,6 +61,7 @@ export interface ModelGateView {
 }
 
 export interface ToolGateView extends ModelGateView {
+  simulation?: boolean;
   /** Only the owning batch may exclude its open effect when rechecking the next item. */
   currentEffectId?: string;
   harnessRead?: boolean;
@@ -331,7 +332,21 @@ const roleAllowlist: Gate<ToolGateView> = {
       )
         return denied('item delegation requires pending tools to settle');
     }
-    if (input.harness && !view.descriptor) return denied('tool is absent from the loaded harness');
+    if (
+      view.simulation &&
+      ![
+        'write_artifact',
+        'submit_result',
+        'spawn_subagents',
+        'await_tasks',
+        'ask',
+        'reply',
+        'read_artifact',
+      ].includes(proposal.name)
+    )
+      return denied('this tool needs an actual harness execution');
+    if (input.harness && !view.descriptor && !view.simulation)
+      return denied('tool is absent from the loaded harness');
     if (input.harness && !input.harness.allowedTools.includes(proposal.name))
       return denied('tool is not allowed by this harness');
     if (view.descriptor?.source.startsWith('extension:')) {

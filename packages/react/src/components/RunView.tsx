@@ -31,6 +31,9 @@ export function RunView({
   const startError = useStore(session, (s) => s.startError);
   const streamError = useStore(session, (s) => s.streamError);
   const streams = useStore(session, (s) => s.streams);
+  const simulatedHarness = useStore(session, (s) =>
+    s.events.some((event) => event.type === 'harness.simulated'),
+  );
   const labelOf = (nodeId: string) =>
     definition?.nodes.find((n) => n.id === nodeId)?.label ?? nodeId;
 
@@ -49,6 +52,7 @@ export function RunView({
       {projection ? (
         <>
           <RunActions key={projection.runId} session={session} />
+          {simulatedHarness ? <p className="text-xs text-muted">{t('harnessSimulation')}</p> : null}
           <BudgetInspector session={session} prices={prices} />
           <HarnessDetails session={session} />
           <div className="flex items-center gap-2 text-xs">

@@ -763,6 +763,7 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
     // they are kept in the log only.
     case 'tool.allowed':
     case 'harness.loaded':
+    case 'harness.simulated':
     case 'harness.tools_updated':
     case 'recipe.evaluated':
     case 'recipe.stopped':
