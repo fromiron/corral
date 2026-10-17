@@ -1,4 +1,10 @@
-import { canonicalJson, CorralDefinition, type ReviewRecipeRevision } from '@corral/contracts';
+import {
+  CorralDefinition,
+  canonicalJson,
+  type ReviewRecipeRevision,
+  type EffectiveHarnessSnapshot,
+  type VerificationReport,
+} from '@corral/contracts';
 import {
   FakeClock,
   Gate,
@@ -8,11 +14,12 @@ import {
 } from '@corral/testkit';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import team from '../../../examples/research-team.corral.json' with { type: 'json' };
 import {
-  compileDefinition,
   Coordinator,
+  type CoordinatorDeps,
+  compileDefinition,
   InMemoryRunStore,
   InProcessTransport,
   waitForProjection,
@@ -20,10 +27,12 @@ import {
 
 function fixture(overrides: Partial<ReviewRecipeRevision> = {}) {
   const definition = CorralDefinition.parse(team);
-  definition.entryNodeId = 'review_loop';
-  definition.roles = definition.roles.filter((role) => ['writer', 'reviewer'].includes(role.id));
+  definition.entryNodeId = 'research';
+  definition.roles = definition.roles.filter((role) =>
+    ['researcher', 'writer', 'reviewer'].includes(role.id),
+  );
   definition.nodes = definition.nodes.filter((node) =>
-    ['review_loop', 'write', 'review', 'review_decision', 'output'].includes(node.id),
+    ['research', 'review_loop', 'write', 'review', 'review_decision', 'output'].includes(node.id),
   );
   definition.capabilityLinks = [];
   definition.controlEdges = definition.controlEdges.filter(
@@ -68,21 +77,54 @@ function fixture(overrides: Partial<ReviewRecipeRevision> = {}) {
   Object.assign(loop, { reviewRecipe: recipe });
   return definition;
 }
-function runtime(definition = fixture(), options: Partial<ScriptedAgentOptions> = {}) {
+function runtime(
+  definition = fixture(),
+  options: Partial<ScriptedAgentOptions> = {},
+  deps: Partial<CoordinatorDeps> = {},
+) {
   const clock = new FakeClock(),
     store = new InMemoryRunStore();
+  const agent = new ScriptedAgentAdapter({
+    turns: 1,
+    collaborate: false,
+    appendNotes: false,
+    reply: (_turn, input) => `${input.nodeId} candidate ${input.round}`,
+    ...options,
+  });
   const coordinator = new Coordinator({
     clock,
     timers: clock,
     store,
     ids: new SequentialIdFactory(),
-    agents: new ScriptedAgentAdapter({
-      turns: 1,
-      collaborate: false,
-      appendNotes: false,
-      reply: (_turn, input) => `${input.nodeId} candidate ${input.round}`,
-      ...options,
-    }),
+    ...deps,
+    agents: {
+      start: async (input, host) => {
+        if (!input.harness) return agent.start(input, host);
+        await host.reportHarness!({
+          ok: true,
+          snapshotHash: input.harness.snapshotHash,
+          tools: input.harness.allowedTools.map((name) => ({
+            name,
+            source: 'corral',
+            schemaHash: 'b'.repeat(64),
+            exposure: 'direct',
+            sideEffect: name === 'run_check' ? 'external' : 'none',
+          })),
+          diagnostics: [],
+        });
+        return agent.start(input, {
+          ...host,
+          prepareModelRequest: () =>
+            host.prepareModelRequest({
+              purpose: 'turn',
+              directiveIds: [],
+              contextHash: 'c'.repeat(64),
+              contextBytes: 10,
+              sections: [],
+            }),
+        });
+      },
+    },
   });
   const transport = new InProcessTransport(coordinator);
   const result = coordinator.startRun({
@@ -97,6 +139,148 @@ function runtime(definition = fixture(), options: Partial<ScriptedAgentOptions> 
 }
 const terminal = (status: string) => ['succeeded', 'failed', 'cancelled'].includes(status);
 describe('bounded review recipes (H6)', () => {
+  function checked(verdicts: ('pass' | 'fail' | 'error' | 'stale')[], changeTree = true) {
+    const definition = fixture({ checkIds: ['types'] }),
+      writer = definition.roles.find((role) => role.id === 'writer');
+    if (!writer) throw new Error('missing writer');
+    writer.harness = { profileId: 'checked', revision: 1 };
+    const selected: EffectiveHarnessSnapshot = {
+      binding: writer.harness,
+      snapshotHash: 'a'.repeat(64),
+      piVersion: '1.3.0',
+      policyRevision: 1,
+      policy: 'strict',
+      allowedTools: ['write_artifact', 'submit_result', 'run_check'],
+      resources: [],
+      tools: [],
+      diagnostics: [],
+      projectTools: {
+        projectId: 'default',
+        revision: 1,
+        hash: 'b'.repeat(64),
+        checkIds: ['types'],
+        lspServerIds: [],
+      },
+    };
+    let count = 0,
+      tree = '1'.repeat(40);
+    const runCheck = vi.fn<NonNullable<NonNullable<CoordinatorDeps['files']>['runCheck']>>(
+      async (input, plan) => {
+        const verdict = verdicts[count++] ?? 'pass';
+        const report: VerificationReport = {
+          verificationId: `check_${count}`,
+          owner: {
+            kind: 'execution',
+            runId: input.runId,
+            executionId: input.executionId,
+            attemptNo: input.attemptNo,
+            effectId: input.effectId,
+          },
+          sessionId: 'session',
+          commandId: 'types',
+          configRevision: 1,
+          fingerprint: plan.fingerprint,
+          tree: plan.tree,
+          state: verdict === 'error' ? 'error' : 'completed',
+          verdict: verdict === 'pass' ? 'pass' : verdict === 'fail' ? 'fail' : 'inconclusive',
+          exitCode: verdict === 'fail' ? 1 : 0,
+          signal: null,
+          timedOut: false,
+          cleanupConfirmed: true,
+          targetUnchanged: true,
+          durationMs: 1,
+          startedAt: '2026-10-18T00:00:00.000Z',
+          endedAt: '2026-10-18T00:00:00.001Z',
+          retainUntil: '2026-10-25T00:00:00.000Z',
+          output: { text: verdict, bytes: 1, hash: 'e'.repeat(64), truncated: false },
+        };
+        return { ...report, stale: verdict === 'stale' };
+      },
+    );
+    const s = runtime(
+      definition,
+      { review: () => 'pass' },
+      {
+        harnesses: { resolve: () => selected },
+        files: {
+          available: () => true,
+          execute: async () => ({}),
+          planCheck: async () => {
+            if (changeTree) tree = String(count + 1).repeat(40);
+            return {
+              commandId: 'types',
+              name: 'Types',
+              argv: ['node', 'check.mjs'],
+              timeoutMs: 1000,
+              configRevision: 1,
+              fingerprint: 'd'.repeat(64),
+              tree,
+              trusted: true,
+            };
+          },
+          runCheck,
+          currentTreeForRun: async () => tree,
+        },
+      },
+    );
+    return { ...s, runCheck };
+  }
+  it('[TC-HAR-014-H] automatically checks each submission and a failed check overrides a passing review', async () => {
+    const s = checked(['fail', 'pass']);
+    const final = await waitForProjection(s.transport, s.runId, (p) => terminal(p.status));
+    expect(final.status).toBe('succeeded');
+    expect(final.nodeExecutions.write).toHaveLength(2);
+    expect(s.runCheck).toHaveBeenCalledTimes(2);
+    expect(
+      s
+        .events()
+        .filter((event) => event.type === 'recipe.evaluated')
+        .map((event) => event.payload),
+    ).toMatchObject([
+      { verdict: 'revise', checkReportIds: ['check_1'] },
+      { verdict: 'pass', checkReportIds: ['check_2'] },
+    ]);
+    expect(
+      s
+        .events()
+        .filter((event) => event.type === 'tool.requested' && event.payload.name === 'run_check')
+        .every((event) => event.actor.kind === 'runtime'),
+    ).toBe(true);
+  });
+  it.each([
+    ['error', 'check_error'],
+    ['stale', 'check_stale'],
+  ] as const)(
+    '[TC-HAR-014-N] %s checks stop without a passing review or generic approval',
+    async (result, reason) => {
+      const s = checked([result]);
+      const final = await waitForProjection(
+        s.transport,
+        s.runId,
+        (p) => terminal(p.status) || p.status === 'awaiting_user',
+      );
+      expect(final.status).toBe('failed');
+      expect(final.nodeExecutions.review ?? []).toHaveLength(0);
+      expect(
+        s
+          .events()
+          .some((event) => event.type === 'recipe.stopped' && event.payload.reason === reason),
+      ).toBe(true);
+    },
+  );
+  it('[TC-HAR-014-N] the same failed check against an unchanged tree stops even when the report prose changes', async () => {
+    const s = checked(['fail', 'fail'], false);
+    const final = await waitForProjection(s.transport, s.runId, (p) => terminal(p.status));
+    expect(final.status).toBe('failed');
+    expect(s.runCheck).toHaveBeenCalledTimes(2);
+    expect(
+      s
+        .events()
+        .some(
+          (event) => event.type === 'recipe.stopped' && event.payload.reason === 'repeated_failure',
+        ),
+    ).toBe(true);
+  });
   it('[TC-HAR-014-H] compiles the existing loop and validates the fixed criteria and evaluator', () => {
     expect(compileDefinition(fixture()).ok).toBe(true);
     expect(compileDefinition(fixture({ criteriaHash: 'a'.repeat(64) })).ok).toBe(false);
@@ -173,7 +357,7 @@ describe('bounded review recipes (H6)', () => {
     const s = runtime(fixture({ maxModelCalls: 1 }));
     const final = await waitForProjection(s.transport, s.runId, (p) => terminal(p.status));
     expect(final.status).toBe('failed');
-    expect(final.budget.modelCalls).toBe(1);
+    expect(final.budget.modelCalls).toBe(2);
     expect(
       s
         .events()
@@ -182,7 +366,8 @@ describe('bounded review recipes (H6)', () => {
     const entered = new Gate(),
       release = new Gate();
     const timed = runtime(fixture({ maxWallMs: 1000 }), {
-      beforeReply: async () => {
+      beforeReply: async (_turn, input) => {
+        if (input.nodeId !== 'write') return;
         entered.open();
         await release.wait();
       },
@@ -202,7 +387,8 @@ describe('bounded review recipes (H6)', () => {
     const entered = new Gate(),
       release = new Gate();
     const s = runtime(fixture({ maxAttempts: 2 }), {
-      beforeReply: async () => {
+      beforeReply: async (_turn, input) => {
+        if (input.nodeId !== 'write') return;
         entered.open();
         await release.wait();
       },
