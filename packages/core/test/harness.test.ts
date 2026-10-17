@@ -41,7 +41,7 @@ const record: ModelRequestRecord = {
   contextBytes: 250,
   sections: [],
 };
-function setup(resolve = true) {
+function setup(resolve = true, selected = snapshot) {
   const started = new Gate();
   const done = new Gate();
   const store = new InMemoryRunStore();
@@ -54,7 +54,8 @@ function setup(resolve = true) {
     ...(resolve
       ? {
           harnesses: {
-            resolve: () => JSON.parse(JSON.stringify(snapshot)) as EffectiveHarnessSnapshot,
+              resolve: () => JSON.parse(JSON.stringify(selected)) as EffectiveHarnessSnapshot,
+              readSkill: () => ({ text: 'first\nsecond\nthird', sha256: 'e'.repeat(64) }),
           },
         }
       : {}),
@@ -105,6 +106,20 @@ async function loaded() {
 }
 
 describe('Coordinator harness boundary (H2)', () => {
+  it('[TC-HAR-005-H] [TC-HAR-005-N] read uses the skill broker and cannot read an unbound skill or worktree without role permission', async () => {
+    const selected: EffectiveHarnessSnapshot = { ...snapshot, policy: 'strict', allowedTools: ['read'], resources: [{ hash: 'c'.repeat(64), name: 'fixture', version: '1.0.0', kind: 'skill', required: true, entry: 'skills/writing/SKILL.md', skillName: 'writing', skillMode: 'auto' }] };
+    const s = setup(true, selected);
+    await s.started.wait();
+    await s.host().reportHarness!({ ok: true, snapshotHash: selected.snapshotHash, tools: [{ ...descriptor, name: 'read', source: 'corral' }], diagnostics: [] });
+    const result = await s.host().invokeTool({ name: 'read', args: { path: 'skills/writing/SKILL.md', offset: 2, limit: 1 } });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.result).toMatchObject({ text: 'first\nsecond\nthird', sha256: 'e'.repeat(64) });
+    for (const path of ['skills/other/SKILL.md', 'skills/writing/../other', 'source.ts', '/etc/passwd'])
+      expect((await s.host().authorizeTool({ name: 'read', args: { path } })).ok).toBe(false);
+    const outOfRange = await s.host().invokeTool({ name: 'read', args: { path: 'skills/writing/SKILL.md', offset: 20 } });
+    expect(outOfRange.ok).toBe(false);
+    s.done.open();
+  });
   it('[TC-HAR-009-N] rejects an unresolved profile before creating a Run', () => {
     const s = setup(false);
     expect(s.result.runId).toBeNull();
@@ -155,8 +170,19 @@ describe('Coordinator harness boundary (H2)', () => {
   it('[TC-HAR-008-N] the harness allowlist also restricts Corral tools the role normally allows', async () => {
     const s = setup();
     await s.started.wait();
-    await s.host().reportHarness!({ ok: true, snapshotHash: snapshot.snapshotHash, tools: [descriptor, { ...descriptor, name: 'write_artifact', source: 'corral' }], diagnostics: [] });
-    expect((await s.host().authorizeTool({ name: 'write_artifact', args: { text: 'not allowed by this profile' } })).ok).toBe(false);
+    await s.host().reportHarness!({
+      ok: true,
+      snapshotHash: snapshot.snapshotHash,
+      tools: [descriptor, { ...descriptor, name: 'write_artifact', source: 'corral' }],
+      diagnostics: [],
+    });
+    expect(
+      (
+        await s
+          .host()
+          .authorizeTool({ name: 'write_artifact', args: { text: 'not allowed by this profile' } })
+      ).ok,
+    ).toBe(false);
     s.done.open();
   });
 
@@ -217,14 +243,12 @@ describe('Coordinator harness boundary (H2)', () => {
     expect(queued).toHaveLength(1);
     const first = await s.host().prepareModelRequest(record);
     expect(first.directives).toEqual([]);
-    await s
-      .host()
-      .observe({
-        kind: 'model_completed',
-        modelCallId: first.modelCallId,
-        text: '',
-        usage: { inputTokens: 1, outputTokens: 1 },
-      });
+    await s.host().observe({
+      kind: 'model_completed',
+      modelCallId: first.modelCallId,
+      text: '',
+      usage: { inputTokens: 1, outputTokens: 1 },
+    });
     const second = await s
       .host()
       .prepareModelRequest({ ...record, directiveIds: queued.map((d) => d.directiveId) });
