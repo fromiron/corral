@@ -173,15 +173,36 @@ function runtime(
 }
 
 describe('SDK worker through the product adapter (H2)', () => {
-  it('[TC-HAR-017-H] uses Pi codemode to invoke a Corral tool through the owned nested approval',async()=>{
-    const proposals:unknown[]=[];
-    const run=runtime([
-      fauxAssistantMessage([fauxToolCall('codemode',{code:'const result = await tools.write_artifact({text:"codemode output"}); text(result);'})],{stopReason:'toolUse'}),
-      fauxAssistantMessage('done'),
-    ],'',{authorizeTool:async proposal=>{proposals.push(proposal);return {ok:true,toolCallId:'owned_'+proposals.length};}});
-    run.input.harness!.allowedTools=['codemode','write_artifact'];
-    expect(await(await run.adapter.start(run.input,run.host)).waitForSettlement()).toMatchObject({outcome:'succeeded'});
-    expect(proposals).toEqual([{name:'codemode',args:{code:expect.any(String)}},{name:'write_artifact',args:{text:'codemode output'},parentToolCallId:'owned_1'}]);
+  it('[TC-HAR-017-H] uses Pi codemode to invoke a Corral tool through the owned nested approval', async () => {
+    const proposals: unknown[] = [];
+    const run = runtime(
+      [
+        fauxAssistantMessage(
+          [
+            fauxToolCall('codemode', {
+              code: 'const result = await tools.write_artifact({text:"codemode output"}); text(result);',
+            }),
+          ],
+          { stopReason: 'toolUse' },
+        ),
+        fauxAssistantMessage('done'),
+      ],
+      '',
+      {
+        authorizeTool: async (proposal) => {
+          proposals.push(proposal);
+          return { ok: true, toolCallId: 'owned_' + proposals.length };
+        },
+      },
+    );
+    run.input.harness!.allowedTools = ['codemode', 'write_artifact'];
+    expect(await (await run.adapter.start(run.input, run.host)).waitForSettlement()).toMatchObject({
+      outcome: 'succeeded',
+    });
+    expect(proposals).toEqual([
+      { name: 'codemode', args: { code: expect.any(String) } },
+      { name: 'write_artifact', args: { text: 'codemode output' }, parentToolCallId: 'owned_1' },
+    ]);
     expect(JSON.stringify(run.reports)).toContain('extension:pi-codemode@1.3.0');
   });
   it('[TC-HAR-017-H] maps nested Pi calls to the owning Corral native call', async () => {

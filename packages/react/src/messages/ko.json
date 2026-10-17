@@ -1803,7 +1803,9 @@
     "keepRoleStyle": "역할 설정 유지",
     "promptUnavailable": "확장 요청을 불러오지 못했습니다. 요청을 닫거나 다시 시도하세요.",
     "retryPrompt": "요청 다시 불러오기",
-    "toolsUpdated": "도구 등록 revision {revision}"
+    "toolsUpdated": "도구 등록 revision {revision}",
+    "codemode": "Pi 코드 모드 사용",
+    "codemodeHint": "허용된 도구를 JavaScript 샌드박스에서 조합합니다. 신뢰한 네이티브 정책이 필요하며 종료 중인 작업을 포함해 전체 실행 스레드를 2개로 제한합니다. 스크립트의 직접 모델 호출은 제공하지 않습니다."
   },
   "Recipe": {
     "heading": "검토 규칙",

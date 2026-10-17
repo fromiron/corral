@@ -603,6 +603,23 @@ export function HarnessSettingsPage() {
               ))}
               <details>
                 <summary className="cursor-pointer text-sm">{t('allowedTools')}</summary>
+                <label className="mt-2 flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={profile.allowedTools.includes('codemode')}
+                    disabled={profile.policy !== 'trusted-native'}
+                    onChange={(event) =>
+                      setToolNames(
+                        [
+                          ...profile.allowedTools.filter((name) => name !== 'codemode'),
+                          ...(event.target.checked ? ['codemode'] : []),
+                        ].join(', '),
+                      )
+                    }
+                  />
+                  {t('codemode')}
+                </label>
+                <p className="text-xs text-muted">{t('codemodeHint')}</p>
                 <label className="mt-2 flex flex-col gap-1 text-sm">
                   {t('allowedTools')}
                   <textarea

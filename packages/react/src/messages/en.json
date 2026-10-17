@@ -1803,7 +1803,9 @@
     "keepRoleStyle": "Keep role settings",
     "promptUnavailable": "The extension prompt could not be loaded. Dismiss it or try again.",
     "retryPrompt": "Retry prompt",
-    "toolsUpdated": "Tool registry revision {revision}"
+    "toolsUpdated": "Tool registry revision {revision}",
+    "codemode": "Enable Pi codemode",
+    "codemodeHint": "Combines allowed tools in a JavaScript sandbox. Requires trusted native policy. At most two workers may run or shut down across executions. Direct model access from scripts is disabled."
   },
   "Recipe": {
     "heading": "Review recipe",

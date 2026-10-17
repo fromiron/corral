@@ -1,5 +1,7 @@
 # 개인 하네스 작업 인계 (H1 완료 시점)
 
+> 최신 진행: 2026-10-18 H2–H8 연속 구현 중. 아래 H1 시점 기록은 역사이며 작업 범위를 H1로 줄이지 않는다. 사용자 요청은 R2/R3 전체와 마지막 Computer Use까지다.
+
 - 작성: Claude / 2026-10-17. 앞 세션의 사용량이 다 되어 다른 작업자에게 넘긴다.
 - 브랜치: `feat/harness-h1`(push 완료). **PR은 아직 열지 않았다.**
 - 기준: main `f17338f`(PR #54 병합). 브랜치 커밋은 3개다.
@@ -204,3 +206,18 @@ CORRAL_SPIKE_NODE=~/.local/share/fnm/node-versions/v24.19.0/installation/bin/nod
 - Loop Inspector에서 후보/검토 역할, 생성·수정·시간(초)·호출·토큰 한도, 등록 검사와 기준 파일을 선택해 새 recipe revision을 고정한다. 기존 definition 저장·이력 경로를 재사용한다. 기준 파일은 프로젝트 범위 API가 현재 hash를 읽으며 임의 절대경로를 받지 않는다.
 - Run에는 회차별 규칙 판정·검사 수·대상 tree·후보/검토 링크와 중단 이유를 표시한다. Inbox는 현재 세션의 최신 실행이 규칙 때문에 중단됐을 때 이유를 보여준다. 과거 중단은 Run에 남고 새 실행 뒤에는 현재 Inbox에 계속 쌓이지 않는다.
 - Studio/server/client/react typecheck, 관련 UI/파일/locale 52 tests, 1,250 spec checks(162/175 tagged) 통과. 브라우저 E2E: Loop 규칙 고정→definition 저장→mock 실행→시도 한도 중단→Run/Inbox 이유 표시 통과. H6 eval/Hashline 비교·추가 통합 경계와 H7–H8은 계속 진행한다.
+
+### H6 평가·H7·H8 기반 체크포인트 (2026-10-18)
+
+- H6 `corral eval`에 고정 정답(exact/includes/JSON), calibration/holdout 분리, 잘못된 통과/불필요한 반려, SDK retry/실행 재시작/수정 회차/사용자 개입 계측을 추가했다. 정의·하네스·recipe 해시와 실제 시작한 도구를 기록한다. 파일 비교는 지정한 전체 Git commit에서 과제×변형마다 새 세션/사본을 만든다. CLI 21 tests 및 파일/CLI 33 tests 통과. 실제 5개 비교군의 종합 fixture 실행·H4 Hashline 실험은 아직 남았다.
+- H7은 기존 `spawn_subagents`의 `mode: "items"`로 구현했다. 1–4개 항목을 순차 실행하고 각 Task/Execution에 batch/index/total을 기록한다. 항목 brief+고정 기준만 전달하며 원래 node binding과 이전 Loop artifact 계보를 섞지 않는다. 부모 예산/깊이/취소/일시정지, 실패 시 미시작 항목 중단, 다른 실행과 동시 시작 거절, 등록된 SDK 도구 권한 재검사를 확인했다. UI에 항목 번호를 표시한다. H7 core 6 tests와 실제 SDK prompt/도구 schema 테스트 통과.
+- H8 기반: 필수 확장의 실행 중 hook 실패가 성공으로 끝나던 오류를 실제 SDK에서 재현·수정했다. 동적 도구 등록은 host에 증가 revision으로 보고하고 schema/source가 달라지면 이전 승인을 거절한다. 중첩 호출의 Pi parent ID를 현재 Corral native effect로 변환하고, 부모 종료 후 시작 거절 및 진행 중 broker 도구 취소를 연결했다. 이 시점 회귀 551 passed/2 opt-in skipped, 뒤의 중첩 호출 52 tests 통과.
+- codemode 공개 factory에 실제 Worker exit 관찰자를 전달하는 최소 pnpm patch를 추가했다(기존 pi-codemode 공개 콜백 재사용). host 상한과 실제 종료 후 반환을 연결하고 설정에 명시적 codemode 토글을 추가했다. 현재 Pro 추가 검토 진행 중이며 아직 H8 완료가 아니다.
+- 남은 필수 범위: MCP 설정·신뢰·OAuth·수명/실제 managed cwd, LSP rename/code action의 불변 제안과 명시 적용, H4 Hashline 비교, H6 다섯 조건의 실제 로컬 fixture 비교, mock+harness 동작 확인, 최종 통합/desktop staging/Computer Use, 묶음 PR 및 허용된 병합 lifecycle. Windows 자손 종료는 현재 미지원/미검증 경계다.
+
+### codemode Pro 추가 검토 완료
+
+- 같은 Oracle 대화에서 Pro(5/5)로 7분 5초 검토를 완료했다. `/tmp/corral-harness-oracle/codemode-pro-review.txt`와 `codemode-pro-review.png`. 최소 callback 전달 patch를 권고했다. Node diagnostics_channel의 실험적 worker 관측 대안도 있지만, 직접 전달이 더 국소적이라는 의견이다.
+- 상한의 증명은 실제 생성~exit 구간 <= 미반환 host lease <=2다. 도구 호출당 실제 Worker 한 개, 성공한 생성의 callback 누락 없음, 미생성과 미관측 구별, 중복/늦은 반환 및 SDK 프로세스 종료 정리가 필요하다.
+- **다음에 보강할 실제 빈틈:** `processChannel`이 PID가 있는 child의 error도 즉시 종료로 취급한다. 생성 실패와 살아 있는 프로세스 오류를 구별해야 한다. backend 재시작 시 이전 SDK 프로세스가 남는 경우도 새 capacity를 빈 상태로 시작하면 안 된다. 실행 시작 IPC 전에 PID/프로세스 정체성을 private 파일로 기록하고, 저장소 소유 lock 획득 후 이전 worker 종료를 확인하는 경로가 필요하다. Linux 로컬 테스트를 우선하며 확인되지 않은 종료는 lease를 반환하지 않는다.
+- 현재 codemode 관련 55 tests 및 서로 다른 execution의 공통 상한 테스트 통과. 넓은 회귀는 557 passed/2 skipped + 한국어 카탈로그 1건 실패였고 해당 영문 토큰을 번역한 뒤 locale 3 tests가 통과했다. production audit 0 advisories. 아직 최종 gate가 아니다.

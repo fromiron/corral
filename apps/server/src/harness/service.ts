@@ -397,6 +397,8 @@ export class HarnessService {
     const allowedTools = [...new Set(layers[0]?.profile.allowedTools ?? [])].filter((name) =>
       layers.every((layer) => layer.profile.allowedTools.includes(name)),
     );
+    if (policy === 'strict' && allowedTools.includes('codemode'))
+      throw new Error('codemode requires trusted-native policy');
     const selection = (key: 'checkIds' | 'lspServerIds') => {
       const specified = layers.flatMap((layer) => (layer.profile[key] ? [layer.profile[key]] : []));
       return [...new Set(specified[0] ?? [])].filter((id) =>

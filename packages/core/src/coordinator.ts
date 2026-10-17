@@ -457,6 +457,7 @@ export class Coordinator {
   private readonly files: FileTools | undefined;
   private readonly harnesses: HarnessResolver | undefined;
   private readonly live = new Map<string, LiveRun>();
+  private readonly codemodeWorkers = new Map<string, { runId: string; executionId: string }>();
   private readonly subscribers = new Set<Subscriber>();
   private storageError: string | null = null;
   private terminationUnconfirmed = false;
@@ -2682,6 +2683,10 @@ export class Coordinator {
         await Promise.allSettled(run.toolOutcomes.get(input.executionId) ?? []);
         run.handles.delete(input.executionId);
       }
+      if (settlement.terminationMode !== 'unconfirmed')
+        for (const [lease, owner] of this.codemodeWorkers)
+          if (owner.runId === run.runId && owner.executionId === input.executionId)
+            this.codemodeWorkers.delete(lease);
       return this.settle(run, input, effectId, settlement);
     })();
     run.taskOutcomes.set(input.taskId, outcome);
@@ -3745,10 +3750,16 @@ export class Coordinator {
         if (
           descriptor.source !== 'corral' &&
           (harness?.policy !== 'trusted-native' ||
-            !harness.resources.some(
-              (r) =>
-                r.kind === 'extension' && descriptor.source === `extension:${r.name}@${r.version}`,
-            ))
+            (!(
+              descriptor.source === 'extension:pi-codemode@1.3.0' &&
+              descriptor.name === 'codemode' &&
+              harness.allowedTools.includes('codemode')
+            ) &&
+              !harness.resources.some(
+                (r) =>
+                  r.kind === 'extension' &&
+                  descriptor.source === `extension:${r.name}@${r.version}`,
+              )))
         )
           throw new Error('unbound native tool');
       }
@@ -4269,6 +4280,10 @@ export class Coordinator {
                 runGates(this.gates['tool.execute'], toolView(call.proposal)),
               );
               if (refusal) throw new Error('native call refused');
+              const codemode =
+                descriptors.get(call.proposal.name)?.source === 'extension:pi-codemode@1.3.0';
+              if (codemode && this.codemodeWorkers.size >= 2)
+                throw new Error('codemode worker capacity reached');
               const effectId = this.ids.next('effect');
               this.commit(run, [
                 {
@@ -4290,6 +4305,7 @@ export class Coordinator {
               ]);
               call.ran = true;
               nativeEffects.set(toolCallId, effectId);
+              if (codemode) this.codemodeWorkers.set(effectId, { runId: run.runId, executionId });
             },
             finishNativeTool: async (toolCallId: string, outcome: 'succeeded' | 'failed') => {
               requireOwned();
@@ -4310,6 +4326,7 @@ export class Coordinator {
                 { type: 'effect.settled', executionId, payload: { effectId, outcome } },
               ]);
               nativeEffects.delete(toolCallId);
+              this.codemodeWorkers.delete(effectId);
               for (const listener of nativeCloseListeners.get(toolCallId) ?? []) listener();
               nativeCloseListeners.delete(toolCallId);
             },

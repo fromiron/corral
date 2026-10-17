@@ -25,6 +25,7 @@ import {
 import {
   type AgentSession,
   createAgentSession,
+  createCodemodeExtension,
   createEditToolDefinition,
   createReadToolDefinition,
   createSyntheticSourceInfo,
@@ -133,6 +134,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
     let registryUpdates = Promise.resolve();
     let registryRevision = 1;
     let reportedRegistryHash = '';
+    const codemodeExits = new Map<string, Promise<void>[]>();
     let failureCode: Extract<HarnessReport, { ok: false }>['code'] = 'sdk_start_failed';
     try {
       const model = deps.resolveModel(
@@ -142,7 +144,10 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
       );
       if (!model) throw new Error('model unavailable');
       failureCode = 'policy_denied';
-      if (start.harness.policy === 'strict' && start.resources.extensions.length)
+      if (
+        start.harness.policy === 'strict' &&
+        (start.resources.extensions.length || start.harness.allowedTools.includes('codemode'))
+      )
         throw new Error('native extensions need trust');
       for (const resource of start.resources.extensions) {
         if (
@@ -509,11 +514,15 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
         });
       };
       const wrapExtension = (extension: Extension) => {
-        const resource = start.resources.extensions.find(
-          (e) => resolve(e.path) === resolve(extension.path),
-        );
+        const codemode =
+          extension.path === '<inline:corral-codemode>' &&
+          start.harness.allowedTools.includes('codemode');
+        const resource = codemode
+          ? { source: 'extension:pi-codemode@1.3.0', hash: '' }
+          : start.resources.extensions.find((e) => resolve(e.path) === resolve(extension.path));
         if (!resource) throw new Error('unbound extension loaded');
         if (
+          codemode ||
           start.harness.resources.some(
             (ref) => ref.kind === 'extension' && ref.hash === resource.hash && ref.required,
           )
@@ -543,6 +552,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
           wrappedTools.add(definition);
           const execute = definition.execute;
           definition.execute = async (id, args, signal, update, ctx) => {
+            if (nativeParents.has(id)) throw new Error('duplicate active tool call');
             const auth = takeAuthorization(id, args);
             await ack({
               type: 'native_tool_start',
@@ -551,12 +561,19 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
             });
             nativeDepth++;
             nativeParents.set(id, auth.toolCallId);
+            const exits: Promise<void>[] = [];
+            if (codemode) codemodeExits.set(id, exits);
             let outcome: 'succeeded' | 'failed' = 'failed';
             try {
               const result = await execute(id, args, signal, update, ctx);
               outcome = 'succeeded';
               return result;
             } finally {
+              // Pi's result/close can precede Worker exit; keep the host lease until exit.
+              if (codemode) {
+                await Promise.all(exits);
+                codemodeExits.delete(id);
+              }
               nativeDepth--;
               nativeParents.delete(id);
               if (!cancelled)
@@ -595,6 +612,21 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
         systemPromptOverride: () => systemPrompt(start),
         appendSystemPromptOverride: () => [],
         extensionFactories: [
+          ...(start.harness.allowedTools.includes('codemode')
+            ? [
+                {
+                  name: 'corral-codemode',
+                  factory: createCodemodeExtension({
+                    models: false,
+                    onWorkerStarted: (id, exited) => {
+                      const exits = codemodeExits.get(id);
+                      if (!exits) throw new Error('unowned codemode worker');
+                      exits.push(exited);
+                    },
+                  }),
+                },
+              ]
+            : []),
           {
             name: 'corral',
             factory: (pi) => {
@@ -756,7 +788,12 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
       await notifications;
       if (requiredExtensionFailed) throw new Error('required extension initialization failed');
       session.setActiveToolsByName(
-        session.getActiveToolNames().filter((name) => start.harness.allowedTools.includes(name)),
+        [
+          ...new Set([
+            ...session.getActiveToolNames(),
+            ...(start.harness.allowedTools.includes('codemode') ? ['codemode'] : []),
+          ]),
+        ].filter((name) => start.harness.allowedTools.includes(name)),
       );
       failureCode = 'policy_denied';
       // A registered foreign provider could bypass the permit. Never select it implicitly.

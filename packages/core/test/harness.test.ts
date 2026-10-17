@@ -124,17 +124,102 @@ async function loaded() {
 }
 
 describe('Coordinator harness boundary (H2)', () => {
-  it('[TC-HAR-017-N] grants at most two codemode capacities and frees only an owned completion',async()=>{
-    const s=setup(true,{...snapshot,resources:[],allowedTools:['codemode']});await s.started.wait();
-    await s.host().reportHarness!({ok:true,snapshotHash:snapshot.snapshotHash,tools:[{...descriptor,name:'codemode',source:'extension:pi-codemode@1.3.0'}],diagnostics:[]});
-    const calls=[];
-    for(let n=0;n<3;n++) calls.push(await s.host().authorizeTool({name:'codemode',args:{code:'text(1)'}}));
-    await s.host().beginNativeTool!(calls[0]!.toolCallId,hash({code:'text(1)'}));
-    await s.host().beginNativeTool!(calls[1]!.toolCallId,hash({code:'text(1)'}));
-    await expect(s.host().beginNativeTool!(calls[2]!.toolCallId,hash({code:'text(1)'}))).rejects.toThrow(/capacity/i);
-    await s.host().finishNativeTool!(calls[0]!.toolCallId,'succeeded');
-    await expect(s.host().finishNativeTool!(calls[0]!.toolCallId,'succeeded')).rejects.toThrow();
-    await s.host().beginNativeTool!(calls[2]!.toolCallId,hash({code:'text(1)'}));
+  it('[TC-HAR-017-N] the worker capacity is shared by distinct executions', async () => {
+    const started = new Gate(),
+      childrenReady = new Gate(),
+      done = new Gate();
+    const hosts: { input: AgentStartInput; host: AgentHost }[] = [];
+    const chosen = { ...snapshot, resources: [], allowedTools: ['codemode', 'spawn_subagents'] };
+    const clock = new FakeClock();
+    const coordinator = new Coordinator({
+      clock,
+      timers: clock,
+      ids: new SequentialIdFactory(),
+      harnesses: { resolve: () => chosen },
+      agents: {
+        start: async (input, host) => {
+          hosts.push({ input, host });
+          started.open();
+          if (hosts.length === 4) childrenReady.open();
+          return {
+            cancel: async () => done.open(),
+            waitForSettlement: async () => {
+              await done.wait();
+              return { outcome: 'cancelled' };
+            },
+          };
+        },
+      },
+    });
+    const definition = linearCorral(['writer']);
+    definition.roles[0]!.harness = snapshot.binding;
+    definition.roles[0]!.allowedCollaborationTools.push('spawn_subagents');
+    const writer = definition.nodes.find((n) => n.type === 'agent')!;
+    definition.nodes.push({ ...writer, id: 'helper', invocation: 'callable' });
+    definition.capabilityLinks.push({
+      id: 'delegate',
+      kind: 'delegate',
+      sourceNodeId: 'writer',
+      targetNodeId: 'helper',
+    });
+    coordinator.startRun({ schemaVersion: '0.1', commandId: 'capacity', definition, mode: 'mock' });
+    await started.wait();
+    const report = {
+      ok: true as const,
+      snapshotHash: snapshot.snapshotHash,
+      tools: [
+        { ...descriptor, name: 'codemode', source: 'extension:pi-codemode@1.3.0' },
+        { ...descriptor, name: 'spawn_subagents', source: 'corral' },
+      ],
+      diagnostics: [],
+    };
+    await hosts[0]!.host.reportHarness!(report);
+    expect(
+      (
+        await hosts[0]!.host.invokeTool({
+          name: 'spawn_subagents',
+          args: { tasks: [1, 2, 3].map((n) => ({ targetNodeId: 'helper', brief: String(n) })) },
+        })
+      ).ok,
+    ).toBe(true);
+    await childrenReady.wait();
+    const calls = [];
+    for (const child of hosts.slice(1)) {
+      await child.host.reportHarness!(report);
+      calls.push({
+        host: child.host,
+        ...(await child.host.authorizeTool({ name: 'codemode', args: { code: 'text(1)' } })),
+      });
+    }
+    await calls[0]!.host.beginNativeTool!(calls[0]!.toolCallId, hash({ code: 'text(1)' }));
+    await calls[1]!.host.beginNativeTool!(calls[1]!.toolCallId, hash({ code: 'text(1)' }));
+    await expect(
+      calls[2]!.host.beginNativeTool!(calls[2]!.toolCallId, hash({ code: 'text(1)' })),
+    ).rejects.toThrow(/capacity/);
+    await calls[0]!.host.finishNativeTool!(calls[0]!.toolCallId, 'succeeded');
+    await calls[2]!.host.beginNativeTool!(calls[2]!.toolCallId, hash({ code: 'text(1)' }));
+    done.open();
+  });
+  it('[TC-HAR-017-N] grants at most two codemode capacities and frees only an owned completion', async () => {
+    const s = setup(true, { ...snapshot, resources: [], allowedTools: ['codemode'] });
+    await s.started.wait();
+    await s.host().reportHarness!({
+      ok: true,
+      snapshotHash: snapshot.snapshotHash,
+      tools: [{ ...descriptor, name: 'codemode', source: 'extension:pi-codemode@1.3.0' }],
+      diagnostics: [],
+    });
+    const calls = [];
+    for (let n = 0; n < 3; n++)
+      calls.push(await s.host().authorizeTool({ name: 'codemode', args: { code: 'text(1)' } }));
+    await s.host().beginNativeTool!(calls[0]!.toolCallId, hash({ code: 'text(1)' }));
+    await s.host().beginNativeTool!(calls[1]!.toolCallId, hash({ code: 'text(1)' }));
+    await expect(
+      s.host().beginNativeTool!(calls[2]!.toolCallId, hash({ code: 'text(1)' })),
+    ).rejects.toThrow(/capacity/i);
+    await s.host().finishNativeTool!(calls[0]!.toolCallId, 'succeeded');
+    await expect(s.host().finishNativeTool!(calls[0]!.toolCallId, 'succeeded')).rejects.toThrow();
+    await s.host().beginNativeTool!(calls[2]!.toolCallId, hash({ code: 'text(1)' }));
     s.done.open();
   });
   it('[TC-HAR-017-N] closing a parent cancels an already running nested broker call', async () => {
@@ -167,13 +252,11 @@ describe('Coordinator harness boundary (H2)', () => {
     });
     const parent = await s.host().authorizeTool({ name: 'echo', args: { text: 'parent' } });
     await s.host().beginNativeTool!(parent.toolCallId, hash({ text: 'parent' }));
-    const child = s
-      .host()
-      .invokeTool({
-        name: 'read_file',
-        args: { path: 'a.txt' },
-        parentToolCallId: parent.toolCallId,
-      });
+    const child = s.host().invokeTool({
+      name: 'read_file',
+      args: { path: 'a.txt' },
+      parentToolCallId: parent.toolCallId,
+    });
     await entered.wait();
     await s.host().finishNativeTool!(parent.toolCallId, 'succeeded');
     expect(cancelled).toBe(true);
