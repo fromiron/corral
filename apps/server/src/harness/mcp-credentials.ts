@@ -107,11 +107,18 @@ export class McpCredentials {
   }
   private guard(key: string, check: Check) {
     const generation = this.generations.get(key) ?? 0;
-    return async () => {
-      if (this.disposed || generation !== (this.generations.get(key) ?? 0)) throw signIn();
-      await check();
+    // Awaiting the guard yields again; credential publication needs this synchronous fence.
+    const current = () => {
       if (this.disposed || generation !== (this.generations.get(key) ?? 0)) throw signIn();
     };
+    return Object.assign(
+      async () => {
+        current();
+        await check();
+        current();
+      },
+      { current },
+    );
   }
   private oauthState(server: HttpServer, state: McpOAuthState): McpOAuthState {
     if (server.auth.kind !== 'oauth' || state.serverUrl !== new URL(server.url).href)
@@ -143,23 +150,30 @@ export class McpCredentials {
     )
       throw signIn();
     const { key, binding } = this.identity(projectId, server);
-    await check();
-    await this.delete(projectId, server);
-    await this.guard(key, check)();
+    const initial = this.guard(key, check);
+    await initial();
+    initial.current();
+    const deleting = this.delete(projectId, server);
+    const guard = this.guard(key, check);
+    await deleting;
+    await guard();
+    guard.current();
     this.save(key, { version: 1, binding, bearer: token });
   }
 
   async startOAuth(projectId: string, server: HttpServer, check: Check) {
     if (server.auth.kind !== 'oauth') throw signIn();
     const { key, binding } = this.identity(projectId, server);
-    await check();
+    const initial = this.guard(key, check);
+    await initial();
+    initial.current();
     // A new login supersedes pending callbacks and refresh writes for this reference.
     this.generations.set(key, (this.generations.get(key) ?? 0) + 1);
+    const guard = this.guard(key, check);
     for (const [id, login] of this.logins)
       if (login.key === key && login.state === 'pending') await this.cancelOAuth(id);
     for (const [id, login] of this.logins) if (login.state !== 'pending') this.logins.delete(id);
     if (this.logins.size >= 16) throw new Error('Too many MCP sign-ins are pending.');
-    const guard = this.guard(key, check);
     await guard();
     const callback = await OAuthCallbackServer.listen({ timeoutMs: 5 * 60_000 });
     const controller = new AbortController();
@@ -212,6 +226,7 @@ export class McpCredentials {
           const oauth = store.load();
           if (authorized !== 'AUTHORIZED' || !oauth?.tokens || login.state !== 'pending')
             throw signIn();
+          guard.current();
           this.save(key, {
             version: 1,
             binding,
@@ -270,6 +285,7 @@ export class McpCredentials {
         const saved = this.load(key, binding);
         if (server.auth.kind === 'bearer') {
           if (!saved?.bearer || challenge) throw signIn();
+          guard.current();
           return saved.bearer;
         }
         if (server.auth.kind !== 'oauth' || !saved?.oauth?.tokens || !saved.redirectUrl)
@@ -283,6 +299,7 @@ export class McpCredentials {
             load: () => this.load(key, binding)?.oauth,
             save: async (state) => {
               await guard();
+              guard.current();
               this.save(key, {
                 version: 1,
                 binding,
@@ -324,6 +341,7 @@ export class McpCredentials {
         await guard();
         const token = await auth.token();
         if (!token) throw signIn();
+        guard.current();
         return token;
       });
     this.chains.set(key, request);

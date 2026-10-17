@@ -136,10 +136,16 @@ describe('TC-HAR-016 MCP credentials', () => {
     let logout: Promise<void> | undefined;
     const check = async () => {
       if (ctx.fixture.refreshes > 0 && !logout) {
-        queueMicrotask(() => queueMicrotask(() => { logout = credentials.delete('p', ctx.server); }));
+        queueMicrotask(() =>
+          queueMicrotask(() => {
+            logout = credentials.delete('p', ctx.server);
+          }),
+        );
       }
     };
-    const outcome = await credentials.authorization('p', ctx.server, check, { status: 401, rejectedToken: 'fixture-access-0' }).catch(() => 'refused');
+    const outcome = await credentials
+      .authorization('p', ctx.server, check, { status: 401, rejectedToken: 'fixture-access-0' })
+      .catch(() => 'refused');
     await logout;
     expect(outcome).toBe('refused');
     expect(credentials.status('p', ctx.server).state).toBe('missing');
