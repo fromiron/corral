@@ -573,7 +573,11 @@
     "checkUnavailable": "Check details could not be verified. Dismiss this request and try again.",
     "checkLoading": "Loading the exact check command…",
     "approveCheck": "Run this check once",
-    "rejectCheck": "Decline this check"
+    "rejectCheck": "Decline this check",
+    "lspHeading": "Approve language server launch",
+    "lspOnce": "Runs this query once in the working copy. A language server is native code with access to this computer; it is not sandboxed. Future launches need permission unless you trust the fingerprint in project settings.",
+    "approveLsp": "Run this query once",
+    "rejectLsp": "Decline this query"
   },
   "Budget": {
     "heading": "Budget and usage",
@@ -1764,6 +1768,30 @@
     "checkTrustHint": "Review the exact command before trusting its launch. It runs native code on this computer. A changed executable, script or lockfile requires another approval.",
     "reviewCheck": "Review launch for {name}",
     "trustCheck": "Trust this launch",
-    "revokeCheckTrust": "Revoke launch trust"
+    "revokeCheckTrust": "Revoke launch trust",
+    "projectTools": "Project tools",
+    "projectLsp": "Language servers",
+    "lspSetupHint": "Register an installed stdio language server. Corral does not install servers or run shell commands. Launch trust is separate from selecting a server.",
+    "noProjectLsp": "No language servers are registered for this project.",
+    "configureLsp": "Configure a language server",
+    "lspId": "Language server ID",
+    "lspName": "Language server name",
+    "lspLanguages": "Language IDs",
+    "lspExtensions": "File extensions",
+    "lspArgv": "Language server command and arguments",
+    "lspArgvHint": "First line: executable. Following lines: one argument each, without shell quoting. Separate language IDs and file extensions with commas.",
+    "lspTimeout": "Query timeout in seconds",
+    "saveLsp": "Save language server",
+    "cancelLsp": "Cancel editing",
+    "editLsp": "Edit {name}",
+    "removeLsp": "Remove {name}",
+    "toolsSaved": "Saved project tools revision {revision}",
+    "invalidLsp": "Check the ID, command, language IDs, dot-prefixed file extensions and timeout (1–1800 seconds).",
+    "duplicateLsp": "This server ID already exists. Edit its existing entry.",
+    "selectLsp": "Select language servers for this style",
+    "lspSelectionHint": "Uncheck to inherit the parent selection. An empty list disables language servers. The role also needs file read permission.",
+    "useLsp": "Use language server {name}",
+    "unregisteredLsp": "Unregistered language server: {id}",
+    "selectedLsp": "Language servers: {ids}"
   }
 }

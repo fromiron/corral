@@ -66,7 +66,7 @@ test('[TC-HAR-010-H] registers and selects a language server, approves an SDK qu
     await page.getByLabel('Select language servers for this style', { exact: true }).check();
     await page.getByLabel('Use language server Fixture server', { exact: true }).check();
     await page.getByRole('button', { name: 'Save work style', exact: true }).click();
-    await expect(page.getByRole('status')).toContainText('Saved revision 1');
+    await expect(page.getByTestId('harness-status')).toContainText('Saved revision 1');
     await page.getByRole('button', { name: 'Preview effective settings', exact: true }).click();
     await expect(page.getByTestId('harness-preview')).toContainText('typescript');
     corral.fake?.answerWith('Definition found.', {

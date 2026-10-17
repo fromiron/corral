@@ -16,14 +16,19 @@ import {
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { editText, PiEditError } from '@corral/adapter-pi';
 import {
   type BrokerFileToolName,
   type CheckExecution,
   CheckPlan,
   type Clock,
+  canonicalJson,
   type EditTextRequest,
   type EditTextResult,
+  type LspExecution,
+  LspQuery,
+  LspReport,
   PiEditInput,
   PiWriteInput,
   ProjectToolConfig,
@@ -37,6 +42,8 @@ import { type Db, SqliteProjectToolStore } from '@corral/storage-sqlite';
 import { systemTimers } from '../runtime.ts';
 import { GitError, git, gitText } from './git.ts';
 import { launchFingerprint } from './launch-fingerprint.ts';
+import { LspRunner } from './lsp.ts';
+import { lspResults, validateLspPosition } from './lsp-results.ts';
 import { VerificationRunner } from './verification.ts';
 
 // Work folders and file changes (CR-012). A project may link one folder, which is only
@@ -265,6 +272,7 @@ interface WorktreeRow {
 }
 
 export class WorkspaceService implements FileTools {
+  private readonly lsp: Pick<LspRunner, 'query'>;
   private readonly io: MutationIo;
   readonly projectTools: SqliteProjectToolStore;
   private readonly verificationRunner: VerificationRunner;
@@ -295,12 +303,16 @@ export class WorkspaceService implements FileTools {
     timers?: Scheduler;
     newVerificationId?: () => string;
     io?: Partial<MutationIo>;
+    lsp?: Pick<LspRunner, 'query'>;
     edit?: (request: EditTextRequest, cancellation: ToolCancellation) => Promise<EditTextResult>;
   }) {
     this.db = options.db;
     this.io = { writeFile, rename, unlink, link, ...options.io };
     this.clock = options.clock;
     this.projectTools = new SqliteProjectToolStore(options.db, options.clock);
+    this.lsp =
+      options.lsp ??
+      new LspRunner({ clock: options.clock, timers: options.timers ?? systemTimers });
     this.verificationRunner = new VerificationRunner({
       clock: options.clock,
       timers: options.timers ?? systemTimers,
@@ -475,36 +487,41 @@ export class WorkspaceService implements FileTools {
     })();
   }
 
-  async inspectCheck(projectId: string, commandId: string) {
+  async inspectProjectTool(projectId: string, kind: 'check' | 'lsp', commandId: string) {
     const binding = this.binding(projectId);
     if (!binding?.trusted)
-      throw new WorkspaceError(
-        'CAPABILITY_DENIED',
-        'trust the repository before inspecting checks',
-      );
+      throw new WorkspaceError('CAPABILITY_DENIED', 'trust the repository before inspecting tools');
     const config = this.projectTools.latest(projectId);
-    const command = config?.checks.find((check) => check.id === commandId);
+    const command = (kind === 'check' ? config?.checks : config?.lspServers)?.find(
+      (tool) => tool.id === commandId,
+    );
     if (!config || !command)
-      throw new WorkspaceError('TARGET_NOT_FOUND', 'no such registered check');
+      throw new WorkspaceError('TARGET_NOT_FOUND', 'no such registered tool');
     const { fingerprint } = await launchFingerprint(binding.root_path, config.revision, command);
     return {
       command,
       configRevision: config.revision,
       fingerprint,
-      trustedAt: this.projectTools.trust({ projectId, kind: 'check', id: commandId, fingerprint }),
+      trustedAt: this.projectTools.trust({ projectId, kind, id: commandId, fingerprint }),
     };
   }
 
-  async trustCheck(projectId: string, commandId: string, fingerprint: string, trusted: boolean) {
+  async trustProjectTool(
+    projectId: string,
+    kind: 'check' | 'lsp',
+    commandId: string,
+    fingerprint: string,
+    trusted: boolean,
+  ) {
     if (trusted) {
-      const inspected = await this.inspectCheck(projectId, commandId);
+      const inspected = await this.inspectProjectTool(projectId, kind, commandId);
       if (
         inspected.fingerprint !== fingerprint ||
         this.projectTools.latest(projectId)?.revision !== inspected.configRevision
       )
         throw new WorkspaceError('REVISION_CONFLICT', 'launch fingerprint changed');
     }
-    const target = { projectId, kind: 'check' as const, id: commandId, fingerprint };
+    const target = { projectId, kind, id: commandId, fingerprint };
     this.projectTools.setTrust(target, trusted);
     return { fingerprint, trustedAt: this.projectTools.trust(target) };
   }
@@ -1073,25 +1090,187 @@ export class WorkspaceService implements FileTools {
     );
   }
 
-  private checkContext(input: CheckExecution) {
+  private projectToolContext(input: Pick<CheckExecution, 'runId' | 'selection'>) {
     const sessionId = this.sessionOfRun(input.runId);
     const row = sessionId ? this.worktree(sessionId) : null;
     const binding = this.binding(input.selection.projectId);
     if (!sessionId || !row || !binding || row.binding_id !== binding.id || !binding.trusted)
       throw new ToolRefusal('CAPABILITY_DENIED', 'trusted working copy unavailable');
     const config = this.projectTools.get(input.selection.projectId, input.selection.revision);
-    if (
-      !config ||
-      config.hash !== input.selection.hash ||
-      !input.selection.checkIds.includes(input.commandId)
-    )
+    if (!config || config.hash !== input.selection.hash)
       throw new ToolRefusal(
         'CAPABILITY_DENIED',
         'check is not selected in the pinned configuration',
       );
-    const command = config.checks.find((check) => check.id === input.commandId);
+    return { sessionId, row, config };
+  }
+
+  private checkContext(input: CheckExecution) {
+    const context = this.projectToolContext(input);
+    if (!input.selection.checkIds.includes(input.commandId))
+      throw new ToolRefusal('CAPABILITY_DENIED', 'check is not selected');
+    const command = context.config.checks.find((check) => check.id === input.commandId);
     if (!command) throw new ToolRefusal('TARGET_NOT_FOUND', 'check is not registered');
-    return { sessionId, row, config, command };
+    return { ...context, command };
+  }
+
+  private lspContext(input: LspExecution) {
+    const context = this.projectToolContext(input),
+      query = LspQuery.parse(input.query);
+    if (!input.selection.lspServerIds.includes(query.serverId))
+      throw new ToolRefusal('CAPABILITY_DENIED', 'language server is not selected');
+    const server = context.config.lspServers.find((server) => server.id === query.serverId);
+    if (!server) throw new ToolRefusal('TARGET_NOT_FOUND', 'language server is not registered');
+    if (
+      !server.fileExtensions.some((extension) =>
+        query.path.toLowerCase().endsWith(extension.toLowerCase()),
+      )
+    )
+      throw new ToolRefusal(
+        'CAPABILITY_DENIED',
+        'language server does not support this file extension',
+      );
+    const languageId =
+      query.languageId ?? (server.languageIds.length === 1 ? server.languageIds[0] : undefined);
+    if (!languageId || !server.languageIds.includes(languageId))
+      throw new ToolRefusal(
+        'SCHEMA_INVALID',
+        `choose a registered language ID: ${server.languageIds.join(', ')}`,
+      );
+    return { ...context, query, server, languageId };
+  }
+
+  async planLsp(input: LspExecution, cancellation: ToolCancellation): Promise<CheckPlan> {
+    const { row, config, query, server } = this.lspContext(input);
+    if (cancellation.aborted)
+      throw new ToolRefusal('TARGET_TERMINAL', 'language server query cancelled');
+    const plan = await this.lease(row.worktree_path, async () => {
+      const bytes = await textBytes(row.worktree_path, safeRelative(query.path));
+      const text = decodeText(bytes, true);
+      if (text === null) throw new ToolRefusal('CAPABILITY_DENIED', 'LSP requires UTF-8 text');
+      if (query.operation !== 'diagnostics') validateLspPosition(query.position, text);
+      const tree = await this.snapshotTree(row.worktree_path),
+        launch = await launchFingerprint(row.worktree_path, config.revision, server);
+      return CheckPlan.parse({
+        purpose: 'lsp',
+        query,
+        commandId: server.id,
+        name: server.name,
+        argv: server.argv,
+        timeoutMs: server.timeoutMs,
+        configRevision: config.revision,
+        tree,
+        fingerprint: launch.fingerprint,
+        trusted:
+          this.projectTools.trust({
+            projectId: config.projectId,
+            kind: 'lsp',
+            id: server.id,
+            fingerprint: launch.fingerprint,
+          }) !== null,
+      });
+    });
+    if (cancellation.aborted)
+      throw new ToolRefusal('TARGET_TERMINAL', 'language server query cancelled');
+    return plan;
+  }
+
+  async runLsp(
+    input: LspExecution,
+    rawPlan: CheckPlan,
+    approvedFingerprint: string | null,
+    cancellation: ToolCancellation,
+  ): Promise<LspReport> {
+    const plan = CheckPlan.parse(rawPlan),
+      { sessionId, row, config, query, server, languageId } = this.lspContext(input);
+    const now = await this.planLsp(input, cancellation);
+    if (
+      plan.purpose !== 'lsp' ||
+      canonicalJson(plan.query) !== canonicalJson(query) ||
+      plan.tree !== now.tree ||
+      plan.fingerprint !== now.fingerprint ||
+      plan.configRevision !== now.configRevision
+    )
+      throw new ToolRefusal('REVISION_CONFLICT', 'language server target or launch changed');
+    if (!now.trusted && approvedFingerprint !== now.fingerprint)
+      throw new ToolRefusal(
+        'CAPABILITY_DENIED',
+        'language server requires trust or exact fingerprint approval',
+      );
+    const bytes = await textBytes(row.worktree_path, safeRelative(query.path));
+    const text = decodeText(bytes, true);
+    if (text === null) throw new ToolRefusal('CAPABILITY_DENIED', 'LSP requires UTF-8 text');
+    const launch = await launchFingerprint(row.worktree_path, config.revision, server);
+    if (launch.fingerprint !== plan.fingerprint || !this.binding(config.projectId)?.trusted)
+      throw new ToolRefusal('REVISION_CONFLICT', 'language server launch changed');
+    if (
+      approvedFingerprint !== plan.fingerprint &&
+      !this.projectTools.trust({
+        projectId: config.projectId,
+        kind: 'lsp',
+        id: server.id,
+        fingerprint: plan.fingerprint,
+      })
+    )
+      throw new ToolRefusal('CAPABILITY_DENIED', 'language server launch trust was revoked');
+    if (cancellation.aborted)
+      throw new ToolRefusal('TARGET_TERMINAL', 'language server query cancelled');
+    const raw = await this.lsp.query(
+      {
+        cwd: row.worktree_path,
+        argv: [launch.executable, ...server.argv.slice(1)],
+        timeoutMs: server.timeoutMs,
+        document: {
+          uri: pathToFileURL(join(row.worktree_path, query.path)).href,
+          text,
+          languageId,
+          version: 1,
+        },
+        operation: query.operation,
+        ...(query.operation !== 'diagnostics' ? { position: query.position } : {}),
+      },
+      cancellation,
+    );
+    const source = { path: query.path, sha256: sha256(bytes), text };
+    const result = await lspResults(
+      raw,
+      source,
+      async (uri) => {
+        let path: string;
+        try {
+          path = safeRelative(relative(row.worktree_path, fileURLToPath(uri)).split(sep).join('/'));
+        } catch {
+          throw new ToolRefusal(
+            'CAPABILITY_DENIED',
+            'language server returned a location outside the working copy scope',
+          );
+        }
+        const bytes = await textBytes(row.worktree_path, path),
+          text = decodeText(bytes, true);
+        if (text === null)
+          throw new ToolRefusal('CAPABILITY_DENIED', 'LSP result is not UTF-8 text');
+        return { path, text, sha256: sha256(bytes) };
+      },
+      row.worktree_path,
+    );
+    if (cancellation.aborted)
+      throw new ToolRefusal('TARGET_TERMINAL', 'language server query cancelled');
+    if ((await this.currentTree(sessionId)) !== plan.tree)
+      throw new ToolRefusal(
+        'REVISION_CONFLICT',
+        'language server result is stale because the working copy changed',
+      );
+    return LspReport.parse({
+      serverId: server.id,
+      operation: query.operation,
+      configRevision: config.revision,
+      fingerprint: plan.fingerprint,
+      tree: plan.tree,
+      source: { path: query.path, sha256: source.sha256, version: 1 },
+      result,
+      durationMs: raw.durationMs,
+      truncated: raw.truncated,
+    });
   }
 
   async planCheck(input: CheckExecution, cancellation: ToolCancellation): Promise<CheckPlan> {

@@ -210,7 +210,9 @@ export type SdkResources = z.infer<typeof SdkResources>;
 const sdkHead = { protocolVersion: z.literal(PROTOCOL_VERSION), executionId: Identifier };
 export const SdkStartFrame = StartFrame.extend({
   ...sdkHead,
-  tools: z.array(z.union([WorkerTool, z.enum(['read', 'edit', 'write', 'run_check'])])),
+  tools: z.array(
+    z.union([WorkerTool, z.enum(['read', 'edit', 'write', 'run_check', 'lsp_query'])]),
+  ),
   harness: EffectiveHarnessSnapshot,
   resources: SdkResources,
 });

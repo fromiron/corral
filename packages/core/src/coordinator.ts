@@ -25,6 +25,7 @@ import {
   HarnessReport,
   type IdFactory,
   type InputBinding,
+  LspQuery,
   type ModelProfileSnapshot,
   ModelRequestRecord,
   ProviderPayloadRecord,
@@ -166,6 +167,16 @@ export interface ExternalTools {
  */
 export interface FileTools {
   available(runId: string): boolean;
+  planLsp?(
+    input: import('@corral/contracts').LspExecution,
+    cancellation: ToolCancellation,
+  ): Promise<import('@corral/contracts').CheckPlan>;
+  runLsp?(
+    input: import('@corral/contracts').LspExecution,
+    plan: import('@corral/contracts').CheckPlan,
+    approvedFingerprint: string | null,
+    cancellation: ToolCancellation,
+  ): Promise<import('@corral/contracts').LspReport>;
   planCheck?(
     input: import('@corral/contracts').CheckExecution,
     cancellation: ToolCancellation,
@@ -2784,7 +2795,7 @@ export class Coordinator {
     return { approvalId, decision };
   }
 
-  private async requestCheckApproval(
+  private async requestLaunchApproval(
     run: LiveRun,
     input: AgentStartInput,
     tool: ToolFrame,
@@ -2805,6 +2816,7 @@ export class Coordinator {
     const timeoutMs = 300000;
     const request = this.requestApproval(run, 'user_action', [bodyRef], {
       tool: {
+        purpose: plan.purpose ?? 'check',
         executionId: input.executionId,
         attemptNo: input.attemptNo,
         effectId: tool.effectId,
@@ -2863,7 +2875,7 @@ export class Coordinator {
           waitingOn: {
             kind: 'approval',
             targetIds: [request.approvalId],
-            reasonCode: 'check_launch',
+            reasonCode: plan.purpose === 'lsp' ? 'lsp_launch' : 'check_launch',
             since: this.clock.nowIso(),
             deadline: new Date(Date.parse(this.clock.nowIso()) + timeoutMs).toISOString(),
             required: true,
@@ -2912,7 +2924,7 @@ export class Coordinator {
         !run.extensionUi.size &&
         !Object.values(run.projection.tasks).some((task) => task.status === 'blocked')
       )
-        drafts.push(runState('awaiting_user', 'running', 'check_approval_closed'));
+        drafts.push(runState('awaiting_user', 'running', 'tool_approval_closed'));
       if (drafts.length) this.commit(run, drafts);
       this.wake(run);
     }
@@ -3543,6 +3555,7 @@ export class Coordinator {
       switch (call.proposal.name) {
         case 'read':
         case 'run_check':
+        case 'lsp_query':
         case 'edit':
         case 'write':
         case 'search':
@@ -4647,32 +4660,47 @@ export class Coordinator {
         proposal.name === 'edit' ||
         proposal.name === 'write';
       let result: Record<string, unknown>;
-      if (proposal.name === 'run_check') {
+      if (proposal.name === 'run_check' || proposal.name === 'lsp_query') {
         const files = this.files,
           selection = input.harness?.projectTools;
-        if (!files?.planCheck || !files.runCheck || !selection)
-          throw new ToolRefusal('CAPABILITY_DENIED', 'check runner unavailable');
+        if (!files || !selection)
+          throw new ToolRefusal('CAPABILITY_DENIED', 'project tools unavailable');
         const owner = {
           runId: input.runId,
           executionId: input.executionId,
           attemptNo: input.attemptNo,
           effectId: tool.effectId,
           selection,
-          commandId: String(proposal.args.commandId),
         };
-        const plan = CheckPlan.parse(await files.planCheck(owner, cancellation));
-        if (cancellation.aborted) throw new ToolRefusal('TARGET_TERMINAL', 'check cancelled');
+        let plan: CheckPlan;
+        let execute: (approved: string | null) => Promise<Record<string, unknown>>;
+        if (proposal.name === 'run_check') {
+          if (!files.planCheck || !files.runCheck)
+            throw new ToolRefusal('CAPABILITY_DENIED', 'check runner unavailable');
+          const check = { ...owner, commandId: String(proposal.args.commandId) };
+          plan = CheckPlan.parse(await files.planCheck(check, cancellation));
+          const runCheck = files.runCheck.bind(files);
+          execute = (approved) => runCheck(check, plan, approved, cancellation);
+        } else {
+          if (!files.planLsp || !files.runLsp)
+            throw new ToolRefusal('CAPABILITY_DENIED', 'language server runner unavailable');
+          const query = { ...owner, query: LspQuery.parse(proposal.args) };
+          plan = CheckPlan.parse(await files.planLsp(query, cancellation));
+          const runLsp = files.runLsp.bind(files);
+          execute = (approved) => runLsp(query, plan, approved, cancellation);
+        }
+        if (cancellation.aborted) throw new ToolRefusal('TARGET_TERMINAL', 'launch cancelled');
         cancelTimer();
         let approved: string | null = null;
         if (!plan.trusted) {
-          if (!(await this.requestCheckApproval(run, input, tool, plan, cancellation)))
-            throw new ToolRefusal('CAPABILITY_DENIED', 'check launch was not approved');
+          if (!(await this.requestLaunchApproval(run, input, tool, plan, cancellation)))
+            throw new ToolRefusal('CAPABILITY_DENIED', 'tool launch was not approved');
           approved = plan.fingerprint;
         }
         await this.boundary(run, executionId);
-        if (cancellation.aborted) throw new ToolRefusal('TARGET_TERMINAL', 'check cancelled');
+        if (cancellation.aborted) throw new ToolRefusal('TARGET_TERMINAL', 'launch cancelled');
         cancelTimer = this.timers.after(plan.timeoutMs + 120000, timeout);
-        result = await files.runCheck(owner, plan, approved, cancellation);
+        result = await execute(approved);
       } else if (proposal.name === 'read') {
         const path = String(proposal.args.path);
         if (path.startsWith('skills/')) {

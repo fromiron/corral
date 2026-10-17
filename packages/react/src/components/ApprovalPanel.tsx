@@ -52,7 +52,11 @@ export function ApprovalPanel({
             await session.getState().loadArtifact(bodyRef);
           const text = session.getState().artifactTexts[bodyRef];
           const plan = CheckPlan.parse(JSON.parse(text ?? 'null'));
-          if (plan.fingerprint !== fingerprint || plan.tree !== targetTree)
+          if (
+            plan.fingerprint !== fingerprint ||
+            plan.tree !== targetTree ||
+            (plan.purpose ?? 'check') !== (approval.tool?.purpose ?? 'check')
+          )
             throw new Error('approval changed');
           if (active) setCheckPlans((previous) => ({ ...previous, [bodyRef]: plan }));
         } catch {
@@ -116,13 +120,21 @@ export function ApprovalPanel({
             }
           >
             <p className="font-medium">
-              {approval.tool ? t('checkHeading') : t(`kind.${approval.kind}`)}
+              {approval.tool
+                ? t(approval.tool.purpose === 'lsp' ? 'lspHeading' : 'checkHeading')
+                : t(`kind.${approval.kind}`)}
             </p>
             {approval.tool ? (
               <div className="flex min-w-0 flex-col gap-1">
                 {checkPlans[approval.tool.bodyRef] ? (
                   <>
                     <p>{checkPlans[approval.tool.bodyRef]?.name}</p>
+                    {checkPlans[approval.tool.bodyRef]?.query ? (
+                      <p>
+                        {checkPlans[approval.tool.bodyRef]?.query?.operation} ·{' '}
+                        {checkPlans[approval.tool.bodyRef]?.query?.path}
+                      </p>
+                    ) : null}
                     <code className="whitespace-pre-wrap break-all">
                       {checkPlans[approval.tool.bodyRef]?.argv.join(' ')}
                     </code>
@@ -135,7 +147,9 @@ export function ApprovalPanel({
                         tree: approval.tool.targetTree.slice(0, 12),
                       })}
                     </p>
-                    <p className="text-muted">{t('checkOnce')}</p>
+                    <p className="text-muted">
+                      {t(approval.tool.purpose === 'lsp' ? 'lspOnce' : 'checkOnce')}
+                    </p>
                   </>
                 ) : (
                   <p role={checkPlans[approval.tool.bodyRef] === null ? 'alert' : 'status'}>
@@ -181,10 +195,16 @@ export function ApprovalPanel({
               <Button
                 size="sm"
                 disabled={busy || !!(approval.tool && !checkPlans[approval.tool.bodyRef])}
-                title={approval.tool ? t('checkOnce') : t(`then.${approval.kind}`)}
+                title={
+                  approval.tool
+                    ? t(approval.tool.purpose === 'lsp' ? 'lspOnce' : 'checkOnce')
+                    : t(`then.${approval.kind}`)
+                }
                 onClick={() => void decide(approval.approvalId, 'approve')}
               >
-                {approval.tool ? t('approveCheck') : t(`approveAs.${approval.kind}`)}
+                {approval.tool
+                  ? t(approval.tool.purpose === 'lsp' ? 'approveLsp' : 'approveCheck')
+                  : t(`approveAs.${approval.kind}`)}
               </Button>
               <Button
                 variant="outline"
@@ -192,7 +212,9 @@ export function ApprovalPanel({
                 disabled={busy}
                 onClick={() => void decide(approval.approvalId, 'reject')}
               >
-                {approval.tool ? t('rejectCheck') : t(`rejectAs.${approval.kind}`)}
+                {approval.tool
+                  ? t(approval.tool.purpose === 'lsp' ? 'rejectLsp' : 'rejectCheck')
+                  : t(`rejectAs.${approval.kind}`)}
               </Button>
             </div>
             {refused?.error ? (

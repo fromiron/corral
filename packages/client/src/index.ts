@@ -782,8 +782,9 @@ export class HarnessApi {
       body: JSON.stringify({ expectedRevision, config }),
     });
   }
-  inspectCheck(
+  inspectProjectTool(
     projectId: string,
+    kind: 'check' | 'lsp',
     commandId: string,
   ): Promise<{
     command: RegisteredCheck;
@@ -792,17 +793,18 @@ export class HarnessApi {
     trustedAt: string | null;
   }> {
     return this.http.json(
-      `/harness/projects/${encodeURIComponent(projectId)}/checks/${encodeURIComponent(commandId)}/launch`,
+      `/harness/projects/${encodeURIComponent(projectId)}/${kind === 'check' ? 'checks' : 'lsp-servers'}/${encodeURIComponent(commandId)}/launch`,
     );
   }
-  trustCheck(
+  trustProjectTool(
     projectId: string,
+    kind: 'check' | 'lsp',
     commandId: string,
     fingerprint: string,
     trusted: boolean,
   ): Promise<{ fingerprint: string; trustedAt: string | null }> {
     return this.http.json(
-      `/harness/projects/${encodeURIComponent(projectId)}/checks/${encodeURIComponent(commandId)}/trust`,
+      `/harness/projects/${encodeURIComponent(projectId)}/${kind === 'check' ? 'checks' : 'lsp-servers'}/${encodeURIComponent(commandId)}/trust`,
       { method: 'PUT', body: JSON.stringify({ fingerprint, trusted }) },
     );
   }

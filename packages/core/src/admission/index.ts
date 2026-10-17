@@ -2,6 +2,7 @@ import {
   type AgentStartInput,
   type ErrorCode,
   FILE_TOOLS,
+  LspQuery,
   PiEditInput,
   PiWriteInput,
   ResourcePath,
@@ -318,6 +319,21 @@ const roleAllowlist: Gate<ToolGateView> = {
       return input.harness.projectTools.checkIds.includes(args.commandId)
         ? allow
         : denied('check is not selected by this role');
+    }
+    if (proposal.name === 'lsp_query') {
+      if (
+        !input.harness?.projectTools ||
+        !view.fileTools ||
+        !input.role.allowedWorkTools.includes('read_file')
+      )
+        return denied('role may not query worktree language servers');
+      const query = LspQuery.safeParse(args);
+      if (!query.success) return refuse('SCHEMA_INVALID', 'invalid language server query');
+      if (query.data.path.startsWith('skills/'))
+        return denied('language servers cannot read skill resources');
+      return input.harness.projectTools.lspServerIds.includes(query.data.serverId)
+        ? allow
+        : denied('language server is not selected by this role');
     }
     if (proposal.name === 'edit' || proposal.name === 'write') {
       if (

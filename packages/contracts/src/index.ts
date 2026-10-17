@@ -9,6 +9,7 @@ export * from './harness.ts';
 export * from './ids.ts';
 export * from './json-schema.ts';
 export * from './layout.ts';
+export * from './lsp.ts';
 export type * from './ports.ts';
 export * from './project-tools.ts';
 export * from './receipt.ts';

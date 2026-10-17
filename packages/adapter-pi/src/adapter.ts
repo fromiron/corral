@@ -252,6 +252,11 @@ class WorkerExecution {
               this.input.harness.projectTools?.checkIds.length
                 ? ['run_check']
                 : []),
+              ...(this.input.harness?.allowedTools.includes('lsp_query') &&
+              role.allowedWorkTools.includes('read_file') &&
+              this.input.harness.projectTools?.lspServerIds.length
+                ? ['lsp_query']
+                : []),
             ]
           : offeredTools(this.input),
         assignment:

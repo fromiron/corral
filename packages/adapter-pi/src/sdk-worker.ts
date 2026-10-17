@@ -7,6 +7,7 @@ import {
   EditTextResult,
   HarnessCommand,
   type HarnessReport,
+  LspQuery,
   ModelRequestRecord,
   ToolDescriptor,
 } from '@corral/contracts';
@@ -37,6 +38,7 @@ import {
   type ToolDefinition,
   type WriteToolInput,
 } from '@earendil-works/pi-coding-agent';
+import { z } from 'zod';
 import type { Channel } from './channel.ts';
 import { extensionUi } from './extension-ui.ts';
 import { lockResources } from './locked-resources.ts';
@@ -419,18 +421,34 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
           description:
             name === 'run_check'
               ? 'Run a selected registered check against a frozen copy. Corral may request permission for this exact launch. Read state, verdict and stale separately; a stale or inconclusive report does not prove a pass.'
-              : TOOL_TEXT[name],
+              : name === 'lsp_query'
+                ? 'Query a selected language server for diagnostics, definition or references in the working copy. Positions are zero-based UTF-16 offsets. Corral may request launch permission. Results include file hashes; use read_file before editing.'
+                : TOOL_TEXT[name],
           parameters:
-            name === 'run_check'
-              ? Type.Object(
-                  {
-                    commandId: Type.Union(
-                      (start.harness.projectTools?.checkIds ?? []).map((id) => Type.Literal(id)),
-                    ),
-                  },
-                  { additionalProperties: false },
+            name === 'lsp_query'
+              ? Type.Unsafe(
+                  z.toJSONSchema(
+                    z.union([
+                      LspQuery.options[0].extend({
+                        serverId: z.enum(start.harness.projectTools?.lspServerIds ?? []),
+                      }),
+                      LspQuery.options[1].extend({
+                        serverId: z.enum(start.harness.projectTools?.lspServerIds ?? []),
+                      }),
+                    ]),
+                    { target: 'draft-07', io: 'input' },
+                  ),
                 )
-              : parametersOf(name, start),
+              : name === 'run_check'
+                ? Type.Object(
+                    {
+                      commandId: Type.Union(
+                        (start.harness.projectTools?.checkIds ?? []).map((id) => Type.Literal(id)),
+                      ),
+                    },
+                    { additionalProperties: false },
+                  )
+                : parametersOf(name, start),
           executionMode: 'sequential',
           execute: async (piCallId, args) => {
             const auth = takeAuthorization(piCallId, args);
@@ -789,7 +807,7 @@ function describeTool(tool: ToolDefinition, source: string): ToolDescriptor {
     ...(annotations ? { annotations } : {}),
     exposure: tool.exposure ?? 'direct',
     sideEffect:
-      source === 'corral' && tool.name === 'run_check'
+      source === 'corral' && ['run_check', 'lsp_query'].includes(tool.name)
         ? 'external'
         : source === 'corral' &&
             ['edit', 'write', 'write_file', 'delete_file', 'move_file'].includes(tool.name)

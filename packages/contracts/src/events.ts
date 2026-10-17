@@ -275,6 +275,7 @@ export const ApprovalRequested = event(
     criteriaVersionId: Identifier.nullable(),
     tool: z
       .strictObject({
+        purpose: z.enum(['check', 'lsp']).optional(),
         executionId: Identifier,
         attemptNo: z.int().min(1),
         effectId: Identifier,

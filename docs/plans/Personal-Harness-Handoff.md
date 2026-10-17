@@ -174,3 +174,11 @@ CORRAL_SPIKE_NODE=~/.local/share/fnm/node-versions/v24.19.0/installation/bin/nod
 - `run_check`는 선택 ID만 받는다. Inbox 승인에 실행·효과·파일 상태·해시·기한이 고정되며, 취소/만료/끝난 실행의 승인은 닫힌다. 승인 하나만 해결해 다른 승인을 건너뛰지 않는다. 명령 정보 미확인 시 UI는 승인 버튼을 막는다.
 - 설정에서 검사 선택/실행 신뢰, SDK 호출→승인→검사→보고서까지 새 브라우저 E2E 통과(로컬 fake provider). 관련 4개 프로젝트 516 passed / opt-in 2 skipped 확인. 새 서버/API 테스트와 typecheck도 통과했다. 실제 유료 모델 호출 없음.
 - H4 LSP 읽기는 이제 구현을 시작한다. H3 Run override/남은 UX 경계, H4 Hashline 비교, H6–H8, 전체 회귀·배포 staging·마지막 Computer Use 검증은 여전히 남았다. Windows 자손 프로세스 종료 확인은 아직 지원/검증 완료가 아니다.
+
+### H4 LSP 읽기 연결 (2026-10-18)
+
+- `lsp_query`를 SDK 도구 목록, Coordinator 역할 읽기 권한·선택 서버 제한, 실행 소유 승인/취소 경로에 연결했다. 실행 설정과 질의를 승인 본문에 고정하고 UI에서 검사와 구별한다.
+- 프로젝트 설정에서 stdio 언어 서버 등록·수정·제거, 역할별 선택·상속, 정확한 실행 해시의 신뢰·철회를 제공한다. 검사와 LSP의 같은 ID는 신뢰를 공유하지 않는다. 프로젝트 전환 중 이전 설정을 새 프로젝트로 저장하지 않도록 상태를 구분한다.
+- broker는 UTF-16 위치·파일 hash·서버 version·범위 밖 URI·결과 크기·완료 시 tree를 검사한다. LSP가 참조한 파일은 agent의 읽기 근거를 대신하지 않는다.
+- 검증: server LSP/파일/검증/API 45 tests, contracts/core/adapter/react 520 passed / 2 opt-in skipped, 관련 6개 패키지 typecheck, Studio production build. 실제 로컬 LSP fixture를 사용하는 브라우저 E2E 2개(검사·언어 서버 등록→선택→승인→완료→실행 신뢰) 통과. 전체 회귀는 프로세스 시작 부하를 제한해 `--maxWorkers=4`로 실행했다.
+- 남은 작업: H3 Run override·정적 미리보기/UX 경계, H4 편집 비교 평가, H6–H8, 최종 통합·desktop·Computer Use. 이 브라우저 E2E는 최종 Computer Use 검증을 대신하지 않는다.

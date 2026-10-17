@@ -47,17 +47,7 @@ export class CheckOutput {
   }
 
   private keep(raw: string) {
-    // biome-ignore lint/suspicious/noControlCharactersInRegex: strip ANSI terminal escapes from check output
-    let text = raw.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '');
-    for (const path of this.paths) text = text.split(path).join('[workspace]');
-    text = text
-      .replace(/(bearer\s+)[\w.+/=-]+/gi, '$1[redacted]')
-      .replace(/\b(?:sk-|rt-|eyJ)[\w.-]{8,}/g, '[redacted]')
-      .replace(
-        /\b[\w-]*(?:token|secret|password|api[_-]?key)[\w-]*\s*[:=]\s*(?:"[^"]*"|'[^']*'|\S+)/gi,
-        '[credential redacted]',
-      )
-      .replace(/(?:[A-Za-z]:\\|(?<![:/\w])\/)(?:[^\s:<>"'|]+[\\/])*[^\s:<>"'|]*/g, '[path]');
+    const text = redactToolText(raw, this.paths);
     const bytes = Buffer.from(text);
     const headRemaining = Math.max(0, 16384 - Buffer.byteLength(this.head));
     this.head += bytes.subarray(0, headRemaining).toString('utf8');
@@ -82,4 +72,19 @@ export class CheckOutput {
       truncated: this.truncated,
     };
   }
+}
+
+export function redactToolText(raw: string, paths: string[]) {
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: strip ANSI terminal escapes from check output
+  let text = raw.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '');
+  for (const path of paths) text = text.split(path).join('[workspace]');
+  text = text
+    .replace(/(bearer\s+)[\w.+/=-]+/gi, '$1[redacted]')
+    .replace(/\b(?:sk-|rt-|eyJ)[\w.-]{8,}/g, '[redacted]')
+    .replace(
+      /\b[\w-]*(?:token|secret|password|api[_-]?key)[\w-]*\s*[:=]\s*(?:"[^"]*"|'[^']*'|\S+)/gi,
+      '[credential redacted]',
+    )
+    .replace(/(?:[A-Za-z]:\\|(?<![:/\w])\/)(?:[^\s:<>"'|]+[\\/])*[^\s:<>"'|]*/g, '[path]');
+  return text;
 }

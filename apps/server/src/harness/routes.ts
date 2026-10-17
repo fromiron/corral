@@ -25,8 +25,8 @@ const safeErrors = new Set([
   'package contains no supported skills or extensions',
   'selected project tool is not registered',
   'trust the repository before configuring tools',
-  'trust the repository before inspecting checks',
-  'no such registered check',
+  'trust the repository before inspecting tools',
+  'no such registered tool',
 ]);
 
 /** Filesystem, package-manager and parser errors never reach the browser verbatim. */
@@ -84,27 +84,38 @@ export function registerHarnessRoutes(
       );
     }),
   );
-  app.get<CheckParams>(`${prefix}/projects/:projectId/checks/:commandId/launch`, (request, reply) =>
-    action(reply, () =>
-      files.inspectCheck(
-        Identifier.parse(request.params.projectId),
-        Identifier.parse(request.params.commandId),
-      ),
-    ),
-  );
-  app.put<CheckParams>(`${prefix}/projects/:projectId/checks/:commandId/trust`, (request, reply) =>
-    action(reply, () => {
-      const input = z
-        .strictObject({ fingerprint: ContentHash, trusted: z.boolean() })
-        .parse(request.body);
-      return files.trustCheck(
-        Identifier.parse(request.params.projectId),
-        Identifier.parse(request.params.commandId),
-        input.fingerprint,
-        input.trusted,
-      );
-    }),
-  );
+  for (const [segment, kind] of [
+    ['checks', 'check'],
+    ['lsp-servers', 'lsp'],
+  ] as const) {
+    app.get<CheckParams>(
+      `${prefix}/projects/:projectId/${segment}/:commandId/launch`,
+      (request, reply) =>
+        action(reply, () =>
+          files.inspectProjectTool(
+            Identifier.parse(request.params.projectId),
+            kind,
+            Identifier.parse(request.params.commandId),
+          ),
+        ),
+    );
+    app.put<CheckParams>(
+      `${prefix}/projects/:projectId/${segment}/:commandId/trust`,
+      (request, reply) =>
+        action(reply, () => {
+          const input = z
+            .strictObject({ fingerprint: ContentHash, trusted: z.boolean() })
+            .parse(request.body);
+          return files.trustProjectTool(
+            Identifier.parse(request.params.projectId),
+            kind,
+            Identifier.parse(request.params.commandId),
+            input.fingerprint,
+            input.trusted,
+          );
+        }),
+    );
+  }
   app.get(`${prefix}/resources`, async () => service.store.listResources());
   app.get(`${prefix}/profiles`, async () => service.store.listProfiles());
   app.post(`${prefix}/reviews`, (request, reply) =>
