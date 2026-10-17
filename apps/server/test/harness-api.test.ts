@@ -74,6 +74,17 @@ it.each(['check', 'lsp'] as const)(
     );
     expect(saved.status, JSON.stringify(saved.body)).toBe(200);
     expect(saved.body.revision).toBe(1);
+    const criteria = await call('/harness/projects/default/criteria-files', {
+      paths: ['check.mjs'],
+    });
+    expect(criteria.status).toBe(200);
+    expect(criteria.body).toEqual([
+      { path: 'check.mjs', sha256: expect.stringMatching(/^[a-f0-9]{64}$/) },
+    ]);
+    expect(JSON.stringify(criteria.body)).not.toContain(source);
+    expect(
+      (await call('/harness/projects/default/criteria-files', { paths: ['../check.mjs'] })).status,
+    ).toBe(400);
     expect(
       (await call('/harness/projects/default/tools', { expectedRevision: 0, config }, 'PUT'))
         .status,
