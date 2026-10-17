@@ -842,6 +842,28 @@ async function createCorralServer(
     }
   });
 
+  // The linked folder as Git sees it now: read only (02-UX-Spec §4).
+  app.get<ProjectParams>(
+    '/api/v1/projects/:projectId/workspace/changes',
+    async (request, reply) => {
+      try {
+        return await files.folderChanges(request.params.projectId);
+      } catch (error) {
+        return workspaceFail(reply, error);
+      }
+    },
+  );
+  app.get<ProjectParams & { Querystring: { path?: string } }>(
+    '/api/v1/projects/:projectId/workspace/changes/file',
+    async (request, reply) => {
+      if (!request.query.path) return fail(reply, 'SCHEMA_INVALID', 'path is required');
+      try {
+        return await files.folderFileVersions(request.params.projectId, request.query.path);
+      } catch (error) {
+        return workspaceFail(reply, error);
+      }
+    },
+  );
   app.get<SessionParams>('/api/v1/sessions/:sessionId/worktree', async (request, reply) => {
     if (!(await sessionOr404(reply, request.params.sessionId))) return reply;
     return { worktree: files.worktreeView(request.params.sessionId) };
@@ -934,6 +956,9 @@ async function createCorralServer(
       return workspaceFail(reply, error);
     }
   });
+  app.get<SessionParams>('/api/v1/sessions/:sessionId/run-snapshots', async (request) =>
+    files.runSnapshots(request.params.sessionId),
+  );
   app.get<SessionParams>('/api/v1/sessions/:sessionId/file-operations', async (request) =>
     files.fileOperations(request.params.sessionId),
   );

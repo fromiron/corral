@@ -452,6 +452,13 @@ export class WorkspaceService implements FileTools {
     return tree;
   }
 
+  /** Each run's start and end trees in this session, for "was this checked?" on run cards. */
+  runSnapshots(sessionId: string) {
+    return this.db
+      .prepare('SELECT run_id AS runId, phase, tree FROM run_snapshots WHERE session_id = ?')
+      .all(sessionId) as { runId: string; phase: 'start' | 'end'; tree: string }[];
+  }
+
   /** A run's start snapshot, taken just before the run was started (CR-012). */
   async recordRunStart(runId: string, sessionId: string, tree: string) {
     const row = this.worktree(sessionId);
@@ -612,6 +619,116 @@ export class WorkspaceService implements FileTools {
       return text === null ? { kind: 'binary', bytes } : { kind: 'text', text };
     };
     return { path: rel, before: await side(from), after: await side(to) };
+  }
+
+  // ── the linked folder as Git sees it (02-UX-Spec §4 "Git 상태") ─────────────
+
+  /**
+   * HEAD → the folder's working tree, staged and unstaged together, plus untracked files.
+   * Read only: `git diff` without optional locks writes nothing, not even the index.
+   */
+  async folderChanges(projectId: string): Promise<ChangeSet & { staged: string[] }> {
+    const row = this.binding(projectId);
+    if (!row) throw new WorkspaceError('TARGET_NOT_FOUND', 'this project has no folder');
+    if (!row.is_git)
+      throw new WorkspaceError('CAPABILITY_DENIED', 'the folder is not a Git repository');
+    const root = row.root_path;
+    const head = await gitText(root, ['rev-parse', '--verify', 'HEAD^{tree}']).catch(() => null);
+    if (!head)
+      return {
+        scope: { kind: 'session' },
+        from: null,
+        to: null,
+        unavailable: 'the repository has no commit',
+        files: [],
+        staged: [],
+      };
+    const split = async (args: string[]) =>
+      (await git(root, args)).stdout.toString('utf8').split('\0');
+    const raw = await split(['diff', '--no-renames', '-z', '--raw', 'HEAD']);
+    const numstat = await split(['diff', '--no-renames', '-z', '--numstat', 'HEAD']);
+    const staged = (
+      await split(['diff', '--cached', '--no-renames', '-z', '--name-only', 'HEAD'])
+    ).filter(Boolean);
+    const untracked = (await split(['ls-files', '-z', '--others', '--exclude-standard'])).filter(
+      Boolean,
+    );
+    const counts = new Map<string, { add: number | null; del: number | null }>();
+    for (const line of numstat) {
+      const match = /^(\d+|-)\t(\d+|-)\t(.*)$/s.exec(line);
+      if (match)
+        counts.set(match[3] as string, {
+          add: match[1] === '-' ? null : Number(match[1]),
+          del: match[2] === '-' ? null : Number(match[2]),
+        });
+    }
+    const files: FileChange[] = [];
+    for (let i = 0; i < raw.length - 1; i += 2) {
+      const fields = (raw[i] as string).trim().split(' ');
+      const path = raw[i + 1] as string;
+      const status = fields.at(-1)?.[0];
+      if (!status || !path) continue;
+      const count = counts.get(path);
+      files.push({
+        path,
+        status:
+          status === 'A'
+            ? 'added'
+            : status === 'D'
+              ? 'deleted'
+              : status === 'T'
+                ? 'type_changed'
+                : 'modified',
+        additions: count?.add ?? null,
+        deletions: count?.del ?? null,
+        binary: count ? count.add === null : false,
+        provenance: 'external_observed',
+        beforeBlob: fields[2] && !/^0+$/.test(fields[2]) ? fields[2] : null,
+        afterBlob: null,
+      });
+    }
+    for (const path of untracked.slice(0, 2000))
+      files.push({
+        path,
+        status: 'added',
+        additions: null,
+        deletions: null,
+        binary: false,
+        provenance: 'external_observed',
+        beforeBlob: null,
+        afterBlob: null,
+      });
+    return { scope: { kind: 'session' }, from: head, to: null, unavailable: null, files, staged };
+  }
+
+  /** One file: as committed at HEAD, and as it is on disk now (never written). */
+  async folderFileVersions(projectId: string, path: string): Promise<FileVersions> {
+    const row = this.binding(projectId);
+    if (!row) throw new WorkspaceError('TARGET_NOT_FOUND', 'this project has no folder');
+    const rel = safeRelative(path);
+    let before: FileSide = { kind: 'absent' };
+    try {
+      const sha = await gitText(row.root_path, ['rev-parse', '--verify', '--quiet', `HEAD:${rel}`]);
+      const bytes = Number(await gitText(row.root_path, ['cat-file', '-s', sha]));
+      if (bytes > MAX_TEXT) before = { kind: 'too_large', bytes };
+      else {
+        const content = (await git(row.root_path, ['cat-file', 'blob', sha])).stdout;
+        const text = decodeText(content);
+        before = text === null ? { kind: 'binary', bytes } : { kind: 'text', text };
+      }
+    } catch {
+      before = { kind: 'absent' };
+    }
+    let after: FileSide = { kind: 'absent' };
+    if ((await assertPlainPath(row.root_path, rel)) === 'file') {
+      const content = await readFile(join(row.root_path, rel));
+      if (content.length > MAX_TEXT) after = { kind: 'too_large', bytes: content.length };
+      else {
+        const text = decodeText(content);
+        after = text === null ? { kind: 'binary', bytes: content.length } : { kind: 'text', text };
+      }
+    }
+    return { path: rel, before, after };
   }
 
   // ── verification commands ───────────────────────────────────────────────────

@@ -10,7 +10,16 @@ import type {
 } from '@corral/core';
 import { ApprovalPanel, SafeMarkdown, StatusBadge } from '@corral/react';
 import { Link, useNavigate, useRouter } from '@tanstack/react-router';
-import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from 'react';
+import {
+  createContext,
+  type KeyboardEvent,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { setCurrentProject } from '../projects.ts';
 import { type SessionSearch, sessionRoute } from '../router.tsx';
@@ -81,6 +90,25 @@ export function SessionPage() {
   const setSearch = (patch: Partial<typeof search>) =>
     void navigate({ search: (s) => ({ ...s, ...patch }) });
   const tabs: SessionTab[] = ['work', 'team', 'run'];
+  // Coming back to a tab keeps where the person was reading (02-UX-Spec §3, §9).
+  const panelRef = useRef<HTMLDivElement>(null);
+  const scrollKey = `corral:scroll:${session.sessionId}:${tab}`;
+  const rememberScroll = (top: number) => {
+    try {
+      window.sessionStorage.setItem(scrollKey, String(Math.round(top)));
+    } catch {
+      // Not remembered; the page still works.
+    }
+  };
+  useLayoutEffect(() => {
+    let top = 0;
+    try {
+      top = Number(window.sessionStorage.getItem(scrollKey) ?? 0);
+    } catch {
+      top = 0;
+    }
+    if (panelRef.current) panelRef.current.scrollTop = top;
+  }, [scrollKey]);
 
   return (
     <WorkbenchLayout
@@ -118,8 +146,10 @@ export function SessionPage() {
             onChoose={(value) => setSearch({ tab: value })}
           />
           <div
+            ref={panelRef}
             role="tabpanel"
             aria-label={tw(`tab.${tab}`)}
+            onScroll={(event) => rememberScroll(event.currentTarget.scrollTop)}
             className="flex min-h-0 flex-1 flex-col overflow-auto"
           >
             {tab === 'work' ? (
@@ -306,36 +336,39 @@ function WorkTab({
   const named = new Set(session.entries.flatMap((e) => (e.runId ? [e.runId] : [])));
   const loose = runs.filter((r) => !named.has(r.runId));
   const queued = session.entries.filter((e) => e.state === 'queued');
+  const runChecks = useRunChecks(session.sessionId, runs);
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-3 p-4">
-      <SessionHeader session={session} corrals={corrals} team={team} />
-      <section aria-label={t('heading')} className="flex flex-col gap-3">
-        {session.entries.length === 0 && loose.length === 0 ? (
-          <p className="rounded-md border border-dashed border-line p-4 text-sm text-muted">
-            {t('timelineEmpty')}
-          </p>
-        ) : null}
-        {session.entries
-          .filter((e) => e.state !== 'queued' && e.state !== 'dismissed')
-          .map((entry) => (
-            <EntryCard key={entry.entryId} entry={entry} runs={runs} />
+    <RunChecks.Provider value={runChecks}>
+      <div className="mx-auto flex w-full max-w-4xl flex-col gap-3 p-4">
+        <SessionHeader session={session} corrals={corrals} team={team} />
+        <section aria-label={t('heading')} className="flex flex-col gap-3">
+          {session.entries.length === 0 && loose.length === 0 ? (
+            <p className="rounded-md border border-dashed border-line p-4 text-sm text-muted">
+              {t('timelineEmpty')}
+            </p>
+          ) : null}
+          {session.entries
+            .filter((e) => e.state !== 'queued' && e.state !== 'dismissed')
+            .map((entry) => (
+              <EntryCard key={entry.entryId} entry={entry} runs={runs} />
+            ))}
+          {loose.map((run) => (
+            <RunCard key={run.runId} run={run} />
           ))}
-        {loose.map((run) => (
-          <RunCard key={run.runId} run={run} />
-        ))}
-      </section>
-      {active && active.sessionId === session.sessionId ? (
-        <ActiveDecisions runId={active.runId} />
-      ) : null}
-      <Composer
-        session={session}
-        team={team}
-        runs={runs}
-        active={active}
-        queued={queued}
-        onChange={onChange}
-      />
-    </div>
+        </section>
+        {active && active.sessionId === session.sessionId ? (
+          <ActiveDecisions runId={active.runId} />
+        ) : null}
+        <Composer
+          session={session}
+          team={team}
+          runs={runs}
+          active={active}
+          queued={queued}
+          onChange={onChange}
+        />
+      </div>
+    </RunChecks.Provider>
   );
 }
 
@@ -688,6 +721,46 @@ function EntryCard({ entry, runs }: { entry: SessionEntry; runs: RunSummary[] })
 }
 
 /** A run with its status and, once it has one, its final result. */
+/** Each ended run's latest check of its own end state, when the session has checks. */
+type RunCheck = { name: string; state: 'running' | 'passed' | 'failed' | 'error' } | null;
+const RunChecks = createContext<{ known: boolean; of: (runId: string) => RunCheck }>({
+  known: false,
+  of: () => null,
+});
+
+/** Matches checks to runs by tree: a check counts for a run only if it ran on the run's end. */
+function useRunChecks(sessionId: string, runs: RunSummary[]) {
+  const { workspaces } = useServices();
+  const [value, setValue] = useState<{ known: boolean; map: Map<string, RunCheck> }>({
+    known: false,
+    map: new Map(),
+  });
+  const key = runs.map((r) => `${r.runId}:${r.status}`).join(',');
+  useEffect(() => {
+    void key;
+    if (!workspaces) return;
+    let live = true;
+    void (async () => {
+      const copy = await workspaces.worktree(sessionId).catch(() => null);
+      if (!copy) return;
+      const [snapshots, checks] = await Promise.all([
+        workspaces.runSnapshots(sessionId),
+        workspaces.verifications(sessionId),
+      ]);
+      const map = new Map<string, RunCheck>();
+      for (const snapshot of snapshots.filter((x) => x.phase === 'end')) {
+        const check = checks.find((c) => c.tree === snapshot.tree);
+        map.set(snapshot.runId, check ? { name: check.name, state: check.state } : null);
+      }
+      if (live) setValue({ known: true, map });
+    })().catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [workspaces, sessionId, key]);
+  return { known: value.known, of: (runId: string) => value.map.get(runId) ?? null };
+}
+
 /**
  * A run in the session (02-UX-Spec §3): whether it finished or not, the agent's own result kept
  * apart from facts, and what can be done next. Links stay inside the workbench.
@@ -695,7 +768,10 @@ function EntryCard({ entry, runs }: { entry: SessionEntry; runs: RunSummary[] })
 function RunCard({ run, nested = false }: { run: RunSummary; nested?: boolean }) {
   const t = useTranslations('Sessions');
   const ts = useTranslations('Status');
+  const tf = useTranslations('Files');
   const { transport, workspaces } = useServices();
+  const checks = useContext(RunChecks);
+  const check = checks.of(run.runId);
   const ended = TERMINAL_RUN_STATUSES.has(run.status);
   const [result, setResult] = useState<{ text: string; id: string } | null>(null);
   useEffect(() => {
@@ -746,6 +822,13 @@ function RunCard({ run, nested = false }: { run: RunSummary; nested?: boolean })
       {ended && run.status !== 'succeeded' ? (
         <p role="note" className="text-xs text-warning">
           {t('didNotFinish', { status: ts(run.status) })}
+        </p>
+      ) : null}
+      {ended && checks.known ? (
+        <p className="text-xs" data-testid="run-check">
+          {check
+            ? t('checked', { name: check.name, state: tf(`checkState.${check.state}`) })
+            : t('notChecked')}
         </p>
       ) : null}
       {result ? (
