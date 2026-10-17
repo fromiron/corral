@@ -163,6 +163,19 @@ export function HarnessSettingsPage() {
     setPreview(null);
   }
   const selectedKey = selected ? `${selected.profileId}:${selected.revision}` : '';
+  const pendingProfile: HarnessProfile = {
+    name: profile.name,
+    policy: profile.policy,
+    resources: profile.resources,
+    allowedTools: [...new Set(toolNames.split(/[\s,]+/).filter(Boolean))],
+    startupCommands: commands
+      .split('\n')
+      .map((command) => command.trim())
+      .filter(Boolean),
+  };
+  const canPreview =
+    selected !== null &&
+    JSON.stringify({ ...selected, ...pendingProfile }) === JSON.stringify(selected);
   return (
     <SettingsLayout active="harness">
       <main className="mx-auto flex max-w-3xl flex-col gap-7 p-6 sm:p-10">
@@ -504,16 +517,7 @@ export function HarnessSettingsPage() {
                       const saved = await api.save(
                         selected?.profileId ?? `harness_${crypto.randomUUID().replaceAll('-', '')}`,
                         selected?.revision ?? 0,
-                        {
-                          name: profile.name,
-                          policy: profile.policy,
-                          resources: profile.resources,
-                          allowedTools: [...new Set(toolNames.split(/[\s,]+/).filter(Boolean))],
-                          startupCommands: commands
-                            .split('\n')
-                            .map((s) => s.trim())
-                            .filter(Boolean),
-                        },
+                        pendingProfile,
                       );
                       setProfiles(await api.profiles());
                       choose(saved);
@@ -526,9 +530,10 @@ export function HarnessSettingsPage() {
                 </Button>
                 <Button
                   variant="outline"
-                  disabled={!selected}
+                  disabled={!canPreview}
                   onClick={() =>
                     selected &&
+                    canPreview &&
                     void work(async () =>
                       setPreview(await api.preview(bindingOf(selected), projectId)),
                     )
@@ -537,7 +542,10 @@ export function HarnessSettingsPage() {
                   {t('preview')}
                 </Button>
               </div>
-              {preview ? <HarnessPreviewView preview={preview} /> : null}
+              {selected && !canPreview ? (
+                <p className="text-xs text-muted">{t('saveBeforePreview')}</p>
+              ) : null}
+              {preview && canPreview ? <HarnessPreviewView preview={preview} /> : null}
             </fieldset>
             <fieldset disabled={busy} className="flex flex-col gap-3 border-t border-line pt-5">
               <legend className="px-1 text-lg font-semibold">{t('defaults')}</legend>
