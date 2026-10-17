@@ -16,6 +16,7 @@ import { openDatabase, SqliteProjectToolStore } from '@corral/storage-sqlite';
 import { FakeClock, Gate } from '@corral/testkit';
 import { afterEach, describe, expect, it } from 'vitest';
 import { safeRelative, WorkspaceService } from '../src/files/service.ts';
+import { ReviewService } from '../src/files/review.ts';
 
 // The file broker's rules (CR-012): paths, the read-before-change rule, and what a stop leaves.
 
@@ -314,6 +315,15 @@ describe('file broker (CR-012)', () => {
     const proposal = s.service.lspProposal('session_1', result.result.proposals[0].proposalId);
     return { ...s, input, proposal };
   }
+  it('[TC-HAR-018-H] surfaces pending language-server proposals in the session inbox until reviewed',async()=>{
+    const s=await proposalSetup();
+    const review=new ReviewService({db:s.db,clock:new FakeClock(),files:s.service});
+    const sessions=[{sessionId:'session_1',title:'Proposal session',entries:[]}];
+    expect(review.inbox(sessions,[])).toContainEqual({kind:'lsp_proposal',sessionId:'session_1',sessionTitle:'Proposal session',runId:null,detail:'1'});
+    s.service.dismissLspProposal('session_1',s.proposal.proposalId,s.proposal.hash);
+    expect(review.inbox(sessions,[]).some(item=>item.kind==='lsp_proposal')).toBe(false);
+    s.db.close();
+  });
   it('[TC-HAR-018-H] persists a pinned proposal, waits for explicit idle-session apply and never writes twice', async () => {
     const s = await proposalSetup();
     expect(s.proposal.state).toBe('pending');
