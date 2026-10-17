@@ -1590,6 +1590,13 @@ export class WorkspaceService implements FileTools {
     return this.lease(row.worktree_path, async () => {
       const proposal = this.lspProposal(sessionId, id);
       if (proposal.state !== 'pending') return proposal;
+      const settlePending = (state: 'stale' | 'applying') => {
+        // Dismissal may win while filesystem preflight is awaiting IO.
+        this.db
+          .prepare("UPDATE lsp_proposals SET state=?,updated_at=? WHERE id=? AND state='pending'")
+          .run(state, this.clock.nowIso(), id);
+        return this.lspProposal(sessionId, id);
+      };
       const active = () =>
         !!this.db
           .prepare(
@@ -1610,11 +1617,10 @@ export class WorkspaceService implements FileTools {
           'CAPABILITY_DENIED',
           'trust the repository before applying this proposal',
         );
-      if (this.worktreeHash(row) !== proposal.worktreeHash)
-        return this.settleLspProposal(proposal, 'stale');
+      if (this.worktreeHash(row) !== proposal.worktreeHash) return settlePending('stale');
       try {
         if ((await this.snapshotTree(row.worktree_path)) !== proposal.tree)
-          return this.settleLspProposal(proposal, 'stale');
+          return settlePending('stale');
         for (const file of proposal.files) {
           if (
             sha256(Buffer.from(file.before)) !== file.beforeHash ||
@@ -1624,7 +1630,7 @@ export class WorkspaceService implements FileTools {
           await expectFile(row.worktree_path, safeRelative(file.path), file.beforeHash);
         }
       } catch {
-        return this.settleLspProposal(proposal, 'stale');
+        return settlePending('stale');
       }
       if (active())
         throw new WorkspaceError(
@@ -1638,7 +1644,8 @@ export class WorkspaceService implements FileTools {
         onCancel: () => () => {},
       };
       const outcomes = proposal.outcomes.map((item) => ({ ...item }));
-      this.settleLspProposal(proposal, 'applying', outcomes);
+      const claimed = settlePending('applying');
+      if (claimed.state !== 'applying') return claimed;
       for (const [index, file] of proposal.files.entries()) {
         try {
           await this.change(

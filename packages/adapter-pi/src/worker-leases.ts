@@ -106,7 +106,9 @@ export async function recoverSdkWorkers(directory: string): Promise<void> {
     rmSync(path, { force: true });
   }
   // Kill SDK owners first; only then can their child registries stop changing.
-  for (const entry of entries.filter((entry) => entry.name.startsWith('children-'))) {
+  for (const entry of readdirSync(directory, { withFileTypes: true }).filter((entry) =>
+    entry.name.startsWith('children-'),
+  )) {
     if (!entry.isDirectory()) throw new Error('worker child registry is invalid');
     const childDirectory = join(directory, entry.name);
     await recoverSdkWorkers(childDirectory);
