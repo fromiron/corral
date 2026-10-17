@@ -18,6 +18,8 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'nod
 import { editText, PiEditError } from '@corral/adapter-pi';
 import {
   type BrokerFileToolName,
+  type CheckExecution,
+  CheckPlan,
   type Clock,
   type EditTextRequest,
   type EditTextResult,
@@ -25,6 +27,7 @@ import {
   PiWriteInput,
   type RegisteredCheck,
   type Scheduler,
+  type VerificationOwner,
   VerificationReport,
 } from '@corral/contracts';
 import { type FileTools, rankFuzzy, type ToolCancellation, ToolRefusal } from '@corral/core';
@@ -957,6 +960,128 @@ export class WorkspaceService implements FileTools {
       tree: await this.snapshotTree(row.worktree_path),
       launch: await launchFingerprint(row.worktree_path, config.revision, command),
     }));
+    return this.startCheck(
+      sessionId,
+      projectId,
+      row.worktree_path,
+      command,
+      config.revision,
+      tree,
+      launch.fingerprint,
+      { kind: 'manual', sessionId },
+    );
+  }
+
+  private checkContext(input: CheckExecution) {
+    const sessionId = this.sessionOfRun(input.runId);
+    const row = sessionId ? this.worktree(sessionId) : null;
+    const binding = this.binding(input.selection.projectId);
+    if (!sessionId || !row || !binding || row.binding_id !== binding.id || !binding.trusted)
+      throw new ToolRefusal('CAPABILITY_DENIED', 'trusted working copy unavailable');
+    const config = this.projectTools.get(input.selection.projectId, input.selection.revision);
+    if (
+      !config ||
+      config.hash !== input.selection.hash ||
+      !input.selection.checkIds.includes(input.commandId)
+    )
+      throw new ToolRefusal(
+        'CAPABILITY_DENIED',
+        'check is not selected in the pinned configuration',
+      );
+    const command = config.checks.find((check) => check.id === input.commandId);
+    if (!command) throw new ToolRefusal('TARGET_NOT_FOUND', 'check is not registered');
+    return { sessionId, row, config, command };
+  }
+
+  async planCheck(input: CheckExecution, cancellation: ToolCancellation): Promise<CheckPlan> {
+    const { row, config, command } = this.checkContext(input);
+    if (cancellation.aborted) throw new ToolRefusal('TARGET_TERMINAL', 'check cancelled');
+    const plan = await this.lease(row.worktree_path, async () => {
+      const tree = await this.snapshotTree(row.worktree_path);
+      const launch = await launchFingerprint(row.worktree_path, config.revision, command);
+      return {
+        commandId: command.id,
+        name: command.name,
+        argv: command.argv,
+        timeoutMs: command.timeoutMs,
+        configRevision: config.revision,
+        tree,
+        fingerprint: launch.fingerprint,
+        trusted:
+          this.projectTools.trust({
+            projectId: config.projectId,
+            kind: 'check',
+            id: command.id,
+            fingerprint: launch.fingerprint,
+          }) !== null,
+      };
+    });
+    if (cancellation.aborted) throw new ToolRefusal('TARGET_TERMINAL', 'check cancelled');
+    return CheckPlan.parse(plan);
+  }
+
+  async runCheck(
+    input: CheckExecution,
+    rawPlan: CheckPlan,
+    approvedFingerprint: string | null,
+    cancellation: ToolCancellation,
+  ): Promise<VerificationReport & { stale: boolean }> {
+    const plan = CheckPlan.parse(rawPlan);
+    const { sessionId, row, config, command } = this.checkContext(input);
+    const now = await this.planCheck(input, cancellation);
+    if (
+      plan.tree !== now.tree ||
+      plan.fingerprint !== now.fingerprint ||
+      plan.commandId !== now.commandId ||
+      plan.configRevision !== now.configRevision
+    )
+      throw new ToolRefusal('REVISION_CONFLICT', 'check target tree or launch fingerprint changed');
+    if (!now.trusted && approvedFingerprint !== now.fingerprint)
+      throw new ToolRefusal(
+        'CAPABILITY_DENIED',
+        'check requires trust or exact fingerprint approval',
+      );
+    const duplicate = this.db
+      .prepare(
+        `SELECT 1 FROM verifications WHERE json_extract(report_json, '$.owner.runId') = ? AND json_extract(report_json, '$.owner.executionId') = ? AND json_extract(report_json, '$.owner.attemptNo') = ? AND json_extract(report_json, '$.owner.effectId') = ?`,
+      )
+      .get(input.runId, input.executionId, input.attemptNo, input.effectId);
+    if (duplicate) throw new ToolRefusal('CAPABILITY_DENIED', 'this check effect already ran');
+    const owner = {
+      kind: 'execution' as const,
+      runId: input.runId,
+      executionId: input.executionId,
+      attemptNo: input.attemptNo,
+      effectId: input.effectId,
+    };
+    const id = this.startCheck(
+      sessionId,
+      config.projectId,
+      row.worktree_path,
+      command,
+      config.revision,
+      plan.tree,
+      plan.fingerprint,
+      owner,
+      cancellation,
+      approvedFingerprint,
+    );
+    const report = await this.waitVerification(id);
+    return { ...report, stale: (await this.currentTree(sessionId)) !== report.tree };
+  }
+
+  private startCheck(
+    sessionId: string,
+    projectId: string,
+    sourceDirectory: string,
+    command: RegisteredCheck,
+    configRevision: number,
+    tree: string,
+    fingerprint: string,
+    owner: VerificationOwner,
+    parentCancellation?: ToolCancellation,
+    approvedFingerprint?: string | null,
+  ): string {
     const id = this.newVerificationId();
     this.db
       .prepare(
@@ -973,23 +1098,30 @@ export class WorkspaceService implements FileTools {
         return () => controller.signal.removeEventListener('abort', fn);
       },
     };
+    const off = parentCancellation?.onCancel(() => controller.abort()) ?? (() => {});
+    if (parentCancellation?.aborted) controller.abort();
     const completion = this.verificationRunner
       .run(
         {
           verificationId: id,
-          owner: { kind: 'manual', sessionId },
+          owner,
           sessionId,
-          sourceDirectory: row.worktree_path,
+          sourceDirectory,
           copyRoot: join(this.worktreeRoot, 'checks'),
           tree,
-          configRevision: config.revision,
-          fingerprint: launch.fingerprint,
+          configRevision,
+          fingerprint,
           command,
           beforeLaunch: async (directory) => {
             if (!this.binding(projectId)?.trusted) throw new Error('repository trust was revoked');
-            const current = await launchFingerprint(directory, config.revision, command);
-            if (current.fingerprint !== launch.fingerprint)
-              throw new Error('launch fingerprint changed');
+            const current = await launchFingerprint(directory, configRevision, command);
+            if (current.fingerprint !== fingerprint) throw new Error('launch fingerprint changed');
+            if (
+              owner.kind === 'execution' &&
+              approvedFingerprint !== fingerprint &&
+              !this.projectTools.trust({ projectId, kind: 'check', id: command.id, fingerprint })
+            )
+              throw new Error('check launch trust was revoked');
             return current.executable;
           },
         },
@@ -1020,7 +1152,10 @@ export class WorkspaceService implements FileTools {
             );
         },
       )
-      .finally(() => this.checks.delete(id));
+      .finally(() => {
+        off();
+        this.checks.delete(id);
+      });
     this.checks.set(id, { sessionId, cancel: () => controller.abort(), completion });
     void completion.catch(() => {});
     return id;

@@ -165,6 +165,16 @@ export interface ExternalTools {
  */
 export interface FileTools {
   available(runId: string): boolean;
+  planCheck?(
+    input: import('@corral/contracts').CheckExecution,
+    cancellation: ToolCancellation,
+  ): Promise<import('@corral/contracts').CheckPlan>;
+  runCheck?(
+    input: import('@corral/contracts').CheckExecution,
+    plan: import('@corral/contracts').CheckPlan,
+    approvedFingerprint: string | null,
+    cancellation: ToolCancellation,
+  ): Promise<import('@corral/contracts').VerificationReport & { stale: boolean }>;
   execute(
     input: {
       name: BrokerFileToolName;
