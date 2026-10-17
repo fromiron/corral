@@ -95,7 +95,7 @@ it('[TC-HAR-003-H] shows the pinned resource, final context, payload and unmanag
     </IntlProvider>,
   );
   expect(screen.getByText('writing-pack · 1.0.0')).toBeInTheDocument();
-  expect(screen.getByText(/writer · r2/)).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: /writer · r2/ })).toBeInTheDocument();
   expect(screen.getByText(/compaction/)).toBeInTheDocument();
   expect(screen.getByText(/skill_writing/)).toBeInTheDocument();
   expect(screen.getByText('1'.repeat(64))).toBeInTheDocument();

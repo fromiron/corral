@@ -54,6 +54,19 @@ export function HarnessDetails({ session }: { session: RunSessionStore }) {
               {snapshot.binding.profileId} · r{snapshot.binding.revision}
             </h3>
             <p className="text-xs">{t(snapshot.policy)}</p>
+            {snapshot.layers?.length ? (
+              <dl className="text-xs">
+                <dt className="font-medium">{t('layers')}</dt>
+                {snapshot.layers.map((layer) => (
+                  <dd key={layer.scope}>
+                    {t(layer.scope)} · {layer.binding.profileId} · r{layer.binding.revision}
+                  </dd>
+                ))}
+              </dl>
+            ) : null}
+            <p className="break-words text-xs text-muted">
+              {t('allowedTools')}: {snapshot.allowedTools.join(', ') || t('noTools')}
+            </p>
             {snapshot.policy === 'trusted-native' ? (
               <p className="text-xs text-warning">{t('nativeWarning')}</p>
             ) : null}
