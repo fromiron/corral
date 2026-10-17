@@ -213,6 +213,20 @@ export class VerificationRunner {
           signal: outcome.signal,
           timedOut: outcome.timedOut,
         };
+        if (processClosed && groupGone && report.state === 'completed') {
+          const targetUnchanged =
+            (await gitText(directory, [
+              'status',
+              '--porcelain=v1',
+              '-z',
+              '--untracked-files=all',
+            ])) === '';
+          report = {
+            ...report,
+            targetUnchanged,
+            verdict: targetUnchanged ? report.verdict : 'inconclusive',
+          };
+        }
       }
     } catch {
       report = {

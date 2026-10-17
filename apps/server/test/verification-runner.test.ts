@@ -71,10 +71,19 @@ function cancellation() {
 
 describe('owned verification runner', () => {
   it('[TC-HAR-013-N] a check that changes its own candidate cannot establish a pass', async () => {
-    const f = fixture("import fs from 'node:fs'; fs.writeFileSync('a.txt','changed during verification');");
-    const report = await new VerificationRunner({clock:f.clock,timers:systemTimers}).run(f.input,cancellation().signal);
-    expect(report).toMatchObject({state:'completed',verdict:'inconclusive',targetUnchanged:false});
-    expect(readFileSync(join(f.root,'a.txt'),'utf8')).toBe('original');
+    const f = fixture(
+      "import fs from 'node:fs'; fs.writeFileSync('a.txt','changed during verification');",
+    );
+    const report = await new VerificationRunner({ clock: f.clock, timers: systemTimers }).run(
+      f.input,
+      cancellation().signal,
+    );
+    expect(report).toMatchObject({
+      state: 'completed',
+      verdict: 'inconclusive',
+      targetUnchanged: false,
+    });
+    expect(readFileSync(join(f.root, 'a.txt'), 'utf8')).toBe('original');
   });
   it('[TC-HAR-012-N] a cancelled duplicate cannot remove a directory owned by a different invocation', async () => {
     const f = fixture('');
@@ -90,9 +99,7 @@ describe('owned verification runner', () => {
     expect(readFileSync(join(existing, 'keep.txt'), 'utf8')).toBe('keep');
   });
   it('[TC-HAR-012-H] executes the captured tree in a separate copy, preserving owner and injected duration', async () => {
-    const f = fixture(
-      `import fs from 'node:fs'; console.log(fs.readFileSync('a.txt','utf8')); fs.writeFileSync('a.txt','from check');`,
-    );
+    const f = fixture(`import fs from 'node:fs'; console.log(fs.readFileSync('a.txt','utf8'));`);
     writeFileSync(join(f.root, 'a.txt'), 'changed after capture');
     const updates: string[] = [];
     const runner = new VerificationRunner({

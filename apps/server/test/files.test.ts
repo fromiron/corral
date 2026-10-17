@@ -264,12 +264,13 @@ describe('file broker (CR-012)', () => {
     expect(report).toMatchObject({
       owner: { kind: 'manual', sessionId: 'session_1' },
       state: 'completed',
-      verdict: 'pass',
+      verdict: 'inconclusive',
+      targetUnchanged: false,
       cleanupConfirmed: true,
     });
     expect(await call('read_file', { path: 'a.txt' })).toMatchObject({ text: 'one\n' });
     const before = service.verifications('session_1', await service.currentTree('session_1'))[0];
-    expect(before).toMatchObject({ state: 'passed', stale: false, report });
+    expect(before).toMatchObject({ state: 'error', stale: false, report });
     await call('write_file', { path: 'a.txt', text: 'changed after check' });
     expect(
       service.verifications('session_1', await service.currentTree('session_1'))[0],

@@ -50,6 +50,7 @@ export const VerificationReport = z.strictObject({
   signal: z.string().nullable(),
   timedOut: z.boolean(),
   cleanupConfirmed: z.boolean(),
+  targetUnchanged: z.boolean().nullable().default(null),
   durationMs: z.number().min(0),
   startedAt: z.iso.datetime(),
   endedAt: z.iso.datetime().nullable(),
