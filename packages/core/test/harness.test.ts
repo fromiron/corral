@@ -1,0 +1,106 @@
+import { type AgentHost, type AgentStartInput, canonicalJson, type EffectiveHarnessSnapshot, type ModelRequestRecord, type ToolDescriptor } from '@corral/contracts';
+import { FakeClock, Gate, linearCorral, SequentialIdFactory } from '@corral/testkit';
+import { sha256 } from '@noble/hashes/sha2.js';
+import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js';
+import { describe, expect, it } from 'vitest';
+import { Coordinator, InMemoryRunStore } from '../src/index.ts';
+
+const hash = (value: unknown) => bytesToHex(sha256(utf8ToBytes(canonicalJson(value))));
+const descriptor: ToolDescriptor = { name: 'echo', source: 'extension:fixture@1.0.0', schemaHash: 'b'.repeat(64), exposure: 'direct', sideEffect: 'none', annotations: { readOnlyHint: true, openWorldHint: false } };
+const snapshot: EffectiveHarnessSnapshot = {
+  binding: { profileId: 'writing', revision: 1 }, snapshotHash: 'a'.repeat(64), piVersion: '1.3.0',
+  policyRevision: 1, policy: 'trusted-native', resources: [{ hash: 'c'.repeat(64), name: 'fixture', version: '1.0.0', kind: 'extension', required: true }],
+  allowedTools: ['echo'], tools: [], diagnostics: [],
+};
+const record: ModelRequestRecord = { purpose: 'turn', directiveIds: [], contextHash: 'd'.repeat(64), contextBytes: 250, sections: [] };
+function setup(resolve = true) {
+  const started = new Gate();
+  const done = new Gate();
+  const store = new InMemoryRunStore();
+  let host!: AgentHost;
+  let input!: AgentStartInput;
+  const coordinator = new Coordinator({
+    clock: new FakeClock(), ids: new SequentialIdFactory(), store,
+    ...(resolve ? { harnesses: { resolve: () => structuredClone(snapshot) } } : {}),
+    agents: { start: async (i, h) => { input = i; host = h; started.open(); return { cancel: async () => done.open(), waitForSettlement: async () => { await done.wait(); return { outcome: 'cancelled' as const }; } }; } },
+  });
+  const definition = linearCorral(['writer']);
+  definition.roles[0]!.harness = snapshot.binding;
+  const result = coordinator.startRun({ schemaVersion: '0.1', commandId: 'start', definition, mode: 'mock' });
+  return { coordinator, store, result, started, done, host: () => host, input: () => input, events: () => store.readEvents(result.runId!, 0) };
+}
+async function loaded() {
+  const s = setup();
+  await s.started.wait();
+  await s.host().reportHarness!({ ok: true, snapshotHash: snapshot.snapshotHash, tools: [descriptor], diagnostics: [] });
+  return s;
+}
+
+describe('Coordinator harness boundary (H2)', () => {
+  it('[TC-HAR-009-N] rejects an unresolved profile before creating a Run', () => {
+    const s = setup(false);
+    expect(s.result.runId).toBeNull();
+    expect(s.result.receipt.status).toBe('rejected');
+    expect(s.store.listRuns()).toEqual([]);
+  });
+
+  it('[TC-HAR-003-H] pins the snapshot, requires load acknowledgement and records each request with its budget reservation', async () => {
+    const s = setup();
+    await s.started.wait();
+    expect(s.input().harness).toEqual(snapshot);
+    await expect(s.host().prepareModelRequest(record)).rejects.toThrow(/harness/i);
+    await s.host().reportHarness!({ ok: true, snapshotHash: snapshot.snapshotHash, tools: [descriptor], diagnostics: [] });
+    const permit = await s.host().prepareModelRequest(record);
+    expect(s.events().filter(e => e.type === 'model.request_recorded')).toMatchObject([{ payload: { modelCallId: permit.modelCallId, ...record } }]);
+    expect(s.events().filter(e => e.type === 'budget.reserved')).toHaveLength(1);
+    await expect(s.host().prepareModelRequest()).rejects.toThrow(/record/i);
+    s.done.open();
+  });
+
+  it('[TC-HAR-002-H] native calls record unmanaged ownership and settle once', async () => {
+    const s = await loaded();
+    const args = { text: 'private body', path: '/private/path' };
+    const auth = await s.host().authorizeTool({ name: 'echo', args });
+    expect(auth.ok).toBe(true);
+    await s.host().beginNativeTool!(auth.toolCallId, hash(args));
+    await s.host().finishNativeTool!(auth.toolCallId, 'succeeded');
+    await expect(s.host().finishNativeTool!(auth.toolCallId, 'succeeded')).rejects.toThrow();
+    expect(s.events().filter(e => e.type === 'tool.allowed')).toMatchObject([{ payload: { policyVersion: 'role-allowlist@2' } }]);
+    expect(s.events().filter(e => e.type === 'tool.started')).toMatchObject([{ payload: { management: 'unmanaged_native' } }]);
+    expect(s.events().filter(e => e.type === 'tool.finished')).toHaveLength(1);
+    expect(JSON.stringify(s.events())).not.toContain('private body');
+    expect(JSON.stringify(s.events())).not.toContain('/private/path');
+    s.done.open();
+  });
+
+  it('[TC-HAR-002-N] changed arguments, duplicate starts and late reports cannot execute or settle again', async () => {
+    const s = await loaded();
+    const args = { text: 'approved' };
+    const auth = await s.host().authorizeTool({ name: 'echo', args });
+    args.text = 'mutated';
+    await expect(s.host().beginNativeTool!(auth.toolCallId, hash(args))).rejects.toThrow();
+    await s.host().beginNativeTool!(auth.toolCallId, hash({ text: 'approved' }));
+    await expect(s.host().beginNativeTool!(auth.toolCallId, hash({ text: 'approved' }))).rejects.toThrow();
+    s.coordinator.submit({ schemaVersion: '0.1', runId: s.result.runId!, commandId: 'cancel', type: 'cancel', payload: { scope: { kind: 'run' }, reason: 'stop' } });
+    await expect(s.host().finishNativeTool!(auth.toolCallId, 'succeeded')).rejects.toThrow();
+    expect(s.events().filter(e => e.type === 'tool.finished')).toHaveLength(0);
+    s.done.open();
+  });
+
+  it('[TC-HAR-003-N] rejects mismatched reports and foreign directive IDs; attaches only actual queued directives', async () => {
+    const s = setup();
+    await s.started.wait();
+    await expect(s.host().reportHarness!({ ok: true, snapshotHash: 'f'.repeat(64), tools: [], diagnostics: [] })).rejects.toThrow();
+    await s.host().reportHarness!({ ok: true, snapshotHash: snapshot.snapshotHash, tools: [descriptor], diagnostics: [] });
+    await expect(s.host().prepareModelRequest({ ...record, directiveIds: ['foreign'] })).rejects.toThrow();
+    s.coordinator.submit({ schemaVersion: '0.1', runId: s.result.runId!, commandId: 'steer', type: 'steer', payload: { targetExecutionId: s.input().executionId, text: 'Keep citations.', delivery: 'next_request' } });
+    const queued = s.host().pendingDirectives!();
+    expect(queued).toHaveLength(1);
+    const first = await s.host().prepareModelRequest(record);
+    expect(first.directives).toEqual([]);
+    await s.host().observe({ kind: 'model_completed', modelCallId: first.modelCallId, text: '', usage: { inputTokens: 1, outputTokens: 1 } });
+    const second = await s.host().prepareModelRequest({ ...record, directiveIds: queued.map(d => d.directiveId) });
+    expect(second.directives).toEqual(queued);
+    s.done.open();
+  });
+});
