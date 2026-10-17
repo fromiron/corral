@@ -9,6 +9,7 @@ import {
   InitializeRequest,
   PublishDiagnosticsNotification,
   ReferencesRequest,
+  ResponseError,
   ShutdownRequest,
 } from 'vscode-languageserver-protocol/node';
 
@@ -22,7 +23,10 @@ const diagnostic = {
 };
 connection.onRequest(InitializeRequest.type, () => {
   if (mode === 'initialize_hang') return new Promise(() => {});
-  if (mode === 'initialize_error') throw new Error('language server /private/example sk-privatefixture12345 refused initialization');
+  if (mode === 'initialize_error')
+    throw new ResponseError(-32603,
+      'language server /private/example sk-privatefixture12345 refused initialization',
+    );
   return {
     capabilities: {
       positionEncoding: mode === 'utf8' ? 'utf-8' : 'utf-16',
