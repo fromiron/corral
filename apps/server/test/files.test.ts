@@ -59,6 +59,30 @@ async function setup(edit?: ConstructorParameters<typeof WorkspaceService>[0]['e
 }
 
 describe('file broker (CR-012)', () => {
+  it('[TC-HAR-013-H] manual checks use owned frozen copies and retain separate state and verdict', async () => {
+    const { service, call, db } = await setup();
+    await service.configure('default', { verifyCommands: [{ id: 'copy', name: 'Copy check', argv: [process.execPath, '-e', "require('fs').writeFileSync('a.txt','changed only by check'); console.log('checked');"], timeoutMs: 10000 }] });
+    const id = await service.verify('session_1', 'default', 'copy');
+    const report = await service.waitVerification(id);
+    expect(report).toMatchObject({ owner: { kind: 'manual', sessionId: 'session_1' }, state: 'completed', verdict: 'pass', cleanupConfirmed: true });
+    expect(await call('read_file', { path: 'a.txt' })).toMatchObject({ text: 'one\n' });
+    const before = service.verifications('session_1', await service.currentTree('session_1'))[0];
+    expect(before).toMatchObject({ state: 'passed', stale: false, report });
+    await call('write_file', { path: 'a.txt', text: 'changed after check' });
+    expect(service.verifications('session_1', await service.currentTree('session_1'))[0]).toMatchObject({ stale: true });
+    expect(db.prepare('SELECT report_json FROM verifications WHERE id = ?').get(id)).toBeTruthy();
+  });
+  it('[TC-HAR-012-N] manual cancellation is session scoped and shutdown drains owned checks', async () => {
+    const { service } = await setup();
+    await service.configure('default', { verifyCommands: [{ id: 'wait', name: 'Wait', argv: [process.execPath, '-e', 'setInterval(()=>{},1000)'], timeoutMs: 10000 }] });
+    const id = await service.verify('session_1', 'default', 'wait');
+    expect(() => service.cancelVerification('other_session', id)).toThrow();
+    service.cancelVerification('session_1', id);
+    expect(await service.waitVerification(id)).toMatchObject({ state: 'cancelled', verdict: 'not_evaluated' });
+    const next = await service.verify('session_1', 'default', 'wait');
+    await service.dispose();
+    expect(await service.waitVerification(next)).toMatchObject({ state: 'cancelled', verdict: 'not_evaluated' });
+  });
   it('[TC-HAR-012-H] existing workspace settings write immutable check revisions and read their authority', async () => {
     const { service, db } = await setup();
     const check = { id: 'types', name: 'Types', argv: ['node', 'check.mjs'], timeoutMs: 10000 };
