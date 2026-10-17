@@ -21,6 +21,7 @@ export {
   type DecisionPolicy,
   type DefinitionSource,
   type FileTools,
+  type HarnessResolver,
   type ModelResolution,
   type ModelResolver,
   SIMULATED_MODELS,

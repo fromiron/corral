@@ -11,6 +11,12 @@ import {
   RunDecisionSettings,
 } from './decisions.ts';
 import { OutputContract, RunLimits } from './definition.ts';
+import {
+  ContentHash,
+  HarnessReport,
+  ModelRequestRecord,
+  ProviderPayloadRecord,
+} from './harness.ts';
 import { Identifier, SchemaVersion } from './ids.ts';
 import { ReviewIssue } from './review.ts';
 import { ExecutionActivity, ExecutionStatus, ReviewVerdict, RunStatus } from './states.ts';
@@ -391,7 +397,12 @@ export const ToolBlocked = event(
 );
 export const ToolStarted = event(
   'tool.started',
-  z.strictObject({ executionId: Identifier, toolCallId: Identifier, effectId: Identifier }),
+  z.strictObject({
+    executionId: Identifier,
+    toolCallId: Identifier,
+    effectId: Identifier,
+    management: z.literal('unmanaged_native').optional(),
+  }),
 );
 export const ToolFinished = event(
   'tool.finished',
@@ -516,7 +527,22 @@ export const DecisionFailed = event(
   z.strictObject({ ...decisionHead, reason: DecisionFailureReason, latencyMs: Count }),
 );
 
+export const HarnessLoaded = event('harness.loaded', HarnessReport.options[0].omit({ ok: true }));
+export const HarnessLoadFailed = event(
+  'harness.load_failed',
+  HarnessReport.options[1].omit({ ok: true }),
+);
+export const ModelRequestRecorded = event(
+  'model.request_recorded',
+  ModelRequestRecord.extend({ modelCallId: Identifier, snapshotHash: ContentHash }),
+);
+export const ModelPayloadRecorded = event('model.payload_recorded', ProviderPayloadRecord);
+
 export const RunEvent = z.discriminatedUnion('type', [
+  HarnessLoaded,
+  HarnessLoadFailed,
+  ModelRequestRecorded,
+  ModelPayloadRecorded,
   RunStarted,
   RunStateChanged,
   RunInterrupted,

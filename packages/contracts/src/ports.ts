@@ -8,6 +8,12 @@ import type {
 import type { AgentRole, InputBindingKind } from './definition.ts';
 import type { CommandError } from './errors.ts';
 import type { ModelProfileSnapshot } from './events.ts';
+import type {
+  EffectiveHarnessSnapshot,
+  HarnessReport,
+  ModelRequestRecord,
+  ProviderPayloadRecord,
+} from './harness.ts';
 
 // Injectable runtime ports (Implementation Plan §4, CRL-DEV-002). Types only.
 
@@ -89,6 +95,8 @@ export interface AgentStartInput {
   assignment: Assignment;
   capabilities: { delegateTo: CallableTarget[]; askTo: CallableTarget[] };
   inputs: ResolvedInput[];
+  /** Resolved at Run start, never a mutable profile lookup inside the worker. */
+  harness?: EffectiveHarnessSnapshot;
 }
 
 export interface DeliveredDirective {
@@ -143,7 +151,13 @@ export interface TextDelta {
 }
 
 export interface AgentHost {
-  prepareModelRequest(): Promise<RequestPermit>;
+  prepareModelRequest(record?: ModelRequestRecord): Promise<RequestPermit>;
+  /** SDK-only: unsupported hosts must refuse SDK execution. */
+  reportHarness?(report: HarnessReport): Promise<void>;
+  recordProviderPayload?(record: ProviderPayloadRecord): Promise<void>;
+  pendingDirectives?(): DeliveredDirective[];
+  beginNativeTool?(toolCallId: string, argsHash: string): Promise<void>;
+  finishNativeTool?(toolCallId: string, outcome: 'succeeded' | 'failed'): Promise<void>;
   /** Reports local transport dispatch; a prepared request alone is never delivery. */
   modelRequestDispatched?(modelCallId: string): Promise<void>;
   /** Authorizes and runs a tool in one step, for agents without a separate tool phase. */
@@ -165,6 +179,7 @@ export interface AgentSettlement {
 export interface AgentHandle {
   cancel(reason: string): Promise<void>;
   waitForSettlement(): Promise<AgentSettlement>;
+  pushDirective?(directive: DeliveredDirective): void;
 }
 
 export interface AgentAdapter {

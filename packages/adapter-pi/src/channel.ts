@@ -1,4 +1,7 @@
 import { type ChildProcess, fork } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 // The transport between host and one worker (ADR-017: one child process per execution,
 // spawned when needed). The protocol does not depend on it, so tests use a memory pair and
@@ -57,6 +60,8 @@ export function processChannel(entry: string, options: { env?: NodeJS.ProcessEnv
   const child: ChildProcess = fork(entry, [], {
     stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
     serialization: 'json',
+    // Parent eval/debug/preload flags do not describe the standalone worker entry.
+    execArgv: [],
     // The worker needs no secrets from the environment: credentials arrive per request.
     env: {
       NODE_ENV: process.env.NODE_ENV ?? 'production',
@@ -81,4 +86,25 @@ export function processChannel(entry: string, options: { env?: NodeJS.ProcessEnv
       if (!exited) child.kill('SIGKILL');
     },
   };
+}
+
+/** Compatibility isolation for trusted native extensions; this is not an OS sandbox. */
+export function sdkProcessChannel(entry: string): Channel {
+  const directory = mkdtempSync(join(tmpdir(), 'corral-sdk-'));
+  try {
+    const channel = processChannel(entry, {
+      env: {
+        CORRAL_WORKER_DIR: directory,
+        HOME: directory,
+        XDG_CONFIG_HOME: join(directory, 'config'),
+        CLAUDE_CONFIG_DIR: join(directory, 'claude'),
+        JITI_FS_CACHE: join(directory, 'jiti'),
+      },
+    });
+    channel.onExit(() => rmSync(directory, { recursive: true, force: true }));
+    return channel;
+  } catch (error) {
+    rmSync(directory, { recursive: true, force: true });
+    throw error;
+  }
 }

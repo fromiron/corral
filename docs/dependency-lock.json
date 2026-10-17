@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-17T04:08:31.547Z",
+  "generatedAt": "2026-10-17T15:28:29.112Z",
   "node": "v24.19.0",
   "packageManager": "pnpm@10.30.3",
   "note": "Registry facts for pinned direct dependencies. Compatibility evidence is the CI gate result, not this file.",
@@ -63,10 +63,10 @@
     },
     {
       "name": "@earendil-works/pi-agent-core",
-      "version": "1.2.0",
+      "version": "1.3.0",
       "license": "MIT",
-      "integrity": "sha512-pUR0vYmGhHkBQGeCeWjwVIA+l1+MrDu6m6VGuysjh6KBzBpovTV/MlcVrEIOaM8jv/slpAyUmuCEQl1jOBqHJQ==",
-      "published": "2026-10-12T22:59:50.884Z",
+      "integrity": "sha512-2jvpxZs47PFD5mSQb/yK0pGHJ5yO7Nu22u9mFjHbSLRgu62vZ9rupimDSIp4arnqOadyv0AWvYHtCSpFoJV7ag==",
+      "published": "2026-10-15T19:09:49.999Z",
       "repository": "git+https://github.com/earendil-works/pi.git",
       "gitHead": null,
       "engines": {
@@ -80,10 +80,10 @@
     },
     {
       "name": "@earendil-works/pi-ai",
-      "version": "1.2.0",
+      "version": "1.3.0",
       "license": "MIT",
-      "integrity": "sha512-U5/1zXqfV1on7/9sbez03tT4Ru49Lvfb4+zXSDK3DBKF5cRk6KxvAOTOY3HJ4jimlZth+rs7vbJqN6iBQAoNuQ==",
-      "published": "2026-10-12T23:01:40.259Z",
+      "integrity": "sha512-KaBI8x7q7sPoFUXICNGD9efHzDG+oRNwVvkA9jdIsSQWH1RjFssOlEGsbLtewUPPgCrvmz0l2KTgSLXTyj3acw==",
+      "published": "2026-10-15T19:11:07.796Z",
       "repository": "git+https://github.com/earendil-works/pi.git",
       "gitHead": null,
       "engines": {
@@ -94,6 +94,23 @@
       "usedBy": [
         "@corral/adapter-pi",
         "@corral/server"
+      ]
+    },
+    {
+      "name": "@earendil-works/pi-coding-agent",
+      "version": "1.3.0",
+      "license": "MIT",
+      "integrity": "sha512-V/WoCjA2hQSe3QLWIUB24cTRdtEdeLiIzkDqU5RMXV6VWuD+KGZnzVBMhglwdnQTySkehZsjt8a3g6Jd2g4nnw==",
+      "published": "2026-10-15T19:13:30.662Z",
+      "repository": "git+https://github.com/earendil-works/pi.git",
+      "gitHead": null,
+      "engines": {
+        "node": ">=22.19.0"
+      },
+      "peerDependencies": null,
+      "scope": "runtime",
+      "usedBy": [
+        "@corral/adapter-pi"
       ]
     },
     {
@@ -1042,6 +1059,14 @@
       ]
     }
   ],
+  "reviewedSources": [
+    {
+      "name": "@pierre/diffs",
+      "version": "1.5.2",
+      "repository": "https://github.com/pierrecomputer/pierre",
+      "source": "https://diffs.com/ — official repository linked from the project site; npm package omits repository metadata."
+    }
+  ],
   "reviewedPrereleases": [
     {
       "name": "@polka/url",
@@ -1088,14 +1113,6 @@
       "scope": "development",
       "reviewedAt": "2026-10-17",
       "review": "electron-builder 26.15.6 transitive Windows signing tooling via @electron/windows-sign; MIT, Node >=14, no peers. Not selected for this Linux build and not included in the app runtime. Its installer remains blocked. Exact upstream alpha is retained only in the pinned build tool graph; pnpm audit reports no advisory for postject."
-    }
-  ],
-  "reviewedSources": [
-    {
-      "name": "@pierre/diffs",
-      "version": "1.5.2",
-      "repository": "https://github.com/pierrecomputer/pierre",
-      "source": "https://diffs.com/ \u2014 official repository linked from the project site; npm package omits repository metadata."
     }
   ]
 }

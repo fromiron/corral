@@ -147,8 +147,15 @@ describe('worker in a child process (C-017, ADR-017)', () => {
           return 'Done.';
         });
         const harness = {
-          binding: { profileId: 'empty', revision: 1 }, snapshotHash: 'a'.repeat(64), piVersion: '1.3.0' as const,
-          policyRevision: 1, policy: 'strict' as const, resources: [], allowedTools: [], tools: [], diagnostics: [],
+          binding: { profileId: 'empty', revision: 1 },
+          snapshotHash: 'a'.repeat(64),
+          piVersion: '1.3.0' as const,
+          policyRevision: 1,
+          policy: 'strict' as const,
+          resources: [],
+          allowedTools: [],
+          tools: [],
+          diagnostics: [],
         };
         const transport = new InProcessTransport(
           new Coordinator({
@@ -194,7 +201,12 @@ describe('worker in a child process (C-017, ADR-017)', () => {
         );
         const definition = linearCorral(['writer']);
         if (sdk) definition.roles[0]!.harness = harness.binding;
-        const result = await transport.startRun({ schemaVersion: '0.1', commandId: 'cmd_process', definition, mode: 'live' });
+        const result = await transport.startRun({
+          schemaVersion: '0.1',
+          commandId: 'cmd_process',
+          definition,
+          mode: 'live',
+        });
         const runId = result.runId!;
         const final = await waitForProjection(transport, runId, settled);
         expect(final.status).toBe('succeeded');
@@ -205,10 +217,14 @@ describe('worker in a child process (C-017, ADR-017)', () => {
         expect(endpoint.authorizations.every((a) => a === authorization)).toBe(true);
         if (sdk) {
           const events: RunEvent[] = [];
-          const stop = transport.subscribe(runId, 0, { onEvent: event => events.push(event) });
+          const stop = transport.subscribe(runId, 0, { onEvent: (event) => events.push(event) });
           await Promise.resolve();
           stop();
-          expect(events.filter(e => e.type === 'model.payload_recorded').map(e => e.payload.payloadHash)).toEqual(payloadHashes);
+          expect(
+            events
+              .filter((e) => e.type === 'model.payload_recorded')
+              .map((e) => e.payload.payloadHash),
+          ).toEqual(payloadHashes);
         }
       } finally {
         await endpoint.close();

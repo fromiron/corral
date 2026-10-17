@@ -758,6 +758,10 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
     // Committed facts that later phases project (review P5, Reins P6, budget P7). Until then
     // they are kept in the log only.
     case 'tool.allowed':
+    case 'harness.loaded':
+    case 'harness.load_failed':
+    case 'model.request_recorded':
+    case 'model.payload_recorded':
     case 'tool.started':
     case 'limit.reached':
     case 'cancel.requested':

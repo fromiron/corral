@@ -24,7 +24,7 @@
 | 계약 | Zod 4 | REST/IPC/정의/command validation 및 JSON Schema 생성 | MIT; TypeBox는 Pi 어댑터 내부 경계에 제한 | S13,S07 |
 | 로컬 API | Fastify 5 | 세션, 명령, 조회, SSE, 일관된 오류 | MIT; SSE 취소/정적 UI/보안 plugin 호환성 검사 | S14,S38 |
 | 그래프 실행 | @langchain/langgraph | 검증된 정적 그래프/제한된 loop 실행 | MIT. 제품의 authoritative task/patch 상태를 중복 소유하지 않음 | S04,S05,S40 |
-| 에이전트 | @earendil-works/pi-agent-core + pi-ai | 모델 tool loop·stream·훅·취소 | MIT, 확인 릴리스1.2.0; coding-agent의 임의 shell loader는 제외 | S06,S07,S36 |
+| 에이전트 | @earendil-works/pi-agent-core + pi-ai + pi-coding-agent | 기본 tool loop, 역할별 명시 SDK 세션(CR-018) | MIT, 모두 1.3.0 정확 고정. 내장 shell·파일·자동 리소스 탐색 제외 | S06,S07,S36 |
 | 저장 | SQLite + better-sqlite3 + Drizzle | 로컬 영속 이벤트·투영·텍스트 산출물의 atomic commit | SQLite public domain / driver MIT / ORM Apache-2.0 | S15,S20~23,S34 |
 | 단위·통합 | Vitest | pure reducer, timeout·fake timer, DB/API 통합 | MIT; 관측 릴리스5.0.4를 무조건 채택하지 말고 호환 검증 | S16,S39 |
 | 성질 테스트 | fast-check | 무작위 command interleaving·예산·취소 불변식 | MIT; seed와 shrink 결과 보존 | S17 |
@@ -331,3 +331,9 @@ https://api.github.com/repos/vitest-dev/vitest/releases?per_page=1
 https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/LICENSE
 
 확인일: 2026-10-14. MIT, 해당 OSS 라이브러리 범위. 외부 호스팅 서비스 조건과 구별.
+
+## 개인 하네스 런타임 의존성 (CR-018, 2026-10-18)
+
+H1에서 검증한 `@earendil-works/pi-coding-agent@1.3.0`을 H2에서 adapter-pi의 runtime dependency로 옮긴다. 새 프레임워크나 별도 확장 로더는 추가하지 않는다. 공개 SDK 타입과 공식 [v1.3.0 SDK 문서](https://github.com/earendil-works/pi/blob/v1.3.0/packages/coding-agent/docs/sdk.md)를 기준으로 한다. Node >=22.19.0 요구를 동봉 Node 24.19.0이 만족하며, 실제 자식 프로세스 + 로컬 HTTP provider 테스트에서 확인했다. TypeScript 선언이 배포 패키지에 포함된다.
+
+정확한 registry integrity·MIT 라이선스·배포일·전이 의존성은 `dependency-lock.json` 및 `pnpm-lock.yaml`에 고정한다. SDK는 worker에서만 import한다. 기본 core worker와 Studio 브라우저 번들에 SDK를 import하지 않는다. pi-tui, jiti, 이미지 처리 및 향후 MCP/codemode 관련 의존성으로 설치 크기가 증가하며, desktop 패키징 검증은 R1 완료 조건에 포함한다. Native 확장은 샌드박스가 아니며 HOME/XDG/Claude/jiti 경로 격리는 사용자 설정 오염 방지용이다. 엄격 정책에서는 네이티브 확장을 거절한다.

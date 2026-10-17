@@ -243,5 +243,25 @@
     "type": "decision.failed",
     "requiredContent": "decisionId,reason,latencyMs",
     "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "harness.loaded",
+    "requiredContent": "snapshotHash,tools,diagnostics (no paths or bodies)",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "harness.load_failed",
+    "requiredContent": "snapshotHash,code",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "model.request_recorded",
+    "requiredContent": "modelCallId,snapshotHash,purpose,directiveIds,contextHash,contextBytes,sections",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "model.payload_recorded",
+    "requiredContent": "modelCallId,payloadHash,payloadBytes (final provider JSON, no headers or bodies)",
+    "status": "payload_schema_to_implement"
   }
 ]

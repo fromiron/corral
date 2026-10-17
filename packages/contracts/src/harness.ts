@@ -7,3 +7,99 @@ export const HarnessBindingRef = z.strictObject({
   revision: z.int().min(1),
 });
 export type HarnessBindingRef = z.infer<typeof HarnessBindingRef>;
+
+export const ContentHash = z.string().regex(/^[a-f0-9]{64}$/);
+export const ToolDescriptor = z.strictObject({
+  source: z.union([
+    z.literal('corral'),
+    z.string().regex(/^extension:[@a-zA-Z0-9_./-]+@[a-zA-Z0-9_.+-]+$/),
+  ]),
+  name: z.string().regex(/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/),
+  schemaHash: ContentHash,
+  annotations: z
+    .strictObject({
+      readOnlyHint: z.boolean().optional(),
+      destructiveHint: z.boolean().optional(),
+      idempotentHint: z.boolean().optional(),
+      openWorldHint: z.boolean().optional(),
+    })
+    .optional(),
+  exposure: z.enum(['direct', 'model-only', 'codemode', 'deferred', 'hidden']),
+  sideEffect: z.enum(['none', 'workspace', 'external', 'unknown']),
+});
+export type ToolDescriptor = z.infer<typeof ToolDescriptor>;
+
+/** References only: no local paths, skill text, credentials or extension error messages. */
+export const HarnessResourceRef = z.strictObject({
+  hash: ContentHash,
+  name: z.string().min(1).max(100),
+  version: z.string().min(1).max(100),
+  kind: z.enum(['skill', 'extension']),
+  required: z.boolean(),
+  skillMode: z.enum(['auto', 'explicit', 'mandatory']).optional(),
+});
+export const EffectiveHarnessSnapshot = z.strictObject({
+  binding: HarnessBindingRef,
+  snapshotHash: ContentHash,
+  piVersion: z.literal('1.3.0'),
+  policyRevision: z.int().min(1),
+  policy: z.enum(['strict', 'trusted-native']),
+  resources: z.array(HarnessResourceRef).max(64),
+  allowedTools: z.array(ToolDescriptor.shape.name).max(128),
+  tools: z.array(ToolDescriptor).max(128),
+  diagnostics: z.array(Identifier).max(64),
+});
+export type EffectiveHarnessSnapshot = z.infer<typeof EffectiveHarnessSnapshot>;
+
+export const HarnessReport = z.discriminatedUnion('ok', [
+  z.strictObject({
+    ok: z.literal(true),
+    snapshotHash: ContentHash,
+    tools: z.array(ToolDescriptor).max(128),
+    diagnostics: z.array(Identifier).max(64),
+  }),
+  z.strictObject({
+    ok: z.literal(false),
+    snapshotHash: ContentHash,
+    code: z.enum([
+      'extension_load_failed',
+      'resource_invalid',
+      'policy_denied',
+      'sdk_start_failed',
+    ]),
+  }),
+]);
+export type HarnessReport = z.infer<typeof HarnessReport>;
+
+/** The final context at the Corral provider boundary, before dispatch. */
+export const ModelRequestRecord = z.strictObject({
+  purpose: z.enum(['turn', 'compaction', 'retry', 'extension']),
+  directiveIds: z.array(Identifier).max(256),
+  contextHash: ContentHash,
+  contextBytes: z
+    .int()
+    .min(0)
+    .max(32 * 1024 * 1024),
+  sections: z
+    .array(
+      z.strictObject({
+        name: Identifier,
+        source: z.enum(['corral', 'skill', 'runtime']),
+        hash: ContentHash,
+        bytes: z.int().min(0),
+      }),
+    )
+    .max(256),
+});
+export type ModelRequestRecord = z.infer<typeof ModelRequestRecord>;
+
+/** The provider-specific JSON after payload hooks; no headers or credentials. */
+export const ProviderPayloadRecord = z.strictObject({
+  modelCallId: Identifier,
+  payloadHash: ContentHash,
+  payloadBytes: z
+    .int()
+    .min(0)
+    .max(32 * 1024 * 1024),
+});
+export type ProviderPayloadRecord = z.infer<typeof ProviderPayloadRecord>;

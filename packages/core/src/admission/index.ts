@@ -57,6 +57,7 @@ export interface ModelGateView {
 }
 
 export interface ToolGateView extends ModelGateView {
+  descriptor?: import('@corral/contracts').ToolDescriptor;
   proposal: ToolProposal;
   policy: InstallationPolicy;
   /** Callable nodes this node may delegate to or ask (capability links). */
@@ -296,6 +297,13 @@ const roleAllowlist: Gate<ToolGateView> = {
     const { args } = proposal;
     const collaboration = input.role.allowedCollaborationTools as readonly string[];
     const allow: GateDecision = { kind: 'allow' };
+    if (input.harness && !view.descriptor) return denied('tool is absent from the loaded harness');
+    if (view.descriptor?.source.startsWith('extension:')) {
+      return input.harness?.policy === 'trusted-native' &&
+        input.harness.allowedTools.includes(proposal.name)
+        ? allow
+        : denied('native tool is not allowed by this harness');
+    }
     if (['search', 'read_document'].includes(proposal.name)) {
       if (
         !(input.role.allowedWorkTools as readonly string[]).includes(proposal.name) ||

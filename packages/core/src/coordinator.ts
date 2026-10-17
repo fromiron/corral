@@ -11,12 +11,17 @@ import {
   type CorralDefinition,
   CreateRunRequest,
   type DecisionNode,
+  EffectiveHarnessSnapshot,
   type EventPayload,
   FILE_TOOLS,
   type FileToolName,
+  type HarnessBindingRef,
+  HarnessReport,
   type IdFactory,
   type InputBinding,
   type ModelProfileSnapshot,
+  ModelRequestRecord,
+  ProviderPayloadRecord,
   type Receipt,
   type RequestPermit,
   type ResolveApprovalCommand,
@@ -34,6 +39,7 @@ import {
   TERMINAL_EXECUTION_STATUSES,
   TERMINAL_RUN_STATUSES,
   type ToolAuthorization,
+  type ToolDescriptor,
   type ToolOutcome,
   type ToolProposal,
 } from '@corral/contracts';
@@ -178,6 +184,7 @@ export class ToolRefusal extends Error {
 export interface CoordinatorDeps {
   tools?: ExternalTools;
   files?: FileTools;
+  harnesses?: HarnessResolver;
   clock: Clock;
   ids: IdFactory;
   agents: AgentAdapter;
@@ -198,6 +205,15 @@ export interface CoordinatorDeps {
   admission?: AdmissionConfig;
   /** reasoning_effort judgment providers and workspace settings (CR-003). Observe only. */
   judgments?: JudgmentConfig;
+}
+
+/** Resolves immutable, trusted revisions without importing extension code. */
+export interface HarnessResolver {
+  resolve(
+    binding: HarnessBindingRef,
+    definition: CorralDefinition,
+    roleId: string,
+  ): EffectiveHarnessSnapshot | null;
 }
 
 const NO_DEADLINES: Scheduler = { after: () => () => {} };
@@ -353,6 +369,7 @@ export class Coordinator {
   private readonly timers: Scheduler;
   private readonly tools: ExternalTools | undefined;
   private readonly files: FileTools | undefined;
+  private readonly harnesses: HarnessResolver | undefined;
   private readonly live = new Map<string, LiveRun>();
   private readonly subscribers = new Set<Subscriber>();
   private storageError: string | null = null;
@@ -373,6 +390,7 @@ export class Coordinator {
     this.timers = deps.timers ?? NO_DEADLINES;
     this.tools = deps.tools;
     this.files = deps.files;
+    this.harnesses = deps.harnesses;
     this.gates = resolveGates(deps.admission);
     this.judgments = deps.judgments;
     this.observers = [
@@ -483,6 +501,27 @@ export class Coordinator {
       });
     }
 
+    const harnesses: Record<string, EffectiveHarnessSnapshot> = {};
+    for (const role of planned.definition.roles) {
+      if (!role.harness) continue;
+      try {
+        const snapshot = EffectiveHarnessSnapshot.parse(
+          this.harnesses?.resolve(role.harness, planned.definition, role.id),
+        );
+        if (
+          snapshot.binding.profileId !== role.harness.profileId ||
+          snapshot.binding.revision !== role.harness.revision ||
+          (snapshot.policy === 'strict' && snapshot.resources.some((r) => r.kind === 'extension'))
+        )
+          throw new Error('invalid binding');
+        harnesses[role.id] = snapshot;
+      } catch {
+        return refuse({
+          code: 'CAPABILITY_DENIED',
+          message: `harness for role ${role.id} is unavailable, untrusted or incompatible`,
+        });
+      }
+    }
     const runId = this.ids.next('run');
     const definition = planned.definition;
     const snapshot: RunSnapshot = {
@@ -495,6 +534,7 @@ export class Coordinator {
       criteriaVersionId: this.ids.next('criteria_version'),
       mode: request.mode,
       models,
+      ...(Object.keys(harnesses).length ? { harnesses } : {}),
       startedAt: this.clock.nowIso(),
     };
     const run: LiveRun = {
@@ -1486,6 +1526,7 @@ export class Coordinator {
         );
       },
     );
+    run.handles.get(executionId)?.pushDirective?.({ directiveId, text: command.payload.text });
     const stored = this.store.getCommand(runId, command.commandId);
     if (!stored) throw new Error(`command ${command.commandId} was not recorded`);
     return this.currentReceipt(stored);
@@ -2121,6 +2162,7 @@ export class Coordinator {
       nodeId: spec.nodeId,
       attemptNo,
       role,
+      ...(run.snapshot.harnesses?.[role.id] ? { harness: run.snapshot.harnesses[role.id] } : {}),
       modelProfile: role.modelProfile,
       mode: run.snapshot.mode,
       model: model.ok
@@ -2364,7 +2406,11 @@ export class Coordinator {
     );
     for (const effect of Object.values(run.projection.effects)) {
       // A model request still open when its agent stopped may or may not have been billed.
-      if (effect.kind !== 'model_request' || effect.scope !== input.executionId) continue;
+      if (
+        (effect.kind !== 'model_request' && !(input.harness && effect.kind === 'tool')) ||
+        effect.scope !== input.executionId
+      )
+        continue;
       if (effect.status !== 'admitted') continue;
       drafts.push({
         type: 'effect.settled',
@@ -2811,10 +2857,18 @@ export class Coordinator {
   // ── agent host: the only way an agent affects the run ─────────────────────
 
   private hostFor(run: LiveRun, input: AgentStartInput): AgentHost {
-    const { executionId } = input;
+    const { executionId, harness } = input;
     const agent: Actor = { kind: 'agent', id: executionId };
     let lastCall: { modelCallId: string; contextSnapshotId: string; effectId: string } | null =
       null;
+    let harnessState: 'unloaded' | 'loaded' | 'failed' = 'unloaded';
+    const descriptors = new Map<string, ToolDescriptor>();
+    const nativeEffects = new Map<string, string>();
+    const recordedPayloads = new Set<string>();
+    const toolView = (proposal: ToolProposal): ToolGateView => ({
+      ...this.toolView(run, input, proposal),
+      ...(descriptors.has(proposal.name) ? { descriptor: descriptors.get(proposal.name)! } : {}),
+    });
 
     const requireActive = () => {
       const status = run.projection.executions[executionId]?.status;
@@ -2833,11 +2887,12 @@ export class Coordinator {
     const authorized = new Map<string, { proposal: ToolProposal; ran: boolean }>();
 
     const authorizeTool = async (proposal: ToolProposal): Promise<ToolAuthorization> => {
+      if (harness && harnessState !== 'loaded') throw new Error('harness not loaded');
+      // A caller cannot change the approved object while awaiting execution.
+      if (harness) proposal = JSON.parse(canonicalJson(proposal)) as ToolProposal;
       const questionId = proposal.name === 'reply' ? proposal.args.questionId : null;
       // Checks a pause cannot change run before the safe boundary (Technical-Design §5.4).
-      const early = toolRefusal(
-        runGates(this.gates['tool.pre_boundary'], this.toolView(run, input, proposal)),
-      );
+      const early = toolRefusal(runGates(this.gates['tool.pre_boundary'], toolView(proposal)));
       if (early) {
         const error: CommandError = { code: early.code, message: early.message };
         if (proposal.name === 'reply') {
@@ -2876,9 +2931,7 @@ export class Coordinator {
       } while (run.projection.status !== 'running');
       requireActive();
       const toolCallId = this.ids.next('tool_call');
-      const refusal = toolRefusal(
-        runGates(this.gates['tool.authorize'], this.toolView(run, input, proposal)),
-      );
+      const refusal = toolRefusal(runGates(this.gates['tool.authorize'], toolView(proposal)));
       const error: CommandError | null = refusal
         ? { code: refusal.code, message: refusal.message }
         : null;
@@ -2897,7 +2950,14 @@ export class Coordinator {
             executionId,
             toolCallId,
             name: proposal.name,
-            validatedArgs: error ? {} : summarizeArgs(proposal.args),
+            validatedArgs: error
+              ? {}
+              : harness
+                ? {
+                    hash: hashOf(proposal.args),
+                    bytes: utf8ToBytes(canonicalJson(proposal.args)).length,
+                  }
+                : summarizeArgs(proposal.args),
           },
         },
         error
@@ -2909,7 +2969,11 @@ export class Coordinator {
           : {
               type: 'tool.allowed',
               executionId,
-              payload: { executionId, toolCallId, policyVersion: TOOL_POLICY_VERSION },
+              payload: {
+                executionId,
+                toolCallId,
+                policyVersion: harness ? 'role-allowlist@2' : TOOL_POLICY_VERSION,
+              },
             },
         ...(refusal?.limit
           ? [
@@ -2951,6 +3015,12 @@ export class Coordinator {
       } while (run.projection.status !== 'running');
       requireActive();
       const call = authorized.get(toolCallId);
+      if (call && descriptors.get(call.proposal.name)?.source.startsWith('extension:'))
+        return {
+          ok: false,
+          toolCallId,
+          error: { code: 'CAPABILITY_DENIED', message: 'native calls execute in their worker' },
+        };
       if (!call || call.ran) {
         return {
           ok: false,
@@ -2961,9 +3031,7 @@ export class Coordinator {
           },
         };
       }
-      const refusal = toolRefusal(
-        runGates(this.gates['tool.execute'], this.toolView(run, input, call.proposal)),
-      );
+      const refusal = toolRefusal(runGates(this.gates['tool.execute'], toolView(call.proposal)));
       if (refusal)
         return { ok: false, toolCallId, error: { code: refusal.code, message: refusal.message } };
       call.ran = true;
@@ -3039,7 +3107,148 @@ export class Coordinator {
       return outcome;
     };
     return {
-      prepareModelRequest: async (): Promise<RequestPermit> => {
+      ...(harness
+        ? {
+            recordProviderPayload: async (raw: ProviderPayloadRecord) => {
+              requireActive();
+              const record = ProviderPayloadRecord.parse(raw);
+              const call = run.projection.modelCalls[record.modelCallId];
+              if (
+                !call ||
+                call.executionId !== executionId ||
+                call.finished ||
+                lastCall?.modelCallId !== record.modelCallId ||
+                recordedPayloads.has(record.modelCallId)
+              )
+                throw new Error('unknown or already recorded request');
+              this.commit(run, [{ type: 'model.payload_recorded', executionId, payload: record }]);
+              recordedPayloads.add(record.modelCallId);
+            },
+            pendingDirectives: () =>
+              run.projection.directiveOrder.flatMap((id) => {
+                const d = run.projection.directives[id];
+                return d?.targetExecutionId === executionId && d.status === 'queued'
+                  ? [{ directiveId: id, text: d.text }]
+                  : [];
+              }),
+            reportHarness: async (raw: HarnessReport) => {
+              requireActive();
+              const report = HarnessReport.parse(raw);
+              if (harnessState !== 'unloaded' || report.snapshotHash !== harness.snapshotHash)
+                throw new Error('unexpected harness report');
+              if (!report.ok) {
+                this.commit(run, [
+                  {
+                    type: 'harness.load_failed',
+                    executionId,
+                    payload: { snapshotHash: report.snapshotHash, code: report.code },
+                  },
+                ]);
+                harnessState = 'failed';
+                return;
+              }
+              const names = new Set<string>();
+              for (const descriptor of report.tools) {
+                if (names.has(descriptor.name)) throw new Error('duplicate descriptor');
+                names.add(descriptor.name);
+                if (
+                  descriptor.source !== 'corral' &&
+                  (!harness.resources.some(
+                    (r) =>
+                      r.kind === 'extension' &&
+                      descriptor.source === `extension:${r.name}@${r.version}`,
+                  ) ||
+                    harness.policy === 'strict')
+                )
+                  throw new Error('unbound native tool');
+              }
+              this.commit(run, [
+                {
+                  type: 'harness.loaded',
+                  executionId,
+                  payload: {
+                    snapshotHash: report.snapshotHash,
+                    tools: report.tools,
+                    diagnostics: report.diagnostics,
+                  },
+                },
+              ]);
+              for (const descriptor of report.tools) descriptors.set(descriptor.name, descriptor);
+              harnessState = 'loaded';
+            },
+            beginNativeTool: async (toolCallId: string, argsHash: string) => {
+              await this.boundary(run, executionId);
+              requireActive();
+              const call = authorized.get(toolCallId);
+              if (
+                !call ||
+                call.ran ||
+                !descriptors.get(call.proposal.name)?.source.startsWith('extension:') ||
+                hashOf(call.proposal.args) !== argsHash
+              )
+                throw new Error('native call is not authorized');
+              const refusal = toolRefusal(
+                runGates(this.gates['tool.execute'], toolView(call.proposal)),
+              );
+              if (refusal) throw new Error('native call refused');
+              const effectId = this.ids.next('effect');
+              this.commit(run, [
+                {
+                  type: 'effect.admitted',
+                  executionId,
+                  payload: {
+                    effectId,
+                    kind: 'tool',
+                    scope: executionId,
+                    epoch: input.attemptNo,
+                    reservationId: null,
+                  },
+                },
+                {
+                  type: 'tool.started',
+                  executionId,
+                  payload: { executionId, toolCallId, effectId, management: 'unmanaged_native' },
+                },
+              ]);
+              call.ran = true;
+              nativeEffects.set(toolCallId, effectId);
+            },
+            finishNativeTool: async (toolCallId: string, outcome: 'succeeded' | 'failed') => {
+              requireActive();
+              const effectId = nativeEffects.get(toolCallId);
+              if (!effectId || run.projection.effects[effectId]?.status !== 'admitted')
+                throw new Error('native call is closed');
+              this.commit(run, [
+                {
+                  type: 'tool.finished',
+                  executionId,
+                  payload: {
+                    executionId,
+                    toolCallId,
+                    resultRef: null,
+                    error: outcome === 'failed' ? 'native_tool_failed' : null,
+                  },
+                },
+                { type: 'effect.settled', executionId, payload: { effectId, outcome } },
+              ]);
+              nativeEffects.delete(toolCallId);
+            },
+          }
+        : {}),
+      prepareModelRequest: async (rawRecord?: ModelRequestRecord): Promise<RequestPermit> => {
+        if (harness && harnessState !== 'loaded') throw new Error('harness not loaded');
+        if (harness && !rawRecord) throw new Error('SDK request record is required');
+        const record = rawRecord ? ModelRequestRecord.parse(rawRecord) : undefined;
+        if (record && !harness) throw new Error('unexpected SDK request record');
+        for (const id of record?.directiveIds ?? []) {
+          const directive = run.projection.directives[id];
+          if (
+            !directive ||
+            directive.targetExecutionId !== executionId ||
+            !['queued', 'attached_to_request', 'delivered'].includes(directive.status)
+          )
+            throw new Error('unknown directive in request');
+        }
         do {
           await this.boundary(run, executionId);
         } while (run.projection.status !== 'running');
@@ -3127,10 +3336,24 @@ export class Coordinator {
         // The snapshot takes every directive queued for this execution right now.
         const queued = run.projection.directiveOrder
           .map((id) => run.projection.directives[id])
-          .filter((d) => d?.targetExecutionId === executionId && d.status === 'queued')
+          .filter(
+            (d) =>
+              d?.targetExecutionId === executionId &&
+              d.status === 'queued' &&
+              (!record || record.directiveIds.includes(d.directiveId)),
+          )
           .map((d) => ({ directiveId: d?.directiveId ?? '', text: d?.text ?? '' }));
         const directiveIds = queued.map((d) => d.directiveId);
         this.commit(run, [
+          ...(record && harness
+            ? [
+                {
+                  type: 'model.request_recorded',
+                  executionId,
+                  payload: { ...record, modelCallId, snapshotHash: harness.snapshotHash },
+                } satisfies EventDraft,
+              ]
+            : []),
           {
             type: 'budget.reserved',
             executionId,

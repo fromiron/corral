@@ -1,5 +1,6 @@
 import type {
   CorralDefinition,
+  EffectiveHarnessSnapshot,
   ModelProfileSnapshot,
   Receipt,
   RunEvent,
@@ -24,6 +25,8 @@ export interface RunSnapshot {
   mode: 'mock' | 'live';
   /** What each model profile resolved to at start (C-058); the run never re-resolves. */
   models: Record<string, ModelProfileSnapshot>;
+  /** Role IDs to pinned harnesses; absent for legacy runs. */
+  harnesses?: Record<string, EffectiveHarnessSnapshot>;
   startedAt: string;
 }
 

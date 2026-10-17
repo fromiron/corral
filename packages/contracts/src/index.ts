@@ -1,3 +1,4 @@
+export { canonicalJson } from './canonical-json.ts';
 export * from './commands.ts';
 export * from './decisions.ts';
 export * from './definition.ts';

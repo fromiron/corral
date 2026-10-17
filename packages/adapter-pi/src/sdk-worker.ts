@@ -1,0 +1,564 @@
+import { createHash } from 'node:crypto';
+import { mkdirSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import {
+  canonicalJson,
+  type DeliveredDirective,
+  type HarnessReport,
+  ModelRequestRecord,
+  ToolDescriptor,
+} from '@corral/contracts';
+import {
+  type AssistantMessage,
+  type Context,
+  createAssistantMessageEventStream,
+  type JsonObject,
+  normalizeContext,
+  type Tool,
+  validateToolArguments,
+} from '@earendil-works/pi-ai';
+import {
+  type AgentSession,
+  createAgentSession,
+  DefaultResourceLoader,
+  type Extension,
+  ModelRuntime,
+  SessionManager,
+  SettingsManager,
+  type ToolDefinition,
+} from '@earendil-works/pi-coding-agent';
+import type { Channel } from './channel.ts';
+import { PROTOCOL_VERSION, SdkHostFrame, type SdkStartFrame } from './protocol.ts';
+import { normalizeUsage } from './usage.ts';
+import type { WorkerDeps } from './worker.ts';
+import { parametersOf, systemPrompt, TOOL_TEXT, textOf, userPrompt } from './worker-tools.ts';
+
+export interface SdkWorkerDeps extends WorkerDeps {
+  /** Private execution directory; the process launcher also isolates HOME and jiti here. */
+  directory: string;
+  now(): number;
+}
+type Reply = Exclude<SdkHostFrame, { type: 'start' | 'cancel' | 'directive' }>;
+const hashOf = (value: unknown) => createHash('sha256').update(canonicalJson(value)).digest('hex');
+const cleanJson = (value: unknown): unknown => JSON.parse(JSON.stringify(value));
+const directiveText = (d: DeliveredDirective) =>
+  `Corral instruction (${d.directiveId}):\n${d.text}`;
+
+/** One explicit SDK session. Pi's session state never commits Corral domain state. */
+export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
+  let executionId: string | null = null;
+  let session: AgentSession | undefined;
+  let cancelled = false;
+  let nextRequest = 0;
+  const waiting = new Map<string, (reply: Reply) => void>();
+  const directives = new Map<string, DeliveredDirective>();
+  port.onFrame((raw) => {
+    const parsed = SdkHostFrame.safeParse(raw);
+    if (!parsed.success) {
+      port.kill();
+      return;
+    }
+    const frame = parsed.data;
+    if (frame.type === 'start') {
+      if (executionId !== null || !('harness' in frame)) {
+        port.kill();
+        return;
+      }
+      executionId = frame.executionId;
+      void execute(frame);
+      return;
+    }
+    if (frame.executionId !== executionId) {
+      port.kill();
+      return;
+    }
+    if (frame.type === 'cancel') {
+      cancelled = true;
+      for (const [requestId, resolveReply] of waiting)
+        resolveReply({
+          type: 'refused',
+          protocolVersion: 2,
+          executionId,
+          requestId,
+          reason: 'cancelled',
+        });
+      waiting.clear();
+      void session?.abort();
+    } else if (frame.type === 'directive') {
+      if (directives.has(frame.directiveId) || cancelled) return;
+      directives.set(frame.directiveId, frame);
+      if (session?.isStreaming)
+        void session.steer(directiveText(frame)).catch(() => {
+          cancelled = true;
+          void session?.abort();
+        });
+    } else {
+      waiting.get(frame.requestId)?.(frame);
+      waiting.delete(frame.requestId);
+    }
+  });
+  port.send({ type: 'ready', protocolVersion: PROTOCOL_VERSION });
+
+  async function execute(start: SdkStartFrame) {
+    const head = { protocolVersion: PROTOCOL_VERSION, executionId: start.executionId };
+    const send = (frame: Record<string, unknown>) => port.send({ ...frame, ...head });
+    const call = (frame: Record<string, unknown>): Promise<Reply> => {
+      if (cancelled) return Promise.reject(new Error('cancelled'));
+      return new Promise((resolveReply) => {
+        const requestId = `req_${++nextRequest}`;
+        waiting.set(requestId, resolveReply);
+        send({ ...frame, requestId });
+      });
+    };
+    const ack = async (frame: Record<string, unknown>) => {
+      if ((await call(frame)).type !== 'ack') throw new Error('host refused');
+    };
+    let reported = false;
+    let failureCode: Extract<HarnessReport, { ok: false }>['code'] = 'sdk_start_failed';
+    try {
+      const model = deps.resolveModel(
+        start.model.provider,
+        start.model.modelId,
+        start.model.endpoint,
+      );
+      if (!model) throw new Error('model unavailable');
+      failureCode = 'policy_denied';
+      if (start.harness.policy === 'strict' && start.resources.extensions.length)
+        throw new Error('native extensions need trust');
+      for (const resource of start.resources.extensions) {
+        if (
+          !start.harness.resources.some((r) => r.kind === 'extension' && r.hash === resource.hash)
+        )
+          throw new Error('unbound extension');
+      }
+      failureCode = 'resource_invalid';
+      for (const resource of start.harness.resources.filter((r) => r.required)) {
+        if (
+          resource.kind === 'extension' &&
+          !start.resources.extensions.some((e) => e.hash === resource.hash)
+        )
+          throw new Error('missing extension');
+        if (
+          resource.kind === 'skill' &&
+          !start.resources.skills.some((s) => s.hash === resource.hash && s.content.trim())
+        )
+          throw new Error('missing skill');
+      }
+      const directory = deps.directory;
+      const agentDir = join(directory, 'agent');
+      const cwd = join(directory, 'work');
+      mkdirSync(agentDir, { recursive: true });
+      mkdirSync(cwd, { recursive: true });
+      const runtime = await ModelRuntime.create({
+        authPath: join(directory, 'auth.json'),
+        modelsPath: null,
+        allowModelNetwork: false,
+        refreshOnCreate: false,
+      });
+      let purpose: ModelRequestRecord['purpose'] = 'turn';
+      let nativeDepth = 0;
+      let requests: Promise<void> = Promise.resolve();
+      runtime.registerProvider('corral', {
+        api: 'corral-proxy',
+        baseUrl: 'http://127.0.0.1:9/corral-unused',
+        apiKey: 'corral-permit-placeholder',
+        models: [
+          {
+            id: model.id,
+            name: model.name,
+            api: 'corral-proxy',
+            reasoning: model.reasoning,
+            input: model.input,
+            cost: model.cost,
+            contextWindow: model.contextWindow,
+            maxTokens: model.maxTokens,
+          },
+        ],
+        streamSimple: (_model, context, options) => {
+          const out = createAssistantMessageEventStream();
+          const requestContext = normalizeContext(cleanJson(context) as Context);
+          const requestPurpose = nativeDepth ? 'extension' : purpose;
+          // Core has one active request per execution. Nested provider requests queue here too.
+          requests = requests.then(async () => {
+            let modelCallId: string | undefined;
+            let observed = false;
+            try {
+              if (cancelled || options?.signal?.aborted) throw new Error('cancelled');
+              const record = requestRecord(requestContext, requestPurpose, directives);
+              const permit = await call({ type: 'prepare_request', ...record });
+              if (permit.type !== 'permit' || cancelled || options?.signal?.aborted)
+                throw new Error('request refused');
+              modelCallId = permit.modelCallId;
+              await ack({ type: 'request_dispatched', modelCallId });
+              if (cancelled || options?.signal?.aborted)
+                throw new Error('cancelled before dispatch');
+              const stream = await deps.streamFn(model, requestContext, {
+                ...options,
+                apiKey: start.model.endpoint?.keyless ? undefined : (permit.apiKey ?? undefined),
+                maxTokens: permit.maxOutputTokens,
+                onPayload: async (payload, payloadModel) => {
+                  const updated = await options?.onPayload?.(payload, payloadModel);
+                  const actual = cleanJson(updated ?? payload);
+                  await ack({
+                    type: 'request_record',
+                    modelCallId,
+                    payloadHash: hashOf(actual),
+                    payloadBytes: Buffer.byteLength(canonicalJson(actual)),
+                  });
+                  if (cancelled || options?.signal?.aborted)
+                    throw new Error('cancelled before HTTP dispatch');
+                  return actual;
+                },
+              });
+              let chunkIndex = 0;
+              for await (const event of stream) {
+                if (event.type === 'text_delta' && !cancelled)
+                  send({
+                    type: 'stream',
+                    modelCallId,
+                    chunkIndex: chunkIndex++,
+                    text: event.delta,
+                  });
+                out.push(event);
+              }
+              const answer = await stream.result();
+              send({
+                type: 'observe',
+                modelCallId,
+                text: textOf(answer),
+                ...normalizeUsage(answer),
+              });
+              observed = true;
+              out.end(answer);
+            } catch {
+              const answer = failedMessage(
+                cancelled || options?.signal?.aborted ? 'aborted' : 'error',
+                deps.now(),
+              );
+              if (modelCallId && !observed)
+                send({ type: 'observe', modelCallId, text: '', ...normalizeUsage(answer) });
+              out.push({
+                type: 'error',
+                reason: answer.stopReason === 'aborted' ? 'aborted' : 'error',
+                error: answer,
+              });
+              out.end(answer);
+            }
+          });
+          return out;
+        },
+      });
+      const proxyModel = runtime.getModel('corral', model.id);
+      if (!proxyModel) throw new Error('proxy unavailable');
+      const authorized = new Map<string, { toolCallId: string; argsHash: string }>();
+      const descriptors = new Map<string, ToolDescriptor>();
+      const schemas = new Map<string, Tool>();
+      const customTools: ToolDefinition[] = start.tools.map((name) => ({
+        name,
+        label: name,
+        description: TOOL_TEXT[name],
+        parameters: parametersOf(name, start),
+        executionMode: 'sequential',
+        execute: async (piCallId, args) => {
+          const auth = takeAuthorization(piCallId, args);
+          const reply = await call({ type: 'execute_tool', toolCallId: auth.toolCallId });
+          if (reply.type !== 'tool_result' || !reply.ok) throw new Error('Corral tool refused');
+          return {
+            content: [{ type: 'text', text: JSON.stringify(reply.result ?? {}) }],
+            details: reply.result ?? {},
+          };
+        },
+      }));
+      const register = (tool: ToolDefinition, source: string) => {
+        descriptors.set(tool.name, describeTool(tool, source));
+        schemas.set(tool.name, {
+          name: tool.name,
+          description: tool.description,
+          parameters: JSON.parse(JSON.stringify(tool.parameters)) as Tool['parameters'],
+        });
+      };
+      for (const tool of customTools) register(tool, 'corral');
+      const takeAuthorization = (id: string, args: unknown) => {
+        const auth = authorized.get(id);
+        authorized.delete(id);
+        if (!auth || auth.argsHash !== hashOf(cleanJson(args)))
+          throw new Error('arguments changed after authorization');
+        return auth;
+      };
+      const wrapExtension = (extension: Extension) => {
+        const resource = start.resources.extensions.find(
+          (e) => resolve(e.path) === resolve(extension.path),
+        );
+        if (!resource) throw new Error('unbound extension loaded');
+        for (const { definition } of extension.tools.values()) {
+          if (descriptors.has(definition.name)) throw new Error('tool name collision');
+          register(definition, resource.source);
+          const execute = definition.execute;
+          definition.execute = async (id, args, signal, update, ctx) => {
+            const auth = takeAuthorization(id, args);
+            await ack({
+              type: 'native_tool_start',
+              toolCallId: auth.toolCallId,
+              argsHash: auth.argsHash,
+            });
+            nativeDepth++;
+            let outcome: 'succeeded' | 'failed' = 'failed';
+            try {
+              const result = await execute(id, args, signal, update, ctx);
+              outcome = 'succeeded';
+              return result;
+            } finally {
+              nativeDepth--;
+              if (!cancelled)
+                await ack({ type: 'native_tool_finish', toolCallId: auth.toolCallId, outcome });
+            }
+          };
+        }
+      };
+      const settings = SettingsManager.inMemory({
+        cacheWarming: 'off',
+        retry: { enabled: true, maxRetries: 2, baseDelayMs: 1, maxAgentDelayMs: 5 },
+      });
+      const loader = new DefaultResourceLoader({
+        cwd,
+        agentDir,
+        settingsManager: settings,
+        noExtensions: true,
+        noSkills: true,
+        noPromptTemplates: true,
+        noThemes: true,
+        noContextFiles: true,
+        additionalExtensionPaths: start.resources.extensions.map((e) => e.path),
+        systemPromptOverride: () => systemPrompt(start),
+        appendSystemPromptOverride: () => [],
+        extensionFactories: [
+          {
+            name: 'corral',
+            factory: (pi) => {
+              pi.on('before_agent_start', (event) => {
+                event.systemPromptOptions.sections.cwd =
+                  'The working copy root (paths are relative to it).';
+                for (const skill of start.resources.skills.filter((s) => s.mode === 'mandatory')) {
+                  if (!skill.content.trim()) throw new Error('mandatory skill is empty');
+                  event.systemPromptOptions.sections[`skill_${skill.name}`] = skill.content;
+                }
+              });
+              pi.on('tool_call', async (event) => {
+                const descriptor = descriptors.get(event.toolName);
+                if (
+                  !descriptor ||
+                  (descriptor.source !== 'corral' &&
+                    !start.harness.allowedTools.includes(event.toolName))
+                )
+                  return { block: true, reason: 'tool is not bound to this role' };
+                if (event.toolName === 'reply' && start.assignment.kind === 'question')
+                  event.input.questionId = start.assignment.questionId;
+                try {
+                  const args = cleanJson(event.input);
+                  const schema = schemas.get(event.toolName);
+                  if (!schema) return { block: true, reason: 'missing tool schema' };
+                  const validated = validateToolArguments(schema, {
+                    type: 'toolCall',
+                    id: event.toolCallId,
+                    name: event.toolName,
+                    arguments: args as JsonObject,
+                  });
+                  // Pi validates before hooks. Validate again without silently coercing a hook's changes.
+                  if (hashOf(validated) !== hashOf(cleanJson(event.input)))
+                    return { block: true, reason: 'invalid final tool arguments' };
+                  const decision = await call({
+                    type: 'authorize_tool',
+                    name: event.toolName,
+                    args,
+                  });
+                  if (decision.type !== 'tool_authorization' || !decision.ok)
+                    return { block: true, reason: 'Corral refused this tool call' };
+                  authorized.set(event.toolCallId, {
+                    toolCallId: decision.toolCallId,
+                    argsHash: hashOf(args),
+                  });
+                  return undefined;
+                } catch {
+                  return { block: true, reason: 'Corral authorization failed' };
+                }
+              });
+            },
+          },
+        ],
+        extensionsOverride: (base) => {
+          const ours = base.extensions.filter((e) => e.path === '<inline:corral>');
+          const rest = base.extensions.filter((e) => e.path !== '<inline:corral>');
+          for (const extension of rest) wrapExtension(extension);
+          return { ...base, extensions: [...rest, ...ours] };
+        },
+      });
+      failureCode = 'extension_load_failed';
+      await loader.reload();
+      if (loader.getExtensions().errors.length) throw new Error('extension failed to load');
+      failureCode = 'sdk_start_failed';
+      ({ session } = await createAgentSession({
+        cwd,
+        agentDir,
+        model: proxyModel,
+        thinkingLevel: 'off',
+        modelRuntime: runtime,
+        resourceLoader: loader,
+        noTools: 'builtin',
+        customTools,
+        sessionManager: SessionManager.inMemory(cwd),
+        settingsManager: settings,
+      }));
+      await session.bindExtensions({});
+      failureCode = 'policy_denied';
+      // A registered foreign provider could bypass the permit. Never select it implicitly.
+      if (session.model?.provider !== 'corral') throw new Error('extension replaced the model');
+      const diagnostics = runtime.getRegisteredProviderIds().some((id) => id !== 'corral')
+        ? ['unmanaged_provider_registered']
+        : [];
+      await ack({
+        type: 'harness_report',
+        report: {
+          ok: true,
+          snapshotHash: start.harness.snapshotHash,
+          tools: [...descriptors.values()],
+          diagnostics,
+        },
+      });
+      reported = true;
+      let settled = false;
+      session.subscribe((event) => {
+        if (event.type === 'agent_start') settled = false;
+        if (event.type === 'agent_settled') settled = true;
+        if (event.type === 'auto_retry_start') purpose = 'retry';
+        if (event.type === 'compaction_start') purpose = 'compaction';
+        if (event.type === 'auto_retry_end' || event.type === 'compaction_end') purpose = 'turn';
+      });
+      for (const command of start.resources.startupCommands) {
+        if (
+          !/^\/[a-zA-Z][\w:-]*(?:\s|$)/.test(command) ||
+          /^\/(reload|login|logout)(?:\s|$)/.test(command)
+        )
+          throw new Error('unsupported startup command');
+        const name = command.slice(1).split(/\s/)[0];
+        if (!session.extensionRunner.getRegisteredCommands().some((c) => c.name === name))
+          throw new Error('unknown startup command');
+        await session.prompt(command);
+      }
+      if (cancelled) throw new Error('cancelled');
+      await session.prompt(
+        [userPrompt(start), ...[...directives.values()].map(directiveText)].join('\n\n'),
+      );
+      await session.waitForIdle();
+      await requests;
+      if (!settled) throw new Error('SDK did not settle');
+      const last = [...session.messages]
+        .reverse()
+        .find((m): m is AssistantMessage => m.role === 'assistant');
+      send({
+        type: 'settled',
+        outcome:
+          cancelled || last?.stopReason === 'aborted'
+            ? 'cancelled'
+            : !last || last.stopReason === 'error'
+              ? 'failed'
+              : 'succeeded',
+      });
+    } catch {
+      if (!reported && !cancelled) {
+        try {
+          await ack({
+            type: 'harness_report',
+            report: { ok: false, snapshotHash: start.harness.snapshotHash, code: failureCode },
+          });
+        } catch {
+          /* The host may already have closed the execution. */
+        }
+      }
+      send({
+        type: 'settled',
+        outcome: cancelled ? 'cancelled' : 'failed',
+        error: 'harness execution failed',
+      });
+    } finally {
+      session?.dispose();
+      waiting.clear();
+      port.kill();
+    }
+  }
+}
+
+function describeTool(tool: ToolDefinition, source: string): ToolDescriptor {
+  const annotations = tool.annotations;
+  return ToolDescriptor.parse({
+    source,
+    name: tool.name,
+    schemaHash: hashOf(cleanJson(tool.parameters)),
+    ...(annotations ? { annotations } : {}),
+    exposure: tool.exposure ?? 'direct',
+    sideEffect:
+      annotations?.readOnlyHint === true && annotations.openWorldHint === false
+        ? 'none'
+        : 'unknown',
+  });
+}
+
+function requestRecord(
+  context: Context,
+  purpose: ModelRequestRecord['purpose'],
+  directives: Map<string, DeliveredDirective>,
+): ModelRequestRecord {
+  const value = cleanJson(context);
+  const serialized = canonicalJson(value);
+  const text = context.messages
+    .flatMap((message) =>
+      message.role !== 'user'
+        ? []
+        : typeof message.content === 'string'
+          ? [message.content]
+          : message.content.flatMap((part) => (part.type === 'text' ? [part.text] : [])),
+    )
+    .join('\n');
+  const sections: ModelRequestRecord['sections'] = [];
+  for (const message of context.messages) {
+    if (message.role !== 'system') continue;
+    for (const [name, content] of Object.entries(message.sections ?? {})) {
+      const body = canonicalJson(cleanJson(content));
+      sections.push({
+        name: /^[a-zA-Z][\w-]{0,63}$/.test(name) ? name : `section_${sections.length}`,
+        source: name.startsWith('skill_') ? 'skill' : 'runtime',
+        hash: hashOf(cleanJson(content)),
+        bytes: Buffer.byteLength(body),
+      });
+    }
+  }
+  return ModelRequestRecord.parse({
+    purpose,
+    directiveIds: [...directives.values()]
+      .filter((d) => text.includes(directiveText(d)))
+      .map((d) => d.directiveId),
+    contextHash: hashOf(value),
+    contextBytes: Buffer.byteLength(serialized),
+    sections,
+  });
+}
+
+function failedMessage(stopReason: 'error' | 'aborted', timestamp: number): AssistantMessage {
+  return {
+    role: 'assistant',
+    content: [],
+    api: 'corral-proxy',
+    provider: 'corral',
+    model: 'unavailable',
+    usage: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 0,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    },
+    stopReason,
+    errorMessage: 'Corral request refused or interrupted',
+    timestamp,
+  };
+}

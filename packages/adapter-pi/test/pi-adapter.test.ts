@@ -5,7 +5,7 @@ import { fauxAssistantMessage, fauxToolCall, getCurrentTools } from '@earendil-w
 import { describe, expect, it } from 'vitest';
 import { PiAgentAdapter } from '../src/adapter.ts';
 import { type Channel, memoryChannelPair } from '../src/channel.ts';
-import { PROTOCOL_VERSION } from '../src/protocol.ts';
+import { LEGACY_PROTOCOL_VERSION as PROTOCOL_VERSION } from '../src/protocol.ts';
 import { ACCESS_TOKEN, liveRuntime, recordingHost } from './harness.ts';
 
 const settled = (p: RunProjection) => ['succeeded', 'failed', 'cancelled'].includes(p.status);
