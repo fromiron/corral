@@ -16,6 +16,7 @@ import { TeamDraftDialog } from '../TeamDraftDialog.tsx';
 import { createFromTemplate, WORKSPACE_TEMPLATES } from '../templates.ts';
 import { InboxSection, WorkFolderSection } from './FilesViews.tsx';
 import { GettingStarted } from './GettingStarted.tsx';
+import { WorkbenchLayout, WorkbenchSidebar } from './Workbench.tsx';
 
 /** A layout file is recognised by its shape; everything else is treated as a definition. */
 function isLayoutFile(text: string): boolean {
@@ -49,7 +50,7 @@ export function WorkspacePage() {
         ? [...picked.filter((id) => id !== runId), runId].slice(-2)
         : picked.filter((id) => id !== runId),
     );
-  const { draft } = workspaceRoute.useSearch();
+  const { draft, newSession } = workspaceRoute.useSearch();
   const [drafting, setDrafting] = useState(Boolean(draft));
   const closeDraft = () => {
     setDrafting(false);
@@ -114,244 +115,265 @@ export function WorkspacePage() {
   };
 
   return (
-    <main className="mx-auto flex max-w-4xl flex-col gap-4 p-6">
-      <ProjectHeader project={project} onError={(message) => setErrors([message])} />
-      <InboxSection projectId={projectId} />
-      <WorkFolderSection projectId={projectId} />
-      <SessionsSection
-        projectId={projectId}
-        archived={archived}
-        sessions={sessions}
-        corrals={corrals}
-        runs={runs}
-      />
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-lg font-semibold">{t('heading')}</h2>
-        <div className={`flex items-center gap-2 ${archived ? 'hidden' : ''}`}>
-          <label className="cursor-pointer rounded-md border border-line px-3 py-1.5 text-sm focus-within:outline-2 focus-within:outline-accent">
-            {t('import')}
-            <input
-              type="file"
-              accept=".json,application/json"
-              multiple
-              onChange={onImport}
-              className="sr-only"
+    <WorkbenchLayout
+      sidebar={<WorkbenchSidebar projectId={projectId} />}
+      main={
+        <main className="min-h-0 flex-1 overflow-auto">
+          <div className="mx-auto flex max-w-4xl flex-col gap-4 p-6">
+            <ProjectHeader project={project} onError={(message) => setErrors([message])} />
+            <InboxSection projectId={projectId} />
+            <WorkFolderSection projectId={projectId} />
+            <SessionsSection
+              key={newSession ? 'new' : 'list'}
+              openForm={Boolean(newSession)}
+              projectId={projectId}
+              archived={archived}
+              sessions={sessions}
+              corrals={corrals}
+              runs={runs}
             />
-          </label>
-          <button
-            type="button"
-            onClick={openNew}
-            className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent"
-          >
-            {t('new')}
-          </button>
-        </div>
-      </div>
-      <p className="text-xs text-muted">
-        {mode === 'server'
-          ? t('storedOnServer')
-          : persistent
-            ? t('storedLocally')
-            : t('notPersistent')}
-      </p>
-      <p className="text-xs text-muted">{t('importHint')}</p>
-      <GettingStarted
-        corrals={totals.corrals}
-        runs={totals.runs}
-        onDraft={() => setDrafting(true)}
-      />
-      {errors.length > 0 ? (
-        <div role="alert" className="rounded-md border border-danger p-3 text-sm text-danger">
-          <p>{t('importFailed')}</p>
-          <ul className="list-disc pl-5">
-            {errors.map((error) => (
-              <li key={error}>{error}</li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-      {corrals.length === 0 ? (
-        <div className="flex flex-col gap-1 rounded-md border border-dashed border-line p-4">
-          <p className="text-sm font-medium">{t('empty')}</p>
-          <p className="text-sm text-muted">{t('emptyHint')}</p>
-        </div>
-      ) : (
-        <ul className="flex flex-col gap-2" aria-label={t('heading')}>
-          {corrals.map((corral) => (
-            <li
-              key={corral.corralId}
-              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line bg-raised p-3"
-            >
-              <div className="flex flex-col">
-                <Link
-                  to="/corrals/$corralId/edit"
-                  params={{ corralId: corral.corralId }}
-                  className="font-medium underline-offset-4 hover:underline"
-                >
-                  {corral.name}
-                </Link>
-                <span className="text-xs text-muted">
-                  {t('revisions', {
-                    definition: corral.definitionRevision,
-                    layout: corral.layoutRevision,
-                    nodes: corral.nodeCount,
-                  })}{' '}
-                  · {t('updated', { time: format.relativeTime(new Date(corral.updatedAt), now) })}
-                </span>
-              </div>
-              <div className="flex items-center gap-2 text-xs">
-                <MoveCorral
-                  name={corral.name}
-                  current={projectId}
-                  projects={projects}
-                  onMove={(to) => void move(corral.corralId, to)}
-                />
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 id="corrals" className="text-lg font-semibold">
+                {t('heading')}
+              </h2>
+              <div className={`flex items-center gap-2 ${archived ? 'hidden' : ''}`}>
+                <label className="cursor-pointer rounded-md border border-line px-3 py-1.5 text-sm focus-within:outline-2 focus-within:outline-accent">
+                  {t('import')}
+                  <input
+                    type="file"
+                    accept=".json,application/json"
+                    multiple
+                    onChange={onImport}
+                    className="sr-only"
+                  />
+                </label>
                 <button
                   type="button"
-                  onClick={() => duplicate(corral.corralId, corral.name)}
-                  className="rounded border border-line px-2 py-1"
+                  onClick={openNew}
+                  className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent"
                 >
-                  {t('duplicate')}
+                  {t('new')}
                 </button>
-                {confirming === corral.corralId ? (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => remove(corral.corralId)}
-                      className="rounded border border-danger px-2 py-1 text-danger"
-                    >
-                      {t('confirmDelete')}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setConfirming(null)}
-                      className="rounded border border-line px-2 py-1"
-                    >
-                      {t('cancel')}
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setConfirming(corral.corralId)}
-                    className="rounded border border-line px-2 py-1"
-                  >
-                    {t('delete')}
-                  </button>
-                )}
               </div>
-            </li>
-          ))}
-        </ul>
-      )}
-      <section
-        aria-labelledby="goal-heading"
-        hidden={archived}
-        className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-accent/60 bg-raised p-3"
-      >
-        <div className="flex flex-col gap-1">
-          <h2 id="goal-heading" className="text-sm font-semibold">
-            {t('template.goal.name')}
-          </h2>
-          <p className="text-xs text-muted">{t('template.goal.body')}</p>
-        </div>
-        <button
-          type="button"
-          onClick={() => setDrafting(true)}
-          className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent"
-        >
-          {t('draftFromGoal')}
-        </button>
-      </section>
-      <section
-        aria-labelledby="templates-heading"
-        hidden={archived}
-        className="flex flex-col gap-2"
-      >
-        <h2 id="templates-heading" className="text-lg font-semibold">
-          {t('templatesHeading')}
-        </h2>
-        <div className="grid gap-2 sm:grid-cols-3">
-          {WORKSPACE_TEMPLATES.map((id) => (
-            <article
-              key={id}
-              aria-labelledby={`template-${id}`}
-              className="flex flex-col gap-2 rounded-md border border-line bg-raised p-3"
+            </div>
+            <p className="text-xs text-muted">
+              {mode === 'server'
+                ? t('storedOnServer')
+                : persistent
+                  ? t('storedLocally')
+                  : t('notPersistent')}
+            </p>
+            <p className="text-xs text-muted">{t('importHint')}</p>
+            <GettingStarted
+              corrals={totals.corrals}
+              runs={totals.runs}
+              onDraft={() => setDrafting(true)}
+            />
+            {errors.length > 0 ? (
+              <div role="alert" className="rounded-md border border-danger p-3 text-sm text-danger">
+                <p>{t('importFailed')}</p>
+                <ul className="list-disc pl-5">
+                  {errors.map((error) => (
+                    <li key={error}>{error}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            {corrals.length === 0 ? (
+              <div className="flex flex-col gap-1 rounded-md border border-dashed border-line p-4">
+                <p className="text-sm font-medium">{t('empty')}</p>
+                <p className="text-sm text-muted">{t('emptyHint')}</p>
+              </div>
+            ) : (
+              <ul className="flex flex-col gap-2" aria-label={t('heading')}>
+                {corrals.map((corral) => (
+                  <li
+                    key={corral.corralId}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line bg-raised p-3"
+                  >
+                    <div className="flex flex-col">
+                      <Link
+                        to="/corrals/$corralId/edit"
+                        params={{ corralId: corral.corralId }}
+                        className="font-medium underline-offset-4 hover:underline"
+                      >
+                        {corral.name}
+                      </Link>
+                      <span className="text-xs text-muted">
+                        {t('revisions', {
+                          definition: corral.definitionRevision,
+                          layout: corral.layoutRevision,
+                          nodes: corral.nodeCount,
+                        })}{' '}
+                        ·{' '}
+                        {t('updated', {
+                          time: format.relativeTime(new Date(corral.updatedAt), now),
+                        })}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs">
+                      <MoveCorral
+                        name={corral.name}
+                        current={projectId}
+                        projects={projects}
+                        onMove={(to) => void move(corral.corralId, to)}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => duplicate(corral.corralId, corral.name)}
+                        className="rounded border border-line px-2 py-1"
+                      >
+                        {t('duplicate')}
+                      </button>
+                      {confirming === corral.corralId ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => remove(corral.corralId)}
+                            className="rounded border border-danger px-2 py-1 text-danger"
+                          >
+                            {t('confirmDelete')}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirming(null)}
+                            className="rounded border border-line px-2 py-1"
+                          >
+                            {t('cancel')}
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setConfirming(corral.corralId)}
+                          className="rounded border border-line px-2 py-1"
+                        >
+                          {t('delete')}
+                        </button>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <section
+              aria-labelledby="goal-heading"
+              hidden={archived}
+              className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-accent/60 bg-raised p-3"
             >
-              <h3 id={`template-${id}`} className="text-sm font-semibold">
-                {t(`template.${id}.name`)}
-              </h3>
-              <p className="flex-1 text-xs text-muted">{t(`template.${id}.body`)}</p>
+              <div className="flex flex-col gap-1">
+                <h2 id="goal-heading" className="text-sm font-semibold">
+                  {t('template.goal.name')}
+                </h2>
+                <p className="text-xs text-muted">{t('template.goal.body')}</p>
+              </div>
               <button
                 type="button"
-                onClick={async () => {
-                  const created = await createFromTemplate(repository, id, t('newName'), projectId);
-                  if (!created.ok) return setErrors([created.message]);
-                  await navigate({
-                    to: '/corrals/$corralId/edit',
-                    params: { corralId: created.corralId },
-                  });
-                }}
-                className="self-start rounded-md border border-accent px-2 py-1 text-xs text-accent"
+                onClick={() => setDrafting(true)}
+                className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent"
               >
-                {t('useTemplate')}
+                {t('draftFromGoal')}
               </button>
-            </article>
-          ))}
-        </div>
-      </section>
-      <section aria-labelledby="runs-heading" className="flex flex-col gap-2">
-        <h2 id="runs-heading" className="text-lg font-semibold">
-          {t('runsHeading')}
-        </h2>
-        {picked.length === 2 ? (
-          <button
-            type="button"
-            onClick={() =>
-              void navigate({ to: '/compare', search: { a: picked[0], b: picked[1] } })
-            }
-            className="self-start rounded-md border border-accent px-3 py-1.5 text-sm text-accent"
-          >
-            {tc('choose', { count: 2 })}
-          </button>
-        ) : null}
-        {runs.length === 0 ? (
-          <p className="text-sm text-muted">{t('runsEmpty')}</p>
-        ) : (
-          <ul className="flex flex-col gap-1" aria-labelledby="runs-heading">
-            {runs.map((run) => {
-              const corral = corrals.find((c) => c.corralId === run.corralId);
-              return (
-                <li
-                  key={run.runId}
-                  className="flex flex-wrap items-center gap-3 rounded-md border border-line px-3 py-2 text-sm"
-                >
-                  <input
-                    type="checkbox"
-                    aria-label={tc('select', { runId: run.runId })}
-                    checked={picked.includes(run.runId)}
-                    onChange={(e) => pick(run.runId, e.target.checked)}
-                  />
-                  <StatusBadge status={run.status} />
-                  <Link
-                    to="/runs/$runId"
-                    params={{ runId: run.runId }}
-                    className="font-mono text-xs underline"
+            </section>
+            <section
+              aria-labelledby="templates-heading"
+              hidden={archived}
+              className="flex flex-col gap-2"
+            >
+              <h2 id="templates-heading" className="text-lg font-semibold">
+                {t('templatesHeading')}
+              </h2>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {WORKSPACE_TEMPLATES.map((id) => (
+                  <article
+                    key={id}
+                    aria-labelledby={`template-${id}`}
+                    className="flex flex-col gap-2 rounded-md border border-line bg-raised p-3"
                   >
-                    {run.runId}
-                  </Link>
-                  <span className="text-xs text-muted">
-                    {corral?.name ?? run.corralId} ·{' '}
-                    {t('runStarted', { time: format.relativeTime(new Date(run.startedAt), now) })}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
-      {drafting ? <TeamDraftDialog onClose={closeDraft} projectId={projectId} /> : null}
-    </main>
+                    <h3 id={`template-${id}`} className="text-sm font-semibold">
+                      {t(`template.${id}.name`)}
+                    </h3>
+                    <p className="flex-1 text-xs text-muted">{t(`template.${id}.body`)}</p>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const created = await createFromTemplate(
+                          repository,
+                          id,
+                          t('newName'),
+                          projectId,
+                        );
+                        if (!created.ok) return setErrors([created.message]);
+                        await navigate({
+                          to: '/corrals/$corralId/edit',
+                          params: { corralId: created.corralId },
+                        });
+                      }}
+                      className="self-start rounded-md border border-accent px-2 py-1 text-xs text-accent"
+                    >
+                      {t('useTemplate')}
+                    </button>
+                  </article>
+                ))}
+              </div>
+            </section>
+            <section aria-labelledby="runs-heading" className="flex flex-col gap-2">
+              <h2 id="runs-heading" className="text-lg font-semibold">
+                {t('runsHeading')}
+              </h2>
+              {picked.length === 2 ? (
+                <button
+                  type="button"
+                  onClick={() =>
+                    void navigate({ to: '/compare', search: { a: picked[0], b: picked[1] } })
+                  }
+                  className="self-start rounded-md border border-accent px-3 py-1.5 text-sm text-accent"
+                >
+                  {tc('choose', { count: 2 })}
+                </button>
+              ) : null}
+              {runs.length === 0 ? (
+                <p className="text-sm text-muted">{t('runsEmpty')}</p>
+              ) : (
+                <ul className="flex flex-col gap-1" aria-labelledby="runs-heading">
+                  {runs.map((run) => {
+                    const corral = corrals.find((c) => c.corralId === run.corralId);
+                    return (
+                      <li
+                        key={run.runId}
+                        className="flex flex-wrap items-center gap-3 rounded-md border border-line px-3 py-2 text-sm"
+                      >
+                        <input
+                          type="checkbox"
+                          aria-label={tc('select', { runId: run.runId })}
+                          checked={picked.includes(run.runId)}
+                          onChange={(e) => pick(run.runId, e.target.checked)}
+                        />
+                        <StatusBadge status={run.status} />
+                        <Link
+                          to="/runs/$runId"
+                          params={{ runId: run.runId }}
+                          className="font-mono text-xs underline"
+                        >
+                          {run.runId}
+                        </Link>
+                        <span className="text-xs text-muted">
+                          {corral?.name ?? run.corralId} ·{' '}
+                          {t('runStarted', {
+                            time: format.relativeTime(new Date(run.startedAt), now),
+                          })}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </section>
+            {drafting ? <TeamDraftDialog onClose={closeDraft} projectId={projectId} /> : null}
+          </div>
+        </main>
+      }
+    />
   );
 }
 
@@ -505,12 +527,14 @@ function MoveCorral({
 
 /** The project's work sessions (CR-011): pinned first, searchable, and a new one. */
 function SessionsSection({
+  openForm = false,
   projectId,
   archived,
   sessions,
   corrals,
   runs,
 }: {
+  openForm?: boolean;
   projectId: string;
   archived: boolean;
   sessions: WorkSession[];
@@ -525,7 +549,7 @@ function SessionsSection({
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [showArchived, setShowArchived] = useState(false);
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState(openForm);
   const [title, setTitle] = useState('');
   const [objective, setObjective] = useState('');
   const [corralId, setCorralId] = useState('');

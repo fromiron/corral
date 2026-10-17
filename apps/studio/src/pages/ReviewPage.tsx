@@ -20,6 +20,7 @@ import { reviewRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
 import { latestResult, startFollowUp, steer, steerTargets } from '../sessionActions.ts';
 import { useBinding } from './FilesViews.tsx';
+import { WorkbenchLayout, WorkbenchSidebar } from './Workbench.tsx';
 
 // Reviewing a session's file changes (CR-012; WBT-15): a fixed comparison range, the files it
 // changed with where each change came from, the diff in the middle, and the agreed checks.
@@ -91,128 +92,143 @@ export function ReviewPage() {
   };
 
   return (
-    <main className="flex h-full min-h-0 flex-col">
-      <header className="flex flex-wrap items-center gap-3 border-b border-line px-4 py-2">
-        <Link
-          to="/sessions/$sessionId"
-          params={{ sessionId: session.sessionId }}
-          className="text-xs underline"
-        >
-          ← {session.title}
-        </Link>
-        <h2 className="text-base font-semibold">{t('reviewHeading')}</h2>
-        <label className="flex items-center gap-1 text-xs">
-          {t('scope')}
-          <select
-            value={scopeKey}
-            onChange={(e) => setScope(e.target.value)}
-            className="rounded border border-line bg-surface px-1 py-0.5"
-          >
-            <option value="session">{t('scopes.session')}</option>
-            <option value="review">{t('scopes.review')}</option>
-            {[...runs].reverse().map((r) => (
-              <option key={r.runId} value={`run:${r.runId}`}>
-                {t('scopes.run', { runId: r.runId })}
-              </option>
-            ))}
-          </select>
-        </label>
-        {changes ? (
-          <span className="text-xs text-muted">{t('files', { count: changes.files.length })}</span>
-        ) : null}
-        <button
-          type="button"
-          onClick={() =>
-            void workspaces?.markReviewed(session.sessionId).then(() => setVersion((n) => n + 1))
-          }
-          title={t('reviewedNote')}
-          className="ml-auto rounded border border-line px-2 py-1 text-xs"
-        >
-          {t('markReviewed')}
-        </button>
-      </header>
-      {error ? (
-        <p role="alert" className="p-3 text-sm text-danger">
-          {t('failed', { message: error })}
-        </p>
-      ) : null}
-      <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[16rem_minmax(0,1fr)_20rem]">
-        <nav
-          aria-label={t('reviewHeading')}
-          className="min-h-0 overflow-auto border-line p-2 md:border-r"
-        >
-          {changes?.unavailable ? <p className="text-xs text-muted">{t('noBaseline')}</p> : null}
-          {changes && !changes.unavailable && changes.files.length === 0 ? (
-            <p className="text-xs text-muted">{t('noChanges')}</p>
+    <WorkbenchLayout
+      sidebar={
+        <WorkbenchSidebar projectId={session.projectId} activeSessionId={session.sessionId} />
+      }
+      main={
+        <main className="flex h-full min-h-0 flex-1 flex-col">
+          <header className="flex flex-wrap items-center gap-3 border-b border-line px-4 py-2">
+            <Link
+              to="/sessions/$sessionId"
+              params={{ sessionId: session.sessionId }}
+              className="text-xs underline"
+            >
+              ← {session.title}
+            </Link>
+            <h2 className="text-base font-semibold">{t('reviewHeading')}</h2>
+            <label className="flex items-center gap-1 text-xs">
+              {t('scope')}
+              <select
+                value={scopeKey}
+                onChange={(e) => setScope(e.target.value)}
+                className="rounded border border-line bg-surface px-1 py-0.5"
+              >
+                <option value="session">{t('scopes.session')}</option>
+                <option value="review">{t('scopes.review')}</option>
+                {[...runs].reverse().map((r) => (
+                  <option key={r.runId} value={`run:${r.runId}`}>
+                    {t('scopes.run', { runId: r.runId })}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {changes ? (
+              <span className="text-xs text-muted">
+                {t('files', { count: changes.files.length })}
+              </span>
+            ) : null}
+            <button
+              type="button"
+              onClick={() =>
+                void workspaces
+                  ?.markReviewed(session.sessionId)
+                  .then(() => setVersion((n) => n + 1))
+              }
+              title={t('reviewedNote')}
+              className="ml-auto rounded border border-line px-2 py-1 text-xs"
+            >
+              {t('markReviewed')}
+            </button>
+          </header>
+          {error ? (
+            <p role="alert" className="p-3 text-sm text-danger">
+              {t('failed', { message: error })}
+            </p>
           ) : null}
-          <ul className="flex flex-col gap-1">
-            {changes?.files.map((file) => (
-              <li key={file.path}>
-                <button
-                  type="button"
-                  aria-current={selected === file.path ? 'true' : undefined}
-                  onClick={() => choose(file.path)}
-                  className={`flex w-full flex-col rounded border px-2 py-1 text-left text-xs ${
-                    selected === file.path ? 'border-accent bg-raised' : 'border-line'
-                  }`}
-                >
-                  <span className="break-all font-mono">{file.path}</span>
-                  <span className="text-muted">
-                    {t(`status.${file.status}`)}
-                    {file.additions !== null ? ` · +${file.additions} −${file.deletions ?? 0}` : ''}
-                    {file.binary ? ' · bin' : ''} · {t(`provenance.${file.provenance}`)}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </nav>
-        <section aria-label={selected ?? t('chooseFile')} className="min-h-0 overflow-auto p-3">
-          {selected && changes?.from && changes.to ? (
-            <FileDiff
-              sessionId={session.sessionId}
-              from={changes.from}
-              to={changes.to}
-              path={selected}
-              comments={comments.filter(
-                (c) => c.from === changes.from && c.to === changes.to && c.path === selected,
+          <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[16rem_minmax(0,1fr)_20rem]">
+            <nav
+              aria-label={t('reviewHeading')}
+              className="min-h-0 overflow-auto border-line p-2 md:border-r"
+            >
+              {changes?.unavailable ? (
+                <p className="text-xs text-muted">{t('noBaseline')}</p>
+              ) : null}
+              {changes && !changes.unavailable && changes.files.length === 0 ? (
+                <p className="text-xs text-muted">{t('noChanges')}</p>
+              ) : null}
+              <ul className="flex flex-col gap-1">
+                {changes?.files.map((file) => (
+                  <li key={file.path}>
+                    <button
+                      type="button"
+                      aria-current={selected === file.path ? 'true' : undefined}
+                      onClick={() => choose(file.path)}
+                      className={`flex w-full flex-col rounded border px-2 py-1 text-left text-xs ${
+                        selected === file.path ? 'border-accent bg-raised' : 'border-line'
+                      }`}
+                    >
+                      <span className="break-all font-mono">{file.path}</span>
+                      <span className="text-muted">
+                        {t(`status.${file.status}`)}
+                        {file.additions !== null
+                          ? ` · +${file.additions} −${file.deletions ?? 0}`
+                          : ''}
+                        {file.binary ? ' · bin' : ''} · {t(`provenance.${file.provenance}`)}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+            <section aria-label={selected ?? t('chooseFile')} className="min-h-0 overflow-auto p-3">
+              {selected && changes?.from && changes.to ? (
+                <FileDiff
+                  sessionId={session.sessionId}
+                  from={changes.from}
+                  to={changes.to}
+                  path={selected}
+                  comments={comments.filter(
+                    (c) => c.from === changes.from && c.to === changes.to && c.path === selected,
+                  )}
+                  onComment={async (comment) => {
+                    await workspaces?.addComment(session.sessionId, {
+                      ...comment,
+                      from: changes.from as string,
+                      to: changes.to as string,
+                      path: selected,
+                    });
+                    await reloadComments();
+                  }}
+                />
+              ) : (
+                <p className="text-sm text-muted">{t('chooseFile')}</p>
               )}
-              onComment={async (comment) => {
-                await workspaces?.addComment(session.sessionId, {
-                  ...comment,
-                  from: changes.from as string,
-                  to: changes.to as string,
-                  path: selected,
-                });
-                await reloadComments();
-              }}
-            />
-          ) : (
-            <p className="text-sm text-muted">{t('chooseFile')}</p>
-          )}
-        </section>
-        <aside className="flex min-h-0 flex-col gap-3 overflow-auto border-line p-3 md:border-l">
-          <CommentsPanel
-            session={session}
-            runs={runs}
-            comments={comments}
-            current={changes}
-            onChange={reloadComments}
-          />
-          {scope.kind === 'session' && changes?.from && changes.to ? (
-            <DecisionPanel
-              sessionId={session.sessionId}
-              from={changes.from}
-              to={changes.to}
-              changed={version}
-              linked={Boolean(binding)}
-            />
-          ) : null}
-          <Checks sessionId={session.sessionId} binding={binding ?? null} changed={version} />
-          <Operations sessionId={session.sessionId} />
-        </aside>
-      </div>
-    </main>
+            </section>
+            <aside className="flex min-h-0 flex-col gap-3 overflow-auto border-line p-3 md:border-l">
+              <CommentsPanel
+                session={session}
+                runs={runs}
+                comments={comments}
+                current={changes}
+                onChange={reloadComments}
+              />
+              {scope.kind === 'session' && changes?.from && changes.to ? (
+                <DecisionPanel
+                  sessionId={session.sessionId}
+                  from={changes.from}
+                  to={changes.to}
+                  changed={version}
+                  linked={Boolean(binding)}
+                />
+              ) : null}
+              <Checks sessionId={session.sessionId} binding={binding ?? null} changed={version} />
+              <Operations sessionId={session.sessionId} />
+            </aside>
+          </div>
+        </main>
+      }
+    />
   );
 }
 
@@ -430,7 +446,7 @@ function Split({ lines }: { lines: DiffLine[] }) {
   );
 }
 
-function Checks({
+export function Checks({
   sessionId,
   binding,
   changed,

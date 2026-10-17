@@ -56,6 +56,42 @@ export function EditorPage() {
   );
 }
 
+/**
+ * The session's team in its workbench (02-UX-Spec §3 팀 설계). It edits the saved team: the next
+ * run of the session uses the saved revision; runs already started keep theirs.
+ */
+export function TeamDesign({ corralId }: { corralId: string }) {
+  const t = useTranslations('Workbench');
+  const { repository } = useServices();
+  const [record, setRecord] = useState<CorralRecord | null | undefined>(undefined);
+  useEffect(() => {
+    let live = true;
+    repository.get(corralId).then(
+      (found) => live && setRecord(found),
+      () => live && setRecord(null),
+    );
+    return () => {
+      live = false;
+    };
+  }, [repository, corralId]);
+  const editor = useMemo(
+    () =>
+      record ? createEditorStore(draftFromDefinition(record.definition, record.layout)) : null,
+    [record],
+  );
+  if (record === undefined) return <p className="p-4 text-sm text-muted">…</p>;
+  if (!record || !editor) return <p className="p-4 text-sm text-muted">{t('noTeam')}</p>;
+  return (
+    <Editor
+      key={record.corralId}
+      record={record}
+      editor={editor}
+      inSession
+      toolbar={<span className="text-xs text-muted">{t('teamNote')}</span>}
+    />
+  );
+}
+
 export function DemoPage() {
   const { record, template } = demoRoute.useLoaderData();
   const editor = useMemo(
@@ -127,6 +163,7 @@ function Editor({
   toolbar,
   guide,
   startFrom = null,
+  inSession = false,
 }: {
   record: CorralRecord;
   editor: EditorStore;
@@ -136,6 +173,8 @@ function Editor({
   guide?: GuideSlot | undefined;
   /** A version the next run starts from, chosen on a Run page (CR-007). */
   startFrom?: StartFromChoice | null;
+  /** Inside a session's workbench: runs start from the session, so no run controls here. */
+  inSession?: boolean;
 }) {
   const t = useTranslations('Editor');
   const { repository, session, mode, live } = useServices();
@@ -266,7 +305,9 @@ function Editor({
               </p>
             ) : null}
           </div>
-          <main className="grid min-h-0 grid-cols-[15rem_1fr_22rem] max-[1100px]:grid-cols-[13rem_1fr_19rem]">
+          <main
+            className={`grid min-h-0 ${inSession ? 'grid-cols-[12rem_1fr_18rem]' : 'grid-cols-[15rem_1fr_22rem] max-[1100px]:grid-cols-[13rem_1fr_19rem]'}`}
+          >
             <aside className="flex min-h-0 flex-col gap-6 overflow-auto border-r border-line p-3">
               <NodePalette />
               <ValidationPanel />
@@ -277,12 +318,14 @@ function Editor({
             </div>
             <aside className="flex min-h-0 flex-col gap-6 overflow-auto border-l border-line p-3">
               <NodeInspector />
-              <RunSide
-                beforeStart={beforeStart}
-                liveAvailable={live}
-                guide={guide}
-                initialStartFrom={startFrom}
-              />
+              {inSession ? null : (
+                <RunSide
+                  beforeStart={beforeStart}
+                  liveAvailable={live}
+                  guide={guide}
+                  initialStartFrom={startFrom}
+                />
+              )}
             </aside>
           </main>
         </div>

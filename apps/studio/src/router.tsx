@@ -29,8 +29,12 @@ const rootRoute = createRootRouteWithContext<{ services: StudioServices }>()({
 });
 
 // `?draft=1` opens "Draft a team from a goal" (CR-006).
-const draftSearch = (search: Record<string, unknown>): { draft?: boolean } =>
-  search.draft === true || search.draft === 1 || search.draft === '1' ? { draft: true } : {};
+const draftSearch = (
+  search: Record<string, unknown>,
+): { draft?: boolean; newSession?: boolean } => ({
+  ...(search.draft === true || search.draft === 1 || search.draft === '1' ? { draft: true } : {}),
+  ...(search.newSession === true || search.newSession === 'true' ? { newSession: true } : {}),
+});
 
 /** `/` is the project worked in last (CR-010); old links to it keep working. */
 const indexRoute = createRoute({
@@ -90,9 +94,35 @@ export const workspaceRoute = createRoute({
 });
 
 /** One work session (CR-011): its requests, runs, queue and the input box. */
+/** The session workbench's tabs and choices (02-UX-Spec §9: view state in the address). */
+export interface SessionSearch {
+  tab?: 'work' | 'team' | 'run' | undefined;
+  panel?: 'changes' | 'artifacts' | 'checks' | undefined;
+  run?: string | undefined;
+  execution?: string | undefined;
+  artifact?: string | undefined;
+  view?: 'results' | 'run' | undefined;
+  result?: string | undefined;
+}
+
+const text = (value: unknown) => (typeof value === 'string' && value ? value : undefined);
+
 export const sessionRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/sessions/$sessionId',
+  validateSearch: (search: Record<string, unknown>): SessionSearch => {
+    const out: SessionSearch = {};
+    if (search.tab === 'work' || search.tab === 'team' || search.tab === 'run')
+      out.tab = search.tab;
+    if (search.panel === 'changes' || search.panel === 'artifacts' || search.panel === 'checks')
+      out.panel = search.panel;
+    if (search.view === 'results' || search.view === 'run') out.view = search.view;
+    for (const key of ['run', 'execution', 'artifact', 'result'] as const) {
+      const value = text(search[key]);
+      if (value) out[key] = value;
+    }
+    return out;
+  },
   loader: async ({ context, params }) => {
     const session = await context.services.repository.getSession(params.sessionId);
     if (!session) throw notFound();
