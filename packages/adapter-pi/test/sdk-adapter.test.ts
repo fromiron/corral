@@ -173,6 +173,58 @@ function runtime(
 }
 
 describe('SDK worker through the product adapter (H2)', () => {
+  it('[TC-HAR-010-H] advertises selected LSP queries only to a role with worktree read permission', async () => {
+    for (const readable of [false, true]) {
+      const executeTool = vi.fn(async (toolCallId: string) => ({
+        ok: true as const,
+        toolCallId,
+        result: { result: { kind: 'locations', locations: [{ path: 'src/other.ts' }] } },
+      }));
+      const run = runtime(
+        [
+          (context) => {
+            const tool = context.messages
+              .flatMap((message) => (message.role === 'system' ? (message.toolsAdded ?? []) : []))
+              .find((tool) => tool.name === 'lsp_query');
+            expect(!!tool).toBe(readable);
+            if (!readable) return fauxAssistantMessage('No file access.');
+            expect(JSON.stringify(tool?.parameters)).toContain('typescript');
+            return fauxAssistantMessage(
+              [
+                fauxToolCall('lsp_query', {
+                  serverId: 'typescript',
+                  operation: 'definition',
+                  path: 'src/main.ts',
+                  position: { line: 0, character: 1 },
+                }),
+              ],
+              { stopReason: 'toolUse' },
+            );
+          },
+          (context) => {
+            expect(JSON.stringify(context.messages)).toContain('src/other.ts');
+            return fauxAssistantMessage('Found the definition.');
+          },
+        ],
+        '',
+        { executeTool },
+      );
+      if (!run.input.harness) throw new Error('missing harness');
+      run.input.harness.allowedTools = ['lsp_query'];
+      run.input.harness.projectTools = {
+        projectId: 'default',
+        revision: 1,
+        hash,
+        checkIds: [],
+        lspServerIds: ['typescript'],
+      };
+      run.input.role.allowedWorkTools = readable ? ['read_file'] : [];
+      expect(
+        await (await run.adapter.start(run.input, run.host)).waitForSettlement(),
+      ).toMatchObject({ outcome: 'succeeded' });
+      expect(executeTool).toHaveBeenCalledTimes(readable ? 1 : 0);
+    }
+  });
   it('[TC-HAR-012-H] exposes only selected registered check IDs and returns the owned report through the host', async () => {
     const proposals: { name: string; args: Record<string, unknown> }[] = [];
     const run = runtime(

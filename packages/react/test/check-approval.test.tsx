@@ -16,7 +16,7 @@ const plan: CheckPlan = {
   tree: 'b'.repeat(40),
   trusted: false,
 };
-function setup(text: string | null) {
+function setup(text: string | null, purpose?: 'check' | 'lsp') {
   const resolveApproval = vi.fn(async () => ({ status: 'applied' }) as Receipt);
   const session = sessionStore({
     projection: projectionWith({
@@ -29,6 +29,7 @@ function setup(text: string | null) {
           criteriaVersionId: null,
           status: 'pending',
           tool: {
+            ...(purpose ? { purpose } : {}),
             executionId: 'exec_1',
             attemptNo: 2,
             effectId: 'effect_1',
@@ -51,6 +52,26 @@ function setup(text: string | null) {
   );
   return resolveApproval;
 }
+it('[TC-HAR-010-H] identifies a language server launch and query without promising a frozen check copy', async () => {
+  const decide = setup(
+    JSON.stringify({
+      ...plan,
+      purpose: 'lsp',
+      query: {
+        serverId: plan.commandId,
+        path: 'src/main.ts',
+        operation: 'definition',
+        position: { line: 0, character: 1 },
+      },
+    }),
+    'lsp',
+  );
+  expect(await screen.findByText('Approve language server launch')).toBeVisible();
+  expect(await screen.findByText('definition · src/main.ts')).toBeVisible();
+  expect(screen.queryByText(/frozen copy/)).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Run this query once' }));
+  await vi.waitFor(() => expect(decide).toHaveBeenCalledWith('approval_check', 'approve'));
+});
 it('[TC-HAR-012-H] shows the exact check command, revision and fingerprint before one-time approval', async () => {
   const decide = setup(JSON.stringify(plan));
   expect(await screen.findByText('node check.mjs')).toBeVisible();
