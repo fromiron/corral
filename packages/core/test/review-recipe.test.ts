@@ -170,6 +170,7 @@ describe('bounded review recipes (H6)', () => {
     };
     let count = 0,
       tree = '1'.repeat(40);
+    let treeRead: (() => Promise<void>) | undefined;
     const runCheck = vi.fn<NonNullable<NonNullable<CoordinatorDeps['files']>['runCheck']>>(
       async (input, plan) => {
         const verdict = verdicts[count++] ?? 'pass';
@@ -225,7 +226,10 @@ describe('bounded review recipes (H6)', () => {
             };
           },
           runCheck,
-          currentTreeForRun: async () => tree,
+          currentTreeForRun: async () => {
+            await treeRead?.();
+            return tree;
+          },
         },
       },
     );
@@ -235,8 +239,55 @@ describe('bounded review recipes (H6)', () => {
       changeTarget: () => {
         tree = 'f'.repeat(40);
       },
+      onTreeRead: (fn: () => Promise<void>) => {
+        treeRead = fn;
+      },
     };
   }
+  it('[TC-HAR-014-N] cancellation during the last evidence read cannot publish a final output', async () => {
+    const s = checked(['pass'], true, true);
+    const waiting = await waitForProjection(
+      s.transport,
+      s.runId,
+      (p) => p.status === 'awaiting_user',
+    );
+    const approval = Object.values(waiting.approvals).find(
+      (approval) => approval.status === 'pending',
+    );
+    if (!approval) throw new Error('missing approval');
+    const entered = new Gate(),
+      release = new Gate();
+    s.onTreeRead(async () => {
+      entered.open();
+      await release.wait();
+    });
+    await s.transport.sendCommand({
+      schemaVersion: '0.1',
+      runId: s.runId,
+      commandId: 'approve-final',
+      expectedControlRevision: waiting.controlRevision,
+      type: 'resolve_approval',
+      payload: {
+        approvalId: approval.approvalId,
+        decision: 'approve',
+        subjectVersionId: approval.subjectVersionIds[0]!,
+      },
+    });
+    await entered.wait();
+    await s.transport.sendCommand({
+      schemaVersion: '0.1',
+      runId: s.runId,
+      commandId: 'cancel-final',
+      type: 'cancel',
+      payload: { scope: { kind: 'run' }, reason: 'user stop' },
+    });
+    release.open();
+    for (let n = 0; n < 30; n++) await Promise.resolve();
+    const final = (await s.transport.getSnapshot(s.runId)).projection;
+    expect(final.status).toBe('cancelled');
+    expect(final.output).toBeNull();
+    expect(s.events().some((event) => event.type === 'output.finalized')).toBe(false);
+  });
   it('[TC-HAR-014-N] a tree changed during final approval cannot reuse an earlier passing check', async () => {
     const s = checked(['pass'], true, true);
     const waiting = await waitForProjection(
