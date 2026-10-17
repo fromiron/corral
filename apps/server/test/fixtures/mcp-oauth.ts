@@ -17,13 +17,26 @@ export async function oauthFixture() {
       response.end(JSON.stringify(body));
     };
     if (url.pathname.startsWith('/.well-known/oauth-protected-resource'))
-      return json({ resource: `${origin}/mcp`, authorization_servers: [origin], scopes_supported: ['docs:read', 'docs:write'] });
+      return json({
+        resource: `${origin}/mcp`,
+        authorization_servers: [origin],
+        scopes_supported: ['docs:read', 'docs:write'],
+      });
     if (url.pathname === '/.well-known/oauth-authorization-server')
-      return json({ issuer: origin, authorization_endpoint: `${origin}/authorize`, token_endpoint: `${origin}/token`, registration_endpoint: `${origin}/register`, response_types_supported: ['code'], code_challenge_methods_supported: ['S256'], token_endpoint_auth_methods_supported: ['none'] });
+      return json({
+        issuer: origin,
+        authorization_endpoint: `${origin}/authorize`,
+        token_endpoint: `${origin}/token`,
+        registration_endpoint: `${origin}/register`,
+        response_types_supported: ['code'],
+        code_challenge_methods_supported: ['S256'],
+        token_endpoint_auth_methods_supported: ['none'],
+      });
     const chunks: Buffer[] = [];
     for await (const chunk of request) chunks.push(Buffer.from(chunk));
     const body = Buffer.concat(chunks).toString();
-    if (url.pathname === '/register') return json({ ...JSON.parse(body), client_id: 'fixture-client' });
+    if (url.pathname === '/register')
+      return json({ ...JSON.parse(body), client_id: 'fixture-client' });
     if (url.pathname === '/authorize') {
       challenge = url.searchParams.get('code_challenge') ?? '';
       redirectUri = url.searchParams.get('redirect_uri') ?? '';
@@ -36,8 +49,14 @@ export async function oauthFixture() {
     if (url.pathname === '/token') {
       const form = new URLSearchParams(body);
       if (form.get('grant_type') === 'authorization_code') {
-        const actual = createHash('sha256').update(form.get('code_verifier') ?? '').digest('base64url');
-        if (actual !== challenge || form.get('redirect_uri') !== redirectUri || form.get('code') !== 'fixture-code')
+        const actual = createHash('sha256')
+          .update(form.get('code_verifier') ?? '')
+          .digest('base64url');
+        if (
+          actual !== challenge ||
+          form.get('redirect_uri') !== redirectUri ||
+          form.get('code') !== 'fixture-code'
+        )
           return json({ error: 'invalid_grant' }, 400);
         exchanges++;
       } else {
@@ -46,7 +65,13 @@ export async function oauthFixture() {
         await beforeRefresh?.();
         refreshes++;
       }
-      return json({ access_token: `fixture-access-${refreshes}`, refresh_token: `fixture-refresh-${refreshes}`, token_type: 'Bearer', expires_in: 3600, scope: grantScope });
+      return json({
+        access_token: `fixture-access-${refreshes}`,
+        refresh_token: `fixture-refresh-${refreshes}`,
+        token_type: 'Bearer',
+        expires_in: 3600,
+        scope: grantScope,
+      });
     }
     json({ error: 'not_found' }, 404);
   });
@@ -56,10 +81,22 @@ export async function oauthFixture() {
   origin = `http://127.0.0.1:${address.port}`;
   return {
     url: `${origin}/mcp`,
-    get exchanges() { return exchanges; },
-    get refreshes() { return refreshes; },
-    scope(value: string) { grantScope = value; },
-    delayRefresh(fn: () => Promise<void>) { beforeRefresh = fn; },
-    close: () => new Promise<void>((resolve, reject) => { server.closeAllConnections(); server.close((error) => error ? reject(error) : resolve()); }),
+    get exchanges() {
+      return exchanges;
+    },
+    get refreshes() {
+      return refreshes;
+    },
+    scope(value: string) {
+      grantScope = value;
+    },
+    delayRefresh(fn: () => Promise<void>) {
+      beforeRefresh = fn;
+    },
+    close: () =>
+      new Promise<void>((resolve, reject) => {
+        server.closeAllConnections();
+        server.close((error) => (error ? reject(error) : resolve()));
+      }),
   };
 }
