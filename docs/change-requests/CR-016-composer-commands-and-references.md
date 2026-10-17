@@ -53,6 +53,8 @@ Coordinator는 시작할 때 brief 뒤에 "References" 목록을 붙인다.
 
 ## 테스트
 
+요구 `CRL-REF-001`(참조 전달)·`CRL-REF-002`(경로 검색)·`CRL-REF-003`(입력 메뉴), 태스크 `C-075`. 시나리오는 `tests/test-catalog.json`에 있다(2026-10-17 사후 등록, 병합 뒤 `spec:check` 실패 복구).
+
 | ID | 내용 | 위치 |
 |---|---|---|
 | TC-REF-001-H | 파일·폴더·실행·역할을 brief 뒤에 포인터로 나열, 권한 없음 문구 | `packages/core/test/references.test.ts` |
