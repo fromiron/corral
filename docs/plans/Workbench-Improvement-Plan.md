@@ -179,3 +179,4 @@ W3부터는 기존 MVP가 제외한 **파일 쓰기와 명령 실행**을 연다
   - 검증: 서버 unit(Git 상태·폴더 사라짐), locale, E2E 2개 파일, 브라우저에서 예시 만들기 확인.
 - §10 데모 다중 파일: 데모 worker에 메모리 작업 폴더를 두어 브라우저 데모에서도 파일 도구·변경 검토·의견·승인·반영·되돌리기가 된다. 검증 명령은 로컬 서버에서만 된다. 브라우저에서 예시 프로젝트 → Run이 파일 작성 → 줄 의견 → 승인 → 반영 계획 → 반영까지 확인했고, 데모 E2E 2개 파일이 통과했다.
 - §11 측정(02-UX-Spec 구현 뒤, 2026-10-17): 목표 모두 충족. diff p95 361 ms(≤500), 세션 전환 p95 162 ms(≤300), 크기 조절 long task 0, axe serious 0. 처음 diff 827 ms를 Myers diff·diff 가상화·git 호출 축소로 고쳤다. 자세한 조건은 [Performance.md](../Performance.md). 측정 spec은 `CORRAL_WORKBENCH_PERF=1`일 때만 돈다(일반 E2E 아님).
+- §11 사용자 평가: 사람 참가자 5명이 필요해 Claude가 실시할 수 없다. 대신 진행 안내([Workbench-Usability-Test.md](../evaluation/Workbench-Usability-Test.md))와 [결과 기록지](../evaluation/Workbench-Usability-Results.md)를 준비했다. 진행 안내에는 참가자 기준, 로컬 서버·데모 환경 준비, "어제 작업 찾기"·"변경/미반영 구분"·"diff 의견 전달 대상 확인" 과제 지시문과 성공 기준, SEQ, 심각도, 개선 연결이 들어 있다. 이 플랜에서 남은 일은 Bell이 진행할 이 평가 하나다.
