@@ -1522,7 +1522,22 @@
     "notNow": "지금은 쓸 수 없어요",
     "groupRequest": "요청",
     "groupRun": "Run",
-    "focus": "요청 입력칸으로 이동"
+    "focus": "요청 입력칸으로 이동",
+    "ended": "{name} (끝남)",
+    "blocked": {
+      "target": "{name} 실행이 끝나 더 이상 지시를 받지 않아요. 다른 실행을 고르거나 다른 방식으로 보내세요.",
+      "run": "이 Run이 끝나서 지시를 전달할 수 없어요. 다른 방식으로 보내세요.",
+      "intent": "다른 Run이 진행 중이라 지금은 보낼 수 없는 요청이에요({intent}). 다른 방식으로 보내세요."
+    },
+    "switchTo": {
+      "next": "후속 작업으로 보내기",
+      "queue": "대기열로 옮기기",
+      "steer": "지시로 보내기",
+      "explain": "결과 질문으로 보내기"
+    },
+    "missingReferences": "더 이상 없는 참조가 {count}개 있어요. 빼고 보내세요.",
+    "referenceGone": "(더 이상 없음)",
+    "referencesNextOnly": "참조는 후속 작업에만 함께 전달돼요. 지금은 요청 글자로만 남아요."
   },
   "Commands": {
     "newSession": "새 세션",

@@ -64,11 +64,12 @@ import { sendKeyLabel, shortcutLabel } from '../shortcuts.ts';
 import { ChatView } from '../workbench/ChatView.tsx';
 import { ComposerInput } from '../workbench/ComposerInput.tsx';
 import { ComposerSurface } from '../workbench/ComposerSurface.tsx';
+import { type IntentLock, resolveIntent } from '../workbench/composerIntent.ts';
 import { type MentionItem, mentionToken, pickedReferences } from '../workbench/composerMenu.ts';
 import { FilePanel, type FileReference } from '../workbench/FilePanel.tsx';
 import { isSendKey, usePreferences } from '../workbench/preferences.ts';
 import { RunMessage } from '../workbench/RunMessage.tsx';
-import { readDraft, writeDraft } from '../workbench/sessionDraft.ts';
+import { readComposerDraft, writeComposerDraft } from '../workbench/sessionDraft.ts';
 import { TopbarActions } from '../workbench/TopbarSlot.tsx';
 import { useMentionSearch } from '../workbench/useMentionSearch.ts';
 import { useBinding, WORKSPACE_CHANGED, WorkingCopyPanel } from './FilesViews.tsx';
@@ -1165,15 +1166,28 @@ function Composer({
   const { repository, transport, mode, live } = services;
   const prefs = usePreferences();
   const router = useRouter();
-  const [text, setText] = useState(() => readDraft(session.sessionId));
+  // UX-02: the draft comes back with its intent, target and exact references.
+  const [restored] = useState(() => readComposerDraft(session.sessionId));
+  const [text, setText] = useState(restored.text);
   const [chosen, setChosen] = useState<SessionIntent | null>(null);
   const [target, setTarget] = useState<string>('');
+  // UX-01: what the request is (and for whom) is fixed once typing starts.
+  const [lock, setLock] = useState<IntentLock | null>(
+    restored.text && restored.intent ? { intent: restored.intent, target: restored.target } : null,
+  );
   const [runMode, setRunMode] = useState<'mock' | 'live'>('mock');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [targets, setTargets] = useState<{ id: string; label: string }[]>([]);
   const [targetTick, setTargetTick] = useState(0);
-  const [picked, setPicked] = useState<MentionItem[]>([]);
+  const [picked, setPicked] = useState<MentionItem[]>(restored.references);
+  const [missing, setMissing] = useState<Set<string>>(new Set());
+  // Names of executions seen, so an instruction for one that ended still says whom it was for.
+  const targetNames = useRef(
+    new Map<string, string>(
+      restored.target && restored.targetLabel ? [[restored.target, restored.targetLabel]] : [],
+    ),
+  );
   const [confirmStop, setConfirmStop] = useState(false);
   const [teamOpen, setTeamOpen] = useState(false);
   const [modeOpen, setModeOpen] = useState(false);
@@ -1206,8 +1220,6 @@ function Composer({
     : latest
       ? ['next', 'explain']
       : ['next'];
-  const intent: SessionIntent =
-    chosen && allowed.includes(chosen) ? chosen : (allowed[0] as SessionIntent);
 
   // Executions that can still take an instruction, named by their node.
   useEffect(() => {
@@ -1245,12 +1257,77 @@ function Composer({
     const timer = setInterval(() => setTargetTick((n) => n + 1), 1500);
     return () => clearInterval(timer);
   }, [ownActive]);
-  const steerTarget = targets.some((x) => x.id === target) ? target : (targets[0]?.id ?? '');
+  for (const x of targets) targetNames.current.set(x.id, x.label);
+  const resolved = resolveIntent({
+    allowed,
+    chosen,
+    chosenTarget: target || null,
+    lock,
+    targets: targets.map((x) => x.id),
+    running: Boolean(ownActive),
+  });
+  const intent = resolved.intent;
+  const steerTarget = resolved.target ?? '';
+  const targetName = (id: string) => targetNames.current.get(id) ?? id;
 
+  /** Changes the text; the first character fixes what the request is and for whom. */
   const write = (value: string) => {
     setText(value);
-    writeDraft(session.sessionId, value);
+    if (!value) setLock(null);
+    else if (!lock) setLock({ intent, target: intent === 'steer' ? steerTarget || null : null });
   };
+  /** An explicit choice by the person; it becomes the new fixed intent while text is typed. */
+  const chooseIntent = (value: SessionIntent) => {
+    setChosen(value);
+    if (text)
+      setLock({
+        intent: value,
+        target: value === 'steer' ? (lock?.target ?? steerTarget) || targets[0]?.id || null : null,
+      });
+  };
+  const chooseTarget = (value: string) => {
+    setTarget(value);
+    if (text) setLock({ intent: 'steer', target: value });
+  };
+  useEffect(() => {
+    writeComposerDraft(session.sessionId, {
+      text,
+      intent: lock?.intent ?? null,
+      target: lock?.target ?? null,
+      targetLabel: lock?.target ? (targetNames.current.get(lock.target) ?? null) : null,
+      references: picked.filter((item) => pickedReferences(text, [item]).length > 0),
+    });
+  }, [session.sessionId, text, lock, picked]);
+
+  // References restored from a draft are checked once: a result version, run or role that is
+  // gone is marked, never swapped for another with the same name (UX-02).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only the restored references
+  useEffect(() => {
+    if (!restored.references.length) return;
+    let live = true;
+    void (async () => {
+      const gone = new Set<string>();
+      const roles = team
+        ? ((await repository.get(team.corralId))?.definition.roles.map((r) => r.id) ?? [])
+        : [];
+      for (const item of restored.references) {
+        const ref = item.reference;
+        try {
+          if (ref.kind === 'result') {
+            const { projection } = await transport.getSnapshot(ref.runId);
+            if (!projection.artifacts[ref.artifactVersionId]) gone.add(item.id);
+          } else if (ref.kind === 'run') await transport.getSnapshot(ref.runId);
+          else if (ref.kind === 'role' && !roles.includes(ref.roleId)) gone.add(item.id);
+        } catch {
+          gone.add(item.id);
+        }
+      }
+      if (live) setMissing(gone);
+    })();
+    return () => {
+      live = false;
+    };
+  }, []);
 
   // A line range chosen in the file panel arrives as a reference at the caret.
   const used = useRef<FileReference | null>(null);
@@ -1285,6 +1362,7 @@ function Composer({
       picked.findIndex((x) => x.id === item.id) === index &&
       pickedReferences(text, [item]).length > 0,
   );
+  const missingChips = chips.filter((item) => missing.has(item.id));
 
   const record = async (entry: Parameters<typeof repository.addSessionEntry>[1]) => {
     const saved = await repository.addSessionEntry(session.sessionId, entry);
@@ -1388,7 +1466,8 @@ function Composer({
       pending.current = null;
       setPicked([]);
       setChosen(null);
-      write('');
+      setLock(null);
+      setText('');
       await router.invalidate();
       onChange();
     } catch (failure) {
@@ -1446,8 +1525,9 @@ function Composer({
   };
   /** Editing a queued task takes it back into the box; sending again records a new version. */
   const editQueued = async (entry: SessionEntry) => {
-    write(entry.text);
+    setText(entry.text);
     setChosen('queue');
+    setLock({ intent: 'queue', target: null });
     await repository.updateSessionEntry(session.sessionId, entry.entryId, {
       state: 'dismissed',
       detail: 'edited',
@@ -1504,6 +1584,8 @@ function Composer({
   };
 
   const unavailable =
+    resolved.blocked !== null ||
+    missingChips.length > 0 ||
     (intent === 'next' && !team) ||
     (intent === 'explain' && !latest) ||
     (intent === 'steer' && !steerTarget);
@@ -1522,7 +1604,7 @@ function Composer({
         disabled: !allowed.includes(value),
         ...(allowed.includes(value) ? {} : { hint: tc('notNow') }),
         run: () => {
-          setChosen(value);
+          chooseIntent(value);
           input.current?.focus();
         },
       }),
@@ -1641,16 +1723,55 @@ function Composer({
               {t('busyElsewhere', { runId: active.runId })}
             </p>
           ) : null}
+          {resolved.blocked ? (
+            <div
+              role="alert"
+              data-testid="intent-blocked"
+              className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg bg-warning/10 px-2.5 py-1.5 text-xs text-warning"
+            >
+              <span className="min-w-0 flex-1">
+                {resolved.blocked === 'target'
+                  ? tc('blocked.target', { name: targetName(steerTarget) })
+                  : resolved.blocked === 'run'
+                    ? tc('blocked.run')
+                    : tc('blocked.intent', { intent: t(`intentShort.${intent}`) })}
+              </span>
+              {allowed
+                .filter((value) => value !== intent)
+                .map((value) => (
+                  <Button
+                    key={value}
+                    variant="outline"
+                    size="xs"
+                    onClick={() => chooseIntent(value)}
+                  >
+                    {tc(`switchTo.${value}`)}
+                  </Button>
+                ))}
+            </div>
+          ) : null}
+          {missingChips.length ? (
+            <p role="alert" className="text-xs text-danger">
+              {tc('missingReferences', { count: missingChips.length })}
+            </p>
+          ) : null}
+          {chips.length && intent !== 'next' ? (
+            <p className="text-2xs text-muted">{tc('referencesNextOnly')}</p>
+          ) : null}
           {chips.length ? (
             <ul aria-label={tc('references')} className="flex flex-wrap gap-1">
               {chips.map((item) => (
                 <li
                   key={item.id}
-                  className="flex max-w-full items-center gap-1 rounded-md bg-subtle py-0.5 pr-0.5 pl-2 text-xs"
+                  data-missing={missing.has(item.id) || undefined}
+                  className={`flex max-w-full items-center gap-1 rounded-md py-0.5 pr-0.5 pl-2 text-xs ${missing.has(item.id) ? 'bg-danger/10 text-danger line-through' : 'bg-subtle'}`}
                 >
                   <span className="truncate font-mono" title={item.label}>
                     {mentionToken(item).slice(1)}
                   </span>
+                  {missing.has(item.id) ? (
+                    <span className="sr-only">{tc('referenceGone')}</span>
+                  ) : null}
                   <Button
                     variant="ghost-muted"
                     size="icon-tiny"
@@ -1701,19 +1822,19 @@ function Composer({
                 <AtSign />
               </Button>
             </Tooltip>
-            {allowed.length > 1 ? (
+            {allowed.length > 1 && !resolved.blocked ? (
               <Select
                 variant="chip"
                 label={t('intentLabel')}
                 value={intent}
-                onValueChange={(value) => setChosen(value)}
+                onValueChange={chooseIntent}
                 options={allowed.map((value) => ({
                   value,
                   label: t(`intentShort.${value}`),
                   hint: t(`intentHint.${value}`),
                 }))}
               />
-            ) : intent !== 'next' ? (
+            ) : intent !== 'next' || resolved.blocked ? (
               <span className="px-2 text-ui text-muted">{t(`intentShort.${intent}`)}</span>
             ) : null}
             {intent === 'steer' ? (
@@ -1722,8 +1843,19 @@ function Composer({
                 label={t('target')}
                 value={steerTarget || null}
                 placeholder={t('noTarget')}
-                onValueChange={setTarget}
-                options={targets.map((x) => ({ value: x.id, label: x.label }))}
+                onValueChange={chooseTarget}
+                options={[
+                  ...(steerTarget && !targets.some((x) => x.id === steerTarget)
+                    ? [
+                        {
+                          value: steerTarget,
+                          label: tc('ended', { name: targetName(steerTarget) }),
+                          disabled: true,
+                        },
+                      ]
+                    : []),
+                  ...targets.map((x) => ({ value: x.id, label: x.label })),
+                ]}
                 disabled={targets.length === 0}
               />
             ) : null}

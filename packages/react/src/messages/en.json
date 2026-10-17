@@ -1522,7 +1522,22 @@
     "notNow": "Not available now",
     "groupRequest": "Request",
     "groupRun": "Run",
-    "focus": "Focus the request box"
+    "focus": "Focus the request box",
+    "ended": "{name} (ended)",
+    "blocked": {
+      "target": "The {name} execution has ended and no longer takes instructions. Choose another execution, or send this another way.",
+      "run": "This run has ended, so the instruction cannot be delivered. Send it another way.",
+      "intent": "This {intent} cannot be sent while another run works. Send it another way."
+    },
+    "switchTo": {
+      "next": "Send as a follow-up",
+      "queue": "Move to the queue",
+      "steer": "Send as an instruction",
+      "explain": "Ask about the result"
+    },
+    "missingReferences": "{count, plural, one {A reference no longer exists.} other {# references no longer exist.}} Remove it before sending.",
+    "referenceGone": "(no longer exists)",
+    "referencesNextOnly": "References travel with follow-ups only; here they stay as text in the request."
   },
   "Commands": {
     "newSession": "New session",
