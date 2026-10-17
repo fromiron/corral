@@ -37,3 +37,5 @@ Pi 공개 runtime의 `refreshTools`와 로드 결과의 extension 도구 정의�
 ## codemode 실제 worker 종료
 
 Pi 1.3.0의 codemode 결과와 `sandbox.close()`는 Worker의 OS 종료보다 먼저 반환할 수 있다. 따라서 호출 완료 개수를 worker 수로 취급하지 않는다. 이미 공개된 pi-codemode의 `onWorkerStarted(exited)` 관찰자를 pi-coding-agent의 공식 factory 옵션까지 전달하는 최소 버전 고정 patch를 사용한다. Coordinator가 생성 전 capacity를 예약하고 SDK wrapper가 실제 exit를 확인한 뒤 반환한다. SDK 프로세스 종료가 확인되면 소유 lease를 정리하며 종료 미확인 상태에서는 반환하지 않는다. 새 실행 엔진·Worker monkey patch·Pi 내부 카운터 조회는 추가하지 않는다. 정확한 적용 파일/검증은 의존성 원장에 남기고 버전 변경 때 patch 재검증을 요구한다.
+
+SDK worker는 실행 시작 IPC를 보내기 전에 private 프로세스 소유 기록을 저장한다. 백엔드는 workspace 소유 lock을 얻고 이전 worker의 종료를 확인한 뒤 Coordinator를 시작한다. Linux에서는 boot ID와 `/proc` 시작 시각을 확인하여 PID 재사용을 구분하고 같은 소유 process group만 종료한다. 확인할 수 없으면 새 실행을 막는다. 다른 OS에서는 이전 PID가 아직 살아 있으면 자동으로 다른 프로세스를 죽이지 않고 복구 미확인으로 시작을 거절한다. `error` 이벤트만으로 살아 있는 child의 종료를 확정하지 않는다.
