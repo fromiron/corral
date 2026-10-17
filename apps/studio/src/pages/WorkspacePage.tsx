@@ -412,10 +412,18 @@ function ProjectTabs({
 }) {
   const t = useTranslations('Projects');
   const location = useRouterState({ select: (s) => s.location.hash });
-  const [saved, setTab] = useRemembered<ProjectTab>(`corral:project-tab:${projectId}`, 'sessions');
-  // A link to #corrals (the team library) opens the teams tab.
-  const tab: ProjectTab = location === 'corrals' ? 'teams' : saved;
   const tabs: ProjectTab[] = ['sessions', 'teams', 'folder', 'runs'];
+  const [saved, setTab] = useRemembered<ProjectTab | null>(`corral:project-tab:${projectId}`, null);
+  // A link to #corrals (the team library) opens the teams tab. Until the person picks a tab,
+  // a project without sessions opens on its teams: setting one up is the next step there.
+  const tab: ProjectTab =
+    location === 'corrals'
+      ? 'teams'
+      : saved && tabs.includes(saved)
+        ? saved
+        : counts.sessions > 0
+          ? 'sessions'
+          : 'teams';
   const refs = useRef<Partial<Record<ProjectTab, HTMLButtonElement | null>>>({});
   const count = (value: ProjectTab) =>
     value === 'folder' ? null : counts[value as 'sessions' | 'teams' | 'runs'];

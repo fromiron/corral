@@ -84,14 +84,24 @@ export function ComposerInput({
     };
   }, [kind, query, searchMentions]);
 
+  const available = commands.filter((c) => c.slash && !c.disabled);
+  // A command whose name starts with what was typed comes first; then fuzzy matches.
+  const prefix =
+    kind === 'slash'
+      ? available.filter((c) => c.slash?.startsWith((query ?? '').toLowerCase()))
+      : [];
   const rows: Row[] =
     kind === 'slash'
-      ? rankFuzzy(
-          query ?? '',
-          commands.filter((c) => c.slash && !c.disabled),
-          (c) => `${c.slash} ${c.title} ${(c.keywords ?? []).join(' ')}`,
-          12,
-        ).map((command) => ({ kind: 'command', id: command.id, command }))
+      ? [
+          ...prefix,
+          ...rankFuzzy(
+            query ?? '',
+            available.filter((c) => !prefix.includes(c)),
+            (c) => `${c.slash} ${c.title} ${(c.keywords ?? []).join(' ')}`,
+          ),
+        ]
+          .slice(0, 12)
+          .map((command) => ({ kind: 'command', id: command.id, command }))
       : kind === 'mention' && mentions
         ? mentions.items.map((item) => ({ kind: 'mention', id: item.id, item }))
         : [];

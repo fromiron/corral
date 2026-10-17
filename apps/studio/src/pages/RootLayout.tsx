@@ -230,7 +230,7 @@ function ProjectSwitcher() {
           }
         >
           {options.map((p) => (
-            <MenuRadioItem key={p.projectId} value={p.projectId}>
+            <MenuRadioItem key={p.projectId} value={p.projectId} closeOnClick>
               {projectName(p, t('defaultName'))}
             </MenuRadioItem>
           ))}

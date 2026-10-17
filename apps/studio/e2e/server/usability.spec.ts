@@ -2,9 +2,10 @@ import type { CorralDefinition } from '@corral/contracts';
 import { linearCorral } from '@corral/testkit';
 import type { Page } from '@playwright/test';
 import { templateForWorkspace } from '../../src/demo/templates.ts';
+import { panelTab, requestBox } from '../workbench.ts';
 import { expect, type Harness, test } from './harness.ts';
 
-const request = (page: Page) => page.getByRole('textbox', { name: 'Request', exact: true });
+const request = requestBox;
 const timeline = (page: Page) => page.getByTestId('chat-timeline');
 
 async function session(page: Page, corral: Harness, definition = linearCorral(['writer'])) {
@@ -28,7 +29,6 @@ test('[WBTST-004] UX-015-01 new-session drafts survive team setup and become an 
   await corral.open('/');
   await page.getByRole('link', { name: 'New session', exact: true }).click();
   await page.getByLabel('Purpose').fill('Keep this purpose through team setup');
-  await page.getByLabel('Title (optional)').fill('Release planning');
   await page
     .getByRole('article')
     .filter({ hasText: 'Single agent' })
@@ -37,11 +37,11 @@ test('[WBTST-004] UX-015-01 new-session drafts survive team setup and become an 
   await expect(page).toHaveURL(/\/edit$/);
   await page.getByRole('link', { name: 'New session', exact: true }).click();
   await expect(page.getByLabel('Purpose')).toHaveValue('Keep this purpose through team setup');
-  await expect(page.getByLabel('Title (optional)')).toHaveValue('Release planning');
   await page.getByRole('button', { name: 'Start session', exact: true }).click();
   await expect(request(page)).toHaveValue('Keep this purpose through team setup');
   expect(corral.server.coordinator.listRuns()).toHaveLength(0);
-  await expect(page.getByRole('radio', { name: 'Question about the result' })).toHaveCount(0);
+  // Nothing to ask about yet: the only choice is a follow-up, so no intent picker shows.
+  await expect(page.getByRole('combobox', { name: 'What this is' })).toHaveCount(0);
   await request(page).fill('');
   await page.reload();
   await expect(request(page)).toHaveValue('');
@@ -61,7 +61,7 @@ test.describe('instruction delivery', () => {
     await expect(page.getByRole('button', { name: 'Resume run', exact: true })).toBeVisible();
     await expect(timeline(page).getByText('Working…', { exact: true })).toHaveCount(0);
     await expect(
-      page.getByTestId('app-sidebar').getByText('Paused', { exact: true }),
+      page.getByTestId('app-sidebar').getByRole('img', { name: 'Paused', exact: true }),
     ).toBeVisible();
     await request(page).fill('Separate verified facts from remaining checks.');
     await page.getByRole('button', { name: 'Send', exact: true }).click();
@@ -111,7 +111,7 @@ test.describe('long multi-agent output', () => {
       content: e.scrollWidth,
     }));
     expect(bounds.content).toBeLessThanOrEqual(bounds.width);
-    await page.getByRole('tab', { name: 'Results', exact: true }).click();
+    await panelTab(page, 'Results');
     const panel = page.getByRole('tabpanel', { name: 'Results', exact: true });
     await expect(panel).toContainText('Partial results');
     for (const artifact of Object.values(projection.artifacts))
@@ -152,11 +152,9 @@ test('[WBTST-004] UX-015-04 older results remain reachable after ten runs', asyn
       )
       .toBe(index + 1);
     if (index === 0) firstRun = corral.server.coordinator.listRuns()[0]?.runId as string;
-    await expect(
-      page.getByRole('radio', { name: 'Continue in this session', exact: true }),
-    ).toBeVisible();
+    await expect(page.getByRole('combobox', { name: 'What this is' })).toContainText('Follow-up');
   }
-  await page.getByRole('tab', { name: 'Results', exact: true }).click();
+  await panelTab(page, 'Results');
   const panel = page.getByRole('tabpanel', { name: 'Results', exact: true });
   await expect(panel.getByRole('button').filter({ hasText: firstRun })).toHaveCount(0);
   await panel.getByRole('button', { name: 'Show 1 earlier runs' }).click();
@@ -175,15 +173,11 @@ test('[WBTST-004] UX-015-07 approvals name exact versions and keep review inside
   const decision = page.locator('[data-testid^="approval-"]').filter({ hasText: 'Your decision' });
   await expect(decision).toBeVisible({ timeout: 15000 });
   await expect(
-    page.getByTestId('app-sidebar').getByText('Waiting for you', { exact: true }),
+    page.getByTestId('app-sidebar').getByRole('img', { name: 'Waiting for you', exact: true }),
   ).toBeVisible();
   await decision.getByRole('button', { name: 'draft v2', exact: true }).click();
   await expect.poll(() => new URL(page.url()).pathname).toBe(sessionUrl);
   await expect(page.getByRole('article', { name: 'draft v2', exact: true })).toBeVisible();
-  await page
-    .getByRole('tablist', { name: 'Session view' })
-    .getByRole('tab', { name: 'Work', exact: true })
-    .click();
   await decision.getByRole('button', { name: 'Approve', exact: true }).click();
   const final = page.locator('[data-testid^="approval-"]').filter({ hasText: 'Final output' });
   await expect(final).toBeVisible();
@@ -214,11 +208,9 @@ test.describe('late result content', () => {
       await new Promise((resolve) => setTimeout(resolve, 350));
       await route.continue();
     });
-    await page.getByRole('tab', { name: 'Team design', exact: true }).click();
-    await page
-      .getByRole('tablist', { name: 'Session view' })
-      .getByRole('tab', { name: 'Work', exact: true })
-      .click();
+    // Away from the session and back.
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await page.goBack();
     await expect(timeline(page).getByRole('heading', { name: 'Long result' })).toBeVisible();
     await expect.poll(() => timeline(page).evaluate((e) => e.scrollTop)).toBeCloseTo(before, 0);
     await page.reload();

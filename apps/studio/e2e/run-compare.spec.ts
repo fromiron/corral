@@ -22,6 +22,7 @@ test('[TC-OBS-004-H] compares two runs: figures, models and the outputs with the
   // edited brief so the editor lets the page go.
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await page.getByRole('link', { name: 'Corrals', exact: true }).click();
+  await page.getByRole('tab', { name: /^Runs/ }).click();
   const runs = page.getByRole('region', { name: 'Runs' });
   await runs.getByRole('checkbox').nth(0).check();
   await runs.getByRole('checkbox').nth(1).check();

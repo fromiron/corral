@@ -256,7 +256,11 @@ export const Sidebar = memo(function Sidebar() {
   return (
     <div data-testid="app-sidebar" className="flex h-full min-h-0 flex-col bg-sidebar text-sm">
       <div className="flex h-[52px] shrink-0 items-center gap-1 px-3">
-        <Link to="/" className="mr-auto flex items-center gap-2 px-1 font-semibold tracking-tight">
+        <Link
+          to="/"
+          aria-label={studio('nav')}
+          className="mr-auto flex items-center gap-2 px-1 font-semibold tracking-tight"
+        >
           <span className="corral-mark">c</span>Corral
         </Link>
         <Tooltip content={tw('newSession')} shortcut={shortcutLabel('session.new')}>

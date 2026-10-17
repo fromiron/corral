@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { panelTab, requestBox } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 // Work folder → working copy → a run that writes through the broker → review and a check
@@ -88,6 +89,7 @@ test('[WBTST-016] a session works in its own copy, and its changes are reviewed 
   const scratch = mkdtempSync(join(tmpdir(), 'corral-e2e-def-'));
   try {
     await corral.open('/');
+    await page.getByRole('tab', { name: /^Work folder/ }).click();
     const folder = page.getByRole('region', { name: 'Work folder' });
     await folder.getByLabel('Folder path on this computer').fill(original);
     await folder.getByRole('button', { name: 'Link folder' }).click();
@@ -100,15 +102,15 @@ test('[WBTST-016] a session works in its own copy, and its changes are reviewed 
       .fill("Notes exist = node -e \"require('fs').statSync('notes/writer.md')\"");
     await folder.getByRole('button', { name: 'Save checks' }).click();
 
+    await page.getByRole('tab', { name: /^Teams/ }).click();
     await page.locator('input[type=file]').setInputFiles([writerWithFiles(scratch)]);
     await expect(page).toHaveURL(/\/edit$/);
     await page.getByRole('link', { name: 'Corrals', exact: true }).click();
-    await page.getByRole('button', { name: 'New session' }).click();
     await page.getByLabel('Purpose').fill('Keep notes in the repository');
     await page.getByRole('button', { name: 'Start session' }).click();
     await expect(page).toHaveURL(/\/sessions\/session_/);
 
-    await page.getByRole('tab', { name: 'Files', exact: true }).click();
+    await panelTab(page, 'Files');
     await page.getByRole('button', { name: 'Open README.md', exact: true }).click();
     const content = page.getByRole('region', { name: 'File content', exact: true });
     await expect(content.getByText('hello', { exact: true })).toBeVisible();
@@ -123,7 +125,7 @@ test('[WBTST-016] a session works in its own copy, and its changes are reviewed 
     await expect(copy.getByRole('link', { name: 'Review changes' })).toBeVisible();
     await expect(page.getByTestId('pre-run')).toContainText('can change the working copy');
 
-    await page.getByRole('textbox', { name: 'Request' }).fill('Write the notes');
+    await requestBox(page).fill('Write the notes');
     await page.getByRole('button', { name: 'Send' }).click();
     const card = page.locator('[data-testid^="entry-"]').first();
     await expect(card.getByText('Succeeded')).toBeVisible({ timeout: 20_000 });

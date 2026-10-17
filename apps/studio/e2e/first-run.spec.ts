@@ -60,6 +60,7 @@ test('[TC-UX-001-H] the result step waits for a result on the run page', async (
   await page.getByRole('link', { name: 'Corrals', exact: true }).click();
   await expect(page.getByTestId('step-review')).toHaveAttribute('data-done', 'false');
 
+  await page.getByRole('tab', { name: /^Runs/ }).click();
   await page.getByRole('region', { name: 'Runs' }).getByRole('link').click();
   await page.getByRole('button', { name: 'Resume run', exact: true }).click();
   await expect(page.getByTestId('run-output')).toBeVisible({ timeout: 20_000 });

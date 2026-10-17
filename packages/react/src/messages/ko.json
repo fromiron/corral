@@ -17,7 +17,7 @@
     "language": "언어",
     "liveShort": "로컬 · 실제 모델",
     "serverShort": "로컬 · 시뮬레이션",
-    "demoShort": "데모"
+    "demoShort": "데모 · 시뮬레이션"
   },
   "Palette": {
     "heading": "노드",

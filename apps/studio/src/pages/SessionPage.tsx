@@ -509,9 +509,11 @@ function SessionActions({
                 value={team?.corralId ?? ''}
                 onValueChange={(value) => void update({ corralId: String(value) || null })}
               >
-                <MenuRadioItem value="">{t('noTeam')}</MenuRadioItem>
+                <MenuRadioItem value="" closeOnClick>
+                  {t('noTeam')}
+                </MenuRadioItem>
                 {corrals.map((c) => (
-                  <MenuRadioItem key={c.corralId} value={c.corralId}>
+                  <MenuRadioItem key={c.corralId} value={c.corralId} closeOnClick>
                     {c.name}
                   </MenuRadioItem>
                 ))}
@@ -619,7 +621,6 @@ function WorkTab({
         }
       >
         <section aria-label={t('heading')}>
-          <h2 className="sr-only">{session.title}</h2>
           {session.entries.length === 0 && loose.length === 0 ? (
             <div className="flex min-h-48 flex-col items-center justify-center gap-3 py-10 text-center">
               <MessageSquare size={28} strokeWidth={1.25} className="text-muted" />
@@ -1588,7 +1589,10 @@ function Composer({
   return (
     <ComposerSurface.Shell>
       {queued.length > 0 ? (
-        <div className="mx-3 rounded-t-xl border border-b-0 border-line bg-surface px-3 py-2">
+        <section
+          aria-label={t('queueHeading')}
+          className="mx-3 rounded-t-xl border border-b-0 border-line bg-surface px-3 py-2"
+        >
           <div className="flex items-center justify-between gap-2">
             <h3 className="text-xs font-medium text-muted">
               {t('queueHeading')} · {queued.length}
@@ -1628,7 +1632,7 @@ function Composer({
               </li>
             ))}
           </ul>
-        </div>
+        </section>
       ) : null}
       <ComposerSurface.Host>
         <section aria-label={t('requestLabel')} className="flex flex-col gap-1 px-3 pt-2.5 pb-2">
@@ -1790,7 +1794,10 @@ function Composer({
           <PreRunSummary session={session} team={team} mode={runMode} intent={intent} />
         ) : null}
         {(intent === 'next' || intent === 'explain') && latest ? (
-          <span>· {t('fromResult', { label: latest.label })}</span>
+          <>
+            <span aria-hidden="true">·</span>
+            <span>{t('fromResult', { label: latest.label })}</span>
+          </>
         ) : null}
         {intent === 'steer' ? <span>{t('intentHint.steer')}</span> : null}
         {intent === 'queue' ? <span>{t('intentHint.queue')}</span> : null}

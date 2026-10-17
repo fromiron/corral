@@ -17,7 +17,7 @@
     "language": "Language",
     "liveShort": "Local · live models",
     "serverShort": "Local · simulated",
-    "demoShort": "Demo"
+    "demoShort": "Demo · simulated"
   },
   "Palette": {
     "heading": "Nodes",

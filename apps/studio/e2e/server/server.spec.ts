@@ -21,7 +21,7 @@ test('[TC-CAN-001-H] a run on the local server saves first, finishes, and surviv
   corral,
 }) => {
   await corral.open('/');
-  await expect(page.getByText('Local server / Simulated agents')).toBeVisible();
+  await expect(page.getByText('Local · simulated', { exact: true })).toBeVisible();
   await agentToOutput(page);
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   // The run started from a saved revision: nothing is left unsaved.
@@ -44,6 +44,7 @@ test('the workspace lists past runs with their status and opens them', async ({ 
   await expect(page.getByTestId('run-output')).toContainText('turn 2');
 
   await page.getByRole('link', { name: 'Corrals', exact: true }).click();
+  await page.getByRole('tab', { name: /^Runs/ }).click();
   const runs = page.getByRole('list', { name: 'Runs' });
   await expect(runs.getByRole('listitem')).toHaveCount(1);
   await expect(runs).toContainText('Succeeded');

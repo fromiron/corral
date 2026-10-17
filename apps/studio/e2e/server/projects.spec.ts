@@ -21,6 +21,7 @@ test('[WBTST-003] a run stays in the project it started in when its Corral moves
   const projectPath = new URL(page.url()).pathname;
   const projectId = projectPath.split('/').at(-1) ?? '';
 
+  await page.getByRole('tab', { name: /^Teams/ }).click();
   await page.getByRole('button', { name: 'New Corral' }).click();
   await page.getByRole('button', { name: 'Add Agent' }).click();
   await page.getByRole('button', { name: 'Add Output' }).click();
@@ -29,24 +30,32 @@ test('[WBTST-003] a run stays in the project it started in when its Corral moves
   await expect(page.getByTestId('run-status')).toContainText('Succeeded', { timeout: 15_000 });
   await page.getByRole('link', { name: 'Corrals', exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`${projectPath}$`));
+  const tab = (name: string) => page.getByRole('tab', { name: new RegExp(`^${name}`) }).click();
   const runs = page.getByRole('region', { name: 'Runs' });
+  await tab('Runs');
   await expect(runs.getByRole('listitem')).toHaveCount(1);
 
   // Move the Corral to the default project: it goes, its finished run stays.
+  await tab('Teams');
   await page.getByLabel('Move Untitled Corral to another project').selectOption('default');
   await expect(page.getByText('No Corrals yet.')).toBeVisible();
   await page.reload();
   await expect(page.getByRole('heading', { level: 2, name: 'Client A' })).toBeVisible();
+  await tab('Runs');
   await expect(runs.getByRole('listitem')).toHaveCount(1);
-  await page.getByRole('banner').getByLabel('Project', { exact: true }).selectOption('default');
+  const switcher = page.getByRole('banner').getByRole('button', { name: 'Project', exact: true });
+  await switcher.click();
+  await page.getByRole('menuitemradio', { name: 'My project' }).click();
+  await tab('Teams');
   await expect(page.getByRole('list', { name: 'Corrals' }).getByRole('listitem')).toHaveCount(1);
+  await tab('Runs');
   await expect(page.getByText('No runs yet.')).toBeVisible();
 
   // The run's own page shows the project it started in.
   await page.goto(`${corral.server.url}${projectPath}`);
+  await tab('Runs');
   await runs.getByRole('link').first().click();
-  await expect(page.getByRole('banner').getByLabel('Project', { exact: true })).toHaveValue(
-    projectId,
-  );
+  await expect(switcher).toContainText('Client A');
+  void projectId;
   expect(corral.errors).toEqual([]);
 });

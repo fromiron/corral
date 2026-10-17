@@ -1,27 +1,18 @@
 import { expect, type Page, test } from '@playwright/test';
+import { requestBox, slash, startSession, teamFromTemplate } from './workbench.ts';
 
 // Work sessions and input intents (CR-011, roadmap 23–24; WBTST-004) in the in-browser runtime.
 
 async function sessionWithTeam(page: Page, delay: number) {
   await page.goto(`/?delay=${delay}`);
-  await page
-    .getByRole('region', { name: 'Start from a template' })
-    .getByRole('article')
-    .filter({ hasText: 'Single agent' })
-    .getByRole('button', { name: 'Use this template' })
-    .click();
-  await expect(page).toHaveURL(/\/edit$/);
-  await page.getByRole('link', { name: 'Corrals', exact: true }).click();
-  await page.getByRole('button', { name: 'New session' }).click();
-  await page.getByLabel('Purpose').fill('Compare two databases');
-  await page.getByRole('button', { name: 'Start session' }).click();
-  await expect(page).toHaveURL(/\/sessions\/session_/);
+  await teamFromTemplate(page);
+  await startSession(page, 'Compare two databases');
   await expect(
     page.getByRole('heading', { level: 2, name: 'Compare two databases' }),
   ).toBeVisible();
 }
 
-const box = (page: Page) => page.getByRole('textbox', { name: 'Request' });
+const box = requestBox;
 const cards = (page: Page) => page.locator('[data-testid^="entry-"]');
 
 test('[WBTST-004] a follow-up starts a new run from the last result; an IME Enter sends nothing', async ({
@@ -50,8 +41,8 @@ test('[WBTST-004] a follow-up starts a new run from the last result; an IME Ente
   await expect(cards(page).nth(1).getByText('Succeeded')).toBeVisible({ timeout: 20_000 });
   await expect(cards(page).first().getByText('Succeeded')).toBeVisible();
 
-  // A question about the result is its own run.
-  await page.getByText('Question about the result', { exact: true }).click();
+  // A question about the result is its own run, chosen with a / command.
+  await slash(page, 'ask');
   await box(page).fill('Which one is simpler to back up?');
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(cards(page)).toHaveCount(3);
@@ -67,11 +58,12 @@ test('[WBTST-004] while a run works, a request waits in the queue until a person
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(cards(page)).toHaveCount(1);
   // Busy: continuing is not offered; queueing is.
-  await expect(page.getByText('Continue in this session', { exact: true })).toHaveCount(0);
-  await page.getByText('Queue as next task', { exact: true }).click();
+  await box(page).fill('/');
+  await expect(page.getByRole('option', { name: /\/next/ })).toHaveCount(0);
+  await slash(page, 'queue');
   await box(page).fill('Then summarise it');
   await page.getByRole('button', { name: 'Send' }).click();
-  const queue = page.getByRole('heading', { name: 'Queued next tasks' }).locator('..');
+  const queue = page.getByRole('region', { name: 'Queued next tasks' });
   await expect(queue).toContainText('Then summarise it');
   await expect(queue.getByRole('button', { name: 'Start now' })).toBeDisabled();
   await expect(cards(page).first().getByText('Succeeded')).toBeVisible({ timeout: 20_000 });
@@ -79,5 +71,5 @@ test('[WBTST-004] while a run works, a request waits in the queue until a person
   await queue.getByRole('button', { name: 'Start now' }).click();
   await expect(cards(page)).toHaveCount(2);
   await expect(cards(page).nth(1)).toContainText('Then summarise it');
-  await expect(page.getByRole('heading', { name: 'Queued next tasks' })).toHaveCount(0);
+  await expect(queue).toHaveCount(0);
 });
