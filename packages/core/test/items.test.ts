@@ -5,10 +5,11 @@ import { Coordinator, InProcessTransport, waitForProjection } from '../src/index
 
 const ended = (p: {status:string}) => ['succeeded','failed','cancelled'].includes(p.status);
 const tasks = [{targetNodeId:'helper',brief:'Only alpha'}, {targetNodeId:'helper',brief:'Only beta'}];
-function setup(options: { gate?: Gate; fail?: boolean; nested?: boolean; parallelFirst?: boolean } = {}) {
+function setup(options: { gate?: Gate; fail?: boolean; nested?: boolean; parallelFirst?: boolean; harness?: boolean } = {}) {
   const definition=collaborationCorral();
   definition.input.brief='PRIVATE PARENT BRIEF';
   definition.limits.maxModelConcurrency=1;
+  if(options.harness) definition.roles[0]!.harness={profileId:'items',revision:1};
   const helper=definition.roles.find(role=>role.id==='helper')!;
   helper.allowedCollaborationTools.push('spawn_subagents');
   definition.capabilityLinks.push({id:'nested',kind:'delegate',sourceNodeId:'helper',targetNodeId:'helper'});
@@ -19,6 +20,12 @@ function setup(options: { gate?: Gate; fail?: boolean; nested?: boolean; paralle
     if(input.nodeId==='research') {
       if(options.parallelFirst) await host.invokeTool({name:'spawn_subagents',args:{tasks:[tasks[0]]}});
       outcomes.push(await host.invokeTool({name:'spawn_subagents',args:{mode:'items',tasks}}));
+      if(options.harness) {
+        const written=await host.invokeTool({name:'write_artifact',args:{text:'done'}});
+        if(!written.ok) return {outcome:'failed',error:written.error.message};
+        await host.invokeTool({name:'submit_result',args:{artifactVersionIds:[written.result.artifactVersionId]}});
+        return {outcome:'succeeded'};
+      }
     }
     if(input.nodeId==='helper') {
       if(options.nested) outcomes.push(await host.invokeTool({name:'spawn_subagents',args:{mode:'items',tasks:[tasks[0]]}}));
@@ -37,9 +44,16 @@ function setup(options: { gate?: Gate; fail?: boolean; nested?: boolean; paralle
     return null;
   }});
   const clock=new FakeClock();
-  const transport=new InProcessTransport(new Coordinator({clock,timers:clock,ids:new SequentialIdFactory(),agents:{start(input,host){started.push(input);return scripted.start(input,host);}}}));
+  const transport=new InProcessTransport(new Coordinator({clock,timers:clock,ids:new SequentialIdFactory(),
+    ...(options.harness?{harnesses:{resolve:()=>({binding:{profileId:'items',revision:1},snapshotHash:'a'.repeat(64),piVersion:'1.3.0',policyRevision:1,policy:'strict' as const,resources:[],allowedTools:['spawn_subagents','write_artifact','submit_result'],tools:[],diagnostics:[]})}}:{}),
+    agents:{async start(input,host){started.push(input);if(input.harness) await host.reportHarness!({ok:true,snapshotHash:input.harness.snapshotHash,diagnostics:[],tools:input.harness.allowedTools.map(name=>({name,source:'corral',schemaHash:'b'.repeat(64),exposure:'direct',sideEffect:'none'}))});return scripted.start(input,host);}}}));
   return {transport,definition,started,outcomes};
 }
+it('[TC-HAR-015-H] rechecks each item against the loaded harness tool registry',async()=>{
+  const s=setup({harness:true});await waitForProjection(s.transport,await start(s),ended);
+  expect(s.outcomes[0]).toMatchObject({ok:true,result:{remaining:0}});
+  expect(s.started.filter(i=>i.nodeId==='helper')).toHaveLength(2);
+});
 async function start(s:ReturnType<typeof setup>) {
   const r=await s.transport.startRun({schemaVersion:'0.1',commandId:'start_items',definition:s.definition,mode:'mock'});
   if(!r.runId) throw new Error(JSON.stringify(r.receipt));
