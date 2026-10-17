@@ -168,24 +168,56 @@ describe('model profiles per run mode (C-020, C-058)', () => {
   it('[TC-HAR-003-N] later executions use the Run model snapshot, while explicit model patches pin their own resolution', async () => {
     for (const patch of [false, true]) {
       let modelId = 'initial';
-      const entered = new Gate(), release = new Gate();
+      const entered = new Gate(),
+        release = new Gate();
       const seen: AgentStartInput[] = [];
       const coordinator = new Coordinator({
-        clock:new FakeClock(),ids:new SequentialIdFactory(),
-        models:{resolve:profile=>({ok:true,snapshot:{profile,provider:'openai',modelId,auth:'api_key'}})},
-        agents:new ScriptedAgentAdapter({turns:1,beforeReply:async (_turn,input)=>{
-          seen.push(input);
-          if(input.nodeId==='first'){entered.open();await release.wait();}
-        }}),
+        clock: new FakeClock(),
+        ids: new SequentialIdFactory(),
+        models: {
+          resolve: (profile) => ({
+            ok: true,
+            snapshot: { profile, provider: 'openai', modelId, auth: 'api_key' },
+          }),
+        },
+        agents: new ScriptedAgentAdapter({
+          turns: 1,
+          beforeReply: async (_turn, input) => {
+            seen.push(input);
+            if (input.nodeId === 'first') {
+              entered.open();
+              await release.wait();
+            }
+          },
+        }),
       });
-      const transport=new InProcessTransport(coordinator);
-      const {runId}=coordinator.startRun({schemaVersion:'0.1',commandId:'start',definition:linearCorral(['first','second']),mode:'live'});
-      if(!runId)throw new Error('run did not start');
-      await entered.wait(); modelId='at_patch';
-      if(patch) expect(coordinator.submit({schemaVersion:'0.1',commandId:'patch_model',runId,type:'patch',expectedControlRevision:coordinator.getSnapshot(runId).projection.controlRevision,payload:{kind:'node_future',nodeId:'second',modelProfile:'model-a'}}).status).toBe('applied');
-      modelId='changed_after_snapshot'; release.open();
-      await waitForProjection(transport,runId,settled);
-      expect(seen.find(input=>input.nodeId==='second')?.model.modelId).toBe(patch?'at_patch':'initial');
+      const transport = new InProcessTransport(coordinator);
+      const { runId } = coordinator.startRun({
+        schemaVersion: '0.1',
+        commandId: 'start',
+        definition: linearCorral(['first', 'second']),
+        mode: 'live',
+      });
+      if (!runId) throw new Error('run did not start');
+      await entered.wait();
+      modelId = 'at_patch';
+      if (patch)
+        expect(
+          coordinator.submit({
+            schemaVersion: '0.1',
+            commandId: 'patch_model',
+            runId,
+            type: 'patch',
+            expectedControlRevision: coordinator.getSnapshot(runId).projection.controlRevision,
+            payload: { kind: 'node_future', nodeId: 'second', modelProfile: 'model-a' },
+          }).status,
+        ).toBe('applied');
+      modelId = 'changed_after_snapshot';
+      release.open();
+      await waitForProjection(transport, runId, settled);
+      expect(seen.find((input) => input.nodeId === 'second')?.model.modelId).toBe(
+        patch ? 'at_patch' : 'initial',
+      );
     }
   });
   const resolver: ModelResolver = {

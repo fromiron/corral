@@ -309,7 +309,13 @@ interface LiveRun {
   requestDeadlines: Map<string, () => void>;
   nodePatches: Map<
     string,
-    { patchId: string; modelProfile: string; prompt: string; revision: number }
+    {
+      patchId: string;
+      modelProfile: string;
+      model: ModelProfileSnapshot;
+      prompt: string;
+      revision: number;
+    }
   >;
   assignments: Map<string, ExecutionSpec>;
   executionOutcomes: Map<string, Promise<StepOutcome>>;
@@ -510,7 +516,7 @@ export class Coordinator {
     const unusable: { code: CommandError['code']; message: string }[] = [];
     for (const profile of new Set(planned.definition.roles.map((r) => r.modelProfile))) {
       const resolution = this.models.resolve(profile, request.mode);
-      if (resolution.ok) models[profile] = resolution.snapshot;
+      if (resolution.ok) models[profile] = JSON.parse(canonicalJson(resolution.snapshot)) as ModelProfileSnapshot;
       else unusable.push({ code: resolution.code, message: `${profile}: ${resolution.reason}` });
     }
     const [firstUnusable] = unusable;
@@ -1187,6 +1193,7 @@ export class Coordinator {
       this.refuseControl(command, payloadHash, { code, message });
     let before: Record<string, unknown> = {},
       after: Record<string, unknown> = {};
+    let patchedModel: ModelProfileSnapshot | undefined;
     const node =
       'nodeId' in change ? run.snapshot.definition.nodes.find((n) => n.id === change.nodeId) : null;
     if ('nodeId' in change && !node)
@@ -1206,8 +1213,13 @@ export class Coordinator {
         ...(change.modelProfile ? { modelProfile: change.modelProfile } : {}),
         ...(change.prompt ? { prompt: change.prompt } : {}),
       };
-      const resolved = this.models.resolve(String(after.modelProfile), run.snapshot.mode);
-      if (!resolved.ok) return refuse(resolved.code, resolved.reason);
+      if (change.modelProfile) {
+        const resolved = this.models.resolve(change.modelProfile, run.snapshot.mode);
+        if (!resolved.ok) return refuse(resolved.code, resolved.reason);
+        patchedModel = JSON.parse(canonicalJson(resolved.snapshot)) as ModelProfileSnapshot;
+        after.modelSnapshot = patchedModel;
+      } else patchedModel = current?.model ?? run.snapshot.models[role.modelProfile];
+      if (!patchedModel) return refuse('CAPABILITY_DENIED', 'the pinned model is unavailable');
     } else if (change.kind === 'loop_limit') {
       if (node?.type !== 'loop') return refuse('SCHEMA_INVALID', 'loop_limit requires a Loop node');
       if (change.maxIterations > this.policy.maxLoopIterations)
@@ -1279,6 +1291,7 @@ export class Coordinator {
       run.nodePatches.set(change.nodeId, {
         patchId,
         modelProfile: String(after.modelProfile),
+        model: patchedModel as ModelProfileSnapshot,
         prompt: String(after.prompt),
         revision: run.projection.controlRevision,
       });
@@ -2177,7 +2190,8 @@ export class Coordinator {
     const role = patch
       ? { ...baseRole, modelProfile: patch.modelProfile, prompt: patch.prompt }
       : baseRole;
-    const model = this.models.resolve(role.modelProfile, run.snapshot.mode);
+    const model = patch?.model ?? run.snapshot.models[role.modelProfile];
+    if (!model) throw new Error('the pinned model is unavailable');
     const label = (id: string) => {
       const target = definition.nodes.find((n) => n.id === id);
       return { nodeId: id, label: target?.label ?? id };
@@ -2198,14 +2212,7 @@ export class Coordinator {
       ...(run.snapshot.harnesses?.[role.id] ? { harness: run.snapshot.harnesses[role.id] } : {}),
       modelProfile: role.modelProfile,
       mode: run.snapshot.mode,
-      model: model.ok
-        ? model.snapshot
-        : (run.snapshot.models[role.modelProfile] ?? {
-            profile: role.modelProfile,
-            provider: null,
-            modelId: null,
-            auth: 'mock',
-          }),
+      model: JSON.parse(canonicalJson(model)) as ModelProfileSnapshot,
       depth: spec.depth,
       round: spec.iterationId ? (run.projection.iterations[spec.iterationId]?.no ?? null) : null,
       criteriaVersionId: run.criteriaVersionId,
