@@ -70,6 +70,12 @@ function cancellation() {
 }
 
 describe('owned verification runner', () => {
+  it('[TC-HAR-013-N] a check that changes its own candidate cannot establish a pass', async () => {
+    const f = fixture("import fs from 'node:fs'; fs.writeFileSync('a.txt','changed during verification');");
+    const report = await new VerificationRunner({clock:f.clock,timers:systemTimers}).run(f.input,cancellation().signal);
+    expect(report).toMatchObject({state:'completed',verdict:'inconclusive',targetUnchanged:false});
+    expect(readFileSync(join(f.root,'a.txt'),'utf8')).toBe('original');
+  });
   it('[TC-HAR-012-N] a cancelled duplicate cannot remove a directory owned by a different invocation', async () => {
     const f = fixture('');
     const existing = join(f.input.copyRoot, f.input.verificationId);
