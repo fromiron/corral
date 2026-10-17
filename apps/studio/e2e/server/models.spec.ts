@@ -21,7 +21,7 @@ test('[TC-SEC-002-H] signing in from Settings shows status and expiry, never the
   corral,
 }) => {
   await corral.open('/');
-  await page.getByRole('link', { name: 'Models' }).click();
+  await page.getByRole('banner').getByRole('link', { name: 'Models' }).click();
   const openai = page.getByTestId('provider-openai');
   await expect(openai.getByTestId('auth-status')).toContainText('Not signed in');
   await expect(page.getByTestId('profile-model-a')).toContainText('Sign-in needed');
@@ -93,7 +93,7 @@ test.describe('a borrowed Codex CLI login (CR-004)', () => {
   }) => {
     corral.fake?.answerWith('Answer through the Codex login.');
     await corral.open('/');
-    await page.getByRole('link', { name: 'Models' }).click();
+    await page.getByRole('banner').getByRole('link', { name: 'Models' }).click();
     const openai = page.getByTestId('provider-openai');
     await expect(openai.getByTestId('auth-status')).toContainText(
       'Using your Codex CLI login (read only)',
@@ -126,7 +126,7 @@ test('[TC-SEC-002-H] an API key typed under Models runs live, is never shown, an
 }) => {
   corral.fake?.answerWith('Answer with an entered key.');
   await corral.open('/');
-  await page.getByRole('link', { name: 'Models' }).click();
+  await page.getByRole('banner').getByRole('link', { name: 'Models' }).click();
   const openai = page.getByTestId('provider-openai');
   await openai.getByLabel('API key').fill('sk-e2e-entered-secret');
   await openai.getByRole('button', { name: 'Save key' }).click();
@@ -143,7 +143,7 @@ test('[TC-SEC-002-H] an API key typed under Models runs live, is never shown, an
   await expect(page.getByTestId('run-output')).toHaveText('Answer with an entered key.');
   expect(corral.fake?.seen.tokens.every((token) => token === 'sk-e2e-entered-secret')).toBe(true);
 
-  await page.getByRole('link', { name: 'Models' }).click();
+  await page.getByRole('banner').getByRole('link', { name: 'Models' }).click();
   await openai.getByRole('button', { name: 'Remove key' }).click();
   await expect(openai.getByTestId('auth-status')).toContainText('Not signed in');
   expect(corral.errors).toEqual([]);
@@ -171,7 +171,7 @@ test.describe('a keyless OpenAI-compatible endpoint (CR-005)', () => {
       return 'Done.';
     });
     await corral.open('/');
-    await page.getByRole('link', { name: 'Models' }).click();
+    await page.getByRole('banner').getByRole('link', { name: 'Models' }).click();
     const local = page.getByTestId('provider-local');
     await expect(local.getByTestId('auth-status')).toContainText('No key needed');
     await expect(local).toContainText(new URL(corral.endpoint?.baseUrl ?? '').host);
