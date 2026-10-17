@@ -795,6 +795,17 @@ describe('review, applying and reverting (CR-013)', () => {
       runId: 'run_1',
       detail: 'attempt_limit',
     });
+    expect(
+      review
+        .inbox(
+          [{ sessionId: 'session_1', title: 't', entries: [] }],
+          [
+            { runId: 'newer', status: 'succeeded', sessionId: 'session_1' },
+            { runId: 'run_1', status: 'failed', sessionId: 'session_1' },
+          ],
+        )
+        .some((item) => item.kind === 'recipe_stopped'),
+    ).toBe(false);
   });
 });
 
