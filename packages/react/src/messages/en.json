@@ -1720,7 +1720,7 @@
     "saved": "Saved revision {revision}",
     "preview": "Preview effective settings",
     "previewHeading": "Effective settings",
-    "dynamic": "Extension prompt sections and tool descriptors are determined at runtime.",
+    "dynamic": "Capability-dependent and dynamically registered tools are resolved at execution. Extension prompt changes are also recorded then.",
     "noSections": "No mandatory skill sections.",
     "layers": "Inheritance",
     "personal": "Personal default",
@@ -1847,7 +1847,16 @@
     "mcpSelectionHint": "Requires trusted native policy and a session working copy. Uncheck to inherit. Add exact names such as mcp__docs__search under Allowed tools; server selection alone grants no tools. Codemode exposure also needs Enable Pi codemode.",
     "useMcp": "Use MCP server {name}",
     "unregisteredMcp": "Unregistered MCP server: {id}",
-    "selectedMcp": "MCP servers: {ids}"
+    "selectedMcp": "MCP servers: {ids}",
+    "staticTools": "Static tool definitions ({count})",
+    "staticToolsHint": "Definitions for the allowlist. Role permissions, working copies and selected targets can further restrict availability.",
+    "toolSchema": "Schema SHA-256 {hash}",
+    "toolEffects": {
+      "none": "No indicated external side effect",
+      "workspace": "Changes the working copy",
+      "external": "External process or service",
+      "unknown": "Side effects not classified"
+    }
   },
   "Recipe": {
     "heading": "Review recipe",

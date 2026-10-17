@@ -27,3 +27,5 @@ export { recoverSdkWorkers } from './worker-leases.ts';
 /** The live worker's entry file, for `processChannel` (one child process per execution). */
 export const WORKER_ENTRY = fileURLToPath(new URL('./worker-main.ts', import.meta.url));
 export const SDK_WORKER_ENTRY = fileURLToPath(new URL('./sdk-worker-main.ts', import.meta.url));
+
+export { staticToolDescriptors } from './static-tools.ts';

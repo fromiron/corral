@@ -1720,7 +1720,7 @@
     "saved": "revision {revision} 저장됨",
     "preview": "적용 설정 미리보기",
     "previewHeading": "적용 설정",
-    "dynamic": "확장의 프롬프트 구획과 도구 정보는 실행 시 결정됩니다.",
+    "dynamic": "권한·대상이 필요한 도구와 동적으로 등록되는 도구는 실행 시 확정합니다. 확장의 프롬프트 변경도 그때 기록합니다.",
     "noSections": "필수 스킬 구획이 없습니다.",
     "layers": "상속",
     "personal": "개인 기본값",
@@ -1847,7 +1847,16 @@
     "mcpSelectionHint": "신뢰한 네이티브 정책과 세션 작업 사본이 필요합니다. 선택을 해제하면 상위 설정을 상속합니다. 허용 도구에 mcp__docs__search처럼 정확한 이름을 추가하세요. 서버 선택만으로 도구가 허용되지는 않습니다. 코드 모드 노출은 Pi 코드 모드도 켜야 합니다.",
     "useMcp": "MCP 서버 {name} 사용",
     "unregisteredMcp": "미등록 MCP 서버: {id}",
-    "selectedMcp": "MCP 서버: {ids}"
+    "selectedMcp": "MCP 서버: {ids}",
+    "staticTools": "정적 도구 정의 ({count})",
+    "staticToolsHint": "허용 목록의 도구 정의입니다. 실제 역할 권한·작업 사본·선택 대상이 실행 가능성을 추가로 제한합니다.",
+    "toolSchema": "스키마 SHA-256 {hash}",
+    "toolEffects": {
+      "none": "표시된 외부 부작용 없음",
+      "workspace": "작업 사본 변경",
+      "external": "외부 프로세스 또는 서비스",
+      "unknown": "부작용 미분류"
+    }
   },
   "Recipe": {
     "heading": "검토 규칙",

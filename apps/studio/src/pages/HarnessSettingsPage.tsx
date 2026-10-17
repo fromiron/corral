@@ -62,6 +62,25 @@ export function HarnessPreviewView({ preview }: { preview: HarnessPreview }) {
       <p className="break-words text-xs text-muted">
         {preview.snapshot.allowedTools.join(', ') || t('noTools')}
       </p>
+      {preview.snapshot.tools.length ? (
+        <details>
+          <summary className="cursor-pointer text-sm">
+            {t('staticTools', { count: preview.snapshot.tools.length })}
+          </summary>
+          <p className="my-2 text-xs text-muted">{t('staticToolsHint')}</p>
+          <ul className="flex flex-col gap-2 text-xs">
+            {preview.snapshot.tools.map((tool) => (
+              <li key={tool.name} className="border-b border-line pb-2">
+                <span className="font-mono">{tool.name}</span> · {tool.source} ·{' '}
+                {t(`toolEffects.${tool.sideEffect}`)}
+                <p className="break-all font-mono text-2xs text-muted">
+                  {t('toolSchema', { hash: tool.schemaHash })}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
       {preview.snapshot.resources.map((resource) => (
         <p key={`${resource.hash}:${resource.entry}`} className="text-xs">
           {resource.skillName ?? resource.name} · {resource.version} ·{' '}

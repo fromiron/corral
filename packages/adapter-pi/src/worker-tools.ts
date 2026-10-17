@@ -29,7 +29,7 @@ export const TOOL_TEXT: Record<WorkerTool, string> = {
 };
 
 /** Parameters the model fills in; ids of the run, owner and question come from Corral. */
-export function parametersOf(name: WorkerTool, start: PromptStart) {
+export function parametersOf(name: WorkerTool, start: Pick<PromptStart, 'delegateTo' | 'askTo'>) {
   const node = (targets: { nodeId: string }[]) =>
     Type.Union(targets.map((t) => Type.Literal(t.nodeId)));
   switch (name) {

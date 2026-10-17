@@ -12,7 +12,12 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { downloadPiPackage, inspectPiPackage, type SdkResources } from '@corral/adapter-pi';
+import {
+  downloadPiPackage,
+  inspectPiPackage,
+  type SdkResources,
+  staticToolDescriptors,
+} from '@corral/adapter-pi';
 import type { McpChallenge } from '@corral/contracts';
 import {
   type AgentStartInput,
@@ -509,6 +514,10 @@ export class HarnessService {
     }
     if (resources.some((resource) => resource.kind === 'extension'))
       diagnostics.push('native_code_unmanaged', 'extension_prompt_determined_at_runtime');
+    const tools = staticToolDescriptors(allowedTools, projectTools);
+    const dynamic =
+      resources.some((resource) => resource.kind === 'extension') ||
+      allowedTools.some((name) => !tools.some((tool) => tool.name === name));
     const resolved = {
       binding: binding ?? { profileId: last.profileId, revision: last.revision },
       piVersion: '1.3.0' as const,
@@ -516,7 +525,7 @@ export class HarnessService {
       policy,
       resources,
       allowedTools,
-      tools: [],
+      tools,
       diagnostics,
       ...(projectTools ? { projectTools } : {}),
       layers: layers.map(({ scope, profile }) => ({
@@ -531,7 +540,7 @@ export class HarnessService {
     return {
       snapshot,
       sections,
-      dynamic: resources.some((resource) => resource.kind === 'extension'),
+      dynamic,
     };
   }
 

@@ -7,9 +7,8 @@ import {
   EditTextResult,
   HarnessCommand,
   type HarnessReport,
-  LspQuery,
   ModelRequestRecord,
-  ToolDescriptor,
+  type ToolDescriptor,
 } from '@corral/contracts';
 import {
   type AssistantMessage,
@@ -39,12 +38,12 @@ import {
   type ToolDefinition,
   type WriteToolInput,
 } from '@earendil-works/pi-coding-agent';
-import { z } from 'zod';
 import type { Channel } from './channel.ts';
 import { extensionUi } from './extension-ui.ts';
 import { lockResources } from './locked-resources.ts';
 import { mcpExtension } from './mcp.ts';
 import { PROTOCOL_VERSION, SdkHostFrame, type SdkStartFrame } from './protocol.ts';
+import { brokerParameters, describeTool } from './static-tools.ts';
 import { normalizeUsage } from './usage.ts';
 import type { WorkerDeps } from './worker.ts';
 import { parametersOf, systemPrompt, TOOL_TEXT, textOf, userPrompt } from './worker-tools.ts';
@@ -451,29 +450,9 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
                 ? 'Query a selected language server for diagnostics, definition, references, rename or code_actions. Positions are zero-based UTF-16. Corral may request launch permission. Rename/code actions only create immutable proposals; the user must review and apply them after the run ends. Results include file hashes; use read_file before other edits.'
                 : TOOL_TEXT[name],
           parameters:
-            name === 'lsp_query'
-              ? Type.Unsafe(
-                  z.toJSONSchema(
-                    z.union(
-                      LspQuery.options.map((option) =>
-                        option.extend({
-                          serverId: z.enum(start.harness.projectTools?.lspServerIds ?? []),
-                        }),
-                      ),
-                    ),
-                    { target: 'draft-07', io: 'input' },
-                  ),
-                )
-              : name === 'run_check'
-                ? Type.Object(
-                    {
-                      commandId: Type.Union(
-                        (start.harness.projectTools?.checkIds ?? []).map((id) => Type.Literal(id)),
-                      ),
-                    },
-                    { additionalProperties: false },
-                  )
-                : parametersOf(name, start),
+            name === 'lsp_query' || name === 'run_check'
+              ? brokerParameters(name, start.harness.projectTools)
+              : parametersOf(name, start),
           executionMode: 'sequential',
           execute: async (piCallId, args) => {
             const auth = takeAuthorization(piCallId, args);
@@ -970,26 +949,6 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
       port.kill();
     }
   }
-}
-
-function describeTool(tool: ToolDefinition, source: string): ToolDescriptor {
-  const annotations = tool.annotations;
-  return ToolDescriptor.parse({
-    source,
-    name: tool.name,
-    schemaHash: hashOf(cleanJson(tool.parameters)),
-    ...(annotations ? { annotations } : {}),
-    exposure: tool.exposure ?? 'direct',
-    sideEffect:
-      source === 'corral' && ['run_check', 'lsp_query'].includes(tool.name)
-        ? 'external'
-        : source === 'corral' &&
-            ['edit', 'write', 'write_file', 'delete_file', 'move_file'].includes(tool.name)
-          ? 'workspace'
-          : annotations?.readOnlyHint === true && annotations.openWorldHint === false
-            ? 'none'
-            : 'unknown',
-  });
 }
 
 function requestRecord(
