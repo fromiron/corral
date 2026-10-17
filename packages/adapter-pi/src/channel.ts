@@ -62,6 +62,7 @@ export function processChannel(
   entry: string,
   options: { env?: NodeJS.ProcessEnv; leaseDirectory?: string; childLeaseDirectory?: string } = {},
 ): Channel {
+  const processOwner = randomUUID();
   const child: ChildProcess = fork(entry, [], {
     stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
     serialization: 'json',
@@ -74,6 +75,7 @@ export function processChannel(
       PATH: process.env.PATH ?? '',
       ...(process.platform === 'win32' ? {} : { CORRAL_WORKER_GROUP: '1' }),
       ...options.env,
+      CORRAL_PROCESS_OWNER: processOwner,
     },
   });
   child.stderr?.on('data', () => {});
@@ -122,7 +124,7 @@ export function processChannel(
   });
   if (options.leaseDirectory && child.pid) {
     try {
-      releaseLease = recordWorkerLease(options.leaseDirectory, child.pid);
+      releaseLease = recordWorkerLease(options.leaseDirectory, child.pid, processOwner);
     } catch (error) {
       stopChildren();
       child.kill('SIGKILL');

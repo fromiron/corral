@@ -21,6 +21,7 @@ const Lease = z.strictObject({
   pid: z.int().positive(),
   bootId: z.string().max(80).nullable(),
   startTicks: z.string().regex(/^\d+$/).nullable(),
+  owner: z.string().min(1).max(100).optional(),
 });
 const missing = (error: unknown) =>
   (error as NodeJS.ErrnoException).code === 'ENOENT' ||
@@ -53,6 +54,7 @@ const bootId = () =>
 export function recordWorkerLease(
   directory: string,
   pid: number,
+  owner?: string,
 ): (() => void) & { reap(): Promise<void> } {
   directoryAt(directory);
   const identity = process.platform === 'linux' ? processIdentity(pid) : null;
@@ -62,6 +64,7 @@ export function recordWorkerLease(
     pid,
     bootId: bootId(),
     startTicks: identity?.startTicks ?? null,
+    ...(owner ? { owner } : {}),
   });
   const path = join(directory, `${randomUUID()}.json`),
     temporary = `${path}.tmp`;
@@ -130,6 +133,26 @@ function liveGroup(pid: number): boolean {
   }
   return false;
 }
+
+function ownedGroup(pid: number, owner: string | undefined): boolean {
+  if (!owner) return false;
+  for (const entry of readdirSync('/proc')) {
+    if (!/^\d+$/.test(entry)) continue;
+    const identity = processIdentity(Number(entry));
+    if (identity?.group !== pid || identity.state === 'Z' || identity.state === 'X') continue;
+    try {
+      if (
+        readFileSync(`/proc/${entry}/environ`, 'utf8')
+          .split('\0')
+          .includes(`CORRAL_PROCESS_OWNER=${owner}`)
+      )
+        return true;
+    } catch (error) {
+      if (!missing(error)) throw new Error('worker cleanup is unconfirmed');
+    }
+  }
+  return false;
+}
 async function reapLease(lease: z.infer<typeof Lease>, boot = bootId()) {
   if (process.platform === 'linux') {
     if (lease.bootId !== boot) return;
@@ -137,6 +160,8 @@ async function reapLease(lease: z.infer<typeof Lease>, boot = bootId()) {
     if (identity && identity.startTicks !== lease.startTicks) return;
     if (identity && identity.group !== lease.pid) throw new Error('worker cleanup is unconfirmed');
     if (!liveGroup(lease.pid)) return;
+    if (!identity && !ownedGroup(lease.pid, lease.owner))
+      throw new Error('worker cleanup is unconfirmed');
     try {
       process.kill(-lease.pid, 'SIGKILL');
     } catch (error) {

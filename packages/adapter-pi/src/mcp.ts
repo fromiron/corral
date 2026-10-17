@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { canonicalJson, type McpChallenge } from '@corral/contracts';
 import { createMcpExtension } from '@earendil-works/pi-coding-agent';
@@ -37,6 +38,7 @@ export function mcpExtension(
       if (!selected || canonicalJson(selected) !== canonicalJson(entry) || cwd !== resources.cwd)
         throw new Error('MCP server is not bound to this execution');
       if ('command' in selected.config) {
+        const processOwner = randomUUID();
         const transport = new StdioTransport({
           command: selected.config.command,
           args: selected.config.args,
@@ -50,6 +52,7 @@ export function mcpExtension(
             LANG: 'C.UTF-8',
             GIT_CONFIG_NOSYSTEM: '1',
             GIT_TERMINAL_PROMPT: '0',
+            CORRAL_PROCESS_OWNER: processOwner,
           },
           stderr: 'pipe',
           maxMessageBytes: 2 * 1024 * 1024,
@@ -73,7 +76,8 @@ export function mcpExtension(
           await authorization(entry.name);
           const starting = start();
           try {
-            if (transport.pid) lease = recordWorkerLease(leaseDirectory, transport.pid);
+            if (transport.pid)
+              lease = recordWorkerLease(leaseDirectory, transport.pid, processOwner);
             await starting;
           } catch (error) {
             await starting.catch(() => {});
