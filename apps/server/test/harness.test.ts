@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { HarnessProfile } from '@corral/contracts';
-import { openDatabase, type Db } from '@corral/storage-sqlite';
+import { type Db, openDatabase } from '@corral/storage-sqlite';
 import { FakeClock, linearCorral } from '@corral/testkit';
 import { afterEach, describe, expect, it } from 'vitest';
 import { HarnessService } from '../src/harness/service.ts';
@@ -20,21 +20,52 @@ function setup(body = '---\nname: writing\ndescription: Write clearly.\n---\nKee
   mkdirSync(join(source, 'extensions'), { recursive: true });
   mkdirSync(join(source, 'skills/writing'), { recursive: true });
   const marker = join(root, 'EXECUTED');
-  writeFileSync(join(source, 'extensions/echo.ts'), `import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(marker)}, 'unexpected'); export default () => {};`);
+  writeFileSync(
+    join(source, 'extensions/echo.ts'),
+    `import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(marker)}, 'unexpected'); export default () => {};`,
+  );
   writeFileSync(join(source, 'skills/writing/SKILL.md'), body);
-  writeFileSync(join(source, 'package.json'), JSON.stringify({ name: 'fixture', version: '1.0.0', license: 'MIT', pi: { extensions: ['extensions/echo.ts'], skills: ['skills'] } }));
+  writeFileSync(
+    join(source, 'package.json'),
+    JSON.stringify({
+      name: 'fixture',
+      version: '1.0.0',
+      license: 'MIT',
+      pi: { extensions: ['extensions/echo.ts'], skills: ['skills'] },
+    }),
+  );
   const db = openDatabase(':memory:');
   databases.push(db);
   const resourceRoot = join(root, 'data');
   const service = new HarnessService({
-    root: resourceRoot, db, clock: new FakeClock(),
-    inspect: async () => ({ name: 'fixture', version: '1.0.0', license: 'MIT', packagePath: null, extensions: ['extensions/echo.ts'], skills: [{ name: 'writing', description: 'Write clearly.', entry: 'skills/writing/SKILL.md' }] }),
+    root: resourceRoot,
+    db,
+    clock: new FakeClock(),
+    inspect: async () => ({
+      name: 'fixture',
+      version: '1.0.0',
+      license: 'MIT',
+      packagePath: null,
+      extensions: ['extensions/echo.ts'],
+      skills: [
+        { name: 'writing', description: 'Write clearly.', entry: 'skills/writing/SKILL.md' },
+      ],
+    }),
   });
   const profile = (hash: string): HarnessProfile => ({
-    name: 'Writer', policy: 'trusted-native', allowedTools: ['echo'], startupCommands: [],
+    name: 'Writer',
+    policy: 'trusted-native',
+    allowedTools: ['echo'],
+    startupCommands: [],
     resources: [
       { resourceHash: hash, entry: 'extensions/echo.ts', kind: 'extension', required: true },
-      { resourceHash: hash, entry: 'skills/writing/SKILL.md', kind: 'skill', required: true, skillMode: 'mandatory' },
+      {
+        resourceHash: hash,
+        entry: 'skills/writing/SKILL.md',
+        kind: 'skill',
+        required: true,
+        skillMode: 'mandatory',
+      },
     ],
   });
   return { service, source, marker, resourceRoot, profile };
@@ -55,11 +86,22 @@ describe('resource discovery, trust and resolution (H3)', () => {
     const preview = s.service.preview(binding, 'default');
     const definition = linearCorral(['writer']);
     definition.roles[0]!.harness = binding;
-    expect(s.service.resolve(binding, definition, definition.roles[0]!.id)).toEqual(preview.snapshot);
-    expect(preview.sections).toMatchObject([{ source: 'skill', name: 'writing', text: expect.stringContaining('Keep sources.') }]);
+    expect(s.service.resolve(binding, definition, definition.roles[0]!.id)).toEqual(
+      preview.snapshot,
+    );
+    expect(preview.sections).toMatchObject([
+      { source: 'skill', name: 'writing', text: expect.stringContaining('Keep sources.') },
+    ]);
     expect(JSON.stringify(preview.snapshot)).not.toContain(s.source);
     expect(JSON.stringify(preview.snapshot)).not.toContain('Keep sources.');
     expect(existsSync(s.marker)).toBe(false);
+    const runtime = await s.service.runtimeResources({ harness: preview.snapshot, inputs: [] });
+    expect(runtime.skills[0]?.content).toContain('Keep sources.');
+    expect(runtime.bundles[0]?.hash).toBe(resource.hash);
+    expect(runtime.extensions[0]?.source).toBe('extension:fixture@1.0.0');
+    s.service.saveProfile('later', 0, { name: 'Later default', policy: 'strict', allowedTools: [], resources: [], startupCommands: [] });
+    s.service.store.setDefault('personal', 'default', 0, { profileId: 'later', revision: 1 });
+    expect(await s.service.runtimeResources({ harness: preview.snapshot, inputs: [] })).toEqual(runtime);
   });
 
   it('[TC-HAR-004-N] changed installed content revokes trust and cannot enter a Run', async () => {
@@ -67,8 +109,13 @@ describe('resource discovery, trust and resolution (H3)', () => {
     const resource = s.service.install((await s.service.discoverLocal(s.source)).reviewId);
     s.service.trust(resource.hash, true);
     s.service.saveProfile('writer', 0, s.profile(resource.hash));
-    writeFileSync(join(s.resourceRoot, 'resources', `sha256-${resource.hash}`, 'extensions/echo.ts'), 'changed');
-    expect(() => s.service.preview({ profileId: 'writer', revision: 1 }, 'default')).toThrow(/changed|integrity/i);
+    writeFileSync(
+      join(s.resourceRoot, 'resources', `sha256-${resource.hash}`, 'extensions/echo.ts'),
+      'changed',
+    );
+    expect(() => s.service.preview({ profileId: 'writer', revision: 1 }, 'default')).toThrow(
+      /changed|integrity/i,
+    );
     expect(s.service.store.getResource(resource.hash)?.trustedAt).toBeNull();
   });
 
@@ -89,15 +136,25 @@ describe('resource discovery, trust and resolution (H3)', () => {
     const resource = s.service.install((await s.service.discoverLocal(s.source)).reviewId);
     s.service.trust(resource.hash, true);
     s.service.saveProfile('writer', 0, s.profile(resource.hash));
-    s.service.saveProfile('personal', 0, { name: 'Personal', policy: 'strict', allowedTools: [], resources: [], startupCommands: [] });
+    s.service.saveProfile('personal', 0, {
+      name: 'Personal',
+      policy: 'strict',
+      allowedTools: [],
+      resources: [],
+      startupCommands: [],
+    });
     s.service.store.setDefault('personal', 'default', 0, { profileId: 'personal', revision: 1 });
-    expect(() => s.service.preview({ profileId: 'writer', revision: 1 }, 'default')).toThrow(/strict|native/i);
+    expect(() => s.service.preview({ profileId: 'writer', revision: 1 }, 'default')).toThrow(
+      /strict|native/i,
+    );
   });
 
   it('[TC-HAR-005-N] mandatory skill size is checked before saving a binding', async () => {
     const s = setup('---\nname: writing\ndescription: Write.\n---\n' + 'x'.repeat(65536));
     const resource = s.service.install((await s.service.discoverLocal(s.source)).reviewId);
     s.service.trust(resource.hash, true);
-    expect(() => s.service.saveProfile('writer', 0, s.profile(resource.hash))).toThrow(/skill.*(large|size|limit)/i);
+    expect(() => s.service.saveProfile('writer', 0, s.profile(resource.hash))).toThrow(
+      /skill.*(large|size|limit)/i,
+    );
   });
 });
