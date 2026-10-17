@@ -13,9 +13,9 @@ import type {
 } from '@corral/client';
 import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import type { RunSummary, WorkSession } from '@corral/core';
-import { type DiffLine, diffLines } from '@corral/react';
+import type { DiffLine } from '@corral/react';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { reviewRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
@@ -26,12 +26,16 @@ import { WorkbenchLayout, WorkbenchSidebar } from './Workbench.tsx';
 // Reviewing a session's file changes (CR-012; WBT-15): a fixed comparison range, the files it
 // changed with where each change came from, the diff in the middle, and the agreed checks.
 
-const scopeFromSearch = (search: { scope?: string; runId?: string }): ChangeScopeQuery =>
-  search.scope === 'run' && search.runId
-    ? { kind: 'run', runId: search.runId }
-    : search.scope === 'review'
-      ? { kind: 'review' }
-      : { kind: 'session' };
+type ReviewScope = ChangeScopeQuery | { kind: 'git' };
+
+const scopeFromSearch = (search: { scope?: string; runId?: string }): ReviewScope =>
+  search.scope === 'git'
+    ? { kind: 'git' }
+    : search.scope === 'run' && search.runId
+      ? { kind: 'run', runId: search.runId }
+      : search.scope === 'review'
+        ? { kind: 'review' }
+        : { kind: 'session' };
 
 export function ReviewPage() {
   const t = useTranslations('Files');
@@ -65,19 +69,21 @@ export function ReviewPage() {
     if (!workspaces) return;
     let live = true;
     setChanges(null);
-    workspaces
-      .changes(
-        session.sessionId,
-        scopeFromSearch({ scope: scopeKey.split(':')[0], runId: scopeKey.split(':')[1] }),
-      )
-      .then(
-        (result) => live && setChanges(result),
-        (failure) => live && setError(failure instanceof Error ? failure.message : String(failure)),
-      );
+    const chosen = scopeFromSearch({
+      scope: scopeKey.split(':')[0],
+      runId: scopeKey.split(':')[1],
+    });
+    (chosen.kind === 'git'
+      ? workspaces.folderChanges(session.projectId)
+      : workspaces.changes(session.sessionId, chosen)
+    ).then(
+      (result) => live && setChanges(result),
+      (failure) => live && setError(failure instanceof Error ? failure.message : String(failure)),
+    );
     return () => {
       live = false;
     };
-  }, [workspaces, session.sessionId, scopeKey, version]);
+  }, [workspaces, session.sessionId, session.projectId, scopeKey, version]);
 
   const selected = search.file ?? null;
   const choose = (file: string) => void navigate({ search: (s) => ({ ...s, file }) });
@@ -86,7 +92,7 @@ export function ReviewPage() {
     void navigate({
       search: (s) => ({
         ...s,
-        scope: kind as 'session' | 'review' | 'run',
+        scope: kind as 'session' | 'review' | 'run' | 'git',
         runId,
         file: undefined,
       }),
@@ -118,6 +124,7 @@ export function ReviewPage() {
               >
                 <option value="session">{t('scopes.session')}</option>
                 <option value="review">{t('scopes.review')}</option>
+                {binding?.isGit ? <option value="git">{t('scopes.git')}</option> : null}
                 {[...runs].reverse().map((r) => (
                   <option key={r.runId} value={`run:${r.runId}`}>
                     {t('scopes.run', { runId: r.runId })}
@@ -172,12 +179,26 @@ export function ReviewPage() {
               />
             </nav>
             <section aria-label={selected ?? t('chooseFile')} className="min-h-0 overflow-auto p-3">
-              {selected && changes?.from && changes.to ? (
+              {scope.kind === 'git' ? (
+                <p className="mb-2 text-xs text-muted">{t('gitScopeNote')}</p>
+              ) : null}
+              {selected && changes?.from && (changes.to || scope.kind === 'git') ? (
                 <FileDiff
-                  sessionId={session.sessionId}
-                  from={changes.from}
-                  to={changes.to}
                   path={selected}
+                  loadKey={`${scopeKey}:${changes.from}:${changes.to}:${selected}`}
+                  load={() =>
+                    scope.kind === 'git'
+                      ? (workspaces as NonNullable<typeof workspaces>).folderFileVersions(
+                          session.projectId,
+                          selected,
+                        )
+                      : (workspaces as NonNullable<typeof workspaces>).fileVersions(
+                          session.sessionId,
+                          changes.from as string,
+                          changes.to as string,
+                          selected,
+                        )
+                  }
                   reviewedKey={fileKey(
                     changes.files.find((f) => f.path === selected),
                     selected,
@@ -186,15 +207,19 @@ export function ReviewPage() {
                   comments={comments.filter(
                     (c) => c.from === changes.from && c.to === changes.to && c.path === selected,
                   )}
-                  onComment={async (comment) => {
-                    await workspaces?.addComment(session.sessionId, {
-                      ...comment,
-                      from: changes.from as string,
-                      to: changes.to as string,
-                      path: selected,
-                    });
-                    await reloadComments();
-                  }}
+                  {...(scope.kind === 'git' || !changes.to
+                    ? {}
+                    : {
+                        onComment: async (comment: NewComment) => {
+                          await workspaces?.addComment(session.sessionId, {
+                            ...comment,
+                            from: changes.from as string,
+                            to: changes.to as string,
+                            path: selected,
+                          });
+                          await reloadComments();
+                        },
+                      })}
                 />
               ) : (
                 <p className="text-sm text-muted">{t('chooseFile')}</p>
@@ -233,42 +258,61 @@ const sideText = (side: FileSideView) =>
 type NewComment = Pick<ReviewCommentView, 'side' | 'startLine' | 'endLine' | 'quote' | 'body'>;
 
 function FileDiff({
-  sessionId,
-  from,
-  to,
   path,
+  loadKey,
+  load,
   reviewedKey,
   reviewed,
   comments,
   onComment,
 }: {
-  sessionId: string;
-  from: string;
-  to: string;
   path: string;
+  /** Changes whenever what to load changes. */
+  loadKey: string;
+  load: () => Promise<{ before: FileSideView; after: FileSideView }>;
   reviewedKey: string;
   reviewed: ReviewedFiles;
   comments: ReviewCommentView[];
-  onComment: (comment: NewComment) => Promise<void>;
+  /** Absent where comments do not apply (the linked folder's Git state). */
+  onComment?: (comment: NewComment) => Promise<void>;
 }) {
   const t = useTranslations('Files');
-  const { workspaces } = useServices();
   const [sides, setSides] = useState<{ before: FileSideView; after: FileSideView } | null>(null);
   const [layout, setLayout] = useState<'unified' | 'split' | 'raw'>('unified');
+  const [diff, setDiff] = useState<DiffLine[] | 'stopped' | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `loadKey` names what `load` reads
   useEffect(() => {
     let live = true;
     setSides(null);
-    void workspaces?.fileVersions(sessionId, from, to, path).then((v) => live && setSides(v));
+    void load().then((v) => live && setSides(v));
     return () => {
       live = false;
     };
-  }, [workspaces, sessionId, from, to, path]);
-  const lines = useMemo(() => {
-    if (!sides) return null;
+  }, [loadKey]);
+  // The diff runs in a worker and is stopped after 3 s (02-UX-Spec §4: no endless spinner).
+  useEffect(() => {
+    setDiff(null);
+    if (!sides) return;
     const before = sideText(sides.before);
     const after = sideText(sides.after);
-    return before === null || after === null ? null : diffLines(before, after);
+    if (before === null || after === null) return;
+    const worker = new Worker(new URL('../diff.worker.ts', import.meta.url), { type: 'module' });
+    const timer = setTimeout(() => {
+      worker.terminate();
+      setDiff('stopped');
+    }, 3000);
+    worker.onmessage = (event: MessageEvent<DiffLine[]>) => {
+      clearTimeout(timer);
+      setDiff(event.data);
+      worker.terminate();
+    };
+    worker.postMessage({ before, after });
+    return () => {
+      clearTimeout(timer);
+      worker.terminate();
+    };
   }, [sides]);
+  const lines = Array.isArray(diff) ? diff : null;
   if (!sides) return <p className="text-sm text-muted">…</p>;
   const notText = (side: FileSideView) =>
     side.kind === 'binary' ? t('binary') : side.kind === 'too_large' ? t('tooLarge') : null;
@@ -316,6 +360,14 @@ function FileDiff({
           ))}
         </fieldset>
       </div>
+      {diff === 'stopped' && layout !== 'raw' ? (
+        <p role="alert" className="text-xs text-warning">
+          {t('diffStopped')}
+        </p>
+      ) : null}
+      {diff === null && layout !== 'raw' && !notText(sides.before) && !notText(sides.after) ? (
+        <p className="text-xs text-muted">{t('computing')}</p>
+      ) : null}
       {unaligned && layout !== 'raw' ? (
         <p role="note" className="text-xs text-warning">
           {t('tooLargeToAlign')}
@@ -338,7 +390,7 @@ function FileDiff({
         </div>
       ) : lines ? (
         layout === 'unified' ? (
-          <Unified lines={lines} comments={comments} onComment={onComment} />
+          <Unified lines={lines} comments={comments} {...(onComment ? { onComment } : {})} />
         ) : (
           <Split lines={lines} />
         )
@@ -358,7 +410,7 @@ function Unified({
 }: {
   lines: DiffLine[];
   comments: ReviewCommentView[];
-  onComment: (comment: NewComment) => Promise<void>;
+  onComment?: (comment: NewComment) => Promise<void>;
 }) {
   const t = useTranslations('Review');
   const [open, setOpen] = useState<number | null>(null);
@@ -384,6 +436,7 @@ function Unified({
             <div data-diff={line.kind} className={`group flex ${lineClass(line.kind)}`}>
               <button
                 type="button"
+                disabled={!onComment}
                 aria-label={t('commentLine', { line: no })}
                 onClick={() => {
                   setOpen(open === index ? null : index);
@@ -413,9 +466,13 @@ function Unified({
                 onSubmit={(event) => {
                   event.preventDefault();
                   if (!body.trim()) return;
-                  void onComment({ side, startLine: no, endLine: no, quote: line.text, body }).then(
-                    () => setOpen(null),
-                  );
+                  void onComment?.({
+                    side,
+                    startLine: no,
+                    endLine: no,
+                    quote: line.text,
+                    body,
+                  }).then(() => setOpen(null));
                 }}
               >
                 <textarea
@@ -996,6 +1053,8 @@ function FileList({
       (!unreviewedOnly || !reviewed.has(fileKey(f, f.path))),
   );
   const folded = matches.filter((f) => GENERATED.test(f.path) && f.status !== 'deleted');
+  // Only the linked folder's Git state has a staged list.
+  const staged = new Set((changes as ChangeSetView & { staged?: string[] }).staged ?? []);
   const main = matches.filter((f) => !folded.includes(f));
   const row = (file: FileChangeView) => (
     <li key={file.path}>
@@ -1015,6 +1074,7 @@ function FileList({
           {t(`status.${file.status}`)}
           {file.additions !== null ? ` · +${file.additions} −${file.deletions ?? 0}` : ''}
           {file.binary ? ' · bin' : ''} · {t(`provenance.${file.provenance}`)}
+          {staged.has(file.path) ? ` · ${t('staged')}` : ''}
         </span>
       </button>
     </li>

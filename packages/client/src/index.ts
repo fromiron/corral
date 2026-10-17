@@ -991,6 +991,23 @@ export class WorkspacesApi {
       'POST',
     );
   }
+  /** The linked folder as Git sees it: HEAD → working tree, read only (02-UX-Spec §4). */
+  folderChanges(projectId: string): Promise<ChangeSetView & { staged: string[] }> {
+    return this.send(`/projects/${encodeURIComponent(projectId)}/workspace/changes`);
+  }
+  folderFileVersions(
+    projectId: string,
+    path: string,
+  ): Promise<{ path: string; before: FileSideView; after: FileSideView }> {
+    return this.send(
+      `/projects/${encodeURIComponent(projectId)}/workspace/changes/file?path=${encodeURIComponent(path)}`,
+    );
+  }
+  runSnapshots(
+    sessionId: string,
+  ): Promise<{ runId: string; phase: 'start' | 'end'; tree: string }[]> {
+    return this.send(`${this.s(sessionId)}/run-snapshots`);
+  }
   inbox(projectId: string): Promise<InboxItemView[]> {
     return this.send(`/projects/${encodeURIComponent(projectId)}/inbox`);
   }

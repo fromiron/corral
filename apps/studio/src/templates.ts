@@ -40,3 +40,42 @@ export async function createFromTemplate(
     ? { ok: true, corralId: result.record.corralId }
     : { ok: false, message: result.message };
 }
+
+/**
+ * Example projects for the in-browser demo (02-UX-Spec §10): two projects, a team each and
+ * six sessions with their purposes. Simulated runs only; nothing here is a real record.
+ */
+export async function createDemoExamples(
+  repository: CorralRepository,
+  text: {
+    projects: [string, string];
+    sessions: [string, string, string, string, string, string];
+    teamName: string;
+  },
+): Promise<string | null> {
+  const plan: { name: string; template: WorkspaceTemplateId; sessions: string[] }[] = [
+    { name: text.projects[0], template: 'research-team', sessions: text.sessions.slice(0, 3) },
+    { name: text.projects[1], template: 'starter', sessions: text.sessions.slice(3, 6) },
+  ];
+  let first: string | null = null;
+  for (const entry of plan) {
+    const project = await repository.createProject({ name: entry.name });
+    if (!project.ok) return first;
+    first ??= project.project.projectId;
+    const team = await createFromTemplate(
+      repository,
+      entry.template,
+      text.teamName,
+      project.project.projectId,
+    );
+    for (const objective of entry.sessions) {
+      await repository.createSession({
+        projectId: project.project.projectId,
+        title: '',
+        objective,
+        corralId: team.ok ? team.corralId : null,
+      });
+    }
+  }
+  return first;
+}

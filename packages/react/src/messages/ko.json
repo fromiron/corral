@@ -1042,7 +1042,19 @@
     "failed": "저장하지 못했습니다: {message}",
     "switchTo": "프로젝트로 전환: {name}",
     "openAll": "모든 프로젝트 열기",
-    "current": "현재"
+    "current": "현재",
+    "folderOptional": "연결할 폴더(선택)",
+    "folderHint": "연결은 폴더를 관측만 합니다. 나중에 연결해도 됩니다.",
+    "exampleProject1": "데이터베이스 선택",
+    "exampleProject2": "릴리스 노트",
+    "exampleSession1": "작은 팀 기준으로 SQLite와 Postgres 비교",
+    "exampleSession2": "Postgres로 옮길 때의 위험 정리",
+    "exampleSession3": "결정 메모 초안",
+    "exampleSession4": "1.4 버전 노트 쓰기",
+    "exampleSession5": "지원팀용 변경 요약",
+    "exampleSession6": "공지 메일 준비",
+    "examples": "예시 프로젝트 만들기",
+    "examplesHint": "팀 하나씩을 가진 프로젝트 2개와 세션 6개를 만들어, 시뮬레이션 에이전트로 워크벤치를 써 볼 수 있습니다."
   },
   "Sessions": {
     "heading": "세션",
@@ -1129,7 +1141,9 @@
     "reviewChanges": "변경 검토",
     "delivery": "전달: {status}",
     "connectionLost": "서버에 연결할 수 없어 Run 상태를 모릅니다. 끝났거나 취소된 것으로 보지 않습니다.",
-    "retry": "다시 시도"
+    "retry": "다시 시도",
+    "checked": "검증함: {name} {state}",
+    "notChecked": "검증 안 함"
   },
   "Files": {
     "folderHeading": "작업 폴더",
@@ -1160,7 +1174,8 @@
     "scopes": {
       "session": "세션 전체",
       "review": "마지막 검토 이후",
-      "run": "Run {runId}"
+      "run": "Run {runId}",
+      "git": "원본 폴더(Git 작업 트리)"
     },
     "noBaseline": "이 Run은 기준이 기록되지 않았습니다.",
     "noChanges": "이 범위에는 변경이 없습니다.",
@@ -1219,7 +1234,11 @@
       "none": "권한: 파일 작업 없음",
       "observe": "권한: 폴더 관측만",
       "copy": "권한: 작업 복사본에만 쓰기"
-    }
+    },
+    "diffStopped": "비교 계산이 3초를 넘어 멈췄습니다. 원문으로 읽거나 내려받으세요.",
+    "computing": "비교하는 중…",
+    "staged": "스테이징됨",
+    "gitScopeNote": "연결한 원본 폴더의 HEAD와 지금 디스크 내용(스테이징 여부 포함)을 비교합니다. 읽기만 하며, 의견과 판단은 세션 작업 복사본에 대해서만 합니다."
   },
   "Review": {
     "commentLine": "{line}번째 줄에 의견",

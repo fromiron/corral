@@ -145,8 +145,11 @@ export const reviewRoute = createRoute({
   path: '/sessions/$sessionId/review',
   validateSearch: (
     search: Record<string, unknown>,
-  ): { scope?: 'session' | 'review' | 'run'; runId?: string; file?: string } => ({
-    ...(search.scope === 'session' || search.scope === 'review' || search.scope === 'run'
+  ): { scope?: 'session' | 'review' | 'run' | 'git'; runId?: string; file?: string } => ({
+    ...(search.scope === 'session' ||
+    search.scope === 'review' ||
+    search.scope === 'run' ||
+    search.scope === 'git'
       ? { scope: search.scope }
       : {}),
     ...(typeof search.runId === 'string' ? { runId: search.runId } : {}),

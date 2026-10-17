@@ -206,3 +206,19 @@ describe('missing folders (02-UX-Spec §8)', () => {
     expect((await service.view('default'))?.missing).toBe(true);
   });
 });
+
+describe('the linked folder as Git sees it (02-UX-Spec §4)', () => {
+  it('lists tracked changes against HEAD and untracked files, and reads the disk side', async () => {
+    const { service, original } = await setup();
+    writeFileSync(join(original, 'a.txt'), 'one\nmore\n');
+    writeFileSync(join(original, 'new.txt'), 'fresh\n');
+    const changes = await service.folderChanges('default');
+    expect(changes.files.map((f) => [f.path, f.status])).toEqual([
+      ['a.txt', 'modified'],
+      ['new.txt', 'added'],
+    ]);
+    const versions = await service.folderFileVersions('default', 'a.txt');
+    expect(versions.before).toEqual({ kind: 'text', text: 'one\n' });
+    expect(versions.after).toEqual({ kind: 'text', text: 'one\nmore\n' });
+  });
+});

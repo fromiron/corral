@@ -5,6 +5,7 @@ import { useFormatter, useNow, useTranslations } from 'use-intl';
 import { projectName, projectOfRun, projectsChanged, useCurrentProject } from '../projects.ts';
 import { projectsRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
+import { createDemoExamples } from '../templates.ts';
 
 /** /projects (CR-010): every project, a new one, and archived ones on request. */
 export function ProjectsPage() {
@@ -13,7 +14,8 @@ export function ProjectsPage() {
   const format = useFormatter();
   const now = useNow({ updateInterval: 60_000 });
   const { projects, corrals, runs } = projectsRoute.useLoaderData();
-  const { repository } = useServices();
+  const { repository, workspaces, mode } = useServices();
+  const [folder, setFolder] = useState('');
   const router = useRouter();
   const navigate = useNavigate();
   const current = useCurrentProject();
@@ -29,6 +31,10 @@ export function ProjectsPage() {
     const result = await repository.createProject({ name, description });
     if (!result.ok) return setError(t('failed', { message: result.message }));
     projectsChanged();
+    // 02-UX-Spec §1: start with a folder or from material alone. A folder that cannot be
+    // linked leaves the project made; the project page says why and offers to link again.
+    if (workspaces && folder.trim())
+      await workspaces.bind(result.project.projectId, folder.trim()).catch(() => undefined);
     await navigate({
       to: '/projects/$projectId',
       params: { projectId: result.project.projectId },
@@ -72,6 +78,21 @@ export function ProjectsPage() {
             className="rounded border border-line bg-surface px-2 py-1 text-sm"
           />
         </label>
+        {workspaces ? (
+          <label className="flex min-w-48 flex-1 flex-col gap-1 text-xs">
+            {t('folderOptional')}
+            <input
+              value={folder}
+              onChange={(e) => setFolder(e.target.value)}
+              spellCheck={false}
+              aria-describedby="folder-hint"
+              className="rounded border border-line bg-surface px-2 py-1 font-mono text-sm"
+            />
+            <span id="folder-hint" className="text-muted">
+              {t('folderHint')}
+            </span>
+          </label>
+        ) : null}
         <button
           type="submit"
           className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent"
@@ -79,6 +100,34 @@ export function ProjectsPage() {
           {t('create')}
         </button>
       </form>
+      {mode === 'browser' ? (
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <button
+            type="button"
+            onClick={async () => {
+              const first = await createDemoExamples(repository, {
+                projects: [t('exampleProject1'), t('exampleProject2')],
+                sessions: [
+                  t('exampleSession1'),
+                  t('exampleSession2'),
+                  t('exampleSession3'),
+                  t('exampleSession4'),
+                  t('exampleSession5'),
+                  t('exampleSession6'),
+                ],
+                teamName: tw('newName'),
+              });
+              projectsChanged();
+              if (first)
+                await navigate({ to: '/projects/$projectId', params: { projectId: first } });
+            }}
+            className="rounded border border-accent px-2 py-1 text-accent"
+          >
+            {t('examples')}
+          </button>
+          <span className="text-muted">{t('examplesHint')}</span>
+        </div>
+      ) : null}
       {error ? (
         <p role="alert" className="text-sm text-danger">
           {error}

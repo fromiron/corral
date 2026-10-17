@@ -1042,7 +1042,19 @@
     "failed": "Could not save: {message}",
     "switchTo": "Switch to project: {name}",
     "openAll": "Open all projects",
-    "current": "Current"
+    "current": "Current",
+    "folderOptional": "Folder to link (optional)",
+    "folderHint": "Linking only observes the folder; you can link one later.",
+    "exampleProject1": "Database choice",
+    "exampleProject2": "Release notes",
+    "exampleSession1": "Compare SQLite and Postgres for a small team",
+    "exampleSession2": "List the risks of moving to Postgres",
+    "exampleSession3": "Draft the decision memo",
+    "exampleSession4": "Write the notes for version 1.4",
+    "exampleSession5": "Summarise the changes for support",
+    "exampleSession6": "Prepare the announcement email",
+    "examples": "Make example projects",
+    "examplesHint": "Two projects with a team each and six sessions, for trying the workbench with simulated agents."
   },
   "Sessions": {
     "heading": "Sessions",
@@ -1129,7 +1141,9 @@
     "reviewChanges": "Review changes",
     "delivery": "Delivery: {status}",
     "connectionLost": "The server cannot be reached, so run states are unknown. They are not assumed finished or cancelled.",
-    "retry": "Try again"
+    "retry": "Try again",
+    "checked": "Checked: {name} {state}",
+    "notChecked": "Not checked"
   },
   "Files": {
     "folderHeading": "Work folder",
@@ -1160,7 +1174,8 @@
     "scopes": {
       "session": "Whole session",
       "review": "Since last review",
-      "run": "Run {runId}"
+      "run": "Run {runId}",
+      "git": "Linked folder (Git working tree)"
     },
     "noBaseline": "No baseline was recorded for this run.",
     "noChanges": "No changes in this range.",
@@ -1219,7 +1234,11 @@
       "none": "Permission: no file work",
       "observe": "Permission: folder observed only",
       "copy": "Permission: writes in the working copy only"
-    }
+    },
+    "diffStopped": "Comparing took over 3 seconds and was stopped. Read the source or download it.",
+    "computing": "Comparing…",
+    "staged": "staged",
+    "gitScopeNote": "Your linked folder, HEAD to what is on disk now (staged and not). Read only; comments and decisions apply to the session's working copy."
   },
   "Review": {
     "commentLine": "Comment on line {line}",
