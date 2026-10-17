@@ -239,6 +239,15 @@ class WorkerExecution {
                 this.input.harness.resources.some((resource) => resource.kind === 'skill'))
                 ? ['read']
                 : []),
+              ...(this.input.harness?.allowedTools.includes('write') &&
+              role.allowedWorkTools.includes('write_file')
+                ? ['write']
+                : []),
+              ...(this.input.harness?.allowedTools.includes('edit') &&
+              role.allowedWorkTools.includes('write_file') &&
+              role.allowedWorkTools.includes('read_file')
+                ? ['edit']
+                : []),
             ]
           : offeredTools(this.input),
         assignment:

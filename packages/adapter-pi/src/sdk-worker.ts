@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 import {
   canonicalJson,
   type DeliveredDirective,
+  EditTextResult,
   HarnessCommand,
   type HarnessReport,
   ModelRequestRecord,
@@ -22,8 +23,10 @@ import {
 import {
   type AgentSession,
   createAgentSession,
+  createEditToolDefinition,
   createReadToolDefinition,
   createSyntheticSourceInfo,
+  createWriteToolDefinition,
   DefaultResourceLoader,
   type Extension,
   ModelRuntime,
@@ -31,6 +34,7 @@ import {
   SessionManager,
   SettingsManager,
   type ToolDefinition,
+  type WriteToolInput,
 } from '@earendil-works/pi-coding-agent';
 import type { Channel } from './channel.ts';
 import { extensionUi } from './extension-ui.ts';
@@ -319,6 +323,41 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
       const descriptors = new Map<string, ToolDescriptor>();
       const schemas = new Map<string, Tool>();
       const customTools: ToolDefinition[] = start.tools.map((name) => {
+        if (name === 'edit' || name === 'write') {
+          const definition =
+            name === 'edit' ? createEditToolDefinition(cwd) : createWriteToolDefinition(cwd);
+          return {
+            name,
+            label: definition.label,
+            description: `${definition.description} Corral requires a prior read by this execution before changing an existing file. Only worktree-relative paths are accepted.`,
+            parameters: definition.parameters,
+            promptSnippet: definition.promptSnippet,
+            promptGuidelines: definition.promptGuidelines,
+            annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
+            executionMode: 'sequential',
+            execute: async (piCallId, args, signal, update, ctx) => {
+              const auth = takeAuthorization(piCallId, args);
+              const reply = await call({ type: 'execute_tool', toolCallId: auth.toolCallId });
+              if (reply.type !== 'tool_result' || !reply.ok)
+                throw new Error(
+                  reply.type === 'tool_result'
+                    ? (reply.reason ?? 'Corral write refused')
+                    : 'Corral write refused',
+                );
+              if (name === 'edit') return EditTextResult.shape.result.parse(reply.result?.piResult);
+              const formatter = createWriteToolDefinition(cwd, {
+                operations: { mkdir: async () => {}, writeFile: async () => {} },
+              });
+              const input: WriteToolInput = validateToolArguments(formatter, {
+                type: 'toolCall',
+                id: piCallId,
+                name,
+                arguments: args as JsonObject,
+              });
+              return formatter.execute(piCallId, input, signal, update, ctx);
+            },
+          };
+        }
         if (name === 'read') {
           const definition = createReadToolDefinition(cwd);
           return {
@@ -736,9 +775,12 @@ function describeTool(tool: ToolDefinition, source: string): ToolDescriptor {
     ...(annotations ? { annotations } : {}),
     exposure: tool.exposure ?? 'direct',
     sideEffect:
-      annotations?.readOnlyHint === true && annotations.openWorldHint === false
-        ? 'none'
-        : 'unknown',
+      source === 'corral' &&
+      ['edit', 'write', 'write_file', 'delete_file', 'move_file'].includes(tool.name)
+        ? 'workspace'
+        : annotations?.readOnlyHint === true && annotations.openWorldHint === false
+          ? 'none'
+          : 'unknown',
   });
 }
 

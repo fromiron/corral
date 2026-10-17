@@ -2,6 +2,7 @@ import { fileURLToPath } from 'node:url';
 
 export { type PiAdapterOptions, PiAgentAdapter } from './adapter.ts';
 export { type Channel, memoryChannelPair, processChannel, sdkProcessChannel } from './channel.ts';
+export { editText, PiEditError } from './edit.ts';
 export {
   ENDPOINT_DEFAULTS,
   EndpointSpec,

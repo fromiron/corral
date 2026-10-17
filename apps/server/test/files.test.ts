@@ -1,9 +1,9 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openDatabase } from '@corral/storage-sqlite';
-import { FakeClock } from '@corral/testkit';
+import { FakeClock, Gate } from '@corral/testkit';
 import { afterEach, describe, expect, it } from 'vitest';
 import { safeRelative, WorkspaceService } from '../src/files/service.ts';
 
@@ -19,7 +19,7 @@ afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-async function setup() {
+async function setup(edit?: ConstructorParameters<typeof WorkspaceService>[0]['edit']) {
   const original = temp();
   const git = (...args: string[]) =>
     execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@e', ...args], { cwd: original });
@@ -41,6 +41,7 @@ async function setup() {
     clock: new FakeClock(),
     worktreeRoot: join(temp(), 'worktrees'),
     forbidden: [],
+    ...(edit ? { edit } : {}),
   });
   await service.bind('default', original);
   await service.configure('default', { trusted: true });
@@ -58,37 +59,110 @@ async function setup() {
 }
 
 describe('file broker (CR-012)', () => {
+  it('[TC-HAR-010-N] cancellation or an external change during edit calculation leaves the file untouched', async () => {
+    for (const cause of ['cancel', 'changed']) {
+      const entered = new Gate();
+      const release = new Gate();
+      let aborted = false;
+      const { service, call, db } = await setup(async () => {
+        entered.open();
+        await release.wait();
+        return {
+          text: 'two\n',
+          result: {
+            content: [{ type: 'text', text: 'Changed.' }],
+            details: { diff: 'diff', patch: 'patch', firstChangedLine: 1 },
+          },
+        };
+      });
+      await call('read_file', { path: 'a.txt' });
+      const root = (
+        service as unknown as { worktree(id: string): { worktree_path: string } }
+      ).worktree('session_1').worktree_path;
+      const pending = service.execute(
+        {
+          name: 'edit',
+          args: { path: 'a.txt', edits: [{ oldText: 'one', newText: 'two' }] },
+          runId: 'run_1',
+          executionId: 'exec_1',
+          toolCallId: 'tool_edit',
+        },
+        {
+          get aborted() {
+            return aborted;
+          },
+          onCancel: () => () => {},
+        },
+      );
+      const rejected = expect(pending).rejects.toThrow(
+        cause === 'cancel' ? /cancelled/ : /changed since/,
+      );
+      await entered.wait();
+      if (cause === 'cancel') aborted = true;
+      else writeFileSync(join(root, 'a.txt'), 'external\n');
+      release.open();
+      await rejected;
+      expect(readFileSync(join(root, 'a.txt'), 'utf8')).toBe(
+        cause === 'cancel' ? 'one\n' : 'external\n',
+      );
+      expect(db.prepare('SELECT COUNT(*) AS n FROM file_operations').get()).toEqual({ n: 0 });
+    }
+  });
   it('[TC-HAR-010-H] Pi edit and write use the same read evidence and recorded atomic write path', async () => {
     const { call, db } = await setup();
     await call('read_file', { path: 'a.txt' });
     const edit = await call('edit', { path: 'a.txt', edits: [{ oldText: 'one', newText: 'two' }] });
-    expect(edit).toMatchObject({ path: 'a.txt', piResult: { content: [{ type: 'text', text: 'Successfully replaced 1 block(s) in a.txt.' }], details: { firstChangedLine: 1 } } });
+    expect(edit).toMatchObject({
+      path: 'a.txt',
+      piResult: {
+        content: [{ type: 'text', text: 'Successfully replaced 1 block(s) in a.txt.' }],
+        details: { firstChangedLine: 1 },
+      },
+    });
     expect(await call('read_file', { path: 'a.txt' })).toMatchObject({ text: 'two\n' });
     await call('write', { path: 'new.txt', content: 'A new file.' });
     expect(await call('read_file', { path: 'new.txt' })).toMatchObject({ text: 'A new file.' });
-    expect(db.prepare("SELECT COUNT(*) AS n FROM file_operations WHERE state = 'applied'").get()).toEqual({ n: 2 });
+    expect(
+      db.prepare("SELECT COUNT(*) AS n FROM file_operations WHERE state = 'applied'").get(),
+    ).toEqual({ n: 2 });
   });
   it('[TC-HAR-010-N] all edit blocks must validate before any bytes are changed', async () => {
     const { call, db } = await setup();
     await call('read_file', { path: 'a.txt' });
-    await expect(call('edit', { path: 'a.txt', edits: [{ oldText: 'one', newText: 'two' }, { oldText: 'missing', newText: 'three' }] })).rejects.toMatchObject({ code: 'SCHEMA_INVALID', message: expect.stringContaining('a.txt') });
+    await expect(
+      call('edit', {
+        path: 'a.txt',
+        edits: [
+          { oldText: 'one', newText: 'two' },
+          { oldText: 'missing', newText: 'three' },
+        ],
+      }),
+    ).rejects.toMatchObject({ code: 'SCHEMA_INVALID', message: expect.stringContaining('a.txt') });
     expect(await call('read_file', { path: 'a.txt' })).toMatchObject({ text: 'one\n' });
     expect(db.prepare('SELECT COUNT(*) AS n FROM file_operations').get()).toEqual({ n: 0 });
   });
   it('[TC-HAR-011-N] a different execution or restarted attempt cannot borrow another execution’s read', async () => {
     const { call } = await setup();
     await call('read_file', { path: 'a.txt' }, 'exec_a');
-    await expect(call('write_file', { path: 'a.txt', text: 'unread overwrite' }, 'exec_b')).rejects.toThrow(/read a.txt/);
-    await expect(call('delete_file', { path: 'a.txt' }, 'exec_a_retry')).rejects.toThrow(/read a.txt/);
+    await expect(
+      call('write_file', { path: 'a.txt', text: 'unread overwrite' }, 'exec_b'),
+    ).rejects.toThrow(/read a.txt/);
+    await expect(call('delete_file', { path: 'a.txt' }, 'exec_a_retry')).rejects.toThrow(
+      /read a.txt/,
+    );
   });
   it('[TC-HAR-011-H] [TC-HAR-011-N] B writing after A reads does not refresh A’s evidence', async () => {
     const { call } = await setup();
     await call('read_file', { path: 'a.txt' }, 'exec_a');
     await call('read_file', { path: 'a.txt' }, 'exec_b');
     await call('write_file', { path: 'a.txt', text: 'B changed this\n' }, 'exec_b');
-    await expect(call('write_file', { path: 'a.txt', text: 'A stale change\n' }, 'exec_a')).rejects.toThrow(/changed since/);
+    await expect(
+      call('write_file', { path: 'a.txt', text: 'A stale change\n' }, 'exec_a'),
+    ).rejects.toThrow(/changed since/);
     await call('read_file', { path: 'a.txt' }, 'exec_a');
-    await expect(call('write_file', { path: 'a.txt', text: 'A reviewed change\n' }, 'exec_a')).resolves.toMatchObject({ created: false });
+    await expect(
+      call('write_file', { path: 'a.txt', text: 'A reviewed change\n' }, 'exec_a'),
+    ).resolves.toMatchObject({ created: false });
   });
   it('[DW-05] browsing stays inside its project or session and does not grant an agent a read', async () => {
     const { service, call, original } = await setup();

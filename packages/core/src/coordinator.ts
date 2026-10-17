@@ -7,6 +7,7 @@ import {
   type AgentStartInput,
   type AnswerExtensionUiCommand,
   type Assignment,
+  type BrokerFileToolName,
   type Clock,
   type CommandError,
   type CorralDefinition,
@@ -19,7 +20,6 @@ import {
   ExtensionUiRequest,
   type ExtensionUiResult,
   FILE_TOOLS,
-  type FileToolName,
   type HarnessBindingRef,
   HarnessReport,
   type IdFactory,
@@ -167,7 +167,7 @@ export interface FileTools {
   available(runId: string): boolean;
   execute(
     input: {
-      name: FileToolName;
+      name: BrokerFileToolName;
       args: Record<string, unknown>;
       runId: string;
       executionId: string;
@@ -3318,6 +3318,8 @@ export class Coordinator {
       const tool = { opening, closing, toolCallId };
       switch (call.proposal.name) {
         case 'read':
+        case 'edit':
+        case 'write':
         case 'search':
         case 'read_document':
         case 'list_files':
@@ -4401,7 +4403,10 @@ export class Coordinator {
     });
     this.commit(run, tool.opening);
     try {
-      const fileTool = (FILE_TOOLS as readonly string[]).includes(proposal.name);
+      const fileTool =
+        (FILE_TOOLS as readonly string[]).includes(proposal.name) ||
+        proposal.name === 'edit' ||
+        proposal.name === 'write';
       let result: Record<string, unknown>;
       if (proposal.name === 'read') {
         const path = String(proposal.args.path);
@@ -4433,7 +4438,7 @@ export class Coordinator {
         if (!files) throw new ToolRefusal('CAPABILITY_DENIED', 'no worktree for this run');
         result = await files.execute(
           {
-            name: proposal.name as FileToolName,
+            name: proposal.name as BrokerFileToolName,
             args: proposal.args,
             runId: run.runId,
             executionId,

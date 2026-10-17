@@ -16,7 +16,15 @@ import {
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import type { Clock } from '@corral/contracts';
+import { editText, PiEditError } from '@corral/adapter-pi';
+import {
+  type BrokerFileToolName,
+  type Clock,
+  type EditTextRequest,
+  type EditTextResult,
+  PiEditInput,
+  PiWriteInput,
+} from '@corral/contracts';
 import { type FileTools, rankFuzzy, type ToolCancellation, ToolRefusal } from '@corral/core';
 import type { Db } from '@corral/storage-sqlite';
 import { GitError, git, gitText } from './git.ts';
@@ -198,10 +206,21 @@ export class WorkspaceService implements FileTools {
   private readonly leases = new Map<string, Promise<unknown>>();
   /** Run → execution → path hash: another attempt's read never authorizes an overwrite. */
   private readonly reads = new Map<string, Map<string, Map<string, string>>>();
+  private readonly edit: (
+    request: EditTextRequest,
+    cancellation: ToolCancellation,
+  ) => Promise<EditTextResult>;
 
-  constructor(options: { db: Db; clock: Clock; worktreeRoot: string; forbidden: string[] }) {
+  constructor(options: {
+    db: Db;
+    clock: Clock;
+    worktreeRoot: string;
+    forbidden: string[];
+    edit?: (request: EditTextRequest, cancellation: ToolCancellation) => Promise<EditTextResult>;
+  }) {
     this.db = options.db;
     this.clock = options.clock;
+    this.edit = options.edit ?? ((request, cancellation) => editText(request, { cancellation }));
     this.worktreeRoot = resolve(options.worktreeRoot);
     this.forbidden = [...options.forbidden, this.worktreeRoot].map((p) => resolve(p));
     // A write planned before the last stop has an unknown outcome; it is never redone (WB-WSP-005).
@@ -999,7 +1018,7 @@ export class WorkspaceService implements FileTools {
 
   async execute(
     input: {
-      name: 'list_files' | 'read_file' | 'write_file' | 'delete_file' | 'move_file';
+      name: BrokerFileToolName;
       args: Record<string, unknown>;
       runId: string;
       executionId: string;
@@ -1007,11 +1026,48 @@ export class WorkspaceService implements FileTools {
     },
     cancellation: ToolCancellation,
   ): Promise<Record<string, unknown>> {
+    if (input.name === 'write') {
+      const args = PiWriteInput.parse(input.args);
+      return this.execute(
+        { ...input, name: 'write_file', args: { path: args.path, text: args.content } },
+        cancellation,
+      );
+    }
     const found = this.worktreeOfRun(input.runId);
     if (!found) throw new ToolRefusal('CAPABILITY_DENIED', 'this run has no working copy');
     const root = found.row.worktree_path;
     const reads = this.readsOf(input.runId, input.executionId);
-    switch (input.name) {
+    const name = input.name;
+    switch (name) {
+      case 'edit': {
+        const args = PiEditInput.parse(input.args);
+        return this.lease(root, async () => {
+          const before = await this.requireRead(root, args.path, reads);
+          const bytes = await readFile(join(root, args.path));
+          if (bytes.length > MAX_TEXT)
+            throw new ToolRefusal('LIMIT_REACHED', 'files are at most 1 MiB');
+          if (sha256(bytes) !== before)
+            throw new ToolRefusal('CAPABILITY_DENIED', `${args.path} changed since it was read`);
+          const text = decodeText(bytes);
+          if (text === null) throw new ToolRefusal('CAPABILITY_DENIED', 'edit requires UTF-8 text');
+          if (cancellation.aborted)
+            throw new ToolRefusal('TARGET_TERMINAL', 'the task was cancelled');
+          const edited = await this.edit({ ...args, text }, cancellation).catch((error) => {
+            if (error instanceof PiEditError)
+              throw new ToolRefusal('SCHEMA_INVALID', error.message);
+            throw error;
+          });
+          // Recheck the read hash under the same lease after the worker returns.
+          const applied = await this.change(
+            root,
+            found.sessionId,
+            { ...input, name: 'write_file', args: { path: args.path, text: edited.text } },
+            reads,
+            cancellation,
+          );
+          return { ...applied, piResult: edited.result };
+        });
+      }
       case 'list_files':
         return this.list(root, typeof input.args.path === 'string' ? input.args.path : '');
       case 'read_file': {
@@ -1029,7 +1085,7 @@ export class WorkspaceService implements FileTools {
       }
       default:
         return this.lease(root, () =>
-          this.change(root, found.sessionId, input, reads, cancellation),
+          this.change(root, found.sessionId, { ...input, name }, reads, cancellation),
         );
     }
   }

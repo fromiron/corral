@@ -154,3 +154,12 @@ CORRAL_SPIKE_NODE=~/.local/share/fnm/node-versions/v24.19.0/installation/bin/nod
 - 필수 확장의 `session_start` 오류를 SDK가 삼키는 반례를 추가했고, 모델 호출 전 명시 실패로 처리했다.
 - 체크포인트 검증: 관련 5개 프로젝트 595 passed / opt-in 3 skipped, 스펙 1250 checks 통과. 새 브라우저 E2E 2개 통과(설정 저장/재접속 및 확장 확인→SDK 실행 완료). 원본 Ponytail 역할 격리 opt-in 테스트도 다시 통과했다. 실제 유료 모델 호출은 없다.
 - 다음: Pi 홈의 명시적 복사 import·확장 명령 메타데이터와 시작 명령 연결, H3 남은 경계 검증, H4–H8. 전체 완료로 표시하지 않는다.
+
+### H3 추가 연결 및 H4 파일 도구 체크포인트
+
+- Pi 홈의 스킬·확장 폴더만 명시적으로 복사 import한다. 인증·설정·세션은 제외하며, Pi 설정에만 등록된 패키지는 별도 버전 고정 설치가 필요하다. 실제 Pi 패키지 탐색기로 복사본을 검사하는 테스트가 통과했다.
+- 확장 명령의 출처·호출 이름·패키지 별칭·시작 조건을 기록한다. `/fixture:pause`처럼 앱 명령과 구분되는 별칭을 시작 옵션에서 해석한다. 앱 레지스트리는 해당 execution에 고정한 시작 전용 항목으로 표시하며 실행 중 다른 대상으로 옮겨 호출하지 않는다.
+- H4: 읽기 근거를 Run→execution→path로 분리했다. 다른 실행의 읽기를 빌리는 경우와 A 읽기→B 쓰기→A 오래된 쓰기를 거절한다.
+- Pi 공식 `createEditTool`을 메모리 operations를 가진 임시 worker에서 실행해 edit 변환·오류·diff를 재사용한다. 실제 쓰기는 기존 broker의 lease·읽기 hash·작업 기록·원자적 파일 교체를 거친다. SDK의 `edit/write`는 기존 파일 권한과 하네스 allowlist가 모두 허용해야 보인다.
+- H4 체크포인트: 관련 57 tests 및 adapter/server/studio typecheck 통과. 원본 Pi 대비 BOM/CRLF/다중 블록/모호한 일치/겹침/무변경 오류 비교, 계산 중 취소·외부 변경 시 무반영을 확인했다.
+- 남은 전체 범위: H3의 실행 단위 override 연결/마지막 UX 경계 재검토, H4 LSP 읽기·편집 비교 평가, H5 검증 runner, H6 recipe/개선/eval, H7 항목 반복, H8 MCP/codemode/LSP 변경 제안, 마지막 통합·desktop·Computer Use 검증. 아직 최종 완료가 아니다.

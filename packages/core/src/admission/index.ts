@@ -2,6 +2,8 @@ import {
   type AgentStartInput,
   type ErrorCode,
   FILE_TOOLS,
+  PiEditInput,
+  PiWriteInput,
   ResourcePath,
   type RunEvent,
   type RunLimits,
@@ -307,6 +309,19 @@ const roleAllowlist: Gate<ToolGateView> = {
         input.harness.allowedTools.includes(proposal.name)
         ? allow
         : denied('native tool is not allowed by this harness');
+    }
+    if (proposal.name === 'edit' || proposal.name === 'write') {
+      if (
+        !input.harness ||
+        !view.fileTools ||
+        !input.role.allowedWorkTools.includes('write_file') ||
+        (proposal.name === 'edit' && !input.role.allowedWorkTools.includes('read_file'))
+      )
+        return denied('role may not modify the worktree');
+      const parsed = (proposal.name === 'edit' ? PiEditInput : PiWriteInput).safeParse(args);
+      if (!parsed.success) return refuse('SCHEMA_INVALID', 'invalid coding tool arguments');
+      if (parsed.data.path.startsWith('skills/')) return denied('skill resources are read only');
+      return allow;
     }
     if (proposal.name === 'read') {
       if (

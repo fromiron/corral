@@ -175,19 +175,67 @@ function runtime(
 describe('SDK worker through the product adapter (H2)', () => {
   it('[TC-HAR-010-H] exposes authorized Pi coding tools and returns their standard result text', async () => {
     const proposals: { name: string; args: Record<string, unknown> }[] = [];
-    const run = runtime([
-      (context) => { expect(context.tools?.map(tool => tool.name)).toEqual(expect.arrayContaining(['edit','write'])); return fauxAssistantMessage([fauxToolCall('edit', { path: 'a.txt', edits: [{ oldText: 'one', newText: 'two' }] })], { stopReason: 'toolUse' }); },
-      context => { expect(JSON.stringify(context.messages)).toContain('Successfully replaced 1 block(s) in a.txt.'); return fauxAssistantMessage([fauxToolCall('write', { path: 'new.txt', content: 'new' })], { stopReason: 'toolUse' }); },
-      context => { expect(JSON.stringify(context.messages)).toContain('Successfully wrote to new.txt'); return fauxAssistantMessage('Done.'); },
-    ], '', {
-      authorizeTool: async proposal => { proposals.push(proposal); return { ok: true, toolCallId: `tool_${proposals.length}` }; },
-      executeTool: async toolCallId => ({ ok: true, toolCallId, result: toolCallId === 'tool_1' ? { piResult: { content: [{ type: 'text', text: 'Successfully replaced 1 block(s) in a.txt.' }], details: { diff: 'diff', patch: 'patch', firstChangedLine: 1 } } } : {} }),
-    });
+    const run = runtime(
+      [
+        (context) => {
+          expect(
+            context.messages.flatMap((message) =>
+              message.role === 'system' ? (message.toolsAdded ?? []).map((tool) => tool.name) : [],
+            ),
+          ).toEqual(expect.arrayContaining(['edit', 'write']));
+          return fauxAssistantMessage(
+            [fauxToolCall('edit', { path: 'a.txt', edits: [{ oldText: 'one', newText: 'two' }] })],
+            { stopReason: 'toolUse' },
+          );
+        },
+        (context) => {
+          expect(JSON.stringify(context.messages)).toContain(
+            'Successfully replaced 1 block(s) in a.txt.',
+          );
+          return fauxAssistantMessage(
+            [fauxToolCall('write', { path: 'new.txt', content: 'new' })],
+            { stopReason: 'toolUse' },
+          );
+        },
+        (context) => {
+          expect(JSON.stringify(context.messages)).toContain('Successfully wrote to new.txt');
+          return fauxAssistantMessage('Done.');
+        },
+      ],
+      '',
+      {
+        authorizeTool: async (proposal) => {
+          proposals.push(proposal);
+          return { ok: true, toolCallId: `tool_${proposals.length}` };
+        },
+        executeTool: async (toolCallId) => ({
+          ok: true,
+          toolCallId,
+          result:
+            toolCallId === 'tool_1'
+              ? {
+                  piResult: {
+                    content: [{ type: 'text', text: 'Successfully replaced 1 block(s) in a.txt.' }],
+                    details: { diff: 'diff', patch: 'patch', firstChangedLine: 1 },
+                  },
+                }
+              : {},
+        }),
+      },
+    );
     run.input.role.allowedWorkTools = ['read_file', 'write_file'];
     run.input.harness!.allowedTools = ['edit', 'write'];
-    expect(await (await run.adapter.start(run.input, run.host)).waitForSettlement()).toMatchObject({ outcome: 'succeeded' });
-    expect(proposals.map(proposal => proposal.name)).toEqual(['edit','write']);
-    expect(run.reports).toContainEqual(expect.objectContaining({ tools: expect.arrayContaining([expect.objectContaining({ name: 'edit', source: 'corral', sideEffect: 'workspace' })]) }));
+    expect(await (await run.adapter.start(run.input, run.host)).waitForSettlement()).toMatchObject({
+      outcome: 'succeeded',
+    });
+    expect(proposals.map((proposal) => proposal.name)).toEqual(['edit', 'write']);
+    expect(run.reports).toContainEqual(
+      expect.objectContaining({
+        tools: expect.arrayContaining([
+          expect.objectContaining({ name: 'edit', source: 'corral', sideEffect: 'workspace' }),
+        ]),
+      }),
+    );
   });
   it('[TC-HAR-007-H] records extension command origins and resolves a package-qualified startup command', async () => {
     let seen = '';

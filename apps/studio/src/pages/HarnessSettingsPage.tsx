@@ -21,6 +21,8 @@ const emptyProfile = (): HarnessProfile => ({
   allowedTools: [
     ...WorkTool.options,
     'read',
+    'edit',
+    'write',
     'submit_result',
     'spawn_subagents',
     'await_tasks',
