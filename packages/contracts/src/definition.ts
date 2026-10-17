@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { HarnessBindingRef } from './harness.ts';
 import { Identifier, SchemaVersion } from './ids.ts';
+import { ReviewRecipeRevision } from './review-recipe.ts';
 
 // Canonical definition of a Corral (Technical-Design §4.1). Layout lives in CanvasLayout.
 
@@ -98,6 +99,7 @@ export const LoopNode = z.strictObject({
   type: z.literal('loop'),
   label: z.string().min(1),
   maxIterations: z.int().min(1).max(10),
+  reviewRecipe: ReviewRecipeRevision.optional(),
 });
 export type LoopNode = z.infer<typeof LoopNode>;
 

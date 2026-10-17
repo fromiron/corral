@@ -20,6 +20,7 @@ import {
 } from './harness.ts';
 import { Identifier, SchemaVersion } from './ids.ts';
 import { ReviewIssue } from './review.ts';
+import { RecipeStopReason } from './review-recipe.ts';
 import { ExecutionActivity, ExecutionStatus, ReviewVerdict, RunStatus } from './states.ts';
 
 // RunEvent = envelope (contracts/event-envelope.schema.json) + a typed payload for each entry
@@ -245,6 +246,36 @@ export const ReviewStale = event(
     reviewVersionId: Identifier,
     newCriteriaVersionId: Identifier,
     cause: z.string().min(1),
+  }),
+);
+const recipeHead = {
+  loopNodeId: Identifier,
+  recipeId: Identifier,
+  revision: z.int().min(1),
+  recipeHash: ContentHash,
+  criteriaVersionId: Identifier,
+};
+export const RecipeEvaluated = event(
+  'recipe.evaluated',
+  z.strictObject({
+    ...recipeHead,
+    iterationId: Identifier,
+    candidateVersionId: Identifier,
+    reviewVersionId: Identifier,
+    checkReportIds: Ids,
+    tree: z
+      .string()
+      .regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/)
+      .nullable(),
+    verdict: ReviewVerdict,
+  }),
+);
+export const RecipeStopped = event(
+  'recipe.stopped',
+  z.strictObject({
+    ...recipeHead,
+    reason: RecipeStopReason,
+    candidateVersionId: Identifier.nullable(),
   }),
 );
 export const LoopIterationStarted = event(
@@ -611,6 +642,8 @@ export const RunEvent = z.discriminatedUnion('type', [
   ArtifactVersionCreated,
   ArtifactRead,
   ReviewRecorded,
+  RecipeEvaluated,
+  RecipeStopped,
   ReviewStale,
   LoopIterationStarted,
   LoopIterationFinished,

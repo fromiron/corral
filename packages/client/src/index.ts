@@ -13,6 +13,7 @@ import {
   type ProjectToolConfigRevision,
   type Receipt,
   type RegisteredCheck,
+  type ReviewRecipeRevision,
   type RunCommand,
   RunEvent,
   type StartRunRequest,
@@ -771,6 +772,15 @@ export class HarnessApi {
   }
   projectTools(projectId: string): Promise<ProjectToolConfigRevision | null> {
     return this.http.json(`/harness/projects/${encodeURIComponent(projectId)}/tools`);
+  }
+  criteriaFiles(
+    projectId: string,
+    paths: string[],
+  ): Promise<ReviewRecipeRevision['criteriaFiles']> {
+    return this.http.json(`/harness/projects/${encodeURIComponent(projectId)}/criteria-files`, {
+      method: 'POST',
+      body: JSON.stringify({ paths }),
+    });
   }
   saveProjectTools(
     projectId: string,

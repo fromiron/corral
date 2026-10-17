@@ -43,6 +43,7 @@ export * from './history.ts';
 export * from './limits.ts';
 export * from './projection.ts';
 export * from './repository/index.ts';
+export { reviewCriteriaHash } from './review-recipe.ts';
 export * from './run-plan.ts';
 export * from './runner.ts';
 export * from './session-runs.ts';

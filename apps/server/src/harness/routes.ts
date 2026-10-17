@@ -6,6 +6,7 @@ import {
   HarnessProfile,
   Identifier,
   ProjectToolConfig,
+  ResourcePath,
 } from '@corral/contracts';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
@@ -63,6 +64,14 @@ export function registerHarnessRoutes(
   const prefix = '/api/v1/harness';
   type ProjectParams = { Params: { projectId: string } };
   type CheckParams = { Params: { projectId: string; commandId: string } };
+  app.post<ProjectParams>(`${prefix}/projects/:projectId/criteria-files`, (request, reply) =>
+    action(reply, () => {
+      const { paths } = z
+        .strictObject({ paths: z.array(ResourcePath).max(20) })
+        .parse(request.body);
+      return files.criteriaFiles(Identifier.parse(request.params.projectId), paths);
+    }),
+  );
   app.get<ProjectParams>(`${prefix}/projects/:projectId/tools`, (request, reply) =>
     action(reply, () =>
       reply

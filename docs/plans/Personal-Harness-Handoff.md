@@ -189,3 +189,12 @@ CORRAL_SPIKE_NODE=~/.local/share/fnm/node-versions/v24.19.0/installation/bin/nod
 - 편집기와 세션 입력창에서 실행 한 번의 작업 방식을 선택·미리보기할 수 있다. 실행 성공 후 선택을 비운다. 대기열이나 설명 요청에 묵시적으로 넘기지 않는다. 이전 선택에 대한 늦은 미리보기 응답은 버린다.
 - 명시적 스킬은 brief의 줄 시작에 완전한 `/skill:name` 토큰이 있을 때만 주입한다. 이름 prefix·URL·인용 문장으로 활성화하지 않는다. 확장 UI 본문 로딩 실패는 오류·다시 불러오기·닫기 경로를 제공한다.
 - Core/server/react 집중 31 tests, 관련 패키지 typecheck, Studio build, 리소스/확장 UI E2E 2개, override/늦은 미리보기 E2E 1개 통과. 정적 도구 descriptor 미리보기, 일반 필수 hook 실패, 동적 등록 도구·실행 cwd는 H8 SDK 확장 경계에서 함께 마무리한다.
+
+### H6 런타임 진행 (2026-10-18, UI/eval은 아직 미완료)
+
+- CR-019의 recipe를 기존 Loop 안에 고정했다. 기준 hash·평가 역할·후보 노드·검사 ID·첫 생성 포함 시도·수정·시간·호출·토큰 상한을 기존 definition revision/Run snapshot이 보존한다.
+- 후보 `submit_result`에서 runtime이 같은 승인 경로로 검사를 자동 실행한다. 실제 보고서를 후보/기준/recipe/tree와 연결하며 검사 fail은 review pass보다 우선한다. 오류·stale·동일 tree의 실패 반복·동일 산출물 반복은 중단한다. 검사 요약과 원본 결과 참조를 평가자/다음 수정 입력에 전달한다.
+- 기준 파일 pin/쓰기 보호와 hash 재확인, 기준/loop patch로 상한 우회 거절, unknown usage를 포함한 하위 실행 예산, 마지막 승인 이후 tree 재확인을 구현했다. 최종 확인의 async read 중 취소해도 성공으로 되돌아가지 않는 반례를 red→green 확인했다.
+- 검증: recipe 집중 15 tests, contracts/core/adapter/react 536 passed / 2 opt-in skipped, server 파일+하네스 API 29 tests, core/server/client typecheck. root event catalog와 generated schemas 갱신.
+- 다음: Loop recipe 편집 UI, Run 판정/중단 패널·Inbox, 실제 자동 검사 통합 및 취소/중복 추가 검증, corral eval 품질/5대조군과 H4 Hashline 비교. H7/H8 및 마지막 desktop/Computer Use는 여전히 남았다.
+- 점검 필요: server mock 모드가 하네스가 붙은 역할에서 ScriptedAgentAdapter로 라우팅된다. SDK 로드 보고/요청 기록 계약과 맞는지 실제 재현 후 처리해야 한다(아직 결함 확정/수정하지 않음).

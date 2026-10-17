@@ -30,10 +30,12 @@ import {
   ModelRequestRecord,
   ProviderPayloadRecord,
   type Receipt,
+  type RecipeStopReason,
   type RequestPermit,
   type ResolveApprovalCommand,
   type ResolvedInput,
   ReviewArtifact,
+  type ReviewRecipeRevision,
   RunCommand,
   RunEvent,
   type RunEventType,
@@ -49,6 +51,7 @@ import {
   type ToolDescriptor,
   type ToolOutcome,
   type ToolProposal,
+  VerificationReport,
 } from '@corral/contracts';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js';
@@ -77,6 +80,7 @@ import {
 import { definitionHash } from './definition-hash.ts';
 import { LogicalDeadline } from './limits.ts';
 import { applyEvent, emptyProjection, type RunProjection } from './projection.ts';
+import { recipeAttempts } from './review-recipe.ts';
 import { planRun } from './run-plan.ts';
 import {
   type GraphRunner,
@@ -167,6 +171,9 @@ export interface ExternalTools {
  */
 export interface FileTools {
   available(runId: string): boolean;
+  pinCriteria?(runId: string, files: ReviewRecipeRevision['criteriaFiles']): Promise<void>;
+  validateCriteria?(runId: string): Promise<boolean>;
+  currentTreeForRun?(runId: string): Promise<string | null>;
   planLsp?(
     input: import('@corral/contracts').LspExecution,
     cancellation: ToolCancellation,
@@ -288,7 +295,20 @@ interface Subscriber {
   onFrame: ((frame: StreamFrame) => void) | undefined;
 }
 
+interface RecipeCandidate {
+  artifactVersionId: string;
+  contentHash: string;
+  checks: VerificationReport[];
+  resultRefs: string[];
+}
+interface RecipeRun {
+  recipe: ReviewRecipeRevision;
+  cancelDeadline(): void;
+  candidates: Map<string, RecipeCandidate>;
+  failureSignature?: string;
+}
 interface LiveRun {
+  recipes: Map<string, RecipeRun>;
   runId: string;
   snapshot: RunSnapshot;
   plan: CompiledPlan;
@@ -597,6 +617,31 @@ export class Coordinator {
         });
       }
     }
+    for (const node of planned.definition.nodes) {
+      if (node.type !== 'loop' || !node.reviewRecipe) continue;
+      const recipe = node.reviewRecipe;
+      const candidate = planned.definition.nodes.find(
+        (candidate) => candidate.id === recipe.candidateNodeId,
+      );
+      const harness = candidate?.type === 'agent' ? harnesses[candidate.roleId] : undefined;
+      if (
+        recipe.checkIds.length &&
+        (!this.files?.planCheck ||
+          !this.files.runCheck ||
+          !this.files.currentTreeForRun ||
+          !harness?.allowedTools.includes('run_check') ||
+          !recipe.checkIds.every((id) => harness.projectTools?.checkIds.includes(id)))
+      )
+        return refuse({
+          code: 'CAPABILITY_DENIED',
+          message: 'recipe checks must be selected by the candidate role in an available worktree',
+        });
+      if (recipe.criteriaFiles.length && (!this.files?.pinCriteria || !this.files.validateCriteria))
+        return refuse({
+          code: 'CAPABILITY_DENIED',
+          message: 'recipe criteria files require the file broker',
+        });
+    }
     const runId = this.ids.next('run');
     const definition = planned.definition;
     const snapshot: RunSnapshot = {
@@ -621,6 +666,7 @@ export class Coordinator {
       activations: new Map(),
       handles: new Map(),
       rounds: new Map(),
+      recipes: new Map(),
       slots: { free: definition.limits.maxModelConcurrency, waiters: [], held: new Map() },
       taskOutcomes: new Map(),
       questions: new Map(),
@@ -1266,6 +1312,8 @@ export class Coordinator {
       if (!patchedModel) return refuse('CAPABILITY_DENIED', 'the pinned model is unavailable');
     } else if (change.kind === 'loop_limit') {
       if (node?.type !== 'loop') return refuse('SCHEMA_INVALID', 'loop_limit requires a Loop node');
+      if (node.reviewRecipe && change.maxIterations > recipeAttempts(node.reviewRecipe))
+        return refuse('LIMIT_REACHED', 'loop limit exceeds the pinned review recipe');
       if (change.maxIterations > this.policy.maxLoopIterations)
         return refuse('LIMIT_REACHED', 'loop cap exceeds installation policy');
       before = { maxIterations: run.plan.loops[node.id]?.maxIterations ?? node.maxIterations };
@@ -1279,6 +1327,11 @@ export class Coordinator {
       );
       after = { ...change.changes };
     } else {
+      if (run.snapshot.definition.nodes.some((node) => node.type === 'loop' && node.reviewRecipe))
+        return refuse(
+          'CRITERIA_CHANGE_REQUIRES_NEW_RUN',
+          'review recipe criteria require a new run',
+        );
       const current = run.pendingCriteriaVersionId ?? run.criteriaVersionId;
       if (change.baseCriteriaVersionId !== current)
         return refuse('STALE_CONTROL_REVISION', 'the criteria version changed');
@@ -1904,6 +1957,7 @@ export class Coordinator {
       }
     }
     if (TERMINAL_RUN_STATUSES.has(projection.status)) {
+      for (const recipe of run.recipes.values()) recipe.cancelDeadline();
       this.live.delete(run.runId);
       run.cancelDeadline();
       this.wake(run);
@@ -2122,6 +2176,26 @@ export class Coordinator {
         await this.boundary(run);
         const loop = run.plan.loops[loopId];
         if (!loop) throw new Error(`plan has no Loop ${loopId}`);
+        const node = run.snapshot.definition.nodes.find((node) => node.id === loopId);
+        if (node?.type === 'loop' && node.reviewRecipe && !run.recipes.has(loopId)) {
+          const recipe = node.reviewRecipe;
+          run.recipes.set(loopId, {
+            recipe,
+            candidates: new Map(),
+            cancelDeadline: this.timers.after(recipe.maxWallMs, () =>
+              this.stopRecipe(run, loopId, 'deadline'),
+            ),
+          });
+          if (recipe.criteriaFiles.length) {
+            try {
+              await this.files?.pinCriteria?.(run.runId, recipe.criteriaFiles);
+            } catch {
+              this.stopRecipe(run, loopId, 'criteria_changed');
+              throw new Error('recipe criteria changed');
+            }
+          }
+          await this.boundary(run);
+        }
         if (run.pendingCriteriaVersionId) {
           run.criteriaVersionId = run.pendingCriteriaVersionId;
           run.pendingCriteriaVersionId = null;
@@ -2161,9 +2235,214 @@ export class Coordinator {
         const round = run.rounds.get(loopId);
         if (round?.no !== no) throw new Error(`Loop ${loopId} round ${no} is not open`);
         this.commit(run, [this.roundFinished(run, loopId, round.iterationId, outcome)]);
+        if (outcome === 'pass') run.recipes.get(loopId)?.cancelDeadline();
         run.rounds.delete(loopId);
       },
     };
+  }
+
+  private recipeHead(run: LiveRun, loopNodeId: string, recipe: ReviewRecipeRevision) {
+    return {
+      loopNodeId,
+      recipeId: recipe.recipeId,
+      revision: recipe.revision,
+      recipeHash: hashOf(recipe),
+      criteriaVersionId: run.criteriaVersionId,
+    };
+  }
+
+  private stopRecipe(
+    run: LiveRun,
+    loopId: string,
+    reason: RecipeStopReason,
+    candidateVersionId?: string,
+  ) {
+    const state = run.recipes.get(loopId);
+    if (!state || TERMINAL_RUN_STATUSES.has(run.projection.status) || run.stop.aborted) return;
+    this.commit(run, [
+      {
+        type: 'recipe.stopped',
+        payload: {
+          ...this.recipeHead(run, loopId, state.recipe),
+          reason,
+          candidateVersionId:
+            candidateVersionId ?? [...state.candidates.values()].at(-1)?.artifactVersionId ?? null,
+        },
+      },
+    ]);
+    this.failRun(run, `review_recipe:${reason}`);
+  }
+
+  private recipeForExecution(run: LiveRun, executionId: string) {
+    const iterationId = run.projection.executions[executionId]?.iterationId;
+    const loopId = iterationId ? run.projection.iterations[iterationId]?.loopNodeId : undefined;
+    const state = loopId ? run.recipes.get(loopId) : undefined;
+    return loopId && state ? { loopId, state } : null;
+  }
+
+  private recipeUsage(run: LiveRun, loopId: string) {
+    const reservations = Object.values(run.projection.budget.reservations).filter(
+      (reservation) => this.recipeForExecution(run, reservation.scope)?.loopId === loopId,
+    );
+    const tokens = reservations.reduce(
+      (total, reservation) => total + (reservation.actual ?? reservation.reserved),
+      0,
+    );
+    return { calls: reservations.length, tokens };
+  }
+
+  private recipeAllowance(run: LiveRun, executionId: string): number {
+    const context = this.recipeForExecution(run, executionId);
+    if (!context) return Number.POSITIVE_INFINITY;
+    const { loopId, state } = context;
+    const { calls, tokens: used } = this.recipeUsage(run, loopId);
+    const reason =
+      calls >= state.recipe.maxModelCalls
+        ? 'call_limit'
+        : used >= state.recipe.maxOutputTokens
+          ? 'token_limit'
+          : null;
+    if (reason) {
+      this.stopRecipe(run, loopId, reason);
+      throw new Error(`review recipe stopped: ${reason}`);
+    }
+    return state.recipe.maxOutputTokens - used;
+  }
+
+  private recipeSubmission(
+    run: LiveRun,
+    input: AgentStartInput,
+    ids: string[],
+  ): RecipeStopReason | null {
+    const context = this.recipeForExecution(run, input.executionId);
+    if (!context || context.state.recipe.candidateNodeId !== input.nodeId) return null;
+    const { state } = context;
+    const artifactVersionId = ids[0];
+    const artifact = artifactVersionId ? run.projection.artifacts[artifactVersionId] : null;
+    if (ids.length !== 1 || !artifact || state.candidates.has(input.executionId))
+      return 'invalid_submission';
+    if (
+      !state.recipe.checkIds.length &&
+      [...state.candidates.values()].some(
+        (candidate) => candidate.contentHash === artifact.contentHash,
+      )
+    )
+      return 'repeated_output';
+    state.candidates.set(input.executionId, {
+      artifactVersionId: artifact.artifactVersionId,
+      contentHash: artifact.contentHash,
+      checks: [],
+      resultRefs: [],
+    });
+    return null;
+  }
+
+  private async recipeCriteriaValid(run: LiveRun, state: RecipeRun): Promise<boolean> {
+    if (!state.recipe.criteriaFiles.length) return true;
+    try {
+      return (await this.files?.validateCriteria?.(run.runId)) === true;
+    } catch {
+      return false;
+    }
+  }
+
+  private async recipeEvidenceProblem(
+    run: LiveRun,
+    loopId: string,
+    state: RecipeRun,
+    candidate: RecipeCandidate,
+  ): Promise<RecipeStopReason | null> {
+    const usage = this.recipeUsage(run, loopId);
+    if (usage.tokens > state.recipe.maxOutputTokens) return 'token_limit';
+    if (usage.calls > state.recipe.maxModelCalls) return 'call_limit';
+    if (!(await this.recipeCriteriaValid(run, state))) return 'criteria_changed';
+    if (candidate.checks.length !== state.recipe.checkIds.length) return 'check_error';
+    const tree = candidate.checks[0]?.tree;
+    try {
+      if (tree && (await this.files?.currentTreeForRun?.(run.runId)) !== tree) return 'check_stale';
+    } catch {
+      return 'check_stale';
+    }
+    return null;
+  }
+
+  private async recipeBoundaryProblem(
+    run: LiveRun,
+    loopId: string,
+    state: RecipeRun,
+    candidate: RecipeCandidate,
+  ): Promise<RecipeStopReason | null> {
+    for (;;) {
+      await this.boundary(run);
+      const problem = await this.recipeEvidenceProblem(run, loopId, state, candidate);
+      if (run.stop.aborted || TERMINAL_RUN_STATUSES.has(run.projection.status))
+        throw new Error('recipe cancelled');
+      if (run.projection.status === 'running') return problem;
+    }
+  }
+
+  private async checkRecipeSubmission(
+    run: LiveRun,
+    input: AgentStartInput,
+    invoke: (commandId: string) => Promise<ToolOutcome>,
+  ): Promise<RecipeStopReason | null> {
+    const context = this.recipeForExecution(run, input.executionId);
+    const candidate = context?.state.candidates.get(input.executionId);
+    if (!context || !candidate) return null;
+    const { state } = context;
+    if (!(await this.recipeCriteriaValid(run, state))) return 'criteria_changed';
+    for (const commandId of state.recipe.checkIds) {
+      if (run.stop.aborted || run.cancelRequested.has(input.executionId)) return 'check_error';
+      const outcome = await invoke(commandId);
+      if (!outcome.ok) return 'check_error';
+      const { stale, ...raw } = outcome.result;
+      const parsed = VerificationReport.safeParse(raw);
+      if (!parsed.success) return 'check_error';
+      const report = parsed.data;
+      if (
+        report.commandId !== commandId ||
+        report.configRevision !== input.harness?.projectTools?.revision ||
+        report.owner.kind !== 'execution' ||
+        report.owner.runId !== run.runId ||
+        report.owner.executionId !== input.executionId ||
+        report.owner.attemptNo !== input.attemptNo
+      )
+        return 'check_error';
+      if (stale !== false || candidate.checks.some((check) => check.tree !== report.tree))
+        return 'check_stale';
+      if (
+        report.state !== 'completed' ||
+        !report.cleanupConfirmed ||
+        report.targetUnchanged !== true ||
+        !['pass', 'fail'].includes(report.verdict)
+      )
+        return 'check_error';
+      candidate.checks.push(report);
+      candidate.resultRefs.push(`result_${outcome.toolCallId}`);
+    }
+    if (!(await this.recipeCriteriaValid(run, state))) return 'criteria_changed';
+    const tree = candidate.checks[0]?.tree;
+    if (tree && (await this.files?.currentTreeForRun?.(run.runId)) !== tree) return 'check_stale';
+    if (
+      tree &&
+      [...state.candidates.entries()].some(
+        ([owner, other]) =>
+          owner !== input.executionId &&
+          other.contentHash === candidate.contentHash &&
+          other.checks[0]?.tree === tree,
+      )
+    )
+      return 'repeated_output';
+    const failed = candidate.checks.filter((check) => check.verdict === 'fail');
+    if (failed.length) {
+      const signature = hashOf({
+        tree,
+        checks: failed.map((check) => ({ id: check.commandId, exitCode: check.exitCode })),
+      });
+      if (state.failureSignature === signature) return 'repeated_failure';
+      state.failureSignature = signature;
+    } else delete state.failureSignature;
+    return null;
   }
 
   private roundFinished(
@@ -2275,6 +2554,30 @@ export class Coordinator {
       },
       inputs: [...spec.given, ...this.resolveInputs(run, node.inputBindings, spec.iterationId)],
     };
+    const recipeLoop = spec.iterationId
+      ? run.projection.iterations[spec.iterationId]?.loopNodeId
+      : undefined;
+    const recipe = recipeLoop ? run.recipes.get(recipeLoop) : undefined;
+    if (
+      recipe &&
+      (node.id === recipe.recipe.candidateNodeId || role.id === recipe.recipe.evaluatorRoleId)
+    ) {
+      const candidate = [...recipe.candidates.values()].at(-1);
+      for (const [index, check] of (candidate?.checks ?? []).entries())
+        input.inputs.push({
+          name: `recipe_check_${check.commandId}`,
+          kind: 'explicit_version',
+          artifactVersionId: candidate?.resultRefs[index] ?? null,
+          text: canonicalJson({
+            verificationId: check.verificationId,
+            tree: check.tree,
+            verdict: check.verdict,
+            state: check.state,
+            output: check.output.text.slice(0, 2000),
+            truncated: check.output.truncated || check.output.text.length > 2000,
+          }),
+        });
+    }
     run.inputsByExecution.set(executionId, input.inputs);
     run.startInputs.set(executionId, input);
     run.assignments.set(executionId, spec);
@@ -2645,6 +2948,15 @@ export class Coordinator {
     }
     if (run.stop.aborted || TERMINAL_RUN_STATUSES.has(run.projection.status)) return;
     await this.boundary(run);
+    for (const [loopId, state] of run.recipes) {
+      const candidate = [...state.candidates.values()].at(-1);
+      if (!candidate || !versions.includes(candidate.artifactVersionId)) continue;
+      const problem = await this.recipeBoundaryProblem(run, loopId, state, candidate);
+      if (problem) {
+        this.stopRecipe(run, loopId, problem, candidate.artifactVersionId);
+        return;
+      }
+    }
     // The output and the run's success are one fact: readers never see one without the other.
     this.commit(run, [
       {
@@ -2690,6 +3002,45 @@ export class Coordinator {
     const reviewVersionId = bound[0];
     if (!reviewVersionId) throw new Error(`${nodeId} has no review to read`);
     const recorded = this.recordReview(run, reviewVersionId);
+    const recipe =
+      node && 'loopId' in node && node.loopId ? run.recipes.get(node.loopId) : undefined;
+    if (recipe && node && 'loopId' in node && node.loopId) {
+      const candidateExecution =
+        run.projection.nodeExecutions[recipe.recipe.candidateNodeId]?.at(-1);
+      const candidate = candidateExecution ? recipe.candidates.get(candidateExecution) : undefined;
+      if (
+        !candidate ||
+        recorded.targetVersionId !== candidate.artifactVersionId ||
+        recorded.verdict === 'inconclusive'
+      ) {
+        this.stopRecipe(run, node.loopId, 'review_invalid', candidate?.artifactVersionId);
+        throw new Error('review recipe stopped');
+      }
+      const problem = await this.recipeBoundaryProblem(run, node.loopId, recipe, candidate);
+      if (problem) {
+        this.stopRecipe(run, node.loopId, problem, candidate.artifactVersionId);
+        throw new Error('review recipe stopped');
+      }
+      const tree = candidate.checks[0]?.tree ?? null;
+      const verdict = candidate.checks.some((check) => check.verdict === 'fail')
+        ? 'revise'
+        : recorded.verdict;
+      this.commit(run, [
+        {
+          type: 'recipe.evaluated',
+          payload: {
+            ...this.recipeHead(run, node.loopId, recipe.recipe),
+            iterationId: round as string,
+            candidateVersionId: candidate.artifactVersionId,
+            reviewVersionId,
+            checkReportIds: candidate.checks.map((check) => check.verificationId),
+            tree,
+            verdict,
+          },
+        },
+      ]);
+      return verdict;
+    }
     if (run.pendingCriteriaVersionId) {
       const requested = this.requestApproval(run, 'user_action', [
         recorded.targetVersionId,
@@ -2948,6 +3299,15 @@ export class Coordinator {
     loopId: string,
     rounds: number,
   ): Promise<'continue' | 'stop'> {
+    const recipe = run.recipes.get(loopId)?.recipe;
+    if (recipe && rounds >= recipeAttempts(recipe)) {
+      this.stopRecipe(
+        run,
+        loopId,
+        recipe.maxAttempts <= recipe.maxRepairs + 1 ? 'attempt_limit' : 'repair_limit',
+      );
+      throw new Error('review recipe stopped');
+    }
     if (rounds >= this.policy.maxLoopIterations) {
       run.capStop = 'hard_cap';
       this.commit(run, [
@@ -3384,7 +3744,10 @@ export class Coordinator {
     // Authorized calls of this execution; each may run once.
     const authorized = new Map<string, { proposal: ToolProposal; ran: boolean }>();
 
-    const authorizeTool = async (proposal: ToolProposal): Promise<ToolAuthorization> => {
+    const authorizeTool = async (
+      proposal: ToolProposal,
+      automatic = false,
+    ): Promise<ToolAuthorization> => {
       if (harness && harnessState !== 'loaded') throw new Error('harness not loaded');
       // A caller cannot change the approved object while awaiting execution.
       if (harness) proposal = JSON.parse(canonicalJson(proposal)) as ToolProposal;
@@ -3412,7 +3775,7 @@ export class Coordinator {
         this.commit(run, [
           {
             type: 'tool.requested',
-            actor: agent,
+            actor: automatic ? RUNTIME : agent,
             executionId,
             payload: { executionId, toolCallId, name: proposal.name, validatedArgs: {} },
           },
@@ -3442,7 +3805,7 @@ export class Coordinator {
       this.commit(run, [
         {
           type: 'tool.requested',
-          actor: agent,
+          actor: automatic ? RUNTIME : agent,
           executionId,
           payload: {
             executionId,
@@ -3588,6 +3951,39 @@ export class Coordinator {
           return this.replyTool(run, input, call.proposal, tool);
         case 'read_artifact':
           return this.readTool(run, input, call.proposal, tool);
+      }
+      if (call.proposal.name === 'submit_result') {
+        let reason = this.recipeSubmission(
+          run,
+          input,
+          call.proposal.args.artifactVersionIds as string[],
+        );
+        if (!reason)
+          reason = await this.checkRecipeSubmission(run, input, async (commandId) => {
+            const authorized = await authorizeTool(
+              { name: 'run_check', args: { commandId } },
+              true,
+            );
+            return authorized.ok ? executeTool(authorized.toolCallId) : authorized;
+          });
+        await this.boundary(run, executionId);
+        requireActive();
+        if (reason) {
+          this.commit(run, [...tool.opening, ...tool.closing(null, reason)]);
+          const context = this.recipeForExecution(run, executionId);
+          if (context)
+            this.stopRecipe(
+              run,
+              context.loopId,
+              reason,
+              (call.proposal.args.artifactVersionIds as string[])[0],
+            );
+          return {
+            ok: false,
+            toolCallId,
+            error: { code: 'LIMIT_REACHED', message: `review recipe stopped: ${reason}` },
+          };
+        }
       }
       const { drafts, result, extra } = this.toolDrafts(
         run,
@@ -3821,6 +4217,7 @@ export class Coordinator {
         } while (run.projection.status !== 'running');
         requireActive();
         const view: ModelGateView = { projection: run.projection, limits: run.limits, input };
+        this.recipeAllowance(run, executionId);
         const request = runGates(this.gates['model.request'], view);
         if (request.kind === 'refuse') this.refuseModelRequest(run, request);
         if (request.kind === 'require_approval') {
@@ -3855,6 +4252,13 @@ export class Coordinator {
             await this.boundary(run, executionId);
           } while (run.projection.status !== 'running');
           requireActive();
+        } catch (error) {
+          this.releaseSlot(run);
+          throw error;
+        }
+        let recipeRemaining: number;
+        try {
+          recipeRemaining = this.recipeAllowance(run, executionId);
         } catch (error) {
           this.releaseSlot(run);
           throw error;
@@ -3897,6 +4301,7 @@ export class Coordinator {
           throw new Error(`LIMIT_REACHED: ${admitted.limitKind}`);
         }
         const modelCallId = this.ids.next('model_call');
+        admitted.maxOutputTokens = Math.min(admitted.maxOutputTokens, recipeRemaining);
         const contextSnapshotId = this.ids.next('context_snapshot');
         const effectId = this.ids.next('effect');
         run.slots.held.set(modelCallId, executionId);

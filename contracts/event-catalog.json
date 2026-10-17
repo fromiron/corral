@@ -283,5 +283,15 @@
     "type": "extension.ui_notified",
     "requiredContent": "executionId,kind,key,level,bodyRef,bodyHash",
     "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "recipe.evaluated",
+    "requiredContent": "loopNodeId,recipeId,revision,recipeHash,criteriaVersionId,iterationId,candidateVersionId,reviewVersionId,checkReportIds,tree,verdict",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "recipe.stopped",
+    "requiredContent": "loopNodeId,recipeId,revision,recipeHash,criteriaVersionId,candidateVersionId,reason",
+    "status": "payload_schema_to_implement"
   }
 ]

@@ -33,6 +33,7 @@ import {
   PiWriteInput,
   ProjectToolConfig,
   type RegisteredCheck,
+  ReviewRecipeRevision,
   type Scheduler,
   type VerificationOwner,
   VerificationReport,
@@ -272,6 +273,7 @@ interface WorktreeRow {
 }
 
 export class WorkspaceService implements FileTools {
+  private readonly criteria = new Map<string, ReviewRecipeRevision['criteriaFiles']>();
   private readonly lsp: Pick<LspRunner, 'query'>;
   private readonly io: MutationIo;
   readonly projectTools: SqliteProjectToolStore;
@@ -485,6 +487,25 @@ export class WorkspaceService implements FileTools {
         .run(JSON.stringify(saved.checks), this.clock.nowIso(), binding.id);
       return saved;
     })();
+  }
+
+  async criteriaFiles(
+    projectId: string,
+    paths: string[],
+  ): Promise<ReviewRecipeRevision['criteriaFiles']> {
+    const binding = this.binding(projectId);
+    if (!binding?.trusted)
+      throw new WorkspaceError(
+        'CAPABILITY_DENIED',
+        'trust the repository before configuring tools',
+      );
+    const files: ReviewRecipeRevision['criteriaFiles'] = [];
+    for (const path of paths)
+      files.push({
+        path: safeRelative(path),
+        sha256: sha256(await textBytes(binding.root_path, safeRelative(path))),
+      });
+    return ReviewRecipeRevision.shape.criteriaFiles.parse(files);
   }
 
   async inspectProjectTool(projectId: string, kind: 'check' | 'lsp', commandId: string) {
@@ -1485,6 +1506,45 @@ export class WorkspaceService implements FileTools {
     return this.worktreeOfRun(runId) !== null;
   }
 
+  async currentTreeForRun(runId: string): Promise<string | null> {
+    const found = this.worktreeOfRun(runId);
+    return found ? this.currentTree(found.sessionId) : null;
+  }
+
+  async pinCriteria(runId: string, raw: ReviewRecipeRevision['criteriaFiles']) {
+    const files = ReviewRecipeRevision.shape.criteriaFiles.parse(raw);
+    const current = this.criteria.get(runId);
+    if (current && canonicalJson(current) !== canonicalJson(files))
+      throw new ToolRefusal('REVISION_CONFLICT', 'recipe criteria are already pinned');
+    const found = this.worktreeOfRun(runId);
+    if (!found) throw new ToolRefusal('CAPABILITY_DENIED', 'criteria require a working copy');
+    await this.lease(found.row.worktree_path, async () => {
+      for (const file of files)
+        if (
+          sha256(await textBytes(found.row.worktree_path, safeRelative(file.path))) !== file.sha256
+        )
+          throw new ToolRefusal('REVISION_CONFLICT', 'recipe criteria changed');
+      this.criteria.set(runId, files);
+    });
+  }
+
+  async validateCriteria(runId: string): Promise<boolean> {
+    const files = this.criteria.get(runId);
+    if (!files) return false;
+    const found = this.worktreeOfRun(runId);
+    if (!found) return false;
+    try {
+      for (const file of files)
+        if (
+          sha256(await textBytes(found.row.worktree_path, safeRelative(file.path))) !== file.sha256
+        )
+          return false;
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   private lease<T>(worktree: string, work: () => Promise<T>): Promise<T> {
     const previous = this.leases.get(worktree) ?? Promise.resolve();
     const next = previous.then(work, work);
@@ -1666,6 +1726,15 @@ export class WorkspaceService implements FileTools {
     expectedBefore?: string,
   ): Promise<Record<string, unknown>> {
     const now = () => this.clock.nowIso();
+    const key = (path: string) => (process.platform === 'win32' ? path.toLowerCase() : path);
+    const targets = (
+      input.name === 'move_file' ? [input.args.from, input.args.to] : [input.args.path]
+    ).map((path) => key(safeRelative(String(path))));
+    if (this.criteria.get(input.runId)?.some((file) => targets.includes(key(file.path))))
+      throw new ToolRefusal(
+        'CAPABILITY_DENIED',
+        'recipe criteria files are immutable during this run',
+      );
     const opId = `fileop_${randomUUID().slice(0, 12)}`;
     const plan = (
       kind: 'write' | 'delete' | 'move',
