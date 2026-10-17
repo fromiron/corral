@@ -20,7 +20,7 @@ function Host({ className, ...props }: ComponentProps<'div'>) {
     <div
       data-slot="composer-host"
       className={cn(
-        'relative z-10 w-full rounded-3xl border border-line bg-raised shadow-composer',
+        'relative z-10 w-full rounded-2xl border border-line bg-raised shadow-composer transition-colors focus-within:border-muted/60',
         className,
       )}
       {...props}

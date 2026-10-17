@@ -801,6 +801,11 @@ export type FileSideView =
   | { kind: 'too_large'; bytes: number };
 
 export type FileBrowseScope = { kind: 'project' | 'session'; id: string };
+export interface PathSearchView {
+  items: { path: string; kind: 'file' | 'folder' }[];
+  truncated: boolean;
+}
+
 export interface FileListView {
   files: { path: string; bytes: number }[];
   truncated: boolean;
@@ -862,6 +867,12 @@ export class WorkspacesApi {
   }
   listFiles(scope: FileBrowseScope, path = ''): Promise<FileListView> {
     return this.send(`${this.browsePath(scope)}/files?${new URLSearchParams({ path })}`);
+  }
+  /** CR-016: files and folders whose path matches `query`, best first; names only. */
+  searchFiles(scope: FileBrowseScope, query: string, limit = 20): Promise<PathSearchView> {
+    return this.send(
+      `${this.browsePath(scope)}/search?${new URLSearchParams({ q: query, limit: String(limit) })}`,
+    );
   }
   readFile(scope: FileBrowseScope, path: string): Promise<{ path: string; content: FileSideView }> {
     return this.send(`${this.browsePath(scope)}/file?${new URLSearchParams({ path })}`);

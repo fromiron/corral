@@ -1,18 +1,11 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
+import { requestBox, startSession, teamFromTemplate } from './workbench.ts';
 
 async function openSession(page: Page) {
   await page.goto('/?delay=50');
-  await page
-    .getByRole('region', { name: 'Start from a template' })
-    .getByRole('article')
-    .filter({ hasText: 'Single agent' })
-    .getByRole('button', { name: 'Use this template' })
-    .click();
-  await page.getByRole('link', { name: 'Corrals', exact: true }).click();
-  await page.getByRole('button', { name: 'New session', exact: true }).click();
-  await page.getByLabel('Purpose').fill('Desktop workbench');
-  await page.getByRole('button', { name: 'Start session' }).click();
+  await teamFromTemplate(page);
+  await startSession(page, 'Desktop workbench');
 }
 
 test('[TC-UX-001-H] DW-08 narrow navigation contains focus and Escape restores its trigger', async ({
@@ -53,9 +46,9 @@ test('[TC-UX-001-H] DW-08 work, team design and settings fit the supported viewp
     { width: 390, height: 844 },
   ]) {
     await page.setViewportSize(viewport);
-    await page.goto(session);
-    for (const tab of ['Work', 'Team design']) {
-      await page.getByRole('tab', { name: tab, exact: true }).click();
+    for (const url of [session, `${session}?panel=run`]) {
+      await page.goto(url);
+      await expect(requestBox(page)).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
         true,
       );
@@ -91,7 +84,7 @@ test('[TC-UX-001-H] DW-01/02 the app shell keeps navigation and theme across ses
   await page.goto(sessionUrl);
   await expect(page.getByTestId('app-sidebar')).toBeVisible();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  await expect(page.getByRole('textbox', { name: 'Request', exact: true })).toBeVisible();
+  await expect(requestBox(page)).toBeVisible();
 });
 
 test('[TC-UX-001-H] DW-02/03 the composer stays docked while the conversation scrolls and drafts survive a tab change', async ({
@@ -99,7 +92,7 @@ test('[TC-UX-001-H] DW-02/03 the composer stays docked while the conversation sc
 }) => {
   await openSession(page);
   const composer = page.getByTestId('chat-composer');
-  const input = page.getByRole('textbox', { name: 'Request', exact: true });
+  const input = requestBox(page);
   await expect(composer).toBeVisible();
   await input.fill(
     Array.from({ length: 30 }, (_, i) => `Requirement ${i}: keep the conversation readable.`).join(
@@ -109,8 +102,13 @@ test('[TC-UX-001-H] DW-02/03 the composer stays docked while the conversation sc
   await input.press('Control+Enter');
   await expect(page.getByTestId('chat-timeline').getByText('Succeeded')).toBeVisible();
   await input.fill('Preserve this follow-up draft');
-  await page.getByRole('tab', { name: 'Team design', exact: true }).click();
-  await page.getByRole('tab', { name: 'Work', exact: true }).click();
+  // Away from the session and back: the draft is still there.
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(page).toHaveURL(/\/settings/);
+  await page
+    .getByTestId('app-sidebar')
+    .getByRole('link', { name: /^Desktop workbench/ })
+    .click();
   await expect(input).toHaveValue('Preserve this follow-up draft');
   const before = await composer.boundingBox();
   await page.getByTestId('chat-timeline').evaluate((node) => {
@@ -128,12 +126,16 @@ test('[TC-UX-001-H] DW-05 a file opens in a remembered tab and its line referenc
   page,
 }) => {
   await openSession(page);
+  await page.getByRole('button', { name: 'Show the panel', exact: true }).click();
   await page.getByRole('tab', { name: 'Files', exact: true }).click();
   await expect(page.getByText('Link a work folder to browse files.')).toBeVisible();
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('link', { name: 'Work folder', exact: true }).click();
   await page.getByRole('button', { name: 'Link folder', exact: true }).click();
-  await page.getByRole('link', { name: /^Desktop workbench/ }).click();
+  await page
+    .getByTestId('app-sidebar')
+    .getByRole('link', { name: /^Desktop workbench/ })
+    .click();
   await expect(page.getByRole('tab', { name: 'Files', exact: true })).toHaveAttribute(
     'aria-selected',
     'true',
@@ -145,13 +147,10 @@ test('[TC-UX-001-H] DW-05 a file opens in a remembered tab and its line referenc
       .getByRole('region', { name: 'File content', exact: true })
       .getByText('# Release notes', { exact: true }),
   ).toBeVisible();
-  await expect(page.getByRole('textbox', { name: 'Request', exact: true })).toHaveValue(
-    'Desktop workbench',
-  );
+  await expect(requestBox(page)).toHaveValue('Desktop workbench');
   await page.getByRole('button', { name: 'Reference lines', exact: true }).click();
-  await expect(page.getByRole('textbox', { name: 'Request', exact: true })).toHaveValue(
-    '@README.md:L1 Desktop workbench',
-  );
+  await expect(requestBox(page)).toHaveValue('@README.md:L1 Desktop workbench');
+  await expect(page.getByRole('list', { name: 'References' })).toContainText('README.md:L1');
   await page.getByRole('tab', { name: 'Changes', exact: true }).click();
   await page.getByRole('tab', { name: 'Files', exact: true }).click();
   await expect(page.getByRole('tab', { name: 'README.md', exact: true })).toHaveAttribute(
@@ -166,10 +165,12 @@ test('[TC-UX-001-H] DW-05 a file opens in a remembered tab and its line referenc
     'aria-selected',
     'true',
   );
-  const request = page.getByRole('textbox', { name: 'Request', exact: true });
-  await request.fill('@src/');
-  await expect(page.getByRole('listbox', { name: 'File references' })).toBeVisible();
+  const request = requestBox(page);
+  await request.fill('@version');
+  await expect(page.getByRole('listbox', { name: 'References' })).toBeVisible();
   await request.press('Enter');
   await expect(request).toHaveValue('@src/version.ts ');
+  await request.fill('@src');
+  await expect(page.getByRole('option', { name: /^src\/?$/ }).first()).toBeVisible();
   await expect(page.getByTestId('chat-timeline').getByRole('article')).toHaveCount(0);
 });

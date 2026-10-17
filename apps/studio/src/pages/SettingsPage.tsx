@@ -3,7 +3,8 @@ import { Button } from '@corral/react/ui';
 import { Link } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
-import { DesktopWorkspace } from '../desktop.tsx';
+import { ShortcutTable } from '../CommandPalette.tsx';
+import { DesktopWorkspace, desktop } from '../desktop.tsx';
 import { LOCALES, type Locale, useLocale } from '../locale.tsx';
 import { useCurrentProject } from '../projects.ts';
 import { settingsRoute } from '../router.tsx';
@@ -51,7 +52,7 @@ export function SettingsLayout({ children, active }: { children: ReactNode; acti
 export function SettingsPage() {
   const t = useTranslations('Desktop');
   const { section = 'general' } = settingsRoute.useSearch();
-  const { theme } = usePreferences();
+  const { theme, sendKey, notify } = usePreferences();
   const { locale, setLocale } = useLocale();
   const project = useCurrentProject();
   return (
@@ -91,6 +92,47 @@ export function SettingsPage() {
             </section>
             <section className="settings-row">
               <div>
+                <h3>{t('sendKey')}</h3>
+                <p>{t('sendKeyHint')}</p>
+              </div>
+              <fieldset className="flex rounded-xl bg-surface p-1">
+                <legend className="sr-only">{t('sendKey')}</legend>
+                {(['enter', 'mod-enter'] as const).map((value) => (
+                  <label
+                    key={value}
+                    className={`relative flex cursor-pointer items-center rounded-lg px-3 py-2 text-xs focus-within:outline-2 focus-within:outline-accent ${sendKey === value ? 'bg-raised text-text shadow-sm' : 'text-muted'}`}
+                  >
+                    <input
+                      type="radio"
+                      name="send-key"
+                      className="absolute inset-0 size-full cursor-pointer opacity-0"
+                      value={value}
+                      checked={sendKey === value}
+                      onChange={() => changePreferences({ sendKey: value })}
+                    />
+                    {value === 'enter' ? t('sendEnter') : t('sendModEnter')}
+                  </label>
+                ))}
+              </fieldset>
+            </section>
+            {desktop ? (
+              <section className="settings-row">
+                <div>
+                  <h3>{t('notifySetting')}</h3>
+                  <p>{t('notifyHint')}</p>
+                </div>
+                <label className="flex items-center gap-2 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={notify}
+                    onChange={(e) => changePreferences({ notify: e.target.checked })}
+                  />
+                  {t('notifyOn')}
+                </label>
+              </section>
+            ) : null}
+            <section className="settings-row">
+              <div>
                 <h3>{t('language')}</h3>
                 <p>{t('languageHint')}</p>
               </div>
@@ -114,22 +156,9 @@ export function SettingsPage() {
             <WorkFolderSection projectId={project} />
           </>
         ) : section === 'shortcuts' ? (
-          <dl className="space-y-3">
-            {[
-              [t('search'), 'Ctrl / ⌘ K'],
-              [t('send'), 'Ctrl / ⌘ Enter'],
-              [t('newLine'), 'Enter'],
-              [t('closeMenu'), 'Esc'],
-              [t('tabNavigation'), '← →'],
-            ].map(([label, key]) => (
-              <div key={key} className="settings-row">
-                <dt>{label}</dt>
-                <dd>
-                  <kbd className="rounded border border-line px-2 py-1 text-xs">{key}</kbd>
-                </dd>
-              </div>
-            ))}
-          </dl>
+          <section className="rounded-xl bg-raised p-5">
+            <ShortcutTable />
+          </section>
         ) : (
           <>
             <div className="flex items-center gap-3">

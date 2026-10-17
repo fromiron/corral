@@ -36,6 +36,7 @@ export {
   resolveDecisionSettings,
 } from './decisions/index.ts';
 export { definitionHash } from './definition-hash.ts';
+export * from './fuzzy.ts';
 export * from './history.ts';
 export * from './limits.ts';
 export * from './projection.ts';

@@ -1,5 +1,5 @@
 import type { ReviewCommentView } from '@corral/client';
-import { Button } from '@corral/react/ui';
+import { Button, Select } from '@corral/react/ui';
 import type { CodeViewItem, FileDiffMetadata, SelectedLineRange } from '@pierre/diffs';
 import { CodeView, WorkerPoolContextProvider } from '@pierre/diffs/react';
 import HighlightWorker from '@pierre/diffs/worker/worker.js?worker';
@@ -131,21 +131,16 @@ export function DiffCode({
     <div className="space-y-2" data-testid="pierre-diff">
       {onComment ? (
         <div className="flex flex-wrap items-center gap-2 text-xs">
-          <select
-            aria-label={td('commentSide')}
+          <Select
+            label={td('commentSide')}
+            size="xs"
             value={range.side ?? 'additions'}
-            onChange={(e) =>
-              setRange((r) => ({
-                ...r,
-                side: e.target.value as 'deletions' | 'additions',
-                endSide: undefined,
-              }))
-            }
-            className="rounded border border-line bg-surface px-1 py-1"
-          >
-            <option value="deletions">{tf('before')}</option>
-            <option value="additions">{tf('after')}</option>
-          </select>
+            onValueChange={(side) => setRange((r) => ({ ...r, side, endSide: undefined }))}
+            options={[
+              { value: 'deletions' as const, label: tf('before') },
+              { value: 'additions' as const, label: tf('after') },
+            ]}
+          />
           <label>
             {td('fromLine')}{' '}
             <input

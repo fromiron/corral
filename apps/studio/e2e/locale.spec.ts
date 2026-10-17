@@ -27,7 +27,7 @@ test.describe('a Korean browser', () => {
     page,
   }) => {
     await page.goto('/demo?delay=200');
-    await expect(page.getByText('데모 / 시뮬레이션 에이전트')).toBeVisible();
+    await expect(page.getByText('데모 · 시뮬레이션', { exact: true })).toBeVisible();
     await expect(page.getByRole('region', { name: '데모 안내' })).toBeVisible();
     await page.getByRole('button', { name: '실행', exact: true }).click();
     await expect(page.getByTestId('run-status')).toContainText(/진행 중|결정 대기|성공/);

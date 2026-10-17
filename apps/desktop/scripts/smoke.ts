@@ -50,8 +50,18 @@ try {
   page.on('pageerror', (error) => errors.push(error.message));
   console.log('Window attached');
   await page.waitForURL(/^http:\/\/127\.0\.0\.1:\d+\//, { timeout: 30000 });
-  await expect(page.getByRole('button', { name: 'Close window' })).toBeVisible();
-  await page.getByRole('button', { name: 'Maximize or restore window' }).click();
+  // CR-017: the system draws the window buttons over the top bar; Studio draws none of its own.
+  await expect(page.getByRole('button', { name: 'Close window' })).toHaveCount(0);
+  console.log(
+    'Window controls overlay:',
+    await page.evaluate(
+      () =>
+        (navigator as unknown as { windowControlsOverlay?: { visible: boolean } })
+          .windowControlsOverlay?.visible ?? 'unsupported',
+    ),
+  );
+  // Double-clicking the empty top bar maximizes, as a system title bar does.
+  await page.getByRole('banner').dispatchEvent('dblclick');
   await expect
     .poll(() =>
       application?.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.isMaximized()),
@@ -69,7 +79,16 @@ try {
     true,
     'second launch preserves the existing window',
   );
-  await page.getByRole('button', { name: 'Maximize or restore window' }).click();
+  await page.getByRole('banner').dispatchEvent('dblclick');
+  // CR-017: a native menu item runs the page's own command (the palette here).
+  await application.evaluate(({ Menu }) => {
+    const find = (items: Electron.MenuItem[]): Electron.MenuItem | undefined =>
+      items.find((item) => item.label === 'Command palette') ??
+      items.flatMap((item) => (item.submenu ? [find(item.submenu.items)] : [])).find(Boolean);
+    find(Menu.getApplicationMenu()?.items ?? [])?.click();
+  });
+  await expect(page.getByRole('dialog', { name: 'Command palette' })).toBeVisible();
+  await page.keyboard.press('Escape');
   await page
     .getByRole('region', { name: 'Start from a template' })
     .getByRole('article')
@@ -77,11 +96,10 @@ try {
     .getByRole('button', { name: 'Use this template' })
     .click();
   await page.getByRole('link', { name: 'Corrals', exact: true }).click();
-  await page.getByRole('button', { name: 'New session', exact: true }).click();
   await page.getByLabel('Purpose').fill('Desktop packaged smoke');
   await page.getByRole('button', { name: 'Start session' }).click();
   await page
-    .getByRole('textbox', { name: 'Request', exact: true })
+    .getByRole('combobox', { name: 'Request', exact: true })
     .fill('Write a short desktop smoke note.');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await page.getByRole('button', { name: 'Pause run', exact: true }).click();
@@ -94,7 +112,9 @@ try {
       return { response: 0, checkboxChecked: false };
     };
   });
-  await page.getByRole('button', { name: 'Close window' }).click();
+  const closeWindow = () =>
+    application?.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.close());
+  await closeWindow();
   await expect
     .poll(() =>
       application?.evaluate(
@@ -109,17 +129,25 @@ try {
   ).toBeVisible({ timeout: 30000 });
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('radio', { name: 'Dark', exact: true }).check();
+  // CR-017: the window follows the page's theme.
+  await expect
+    .poll(() =>
+      application?.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0]?.getBackgroundColor().toLowerCase(),
+      ),
+    )
+    .toBe('#151615');
   await page
     .getByTestId('app-sidebar')
     .getByRole('link', { name: /^Desktop packaged smoke/ })
     .click();
   await page
-    .getByRole('textbox', { name: 'Request', exact: true })
+    .getByRole('combobox', { name: 'Request', exact: true })
     .fill('A draft preserved across restart');
   mkdirSync(join(desktop, 'release'), { recursive: true });
   await page.screenshot({ path: join(desktop, 'release/desktop-smoke.png') });
   const closed = application.waitForEvent('close');
-  await page.getByRole('button', { name: 'Close window' }).click();
+  await closeWindow();
   await closed;
   console.log('Launching isolated app');
   application = await launch();
@@ -128,7 +156,7 @@ try {
   await expect(
     restored.getByTestId('chat-timeline').getByText('Succeeded', { exact: false }),
   ).toBeVisible();
-  await expect(restored.getByRole('textbox', { name: 'Request', exact: true })).toHaveValue(
+  await expect(restored.getByRole('combobox', { name: 'Request', exact: true })).toHaveValue(
     'A draft preserved across restart',
   );
   await expect(restored.locator('html')).toHaveAttribute('data-theme', 'dark');
@@ -171,7 +199,7 @@ try {
       .filter({ hasText: 'Not finished (Interrupted)' }),
   ).toBeVisible();
   await expect(restored.getByRole('button', { name: 'Resume run', exact: true })).toHaveCount(0);
-  await restored.getByRole('textbox', { name: 'Request', exact: true }).fill('Quit while paused');
+  await restored.getByRole('combobox', { name: 'Request', exact: true }).fill('Quit while paused');
   await restored.getByRole('button', { name: 'Send', exact: true }).click();
   await restored.getByRole('button', { name: 'Pause run', exact: true }).click();
   await expect(restored.getByRole('button', { name: 'Resume run', exact: true })).toBeVisible();
@@ -179,7 +207,7 @@ try {
     dialog.showMessageBox = async () => ({ response: 1, checkboxChecked: false });
   });
   const stopped = application.waitForEvent('close');
-  await restored.getByRole('button', { name: 'Close window' }).click();
+  await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.close());
   await stopped;
   console.log('Active-run quit accepted; checking failed startup');
   const stateFile = join(data, 'desktop.json');

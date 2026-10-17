@@ -6,14 +6,28 @@ import {
   type WorkSession,
 } from '@corral/core';
 import { arrangeDraft, draftLayout, emptyDraft, importDocuments, StatusBadge } from '@corral/react';
-import { Link, useNavigate, useRouter } from '@tanstack/react-router';
-import { type ChangeEvent, type FormEvent, useEffect, useState } from 'react';
+import { Ellipsis } from '@corral/react/icons';
+import {
+  Button,
+  buttonVariants,
+  Input,
+  Menu,
+  MenuItem,
+  MenuPopup,
+  MenuSeparator,
+  MenuTrigger,
+  Select,
+} from '@corral/react/ui';
+import { Link, useNavigate, useRouter, useRouterState } from '@tanstack/react-router';
+import { type ChangeEvent, type FormEvent, useEffect, useRef, useState } from 'react';
 import { useFormatter, useNow, useTranslations } from 'use-intl';
 import { projectName, projectsChanged, setCurrentProject } from '../projects.ts';
 import { workspaceRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
 import { TeamDraftDialog } from '../TeamDraftDialog.tsx';
 import { createFromTemplate, WORKSPACE_TEMPLATES } from '../templates.ts';
+import { ComposerSurface } from '../workbench/ComposerSurface.tsx';
+import { isSendKey, usePreferences } from '../workbench/preferences.ts';
 import { writeDraft } from '../workbench/sessionDraft.ts';
 import { InboxSection, WorkFolderSection } from './FilesViews.tsx';
 import { GettingStarted } from './GettingStarted.tsx';
@@ -115,62 +129,241 @@ export function WorkspacePage() {
     await router.invalidate();
   };
 
+  const teamsPanel = (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 id="corrals" className="text-base font-semibold">
+          {t('heading')}
+        </h2>
+        <div className={`flex items-center gap-2 ${archived ? 'hidden' : ''}`}>
+          <label
+            className={buttonVariants({
+              variant: 'outline',
+              size: 'sm',
+              className: 'cursor-pointer focus-within:ring-2 focus-within:ring-ring',
+            })}
+          >
+            {t('import')}
+            <input
+              type="file"
+              accept=".json,application/json"
+              multiple
+              onChange={onImport}
+              className="sr-only"
+            />
+          </label>
+          <Button variant="outline" size="sm" onClick={() => setDrafting(true)}>
+            {t('draftFromGoal')}
+          </Button>
+          <Button size="sm" onClick={openNew}>
+            {t('new')}
+          </Button>
+        </div>
+      </div>
+      <p className="text-xs text-muted">
+        {mode === 'server'
+          ? t('storedOnServer')
+          : persistent
+            ? t('storedLocally')
+            : t('notPersistent')}{' '}
+        {t('importHint')}
+      </p>
+      <GettingStarted
+        corrals={totals.corrals}
+        runs={totals.runs}
+        onDraft={() => setDrafting(true)}
+      />
+      {corrals.length === 0 ? (
+        <div className="flex flex-col gap-1 rounded-lg border border-dashed border-line p-4">
+          <p className="text-sm font-medium">{t('empty')}</p>
+          <p className="text-sm text-muted">{t('emptyHint')}</p>
+        </div>
+      ) : (
+        <ul className="flex flex-col" aria-label={t('heading')}>
+          {corrals.map((corral) => (
+            <li
+              key={corral.corralId}
+              className="flex flex-wrap items-center justify-between gap-2 border-b border-line/50 py-2.5 last:border-b-0"
+            >
+              <div className="flex min-w-0 flex-col">
+                <Link
+                  to="/corrals/$corralId/edit"
+                  params={{ corralId: corral.corralId }}
+                  className="font-medium hover:underline"
+                >
+                  {corral.name}
+                </Link>
+                <span className="text-xs text-muted">
+                  {t('revisions', {
+                    definition: corral.definitionRevision,
+                    layout: corral.layoutRevision,
+                    nodes: corral.nodeCount,
+                  })}{' '}
+                  ·{' '}
+                  {t('updated', {
+                    time: format.relativeTime(new Date(corral.updatedAt), now),
+                  })}
+                </span>
+              </div>
+              <div className="flex items-center gap-1 text-xs">
+                <MoveCorral
+                  name={corral.name}
+                  current={projectId}
+                  projects={projects}
+                  onMove={(to) => void move(corral.corralId, to)}
+                />
+                <Button
+                  variant="ghost-muted"
+                  size="xs"
+                  onClick={() => duplicate(corral.corralId, corral.name)}
+                >
+                  {t('duplicate')}
+                </Button>
+                {confirming === corral.corralId ? (
+                  <>
+                    <Button
+                      variant="destructive-outline"
+                      size="xs"
+                      onClick={() => remove(corral.corralId)}
+                    >
+                      {t('confirmDelete')}
+                    </Button>
+                    <Button variant="ghost-muted" size="xs" onClick={() => setConfirming(null)}>
+                      {t('cancel')}
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    variant="ghost-destructive"
+                    size="xs"
+                    onClick={() => setConfirming(corral.corralId)}
+                  >
+                    {t('delete')}
+                  </Button>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      <section
+        aria-labelledby="templates-heading"
+        hidden={archived}
+        className="flex flex-col gap-2"
+      >
+        <h3 id="templates-heading" className="text-ui font-semibold">
+          {t('templatesHeading')}
+        </h3>
+        <div className="grid gap-2 sm:grid-cols-3">
+          {WORKSPACE_TEMPLATES.map((id) => (
+            <article
+              key={id}
+              aria-labelledby={`template-${id}`}
+              className="flex flex-col gap-2 rounded-lg border border-line/70 p-3"
+            >
+              <h4 id={`template-${id}`} className="text-ui font-medium">
+                {t(`template.${id}.name`)}
+              </h4>
+              <p className="flex-1 text-xs text-muted">{t(`template.${id}.body`)}</p>
+              <Button
+                variant="outline"
+                size="xs"
+                className="self-start"
+                onClick={async () => {
+                  const created = await createFromTemplate(repository, id, t('newName'), projectId);
+                  if (!created.ok) return setErrors([created.message]);
+                  await navigate({
+                    to: '/corrals/$corralId/edit',
+                    params: { corralId: created.corralId },
+                  });
+                }}
+              >
+                {t('useTemplate')}
+              </Button>
+            </article>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+
+  const runsPanel = (
+    <section aria-labelledby="runs-heading" className="flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <h2 id="runs-heading" className="text-base font-semibold">
+          {t('runsHeading')}
+        </h2>
+        {picked.length === 2 ? (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              void navigate({ to: '/compare', search: { a: picked[0], b: picked[1] } })
+            }
+          >
+            {tc('choose', { count: 2 })}
+          </Button>
+        ) : null}
+      </div>
+      {runs.length === 0 ? (
+        <p className="text-sm text-muted">{t('runsEmpty')}</p>
+      ) : (
+        <ul className="flex flex-col" aria-labelledby="runs-heading">
+          {runs.map((run) => {
+            const corral = corrals.find((c) => c.corralId === run.corralId);
+            return (
+              <li
+                key={run.runId}
+                className="flex flex-wrap items-center gap-3 border-b border-line/50 py-2 text-sm last:border-b-0"
+              >
+                <input
+                  type="checkbox"
+                  aria-label={tc('select', { runId: run.runId })}
+                  checked={picked.includes(run.runId)}
+                  onChange={(e) => pick(run.runId, e.target.checked)}
+                />
+                <StatusBadge status={run.status} />
+                <Link
+                  to="/runs/$runId"
+                  params={{ runId: run.runId }}
+                  className="font-mono text-xs hover:underline"
+                >
+                  {run.runId}
+                </Link>
+                <span className="text-xs text-muted">
+                  {corral?.name ?? run.corralId} ·{' '}
+                  {t('runStarted', {
+                    time: format.relativeTime(new Date(run.startedAt), now),
+                  })}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+
   return (
     <WorkbenchLayout
       main={
         <main className="min-h-0 flex-1 overflow-auto">
-          <div className="mx-auto flex max-w-4xl flex-col gap-4 p-6">
+          <div className="mx-auto flex max-w-3xl flex-col gap-6 px-6 pt-10 pb-12">
             <ProjectHeader project={project} onError={(message) => setErrors([message])} />
+            {archived ? null : (
+              <StartSession
+                key={newSession ? 'new' : 'start'}
+                focus={Boolean(newSession)}
+                projectId={projectId}
+                corrals={corrals}
+              />
+            )}
             <InboxSection projectId={projectId} />
-            <WorkFolderSection projectId={projectId} />
-            <SessionsSection
-              key={newSession ? 'new' : 'list'}
-              openForm={Boolean(newSession)}
-              projectId={projectId}
-              archived={archived}
-              sessions={sessions}
-              corrals={corrals}
-              runs={runs}
-            />
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 id="corrals" className="text-lg font-semibold">
-                {t('heading')}
-              </h2>
-              <div className={`flex items-center gap-2 ${archived ? 'hidden' : ''}`}>
-                <label className="cursor-pointer rounded-md border border-line px-3 py-1.5 text-sm focus-within:outline-2 focus-within:outline-accent">
-                  {t('import')}
-                  <input
-                    type="file"
-                    accept=".json,application/json"
-                    multiple
-                    onChange={onImport}
-                    className="sr-only"
-                  />
-                </label>
-                <button
-                  type="button"
-                  onClick={openNew}
-                  className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent"
-                >
-                  {t('new')}
-                </button>
-              </div>
-            </div>
-            <p className="text-xs text-muted">
-              {mode === 'server'
-                ? t('storedOnServer')
-                : persistent
-                  ? t('storedLocally')
-                  : t('notPersistent')}
-            </p>
-            <p className="text-xs text-muted">{t('importHint')}</p>
-            <GettingStarted
-              corrals={totals.corrals}
-              runs={totals.runs}
-              onDraft={() => setDrafting(true)}
-            />
             {errors.length > 0 ? (
-              <div role="alert" className="rounded-md border border-danger p-3 text-sm text-danger">
+              <div
+                role="alert"
+                className="rounded-lg border border-danger/50 p-3 text-sm text-danger"
+              >
                 <p>{t('importFailed')}</p>
                 <ul className="list-disc pl-5">
                   {errors.map((error) => (
@@ -179,201 +372,96 @@ export function WorkspacePage() {
                 </ul>
               </div>
             ) : null}
-            {corrals.length === 0 ? (
-              <div className="flex flex-col gap-1 rounded-md border border-dashed border-line p-4">
-                <p className="text-sm font-medium">{t('empty')}</p>
-                <p className="text-sm text-muted">{t('emptyHint')}</p>
-              </div>
-            ) : (
-              <ul className="flex flex-col gap-2" aria-label={t('heading')}>
-                {corrals.map((corral) => (
-                  <li
-                    key={corral.corralId}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line bg-raised p-3"
-                  >
-                    <div className="flex flex-col">
-                      <Link
-                        to="/corrals/$corralId/edit"
-                        params={{ corralId: corral.corralId }}
-                        className="font-medium underline-offset-4 hover:underline"
-                      >
-                        {corral.name}
-                      </Link>
-                      <span className="text-xs text-muted">
-                        {t('revisions', {
-                          definition: corral.definitionRevision,
-                          layout: corral.layoutRevision,
-                          nodes: corral.nodeCount,
-                        })}{' '}
-                        ·{' '}
-                        {t('updated', {
-                          time: format.relativeTime(new Date(corral.updatedAt), now),
-                        })}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 text-xs">
-                      <MoveCorral
-                        name={corral.name}
-                        current={projectId}
-                        projects={projects}
-                        onMove={(to) => void move(corral.corralId, to)}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => duplicate(corral.corralId, corral.name)}
-                        className="rounded border border-line px-2 py-1"
-                      >
-                        {t('duplicate')}
-                      </button>
-                      {confirming === corral.corralId ? (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => remove(corral.corralId)}
-                            className="rounded border border-danger px-2 py-1 text-danger"
-                          >
-                            {t('confirmDelete')}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setConfirming(null)}
-                            className="rounded border border-line px-2 py-1"
-                          >
-                            {t('cancel')}
-                          </button>
-                        </>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => setConfirming(corral.corralId)}
-                          className="rounded border border-line px-2 py-1"
-                        >
-                          {t('delete')}
-                        </button>
-                      )}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <section
-              aria-labelledby="goal-heading"
-              hidden={archived}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-accent/60 bg-raised p-3"
-            >
-              <div className="flex flex-col gap-1">
-                <h2 id="goal-heading" className="text-sm font-semibold">
-                  {t('template.goal.name')}
-                </h2>
-                <p className="text-xs text-muted">{t('template.goal.body')}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setDrafting(true)}
-                className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent"
-              >
-                {t('draftFromGoal')}
-              </button>
-            </section>
-            <section
-              aria-labelledby="templates-heading"
-              hidden={archived}
-              className="flex flex-col gap-2"
-            >
-              <h2 id="templates-heading" className="text-lg font-semibold">
-                {t('templatesHeading')}
-              </h2>
-              <div className="grid gap-2 sm:grid-cols-3">
-                {WORKSPACE_TEMPLATES.map((id) => (
-                  <article
-                    key={id}
-                    aria-labelledby={`template-${id}`}
-                    className="flex flex-col gap-2 rounded-md border border-line bg-raised p-3"
-                  >
-                    <h3 id={`template-${id}`} className="text-sm font-semibold">
-                      {t(`template.${id}.name`)}
-                    </h3>
-                    <p className="flex-1 text-xs text-muted">{t(`template.${id}.body`)}</p>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        const created = await createFromTemplate(
-                          repository,
-                          id,
-                          t('newName'),
-                          projectId,
-                        );
-                        if (!created.ok) return setErrors([created.message]);
-                        await navigate({
-                          to: '/corrals/$corralId/edit',
-                          params: { corralId: created.corralId },
-                        });
-                      }}
-                      className="self-start rounded-md border border-accent px-2 py-1 text-xs text-accent"
-                    >
-                      {t('useTemplate')}
-                    </button>
-                  </article>
-                ))}
-              </div>
-            </section>
-            <section aria-labelledby="runs-heading" className="flex flex-col gap-2">
-              <h2 id="runs-heading" className="text-lg font-semibold">
-                {t('runsHeading')}
-              </h2>
-              {picked.length === 2 ? (
-                <button
-                  type="button"
-                  onClick={() =>
-                    void navigate({ to: '/compare', search: { a: picked[0], b: picked[1] } })
-                  }
-                  className="self-start rounded-md border border-accent px-3 py-1.5 text-sm text-accent"
-                >
-                  {tc('choose', { count: 2 })}
-                </button>
-              ) : null}
-              {runs.length === 0 ? (
-                <p className="text-sm text-muted">{t('runsEmpty')}</p>
-              ) : (
-                <ul className="flex flex-col gap-1" aria-labelledby="runs-heading">
-                  {runs.map((run) => {
-                    const corral = corrals.find((c) => c.corralId === run.corralId);
-                    return (
-                      <li
-                        key={run.runId}
-                        className="flex flex-wrap items-center gap-3 rounded-md border border-line px-3 py-2 text-sm"
-                      >
-                        <input
-                          type="checkbox"
-                          aria-label={tc('select', { runId: run.runId })}
-                          checked={picked.includes(run.runId)}
-                          onChange={(e) => pick(run.runId, e.target.checked)}
-                        />
-                        <StatusBadge status={run.status} />
-                        <Link
-                          to="/runs/$runId"
-                          params={{ runId: run.runId }}
-                          className="font-mono text-xs underline"
-                        >
-                          {run.runId}
-                        </Link>
-                        <span className="text-xs text-muted">
-                          {corral?.name ?? run.corralId} ·{' '}
-                          {t('runStarted', {
-                            time: format.relativeTime(new Date(run.startedAt), now),
-                          })}
-                        </span>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </section>
+            <ProjectTabs
+              sessions={<SessionList sessions={sessions} runs={runs} />}
+              teams={teamsPanel}
+              folder={<WorkFolderSection projectId={projectId} />}
+              runs={runsPanel}
+              counts={{
+                sessions: sessions.filter((x) => !x.archivedAt).length,
+                teams: corrals.length,
+                runs: runs.length,
+              }}
+              projectId={projectId}
+            />
             {drafting ? <TeamDraftDialog onClose={closeDraft} projectId={projectId} /> : null}
           </div>
         </main>
       }
     />
+  );
+}
+
+type ProjectTab = 'sessions' | 'teams' | 'folder' | 'runs';
+
+/** The project's lists and settings, one at a time; the choice is remembered per project. */
+function ProjectTabs({
+  sessions,
+  teams,
+  folder,
+  runs,
+  counts,
+  projectId,
+}: {
+  sessions: React.ReactNode;
+  teams: React.ReactNode;
+  folder: React.ReactNode;
+  runs: React.ReactNode;
+  counts: { sessions: number; teams: number; runs: number };
+  projectId: string;
+}) {
+  const t = useTranslations('Projects');
+  const location = useRouterState({ select: (s) => s.location.hash });
+  const tabs: ProjectTab[] = ['sessions', 'teams', 'folder', 'runs'];
+  const [saved, setTab] = useRemembered<ProjectTab | null>(`corral:project-tab:${projectId}`, null);
+  // A link to #corrals (the team library) opens the teams tab. Until the person picks a tab,
+  // a project without sessions opens on its teams: setting one up is the next step there.
+  const tab: ProjectTab =
+    location === 'corrals'
+      ? 'teams'
+      : saved && tabs.includes(saved)
+        ? saved
+        : counts.sessions > 0
+          ? 'sessions'
+          : 'teams';
+  const refs = useRef<Partial<Record<ProjectTab, HTMLButtonElement | null>>>({});
+  const count = (value: ProjectTab) =>
+    value === 'folder' ? null : counts[value as 'sessions' | 'teams' | 'runs'];
+  return (
+    <div className="flex flex-col gap-4">
+      <div role="tablist" aria-label={t('sections')} className="flex gap-1 border-b border-line/60">
+        {tabs.map((value, index) => (
+          <button
+            key={value}
+            ref={(el) => {
+              refs.current[value] = el;
+            }}
+            type="button"
+            role="tab"
+            id={`project-tab-${value}`}
+            aria-selected={tab === value}
+            aria-controls={`project-panel-${value}`}
+            tabIndex={tab === value ? 0 : -1}
+            onClick={() => setTab(value)}
+            onKeyDown={(event) => {
+              const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
+              if (!step) return;
+              event.preventDefault();
+              const next = tabs[(index + step + tabs.length) % tabs.length] as ProjectTab;
+              setTab(next);
+              refs.current[next]?.focus();
+            }}
+            className={`-mb-px flex items-center gap-1.5 border-b-2 px-2 pb-2 text-ui transition-colors ${tab === value ? 'border-text font-medium text-text' : 'border-transparent text-muted hover:text-text'}`}
+          >
+            {t(`tab.${value}`)}
+            {count(value) ? <span className="text-2xs text-muted">{count(value)}</span> : null}
+          </button>
+        ))}
+      </div>
+      <div role="tabpanel" id={`project-panel-${tab}`} aria-labelledby={`project-tab-${tab}`}>
+        {tab === 'sessions' ? sessions : tab === 'teams' ? teams : tab === 'folder' ? folder : runs}
+      </div>
+    </div>
   );
 }
 
@@ -410,75 +498,81 @@ function ProjectHeader({
 
   return (
     <section aria-labelledby="project-heading" className="flex flex-col gap-1">
-      <p className="text-xs text-muted">{t('label')}</p>
       {editing ? (
         <form onSubmit={submit} className="flex flex-wrap items-end gap-2">
-          <label className="flex flex-col gap-1 text-xs">
+          <label htmlFor="project-name" className="flex flex-col gap-1 text-xs">
             {t('nameLabel')}
-            <input
+            <Input
+              id="project-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
               maxLength={80}
               required
-              className="rounded border border-line bg-surface px-2 py-1 text-sm"
             />
           </label>
-          <label className="flex min-w-48 flex-1 flex-col gap-1 text-xs">
+          <label
+            htmlFor="project-description"
+            className="flex min-w-48 flex-1 flex-col gap-1 text-xs"
+          >
             {t('descriptionLabel')}
-            <input
+            <Input
+              id="project-description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               maxLength={500}
-              className="rounded border border-line bg-surface px-2 py-1 text-sm"
             />
           </label>
-          <button
-            type="submit"
-            className="rounded border border-accent px-2 py-1 text-xs text-accent"
-          >
+          <Button type="submit" size="sm">
             {t('save')}
-          </button>
-          <button
-            type="button"
-            onClick={() => setEditing(false)}
-            className="rounded border border-line px-2 py-1 text-xs"
-          >
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setEditing(false)}>
             {t('cancel')}
-          </button>
+          </Button>
         </form>
       ) : (
-        <div className="flex flex-wrap items-center gap-2">
-          <h2 id="project-heading" className="text-xl font-semibold">
+        <div className="flex items-center gap-2">
+          <h2
+            id="project-heading"
+            className="min-w-0 truncate text-2xl font-semibold tracking-tight"
+          >
             {shown}
           </h2>
           {project.archivedAt ? (
-            <span className="rounded-full border border-line px-2 py-0.5 text-xs text-muted">
+            <span className="rounded-full bg-subtle px-2 py-0.5 text-xs text-muted">
               {t('archived')}
             </span>
           ) : null}
-          <button
-            type="button"
-            onClick={() => {
-              setName(shown);
-              setDescription(project.description);
-              setEditing(true);
-            }}
-            className="rounded border border-line px-2 py-0.5 text-xs"
-          >
-            {t('rename')}
-          </button>
-          {project.projectId === DEFAULT_PROJECT_ID ? null : (
-            <button
-              type="button"
-              onClick={() => void update({ archived: !project.archivedAt })}
-              className="rounded border border-line px-2 py-0.5 text-xs"
+          <Menu>
+            <MenuTrigger
+              render={
+                <Button
+                  variant="ghost-muted"
+                  size="icon-sm"
+                  aria-label={t('actions', { name: shown })}
+                />
+              }
             >
-              {project.archivedAt ? t('restore') : t('archive')}
-            </button>
-          )}
-          <Link to="/projects" className="text-xs underline">
-            {t('allProjects')}
-          </Link>
+              <Ellipsis />
+            </MenuTrigger>
+            <MenuPopup align="start">
+              <MenuItem
+                onClick={() => {
+                  setName(shown);
+                  setDescription(project.description);
+                  setEditing(true);
+                }}
+              >
+                {t('rename')}
+              </MenuItem>
+              {project.projectId === DEFAULT_PROJECT_ID ? null : (
+                <MenuItem onClick={() => void update({ archived: !project.archivedAt })}>
+                  {project.archivedAt ? t('restore') : t('archive')}
+                </MenuItem>
+              )}
+              <MenuSeparator />
+              <MenuItem render={<Link to="/projects" />}>{t('allProjects')}</MenuItem>
+            </MenuPopup>
+          </Menu>
         </div>
       )}
       {project.description && !editing ? (
@@ -525,31 +619,24 @@ function MoveCorral({
   );
 }
 
-/** The project's work sessions (CR-011): pinned first, searchable, and a new one. */
-function SessionsSection({
-  openForm = false,
+/**
+ * Starting work (Workbench polish P1): one box for what the session is for, and its team.
+ * The purpose becomes the first request's draft; nothing runs until it is sent there.
+ */
+function StartSession({
+  focus,
   projectId,
-  archived,
-  sessions,
   corrals,
-  runs,
 }: {
-  openForm?: boolean;
+  focus: boolean;
   projectId: string;
-  archived: boolean;
-  sessions: WorkSession[];
   corrals: CorralSummary[];
-  runs: RunSummary[];
 }) {
   const t = useTranslations('Sessions');
-  const tw = useTranslations('Workspace');
-  const format = useFormatter();
-  const now = useNow({ updateInterval: 60_000 });
   const { repository } = useServices();
+  const { sendKey } = usePreferences();
   const navigate = useNavigate();
-  const [query, setQuery] = useState('');
-  const [showArchived, setShowArchived] = useState(false);
-  const [creating, setCreating] = useState(openForm);
+  const box = useRef<HTMLTextAreaElement>(null);
   const [draft, saveDraft] = useRemembered(`corral:new-session:v1:${projectId}`, {
     title: '',
     objective: '',
@@ -560,20 +647,16 @@ function SessionsSection({
   const corralId = typeof draft?.corralId === 'string' ? draft.corralId : '';
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const needle = query.trim().toLowerCase();
-  const archivedCount = sessions.filter((x) => x.archivedAt).length;
-  const shown = sessions.filter(
-    (x) =>
-      (showArchived || !x.archivedAt) &&
-      (!needle || `${x.title}\n${x.objective}`.toLowerCase().includes(needle)),
-  );
   const team = corrals.some((c) => c.corralId === corralId)
     ? corralId
     : (corrals[0]?.corralId ?? '');
+  useEffect(() => {
+    if (focus) box.current?.focus();
+  }, [focus]);
 
-  const create = async (event: FormEvent) => {
-    event.preventDefault();
-    if (saving) return;
+  const create = async (event?: FormEvent) => {
+    event?.preventDefault();
+    if (saving || (!title.trim() && !objective.trim())) return;
     setSaving(true);
     setError(null);
     try {
@@ -598,107 +681,103 @@ function SessionsSection({
   };
 
   return (
+    <form onSubmit={create} aria-label={t('new')} className="flex flex-col gap-2">
+      <ComposerSurface.Host className="flex flex-col gap-1 px-3 pt-3 pb-2">
+        <textarea
+          ref={box}
+          aria-label={t('objectiveLabel')}
+          placeholder={t('objectivePlaceholder')}
+          value={objective}
+          rows={3}
+          onChange={(e) => saveDraft({ title, objective: e.target.value, corralId })}
+          onKeyDown={(e) => {
+            if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+            if (isSendKey(e, sendKey)) {
+              e.preventDefault();
+              void create();
+            }
+          }}
+          className="min-h-20 w-full resize-none bg-transparent px-1 text-sm leading-6 outline-none placeholder:text-muted/80"
+        />
+        <div className="flex items-center gap-1">
+          <Select
+            variant="chip"
+            label={t('teamLabel')}
+            value={team}
+            onValueChange={(value) => saveDraft({ title, objective, corralId: value })}
+            options={
+              corrals.length
+                ? corrals.map((c) => ({ value: c.corralId, label: c.name }))
+                : [{ value: '', label: t('noTeam') }]
+            }
+          />
+          <Button
+            type="submit"
+            size="sm"
+            className="ml-auto"
+            disabled={saving || (!title.trim() && !objective.trim())}
+          >
+            {t('create')}
+          </Button>
+        </div>
+      </ComposerSurface.Host>
+      <p className="px-2 text-2xs text-muted">{t('startHint')}</p>
+      {error ? (
+        <p role="alert" className="text-sm text-danger">
+          {error}
+        </p>
+      ) : null}
+    </form>
+  );
+}
+
+/** The project's work sessions (CR-011): pinned first, searchable. */
+function SessionList({ sessions, runs }: { sessions: WorkSession[]; runs: RunSummary[] }) {
+  const t = useTranslations('Sessions');
+  const tw = useTranslations('Workspace');
+  const format = useFormatter();
+  const now = useNow({ updateInterval: 60_000 });
+  const [query, setQuery] = useState('');
+  const [showArchived, setShowArchived] = useState(false);
+  const needle = query.trim().toLowerCase();
+  const archivedCount = sessions.filter((x) => x.archivedAt).length;
+  const shown = sessions
+    .filter(
+      (x) =>
+        (showArchived || !x.archivedAt) &&
+        (!needle || `${x.title}\n${x.objective}`.toLowerCase().includes(needle)),
+    )
+    .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt.localeCompare(a.updatedAt));
+  return (
     <section aria-labelledby="sessions-heading" className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 id="sessions-heading" className="text-lg font-semibold">
+        <h2 id="sessions-heading" className="sr-only">
           {t('heading')}
         </h2>
-        <div className="flex items-center gap-2">
-          {sessions.length > 0 ? (
-            <input
-              type="search"
-              aria-label={t('search')}
-              placeholder={t('search')}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              className="rounded border border-line bg-surface px-2 py-1 text-sm"
-            />
-          ) : null}
-          {archived ? null : (
-            <button
-              type="button"
-              aria-expanded={creating}
-              onClick={() => setCreating(!creating)}
-              className="rounded-md border border-accent px-3 py-1.5 text-sm text-accent"
-            >
-              {t('new')}
-            </button>
-          )}
-        </div>
+        {sessions.length > 0 ? (
+          <Input
+            type="search"
+            aria-label={t('search')}
+            placeholder={t('search')}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            className="max-w-64"
+          />
+        ) : null}
       </div>
-      {creating ? (
-        <form
-          onSubmit={create}
-          aria-label={t('new')}
-          className="flex flex-col gap-2 rounded-md border border-line bg-raised p-3"
-        >
-          <label className="flex flex-col gap-1 text-xs">
-            {t('objectiveLabel')}
-            <textarea
-              value={objective}
-              rows={2}
-              onChange={(e) => saveDraft({ title, objective: e.target.value, corralId })}
-              className="rounded border border-line bg-surface px-2 py-1 text-sm"
-            />
-          </label>
-          <div className="flex flex-wrap items-end gap-2">
-            <label className="flex min-w-48 flex-1 flex-col gap-1 text-xs">
-              {t('titleLabel')}
-              <input
-                value={title}
-                maxLength={120}
-                onChange={(e) => saveDraft({ title: e.target.value, objective, corralId })}
-                className="rounded border border-line bg-surface px-2 py-1 text-sm"
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-xs">
-              {t('teamLabel')}
-              <select
-                value={team}
-                onChange={(e) => saveDraft({ title, objective, corralId: e.target.value })}
-                className="rounded border border-line bg-surface px-2 py-1 text-sm"
-              >
-                {corrals.length === 0 ? <option value="">{t('noTeam')}</option> : null}
-                {corrals.map((c) => (
-                  <option key={c.corralId} value={c.corralId}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button
-              type="submit"
-              disabled={saving || (!title.trim() && !objective.trim())}
-              className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent disabled:opacity-50"
-            >
-              {t('create')}
-            </button>
-          </div>
-          {error ? (
-            <p role="alert" className="text-sm text-danger">
-              {error}
-            </p>
-          ) : null}
-        </form>
-      ) : null}
       {sessions.length === 0 ? (
         <p className="text-sm text-muted">{t('empty')}</p>
       ) : (
-        <ul aria-label={t('heading')} className="flex flex-col gap-1">
+        <ul aria-label={t('heading')} className="flex flex-col">
           {shown.map((x) => (
-            <li
-              key={x.sessionId}
-              className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-line bg-raised px-3 py-2"
-            >
-              <div className="flex min-w-0 flex-col">
-                <Link
-                  to="/sessions/$sessionId"
-                  params={{ sessionId: x.sessionId }}
-                  className="font-medium underline-offset-4 hover:underline"
-                >
-                  {x.title}
-                </Link>
-                <span className="text-xs text-muted">
+            <li key={x.sessionId}>
+              <Link
+                to="/sessions/$sessionId"
+                params={{ sessionId: x.sessionId }}
+                className="flex items-baseline justify-between gap-3 rounded-md px-2 py-2 hover:bg-subtle"
+              >
+                <span className="min-w-0 truncate text-sm font-medium">{x.title}</span>
+                <span className="shrink-0 text-xs text-muted">
                   {[
                     x.pinned ? t('pinned') : null,
                     x.archivedAt ? t('archived') : null,
@@ -710,20 +789,21 @@ function SessionsSection({
                     .filter(Boolean)
                     .join(' · ')}
                 </span>
-              </div>
+              </Link>
             </li>
           ))}
         </ul>
       )}
       {archivedCount > 0 ? (
-        <button
-          type="button"
+        <Button
+          variant="ghost-muted"
+          size="xs"
+          className="self-start"
           aria-pressed={showArchived}
           onClick={() => setShowArchived(!showArchived)}
-          className="self-start text-xs underline"
         >
           {showArchived ? t('hideArchived') : t('showArchived', { count: archivedCount })}
-        </button>
+        </Button>
       ) : null}
     </section>
   );

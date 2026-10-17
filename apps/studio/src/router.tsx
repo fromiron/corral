@@ -97,8 +97,10 @@ export const workspaceRoute = createRoute({
 /** One work session (CR-011): its requests, runs, queue and the input box. */
 /** The session workbench's tabs and choices (02-UX-Spec §9: view state in the address). */
 export interface SessionSearch {
+  /** Old links only (`tab=run`); read into `panel`. */
   tab?: 'work' | 'team' | 'run' | undefined;
-  panel?: 'files' | 'changes' | 'artifacts' | 'checks' | undefined;
+  /** The open side panel tab; none means the panel is closed. */
+  panel?: 'files' | 'changes' | 'artifacts' | 'checks' | 'run' | undefined;
   run?: string | undefined;
   execution?: string | undefined;
   artifact?: string | undefined;
@@ -110,14 +112,16 @@ const text = (value: unknown) => (typeof value === 'string' && value ? value : u
 
 export function validateSessionSearch(search: Record<string, unknown>): SessionSearch {
   const out: SessionSearch = {};
-  if (search.tab === 'work' || search.tab === 'team' || search.tab === 'run') out.tab = search.tab;
   if (
     search.panel === 'files' ||
     search.panel === 'changes' ||
     search.panel === 'artifacts' ||
-    search.panel === 'checks'
+    search.panel === 'checks' ||
+    search.panel === 'run'
   )
     out.panel = search.panel;
+  // Run detail used to be a main tab; old links open it in the panel.
+  if (search.tab === 'run') out.panel = 'run';
   if (search.view === 'results' || search.view === 'run') out.view = search.view;
   for (const key of ['run', 'execution', 'artifact', 'result'] as const) {
     const value = text(search[key]);

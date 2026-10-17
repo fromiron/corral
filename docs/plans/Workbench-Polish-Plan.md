@@ -296,3 +296,52 @@ leeskills `design-workflow`의 증거 라벨을 쓴다.
 | 접근성 | 세션·검토 화면 axe serious/critical 0 |
 
 검증하지 못한 항목은 각 PR과 최종 보고에 그대로 적는다.
+
+## 8. 진행 상태 (2026-10-17)
+
+§5의 권장안 네 가지를 그대로 적용했다: Enter 전송(설정에서 Ctrl/⌘+Enter로 바꿈), Run 상세는 오른쪽 패널, 참조는 포인터·결과 버전 고정, 알림은 기본 꺼짐.
+
+| # | 내용 | 상태 | 근거 |
+|---|---|---|---|
+| 1 | 토큰·글자 단계·가드 테스트 | 완료 | `apps/studio/src/design.test.ts` (임의 px 글자 0, 정의 안 된 CSS 변수 0, 워크벤치 네이티브 select 0) |
+| 2 | 부품(Select·Tooltip·Kbd·StatusDot)과 교체 | 완료 | `packages/react/src/ui/select.tsx`, `tooltip.tsx`, `StatusBadge.tsx` |
+| 3 | 위쪽 바·사이드바·세션 머리·패널 기본 닫힘 | 완료 | 세션 동작은 위쪽 바 슬롯(`TopbarSlot.tsx`), 패널 상태는 주소(`?panel=`) |
+| 4 | 프로젝트 홈 → 새 세션 화면 + 탭 | 완료 | 세션이 없는 프로젝트는 팀 탭부터 연다 |
+| 5 | CR-016 | 완료 | [CR-016](../change-requests/CR-016-composer-commands-and-references.md) |
+| 6 | 명령 레지스트리·⌘K 그룹·단축키·안내 일치 | 완료 | `commandRegistry.ts`, `shortcuts.ts`, 도움말과 설정 › 단축키가 같은 표 |
+| 7 | `/` 메뉴 | 완료 | 이름이 앞부분과 맞는 명령이 먼저, 지금 못 쓰는 명령은 숨김 |
+| 8 | 검색 API·점수기·`@` 참조·`references` | 완료 | 서버·데모 같은 순위, 참조 칩 |
+| 9 | 컴포저 칩·보내기/멈춤·대기열 | 완료 | 지시를 받을 실행이 없으면 대기로 바뀜 |
+| 10 | 대화 흐름·스트리밍 | 완료 | 에이전트 활동 한 줄, 작성 중 글, 실패는 항상 보임 |
+| 11 | CR-017 데스크톱 | 완료 | [CR-017](../change-requests/CR-017-desktop-native-shell.md) |
+| 12 | 문구·최종 검증 | 완료(아래 범위) | 한국어는 기존 용어 "Run"을 유지하고 새 문구를 맞춤 |
+
+### 실행한 검증
+
+- **단위**: 전체 `pnpm test` 103개 파일 통과(1개는 원래 skip). storybook 브라우저 수집이 한 번 실패했다가 다시 실행해 통과했다.
+- **E2E**:
+  - chromium 데모 67개 통과. `demo.spec`의 오프라인 지시 테스트는 한 번 시간 초과 후 다시 실행해 통과했다.
+  - server 30개 통과(1개 skip).
+  - firefox 프로젝트는 돌리지 않았다.
+- **데스크톱 smoke**: `apps/desktop/scripts/smoke.ts` 통과.
+  - Linux에서 `windowControlsOverlay.visible = true`를 확인했다.
+  - 메뉴 "Command palette"가 페이지 팔레트를 연다.
+  - 다크 테마에서 창 배경 `#151615`.
+  - 기존 복구·종료 흐름도 모두 통과했다.
+- **lint·typecheck**: 전체 통과. `apps/desktop/scripts/prepare.ts`의 기존 info 2개는 남아 있다.
+
+### 플랜과 다르게 한 것
+
+- `/export`는 만들지 않았다. Run 내보내기는 비공개 대화 기록을 파일로 내려받는 일이라 노출 범위를 따로 정해야 한다.
+- `/archive`는 확인 없이 실행한다. 보관은 메뉴에서 바로 되돌릴 수 있기 때문이다. `/stop`은 확인을 거친다.
+- 위쪽 바의 "Corrals"·"Models" 아이콘을 없앴다. 집으로 가는 길은 로고 링크(이름 "Corrals")이고, 모델은 설정 › 모델에서 연다.
+
+### 검증하지 못한 것과 후속
+
+- **§7의 "보이는 버튼 수 절반 이하"**: 같은 스크립트로 세지 않았다. 화면 캡처로만 확인했다.
+- **검색 p95**: 추적 파일 2만 개에서의 응답 시간을 재지 않았다.
+- **axe**: 측정 스펙(opt-in)은 다시 돌리지 않았다. `desktop-workbench.spec`의 axe 검사(세션·Run 패널·설정, 4개 화면 크기)는 통과했다.
+- **편집기의 "Unsaved changes"**: 세션에서 Run을 돌린 뒤 같은 팀 편집기를 열면 바로 표시되어, 떠날 때 확인 창이 뜬다. 데스크톱 E2E에서 재현했고, 이번 변경 전부터 있던 동작으로 보인다(추론). 원인은 따로 확인해야 한다.
+- **데모 Run**: 브라우저 데모는 새로 고침하면 Run이 사라져 요청만 남는다. 기존 동작이다.
+- **macOS·Windows**: 데스크톱 분기는 실행해 보지 않았다.
+- **사용성 평가**: Bell의 5인 평가로 이어진다.

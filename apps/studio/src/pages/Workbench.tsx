@@ -1,4 +1,4 @@
-import { Maximize2, Minimize2, PanelRight, X } from '@corral/react/icons';
+import { Maximize2, Minimize2, X } from '@corral/react/icons';
 import { Button } from '@corral/react/ui';
 import {
   type CSSProperties,
@@ -101,14 +101,24 @@ function Resizer({
 
 type Area = 'main' | 'panel';
 
-/** T3's main-column / docked-panel composition. App navigation is owned by RootLayout. */
+/**
+ * T3's main-column / docked-panel composition. App navigation is owned by RootLayout; the page
+ * owns whether the panel is open (it is closed until asked for) and its tabs, shown as the
+ * panel's only header row.
+ */
 export function WorkbenchLayout({
   main,
   panel,
+  panelTabs,
+  panelOpen = false,
+  onPanelClose,
   storageKey = 'global',
 }: {
   main: ReactNode;
   panel?: ReactNode;
+  panelTabs?: ReactNode;
+  panelOpen?: boolean;
+  onPanelClose?: () => void;
   storageKey?: string;
 }) {
   const t = useTranslations('Workbench');
@@ -118,12 +128,13 @@ export function WorkbenchLayout({
     typeof savedRight === 'number' && Number.isFinite(savedRight)
       ? Math.min(RIGHT.max, Math.max(RIGHT.min, savedRight))
       : 400;
-  const [rightOpen, setRightOpen] = useRemembered(`corral:wb:right-open:${storageKey}`, true);
   const [maximized, setMaximized] = useState(false);
   const [area, setArea] = useState<Area>('main');
+  const open = Boolean(panel) && panelOpen;
+  const shown: Area = open ? area : 'main';
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col">
-      {panel ? (
+      {open ? (
         <div
           role="tablist"
           aria-label={t('areas')}
@@ -134,9 +145,9 @@ export function WorkbenchLayout({
               key={name}
               type="button"
               role="tab"
-              aria-selected={area === name}
+              aria-selected={shown === name}
               onClick={() => setArea(name)}
-              className={`rounded-md px-3 py-1.5 text-xs ${area === name ? 'bg-sidebar-selected text-text' : 'text-muted'}`}
+              className={`rounded-md px-3 py-1.5 text-xs ${shown === name ? 'bg-sidebar-selected text-text' : 'text-muted'}`}
             >
               {name === 'main' ? td('conversation') : td('panel')}
             </button>
@@ -145,25 +156,13 @@ export function WorkbenchLayout({
       ) : null}
       <div className="relative flex min-h-0 min-w-0 flex-1">
         <div
-          className={`${area === 'main' ? 'flex' : 'hidden'} min-h-0 min-w-0 flex-1 flex-col ${maximized ? 'lg:hidden' : 'lg:flex'}`}
+          className={`${shown === 'main' ? 'flex' : 'hidden'} min-h-0 min-w-0 flex-1 flex-col ${open && maximized ? 'lg:hidden' : 'lg:flex'}`}
         >
           {main}
         </div>
-        {panel && !rightOpen ? (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={t('expandPanel')}
-            title={t('expandPanel')}
-            onClick={() => setRightOpen(true)}
-            className="absolute top-2 right-2 hidden lg:inline-flex"
-          >
-            <PanelRight />
-          </Button>
-        ) : null}
-        {panel ? (
+        {open ? (
           <>
-            {rightOpen && !maximized ? (
+            {!maximized ? (
               <Resizer
                 label={t('resizePanel')}
                 value={right}
@@ -175,13 +174,13 @@ export function WorkbenchLayout({
             <aside
               aria-label={t('panelTabs')}
               style={{ '--wb-right': `${right}px` } as CSSProperties}
-              className={`${area === 'panel' ? 'flex' : 'hidden'} min-h-0 w-full shrink-0 flex-col border-l border-line/60 ${rightOpen ? (maximized ? 'lg:flex lg:flex-1' : 'lg:flex lg:w-[var(--wb-right)]') : 'lg:hidden'}`}
+              className={`${shown === 'panel' ? 'flex' : 'hidden'} min-h-0 w-full shrink-0 flex-col border-l border-line/60 bg-surface ${maximized ? 'lg:flex lg:flex-1' : 'lg:flex lg:w-[var(--wb-right)]'}`}
             >
-              <div className="flex h-10 shrink-0 items-center justify-between border-b border-line/50 px-3">
-                <span className="text-xs font-medium text-muted">{td('panel')}</span>
-                <div className="flex items-center gap-1 max-lg:hidden">
+              <div className="flex h-10 shrink-0 items-center gap-1 border-b border-line/50 pr-2 pl-1">
+                <div className="min-w-0 flex-1 overflow-x-auto">{panelTabs}</div>
+                <div className="flex items-center max-lg:hidden">
                   <Button
-                    variant="ghost"
+                    variant="ghost-muted"
                     size="icon-xs"
                     aria-label={maximized ? td('restore') : td('maximize')}
                     onClick={() => setMaximized((v) => !v)}
@@ -189,12 +188,12 @@ export function WorkbenchLayout({
                     {maximized ? <Minimize2 /> : <Maximize2 />}
                   </Button>
                   <Button
-                    variant="ghost"
+                    variant="ghost-muted"
                     size="icon-xs"
                     aria-label={t('collapsePanel')}
                     onClick={() => {
-                      setRightOpen(false);
                       setMaximized(false);
+                      onPanelClose?.();
                     }}
                   >
                     <X />

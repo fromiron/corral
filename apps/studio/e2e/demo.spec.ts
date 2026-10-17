@@ -25,7 +25,7 @@ test('[TC-DEV-005-H] /demo starts a key-free worker runtime and steering changes
   await page.goto('/demo?template=starter&delay=6000');
   await expect(page.getByLabel('Corral name')).toHaveValue('Demo Corral');
   await workerReady;
-  await expect(page.getByText('Demo / Simulated agents')).toBeVisible();
+  await expect(page.getByText('Demo · simulated', { exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Models', exact: true })).toHaveCount(0);
   await expect(page.getByText('Ready to run.')).toBeVisible();
   // Once static assets are loaded, all editing and execution remains in this browser.
@@ -197,7 +197,7 @@ test('[TC-DEV-005-H] the default demo team delegates, asks, revises once and fin
   });
   await page.goto('/demo?delay=200');
   await expect(page.getByLabel('Corral name')).toHaveValue('Research team');
-  await expect(page.getByText('Demo / Simulated agents')).toBeVisible();
+  await expect(page.getByText('Demo · simulated', { exact: true })).toBeVisible();
   await expect(page.getByText('Ready to run.')).toBeVisible();
   await expect(step(page, 'start')).toHaveAttribute('data-state', 'current');
   await context.setOffline(true);

@@ -14,7 +14,13 @@ import type {
   WorkspaceBindingView,
   WorktreeView,
 } from '@corral/client';
-import { type FileTools, type RunStore, type ToolCancellation, ToolRefusal } from '@corral/core';
+import {
+  type FileTools,
+  type RunStore,
+  rankFuzzy,
+  type ToolCancellation,
+  ToolRefusal,
+} from '@corral/core';
 import { diffLines } from '@corral/react/diff';
 
 // The browser demo's work folder (02-UX-Spec §10): the same flow as the local server's
@@ -333,6 +339,26 @@ export class DemoWorkspace implements FileTools {
       .filter(([name]) => name.startsWith(folder))
       .map(([name, text]) => ({ path: name, bytes: new TextEncoder().encode(text).length }));
     return { files: files.slice(0, 500), truncated: files.length > 500 };
+  }
+
+  /** CR-016: the same ranking as the local server's `@` search, over the example folder. */
+  searchFiles(scope: FileBrowseScope, query: string, limit = 20) {
+    const paths = [...this.browseFiles(scope).keys()];
+    const folders = new Set<string>();
+    for (const path of paths) {
+      const parts = path.split('/');
+      for (let i = 1; i < parts.length; i++) folders.add(parts.slice(0, i).join('/'));
+    }
+    const items = rankFuzzy(
+      query,
+      [
+        ...[...folders].sort().map((path) => ({ path, kind: 'folder' as const })),
+        ...paths.map((path) => ({ path, kind: 'file' as const })),
+      ],
+      (item) => (item.kind === 'folder' ? `${item.path}/` : item.path),
+      Math.min(50, Math.max(1, limit)),
+    );
+    return { items, truncated: false };
   }
 
   readFile(scope: FileBrowseScope, path: string): { path: string; content: FileSideView } {

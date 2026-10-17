@@ -21,6 +21,7 @@ export function createDemoWorkspaces(
   };
   return {
     listFiles: (scope, path) => as(call('listFiles', scope, path)),
+    searchFiles: (scope, query, limit) => as(call('searchFiles', scope, query, limit)),
     readFile: (scope, path) => as(call('readFile', scope, path)),
     binding: (projectId) => as(call('binding', projectId)),
     bind: (projectId, path) => as(call('bind', projectId, path)),

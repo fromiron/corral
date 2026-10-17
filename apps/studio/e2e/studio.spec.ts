@@ -44,7 +44,7 @@ test('[TC-CAN-001-H] nodes dropped on an empty canvas and connected run as drawn
 }) => {
   const errors = await trackErrors(page);
   await newCorral(page, '?delay=50');
-  await expect(page.getByText('Demo / Simulated agents')).toBeVisible();
+  await expect(page.getByText('Demo · simulated', { exact: true })).toBeVisible();
 
   await buildAgentToOutput(page);
   await page.getByRole('button', { name: 'Run', exact: true }).click();

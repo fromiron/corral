@@ -53,32 +53,6 @@
 .app-shell[data-sidebar-open="true"] .app-sidebar-trigger {
   display: none;
 }
-.topbar-icon {
-  display: grid;
-  place-items: center;
-  height: 28px;
-  width: 28px;
-  border-radius: 8px;
-  color: var(--muted);
-}
-.topbar-icon:hover {
-  background: var(--raised);
-  color: var(--text);
-}
-.runtime-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  margin-left: 8px;
-  font-size: 10px;
-  color: var(--muted);
-  white-space: nowrap;
-}
-.runtime-badge > span {
-  height: 5px;
-  width: 5px;
-  border-radius: 50%;
-}
 .corral-mark {
   display: inline-grid;
   height: 25px;
@@ -125,11 +99,6 @@
 .chat-timeline {
   scrollbar-gutter: stable;
 }
-.chat-composer textarea {
-  resize: none;
-  max-height: 180px;
-  min-height: 64px;
-}
 .chat-turn {
   margin-bottom: 32px;
 }
@@ -155,13 +124,6 @@
   }
 }
 @media (max-width: 640px) {
-  .runtime-badge {
-    max-width: 80px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    display: block;
-    font-size: 9px;
-  }
   .settings-row {
     align-items: flex-start;
     flex-direction: column;
@@ -210,7 +172,10 @@
     border-right-width: 0;
   }
 }
+/* CR-017: room for the window buttons the system draws over the top bar (Window Controls
+   Overlay); without an overlay the env() fallbacks leave the normal padding. */
 .desktop-app .app-topbar {
+  padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 12px);
   -webkit-app-region: drag;
 }
 .desktop-app .app-topbar :is(button, a, input, select) {
