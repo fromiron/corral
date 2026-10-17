@@ -760,6 +760,10 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
     case 'tool.allowed':
     case 'harness.loaded':
     case 'harness.load_failed':
+    case 'extension.ui_requested':
+    case 'extension.ui_answered':
+    case 'extension.ui_expired':
+    case 'extension.ui_notified':
     case 'model.request_recorded':
     case 'model.payload_recorded':
     case 'tool.started':

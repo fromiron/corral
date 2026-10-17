@@ -198,6 +198,9 @@ function recordReferences(events: readonly RunEvent[]): Set<string> {
       add(event.payload.after.criteriaVersionId);
     }
     if (event.type === 'model.finished') add(event.payload.responseRef);
+    if (event.type === 'extension.ui_requested' || event.type === 'extension.ui_notified')
+      add(event.payload.bodyRef);
+    if (event.type === 'extension.ui_answered') add(event.payload.answerRef);
     if (event.type === 'tool.finished' && event.payload.resultRef) {
       const kind = tools.get(event.payload.toolCallId);
       const ref = event.payload.resultRef;

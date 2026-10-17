@@ -97,6 +97,8 @@ class WorkerExecution {
   private resolve!: (settlement: AgentSettlement) => void;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private pendingSettlement: AgentSettlement | null = null;
+  private readonly uiRequests = new Map<string, AbortController>();
+  private readonly uiRequestIds = new Set<string>();
 
   private readonly input: AgentStartInput;
   private readonly host: AgentHost;
@@ -159,6 +161,8 @@ class WorkerExecution {
   private finish(settlement: AgentSettlement) {
     if (this.state === 'done') return;
     this.state = 'done';
+    for (const controller of this.uiRequests.values()) controller.abort();
+    this.uiRequests.clear();
     if (this.timer) clearTimeout(this.timer);
     this.resolve(settlement);
   }
@@ -186,6 +190,7 @@ class WorkerExecution {
 
   private async cancel(reason: string) {
     if (this.state === 'done' || this.pendingSettlement) return;
+    for (const controller of this.uiRequests.values()) controller.abort();
     this.send({ type: 'cancel', reason });
     this.timer = setTimeout(
       () => {
@@ -260,6 +265,65 @@ class WorkerExecution {
     }
 
     switch (frame.type) {
+      case 'ui_request': {
+        if (this.uiRequestIds.has(frame.requestId)) return this.violation();
+        this.uiRequestIds.add(frame.requestId);
+        const controller = new AbortController();
+        this.uiRequests.set(frame.requestId, controller);
+        try {
+          if (!this.host.requestExtensionUi) throw new Error('extension UI unavailable');
+          // Human input must not block the queue that carries its abort and the worker's exit.
+          const result = this.host.requestExtensionUi(frame.request, {
+            get aborted() {
+              return controller.signal.aborted;
+            },
+            onCancel: (listener) => {
+              controller.signal.addEventListener('abort', listener, { once: true });
+              return () => controller.signal.removeEventListener('abort', listener);
+            },
+          });
+          void result
+            .then(
+              (answer) => {
+                if (this.state === 'running' && !this.pendingSettlement)
+                  this.send({ type: 'ui_answer', requestId: frame.requestId, result: answer });
+              },
+              () => {
+                if (this.state === 'running' && !this.pendingSettlement)
+                  this.send({
+                    type: 'refused',
+                    requestId: frame.requestId,
+                    reason: 'extension UI unavailable',
+                  });
+              },
+            )
+            .finally(() => this.uiRequests.delete(frame.requestId));
+        } catch {
+          this.uiRequests.delete(frame.requestId);
+          this.send({
+            type: 'refused',
+            requestId: frame.requestId,
+            reason: 'extension UI unavailable',
+          });
+        }
+        return;
+      }
+      case 'ui_cancel':
+        this.uiRequests.get(frame.requestId)?.abort();
+        return;
+      case 'ui_notice':
+        try {
+          if (!this.host.notifyExtensionUi) throw new Error('extension UI unavailable');
+          await this.host.notifyExtensionUi(frame.notice);
+          this.send({ type: 'ack', requestId: frame.requestId });
+        } catch {
+          this.send({
+            type: 'refused',
+            requestId: frame.requestId,
+            reason: 'extension UI unavailable',
+          });
+        }
+        return;
       case 'harness_report':
       case 'request_record':
       case 'native_tool_start':

@@ -176,8 +176,29 @@ export function fakeOpenAI(
     subscriptionModels: (providerId) =>
       providerId === 'openai' ? new Set(['gpt-test-a', 'gpt-test-b']) : null,
     getDeviceId: () => '00000000-0000-4000-8000-000000000001',
-    agents: (registry) =>
+    agents: (registry, harnesses) =>
       new PiAgentAdapter({
+        harness: (input) => harnesses.runtimeResources(input),
+        spawnSdk: () => {
+          const { host, worker } = memoryChannelPair();
+          mkdirSync(configDir, { recursive: true });
+          const directory = mkdtempSync(join(configDir, 'sdk-fixture-'));
+          // Test-only SDK sessions use the same deterministic model and never provider HTTP.
+          void import('@corral/adapter-pi/sdk-worker')
+            .then(({ runSdkWorker }) =>
+              runSdkWorker(worker, {
+                directory,
+                now: () => Date.now(),
+                streamFn: (model, context, streamOptions) => {
+                  seen.tokens.push(streamOptions?.apiKey);
+                  return faux.streamSimple(model, context, streamOptions);
+                },
+                resolveModel: (provider, id) => models.getModel(provider, id),
+              }),
+            )
+            .catch(() => worker.kill());
+          return host;
+        },
         spawn: () => {
           const { host, worker } = memoryChannelPair();
           // Like the real worker: an endpoint (CR-005) is built from its start frame alone.

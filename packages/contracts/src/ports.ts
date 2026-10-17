@@ -10,6 +10,9 @@ import type { CommandError } from './errors.ts';
 import type { ModelProfileSnapshot } from './events.ts';
 import type {
   EffectiveHarnessSnapshot,
+  ExtensionUiNotice,
+  ExtensionUiRequest,
+  ExtensionUiResult,
   HarnessReport,
   ModelRequestRecord,
   ProviderPayloadRecord,
@@ -154,6 +157,11 @@ export interface AgentHost {
   prepareModelRequest(record?: ModelRequestRecord): Promise<RequestPermit>;
   /** SDK-only: unsupported hosts must refuse SDK execution. */
   reportHarness?(report: HarnessReport): Promise<void>;
+  requestExtensionUi?(
+    request: ExtensionUiRequest,
+    cancellation?: DecisionCancellation,
+  ): Promise<ExtensionUiResult>;
+  notifyExtensionUi?(notice: ExtensionUiNotice): Promise<void>;
   recordProviderPayload?(record: ProviderPayloadRecord): Promise<void>;
   pendingDirectives?(): DeliveredDirective[];
   beginNativeTool?(toolCallId: string, argsHash: string): Promise<void>;

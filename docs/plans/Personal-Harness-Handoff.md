@@ -146,3 +146,11 @@ CORRAL_SPIKE_NODE=~/.local/share/fnm/node-versions/v24.19.0/installation/bin/nod
 - 자동 임계치 압축을 실제 SDK worker에서 유도했고, 압축 permit 및 압축 후 필수 스킬 유지가 통과했다. 네이티브 확장이 최종 context에서 필수 구획을 제거하는 경우와 proxy provider 응답 식별자 회귀도 검증했다.
 - 검증: adapter/Core/server 관련 40 tests, 새 설정 E2E 1개(설치→신뢰→필수 스킬 저장→미리보기→새로고침), 전체 workspace typecheck 통과. 인앱 브라우저에서도 한국어 설정으로 같은 동작을 직접 확인했다. 이 기록은 당시 체크포인트이며 최종 gate 결과가 아니다.
 - **아직 H3 완료 아님:** 확장 UI 왕복·명령 레지스트리·Pi 홈 선택 import, SDK 실제 실행을 포함한 최종 UI 검증을 계속한다. H4–H8 전체 구현과 마지막 Computer Use 검증도 사용자 요청 범위에 남아 있다.
+
+### H3 확장 UI 체크포인트
+
+- `select/confirm/input/notify/setStatus`를 SDK → v2 IPC → Coordinator → 기존 확인 필요 패널에 연결했다. 요청 ID·execution·attempt·control revision·timeout을 검사하며 취소/종료/중복/늦은 응답을 막는다. custom/터미널/위젯 UI는 비지원 알림을 남긴다.
+- 요청·답변·알림 본문은 private record로 저장하고 이벤트에는 참조·해시를 남긴다. 해당 참조만 본문 읽기 API에 허용한다. 실행 기록의 확장 UI 이력도 표시한다.
+- 필수 확장의 `session_start` 오류를 SDK가 삼키는 반례를 추가했고, 모델 호출 전 명시 실패로 처리했다.
+- 체크포인트 검증: 관련 5개 프로젝트 595 passed / opt-in 3 skipped, 스펙 1250 checks 통과. 새 브라우저 E2E 2개 통과(설정 저장/재접속 및 확장 확인→SDK 실행 완료). 원본 Ponytail 역할 격리 opt-in 테스트도 다시 통과했다. 실제 유료 모델 호출은 없다.
+- 다음: Pi 홈의 명시적 복사 import·확장 명령 메타데이터와 시작 명령 연결, H3 남은 경계 검증, H4–H8. 전체 완료로 표시하지 않는다.

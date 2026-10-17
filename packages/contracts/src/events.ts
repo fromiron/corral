@@ -540,7 +540,42 @@ export const ModelRequestRecorded = event(
 );
 export const ModelPayloadRecorded = event('model.payload_recorded', ProviderPayloadRecord);
 
+const uiTarget = { requestId: Identifier, executionId: Identifier, attemptNo: z.int().min(1) };
+export const ExtensionUiRequested = event(
+  'extension.ui_requested',
+  z.strictObject({
+    ...uiTarget,
+    kind: z.enum(['select', 'confirm', 'input']),
+    bodyRef: Identifier,
+    bodyHash: ContentHash,
+    deadline: z.iso.datetime(),
+  }),
+);
+export const ExtensionUiAnswered = event(
+  'extension.ui_answered',
+  z.strictObject({ ...uiTarget, answerRef: Identifier, answerHash: ContentHash }),
+);
+export const ExtensionUiExpired = event(
+  'extension.ui_expired',
+  z.strictObject({ ...uiTarget, reason: z.enum(['timeout', 'cancelled', 'execution_ended']) }),
+);
+export const ExtensionUiNotified = event(
+  'extension.ui_notified',
+  z.strictObject({
+    executionId: Identifier,
+    kind: z.enum(['notify', 'status', 'unsupported']),
+    key: z.string().min(1).max(100),
+    level: z.enum(['info', 'warning', 'error']),
+    bodyRef: Identifier,
+    bodyHash: ContentHash,
+  }),
+);
+
 export const RunEvent = z.discriminatedUnion('type', [
+  ExtensionUiRequested,
+  ExtensionUiAnswered,
+  ExtensionUiExpired,
+  ExtensionUiNotified,
   HarnessLoaded,
   HarnessLoadFailed,
   ModelRequestRecorded,

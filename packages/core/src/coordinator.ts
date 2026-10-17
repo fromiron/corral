@@ -5,14 +5,19 @@ import {
   type AgentObservation,
   type AgentSettlement,
   type AgentStartInput,
+  type AnswerExtensionUiCommand,
   type Assignment,
   type Clock,
   type CommandError,
   type CorralDefinition,
   CreateRunRequest,
+  type DecisionCancellation,
   type DecisionNode,
   EffectiveHarnessSnapshot,
   type EventPayload,
+  ExtensionUiNotice,
+  ExtensionUiRequest,
+  type ExtensionUiResult,
   FILE_TOOLS,
   type FileToolName,
   type HarnessBindingRef,
@@ -279,6 +284,9 @@ interface LiveRun {
   cancelRequested: Set<string>;
   /** Pending approvals and how to continue once the person decides (C-029). */
   approvals: Map<string, (decision: 'approve' | 'reject') => void>;
+  extensionUi: Map<string, PendingExtensionUi>;
+  uiRequestCount: number;
+  uiNoticeCount: number;
   /** The inputs each execution was started with: what a reviewer actually reviewed. */
   inputsByExecution: Map<string, ResolvedInput[]>;
   /** What each execution was started with, for judgments of its requests (CR-003). */
@@ -308,6 +316,14 @@ interface OpenQuestion {
   wake(result: Record<string, unknown>): void;
   cancelTimer(): void;
   deadline: LogicalDeadline;
+}
+
+interface PendingExtensionUi {
+  requestId: string;
+  input: AgentStartInput;
+  request: ExtensionUiRequest;
+  due: number;
+  finish(result: ExtensionUiResult): void;
 }
 
 /** What starts an execution: its node, place in the call tree and reason to exist. */
@@ -552,6 +568,9 @@ export class Coordinator {
       questions: new Map(),
       cancelRequested: new Set(),
       approvals: new Map(),
+      extensionUi: new Map(),
+      uiRequestCount: 0,
+      uiNoticeCount: 0,
       inputsByExecution: new Map(),
       startInputs: new Map(),
       capStop: null,
@@ -821,6 +840,8 @@ export class Coordinator {
     try {
       if (command.type === 'steer') return this.steer(command, payloadHash);
       if (command.type === 'resolve_approval') return this.resolveApproval(command, payloadHash);
+      if (command.type === 'answer_extension_ui')
+        return this.answerExtensionUi(command, payloadHash);
       return this.control(command, payloadHash);
     } catch {
       return unavailable(command.commandId, command.runId, this.storageError);
@@ -888,7 +909,7 @@ export class Coordinator {
   }
 
   private control(
-    command: Exclude<RunCommand, SteerCommand | ResolveApprovalCommand>,
+    command: Exclude<RunCommand, SteerCommand | ResolveApprovalCommand | AnswerExtensionUiCommand>,
     payloadHash: string,
   ): Receipt {
     const run = this.live.get(command.runId);
@@ -2287,6 +2308,9 @@ export class Coordinator {
 
   private requestCancel(run: LiveRun, executionId: string, reason: string) {
     run.cancelRequested.add(executionId);
+    for (const pending of run.extensionUi.values())
+      if (pending.input.executionId === executionId)
+        this.closeExtensionUi(run, pending.requestId, 'cancelled');
     for (const listener of run.cancelListeners.get(executionId) ?? []) listener();
     for (const child of this.liveChildren(run, executionId))
       this.requestCancel(run, child.executionId, reason);
@@ -2357,6 +2381,9 @@ export class Coordinator {
     effectId: string,
     settlement: AgentSettlement,
   ): StepOutcome {
+    for (const pending of run.extensionUi.values())
+      if (pending.input.executionId === input.executionId)
+        this.closeExtensionUi(run, pending.requestId, 'execution_ended');
     const execution = run.projection.executions[input.executionId];
     if (!execution || TERMINAL_EXECUTION_STATUSES.has(execution.status) || this.storageError) {
       // Already ended elsewhere (run over, storage closed): a late report changes nothing.
@@ -2790,7 +2817,8 @@ export class Coordinator {
           : [
               runState(
                 run.projection.status,
-                Object.values(run.projection.tasks).some((t) => t.status === 'blocked')
+                run.extensionUi.size > 0 ||
+                  Object.values(run.projection.tasks).some((t) => t.status === 'blocked')
                   ? 'awaiting_user'
                   : 'running',
                 'approval_resolved',
@@ -2857,6 +2885,229 @@ export class Coordinator {
   }
 
   // ── agent host: the only way an agent affects the run ─────────────────────
+
+  private uiContinuation(run: LiveRun, pending: PendingExtensionUi): EventDraft[] {
+    const { executionId } = pending.input;
+    if (
+      run.stop.aborted ||
+      run.cancelRequested.has(executionId) ||
+      TERMINAL_RUN_STATUSES.has(run.projection.status) ||
+      run.projection.status === 'cancelling'
+    )
+      return [];
+    const execution = run.projection.executions[executionId];
+    const drafts: EventDraft[] =
+      execution?.status === 'waiting_approval'
+        ? [
+            {
+              type: 'execution.state_changed',
+              executionId,
+              payload: {
+                executionId,
+                from: execution.status,
+                to: ['paused', 'pausing'].includes(run.projection.status) ? 'paused' : 'active',
+                activity: null,
+                waitingOn: null,
+              },
+            },
+          ]
+        : [];
+    if (
+      run.projection.status === 'awaiting_user' &&
+      run.extensionUi.size === 1 &&
+      !run.approvals.size &&
+      !Object.values(run.projection.tasks).some((task) => task.status === 'blocked')
+    )
+      drafts.push(runState('awaiting_user', 'running', 'extension_ui_closed'));
+    return drafts;
+  }
+
+  private closeExtensionUi(
+    run: LiveRun,
+    requestId: string,
+    reason: 'timeout' | 'cancelled' | 'execution_ended',
+  ) {
+    const pending = run.extensionUi.get(requestId);
+    if (!pending) return;
+    try {
+      if (!this.storageError && !TERMINAL_RUN_STATUSES.has(run.projection.status))
+        this.commit(run, [
+          {
+            type: 'extension.ui_expired',
+            executionId: pending.input.executionId,
+            payload: {
+              requestId,
+              executionId: pending.input.executionId,
+              attemptNo: pending.input.attemptNo,
+              reason,
+            },
+          },
+          ...this.uiContinuation(run, pending),
+        ]);
+    } finally {
+      run.extensionUi.delete(requestId);
+      pending.finish({ status: reason === 'timeout' ? 'expired' : 'cancelled' });
+      this.wake(run);
+    }
+  }
+
+  private requestExtensionUi(
+    run: LiveRun,
+    input: AgentStartInput,
+    raw: ExtensionUiRequest,
+    cancellation?: DecisionCancellation,
+  ): Promise<ExtensionUiResult> {
+    const request = ExtensionUiRequest.parse(raw);
+    const { executionId, attemptNo } = input;
+    const execution = run.projection.executions[executionId];
+    if (
+      !input.harness ||
+      input.harness.policy !== 'trusted-native' ||
+      !execution ||
+      execution.status !== 'active' ||
+      run.stop.aborted ||
+      run.cancelRequested.has(executionId) ||
+      !['running', 'awaiting_user'].includes(run.projection.status) ||
+      run.projection.tasks[input.taskId]?.activeExecutionId !== executionId ||
+      this.storageError
+    )
+      throw new Error('extension UI target is unavailable');
+    if (cancellation?.aborted) return Promise.resolve({ status: 'cancelled' });
+    if (
+      run.uiRequestCount >= 100 ||
+      [...run.extensionUi.values()].some((pending) => pending.input.executionId === executionId)
+    )
+      throw new Error('extension UI request limit reached');
+    const requestId = this.ids.next('approval');
+    const bodyRef = this.ids.next('artifact_version');
+    const body = canonicalJson(request);
+    const due = this.clock.monotonicMs() + request.timeoutMs;
+    const deadline = new Date(Date.parse(this.clock.nowIso()) + request.timeoutMs).toISOString();
+    let resolve!: (result: ExtensionUiResult) => void;
+    let cancelTimer = () => {};
+    let unsubscribe = () => {};
+    const result = new Promise<ExtensionUiResult>((done) => {
+      resolve = done;
+    });
+    const pending: PendingExtensionUi = {
+      requestId,
+      input,
+      request,
+      due,
+      finish: (answer) => {
+        cancelTimer();
+        unsubscribe();
+        resolve(answer);
+      },
+    };
+    this.commit(
+      run,
+      [
+        {
+          type: 'extension.ui_requested',
+          executionId,
+          payload: {
+            requestId,
+            executionId,
+            attemptNo,
+            kind: request.kind,
+            bodyRef,
+            bodyHash: hashOf(request),
+            deadline,
+          },
+        },
+        {
+          type: 'execution.state_changed',
+          executionId,
+          payload: {
+            executionId,
+            from: execution.status,
+            to: 'waiting_approval',
+            activity: null,
+            waitingOn: {
+              kind: 'approval',
+              targetIds: [requestId],
+              reasonCode: 'extension_ui',
+              since: this.clock.nowIso(),
+              deadline,
+              required: true,
+            },
+          },
+        },
+        ...(run.projection.status === 'running'
+          ? [runState('running', 'awaiting_user', 'extension_ui_requested')]
+          : []),
+      ],
+      () => this.store.putArtifactText(run.runId, bodyRef, body),
+    );
+    run.extensionUi.set(requestId, pending);
+    run.uiRequestCount += 1;
+    cancelTimer = this.timers.after(request.timeoutMs, () =>
+      this.closeExtensionUi(run, requestId, 'timeout'),
+    );
+    unsubscribe =
+      cancellation?.onCancel(() => this.closeExtensionUi(run, requestId, 'cancelled')) ??
+      (() => {});
+    return result;
+  }
+
+  private answerExtensionUi(command: AnswerExtensionUiCommand, payloadHash: string): Receipt {
+    const run = this.live.get(command.runId);
+    const pending = run?.extensionUi.get(command.payload.requestId);
+    const refuse = (code: CommandError['code'], message: string) =>
+      this.refuseControl(command, payloadHash, { code, message });
+    if (!run || !pending) return refuse('TARGET_TERMINAL', 'the extension UI request has closed');
+    const { input, request } = pending;
+    if (
+      command.payload.executionId !== input.executionId ||
+      command.payload.attemptNo !== input.attemptNo ||
+      run.cancelRequested.has(input.executionId) ||
+      run.projection.tasks[input.taskId]?.activeExecutionId !== input.executionId
+    )
+      return refuse('TARGET_TERMINAL', 'the extension UI target changed');
+    if (pending.due <= this.clock.monotonicMs()) {
+      this.closeExtensionUi(run, pending.requestId, 'timeout');
+      return refuse('TARGET_TERMINAL', 'the extension UI request expired');
+    }
+    if (command.expectedControlRevision !== run.projection.controlRevision)
+      return refuse('STALE_CONTROL_REVISION', 'the control revision changed');
+    const value = command.payload.value;
+    if (
+      value !== null &&
+      (request.kind === 'confirm'
+        ? typeof value !== 'boolean'
+        : typeof value !== 'string' ||
+          (request.kind === 'select' && !request.options.includes(value)))
+    )
+      return refuse('SCHEMA_INVALID', 'the answer does not match the requested input');
+    const answerRef = this.ids.next('artifact_version');
+    const receipt = this.controlReceipt(
+      run,
+      command,
+      payloadHash,
+      [
+        {
+          type: 'extension.ui_answered',
+          executionId: input.executionId,
+          payload: {
+            requestId: pending.requestId,
+            executionId: input.executionId,
+            attemptNo: input.attemptNo,
+            answerRef,
+            answerHash: hashOf(value),
+          },
+        },
+        ...this.uiContinuation(run, pending),
+      ],
+      'applied',
+      'immediate',
+      () => this.store.putArtifactText(run.runId, answerRef, canonicalJson(value)),
+    );
+    run.extensionUi.delete(pending.requestId);
+    pending.finish(value === null ? { status: 'cancelled' } : { status: 'answered', value });
+    this.wake(run);
+    return receipt;
+  }
 
   private hostFor(run: LiveRun, input: AgentStartInput): AgentHost {
     const { executionId, harness } = input;
@@ -3112,6 +3363,44 @@ export class Coordinator {
     return {
       ...(harness
         ? {
+            requestExtensionUi: (
+              request: ExtensionUiRequest,
+              cancellation?: DecisionCancellation,
+            ) => this.requestExtensionUi(run, input, request, cancellation),
+            notifyExtensionUi: async (raw: ExtensionUiNotice) => {
+              const notice = ExtensionUiNotice.parse(raw);
+              if (
+                run.stop.aborted ||
+                run.cancelRequested.has(executionId) ||
+                TERMINAL_RUN_STATUSES.has(run.projection.status) ||
+                TERMINAL_EXECUTION_STATUSES.has(
+                  run.projection.executions[executionId]?.status ?? 'failed',
+                ) ||
+                this.storageError
+              )
+                throw new Error('extension UI target has ended');
+              if (++run.uiNoticeCount > 1000)
+                throw new Error('extension notification limit reached');
+              const bodyRef = this.ids.next('artifact_version');
+              this.commit(
+                run,
+                [
+                  {
+                    type: 'extension.ui_notified',
+                    executionId,
+                    payload: {
+                      executionId,
+                      kind: notice.kind,
+                      key: hashOf(notice.key),
+                      level: notice.level,
+                      bodyRef,
+                      bodyHash: hashOf(notice),
+                    },
+                  },
+                ],
+                () => this.store.putArtifactText(run.runId, bodyRef, canonicalJson(notice)),
+              );
+            },
             recordProviderPayload: async (raw: ProviderPayloadRecord) => {
               requireActive();
               const record = ProviderPayloadRecord.parse(raw);

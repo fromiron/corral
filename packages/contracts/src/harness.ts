@@ -95,6 +95,31 @@ export const HarnessReport = z.discriminatedUnion('ok', [
 ]);
 export type HarnessReport = z.infer<typeof HarnessReport>;
 
+const UiHead = { title: z.string().min(1).max(300), timeoutMs: z.int().min(1).max(300000) };
+export const ExtensionUiRequest = z.discriminatedUnion('kind', [
+  z.strictObject({
+    ...UiHead,
+    kind: z.literal('select'),
+    options: z.array(z.string().min(1).max(1000)).min(1).max(100),
+  }),
+  z.strictObject({ ...UiHead, kind: z.literal('confirm'), message: z.string().max(12000) }),
+  z.strictObject({ ...UiHead, kind: z.literal('input'), placeholder: z.string().max(1000) }),
+]);
+export type ExtensionUiRequest = z.infer<typeof ExtensionUiRequest>;
+export const ExtensionUiValue = z.union([z.string().max(12000), z.boolean(), z.null()]);
+export const ExtensionUiResult = z.discriminatedUnion('status', [
+  z.strictObject({ status: z.literal('answered'), value: ExtensionUiValue }),
+  z.strictObject({ status: z.enum(['cancelled', 'expired']) }),
+]);
+export type ExtensionUiResult = z.infer<typeof ExtensionUiResult>;
+export const ExtensionUiNotice = z.strictObject({
+  kind: z.enum(['notify', 'status', 'unsupported']),
+  key: z.string().min(1).max(100),
+  text: z.string().max(12000),
+  level: z.enum(['info', 'warning', 'error']),
+});
+export type ExtensionUiNotice = z.infer<typeof ExtensionUiNotice>;
+
 /** The final context at the Corral provider boundary, before dispatch. */
 export const ModelRequestRecord = z.strictObject({
   purpose: z.enum(['turn', 'compaction', 'retry', 'extension']),

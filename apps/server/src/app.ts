@@ -1295,7 +1295,11 @@ async function createCorralServer(
               (patch.before.criteriaVersionId === versionId ||
                 patch.after.criteriaVersionId === versionId),
           ) ||
-          coordinator.getRunSnapshot(runId)?.criteriaVersionId === versionId);
+          coordinator.getRunSnapshot(runId)?.criteriaVersionId === versionId ||
+          store.readEvents(runId, 0).some(event =>
+            ((event.type === 'extension.ui_requested' || event.type === 'extension.ui_notified') && event.payload.bodyRef === versionId) ||
+            (event.type === 'extension.ui_answered' && event.payload.answerRef === versionId),
+          ));
       const text = known ? coordinator.getArtifactText(runId, versionId) : null;
       return text === null ? fail(reply, 'TARGET_NOT_FOUND', 'no such version') : { text };
     },

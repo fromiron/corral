@@ -25,11 +25,25 @@ export function HarnessDetails({ session }: { session: RunSessionStore }) {
   const loads = events.filter(
     (event) => event.type === 'harness.loaded' || event.type === 'harness.load_failed',
   );
-  if (!harnesses && !requests.length) return null;
+  const uiHistory = events.filter((event) => event.type.startsWith('extension.ui_'));
+  if (!harnesses && !requests.length && !uiHistory.length) return null;
   return (
     <details className="mb-4 rounded-lg border border-line p-3" data-testid="harness-details">
       <summary className="cursor-pointer text-sm font-semibold">{t('applied')}</summary>
       <div className="mt-3 flex flex-col gap-3">
+        {uiHistory.length ? (
+          <details>
+            <summary className="cursor-pointer text-xs">{t('uiHistory')}</summary>
+            <ul className="text-2xs">
+              {uiHistory.map((event) => (
+                <li key={event.eventId}>
+                  {event.executionId} ·{' '}
+                  {'requestId' in event.payload ? event.payload.requestId : ''} · {event.type}
+                </li>
+              ))}
+            </ul>
+          </details>
+        ) : null}
         {Object.entries(harnesses ?? {}).map(([roleId, snapshot]) => (
           <section key={roleId} className="flex flex-col gap-1 border-b border-line pb-3">
             <h3 className="text-sm font-medium">

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { CorralDefinition, RunInput } from './definition.ts';
+import { ExtensionUiValue } from './harness.ts';
 import { Identifier, SchemaVersion } from './ids.ts';
 
 // Commands from contracts/command.schema.json. A command is an intent; the Coordinator
@@ -115,7 +116,20 @@ export const RestartTaskCommand = z.strictObject({
 });
 export type RestartTaskCommand = z.infer<typeof RestartTaskCommand>;
 
+export const AnswerExtensionUiCommand = z.strictObject({
+  ...requiredRevision,
+  type: z.literal('answer_extension_ui'),
+  payload: z.strictObject({
+    requestId: Identifier,
+    executionId: Identifier,
+    attemptNo: z.int().min(1),
+    value: ExtensionUiValue,
+  }),
+});
+export type AnswerExtensionUiCommand = z.infer<typeof AnswerExtensionUiCommand>;
+
 export const RunCommand = z.discriminatedUnion('type', [
+  AnswerExtensionUiCommand,
   SteerCommand,
   PauseCommand,
   ResumeCommand,

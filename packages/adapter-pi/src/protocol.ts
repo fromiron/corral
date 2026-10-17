@@ -1,6 +1,9 @@
 import {
   ContentHash,
   EffectiveHarnessSnapshot,
+  ExtensionUiNotice,
+  ExtensionUiRequest,
+  ExtensionUiResult,
   HarnessReport,
   HarnessResource,
   Identifier,
@@ -213,6 +216,19 @@ export const SdkStartFrame = StartFrame.extend({
 });
 export type SdkStartFrame = z.infer<typeof SdkStartFrame>;
 export const SdkWorkerFrame = z.union([
+  z.strictObject({
+    type: z.literal('ui_request'),
+    ...sdkHead,
+    requestId: RequestId,
+    request: ExtensionUiRequest,
+  }),
+  z.strictObject({ type: z.literal('ui_cancel'), ...sdkHead, requestId: RequestId }),
+  z.strictObject({
+    type: z.literal('ui_notice'),
+    ...sdkHead,
+    requestId: RequestId,
+    notice: ExtensionUiNotice,
+  }),
   ...WorkerFrame.options.map((frame) =>
     frame.extend({ protocolVersion: z.literal(PROTOCOL_VERSION) }),
   ),
@@ -257,6 +273,12 @@ export const SdkWorkerFrame = z.union([
 ]);
 export type SdkWorkerFrame = z.infer<typeof SdkWorkerFrame>;
 export const SdkHostFrame = z.union([
+  z.strictObject({
+    type: z.literal('ui_answer'),
+    ...sdkHead,
+    requestId: RequestId,
+    result: ExtensionUiResult,
+  }),
   ...HostFrame.options
     .filter((frame) => frame.shape.type.value !== 'start')
     .map((frame) => frame.extend({ protocolVersion: z.literal(PROTOCOL_VERSION) })),

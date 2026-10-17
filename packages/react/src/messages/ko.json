@@ -1709,6 +1709,18 @@
     "contextHash": "최종 문맥 해시",
     "payloadHash": "제공자 요청 해시",
     "payloadAbsent": "제공자 요청 기록 없음.",
-    "unmanaged": "관리되지 않은 네이티브 실행"
+    "unmanaged": "관리되지 않은 네이티브 실행",
+    "extensionUi": "확장 입력 요청",
+    "extensionNotice": "확장",
+    "answerUnconfirmed": "답변 전달을 확인하지 못했습니다. 요청 상태를 확인한 뒤 다시 시도하세요.",
+    "loadingPrompt": "확장 요청 불러오는 중…",
+    "attempt": "시도 {attempt}",
+    "expires": "{time}에 만료",
+    "chooseOption": "선택하세요",
+    "confirmYes": "확인",
+    "confirmNo": "거절",
+    "sendAnswer": "답변 전송",
+    "dismissPrompt": "요청 닫기",
+    "uiHistory": "확장 입력 이력"
   }
 }

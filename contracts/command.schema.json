@@ -516,6 +516,80 @@
         "expectedControlRevision"
       ],
       "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "const": "0.1"
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+        },
+        "runId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+        },
+        "expectedControlRevision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "type": {
+          "type": "string",
+          "const": "answer_extension_ui"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "requestId": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+            },
+            "executionId": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+            },
+            "attemptNo": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 12000
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "requestId",
+            "executionId",
+            "attemptNo",
+            "value"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "commandId",
+        "runId",
+        "expectedControlRevision",
+        "type",
+        "payload"
+      ],
+      "additionalProperties": false
     }
   ]
 }

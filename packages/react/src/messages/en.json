@@ -1709,6 +1709,18 @@
     "contextHash": "Final context hash",
     "payloadHash": "Provider payload hash",
     "payloadAbsent": "No provider payload recorded.",
-    "unmanaged": "Unmanaged native execution"
+    "unmanaged": "Unmanaged native execution",
+    "extensionUi": "Extension needs your input",
+    "extensionNotice": "Extension",
+    "answerUnconfirmed": "Answer delivery is unconfirmed. Check the pending request before trying again.",
+    "loadingPrompt": "Loading extension prompt…",
+    "attempt": "Attempt {attempt}",
+    "expires": "Expires at {time}",
+    "chooseOption": "Choose an option",
+    "confirmYes": "Confirm",
+    "confirmNo": "Decline",
+    "sendAnswer": "Send answer",
+    "dismissPrompt": "Dismiss request",
+    "uiHistory": "Extension UI history"
   }
 }

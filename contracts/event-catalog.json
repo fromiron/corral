@@ -1,7 +1,7 @@
 [
   {
     "type": "run.started",
-    "requiredContent": "정의/입력/모델 snapshot과 최초 limits",
+    "requiredContent": "\uc815\uc758/\uc785\ub825/\ubaa8\ub378 snapshot\uacfc \ucd5c\ucd08 limits",
     "status": "payload_schema_to_implement"
   },
   {
@@ -262,6 +262,26 @@
   {
     "type": "model.payload_recorded",
     "requiredContent": "modelCallId,payloadHash,payloadBytes (final provider JSON, no headers or bodies)",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "extension.ui_requested",
+    "requiredContent": "requestId,executionId,attemptNo,kind,bodyRef,bodyHash,deadline",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "extension.ui_answered",
+    "requiredContent": "requestId,executionId,attemptNo,answerRef,answerHash",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "extension.ui_expired",
+    "requiredContent": "requestId,executionId,attemptNo,reason",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "extension.ui_notified",
+    "requiredContent": "executionId,kind,key,level,bodyRef,bodyHash",
     "status": "payload_schema_to_implement"
   }
 ]

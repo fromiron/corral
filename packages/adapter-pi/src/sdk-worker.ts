@@ -32,6 +32,7 @@ import {
   type ToolDefinition,
 } from '@earendil-works/pi-coding-agent';
 import type { Channel } from './channel.ts';
+import { extensionUi } from './extension-ui.ts';
 import { lockResources } from './locked-resources.ts';
 import { PROTOCOL_VERSION, SdkHostFrame, type SdkStartFrame } from './protocol.ts';
 import { normalizeUsage } from './usage.ts';
@@ -118,6 +119,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
     const ack = async (frame: Record<string, unknown>) => {
       if ((await call(frame)).type !== 'ack') throw new Error('host refused');
     };
+    let notifications = Promise.resolve();
     let reported = false;
     let failureCode: Extract<HarnessReport, { ok: false }>['code'] = 'sdk_start_failed';
     try {
@@ -557,7 +559,52 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
         sessionManager: SessionManager.inMemory(cwd),
         settingsManager: settings,
       }));
-      await session.bindExtensions({});
+      const uiContext = extensionUi(
+        session.extensionRunner.getUIContext(),
+        async (request, signal) => {
+          if (cancelled || signal?.aborted) return { status: 'cancelled' };
+          const requestId = `req_${++nextRequest}`;
+          const reply = new Promise<Reply>((resolve) => waiting.set(requestId, resolve));
+          const abort = () => send({ type: 'ui_cancel', requestId });
+          signal?.addEventListener('abort', abort, { once: true });
+          try {
+            send({ type: 'ui_request', requestId, request });
+            const result = await reply;
+            if (result.type !== 'ui_answer') throw new Error('extension UI request refused');
+            return result.result;
+          } finally {
+            signal?.removeEventListener('abort', abort);
+          }
+        },
+        (notice) => {
+          notifications = notifications.then(() => ack({ type: 'ui_notice', notice }));
+          // Preserve the rejection for the next session boundary without an unhandled promise.
+          void notifications.catch(() => {});
+        },
+      );
+      failureCode = 'extension_load_failed';
+      let extensionStartFailed = false;
+      const requiredPaths = new Set(
+        start.resources.extensions
+          .filter((extension) =>
+            start.harness.resources.some(
+              (resource) =>
+                resource.kind === 'extension' &&
+                resource.hash === extension.hash &&
+                resource.required,
+            ),
+          )
+          .map((extension) => resolve(extension.path)),
+      );
+      await session.bindExtensions({
+        uiContext,
+        onError: (error) => {
+          if (error.event === 'session_start' && requiredPaths.has(resolve(error.extensionPath)))
+            extensionStartFailed = true;
+        },
+      });
+      await notifications;
+      if (extensionStartFailed) throw new Error('required extension initialization failed');
       session.setActiveToolsByName(
         session.getActiveToolNames().filter((name) => start.harness.allowedTools.includes(name)),
       );
@@ -619,6 +666,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
         [userPrompt(start), ...[...directives.values()].map(directiveText)].join('\n\n'),
       );
       await session.waitForIdle();
+      await notifications;
       await requests;
       if (!settled) throw new Error('SDK did not settle');
       const last = [...session.messages]
