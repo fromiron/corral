@@ -1,6 +1,6 @@
 # 개인 하네스 작업 인계 (H1 완료 시점)
 
-> 최신 진행: 2026-10-18 H2–H8 연속 구현 중. 아래 H1 시점 기록은 역사이며 작업 범위를 H1로 줄이지 않는다. 사용자 요청은 R2/R3 전체와 마지막 Computer Use까지다.
+> 최신 진행: 2026-10-18 H2–H8 제품 구현·로컬 검증·직접 Computer Use를 완료했다. 기능·Oracle Pro 반례 수정·검증 경계는 [최종 검증 보고서](../evaluation/Personal-Harness-Validation-2026-10-18.md), 전달·검사·병합 상태는 [PR #55](https://github.com/fromiron/corral/pull/55)를 따른다. 아래 H1 시점 기록과 중간 체크포인트는 역사이며 현재 상태로 읽지 않는다.
 
 - 작성: Claude / 2026-10-17. 앞 세션의 사용량이 다 되어 다른 작업자에게 넘긴다.
 - 브랜치: `feat/harness-h1`(push 완료). **PR은 아직 열지 않았다.**
@@ -17,7 +17,7 @@
 4. [CR-018](../change-requests/CR-018-pi-standard-harness.md), `docs/Decisions.md`의 ADR-027.
 5. Bell의 원안: [personal-harness-2026-10-17](../proposals/personal-harness-2026-10-17.md).
 
-## 지금 상태
+## H1 당시 상태
 
 | 단계 | 상태 |
 |---|---|
@@ -34,7 +34,7 @@
 - S6(npm 네트워크)는 opt-in으로 따로 통과
 - S8은 Node 24.19.0(desktop 동봉)에서도 통과
 
-## 다음에 할 일
+## H1 당시 다음 작업
 
 ### 1. H1 PR 열기
 
