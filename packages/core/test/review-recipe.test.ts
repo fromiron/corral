@@ -139,10 +139,16 @@ function runtime(
 }
 const terminal = (status: string) => ['succeeded', 'failed', 'cancelled'].includes(status);
 describe('bounded review recipes (H6)', () => {
-  function checked(verdicts: ('pass' | 'fail' | 'error' | 'stale')[], changeTree = true) {
+  function checked(
+    verdicts: ('pass' | 'fail' | 'error' | 'stale')[],
+    changeTree = true,
+    finalApproval = false,
+  ) {
     const definition = fixture({ checkIds: ['types'] }),
       writer = definition.roles.find((role) => role.id === 'writer');
     if (!writer) throw new Error('missing writer');
+    const output = definition.nodes.find((node) => node.type === 'output');
+    if (output?.type === 'output') output.requireApproval = finalApproval;
     writer.harness = { profileId: 'checked', revision: 1 };
     const selected: EffectiveHarnessSnapshot = {
       binding: writer.harness,
@@ -223,8 +229,61 @@ describe('bounded review recipes (H6)', () => {
         },
       },
     );
-    return { ...s, runCheck };
+    return {
+      ...s,
+      runCheck,
+      changeTarget: () => {
+        tree = 'f'.repeat(40);
+      },
+    };
   }
+  it('[TC-HAR-014-N] a tree changed during final approval cannot reuse an earlier passing check', async () => {
+    const s = checked(['pass'], true, true);
+    const waiting = await waitForProjection(
+      s.transport,
+      s.runId,
+      (p) => p.status === 'awaiting_user',
+    );
+    const approval = Object.values(waiting.approvals).find(
+      (approval) => approval.status === 'pending',
+    );
+    if (!approval) throw new Error('missing approval');
+    s.changeTarget();
+    await s.transport.sendCommand({
+      schemaVersion: '0.1',
+      runId: s.runId,
+      commandId: 'approve-final',
+      expectedControlRevision: waiting.controlRevision,
+      type: 'resolve_approval',
+      payload: {
+        approvalId: approval.approvalId,
+        decision: 'approve',
+        subjectVersionId: approval.subjectVersionIds[0]!,
+      },
+    });
+    const final = await waitForProjection(s.transport, s.runId, (p) => terminal(p.status));
+    expect(final.status).toBe('failed');
+    expect(final.output).toBeNull();
+    expect(
+      s
+        .events()
+        .some((event) => event.type === 'recipe.stopped' && event.payload.reason === 'check_stale'),
+    ).toBe(true);
+  });
+  it('[TC-HAR-014-N] an over-reported last model response cannot bypass the recipe token cap', async () => {
+    const s = runtime(fixture({ maxOutputTokens: 100 }), {
+      review: () => 'pass',
+      reply: (_turn, input) => (input.nodeId === 'review' ? 'x'.repeat(150) : 'small'),
+    });
+    const final = await waitForProjection(s.transport, s.runId, (p) => terminal(p.status));
+    expect(final.status).toBe('failed');
+    expect(final.output).toBeNull();
+    expect(
+      s
+        .events()
+        .some((event) => event.type === 'recipe.stopped' && event.payload.reason === 'token_limit'),
+    ).toBe(true);
+  });
   it('[TC-HAR-014-H] automatically checks each submission and a failed check overrides a passing review', async () => {
     const s = checked(['fail', 'pass']);
     const final = await waitForProjection(s.transport, s.runId, (p) => terminal(p.status));
