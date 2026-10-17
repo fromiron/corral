@@ -124,20 +124,47 @@ async function loaded() {
 }
 
 describe('Coordinator harness boundary (H2)', () => {
-  it('[TC-HAR-017-N] closing a parent cancels an already running nested broker call',async()=>{
-    const entered=new Gate();let cancelled=false;
-    const files:FileTools={available:()=>true,execute:async(_input,signal)=>{
-      entered.open();await new Promise<void>(resolve=>signal.onCancel(()=>{cancelled=signal.aborted;resolve();}));
-      throw new Error('cancelled');
-    }};
-    const s=setup(true,{...snapshot,allowedTools:['echo','read_file']},{files,fileTools:true});
-    await s.started.wait();await s.host().reportHarness!({ok:true,snapshotHash:snapshot.snapshotHash,tools:[descriptor,{...descriptor,name:'read_file',source:'corral'}],diagnostics:[]});
-    const parent=await s.host().authorizeTool({name:'echo',args:{text:'parent'}});
-    await s.host().beginNativeTool!(parent.toolCallId,hash({text:'parent'}));
-    const child=s.host().invokeTool({name:'read_file',args:{path:'a.txt'},parentToolCallId:parent.toolCallId});
-    await entered.wait();await s.host().finishNativeTool!(parent.toolCallId,'succeeded');
+  it('[TC-HAR-017-N] closing a parent cancels an already running nested broker call', async () => {
+    const entered = new Gate();
+    let cancelled = false;
+    const files: FileTools = {
+      available: () => true,
+      execute: async (_input, signal) => {
+        entered.open();
+        await new Promise<void>((resolve) =>
+          signal.onCancel(() => {
+            cancelled = signal.aborted;
+            resolve();
+          }),
+        );
+        throw new Error('cancelled');
+      },
+    };
+    const s = setup(
+      true,
+      { ...snapshot, allowedTools: ['echo', 'read_file'] },
+      { files, fileTools: true },
+    );
+    await s.started.wait();
+    await s.host().reportHarness!({
+      ok: true,
+      snapshotHash: snapshot.snapshotHash,
+      tools: [descriptor, { ...descriptor, name: 'read_file', source: 'corral' }],
+      diagnostics: [],
+    });
+    const parent = await s.host().authorizeTool({ name: 'echo', args: { text: 'parent' } });
+    await s.host().beginNativeTool!(parent.toolCallId, hash({ text: 'parent' }));
+    const child = s
+      .host()
+      .invokeTool({
+        name: 'read_file',
+        args: { path: 'a.txt' },
+        parentToolCallId: parent.toolCallId,
+      });
+    await entered.wait();
+    await s.host().finishNativeTool!(parent.toolCallId, 'succeeded');
     expect(cancelled).toBe(true);
-    expect(await child).toMatchObject({ok:false});
+    expect(await child).toMatchObject({ ok: false });
     s.done.open();
   });
   it('[TC-HAR-017-N] nested calls require a live native parent and cannot execute after it closes', async () => {
@@ -149,13 +176,11 @@ describe('Coordinator harness boundary (H2)', () => {
     ).toMatchObject({ ok: false });
     const parent = await s.host().authorizeTool({ name: 'echo', args: { text: 'parent' } });
     await s.host().beginNativeTool!(parent.toolCallId, hash({ text: 'parent' }));
-    const child = await s
-      .host()
-      .authorizeTool({
-        name: 'echo',
-        args: { text: 'child' },
-        parentToolCallId: parent.toolCallId,
-      });
+    const child = await s.host().authorizeTool({
+      name: 'echo',
+      args: { text: 'child' },
+      parentToolCallId: parent.toolCallId,
+    });
     expect(child.ok).toBe(true);
     expect(
       s

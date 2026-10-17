@@ -51,6 +51,7 @@ export const WorkerFrame = z.discriminatedUnion('type', [
     requestId: RequestId,
     name: z.string().min(1).max(64),
     args: z.record(z.string(), z.unknown()),
+    parentToolCallId: Identifier.optional(),
   }),
   z.strictObject({
     type: z.literal('execute_tool'),

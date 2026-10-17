@@ -416,6 +416,7 @@ interface PreparedExecution {
 /** A refused tool call; `limit` marks the refusals that also record `limit.reached`. */
 /** The opening and closing events every executed tool call commits. */
 interface ToolFrame {
+  parentCancellation?: ToolCancellation;
   effectId: string;
   toolCallId: string;
   opening: EventDraft[];
@@ -3753,6 +3754,21 @@ export class Coordinator {
       }
     };
     const nativeEffects = new Map<string, string>();
+    const nativeCloseListeners = new Map<string, Set<() => void>>();
+    const parentRefusal = (proposal: ToolProposal): Refusal | null => {
+      let parentId = proposal.parentToolCallId;
+      while (parentId !== undefined) {
+        const parent = nativeEffects.get(parentId);
+        if (!harness || !parent || run.projection.effects[parent]?.status !== 'admitted')
+          return {
+            kind: 'refuse',
+            code: 'CAPABILITY_DENIED',
+            message: 'nested tool parent is closed or unknown',
+          };
+        parentId = authorized.get(parentId)?.proposal.parentToolCallId;
+      }
+      return null;
+    };
     const recordedPayloads = new Set<string>();
     const toolView = (proposal: ToolProposal): ToolGateView => ({
       ...this.toolView(run, input, proposal),
@@ -3802,7 +3818,9 @@ export class Coordinator {
       if (harness) proposal = JSON.parse(canonicalJson(proposal)) as ToolProposal;
       const questionId = proposal.name === 'reply' ? proposal.args.questionId : null;
       // Checks a pause cannot change run before the safe boundary (Technical-Design §5.4).
-      const early = toolRefusal(runGates(this.gates['tool.pre_boundary'], toolView(proposal)));
+      const early =
+        parentRefusal(proposal) ??
+        toolRefusal(runGates(this.gates['tool.pre_boundary'], toolView(proposal)));
       if (early) {
         const error: CommandError = { code: early.code, message: early.message };
         if (proposal.name === 'reply') {
@@ -3841,7 +3859,9 @@ export class Coordinator {
       } while (run.projection.status !== 'running');
       requireActive();
       const toolCallId = this.ids.next('tool_call');
-      const refusal = toolRefusal(runGates(this.gates['tool.authorize'], toolView(proposal)));
+      const refusal =
+        parentRefusal(proposal) ??
+        toolRefusal(runGates(this.gates['tool.authorize'], toolView(proposal)));
       const error: CommandError | null = refusal
         ? { code: refusal.code, message: refusal.message }
         : null;
@@ -3860,6 +3880,7 @@ export class Coordinator {
             executionId,
             toolCallId,
             name: proposal.name,
+            ...(proposal.parentToolCallId ? { parentToolCallId: proposal.parentToolCallId } : {}),
             validatedArgs: error
               ? {}
               : harness
@@ -3954,7 +3975,9 @@ export class Coordinator {
             message: 'tool registration changed after authorization',
           },
         };
-      const refusal = toolRefusal(runGates(this.gates['tool.execute'], toolView(call.proposal)));
+      const refusal =
+        parentRefusal(call.proposal) ??
+        toolRefusal(runGates(this.gates['tool.execute'], toolView(call.proposal)));
       if (refusal)
         return { ok: false, toolCallId, error: { code: refusal.code, message: refusal.message } };
       call.ran = true;
@@ -3988,7 +4011,28 @@ export class Coordinator {
                 payload: { effectId, outcome: error ? 'failed' : 'succeeded' },
               },
             ];
-      const tool = { opening, closing, toolCallId, effectId };
+      const tool: ToolFrame = { opening, closing, toolCallId, effectId };
+      if (call.proposal.parentToolCallId)
+        tool.parentCancellation = {
+          get aborted() {
+            return parentRefusal(call.proposal) !== null;
+          },
+          onCancel(fn) {
+            const owners: Set<() => void>[] = [];
+            let parentId = call.proposal.parentToolCallId;
+            while (parentId) {
+              const listeners = nativeCloseListeners.get(parentId) ?? new Set<() => void>();
+              nativeCloseListeners.set(parentId, listeners);
+              listeners.add(fn);
+              owners.push(listeners);
+              parentId = authorized.get(parentId)?.proposal.parentToolCallId;
+            }
+            if (this.aborted) fn();
+            return () => {
+              for (const listeners of owners) listeners.delete(fn);
+            };
+          },
+        };
       switch (call.proposal.name) {
         case 'read':
         case 'run_check':
@@ -4215,6 +4259,7 @@ export class Coordinator {
               if (
                 !call ||
                 call.ran ||
+                parentRefusal(call.proposal) ||
                 call.descriptorHash !== hashOf(descriptors.get(call.proposal.name) ?? null) ||
                 !descriptors.get(call.proposal.name)?.source.startsWith('extension:') ||
                 hashOf(call.proposal.args) !== argsHash
@@ -4265,6 +4310,8 @@ export class Coordinator {
                 { type: 'effect.settled', executionId, payload: { effectId, outcome } },
               ]);
               nativeEffects.delete(toolCallId);
+              for (const listener of nativeCloseListeners.get(toolCallId) ?? []) listener();
+              nativeCloseListeners.delete(toolCallId);
             },
           }
         : {}),
@@ -5225,10 +5272,14 @@ export class Coordinator {
       for (const listener of listeners) listener();
     };
     scopeListeners.add(abort);
+    const offParent = tool.parentCancellation?.onCancel(abort);
     const cancellation: ToolCancellation = {
       get aborted() {
         return (
-          timedOut || run.cancelRequested.has(executionId) || run.closingExecutions.has(executionId)
+          timedOut ||
+          Boolean(tool.parentCancellation?.aborted) ||
+          run.cancelRequested.has(executionId) ||
+          run.closingExecutions.has(executionId)
         );
       },
       onCancel(fn) {
@@ -5426,6 +5477,7 @@ export class Coordinator {
     } finally {
       cancelTimer();
       scopeListeners.delete(abort);
+      offParent?.();
       listeners.clear();
     }
   }

@@ -427,6 +427,7 @@ export const ToolRequested = event(
   z.strictObject({
     executionId: Identifier,
     toolCallId: Identifier,
+    parentToolCallId: Identifier.optional(),
     name: z.string().min(1),
     /** Validated arguments; large values are replaced by size and hash. */
     validatedArgs: z.record(z.string(), z.unknown()),

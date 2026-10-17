@@ -173,15 +173,28 @@ function runtime(
 }
 
 describe('SDK worker through the product adapter (H2)', () => {
-  it('[TC-HAR-017-H] maps nested Pi calls to the owning Corral native call',async()=>{
-    const proposals: {name:string;parentToolCallId?:string}[]=[];
-    const run=runtime([
-      fauxAssistantMessage([fauxToolCall('echo',{text:'parent'})],{stopReason:'toolUse'}),fauxAssistantMessage('done'),
-    ],`export default pi=>{pi.registerTool({name:'echo',label:'Echo',description:'Nested call',parameters:{type:'object',properties:{text:{type:'string'}},required:['text']},execute:async(id,args,signal,update,ctx)=>{await ctx.executeTool('write_artifact',{text:'child'});return {content:[{type:'text',text:'done'}],details:{}};}});};`,{
-      authorizeTool:async proposal=>{proposals.push(proposal);return {ok:true,toolCallId:'owned_'+proposals.length};},
+  it('[TC-HAR-017-H] maps nested Pi calls to the owning Corral native call', async () => {
+    const proposals: { name: string; parentToolCallId?: string }[] = [];
+    const run = runtime(
+      [
+        fauxAssistantMessage([fauxToolCall('echo', { text: 'parent' })], { stopReason: 'toolUse' }),
+        fauxAssistantMessage('done'),
+      ],
+      `export default pi=>{pi.registerTool({name:'echo',label:'Echo',description:'Nested call',parameters:{type:'object',properties:{text:{type:'string'}},required:['text']},execute:async(id,args,signal,update,ctx)=>{await ctx.executeTool('write_artifact',{text:'child'});return {content:[{type:'text',text:'done'}],details:{}};}});};`,
+      {
+        authorizeTool: async (proposal) => {
+          proposals.push(proposal);
+          return { ok: true, toolCallId: 'owned_' + proposals.length };
+        },
+      },
+    );
+    expect(await (await run.adapter.start(run.input, run.host)).waitForSettlement()).toMatchObject({
+      outcome: 'succeeded',
     });
-    expect(await(await run.adapter.start(run.input,run.host)).waitForSettlement()).toMatchObject({outcome:'succeeded'});
-    expect(proposals).toEqual([{name:'echo',args:{text:'parent'}},{name:'write_artifact',args:{text:'child'},parentToolCallId:'owned_1'}]);
+    expect(proposals).toEqual([
+      { name: 'echo', args: { text: 'parent' } },
+      { name: 'write_artifact', args: { text: 'child' }, parentToolCallId: 'owned_1' },
+    ]);
   });
   it.each(['session_start', 'before_agent_start'] as const)(
     '[TC-HAR-016-H] wraps tools registered during %s and reports them before use',

@@ -410,7 +410,11 @@ class WorkerExecution {
       }
       case 'authorize_tool': {
         try {
-          const decision = await this.host.authorizeTool({ name: frame.name, args: frame.args });
+          const decision = await this.host.authorizeTool({
+            name: frame.name,
+            args: frame.args,
+            ...(frame.parentToolCallId ? { parentToolCallId: frame.parentToolCallId } : {}),
+          });
           this.send({
             type: 'tool_authorization',
             requestId: frame.requestId,

@@ -490,6 +490,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
         return auth;
       };
       const wrappedTools = new WeakSet<ToolDefinition>();
+      const nativeParents = new Map<string, string>();
       const wrappedHandlers = new WeakSet<object>();
       const publishRegistry = () => {
         const tools = [...descriptors.values()];
@@ -549,6 +550,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
               argsHash: auth.argsHash,
             });
             nativeDepth++;
+            nativeParents.set(id, auth.toolCallId);
             let outcome: 'succeeded' | 'failed' = 'failed';
             try {
               const result = await execute(id, args, signal, update, ctx);
@@ -556,6 +558,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
               return result;
             } finally {
               nativeDepth--;
+              nativeParents.delete(id);
               if (!cancelled)
                 await ack({ type: 'native_tool_finish', toolCallId: auth.toolCallId, outcome });
             }
@@ -636,10 +639,16 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
                   // Pi validates before hooks. Validate again without silently coercing a hook's changes.
                   if (hashOf(validated) !== hashOf(cleanJson(event.input)))
                     return { block: true, reason: 'invalid final tool arguments' };
+                  const parentToolCallId = event.parentToolCallId
+                    ? nativeParents.get(event.parentToolCallId)
+                    : undefined;
+                  if (event.parentToolCallId && !parentToolCallId)
+                    return { block: true, reason: 'nested tool parent is closed' };
                   const decision = await call({
                     type: 'authorize_tool',
                     name: event.toolName,
                     args,
+                    ...(parentToolCallId ? { parentToolCallId } : {}),
                   });
                   if (decision.type !== 'tool_authorization' || !decision.ok)
                     return {

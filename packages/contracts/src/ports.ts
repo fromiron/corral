@@ -138,6 +138,7 @@ export type AgentObservation = {
 export interface ToolProposal {
   name: string;
   args: Record<string, unknown>;
+  parentToolCallId?: string;
 }
 
 export type ToolOutcome =
