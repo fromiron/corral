@@ -190,7 +190,7 @@ export function ComposerInput({
                     aria-disabled={
                       row.kind === 'command' && row.command.disabled ? true : undefined
                     }
-                    onMouseEnter={() => setIndex(at)}
+                    onMouseMove={() => setIndex(at)}
                     onMouseDown={(event) => {
                       event.preventDefault();
                       choose(row);

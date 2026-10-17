@@ -51,7 +51,7 @@ test('[TC-UX-001-H] the result step waits for a result on the run page', async (
     .getByRole('region', { name: 'Start from a template' })
     .getByRole('article')
     .filter({ hasText: 'Single agent' })
-    .getByRole('button', { name: 'Use this template' })
+    .getByRole('button', { name: 'Edit this team' })
     .click();
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   await page.getByRole('button', { name: 'Pause run', exact: true }).click();

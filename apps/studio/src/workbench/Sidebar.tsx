@@ -18,6 +18,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
+  DialogPanel,
   DialogPopup,
   DialogTitle,
   Input,
@@ -42,6 +43,7 @@ import {
 import { useServices } from '../services.tsx';
 import { shortcutLabel } from '../shortcuts.ts';
 import { changePreferences, preferences } from './preferences.ts';
+import { useModelProfiles } from './useModels.ts';
 
 export function useCorralSidebar() {
   const { repository, transport, workspaces } = useServices();
@@ -161,6 +163,8 @@ export const Sidebar = memo(function Sidebar() {
   const status = useTranslations('Status');
   const studio = useTranslations('Studio');
   const ago = useAgo();
+  const profiles = useModelProfiles();
+  const connected = Boolean(profiles?.some((p) => p.available));
   const { repository, mode, live } = useServices();
   const router = useRouter();
   const navigate = useNavigate();
@@ -504,22 +508,28 @@ export const Sidebar = memo(function Sidebar() {
           content={
             mode === 'server'
               ? live
-                ? studio('liveNote')
+                ? connected
+                  ? studio('liveNote')
+                  : studio('liveNoModelNote')
                 : studio('serverNote')
               : studio('demoNote')
           }
         >
+          {/* UX-06: "live models" only when a model is actually connected. */}
           <button
             type="button"
+            onClick={() => (live && !connected ? void navigate({ to: '/settings/models' }) : null)}
             className="ml-auto flex items-center gap-1.5 rounded px-1.5 py-1 text-2xs text-muted"
           >
             <span
               aria-hidden="true"
-              className={`size-1.5 rounded-full ${live ? 'bg-success' : 'bg-warning'}`}
+              className={`size-1.5 rounded-full ${live && connected ? 'bg-success' : 'bg-warning'}`}
             />
             {mode === 'server'
               ? live
-                ? studio('liveShort')
+                ? connected
+                  ? studio('liveShort')
+                  : studio('liveNoModel')
                 : studio('serverShort')
               : studio('demoShort')}
           </button>
@@ -536,15 +546,17 @@ export const Sidebar = memo(function Sidebar() {
             <DialogTitle>{t('rename')}</DialogTitle>
             <DialogDescription>{t('renameHint')}</DialogDescription>
           </DialogHeader>
-          <Input
-            aria-label={t('sessionTitle')}
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.nativeEvent.isComposing && editing && title.trim())
-                void update(editing, { title });
-            }}
-          />
+          <DialogPanel>
+            <Input
+              aria-label={t('sessionTitle')}
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.nativeEvent.isComposing && editing && title.trim())
+                  void update(editing, { title });
+              }}
+            />
+          </DialogPanel>
           {error ? (
             <p role="alert" className="text-sm text-danger">
               {error}

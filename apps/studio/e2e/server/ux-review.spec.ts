@@ -1,0 +1,104 @@
+import { linearCorral } from '@corral/testkit';
+import type { Page } from '@playwright/test';
+import { panelTab, requestBox } from '../workbench.ts';
+import { expect, type Harness, test } from './harness.ts';
+
+// Workbench UX review (docs/plans/Workbench-UX-Review-Plan.md): pinpoint checks of the fixes
+// that need the local server's persistent runs.
+
+async function session(page: Page, corral: Harness) {
+  await corral.open('/');
+  await page.getByRole('tab', { name: /^Teams/ }).click();
+  await page.locator('input[type=file]').setInputFiles({
+    name: 'review.corral.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify(linearCorral(['writer']))),
+  });
+  await expect(page).toHaveURL(/\/edit$/);
+  await page.getByRole('link', { name: 'New session', exact: true }).click();
+  await page.getByLabel('Purpose').fill('Review fixes');
+  await page.getByRole('button', { name: 'Start session', exact: true }).click();
+  await expect(page).toHaveURL(/\/sessions\/session_/);
+}
+
+test('[TC-UX-02-H] a referenced result keeps its exact version through a reload', async ({
+  page,
+  corral,
+}) => {
+  await session(page, corral);
+  await requestBox(page).fill('First draft');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(page.getByTestId('chat-timeline').getByText('Succeeded')).toBeVisible({
+    timeout: 20_000,
+  });
+  const [first] = corral.server.coordinator.listRuns();
+  const version = first?.runId
+    ? corral.server.coordinator.getSnapshot(first.runId).projection.output?.artifactVersionIds[0]
+    : undefined;
+  expect(version).toBeTruthy();
+
+  await requestBox(page).fill('Compare with @');
+  const references = page.getByRole('listbox', { name: 'References' });
+  await expect(references.getByRole('option').first()).toBeVisible();
+  await references.getByRole('group', { name: 'Results' }).getByRole('option').first().click();
+  const chips = page.getByRole('list', { name: 'References' });
+  await expect(chips.getByRole('listitem')).toHaveCount(1);
+
+  await page.reload();
+  await expect(chips.getByRole('listitem')).toHaveCount(1);
+  await expect(chips.locator('[data-missing]')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect.poll(() => corral.server.coordinator.listRuns().length).toBe(2);
+  const second = corral.server.coordinator.listRuns().find((r) => r.runId !== first?.runId);
+  // The reference reached the run as that exact version: its text is in the new brief (CR-016).
+  const text = corral.server.coordinator.getArtifactText(first?.runId as string, version as string);
+  const brief = corral.server.coordinator.getRunSnapshot(second?.runId as string)?.definition.input
+    .brief;
+  expect(text).toBeTruthy();
+  expect(brief).toContain('References');
+  expect(brief).toContain(text as string);
+  expect(corral.errors).toEqual([]);
+});
+
+test('[TC-UX-05-H] reviewing a session without a working copy says so, without an error', async ({
+  page,
+  corral,
+}) => {
+  await session(page, corral);
+  const sessionPath = new URL(page.url()).pathname;
+  await page.goto(`${corral.server.url}${sessionPath}/review`);
+  await expect(page.getByTestId('review-empty')).toBeVisible();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(page.getByText('Preparing the comparison…')).toBeHidden();
+  await page.getByRole('link', { name: 'Open results' }).click();
+  await expect(page).toHaveURL(/panel=artifacts/);
+  await expect(page.getByRole('tab', { name: 'Results', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  void panelTab;
+});
+
+test.describe('live models', () => {
+  test.use({ live: true });
+  test('[TC-UX-04-H] a role whose model is not connected stops the request before it is sent', async ({
+    page,
+    corral,
+  }) => {
+    await session(page, corral);
+    await requestBox(page).fill('Use the live model');
+    await page.getByRole('combobox', { name: 'Run mode' }).click();
+    await page.getByRole('option', { name: 'Live models' }).click();
+    await expect(page.getByTestId('models-not-ready')).toContainText('model-a');
+    await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
+    await expect(page.getByTestId('app-sidebar')).toContainText('no model connected');
+    // /model shows each role's model and that it needs a sign-in.
+    await page.getByRole('button', { name: 'Use simulated agents' }).click();
+    await expect(page.getByTestId('models-not-ready')).toHaveCount(0);
+    await expect(requestBox(page)).toHaveValue('Use the live model');
+    await requestBox(page).fill('/model');
+    await requestBox(page).press('Enter');
+    await expect(page.getByTestId('model-assignments')).toContainText('Sign-in needed');
+    expect(corral.server.coordinator.listRuns()).toHaveLength(0);
+  });
+});

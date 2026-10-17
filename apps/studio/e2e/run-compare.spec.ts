@@ -10,7 +10,7 @@ test('[TC-OBS-004-H] compares two runs: figures, models and the outputs with the
     .getByRole('region', { name: 'Start from a template' })
     .getByRole('article')
     .filter({ hasText: 'Single agent' })
-    .getByRole('button', { name: 'Use this template' })
+    .getByRole('button', { name: 'Edit this team' })
     .click();
   await expect(page).toHaveURL(/\/edit$/);
   for (const brief of ['Compare two pens.', 'Compare three pens.']) {

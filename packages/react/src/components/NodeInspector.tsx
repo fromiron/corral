@@ -26,7 +26,18 @@ function useEditSession() {
   };
 }
 
-export function NodeInspector() {
+/** A model profile the role may use, as the local server knows it (UX-06). */
+export interface ProfileOption {
+  profileId: string;
+  label: string;
+  available: boolean;
+}
+
+/**
+ * The team's defaults and the selected node (UX-10): what applies to every run of the team is
+ * kept apart from the selected role, and rarely changed settings are folded away.
+ */
+export function NodeInspector({ profiles = null }: { profiles?: ProfileOption[] | null } = {}) {
   const t = useTranslations('Inspector');
   const id = useId();
   const { editor } = useStudioStores();
@@ -37,14 +48,16 @@ export function NodeInspector() {
   );
 
   return (
-    <section aria-labelledby={`${id}-heading`} className="flex flex-col gap-3">
+    <section aria-labelledby={`${id}-heading`} className="flex flex-col gap-4">
       <h2 id={`${id}-heading`} className="text-sm font-semibold">
         {t('heading')}
       </h2>
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-1 rounded-lg bg-subtle/60 p-2.5">
+        <p className="text-2xs font-medium text-muted">{t('teamDefaults')}</p>
         <label htmlFor={`${id}-brief`} className="text-xs font-medium">
           {t('brief')}
         </label>
+        <p className="text-2xs text-muted">{t('briefHint')}</p>
         <textarea
           id={`${id}-brief`}
           value={brief}
@@ -54,12 +67,22 @@ export function NodeInspector() {
           className={field}
         />
       </div>
-      {node ? <NodeProperties node={node} /> : <p className="text-sm text-muted">{t('none')}</p>}
+      {node ? (
+        <NodeProperties node={node} profiles={profiles} />
+      ) : (
+        <p className="text-sm text-muted">{t('none')}</p>
+      )}
     </section>
   );
 }
 
-function NodeProperties({ node }: { node: CorralNode }) {
+function NodeProperties({
+  node,
+  profiles,
+}: {
+  node: CorralNode;
+  profiles: ProfileOption[] | null;
+}) {
   const t = useTranslations('Inspector');
   const id = useId();
   const { editor } = useStudioStores();
@@ -112,39 +135,43 @@ function NodeProperties({ node }: { node: CorralNode }) {
               value={role.prompt}
               onChange={(e) => update(node.id, { prompt: e.target.value })}
               {...session}
-              rows={4}
-              className={field}
+              rows={8}
+              className={`${field} min-h-32 resize-y leading-6`}
             />
           </label>
           {sharedBy > 1 ? (
             <p className="text-xs text-warning">{t('sharedRole', { count: sharedBy })}</p>
           ) : null}
-          <label htmlFor={`${id}-contract`} className="flex flex-col gap-1 text-xs font-medium">
-            {t('contract')}
-            <select
-              id={`${id}-contract`}
-              value={role.outputContract}
-              onChange={(e) =>
-                update(node.id, { outputContract: e.target.value as OutputContract })
-              }
-              className={field}
-            >
-              {CONTRACTS.map((c) => (
-                <option key={c} value={c}>
-                  {t(`contracts.${c}`)}
-                </option>
-              ))}
-            </select>
-          </label>
           <label htmlFor={`${id}-profile`} className="flex flex-col gap-1 text-xs font-medium">
             {t('modelProfile')}
-            <input
-              id={`${id}-profile`}
-              value={role.modelProfile}
-              onChange={(e) => update(node.id, { modelProfile: e.target.value })}
-              {...session}
-              className={field}
-            />
+            {profiles?.length ? (
+              <select
+                id={`${id}-profile`}
+                value={role.modelProfile}
+                onChange={(e) => update(node.id, { modelProfile: e.target.value })}
+                className={field}
+              >
+                {profiles.some((p) => p.profileId === role.modelProfile) ? null : (
+                  <option value={role.modelProfile}>
+                    {t('profileMissing', { profile: role.modelProfile })}
+                  </option>
+                )}
+                {profiles.map((p) => (
+                  <option key={p.profileId} value={p.profileId}>
+                    {p.profileId} — {p.label}
+                    {p.available ? '' : ` (${t('profileSignIn')})`}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                id={`${id}-profile`}
+                value={role.modelProfile}
+                onChange={(e) => update(node.id, { modelProfile: e.target.value })}
+                {...session}
+                className={field}
+              />
+            )}
           </label>
           <label className="flex items-start gap-2 text-xs">
             <input
@@ -157,6 +184,28 @@ function NodeProperties({ node }: { node: CorralNode }) {
               <span className="block text-muted">{t('fileToolsHint')}</span>
             </span>
           </label>
+          <details className="text-xs">
+            <summary className="cursor-pointer font-medium text-muted">{t('advanced')}</summary>
+            <div className="mt-2 flex flex-col gap-3">
+              <label htmlFor={`${id}-contract`} className="flex flex-col gap-1 text-xs font-medium">
+                {t('contract')}
+                <select
+                  id={`${id}-contract`}
+                  value={role.outputContract}
+                  onChange={(e) =>
+                    update(node.id, { outputContract: e.target.value as OutputContract })
+                  }
+                  className={field}
+                >
+                  {CONTRACTS.map((c) => (
+                    <option key={c} value={c}>
+                      {t(`contracts.${c}`)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          </details>
         </>
       ) : null}
 

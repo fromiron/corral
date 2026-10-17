@@ -180,7 +180,12 @@ test('[TC-DEV-005-H] a previewed future prompt patch changes only the downstream
 const approve = async (page: Page, kind: 'Your decision' | 'Final output') => {
   const card = page.locator('[data-testid^="approval-"]').filter({ hasText: kind });
   await expect(card).toBeVisible({ timeout: 20_000 });
-  await card.getByRole('button', { name: 'Approve' }).click();
+  // UX-11: each step's button says what approving it does.
+  await card
+    .getByRole('button', {
+      name: kind === 'Final output' ? 'Confirm as final result' : 'Continue with this version',
+    })
+    .click();
 };
 
 const step = (page: Page, id: string) =>
@@ -259,7 +264,7 @@ test('[TC-DEV-005-N] a rejected approval does not finish the run or the guide', 
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   const card = page.locator('[data-testid^="approval-"]').filter({ hasText: 'Your decision' });
   await expect(card).toBeVisible({ timeout: 20_000 });
-  await card.getByRole('button', { name: 'Reject' }).click();
+  await card.getByRole('button', { name: 'Reject and stop' }).click();
   await expect(page.getByTestId('run-status')).not.toContainText(/Running|Waiting/, {
     timeout: 10_000,
   });

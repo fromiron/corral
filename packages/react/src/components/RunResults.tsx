@@ -55,80 +55,84 @@ export function RunResults({
     null;
 
   return (
-    <div
-      className="flex h-full min-h-0 flex-col overflow-auto md:flex-row md:overflow-hidden"
-      data-testid="run-results"
-    >
-      <nav
-        aria-label={t('label')}
-        className="flex shrink-0 flex-col gap-3 border-b border-line p-3 md:w-72 md:overflow-auto md:border-r md:border-b-0"
+    // UX-03: one column until the results have room for a list beside the text, measured on
+    // this view's own width (a side panel is narrow on any screen).
+    <div className="@container h-full min-h-0">
+      <div
+        className="flex h-full min-h-0 flex-col overflow-auto @3xl:flex-row @3xl:overflow-hidden"
+        data-testid="run-results"
       >
-        {results.kind === 'final' ? null : (
-          <p role="status" className="rounded border border-line p-2 text-xs text-muted">
-            {t(`kind.${results.kind}`, { status: projection.status })}
-          </p>
-        )}
-        {results.final.length > 0 ? (
-          <ResultSection heading={t('final')}>
-            {results.final.map((item) => (
-              <ResultButton
-                key={item.artifactVersionId}
-                session={session}
-                item={item}
-                chosen={chosen?.artifactVersionId === item.artifactVersionId}
-                onSelect={onSelect}
-              />
-            ))}
-          </ResultSection>
-        ) : null}
-        {results.intermediate.length > 0 ? (
-          <ResultSection heading={results.kind === 'partial' ? t('partial') : t('intermediate')}>
-            {results.intermediate.map((group) => (
-              <li key={group.artifactId} className="flex flex-col gap-1">
+        <nav
+          aria-label={t('label')}
+          className="flex max-h-40 shrink-0 flex-col gap-3 overflow-auto border-b border-line p-3 @3xl:max-h-none @3xl:w-72 @3xl:border-r @3xl:border-b-0"
+        >
+          {results.kind === 'final' ? null : (
+            <p role="status" className="rounded border border-line p-2 text-xs text-muted">
+              {t(`kind.${results.kind}`, { status: projection.status })}
+            </p>
+          )}
+          {results.final.length > 0 ? (
+            <ResultSection heading={t('final')}>
+              {results.final.map((item) => (
                 <ResultButton
+                  key={item.artifactVersionId}
                   session={session}
-                  item={group.latest}
-                  chosen={chosen?.artifactVersionId === group.latest.artifactVersionId}
+                  item={item}
+                  chosen={chosen?.artifactVersionId === item.artifactVersionId}
                   onSelect={onSelect}
-                  bare
                 />
-                {group.versions.length > 1 ? (
-                  <details
-                    className="pl-3 text-xs"
-                    open={group.versions.some(
-                      (v, i) => i > 0 && v.artifactVersionId === chosen?.artifactVersionId,
-                    )}
-                  >
-                    <summary className="cursor-pointer text-muted">
-                      {t('earlier', { count: group.versions.length - 1 })}
-                    </summary>
-                    <ul className="mt-1 flex flex-col gap-1">
-                      {group.versions.slice(1).map((item) => (
-                        <ResultButton
-                          key={item.artifactVersionId}
-                          session={session}
-                          item={item}
-                          chosen={chosen?.artifactVersionId === item.artifactVersionId}
-                          onSelect={onSelect}
-                        />
-                      ))}
-                    </ul>
-                  </details>
-                ) : null}
-              </li>
-            ))}
-          </ResultSection>
+              ))}
+            </ResultSection>
+          ) : null}
+          {results.intermediate.length > 0 ? (
+            <ResultSection heading={results.kind === 'partial' ? t('partial') : t('intermediate')}>
+              {results.intermediate.map((group) => (
+                <li key={group.artifactId} className="flex flex-col gap-1">
+                  <ResultButton
+                    session={session}
+                    item={group.latest}
+                    chosen={chosen?.artifactVersionId === group.latest.artifactVersionId}
+                    onSelect={onSelect}
+                    bare
+                  />
+                  {group.versions.length > 1 ? (
+                    <details
+                      className="pl-3 text-xs"
+                      open={group.versions.some(
+                        (v, i) => i > 0 && v.artifactVersionId === chosen?.artifactVersionId,
+                      )}
+                    >
+                      <summary className="cursor-pointer text-muted">
+                        {t('earlier', { count: group.versions.length - 1 })}
+                      </summary>
+                      <ul className="mt-1 flex flex-col gap-1">
+                        {group.versions.slice(1).map((item) => (
+                          <ResultButton
+                            key={item.artifactVersionId}
+                            session={session}
+                            item={item}
+                            chosen={chosen?.artifactVersionId === item.artifactVersionId}
+                            onSelect={onSelect}
+                          />
+                        ))}
+                      </ul>
+                    </details>
+                  ) : null}
+                </li>
+              ))}
+            </ResultSection>
+          ) : null}
+        </nav>
+        {chosen ? (
+          <ResultReader
+            key={chosen.artifactVersionId}
+            session={session}
+            item={chosen}
+            {...(previewUrl ? { previewUrl } : {})}
+            {...(onStartFrom ? { onStartFrom } : {})}
+          />
         ) : null}
-      </nav>
-      {chosen ? (
-        <ResultReader
-          key={chosen.artifactVersionId}
-          session={session}
-          item={chosen}
-          {...(previewUrl ? { previewUrl } : {})}
-          {...(onStartFrom ? { onStartFrom } : {})}
-        />
-      ) : null}
+      </div>
     </div>
   );
 }
@@ -267,7 +271,7 @@ function ResultReader({
   const src = html && runId && previewUrl ? previewUrl(runId, id) : null;
 
   return (
-    <article aria-labelledby={headingId} className="flex min-w-0 flex-col md:min-h-0 md:flex-1">
+    <article aria-labelledby={headingId} className="flex min-w-0 flex-col @3xl:min-h-0 @3xl:flex-1">
       <header className="flex flex-col gap-2 border-b border-line px-4 py-3">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 id={headingId} className="text-lg font-semibold">
@@ -357,7 +361,7 @@ function ResultReader({
         data-testid="result-body"
         // biome-ignore lint/a11y/noNoninteractiveTabindex: the body scrolls and must be reachable by keyboard
         tabIndex={0}
-        className="px-4 py-4 md:min-h-0 md:flex-1 md:overflow-auto"
+        className="px-4 py-4 @3xl:min-h-0 @3xl:flex-1 @3xl:overflow-auto"
       >
         {text === undefined ? (
           <p className="text-sm text-muted">{failed ? t('unavailable') : ta('loading')}</p>

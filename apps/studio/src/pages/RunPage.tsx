@@ -193,7 +193,8 @@ function RunWorkspace({
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   // Below 768px one panel shows at a time (roadmap 19); wider screens show them all.
   const [panel, setPanel] = useState<NarrowPanel>('canvas');
-  const shown = (name: NarrowPanel) => (panel === name ? '' : 'max-md:hidden');
+  // UX-03: the run view follows its own width (a side panel is narrow on any screen).
+  const shown = (name: NarrowPanel) => (panel === name ? '' : '@max-3xl:hidden');
 
   const chooseExecution = (id: string) => {
     setSelectedNodeId(null);
@@ -211,7 +212,7 @@ function RunWorkspace({
 
   if (view === null) {
     return (
-      <div className="flex h-full min-h-0 flex-col">
+      <div className="@container flex h-full min-h-0 flex-col">
         <RunSummary session={session} definition={definition} view="run" onView={chooseView} />
       </div>
     );
@@ -219,7 +220,7 @@ function RunWorkspace({
 
   if (view === 'results') {
     return (
-      <div className="flex h-full min-h-0 flex-col">
+      <div className="@container flex h-full min-h-0 flex-col">
         <RunSummary session={session} definition={definition} view={view} onView={chooseView} />
         <Main className="min-h-0 flex-1">
           <RunResults
@@ -230,12 +231,19 @@ function RunWorkspace({
             {...(startFrom ? { onStartFrom: startFrom } : {})}
           />
         </Main>
+        {/* A waiting decision stays at the foot of what it is about: read, then decide (UX-03). */}
+        <ApprovalPanel
+          session={session}
+          compact
+          onOpenArtifact={(id) => setSearch({ view: 'results', result: id })}
+          className="shrink-0 border-t border-line px-3 py-2"
+        />
       </div>
     );
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="@container flex h-full min-h-0 flex-col">
       <RunSummary session={session} definition={definition} view={view} onView={chooseView} />
       <NarrowViews panel={panel} onChoose={setPanel} />
       <Main className="run-layout min-h-0 flex-1">
@@ -592,7 +600,7 @@ function NarrowViews({
     <div
       role="tablist"
       aria-label={t('label')}
-      className="flex gap-1 overflow-x-auto border-b border-line px-2 py-1 md:hidden"
+      className="flex gap-1 overflow-x-auto border-b border-line px-2 py-1 @3xl:hidden"
     >
       {NARROW_PANELS.map((name, index) => (
         <button

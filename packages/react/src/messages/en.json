@@ -17,7 +17,9 @@
     "language": "Language",
     "liveShort": "Local · live models",
     "serverShort": "Local · simulated",
-    "demoShort": "Demo · simulated"
+    "demoShort": "Demo · simulated",
+    "liveNoModel": "Local · no model connected",
+    "liveNoModelNote": "Live models are possible here, but no model is connected yet. Open Settings › Models to sign in; until then runs are simulated."
   },
   "Palette": {
     "heading": "Nodes",
@@ -142,7 +144,12 @@
     "removeCall": "Remove link to {target}",
     "noCallableAgents": "Add an agent and set it to Only when called.",
     "fileTools": "Can change files",
-    "fileToolsHint": "Reads and writes files only in the session's working copy, through Corral's file tools. Without a working copy the tools are refused."
+    "fileToolsHint": "Reads and writes files only in the session's working copy, through Corral's file tools. Without a working copy the tools are refused.",
+    "teamDefaults": "For every run of this team",
+    "briefHint": "Used when a run has no request of its own. In a session, the request you send is the brief.",
+    "advanced": "Advanced",
+    "profileMissing": "{profile} (not set up here)",
+    "profileSignIn": "sign-in needed"
   },
   "Validation": {
     "heading": "Before running",
@@ -265,7 +272,9 @@
     "restartInstruction": "Instruction for the new attempt",
     "restartExplain": "Creates a new execution for the same unfinished task after this attempt has terminated. The coordinator checks that its parent still waits for it.",
     "requestLink": "Request {request} · Snapshot {snapshot}",
-    "produced": "Produced: {versions}"
+    "produced": "Produced: {versions}",
+    "receiptRun": "Whole-run command",
+    "receiptExecution": "Command to one execution"
   },
   "Status": {
     "created": "Created",
@@ -332,7 +341,7 @@
     "runStarted": "Started {time}",
     "emptyHint": "Start from a template below, create an empty Corral or import a JSON file.",
     "templatesHeading": "Start from a template",
-    "useTemplate": "Use this template",
+    "useTemplate": "Edit this team",
     "template": {
       "research-team": {
         "name": "Research team",
@@ -351,7 +360,9 @@
         "body": "Describe what the team should do; get a team shape to review before it opens."
       }
     },
-    "draftFromGoal": "Draft from a goal"
+    "draftFromGoal": "Draft from a goal",
+    "startWithTemplate": "Start a session with this team",
+    "suggestedTeam": "{name} (suggested, made when you start)"
   },
   "Editor": {
     "name": "Corral name",
@@ -364,7 +375,9 @@
     "noChanges": "Nothing to save.",
     "export": "Export JSON",
     "leaveUnsaved": "Leave without saving? Your unsaved changes will be lost.",
-    "openRun": "Open run page"
+    "openRun": "Open run page",
+    "backToSession": "Back to the session",
+    "appliesNextRun": "Saved changes apply from the session's next run; runs already started keep their team."
   },
   "RunPage": {
     "retry": "Retry loading run",
@@ -537,7 +550,23 @@
     "criteria": "Criteria",
     "approve": "Approve",
     "reject": "Reject",
-    "refused": "Not applied: {message}"
+    "refused": "Not applied: {message}",
+    "done": "✓ {step} approved ({subject})",
+    "then": {
+      "user_action": "Approving continues the run with these versions; rejecting stops it.",
+      "final_output": "Approving makes this version the run's final result; rejecting leaves the run without one.",
+      "loop_cap": "Approving runs the review once more; rejecting stops the run."
+    },
+    "approveAs": {
+      "user_action": "Continue with this version",
+      "final_output": "Confirm as final result",
+      "loop_cap": "Review once more"
+    },
+    "rejectAs": {
+      "user_action": "Reject and stop",
+      "final_output": "Do not confirm",
+      "loop_cap": "Stop here"
+    }
   },
   "Budget": {
     "heading": "Budget and usage",
@@ -987,13 +1016,13 @@
     "done": "done",
     "model": "Connect a model",
     "modelAction": "Connect a model",
-    "corral": "Make a Corral",
+    "corral": "Pick a team",
     "corralAction": "Start from a goal",
-    "corralOr": "or pick a template below",
-    "run": "Run it",
-    "runAction": "Open a Corral and press Run",
+    "corralOr": "or choose a suggested team in the box above",
+    "run": "Send the first request",
+    "runAction": "Start a session and send what you want done",
     "review": "Read the result",
-    "reviewAction": "Open a run's page from the list below"
+    "reviewAction": "Open the result in the conversation"
   },
   "Results": {
     "label": "Results",
@@ -1140,7 +1169,7 @@
     "remove": "Remove",
     "openResults": "Open results",
     "openRun": "View run",
-    "mode": "Models",
+    "mode": "Run mode",
     "modeMock": "Simulated",
     "modeLive": "Live models",
     "working": "Working…",
@@ -1177,7 +1206,8 @@
     },
     "editTeam": "Open team design",
     "objectivePlaceholder": "What should this session work on?",
-    "startHint": "Starts a session with this purpose. Nothing runs until you send the first request."
+    "startHint": "Starts a session with this purpose. Nothing runs until you send the first request.",
+    "appliesAt": "at its next model request"
   },
   "Files": {
     "folderHeading": "Work folder",
@@ -1275,7 +1305,14 @@
     "gitScopeNote": "Your linked folder, HEAD to what is on disk now (staged and not). Read only; comments and decisions apply to the session's working copy.",
     "demoFolder": "Demo: any path links an example folder kept in this page's memory (demo://example-repo). A reload starts it again.",
     "checksServerOnly": "Checks run commands on your computer, so they need the local server.",
-    "chooseFolder": "Choose folder…"
+    "chooseFolder": "Choose folder…",
+    "noCopyTitle": "This session has no working copy",
+    "noCopyBody": "Its runs did not work on files, so there are no file changes to compare. Their results are in the Results panel. To let a run change files, make a working copy first.",
+    "openResults": "Open results",
+    "makeCopyThere": "Set up a working copy",
+    "retry": "Try again",
+    "runChangedNothing": "This run did not change any files.",
+    "nothingChanged": "No files changed."
   },
   "Review": {
     "commentLine": "Comment on line {line}",
@@ -1501,7 +1538,16 @@
     "notifyBody": "{count, plural, one {# item needs} other {# items need}} you in this project.",
     "notifySetting": "Notifications",
     "notifyHint": "A system notification when a decision or review is waiting and Corral is in the background.",
-    "notifyOn": "Notify me"
+    "notifyOn": "Notify me",
+    "agents": {
+      "working": "{count} working",
+      "paused": "{count} paused",
+      "waitingApproval": "{count} waiting for your decision",
+      "waitingChildren": "{count} waiting for sub-tasks",
+      "waitingMessage": "{count} waiting for a reply",
+      "starting": "{count} about to start",
+      "stopping": "{count} stopping"
+    }
   },
   "Composer": {
     "commands": "Commands",
@@ -1522,7 +1568,38 @@
     "notNow": "Not available now",
     "groupRequest": "Request",
     "groupRun": "Run",
-    "focus": "Focus the request box"
+    "focus": "Focus the request box",
+    "ended": "{name} (ended)",
+    "blocked": {
+      "target": "The {name} execution has ended and no longer takes instructions. Choose another execution, or send this another way.",
+      "run": "This run has ended, so the instruction cannot be delivered. Send it another way.",
+      "intent": "This {intent} cannot be sent while another run works. Send it another way."
+    },
+    "switchTo": {
+      "next": "Send as a follow-up",
+      "queue": "Move to the queue",
+      "steer": "Send as an instruction",
+      "explain": "Ask about the result"
+    },
+    "missingReferences": "{count, plural, one {A reference no longer exists.} other {# references no longer exist.}} Remove it before sending.",
+    "referenceGone": "(no longer exists)",
+    "referencesNextOnly": "References travel with follow-ups only; here they stay as text in the request.",
+    "models": {
+      "title": "Models of this team",
+      "liveNote": "Live models are chosen: each role calls the model below.",
+      "mockNote": "Simulated agents are chosen: no model is called. With live models, each role would call the model below.",
+      "settings": "Model settings",
+      "noTeam": "Choose a team to see its models.",
+      "notReady": "Not connected: {roles}. Connect the model, or send with simulated agents.",
+      "connect": "Connect a model",
+      "useSimulated": "Use simulated agents",
+      "state": {
+        "ready": "Connected",
+        "signin": "Sign-in needed",
+        "missing": "Not set up here",
+        "simulated": "Simulated (demo)"
+      }
+    }
   },
   "Commands": {
     "newSession": "New session",
@@ -1551,5 +1628,18 @@
     "makeCopy": "Make a working copy",
     "copyExists": "This session already has a working copy",
     "noFolder": "Link a work folder first"
+  },
+  "Refusal": {
+    "signin": "The team's model is not connected. Sign in under Settings › Models, or send it with simulated agents.",
+    "profile": "The team uses a model profile that is not set up here. Check the model settings or the team's roles.",
+    "busy": "Another run is working right now. Queue this request to start it afterwards.",
+    "limit": "The request is over this installation's limits (for example, referenced results are too large).",
+    "reference": "Something this request refers to no longer exists. Remove that reference and send again.",
+    "network": "The answer was lost on the way, so it is not known whether the request arrived. Sending again will not start a second run.",
+    "other": "The request did not start.",
+    "connect": "Connect a model",
+    "retry": "Send again",
+    "queue": "Move to the queue",
+    "edit": "Edit the request again"
   }
 }

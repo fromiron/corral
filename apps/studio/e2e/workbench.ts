@@ -10,7 +10,7 @@ export async function teamFromTemplate(page: Page, name = 'Single agent') {
     .getByRole('region', { name: 'Start from a template' })
     .getByRole('article')
     .filter({ hasText: name })
-    .getByRole('button', { name: 'Use this template' })
+    .getByRole('button', { name: 'Edit this team' })
     .click();
   await expect(page).toHaveURL(/\/edit$/);
   await page.goBack();

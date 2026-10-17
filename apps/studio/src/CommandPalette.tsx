@@ -461,7 +461,7 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
                   tabIndex={-1}
                   aria-selected={index === current}
                   aria-disabled={command.disabled ? true : undefined}
-                  onMouseEnter={() => setActive(index)}
+                  onMouseMove={() => setActive(index)}
                   onMouseDown={(event) => {
                     event.preventDefault();
                     void runCommand(command);
@@ -490,20 +490,25 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
 function ShortcutHelp({ onClose }: { onClose: () => void }) {
   const t = useTranslations('Shortcuts');
   const closeRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => closeRef.current?.focus(), []);
+  // UX-12: focus starts at the top, so the dialog opens on its title and first shortcut.
+  useEffect(() => closeRef.current?.focus({ preventScroll: true }), []);
   return (
     <Modal label={t('label')} onClose={onClose}>
-      <div className="flex max-h-[70vh] flex-col gap-3 overflow-auto p-4 text-sm">
-        <h2 className="font-semibold">{t('label')}</h2>
-        <ShortcutTable />
-        <button
-          ref={closeRef}
-          type="button"
-          onClick={onClose}
-          className="self-end rounded-md px-2 py-1 text-xs text-muted hover:bg-subtle hover:text-text"
-        >
-          {t('closeButton')}
-        </button>
+      <div className="flex max-h-[70vh] flex-col text-sm">
+        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-line px-4 py-3">
+          <h2 className="font-semibold">{t('label')}</h2>
+          <button
+            ref={closeRef}
+            type="button"
+            onClick={onClose}
+            className="rounded-md px-2 py-1 text-xs text-muted hover:bg-subtle hover:text-text"
+          >
+            {t('closeButton')}
+          </button>
+        </div>
+        <div className="min-h-0 overflow-auto px-4 py-3">
+          <ShortcutTable />
+        </div>
       </div>
     </Modal>
   );

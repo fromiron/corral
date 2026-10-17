@@ -93,7 +93,7 @@ try {
     .getByRole('region', { name: 'Start from a template' })
     .getByRole('article')
     .filter({ hasText: 'Single agent' })
-    .getByRole('button', { name: 'Use this template' })
+    .getByRole('button', { name: 'Edit this team' })
     .click();
   await page.getByRole('link', { name: 'Corrals', exact: true }).click();
   await page.getByLabel('Purpose').fill('Desktop packaged smoke');

@@ -38,7 +38,7 @@ test('[TC-UX-001-H] keyboard only: a Corral from a template, a node moved and de
 }) => {
   await page.goto('/?delay=50');
   await expect(page.getByRole('heading', { name: 'Corrals' })).toBeVisible();
-  await tabTo(page, /^Use this template$/);
+  await tabTo(page, /^Edit this team$/);
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/\/edit$/);
   await expect(page.locator('.react-flow__node')).toHaveCount(9);
@@ -72,7 +72,10 @@ test('[TC-UX-001-H] keyboard only: a Corral from a template, a node moved and de
     await expect(
       page.locator('[data-testid^="approval-"]').filter({ hasText: decision }),
     ).toBeVisible({ timeout: 30_000 });
-    await tabTo(page, /^Approve$/);
+    await tabTo(
+      page,
+      decision === 'Final output' ? /^Confirm as final result$/ : /^Continue with this version$/,
+    );
     await page.keyboard.press('Enter');
   }
   await expect(page.getByTestId('run-status')).toContainText('Succeeded', { timeout: 30_000 });

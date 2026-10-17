@@ -56,7 +56,7 @@ test('[TC-CAN-002-H] Tidy up rearranges a messy canvas, and one Undo puts it bac
     .getByRole('region', { name: 'Start from a template' })
     .getByRole('article')
     .filter({ hasText: 'Research team' })
-    .getByRole('button', { name: 'Use this template' })
+    .getByRole('button', { name: 'Edit this team' })
     .click();
   await expect(page.locator('.react-flow__node')).toHaveCount(9);
   // Pile the Research node onto the Output.
@@ -91,7 +91,7 @@ test('[TC-CAN-002-H] Tidy up is in the command palette', async ({ page }) => {
     .getByRole('region', { name: 'Start from a template' })
     .getByRole('article')
     .filter({ hasText: 'Research team' })
-    .getByRole('button', { name: 'Use this template' })
+    .getByRole('button', { name: 'Edit this team' })
     .click();
   await expect(page.locator('.react-flow__node')).toHaveCount(9);
   await page.keyboard.press('Control+k');

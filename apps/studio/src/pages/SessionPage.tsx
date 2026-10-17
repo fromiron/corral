@@ -29,6 +29,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
+  DialogPanel,
   DialogPopup,
   DialogTitle,
   Input,
@@ -64,13 +65,21 @@ import { sendKeyLabel, shortcutLabel } from '../shortcuts.ts';
 import { ChatView } from '../workbench/ChatView.tsx';
 import { ComposerInput } from '../workbench/ComposerInput.tsx';
 import { ComposerSurface } from '../workbench/ComposerSurface.tsx';
+import { type IntentLock, resolveIntent } from '../workbench/composerIntent.ts';
 import { type MentionItem, mentionToken, pickedReferences } from '../workbench/composerMenu.ts';
 import { FilePanel, type FileReference } from '../workbench/FilePanel.tsx';
 import { isSendKey, usePreferences } from '../workbench/preferences.ts';
+import { EDIT_REQUEST, editRequest, RefusalHelp } from '../workbench/RefusalHelp.tsx';
 import { RunMessage } from '../workbench/RunMessage.tsx';
-import { readDraft, writeDraft } from '../workbench/sessionDraft.ts';
+import { readComposerDraft, writeComposerDraft } from '../workbench/sessionDraft.ts';
 import { TopbarActions } from '../workbench/TopbarSlot.tsx';
 import { useMentionSearch } from '../workbench/useMentionSearch.ts';
+import {
+  type ProfileInfo,
+  type RoleModel,
+  useModelProfiles,
+  useTeamRoles,
+} from '../workbench/useModels.ts';
 import { useBinding, WORKSPACE_CHANGED, WorkingCopyPanel } from './FilesViews.tsx';
 import { Checks } from './ReviewPage.tsx';
 import { RunDetail } from './RunPage.tsx';
@@ -526,6 +535,7 @@ function SessionActions({
                 void navigate({
                   to: '/corrals/$corralId/edit',
                   params: { corralId: team.corralId },
+                  search: { fromSession: session.sessionId },
                 })
               }
             >
@@ -547,15 +557,17 @@ function SessionActions({
             <DialogTitle>{td('rename')}</DialogTitle>
             <DialogDescription>{td('renameHint')}</DialogDescription>
           </DialogHeader>
-          <Input
-            aria-label={td('sessionTitle')}
-            value={renaming ?? ''}
-            onChange={(e) => setRenaming(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.nativeEvent.isComposing && renaming?.trim())
-                void update({ title: renaming }).then((ok) => ok && setRenaming(null));
-            }}
-          />
+          <DialogPanel>
+            <Input
+              aria-label={td('sessionTitle')}
+              value={renaming ?? ''}
+              onChange={(e) => setRenaming(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.nativeEvent.isComposing && renaming?.trim())
+                  void update({ title: renaming }).then((ok) => ok && setRenaming(null));
+              }}
+            />
+          </DialogPanel>
           <DialogFooter>
             <Button
               disabled={!renaming?.trim()}
@@ -953,7 +965,9 @@ function EntryCard({
           {when}
         </span>
       </div>
-      {entry.detail ? (
+      {entry.detail && entry.state === 'refused' ? (
+        <RefusalHelp message={entry.detail} onEdit={() => editRequest(entry.text)} />
+      ) : entry.detail ? (
         <p role="note" className="text-xs text-danger">
           {entry.detail}
         </p>
@@ -961,9 +975,11 @@ function EntryCard({
       {run && entry.intent !== 'steer' ? <RunCard run={run} nested onPanel={onPanel} /> : null}
       {entry.intent === 'steer' && entry.runId ? (
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
-          {entry.commandId ? (
-            <DeliveryStatus runId={entry.runId} commandId={entry.commandId} />
-          ) : null}
+          <DeliveryStatus
+            runId={entry.runId}
+            commandId={entry.commandId ?? null}
+            executionId={entry.executionId ?? null}
+          />
           <Button
             variant="ghost-muted"
             size="xs"
@@ -1098,12 +1114,43 @@ function RunCard({
 }
 
 /** Where an instruction is now, from the run's own record of it (02-UX-Spec §7). */
-function DeliveryStatus({ runId, commandId }: { runId: string; commandId: string }) {
+/**
+ * Whom an instruction was for, when it applies, and where it is now (UX-08), from the run's
+ * own record. It stays readable after the composer moves on to another execution.
+ */
+function DeliveryStatus({
+  runId,
+  commandId,
+  executionId,
+}: {
+  runId: string;
+  commandId: string | null;
+  executionId: string | null;
+}) {
   const t = useTranslations('Sessions');
   const ts = useTranslations('Transcript.instruction');
   const { transport } = useServices();
   const [status, setStatus] = useState<string | null>(null);
+  const [recipient, setRecipient] = useState<string | null>(null);
   useEffect(() => {
+    let live = true;
+    void Promise.all([transport.getSnapshot(runId), transport.getRunDefinition(runId)]).then(
+      ([{ projection }, definition]) => {
+        const execution = executionId ? projection.executions[executionId] : undefined;
+        if (!live || !execution) return;
+        const node = definition?.nodes.find((n) => n.id === execution.nodeId);
+        setRecipient(
+          `${node?.label ?? execution.nodeId} · #${projection.executionOrder.indexOf(execution.executionId) + 1}`,
+        );
+      },
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+  }, [transport, runId, executionId]);
+  useEffect(() => {
+    if (!commandId) return;
     let live = true;
     const read = () =>
       transport.getSnapshot(runId).then(
@@ -1128,9 +1175,15 @@ function DeliveryStatus({ runId, commandId }: { runId: string; commandId: string
       clearInterval(timer);
     };
   }, [transport, runId, commandId]);
-  return status ? (
-    <span data-testid="delivery">{t('delivery', { status: ts(status) })}</span>
-  ) : null;
+  return (
+    <>
+      <span data-testid="recipient" className="font-medium text-text" title={executionId ?? ''}>
+        → {recipient ?? executionId}
+      </span>
+      <span>{t('appliesAt')}</span>
+      {status ? <span data-testid="delivery">{t('delivery', { status: ts(status) })}</span> : null}
+    </>
+  );
 }
 
 function finalResultId(projection: RunProjection): string | null {
@@ -1165,18 +1218,41 @@ function Composer({
   const { repository, transport, mode, live } = services;
   const prefs = usePreferences();
   const router = useRouter();
-  const [text, setText] = useState(() => readDraft(session.sessionId));
+  // UX-02: the draft comes back with its intent, target and exact references.
+  const [restored] = useState(() => readComposerDraft(session.sessionId));
+  const [text, setText] = useState(restored.text);
   const [chosen, setChosen] = useState<SessionIntent | null>(null);
   const [target, setTarget] = useState<string>('');
+  // UX-01: what the request is (and for whom) is fixed once typing starts.
+  const [lock, setLock] = useState<IntentLock | null>(
+    restored.text && restored.intent ? { intent: restored.intent, target: restored.target } : null,
+  );
   const [runMode, setRunMode] = useState<'mock' | 'live'>('mock');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // UX-04: why the last request did not start; the text stays in the box to send again.
+  const [refusal, setRefusal] = useState<{
+    message: string;
+    code?: string | undefined;
+    network?: boolean;
+  } | null>(null);
   const [targets, setTargets] = useState<{ id: string; label: string }[]>([]);
   const [targetTick, setTargetTick] = useState(0);
-  const [picked, setPicked] = useState<MentionItem[]>([]);
+  const [picked, setPicked] = useState<MentionItem[]>(restored.references);
+  const [missing, setMissing] = useState<Set<string>>(new Set());
+  // Names of executions seen, so an instruction for one that ended still says whom it was for.
+  const targetNames = useRef(
+    new Map<string, string>(
+      restored.target && restored.targetLabel ? [[restored.target, restored.targetLabel]] : [],
+    ),
+  );
   const [confirmStop, setConfirmStop] = useState(false);
   const [teamOpen, setTeamOpen] = useState(false);
   const [modeOpen, setModeOpen] = useState(false);
+  const [modelsOpen, setModelsOpen] = useState(false);
+  // UX-06: which model each role uses, and whether it is connected.
+  const profiles = useModelProfiles();
+  const roles = useTeamRoles(team);
   const [recall, setRecall] = useState(-1);
   const input = useRef<HTMLTextAreaElement>(null);
   const ownActive = active && active.sessionId === session.sessionId ? active : null;
@@ -1206,8 +1282,6 @@ function Composer({
     : latest
       ? ['next', 'explain']
       : ['next'];
-  const intent: SessionIntent =
-    chosen && allowed.includes(chosen) ? chosen : (allowed[0] as SessionIntent);
 
   // Executions that can still take an instruction, named by their node.
   useEffect(() => {
@@ -1245,12 +1319,77 @@ function Composer({
     const timer = setInterval(() => setTargetTick((n) => n + 1), 1500);
     return () => clearInterval(timer);
   }, [ownActive]);
-  const steerTarget = targets.some((x) => x.id === target) ? target : (targets[0]?.id ?? '');
+  for (const x of targets) targetNames.current.set(x.id, x.label);
+  const resolved = resolveIntent({
+    allowed,
+    chosen,
+    chosenTarget: target || null,
+    lock,
+    targets: targets.map((x) => x.id),
+    running: Boolean(ownActive),
+  });
+  const intent = resolved.intent;
+  const steerTarget = resolved.target ?? '';
+  const targetName = (id: string) => targetNames.current.get(id) ?? id;
 
+  /** Changes the text; the first character fixes what the request is and for whom. */
   const write = (value: string) => {
     setText(value);
-    writeDraft(session.sessionId, value);
+    if (!value) setLock(null);
+    else if (!lock) setLock({ intent, target: intent === 'steer' ? steerTarget || null : null });
   };
+  /** An explicit choice by the person; it becomes the new fixed intent while text is typed. */
+  const chooseIntent = (value: SessionIntent) => {
+    setChosen(value);
+    if (text)
+      setLock({
+        intent: value,
+        target: value === 'steer' ? (lock?.target ?? steerTarget) || targets[0]?.id || null : null,
+      });
+  };
+  const chooseTarget = (value: string) => {
+    setTarget(value);
+    if (text) setLock({ intent: 'steer', target: value });
+  };
+  useEffect(() => {
+    writeComposerDraft(session.sessionId, {
+      text,
+      intent: lock?.intent ?? null,
+      target: lock?.target ?? null,
+      targetLabel: lock?.target ? (targetNames.current.get(lock.target) ?? null) : null,
+      references: picked.filter((item) => pickedReferences(text, [item]).length > 0),
+    });
+  }, [session.sessionId, text, lock, picked]);
+
+  // References restored from a draft are checked once: a result version, run or role that is
+  // gone is marked, never swapped for another with the same name (UX-02).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only the restored references
+  useEffect(() => {
+    if (!restored.references.length) return;
+    let live = true;
+    void (async () => {
+      const gone = new Set<string>();
+      const roles = team
+        ? ((await repository.get(team.corralId))?.definition.roles.map((r) => r.id) ?? [])
+        : [];
+      for (const item of restored.references) {
+        const ref = item.reference;
+        try {
+          if (ref.kind === 'result') {
+            const { projection } = await transport.getSnapshot(ref.runId);
+            if (!projection.artifacts[ref.artifactVersionId]) gone.add(item.id);
+          } else if (ref.kind === 'run') await transport.getSnapshot(ref.runId);
+          else if (ref.kind === 'role' && !roles.includes(ref.roleId)) gone.add(item.id);
+        } catch {
+          gone.add(item.id);
+        }
+      }
+      if (live) setMissing(gone);
+    })();
+    return () => {
+      live = false;
+    };
+  }, []);
 
   // A line range chosen in the file panel arrives as a reference at the caret.
   const used = useRef<FileReference | null>(null);
@@ -1285,6 +1424,7 @@ function Composer({
       picked.findIndex((x) => x.id === item.id) === index &&
       pickedReferences(text, [item]).length > 0,
   );
+  const missingChips = chips.filter((item) => missing.has(item.id));
 
   const record = async (entry: Parameters<typeof repository.addSessionEntry>[1]) => {
     const saved = await repository.addSessionEntry(session.sessionId, entry);
@@ -1296,7 +1436,7 @@ function Composer({
     brief: string,
     commandId: string = newCommandId(),
     refs: RunReference[] = [],
-  ): Promise<{ runId: string | null; detail: string | null }> => {
+  ): Promise<{ runId: string | null; detail: string | null; code?: string | undefined }> => {
     if (!team) return { runId: null, detail: t('noTeamYet') };
     const corral = await repository.get(team.corralId);
     if (!corral) return { runId: null, detail: t('noTeamYet') };
@@ -1319,7 +1459,20 @@ function Composer({
           }
         : { ...common, definition: { ...corral.definition, input } },
     );
-    return { runId: result.runId, detail: result.receipt.error?.message ?? null };
+    return {
+      runId: result.runId,
+      detail: result.receipt.error?.message ?? null,
+      code: result.receipt.error?.code,
+    };
+  };
+
+  /** A refused request keeps its text, intent and references so it can be fixed and resent. */
+  const refused = async (message: string, code?: string) => {
+    // A refusal is final for that command; the next attempt is a new command.
+    pending.current = null;
+    setRefusal({ message, code });
+    await router.invalidate();
+    onChange();
   };
 
   const send = async () => {
@@ -1327,11 +1480,12 @@ function Composer({
     if (!body || busy) return;
     setBusy(true);
     setError(null);
+    setRefusal(null);
     try {
       if (intent === 'next') {
         const refs = references;
         const commandId = commandFor(`next\u0000${body}\u0000${JSON.stringify(refs)}`);
-        const { runId, detail } = await startNext(body, commandId, refs);
+        const { runId, detail, code } = await startNext(body, commandId, refs);
         await record({
           intent,
           text: body,
@@ -1340,6 +1494,7 @@ function Composer({
           detail,
           commandId,
         });
+        if (!runId) return await refused(detail ?? t('noTeamYet'), code);
       } else if (intent === 'queue') {
         await record({ intent, text: body, state: 'queued' });
       } else if (intent === 'steer' && ownActive && steerTarget) {
@@ -1360,6 +1515,7 @@ function Composer({
           detail: receipt.error?.message ?? null,
           commandId,
         });
+        if (receipt.error) return await refused(receipt.error.message, receipt.error.code);
       } else if (intent === 'explain') {
         const corral = team ? await repository.get(team.corralId) : null;
         const profile = corral?.definition.roles[0]?.modelProfile ?? 'model-a';
@@ -1382,21 +1538,46 @@ function Composer({
           runId: result.runId,
           detail: result.receipt.error?.message ?? null,
         });
+        if (!result.runId)
+          return await refused(
+            result.receipt.error?.message ?? t('noResult'),
+            result.receipt.error?.code,
+          );
       } else {
         return;
       }
       pending.current = null;
       setPicked([]);
       setChosen(null);
-      write('');
+      setLock(null);
+      setText('');
       await router.invalidate();
       onChange();
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : String(failure));
+      // The answer was lost: the request may or may not have arrived. The text stays, and a
+      // retry reuses the same command ID, so the runtime returns the first receipt (UX-04).
+      setRefusal({
+        message: failure instanceof Error ? failure.message : String(failure),
+        network: true,
+      });
     } finally {
       setBusy(false);
     }
   };
+
+  // "Edit the request again" on a refused turn brings its text back here.
+  useEffect(() => {
+    const take = (event: Event) => {
+      const value = (event as CustomEvent<string>).detail;
+      if (typeof value !== 'string') return;
+      setText(value);
+      setLock(null);
+      setRefusal(null);
+      requestAnimationFrame(() => input.current?.focus());
+    };
+    window.addEventListener(EDIT_REQUEST, take);
+    return () => window.removeEventListener(EDIT_REQUEST, take);
+  }, []);
 
   const runCommand = async (type: 'pause' | 'resume' | 'cancel') => {
     if (!ownActive) return;
@@ -1446,8 +1627,9 @@ function Composer({
   };
   /** Editing a queued task takes it back into the box; sending again records a new version. */
   const editQueued = async (entry: SessionEntry) => {
-    write(entry.text);
+    setText(entry.text);
     setChosen('queue');
+    setLock({ intent: 'queue', target: null });
     await repository.updateSessionEntry(session.sessionId, entry.entryId, {
       state: 'dismissed',
       detail: 'edited',
@@ -1503,7 +1685,16 @@ function Composer({
     }
   };
 
+  // UX-04: with live models chosen, a role whose model is not connected stops the request
+  // before it is sent, with the way to connect it.
+  const notReady =
+    runMode === 'live' && (intent === 'next' || intent === 'explain') && profiles
+      ? roles.filter((r) => !profiles.some((p) => p.profileId === r.profileId && p.available))
+      : [];
   const unavailable =
+    notReady.length > 0 ||
+    resolved.blocked !== null ||
+    missingChips.length > 0 ||
     (intent === 'next' && !team) ||
     (intent === 'explain' && !latest) ||
     (intent === 'steer' && !steerTarget);
@@ -1522,7 +1713,7 @@ function Composer({
         disabled: !allowed.includes(value),
         ...(allowed.includes(value) ? {} : { hint: tc('notNow') }),
         run: () => {
-          setChosen(value);
+          chooseIntent(value);
           input.current?.focus();
         },
       }),
@@ -1567,14 +1758,22 @@ function Composer({
     ...(mode === 'server' && live
       ? [
           {
-            id: 'composer:model',
+            id: 'composer:mode',
             title: t('mode'),
             group: tc('groupRequest'),
-            slash: 'model',
+            slash: 'mode',
+            keywords: [t('modeMock'), t('modeLive')],
             run: () => setModeOpen(true),
           },
         ]
       : []),
+    {
+      id: 'composer:models',
+      title: tc('models.title'),
+      group: tc('groupRequest'),
+      slash: 'model',
+      run: () => setModelsOpen(true),
+    },
     {
       id: 'composer:focus',
       title: tc('focus'),
@@ -1641,16 +1840,86 @@ function Composer({
               {t('busyElsewhere', { runId: active.runId })}
             </p>
           ) : null}
+          {resolved.blocked ? (
+            <div
+              role="alert"
+              data-testid="intent-blocked"
+              className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg bg-warning/10 px-2.5 py-1.5 text-xs text-warning"
+            >
+              <span className="min-w-0 flex-1">
+                {resolved.blocked === 'target'
+                  ? tc('blocked.target', { name: targetName(steerTarget) })
+                  : resolved.blocked === 'run'
+                    ? tc('blocked.run')
+                    : tc('blocked.intent', { intent: t(`intentShort.${intent}`) })}
+              </span>
+              {allowed
+                .filter((value) => value !== intent)
+                .map((value) => (
+                  <Button
+                    key={value}
+                    variant="outline"
+                    size="xs"
+                    onClick={() => chooseIntent(value)}
+                  >
+                    {tc(`switchTo.${value}`)}
+                  </Button>
+                ))}
+            </div>
+          ) : null}
+          {notReady.length ? (
+            <div
+              role="alert"
+              data-testid="models-not-ready"
+              className="flex flex-wrap items-center gap-2 rounded-lg bg-warning/10 px-2.5 py-1.5 text-xs text-warning"
+            >
+              <span className="min-w-0 flex-1">
+                {tc('models.notReady', {
+                  roles: notReady.map((r) => `${r.name} (${r.profileId})`).join(', '),
+                })}
+              </span>
+              <Button size="xs" render={<Link to="/settings/models" />}>
+                {tc('models.connect')}
+              </Button>
+              <Button variant="outline" size="xs" onClick={() => setRunMode('mock')}>
+                {tc('models.useSimulated')}
+              </Button>
+            </div>
+          ) : null}
+          {refusal ? (
+            <RefusalHelp
+              message={refusal.message}
+              code={refusal.code}
+              network={refusal.network}
+              onRetry={() => void send()}
+              onQueue={() => {
+                setRefusal(null);
+                chooseIntent('queue');
+              }}
+            />
+          ) : null}
+          {missingChips.length ? (
+            <p role="alert" className="text-xs text-danger">
+              {tc('missingReferences', { count: missingChips.length })}
+            </p>
+          ) : null}
+          {chips.length && intent !== 'next' ? (
+            <p className="text-2xs text-muted">{tc('referencesNextOnly')}</p>
+          ) : null}
           {chips.length ? (
             <ul aria-label={tc('references')} className="flex flex-wrap gap-1">
               {chips.map((item) => (
                 <li
                   key={item.id}
-                  className="flex max-w-full items-center gap-1 rounded-md bg-subtle py-0.5 pr-0.5 pl-2 text-xs"
+                  data-missing={missing.has(item.id) || undefined}
+                  className={`flex max-w-full items-center gap-1 rounded-md py-0.5 pr-0.5 pl-2 text-xs ${missing.has(item.id) ? 'bg-danger/10 text-danger line-through' : 'bg-subtle'}`}
                 >
                   <span className="truncate font-mono" title={item.label}>
                     {mentionToken(item).slice(1)}
                   </span>
+                  {missing.has(item.id) ? (
+                    <span className="sr-only">{tc('referenceGone')}</span>
+                  ) : null}
                   <Button
                     variant="ghost-muted"
                     size="icon-tiny"
@@ -1701,19 +1970,19 @@ function Composer({
                 <AtSign />
               </Button>
             </Tooltip>
-            {allowed.length > 1 ? (
+            {allowed.length > 1 && !resolved.blocked ? (
               <Select
                 variant="chip"
                 label={t('intentLabel')}
                 value={intent}
-                onValueChange={(value) => setChosen(value)}
+                onValueChange={chooseIntent}
                 options={allowed.map((value) => ({
                   value,
                   label: t(`intentShort.${value}`),
                   hint: t(`intentHint.${value}`),
                 }))}
               />
-            ) : intent !== 'next' ? (
+            ) : intent !== 'next' || resolved.blocked ? (
               <span className="px-2 text-ui text-muted">{t(`intentShort.${intent}`)}</span>
             ) : null}
             {intent === 'steer' ? (
@@ -1722,8 +1991,19 @@ function Composer({
                 label={t('target')}
                 value={steerTarget || null}
                 placeholder={t('noTarget')}
-                onValueChange={setTarget}
-                options={targets.map((x) => ({ value: x.id, label: x.label }))}
+                onValueChange={chooseTarget}
+                options={[
+                  ...(steerTarget && !targets.some((x) => x.id === steerTarget)
+                    ? [
+                        {
+                          value: steerTarget,
+                          label: tc('ended', { name: targetName(steerTarget) }),
+                          disabled: true,
+                        },
+                      ]
+                    : []),
+                  ...targets.map((x) => ({ value: x.id, label: x.label })),
+                ]}
                 disabled={targets.length === 0}
               />
             ) : null}
@@ -1807,6 +2087,38 @@ function Composer({
           {error}
         </p>
       ) : null}
+      <Dialog open={modelsOpen} onOpenChange={setModelsOpen}>
+        <DialogPopup>
+          <DialogHeader>
+            <DialogTitle>{tc('models.title')}</DialogTitle>
+            <DialogDescription>
+              {runMode === 'live' ? tc('models.liveNote') : tc('models.mockNote')}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogPanel>
+            <ModelAssignments roles={roles} profiles={profiles} />
+          </DialogPanel>
+          <DialogFooter>
+            {team ? (
+              <Button
+                variant="outline"
+                render={
+                  <Link
+                    to="/corrals/$corralId/edit"
+                    params={{ corralId: team.corralId }}
+                    search={{ fromSession: session.sessionId }}
+                  />
+                }
+              >
+                {t('editTeam')}
+              </Button>
+            ) : null}
+            {mode === 'server' ? (
+              <Button render={<Link to="/settings/models" />}>{tc('models.settings')}</Button>
+            ) : null}
+          </DialogFooter>
+        </DialogPopup>
+      </Dialog>
       <Dialog open={confirmStop} onOpenChange={setConfirmStop}>
         <DialogPopup>
           <DialogHeader>
@@ -1932,4 +2244,42 @@ function PreRunSummary({
     t,
   ]);
   return text ? <span data-testid="pre-run">{text}</span> : null;
+}
+
+/** Each role of the team, the model profile it uses, and whether that model is ready (UX-06). */
+function ModelAssignments({
+  roles,
+  profiles,
+}: {
+  roles: RoleModel[];
+  profiles: ProfileInfo[] | null;
+}) {
+  const tc = useTranslations('Composer');
+  if (!roles.length) return <p className="text-sm text-muted">{tc('models.noTeam')}</p>;
+  return (
+    <ul className="flex flex-col divide-y divide-line/60 text-sm" data-testid="model-assignments">
+      {roles.map((role) => {
+        const profile = profiles?.find((p) => p.profileId === role.profileId);
+        const state = !profiles
+          ? 'simulated'
+          : !profile
+            ? 'missing'
+            : profile.available
+              ? 'ready'
+              : 'signin';
+        return (
+          <li key={role.roleId} className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 py-2">
+            <span className="font-medium">{role.name}</span>
+            <span className="font-mono text-xs text-muted">{role.profileId}</span>
+            <span className="min-w-0 flex-1 text-xs text-muted">{profile?.label ?? ''}</span>
+            <span
+              className={`text-xs ${state === 'ready' ? 'text-success' : state === 'simulated' ? 'text-muted' : 'text-warning'}`}
+            >
+              {tc(`models.state.${state}`)}
+            </span>
+          </li>
+        );
+      })}
+    </ul>
+  );
 }

@@ -9,12 +9,14 @@ import {
   SafeMarkdown,
   StatusBadge,
 } from '@corral/react';
-import { Activity, ChevronRight, FileText, LoaderCircle } from '@corral/react/icons';
+import { Activity, ChevronRight, FileText, LoaderCircle, Pause } from '@corral/react/icons';
 import { Button } from '@corral/react/ui';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
+import { markRunReviewed } from '../pages/GettingStarted.tsx';
 import { useRemembered } from '../pages/Workbench.tsx';
+import { agentSummary } from './agentSummary.ts';
 import { useCorralRun } from './useCorralChat.ts';
 
 /** T3's expandable work log and response surface, projected from Corral executions. */
@@ -78,6 +80,7 @@ export function RunMessage({
   const busy = working
     ? executions.filter((execution) => !TERMINAL_EXECUTION_STATUSES.has(execution.status))
     : [];
+  const summary = agentSummary(busy.map((execution) => execution.status));
   // Failures are never folded away (CR-015-03): each failed agent and its error stays in view.
   const failed = executions.filter((execution) => execution.status === 'failed');
   const name = (executionId: string) => {
@@ -139,8 +142,17 @@ export function RunMessage({
           {busy.length ? (
             <details className="group/agents">
               <summary className="flex cursor-pointer list-none items-center gap-2 py-0.5 text-muted hover:text-text">
-                <LoaderCircle size={13} className="animate-spin motion-reduce:animate-none" />
-                {t('agentsWorking', { count: busy.length })}
+                {summary.working > 0 && projection.status === 'running' ? (
+                  <LoaderCircle size={13} className="animate-spin motion-reduce:animate-none" />
+                ) : (
+                  <Pause size={13} />
+                )}
+                <span data-testid="agent-summary">
+                  {[
+                    t('agents.working', { count: summary.working }),
+                    ...summary.groups.map(([group, count]) => t(`agents.${group}`, { count })),
+                  ].join(' · ')}
+                </span>
                 <ChevronRight
                   size={12}
                   className="transition-transform group-open/agents:rotate-90"
@@ -245,6 +257,10 @@ function ChatResult({
     `corral:chat-result:v1:${projection.runId}:${result.artifactVersionId}`,
     first,
   );
+  // Reading a result in the conversation is the checklist's last step (UX-09).
+  useEffect(() => {
+    if (open === true && text !== undefined) markRunReviewed();
+  }, [open, text]);
   const author = projection.executions[result.authorExecutionId];
   const review = projection.reviews[result.artifactVersionId];
   const target = review ? projection.artifacts[review.targetVersionId] : null;

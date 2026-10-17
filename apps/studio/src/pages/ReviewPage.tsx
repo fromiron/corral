@@ -13,6 +13,7 @@ import type {
 } from '@corral/client';
 import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import type { RunSummary, WorkSession } from '@corral/core';
+import { Button } from '@corral/react/ui';
 import type { FileDiffMetadata } from '@pierre/diffs';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
@@ -51,6 +52,8 @@ export function ReviewPage() {
   const scopeKey = scope.kind === 'run' ? `run:${scope.runId}` : scope.kind;
   const [changes, setChanges] = useState<ChangeSetView | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // UX-05: a session without a working copy has nothing to compare; that is not a failure.
+  const [noCopy, setNoCopy] = useState(false);
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [version, setVersion] = useState(0);
   const { binding } = useBinding(session.projectId);
@@ -73,16 +76,24 @@ export function ReviewPage() {
     if (!workspaces) return;
     let live = true;
     setChanges(null);
+    setError(null);
+    setNoCopy(false);
     const chosen = scopeFromSearch({
       scope: scopeKey.split(':')[0],
       runId: scopeKey.split(':')[1],
     });
-    (chosen.kind === 'git'
-      ? workspaces.folderChanges(session.projectId)
-      : workspaces.changes(session.sessionId, chosen)
-    ).then(
-      (result) => live && setChanges(result),
-      (failure) => live && setError(failure instanceof Error ? failure.message : String(failure)),
+    void (async () => {
+      if (chosen.kind !== 'git') {
+        const copy = await workspaces.worktree(session.sessionId).catch(() => null);
+        if (!copy || copy.missing) return live && setNoCopy(true);
+      }
+      const result = await (chosen.kind === 'git'
+        ? workspaces.folderChanges(session.projectId)
+        : workspaces.changes(session.sessionId, chosen));
+      if (live) setChanges(result);
+    })().catch(
+      (failure: unknown) =>
+        live && setError(failure instanceof Error ? failure.message : String(failure)),
     );
     return () => {
       live = false;
@@ -161,12 +172,52 @@ export function ReviewPage() {
               {t('markReviewed')}
             </button>
           </header>
-          {error ? (
-            <p role="alert" className="p-3 text-sm text-danger">
+          {noCopy ? (
+            <section
+              data-testid="review-empty"
+              className="mx-auto flex max-w-lg flex-col items-start gap-3 p-8 text-sm"
+            >
+              <h3 className="text-base font-semibold">{t('noCopyTitle')}</h3>
+              <p className="text-muted">{t('noCopyBody')}</p>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  render={
+                    <Link
+                      to="/sessions/$sessionId"
+                      params={{ sessionId: session.sessionId }}
+                      search={{ panel: 'artifacts' }}
+                    />
+                  }
+                >
+                  {t('openResults')}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  render={
+                    <Link
+                      to="/sessions/$sessionId"
+                      params={{ sessionId: session.sessionId }}
+                      search={{ panel: 'changes' }}
+                    />
+                  }
+                >
+                  {t('makeCopyThere')}
+                </Button>
+              </div>
+            </section>
+          ) : error ? (
+            <div role="alert" className="flex flex-wrap items-center gap-2 p-3 text-sm text-danger">
               {t('failed', { message: error })}
-            </p>
+              <Button variant="outline" size="xs" onClick={() => setVersion((n) => n + 1)}>
+                {t('retry')}
+              </Button>
+            </div>
           ) : null}
-          <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[16rem_minmax(0,1fr)_20rem]">
+          <div
+            className={`${noCopy || error ? 'hidden' : 'grid'} min-h-0 flex-1 grid-cols-1 md:grid-cols-[16rem_minmax(0,1fr)_20rem]`}
+          >
             <nav
               aria-label={t('reviewHeading')}
               className="min-h-0 overflow-auto border-line p-2 md:border-r"
@@ -177,6 +228,7 @@ export function ReviewPage() {
                 selected={selected}
                 reviewed={reviewed}
                 onChoose={choose}
+                scopeIsRun={scope.kind === 'run'}
               />
             </nav>
             <section aria-label={selected ?? t('chooseFile')} className="min-h-0 overflow-auto p-3">
@@ -902,7 +954,9 @@ function FileList({
   selected,
   reviewed,
   onChoose,
+  scopeIsRun = false,
 }: {
+  scopeIsRun?: boolean;
   sessionId: string;
   changes: ChangeSetView | null;
   selected: string | null;
@@ -916,6 +970,12 @@ function FileList({
   void sessionId;
   if (!changes) return <p className="text-xs text-muted">{t('preparing')}</p>;
   if (changes.unavailable) return <p className="text-xs text-muted">{t('noBaseline')}</p>;
+  if (changes.files.length === 0)
+    return (
+      <p data-testid="no-changes" className="text-xs text-muted">
+        {scopeIsRun ? t('runChangedNothing') : t('nothingChanged')}
+      </p>
+    );
   const needle = query.trim().toLowerCase();
   const matches = changes.files.filter(
     (f) =>

@@ -6,7 +6,12 @@ import { expect, type Page, test } from '@playwright/test';
 const approve = async (page: Page, kind: 'Your decision' | 'Final output') => {
   const card = page.locator('[data-testid^="approval-"]').filter({ hasText: kind });
   await expect(card).toBeVisible({ timeout: 20_000 });
-  await card.getByRole('button', { name: 'Approve' }).click();
+  // UX-11: each step's button says what approving it does.
+  await card
+    .getByRole('button', {
+      name: kind === 'Final output' ? 'Confirm as final result' : 'Continue with this version',
+    })
+    .click();
 };
 
 const results = (page: Page) => page.getByRole('navigation', { name: 'Results' });
