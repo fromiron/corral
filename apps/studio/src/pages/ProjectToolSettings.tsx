@@ -4,6 +4,7 @@ import { Button } from '@corral/react/ui';
 import { Link } from '@tanstack/react-router';
 import { useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
+import { McpSettings } from './McpSettings.tsx';
 
 const field = 'w-full rounded-md border border-line bg-surface p-2 text-sm';
 const empty = { id: '', name: '', argv: '', languages: '', extensions: '', seconds: '30' };
@@ -271,6 +272,7 @@ export function ProjectToolSettings({
           ) : null}
         </div>
       </fieldset>
+      <McpSettings api={api} projectId={projectId} config={config} onChange={onChange} />
     </section>
   );
 }

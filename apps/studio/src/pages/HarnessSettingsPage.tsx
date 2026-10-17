@@ -92,6 +92,8 @@ export function HarnessPreviewView({ preview }: { preview: HarnessPreview }) {
           })}
           <br />
           {t('selectedLsp', { ids: preview.snapshot.projectTools.lspServerIds.join(', ') || '—' })}
+          <br />
+          {t('selectedMcp', { ids: preview.snapshot.projectTools.mcpServerIds?.join(', ') || '—' })}
         </p>
       ) : null}
     </section>
@@ -532,6 +534,16 @@ export function HarnessSettingsPage() {
                     missing: 'unregisteredLsp',
                     empty: 'noProjectLsp',
                   },
+                  {
+                    key: 'mcpServerIds',
+                    tool: '',
+                    items: projectTools?.mcpServers ?? [],
+                    select: 'selectMcp',
+                    hint: 'mcpSelectionHint',
+                    use: 'useMcp',
+                    missing: 'unregisteredMcp',
+                    empty: 'noProjectMcp',
+                  },
                 ] as const
               ).map((group) => (
                 <div key={group.key} className="flex flex-col gap-2 border-t border-line pt-3">
@@ -541,7 +553,7 @@ export function HarnessSettingsPage() {
                       checked={profile[group.key] !== undefined}
                       onChange={(event) => {
                         const checked = event.target.checked;
-                        if (checked)
+                        if (checked && group.tool)
                           setToolNames((current) =>
                             [
                               ...new Set([...current.split(/[\s,]+/).filter(Boolean), group.tool]),
