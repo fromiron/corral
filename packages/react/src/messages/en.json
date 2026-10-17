@@ -1071,7 +1071,15 @@
     "exampleSession5": "Summarise the changes for support",
     "exampleSession6": "Prepare the announcement email",
     "examples": "Make example projects",
-    "examplesHint": "Two projects with a team each and six sessions, for trying the workbench with simulated agents."
+    "examplesHint": "Two projects with a team each and six sessions, for trying the workbench with simulated agents.",
+    "sections": "Project",
+    "tab": {
+      "sessions": "Sessions",
+      "teams": "Teams",
+      "folder": "Work folder",
+      "runs": "Runs"
+    },
+    "actions": "Actions for {name}"
   },
   "Sessions": {
     "heading": "Sessions",
@@ -1167,7 +1175,9 @@
       "steer": "Instruction",
       "explain": "Question"
     },
-    "editTeam": "Open team design"
+    "editTeam": "Open team design",
+    "objectivePlaceholder": "What should this session work on?",
+    "startHint": "Starts a session with this purpose. Nothing runs until you send the first request."
   },
   "Files": {
     "folderHeading": "Work folder",
