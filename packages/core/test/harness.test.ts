@@ -124,6 +124,15 @@ async function loaded() {
 }
 
 describe('Coordinator harness boundary (H2)', () => {
+  it('[TC-HAR-003-N] simulation cannot fabricate an SDK load or provider payload record',async()=>{
+    const s=setup();await s.started.wait();await s.host().simulateHarness!();
+    await expect(s.host().reportHarness!({ok:true,snapshotHash:snapshot.snapshotHash,tools:[descriptor],diagnostics:[]})).rejects.toThrow();
+    await expect(s.host().prepareModelRequest(record)).rejects.toThrow(/simulation/);
+    const permit=await s.host().prepareModelRequest();
+    await expect(s.host().recordProviderPayload!({modelCallId:permit.modelCallId,payloadHash:'e'.repeat(64),payloadBytes:10})).rejects.toThrow(/simulation/);
+    expect(s.events().some(e=>e.type==='harness.loaded'||e.type==='model.request_recorded'||e.type==='model.payload_recorded')).toBe(false);
+    s.done.open();
+  });
   it('[TC-HAR-017-N] the worker capacity is shared by distinct executions', async () => {
     const started = new Gate(),
       childrenReady = new Gate(),
