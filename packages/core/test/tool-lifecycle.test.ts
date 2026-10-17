@@ -6,9 +6,10 @@ import {
   InMemoryRunStore,
   InProcessTransport,
   waitForProjection,
+  ToolTerminationUnconfirmed,
 } from '../src/index.ts';
 
-async function setup(termination: 'normal' | 'error', response: 'success' | 'error' = 'success') {
+async function setup(termination: 'normal' | 'error', response: 'success' | 'error' | 'unconfirmed' = 'success') {
   const clock = new FakeClock(),
     entered = new Gate(),
     finish = new Gate(),
@@ -31,6 +32,7 @@ async function setup(termination: 'normal' | 'error', response: 'success' | 'err
         await release.wait();
         off();
         if (response === 'error') throw new Error('late backend failure');
+        if (response === 'unconfirmed') throw new ToolTerminationUnconfirmed();
         return { text: 'late file body' };
       },
     },
@@ -76,6 +78,17 @@ async function setup(termination: 'normal' | 'error', response: 'success' | 'err
 const drain = async () => {
   for (let i = 0; i < 20; i++) await Promise.resolve();
 };
+
+it('[TC-HAR-012-N] unconfirmed tool process termination settles unknown and prevents another Run', async()=>{
+  const s=await setup('normal','unconfirmed');s.release.open();
+  expect((await s.pending()).ok).toBe(false);
+  s.finish.open();
+  await waitForProjection(s.transport,s.runId,p=>p.status==='failed');
+  const events=s.store.readEvents(s.runId,0);
+  const started=events.find(e=>e.type==='tool.started');if(!started||started.type!=='tool.started')throw new Error('missing tool effect');
+  expect(events.find(e=>e.type==='effect.settled'&&e.payload.effectId===started.payload.effectId)?.payload).toMatchObject({outcome:'unknown'});
+  expect(s.coordinator.startRun({schemaVersion:'0.1',commandId:'another',definition:linearCorral(['writer']),mode:'mock'}).runId).toBeNull();
+});
 
 it('[TC-HAR-012-N] normal and exceptional worker endings cancel and drain an owned tool before settling the execution', async () => {
   for (const termination of ['normal', 'error'] as const) {
