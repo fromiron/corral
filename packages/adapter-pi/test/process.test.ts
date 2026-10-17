@@ -11,8 +11,8 @@ import { startCompatibleEndpoint } from '@corral/testkit/endpoint';
 import { afterEach, describe, expect, it } from 'vitest';
 import { PiAgentAdapter } from '../src/adapter.ts';
 import { processChannel } from '../src/channel.ts';
-import { WORKER_ENTRY } from '../src/index.ts';
-import { PROTOCOL_VERSION } from '../src/protocol.ts';
+import { SDK_WORKER_ENTRY, sdkProcessChannel, WORKER_ENTRY } from '../src/index.ts';
+import { LEGACY_PROTOCOL_VERSION as PROTOCOL_VERSION } from '../src/protocol.ts';
 import { liveModels } from './harness.ts';
 
 const FIXTURE = join(import.meta.dirname, 'fixtures', 'faux-worker.ts');
@@ -123,11 +123,13 @@ describe('worker in a child process (C-017, ADR-017)', () => {
   }, 30_000);
 
   it.each([
-    ['keyless', true, 'Bearer no-key'],
-    ['keyed', false, 'Bearer per-request-key'],
+    ['keyless core', true, 'Bearer no-key', false],
+    ['keyed core', false, 'Bearer per-request-key', false],
+    ['keyless SDK', true, 'Bearer no-key', true],
+    ['keyed SDK', false, 'Bearer per-request-key', true],
   ])(
     '[TC-SEC-002-H] runs a live step on a %s OpenAI-compatible endpoint, with only the right key (CR-005)',
-    async (_name, keyless, authorization) => {
+    async (_name, keyless, authorization, sdk) => {
       const endpoint = await startCompatibleEndpoint();
       try {
         let calls = 0;
@@ -140,12 +142,19 @@ describe('worker in a child process (C-017, ADR-017)', () => {
             return { toolCall: { name: 'submit_result', args: { artifactVersionIds: [written] } } };
           return 'Done.';
         });
+        const harness = {
+          binding: { profileId: 'empty', revision: 1 }, snapshotHash: 'a'.repeat(64), piVersion: '1.3.0' as const,
+          policyRevision: 1, policy: 'strict' as const, resources: [], allowedTools: [], tools: [], diagnostics: [],
+        };
         const transport = new InProcessTransport(
           new Coordinator({
             clock: new FakeClock(),
             ids: new SequentialIdFactory(),
+            ...(sdk ? { harnesses: { resolve: () => harness } } : {}),
             agents: new PiAgentAdapter({
               spawn: () => processChannel(WORKER_ENTRY),
+              spawnSdk: () => sdkProcessChannel(SDK_WORKER_ENTRY),
+              harness: async () => ({ extensions: [], skills: [], startupCommands: [] }),
               // The host never hands a key for a keyless endpoint; the worker drops one anyway.
               credentials: async () => 'per-request-key',
               endpoint: (model) =>
@@ -179,7 +188,11 @@ describe('worker in a child process (C-017, ADR-017)', () => {
             },
           }),
         );
-        const { runId, final } = await run(transport);
+        const definition = linearCorral(['writer']);
+        if (sdk) definition.roles[0]!.harness = harness.binding;
+        const result = await transport.startRun({ schemaVersion: '0.1', commandId: 'cmd_process', definition, mode: 'live' });
+        const runId = result.runId!;
+        const final = await waitForProjection(transport, runId, settled);
         expect(final.status).toBe('succeeded');
         const output = final.output?.artifactVersionIds[0] ?? '';
         expect(await transport.getArtifactText(runId, output)).toBe('Hi from the endpoint');
