@@ -780,6 +780,21 @@ describe('review, applying and reverting (CR-013)', () => {
       'queued',
       'unreviewed',
     ]);
+    db.prepare(
+      "UPDATE runs SET projection_json = json_object('statusReason','review_recipe:attempt_limit') WHERE id = 'run_1'",
+    ).run();
+    expect(
+      review.inbox(
+        [{ sessionId: 'session_1', title: 't', entries: [] }],
+        [{ runId: 'run_1', status: 'failed', sessionId: 'session_1' }],
+      ),
+    ).toContainEqual({
+      kind: 'recipe_stopped',
+      sessionId: 'session_1',
+      sessionTitle: 't',
+      runId: 'run_1',
+      detail: 'attempt_limit',
+    });
   });
 });
 

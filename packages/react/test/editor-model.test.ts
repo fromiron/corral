@@ -1,5 +1,5 @@
 import { type CanvasLayout, CorralDefinition } from '@corral/contracts';
-import { compileDefinition, definitionHash, planRun } from '@corral/core';
+import { compileDefinition, definitionHash, planRun, reviewCriteriaHash } from '@corral/core';
 import { describe, expect, it } from 'vitest';
 import researchTeam from '../../../examples/research-team.corral.json' with { type: 'json' };
 import researchLayout from '../../../examples/research-team.layout.json' with { type: 'json' };
@@ -314,6 +314,36 @@ describe('arranging the canvas (roadmap 18)', () => {
 });
 
 describe('file tools switch (CR-012)', () => {
+  it('[TC-HAR-014-H] stores a pinned review recipe in the definition without changing an earlier draft', () => {
+    const draft = draftFromDefinition(team(), layout());
+    const recipe = {
+      recipeId: 'quality',
+      revision: 1,
+      criteriaHash: reviewCriteriaHash(draft.definition.input.criteria),
+      candidateNodeId: 'write',
+      evaluatorRoleId: 'reviewer',
+      checkIds: [],
+      criteriaFiles: [],
+      maxAttempts: 2,
+      maxRepairs: 1,
+      maxWallMs: 10000,
+      maxModelCalls: 20,
+      maxOutputTokens: 10000,
+    };
+    const on = updateNode(draft, 'review_loop', { reviewRecipe: recipe });
+    expect(on.definition.nodes.find((node) => node.id === 'review_loop')).toHaveProperty(
+      'reviewRecipe',
+      recipe,
+    );
+    expect(draft.definition.nodes.find((node) => node.id === 'review_loop')).not.toHaveProperty(
+      'reviewRecipe',
+    );
+    expect(compileDraft(on).runnable).toBe(true);
+    const off = updateNode(on, 'review_loop', { reviewRecipe: null });
+    expect(off.definition.nodes.find((node) => node.id === 'review_loop')).not.toHaveProperty(
+      'reviewRecipe',
+    );
+  });
   it('[TC-HAR-004-H] pins and removes a role harness without retaining a null field', () => {
     const added = addNode(emptyDraft(), 'agent', { x: 0, y: 0 });
     const binding = { profileId: 'writer', revision: 2 };
