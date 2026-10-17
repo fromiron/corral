@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -147,6 +147,7 @@ function runtime(
         resolveModel: () => faux.getModel(),
         now: () => 1000,
         directory,
+        workerLeaseDirectory: join(directory, 'durable-workers'),
       });
       return pair.host;
     },
@@ -206,6 +207,11 @@ describe('SDK worker through the product adapter (H2)', () => {
         },
         (context) => {
           sawResult = JSON.stringify(context.messages).includes('managed copy');
+          expect(
+            readdirSync(join(run.directory, 'durable-workers')).filter((name) =>
+              name.endsWith('.json'),
+            ),
+          ).toHaveLength(1);
           return fauxAssistantMessage('done');
         },
       ],
@@ -255,6 +261,7 @@ describe('SDK worker through the product adapter (H2)', () => {
       outcome: 'succeeded',
     });
     expect(sawResult).toBe(true);
+    expect(readdirSync(join(run.directory, 'durable-workers'))).toEqual([]);
     expect(began).toHaveLength(1);
     expect(JSON.stringify(updates)).toContain('extension:pi-mcp@1.3.0');
   });

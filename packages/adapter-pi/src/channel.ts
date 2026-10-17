@@ -1,8 +1,9 @@
 import { type ChildProcess, fork } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { recordWorkerLease } from './worker-leases.ts';
+import { recordWorkerLease, recoverSdkWorkers } from './worker-leases.ts';
 
 // The transport between host and one worker (ADR-017: one child process per execution,
 // spawned when needed). The protocol does not depend on it, so tests use a memory pair and
@@ -59,7 +60,7 @@ export function memoryChannelPair(): { host: Channel; worker: Channel } {
  */
 export function processChannel(
   entry: string,
-  options: { env?: NodeJS.ProcessEnv; leaseDirectory?: string } = {},
+  options: { env?: NodeJS.ProcessEnv; leaseDirectory?: string; childLeaseDirectory?: string } = {},
 ): Channel {
   const child: ChildProcess = fork(entry, [], {
     stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
@@ -92,12 +93,24 @@ export function processChannel(
     if (exited) return;
     stopChildren();
     exited = true;
-    try {
-      releaseLease();
-    } catch {
-      /* A remaining record is rechecked at next startup. */
-    }
-    for (const handler of exitHandlers) handler(code);
+    const confirmed = () => {
+      try {
+        releaseLease();
+      } catch {
+        /* Remaining records are rechecked at startup. */
+      }
+      for (const handler of exitHandlers) handler(code);
+    };
+    if (options.childLeaseDirectory) {
+      void recoverSdkWorkers(options.childLeaseDirectory)
+        .then(() => {
+          rmSync(options.childLeaseDirectory!, { recursive: true, force: true });
+          confirmed();
+        })
+        .catch(() => {
+          /* No exit acknowledgement: the adapter reports termination_unconfirmed. */
+        });
+    } else confirmed();
   };
   child.on('exit', ended);
   child.on('error', () => {
@@ -137,11 +150,14 @@ export function sdkProcessChannel(
   options: { leaseDirectory?: string } = {},
 ): Channel {
   const directory = mkdtempSync(join(tmpdir(), 'corral-sdk-'));
+  const childLeaseDirectory = join(options.leaseDirectory ?? directory, `children-${randomUUID()}`);
   try {
     const channel = processChannel(entry, {
       ...options,
+      childLeaseDirectory,
       env: {
         CORRAL_WORKER_DIR: directory,
+        CORRAL_WORKER_LEASE_DIR: childLeaseDirectory,
         HOME: directory,
         XDG_CONFIG_HOME: join(directory, 'config'),
         CLAUDE_CONFIG_DIR: join(directory, 'claude'),

@@ -11,6 +11,7 @@ const credentials = requestCredentials();
 const models = builtinModels({ credentials: credentials.store });
 runSdkWorker(processPort(), {
   directory,
+  workerLeaseDirectory: process.env.CORRAL_WORKER_LEASE_DIR,
   now: () => Date.now(),
   streamFn: (model, context, options) => {
     if (options?.apiKey) credentials.use(model.provider, options.apiKey);

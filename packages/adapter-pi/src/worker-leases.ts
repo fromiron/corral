@@ -51,10 +51,12 @@ const bootId = () =>
     : null;
 
 /** Written before the host sends start; an unrecorded process cannot start codemode work. */
-export function recordWorkerLease(directory: string, pid: number): () => void {
+export function recordWorkerLease(
+  directory: string,
+  pid: number,
+): (() => void) & { reap(): Promise<void> } {
   directoryAt(directory);
   const identity = process.platform === 'linux' ? processIdentity(pid) : null;
-  if (process.platform === 'linux' && !identity) return () => {};
   if (identity && identity.group !== pid) throw new Error('worker process group is not owned');
   const lease = Lease.parse({
     version: 1,
@@ -70,14 +72,22 @@ export function recordWorkerLease(directory: string, pid: number): () => void {
   } finally {
     rmSync(temporary, { force: true });
   }
-  return () => rmSync(path, { force: true });
+  const release = () => {
+    if (process.platform === 'linux' && liveGroup(pid)) return;
+    rmSync(path, { force: true });
+  };
+  let reaping: Promise<void> | undefined;
+  return Object.assign(release, {
+    reap: () => (reaping ??= reapLease(lease).then(() => rmSync(path, { force: true }))),
+  });
 }
 
 /** Call only after acquiring the workspace owner lock, before admitting any new workers. */
 export async function recoverSdkWorkers(directory: string): Promise<void> {
   directoryAt(directory);
   const boot = bootId();
-  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+  const entries = readdirSync(directory, { withFileTypes: true });
+  for (const entry of entries) {
     if (!entry.name.endsWith('.json')) continue;
     if (!entry.isFile()) throw new Error('worker recovery record is invalid');
     const path = join(directory, entry.name);
@@ -92,40 +102,53 @@ export async function recoverSdkWorkers(directory: string): Promise<void> {
     } finally {
       if (fd !== undefined) closeSync(fd);
     }
-    if (process.platform === 'linux') {
-      if (lease.bootId !== boot) {
-        rmSync(path, { force: true });
-        continue;
-      }
-      const identity = processIdentity(lease.pid);
-      if (!identity || identity.startTicks !== lease.startTicks) {
-        rmSync(path, { force: true });
-        continue;
-      }
-      if (identity.group !== lease.pid) throw new Error('worker cleanup is unconfirmed');
-      try {
-        process.kill(-lease.pid, 'SIGKILL');
-      } catch (error) {
-        if (!missing(error)) throw new Error('worker cleanup is unconfirmed');
-      }
-      let ended = false;
-      for (let attempt = 0; attempt < 100; attempt++) {
-        const current = processIdentity(lease.pid);
-        if (!current || current.startTicks !== lease.startTicks) {
-          ended = true;
-          break;
-        }
-        await delay(20);
-      }
-      if (!ended) throw new Error('worker cleanup is unconfirmed');
-    } else {
-      try {
-        process.kill(lease.pid, 0);
-        throw new Error('worker cleanup is unconfirmed');
-      } catch (error) {
-        if (!missing(error)) throw new Error('worker cleanup is unconfirmed');
-      }
-    }
+    await reapLease(lease, boot);
     rmSync(path, { force: true });
+  }
+  // Kill SDK owners first; only then can their child registries stop changing.
+  for (const entry of entries.filter((entry) => entry.name.startsWith('children-'))) {
+    if (!entry.isDirectory()) throw new Error('worker child registry is invalid');
+    const childDirectory = join(directory, entry.name);
+    await recoverSdkWorkers(childDirectory);
+    rmSync(childDirectory, { recursive: true, force: true });
+  }
+}
+
+// A dead group leader does not prove its children stopped. Zombies cannot execute work.
+function liveGroup(pid: number): boolean {
+  try {
+    process.kill(-pid, 0);
+  } catch (error) {
+    if (missing(error)) return false;
+    throw new Error('worker cleanup is unconfirmed');
+  }
+  for (const entry of readdirSync('/proc')) {
+    if (/^\d+$/.test(entry) && processIdentity(Number(entry))?.group === pid) return true;
+  }
+  return false;
+}
+async function reapLease(lease: z.infer<typeof Lease>, boot = bootId()) {
+  if (process.platform === 'linux') {
+    if (lease.bootId !== boot) return;
+    const identity = processIdentity(lease.pid);
+    if (identity && identity.startTicks !== lease.startTicks) return;
+    if (identity && identity.group !== lease.pid) throw new Error('worker cleanup is unconfirmed');
+    if (!liveGroup(lease.pid)) return;
+    try {
+      process.kill(-lease.pid, 'SIGKILL');
+    } catch (error) {
+      if (!missing(error)) throw new Error('worker cleanup is unconfirmed');
+    }
+    for (let attempt = 0; attempt < 100; attempt++) {
+      if (!liveGroup(lease.pid)) return;
+      await delay(20);
+    }
+    throw new Error('worker cleanup is unconfirmed');
+  }
+  try {
+    process.kill(lease.pid, 0);
+    throw new Error('worker cleanup is unconfirmed');
+  } catch (error) {
+    if (!missing(error)) throw new Error('worker cleanup is unconfirmed');
   }
 }

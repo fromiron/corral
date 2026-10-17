@@ -5,22 +5,44 @@ import { join } from 'node:path';
 import { expect, it } from 'vitest';
 import { processChannel, recoverSdkWorkers, sdkProcessChannel } from '../src/index.ts';
 
-it.skipIf(process.platform !== 'linux')('[TC-HAR-016-N] killing an SDK owner reaps separately grouped MCP processes before reporting exit', async()=>{
-  const directory=mkdtempSync(join(tmpdir(),'corral-sdk-mcp-'));
-  const channel=sdkProcessChannel(join(import.meta.dirname,'fixtures/mcp-owner.ts'),{leaseDirectory:directory});
-  const exited=new Promise<void>(resolve=>channel.onExit(()=>resolve()));
-  let pid:number|undefined;
-  try {
-    const info = await new Promise<{pid:number}>(resolve=>channel.onFrame(frame=>resolve(frame as {pid:number})));
-    pid=info.pid;
-    expect(()=>process.kill(pid!,0)).not.toThrow();
-    channel.kill();await exited;
-    const state=()=>{try{return readFileSync(`/proc/${pid}/stat`,'utf8').split(') ')[1]?.[0];}catch{return null;}};
-    expect([null,'Z','X']).toContain(state());
-    await recoverSdkWorkers(directory);
-    expect(readdirSync(directory)).toEqual([]);
-  } finally {channel.kill();if(pid)try{process.kill(-pid,'SIGKILL');}catch{}rmSync(directory,{recursive:true,force:true});}
-});
+it.skipIf(process.platform !== 'linux')(
+  '[TC-HAR-016-N] killing an SDK owner reaps separately grouped MCP processes before reporting exit',
+  async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'corral-sdk-mcp-'));
+    const channel = sdkProcessChannel(join(import.meta.dirname, 'fixtures/mcp-owner.ts'), {
+      leaseDirectory: directory,
+    });
+    const exited = new Promise<void>((resolve) => channel.onExit(() => resolve()));
+    let pid: number | undefined;
+    try {
+      const info = await new Promise<{ pid: number }>((resolve) =>
+        channel.onFrame((frame) => resolve(frame as { pid: number })),
+      );
+      pid = info.pid;
+      expect(() => process.kill(pid!, 0)).not.toThrow();
+      channel.kill();
+      await exited;
+      const state = () => {
+        try {
+          return readFileSync(`/proc/${pid}/stat`, 'utf8').split(') ')[1]?.[0];
+        } catch {
+          return null;
+        }
+      };
+      expect([null, 'Z', 'X']).toContain(state());
+      await recoverSdkWorkers(directory);
+      expect(readdirSync(directory)).toEqual([]);
+    } finally {
+      channel.kill();
+      if (pid)
+        try {
+          process.kill(-pid, 'SIGKILL');
+        } catch {}
+      rmSync(directory, { recursive: true, force: true });
+    }
+  },
+);
+
 import { recordWorkerLease } from '../src/worker-leases.ts';
 
 it.skipIf(process.platform !== 'linux')(

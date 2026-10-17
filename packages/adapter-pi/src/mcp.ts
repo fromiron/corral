@@ -3,11 +3,13 @@ import { canonicalJson, type McpChallenge } from '@corral/contracts';
 import { createMcpExtension } from '@earendil-works/pi-coding-agent';
 import { StdioTransport, StreamableHttpTransport } from '@earendil-works/pi-mcp';
 import type { SdkResources } from './protocol.ts';
+import { recordWorkerLease } from './worker-leases.ts';
 
 export function mcpExtension(
   resources: SdkResources,
   directory: string,
   authorization: (id: string, challenge?: McpChallenge) => Promise<string | undefined>,
+  leaseDirectory = join(directory, 'child-leases'),
 ) {
   const servers = (resources.mcp ?? []).map(({ server, fingerprint }) => ({
     name: server.id,
@@ -55,9 +57,29 @@ export function mcpExtension(
           closeTimeoutMs: 1000,
         });
         const start = transport.start.bind(transport);
+        const close = transport.close.bind(transport);
+        let lease: ReturnType<typeof recordWorkerLease> | undefined;
+        transport.onClose(() => {
+          void lease?.reap().catch(() => {});
+        });
+        transport.close = async () => {
+          try {
+            await close();
+          } finally {
+            await lease?.reap();
+          }
+        };
         transport.start = async () => {
           await authorization(entry.name);
-          await start();
+          const starting = start();
+          try {
+            if (transport.pid) lease = recordWorkerLease(leaseDirectory, transport.pid);
+            await starting;
+          } catch (error) {
+            await starting.catch(() => {});
+            await transport.close();
+            throw error;
+          }
         };
         return transport;
       }

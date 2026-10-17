@@ -52,6 +52,7 @@ import { parametersOf, systemPrompt, TOOL_TEXT, textOf, userPrompt } from './wor
 export interface SdkWorkerDeps extends WorkerDeps {
   /** Private execution directory; the process launcher also isolates HOME and jiti here. */
   directory: string;
+  workerLeaseDirectory?: string;
   now(): number;
 }
 type Reply = Exclude<SdkHostFrame, { type: 'start' | 'cancel' | 'directive' }>;
@@ -636,16 +637,21 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
             ? [
                 {
                   name: 'corral-mcp',
-                  factory: mcpExtension(start.resources, directory, async (serverId, challenge) => {
-                    const reply = await call({
-                      type: 'mcp_authorization',
-                      serverId,
-                      ...(challenge ? { challenge } : {}),
-                    });
-                    if (reply.type !== 'mcp_authorization')
-                      throw new Error('MCP authorization unavailable');
-                    return reply.token;
-                  }),
+                  factory: mcpExtension(
+                    start.resources,
+                    directory,
+                    async (serverId, challenge) => {
+                      const reply = await call({
+                        type: 'mcp_authorization',
+                        serverId,
+                        ...(challenge ? { challenge } : {}),
+                      });
+                      if (reply.type !== 'mcp_authorization')
+                        throw new Error('MCP authorization unavailable');
+                      return reply.token;
+                    },
+                    deps.workerLeaseDirectory,
+                  ),
                 },
               ]
             : []),
@@ -923,6 +929,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
         .find((m): m is AssistantMessage => m.role === 'assistant');
       await shutdown();
       await registryUpdates;
+      if (requiredExtensionFailed) throw new Error('required extension shutdown failed');
       send({
         type: 'settled',
         outcome:
