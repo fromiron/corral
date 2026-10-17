@@ -59,6 +59,29 @@ async function setup(edit?: ConstructorParameters<typeof WorkspaceService>[0]['e
 }
 
 describe('file broker (CR-012)', () => {
+  it('[TC-HAR-012-N] automatic checks enforce pinned selection, exact fingerprint approval, owner and stale-tree rejection', async () => {
+    const { service, call } = await setup();
+    await service.configure('default', { verifyCommands: [{ id:'ok',name:'OK',argv:[process.execPath,'-e','process.exit(0)'],timeoutMs:10000 }] });
+    const config = service.projectTools.latest('default'); if (!config) throw new Error('missing config');
+    const selection = { projectId:'default',revision:config.revision,hash:config.hash,checkIds:['ok'],lspServerIds:[] };
+    const context = { runId:'run_1',executionId:'exec_1',attemptNo:1,effectId:'effect_check',selection,commandId:'ok' };
+    const cancellation = {aborted:false,onCancel:()=>()=>{}};
+    const plan = await service.planCheck(context,cancellation);
+    expect(plan.trusted).toBe(false);
+    await expect(service.runCheck(context,plan,null,cancellation)).rejects.toThrow(/approval|trust/);
+    await expect(service.planCheck({...context,commandId:'unknown'},cancellation)).rejects.toThrow(/selected|registered/);
+    await expect(service.runCheck(context,plan,'f'.repeat(64),cancellation)).rejects.toThrow(/approval|fingerprint/);
+    const report = await service.runCheck(context,plan,plan.fingerprint,cancellation);
+    expect(report).toMatchObject({ owner:{kind:'execution',runId:'run_1',executionId:'exec_1',attemptNo:1,effectId:'effect_check'},state:'completed',verdict:'pass',stale:false });
+    await expect(service.runCheck(context,plan,plan.fingerprint,cancellation)).rejects.toThrow(/already|duplicate/);
+    service.projectTools.setTrust({projectId:'default',kind:'check',id:'ok',fingerprint:plan.fingerprint},true);
+    const trusted = await service.planCheck(context,cancellation);
+    expect(trusted.trusted).toBe(true);
+    service.projectTools.setTrust({projectId:'default',kind:'check',id:'ok',fingerprint:plan.fingerprint},false);
+    await expect(service.runCheck(context,trusted,null,cancellation)).rejects.toThrow(/trust|approval/);
+    await call('read_file',{path:'a.txt'}); await call('write_file',{path:'a.txt',text:'new tree'});
+    await expect(service.runCheck(context,plan,plan.fingerprint,cancellation)).rejects.toThrow(/tree|changed/);
+  });
   it('[TC-HAR-013-H] manual checks use owned frozen copies and retain separate state and verdict', async () => {
     const { service, call, db } = await setup();
     await service.configure('default', {
