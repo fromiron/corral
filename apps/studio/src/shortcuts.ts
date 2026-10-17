@@ -50,20 +50,24 @@ export const SHORTCUTS: readonly Shortcut[] = [
 
 /** Keys that work only inside one place (composer, editor); listed in help, not bound here. */
 export const LOCAL_KEYS = [
-  { id: 'send', keys: (sendWithEnter: boolean) => (sendWithEnter ? 'Enter' : `${mod()} Enter`) },
+  {
+    id: 'send',
+    keys: (sendWithEnter: boolean) =>
+      sendWithEnter ? 'Enter' : formatChord({ mod: true, key: 'Enter' }),
+  },
   {
     id: 'newline',
-    keys: (sendWithEnter: boolean) => (sendWithEnter ? 'Shift Enter' : 'Enter'),
+    keys: (sendWithEnter: boolean) =>
+      sendWithEnter ? formatChord({ shift: true, key: 'Enter' }) : 'Enter',
   },
+  { id: 'recall', keys: () => '↑' },
   { id: 'mention', keys: () => '@' },
   { id: 'slash', keys: () => '/' },
-  { id: 'save', keys: () => `${mod()} S` },
-  { id: 'undo', keys: () => `${mod()} Z` },
-  { id: 'redo', keys: () => `${mod()} Shift Z` },
+  { id: 'save', keys: () => formatChord({ mod: true, key: 's' }) },
+  { id: 'undo', keys: () => formatChord({ mod: true, key: 'z' }) },
+  { id: 'redo', keys: () => formatChord({ mod: true, shift: true, key: 'z' }) },
   { id: 'close', keys: () => 'Esc' },
 ] as const;
-
-const mod = () => (isMac() ? '⌘' : 'Ctrl');
 
 export function chordOf(id: ShortcutId): Chord | null {
   const shortcut = SHORTCUTS.find((s) => s.id === id);

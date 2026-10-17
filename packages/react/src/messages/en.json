@@ -829,7 +829,8 @@
       "runs": "Runs",
       "help": "Help",
       "editor": "Editor",
-      "projects": "Projects"
+      "projects": "Projects",
+      "sessions": "Open a session"
     },
     "draftTeam": "Draft a team from a goal",
     "tidy": "Tidy up the canvas"
@@ -837,16 +838,29 @@
   "Shortcuts": {
     "label": "Keyboard shortcuts",
     "palette": "Command palette",
-    "help": "Show these shortcuts",
+    "help": "Keyboard shortcuts",
     "save": "Save the Corral",
     "undo": "Undo an edit",
     "redo": "Redo",
     "delete": "Delete the selected node or connection",
     "move": "Move the selected node",
-    "send": "Send an instruction",
-    "newline": "New line in an instruction",
-    "close": "Close a dialog",
-    "closeButton": "Close"
+    "send": "Send a request",
+    "newline": "New line in a request",
+    "close": "Close a menu or dialog",
+    "closeButton": "Close",
+    "helpKey": "Keyboard shortcuts (outside a text box)",
+    "sessionNew": "New session",
+    "sessionJump": "Go to a session in this project",
+    "viewSidebar": "Show or hide the sidebar",
+    "viewPanel": "Show or hide the side panel",
+    "composerFocus": "Go to the request box",
+    "settings": "Settings",
+    "navBack": "Back",
+    "navForward": "Forward",
+    "runStop": "Stop the run",
+    "recall": "Earlier request (empty box)",
+    "mention": "Reference a file, folder, result, run or role",
+    "slash": "Commands (at the start of a request)"
   },
   "TeamDraft": {
     "title": "Draft a team from a goal",
@@ -1466,7 +1480,11 @@
     "resultUnavailable": "This result could not be read.",
     "retryResult": "Try again",
     "teamActivity": "Team activity",
-    "moreResults": "Show {count} earlier runs"
+    "moreResults": "Show {count} earlier runs",
+    "sendKey": "Send with",
+    "sendKeyHint": "Which key sends a request. The other adds a line.",
+    "sendEnter": "Enter",
+    "sendModEnter": "Ctrl/⌘ + Enter"
   },
   "Composer": {
     "commands": "Commands",
@@ -1488,5 +1506,33 @@
     "groupRequest": "Request",
     "groupRun": "Run",
     "focus": "Focus the request box"
+  },
+  "Commands": {
+    "newSession": "New session",
+    "jump": "Go to session 1–9",
+    "hideSidebar": "Hide the sidebar",
+    "showSidebar": "Show the sidebar",
+    "settings": "Settings",
+    "back": "Back",
+    "forward": "Forward",
+    "shortcuts": "Keyboard shortcuts",
+    "groups": {
+      "session": "Session",
+      "go": "Go to",
+      "view": "View",
+      "help": "Help",
+      "panel": "Panel"
+    },
+    "togglePanel": "Show or hide the side panel",
+    "openPanel": "Open {panel}",
+    "review": "Open the review screen",
+    "rename": "Rename session",
+    "pin": "Pin session",
+    "unpin": "Unpin session",
+    "archive": "Archive session",
+    "restore": "Restore session",
+    "makeCopy": "Make a working copy",
+    "copyExists": "This session already has a working copy",
+    "noFolder": "Link a work folder first"
   }
 }

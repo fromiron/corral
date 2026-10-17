@@ -368,6 +368,88 @@ function SessionActions({
     await router.invalidate();
     return true;
   };
+  const tcmd = useTranslations('Commands');
+  const { workspaces } = useServices();
+  const panelGroup = tcmd('groups.panel');
+  const sessionGroup = tcmd('groups.session');
+  useRegisterCommands('session', [
+    {
+      id: 'panel:toggle',
+      title: tcmd('togglePanel'),
+      group: panelGroup,
+      shortcutId: 'view.panel',
+      shortcut: shortcutLabel('view.panel'),
+      run: () => onPanel(panel ? undefined : 'changes'),
+    },
+    ...(
+      [
+        ['changes', 'changes'],
+        ['files', 'files'],
+        ['artifacts', 'results'],
+        ['checks', 'checks'],
+        ['run', 'run'],
+      ] as const
+    ).map(
+      ([value, slash]): AppCommand => ({
+        id: `panel:${value}`,
+        title: tcmd('openPanel', { panel: tw(`panel.${value}`) }),
+        group: panelGroup,
+        slash,
+        run: () => onPanel(value),
+      }),
+    ),
+    {
+      id: 'session:review',
+      title: tcmd('review'),
+      group: sessionGroup,
+      slash: 'review',
+      disabled: !workspaces,
+      hint: workspaces ? undefined : tw('serverOnly'),
+      run: () =>
+        navigate({ to: '/sessions/$sessionId/review', params: { sessionId: session.sessionId } }),
+    },
+    {
+      id: 'session:copy',
+      title: tcmd('makeCopy'),
+      group: sessionGroup,
+      slash: 'copy',
+      disabled: !workspaces,
+      hint: workspaces ? undefined : tw('serverOnly'),
+      run: async () => {
+        if (!workspaces) return;
+        try {
+          const existing = await workspaces.worktree(session.sessionId).catch(() => null);
+          if (existing && !existing.missing) return setError(tcmd('copyExists'));
+          await workspaces.createWorktree(session.sessionId);
+          window.dispatchEvent(new Event(WORKSPACE_CHANGED));
+          onPanel('changes');
+        } catch (failure) {
+          setError(failure instanceof Error ? failure.message : String(failure));
+        }
+      },
+    },
+    {
+      id: 'session:rename',
+      title: tcmd('rename'),
+      group: sessionGroup,
+      slash: 'rename',
+      run: () => setRenaming(session.title),
+    },
+    {
+      id: 'session:pin',
+      title: session.pinned ? tcmd('unpin') : tcmd('pin'),
+      group: sessionGroup,
+      slash: session.pinned ? 'unpin' : 'pin',
+      run: () => void update({ pinned: !session.pinned }),
+    },
+    {
+      id: 'session:archive',
+      title: session.archivedAt ? tcmd('restore') : tcmd('archive'),
+      group: sessionGroup,
+      slash: session.archivedAt ? 'restore' : 'archive',
+      run: () => void update({ archived: !session.archivedAt }),
+    },
+  ]);
   return (
     <TopbarActions>
       {error ? (

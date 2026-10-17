@@ -1,4 +1,5 @@
 import { TIDY_EVENT } from '@corral/react';
+import { Kbd } from '@corral/react/ui';
 import { useNavigate } from '@tanstack/react-router';
 import {
   type KeyboardEvent,
@@ -10,13 +11,18 @@ import {
   useState,
 } from 'react';
 import { useTranslations } from 'use-intl';
-import { type Command, rankCommands } from './commands.ts';
+import {
+  type AppCommand,
+  runShortcut,
+  useRegisterCommands,
+  useRegisteredCommands,
+} from './commandRegistry.ts';
+import { rankCommands } from './commands.ts';
 import { currentProject, projectName } from './projects.ts';
 import { useServices } from './services.tsx';
+import { LOCAL_KEYS, SHORTCUTS, type ShortcutId, shortcutFor, shortcutLabel } from './shortcuts.ts';
 import { createFromTemplate, WORKSPACE_TEMPLATES } from './templates.ts';
-
-const isMac = () => /Mac|iPhone|iPad/.test(globalThis.navigator?.platform ?? '');
-export const modKey = () => (isMac() ? '⌘' : 'Ctrl');
+import { changePreferences, preferences, usePreferences } from './workbench/preferences.ts';
 
 /** True while the user types in a field or composes with an IME: global keys stay quiet. */
 function typing(event: globalThis.KeyboardEvent): boolean {
@@ -55,18 +61,23 @@ export function CommandLayer() {
         close();
         return;
       }
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+      const hit = shortcutFor(event);
+      if (hit?.id === 'palette') {
         event.preventDefault();
         if (palette) close();
         else open('palette');
-      } else if (event.key === '?' && !typing(event) && !palette && !help) {
+      } else if (hit?.id === 'help' || (event.key === '?' && !typing(event))) {
+        if (palette || help) return;
         event.preventDefault();
         open('help');
+      } else if (hit && !palette && !help && runShortcut(hit.id, hit.digit)) {
+        event.preventDefault();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [palette, help, open, close]);
+  useGlobalCommands(() => open('help'));
   return (
     <>
       {palette ? (
@@ -81,6 +92,91 @@ export function CommandLayer() {
       {help ? <ShortcutHelp onClose={close} /> : null}
     </>
   );
+}
+
+/** Commands that work everywhere in Studio: new session, the sidebar, settings, history. */
+function useGlobalCommands(showHelp: () => void) {
+  const t = useTranslations('Commands');
+  const navigate = useNavigate();
+  const { repository } = useServices();
+  const prefs = usePreferences();
+  const go = t('groups.go');
+  useRegisterCommands('global', [
+    {
+      id: 'session:new',
+      title: t('newSession'),
+      group: t('groups.session'),
+      slash: 'new',
+      shortcutId: 'session.new',
+      shortcut: shortcutLabel('session.new'),
+      run: () =>
+        navigate({
+          to: '/projects/$projectId',
+          params: { projectId: currentProject() },
+          search: { newSession: true },
+        }),
+    },
+    {
+      id: 'session:jump',
+      title: t('jump'),
+      group: go,
+      shortcutId: 'session.jump',
+      shortcut: shortcutLabel('session.jump'),
+      run: () => {},
+      jump: (digit) =>
+        void repository.listSessions(currentProject()).then((list) => {
+          const ordered = list
+            .filter((s) => !s.archivedAt)
+            .sort(
+              (a, b) =>
+                Number(b.pinned) - Number(a.pinned) || b.updatedAt.localeCompare(a.updatedAt),
+            );
+          const target = ordered[digit - 1];
+          if (target)
+            void navigate({ to: '/sessions/$sessionId', params: { sessionId: target.sessionId } });
+        }),
+    },
+    {
+      id: 'view:sidebar',
+      title: prefs.sidebarOpen ? t('hideSidebar') : t('showSidebar'),
+      group: t('groups.view'),
+      shortcutId: 'view.sidebar',
+      shortcut: shortcutLabel('view.sidebar'),
+      run: () => changePreferences({ sidebarOpen: !preferences.getState().sidebarOpen }),
+    },
+    {
+      id: 'go:settings',
+      title: t('settings'),
+      group: go,
+      shortcutId: 'settings',
+      shortcut: shortcutLabel('settings'),
+      run: () => navigate({ to: '/settings' }),
+    },
+    {
+      id: 'go:back',
+      title: t('back'),
+      group: go,
+      shortcutId: 'nav.back',
+      shortcut: shortcutLabel('nav.back'),
+      run: () => window.history.back(),
+    },
+    {
+      id: 'go:forward',
+      title: t('forward'),
+      group: go,
+      shortcutId: 'nav.forward',
+      shortcut: shortcutLabel('nav.forward'),
+      run: () => window.history.forward(),
+    },
+    {
+      id: 'help:shortcuts',
+      title: t('shortcuts'),
+      group: t('groups.help'),
+      slash: 'help',
+      shortcut: shortcutLabel('help'),
+      run: showHelp,
+    },
+  ]);
 }
 
 export function Modal({
@@ -121,7 +217,8 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
   const services = useServices();
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
-  const [dynamic, setDynamic] = useState<Command[]>([]);
+  const [dynamic, setDynamic] = useState<AppCommand[]>([]);
+  const registered = useRegisteredCommands();
   const listId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -132,15 +229,32 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
       services.repository.list(),
       services.transport.listRuns(),
       services.repository.listProjects(),
+      services.repository.listSessions(currentProject()),
     ]).then(
-      ([corrals, runs, projects]) => {
+      ([corrals, runs, projects, sessions]) => {
         if (!live) return;
         setDynamic([
+          ...sessions
+            .filter((x) => !x.archivedAt)
+            .sort(
+              (a, b) =>
+                Number(b.pinned) - Number(a.pinned) || b.updatedAt.localeCompare(a.updatedAt),
+            )
+            .map(
+              (x): AppCommand => ({
+                id: `session:${x.sessionId}`,
+                title: x.title,
+                group: t('groups.sessions'),
+                keywords: [x.objective],
+                run: () =>
+                  navigate({ to: '/sessions/$sessionId', params: { sessionId: x.sessionId } }),
+              }),
+            ),
           // CR-010: switch to any active project but the current one.
           ...projects
             .filter((p) => !p.archivedAt && p.projectId !== currentProject())
             .map(
-              (p): Command => ({
+              (p): AppCommand => ({
                 id: `project:${p.projectId}`,
                 title: tp('switchTo', { name: projectName(p, tp('defaultName')) }),
                 group: t('groups.projects'),
@@ -150,7 +264,7 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
               }),
             ),
           ...corrals.map(
-            (c): Command => ({
+            (c): AppCommand => ({
               id: `corral:${c.corralId}`,
               title: t('openCorral', { name: c.name }),
               group: t('groups.corrals'),
@@ -159,7 +273,7 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
             }),
           ),
           ...runs.slice(0, 20).map(
-            (r): Command => ({
+            (r): AppCommand => ({
               id: `run:${r.runId}`,
               title: t('openRun', { runId: r.runId }),
               group: t('groups.runs'),
@@ -176,9 +290,9 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
     };
   }, [services, navigate, t, tp]);
 
-  const commands = useMemo<Command[]>(() => {
+  const commands = useMemo<AppCommand[]>(() => {
     const fromTemplate = WORKSPACE_TEMPLATES.map(
-      (id): Command => ({
+      (id): AppCommand => ({
         id: `template:${id}`,
         title:
           id === 'blank' ? t('newBlank') : t('newFromTemplate', { name: t(`templates.${id}`) }),
@@ -200,7 +314,7 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
     );
     // Only in the editor: the canvas listens for the tidy event (roadmap 18).
     const editing = /\/corrals\/[^/]+\/edit$|^\/demo$/.test(window.location.pathname);
-    const tidy: Command[] = editing
+    const tidy: AppCommand[] = editing
       ? [
           {
             id: 'editor:tidy',
@@ -213,14 +327,14 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
           },
         ]
       : [];
-    const draftTeam: Command = {
+    const draftTeam: AppCommand = {
       id: 'create:team-draft',
       title: t('draftTeam'),
       group: t('groups.create'),
       keywords: ['goal', 'team', 'draft', '목표', '팀', '초안'],
       run: () => navigate({ to: '/', search: { draft: true } }),
     };
-    const go: Command[] = [
+    const go: AppCommand[] = [
       {
         id: 'go:corrals',
         title: t('goCorrals'),
@@ -252,15 +366,29 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
             },
           ]
         : []),
-      { id: 'help', title: t('shortcuts'), group: t('groups.help'), shortcut: '?', run: onHelp },
     ];
-    return [...tidy, draftTeam, ...fromTemplate, ...go, ...dynamic];
-  }, [dynamic, services, navigate, t, tw, tp, onHelp]);
+    // What this screen can do comes first, then moving around, then making things.
+    const help = registered.find((c) => c.id === 'help:shortcuts');
+    return [
+      ...tidy,
+      ...registered.filter((c) => c.id !== 'help:shortcuts'),
+      ...dynamic,
+      ...go,
+      draftTeam,
+      ...fromTemplate,
+      ...(help ? [{ ...help, run: onHelp }] : []),
+    ];
+  }, [dynamic, registered, services, navigate, t, tw, tp, onHelp]);
 
-  const shown = rankCommands(query, commands);
+  const ranked = rankCommands(query, commands) as AppCommand[];
+  // One heading per group, in the order the groups first appear in the ranking.
+  const grouped = new Map<string, AppCommand[]>();
+  for (const command of ranked)
+    grouped.set(command.group, [...(grouped.get(command.group) ?? []), command]);
+  const shown = [...grouped.values()].flat();
   const current = Math.min(active, Math.max(0, shown.length - 1));
-  const runCommand = async (command: Command | undefined) => {
-    if (!command) return;
+  const runCommand = async (command: AppCommand | undefined) => {
+    if (!command || command.disabled) return;
     onClose();
     await command.run();
   };
@@ -307,25 +435,40 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
         className="max-h-80 overflow-auto p-1"
       >
         {shown.length === 0 ? <p className="px-2 py-1.5 text-sm text-muted">{t('none')}</p> : null}
-        {shown.map((command, index) => (
-          <div
-            key={command.id}
-            id={`${listId}-${index}`}
-            role="option"
-            // Focus stays in the search field; the active option is aria-activedescendant.
-            tabIndex={-1}
-            aria-selected={index === current}
-            onMouseEnter={() => setActive(index)}
-            onMouseDown={(event) => {
-              event.preventDefault();
-              void runCommand(command);
-            }}
-            className={`flex cursor-pointer items-center justify-between gap-2 rounded px-2 py-1.5 text-sm ${
-              index === current ? 'bg-accent/15' : ''
-            }`}
-          >
-            <span>{command.title}</span>
-            <span className="text-xs text-muted">{command.shortcut ?? command.group}</span>
+        {[...grouped].map(([group, list]) => (
+          // biome-ignore lint/a11y/useSemanticElements: a listbox's option groups are ARIA groups
+          <div key={group} role="group" aria-label={group}>
+            <p className="px-2 pt-2 pb-1 text-2xs font-medium text-muted">{group}</p>
+            {list.map((command) => {
+              const index = shown.indexOf(command);
+              return (
+                <div
+                  key={command.id}
+                  id={`${listId}-${index}`}
+                  role="option"
+                  // Focus stays in the search field; the active option is aria-activedescendant.
+                  tabIndex={-1}
+                  aria-selected={index === current}
+                  aria-disabled={command.disabled ? true : undefined}
+                  onMouseEnter={() => setActive(index)}
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    void runCommand(command);
+                  }}
+                  className={`flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-ui ${
+                    index === current ? 'bg-subtle' : ''
+                  } ${command.disabled ? 'opacity-50' : ''}`}
+                >
+                  <span className="min-w-0 flex-1 truncate">{command.title}</span>
+                  {command.disabled && command.hint ? (
+                    <span className="text-2xs text-muted">{command.hint}</span>
+                  ) : command.slash ? (
+                    <span className="font-mono text-2xs text-muted">/{command.slash}</span>
+                  ) : null}
+                  {command.shortcut ? <Kbd>{command.shortcut}</Kbd> : null}
+                </div>
+              );
+            })}
           </div>
         ))}
       </div>
@@ -337,42 +480,60 @@ function ShortcutHelp({ onClose }: { onClose: () => void }) {
   const t = useTranslations('Shortcuts');
   const closeRef = useRef<HTMLButtonElement>(null);
   useEffect(() => closeRef.current?.focus(), []);
-  const mod = modKey();
-  const rows: [string, string][] = [
-    [`${mod} K`, t('palette')],
-    ['?', t('help')],
-    [`${mod} S`, t('save')],
-    [`${mod} Z`, t('undo')],
-    [`${mod} Shift Z / ${mod} Y`, t('redo')],
-    ['Delete / Backspace', t('delete')],
-    ['← ↑ → ↓', t('move')],
-    ['Enter', t('send')],
-    ['Shift Enter', t('newline')],
-    ['Esc', t('close')],
-  ];
   return (
     <Modal label={t('label')} onClose={onClose}>
-      <div className="flex flex-col gap-2 p-4 text-sm">
+      <div className="flex max-h-[70vh] flex-col gap-3 overflow-auto p-4 text-sm">
         <h2 className="font-semibold">{t('label')}</h2>
-        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
-          {rows.map(([keys, what]) => (
-            <div key={keys} className="contents">
-              <dt>
-                <kbd className="rounded border border-line px-1 font-mono text-xs">{keys}</kbd>
-              </dt>
-              <dd>{what}</dd>
-            </div>
-          ))}
-        </dl>
+        <ShortcutTable />
         <button
           ref={closeRef}
           type="button"
           onClick={onClose}
-          className="self-end rounded border border-line px-2 py-1 text-xs"
+          className="self-end rounded-md px-2 py-1 text-xs text-muted hover:bg-subtle hover:text-text"
         >
           {t('closeButton')}
         </button>
       </div>
     </Modal>
+  );
+}
+
+const LABEL: Record<ShortcutId, string> = {
+  palette: 'palette',
+  help: 'help',
+  'session.new': 'sessionNew',
+  'session.jump': 'sessionJump',
+  'view.sidebar': 'viewSidebar',
+  'view.panel': 'viewPanel',
+  'composer.focus': 'composerFocus',
+  settings: 'settings',
+  'nav.back': 'navBack',
+  'nav.forward': 'navForward',
+  'run.stop': 'runStop',
+};
+
+/** Every shortcut that works here, from the one table the key handler uses. */
+export function ShortcutTable() {
+  const t = useTranslations('Shortcuts');
+  const { sendKey } = usePreferences();
+  const rows: [string, string][] = [
+    ...SHORTCUTS.flatMap((s): [string, string][] => {
+      const keys = shortcutLabel(s.id);
+      return keys ? [[t(LABEL[s.id] as 'palette'), keys]] : [];
+    }),
+    [t('helpKey'), '?'],
+    ...LOCAL_KEYS.map((k): [string, string] => [t(k.id), k.keys(sendKey === 'enter')]),
+  ];
+  return (
+    <dl className="grid grid-cols-[1fr_auto] gap-x-6 gap-y-1.5">
+      {rows.map(([what, keys]) => (
+        <div key={what} className="contents">
+          <dt className="text-ui">{what}</dt>
+          <dd className="text-right">
+            <Kbd>{keys}</Kbd>
+          </dd>
+        </div>
+      ))}
+    </dl>
   );
 }
