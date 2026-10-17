@@ -24,9 +24,10 @@ import {
   type EditTextResult,
   PiEditInput,
   PiWriteInput,
+  type RegisteredCheck,
 } from '@corral/contracts';
 import { type FileTools, rankFuzzy, type ToolCancellation, ToolRefusal } from '@corral/core';
-import type { Db } from '@corral/storage-sqlite';
+import { type Db, SqliteProjectToolStore } from '@corral/storage-sqlite';
 import { GitError, git, gitText } from './git.ts';
 
 // Work folders and file changes (CR-012). A project may link one folder, which is only
@@ -37,12 +38,7 @@ import { GitError, git, gitText } from './git.ts';
 const MAX_TEXT = 1024 * 1024;
 const OUTPUT_TAIL = 64 * 1024;
 
-export interface VerifyCommand {
-  id: string;
-  name: string;
-  argv: string[];
-  timeoutMs: number;
-}
+export type VerifyCommand = RegisteredCheck;
 
 export interface BindingView {
   bindingId: string;
@@ -197,6 +193,7 @@ interface WorktreeRow {
 }
 
 export class WorkspaceService implements FileTools {
+  readonly projectTools: SqliteProjectToolStore;
   private readonly db: Db;
   private readonly clock: Clock;
   private readonly worktreeRoot: string;
@@ -220,6 +217,7 @@ export class WorkspaceService implements FileTools {
   }) {
     this.db = options.db;
     this.clock = options.clock;
+    this.projectTools = new SqliteProjectToolStore(options.db, options.clock);
     this.edit = options.edit ?? ((request, cancellation) => editText(request, { cancellation }));
     this.worktreeRoot = resolve(options.worktreeRoot);
     this.forbidden = [...options.forbidden, this.worktreeRoot].map((p) => resolve(p));
@@ -280,7 +278,7 @@ export class WorkspaceService implements FileTools {
       path: row.root_path,
       isGit: row.is_git === 1,
       trusted: row.trusted === 1,
-      verifyCommands: JSON.parse(row.verify_json) as VerifyCommand[],
+      verifyCommands: this.projectTools.latest(projectId)?.checks ?? [],
       status,
       missing,
     };
@@ -346,16 +344,25 @@ export class WorkspaceService implements FileTools {
     const trusted = change.trusted ?? row.trusted === 1;
     if (change.verifyCommands && !trusted)
       throw new WorkspaceError('CAPABILITY_DENIED', 'trust the repository before adding checks');
-    this.db
-      .prepare(
-        'UPDATE workspace_bindings SET trusted = ?, verify_json = ?, updated_at = ? WHERE id = ?',
-      )
-      .run(
-        trusted ? 1 : 0,
-        JSON.stringify(change.verifyCommands ?? JSON.parse(row.verify_json)),
-        this.clock.nowIso(),
-        row.id,
-      );
+    this.db.transaction(() => {
+      if (change.verifyCommands) {
+        const previous = this.projectTools.latest(projectId);
+        this.projectTools.save(projectId, previous?.revision ?? 0, {
+          checks: change.verifyCommands,
+          lspServers: previous?.lspServers ?? [],
+        });
+      }
+      this.db
+        .prepare(
+          'UPDATE workspace_bindings SET trusted = ?, verify_json = ?, updated_at = ? WHERE id = ?',
+        )
+        .run(
+          trusted ? 1 : 0,
+          JSON.stringify(change.verifyCommands ?? JSON.parse(row.verify_json)),
+          this.clock.nowIso(),
+          row.id,
+        );
+    })();
     return (await this.view(projectId)) as BindingView;
   }
 
@@ -916,7 +923,7 @@ export class WorkspaceService implements FileTools {
     if (!binding || !row) throw new WorkspaceError('TARGET_NOT_FOUND', 'no working copy to check');
     if (!binding.trusted)
       throw new WorkspaceError('CAPABILITY_DENIED', 'trust the repository before running checks');
-    const command = (JSON.parse(binding.verify_json) as VerifyCommand[]).find(
+    const command = (this.projectTools.latest(projectId)?.checks ?? []).find(
       (c) => c.id === commandId,
     );
     if (!command) throw new WorkspaceError('TARGET_NOT_FOUND', 'no such check');

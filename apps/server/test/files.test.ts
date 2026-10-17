@@ -71,7 +71,9 @@ describe('file broker (CR-012)', () => {
     expect(store.get('default', first?.revision ?? 0)?.checks).toEqual([check]);
     db.prepare('UPDATE workspace_bindings SET verify_json = ?').run(JSON.stringify([check]));
     expect((await service.view('default'))?.verifyCommands).toEqual([]);
-    await expect(service.configure('default', { verifyCommands: [{ ...check, argv: [] }] })).rejects.toThrow();
+    await expect(
+      service.configure('default', { verifyCommands: [{ ...check, argv: [] }] }),
+    ).rejects.toThrow();
     expect(store.latest('default')?.checks).toEqual([]);
   });
   it('[TC-HAR-010-N] cancellation or an external change during edit calculation leaves the file untouched', async () => {
