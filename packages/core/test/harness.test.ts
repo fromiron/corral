@@ -4,10 +4,10 @@ import {
   type CheckPlan,
   canonicalJson,
   type EffectiveHarnessSnapshot,
+  type LspReport,
   type ModelRequestRecord,
   type ToolDescriptor,
   type VerificationReport,
-  type LspReport,
 } from '@corral/contracts';
 import { FakeClock, Gate, linearCorral, SequentialIdFactory } from '@corral/testkit';
 import { sha256 } from '@noble/hashes/sha2.js';
@@ -124,6 +124,53 @@ async function loaded() {
 }
 
 describe('Coordinator harness boundary (H2)', () => {
+  it('[TC-HAR-003-H] pins a run-only harness layer and refuses unknown or unbound role overrides', () => {
+    const definition = linearCorral(['writer']);
+    const role = definition.roles[0]!;
+    role.harness = snapshot.binding;
+    const override = { profileId: 'narrow', revision: 2 };
+    const selected = {
+      ...snapshot,
+      resources: [],
+      layers: [
+        { scope: 'role' as const, binding: snapshot.binding },
+        { scope: 'run' as const, binding: override },
+      ],
+    };
+    const resolve = vi.fn(() => selected);
+    const coordinator = new Coordinator({
+      clock: new FakeClock(),
+      ids: new SequentialIdFactory(),
+      harnesses: { resolve },
+      agents: {
+        start: async () => {
+          throw new Error('not exercised');
+        },
+      },
+    });
+    const request = {
+      schemaVersion: '0.1' as const,
+      commandId: 'override',
+      definition,
+      mode: 'mock' as const,
+      harnessOverrides: { [role.id]: override },
+    };
+    const bad = { ...request, commandId: 'bad-override', harnessOverrides: { unknown: override } };
+    expect(coordinator.startRun(bad).receipt.error?.code).toBe('CAPABILITY_DENIED');
+    const result = coordinator.startRun(request);
+    expect(result.receipt.error).toBeUndefined();
+    expect(resolve).toHaveBeenCalledWith(snapshot.binding, expect.anything(), role.id, {
+      runOverride: override,
+    });
+    expect(definition.roles[0]?.harness).toEqual(snapshot.binding);
+    expect(coordinator.startRun(request)).toEqual(result);
+    expect(
+      coordinator.startRun({
+        ...request,
+        harnessOverrides: { [role.id]: { ...override, revision: 3 } },
+      }).receipt.error?.code,
+    ).toBe('IDEMPOTENCY_CONFLICT');
+  });
   it('[TC-HAR-010-H] a selected LSP query uses the owned launch approval and cannot run without read permission', async () => {
     const query = {
       serverId: 'typescript',

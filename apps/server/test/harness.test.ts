@@ -85,6 +85,58 @@ function setup(
 }
 
 describe('resource discovery, trust and resolution (H3)', () => {
+  it('[TC-HAR-005-N] an explicit skill command must be a complete command token in the brief', async () => {
+    const s = setup();
+    const review = await s.service.discoverLocal(s.source);
+    const resource = s.service.install(review.reviewId);
+    s.service.trust(resource.hash, true);
+    s.service.saveProfile('explicit', 0, {
+      name: 'Explicit',
+      policy: 'strict',
+      allowedTools: ['read'],
+      startupCommands: [],
+      resources: [
+        {
+          resourceHash: resource.hash,
+          entry: 'skills/writing/SKILL.md',
+          kind: 'skill',
+          required: true,
+          skillMode: 'explicit',
+        },
+      ],
+    });
+    const snapshot = s.service.preview({ profileId: 'explicit', revision: 1 }, 'default').snapshot;
+    for (const [text, expected] of [
+      ['/skill:writing extra', true],
+      ['Start\n/skill:writing', true],
+      ['Explain /skill:writing-old', false],
+      ['https://example.test/skill:writing', false],
+      ['quoted /skill:writing command', false],
+    ] as const) {
+      const resources = await s.service.runtimeResources({
+        harness: snapshot,
+        inputs: [{ name: 'brief', kind: 'run_input', artifactVersionId: null, text }],
+      });
+      expect(Boolean(resources.skills[0]?.content), text).toBe(expected);
+    }
+  });
+  it('[TC-HAR-003-H] run resolution uses the same narrowing layer as preview', () => {
+    const { service } = setup();
+    const base = {
+      name: 'Base',
+      policy: 'strict' as const,
+      allowedTools: ['read', 'write'],
+      resources: [],
+      startupCommands: [],
+    };
+    service.saveProfile('base', 0, base);
+    service.saveProfile('limited', 0, { ...base, allowedTools: ['read'] });
+    const binding = { profileId: 'base', revision: 1 },
+      runOverride = { profileId: 'limited', revision: 1 };
+    expect(service.resolve(binding, linearCorral(['writer']), 'writer', { runOverride })).toEqual(
+      service.preview(binding, 'default', runOverride).snapshot,
+    );
+  });
   it('[TC-HAR-012-H] pins selected project tools in the effective snapshot and inheritance can only narrow selection', () => {
     const { service, db } = setup();
     const tools = new SqliteProjectToolStore(db, new FakeClock());
