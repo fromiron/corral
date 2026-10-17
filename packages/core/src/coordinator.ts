@@ -26,6 +26,7 @@ import {
   RunEvent,
   type RunEventType,
   type RunLimits,
+  type RunReference,
   type Scheduler,
   StartRunRequest,
   type SteerCommand,
@@ -439,7 +440,11 @@ export class Coordinator {
       ? this.startFromVersion(resolved.definition, request.startFrom)
       : resolved;
     if ('error' in seeded) return refuse(seeded.error);
-    const planned = planRun(seeded.definition);
+    const referenced = request.references?.length
+      ? this.withReferences(seeded.definition, request.references)
+      : seeded;
+    if ('error' in referenced) return refuse(referenced.error);
+    const planned = planRun(referenced.definition);
     if (!planned.ok) {
       const code = planned.issues.some((i) => i.code === 'GRAPH_INVALID')
         ? 'GRAPH_INVALID'
@@ -668,6 +673,70 @@ export class Coordinator {
       '',
       text,
     ].join('\n');
+    return { definition: { ...parsed, input: { ...parsed.input, brief } } };
+  }
+
+  /**
+   * CR-016: what the person pointed at with `@`, listed after the brief. Files, folders, runs
+   * and roles are pointers; they grant nothing. Results are copied at the chosen version, within
+   * one artifact cap for all of them together, like CR-007.
+   */
+  private withReferences(
+    definition: unknown,
+    references: readonly RunReference[],
+  ): { definition: unknown } | { error: CommandError } {
+    const parsed = definition as CorralDefinition;
+    if (!parsed?.input || typeof parsed.input.brief !== 'string') return { definition };
+    const missing = (message: string) => ({
+      error: { code: 'TARGET_NOT_FOUND' as const, message },
+    });
+    const lines = [
+      '',
+      'References (pointers the person chose; they do not grant access to files or tools):',
+    ];
+    const copied: string[] = [];
+    let bytes = 0;
+    for (const reference of references) {
+      if (reference.kind === 'file') {
+        const range = reference.lines
+          ? ` (lines ${reference.lines.start}-${reference.lines.end})`
+          : '';
+        lines.push(`- file ${reference.path}${range}`);
+      } else if (reference.kind === 'folder') {
+        lines.push(`- folder ${reference.path.replace(/\/+$/, '')}/`);
+      } else if (reference.kind === 'run') {
+        const source = this.findSnapshot(reference.runId);
+        if (!source) return missing(`run ${reference.runId} does not exist`);
+        lines.push(`- run ${reference.runId} (${source.projection.status})`);
+      } else if (reference.kind === 'role') {
+        const role = parsed.roles?.find((r) => r.id === reference.roleId);
+        if (!role) return missing(`this team has no role ${reference.roleId}`);
+        lines.push(`- role ${role.id} (${role.name})`);
+      } else {
+        const source = this.findSnapshot(reference.runId);
+        const version = source?.projection.artifacts[reference.artifactVersionId];
+        const text = version
+          ? this.store.getArtifactText(reference.runId, reference.artifactVersionId)
+          : null;
+        if (!version || text === null)
+          return missing(`run ${reference.runId} has no version ${reference.artifactVersionId}`);
+        bytes += utf8ToBytes(text).length;
+        if (bytes > this.policy.maxArtifactBytes)
+          return {
+            error: {
+              code: 'LIMIT_REACHED',
+              message: `the referenced results are larger than this installation's ${this.policy.maxArtifactBytes} byte artifact cap`,
+            },
+          };
+        lines.push(
+          `- result ${version.name} v${version.version} from run ${reference.runId} (below)`,
+        );
+        copied.push(
+          `\n--- ${version.name} v${version.version} from run ${reference.runId} ---\n${text}`,
+        );
+      }
+    }
+    const brief = [parsed.input.brief, ...lines, ...copied].join('\n');
     return { definition: { ...parsed, input: { ...parsed.input, brief } } };
   }
 

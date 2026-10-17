@@ -128,29 +128,31 @@
   backdrop-filter: blur(12px);
 }
 
-html,
-body,
-#root {
-  height: 100%;
-}
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
 
-body {
-  margin: 0;
-  background: var(--surface);
-  color: var(--text);
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-}
+  body {
+    margin: 0;
+    background: var(--surface);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
 
-:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
 
-@media (prefers-reduced-motion: reduce) {
-  * {
-    /* biome-ignore lint/complexity/noImportantStyles: reduced motion overrides every animation */
-    animation-duration: 0.01ms !important;
-    /* biome-ignore lint/complexity/noImportantStyles: reduced motion overrides every transition */
-    transition-duration: 0.01ms !important;
+  @media (prefers-reduced-motion: reduce) {
+    * {
+      /* biome-ignore lint/complexity/noImportantStyles: reduced motion overrides every animation */
+      animation-duration: 0.01ms !important;
+      /* biome-ignore lint/complexity/noImportantStyles: reduced motion overrides every transition */
+      transition-duration: 0.01ms !important;
+    }
   }
 }

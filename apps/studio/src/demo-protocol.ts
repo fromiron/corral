@@ -13,6 +13,7 @@ export type DemoRequest = {
 /** The demo work folder's calls the page may make (demo/workspace.ts). */
 export const DEMO_WORKSPACE_METHODS = [
   'listFiles',
+  'searchFiles',
   'readFile',
   'binding',
   'bind',

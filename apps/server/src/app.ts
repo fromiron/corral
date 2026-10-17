@@ -800,6 +800,25 @@ async function createCorralServer(
         return workspaceFail(reply, error);
       }
     });
+    // CR-016: names for an `@` reference, ranked; never file contents.
+    app.get<{ Params: { id: string } }>(`${base}/search`, async (request, reply) => {
+      const query = z
+        .strictObject({
+          q: z.string().max(200).default(''),
+          limit: z.coerce.number().int().min(1).max(50).default(20),
+        })
+        .safeParse(request.query);
+      if (!query.success) return fail(reply, 'SCHEMA_INVALID', 'q and limit are invalid');
+      try {
+        return await files.searchPaths(
+          { kind, id: request.params.id },
+          query.data.q,
+          query.data.limit,
+        );
+      } catch (error) {
+        return workspaceFail(reply, error);
+      }
+    });
     app.get<{ Params: { id: string } }>(`${base}/file`, async (request, reply) => {
       const query = z.strictObject({ path: z.string().min(1).max(4096) }).safeParse(request.query);
       if (!query.success) return fail(reply, 'SCHEMA_INVALID', 'path is required');

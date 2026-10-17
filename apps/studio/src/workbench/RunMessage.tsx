@@ -99,7 +99,7 @@ export function RunMessage({
                   to={sessionId ? '/sessions/$sessionId' : '/runs/$runId'}
                   params={sessionId ? { sessionId } : { runId }}
                   search={{
-                    ...(sessionId ? { tab: 'run' as const, run: runId } : {}),
+                    ...(sessionId ? { panel: 'run' as const, run: runId } : {}),
                     view: 'run',
                     execution: execution.executionId,
                   }}
@@ -221,7 +221,7 @@ function ChatResult({
     params: sessionId ? { sessionId } : { runId: projection.runId },
   };
   const search = (id: string) => ({
-    ...(sessionId ? { tab: 'run' as const, run: projection.runId } : {}),
+    ...(sessionId ? { panel: 'run' as const, run: projection.runId } : {}),
     view: 'results' as const,
     result: id,
   });

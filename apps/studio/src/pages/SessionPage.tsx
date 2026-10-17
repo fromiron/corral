@@ -1,5 +1,9 @@
 import type { FileChangeView } from '@corral/client';
-import { TERMINAL_EXECUTION_STATUSES, TERMINAL_RUN_STATUSES } from '@corral/contracts';
+import {
+  type RunReference,
+  TERMINAL_EXECUTION_STATUSES,
+  TERMINAL_RUN_STATUSES,
+} from '@corral/contracts';
 import type {
   CorralSummary,
   RunProjection,
@@ -9,7 +13,38 @@ import type {
   WorkSession,
 } from '@corral/core';
 import { ApprovalPanel, RunActions, runResults, StatusBadge } from '@corral/react';
-import { ArrowUp, ChevronDown, MessageSquare } from '@corral/react/icons';
+import {
+  ArrowUp,
+  AtSign,
+  Ellipsis,
+  FileDiff,
+  MessageSquare,
+  PanelRight,
+  Square,
+  X,
+} from '@corral/react/icons';
+import {
+  Button,
+  Dialog,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogPopup,
+  DialogTitle,
+  Input,
+  Menu,
+  MenuItem,
+  MenuPopup,
+  MenuRadioGroup,
+  MenuRadioItem,
+  MenuSeparator,
+  MenuSub,
+  MenuSubPopup,
+  MenuSubTrigger,
+  MenuTrigger,
+  Select,
+  Tooltip,
+} from '@corral/react/ui';
 import { Link, useNavigate, useRouter } from '@tanstack/react-router';
 import {
   createContext,
@@ -17,21 +52,25 @@ import {
   useCallback,
   useContext,
   useEffect,
-  useLayoutEffect,
   useRef,
   useState,
 } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
-import { setCurrentProject } from '../projects.ts';
+import { type AppCommand, useRegisterCommands, useRegisteredCommands } from '../commandRegistry.ts';
+import { projectsChanged, setCurrentProject } from '../projects.ts';
 import { type SessionSearch, sessionRoute, validateSessionSearch } from '../router.tsx';
 import { useServices } from '../services.tsx';
+import { sendKeyLabel, shortcutLabel } from '../shortcuts.ts';
 import { ChatView } from '../workbench/ChatView.tsx';
+import { ComposerInput } from '../workbench/ComposerInput.tsx';
 import { ComposerSurface } from '../workbench/ComposerSurface.tsx';
+import { type MentionItem, mentionToken, pickedReferences } from '../workbench/composerMenu.ts';
 import { FilePanel, type FileReference } from '../workbench/FilePanel.tsx';
-import { RequestInput } from '../workbench/RequestInput.tsx';
+import { isSendKey, usePreferences } from '../workbench/preferences.ts';
 import { RunMessage } from '../workbench/RunMessage.tsx';
 import { readDraft, writeDraft } from '../workbench/sessionDraft.ts';
-import { TeamDesign } from './EditorPage.tsx';
+import { TopbarActions } from '../workbench/TopbarSlot.tsx';
+import { useMentionSearch } from '../workbench/useMentionSearch.ts';
 import { useBinding, WORKSPACE_CHANGED, WorkingCopyPanel } from './FilesViews.tsx';
 import { Checks } from './ReviewPage.tsx';
 import { RunDetail } from './RunPage.tsx';
@@ -75,13 +114,14 @@ function useSessionRuns(sessionId: string) {
   return { runs, active, refresh, lost };
 }
 
-export type SessionTab = 'work' | 'team' | 'run';
-export type SessionPanel = 'files' | 'changes' | 'artifacts' | 'checks';
+export type SessionPanel = 'files' | 'changes' | 'artifacts' | 'checks' | 'run';
+const PANELS: SessionPanel[] = ['changes', 'files', 'artifacts', 'checks', 'run'];
 
 /**
- * A session as a workbench (02-UX-Spec §2–§3): the sidebar, a header with what is true now,
- * Work / Team design / Run detail in the middle, and Changes / Results / Checks on the right.
- * Tabs and choices live in the address, so they survive reloads and the back button.
+ * A session as a workbench (02-UX-Spec §2–§3; Workbench polish P1): the conversation in the
+ * middle and, only when asked for, one side panel with Changes / Files / Results / Checks / Run.
+ * The session's own actions sit in the top bar. Choices live in the address, so they survive
+ * reloads and the back button.
  */
 export function SessionPage() {
   const tw = useTranslations('Workbench');
@@ -102,8 +142,7 @@ export function SessionPage() {
   useEffect(() => setCurrentProject(session.projectId), [session.projectId]);
   const team = corrals.find((c) => c.corralId === session.corralId) ?? null;
   const ts = useTranslations('Sessions');
-  const tab: SessionTab = search.tab ?? 'work';
-  const panel: SessionPanel = search.panel ?? 'changes';
+  const panel = search.panel;
   const [pendingReference, setReference] = useState<{
     sessionId: string;
     value: FileReference;
@@ -115,127 +154,95 @@ export function SessionPage() {
     rememberView({ ...next });
     void navigate({ search: () => next });
   };
-  const tabs: SessionTab[] = ['work', 'team', 'run'];
-  // Coming back to a tab keeps where the person was reading (02-UX-Spec §3, §9).
-  const panelRef = useRef<HTMLDivElement>(null);
-  const scrollKey = `corral:scroll:${session.sessionId}:${tab}`;
-  const rememberScroll = (top: number) => {
-    try {
-      window.sessionStorage.setItem(scrollKey, String(Math.round(top)));
-    } catch {
-      // Not remembered; the page still works.
-    }
-  };
-  useLayoutEffect(() => {
-    let top = 0;
-    try {
-      top = Number(window.sessionStorage.getItem(scrollKey) ?? 0);
-    } catch {
-      top = 0;
-    }
-    if (panelRef.current) panelRef.current.scrollTop = top;
-  }, [scrollKey]);
+  const changes = useSessionChanges(session.sessionId, runs);
 
   return (
-    <WorkbenchLayout
-      key={session.sessionId}
-      storageKey={session.sessionId}
-      main={
-        <div className="flex min-h-0 flex-1 flex-col">
-          {lost ? (
-            <div
-              role="alert"
-              className="flex items-center gap-2 border-b border-danger px-4 py-2 text-xs text-danger"
-            >
-              {ts('connectionLost')}
-              <button
-                type="button"
-                onClick={refresh}
-                className="rounded border border-line px-2 py-0.5 text-text"
-              >
-                {ts('retry')}
-              </button>
-            </div>
-          ) : null}
-          <TabRow
-            label={tw('tabs')}
-            values={tabs}
-            current={tab}
-            text={(value) => tw(`tab.${value}`)}
-            onChoose={(value) => setSearch({ tab: value })}
-          />
-          <div
-            ref={panelRef}
-            role="tabpanel"
-            aria-label={tw(`tab.${tab}`)}
-            onScroll={(event) => rememberScroll(event.currentTarget.scrollTop)}
-            className={`flex min-h-0 flex-1 flex-col ${tab === 'work' ? 'overflow-hidden' : 'overflow-auto'}`}
-          >
-            {tab === 'work' ? (
-              <WorkTab
-                session={session}
-                corrals={corrals}
-                team={team}
-                runs={runs}
-                active={active}
-                onChange={refresh}
-                reference={reference}
-                onReferenceUsed={() => setReference(null)}
-              />
-            ) : tab === 'team' ? (
-              team ? (
-                <TeamDesign corralId={team.corralId} />
-              ) : (
-                <p className="p-4 text-sm text-muted">{tw('noTeam')}</p>
-              )
-            ) : (
-              <RunTab runs={runs} search={search} setSearch={setSearch} />
-            )}
-          </div>
-        </div>
-      }
-      panel={
-        tab === 'team' ? undefined : (
-          <div className="flex min-h-0 flex-col">
+    <>
+      <SessionActions
+        session={session}
+        corrals={corrals}
+        team={team}
+        changes={changes}
+        panel={panel}
+        onPanel={(value) => setSearch({ panel: value })}
+      />
+      <WorkbenchLayout
+        key={session.sessionId}
+        storageKey={session.sessionId}
+        panelOpen={Boolean(panel)}
+        onPanelClose={() => setSearch({ panel: undefined })}
+        panelTabs={
+          panel ? (
             <TabRow
               label={tw('panelTabs')}
-              values={['files', 'changes', 'artifacts', 'checks'] as SessionPanel[]}
+              values={PANELS}
               current={panel}
               text={(value) => tw(`panel.${value}`)}
               onChoose={(value) => setSearch({ panel: value })}
             />
+          ) : null
+        }
+        main={
+          <div className="flex min-h-0 flex-1 flex-col">
+            {lost ? (
+              <div
+                role="alert"
+                className="flex items-center gap-2 border-b border-danger/40 bg-danger/5 px-4 py-2 text-xs text-danger"
+              >
+                {ts('connectionLost')}
+                <Button variant="outline" size="xs" onClick={refresh}>
+                  {ts('retry')}
+                </Button>
+              </div>
+            ) : null}
+            <WorkTab
+              session={session}
+              team={team}
+              corrals={corrals}
+              runs={runs}
+              active={active}
+              onChange={refresh}
+              reference={reference}
+              onReferenceUsed={() => setReference(null)}
+              onPanel={(value, run) => setSearch({ panel: value, ...run })}
+            />
+          </div>
+        }
+        panel={
+          panel ? (
             <div
               role="tabpanel"
               aria-label={tw(`panel.${panel}`)}
-              className="flex flex-col gap-3 p-3"
+              className={
+                panel === 'run' ? 'flex h-full min-h-0 flex-col' : 'flex flex-col gap-3 p-3'
+              }
             >
               {panel === 'files' ? (
                 <FilePanel
                   key={session.sessionId}
                   projectId={session.projectId}
                   sessionId={session.sessionId}
-                  onReference={(value) => {
-                    setReference({ sessionId: session.sessionId, value });
-                    setSearch({ tab: 'work' });
-                  }}
+                  onReference={(value) => setReference({ sessionId: session.sessionId, value })}
                 />
               ) : panel === 'changes' ? (
-                <ChangesPanel session={session} runs={runs} />
+                <ChangesPanel session={session} files={changes} />
               ) : panel === 'artifacts' ? (
                 <ArtifactsPanel
                   runs={runs}
                   onOpen={(runId, result) =>
-                    setSearch({ tab: 'run', run: runId, view: 'results', result })
+                    setSearch({ panel: 'run', run: runId, view: 'results', result })
                   }
                 />
-              ) : (
+              ) : panel === 'checks' ? (
                 <ChecksPanel session={session} />
+              ) : (
+                <RunPanel runs={runs} search={search} setSearch={setSearch} />
               )}
             </div>
-          </div>
-        )
-      }
-    />
+          ) : null
+        }
+      />
+    </>
   );
 }
 
@@ -263,7 +270,7 @@ function TabRow<T extends string>({
     refs.current[next]?.focus();
   };
   return (
-    <div role="tablist" aria-label={label} className="flex gap-1 border-b border-line px-3 pt-2">
+    <div role="tablist" aria-label={label} className="flex items-center gap-0.5">
       {values.map((value, index) => (
         <button
           key={value}
@@ -276,8 +283,8 @@ function TabRow<T extends string>({
           tabIndex={current === value ? 0 : -1}
           onClick={() => onChoose(value)}
           onKeyDown={(event) => move(event, index)}
-          className={`rounded-t px-3 py-1 text-xs ${
-            current === value ? 'border border-b-0 border-line bg-raised font-medium' : 'text-muted'
+          className={`h-7 shrink-0 rounded-md px-2.5 text-ui transition-colors ${
+            current === value ? 'bg-subtle font-medium text-text' : 'text-muted hover:text-text'
           }`}
         >
           {text(value)}
@@ -287,76 +294,221 @@ function TabRow<T extends string>({
   );
 }
 
-/** What is true now: project, session, team revision, working copy, run state, runtime mode. */
-function WorkbenchHeader({
-  session,
-  team,
-  active,
-}: {
-  session: WorkSession;
-  team: CorralSummary | null;
-  active: RunSummary | null;
-}) {
-  const tw = useTranslations('Workbench');
-  const tf = useTranslations('Files');
-  const { workspaces, mode, live } = useServices();
-  const { binding } = useBinding(session.projectId);
-  const [copy, setCopy] = useState<string | null>(null);
+/** The session's changed files in its working copy, or null without one. */
+function useSessionChanges(sessionId: string, runs: RunSummary[]) {
+  const { workspaces } = useServices();
+  const [files, setFiles] = useState<FileChangeView[] | null>(null);
+  const [tick, setTick] = useState(0);
   useEffect(() => {
+    const changed = () => setTick((n) => n + 1);
+    window.addEventListener(WORKSPACE_CHANGED, changed);
+    return () => window.removeEventListener(WORKSPACE_CHANGED, changed);
+  }, []);
+  // Refresh when a run of the session starts or ends.
+  const key = runs.map((r) => `${r.runId}:${r.status}`).join(',');
+  useEffect(() => {
+    void key;
+    void tick;
     if (!workspaces) return;
-    const load = () =>
-      void workspaces.worktree(session.sessionId).then(
-        (w) => setCopy(w ? w.baseCommit.slice(0, 8) : null),
-        () => setCopy(null),
-      );
-    load();
-    window.addEventListener(WORKSPACE_CHANGED, load);
-    return () => window.removeEventListener(WORKSPACE_CHANGED, load);
-  }, [workspaces, session.sessionId]);
-  return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-line px-4 py-2 text-xs">
-      <span>
-        {team
-          ? tw('headerTeam', { name: team.name, revision: team.definitionRevision })
-          : tw('noTeamHeader')}
-      </span>
-      {workspaces ? <span>{copy ? tw('copyFrom', { commit: copy }) : tw('copyNone')}</span> : null}
-      <span data-testid="permission">
-        {tf(`permission.${copy ? 'copy' : binding ? 'observe' : 'none'}`)}
-      </span>
-      <span aria-live="polite">
-        {active ? (
-          <StatusBadge status={active.status} />
-        ) : (
-          <span className="text-muted">{tw('idle')}</span>
-        )}
-      </span>
-      <span className="ml-auto rounded-full border border-warning px-2 py-0.5 text-warning">
-        {tw(`mode.${mode}`)} · {live ? tw('live') : tw('simulated')}
-      </span>
-    </div>
-  );
+    let live = true;
+    // Without a working copy there is nothing to compare; asking would only be refused.
+    void (async () => {
+      const copy = await workspaces.worktree(sessionId).catch(() => null);
+      if (!copy || copy.missing) return live && setFiles(null);
+      const changes = await workspaces.changes(sessionId, { kind: 'session' });
+      if (live) setFiles(changes.files);
+    })().catch(() => live && setFiles(null));
+    return () => {
+      live = false;
+    };
+  }, [workspaces, sessionId, key, tick]);
+  return files;
 }
 
-/** The Work tab: what was asked, the runs it started, decisions waiting, and the input box. */
-function WorkTab({
+/** The session's own actions, in the top bar: changes, the side panel, and a menu. */
+function SessionActions({
   session,
   corrals,
   team,
+  changes,
+  panel,
+  onPanel,
+}: {
+  session: WorkSession;
+  corrals: CorralSummary[];
+  team: CorralSummary | null;
+  changes: FileChangeView[] | null;
+  panel: SessionPanel | undefined;
+  onPanel: (panel: SessionPanel | undefined) => void;
+}) {
+  const t = useTranslations('Sessions');
+  const tw = useTranslations('Workbench');
+  const td = useTranslations('Desktop');
+  const { repository } = useServices();
+  const router = useRouter();
+  const navigate = useNavigate();
+  const [error, setError] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const update = async (change: {
+    corralId?: string | null;
+    pinned?: boolean;
+    archived?: boolean;
+    title?: string;
+  }) => {
+    const result = await repository.updateSession(session.sessionId, {
+      ...change,
+      expectedRevision: session.revision,
+    });
+    if (!result.ok) {
+      setError(t('failed', { message: result.message }));
+      return false;
+    }
+    setError(null);
+    projectsChanged();
+    await router.invalidate();
+    return true;
+  };
+  return (
+    <TopbarActions>
+      {error ? (
+        <p role="alert" className="max-w-64 truncate text-xs text-danger" title={error}>
+          {error}
+        </p>
+      ) : null}
+      {changes && changes.length > 0 ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-pressed={panel === 'changes'}
+          onClick={() => onPanel(panel === 'changes' ? undefined : 'changes')}
+          className="gap-1.5 text-muted-foreground"
+        >
+          <FileDiff />
+          {tw('changeCount', { count: changes.length })}
+        </Button>
+      ) : null}
+      <Tooltip
+        content={panel ? tw('collapsePanel') : tw('expandPanel')}
+        shortcut={shortcutLabel('view.panel')}
+      >
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={panel ? tw('collapsePanel') : tw('expandPanel')}
+          aria-pressed={Boolean(panel)}
+          onClick={() => onPanel(panel ? undefined : 'changes')}
+        >
+          <PanelRight />
+        </Button>
+      </Tooltip>
+      <Menu>
+        <MenuTrigger
+          render={
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={td('sessionActions', { title: session.title })}
+            />
+          }
+        >
+          <Ellipsis />
+        </MenuTrigger>
+        <MenuPopup align="end" className="min-w-52">
+          <MenuItem onClick={() => setRenaming(session.title)}>{td('rename')}</MenuItem>
+          <MenuSub>
+            <MenuSubTrigger>
+              {t('chooseTeam')}
+              <span className="ml-auto max-w-28 truncate pl-3 text-xs text-muted-foreground">
+                {team?.name ?? t('noTeam')}
+              </span>
+            </MenuSubTrigger>
+            <MenuSubPopup>
+              <MenuRadioGroup
+                value={team?.corralId ?? ''}
+                onValueChange={(value) => void update({ corralId: String(value) || null })}
+              >
+                <MenuRadioItem value="">{t('noTeam')}</MenuRadioItem>
+                {corrals.map((c) => (
+                  <MenuRadioItem key={c.corralId} value={c.corralId}>
+                    {c.name}
+                  </MenuRadioItem>
+                ))}
+              </MenuRadioGroup>
+            </MenuSubPopup>
+          </MenuSub>
+          {team ? (
+            <MenuItem
+              onClick={() =>
+                void navigate({
+                  to: '/corrals/$corralId/edit',
+                  params: { corralId: team.corralId },
+                })
+              }
+            >
+              {t('editTeam')}
+            </MenuItem>
+          ) : null}
+          <MenuSeparator />
+          <MenuItem onClick={() => void update({ pinned: !session.pinned })}>
+            {session.pinned ? t('unpin') : t('pin')}
+          </MenuItem>
+          <MenuItem onClick={() => void update({ archived: !session.archivedAt })}>
+            {session.archivedAt ? t('restore') : t('archive')}
+          </MenuItem>
+        </MenuPopup>
+      </Menu>
+      <Dialog open={renaming !== null} onOpenChange={(open) => !open && setRenaming(null)}>
+        <DialogPopup>
+          <DialogHeader>
+            <DialogTitle>{td('rename')}</DialogTitle>
+            <DialogDescription>{td('renameHint')}</DialogDescription>
+          </DialogHeader>
+          <Input
+            aria-label={td('sessionTitle')}
+            value={renaming ?? ''}
+            onChange={(e) => setRenaming(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.nativeEvent.isComposing && renaming?.trim())
+                void update({ title: renaming }).then((ok) => ok && setRenaming(null));
+            }}
+          />
+          <DialogFooter>
+            <Button
+              disabled={!renaming?.trim()}
+              onClick={() =>
+                void update({ title: renaming ?? '' }).then((ok) => ok && setRenaming(null))
+              }
+            >
+              {td('save')}
+            </Button>
+          </DialogFooter>
+        </DialogPopup>
+      </Dialog>
+    </TopbarActions>
+  );
+}
+
+/** The conversation: what was asked, the runs it started, decisions waiting, and the input box. */
+function WorkTab({
+  session,
+  team,
+  corrals,
   runs,
   active,
   onChange,
   reference,
   onReferenceUsed,
+  onPanel,
 }: {
   session: WorkSession;
-  corrals: CorralSummary[];
   team: CorralSummary | null;
+  corrals: CorralSummary[];
   runs: RunSummary[];
   active: RunSummary | null;
   onChange: () => void;
   reference: FileReference | null;
   onReferenceUsed: () => void;
+  onPanel: (panel: SessionPanel, run?: Partial<SessionSearch>) => void;
 }) {
   const t = useTranslations('Sessions');
   // Entries in order; runs that no entry names (started elsewhere) are shown after them.
@@ -369,19 +521,12 @@ function WorkTab({
     <RunChecks.Provider value={runChecks}>
       <ChatView
         sessionId={session.sessionId}
-        header={
-          <SessionHeader
-            session={session}
-            corrals={corrals}
-            team={team}
-            active={active?.sessionId === session.sessionId ? active : null}
-          />
-        }
         composer={
           <Composer
             key={session.sessionId}
             session={session}
             team={team}
+            corrals={corrals}
             runs={runs}
             active={active}
             queued={queued}
@@ -392,32 +537,35 @@ function WorkTab({
         }
       >
         <section aria-label={t('heading')}>
+          <h2 className="sr-only">{session.title}</h2>
           {session.entries.length === 0 && loose.length === 0 ? (
             <div className="flex min-h-48 flex-col items-center justify-center gap-3 py-10 text-center">
               <MessageSquare size={28} strokeWidth={1.25} className="text-muted" />
               <h3 className="text-xl font-medium tracking-tight">{td('noRequests')}</h3>
-              <p className="text-sm text-muted">{td('startHint')}</p>
+              <p className="max-w-md text-sm text-muted">
+                {session.objective ? session.objective : td('startHint')}
+              </p>
             </div>
           ) : null}
           {session.entries
             .filter((e) => e.state !== 'queued' && e.state !== 'dismissed')
             .map((entry) => (
-              <EntryCard key={entry.entryId} entry={entry} runs={runs} />
+              <EntryCard key={entry.entryId} entry={entry} runs={runs} onPanel={onPanel} />
             ))}
           {loose.map((run) => (
-            <RunCard key={run.runId} run={run} />
+            <RunCard key={run.runId} run={run} onPanel={onPanel} />
           ))}
         </section>
         {active && active.sessionId === session.sessionId ? (
-          <ActiveDecisions runId={active.runId} sessionId={session.sessionId} />
+          <ActiveDecisions runId={active.runId} onPanel={onPanel} />
         ) : null}
       </ChatView>
     </RunChecks.Provider>
   );
 }
 
-/** Run detail inside the workbench: the chosen run (newest by default) with its own views. */
-function RunTab({
+/** Run detail in the side panel: the chosen run (newest by default) with its own views. */
+function RunPanel({
   runs,
   search,
   setSearch,
@@ -427,33 +575,34 @@ function RunTab({
   setSearch: (patch: Partial<SessionSearch>) => void;
 }) {
   const tw = useTranslations('Workbench');
+  const ts = useTranslations('Status');
   const runId =
     search.run && runs.some((r) => r.runId === search.run) ? search.run : runs.at(-1)?.runId;
   if (!runId) return <p className="p-4 text-sm text-muted">{tw('noRuns')}</p>;
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <label className="flex items-center gap-2 border-b border-line px-4 py-1 text-xs">
-        {tw('chooseRun')}
-        <select
+      <div className="flex items-center gap-2 border-b border-line/50 px-3 py-1.5">
+        <Select
+          label={tw('chooseRun')}
+          size="xs"
+          variant="ghost"
           value={runId}
-          onChange={(e) =>
+          onValueChange={(value) =>
             setSearch({
-              run: e.target.value,
+              run: value,
               execution: undefined,
               artifact: undefined,
               view: undefined,
               result: undefined,
             })
           }
-          className="rounded border border-line bg-surface px-1 py-0.5"
-        >
-          {[...runs].reverse().map((r) => (
-            <option key={r.runId} value={r.runId}>
-              {r.runId} · {r.status}
-            </option>
-          ))}
-        </select>
-      </label>
+          options={[...runs].reverse().map((r, index) => ({
+            value: r.runId,
+            label: `${tw('runNumber', { number: runs.length - index })} · ${ts(r.status)}`,
+            hint: r.runId,
+          }))}
+        />
+      </div>
       <div className="min-h-0 flex-1">
         <RunDetail
           key={runId}
@@ -473,28 +622,16 @@ function RunTab({
 }
 
 /** Changes: the working copy and its files for the whole session; the review screen for more. */
-function ChangesPanel({ session, runs }: { session: WorkSession; runs: RunSummary[] }) {
+function ChangesPanel({
+  session,
+  files,
+}: {
+  session: WorkSession;
+  files: FileChangeView[] | null;
+}) {
   const tw = useTranslations('Workbench');
   const tf = useTranslations('Files');
   const { workspaces } = useServices();
-  const [files, setFiles] = useState<FileChangeView[] | null>(null);
-  // Refresh when a run of the session starts or ends.
-  const key = runs.map((r) => `${r.runId}:${r.status}`).join(',');
-  useEffect(() => {
-    void key;
-    if (!workspaces) return;
-    let live = true;
-    // Without a working copy there is nothing to compare; asking would only be refused.
-    void (async () => {
-      const copy = await workspaces.worktree(session.sessionId).catch(() => null);
-      if (!copy || copy.missing) return live && setFiles(null);
-      const changes = await workspaces.changes(session.sessionId, { kind: 'session' });
-      if (live) setFiles(changes.files);
-    })().catch(() => live && setFiles(null));
-    return () => {
-      live = false;
-    };
-  }, [workspaces, session.sessionId, key]);
   if (!workspaces) return <p className="text-xs text-muted">{tw('serverOnly')}</p>;
   return (
     <>
@@ -504,31 +641,33 @@ function ChangesPanel({ session, runs }: { session: WorkSession; runs: RunSummar
       ) : (
         <div className="flex flex-col gap-1">
           <p className="text-xs font-medium">{tw('changeCount', { count: files.length })}</p>
-          <ul className="flex flex-col gap-0.5 text-xs">
+          <ul className="flex flex-col text-xs">
             {files.slice(0, 50).map((f) => (
               <li key={f.path}>
                 <Link
                   to="/sessions/$sessionId/review"
                   params={{ sessionId: session.sessionId }}
                   search={{ file: f.path }}
-                  className="break-all font-mono underline-offset-2 hover:underline"
+                  className="flex items-baseline gap-2 rounded px-1.5 py-1 hover:bg-subtle"
                 >
-                  {f.path}
-                </Link>{' '}
-                <span className="text-muted">
-                  {tf(`status.${f.status}`)}
-                  {f.additions !== null ? ` +${f.additions} −${f.deletions ?? 0}` : ''}
-                </span>
+                  <span className="min-w-0 flex-1 break-all font-mono">{f.path}</span>
+                  <span className="shrink-0 text-muted">
+                    {tf(`status.${f.status}`)}
+                    {f.additions !== null ? ` +${f.additions} −${f.deletions ?? 0}` : ''}
+                  </span>
+                </Link>
               </li>
             ))}
           </ul>
-          <Link
-            to="/sessions/$sessionId/review"
-            params={{ sessionId: session.sessionId }}
-            className="self-start rounded-md bg-accent px-3 py-1 text-xs font-medium text-on-accent"
+          <Button
+            size="sm"
+            className="self-start"
+            render={
+              <Link to="/sessions/$sessionId/review" params={{ sessionId: session.sessionId }} />
+            }
           >
             {tw('expandReview')}
-          </Link>
+          </Button>
         </div>
       )}
     </>
@@ -613,9 +752,9 @@ function ArtifactsPanel({
     return (
       <div role="alert" className="space-y-2 text-xs text-danger">
         <p>{td('resultUnavailable')}</p>
-        <button type="button" className="underline" onClick={() => setRetry((value) => value + 1)}>
+        <Button variant="outline" size="xs" onClick={() => setRetry((value) => value + 1)}>
           {td('retryResult')}
-        </button>
+        </Button>
       </div>
     );
   return (
@@ -629,7 +768,7 @@ function ArtifactsPanel({
               <button
                 type="button"
                 onClick={() => onOpen(item.runId, item.id)}
-                className="flex w-full flex-col rounded border border-line px-2 py-2 text-left"
+                className="flex w-full flex-col rounded-md px-2 py-1.5 text-left hover:bg-subtle"
               >
                 <span className="text-xs text-muted">{tr(item.kind)}</span>
                 <span className="font-medium">{item.label}</span>
@@ -645,13 +784,9 @@ function ArtifactsPanel({
         </ul>
       )}
       {ended.length > count ? (
-        <button
-          type="button"
-          className="text-xs underline"
-          onClick={() => setCount((value) => value + 10)}
-        >
+        <Button variant="ghost-muted" size="xs" onClick={() => setCount((value) => value + 10)}>
           {td('moreResults', { count: ended.length - count })}
-        </button>
+        </Button>
       ) : null}
     </div>
   );
@@ -666,21 +801,27 @@ function ChecksPanel({ session }: { session: WorkSession }) {
   return (
     <>
       <Checks sessionId={session.sessionId} binding={binding ?? null} changed={0} />
-      <Link
-        to="/sessions/$sessionId/review"
-        params={{ sessionId: session.sessionId }}
-        className="text-xs underline"
+      <Button
+        variant="outline"
+        size="sm"
+        className="self-start"
+        render={<Link to="/sessions/$sessionId/review" params={{ sessionId: session.sessionId }} />}
       >
         {tw('expandReview')}
-      </Link>
+      </Button>
     </>
   );
 }
 
 /** Decisions the session's working run waits for, answered here (WB-OBS-002). */
-function ActiveDecisions({ runId, sessionId }: { runId: string; sessionId: string }) {
+function ActiveDecisions({
+  runId,
+  onPanel,
+}: {
+  runId: string;
+  onPanel: (panel: SessionPanel, run?: Partial<SessionSearch>) => void;
+}) {
   const { session } = useServices();
-  const navigate = useNavigate();
   useEffect(() => {
     void session.getState().open(runId);
   }, [session, runId]);
@@ -689,159 +830,71 @@ function ActiveDecisions({ runId, sessionId }: { runId: string; sessionId: strin
       <RunActions session={session} compact />
       <ApprovalPanel
         session={session}
-        onOpenArtifact={(id) =>
-          void navigate({
-            to: '/sessions/$sessionId',
-            params: { sessionId },
-            search: { tab: 'run', run: runId, view: 'results', result: id },
-          })
-        }
+        onOpenArtifact={(id) => onPanel('run', { run: runId, view: 'results', result: id })}
       />
     </>
   );
 }
 
-function SessionHeader({
-  session,
-  corrals,
-  team,
-  active,
+function EntryCard({
+  entry,
+  runs,
+  onPanel,
 }: {
-  session: WorkSession;
-  corrals: CorralSummary[];
-  team: CorralSummary | null;
-  active: RunSummary | null;
+  entry: SessionEntry;
+  runs: RunSummary[];
+  onPanel: (panel: SessionPanel, run?: Partial<SessionSearch>) => void;
 }) {
-  const t = useTranslations('Sessions');
-  const td = useTranslations('Desktop');
-  const { repository } = useServices();
-  const router = useRouter();
-  const [error, setError] = useState<string | null>(null);
-  const update = async (change: {
-    corralId?: string | null;
-    pinned?: boolean;
-    archived?: boolean;
-  }) => {
-    const result = await repository.updateSession(session.sessionId, {
-      ...change,
-      expectedRevision: session.revision,
-    });
-    if (!result.ok) return setError(t('failed', { message: result.message }));
-    setError(null);
-    await router.invalidate();
-  };
-  return (
-    <details className="session-details shrink-0 border-b border-line/40 px-5 py-2 text-xs">
-      <summary className="flex cursor-pointer list-none items-center gap-2 text-muted">
-        <ChevronDown size={13} />
-        {td('sessionDetails')}
-        <span className="ml-auto truncate">{team?.name}</span>
-      </summary>
-      <div className="flex flex-col gap-3 py-3">
-        <WorkbenchHeader session={session} team={team} active={active} />
-        <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-base font-semibold">{session.title}</h2>
-          {session.pinned ? (
-            <span className="rounded-full border border-line px-2 py-0.5 text-xs">
-              {t('pinned')}
-            </span>
-          ) : null}
-          {session.archivedAt ? (
-            <span className="rounded-full border border-line px-2 py-0.5 text-xs text-muted">
-              {t('archived')}
-            </span>
-          ) : null}
-          <button
-            type="button"
-            onClick={() => void update({ pinned: !session.pinned })}
-            className="rounded border border-line px-2 py-0.5 text-xs"
-          >
-            {session.pinned ? t('unpin') : t('pin')}
-          </button>
-          <button
-            type="button"
-            onClick={() => void update({ archived: !session.archivedAt })}
-            className="rounded border border-line px-2 py-0.5 text-xs"
-          >
-            {session.archivedAt ? t('restore') : t('archive')}
-          </button>
-        </div>
-        {session.objective ? (
-          <p className="whitespace-pre-wrap text-sm text-muted">
-            <span className="font-medium text-text">{t('purpose')}: </span>
-            {session.objective}
-          </p>
-        ) : null}
-        <label className="flex flex-wrap items-center gap-2 text-sm">
-          {t('chooseTeam')}
-          <select
-            value={team?.corralId ?? ''}
-            onChange={(e) => void update({ corralId: e.target.value || null })}
-            className="rounded border border-line bg-surface px-2 py-1"
-          >
-            <option value="">{t('noTeam')}</option>
-            {corrals.map((c) => (
-              <option key={c.corralId} value={c.corralId}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-          {team ? (
-            <Link
-              to="/corrals/$corralId/edit"
-              params={{ corralId: team.corralId }}
-              className="text-xs underline"
-            >
-              {team.name}
-            </Link>
-          ) : null}
-        </label>
-        {error ? (
-          <p role="alert" className="text-sm text-danger">
-            {error}
-          </p>
-        ) : null}
-      </div>
-    </details>
-  );
-}
-
-function EntryCard({ entry, runs }: { entry: SessionEntry; runs: RunSummary[] }) {
   const t = useTranslations('Sessions');
   const format = useFormatter();
   const run = entry.runId ? runs.find((r) => r.runId === entry.runId) : undefined;
+  const when = format.dateTime(new Date(entry.createdAt), {
+    timeStyle: 'short',
+    dateStyle: 'short',
+  });
+  // A plain follow-up needs no label; queue, instruction and question say what they were.
+  const label = entry.intent === 'next' ? null : t(`intentShort.${entry.intent}`);
+  const state =
+    entry.state === 'started' || entry.state === 'sent' ? null : t(`state.${entry.state}`);
   return (
-    <article data-testid={`entry-${entry.entryId}`} className="chat-turn flex flex-col gap-5">
-      <div className="user-message">
-        <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-2xs text-muted">
-          <span>{t('youAsked', { intent: t(`intent.${entry.intent}`) })}</span>
-          <span>
-            {t(`state.${entry.state}`)} ·{' '}
-            {format.dateTime(new Date(entry.createdAt), { timeStyle: 'short', dateStyle: 'short' })}
-          </span>
-        </div>
+    <article data-testid={`entry-${entry.entryId}`} className="chat-turn flex flex-col gap-4">
+      <div className="user-message" title={when}>
+        {label || state ? (
+          <p className="mb-1 text-2xs font-medium text-muted">
+            {[label, state].filter(Boolean).join(' · ')}
+          </p>
+        ) : null}
         <p className="whitespace-pre-wrap text-sm leading-6">{entry.text}</p>
+        <span className="sr-only">
+          {t('youAsked', { intent: t(`intent.${entry.intent}`) })} · {t(`state.${entry.state}`)} ·{' '}
+          {when}
+        </span>
       </div>
       {entry.detail ? (
         <p role="note" className="text-xs text-danger">
           {entry.detail}
         </p>
       ) : null}
-      {run && entry.intent !== 'steer' ? <RunCard run={run} nested /> : null}
-      {entry.intent === 'steer' && entry.runId && entry.commandId ? (
-        <DeliveryStatus runId={entry.runId} commandId={entry.commandId} />
-      ) : null}
+      {run && entry.intent !== 'steer' ? <RunCard run={run} nested onPanel={onPanel} /> : null}
       {entry.intent === 'steer' && entry.runId ? (
-        <Link
-          to="/runs/$runId"
-          params={{ runId: entry.runId }}
-          search={
-            entry.executionId ? { execution: entry.executionId, view: 'run' } : { view: 'run' }
-          }
-          className="self-start text-xs underline"
-        >
-          {t('openRun')}
-        </Link>
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+          {entry.commandId ? (
+            <DeliveryStatus runId={entry.runId} commandId={entry.commandId} />
+          ) : null}
+          <Button
+            variant="ghost-muted"
+            size="xs"
+            onClick={() =>
+              onPanel('run', {
+                run: entry.runId ?? undefined,
+                view: 'run',
+                execution: entry.executionId ?? undefined,
+              })
+            }
+          >
+            {t('openRun')}
+          </Button>
+        </div>
       ) : null}
     </article>
   );
@@ -889,10 +942,18 @@ function useRunChecks(sessionId: string, runs: RunSummary[]) {
 }
 
 /**
- * A run in the session (02-UX-Spec §3): whether it finished or not, the agent's own result kept
- * apart from facts, and what can be done next. Links stay inside the workbench.
+ * A run in the session (02-UX-Spec §3): one line with its state, the agent's own words kept
+ * apart from facts, and what can be done next. Details open in the side panel.
  */
-function RunCard({ run, nested = false }: { run: RunSummary; nested?: boolean }) {
+function RunCard({
+  run,
+  nested = false,
+  onPanel,
+}: {
+  run: RunSummary;
+  nested?: boolean;
+  onPanel: (panel: SessionPanel, run?: Partial<SessionSearch>) => void;
+}) {
   const t = useTranslations('Sessions');
   const ts = useTranslations('Status');
   const tf = useTranslations('Files');
@@ -900,62 +961,54 @@ function RunCard({ run, nested = false }: { run: RunSummary; nested?: boolean })
   const checks = useContext(RunChecks);
   const check = checks.of(run.runId);
   const ended = TERMINAL_RUN_STATUSES.has(run.status);
-  const inSession = (view: 'results' | 'run') =>
-    run.sessionId ? (
-      <Link
-        to="/sessions/$sessionId"
-        params={{ sessionId: run.sessionId }}
-        search={{ tab: 'run', run: run.runId, view }}
-        className="underline"
-      >
-        {view === 'results' ? t('openResults') : t('openRun')}
-      </Link>
-    ) : (
-      <Link to="/runs/$runId" params={{ runId: run.runId }} search={{ view }} className="underline">
-        {view === 'results' ? t('openResults') : t('openRun')}
-      </Link>
-    );
   return (
     <section
       aria-label={run.runId}
       data-testid={`run-card-${run.runId}`}
-      className={`flex min-w-0 flex-col gap-3 ${nested ? '' : 'mb-6'}`}
+      className={`flex min-w-0 flex-col gap-3 ${nested ? '' : 'mb-8'}`}
     >
-      <div className="flex flex-wrap items-center gap-2 text-xs">
+      <div className="flex min-h-7 flex-wrap items-center gap-x-3 gap-y-1 text-xs">
         <StatusBadge status={run.status} />
         <span className="sr-only">{run.runId}</span>
-        {inSession('results')}
-        {inSession('run')}
+        {ended && checks.known ? (
+          <span className="text-muted" data-testid="run-check">
+            {check
+              ? t('checked', { name: check.name, state: tf(`checkState.${check.state}`) })
+              : t('notChecked')}
+          </span>
+        ) : null}
+        <Button
+          variant="ghost-muted"
+          size="xs"
+          className="ml-auto"
+          onClick={() => onPanel('run', { run: run.runId, view: 'run' })}
+        >
+          {t('openRun')}
+        </Button>
       </div>
-      {run.status === 'running' ? <p className="text-xs text-muted">{t('working')}</p> : null}
-      {ended && run.status === 'succeeded' ? (
-        <p className="text-xs font-medium">{t('didFinish')}</p>
-      ) : null}
       {ended && run.status !== 'succeeded' ? (
         <p role="note" className="text-xs text-warning">
           {t('didNotFinish', { status: ts(run.status) })}
         </p>
       ) : null}
-      {ended && checks.known ? (
-        <p className="text-xs" data-testid="run-check">
-          {check
-            ? t('checked', { name: check.name, state: tf(`checkState.${check.state}`) })
-            : t('notChecked')}
-        </p>
-      ) : null}
       <RunMessage runId={run.runId} sessionId={run.sessionId ?? null} live={!ended} />
       {ended && workspaces && run.sessionId ? (
-        <p className="flex flex-wrap items-center gap-2 text-xs">
-          <span className="text-muted">{t('nextActions')}:</span>
-          <Link
-            to="/sessions/$sessionId/review"
-            params={{ sessionId: run.sessionId }}
-            search={{ scope: 'run', runId: run.runId }}
-            className="underline"
+        <div>
+          <Button
+            variant="outline"
+            size="xs"
+            render={
+              <Link
+                to="/sessions/$sessionId/review"
+                params={{ sessionId: run.sessionId }}
+                search={{ scope: 'run', runId: run.runId }}
+              />
+            }
           >
+            <FileDiff />
             {t('reviewChanges')}
-          </Link>
-        </p>
+          </Button>
+        </div>
       ) : null}
     </section>
   );
@@ -993,9 +1046,7 @@ function DeliveryStatus({ runId, commandId }: { runId: string; commandId: string
     };
   }, [transport, runId, commandId]);
   return status ? (
-    <p data-testid="delivery" className="text-xs">
-      {t('delivery', { status: ts(status) })}
-    </p>
+    <span data-testid="delivery">{t('delivery', { status: ts(status) })}</span>
   ) : null;
 }
 
@@ -1006,6 +1057,7 @@ function finalResultId(projection: RunProjection): string | null {
 function Composer({
   session,
   team,
+  corrals,
   runs,
   active,
   queued,
@@ -1015,6 +1067,7 @@ function Composer({
 }: {
   session: WorkSession;
   team: CorralSummary | null;
+  corrals: CorralSummary[];
   runs: RunSummary[];
   active: RunSummary | null;
   queued: SessionEntry[];
@@ -1023,8 +1076,11 @@ function Composer({
   onReferenceUsed: () => void;
 }) {
   const t = useTranslations('Sessions');
+  const tc = useTranslations('Composer');
+  const tr = useTranslations('Reins');
   const services = useServices();
   const { repository, transport, mode, live } = services;
+  const prefs = usePreferences();
   const router = useRouter();
   const [text, setText] = useState(() => readDraft(session.sessionId));
   const [chosen, setChosen] = useState<SessionIntent | null>(null);
@@ -1034,8 +1090,20 @@ function Composer({
   const [error, setError] = useState<string | null>(null);
   const [targets, setTargets] = useState<{ id: string; label: string }[]>([]);
   const [targetTick, setTargetTick] = useState(0);
+  const [picked, setPicked] = useState<MentionItem[]>([]);
+  const [confirmStop, setConfirmStop] = useState(false);
+  const [teamOpen, setTeamOpen] = useState(false);
+  const [modeOpen, setModeOpen] = useState(false);
+  const [recall, setRecall] = useState(-1);
+  const input = useRef<HTMLTextAreaElement>(null);
   const ownActive = active && active.sessionId === session.sessionId ? active : null;
   const latest = useLatestResult(runs);
+  const searchMentions = useMentionSearch({
+    projectId: session.projectId,
+    sessionId: session.sessionId,
+    runs,
+    team,
+  });
   // One command ID per request: a retry after a lost answer reuses it, so the runtime returns
   // the first receipt instead of starting a second run (02-UX-Spec §6).
   const pending = useRef<{ key: string; commandId: string } | null>(null);
@@ -1095,6 +1163,45 @@ function Composer({
   }, [ownActive]);
   const steerTarget = targets.some((x) => x.id === target) ? target : (targets[0]?.id ?? '');
 
+  const write = (value: string) => {
+    setText(value);
+    writeDraft(session.sessionId, value);
+  };
+
+  // A line range chosen in the file panel arrives as a reference at the caret.
+  const used = useRef<FileReference | null>(null);
+  useEffect(() => {
+    if (!reference || used.current === reference) return;
+    used.current = reference;
+    const item: MentionItem = {
+      id: `file:${reference.path}:${reference.start}-${reference.end}`,
+      kind: 'file',
+      label: reference.path,
+      lines: { start: reference.start, end: reference.end },
+      reference: {
+        kind: 'file',
+        path: reference.path,
+        lines: { start: reference.start, end: reference.end },
+      },
+    };
+    setPicked((list) => [...list, item]);
+    const box = input.current;
+    const at = box?.selectionStart ?? text.length;
+    const before = text.slice(0, at);
+    const token = mentionToken(item);
+    const next = `${before}${before && !/\s$/.test(before) ? ' ' : ''}${token} ${text.slice(at)}`;
+    write(next);
+    onReferenceUsed();
+    requestAnimationFrame(() => box?.focus());
+  });
+
+  const references = pickedReferences(text, picked);
+  const chips = picked.filter(
+    (item, index) =>
+      picked.findIndex((x) => x.id === item.id) === index &&
+      pickedReferences(text, [item]).length > 0,
+  );
+
   const record = async (entry: Parameters<typeof repository.addSessionEntry>[1]) => {
     const saved = await repository.addSessionEntry(session.sessionId, entry);
     if (!saved.ok) setError(t('failed', { message: saved.message }));
@@ -1104,6 +1211,7 @@ function Composer({
   const startNext = async (
     brief: string,
     commandId: string = newCommandId(),
+    refs: RunReference[] = [],
   ): Promise<{ runId: string | null; detail: string | null }> => {
     if (!team) return { runId: null, detail: t('noTeamYet') };
     const corral = await repository.get(team.corralId);
@@ -1115,6 +1223,7 @@ function Composer({
       mode: runMode,
       sessionId: session.sessionId,
       ...(latest ? { startFrom: { runId: latest.runId, artifactVersionId: latest.id } } : {}),
+      ...(refs.length ? { references: refs } : {}),
     };
     const result = await transport.startRun(
       mode === 'server'
@@ -1136,8 +1245,9 @@ function Composer({
     setError(null);
     try {
       if (intent === 'next') {
-        const commandId = commandFor(`next\u0000${body}`);
-        const { runId, detail } = await startNext(body, commandId);
+        const refs = references;
+        const commandId = commandFor(`next\u0000${body}\u0000${JSON.stringify(refs)}`);
+        const { runId, detail } = await startNext(body, commandId, refs);
         await record({
           intent,
           text: body,
@@ -1192,8 +1302,9 @@ function Composer({
         return;
       }
       pending.current = null;
-      setText('');
-      writeDraft(session.sessionId, '');
+      setPicked([]);
+      setChosen(null);
+      write('');
       await router.invalidate();
       onChange();
     } catch (failure) {
@@ -1201,6 +1312,33 @@ function Composer({
     } finally {
       setBusy(false);
     }
+  };
+
+  const runCommand = async (type: 'pause' | 'resume' | 'cancel') => {
+    if (!ownActive) return;
+    const receipt = await transport
+      .sendCommand(
+        type === 'cancel'
+          ? {
+              schemaVersion: '0.1',
+              commandId: newCommandId(),
+              runId: ownActive.runId,
+              type,
+              payload: { scope: { kind: 'run' }, reason: 'User cancelled the run' },
+            }
+          : {
+              schemaVersion: '0.1',
+              commandId: newCommandId(),
+              runId: ownActive.runId,
+              type,
+              payload: { scope: 'run' },
+            },
+      )
+      .catch((failure: unknown) => ({
+        error: { message: failure instanceof Error ? failure.message : String(failure) },
+      }));
+    if (receipt.error) setError(receipt.error.message);
+    onChange();
   };
 
   const startQueued = async (entry: SessionEntry) => {
@@ -1224,8 +1362,7 @@ function Composer({
   };
   /** Editing a queued task takes it back into the box; sending again records a new version. */
   const editQueued = async (entry: SessionEntry) => {
-    setText(entry.text);
-    writeDraft(session.sessionId, entry.text);
+    write(entry.text);
     setChosen('queue');
     await repository.updateSessionEntry(session.sessionId, entry.entryId, {
       state: 'dismissed',
@@ -1244,12 +1381,41 @@ function Composer({
     if (ended && autoStart && next && team) void startQueued(next);
   }, [active, ownActive]);
 
+  const updateTeam = async (corralId: string) => {
+    const result = await repository.updateSession(session.sessionId, {
+      corralId: corralId || null,
+      expectedRevision: session.revision,
+    });
+    if (!result.ok) setError(t('failed', { message: result.message }));
+    else await router.invalidate();
+  };
+
+  // Earlier requests, newest first, for ↑ in an empty box.
+  const history = session.entries
+    .map((e) => e.text)
+    .filter((value, index, all) => value.trim() && all.lastIndexOf(value) === index)
+    .reverse();
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     // An IME composition's Enter confirms the text; it never sends (WB-UX-005).
     if (event.nativeEvent.isComposing || event.keyCode === 229) return;
-    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+    if (isSendKey(event, prefs.sendKey)) {
       event.preventDefault();
       void send();
+      return;
+    }
+    const box = event.currentTarget;
+    const recalled = recall >= 0 && text === history[recall];
+    if (
+      (event.key === 'ArrowUp' || event.key === 'ArrowDown') &&
+      !event.shiftKey &&
+      (text === '' || recalled) &&
+      box.selectionStart === box.selectionEnd
+    ) {
+      const next = event.key === 'ArrowUp' ? recall + 1 : recall - 1;
+      if (next < -1 || next >= history.length) return;
+      event.preventDefault();
+      setRecall(next);
+      write(next === -1 ? '' : (history[next] ?? ''));
     }
   };
 
@@ -1257,173 +1423,322 @@ function Composer({
     (intent === 'next' && !team) ||
     (intent === 'explain' && !latest) ||
     (intent === 'steer' && !steerTarget);
+  const stopping = Boolean(ownActive) && !text.trim();
+  const canLive = mode === 'server' && live && (intent === 'next' || intent === 'explain');
+  const why = (allowedHere: boolean) => (allowedHere ? undefined : tc('notNow'));
+
+  useRegisterCommands('composer', [
+    ...(['next', 'queue', 'steer', 'explain'] as SessionIntent[]).map(
+      (value): AppCommand => ({
+        id: `intent:${value}`,
+        title: t(`intent.${value}`),
+        group: tc('groupRequest'),
+        slash: value === 'explain' ? 'ask' : value,
+        keywords: [t(`intentShort.${value}`)],
+        disabled: !allowed.includes(value),
+        ...(allowed.includes(value) ? {} : { hint: tc('notNow') }),
+        run: () => {
+          setChosen(value);
+          input.current?.focus();
+        },
+      }),
+    ),
+    {
+      id: 'run:pause',
+      title: tr('pause'),
+      group: tc('groupRun'),
+      slash: 'pause',
+      disabled: ownActive?.status !== 'running',
+      hint: why(ownActive?.status === 'running'),
+      run: () => void runCommand('pause'),
+    },
+    {
+      id: 'run:resume',
+      title: tr('resume'),
+      group: tc('groupRun'),
+      slash: 'resume',
+      disabled: ownActive?.status !== 'paused',
+      hint: why(ownActive?.status === 'paused'),
+      run: () => void runCommand('resume'),
+    },
+    {
+      id: 'run:stop',
+      title: tr('cancelRun'),
+      group: tc('groupRun'),
+      slash: 'stop',
+      shortcutId: 'run.stop',
+      shortcut: shortcutLabel('run.stop'),
+      disabled: !ownActive,
+      hint: why(Boolean(ownActive)),
+      run: () => setConfirmStop(true),
+    },
+    {
+      id: 'composer:team',
+      title: t('chooseTeam'),
+      group: tc('groupRequest'),
+      slash: 'team',
+      keywords: corrals.map((c) => c.name),
+      run: () => setTeamOpen(true),
+    },
+    ...(mode === 'server' && live
+      ? [
+          {
+            id: 'composer:model',
+            title: t('mode'),
+            group: tc('groupRequest'),
+            slash: 'model',
+            run: () => setModeOpen(true),
+          },
+        ]
+      : []),
+    {
+      id: 'composer:focus',
+      title: tc('focus'),
+      group: tc('groupRequest'),
+      shortcutId: 'composer.focus',
+      shortcut: shortcutLabel('composer.focus'),
+      run: () => input.current?.focus(),
+    },
+  ]);
+  const commands = useRegisteredCommands();
 
   return (
     <ComposerSurface.Shell>
-      <ComposerSurface.Host>
-        <section
-          aria-label={t('requestLabel')}
-          className="flex max-h-[48dvh] flex-col gap-2 overflow-y-auto p-3 sm:p-4"
-        >
-          {queued.length > 0 ? (
-            <div className="flex flex-col gap-1 rounded-md border border-line p-2">
-              <h3 className="text-xs font-semibold">{t('queueHeading')}</h3>
-              <ul className="flex flex-col gap-1">
-                {queued.map((entry) => (
-                  <li key={entry.entryId} className="flex flex-wrap items-center gap-2 text-sm">
-                    <span className="min-w-0 flex-1 whitespace-pre-wrap">{entry.text}</span>
-                    <button
-                      type="button"
-                      disabled={Boolean(active) || busy || !team}
-                      onClick={() => void startQueued(entry)}
-                      className="rounded border border-accent px-2 py-0.5 text-xs text-accent disabled:opacity-50"
-                    >
-                      {t('startNow')}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void editQueued(entry)}
-                      className="rounded border border-line px-2 py-0.5 text-xs"
-                    >
-                      {t('editQueued')}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void removeQueued(entry)}
-                      className="rounded border border-line px-2 py-0.5 text-xs"
-                    >
-                      {t('remove')}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-              <label className="flex items-start gap-2 text-xs">
-                <input
-                  type="checkbox"
-                  checked={autoStart}
-                  onChange={(e) => setAutoStart(e.target.checked)}
-                />
-                <span>
-                  {t('autoStart')}
-                  <span className="block text-muted">{t('autoStartHint')}</span>
+      {queued.length > 0 ? (
+        <div className="mx-3 rounded-t-xl border border-b-0 border-line bg-surface px-3 py-2">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-xs font-medium text-muted">
+              {t('queueHeading')} · {queued.length}
+            </h3>
+            <label
+              className="flex items-center gap-1.5 text-2xs text-muted"
+              title={t('autoStartHint')}
+            >
+              <input
+                type="checkbox"
+                checked={autoStart}
+                onChange={(e) => setAutoStart(e.target.checked)}
+              />
+              {t('autoStart')}
+            </label>
+          </div>
+          <ul className="mt-1 flex flex-col">
+            {queued.map((entry) => (
+              <li key={entry.entryId} className="group/queued flex items-center gap-1 text-ui">
+                <span className="min-w-0 flex-1 truncate" title={entry.text}>
+                  {entry.text}
                 </span>
-              </label>
-            </div>
-          ) : null}
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  disabled={Boolean(active) || busy || !team}
+                  onClick={() => void startQueued(entry)}
+                >
+                  {t('startNow')}
+                </Button>
+                <Button variant="ghost-muted" size="xs" onClick={() => void editQueued(entry)}>
+                  {t('editQueued')}
+                </Button>
+                <Button variant="ghost-muted" size="xs" onClick={() => void removeQueued(entry)}>
+                  {t('remove')}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      <ComposerSurface.Host>
+        <section aria-label={t('requestLabel')} className="flex flex-col gap-1 px-3 pt-2.5 pb-2">
           {active && !ownActive ? (
             <p role="note" className="text-xs text-warning">
               {t('busyElsewhere', { runId: active.runId })}
             </p>
           ) : null}
-          <fieldset className="flex flex-wrap gap-1 text-xs">
-            <legend className="sr-only">{t('intentLabel')}</legend>
-            {allowed.map((value) => (
-              <label
-                key={value}
-                className={`cursor-pointer rounded px-2 py-1 focus-within:outline-2 focus-within:outline-accent ${
-                  intent === value
-                    ? 'bg-sidebar-selected text-text'
-                    : 'text-muted hover:bg-sidebar-selected/50'
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="session-intent"
-                  value={value}
-                  checked={intent === value}
-                  onChange={() => setChosen(value)}
-                  className="sr-only"
-                />
-                {t(`intent.${value}`)}
-              </label>
-            ))}
-          </fieldset>
-          <p className="sr-only">{t(`intentHint.${intent}`)}</p>
-          {intent === 'steer' && steerTarget ? (
-            <p
-              data-testid="target-chip"
-              className="self-start rounded-full border border-accent px-2 py-0.5 text-xs"
-            >
-              {t('targetChip', {
-                label: targets.find((x) => x.id === steerTarget)?.label ?? steerTarget,
-              })}
-            </p>
+          {chips.length ? (
+            <ul aria-label={tc('references')} className="flex flex-wrap gap-1">
+              {chips.map((item) => (
+                <li
+                  key={item.id}
+                  className="flex max-w-full items-center gap-1 rounded-md bg-subtle py-0.5 pr-0.5 pl-2 text-xs"
+                >
+                  <span className="truncate font-mono" title={item.label}>
+                    {mentionToken(item).slice(1)}
+                  </span>
+                  <Button
+                    variant="ghost-muted"
+                    size="icon-tiny"
+                    aria-label={tc('removeReference', { label: item.label })}
+                    onClick={() => {
+                      write(text.split(mentionToken(item)).join('').replace(/ {2,}/g, ' '));
+                      setPicked((list) => list.filter((x) => x.id !== item.id));
+                    }}
+                  >
+                    <X />
+                  </Button>
+                </li>
+              ))}
+            </ul>
           ) : null}
-          {intent === 'steer' ? (
-            <label className="flex items-center gap-2 text-xs">
-              {t('target')}
-              <select
-                value={steerTarget}
-                onChange={(e) => setTarget(e.target.value)}
-                className="rounded border border-line bg-surface px-1 py-0.5"
-              >
-                {targets.length === 0 ? <option value="">{t('noTarget')}</option> : null}
-                {targets.map((x) => (
-                  <option key={x.id} value={x.id}>
-                    {x.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : null}
-          {(intent === 'next' || intent === 'explain') && latest ? (
-            <p className="text-xs text-muted">{t('fromResult', { label: latest.label })}</p>
-          ) : null}
-          {(intent === 'next' || intent === 'explain') && team ? (
-            <PreRunSummary session={session} team={team} mode={runMode} intent={intent} />
-          ) : null}
-          {intent === 'next' && !team ? (
-            <p className="text-xs text-warning">{t('noTeamYet')}</p>
-          ) : null}
-          {intent === 'explain' && !latest ? (
-            <p className="text-xs text-warning">{t('noResult')}</p>
-          ) : null}
-          <RequestInput
-            projectId={session.projectId}
-            sessionId={session.sessionId}
-            reference={reference}
-            onReferenceUsed={onReferenceUsed}
+          <ComposerInput
+            inputRef={input}
+            label={t('requestLabel')}
+            placeholder={tc('placeholder')}
             value={text}
             onChange={(value) => {
-              setText(value);
-              writeDraft(session.sessionId, value);
+              setRecall(-1);
+              write(value);
             }}
             onKeyDown={onKeyDown}
+            commands={commands}
+            searchMentions={searchMentions}
+            onMention={(item) => setPicked((list) => [...list, item])}
           />
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-2xs text-muted">{t('sendHint')}</span>
-            <div className="flex items-center gap-2">
-              {mode === 'server' && live && (intent === 'next' || intent === 'explain') ? (
-                <label className="flex items-center gap-1 text-xs">
-                  {t('mode')}
-                  <select
-                    value={runMode}
-                    onChange={(e) => setRunMode(e.target.value as 'mock' | 'live')}
-                    className="rounded border border-line bg-surface px-1 py-0.5"
-                  >
-                    <option value="mock">{t('modeMock')}</option>
-                    <option value="live">{t('modeLive')}</option>
-                  </select>
-                </label>
-              ) : null}
-              <button
-                type="button"
-                disabled={busy || !text.trim() || unavailable}
-                onClick={() => void send()}
-                aria-label={t('send')}
-                className="grid size-9 place-items-center rounded-full bg-accent text-on-accent disabled:opacity-40"
+          <div className="flex flex-wrap items-center gap-0.5">
+            <Tooltip content={tc('addReference')}>
+              <Button
+                variant="ghost-muted"
+                size="icon-sm"
+                aria-label={tc('addReference')}
+                onClick={() => {
+                  const box = input.current;
+                  const at = box?.selectionStart ?? text.length;
+                  const before = text.slice(0, at);
+                  const head = `${before}${before && !/\s$/.test(before) ? ' ' : ''}@`;
+                  write(`${head}${text.slice(at)}`);
+                  requestAnimationFrame(() => {
+                    box?.focus();
+                    box?.setSelectionRange(head.length, head.length);
+                  });
+                }}
               >
-                <ArrowUp size={18} />
-              </button>
+                <AtSign />
+              </Button>
+            </Tooltip>
+            {allowed.length > 1 ? (
+              <Select
+                variant="chip"
+                label={t('intentLabel')}
+                value={intent}
+                onValueChange={(value) => setChosen(value)}
+                options={allowed.map((value) => ({
+                  value,
+                  label: t(`intentShort.${value}`),
+                  hint: t(`intentHint.${value}`),
+                }))}
+              />
+            ) : intent !== 'next' ? (
+              <span className="px-2 text-ui text-muted">{t(`intentShort.${intent}`)}</span>
+            ) : null}
+            {intent === 'steer' ? (
+              <Select
+                variant="chip"
+                label={t('target')}
+                value={steerTarget || null}
+                placeholder={t('noTarget')}
+                onValueChange={setTarget}
+                options={targets.map((x) => ({ value: x.id, label: x.label }))}
+                disabled={targets.length === 0}
+              />
+            ) : null}
+            {intent === 'next' || intent === 'explain' ? (
+              <Select
+                variant="chip"
+                label={t('teamLabel')}
+                value={team?.corralId ?? ''}
+                open={teamOpen}
+                onOpenChange={setTeamOpen}
+                onValueChange={(value) => void updateTeam(value)}
+                options={[
+                  { value: '', label: t('noTeam') },
+                  ...corrals.map((c) => ({ value: c.corralId, label: c.name })),
+                ]}
+              />
+            ) : null}
+            {canLive ? (
+              <Select
+                variant="chip"
+                label={t('mode')}
+                value={runMode}
+                open={modeOpen}
+                onOpenChange={setModeOpen}
+                onValueChange={setRunMode}
+                options={[
+                  { value: 'mock', label: t('modeMock') },
+                  { value: 'live', label: t('modeLive') },
+                ]}
+              />
+            ) : null}
+            <div className="ml-auto flex items-center gap-1">
+              {stopping ? (
+                <Tooltip content={tr('cancelRun')} shortcut={shortcutLabel('run.stop')}>
+                  <Button
+                    variant="outline"
+                    size="icon-sm"
+                    aria-label={tr('cancelRun')}
+                    className="rounded-full"
+                    onClick={() => setConfirmStop(true)}
+                  >
+                    <Square className="fill-current" />
+                  </Button>
+                </Tooltip>
+              ) : (
+                <Tooltip content={t('send')} shortcut={sendKeyLabel(prefs.sendKey)}>
+                  <Button
+                    size="icon-sm"
+                    aria-label={t('send')}
+                    disabled={busy || !text.trim() || unavailable}
+                    className="rounded-full"
+                    onClick={() => void send()}
+                  >
+                    <ArrowUp />
+                  </Button>
+                </Tooltip>
+              )}
             </div>
           </div>
-          {error ? (
-            <p role="alert" className="text-sm text-danger">
-              {error}
-            </p>
-          ) : null}
         </section>
       </ComposerSurface.Host>
+      <div className="flex min-h-5 flex-wrap items-center gap-x-2 px-4 pt-1.5 text-2xs text-muted">
+        {intent === 'next' && !team ? <span className="text-warning">{t('noTeamYet')}</span> : null}
+        {intent === 'explain' && !latest ? (
+          <span className="text-warning">{t('noResult')}</span>
+        ) : null}
+        {(intent === 'next' || intent === 'explain') && team ? (
+          <PreRunSummary session={session} team={team} mode={runMode} intent={intent} />
+        ) : null}
+        {(intent === 'next' || intent === 'explain') && latest ? (
+          <span>· {t('fromResult', { label: latest.label })}</span>
+        ) : null}
+        {intent === 'steer' ? <span>{t('intentHint.steer')}</span> : null}
+        {intent === 'queue' ? <span>{t('intentHint.queue')}</span> : null}
+      </div>
+      {error ? (
+        <p role="alert" className="px-4 pt-1 text-xs text-danger">
+          {error}
+        </p>
+      ) : null}
+      <Dialog open={confirmStop} onOpenChange={setConfirmStop}>
+        <DialogPopup>
+          <DialogHeader>
+            <DialogTitle>{tr('cancelRun')}</DialogTitle>
+            <DialogDescription>{tr('cancelRunExplain')}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmStop(false)}>
+              {tr('keepRunning')}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                setConfirmStop(false);
+                void runCommand('cancel');
+              }}
+            >
+              {tr('confirmCancelRun')}
+            </Button>
+          </DialogFooter>
+        </DialogPopup>
+      </Dialog>
     </ComposerSurface.Shell>
   );
 }
@@ -1526,9 +1841,5 @@ function PreRunSummary({
     intent,
     t,
   ]);
-  return text ? (
-    <p data-testid="pre-run" className="text-xs text-muted">
-      {text}
-    </p>
-  ) : null;
+  return text ? <span data-testid="pre-run">{text}</span> : null;
 }

@@ -17,7 +17,7 @@ import {
 import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { Clock } from '@corral/contracts';
-import { type FileTools, type ToolCancellation, ToolRefusal } from '@corral/core';
+import { type FileTools, rankFuzzy, type ToolCancellation, ToolRefusal } from '@corral/core';
 import type { Db } from '@corral/storage-sqlite';
 import { GitError, git, gitText } from './git.ts';
 
@@ -138,6 +138,9 @@ export function safeRelative(input: string): string {
 }
 
 /** Refuses a path whose existing components include a symbolic link. */
+/** Paths considered by one `@` search; larger folders say they were cut. */
+const SEARCH_CAP = 50_000;
+
 async function assertPlainPath(root: string, rel: string): Promise<'file' | 'missing' | 'other'> {
   const parts = rel.split('/');
   let current = root;
@@ -746,6 +749,66 @@ export class WorkspaceService implements FileTools {
   async listFiles(scope: FileBrowseScope, path = '') {
     const { root, isGit } = await this.browseRoot(scope);
     return this.list(root, path, isGit);
+  }
+
+  /**
+   * CR-016: files and folders for an `@` reference, ranked by a fuzzy match of their path. Only
+   * names are read; Git's ignore rules apply, and nothing behind a symbolic link is returned.
+   */
+  async searchPaths(
+    scope: FileBrowseScope,
+    query: string,
+    limit: number,
+  ): Promise<{ items: { path: string; kind: 'file' | 'folder' }[]; truncated: boolean }> {
+    const { root, isGit } = await this.browseRoot(scope);
+    const walk = isGit ? null : await this.folderPaths(root, '');
+    const listed =
+      walk?.paths ??
+      (await git(root, ['ls-files', '-z', '--cached', '--others', '--exclude-standard'])).stdout
+        .toString('utf8')
+        .split('\0')
+        .filter(Boolean);
+    const paths = [...new Set(listed)].slice(0, SEARCH_CAP).filter((path) => {
+      try {
+        safeRelative(path);
+        return true;
+      } catch {
+        return false;
+      }
+    });
+    const folders = new Set<string>();
+    for (const path of paths) {
+      const parts = path.split('/');
+      for (let i = 1; i < parts.length; i++) folders.add(parts.slice(0, i).join('/'));
+    }
+    const candidates = [
+      ...[...folders]
+        .sort((a, b) => a.split('/').length - b.split('/').length || a.localeCompare(b))
+        .map((path) => ({ path, kind: 'folder' as const })),
+      ...paths.map((path) => ({ path, kind: 'file' as const })),
+    ];
+    const ranked = rankFuzzy(
+      query,
+      candidates,
+      (item) => (item.kind === 'folder' ? `${item.path}/` : item.path),
+      limit * 3,
+    );
+    const items: { path: string; kind: 'file' | 'folder' }[] = [];
+    for (const item of ranked) {
+      if (items.length >= limit) break;
+      try {
+        if (item.kind === 'file') {
+          if ((await assertPlainPath(root, item.path)) === 'file') items.push(item);
+        } else {
+          // Throws for a symbolic link anywhere on the way.
+          await assertPlainPath(root, item.path);
+          if ((await lstat(join(root, item.path))).isDirectory()) items.push(item);
+        }
+      } catch {
+        // A symbolic link or a path that is gone: not offered.
+      }
+    }
+    return { items, truncated: listed.length > SEARCH_CAP || !!walk?.truncated };
   }
 
   async readFile(

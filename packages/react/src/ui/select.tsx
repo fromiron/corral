@@ -28,6 +28,8 @@ export function Select<T extends string>({
   className,
   icon,
   align = 'start',
+  open,
+  onOpenChange,
 }: {
   value: T | null;
   onValueChange: (value: T) => void;
@@ -41,6 +43,9 @@ export function Select<T extends string>({
   className?: string;
   icon?: React.ReactNode;
   align?: 'start' | 'center' | 'end';
+  /** Lets a command open the list (e.g. `/team`). */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const items = options.map((o) => ({ value: o.value, label: o.label }));
   return (
@@ -51,6 +56,8 @@ export function Select<T extends string>({
         if (next !== null) onValueChange(next as T);
       }}
       disabled={disabled}
+      {...(open === undefined ? {} : { open })}
+      {...(onOpenChange ? { onOpenChange: (next: boolean) => onOpenChange(next) } : {})}
     >
       <SelectPrimitive.Trigger
         aria-label={label}

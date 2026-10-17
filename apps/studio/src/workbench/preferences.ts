@@ -7,10 +7,18 @@ export interface Preferences {
   theme: Theme;
   sidebarOpen: boolean;
   sidebarWidth: number;
+  /** Enter sends and Shift+Enter adds a line, or Ctrl/⌘+Enter sends and Enter adds a line. */
+  sendKey: 'enter' | 'mod-enter';
 }
 
 export const PREFERENCES_KEY = 'corral:workbench:v1';
-const defaults: Preferences = { version: 1, theme: 'system', sidebarOpen: true, sidebarWidth: 256 };
+const defaults: Preferences = {
+  version: 1,
+  theme: 'system',
+  sidebarOpen: true,
+  sidebarWidth: 256,
+  sendKey: 'enter',
+};
 
 export function parsePreferences(raw: string | null): Preferences {
   try {
@@ -24,6 +32,7 @@ export function parsePreferences(raw: string | null): Preferences {
         typeof value.sidebarWidth === 'number' && Number.isFinite(value.sidebarWidth)
           ? Math.min(420, Math.max(220, value.sidebarWidth))
           : 256,
+      sendKey: value.sendKey === 'mod-enter' ? 'mod-enter' : 'enter',
     };
   } catch {
     return { ...defaults };
@@ -57,4 +66,14 @@ export function applyTheme(theme: Theme) {
   document.documentElement.dataset.theme = theme;
   document.documentElement.classList.toggle('dark', dark);
   document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+}
+
+/** Whether a key press in a request box sends it, per the person's choice; never mid-IME. */
+export function isSendKey(
+  event: { key: string; shiftKey: boolean; ctrlKey: boolean; metaKey: boolean; altKey: boolean },
+  sendKey: Preferences['sendKey'],
+): boolean {
+  if (event.key !== 'Enter' || event.altKey) return false;
+  if (sendKey === 'mod-enter') return event.ctrlKey || event.metaKey;
+  return !event.shiftKey;
 }

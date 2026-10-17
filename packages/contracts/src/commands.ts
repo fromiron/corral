@@ -135,6 +135,40 @@ export type RunCommandType = RunCommand['type'];
 export const StartFrom = z.strictObject({ runId: Identifier, artifactVersionId: Identifier });
 export type StartFrom = z.infer<typeof StartFrom>;
 
+/** A path inside the work folder: relative, no `..`, no drive or leading slash (CR-016). */
+const ReferencePath = z
+  .string()
+  .min(1)
+  .max(1024)
+  .refine(
+    (path) =>
+      !/^([/\\]|[A-Za-z]:)/.test(path) &&
+      !path.includes('\\') &&
+      !path.split('/').some((part) => part === '..' || part === '.'),
+    'a reference path is relative to the work folder',
+  );
+
+/**
+ * CR-016: what a person pointed at with `@`. A reference never grants a tool or a path; the run
+ * reads files only through the tools its roles already have. A result is copied at this version.
+ */
+export const RunReference = z.discriminatedUnion('kind', [
+  z.strictObject({
+    kind: z.literal('file'),
+    path: ReferencePath,
+    lines: z
+      .strictObject({ start: z.int().min(1), end: z.int().min(1) })
+      .refine((l) => l.end >= l.start, 'lines end before they start')
+      .optional(),
+  }),
+  z.strictObject({ kind: z.literal('folder'), path: ReferencePath }),
+  z.strictObject({ kind: z.literal('result'), runId: Identifier, artifactVersionId: Identifier }),
+  z.strictObject({ kind: z.literal('run'), runId: Identifier }),
+  z.strictObject({ kind: z.literal('role'), roleId: Identifier }),
+]);
+export type RunReference = z.infer<typeof RunReference>;
+export const RunReferences = z.array(RunReference).max(20);
+
 export const StartRunRequest = z.strictObject({
   schemaVersion: SchemaVersion,
   commandId: Identifier,
@@ -143,6 +177,7 @@ export const StartRunRequest = z.strictObject({
   startFrom: StartFrom.optional(),
   /** The work session this run continues (CR-011); recorded with the run, not in its snapshot. */
   sessionId: Identifier.optional(),
+  references: RunReferences.optional(),
 });
 export type StartRunRequest = z.infer<typeof StartRunRequest>;
 
@@ -159,5 +194,6 @@ export const CreateRunRequest = z.strictObject({
   mode: z.enum(['mock', 'live']),
   startFrom: StartFrom.optional(),
   sessionId: Identifier.optional(),
+  references: RunReferences.optional(),
 });
 export type CreateRunRequest = z.infer<typeof CreateRunRequest>;

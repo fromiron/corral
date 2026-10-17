@@ -14,7 +14,10 @@
     "navModels": "모델",
     "liveBadge": "로컬 서버 / 시뮬레이션 또는 실제 에이전트",
     "liveNote": "실제 모델을 고르지 않으면 Run은 시뮬레이션입니다. 실제 Run은 본인 로그인을 사용합니다.",
-    "language": "언어"
+    "language": "언어",
+    "liveShort": "로컬 · 실제 모델",
+    "serverShort": "로컬 · 시뮬레이션",
+    "demoShort": "데모"
   },
   "Palette": {
     "heading": "노드",
@@ -1143,7 +1146,14 @@
     "connectionLost": "서버에 연결할 수 없어 Run 상태를 모릅니다. 끝났거나 취소된 것으로 보지 않습니다.",
     "retry": "다시 시도",
     "checked": "검증함: {name} {state}",
-    "notChecked": "검증 안 함"
+    "notChecked": "검증 안 함",
+    "intentShort": {
+      "next": "후속 작업",
+      "queue": "대기",
+      "steer": "지시",
+      "explain": "질문"
+    },
+    "editTeam": "팀 설계 열기"
   },
   "Files": {
     "folderHeading": "작업 폴더",
@@ -1345,7 +1355,8 @@
       "changes": "변경",
       "artifacts": "산출물",
       "checks": "검증",
-      "files": "파일"
+      "files": "파일",
+      "run": "실행"
     },
     "headerTeam": "팀: {name} r{revision}",
     "noTeamHeader": "팀 없음",
@@ -1368,7 +1379,8 @@
     "changeCount": "{count, plural, =0 {변경 없음} other {바뀐 파일 #개}}",
     "noCopyChanges": "작업 복사본을 만들면 여기에 파일 변경이 보입니다.",
     "checksOnReview": "검증은 검토 화면에서 실행합니다.",
-    "serverOnly": "파일 작업·변경·검증은 로컬 서버에서만 쓸 수 있습니다."
+    "serverOnly": "파일 작업·변경·검증은 로컬 서버에서만 쓸 수 있습니다.",
+    "runNumber": "실행 {number}"
   },
   "Desktop": {
     "conversation": "대화",
@@ -1455,5 +1467,26 @@
     "retryResult": "다시 시도",
     "teamActivity": "팀 진행",
     "moreResults": "앞선 실행 {count}개 더 보기"
+  },
+  "Composer": {
+    "commands": "명령",
+    "references": "참조",
+    "noCommand": "맞는 명령이 없어요.",
+    "noReference": "맞는 파일·폴더·결과·실행·역할이 없어요.",
+    "group": {
+      "file": "파일",
+      "folder": "폴더",
+      "result": "결과",
+      "run": "실행",
+      "role": "역할"
+    },
+    "fromRun": "run-{number}의 결과",
+    "placeholder": "팀에게 요청하세요… / 명령, @ 참조",
+    "addReference": "파일·폴더·결과·실행·역할 참조",
+    "removeReference": "{label} 참조 빼기",
+    "notNow": "지금은 쓸 수 없어요",
+    "groupRequest": "요청",
+    "groupRun": "실행",
+    "focus": "요청 입력칸으로 이동"
   }
 }

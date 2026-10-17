@@ -1,14 +1,11 @@
 // Adapted from T3 Code Sidebar's grouped rows and action menus (MIT). See THIRD-PARTY-NOTICES/T3-Code.md.
 import type { ProjectSummary, RunSummary, WorkSession } from '@corral/core';
+import { StatusDot } from '@corral/react';
 import {
-  BookOpen,
   ChevronDown,
-  CircleAlert,
   Ellipsis,
-  Folder,
   FolderPlus,
   Inbox,
-  LoaderCircle,
   PanelLeft,
   Pin,
   Search,
@@ -28,11 +25,12 @@ import {
   MenuItem,
   MenuPopup,
   MenuTrigger,
+  Tooltip,
 } from '@corral/react/ui';
 import { Link, useNavigate, useRouter, useRouterState } from '@tanstack/react-router';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { useTranslations } from 'use-intl';
+import { useLocale, useTranslations } from 'use-intl';
 import { useRemembered } from '../pages/Workbench.tsx';
 import {
   projectName,
@@ -41,6 +39,7 @@ import {
   useProjectsVersion,
 } from '../projects.ts';
 import { useServices } from '../services.tsx';
+import { shortcutLabel } from '../shortcuts.ts';
 import { changePreferences } from './preferences.ts';
 
 export function useCorralSidebar() {
@@ -119,13 +118,33 @@ export function useCorralSidebar() {
   return { projects, sessions, runs, inbox, error, current };
 }
 
+const ENDED = new Set(['succeeded', 'failed', 'cancelled', 'interrupted']);
+
+/** "3m ago", "2h ago" in the reader's language: when a session last changed. */
+function useAgo() {
+  const locale = useLocale();
+  const format = useMemo(
+    () => new Intl.RelativeTimeFormat(locale, { style: 'narrow', numeric: 'always' }),
+    [locale],
+  );
+  return (iso: string) => {
+    const minutes = Math.round((Date.parse(iso) - Date.now()) / 60_000);
+    if (Math.abs(minutes) < 60) return format.format(Math.min(-1, minutes), 'minute');
+    const hours = Math.round(minutes / 60);
+    if (Math.abs(hours) < 24) return format.format(hours, 'hour');
+    return format.format(Math.round(hours / 24), 'day');
+  };
+}
+
 export const Sidebar = memo(function Sidebar() {
   const t = useTranslations('Desktop');
   const tw = useTranslations('Workbench');
   const tp = useTranslations('Projects');
   const ts = useTranslations('Sessions');
   const status = useTranslations('Status');
-  const { repository } = useServices();
+  const studio = useTranslations('Studio');
+  const ago = useAgo();
+  const { repository, mode, live } = useServices();
   const router = useRouter();
   const navigate = useNavigate();
   const path = useRouterState({ select: (s) => s.location.pathname });
@@ -171,8 +190,8 @@ export const Sidebar = memo(function Sidebar() {
   const virtual = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scroll.current,
-    estimateSize: (index) => (rows[index]?.kind === 'session' ? 64 : 36),
-    overscan: 6,
+    estimateSize: () => 34,
+    overscan: 8,
     getItemKey: (index) => {
       const row = rows[index];
       return row?.kind === 'session'
@@ -219,67 +238,80 @@ export const Sidebar = memo(function Sidebar() {
 
   return (
     <div data-testid="app-sidebar" className="flex h-full min-h-0 flex-col bg-sidebar text-sm">
-      <div className="flex h-[52px] shrink-0 items-center justify-between px-4">
-        <Link to="/" className="flex items-center gap-2.5 font-semibold tracking-tight">
+      <div className="flex h-[52px] shrink-0 items-center gap-1 px-3">
+        <Link to="/" className="mr-auto flex items-center gap-2 px-1 font-semibold tracking-tight">
           <span className="corral-mark">c</span>Corral
         </Link>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label={tw('collapseSidebar')}
-          onClick={() => changePreferences({ sidebarOpen: false })}
-        >
-          <PanelLeft />
-        </Button>
+        <Tooltip content={tw('newSession')} shortcut={shortcutLabel('session.new')}>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={tw('newSession')}
+            render={
+              <Link
+                to="/projects/$projectId"
+                params={{ projectId: model.current }}
+                search={{ newSession: true }}
+              />
+            }
+          >
+            <SquarePen />
+          </Button>
+        </Tooltip>
+        <Tooltip content={tw('collapseSidebar')} shortcut={shortcutLabel('view.sidebar')}>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={tw('collapseSidebar')}
+            onClick={() => changePreferences({ sidebarOpen: false })}
+          >
+            <PanelLeft />
+          </Button>
+        </Tooltip>
       </div>
-      <div className="px-3 pt-3 pb-2">
-        <div className="flex items-center gap-2 rounded-lg border border-transparent px-2 text-muted focus-within:border-line focus-within:bg-raised">
-          <Search size={16} aria-hidden="true" />
+      <div className="px-3 pb-2">
+        <div className="flex h-8 items-center gap-2 rounded-md px-2 text-muted focus-within:bg-raised focus-within:ring-1 focus-within:ring-line">
+          <Search size={14} aria-hidden="true" />
           <input
             type="search"
             aria-label={tw('searchSessions')}
             placeholder={t('search')}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="min-w-0 flex-1 bg-transparent py-2 text-sm outline-none"
+            className="min-w-0 flex-1 bg-transparent text-ui text-text outline-none placeholder:text-muted"
           />
-          <Link
-            to="/projects/$projectId"
-            params={{ projectId: model.current }}
-            search={{ newSession: true }}
-            aria-label={tw('newSession')}
-            className="rounded p-1 hover:bg-raised"
-          >
-            <SquarePen size={17} />
-          </Link>
         </div>
       </div>
       {model.inbox > 0 ? (
         <Link
           to="/projects/$projectId"
           params={{ projectId: model.current }}
-          className="mx-3 flex items-center gap-2 rounded-lg bg-warning/10 px-3 py-2 text-warning"
+          className="mx-3 mb-1 flex h-8 items-center gap-2 rounded-md px-2 text-ui text-warning hover:bg-warning/10"
         >
-          <Inbox size={16} />
+          <Inbox size={14} />
           {tw('needsYou', { count: model.inbox })}
         </Link>
       ) : null}
-      <div className="px-2 pt-2">
-        <div className="mb-2 flex items-center justify-between px-2 text-xs text-muted">
-          <Link to="/projects" className="flex items-center gap-2">
-            <Folder size={15} />
-            {tw('allProjects')}
-          </Link>
-          <Link to="/projects" aria-label={t('newProject')} className="rounded p-1 hover:bg-raised">
-            <FolderPlus size={15} />
-          </Link>
-        </div>
-        {model.error ? (
-          <p role="alert" className="p-2 text-xs text-danger">
-            {model.error}
-          </p>
-        ) : null}
+      <div className="flex items-center justify-between pt-2 pr-3 pb-1 pl-5 text-2xs font-medium text-muted">
+        <Link to="/projects" className="hover:text-text">
+          {tw('allProjects')}
+        </Link>
+        <Tooltip content={t('newProject')}>
+          <Button
+            variant="ghost-muted"
+            size="icon-xs"
+            aria-label={t('newProject')}
+            render={<Link to="/projects" />}
+          >
+            <FolderPlus />
+          </Button>
+        </Tooltip>
       </div>
+      {model.error ? (
+        <p role="alert" className="px-5 py-1 text-xs text-danger">
+          {model.error}
+        </p>
+      ) : null}
       <nav
         ref={scroll}
         aria-label={tw('sidebar')}
@@ -320,7 +352,7 @@ export const Sidebar = memo(function Sidebar() {
             };
             if (row.kind === 'empty')
               return (
-                <p key={item.key} style={position} className="px-7 py-2 text-xs text-muted">
+                <p key={item.key} style={position} className="px-8 py-2 text-xs text-muted">
                   {tw('noSessions')}
                 </p>
               );
@@ -332,10 +364,10 @@ export const Sidebar = memo(function Sidebar() {
                   key={item.key}
                   data-sidebar-index={item.index}
                   style={position}
-                  className="flex items-center gap-1 px-1 text-xs font-medium text-muted"
+                  className="flex items-center gap-0.5 px-1 pt-1 text-ui font-medium text-muted"
                 >
                   <Button
-                    variant="ghost"
+                    variant="ghost-muted"
                     size="icon-xs"
                     aria-label={t('toggleProject', {
                       name: projectName(project, tp('defaultName')),
@@ -343,14 +375,13 @@ export const Sidebar = memo(function Sidebar() {
                     aria-expanded={!folded}
                     onClick={() => setCollapsed({ ...collapsed, [project.projectId]: !folded })}
                   >
-                    <ChevronDown size={13} className={folded ? '-rotate-90' : ''} />
+                    <ChevronDown className={`transition-transform ${folded ? '-rotate-90' : ''}`} />
                   </Button>
                   <Link
                     to="/projects/$projectId"
                     params={{ projectId: project.projectId }}
-                    className="flex min-w-0 flex-1 items-center gap-2 rounded-md py-2 hover:text-text"
+                    className="flex min-w-0 flex-1 items-center rounded-md py-1 hover:text-text"
                   >
-                    <Folder size={14} />
                     <span className="truncate">{projectName(project, tp('defaultName'))}</span>
                   </Link>
                 </div>
@@ -359,55 +390,40 @@ export const Sidebar = memo(function Sidebar() {
             const session = row.session;
             const active = path.startsWith(`/sessions/${session.sessionId}`);
             const run = model.runs.find((r) => r.sessionId === session.sessionId);
-            const working =
-              run && !['succeeded', 'failed', 'cancelled', 'interrupted'].includes(run.status);
+            const working = Boolean(run && !ENDED.has(run.status));
+            // Only what needs attention shows a dot: working, waiting for a person, or failed.
+            const flagged = run && (working || run.status === 'failed');
             return (
               <div
                 key={item.key}
                 data-sidebar-index={item.index}
                 style={position}
-                className={`group/sidebar-row rounded-xl border-b-4 border-sidebar transition-colors ${active ? 'bg-sidebar-selected' : 'hover:bg-sidebar-selected/60'}`}
+                className="group/sidebar-row relative py-px"
               >
                 <Link
                   to="/sessions/$sessionId"
                   params={{ sessionId: session.sessionId }}
                   aria-current={active ? 'page' : undefined}
-                  className="block min-w-0 rounded-xl px-3 pt-2.5 pr-9 pb-2.5"
+                  className={`flex h-8 min-w-0 items-center gap-2 rounded-md pr-2 pl-7 text-ui transition-colors ${active ? 'bg-sidebar-selected font-medium text-text' : 'text-text/85 hover:bg-subtle'}`}
                 >
-                  <span className="flex items-center gap-2">
-                    <span
-                      className={`min-w-0 flex-1 truncate text-ui ${active ? 'font-medium text-text' : 'text-text/85'}`}
-                    >
-                      {session.title}
+                  <span className="min-w-0 flex-1 truncate">{session.title}</span>
+                  {session.pinned ? <Pin size={12} className="shrink-0 text-muted" /> : null}
+                  {flagged ? (
+                    <StatusDot status={run.status} label={status(run.status)} />
+                  ) : (
+                    <span className="shrink-0 text-2xs text-muted group-focus-within/sidebar-row:invisible group-hover/sidebar-row:invisible">
+                      {ago(session.updatedAt)}
                     </span>
-                    {session.pinned ? <Pin size={12} className="shrink-0 text-muted" /> : null}
-                  </span>
-                  <span className="mt-1 flex items-center gap-1.5 text-2xs text-muted">
-                    {run?.status === 'running' ? (
-                      <LoaderCircle size={11} className="animate-spin motion-reduce:animate-none" />
-                    ) : run?.status === 'failed' ? (
-                      <CircleAlert size={11} className="text-danger" />
-                    ) : (
-                      <span className="h-1 w-1 rounded-full bg-muted/50" />
-                    )}
-                    {working
-                      ? status(run.status)
-                      : run
-                        ? t('runCount', {
-                            count: model.runs.filter((r) => r.sessionId === session.sessionId)
-                              .length,
-                          })
-                        : t('ready')}
-                  </span>
+                  )}
                 </Link>
                 <Menu>
                   <MenuTrigger
                     render={
                       <Button
-                        variant="ghost"
+                        variant="ghost-muted"
                         size="icon-xs"
                         aria-label={t('sessionActions', { title: session.title })}
-                        className="absolute top-2 right-1.5 text-muted opacity-60 group-hover/sidebar-row:opacity-100 focus-visible:opacity-100"
+                        className="absolute top-1 right-1 opacity-0 group-focus-within/sidebar-row:opacity-100 group-hover/sidebar-row:opacity-100 focus-visible:opacity-100 data-popup-open:opacity-100"
                       />
                     }
                   >
@@ -429,7 +445,7 @@ export const Sidebar = memo(function Sidebar() {
                       {session.pinned ? ts('unpin') : ts('pin')}
                     </MenuItem>
                     <MenuItem
-                      disabled={busy || Boolean(working)}
+                      disabled={busy || working}
                       onClick={() => void update(session, { archived: true })}
                     >
                       {ts('archive')}
@@ -452,25 +468,41 @@ export const Sidebar = memo(function Sidebar() {
           {error}
         </p>
       ) : null}
-      <div className="flex shrink-0 items-center gap-1 border-t border-line/50 p-2">
+      <div className="flex shrink-0 items-center gap-1 border-t border-line/50 px-2 py-2">
         <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label={t('settings')}
+          variant="ghost-muted"
+          size="sm"
+          className="gap-2"
           onClick={() => void navigate({ to: '/settings' })}
         >
           <Settings />
+          {t('settings')}
         </Button>
-        <Link
-          to="/projects/$projectId"
-          params={{ projectId: model.current }}
-          hash="corrals"
-          aria-label={tw('teamLibrary')}
-          className="rounded-lg p-2 text-muted hover:bg-raised"
+        <Tooltip
+          side="top"
+          content={
+            mode === 'server'
+              ? live
+                ? studio('liveNote')
+                : studio('serverNote')
+              : studio('demoNote')
+          }
         >
-          <BookOpen size={17} />
-        </Link>
-        <span className="ml-auto pr-2 text-2xs text-muted">Corral Workbench</span>
+          <button
+            type="button"
+            className="ml-auto flex items-center gap-1.5 rounded px-1.5 py-1 text-2xs text-muted"
+          >
+            <span
+              aria-hidden="true"
+              className={`size-1.5 rounded-full ${live ? 'bg-success' : 'bg-warning'}`}
+            />
+            {mode === 'server'
+              ? live
+                ? studio('liveShort')
+                : studio('serverShort')
+              : studio('demoShort')}
+          </button>
+        </Tooltip>
       </div>
       <Dialog
         open={Boolean(editing)}

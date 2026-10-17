@@ -148,6 +148,39 @@ describe('file broker (CR-012)', () => {
   });
 });
 
+describe('path search for `@` references (CR-016)', () => {
+  it('[TC-REF-010-H] finds files and folders by fuzzy name, file names first, without reading them', async () => {
+    const { service, original } = await setup();
+    const scope = { kind: 'project' as const, id: 'default' };
+    mkdirSync(join(original, 'src', 'pages'), { recursive: true });
+    writeFileSync(join(original, 'src', 'pages', 'SessionPage.tsx'), 'x');
+    writeFileSync(join(original, 'src', 'session.ts'), 'x');
+    mkdirSync(join(original, 'node_modules', 'dep'), { recursive: true });
+    writeFileSync(join(original, 'node_modules', 'dep', 'session.js'), 'x');
+    writeFileSync(join(original, '.gitignore'), 'node_modules\n');
+    symlinkSync('/etc', join(original, 'outside'));
+    const found = await service.searchPaths(scope, 'sesspage', 10);
+    expect(found.items[0]).toEqual({ path: 'src/pages/SessionPage.tsx', kind: 'file' });
+    const folders = await service.searchPaths(scope, 'pages', 10);
+    expect(folders.items).toContainEqual({ path: 'src/pages', kind: 'folder' });
+    const all = await service.searchPaths(scope, 'session', 50);
+    expect(all.items.some((i) => i.path.startsWith('node_modules'))).toBe(false);
+    expect(all.items.some((i) => i.path.startsWith('outside') || i.path.startsWith('.git'))).toBe(
+      false,
+    );
+    expect((await service.searchPaths(scope, 'session', 1)).items).toHaveLength(1);
+    expect((await service.searchPaths(scope, 'zzzz', 10)).items).toEqual([]);
+  });
+
+  it('[TC-REF-011-F] searches only registered scopes', async () => {
+    const { service } = await setup();
+    await expect(service.searchPaths({ kind: 'project', id: 'missing' }, 'a', 5)).rejects.toThrow();
+    await expect(
+      service.searchPaths({ kind: 'session', id: 'session_1' }, 'a', 5),
+    ).resolves.toMatchObject({ items: [{ path: 'a.txt', kind: 'file' }] });
+  });
+});
+
 describe('review, applying and reverting (CR-013)', () => {
   it('[WB-REV-004/005] applies the approved tree, skips or refuses conflicts, and reverts only what is unchanged', async () => {
     const { db, service, call, original } = await setup();
