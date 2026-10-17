@@ -1356,5 +1356,16 @@ describe('work folders and file changes (CR-012)', () => {
       ok: ['passed', 0, false],
       bad: ['failed', 3, false],
     });
+    const reports = (await json(`/sessions/${sessionId}/verifications`)).body;
+    expect(reports.find((r: { commandId: string }) => r.commandId === 'ok').report).toMatchObject({ state: 'completed', verdict: 'pass', owner: { kind: 'manual', sessionId } });
+    await json('/projects/default/workspace', 'PATCH', { verifyCommands: [{ id: 'wait', name: 'Wait', argv: [process.execPath, '-e', 'setInterval(()=>{},1000)'], timeoutMs: 10000 }] });
+    const waiting = await json(`/sessions/${sessionId}/verifications`, 'POST', { commandId: 'wait' });
+    expect((await json(`/sessions/${sessionId}/verifications/${waiting.body.verificationId}/cancel`, 'POST', {})).status).toBe(204);
+    for (let i=0; i<100; i++) {
+      const report = (await json(`/sessions/${sessionId}/verifications`)).body.find((r: { verificationId: string }) => r.verificationId === waiting.body.verificationId)?.report;
+      if (report?.endedAt) { expect(report).toMatchObject({ state: 'cancelled', verdict: 'not_evaluated' }); break; }
+      if (i===99) throw new Error('cancelled check did not finish');
+      await new Promise(resolve => setTimeout(resolve,20));
+    }
   });
 });
