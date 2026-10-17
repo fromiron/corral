@@ -2,9 +2,9 @@ import { type ExtensionUiRequest, type Receipt, RunEvent } from '@corral/contrac
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { IntlProvider } from 'use-intl';
 import { expect, it, vi } from 'vitest';
-import type { SessionCommand } from '../src/run/session.ts';
 import { ExtensionUiPanel } from '../src/components/ExtensionUiPanel.tsx';
 import messages from '../src/messages/en.json' with { type: 'json' };
+import type { SessionCommand } from '../src/run/session.ts';
 import { projectionWith, sessionStore } from '../src/stories/fixtures.tsx';
 
 it('[TC-HAR-007-H] shows a scoped extension prompt, sends its exact attempt and removes it on expiry', async () => {
@@ -97,9 +97,26 @@ it('[TC-HAR-007-H] shows a scoped extension prompt, sends its exact attempt and 
     }),
   );
   expect(screen.queryByRole('button', { name: 'Send answer' })).not.toBeInTheDocument();
-  act(() => session.setState({events:[event],projection,artifactTexts:{},loadArtifact:async()=>{throw new Error('offline');}}));
-  expect(await screen.findByText('The extension prompt could not be loaded. Dismiss it or try again.')).toBeVisible();
-  expect(screen.queryByRole('button', {name:'Send answer'})).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button',{name:'Dismiss request'}));
-  await vi.waitFor(()=>expect(sendCommand).toHaveBeenLastCalledWith(expect.objectContaining({payload:{requestId:'ui_1',executionId:'exec_1',attemptNo:2,value:null}})));
+  act(() =>
+    session.setState({
+      events: [event],
+      projection,
+      artifactTexts: {},
+      loadArtifact: async () => {
+        throw new Error('offline');
+      },
+    }),
+  );
+  expect(
+    await screen.findByText('The extension prompt could not be loaded. Dismiss it or try again.'),
+  ).toBeVisible();
+  expect(screen.queryByRole('button', { name: 'Send answer' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Dismiss request' }));
+  await vi.waitFor(() =>
+    expect(sendCommand).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        payload: { requestId: 'ui_1', executionId: 'exec_1', attemptNo: 2, value: null },
+      }),
+    ),
+  );
 });

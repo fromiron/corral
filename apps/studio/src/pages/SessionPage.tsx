@@ -1,5 +1,6 @@
 import type { FileChangeView } from '@corral/client';
 import {
+  type HarnessOverrides,
   type RunReference,
   TERMINAL_EXECUTION_STATUSES,
   TERMINAL_RUN_STATUSES,
@@ -70,6 +71,7 @@ import { type MentionItem, mentionToken, pickedReferences } from '../workbench/c
 import { FilePanel, type FileReference } from '../workbench/FilePanel.tsx';
 import { isSendKey, usePreferences } from '../workbench/preferences.ts';
 import { EDIT_REQUEST, editRequest, RefusalHelp } from '../workbench/RefusalHelp.tsx';
+import { RunHarnessOverrides } from '../workbench/RunHarnessOverrides.tsx';
 import { RunMessage } from '../workbench/RunMessage.tsx';
 import { readComposerDraft, writeComposerDraft } from '../workbench/sessionDraft.ts';
 import { TopbarActions } from '../workbench/TopbarSlot.tsx';
@@ -1253,6 +1255,9 @@ function Composer({
   // UX-06: which model each role uses, and whether it is connected.
   const profiles = useModelProfiles();
   const roles = useTeamRoles(team);
+  const harnessKey = JSON.stringify([session.sessionId, team?.corralId, team?.definitionRevision]);
+  const [runStyles, setRunStyles] = useState<{ key: string; value: HarnessOverrides } | null>(null);
+  const harnessOverrides = runStyles?.key === harnessKey ? runStyles.value : {};
   const [recall, setRecall] = useState(-1);
   const input = useRef<HTMLTextAreaElement>(null);
   const ownActive = active && active.sessionId === session.sessionId ? active : null;
@@ -1436,6 +1441,7 @@ function Composer({
     brief: string,
     commandId: string = newCommandId(),
     refs: RunReference[] = [],
+    overrides: HarnessOverrides = {},
   ): Promise<{ runId: string | null; detail: string | null; code?: string | undefined }> => {
     if (!team) return { runId: null, detail: t('noTeamYet') };
     const corral = await repository.get(team.corralId);
@@ -1448,6 +1454,7 @@ function Composer({
       sessionId: session.sessionId,
       ...(latest ? { startFrom: { runId: latest.runId, artifactVersionId: latest.id } } : {}),
       ...(refs.length ? { references: refs } : {}),
+      ...(Object.keys(overrides).length ? { harnessOverrides: overrides } : {}),
     };
     const result = await transport.startRun(
       mode === 'server'
@@ -1484,8 +1491,11 @@ function Composer({
     try {
       if (intent === 'next') {
         const refs = references;
-        const commandId = commandFor(`next\u0000${body}\u0000${JSON.stringify(refs)}`);
-        const { runId, detail, code } = await startNext(body, commandId, refs);
+        const commandId = commandFor(
+          `next\u0000${body}\u0000${JSON.stringify([refs, harnessOverrides, runMode])}`,
+        );
+        const { runId, detail, code } = await startNext(body, commandId, refs, harnessOverrides);
+        if (runId) setRunStyles(null);
         await record({
           intent,
           text: body,
@@ -1832,6 +1842,15 @@ function Composer({
             ))}
           </ul>
         </section>
+      ) : null}
+      {intent === 'next' ? (
+        <RunHarnessOverrides
+          roles={roles}
+          projectId={session.projectId}
+          value={harnessOverrides}
+          onChange={(value) => setRunStyles({ key: harnessKey, value })}
+          disabled={busy}
+        />
       ) : null}
       <ComposerSurface.Host>
         <section aria-label={t('requestLabel')} className="flex flex-col gap-1 px-3 pt-2.5 pb-2">

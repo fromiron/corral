@@ -48,7 +48,28 @@ test('[TC-HAR-003-H] previews a run-only work style, uses its pinned layer and c
   corral.fake?.answerWith('Run override applied.');
   await page.goto(`${corral.server.url}/corrals/${corralId}/edit`);
   await page.getByText('Work styles for this run', { exact: true }).click();
-  const select = page.getByLabel('Run work style for writer', { exact: true });
+  const select = page.getByRole('combobox', { name: 'Run work style for writer', exact: true });
+  await select.selectOption('limited:1');
+  let release!: () => void;
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(
+    '**/api/v1/harness/preview',
+    async (route) => {
+      await blocked;
+      await route.continue();
+    },
+    { times: 1 },
+  );
+  const requested = page.waitForRequest('**/api/v1/harness/preview');
+  await page.getByRole('button', { name: 'Preview run style for writer', exact: true }).click();
+  await requested;
+  await select.selectOption('');
+  const received = page.waitForResponse('**/api/v1/harness/preview');
+  release();
+  await received;
+  await expect(page.getByTestId('run-harness-preview')).toHaveCount(0);
   await select.selectOption('limited:1');
   await page.getByRole('button', { name: 'Preview run style for writer', exact: true }).click();
   await expect(page.getByTestId('run-harness-preview')).toContainText('limited');

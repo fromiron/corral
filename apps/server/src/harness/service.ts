@@ -222,7 +222,14 @@ export class HarnessService {
           (skill) => skill.entry === ref.entry && skill.name === ref.skillName,
         );
         if (!skill) throw new Error('skill entry changed');
-        const explicit = input.inputs.some((input) => input.text.includes(`/skill:${skill.name}`));
+        const explicit = input.inputs.some(
+          (input) =>
+            input.kind === 'run_input' &&
+            input.name === 'brief' &&
+            input.text
+              .split(/\r?\n/)
+              .some((line) => line.trim().split(/\s+/, 1)[0] === `/skill:${skill.name}`),
+        );
         const bytes =
           ref.skillMode === 'mandatory' || explicit
             ? readFileSync(join(this.directory(ref.hash), skill.entry))
@@ -352,11 +359,23 @@ export class HarnessService {
     binding: HarnessBindingRef,
     definition: CorralDefinition,
     _roleId: string,
+    options?: { runOverride?: HarnessBindingRef; sessionId?: string },
   ): EffectiveHarnessSnapshot {
     const row = this.db.prepare('SELECT project_id FROM corrals WHERE id = ?').get(definition.id) as
       | { project_id: string }
       | undefined;
-    return this.preview(binding, row?.project_id ?? 'default').snapshot;
+    const session = options?.sessionId
+      ? (this.db
+          .prepare('SELECT project_id FROM work_sessions WHERE id = ?')
+          .get(options.sessionId) as { project_id: string } | undefined)
+      : undefined;
+    if (options?.sessionId && (!session || (row && row.project_id !== session.project_id)))
+      throw new Error('harness project does not match session');
+    return this.preview(
+      binding,
+      session?.project_id ?? row?.project_id ?? 'default',
+      options?.runOverride,
+    ).snapshot;
   }
 
   private profile(binding: HarnessBindingRef) {

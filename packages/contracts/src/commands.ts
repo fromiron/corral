@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { CorralDefinition, RunInput } from './definition.ts';
-import { ExtensionUiValue } from './harness.ts';
+import { ExtensionUiValue, HarnessOverrides } from './harness.ts';
 import { Identifier, SchemaVersion } from './ids.ts';
 
 // Commands from contracts/command.schema.json. A command is an intent; the Coordinator
@@ -192,6 +192,7 @@ export const StartRunRequest = z.strictObject({
   /** The work session this run continues (CR-011); recorded with the run, not in its snapshot. */
   sessionId: Identifier.optional(),
   references: RunReferences.optional(),
+  harnessOverrides: HarnessOverrides.optional(),
 });
 export type StartRunRequest = z.infer<typeof StartRunRequest>;
 
@@ -209,5 +210,6 @@ export const CreateRunRequest = z.strictObject({
   startFrom: StartFrom.optional(),
   sessionId: Identifier.optional(),
   references: RunReferences.optional(),
+  harnessOverrides: HarnessOverrides.optional(),
 });
 export type CreateRunRequest = z.infer<typeof CreateRunRequest>;

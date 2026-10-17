@@ -182,3 +182,10 @@ CORRAL_SPIKE_NODE=~/.local/share/fnm/node-versions/v24.19.0/installation/bin/nod
 - broker는 UTF-16 위치·파일 hash·서버 version·범위 밖 URI·결과 크기·완료 시 tree를 검사한다. LSP가 참조한 파일은 agent의 읽기 근거를 대신하지 않는다.
 - 검증: server LSP/파일/검증/API 45 tests, contracts/core/adapter/react 520 passed / 2 opt-in skipped, 관련 6개 패키지 typecheck, Studio production build. 실제 로컬 LSP fixture를 사용하는 브라우저 E2E 2개(검사·언어 서버 등록→선택→승인→완료→실행 신뢰) 통과. 전체 회귀는 프로세스 시작 부하를 제한해 `--maxWorkers=4`로 실행했다.
 - 남은 작업: H3 Run override·정적 미리보기/UX 경계, H4 편집 비교 평가, H6–H8, 최종 통합·desktop·Computer Use. 이 브라우저 E2E는 최종 Computer Use 검증을 대신하지 않는다.
+
+### H3 실행 override 연결 (2026-10-18)
+
+- 시작 요청의 `harnessOverrides`를 역할별 마지막 run 계층으로 연결했다. 미등록/기본 역할에는 적용하지 못하며, 저장된 팀의 역할 설정을 수정하지 않는다. 프로젝트는 실제 session/Corral 소유권에서 해석한다.
+- 편집기와 세션 입력창에서 실행 한 번의 작업 방식을 선택·미리보기할 수 있다. 실행 성공 후 선택을 비운다. 대기열이나 설명 요청에 묵시적으로 넘기지 않는다. 이전 선택에 대한 늦은 미리보기 응답은 버린다.
+- 명시적 스킬은 brief의 줄 시작에 완전한 `/skill:name` 토큰이 있을 때만 주입한다. 이름 prefix·URL·인용 문장으로 활성화하지 않는다. 확장 UI 본문 로딩 실패는 오류·다시 불러오기·닫기 경로를 제공한다.
+- Core/server/react 집중 31 tests, 관련 패키지 typecheck, Studio build, 리소스/확장 UI E2E 2개, override/늦은 미리보기 E2E 1개 통과. 정적 도구 descriptor 미리보기, 일반 필수 hook 실패, 동적 등록 도구·실행 cwd는 H8 SDK 확장 경계에서 함께 마무리한다.

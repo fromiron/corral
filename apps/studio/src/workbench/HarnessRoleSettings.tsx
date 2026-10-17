@@ -3,7 +3,7 @@ import type { AgentRole, HarnessProfileRevision } from '@corral/contracts';
 import { useStudioStores } from '@corral/react';
 import { Button } from '@corral/react/ui';
 import { Link } from '@tanstack/react-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { HarnessPreviewView } from '../pages/HarnessSettingsPage.tsx';
 import { useCurrentProject } from '../projects.ts';
@@ -19,6 +19,8 @@ export function HarnessRoleSettings({ role, nodeId }: { role: AgentRole; nodeId:
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const selection = role.harness ? `${role.harness.profileId}:${role.harness.revision}` : '';
+  const contextKey = `${projectId}:${nodeId}:${role.id}:${selection}`;
+  const request = useRef(0);
   useEffect(() => {
     if (!api) return;
     let active = true;
@@ -38,10 +40,14 @@ export function HarnessRoleSettings({ role, nodeId }: { role: AgentRole; nodeId:
     };
   }, [api, t]);
   useEffect(() => {
-    void selection;
+    void contextKey;
     setPreview(null);
     setError('');
-  }, [selection]);
+    setBusy(false);
+    return () => {
+      request.current += 1;
+    };
+  }, [contextKey]);
   if (!api) return null;
   return (
     <section className="flex flex-col gap-2 border-y border-line py-3">
@@ -85,12 +91,22 @@ export function HarnessRoleSettings({ role, nodeId }: { role: AgentRole; nodeId:
             disabled={busy}
             onClick={() => {
               if (!role.harness) return;
+              const version = ++request.current;
               setBusy(true);
               setError('');
               void api
                 .preview(role.harness, projectId)
-                .then(setPreview, () => setError(t('error')))
-                .finally(() => setBusy(false));
+                .then(
+                  (value) => {
+                    if (version === request.current) setPreview(value);
+                  },
+                  () => {
+                    if (version === request.current) setError(t('error'));
+                  },
+                )
+                .finally(() => {
+                  if (version === request.current) setBusy(false);
+                });
             }}
           >
             {busy ? t('busy') : t('preview')}

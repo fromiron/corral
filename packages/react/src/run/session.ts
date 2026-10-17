@@ -2,6 +2,7 @@ import {
   type CommandError,
   type CorralDefinition,
   type EventOf,
+  type HarnessOverrides,
   type Receipt,
   type RunCommand,
   type RunEvent,
@@ -54,6 +55,7 @@ export interface RunSessionState {
     saved?: SavedRevision,
     mode?: 'mock' | 'live',
     startFrom?: StartFrom,
+    harnessOverrides?: HarnessOverrides,
   ): Promise<void>;
   /** Follows an existing run, such as after a reload or from a link. */
   open(runId: string): Promise<void>;
@@ -322,11 +324,14 @@ export function createRunSession(
       commandError: null,
       unconfirmedCommands: {},
 
-      async start(definition, saved, mode = 'mock', startFrom) {
+      async start(definition, saved, mode = 'mock', startFrom, harnessOverrides) {
         reset();
         const version = generation;
         const commandId = newCommandId();
-        const from = startFrom ? { startFrom } : {};
+        const from = {
+          ...(startFrom ? { startFrom } : {}),
+          ...(harnessOverrides && Object.keys(harnessOverrides).length ? { harnessOverrides } : {}),
+        };
         try {
           const { runId, receipt } = await transport.startRun(
             saved

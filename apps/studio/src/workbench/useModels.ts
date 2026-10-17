@@ -1,4 +1,5 @@
 import type { ModelProfileView } from '@corral/client';
+import type { HarnessBindingRef } from '@corral/contracts';
 import type { CorralSummary } from '@corral/core';
 import { useEffect, useState } from 'react';
 import { useServices } from '../services.tsx';
@@ -65,6 +66,7 @@ export interface RoleModel {
   roleId: string;
   name: string;
   profileId: string;
+  harness?: HarnessBindingRef;
 }
 
 /** The roles of a team and the model profile each one uses (saved revision). */
@@ -84,6 +86,7 @@ export function useTeamRoles(team: CorralSummary | null): RoleModel[] {
             roleId: r.id,
             name: r.name,
             profileId: r.modelProfile,
+            ...(r.harness ? { harness: r.harness } : {}),
           })) ?? [],
         ),
       () => live && setRoles([]),

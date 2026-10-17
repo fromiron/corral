@@ -847,10 +847,14 @@ export class HarnessApi {
       body: JSON.stringify({ expectedRevision, profile }),
     });
   }
-  preview(binding: HarnessBindingRef, projectId: string): Promise<HarnessPreview> {
+  preview(
+    binding: HarnessBindingRef,
+    projectId: string,
+    runOverride?: HarnessBindingRef,
+  ): Promise<HarnessPreview> {
     return this.http.json('/harness/preview', {
       method: 'POST',
-      body: JSON.stringify({ binding, projectId }),
+      body: JSON.stringify({ binding, projectId, ...(runOverride ? { runOverride } : {}) }),
     });
   }
   default(scope: HarnessDefault['scope'], scopeId: string): Promise<HarnessDefault> {

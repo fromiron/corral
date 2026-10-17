@@ -1792,6 +1792,13 @@
     "lspSelectionHint": "Uncheck to inherit the parent selection. An empty list disables language servers. The role also needs file read permission.",
     "useLsp": "Use language server {name}",
     "unregisteredLsp": "Unregistered language server: {id}",
-    "selectedLsp": "Language servers: {ids}"
+    "selectedLsp": "Language servers: {ids}",
+    "runStyles": "Work styles for this run",
+    "runStyleHint": "Adds a final layer to the selected roles for this run only. Required resources and stricter tool restrictions remain. Saved team settings stay unchanged.",
+    "runStyleFor": "Run work style for {name}",
+    "previewRunStyle": "Preview run style for {name}",
+    "keepRoleStyle": "Keep role settings",
+    "promptUnavailable": "The extension prompt could not be loaded. Dismiss it or try again.",
+    "retryPrompt": "Retry prompt"
   }
 }

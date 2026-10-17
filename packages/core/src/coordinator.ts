@@ -246,6 +246,7 @@ export interface HarnessResolver {
     binding: HarnessBindingRef,
     definition: CorralDefinition,
     roleId: string,
+    options?: { runOverride?: HarnessBindingRef; sessionId?: string },
   ): EffectiveHarnessSnapshot | null;
   readSkill?(snapshot: EffectiveHarnessSnapshot, path: string): Record<string, unknown>;
 }
@@ -565,11 +566,22 @@ export class Coordinator {
     }
 
     const harnesses: Record<string, EffectiveHarnessSnapshot> = {};
+    for (const roleId of Object.keys(request.harnessOverrides ?? {}))
+      if (!planned.definition.roles.some((role) => role.id === roleId && role.harness))
+        return refuse({
+          code: 'CAPABILITY_DENIED',
+          message: 'run work style requires a role with a bound harness',
+        });
     for (const role of planned.definition.roles) {
       if (!role.harness) continue;
       try {
         const snapshot = EffectiveHarnessSnapshot.parse(
-          this.harnesses?.resolve(role.harness, planned.definition, role.id),
+          this.harnesses?.resolve(role.harness, planned.definition, role.id, {
+            ...(request.harnessOverrides?.[role.id]
+              ? { runOverride: request.harnessOverrides[role.id] }
+              : {}),
+            ...(request.sessionId ? { sessionId: request.sessionId } : {}),
+          }),
         );
         if (
           snapshot.binding.profileId !== role.harness.profileId ||

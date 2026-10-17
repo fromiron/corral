@@ -14,6 +14,8 @@ export function ExtensionUiPanel({ session }: { session: RunSessionStore }) {
   const events = useStore(session, (s) => s.events);
   const projection = useStore(session, (s) => s.projection);
   const bodies = useStore(session, (s) => s.artifactTexts);
+  const [failedRefs, setFailedRefs] = useState<Set<string>>(new Set());
+  const [retry, setRetry] = useState(0);
   const t = useTranslations('Harness');
   const closed = new Set(
     events
@@ -49,8 +51,21 @@ export function ExtensionUiPanel({ session }: { session: RunSessionStore }) {
   ].slice(-8);
   const refs = [...pending, ...notices].map((event) => event.payload.bodyRef).join(',');
   useEffect(() => {
-    for (const ref of refs.split(',').filter(Boolean)) void session.getState().loadArtifact(ref);
-  }, [session, refs]);
+    void retry;
+    let active = true;
+    for (const ref of refs.split(',').filter(Boolean))
+      void (async () => {
+        try {
+          await session.getState().loadArtifact(ref);
+          if (!session.getState().artifactTexts[ref]) throw new Error('missing prompt');
+        } catch {
+          if (active) setFailedRefs((current) => new Set([...current, ref]));
+        }
+      })();
+    return () => {
+      active = false;
+    };
+  }, [session, refs, retry]);
   if (!pending.length && !notices.length) return null;
   return (
     <section aria-label={t('extensionUi')} className="flex flex-col gap-2">
@@ -60,6 +75,15 @@ export function ExtensionUiPanel({ session }: { session: RunSessionStore }) {
           session={session}
           event={event}
           text={bodies[event.payload.bodyRef]}
+          loadFailed={failedRefs.has(event.payload.bodyRef)}
+          retry={() => {
+            setFailedRefs((current) => {
+              const next = new Set(current);
+              next.delete(event.payload.bodyRef);
+              return next;
+            });
+            setRetry((current) => current + 1);
+          }}
         />
       ))}
       {notices.map((event) => {
@@ -89,10 +113,14 @@ function ExtensionPrompt({
   session,
   event,
   text,
+  loadFailed,
+  retry,
 }: {
   session: RunSessionStore;
   event: EventOf<'extension.ui_requested'>;
   text: string | undefined;
+  loadFailed: boolean;
+  retry(): void;
 }) {
   const t = useTranslations('Harness');
   const format = useFormatter();
@@ -134,7 +162,15 @@ function ExtensionPrompt({
       data-testid={`extension-ui-${event.payload.requestId}`}
     >
       <p className="text-xs font-medium text-muted">{t('extensionUi')}</p>
-      <h3 className="font-medium">{request?.title ?? t('loadingPrompt')}</h3>
+      <h3 className="font-medium">
+        {request?.title ??
+          t(loadFailed || text !== undefined ? 'promptUnavailable' : 'loadingPrompt')}
+      </h3>
+      {!request && loadFailed ? (
+        <Button size="sm" variant="outline" onClick={retry}>
+          {t('retryPrompt')}
+        </Button>
+      ) : null}
       <p className="text-2xs text-muted">
         {event.payload.executionId} · {t('attempt', { attempt: event.payload.attemptNo })} ·{' '}
         {event.payload.requestId}

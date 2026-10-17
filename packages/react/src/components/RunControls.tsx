@@ -1,4 +1,4 @@
-import { type StartFrom, TERMINAL_RUN_STATUSES } from '@corral/contracts';
+import { type HarnessOverrides, type StartFrom, TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import { useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
@@ -17,6 +17,7 @@ export function RunControls({
   liveAvailable = false,
   startFrom = null,
   onClearStartFrom,
+  harnessOverrides,
 }: {
   onStarted?: (runId: string) => void;
   beforeStart?: () => Promise<SavedRevision | null>;
@@ -25,6 +26,7 @@ export function RunControls({
   /** The earlier version the next run starts from (CR-007), with a label for it. */
   startFrom?: (StartFrom & { label: string }) | null;
   onClearStartFrom?: () => void;
+  harnessOverrides?: HarnessOverrides;
 }) {
   const t = useTranslations('Run');
   const { editor, session } = useStudioStores();
@@ -50,6 +52,7 @@ export function RunControls({
           startFrom
             ? { runId: startFrom.runId, artifactVersionId: startFrom.artifactVersionId }
             : undefined,
+          harnessOverrides,
         );
       const runId = session.getState().runId;
       if (runId) onStarted?.(runId);
