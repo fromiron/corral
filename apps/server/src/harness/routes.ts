@@ -1,8 +1,15 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { ContentHash, HarnessBindingRef, HarnessProfile, Identifier } from '@corral/contracts';
+import {
+  ContentHash,
+  HarnessBindingRef,
+  HarnessProfile,
+  Identifier,
+  ProjectToolConfig,
+} from '@corral/contracts';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
+import { WorkspaceError, type WorkspaceService } from '../files/service.ts';
 import type { HarnessService } from './service.ts';
 
 const revision = z.int().min(0);
@@ -16,6 +23,10 @@ const safeErrors = new Set([
   'package source requires an exact version or commit',
   'unknown or duplicate skill name',
   'package contains no supported skills or extensions',
+  'selected project tool is not registered',
+  'trust the repository before configuring tools',
+  'trust the repository before inspecting checks',
+  'no such registered check',
 ]);
 
 /** Filesystem, package-manager and parser errors never reach the browser verbatim. */
@@ -24,7 +35,13 @@ async function action(reply: FastifyReply, work: () => unknown) {
     return await work();
   } catch (error) {
     const message = error instanceof Error ? error.message : '';
-    const conflict = ['profile revision changed', 'default revision changed'].includes(message);
+    const conflict =
+      [
+        'profile revision changed',
+        'default revision changed',
+        'project tool revision changed',
+      ].includes(message) ||
+      (error instanceof WorkspaceError && error.code === 'REVISION_CONFLICT');
     return reply.code(conflict ? 409 : 400).send({
       error: {
         code: conflict ? 'STALE_CONTROL_REVISION' : 'SCHEMA_INVALID',
@@ -38,8 +55,56 @@ async function action(reply: FastifyReply, work: () => unknown) {
   }
 }
 
-export function registerHarnessRoutes(app: FastifyInstance, service: HarnessService) {
+export function registerHarnessRoutes(
+  app: FastifyInstance,
+  service: HarnessService,
+  files: WorkspaceService,
+) {
   const prefix = '/api/v1/harness';
+  type ProjectParams = { Params: { projectId: string } };
+  type CheckParams = { Params: { projectId: string; commandId: string } };
+  app.get<ProjectParams>(`${prefix}/projects/:projectId/tools`, (request, reply) =>
+    action(reply, () =>
+      reply
+        .type('application/json')
+        .send(
+          JSON.stringify(files.projectTools.latest(Identifier.parse(request.params.projectId))),
+        ),
+    ),
+  );
+  app.put<ProjectParams>(`${prefix}/projects/:projectId/tools`, (request, reply) =>
+    action(reply, () => {
+      const input = z
+        .strictObject({ expectedRevision: revision, config: ProjectToolConfig })
+        .parse(request.body);
+      return files.configureProjectTools(
+        Identifier.parse(request.params.projectId),
+        input.expectedRevision,
+        input.config,
+      );
+    }),
+  );
+  app.get<CheckParams>(`${prefix}/projects/:projectId/checks/:commandId/launch`, (request, reply) =>
+    action(reply, () =>
+      files.inspectCheck(
+        Identifier.parse(request.params.projectId),
+        Identifier.parse(request.params.commandId),
+      ),
+    ),
+  );
+  app.put<CheckParams>(`${prefix}/projects/:projectId/checks/:commandId/trust`, (request, reply) =>
+    action(reply, () => {
+      const input = z
+        .strictObject({ fingerprint: ContentHash, trusted: z.boolean() })
+        .parse(request.body);
+      return files.trustCheck(
+        Identifier.parse(request.params.projectId),
+        Identifier.parse(request.params.commandId),
+        input.fingerprint,
+        input.trusted,
+      );
+    }),
+  );
   app.get(`${prefix}/resources`, async () => service.store.listResources());
   app.get(`${prefix}/profiles`, async () => service.store.listProfiles());
   app.post(`${prefix}/reviews`, (request, reply) =>

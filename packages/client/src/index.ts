@@ -9,7 +9,10 @@ import {
   type HarnessProfileRevision,
   type HarnessResource,
   type HarnessResourceView,
+  type ProjectToolConfig,
+  type ProjectToolConfigRevision,
   type Receipt,
+  type RegisteredCheck,
   type RunCommand,
   RunEvent,
   type StartRunRequest,
@@ -765,6 +768,43 @@ export class HarnessApi {
   }
   resources(): Promise<HarnessResourceView[]> {
     return this.http.json('/harness/resources');
+  }
+  projectTools(projectId: string): Promise<ProjectToolConfigRevision | null> {
+    return this.http.json(`/harness/projects/${encodeURIComponent(projectId)}/tools`);
+  }
+  saveProjectTools(
+    projectId: string,
+    expectedRevision: number,
+    config: ProjectToolConfig,
+  ): Promise<ProjectToolConfigRevision> {
+    return this.http.json(`/harness/projects/${encodeURIComponent(projectId)}/tools`, {
+      method: 'PUT',
+      body: JSON.stringify({ expectedRevision, config }),
+    });
+  }
+  inspectCheck(
+    projectId: string,
+    commandId: string,
+  ): Promise<{
+    command: RegisteredCheck;
+    configRevision: number;
+    fingerprint: string;
+    trustedAt: string | null;
+  }> {
+    return this.http.json(
+      `/harness/projects/${encodeURIComponent(projectId)}/checks/${encodeURIComponent(commandId)}/launch`,
+    );
+  }
+  trustCheck(
+    projectId: string,
+    commandId: string,
+    fingerprint: string,
+    trusted: boolean,
+  ): Promise<{ fingerprint: string; trustedAt: string | null }> {
+    return this.http.json(
+      `/harness/projects/${encodeURIComponent(projectId)}/checks/${encodeURIComponent(commandId)}/trust`,
+      { method: 'PUT', body: JSON.stringify({ fingerprint, trusted }) },
+    );
   }
   profiles(): Promise<HarnessProfileRevision[]> {
     return this.http.json('/harness/profiles');

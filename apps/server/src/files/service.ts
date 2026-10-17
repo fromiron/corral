@@ -26,6 +26,7 @@ import {
   type EditTextResult,
   PiEditInput,
   PiWriteInput,
+  ProjectToolConfig,
   type RegisteredCheck,
   type Scheduler,
   type VerificationOwner,
@@ -456,6 +457,57 @@ export class WorkspaceService implements FileTools {
   }
 
   // ── session worktrees ───────────────────────────────────────────────────────
+
+  configureProjectTools(projectId: string, expectedRevision: number, raw: ProjectToolConfig) {
+    const binding = this.binding(projectId);
+    if (!binding?.trusted)
+      throw new WorkspaceError(
+        'CAPABILITY_DENIED',
+        'trust the repository before configuring tools',
+      );
+    const config = ProjectToolConfig.parse(raw);
+    return this.db.transaction(() => {
+      const saved = this.projectTools.save(projectId, expectedRevision, config);
+      this.db
+        .prepare('UPDATE workspace_bindings SET verify_json = ?, updated_at = ? WHERE id = ?')
+        .run(JSON.stringify(saved.checks), this.clock.nowIso(), binding.id);
+      return saved;
+    })();
+  }
+
+  async inspectCheck(projectId: string, commandId: string) {
+    const binding = this.binding(projectId);
+    if (!binding?.trusted)
+      throw new WorkspaceError(
+        'CAPABILITY_DENIED',
+        'trust the repository before inspecting checks',
+      );
+    const config = this.projectTools.latest(projectId);
+    const command = config?.checks.find((check) => check.id === commandId);
+    if (!config || !command)
+      throw new WorkspaceError('TARGET_NOT_FOUND', 'no such registered check');
+    const { fingerprint } = await launchFingerprint(binding.root_path, config.revision, command);
+    return {
+      command,
+      configRevision: config.revision,
+      fingerprint,
+      trustedAt: this.projectTools.trust({ projectId, kind: 'check', id: commandId, fingerprint }),
+    };
+  }
+
+  async trustCheck(projectId: string, commandId: string, fingerprint: string, trusted: boolean) {
+    if (trusted) {
+      const inspected = await this.inspectCheck(projectId, commandId);
+      if (
+        inspected.fingerprint !== fingerprint ||
+        this.projectTools.latest(projectId)?.revision !== inspected.configRevision
+      )
+        throw new WorkspaceError('REVISION_CONFLICT', 'launch fingerprint changed');
+    }
+    const target = { projectId, kind: 'check' as const, id: commandId, fingerprint };
+    this.projectTools.setTrust(target, trusted);
+    return { fingerprint, trustedAt: this.projectTools.trust(target) };
+  }
 
   private worktree(sessionId: string): WorktreeRow | null {
     return (

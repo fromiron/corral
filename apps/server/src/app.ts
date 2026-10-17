@@ -582,7 +582,7 @@ async function createCorralServer(
     }
   });
 
-  registerHarnessRoutes(app, harnesses);
+  registerHarnessRoutes(app, harnesses, files);
 
   // ── models (C-058) ─────────────────────────────────────────────────────────
   // Status and expiry only; tokens never appear in these answers (ADR-019).
