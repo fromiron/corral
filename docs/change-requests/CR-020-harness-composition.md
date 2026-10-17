@@ -40,6 +40,8 @@ Pi 1.3.0의 codemode 결과와 `sandbox.close()`는 Worker의 OS 종료보다 �
 
 SDK worker는 실행 시작 IPC를 보내기 전에 private 프로세스 소유 기록을 저장한다. 백엔드는 workspace 소유 lock을 얻고 이전 worker의 종료를 확인한 뒤 Coordinator를 시작한다. Linux에서는 boot ID와 `/proc` 시작 시각을 확인하여 PID 재사용을 구분하고 같은 소유 process group만 종료한다. 확인할 수 없으면 새 실행을 막는다. 다른 OS에서는 이전 PID가 아직 살아 있으면 자동으로 다른 프로세스를 죽이지 않고 복구 미확인으로 시작을 거절한다. `error` 이벤트만으로 살아 있는 child의 종료를 확정하지 않는다.
 
+그룹 leader가 이미 사라진 경우에는 PGID만으로 소유권을 확정하지 않는다. 새 SDK/MCP 프로세스에 실행별 무작위 소유 표지를 환경으로 전달하고 private lease에 함께 저장한다. 살아 있는 같은 그룹 구성원이 표지를 보존한 경우만 정리한다. 표지가 없는 과거 기록이나 확인 불가 그룹은 cleanup unconfirmed이며 다른 프로세스를 추정으로 종료하지 않는다.
+
 ## MCP 설정·권한·인증
 
 - `ProjectToolConfigRevision.mcpServers`에 stdio argv 또는 HTTP endpoint, 노출 방식(direct/codemode), timeout, 인증 방식/credential reference/요청 scope를 저장한다. 기존 revision은 선택 필드가 없어도 동일한 hash를 유지한다. 서버 ID는 도구 namespace 충돌을 피하도록 소문자 영숫자와 밑줄로 제한한다.
