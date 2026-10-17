@@ -152,6 +152,14 @@ describe('Coordinator harness boundary (H2)', () => {
     s.done.open();
   });
 
+  it('[TC-HAR-008-N] the harness allowlist also restricts Corral tools the role normally allows', async () => {
+    const s = setup();
+    await s.started.wait();
+    await s.host().reportHarness!({ ok: true, snapshotHash: snapshot.snapshotHash, tools: [descriptor, { ...descriptor, name: 'write_artifact', source: 'corral' }], diagnostics: [] });
+    expect((await s.host().authorizeTool({ name: 'write_artifact', args: { text: 'not allowed by this profile' } })).ok).toBe(false);
+    s.done.open();
+  });
+
   it('[TC-HAR-002-N] changed arguments, duplicate starts and late reports cannot execute or settle again', async () => {
     const s = await loaded();
     const args = { text: 'approved' };
