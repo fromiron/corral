@@ -1,5 +1,7 @@
 import {
   ApplyWorkspaceEditRequest,
+  CodeActionRequest,
+  CodeActionResolveRequest,
   createProtocolConnection,
   DefinitionRequest,
   DidOpenTextDocumentNotification,
@@ -9,6 +11,7 @@ import {
   InitializeRequest,
   PublishDiagnosticsNotification,
   ReferencesRequest,
+  RenameRequest,
   ResponseError,
   ShutdownRequest,
 } from 'vscode-languageserver-protocol/node';
@@ -33,6 +36,8 @@ connection.onRequest(InitializeRequest.type, () => {
       positionEncoding: mode === 'utf8' ? 'utf-8' : 'utf-16',
       definitionProvider: true,
       referencesProvider: true,
+      renameProvider: true,
+      codeActionProvider: {resolveProvider:true},
       textDocumentSync: 1,
       ...(mode === 'pull'
         ? { diagnosticProvider: { interFileDependencies: false, workspaceDiagnostics: false } }
@@ -76,6 +81,9 @@ connection.onRequest(DefinitionRequest.type, (params) => {
 connection.onRequest(ReferencesRequest.type, (params) => [
   { uri: document.uri, range: { start: params.position, end: params.position } },
 ]);
+connection.onRequest(RenameRequest.type, params=>({documentChanges:[{textDocument:{uri:document.uri,version:mode==='rename_wrong_version'?2:1},edits:[{range:{start:params.position,end:{...params.position,character:params.position.character+5}},newText:params.newName}]}]}));
+connection.onRequest(CodeActionRequest.type,()=>[{title:'Resolved fix',data:{resolve:true}},{title:'Command only',command:'fixture.noop'}]);
+connection.onRequest(CodeActionResolveRequest.type,action=>({...action,edit:{changes:{[document.uri]:[{range:{start:{line:0,character:2},end:{line:0,character:7}},newText:'fixed'}]}}}));
 connection.onRequest(DocumentDiagnosticRequest.type, () => ({ kind: 'full', items: [diagnostic] }));
 connection.onRequest(ShutdownRequest.type, () => null);
 connection.onNotification(ExitNotification.type, () => process.exit(0));

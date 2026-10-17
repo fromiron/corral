@@ -32,6 +32,14 @@ function fixture(mode = 'normal') {
   };
 }
 const live = { aborted: false, onCancel: () => () => {} };
+it('[TC-HAR-018-H] obtains rename and resolved code-action edits without applying them or running commands', async()=>{
+  const runner=new LspRunner({clock:new FakeClock(),timers:systemTimers});
+  const input=fixture();
+  const rename=await runner.query({...input,operation:'rename',position:{line:0,character:2},newName:'renamed'},live);
+  expect(rename).toMatchObject({kind:'edits',actions:[{title:'Rename to renamed',edit:{documentChanges:[{textDocument:{uri:input.document.uri,version:1},edits:[{newText:'renamed'}]}]}}]});
+  const actions=await runner.query({...input,operation:'code_actions',range:{start:{line:0,character:2},end:{line:0,character:7}}},live);
+  expect(actions).toMatchObject({kind:'edits',actions:[{title:'Resolved fix',edit:{changes:{[input.document.uri]:[{newText:'fixed'}]}}},{title:'Command only',unsupported:'command'}]});
+});
 it('[TC-HAR-010-N] server exception text never becomes a public tool error', async () => {
   const runner = new LspRunner({ clock: new FakeClock(), timers: systemTimers });
   await expect(
