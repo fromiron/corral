@@ -2,7 +2,7 @@ import { fork } from 'node:child_process';
 import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { processChannel, recoverSdkWorkers, sdkProcessChannel } from '../src/index.ts';
 
 it.skipIf(process.platform !== 'linux')(
@@ -80,6 +80,58 @@ it.skipIf(process.platform !== 'linux')(
 );
 
 import { recordWorkerLease } from '../src/worker-leases.ts';
+
+it.skipIf(process.platform !== 'linux')(
+  '[TC-HAR-016-N] recovery discovers child registries created while owners are stopping',
+  async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'corral-late-registry-'));
+    const spawn = () =>
+      fork(join(import.meta.dirname, 'fixtures/orphan-worker.ts'), [], {
+        detached: true,
+        execArgv: [],
+        stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
+      });
+    const owner = spawn(),
+      child = spawn();
+    const closed = [owner, child].map(
+      (process) => new Promise<void>((resolve) => process.once('exit', () => resolve())),
+    );
+    const kill = process.kill.bind(process);
+    let spy: ReturnType<typeof vi.spyOn> | undefined;
+    try {
+      await Promise.all(
+        [owner, child].map(
+          (process) => new Promise<void>((resolve) => process.once('message', () => resolve())),
+        ),
+      );
+      recordWorkerLease(directory, owner.pid!);
+      spy = vi.spyOn(process, 'kill').mockImplementation((pid, signal) => {
+        if (pid === -owner.pid! && signal === 'SIGKILL')
+          recordWorkerLease(join(directory, 'children-late'), child.pid!);
+        return kill(pid, signal);
+      });
+      await recoverSdkWorkers(directory);
+      expect(readdirSync(directory)).toEqual([]);
+      const state = () => {
+        try {
+          return readFileSync(`/proc/${child.pid}/stat`, 'utf8').split(') ')[1]?.[0];
+        } catch {
+          return null;
+        }
+      };
+      expect([null, 'Z', 'X']).toContain(state());
+    } finally {
+      spy?.mockRestore();
+      for (const process of [owner, child]) {
+        try {
+          kill(-process.pid!, 'SIGKILL');
+        } catch {}
+      }
+      await Promise.all(closed);
+      rmSync(directory, { recursive: true, force: true });
+    }
+  },
+);
 
 it.skipIf(process.platform !== 'linux')(
   '[TC-HAR-016-N] recovers the server group after its recorded leader has already exited',

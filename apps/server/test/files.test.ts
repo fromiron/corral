@@ -14,7 +14,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { openDatabase, SqliteProjectToolStore } from '@corral/storage-sqlite';
 import { FakeClock, Gate } from '@corral/testkit';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ReviewService } from '../src/files/review.ts';
 import { safeRelative, WorkspaceService } from '../src/files/service.ts';
 
@@ -381,6 +381,39 @@ describe('file broker (CR-012)', () => {
     expect(readFileSync(join(s.root, 'a.txt'), 'utf8')).toBe('one\n');
     expect(s.db.prepare('SELECT * FROM file_operations').all()).toHaveLength(0);
     s.db.close();
+  });
+  it('[TC-HAR-018-N] dismissing during asynchronous preflight cannot apply or overwrite the dismissal', async () => {
+    for (const stale of [false, true]) {
+      const s = await proposalSetup();
+      s.db.prepare("UPDATE runs SET status='succeeded' WHERE id='run_1'").run();
+      const entered = new Gate(),
+        release = new Gate();
+      const target = s.service as unknown as { snapshotTree(path: string): Promise<string> };
+      const snapshot = target.snapshotTree.bind(target);
+      const spy = vi.spyOn(target, 'snapshotTree').mockImplementationOnce(async (path) => {
+        entered.open();
+        await release.wait();
+        return stale ? '0'.repeat(40) : snapshot(path);
+      });
+      const applying = s.service.applyLspProposal(
+        'session_1',
+        s.proposal.proposalId,
+        s.proposal.hash,
+      );
+      await entered.wait();
+      expect(
+        s.service.dismissLspProposal('session_1', s.proposal.proposalId, s.proposal.hash).state,
+      ).toBe('dismissed');
+      release.open();
+      try {
+        expect((await applying).state).toBe('dismissed');
+        expect(readFileSync(join(s.root, 'a.txt'), 'utf8')).toBe('one\n');
+        expect(s.db.prepare('SELECT * FROM file_operations').all()).toHaveLength(0);
+      } finally {
+        spy.mockRestore();
+        s.db.close();
+      }
+    }
   });
   it('[TC-HAR-018-N] preserves partial writes and recovers uncertain files without replaying them', async () => {
     const s = await proposalSetup({
