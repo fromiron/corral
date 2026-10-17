@@ -111,6 +111,9 @@ describe('resource discovery, trust and resolution (H3)', () => {
     expect(runtime.skills[0]?.content).toContain('Keep sources.');
     expect(runtime.bundles[0]?.hash).toBe(resource.hash);
     expect(runtime.extensions[0]?.source).toBe('extension:fixture@1.0.0');
+    expect(s.service.readSkill(preview.snapshot, 'skills/writing/SKILL.md')).toMatchObject({ text: expect.stringContaining('Keep sources.'), sha256: expect.stringMatching(/^[a-f0-9]{64}$/), resourceHash: resource.hash });
+    for (const path of ['skills/other/SKILL.md', 'skills/writing/../extensions/echo.ts', '/etc/passwd'])
+      expect(() => s.service.readSkill(preview.snapshot, path)).toThrow();
     s.service.saveProfile('later', 0, { name: 'Later default', policy: 'strict', allowedTools: [], resources: [], startupCommands: [] });
     s.service.store.setDefault('personal', 'default', 0, { profileId: 'later', revision: 1 });
     expect(await s.service.runtimeResources({ harness: preview.snapshot, inputs: [] })).toEqual(runtime);
