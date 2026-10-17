@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import { SqliteProjectToolStore } from './project-tool-store.ts';
 
 // One SQLite file per workspace (C-011, C-062). Durable settings follow the C-052 spike:
 // WAL, foreign keys, FULL sync. Schema changes are numbered migrations recorded in
@@ -9,6 +10,7 @@ export type Db = Database.Database;
 export interface Migration {
   name: string;
   sql: string;
+  data?: (db: Db) => void;
 }
 
 const IMMUTABLE = (table: string) => `
@@ -327,6 +329,38 @@ ${IMMUTABLE('harness_resources')}
 ${IMMUTABLE('harness_profile_revisions')}
 `,
   },
+  {
+    name: '0008_project_tools',
+    sql: `
+CREATE TABLE project_tool_revisions (
+  project_id TEXT NOT NULL,
+  revision INTEGER NOT NULL CHECK (revision >= 1),
+  config_json TEXT NOT NULL,
+  PRIMARY KEY (project_id, revision)
+) STRICT;
+CREATE TABLE project_tool_trust (
+  project_id TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('check', 'lsp')),
+  tool_id TEXT NOT NULL,
+  fingerprint TEXT NOT NULL,
+  trusted_at TEXT,
+  PRIMARY KEY (project_id, kind, tool_id, fingerprint)
+) STRICT;
+${IMMUTABLE('project_tool_revisions')}
+`,
+    data(db) {
+      const rows = db
+        .prepare('SELECT project_id, verify_json, updated_at FROM workspace_bindings')
+        .all() as { project_id: string; verify_json: string; updated_at: string }[];
+      for (const row of rows) {
+        const store = new SqliteProjectToolStore(db, {
+          nowIso: () => row.updated_at,
+          monotonicMs: () => 0,
+        });
+        store.save(row.project_id, 0, { checks: JSON.parse(row.verify_json), lspServers: [] });
+      }
+    },
+  },
 ];
 
 /** History queries must neither recover active runs nor migrate the workspace. */
@@ -370,6 +404,7 @@ export function migrate(db: Db) {
     const migration = MIGRATIONS[version] as Migration;
     db.transaction(() => {
       db.exec(migration.sql);
+      migration.data?.(db);
       db.pragma(`user_version = ${version + 1}`);
     })();
   }
