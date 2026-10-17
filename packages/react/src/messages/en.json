@@ -743,6 +743,7 @@
     "withInstructions": "{count, plural, one {with your instruction} other {with # instructions}}",
     "effort": "Effort {level} · {provider}",
     "waiting": "Waiting for the model…",
+    "emptyReply": "Response complete · no text",
     "streaming": "Still streaming. Not final until the request finishes.",
     "gap": "Part of the stream was lost; the final reply replaces it.",
     "tool": {

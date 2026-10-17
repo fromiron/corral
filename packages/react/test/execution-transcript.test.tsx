@@ -109,7 +109,9 @@ describe('ExecutionTranscript (UX-A3)', () => {
   it('[TC-OBS-001-N] completed tool-only replies do not look like pending model requests', async () => {
     const { session, writer } = await collaborationRun();
     session.setState((state) => ({
-      streams: Object.fromEntries(Object.entries(state.streams).map(([id, stream]) => [id, { ...stream, text: '' }])),
+      streams: Object.fromEntries(
+        Object.entries(state.streams).map(([id, stream]) => [id, { ...stream, text: '' }]),
+      ),
     }));
     render(
       <IntlProvider locale="en" messages={messages} timeZone="UTC">

@@ -743,6 +743,7 @@
     "withInstructions": "{count, plural, one {지시 포함} other {지시 #개 포함}}",
     "effort": "강도 {level} · {provider}",
     "waiting": "모델을 기다리는 중…",
+    "emptyReply": "응답 완료 · 텍스트 없음",
     "streaming": "아직 받는 중입니다. 요청이 끝나야 최종입니다.",
     "gap": "스트림 일부를 놓쳤습니다. 최종 답이 이를 대신합니다.",
     "tool": {

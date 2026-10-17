@@ -123,7 +123,7 @@ function Entry({
           {entry.text ? (
             <SafeMarkdown text={entry.text} />
           ) : (
-            <p className="text-muted">{t('waiting')}</p>
+            <p className="text-muted">{t(entry.live ? 'waiting' : 'emptyReply')}</p>
           )}
           {entry.live ? <p className="text-muted">{t('streaming')}</p> : null}
           {entry.broken ? <p className="text-warning">{t('gap')}</p> : null}
