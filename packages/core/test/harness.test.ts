@@ -124,6 +124,19 @@ async function loaded() {
 }
 
 describe('Coordinator harness boundary (H2)', () => {
+  it('[TC-HAR-017-N] grants at most two codemode capacities and frees only an owned completion',async()=>{
+    const s=setup(true,{...snapshot,resources:[],allowedTools:['codemode']});await s.started.wait();
+    await s.host().reportHarness!({ok:true,snapshotHash:snapshot.snapshotHash,tools:[{...descriptor,name:'codemode',source:'extension:pi-codemode@1.3.0'}],diagnostics:[]});
+    const calls=[];
+    for(let n=0;n<3;n++) calls.push(await s.host().authorizeTool({name:'codemode',args:{code:'text(1)'}}));
+    await s.host().beginNativeTool!(calls[0]!.toolCallId,hash({code:'text(1)'}));
+    await s.host().beginNativeTool!(calls[1]!.toolCallId,hash({code:'text(1)'}));
+    await expect(s.host().beginNativeTool!(calls[2]!.toolCallId,hash({code:'text(1)'}))).rejects.toThrow(/capacity/i);
+    await s.host().finishNativeTool!(calls[0]!.toolCallId,'succeeded');
+    await expect(s.host().finishNativeTool!(calls[0]!.toolCallId,'succeeded')).rejects.toThrow();
+    await s.host().beginNativeTool!(calls[2]!.toolCallId,hash({code:'text(1)'}));
+    s.done.open();
+  });
   it('[TC-HAR-017-N] closing a parent cancels an already running nested broker call', async () => {
     const entered = new Gate();
     let cancelled = false;
