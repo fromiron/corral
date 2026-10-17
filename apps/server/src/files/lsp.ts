@@ -37,7 +37,7 @@ function isAction(value: unknown): value is CodeAction {
   if (value === null || typeof value !== 'object') return false;
   return CodeAction.is({
     ...value,
-    ...(!('edit' in value) && !('command' in value) ? { edit: {} } : {}),
+    ...(!('edit' in value) && !('command' in value) ? { edit: { changes: {} } } : {}),
   });
 }
 
