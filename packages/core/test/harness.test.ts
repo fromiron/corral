@@ -9,7 +9,7 @@ import {
 import { FakeClock, Gate, linearCorral, SequentialIdFactory } from '@corral/testkit';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { Coordinator, exportRunArchive, InMemoryRunStore, openRunArchive } from '../src/index.ts';
 
 const hash = (value: unknown) => bytesToHex(sha256(utf8ToBytes(canonicalJson(value))));
@@ -109,6 +109,14 @@ async function loaded() {
 }
 
 describe('Coordinator harness boundary (H2)', () => {
+  it('[TC-HAR-007-N] ending an execution closes its outstanding dialog before another attempt can answer', async () => {
+    const s = await loaded();
+    const answer = s.host().requestExtensionUi!({ kind: 'input', title: 'Name', placeholder: '', timeoutMs: 1000 });
+    s.done.open();
+    await vi.waitFor(() => expect(s.events().some(e => e.type === 'execution.settled')).toBe(true));
+    expect(s.events().filter(e => e.type === 'extension.ui_expired')).toMatchObject([{ payload: { reason: 'execution_ended' } }]);
+    expect(await answer).toEqual({ status: 'cancelled' });
+  });
   it('[TC-HAR-007-H] UI answers match the execution attempt and command replay is idempotent; bodies stay in private records', async () => {
     const s = await loaded();
     const answer = s.host().requestExtensionUi!({ kind: 'select', title: 'Private question', options: ['One', 'Two'], timeoutMs: 1000 });
