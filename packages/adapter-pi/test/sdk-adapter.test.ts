@@ -127,6 +127,56 @@ describe('SDK worker through the product adapter (H2)', () => {
     expect(run.credentials).not.toHaveBeenCalled();
   });
 
+  it('[TC-HAR-001-N] cancellation between permit and dispatch never contacts the provider', async () => {
+    let dispatched = 0;
+    const run = runtime([() => { dispatched++; return fauxAssistantMessage('Must not run'); }], '', {
+      modelRequestDispatched: async () => { throw new Error('scope cancelled'); },
+    });
+    expect(await (await run.adapter.start(input(), run.host)).waitForSettlement()).toMatchObject({ outcome: 'failed' });
+    expect(dispatched).toBe(0);
+    expect(run.calls.filter(c => c.startsWith('observe'))).toEqual(['observe call_1']);
+  });
+
+  it('[TC-HAR-002-N] validates arguments again after extension hooks, before host authorization', async () => {
+    const authorize = vi.fn(async () => ({ ok: true as const, toolCallId: 'tool_1' }));
+    const run = runtime([
+      fauxAssistantMessage([fauxToolCall('echo', { text: 'before' })], { stopReason: 'toolUse' }), fauxAssistantMessage('Rejected.'),
+    ], `export default pi => {
+      pi.registerTool({name:'echo',label:'Echo',description:'Echo',parameters:{type:'object',properties:{text:{type:'string'}},required:['text']},execute:async () => ({content:[],details:{}})});
+      pi.on('tool_call', event => { event.input.text={invalid:true}; });
+    }`, { authorizeTool: authorize });
+    await (await run.adapter.start(input(), run.host)).waitForSettlement();
+    expect(authorize).not.toHaveBeenCalled();
+  });
+
+  it('[TC-HAR-003-H] steers an in-flight execution and reports only directives in the actual request', async () => {
+    const entered = new Gate();
+    const release = new Gate();
+    const run = runtime([
+      async () => { entered.open(); await release.wait(); return fauxAssistantMessage([fauxToolCall('write_artifact', { text: 'Draft' })], { stopReason: 'toolUse' }); },
+      fauxAssistantMessage('Done.'),
+    ]);
+    const handle = await run.adapter.start(input(), run.host);
+    await entered.wait();
+    handle.pushDirective!({ directiveId: 'directive_1', text: 'Keep sources.' });
+    release.open();
+    await handle.waitForSettlement();
+    expect(run.requests).toMatchObject([{ directiveIds: [] }, { directiveIds: ['directive_1'] }]);
+  });
+
+  it('[TC-HAR-001-H] nested model calls made by an extension use their own permits and observations', async () => {
+    const run = runtime([
+      fauxAssistantMessage([fauxToolCall('echo', {})], { stopReason: 'toolUse' }), fauxAssistantMessage('Nested answer.'), fauxAssistantMessage('Done.'),
+    ], `export default pi => pi.registerTool({name:'echo',label:'Echo',description:'Nested request',parameters:{type:'object',properties:{}},execute:async (_id,_args,_signal,_update,ctx) => {
+      const answer=await ctx.modelRegistry.streamSimple(ctx.modelRegistry.find('corral','faux-1'),{messages:[{role:'user',content:'Nested',timestamp:0}]}).result();
+      return {content:answer.content.filter(c=>c.type==='text'),details:{}};
+    }});`);
+    expect(await (await run.adapter.start(input(), run.host)).waitForSettlement()).toMatchObject({ outcome: 'succeeded' });
+    expect(run.requests).toMatchObject([{ purpose: 'turn' }, { purpose: 'extension' }, { purpose: 'turn' }]);
+    expect(run.credentials).toHaveBeenCalledTimes(3);
+    expect(run.calls.filter(c => c.startsWith('observe'))).toEqual(['observe call_1', 'observe call_2', 'observe call_3']);
+  });
+
   it('[TC-HAR-006-N] a required extension that fails to load fails without a model request or fallback', async () => {
     const run = runtime([fauxAssistantMessage('Must not run')], 'throw new Error("private path/body");');
     expect(await (await run.adapter.start(input(), run.host)).waitForSettlement()).toMatchObject({ outcome: 'failed' });
