@@ -18,7 +18,6 @@ import {
   type JsonObject,
   normalizeContext,
   type Tool,
-  Type,
   validateToolArguments,
 } from '@earendil-works/pi-ai';
 import {
