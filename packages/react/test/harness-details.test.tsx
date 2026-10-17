@@ -45,6 +45,10 @@ it('[TC-HAR-003-H] shows the pinned resource, final context, payload and unmanag
             allowedTools: ['echo'],
             tools: [],
             diagnostics: [],
+            layers: [
+              { scope: 'role', binding: { profileId: 'writer', revision: 2 } },
+              { scope: 'run', binding: { profileId: 'one-time', revision: 3 } },
+            ],
           },
         },
       },
@@ -96,4 +100,6 @@ it('[TC-HAR-003-H] shows the pinned resource, final context, payload and unmanag
   expect(screen.getByText(/skill_writing/)).toBeInTheDocument();
   expect(screen.getByText('1'.repeat(64))).toBeInTheDocument();
   expect(screen.getByText(/echo.*Unmanaged native/)).toBeInTheDocument();
+  expect(screen.getByText('Run · one-time · r3')).toBeInTheDocument();
+  expect(screen.getByText('Allowed tool names: echo')).toBeInTheDocument();
 });
