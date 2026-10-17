@@ -77,13 +77,11 @@ export function HarnessRoleSettings({ role, nodeId }: { role: AgentRole; nodeId:
             const profile = profiles.find(
               (profile) => `${profile.profileId}:${profile.revision}` === value,
             );
-            editor
-              .getState()
-              .updateNode(nodeId, {
-                harness: profile
-                  ? { profileId: profile.profileId, revision: profile.revision }
-                  : null,
-              });
+            editor.getState().updateNode(nodeId, {
+              harness: profile
+                ? { profileId: profile.profileId, revision: profile.revision }
+                : null,
+            });
           }}
         />
       </div>

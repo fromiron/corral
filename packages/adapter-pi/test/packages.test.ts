@@ -45,6 +45,13 @@ it('[TC-HAR-004-H] Pi package discovery uses its manifest and skill parser witho
 }, 15000);
 
 it('[TC-HAR-004-N] downloads require an exact npm version or HTTPS Git commit and cannot embed credentials', async () => {
-  for (const source of ['npm:package', 'npm:package@latest', 'npm:package@^1.0.0', 'git:https://github.com/org/repo@main', `git:https://user:secret@host/org/repo@${'a'.repeat(40)}`, `git:https://host/../../outside@${'a'.repeat(40)}`])
+  for (const source of [
+    'npm:package',
+    'npm:package@latest',
+    'npm:package@^1.0.0',
+    'git:https://github.com/org/repo@main',
+    `git:https://user:secret@host/org/repo@${'a'.repeat(40)}`,
+    `git:https://host/../../outside@${'a'.repeat(40)}`,
+  ])
     await expect(downloadPiPackage(source, '/unused')).rejects.toThrow(/pin|source/i);
 });

@@ -1,8 +1,8 @@
 import {
   CorralDefinition,
   canonicalJson,
-  type ReviewRecipeRevision,
   type EffectiveHarnessSnapshot,
+  type ReviewRecipeRevision,
   type VerificationReport,
 } from '@corral/contracts';
 import {

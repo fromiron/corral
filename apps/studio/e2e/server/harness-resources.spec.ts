@@ -130,7 +130,9 @@ test('[TC-HAR-004-H] install, trust, save and preview a mandatory skill through 
     await page.getByRole('button', { name: 'Preview effective settings', exact: true }).click();
     await expect(page.getByTestId('harness-preview')).toContainText('Always cite the source.');
     await page.getByLabel('Work style name', { exact: true }).fill('Unsaved change');
-    await expect(page.getByRole('button', { name: 'Preview effective settings', exact: true })).toBeDisabled();
+    await expect(
+      page.getByRole('button', { name: 'Preview effective settings', exact: true }),
+    ).toBeDisabled();
     await page.reload();
     await page
       .getByLabel('Saved work style', { exact: true })

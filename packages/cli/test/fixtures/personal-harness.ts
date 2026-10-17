@@ -286,7 +286,7 @@ export async function runHarnessComparison() {
     const transport = new InProcessTransport(server.coordinator),
       start = transport.startRun.bind(transport);
     transport.startRun = async (request) => {
-      assert('definition' in request,'fixture runs require an inline definition');
+      assert('definition' in request, 'fixture runs require an inline definition');
       const group = request.definition.id.replace('fixture_', '') as EvalGroup;
       const operands = /Add (\d+) and (\d+)/.exec(request.definition.input.brief);
       assert(operands);

@@ -7,18 +7,49 @@ import { afterEach, expect, it } from 'vitest';
 import { lockResources } from '../src/locked-resources.ts';
 
 const roots: string[] = [];
-afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+afterEach(() => {
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+});
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 function setup() {
-  const root = mkdtempSync(join(tmpdir(), 'corral-lock-')); roots.push(root);
-  const source = join(root, 'source'); const worker = join(root, 'worker');
-  mkdirSync(source); mkdirSync(worker);
+  const root = mkdtempSync(join(tmpdir(), 'corral-lock-'));
+  roots.push(root);
+  const source = join(root, 'source');
+  const worker = join(root, 'worker');
+  mkdirSync(source);
+  mkdirSync(worker);
   const text = 'export default () => {};';
   writeFileSync(join(source, 'extension.ts'), text);
   const files = [{ path: 'extension.ts', hash: hash(text), bytes: Buffer.byteLength(text) }];
   const resourceHash = hash(canonicalJson(files));
-  const snapshot: EffectiveHarnessSnapshot = { binding: { profileId: 'writing', revision: 1 }, snapshotHash: 'a'.repeat(64), piVersion: '1.3.0', policyRevision: 1, policy: 'trusted-native', resources: [{ hash: resourceHash, name: 'fixture', version: '1.0.0', kind: 'extension', required: true, entry: 'extension.ts' }], allowedTools: [], tools: [], diagnostics: [] };
-  const resources = { extensions: [{ path: join(source, 'extension.ts'), hash: resourceHash, source: 'extension:fixture@1.0.0' }], skills: [], startupCommands: [], bundles: [{ root: source, hash: resourceHash, files }] };
+  const snapshot: EffectiveHarnessSnapshot = {
+    binding: { profileId: 'writing', revision: 1 },
+    snapshotHash: 'a'.repeat(64),
+    piVersion: '1.3.0',
+    policyRevision: 1,
+    policy: 'trusted-native',
+    resources: [
+      {
+        hash: resourceHash,
+        name: 'fixture',
+        version: '1.0.0',
+        kind: 'extension',
+        required: true,
+        entry: 'extension.ts',
+      },
+    ],
+    allowedTools: [],
+    tools: [],
+    diagnostics: [],
+  };
+  const resources = {
+    extensions: [
+      { path: join(source, 'extension.ts'), hash: resourceHash, source: 'extension:fixture@1.0.0' },
+    ],
+    skills: [],
+    startupCommands: [],
+    bundles: [{ root: source, hash: resourceHash, files }],
+  };
   return { source, worker, text, resources, snapshot };
 }
 it('[TC-HAR-004-H] loads a verified execution copy, which later edits of the installed resource cannot change', () => {

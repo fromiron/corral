@@ -1,4 +1,15 @@
-# 편집 도구 비교
+# 로컬 하네스 평가
+
+## 다섯 비교군 SDK fixture
+
+```sh
+node tools/evaluation/personal-harness.ts /tmp/corral-personal-harness-report.json
+pnpm exec vitest run packages/cli/test/harness-comparison.test.ts
+```
+
+기본·필수 스킬·결정적 검사·검토 및 수정·Pi 코딩 도구를 실제 SDK와 로컬 고정 응답 provider로 실행한다. 각 calibration/holdout 실행은 같은 Git commit의 새 작업 사본을 사용한다. 유료 모델 호출은 없으며 품질 향상 주장이 아닌 실행·계측 검증이다. 결과에 소스 commit과 작업 트리 변경 여부를 기록한다. [검증 결과](../../docs/evaluation/Personal-Harness-Local-Fixture-Results.md).
+
+## 편집 도구 비교
 
 Hashline은 비교 실험에만 사용한다. Corral 제품 도구나 설치 의존성으로 추가하지 않는다.
 

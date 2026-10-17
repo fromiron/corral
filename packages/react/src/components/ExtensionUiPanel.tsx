@@ -197,6 +197,7 @@ function ExtensionPrompt({
         >
           <option value="">{t('chooseOption')}</option>
           {request.options.map((option, index) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: This request's options are immutable and may repeat labels.
             <option key={`${index}:${option}`} value={option}>
               {option}
             </option>
