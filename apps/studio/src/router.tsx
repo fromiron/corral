@@ -214,10 +214,18 @@ export const editorRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/corrals/$corralId/edit',
   // A version of an earlier run the next run starts from (CR-007), from the Run page.
-  validateSearch: (search: Record<string, unknown>): { fromRun?: string; fromVersion?: string } =>
-    typeof search.fromRun === 'string' && typeof search.fromVersion === 'string'
+  // `fromSession`: opened from a session's menu, so the editor offers the way back (UX-10).
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { fromRun?: string; fromVersion?: string; fromSession?: string } => ({
+    ...(typeof search.fromRun === 'string' && typeof search.fromVersion === 'string'
       ? { fromRun: search.fromRun, fromVersion: search.fromVersion }
-      : {},
+      : {}),
+    ...(typeof search.fromSession === 'string' &&
+    /^session_[A-Za-z0-9_-]+$/.test(search.fromSession)
+      ? { fromSession: search.fromSession }
+      : {}),
+  }),
   loader: async ({ context, params }) => {
     const record = await context.services.repository.get(params.corralId);
     if (!record) throw notFound();

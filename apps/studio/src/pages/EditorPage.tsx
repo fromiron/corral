@@ -31,10 +31,11 @@ import { useModelPrices } from '../prices.ts';
 import { setCurrentProject } from '../projects.ts';
 import { demoRoute, editorRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
+import { useModelProfiles } from '../workbench/useModels.ts';
 
 export function EditorPage() {
   const record = editorRoute.useLoaderData();
-  const { fromRun, fromVersion } = editorRoute.useSearch();
+  const { fromRun, fromVersion, fromSession } = editorRoute.useSearch();
   // CR-010: the header shows the Corral's project, and `/` returns to it.
   useEffect(() => setCurrentProject(record.projectId), [record.projectId]);
   // A fresh editor (and undo history) for each Corral.
@@ -52,6 +53,7 @@ export function EditorPage() {
           ? { runId: fromRun, artifactVersionId: fromVersion, label: fromVersion }
           : null
       }
+      fromSession={fromSession ?? null}
     />
   );
 }
@@ -164,6 +166,7 @@ function Editor({
   guide,
   startFrom = null,
   inSession = false,
+  fromSession = null,
 }: {
   record: CorralRecord;
   editor: EditorStore;
@@ -175,9 +178,12 @@ function Editor({
   startFrom?: StartFromChoice | null;
   /** Inside a session's workbench: runs start from the session, so no run controls here. */
   inSession?: boolean;
+  /** Opened from this session: show the way back and when edits apply (UX-10). */
+  fromSession?: string | null;
 }) {
   const t = useTranslations('Editor');
   const { repository, session, mode, live } = useServices();
+  const profiles = useModelProfiles();
   const draft = useStore(editor, (s) => s.draft);
   const [saved, setSaved] = useState({ record, draft: editor.getState().draft });
   const [saving, setSaving] = useState(false);
@@ -256,7 +262,24 @@ function Editor({
     <StudioStoresProvider editor={editor} session={session}>
       <ReactFlowProvider>
         <div className="editor-shell h-full">
-          <div className="editor-frame grid h-full grid-rows-[auto_minmax(0,1fr)]">
+          <div
+            className={`editor-frame grid h-full ${fromSession ? 'grid-rows-[auto_auto_minmax(0,1fr)]' : 'grid-rows-[auto_minmax(0,1fr)]'}`}
+          >
+            {fromSession ? (
+              <div
+                data-testid="from-session"
+                className="flex flex-wrap items-center gap-2 border-b border-line bg-subtle/60 px-3 py-1.5 text-xs"
+              >
+                <Link
+                  to="/sessions/$sessionId"
+                  params={{ sessionId: fromSession }}
+                  className="font-medium hover:underline"
+                >
+                  ← {t('backToSession')}
+                </Link>
+                <span className="text-muted">{t('appliesNextRun')}</span>
+              </div>
+            ) : null}
             <div className="flex flex-wrap items-center gap-3 border-b border-line px-3 py-2">
               <label className="flex items-center gap-2 text-sm">
                 <span className="sr-only">{t('name')}</span>
@@ -319,7 +342,7 @@ function Editor({
                 <CanvasNotice />
               </div>
               <aside className="editor-inspector flex min-h-0 min-w-0 flex-col gap-6 overflow-auto border-l border-line p-3">
-                <NodeInspector />
+                <NodeInspector profiles={profiles} />
                 {inSession ? null : (
                   <RunSide
                     beforeStart={beforeStart}

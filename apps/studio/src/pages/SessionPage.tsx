@@ -68,10 +68,17 @@ import { type IntentLock, resolveIntent } from '../workbench/composerIntent.ts';
 import { type MentionItem, mentionToken, pickedReferences } from '../workbench/composerMenu.ts';
 import { FilePanel, type FileReference } from '../workbench/FilePanel.tsx';
 import { isSendKey, usePreferences } from '../workbench/preferences.ts';
+import { EDIT_REQUEST, editRequest, RefusalHelp } from '../workbench/RefusalHelp.tsx';
 import { RunMessage } from '../workbench/RunMessage.tsx';
 import { readComposerDraft, writeComposerDraft } from '../workbench/sessionDraft.ts';
 import { TopbarActions } from '../workbench/TopbarSlot.tsx';
 import { useMentionSearch } from '../workbench/useMentionSearch.ts';
+import {
+  type ProfileInfo,
+  type RoleModel,
+  useModelProfiles,
+  useTeamRoles,
+} from '../workbench/useModels.ts';
 import { useBinding, WORKSPACE_CHANGED, WorkingCopyPanel } from './FilesViews.tsx';
 import { Checks } from './ReviewPage.tsx';
 import { RunDetail } from './RunPage.tsx';
@@ -527,6 +534,7 @@ function SessionActions({
                 void navigate({
                   to: '/corrals/$corralId/edit',
                   params: { corralId: team.corralId },
+                  search: { fromSession: session.sessionId },
                 })
               }
             >
@@ -954,7 +962,9 @@ function EntryCard({
           {when}
         </span>
       </div>
-      {entry.detail ? (
+      {entry.detail && entry.state === 'refused' ? (
+        <RefusalHelp message={entry.detail} onEdit={() => editRequest(entry.text)} />
+      ) : entry.detail ? (
         <p role="note" className="text-xs text-danger">
           {entry.detail}
         </p>
@@ -1178,6 +1188,12 @@ function Composer({
   const [runMode, setRunMode] = useState<'mock' | 'live'>('mock');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // UX-04: why the last request did not start; the text stays in the box to send again.
+  const [refusal, setRefusal] = useState<{
+    message: string;
+    code?: string | undefined;
+    network?: boolean;
+  } | null>(null);
   const [targets, setTargets] = useState<{ id: string; label: string }[]>([]);
   const [targetTick, setTargetTick] = useState(0);
   const [picked, setPicked] = useState<MentionItem[]>(restored.references);
@@ -1191,6 +1207,10 @@ function Composer({
   const [confirmStop, setConfirmStop] = useState(false);
   const [teamOpen, setTeamOpen] = useState(false);
   const [modeOpen, setModeOpen] = useState(false);
+  const [modelsOpen, setModelsOpen] = useState(false);
+  // UX-06: which model each role uses, and whether it is connected.
+  const profiles = useModelProfiles();
+  const roles = useTeamRoles(team);
   const [recall, setRecall] = useState(-1);
   const input = useRef<HTMLTextAreaElement>(null);
   const ownActive = active && active.sessionId === session.sessionId ? active : null;
@@ -1374,7 +1394,7 @@ function Composer({
     brief: string,
     commandId: string = newCommandId(),
     refs: RunReference[] = [],
-  ): Promise<{ runId: string | null; detail: string | null }> => {
+  ): Promise<{ runId: string | null; detail: string | null; code?: string | undefined }> => {
     if (!team) return { runId: null, detail: t('noTeamYet') };
     const corral = await repository.get(team.corralId);
     if (!corral) return { runId: null, detail: t('noTeamYet') };
@@ -1397,7 +1417,20 @@ function Composer({
           }
         : { ...common, definition: { ...corral.definition, input } },
     );
-    return { runId: result.runId, detail: result.receipt.error?.message ?? null };
+    return {
+      runId: result.runId,
+      detail: result.receipt.error?.message ?? null,
+      code: result.receipt.error?.code,
+    };
+  };
+
+  /** A refused request keeps its text, intent and references so it can be fixed and resent. */
+  const refused = async (message: string, code?: string) => {
+    // A refusal is final for that command; the next attempt is a new command.
+    pending.current = null;
+    setRefusal({ message, code });
+    await router.invalidate();
+    onChange();
   };
 
   const send = async () => {
@@ -1405,11 +1438,12 @@ function Composer({
     if (!body || busy) return;
     setBusy(true);
     setError(null);
+    setRefusal(null);
     try {
       if (intent === 'next') {
         const refs = references;
         const commandId = commandFor(`next\u0000${body}\u0000${JSON.stringify(refs)}`);
-        const { runId, detail } = await startNext(body, commandId, refs);
+        const { runId, detail, code } = await startNext(body, commandId, refs);
         await record({
           intent,
           text: body,
@@ -1418,6 +1452,7 @@ function Composer({
           detail,
           commandId,
         });
+        if (!runId) return await refused(detail ?? t('noTeamYet'), code);
       } else if (intent === 'queue') {
         await record({ intent, text: body, state: 'queued' });
       } else if (intent === 'steer' && ownActive && steerTarget) {
@@ -1438,6 +1473,7 @@ function Composer({
           detail: receipt.error?.message ?? null,
           commandId,
         });
+        if (receipt.error) return await refused(receipt.error.message, receipt.error.code);
       } else if (intent === 'explain') {
         const corral = team ? await repository.get(team.corralId) : null;
         const profile = corral?.definition.roles[0]?.modelProfile ?? 'model-a';
@@ -1460,6 +1496,11 @@ function Composer({
           runId: result.runId,
           detail: result.receipt.error?.message ?? null,
         });
+        if (!result.runId)
+          return await refused(
+            result.receipt.error?.message ?? t('noResult'),
+            result.receipt.error?.code,
+          );
       } else {
         return;
       }
@@ -1471,11 +1512,30 @@ function Composer({
       await router.invalidate();
       onChange();
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : String(failure));
+      // The answer was lost: the request may or may not have arrived. The text stays, and a
+      // retry reuses the same command ID, so the runtime returns the first receipt (UX-04).
+      setRefusal({
+        message: failure instanceof Error ? failure.message : String(failure),
+        network: true,
+      });
     } finally {
       setBusy(false);
     }
   };
+
+  // "Edit the request again" on a refused turn brings its text back here.
+  useEffect(() => {
+    const take = (event: Event) => {
+      const value = (event as CustomEvent<string>).detail;
+      if (typeof value !== 'string') return;
+      setText(value);
+      setLock(null);
+      setRefusal(null);
+      requestAnimationFrame(() => input.current?.focus());
+    };
+    window.addEventListener(EDIT_REQUEST, take);
+    return () => window.removeEventListener(EDIT_REQUEST, take);
+  }, []);
 
   const runCommand = async (type: 'pause' | 'resume' | 'cancel') => {
     if (!ownActive) return;
@@ -1583,7 +1643,14 @@ function Composer({
     }
   };
 
+  // UX-04: with live models chosen, a role whose model is not connected stops the request
+  // before it is sent, with the way to connect it.
+  const notReady =
+    runMode === 'live' && (intent === 'next' || intent === 'explain') && profiles
+      ? roles.filter((r) => !profiles.some((p) => p.profileId === r.profileId && p.available))
+      : [];
   const unavailable =
+    notReady.length > 0 ||
     resolved.blocked !== null ||
     missingChips.length > 0 ||
     (intent === 'next' && !team) ||
@@ -1649,14 +1716,22 @@ function Composer({
     ...(mode === 'server' && live
       ? [
           {
-            id: 'composer:model',
+            id: 'composer:mode',
             title: t('mode'),
             group: tc('groupRequest'),
-            slash: 'model',
+            slash: 'mode',
+            keywords: [t('modeMock'), t('modeLive')],
             run: () => setModeOpen(true),
           },
         ]
       : []),
+    {
+      id: 'composer:models',
+      title: tc('models.title'),
+      group: tc('groupRequest'),
+      slash: 'model',
+      run: () => setModelsOpen(true),
+    },
     {
       id: 'composer:focus',
       title: tc('focus'),
@@ -1749,6 +1824,37 @@ function Composer({
                   </Button>
                 ))}
             </div>
+          ) : null}
+          {notReady.length ? (
+            <div
+              role="alert"
+              data-testid="models-not-ready"
+              className="flex flex-wrap items-center gap-2 rounded-lg bg-warning/10 px-2.5 py-1.5 text-xs text-warning"
+            >
+              <span className="min-w-0 flex-1">
+                {tc('models.notReady', {
+                  roles: notReady.map((r) => `${r.name} (${r.profileId})`).join(', '),
+                })}
+              </span>
+              <Button size="xs" render={<Link to="/settings/models" />}>
+                {tc('models.connect')}
+              </Button>
+              <Button variant="outline" size="xs" onClick={() => setRunMode('mock')}>
+                {tc('models.useSimulated')}
+              </Button>
+            </div>
+          ) : null}
+          {refusal ? (
+            <RefusalHelp
+              message={refusal.message}
+              code={refusal.code}
+              network={refusal.network}
+              onRetry={() => void send()}
+              onQueue={() => {
+                setRefusal(null);
+                chooseIntent('queue');
+              }}
+            />
           ) : null}
           {missingChips.length ? (
             <p role="alert" className="text-xs text-danger">
@@ -1939,6 +2045,36 @@ function Composer({
           {error}
         </p>
       ) : null}
+      <Dialog open={modelsOpen} onOpenChange={setModelsOpen}>
+        <DialogPopup>
+          <DialogHeader>
+            <DialogTitle>{tc('models.title')}</DialogTitle>
+            <DialogDescription>
+              {runMode === 'live' ? tc('models.liveNote') : tc('models.mockNote')}
+            </DialogDescription>
+          </DialogHeader>
+          <ModelAssignments roles={roles} profiles={profiles} />
+          <DialogFooter>
+            {team ? (
+              <Button
+                variant="outline"
+                render={
+                  <Link
+                    to="/corrals/$corralId/edit"
+                    params={{ corralId: team.corralId }}
+                    search={{ fromSession: session.sessionId }}
+                  />
+                }
+              >
+                {t('editTeam')}
+              </Button>
+            ) : null}
+            {mode === 'server' ? (
+              <Button render={<Link to="/settings/models" />}>{tc('models.settings')}</Button>
+            ) : null}
+          </DialogFooter>
+        </DialogPopup>
+      </Dialog>
       <Dialog open={confirmStop} onOpenChange={setConfirmStop}>
         <DialogPopup>
           <DialogHeader>
@@ -2064,4 +2200,42 @@ function PreRunSummary({
     t,
   ]);
   return text ? <span data-testid="pre-run">{text}</span> : null;
+}
+
+/** Each role of the team, the model profile it uses, and whether that model is ready (UX-06). */
+function ModelAssignments({
+  roles,
+  profiles,
+}: {
+  roles: RoleModel[];
+  profiles: ProfileInfo[] | null;
+}) {
+  const tc = useTranslations('Composer');
+  if (!roles.length) return <p className="text-sm text-muted">{tc('models.noTeam')}</p>;
+  return (
+    <ul className="flex flex-col divide-y divide-line/60 text-sm" data-testid="model-assignments">
+      {roles.map((role) => {
+        const profile = profiles?.find((p) => p.profileId === role.profileId);
+        const state = !profiles
+          ? 'simulated'
+          : !profile
+            ? 'missing'
+            : profile.available
+              ? 'ready'
+              : 'signin';
+        return (
+          <li key={role.roleId} className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 py-2">
+            <span className="font-medium">{role.name}</span>
+            <span className="font-mono text-xs text-muted">{role.profileId}</span>
+            <span className="min-w-0 flex-1 text-xs text-muted">{profile?.label ?? ''}</span>
+            <span
+              className={`text-xs ${state === 'ready' ? 'text-success' : state === 'simulated' ? 'text-muted' : 'text-warning'}`}
+            >
+              {tc(`models.state.${state}`)}
+            </span>
+          </li>
+        );
+      })}
+    </ul>
+  );
 }

@@ -187,7 +187,7 @@
   container: editor / inline-size;
 }
 .editor-layout {
-  grid-template-columns: 12rem minmax(0, 1fr) 18rem;
+  grid-template-columns: 12rem minmax(0, 1fr) 22rem;
   grid-template-areas: "palette canvas inspector";
 }
 .editor-palette {
