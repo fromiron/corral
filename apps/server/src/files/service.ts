@@ -1,4 +1,3 @@
-import { spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { constants, existsSync } from 'node:fs';
 import {
@@ -25,10 +24,15 @@ import {
   PiEditInput,
   PiWriteInput,
   type RegisteredCheck,
+  type Scheduler,
+  VerificationReport,
 } from '@corral/contracts';
 import { type FileTools, rankFuzzy, type ToolCancellation, ToolRefusal } from '@corral/core';
 import { type Db, SqliteProjectToolStore } from '@corral/storage-sqlite';
+import { systemTimers } from '../runtime.ts';
 import { GitError, git, gitText } from './git.ts';
+import { launchFingerprint } from './launch-fingerprint.ts';
+import { VerificationRunner } from './verification.ts';
 
 // Work folders and file changes (CR-012). A project may link one folder, which is only
 // observed. A session gets its own git worktree outside that folder; agents change files
@@ -36,7 +40,6 @@ import { GitError, git, gitText } from './git.ts';
 // Snapshots are git trees written from a temporary index, pinned under refs/corral/.
 
 const MAX_TEXT = 1024 * 1024;
-const OUTPUT_TAIL = 64 * 1024;
 
 export type VerifyCommand = RegisteredCheck;
 
@@ -114,6 +117,7 @@ export interface VerificationView {
   endedAt: string | null;
   /** The worktree has changed since it ran. */
   stale: boolean;
+  report: VerificationReport | null;
 }
 
 export class WorkspaceError extends Error {
@@ -194,6 +198,12 @@ interface WorktreeRow {
 
 export class WorkspaceService implements FileTools {
   readonly projectTools: SqliteProjectToolStore;
+  private readonly verificationRunner: VerificationRunner;
+  private readonly newVerificationId: () => string;
+  private readonly checks = new Map<
+    string,
+    { sessionId: string; cancel: () => void; completion: Promise<VerificationReport> }
+  >();
   private readonly db: Db;
   private readonly clock: Clock;
   private readonly worktreeRoot: string;
@@ -213,11 +223,19 @@ export class WorkspaceService implements FileTools {
     clock: Clock;
     worktreeRoot: string;
     forbidden: string[];
+    timers?: Scheduler;
+    newVerificationId?: () => string;
     edit?: (request: EditTextRequest, cancellation: ToolCancellation) => Promise<EditTextResult>;
   }) {
     this.db = options.db;
     this.clock = options.clock;
     this.projectTools = new SqliteProjectToolStore(options.db, options.clock);
+    this.verificationRunner = new VerificationRunner({
+      clock: options.clock,
+      timers: options.timers ?? systemTimers,
+    });
+    this.newVerificationId =
+      options.newVerificationId ?? (() => `verify_${randomUUID().replaceAll('-', '')}`);
     this.edit = options.edit ?? ((request, cancellation) => editText(request, { cancellation }));
     this.worktreeRoot = resolve(options.worktreeRoot);
     this.forbidden = [...options.forbidden, this.worktreeRoot].map((p) => resolve(p));
@@ -232,10 +250,11 @@ export class WorkspaceService implements FileTools {
     this.db
       .prepare(
         `UPDATE verifications SET state = 'error', ended_at = ?,
-           output_tail = output_tail || '\n[the server stopped during this check]'
+           output_tail = output_tail || '\n[the server stopped during this check]',
+           report_json = CASE WHEN report_json IS NULL THEN NULL ELSE json_set(report_json, '$.state', 'error', '$.verdict', 'inconclusive', '$.cleanupConfirmed', json('false'), '$.endedAt', ?) END
          WHERE state = 'running'`,
       )
-      .run(this.clock.nowIso());
+      .run(this.clock.nowIso(), this.clock.nowIso());
   }
 
   // ── folder links ────────────────────────────────────────────────────────────
@@ -872,6 +891,11 @@ export class WorkspaceService implements FileTools {
   }
 
   verifications(sessionId: string, currentTree: string | null): VerificationView[] {
+    this.db
+      .prepare(
+        `UPDATE verifications SET output_tail = '', report_json = json_set(report_json, '$.output.text', '') WHERE report_json IS NOT NULL AND json_extract(report_json, '$.retainUntil') < ?`,
+      )
+      .run(this.clock.nowIso());
     const rows = this.db
       .prepare('SELECT * FROM verifications WHERE session_id = ? ORDER BY started_at DESC LIMIT 50')
       .all(sessionId) as {
@@ -885,6 +909,7 @@ export class WorkspaceService implements FileTools {
       duration_ms: number | null;
       output_tail: string;
       state: VerificationView['state'];
+      report_json: string | null;
       started_at: string;
       ended_at: string | null;
     }[];
@@ -904,7 +929,8 @@ export class WorkspaceService implements FileTools {
         output: r.output_tail,
         startedAt: r.started_at,
         endedAt: r.ended_at,
-        stale: currentTree !== null && currentTree !== r.tree,
+        stale: currentTree === null || currentTree !== r.tree,
+        report: r.report_json ? VerificationReport.parse(JSON.parse(r.report_json)) : null,
       };
     });
   }
@@ -916,80 +942,119 @@ export class WorkspaceService implements FileTools {
     return this.lease(row.worktree_path, () => this.snapshotTree(row.worktree_path));
   }
 
-  /** Starts an agreed check in the working copy; its result is recorded when it ends. */
+  /** A manual click authorizes this one launch; automatic callers require fingerprint trust. */
   async verify(sessionId: string, projectId: string, commandId: string): Promise<string> {
     const binding = this.binding(projectId);
     const row = this.worktree(sessionId);
-    if (!binding || !row) throw new WorkspaceError('TARGET_NOT_FOUND', 'no working copy to check');
+    if (!binding || !row || row.binding_id !== binding.id)
+      throw new WorkspaceError('TARGET_NOT_FOUND', 'no working copy to check');
     if (!binding.trusted)
       throw new WorkspaceError('CAPABILITY_DENIED', 'trust the repository before running checks');
-    const command = (this.projectTools.latest(projectId)?.checks ?? []).find(
-      (c) => c.id === commandId,
-    );
-    if (!command) throw new WorkspaceError('TARGET_NOT_FOUND', 'no such check');
-    const tree = await this.lease(row.worktree_path, () => this.snapshotTree(row.worktree_path));
-    const id = `verify_${randomUUID().slice(0, 8)}`;
-    const started = Date.now();
+    const config = this.projectTools.latest(projectId);
+    const command = config?.checks.find((c) => c.id === commandId);
+    if (!config || !command) throw new WorkspaceError('TARGET_NOT_FOUND', 'no such check');
+    const { tree, launch } = await this.lease(row.worktree_path, async () => ({
+      tree: await this.snapshotTree(row.worktree_path),
+      launch: await launchFingerprint(row.worktree_path, config.revision, command),
+    }));
+    const id = this.newVerificationId();
     this.db
       .prepare(
-        `INSERT INTO verifications (id, session_id, command_id, command_json, tree, exit_code, signal,
-           timed_out, duration_ms, output_tail, state, started_at, ended_at)
-         VALUES (?, ?, ?, ?, ?, NULL, NULL, 0, NULL, '', 'running', ?, NULL)`,
+        `INSERT INTO verifications (id, session_id, command_id, command_json, tree, exit_code, signal, timed_out, duration_ms, output_tail, state, started_at, ended_at) VALUES (?, ?, ?, ?, ?, NULL, NULL, 0, NULL, '', 'running', ?, NULL)`,
       )
       .run(id, sessionId, command.id, JSON.stringify(command), tree, this.clock.nowIso());
-    let output = '';
-    const keep = (chunk: Buffer) => {
-      output = (output + chunk.toString('utf8')).slice(-OUTPUT_TAIL);
+    const controller = new AbortController();
+    const cancellation = {
+      get aborted() {
+        return controller.signal.aborted;
+      },
+      onCancel(fn: () => void) {
+        controller.signal.addEventListener('abort', fn);
+        return () => controller.signal.removeEventListener('abort', fn);
+      },
     };
-    let timedOut = false;
-    const finish = (code: number | null, signal: string | null, error?: string) => {
-      this.db
-        .prepare(
-          `UPDATE verifications SET exit_code = ?, signal = ?, timed_out = ?, duration_ms = ?,
-             output_tail = ?, state = ?, ended_at = ? WHERE id = ?`,
-        )
-        .run(
-          code,
-          signal,
-          timedOut ? 1 : 0,
-          Date.now() - started,
-          error ? `${output}\n${error}`.slice(-OUTPUT_TAIL) : output,
-          error ? 'error' : code === 0 && !timedOut ? 'passed' : 'failed',
-          this.clock.nowIso(),
-          id,
-        );
-    };
-    try {
-      const child = spawn(command.argv[0] as string, command.argv.slice(1), {
-        cwd: row.worktree_path,
-        shell: false,
-        env: {
-          PATH: process.env.PATH ?? '/usr/bin:/bin',
-          HOME: process.env.HOME ?? '',
-          LANG: process.env.LANG ?? 'C.UTF-8',
+    const completion = this.verificationRunner
+      .run(
+        {
+          verificationId: id,
+          owner: { kind: 'manual', sessionId },
+          sessionId,
+          sourceDirectory: row.worktree_path,
+          copyRoot: join(this.worktreeRoot, 'checks'),
+          tree,
+          configRevision: config.revision,
+          fingerprint: launch.fingerprint,
+          command,
+          beforeLaunch: async (directory) => {
+            if (!this.binding(projectId)?.trusted) throw new Error('repository trust was revoked');
+            const current = await launchFingerprint(directory, config.revision, command);
+            if (current.fingerprint !== launch.fingerprint)
+              throw new Error('launch fingerprint changed');
+            return current.executable;
+          },
         },
-        stdio: ['ignore', 'pipe', 'pipe'],
-      });
-      child.stdout.on('data', keep);
-      child.stderr.on('data', keep);
-      const timer = setTimeout(() => {
-        timedOut = true;
-        child.kill('SIGTERM');
-        setTimeout(() => child.kill('SIGKILL'), 5000).unref();
-      }, command.timeoutMs);
-      timer.unref();
-      child.on('error', (error) => {
-        clearTimeout(timer);
-        finish(null, null, `could not start: ${error.message}`);
-      });
-      child.on('close', (code, signal) => {
-        clearTimeout(timer);
-        finish(code, signal);
-      });
-    } catch (error) {
-      finish(null, null, `could not start: ${String(error)}`);
-    }
+        cancellation,
+        (report) => {
+          const state = ['queued', 'running'].includes(report.state)
+            ? 'running'
+            : report.verdict === 'pass'
+              ? 'passed'
+              : report.verdict === 'fail'
+                ? 'failed'
+                : 'error';
+          this.db
+            .prepare(
+              `UPDATE verifications SET exit_code = ?, signal = ?, timed_out = ?, duration_ms = ?, output_tail = ?, state = ?, ended_at = ?, report_json = ? WHERE id = ? AND session_id = ?`,
+            )
+            .run(
+              report.exitCode,
+              report.signal,
+              report.timedOut ? 1 : 0,
+              report.durationMs,
+              report.output.text,
+              state,
+              report.endedAt,
+              JSON.stringify(report),
+              id,
+              sessionId,
+            );
+        },
+      )
+      .finally(() => this.checks.delete(id));
+    this.checks.set(id, { sessionId, cancel: () => controller.abort(), completion });
+    void completion.catch(() => {});
     return id;
+  }
+
+  async waitVerification(id: string): Promise<VerificationReport> {
+    const pending = this.checks.get(id);
+    if (pending) return pending.completion;
+    const row = this.db.prepare('SELECT report_json FROM verifications WHERE id = ?').get(id) as
+      | { report_json: string | null }
+      | undefined;
+    if (!row?.report_json)
+      throw new WorkspaceError('TARGET_NOT_FOUND', 'no such verification report');
+    return VerificationReport.parse(JSON.parse(row.report_json));
+  }
+
+  cancelVerification(sessionId: string, id: string) {
+    const row = this.db
+      .prepare('SELECT report_json FROM verifications WHERE id = ? AND session_id = ?')
+      .get(id, sessionId) as { report_json: string | null } | undefined;
+    if (!row?.report_json)
+      throw new WorkspaceError('TARGET_NOT_FOUND', 'no such verification report');
+    if (VerificationReport.parse(JSON.parse(row.report_json)).owner.kind !== 'manual')
+      throw new WorkspaceError(
+        'CAPABILITY_DENIED',
+        'stop the owning execution to cancel this check',
+      );
+    this.checks.get(id)?.cancel();
+  }
+
+  async dispose() {
+    const pending = [...this.checks.values()];
+    for (const check of pending) check.cancel();
+    await Promise.allSettled(pending.map((check) => check.completion));
   }
 
   // ── the file broker (FileTools) ─────────────────────────────────────────────

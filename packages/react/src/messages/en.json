@@ -1312,7 +1312,26 @@
     "makeCopyThere": "Set up a working copy",
     "retry": "Try again",
     "runChangedNothing": "This run did not change any files.",
-    "nothingChanged": "No files changed."
+    "nothingChanged": "No files changed.",
+    "isolatedChecksNote": "Checks run in a frozen copy. Ignored dependencies are not copied; register a check script that prepares its own dependencies when needed.",
+    "cancelCheck": "Stop check",
+    "checkEvidence": "Execution evidence",
+    "checkFingerprint": "Config r{revision} · fingerprint {hash} · tree {tree}",
+    "checkRetention": "Output kept until {date}",
+    "checkCleanupUnknown": "Process cleanup could not be confirmed. This result cannot establish a pass.",
+    "checkReportState": {
+      "queued": "Queued",
+      "running": "Running",
+      "completed": "Completed",
+      "error": "Error",
+      "cancelled": "Cancelled"
+    },
+    "checkVerdict": {
+      "pass": "Pass",
+      "fail": "Fail",
+      "inconclusive": "Inconclusive",
+      "not_evaluated": "Not evaluated"
+    }
   },
   "Review": {
     "commentLine": "Comment on line {line}",

@@ -24,7 +24,7 @@ export interface VerificationInput {
   fingerprint: string;
   command: RegisteredCheck;
   /** Recheck launch identity/trust against the frozen copy immediately before spawning. */
-  beforeLaunch?: (directory: string) => Promise<void>;
+  beforeLaunch?: (directory: string) => Promise<string | undefined>;
 }
 
 /** One check owns its immutable Git copy and child process group until cleanup completes. */
@@ -78,6 +78,7 @@ export class VerificationRunner {
     let copied = false;
     let processClosed = true;
     let groupGone = true;
+    let executable = command.argv[0] as string;
     try {
       if (!cancellation.aborted) {
         await mkdir(input.copyRoot, { recursive: true, mode: 0o700 });
@@ -97,7 +98,7 @@ export class VerificationRunner {
           await git(input.sourceDirectory, ['worktree', 'add', '--detach', directory, commit]);
           copied = true;
           home = await mkdtemp(join(input.copyRoot, `${id}-home-`));
-          await input.beforeLaunch?.(directory);
+          executable = (await input.beforeLaunch?.(directory)) ?? executable;
         }
       }
       if (cancellation.aborted) report = { ...report, state: 'cancelled' };
@@ -156,7 +157,7 @@ export class VerificationRunner {
             cancelCleanup = this.timers.after(3000, () => finish(null, null, false));
           };
           try {
-            child = this.spawn(command.argv[0] as string, command.argv.slice(1), {
+            child = this.spawn(executable, command.argv.slice(1), {
               cwd: directory,
               shell: false,
               detached: process.platform !== 'win32',
@@ -237,7 +238,7 @@ export class VerificationRunner {
     }
     report = {
       ...report,
-      durationMs: Math.max(0, this.clock.monotonicMs() - start),
+      durationMs: Math.max(0, Math.round(this.clock.monotonicMs() - start)),
       endedAt: this.clock.nowIso(),
       output: output.finish(),
     };

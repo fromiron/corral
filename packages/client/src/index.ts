@@ -15,6 +15,7 @@ import {
   type StartRunRequest,
   type StreamFrame,
   type TeamPlan,
+  type VerificationReport,
 } from '@corral/contracts';
 import type {
   CorralRecord,
@@ -903,6 +904,7 @@ export interface VerificationResultView {
   startedAt: string;
   endedAt: string | null;
   stale: boolean;
+  report?: VerificationReport | null;
 }
 
 export interface FileOperationView {
@@ -1011,6 +1013,13 @@ export class WorkspacesApi {
   }
   verifications(sessionId: string): Promise<VerificationResultView[]> {
     return this.send(`/sessions/${encodeURIComponent(sessionId)}/verifications`);
+  }
+  cancelVerification(sessionId: string, verificationId: string): Promise<void> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/verifications/${encodeURIComponent(verificationId)}/cancel`,
+      'POST',
+      {},
+    );
   }
   verify(sessionId: string, commandId: string): Promise<{ verificationId: string }> {
     return this.send(`/sessions/${encodeURIComponent(sessionId)}/verifications`, 'POST', {

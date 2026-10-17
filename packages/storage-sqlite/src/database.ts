@@ -361,6 +361,10 @@ ${IMMUTABLE('project_tool_revisions')}
       }
     },
   },
+  {
+    name: '0009_verification_reports',
+    sql: 'ALTER TABLE verifications ADD COLUMN report_json TEXT;',
+  },
 ];
 
 /** History queries must neither recover active runs nor migrate the workspace. */

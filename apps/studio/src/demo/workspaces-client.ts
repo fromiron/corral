@@ -39,6 +39,7 @@ export function createDemoWorkspaces(
     markReviewed: (sessionId) => as(call('markReviewed', sessionId)),
     verifications: (sessionId) => as(call('verifications', sessionId)),
     verify: () => as(call('verify')),
+    cancelVerification: () => as(call('verify')),
     fileOperations: (sessionId) => as(call('fileOperations', sessionId)),
     runSnapshots: (sessionId) => as(call('runSnapshots', sessionId)),
     comments: (sessionId) => as(call('listComments', sessionId)),

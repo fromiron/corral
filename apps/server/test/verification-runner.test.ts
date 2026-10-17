@@ -104,7 +104,7 @@ describe('owned verification runner', () => {
       state: 'completed',
       verdict: 'pass',
       exitCode: 0,
-      durationMs: 250,
+      durationMs: 251,
       cleanupConfirmed: true,
     });
     expect(report.output.text).toContain('original');

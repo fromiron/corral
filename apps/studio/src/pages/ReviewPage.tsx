@@ -477,6 +477,16 @@ export function Checks({
   const t = useTranslations('Files');
   const { workspaces, mode } = useServices();
   const [results, setResults] = useState<VerificationResultView[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const checkAction = async (action: Promise<unknown>) => {
+    setError(null);
+    try {
+      await action;
+      await reload();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
+    }
+  };
   const reload = useCallback(async () => {
     if (workspaces) setResults(await workspaces.verifications(sessionId).catch(() => []));
   }, [workspaces, sessionId]);
@@ -496,6 +506,14 @@ export function Checks({
       <h3 id="checks-heading" className="text-sm font-semibold">
         {t('checksHeading')}
       </h3>
+      {mode !== 'browser' && commands.length ? (
+        <p className="text-xs text-muted">{t('isolatedChecksNote')}</p>
+      ) : null}
+      {error ? (
+        <p role="alert" className="text-xs text-danger">
+          {error}
+        </p>
+      ) : null}
       {commands.length === 0 ? (
         <p className="text-xs text-muted">
           {mode === 'browser' ? t('checksServerOnly') : t('noChecks')}
@@ -507,7 +525,7 @@ export function Checks({
             key={command.id}
             type="button"
             disabled={running}
-            onClick={() => void workspaces?.verify(sessionId, command.id).then(reload)}
+            onClick={() => workspaces && void checkAction(workspaces.verify(sessionId, command.id))}
             className="rounded border border-accent px-2 py-0.5 text-xs text-accent disabled:opacity-50"
           >
             {t('runCheck', { name: command.name })}
@@ -528,8 +546,21 @@ export function Checks({
                   r.state === 'passed' ? 'text-success' : r.state === 'running' ? '' : 'text-danger'
                 }
               >
-                {t(`checkState.${r.state}`)}
+                {r.report ? t(`checkReportState.${r.report.state}`) : t(`checkState.${r.state}`)}
               </span>
+              {r.report ? <span>{t(`checkVerdict.${r.report.verdict}`)}</span> : null}
+              {r.state === 'running' && r.report?.owner.kind === 'manual' ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() =>
+                    workspaces &&
+                    void checkAction(workspaces.cancelVerification(sessionId, r.verificationId))
+                  }
+                >
+                  {t('cancelCheck')}
+                </Button>
+              ) : null}
               {r.endedAt ? (
                 <span className="text-muted">
                   {t('checkMeta', { code: r.exitCode ?? '—', ms: r.durationMs ?? 0 })}
@@ -538,6 +569,22 @@ export function Checks({
               {r.timedOut ? <span className="text-danger">{t('timedOut')}</span> : null}
               {r.stale ? <span className="text-warning">{t('stale')}</span> : null}
             </div>
+            {r.report ? (
+              <details className="text-muted">
+                <summary>{t('checkEvidence')}</summary>
+                <p>
+                  {t('checkFingerprint', {
+                    revision: r.report.configRevision,
+                    hash: r.report.fingerprint.slice(0, 12),
+                    tree: r.tree.slice(0, 12),
+                  })}
+                </p>
+                <p>{t('checkRetention', { date: r.report.retainUntil })}</p>
+                {!r.report.cleanupConfirmed && r.report.endedAt ? (
+                  <p className="text-warning">{t('checkCleanupUnknown')}</p>
+                ) : null}
+              </details>
+            ) : null}
             {r.output ? (
               <details>
                 <summary className="cursor-pointer text-muted">{r.argv.join(' ')}</summary>

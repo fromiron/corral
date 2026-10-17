@@ -309,7 +309,9 @@ async function createCorralServer(
     clock,
     worktreeRoot: options.worktreeRoot ?? defaultWorktreeRoot(),
     forbidden: [join(workspace.root, '.corral'), userConfigDir()],
+    timers: options.timers ?? systemTimers,
   });
+  resources.defer(() => files.dispose());
 
   const review = new ReviewService({ db, clock, files });
   const harnesses = new HarnessService({
@@ -1013,6 +1015,18 @@ async function createCorralServer(
       return workspaceFail(reply, error);
     }
   });
+  app.post<{ Params: { sessionId: string; verificationId: string } }>(
+    '/api/v1/sessions/:sessionId/verifications/:verificationId/cancel',
+    async (request, reply) => {
+      if (!(await sessionOr404(reply, request.params.sessionId))) return reply;
+      try {
+        files.cancelVerification(request.params.sessionId, request.params.verificationId);
+        return reply.code(204).send();
+      } catch (error) {
+        return workspaceFail(reply, error);
+      }
+    },
+  );
   app.get<SessionParams>('/api/v1/sessions/:sessionId/run-snapshots', async (request) =>
     files.runSnapshots(request.params.sessionId),
   );
@@ -1296,10 +1310,15 @@ async function createCorralServer(
                 patch.after.criteriaVersionId === versionId),
           ) ||
           coordinator.getRunSnapshot(runId)?.criteriaVersionId === versionId ||
-          store.readEvents(runId, 0).some(event =>
-            ((event.type === 'extension.ui_requested' || event.type === 'extension.ui_notified') && event.payload.bodyRef === versionId) ||
-            (event.type === 'extension.ui_answered' && event.payload.answerRef === versionId),
-          ));
+          store
+            .readEvents(runId, 0)
+            .some(
+              (event) =>
+                ((event.type === 'extension.ui_requested' ||
+                  event.type === 'extension.ui_notified') &&
+                  event.payload.bodyRef === versionId) ||
+                (event.type === 'extension.ui_answered' && event.payload.answerRef === versionId),
+            ));
       const text = known ? coordinator.getArtifactText(runId, versionId) : null;
       return text === null ? fail(reply, 'TARGET_NOT_FOUND', 'no such version') : { text };
     },

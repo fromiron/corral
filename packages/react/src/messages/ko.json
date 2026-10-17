@@ -1312,7 +1312,26 @@
     "makeCopyThere": "작업 복사본 준비",
     "retry": "다시 시도",
     "runChangedNothing": "이 Run은 파일을 바꾸지 않았어요.",
-    "nothingChanged": "바뀐 파일이 없어요."
+    "nothingChanged": "바뀐 파일이 없어요.",
+    "isolatedChecksNote": "검사는 시작 시점의 별도 복사본에서 실행합니다. Git 제외 대상인 의존성은 복사하지 않으므로, 필요하면 의존성을 준비하는 검사 스크립트를 등록하세요.",
+    "cancelCheck": "검사 중지",
+    "checkEvidence": "실행 근거",
+    "checkFingerprint": "설정 r{revision} · fingerprint {hash} · tree {tree}",
+    "checkRetention": "출력 보존 기한: {date}",
+    "checkCleanupUnknown": "프로세스 정리를 확인하지 못했습니다. 통과 근거로 사용할 수 없습니다.",
+    "checkReportState": {
+      "queued": "대기",
+      "running": "실행 중",
+      "completed": "실행 완료",
+      "error": "실행 오류",
+      "cancelled": "취소됨"
+    },
+    "checkVerdict": {
+      "pass": "통과",
+      "fail": "실패",
+      "inconclusive": "판정 불가",
+      "not_evaluated": "미평가"
+    }
   },
   "Review": {
     "commentLine": "{line}번째 줄에 의견",
