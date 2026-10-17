@@ -119,6 +119,11 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
               {t('unlink')}
             </button>
           </div>
+          {binding.missing ? (
+            <p role="alert" className="text-xs text-danger">
+              {t('folderMissing', { path: binding.path })}
+            </p>
+          ) : null}
           {binding.isGit && binding.status ? (
             <p className="text-xs text-muted">
               {t('gitStatus', {
@@ -230,6 +235,11 @@ export function WorkingCopyPanel({
       <h3 id="copy-heading" className="text-sm font-semibold">
         {t('copyHeading')}
       </h3>
+      {worktree?.missing ? (
+        <p role="alert" className="text-xs text-danger">
+          {t('copyMissing')}
+        </p>
+      ) : null}
       {worktree ? (
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs text-muted">

@@ -66,6 +66,8 @@ export interface SessionEntry {
   executionId: string | null;
   /** Why it was refused or not delivered, in the runtime's words. */
   detail: string | null;
+  /** The command it was sent as, so its receipt and Reins delivery can be looked up. */
+  commandId?: string | null;
 }
 
 export interface WorkSession {
@@ -107,6 +109,7 @@ export interface NewSessionEntry {
   runId?: string | null;
   executionId?: string | null;
   detail?: string | null;
+  commandId?: string | null;
 }
 
 export interface CorralRecord {
@@ -284,6 +287,7 @@ export function planSessionEntry(
           runId: entry.runId ?? null,
           executionId: entry.executionId ?? null,
           detail: entry.detail ?? null,
+          commandId: entry.commandId ?? null,
         },
       ],
     },

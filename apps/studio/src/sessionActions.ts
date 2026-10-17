@@ -79,13 +79,14 @@ export async function steer(
   runId: string,
   executionId: string,
   text: string,
-): Promise<{ sent: boolean; detail: string | null }> {
+): Promise<{ sent: boolean; detail: string | null; commandId: string }> {
+  const commandId = newCommandId();
   const receipt = await services.transport.sendCommand({
     schemaVersion: '0.1',
-    commandId: newCommandId(),
+    commandId,
     runId,
     type: 'steer',
     payload: { targetExecutionId: executionId, text, delivery: 'next_request' },
   });
-  return { sent: !receipt.error, detail: receipt.error?.message ?? null };
+  return { sent: !receipt.error, detail: receipt.error?.message ?? null, commandId };
 }

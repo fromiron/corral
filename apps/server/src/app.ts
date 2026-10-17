@@ -196,6 +196,7 @@ const NewEntry = z.strictObject({
   runId: Identifier.nullable().optional(),
   executionId: Identifier.nullable().optional(),
   detail: z.string().max(2000).nullable().optional(),
+  commandId: Identifier.nullable().optional(),
 });
 const EntryChange = z.strictObject({
   state: EntryState,
