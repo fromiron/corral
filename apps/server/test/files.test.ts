@@ -260,6 +260,42 @@ describe('file broker (CR-012)', () => {
     };
     return { ...s, root, input, cancellation: { aborted: false, onCancel: () => () => {} } };
   }
+  async function proposalSetup() {
+    const s = await lspSetup('normal', {query:async input=>({kind:'edits',actions:[{title:'Update names',edit:{documentChanges:[{textDocument:{uri:input.document.uri,version:1},edits:[{range:{start:{line:0,character:0},end:{line:0,character:3}},newText:'updated'}]},{textDocument:{uri:new URL('./b.txt',input.document.uri).href,version:null},edits:[{range:{start:{line:0,character:0},end:{line:0,character:6}},newText:'changed'}]}]}}],durationMs:1,truncated:false})});
+    const input={...s.input,query:{...s.input.query,operation:'rename' as const,newName:'updated'}};
+    const plan=await s.service.planLsp(input,s.cancellation);
+    const result=await s.service.runLsp(input,plan,plan.fingerprint,s.cancellation);
+    if(result.result.kind!=='proposals' || !result.result.proposals[0])throw new Error('proposal missing');
+    const proposal=s.service.lspProposal('session_1',result.result.proposals[0].proposalId);
+    return {...s,input,proposal};
+  }
+  it('[TC-HAR-018-H] persists a pinned proposal, waits for explicit idle-session apply and never writes twice',async()=>{
+    const s=await proposalSetup();
+    expect(s.proposal.state).toBe('pending');
+    expect(s.service.lspProposals('session_1')).toHaveLength(1);
+    expect(readFileSync(join(s.root,'a.txt'),'utf8')).toBe('one\n');
+    expect(readFileSync(join(s.root,'b.txt'),'utf8')).toBe('target\n');
+    await expect(s.service.applyLspProposal('session_1',s.proposal.proposalId,s.proposal.hash)).rejects.toThrow(/run|Run/);
+    s.db.prepare("UPDATE runs SET status='succeeded' WHERE id='run_1'").run();
+    await expect(s.service.applyLspProposal('session_1',s.proposal.proposalId,'0'.repeat(64))).rejects.toThrow(/hash|changed/);
+    expect((await s.service.applyLspProposal('session_1',s.proposal.proposalId,s.proposal.hash)).state).toBe('applied');
+    expect(readFileSync(join(s.root,'a.txt'),'utf8')).toBe('updated\n');
+    expect(readFileSync(join(s.root,'b.txt'),'utf8')).toBe('changed\n');
+    expect((await s.service.applyLspProposal('session_1',s.proposal.proposalId,s.proposal.hash)).state).toBe('applied');
+    expect(s.db.prepare('SELECT * FROM file_operations').all()).toHaveLength(2);
+    expect(()=>s.service.lspProposal('different_session',s.proposal.proposalId)).toThrow();
+    s.db.close();
+  });
+  it('[TC-HAR-018-N] preflights every file before the first write and rejects a stale proposal',async()=>{
+    const s=await proposalSetup();
+    s.db.prepare("UPDATE runs SET status='succeeded' WHERE id='run_1'").run();
+    writeFileSync(join(s.root,'b.txt'),'external change\n');
+    const result=await s.service.applyLspProposal('session_1',s.proposal.proposalId,s.proposal.hash);
+    expect(result.state).toBe('stale');
+    expect(readFileSync(join(s.root,'a.txt'),'utf8')).toBe('one\n');
+    expect(s.db.prepare('SELECT * FROM file_operations').all()).toHaveLength(0);
+    s.db.close();
+  });
   it('[TC-HAR-010-H] LSP results are relative, pinned and do not create agent write evidence for returned locations', async () => {
     const s = await lspSetup('other_file');
     const plan = await s.service.planLsp(s.input, s.cancellation);
