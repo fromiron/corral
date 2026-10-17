@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { constants, existsSync } from 'node:fs';
 import {
+  link,
   lstat,
   mkdir,
   open,
@@ -171,14 +172,77 @@ async function assertPlainPath(root: string, rel: string): Promise<'file' | 'mis
   return 'missing';
 }
 
-function decodeText(bytes: Buffer): string | null {
+function decodeText(bytes: Buffer, preserveBom = false): string | null {
   if (bytes.includes(0)) return null;
   try {
-    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    return new TextDecoder('utf-8', { fatal: true, ignoreBOM: preserveBom }).decode(bytes);
   } catch {
     return null;
   }
 }
+
+/** Bounded bytes only; human reads never update an execution's evidence ledger. */
+async function boundedFile(
+  root: string,
+  rel: string,
+): Promise<{ bytes: Buffer | null; size: number }> {
+  if ((await assertPlainPath(root, rel)) !== 'file')
+    throw new ToolRefusal('TARGET_NOT_FOUND', `${rel} is not a file`);
+  const handle = await open(join(root, rel), constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const info = await handle.stat();
+    if (!info.isFile() || (await realpath(join(root, rel))) !== resolve(root, rel))
+      throw new ToolRefusal(
+        'CAPABILITY_DENIED',
+        'only plain files in the working copy can be read',
+      );
+    const current = await lstat(join(root, rel));
+    if (current.ino !== info.ino || current.dev !== info.dev)
+      throw new ToolRefusal('REVISION_CONFLICT', `${rel} changed while opening`);
+    if (info.size > MAX_TEXT) return { bytes: null, size: info.size };
+    const buffer = Buffer.alloc(MAX_TEXT + 1);
+    let size = 0;
+    while (size < buffer.length) {
+      const { bytesRead } = await handle.read(buffer, size, buffer.length - size, size);
+      if (!bytesRead) break;
+      size += bytesRead;
+    }
+    const after = await handle.stat();
+    if (
+      after.size !== info.size ||
+      after.mtimeMs !== info.mtimeMs ||
+      after.ctimeMs !== info.ctimeMs
+    )
+      throw new ToolRefusal('REVISION_CONFLICT', `${rel} changed while reading`);
+    return { bytes: size > MAX_TEXT ? null : buffer.subarray(0, size), size };
+  } finally {
+    await handle.close();
+  }
+}
+
+async function textBytes(root: string, rel: string) {
+  const { bytes } = await boundedFile(root, rel);
+  if (!bytes) throw new ToolRefusal('LIMIT_REACHED', `${rel} is larger than 1 MiB`);
+  return bytes;
+}
+
+async function expectFile(root: string, rel: string, expected: string | null) {
+  const kind = await assertPlainPath(root, rel);
+  if (
+    expected === null
+      ? kind === 'missing'
+      : kind === 'file' && sha256(await textBytes(root, rel)) === expected
+  )
+    return;
+  throw new ToolRefusal('REVISION_CONFLICT', `${rel} changed since the operation was prepared`);
+}
+
+type MutationIo = {
+  writeFile: typeof writeFile;
+  rename: typeof rename;
+  unlink: typeof unlink;
+  link: typeof link;
+};
 
 interface BindingRow {
   id: string;
@@ -200,6 +264,7 @@ interface WorktreeRow {
 }
 
 export class WorkspaceService implements FileTools {
+  private readonly io: MutationIo;
   readonly projectTools: SqliteProjectToolStore;
   private readonly verificationRunner: VerificationRunner;
   private readonly newVerificationId: () => string;
@@ -228,9 +293,11 @@ export class WorkspaceService implements FileTools {
     forbidden: string[];
     timers?: Scheduler;
     newVerificationId?: () => string;
+    io?: Partial<MutationIo>;
     edit?: (request: EditTextRequest, cancellation: ToolCancellation) => Promise<EditTextResult>;
   }) {
     this.db = options.db;
+    this.io = { writeFile, rename, unlink, link, ...options.io };
     this.clock = options.clock;
     this.projectTools = new SqliteProjectToolStore(options.db, options.clock);
     this.verificationRunner = new VerificationRunner({
@@ -866,31 +933,13 @@ export class WorkspaceService implements FileTools {
   ): Promise<{ path: string; content: FileSide }> {
     const { root } = await this.browseRoot(scope);
     const rel = safeRelative(path);
-    if ((await assertPlainPath(root, rel)) !== 'file')
-      throw new WorkspaceError('TARGET_NOT_FOUND', 'the file is unavailable');
-    const handle = await open(join(root, rel), constants.O_RDONLY | constants.O_NOFOLLOW);
-    try {
-      const info = await handle.stat();
-      if (!info.isFile())
-        throw new WorkspaceError('CAPABILITY_DENIED', 'only plain files can be read');
-      if (info.size > MAX_TEXT)
-        return { path: rel, content: { kind: 'too_large', bytes: info.size } };
-      const buffer = Buffer.alloc(MAX_TEXT + 1);
-      let size = 0;
-      while (size < buffer.length) {
-        const { bytesRead } = await handle.read(buffer, size, buffer.length - size, size);
-        if (!bytesRead) break;
-        size += bytesRead;
-      }
-      if (size > MAX_TEXT) return { path: rel, content: { kind: 'too_large', bytes: size } };
-      const text = decodeText(buffer.subarray(0, size));
-      return {
-        path: rel,
-        content: text === null ? { kind: 'binary', bytes: size } : { kind: 'text', text },
-      };
-    } finally {
-      await handle.close();
-    }
+    const { bytes, size } = await boundedFile(root, rel);
+    if (!bytes) return { path: rel, content: { kind: 'too_large', bytes: size } };
+    const text = decodeText(bytes);
+    return {
+      path: rel,
+      content: text === null ? { kind: 'binary', bytes: size } : { kind: 'text', text },
+    };
   }
 
   verifications(sessionId: string, currentTree: string | null): VerificationView[] {
@@ -1250,12 +1299,12 @@ export class WorkspaceService implements FileTools {
         const args = PiEditInput.parse(input.args);
         return this.lease(root, async () => {
           const before = await this.requireRead(root, args.path, reads);
-          const bytes = await readFile(join(root, args.path));
+          const bytes = await textBytes(root, args.path);
           if (bytes.length > MAX_TEXT)
             throw new ToolRefusal('LIMIT_REACHED', 'files are at most 1 MiB');
           if (sha256(bytes) !== before)
             throw new ToolRefusal('CAPABILITY_DENIED', `${args.path} changed since it was read`);
-          const text = decodeText(bytes);
+          const text = decodeText(bytes, true);
           if (text === null) throw new ToolRefusal('CAPABILITY_DENIED', 'edit requires UTF-8 text');
           if (cancellation.aborted)
             throw new ToolRefusal('TARGET_TERMINAL', 'the task was cancelled');
@@ -1271,6 +1320,7 @@ export class WorkspaceService implements FileTools {
             { ...input, name: 'write_file', args: { path: args.path, text: edited.text } },
             reads,
             cancellation,
+            before,
           );
           return { ...applied, piResult: edited.result };
         });
@@ -1281,7 +1331,7 @@ export class WorkspaceService implements FileTools {
         const rel = safeRelative(String(input.args.path));
         const kind = await assertPlainPath(root, rel);
         if (kind !== 'file') throw new ToolRefusal('TARGET_NOT_FOUND', `${rel} is not a file`);
-        const bytes = await readFile(join(root, rel));
+        const bytes = await textBytes(root, rel);
         if (bytes.length > MAX_TEXT)
           throw new ToolRefusal('LIMIT_REACHED', `${rel} is larger than 1 MiB`);
         const text = decodeText(bytes);
@@ -1362,7 +1412,7 @@ export class WorkspaceService implements FileTools {
 
   /** What an existing file must look like before it may be changed: as this run read it. */
   private async requireRead(root: string, rel: string, reads: Map<string, string>) {
-    const current = sha256(await readFile(join(root, rel)));
+    const current = sha256(await textBytes(root, rel));
     const read = reads.get(rel);
     if (!read) throw new ToolRefusal('REVISION_CONFLICT', `read ${rel} before changing it`);
     if (read !== current)
@@ -1382,6 +1432,7 @@ export class WorkspaceService implements FileTools {
     },
     reads: Map<string, string>,
     cancellation: ToolCancellation,
+    expectedBefore?: string,
   ): Promise<Record<string, unknown>> {
     const now = () => this.clock.nowIso();
     const opId = `fileop_${randomUUID().slice(0, 12)}`;
@@ -1412,7 +1463,7 @@ export class WorkspaceService implements FileTools {
           now(),
           now(),
         );
-    const settle = (state: 'applied' | 'failed', detail: string | null = null) =>
+    const settle = (state: 'applied' | 'failed' | 'uncertain', detail: string | null = null) =>
       this.db
         .prepare('UPDATE file_operations SET state = ?, detail = ?, updated_at = ? WHERE id = ?')
         .run(state, detail, now(), opId);
@@ -1429,26 +1480,44 @@ export class WorkspaceService implements FileTools {
       const kind = await assertPlainPath(root, rel);
       if (kind === 'other')
         throw new ToolRefusal('CAPABILITY_DENIED', `${rel} is not a plain file`);
-      const before = kind === 'file' ? await this.requireRead(root, rel, reads) : null;
+      if (expectedBefore !== undefined) await expectFile(root, rel, expectedBefore);
+      const before =
+        expectedBefore ?? (kind === 'file' ? await this.requireRead(root, rel, reads) : null);
       const after = sha256(bytes);
       guard();
       plan('write', rel, null, before, after);
+      let applied = false;
+      let temporary: string | undefined;
       try {
         const full = join(root, rel);
         await mkdir(dirname(full), { recursive: true });
-        if ((await assertPlainPath(root, rel)) === 'other')
-          throw new Error('the path changed while writing');
+        await expectFile(root, rel, before);
         const mode = kind === 'file' ? (await stat(full)).mode : 0o644;
-        const temporary = join(
-          dirname(full),
-          `.${basename(full)}.corral-${randomUUID().slice(0, 8)}`,
-        );
-        await writeFile(temporary, bytes, { mode });
-        await rename(temporary, full);
+        temporary = join(dirname(full), `.${basename(full)}.corral-${randomUUID().slice(0, 8)}`);
+        await this.io.writeFile(temporary, bytes, { mode, flag: 'wx' });
+        await expectFile(root, rel, before);
+        guard();
+        // link is exclusive for a new destination; rename replaces only a checked existing file.
+        if (before === null) await this.io.link(temporary, full);
+        else await this.io.rename(temporary, full);
+        applied = true;
         settle('applied');
       } catch (error) {
-        settle('failed', String(error instanceof Error ? error.message : error).slice(0, 200));
-        throw new ToolRefusal('CAPABILITY_DENIED', `could not write ${rel}`);
+        try {
+          settle(
+            applied ? 'uncertain' : 'failed',
+            applied ? 'file changed but recording was not confirmed' : 'write did not complete',
+          );
+        } catch {
+          /* A planned row becomes uncertain on recovery. */
+        }
+        if (error instanceof ToolRefusal) throw error;
+        throw new ToolRefusal(
+          'CAPABILITY_DENIED',
+          applied ? `the change to ${rel} could not be recorded` : `could not write ${rel}`,
+        );
+      } finally {
+        if (temporary) await rm(temporary, { force: true });
       }
       reads.set(rel, after);
       return { path: rel, sha256: after, bytes: bytes.length, created: kind === 'missing' };
@@ -1461,12 +1530,24 @@ export class WorkspaceService implements FileTools {
       const before = await this.requireRead(root, rel, reads);
       guard();
       plan('delete', rel, null, before, null);
+      let applied = false;
       try {
-        await unlink(join(root, rel));
+        await expectFile(root, rel, before);
+        guard();
+        await this.io.unlink(join(root, rel));
+        applied = true;
         settle('applied');
       } catch (error) {
-        settle('failed', String(error).slice(0, 200));
-        throw new ToolRefusal('CAPABILITY_DENIED', `could not delete ${rel}`);
+        try {
+          settle(
+            applied ? 'uncertain' : 'failed',
+            applied ? 'file changed but recording was not confirmed' : 'delete did not complete',
+          );
+        } catch {
+          /* Recovered as uncertain. */
+        }
+        if (error instanceof ToolRefusal) throw error;
+        throw new ToolRefusal('CAPABILITY_DENIED', `could not confirm deletion of ${rel}`);
       }
       reads.delete(rel);
       return { path: rel, deleted: true };
@@ -1481,13 +1562,26 @@ export class WorkspaceService implements FileTools {
     const before = await this.requireRead(root, from, reads);
     guard();
     plan('move', from, to, before, before);
+    let applied = false;
     try {
       await mkdir(dirname(join(root, to)), { recursive: true });
-      await rename(join(root, from), join(root, to));
+      await expectFile(root, from, before);
+      await expectFile(root, to, null);
+      guard();
+      await this.io.rename(join(root, from), join(root, to));
+      applied = true;
       settle('applied');
     } catch (error) {
-      settle('failed', String(error).slice(0, 200));
-      throw new ToolRefusal('CAPABILITY_DENIED', `could not move ${from}`);
+      try {
+        settle(
+          applied ? 'uncertain' : 'failed',
+          applied ? 'file changed but recording was not confirmed' : 'move did not complete',
+        );
+      } catch {
+        /* Recovered as uncertain. */
+      }
+      if (error instanceof ToolRefusal) throw error;
+      throw new ToolRefusal('CAPABILITY_DENIED', `could not confirm movement of ${from}`);
     }
     reads.delete(from);
     reads.set(to, before);

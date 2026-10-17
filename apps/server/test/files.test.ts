@@ -1,8 +1,16 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { writeFile } from 'node:fs/promises';
 import { openDatabase, SqliteProjectToolStore } from '@corral/storage-sqlite';
 import { FakeClock, Gate } from '@corral/testkit';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -20,7 +28,10 @@ afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-async function setup(edit?: ConstructorParameters<typeof WorkspaceService>[0]['edit'], io?: ConstructorParameters<typeof WorkspaceService>[0]['io']) {
+async function setup(
+  edit?: ConstructorParameters<typeof WorkspaceService>[0]['edit'],
+  io?: ConstructorParameters<typeof WorkspaceService>[0]['io'],
+) {
   const original = temp();
   const git = (...args: string[]) =>
     execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@e', ...args], { cwd: original });
@@ -62,45 +73,99 @@ async function setup(edit?: ConstructorParameters<typeof WorkspaceService>[0]['e
 
 describe('file broker (CR-012)', () => {
   it('[TC-HAR-010-N] an edit cannot resurrect a deleted original or replace its frozen hash with a later read', async () => {
-    for (const kind of ['deleted','reread']) {
-      const entered = new Gate(), release = new Gate();
-      const { service, call } = await setup(async () => { entered.open(); await release.wait(); return { text:'edited', result:{content:[],details:{diff:'',patch:''}} }; });
-      const root = service.copyOf('session_1')?.worktree; if (!root) throw new Error('no copy');
-      await call('read_file',{path:'a.txt'});
-      const pending = call('edit',{path:'a.txt',edits:[{oldText:'one',newText:'edited'}]});
+    for (const kind of ['deleted', 'reread']) {
+      const entered = new Gate(),
+        release = new Gate();
+      const { service, call } = await setup(async () => {
+        entered.open();
+        await release.wait();
+        return { text: 'edited', result: { content: [], details: { diff: '', patch: '' } } };
+      });
+      const root = service.copyOf('session_1')?.worktree;
+      if (!root) throw new Error('no copy');
+      await call('read_file', { path: 'a.txt' });
+      const pending = call('edit', {
+        path: 'a.txt',
+        edits: [{ oldText: 'one', newText: 'edited' }],
+      });
       const rejected = expect(pending).rejects.toThrow(/changed|missing|precondition/);
       await entered.wait();
-      if (kind==='deleted') rmSync(join(root,'a.txt'));
-      else { writeFileSync(join(root,'a.txt'),'external'); await call('read_file',{path:'a.txt'}); }
-      release.open(); await rejected;
-      if(kind==='deleted') expect(existsSync(join(root,'a.txt'))).toBe(false);
-      else expect(readFileSync(join(root,'a.txt'),'utf8')).toBe('external');
+      if (kind === 'deleted') rmSync(join(root, 'a.txt'));
+      else {
+        writeFileSync(join(root, 'a.txt'), 'external');
+        await call('read_file', { path: 'a.txt' });
+      }
+      release.open();
+      await rejected;
+      if (kind === 'deleted') expect(existsSync(join(root, 'a.txt'))).toBe(false);
+      else expect(readFileSync(join(root, 'a.txt'), 'utf8')).toBe('external');
     }
   });
   it('[TC-HAR-010-H] broker edit preserves BOM and CRLF bytes through the public Pi transformer', async () => {
-    const { service,call } = await setup(); const root=service.copyOf('session_1')?.worktree; if(!root) throw new Error('no copy');
-    writeFileSync(join(root,'a.txt'),'\ufeffone\r\ntwo\r\n');
-    await call('read_file',{path:'a.txt'});
-    await call('edit',{path:'a.txt',edits:[{oldText:'one',newText:'ONE'}]});
-    expect(readFileSync(join(root,'a.txt'),'utf8')).toBe('\ufeffONE\r\ntwo\r\n');
+    const { service, call } = await setup();
+    const root = service.copyOf('session_1')?.worktree;
+    if (!root) throw new Error('no copy');
+    writeFileSync(join(root, 'a.txt'), '\ufeffone\r\ntwo\r\n');
+    await call('read_file', { path: 'a.txt' });
+    await call('edit', { path: 'a.txt', edits: [{ oldText: 'one', newText: 'ONE' }] });
+    expect(readFileSync(join(root, 'a.txt'), 'utf8')).toBe('\ufeffONE\r\ntwo\r\n');
   });
   it('[TC-HAR-011-N] cancellation or destination creation after staging cannot be overwritten and temporary files are removed', async () => {
-    for(const reason of ['cancel','created']) {
-      let aborted=false, root='';
-      const { service,call }=await setup(undefined,{writeFile:async(...args:Parameters<typeof writeFile>)=> { await writeFile(...args); if(reason==='cancel') aborted=true; else writeFileSync(join(root,'new.txt'),'external'); }});
-      root=service.copyOf('session_1')?.worktree ?? ''; await call('read_file',{path:'a.txt'});
-      const path=reason==='cancel'?'a.txt':'new.txt';
-      await expect(service.execute({name:'write_file',args:{path,text:'agent'},runId:'run_1',executionId:'exec_1',toolCallId:'write_guard'}, {get aborted(){return aborted;},onCancel:()=>()=>{}})).rejects.toThrow();
-      expect(readFileSync(join(root,path),'utf8')).toBe(reason==='cancel'?'one\n':'external');
-      expect((await service.listFiles({kind:'session',id:'session_1'})).files.some(file=>file.path.includes('.corral-'))).toBe(false);
+    for (const reason of ['cancel', 'created']) {
+      let aborted = false,
+        root = '';
+      const { service, call } = await setup(undefined, {
+        writeFile: async (...args: Parameters<typeof writeFile>) => {
+          await writeFile(...args);
+          if (reason === 'cancel') aborted = true;
+          else writeFileSync(join(root, 'new.txt'), 'external');
+        },
+      });
+      root = service.copyOf('session_1')?.worktree ?? '';
+      await call('read_file', { path: 'a.txt' });
+      const path = reason === 'cancel' ? 'a.txt' : 'new.txt';
+      await expect(
+        service.execute(
+          {
+            name: 'write_file',
+            args: { path, text: 'agent' },
+            runId: 'run_1',
+            executionId: 'exec_1',
+            toolCallId: 'write_guard',
+          },
+          {
+            get aborted() {
+              return aborted;
+            },
+            onCancel: () => () => {},
+          },
+        ),
+      ).rejects.toThrow();
+      expect(readFileSync(join(root, path), 'utf8')).toBe(
+        reason === 'cancel' ? 'one\n' : 'external',
+      );
+      expect(
+        (await service.listFiles({ kind: 'session', id: 'session_1' })).files.some((file) =>
+          file.path.includes('.corral-'),
+        ),
+      ).toBe(false);
     }
   });
   it('[TC-HAR-011-N] a successful file replacement with failed bookkeeping stays uncertain, not failed', async () => {
-    const {service,call,db}=await setup(); await call('read_file',{path:'a.txt'});
-    db.exec("CREATE TRIGGER reject_applied BEFORE UPDATE ON file_operations WHEN NEW.state = 'applied' BEGIN SELECT RAISE(ABORT, 'test recording failed'); END;");
-    await expect(call('write_file',{path:'a.txt',text:'physically changed'})).rejects.toThrow();
-    expect((db.prepare('SELECT state FROM file_operations').get() as {state:string}).state).toBe('uncertain');
-    expect(readFileSync(join(service.copyOf('session_1')?.worktree ?? '', 'a.txt'),'utf8')).toBe('physically changed');
+    const { service, call, db } = await setup();
+    await call('read_file', { path: 'a.txt' });
+    db.exec(
+      "CREATE TRIGGER reject_applied BEFORE UPDATE ON file_operations WHEN NEW.state = 'applied' BEGIN SELECT RAISE(ABORT, 'test recording failed'); END;",
+    );
+    await expect(
+      call('write_file', { path: 'a.txt', text: 'physically changed' }),
+    ).rejects.toThrow();
+    expect((db.prepare('SELECT state FROM file_operations').get() as { state: string }).state).toBe(
+      'uncertain',
+    );
+    expect(readFileSync(join(service.copyOf('session_1')?.worktree ?? '', 'a.txt'), 'utf8')).toBe(
+      'physically changed',
+    );
   });
   it('[TC-HAR-012-N] automatic checks enforce pinned selection, exact fingerprint approval, owner and stale-tree rejection', async () => {
     const { service, call } = await setup();
