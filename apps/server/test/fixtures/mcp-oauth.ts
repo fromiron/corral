@@ -7,6 +7,7 @@ export async function oauthFixture() {
   let challenge = '';
   let redirectUri = '';
   let exchanges = 0;
+  let mcpCalls = 0;
   let refreshes = 0;
   let grantScope = 'docs:read';
   let beforeRefresh: (() => Promise<void>) | undefined;
@@ -35,6 +36,44 @@ export async function oauthFixture() {
     const chunks: Buffer[] = [];
     for await (const chunk of request) chunks.push(Buffer.from(chunk));
     const body = Buffer.concat(chunks).toString();
+    if (url.pathname === '/mcp') {
+      if (request.headers.authorization !== `Bearer fixture-access-${refreshes}`) {
+        response.setHeader('www-authenticate', 'Bearer error="invalid_token"');
+        return json({ error: 'unauthorized' }, 401);
+      }
+      if (request.method !== 'POST') {
+        response.writeHead(405);
+        return response.end();
+      }
+      const message = JSON.parse(body);
+      if (message.id === undefined) {
+        response.writeHead(202);
+        return response.end();
+      }
+      let result: unknown = {};
+      if (message.method === 'initialize')
+        result = {
+          protocolVersion: message.params.protocolVersion,
+          capabilities: { tools: {} },
+          serverInfo: { name: 'docs', version: '1' },
+        };
+      if (message.method === 'tools/list')
+        result = {
+          tools: [
+            {
+              name: 'echo',
+              description: 'Read fixture docs',
+              inputSchema: { type: 'object', properties: {} },
+              annotations: { readOnlyHint: true, openWorldHint: false },
+            },
+          ],
+        };
+      if (message.method === 'tools/call') {
+        mcpCalls++;
+        result = { content: [{ type: 'text', text: 'Local MCP result' }] };
+      }
+      return json({ jsonrpc: '2.0', id: message.id, result });
+    }
     if (url.pathname === '/register')
       return json({ ...JSON.parse(body), client_id: 'fixture-client' });
     if (url.pathname === '/authorize') {
@@ -81,6 +120,9 @@ export async function oauthFixture() {
   origin = `http://127.0.0.1:${address.port}`;
   return {
     url: `${origin}/mcp`,
+    get mcpCalls() {
+      return mcpCalls;
+    },
     get exchanges() {
       return exchanges;
     },

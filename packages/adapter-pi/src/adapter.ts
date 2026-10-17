@@ -125,14 +125,20 @@ class WorkerExecution {
     this.channel.onFrame((raw) => {
       this.queue = this.queue.then(() => this.receive(raw)).catch(() => this.violation());
     });
-    this.channel.onExit((code) => {
+    this.channel.onExit((code, cleanupConfirmed = true) => {
       // Drain already-received IPC before deciding whether the worker supplied a result.
       void this.queue.finally(() => {
         this.finish(
-          this.pendingSettlement ?? {
-            outcome: 'failed',
-            error: `the model worker stopped unexpectedly (${code === null ? 'killed' : `exit ${code}`})`,
-          },
+          !cleanupConfirmed
+            ? {
+                outcome: 'failed',
+                terminationMode: 'unconfirmed',
+                error: 'termination_unconfirmed',
+              }
+            : (this.pendingSettlement ?? {
+                outcome: 'failed',
+                error: `the model worker stopped unexpectedly (${code === null ? 'killed' : `exit ${code}`})`,
+              }),
         );
       });
     });

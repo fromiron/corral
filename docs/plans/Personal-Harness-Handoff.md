@@ -236,3 +236,13 @@ CORRAL_SPIKE_NODE=~/.local/share/fnm/node-versions/v24.19.0/installation/bin/nod
 - 다음 OAuth 구현은 **pi-mcp 공개** `McpOAuthProvider`, `authorizeMcp`, `adaptOAuthProvider`, `OAuthCallbackServer`를 사용한다. pi-coding-agent의 내부 `McpOAuthCredentialStore`는 root export가 없으므로 private deep import하지 않는다. Host의 별도 workspace 밖 private 저장소에 OAuth state/refresh를 두고, worker에는 고정 서버 ID 요청에 대한 bearer만 private IPC로 전달할 계획이다. scope 확장은 자동 처리하지 않는다. 로컬 MCP/OAuth fixture로 검증한다.
 - SDK `createMcpExtension`에 명시 loadConfig/createTransport를 제공하고 ambient mcp.json/미등록 서버를 거절한다. 내장 `/mcp` manager는 앱의 불변 설정·인증 경로를 우회하지 않게 노출하지 않는다. 동적 도구 registry 및 native 부모 승인 경계는 이미 구현됐다. 종료 시 session_shutdown await가 필요하다.
 - 모의 실행도 수정했다. `harness.simulated`를 별도로 기록해 실제 SDK load/provider payload를 꾸미지 않고 기본 Corral 흐름만 실행한다. UI에 실행하지 않은 범위를 표시한다. 통합 704 passed/3 opt-in skipped 후 별도 허위 provider 기록 거절 테스트 포함 core harness 23 tests 통과.
+
+### H8 MCP·OAuth·프로세스 정리 연결 (2026-10-18)
+
+- MCP stdio/Streamable HTTP를 Pi 공개 factory로 연결했다. 등록된 설정만 loadConfig/createTransport에 전달하고 미등록 서버·내장 설정 manager를 거절한다. 실제 관리 사본 cwd, 허용되지 않은 도구의 hidden 노출, 동적 descriptor와 native dispatch 재신뢰 검사를 연결했다.
+- workspace 밖 private MCP 인증 저장소와 공개 pi-mcp OAuth PKCE flow를 연결했다. 정확한 프로젝트/서버/credential reference/endpoint/scope에 묶으며, 토큰은 요청별 private IPC로만 전달한다. 401 갱신 직렬화, 로그아웃·scope/endpoint 변경·취소·늦은 callback·과도한 grant 거절, 토큰 없는 상태 API 테스트 통과. 신뢰를 철회한 뒤에도 로그아웃은 가능하다.
+- 설정 UI에서 서버 등록/수정/제거, 실행 fingerprint 신뢰, bearer 저장, OAuth 로그인/취소/로그아웃, 역할별 서버 선택과 preview를 제공한다. 구체적인 도구 이름은 기존 허용 도구 입력에서 지정한다(서버 선택만으로 모든 도구를 허용하지 않음).
+- 실제 브라우저 E2E: 서버 등록→신뢰→로컬 PKCE 로그인→역할 설정 고정→실제 HTTP MCP 도구 1회 실행→Run succeeded→신뢰 철회→로그아웃 통과. 실제 유료 모델/계정은 사용하지 않았다. 별도 actual SDK stdio 관리 사본 테스트도 통과.
+- Pi MCP stdio는 별도 process group이므로 SDK 소유자별 durable child registry를 추가했다. SDK 종료는 해당 서버 그룹 정리가 확인된 뒤 통지한다. 부모가 먼저 죽은 group도 살아 있는 구성원을 검사·정리한다. 정리 실패는 host를 무한 대기시키지 않고 termination_unconfirmed로 전달한다. 실제 프로세스/SDK 49 tests, 추가 실패 통지 16 tests 통과. Linux 확인이며 Windows 자손 정리는 여전히 검증 완료가 아니다.
+- MCP까지 넓은 회귀: 719 passed/3 opt-in skipped + 한국어 stdio 표기 2개가 locale 검사에서 실패했다. 두 문구를 한국어로 고친 뒤 locale 3 tests 통과. adapter/server/studio typecheck 통과. 최종 전체 gate는 이후 변경까지 다시 필요하다.
+- 다음 구현은 H8 LSP rename/code action의 불변 제안 및 명시 적용이다. H6 다섯 비교군 실제 SDK fixture, 최종 staging/전체 검증/Computer Use 및 PR도 여전히 남아 있다.

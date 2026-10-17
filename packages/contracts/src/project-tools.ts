@@ -35,7 +35,10 @@ export const RegisteredLspServer = z.strictObject({
 });
 export type RegisteredLspServer = z.infer<typeof RegisteredLspServer>;
 const McpCommon = {
-  id: z.string().regex(/^[a-z][a-z0-9_]{0,39}$/),
+  id: z
+    .string()
+    .regex(/^[a-z][a-z0-9_]{0,39}$/)
+    .refine((value) => !value.includes('__'), 'MCP namespace separator is reserved'),
   name: Launch.name,
   timeoutMs: Launch.timeoutMs.max(300000),
   exposure: z.enum(['direct', 'codemode']),

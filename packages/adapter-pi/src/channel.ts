@@ -13,7 +13,7 @@ export interface Channel {
   send(frame: unknown): void;
   onFrame(handler: (frame: unknown) => void): void;
   /** Called once when the worker is gone; `code` is null when it was killed by a signal. */
-  onExit(handler: (code: number | null) => void): void;
+  onExit(handler: (code: number | null, cleanupConfirmed?: boolean) => void): void;
   kill(): void;
 }
 
@@ -79,7 +79,7 @@ export function processChannel(
   child.stderr?.on('data', () => {});
   let exited = false;
   let releaseLease = () => {};
-  const exitHandlers: ((code: number | null) => void)[] = [];
+  const exitHandlers: ((code: number | null, cleanupConfirmed?: boolean) => void)[] = [];
   const stopChildren = () => {
     if (process.platform !== 'win32' && child.pid) {
       try {
@@ -93,13 +93,13 @@ export function processChannel(
     if (exited) return;
     stopChildren();
     exited = true;
-    const confirmed = () => {
+    const confirmed = (cleanupConfirmed = true) => {
       try {
-        releaseLease();
+        if (cleanupConfirmed) releaseLease();
       } catch {
         /* Remaining records are rechecked at startup. */
       }
-      for (const handler of exitHandlers) handler(code);
+      for (const handler of exitHandlers) handler(code, cleanupConfirmed);
     };
     if (options.childLeaseDirectory) {
       void recoverSdkWorkers(options.childLeaseDirectory)
@@ -108,7 +108,7 @@ export function processChannel(
           confirmed();
         })
         .catch(() => {
-          /* No exit acknowledgement: the adapter reports termination_unconfirmed. */
+          confirmed(false);
         });
     } else confirmed();
   };
@@ -168,7 +168,9 @@ export function sdkProcessChannel(
         NPM_CONFIG_GLOBALCONFIG: join(directory, 'global.npmrc'),
       },
     });
-    channel.onExit(() => rmSync(directory, { recursive: true, force: true }));
+    channel.onExit((_code, confirmed) => {
+      if (confirmed !== false) rmSync(directory, { recursive: true, force: true });
+    });
     return channel;
   } catch (error) {
     rmSync(directory, { recursive: true, force: true });

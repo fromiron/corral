@@ -2,10 +2,11 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { linearCorral } from '@corral/testkit';
 import { oauthFixture } from '../../../server/test/fixtures/mcp-oauth.ts';
 import { expect, test } from './harness.ts';
 
-test.use({ live: true });
+test.use({ live: true, codexLogin: true });
 test('[TC-HAR-016-H] reviews an MCP server, completes local OAuth and pins its role selection', async ({
   page,
   corral,
@@ -14,6 +15,18 @@ test('[TC-HAR-016-H] reviews an MCP server, completes local OAuth and pins its r
   const fixture = await oauthFixture();
   try {
     execFileSync('git', ['init', '-q', source]);
+    execFileSync('git', [
+      '-C',
+      source,
+      '-c',
+      'user.name=Fixture',
+      '-c',
+      'user.email=fixture@example.invalid',
+      'commit',
+      '--allow-empty',
+      '-qm',
+      'fixture',
+    ]);
     await corral.open('/settings/harness');
     await page.evaluate(async (source) => {
       const { csrfToken } = await (await fetch('/api/v1/session')).json();
@@ -62,6 +75,46 @@ test('[TC-HAR-016-H] reviews an MCP server, completes local OAuth and pins its r
     await page.getByRole('button', { name: 'Save work style', exact: true }).click();
     await page.getByRole('button', { name: 'Preview effective settings', exact: true }).click();
     await expect(page.getByTestId('harness-preview')).toContainText('MCP servers: docs');
+    corral.fake?.answerWith('MCP completed.', { mcpCall: { name: 'mcp__docs__echo', args: {} } });
+    const definition = linearCorral(['writer']);
+    definition.roles[0]!.modelProfile = 'model-b';
+    const ids = await page.evaluate(async (definition) => {
+      const { csrfToken } = await (await fetch('/api/v1/session')).json();
+      const call = async (path: string, body: unknown) => {
+        const response = await fetch(`/api/v1${path}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-corral-csrf': csrfToken },
+          body: JSON.stringify(body),
+        });
+        if (!response.ok) throw new Error(`setup ${path}: ${response.status}`);
+        return response.json();
+      };
+      const profiles = await (await fetch('/api/v1/harness/profiles')).json();
+      const profile = profiles.find((p: { name: string }) => p.name === 'MCP writer');
+      definition.roles[0]!.harness = { profileId: profile.profileId, revision: profile.revision };
+      const session = await call('/sessions', { projectId: 'default', title: 'MCP work' });
+      const sessionId = session.session.sessionId;
+      await call(`/sessions/${sessionId}/worktree`, {});
+      const saved = await call('/corrals', {
+        definition,
+        layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
+      });
+      const started = await call('/runs', {
+        schemaVersion: '0.1',
+        commandId: 'mcp-run',
+        corralId: saved.record.corralId,
+        definitionRevision: 1,
+        sessionId,
+        mode: 'live',
+      });
+      return { runId: started.runId };
+    }, definition);
+    await page.goto(`${corral.server.url}/runs/${ids.runId}?view=run`);
+    await expect(page.getByTestId('run-status').first()).toContainText('Succeeded');
+    expect(fixture.mcpCalls).toBe(1);
+    await page.goto(`${corral.server.url}/settings/harness`);
+    await page.getByRole('button', { name: 'Review launch for Local docs', exact: true }).click();
+
     await page.getByRole('button', { name: 'Revoke launch trust', exact: true }).click();
     await page.getByRole('button', { name: 'Sign out of Local docs', exact: true }).click();
     await expect(page.getByText('Sign-in required', { exact: true })).toBeVisible();

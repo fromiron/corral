@@ -56,8 +56,17 @@ it('[TC-HAR-004-N] resource entries stay relative to immutable bundles', () => {
 });
 
 import { RegisteredMcpServer } from '../src/project-tools.ts';
-it('[TC-HAR-016-N] MCP server IDs cannot contain the tool namespace separator',()=>{
- const server={id:'docs__other',name:'Docs',transport:'http',url:'https://example.invalid/mcp',auth:{kind:'none'},exposure:'direct',timeoutMs:1000};
- expect(RegisteredMcpServer.safeParse(server).success).toBe(false);
- expect(RegisteredMcpServer.safeParse({...server,id:'docs_other'}).success).toBe(true);
+
+it('[TC-HAR-016-N] MCP server IDs cannot contain the tool namespace separator', () => {
+  const server = {
+    id: 'docs__other',
+    name: 'Docs',
+    transport: 'http',
+    url: 'https://example.invalid/mcp',
+    auth: { kind: 'none' },
+    exposure: 'direct',
+    timeoutMs: 1000,
+  };
+  expect(RegisteredMcpServer.safeParse(server).success).toBe(false);
+  expect(RegisteredMcpServer.safeParse({ ...server, id: 'docs_other' }).success).toBe(true);
 });

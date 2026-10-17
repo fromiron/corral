@@ -10,6 +10,7 @@ import {
   envApiKeyAuth,
   fauxAssistantMessage,
   fauxToolCall,
+  type JsonObject,
   type OAuthAuth,
 } from '@earendil-works/pi-ai';
 import type { LiveModels } from './app.ts';
@@ -226,8 +227,22 @@ export function fakeOpenAI(
   };
 
   /** Scripts one live step: write `text`, submit it, finish. */
-  const answerWith = (text: string, options: { checkId?: string; lspQuery?: LspQuery } = {}) => {
+  const answerWith = (
+    text: string,
+    options: {
+      checkId?: string;
+      lspQuery?: LspQuery;
+      mcpCall?: { name: string; args: JsonObject };
+    } = {},
+  ) => {
     faux.setResponses([
+      ...(options.mcpCall
+        ? [
+            fauxAssistantMessage([fauxToolCall(options.mcpCall.name, options.mcpCall.args)], {
+              stopReason: 'toolUse',
+            }),
+          ]
+        : []),
       ...(options.lspQuery
         ? [
             fauxAssistantMessage([fauxToolCall('lsp_query', options.lspQuery)], {
