@@ -1040,7 +1040,6 @@ function RunCard({
   const t = useTranslations('Sessions');
   const ts = useTranslations('Status');
   const tf = useTranslations('Files');
-  const { workspaces } = useServices();
   const checks = useContext(RunChecks);
   const check = checks.of(run.runId);
   const ended = TERMINAL_RUN_STATUSES.has(run.status);
@@ -1075,7 +1074,8 @@ function RunCard({
         </p>
       ) : null}
       <RunMessage runId={run.runId} sessionId={run.sessionId ?? null} live={!ended} />
-      {ended && workspaces && run.sessionId ? (
+      {/* Only a session with a working copy has changes to review (its checks are known). */}
+      {ended && checks.known && run.sessionId ? (
         <div>
           <Button
             variant="outline"
