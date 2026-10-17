@@ -216,4 +216,37 @@ describe('TC-HAR-016 MCP credentials', () => {
       spy.mockRestore();
     }
   });
+  it.each(['logout', 'login'])(
+    'older %s cleanup cannot cancel a newly started OAuth login',
+    async (action) => {
+      const ctx = await setup();
+      await ctx.credentials.startOAuth('p', ctx.server, current);
+      const entered = Promise.withResolvers<void>(),
+        release = Promise.withResolvers<void>();
+      const cancel = ctx.credentials.cancelOAuth.bind(ctx.credentials);
+      const spy = vi.spyOn(ctx.credentials, 'cancelOAuth').mockImplementationOnce(async (id) => {
+        await cancel(id);
+        entered.resolve();
+        await release.promise;
+      });
+      const older = (
+        action === 'logout'
+          ? ctx.credentials.delete('p', ctx.server)
+          : ctx.credentials.startOAuth('p', ctx.server, current)
+      ).catch(() => 'superseded');
+      await entered.promise;
+      try {
+        const latest = await ctx.credentials.startOAuth('p', ctx.server, current);
+        release.resolve();
+        await older;
+        expect(ctx.credentials.loginStatus(latest.loginId).state).toBe('pending');
+        await fetch(latest.url);
+        await expect.poll(() => ctx.credentials.loginStatus(latest.loginId).state).toBe('ready');
+      } finally {
+        release.resolve();
+        await older;
+        spy.mockRestore();
+      }
+    },
+  );
 });
