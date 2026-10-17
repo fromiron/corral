@@ -221,3 +221,9 @@ CORRAL_SPIKE_NODE=~/.local/share/fnm/node-versions/v24.19.0/installation/bin/nod
 - 상한의 증명은 실제 생성~exit 구간 <= 미반환 host lease <=2다. 도구 호출당 실제 Worker 한 개, 성공한 생성의 callback 누락 없음, 미생성과 미관측 구별, 중복/늦은 반환 및 SDK 프로세스 종료 정리가 필요하다.
 - **다음에 보강할 실제 빈틈:** `processChannel`이 PID가 있는 child의 error도 즉시 종료로 취급한다. 생성 실패와 살아 있는 프로세스 오류를 구별해야 한다. backend 재시작 시 이전 SDK 프로세스가 남는 경우도 새 capacity를 빈 상태로 시작하면 안 된다. 실행 시작 IPC 전에 PID/프로세스 정체성을 private 파일로 기록하고, 저장소 소유 lock 획득 후 이전 worker 종료를 확인하는 경로가 필요하다. Linux 로컬 테스트를 우선하며 확인되지 않은 종료는 lease를 반환하지 않는다.
 - 현재 codemode 관련 55 tests 및 서로 다른 execution의 공통 상한 테스트 통과. 넓은 회귀는 557 passed/2 skipped + 한국어 카탈로그 1건 실패였고 해당 영문 토큰을 번역한 뒤 locale 3 tests가 통과했다. production audit 0 advisories. 아직 최종 gate가 아니다.
+
+### 실제 종료 복구·H4 Hashline 평가 완료 체크포인트
+
+- `processChannel`의 PID 있는 오류는 강제 종료를 요청하되 실제 exit까지 기다린다. SDK 시작 IPC 전에 private PID/boot ID/start ticks 기록을 만들고, server workspace lock 뒤 이전 worker를 복구한다. Linux PID 재사용은 kill하지 않으며, 다른 OS의 살아 있는 이전 PID는 복구 미확인으로 거절한다. 관련 실제 자식 프로세스 13 tests와 server 시작 복구 4 tests 통과.
+- H4: 고정 OMP commit `647f9fa5dfae227d48a9588251f1a8439811e0e2`의 실제 Rust Hashline v2를 빌드하고 `corral eval --hashline-binary`로 전체 쓰기/Pi edit/Hashline의 6 fixture × 3 방법을 실행했다. 본문/BOM/CRLF/유니코드/EOF와 stale 보호를 확인했다. 중복 문자열의 Pi 거절은 의도된 안전 동작이다. 결과는 `docs/evaluation/Harness-Coding-Tools-Results.md`/JSON, 재현은 `tools/evaluation/README.md`. 모델 품질/토큰 절감 주장은 하지 않는다. CLI/server 23 tests 및 server/CLI typecheck 통과.
+- 남은 주요 작업은 H8 MCP·OAuth·managed cwd·LSP 쓰기 제안, H6 실제 SDK 다섯 조건의 종합 비교 fixture, mock+harness 동작 정리, 마지막 전체 회귀/desktop/Computer Use 및 PR이다. codemode 실제 Worker 상한에 대해서도 취소·생성 실패·프로세스 복구의 최종 통합 증거를 묶어 검토한다.

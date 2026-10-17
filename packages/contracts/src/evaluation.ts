@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PiEditInput } from './coding.ts';
 import { Identifier, SchemaVersion } from './ids.ts';
 
 export const EvalExpectation = z.discriminatedUnion('kind', [
@@ -80,3 +81,33 @@ export const EvalSuiteDocument = z
       });
   });
 export type EvalSuiteDocument = z.infer<typeof EvalSuiteDocument>;
+
+export const CodingEvalSuite = z
+  .strictObject({
+    schemaVersion: SchemaVersion,
+    kind: z.literal('coding_tools'),
+    fixtures: z
+      .array(
+        z.strictObject({
+          id: Identifier,
+          before: z.string().max(512 * 1024),
+          expected: z.string().max(512 * 1024),
+          changedBeforeApply: z
+            .string()
+            .max(512 * 1024)
+            .optional(),
+          edits: PiEditInput.shape.edits,
+          hashlinePatch: z
+            .string()
+            .min(1)
+            .max(512 * 1024),
+        }),
+      )
+      .min(1)
+      .max(50),
+  })
+  .refine(
+    (suite) => new Set(suite.fixtures.map((row) => row.id)).size === suite.fixtures.length,
+    'duplicate fixture ID',
+  );
+export type CodingEvalSuite = z.infer<typeof CodingEvalSuite>;

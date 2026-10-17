@@ -1,0 +1,83 @@
+{
+  "schemaVersion": "0.1",
+  "kind": "coding_tools",
+  "fixtures": [
+    {
+      "id": "single-line",
+      "before": "alpha\nbeta\ngamma\n",
+      "expected": "alpha\nchanged\ngamma\n",
+      "edits": [
+        {
+          "oldText": "beta",
+          "newText": "changed"
+        }
+      ],
+      "hashlinePatch": "[fixture.txt#{tag}]\nPUT 2.=2:\n+changed"
+    },
+    {
+      "id": "two-blocks",
+      "before": "alpha\nbeta\ngamma\ndelta\n",
+      "expected": "first\nbeta\nthird\ndelta\n",
+      "edits": [
+        {
+          "oldText": "alpha",
+          "newText": "first"
+        },
+        {
+          "oldText": "gamma",
+          "newText": "third"
+        }
+      ],
+      "hashlinePatch": "[fixture.txt#{tag}]\nPUT 1.=1:\n+first\nPUT 3.=3:\n+third"
+    },
+    {
+      "id": "duplicate-text",
+      "before": "same\nkeep\nsame\n",
+      "expected": "same\nkeep\nchanged\n",
+      "edits": [
+        {
+          "oldText": "same",
+          "newText": "changed"
+        }
+      ],
+      "hashlinePatch": "[fixture.txt#{tag}]\nPUT 3.=3:\n+changed"
+    },
+    {
+      "id": "bom-crlf",
+      "before": "﻿alpha\r\nbeta\r\n",
+      "expected": "﻿alpha\r\nchanged\r\n",
+      "edits": [
+        {
+          "oldText": "beta",
+          "newText": "changed"
+        }
+      ],
+      "hashlinePatch": "[fixture.txt#{tag}]\nPUT 2.=2:\n+changed"
+    },
+    {
+      "id": "unicode-eof",
+      "before": "안녕\nπ = 3",
+      "expected": "안녕\nπ = 4",
+      "edits": [
+        {
+          "oldText": "π = 3",
+          "newText": "π = 4"
+        }
+      ],
+      "hashlinePatch": "[fixture.txt#{tag}]\nPUT 2.=2:\n+π = 4"
+    },
+    {
+      "id": "stale-source",
+      "before": "alpha\nbeta\n",
+      "expected": "alpha\nchanged\n",
+      "changedBeforeApply": "external change\n",
+      "edits": [
+        {
+          "oldText": "beta",
+          "newText": "changed"
+        }
+      ],
+      "hashlinePatch": "[fixture.txt#{tag}]\nPUT 2.=2:\n+changed"
+    }
+  ]
+}

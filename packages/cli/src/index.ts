@@ -1,9 +1,10 @@
 import { spawn } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
-import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { createHash, randomUUID } from 'node:crypto';
+import { createReadStream, existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+import { CodingEvalSuite } from '@corral/contracts';
 import {
   applyEvent,
   compileDefinition,
@@ -141,7 +142,7 @@ export interface CliIO {
 }
 
 const usage =
-  'corral dev [--demo] | validate <file> | run <file> [--input <brief>] [--watch] [--demo] | inspect <run-id> [--judgments] | inspect --archive <file> | export <run-id> [--redact | --private] | judge install|status [--model-dir <dir>] | exec <file> [--input <brief>] [--demo] [--json] | eval <suite.json> [--demo] [--out <file>]';
+  'corral dev [--demo] | validate <file> | run <file> [--input <brief>] [--watch] [--demo] | inspect <run-id> [--judgments] | inspect --archive <file> | export <run-id> [--redact | --private] | judge install|status [--model-dir <dir>] | exec <file> [--input <brief>] [--demo] [--json] | eval <suite.json> [--demo] [--out <file>] | eval <coding-suite.json> --hashline-binary <fixture-driver> [--out <file>]';
 
 export async function runCli(args: string[], io: CliIO): Promise<number> {
   let server: import('@corral/server').CorralServer | undefined;
@@ -164,6 +165,7 @@ export async function runCli(args: string[], io: CliIO): Promise<number> {
         judgments: { type: 'boolean', default: false },
         json: { type: 'boolean', default: false },
         out: { type: 'string' },
+        'hashline-binary': { type: 'string' },
         help: { type: 'boolean', short: 'h' },
       },
     });
@@ -188,6 +190,33 @@ export async function runCli(args: string[], io: CliIO): Promise<number> {
       }
       const mode = values.demo ? 'mock' : 'live';
       if (command === 'eval') {
+        if (values['hashline-binary']) {
+          const { evaluateCodingTools, hashlineFixtureDriver, HASHLINE_COMMIT } = await import(
+            '@corral/server'
+          );
+          const suite = CodingEvalSuite.parse(JSON.parse(readInput(resolve(io.cwd, target))));
+          const binary = resolve(io.cwd, values['hashline-binary']);
+          const digest = createHash('sha256');
+          for await (const chunk of createReadStream(binary)) digest.update(chunk);
+          const result = await evaluateCodingTools(suite, {
+            signal: io.signal,
+            hashline: (text, patch, signal) => hashlineFixtureDriver(binary, text, patch, signal),
+          });
+          const report = {
+            ...result,
+            hashline: { sourceCommit: HASHLINE_COMMIT, binaryHash: digest.digest('hex') },
+          };
+          io.write('| fixture | method | status | expected result | argument bytes | wall ms |');
+          io.write('|---|---|---|---|---:|---:|');
+          for (const row of report.results)
+            io.write(
+              `| ${row.fixture} | ${row.method} | ${row.status} | ${row.correct} | ${row.argumentBytes} | ${row.wallMs} |`,
+            );
+          io.write('Deterministic editing fixtures only; no LLM quality or token-saving claim.');
+          if (values.out)
+            writeFileSync(resolve(io.cwd, values.out), `${JSON.stringify(report, null, 2)}\n`);
+          return report.results.some((row) => row.status === 'error') ? 1 : 0;
+        }
         const loaded = loadSuite(resolve(io.cwd, target));
         if (!loaded.ok) {
           for (const error of loaded.errors) io.write(`Suite: ${error}`);

@@ -55,5 +55,7 @@ suite에 `comparison: "personal_harness"`를 지정하면 정확히 다섯 varia
 
 ## 기록
 
+H4 편집 도구 비교는 [fixture 실행 안내](../tools/evaluation/README.md)를 따른다. `corral eval examples/eval/coding-tools.json --hashline-binary <fixture-driver>`가 현재 전체 쓰기·Pi edit·원본 Hashline을 동일 broker 조건에서 비교한다. 이 실험은 위의 LLM 대조군 평가와 별도다.
+
 - 2026-10-16 데모 suite(지시문 2 × 변형 2): single 평균 모델 호출 2, team 16 / 실행 1 대 9.
 - 2026-10-16 실제 모델 1회(`exec`, single, "In two sentences, what is a database index?", OpenAI 구독 로그인): 성공, 모델 호출 3, 출력 토큰 122, 10.6 s. 실제 답을 받았다. 이는 경로 확인이며 품질·비용 비교 결과가 아니다.
