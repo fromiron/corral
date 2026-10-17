@@ -1,0 +1,50 @@
+:root {
+  font-family: system-ui, sans-serif;
+  color: #e5e5e5;
+  background: #151515;
+  color-scheme: dark;
+}
+body {
+  margin: 0;
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  -webkit-app-region: drag;
+}
+main {
+  width: min(460px, 80vw);
+  text-align: center;
+}
+.mark {
+  margin: auto;
+  width: 48px;
+  height: 48px;
+  border: 1px solid #599d84;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  font-size: 28px;
+  color: #8cbaa8;
+}
+h1 {
+  font-weight: 500;
+  font-size: 24px;
+}
+p {
+  color: #aaa;
+  font-size: 14px;
+  line-height: 1.6;
+}
+button {
+  margin: 5px;
+  padding: 8px 12px;
+  border: 1px solid #444;
+  border-radius: 8px;
+  background: #262626;
+  color: inherit;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+button:focus-visible {
+  outline: 2px solid #8cbaa8;
+}

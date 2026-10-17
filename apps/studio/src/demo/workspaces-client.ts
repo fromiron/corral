@@ -20,6 +20,8 @@ export function createDemoWorkspaces(
     return session.projectId;
   };
   return {
+    listFiles: (scope, path) => as(call('listFiles', scope, path)),
+    readFile: (scope, path) => as(call('readFile', scope, path)),
     binding: (projectId) => as(call('binding', projectId)),
     bind: (projectId, path) => as(call('bind', projectId, path)),
     configure: (projectId, change) => as(call('configure', projectId, change)),

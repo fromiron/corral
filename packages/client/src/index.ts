@@ -800,6 +800,12 @@ export type FileSideView =
   | { kind: 'binary'; bytes: number }
   | { kind: 'too_large'; bytes: number };
 
+export type FileBrowseScope = { kind: 'project' | 'session'; id: string };
+export interface FileListView {
+  files: { path: string; bytes: number }[];
+  truncated: boolean;
+}
+
 export interface VerificationResultView {
   verificationId: string;
   commandId: string;
@@ -849,6 +855,16 @@ export class WorkspacesApi {
     const p = encodeURIComponent(projectId);
     return (await this.send<{ binding: WorkspaceBindingView | null }>(`/projects/${p}/workspace`))
       .binding;
+  }
+  private browsePath(scope: FileBrowseScope) {
+    const id = encodeURIComponent(scope.id);
+    return scope.kind === 'project' ? `/projects/${id}/workspace` : `/sessions/${id}/worktree`;
+  }
+  listFiles(scope: FileBrowseScope, path = ''): Promise<FileListView> {
+    return this.send(`${this.browsePath(scope)}/files?${new URLSearchParams({ path })}`);
+  }
+  readFile(scope: FileBrowseScope, path: string): Promise<{ path: string; content: FileSideView }> {
+    return this.send(`${this.browsePath(scope)}/file?${new URLSearchParams({ path })}`);
   }
   async bind(projectId: string, path: string): Promise<WorkspaceBindingView> {
     const p = encodeURIComponent(projectId);

@@ -1,4 +1,4 @@
-import type { RuntimeTransport, TransportHandlers } from '@corral/core';
+import type { RunArchive, RuntimeTransport, TransportHandlers } from '@corral/core';
 import type {
   DemoMessage,
   DemoMethod,
@@ -17,7 +17,11 @@ export function createDemoTransport(): RuntimeTransport {
 }
 
 /** The demo worker's transport and its work folder (02-UX-Spec §10). */
-export function createDemoRuntime(): { transport: RuntimeTransport; workspace: DemoWorkspaceCall } {
+export function createDemoRuntime(): {
+  transport: RuntimeTransport;
+  workspace: DemoWorkspaceCall;
+  readHistory: (runId: string) => Promise<RunArchive>;
+} {
   const worker = new Worker(new URL('./demo.worker.ts', import.meta.url), { type: 'module' });
   const raw = new URLSearchParams(window.location.search).get('delay');
   const delayMs = raw === null ? 1500 : Number(raw);
@@ -97,5 +101,12 @@ export function createDemoRuntime(): { transport: RuntimeTransport; workspace: D
       };
     },
   };
-  return { transport, workspace };
+  const readHistory = (runId: string) =>
+    new Promise<RunArchive>((resolve, reject) => {
+      if (failure) return reject(failure);
+      const id = ++nextId;
+      pending.set(id, { resolve: (value) => resolve(value as RunArchive), reject });
+      worker.postMessage({ type: 'history', id, runId } satisfies DemoMessage);
+    });
+  return { transport, workspace, readHistory };
 }

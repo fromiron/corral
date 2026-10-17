@@ -784,6 +784,33 @@ async function createCorralServer(
   type ProjectParams = { Params: { projectId: string } };
   type SessionParams = { Params: { sessionId: string } };
 
+  // DW-05: the browser chooses a registered scope, never an absolute filesystem root.
+  for (const [kind, base] of [
+    ['project', '/api/v1/projects/:id/workspace'],
+    ['session', '/api/v1/sessions/:id/worktree'],
+  ] as const) {
+    app.get<{ Params: { id: string } }>(`${base}/files`, async (request, reply) => {
+      const query = z
+        .strictObject({ path: z.string().max(4096).default('') })
+        .safeParse(request.query);
+      if (!query.success) return fail(reply, 'SCHEMA_INVALID', 'path must be relative');
+      try {
+        return await files.listFiles({ kind, id: request.params.id }, query.data.path);
+      } catch (error) {
+        return workspaceFail(reply, error);
+      }
+    });
+    app.get<{ Params: { id: string } }>(`${base}/file`, async (request, reply) => {
+      const query = z.strictObject({ path: z.string().min(1).max(4096) }).safeParse(request.query);
+      if (!query.success) return fail(reply, 'SCHEMA_INVALID', 'path is required');
+      try {
+        return await files.readFile({ kind, id: request.params.id }, query.data.path);
+      } catch (error) {
+        return workspaceFail(reply, error);
+      }
+    });
+  }
+
   app.get<ProjectParams>('/api/v1/projects/:projectId/workspace', async (request, reply) => {
     try {
       return { binding: await files.view(request.params.projectId) };

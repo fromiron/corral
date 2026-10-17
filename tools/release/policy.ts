@@ -18,6 +18,11 @@ const REVIEWED = new Set([
   // type-fest via onnxruntime-node → global-agent → serialize-error (C-072). Either license is
   // permissive; the MIT terms apply.
   '(MIT OR CC0-1.0)',
+  // electron-builder's argparse / filename utilities, reviewed for the Linux build tool graph.
+  'Python-2.0',
+  'WTFPL OR ISC',
+  'WTFPL',
+  '(WTFPL OR MIT)',
 ]);
 
 export interface LicensedPackage {
@@ -81,11 +86,13 @@ export function createInventory(
 ) {
   const entries = Object.entries(licenses)
     .flatMap(([license, packages]) => {
-      if (!REVIEWED.has(license)) throw new Error(`Unreviewed license: ${license}`);
+      // Pierre 1.5.2 publishes the SPDX Apache identifier in lowercase.
+      const normalized = license === 'apache-2.0' ? 'Apache-2.0' : license;
+      if (!REVIEWED.has(normalized)) throw new Error(`Unreviewed license: ${license}`);
       return packages.flatMap((pkg) =>
         pkg.versions.map((version) => {
           assertReviewedVersion(pkg.name, version, license, reviewedPrereleases);
-          return { name: pkg.name, version, license };
+          return { name: pkg.name, version, license: normalized };
         }),
       );
     })

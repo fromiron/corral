@@ -306,6 +306,11 @@ describe('local security boundary (C-055)', () => {
     const csp = health.headers.get('content-security-policy') ?? '';
     expect(csp).toContain("default-src 'none'");
     expect(csp).toContain("frame-ancestors 'none'");
+    expect(csp.split('; ').find((value) => value.startsWith('script-src'))).toBe(
+      "script-src 'self'",
+    );
+    expect(csp).not.toContain('unsafe-eval');
+    expect(csp).toContain("style-src 'self' 'unsafe-inline'");
     expect(health.headers.get('x-content-type-options')).toBe('nosniff');
     const body = await health.json();
     expect(body).toMatchObject({ ok: true, schemaVersion: '0.1' });

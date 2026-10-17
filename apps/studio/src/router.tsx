@@ -16,6 +16,7 @@ import { ReviewPage } from './pages/ReviewPage.tsx';
 import { ErrorView, NotFoundView, RootLayout } from './pages/RootLayout.tsx';
 import { RunPage } from './pages/RunPage.tsx';
 import { SessionPage } from './pages/SessionPage.tsx';
+import { SettingsPage } from './pages/SettingsPage.tsx';
 import { WorkspacePage } from './pages/WorkspacePage.tsx';
 import { currentProject, projectOfRun } from './projects.ts';
 import type { StudioServices } from './services.tsx';
@@ -97,7 +98,7 @@ export const workspaceRoute = createRoute({
 /** The session workbench's tabs and choices (02-UX-Spec §9: view state in the address). */
 export interface SessionSearch {
   tab?: 'work' | 'team' | 'run' | undefined;
-  panel?: 'changes' | 'artifacts' | 'checks' | undefined;
+  panel?: 'files' | 'changes' | 'artifacts' | 'checks' | undefined;
   run?: string | undefined;
   execution?: string | undefined;
   artifact?: string | undefined;
@@ -107,22 +108,28 @@ export interface SessionSearch {
 
 const text = (value: unknown) => (typeof value === 'string' && value ? value : undefined);
 
+export function validateSessionSearch(search: Record<string, unknown>): SessionSearch {
+  const out: SessionSearch = {};
+  if (search.tab === 'work' || search.tab === 'team' || search.tab === 'run') out.tab = search.tab;
+  if (
+    search.panel === 'files' ||
+    search.panel === 'changes' ||
+    search.panel === 'artifacts' ||
+    search.panel === 'checks'
+  )
+    out.panel = search.panel;
+  if (search.view === 'results' || search.view === 'run') out.view = search.view;
+  for (const key of ['run', 'execution', 'artifact', 'result'] as const) {
+    const value = text(search[key]);
+    if (value) out[key] = value;
+  }
+  return out;
+}
+
 export const sessionRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/sessions/$sessionId',
-  validateSearch: (search: Record<string, unknown>): SessionSearch => {
-    const out: SessionSearch = {};
-    if (search.tab === 'work' || search.tab === 'team' || search.tab === 'run')
-      out.tab = search.tab;
-    if (search.panel === 'changes' || search.panel === 'artifacts' || search.panel === 'checks')
-      out.panel = search.panel;
-    if (search.view === 'results' || search.view === 'run') out.view = search.view;
-    for (const key of ['run', 'execution', 'artifact', 'result'] as const) {
-      const value = text(search[key]);
-      if (value) out[key] = value;
-    }
-    return out;
-  },
+  validateSearch: validateSessionSearch,
   loader: async ({ context, params }) => {
     const session = await context.services.repository.getSession(params.sessionId);
     if (!session) throw notFound();
@@ -230,6 +237,19 @@ export const runRoute = createRoute({
   component: RunPage,
 });
 
+export const settingsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/settings',
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { section?: 'general' | 'workspace' | 'shortcuts' | 'about' } => ({
+    ...(['general', 'workspace', 'shortcuts', 'about'].includes(String(search.section))
+      ? { section: search.section as 'general' | 'workspace' | 'shortcuts' | 'about' }
+      : {}),
+  }),
+  component: SettingsPage,
+});
+
 export const modelSettingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/settings/models',
@@ -284,6 +304,7 @@ export function createStudioRouter(services: StudioServices) {
       editorRoute,
       runRoute,
       modelSettingsRoute,
+      settingsRoute,
       compareRoute,
       ...(import.meta.env.MODE === 'performance' ? [createPerformanceRoute()] : []),
     ]),

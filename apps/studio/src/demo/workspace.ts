@@ -1,6 +1,7 @@
 import type {
   ChangeScopeQuery,
   ChangeSetView,
+  FileBrowseScope,
   FileChangeView,
   FileOperationView,
   FileSideView,
@@ -314,6 +315,39 @@ export class DemoWorkspace implements FileTools {
       unavailable: null,
       files: this.compare(from, to, new Set()),
       staged: [],
+    };
+  }
+
+  private browseFiles(scope: FileBrowseScope) {
+    const files =
+      scope.kind === 'project'
+        ? this.bindings.get(scope.id)?.folder
+        : this.copies.get(scope.id)?.files;
+    if (!files) throw new Error('the linked folder is unavailable');
+    return files;
+  }
+
+  listFiles(scope: FileBrowseScope, path = '') {
+    const folder = path ? `${safeRelative(path)}/` : '';
+    const files = [...this.browseFiles(scope)]
+      .filter(([name]) => name.startsWith(folder))
+      .map(([name, text]) => ({ path: name, bytes: new TextEncoder().encode(text).length }));
+    return { files: files.slice(0, 500), truncated: files.length > 500 };
+  }
+
+  readFile(scope: FileBrowseScope, path: string): { path: string; content: FileSideView } {
+    const rel = safeRelative(path);
+    const text = this.browseFiles(scope).get(rel);
+    if (text === undefined) throw new Error('the file is unavailable');
+    const bytes = new TextEncoder().encode(text).length;
+    return {
+      path: rel,
+      content:
+        bytes > 1024 * 1024
+          ? { kind: 'too_large', bytes }
+          : text.includes('\0')
+            ? { kind: 'binary', bytes }
+            : { kind: 'text', text },
     };
   }
 

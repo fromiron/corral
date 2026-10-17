@@ -1,73 +1,174 @@
 import type { ProjectSummary } from '@corral/core';
+import { LayoutGrid, PanelLeft, Search, Settings } from '@corral/react/icons';
+import { Button, Dialog, DialogPopup, DialogTitle } from '@corral/react/ui';
 import {
   type ErrorComponentProps,
   Link,
   Outlet,
   useNavigate,
   useRouter,
+  useRouterState,
 } from '@tanstack/react-router';
-import { useEffect, useState } from 'react';
+import { type CSSProperties, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { CommandLayer, modKey } from '../CommandPalette.tsx';
-import { LOCALES, type Locale, useLocale } from '../locale.tsx';
+import { WindowControls } from '../desktop.tsx';
 import { projectName, useCurrentProject, useProjectsVersion } from '../projects.ts';
 import { useServices } from '../services.tsx';
+import { applyTheme, changePreferences, usePreferences } from '../workbench/preferences.ts';
+import { Sidebar } from '../workbench/Sidebar.tsx';
 
 export function RootLayout() {
   const t = useTranslations('Studio');
+  const tw = useTranslations('Workbench');
   const tp = useTranslations('CommandPalette');
   const { mode, live } = useServices();
-  const { locale, setLocale } = useLocale();
+  const prefs = usePreferences();
+  const location = useRouterState({ select: (s) => s.location.href });
+  const data = useRouterState({ select: (s) => s.matches.at(-1)?.loaderData }) as
+    | { session?: { title: string } }
+    | undefined;
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [narrow, setNarrow] = useState(() => matchMedia('(max-width: 1023px)').matches);
+  const sidebarTrigger = useRef<HTMLButtonElement>(null);
+  const drag = useRef<{ x: number; width: number } | null>(null);
+  useEffect(() => {
+    const media = matchMedia('(max-width: 1023px)');
+    const update = () => {
+      setNarrow(media.matches);
+      setMobileOpen(false);
+    };
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
+  useEffect(() => {
+    void location;
+    setMobileOpen(false);
+  }, [location]);
+  useEffect(() => {
+    applyTheme(prefs.theme);
+    const media = matchMedia('(prefers-color-scheme: dark)');
+    const update = () => applyTheme(prefs.theme);
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, [prefs.theme]);
+  useEffect(() => {
+    if (!prefs.sidebarOpen) setMobileOpen(false);
+  }, [prefs.sidebarOpen]);
   return (
-    <div className="grid h-full grid-cols-[minmax(0,1fr)] grid-rows-[auto_1fr]">
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-raised px-4 py-2">
-        <nav className="flex items-center gap-4">
-          <h1 className="text-base font-semibold">{t('title')}</h1>
-          <ProjectSwitcher />
-          <Link to="/" className="text-sm underline-offset-4 hover:underline">
-            {t('nav')}
-          </Link>
-          {mode === 'server' ? (
-            <Link to="/settings/models" className="text-sm underline-offset-4 hover:underline">
-              {t('navModels')}
-            </Link>
-          ) : null}
-        </nav>
-        <button
-          type="button"
-          onClick={() =>
-            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }))
-          }
-          className="flex items-center gap-2 rounded-md border border-line px-2 py-1 text-xs text-muted"
-        >
-          {tp('button')}
-          <kbd className="font-mono">{modKey()} K</kbd>
-        </button>
-        <label className="flex items-center gap-1 text-xs text-muted">
-          <span>{t('language')}</span>
-          <select
-            value={locale}
-            onChange={(event) => setLocale(event.target.value as Locale)}
-            className="rounded border border-line bg-surface px-1 py-0.5 text-text"
+    <div
+      className="app-shell"
+      data-sidebar-open={prefs.sidebarOpen}
+      style={{ '--app-sidebar-width': `${prefs.sidebarWidth}px` } as CSSProperties}
+    >
+      {narrow ? (
+        <Dialog open={mobileOpen} onOpenChange={setMobileOpen}>
+          <DialogPopup
+            className="mobile-sidebar-dialog"
+            showCloseButton={false}
+            bottomStickOnMobile={false}
+            finalFocus={sidebarTrigger}
           >
-            {LOCALES.map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <p className="flex min-w-0 flex-wrap items-center gap-2 text-xs">
-          <span className="rounded-full border border-warning px-2 py-0.5 font-semibold text-warning">
+            <DialogTitle className="sr-only">{tw('expandSidebar')}</DialogTitle>
+            <Sidebar />
+          </DialogPopup>
+        </Dialog>
+      ) : (
+        <aside className="app-sidebar">
+          <Sidebar />
+        </aside>
+      )}
+      {/* biome-ignore lint/a11y/useSemanticElements: WAI-ARIA window splitter */}
+      <div
+        role="separator"
+        aria-label={tw('resizeSidebar')}
+        aria-orientation="vertical"
+        tabIndex={0}
+        aria-valuenow={prefs.sidebarWidth}
+        aria-valuemin={220}
+        aria-valuemax={420}
+        className="app-sidebar-resizer"
+        onPointerDown={(e) => {
+          drag.current = { x: e.clientX, width: prefs.sidebarWidth };
+          e.currentTarget.setPointerCapture(e.pointerId);
+        }}
+        onPointerMove={(e) => {
+          if (drag.current)
+            changePreferences({ sidebarWidth: drag.current.width + e.clientX - drag.current.x });
+        }}
+        onPointerUp={() => {
+          drag.current = null;
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+            e.preventDefault();
+            changePreferences({
+              sidebarWidth: prefs.sidebarWidth + (e.key === 'ArrowRight' ? 16 : -16),
+            });
+          }
+        }}
+      />
+      <div className="app-main">
+        <header className="app-topbar">
+          <h1 className="sr-only">{t('title')}</h1>
+          <Button
+            ref={sidebarTrigger}
+            variant="ghost"
+            size="icon-sm"
+            aria-label={tw('expandSidebar')}
+            className="app-sidebar-trigger"
+            onClick={() => {
+              changePreferences({ sidebarOpen: true });
+              setMobileOpen((v) => !v);
+            }}
+          >
+            <PanelLeft />
+          </Button>
+          <ProjectSwitcher />
+          {data?.session ? (
+            <h2 className="min-w-0 truncate text-sm font-medium">
+              <span className="mx-2 text-muted/50">/</span>
+              {data.session.title}
+            </h2>
+          ) : null}
+          <nav className="ml-auto flex shrink-0 items-center gap-1" aria-label={t('nav')}>
+            <Link to="/" aria-label={t('nav')} title={t('nav')} className="topbar-icon">
+              <LayoutGrid size={16} />
+            </Link>
+            {mode === 'server' ? (
+              <Link
+                to="/settings/models"
+                aria-label={t('navModels')}
+                title={t('navModels')}
+                className="topbar-icon"
+              >
+                <Settings size={16} />
+              </Link>
+            ) : null}
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={tp('button')}
+              title={`${tp('button')} (${modKey()} K)`}
+              onClick={() =>
+                window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }))
+              }
+            >
+              <Search />
+            </Button>
+          </nav>
+          <span
+            className="runtime-badge"
+            title={mode === 'server' ? (live ? t('liveNote') : t('serverNote')) : t('demoNote')}
+          >
+            <span className={live ? 'bg-success' : 'bg-warning'} />
             {mode === 'server' ? (live ? t('liveBadge') : t('serverBadge')) : t('demoBadge')}
           </span>
-          <span className="text-muted">
-            {mode === 'server' ? (live ? t('liveNote') : t('serverNote')) : t('demoNote')}
-          </span>
-        </p>
-      </header>
-      <div className="min-h-0">
-        <Outlet />
+          <WindowControls />
+        </header>
+        <div className="app-outlet">
+          <Outlet />
+        </div>
       </div>
       <CommandLayer />
     </div>
@@ -99,7 +200,7 @@ function ProjectSwitcher() {
   const options = projects.filter((p) => !p.archivedAt || p.projectId === current);
   return (
     <label className="flex items-center gap-1 text-xs text-muted">
-      <span aria-hidden="true">{t('label')}</span>
+      <span className="sr-only">{t('label')}</span>
       <select
         aria-label={t('label')}
         value={options.some((p) => p.projectId === current) ? current : ''}
@@ -109,7 +210,7 @@ function ProjectSwitcher() {
           else if (value)
             void navigate({ to: '/projects/$projectId', params: { projectId: value } });
         }}
-        className="max-w-48 rounded border border-line bg-surface px-1 py-0.5 text-text"
+        className="max-w-44 rounded-md border border-transparent bg-transparent py-1 pr-2 text-[13px] font-medium text-text hover:bg-raised"
       >
         {options.some((p) => p.projectId === current) ? null : <option value="">—</option>}
         {options.map((p) => (

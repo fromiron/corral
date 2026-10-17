@@ -11,7 +11,8 @@ export const SECURITY_HEADERS: Record<string, string> = {
   'content-security-policy': [
     "default-src 'none'",
     "script-src 'self'",
-    "style-src 'self'",
+    // CR-014: Pierre's shadow-DOM theme and token colors need inline CSS, never inline JS.
+    "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data:",
     "font-src 'self'",
     "connect-src 'self'",

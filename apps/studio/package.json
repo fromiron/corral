@@ -16,6 +16,7 @@
     "@corral/core": "workspace:*",
     "@corral/react": "workspace:*",
     "@corral/testkit": "workspace:*",
+    "@pierre/diffs": "1.5.2",
     "@tanstack/react-router": "1.170.44",
     "@tanstack/react-virtual": "3.14.19",
     "@xyflow/react": "12.12.0",

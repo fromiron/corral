@@ -14,8 +14,22 @@
   color-scheme: light;
 }
 
+:root.dark {
+  --surface: #151615;
+  --raised: #1f201f;
+  --line: #3a3b39;
+  --text: #ececea;
+  --muted: #a8a8a2;
+  --accent: #5cc4a8;
+  --on-accent: #0b1f1a;
+  --success: #6fcf8f;
+  --warning: #f0b45c;
+  --danger: #ff8a80;
+  color-scheme: dark;
+}
+
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme]) {
     --surface: #151615;
     --raised: #1f201f;
     --line: #3a3b39;
@@ -30,6 +44,34 @@
   }
 }
 
+/* T3's semantic control tokens mapped to Corral's palette; one theme for every surface. */
+:root {
+  --radius: 0.625rem;
+  --control-radius: 0.5rem;
+  --chat-content-max-width: 46rem;
+  --workspace-topbar-height: 52px;
+  --sidebar: color-mix(in srgb, var(--surface) 92%, var(--line));
+  --sidebar-selected: color-mix(in srgb, var(--surface) 85%, var(--text));
+  --background: var(--surface);
+  --foreground: var(--text);
+  --card: var(--raised);
+  --card-foreground: var(--text);
+  --popover: var(--raised);
+  --popover-foreground: var(--text);
+  --primary: var(--accent);
+  --primary-foreground: var(--on-accent);
+  --secondary: var(--sidebar-selected);
+  --secondary-foreground: var(--text);
+  --muted-foreground: var(--muted);
+  --accent-foreground: var(--on-accent);
+  --border: var(--line);
+  --input: var(--line);
+  --ring: var(--accent);
+  --destructive: var(--danger);
+}
+
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme inline {
   --color-surface: var(--surface);
   --color-raised: var(--raised);
@@ -41,6 +83,25 @@
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-danger: var(--danger);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-destructive: var(--destructive);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-selected: var(--sidebar-selected);
+  --shadow-composer: 0 4px 24px rgb(0 0 0 / 5%), 0 1px 3px rgb(0 0 0 / 4%);
 }
 
 html,
