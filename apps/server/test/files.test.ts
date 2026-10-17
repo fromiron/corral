@@ -46,7 +46,7 @@ async function setup() {
   await service.configure('default', { trusted: true });
   await service.createWorktree('session_1', 'default');
   const call = (
-    name: 'read_file' | 'write_file' | 'delete_file' | 'move_file',
+    name: 'read_file' | 'write_file' | 'delete_file' | 'move_file' | 'edit' | 'write',
     args: Record<string, unknown>,
     executionId = 'exec_1',
   ) =>
@@ -58,6 +58,23 @@ async function setup() {
 }
 
 describe('file broker (CR-012)', () => {
+  it('[TC-HAR-010-H] Pi edit and write use the same read evidence and recorded atomic write path', async () => {
+    const { call, db } = await setup();
+    await call('read_file', { path: 'a.txt' });
+    const edit = await call('edit', { path: 'a.txt', edits: [{ oldText: 'one', newText: 'two' }] });
+    expect(edit).toMatchObject({ path: 'a.txt', piResult: { content: [{ type: 'text', text: 'Successfully replaced 1 block(s) in a.txt.' }], details: { firstChangedLine: 1 } } });
+    expect(await call('read_file', { path: 'a.txt' })).toMatchObject({ text: 'two\n' });
+    await call('write', { path: 'new.txt', content: 'A new file.' });
+    expect(await call('read_file', { path: 'new.txt' })).toMatchObject({ text: 'A new file.' });
+    expect(db.prepare("SELECT COUNT(*) AS n FROM file_operations WHERE state = 'applied'").get()).toEqual({ n: 2 });
+  });
+  it('[TC-HAR-010-N] all edit blocks must validate before any bytes are changed', async () => {
+    const { call, db } = await setup();
+    await call('read_file', { path: 'a.txt' });
+    await expect(call('edit', { path: 'a.txt', edits: [{ oldText: 'one', newText: 'two' }, { oldText: 'missing', newText: 'three' }] })).rejects.toThrow();
+    expect(await call('read_file', { path: 'a.txt' })).toMatchObject({ text: 'one\n' });
+    expect(db.prepare('SELECT COUNT(*) AS n FROM file_operations').get()).toEqual({ n: 0 });
+  });
   it('[TC-HAR-011-N] a different execution or restarted attempt cannot borrow another execution’s read', async () => {
     const { call } = await setup();
     await call('read_file', { path: 'a.txt' }, 'exec_a');
