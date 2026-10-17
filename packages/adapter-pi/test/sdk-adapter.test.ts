@@ -172,6 +172,12 @@ function runtime(
 }
 
 describe('SDK worker through the product adapter (H2)', () => {
+  it('[TC-HAR-006-N] a required extension session-start error fails before any provider request', async () => {
+    const run = runtime([fauxAssistantMessage('Must not run.')], `export default pi => pi.on('session_start',()=>{ throw new Error('private startup detail'); });`);
+    expect(await (await run.adapter.start(run.input, run.host)).waitForSettlement()).toMatchObject({ outcome: 'failed' });
+    expect(run.requests).toHaveLength(0);
+    expect(run.reports).toContainEqual({ ok: false, snapshotHash: hash, code: 'extension_load_failed' });
+  });
   it('[TC-HAR-007-H] bridges extension dialogs and notifications without a model request during startup', async () => {
     const requests: unknown[] = [];
     const notices: unknown[] = [];
