@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
@@ -74,6 +75,33 @@ async function setup(
 }
 
 describe('file broker (CR-012)', () => {
+  it('[TC-HAR-014-N] pins recipe criteria without lending read evidence and rejects changes or a new baseline', async () => {
+    const s = await setup();
+    try {
+      const source = { sha256: createHash('sha256').update('one\n').digest('hex') };
+      await s.service.pinCriteria('run_1', [{ path: 'a.txt', sha256: source.sha256 }]);
+      expect(await s.service.validateCriteria('run_1')).toBe(true);
+      await expect(s.call('write_file', { path: 'a.txt', text: 'weaker' })).rejects.toThrow(
+        /criteria/,
+      );
+      await s.call('read_file', { path: 'a.txt' });
+      for (const [name, args] of [
+        ['write_file', { path: 'a.txt', text: 'weaker' }],
+        ['delete_file', { path: 'a.txt' }],
+        ['move_file', { from: 'a.txt', to: 'b.txt' }],
+      ] as const)
+        await expect(s.call(name, args)).rejects.toThrow(/criteria/);
+      await expect(
+        s.service.pinCriteria('run_1', [{ path: 'a.txt', sha256: 'a'.repeat(64) }]),
+      ).rejects.toThrow(/criteria/);
+      const root = s.service.copyOf('session_1')?.worktree;
+      if (!root) throw new Error('no copy');
+      writeFileSync(join(root, 'a.txt'), 'native mutation');
+      expect(await s.service.validateCriteria('run_1')).toBe(false);
+    } finally {
+      s.db.close();
+    }
+  });
   async function lspSetup(
     mode = 'normal',
     lsp?: ConstructorParameters<typeof WorkspaceService>[0]['lsp'],
