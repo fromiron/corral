@@ -44,7 +44,12 @@ export function useModelProfiles(): ProfileInfo[] | null {
           list.map((p) => ({
             profileId: p.profileId,
             label: `${p.providerName} · ${p.modelName ?? p.modelId}`,
-            available: p.available,
+            // Ready to call: the model is known, a sign-in or key is set, and a subscription
+            // sign-in may use this model.
+            available:
+              p.available &&
+              p.method !== null &&
+              !(p.method === 'oauth' && p.subscriptionSupported === false),
           })),
         ),
       () => live && setProfiles(null),

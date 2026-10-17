@@ -26,7 +26,7 @@ async function singleAgentRun(page: Page) {
     .getByRole('region', { name: 'Start from a template' })
     .getByRole('article')
     .filter({ hasText: 'Single agent' })
-    .getByRole('button', { name: 'Use this template' })
+    .getByRole('button', { name: 'Edit this team' })
     .click();
   await expect(page).toHaveURL(/\/edit$/);
   await page.getByRole('button', { name: 'Run', exact: true }).click();

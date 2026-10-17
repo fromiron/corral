@@ -33,6 +33,9 @@ import { InboxSection, WorkFolderSection } from './FilesViews.tsx';
 import { GettingStarted } from './GettingStarted.tsx';
 import { useRemembered, WorkbenchLayout } from './Workbench.tsx';
 
+/** Fired by a template card to choose that team in the new-session box (UX-09). */
+const START_WITH_TEMPLATE = 'corral:start-with-template';
+
 /** A layout file is recognised by its shape; everything else is treated as a definition. */
 function isLayoutFile(text: string): boolean {
   try {
@@ -265,6 +268,17 @@ export function WorkspacePage() {
                 {t(`template.${id}.name`)}
               </h4>
               <p className="flex-1 text-xs text-muted">{t(`template.${id}.body`)}</p>
+              {id === 'blank' ? null : (
+                <Button
+                  size="xs"
+                  className="self-start"
+                  onClick={() =>
+                    window.dispatchEvent(new CustomEvent(START_WITH_TEMPLATE, { detail: id }))
+                  }
+                >
+                  {t('startWithTemplate')}
+                </Button>
+              )}
               <Button
                 variant="outline"
                 size="xs"
@@ -633,6 +647,7 @@ function StartSession({
   corrals: CorralSummary[];
 }) {
   const t = useTranslations('Sessions');
+  const tw = useTranslations('Workspace');
   const { repository } = useServices();
   const { sendKey } = usePreferences();
   const navigate = useNavigate();
@@ -647,12 +662,29 @@ function StartSession({
   const corralId = typeof draft?.corralId === 'string' ? draft.corralId : '';
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const team = corrals.some((c) => c.corralId === corralId)
-    ? corralId
-    : (corrals[0]?.corralId ?? '');
+  // UX-09: a suggested team (a template) can be chosen here; it is made when the session starts,
+  // so trying a team never needs the graph editor.
+  const suggested = WORKSPACE_TEMPLATES.filter((id) => id !== 'blank');
+  const isSuggested = (value: string) =>
+    value.startsWith('template:') && suggested.includes(value.slice(9) as never);
+  const team =
+    corrals.some((c) => c.corralId === corralId) || isSuggested(corralId)
+      ? corralId
+      : (corrals[0]?.corralId ?? 'template:starter');
   useEffect(() => {
     if (focus) box.current?.focus();
   }, [focus]);
+  // "Start a session with this team" on a template card picks it here.
+  useEffect(() => {
+    const pick = (event: Event) => {
+      const id = (event as CustomEvent<string>).detail;
+      saveDraft({ title, objective, corralId: `template:${id}` });
+      box.current?.scrollIntoView({ block: 'center' });
+      box.current?.focus();
+    };
+    window.addEventListener(START_WITH_TEMPLATE, pick);
+    return () => window.removeEventListener(START_WITH_TEMPLATE, pick);
+  });
 
   const create = async (event?: FormEvent) => {
     event?.preventDefault();
@@ -660,11 +692,18 @@ function StartSession({
     setSaving(true);
     setError(null);
     try {
+      let teamId = team;
+      if (isSuggested(team)) {
+        const id = team.slice(9) as (typeof suggested)[number];
+        const made = await createFromTemplate(repository, id, tw(`template.${id}.name`), projectId);
+        if (!made.ok) return setError(made.message);
+        teamId = made.corralId;
+      }
       const result = await repository.createSession({
         projectId,
         title,
         objective,
-        corralId: team || null,
+        corralId: teamId || null,
       });
       if (!result.ok) return setError(result.message);
       writeDraft(result.session.sessionId, objective);
@@ -705,11 +744,14 @@ function StartSession({
             label={t('teamLabel')}
             value={team}
             onValueChange={(value) => saveDraft({ title, objective, corralId: value })}
-            options={
-              corrals.length
-                ? corrals.map((c) => ({ value: c.corralId, label: c.name }))
-                : [{ value: '', label: t('noTeam') }]
-            }
+            options={[
+              ...corrals.map((c) => ({ value: c.corralId, label: c.name })),
+              ...suggested.map((id) => ({
+                value: `template:${id}`,
+                label: tw('suggestedTeam', { name: tw(`template.${id}.name`) }),
+                hint: tw(`template.${id}.body`),
+              })),
+            ]}
           />
           <Button
             type="submit"

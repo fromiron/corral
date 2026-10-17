@@ -216,8 +216,7 @@ export function ReviewPage() {
             </div>
           ) : null}
           <div
-            hidden={noCopy || Boolean(error)}
-            className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[16rem_minmax(0,1fr)_20rem]"
+            className={`${noCopy || error ? 'hidden' : 'grid'} min-h-0 flex-1 grid-cols-1 md:grid-cols-[16rem_minmax(0,1fr)_20rem]`}
           >
             <nav
               aria-label={t('reviewHeading')}

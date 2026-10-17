@@ -23,8 +23,9 @@ export function CommandReceipts({ session, target }: { session: RunSessionStore;
         .filter(({ command }) => target === `run:${command.runId}`)
         .map(({ command, error }) => (
           <div key={command.commandId} className="rounded border border-warning p-2">
-            <p className="font-mono">
-              {command.commandId} · {command.type}
+            <p title={command.commandId}>
+              {t(command.runId && target.startsWith('run:') ? 'receiptRun' : 'receiptExecution')} ·{' '}
+              {command.type}
             </p>
             <p role="alert">{t('connectionUnknown', { message: error })}</p>
             <button
@@ -49,8 +50,11 @@ export function CommandReceipts({ session, target }: { session: RunSessionStore;
           data-testid={`receipt-${receipt.commandId}`}
         >
           <p>
-            <span className="font-mono">{receipt.commandId}</span> ·{' '}
-            <StatusBadge status={receipt.status} />
+            {/* UX-08: what the command was for, not its ID (kept in the title for support). */}
+            <span title={receipt.commandId}>
+              {t(receipt.target.startsWith('run:') ? 'receiptRun' : 'receiptExecution')}
+            </span>{' '}
+            · <StatusBadge status={receipt.status} />
           </p>
           <p className="text-muted">{t(`boundary.${receipt.requestedBoundary}`)}</p>
           {receipt.error ? (

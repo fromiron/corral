@@ -32,7 +32,7 @@ test('[WBTST-004] UX-015-01 new-session drafts survive team setup and become an 
   await page
     .getByRole('article')
     .filter({ hasText: 'Single agent' })
-    .getByRole('button', { name: 'Use this template' })
+    .getByRole('button', { name: 'Edit this team' })
     .click();
   await expect(page).toHaveURL(/\/edit$/);
   await page.getByRole('link', { name: 'New session', exact: true }).click();

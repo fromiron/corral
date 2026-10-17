@@ -71,7 +71,7 @@ test('[TC-CAN-001-H] an empty workspace offers templates, and a template opens a
   await gallery
     .getByRole('article')
     .filter({ hasText: 'Research team' })
-    .getByRole('button', { name: 'Use this template' })
+    .getByRole('button', { name: 'Edit this team' })
     .click();
   await expect(page).toHaveURL(/\/corrals\/[^/]+\/edit$/);
   await expect(page.locator('.react-flow__node')).toHaveCount(9);
@@ -81,7 +81,7 @@ test('[TC-CAN-001-H] an empty workspace offers templates, and a template opens a
     .getByRole('region', { name: 'Start from a template' })
     .getByRole('article')
     .filter({ hasText: 'Research team' })
-    .getByRole('button', { name: 'Use this template' })
+    .getByRole('button', { name: 'Edit this team' })
     .click();
   await page.goto('/');
   await expect(page.getByRole('listitem').filter({ hasText: 'Research team' })).toHaveCount(2);

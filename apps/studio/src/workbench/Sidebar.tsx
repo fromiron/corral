@@ -18,6 +18,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
+  DialogPanel,
   DialogPopup,
   DialogTitle,
   Input,
@@ -545,15 +546,17 @@ export const Sidebar = memo(function Sidebar() {
             <DialogTitle>{t('rename')}</DialogTitle>
             <DialogDescription>{t('renameHint')}</DialogDescription>
           </DialogHeader>
-          <Input
-            aria-label={t('sessionTitle')}
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.nativeEvent.isComposing && editing && title.trim())
-                void update(editing, { title });
-            }}
-          />
+          <DialogPanel>
+            <Input
+              aria-label={t('sessionTitle')}
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.nativeEvent.isComposing && editing && title.trim())
+                  void update(editing, { title });
+              }}
+            />
+          </DialogPanel>
           {error ? (
             <p role="alert" className="text-sm text-danger">
               {error}

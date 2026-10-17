@@ -38,7 +38,7 @@ test('[TC-UX-001-H] keyboard only: a Corral from a template, a node moved and de
 }) => {
   await page.goto('/?delay=50');
   await expect(page.getByRole('heading', { name: 'Corrals' })).toBeVisible();
-  await tabTo(page, /^Use this template$/);
+  await tabTo(page, /^Edit this team$/);
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/\/edit$/);
   await expect(page.locator('.react-flow__node')).toHaveCount(9);

@@ -54,6 +54,8 @@ export function Select<T extends string>({
       value={value}
       onValueChange={(next) => {
         if (next !== null) onValueChange(next as T);
+        // A controlled list closes on a choice too.
+        onOpenChange?.(false);
       }}
       disabled={disabled}
       {...(open === undefined ? {} : { open })}

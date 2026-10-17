@@ -29,6 +29,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
+  DialogPanel,
   DialogPopup,
   DialogTitle,
   Input,
@@ -556,15 +557,17 @@ function SessionActions({
             <DialogTitle>{td('rename')}</DialogTitle>
             <DialogDescription>{td('renameHint')}</DialogDescription>
           </DialogHeader>
-          <Input
-            aria-label={td('sessionTitle')}
-            value={renaming ?? ''}
-            onChange={(e) => setRenaming(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.nativeEvent.isComposing && renaming?.trim())
-                void update({ title: renaming }).then((ok) => ok && setRenaming(null));
-            }}
-          />
+          <DialogPanel>
+            <Input
+              aria-label={td('sessionTitle')}
+              value={renaming ?? ''}
+              onChange={(e) => setRenaming(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.nativeEvent.isComposing && renaming?.trim())
+                  void update({ title: renaming }).then((ok) => ok && setRenaming(null));
+              }}
+            />
+          </DialogPanel>
           <DialogFooter>
             <Button
               disabled={!renaming?.trim()}
@@ -972,9 +975,11 @@ function EntryCard({
       {run && entry.intent !== 'steer' ? <RunCard run={run} nested onPanel={onPanel} /> : null}
       {entry.intent === 'steer' && entry.runId ? (
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
-          {entry.commandId ? (
-            <DeliveryStatus runId={entry.runId} commandId={entry.commandId} />
-          ) : null}
+          <DeliveryStatus
+            runId={entry.runId}
+            commandId={entry.commandId ?? null}
+            executionId={entry.executionId ?? null}
+          />
           <Button
             variant="ghost-muted"
             size="xs"
@@ -1109,12 +1114,43 @@ function RunCard({
 }
 
 /** Where an instruction is now, from the run's own record of it (02-UX-Spec §7). */
-function DeliveryStatus({ runId, commandId }: { runId: string; commandId: string }) {
+/**
+ * Whom an instruction was for, when it applies, and where it is now (UX-08), from the run's
+ * own record. It stays readable after the composer moves on to another execution.
+ */
+function DeliveryStatus({
+  runId,
+  commandId,
+  executionId,
+}: {
+  runId: string;
+  commandId: string | null;
+  executionId: string | null;
+}) {
   const t = useTranslations('Sessions');
   const ts = useTranslations('Transcript.instruction');
   const { transport } = useServices();
   const [status, setStatus] = useState<string | null>(null);
+  const [recipient, setRecipient] = useState<string | null>(null);
   useEffect(() => {
+    let live = true;
+    void Promise.all([transport.getSnapshot(runId), transport.getRunDefinition(runId)]).then(
+      ([{ projection }, definition]) => {
+        const execution = executionId ? projection.executions[executionId] : undefined;
+        if (!live || !execution) return;
+        const node = definition?.nodes.find((n) => n.id === execution.nodeId);
+        setRecipient(
+          `${node?.label ?? execution.nodeId} · #${projection.executionOrder.indexOf(execution.executionId) + 1}`,
+        );
+      },
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+  }, [transport, runId, executionId]);
+  useEffect(() => {
+    if (!commandId) return;
     let live = true;
     const read = () =>
       transport.getSnapshot(runId).then(
@@ -1139,9 +1175,15 @@ function DeliveryStatus({ runId, commandId }: { runId: string; commandId: string
       clearInterval(timer);
     };
   }, [transport, runId, commandId]);
-  return status ? (
-    <span data-testid="delivery">{t('delivery', { status: ts(status) })}</span>
-  ) : null;
+  return (
+    <>
+      <span data-testid="recipient" className="font-medium text-text" title={executionId ?? ''}>
+        → {recipient ?? executionId}
+      </span>
+      <span>{t('appliesAt')}</span>
+      {status ? <span data-testid="delivery">{t('delivery', { status: ts(status) })}</span> : null}
+    </>
+  );
 }
 
 function finalResultId(projection: RunProjection): string | null {
@@ -2053,7 +2095,9 @@ function Composer({
               {runMode === 'live' ? tc('models.liveNote') : tc('models.mockNote')}
             </DialogDescription>
           </DialogHeader>
-          <ModelAssignments roles={roles} profiles={profiles} />
+          <DialogPanel>
+            <ModelAssignments roles={roles} profiles={profiles} />
+          </DialogPanel>
           <DialogFooter>
             {team ? (
               <Button

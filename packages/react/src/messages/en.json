@@ -272,7 +272,9 @@
     "restartInstruction": "Instruction for the new attempt",
     "restartExplain": "Creates a new execution for the same unfinished task after this attempt has terminated. The coordinator checks that its parent still waits for it.",
     "requestLink": "Request {request} · Snapshot {snapshot}",
-    "produced": "Produced: {versions}"
+    "produced": "Produced: {versions}",
+    "receiptRun": "Whole-run command",
+    "receiptExecution": "Command to one execution"
   },
   "Status": {
     "created": "Created",
@@ -339,7 +341,7 @@
     "runStarted": "Started {time}",
     "emptyHint": "Start from a template below, create an empty Corral or import a JSON file.",
     "templatesHeading": "Start from a template",
-    "useTemplate": "Use this template",
+    "useTemplate": "Edit this team",
     "template": {
       "research-team": {
         "name": "Research team",
@@ -358,7 +360,9 @@
         "body": "Describe what the team should do; get a team shape to review before it opens."
       }
     },
-    "draftFromGoal": "Draft from a goal"
+    "draftFromGoal": "Draft from a goal",
+    "startWithTemplate": "Start a session with this team",
+    "suggestedTeam": "{name} (suggested, made when you start)"
   },
   "Editor": {
     "name": "Corral name",
@@ -1012,13 +1016,13 @@
     "done": "done",
     "model": "Connect a model",
     "modelAction": "Connect a model",
-    "corral": "Make a Corral",
+    "corral": "Pick a team",
     "corralAction": "Start from a goal",
-    "corralOr": "or pick a template below",
-    "run": "Run it",
-    "runAction": "Open a Corral and press Run",
+    "corralOr": "or choose a suggested team in the box above",
+    "run": "Send the first request",
+    "runAction": "Start a session and send what you want done",
     "review": "Read the result",
-    "reviewAction": "Open a run's page from the list below"
+    "reviewAction": "Open the result in the conversation"
   },
   "Results": {
     "label": "Results",
@@ -1202,7 +1206,8 @@
     },
     "editTeam": "Open team design",
     "objectivePlaceholder": "What should this session work on?",
-    "startHint": "Starts a session with this purpose. Nothing runs until you send the first request."
+    "startHint": "Starts a session with this purpose. Nothing runs until you send the first request.",
+    "appliesAt": "at its next model request"
   },
   "Files": {
     "folderHeading": "Work folder",
@@ -1533,7 +1538,16 @@
     "notifyBody": "{count, plural, one {# item needs} other {# items need}} you in this project.",
     "notifySetting": "Notifications",
     "notifyHint": "A system notification when a decision or review is waiting and Corral is in the background.",
-    "notifyOn": "Notify me"
+    "notifyOn": "Notify me",
+    "agents": {
+      "working": "{count} working",
+      "paused": "{count} paused",
+      "waitingApproval": "{count} waiting for your decision",
+      "waitingChildren": "{count} waiting for sub-tasks",
+      "waitingMessage": "{count} waiting for a reply",
+      "starting": "{count} about to start",
+      "stopping": "{count} stopping"
+    }
   },
   "Composer": {
     "commands": "Commands",
