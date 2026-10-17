@@ -246,3 +246,11 @@ CORRAL_SPIKE_NODE=~/.local/share/fnm/node-versions/v24.19.0/installation/bin/nod
 - Pi MCP stdio는 별도 process group이므로 SDK 소유자별 durable child registry를 추가했다. SDK 종료는 해당 서버 그룹 정리가 확인된 뒤 통지한다. 부모가 먼저 죽은 group도 살아 있는 구성원을 검사·정리한다. 정리 실패는 host를 무한 대기시키지 않고 termination_unconfirmed로 전달한다. 실제 프로세스/SDK 49 tests, 추가 실패 통지 16 tests 통과. Linux 확인이며 Windows 자손 정리는 여전히 검증 완료가 아니다.
 - MCP까지 넓은 회귀: 719 passed/3 opt-in skipped + 한국어 stdio 표기 2개가 locale 검사에서 실패했다. 두 문구를 한국어로 고친 뒤 locale 3 tests 통과. adapter/server/studio typecheck 통과. 최종 전체 gate는 이후 변경까지 다시 필요하다.
 - 다음 구현은 H8 LSP rename/code action의 불변 제안 및 명시 적용이다. H6 다섯 비교군 실제 SDK fixture, 최종 staging/전체 검증/Computer Use 및 PR도 여전히 남아 있다.
+
+### H8 LSP 변경 제안 진행 중
+
+- CR-020에 지원 범위/명시 적용/부분 실패 의미를 추가했다. 기존 파일에 대한 TextEdit·TextDocumentEdit만 받고 resource operation/annotation/snippet/executeCommand는 지원하지 않는다고 명시한다. codeAction/resolve는 edit만 얻고 command를 실행하지 않는다.
+- `apps/server/src/files/lsp-edits.ts`의 순수 staging 검증기를 추가했다. 기존 protocol 패키지의 공개 TextDocument.applyEdits를 재사용해 edit ordering/overlap을 처리한다(별도 의존성 없음). 전체 경로/hash/문서 버전, BOM/CRLF/UTF-16 경계·surrogate 분할·중복·크기 제한을 검사한다. 12 tests 통과.
+- `LspRunner.query` 내부 입력에 rename/code_actions를 추가하고 실제 프로토콜 요청·resolve를 연결했다. LSP 3.18.4의 CodeAction.is가 아직 edit 없는 resolve 대상 literal을 거절하므로, type guard에서 빈 edit를 검증용으로만 더해 검사한다. 실제 action payload는 그대로 resolve에 보낸다. 서버 applyEdit 요청은 계속 applied:false다. `lspResults`는 edit 결과를 읽기 결과로 처리하지 못하게 거절한다.
+- **아직 미연결:** public LspQuery/Report 계약, 불변 proposal 저장소/migration, WorkspaceService.runLsp의 staging/persist 경로, 명시 apply broker/API/client/UI, SDK schema/도구 설명/locale, 부분 실패·stale·취소·중복·재시작 테스트와 브라우저 E2E. 현재 내부 transport만 rename/code_actions를 받으므로 제품에서 쓸 수 있다고 보고하면 안 된다.
+- 다음 권장 구현: 기존 `WorkspaceService.change`를 lease 안에서 재사용한다. 제안에 before/after bytes/hash·tree·source version·owner scope를 고정하고, 적용은 user가 hash를 지정한 세션 API로 수행한다. 미종료 Run이 있는 세션은 거절한다. 전체 파일 사전 검사 뒤 각 파일의 기존 file_operations를 남기고, 실패 시 이미 적용/불확실 파일을 보존·남은 파일 중단하며 재적용하지 않는다. 기존 ReviewPage/Pierre DiffCode로 명시 검토 UI를 연결한다.

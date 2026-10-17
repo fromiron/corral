@@ -39,6 +39,8 @@ export async function lspResults(
   readUri: (uri: string) => Promise<LspDocument>,
   privateRoot: string,
 ): Promise<LspReport['result']> {
+  if (raw.kind === 'edits')
+    throw new ToolRefusal('SCHEMA_INVALID', 'LSP edits require the change proposal broker');
   if (raw.kind === 'diagnostics')
     return {
       kind: 'diagnostics',

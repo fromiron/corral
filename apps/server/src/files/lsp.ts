@@ -9,6 +9,9 @@ import { type ToolCancellation, ToolRefusal, ToolTerminationUnconfirmed } from '
 import {
   ApplyWorkspaceEditRequest,
   CancellationTokenSource,
+  CodeAction,
+  CodeActionRequest,
+  CodeActionResolveRequest,
   createProtocolConnection,
   DefinitionRequest,
   type Diagnostic,
@@ -22,10 +25,21 @@ import {
   type Position,
   type ProtocolConnection,
   PublishDiagnosticsNotification,
+  type Range,
   ReferencesRequest,
+  RenameRequest,
   ShutdownRequest,
 } from 'vscode-languageserver-protocol/node';
 import { killProcessGroup, processGroupGone } from './process-group.ts';
+
+// The protocol validator requires an edit even for an unresolved literal action.
+function isAction(value: unknown): value is CodeAction {
+  if (value === null || typeof value !== 'object') return false;
+  return CodeAction.is({
+    ...value,
+    ...(!('edit' in value) && !('command' in value) ? { edit: {} } : {}),
+  });
+}
 
 class LspFailure extends ToolRefusal {
   constructor(message: string) {
@@ -38,12 +52,23 @@ interface LspInput {
   argv: string[];
   timeoutMs: number;
   document: { uri: string; text: string; languageId: string; version: number };
-  operation: 'definition' | 'references' | 'diagnostics';
+  operation: 'definition' | 'references' | 'diagnostics' | 'rename' | 'code_actions';
   position?: Position;
+  range?: Range;
+  newName?: string;
+  only?: string[];
 }
 type LspBody =
   | { kind: 'locations'; locations: (Location | LocationLink)[] }
-  | { kind: 'diagnostics'; diagnostics: Diagnostic[] };
+  | { kind: 'diagnostics'; diagnostics: Diagnostic[] }
+  | {
+      kind: 'edits';
+      actions: {
+        title: string;
+        edit?: unknown;
+        unsupported?: 'command' | 'disabled' | 'no_edit';
+      }[];
+    };
 export type LspResponse = LspBody & { durationMs: number; truncated: boolean };
 
 /** Transport only: the owning workspace broker supplies/validates documents and URI scope. */
@@ -85,8 +110,15 @@ export class LspRunner {
       input.timeoutMs > 1800000
     )
       throw new LspFailure('language server input exceeds limits');
-    if (input.operation !== 'diagnostics' && !input.position)
+    if (['definition', 'references', 'rename'].includes(input.operation) && !input.position)
       throw new LspFailure('language server position is required');
+    if (
+      input.operation === 'rename' &&
+      (!input.newName || input.newName.length > 200 || /[\r\n\0]/.test(input.newName))
+    )
+      throw new LspFailure('invalid rename identifier');
+    if (input.operation === 'code_actions' && !input.range)
+      throw new LspFailure('code action range is required');
     const home = await mkdtemp(join(tmpdir(), 'corral-lsp-home-'));
     const started = this.clock.monotonicMs();
     let child: ChildProcess | undefined, connection: ProtocolConnection | undefined;
@@ -213,10 +245,26 @@ export class LspRunner {
             clientInfo: { name: 'Corral' },
             capabilities: {
               general: { positionEncodings: ['utf-16'] },
-              workspace: { applyEdit: false },
+              workspace: {
+                applyEdit: false,
+                workspaceEdit: {
+                  documentChanges: true,
+                  resourceOperations: [],
+                  failureHandling: 'abort',
+                },
+              },
               textDocument: {
                 publishDiagnostics: { versionSupport: true },
                 definition: { linkSupport: true },
+                rename: { prepareSupport: false },
+                codeAction: {
+                  dataSupport: true,
+                  disabledSupport: true,
+                  resolveSupport: { properties: ['edit'] },
+                  codeActionLiteralSupport: {
+                    codeActionKind: { valueSet: ['quickfix', 'refactor', 'source'] },
+                  },
+                },
                 diagnostic: { dynamicRegistration: false },
               },
             },
@@ -256,6 +304,74 @@ export class LspRunner {
         if (!Array.isArray(items)) throw new LspFailure('invalid language server diagnostics');
         truncated = items.length > 256;
         response = { kind: 'diagnostics', diagnostics: items.slice(0, 256) };
+      } else if (input.operation === 'rename') {
+        if (!initialized.capabilities.renameProvider)
+          throw new LspFailure('language server does not support rename');
+        const edit = await wait(
+          connection.sendRequest(
+            RenameRequest.type,
+            {
+              textDocument: { uri: input.document.uri },
+              position: input.position as Position,
+              newName: input.newName as string,
+            },
+            token.token,
+          ),
+        );
+        response = {
+          kind: 'edits',
+          actions: edit ? [{ title: `Rename to ${input.newName}`, edit }] : [],
+        };
+      } else if (input.operation === 'code_actions') {
+        const capability = initialized.capabilities.codeActionProvider;
+        if (!capability) throw new LspFailure('language server does not support code actions');
+        const candidates =
+          (await wait(
+            connection.sendRequest(
+              CodeActionRequest.type,
+              {
+                textDocument: { uri: input.document.uri },
+                range: input.range as Range,
+                context: { diagnostics: [], ...(input.only ? { only: input.only } : {}) },
+              },
+              token.token,
+            ),
+          )) ?? [];
+        if (!Array.isArray(candidates) || candidates.length > 32)
+          throw new LspFailure('code action limit exceeded');
+        const actions: Extract<LspBody, { kind: 'edits' }>['actions'] = [];
+        for (const candidate of candidates) {
+          if (typeof candidate?.title !== 'string' || candidate.title.length > 1000)
+            throw new LspFailure('invalid code action');
+          if (typeof candidate.command === 'string') {
+            actions.push({ title: candidate.title, unsupported: 'command' });
+            continue;
+          }
+          if (!isAction(candidate)) throw new LspFailure('invalid code action');
+          let action = candidate;
+          if (
+            !action.edit &&
+            action.data !== undefined &&
+            typeof capability === 'object' &&
+            capability.resolveProvider
+          ) {
+            action = await wait(
+              connection.sendRequest(CodeActionResolveRequest.type, action, token.token),
+            );
+            if (!isAction(action) || action.title.length > 1000)
+              throw new LspFailure('invalid resolved code action');
+          }
+          actions.push(
+            action.disabled
+              ? { title: action.title, unsupported: 'disabled' }
+              : action.command
+                ? { title: action.title, unsupported: 'command' }
+                : action.edit
+                  ? { title: action.title, edit: action.edit }
+                  : { title: action.title, unsupported: 'no_edit' },
+          );
+        }
+        response = { kind: 'edits', actions };
       } else {
         const params = {
           textDocument: { uri: input.document.uri },
