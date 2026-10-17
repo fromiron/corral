@@ -292,6 +292,7 @@ interface LiveRun {
   questions: Map<string, OpenQuestion>;
   /** Executions whose cancel the Coordinator asked for: they settle as cancelled. */
   cancelRequested: Set<string>;
+  closingExecutions: Set<string>;
   /** Pending approvals and how to continue once the person decides (C-029). */
   approvals: Map<string, (decision: 'approve' | 'reject') => void>;
   extensionUi: Map<string, PendingExtensionUi>;
@@ -365,6 +366,7 @@ interface PreparedExecution {
 /** A refused tool call; `limit` marks the refusals that also record `limit.reached`. */
 /** The opening and closing events every executed tool call commits. */
 interface ToolFrame {
+  effectId: string;
   toolCallId: string;
   opening: EventDraft[];
   closing(resultRef: string | null, error?: string | null): EventDraft[];
@@ -516,7 +518,8 @@ export class Coordinator {
     const unusable: { code: CommandError['code']; message: string }[] = [];
     for (const profile of new Set(planned.definition.roles.map((r) => r.modelProfile))) {
       const resolution = this.models.resolve(profile, request.mode);
-      if (resolution.ok) models[profile] = JSON.parse(canonicalJson(resolution.snapshot)) as ModelProfileSnapshot;
+      if (resolution.ok)
+        models[profile] = JSON.parse(canonicalJson(resolution.snapshot)) as ModelProfileSnapshot;
       else unusable.push({ code: resolution.code, message: `${profile}: ${resolution.reason}` });
     }
     const [firstUnusable] = unusable;
@@ -583,6 +586,7 @@ export class Coordinator {
       taskOutcomes: new Map(),
       questions: new Map(),
       cancelRequested: new Set(),
+      closingExecutions: new Set(),
       approvals: new Map(),
       extensionUi: new Map(),
       uiRequestCount: 0,
@@ -2296,14 +2300,19 @@ export class Coordinator {
         run.handles.set(input.executionId, handle);
         if (run.cancelRequested.has(input.executionId)) await handle.cancel('cancelled');
         settlement = await handle.waitForSettlement();
-        await Promise.all(run.toolOutcomes.get(input.executionId) ?? []);
       } catch (error) {
         settlement = { outcome: 'failed', error: String(error) };
       } finally {
+        run.closingExecutions.add(input.executionId);
+        for (const pending of run.extensionUi.values())
+          if (pending.input.executionId === input.executionId)
+            this.closeExtensionUi(run, pending.requestId, 'execution_ended');
+        for (const listener of run.cancelListeners.get(input.executionId) ?? []) listener();
+        // A worker can end while awaiting a child; stop children before draining those tools.
+        await this.cancelChildren(run, input.executionId, 'the parent execution ended');
+        await Promise.allSettled(run.toolOutcomes.get(input.executionId) ?? []);
         run.handles.delete(input.executionId);
       }
-      // An execution owns its children: they end before it does (Spec §7.2).
-      await this.cancelChildren(run, input.executionId, 'the parent execution ended');
       return this.settle(run, input, effectId, settlement);
     })();
     run.taskOutcomes.set(input.taskId, outcome);
@@ -3146,6 +3155,7 @@ export class Coordinator {
         status !== 'active' ||
         run.projection.status !== 'running' ||
         run.cancelRequested.has(executionId) ||
+        run.closingExecutions.has(executionId) ||
         run.projection.tasks[input.taskId]?.activeExecutionId !== executionId ||
         this.storageError
       ) {
@@ -3320,19 +3330,22 @@ export class Coordinator {
         },
         { type: 'tool.started', executionId, payload: { executionId, toolCallId, effectId } },
       ];
-      const closing = (resultRef: string | null, error: string | null = null): EventDraft[] => [
-        {
-          type: 'tool.finished',
-          executionId,
-          payload: { executionId, toolCallId, resultRef, error },
-        },
-        {
-          type: 'effect.settled',
-          executionId,
-          payload: { effectId, outcome: error ? 'failed' : 'succeeded' },
-        },
-      ];
-      const tool = { opening, closing, toolCallId };
+      const closing = (resultRef: string | null, error: string | null = null): EventDraft[] =>
+        run.projection.effects[effectId] && run.projection.effects[effectId]?.status !== 'admitted'
+          ? []
+          : [
+              {
+                type: 'tool.finished',
+                executionId,
+                payload: { executionId, toolCallId, resultRef, error },
+              },
+              {
+                type: 'effect.settled',
+                executionId,
+                payload: { effectId, outcome: error ? 'failed' : 'succeeded' },
+              },
+            ];
+      const tool = { opening, closing, toolCallId, effectId };
       switch (call.proposal.name) {
         case 'read':
         case 'edit':
@@ -3537,7 +3550,18 @@ export class Coordinator {
               nativeEffects.set(toolCallId, effectId);
             },
             finishNativeTool: async (toolCallId: string, outcome: 'succeeded' | 'failed') => {
-              requireActive();
+              const execution = run.projection.executions[executionId];
+              if (
+                !execution ||
+                TERMINAL_EXECUTION_STATUSES.has(execution.status) ||
+                TERMINAL_RUN_STATUSES.has(run.projection.status) ||
+                run.cancelRequested.has(executionId) ||
+                run.closingExecutions.has(executionId) ||
+                execution.attemptNo !== input.attemptNo ||
+                run.projection.tasks[input.taskId]?.activeExecutionId !== executionId ||
+                this.storageError
+              )
+                throw new Error('native owner is closed');
               const effectId = nativeEffects.get(toolCallId);
               if (!effectId || run.projection.effects[effectId]?.status !== 'admitted')
                 throw new Error('native call is closed');
@@ -4397,7 +4421,9 @@ export class Coordinator {
     scopeListeners.add(abort);
     const cancellation: ToolCancellation = {
       get aborted() {
-        return timedOut || run.cancelRequested.has(executionId);
+        return (
+          timedOut || run.cancelRequested.has(executionId) || run.closingExecutions.has(executionId)
+        );
       },
       onCancel(fn) {
         listeners.add(fn);
@@ -4477,7 +4503,16 @@ export class Coordinator {
           cancellation,
         );
       }
-      if (cancellation.aborted || TERMINAL_RUN_STATUSES.has(run.projection.status)) {
+      const execution = run.projection.executions[executionId];
+      if (
+        cancellation.aborted ||
+        TERMINAL_RUN_STATUSES.has(run.projection.status) ||
+        !execution ||
+        TERMINAL_EXECUTION_STATUSES.has(execution.status) ||
+        execution.attemptNo !== input.attemptNo ||
+        run.projection.tasks[input.taskId]?.activeExecutionId !== executionId ||
+        run.projection.effects[tool.effectId]?.status !== 'admitted'
+      ) {
         this.commit(run, [
           ...tool.closing(null, 'scope cancelled'),
           {

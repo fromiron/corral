@@ -123,14 +123,32 @@ async function loaded() {
 describe('Coordinator harness boundary (H2)', () => {
   it('[TC-HAR-002-N] an admitted native effect can finish during pause without admitting another call', async () => {
     const s = await loaded();
-    const args = {text:'approved'};
-    const auth = await s.host().authorizeTool({name:'echo',args});
-    await s.host().beginNativeTool!(auth.toolCallId,hash(args));
-    s.coordinator.submit({schemaVersion:'0.1',runId:s.input().runId,commandId:'pause_native',type:'pause',payload:{scope:'run'}});
-    await expect(s.host().finishNativeTool!(auth.toolCallId,'succeeded')).resolves.toBeUndefined();
-    expect(s.events().filter(event=>event.type==='tool.finished' && event.payload.toolCallId===auth.toolCallId)).toHaveLength(1);
+    const args = { text: 'approved' };
+    const auth = await s.host().authorizeTool({ name: 'echo', args });
+    await s.host().beginNativeTool!(auth.toolCallId, hash(args));
+    s.coordinator.submit({
+      schemaVersion: '0.1',
+      runId: s.input().runId,
+      commandId: 'pause_native',
+      type: 'pause',
+      payload: { scope: 'run' },
+    });
+    await expect(s.host().finishNativeTool!(auth.toolCallId, 'succeeded')).resolves.toBeUndefined();
+    expect(
+      s
+        .events()
+        .filter(
+          (event) => event.type === 'tool.finished' && event.payload.toolCallId === auth.toolCallId,
+        ),
+    ).toHaveLength(1);
     expect(s.coordinator.getSnapshot(s.input().runId).projection.status).not.toBe('running');
-    s.coordinator.submit({schemaVersion:'0.1',runId:s.input().runId,commandId:'stop_native',type:'cancel',payload:{scope:{kind:'run'},reason:'done'}});
+    s.coordinator.submit({
+      schemaVersion: '0.1',
+      runId: s.input().runId,
+      commandId: 'stop_native',
+      type: 'cancel',
+      payload: { scope: { kind: 'run' }, reason: 'done' },
+    });
     s.done.open();
   });
   it('[TC-HAR-010-H] [TC-HAR-010-N] Pi edit/write aliases retain role file permissions and cannot modify skill resources', async () => {
@@ -155,24 +173,20 @@ describe('Coordinator harness boundary (H2)', () => {
       diagnostics: [],
     });
     expect(
-      await s
-        .host()
-        .invokeTool({
-          name: 'edit',
-          args: { path: 'a.txt', edits: [{ oldText: 'one', newText: 'two' }] },
-        }),
+      await s.host().invokeTool({
+        name: 'edit',
+        args: { path: 'a.txt', edits: [{ oldText: 'one', newText: 'two' }] },
+      }),
     ).toMatchObject({ ok: true });
     expect(execute).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'edit', executionId: s.input().executionId }),
       expect.anything(),
     );
     expect(
-      await s
-        .host()
-        .authorizeTool({
-          name: 'write',
-          args: { path: 'skills/writing/SKILL.md', content: 'overwrite' },
-        }),
+      await s.host().authorizeTool({
+        name: 'write',
+        args: { path: 'skills/writing/SKILL.md', content: 'overwrite' },
+      }),
     ).toMatchObject({ ok: false });
     expect(
       await s.host().authorizeTool({ name: 'edit', args: { path: 'a.txt', edits: [] } }),
