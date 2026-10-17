@@ -61,7 +61,8 @@ export interface InboxItem {
     | 'integration'
     | 'check_failed'
     | 'unreviewed'
-    | 'recipe_stopped';
+    | 'recipe_stopped'
+    | 'lsp_proposal';
   sessionId: string;
   sessionTitle: string;
   runId: string | null;
@@ -571,6 +572,17 @@ export class ReviewService {
           sessionTitle: title,
           runId: null,
           detail: entry.text.slice(0, 120),
+        });
+      const proposals = this.db
+        .prepare("SELECT COUNT(*) AS n FROM lsp_proposals WHERE session_id=? AND state='pending'")
+        .get(id) as { n: number };
+      if (proposals.n > 0)
+        items.push({
+          kind: 'lsp_proposal',
+          sessionId: id,
+          sessionTitle: title,
+          runId: null,
+          detail: String(proposals.n),
         });
       const uncertain = this.db
         .prepare(

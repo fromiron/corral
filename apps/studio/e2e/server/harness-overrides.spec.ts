@@ -49,7 +49,8 @@ test('[TC-HAR-003-H] previews a run-only work style, uses its pinned layer and c
   await page.goto(`${corral.server.url}/corrals/${corralId}/edit`);
   await page.getByText('Work styles for this run', { exact: true }).click();
   const select = page.getByRole('combobox', { name: 'Run work style for writer', exact: true });
-  await select.selectOption('limited:1');
+  await select.click();
+  await page.getByRole('option', { name: 'One-time style · r1', exact: true }).click();
   let release!: () => void;
   const blocked = new Promise<void>((resolve) => {
     release = resolve;
@@ -65,18 +66,20 @@ test('[TC-HAR-003-H] previews a run-only work style, uses its pinned layer and c
   const requested = page.waitForRequest('**/api/v1/harness/preview');
   await page.getByRole('button', { name: 'Preview run style for writer', exact: true }).click();
   await requested;
-  await select.selectOption('');
+  await select.click();
+  await page.getByRole('option', { name: 'Keep role settings', exact: true }).click();
   const received = page.waitForResponse('**/api/v1/harness/preview');
   release();
   await received;
   await expect(page.getByTestId('run-harness-preview')).toHaveCount(0);
-  await select.selectOption('limited:1');
+  await select.click();
+  await page.getByRole('option', { name: 'One-time style · r1', exact: true }).click();
   await page.getByRole('button', { name: 'Preview run style for writer', exact: true }).click();
   await expect(page.getByTestId('run-harness-preview')).toContainText('limited');
   await page.getByLabel('Agents').selectOption({ label: 'Live models (uses your sign-in)' });
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   await expect(page.getByTestId('run-status').first()).toContainText('Succeeded');
-  await expect(select).toHaveValue('');
+  await expect(select).toContainText('Keep role settings');
   const state = await page.evaluate(async () => {
     const runs = await (await fetch('/api/v1/runs')).json();
     return (await fetch(`/api/v1/runs/${runs[0].runId}`)).json();

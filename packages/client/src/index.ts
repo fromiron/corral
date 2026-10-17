@@ -1332,7 +1332,8 @@ export interface InboxItemView {
     | 'integration'
     | 'check_failed'
     | 'unreviewed'
-    | 'recipe_stopped';
+    | 'recipe_stopped'
+    | 'lsp_proposal';
   sessionId: string;
   sessionTitle: string;
   runId: string | null;

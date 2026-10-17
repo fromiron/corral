@@ -4,7 +4,7 @@ import type {
   HarnessOverrides,
   HarnessProfileRevision,
 } from '@corral/contracts';
-import { Button } from '@corral/react/ui';
+import { Button, Select } from '@corral/react/ui';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { HarnessPreviewView } from '../pages/HarnessSettingsPage.tsx';
@@ -76,15 +76,28 @@ export function RunHarnessOverrides({
             selected = chosen ? `${chosen.profileId}:${chosen.revision}` : '';
           return [
             <div key={role.roleId} className="flex flex-col gap-2">
-              <label className="flex flex-col gap-1">
-                {t('runStyleFor', { name: role.name })}
-                <select
-                  className="rounded border border-line bg-surface p-2"
+              <div className="flex flex-col gap-1">
+                <span>{t('runStyleFor', { name: role.name })}</span>
+                <Select
+                  label={t('runStyleFor', { name: role.name })}
                   value={selected}
-                  onChange={(event) => {
+                  disabled={disabled}
+                  options={[
+                    { value: '', label: t('keepRoleStyle') },
+                    ...(selected &&
+                    !profiles.some(
+                      (profile) => `${profile.profileId}:${profile.revision}` === selected,
+                    )
+                      ? [{ value: selected, label: selected }]
+                      : []),
+                    ...profiles.map((profile) => ({
+                      value: `${profile.profileId}:${profile.revision}`,
+                      label: `${profile.name} · r${profile.revision}`,
+                    })),
+                  ]}
+                  onValueChange={(selection) => {
                     const profile = profiles.find(
-                      (profile) =>
-                        `${profile.profileId}:${profile.revision}` === event.target.value,
+                      (profile) => `${profile.profileId}:${profile.revision}` === selection,
                     );
                     const next = { ...value };
                     if (profile)
@@ -96,24 +109,8 @@ export function RunHarnessOverrides({
                     onChange(next);
                     setPreview(null);
                   }}
-                >
-                  <option value="">{t('keepRoleStyle')}</option>
-                  {selected &&
-                  !profiles.some(
-                    (profile) => `${profile.profileId}:${profile.revision}` === selected,
-                  ) ? (
-                    <option value={selected}>{selected}</option>
-                  ) : null}
-                  {profiles.map((profile) => (
-                    <option
-                      key={profile.profileId}
-                      value={`${profile.profileId}:${profile.revision}`}
-                    >
-                      {profile.name} · r{profile.revision}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                />
+              </div>
               <Button
                 variant="outline"
                 size="sm"

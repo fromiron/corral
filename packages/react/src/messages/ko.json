@@ -1416,7 +1416,8 @@
       "integration": "반영이 깔끔하게 끝나지 않음({detail})",
       "check_failed": "최근 검증 실패: {detail}",
       "unreviewed": "마지막 검토 뒤 파일 쓰기 {detail}개",
-      "recipe_stopped": "검토 중단: {detail}"
+      "recipe_stopped": "검토 중단: {detail}",
+      "lsp_proposal": "검토 대기 중인 언어 서버 제안 ({detail})"
     },
     "open": "열기"
   },

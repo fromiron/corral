@@ -1,7 +1,7 @@
 import type { HarnessPreview } from '@corral/client';
 import type { AgentRole, HarnessProfileRevision } from '@corral/contracts';
 import { useStudioStores } from '@corral/react';
-import { Button } from '@corral/react/ui';
+import { Button, Select } from '@corral/react/ui';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -51,34 +51,42 @@ export function HarnessRoleSettings({ role, nodeId }: { role: AgentRole; nodeId:
   if (!api) return null;
   return (
     <section className="flex flex-col gap-2 border-y border-line py-3">
-      <label className="flex flex-col gap-1 text-xs font-medium">
-        {t('heading')}
-        <select
-          className="rounded-md border border-line bg-surface p-2 text-sm"
+      <div className="flex flex-col gap-1 text-xs font-medium">
+        <span>{t('heading')}</span>
+        <Select
+          label={t('heading')}
           value={selection}
           disabled={busy}
-          onChange={(e) => {
-            const profile = profiles.find((p) => `${p.profileId}:${p.revision}` === e.target.value);
-            editor.getState().updateNode(nodeId, {
-              harness: profile
-                ? { profileId: profile.profileId, revision: profile.revision }
-                : null,
-            });
+          options={[
+            { value: '', label: t('basic') },
+            ...(selection &&
+            !profiles.some((profile) => `${profile.profileId}:${profile.revision}` === selection)
+              ? [
+                  {
+                    value: selection,
+                    label: `${role.harness?.profileId} · r${role.harness?.revision}`,
+                  },
+                ]
+              : []),
+            ...profiles.map((profile) => ({
+              value: `${profile.profileId}:${profile.revision}`,
+              label: `${profile.name} · r${profile.revision}`,
+            })),
+          ]}
+          onValueChange={(value) => {
+            const profile = profiles.find(
+              (profile) => `${profile.profileId}:${profile.revision}` === value,
+            );
+            editor
+              .getState()
+              .updateNode(nodeId, {
+                harness: profile
+                  ? { profileId: profile.profileId, revision: profile.revision }
+                  : null,
+              });
           }}
-        >
-          <option value="">{t('basic')}</option>
-          {selection && !profiles.some((p) => `${p.profileId}:${p.revision}` === selection) ? (
-            <option value={selection}>
-              {role.harness?.profileId} · r{role.harness?.revision}
-            </option>
-          ) : null}
-          {profiles.map((p) => (
-            <option key={p.profileId} value={`${p.profileId}:${p.revision}`}>
-              {p.name} · r{p.revision}
-            </option>
-          ))}
-        </select>
-      </label>
+        />
+      </div>
       <Link to="/settings/harness" className="text-xs text-accent underline">
         {t('manage')}
       </Link>

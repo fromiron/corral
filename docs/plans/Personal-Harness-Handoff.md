@@ -255,3 +255,13 @@ CORRAL_SPIKE_NODE=~/.local/share/fnm/node-versions/v24.19.0/installation/bin/nod
 - **아직 미연결:** public LspQuery/Report 계약, 불변 proposal 저장소/migration, WorkspaceService.runLsp의 staging/persist 경로, 명시 apply broker/API/client/UI, SDK schema/도구 설명/locale, 부분 실패·stale·취소·중복·재시작 테스트와 브라우저 E2E. 현재 내부 transport만 rename/code_actions를 받으므로 제품에서 쓸 수 있다고 보고하면 안 된다.
 - 다음 권장 구현: 기존 `WorkspaceService.change`를 lease 안에서 재사용한다. 제안에 before/after bytes/hash·tree·source version·owner scope를 고정하고, 적용은 user가 hash를 지정한 세션 API로 수행한다. 미종료 Run이 있는 세션은 거절한다. 전체 파일 사전 검사 뒤 각 파일의 기존 file_operations를 남기고, 실패 시 이미 적용/불확실 파일을 보존·남은 파일 중단하며 재적용하지 않는다. 기존 ReviewPage/Pierre DiffCode로 명시 검토 UI를 연결한다.
 - LSP transport + staging 23 tests 최종 통과. CodeAction 검증용 빈 edit는 `{changes:{}}`여야 한다(라이브러리는 `{}`를 WorkspaceEdit로 인정하지 않음). Server typecheck도 통과했다. 제품 연결은 여전히 다음 단계다.
+
+### H8 LSP 제안 저장·명시 적용·UI 연결
+
+- public `lsp_query`에 rename/code_actions를 추가하고 SDK 도구 schema/설명을 갱신했다. migration 0011의 proposal 본문·hash·소유 범위·worktree 정체성·기준 tree·서버 fingerprint는 고정이다. 목록/모델 응답은 diff 본문 대신 요약만 담는다.
+- WorkspaceService는 모든 응답을 staging한 뒤 현재 tree/취소를 재확인하고 한 번에 저장한다. 파일 본문 batch는 8 MiB, 파일당 1 MiB/32파일이며 잘린 edit 결과는 거절한다. 읽기 질의의 URI 범위 검사와 기존 파일 broker를 재사용한다.
+- 명시 적용은 제안 hash와 해당 세션을 확인하고 미종료 Run을 거절한다. 같은 lease에서 모든 대상 hash/tree를 확인한 후 기존 `change`를 사용한다. stale이면 첫 쓰기도 하지 않는다. 중간 IO 실패/새 Run/신뢰 철회 시 이미 적용한 파일과 failed/uncertain 파일을 남기고 멈춘다. 중복 적용은 재실행하지 않는다. 재시작 시 기존 file_operations를 근거로 applying→partial/uncertain 복구한다.
+- 세션 파일 검토의 제안 목록→불변 diff(Pierre 기존 FileDiff 재사용)→사용자 적용/닫기 UI를 연결했다. 브라우저 데모에서는 native LSP 기능을 제공하지 않는다. Inbox의 pending 제안 발견성도 연결 중이다.
+- 검증: staging/실제 LSP transport/file broker 56 tests, 부분 실패·재시작·늦은 취소·stale·중복 적용 포함. 실제 브라우저 E2E에서 SDK rename→launch 승인→Run 완료→제안 diff 검토→명시 적용→관리 사본만 변경/원본 유지까지 통과했다. core/adapter/server/client typecheck 통과, Studio는 demo API 추가 뒤 통과.
+- 남은 마무리: H6 다섯 비교군 실제 SDK fixture, 최종 전체 회귀/contract/spec/dependency gate·desktop staging·Computer Use·Pro 최종 검토/PR. Windows 자손 정리 미검증 경계는 그대로다.
+- Inbox pending 제안 표시/닫기 반례 통과. 전체 워크스페이스 회귀는 939 passed/5 opt-in skipped와 기존 workbench Select 규칙 1건 실패였다. HarnessRoleSettings·RunHarnessOverrides·LoopRecipeSettings의 native select 4개를 공통 Select로 교체했고, design guard 6 tests 및 override/recipe/MCP/LSP 명시 적용 브라우저 E2E 4개가 통과했다. 전체 typecheck 통과, spec 1,256 checks/169 of 175 tagged, MCP 의존성 원장 갱신 뒤 deps:check 통과. 수정 이후 최종 전체 회귀는 아직 남았다.

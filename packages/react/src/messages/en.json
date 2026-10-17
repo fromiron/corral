@@ -1416,7 +1416,8 @@
       "integration": "Applying did not finish cleanly ({detail})",
       "check_failed": "Latest check failed: {detail}",
       "unreviewed": "{detail} file writes since your last review",
-      "recipe_stopped": "Review stopped: {detail}"
+      "recipe_stopped": "Review stopped: {detail}",
+      "lsp_proposal": "Language server proposals awaiting review ({detail})"
     },
     "open": "Open"
   },

@@ -1,7 +1,7 @@
 import { type LoopNode, type RegisteredCheck, ReviewRecipeRevision } from '@corral/contracts';
 import { reviewCriteriaHash } from '@corral/core';
 import { useStudioStores } from '@corral/react';
-import { Button } from '@corral/react/ui';
+import { Button, Select } from '@corral/react/ui';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
@@ -103,40 +103,32 @@ export function LoopRecipeSettings({ node, projectId }: { node: LoopNode; projec
           {t('pinned', { revision: node.reviewRecipe.revision })}
         </p>
       ) : null}
-      <label className="flex flex-col gap-1 text-xs">
-        {t('candidate')}
-        <select
-          className={field}
+      <div className="flex flex-col gap-1 text-xs">
+        <span>{t('candidate')}</span>
+        <Select
+          label={t('candidate')}
           value={values.candidateNodeId}
-          onChange={(event) =>
-            setValues((value) => ({ ...value, candidateNodeId: event.target.value }))
-          }
-        >
-          <option value="">{t('choose')}</option>
-          {candidates.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="flex flex-col gap-1 text-xs">
-        {t('evaluator')}
-        <select
-          className={field}
+          disabled={busy}
+          options={[
+            { value: '', label: t('choose') },
+            ...candidates.map((item) => ({ value: item.id, label: item.label })),
+          ]}
+          onValueChange={(candidateNodeId) => setValues((value) => ({ ...value, candidateNodeId }))}
+        />
+      </div>
+      <div className="flex flex-col gap-1 text-xs">
+        <span>{t('evaluator')}</span>
+        <Select
+          label={t('evaluator')}
           value={values.evaluatorRoleId}
-          onChange={(event) =>
-            setValues((value) => ({ ...value, evaluatorRoleId: event.target.value }))
-          }
-        >
-          <option value="">{t('choose')}</option>
-          {reviewers.map((item) => (
-            <option key={item.id} value={item.roleId}>
-              {item.label}
-            </option>
-          ))}
-        </select>
-      </label>
+          disabled={busy}
+          options={[
+            { value: '', label: t('choose') },
+            ...reviewers.map((item) => ({ value: item.roleId, label: item.label })),
+          ]}
+          onValueChange={(evaluatorRoleId) => setValues((value) => ({ ...value, evaluatorRoleId }))}
+        />
+      </div>
       <p className="text-xs font-medium">{t('criteria')}</p>
       <ul className="list-disc pl-4 text-xs">
         {definition.input.criteria.map((criterion) => (
