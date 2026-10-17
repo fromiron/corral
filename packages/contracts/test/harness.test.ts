@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { AgentRole } from '../src/definition.ts';
+import { HarnessProfile, ResourcePath } from '../src/harness.ts';
 
 const role = {
   id: 'writer',
@@ -27,4 +28,29 @@ describe('optional harness binding (CR-018, H2)', () => {
     ])
       expect(AgentRole.safeParse({ ...role, harness }).success).toBe(false);
   });
+});
+
+it('[TC-HAR-004-N] resource entries stay relative to immutable bundles', () => {
+  for (const value of [
+    '/etc/passwd',
+    '../skill.md',
+    'a/../b',
+    'a/./b',
+    'a//b',
+    'C:/secret',
+    'a\\b',
+    'a\u0000b',
+  ])
+    expect(ResourcePath.safeParse(value).success).toBe(false);
+  expect(ResourcePath.parse('skills/writer/SKILL.md')).toBe('skills/writer/SKILL.md');
+  expect(
+    HarnessProfile.safeParse({
+      name: 'Writing',
+      policy: 'strict',
+      allowedTools: [],
+      resources: [],
+      startupCommands: [],
+      unknown: true,
+    }).success,
+  ).toBe(false);
 });

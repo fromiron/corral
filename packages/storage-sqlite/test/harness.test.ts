@@ -1,11 +1,19 @@
 import { FakeClock } from '@corral/testkit';
 import { afterEach, describe, expect, it } from 'vitest';
-import { openDatabase, type Db } from '../src/database.ts';
+import { type Db, openDatabase } from '../src/database.ts';
 import { SqliteHarnessStore } from '../src/harness-store.ts';
 
 const databases: Db[] = [];
-afterEach(() => { for (const db of databases.splice(0)) db.close(); });
-const profile = { name: 'Writing', policy: 'strict' as const, allowedTools: [], resources: [], startupCommands: [] };
+afterEach(() => {
+  for (const db of databases.splice(0)) db.close();
+});
+const profile = {
+  name: 'Writing',
+  policy: 'strict' as const,
+  allowedTools: [],
+  resources: [],
+  startupCommands: [],
+};
 function setup() {
   const db = openDatabase(':memory:');
   databases.push(db);
@@ -28,7 +36,9 @@ describe('immutable harness revisions (H3)', () => {
     const { db, store } = setup();
     store.saveProfile('writing', 0, profile);
     expect(() => store.saveProfile('writing', 0, profile)).toThrow(/revision/i);
-    expect(() => db.prepare('UPDATE harness_profile_revisions SET profile_json = ?').run('{}')).toThrow(/immutable/i);
+    expect(() =>
+      db.prepare('UPDATE harness_profile_revisions SET profile_json = ?').run('{}'),
+    ).toThrow(/immutable/i);
     expect(() => db.exec('DELETE FROM harness_profile_revisions')).toThrow(/immutable/i);
     expect(store.getProfile({ profileId: 'writing', revision: 1 })?.name).toBe('Writing');
   });
@@ -40,7 +50,9 @@ describe('immutable harness revisions (H3)', () => {
     expect(store.setDefault('personal', 'default', 0, binding).revision).toBe(1);
     expect(store.getDefault('personal', 'default')).toMatchObject({ binding, revision: 1 });
     expect(() => store.setDefault('personal', 'default', 0, null)).toThrow(/revision/i);
-    expect(() => store.setDefault('project', 'default', 0, { ...binding, revision: 99 })).toThrow(/profile/i);
+    expect(() => store.setDefault('project', 'default', 0, { ...binding, revision: 99 })).toThrow(
+      /profile/i,
+    );
     expect(store.setDefault('personal', 'default', 1, null).binding).toBeNull();
   });
 });

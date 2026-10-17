@@ -103,3 +103,63 @@ export const ProviderPayloadRecord = z.strictObject({
     .max(32 * 1024 * 1024),
 });
 export type ProviderPayloadRecord = z.infer<typeof ProviderPayloadRecord>;
+
+/** Paths inside a copied resource bundle, never paths on the person's computer. */
+export const ResourcePath = z
+  .string()
+  .min(1)
+  .max(500)
+  .regex(/^(?!\/)(?![A-Za-z]:)(?!.*(?:^|\/)\.{1,2}(?:\/|$))(?!.*\/\/)[^\\\p{Cc}]+$/u);
+export const HarnessProfile = z.strictObject({
+  name: z.string().trim().min(1).max(100),
+  policy: z.enum(['strict', 'trusted-native']),
+  allowedTools: z.array(ToolDescriptor.shape.name).max(128),
+  resources: z
+    .array(
+      z.strictObject({
+        resourceHash: ContentHash,
+        entry: ResourcePath,
+        kind: z.enum(['skill', 'extension']),
+        required: z.boolean(),
+        skillMode: z.enum(['auto', 'explicit', 'mandatory']).optional(),
+      }),
+    )
+    .max(64),
+  startupCommands: z.array(z.string().min(1).max(1000)).max(16),
+});
+export type HarnessProfile = z.infer<typeof HarnessProfile>;
+export const HarnessProfileRevision = HarnessProfile.extend({
+  profileId: Identifier,
+  revision: z.int().min(1),
+  createdAt: z.iso.datetime(),
+});
+export type HarnessProfileRevision = z.infer<typeof HarnessProfileRevision>;
+
+export const HarnessResource = z.strictObject({
+  hash: ContentHash,
+  name: z.string().regex(/^(?:@[a-z0-9][a-z0-9_.-]*\/)?[a-z0-9][a-z0-9_.-]*$/),
+  version: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_.+-]{0,99}$/),
+  license: z.string().max(200).nullable(),
+  sourceKind: z.enum(['local', 'npm', 'git']),
+  sourceLabel: z.string().max(300),
+  /** Package location relative to the whole copied install (including its dependencies). */
+  packagePath: ResourcePath.nullable(),
+  extensions: z.array(ResourcePath).max(64),
+  skills: z
+    .array(
+      z.strictObject({ name: Identifier, description: z.string().max(1000), entry: ResourcePath }),
+    )
+    .max(64),
+  files: z
+    .array(z.strictObject({ path: ResourcePath, hash: ContentHash, bytes: z.int().min(0) }))
+    .max(10000),
+  createdAt: z.iso.datetime(),
+});
+export type HarnessResource = z.infer<typeof HarnessResource>;
+export type HarnessResourceView = HarnessResource & { trustedAt: string | null };
+export interface HarnessDefault {
+  scope: 'personal' | 'project';
+  scopeId: string;
+  revision: number;
+  binding: HarnessBindingRef | null;
+}

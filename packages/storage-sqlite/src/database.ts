@@ -295,6 +295,38 @@ CREATE TABLE integration_files (
 ) STRICT;
 `,
   },
+  {
+    name: '0007_personal_harness',
+    sql: `
+CREATE TABLE harness_resources (
+  hash TEXT PRIMARY KEY,
+  resource_json TEXT NOT NULL,
+  created_at TEXT NOT NULL
+) STRICT;
+CREATE TABLE harness_resource_trust (
+  hash TEXT PRIMARY KEY REFERENCES harness_resources(hash),
+  trusted_at TEXT
+) STRICT;
+CREATE TABLE harness_profile_revisions (
+  profile_id TEXT NOT NULL,
+  revision INTEGER NOT NULL CHECK (revision >= 1),
+  profile_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (profile_id, revision)
+) STRICT;
+CREATE TABLE harness_defaults (
+  scope TEXT NOT NULL CHECK (scope IN ('personal', 'project')),
+  scope_id TEXT NOT NULL,
+  revision INTEGER NOT NULL CHECK (revision >= 1),
+  profile_id TEXT,
+  profile_revision INTEGER,
+  PRIMARY KEY (scope, scope_id),
+  FOREIGN KEY (profile_id, profile_revision) REFERENCES harness_profile_revisions(profile_id, revision)
+) STRICT;
+${IMMUTABLE('harness_resources')}
+${IMMUTABLE('harness_profile_revisions')}
+`,
+  },
 ];
 
 /** History queries must neither recover active runs nor migrate the workspace. */
