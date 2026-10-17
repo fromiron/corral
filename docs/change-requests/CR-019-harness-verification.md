@@ -23,6 +23,10 @@ TC-HAR-014: 첫 시도를 포함한 상한, 기준 변경 거절, 같은 출력/
 - 파일 I/O는 계속 서버 broker가 수행한다. Pi 편집 변환은 리소스·확장·세션을 로드하지 않는 별도 임시 worker에서 공개 `createEditTool`의 메모리 operations로 계산한다. 실제 파일 경로나 자격 증명을 보내지 않는다. 변경된 결과만 broker의 쓰기 lease 및 execution별 읽기 hash 검사로 반영한다.
 - 검증 대상: 원본 Pi와 같은 정상 결과/오류, 여러 블록의 전부 성공 또는 무변경 실패, BOM/CRLF, 중복 문자열·겹침, 취소 시 무반영, 계산 중 원본 변경 거절. 단일 파일 도구는 기존 원자적 교체·파일 작업 기록을 재사용한다.
 
+### 고정 편집 fixture 비교
+
+`corral eval <coding-suite.json> --hashline-binary <명시적으로 빌드한 fixture driver>`는 전체 쓰기·Pi edit·고정 OMP Hashline을 같은 입력으로 비교한다. 각 방법은 새 임시 관리 사본과 동일한 execution 읽기 근거를 사용한다. 실제 Corral broker의 원본 변경 검사를 세 방법에 모두 적용하며, Hashline은 제품 기본 도구에 등록하지 않는다. 완료/거절/실행 오류, 기대 최종 bytes 일치, 모델 인자 bytes, 실행 시간과 엔진 식별자를 기록한다. 이 고정 입력 실험은 LLM 코드 생성 품질 측정이 아니며 유료/외부 모델을 호출하지 않는다.
+
 ### 프로젝트 실행 설정과 신뢰
 
 - 등록 검사와 LSP 서버 정의는 `ProjectToolConfigRevision`에 저장한다. 프로젝트별 증가 revision과 내용 hash를 가지며 수정·삭제하지 않는다. 역할은 등록 ID를 선택하고 Run 시작 시 해당 설정 revision을 고정한다. 실제 argv·로컬 경로는 공개 Run 이벤트에 넣지 않는다.
