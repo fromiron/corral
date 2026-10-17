@@ -5,7 +5,7 @@ import type {
   EffortFeatures,
   EffortLevel,
 } from './decisions.ts';
-import type { AgentRole, InputBindingKind } from './definition.ts';
+import type { AgentRole, InputBindingKind, ItemRef } from './definition.ts';
 import type { CommandError } from './errors.ts';
 import type { ModelProfileSnapshot } from './events.ts';
 import type {
@@ -96,6 +96,7 @@ export interface AgentStartInput {
   /** The completion criteria version the run works against; reviews must name it. */
   criteriaVersionId: string;
   assignment: Assignment;
+  item?: ItemRef;
   capabilities: { delegateTo: CallableTarget[]; askTo: CallableTarget[] };
   inputs: ResolvedInput[];
   /** Resolved at Run start, never a mutable profile lookup inside the worker. */

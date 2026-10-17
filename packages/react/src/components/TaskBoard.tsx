@@ -57,6 +57,9 @@ export function TaskBoard({
                 >
                   <td className="py-1">
                     {labelOf(task.nodeId)}
+                    {execution?.item ? (
+                      <span className="block text-muted">{t('item', execution.item)}</span>
+                    ) : null}
                     <span className="block font-mono text-muted">{task.taskId}</span>
                   </td>
                   <td>

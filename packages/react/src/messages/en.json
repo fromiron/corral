@@ -217,7 +217,8 @@
     "reasonPrefix": "Reason:",
     "newRunFromResult": "New run from this result",
     "startFrom": "The next run starts from {label} of run {runId}: its text is added to the brief.",
-    "clearStartFrom": "Clear"
+    "clearStartFrom": "Clear",
+    "item": "Item {index} of {total}"
   },
   "Reins": {
     "heading": "Reins",
@@ -495,7 +496,8 @@
     "status": "Status",
     "submitted": "Submitted",
     "graph": "the graph",
-    "attempts": "{count} attempts"
+    "attempts": "{count} attempts",
+    "item": "Item {index} of {total}"
   },
   "Questions": {
     "heading": "Questions",

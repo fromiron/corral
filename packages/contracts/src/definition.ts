@@ -23,6 +23,13 @@ export const InputBinding = z.strictObject({
 });
 export type InputBinding = z.infer<typeof InputBinding>;
 
+export const ItemRef = z.strictObject({
+  batchId: Identifier,
+  index: z.int().min(1).max(4),
+  total: z.int().min(1).max(4),
+});
+export type ItemRef = z.infer<typeof ItemRef>;
+
 // File tools (CR-012) work only inside a session's managed worktree.
 export const WorkTool = z.enum([
   'search',

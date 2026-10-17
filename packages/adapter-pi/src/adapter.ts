@@ -269,6 +269,7 @@ class WorkerExecution {
                   body: this.input.assignment.body,
                 }
               : { kind: 'scheduled' },
+        ...(this.input.item ? { item: this.input.item } : {}),
         delegateTo: this.input.capabilities.delegateTo,
         askTo: this.input.capabilities.askTo,
         ...(this.resources ? { harness: this.input.harness, resources: this.resources } : {}),

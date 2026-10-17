@@ -217,7 +217,8 @@
     "reasonPrefix": "이유:",
     "newRunFromResult": "이 결과에서 새 Run",
     "startFrom": "다음 Run은 {runId} Run의 {label}에서 시작합니다. 그 본문이 브리프에 붙습니다.",
-    "clearStartFrom": "지우기"
+    "clearStartFrom": "지우기",
+    "item": "항목 {index}/{total}"
   },
   "Reins": {
     "heading": "Reins",
@@ -495,7 +496,8 @@
     "status": "상태",
     "submitted": "제출",
     "graph": "그래프",
-    "attempts": "시도 {count}회"
+    "attempts": "시도 {count}회",
+    "item": "항목 {index}/{total}"
   },
   "Questions": {
     "heading": "질문",

@@ -7,6 +7,7 @@ import {
   HarnessReport,
   HarnessResource,
   Identifier,
+  ItemRef,
   ModelRequestRecord,
   ProviderPayloadRecord,
   ResourcePath,
@@ -124,6 +125,7 @@ export const StartFrame = z.strictObject({
   /** The criteria version reviews must name, and the Loop round (null outside a Loop). */
   criteriaVersionId: Identifier,
   round: z.int().min(1).nullable(),
+  item: ItemRef.optional(),
   /** Tools this execution may propose. The host still checks every call. */
   tools: z.array(WorkerTool),
   /** Why the execution exists: its own step, a delegated task, or a question to answer. */

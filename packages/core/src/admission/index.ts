@@ -61,6 +61,8 @@ export interface ModelGateView {
 }
 
 export interface ToolGateView extends ModelGateView {
+  /** Only the owning batch may exclude its open effect when rechecking the next item. */
+  currentEffectId?: string;
   harnessRead?: boolean;
   descriptor?: import('@corral/contracts').ToolDescriptor;
   proposal: ToolProposal;
@@ -302,6 +304,33 @@ const roleAllowlist: Gate<ToolGateView> = {
     const { args } = proposal;
     const collaboration = input.role.allowedCollaborationTools as readonly string[];
     const allow: GateDecision = { kind: 'allow' };
+    if (
+      (proposal.name === 'spawn_subagents' && args.mode === 'items') ||
+      (input.item && ['spawn_subagents', 'ask'].includes(proposal.name))
+    ) {
+      const ancestors = new Set<string>([input.executionId]);
+      let parent = p.executions[input.executionId]?.parentExecutionId;
+      while (parent) {
+        ancestors.add(parent);
+        parent = p.executions[parent]?.parentExecutionId;
+      }
+      if (
+        Object.values(p.executions).some(
+          (e) => !TERMINAL_EXECUTION_STATUSES.has(e.status) && !ancestors.has(e.executionId),
+        )
+      )
+        return denied('item delegation requires all other executions to settle');
+      if (
+        Object.values(p.effects).some(
+          (e) =>
+            e.kind === 'tool' &&
+            e.scope === input.executionId &&
+            e.status === 'admitted' &&
+            e.effectId !== view.currentEffectId,
+        )
+      )
+        return denied('item delegation requires pending tools to settle');
+    }
     if (input.harness && !view.descriptor) return denied('tool is absent from the loaded harness');
     if (input.harness && !input.harness.allowedTools.includes(proposal.name))
       return denied('tool is not allowed by this harness');
@@ -442,8 +471,16 @@ const roleAllowlist: Gate<ToolGateView> = {
       }
       case 'spawn_subagents': {
         const tasks = args.tasks;
+        if (args.mode !== undefined && args.mode !== 'items')
+          return refuse('SCHEMA_INVALID', 'unknown delegation mode');
         if (!Array.isArray(tasks) || tasks.length === 0 || tasks.length > 4) {
           return refuse('SCHEMA_INVALID', 'tasks must list 1 to 4 tasks');
+        }
+        if (args.mode === 'items' && input.item)
+          return denied('nested item batches are not allowed');
+        if (args.mode === 'items' || input.item) {
+          if (input.item && tasks.length !== 1)
+            return denied('item descendants must run one at a time');
         }
         for (const task of tasks as { targetNodeId?: unknown; brief?: unknown }[]) {
           if (typeof task?.brief !== 'string' || !task.brief.trim() || task.brief.length > 4000) {
@@ -559,7 +596,10 @@ const limits: Gate<ToolGateView> = {
         );
       }
       // Reserve resident capacity for the whole batch, or none of it (Technical-Design §8.1).
-      if (live + count > policy.maxResidentExecutions) {
+      if (
+        live + (proposal.name === 'spawn_subagents' && args.mode === 'items' ? 1 : count) >
+        policy.maxResidentExecutions
+      ) {
         return refuse(
           'RESOURCE_CAPACITY',
           `at most ${policy.maxResidentExecutions} executions may be alive at once`,

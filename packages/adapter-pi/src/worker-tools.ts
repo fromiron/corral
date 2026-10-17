@@ -20,7 +20,7 @@ export const TOOL_TEXT: Record<WorkerTool, string> = {
   move_file: 'Move or rename a file you have read, from one relative path to another.',
   submit_result: 'Submit the versions that complete your task. Call it once, after write_artifact.',
   spawn_subagents:
-    'Start callable agents on separate tasks, in parallel. Returns their taskIds; then call await_tasks.',
+    'Start callable agents on separate tasks. Default: parallel, returns taskIds; then call await_tasks. With mode="items": run one at a time with only that item brief and completion criteria, wait for results, and stop after a failure. Item batches cannot be nested.',
   await_tasks:
     'Wait until the given tasks you started finish. Returns each status and the versions it submitted.',
   ask: 'Ask a callable agent a question and wait for its answer (or a timeout).',
@@ -65,6 +65,7 @@ export function parametersOf(name: WorkerTool, start: PromptStart) {
       return Type.Object({ artifactVersionIds: Type.Array(Type.String(), { minItems: 1 }) });
     case 'spawn_subagents':
       return Type.Object({
+        mode: Type.Optional(Type.Literal('items')),
         tasks: Type.Array(
           Type.Object({ targetNodeId: node(start.delegateTo), brief: Type.String() }),
           { minItems: 1, maxItems: 4 },
@@ -99,6 +100,10 @@ export function systemPrompt(start: PromptStart): string {
   if (start.assignment.kind === 'delegated') {
     lines.push('Another agent delegated a task to you; it is given as "task" below.');
   }
+  if (start.item)
+    lines.push(
+      `This is isolated item ${start.item.index} of ${start.item.total}. Other items' inputs and outputs are not available. Worktree changes accumulate in order.`,
+    );
   if (start.assignment.kind === 'question') {
     lines.push(
       'Another agent asked you the question given as "question" below. Answer it with reply.',

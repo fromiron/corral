@@ -279,6 +279,7 @@ function ExecutionRow({
             {labelOf(execution.nodeId)} · {id}
           </span>
           <span className="text-muted">
+            {execution.item ? `${t('item', execution.item)} · ` : ''}
             {round ? `${t('round', { no: round })} · ` : ''}
             {execution.attemptNo > 1 ? `${t('attempt', { no: execution.attemptNo })} · ` : ''}
             {t('requests', { count: execution.modelCallIds.length })}

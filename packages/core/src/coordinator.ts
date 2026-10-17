@@ -393,6 +393,7 @@ interface PendingExtensionUi {
 
 /** What starts an execution: its node, place in the call tree and reason to exist. */
 interface ExecutionSpec {
+  item?: AgentStartInput['item'];
   previousExecutionId?: string;
   taskId?: string;
   attemptNo?: number;
@@ -2533,6 +2534,9 @@ export class Coordinator {
     const executionId = this.ids.next('execution');
     const effectId = this.ids.next('effect');
     const attemptNo = spec.attemptNo ?? 1;
+    const item =
+      spec.item ??
+      (spec.parentExecutionId ? run.startInputs.get(spec.parentExecutionId)?.item : undefined);
     const input: AgentStartInput = {
       runId: run.runId,
       executionId,
@@ -2548,11 +2552,19 @@ export class Coordinator {
       round: spec.iterationId ? (run.projection.iterations[spec.iterationId]?.no ?? null) : null,
       criteriaVersionId: run.criteriaVersionId,
       assignment: spec.assignment,
+      ...(item ? { item } : {}),
       capabilities: {
         delegateTo: callables.delegate.map(label),
         askTo: callables.question.map(label),
       },
-      inputs: [...spec.given, ...this.resolveInputs(run, node.inputBindings, spec.iterationId)],
+      inputs: [
+        ...spec.given,
+        ...this.resolveInputs(
+          run,
+          item ? [{ kind: 'run_input', name: 'criteria' }] : node.inputBindings,
+          spec.iterationId,
+        ),
+      ],
     };
     const recipeLoop = spec.iterationId
       ? run.projection.iterations[spec.iterationId]?.loopNodeId
@@ -2560,6 +2572,7 @@ export class Coordinator {
     const recipe = recipeLoop ? run.recipes.get(recipeLoop) : undefined;
     if (
       recipe &&
+      !item &&
       (node.id === recipe.recipe.candidateNodeId || role.id === recipe.recipe.evaluatorRoleId)
     ) {
       const candidate = [...recipe.candidates.values()].at(-1);
@@ -2600,6 +2613,7 @@ export class Coordinator {
         payload: {
           executionId,
           parentExecutionId: spec.parentExecutionId,
+          ...(item ? { item } : {}),
           ...(spec.previousExecutionId ? { previousExecutionId: spec.previousExecutionId } : {}),
           nodeId: spec.nodeId,
           taskId,
@@ -3942,7 +3956,14 @@ export class Coordinator {
         case 'move_file':
           return this.externalTool(run, input, call.proposal, tool);
         case 'spawn_subagents':
-          return this.spawnTool(run, input, call.proposal, tool);
+          return this.spawnTool(run, input, call.proposal, tool, (proposal) =>
+            toolRefusal(
+              runGates(this.gates['tool.execute'], {
+                ...toolView(proposal),
+                currentEffectId: effectId,
+              }),
+            ),
+          );
         case 'await_tasks':
           return this.awaitTool(run, input, call.proposal, tool);
         case 'ask':
@@ -4690,6 +4711,7 @@ export class Coordinator {
 
   /** The latest version the same node wrote in the previous round of its Loop. */
   private previousRoundOutput(run: LiveRun, input: AgentStartInput) {
+    if (input.item) return null;
     const iterationId = run.projection.executions[input.executionId]?.iterationId;
     const previous = iterationId ? this.previousRound(run, iterationId) : null;
     if (!previous) return null;
@@ -4713,7 +4735,9 @@ export class Coordinator {
     input: AgentStartInput,
     proposal: ToolProposal,
     tool: ToolFrame,
+    recheck: (proposal: ToolProposal) => Refusal | null,
   ): Promise<ToolOutcome> {
+    if (proposal.args.mode === 'items') return this.spawnItems(run, input, proposal, tool, recheck);
     const tasks = proposal.args.tasks as { targetNodeId: string; brief: string }[];
     const children = tasks.map((task) =>
       this.prepareExecution(run, {
@@ -4736,6 +4760,114 @@ export class Coordinator {
       toolCallId: tool.toolCallId,
       result: { taskIds: children.map((c) => c.input.taskId) },
     };
+  }
+
+  private async spawnItems(
+    run: LiveRun,
+    input: AgentStartInput,
+    proposal: ToolProposal,
+    tool: ToolFrame,
+    recheck: (proposal: ToolProposal) => Refusal | null,
+  ): Promise<ToolOutcome> {
+    const tasks = proposal.args.tasks as { targetNodeId: string; brief: string }[];
+    const results: { taskId: string; status: string; artifactVersionIds: string[] }[] = [];
+    const { executionId } = input;
+    const cancelled = () =>
+      run.stop.aborted ||
+      run.cancelRequested.has(executionId) ||
+      run.closingExecutions.has(executionId);
+    let error: string | null = null;
+    this.commit(run, tool.opening);
+    try {
+      for (const [index, task] of tasks.entries()) {
+        await this.boundary(run, executionId);
+        if (cancelled()) {
+          error = 'scope cancelled';
+          break;
+        }
+        const refusal = recheck({ ...proposal, args: { mode: 'items', tasks: [task] } });
+        if (refusal) {
+          error = refusal.message;
+          break;
+        }
+        const child = this.prepareExecution(run, {
+          nodeId: task.targetNodeId,
+          iterationId: run.projection.executions[executionId]?.iterationId ?? null,
+          parentExecutionId: executionId,
+          depth: input.depth + 1,
+          assignment: { kind: 'delegated', brief: task.brief, parentExecutionId: executionId },
+          item: { batchId: tool.toolCallId, index: index + 1, total: tasks.length },
+          given: [{ name: 'task', kind: 'run_input', artifactVersionId: null, text: task.brief }],
+        });
+        const from = run.projection.executions[executionId]!.status;
+        this.commit(run, [
+          ...child.drafts,
+          {
+            type: 'execution.state_changed',
+            executionId,
+            payload: {
+              executionId,
+              from,
+              to: 'waiting_children',
+              activity: null,
+              waitingOn: {
+                kind: 'children',
+                targetIds: [child.input.executionId],
+                reasonCode: 'awaiting_item',
+                since: this.clock.nowIso(),
+                deadline: null,
+                required: true,
+              },
+            },
+          },
+        ]);
+        const outcome = await this.launch(run, child);
+        const state = run.projection.tasks[child.input.taskId];
+        results.push({
+          taskId: child.input.taskId,
+          status: state?.status ?? 'failed',
+          artifactVersionIds:
+            state?.status === 'completed' ? state.submittedArtifactVersionIds : [],
+        });
+        if (!outcome.ok || cancelled()) {
+          if (cancelled()) error = 'scope cancelled';
+          break;
+        }
+      }
+    } catch {
+      error = cancelled() ? 'scope cancelled' : 'item batch stopped';
+    } finally {
+      if (!cancelled() && run.projection.executions[executionId]?.status === 'waiting_children')
+        this.commit(run, [
+          {
+            type: 'execution.state_changed',
+            executionId,
+            payload: {
+              executionId,
+              from: 'waiting_children',
+              to: 'active',
+              activity: 'model',
+              waitingOn: null,
+            },
+          },
+        ]);
+      this.commit(run, tool.closing(null, error));
+    }
+    return error
+      ? {
+          ok: false,
+          toolCallId: tool.toolCallId,
+          error: { code: 'TARGET_TERMINAL', message: error },
+        }
+      : {
+          ok: true,
+          toolCallId: tool.toolCallId,
+          result: {
+            taskIds: results.map((row) => row.taskId),
+            tasks: results,
+            remaining: tasks.length - results.length,
+          },
+        };
   }
 
   /** Waits for the caller's children; the caller holds no model slot meanwhile. */

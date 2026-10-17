@@ -2094,6 +2094,31 @@
               "type": "string",
               "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
             },
+            "item": {
+              "type": "object",
+              "properties": {
+                "batchId": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                },
+                "index": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 4
+                },
+                "total": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 4
+                }
+              },
+              "required": [
+                "batchId",
+                "index",
+                "total"
+              ],
+              "additionalProperties": false
+            },
             "nodeId": {
               "type": "string",
               "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"

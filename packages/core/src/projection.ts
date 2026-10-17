@@ -4,6 +4,7 @@ import type {
   EventPayload,
   ExecutionActivity,
   ExecutionStatus,
+  ItemRef,
   ModelProfileSnapshot,
   NormalizedUsage,
   OutputContract,
@@ -22,6 +23,7 @@ import { applyProgressEvent, emptyProgress, type ProgressState } from './limits.
 // coordinator and in every client, so a replayed log and a live view cannot drift.
 
 export interface ExecutionView {
+  item?: ItemRef;
   executionId: string;
   nodeId: string;
   taskId: string;
@@ -845,6 +847,7 @@ function executionCreated(p: RunProjection, event: EventOf<'execution.created'>)
     attemptNo,
     parentExecutionId,
     previousExecutionId: event.payload.previousExecutionId ?? null,
+    ...(event.payload.item ? { item: event.payload.item } : {}),
     depth,
     iterationId,
     modelProfile: event.payload.modelProfile,

@@ -10,7 +10,7 @@ import {
   EvidenceLevel,
   RunDecisionSettings,
 } from './decisions.ts';
-import { OutputContract, RunLimits } from './definition.ts';
+import { ItemRef, OutputContract, RunLimits } from './definition.ts';
 import {
   ContentHash,
   EffectiveHarnessSnapshot,
@@ -109,6 +109,7 @@ export const ExecutionCreated = event(
     executionId: Identifier,
     parentExecutionId: Identifier.nullable(),
     previousExecutionId: Identifier.optional(),
+    item: ItemRef.optional(),
     nodeId: Identifier,
     taskId: Identifier,
     attemptNo: z.int().min(1),
