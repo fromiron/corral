@@ -1,5 +1,7 @@
 import { fork } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
+import { canonicalJson, type RunEvent } from '@corral/contracts';
 import {
   Coordinator,
   InProcessTransport,
@@ -133,7 +135,9 @@ describe('worker in a child process (C-017, ADR-017)', () => {
       const endpoint = await startCompatibleEndpoint();
       try {
         let calls = 0;
+        const payloadHashes: string[] = [];
         endpoint.setReply((body) => {
+          payloadHashes.push(createHash('sha256').update(canonicalJson(body)).digest('hex'));
           calls += 1;
           const written = [...JSON.stringify(body).matchAll(/artv_[A-Za-z0-9]+/g)].at(-1)?.[0];
           if (calls === 1)
@@ -199,6 +203,13 @@ describe('worker in a child process (C-017, ADR-017)', () => {
         expect(endpoint.models.every((m) => m === 'llama3.2')).toBe(true);
         expect(endpoint.authorizations.length).toBeGreaterThan(1);
         expect(endpoint.authorizations.every((a) => a === authorization)).toBe(true);
+        if (sdk) {
+          const events: RunEvent[] = [];
+          const stop = transport.subscribe(runId, 0, { onEvent: event => events.push(event) });
+          await Promise.resolve();
+          stop();
+          expect(events.filter(e => e.type === 'model.payload_recorded').map(e => e.payload.payloadHash)).toEqual(payloadHashes);
+        }
       } finally {
         await endpoint.close();
       }
