@@ -1,5 +1,6 @@
 import { fork } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { createConnection } from 'node:net';
 import { join } from 'node:path';
 import { canonicalJson, type RunEvent } from '@corral/contracts';
 import {
@@ -50,6 +51,26 @@ async function run(transport: InProcessTransport) {
 }
 
 describe('worker in a child process (C-017, ADR-017)', () => {
+  it.skipIf(process.platform === 'win32')('[TC-HAR-006-N] terminating a worker also ends its ordinary child processes', async () => {
+    const channel = processChannel(join(import.meta.dirname, 'fixtures', 'process-group.ts'));
+    const ready = new Promise<{ port: number; pid: number }>(resolve => channel.onFrame(frame => resolve(frame as { port: number; pid: number })));
+    const exited = new Promise<void>(resolve => channel.onExit(() => resolve()));
+    const child = await ready;
+    const listening = () => new Promise<boolean>(resolve => {
+      const socket = createConnection({ host: '127.0.0.1', port: child.port });
+      socket.once('connect', () => { socket.destroy(); resolve(true); });
+      socket.once('error', () => { socket.destroy(); resolve(false); });
+    });
+    try {
+      expect(await listening()).toBe(true);
+      channel.kill();
+      await exited;
+      await expect.poll(listening).toBe(false);
+    } finally {
+      channel.kill();
+      try { process.kill(child.pid, 'SIGKILL'); } catch { /* Already stopped as expected. */ }
+    }
+  });
   it('[TC-RUN-007-N] exits when the owning coordinator process disconnects', async () => {
     const child = fork(join(import.meta.dirname, 'fixtures', 'orphan-worker.ts'), [], {
       stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
@@ -153,7 +174,7 @@ describe('worker in a child process (C-017, ADR-017)', () => {
           policyRevision: 1,
           policy: 'strict' as const,
           resources: [],
-          allowedTools: [],
+          allowedTools: ['write_artifact', 'submit_result'],
           tools: [],
           diagnostics: [],
         };
