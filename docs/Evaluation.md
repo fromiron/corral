@@ -24,10 +24,34 @@ suite는 지시문 목록과 Corral 변형 목록이다. 모든 변형을 모든
 
 `examples/eval/`에는 단일 에이전트와, 사람 승인을 뺀 조사 팀 변형이 있다(승인이 있으면 headless로 끝까지 갈 수 없다).
 
-## 하지 않는 것
+## 고정 정답 조건과 하네스 비교
 
-- **답의 품질을 판정하지 않는다.** 표는 비용과 시간만 잰다. 품질 비교는 출력 전문을 사람이 읽거나, 별도의 채점 단계(후속)로 한다.
-- 실제 모델 실행은 비용·사용량이 생긴다. 일반 CI는 `--demo`만 쓴다(AGENTS 4).
+각 brief에 `expected`를 넣으면 실행 상태와 별도로 채점한다. `phase`는 `calibration` 또는 `holdout`이며 생략하면 holdout이다. 두 단계는 합산하지 않는다.
+
+```json
+{
+  "id": "add",
+  "brief": "Return the JSON object {\"answer\":4} and no other text.",
+  "phase": "holdout",
+  "expected": { "kind": "json", "value": { "answer": 4 } }
+}
+```
+
+지원 조건은 `exact` + `text`, `includes` + 비어 있지 않은 문자열 배열 `all`, `json` + JSON `value`다. 임의 코드나 모델을 채점기로 실행하지 않는다. `expected`가 없으면 품질 값은 미측정(null)이다.
+
+- 최종 정답률: 고정 정답이 있는 전체 실행 중 정확한 최종 결과를 전달한 비율. 결과를 전달하지 못한 실행도 분모에 남는다.
+- 잘못된 통과: 실행이 성공했지만 최종 답이 고정 정답 조건을 어겼다.
+- 불필요한 반려: 후보는 정답이지만 검토 규칙의 품질 판정 뒤 시도/수정/무진전 한도에서 중단됐다. 승인 대기·검사 오류·취소·예산/시간 부족은 품질 반려로 세지 않는다.
+- 재시도는 SDK 모델 요청 retry, execution 재시작, Loop 수정 회차를 따로 기록한다. 사용자 개입 요청 수도 별도다. 이벤트 이력을 끝까지 확인하지 못한 계측은 null/불완전으로 남긴다.
+- 보고서에 Run ID, definition hash, 하네스·recipe hash, 실제 실행 시작된 도구 이름을 남긴다. 입력 설정 재현의 근거이며 LLM 출력 재현 보장은 아니다.
+
+suite에 `comparison: "personal_harness"`를 지정하면 정확히 다섯 variant가 필요하다. 각 variant의 `group`은 `baseline`, `mandatory_skill`, `deterministic_check`, `review_repair`, `coding_tool` 중 하나이며 중복할 수 없다. 각 변형은 실제 저장된 하네스 revision을 참조하는 Corral 파일을 준비한다. 그룹 이름은 실험 조건의 선언이며 기능 사용/효과의 증거가 아니다. 보고서의 실제 적용 hash와 도구 기록도 함께 확인한다.
+
+같은 과제·모델·부모 예산으로 비교하고 기준을 조정한 calibration 과제를 holdout으로 재사용하지 않는다. 파일 변경을 비교할 때는 각 실행의 초기 작업 사본도 같아야 한다. 승인·신뢰는 Studio에서 미리 검토하며 headless 실행이 대신 승인하지 않는다.
+
+파일 도구 비교에서는 suite에 `workspace: { "projectId": "default", "baseCommit": "전체 Git commit hash" }`를 넣는다. 이미 연결하고 신뢰한 프로젝트에서 각 과제 × 변형마다 새 세션/작업 사본을 만든다. 지정 커밋이 로컬에 없으면 실패하며 HEAD로 대체하지 않는다. 결과의 `workspace`에는 세션과 실제 기준 커밋이 남는다. 비교 뒤 작업 사본은 검토를 위해 보존하며 Studio에서 정리할 수 있다. 원본 폴더의 미커밋 변경은 비교 초기 상태에 포함되지 않는다.
+
+실제 모델 실행은 비용·사용량이 생긴다. 일반 CI는 시뮬레이션 또는 명시적인 로컬 fake provider만 쓴다(AGENTS 4). 결정적 테스트의 정답률은 계측/기능 검증이며 실제 모델의 품질 개선 수치가 아니다.
 
 ## 기록
 

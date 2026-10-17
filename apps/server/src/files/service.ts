@@ -569,7 +569,13 @@ export class WorkspaceService implements FileTools {
       : null;
   }
 
-  async createWorktree(sessionId: string, projectId: string): Promise<WorktreeView> {
+  async createWorktree(
+    sessionId: string,
+    projectId: string,
+    baseCommit?: string,
+  ): Promise<WorktreeView> {
+    if (baseCommit !== undefined && !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(baseCommit))
+      throw new WorkspaceError('SCHEMA_INVALID', 'a full commit hash is required');
     const binding = this.binding(projectId);
     if (!binding)
       throw new WorkspaceError('TARGET_NOT_FOUND', 'link a folder to the project first');
@@ -581,9 +587,16 @@ export class WorkspaceService implements FileTools {
       throw new WorkspaceError('REVISION_CONFLICT', 'this session already has a working copy');
     let head: string;
     try {
-      head = await gitText(binding.root_path, ['rev-parse', '--verify', 'HEAD^{commit}']);
+      head = await gitText(binding.root_path, [
+        'rev-parse',
+        '--verify',
+        `${baseCommit ?? 'HEAD'}^{commit}`,
+      ]);
     } catch {
-      throw new WorkspaceError('SCHEMA_INVALID', 'the repository has no commit to start from');
+      throw new WorkspaceError(
+        'SCHEMA_INVALID',
+        'the repository does not contain the requested commit',
+      );
     }
     const path = join(this.worktreeRoot, binding.id, sessionId);
     await mkdir(dirname(path), { recursive: true, mode: 0o700 });

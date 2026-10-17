@@ -201,10 +201,15 @@ export async function runCli(args: string[], io: CliIO): Promise<number> {
           {
             signal: io.signal,
             onResult: io.write,
+            prepareWorkspace: (target) => server!.prepareEvaluation(target),
           },
         );
         io.write(summaryTable(report));
-        io.write('Cost and time only: this table does not judge answer quality.');
+        io.write(
+          report.summary.some((row) => row.quality.expectedRuns)
+            ? 'Quality uses only the suite’s fixed expectations; calibration and holdout are separate.'
+            : 'Cost and time only: this table does not judge answer quality.',
+        );
         if (values.out)
           writeFileSync(resolve(io.cwd, values.out), `${JSON.stringify(report, null, 2)}\n`);
         return report.summary.every((s) => s.runs > 0) ? 0 : 1;

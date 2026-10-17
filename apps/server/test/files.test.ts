@@ -75,18 +75,30 @@ async function setup(
 }
 
 describe('file broker (CR-012)', () => {
-  it('[TC-HAR-014-H] creates comparison copies from the exact requested commit even after the source HEAD moves',async()=>{
-    const s=await setup();
+  it('[TC-HAR-014-H] creates comparison copies from the exact requested commit even after the source HEAD moves', async () => {
+    const s = await setup();
     try {
-      const first=s.service.worktreeView('session_1')!.baseCommit;
-      writeFileSync(join(s.original,'a.txt'),'new source\n');
-      execFileSync('git',['-c','user.name=t','-c','user.email=t@e','commit','-qam','second'],{cwd:s.original});
-      s.db.prepare("INSERT INTO work_sessions VALUES ('session_2', 'default', NULL, 't', '', 0, 1, 'x', 'x', NULL, '[]')").run();
-      const second=await s.service.createWorktree('session_2','default',first);
+      const first = s.service.worktreeView('session_1')!.baseCommit;
+      writeFileSync(join(s.original, 'a.txt'), 'new source\n');
+      execFileSync(
+        'git',
+        ['-c', 'user.name=t', '-c', 'user.email=t@e', 'commit', '-qam', 'second'],
+        { cwd: s.original },
+      );
+      s.db
+        .prepare(
+          "INSERT INTO work_sessions VALUES ('session_2', 'default', NULL, 't', '', 0, 1, 'x', 'x', NULL, '[]')",
+        )
+        .run();
+      const second = await s.service.createWorktree('session_2', 'default', first);
       expect(second.baseCommit).toBe(first);
-      expect(readFileSync(join(s.service.copyOf('session_2')!.worktree,'a.txt'),'utf8')).toBe('one\n');
-      expect(readFileSync(join(s.original,'a.txt'),'utf8')).toBe('new source\n');
-    } finally {s.db.close();}
+      expect(readFileSync(join(s.service.copyOf('session_2')!.worktree, 'a.txt'), 'utf8')).toBe(
+        'one\n',
+      );
+      expect(readFileSync(join(s.original, 'a.txt'), 'utf8')).toBe('new source\n');
+    } finally {
+      s.db.close();
+    }
   });
   it('[TC-HAR-014-N] pins recipe criteria without lending read evidence and rejects changes or a new baseline', async () => {
     const s = await setup();

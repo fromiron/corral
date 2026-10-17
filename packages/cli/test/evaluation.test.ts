@@ -29,14 +29,36 @@ const runtime = () =>
       }),
     }),
   );
-it('[TC-HAR-014-H] prepares a fresh pinned work session for each comparison case',async()=>{
-  const transport=runtime();let prepared=0;
-  const suite={workspace:{projectId:'default',baseCommit:'a'.repeat(40)},briefs:[{id:'one',brief:'First'},{id:'two',brief:'Second'}],variants:[{id:'base',corral:'base.json',definition:linearCorral(['writer'])}]};
-  const report=await runSuite(transport,suite,'mock',{signal:new AbortController().signal,prepareWorkspace:async target=>({sessionId:`session_${++prepared}`,baseCommit:target.baseCommit})});
+it('[TC-HAR-014-H] prepares a fresh pinned work session for each comparison case', async () => {
+  const transport = runtime();
+  let prepared = 0;
+  const suite = {
+    workspace: { projectId: 'default', baseCommit: 'a'.repeat(40) },
+    briefs: [
+      { id: 'one', brief: 'First' },
+      { id: 'two', brief: 'Second' },
+    ],
+    variants: [{ id: 'base', corral: 'base.json', definition: linearCorral(['writer']) }],
+  };
+  const report = await runSuite(transport, suite, 'mock', {
+    signal: new AbortController().signal,
+    prepareWorkspace: async (target) => ({
+      sessionId: `session_${++prepared}`,
+      baseCommit: target.baseCommit,
+    }),
+  });
   expect(prepared).toBe(2);
-  expect(report.results.map(row=>row.workspace)).toEqual([{sessionId:'session_1',baseCommit:'a'.repeat(40)},{sessionId:'session_2',baseCommit:'a'.repeat(40)}]);
-  expect((await transport.listRuns()).map(run=>run.sessionId).sort()).toEqual(['session_1','session_2']);
-  await expect(runSuite(runtime(),suite,'mock',{signal:new AbortController().signal})).rejects.toThrow(/workspace/i);
+  expect(report.results.map((row) => row.workspace)).toEqual([
+    { sessionId: 'session_1', baseCommit: 'a'.repeat(40) },
+    { sessionId: 'session_2', baseCommit: 'a'.repeat(40) },
+  ]);
+  expect((await transport.listRuns()).map((run) => run.sessionId).sort()).toEqual([
+    'session_1',
+    'session_2',
+  ]);
+  await expect(
+    runSuite(runtime(), suite, 'mock', { signal: new AbortController().signal }),
+  ).rejects.toThrow(/workspace/i);
 });
 it('[TC-HAR-014-H] counts a correct candidate rejected by a recipe and records the repair lineage', async () => {
   const definition = CorralDefinition.parse(reviewTeam),

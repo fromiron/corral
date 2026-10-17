@@ -139,6 +139,10 @@ export interface CorralServer {
   bootstrapUrl: string;
   policy: InstallationPolicy;
   coordinator: Coordinator;
+  prepareEvaluation(target: {
+    projectId: string;
+    baseCommit: string;
+  }): Promise<{ sessionId: string; baseCommit: string }>;
   close(): Promise<void>;
 }
 
@@ -1466,6 +1470,19 @@ async function createCorralServer(
     bootstrapUrl: `${url}/#bootstrap=${token}`,
     policy: workspace.policy,
     coordinator,
+    async prepareEvaluation(target) {
+      const created = await corrals.createSession({
+        projectId: target.projectId,
+        title: 'Evaluation',
+      });
+      if (!created.ok) throw new Error(created.message);
+      const copy = await files.createWorktree(
+        created.session.sessionId,
+        target.projectId,
+        target.baseCommit,
+      );
+      return { sessionId: created.session.sessionId, baseCommit: copy.baseCommit };
+    },
     async close() {
       for (const close of [...streams]) close();
       await resources.disposeAsync();
