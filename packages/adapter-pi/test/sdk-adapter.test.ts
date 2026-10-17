@@ -1,7 +1,8 @@
+import { createHash } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { AgentHost, AgentStartInput, EffectiveHarnessSnapshot } from '@corral/contracts';
+import { canonicalJson, type AgentHost, type AgentStartInput, type EffectiveHarnessSnapshot } from '@corral/contracts';
 import { Gate, linearCorral } from '@corral/testkit';
 import {
   createFauxCore,
@@ -61,7 +62,12 @@ function runtime(
   const directory = mkdtempSync(join(tmpdir(), 'corral-sdk-test-'));
   scratch.push(directory);
   const path = join(directory, 'fixture.ts');
-  writeFileSync(path, extension || 'export default () => {}');
+  const content = extension || 'export default () => {}';
+  writeFileSync(path, content);
+  const files = [{ path: 'fixture.ts', hash: createHash('sha256').update(content).digest('hex'), bytes: Buffer.byteLength(content) }];
+  const resourceHash = createHash('sha256').update(canonicalJson(files)).digest('hex');
+  const start = input();
+  start.harness = { ...snapshot, resources: [{ ...snapshot.resources[0]!, hash: resourceHash, entry: 'fixture.ts' }] };
   const faux = createFauxCore({});
   faux.setResponses(responses);
   const frames: unknown[] = [];
@@ -104,17 +110,25 @@ function runtime(
       return pair.host;
     },
     harness: async () => ({
-      extensions: [{ path, hash, source: 'extension:fixture@1.0.0' }],
+      extensions: [{ path, hash: resourceHash, source: 'extension:fixture@1.0.0' }],
+      bundles: [{ root: directory, hash: resourceHash, files }],
       skills: [],
       startupCommands: [],
     }),
     credentials,
     cancelGraceMs: 200,
   });
-  return { adapter, host, calls, frames, reports, requests, credentials, directory };
+  return { adapter, host, calls, frames, reports, requests, credentials, directory, input: start };
 }
 
 describe('SDK worker through the product adapter (H2)', () => {
+  it('[TC-HAR-003-N] resource preparation errors never disclose a local path or body', async () => {
+    const run = runtime([]);
+    const spawn = vi.fn();
+    const adapter = new PiAgentAdapter({ spawn, spawnSdk: spawn, harness: async () => { throw new Error('/private/path: private body'); }, credentials: async () => null });
+    await expect(adapter.start(run.input, run.host)).rejects.toThrow('harness resources could not be prepared');
+    expect(spawn).not.toHaveBeenCalled();
+  });
   it('[TC-HAR-009-N] refuses a binding without a resolved snapshot before spawning or looking up credentials', async () => {
     const spawn = vi.fn();
     const credentials = vi.fn();
@@ -134,7 +148,7 @@ describe('SDK worker through the product adapter (H2)', () => {
       }),
       fauxAssistantMessage('Recovered.'),
     ]);
-    const handle = await run.adapter.start(input(), run.host);
+    const handle = await run.adapter.start(run.input, run.host);
     expect(await handle.waitForSettlement()).toMatchObject({ outcome: 'succeeded' });
     expect(run.credentials).toHaveBeenCalledTimes(2);
     expect(run.requests).toMatchObject([
@@ -183,7 +197,7 @@ describe('SDK worker through the product adapter (H2)', () => {
         },
       },
     );
-    expect(await (await run.adapter.start(input(), run.host)).waitForSettlement()).toMatchObject({
+    expect(await (await run.adapter.start(run.input, run.host)).waitForSettlement()).toMatchObject({
       outcome: 'succeeded',
     });
     expect(order).toEqual(['authorized', 'started', 'finished']);
@@ -205,7 +219,7 @@ describe('SDK worker through the product adapter (H2)', () => {
         },
       },
     );
-    expect(await (await run.adapter.start(input(), run.host)).waitForSettlement()).toMatchObject({
+    expect(await (await run.adapter.start(run.input, run.host)).waitForSettlement()).toMatchObject({
       outcome: 'failed',
     });
     expect(dispatched).toBe(0);
@@ -228,7 +242,7 @@ describe('SDK worker through the product adapter (H2)', () => {
         },
       },
     );
-    expect(await (await run.adapter.start(input(), run.host)).waitForSettlement()).toMatchObject({
+    expect(await (await run.adapter.start(run.input, run.host)).waitForSettlement()).toMatchObject({
       outcome: 'failed',
     });
     expect(dispatched).toBe(0);
@@ -248,7 +262,7 @@ describe('SDK worker through the product adapter (H2)', () => {
     }`,
       { authorizeTool: authorize },
     );
-    await (await run.adapter.start(input(), run.host)).waitForSettlement();
+    await (await run.adapter.start(run.input, run.host)).waitForSettlement();
     expect(authorize).not.toHaveBeenCalled();
   });
 
@@ -265,7 +279,7 @@ describe('SDK worker through the product adapter (H2)', () => {
       },
       fauxAssistantMessage('Done.'),
     ]);
-    const handle = await run.adapter.start(input(), run.host);
+    const handle = await run.adapter.start(run.input, run.host);
     await entered.wait();
     handle.pushDirective!({ directiveId: 'directive_1', text: 'Keep sources.' });
     release.open();
@@ -285,7 +299,7 @@ describe('SDK worker through the product adapter (H2)', () => {
       return {content:answer.content.filter(c=>c.type==='text'),details:{}};
     }});`,
     );
-    expect(await (await run.adapter.start(input(), run.host)).waitForSettlement()).toMatchObject({
+    expect(await (await run.adapter.start(run.input, run.host)).waitForSettlement()).toMatchObject({
       outcome: 'succeeded',
     });
     expect(run.requests).toMatchObject([
@@ -306,7 +320,7 @@ describe('SDK worker through the product adapter (H2)', () => {
       [fauxAssistantMessage('Must not run')],
       'throw new Error("private path/body");',
     );
-    expect(await (await run.adapter.start(input(), run.host)).waitForSettlement()).toMatchObject({
+    expect(await (await run.adapter.start(run.input, run.host)).waitForSettlement()).toMatchObject({
       outcome: 'failed',
     });
     expect(run.credentials).not.toHaveBeenCalled();
@@ -331,7 +345,7 @@ describe('SDK worker through the product adapter (H2)', () => {
         beginNativeTool: begin,
       },
     );
-    await (await run.adapter.start(input(), run.host)).waitForSettlement();
+    await (await run.adapter.start(run.input, run.host)).waitForSettlement();
     expect(begin).not.toHaveBeenCalled();
   });
 
@@ -345,7 +359,7 @@ describe('SDK worker through the product adapter (H2)', () => {
         return fauxAssistantMessage('Late');
       },
     ]);
-    const handle = await run.adapter.start(input(), run.host);
+    const handle = await run.adapter.start(run.input, run.host);
     await entered.wait();
     await handle.cancel('user cancelled');
     gate.open();

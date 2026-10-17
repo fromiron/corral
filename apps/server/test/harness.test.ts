@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { HarnessProfile } from '@corral/contracts';
@@ -13,7 +13,7 @@ afterEach(() => {
   for (const db of databases.splice(0)) db.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
-function setup(body = '---\nname: writing\ndescription: Write clearly.\n---\nKeep sources.') {
+function setup(body = '---\nname: writing\ndescription: Write clearly.\n---\nKeep sources.', download?: ConstructorParameters<typeof HarnessService>[0]['download']) {
   const root = mkdtempSync(join(tmpdir(), 'corral-harness-store-'));
   roots.push(root);
   const source = join(root, 'source');
@@ -41,6 +41,7 @@ function setup(body = '---\nname: writing\ndescription: Write clearly.\n---\nKee
     root: resourceRoot,
     db,
     clock: new FakeClock(),
+    ...(download ? { download } : {}),
     inspect: async () => ({
       name: 'fixture',
       version: '1.0.0',
@@ -72,6 +73,17 @@ function setup(body = '---\nname: writing\ndescription: Write clearly.\n---\nKee
 }
 
 describe('resource discovery, trust and resolution (H3)', () => {
+  it('[TC-HAR-004-H] downloaded package links become verified regular files in the reviewed copy', async () => {
+    const s = setup(undefined, async (_source, directory) => {
+      writeFileSync(join(directory, 'extension.ts'), 'export default () => {};');
+      symlinkSync('extension.ts', join(directory, 'alias.ts'));
+      return { name: 'fixture', version: '1.0.0', license: 'MIT', packagePath: null, extensions: ['alias.ts'], skills: [] };
+    });
+    const review = await s.service.discoverPackage('npm:fixture@1.0.0');
+    const resource = s.service.install(review.reviewId);
+    expect(resource.sourceKind).toBe('npm');
+    expect(lstatSync(join(s.resourceRoot, 'resources', `sha256-${resource.hash}`, 'alias.ts')).isSymbolicLink()).toBe(false);
+  });
   it('[TC-HAR-004-H] [TC-HAR-005-H] discovery does not execute or install; binding requires hash-specific trust and preview matches Run resolution', async () => {
     const s = setup();
     const review = await s.service.discoverLocal(s.source);
