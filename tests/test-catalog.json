@@ -1393,5 +1393,148 @@
     "status": "planned",
     "adapter": "mock unless explicitly live",
     "evidence": null
+  },
+  {
+    "id": "TC-REF-001-H",
+    "requirements": [
+      "CRL-REF-001"
+    ],
+    "suite": "unit",
+    "scenario": "파일·폴더·실행·역할 참조를 brief 뒤에 포인터로 나열하고 권한이 없다는 문구를 붙인다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-REF-002-H",
+    "requirements": [
+      "CRL-REF-001"
+    ],
+    "suite": "unit",
+    "scenario": "결과 참조는 고른 버전의 본문을 복사하고 옛 Run의 버전을 가리키지 않는다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-REF-003-F",
+    "requirements": [
+      "CRL-REF-001"
+    ],
+    "suite": "unit",
+    "scenario": "없는 결과·실행·역할 참조는 거절되고 Run이 생기지 않는다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-REF-004-F",
+    "requirements": [
+      "CRL-REF-001"
+    ],
+    "suite": "unit",
+    "scenario": "결과 참조 본문 합계가 산출물 상한을 넘으면 자르지 않고 거절한다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-REF-005-F",
+    "requirements": [
+      "CRL-REF-001"
+    ],
+    "suite": "unit",
+    "scenario": "절대·탈출 경로, 21개 이상의 참조, 거꾸로 된 줄 범위는 요청 스키마에서 거절된다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-REF-006-D",
+    "requirements": [
+      "CRL-REF-001"
+    ],
+    "suite": "unit",
+    "scenario": "같은 참조를 담은 같은 commandId 재전송은 첫 접수를 돌려준다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-REF-010-H",
+    "requirements": [
+      "CRL-REF-002"
+    ],
+    "suite": "integration",
+    "scenario": "서버 검색이 fuzzy 순위로 파일명을 먼저 돌려주고, 무시 파일·심볼릭 링크를 빼며 limit을 지키고 파일을 읽지 않는다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-REF-011-F",
+    "requirements": [
+      "CRL-REF-002"
+    ],
+    "suite": "integration",
+    "scenario": "등록되지 않은 검색 범위는 거절된다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-REF-020-H",
+    "requirements": [
+      "CRL-REF-003"
+    ],
+    "suite": "unit",
+    "scenario": "`/`는 입력 맨 앞에서만 명령 메뉴를 연다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-REF-021-H",
+    "requirements": [
+      "CRL-REF-003"
+    ],
+    "suite": "unit",
+    "scenario": "`@`는 맨 앞이나 공백 뒤에서만 참조 메뉴를 연다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-REF-022-H",
+    "requirements": [
+      "CRL-REF-003"
+    ],
+    "suite": "unit",
+    "scenario": "고른 항목이 트리거를 토큰과 공백으로 바꾼다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-REF-023-H",
+    "requirements": [
+      "CRL-REF-003"
+    ],
+    "suite": "unit",
+    "scenario": "공백이 있는 이름은 따옴표로 감싸고 폴더·줄 범위를 표시한다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-REF-024-H",
+    "requirements": [
+      "CRL-REF-003"
+    ],
+    "suite": "unit",
+    "scenario": "본문에 토큰이 남은 참조만 한 번씩 보내고 지워진 토큰의 참조는 보내지 않는다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
   }
 ]

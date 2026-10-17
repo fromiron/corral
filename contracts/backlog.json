@@ -1425,5 +1425,29 @@
     "done": "본문 복사·출처 기록·거절 3종, 서버·브라우저 runtime 동일",
     "status": "implemented",
     "evidence": "docs/change-requests/CR-007-new-run-from-version.md"
+  },
+  {
+    "id": "C-075",
+    "phase": "P11",
+    "title": "컴포저 `/` 명령과 `@` 참조(구조화 참조 전달·경로 검색·명령 레지스트리)",
+    "dependsOn": [
+      "C-074"
+    ],
+    "requirements": [
+      "CRL-REF-001",
+      "CRL-REF-002",
+      "CRL-REF-003"
+    ],
+    "files": [
+      "packages/contracts/src/commands.ts",
+      "packages/core/src/coordinator.ts",
+      "packages/core/src/fuzzy.ts",
+      "apps/server/src/files/service.ts",
+      "apps/studio/src/commandRegistry.ts",
+      "apps/studio/src/workbench/composerMenu.ts"
+    ],
+    "done": "참조 포인터·버전 고정 복사·거절 3종·멱등, 서버 fuzzy 검색, `/`·`@` 메뉴와 토큰",
+    "status": "implemented",
+    "evidence": "docs/change-requests/CR-016-composer-commands-and-references.md"
   }
 ]

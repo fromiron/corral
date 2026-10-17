@@ -652,5 +652,42 @@
     "tasks": [
       "C-074"
     ]
+  },
+  {
+    "requirementId": "CRL-REF-001",
+    "tests": [
+      "TC-REF-001-H",
+      "TC-REF-002-H",
+      "TC-REF-003-F",
+      "TC-REF-004-F",
+      "TC-REF-005-F",
+      "TC-REF-006-D"
+    ],
+    "tasks": [
+      "C-075"
+    ]
+  },
+  {
+    "requirementId": "CRL-REF-002",
+    "tests": [
+      "TC-REF-010-H",
+      "TC-REF-011-F"
+    ],
+    "tasks": [
+      "C-075"
+    ]
+  },
+  {
+    "requirementId": "CRL-REF-003",
+    "tests": [
+      "TC-REF-020-H",
+      "TC-REF-021-H",
+      "TC-REF-022-H",
+      "TC-REF-023-H",
+      "TC-REF-024-H"
+    ],
+    "tasks": [
+      "C-075"
+    ]
   }
 ]
