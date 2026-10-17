@@ -85,6 +85,16 @@ function setup(
 }
 
 describe('resource discovery, trust and resolution (H3)', () => {
+  it('[TC-HAR-016-H] pins and intersects selected MCP servers with no ambient selections',()=>{
+    const {service}=setup();
+    const mcp={id:'docs',name:'Docs',transport:'http' as const,url:'https://example.invalid/mcp',exposure:'direct' as const,timeoutMs:10000,auth:{kind:'none' as const}};
+    service.projectTools.save('default',0,{checks:[],lspServers:[],mcpServers:[mcp]});
+    const profile={name:'MCP',policy:'trusted-native' as const,allowedTools:['mcp__docs__read'],resources:[],startupCommands:[],mcpServerIds:['docs']};
+    service.saveProfile('mcp',0,profile);
+    expect(service.preview({profileId:'mcp',revision:1},'default').snapshot.projectTools?.mcpServerIds).toEqual(['docs']);
+    service.saveProfile('without_mcp',0,{...profile,mcpServerIds:[]});
+    expect(service.preview({profileId:'mcp',revision:1},'default',{profileId:'without_mcp',revision:1}).snapshot.projectTools?.mcpServerIds??[]).toEqual([]);
+  });
   it('[TC-HAR-005-N] an explicit skill command must be a complete command token in the brief', async () => {
     const s = setup();
     const review = await s.service.discoverLocal(s.source);

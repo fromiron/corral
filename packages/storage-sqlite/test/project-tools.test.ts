@@ -35,6 +35,20 @@ function setup() {
 }
 
 describe('pinned project execution configuration', () => {
+  it('[TC-HAR-016-H] pins MCP endpoint and OAuth scope without changing old configuration hashes',()=>{
+    const {store}=setup();
+    const original=store.save('project',0,config);
+    const mcp={id:'docs',name:'Docs',transport:'http' as const,url:'https://example.invalid/mcp',exposure:'direct' as const,timeoutMs:10000,auth:{kind:'oauth' as const,credentialRef:'docs_login',scope:'read:docs'}};
+    const saved=store.save('project',1,{...config,mcpServers:[mcp]});
+    expect(store.get('project',1)).toEqual(original);
+    expect(saved.mcpServers).toEqual([mcp]);
+    const target={projectId:'project',kind:'mcp' as const,id:'docs',fingerprint:'f'.repeat(64)};
+    store.setTrust(target,true);expect(store.trust(target)).not.toBeNull();
+    expect(store.trust({...target,kind:'lsp'})).toBeNull();
+    expect(store.save('project',2,{...config,mcpServers:[{...mcp,auth:{...mcp.auth,scope:'write:docs'}}]}).hash).not.toBe(saved.hash);
+    for(const server of [{...mcp,id:'collision-name'},{...mcp,url:'http://remote.invalid/mcp'},{...mcp,auth:{kind:'bearer',token:'inline-secret'}},{...mcp,url:'https://user:secret@example.invalid/mcp'}])
+      expect(ProjectToolConfig.safeParse({...config,mcpServers:[server]}).success).toBe(false);
+  });
   it('[TC-HAR-012-H] preserves exact revisions and computes canonical content hashes', () => {
     const { db, store } = setup();
     expect(store.latest('project')).toBeNull();
