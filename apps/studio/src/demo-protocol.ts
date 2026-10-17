@@ -10,8 +10,42 @@ export type DemoRequest = {
     args: Parameters<RuntimeTransport[M]>;
   };
 }[DemoMethod];
+/** The demo work folder's calls the page may make (demo/workspace.ts). */
+export const DEMO_WORKSPACE_METHODS = [
+  'binding',
+  'bind',
+  'configure',
+  'unbind',
+  'worktree',
+  'createWorktree',
+  'removeWorktree',
+  'changes',
+  'fileVersions',
+  'folderChanges',
+  'folderFileVersions',
+  'markReviewed',
+  'verifications',
+  'verify',
+  'fileOperations',
+  'runSnapshots',
+  'listComments',
+  'addComment',
+  'setCommentState',
+  'feedbackText',
+  'recordFeedback',
+  'decisions',
+  'decide',
+  'integrationPlan',
+  'integrate',
+  'integrations',
+  'revert',
+  'inboxFacts',
+] as const;
+export type DemoWorkspaceMethod = (typeof DEMO_WORKSPACE_METHODS)[number];
+
 export type DemoMessage =
   | DemoRequest
+  | { type: 'workspace'; id: number; method: DemoWorkspaceMethod; args: unknown[] }
   | { type: 'subscribe'; id: number; runId: string; afterSeq: number }
   | { type: 'unsubscribe'; id: number }
   | { type: 'configure'; delayMs: number };

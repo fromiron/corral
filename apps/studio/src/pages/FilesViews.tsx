@@ -9,7 +9,11 @@ import { type FormEvent, useCallback, useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
 
-// Work folders and working copies in Studio (CR-012). Shown on the local server only.
+// Work folders and working copies in Studio (CR-012), on the local server or the demo's
+// in-memory example folder.
+
+/** Fired when a session's working copy is made or removed. */
+export const WORKSPACE_CHANGED = 'corral:workspace-changed';
 
 /** "Name = command args" per line; quotes keep spaces inside one argument. */
 export function parseChecks(text: string): VerifyCommand[] {
@@ -55,9 +59,9 @@ export function useBinding(projectId: string | null) {
 /** The project's linked folder, its trust and checks (project page). */
 export function WorkFolderSection({ projectId }: { projectId: string }) {
   const t = useTranslations('Files');
-  const { workspaces } = useServices();
+  const { workspaces, mode } = useServices();
   const { binding, reload } = useBinding(projectId);
-  const [path, setPath] = useState('');
+  const [path, setPath] = useState(mode === 'browser' ? 'demo://example-repo' : '');
   const [checks, setChecks] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   if (!workspaces || binding === undefined) return null;
@@ -86,6 +90,7 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
         {t('folderHeading')}
       </h2>
       <p className="text-xs text-muted">{t('folderIntro')}</p>
+      {mode === 'browser' ? <p className="text-xs text-warning">{t('demoFolder')}</p> : null}
       {!binding ? (
         <form onSubmit={link} className="flex flex-wrap items-end gap-2">
           <label className="flex min-w-64 flex-1 flex-col gap-1 text-xs">
@@ -219,6 +224,8 @@ export function WorkingCopyPanel({
     try {
       await work();
       await reload();
+      // The header and panels showing the copy follow it.
+      window.dispatchEvent(new Event(WORKSPACE_CHANGED));
     } catch (failure) {
       setError(
         t('failed', { message: failure instanceof Error ? failure.message : String(failure) }),

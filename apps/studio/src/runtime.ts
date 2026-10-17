@@ -1,8 +1,23 @@
 import type { RuntimeTransport, TransportHandlers } from '@corral/core';
-import type { DemoMessage, DemoMethod, DemoResponse } from './demo-protocol.ts';
+import type {
+  DemoMessage,
+  DemoMethod,
+  DemoResponse,
+  DemoWorkspaceMethod,
+} from './demo-protocol.ts';
+
+export type DemoWorkspaceCall = (
+  method: DemoWorkspaceMethod,
+  ...args: unknown[]
+) => Promise<unknown>;
 
 /** ADR-016: the same Coordinator and transport run in a worker, without a server or keys. */
 export function createDemoTransport(): RuntimeTransport {
+  return createDemoRuntime().transport;
+}
+
+/** The demo worker's transport and its work folder (02-UX-Spec §10). */
+export function createDemoRuntime(): { transport: RuntimeTransport; workspace: DemoWorkspaceCall } {
   const worker = new Worker(new URL('./demo.worker.ts', import.meta.url), { type: 'module' });
   const raw = new URLSearchParams(window.location.search).get('delay');
   const delayMs = raw === null ? 1500 : Number(raw);
@@ -52,7 +67,15 @@ export function createDemoTransport(): RuntimeTransport {
       worker.postMessage({ type: 'request', id, method, args });
     }) as ReturnType<RuntimeTransport[M]>;
   };
-  return {
+  const workspace: DemoWorkspaceCall = (method, ...args) => {
+    const id = ++nextId;
+    return new Promise((resolve, reject) => {
+      if (failure) return reject(failure);
+      pending.set(id, { resolve, reject });
+      worker.postMessage({ type: 'workspace', id, method, args } satisfies DemoMessage);
+    });
+  };
+  const transport: RuntimeTransport = {
     startRun: (...args) => request('startRun', ...args),
     sendCommand: (...args) => request('sendCommand', ...args),
     getReceipt: (...args) => request('getReceipt', ...args),
@@ -74,4 +97,5 @@ export function createDemoTransport(): RuntimeTransport {
       };
     },
   };
+  return { transport, workspace };
 }

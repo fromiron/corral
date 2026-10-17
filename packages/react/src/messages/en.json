@@ -1238,7 +1238,9 @@
     "diffStopped": "Comparing took over 3 seconds and was stopped. Read the source or download it.",
     "computing": "Comparing…",
     "staged": "staged",
-    "gitScopeNote": "Your linked folder, HEAD to what is on disk now (staged and not). Read only; comments and decisions apply to the session's working copy."
+    "gitScopeNote": "Your linked folder, HEAD to what is on disk now (staged and not). Read only; comments and decisions apply to the session's working copy.",
+    "demoFolder": "Demo: any path links an example folder kept in this page's memory (demo://example-repo). A reload starts it again.",
+    "checksServerOnly": "Checks run commands on your computer, so they need the local server."
   },
   "Review": {
     "commentLine": "Comment on line {line}",

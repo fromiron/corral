@@ -1,6 +1,8 @@
+import { FILE_TOOLS } from '@corral/contracts';
 import type { CorralRepository } from '@corral/core';
 import { emptyDraft } from '@corral/react';
 import { type DemoTemplateId, templateForWorkspace } from './demo/templates.ts';
+import type { WorkspacesClient } from './demo/workspaces-client.ts';
 
 export type WorkspaceTemplateId = DemoTemplateId | 'blank';
 
@@ -47,6 +49,7 @@ export async function createFromTemplate(
  */
 export async function createDemoExamples(
   repository: CorralRepository,
+  workspaces: WorkspacesClient | null,
   text: {
     projects: [string, string];
     sessions: [string, string, string, string, string, string];
@@ -58,7 +61,7 @@ export async function createDemoExamples(
     { name: text.projects[1], template: 'starter', sessions: text.sessions.slice(3, 6) },
   ];
   let first: string | null = null;
-  for (const entry of plan) {
+  for (const [index, entry] of plan.entries()) {
     const project = await repository.createProject({ name: entry.name });
     if (!project.ok) return first;
     first ??= project.project.projectId;
@@ -68,13 +71,38 @@ export async function createDemoExamples(
       text.teamName,
       project.project.projectId,
     );
+    const sessionIds: string[] = [];
     for (const objective of entry.sessions) {
-      await repository.createSession({
+      const made = await repository.createSession({
         projectId: project.project.projectId,
         title: '',
         objective,
         corralId: team.ok ? team.corralId : null,
       });
+      if (made.ok) sessionIds.push(made.session.sessionId);
+    }
+    // The second project works on files: a linked example folder, a team that may change
+    // files, and a working copy for its first session (02-UX-Spec §10).
+    if (index === 1 && workspaces && team.ok) {
+      const record = await repository.get(team.corralId);
+      if (record) {
+        const definition = {
+          ...record.definition,
+          roles: record.definition.roles.map((role) => ({
+            ...role,
+            allowedWorkTools: [...new Set([...role.allowedWorkTools, ...FILE_TOOLS])],
+          })),
+        };
+        await repository.save({
+          definition,
+          layout: { nodes: record.layout.nodes, viewport: record.layout.viewport },
+          expectedDefinitionRevision: record.definitionRevision,
+        });
+      }
+      const projectId = project.project.projectId;
+      await workspaces.bind(projectId, 'demo://example-repo').catch(() => null);
+      await workspaces.configure(projectId, { trusted: true }).catch(() => null);
+      if (sessionIds[0]) await workspaces.createWorktree(sessionIds[0]).catch(() => null);
     }
   }
   return first;
