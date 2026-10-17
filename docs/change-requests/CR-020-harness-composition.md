@@ -31,3 +31,5 @@ TC-HAR-018: LSP 응답과 문서 버전 불일치, 범위 밖 URI, 부분 실패
 ## 런타임 도구 등록
 
 Pi 공개 runtime의 `refreshTools`와 로드 결과의 extension 도구 정의를 사용한다. 최초 로드 보고 이후의 등록/교체/제거는 execution별 증가 revision으로 Coordinator에 보고한 뒤 도구 호출이나 모델 요청을 계속한다. 보고는 원래 snapshot hash와 기대 revision을 확인하고 기존 역할 allowlist를 넓히지 않는다. 승인 시의 descriptor hash를 실행 직전 재검사하여 교체된 스키마/출처의 이전 승인을 재사용하지 않는다. 이미 시작한 효과는 원래 소유권으로 정산한다.
+
+중첩 호출은 Pi의 `parentToolCallId`를 현재 실행 중인 Corral 도구 ID로 변환한다. 같은 execution에서 아직 열린 native 효과만 부모가 될 수 있다. 부모 종료 뒤의 승인·실행은 거절하고 호출 기록에 부모 ID를 남긴다. worker의 Pi ID나 임의의 다른 execution ID를 신뢰하지 않는다.

@@ -173,20 +173,49 @@ function runtime(
 }
 
 describe('SDK worker through the product adapter (H2)', () => {
-  it.each(['session_start','before_agent_start'] as const)('[TC-HAR-016-H] wraps tools registered during %s and reports them before use',async event=>{
-    const updates: unknown[]=[],began:unknown[]=[];
+  it('[TC-HAR-017-H] maps nested Pi calls to the owning Corral native call',async()=>{
+    const proposals: {name:string;parentToolCallId?:string}[]=[];
     const run=runtime([
-      fauxAssistantMessage([fauxToolCall('echo',{text:'dynamic'})],{stopReason:'toolUse'}),
-      context=>{expect(JSON.stringify(context.messages)).toContain('DYNAMIC RESULT');return fauxAssistantMessage('done');},
-    ],`export default pi => { pi.on(${JSON.stringify(event)}, () => { pi.registerTool({name:'echo',label:'Echo',description:'Dynamic echo',parameters:{type:'object',properties:{text:{type:'string'}},required:['text']},execute:async()=>({content:[{type:'text',text:'DYNAMIC RESULT'}],details:{}})}); }); };`,{
-      updateHarnessTools:async update=>{updates.push(update);},
-      beginNativeTool:async(...args)=>{began.push(args);},
+      fauxAssistantMessage([fauxToolCall('echo',{text:'parent'})],{stopReason:'toolUse'}),fauxAssistantMessage('done'),
+    ],`export default pi=>{pi.registerTool({name:'echo',label:'Echo',description:'Nested call',parameters:{type:'object',properties:{text:{type:'string'}},required:['text']},execute:async(id,args,signal,update,ctx)=>{await ctx.executeTool('write_artifact',{text:'child'});return {content:[{type:'text',text:'done'}],details:{}};}});};`,{
+      authorizeTool:async proposal=>{proposals.push(proposal);return {ok:true,toolCallId:'owned_'+proposals.length};},
     });
     expect(await(await run.adapter.start(run.input,run.host)).waitForSettlement()).toMatchObject({outcome:'succeeded'});
-    expect(began).toHaveLength(1);
-    if(event==='before_agent_start') expect(updates).toHaveLength(1);
-    expect(JSON.stringify([...run.reports,...updates])).toContain('echo');
+    expect(proposals).toEqual([{name:'echo',args:{text:'parent'}},{name:'write_artifact',args:{text:'child'},parentToolCallId:'owned_1'}]);
   });
+  it.each(['session_start', 'before_agent_start'] as const)(
+    '[TC-HAR-016-H] wraps tools registered during %s and reports them before use',
+    async (event) => {
+      const updates: unknown[] = [],
+        began: unknown[] = [];
+      const run = runtime(
+        [
+          fauxAssistantMessage([fauxToolCall('echo', { text: 'dynamic' })], {
+            stopReason: 'toolUse',
+          }),
+          (context) => {
+            expect(JSON.stringify(context.messages)).toContain('DYNAMIC RESULT');
+            return fauxAssistantMessage('done');
+          },
+        ],
+        `export default pi => { pi.on(${JSON.stringify(event)}, () => { pi.registerTool({name:'echo',label:'Echo',description:'Dynamic echo',parameters:{type:'object',properties:{text:{type:'string'}},required:['text']},execute:async()=>({content:[{type:'text',text:'DYNAMIC RESULT'}],details:{}})}); }); };`,
+        {
+          updateHarnessTools: async (update) => {
+            updates.push(update);
+          },
+          beginNativeTool: async (...args) => {
+            began.push(args);
+          },
+        },
+      );
+      expect(
+        await (await run.adapter.start(run.input, run.host)).waitForSettlement(),
+      ).toMatchObject({ outcome: 'succeeded' });
+      expect(began).toHaveLength(1);
+      if (event === 'before_agent_start') expect(updates).toHaveLength(1);
+      expect(JSON.stringify([...run.reports, ...updates])).toContain('echo');
+    },
+  );
   it.each(['before_agent_start', 'context', 'tool_call', 'tool_result'] as const)(
     '[TC-HAR-006-N] stops after a required %s hook fails',
     async (event) => {
