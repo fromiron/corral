@@ -51,7 +51,7 @@ async function run(transport: InProcessTransport) {
 }
 
 describe('worker in a child process (C-017, ADR-017)', () => {
-  it.skipIf(process.platform === 'win32')('[TC-HAR-006-N] terminating a worker also ends its ordinary child processes', async () => {
+  it.skipIf(process.platform === 'win32').each(['kill', 'exit'])('[TC-HAR-006-N] worker %s also ends its ordinary child processes', async mode => {
     const channel = processChannel(join(import.meta.dirname, 'fixtures', 'process-group.ts'));
     const ready = new Promise<{ port: number; pid: number }>(resolve => channel.onFrame(frame => resolve(frame as { port: number; pid: number })));
     const exited = new Promise<void>(resolve => channel.onExit(() => resolve()));
@@ -63,7 +63,8 @@ describe('worker in a child process (C-017, ADR-017)', () => {
     });
     try {
       expect(await listening()).toBe(true);
-      channel.kill();
+      if (mode === 'kill') channel.kill();
+      else channel.send({ type: 'exit' });
       await exited;
       await expect.poll(listening).toBe(false);
     } finally {
