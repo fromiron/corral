@@ -18,8 +18,8 @@ import {
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PiAgentAdapter } from '../src/adapter.ts';
 import { memoryChannelPair } from '../src/channel.ts';
-import { runSdkWorker } from '../src/sdk-worker.ts';
 import type { SdkResources } from '../src/protocol.ts';
+import { runSdkWorker } from '../src/sdk-worker.ts';
 import { ACCESS_TOKEN, recordingHost } from './harness.ts';
 
 const scratch: string[] = [];
@@ -180,16 +180,80 @@ describe('SDK worker through the product adapter (H2)', () => {
     const cwd = mkdtempSync(join(tmpdir(), 'corral-mcp-copy-'));
     scratch.push(cwd);
     writeFileSync(join(cwd, 'marker.txt'), 'managed copy');
-    writeFileSync(join(cwd, 'server.mjs'), `import {createInterface} from 'node:readline';import {readFileSync} from 'node:fs';const input=createInterface({input:process.stdin});input.on('line',line=>{const m=JSON.parse(line);if(m.id===undefined)return;const result=m.method==='initialize'?{protocolVersion:m.params.protocolVersion,capabilities:{tools:{}},serverInfo:{name:'fixture',version:'1'}}:m.method==='tools/list'?{tools:[{name:'echo',description:'Read fixture',inputSchema:{type:'object',properties:{}},annotations:{readOnlyHint:true,openWorldHint:false}},{name:'forbidden',description:'Not allowed',inputSchema:{type:'object',properties:{}}}]}:m.method==='tools/call'?{content:[{type:'text',text:readFileSync('marker.txt','utf8')}]}:{};process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result})+'\\n');});`);
-    const updates: unknown[] = [], began: string[] = [];
+    writeFileSync(
+      join(cwd, 'server.mjs'),
+      `import {createInterface} from 'node:readline';import {readFileSync} from 'node:fs';const input=createInterface({input:process.stdin});input.on('line',line=>{const m=JSON.parse(line);if(m.id===undefined)return;const result=m.method==='initialize'?{protocolVersion:m.params.protocolVersion,capabilities:{tools:{}},serverInfo:{name:'fixture',version:'1'}}:m.method==='tools/list'?{tools:[{name:'echo',description:'Read fixture',inputSchema:{type:'object',properties:{}},annotations:{readOnlyHint:true,openWorldHint:false}},{name:'forbidden',description:'Not allowed',inputSchema:{type:'object',properties:{}}}]}:m.method==='tools/call'?{content:[{type:'text',text:readFileSync('marker.txt','utf8')}]}:{};process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result})+'\\n');});`,
+    );
+    const updates: unknown[] = [],
+      began: string[] = [];
     let sawResult = false;
-    const run = runtime([
-      (context) => { expect(context.tools?.map(t=>t.name)).toContain('mcp__docs__echo'); expect(context.tools?.map(t=>t.name)).not.toContain('mcp__docs__forbidden'); return fauxAssistantMessage([fauxToolCall('mcp__docs__echo', {})], {stopReason:'toolUse'}); },
-      (context) => { sawResult = JSON.stringify(context.messages).includes('managed copy'); return fauxAssistantMessage('done'); }
-    ], '', { updateHarnessTools: async update=>{updates.push(update);}, beginNativeTool:async id=>{began.push(id);} }, undefined, undefined, [], {cwd, mcp:[{server:{id:'docs',name:'Docs',transport:'stdio',argv:[process.execPath,'server.mjs'],exposure:'direct',timeoutMs:5000},fingerprint:'a'.repeat(64)}]});
+    const run = runtime(
+      [
+        (context) => {
+          expect(
+            context.messages.flatMap((message) =>
+              message.role === 'system' ? (message.toolsAdded ?? []).map((tool) => tool.name) : [],
+            ),
+          ).toContain('mcp__docs__echo');
+          expect(
+            context.messages.flatMap((message) =>
+              message.role === 'system' ? (message.toolsAdded ?? []).map((tool) => tool.name) : [],
+            ),
+          ).not.toContain('mcp__docs__forbidden');
+          return fauxAssistantMessage([fauxToolCall('mcp__docs__echo', {})], {
+            stopReason: 'toolUse',
+          });
+        },
+        (context) => {
+          sawResult = JSON.stringify(context.messages).includes('managed copy');
+          return fauxAssistantMessage('done');
+        },
+      ],
+      '',
+      {
+        mcpAuthorization: async () => undefined,
+        updateHarnessTools: async (update) => {
+          updates.push(update);
+        },
+        beginNativeTool: async (id) => {
+          began.push(id);
+        },
+      },
+      undefined,
+      undefined,
+      [],
+      {
+        cwd,
+        mcp: [
+          {
+            server: {
+              id: 'docs',
+              name: 'Docs',
+              transport: 'stdio',
+              argv: [process.execPath, 'server.mjs'],
+              exposure: 'direct',
+              timeoutMs: 5000,
+            },
+            fingerprint: 'a'.repeat(64),
+          },
+        ],
+      },
+    );
     run.input.harness!.allowedTools = ['mcp__docs__echo'];
-    run.input.harness!.projectTools = {projectId:'p',configRevision:1,configHash:'a'.repeat(64),checkIds:[],lspServerIds:[],mcpServerIds:['docs']};
-    expect(await (await run.adapter.start(run.input, run.host)).waitForSettlement()).toMatchObject({outcome:'succeeded'});
+    run.input.harness!.projectTools = {
+      projectId: 'p',
+      revision: 1,
+      hash: 'a'.repeat(64),
+      checkIds: [],
+      lspServerIds: [],
+      mcpServerIds: ['docs'],
+    };
+    expect(
+      await (await run.adapter.start(run.input, run.host)).waitForSettlement(),
+      JSON.stringify(run.frames),
+    ).toMatchObject({
+      outcome: 'succeeded',
+    });
     expect(sawResult).toBe(true);
     expect(began).toHaveLength(1);
     expect(JSON.stringify(updates)).toContain('extension:pi-mcp@1.3.0');

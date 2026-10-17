@@ -18,34 +18,73 @@ it('[TC-HAR-016-H] binds browser OAuth to reviewed settings and allows logout af
   execFileSync('git', ['init', '-q', source]);
   const fixture = await oauthFixture();
   const token = 'mcp-bootstrap-0123456789abcdef';
-  const {live} = fakeOpenAI({configDir:join(root,'private')});
+  const { live } = fakeOpenAI({ configDir: join(root, 'private') });
   try {
-    server = await startCorralServer({workspace:join(root,'workspace'), agents:new ScriptedAgentAdapter({turns:1}),bootstrapToken:token,live});
-    const login = await fetch(`${server.url}/api/v1/session`,{method:'POST',headers:{origin:server.url,'content-type':'application/json'},body:JSON.stringify({token})});
-    const headers = {cookie:(login.headers.get('set-cookie') ?? '').split(';')[0] ?? '',origin:server.url,'content-type':'application/json','x-corral-csrf':login.headers.get('x-corral-csrf') ?? ''};
-    const call = async(path:string,body?:unknown,method=body?'POST':'GET')=>{
-      const response = await fetch(`${server?.url}/api/v1${path}`,{method,headers,...(body?{body:JSON.stringify(body)}:{})});
-      return {status:response.status,body:await response.json()};
+    server = await startCorralServer({
+      workspace: join(root, 'workspace'),
+      agents: new ScriptedAgentAdapter({ turns: 1 }),
+      bootstrapToken: token,
+      live,
+    });
+    const login = await fetch(`${server.url}/api/v1/session`, {
+      method: 'POST',
+      headers: { origin: server.url, 'content-type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
+    const headers = {
+      cookie: (login.headers.get('set-cookie') ?? '').split(';')[0] ?? '',
+      origin: server.url,
+      'content-type': 'application/json',
+      'x-corral-csrf': login.headers.get('x-corral-csrf') ?? '',
     };
-    await call('/projects/default/workspace',{path:source},'PUT');
-    await call('/projects/default/workspace',{trusted:true},'PATCH');
-    const config = {checks:[],lspServers:[],mcpServers:[{id:'docs',name:'Docs',transport:'http',url:fixture.url,timeoutMs:5000,exposure:'direct',auth:{kind:'oauth',scope:'docs:read',credentialRef:'login'}}]};
-    expect((await call('/harness/projects/default/tools',{expectedRevision:0,config},'PUT')).status).toBe(200);
+    const call = async (path: string, body?: unknown, method = body ? 'POST' : 'GET') => {
+      const response = await fetch(`${server?.url}/api/v1${path}`, {
+        method,
+        headers,
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      });
+      return { status: response.status, body: await response.json() };
+    };
+    await call('/projects/default/workspace', { path: source }, 'PUT');
+    await call('/projects/default/workspace', { trusted: true }, 'PATCH');
+    const config = {
+      checks: [],
+      lspServers: [],
+      mcpServers: [
+        {
+          id: 'docs',
+          name: 'Docs',
+          transport: 'http',
+          url: fixture.url,
+          timeoutMs: 5000,
+          exposure: 'direct',
+          auth: { kind: 'oauth', scope: 'docs:read', credentialRef: 'login' },
+        },
+      ],
+    };
+    expect(
+      (await call('/harness/projects/default/tools', { expectedRevision: 0, config }, 'PUT'))
+        .status,
+    ).toBe(200);
     const path = '/harness/projects/default/mcp-servers/docs';
-    const {fingerprint} = (await call(`${path}/launch`)).body;
-    expect((await call(`${path}/auth`,{action:'sign_in',fingerprint})).status).toBe(400);
-    await call(`${path}/trust`,{fingerprint,trusted:true},'PUT');
-    const started = await call(`${path}/auth`,{action:'sign_in',fingerprint});
-    expect(started.status,JSON.stringify(started.body)).toBe(200);
+    const { fingerprint } = (await call(`${path}/launch`)).body;
+    expect((await call(`${path}/auth`, { action: 'sign_in', fingerprint })).status).toBe(400);
+    await call(`${path}/trust`, { fingerprint, trusted: true }, 'PUT');
+    const started = await call(`${path}/auth`, { action: 'sign_in', fingerprint });
+    expect(started.status, JSON.stringify(started.body)).toBe(200);
     await fetch(started.body.url);
-    await expect.poll(async()=> (await call(`/harness/mcp-logins/${started.body.loginId}`)).body.state).toBe('ready');
+    await expect
+      .poll(async () => (await call(`/harness/mcp-logins/${started.body.loginId}`)).body.state)
+      .toBe('ready');
     const status = await call(`${path}/auth`);
-    expect(status.body).toMatchObject({state:'ready',kind:'oauth'});
+    expect(status.body).toMatchObject({ state: 'ready', kind: 'oauth' });
     expect(JSON.stringify(status.body)).not.toContain('fixture-access');
-    await call(`${path}/trust`,{fingerprint,trusted:false},'PUT');
-    expect((await call(`${path}/auth`,{action:'sign_out',fingerprint})).status).toBe(200);
+    await call(`${path}/trust`, { fingerprint, trusted: false }, 'PUT');
+    expect((await call(`${path}/auth`, { action: 'sign_out', fingerprint })).status).toBe(200);
     expect((await call(`${path}/auth`)).body.state).toBe('missing');
-  } finally {await fixture.close();}
+  } finally {
+    await fixture.close();
+  }
 });
 it('[TC-HAR-003-H] simulates a bound work style without claiming that its SDK resources were loaded', async () => {
   root = mkdtempSync(join(tmpdir(), 'corral-harness-simulation-'));

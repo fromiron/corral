@@ -18,6 +18,7 @@ import type {
   ModelRequestRecord,
   ProviderPayloadRecord,
 } from './harness.ts';
+import type { McpChallenge } from './project-tools.ts';
 
 // Injectable runtime ports (Implementation Plan §4, CRL-DEV-002). Types only.
 
@@ -162,6 +163,7 @@ export interface AgentHost {
   reportHarness?(report: HarnessReport): Promise<void>;
   simulateHarness?(): Promise<void>;
   updateHarnessTools?(update: HarnessToolsUpdate): Promise<void>;
+  mcpAuthorization?(serverId: string, challenge?: McpChallenge): Promise<string | undefined>;
   requestExtensionUi?(
     request: ExtensionUiRequest,
     cancellation?: DecisionCancellation,

@@ -343,6 +343,23 @@ class WorkerExecution {
           });
         }
         return;
+      case 'mcp_authorization':
+        try {
+          if (!this.resources || !this.host.mcpAuthorization) throw new Error('unavailable');
+          const token = await this.host.mcpAuthorization(frame.serverId, frame.challenge);
+          this.send({
+            type: 'mcp_authorization',
+            requestId: frame.requestId,
+            ...(token ? { token } : {}),
+          });
+        } catch {
+          this.send({
+            type: 'refused',
+            requestId: frame.requestId,
+            reason: 'MCP authorization unavailable',
+          });
+        }
+        return;
       case 'harness_report':
       case 'harness_tools':
       case 'request_record':

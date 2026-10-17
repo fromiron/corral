@@ -13,6 +13,7 @@ import {
 } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { downloadPiPackage, inspectPiPackage, type SdkResources } from '@corral/adapter-pi';
+import type { McpChallenge } from '@corral/contracts';
 import {
   type AgentStartInput,
   type Clock,
@@ -30,6 +31,7 @@ import {
   ResourcePath,
 } from '@corral/contracts';
 import { type Db, SqliteHarnessStore, SqliteProjectToolStore } from '@corral/storage-sqlite';
+import type { McpService } from './mcp-service.ts';
 
 interface ResourceReview {
   reviewId: string;
@@ -47,6 +49,7 @@ export class HarnessService {
   readonly store: SqliteHarnessStore;
   readonly projectTools: SqliteProjectToolStore;
   private readonly root: string;
+  readonly mcp: McpService | undefined;
   private readonly db: Db;
   private readonly clock: Clock;
   private readonly inspect: (directory: string) => Promise<PackageInspection>;
@@ -55,12 +58,14 @@ export class HarnessService {
 
   constructor(options: {
     root: string;
+    mcp?: McpService;
     db: Db;
     clock: Clock;
     inspect?: (directory: string) => Promise<PackageInspection>;
     download?: (source: string, directory: string) => Promise<PackageInspection>;
   }) {
     this.root = resolve(options.root);
+    this.mcp = options.mcp;
     this.db = options.db;
     this.clock = options.clock;
     this.inspect = options.inspect ?? inspectPiPackage;
@@ -185,7 +190,7 @@ export class HarnessService {
   }
 
   async runtimeResources(
-    input: Pick<AgentStartInput, 'harness' | 'inputs'>,
+    input: Pick<AgentStartInput, 'harness' | 'inputs'> & Partial<Pick<AgentStartInput, 'runId'>>,
   ): Promise<SdkResources> {
     if (!input.harness) throw new Error('harness snapshot missing');
     const { snapshotHash, ...body } = input.harness;
@@ -251,7 +256,21 @@ export class HarnessService {
       resources.startupCommands.push(...this.profile(layer.binding).startupCommands);
     }
     if (resources.startupCommands.length > 16) throw new Error('too many startup commands');
+    if (input.runId && this.mcp)
+      Object.assign(resources, await this.mcp.resources(input.runId, input.harness));
+    else if (input.harness.projectTools?.mcpServerIds?.length)
+      throw new Error('MCP runtime unavailable');
     return resources;
+  }
+
+  checkMcpTool(input: AgentStartInput, name: string, args: Record<string, unknown>) {
+    if (!this.mcp) throw new Error('MCP runtime unavailable');
+    return this.mcp.checkTool(input, name, args);
+  }
+
+  mcpAuthorization(input: AgentStartInput, serverId: string, challenge?: McpChallenge) {
+    if (!this.mcp) throw new Error('MCP runtime unavailable');
+    return this.mcp.authorization(input, serverId, challenge);
   }
 
   readSkill(snapshot: EffectiveHarnessSnapshot, path: string): Record<string, unknown> {

@@ -30,6 +30,9 @@ const safeErrors = new Set([
   'trust the repository before configuring tools',
   'trust the repository before inspecting tools',
   'no such registered tool',
+  'MCP launch requires current fingerprint trust',
+  'Sign in to the configured MCP server again.',
+  'The saved MCP sign-in cannot be read; sign in again.',
 ]);
 
 /** Filesystem, package-manager and parser errors never reach the browser verbatim. */
@@ -66,6 +69,72 @@ export function registerHarnessRoutes(
   const prefix = '/api/v1/harness';
   type ProjectParams = { Params: { projectId: string } };
   type CheckParams = { Params: { projectId: string; commandId: string } };
+  const mcp = () => {
+    if (!service.mcp) throw new Error('MCP runtime unavailable');
+    return service.mcp;
+  };
+  const configuredMcp = (projectId: string, id: string) => {
+    const server = files.projectTools
+      .latest(projectId)
+      ?.mcpServers?.find((server) => server.id === id);
+    if (!server) throw new Error('no such registered tool');
+    return server;
+  };
+  app.get<CheckParams>(
+    `${prefix}/projects/:projectId/mcp-servers/:commandId/auth`,
+    (request, reply) =>
+      action(reply, async () => {
+        const projectId = Identifier.parse(request.params.projectId);
+        return mcp().credentials.status(
+          projectId,
+          configuredMcp(projectId, Identifier.parse(request.params.commandId)),
+        );
+      }),
+  );
+  app.post<CheckParams>(
+    `${prefix}/projects/:projectId/mcp-servers/:commandId/auth`,
+    (request, reply) =>
+      action(reply, async () => {
+        const body = z
+          .discriminatedUnion('action', [
+            z.strictObject({
+              action: z.literal('bearer'),
+              fingerprint: ContentHash,
+              token: z.string().min(1).max(16000),
+            }),
+            z.strictObject({ action: z.literal('sign_in'), fingerprint: ContentHash }),
+            z.strictObject({ action: z.literal('sign_out'), fingerprint: ContentHash }),
+          ])
+          .parse(request.body);
+        const projectId = Identifier.parse(request.params.projectId);
+        if (body.action === 'sign_out') {
+          const server = configuredMcp(projectId, Identifier.parse(request.params.commandId));
+          if (server.transport === 'http' && server.auth.kind !== 'none')
+            await mcp().credentials.delete(projectId, server);
+          return mcp().credentials.status(projectId, server);
+        }
+        const { server, check } = await mcp().authentication(
+          projectId,
+          Identifier.parse(request.params.commandId),
+          body.fingerprint,
+        );
+        if (body.action === 'sign_in')
+          return mcp().credentials.startOAuth(projectId, server, check);
+        if (body.action === 'bearer')
+          await mcp().credentials.saveBearer(projectId, server, body.token, check);
+
+        return mcp().credentials.status(projectId, server);
+      }),
+  );
+  app.get<{ Params: { loginId: string } }>(`${prefix}/mcp-logins/:loginId`, (request, reply) =>
+    action(reply, () => mcp().credentials.loginStatus(Identifier.parse(request.params.loginId))),
+  );
+  app.delete<{ Params: { loginId: string } }>(`${prefix}/mcp-logins/:loginId`, (request, reply) =>
+    action(reply, async () => {
+      await mcp().credentials.cancelOAuth(Identifier.parse(request.params.loginId));
+      return { ok: true };
+    }),
+  );
   app.post<ProjectParams>(`${prefix}/projects/:projectId/criteria-files`, (request, reply) =>
     action(reply, () => {
       const { paths } = z

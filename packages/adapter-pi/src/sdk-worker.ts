@@ -43,6 +43,7 @@ import { z } from 'zod';
 import type { Channel } from './channel.ts';
 import { extensionUi } from './extension-ui.ts';
 import { lockResources } from './locked-resources.ts';
+import { mcpExtension } from './mcp.ts';
 import { PROTOCOL_VERSION, SdkHostFrame, type SdkStartFrame } from './protocol.ts';
 import { normalizeUsage } from './usage.ts';
 import type { WorkerDeps } from './worker.ts';
@@ -135,6 +136,11 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
     let registryRevision = 1;
     let reportedRegistryHash = '';
     const codemodeExits = new Map<string, Promise<void>[]>();
+    let shuttingDown: Promise<unknown> | undefined;
+    const shutdown = () =>
+      (shuttingDown ??= session
+        ? session.extensionRunner.emit({ type: 'session_shutdown', reason: 'quit' })
+        : Promise.resolve());
     let failureCode: Extract<HarnessReport, { ok: false }>['code'] = 'sdk_start_failed';
     try {
       const model = deps.resolveModel(
@@ -146,7 +152,9 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
       failureCode = 'policy_denied';
       if (
         start.harness.policy === 'strict' &&
-        (start.resources.extensions.length || start.harness.allowedTools.includes('codemode'))
+        (start.resources.extensions.length ||
+          start.resources.mcp?.length ||
+          start.harness.allowedTools.includes('codemode'))
       )
         throw new Error('native extensions need trust');
       for (const resource of start.resources.extensions) {
@@ -177,7 +185,13 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
       }
       const directory = deps.directory;
       const agentDir = join(directory, 'agent');
-      const cwd = join(directory, 'work');
+      const cwd = start.resources.cwd ?? join(directory, 'work');
+      if (
+        start.resources.mcp?.some(
+          ({ server }) => !start.harness.projectTools?.mcpServerIds?.includes(server.id),
+        )
+      )
+        throw new Error('unselected MCP server');
       mkdirSync(agentDir, { recursive: true });
       mkdirSync(cwd, { recursive: true });
       const runtime = await ModelRuntime.create({
@@ -517,12 +531,17 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
         const codemode =
           extension.path === '<inline:corral-codemode>' &&
           start.harness.allowedTools.includes('codemode');
-        const resource = codemode
-          ? { source: 'extension:pi-codemode@1.3.0', hash: '' }
-          : start.resources.extensions.find((e) => resolve(e.path) === resolve(extension.path));
+        const mcp = extension.path === '<inline:corral-mcp>' && !!start.resources.mcp?.length;
+        if (mcp) extension.commands.clear();
+        const resource = mcp
+          ? { source: 'extension:pi-mcp@1.3.0', hash: '' }
+          : codemode
+            ? { source: 'extension:pi-codemode@1.3.0', hash: '' }
+            : start.resources.extensions.find((e) => resolve(e.path) === resolve(extension.path));
         if (!resource) throw new Error('unbound extension loaded');
         if (
           codemode ||
+          mcp ||
           start.harness.resources.some(
             (ref) => ref.kind === 'extension' && ref.hash === resource.hash && ref.required,
           )
@@ -547,6 +566,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
         }
         for (const { definition } of extension.tools.values()) {
           if (descriptors.has(definition.name)) throw new Error('tool name collision');
+          if (!start.harness.allowedTools.includes(definition.name)) definition.exposure = 'hidden';
           register(definition, resource.source);
           if (wrappedTools.has(definition)) continue;
           wrappedTools.add(definition);
@@ -612,6 +632,23 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
         systemPromptOverride: () => systemPrompt(start),
         appendSystemPromptOverride: () => [],
         extensionFactories: [
+          ...(start.resources.mcp?.length
+            ? [
+                {
+                  name: 'corral-mcp',
+                  factory: mcpExtension(start.resources, directory, async (serverId, challenge) => {
+                    const reply = await call({
+                      type: 'mcp_authorization',
+                      serverId,
+                      ...(challenge ? { challenge } : {}),
+                    });
+                    if (reply.type !== 'mcp_authorization')
+                      throw new Error('MCP authorization unavailable');
+                    return reply.token;
+                  }),
+                },
+              ]
+            : []),
           ...(start.harness.allowedTools.includes('codemode')
             ? [
                 {
@@ -884,6 +921,8 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
       const last = [...session.messages]
         .reverse()
         .find((m): m is AssistantMessage => m.role === 'assistant');
+      await shutdown();
+      await registryUpdates;
       send({
         type: 'settled',
         outcome:
@@ -894,6 +933,11 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
               : 'succeeded',
       });
     } catch {
+      try {
+        await shutdown();
+      } catch {
+        /* Process shutdown remains the final cleanup fence. */
+      }
       if (!reported && !cancelled) {
         try {
           await ack({
@@ -910,6 +954,11 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
         error: 'harness execution failed',
       });
     } finally {
+      try {
+        await shutdown();
+      } catch {
+        /* The worker exit closes remaining owned resources. */
+      }
       session?.dispose();
       waiting.clear();
       port.kill();

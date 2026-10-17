@@ -1,3 +1,4 @@
+import type { McpChallenge } from '@corral/contracts';
 import {
   type AgentAdapter,
   type AgentHandle,
@@ -257,6 +258,12 @@ export interface HarnessResolver {
     options?: { runOverride?: HarnessBindingRef; sessionId?: string },
   ): EffectiveHarnessSnapshot | null;
   readSkill?(snapshot: EffectiveHarnessSnapshot, path: string): Record<string, unknown>;
+  checkMcpTool?(input: AgentStartInput, name: string, args: Record<string, unknown>): Promise<void>;
+  mcpAuthorization?(
+    input: AgentStartInput,
+    serverId: string,
+    challenge?: McpChallenge,
+  ): Promise<string | undefined>;
 }
 
 const NO_DEADLINES: Scheduler = { after: () => () => {} };
@@ -3751,9 +3758,18 @@ export class Coordinator {
           descriptor.source !== 'corral' &&
           (harness?.policy !== 'trusted-native' ||
             (!(
-              descriptor.source === 'extension:pi-codemode@1.3.0' &&
-              descriptor.name === 'codemode' &&
-              harness.allowedTools.includes('codemode')
+              (descriptor.source === 'extension:pi-codemode@1.3.0' &&
+                descriptor.name === 'codemode' &&
+                harness.allowedTools.includes('codemode')) ||
+              (descriptor.source === 'extension:pi-mcp@1.3.0' &&
+                (harness.projectTools?.mcpServerIds?.some((id) =>
+                  descriptor.name.startsWith(`mcp__${id}__`),
+                ) ||
+                  [
+                    'list_mcp_resources',
+                    'list_mcp_resource_templates',
+                    'read_mcp_resource',
+                  ].includes(descriptor.name)))
             ) &&
               !harness.resources.some(
                 (r) =>
@@ -4280,6 +4296,18 @@ export class Coordinator {
               for (const descriptor of update.tools) descriptors.set(descriptor.name, descriptor);
               toolsRevision += 1;
             },
+            mcpAuthorization: async (serverId: string, challenge?: McpChallenge) => {
+              requireOwned();
+              if (
+                harness.policy !== 'trusted-native' ||
+                !harness.projectTools?.mcpServerIds?.includes(serverId) ||
+                !this.harnesses?.mcpAuthorization
+              )
+                throw new Error('MCP server is not selected');
+              const token = await this.harnesses.mcpAuthorization(input, serverId, challenge);
+              requireOwned();
+              return token;
+            },
             beginNativeTool: async (toolCallId: string, argsHash: string) => {
               await this.boundary(run, executionId);
               requireActive();
@@ -4297,6 +4325,17 @@ export class Coordinator {
                 runGates(this.gates['tool.execute'], toolView(call.proposal)),
               );
               if (refusal) throw new Error('native call refused');
+              if (descriptors.get(call.proposal.name)?.source === 'extension:pi-mcp@1.3.0') {
+                if (!this.harnesses?.checkMcpTool) throw new Error('MCP trust unavailable');
+                await this.harnesses.checkMcpTool(input, call.proposal.name, call.proposal.args);
+                requireActive();
+                if (
+                  call.ran ||
+                  parentRefusal(call.proposal) ||
+                  call.descriptorHash !== hashOf(descriptors.get(call.proposal.name) ?? null)
+                )
+                  throw new Error('native call changed');
+              }
               const codemode =
                 descriptors.get(call.proposal.name)?.source === 'extension:pi-codemode@1.3.0';
               if (codemode && this.codemodeWorkers.size >= 2)

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -44,6 +45,8 @@ import { z } from 'zod';
 import packageJson from '../package.json' with { type: 'json' };
 import { ReviewService } from './files/review.ts';
 import { type ChangeScope, WorkspaceError, WorkspaceService } from './files/service.ts';
+import { McpCredentials } from './harness/mcp-credentials.ts';
+import { McpService } from './harness/mcp-service.ts';
 import { registerHarnessRoutes } from './harness/routes.ts';
 import { HarnessService } from './harness/service.ts';
 import { ImportInput, type InputOptions, InputRegistry } from './inputs.ts';
@@ -331,7 +334,15 @@ async function createCorralServer(
   resources.defer(() => files.dispose());
 
   const review = new ReviewService({ db, clock, files });
+  const mcpConfigDir = options.live?.configDir ?? userConfigDir();
+  assertOutsideWorkspace(mcpConfigDir, workspace.root);
+  const mcpCredentials = new McpCredentials({
+    directory: join(mcpConfigDir, 'mcp', createHash('sha256').update(workspace.root).digest('hex')),
+  });
+  resources.defer(() => mcpCredentials.dispose());
+  const mcp = new McpService(files, mcpCredentials);
   const harnesses = new HarnessService({
+    mcp,
     db,
     clock,
     root: join(workspace.root, '.corral', 'harness'),

@@ -768,6 +768,59 @@ export class HarnessApi {
   constructor(options: HttpOptions) {
     this.http = new Http(options);
   }
+  mcpAuthStatus(
+    projectId: string,
+    serverId: string,
+  ): Promise<{
+    state: 'ready' | 'missing' | 'not_required';
+    kind: 'none' | 'bearer' | 'oauth';
+    expiresAt?: number;
+  }> {
+    return this.http.json(
+      `/harness/projects/${encodeURIComponent(projectId)}/mcp-servers/${encodeURIComponent(serverId)}/auth`,
+    );
+  }
+  saveMcpBearer(
+    projectId: string,
+    serverId: string,
+    fingerprint: string,
+    token: string,
+  ): ReturnType<HarnessApi['mcpAuthStatus']> {
+    return this.http.json(
+      `/harness/projects/${encodeURIComponent(projectId)}/mcp-servers/${encodeURIComponent(serverId)}/auth`,
+      { method: 'POST', body: JSON.stringify({ action: 'bearer', fingerprint, token }) },
+    );
+  }
+  signInMcp(
+    projectId: string,
+    serverId: string,
+    fingerprint: string,
+  ): Promise<{ loginId: string; url: string }> {
+    return this.http.json(
+      `/harness/projects/${encodeURIComponent(projectId)}/mcp-servers/${encodeURIComponent(serverId)}/auth`,
+      { method: 'POST', body: JSON.stringify({ action: 'sign_in', fingerprint }) },
+    );
+  }
+  signOutMcp(
+    projectId: string,
+    serverId: string,
+    fingerprint: string,
+  ): ReturnType<HarnessApi['mcpAuthStatus']> {
+    return this.http.json(
+      `/harness/projects/${encodeURIComponent(projectId)}/mcp-servers/${encodeURIComponent(serverId)}/auth`,
+      { method: 'POST', body: JSON.stringify({ action: 'sign_out', fingerprint }) },
+    );
+  }
+  mcpLoginStatus(
+    loginId: string,
+  ): Promise<{ state: 'pending' | 'ready' | 'failed' | 'cancelled' }> {
+    return this.http.json(`/harness/mcp-logins/${encodeURIComponent(loginId)}`);
+  }
+  cancelMcpLogin(loginId: string): Promise<{ ok: boolean }> {
+    return this.http.json(`/harness/mcp-logins/${encodeURIComponent(loginId)}`, {
+      method: 'DELETE',
+    });
+  }
   inspectMcpServer(
     projectId: string,
     serverId: string,

@@ -53,7 +53,11 @@ const record: ModelRequestRecord = {
 function setup(
   resolve = true,
   selected = snapshot,
-  options: { files?: FileTools; fileTools?: boolean; harness?: Partial<NonNullable<ConstructorParameters<typeof Coordinator>[0]['harnesses']>> } = {},
+  options: {
+    files?: FileTools;
+    fileTools?: boolean;
+    harness?: Partial<NonNullable<ConstructorParameters<typeof Coordinator>[0]['harnesses']>>;
+  } = {},
 ) {
   const started = new Gate();
   const done = new Gate();
@@ -236,20 +240,48 @@ describe('Coordinator harness boundary (H2)', () => {
   });
   it('[TC-HAR-016-N] rechecks MCP trust at dispatch and credentials only for selected owned execution', async () => {
     let trusted = true;
-    const authorization = vi.fn(async()=> 'fixture-token');
-    const s = setup(true, {...snapshot, resources:[], allowedTools:['mcp__docs__echo'], projectTools:{projectId:'p',configRevision:1,configHash:'a'.repeat(64),checkIds:[],lspServerIds:[],mcpServerIds:['docs']}}, {harness:{checkMcpTool:async()=>{if(!trusted)throw new Error('revoked');},mcpAuthorization:authorization}});
+    const authorization = vi.fn(async () => 'fixture-token');
+    const s = setup(
+      true,
+      {
+        ...snapshot,
+        resources: [],
+        allowedTools: ['mcp__docs__echo'],
+        projectTools: {
+          projectId: 'p',
+          revision: 1,
+          hash: 'a'.repeat(64),
+          checkIds: [],
+          lspServerIds: [],
+          mcpServerIds: ['docs'],
+        },
+      },
+      {
+        harness: {
+          checkMcpTool: async () => {
+            if (!trusted) throw new Error('revoked');
+          },
+          mcpAuthorization: authorization,
+        },
+      },
+    );
     await s.started.wait();
-    await s.host().reportHarness!({ok:true,snapshotHash:snapshot.snapshotHash,tools:[{...descriptor,name:'mcp__docs__echo',source:'extension:pi-mcp@1.3.0'}],diagnostics:[]});
+    await s.host().reportHarness!({
+      ok: true,
+      snapshotHash: snapshot.snapshotHash,
+      tools: [{ ...descriptor, name: 'mcp__docs__echo', source: 'extension:pi-mcp@1.3.0' }],
+      diagnostics: [],
+    });
     expect(await s.host().mcpAuthorization!('docs')).toBe('fixture-token');
     await expect(s.host().mcpAuthorization!('unknown')).rejects.toThrow();
     expect(authorization).toHaveBeenCalledTimes(1);
-    const call = await s.host().authorizeTool({name:'mcp__docs__echo',args:{}});
+    const call = await s.host().authorizeTool({ name: 'mcp__docs__echo', args: {} });
     expect(call.ok).toBe(true);
     trusted = false;
-    await expect(s.host().beginNativeTool!(call.toolCallId,hash({}))).rejects.toThrow('revoked');
+    await expect(s.host().beginNativeTool!(call.toolCallId, hash({}))).rejects.toThrow('revoked');
     trusted = true;
-    await s.host().beginNativeTool!(call.toolCallId,hash({}));
-    await s.host().finishNativeTool!(call.toolCallId,'succeeded');
+    await s.host().beginNativeTool!(call.toolCallId, hash({}));
+    await s.host().finishNativeTool!(call.toolCallId, 'succeeded');
     s.done.open();
   });
   it('[TC-HAR-017-N] grants at most two codemode capacities and frees only an owned completion', async () => {

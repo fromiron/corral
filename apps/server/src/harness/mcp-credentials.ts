@@ -10,7 +10,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
-import { canonicalJson, type RegisteredMcpServer } from '@corral/contracts';
+import { canonicalJson, type McpChallenge, type RegisteredMcpServer } from '@corral/contracts';
 import {
   adaptOAuthProvider,
   authorizeMcp,
@@ -23,11 +23,6 @@ import {
 
 type HttpServer = Extract<RegisteredMcpServer, { transport: 'http' }>;
 type Check = () => Promise<void>;
-export interface McpChallenge {
-  status: 401 | 403;
-  wwwAuthenticate?: string;
-  rejectedToken?: string;
-}
 interface Saved {
   version: 1;
   binding: string;
@@ -168,7 +163,7 @@ export class McpCredentials {
     await guard();
     const callback = await OAuthCallbackServer.listen({ timeoutMs: 5 * 60_000 });
     const controller = new AbortController();
-    const loginId = this.newId();
+    const loginId = `mcp_login_${this.newId()}`;
     let closing: Promise<void> | undefined;
     const login: Login = {
       key,

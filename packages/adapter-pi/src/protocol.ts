@@ -9,8 +9,10 @@ import {
   HarnessToolsUpdate,
   Identifier,
   ItemRef,
+  McpChallenge,
   ModelRequestRecord,
   ProviderPayloadRecord,
+  RegisteredMcpServer,
   ResourcePath,
 } from '@corral/contracts';
 import { z } from 'zod';
@@ -182,6 +184,11 @@ export type StartFrame = z.infer<typeof StartFrame>;
 
 /** Private IPC configuration. Never persisted in run events or exports. */
 export const SdkResources = z.strictObject({
+  cwd: z.string().min(1).optional(),
+  mcp: z
+    .array(z.strictObject({ server: RegisteredMcpServer, fingerprint: ContentHash }))
+    .max(16)
+    .optional(),
   bundles: z
     .array(
       z.strictObject({
@@ -222,6 +229,13 @@ export const SdkStartFrame = StartFrame.extend({
 });
 export type SdkStartFrame = z.infer<typeof SdkStartFrame>;
 export const SdkWorkerFrame = z.union([
+  z.strictObject({
+    type: z.literal('mcp_authorization'),
+    ...sdkHead,
+    requestId: RequestId,
+    serverId: Identifier,
+    challenge: McpChallenge.optional(),
+  }),
   z.strictObject({
     type: z.literal('ui_request'),
     ...sdkHead,
@@ -285,6 +299,12 @@ export const SdkWorkerFrame = z.union([
 ]);
 export type SdkWorkerFrame = z.infer<typeof SdkWorkerFrame>;
 export const SdkHostFrame = z.union([
+  z.strictObject({
+    type: z.literal('mcp_authorization'),
+    ...sdkHead,
+    requestId: RequestId,
+    token: z.string().max(16000).optional(),
+  }),
   z.strictObject({
     type: z.literal('ui_answer'),
     ...sdkHead,

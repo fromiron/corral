@@ -65,6 +65,13 @@ export const RegisteredMcpServer = z.discriminatedUnion('transport', [
   z.strictObject({ ...McpCommon, transport: z.literal('http'), url: McpUrl, auth: McpAuth }),
 ]);
 export type RegisteredMcpServer = z.infer<typeof RegisteredMcpServer>;
+/** Private IPC only; never included in run events or exports. */
+export const McpChallenge = z.strictObject({
+  status: z.union([z.literal(401), z.literal(403)]),
+  wwwAuthenticate: z.string().max(4000).optional(),
+  rejectedToken: z.string().max(16000).optional(),
+});
+export type McpChallenge = z.infer<typeof McpChallenge>;
 export const ProjectToolConfig = z
   .strictObject({
     checks: z.array(RegisteredCheck).max(64),
