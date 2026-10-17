@@ -240,3 +240,27 @@
 Electron은 창·OS 대화상자·서버 수명을 소유한다. 서버와 Pi worker는 동봉 Node 24.19로 실행해 Electron ABI와 SQLite/ONNX 런타임을 분리한다. renderer는 기존 loopback 세션/CSRF 경계로 API를 쓰며 Node 권한을 받지 않는다. 기존 workspace는 명시적으로 선택하며 자동 이관하지 않는다. 웹 Studio도 같은 UI를 사용한다.
 
 **결과·제약:** Linux x64 AppImage가 첫 대상이다. 원본의 원격 환경·터미널·Git 쓰기·플러그인 플랫폼은 이식하지 않는다. native module·worker·자원 경로는 개발 실행과 설치 패키지에서 각각 검증한다.
+
+## ADR-027: Pi coding-agent SDK를 역할별 실행 방식으로 추가한다
+
+**상태:** 제안 (2026-10-17, [CR-018](change-requests/CR-018-pi-standard-harness.md)). H1 스파이크 S1·S2·S4 통과와 Bell의 Go 승인 뒤 채택한다. 채택되면 ADR-005를 부분 대체한다.
+
+**결정:**
+
+- 역할마다 실행 방식 `pi-core`(기존 agent-core worker) 또는 `pi-sdk`(`@earendil-works/pi-coding-agent` SDK)를 고르고, Run 시작 시 고정한다.
+- `pi-sdk`는 기존과 같은 실행 단위 worker 프로세스 안에서만 돈다.
+- 모델 요청은 자격 증명 없는 `ModelRuntime`에 등록한 Corral provider 하나로만 보낸다. 이 provider는 요청마다 host permit을 받는다.
+- 리소스는 핀 고정한 경로만 로드한다(`noExtensions`·`noSkills`·`noContextFiles` + 명시 경로).
+- 설정은 in-memory로 둔다(`cacheWarming: off`). 세션도 in-memory다.
+- Pi 내장 도구는 끈다.
+- Corral 확장을 마지막에 로드한다. 이 확장이 `tool_call`에서 최종 인자를 host에 승인받는다.
+- 필수 확장이 실패하면 실행이 실패한다. `pi-core`로 fallback하지 않는다.
+
+**이유:** Agent Skills·Pi 패키지를 원형 그대로 쓰려면 공식 리소스 로더와 확장 런타임이 필요하다. 1.3.0 SDK에는 `streamFn`·`prepareRequest` 주입 옵션이 없다. 그래서 모든 요청이 지나는 `modelRuntime.streamSimple`에 등록한 provider가 공개 API 안의 유일한 통제 지점이다.
+
+**결과·제약:**
+
+- 확장 코드는 worker 권한으로 직접 fs·network·process를 쓸 수 있다. 이것을 "신뢰한 네이티브 코드"로 표시하고 통제를 약속하지 않는다.
+- OS 격리는 제공하지 않는다.
+- `pi-core` 역할의 이벤트·hash·골든은 바뀌지 않는다.
+- Pi 업그레이드는 별도 변경으로 하고, S1·S2·S4 회귀 테스트를 통과해야 한다.

@@ -1,0 +1,72 @@
+# CR-018: 역할별 Pi 표준 스킬·확장 실행
+
+- 요청: Bell, 2026-10-17. 원안은 [Corral Personal Harness 구현 계획](../proposals/personal-harness-2026-10-17.md)이다.
+- 구현 플랜: [Personal-Harness-Implementation-Plan](../plans/Personal-Harness-Implementation-Plan.md).
+- 기준: `f17338f`(PR #54 병합).
+- 관련: ADR-005(agent-core worker), ADR-024(admission gate), C-052(worker 규칙), CR-012(파일 broker), CR-016(명령 레지스트리).
+- 결정: [ADR-027](../Decisions.md#adr-027-pi-coding-agent-sdk를-역할별-실행-방식으로-추가한다).
+- 상태: **제안. H1 스파이크 진행 중.**
+  - 스펙·기술 설계 본문(아래 "문서 변경")은 S1·S2·S4가 통과하고 Bell이 Go를 승인한 뒤 고친다.
+  - 그 전까지 제품 실행 경로는 바뀌지 않는다. 스파이크 코드는 테스트에만 있다.
+
+## 바뀌는 것
+
+| 영역 | 지금 | 바뀐 뒤 (R1 = 플랜 H0–H3) |
+|---|---|---|
+| 역할 실행 방식 | 모든 역할이 `pi-agent-core` worker(`worker.ts`) | 역할마다 `runtime: 'pi-core' \| 'pi-sdk'`. 값은 Run 시작 시 고정한다. 기본값은 `pi-core`다. 스킬·확장을 바인딩한 역할만 `pi-sdk`(`@earendil-works/pi-coding-agent` SDK)를 쓴다 |
+| 스킬 | 없음 | Agent Skills 형식(`SKILL.md`)을 원본 그대로 쓴다. 적용 수준은 자동 선택·명시적 호출·필수 적용 세 가지다. 필수 적용은 system prompt 구획에 본문을 넣는다. 스킬 스크립트는 실행하지 않는다 |
+| 확장 | 없음 | Pi 패키지·확장을 **신뢰한 네이티브 코드**로 역할에 바인딩한다. 실행 위치는 worker 프로세스 안이다 |
+| 리소스 | 없음 | 설치 → 신뢰(내용 hash 단위) → 역할 바인딩 → 실행을 분리한다. 실행에는 핀 고정 snapshot을 쓴다. 자동 탐색(`~/.pi/agent`, `.pi/`, `.agents/skills`, `AGENTS.md`)은 하지 않는다 |
+| 모델 요청 | worker가 요청마다 host permit을 받는다 | 같다. SDK 실행은 Corral provider 하나로만 요청한다. 세션·재시도·압축·확장 중첩 호출이 모두 permit을 받는다. Pi 런타임에 실제 자격 증명을 넣지 않는다 |
+| 도구 | 역할 허용 목록의 Corral 도구 | Pi 내장 도구(`read/bash/edit/write/grep/find/ls`)는 끈다. 확장 도구는 **최종 인자**로 host 승인을 받는다. 실행은 worker 안이며 "관리되지 않은 실행"으로 기록한다 |
+| 지시(Reins) | 요청 준비 시 context에 넣는다 | SDK 실행에서는 Pi steer 메시지로 보내고, 요청 단위로 묶는다(S3 결과에 따름) |
+
+R2(검증·개선)와 R3(MCP·codemode·항목 반복)는 이 CR 범위가 아니다. 각각 별도 CR로 한다.
+
+## 보장 범위
+
+"모든 외부 효과는 Coordinator를 통과한다"는 보장을 두 경로로 나눈다.
+
+| 경로 | 무엇 | 보장 |
+|---|---|---|
+| 관리 경로 | Corral 도구, 모든 모델 요청, 확장 도구의 **호출 승인** | 승인·예산·취소·기록을 지금과 같이 보장한다 |
+| 신뢰한 네이티브 확장 | 확장 코드가 직접 하는 fs·network·process 접근, 확장 도구의 **실행 내용** | 통제하지 않는다. 화면과 문서에 "신뢰한 코드"로 표시한다. `HOME`·`XDG_CONFIG_HOME`을 실행 전용 디렉터리로 돌리지만, 이것은 **보안 경계가 아니다** |
+| OS 격리 | 컨테이너·샌드박스 | 제공하지 않는다. 제공한다고 표시하지 않는다 |
+
+추가 규칙은 다음과 같다.
+
+- 엄격 역할에는 provider를 등록하는 확장과 annotations 없는 확장 도구를 붙일 수 없다. 저장할 때와 Run 시작 때 모두 거절한다.
+- LLM 판단이나 UI 토글로 권한을 넓히지 않는다.
+
+## 문서 변경 (Go 승인 뒤)
+
+| 문서 | 바꿀 내용 |
+|---|---|
+| `Corral-Spec-v0.1.md` §범위(111행) | "역할에 바인딩한 Pi 표준 스킬·확장(R1)"을 범위에 넣는다. MCP 확장 로딩, 셸/코딩, 파일 동시 수정은 계속 제외한다 |
+| `docs/Technical-Design.md` 233행 | coding-agent SDK를 `pi-sdk` 실행 방식으로 쓴다. 자동 리소스 로더와 내장 셸·파일 도구는 쓰지 않는다 |
+| `docs/Decisions.md` ADR-005 | "ADR-027이 부분 대체"로 표시한다 |
+| `docs/Decisions.md` ADR-024 | Corral gate는 닫혀 있다. Pi 확장 hook은 worker 안에서만 돈다. 이 사실을 결과·제약에 덧붙인다 |
+| `docs/Dependencies-and-Sources.md` | coding-agent와 전이 의존의 버전·라이선스를 기록한다(H1에서 devDependency로 먼저 기록) |
+
+## 반례 (플랜 §7의 TC-HAR)
+
+| 영역 | 반드시 거절·실패해야 하는 것 |
+|---|---|
+| 모델 요청 | permit 없는 dispatch, 캐시 warming 요청, 확장이 다른 provider로 보내는 요청 |
+| 도구 | 승인 뒤 인자 변경, `tool_call` 핸들러 예외, 승인 안 된 중첩 호출, unknown 도구 |
+| 리소스 | 바인딩하지 않은 `~/.pi/agent`·`.pi/`·`.agents/skills`·`AGENTS.md` 로드, 내용이 바뀐 미신뢰 리소스 |
+| 실행 | 필수 확장 로드 실패 시 `pi-core`로 조용히 내려가는 것 |
+| 기록 | 로그·export에 로컬 절대경로·키가 남는 것 |
+
+## 테스트
+
+| ID | 내용 | 위치 |
+|---|---|---|
+| TC-HAR-001-H/N | 모든 모델 요청(일반·재시도·압축·확장 중첩)이 permit을 받는다. permit 없는 dispatch는 없다 | `packages/adapter-pi/test/spike/permit.test.ts`(S1) |
+| TC-HAR-002-H/N | 최종 인자로 승인, 핸들러 예외는 차단, 중첩 호출도 승인 | `packages/adapter-pi/test/spike/tools.test.ts`(S2) |
+| TC-HAR-004-H/N | 바인딩한 리소스만 로드, 함정 HOME과 cwd의 리소스는 로드하지 않음 | `packages/adapter-pi/test/spike/resources.test.ts`(S4) |
+| 나머지 TC-HAR | H2–H3에서 추가한다 | 플랜 §7 |
+
+## 검증하지 못한 것
+
+[스파이크 보고서](../spikes/HAR-pi-sdk-spikes.md)에 단계마다 적는다.
