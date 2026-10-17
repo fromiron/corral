@@ -75,6 +75,15 @@ async function setup(
 }
 
 describe('file broker (CR-012)', () => {
+  it('[TC-HAR-016-N] changing legacy check settings retains MCP definitions',async()=>{
+    const s=await setup();
+    try {
+      const mcp={id:'docs',name:'Docs',transport:'http' as const,url:'https://example.invalid/mcp',exposure:'direct' as const,timeoutMs:10000,auth:{kind:'none' as const}};
+      s.service.configureProjectTools('default',0,{checks:[],lspServers:[],mcpServers:[mcp]});
+      await s.service.configure('default',{verifyCommands:[]});
+      expect(s.service.projectTools.latest('default')?.mcpServers).toEqual([mcp]);
+    } finally {s.db.close();}
+  });
   it('[TC-HAR-014-H] creates comparison copies from the exact requested commit even after the source HEAD moves', async () => {
     const s = await setup();
     try {
