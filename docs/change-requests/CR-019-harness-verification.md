@@ -22,3 +22,10 @@ TC-HAR-014: 첫 시도를 포함한 상한, 기준 변경 거절, 같은 출력/
 - Pi 1.3.0의 `edit` 입력은 `{path, edits:[{oldText,newText}]}`다. 각 블록은 원본 파일에서 찾고 겹침·모호한 일치·변경 없음은 공식 도구와 같은 의미로 처리한다. BOM·줄바꿈·diff/patch 형식도 공개 도구를 재사용한다.
 - 파일 I/O는 계속 서버 broker가 수행한다. Pi 편집 변환은 리소스·확장·세션을 로드하지 않는 별도 임시 worker에서 공개 `createEditTool`의 메모리 operations로 계산한다. 실제 파일 경로나 자격 증명을 보내지 않는다. 변경된 결과만 broker의 쓰기 lease 및 execution별 읽기 hash 검사로 반영한다.
 - 검증 대상: 원본 Pi와 같은 정상 결과/오류, 여러 블록의 전부 성공 또는 무변경 실패, BOM/CRLF, 중복 문자열·겹침, 취소 시 무반영, 계산 중 원본 변경 거절. 단일 파일 도구는 기존 원자적 교체·파일 작업 기록을 재사용한다.
+
+### 프로젝트 실행 설정과 신뢰
+
+- 등록 검사와 LSP 서버 정의는 `ProjectToolConfigRevision`에 저장한다. 프로젝트별 증가 revision과 내용 hash를 가지며 수정·삭제하지 않는다. 역할은 등록 ID를 선택하고 Run 시작 시 해당 설정 revision을 고정한다. 실제 argv·로컬 경로는 공개 Run 이벤트에 넣지 않는다.
+- 실행 신뢰는 프로젝트·종류·ID·launch fingerprint별 별도 결정이다. 설정 revision만으로 실행을 허가하지 않는다. fingerprint에는 정의, 실행 파일, 관련 scripts/lockfiles와 Node 버전을 포함한다. 신뢰 철회는 이미 고정된 설정에도 적용한다.
+- 기존 `workspace_bindings.verify_json`은 migration에서 첫 설정 revision으로 보존한다. 자동 실행 신뢰로 승격하지 않는다. 이후 기존 수동 검사 설정 API도 같은 revision 저장소를 사용한다.
+- TC-HAR-012/013은 이전 revision 보존, 동시 저장 충돌, 잘못된 argv/중복 ID, 기존 설정 이관 및 신뢰 비승격도 확인한다. LSP·검증 실행기는 같은 설정을 읽되 별도 수명으로 관리한다.
