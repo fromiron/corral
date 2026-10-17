@@ -350,3 +350,7 @@ H1에서 검증한 `@earendil-works/pi-coding-agent@1.3.0`을 H2에서 adapter-p
 - 설치된 `@earendil-works/pi-codemode@1.3.0`의 공개 `CodemodeSandboxOptions.onWorkerStarted(exited)`를 사용한다. `dist/runtime/host.js`는 실제 Node Worker exit에서만 이 Promise를 해결한다. `sandbox.close()`와 도구 결과는 종료 요청 직후 반환할 수 있으므로 host capacity 반환의 근거로 쓰지 않는다.
 - 새 의존성은 없다. JS 두 파일의 콜백 전달 두 줄과 배포 TypeScript 선언 두 곳만 확장한다. 미사용 시 기존 호출자는 동일하게 동작하며 기존 Node >=22.19.0 / 동봉 Node 24.19.0 요구를 유지한다. Studio 브라우저 번들에는 포함하지 않는다.
 - patch는 정확한 1.3.0에만 적용한다. Pi 업그레이드 시 공식 옵션 도입 여부, Worker 생성 실패·실제 종료·취소 후 늦은 종료를 다시 검증하고 불필요해진 patch를 제거한다. 일반 CI의 `codemode-lifecycle.test.ts`가 실제 로컬 Worker로 콜백 전달을 확인한다.
+
+## MCP transport와 OAuth (CR-020, 2026-10-18)
+
+이미 Pi coding-agent의 전이 의존성인 `@earendil-works/pi-mcp@1.3.0`을 server/adapter의 직접 의존성으로도 선언한다. [Pi 공식 MCP 패키지](https://github.com/earendil-works/pi/tree/v1.3.0/packages/mcp)의 공개 StdioTransport/StreamableHttpTransport, MCP client, OAuth provider·PKCE callback·flow를 재사용하여 프로토콜과 인증 코드를 다시 만들지 않는다. 설치된 배포의 MIT, Node >=22.19.0, TypeScript 선언, 유일한 자체 의존성 cross-spawn 7.0.6을 확인했다. 기존에 설치된 정확한 버전이므로 새 전이 런타임 패키지는 늘지 않으며 Studio 의존성도 아니다. 직전 production audit는 0 advisories다. 설치 스크립트는 실행하지 않았다. Context7을 검색했으나 제공되지 않아 설치된 1.3.0 공개 선언과 구현을 대조했다.

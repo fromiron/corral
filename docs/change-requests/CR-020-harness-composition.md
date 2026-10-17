@@ -39,3 +39,11 @@ Pi 공개 runtime의 `refreshTools`와 로드 결과의 extension 도구 정의�
 Pi 1.3.0의 codemode 결과와 `sandbox.close()`는 Worker의 OS 종료보다 먼저 반환할 수 있다. 따라서 호출 완료 개수를 worker 수로 취급하지 않는다. 이미 공개된 pi-codemode의 `onWorkerStarted(exited)` 관찰자를 pi-coding-agent의 공식 factory 옵션까지 전달하는 최소 버전 고정 patch를 사용한다. Coordinator가 생성 전 capacity를 예약하고 SDK wrapper가 실제 exit를 확인한 뒤 반환한다. SDK 프로세스 종료가 확인되면 소유 lease를 정리하며 종료 미확인 상태에서는 반환하지 않는다. 새 실행 엔진·Worker monkey patch·Pi 내부 카운터 조회는 추가하지 않는다. 정확한 적용 파일/검증은 의존성 원장에 남기고 버전 변경 때 patch 재검증을 요구한다.
 
 SDK worker는 실행 시작 IPC를 보내기 전에 private 프로세스 소유 기록을 저장한다. 백엔드는 workspace 소유 lock을 얻고 이전 worker의 종료를 확인한 뒤 Coordinator를 시작한다. Linux에서는 boot ID와 `/proc` 시작 시각을 확인하여 PID 재사용을 구분하고 같은 소유 process group만 종료한다. 확인할 수 없으면 새 실행을 막는다. 다른 OS에서는 이전 PID가 아직 살아 있으면 자동으로 다른 프로세스를 죽이지 않고 복구 미확인으로 시작을 거절한다. `error` 이벤트만으로 살아 있는 child의 종료를 확정하지 않는다.
+
+## MCP 설정·권한·인증
+
+- `ProjectToolConfigRevision.mcpServers`에 stdio argv 또는 HTTP endpoint, 노출 방식(direct/codemode), timeout, 인증 방식/credential reference/요청 scope를 저장한다. 기존 revision은 선택 필드가 없어도 동일한 hash를 유지한다. 서버 ID는 도구 namespace 충돌을 피하도록 소문자 영숫자와 밑줄로 제한한다.
+- 역할은 `mcpServerIds`와 구체적 `allowedTools`의 교집합을 선택한다. Run snapshot은 프로젝트 설정 revision/hash와 선택 ID를 고정한다. 실행/원격 endpoint 신뢰는 `kind=mcp`인 개별 fingerprint에 부여한다. HTTP fingerprint는 원격 코드의 불변성을 증명하지 않으며 endpoint·인증 대상·scope에 대한 신뢰다. stdio는 기존 launch fingerprint를 사용한다.
+- SDK의 공개 `createMcpExtension` factory만 활성화하고 설정 파일 자동 탐색·확장의 미등록 서버 연결·내장 `/mcp` 설정 변경 경로를 막는다. 실제 관리 사본 cwd를 private IPC로 전달하며 사용자 원본 cwd를 대체 실행 위치로 쓰지 않는다. native 서버 자체는 OS sandbox가 아니다.
+- Bearer/OAuth 비밀과 갱신 토큰은 workspace 밖의 Corral private 저장소에 둔다. OAuth는 공개 pi-mcp flow와 loopback PKCE callback을 사용하고 사용자 설정 화면에서만 시작/취소한다. worker는 고정 서버 ID로 해당 요청에 필요한 bearer token만 host에 요청한다. 권한 scope 변경·다른 endpoint에 기존 credential을 재사용하지 않는다. 임의 provider key 조회나 모델 자격 증명 전달을 허용하지 않는다.
+- SDK native descriptor/중첩 호출 경계를 MCP에도 적용한다. 종료 시 `session_shutdown`으로 서버 연결을 닫고 worker 프로세스 정리도 확인한다. 일반 CI/로컬 검증은 로컬 MCP·OAuth fixture만 사용한다.
