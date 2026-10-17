@@ -10,6 +10,7 @@ import {
   StatusBadge,
 } from '@corral/react';
 import { Activity, ChevronRight, FileText, LoaderCircle } from '@corral/react/icons';
+import { Button } from '@corral/react/ui';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -74,11 +75,55 @@ export function RunMessage({
   const label = (nodeId: string) =>
     state.definition?.nodes.find((n) => n.id === nodeId)?.label ?? nodeId;
   const executions = projection.executionOrder.flatMap((id) => projection.executions[id] ?? []);
-  const agents = executions.filter((execution) =>
-    working ? !TERMINAL_EXECUTION_STATUSES.has(execution.status) : execution.status === 'failed',
+  const busy = working
+    ? executions.filter((execution) => !TERMINAL_EXECUTION_STATUSES.has(execution.status))
+    : [];
+  // Failures are never folded away (CR-015-03): each failed agent and its error stays in view.
+  const failed = executions.filter((execution) => execution.status === 'failed');
+  const name = (executionId: string) => {
+    const execution = projection.executions[executionId];
+    return execution
+      ? `${label(execution.nodeId)} · #${projection.executionOrder.indexOf(executionId) + 1}`
+      : executionId;
+  };
+  // What a model is writing right now, shown in the conversation; never a fact (C-018).
+  const writing = working
+    ? Object.entries(state.streams)
+        .filter(
+          ([id, stream]) =>
+            !stream.completed && !stream.broken && !projection.modelCalls[id]?.finished,
+        )
+        .at(-1)
+    : undefined;
+  const writer = writing ? projection.modelCalls[writing[0]]?.executionId : undefined;
+  const agentRow = (execution: (typeof executions)[number]) => (
+    <li key={execution.executionId} className="flex min-w-0 flex-wrap items-center gap-x-2 text-xs">
+      <Link
+        to={sessionId ? '/sessions/$sessionId' : '/runs/$runId'}
+        params={sessionId ? { sessionId } : { runId }}
+        search={{
+          ...(sessionId ? { panel: 'run' as const, run: runId } : {}),
+          view: 'run',
+          execution: execution.executionId,
+        }}
+        title={execution.executionId}
+        className="font-medium hover:underline"
+      >
+        {name(execution.executionId)}
+      </Link>
+      <StatusBadge status={execution.status} />
+      {execution.waitingOn ? (
+        <span className="text-muted">
+          {trun(`waiting.${execution.waitingOn.kind}`, {
+            count: execution.waitingOn.targetIds.length,
+          })}
+        </span>
+      ) : null}
+      {execution.error ? <p className="w-full text-danger">{execution.error}</p> : null}
+    </li>
   );
   return (
-    <div className="flex min-w-0 flex-col gap-5">
+    <div className="flex min-w-0 flex-col gap-3">
       {projection.statusReason &&
       projection.status !== 'running' &&
       projection.status !== 'succeeded' ? (
@@ -86,88 +131,50 @@ export function RunMessage({
           {trun('reasonPrefix')} <RunReason code={projection.statusReason} nodeLabel={label} />
         </p>
       ) : null}
-      {agents.length ? (
-        <section aria-label={t('teamActivity')} data-testid="team-activity" className="space-y-2">
-          <h3 className="text-xs font-medium text-muted">{t('teamActivity')}</h3>
-          <ul className="grid gap-2 sm:grid-cols-2">
-            {agents.map((execution) => (
-              <li
-                key={execution.executionId}
-                className="min-w-0 rounded-lg border border-line p-2 text-xs wrap-anywhere"
-              >
-                <Link
-                  to={sessionId ? '/sessions/$sessionId' : '/runs/$runId'}
-                  params={sessionId ? { sessionId } : { runId }}
-                  search={{
-                    ...(sessionId ? { panel: 'run' as const, run: runId } : {}),
-                    view: 'run',
-                    execution: execution.executionId,
-                  }}
-                  title={execution.executionId}
-                  className="font-medium underline-offset-4 hover:underline"
-                >
-                  {label(execution.nodeId)} · #
-                  {projection.executionOrder.indexOf(execution.executionId) + 1}
-                </Link>
-                <div className="mt-1">
-                  <StatusBadge status={execution.status} />
-                </div>
-                {execution.waitingOn ? (
-                  <p className="mt-1 text-muted">
-                    {trun(`waiting.${execution.waitingOn.kind}`, {
-                      count: execution.waitingOn.targetIds.length,
-                    })}
-                  </p>
-                ) : null}
-                {execution.error ? <p className="mt-1 text-danger">{execution.error}</p> : null}
-              </li>
-            ))}
-          </ul>
+      {busy.length || failed.length ? (
+        <section aria-label={t('teamActivity')} data-testid="team-activity" className="text-xs">
+          {failed.length ? (
+            <ul className="mb-1 flex flex-col gap-1">{failed.map(agentRow)}</ul>
+          ) : null}
+          {busy.length ? (
+            <details className="group/agents">
+              <summary className="flex cursor-pointer list-none items-center gap-2 py-0.5 text-muted hover:text-text">
+                <LoaderCircle size={13} className="animate-spin motion-reduce:animate-none" />
+                {t('agentsWorking', { count: busy.length })}
+                <ChevronRight
+                  size={12}
+                  className="transition-transform group-open/agents:rotate-90"
+                />
+              </summary>
+              <ul className="mt-1.5 flex flex-col gap-1 border-l border-line pl-3">
+                {busy.map(agentRow)}
+              </ul>
+            </details>
+          ) : null}
         </section>
       ) : null}
+      {writing ? (
+        <div data-testid="live-text" aria-live="off" className="min-w-0">
+          <p className="mb-1 text-2xs text-muted">
+            {t('writing', { name: writer ? name(writer) : '' })}
+          </p>
+          <p className="live-text max-h-40 overflow-hidden text-sm leading-6 whitespace-pre-wrap text-text/80 wrap-anywhere">
+            {writing[1].text.slice(-1200)}
+            <span
+              aria-hidden="true"
+              className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-muted align-text-bottom motion-reduce:animate-none"
+            />
+          </p>
+        </div>
+      ) : null}
       {resultError ? (
-        <p role="alert" className="text-xs text-danger">
-          {t('resultUnavailable')}{' '}
-          <button
-            type="button"
-            className="underline"
-            onClick={() => setRetry((value) => value + 1)}
-          >
+        <p role="alert" className="flex items-center gap-2 text-xs text-danger">
+          {t('resultUnavailable')}
+          <Button variant="outline" size="xs" onClick={() => setRetry((value) => value + 1)}>
             {t('retryResult')}
-          </button>
+          </Button>
         </p>
       ) : null}
-      <details className="work-log" onToggle={(e) => setExpanded(e.currentTarget.open)}>
-        <summary className="flex cursor-pointer list-none items-center gap-2 py-1 text-xs text-muted hover:text-text">
-          {projection.status === 'running' ? (
-            <LoaderCircle size={14} className="animate-spin motion-reduce:animate-none" />
-          ) : (
-            <Activity size={14} />
-          )}
-          {t('activity')}
-          <span className="tabular-nums">{projection.executionOrder.length}</span>
-          <ChevronRight size={13} className={expanded ? 'rotate-90' : ''} />
-        </summary>
-        {expanded ? (
-          <div className="mt-3 space-y-3 border-l border-line pl-4">
-            {projection.executionOrder.map((id) => {
-              const execution = projection.executions[id];
-              if (!execution) return null;
-              return (
-                <details key={id} className="text-xs">
-                  <summary className="flex cursor-pointer items-center gap-2 py-2">
-                    <span className="font-medium">
-                      {label(execution.nodeId)} · #{projection.executionOrder.indexOf(id) + 1}
-                    </span>
-                    <StatusBadge status={execution.status} />
-                  </summary>
-                  <ExecutionTranscript session={store} executionId={id} />
-                </details>
-              );
-            })}
-          </div>
-        ) : null}
-      </details>
       {visible.map((result, index) => (
         <ChatResult
           key={result.artifactVersionId}
@@ -180,6 +187,31 @@ export function RunMessage({
           first={index === 0}
         />
       ))}
+      <details className="work-log group/log" onToggle={(e) => setExpanded(e.currentTarget.open)}>
+        <summary className="flex w-fit cursor-pointer list-none items-center gap-1.5 rounded py-0.5 text-xs text-muted hover:text-text">
+          <Activity size={13} />
+          {t('activity')}
+          <span className="tabular-nums">{projection.executionOrder.length}</span>
+          <ChevronRight size={12} className="transition-transform group-open/log:rotate-90" />
+        </summary>
+        {expanded ? (
+          <div className="mt-2 space-y-1 border-l border-line pl-3">
+            {projection.executionOrder.map((id) => {
+              const execution = projection.executions[id];
+              if (!execution) return null;
+              return (
+                <details key={id} className="text-xs">
+                  <summary className="flex cursor-pointer items-center gap-2 py-1.5">
+                    <span className="font-medium">{name(id)}</span>
+                    <StatusBadge status={execution.status} />
+                  </summary>
+                  <ExecutionTranscript session={store} executionId={id} />
+                </details>
+              );
+            })}
+          </div>
+        ) : null}
+      </details>
       {state.streamError ? (
         <p role="alert" className="text-xs text-danger">
           {state.streamError}
@@ -232,15 +264,15 @@ function ChatResult({
       className="min-w-0 space-y-3 text-sm leading-7 wrap-anywhere"
       data-testid="chat-result"
     >
-      <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 text-xs text-muted hover:text-text">
-        <FileText size={14} />
+      <summary className="flex w-fit cursor-pointer list-none flex-wrap items-center gap-1.5 rounded text-xs text-muted hover:text-text">
+        <FileText size={13} />
         {partial ? tr('partial') : t('result')} · {result.name} v{result.version}
         {author ? (
           <span>
             · {label(author.nodeId)} #{projection.executionOrder.indexOf(author.executionId) + 1}
           </span>
         ) : null}
-        <ChevronRight size={13} className={open ? 'rotate-90' : ''} />
+        <ChevronRight size={12} className={`transition-transform ${open ? 'rotate-90' : ''}`} />
       </summary>
       {open === true ? (
         <>
@@ -248,7 +280,11 @@ function ChatResult({
             <ReviewSummary
               review={review}
               target={
-                <Link {...location} search={search(review.targetVersionId)} className="underline">
+                <Link
+                  {...location}
+                  search={search(review.targetVersionId)}
+                  className="underline-offset-2 hover:underline"
+                >
                   {target ? `${target.name} v${target.version}` : review.targetVersionId}
                 </Link>
               }

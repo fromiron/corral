@@ -1197,8 +1197,9 @@ function Composer({
 
   // What may be sent now: one run at a time, so a busy runtime only takes a queue entry or,
   // for this session's run, an instruction.
+  // An instruction needs an execution that can still take one (none while a decision waits).
   const allowed: SessionIntent[] = active
-    ? ownActive
+    ? ownActive && targets.length > 0
       ? ['steer', 'queue']
       : ['queue']
     : latest

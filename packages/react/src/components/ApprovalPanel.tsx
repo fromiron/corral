@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import type { RunSessionStore } from '../run/session.ts';
+import { Button } from '../ui/button.tsx';
 
 /**
  * Decisions waiting for the person (C-029, Spec §7.5): each names the exact versions and the
@@ -46,29 +47,29 @@ export function ApprovalPanel({
 
   return (
     <section aria-labelledby="approvals-heading" className="flex flex-col gap-2">
-      <h3 id="approvals-heading" className="text-sm font-semibold">
+      <h3 id="approvals-heading" className="text-ui font-semibold">
         {t('heading')}
       </h3>
       {approvals.map((approval) => (
         <article
           key={approval.approvalId}
           data-testid={`approval-${approval.approvalId}`}
-          className="flex flex-col gap-2 rounded-md border border-warning p-2 text-xs"
+          className="flex flex-col gap-2 rounded-xl border border-warning/50 bg-warning/5 p-3 text-xs"
         >
           <p className="font-medium">{t(`kind.${approval.kind}`)}</p>
           <p className="text-muted">{t(`explain.${approval.kind}`)}</p>
           <div className="flex flex-wrap items-center gap-1">
             <span className="text-muted">{t('subject')}</span>
             {approval.subjectVersionIds.map((id) => (
-              <button
+              <Button
                 key={id}
-                type="button"
+                variant="outline"
+                size="xs"
                 title={id}
                 onClick={() => onOpenArtifact(id)}
-                className="rounded border border-line px-1 font-mono"
               >
                 {artifacts?.[id] ? `${artifacts[id].name} v${artifacts[id].version}` : id}
-              </button>
+              </Button>
             ))}
           </div>
           {criteria ? (
@@ -82,22 +83,21 @@ export function ApprovalPanel({
             </div>
           ) : null}
           <div className="flex gap-2">
-            <button
-              type="button"
+            <Button
+              size="sm"
               disabled={busy}
               onClick={() => void decide(approval.approvalId, 'approve')}
-              className="rounded-md bg-accent px-3 py-1 font-medium text-on-accent disabled:opacity-50"
             >
               {t('approve')}
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
               disabled={busy}
               onClick={() => void decide(approval.approvalId, 'reject')}
-              className="rounded-md border border-line px-3 py-1 disabled:opacity-50"
             >
               {t('reject')}
-            </button>
+            </Button>
           </div>
           {refused?.error ? (
             <p role="alert" className="text-danger">

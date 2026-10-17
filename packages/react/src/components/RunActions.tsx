@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import type { RunSessionStore, SessionCommand } from '../run/session.ts';
+import { Button } from '../ui/button.tsx';
 import { CommandReceipts } from './CommandReceipts.tsx';
 
 /** Whole-run Pause/Resume and Cancel. `compact` drops the explanations (the Run page header). */
@@ -32,7 +33,7 @@ export function RunActions({
   return (
     <section
       aria-label={t('runControls')}
-      className="flex flex-col gap-2 rounded border border-line p-2 text-xs"
+      className={`flex flex-col gap-2 text-xs ${compact ? '' : 'rounded-lg border border-line p-3'}`}
     >
       {compact ? null : (
         <>
@@ -41,10 +42,10 @@ export function RunActions({
         </>
       )}
       {!terminal ? (
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            className="rounded border border-line px-2 py-1"
+        <div className="flex flex-wrap gap-1">
+          <Button
+            variant="outline"
+            size="xs"
             disabled={
               pending || projection.status === 'pausing' || projection.status === 'cancelling'
             }
@@ -56,25 +57,25 @@ export function RunActions({
             }
           >
             {projection.status === 'paused' ? t('resume') : t('pause')}
-          </button>
-          <button
-            type="button"
-            className="rounded border border-danger px-2 py-1 text-danger"
+          </Button>
+          <Button
+            variant="ghost-destructive"
+            size="xs"
             disabled={pending || projection.status === 'cancelling'}
             onClick={() => setConfirmCancel(true)}
           >
             {t('cancelRun')}
-          </button>
+          </Button>
         </div>
       ) : null}
       {confirmCancel && !terminal ? (
-        <div className="flex flex-col gap-2 rounded border border-danger p-2">
+        <div className="flex flex-col gap-2 rounded-lg border border-danger/40 bg-danger/5 p-3">
           <p>{t('cancelRunExplain')}</p>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
+          <div className="flex flex-wrap gap-1">
+            <Button
+              variant="destructive"
+              size="xs"
               disabled={pending}
-              className="rounded border border-danger px-2 py-1 text-danger"
               onClick={() => {
                 setConfirmCancel(false);
                 send({
@@ -84,14 +85,10 @@ export function RunActions({
               }}
             >
               {t('confirmCancelRun')}
-            </button>
-            <button
-              type="button"
-              className="rounded border border-line px-2 py-1"
-              onClick={() => setConfirmCancel(false)}
-            >
+            </Button>
+            <Button variant="outline" size="xs" onClick={() => setConfirmCancel(false)}>
               {t('keepRunning')}
-            </button>
+            </Button>
           </div>
         </div>
       ) : null}

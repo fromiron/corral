@@ -1484,7 +1484,9 @@
     "sendKey": "Send with",
     "sendKeyHint": "Which key sends a request. The other adds a line.",
     "sendEnter": "Enter",
-    "sendModEnter": "Ctrl/⌘ + Enter"
+    "sendModEnter": "Ctrl/⌘ + Enter",
+    "agentsWorking": "{count, plural, one {# agent working} other {# agents working}}",
+    "writing": "{name} is writing…"
   },
   "Composer": {
     "commands": "Commands",
