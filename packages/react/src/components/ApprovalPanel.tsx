@@ -1,4 +1,4 @@
-import type { Receipt } from '@corral/contracts';
+import { CheckPlan, type Receipt } from '@corral/contracts';
 import { useEffect, useId, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
@@ -39,6 +39,31 @@ export function ApprovalPanel({
   const criteria = useStore(session, (s) => (criteriaId ? s.artifactTexts[criteriaId] : undefined));
   const [busy, setBusy] = useState(false);
   const [refused, setRefused] = useState<Receipt | null>(null);
+  const [checkPlans, setCheckPlans] = useState<Record<string, CheckPlan | null>>({});
+
+  useEffect(() => {
+    let active = true;
+    for (const approval of approvals) {
+      if (!approval.tool) continue;
+      const { bodyRef, fingerprint, targetTree } = approval.tool;
+      void (async () => {
+        try {
+          if (session.getState().artifactTexts[bodyRef] === undefined)
+            await session.getState().loadArtifact(bodyRef);
+          const text = session.getState().artifactTexts[bodyRef];
+          const plan = CheckPlan.parse(JSON.parse(text ?? 'null'));
+          if (plan.fingerprint !== fingerprint || plan.tree !== targetTree)
+            throw new Error('approval changed');
+          if (active) setCheckPlans((previous) => ({ ...previous, [bodyRef]: plan }));
+        } catch {
+          if (active) setCheckPlans((previous) => ({ ...previous, [bodyRef]: null }));
+        }
+      })();
+    }
+    return () => {
+      active = false;
+    };
+  }, [approvals, session]);
 
   useEffect(() => {
     if (criteriaId) void session.getState().loadArtifact(criteriaId);
@@ -90,22 +115,58 @@ export function ApprovalPanel({
                 : 'flex flex-col gap-2 rounded-xl border border-warning/50 bg-warning/5 p-3 text-xs'
             }
           >
-            <p className="font-medium">{t(`kind.${approval.kind}`)}</p>
-            {compact ? null : <p className="text-muted">{t(`explain.${approval.kind}`)}</p>}
-            <div className="flex flex-wrap items-center gap-1">
-              <span className="text-muted">{t('subject')}</span>
-              {approval.subjectVersionIds.map((id) => (
-                <Button
-                  key={id}
-                  variant="outline"
-                  size="xs"
-                  title={id}
-                  onClick={() => onOpenArtifact(id)}
-                >
-                  {label(id)}
-                </Button>
-              ))}
-            </div>
+            <p className="font-medium">
+              {approval.tool ? t('checkHeading') : t(`kind.${approval.kind}`)}
+            </p>
+            {approval.tool ? (
+              <div className="flex min-w-0 flex-col gap-1">
+                {checkPlans[approval.tool.bodyRef] ? (
+                  <>
+                    <p>{checkPlans[approval.tool.bodyRef]?.name}</p>
+                    <code className="whitespace-pre-wrap break-all">
+                      {checkPlans[approval.tool.bodyRef]?.argv.join(' ')}
+                    </code>
+                    <p className="text-muted">
+                      {t('checkScope', {
+                        execution: approval.tool.executionId,
+                        attempt: approval.tool.attemptNo,
+                        revision: checkPlans[approval.tool.bodyRef]?.configRevision ?? 0,
+                        fingerprint: approval.tool.fingerprint.slice(0, 12),
+                        tree: approval.tool.targetTree.slice(0, 12),
+                      })}
+                    </p>
+                    <p className="text-muted">{t('checkOnce')}</p>
+                  </>
+                ) : (
+                  <p role={checkPlans[approval.tool.bodyRef] === null ? 'alert' : 'status'}>
+                    {t(
+                      checkPlans[approval.tool.bodyRef] === null
+                        ? 'checkUnavailable'
+                        : 'checkLoading',
+                    )}
+                  </p>
+                )}
+              </div>
+            ) : null}
+            {compact || approval.tool ? null : (
+              <p className="text-muted">{t(`explain.${approval.kind}`)}</p>
+            )}
+            {approval.tool ? null : (
+              <div className="flex flex-wrap items-center gap-1">
+                <span className="text-muted">{t('subject')}</span>
+                {approval.subjectVersionIds.map((id) => (
+                  <Button
+                    key={id}
+                    variant="outline"
+                    size="xs"
+                    title={id}
+                    onClick={() => onOpenArtifact(id)}
+                  >
+                    {label(id)}
+                  </Button>
+                ))}
+              </div>
+            )}
             {criteria && !compact ? (
               <div className="text-muted">
                 {t('criteria')}
@@ -119,11 +180,11 @@ export function ApprovalPanel({
             <div className={`flex gap-2 ${compact ? 'ml-auto' : ''}`}>
               <Button
                 size="sm"
-                disabled={busy}
-                title={t(`then.${approval.kind}`)}
+                disabled={busy || !!(approval.tool && !checkPlans[approval.tool.bodyRef])}
+                title={approval.tool ? t('checkOnce') : t(`then.${approval.kind}`)}
                 onClick={() => void decide(approval.approvalId, 'approve')}
               >
-                {t(`approveAs.${approval.kind}`)}
+                {approval.tool ? t('approveCheck') : t(`approveAs.${approval.kind}`)}
               </Button>
               <Button
                 variant="outline"
@@ -131,7 +192,7 @@ export function ApprovalPanel({
                 disabled={busy}
                 onClick={() => void decide(approval.approvalId, 'reject')}
               >
-                {t(`rejectAs.${approval.kind}`)}
+                {approval.tool ? t('rejectCheck') : t(`rejectAs.${approval.kind}`)}
               </Button>
             </div>
             {refused?.error ? (

@@ -8,6 +8,7 @@ import {
   type AnswerExtensionUiCommand,
   type Assignment,
   type BrokerFileToolName,
+  CheckPlan,
   type Clock,
   type CommandError,
   type CorralDefinition,
@@ -295,6 +296,15 @@ interface LiveRun {
   closingExecutions: Set<string>;
   /** Pending approvals and how to continue once the person decides (C-029). */
   approvals: Map<string, (decision: 'approve' | 'reject') => void>;
+  toolApprovals: Map<
+    string,
+    {
+      input: AgentStartInput;
+      effectId: string;
+      due: number;
+      expire(reason: 'cancelled' | 'timeout' | 'execution_ended'): void;
+    }
+  >;
   extensionUi: Map<string, PendingExtensionUi>;
   uiRequestCount: number;
   uiNoticeCount: number;
@@ -588,6 +598,7 @@ export class Coordinator {
       cancelRequested: new Set(),
       closingExecutions: new Set(),
       approvals: new Map(),
+      toolApprovals: new Map(),
       extensionUi: new Map(),
       uiRequestCount: 0,
       uiNoticeCount: 0,
@@ -2312,6 +2323,8 @@ export class Coordinator {
         settlement = { outcome: 'failed', error: String(error) };
       } finally {
         run.closingExecutions.add(input.executionId);
+        for (const pending of run.toolApprovals.values())
+          if (pending.input.executionId === input.executionId) pending.expire('execution_ended');
         for (const pending of run.extensionUi.values())
           if (pending.input.executionId === input.executionId)
             this.closeExtensionUi(run, pending.requestId, 'execution_ended');
@@ -2733,24 +2746,170 @@ export class Coordinator {
     run: LiveRun,
     kind: 'final_output' | 'loop_cap' | 'user_action',
     subjectVersionIds: string[],
+    request?: { tool: NonNullable<EventPayload<'approval.requested'>['tool']>; body: string },
   ): { approvalId: string; decision: Promise<'approve' | 'reject'> } {
     const approvalId = this.ids.next('approval');
     const decision = new Promise<'approve' | 'reject'>((resolve) => {
       run.approvals.set(approvalId, resolve);
     });
+    this.commit(
+      run,
+      [
+        {
+          type: 'approval.requested',
+          payload: {
+            approvalId,
+            kind,
+            subjectVersionIds,
+            criteriaVersionId: request
+              ? null
+              : (run.pendingCriteriaVersionId ?? run.criteriaVersionId),
+            ...(request ? { tool: request.tool } : {}),
+          },
+        },
+        ...(request && ['paused', 'pausing'].includes(run.projection.status)
+          ? []
+          : [runState(run.projection.status, 'awaiting_user', `approval_requested: ${kind}`)]),
+      ],
+      request
+        ? () => this.store.putArtifactText(run.runId, request.tool.bodyRef, request.body)
+        : undefined,
+    );
+    return { approvalId, decision };
+  }
+
+  private async requestCheckApproval(
+    run: LiveRun,
+    input: AgentStartInput,
+    tool: ToolFrame,
+    plan: CheckPlan,
+    cancellation: ToolCancellation,
+  ): Promise<boolean> {
+    if (cancellation.aborted || run.stop.aborted || run.uiRequestCount >= 100) return false;
+    const execution = run.projection.executions[input.executionId];
+    if (
+      !execution ||
+      !['active', 'waiting_approval'].includes(execution.status) ||
+      execution.attemptNo !== input.attemptNo ||
+      run.projection.tasks[input.taskId]?.activeExecutionId !== input.executionId ||
+      run.projection.effects[tool.effectId]?.status !== 'admitted'
+    )
+      return false;
+    const bodyRef = this.ids.next('artifact_version');
+    const timeoutMs = 300000;
+    const request = this.requestApproval(run, 'user_action', [bodyRef], {
+      tool: {
+        executionId: input.executionId,
+        attemptNo: input.attemptNo,
+        effectId: tool.effectId,
+        toolCallId: tool.toolCallId,
+        bodyRef,
+        fingerprint: plan.fingerprint,
+        targetTree: plan.tree,
+        deadline: new Date(Date.parse(this.clock.nowIso()) + timeoutMs).toISOString(),
+      },
+      body: canonicalJson(plan),
+    });
+    run.uiRequestCount += 1;
+    let cancelTimer = () => {},
+      off = () => {};
+    const cleanup = () => {
+      cancelTimer();
+      off();
+      run.toolApprovals.delete(request.approvalId);
+    };
+    const expire = (reason: 'cancelled' | 'timeout' | 'execution_ended') => {
+      if (!run.toolApprovals.has(request.approvalId)) return;
+      const resume = run.approvals.get(request.approvalId);
+      run.approvals.delete(request.approvalId);
+      cleanup();
+      if (!this.storageError && run.projection.approvals[request.approvalId]?.status === 'pending')
+        this.commit(run, [
+          {
+            type: 'approval.resolved',
+            executionId: input.executionId,
+            payload: {
+              approvalId: request.approvalId,
+              decision: 'reject',
+              actor: RUNTIME.id,
+              subjectVersionIds: [bodyRef],
+              reason,
+            },
+          },
+        ]);
+      resume?.('reject');
+    };
+    run.toolApprovals.set(request.approvalId, {
+      input,
+      effectId: tool.effectId,
+      due: this.clock.monotonicMs() + timeoutMs,
+      expire,
+    });
     this.commit(run, [
       {
-        type: 'approval.requested',
+        type: 'execution.state_changed',
+        executionId: input.executionId,
         payload: {
-          approvalId,
-          kind,
-          subjectVersionIds,
-          criteriaVersionId: run.pendingCriteriaVersionId ?? run.criteriaVersionId,
+          executionId: input.executionId,
+          from: execution.status,
+          to: 'waiting_approval',
+          activity: null,
+          waitingOn: {
+            kind: 'approval',
+            targetIds: [request.approvalId],
+            reasonCode: 'check_launch',
+            since: this.clock.nowIso(),
+            deadline: new Date(Date.parse(this.clock.nowIso()) + timeoutMs).toISOString(),
+            required: true,
+          },
         },
       },
-      runState(run.projection.status, 'awaiting_user', `approval_requested: ${kind}`),
     ]);
-    return { approvalId, decision };
+    cancelTimer = this.timers.after(timeoutMs, () => expire('timeout'));
+    off = cancellation.onCancel(() => expire('cancelled'));
+    try {
+      return (await request.decision) === 'approve';
+    } finally {
+      cleanup();
+      const owner = run.projection.executions[input.executionId];
+      const drafts: EventDraft[] = [];
+      if (
+        !this.storageError &&
+        owner?.status === 'waiting_approval' &&
+        !run.cancelRequested.has(input.executionId) &&
+        !run.closingExecutions.has(input.executionId) &&
+        ![...run.toolApprovals.values()].some(
+          (pending) => pending.input.executionId === input.executionId,
+        ) &&
+        ![...run.extensionUi.values()].some(
+          (pending) => pending.input.executionId === input.executionId,
+        )
+      )
+        drafts.push({
+          type: 'execution.state_changed',
+          executionId: input.executionId,
+          payload: {
+            executionId: input.executionId,
+            from: 'waiting_approval',
+            to: ['paused', 'pausing'].includes(run.projection.status) ? 'paused' : 'active',
+            activity: 'tool',
+            waitingOn: null,
+          },
+        });
+      if (
+        !this.storageError &&
+        !run.stop.aborted &&
+        !run.cancelRequested.has(input.executionId) &&
+        !run.closingExecutions.has(input.executionId) &&
+        run.projection.status === 'awaiting_user' &&
+        !run.approvals.size &&
+        !run.extensionUi.size &&
+        !Object.values(run.projection.tasks).some((task) => task.status === 'blocked')
+      )
+        drafts.push(runState('awaiting_user', 'running', 'check_approval_closed'));
+      if (drafts.length) this.commit(run, drafts);
+      this.wake(run);
+    }
   }
 
   /** At the Loop cap: ask for one more round, unless the installation's hard cap is reached. */
@@ -2815,6 +2974,26 @@ export class Coordinator {
         message: `approval ${approvalId} is already ${approval.status}`,
       });
     }
+    if (approval.tool) {
+      const pending = run.toolApprovals.get(approvalId);
+      const owner = run.projection.executions[approval.tool.executionId];
+      if (pending && this.clock.monotonicMs() >= pending.due) pending.expire('timeout');
+      if (
+        !pending ||
+        this.clock.monotonicMs() >= pending.due ||
+        !owner ||
+        TERMINAL_EXECUTION_STATUSES.has(owner.status) ||
+        owner.attemptNo !== approval.tool.attemptNo ||
+        run.cancelRequested.has(owner.executionId) ||
+        run.closingExecutions.has(owner.executionId) ||
+        run.projection.tasks[pending.input.taskId]?.activeExecutionId !== owner.executionId ||
+        run.projection.effects[pending.effectId]?.status !== 'admitted'
+      )
+        return refuse({
+          code: 'APPROVAL_STALE',
+          message: 'the check approval owner is no longer current',
+        });
+    }
     if (command.expectedControlRevision !== run.projection.controlRevision) {
       return refuse({
         code: 'STALE_CONTROL_REVISION',
@@ -2851,7 +3030,8 @@ export class Coordinator {
           : [
               runState(
                 run.projection.status,
-                run.extensionUi.size > 0 ||
+                run.approvals.size > 1 ||
+                  run.extensionUi.size > 0 ||
                   Object.values(run.projection.tasks).some((t) => t.status === 'blocked')
                   ? 'awaiting_user'
                   : 'running',
@@ -3356,6 +3536,7 @@ export class Coordinator {
       const tool = { opening, closing, toolCallId, effectId };
       switch (call.proposal.name) {
         case 'read':
+        case 'run_check':
         case 'edit':
         case 'write':
         case 'search':
@@ -4441,7 +4622,7 @@ export class Coordinator {
         };
       },
     };
-    const cancelTimer = this.timers.after(30_000, () => {
+    const timeout = () => {
       timedOut = true;
       abort();
       this.submit({
@@ -4451,7 +4632,8 @@ export class Coordinator {
         type: 'cancel',
         payload: { scope: { kind: 'execution', executionId }, reason: 'tool_timeout' },
       });
-    });
+    };
+    let cancelTimer = this.timers.after(30_000, timeout);
     this.commit(run, tool.opening);
     try {
       const fileTool =
@@ -4459,7 +4641,33 @@ export class Coordinator {
         proposal.name === 'edit' ||
         proposal.name === 'write';
       let result: Record<string, unknown>;
-      if (proposal.name === 'read') {
+      if (proposal.name === 'run_check') {
+        const files = this.files,
+          selection = input.harness?.projectTools;
+        if (!files?.planCheck || !files.runCheck || !selection)
+          throw new ToolRefusal('CAPABILITY_DENIED', 'check runner unavailable');
+        const owner = {
+          runId: input.runId,
+          executionId: input.executionId,
+          attemptNo: input.attemptNo,
+          effectId: tool.effectId,
+          selection,
+          commandId: String(proposal.args.commandId),
+        };
+        const plan = CheckPlan.parse(await files.planCheck(owner, cancellation));
+        if (cancellation.aborted) throw new ToolRefusal('TARGET_TERMINAL', 'check cancelled');
+        cancelTimer();
+        let approved: string | null = null;
+        if (!plan.trusted) {
+          if (!(await this.requestCheckApproval(run, input, tool, plan, cancellation)))
+            throw new ToolRefusal('CAPABILITY_DENIED', 'check launch was not approved');
+          approved = plan.fingerprint;
+        }
+        await this.boundary(run, executionId);
+        if (cancellation.aborted) throw new ToolRefusal('TARGET_TERMINAL', 'check cancelled');
+        cancelTimer = this.timers.after(plan.timeoutMs + 120000, timeout);
+        result = await files.runCheck(owner, plan, approved, cancellation);
+      } else if (proposal.name === 'read') {
         const path = String(proposal.args.path);
         if (path.startsWith('skills/')) {
           if (!input.harness || !this.harnesses?.readSkill)

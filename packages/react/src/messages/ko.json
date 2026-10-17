@@ -566,7 +566,14 @@
       "user_action": "반려하고 멈춤",
       "final_output": "확정하지 않음",
       "loop_cap": "여기서 멈춤"
-    }
+    },
+    "checkHeading": "검사 실행 승인",
+    "checkScope": "{execution} · 시도 {attempt} · 설정 r{revision} · 실행 해시 {fingerprint} · 파일 상태 {tree}",
+    "checkOnce": "등록된 명령을 고정된 복사본에서 한 번 실행합니다. 프로젝트 설정에서 실행 해시를 신뢰하지 않으면 다음 실행에도 별도 승인이 필요합니다.",
+    "checkUnavailable": "검사 정보를 확인하지 못했습니다. 요청을 거절한 뒤 다시 시도하세요.",
+    "checkLoading": "실행할 검사 명령을 불러오는 중…",
+    "approveCheck": "이번 검사 한 번 실행",
+    "rejectCheck": "이번 검사 거절"
   },
   "Budget": {
     "heading": "예산과 사용량",
@@ -1316,7 +1323,7 @@
     "isolatedChecksNote": "검사는 시작 시점의 별도 복사본에서 실행합니다. Git 제외 대상인 의존성은 복사하지 않으므로, 필요하면 의존성을 준비하는 검사 스크립트를 등록하세요.",
     "cancelCheck": "검사 중지",
     "checkEvidence": "실행 근거",
-    "checkFingerprint": "설정 r{revision} · fingerprint {hash} · tree {tree}",
+    "checkFingerprint": "설정 r{revision} · 실행 해시 {hash} · 파일 상태 {tree}",
     "checkRetention": "출력 보존 기한: {date}",
     "checkCleanupUnknown": "프로세스 정리를 확인하지 못했습니다. 통과 근거로 사용할 수 없습니다.",
     "checkReportState": {
@@ -1331,7 +1338,8 @@
       "fail": "실패",
       "inconclusive": "판정 불가",
       "not_evaluated": "미평가"
-    }
+    },
+    "checkTargetChanged": "검사가 후보 파일을 변경했으므로 통과 근거로 사용할 수 없습니다."
   },
   "Review": {
     "commentLine": "{line}번째 줄에 의견",

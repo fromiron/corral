@@ -155,7 +155,7 @@ provider/network error는 사용자 키 원문·응답 헤더를 포함하지 �
 | `loop.iteration_started` | iterationId,no,pinnedCarryInputs,criteriaVersion |
 | `loop.iteration_finished` | outcome,submittedVersions |
 | `approval.requested` | approvalId,kind,subjectVersions,criteriaVersion |
-| `approval.resolved` | decision,actor,subjectVersions |
+| `approval.resolved` | decision,actor,subjectVersions. 등록 검사 승인 종료는 선택 reason(cancelled/timeout/execution_ended)과 runtime actor로 기록한다 |
 | `directive.accepted` | directiveId,target,body,commandId |
 | `directive.attached` | contextSnapshotId,modelCallId |
 | `directive.dispatched` | modelCallId,executionEpoch |

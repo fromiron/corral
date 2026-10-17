@@ -198,6 +198,7 @@ function recordReferences(events: readonly RunEvent[]): Set<string> {
       add(event.payload.after.criteriaVersionId);
     }
     if (event.type === 'model.finished') add(event.payload.responseRef);
+    if (event.type === 'approval.requested' && event.payload.tool) add(event.payload.tool.bodyRef);
     if (event.type === 'extension.ui_requested' || event.type === 'extension.ui_notified')
       add(event.payload.bodyRef);
     if (event.type === 'extension.ui_answered') add(event.payload.answerRef);

@@ -248,6 +248,10 @@ class WorkerExecution {
               role.allowedWorkTools.includes('read_file')
                 ? ['edit']
                 : []),
+              ...(this.input.harness?.allowedTools.includes('run_check') &&
+              this.input.harness.projectTools?.checkIds.length
+                ? ['run_check']
+                : []),
             ]
           : offeredTools(this.input),
         assignment:

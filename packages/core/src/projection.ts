@@ -169,6 +169,7 @@ export interface ApprovalView {
   /** The exact versions this decision is about; the first is the one being approved. */
   subjectVersionIds: string[];
   criteriaVersionId: string | null;
+  tool?: EventPayload<'approval.requested'>['tool'];
   status: 'pending' | 'approved' | 'rejected' | 'stale';
 }
 
@@ -572,6 +573,7 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
         subjectVersionIds,
         criteriaVersionId,
         status: 'pending',
+        ...(event.payload.tool ? { tool: event.payload.tool } : {}),
       };
       return { ...p, approvals: { ...p.approvals, [approvalId]: approval } };
     }
@@ -733,7 +735,7 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
               approvals: Object.fromEntries(
                 Object.entries(p.approvals).map(([id, a]) => [
                   id,
-                  a.status === 'pending' ? { ...a, status: 'stale' as const } : a,
+                  a.status === 'pending' && !a.tool ? { ...a, status: 'stale' as const } : a,
                 ]),
               ),
             }

@@ -566,7 +566,14 @@
       "user_action": "Reject and stop",
       "final_output": "Do not confirm",
       "loop_cap": "Stop here"
-    }
+    },
+    "checkHeading": "Approve check launch",
+    "checkScope": "{execution} · attempt {attempt} · config r{revision} · {fingerprint} · tree {tree}",
+    "checkOnce": "Runs this registered command once in a frozen copy. Future launches need their own permission unless you trust the fingerprint in project settings.",
+    "checkUnavailable": "Check details could not be verified. Dismiss this request and try again.",
+    "checkLoading": "Loading the exact check command…",
+    "approveCheck": "Run this check once",
+    "rejectCheck": "Decline this check"
   },
   "Budget": {
     "heading": "Budget and usage",
@@ -1331,7 +1338,8 @@
       "fail": "Fail",
       "inconclusive": "Inconclusive",
       "not_evaluated": "Not evaluated"
-    }
+    },
+    "checkTargetChanged": "The check changed its own target; it cannot prove a pass."
   },
   "Review": {
     "commentLine": "Comment on line {line}",

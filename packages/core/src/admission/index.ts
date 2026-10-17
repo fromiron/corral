@@ -310,6 +310,15 @@ const roleAllowlist: Gate<ToolGateView> = {
         ? allow
         : denied('native tool is not allowed by this harness');
     }
+    if (proposal.name === 'run_check') {
+      if (!input.harness?.projectTools || !view.fileTools)
+        return denied('no selected project checks');
+      if (Object.keys(args).length !== 1 || typeof args.commandId !== 'string')
+        return refuse('SCHEMA_INVALID', 'run_check accepts only a registered commandId');
+      return input.harness.projectTools.checkIds.includes(args.commandId)
+        ? allow
+        : denied('check is not selected by this role');
+    }
     if (proposal.name === 'edit' || proposal.name === 'write') {
       if (
         !input.harness ||

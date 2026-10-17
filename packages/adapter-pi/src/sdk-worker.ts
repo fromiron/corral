@@ -18,6 +18,7 @@ import {
   type JsonObject,
   normalizeContext,
   type Tool,
+  Type,
   validateToolArguments,
 } from '@earendil-works/pi-ai';
 import {
@@ -415,8 +416,21 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
         return {
           name,
           label: name,
-          description: TOOL_TEXT[name],
-          parameters: parametersOf(name, start),
+          description:
+            name === 'run_check'
+              ? 'Run a selected registered check against a frozen copy. Corral may request permission for this exact launch. Read state, verdict and stale separately; a stale or inconclusive report does not prove a pass.'
+              : TOOL_TEXT[name],
+          parameters:
+            name === 'run_check'
+              ? Type.Object(
+                  {
+                    commandId: Type.Union(
+                      (start.harness.projectTools?.checkIds ?? []).map((id) => Type.Literal(id)),
+                    ),
+                  },
+                  { additionalProperties: false },
+                )
+              : parametersOf(name, start),
           executionMode: 'sequential',
           execute: async (piCallId, args) => {
             const auth = takeAuthorization(piCallId, args);
@@ -775,12 +789,14 @@ function describeTool(tool: ToolDefinition, source: string): ToolDescriptor {
     ...(annotations ? { annotations } : {}),
     exposure: tool.exposure ?? 'direct',
     sideEffect:
-      source === 'corral' &&
-      ['edit', 'write', 'write_file', 'delete_file', 'move_file'].includes(tool.name)
-        ? 'workspace'
-        : annotations?.readOnlyHint === true && annotations.openWorldHint === false
-          ? 'none'
-          : 'unknown',
+      source === 'corral' && tool.name === 'run_check'
+        ? 'external'
+        : source === 'corral' &&
+            ['edit', 'write', 'write_file', 'delete_file', 'move_file'].includes(tool.name)
+          ? 'workspace'
+          : annotations?.readOnlyHint === true && annotations.openWorldHint === false
+            ? 'none'
+            : 'unknown',
   });
 }
 

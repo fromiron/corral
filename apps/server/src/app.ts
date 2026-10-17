@@ -1317,7 +1317,8 @@ async function createCorralServer(
                 ((event.type === 'extension.ui_requested' ||
                   event.type === 'extension.ui_notified') &&
                   event.payload.bodyRef === versionId) ||
-                (event.type === 'extension.ui_answered' && event.payload.answerRef === versionId),
+                (event.type === 'extension.ui_answered' && event.payload.answerRef === versionId) ||
+                (event.type === 'approval.requested' && event.payload.tool?.bodyRef === versionId),
             ));
       const text = known ? coordinator.getArtifactText(runId, versionId) : null;
       return text === null ? fail(reply, 'TARGET_NOT_FOUND', 'no such version') : { text };

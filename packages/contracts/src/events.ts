@@ -273,6 +273,18 @@ export const ApprovalRequested = event(
     kind: z.enum(['final_output', 'loop_cap', 'user_action']),
     subjectVersionIds: Ids,
     criteriaVersionId: Identifier.nullable(),
+    tool: z
+      .strictObject({
+        executionId: Identifier,
+        attemptNo: z.int().min(1),
+        effectId: Identifier,
+        toolCallId: Identifier,
+        bodyRef: Identifier,
+        fingerprint: z.string().regex(/^[a-f0-9]{64}$/),
+        targetTree: z.string().regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/),
+        deadline: z.iso.datetime(),
+      })
+      .optional(),
   }),
 );
 export const ApprovalResolved = event(
@@ -282,6 +294,7 @@ export const ApprovalResolved = event(
     decision: z.enum(['approve', 'reject']),
     actor: Identifier,
     subjectVersionIds: Ids,
+    reason: z.enum(['cancelled', 'timeout', 'execution_ended']).optional(),
   }),
 );
 export const OutputFinalized = event(
