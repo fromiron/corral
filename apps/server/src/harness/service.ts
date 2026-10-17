@@ -29,7 +29,7 @@ import {
   PinnedPackageSource,
   ResourcePath,
 } from '@corral/contracts';
-import { type Db, SqliteHarnessStore } from '@corral/storage-sqlite';
+import { type Db, SqliteHarnessStore, SqliteProjectToolStore } from '@corral/storage-sqlite';
 
 interface ResourceReview {
   reviewId: string;
@@ -45,6 +45,7 @@ const treeHash = (files: HarnessResource['files']) => hash(canonicalJson(files))
 /** Resource discovery and preview read bytes only. Execution imports happen in the Pi worker. */
 export class HarnessService {
   readonly store: SqliteHarnessStore;
+  readonly projectTools: SqliteProjectToolStore;
   private readonly root: string;
   private readonly db: Db;
   private readonly clock: Clock;
@@ -65,6 +66,7 @@ export class HarnessService {
     this.inspect = options.inspect ?? inspectPiPackage;
     this.download = options.download ?? downloadPiPackage;
     this.store = new SqliteHarnessStore(options.db, options.clock);
+    this.projectTools = new SqliteProjectToolStore(options.db, options.clock);
     mkdirSync(join(this.root, 'reviews'), { recursive: true, mode: 0o700 });
     mkdirSync(join(this.root, 'resources'), { recursive: true, mode: 0o700 });
   }
@@ -326,7 +328,7 @@ export class HarnessService {
     }
     layers.push({ scope: 'role', profile: this.profile(binding) });
     if (runOverride) layers.push({ scope: 'run', profile: this.profile(runOverride) });
-    return this.compose(layers, binding);
+    return this.compose(layers, binding, projectId);
   }
 
   setDefault(
@@ -366,6 +368,7 @@ export class HarnessService {
   private compose(
     layers: { scope: 'personal' | 'project' | 'role' | 'run'; profile: HarnessProfileRevision }[],
     binding?: HarnessBindingRef,
+    projectId?: string,
   ) {
     const last = layers.at(-1)?.profile;
     if (!last) throw new Error('harness profile is missing');
@@ -375,6 +378,31 @@ export class HarnessService {
     const allowedTools = [...new Set(layers[0]?.profile.allowedTools ?? [])].filter((name) =>
       layers.every((layer) => layer.profile.allowedTools.includes(name)),
     );
+    const selection = (key: 'checkIds' | 'lspServerIds') => {
+      const specified = layers.flatMap((layer) => (layer.profile[key] ? [layer.profile[key]] : []));
+      return [...new Set(specified[0] ?? [])].filter((id) =>
+        specified.every((ids) => ids.includes(id)),
+      );
+    };
+    const checkIds = selection('checkIds'),
+      lspServerIds = selection('lspServerIds');
+    let projectTools: EffectiveHarnessSnapshot['projectTools'];
+    if (projectId && (checkIds.length || lspServerIds.length)) {
+      const config = this.projectTools.latest(projectId);
+      if (
+        !config ||
+        checkIds.some((id) => !config.checks.some((check) => check.id === id)) ||
+        lspServerIds.some((id) => !config.lspServers.some((server) => server.id === id))
+      )
+        throw new Error('selected project tool is not registered');
+      projectTools = {
+        projectId,
+        revision: config.revision,
+        hash: config.hash,
+        checkIds,
+        lspServerIds,
+      };
+    }
     const selected = new Map<string, HarnessProfile['resources'][number]>();
     for (const { profile } of layers)
       for (const resource of profile.resources) {
@@ -445,6 +473,7 @@ export class HarnessService {
       allowedTools,
       tools: [],
       diagnostics,
+      ...(projectTools ? { projectTools } : {}),
       layers: layers.map(({ scope, profile }) => ({
         scope,
         binding: { profileId: profile.profileId, revision: profile.revision },

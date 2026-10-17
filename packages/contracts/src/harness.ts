@@ -63,6 +63,15 @@ export const EffectiveHarnessSnapshot = z.strictObject({
   allowedTools: z.array(ToolDescriptor.shape.name).max(128),
   tools: z.array(ToolDescriptor).max(128),
   diagnostics: z.array(Identifier).max(64),
+  projectTools: z
+    .strictObject({
+      projectId: Identifier,
+      revision: z.int().min(1),
+      hash: ContentHash,
+      checkIds: z.array(Identifier).max(64),
+      lspServerIds: z.array(Identifier).max(16),
+    })
+    .optional(),
   layers: z
     .array(
       z.strictObject({
@@ -180,6 +189,8 @@ export const HarnessProfile = z.strictObject({
     )
     .max(64),
   startupCommands: z.array(z.string().min(1).max(1000)).max(16),
+  checkIds: z.array(Identifier).max(64).optional(),
+  lspServerIds: z.array(Identifier).max(16).optional(),
 });
 export type HarnessProfile = z.infer<typeof HarnessProfile>;
 export const HarnessProfileRevision = HarnessProfile.extend({
