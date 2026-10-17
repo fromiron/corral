@@ -172,6 +172,36 @@ function runtime(
 }
 
 describe('SDK worker through the product adapter (H2)', () => {
+  it('[TC-HAR-007-H] bridges extension dialogs and notifications without a model request during startup', async () => {
+    const requests: unknown[] = [];
+    const notices: unknown[] = [];
+    const run = runtime([fauxAssistantMessage('Done.')], `export default pi => pi.on('session_start', async (_e,ctx)=>{
+      const yes=await ctx.ui.confirm('Continue?', 'Read only.', {timeout:500});
+      const option=await ctx.ui.select('Mode', ['One','Two']);
+      const name=await ctx.ui.input('Name','Example');
+      if(!yes || option!=='Two' || name!=='Writer') throw new Error('wrong UI reply');
+      ctx.ui.notify('Ready.'); ctx.ui.setStatus('fixture','Enabled'); ctx.ui.setWidget('unsupported', ['x']);
+    });`, {
+      requestExtensionUi: async request => { requests.push(request); return { status: 'answered', value: request.kind === 'confirm' ? true : request.kind === 'select' ? 'Two' : 'Writer' }; },
+      notifyExtensionUi: async notice => { notices.push(notice); },
+    });
+    expect(await (await run.adapter.start(run.input, run.host)).waitForSettlement()).toMatchObject({ outcome: 'succeeded' });
+    expect(requests).toMatchObject([{ kind: 'confirm', timeoutMs: 500 }, { kind: 'select' }, { kind: 'input' }]);
+    expect(notices).toMatchObject([{ kind: 'notify', text: 'Ready.' }, { kind: 'status', key: 'fixture', text: 'Enabled' }, { kind: 'unsupported' }]);
+    expect(run.requests).toHaveLength(1);
+  });
+  it('[TC-HAR-007-N] a dialog AbortSignal reaches the host while its reply is pending', async () => {
+    const cancelled = vi.fn();
+    const run = runtime([fauxAssistantMessage('Done.')], `export default pi => pi.on('session_start', async (_e,ctx)=>{
+      const abort=new AbortController(); const result=ctx.ui.confirm('Continue?','',{signal:abort.signal}); abort.abort();
+      if(await result) throw new Error('cancelled request approved');
+    });`, { requestExtensionUi: (_request, cancellation) => new Promise(resolve => {
+      const close=()=>{cancelled(); resolve({status:'cancelled'});};
+      if(cancellation?.aborted) close(); else cancellation?.onCancel(close);
+    }) });
+    expect(await (await run.adapter.start(run.input, run.host)).waitForSettlement()).toMatchObject({ outcome: 'succeeded' });
+    expect(cancelled).toHaveBeenCalledTimes(1);
+  });
   it('[TC-HAR-001-H] keeps the SDK proxy identity while dispatching the actual provider identity', async () => {
     let seen = '';
     let originMatches = false;
