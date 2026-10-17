@@ -75,8 +75,12 @@ describe('owned verification runner', () => {
     const existing = join(f.input.copyRoot, f.input.verificationId);
     mkdirSync(existing, { recursive: true });
     writeFileSync(join(existing, 'keep.txt'), 'keep');
-    const cancel = cancellation(); cancel.cancel();
-    await new VerificationRunner({ clock: f.clock, timers: systemTimers }).run(f.input, cancel.signal);
+    const cancel = cancellation();
+    cancel.cancel();
+    await new VerificationRunner({ clock: f.clock, timers: systemTimers }).run(
+      f.input,
+      cancel.signal,
+    );
     expect(readFileSync(join(existing, 'keep.txt'), 'utf8')).toBe('keep');
   });
   it('[TC-HAR-012-H] executes the captured tree in a separate copy, preserving owner and injected duration', async () => {

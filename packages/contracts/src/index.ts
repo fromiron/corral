@@ -15,3 +15,4 @@ export * from './receipt.ts';
 export * from './review.ts';
 export * from './states.ts';
 export * from './team-plan.ts';
+export * from './verification.ts';
