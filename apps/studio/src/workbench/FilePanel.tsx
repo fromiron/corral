@@ -1,6 +1,6 @@
 import type { FileSideView } from '@corral/client';
 import { FileText, RefreshCw, X } from '@corral/react/icons';
-import { Button, Input } from '@corral/react/ui';
+import { Button, Input, Select } from '@corral/react/ui';
 import { Link } from '@tanstack/react-router';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
@@ -105,15 +105,18 @@ export function FilePanel({
   return (
     <div className="flex min-h-0 flex-col gap-2" data-testid="file-panel">
       <div className="flex items-center gap-2">
-        <select
-          aria-label={t('fileSource')}
+        <Select
+          label={t('fileSource')}
+          size="xs"
+          variant="ghost"
+          className="min-w-0 flex-1 justify-start"
           value={scopeKind ?? 'project'}
-          onChange={(e) => setSource(e.target.value as 'project' | 'session')}
-          className="min-w-0 flex-1 rounded border border-line bg-surface p-1 text-xs"
-        >
-          <option value="project">{t('sourceFolder')}</option>
-          {hasCopy ? <option value="session">{t('sessionCopy')}</option> : null}
-        </select>
+          onValueChange={setSource}
+          options={[
+            { value: 'project' as const, label: t('sourceFolder') },
+            ...(hasCopy ? [{ value: 'session' as const, label: t('sessionCopy') }] : []),
+          ]}
+        />
         <Button size="icon-xs" variant="ghost" aria-label={t('refreshFiles')} onClick={refresh}>
           <RefreshCw />
         </Button>

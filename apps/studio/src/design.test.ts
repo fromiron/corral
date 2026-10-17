@@ -75,6 +75,19 @@ describe('design guard (Workbench polish P0)', () => {
     expect(found).toEqual([]);
   });
 
+  it('uses one select on the workbench screens, never a native one', () => {
+    const workbench = [
+      ...files(join(root, 'apps/studio/src/workbench'), /\.tsx$/),
+      join(root, 'apps/studio/src/pages/SessionPage.tsx'),
+      join(root, 'apps/studio/src/pages/RootLayout.tsx'),
+      join(root, 'apps/studio/src/pages/Workbench.tsx'),
+    ];
+    const found = workbench.flatMap((path) =>
+      (readFileSync(path, 'utf8').match(/<select\b/g) ?? []).map(() => where(path)),
+    );
+    expect(found).toEqual([]);
+  });
+
   it('merges the extra type steps as font sizes, not colors', () => {
     expect(cn('text-ui text-muted')).toBe('text-ui text-muted');
     expect(cn('text-xs text-ui')).toBe('text-ui');

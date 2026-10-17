@@ -857,9 +857,9 @@
     "settings": "설정",
     "navBack": "뒤로",
     "navForward": "앞으로",
-    "runStop": "실행 중지",
+    "runStop": "Run 중지",
     "recall": "이전 요청(빈 입력칸)",
-    "mention": "파일·폴더·결과·실행·역할 참조",
+    "mention": "파일·폴더·결과·Run·역할 참조",
     "slash": "명령(요청 맨 앞)"
   },
   "TeamDraft": {
@@ -1077,7 +1077,7 @@
       "sessions": "세션",
       "teams": "팀",
       "folder": "작업 폴더",
-      "runs": "실행"
+      "runs": "Run"
     },
     "actions": "{name} 작업"
   },
@@ -1139,7 +1139,7 @@
     "startNow": "지금 시작",
     "remove": "지우기",
     "openResults": "결과 보기",
-    "openRun": "Run 화면",
+    "openRun": "Run 보기",
     "mode": "모델",
     "modeMock": "시뮬레이션",
     "modeLive": "실제 모델",
@@ -1380,7 +1380,7 @@
       "artifacts": "산출물",
       "checks": "검증",
       "files": "파일",
-      "run": "실행"
+      "run": "Run"
     },
     "headerTeam": "팀: {name} r{revision}",
     "noTeamHeader": "팀 없음",
@@ -1404,7 +1404,7 @@
     "noCopyChanges": "작업 복사본을 만들면 여기에 파일 변경이 보입니다.",
     "checksOnReview": "검증은 검토 화면에서 실행합니다.",
     "serverOnly": "파일 작업·변경·검증은 로컬 서버에서만 쓸 수 있습니다.",
-    "runNumber": "실행 {number}"
+    "runNumber": "Run {number}"
   },
   "Desktop": {
     "conversation": "대화",
@@ -1507,21 +1507,21 @@
     "commands": "명령",
     "references": "참조",
     "noCommand": "맞는 명령이 없어요.",
-    "noReference": "맞는 파일·폴더·결과·실행·역할이 없어요.",
+    "noReference": "맞는 파일·폴더·결과·Run·역할이 없어요.",
     "group": {
       "file": "파일",
       "folder": "폴더",
       "result": "결과",
-      "run": "실행",
+      "run": "Run",
       "role": "역할"
     },
     "fromRun": "run-{number}의 결과",
     "placeholder": "팀에게 요청하세요… / 명령, @ 참조",
-    "addReference": "파일·폴더·결과·실행·역할 참조",
+    "addReference": "파일·폴더·결과·Run·역할 참조",
     "removeReference": "{label} 참조 빼기",
     "notNow": "지금은 쓸 수 없어요",
     "groupRequest": "요청",
-    "groupRun": "실행",
+    "groupRun": "Run",
     "focus": "요청 입력칸으로 이동"
   },
   "Commands": {
