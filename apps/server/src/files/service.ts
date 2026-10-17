@@ -1338,6 +1338,9 @@ export class WorkspaceService implements FileTools {
     const bytes = await textBytes(row.worktree_path, safeRelative(query.path));
     const text = decodeText(bytes, true);
     if (text === null) throw new ToolRefusal('CAPABILITY_DENIED', 'LSP requires UTF-8 text');
+    const proposesChanges = query.operation === 'rename' || query.operation === 'code_actions';
+    if (proposesChanges)
+      await this.requireLspSnapshot(row.worktree_path, plan.tree, query.path, sha256(bytes));
     const launch = await launchFingerprint(row.worktree_path, config.revision, server);
     if (launch.fingerprint !== plan.fingerprint || !this.binding(config.projectId)?.trusted)
       throw new ToolRefusal('REVISION_CONFLICT', 'language server launch changed');
@@ -1387,6 +1390,8 @@ export class WorkspaceService implements FileTools {
       const bytes = await textBytes(row.worktree_path, path),
         text = decodeText(bytes, true);
       if (text === null) throw new ToolRefusal('CAPABILITY_DENIED', 'LSP result is not UTF-8 text');
+      if (proposesChanges)
+        await this.requireLspSnapshot(row.worktree_path, plan.tree, path, sha256(bytes));
       return { path, text, sha256: sha256(bytes) };
     };
     let result: LspReport['result'];
@@ -1394,6 +1399,7 @@ export class WorkspaceService implements FileTools {
       if (raw.truncated)
         throw new ToolRefusal('LIMIT_REACHED', 'incomplete LSP changes cannot be proposed');
       result = await this.lease(row.worktree_path, async () => {
+        await expectFile(row.worktree_path, safeRelative(query.path), source.sha256);
         const proposals: LspProposalContent[] = [];
         let proposalBytes = 0;
         const unavailable: Extract<LspReport['result'], { kind: 'proposals' }>['unavailable'] = [];
@@ -1493,6 +1499,21 @@ export class WorkspaceService implements FileTools {
           baseCommit: row.base_commit,
         }),
       ),
+    );
+  }
+
+  private async requireLspSnapshot(worktree: string, tree: string, path: string, hash: string) {
+    try {
+      const blob = await git(worktree, ['cat-file', 'blob', `${tree}:${safeRelative(path)}`], {
+        maxBuffer: MAX_TEXT + 1,
+      });
+      if (sha256(blob.stdout) === hash) return;
+    } catch {
+      // Ignored files and Git filters cannot establish the original byte precondition.
+    }
+    throw new ToolRefusal(
+      'REVISION_CONFLICT',
+      'LSP changes require identical file bytes in the fixed Git snapshot',
     );
   }
 
@@ -1621,12 +1642,29 @@ export class WorkspaceService implements FileTools {
       try {
         if ((await this.snapshotTree(row.worktree_path)) !== proposal.tree)
           return settlePending('stale');
+        await this.requireLspSnapshot(
+          row.worktree_path,
+          proposal.tree,
+          proposal.source.path,
+          proposal.source.sha256,
+        );
+        await expectFile(
+          row.worktree_path,
+          safeRelative(proposal.source.path),
+          proposal.source.sha256,
+        );
         for (const file of proposal.files) {
           if (
             sha256(Buffer.from(file.before)) !== file.beforeHash ||
             sha256(Buffer.from(file.after)) !== file.afterHash
           )
             throw new Error('proposal hash changed');
+          await this.requireLspSnapshot(
+            row.worktree_path,
+            proposal.tree,
+            file.path,
+            file.beforeHash,
+          );
           await expectFile(row.worktree_path, safeRelative(file.path), file.beforeHash);
         }
       } catch {
