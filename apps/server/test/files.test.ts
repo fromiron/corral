@@ -31,6 +31,7 @@ afterEach(() => {
 async function setup(
   edit?: ConstructorParameters<typeof WorkspaceService>[0]['edit'],
   io?: ConstructorParameters<typeof WorkspaceService>[0]['io'],
+  lsp?: ConstructorParameters<typeof WorkspaceService>[0]['lsp'],
 ) {
   const original = temp();
   const git = (...args: string[]) =>
@@ -55,6 +56,7 @@ async function setup(
     forbidden: [],
     ...(edit ? { edit } : {}),
     ...(io ? { io } : {}),
+    ...(lsp ? { lsp } : {}),
   });
   await service.bind('default', original);
   await service.configure('default', { trusted: true });
@@ -72,6 +74,38 @@ async function setup(
 }
 
 describe('file broker (CR-012)', () => {
+  async function lspSetup(mode='normal',lsp?:ConstructorParameters<typeof WorkspaceService>[0]['lsp']) {
+    const s=await setup(undefined,undefined,lsp);
+    const root=s.service.copyOf('session_1')?.worktree;if(!root)throw new Error('missing copy');
+    const fixture=readFileSync(new URL('./fixtures/lsp-server.mjs',import.meta.url),'utf8').replace("'vscode-languageserver-protocol/node'",JSON.stringify(import.meta.resolve('vscode-languageserver-protocol/node')));
+    writeFileSync(join(root,'server.mjs'),fixture);writeFileSync(join(root,'b.txt'),'target\n');
+    const config=s.service.configureProjectTools('default',0,{checks:[],lspServers:[{id:'fixture',name:'Fixture LSP',argv:[process.execPath,'server.mjs',mode],timeoutMs:1000,languageIds:['plaintext'],fileExtensions:['.txt']}]});
+    const input={runId:'run_1',executionId:'exec_1',attemptNo:1,effectId:'effect_lsp',selection:{projectId:'default',revision:config.revision,hash:config.hash,checkIds:[],lspServerIds:['fixture']},query:{serverId:'fixture',path:'a.txt',operation:'definition' as const,position:{line:0,character:0}}};
+    return {...s,root,input,cancellation:{aborted:false,onCancel:()=>()=>{}}};
+  }
+  it('[TC-HAR-010-H] LSP results are relative, pinned and do not create agent write evidence for returned locations',async()=>{
+    const s=await lspSetup('other_file');
+    const plan=await s.service.planLsp(s.input,s.cancellation);
+    await expect(s.service.runLsp(s.input,plan,null,s.cancellation)).rejects.toThrow(/approval|trust/);
+    const result=await s.service.runLsp(s.input,plan,plan.fingerprint,s.cancellation);
+    expect(result).toMatchObject({serverId:'fixture',configRevision:1,source:{path:'a.txt',version:1},result:{kind:'locations',locations:[{path:'b.txt',range:{start:{line:0,character:0},end:{line:0,character:0}}}]}});
+    expect(JSON.stringify(result)).not.toContain(s.root);
+    await expect(s.call('write_file',{path:'b.txt',text:'must read first'})).rejects.toThrow(/read.*before/);
+    await expect(s.call('write_file',{path:'a.txt',text:'must read first'})).rejects.toThrow(/read.*before/);
+    await expect(s.service.planLsp({...s.input,query:{...s.input.query,serverId:'unbound'}},s.cancellation)).rejects.toThrow(/selected|registered/);
+  });
+  it('[TC-HAR-018-N] LSP cannot return a file URI outside the managed worktree',async()=>{
+    const s=await lspSetup('out_of_scope');const plan=await s.service.planLsp(s.input,s.cancellation);
+    await expect(s.service.runLsp(s.input,plan,plan.fingerprint,s.cancellation)).rejects.toThrow(/scope|outside/);
+  });
+  it('[TC-HAR-010-N] a file change during an LSP query invalidates the result',async()=>{
+    const entered=new Gate(),release=new Gate();
+    const s=await lspSetup('normal',{query:async input=>{entered.open();await release.wait();return {kind:'locations' as const,locations:[{uri:input.document.uri,range:{start:{line:0,character:0},end:{line:0,character:0}}}],durationMs:1,truncated:false};}});
+    const plan=await s.service.planLsp(s.input,s.cancellation);
+    const pending=s.service.runLsp(s.input,plan,plan.fingerprint,s.cancellation);
+    const rejected=expect(pending).rejects.toThrow(/changed|stale/);
+    await entered.wait();writeFileSync(join(s.root,'a.txt'),'changed');release.open();await rejected;
+  });
   it('[TC-HAR-010-N] an edit cannot resurrect a deleted original or replace its frozen hash with a later read', async () => {
     for (const kind of ['deleted', 'reread']) {
       const entered = new Gate(),

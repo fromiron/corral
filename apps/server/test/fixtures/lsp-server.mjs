@@ -58,7 +58,7 @@ connection.onNotification(DidOpenTextDocumentNotification.type, async (params) =
 });
 connection.onRequest(DefinitionRequest.type, (params) => {
   if (mode === 'query_hang') return new Promise(() => {});
-  return { uri: document.uri, range: { start: params.position, end: params.position } };
+  return { uri: mode === 'out_of_scope' ? 'file:///outside-the-worktree.txt' : mode === 'other_file' ? new URL('./b.txt',document.uri).href : document.uri, range: { start: params.position, end: params.position } };
 });
 connection.onRequest(ReferencesRequest.type, (params) => [
   { uri: document.uri, range: { start: params.position, end: params.position } },
