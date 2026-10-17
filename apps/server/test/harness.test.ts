@@ -11,7 +11,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { HarnessProfile } from '@corral/contracts';
-import { type Db, openDatabase } from '@corral/storage-sqlite';
+import { type Db, openDatabase, SqliteProjectToolStore } from '@corral/storage-sqlite';
 import { FakeClock, linearCorral } from '@corral/testkit';
 import { afterEach, describe, expect, it } from 'vitest';
 import { HarnessService } from '../src/harness/service.ts';
@@ -81,10 +81,31 @@ function setup(
       },
     ],
   });
-  return { service, source, marker, resourceRoot, profile };
+  return { service, db, source, marker, resourceRoot, profile };
 }
 
 describe('resource discovery, trust and resolution (H3)', () => {
+  it('[TC-HAR-012-H] pins selected project tools in the effective snapshot and inheritance can only narrow selection', () => {
+    const { service, db } = setup();
+    const tools = new SqliteProjectToolStore(db, new FakeClock());
+    const check = (id: string) => ({ id, name: id, argv: ['node','check.mjs'], timeoutMs: 1000 });
+    const config = tools.save('default', 0, { checks: [check('one'),check('two')], lspServers: [] });
+    const base = { name: 'Checks', policy: 'strict' as const, allowedTools: ['run_check'], resources: [], startupCommands: [], checkIds: ['one', 'two'] };
+    service.saveProfile('checks',0,base);
+    const binding = {profileId:'checks',revision:1};
+    const before = service.preview(binding,'default').snapshot;
+    expect(before.projectTools).toMatchObject({ projectId:'default', revision:1, hash:config.hash, checkIds:['one','two'], lspServerIds:[] });
+    service.saveProfile('narrow',0,{...base,checkIds:['one']});
+    service.setDefault('project','default',0,{profileId:'narrow',revision:1});
+    expect(service.preview(binding,'default').snapshot.projectTools?.checkIds).toEqual(['one']);
+    tools.save('default',1,{checks:[check('one')],lspServers:[]});
+    const after = service.preview(binding,'default').snapshot;
+    expect(before.projectTools?.revision).toBe(1);
+    expect(after.projectTools?.revision).toBe(2);
+    expect(after.snapshotHash).not.toBe(before.snapshotHash);
+    service.setDefault('project','default',1,null);
+    expect(() => service.preview(binding,'default')).toThrow(/registered/);
+  });
   it('[TC-HAR-004-H] explicit Pi home import copies only skill and extension folders, leaving credentials and settings untouched', async () => {
     const s = setup();
     const secret = '{"access":"do-not-copy"}';
