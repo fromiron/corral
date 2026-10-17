@@ -32,9 +32,8 @@ function processIdentity(pid: number) {
       .slice(stat.lastIndexOf(')') + 2)
       .trim()
       .split(/\s+/);
-    if (fields[0] === 'Z' || fields[0] === 'X') return null;
     if (!/^\d+$/.test(fields[19] ?? '')) throw new Error('worker identity unavailable');
-    return { startTicks: fields[19]!, group: Number(fields[2]) };
+    return { startTicks: fields[19]!, group: Number(fields[2]), state: fields[0] };
   } catch (error) {
     if (missing(error)) return null;
     throw new Error('worker identity unavailable');
@@ -125,7 +124,9 @@ function liveGroup(pid: number): boolean {
     throw new Error('worker cleanup is unconfirmed');
   }
   for (const entry of readdirSync('/proc')) {
-    if (/^\d+$/.test(entry) && processIdentity(Number(entry))?.group === pid) return true;
+    if (!/^\d+$/.test(entry)) continue;
+    const identity = processIdentity(Number(entry));
+    if (identity?.group === pid && identity.state !== 'Z' && identity.state !== 'X') return true;
   }
   return false;
 }
