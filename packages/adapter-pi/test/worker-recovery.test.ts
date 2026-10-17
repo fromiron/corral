@@ -5,6 +5,22 @@ import { join } from 'node:path';
 import { expect, it } from 'vitest';
 import { processChannel, recoverSdkWorkers, sdkProcessChannel } from '../src/index.ts';
 
+it.skipIf(process.platform !== 'linux')('[TC-HAR-016-N] failed child cleanup reports unconfirmed exit instead of leaving the host waiting',async()=>{
+  const directory=mkdtempSync(join(tmpdir(),'corral-sdk-mcp-invalid-'));
+  const channel=sdkProcessChannel(join(import.meta.dirname,'fixtures/mcp-owner.ts'),{leaseDirectory:directory});
+  const exited=new Promise<boolean|undefined>(resolve=>channel.onExit((_code,confirmed)=>resolve(confirmed)));
+  let pid:number|undefined;
+  try {
+    const info=await new Promise<{pid:number}>(resolve=>channel.onFrame(frame=>resolve(frame as {pid:number})));pid=info.pid;
+    const children=readdirSync(directory).find(name=>name.startsWith('children-'));
+    if(!children)throw new Error('child registry missing');
+    writeFileSync(join(directory,children,'broken.json'),'invalid');
+    channel.kill();
+    const outcome=await Promise.race([exited,new Promise<string>(resolve=>setTimeout(()=>resolve('never notified'),300))]);
+    expect(outcome).toBe(false);
+  } finally {channel.kill();if(pid)try{process.kill(-pid,'SIGKILL');}catch{}rmSync(directory,{recursive:true,force:true});}
+});
+
 it.skipIf(process.platform !== 'linux')(
   '[TC-HAR-016-N] killing an SDK owner reaps separately grouped MCP processes before reporting exit',
   async () => {
