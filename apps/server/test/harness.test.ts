@@ -85,6 +85,18 @@ function setup(
 }
 
 describe('resource discovery, trust and resolution (H3)', () => {
+  it('[TC-HAR-003-H] previews static broker descriptors without executing native resources', async()=>{
+    const s=setup();
+    const review=await s.service.discoverLocal(s.source);
+    s.service.install(review.reviewId);s.service.trust(review.resource.hash,true);
+    s.service.saveProfile('preview',0,{...s.profile(review.resource.hash),allowedTools:['read','edit','write','write_artifact','ask','echo']});
+    const preview=s.service.preview({profileId:'preview',revision:1},'default');
+    expect(preview.snapshot.tools.map(tool=>tool.name)).toEqual(['read','edit','write','write_artifact']);
+    expect(preview.snapshot.tools).toContainEqual(expect.objectContaining({name:'read',source:'corral',sideEffect:'none',schemaHash:expect.stringMatching(/^[a-f0-9]{64}$/)}));
+    expect(preview.snapshot.tools).toContainEqual(expect.objectContaining({name:'edit',sideEffect:'workspace'}));
+    expect(preview.dynamic).toBe(true);
+    expect(existsSync(s.marker)).toBe(false);
+  });
   it('[TC-HAR-016-H] pins and intersects selected MCP servers with no ambient selections', () => {
     const { service } = setup();
     const mcp = {

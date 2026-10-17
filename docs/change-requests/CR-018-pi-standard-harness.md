@@ -91,3 +91,7 @@ R2(검증·개선)와 R3(MCP·codemode·항목 반복)는 이 CR 범위가 아�
 ## 모의 실행과 하네스
 
 모의 실행은 실제 모델·스킬 본문·확장 로딩의 검증이 아니다. 서버의 모의 adapter가 명시적인 `harness.simulated` 사실을 기록하고 기존 Corral 도구/그래프만 시뮬레이션한다. 고정 snapshot과 역할/하네스 도구 허용 목록은 유지하지만 실제 SDK descriptor/schema hash나 전달 증거를 꾸며내지 않는다. 실제 live 실행에서는 이 경로를 허용하지 않으며 필수 확장 실패를 모의 실행으로 우회하지 않는다. 화면에서 실제 하네스를 실행하지 않았다는 범위를 표시한다.
+
+### 정적 도구 미리보기
+
+미리보기는 Corral broker의 정적 descriptor를 보여주며 확장 코드를 로드하지 않는다. Pi read/edit/write는 고정 SDK의 공개 factory가 반환하는 파라미터 schema를 저장하고, 호환성 테스트가 실제 factory와 대조한다. 검사/LSP schema는 런타임과 같은 생성 함수를 사용한다. 위임 대상이 필요한 ask/spawn과 확장·MCP·codemode의 동적 등록은 실행 시 확정한다. 정적 정의는 허용 목록 기준이며 실제 역할 권한·작업 사본·선택 대상이 실행 가능성을 추가 제한한다. 실제 실행의 descriptor는 여전히 harness.loaded/tools_updated 기록을 기준으로 한다.
