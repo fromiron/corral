@@ -55,3 +55,4 @@ SDK worker는 실행 시작 IPC를 보내기 전에 private 프로세스 소유 
 - 제안은 ID·본문 hash·소유 run/execution/attempt/effect·기준 tree·설정 revision·서버 fingerprint와 함께 불변 보관한다. diff 본문은 로컬 파일 검토 API에서만 읽고 이벤트/공개 export에는 넣지 않는다. 제안 생성만으로 파일이 바뀌거나 agent 읽기 원장이 생기지 않는다.
 - 사용자가 세션 파일 검토 화면에서 제안 hash를 지정해 명시 적용한다. 해당 세션에 미종료 Run이 있으면 거절한다. 하나의 사본 lease 아래 모든 파일의 경로/hash/tree를 사전 확인한 뒤 기존 파일 broker를 사용한다. 적용 도중 외부 변경/새 Run/IO 실패가 생기면 남은 파일을 멈추고 파일별 applied/failed/uncertain을 보존한다. 여러 파일의 원자성이나 자동 rollback을 보장하지 않는다. 이미 적용/부분 적용한 요청을 다시 실행하지 않는다.
 - 정상 다중 파일·BOM/CRLF/유니코드, 범위 밖 URI·잘못된 문서 버전·중복/겹침·stale, 취소·늦은 응답, 실패 뒤 부분 상태·재시작·중복 적용 및 실제 UI 명시 적용을 검증한다.
+- 변경 제안의 질의 원본과 모든 대상은 고정 Git tree에 포함되고, 실제 읽은 bytes가 그 tree의 blob과 일치해야 한다. Git에서 제외된 파일이나 clean/EOL 필터 때문에 작업 사본과 snapshot bytes가 다른 파일은 안전한 원본 전제조건을 만들 수 없어 변경 제안을 거절한다. 읽기 전용 LSP 질의의 범위는 바꾸지 않는다. 적용 시에도 원본 문서와 대상 파일의 고정 기준을 다시 확인한다.

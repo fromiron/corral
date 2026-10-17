@@ -328,6 +328,65 @@ describe('file broker (CR-012)', () => {
     const proposal = s.service.lspProposal('session_1', result.result.proposals[0].proposalId);
     return { ...s, input, proposal };
   }
+  it.each(['ignored-target', 'ignored-source', 'filtered-target'])(
+    '[TC-HAR-018-N] refuses LSP changes whose original bytes are outside the fixed tree (%s)',
+    async (kind) => {
+      const s = await lspSetup('normal', {
+        query: async (input) => {
+          if (kind === 'ignored-target') writeFileSync(join(s.root, 'b.txt'), 'external\n');
+          return {
+            kind: 'edits',
+            actions: [
+              {
+                title: 'Old rename',
+                edit: {
+                  changes: {
+                    [new URL('./b.txt', input.document.uri).href]: [
+                      {
+                        range: { start: { line: 0, character: 0 }, end: { line: 0, character: 6 } },
+                        newText: 'changed',
+                      },
+                    ],
+                  },
+                },
+              },
+            ],
+            durationMs: 1,
+            truncated: false,
+          };
+        },
+      });
+      if (kind === 'filtered-target') {
+        writeFileSync(join(s.root, '.gitattributes'), 'b.txt text eol=lf\n');
+        writeFileSync(join(s.root, 'b.txt'), 'target\r\n');
+      } else writeFileSync(join(s.root, '.gitignore'), 'b.txt\n');
+      const input = {
+        ...s.input,
+        query: {
+          ...s.input.query,
+          path: kind === 'ignored-source' ? 'b.txt' : 'a.txt',
+          operation: 'rename' as const,
+          newName: 'changed',
+        },
+      };
+      const plan = await s.service.planLsp(input, s.cancellation);
+      try {
+        await expect(
+          s.service.runLsp(input, plan, plan.fingerprint, s.cancellation),
+        ).rejects.toThrow(/snapshot|fixed tree/);
+        expect(s.service.lspProposals('session_1')).toEqual([]);
+        expect(readFileSync(join(s.root, 'b.txt'), 'utf8')).toBe(
+          kind === 'ignored-target'
+            ? 'external\n'
+            : kind === 'filtered-target'
+              ? 'target\r\n'
+              : 'target\n',
+        );
+      } finally {
+        s.db.close();
+      }
+    },
+  );
   it('[TC-HAR-018-H] surfaces pending language-server proposals in the session inbox until reviewed', async () => {
     const s = await proposalSetup();
     const review = new ReviewService({ db: s.db, clock: new FakeClock(), files: s.service });
