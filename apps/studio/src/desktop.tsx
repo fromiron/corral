@@ -1,4 +1,4 @@
-import { FolderOpen, Maximize2, X } from '@corral/react/icons';
+import { FolderOpen } from '@corral/react/icons';
 import { Button } from '@corral/react/ui';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -6,6 +6,8 @@ import { useTranslations } from 'use-intl';
 interface DesktopInfo {
   version: string;
   platform: string;
+  /** The system draws the window buttons over the top bar (CR-017). */
+  overlay: boolean;
   status: 'starting' | 'ready' | 'failed';
   gitAvailable: boolean;
   workspace: string;
@@ -19,6 +21,11 @@ interface DesktopBridge {
   revealWorkspace(): Promise<void>;
   openExternal(url: string): Promise<void>;
   retry(): Promise<void>;
+  theme(dark: boolean): Promise<void>;
+  notify(title: string, body: string): Promise<boolean>;
+  badge(count: number): Promise<void>;
+  /** Menu commands by name; returns the unsubscribe function. */
+  onCommand(callback: (id: string) => void): () => void;
 }
 declare global {
   interface Window {
@@ -27,35 +34,12 @@ declare global {
 }
 export const desktop = typeof window === 'undefined' ? undefined : window.corralDesktop;
 
-export function WindowControls() {
-  const t = useTranslations('Desktop');
-  if (!desktop) return null;
-  return (
-    <fieldset
-      className="flex h-full shrink-0 items-center border-l border-line/60 pl-1"
-      aria-label={t('windowControls')}
-    >
-      {(['minimize', 'maximize', 'close'] as const).map((action) => (
-        <Button
-          key={action}
-          size="icon-sm"
-          variant="ghost"
-          aria-label={t(`window.${action}`)}
-          title={t(`window.${action}`)}
-          onClick={() => void desktop.window(action)}
-          className={action === 'close' ? 'hover:bg-danger/20' : ''}
-        >
-          {action === 'minimize' ? (
-            <span aria-hidden="true">−</span>
-          ) : action === 'maximize' ? (
-            <Maximize2 size={14} />
-          ) : (
-            <X size={14} />
-          )}
-        </Button>
-      ))}
-    </fieldset>
-  );
+/**
+ * Double-clicking the empty top bar maximizes or restores the window, as a system title bar
+ * does (CR-017). The system draws the window buttons themselves over the bar.
+ */
+export function onTopbarDoubleClick(event: { target: EventTarget; currentTarget: EventTarget }) {
+  if (desktop && event.target === event.currentTarget) void desktop.window('maximize');
 }
 
 export function DesktopWorkspace() {

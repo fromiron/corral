@@ -11,6 +11,7 @@ describe('DW-02 workbench preferences', () => {
       sidebarWidth: 420,
       sidebarOpen: false,
       sendKey: 'enter',
+      notify: false,
     });
   });
   it('ignores corrupt and future preferences without losing access to navigation', () => {
@@ -26,6 +27,7 @@ describe('DW-02 workbench preferences', () => {
         sidebarWidth: 256,
         sidebarOpen: true,
         sendKey: 'enter',
+        notify: false,
       });
     }
   });

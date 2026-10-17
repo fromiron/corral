@@ -9,6 +9,8 @@ export interface Preferences {
   sidebarWidth: number;
   /** Enter sends and Shift+Enter adds a line, or Ctrl/⌘+Enter sends and Enter adds a line. */
   sendKey: 'enter' | 'mod-enter';
+  /** Desktop app: a system notification when something needs the person (off by default). */
+  notify: boolean;
 }
 
 export const PREFERENCES_KEY = 'corral:workbench:v1';
@@ -18,6 +20,7 @@ const defaults: Preferences = {
   sidebarOpen: true,
   sidebarWidth: 256,
   sendKey: 'enter',
+  notify: false,
 };
 
 export function parsePreferences(raw: string | null): Preferences {
@@ -33,6 +36,7 @@ export function parsePreferences(raw: string | null): Preferences {
           ? Math.min(420, Math.max(220, value.sidebarWidth))
           : 256,
       sendKey: value.sendKey === 'mod-enter' ? 'mod-enter' : 'enter',
+      notify: value.notify === true,
     };
   } catch {
     return { ...defaults };
@@ -60,12 +64,14 @@ export function changePreferences(patch: Partial<Omit<Preferences, 'version'>>) 
   }
 }
 
-export function applyTheme(theme: Theme) {
+/** Applies the theme to the page; returns whether it is dark. */
+export function applyTheme(theme: Theme): boolean {
   const dark =
     theme === 'dark' || (theme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
   document.documentElement.dataset.theme = theme;
   document.documentElement.classList.toggle('dark', dark);
   document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+  return dark;
 }
 
 /** Whether a key press in a request box sends it, per the person's choice; never mid-IME. */

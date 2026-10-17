@@ -4,7 +4,7 @@ import { Link } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
 import { ShortcutTable } from '../CommandPalette.tsx';
-import { DesktopWorkspace } from '../desktop.tsx';
+import { DesktopWorkspace, desktop } from '../desktop.tsx';
 import { LOCALES, type Locale, useLocale } from '../locale.tsx';
 import { useCurrentProject } from '../projects.ts';
 import { settingsRoute } from '../router.tsx';
@@ -52,7 +52,7 @@ export function SettingsLayout({ children, active }: { children: ReactNode; acti
 export function SettingsPage() {
   const t = useTranslations('Desktop');
   const { section = 'general' } = settingsRoute.useSearch();
-  const { theme, sendKey } = usePreferences();
+  const { theme, sendKey, notify } = usePreferences();
   const { locale, setLocale } = useLocale();
   const project = useCurrentProject();
   return (
@@ -115,6 +115,22 @@ export function SettingsPage() {
                 ))}
               </fieldset>
             </section>
+            {desktop ? (
+              <section className="settings-row">
+                <div>
+                  <h3>{t('notifySetting')}</h3>
+                  <p>{t('notifyHint')}</p>
+                </div>
+                <label className="flex items-center gap-2 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={notify}
+                    onChange={(e) => changePreferences({ notify: e.target.checked })}
+                  />
+                  {t('notifyOn')}
+                </label>
+              </section>
+            ) : null}
             <section className="settings-row">
               <div>
                 <h3>{t('language')}</h3>

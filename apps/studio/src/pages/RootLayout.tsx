@@ -26,7 +26,7 @@ import {
 import { type CSSProperties, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { CommandLayer } from '../CommandPalette.tsx';
-import { WindowControls } from '../desktop.tsx';
+import { desktop, onTopbarDoubleClick } from '../desktop.tsx';
 import { projectName, useCurrentProject, useProjectsVersion } from '../projects.ts';
 import { useServices } from '../services.tsx';
 import { shortcutLabel } from '../shortcuts.ts';
@@ -62,9 +62,13 @@ export function RootLayout() {
     setMobileOpen(false);
   }, [location]);
   useEffect(() => {
-    applyTheme(prefs.theme);
+    // The desktop window and its title bar buttons follow the page's theme (CR-017).
+    const update = () => {
+      const dark = applyTheme(prefs.theme);
+      void desktop?.theme(dark).catch(() => {});
+    };
+    update();
     const media = matchMedia('(prefers-color-scheme: dark)');
-    const update = () => applyTheme(prefs.theme);
     media.addEventListener('change', update);
     return () => media.removeEventListener('change', update);
   }, [prefs.theme]);
@@ -129,7 +133,8 @@ export function RootLayout() {
             }}
           />
           <div className="app-main">
-            <header className="app-topbar">
+            {/* biome-ignore lint/a11y/noStaticElementInteractions: a title bar's double click is a pointer convenience; the window menu does the same */}
+            <header className="app-topbar" onDoubleClick={onTopbarDoubleClick}>
               <h1 className="sr-only">{t('title')}</h1>
               <Tooltip content={tw('expandSidebar')} shortcut={shortcutLabel('view.sidebar')}>
                 <Button
@@ -168,7 +173,6 @@ export function RootLayout() {
                   <Search />
                 </Button>
               </Tooltip>
-              <WindowControls />
             </header>
             <div className="app-outlet">
               <Outlet />

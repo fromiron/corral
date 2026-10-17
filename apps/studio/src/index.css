@@ -172,7 +172,10 @@
     border-right-width: 0;
   }
 }
+/* CR-017: room for the window buttons the system draws over the top bar (Window Controls
+   Overlay); without an overlay the env() fallbacks leave the normal padding. */
 .desktop-app .app-topbar {
+  padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 12px);
   -webkit-app-region: drag;
 }
 .desktop-app .app-topbar :is(button, a, input, select) {

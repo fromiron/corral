@@ -31,6 +31,7 @@ import { Link, useNavigate, useRouter, useRouterState } from '@tanstack/react-ro
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useLocale, useTranslations } from 'use-intl';
+import { desktop } from '../desktop.tsx';
 import { useRemembered } from '../pages/Workbench.tsx';
 import {
   projectName,
@@ -40,10 +41,12 @@ import {
 } from '../projects.ts';
 import { useServices } from '../services.tsx';
 import { shortcutLabel } from '../shortcuts.ts';
-import { changePreferences } from './preferences.ts';
+import { changePreferences, preferences } from './preferences.ts';
 
 export function useCorralSidebar() {
   const { repository, transport, workspaces } = useServices();
+  const td = useTranslations('Desktop');
+  const seen = useRef<number | null>(null);
   const href = useRouterState({ select: (s) => s.location.href });
   const version = useProjectsVersion();
   const current = useCurrentProject();
@@ -103,7 +106,21 @@ export function useCorralSidebar() {
       );
       void workspaces?.inbox(current).then(
         (r) => {
-          if (live) setInbox(r.length);
+          if (!live) return;
+          setInbox(r.length);
+          // Desktop: the taskbar shows the count; a notification only for new items, only when
+          // the window is in the background, and only if the person turned it on (CR-017).
+          void desktop?.badge(r.length).catch(() => {});
+          if (
+            seen.current !== null &&
+            r.length > seen.current &&
+            preferences.getState().notify &&
+            !document.hasFocus()
+          )
+            void desktop
+              ?.notify(td('notifyTitle'), td('notifyBody', { count: r.length }))
+              .catch(() => {});
+          seen.current = r.length;
         },
         () => {},
       );
@@ -114,7 +131,7 @@ export function useCorralSidebar() {
       live = false;
       clearInterval(timer);
     };
-  }, [transport, workspaces, current]);
+  }, [transport, workspaces, current, td]);
   return { projects, sessions, runs, inbox, error, current };
 }
 

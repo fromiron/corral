@@ -4,15 +4,27 @@ import { isAbsolute, join, resolve } from 'node:path';
 import {
   app,
   BrowserWindow,
+  clipboard,
   dialog,
   session as electronSession,
   ipcMain,
   Menu,
+  type MenuItemConstructorOptions,
+  Notification,
+  nativeTheme,
   protocol,
   screen,
   shell,
 } from 'electron';
-import { externalUrl, localRoute, trustedSender } from './security.ts';
+import {
+  type DesktopCommand,
+  externalUrl,
+  localRoute,
+  notificationText,
+  recentWorkspaces,
+  themeColors,
+  trustedSender,
+} from './security.ts';
 
 app.setName('Corral');
 const dataArg = process.argv.find((arg) => arg.startsWith('--data-dir='))?.slice(11);
@@ -35,6 +47,9 @@ interface SavedState {
   x?: number;
   y?: number;
   maximized: boolean;
+  /** The page's last theme, so the window opens in it (CR-017). */
+  dark?: boolean;
+  recent: string[];
 }
 const saved: SavedState = {
   workspace: join(app.getPath('userData'), 'workspaces', 'default'),
@@ -43,6 +58,7 @@ const saved: SavedState = {
   width: 1440,
   height: 900,
   maximized: false,
+  recent: [],
 };
 try {
   const value = JSON.parse(readFileSync(stateFile, 'utf8'));
@@ -59,6 +75,8 @@ try {
     saved.y = value.y;
   }
   saved.maximized = value.maximized === true;
+  if (typeof value.dark === 'boolean') saved.dark = value.dark;
+  saved.recent = recentWorkspaces(value.recent, saved.workspace);
 } catch {
   /* First launch or invalid saved window state uses defaults. */
 }
@@ -269,19 +287,145 @@ async function chooseWorkspace() {
     properties: ['openDirectory', 'createDirectory'],
   });
   const path = choice.filePaths[0];
-  if (choice.canceled || !path || path === saved.workspace) return;
+  if (choice.canceled || !path) return;
+  await openWorkspaceAt(path);
+}
+
+async function openWorkspaceAt(path: string) {
+  if (!window || switching || closing || path === saved.workspace || !isAbsolute(path)) return;
   switching = true;
   try {
     if (!(await confirmStop())) return;
     await stopServer();
     saved.workspace = path;
+    saved.recent = recentWorkspaces(saved.recent, path);
     saved.route = '/';
     saved.port = 0;
     persist();
+    buildMenu();
     await startServer();
   } finally {
     switching = false;
   }
+}
+
+/** Asks the page to run one of its own commands (CR-017); the page decides what it does. */
+const command = (id: DesktopCommand) => () => {
+  if (window && !window.isDestroyed() && status === 'ready')
+    window.webContents.send('desktop:command', id);
+};
+
+function buildMenu() {
+  const ko = app.getLocale().startsWith('ko');
+  const say = (en: string, kr: string) => (ko ? kr : en);
+  const recent: MenuItemConstructorOptions[] = saved.recent
+    .filter((path) => path !== saved.workspace)
+    .map((path) => ({ label: path, click: () => void openWorkspaceAt(path) }));
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate([
+      {
+        label: say('File', '파일'),
+        submenu: [
+          {
+            label: say('New session', '새 세션'),
+            accelerator: 'CommandOrControl+N',
+            click: command('session.new'),
+          },
+          { type: 'separator' },
+          { label: say('Open workspace…', '작업 공간 열기…'), click: () => void chooseWorkspace() },
+          {
+            label: say('Open recent', '최근 작업 공간'),
+            enabled: recent.length > 0,
+            submenu: recent.length ? recent : [{ label: '—', enabled: false }],
+          },
+          { type: 'separator' },
+          {
+            label: say('Settings', '설정'),
+            accelerator: 'CommandOrControl+,',
+            click: command('settings'),
+          },
+          { type: 'separator' },
+          {
+            label: say('Quit', '종료'),
+            accelerator: 'CommandOrControl+Q',
+            click: () => void quit(),
+          },
+        ],
+      },
+      {
+        role: 'editMenu',
+        submenu: [
+          { role: 'undo' },
+          { role: 'redo' },
+          { type: 'separator' },
+          { role: 'cut' },
+          { role: 'copy' },
+          { role: 'paste' },
+          { role: 'pasteAndMatchStyle', accelerator: 'CommandOrControl+Shift+V' },
+          { role: 'selectAll' },
+        ],
+      },
+      {
+        label: say('View', '보기'),
+        submenu: [
+          {
+            label: say('Command palette', '명령 팔레트'),
+            accelerator: 'CommandOrControl+K',
+            click: command('palette'),
+          },
+          {
+            label: say('Toggle sidebar', '사이드바'),
+            accelerator: 'CommandOrControl+B',
+            click: command('view.sidebar'),
+          },
+          {
+            label: say('Toggle side panel', '사이드 패널'),
+            accelerator: 'CommandOrControl+Alt+B',
+            click: command('view.panel'),
+          },
+          {
+            label: say('Go to request box', '요청 입력칸으로'),
+            accelerator: 'CommandOrControl+L',
+            click: command('composer.focus'),
+          },
+          { type: 'separator' },
+          {
+            label: say('Back', '뒤로'),
+            accelerator: 'CommandOrControl+[',
+            click: command('nav.back'),
+          },
+          {
+            label: say('Forward', '앞으로'),
+            accelerator: 'CommandOrControl+]',
+            click: command('nav.forward'),
+          },
+          { type: 'separator' },
+          { role: 'resetZoom' },
+          { role: 'zoomIn' },
+          { role: 'zoomOut' },
+          { type: 'separator' },
+          { role: 'togglefullscreen' },
+          { role: 'reload' },
+          { role: 'toggleDevTools' },
+        ],
+      },
+      { role: 'windowMenu' },
+      {
+        role: 'help',
+        submenu: [
+          {
+            label: say('Keyboard shortcuts', '키보드 단축키'),
+            accelerator: 'CommandOrControl+/',
+            click: command('help'),
+          },
+          {
+            label: say('Releases', '릴리스'),
+            click: () => void shell.openExternal('https://github.com/fromiron/corral/releases'),
+          },
+        ],
+      },
+    ]),
+  );
 }
 
 if (!app.requestSingleInstanceLock()) app.quit();
@@ -331,6 +475,11 @@ else {
       saved.y < display.y + display.height &&
       saved.x + saved.width > display.x &&
       saved.y + saved.height > display.y;
+    const colors = themeColors(saved.dark ?? nativeTheme.shouldUseDarkColors) ?? {
+      background: '#151615',
+      overlay: '#151615',
+      symbol: '#ececea',
+    };
     window = new BrowserWindow({
       width: Math.min(saved.width, display.width),
       height: Math.min(saved.height, display.height),
@@ -338,8 +487,15 @@ else {
       minWidth: 800,
       minHeight: 600,
       title: 'Corral',
-      frame: false,
-      backgroundColor: '#151515',
+      // CR-017: the page draws the title bar; the system draws the window buttons over it.
+      ...(process.platform === 'darwin'
+        ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 16, y: 18 } }
+        : {
+            titleBarStyle: 'hidden' as const,
+            titleBarOverlay: { color: colors.overlay, symbolColor: colors.symbol, height: 52 },
+          }),
+      backgroundColor: colors.background,
+      show: false,
       webPreferences: {
         preload: join(import.meta.dirname, 'preload.cjs'),
         contextIsolation: true,
@@ -350,7 +506,49 @@ else {
       },
     });
     if (saved.maximized) window.maximize();
+    window.once('ready-to-show', () => window?.show());
+    // Size and place are kept as they change, not only on quit, so a crash keeps them.
+    let bounds: NodeJS.Timeout | null = null;
+    const keepBounds = () => {
+      if (bounds) clearTimeout(bounds);
+      bounds = setTimeout(persist, 500);
+    };
+    for (const name of ['resize', 'move', 'maximize', 'unmaximize'] as const)
+      window.on(name as 'resize', keepBounds);
     const contents = window.webContents;
+    // Text fields get cut, copy, paste and spelling; links get "copy link" (CR-017).
+    contents.on('context-menu', (_event, params) => {
+      const ko = app.getLocale().startsWith('ko');
+      const items: MenuItemConstructorOptions[] = [
+        ...params.dictionarySuggestions.slice(0, 5).map(
+          (word): MenuItemConstructorOptions => ({
+            label: word,
+            click: () => contents.replaceMisspelling(word),
+          }),
+        ),
+        ...(params.dictionarySuggestions.length ? [{ type: 'separator' as const }] : []),
+        ...(params.isEditable
+          ? ([
+              { role: 'cut', enabled: params.editFlags.canCut },
+              { role: 'copy', enabled: params.editFlags.canCopy },
+              { role: 'paste', enabled: params.editFlags.canPaste },
+              { type: 'separator' },
+              { role: 'selectAll' },
+            ] as MenuItemConstructorOptions[])
+          : params.selectionText
+            ? ([{ role: 'copy' }] as MenuItemConstructorOptions[])
+            : []),
+        ...(externalUrl(params.linkURL)
+          ? [
+              {
+                label: ko ? '링크 복사' : 'Copy link',
+                click: () => clipboard.writeText(params.linkURL),
+              },
+            ]
+          : []),
+      ];
+      if (items.length && window) Menu.buildFromTemplate(items).popup({ window });
+    });
     contents.on('render-process-gone', () => {
       if (closing) return;
       status = 'failed';
@@ -408,6 +606,7 @@ else {
     handle('info', () => ({
       version: app.getVersion(),
       platform: process.platform,
+      overlay: process.platform !== 'darwin',
       status,
       gitAvailable,
       workspace: saved.workspace,
@@ -420,6 +619,30 @@ else {
         else window?.maximize();
       } else if (action === 'close') void quit();
       else throw new Error('Unknown window action');
+    });
+    handle('theme', (dark) => {
+      const next = themeColors(dark);
+      if (!next || !window) throw new Error('Unknown theme');
+      saved.dark = dark as boolean;
+      window.setBackgroundColor(next.background);
+      if (process.platform !== 'darwin')
+        window.setTitleBarOverlay({ color: next.overlay, symbolColor: next.symbol });
+    });
+    handle('notify', (value) => {
+      const text = notificationText(value);
+      if (!text || !window || window.isFocused() || !Notification.isSupported()) return false;
+      const note = new Notification({ ...text, silent: false });
+      note.on('click', () => {
+        window?.show();
+        window?.focus();
+      });
+      note.show();
+      return true;
+    });
+    handle('badge', (count) => {
+      app.setBadgeCount(
+        Number.isInteger(count) && (count as number) >= 0 ? Math.min(count as number, 999) : 0,
+      );
     });
     handle('pick-folder', async () => {
       if (!window) return null;
@@ -446,20 +669,7 @@ else {
         switching = false;
       }
     });
-    Menu.setApplicationMenu(
-      Menu.buildFromTemplate([
-        {
-          label: 'Corral',
-          submenu: [
-            { label: 'Open workspace…', click: () => void chooseWorkspace() },
-            { type: 'separator' },
-            { label: 'Quit', accelerator: 'CommandOrControl+Q', click: () => void quit() },
-          ],
-        },
-        { role: 'editMenu' },
-        { role: 'viewMenu' },
-      ]),
-    );
+    buildMenu();
     await startServer();
   });
 }

@@ -18,6 +18,7 @@ import {
   useRegisteredCommands,
 } from './commandRegistry.ts';
 import { rankCommands } from './commands.ts';
+import { desktop } from './desktop.tsx';
 import { currentProject, projectName } from './projects.ts';
 import { useServices } from './services.tsx';
 import { LOCAL_KEYS, SHORTCUTS, type ShortcutId, shortcutFor, shortcutLabel } from './shortcuts.ts';
@@ -78,6 +79,16 @@ export function CommandLayer() {
     return () => window.removeEventListener('keydown', onKey);
   }, [palette, help, open, close]);
   useGlobalCommands(() => open('help'));
+  // The desktop menu asks for commands by name; they run like their shortcuts (CR-017).
+  useEffect(
+    () =>
+      desktop?.onCommand((id) => {
+        if (id === 'palette') open('palette');
+        else if (id === 'help') open('help');
+        else runShortcut(id as ShortcutId);
+      }),
+    [open],
+  );
   return (
     <>
       {palette ? (

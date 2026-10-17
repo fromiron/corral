@@ -1496,7 +1496,12 @@
     "sendEnter": "Enter",
     "sendModEnter": "Ctrl/⌘ + Enter",
     "agentsWorking": "{count, plural, one {# agent working} other {# agents working}}",
-    "writing": "{name} is writing…"
+    "writing": "{name} is writing…",
+    "notifyTitle": "Corral needs you",
+    "notifyBody": "{count, plural, one {# item needs} other {# items need}} you in this project.",
+    "notifySetting": "Notifications",
+    "notifyHint": "A system notification when a decision or review is waiting and Corral is in the background.",
+    "notifyOn": "Notify me"
   },
   "Composer": {
     "commands": "Commands",
