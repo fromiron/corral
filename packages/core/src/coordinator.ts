@@ -197,6 +197,12 @@ export class ToolRefusal extends Error {
   }
 }
 
+export class ToolTerminationUnconfirmed extends ToolRefusal {
+  constructor(message = 'tool process termination could not be confirmed') {
+    super('CAPABILITY_DENIED', message);
+  }
+}
+
 export interface CoordinatorDeps {
   tools?: ExternalTools;
   files?: FileTools;
@@ -4719,6 +4725,8 @@ export class Coordinator {
           cancellation,
         );
       }
+      if (proposal.name === 'run_check' && result.cleanupConfirmed === false)
+        throw new ToolTerminationUnconfirmed();
       const execution = run.projection.executions[executionId];
       if (
         cancellation.aborted ||
@@ -4762,7 +4770,28 @@ export class Coordinator {
       // A file backend's refusal (conflict, path policy) is told to the agent as it is.
       const refusal = error instanceof ToolRefusal ? error : null;
       const message = refusal?.message ?? 'external tool failed';
-      this.commit(run, tool.closing(null, message));
+      if (error instanceof ToolTerminationUnconfirmed) {
+        if (run.projection.effects[tool.effectId]?.status === 'admitted')
+          this.commit(run, [
+            {
+              type: 'tool.finished',
+              executionId,
+              payload: {
+                executionId,
+                toolCallId: tool.toolCallId,
+                resultRef: null,
+                error: message,
+              },
+            },
+            {
+              type: 'effect.settled',
+              executionId,
+              payload: { effectId: tool.effectId, outcome: 'unknown' },
+            },
+          ]);
+        this.terminationUnconfirmed = true;
+        this.failRun(run, 'termination_unconfirmed');
+      } else this.commit(run, tool.closing(null, message));
       return {
         ok: false,
         toolCallId: tool.toolCallId,

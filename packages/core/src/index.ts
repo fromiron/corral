@@ -28,6 +28,7 @@ export {
   type StartRunResult,
   type ToolCancellation,
   ToolRefusal,
+  ToolTerminationUnconfirmed,
 } from './coordinator.ts';
 export { LocalHeuristicProvider } from './decisions/heuristic.ts';
 export {

@@ -12,6 +12,7 @@ import {
 import type { ToolCancellation } from '@corral/core';
 import { CheckOutput } from './check-output.ts';
 import { git, gitText } from './git.ts';
+import { killProcessGroup, processGroupGone } from './process-group.ts';
 
 export interface VerificationInput {
   verificationId: string;
@@ -123,13 +124,7 @@ export class VerificationRunner {
           let cancelCleanup = () => {};
           let off = () => {};
           const kill = () => {
-            if (!child?.pid) return;
-            try {
-              if (process.platform === 'win32') child.kill('SIGKILL');
-              else process.kill(-child.pid, 'SIGKILL');
-            } catch {
-              /* Already exited; close still finalizes the report. */
-            }
+            if (child) killProcessGroup(child);
           };
           const finish = (code: number | null, signal: string | null, closed: boolean) => {
             if (finished) return;
@@ -191,7 +186,7 @@ export class VerificationRunner {
           }
         });
         processClosed = outcome.closed;
-        groupGone = !outcome.pid || (await this.groupGone(outcome.pid));
+        groupGone = !outcome.pid || (await processGroupGone(outcome.pid, this.timers));
         const cancelled = outcome.cancelled || cancellation.aborted;
         const error =
           outcome.failed ||
@@ -258,19 +253,5 @@ export class VerificationRunner {
     };
     update(report);
     return report;
-  }
-
-  private async groupGone(pid: number): Promise<boolean> {
-    // Windows has no POSIX process group: do not claim descendant cleanup there.
-    if (process.platform === 'win32') return false;
-    for (let attempt = 0; attempt < 20; attempt++) {
-      try {
-        process.kill(-pid, 0);
-      } catch (error) {
-        return (error as NodeJS.ErrnoException).code === 'ESRCH';
-      }
-      await new Promise<void>((resolve) => this.timers.after(50, resolve));
-    }
-    return false;
   }
 }
