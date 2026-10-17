@@ -145,9 +145,12 @@ test('[TC-UX-001-H] DW-05 a file opens in a remembered tab and its line referenc
       .getByRole('region', { name: 'File content', exact: true })
       .getByText('# Release notes', { exact: true }),
   ).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Request', exact: true })).toHaveValue(
+    'Desktop workbench',
+  );
   await page.getByRole('button', { name: 'Reference lines', exact: true }).click();
   await expect(page.getByRole('textbox', { name: 'Request', exact: true })).toHaveValue(
-    '@README.md:L1 ',
+    '@README.md:L1 Desktop workbench',
   );
   await page.getByRole('tab', { name: 'Changes', exact: true }).click();
   await page.getByRole('tab', { name: 'Files', exact: true }).click();

@@ -1,9 +1,19 @@
-import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
-import { ExecutionTranscript, runResults, SafeMarkdown, StatusBadge } from '@corral/react';
+import { TERMINAL_EXECUTION_STATUSES, TERMINAL_RUN_STATUSES } from '@corral/contracts';
+import type { RunProjection } from '@corral/core';
+import {
+  ExecutionTranscript,
+  type ResultItem,
+  ReviewSummary,
+  RunReason,
+  runResults,
+  SafeMarkdown,
+  StatusBadge,
+} from '@corral/react';
 import { Activity, ChevronRight, FileText, LoaderCircle } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
+import { useRemembered } from '../pages/Workbench.tsx';
 import { useCorralRun } from './useCorralChat.ts';
 
 /** T3's expandable work log and response surface, projected from Corral executions. */
@@ -17,7 +27,7 @@ export function RunMessage({
   live: boolean;
 }) {
   const t = useTranslations('Desktop');
-  const tr = useTranslations('Results');
+  const trun = useTranslations('Run');
   const [expanded, setExpanded] = useState(false);
   const [resultError, setResultError] = useState(false);
   const [retry, setRetry] = useState(0);
@@ -63,8 +73,58 @@ export function RunMessage({
   const working = !TERMINAL_RUN_STATUSES.has(projection.status);
   const label = (nodeId: string) =>
     state.definition?.nodes.find((n) => n.id === nodeId)?.label ?? nodeId;
+  const executions = projection.executionOrder.flatMap((id) => projection.executions[id] ?? []);
+  const agents = executions.filter((execution) =>
+    working ? !TERMINAL_EXECUTION_STATUSES.has(execution.status) : execution.status === 'failed',
+  );
   return (
     <div className="flex min-w-0 flex-col gap-5">
+      {projection.statusReason &&
+      projection.status !== 'running' &&
+      projection.status !== 'succeeded' ? (
+        <p data-testid="run-reason" className="text-xs text-muted">
+          {trun('reasonPrefix')} <RunReason code={projection.statusReason} nodeLabel={label} />
+        </p>
+      ) : null}
+      {agents.length ? (
+        <section aria-label={t('teamActivity')} data-testid="team-activity" className="space-y-2">
+          <h3 className="text-xs font-medium text-muted">{t('teamActivity')}</h3>
+          <ul className="grid gap-2 sm:grid-cols-2">
+            {agents.map((execution) => (
+              <li
+                key={execution.executionId}
+                className="min-w-0 rounded-lg border border-line p-2 text-xs wrap-anywhere"
+              >
+                <Link
+                  to={sessionId ? '/sessions/$sessionId' : '/runs/$runId'}
+                  params={sessionId ? { sessionId } : { runId }}
+                  search={{
+                    ...(sessionId ? { tab: 'run' as const, run: runId } : {}),
+                    view: 'run',
+                    execution: execution.executionId,
+                  }}
+                  title={execution.executionId}
+                  className="font-medium underline-offset-4 hover:underline"
+                >
+                  {label(execution.nodeId)} · #
+                  {projection.executionOrder.indexOf(execution.executionId) + 1}
+                </Link>
+                <div className="mt-1">
+                  <StatusBadge status={execution.status} />
+                </div>
+                {execution.waitingOn ? (
+                  <p className="mt-1 text-muted">
+                    {trun(`waiting.${execution.waitingOn.kind}`, {
+                      count: execution.waitingOn.targetIds.length,
+                    })}
+                  </p>
+                ) : null}
+                {execution.error ? <p className="mt-1 text-danger">{execution.error}</p> : null}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
       {resultError ? (
         <p role="alert" className="text-xs text-danger">
           {t('resultUnavailable')}{' '}
@@ -79,7 +139,7 @@ export function RunMessage({
       ) : null}
       <details className="work-log" onToggle={(e) => setExpanded(e.currentTarget.open)}>
         <summary className="flex cursor-pointer list-none items-center gap-2 py-1 text-xs text-muted hover:text-text">
-          {working ? (
+          {projection.status === 'running' ? (
             <LoaderCircle size={14} className="animate-spin motion-reduce:animate-none" />
           ) : (
             <Activity size={14} />
@@ -96,7 +156,9 @@ export function RunMessage({
               return (
                 <details key={id} className="text-xs">
                   <summary className="flex cursor-pointer items-center gap-2 py-2">
-                    <span className="font-medium">{label(execution.nodeId)}</span>
+                    <span className="font-medium">
+                      {label(execution.nodeId)} · #{projection.executionOrder.indexOf(id) + 1}
+                    </span>
                     <StatusBadge status={execution.status} />
                   </summary>
                   <ExecutionTranscript session={store} executionId={id} />
@@ -106,44 +168,17 @@ export function RunMessage({
           </div>
         ) : null}
       </details>
-      {working
-        ? Object.entries(state.streams)
-            .filter(([, s]) => !s.completed && s.text)
-            .map(([id, stream]) => {
-              const call = projection.modelCalls[id];
-              const execution = call ? projection.executions[call.executionId] : null;
-              return (
-                <div key={id} className="text-sm">
-                  <p className="mb-2 text-xs text-muted">
-                    {execution ? label(execution.nodeId) : t('working')}
-                  </p>
-                  <SafeMarkdown text={stream.text} />
-                </div>
-              );
-            })
-        : null}
-      {visible.map((result) => (
-        <div key={result.artifactVersionId} className="min-w-0 text-[14px] leading-7">
-          <div className="mb-3 flex items-center gap-2 text-xs text-muted">
-            <FileText size={14} />
-            {results?.kind === 'partial' ? tr('partial') : t('result')} · {result.name} v
-            {result.version}
-          </div>
-          <SafeMarkdown text={state.artifactTexts[result.artifactVersionId] ?? ''} />
-          <Link
-            to={sessionId ? '/sessions/$sessionId' : '/runs/$runId'}
-            params={sessionId ? { sessionId } : { runId }}
-            search={{
-              ...(sessionId ? { tab: 'run' as const, run: runId } : {}),
-              view: 'results',
-              result: result.artifactVersionId,
-            }}
-            className="mt-3 inline-flex items-center gap-1 text-xs text-muted hover:text-text"
-          >
-            {tr('openResults')}
-            <ChevronRight size={12} />
-          </Link>
-        </div>
+      {visible.map((result, index) => (
+        <ChatResult
+          key={result.artifactVersionId}
+          result={result}
+          text={state.artifactTexts[result.artifactVersionId]}
+          projection={projection}
+          label={label}
+          sessionId={sessionId}
+          partial={results?.kind === 'partial'}
+          first={index === 0}
+        />
       ))}
       {state.streamError ? (
         <p role="alert" className="text-xs text-danger">
@@ -151,5 +186,88 @@ export function RunMessage({
         </p>
       ) : null}
     </div>
+  );
+}
+
+function ChatResult({
+  result,
+  text,
+  projection,
+  label,
+  sessionId,
+  partial,
+  first,
+}: {
+  result: ResultItem;
+  text: string | undefined;
+  projection: RunProjection;
+  label: (nodeId: string) => string;
+  sessionId: string | null;
+  partial: boolean;
+  first: boolean;
+}) {
+  const t = useTranslations('Desktop');
+  const tr = useTranslations('Results');
+  const ta = useTranslations('Artifact');
+  const [open, setOpen] = useRemembered(
+    `corral:chat-result:v1:${projection.runId}:${result.artifactVersionId}`,
+    first,
+  );
+  const author = projection.executions[result.authorExecutionId];
+  const review = projection.reviews[result.artifactVersionId];
+  const target = review ? projection.artifacts[review.targetVersionId] : null;
+  const location = {
+    to: sessionId ? ('/sessions/$sessionId' as const) : ('/runs/$runId' as const),
+    params: sessionId ? { sessionId } : { runId: projection.runId },
+  };
+  const search = (id: string) => ({
+    ...(sessionId ? { tab: 'run' as const, run: projection.runId } : {}),
+    view: 'results' as const,
+    result: id,
+  });
+  return (
+    <details
+      open={open === true}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+      className="min-w-0 space-y-3 text-[14px] leading-7 wrap-anywhere"
+      data-testid="chat-result"
+    >
+      <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 text-xs text-muted hover:text-text">
+        <FileText size={14} />
+        {partial ? tr('partial') : t('result')} · {result.name} v{result.version}
+        {author ? (
+          <span>
+            · {label(author.nodeId)} #{projection.executionOrder.indexOf(author.executionId) + 1}
+          </span>
+        ) : null}
+        <ChevronRight size={13} className={open ? 'rotate-90' : ''} />
+      </summary>
+      {open === true ? (
+        <>
+          {review ? (
+            <ReviewSummary
+              review={review}
+              target={
+                <Link {...location} search={search(review.targetVersionId)} className="underline">
+                  {target ? `${target.name} v${target.version}` : review.targetVersionId}
+                </Link>
+              }
+            />
+          ) : text === undefined ? (
+            <p className="text-xs text-muted">{ta('loading')}</p>
+          ) : (
+            <SafeMarkdown text={text} />
+          )}
+          <Link
+            {...location}
+            search={search(result.artifactVersionId)}
+            className="inline-flex items-center gap-1 text-xs text-muted hover:text-text"
+          >
+            {tr('openResults')}
+            <ChevronRight size={12} />
+          </Link>
+        </>
+      ) : null}
+    </details>
   );
 }

@@ -20,33 +20,59 @@ export function ChatView({
   const timeline = useRef<HTMLElement>(null);
   const content = useRef<HTMLDivElement>(null);
   const follow = useRef(true);
+  const restoreTop = useRef<number | null>(null);
   const [atEnd, setAtEnd] = useState(true);
   useLayoutEffect(() => {
     const box = timeline.current;
     const body = content.current;
     if (!box || !body) return;
     const key = `corral:chat-scroll:${sessionId}`;
+    follow.current = true;
+    restoreTop.current = null;
     try {
-      const stored = sessionStorage.getItem(key);
-      box.scrollTop = stored === null ? box.scrollHeight : Number(stored);
+      const raw = sessionStorage.getItem(key);
+      const stored = raw === null ? null : JSON.parse(raw);
+      const top = typeof stored === 'number' ? stored : stored?.top;
+      if (typeof top === 'number' && Number.isFinite(top) && top >= 0) {
+        follow.current = stored?.follow === true;
+        if (!follow.current) restoreTop.current = top;
+      }
     } catch {
-      box.scrollTop = box.scrollHeight;
+      /* A missing preference does not block the conversation. */
     }
-    follow.current = box.scrollHeight - box.scrollTop - box.clientHeight < 48;
-    setAtEnd(follow.current);
-    const observer = new ResizeObserver(() => {
-      if (follow.current) box.scrollTop = box.scrollHeight;
-    });
-    observer.observe(body);
-    return () => {
-      observer.disconnect();
+    const position = () => {
+      if (restoreTop.current !== null) {
+        box.scrollTop = restoreTop.current;
+        if (box.scrollHeight - box.clientHeight >= restoreTop.current) restoreTop.current = null;
+      } else if (follow.current) box.scrollTop = box.scrollHeight;
+      setAtEnd(box.scrollHeight - box.scrollTop - box.clientHeight < 48);
+    };
+    const remember = () => {
       try {
-        sessionStorage.setItem(key, String(box.scrollTop));
+        sessionStorage.setItem(
+          key,
+          JSON.stringify({ top: restoreTop.current ?? box.scrollTop, follow: follow.current }),
+        );
       } catch {
         /* Session only. */
       }
     };
+    position();
+    const observer = new ResizeObserver(position);
+    observer.observe(body);
+    window.addEventListener('pagehide', remember);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('pagehide', remember);
+      remember();
+    };
   }, [sessionId]);
+  const stopRestoring = () => {
+    if (restoreTop.current !== null) {
+      restoreTop.current = null;
+      follow.current = false;
+    }
+  };
 
   return (
     <div
@@ -61,9 +87,17 @@ export function ChatView({
         tabIndex={0}
         aria-label={t('conversation')}
         className="chat-timeline min-h-0 flex-1 overflow-y-auto overscroll-contain"
+        onWheel={stopRestoring}
+        onPointerDown={stopRestoring}
+        onKeyDown={(event) => {
+          if (
+            ['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)
+          )
+            stopRestoring();
+        }}
         onScroll={() => {
           const box = timeline.current;
-          if (!box) return;
+          if (!box || restoreTop.current !== null) return;
           follow.current = box.scrollHeight - box.scrollTop - box.clientHeight < 48;
           setAtEnd(follow.current);
         }}
@@ -87,6 +121,7 @@ export function ChatView({
               variant="outline"
               className="pointer-events-auto rounded-full"
               onClick={() => {
+                restoreTop.current = null;
                 follow.current = true;
                 if (timeline.current) timeline.current.scrollTop = timeline.current.scrollHeight;
               }}

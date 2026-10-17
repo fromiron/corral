@@ -1452,6 +1452,8 @@
     "revealWorkspace": "파일 관리자에서 보기",
     "toggleProject": "{name} 세션 목록 접기/펼치기",
     "resultUnavailable": "이 결과를 읽지 못했습니다.",
-    "retryResult": "다시 시도"
+    "retryResult": "다시 시도",
+    "teamActivity": "팀 진행",
+    "moreResults": "앞선 실행 {count}개 더 보기"
   }
 }

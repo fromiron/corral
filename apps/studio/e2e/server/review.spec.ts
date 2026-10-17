@@ -24,10 +24,7 @@ test('[TC-RUN-003-H] [TC-ART-004-H] [TC-OBS-001-H] a review loop revises the dra
   // The decision is about draft@2 and the review that passed it, judged by the run's criteria.
   const card = page.locator('[data-testid^="approval-"]');
   await expect(card).toContainText('근거 자료의 출처를 명시한다.');
-  await card
-    .getByRole('button', { name: /^artv_/ })
-    .first()
-    .click();
+  await card.getByRole('button', { name: 'draft v2', exact: true }).click();
   const viewer = page.getByTestId('artifact-viewer');
   await expect(viewer).toContainText('draft · Version 2');
   await expect(viewer).toContainText('Revises');

@@ -70,9 +70,20 @@ describe('approvals and reviews in Studio (C-029, C-030)', () => {
   it('[TC-ART-004-H] approves the exact version shown, and the run moves on', async () => {
     const { session, projection } = await teamAwaitingApproval();
     const approval = Object.values(projection.approvals).find((a) => a.status === 'pending');
-    wrap(<ApprovalPanel session={session} onOpenArtifact={vi.fn()} />);
+    if (!approval) throw new Error('approval fixture');
+    const open = vi.fn();
+    wrap(<ApprovalPanel session={session} onOpenArtifact={open} />);
     const card = screen.getByTestId(`approval-${approval?.approvalId}`);
-    expect(card).toHaveTextContent(approval?.subjectVersionIds[0] ?? 'missing');
+    for (const id of approval.subjectVersionIds) {
+      const artifact = projection.artifacts[id];
+      if (!artifact) throw new Error('approval artifact fixture');
+      const target = within(card).getByRole('button', {
+        name: `${artifact.name} v${artifact.version}`,
+      });
+      expect(target).toHaveAttribute('title', id);
+      fireEvent.click(target);
+      expect(open).toHaveBeenLastCalledWith(id);
+    }
     // The criteria it is judged against are on the card, from the run's snapshot.
     await waitFor(() =>
       expect(card).toHaveTextContent(researchTeam.input.criteria[0] ?? 'missing'),
