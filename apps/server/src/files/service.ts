@@ -196,8 +196,8 @@ export class WorkspaceService implements FileTools {
   private readonly forbidden: string[];
   /** Per-worktree write lease: one Corral write at a time (WB-WSP-003). */
   private readonly leases = new Map<string, Promise<unknown>>();
-  /** What each run has read: path → content hash, for the overwrite rule. */
-  private readonly reads = new Map<string, Map<string, string>>();
+  /** Run → execution → path hash: another attempt's read never authorizes an overwrite. */
+  private readonly reads = new Map<string, Map<string, Map<string, string>>>();
 
   constructor(options: { db: Db; clock: Clock; worktreeRoot: string; forbidden: string[] }) {
     this.db = options.db;
@@ -443,6 +443,7 @@ export class WorkspaceService implements FileTools {
 
   /** Records a run's start or end snapshot, inside the write lease so no write is half-seen. */
   async snapshotRun(runId: string, sessionId: string, phase: 'start' | 'end') {
+    if (phase === 'end') this.reads.delete(runId);
     const row = this.worktree(sessionId);
     if (!row) return null;
     const existing = this.runTree(runId, phase);
@@ -988,9 +989,11 @@ export class WorkspaceService implements FileTools {
     return next;
   }
 
-  private readsOf(runId: string) {
-    const map = this.reads.get(runId) ?? new Map<string, string>();
-    this.reads.set(runId, map);
+  private readsOf(runId: string, executionId: string) {
+    const executions = this.reads.get(runId) ?? new Map<string, Map<string, string>>();
+    this.reads.set(runId, executions);
+    const map = executions.get(executionId) ?? new Map<string, string>();
+    executions.set(executionId, map);
     return map;
   }
 
@@ -1007,7 +1010,7 @@ export class WorkspaceService implements FileTools {
     const found = this.worktreeOfRun(input.runId);
     if (!found) throw new ToolRefusal('CAPABILITY_DENIED', 'this run has no working copy');
     const root = found.row.worktree_path;
-    const reads = this.readsOf(input.runId);
+    const reads = this.readsOf(input.runId, input.executionId);
     switch (input.name) {
       case 'list_files':
         return this.list(root, typeof input.args.path === 'string' ? input.args.path : '');
