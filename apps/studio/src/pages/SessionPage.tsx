@@ -1,3 +1,4 @@
+import type { FileChangeView } from '@corral/client';
 import { TERMINAL_EXECUTION_STATUSES, TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import type {
   CorralSummary,
@@ -9,12 +10,16 @@ import type {
 } from '@corral/core';
 import { ApprovalPanel, SafeMarkdown, StatusBadge } from '@corral/react';
 import { Link, useNavigate, useRouter } from '@tanstack/react-router';
-import { type KeyboardEvent, useCallback, useEffect, useState } from 'react';
+import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
-import { projectName, setCurrentProject } from '../projects.ts';
-import { sessionRoute } from '../router.tsx';
+import { setCurrentProject } from '../projects.ts';
+import { type SessionSearch, sessionRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
-import { WorkingCopyPanel } from './FilesViews.tsx';
+import { TeamDesign } from './EditorPage.tsx';
+import { useBinding, WorkingCopyPanel } from './FilesViews.tsx';
+import { Checks } from './ReviewPage.tsx';
+import { RunDetail } from './RunPage.tsx';
+import { WorkbenchLayout, WorkbenchSidebar } from './Workbench.tsx';
 
 // A work session (CR-011, roadmap 23–24): what was asked, the runs it started, the queue, and
 // one input box whose intent is chosen, never guessed.
@@ -48,30 +53,235 @@ function useSessionRuns(sessionId: string) {
   return { runs, active, refresh };
 }
 
+export type SessionTab = 'work' | 'team' | 'run';
+export type SessionPanel = 'changes' | 'artifacts' | 'checks';
+
+/**
+ * A session as a workbench (02-UX-Spec §2–§3): the sidebar, a header with what is true now,
+ * Work / Team design / Run detail in the middle, and Changes / Results / Checks on the right.
+ * Tabs and choices live in the address, so they survive reloads and the back button.
+ */
 export function SessionPage() {
-  const t = useTranslations('Sessions');
-  const tp = useTranslations('Projects');
+  const tw = useTranslations('Workbench');
   const { session, project, corrals } = sessionRoute.useLoaderData();
+  const search = sessionRoute.useSearch();
+  const navigate = useNavigate({ from: '/sessions/$sessionId' });
   const { runs, active, refresh } = useSessionRuns(session.sessionId);
   useEffect(() => setCurrentProject(session.projectId), [session.projectId]);
   const team = corrals.find((c) => c.corralId === session.corralId) ?? null;
+  const tab: SessionTab = search.tab ?? 'work';
+  const panel: SessionPanel = search.panel ?? 'changes';
+  const setSearch = (patch: Partial<typeof search>) =>
+    void navigate({ search: (s) => ({ ...s, ...patch }) });
+  const tabs: SessionTab[] = ['work', 'team', 'run'];
 
+  return (
+    <WorkbenchLayout
+      sidebar={
+        <WorkbenchSidebar projectId={session.projectId} activeSessionId={session.sessionId} />
+      }
+      main={
+        <div className="flex min-h-0 flex-1 flex-col">
+          <WorkbenchHeader
+            session={session}
+            projectLabel={project ? project.name : ''}
+            team={team}
+            active={active && active.sessionId === session.sessionId ? active : null}
+          />
+          <TabRow
+            label={tw('tabs')}
+            values={tabs}
+            current={tab}
+            text={(value) => tw(`tab.${value}`)}
+            onChoose={(value) => setSearch({ tab: value })}
+          />
+          <div
+            role="tabpanel"
+            aria-label={tw(`tab.${tab}`)}
+            className="flex min-h-0 flex-1 flex-col overflow-auto"
+          >
+            {tab === 'work' ? (
+              <WorkTab
+                session={session}
+                corrals={corrals}
+                team={team}
+                runs={runs}
+                active={active}
+                onChange={refresh}
+              />
+            ) : tab === 'team' ? (
+              team ? (
+                <TeamDesign corralId={team.corralId} />
+              ) : (
+                <p className="p-4 text-sm text-muted">{tw('noTeam')}</p>
+              )
+            ) : (
+              <RunTab runs={runs} search={search} setSearch={setSearch} />
+            )}
+          </div>
+        </div>
+      }
+      panel={
+        <div className="flex min-h-0 flex-col">
+          <TabRow
+            label={tw('panelTabs')}
+            values={['changes', 'artifacts', 'checks'] as SessionPanel[]}
+            current={panel}
+            text={(value) => tw(`panel.${value}`)}
+            onChoose={(value) => setSearch({ panel: value })}
+          />
+          <div
+            role="tabpanel"
+            aria-label={tw(`panel.${panel}`)}
+            className="flex flex-col gap-3 p-3"
+          >
+            {panel === 'changes' ? (
+              <ChangesPanel session={session} runs={runs} />
+            ) : panel === 'artifacts' ? (
+              <ArtifactsPanel
+                runs={runs}
+                onOpen={(runId, result) =>
+                  setSearch({ tab: 'run', run: runId, view: 'results', result })
+                }
+              />
+            ) : (
+              <ChecksPanel session={session} />
+            )}
+          </div>
+        </div>
+      }
+    />
+  );
+}
+
+/** A WAI-ARIA tab row; arrow keys move between tabs. */
+function TabRow<T extends string>({
+  label,
+  values,
+  current,
+  text,
+  onChoose,
+}: {
+  label: string;
+  values: T[];
+  current: T;
+  text: (value: T) => string;
+  onChoose: (value: T) => void;
+}) {
+  const refs = useRef<Partial<Record<T, HTMLButtonElement | null>>>({});
+  const move = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
+    const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
+    if (!step) return;
+    event.preventDefault();
+    const next = values[(index + step + values.length) % values.length] as T;
+    onChoose(next);
+    refs.current[next]?.focus();
+  };
+  return (
+    <div role="tablist" aria-label={label} className="flex gap-1 border-b border-line px-3 pt-2">
+      {values.map((value, index) => (
+        <button
+          key={value}
+          ref={(el) => {
+            refs.current[value] = el;
+          }}
+          type="button"
+          role="tab"
+          aria-selected={current === value}
+          tabIndex={current === value ? 0 : -1}
+          onClick={() => onChoose(value)}
+          onKeyDown={(event) => move(event, index)}
+          className={`rounded-t px-3 py-1 text-xs ${
+            current === value ? 'border border-b-0 border-line bg-raised font-medium' : 'text-muted'
+          }`}
+        >
+          {text(value)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** What is true now: project, session, team revision, working copy, run state, runtime mode. */
+function WorkbenchHeader({
+  session,
+  projectLabel,
+  team,
+  active,
+}: {
+  session: WorkSession;
+  projectLabel: string;
+  team: CorralSummary | null;
+  active: RunSummary | null;
+}) {
+  const tw = useTranslations('Workbench');
+  const tp = useTranslations('Projects');
+  const { workspaces, mode, live } = useServices();
+  const [copy, setCopy] = useState<string | null>(null);
+  useEffect(() => {
+    if (!workspaces) return;
+    void workspaces.worktree(session.sessionId).then(
+      (w) => setCopy(w ? w.baseCommit.slice(0, 8) : null),
+      () => setCopy(null),
+    );
+  }, [workspaces, session.sessionId]);
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-line px-4 py-2 text-xs">
+      <p className="text-sm">
+        <Link
+          to="/projects/$projectId"
+          params={{ projectId: session.projectId }}
+          className="text-muted underline-offset-4 hover:underline"
+        >
+          {projectLabel || tp('defaultName')}
+        </Link>
+        <span className="text-muted"> / </span>
+        <span className="font-semibold">{session.title}</span>
+      </p>
+      <span>
+        {team
+          ? tw('headerTeam', { name: team.name, revision: team.definitionRevision })
+          : tw('noTeamHeader')}
+      </span>
+      {workspaces ? <span>{copy ? tw('copyFrom', { commit: copy }) : tw('copyNone')}</span> : null}
+      <span aria-live="polite">
+        {active ? (
+          <StatusBadge status={active.status} />
+        ) : (
+          <span className="text-muted">{tw('idle')}</span>
+        )}
+      </span>
+      <span className="ml-auto rounded-full border border-warning px-2 py-0.5 text-warning">
+        {tw(`mode.${mode}`)} · {live ? tw('live') : tw('simulated')}
+      </span>
+    </div>
+  );
+}
+
+/** The Work tab: what was asked, the runs it started, decisions waiting, and the input box. */
+function WorkTab({
+  session,
+  corrals,
+  team,
+  runs,
+  active,
+  onChange,
+}: {
+  session: WorkSession;
+  corrals: CorralSummary[];
+  team: CorralSummary | null;
+  runs: RunSummary[];
+  active: RunSummary | null;
+  onChange: () => void;
+}) {
+  const t = useTranslations('Sessions');
   // Entries in order; runs that no entry names (started elsewhere) are shown after them.
   const named = new Set(session.entries.flatMap((e) => (e.runId ? [e.runId] : [])));
   const loose = runs.filter((r) => !named.has(r.runId));
   const queued = session.entries.filter((e) => e.state === 'queued');
-
   return (
-    <main className="mx-auto flex h-full max-w-4xl flex-col gap-3 overflow-auto p-6">
-      <Link
-        to="/projects/$projectId"
-        params={{ projectId: session.projectId }}
-        className="text-xs underline"
-      >
-        {t('backTo', { name: projectName(project ?? undefined, tp('defaultName')) })}
-      </Link>
+    <div className="mx-auto flex w-full max-w-4xl flex-col gap-3 p-4">
       <SessionHeader session={session} corrals={corrals} team={team} />
-      <WorkingCopyPanel sessionId={session.sessionId} projectId={session.projectId} />
       <section aria-label={t('heading')} className="flex flex-col gap-3">
         {session.entries.length === 0 && loose.length === 0 ? (
           <p className="rounded-md border border-dashed border-line p-4 text-sm text-muted">
@@ -96,9 +306,199 @@ export function SessionPage() {
         runs={runs}
         active={active}
         queued={queued}
-        onChange={refresh}
+        onChange={onChange}
       />
-    </main>
+    </div>
+  );
+}
+
+/** Run detail inside the workbench: the chosen run (newest by default) with its own views. */
+function RunTab({
+  runs,
+  search,
+  setSearch,
+}: {
+  runs: RunSummary[];
+  search: SessionSearch;
+  setSearch: (patch: Partial<SessionSearch>) => void;
+}) {
+  const tw = useTranslations('Workbench');
+  const runId =
+    search.run && runs.some((r) => r.runId === search.run) ? search.run : runs.at(-1)?.runId;
+  if (!runId) return <p className="p-4 text-sm text-muted">{tw('noRuns')}</p>;
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <label className="flex items-center gap-2 border-b border-line px-4 py-1 text-xs">
+        {tw('chooseRun')}
+        <select
+          value={runId}
+          onChange={(e) =>
+            setSearch({
+              run: e.target.value,
+              execution: undefined,
+              artifact: undefined,
+              view: undefined,
+              result: undefined,
+            })
+          }
+          className="rounded border border-line bg-surface px-1 py-0.5"
+        >
+          {[...runs].reverse().map((r) => (
+            <option key={r.runId} value={r.runId}>
+              {r.runId} · {r.status}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="min-h-0 flex-1">
+        <RunDetail
+          key={runId}
+          runId={runId}
+          embedded
+          search={{
+            execution: search.execution,
+            artifact: search.artifact,
+            view: search.view,
+            result: search.result,
+          }}
+          setSearch={(patch) => setSearch({ run: runId, ...patch })}
+        />
+      </div>
+    </div>
+  );
+}
+
+/** Changes: the working copy and its files for the whole session; the review screen for more. */
+function ChangesPanel({ session, runs }: { session: WorkSession; runs: RunSummary[] }) {
+  const tw = useTranslations('Workbench');
+  const tf = useTranslations('Files');
+  const { workspaces } = useServices();
+  const [files, setFiles] = useState<FileChangeView[] | null>(null);
+  // Refresh when a run of the session starts or ends.
+  const key = runs.map((r) => `${r.runId}:${r.status}`).join(',');
+  useEffect(() => {
+    void key;
+    if (!workspaces) return;
+    let live = true;
+    workspaces.changes(session.sessionId, { kind: 'session' }).then(
+      (c) => live && setFiles(c.files),
+      () => live && setFiles(null),
+    );
+    return () => {
+      live = false;
+    };
+  }, [workspaces, session.sessionId, key]);
+  if (!workspaces) return <p className="text-xs text-muted">{tw('serverOnly')}</p>;
+  return (
+    <>
+      <WorkingCopyPanel sessionId={session.sessionId} projectId={session.projectId} />
+      {files === null ? (
+        <p className="text-xs text-muted">{tw('noCopyChanges')}</p>
+      ) : (
+        <div className="flex flex-col gap-1">
+          <p className="text-xs font-medium">{tw('changeCount', { count: files.length })}</p>
+          <ul className="flex flex-col gap-0.5 text-xs">
+            {files.slice(0, 50).map((f) => (
+              <li key={f.path}>
+                <Link
+                  to="/sessions/$sessionId/review"
+                  params={{ sessionId: session.sessionId }}
+                  search={{ file: f.path }}
+                  className="break-all font-mono underline-offset-2 hover:underline"
+                >
+                  {f.path}
+                </Link>{' '}
+                <span className="text-muted">
+                  {tf(`status.${f.status}`)}
+                  {f.additions !== null ? ` +${f.additions} −${f.deletions ?? 0}` : ''}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <Link
+            to="/sessions/$sessionId/review"
+            params={{ sessionId: session.sessionId }}
+            className="self-start rounded-md bg-accent px-3 py-1 text-xs font-medium text-on-accent"
+          >
+            {tw('expandReview')}
+          </Link>
+        </div>
+      )}
+    </>
+  );
+}
+
+/** Results: final results of the session's ended runs, newest first, opened in Run detail. */
+function ArtifactsPanel({
+  runs,
+  onOpen,
+}: {
+  runs: RunSummary[];
+  onOpen: (runId: string, artifactVersionId: string) => void;
+}) {
+  const tw = useTranslations('Workbench');
+  const { transport } = useServices();
+  const [items, setItems] = useState<{ runId: string; id: string; label: string }[]>([]);
+  // Ended runs, newest first, as one key: the lookup reruns only when they change.
+  const key = [...runs]
+    .reverse()
+    .filter((r) => TERMINAL_RUN_STATUSES.has(r.status))
+    .slice(0, 10)
+    .map((r) => r.runId)
+    .join(',');
+  useEffect(() => {
+    let live = true;
+    void (async () => {
+      const found: { runId: string; id: string; label: string }[] = [];
+      for (const runId of key ? key.split(',') : []) {
+        const { projection } = await transport.getSnapshot(runId);
+        for (const id of projection.output?.artifactVersionIds ?? []) {
+          const a = projection.artifacts[id];
+          if (a) found.push({ runId, id, label: `${a.name} v${a.version}` });
+        }
+      }
+      if (live) setItems(found);
+    })().catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [transport, key]);
+  if (items.length === 0) return <p className="text-xs text-muted">{tw('artifactsEmpty')}</p>;
+  return (
+    <ul className="flex flex-col gap-1 text-sm">
+      {items.map((item) => (
+        <li key={`${item.runId}:${item.id}`}>
+          <button
+            type="button"
+            onClick={() => onOpen(item.runId, item.id)}
+            className="flex w-full flex-col rounded border border-line px-2 py-1 text-left"
+          >
+            <span className="font-medium">{item.label}</span>
+            <span className="font-mono text-xs text-muted">{item.runId}</span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Checks: the agreed commands and their results, as on the review screen. */
+function ChecksPanel({ session }: { session: WorkSession }) {
+  const tw = useTranslations('Workbench');
+  const { workspaces } = useServices();
+  const { binding } = useBinding(session.projectId);
+  if (!workspaces) return <p className="text-xs text-muted">{tw('serverOnly')}</p>;
+  return (
+    <>
+      <Checks sessionId={session.sessionId} binding={binding ?? null} changed={0} />
+      <Link
+        to="/sessions/$sessionId/review"
+        params={{ sessionId: session.sessionId }}
+        className="text-xs underline"
+      >
+        {tw('expandReview')}
+      </Link>
+    </>
   );
 }
 

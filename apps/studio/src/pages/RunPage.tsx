@@ -33,10 +33,44 @@ import { runRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
 import { markRunReviewed } from './GettingStarted.tsx';
 
+/** What a run's detail keeps in the address: the view, chosen execution, version and result. */
+export interface RunDetailSearch {
+  execution?: string | undefined;
+  artifact?: string | undefined;
+  view?: 'results' | 'run' | undefined;
+  result?: string | undefined;
+}
+
 /** /runs/$runId?execution=…&artifact=… — one run: graph, call tree, details and Reins (C-066). */
 export function RunPage() {
-  const t = useTranslations('RunPage');
   const { runId } = runRoute.useParams();
+  const search = runRoute.useSearch();
+  const navigate = useNavigate({ from: '/runs/$runId' });
+  return (
+    <RunDetail
+      runId={runId}
+      search={search}
+      setSearch={(patch) => void navigate({ search: (s) => ({ ...s, ...patch }) })}
+    />
+  );
+}
+
+/**
+ * A run's detail, on its own page or inside a session's workbench (02-UX-Spec §3 실행 상세).
+ * The caller keeps the search state; `embedded` drops the page landmarks.
+ */
+export function RunDetail({
+  runId,
+  search,
+  setSearch,
+  embedded = false,
+}: {
+  runId: string;
+  search: RunDetailSearch;
+  setSearch: (patch: RunDetailSearch) => void;
+  embedded?: boolean;
+}) {
+  const t = useTranslations('RunPage');
   const { session, transport, repository } = useServices();
   const activeRunId = useStore(session, (s) => s.runId);
   const missing = useStore(session, (s) => s.missingRunId === runId);
@@ -102,7 +136,15 @@ export function RunPage() {
   }
   const opened = openedEnded?.runId === runId ? openedEnded.ended : null;
   return (
-    <RunWorkspace key={runId} session={session} definition={definition} openedEnded={opened} />
+    <RunWorkspace
+      key={runId}
+      session={session}
+      definition={definition}
+      openedEnded={opened}
+      search={search}
+      setSearch={setSearch}
+      embedded={embedded}
+    />
   );
 }
 
@@ -110,15 +152,22 @@ function RunWorkspace({
   session,
   definition,
   openedEnded,
+  search,
+  setSearch,
+  embedded,
 }: {
   session: RunSessionStore;
   definition: CorralDefinition;
   /** Whether the run had ended when the page opened; null until known. */
   openedEnded: boolean | null;
+  search: RunDetailSearch;
+  setSearch: (patch: RunDetailSearch) => void;
+  embedded: boolean;
 }) {
   const t = useTranslations('RunPage');
-  const { execution, artifact, view: chosenView, result } = runRoute.useSearch();
-  const navigate = useNavigate({ from: '/runs/$runId' });
+  const { execution, artifact, view: chosenView, result } = search;
+  const navigate = useNavigate();
+  const Main = embedded ? 'div' : 'main';
   const { previewUrl } = useServices();
   const projection = useStore(session, (s) => s.projection);
   // CR-009: a run that had ended when the page opened shows its results first. A chosen
@@ -126,8 +175,7 @@ function RunWorkspace({
   const view: RunPageView | null =
     chosenView ??
     (execution || artifact ? 'run' : openedEnded === null ? null : openedEnded ? 'results' : 'run');
-  const chooseView = (next: RunPageView) =>
-    void navigate({ search: (s) => ({ ...s, view: next }) });
+  const chooseView = (next: RunPageView) => setSearch({ view: next });
   const startFrom = projection?.corralId
     ? (from: { runId: string; artifactVersionId: string }) =>
         void navigate({
@@ -150,11 +198,11 @@ function RunWorkspace({
   const chooseExecution = (id: string) => {
     setSelectedNodeId(null);
     setPanel('side');
-    void navigate({ search: (s) => ({ ...s, execution: id }) });
+    setSearch({ execution: id });
   };
   const openArtifact = (id: string) => {
     setPanel('side');
-    void navigate({ search: (s) => ({ ...s, artifact: id }) });
+    setSearch({ artifact: id });
   };
   const unknownExecution =
     execution && projection && !projection.executions[execution] ? execution : null;
@@ -173,17 +221,15 @@ function RunWorkspace({
     return (
       <div className="flex h-full min-h-0 flex-col">
         <RunSummary session={session} definition={definition} view={view} onView={chooseView} />
-        <main className="min-h-0 flex-1">
+        <Main className="min-h-0 flex-1">
           <RunResults
             session={session}
             selectedId={result ?? null}
-            onSelect={(id) =>
-              void navigate({ search: (s) => ({ ...s, view: 'results', result: id }) })
-            }
+            onSelect={(id) => setSearch({ view: 'results', result: id })}
             {...(previewUrl ? { previewUrl } : {})}
             {...(startFrom ? { onStartFrom: startFrom } : {})}
           />
-        </main>
+        </Main>
       </div>
     );
   }
@@ -192,7 +238,7 @@ function RunWorkspace({
     <div className="flex h-full min-h-0 flex-col">
       <RunSummary session={session} definition={definition} view={view} onView={chooseView} />
       <NarrowViews panel={panel} onChoose={setPanel} />
-      <main className="run-layout min-h-0 flex-1">
+      <Main className="run-layout min-h-0 flex-1">
         <aside
           aria-labelledby="run-executions-heading"
           className={`flex min-h-0 flex-col gap-2 overflow-auto border-r border-line p-3 [grid-area:tree] max-[1279px]:border-t ${shown('tree')}`}
@@ -245,7 +291,7 @@ function RunWorkspace({
               versionId={artifact}
               onOpen={openArtifact}
               {...(startFrom ? { onStartFrom: startFrom } : {})}
-              onClose={() => void navigate({ search: (s) => ({ ...s, artifact: undefined }) })}
+              onClose={() => setSearch({ artifact: undefined })}
             />
           ) : null}
           {target ? (
@@ -268,12 +314,10 @@ function RunWorkspace({
           <RunDetails
             session={session}
             openArtifact={openArtifact}
-            openResult={(id) =>
-              void navigate({ search: (s) => ({ ...s, view: 'results', result: id }) })
-            }
+            openResult={(id) => setSearch({ view: 'results', result: id })}
           />
         </div>
-      </main>
+      </Main>
     </div>
   );
 }

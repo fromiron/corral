@@ -1254,5 +1254,60 @@
       "unreviewed": "{detail} file writes since your last review"
     },
     "open": "Open"
+  },
+  "Workbench": {
+    "sidebar": "Projects and sessions",
+    "collapseSidebar": "Hide the sidebar",
+    "expandSidebar": "Show the sidebar",
+    "collapsePanel": "Hide the panel",
+    "expandPanel": "Show the panel",
+    "resizeSidebar": "Sidebar width",
+    "resizePanel": "Panel width",
+    "searchSessions": "Search sessions",
+    "sessions": "Sessions",
+    "newSession": "New session",
+    "needsYou": "Needs you ({count})",
+    "teamLibrary": "Team library",
+    "allProjects": "All projects",
+    "models": "Models",
+    "noSessions": "No sessions yet.",
+    "areas": "Workbench area",
+    "areaSidebar": "Sessions",
+    "areaMain": "Work",
+    "areaPanel": "Panel",
+    "tabs": "Session view",
+    "tab": {
+      "work": "Work",
+      "team": "Team design",
+      "run": "Run detail"
+    },
+    "panelTabs": "Side panel",
+    "panel": {
+      "changes": "Changes",
+      "artifacts": "Results",
+      "checks": "Checks"
+    },
+    "headerTeam": "Team: {name} r{revision}",
+    "noTeamHeader": "No team",
+    "copyNone": "No working copy",
+    "copyFrom": "Copy from {commit}",
+    "idle": "No run working",
+    "mode": {
+      "server": "Local server",
+      "browser": "Demo"
+    },
+    "live": "live models available",
+    "simulated": "simulated agents",
+    "noTeam": "Choose a team for this session on the Work tab.",
+    "teamNote": "Edits the saved team. The session's next run uses the saved revision; runs already started keep theirs.",
+    "chooseRun": "Run",
+    "noRuns": "No runs in this session yet.",
+    "artifactsEmpty": "No results yet.",
+    "openResults": "Open results",
+    "expandReview": "Open the review screen",
+    "changeCount": "{count, plural, =0 {No changes} one {# changed file} other {# changed files}}",
+    "noCopyChanges": "Make a working copy to see file changes here.",
+    "checksOnReview": "Run checks from the review screen.",
+    "serverOnly": "File work, changes and checks need the local server."
   }
 }
