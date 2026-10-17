@@ -26,6 +26,22 @@ export const LspQuery = z.discriminatedUnion('operation', [
     operation: z.enum(['definition', 'references']),
     position: LspPosition,
   }),
+  z.strictObject({
+    ...QueryHead,
+    operation: z.literal('rename'),
+    position: LspPosition,
+    newName: z
+      .string()
+      .min(1)
+      .max(200)
+      .refine((value) => !/[\r\n\0]/.test(value)),
+  }),
+  z.strictObject({
+    ...QueryHead,
+    operation: z.literal('code_actions'),
+    range: LspRange,
+    only: z.array(z.string().min(1).max(100)).max(20).optional(),
+  }),
 ]);
 export type LspQuery = z.infer<typeof LspQuery>;
 export interface LspExecution {
@@ -50,12 +66,41 @@ export const LspDiagnostic = z.strictObject({
 });
 export const LspReport = z.strictObject({
   serverId: Identifier,
-  operation: z.enum(['diagnostics', 'definition', 'references']),
+  operation: z.enum(['diagnostics', 'definition', 'references', 'rename', 'code_actions']),
   configRevision: z.int().min(1),
   fingerprint: ContentHash,
   tree: z.string().regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/),
   source: z.strictObject({ path: ResourcePath, sha256: ContentHash, version: z.literal(1) }),
   result: z.discriminatedUnion('kind', [
+    z.strictObject({
+      kind: z.literal('proposals'),
+      proposals: z
+        .array(
+          z.strictObject({
+            proposalId: Identifier,
+            hash: ContentHash,
+            title: z.string().max(400),
+            files: z
+              .array(
+                z.strictObject({
+                  path: ResourcePath,
+                  beforeHash: ContentHash,
+                  afterHash: ContentHash,
+                }),
+              )
+              .max(32),
+          }),
+        )
+        .max(32),
+      unavailable: z
+        .array(
+          z.strictObject({
+            title: z.string().max(400),
+            reason: z.enum(['command', 'disabled', 'no_edit']),
+          }),
+        )
+        .max(32),
+    }),
     z.strictObject({ kind: z.literal('locations'), locations: z.array(LspLocation).max(256) }),
     z.strictObject({
       kind: z.literal('diagnostics'),
@@ -66,3 +111,57 @@ export const LspReport = z.strictObject({
   truncated: z.boolean(),
 });
 export type LspReport = z.infer<typeof LspReport>;
+
+export const LspProposalFile = z.strictObject({
+  path: ResourcePath,
+  beforeHash: ContentHash,
+  afterHash: ContentHash,
+  before: z.string().max(1024 * 1024),
+  after: z.string().max(1024 * 1024),
+});
+export const LspProposalContent = z.strictObject({
+  proposalId: Identifier,
+  sessionId: Identifier,
+  runId: Identifier,
+  executionId: Identifier,
+  attemptNo: z.int().min(1),
+  effectId: Identifier,
+  serverId: Identifier,
+  configRevision: z.int().min(1),
+  fingerprint: ContentHash,
+  tree: LspReport.shape.tree,
+  worktreeHash: ContentHash,
+  source: LspReport.shape.source,
+  title: z.string().max(400),
+  files: z.array(LspProposalFile).min(1).max(32),
+  createdAt: z.iso.datetime(),
+});
+export type LspProposalContent = z.infer<typeof LspProposalContent>;
+export const LspProposalState = z.enum([
+  'pending',
+  'applying',
+  'applied',
+  'partial',
+  'failed',
+  'stale',
+  'dismissed',
+]);
+const Application = {
+  hash: ContentHash,
+  state: LspProposalState,
+  outcomes: z
+    .array(
+      z.strictObject({
+        path: ResourcePath,
+        state: z.enum(['pending', 'applied', 'failed', 'uncertain']),
+      }),
+    )
+    .max(32),
+};
+export const LspProposal = LspProposalContent.extend(Application);
+export type LspProposal = z.infer<typeof LspProposal>;
+export const LspProposalSummary = LspProposalContent.extend({
+  ...Application,
+  files: z.array(LspProposalFile.omit({ before: true, after: true })).max(32),
+});
+export type LspProposalSummary = z.infer<typeof LspProposalSummary>;

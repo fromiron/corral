@@ -9,6 +9,8 @@ import {
   type HarnessProfileRevision,
   type HarnessResource,
   type HarnessResourceView,
+  type LspProposal,
+  type LspProposalSummary,
   type ProjectToolConfig,
   type ProjectToolConfigRevision,
   type Receipt,
@@ -1141,6 +1143,28 @@ export class WorkspacesApi {
   ): Promise<{ path: string; before: FileSideView; after: FileSideView }> {
     const query = new URLSearchParams({ from, to, path }).toString();
     return this.send(`/sessions/${encodeURIComponent(sessionId)}/changes/file?${query}`);
+  }
+  lspProposals(sessionId: string): Promise<LspProposalSummary[]> {
+    return this.send(`/sessions/${encodeURIComponent(sessionId)}/lsp-proposals`);
+  }
+  lspProposal(sessionId: string, id: string): Promise<LspProposal> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/lsp-proposals/${encodeURIComponent(id)}`,
+    );
+  }
+  applyLspProposal(sessionId: string, id: string, hash: string): Promise<LspProposal> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/lsp-proposals/${encodeURIComponent(id)}/apply`,
+      'POST',
+      { hash },
+    );
+  }
+  dismissLspProposal(sessionId: string, id: string, hash: string): Promise<LspProposal> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/lsp-proposals/${encodeURIComponent(id)}/dismiss`,
+      'POST',
+      { hash },
+    );
   }
   markReviewed(sessionId: string): Promise<null> {
     return this.send(`/sessions/${encodeURIComponent(sessionId)}/reviewed`, 'POST');

@@ -381,6 +381,23 @@ DROP TABLE project_tool_trust;
 ALTER TABLE project_tool_trust_next RENAME TO project_tool_trust;
 `,
   },
+  {
+    name: '0011_lsp_proposals',
+    sql: `
+CREATE TABLE lsp_proposals (
+ id TEXT PRIMARY KEY,
+ session_id TEXT NOT NULL,
+ content_json TEXT NOT NULL,
+ summary_json TEXT NOT NULL,
+ content_hash TEXT NOT NULL,
+ state TEXT NOT NULL CHECK(state IN ('pending','applying','applied','partial','failed','stale','dismissed')),
+ outcomes_json TEXT NOT NULL,
+ created_at TEXT NOT NULL,
+ updated_at TEXT NOT NULL
+) STRICT;
+CREATE INDEX lsp_proposals_by_session ON lsp_proposals(session_id,created_at);
+`,
+  },
 ];
 
 /** History queries must neither recover active runs nor migrate the workspace. */

@@ -8,6 +8,7 @@ import {
   CanvasLayout,
   type Clock,
   type CommandError,
+  ContentHash,
   CorralDefinitionDraft,
   CreateRunRequest,
   type DecisionProvider,
@@ -1063,6 +1064,48 @@ async function createCorralServer(
   app.get<SessionParams>('/api/v1/sessions/:sessionId/file-operations', async (request) =>
     files.fileOperations(request.params.sessionId),
   );
+
+  app.get<SessionParams>('/api/v1/sessions/:sessionId/lsp-proposals', async (request, reply) => {
+    if (!(await sessionOr404(reply, request.params.sessionId))) return reply;
+    try {
+      return files.lspProposals(request.params.sessionId);
+    } catch (error) {
+      return workspaceFail(reply, error);
+    }
+  });
+  type ProposalParams = { Params: { sessionId: string; proposalId: string } };
+  app.get<ProposalParams>(
+    '/api/v1/sessions/:sessionId/lsp-proposals/:proposalId',
+    async (request, reply) => {
+      if (!(await sessionOr404(reply, request.params.sessionId))) return reply;
+      try {
+        return files.lspProposal(
+          request.params.sessionId,
+          Identifier.parse(request.params.proposalId),
+        );
+      } catch (error) {
+        return workspaceFail(reply, error);
+      }
+    },
+  );
+  for (const action of ['apply', 'dismiss'] as const)
+    app.post<ProposalParams>(
+      `/api/v1/sessions/:sessionId/lsp-proposals/:proposalId/${action}`,
+      async (request, reply) => {
+        if (!(await sessionOr404(reply, request.params.sessionId))) return reply;
+        const body = z.strictObject({ hash: ContentHash }).safeParse(request.body);
+        if (!body.success)
+          return fail(reply, 'SCHEMA_INVALID', 'the reviewed proposal hash is required');
+        try {
+          const id = Identifier.parse(request.params.proposalId);
+          return action === 'apply'
+            ? await files.applyLspProposal(request.params.sessionId, id, body.data.hash)
+            : files.dismissLspProposal(request.params.sessionId, id, body.data.hash);
+        } catch (error) {
+          return workspaceFail(reply, error);
+        }
+      },
+    );
 
   // ── Review comments, decisions, applying and reverting (CR-013) ──────────────
   const Tree = z.string().regex(/^[0-9a-f]{40,64}$/);

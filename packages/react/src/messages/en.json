@@ -1897,5 +1897,37 @@
       "review_invalid": "Review does not match the candidate or criteria",
       "invalid_submission": "Candidate submission is invalid or duplicated"
     }
+  },
+  "LspProposals": {
+    "heading": "Language server proposals",
+    "hint": "Proposed changes are kept separately until you apply them.",
+    "empty": "No language server changes have been proposed.",
+    "refresh": "Refresh proposals",
+    "review": "Review {title}",
+    "files": "{count, plural, one {# file} other {# files}}",
+    "loadFailed": "The proposal could not be loaded. Refresh and try again.",
+    "applyHint": "Review the proposed bytes for every file. Apply these changes to the session working copy after its runs finish. Original files are unchanged. If an external change or write fails midway, the completed files remain and the rest stop.",
+    "loading": "Loading proposal…",
+    "source": "{server} · config r{revision}",
+    "file": "Proposed file",
+    "applying": "Applying…",
+    "apply": "Apply {count, plural, one {# file change} other {# file changes}}",
+    "dismiss": "Dismiss proposal",
+    "partialHint": "Some files may have changed. Check each file outcome and the session diff. This proposal cannot be applied again; request a new proposal for the current files.",
+    "states": {
+      "pending": "Pending review",
+      "applying": "Applying",
+      "applied": "Applied",
+      "partial": "Partially applied or uncertain",
+      "failed": "Apply failed",
+      "stale": "Files changed — request a new proposal",
+      "dismissed": "Dismissed"
+    },
+    "outcomes": {
+      "pending": "Not applied",
+      "applied": "Applied",
+      "failed": "Failed",
+      "uncertain": "Unconfirmed"
+    }
   }
 }

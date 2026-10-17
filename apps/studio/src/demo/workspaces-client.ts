@@ -19,7 +19,14 @@ export function createDemoWorkspaces(
     if (!session) throw new Error('no such session');
     return session.projectId;
   };
+  const noLsp = async (): Promise<never> => {
+    throw new Error('Language server changes require the local backend.');
+  };
   return {
+    lspProposals: async () => [],
+    lspProposal: noLsp,
+    applyLspProposal: noLsp,
+    dismissLspProposal: noLsp,
     listFiles: (scope, path) => as(call('listFiles', scope, path)),
     searchFiles: (scope, query, limit) => as(call('searchFiles', scope, query, limit)),
     readFile: (scope, path) => as(call('readFile', scope, path)),

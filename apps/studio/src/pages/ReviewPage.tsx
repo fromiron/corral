@@ -22,6 +22,7 @@ import { reviewRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
 import { latestResult, startFollowUp, steer, steerTargets } from '../sessionActions.ts';
 import { useBinding } from './FilesViews.tsx';
+import { LspProposals } from './LspProposals.tsx';
 import { WorkbenchLayout } from './Workbench.tsx';
 
 // Reviewing a session's file changes (CR-012; WBT-15): a fixed comparison range, the files it
@@ -47,7 +48,7 @@ export function ReviewPage() {
   const { session } = reviewRoute.useLoaderData();
   const search = reviewRoute.useSearch();
   const navigate = useNavigate({ from: '/sessions/$sessionId/review' });
-  const { workspaces, transport } = useServices();
+  const { workspaces, transport, mode } = useServices();
   const scope = scopeFromSearch(search);
   const scopeKey = scope.kind === 'run' ? `run:${scope.runId}` : scope.kind;
   const [changes, setChanges] = useState<ChangeSetView | null>(null);
@@ -279,6 +280,29 @@ export function ReviewPage() {
               )}
             </section>
             <aside className="flex min-h-0 flex-col gap-3 overflow-auto border-line p-3 md:border-l">
+              {workspaces && mode === 'server' ? (
+                <LspProposals
+                  key={session.sessionId}
+                  api={workspaces}
+                  sessionId={session.sessionId}
+                  version={version}
+                  onApplied={() => setVersion((current) => current + 1)}
+                  renderFile={(proposal, file) => (
+                    <FileDiff
+                      path={file.path}
+                      loadKey={`${proposal.hash}:${file.path}`}
+                      load={async () => ({
+                        before: { kind: 'text', text: file.before },
+                        after: { kind: 'text', text: file.after },
+                      })}
+                      reviewedKey={`proposal:${proposal.hash}:${file.path}`}
+                      reviewed={reviewed}
+                      comments={[]}
+                    />
+                  )}
+                />
+              ) : null}
+
               <CommentsPanel
                 session={session}
                 runs={runs}

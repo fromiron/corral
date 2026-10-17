@@ -27,6 +27,9 @@ import {
   type EditTextRequest,
   type EditTextResult,
   type LspExecution,
+  LspProposal,
+  LspProposalContent,
+  LspProposalSummary,
   LspQuery,
   LspReport,
   PiEditInput,
@@ -42,9 +45,11 @@ import {
 import { type FileTools, rankFuzzy, type ToolCancellation, ToolRefusal } from '@corral/core';
 import { type Db, SqliteProjectToolStore } from '@corral/storage-sqlite';
 import { systemTimers } from '../runtime.ts';
+import { redactToolText } from './check-output.ts';
 import { GitError, git, gitText } from './git.ts';
 import { launchFingerprint } from './launch-fingerprint.ts';
 import { LspRunner } from './lsp.ts';
+import { stageLspEdit } from './lsp-edits.ts';
 import { lspResults, validateLspPosition } from './lsp-results.ts';
 import { VerificationRunner } from './verification.ts';
 
@@ -280,6 +285,7 @@ export class WorkspaceService implements FileTools {
   readonly projectTools: SqliteProjectToolStore;
   private readonly verificationRunner: VerificationRunner;
   private readonly newVerificationId: () => string;
+  private readonly newLspProposalId: () => string;
   private readonly checks = new Map<
     string,
     { sessionId: string; cancel: () => void; completion: Promise<VerificationReport> }
@@ -305,6 +311,7 @@ export class WorkspaceService implements FileTools {
     forbidden: string[];
     timers?: Scheduler;
     newVerificationId?: () => string;
+    newLspProposalId?: () => string;
     io?: Partial<MutationIo>;
     lsp?: Pick<LspRunner, 'query'>;
     edit?: (request: EditTextRequest, cancellation: ToolCancellation) => Promise<EditTextResult>;
@@ -322,6 +329,8 @@ export class WorkspaceService implements FileTools {
     });
     this.newVerificationId =
       options.newVerificationId ?? (() => `verify_${randomUUID().replaceAll('-', '')}`);
+    this.newLspProposalId =
+      options.newLspProposalId ?? (() => `lsp_${randomUUID().replaceAll('-', '')}`);
     this.edit = options.edit ?? ((request, cancellation) => editText(request, { cancellation }));
     this.worktreeRoot = resolve(options.worktreeRoot);
     this.forbidden = [...options.forbidden, this.worktreeRoot].map((p) => resolve(p));
@@ -333,6 +342,27 @@ export class WorkspaceService implements FileTools {
          WHERE state = 'planned'`,
       )
       .run(this.clock.nowIso());
+    const interrupted = this.db
+      .prepare("SELECT id,session_id FROM lsp_proposals WHERE state='applying'")
+      .all() as { id: string; session_id: string }[];
+    for (const row of interrupted) {
+      const proposal = this.lspProposal(row.session_id, row.id);
+      const outcomes = proposal.files.map((file) => {
+        const operation = this.db
+          .prepare('SELECT state FROM file_operations WHERE tool_call_id=? AND path=?')
+          .get(row.id, file.path) as { state: string } | undefined;
+        const state =
+          operation?.state === 'applied'
+            ? ('applied' as const)
+            : operation?.state === 'failed'
+              ? ('failed' as const)
+              : operation
+                ? ('uncertain' as const)
+                : ('pending' as const);
+        return { path: file.path, state };
+      });
+      this.settleLspProposal(proposal, 'partial', outcomes);
+    }
     this.db
       .prepare(
         `UPDATE verifications SET state = 'error', ended_at = ?,
@@ -1252,7 +1282,11 @@ export class WorkspaceService implements FileTools {
       const bytes = await textBytes(row.worktree_path, safeRelative(query.path));
       const text = decodeText(bytes, true);
       if (text === null) throw new ToolRefusal('CAPABILITY_DENIED', 'LSP requires UTF-8 text');
-      if (query.operation !== 'diagnostics') validateLspPosition(query.position, text);
+      if ('position' in query) validateLspPosition(query.position, text);
+      if ('range' in query) {
+        validateLspPosition(query.range.start, text);
+        validateLspPosition(query.range.end, text);
+      }
       const tree = await this.snapshotTree(row.worktree_path),
         launch = await launchFingerprint(row.worktree_path, config.revision, server);
       return CheckPlan.parse({
@@ -1331,32 +1365,104 @@ export class WorkspaceService implements FileTools {
           version: 1,
         },
         operation: query.operation,
-        ...(query.operation !== 'diagnostics' ? { position: query.position } : {}),
+        ...('position' in query ? { position: query.position } : {}),
+        ...(query.operation === 'rename' ? { newName: query.newName } : {}),
+        ...(query.operation === 'code_actions'
+          ? { range: query.range, ...(query.only ? { only: query.only } : {}) }
+          : {}),
       },
       cancellation,
     );
     const source = { path: query.path, sha256: sha256(bytes), text };
-    const result = await lspResults(
-      raw,
-      source,
-      async (uri) => {
-        let path: string;
-        try {
-          path = safeRelative(relative(row.worktree_path, fileURLToPath(uri)).split(sep).join('/'));
-        } catch {
-          throw new ToolRefusal(
-            'CAPABILITY_DENIED',
-            'language server returned a location outside the working copy scope',
+    const readUri = async (uri: string) => {
+      let path: string;
+      try {
+        path = safeRelative(relative(row.worktree_path, fileURLToPath(uri)).split(sep).join('/'));
+      } catch {
+        throw new ToolRefusal(
+          'CAPABILITY_DENIED',
+          'language server returned a location outside the working copy scope',
+        );
+      }
+      const bytes = await textBytes(row.worktree_path, path),
+        text = decodeText(bytes, true);
+      if (text === null) throw new ToolRefusal('CAPABILITY_DENIED', 'LSP result is not UTF-8 text');
+      return { path, text, sha256: sha256(bytes) };
+    };
+    let result: LspReport['result'];
+    if (raw.kind === 'edits') {
+      if (raw.truncated)
+        throw new ToolRefusal('LIMIT_REACHED', 'incomplete LSP changes cannot be proposed');
+      result = await this.lease(row.worktree_path, async () => {
+        const proposals: LspProposalContent[] = [];
+        let proposalBytes = 0;
+        const unavailable: Extract<LspReport['result'], { kind: 'proposals' }>['unavailable'] = [];
+        for (const action of raw.actions) {
+          const title = redactToolText(action.title, [row.worktree_path]).slice(0, 400);
+          if (action.unsupported) {
+            unavailable.push({ title, reason: action.unsupported });
+            continue;
+          }
+          const files = await stageLspEdit(
+            action.edit,
+            { uri: pathToFileURL(join(row.worktree_path, query.path)).href, version: 1 },
+            readUri,
+          );
+          if (!files.length) continue;
+          proposalBytes += files.reduce(
+            (sum, file) => sum + Buffer.byteLength(file.before) + Buffer.byteLength(file.after),
+            0,
+          );
+          if (proposalBytes > 8 * 1024 * 1024)
+            throw new ToolRefusal('LIMIT_REACHED', 'LSP proposal batch exceeds text limits');
+          proposals.push(
+            LspProposalContent.parse({
+              proposalId: this.newLspProposalId(),
+              sessionId,
+              runId: input.runId,
+              executionId: input.executionId,
+              attemptNo: input.attemptNo,
+              effectId: input.effectId,
+              serverId: server.id,
+              configRevision: config.revision,
+              fingerprint: plan.fingerprint,
+              tree: plan.tree,
+              worktreeHash: this.worktreeHash(row),
+              source: { path: query.path, sha256: source.sha256, version: 1 },
+              title,
+              files,
+              createdAt: this.clock.nowIso(),
+            }),
           );
         }
-        const bytes = await textBytes(row.worktree_path, path),
-          text = decodeText(bytes, true);
-        if (text === null)
-          throw new ToolRefusal('CAPABILITY_DENIED', 'LSP result is not UTF-8 text');
-        return { path, text, sha256: sha256(bytes) };
-      },
-      row.worktree_path,
-    );
+        if (cancellation.aborted)
+          throw new ToolRefusal('TARGET_TERMINAL', 'language server query cancelled');
+        if ((await this.snapshotTree(row.worktree_path)) !== plan.tree)
+          throw new ToolRefusal(
+            'REVISION_CONFLICT',
+            'language server result is stale because the working copy changed',
+          );
+        if (cancellation.aborted)
+          throw new ToolRefusal('TARGET_TERMINAL', 'language server query cancelled');
+        this.db.transaction(() => {
+          for (const proposal of proposals) this.saveLspProposal(proposal);
+        })();
+        return {
+          kind: 'proposals' as const,
+          proposals: proposals.map((proposal) => ({
+            proposalId: proposal.proposalId,
+            title: proposal.title,
+            hash: sha256(Buffer.from(canonicalJson(proposal))),
+            files: proposal.files.map(({ path, beforeHash, afterHash }) => ({
+              path,
+              beforeHash,
+              afterHash,
+            })),
+          })),
+          unavailable,
+        };
+      });
+    } else result = await lspResults(raw, source, readUri, row.worktree_path);
     if (cancellation.aborted)
       throw new ToolRefusal('TARGET_TERMINAL', 'language server query cancelled');
     if ((await this.currentTree(sessionId)) !== plan.tree)
@@ -1374,6 +1480,204 @@ export class WorkspaceService implements FileTools {
       result,
       durationMs: raw.durationMs,
       truncated: raw.truncated,
+    });
+  }
+
+  private worktreeHash(row: WorktreeRow) {
+    return sha256(
+      Buffer.from(
+        canonicalJson({
+          bindingId: row.binding_id,
+          path: row.worktree_path,
+          createdAt: row.created_at,
+          baseCommit: row.base_commit,
+        }),
+      ),
+    );
+  }
+
+  private saveLspProposal(content: LspProposalContent) {
+    const hash = sha256(Buffer.from(canonicalJson(content)));
+    const summary = {
+      ...content,
+      hash,
+      files: content.files.map(({ path, beforeHash, afterHash }) => ({
+        path,
+        beforeHash,
+        afterHash,
+      })),
+    };
+    const outcomes = content.files.map((file) => ({ path: file.path, state: 'pending' }));
+    this.db
+      .prepare(`INSERT INTO lsp_proposals (id,session_id,content_json,summary_json,content_hash,state,outcomes_json,created_at,updated_at)
+      VALUES (?,?,?,?,?,'pending',?,?,?)`)
+      .run(
+        content.proposalId,
+        content.sessionId,
+        JSON.stringify(content),
+        JSON.stringify(summary),
+        hash,
+        JSON.stringify(outcomes),
+        content.createdAt,
+        content.createdAt,
+      );
+  }
+
+  lspProposals(sessionId: string): LspProposalSummary[] {
+    const rows = this.db
+      .prepare(
+        'SELECT summary_json,state,outcomes_json FROM lsp_proposals WHERE session_id=? ORDER BY created_at DESC LIMIT 100',
+      )
+      .all(sessionId) as { summary_json: string; state: string; outcomes_json: string }[];
+    return rows.map((row) =>
+      LspProposalSummary.parse({
+        ...JSON.parse(row.summary_json),
+        state: row.state,
+        outcomes: JSON.parse(row.outcomes_json),
+      }),
+    );
+  }
+
+  lspProposal(sessionId: string, id: string): LspProposal {
+    const row = this.db
+      .prepare(
+        'SELECT content_json,content_hash,state,outcomes_json FROM lsp_proposals WHERE session_id=? AND id=?',
+      )
+      .get(sessionId, id) as
+      | { content_json: string; content_hash: string; state: string; outcomes_json: string }
+      | undefined;
+    if (!row) throw new WorkspaceError('TARGET_NOT_FOUND', 'no such LSP proposal');
+    const content = LspProposalContent.parse(JSON.parse(row.content_json));
+    if (
+      content.sessionId !== sessionId ||
+      content.proposalId !== id ||
+      sha256(Buffer.from(canonicalJson(content))) !== row.content_hash
+    )
+      throw new WorkspaceError('REVISION_CONFLICT', 'LSP proposal content hash changed');
+    return LspProposal.parse({
+      ...content,
+      hash: row.content_hash,
+      state: row.state,
+      outcomes: JSON.parse(row.outcomes_json),
+    });
+  }
+
+  private settleLspProposal(
+    proposal: LspProposal,
+    state: LspProposal['state'],
+    outcomes = proposal.outcomes,
+  ) {
+    this.db
+      .prepare('UPDATE lsp_proposals SET state=?,outcomes_json=?,updated_at=? WHERE id=?')
+      .run(state, JSON.stringify(outcomes), this.clock.nowIso(), proposal.proposalId);
+    return this.lspProposal(proposal.sessionId, proposal.proposalId);
+  }
+
+  dismissLspProposal(sessionId: string, id: string, hash: string) {
+    const proposal = this.lspProposal(sessionId, id);
+    if (proposal.hash !== hash)
+      throw new WorkspaceError('REVISION_CONFLICT', 'LSP proposal content hash changed');
+    if (proposal.state !== 'pending') return proposal;
+    return this.settleLspProposal(proposal, 'dismissed');
+  }
+
+  async applyLspProposal(sessionId: string, id: string, hash: string): Promise<LspProposal> {
+    const found = this.lspProposal(sessionId, id);
+    if (found.hash !== hash)
+      throw new WorkspaceError('REVISION_CONFLICT', 'LSP proposal content hash changed');
+    const row = this.worktree(sessionId);
+    if (!row) throw new WorkspaceError('TARGET_NOT_FOUND', 'the working copy is unavailable');
+    return this.lease(row.worktree_path, async () => {
+      const proposal = this.lspProposal(sessionId, id);
+      if (proposal.state !== 'pending') return proposal;
+      const active = () =>
+        !!this.db
+          .prepare(
+            "SELECT 1 FROM runs WHERE session_id=? AND status NOT IN ('succeeded','failed','cancelled','interrupted') LIMIT 1",
+          )
+          .get(sessionId);
+      if (active())
+        throw new WorkspaceError(
+          'REVISION_CONFLICT',
+          'finish or cancel the session Run before applying this proposal',
+        );
+      const trusted = () =>
+        !!this.db
+          .prepare('SELECT 1 FROM workspace_bindings WHERE id=? AND trusted=1')
+          .get(row.binding_id);
+      if (!trusted())
+        throw new WorkspaceError(
+          'CAPABILITY_DENIED',
+          'trust the repository before applying this proposal',
+        );
+      if (this.worktreeHash(row) !== proposal.worktreeHash)
+        return this.settleLspProposal(proposal, 'stale');
+      try {
+        if ((await this.snapshotTree(row.worktree_path)) !== proposal.tree)
+          return this.settleLspProposal(proposal, 'stale');
+        for (const file of proposal.files) {
+          if (
+            sha256(Buffer.from(file.before)) !== file.beforeHash ||
+            sha256(Buffer.from(file.after)) !== file.afterHash
+          )
+            throw new Error('proposal hash changed');
+          await expectFile(row.worktree_path, safeRelative(file.path), file.beforeHash);
+        }
+      } catch {
+        return this.settleLspProposal(proposal, 'stale');
+      }
+      if (active())
+        throw new WorkspaceError(
+          'REVISION_CONFLICT',
+          'a Run started while the proposal was being checked',
+        );
+      const cancellation: ToolCancellation = {
+        get aborted() {
+          return active() || !trusted();
+        },
+        onCancel: () => () => {},
+      };
+      const outcomes = proposal.outcomes.map((item) => ({ ...item }));
+      this.settleLspProposal(proposal, 'applying', outcomes);
+      for (const [index, file] of proposal.files.entries()) {
+        try {
+          await this.change(
+            row.worktree_path,
+            sessionId,
+            {
+              name: 'write_file',
+              args: { path: file.path, text: file.after },
+              runId: proposal.runId,
+              executionId: proposal.executionId,
+              toolCallId: proposal.proposalId,
+            },
+            new Map([[file.path, file.beforeHash]]),
+            cancellation,
+            file.beforeHash,
+          );
+          outcomes[index] = { path: file.path, state: 'applied' };
+          this.settleLspProposal(proposal, 'applying', outcomes);
+        } catch {
+          const operation = this.db
+            .prepare('SELECT state FROM file_operations WHERE tool_call_id=? AND path=?')
+            .get(id, file.path) as { state: string } | undefined;
+          const state =
+            operation?.state === 'applied'
+              ? 'applied'
+              : operation?.state === 'planned' || operation?.state === 'uncertain'
+                ? 'uncertain'
+                : 'failed';
+          outcomes[index] = { path: file.path, state };
+          return this.settleLspProposal(
+            proposal,
+            outcomes.some((file) => file.state === 'applied' || file.state === 'uncertain')
+              ? 'partial'
+              : 'failed',
+            outcomes,
+          );
+        }
+      }
+      return this.settleLspProposal(proposal, 'applied', outcomes);
     });
   }
 
