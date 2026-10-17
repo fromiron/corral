@@ -19,6 +19,7 @@ MCP는 등록 서버 선택과 정확한 허용 도구 이름을 함께 사용�
 ## 로컬 자동 검증
 
 - `pnpm test --maxWorkers=4`: **960 passed / 5 opt-in skipped** (`8652600`).
+- 이후 `4a0bf13`의 hosted CI에서는 네 번의 독립 Pi worker 시작을 한 테스트로 묶은 오류 계약 검사가 5초 runner 제한을 넘었다. 같은 입력·assertion을 `it.each`로 분리해 각 사례를 독립 검사한다. 기본 5초 제한과 제품의 편집 제한 시간은 유지했다. 분리한 편집 계약 **7 tests** 및 adapter typecheck 통과. 이 테스트 분리로 전체 표시 개수는 4개 늘어난다.
 - 원본 Ponytail 패키지 역할 격리: `CORRAL_HARNESS_NETWORK=1 ... harness-package.test.ts` **1 passed**. 모델 호출은 로컬 고정 응답이다.
 - 브라우저 전체 175개를 Chromium·Firefox·실제 서버에서 실행했다. 초기 검사 문구 실패는 `Completed` 실행 상태와 `Pass` 판정을 각각 확인하도록 고쳐 관련 3개 흐름이 통과했다. 이후 개발 서버 재로딩 간섭은 production 빌드에서 검증했고, 서로 다른 Playwright 실행의 같은 출력 폴더 충돌로 생긴 3개 종료 오류도 별도 출력 폴더로 실행해 모두 통과했다. 테스트 assertion이나 retry 설정을 완화하지 않았다.
 - production 사용자 흐름은 **169 passed + 종료 기록 충돌 3개 재검증 passed / 1 skipped**. 개발 모듈 직접 import 테스트와 지시 초안 경계는 별도 **4 passed**. 기존 release gate와 같이 개발 모듈 테스트 2개는 production 대상에서 제외한다. 최종 backend 변경 뒤 하네스 설정·필수 스킬·확장 입력·검사·LSP·MCP OAuth·override·recipe E2E **8 passed**.
