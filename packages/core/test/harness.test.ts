@@ -10,7 +10,7 @@ import { FakeClock, Gate, linearCorral, SequentialIdFactory } from '@corral/test
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js';
 import { describe, expect, it, vi } from 'vitest';
-import { Coordinator, exportRunArchive, InMemoryRunStore, openRunArchive } from '../src/index.ts';
+import { Coordinator, exportRunArchive, type FileTools, InMemoryRunStore, openRunArchive } from '../src/index.ts';
 
 const hash = (value: unknown) => bytesToHex(sha256(utf8ToBytes(canonicalJson(value))));
 const descriptor: ToolDescriptor = {
@@ -41,7 +41,7 @@ const record: ModelRequestRecord = {
   contextBytes: 250,
   sections: [],
 };
-function setup(resolve = true, selected = snapshot) {
+function setup(resolve = true, selected = snapshot, options: { files?: FileTools; fileTools?: boolean } = {}) {
   const started = new Gate();
   const done = new Gate();
   const store = new InMemoryRunStore();
@@ -53,6 +53,7 @@ function setup(resolve = true, selected = snapshot) {
     timers: clock,
     ids: new SequentialIdFactory(),
     store,
+    ...(options.files ? { files: options.files } : {}),
     ...(resolve
       ? {
           harnesses: {
@@ -78,6 +79,7 @@ function setup(resolve = true, selected = snapshot) {
   });
   const definition = linearCorral(['writer']);
   definition.roles[0]!.harness = snapshot.binding;
+  if (options.fileTools) definition.roles[0]!.allowedWorkTools = ['read_file', 'write_file'];
   const result = coordinator.startRun({
     schemaVersion: '0.1',
     commandId: 'start',
@@ -109,6 +111,22 @@ async function loaded() {
 }
 
 describe('Coordinator harness boundary (H2)', () => {
+  it('[TC-HAR-010-H] [TC-HAR-010-N] Pi edit/write aliases retain role file permissions and cannot modify skill resources', async () => {
+    const execute = vi.fn(async () => ({ path: 'a.txt', sha256: 'a'.repeat(64) }));
+    const selected: EffectiveHarnessSnapshot = { ...snapshot, policy: 'strict', resources: [], allowedTools: ['edit','write'] };
+    const s = setup(true, selected, { files: { available: () => true, execute }, fileTools: true });
+    await s.started.wait();
+    await s.host().reportHarness!({ ok: true, snapshotHash: selected.snapshotHash, tools: ['edit','write'].map(name => ({ ...descriptor, source: 'corral', name, sideEffect: 'workspace' })), diagnostics: [] });
+    expect(await s.host().invokeTool({ name: 'edit', args: { path: 'a.txt', edits: [{ oldText: 'one', newText: 'two' }] } })).toMatchObject({ ok: true });
+    expect(execute).toHaveBeenCalledWith(expect.objectContaining({ name: 'edit', executionId: s.input().executionId }), expect.anything());
+    expect(await s.host().authorizeTool({ name: 'write', args: { path: 'skills/writing/SKILL.md', content: 'overwrite' } })).toMatchObject({ ok: false });
+    expect(await s.host().authorizeTool({ name: 'edit', args: { path: 'a.txt', edits: [] } })).toMatchObject({ ok: false });
+    const denied = setup(true, selected, { files: { available: () => true, execute } });
+    await denied.started.wait();
+    await denied.host().reportHarness!({ ok: true, snapshotHash: selected.snapshotHash, tools: [{ ...descriptor, source: 'corral', name: 'write', sideEffect: 'workspace' }], diagnostics: [] });
+    expect(await denied.host().authorizeTool({ name: 'write', args: { path: 'a.txt', content: 'overwrite' } })).toMatchObject({ ok: false });
+    s.done.open(); denied.done.open();
+  });
   it('[TC-HAR-007-N] ending an execution closes its outstanding dialog before another attempt can answer', async () => {
     const s = await loaded();
     const answer = s.host().requestExtensionUi!({
