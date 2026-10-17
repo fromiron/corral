@@ -314,6 +314,16 @@ describe('arranging the canvas (roadmap 18)', () => {
 });
 
 describe('file tools switch (CR-012)', () => {
+  it('[TC-HAR-004-H] pins and removes a role harness without retaining a null field', () => {
+    const added = addNode(emptyDraft(), 'agent', { x: 0, y: 0 });
+    const binding = { profileId: 'writer', revision: 2 };
+    const on = updateNode(added.draft, added.nodeId, { harness: binding });
+    expect(on.definition.roles[0]?.harness).toEqual(binding);
+    expect(added.draft.definition.roles[0]).not.toHaveProperty('harness');
+    const off = updateNode(on, added.nodeId, { harness: null });
+    expect(off.definition.roles[0]).not.toHaveProperty('harness');
+    expect(off.definition.roles).toEqual(added.draft.definition.roles);
+  });
   it('gives a role every file tool, and takes them all away again', () => {
     const added = addNode(emptyDraft(), 'agent', { x: 0, y: 0 });
     const roleOf = (draft: EditorDraft) => draft.definition.roles[0]?.allowedWorkTools;
