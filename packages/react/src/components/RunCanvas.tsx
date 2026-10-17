@@ -91,7 +91,7 @@ export function RunCanvas({
             <Controls showInteractive={false} />
             <FitOnResize frame={frame} />
           </ReactFlow>
-          <p className="pointer-events-none absolute right-2 top-2 rounded bg-raised/90 px-2 py-0.5 text-[11px] text-muted">
+          <p className="pointer-events-none absolute right-2 top-2 rounded bg-raised/90 px-2 py-0.5 text-2xs text-muted">
             {t(`layout.${layout.source}`)} · {t('layoutNote')}
           </p>
         </div>

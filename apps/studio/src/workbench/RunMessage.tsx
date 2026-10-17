@@ -229,7 +229,7 @@ function ChatResult({
     <details
       open={open === true}
       onToggle={(event) => setOpen(event.currentTarget.open)}
-      className="min-w-0 space-y-3 text-[14px] leading-7 wrap-anywhere"
+      className="min-w-0 space-y-3 text-sm leading-7 wrap-anywhere"
       data-testid="chat-result"
     >
       <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 text-xs text-muted hover:text-text">

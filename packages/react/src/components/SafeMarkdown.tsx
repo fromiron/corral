@@ -32,7 +32,7 @@ export function SafeMarkdown({
   }
   return (
     <div
-      className={`corral-markdown flex min-w-0 max-w-full flex-col wrap-anywhere ${reader ? 'gap-3 text-[15px] leading-7' : 'gap-2 text-sm leading-relaxed'}`}
+      className={`corral-markdown flex min-w-0 max-w-full flex-col wrap-anywhere ${reader ? 'gap-3 text-reader leading-7' : 'gap-2 text-sm leading-relaxed'}`}
     >
       <Markdown
         skipHtml
@@ -88,15 +88,13 @@ export function SafeMarkdown({
           ul: ({ children }) => <ul className="list-disc pl-5">{children}</ul>,
           ol: ({ children }) => <ol className="list-decimal pl-5">{children}</ol>,
           code: ({ children }) => (
-            <code
-              className={`rounded bg-surface px-1 font-mono ${reader ? 'text-[13px]' : 'text-xs'}`}
-            >
+            <code className={`rounded bg-surface px-1 font-mono ${reader ? 'text-ui' : 'text-xs'}`}>
               {children}
             </code>
           ),
           pre: ({ children }) => (
             <pre
-              className={`max-w-full overflow-auto rounded border border-line bg-surface p-2 ${reader ? 'text-[13px]' : 'text-xs'}`}
+              className={`max-w-full overflow-auto rounded border border-line bg-surface p-2 ${reader ? 'text-ui' : 'text-xs'}`}
             >
               {children}
             </pre>

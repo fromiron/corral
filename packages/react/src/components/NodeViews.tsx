@@ -56,10 +56,7 @@ function RunOverlay({ nodeId }: { nodeId: string }) {
 
 function PortLabel({ children, style }: { children: string; style: CSSProperties }) {
   return (
-    <span
-      className="pointer-events-none absolute text-[10px] leading-none text-muted"
-      style={style}
-    >
+    <span className="pointer-events-none absolute text-2xs leading-none text-muted" style={style}>
       {children}
     </span>
   );
@@ -84,7 +81,7 @@ function Shell({
         selected ? 'border-accent ring-2 ring-accent/40' : 'border-line'
       }`}
     >
-      <div className="text-[10px] font-semibold uppercase tracking-wide text-muted">{kind}</div>
+      <div className="text-2xs font-semibold uppercase tracking-wide text-muted">{kind}</div>
       <div className="text-sm font-medium">{label}</div>
       {children}
       <RunOverlay nodeId={id} />
@@ -223,7 +220,7 @@ export function LoopNodeView({ id, selected, isConnectable }: NodeProps<Node<Can
           selected ? 'border-accent' : 'border-line'
         }`}
       >
-        <div className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+        <div className="text-2xs font-semibold uppercase tracking-wide text-muted">
           {t('Palette.loop')}
         </div>
         <div className="text-sm font-medium">{node.label}</div>

@@ -68,6 +68,12 @@
   --input: var(--line);
   --ring: var(--accent);
   --destructive: var(--danger);
+  /* Neutral hover/highlight. The brand accent is kept for primary actions, focus and selection. */
+  --subtle: color-mix(in srgb, var(--text) 7%, transparent);
+  --contrast-muted-foreground: var(--muted);
+  --thread-details-panel-width: 24rem;
+  --app-scrollbar-thumb: color-mix(in srgb, var(--text) 18%, transparent);
+  --app-scrollbar-thumb-hover: color-mix(in srgb, var(--text) 30%, transparent);
 }
 
 @custom-variant dark (&:where(.dark, .dark *));
@@ -101,7 +107,25 @@
   --color-destructive: var(--destructive);
   --color-sidebar: var(--sidebar);
   --color-sidebar-selected: var(--sidebar-selected);
+  --color-subtle: var(--subtle);
+  --color-destructive-foreground: var(--danger);
+  --color-success-foreground: var(--success);
+  --color-warning-foreground: var(--warning);
+  --color-warning-surface: color-mix(in srgb, var(--warning) 10%, transparent);
+  /* Type scale (Workbench polish P0): 2xs 11 · xs 12 · ui 13 · sm 14 · reader 15 · base 16. */
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
+  --text-ui: 0.8125rem;
+  --text-ui--line-height: 1.25rem;
+  --text-reader: 0.9375rem;
+  --text-reader--line-height: 1.75rem;
+  --shadow-popup: 0 8px 32px rgb(0 0 0 / 12%), 0 2px 6px rgb(0 0 0 / 8%);
   --shadow-composer: 0 4px 24px rgb(0 0 0 / 5%), 0 1px 3px rgb(0 0 0 / 4%);
+}
+
+@utility surface-glass {
+  background: color-mix(in srgb, var(--raised) 82%, transparent);
+  backdrop-filter: blur(12px);
 }
 
 html,

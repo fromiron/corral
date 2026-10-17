@@ -813,7 +813,7 @@ function EntryCard({ entry, runs }: { entry: SessionEntry; runs: RunSummary[] })
   return (
     <article data-testid={`entry-${entry.entryId}`} className="chat-turn flex flex-col gap-5">
       <div className="user-message">
-        <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-2xs text-muted">
           <span>{t('youAsked', { intent: t(`intent.${entry.intent}`) })}</span>
           <span>
             {t(`state.${entry.state}`)} ·{' '}
@@ -1391,7 +1391,7 @@ function Composer({
             onKeyDown={onKeyDown}
           />
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-[10px] text-muted">{t('sendHint')}</span>
+            <span className="text-2xs text-muted">{t('sendHint')}</span>
             <div className="flex items-center gap-2">
               {mode === 'server' && live && (intent === 'next' || intent === 'explain') ? (
                 <label className="flex items-center gap-1 text-xs">
