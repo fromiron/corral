@@ -1638,7 +1638,9 @@ export class WorkspaceService implements FileTools {
           'CAPABILITY_DENIED',
           'trust the repository before applying this proposal',
         );
-      if (this.worktreeHash(row) !== proposal.worktreeHash) return settlePending('stale');
+      const currentCopy = this.worktree(sessionId);
+      if (!currentCopy || this.worktreeHash(currentCopy) !== proposal.worktreeHash)
+        return settlePending('stale');
       try {
         if ((await this.snapshotTree(row.worktree_path)) !== proposal.tree)
           return settlePending('stale');

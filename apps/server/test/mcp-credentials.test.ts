@@ -2,6 +2,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:f
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { RegisteredMcpServer } from '@corral/contracts';
+import { Gate } from '@corral/testkit';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { McpCredentials } from '../src/harness/mcp-credentials.ts';
 import { oauthFixture } from './fixtures/mcp-oauth.ts';
@@ -189,16 +190,16 @@ describe('TC-HAR-016 MCP credentials', () => {
   it('an older logout waiting for callback cleanup cannot delete a newer credential', async () => {
     const ctx = await setup();
     await ctx.credentials.startOAuth('p', ctx.server, current);
-    const entered = Promise.withResolvers<void>(),
-      release = Promise.withResolvers<void>();
+    const entered = new Gate(),
+      release = new Gate();
     const cancel = ctx.credentials.cancelOAuth.bind(ctx.credentials);
     const spy = vi.spyOn(ctx.credentials, 'cancelOAuth').mockImplementationOnce(async (id) => {
       await cancel(id);
-      entered.resolve();
-      await release.promise;
+      entered.open();
+      await release.wait();
     });
     const deleting = ctx.credentials.delete('p', ctx.server);
-    await entered.promise;
+    await entered.wait();
     const bearer = {
       ...ctx.server,
       auth: { kind: 'bearer' as const, credentialRef: 'docs-login' },
@@ -206,12 +207,12 @@ describe('TC-HAR-016 MCP credentials', () => {
     try {
       await ctx.credentials.saveBearer('p', bearer, 'new-fixture-token', current);
       expect(ctx.credentials.status('p', bearer).state).toBe('ready');
-      release.resolve();
+      release.open();
       await deleting;
       expect(ctx.credentials.status('p', bearer).state).toBe('ready');
       expect(await ctx.credentials.authorization('p', bearer, current)).toBe('new-fixture-token');
     } finally {
-      release.resolve();
+      release.open();
       await deleting;
       spy.mockRestore();
     }
@@ -221,29 +222,29 @@ describe('TC-HAR-016 MCP credentials', () => {
     async (action) => {
       const ctx = await setup();
       await ctx.credentials.startOAuth('p', ctx.server, current);
-      const entered = Promise.withResolvers<void>(),
-        release = Promise.withResolvers<void>();
+      const entered = new Gate(),
+        release = new Gate();
       const cancel = ctx.credentials.cancelOAuth.bind(ctx.credentials);
       const spy = vi.spyOn(ctx.credentials, 'cancelOAuth').mockImplementationOnce(async (id) => {
         await cancel(id);
-        entered.resolve();
-        await release.promise;
+        entered.open();
+        await release.wait();
       });
       const older = (
         action === 'logout'
           ? ctx.credentials.delete('p', ctx.server)
           : ctx.credentials.startOAuth('p', ctx.server, current)
       ).catch(() => 'superseded');
-      await entered.promise;
+      await entered.wait();
       try {
         const latest = await ctx.credentials.startOAuth('p', ctx.server, current);
-        release.resolve();
+        release.open();
         await older;
         expect(ctx.credentials.loginStatus(latest.loginId).state).toBe('pending');
         await fetch(latest.url);
         await expect.poll(() => ctx.credentials.loginStatus(latest.loginId).state).toBe('ready');
       } finally {
-        release.resolve();
+        release.open();
         await older;
         spy.mockRestore();
       }

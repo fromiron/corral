@@ -170,7 +170,7 @@ export class McpCredentials {
     // A new login supersedes pending callbacks and refresh writes for this reference.
     this.generations.set(key, (this.generations.get(key) ?? 0) + 1);
     const guard = this.guard(key, check);
-    for (const [id, login] of this.logins)
+    for (const [id, login] of [...this.logins])
       if (login.key === key && login.state === 'pending') await this.cancelOAuth(id);
     for (const [id, login] of this.logins) if (login.state !== 'pending') this.logins.delete(id);
     if (this.logins.size >= 16) throw new Error('Too many MCP sign-ins are pending.');
@@ -263,8 +263,8 @@ export class McpCredentials {
   async delete(projectId: string, server: HttpServer) {
     const { key } = this.identity(projectId, server);
     this.generations.set(key, (this.generations.get(key) ?? 0) + 1);
-    for (const [id, login] of this.logins) if (login.key === key) await this.cancelOAuth(id);
     rmSync(join(this.directory, `${key}.json`), { force: true });
+    for (const [id, login] of [...this.logins]) if (login.key === key) await this.cancelOAuth(id);
   }
 
   async authorization(
