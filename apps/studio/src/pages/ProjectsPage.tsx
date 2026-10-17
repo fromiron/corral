@@ -105,7 +105,7 @@ export function ProjectsPage() {
           <button
             type="button"
             onClick={async () => {
-              const first = await createDemoExamples(repository, {
+              const first = await createDemoExamples(repository, workspaces, {
                 projects: [t('exampleProject1'), t('exampleProject2')],
                 sessions: [
                   t('exampleSession1'),

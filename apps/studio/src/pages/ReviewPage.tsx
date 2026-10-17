@@ -556,7 +556,7 @@ export function Checks({
   changed: number;
 }) {
   const t = useTranslations('Files');
-  const { workspaces } = useServices();
+  const { workspaces, mode } = useServices();
   const [results, setResults] = useState<VerificationResultView[]>([]);
   const reload = useCallback(async () => {
     if (workspaces) setResults(await workspaces.verifications(sessionId).catch(() => []));
@@ -577,7 +577,11 @@ export function Checks({
       <h3 id="checks-heading" className="text-sm font-semibold">
         {t('checksHeading')}
       </h3>
-      {commands.length === 0 ? <p className="text-xs text-muted">{t('noChecks')}</p> : null}
+      {commands.length === 0 ? (
+        <p className="text-xs text-muted">
+          {mode === 'browser' ? t('checksServerOnly') : t('noChecks')}
+        </p>
+      ) : null}
       <div className="flex flex-wrap gap-1">
         {commands.map((command) => (
           <button

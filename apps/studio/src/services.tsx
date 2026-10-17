@@ -18,7 +18,8 @@ import {
 } from '@corral/core';
 import { createRunSession, type RunSessionStore } from '@corral/react';
 import { createContext, type ReactNode, useContext } from 'react';
-import { createDemoTransport } from './runtime.ts';
+import { createDemoWorkspaces, type WorkspacesClient } from './demo/workspaces-client.ts';
+import { createDemoRuntime } from './runtime.ts';
 
 // App-wide services. Studio served by the local server talks to it (saved Corrals, persistent
 // runs); opened any other way it runs the in-browser runtime with simulated agents (ADR-016).
@@ -40,8 +41,8 @@ export interface StudioServices {
   previewUrl?: (runId: string, artifactVersionId: string) => string;
   /** A question about a result, as its own run in a session (CR-011). */
   startExplain: (request: ExplainStart) => Promise<StartRunResult>;
-  /** Work folders and file changes (CR-012); the browser runtime has none. */
-  workspaces: WorkspacesApi | null;
+  /** Work folders and file changes (CR-012); the browser demo has an in-memory one. */
+  workspaces: WorkspacesClient | null;
 }
 
 export interface ExplainStart {
@@ -119,20 +120,22 @@ export async function createStudioServices(): Promise<StudioServices> {
     };
   }
   const { store, persistent } = browserStore(window.location.pathname === '/demo');
-  const transport = createDemoTransport();
+  const { transport, workspace } = createDemoRuntime();
+  const repository = createKeyValueCorralRepository(store, {
+    clock: systemClock,
+    newCorralId: () => `corral_${crypto.randomUUID().slice(0, 8)}`,
+  });
   return {
     mode: 'browser',
     persistent,
     sessionMissing: false,
     models: null,
     live: false,
-    repository: createKeyValueCorralRepository(store, {
-      clock: systemClock,
-      newCorralId: () => `corral_${crypto.randomUUID().slice(0, 8)}`,
-    }),
+    repository,
     transport,
     session: createRunSession(transport),
-    workspaces: null,
+    // An in-memory example folder in the demo worker (02-UX-Spec §10).
+    workspaces: createDemoWorkspaces(workspace, repository, transport),
     // The in-browser runtime runs inline definitions itself.
     startExplain: ({ question, modelProfile, sessionId, startFrom, ...rest }) =>
       transport.startRun({

@@ -1,12 +1,29 @@
 import './csp.ts';
-import { Coordinator, InProcessTransport, LocalHeuristicProvider } from '@corral/core';
+import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
+import {
+  Coordinator,
+  InMemoryRunStore,
+  InProcessTransport,
+  LocalHeuristicProvider,
+} from '@corral/core';
 import { ScriptedAgentAdapter, SequentialIdFactory } from '@corral/testkit';
 import { createDemoReply, DEMO_TURNS } from './demo/script.ts';
-import type { DemoMessage, DemoRequest, DemoResponse } from './demo-protocol.ts';
+import { DemoWorkspace } from './demo/workspace.ts';
+import {
+  DEMO_WORKSPACE_METHODS,
+  type DemoMessage,
+  type DemoRequest,
+  type DemoResponse,
+} from './demo-protocol.ts';
 
 let delayMs = 1500;
+const store = new InMemoryRunStore();
+// The demo's work folder and the file tools on it (02-UX-Spec §10, CR-012).
+const files = new DemoWorkspace(store);
 const transport = new InProcessTransport(
   new Coordinator({
+    store,
+    files,
     clock: { nowIso: () => new Date().toISOString(), monotonicMs: () => performance.now() },
     // A namespace per page load: demo runs vanish on reload, and a session saved in this
     // browser must not mistake a new run for an old one with the same number (CR-011).
@@ -35,10 +52,30 @@ const transport = new InProcessTransport(
 const subscriptions = new Map<number, () => void>();
 const send = (message: DemoResponse) => self.postMessage(message);
 
+/** A run in a session with a working copy gets start and end snapshots, as on the server. */
+async function startRun(...args: Parameters<typeof transport.startRun>) {
+  const sessionId = args[0].sessionId;
+  const startTree = files.runStarting(sessionId);
+  const result = await transport.startRun(...args);
+  if (result.runId && startTree && sessionId) {
+    const runId = result.runId;
+    files.runStarted(runId, sessionId, startTree);
+    const stop = transport.subscribe(runId, 0, {
+      onEvent: (event) => {
+        if (event.type === 'run.state_changed' && TERMINAL_RUN_STATUSES.has(event.payload.to)) {
+          files.runEnded(runId);
+          queueMicrotask(stop);
+        }
+      },
+    });
+  }
+  return result;
+}
+
 function request(message: DemoRequest): Promise<unknown> {
   switch (message.method) {
     case 'startRun':
-      return transport.startRun(...message.args);
+      return startRun(...message.args);
     case 'sendCommand':
       return transport.sendCommand(...message.args);
     case 'getReceipt':
@@ -77,6 +114,28 @@ self.addEventListener('message', (event: MessageEvent<DemoMessage>) => {
           }),
       }),
     );
+  } else if (message.type === 'workspace') {
+    // Only the listed methods; errors carry their message (no paths exist in the demo).
+    try {
+      if (!(DEMO_WORKSPACE_METHODS as readonly string[]).includes(message.method))
+        throw new Error('unknown demo workspace call');
+      const method = files[message.method] as (...args: unknown[]) => unknown;
+      void Promise.resolve(method.apply(files, message.args)).then(
+        (value) => send({ type: 'result', id: message.id, value }),
+        (error: unknown) =>
+          send({
+            type: 'error',
+            id: message.id,
+            message: error instanceof Error ? error.message : 'Demo request failed.',
+          }),
+      );
+    } catch (error) {
+      send({
+        type: 'error',
+        id: message.id,
+        message: error instanceof Error ? error.message : 'Demo request failed.',
+      });
+    }
   } else {
     void request(message).then(
       (value) => send({ type: 'result', id: message.id, value }),

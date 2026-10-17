@@ -25,7 +25,7 @@ import { setCurrentProject } from '../projects.ts';
 import { type SessionSearch, sessionRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
 import { TeamDesign } from './EditorPage.tsx';
-import { useBinding, WorkingCopyPanel } from './FilesViews.tsx';
+import { useBinding, WORKSPACE_CHANGED, WorkingCopyPanel } from './FilesViews.tsx';
 import { Checks } from './ReviewPage.tsx';
 import { RunDetail } from './RunPage.tsx';
 import { useRemembered, WorkbenchLayout, WorkbenchSidebar } from './Workbench.tsx';
@@ -274,10 +274,14 @@ function WorkbenchHeader({
   const [copy, setCopy] = useState<string | null>(null);
   useEffect(() => {
     if (!workspaces) return;
-    void workspaces.worktree(session.sessionId).then(
-      (w) => setCopy(w ? w.baseCommit.slice(0, 8) : null),
-      () => setCopy(null),
-    );
+    const load = () =>
+      void workspaces.worktree(session.sessionId).then(
+        (w) => setCopy(w ? w.baseCommit.slice(0, 8) : null),
+        () => setCopy(null),
+      );
+    load();
+    window.addEventListener(WORKSPACE_CHANGED, load);
+    return () => window.removeEventListener(WORKSPACE_CHANGED, load);
   }, [workspaces, session.sessionId]);
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-line px-4 py-2 text-xs">
