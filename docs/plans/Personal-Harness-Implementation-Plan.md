@@ -2,7 +2,7 @@
 
 - 작성: Claude / 2026-10-17. 기준 커밋은 `main` `8150c2e`(PR #53 병합)이다.
 - 원안: Bell의 [Corral Personal Harness 구현 계획](../proposals/personal-harness-2026-10-17.md)(2026-10-17).
-- 상태: **제안**이다. 착수하려면 Bell이 [§3](#3-먼저-바꿔야-하는-기존-결정)의 CR-018과 ADR-027을 승인해야 한다.
+- 상태: **구현 중** (2026-10-18). Bell의 H2–H8 구현 및 로컬 UI 검증 요청에 따라 CR-018·ADR-027을 채택한다. H1 스파이크 재확인: 21 passed / opt-in 2 skipped. H0 병합 커밋 f17338f의 PR gate 성공(run 39041857775)을 확인했다.
 - 진행 규칙은 [AGENTS.md](../../AGENTS.md)를 그대로 따른다.
   - CR이 먼저, red test가 먼저.
   - 외부 호출·시간·ID는 주입한다.

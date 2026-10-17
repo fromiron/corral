@@ -394,5 +394,65 @@
     "requirement": "엄격 역할에는 provider를 등록하는 확장, annotations 없는 확장 도구, 네이티브 확장을 붙일 수 없다.",
     "owner": "security",
     "phase": "P12"
+  },
+  {
+    "id": "CRL-HAR-009",
+    "requirement": "기존 정의·이벤트·hash를 유지하며 하네스 바인딩과 실행 snapshot을 선택적으로 추가한다. 잘못된 revision·중복 도구·엄격 정책 충돌은 시작 전에 거절한다.",
+    "owner": "runtime",
+    "phase": "P12"
+  },
+  {
+    "id": "CRL-HAR-010",
+    "requirement": "Pi read/edit/write 계약을 기존 broker에 제공하고 범위 밖 경로·심볼릭 링크·stale 편집을 거절한다.",
+    "owner": "storage",
+    "phase": "P12"
+  },
+  {
+    "id": "CRL-HAR-011",
+    "requirement": "파일 읽기 근거는 execution별로 분리되며 다른 실행의 읽기를 쓰기 근거로 사용할 수 없다.",
+    "owner": "storage",
+    "phase": "P12"
+  },
+  {
+    "id": "CRL-HAR-012",
+    "requirement": "등록 검증은 Run/execution/attempt 소유권, 별도 시작 tree, fingerprint, 주입 시계와 취소 가능한 프로세스 수명을 가진다.",
+    "owner": "runtime",
+    "phase": "P12"
+  },
+  {
+    "id": "CRL-HAR-013",
+    "requirement": "검증 실행 상태와 판정을 분리하며 오류·취소·stale 결과는 완료 근거가 되지 않는다.",
+    "owner": "runtime",
+    "phase": "P12"
+  },
+  {
+    "id": "CRL-HAR-014",
+    "requirement": "불변 recipe 기준과 첫 시도를 포함한 횟수·시간·토큰 상한 안에서만 검토·수정을 반복하며 무진전·부모 취소 시 멈춘다.",
+    "owner": "runtime",
+    "phase": "P12"
+  },
+  {
+    "id": "CRL-HAR-015",
+    "requirement": "항목별 입력을 격리하고 부모 예산·취소·위임 깊이를 보존하며 같은 작업 복사본의 병렬 변경을 거절한다.",
+    "owner": "runtime",
+    "phase": "P12"
+  },
+  {
+    "id": "CRL-HAR-016",
+    "requirement": "명시적으로 신뢰한 MCP 서버만 실행하며 모든 도구를 최종 인자로 승인하고 취소·오류 시 수명을 정리한다.",
+    "owner": "runtime",
+    "phase": "P12"
+  },
+  {
+    "id": "CRL-HAR-017",
+    "requirement": "codemode 중첩 호출도 도구 승인·부모 예산을 거치며 전 세션 worker 상한 2와 취소를 지킨다.",
+    "owner": "runtime",
+    "phase": "P12"
+  },
+  {
+    "id": "CRL-HAR-018",
+    "requirement": "LSP 조회와 변경 제안은 등록 서버·문서 버전에 묶고 모든 대상 경로·hash를 확인한 broker 적용만 허용한다.",
+    "owner": "storage",
+    "phase": "P12"
   }
 ]

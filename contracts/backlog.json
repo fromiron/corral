@@ -1475,5 +1475,146 @@
     "done": "S1·S2·S4 통과(Go 조건), S3·S5·S6·S7·S8 결과와 범위 축소를 보고서에 기록",
     "status": "implemented",
     "evidence": "docs/spikes/HAR-pi-sdk-spikes.md"
+  },
+  {
+    "id": "C-077",
+    "phase": "P12",
+    "title": "H2 SDK 런타임·프로토콜·요청/도구 승인",
+    "dependsOn": [
+      "C-076"
+    ],
+    "requirements": [
+      "CRL-HAR-001",
+      "CRL-HAR-002",
+      "CRL-HAR-003",
+      "CRL-HAR-006",
+      "CRL-HAR-009"
+    ],
+    "files": [
+      "packages/contracts/",
+      "packages/adapter-pi/",
+      "packages/core/"
+    ],
+    "done": "개인 하네스 구현 플랜 해당 H 단계 수용 기준과 반례 및 로컬 작동 확인 통과",
+    "status": "planned",
+    "evidence": "docs/plans/Personal-Harness-Implementation-Plan.md"
+  },
+  {
+    "id": "C-078",
+    "phase": "P12",
+    "title": "H3 리소스·역할 바인딩·미리보기·확장 UI",
+    "dependsOn": [
+      "C-077"
+    ],
+    "requirements": [
+      "CRL-HAR-004",
+      "CRL-HAR-005",
+      "CRL-HAR-007",
+      "CRL-HAR-008"
+    ],
+    "files": [
+      "apps/server/src/harness/",
+      "packages/storage-sqlite/",
+      "apps/studio/",
+      "packages/react/"
+    ],
+    "done": "개인 하네스 구현 플랜 해당 H 단계 수용 기준과 반례 및 로컬 작동 확인 통과",
+    "status": "planned",
+    "evidence": "docs/plans/Personal-Harness-Implementation-Plan.md"
+  },
+  {
+    "id": "C-079",
+    "phase": "P12",
+    "title": "H4 broker 코딩 도구·읽기 근거·LSP 조회",
+    "dependsOn": [
+      "C-078"
+    ],
+    "requirements": [
+      "CRL-HAR-010",
+      "CRL-HAR-011",
+      "CRL-HAR-018"
+    ],
+    "files": [
+      "apps/server/src/files/",
+      "packages/adapter-pi/"
+    ],
+    "done": "개인 하네스 구현 플랜 해당 H 단계 수용 기준과 반례 및 로컬 작동 확인 통과",
+    "status": "planned",
+    "evidence": "docs/plans/Personal-Harness-Implementation-Plan.md"
+  },
+  {
+    "id": "C-080",
+    "phase": "P12",
+    "title": "H5 자동 검증·fingerprint·취소·보고서",
+    "dependsOn": [
+      "C-079"
+    ],
+    "requirements": [
+      "CRL-HAR-012",
+      "CRL-HAR-013"
+    ],
+    "files": [
+      "apps/server/src/files/",
+      "packages/core/"
+    ],
+    "done": "개인 하네스 구현 플랜 해당 H 단계 수용 기준과 반례 및 로컬 작동 확인 통과",
+    "status": "planned",
+    "evidence": "docs/plans/Personal-Harness-Implementation-Plan.md"
+  },
+  {
+    "id": "C-081",
+    "phase": "P12",
+    "title": "H6 recipe 검토·제한된 개선·평가",
+    "dependsOn": [
+      "C-080"
+    ],
+    "requirements": [
+      "CRL-HAR-014"
+    ],
+    "files": [
+      "packages/core/",
+      "packages/cli/"
+    ],
+    "done": "개인 하네스 구현 플랜 해당 H 단계 수용 기준과 반례 및 로컬 작동 확인 통과",
+    "status": "planned",
+    "evidence": "docs/plans/Personal-Harness-Implementation-Plan.md"
+  },
+  {
+    "id": "C-082",
+    "phase": "P12",
+    "title": "H7 항목별 반복·부모 취소",
+    "dependsOn": [
+      "C-081"
+    ],
+    "requirements": [
+      "CRL-HAR-015"
+    ],
+    "files": [
+      "packages/core/"
+    ],
+    "done": "개인 하네스 구현 플랜 해당 H 단계 수용 기준과 반례 및 로컬 작동 확인 통과",
+    "status": "planned",
+    "evidence": "docs/plans/Personal-Harness-Implementation-Plan.md"
+  },
+  {
+    "id": "C-083",
+    "phase": "P12",
+    "title": "H8 MCP·codemode·LSP 변경 제안",
+    "dependsOn": [
+      "C-082"
+    ],
+    "requirements": [
+      "CRL-HAR-016",
+      "CRL-HAR-017",
+      "CRL-HAR-018"
+    ],
+    "files": [
+      "packages/adapter-pi/",
+      "apps/server/",
+      "apps/studio/"
+    ],
+    "done": "개인 하네스 구현 플랜 해당 H 단계 수용 기준과 반례 및 로컬 작동 확인 통과",
+    "status": "planned",
+    "evidence": "docs/plans/Personal-Harness-Implementation-Plan.md"
   }
 ]

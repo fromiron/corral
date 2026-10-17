@@ -36,6 +36,8 @@
 
 ## ADR-005: Pi agent-core를 worker로 감싼다
 
+**상태:** ADR-027이 역할별 SDK 실행에 한해 부분 대체(2026-10-18). 기본 pi-core 실행은 유지한다.
+
 **결정:** coding-agent 전체 대신 agent-core+pi-ai, 명시한 도구만 제공한다. worker는 host RPC로 신규 효과를 요청한다.
 
 **이유:** 원하는 역할은 코딩 전용이 아니며, 권한과 사용량을 host가 검증해야 한다.
@@ -219,7 +221,7 @@
 
 **이유:** 검사가 `coordinator.ts` 곳곳에 흩어져 있어 새 정책(추론 강도 판정, 이후 도구 권한)을 넣을 자리가 없고 단위 시험도 어렵다. 동기 gate는 기술 설계 §5.1의 "검사와 commit 사이에 비동기 작업 없음"을 지킨다.
 
-**결과·제약:** 기본 gate 집합은 리팩터 전 golden 이벤트 열과 바이트 단위로 같아야 하며 `tool.allowed.policyVersion`도 `role-allowlist@1`을 유지한다. 닫힌 질문에 대한 reply 검사는 지금처럼 안전 경계 대기 앞에 둔다. 사용자 정의 hook, 런타임 로딩, 공개 플러그인 API는 만들지 않는다(기술 설계 §15). Cordis식 동적 효과 스코프는 채택하지 않는다.
+**결과·제약:** 기본 gate 집합은 리팩터 전 golden 이벤트 열과 바이트 단위로 같아야 하며 `tool.allowed.policyVersion`도 `role-allowlist@1`을 유지한다. 닫힌 질문에 대한 reply 검사는 지금처럼 안전 경계 대기 앞에 둔다. Corral admission gate의 사용자 정의 hook, 런타임 로딩, 공개 플러그인 API는 만들지 않는다(기술 설계 §15). ADR-027의 Pi 확장 hook은 worker 안에서만 실행하며 이 gate를 교체하지 못한다. Cordis식 동적 효과 스코프는 채택하지 않는다.
 
 ## ADR-025: DecisionProvider는 관찰 전용 reasoning_effort로 시작하고 Run 시작 시 고정한다
 
@@ -243,7 +245,7 @@ Electron은 창·OS 대화상자·서버 수명을 소유한다. 서버와 Pi wo
 
 ## ADR-027: Pi coding-agent SDK를 역할별 실행 방식으로 추가한다
 
-**상태:** 제안 (2026-10-17, [CR-018](change-requests/CR-018-pi-standard-harness.md)). H1 스파이크 S1·S2·S4 통과와 Bell의 Go 승인 뒤 채택한다. 채택되면 ADR-005를 부분 대체한다.
+**상태:** 채택 (2026-10-18, [CR-018](change-requests/CR-018-pi-standard-harness.md)). H1 S1·S2·S4 통과와 Bell의 H2–H8 구현 계속 요청에 따른다. ADR-005를 역할별 SDK 실행에 한해 부분 대체한다.
 
 **결정:**
 

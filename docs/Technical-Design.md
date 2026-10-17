@@ -230,7 +230,7 @@ Task는 역할 소유와 실행 시도 소유를 구별한다. `assignedRoleId`�
 
 ### 7.1 채택 범위
 
-Pi의 **agent-core + pi-ai**를 사용한다. coding-agent의 셸·파일 도구·프로젝트 확장 자동 로더는 사용하지 않는다. 현재 확인한 agent-core 1.2.0은 request 준비, 도구 전후 훅, 이벤트, 취소 연결점을 제공한다. 정확한 호출 순서는 잠근 버전의 소스로 contract test한다. [S06]
+기본 실행은 Pi **agent-core + pi-ai 1.3.0**을 유지한다. 역할에 바인딩된 하네스는 **coding-agent SDK 1.3.0**을 worker 안에서 사용한다(ADR-027). 프로젝트 자동 탐색과 내장 셸·파일 도구는 끄고, 핀 고정 리소스와 Corral broker만 제공한다. SDK provider가 받은 최종 context를 기록하고 요청마다 host permit을 받는다. agent-core는 request 준비, 도구 전후 훅, 이벤트, 취소 연결점을 제공한다. 정확한 호출 순서는 잠근 버전의 소스로 contract test한다. [S06]
 
 parent 서버는 authoritative 상태를, child worker는 하나의 Pi 실행 컨텍스트와 provider 연결을 가진다. child process는 정리·장애 격리용이며 신뢰할 수 없는 플러그인을 안전하게 실행하는 sandbox는 아니다. worker에는 요청에 필요한 provider 자격 증명(API 키 또는 host가 갱신한 OAuth access token)과 런타임 설정만 전달하며, refresh token은 host 밖으로 보내지 않는다([CR-001](change-requests/CR-001-openai-oauth-first.md)). 실모델 연결은 최소 localhost 세션·Origin/Host 검사를 먼저 갖춘 상태에서만 활성화하며, P8까지 인증 없는 공개 live endpoint를 임시 운영하지 않는다.
 
