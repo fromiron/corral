@@ -600,25 +600,20 @@ export class WorkspaceService implements FileTools {
     const row = this.worktree(sessionId);
     if (!row) throw new WorkspaceError('TARGET_NOT_FOUND', 'this session has no working copy');
     const rel = safeRelative(path);
+    // One git process per side, both at once (02-UX-Spec §11: diff display p95 ≤ 500 ms).
     const side = async (tree: string): Promise<FileSide> => {
-      let sha: string;
+      let content: Buffer;
       try {
-        sha = await gitText(row.worktree_path, [
-          'rev-parse',
-          '--verify',
-          '--quiet',
-          `${tree}:${rel}`,
-        ]);
+        content = (await git(row.worktree_path, ['cat-file', 'blob', `${tree}:${rel}`])).stdout;
       } catch {
         return { kind: 'absent' };
       }
-      const bytes = Number(await gitText(row.worktree_path, ['cat-file', '-s', sha]));
-      if (bytes > MAX_TEXT) return { kind: 'too_large', bytes };
-      const content = (await git(row.worktree_path, ['cat-file', 'blob', sha])).stdout;
+      if (content.length > MAX_TEXT) return { kind: 'too_large', bytes: content.length };
       const text = decodeText(content);
-      return text === null ? { kind: 'binary', bytes } : { kind: 'text', text };
+      return text === null ? { kind: 'binary', bytes: content.length } : { kind: 'text', text };
     };
-    return { path: rel, before: await side(from), after: await side(to) };
+    const [before, after] = await Promise.all([side(from), side(to)]);
+    return { path: rel, before, after };
   }
 
   // ── the linked folder as Git sees it (02-UX-Spec §4 "Git 상태") ─────────────

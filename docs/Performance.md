@@ -55,3 +55,46 @@ Playwright의 global setup은 production fixture를 새로 build하고, 각 테�
 - React commit 회귀는 `packages/react/test/canvas-render-budget.test.tsx`가 별도로 검사한다. MutationObserver만으로 동일 DOM을 생성하는 모든 React render까지 측정했다고 주장하지 않는다.
 
 초기 로딩·모바일·다른 장비·무기한 실행·실제 모델 지연은 이 측정의 범위가 아니다. production JS의 500kB chunk 경고도 별도 한계로 남는다. 성능 gate 통과는 hosted 검증이나 유료 live smoke를 포함한 최종 출시 승인이 아니다.
+
+## Workbench 화면 측정 (02-UX-Spec §11, 2026-10-17)
+
+02-UX-Spec 구현을 마친 뒤 한 번 측정했다([UX-Spec-Conformance](plans/UX-Spec-Conformance.md)). 원본 결과는 [performance/workbench.json](performance/workbench.json)이다. 일반 E2E에는 넣지 않았고, 다시 측정하려면 `CORRAL_WORKBENCH_PERF=1`로 `e2e/server/workbench-measure.spec.ts`를 실행한다.
+
+### 측정 조건
+
+- 장비·실행 환경: AMD Ryzen 5 5600X(논리 CPU 12), Node v24.14.0, Chromium 156.0.8078.4(Playwright 1.64.1), 1280×800, 로컬 서버와 production Studio build(loopback).
+- 작업량:
+  - 프로젝트 30개, 한 프로젝트 사이드바에 세션 500개.
+  - 세션 작업 복사본에 바뀐 파일 301개: 새 파일 300개와, 4,000줄(약 200 KB) 중 10줄마다 바뀐 파일 1개.
+  - 측정마다 표본 20개를 잡았다. 모델 호출은 없다.
+
+### 결과
+
+| 측정 | 목표 | 결과 |
+|---|---|---|
+| 큰 파일을 고른 뒤 diff 첫 화면 표시 p95 | ≤ 500 ms | **361 ms**(최대 368) |
+| 세션 전환(사이드바, warm) p95 | ≤ 300 ms | **162 ms**(최대 184) |
+| 사이드바 너비를 키보드로 20번 바꿀 때 long task | 없음 | **0건** |
+| axe serious·critical(프로젝트·세션·검토·diff 열린 검토) | 0 | **0** |
+
+### 처음 실행에서 고친 것
+
+처음 실행(세션 2개)은 diff 표시 p95가 **827 ms**로 목표를 넘었다. 원인은 세 가지였다.
+
+- 4,000줄 파일이 LCS 한도를 넘어 "전체 교체" 8,000줄로 그려졌다.
+- 모든 줄을 DOM에 그렸다.
+- 파일 하나를 읽는 데 git 프로세스 6개를 차례로 띄웠다.
+
+다음과 같이 고친 뒤 위 결과가 나왔다.
+
+- 큰 입력에는 Myers O(ND) diff를 쓴다(편집 2,000개까지 줄 맞춤).
+- 통합 diff를 가상화했다(`@tanstack/react-virtual`, 이미 쓰던 3.14.19).
+- 파일 한쪽마다 git 1회로 읽고, 두 쪽을 동시에 읽는다.
+
+세션 전환은 세션 2개일 때 p95 135 ms였다.
+
+### 측정하지 않은 것
+
+- 02-UX-Spec §11의 사용자 평가(최소 5명의 과제 기반 탐색 테스트)는 사람 참가자가 필요해 여기서 하지 않았다.
+- Monaco model 수 점검은 해당하지 않는다. Monaco를 쓰지 않고 diff 화면은 한 번에 파일 하나만 그린다.
+- cold start와 다른 OS·브라우저는 측정하지 않았다.
