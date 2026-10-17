@@ -194,3 +194,15 @@ describe('review, applying and reverting (CR-013)', () => {
     ]);
   });
 });
+
+describe('missing folders (02-UX-Spec §8)', () => {
+  it('says when the linked folder or the working copy is gone, instead of failing', async () => {
+    const { service, original } = await setup();
+    const copy = service.copyOf('session_1');
+    if (!copy) throw new Error('no copy');
+    rmSync(copy.worktree, { recursive: true, force: true });
+    expect(service.worktreeView('session_1')?.missing).toBe(true);
+    rmSync(original, { recursive: true, force: true });
+    expect((await service.view('default'))?.missing).toBe(true);
+  });
+});

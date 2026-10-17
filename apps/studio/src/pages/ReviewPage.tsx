@@ -1,6 +1,7 @@
 import type {
   ChangeScopeQuery,
   ChangeSetView,
+  FileChangeView,
   FileOperationView,
   FileSideView,
   IntegrationPlanFile,
@@ -46,6 +47,7 @@ export function ReviewPage() {
   const [version, setVersion] = useState(0);
   const { binding } = useBinding(session.projectId);
   const [comments, setComments] = useState<ReviewCommentView[]>([]);
+  const reviewed = useReviewedFiles(session.sessionId);
   const reloadComments = useCallback(async () => {
     if (workspaces) setComments(await workspaces.comments(session.sessionId).catch(() => []));
   }, [workspaces, session.sessionId]);
@@ -123,9 +125,19 @@ export function ReviewPage() {
                 ))}
               </select>
             </label>
+            {changes?.from && changes.to ? (
+              <span
+                className="font-mono text-xs text-muted"
+                title={`${changes.from} → ${changes.to}`}
+              >
+                {t('compareRange', { from: changes.from.slice(0, 8), to: changes.to.slice(0, 8) })}
+              </span>
+            ) : null}
             {changes ? (
               <span className="text-xs text-muted">
-                {t('files', { count: changes.files.length })}
+                {scope.kind === 'review'
+                  ? t('newChanges', { count: changes.files.length })
+                  : t('files', { count: changes.files.length })}
               </span>
             ) : null}
             <button
@@ -151,35 +163,13 @@ export function ReviewPage() {
               aria-label={t('reviewHeading')}
               className="min-h-0 overflow-auto border-line p-2 md:border-r"
             >
-              {changes?.unavailable ? (
-                <p className="text-xs text-muted">{t('noBaseline')}</p>
-              ) : null}
-              {changes && !changes.unavailable && changes.files.length === 0 ? (
-                <p className="text-xs text-muted">{t('noChanges')}</p>
-              ) : null}
-              <ul className="flex flex-col gap-1">
-                {changes?.files.map((file) => (
-                  <li key={file.path}>
-                    <button
-                      type="button"
-                      aria-current={selected === file.path ? 'true' : undefined}
-                      onClick={() => choose(file.path)}
-                      className={`flex w-full flex-col rounded border px-2 py-1 text-left text-xs ${
-                        selected === file.path ? 'border-accent bg-raised' : 'border-line'
-                      }`}
-                    >
-                      <span className="break-all font-mono">{file.path}</span>
-                      <span className="text-muted">
-                        {t(`status.${file.status}`)}
-                        {file.additions !== null
-                          ? ` · +${file.additions} −${file.deletions ?? 0}`
-                          : ''}
-                        {file.binary ? ' · bin' : ''} · {t(`provenance.${file.provenance}`)}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
+              <FileList
+                sessionId={session.sessionId}
+                changes={changes}
+                selected={selected}
+                reviewed={reviewed}
+                onChoose={choose}
+              />
             </nav>
             <section aria-label={selected ?? t('chooseFile')} className="min-h-0 overflow-auto p-3">
               {selected && changes?.from && changes.to ? (
@@ -188,6 +178,11 @@ export function ReviewPage() {
                   from={changes.from}
                   to={changes.to}
                   path={selected}
+                  reviewedKey={fileKey(
+                    changes.files.find((f) => f.path === selected),
+                    selected,
+                  )}
+                  reviewed={reviewed}
                   comments={comments.filter(
                     (c) => c.from === changes.from && c.to === changes.to && c.path === selected,
                   )}
@@ -242,6 +237,8 @@ function FileDiff({
   from,
   to,
   path,
+  reviewedKey,
+  reviewed,
   comments,
   onComment,
 }: {
@@ -249,13 +246,15 @@ function FileDiff({
   from: string;
   to: string;
   path: string;
+  reviewedKey: string;
+  reviewed: ReviewedFiles;
   comments: ReviewCommentView[];
   onComment: (comment: NewComment) => Promise<void>;
 }) {
   const t = useTranslations('Files');
   const { workspaces } = useServices();
   const [sides, setSides] = useState<{ before: FileSideView; after: FileSideView } | null>(null);
-  const [layout, setLayout] = useState<'unified' | 'split'>('unified');
+  const [layout, setLayout] = useState<'unified' | 'split' | 'raw'>('unified');
   useEffect(() => {
     let live = true;
     setSides(null);
@@ -273,12 +272,38 @@ function FileDiff({
   if (!sides) return <p className="text-sm text-muted">…</p>;
   const notText = (side: FileSideView) =>
     side.kind === 'binary' ? t('binary') : side.kind === 'too_large' ? t('tooLarge') : null;
+  const before = sideText(sides.before);
+  const after = sideText(sides.after);
+  // diffLines aligns up to 4M line pairs; past that it shows the file as replaced.
+  const unaligned =
+    before !== null &&
+    after !== null &&
+    before.split('\n').length * after.split('\n').length > 4_000_000;
+  const source = sides.after.kind === 'text' ? sides.after.text : (before ?? '');
+  const isReviewed = reviewed.has(reviewedKey);
+  const download = () => {
+    const url = URL.createObjectURL(new Blob([source], { type: 'text/plain;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = path.split('/').at(-1) ?? 'file.txt';
+    link.click();
+    URL.revokeObjectURL(url);
+  };
   return (
     <div className="flex flex-col gap-2" data-testid="file-diff">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <h3 className="break-all font-mono text-sm">{path}</h3>
+        <button
+          type="button"
+          aria-pressed={isReviewed}
+          onClick={() => reviewed.toggle(reviewedKey)}
+          title={t('reviewedNote')}
+          className={`rounded px-2 py-0.5 text-xs ${isReviewed ? 'bg-success/20' : 'border border-line'}`}
+        >
+          {isReviewed ? `✓ ${t('reviewedFile')}` : t('markFileReviewed')}
+        </button>
         <fieldset className="ml-auto flex gap-1 text-xs">
-          {(['unified', 'split'] as const).map((value) => (
+          {(['unified', 'split', 'raw'] as const).map((value) => (
             <button
               key={value}
               type="button"
@@ -291,8 +316,26 @@ function FileDiff({
           ))}
         </fieldset>
       </div>
+      {unaligned && layout !== 'raw' ? (
+        <p role="note" className="text-xs text-warning">
+          {t('tooLargeToAlign')}
+        </p>
+      ) : null}
       {notText(sides.before) || notText(sides.after) ? (
         <p className="text-sm text-muted">{notText(sides.after) ?? notText(sides.before)}</p>
+      ) : layout === 'raw' ? (
+        <div className="flex flex-col gap-1">
+          <button
+            type="button"
+            onClick={download}
+            className="self-start rounded border border-line px-2 py-0.5 text-xs"
+          >
+            {t('downloadFile')}
+          </button>
+          <pre className="overflow-auto whitespace-pre-wrap break-all rounded border border-line bg-surface p-2 font-mono text-[13px]">
+            {source}
+          </pre>
+        </div>
       ) : lines ? (
         layout === 'unified' ? (
           <Unified lines={lines} comments={comments} onComment={onComment} />
@@ -600,8 +643,9 @@ function CommentsPanel({
       let executionId: string | null = null;
       let sent = false;
       let detail: string | null = null;
+      let commandId: string | null = null;
       if (active && steerTo) {
-        ({ sent, detail } = await steer(services, active.runId, steerTo.id, text));
+        ({ sent, detail, commandId } = await steer(services, active.runId, steerTo.id, text));
         runId = active.runId;
         executionId = steerTo.id;
       } else if (!active) {
@@ -630,6 +674,7 @@ function CommentsPanel({
         runId,
         executionId,
         detail,
+        commandId,
       });
       setNote(sent ? t('sent') : detail);
       await onChange();
@@ -879,5 +924,145 @@ function DecisionPanel({
         </div>
       ))}
     </section>
+  );
+}
+
+// ── file list helpers (02-UX-Spec §4) ───────────────────────────────────────
+
+/** "Reviewed" is reading, per file content: it holds while the file's after-blob is the same. */
+const fileKey = (file: FileChangeView | undefined, path: string) =>
+  `${path}@${file?.afterBlob ?? file?.beforeBlob ?? 'gone'}`;
+
+interface ReviewedFiles {
+  has(key: string): boolean;
+  toggle(key: string): void;
+}
+
+/** Kept in this browser (a view state, 02-UX-Spec §9), per session. */
+function useReviewedFiles(sessionId: string): ReviewedFiles {
+  const storageKey = `corral:reviewed:${sessionId}`;
+  const [keys, setKeys] = useState<Set<string>>(() => {
+    try {
+      return new Set(JSON.parse(window.localStorage.getItem(storageKey) ?? '[]') as string[]);
+    } catch {
+      return new Set();
+    }
+  });
+  return {
+    has: (key) => keys.has(key),
+    toggle: (key) => {
+      const next = new Set(keys);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      setKeys(next);
+      try {
+        window.localStorage.setItem(storageKey, JSON.stringify([...next].slice(-2000)));
+      } catch {
+        // Remembered for this page only.
+      }
+    },
+  };
+}
+
+/** Lock files and build output: folded by default, but deletions stay in view. */
+const GENERATED =
+  /(^|\/)(pnpm-lock\.yaml|package-lock\.json|yarn\.lock|Cargo\.lock|poetry\.lock|go\.sum|composer\.lock|Gemfile\.lock)$|(^|\/)(dist|build|generated|__generated__)\/|\.min\.(js|css)$/;
+
+function FileList({
+  sessionId,
+  changes,
+  selected,
+  reviewed,
+  onChoose,
+}: {
+  sessionId: string;
+  changes: ChangeSetView | null;
+  selected: string | null;
+  reviewed: ReviewedFiles;
+  onChoose: (path: string) => void;
+}) {
+  const t = useTranslations('Files');
+  const [query, setQuery] = useState('');
+  const [kind, setKind] = useState<'all' | FileChangeView['status']>('all');
+  const [unreviewedOnly, setUnreviewedOnly] = useState(false);
+  void sessionId;
+  if (!changes) return <p className="text-xs text-muted">{t('preparing')}</p>;
+  if (changes.unavailable) return <p className="text-xs text-muted">{t('noBaseline')}</p>;
+  const needle = query.trim().toLowerCase();
+  const matches = changes.files.filter(
+    (f) =>
+      (!needle || f.path.toLowerCase().includes(needle)) &&
+      (kind === 'all' || f.status === kind) &&
+      (!unreviewedOnly || !reviewed.has(fileKey(f, f.path))),
+  );
+  const folded = matches.filter((f) => GENERATED.test(f.path) && f.status !== 'deleted');
+  const main = matches.filter((f) => !folded.includes(f));
+  const row = (file: FileChangeView) => (
+    <li key={file.path}>
+      <button
+        type="button"
+        aria-current={selected === file.path ? 'true' : undefined}
+        onClick={() => onChoose(file.path)}
+        className={`flex w-full flex-col rounded border px-2 py-1 text-left text-xs ${
+          selected === file.path ? 'border-accent bg-raised' : 'border-line'
+        }`}
+      >
+        <span className="break-all font-mono">
+          {reviewed.has(fileKey(file, file.path)) ? '✓ ' : ''}
+          {file.path}
+        </span>
+        <span className="text-muted">
+          {t(`status.${file.status}`)}
+          {file.additions !== null ? ` · +${file.additions} −${file.deletions ?? 0}` : ''}
+          {file.binary ? ' · bin' : ''} · {t(`provenance.${file.provenance}`)}
+        </span>
+      </button>
+    </li>
+  );
+  return (
+    <div className="flex flex-col gap-2">
+      <input
+        type="search"
+        aria-label={t('filterSearch')}
+        placeholder={t('filterSearch')}
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        className="rounded border border-line bg-surface px-2 py-1 text-xs"
+      />
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <select
+          aria-label={t('kindAll')}
+          value={kind}
+          onChange={(e) => setKind(e.target.value as typeof kind)}
+          className="rounded border border-line bg-surface px-1 py-0.5"
+        >
+          <option value="all">{t('kindAll')}</option>
+          {(['added', 'modified', 'deleted', 'type_changed'] as const).map((value) => (
+            <option key={value} value={value}>
+              {t(`status.${value}`)}
+            </option>
+          ))}
+        </select>
+        <label className="flex items-center gap-1">
+          <input
+            type="checkbox"
+            checked={unreviewedOnly}
+            onChange={(e) => setUnreviewedOnly(e.target.checked)}
+          />
+          {t('unreviewedOnly')}
+        </label>
+      </div>
+      {changes.files.length === 0 ? <p className="text-xs text-muted">{t('noChanges')}</p> : null}
+      <ul className="flex flex-col gap-1">{main.map(row)}</ul>
+      {folded.length > 0 ? (
+        <details>
+          <summary className="cursor-pointer text-xs text-muted">
+            {t('generatedGroup', { count: folded.length })}
+          </summary>
+          <ul className="mt-1 flex flex-col gap-1">{folded.map(row)}</ul>
+        </details>
+      ) : null}
+      <p className="text-xs text-muted">{t('ignoredNote')}</p>
+    </div>
   );
 }

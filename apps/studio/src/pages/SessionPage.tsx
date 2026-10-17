@@ -19,7 +19,7 @@ import { TeamDesign } from './EditorPage.tsx';
 import { useBinding, WorkingCopyPanel } from './FilesViews.tsx';
 import { Checks } from './ReviewPage.tsx';
 import { RunDetail } from './RunPage.tsx';
-import { WorkbenchLayout, WorkbenchSidebar } from './Workbench.tsx';
+import { useRemembered, WorkbenchLayout, WorkbenchSidebar } from './Workbench.tsx';
 
 // A work session (CR-011, roadmap 23–24): what was asked, the runs it started, the queue, and
 // one input box whose intent is chosen, never guessed.
@@ -31,13 +31,19 @@ function useSessionRuns(sessionId: string) {
   const { transport } = useServices();
   const [all, setAll] = useState<RunSummary[]>([]);
   const [tick, setTick] = useState(0);
+  // Unreachable server: run states are unknown, not finished (02-UX-Spec §8).
+  const [lost, setLost] = useState(false);
   const refresh = useCallback(() => setTick((n) => n + 1), []);
   useEffect(() => {
     void tick;
     let live = true;
     transport.listRuns().then(
-      (runs) => live && setAll(runs),
-      () => {},
+      (runs) => {
+        if (!live) return;
+        setAll(runs);
+        setLost(false);
+      },
+      () => live && setLost(true),
     );
     return () => {
       live = false;
@@ -45,12 +51,12 @@ function useSessionRuns(sessionId: string) {
   }, [transport, tick]);
   const active = all.find((r) => !TERMINAL_RUN_STATUSES.has(r.status)) ?? null;
   useEffect(() => {
-    if (!active) return;
+    if (!active && !lost) return;
     const timer = setInterval(refresh, 1500);
     return () => clearInterval(timer);
-  }, [active, refresh]);
+  }, [active, lost, refresh]);
   const runs = all.filter((r) => r.sessionId === sessionId).reverse();
-  return { runs, active, refresh };
+  return { runs, active, refresh, lost };
 }
 
 export type SessionTab = 'work' | 'team' | 'run';
@@ -66,9 +72,10 @@ export function SessionPage() {
   const { session, project, corrals } = sessionRoute.useLoaderData();
   const search = sessionRoute.useSearch();
   const navigate = useNavigate({ from: '/sessions/$sessionId' });
-  const { runs, active, refresh } = useSessionRuns(session.sessionId);
+  const { runs, active, refresh, lost } = useSessionRuns(session.sessionId);
   useEffect(() => setCurrentProject(session.projectId), [session.projectId]);
   const team = corrals.find((c) => c.corralId === session.corralId) ?? null;
+  const ts = useTranslations('Sessions');
   const tab: SessionTab = search.tab ?? 'work';
   const panel: SessionPanel = search.panel ?? 'changes';
   const setSearch = (patch: Partial<typeof search>) =>
@@ -88,6 +95,21 @@ export function SessionPage() {
             team={team}
             active={active && active.sessionId === session.sessionId ? active : null}
           />
+          {lost ? (
+            <div
+              role="alert"
+              className="flex items-center gap-2 border-b border-danger px-4 py-2 text-xs text-danger"
+            >
+              {ts('connectionLost')}
+              <button
+                type="button"
+                onClick={refresh}
+                className="rounded border border-line px-2 py-0.5 text-text"
+              >
+                {ts('retry')}
+              </button>
+            </div>
+          ) : null}
           <TabRow
             label={tw('tabs')}
             values={tabs}
@@ -216,7 +238,9 @@ function WorkbenchHeader({
 }) {
   const tw = useTranslations('Workbench');
   const tp = useTranslations('Projects');
+  const tf = useTranslations('Files');
   const { workspaces, mode, live } = useServices();
+  const { binding } = useBinding(session.projectId);
   const [copy, setCopy] = useState<string | null>(null);
   useEffect(() => {
     if (!workspaces) return;
@@ -244,6 +268,9 @@ function WorkbenchHeader({
           : tw('noTeamHeader')}
       </span>
       {workspaces ? <span>{copy ? tw('copyFrom', { commit: copy }) : tw('copyNone')}</span> : null}
+      <span data-testid="permission">
+        {tf(`permission.${copy ? 'copy' : binding ? 'observe' : 'none'}`)}
+      </span>
       <span aria-live="polite">
         {active ? (
           <StatusBadge status={active.status} />
@@ -380,10 +407,13 @@ function ChangesPanel({ session, runs }: { session: WorkSession; runs: RunSummar
     void key;
     if (!workspaces) return;
     let live = true;
-    workspaces.changes(session.sessionId, { kind: 'session' }).then(
-      (c) => live && setFiles(c.files),
-      () => live && setFiles(null),
-    );
+    // Without a working copy there is nothing to compare; asking would only be refused.
+    void (async () => {
+      const copy = await workspaces.worktree(session.sessionId).catch(() => null);
+      if (!copy || copy.missing) return live && setFiles(null);
+      const changes = await workspaces.changes(session.sessionId, { kind: 'session' });
+      if (live) setFiles(changes.files);
+    })().catch(() => live && setFiles(null));
     return () => {
       live = false;
     };
@@ -638,6 +668,9 @@ function EntryCard({ entry, runs }: { entry: SessionEntry; runs: RunSummary[] })
         </p>
       ) : null}
       {run && entry.intent !== 'steer' ? <RunCard run={run} nested /> : null}
+      {entry.intent === 'steer' && entry.runId && entry.commandId ? (
+        <DeliveryStatus runId={entry.runId} commandId={entry.commandId} />
+      ) : null}
       {entry.intent === 'steer' && entry.runId ? (
         <Link
           to="/runs/$runId"
@@ -655,9 +688,14 @@ function EntryCard({ entry, runs }: { entry: SessionEntry; runs: RunSummary[] })
 }
 
 /** A run with its status and, once it has one, its final result. */
+/**
+ * A run in the session (02-UX-Spec §3): whether it finished or not, the agent's own result kept
+ * apart from facts, and what can be done next. Links stay inside the workbench.
+ */
 function RunCard({ run, nested = false }: { run: RunSummary; nested?: boolean }) {
   const t = useTranslations('Sessions');
-  const { transport } = useServices();
+  const ts = useTranslations('Status');
+  const { transport, workspaces } = useServices();
   const ended = TERMINAL_RUN_STATUSES.has(run.status);
   const [result, setResult] = useState<{ text: string; id: string } | null>(null);
   useEffect(() => {
@@ -674,6 +712,21 @@ function RunCard({ run, nested = false }: { run: RunSummary; nested?: boolean })
       live = false;
     };
   }, [transport, run.runId, ended]);
+  const inSession = (view: 'results' | 'run') =>
+    run.sessionId ? (
+      <Link
+        to="/sessions/$sessionId"
+        params={{ sessionId: run.sessionId }}
+        search={{ tab: 'run', run: run.runId, view }}
+        className="underline"
+      >
+        {view === 'results' ? t('openResults') : t('openRun')}
+      </Link>
+    ) : (
+      <Link to="/runs/$runId" params={{ runId: run.runId }} search={{ view }} className="underline">
+        {view === 'results' ? t('openResults') : t('openRun')}
+      </Link>
+    );
   return (
     <section
       aria-label={run.runId}
@@ -683,31 +736,78 @@ function RunCard({ run, nested = false }: { run: RunSummary; nested?: boolean })
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <StatusBadge status={run.status} />
         <span className="font-mono text-muted">{run.runId}</span>
-        <Link
-          to="/runs/$runId"
-          params={{ runId: run.runId }}
-          search={{ view: 'results' }}
-          className="underline"
-        >
-          {t('openResults')}
-        </Link>
-        <Link
-          to="/runs/$runId"
-          params={{ runId: run.runId }}
-          search={{ view: 'run' }}
-          className="underline"
-        >
-          {t('openRun')}
-        </Link>
+        {inSession('results')}
+        {inSession('run')}
       </div>
       {!ended ? <p className="text-xs text-muted">{t('working')}</p> : null}
+      {ended && run.status === 'succeeded' ? (
+        <p className="text-xs font-medium">{t('didFinish')}</p>
+      ) : null}
+      {ended && run.status !== 'succeeded' ? (
+        <p role="note" className="text-xs text-warning">
+          {t('didNotFinish', { status: ts(run.status) })}
+        </p>
+      ) : null}
       {result ? (
-        <div className="max-h-72 overflow-auto rounded border border-line bg-surface p-2">
-          <SafeMarkdown text={result.text} />
+        <div className="flex flex-col gap-1">
+          <p className="text-xs text-muted">{t('agentSummary')}</p>
+          <div className="max-h-72 overflow-auto rounded border border-line bg-surface p-2">
+            <SafeMarkdown text={result.text} />
+          </div>
         </div>
+      ) : null}
+      {ended && workspaces && run.sessionId ? (
+        <p className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="text-muted">{t('nextActions')}:</span>
+          <Link
+            to="/sessions/$sessionId/review"
+            params={{ sessionId: run.sessionId }}
+            search={{ scope: 'run', runId: run.runId }}
+            className="underline"
+          >
+            {t('reviewChanges')}
+          </Link>
+        </p>
       ) : null}
     </section>
   );
+}
+
+/** Where an instruction is now, from the run's own record of it (02-UX-Spec §7). */
+function DeliveryStatus({ runId, commandId }: { runId: string; commandId: string }) {
+  const t = useTranslations('Sessions');
+  const ts = useTranslations('Status');
+  const { transport } = useServices();
+  const [status, setStatus] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    const read = () =>
+      transport.getSnapshot(runId).then(
+        ({ projection }) => {
+          const directive = Object.values(projection.directives).find(
+            (d) => d.commandId === commandId,
+          );
+          if (live) setStatus(directive?.status ?? null);
+          return directive?.status ?? null;
+        },
+        () => null,
+      );
+    void read();
+    const timer = setInterval(() => {
+      void read().then((now) => {
+        if (now && !['accepted', 'attached_to_request'].includes(now)) clearInterval(timer);
+      });
+    }, 2000);
+    return () => {
+      live = false;
+      clearInterval(timer);
+    };
+  }, [transport, runId, commandId]);
+  return status ? (
+    <p data-testid="delivery" className="text-xs">
+      {t('delivery', { status: ts(status) })}
+    </p>
+  ) : null;
 }
 
 function finalResultId(projection: RunProjection): string | null {
@@ -757,8 +857,17 @@ function Composer({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [targets, setTargets] = useState<{ id: string; label: string }[]>([]);
+  const [targetTick, setTargetTick] = useState(0);
   const ownActive = active && active.sessionId === session.sessionId ? active : null;
   const latest = useLatestResult(runs);
+  // One command ID per request: a retry after a lost answer reuses it, so the runtime returns
+  // the first receipt instead of starting a second run (02-UX-Spec §6).
+  const pending = useRef<{ key: string; commandId: string } | null>(null);
+  const commandFor = (key: string) => {
+    if (pending.current?.key !== key) pending.current = { key, commandId: newCommandId() };
+    return pending.current.commandId;
+  };
+  const [autoStart, setAutoStart] = useRemembered(`corral:auto-queue:${session.sessionId}`, false);
 
   // What may be sent now: one run at a time, so a busy runtime only takes a queue entry or,
   // for this session's run, an instruction.
@@ -772,6 +881,7 @@ function Composer({
 
   // Executions that can still take an instruction, named by their node.
   useEffect(() => {
+    void targetTick;
     if (!ownActive) return setTargets([]);
     let live = true;
     void Promise.all([
@@ -798,7 +908,13 @@ function Composer({
     return () => {
       live = false;
     };
-  }, [transport, ownActive]);
+  }, [transport, ownActive, targetTick]);
+  // An execution may end while the person types: the list follows it (02-UX-Spec §6).
+  useEffect(() => {
+    if (!ownActive) return;
+    const timer = setInterval(() => setTargetTick((n) => n + 1), 1500);
+    return () => clearInterval(timer);
+  }, [ownActive]);
   const steerTarget = targets.some((x) => x.id === target) ? target : (targets[0]?.id ?? '');
 
   const record = async (entry: Parameters<typeof repository.addSessionEntry>[1]) => {
@@ -809,6 +925,7 @@ function Composer({
   /** Starts a follow-up with the team; returns the run or why not. */
   const startNext = async (
     brief: string,
+    commandId: string = newCommandId(),
   ): Promise<{ runId: string | null; detail: string | null }> => {
     if (!team) return { runId: null, detail: t('noTeamYet') };
     const corral = await repository.get(team.corralId);
@@ -816,7 +933,7 @@ function Composer({
     const input = { brief, criteria: corral.definition.input.criteria };
     const common = {
       schemaVersion: '0.1' as const,
-      commandId: newCommandId(),
+      commandId,
       mode: runMode,
       sessionId: session.sessionId,
       ...(latest ? { startFrom: { runId: latest.runId, artifactVersionId: latest.id } } : {}),
@@ -841,14 +958,23 @@ function Composer({
     setError(null);
     try {
       if (intent === 'next') {
-        const { runId, detail } = await startNext(body);
-        await record({ intent, text: body, state: runId ? 'started' : 'refused', runId, detail });
+        const commandId = commandFor(`next\u0000${body}`);
+        const { runId, detail } = await startNext(body, commandId);
+        await record({
+          intent,
+          text: body,
+          state: runId ? 'started' : 'refused',
+          runId,
+          detail,
+          commandId,
+        });
       } else if (intent === 'queue') {
         await record({ intent, text: body, state: 'queued' });
       } else if (intent === 'steer' && ownActive && steerTarget) {
+        const commandId = commandFor(`steer\u0000${steerTarget}\u0000${body}`);
         const receipt = await transport.sendCommand({
           schemaVersion: '0.1',
-          commandId: newCommandId(),
+          commandId,
           runId: ownActive.runId,
           type: 'steer',
           payload: { targetExecutionId: steerTarget, text: body, delivery: 'next_request' },
@@ -860,6 +986,7 @@ function Composer({
           runId: ownActive.runId,
           executionId: steerTarget,
           detail: receipt.error?.message ?? null,
+          commandId,
         });
       } else if (intent === 'explain') {
         const corral = team ? await repository.get(team.corralId) : null;
@@ -869,7 +996,7 @@ function Composer({
           return;
         }
         const result = await services.startExplain({
-          commandId: newCommandId(),
+          commandId: commandFor(`explain\u0000${body}`),
           sessionId: session.sessionId,
           question: body,
           modelProfile: profile,
@@ -886,6 +1013,7 @@ function Composer({
       } else {
         return;
       }
+      pending.current = null;
       setText('');
       writeDraft(session.sessionId, '');
       await router.invalidate();
@@ -916,6 +1044,27 @@ function Composer({
     await repository.updateSessionEntry(session.sessionId, entry.entryId, { state: 'dismissed' });
     await router.invalidate();
   };
+  /** Editing a queued task takes it back into the box; sending again records a new version. */
+  const editQueued = async (entry: SessionEntry) => {
+    setText(entry.text);
+    writeDraft(session.sessionId, entry.text);
+    setChosen('queue');
+    await repository.updateSessionEntry(session.sessionId, entry.entryId, {
+      state: 'dismissed',
+      detail: 'edited',
+    });
+    await router.invalidate();
+  };
+
+  // Auto-start, when switched on: only on a run's end seen by this page, never on load.
+  const wasActive = useRef(Boolean(ownActive));
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reacts to the run ending only
+  useEffect(() => {
+    const ended = wasActive.current && !active;
+    wasActive.current = Boolean(ownActive);
+    const next = queued[0];
+    if (ended && autoStart && next && team) void startQueued(next);
+  }, [active, ownActive]);
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     // An IME composition's Enter confirms the text; it never sends (WB-UX-005).
@@ -950,6 +1099,13 @@ function Composer({
                 </button>
                 <button
                   type="button"
+                  onClick={() => void editQueued(entry)}
+                  className="rounded border border-line px-2 py-0.5 text-xs"
+                >
+                  {t('editQueued')}
+                </button>
+                <button
+                  type="button"
                   onClick={() => void removeQueued(entry)}
                   className="rounded border border-line px-2 py-0.5 text-xs"
                 >
@@ -958,6 +1114,17 @@ function Composer({
               </li>
             ))}
           </ul>
+          <label className="flex items-start gap-2 text-xs">
+            <input
+              type="checkbox"
+              checked={autoStart}
+              onChange={(e) => setAutoStart(e.target.checked)}
+            />
+            <span>
+              {t('autoStart')}
+              <span className="block text-muted">{t('autoStartHint')}</span>
+            </span>
+          </label>
         </div>
       ) : null}
       {active && !ownActive ? (
@@ -987,6 +1154,16 @@ function Composer({
         ))}
       </fieldset>
       <p className="text-xs text-muted">{t(`intentHint.${intent}`)}</p>
+      {intent === 'steer' && steerTarget ? (
+        <p
+          data-testid="target-chip"
+          className="self-start rounded-full border border-accent px-2 py-0.5 text-xs"
+        >
+          {t('targetChip', {
+            label: targets.find((x) => x.id === steerTarget)?.label ?? steerTarget,
+          })}
+        </p>
+      ) : null}
       {intent === 'steer' ? (
         <label className="flex items-center gap-2 text-xs">
           {t('target')}
@@ -1006,6 +1183,9 @@ function Composer({
       ) : null}
       {(intent === 'next' || intent === 'explain') && latest ? (
         <p className="text-xs text-muted">{t('fromResult', { label: latest.label })}</p>
+      ) : null}
+      {(intent === 'next' || intent === 'explain') && team ? (
+        <PreRunSummary session={session} team={team} mode={runMode} intent={intent} />
       ) : null}
       {intent === 'next' && !team ? <p className="text-xs text-warning">{t('noTeamYet')}</p> : null}
       {intent === 'explain' && !latest ? (
@@ -1086,4 +1266,61 @@ function useLatestResult(runs: RunSummary[]) {
     };
   }, [transport, key]);
   return latest;
+}
+
+/**
+ * What the next run would start with (02-UX-Spec §5.5): team, models, file work, limits and
+ * mode, read from the saved team and the working copy, never guessed.
+ */
+function PreRunSummary({
+  session,
+  team,
+  mode,
+  intent,
+}: {
+  session: WorkSession;
+  team: CorralSummary;
+  mode: 'mock' | 'live';
+  intent: 'next' | 'explain';
+}) {
+  const t = useTranslations('Sessions');
+  const { repository, workspaces } = useServices();
+  const [text, setText] = useState<string | null>(null);
+  // A new team revision changes what the next run would use.
+  const revision = team.definitionRevision;
+  useEffect(() => {
+    void revision;
+    let live = true;
+    void (async () => {
+      const record = await repository.get(team.corralId);
+      if (!record) return;
+      const copy = workspaces
+        ? await workspaces.worktree(session.sessionId).catch(() => null)
+        : null;
+      const roles =
+        intent === 'explain' ? record.definition.roles.slice(0, 1) : record.definition.roles;
+      const fileTools =
+        intent === 'next' && roles.some((r) => r.allowedWorkTools.includes('write_file'));
+      const limits = record.definition.limits;
+      if (!live) return;
+      setText(
+        t('preRun', {
+          team: `${record.name} r${record.definitionRevision}`,
+          profiles: [...new Set(roles.map((r) => r.modelProfile))].join(', '),
+          files: fileTools ? (copy ? t('filesCopy') : t('filesNoCopy')) : t('filesNone'),
+          calls: intent === 'explain' ? Math.min(limits.maxModelCalls, 4) : limits.maxModelCalls,
+          minutes: Math.round(limits.runDeadlineMs / 60_000),
+          mode: mode === 'live' ? t('modeLive') : t('modeMock'),
+        }),
+      );
+    })().catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [repository, workspaces, session.sessionId, team.corralId, revision, mode, intent, t]);
+  return text ? (
+    <p data-testid="pre-run" className="text-xs text-muted">
+      {text}
+    </p>
+  ) : null;
 }

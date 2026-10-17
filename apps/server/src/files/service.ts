@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import {
   lstat,
   mkdir,
@@ -42,6 +43,8 @@ export interface BindingView {
   trusted: boolean;
   verifyCommands: VerifyCommand[];
   status: { branch: string | null; head: string | null; changed: number } | null;
+  /** The folder is no longer where it was linked. */
+  missing: boolean;
 }
 
 export interface WorktreeView {
@@ -50,6 +53,8 @@ export interface WorktreeView {
   createdAt: string;
   removedAt: string | null;
   reviewed: boolean;
+  /** The working copy's folder is gone (deleted outside Corral). */
+  missing: boolean;
 }
 
 export type ChangeScope = { kind: 'session' } | { kind: 'review' } | { kind: 'run'; runId: string };
@@ -61,6 +66,9 @@ export interface FileChange {
   deletions: number | null;
   binary: boolean;
   provenance: 'managed_agent' | 'external_observed';
+  /** Git blob ids of the two sides (null when absent): a file's identity for "reviewed". */
+  beforeBlob: string | null;
+  afterBlob: string | null;
 }
 
 export interface ChangeSet {
@@ -221,7 +229,12 @@ export class WorkspaceService implements FileTools {
     const row = this.binding(projectId);
     if (!row) return null;
     let status: BindingView['status'] = null;
-    if (row.is_git) {
+    // A folder moved or deleted since it was linked (02-UX-Spec §8): said, not guessed around.
+    const missing = !(await stat(row.root_path).then(
+      (info) => info.isDirectory(),
+      () => false,
+    ));
+    if (row.is_git && !missing) {
       try {
         const branch = await gitText(row.root_path, ['rev-parse', '--abbrev-ref', 'HEAD']).catch(
           () => null,
@@ -244,6 +257,7 @@ export class WorkspaceService implements FileTools {
       trusted: row.trusted === 1,
       verifyCommands: JSON.parse(row.verify_json) as VerifyCommand[],
       status,
+      missing,
     };
   }
 
@@ -339,6 +353,7 @@ export class WorkspaceService implements FileTools {
           createdAt: row.created_at,
           removedAt: row.removed_at,
           reviewed: row.reviewed_tree !== null,
+          missing: !existsSync(row.worktree_path),
         }
       : null;
   }
@@ -533,8 +548,10 @@ export class WorkspaceService implements FileTools {
     for (let i = 0; i < raw.length - 1; i += 2) {
       const meta = raw[i] as string;
       const path = raw[i + 1] as string;
-      const status = meta.trim().split(' ').at(-1)?.[0];
+      const fields = meta.trim().split(' ');
+      const status = fields.at(-1)?.[0];
       if (!status || !path) continue;
+      const blob = (sha: string | undefined) => (sha && !/^0+$/.test(sha) ? sha : null);
       const count = counts.get(path);
       files.push({
         path,
@@ -550,6 +567,8 @@ export class WorkspaceService implements FileTools {
         deletions: count?.del ?? null,
         binary: count ? count.add === null : false,
         provenance: managed.has(path) ? 'managed_agent' : 'external_observed',
+        beforeBlob: blob(fields[2]),
+        afterBlob: blob(fields[3]),
       });
     }
     return { scope, from, to, unavailable: null, files };

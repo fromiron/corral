@@ -759,6 +759,7 @@ export interface WorkspaceBindingView {
   trusted: boolean;
   verifyCommands: VerifyCommand[];
   status: { branch: string | null; head: string | null; changed: number } | null;
+  missing: boolean;
 }
 
 export interface WorktreeView {
@@ -767,6 +768,7 @@ export interface WorktreeView {
   createdAt: string;
   removedAt: string | null;
   reviewed: boolean;
+  missing: boolean;
 }
 
 export type ChangeScopeQuery =
@@ -781,6 +783,8 @@ export interface FileChangeView {
   deletions: number | null;
   binary: boolean;
   provenance: 'managed_agent' | 'external_observed';
+  beforeBlob: string | null;
+  afterBlob: string | null;
 }
 
 export interface ChangeSetView {
