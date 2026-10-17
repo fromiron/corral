@@ -48,15 +48,31 @@ async function setup() {
   const call = (
     name: 'read_file' | 'write_file' | 'delete_file' | 'move_file',
     args: Record<string, unknown>,
+    executionId = 'exec_1',
   ) =>
     service.execute(
-      { name, args, runId: 'run_1', executionId: 'exec_1', toolCallId: `tool_${Math.random()}` },
+      { name, args, runId: 'run_1', executionId, toolCallId: `tool_${Math.random()}` },
       { aborted: false, onCancel: () => () => {} },
     );
   return { db, service, call, original };
 }
 
 describe('file broker (CR-012)', () => {
+  it('[TC-HAR-011-N] a different execution or restarted attempt cannot borrow another execution’s read', async () => {
+    const { call } = await setup();
+    await call('read_file', { path: 'a.txt' }, 'exec_a');
+    await expect(call('write_file', { path: 'a.txt', text: 'unread overwrite' }, 'exec_b')).rejects.toThrow(/read a.txt/);
+    await expect(call('delete_file', { path: 'a.txt' }, 'exec_a_retry')).rejects.toThrow(/read a.txt/);
+  });
+  it('[TC-HAR-011-H] [TC-HAR-011-N] B writing after A reads does not refresh A’s evidence', async () => {
+    const { call } = await setup();
+    await call('read_file', { path: 'a.txt' }, 'exec_a');
+    await call('read_file', { path: 'a.txt' }, 'exec_b');
+    await call('write_file', { path: 'a.txt', text: 'B changed this\n' }, 'exec_b');
+    await expect(call('write_file', { path: 'a.txt', text: 'A stale change\n' }, 'exec_a')).rejects.toThrow(/changed since/);
+    await call('read_file', { path: 'a.txt' }, 'exec_a');
+    await expect(call('write_file', { path: 'a.txt', text: 'A reviewed change\n' }, 'exec_a')).resolves.toMatchObject({ created: false });
+  });
   it('[DW-05] browsing stays inside its project or session and does not grant an agent a read', async () => {
     const { service, call, original } = await setup();
     const scope = { kind: 'project' as const, id: 'default' };
