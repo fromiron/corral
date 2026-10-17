@@ -124,16 +124,49 @@ async function loaded() {
 }
 
 describe('Coordinator harness boundary (H2)', () => {
-  it('[TC-HAR-017-N] nested calls require a live native parent and cannot execute after it closes',async()=>{
-    const s=await loaded();
-    expect(await s.host().authorizeTool({name:'echo',args:{text:'child'},parentToolCallId:'unknown'})).toMatchObject({ok:false});
+  it('[TC-HAR-017-N] closing a parent cancels an already running nested broker call',async()=>{
+    const entered=new Gate();let cancelled=false;
+    const files:FileTools={available:()=>true,execute:async(_input,signal)=>{
+      entered.open();await new Promise<void>(resolve=>signal.onCancel(()=>{cancelled=signal.aborted;resolve();}));
+      throw new Error('cancelled');
+    }};
+    const s=setup(true,{...snapshot,allowedTools:['echo','read_file']},{files,fileTools:true});
+    await s.started.wait();await s.host().reportHarness!({ok:true,snapshotHash:snapshot.snapshotHash,tools:[descriptor,{...descriptor,name:'read_file',source:'corral'}],diagnostics:[]});
     const parent=await s.host().authorizeTool({name:'echo',args:{text:'parent'}});
     await s.host().beginNativeTool!(parent.toolCallId,hash({text:'parent'}));
-    const child=await s.host().authorizeTool({name:'echo',args:{text:'child'},parentToolCallId:parent.toolCallId});
+    const child=s.host().invokeTool({name:'read_file',args:{path:'a.txt'},parentToolCallId:parent.toolCallId});
+    await entered.wait();await s.host().finishNativeTool!(parent.toolCallId,'succeeded');
+    expect(cancelled).toBe(true);
+    expect(await child).toMatchObject({ok:false});
+    s.done.open();
+  });
+  it('[TC-HAR-017-N] nested calls require a live native parent and cannot execute after it closes', async () => {
+    const s = await loaded();
+    expect(
+      await s
+        .host()
+        .authorizeTool({ name: 'echo', args: { text: 'child' }, parentToolCallId: 'unknown' }),
+    ).toMatchObject({ ok: false });
+    const parent = await s.host().authorizeTool({ name: 'echo', args: { text: 'parent' } });
+    await s.host().beginNativeTool!(parent.toolCallId, hash({ text: 'parent' }));
+    const child = await s
+      .host()
+      .authorizeTool({
+        name: 'echo',
+        args: { text: 'child' },
+        parentToolCallId: parent.toolCallId,
+      });
     expect(child.ok).toBe(true);
-    expect(s.events().find(e=>e.type==='tool.requested' && e.payload.toolCallId===child.toolCallId)?.payload).toMatchObject({parentToolCallId:parent.toolCallId});
-    await s.host().finishNativeTool!(parent.toolCallId,'succeeded');
-    await expect(s.host().beginNativeTool!(child.toolCallId,hash({text:'child'}))).rejects.toThrow();
+    expect(
+      s
+        .events()
+        .find((e) => e.type === 'tool.requested' && e.payload.toolCallId === child.toolCallId)
+        ?.payload,
+    ).toMatchObject({ parentToolCallId: parent.toolCallId });
+    await s.host().finishNativeTool!(parent.toolCallId, 'succeeded');
+    await expect(
+      s.host().beginNativeTool!(child.toolCallId, hash({ text: 'child' })),
+    ).rejects.toThrow();
     s.done.open();
   });
   it('[TC-HAR-016-N] revisions dynamic descriptors and refuses old approvals, duplicate updates and unbound sources', async () => {
