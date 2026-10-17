@@ -128,6 +128,22 @@ describe('TC-HAR-016 MCP credentials', () => {
     expect(await result).toBe('refused');
     expect(ctx.credentials.status('p', ctx.server).state).toBe('missing');
   });
+  it('cannot write refresh credentials after logout wins the guard continuation gap', async () => {
+    const ctx = await setup();
+    await login(ctx);
+    const credentials = new McpCredentials({ directory: join(ctx.root, 'private') });
+    cleanup.push(() => credentials.dispose());
+    let logout: Promise<void> | undefined;
+    const check = async () => {
+      if (ctx.fixture.refreshes > 0 && !logout) {
+        queueMicrotask(() => queueMicrotask(() => { logout = credentials.delete('p', ctx.server); }));
+      }
+    };
+    const outcome = await credentials.authorization('p', ctx.server, check, { status: 401, rejectedToken: 'fixture-access-0' }).catch(() => 'refused');
+    await logout;
+    expect(outcome).toBe('refused');
+    expect(credentials.status('p', ctx.server).state).toBe('missing');
+  });
   it('rejects over-broad grants and separates bearer credentials by exact binding', async () => {
     const ctx = await setup();
     ctx.fixture.scope('docs:read docs:write');
