@@ -1793,6 +1793,14 @@ export class Coordinator {
       isOpen: open,
       record: (drafts) => {
         if (!open() || this.storageError) return false;
+        // An ended worker cannot collect a judgment. Its admitted provider effect still closes.
+        drafts = drafts.filter(
+          (draft) =>
+            !draft.executionId ||
+            !run.closingExecutions.has(draft.executionId) ||
+            draft.type === 'effect.settled',
+        );
+        if (!drafts.length) return false;
         const allowed = new Set([
           'decision.requested',
           'decision.observed',
