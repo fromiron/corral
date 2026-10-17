@@ -1,6 +1,8 @@
 import {
   type AgentHost,
   type AgentStartInput,
+  type CheckPlan,
+  type VerificationReport,
   canonicalJson,
   type EffectiveHarnessSnapshot,
   type ModelRequestRecord,
@@ -121,6 +123,47 @@ async function loaded() {
 }
 
 describe('Coordinator harness boundary (H2)', () => {
+  it('[TC-HAR-012-H] a registered check waits for an exact owned approval and executes only once', async () => {
+    const plan: CheckPlan = { commandId:'types',name:'Types',argv:['node','check.mjs'],timeoutMs:10000,configRevision:1,fingerprint:'e'.repeat(64),tree:'f'.repeat(40),trusted:false };
+    const runCheck = vi.fn(async (input: import('@corral/contracts').CheckExecution) => ({verificationId:'verify_one', owner:{kind:'execution',runId:input.runId,executionId:input.executionId,attemptNo:input.attemptNo,effectId:input.effectId}, sessionId:'session_one',commandId:'types',configRevision:1,fingerprint:plan.fingerprint,tree:plan.tree,state:'completed',verdict:'pass',exitCode:0,signal:null,timedOut:false,cleanupConfirmed:true,targetUnchanged:true,durationMs:1,startedAt:'2026-10-18T00:00:00.000Z',endedAt:'2026-10-18T00:00:01.000Z',retainUntil:'2026-10-25T00:00:00.000Z',output:{text:'ok',bytes:2,hash:'b'.repeat(64),truncated:false},stale:false} as VerificationReport & {stale:boolean}));
+    const selected: EffectiveHarnessSnapshot = {...snapshot,policy:'strict',resources:[],allowedTools:['run_check'],projectTools:{projectId:'default',revision:1,hash:'c'.repeat(64),checkIds:['types'],lspServerIds:[]}};
+    const s=setup(true,selected,{files:{available:()=>true,execute:async()=>({}),planCheck:async()=>plan,runCheck}});
+    await s.started.wait(); await s.host().reportHarness!({ok:true,snapshotHash:selected.snapshotHash,tools:[{...descriptor,name:'run_check',source:'corral',sideEffect:'external'}],diagnostics:[]});
+    expect((await s.host().authorizeTool({name:'run_check',args:{commandId:'other'}})).ok).toBe(false);
+    expect((await s.host().authorizeTool({name:'run_check',args:{commandId:'types',argv:['other']}})).ok).toBe(false);
+    const auth=await s.host().authorizeTool({name:'run_check',args:{commandId:'types'}}); expect(auth.ok).toBe(true);
+    const pending=s.host().executeTool(auth.toolCallId);
+    await vi.waitFor(()=>expect(s.events().some(e=>e.type==='approval.requested')).toBe(true));
+    expect(runCheck).not.toHaveBeenCalled();
+    const event=s.events().find(e=>e.type==='approval.requested'); if(!event||event.type!=='approval.requested')throw new Error('approval missing');
+    expect(event.payload.tool).toMatchObject({executionId:s.input().executionId,attemptNo:1,toolCallId:auth.toolCallId,fingerprint:plan.fingerprint,targetTree:plan.tree});
+    expect(s.store.getArtifactText(s.input().runId,event.payload.subjectVersionIds[0] ?? '')).toContain('check.mjs');
+    const answer={schemaVersion:'0.1' as const,commandId:'approve_check',runId:s.input().runId,type:'resolve_approval' as const,expectedControlRevision:s.coordinator.getSnapshot(s.input().runId).projection.controlRevision,payload:{approvalId:event.payload.approvalId,decision:'approve' as const,subjectVersionId:event.payload.subjectVersionIds[0] ?? ''}};
+    expect(s.coordinator.submit(answer).status).toBe('applied');
+    expect((await pending).ok).toBe(true); expect(s.coordinator.submit(answer).status).toBe('applied');
+    expect(runCheck).toHaveBeenCalledTimes(1);
+    expect(runCheck.mock.calls[0]?.[0]).toMatchObject({runId:s.input().runId,executionId:s.input().executionId,attemptNo:1});
+    expect(s.events().filter(e=>e.type==='tool.finished' && e.payload.toolCallId===auth.toolCallId)).toHaveLength(1);
+    expect(()=>openRunArchive(exportRunArchive(s.store,s.input().runId,{privateTranscript:true}))).not.toThrow();
+    s.done.open();
+  });
+
+  it('[TC-HAR-012-N] cancelling a check approval owner closes the request and rejects late approval', async () => {
+    const plan: CheckPlan={commandId:'types',name:'Types',argv:['node','check.mjs'],timeoutMs:10000,configRevision:1,fingerprint:'e'.repeat(64),tree:'f'.repeat(40),trusted:false};
+    const runCheck=vi.fn(async()=>{throw new Error('must not execute');});
+    const selected: EffectiveHarnessSnapshot={...snapshot,policy:'strict',resources:[],allowedTools:['run_check'],projectTools:{projectId:'default',revision:1,hash:'c'.repeat(64),checkIds:['types'],lspServerIds:[]}};
+    const s=setup(true,selected,{files:{available:()=>true,execute:async()=>({}),planCheck:async()=>plan,runCheck}});
+    await s.started.wait(); await s.host().reportHarness!({ok:true,snapshotHash:selected.snapshotHash,tools:[{...descriptor,name:'run_check',source:'corral',sideEffect:'external'}],diagnostics:[]});
+    const auth=await s.host().authorizeTool({name:'run_check',args:{commandId:'types'}});expect(auth.ok).toBe(true);
+    const pending=s.host().executeTool(auth.toolCallId);
+    await vi.waitFor(()=>expect(s.events().some(e=>e.type==='approval.requested')).toBe(true));
+    const event=s.events().find(e=>e.type==='approval.requested');if(!event||event.type!=='approval.requested')throw new Error('missing approval');
+    s.coordinator.submit({schemaVersion:'0.1',runId:s.input().runId,commandId:'cancel_owner',type:'cancel',payload:{scope:{kind:'execution',executionId:s.input().executionId},reason:'stop'}});
+    expect((await pending).ok).toBe(false); expect(runCheck).not.toHaveBeenCalled();
+    expect(s.coordinator.getSnapshot(s.input().runId).projection.approvals[event.payload.approvalId]?.status).not.toBe('pending');
+    expect(s.coordinator.submit({schemaVersion:'0.1',runId:s.input().runId,commandId:'late_approve',type:'resolve_approval',expectedControlRevision:s.coordinator.getSnapshot(s.input().runId).projection.controlRevision,payload:{approvalId:event.payload.approvalId,decision:'approve',subjectVersionId:event.payload.subjectVersionIds[0]??''}}).status).toBe('rejected');
+    s.done.open();
+  });
   it('[TC-HAR-002-N] an admitted native effect can finish during pause without admitting another call', async () => {
     const s = await loaded();
     const args = { text: 'approved' };
