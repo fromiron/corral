@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { openDatabase } from '@corral/storage-sqlite';
+import { openDatabase, SqliteProjectToolStore } from '@corral/storage-sqlite';
 import { FakeClock, Gate } from '@corral/testkit';
 import { afterEach, describe, expect, it } from 'vitest';
 import { safeRelative, WorkspaceService } from '../src/files/service.ts';
@@ -59,6 +59,21 @@ async function setup(edit?: ConstructorParameters<typeof WorkspaceService>[0]['e
 }
 
 describe('file broker (CR-012)', () => {
+  it('[TC-HAR-012-H] existing workspace settings write immutable check revisions and read their authority', async () => {
+    const { service, db } = await setup();
+    const check = { id: 'types', name: 'Types', argv: ['node', 'check.mjs'], timeoutMs: 10000 };
+    await service.configure('default', { verifyCommands: [check] });
+    const store = new SqliteProjectToolStore(db, new FakeClock());
+    const first = store.latest('default');
+    expect(first).toMatchObject({ checks: [check] });
+    await service.configure('default', { verifyCommands: [] });
+    expect(store.latest('default')?.revision).toBe((first?.revision ?? 0) + 1);
+    expect(store.get('default', first?.revision ?? 0)?.checks).toEqual([check]);
+    db.prepare('UPDATE workspace_bindings SET verify_json = ?').run(JSON.stringify([check]));
+    expect((await service.view('default'))?.verifyCommands).toEqual([]);
+    await expect(service.configure('default', { verifyCommands: [{ ...check, argv: [] }] })).rejects.toThrow();
+    expect(store.latest('default')?.checks).toEqual([]);
+  });
   it('[TC-HAR-010-N] cancellation or an external change during edit calculation leaves the file untouched', async () => {
     for (const cause of ['cancel', 'changed']) {
       const entered = new Gate();
