@@ -44,6 +44,17 @@ const wrap = (ui: React.ReactNode) =>
   );
 
 describe('line diff (C-030)', () => {
+  it('[02-UX-Spec §4] aligns a large file with few changes instead of replacing it whole', () => {
+    const before = Array.from({ length: 4000 }, (_, i) => `line ${i}`);
+    const after = before.map((line, i) => (i % 10 === 0 ? `changed ${i}` : line));
+    const lines = diffLines(before.join('\n'), after.join('\n'));
+    expect(lines.filter((l) => l.kind === 'same')).toHaveLength(3600);
+    expect(lines.filter((l) => l.kind === 'added')).toHaveLength(400);
+    expect(lines.filter((l) => l.kind === 'removed')).toHaveLength(400);
+    // Order is kept: every line of the new version appears, in order.
+    expect(lines.filter((l) => l.kind !== 'removed').map((l) => l.text)).toEqual(after);
+  });
+
   it('keeps shared lines and marks what was removed and added', () => {
     expect(diffLines('a\nb\nc', 'a\nB\nc\nd')).toEqual([
       { kind: 'same', text: 'a' },

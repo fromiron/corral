@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-16T11:23:15.661Z",
+  "generatedAt": "2026-10-17T00:59:54.638Z",
   "node": "v24.14.0",
   "packageManager": "pnpm@10.30.3",
   "note": "Registry facts for pinned direct dependencies. Compatibility evidence is the CI gate result, not this file.",
@@ -271,7 +271,8 @@
       },
       "scope": "runtime",
       "usedBy": [
-        "@corral/react"
+        "@corral/react",
+        "@corral/studio"
       ]
     },
     {

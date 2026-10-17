@@ -15,7 +15,8 @@ import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import type { RunSummary, WorkSession } from '@corral/core';
 import type { DiffLine } from '@corral/react';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { reviewRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
@@ -426,80 +427,106 @@ function Unified({
       no: line.kind === 'removed' ? before : after,
     };
   });
+  // Only the rows in view are in the DOM (02-UX-Spec §11, WB-UX-006): a 4,000-line file costs
+  // what a screenful does. Rows grow with wrapped text, comments and the comment form.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const rows = useVirtualizer({
+    count: numbered.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 22,
+    overscan: 30,
+  });
   return (
-    <div className="overflow-auto rounded border border-line bg-surface font-mono text-[13px]">
-      {numbered.map(({ line, side, no }, index) => {
-        const here = comments.filter((c) => c.side === side && c.startLine === no);
-        return (
-          // biome-ignore lint/suspicious/noArrayIndexKey: diff rows have no identity beyond their place
-          <div key={index}>
-            <div data-diff={line.kind} className={`group flex ${lineClass(line.kind)}`}>
-              <button
-                type="button"
-                disabled={!onComment}
-                aria-label={t('commentLine', { line: no })}
-                onClick={() => {
-                  setOpen(open === index ? null : index);
-                  setBody('');
-                }}
-                className="w-12 shrink-0 select-none px-1 text-right text-muted hover:text-accent"
-              >
-                {no}
-              </button>
-              <span className="whitespace-pre-wrap break-all px-2">
-                {line.kind === 'added' ? '+ ' : line.kind === 'removed' ? '- ' : '  '}
-                {line.text}
-              </span>
-            </div>
-            {here.map((c) => (
-              <p
-                key={c.commentId}
-                data-testid="inline-comment"
-                className="ml-12 border-l-2 border-accent bg-raised px-2 py-1 font-sans text-xs"
-              >
-                {c.body} <span className="text-muted">· {t(`commentState.${c.state}`)}</span>
-              </p>
-            ))}
-            {open === index ? (
-              <form
-                className="ml-12 flex flex-col gap-1 bg-raised p-2 font-sans"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  if (!body.trim()) return;
-                  void onComment?.({
-                    side,
-                    startLine: no,
-                    endLine: no,
-                    quote: line.text,
-                    body,
-                  }).then(() => setOpen(null));
-                }}
-              >
-                <textarea
+    <div
+      ref={scrollRef}
+      className="max-h-[75vh] overflow-auto rounded border border-line bg-surface font-mono text-[13px]"
+    >
+      <div style={{ height: rows.getTotalSize(), position: 'relative' }}>
+        {rows.getVirtualItems().map((item) => {
+          const index = item.index;
+          const { line, side, no } = numbered[index] as (typeof numbered)[number];
+          const here = comments.filter((c) => c.side === side && c.startLine === no);
+          return (
+            <div
+              key={item.key}
+              data-index={index}
+              ref={rows.measureElement}
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                transform: `translateY(${item.start}px)`,
+              }}
+            >
+              <div data-diff={line.kind} className={`group flex ${lineClass(line.kind)}`}>
+                <button
+                  type="button"
+                  disabled={!onComment}
                   aria-label={t('commentLine', { line: no })}
-                  placeholder={t('commentPlaceholder')}
-                  value={body}
-                  rows={2}
-                  onChange={(e) => setBody(e.target.value)}
-                  className="rounded border border-line bg-surface p-1 text-xs"
-                />
-                <div className="flex gap-1 text-xs">
-                  <button type="submit" className="rounded bg-accent px-2 py-0.5 text-on-accent">
-                    {t('addComment')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setOpen(null)}
-                    className="rounded border border-line px-2 py-0.5"
-                  >
-                    {t('cancel')}
-                  </button>
-                </div>
-              </form>
-            ) : null}
-          </div>
-        );
-      })}
+                  onClick={() => {
+                    setOpen(open === index ? null : index);
+                    setBody('');
+                  }}
+                  className="w-12 shrink-0 select-none px-1 text-right text-muted hover:text-accent"
+                >
+                  {no}
+                </button>
+                <span className="whitespace-pre-wrap break-all px-2">
+                  {line.kind === 'added' ? '+ ' : line.kind === 'removed' ? '- ' : '  '}
+                  {line.text}
+                </span>
+              </div>
+              {here.map((c) => (
+                <p
+                  key={c.commentId}
+                  data-testid="inline-comment"
+                  className="ml-12 border-l-2 border-accent bg-raised px-2 py-1 font-sans text-xs"
+                >
+                  {c.body} <span className="text-muted">· {t(`commentState.${c.state}`)}</span>
+                </p>
+              ))}
+              {open === index ? (
+                <form
+                  className="ml-12 flex flex-col gap-1 bg-raised p-2 font-sans"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    if (!body.trim()) return;
+                    void onComment?.({
+                      side,
+                      startLine: no,
+                      endLine: no,
+                      quote: line.text,
+                      body,
+                    }).then(() => setOpen(null));
+                  }}
+                >
+                  <textarea
+                    aria-label={t('commentLine', { line: no })}
+                    placeholder={t('commentPlaceholder')}
+                    value={body}
+                    rows={2}
+                    onChange={(e) => setBody(e.target.value)}
+                    className="rounded border border-line bg-surface p-1 text-xs"
+                  />
+                  <div className="flex gap-1 text-xs">
+                    <button type="submit" className="rounded bg-accent px-2 py-0.5 text-on-accent">
+                      {t('addComment')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setOpen(null)}
+                      className="rounded border border-line px-2 py-0.5"
+                    >
+                      {t('cancel')}
+                    </button>
+                  </div>
+                </form>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
