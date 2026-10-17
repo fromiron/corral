@@ -105,6 +105,25 @@
               "draft",
               "review"
             ]
+          },
+          "harness": {
+            "type": "object",
+            "properties": {
+              "profileId": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+              },
+              "revision": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "profileId",
+              "revision"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [

@@ -3,6 +3,7 @@ export * from './decisions.ts';
 export * from './definition.ts';
 export * from './errors.ts';
 export * from './events.ts';
+export * from './harness.ts';
 export * from './ids.ts';
 export * from './json-schema.ts';
 export * from './layout.ts';
