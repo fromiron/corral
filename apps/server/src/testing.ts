@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { endpointProvider, memoryChannelPair, PiAgentAdapter, runWorker } from '@corral/adapter-pi';
+import type { LspQuery } from '@corral/contracts';
 import {
   createFauxCore,
   createModels,
@@ -225,8 +226,15 @@ export function fakeOpenAI(
   };
 
   /** Scripts one live step: write `text`, submit it, finish. */
-  const answerWith = (text: string, options: { checkId?: string } = {}) => {
+  const answerWith = (text: string, options: { checkId?: string; lspQuery?: LspQuery } = {}) => {
     faux.setResponses([
+      ...(options.lspQuery
+        ? [
+            fauxAssistantMessage([fauxToolCall('lsp_query', options.lspQuery)], {
+              stopReason: 'toolUse',
+            }),
+          ]
+        : []),
       ...(options.checkId
         ? [
             fauxAssistantMessage([fauxToolCall('run_check', { commandId: options.checkId })], {
