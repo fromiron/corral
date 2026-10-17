@@ -129,6 +129,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
     };
     let notifications = Promise.resolve();
     let reported = false;
+    let requiredExtensionFailed = false;
     let failureCode: Extract<HarnessReport, { ok: false }>['code'] = 'sdk_start_failed';
     try {
       const model = deps.resolveModel(
@@ -240,6 +241,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
             let modelCallId: string | undefined;
             let observed = false;
             try {
+              if (requiredExtensionFailed) throw new Error('required extension failed');
               if (cancelled || options?.signal?.aborted) throw new Error('cancelled');
               const record = requestRecord(requestContext, requestPurpose, directives);
               const permit = await call({ type: 'prepare_request', ...record });
@@ -476,6 +478,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
       };
       for (const tool of customTools) register(tool, 'corral');
       const takeAuthorization = (id: string, args: unknown) => {
+        if (requiredExtensionFailed) throw new Error('required extension failed');
         const auth = authorized.get(id);
         authorized.delete(id);
         if (!auth || auth.argsHash !== hashOf(cleanJson(args)))
@@ -487,6 +490,24 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
           (e) => resolve(e.path) === resolve(extension.path),
         );
         if (!resource) throw new Error('unbound extension loaded');
+        if (
+          start.harness.resources.some(
+            (ref) => ref.kind === 'extension' && ref.hash === resource.hash && ref.required,
+          )
+        ) {
+          for (const [event, handlers] of extension.handlers)
+            extension.handlers.set(
+              event,
+              handlers.map((handler) => async (...args) => {
+                try {
+                  return await handler(...args);
+                } catch {
+                  requiredExtensionFailed = true;
+                  throw new Error('required extension failed');
+                }
+              }),
+            );
+        }
         for (const { definition } of extension.tools.values()) {
           if (descriptors.has(definition.name)) throw new Error('tool name collision');
           register(definition, resource.source);
@@ -561,6 +582,8 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
                 }
               });
               pi.on('tool_call', async (event) => {
+                if (requiredExtensionFailed)
+                  return { block: true, reason: 'required extension failed' };
                 const descriptor = descriptors.get(event.toolName);
                 if (
                   !descriptor ||
@@ -655,7 +678,6 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
         },
       );
       failureCode = 'extension_load_failed';
-      let extensionStartFailed = false;
       const requiredPaths = new Set(
         start.resources.extensions
           .filter((extension) =>
@@ -671,12 +693,11 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
       await session.bindExtensions({
         uiContext,
         onError: (error) => {
-          if (error.event === 'session_start' && requiredPaths.has(resolve(error.extensionPath)))
-            extensionStartFailed = true;
+          if (requiredPaths.has(resolve(error.extensionPath))) requiredExtensionFailed = true;
         },
       });
       await notifications;
-      if (extensionStartFailed) throw new Error('required extension initialization failed');
+      if (requiredExtensionFailed) throw new Error('required extension initialization failed');
       session.setActiveToolsByName(
         session.getActiveToolNames().filter((name) => start.harness.allowedTools.includes(name)),
       );
@@ -761,6 +782,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
       await session.waitForIdle();
       await notifications;
       await requests;
+      if (requiredExtensionFailed) throw new Error('required extension failed');
       if (!settled) throw new Error('SDK did not settle');
       const last = [...session.messages]
         .reverse()

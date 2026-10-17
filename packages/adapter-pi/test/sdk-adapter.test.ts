@@ -173,17 +173,34 @@ function runtime(
 }
 
 describe('SDK worker through the product adapter (H2)', () => {
-  it.each(['before_agent_start','context','tool_call','tool_result'] as const)('[TC-HAR-006-N] stops after a required %s hook fails', async event => {
-    const executeTool=vi.fn(async(toolCallId:string)=>({ok:true as const,toolCallId,result:{artifactVersionId:'version_one'}}));
-    const run=runtime([
-      fauxAssistantMessage([fauxToolCall('write_artifact',{text:'draft'})],{stopReason:'toolUse'}),
-      fauxAssistantMessage('Finished.'),
-    ],`export default pi => { pi.on(${JSON.stringify(event)}, () => { throw new Error('private hook failure'); }); };`,{executeTool});
-    expect(await(await run.adapter.start(run.input,run.host)).waitForSettlement()).toMatchObject({outcome:'failed'});
-    expect(executeTool).toHaveBeenCalledTimes(event==='tool_result'?1:0);
-    expect(run.credentials.mock.calls.length).toBeLessThanOrEqual(event==='tool_call'||event==='tool_result'?1:0);
-    expect(JSON.stringify(run.frames)).not.toContain('private hook failure');
-  });
+  it.each(['before_agent_start', 'context', 'tool_call', 'tool_result'] as const)(
+    '[TC-HAR-006-N] stops after a required %s hook fails',
+    async (event) => {
+      const executeTool = vi.fn(async (toolCallId: string) => ({
+        ok: true as const,
+        toolCallId,
+        result: { artifactVersionId: 'version_one' },
+      }));
+      const run = runtime(
+        [
+          fauxAssistantMessage([fauxToolCall('write_artifact', { text: 'draft' })], {
+            stopReason: 'toolUse',
+          }),
+          fauxAssistantMessage('Finished.'),
+        ],
+        `export default pi => { pi.on(${JSON.stringify(event)}, () => { throw new Error('private hook failure'); }); };`,
+        { executeTool },
+      );
+      expect(
+        await (await run.adapter.start(run.input, run.host)).waitForSettlement(),
+      ).toMatchObject({ outcome: 'failed' });
+      expect(executeTool).toHaveBeenCalledTimes(event === 'tool_result' ? 1 : 0);
+      expect(run.credentials.mock.calls.length).toBeLessThanOrEqual(
+        event === 'tool_call' || event === 'tool_result' ? 1 : 0,
+      );
+      expect(JSON.stringify(run.frames)).not.toContain('private hook failure');
+    },
+  );
   it('[TC-HAR-015-H] exposes item delegation and carries item identity into the actual SDK prompt', async () => {
     const proposals: unknown[] = [];
     const run = runtime(
