@@ -18,7 +18,7 @@ export { isHtmlDocument, RunResults } from './components/RunResults.tsx';
 export { describeEvent, EventText, RunReason } from './components/RunText.tsx';
 export { ExecutionTree, RunOutput, RunView } from './components/RunView.tsx';
 export { SafeMarkdown } from './components/SafeMarkdown.tsx';
-export { StatusBadge } from './components/StatusBadge.tsx';
+export { StatusBadge, StatusDot, statusTone } from './components/StatusBadge.tsx';
 export { TaskBoard } from './components/TaskBoard.tsx';
 export { Timeline } from './components/Timeline.tsx';
 export { ValidationPanel } from './components/ValidationPanel.tsx';
