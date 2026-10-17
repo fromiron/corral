@@ -1802,7 +1802,8 @@
     "previewRunStyle": "{name}의 실행 설정 미리보기",
     "keepRoleStyle": "역할 설정 유지",
     "promptUnavailable": "확장 요청을 불러오지 못했습니다. 요청을 닫거나 다시 시도하세요.",
-    "retryPrompt": "요청 다시 불러오기"
+    "retryPrompt": "요청 다시 불러오기",
+    "toolsUpdated": "도구 등록 revision {revision}"
   },
   "Recipe": {
     "heading": "검토 규칙",

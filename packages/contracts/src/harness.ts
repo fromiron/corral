@@ -46,6 +46,12 @@ export const ToolDescriptor = z.strictObject({
   sideEffect: z.enum(['none', 'workspace', 'external', 'unknown']),
 });
 export type ToolDescriptor = z.infer<typeof ToolDescriptor>;
+export const HarnessToolsUpdate = z.strictObject({
+  snapshotHash: ContentHash,
+  expectedRevision: z.int().min(1),
+  tools: z.array(ToolDescriptor).max(128),
+});
+export type HarnessToolsUpdate = z.infer<typeof HarnessToolsUpdate>;
 
 /** References only: no local paths, skill text, credentials or extension error messages. */
 export const HarnessResourceRef = z.strictObject({

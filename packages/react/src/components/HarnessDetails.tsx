@@ -23,7 +23,10 @@ export function HarnessDetails({ session }: { session: RunSessionStore }) {
     .filter((event) => event.type === 'tool.started')
     .filter((event) => event.payload.management === 'unmanaged_native');
   const loads = events.filter(
-    (event) => event.type === 'harness.loaded' || event.type === 'harness.load_failed',
+    (event) =>
+      event.type === 'harness.loaded' ||
+      event.type === 'harness.tools_updated' ||
+      event.type === 'harness.load_failed',
   );
   const uiHistory = events.filter((event) => event.type.startsWith('extension.ui_'));
   if (!harnesses && !requests.length && !uiHistory.length) return null;
@@ -72,20 +75,26 @@ export function HarnessDetails({ session }: { session: RunSessionStore }) {
           <details key={event.eventId}>
             <summary className="cursor-pointer text-xs">
               {event.executionId} ·{' '}
-              {event.type === 'harness.loaded' ? t('loaded') : t('loadFailed')}
+              {event.type === 'harness.loaded'
+                ? t('loaded')
+                : event.type === 'harness.tools_updated'
+                  ? t('toolsUpdated', { revision: event.payload.revision })
+                  : t('loadFailed')}
             </summary>
-            {event.type === 'harness.loaded' ? (
+            {event.type !== 'harness.load_failed' ? (
               <ul className="text-xs">
                 {event.payload.tools.map((tool) => (
                   <li key={tool.name}>
                     {tool.name} · {tool.source} · {tool.sideEffect}
                   </li>
                 ))}
-                {(event.payload.commands ?? []).map((command) => (
-                  <li key={command.alias}>
-                    /{command.alias} · {command.source} · {t('startupOnly')}
-                  </li>
-                ))}
+                {(event.type === 'harness.loaded' ? (event.payload.commands ?? []) : []).map(
+                  (command) => (
+                    <li key={command.alias}>
+                      /{command.alias} · {command.source} · {t('startupOnly')}
+                    </li>
+                  ),
+                )}
               </ul>
             ) : (
               <p className="text-xs text-danger">{event.payload.code}</p>

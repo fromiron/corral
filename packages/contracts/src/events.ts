@@ -15,6 +15,7 @@ import {
   ContentHash,
   EffectiveHarnessSnapshot,
   HarnessReport,
+  HarnessToolsUpdate,
   ModelRequestRecord,
   ProviderPayloadRecord,
 } from './harness.ts';
@@ -576,6 +577,10 @@ export const DecisionFailed = event(
 );
 
 export const HarnessLoaded = event('harness.loaded', HarnessReport.options[0].omit({ ok: true }));
+export const HarnessToolsUpdated = event(
+  'harness.tools_updated',
+  HarnessToolsUpdate.omit({ expectedRevision: true }).extend({ revision: z.int().min(2) }),
+);
 export const HarnessLoadFailed = event(
   'harness.load_failed',
   HarnessReport.options[1].omit({ ok: true }),
@@ -623,6 +628,7 @@ export const RunEvent = z.discriminatedUnion('type', [
   ExtensionUiExpired,
   ExtensionUiNotified,
   HarnessLoaded,
+  HarnessToolsUpdated,
   HarnessLoadFailed,
   ModelRequestRecorded,
   ModelPayloadRecorded,

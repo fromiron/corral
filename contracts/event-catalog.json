@@ -1,7 +1,7 @@
 [
   {
     "type": "run.started",
-    "requiredContent": "\uc815\uc758/\uc785\ub825/\ubaa8\ub378 snapshot\uacfc \ucd5c\ucd08 limits",
+    "requiredContent": "정의/입력/모델 snapshot과 최초 limits",
     "status": "payload_schema_to_implement"
   },
   {
@@ -292,6 +292,11 @@
   {
     "type": "recipe.stopped",
     "requiredContent": "loopNodeId,recipeId,revision,recipeHash,criteriaVersionId,candidateVersionId,reason",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "harness.tools_updated",
+    "requiredContent": "snapshotHash,revision,tools (no paths or bodies)",
     "status": "payload_schema_to_implement"
   }
 ]

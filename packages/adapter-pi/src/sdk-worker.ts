@@ -130,6 +130,9 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
     let notifications = Promise.resolve();
     let reported = false;
     let requiredExtensionFailed = false;
+    let registryUpdates = Promise.resolve();
+    let registryRevision = 1;
+    let reportedRegistryHash = '';
     let failureCode: Extract<HarnessReport, { ok: false }>['code'] = 'sdk_start_failed';
     try {
       const model = deps.resolveModel(
@@ -241,6 +244,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
             let modelCallId: string | undefined;
             let observed = false;
             try {
+              await registryUpdates;
               if (requiredExtensionFailed) throw new Error('required extension failed');
               if (cancelled || options?.signal?.aborted) throw new Error('cancelled');
               const record = requestRecord(requestContext, requestPurpose, directives);
@@ -485,6 +489,24 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
           throw new Error('arguments changed after authorization');
         return auth;
       };
+      const wrappedTools = new WeakSet<ToolDefinition>();
+      const wrappedHandlers = new WeakSet<object>();
+      const publishRegistry = () => {
+        const tools = [...descriptors.values()];
+        const hash = hashOf(tools);
+        if (!reported || hash === reportedRegistryHash) return;
+        reportedRegistryHash = hash;
+        const expectedRevision = registryRevision++;
+        registryUpdates = registryUpdates.then(() =>
+          ack({
+            type: 'harness_tools',
+            update: { snapshotHash: start.harness.snapshotHash, expectedRevision, tools },
+          }),
+        );
+        void registryUpdates.catch(() => {
+          requiredExtensionFailed = true;
+        });
+      };
       const wrapExtension = (extension: Extension) => {
         const resource = start.resources.extensions.find(
           (e) => resolve(e.path) === resolve(extension.path),
@@ -498,19 +520,26 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
           for (const [event, handlers] of extension.handlers)
             extension.handlers.set(
               event,
-              handlers.map((handler) => async (...args) => {
-                try {
-                  return await handler(...args);
-                } catch {
-                  requiredExtensionFailed = true;
-                  throw new Error('required extension failed');
-                }
+              handlers.map((handler) => {
+                if (wrappedHandlers.has(handler)) return handler;
+                const wrapped = async (...args: Parameters<typeof handler>) => {
+                  try {
+                    return await handler(...args);
+                  } catch {
+                    requiredExtensionFailed = true;
+                    throw new Error('required extension failed');
+                  }
+                };
+                wrappedHandlers.add(wrapped);
+                return wrapped;
               }),
             );
         }
         for (const { definition } of extension.tools.values()) {
           if (descriptors.has(definition.name)) throw new Error('tool name collision');
           register(definition, resource.source);
+          if (wrappedTools.has(definition)) continue;
+          wrappedTools.add(definition);
           const execute = definition.execute;
           definition.execute = async (id, args, signal, update, ctx) => {
             const auth = takeAuthorization(id, args);
@@ -582,6 +611,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
                 }
               });
               pi.on('tool_call', async (event) => {
+                await registryUpdates;
                 if (requiredExtensionFailed)
                   return { block: true, reason: 'required extension failed' };
                 const descriptor = descriptors.get(event.toolName);
@@ -654,6 +684,24 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
         sessionManager: SessionManager.inMemory(cwd),
         settingsManager: settings,
       }));
+      const extensionRuntime = loader.getExtensions().runtime;
+      const refreshTools = extensionRuntime.refreshTools;
+      extensionRuntime.refreshTools = () => {
+        try {
+          for (const [name, descriptor] of descriptors)
+            if (descriptor.source !== 'corral') {
+              descriptors.delete(name);
+              schemas.delete(name);
+            }
+          for (const extension of loader.getExtensions().extensions)
+            if (extension.path !== '<inline:corral>') wrapExtension(extension);
+          refreshTools();
+          publishRegistry();
+        } catch (error) {
+          requiredExtensionFailed = true;
+          throw error;
+        }
+      };
       const uiContext = extensionUi(
         session.extensionRunner.getUIContext(),
         async (request, signal) => {
@@ -727,17 +775,20 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
       });
       if (new Set(commands.map((command) => command.alias)).size !== commands.length)
         throw new Error('ambiguous extension command alias');
+      const initialTools = [...descriptors.values()];
+      reportedRegistryHash = hashOf(initialTools);
       await ack({
         type: 'harness_report',
         report: {
           ok: true,
           snapshotHash: start.harness.snapshotHash,
-          tools: [...descriptors.values()],
+          tools: initialTools,
           diagnostics,
           ...(commands.length ? { commands } : {}),
         },
       });
       reported = true;
+      publishRegistry();
       let settled = false;
       session.subscribe((event) => {
         if (event.type === 'agent_start') settled = false;

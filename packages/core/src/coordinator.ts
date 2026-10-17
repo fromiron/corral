@@ -23,6 +23,7 @@ import {
   FILE_TOOLS,
   type HarnessBindingRef,
   HarnessReport,
+  HarnessToolsUpdate,
   type IdFactory,
   type InputBinding,
   LspQuery,
@@ -3733,7 +3734,24 @@ export class Coordinator {
     let lastCall: { modelCallId: string; contextSnapshotId: string; effectId: string } | null =
       null;
     let harnessState: 'unloaded' | 'loaded' | 'failed' = 'unloaded';
+    let toolsRevision = 1;
     const descriptors = new Map<string, ToolDescriptor>();
+    const validateDescriptors = (tools: ToolDescriptor[]) => {
+      const names = new Set<string>();
+      for (const descriptor of tools) {
+        if (names.has(descriptor.name)) throw new Error('duplicate descriptor');
+        names.add(descriptor.name);
+        if (
+          descriptor.source !== 'corral' &&
+          (harness?.policy !== 'trusted-native' ||
+            !harness.resources.some(
+              (r) =>
+                r.kind === 'extension' && descriptor.source === `extension:${r.name}@${r.version}`,
+            ))
+        )
+          throw new Error('unbound native tool');
+      }
+    };
     const nativeEffects = new Map<string, string>();
     const recordedPayloads = new Set<string>();
     const toolView = (proposal: ToolProposal): ToolGateView => ({
@@ -3754,9 +3772,26 @@ export class Coordinator {
         throw new Error(`execution ${executionId} is not active`);
       }
     };
+    const requireOwned = () => {
+      const execution = run.projection.executions[executionId];
+      if (
+        !execution ||
+        TERMINAL_EXECUTION_STATUSES.has(execution.status) ||
+        TERMINAL_RUN_STATUSES.has(run.projection.status) ||
+        run.cancelRequested.has(executionId) ||
+        run.closingExecutions.has(executionId) ||
+        execution.attemptNo !== input.attemptNo ||
+        run.projection.tasks[input.taskId]?.activeExecutionId !== executionId ||
+        this.storageError
+      )
+        throw new Error('execution owner is closed');
+    };
 
     // Authorized calls of this execution; each may run once.
-    const authorized = new Map<string, { proposal: ToolProposal; ran: boolean }>();
+    const authorized = new Map<
+      string,
+      { proposal: ToolProposal; ran: boolean; descriptorHash?: string }
+    >();
 
     const authorizeTool = async (
       proposal: ToolProposal,
@@ -3880,7 +3915,11 @@ export class Coordinator {
           : []),
       ]);
       if (error) return { ok: false, toolCallId, error };
-      authorized.set(toolCallId, { proposal, ran: false });
+      authorized.set(toolCallId, {
+        proposal,
+        ran: false,
+        ...(harness ? { descriptorHash: hashOf(descriptors.get(proposal.name) ?? null) } : {}),
+      });
       return { ok: true, toolCallId };
     };
 
@@ -3906,6 +3945,15 @@ export class Coordinator {
           },
         };
       }
+      if (harness && call.descriptorHash !== hashOf(descriptors.get(call.proposal.name) ?? null))
+        return {
+          ok: false,
+          toolCallId,
+          error: {
+            code: 'CAPABILITY_DENIED',
+            message: 'tool registration changed after authorization',
+          },
+        };
       const refusal = toolRefusal(runGates(this.gates['tool.execute'], toolView(call.proposal)));
       if (refusal)
         return { ok: false, toolCallId, error: { code: refusal.code, message: refusal.message } };
@@ -4108,21 +4156,7 @@ export class Coordinator {
                 harnessState = 'failed';
                 return;
               }
-              const names = new Set<string>();
-              for (const descriptor of report.tools) {
-                if (names.has(descriptor.name)) throw new Error('duplicate descriptor');
-                names.add(descriptor.name);
-                if (
-                  descriptor.source !== 'corral' &&
-                  (!harness.resources.some(
-                    (r) =>
-                      r.kind === 'extension' &&
-                      descriptor.source === `extension:${r.name}@${r.version}`,
-                  ) ||
-                    harness.policy === 'strict')
-                )
-                  throw new Error('unbound native tool');
-              }
+              validateDescriptors(report.tools);
               for (const command of report.commands ?? []) {
                 if (
                   harness.policy === 'strict' ||
@@ -4149,6 +4183,31 @@ export class Coordinator {
               for (const descriptor of report.tools) descriptors.set(descriptor.name, descriptor);
               harnessState = 'loaded';
             },
+            updateHarnessTools: async (raw) => {
+              requireOwned();
+              const update = HarnessToolsUpdate.parse(raw);
+              if (
+                harnessState !== 'loaded' ||
+                update.snapshotHash !== harness.snapshotHash ||
+                update.expectedRevision !== toolsRevision
+              )
+                throw new Error('unexpected tool registry revision');
+              validateDescriptors(update.tools);
+              this.commit(run, [
+                {
+                  type: 'harness.tools_updated',
+                  executionId,
+                  payload: {
+                    snapshotHash: update.snapshotHash,
+                    revision: toolsRevision + 1,
+                    tools: update.tools,
+                  },
+                },
+              ]);
+              descriptors.clear();
+              for (const descriptor of update.tools) descriptors.set(descriptor.name, descriptor);
+              toolsRevision += 1;
+            },
             beginNativeTool: async (toolCallId: string, argsHash: string) => {
               await this.boundary(run, executionId);
               requireActive();
@@ -4156,6 +4215,7 @@ export class Coordinator {
               if (
                 !call ||
                 call.ran ||
+                call.descriptorHash !== hashOf(descriptors.get(call.proposal.name) ?? null) ||
                 !descriptors.get(call.proposal.name)?.source.startsWith('extension:') ||
                 hashOf(call.proposal.args) !== argsHash
               )
@@ -4187,18 +4247,7 @@ export class Coordinator {
               nativeEffects.set(toolCallId, effectId);
             },
             finishNativeTool: async (toolCallId: string, outcome: 'succeeded' | 'failed') => {
-              const execution = run.projection.executions[executionId];
-              if (
-                !execution ||
-                TERMINAL_EXECUTION_STATUSES.has(execution.status) ||
-                TERMINAL_RUN_STATUSES.has(run.projection.status) ||
-                run.cancelRequested.has(executionId) ||
-                run.closingExecutions.has(executionId) ||
-                execution.attemptNo !== input.attemptNo ||
-                run.projection.tasks[input.taskId]?.activeExecutionId !== executionId ||
-                this.storageError
-              )
-                throw new Error('native owner is closed');
+              requireOwned();
               const effectId = nativeEffects.get(toolCallId);
               if (!effectId || run.projection.effects[effectId]?.status !== 'admitted')
                 throw new Error('native call is closed');

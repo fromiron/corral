@@ -344,11 +344,14 @@ class WorkerExecution {
         }
         return;
       case 'harness_report':
+      case 'harness_tools':
       case 'request_record':
       case 'native_tool_start':
       case 'native_tool_finish': {
         try {
           if (frame.type === 'harness_report') await this.host.reportHarness!(frame.report);
+          else if (frame.type === 'harness_tools')
+            await this.host.updateHarnessTools!(frame.update);
           else if (frame.type === 'request_record') {
             if (!this.host.recordProviderPayload)
               throw new Error('provider request recording unavailable');

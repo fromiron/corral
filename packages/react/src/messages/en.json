@@ -1802,7 +1802,8 @@
     "previewRunStyle": "Preview run style for {name}",
     "keepRoleStyle": "Keep role settings",
     "promptUnavailable": "The extension prompt could not be loaded. Dismiss it or try again.",
-    "retryPrompt": "Retry prompt"
+    "retryPrompt": "Retry prompt",
+    "toolsUpdated": "Tool registry revision {revision}"
   },
   "Recipe": {
     "heading": "Review recipe",

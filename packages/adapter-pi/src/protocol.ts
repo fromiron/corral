@@ -6,6 +6,7 @@ import {
   ExtensionUiResult,
   HarnessReport,
   HarnessResource,
+  HarnessToolsUpdate,
   Identifier,
   ItemRef,
   ModelRequestRecord,
@@ -253,6 +254,12 @@ export const SdkWorkerFrame = z.union([
     ...sdkHead,
     requestId: RequestId,
     report: HarnessReport,
+  }),
+  z.strictObject({
+    type: z.literal('harness_tools'),
+    ...sdkHead,
+    requestId: RequestId,
+    update: HarnessToolsUpdate,
   }),
   z.strictObject({
     type: z.literal('request_record'),
