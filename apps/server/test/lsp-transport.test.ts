@@ -32,6 +32,10 @@ function fixture(mode = 'normal') {
   };
 }
 const live = { aborted: false, onCancel: () => () => {} };
+it('[TC-HAR-010-N] server exception text never becomes a public tool error', async()=>{
+  const runner=new LspRunner({clock:new FakeClock(),timers:systemTimers});
+  await expect(runner.query({...fixture('initialize_error'),operation:'diagnostics'},live)).rejects.toThrow('language server query failed');
+});
 it('[TC-HAR-010-H] uses public LSP initialization, full document sync and UTF-16 positions for definition/references', async () => {
   const runner = new LspRunner({ clock: new FakeClock(), timers: systemTimers });
   for (const operation of ['definition', 'references'] as const) {
