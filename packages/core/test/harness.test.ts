@@ -7,6 +7,7 @@ import {
   type ModelRequestRecord,
   type ToolDescriptor,
   type VerificationReport,
+  type LspReport,
 } from '@corral/contracts';
 import { FakeClock, Gate, linearCorral, SequentialIdFactory } from '@corral/testkit';
 import { sha256 } from '@noble/hashes/sha2.js';
@@ -123,6 +124,107 @@ async function loaded() {
 }
 
 describe('Coordinator harness boundary (H2)', () => {
+  it('[TC-HAR-010-H] a selected LSP query uses the owned launch approval and cannot run without read permission', async () => {
+    const query = {
+      serverId: 'typescript',
+      path: 'source.ts',
+      operation: 'definition' as const,
+      position: { line: 0, character: 2 },
+    };
+    const plan: CheckPlan = {
+      purpose: 'lsp',
+      query,
+      commandId: query.serverId,
+      name: 'TypeScript server',
+      argv: ['typescript-language-server', '--stdio'],
+      timeoutMs: 10000,
+      configRevision: 1,
+      fingerprint: 'e'.repeat(64),
+      tree: 'f'.repeat(40),
+      trusted: false,
+    };
+    const runLsp = vi.fn(
+      async () =>
+        ({
+          serverId: query.serverId,
+          operation: query.operation,
+          configRevision: 1,
+          fingerprint: plan.fingerprint,
+          tree: plan.tree,
+          source: { path: query.path, sha256: 'b'.repeat(64), version: 1 },
+          result: { kind: 'locations', locations: [] },
+          durationMs: 1,
+          truncated: false,
+        }) as LspReport,
+    );
+    const selected: EffectiveHarnessSnapshot = {
+      ...snapshot,
+      policy: 'strict',
+      resources: [],
+      allowedTools: ['lsp_query'],
+      projectTools: {
+        projectId: 'default',
+        revision: 1,
+        hash: 'c'.repeat(64),
+        checkIds: [],
+        lspServerIds: ['typescript'],
+      },
+    };
+    for (const readPermission of [false, true]) {
+      const s = setup(true, selected, {
+        files: {
+          available: () => true,
+          execute: async () => ({}),
+          planLsp: async () => plan,
+          runLsp,
+        },
+        fileTools: readPermission,
+      });
+      await s.started.wait();
+      await s.host().reportHarness!({
+        ok: true,
+        snapshotHash: selected.snapshotHash,
+        tools: [{ ...descriptor, name: 'lsp_query', source: 'corral', sideEffect: 'external' }],
+        diagnostics: [],
+      });
+      const authorization = await s.host().authorizeTool({ name: 'lsp_query', args: query });
+      expect(authorization.ok).toBe(readPermission);
+      if (!readPermission) {
+        s.done.open();
+        continue;
+      }
+      expect(
+        (
+          await s
+            .host()
+            .authorizeTool({ name: 'lsp_query', args: { ...query, serverId: 'unbound' } })
+        ).ok,
+      ).toBe(false);
+      const pending = s.host().executeTool(authorization.toolCallId);
+      await vi.waitFor(() =>
+        expect(s.events().some((event) => event.type === 'approval.requested')).toBe(true),
+      );
+      const approval = s.events().find((event) => event.type === 'approval.requested');
+      if (!approval) throw new Error('missing approval');
+      expect(approval.payload.tool?.purpose).toBe('lsp');
+      s.coordinator.submit({
+        schemaVersion: '0.1',
+        commandId: 'approve_lsp',
+        runId: s.input().runId,
+        type: 'resolve_approval',
+        expectedControlRevision: s.coordinator.getSnapshot(s.input().runId).projection
+          .controlRevision,
+        payload: {
+          approvalId: approval.payload.approvalId,
+          subjectVersionId: approval.payload.subjectVersionIds[0] ?? '',
+          decision: 'approve',
+        },
+      });
+      expect((await pending).ok).toBe(true);
+      expect(runLsp).toHaveBeenCalledTimes(1);
+      s.done.open();
+    }
+  });
   it('[TC-HAR-012-N] one approval cannot resume a run with another pending check, and its deadline closes it', async () => {
     const plan: CheckPlan = {
       commandId: 'types',
