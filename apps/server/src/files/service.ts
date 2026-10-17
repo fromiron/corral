@@ -1900,12 +1900,12 @@ export class WorkspaceService implements FileTools {
 
   async pinCriteria(runId: string, raw: ReviewRecipeRevision['criteriaFiles']) {
     const files = ReviewRecipeRevision.shape.criteriaFiles.parse(raw);
-    const current = this.criteria.get(runId);
-    if (current && canonicalJson(current) !== canonicalJson(files))
-      throw new ToolRefusal('REVISION_CONFLICT', 'recipe criteria are already pinned');
     const found = this.worktreeOfRun(runId);
     if (!found) throw new ToolRefusal('CAPABILITY_DENIED', 'criteria require a working copy');
     await this.lease(found.row.worktree_path, async () => {
+      const current = this.criteria.get(runId);
+      if (current && canonicalJson(current) !== canonicalJson(files))
+        throw new ToolRefusal('REVISION_CONFLICT', 'recipe criteria are already pinned');
       for (const file of files)
         if (
           sha256(await textBytes(found.row.worktree_path, safeRelative(file.path))) !== file.sha256
