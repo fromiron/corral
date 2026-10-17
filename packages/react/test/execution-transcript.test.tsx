@@ -106,6 +106,19 @@ describe('buildTranscript (UX-A3)', () => {
 });
 
 describe('ExecutionTranscript (UX-A3)', () => {
+  it('[TC-OBS-001-N] completed tool-only replies do not look like pending model requests', async () => {
+    const { session, writer } = await collaborationRun();
+    session.setState((state) => ({
+      streams: Object.fromEntries(Object.entries(state.streams).map(([id, stream]) => [id, { ...stream, text: '' }])),
+    }));
+    render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <ExecutionTranscript session={session} executionId={writer} />
+      </IntlProvider>,
+    );
+    expect(screen.queryByText(messages.Transcript.waiting)).not.toBeInTheDocument();
+    expect(screen.getAllByText('Response complete · no text')).toHaveLength(2);
+  });
   it('[TC-RNS-010-H] shows the person’s instruction with where it went, and the reply that followed it', async () => {
     const { session, writer } = await collaborationRun({ steerWriter: 'Cite the vendor docs.' });
     render(
