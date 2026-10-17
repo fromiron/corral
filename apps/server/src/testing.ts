@@ -273,5 +273,15 @@ export function fakeOpenAI(
   /** Scripts one plain text answer (for a host request such as a team draft). */
   const replyText = (text: string) => faux.setResponses([fauxAssistantMessage(text)]);
 
-  return { live, credentials, configDir, seen, answerWith, replyText };
+  return {
+    live,
+    credentials,
+    configDir,
+    seen,
+    answerWith,
+    replyText,
+    setResponses: (steps: Parameters<typeof faux.setResponses>[0]) => faux.setResponses(steps),
+  };
 }
+
+export { type FauxResponseStep, fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai';
