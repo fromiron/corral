@@ -399,21 +399,25 @@ export class HarnessService {
     );
     if (policy === 'strict' && allowedTools.includes('codemode'))
       throw new Error('codemode requires trusted-native policy');
-    const selection = (key: 'checkIds' | 'lspServerIds') => {
+    const selection = (key: 'checkIds' | 'lspServerIds' | 'mcpServerIds') => {
       const specified = layers.flatMap((layer) => (layer.profile[key] ? [layer.profile[key]] : []));
       return [...new Set(specified[0] ?? [])].filter((id) =>
         specified.every((ids) => ids.includes(id)),
       );
     };
     const checkIds = selection('checkIds'),
-      lspServerIds = selection('lspServerIds');
+      lspServerIds = selection('lspServerIds'),
+      mcpServerIds = selection('mcpServerIds');
+    if (mcpServerIds.length && policy === 'strict')
+      throw new Error('MCP requires trusted-native policy');
     let projectTools: EffectiveHarnessSnapshot['projectTools'];
-    if (projectId && (checkIds.length || lspServerIds.length)) {
+    if (projectId && (checkIds.length || lspServerIds.length || mcpServerIds.length)) {
       const config = this.projectTools.latest(projectId);
       if (
         !config ||
         checkIds.some((id) => !config.checks.some((check) => check.id === id)) ||
-        lspServerIds.some((id) => !config.lspServers.some((server) => server.id === id))
+        lspServerIds.some((id) => !config.lspServers.some((server) => server.id === id)) ||
+        mcpServerIds.some((id) => !config.mcpServers?.some((server) => server.id === id))
       )
         throw new Error('selected project tool is not registered');
       projectTools = {
@@ -422,6 +426,7 @@ export class HarnessService {
         hash: config.hash,
         checkIds,
         lspServerIds,
+        ...(mcpServerIds.length ? { mcpServerIds } : {}),
       };
     }
     const selected = new Map<string, HarnessProfile['resources'][number]>();

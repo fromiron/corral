@@ -454,6 +454,7 @@ export class WorkspaceService implements FileTools {
         this.projectTools.save(projectId, previous?.revision ?? 0, {
           checks: change.verifyCommands,
           lspServers: previous?.lspServers ?? [],
+          ...(previous?.mcpServers ? { mcpServers: previous.mcpServers } : {}),
         });
       }
       this.db

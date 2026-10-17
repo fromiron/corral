@@ -44,6 +44,7 @@ export function ProjectToolSettings({
     const saved = await api.saveProjectTools(projectId, config?.revision ?? 0, {
       checks: config?.checks ?? [],
       lspServers: servers,
+      ...(config?.mcpServers ? { mcpServers: config.mcpServers } : {}),
     });
     onChange(saved);
     setLaunches({});

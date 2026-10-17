@@ -20,6 +20,7 @@ const safeErrors = new Set([
   'resource integrity changed; review and trust the new content',
   'strict policy refuses native extensions',
   'codemode requires trusted-native policy',
+  'MCP requires trusted-native policy',
   'mandatory skill size limit exceeded',
   'resource review expired or already installed',
   'package source requires an exact version or commit',

@@ -190,6 +190,7 @@ export function HarnessSettingsPage() {
     resources: profile.resources,
     ...(profile.checkIds !== undefined ? { checkIds: profile.checkIds } : {}),
     ...(profile.lspServerIds !== undefined ? { lspServerIds: profile.lspServerIds } : {}),
+    ...(profile.mcpServerIds !== undefined ? { mcpServerIds: profile.mcpServerIds } : {}),
     allowedTools: [...new Set(toolNames.split(/[\s,]+/).filter(Boolean))],
     startupCommands: commands
       .split('\n')
@@ -606,12 +607,12 @@ export function HarnessSettingsPage() {
                 <label className="mt-2 flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"
-                    checked={profile.allowedTools.includes('codemode')}
+                    checked={pendingProfile.allowedTools.includes('codemode')}
                     disabled={profile.policy !== 'trusted-native'}
                     onChange={(event) =>
                       setToolNames(
                         [
-                          ...profile.allowedTools.filter((name) => name !== 'codemode'),
+                          ...pendingProfile.allowedTools.filter((name) => name !== 'codemode'),
                           ...(event.target.checked ? ['codemode'] : []),
                         ].join(', '),
                       )

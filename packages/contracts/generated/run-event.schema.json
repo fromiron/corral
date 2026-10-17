@@ -1938,6 +1938,14 @@
                           "type": "string",
                           "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
                         }
+                      },
+                      "mcpServerIds": {
+                        "maxItems": 16,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                        }
                       }
                     },
                     "required": [

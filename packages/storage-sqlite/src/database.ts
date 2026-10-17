@@ -365,6 +365,22 @@ ${IMMUTABLE('project_tool_revisions')}
     name: '0009_verification_reports',
     sql: 'ALTER TABLE verifications ADD COLUMN report_json TEXT;',
   },
+  {
+    name: '0010_mcp_trust',
+    sql: `
+CREATE TABLE project_tool_trust_next (
+  project_id TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('check', 'lsp', 'mcp')),
+  tool_id TEXT NOT NULL,
+  fingerprint TEXT NOT NULL,
+  trusted_at TEXT,
+  PRIMARY KEY (project_id, kind, tool_id, fingerprint)
+) STRICT;
+INSERT INTO project_tool_trust_next SELECT * FROM project_tool_trust;
+DROP TABLE project_tool_trust;
+ALTER TABLE project_tool_trust_next RENAME TO project_tool_trust;
+`,
+  },
 ];
 
 /** History queries must neither recover active runs nor migrate the workspace. */
