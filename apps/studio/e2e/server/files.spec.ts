@@ -147,7 +147,9 @@ test('[WBTST-016] a session works in its own copy, and its changes are reviewed 
     await page.getByRole('button', { name: 'Approve these changes' }).click();
     await expect(page.getByTestId('decision')).toContainText('Approved');
     await page.getByRole('button', { name: 'Plan applying the approved changes' }).click();
-    await expect(page.getByTestId('integration-plan')).toContainText('notes/writer.md · Will write');
+    await expect(page.getByTestId('integration-plan')).toContainText(
+      'notes/writer.md · Will write',
+    );
     await page.getByRole('button', { name: /^Apply \d+ files?$/ }).click();
     await expect(page.getByTestId('integration').first()).toContainText('Applied');
     expect(existsSync(join(original, 'notes', 'writer.md'))).toBe(true);

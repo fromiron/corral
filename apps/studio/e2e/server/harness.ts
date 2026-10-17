@@ -67,6 +67,8 @@ async function serve(
     workspace,
     port: 0,
     staticDir: STUDIO,
+    // Sessions' working copies stay with the test, never in the user's data directory.
+    worktreeRoot: `${workspace}-worktrees`,
     ...(fake ? { live: fake.live } : {}),
     agents: new ScriptedAgentAdapter({
       turns: 2,
@@ -141,6 +143,7 @@ export const test = base.extend<{
       await server.close();
       await endpoint?.close();
       rmSync(workspace, { recursive: true, force: true });
+      rmSync(`${workspace}-worktrees`, { recursive: true, force: true });
       if (fake) rmSync(fake.configDir, { recursive: true, force: true });
     }
     expect(external, 'requests to hosts other than the local server').toEqual([]);
