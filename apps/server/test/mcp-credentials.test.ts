@@ -2,7 +2,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:f
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { RegisteredMcpServer } from '@corral/contracts';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { McpCredentials } from '../src/harness/mcp-credentials.ts';
 import { oauthFixture } from './fixtures/mcp-oauth.ts';
 
@@ -168,5 +168,52 @@ describe('TC-HAR-016 MCP credentials', () => {
         throw new Error('revoked');
       }),
     ).rejects.toThrow('revoked');
+  });
+  it('does not save a bearer after logout wins its final guard continuation', async () => {
+    const ctx = await setup();
+    const bearer = { ...ctx.server, auth: { kind: 'bearer' as const, credentialRef: 'manual' } };
+    let calls = 0;
+    let logout: Promise<void> | undefined;
+    const saving = ctx.credentials.saveBearer('p', bearer, 'fixture-manual-token', async () => {
+      if (++calls === 2)
+        queueMicrotask(() =>
+          queueMicrotask(() => {
+            logout = ctx.credentials.delete('p', bearer);
+          }),
+        );
+    });
+    await expect(saving).rejects.toThrow(/sign in/i);
+    await logout;
+    expect(ctx.credentials.status('p', bearer).state).toBe('missing');
+  });
+  it('an older logout waiting for callback cleanup cannot delete a newer credential', async () => {
+    const ctx = await setup();
+    await ctx.credentials.startOAuth('p', ctx.server, current);
+    const entered = Promise.withResolvers<void>(),
+      release = Promise.withResolvers<void>();
+    const cancel = ctx.credentials.cancelOAuth.bind(ctx.credentials);
+    const spy = vi.spyOn(ctx.credentials, 'cancelOAuth').mockImplementationOnce(async (id) => {
+      await cancel(id);
+      entered.resolve();
+      await release.promise;
+    });
+    const deleting = ctx.credentials.delete('p', ctx.server);
+    await entered.promise;
+    const bearer = {
+      ...ctx.server,
+      auth: { kind: 'bearer' as const, credentialRef: 'docs-login' },
+    };
+    try {
+      await ctx.credentials.saveBearer('p', bearer, 'new-fixture-token', current);
+      expect(ctx.credentials.status('p', bearer).state).toBe('ready');
+      release.resolve();
+      await deleting;
+      expect(ctx.credentials.status('p', bearer).state).toBe('ready');
+      expect(await ctx.credentials.authorization('p', bearer, current)).toBe('new-fixture-token');
+    } finally {
+      release.resolve();
+      await deleting;
+      spy.mockRestore();
+    }
   });
 });

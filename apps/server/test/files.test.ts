@@ -441,6 +441,41 @@ describe('file broker (CR-012)', () => {
     expect(s.db.prepare('SELECT * FROM file_operations').all()).toHaveLength(0);
     s.db.close();
   });
+  it('[TC-HAR-018-N] rechecks working-copy identity after waiting for its lease', async () => {
+    const s = await proposalSetup();
+    s.db.prepare("UPDATE runs SET status='succeeded' WHERE id='run_1'").run();
+    const entered = new Gate(),
+      release = new Gate();
+    const target = s.service as unknown as {
+      lease<T>(path: string, work: () => Promise<T>): Promise<T>;
+    };
+    const lease = target.lease.bind(target);
+    const spy = vi.spyOn(target, 'lease').mockImplementationOnce(async (path, work) => {
+      entered.open();
+      await release.wait();
+      return lease(path, work);
+    });
+    const applying = s.service.applyLspProposal(
+      'session_1',
+      s.proposal.proposalId,
+      s.proposal.hash,
+    );
+    await entered.wait();
+    s.db
+      .prepare(
+        "UPDATE session_worktrees SET created_at='2026-10-18T01:00:00Z' WHERE session_id='session_1'",
+      )
+      .run();
+    release.open();
+    try {
+      expect((await applying).state).toBe('stale');
+      expect(readFileSync(join(s.root, 'a.txt'), 'utf8')).toBe('one\n');
+      expect(s.db.prepare('SELECT * FROM file_operations').all()).toHaveLength(0);
+    } finally {
+      spy.mockRestore();
+      s.db.close();
+    }
+  });
   it('[TC-HAR-018-N] dismissing during asynchronous preflight cannot apply or overwrite the dismissal', async () => {
     for (const stale of [false, true]) {
       const s = await proposalSetup();
