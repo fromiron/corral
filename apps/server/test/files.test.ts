@@ -71,7 +71,7 @@ describe('file broker (CR-012)', () => {
   it('[TC-HAR-010-N] all edit blocks must validate before any bytes are changed', async () => {
     const { call, db } = await setup();
     await call('read_file', { path: 'a.txt' });
-    await expect(call('edit', { path: 'a.txt', edits: [{ oldText: 'one', newText: 'two' }, { oldText: 'missing', newText: 'three' }] })).rejects.toThrow();
+    await expect(call('edit', { path: 'a.txt', edits: [{ oldText: 'one', newText: 'two' }, { oldText: 'missing', newText: 'three' }] })).rejects.toMatchObject({ code: 'SCHEMA_INVALID', message: expect.stringContaining('a.txt') });
     expect(await call('read_file', { path: 'a.txt' })).toMatchObject({ text: 'one\n' });
     expect(db.prepare('SELECT COUNT(*) AS n FROM file_operations').get()).toEqual({ n: 0 });
   });
