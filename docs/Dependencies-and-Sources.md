@@ -337,3 +337,9 @@ https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/LICENS
 H1에서 검증한 `@earendil-works/pi-coding-agent@1.3.0`을 H2에서 adapter-pi의 runtime dependency로 옮긴다. 새 프레임워크나 별도 확장 로더는 추가하지 않는다. 공개 SDK 타입과 공식 [v1.3.0 SDK 문서](https://github.com/earendil-works/pi/blob/v1.3.0/packages/coding-agent/docs/sdk.md)를 기준으로 한다. Node >=22.19.0 요구를 동봉 Node 24.19.0이 만족하며, 실제 자식 프로세스 + 로컬 HTTP provider 테스트에서 확인했다. TypeScript 선언이 배포 패키지에 포함된다.
 
 정확한 registry integrity·MIT 라이선스·배포일·전이 의존성은 `dependency-lock.json` 및 `pnpm-lock.yaml`에 고정한다. SDK는 worker에서만 import한다. 기본 core worker와 Studio 브라우저 번들에 SDK를 import하지 않는다. pi-tui, jiti, 이미지 처리 및 향후 MCP/codemode 관련 의존성으로 설치 크기가 증가하며, desktop 패키징 검증은 R1 완료 조건에 포함한다. Native 확장은 샌드박스가 아니며 HOME/XDG/Claude/jiti 경로 격리는 사용자 설정 오염 방지용이다. 엄격 정책에서는 네이티브 확장을 거절한다.
+
+## LSP 통신 (CR-019, 2026-10-18)
+
+- `vscode-languageserver-protocol@3.18.4`를 서버에만 추가한다. [Microsoft의 공개 프로토콜 구현](https://github.com/microsoft/vscode-languageserver-node)을 사용하며 별도 JSON-RPC 프레이머를 만들지 않는다. 공식 저장소의 3.18.4 릴리스 기록과 정확한 npm 배포 타입을 확인했다. Context7 도구는 이 세션에 제공되지 않았다.
+- MIT이며 TypeScript 선언을 포함한다. 전이 의존은 `vscode-jsonrpc@9.0.3`(MIT, Node >=14)와 `vscode-languageserver-types@3.18.4`(MIT)뿐이다. 프로젝트의 Node 24.19를 사용한다. npm unpacked 크기는 각각 404,899 / 225,485 / 414,344 bytes(합계 약 1 MiB)이며 Studio 브라우저 의존성이 아니다. 설치 스크립트는 실행하지 않았다.
+- 설치 후 production audit에 알려진 취약점이 없음을 확인했다. 실제 LSP 서버는 자동 설치하지 않고 사용자가 등록·검토·신뢰한 argv만 실행한다. 서버 프로세스의 직접 파일/네트워크 접근을 OS 샌드박스로 제한한다고 보장하지 않는다.

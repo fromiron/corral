@@ -163,3 +163,14 @@ CORRAL_SPIKE_NODE=~/.local/share/fnm/node-versions/v24.19.0/installation/bin/nod
 - Pi 공식 `createEditTool`을 메모리 operations를 가진 임시 worker에서 실행해 edit 변환·오류·diff를 재사용한다. 실제 쓰기는 기존 broker의 lease·읽기 hash·작업 기록·원자적 파일 교체를 거친다. SDK의 `edit/write`는 기존 파일 권한과 하네스 allowlist가 모두 허용해야 보인다.
 - H4 체크포인트: 관련 57 tests 및 adapter/server/studio typecheck 통과. 원본 Pi 대비 BOM/CRLF/다중 블록/모호한 일치/겹침/무변경 오류 비교, 계산 중 취소·외부 변경 시 무반영을 확인했다.
 - 남은 전체 범위: H3의 실행 단위 override 연결/마지막 UX 경계 재검토, H4 LSP 읽기·편집 비교 평가, H5 검증 runner, H6 recipe/개선/eval, H7 항목 반복, H8 MCP/codemode/LSP 변경 제안, 마지막 통합·desktop·Computer Use 검증. 아직 최종 완료가 아니다.
+
+### H5 연결 및 Pro 재검토 체크포인트 (2026-10-18)
+
+- 사용자 지적에 따라 Oracle을 **Pro**로 다시 실행했다. 인앱 브라우저에서 Pro 선택과 완료를 확인했다. 대화: https://chatgpt.com/c/6ad3ba1c-c5a0-83e8-9c52-951cf97682de . 임시 증거 `/tmp/corral-harness-oracle/pro-review.txt`, `pro-review.png`. Medium 답변을 최종 검토로 취급하지 않는다.
+- 검토로 제기된 edit 원본 삭제/재조회 우회, broker BOM 손실, 최종 쓰기 취소, 쓰기 후 기록 실패를 재현하고 보강했다. 제한 바이트 읽기를 공유하고 기존 원본 hash를 적용까지 유지한다. 실제 변경 후 기록만 실패한 작업은 uncertain이다.
+- 후속 execution의 모델 재해석을 제거했다. Run 및 명시적 모델 patch의 snapshot을 사용한다. worker 정상/예외 종료의 도구 drain, 늦은 effect 중복 정산, pause 중 native 완료 처리를 보강했다. Core 전체 248 tests 통과 시점을 확인했다.
+- 프로젝트 실행 설정/검사·LSP 선택은 불변 revision과 hash다(migration 0008). 기존 검사 설정도 같은 저장소를 사용한다. 실행 해시 신뢰는 별도이며 명령·실행 파일·관련 스크립트·잠금 파일이 달라지면 재승인이 필요하다.
+- 수동/자동 검사는 공통 VerificationRunner를 사용한다. 고정 Git 복사본, execution/attempt/effect 소유권, 취소와 POSIX process group 정리, 시계 주입, 제한·마스킹 출력, 7일 출력 보존, 상태/판정 분리를 구현했다. 후보 복사본을 변경한 검사도 pass 근거로 인정하지 않는다.
+- `run_check`는 선택 ID만 받는다. Inbox 승인에 실행·효과·파일 상태·해시·기한이 고정되며, 취소/만료/끝난 실행의 승인은 닫힌다. 승인 하나만 해결해 다른 승인을 건너뛰지 않는다. 명령 정보 미확인 시 UI는 승인 버튼을 막는다.
+- 설정에서 검사 선택/실행 신뢰, SDK 호출→승인→검사→보고서까지 새 브라우저 E2E 통과(로컬 fake provider). 관련 4개 프로젝트 516 passed / opt-in 2 skipped 확인. 새 서버/API 테스트와 typecheck도 통과했다. 실제 유료 모델 호출 없음.
+- H4 LSP 읽기는 이제 구현을 시작한다. H3 Run override/남은 UX 경계, H4 Hashline 비교, H6–H8, 전체 회귀·배포 staging·마지막 Computer Use 검증은 여전히 남았다. Windows 자손 프로세스 종료 확인은 아직 지원/검증 완료가 아니다.
