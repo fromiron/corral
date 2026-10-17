@@ -63,7 +63,11 @@ export class PiAgentAdapter implements AgentAdapter {
         input.harness.binding.revision !== input.role.harness.revision
       )
         throw new Error('the harness runtime is unavailable or unresolved');
-      resources = SdkResources.parse(await this.options.harness(input));
+      try {
+        resources = SdkResources.parse(await this.options.harness(input));
+      } catch {
+        throw new Error('harness resources could not be prepared');
+      }
     } else if (input.harness) throw new Error('unexpected harness snapshot');
     const { provider, modelId } = input.model;
     if (input.mode !== 'live' || !provider || !modelId) {
@@ -220,7 +224,18 @@ class WorkerExecution {
         round: this.input.round,
         // Only the tools this role may use, and that its links make meaningful, are offered;
         // the host still checks every call.
-        tools: offeredTools(this.input),
+        tools: this.resources
+          ? [
+              ...offeredTools(this.input).filter((name) =>
+                this.input.harness?.allowedTools.includes(name),
+              ),
+              ...(this.input.harness?.allowedTools.includes('read') &&
+              (this.input.role.allowedWorkTools.includes('read_file') ||
+                this.input.harness.resources.some((resource) => resource.kind === 'skill'))
+                ? ['read']
+                : []),
+            ]
+          : offeredTools(this.input),
         assignment:
           this.input.assignment.kind === 'delegated'
             ? { kind: 'delegated', brief: this.input.assignment.brief }

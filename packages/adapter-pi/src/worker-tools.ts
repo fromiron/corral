@@ -1,6 +1,8 @@
 import { type AssistantMessage, Type } from '@earendil-works/pi-ai';
 import type { StartFrame, WorkerTool } from './protocol.ts';
 
+type PromptStart = Omit<StartFrame, 'protocolVersion' | 'tools'> & { tools: readonly string[] };
+
 export const TOOL_TEXT: Record<WorkerTool, string> = {
   search:
     'Search registered documents, or explicitly choose Brave for an enabled live run. Returns registered source references.',
@@ -27,7 +29,7 @@ export const TOOL_TEXT: Record<WorkerTool, string> = {
 };
 
 /** Parameters the model fills in; ids of the run, owner and question come from Corral. */
-export function parametersOf(name: WorkerTool, start: Omit<StartFrame, 'protocolVersion'>) {
+export function parametersOf(name: WorkerTool, start: PromptStart) {
   const node = (targets: { nodeId: string }[]) =>
     Type.Union(targets.map((t) => Type.Literal(t.nodeId)));
   switch (name) {
@@ -86,7 +88,7 @@ export function parametersOf(name: WorkerTool, start: Omit<StartFrame, 'protocol
   }
 }
 
-export function systemPrompt(start: Omit<StartFrame, 'protocolVersion'>): string {
+export function systemPrompt(start: PromptStart): string {
   const names = (targets: { nodeId: string; label: string }[]) =>
     targets.map((t) => `${t.label} (${t.nodeId})`).join(', ');
   const lines = [
@@ -133,7 +135,7 @@ export function systemPrompt(start: Omit<StartFrame, 'protocolVersion'>): string
   return lines.join('\n');
 }
 
-export function userPrompt(start: Omit<StartFrame, 'protocolVersion'>): string {
+export function userPrompt(start: PromptStart): string {
   const round = start.round ? `This is round ${start.round} of a review loop.\n\n` : '';
   return (
     round +

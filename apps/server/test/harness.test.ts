@@ -1,4 +1,12 @@
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { HarnessProfile } from '@corral/contracts';
@@ -13,7 +21,10 @@ afterEach(() => {
   for (const db of databases.splice(0)) db.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
-function setup(body = '---\nname: writing\ndescription: Write clearly.\n---\nKeep sources.', download?: ConstructorParameters<typeof HarnessService>[0]['download']) {
+function setup(
+  body = '---\nname: writing\ndescription: Write clearly.\n---\nKeep sources.',
+  download?: ConstructorParameters<typeof HarnessService>[0]['download'],
+) {
   const root = mkdtempSync(join(tmpdir(), 'corral-harness-store-'));
   roots.push(root);
   const source = join(root, 'source');
@@ -77,12 +88,23 @@ describe('resource discovery, trust and resolution (H3)', () => {
     const s = setup(undefined, async (_source, directory) => {
       writeFileSync(join(directory, 'extension.ts'), 'export default () => {};');
       symlinkSync('extension.ts', join(directory, 'alias.ts'));
-      return { name: 'fixture', version: '1.0.0', license: 'MIT', packagePath: null, extensions: ['alias.ts'], skills: [] };
+      return {
+        name: 'fixture',
+        version: '1.0.0',
+        license: 'MIT',
+        packagePath: null,
+        extensions: ['alias.ts'],
+        skills: [],
+      };
     });
     const review = await s.service.discoverPackage('npm:fixture@1.0.0');
     const resource = s.service.install(review.reviewId);
     expect(resource.sourceKind).toBe('npm');
-    expect(lstatSync(join(s.resourceRoot, 'resources', `sha256-${resource.hash}`, 'alias.ts')).isSymbolicLink()).toBe(false);
+    expect(
+      lstatSync(
+        join(s.resourceRoot, 'resources', `sha256-${resource.hash}`, 'alias.ts'),
+      ).isSymbolicLink(),
+    ).toBe(false);
   });
   it('[TC-HAR-004-H] [TC-HAR-005-H] discovery does not execute or install; binding requires hash-specific trust and preview matches Run resolution', async () => {
     const s = setup();
@@ -111,12 +133,28 @@ describe('resource discovery, trust and resolution (H3)', () => {
     expect(runtime.skills[0]?.content).toContain('Keep sources.');
     expect(runtime.bundles[0]?.hash).toBe(resource.hash);
     expect(runtime.extensions[0]?.source).toBe('extension:fixture@1.0.0');
-    expect(s.service.readSkill(preview.snapshot, 'skills/writing/SKILL.md')).toMatchObject({ text: expect.stringContaining('Keep sources.'), sha256: expect.stringMatching(/^[a-f0-9]{64}$/), resourceHash: resource.hash });
-    for (const path of ['skills/other/SKILL.md', 'skills/writing/../extensions/echo.ts', '/etc/passwd'])
+    expect(s.service.readSkill(preview.snapshot, 'skills/writing/SKILL.md')).toMatchObject({
+      text: expect.stringContaining('Keep sources.'),
+      sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+      resourceHash: resource.hash,
+    });
+    for (const path of [
+      'skills/other/SKILL.md',
+      'skills/writing/../extensions/echo.ts',
+      '/etc/passwd',
+    ])
       expect(() => s.service.readSkill(preview.snapshot, path)).toThrow();
-    s.service.saveProfile('later', 0, { name: 'Later default', policy: 'strict', allowedTools: [], resources: [], startupCommands: [] });
+    s.service.saveProfile('later', 0, {
+      name: 'Later default',
+      policy: 'strict',
+      allowedTools: [],
+      resources: [],
+      startupCommands: [],
+    });
     s.service.store.setDefault('personal', 'default', 0, { profileId: 'later', revision: 1 });
-    expect(await s.service.runtimeResources({ harness: preview.snapshot, inputs: [] })).toEqual(runtime);
+    expect(await s.service.runtimeResources({ harness: preview.snapshot, inputs: [] })).toEqual(
+      runtime,
+    );
   });
 
   it('[TC-HAR-004-N] changed installed content revokes trust and cannot enter a Run', async () => {

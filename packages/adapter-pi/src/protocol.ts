@@ -2,9 +2,11 @@ import {
   ContentHash,
   EffectiveHarnessSnapshot,
   HarnessReport,
+  HarnessResource,
   Identifier,
   ModelRequestRecord,
   ProviderPayloadRecord,
+  ResourcePath,
 } from '@corral/contracts';
 import { z } from 'zod';
 import { EndpointSpec } from './endpoint.ts';
@@ -173,6 +175,15 @@ export type StartFrame = z.infer<typeof StartFrame>;
 
 /** Private IPC configuration. Never persisted in run events or exports. */
 export const SdkResources = z.strictObject({
+  bundles: z
+    .array(
+      z.strictObject({
+        root: z.string().min(1),
+        hash: ContentHash,
+        files: HarnessResource.shape.files,
+      }),
+    )
+    .max(64),
   extensions: z
     .array(
       z.strictObject({ path: z.string().min(1), hash: ContentHash, source: z.string().min(1) }),
@@ -184,6 +195,7 @@ export const SdkResources = z.strictObject({
         name: Identifier,
         description: z.string().max(1000),
         hash: ContentHash,
+        entry: ResourcePath,
         mode: z.enum(['auto', 'explicit', 'mandatory']),
         content: z.string().max(64 * 1024),
       }),
@@ -195,6 +207,7 @@ export type SdkResources = z.infer<typeof SdkResources>;
 const sdkHead = { protocolVersion: z.literal(PROTOCOL_VERSION), executionId: Identifier };
 export const SdkStartFrame = StartFrame.extend({
   ...sdkHead,
+  tools: z.array(z.union([WorkerTool, z.literal('read')])),
   harness: EffectiveHarnessSnapshot,
   resources: SdkResources,
 });

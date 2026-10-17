@@ -2,7 +2,12 @@ import { createHash } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { canonicalJson, type AgentHost, type AgentStartInput, type EffectiveHarnessSnapshot } from '@corral/contracts';
+import {
+  type AgentHost,
+  type AgentStartInput,
+  canonicalJson,
+  type EffectiveHarnessSnapshot,
+} from '@corral/contracts';
 import { Gate, linearCorral } from '@corral/testkit';
 import {
   createFauxCore,
@@ -66,17 +71,39 @@ function runtime(
   const path = join(directory, 'fixture.ts');
   const content = extension || 'export default () => {}';
   writeFileSync(path, content);
-  const files = [{ path: 'fixture.ts', hash: createHash('sha256').update(content).digest('hex'), bytes: Buffer.byteLength(content) }];
+  const files = [
+    {
+      path: 'fixture.ts',
+      hash: createHash('sha256').update(content).digest('hex'),
+      bytes: Buffer.byteLength(content),
+    },
+  ];
   if (skill) {
     writeFileSync(join(directory, 'SKILL.md'), skill.text);
-    files.push({ path: 'SKILL.md', hash: createHash('sha256').update(skill.text).digest('hex'), bytes: Buffer.byteLength(skill.text) });
+    files.push({
+      path: 'SKILL.md',
+      hash: createHash('sha256').update(skill.text).digest('hex'),
+      bytes: Buffer.byteLength(skill.text),
+    });
   }
   const resourceHash = createHash('sha256').update(canonicalJson(files)).digest('hex');
   const start = input();
-  start.harness = { ...snapshot, resources: [{ ...snapshot.resources[0]!, hash: resourceHash, entry: 'fixture.ts' }] };
+  start.harness = {
+    ...snapshot,
+    resources: [{ ...snapshot.resources[0]!, hash: resourceHash, entry: 'fixture.ts' }],
+  };
   if (skill) {
     start.harness.allowedTools = [...start.harness.allowedTools, 'read'];
-    start.harness.resources.push({ hash: resourceHash, name: 'fixture', version: '1.0.0', kind: 'skill', entry: 'SKILL.md', required: true, skillName: 'writing', skillMode: skill.mode });
+    start.harness.resources.push({
+      hash: resourceHash,
+      name: 'fixture',
+      version: '1.0.0',
+      kind: 'skill',
+      entry: 'SKILL.md',
+      required: true,
+      skillName: 'writing',
+      skillMode: skill.mode,
+    });
     if (skill.brief) start.inputs[0]!.text = skill.brief;
   }
   const faux = createFauxCore(contextWindow ? { models: [{ id: 'faux-1', contextWindow }] } : {});
@@ -123,7 +150,19 @@ function runtime(
     harness: async () => ({
       extensions: [{ path, hash: resourceHash, source: 'extension:fixture@1.0.0' }],
       bundles: [{ root: directory, hash: resourceHash, files }],
-      skills: skill ? [{ name: 'writing', description: 'Writing with sources.', hash: resourceHash, entry: 'SKILL.md', mode: skill.mode, content: skill.mode === 'mandatory' || skill.brief?.startsWith('/skill:') ? skill.text : '' }] : [],
+      skills: skill
+        ? [
+            {
+              name: 'writing',
+              description: 'Writing with sources.',
+              hash: resourceHash,
+              entry: 'SKILL.md',
+              mode: skill.mode,
+              content:
+                skill.mode === 'mandatory' || skill.brief?.startsWith('/skill:') ? skill.text : '',
+            },
+          ]
+        : [],
       startupCommands: [],
     }),
     credentials,
@@ -136,52 +175,103 @@ describe('SDK worker through the product adapter (H2)', () => {
   it('[TC-HAR-001-H] keeps the SDK proxy identity while dispatching the actual provider identity', async () => {
     let seen = '';
     let originMatches = false;
-    const run = runtime([
-      fauxAssistantMessage([fauxToolCall('write_artifact', { text: 'Draft' })], { stopReason: 'toolUse' }),
-      (context, _options, _state, model) => {
-        seen = JSON.stringify(context.messages);
-        originMatches = context.messages.find(message => message.role === 'assistant')?.provider === model.provider;
-        return fauxAssistantMessage('Done.');
-      },
-    ], `export default pi => pi.on('context_with_system', event => { const assistant=event.messages.find(message=>message.role==='assistant'); return assistant?{messages:event.messages.map(message=>message.role==='system'?{...message,sections:{...message.sections,sdk_identity:'SDK provider: '+assistant.provider}}:message)}:undefined; });`);
+    const run = runtime(
+      [
+        fauxAssistantMessage([fauxToolCall('write_artifact', { text: 'Draft' })], {
+          stopReason: 'toolUse',
+        }),
+        (context, _options, _state, model) => {
+          seen = JSON.stringify(context.messages);
+          originMatches =
+            context.messages.find((message) => message.role === 'assistant')?.provider ===
+            model.provider;
+          return fauxAssistantMessage('Done.');
+        },
+      ],
+      `export default pi => pi.on('context_with_system', event => { const assistant=event.messages.find(message=>message.role==='assistant'); return assistant?{messages:event.messages.map(message=>message.role==='system'?{...message,sections:{...message.sections,sdk_identity:'SDK provider: '+assistant.provider}}:message)}:undefined; });`,
+    );
     await (await run.adapter.start(run.input, run.host)).waitForSettlement();
     expect(seen).toContain('SDK provider: corral');
     expect(originMatches).toBe(true);
   });
   it('[TC-HAR-005-N] an extension cannot strip mandatory instructions from the final context', async () => {
     let seen = '';
-    const run = runtime([context => { seen = JSON.stringify(context.messages); return fauxAssistantMessage('Done.'); }], `export default pi => pi.on('context_with_system', event => ({messages:event.messages.map(message=>message.role==='system'?{...message,sections:{...message.sections,skill_writing:null}}:message)}));`, {}, { text: 'Always cite sources.', mode: 'mandatory' });
+    const run = runtime(
+      [
+        (context) => {
+          seen = JSON.stringify(context.messages);
+          return fauxAssistantMessage('Done.');
+        },
+      ],
+      `export default pi => pi.on('context_with_system', event => ({messages:event.messages.map(message=>message.role==='system'?{...message,sections:{...message.sections,skill_writing:null}}:message)}));`,
+      {},
+      { text: 'Always cite sources.', mode: 'mandatory' },
+    );
     await (await run.adapter.start(run.input, run.host)).waitForSettlement();
     expect(seen).toContain('Always cite sources.');
   });
 
   it('[TC-HAR-001-H] automatic threshold compaction uses permits and mandatory skills remain in the following turn', async () => {
     const seen: { purpose: string; text: string }[] = [];
-    const responses: FauxResponseStep[] = Array.from({ length: 8 }, () => context => {
-      seen.push({ purpose: (run.requests.at(-1) as { purpose: string }).purpose, text: JSON.stringify(context.messages) });
+    const responses: FauxResponseStep[] = Array.from({ length: 8 }, () => (context) => {
+      seen.push({
+        purpose: (run.requests.at(-1) as { purpose: string }).purpose,
+        text: JSON.stringify(context.messages),
+      });
       return fauxAssistantMessage('A short summary or answer.');
     });
-    const run = runtime(responses, `export default pi => pi.on('session_start', ()=>pi.sendMessage({customType:'fixture_history',content:'Context history. '.repeat(6000),display:false}));`, {}, { text: 'Always cite sources.', mode: 'mandatory' }, 32768);
-    expect(await (await run.adapter.start(run.input, run.host)).waitForSettlement()).toMatchObject({ outcome: 'succeeded' });
-    expect(seen.some(request => request.purpose === 'compaction')).toBe(true);
-    expect(seen.at(-1)).toMatchObject({ purpose: 'turn', text: expect.stringContaining('Always cite sources.') });
+    const run = runtime(
+      responses,
+      `export default pi => { let round=0; pi.on('agent_before_settle', ()=>{ if(round<3){ pi.sendUserMessage(round++<2?'Context history. '.repeat(3500):'Continue briefly.',{deliverAs:'followUp'}); } }); };`,
+      {},
+      { text: 'Always cite sources.', mode: 'mandatory', brief: 'Context history. '.repeat(3500) },
+      65536,
+    );
+    expect(await (await run.adapter.start(run.input, run.host)).waitForSettlement()).toMatchObject({
+      outcome: 'succeeded',
+    });
+    expect(seen.some((request) => request.purpose === 'compaction')).toBe(true);
+    expect(seen.at(-1)).toMatchObject({
+      purpose: 'turn',
+      text: expect.stringContaining('Always cite sources.'),
+    });
     expect(run.credentials).toHaveBeenCalledTimes(seen.length);
-    expect(run.calls.filter(call => call.startsWith('observe'))).toHaveLength(seen.length);
+    expect(run.calls.filter((call) => call.startsWith('observe'))).toHaveLength(seen.length);
   });
   it('[TC-HAR-005-H] lists auto skills virtually and formats broker reads with Pi offset and limit behavior', async () => {
     let observed = '';
-    const run = runtime([
-      context => {
-        expect(JSON.stringify(context.messages)).toContain('skills/writing/SKILL.md');
-        return fauxAssistantMessage([fauxToolCall('read', { path: 'skills/writing/SKILL.md', offset: 2, limit: 1 })], { stopReason: 'toolUse' });
+    const run = runtime(
+      [
+        (context) => {
+          expect(JSON.stringify(context.messages)).toContain('skills/writing/SKILL.md');
+          return fauxAssistantMessage(
+            [fauxToolCall('read', { path: 'skills/writing/SKILL.md', offset: 2, limit: 1 })],
+            { stopReason: 'toolUse' },
+          );
+        },
+        (context) => {
+          const result = context.messages.filter((message) => message.role === 'toolResult').at(-1);
+          observed = JSON.stringify(result?.content);
+          return fauxAssistantMessage('Done.');
+        },
+      ],
+      '',
+      {
+        executeTool: async (toolCallId) => ({
+          ok: true,
+          toolCallId,
+          result: {
+            path: 'skills/writing/SKILL.md',
+            text: 'one\ntwo\nthree',
+            sha256: 'c'.repeat(64),
+          },
+        }),
       },
-      context => {
-        const result = context.messages.filter(message => message.role === 'toolResult').at(-1);
-        observed = JSON.stringify(result?.content);
-        return fauxAssistantMessage('Done.');
-      },
-    ], '', { executeTool: async toolCallId => ({ ok: true, toolCallId, result: { path: 'skills/writing/SKILL.md', text: 'one\ntwo\nthree', sha256: 'c'.repeat(64) } }) }, { text: 'one\ntwo\nthree', mode: 'auto' });
-    expect(await (await run.adapter.start(run.input, run.host)).waitForSettlement()).toMatchObject({ outcome: 'succeeded' });
+      { text: 'one\ntwo\nthree', mode: 'auto' },
+    );
+    expect(await (await run.adapter.start(run.input, run.host)).waitForSettlement()).toMatchObject({
+      outcome: 'succeeded',
+    });
     expect(observed).toContain('two');
     expect(observed).not.toContain('one');
     expect(observed).not.toContain('three');
@@ -189,8 +279,20 @@ describe('SDK worker through the product adapter (H2)', () => {
 
   it('[TC-HAR-005-H] expands an explicit skill command in Corral without exposing a local path', async () => {
     let seen = '';
-    const run = runtime([context => { seen = JSON.stringify(context.messages); return fauxAssistantMessage('Done.'); }], '', {}, { text: 'Use verified evidence.', mode: 'explicit', brief: '/skill:writing Write a note.' });
-    expect(await (await run.adapter.start(run.input, run.host)).waitForSettlement()).toMatchObject({ outcome: 'succeeded' });
+    const run = runtime(
+      [
+        (context) => {
+          seen = JSON.stringify(context.messages);
+          return fauxAssistantMessage('Done.');
+        },
+      ],
+      '',
+      {},
+      { text: 'Use verified evidence.', mode: 'explicit', brief: '/skill:writing Write a note.' },
+    );
+    expect(await (await run.adapter.start(run.input, run.host)).waitForSettlement()).toMatchObject({
+      outcome: 'succeeded',
+    });
     expect(seen).toContain('Use verified evidence.');
     expect(seen).toContain('Write a note.');
     expect(seen).not.toContain(run.directory);
@@ -199,8 +301,17 @@ describe('SDK worker through the product adapter (H2)', () => {
   it('[TC-HAR-003-N] resource preparation errors never disclose a local path or body', async () => {
     const run = runtime([]);
     const spawn = vi.fn();
-    const adapter = new PiAgentAdapter({ spawn, spawnSdk: spawn, harness: async () => { throw new Error('/private/path: private body'); }, credentials: async () => null });
-    await expect(adapter.start(run.input, run.host)).rejects.toThrow('harness resources could not be prepared');
+    const adapter = new PiAgentAdapter({
+      spawn,
+      spawnSdk: spawn,
+      harness: async () => {
+        throw new Error('/private/path: private body');
+      },
+      credentials: async () => null,
+    });
+    await expect(adapter.start(run.input, run.host)).rejects.toThrow(
+      'harness resources could not be prepared',
+    );
     expect(spawn).not.toHaveBeenCalled();
   });
   it('[TC-HAR-009-N] refuses a binding without a resolved snapshot before spawning or looking up credentials', async () => {

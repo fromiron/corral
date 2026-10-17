@@ -2,6 +2,7 @@ import {
   type AgentStartInput,
   type ErrorCode,
   FILE_TOOLS,
+  ResourcePath,
   type RunEvent,
   type RunLimits,
   TERMINAL_EXECUTION_STATUSES,
@@ -57,6 +58,7 @@ export interface ModelGateView {
 }
 
 export interface ToolGateView extends ModelGateView {
+  harnessRead?: boolean;
   descriptor?: import('@corral/contracts').ToolDescriptor;
   proposal: ToolProposal;
   policy: InstallationPolicy;
@@ -298,11 +300,36 @@ const roleAllowlist: Gate<ToolGateView> = {
     const collaboration = input.role.allowedCollaborationTools as readonly string[];
     const allow: GateDecision = { kind: 'allow' };
     if (input.harness && !view.descriptor) return denied('tool is absent from the loaded harness');
+    if (input.harness && !input.harness.allowedTools.includes(proposal.name))
+      return denied('tool is not allowed by this harness');
     if (view.descriptor?.source.startsWith('extension:')) {
       return input.harness?.policy === 'trusted-native' &&
         input.harness.allowedTools.includes(proposal.name)
         ? allow
         : denied('native tool is not allowed by this harness');
+    }
+    if (proposal.name === 'read') {
+      if (
+        !input.harness ||
+        typeof args.path !== 'string' ||
+        !ResourcePath.safeParse(args.path).success ||
+        Object.keys(args).some((key) => !['path', 'offset', 'limit'].includes(key)) ||
+        [args.offset, args.limit].some(
+          (value) => value !== undefined && (!Number.isSafeInteger(value) || Number(value) < 1),
+        )
+      )
+        return refuse('SCHEMA_INVALID', 'invalid read arguments');
+      const path = args.path;
+      if (path.startsWith('skills/'))
+        return view.harnessRead &&
+          input.harness.resources.some(
+            (resource) => resource.kind === 'skill' && resource.skillName === path.split('/')[1],
+          )
+          ? allow
+          : denied('skill is not bound to this role');
+      return view.fileTools && input.role.allowedWorkTools.includes('read_file')
+        ? allow
+        : denied('role may not read the worktree');
     }
     if (['search', 'read_document'].includes(proposal.name)) {
       if (

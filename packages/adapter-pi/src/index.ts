@@ -9,6 +9,7 @@ export {
   KEYLESS_PLACEHOLDER,
   requestKeyAuth,
 } from './endpoint.ts';
+export { downloadPiPackage, inspectPiPackage } from './packages.ts';
 export {
   HostFrame,
   LEGACY_PROTOCOL_VERSION,

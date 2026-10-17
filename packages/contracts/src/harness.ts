@@ -9,6 +9,19 @@ export const HarnessBindingRef = z.strictObject({
 export type HarnessBindingRef = z.infer<typeof HarnessBindingRef>;
 
 export const ContentHash = z.string().regex(/^[a-f0-9]{64}$/);
+export const PinnedPackageSource = z
+  .string()
+  .max(1000)
+  .regex(
+    /^(?:npm:(?:@[a-z0-9][a-z0-9_.-]*\/)?[a-z0-9][a-z0-9_.-]*@\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?(?:\+[a-zA-Z0-9.-]+)?|git:https:\/\/[a-zA-Z0-9][a-zA-Z0-9.-]*(?::\d+)?\/(?:[a-zA-Z0-9_-][a-zA-Z0-9_.-]*\/)*[a-zA-Z0-9_-][a-zA-Z0-9_.-]*@[a-f0-9]{40})$/,
+  );
+/** Paths inside a copied resource bundle, never paths on the person's computer. */
+export const ResourcePath = z
+  .string()
+  .min(1)
+  .max(500)
+  .regex(/^(?!\/)(?![A-Za-z]:)(?!.*(?:^|\/)\.{1,2}(?:\/|$))(?!.*\/\/)[^\\\p{Cc}]+$/u);
+
 export const ToolDescriptor = z.strictObject({
   source: z.union([
     z.literal('corral'),
@@ -37,6 +50,8 @@ export const HarnessResourceRef = z.strictObject({
   kind: z.enum(['skill', 'extension']),
   required: z.boolean(),
   skillMode: z.enum(['auto', 'explicit', 'mandatory']).optional(),
+  entry: ResourcePath.optional(),
+  skillName: Identifier.optional(),
 });
 export const EffectiveHarnessSnapshot = z.strictObject({
   binding: HarnessBindingRef,
@@ -48,6 +63,15 @@ export const EffectiveHarnessSnapshot = z.strictObject({
   allowedTools: z.array(ToolDescriptor.shape.name).max(128),
   tools: z.array(ToolDescriptor).max(128),
   diagnostics: z.array(Identifier).max(64),
+  layers: z
+    .array(
+      z.strictObject({
+        scope: z.enum(['personal', 'project', 'role', 'run']),
+        binding: HarnessBindingRef,
+      }),
+    )
+    .max(4)
+    .optional(),
 });
 export type EffectiveHarnessSnapshot = z.infer<typeof EffectiveHarnessSnapshot>;
 
@@ -104,12 +128,6 @@ export const ProviderPayloadRecord = z.strictObject({
 });
 export type ProviderPayloadRecord = z.infer<typeof ProviderPayloadRecord>;
 
-/** Paths inside a copied resource bundle, never paths on the person's computer. */
-export const ResourcePath = z
-  .string()
-  .min(1)
-  .max(500)
-  .regex(/^(?!\/)(?![A-Za-z]:)(?!.*(?:^|\/)\.{1,2}(?:\/|$))(?!.*\/\/)[^\\\p{Cc}]+$/u);
 export const HarnessProfile = z.strictObject({
   name: z.string().trim().min(1).max(100),
   policy: z.enum(['strict', 'trusted-native']),
@@ -156,6 +174,15 @@ export const HarnessResource = z.strictObject({
   createdAt: z.iso.datetime(),
 });
 export type HarnessResource = z.infer<typeof HarnessResource>;
+export const PackageInspection = HarnessResource.pick({
+  name: true,
+  version: true,
+  license: true,
+  packagePath: true,
+  extensions: true,
+  skills: true,
+});
+export type PackageInspection = z.infer<typeof PackageInspection>;
 export type HarnessResourceView = HarnessResource & { trustedAt: string | null };
 export interface HarnessDefault {
   scope: 'personal' | 'project';

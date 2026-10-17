@@ -60,30 +60,48 @@ export function processChannel(entry: string, options: { env?: NodeJS.ProcessEnv
   const child: ChildProcess = fork(entry, [], {
     stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
     serialization: 'json',
+    detached: process.platform !== 'win32',
     // Parent eval/debug/preload flags do not describe the standalone worker entry.
     execArgv: [],
     // The worker needs no secrets from the environment: credentials arrive per request.
     env: {
       NODE_ENV: process.env.NODE_ENV ?? 'production',
       PATH: process.env.PATH ?? '',
+      ...(process.platform === 'win32' ? {} : { CORRAL_WORKER_GROUP: '1' }),
       ...options.env,
     },
   });
   child.stderr?.on('data', () => {});
   let exited = false;
   const exitHandlers: ((code: number | null) => void)[] = [];
-  child.on('exit', (code) => {
+  const stopChildren = () => {
+    if (process.platform !== 'win32' && child.pid) {
+      try {
+        process.kill(-child.pid, 'SIGKILL');
+      } catch {
+        /* The group is already gone. */
+      }
+    }
+  };
+  const ended = (code: number | null) => {
+    if (exited) return;
+    stopChildren();
     exited = true;
     for (const handler of exitHandlers) handler(code);
-  });
+  };
+  child.on('exit', ended);
+  child.on('error', () => ended(null));
   return {
     send: (frame) => {
-      if (!exited && child.connected) child.send(frame as never);
+      if (!exited && child.connected) child.send(frame as never, () => {});
     },
     onFrame: (handler) => void child.on('message', handler),
     onExit: (handler) => void exitHandlers.push(handler),
     kill: () => {
-      if (!exited) child.kill('SIGKILL');
+      if (!exited) {
+        stopChildren();
+        child.kill('SIGKILL');
+      }
     },
   };
 }
@@ -99,6 +117,10 @@ export function sdkProcessChannel(entry: string): Channel {
         XDG_CONFIG_HOME: join(directory, 'config'),
         CLAUDE_CONFIG_DIR: join(directory, 'claude'),
         JITI_FS_CACHE: join(directory, 'jiti'),
+        GIT_CONFIG_NOSYSTEM: '1',
+        GIT_TERMINAL_PROMPT: '0',
+        NPM_CONFIG_USERCONFIG: join(directory, 'user.npmrc'),
+        NPM_CONFIG_GLOBALCONFIG: join(directory, 'global.npmrc'),
       },
     });
     channel.onExit(() => rmSync(directory, { recursive: true, force: true }));

@@ -214,6 +214,7 @@ export interface HarnessResolver {
     definition: CorralDefinition,
     roleId: string,
   ): EffectiveHarnessSnapshot | null;
+  readSkill?(snapshot: EffectiveHarnessSnapshot, path: string): Record<string, unknown>;
 }
 
 const NO_DEADLINES: Scheduler = { after: () => () => {} };
@@ -3064,6 +3065,7 @@ export class Coordinator {
       ];
       const tool = { opening, closing, toolCallId };
       switch (call.proposal.name) {
+        case 'read':
         case 'search':
         case 'read_document':
         case 'list_files':
@@ -3588,6 +3590,7 @@ export class Coordinator {
       callables: run.plan.callables[input.nodeId] ?? { delegate: [], question: [] },
       externalTools: Boolean(this.tools),
       fileTools: this.files?.available(run.runId) ?? false,
+      harnessRead: Boolean(this.harnesses?.readSkill),
       responderOf: (questionId) => run.questions.get(questionId)?.responderExecutionId,
       readable: () => this.readable(run, input),
     };
@@ -4098,7 +4101,32 @@ export class Coordinator {
     try {
       const fileTool = (FILE_TOOLS as readonly string[]).includes(proposal.name);
       let result: Record<string, unknown>;
-      if (fileTool) {
+      if (proposal.name === 'read') {
+        const path = String(proposal.args.path);
+        if (path.startsWith('skills/')) {
+          if (!input.harness || !this.harnesses?.readSkill)
+            throw new ToolRefusal('CAPABILITY_DENIED', 'skill broker unavailable');
+          result = this.harnesses.readSkill(input.harness, path);
+        } else {
+          if (!this.files) throw new ToolRefusal('CAPABILITY_DENIED', 'worktree unavailable');
+          result = await this.files.execute(
+            {
+              name: 'read_file',
+              args: { path },
+              runId: run.runId,
+              executionId,
+              toolCallId: tool.toolCallId,
+            },
+            cancellation,
+          );
+        }
+        const lines = String(result.text ?? '').split('\n');
+        const offset = Number(proposal.args.offset ?? 1);
+        if (offset > lines.length)
+          throw new ToolRefusal('SCHEMA_INVALID', 'read offset is beyond the end of the file');
+        if (utf8ToBytes(lines[offset - 1] ?? '').length > 50 * 1024)
+          throw new ToolRefusal('LIMIT_REACHED', 'the requested line exceeds the read size limit');
+      } else if (fileTool) {
         const files = this.files;
         if (!files) throw new ToolRefusal('CAPABILITY_DENIED', 'no worktree for this run');
         result = await files.execute(

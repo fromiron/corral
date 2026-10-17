@@ -10,6 +10,7 @@ import {
 } from '@corral/contracts';
 import {
   type AssistantMessage,
+  type AssistantMessageEvent,
   type Context,
   createAssistantMessageEventStream,
   type JsonObject,
@@ -20,14 +21,18 @@ import {
 import {
   type AgentSession,
   createAgentSession,
+  createReadToolDefinition,
+  createSyntheticSourceInfo,
   DefaultResourceLoader,
   type Extension,
   ModelRuntime,
+  type ReadToolInput,
   SessionManager,
   SettingsManager,
   type ToolDefinition,
 } from '@earendil-works/pi-coding-agent';
 import type { Channel } from './channel.ts';
+import { lockResources } from './locked-resources.ts';
 import { PROTOCOL_VERSION, SdkHostFrame, type SdkStartFrame } from './protocol.ts';
 import { normalizeUsage } from './usage.ts';
 import type { WorkerDeps } from './worker.ts';
@@ -132,6 +137,10 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
           throw new Error('unbound extension');
       }
       failureCode = 'resource_invalid';
+      start = {
+        ...start,
+        resources: lockResources(start.resources, start.harness, deps.directory),
+      };
       for (const resource of start.harness.resources.filter((r) => r.required)) {
         if (
           resource.kind === 'extension' &&
@@ -140,7 +149,10 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
           throw new Error('missing extension');
         if (
           resource.kind === 'skill' &&
-          !start.resources.skills.some((s) => s.hash === resource.hash && s.content.trim())
+          !start.resources.skills.some(
+            (s) =>
+              s.hash === resource.hash && (resource.skillMode !== 'mandatory' || s.content.trim()),
+          )
         )
           throw new Error('missing skill');
       }
@@ -158,6 +170,18 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
       let purpose: ModelRequestRecord['purpose'] = 'turn';
       let nativeDepth = 0;
       let requests: Promise<void> = Promise.resolve();
+      const proxyMessage = (message: AssistantMessage): AssistantMessage => ({
+        ...message,
+        api: 'corral-proxy',
+        provider: 'corral',
+        model: model.id,
+      });
+      const proxyEvent = (event: AssistantMessageEvent): AssistantMessageEvent => {
+        if ('partial' in event) return { ...event, partial: proxyMessage(event.partial) };
+        if (event.type === 'done') return { ...event, message: proxyMessage(event.message) };
+        if (event.type === 'error') return { ...event, error: proxyMessage(event.error) };
+        return event;
+      };
       runtime.registerProvider('corral', {
         api: 'corral-proxy',
         baseUrl: 'http://127.0.0.1:9/corral-unused',
@@ -176,8 +200,31 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
         ],
         streamSimple: (_model, context, options) => {
           const out = createAssistantMessageEventStream();
-          const requestContext = normalizeContext(cleanJson(context) as Context);
           const requestPurpose = nativeDepth ? 'extension' : purpose;
+          const owned = cleanJson(context) as Context;
+          owned.messages = owned.messages.map((message) =>
+            message.role === 'assistant' && message.provider === 'corral'
+              ? { ...message, provider: model.provider, api: model.api, model: model.id }
+              : message,
+          );
+          const mandatory =
+            requestPurpose === 'compaction'
+              ? []
+              : start.resources.skills.filter((skill) => skill.mode === 'mandatory');
+          if (mandatory.length) {
+            let system = owned.messages.findLast((message) => message.role === 'system');
+            if (!system) {
+              system = { role: 'system', content: '', timestamp: deps.now() };
+              owned.messages.unshift(system);
+            }
+            system.sections = { ...system.sections };
+            for (const skill of mandatory) {
+              if (!skill.content.trim()) throw new Error('mandatory skill missing');
+              system.sections[`skill_${skill.name}`] =
+                `Skill resources: skills/${skill.name}/\n${skill.content}`;
+            }
+          }
+          const requestContext = normalizeContext(owned);
           // Core has one active request per execution. Nested provider requests queue here too.
           requests = requests.then(async () => {
             let modelCallId: string | undefined;
@@ -199,11 +246,15 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
                 onPayload: async (payload, payloadModel) => {
                   const updated = await options?.onPayload?.(payload, payloadModel);
                   const actual = cleanJson(updated ?? payload);
+                  const serialized = canonicalJson(actual);
+                  for (const skill of mandatory)
+                    if (!serialized.includes(JSON.stringify(skill.content).slice(1, -1)))
+                      throw new Error('mandatory skill removed from provider payload');
                   await ack({
                     type: 'request_record',
                     modelCallId,
                     payloadHash: hashOf(actual),
-                    payloadBytes: Buffer.byteLength(canonicalJson(actual)),
+                    payloadBytes: Buffer.byteLength(serialized),
                   });
                   if (cancelled || options?.signal?.aborted)
                     throw new Error('cancelled before HTTP dispatch');
@@ -219,17 +270,28 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
                     chunkIndex: chunkIndex++,
                     text: event.delta,
                   });
-                out.push(event);
+                if (event.type === 'done' || event.type === 'error') {
+                  const answer = event.type === 'done' ? event.message : event.error;
+                  send({
+                    type: 'observe',
+                    modelCallId,
+                    text: textOf(answer),
+                    ...normalizeUsage(answer),
+                  });
+                  observed = true;
+                }
+                out.push(proxyEvent(event));
               }
               const answer = await stream.result();
-              send({
-                type: 'observe',
-                modelCallId,
-                text: textOf(answer),
-                ...normalizeUsage(answer),
-              });
+              if (!observed)
+                send({
+                  type: 'observe',
+                  modelCallId,
+                  text: textOf(answer),
+                  ...normalizeUsage(answer),
+                });
               observed = true;
-              out.end(answer);
+              out.end(proxyMessage(answer));
             } catch {
               const answer = failedMessage(
                 cancelled || options?.signal?.aborted ? 'aborted' : 'error',
@@ -240,9 +302,9 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
               out.push({
                 type: 'error',
                 reason: answer.stopReason === 'aborted' ? 'aborted' : 'error',
-                error: answer,
+                error: proxyMessage(answer),
               });
-              out.end(answer);
+              out.end(proxyMessage(answer));
             }
           });
           return out;
@@ -253,22 +315,83 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
       const authorized = new Map<string, { toolCallId: string; argsHash: string }>();
       const descriptors = new Map<string, ToolDescriptor>();
       const schemas = new Map<string, Tool>();
-      const customTools: ToolDefinition[] = start.tools.map((name) => ({
-        name,
-        label: name,
-        description: TOOL_TEXT[name],
-        parameters: parametersOf(name, start),
-        executionMode: 'sequential',
-        execute: async (piCallId, args) => {
-          const auth = takeAuthorization(piCallId, args);
-          const reply = await call({ type: 'execute_tool', toolCallId: auth.toolCallId });
-          if (reply.type !== 'tool_result' || !reply.ok) throw new Error('Corral tool refused');
+      const customTools: ToolDefinition[] = start.tools.map((name) => {
+        if (name === 'read') {
+          const definition = createReadToolDefinition(cwd);
           return {
-            content: [{ type: 'text', text: JSON.stringify(reply.result ?? {}) }],
-            details: reply.result ?? {},
+            name: definition.name,
+            label: definition.label,
+            parameters: definition.parameters,
+            outputSchema: definition.outputSchema,
+            promptGuidelines: definition.promptGuidelines,
+            annotations: { readOnlyHint: true, openWorldHint: false },
+            description:
+              'Read UTF-8 text through Corral. Paths are relative to the worktree; skills/<name>/ is reserved for bound skill files. Supports offset/limit; output is bounded to 2,000 lines or 50 KiB.',
+            executionMode: 'sequential',
+            execute: async (piCallId, args, signal, onUpdate, ctx) => {
+              const auth = takeAuthorization(piCallId, args);
+              const reply = await call({ type: 'execute_tool', toolCallId: auth.toolCallId });
+              if (
+                reply.type !== 'tool_result' ||
+                !reply.ok ||
+                typeof reply.result?.text !== 'string'
+              )
+                throw new Error(
+                  reply.type === 'tool_result'
+                    ? (reply.reason ?? 'Corral read refused')
+                    : 'Corral read refused',
+                );
+              const text = reply.result.text;
+              const reader = createReadToolDefinition(cwd, {
+                operations: {
+                  access: async () => {},
+                  readFile: async () => Buffer.from(text, 'utf8'),
+                  detectImageMimeType: async () => null,
+                },
+              });
+              const readArgs: ReadToolInput = validateToolArguments(definition, {
+                type: 'toolCall',
+                id: piCallId,
+                name: 'read',
+                arguments: args as JsonObject,
+              });
+              const result = await reader.execute(piCallId, readArgs, signal, onUpdate, ctx);
+              return {
+                ...result,
+                details: {
+                  ...result.details,
+                  source: {
+                    path: reply.result.path,
+                    sha256: reply.result.sha256,
+                    resourceHash: reply.result.resourceHash,
+                  },
+                },
+              };
+            },
           };
-        },
-      }));
+        }
+        return {
+          name,
+          label: name,
+          description: TOOL_TEXT[name],
+          parameters: parametersOf(name, start),
+          executionMode: 'sequential',
+          execute: async (piCallId, args) => {
+            const auth = takeAuthorization(piCallId, args);
+            const reply = await call({ type: 'execute_tool', toolCallId: auth.toolCallId });
+            if (reply.type !== 'tool_result' || !reply.ok)
+              throw new Error(
+                reply.type === 'tool_result'
+                  ? (reply.reason ?? 'Corral tool refused')
+                  : 'Corral tool refused',
+              );
+            return {
+              content: [{ type: 'text', text: JSON.stringify(reply.result ?? {}) }],
+              details: reply.result ?? {},
+            };
+          },
+        };
+      });
       const register = (tool: ToolDefinition, source: string) => {
         descriptors.set(tool.name, describeTool(tool, source));
         schemas.set(tool.name, {
@@ -328,6 +451,19 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
         noPromptTemplates: true,
         noThemes: true,
         noContextFiles: true,
+        skillsOverride: (base) => ({
+          ...base,
+          skills: start.resources.skills.map((skill) => ({
+            name: skill.name,
+            description: skill.description,
+            filePath: `skills/${skill.name}/SKILL.md`,
+            baseDir: `skills/${skill.name}`,
+            disableModelInvocation: skill.mode !== 'auto',
+            sourceInfo: createSyntheticSourceInfo(`skills/${skill.name}/SKILL.md`, {
+              source: 'corral',
+            }),
+          })),
+        }),
         additionalExtensionPaths: start.resources.extensions.map((e) => e.path),
         systemPromptOverride: () => systemPrompt(start),
         appendSystemPromptOverride: () => [],
@@ -336,6 +472,13 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
             name: 'corral',
             factory: (pi) => {
               pi.on('before_agent_start', (event) => {
+                pi.setActiveTools(
+                  pi
+                    .getActiveTools()
+                    .filter(
+                      (name) => descriptors.has(name) && start.harness.allowedTools.includes(name),
+                    ),
+                );
                 event.systemPromptOptions.sections.cwd =
                   'The working copy root (paths are relative to it).';
                 for (const skill of start.resources.skills.filter((s) => s.mode === 'mandatory')) {
@@ -372,7 +515,13 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
                     args,
                   });
                   if (decision.type !== 'tool_authorization' || !decision.ok)
-                    return { block: true, reason: 'Corral refused this tool call' };
+                    return {
+                      block: true,
+                      reason:
+                        decision.type === 'tool_authorization'
+                          ? (decision.reason ?? 'Corral refused this tool call')
+                          : 'Corral refused this tool call',
+                    };
                   authorized.set(event.toolCallId, {
                     toolCallId: decision.toolCallId,
                     argsHash: hashOf(args),
@@ -409,6 +558,9 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
         settingsManager: settings,
       }));
       await session.bindExtensions({});
+      session.setActiveToolsByName(
+        session.getActiveToolNames().filter((name) => start.harness.allowedTools.includes(name)),
+      );
       failureCode = 'policy_denied';
       // A registered foreign provider could bypass the permit. Never select it implicitly.
       if (session.model?.provider !== 'corral') throw new Error('extension replaced the model');
@@ -445,6 +597,24 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
         await session.prompt(command);
       }
       if (cancelled) throw new Error('cancelled');
+      start = {
+        ...start,
+        inputs: start.inputs.map((input) =>
+          input.name === 'brief' && input.artifactVersionId === null
+            ? {
+                ...input,
+                text: input.text.replace(
+                  /^\/skill:([^\s]+)(?:[ \t]+(.*))?$/gm,
+                  (_match, name: string, rest: string | undefined) => {
+                    const skill = start.resources.skills.find((skill) => skill.name === name);
+                    if (!skill?.content.trim()) throw new Error('explicit skill is not available');
+                    return `Corral skill (${name}):\n${skill.content}\n\n${rest ?? ''}`;
+                  },
+                ),
+              }
+            : input,
+        ),
+      };
       await session.prompt(
         [userPrompt(start), ...[...directives.values()].map(directiveText)].join('\n\n'),
       );

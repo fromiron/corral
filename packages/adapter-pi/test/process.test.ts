@@ -51,27 +51,43 @@ async function run(transport: InProcessTransport) {
 }
 
 describe('worker in a child process (C-017, ADR-017)', () => {
-  it.skipIf(process.platform === 'win32').each(['kill', 'exit'])('[TC-HAR-006-N] worker %s also ends its ordinary child processes', async mode => {
-    const channel = processChannel(join(import.meta.dirname, 'fixtures', 'process-group.ts'));
-    const ready = new Promise<{ port: number; pid: number }>(resolve => channel.onFrame(frame => resolve(frame as { port: number; pid: number })));
-    const exited = new Promise<void>(resolve => channel.onExit(() => resolve()));
-    const child = await ready;
-    const listening = () => new Promise<boolean>(resolve => {
-      const socket = createConnection({ host: '127.0.0.1', port: child.port });
-      socket.once('connect', () => { socket.destroy(); resolve(true); });
-      socket.once('error', () => { socket.destroy(); resolve(false); });
-    });
-    try {
-      expect(await listening()).toBe(true);
-      if (mode === 'kill') channel.kill();
-      else channel.send({ type: 'exit' });
-      await exited;
-      await expect.poll(listening).toBe(false);
-    } finally {
-      channel.kill();
-      try { process.kill(child.pid, 'SIGKILL'); } catch { /* Already stopped as expected. */ }
-    }
-  });
+  it.skipIf(process.platform === 'win32').each(['kill', 'exit'])(
+    '[TC-HAR-006-N] worker %s also ends its ordinary child processes',
+    async (mode) => {
+      const channel = processChannel(join(import.meta.dirname, 'fixtures', 'process-group.ts'));
+      const ready = new Promise<{ port: number; pid: number }>((resolve) =>
+        channel.onFrame((frame) => resolve(frame as { port: number; pid: number })),
+      );
+      const exited = new Promise<void>((resolve) => channel.onExit(() => resolve()));
+      const child = await ready;
+      const listening = () =>
+        new Promise<boolean>((resolve) => {
+          const socket = createConnection({ host: '127.0.0.1', port: child.port });
+          socket.once('connect', () => {
+            socket.destroy();
+            resolve(true);
+          });
+          socket.once('error', () => {
+            socket.destroy();
+            resolve(false);
+          });
+        });
+      try {
+        expect(await listening()).toBe(true);
+        if (mode === 'kill') channel.kill();
+        else channel.send({ type: 'exit' });
+        await exited;
+        await expect.poll(listening).toBe(false);
+      } finally {
+        channel.kill();
+        try {
+          process.kill(child.pid, 'SIGKILL');
+        } catch {
+          /* Already stopped as expected. */
+        }
+      }
+    },
+  );
   it('[TC-RUN-007-N] exits when the owning coordinator process disconnects', async () => {
     const child = fork(join(import.meta.dirname, 'fixtures', 'orphan-worker.ts'), [], {
       stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
@@ -187,7 +203,12 @@ describe('worker in a child process (C-017, ADR-017)', () => {
             agents: new PiAgentAdapter({
               spawn: () => processChannel(WORKER_ENTRY),
               spawnSdk: () => sdkProcessChannel(SDK_WORKER_ENTRY),
-              harness: async () => ({ extensions: [], skills: [], startupCommands: [] }),
+              harness: async () => ({
+                extensions: [],
+                skills: [],
+                startupCommands: [],
+                bundles: [],
+              }),
               // The host never hands a key for a keyless endpoint; the worker drops one anyway.
               credentials: async () => 'per-request-key',
               endpoint: (model) =>
