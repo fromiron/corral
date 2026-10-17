@@ -41,6 +41,7 @@ test('[TC-HAR-014-H] pins a review recipe in the Loop editor and explains its st
   await page.getByRole('button', { name: 'Pin review recipe', exact: true }).click();
   await expect(page.getByText('Pinned recipe revision 1', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
   const runId = await page.evaluate(async ({ corralId, sessionId }) => {
     const { csrfToken } = await (await fetch('/api/v1/session')).json();
     const record = await (await fetch(`/api/v1/corrals/${corralId}`)).json();

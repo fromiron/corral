@@ -318,6 +318,7 @@ export function WorkingCopyPanel({
 /** What needs a person in this project (CR-013, WB-OBS-002); it empties as things are handled. */
 export function InboxSection({ projectId }: { projectId: string }) {
   const t = useTranslations('Review');
+  const tr = useTranslations('Recipe');
   const { workspaces } = useServices();
   const [items, setItems] = useState<InboxItemView[]>([]);
   useEffect(() => {
@@ -353,9 +354,18 @@ export function InboxSection({ projectId }: { projectId: string }) {
           >
             <span>
               <span className="font-medium">{item.sessionTitle}</span> ·{' '}
-              {t(`inbox.${item.kind}`, { detail: item.detail ?? '' })}
+              {t(`inbox.${item.kind}`, {
+                detail:
+                  item.kind === 'recipe_stopped'
+                    ? tr(`reasons.${item.detail}`)
+                    : (item.detail ?? ''),
+              })}
             </span>
-            {item.kind === 'decision' && item.runId ? (
+            {item.kind === 'recipe_stopped' && item.runId ? (
+              <Link to="/runs/$runId" params={{ runId: item.runId }} className="text-xs underline">
+                {t('open')}
+              </Link>
+            ) : item.kind === 'decision' && item.runId ? (
               <Link
                 to="/sessions/$sessionId"
                 params={{ sessionId: item.sessionId }}

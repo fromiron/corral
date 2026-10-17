@@ -11,6 +11,7 @@ import {
   type DecisionNode,
   FILE_TOOLS,
   type InputBinding,
+  type LoopNode,
   type NodeLayout,
   type OutputContract,
   type SourcePort,
@@ -81,6 +82,7 @@ export interface NodeChange {
   harness?: AgentRole['harness'] | null;
   mode?: DecisionNode['mode'];
   maxIterations?: number;
+  reviewRecipe?: LoopNode['reviewRecipe'] | null;
   requireApproval?: boolean;
   inputBindings?: InputBinding[];
   /** Lets the role change files in the session's working copy (CR-012): all file tools. */
@@ -383,6 +385,10 @@ export function updateNode(draft: EditorDraft, nodeId: string, change: NodeChang
   }
   if (next.type === 'loop' && change.maxIterations !== undefined)
     next = { ...next, maxIterations: change.maxIterations };
+  if (next.type === 'loop' && change.reviewRecipe !== undefined) {
+    const { reviewRecipe: _prior, ...rest } = next;
+    next = change.reviewRecipe ? { ...rest, reviewRecipe: change.reviewRecipe } : rest;
+  }
   if (next.type === 'output' && change.requireApproval !== undefined)
     next = { ...next, requireApproval: change.requireApproval };
   setNode(next);

@@ -33,6 +33,7 @@ import { setCurrentProject, useCurrentProject } from '../projects.ts';
 import { demoRoute, editorRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
 import { HarnessRoleSettings } from '../workbench/HarnessRoleSettings.tsx';
+import { LoopRecipeSettings } from '../workbench/LoopRecipeSettings.tsx';
 import { RunHarnessOverrides } from '../workbench/RunHarnessOverrides.tsx';
 import { useModelProfiles } from '../workbench/useModels.ts';
 
@@ -347,6 +348,13 @@ function Editor({
               <aside className="editor-inspector flex min-h-0 min-w-0 flex-col gap-6 overflow-auto border-l border-line p-3">
                 <NodeInspector
                   profiles={profiles}
+                  loopSettings={(node) => (
+                    <LoopRecipeSettings
+                      key={`${node.id}:${node.reviewRecipe?.revision ?? 0}`}
+                      node={node}
+                      projectId={record.projectId}
+                    />
+                  )}
                   roleSettings={(role, nodeId) => (
                     <HarnessRoleSettings key={nodeId} role={role} nodeId={nodeId} />
                   )}

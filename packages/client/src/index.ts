@@ -1223,7 +1223,14 @@ export interface IntegrationResultView {
 }
 
 export interface InboxItemView {
-  kind: 'decision' | 'queued' | 'uncertain_write' | 'integration' | 'check_failed' | 'unreviewed';
+  kind:
+    | 'decision'
+    | 'queued'
+    | 'uncertain_write'
+    | 'integration'
+    | 'check_failed'
+    | 'unreviewed'
+    | 'recipe_stopped';
   sessionId: string;
   sessionTitle: string;
   runId: string | null;

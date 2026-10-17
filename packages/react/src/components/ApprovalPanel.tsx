@@ -5,6 +5,7 @@ import { useStore } from 'zustand';
 import type { RunSessionStore } from '../run/session.ts';
 import { Button } from '../ui/button.tsx';
 import { ExtensionUiPanel } from './ExtensionUiPanel.tsx';
+import { RecipeStatusPanel } from './RecipeStatusPanel.tsx';
 
 /**
  * Decisions waiting for the person (C-029, Spec §7.5): each names the exact versions and the
@@ -73,7 +74,13 @@ export function ApprovalPanel({
     if (criteriaId) void session.getState().loadArtifact(criteriaId);
   }, [session, criteriaId]);
 
-  if (approvals.length === 0) return <ExtensionUiPanel session={session} />;
+  if (approvals.length === 0)
+    return (
+      <>
+        <RecipeStatusPanel session={session} onOpenArtifact={onOpenArtifact} />
+        <ExtensionUiPanel session={session} />
+      </>
+    );
   const label = (id: string) =>
     artifacts?.[id] ? `${artifacts[id].name} v${artifacts[id].version}` : id;
   const decide = async (approvalId: string, decision: 'approve' | 'reject') => {
@@ -90,6 +97,7 @@ export function ApprovalPanel({
 
   return (
     <>
+      <RecipeStatusPanel session={session} onOpenArtifact={onOpenArtifact} />
       <ExtensionUiPanel session={session} />
       <section aria-labelledby={headingId} className={`flex flex-col gap-2 ${className ?? ''}`}>
         <h3 id={headingId} className={compact ? 'sr-only' : 'text-ui font-semibold'}>

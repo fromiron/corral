@@ -3,6 +3,7 @@ import type {
   CorralNode,
   InputBinding,
   InputBindingKind,
+  LoopNode,
   OutputContract,
 } from '@corral/contracts';
 import { inputPortsOf, outputPortsOf } from '@corral/core';
@@ -44,12 +45,15 @@ export interface ProfileOption {
  * kept apart from the selected role, and rarely changed settings are folded away.
  */
 type RoleSettings = (role: AgentRole, nodeId: string) => ReactNode;
+type LoopSettings = (node: LoopNode) => ReactNode;
 export function NodeInspector({
   profiles = null,
   roleSettings,
+  loopSettings,
 }: {
   profiles?: ProfileOption[] | null;
   roleSettings?: RoleSettings;
+  loopSettings?: LoopSettings;
 } = {}) {
   const t = useTranslations('Inspector');
   const id = useId();
@@ -81,7 +85,12 @@ export function NodeInspector({
         />
       </div>
       {node ? (
-        <NodeProperties node={node} profiles={profiles} roleSettings={roleSettings} />
+        <NodeProperties
+          node={node}
+          profiles={profiles}
+          roleSettings={roleSettings}
+          loopSettings={loopSettings}
+        />
       ) : (
         <p className="text-sm text-muted">{t('none')}</p>
       )}
@@ -93,10 +102,12 @@ function NodeProperties({
   node,
   profiles,
   roleSettings,
+  loopSettings,
 }: {
   node: CorralNode;
   profiles: ProfileOption[] | null;
   roleSettings: RoleSettings | undefined;
+  loopSettings: LoopSettings | undefined;
 }) {
   const t = useTranslations('Inspector');
   const id = useId();
@@ -263,6 +274,7 @@ function NodeProperties({
         </label>
       ) : null}
 
+      {node.type === 'loop' ? loopSettings?.(node) : null}
       {node.type === 'output' ? (
         <>
           <label className="flex items-center gap-2 text-xs">

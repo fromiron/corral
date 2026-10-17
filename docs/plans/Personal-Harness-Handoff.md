@@ -198,3 +198,9 @@ CORRAL_SPIKE_NODE=~/.local/share/fnm/node-versions/v24.19.0/installation/bin/nod
 - 검증: recipe 집중 15 tests, contracts/core/adapter/react 536 passed / 2 opt-in skipped, server 파일+하네스 API 29 tests, core/server/client typecheck. root event catalog와 generated schemas 갱신.
 - 다음: Loop recipe 편집 UI, Run 판정/중단 패널·Inbox, 실제 자동 검사 통합 및 취소/중복 추가 검증, corral eval 품질/5대조군과 H4 Hashline 비교. H7/H8 및 마지막 desktop/Computer Use는 여전히 남았다.
 - 점검 필요: server mock 모드가 하네스가 붙은 역할에서 ScriptedAgentAdapter로 라우팅된다. SDK 로드 보고/요청 기록 계약과 맞는지 실제 재현 후 처리해야 한다(아직 결함 확정/수정하지 않음).
+
+### H6 규칙 편집·중단 표시 연결 (2026-10-18)
+
+- Loop Inspector에서 후보/검토 역할, 생성·수정·시간(초)·호출·토큰 한도, 등록 검사와 기준 파일을 선택해 새 recipe revision을 고정한다. 기존 definition 저장·이력 경로를 재사용한다. 기준 파일은 프로젝트 범위 API가 현재 hash를 읽으며 임의 절대경로를 받지 않는다.
+- Run에는 회차별 규칙 판정·검사 수·대상 tree·후보/검토 링크와 중단 이유를 표시한다. Inbox는 현재 세션의 최신 실행이 규칙 때문에 중단됐을 때 이유를 보여준다. 과거 중단은 Run에 남고 새 실행 뒤에는 현재 Inbox에 계속 쌓이지 않는다.
+- Studio/server/client/react typecheck, 관련 UI/파일/locale 52 tests, 1,250 spec checks(162/175 tagged) 통과. 브라우저 E2E: Loop 규칙 고정→definition 저장→mock 실행→시도 한도 중단→Run/Inbox 이유 표시 통과. H6 eval/Hashline 비교·추가 통합 경계와 H7–H8은 계속 진행한다.

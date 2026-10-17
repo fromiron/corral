@@ -1412,7 +1412,8 @@
       "uncertain_write": "File writes with unknown outcome",
       "integration": "Applying did not finish cleanly ({detail})",
       "check_failed": "Latest check failed: {detail}",
-      "unreviewed": "{detail} file writes since your last review"
+      "unreviewed": "{detail} file writes since your last review",
+      "recipe_stopped": "Review stopped: {detail}"
     },
     "open": "Open"
   },
@@ -1800,5 +1801,55 @@
     "keepRoleStyle": "Keep role settings",
     "promptUnavailable": "The extension prompt could not be loaded. Dismiss it or try again.",
     "retryPrompt": "Retry prompt"
+  },
+  "Recipe": {
+    "heading": "Review recipe",
+    "setupHint": "Pin the criteria, reviewer and limits for this Loop. The candidate → reviewer → review decision stays in the existing graph.",
+    "pinned": "Pinned recipe revision {revision}",
+    "candidate": "Candidate step",
+    "evaluator": "Reviewer role",
+    "choose": "Choose a step",
+    "criteria": "Fixed completion criteria",
+    "criteriaChanged": "Criteria changed. Pin a new recipe revision before running.",
+    "maxAttempts": "Maximum generation attempts",
+    "maxRepairs": "Maximum repairs after the first attempt",
+    "maxWallMs": "Time limit in seconds",
+    "maxModelCalls": "Maximum model calls",
+    "maxOutputTokens": "Maximum output tokens",
+    "limitsHint": "The first generation counts as an attempt. The smaller attempt/repair limit wins. Parent run limits also apply. Approval cannot extend these caps.",
+    "checks": "Checks before review",
+    "checksHint": "Select the same checks in the candidate role’s work style. Each launch still requires its own trust or approval.",
+    "missingCheck": "Unregistered check: {id}",
+    "files": "Protected criteria files",
+    "filesHint": "Optional: one project-relative path per line. Pinning copies the current hashes from the linked project folder. The run’s working copy must match; these files cannot be changed by agent file tools.",
+    "filesNeedServer": "Criteria files require a local server and a trusted project folder.",
+    "invalid": "Check the candidate, reviewer and limits before pinning.",
+    "changed": "The recipe or criteria changed while saving. Review the current settings and try again.",
+    "loadFailed": "Could not load registered checks.",
+    "save": "Pin review recipe",
+    "remove": "Remove recipe from future runs",
+    "round": "Round {round}: {verdict}",
+    "evidence": "Recipe r{revision} · {checks} check reports",
+    "openCandidate": "Open candidate",
+    "openReview": "Open review",
+    "verdict": {
+      "pass": "Pass",
+      "revise": "Revise",
+      "inconclusive": "Inconclusive"
+    },
+    "reasons": {
+      "attempt_limit": "Generation attempt limit reached",
+      "repair_limit": "Repair limit reached",
+      "repeated_output": "Candidate repeated without change",
+      "repeated_failure": "Same check failure on an unchanged target",
+      "call_limit": "Recipe model call allowance exhausted",
+      "token_limit": "Recipe output token allowance exhausted",
+      "deadline": "Recipe time limit reached",
+      "criteria_changed": "Pinned criteria files changed",
+      "check_error": "Required check did not produce a usable verdict",
+      "check_stale": "Check evidence refers to an older target",
+      "review_invalid": "Review does not match the candidate or criteria",
+      "invalid_submission": "Candidate submission is invalid or duplicated"
+    }
   }
 }
