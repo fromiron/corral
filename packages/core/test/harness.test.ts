@@ -10,7 +10,7 @@ import { FakeClock, Gate, linearCorral, SequentialIdFactory } from '@corral/test
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js';
 import { describe, expect, it } from 'vitest';
-import { Coordinator, InMemoryRunStore } from '../src/index.ts';
+import { Coordinator, InMemoryRunStore, exportRunArchive, openRunArchive } from '../src/index.ts';
 
 const hash = (value: unknown) => bytesToHex(sha256(utf8ToBytes(canonicalJson(value))));
 const descriptor: ToolDescriptor = {
@@ -131,6 +131,7 @@ describe('Coordinator harness boundary (H2)', () => {
     const s = setup();
     await s.started.wait();
     expect(s.input().harness).toEqual(snapshot);
+    expect(s.events().find(event => event.type === 'run.started')?.payload).toMatchObject({ harnesses: { [s.input().role.id]: snapshot } });
     await expect(s.host().prepareModelRequest(record)).rejects.toThrow(/harness/i);
     await s.host().reportHarness!({
       ok: true,
@@ -143,6 +144,8 @@ describe('Coordinator harness boundary (H2)', () => {
       { payload: { modelCallId: permit.modelCallId, ...record } },
     ]);
     expect(s.events().filter((e) => e.type === 'budget.reserved')).toHaveLength(1);
+    const archived = openRunArchive(exportRunArchive(s.store, s.input().runId, { privateTranscript: true }));
+    expect(archived.visibility === 'private' && archived.snapshot.harnesses).toEqual({ [s.input().role.id]: snapshot });
     await expect(s.host().prepareModelRequest()).rejects.toThrow(/record/i);
     s.done.open();
   });
