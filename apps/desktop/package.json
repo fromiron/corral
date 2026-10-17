@@ -1,0 +1,53 @@
+{
+  "name": "@corral/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Corral desktop workbench",
+  "author": "Corral contributors",
+  "main": "dist/main.js",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "prepare:runtime": "node scripts/prepare.ts",
+    "dev": "electron .",
+    "package": "electron-builder --linux AppImage --x64 --publish never"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "@corral/server": "workspace:*",
+    "@types/node": "24.19.2",
+    "electron": "44.4.5",
+    "electron-builder": "26.15.6",
+    "typescript": "6.0.3",
+    "vitest": "5.0.4"
+  },
+  "build": {
+    "appId": "app.corral.desktop",
+    "productName": "Corral",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "staging",
+        "to": "runtime"
+      }
+    ],
+    "npmRebuild": false,
+    "linux": {
+      "icon": "build/icon.png",
+      "target": [
+        "AppImage"
+      ],
+      "category": "Development",
+      "artifactName": "Corral-${version}-${arch}.${ext}",
+      "syncDesktopName": true
+    },
+    "executableName": "corral"
+  },
+  "desktopName": "corral.desktop"
+}

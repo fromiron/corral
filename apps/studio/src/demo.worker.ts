@@ -2,6 +2,7 @@ import './csp.ts';
 import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import {
   Coordinator,
+  exportRunArchive,
   InMemoryRunStore,
   InProcessTransport,
   LocalHeuristicProvider,
@@ -114,6 +115,16 @@ self.addEventListener('message', (event: MessageEvent<DemoMessage>) => {
           }),
       }),
     );
+  } else if (message.type === 'history') {
+    try {
+      send({
+        type: 'result',
+        id: message.id,
+        value: exportRunArchive(store, message.runId, { privateTranscript: true }),
+      });
+    } catch {
+      send({ type: 'error', id: message.id, message: 'The run history is unavailable.' });
+    }
   } else if (message.type === 'workspace') {
     // Only the listed methods; errors carry their message (no paths exist in the demo).
     try {

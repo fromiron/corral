@@ -255,79 +255,82 @@ function Editor({
   return (
     <StudioStoresProvider editor={editor} session={session}>
       <ReactFlowProvider>
-        <div className="grid h-full grid-rows-[auto_1fr]">
-          <div className="flex flex-wrap items-center gap-3 border-b border-line px-3 py-2">
-            <label className="flex items-center gap-2 text-sm">
-              <span className="sr-only">{t('name')}</span>
-              <input
-                value={draft.definition.name}
-                onChange={(e) => editor.getState().setName(e.target.value)}
-                onFocus={() => editor.getState().beginBatch()}
-                onBlur={() => editor.getState().endBatch()}
-                aria-label={t('name')}
-                className="rounded-md border border-line bg-surface px-2 py-1 font-medium"
-              />
-            </label>
-            <span className="text-xs text-muted" data-testid="revisions">
-              {t('revisions', {
-                definition: saved.record.definitionRevision,
-                layout: saved.record.layoutRevision,
-              })}
-            </span>
-            <span className={`text-xs ${dirty ? 'text-warning' : 'text-muted'}`} aria-live="polite">
-              {dirty ? `● ${t('unsaved')}` : t('saved')}
-            </span>
-            <EditorToolbar />
-            {toolbar}
-            <div className="ml-auto flex items-center gap-2">
-              <button
-                type="button"
-                onClick={exportFiles}
-                className="rounded-md border border-line px-3 py-1.5 text-sm"
-              >
-                {t('export')}
-              </button>
-              <button
-                type="button"
-                onClick={() => void save()}
-                disabled={saving}
-                className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent disabled:opacity-50"
-              >
-                {saving ? t('saving') : t('save')}
-              </button>
-            </div>
-            {message ? (
-              <p
-                role={message.error ? 'alert' : 'status'}
-                className={`w-full text-xs ${message.error ? 'text-danger' : 'text-muted'}`}
-              >
-                {message.text}
-              </p>
-            ) : null}
-          </div>
-          <main
-            className={`grid min-h-0 ${inSession ? 'grid-cols-[12rem_1fr_18rem]' : 'grid-cols-[15rem_1fr_22rem] max-[1100px]:grid-cols-[13rem_1fr_19rem]'}`}
-          >
-            <aside className="flex min-h-0 flex-col gap-6 overflow-auto border-r border-line p-3">
-              <NodePalette />
-              <ValidationPanel />
-            </aside>
-            <div className="relative min-h-0">
-              <CorralCanvas />
-              <CanvasNotice />
-            </div>
-            <aside className="flex min-h-0 flex-col gap-6 overflow-auto border-l border-line p-3">
-              <NodeInspector />
-              {inSession ? null : (
-                <RunSide
-                  beforeStart={beforeStart}
-                  liveAvailable={live}
-                  guide={guide}
-                  initialStartFrom={startFrom}
+        <div className="editor-shell h-full">
+          <div className="editor-frame grid h-full grid-rows-[auto_minmax(0,1fr)]">
+            <div className="flex flex-wrap items-center gap-3 border-b border-line px-3 py-2">
+              <label className="flex items-center gap-2 text-sm">
+                <span className="sr-only">{t('name')}</span>
+                <input
+                  value={draft.definition.name}
+                  onChange={(e) => editor.getState().setName(e.target.value)}
+                  onFocus={() => editor.getState().beginBatch()}
+                  onBlur={() => editor.getState().endBatch()}
+                  aria-label={t('name')}
+                  className="rounded-md border border-line bg-surface px-2 py-1 font-medium"
                 />
-              )}
-            </aside>
-          </main>
+              </label>
+              <span className="text-xs text-muted" data-testid="revisions">
+                {t('revisions', {
+                  definition: saved.record.definitionRevision,
+                  layout: saved.record.layoutRevision,
+                })}
+              </span>
+              <span
+                className={`text-xs ${dirty ? 'text-warning' : 'text-muted'}`}
+                aria-live="polite"
+              >
+                {dirty ? `● ${t('unsaved')}` : t('saved')}
+              </span>
+              <EditorToolbar />
+              {toolbar}
+              <div className="ml-auto flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={exportFiles}
+                  className="rounded-md border border-line px-3 py-1.5 text-sm"
+                >
+                  {t('export')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void save()}
+                  disabled={saving}
+                  className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent disabled:opacity-50"
+                >
+                  {saving ? t('saving') : t('save')}
+                </button>
+              </div>
+              {message ? (
+                <p
+                  role={message.error ? 'alert' : 'status'}
+                  className={`w-full text-xs ${message.error ? 'text-danger' : 'text-muted'}`}
+                >
+                  {message.text}
+                </p>
+              ) : null}
+            </div>
+            <main className="editor-layout grid min-h-0">
+              <aside className="editor-palette flex min-h-0 flex-col gap-6 overflow-auto border-r border-line p-3">
+                <NodePalette />
+                <ValidationPanel />
+              </aside>
+              <div className="editor-canvas relative min-h-0 min-w-0">
+                <CorralCanvas />
+                <CanvasNotice />
+              </div>
+              <aside className="editor-inspector flex min-h-0 min-w-0 flex-col gap-6 overflow-auto border-l border-line p-3">
+                <NodeInspector />
+                {inSession ? null : (
+                  <RunSide
+                    beforeStart={beforeStart}
+                    liveAvailable={live}
+                    guide={guide}
+                    initialStartFrom={startFrom}
+                  />
+                )}
+              </aside>
+            </main>
+          </div>
         </div>
       </ReactFlowProvider>
     </StudioStoresProvider>

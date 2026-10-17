@@ -7,6 +7,7 @@ import type {
 import { Link } from '@tanstack/react-router';
 import { type FormEvent, useCallback, useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
+import { desktop } from '../desktop.tsx';
 import { useServices } from '../services.tsx';
 
 // Work folders and working copies in Studio (CR-012), on the local server or the demo's
@@ -102,6 +103,20 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
               className="rounded border border-line bg-surface px-2 py-1 font-mono text-sm"
             />
           </label>
+          {desktop ? (
+            <button
+              type="button"
+              onClick={() =>
+                void act(async () => {
+                  const folder = await desktop?.pickFolder();
+                  if (folder) setPath(folder);
+                })
+              }
+              className="rounded-md border border-line px-3 py-1.5 text-sm"
+            >
+              {t('chooseFolder')}
+            </button>
+          ) : null}
           <button
             type="submit"
             disabled={!path.trim()}

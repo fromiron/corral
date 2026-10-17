@@ -13,19 +13,22 @@ import type {
 } from '@corral/client';
 import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import type { RunSummary, WorkSession } from '@corral/core';
-import type { DiffLine } from '@corral/react';
+import type { FileDiffMetadata } from '@pierre/diffs';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { useVirtualizer } from '@tanstack/react-virtual';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { reviewRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
 import { latestResult, startFollowUp, steer, steerTargets } from '../sessionActions.ts';
 import { useBinding } from './FilesViews.tsx';
-import { WorkbenchLayout, WorkbenchSidebar } from './Workbench.tsx';
+import { WorkbenchLayout } from './Workbench.tsx';
 
 // Reviewing a session's file changes (CR-012; WBT-15): a fixed comparison range, the files it
 // changed with where each change came from, the diff in the middle, and the agreed checks.
+
+const DiffCode = lazy(() =>
+  import('../workbench/PierreCode.tsx').then((module) => ({ default: module.DiffCode })),
+);
 
 type ReviewScope = ChangeScopeQuery | { kind: 'git' };
 
@@ -102,9 +105,6 @@ export function ReviewPage() {
 
   return (
     <WorkbenchLayout
-      sidebar={
-        <WorkbenchSidebar projectId={session.projectId} activeSessionId={session.sessionId} />
-      }
       main={
         <main className="flex h-full min-h-0 flex-1 flex-col">
           <header className="flex flex-wrap items-center gap-3 border-b border-line px-4 py-2">
@@ -280,12 +280,19 @@ function FileDiff({
   const t = useTranslations('Files');
   const [sides, setSides] = useState<{ before: FileSideView; after: FileSideView } | null>(null);
   const [layout, setLayout] = useState<'unified' | 'split' | 'raw'>('unified');
-  const [diff, setDiff] = useState<DiffLine[] | 'stopped' | null>(null);
+  const [diff, setDiff] = useState<FileDiffMetadata | 'stopped' | null>(null);
+  const [error, setError] = useState<string | null>(null);
   // biome-ignore lint/correctness/useExhaustiveDependencies: `loadKey` names what `load` reads
   useEffect(() => {
     let live = true;
     setSides(null);
-    void load().then((v) => live && setSides(v));
+    setError(null);
+    void load().then(
+      (v) => live && setSides(v),
+      (failure: unknown) => {
+        if (live) setError(failure instanceof Error ? failure.message : String(failure));
+      },
+    );
     return () => {
       live = false;
     };
@@ -302,28 +309,33 @@ function FileDiff({
       worker.terminate();
       setDiff('stopped');
     }, 3000);
-    worker.onmessage = (event: MessageEvent<DiffLine[]>) => {
+    worker.onmessage = (event: MessageEvent<{ diff?: FileDiffMetadata; error?: boolean }>) => {
       clearTimeout(timer);
-      setDiff(event.data);
+      setDiff(event.data.diff ?? 'stopped');
       worker.terminate();
     };
-    worker.postMessage({ before, after });
+    worker.onerror = () => {
+      clearTimeout(timer);
+      worker.terminate();
+      setDiff('stopped');
+    };
+    worker.postMessage({ path, before, after });
     return () => {
       clearTimeout(timer);
       worker.terminate();
     };
-  }, [sides]);
-  const lines = Array.isArray(diff) ? diff : null;
+  }, [sides, path]);
+  if (error)
+    return (
+      <p role="alert" className="text-sm text-danger">
+        {error}
+      </p>
+    );
   if (!sides) return <p className="text-sm text-muted">…</p>;
   const notText = (side: FileSideView) =>
     side.kind === 'binary' ? t('binary') : side.kind === 'too_large' ? t('tooLarge') : null;
   const before = sideText(sides.before);
   const after = sideText(sides.after);
-  // diffLines aligns up to 4M line pairs; past that it shows the file as replaced.
-  const unaligned =
-    before !== null &&
-    after !== null &&
-    before.split('\n').length * after.split('\n').length > 4_000_000;
   const source = sides.after.kind === 'text' ? sides.after.text : (before ?? '');
   const isReviewed = reviewed.has(reviewedKey);
   const download = () => {
@@ -369,11 +381,6 @@ function FileDiff({
       {diff === null && layout !== 'raw' && !notText(sides.before) && !notText(sides.after) ? (
         <p className="text-xs text-muted">{t('computing')}</p>
       ) : null}
-      {unaligned && layout !== 'raw' ? (
-        <p role="note" className="text-xs text-warning">
-          {t('tooLargeToAlign')}
-        </p>
-      ) : null}
       {notText(sides.before) || notText(sides.after) ? (
         <p className="text-sm text-muted">{notText(sides.after) ?? notText(sides.before)}</p>
       ) : layout === 'raw' ? (
@@ -389,187 +396,20 @@ function FileDiff({
             {source}
           </pre>
         </div>
-      ) : lines ? (
-        layout === 'unified' ? (
-          <Unified lines={lines} comments={comments} {...(onComment ? { onComment } : {})} />
-        ) : (
-          <Split lines={lines} />
-        )
+      ) : diff && diff !== 'stopped' ? (
+        <Suspense fallback={<p className="text-xs text-muted">{t('computing')}</p>}>
+          <DiffCode
+            key={loadKey}
+            diff={diff}
+            before={before ?? ''}
+            after={after ?? ''}
+            layout={layout}
+            comments={comments}
+            {...(onComment ? { onComment } : {})}
+          />
+        </Suspense>
       ) : null}
     </div>
-  );
-}
-
-const lineClass = (kind: DiffLine['kind']) =>
-  kind === 'added' ? 'bg-success/15' : kind === 'removed' ? 'bg-danger/15' : '';
-
-/** One column; each line can take a comment, fixed to its side and number (WB-REV-001). */
-function Unified({
-  lines,
-  comments,
-  onComment,
-}: {
-  lines: DiffLine[];
-  comments: ReviewCommentView[];
-  onComment?: (comment: NewComment) => Promise<void>;
-}) {
-  const t = useTranslations('Review');
-  const [open, setOpen] = useState<number | null>(null);
-  const [body, setBody] = useState('');
-  let before = 0;
-  let after = 0;
-  const numbered = lines.map((line) => {
-    if (line.kind !== 'added') before++;
-    if (line.kind !== 'removed') after++;
-    return {
-      line,
-      side: line.kind === 'removed' ? ('before' as const) : ('after' as const),
-      no: line.kind === 'removed' ? before : after,
-    };
-  });
-  // Only the rows in view are in the DOM (02-UX-Spec §11, WB-UX-006): a 4,000-line file costs
-  // what a screenful does. Rows grow with wrapped text, comments and the comment form.
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const rows = useVirtualizer({
-    count: numbered.length,
-    getScrollElement: () => scrollRef.current,
-    estimateSize: () => 22,
-    overscan: 30,
-  });
-  return (
-    <div
-      ref={scrollRef}
-      className="max-h-[75vh] overflow-auto rounded border border-line bg-surface font-mono text-[13px]"
-    >
-      <div style={{ height: rows.getTotalSize(), position: 'relative' }}>
-        {rows.getVirtualItems().map((item) => {
-          const index = item.index;
-          const { line, side, no } = numbered[index] as (typeof numbered)[number];
-          const here = comments.filter((c) => c.side === side && c.startLine === no);
-          return (
-            <div
-              key={item.key}
-              data-index={index}
-              ref={rows.measureElement}
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: '100%',
-                transform: `translateY(${item.start}px)`,
-              }}
-            >
-              <div data-diff={line.kind} className={`group flex ${lineClass(line.kind)}`}>
-                <button
-                  type="button"
-                  disabled={!onComment}
-                  aria-label={t('commentLine', { line: no })}
-                  onClick={() => {
-                    setOpen(open === index ? null : index);
-                    setBody('');
-                  }}
-                  className="w-12 shrink-0 select-none px-1 text-right text-muted hover:text-accent"
-                >
-                  {no}
-                </button>
-                <span className="whitespace-pre-wrap break-all px-2">
-                  {line.kind === 'added' ? '+ ' : line.kind === 'removed' ? '- ' : '  '}
-                  {line.text}
-                </span>
-              </div>
-              {here.map((c) => (
-                <p
-                  key={c.commentId}
-                  data-testid="inline-comment"
-                  className="ml-12 border-l-2 border-accent bg-raised px-2 py-1 font-sans text-xs"
-                >
-                  {c.body} <span className="text-muted">· {t(`commentState.${c.state}`)}</span>
-                </p>
-              ))}
-              {open === index ? (
-                <form
-                  className="ml-12 flex flex-col gap-1 bg-raised p-2 font-sans"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    if (!body.trim()) return;
-                    void onComment?.({
-                      side,
-                      startLine: no,
-                      endLine: no,
-                      quote: line.text,
-                      body,
-                    }).then(() => setOpen(null));
-                  }}
-                >
-                  <textarea
-                    aria-label={t('commentLine', { line: no })}
-                    placeholder={t('commentPlaceholder')}
-                    value={body}
-                    rows={2}
-                    onChange={(e) => setBody(e.target.value)}
-                    className="rounded border border-line bg-surface p-1 text-xs"
-                  />
-                  <div className="flex gap-1 text-xs">
-                    <button type="submit" className="rounded bg-accent px-2 py-0.5 text-on-accent">
-                      {t('addComment')}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setOpen(null)}
-                      className="rounded border border-line px-2 py-0.5"
-                    >
-                      {t('cancel')}
-                    </button>
-                  </div>
-                </form>
-              ) : null}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function Split({ lines }: { lines: DiffLine[] }) {
-  const t = useTranslations('Files');
-  // Removed lines on the left, added on the right, shared lines on both, aligned in order.
-  const rows: { left: DiffLine | null; right: DiffLine | null }[] = [];
-  for (const line of lines) {
-    if (line.kind === 'same') rows.push({ left: line, right: line });
-    else if (line.kind === 'removed') rows.push({ left: line, right: null });
-    else {
-      const open = rows.findLast((r) => r.left?.kind === 'removed' && r.right === null);
-      if (open) open.right = line;
-      else rows.push({ left: null, right: line });
-    }
-  }
-  return (
-    <table className="w-full table-fixed border-collapse font-mono text-[13px]">
-      <thead className="text-left text-xs text-muted">
-        <tr>
-          <th className="px-2">{t('before')}</th>
-          <th className="px-2">{t('after')}</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((row, index) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: diff rows have no identity beyond their place
-          <tr key={index} className="align-top">
-            <td
-              className={`whitespace-pre-wrap break-all px-2 ${row.left ? lineClass(row.left.kind) : ''}`}
-            >
-              {row.left?.text ?? ''}
-            </td>
-            <td
-              className={`whitespace-pre-wrap break-all px-2 ${row.right ? lineClass(row.right.kind) : ''}`}
-            >
-              {row.right?.text ?? ''}
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
   );
 }
 

@@ -42,9 +42,24 @@ async function api(page: Page, path: string, method = 'GET', body?: unknown) {
 const serious = async (page: Page, exclude: string[] = []) => {
   let builder = new AxeBuilder({ page });
   for (const selector of exclude) builder = builder.exclude(selector);
-  return (await builder.analyze()).violations
-    .filter((v) => v.impact === 'serious' || v.impact === 'critical')
-    .map((v) => `${v.id}: ${v.nodes.length} nodes`);
+  const violations = (await builder.analyze()).violations.filter(
+    (v) => v.impact === 'serious' || v.impact === 'critical',
+  );
+  if (violations.length)
+    console.log(
+      'WORKBENCH_AXE',
+      JSON.stringify(
+        violations.map((v) => ({
+          id: v.id,
+          nodes: v.nodes.map((n) => ({
+            target: n.target,
+            html: n.html,
+            summary: n.failureSummary,
+          })),
+        })),
+      ),
+    );
+  return violations.map((v) => `${v.id}: ${v.nodes.length} nodes`);
 };
 
 const bigText = (changeEvery: number | null) =>
@@ -56,6 +71,10 @@ const bigText = (changeEvery: number | null) =>
 
 test('[§11] workbench timings and accessibility on a fixed workload', async ({ page, corral }) => {
   test.setTimeout(300_000);
+  const throttled: string[] = [];
+  page.on('response', (response) => {
+    if (response.status() === 429) throttled.push(new URL(response.url()).pathname);
+  });
   const original = mkdtempSync(join(tmpdir(), 'corral-e2e-measure-'));
   try {
     const git = (...args: string[]) =>
@@ -116,7 +135,15 @@ test('[§11] workbench timings and accessibility on a fixed workload', async ({ 
     findings.project = await serious(page);
 
     const sidebar = page.getByRole('navigation', { name: 'Projects and sessions' });
+    await page
+      .getByTestId('app-sidebar')
+      .getByRole('searchbox', { name: 'Search sessions' })
+      .fill('Session A');
     await sidebar.getByRole('link', { name: 'Session A' }).click();
+    await page
+      .getByTestId('app-sidebar')
+      .getByRole('searchbox', { name: 'Search sessions' })
+      .fill('');
     await expect(page.getByRole('heading', { level: 2, name: 'Session A' })).toBeVisible();
     findings.session = await serious(page);
 
@@ -136,7 +163,8 @@ test('[§11] workbench timings and accessibility on a fixed workload', async ({ 
       await expect(
         page
           .getByTestId('file-diff')
-          .getByText(/^\+ changed 0$/)
+          .locator('[data-line-type="change-addition"]')
+          .filter({ hasText: 'changed 0' })
           .first(),
       ).toBeVisible();
       diffTimes.push(Date.now() - started);
@@ -186,6 +214,7 @@ test('[§11] workbench timings and accessibility on a fixed workload', async ({ 
       findings,
     };
     console.log(`WORKBENCH_MEASURE ${JSON.stringify(result)}`);
+    expect(throttled).toEqual([]);
     expect(findings).toEqual({ project: [], session: [], review: [], reviewWithDiff: [] });
     expect(result.diffP95Ms, 'diff display p95').toBeLessThanOrEqual(500);
     expect(result.switchP95Ms, 'session switch p95').toBeLessThanOrEqual(300);

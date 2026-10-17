@@ -1,9 +1,11 @@
 import { spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { existsSync } from 'node:fs';
+import { constants, existsSync } from 'node:fs';
 import {
   lstat,
   mkdir,
+  open,
+  opendir,
   readFile,
   realpath,
   rename,
@@ -58,6 +60,7 @@ export interface WorktreeView {
 }
 
 export type ChangeScope = { kind: 'session' } | { kind: 'review' } | { kind: 'run'; runId: string };
+export type FileBrowseScope = { kind: 'project' | 'session'; id: string };
 
 export interface FileChange {
   path: string;
@@ -728,6 +731,56 @@ export class WorkspaceService implements FileTools {
 
   // ── verification commands ───────────────────────────────────────────────────
 
+  /** Human inspection never updates the agent's read-before-write ledger. */
+  private async browseRoot(scope: FileBrowseScope) {
+    const binding = scope.kind === 'project' ? this.binding(scope.id) : null;
+    const copy = scope.kind === 'session' ? this.worktree(scope.id) : null;
+    const root = binding?.root_path ?? copy?.worktree_path;
+    if (!root || !existsSync(root))
+      throw new WorkspaceError('TARGET_NOT_FOUND', 'the linked folder is unavailable');
+    if ((await lstat(root)).isSymbolicLink() || (await realpath(root)) !== root)
+      throw new WorkspaceError('CAPABILITY_DENIED', 'the linked folder has moved');
+    return { root, isGit: binding ? !!binding.is_git : true };
+  }
+
+  async listFiles(scope: FileBrowseScope, path = '') {
+    const { root, isGit } = await this.browseRoot(scope);
+    return this.list(root, path, isGit);
+  }
+
+  async readFile(
+    scope: FileBrowseScope,
+    path: string,
+  ): Promise<{ path: string; content: FileSide }> {
+    const { root } = await this.browseRoot(scope);
+    const rel = safeRelative(path);
+    if ((await assertPlainPath(root, rel)) !== 'file')
+      throw new WorkspaceError('TARGET_NOT_FOUND', 'the file is unavailable');
+    const handle = await open(join(root, rel), constants.O_RDONLY | constants.O_NOFOLLOW);
+    try {
+      const info = await handle.stat();
+      if (!info.isFile())
+        throw new WorkspaceError('CAPABILITY_DENIED', 'only plain files can be read');
+      if (info.size > MAX_TEXT)
+        return { path: rel, content: { kind: 'too_large', bytes: info.size } };
+      const buffer = Buffer.alloc(MAX_TEXT + 1);
+      let size = 0;
+      while (size < buffer.length) {
+        const { bytesRead } = await handle.read(buffer, size, buffer.length - size, size);
+        if (!bytesRead) break;
+        size += bytesRead;
+      }
+      if (size > MAX_TEXT) return { path: rel, content: { kind: 'too_large', bytes: size } };
+      const text = decodeText(buffer.subarray(0, size));
+      return {
+        path: rel,
+        content: text === null ? { kind: 'binary', bytes: size } : { kind: 'text', text },
+      };
+    } finally {
+      await handle.close();
+    }
+  }
+
   verifications(sessionId: string, currentTree: string | null): VerificationView[] {
     const rows = this.db
       .prepare('SELECT * FROM verifications WHERE session_id = ? ORDER BY started_at DESC LIMIT 50')
@@ -915,32 +968,67 @@ export class WorkspaceService implements FileTools {
     }
   }
 
-  private async list(root: string, folder: string) {
+  private async list(root: string, folder: string, isGit = true) {
     const rel = folder ? safeRelative(folder) : '';
-    const out = (
-      await git(root, [
-        'ls-files',
-        '-z',
-        '--cached',
-        '--others',
-        '--exclude-standard',
-        '--',
-        rel || '.',
-      ])
-    ).stdout
-      .toString('utf8')
-      .split('\0')
-      .filter(Boolean);
+    if (rel) {
+      await assertPlainPath(root, rel);
+      if (!(await stat(join(root, rel))).isDirectory())
+        throw new WorkspaceError('TARGET_NOT_FOUND', 'the folder is unavailable');
+    }
+    // Git's ignore rules keep dependencies and generated output out of the picker.
+    const walk = isGit ? null : await this.folderPaths(root, rel);
+    const out =
+      walk?.paths ??
+      (
+        await git(root, [
+          'ls-files',
+          '-z',
+          '--cached',
+          '--others',
+          '--exclude-standard',
+          '--',
+          rel ? `:(literal)${rel}` : '.',
+        ])
+      ).stdout
+        .toString('utf8')
+        .split('\0')
+        .filter(Boolean);
     const files: { path: string; bytes: number }[] = [];
     for (const path of [...new Set(out)].slice(0, 500)) {
       try {
+        safeRelative(path);
+        if ((await assertPlainPath(root, path)) !== 'file') continue;
         const info = await lstat(join(root, path));
         if (info.isFile()) files.push({ path, bytes: info.size });
       } catch {
         // Listed by git but already gone: not a file now.
       }
     }
-    return { files, truncated: out.length > 500 };
+    return { files, truncated: !!walk?.truncated || out.length > 500 };
+  }
+
+  /** Non-Git folders have the same bounded picker and never follow directory symlinks. */
+  private async folderPaths(root: string, folder: string) {
+    const pending = [folder];
+    const paths: string[] = [];
+    let visited = 0;
+    while (pending.length && paths.length <= 500 && visited < 2000) {
+      const rel = pending.shift() as string;
+      const dir = await opendir(join(root, rel));
+      for await (const entry of dir) {
+        if (++visited >= 2000) break;
+        const path = rel ? `${rel}/${entry.name}` : entry.name;
+        try {
+          safeRelative(path);
+        } catch {
+          continue;
+        }
+        if (entry.isDirectory()) pending.push(path);
+        if (entry.isFile()) paths.push(path);
+        if (paths.length > 500) break;
+      }
+    }
+    return { paths, truncated: pending.length > 0 || visited >= 2000 || paths.length > 500 };
   }
 
   /** What an existing file must look like before it may be changed: as this run read it. */

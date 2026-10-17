@@ -16,7 +16,7 @@ import { TeamDraftDialog } from '../TeamDraftDialog.tsx';
 import { createFromTemplate, WORKSPACE_TEMPLATES } from '../templates.ts';
 import { InboxSection, WorkFolderSection } from './FilesViews.tsx';
 import { GettingStarted } from './GettingStarted.tsx';
-import { WorkbenchLayout, WorkbenchSidebar } from './Workbench.tsx';
+import { WorkbenchLayout } from './Workbench.tsx';
 
 /** A layout file is recognised by its shape; everything else is treated as a definition. */
 function isLayoutFile(text: string): boolean {
@@ -116,7 +116,6 @@ export function WorkspacePage() {
 
   return (
     <WorkbenchLayout
-      sidebar={<WorkbenchSidebar projectId={projectId} />}
       main={
         <main className="min-h-0 flex-1 overflow-auto">
           <div className="mx-auto flex max-w-4xl flex-col gap-4 p-6">

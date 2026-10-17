@@ -230,3 +230,13 @@
 **이유:** 구현 플랜 v0.1 §11은 적용 전에 질문·후보·응답·registry·timeout·privacy를 먼저 명세하고 두 adapter의 결과를 비교 기록하라고 정했다. 관찰 데이터 없이 적용하면 Reins의 "무엇이 왜 바뀌었는가"를 설명할 수 없다.
 
 **결과·제약:** 판정은 `RequestPermit`·예산 예약·worker 요청을 바꾸지 않는다. `apply` 모드, 자동 라우팅, Hybrid, 비용 절감 주장, ONNX 모델과 Jev adapter는 각각 후속 CR이다(CR-003 D1·D2). 외부 provider는 live Run의 opt-in에서만 쓰고 전송 전에 `effect.admitted(kind: decision)`를 남긴다. 기존 `DecisionPolicy` 포트(Decision 노드 판정)는 이번에 바꾸지 않는다.
+
+## ADR-026: T3 화면을 Corral 실행 모델에 연결하고 Electron은 호스트만 맡는다
+
+**상태:** 채택 (Bell, 2026-10-17, [CR-014](change-requests/CR-014-desktop-workbench.md)).
+
+**결정:** T3의 Sidebar·ChatView 화면 트리와 필요한 UI 동작을 MIT 고지를 보존해 포팅한다. Corral repository·projection·transcript와 명령 경로에 연결하고 T3의 provider/orchestration 서버를 흉내 내지 않는다. 데이터의 권위는 Coordinator와 기존 SQLite다. UI 선호는 별도 버전 설정으로 둔다. PI의 패널 동작은 참고만 한다.
+
+Electron은 창·OS 대화상자·서버 수명을 소유한다. 서버와 Pi worker는 동봉 Node 24.19로 실행해 Electron ABI와 SQLite/ONNX 런타임을 분리한다. renderer는 기존 loopback 세션/CSRF 경계로 API를 쓰며 Node 권한을 받지 않는다. 기존 workspace는 명시적으로 선택하며 자동 이관하지 않는다. 웹 Studio도 같은 UI를 사용한다.
+
+**결과·제약:** Linux x64 AppImage가 첫 대상이다. 원본의 원격 환경·터미널·Git 쓰기·플러그인 플랫폼은 이식하지 않는다. native module·worker·자원 경로는 개발 실행과 설치 패키지에서 각각 검증한다.

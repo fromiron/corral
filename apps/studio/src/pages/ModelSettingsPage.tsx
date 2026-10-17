@@ -5,6 +5,7 @@ import { useFormatter, useTranslations } from 'use-intl';
 import { modelSettingsRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
 import { ModelConfigEditor } from './ModelConfigEditor.tsx';
+import { SettingsLayout } from './SettingsPage.tsx';
 
 /**
  * /settings/models (Spec §4.1, C-058). Sign-in happens on the provider's own page, opened by
@@ -26,42 +27,48 @@ export function ModelSettingsPage() {
   }, [pending, router]);
 
   return (
-    <main className="mx-auto flex max-w-4xl flex-col gap-4 p-6">
-      <h2 className="text-lg font-semibold">{t('heading')}</h2>
-      {mode !== 'server' || !models ? (
-        <p className="text-sm text-muted">{t('browserOnly')}</p>
-      ) : !live ? (
-        <p className="text-sm text-muted">{t('noLive')}</p>
-      ) : (
-        <>
-          <p className="text-sm text-muted">{t('intro')}</p>
-          <section aria-labelledby="providers-heading" className="flex flex-col gap-2">
-            <h3 id="providers-heading" className="text-sm font-semibold">
-              {t('providers')}
-            </h3>
-            {providers.map((provider) => (
-              <ProviderCard key={provider.providerId} provider={provider} />
-            ))}
-          </section>
-          {editing && config ? (
-            <ModelConfigEditor config={config} catalog={catalog} onDone={() => setEditing(false)} />
-          ) : (
-            <>
-              <ProfilesTable profiles={profiles} />
-              {config ? (
-                <button
-                  type="button"
-                  onClick={() => setEditing(true)}
-                  className="self-start rounded-md border border-accent px-3 py-1.5 text-sm text-accent"
-                >
-                  {t('editModels')}
-                </button>
-              ) : null}
-            </>
-          )}
-        </>
-      )}
-    </main>
+    <SettingsLayout active="models">
+      <main className="mx-auto flex max-w-4xl flex-col gap-6 p-6 sm:p-10">
+        <h2 className="text-lg font-semibold">{t('heading')}</h2>
+        {mode !== 'server' || !models ? (
+          <p className="text-sm text-muted">{t('browserOnly')}</p>
+        ) : !live ? (
+          <p className="text-sm text-muted">{t('noLive')}</p>
+        ) : (
+          <>
+            <p className="text-sm text-muted">{t('intro')}</p>
+            <section aria-labelledby="providers-heading" className="flex flex-col gap-2">
+              <h3 id="providers-heading" className="text-sm font-semibold">
+                {t('providers')}
+              </h3>
+              {providers.map((provider) => (
+                <ProviderCard key={provider.providerId} provider={provider} />
+              ))}
+            </section>
+            {editing && config ? (
+              <ModelConfigEditor
+                config={config}
+                catalog={catalog}
+                onDone={() => setEditing(false)}
+              />
+            ) : (
+              <>
+                <ProfilesTable profiles={profiles} />
+                {config ? (
+                  <button
+                    type="button"
+                    onClick={() => setEditing(true)}
+                    className="self-start rounded-md border border-accent px-3 py-1.5 text-sm text-accent"
+                  >
+                    {t('editModels')}
+                  </button>
+                ) : null}
+              </>
+            )}
+          </>
+        )}
+      </main>
+    </SettingsLayout>
   );
 }
 

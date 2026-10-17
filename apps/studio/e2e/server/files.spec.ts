@@ -108,6 +108,16 @@ test('[WBTST-016] a session works in its own copy, and its changes are reviewed 
     await page.getByRole('button', { name: 'Start session' }).click();
     await expect(page).toHaveURL(/\/sessions\/session_/);
 
+    await page.getByRole('tab', { name: 'Files', exact: true }).click();
+    await page.getByRole('button', { name: 'Open README.md', exact: true }).click();
+    const content = page.getByRole('region', { name: 'File content', exact: true });
+    await expect(content.getByText('hello', { exact: true })).toBeVisible();
+    writeFileSync(join(original, 'README.md'), 'updated outside Corral\n');
+    await page.getByRole('button', { name: 'Refresh files', exact: true }).click();
+    await expect(content.getByText('updated outside Corral', { exact: true })).toBeVisible();
+    writeFileSync(join(original, 'README.md'), 'hello\n');
+    await page.getByRole('tab', { name: 'Changes', exact: true }).click();
+
     const copy = page.getByRole('region', { name: 'Working copy' });
     await copy.getByRole('button', { name: /Make a working copy from/ }).click();
     await expect(copy.getByRole('link', { name: 'Review changes' })).toBeVisible();
@@ -124,7 +134,7 @@ test('[WBTST-016] a session works in its own copy, and its changes are reviewed 
     await expect(file).toContainText('Corral');
     await file.click();
     await expect(
-      page.getByTestId('file-diff').locator('[data-diff="added"]').first(),
+      page.getByTestId('file-diff').locator('[data-line-type="change-addition"]').first(),
     ).toBeVisible();
     await page.getByRole('button', { name: 'Run Notes exist' }).click();
     await expect(page.getByTestId('check-result').first()).toContainText('Passed', {
@@ -137,7 +147,11 @@ test('[WBTST-016] a session works in its own copy, and its changes are reviewed 
     // CR-013: a comment on a line goes out as a request for changes, as a new run.
     await page.getByRole('button', { name: 'Comment on line 1' }).first().click();
     await page.getByRole('textbox', { name: 'Comment on line 1' }).fill('Start with a title.');
-    await page.getByRole('button', { name: 'Add comment' }).click();
+    await page
+      .getByTestId('pierre-diff')
+      .locator('form')
+      .getByRole('button', { name: 'Add comment', exact: true })
+      .click();
     await expect(page.getByTestId('inline-comment')).toContainText('Start with a title.');
     await page.getByRole('button', { name: 'Send for changes' }).click();
     await expect(page.getByRole('status').filter({ hasText: 'Sent.' })).toBeVisible();

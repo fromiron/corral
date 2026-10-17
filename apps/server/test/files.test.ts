@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openDatabase } from '@corral/storage-sqlite';
@@ -57,6 +57,43 @@ async function setup() {
 }
 
 describe('file broker (CR-012)', () => {
+  it('[DW-05] browsing stays inside its project or session and does not grant an agent a read', async () => {
+    const { service, call, original } = await setup();
+    const scope = { kind: 'project' as const, id: 'default' };
+    mkdirSync(join(original, 'nested'));
+    writeFileSync(join(original, 'nested', 'plain.txt'), 'hello');
+    writeFileSync(join(original, 'binary.dat'), Buffer.from([0, 1, 2]));
+    writeFileSync(join(original, 'large.txt'), 'x'.repeat(1024 * 1024 + 1));
+    symlinkSync('/etc', join(original, 'outside'));
+    const listed = await service.listFiles(scope);
+    expect(listed.files.map((f) => f.path)).toEqual(
+      expect.arrayContaining(['a.txt', 'nested/plain.txt']),
+    );
+    expect(
+      listed.files.some((f) => f.path.startsWith('.git/') || f.path.startsWith('outside/')),
+    ).toBe(false);
+    await expect(service.readFile(scope, 'nested/plain.txt')).resolves.toMatchObject({
+      content: { kind: 'text', text: 'hello' },
+    });
+    await expect(service.readFile(scope, 'binary.dat')).resolves.toMatchObject({
+      content: { kind: 'binary' },
+    });
+    await expect(service.readFile(scope, 'large.txt')).resolves.toMatchObject({
+      content: { kind: 'too_large' },
+    });
+    for (const bad of ['../a.txt', '/etc/passwd', '.git/config', 'outside/passwd']) {
+      await expect(service.readFile(scope, bad)).rejects.toThrow();
+    }
+    await expect(service.listFiles(scope, 'outside')).rejects.toThrow();
+    await expect(
+      service.readFile({ kind: 'session', id: 'session_1' }, 'a.txt'),
+    ).resolves.toMatchObject({ content: { kind: 'text', text: 'one\n' } });
+    await expect(call('write_file', { path: 'a.txt', text: 'two' })).rejects.toThrow(/read a.txt/);
+    await expect(service.readFile({ kind: 'project', id: 'missing' }, 'a.txt')).rejects.toThrow();
+    rmSync(original, { recursive: true });
+    await expect(service.listFiles(scope)).rejects.toThrow();
+  });
+
   it('refuses paths that leave the copy, reach .git or .corral, or are absolute', () => {
     for (const bad of [
       '../x',

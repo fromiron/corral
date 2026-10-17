@@ -1,7 +1,14 @@
-import { diffLines } from '@corral/react/diff';
+import { parseDiffFromFile } from '@pierre/diffs';
 
 // Line diffs off the page's thread (02-UX-Spec §4): the review screen stops waiting after a
 // few seconds and offers the source instead of spinning forever.
-self.onmessage = (event: MessageEvent<{ before: string; after: string }>) => {
-  self.postMessage(diffLines(event.data.before, event.data.after));
+self.onmessage = (event: MessageEvent<{ path: string; before: string; after: string }>) => {
+  try {
+    const { path, before, after } = event.data;
+    self.postMessage({
+      diff: parseDiffFromFile({ name: path, contents: before }, { name: path, contents: after }),
+    });
+  } catch {
+    self.postMessage({ error: true });
+  }
 };

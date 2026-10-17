@@ -12,6 +12,8 @@ export type DemoRequest = {
 }[DemoMethod];
 /** The demo work folder's calls the page may make (demo/workspace.ts). */
 export const DEMO_WORKSPACE_METHODS = [
+  'listFiles',
+  'readFile',
   'binding',
   'bind',
   'configure',
@@ -45,6 +47,7 @@ export type DemoWorkspaceMethod = (typeof DEMO_WORKSPACE_METHODS)[number];
 
 export type DemoMessage =
   | DemoRequest
+  | { type: 'history'; id: number; runId: string }
   | { type: 'workspace'; id: number; method: DemoWorkspaceMethod; args: unknown[] }
   | { type: 'subscribe'; id: number; runId: string; afterSeq: number }
   | { type: 'unsubscribe'; id: number }

@@ -27,6 +27,15 @@ test('[TC-DX-002-N] unknown or unreviewed licenses fail closed', () => {
   }
 });
 
+test('[TC-DX-002-H] Pierre’s reviewed lowercase Apache identifier is canonical in the SBOM', () => {
+  const inventory = createInventory(
+    { 'apache-2.0': [{ name: '@pierre/diffs', versions: ['1.5.2'] }] },
+    'abc',
+    '2026-10-17T00:00:00Z',
+  );
+  assert.equal(inventory.packages[0]?.licenseDeclared, 'Apache-2.0');
+});
+
 test('[TC-DX-002-N] a permissive license does not approve an unreviewed prerelease', () => {
   assert.throws(
     () =>

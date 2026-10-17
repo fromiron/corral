@@ -18,6 +18,15 @@ const manifests = [
 ].map((path) => JSON.parse(readFileSync(join(ROOT, path), 'utf-8')) as Manifest);
 
 const direct = new Map<string, { version: string; usedBy: Set<string>; dev: boolean }>();
+const evidencePath = join(ROOT, 'docs/dependency-lock.json');
+const previous = existsSync(evidencePath) ? JSON.parse(readFileSync(evidencePath, 'utf8')) : {};
+// Explicit, version-bound source reviews fill registry omissions; registry facts still win.
+const reviewedSources = (previous.reviewedSources ?? []) as {
+  name: string;
+  version: string;
+  repository: string;
+  source: string;
+}[];
 for (const manifest of manifests) {
   for (const kind of ['dependencies', 'devDependencies'] as const) {
     for (const [name, range] of Object.entries(manifest[kind] ?? {})) {
@@ -46,7 +55,11 @@ const records = [...direct.entries()]
       license: view.license ?? null,
       integrity: view.dist?.integrity ?? null,
       published: view.time?.[version] ?? null,
-      repository: view.repository?.url ?? null,
+      repository:
+        view.repository?.url ??
+        reviewedSources.find((entry) => entry.name === name && entry.version === version)
+          ?.repository ??
+        null,
       gitHead: view.gitHead ?? null,
       engines: view.engines ?? null,
       peerDependencies: view.peerDependencies ?? null,
@@ -55,17 +68,15 @@ const records = [...direct.entries()]
     };
   });
 
-const evidencePath = join(ROOT, 'docs/dependency-lock.json');
 // Registry refreshes never create or replace the separately reviewed prerelease exceptions.
-const reviewedPrereleases = existsSync(evidencePath)
-  ? JSON.parse(readFileSync(evidencePath, 'utf8')).reviewedPrereleases
-  : undefined;
+const reviewedPrereleases = previous.reviewedPrereleases;
 const out = {
   generatedAt: new Date().toISOString(),
   node: process.version,
   packageManager: JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf-8')).packageManager,
   note: 'Registry facts for pinned direct dependencies. Compatibility evidence is the CI gate result, not this file.',
   dependencies: records,
+  ...(reviewedSources.length ? { reviewedSources } : {}),
   ...(reviewedPrereleases ? { reviewedPrereleases } : {}),
 };
 writeFileSync(evidencePath, `${JSON.stringify(out, null, 2)}\n`);

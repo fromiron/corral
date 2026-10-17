@@ -8,7 +8,8 @@ import type {
   SessionIntent,
   WorkSession,
 } from '@corral/core';
-import { ApprovalPanel, SafeMarkdown, StatusBadge } from '@corral/react';
+import { ApprovalPanel, RunActions, StatusBadge } from '@corral/react';
+import { ArrowUp, ChevronDown, MessageSquare } from '@corral/react/icons';
 import { Link, useNavigate, useRouter } from '@tanstack/react-router';
 import {
   createContext,
@@ -22,13 +23,18 @@ import {
 } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { setCurrentProject } from '../projects.ts';
-import { type SessionSearch, sessionRoute } from '../router.tsx';
+import { type SessionSearch, sessionRoute, validateSessionSearch } from '../router.tsx';
 import { useServices } from '../services.tsx';
+import { ChatView } from '../workbench/ChatView.tsx';
+import { ComposerSurface } from '../workbench/ComposerSurface.tsx';
+import { FilePanel, type FileReference } from '../workbench/FilePanel.tsx';
+import { RequestInput } from '../workbench/RequestInput.tsx';
+import { RunMessage } from '../workbench/RunMessage.tsx';
 import { TeamDesign } from './EditorPage.tsx';
 import { useBinding, WORKSPACE_CHANGED, WorkingCopyPanel } from './FilesViews.tsx';
 import { Checks } from './ReviewPage.tsx';
 import { RunDetail } from './RunPage.tsx';
-import { useRemembered, WorkbenchLayout, WorkbenchSidebar } from './Workbench.tsx';
+import { useRemembered, WorkbenchLayout } from './Workbench.tsx';
 
 // A work session (CR-011, roadmap 23–24): what was asked, the runs it started, the queue, and
 // one input box whose intent is chosen, never guessed.
@@ -69,7 +75,7 @@ function useSessionRuns(sessionId: string) {
 }
 
 export type SessionTab = 'work' | 'team' | 'run';
-export type SessionPanel = 'changes' | 'artifacts' | 'checks';
+export type SessionPanel = 'files' | 'changes' | 'artifacts' | 'checks';
 
 /**
  * A session as a workbench (02-UX-Spec §2–§3): the sidebar, a header with what is true now,
@@ -78,8 +84,18 @@ export type SessionPanel = 'changes' | 'artifacts' | 'checks';
  */
 export function SessionPage() {
   const tw = useTranslations('Workbench');
-  const { session, project, corrals } = sessionRoute.useLoaderData();
-  const search = sessionRoute.useSearch();
+  const { session, corrals } = sessionRoute.useLoaderData();
+  const urlSearch = sessionRoute.useSearch();
+  const [savedView, rememberView] = useRemembered<Record<string, unknown>>(
+    `corral:session-view:v1:${session.sessionId}`,
+    {},
+  );
+  const search = {
+    ...validateSessionSearch(savedView && typeof savedView === 'object' ? savedView : {}),
+    ...urlSearch,
+  };
+  const viewKey = JSON.stringify(search);
+  useEffect(() => rememberView(JSON.parse(viewKey)), [viewKey, rememberView]);
   const navigate = useNavigate({ from: '/sessions/$sessionId' });
   const { runs, active, refresh, lost } = useSessionRuns(session.sessionId);
   useEffect(() => setCurrentProject(session.projectId), [session.projectId]);
@@ -87,8 +103,17 @@ export function SessionPage() {
   const ts = useTranslations('Sessions');
   const tab: SessionTab = search.tab ?? 'work';
   const panel: SessionPanel = search.panel ?? 'changes';
-  const setSearch = (patch: Partial<typeof search>) =>
-    void navigate({ search: (s) => ({ ...s, ...patch }) });
+  const [pendingReference, setReference] = useState<{
+    sessionId: string;
+    value: FileReference;
+  } | null>(null);
+  const reference =
+    pendingReference?.sessionId === session.sessionId ? pendingReference.value : null;
+  const setSearch = (patch: Partial<typeof search>) => {
+    const next = validateSessionSearch({ ...search, ...patch });
+    rememberView({ ...next });
+    void navigate({ search: () => next });
+  };
   const tabs: SessionTab[] = ['work', 'team', 'run'];
   // Coming back to a tab keeps where the person was reading (02-UX-Spec §3, §9).
   const panelRef = useRef<HTMLDivElement>(null);
@@ -112,17 +137,10 @@ export function SessionPage() {
 
   return (
     <WorkbenchLayout
-      sidebar={
-        <WorkbenchSidebar projectId={session.projectId} activeSessionId={session.sessionId} />
-      }
+      key={session.sessionId}
+      storageKey={session.sessionId}
       main={
         <div className="flex min-h-0 flex-1 flex-col">
-          <WorkbenchHeader
-            session={session}
-            projectLabel={project ? project.name : ''}
-            team={team}
-            active={active && active.sessionId === session.sessionId ? active : null}
-          />
           {lost ? (
             <div
               role="alert"
@@ -150,7 +168,7 @@ export function SessionPage() {
             role="tabpanel"
             aria-label={tw(`tab.${tab}`)}
             onScroll={(event) => rememberScroll(event.currentTarget.scrollTop)}
-            className="flex min-h-0 flex-1 flex-col overflow-auto"
+            className={`flex min-h-0 flex-1 flex-col ${tab === 'work' ? 'overflow-hidden' : 'overflow-auto'}`}
           >
             {tab === 'work' ? (
               <WorkTab
@@ -160,6 +178,8 @@ export function SessionPage() {
                 runs={runs}
                 active={active}
                 onChange={refresh}
+                reference={reference}
+                onReferenceUsed={() => setReference(null)}
               />
             ) : tab === 'team' ? (
               team ? (
@@ -174,33 +194,45 @@ export function SessionPage() {
         </div>
       }
       panel={
-        <div className="flex min-h-0 flex-col">
-          <TabRow
-            label={tw('panelTabs')}
-            values={['changes', 'artifacts', 'checks'] as SessionPanel[]}
-            current={panel}
-            text={(value) => tw(`panel.${value}`)}
-            onChoose={(value) => setSearch({ panel: value })}
-          />
-          <div
-            role="tabpanel"
-            aria-label={tw(`panel.${panel}`)}
-            className="flex flex-col gap-3 p-3"
-          >
-            {panel === 'changes' ? (
-              <ChangesPanel session={session} runs={runs} />
-            ) : panel === 'artifacts' ? (
-              <ArtifactsPanel
-                runs={runs}
-                onOpen={(runId, result) =>
-                  setSearch({ tab: 'run', run: runId, view: 'results', result })
-                }
-              />
-            ) : (
-              <ChecksPanel session={session} />
-            )}
+        tab === 'team' ? undefined : (
+          <div className="flex min-h-0 flex-col">
+            <TabRow
+              label={tw('panelTabs')}
+              values={['files', 'changes', 'artifacts', 'checks'] as SessionPanel[]}
+              current={panel}
+              text={(value) => tw(`panel.${value}`)}
+              onChoose={(value) => setSearch({ panel: value })}
+            />
+            <div
+              role="tabpanel"
+              aria-label={tw(`panel.${panel}`)}
+              className="flex flex-col gap-3 p-3"
+            >
+              {panel === 'files' ? (
+                <FilePanel
+                  key={session.sessionId}
+                  projectId={session.projectId}
+                  sessionId={session.sessionId}
+                  onReference={(value) => {
+                    setReference({ sessionId: session.sessionId, value });
+                    setSearch({ tab: 'work' });
+                  }}
+                />
+              ) : panel === 'changes' ? (
+                <ChangesPanel session={session} runs={runs} />
+              ) : panel === 'artifacts' ? (
+                <ArtifactsPanel
+                  runs={runs}
+                  onOpen={(runId, result) =>
+                    setSearch({ tab: 'run', run: runId, view: 'results', result })
+                  }
+                />
+              ) : (
+                <ChecksPanel session={session} />
+              )}
+            </div>
           </div>
-        </div>
+        )
       }
     />
   );
@@ -257,17 +289,14 @@ function TabRow<T extends string>({
 /** What is true now: project, session, team revision, working copy, run state, runtime mode. */
 function WorkbenchHeader({
   session,
-  projectLabel,
   team,
   active,
 }: {
   session: WorkSession;
-  projectLabel: string;
   team: CorralSummary | null;
   active: RunSummary | null;
 }) {
   const tw = useTranslations('Workbench');
-  const tp = useTranslations('Projects');
   const tf = useTranslations('Files');
   const { workspaces, mode, live } = useServices();
   const { binding } = useBinding(session.projectId);
@@ -285,17 +314,6 @@ function WorkbenchHeader({
   }, [workspaces, session.sessionId]);
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-line px-4 py-2 text-xs">
-      <p className="text-sm">
-        <Link
-          to="/projects/$projectId"
-          params={{ projectId: session.projectId }}
-          className="text-muted underline-offset-4 hover:underline"
-        >
-          {projectLabel || tp('defaultName')}
-        </Link>
-        <span className="text-muted"> / </span>
-        <span className="font-semibold">{session.title}</span>
-      </p>
       <span>
         {team
           ? tw('headerTeam', { name: team.name, revision: team.definitionRevision })
@@ -327,6 +345,8 @@ function WorkTab({
   runs,
   active,
   onChange,
+  reference,
+  onReferenceUsed,
 }: {
   session: WorkSession;
   corrals: CorralSummary[];
@@ -334,6 +354,8 @@ function WorkTab({
   runs: RunSummary[];
   active: RunSummary | null;
   onChange: () => void;
+  reference: FileReference | null;
+  onReferenceUsed: () => void;
 }) {
   const t = useTranslations('Sessions');
   // Entries in order; runs that no entry names (started elsewhere) are shown after them.
@@ -341,15 +363,40 @@ function WorkTab({
   const loose = runs.filter((r) => !named.has(r.runId));
   const queued = session.entries.filter((e) => e.state === 'queued');
   const runChecks = useRunChecks(session.sessionId, runs);
+  const td = useTranslations('Desktop');
   return (
     <RunChecks.Provider value={runChecks}>
-      <div className="mx-auto flex w-full max-w-4xl flex-col gap-3 p-4">
-        <SessionHeader session={session} corrals={corrals} team={team} />
-        <section aria-label={t('heading')} className="flex flex-col gap-3">
+      <ChatView
+        sessionId={session.sessionId}
+        header={
+          <SessionHeader
+            session={session}
+            corrals={corrals}
+            team={team}
+            active={active?.sessionId === session.sessionId ? active : null}
+          />
+        }
+        composer={
+          <Composer
+            key={session.sessionId}
+            session={session}
+            team={team}
+            runs={runs}
+            active={active}
+            queued={queued}
+            onChange={onChange}
+            reference={reference}
+            onReferenceUsed={onReferenceUsed}
+          />
+        }
+      >
+        <section aria-label={t('heading')}>
           {session.entries.length === 0 && loose.length === 0 ? (
-            <p className="rounded-md border border-dashed border-line p-4 text-sm text-muted">
-              {t('timelineEmpty')}
-            </p>
+            <div className="flex min-h-48 flex-col items-center justify-center gap-3 py-10 text-center">
+              <MessageSquare size={28} strokeWidth={1.25} className="text-muted" />
+              <h3 className="text-xl font-medium tracking-tight">{td('noRequests')}</h3>
+              <p className="text-sm text-muted">{td('startHint')}</p>
+            </div>
           ) : null}
           {session.entries
             .filter((e) => e.state !== 'queued' && e.state !== 'dismissed')
@@ -363,15 +410,7 @@ function WorkTab({
         {active && active.sessionId === session.sessionId ? (
           <ActiveDecisions runId={active.runId} />
         ) : null}
-        <Composer
-          session={session}
-          team={team}
-          runs={runs}
-          active={active}
-          queued={queued}
-          onChange={onChange}
-        />
-      </div>
+      </ChatView>
     </RunChecks.Provider>
   );
 }
@@ -577,16 +616,19 @@ function ActiveDecisions({ runId }: { runId: string }) {
     void session.getState().open(runId);
   }, [session, runId]);
   return (
-    <ApprovalPanel
-      session={session}
-      onOpenArtifact={(id) =>
-        void navigate({
-          to: '/runs/$runId',
-          params: { runId },
-          search: { view: 'results', result: id },
-        })
-      }
-    />
+    <>
+      <RunActions session={session} compact />
+      <ApprovalPanel
+        session={session}
+        onOpenArtifact={(id) =>
+          void navigate({
+            to: '/runs/$runId',
+            params: { runId },
+            search: { view: 'results', result: id },
+          })
+        }
+      />
+    </>
   );
 }
 
@@ -594,12 +636,15 @@ function SessionHeader({
   session,
   corrals,
   team,
+  active,
 }: {
   session: WorkSession;
   corrals: CorralSummary[];
   team: CorralSummary | null;
+  active: RunSummary | null;
 }) {
   const t = useTranslations('Sessions');
+  const td = useTranslations('Desktop');
   const { repository } = useServices();
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -617,68 +662,78 @@ function SessionHeader({
     await router.invalidate();
   };
   return (
-    <header className="flex flex-col gap-2 border-b border-line pb-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <h2 className="text-xl font-semibold">{session.title}</h2>
-        {session.pinned ? (
-          <span className="rounded-full border border-line px-2 py-0.5 text-xs">{t('pinned')}</span>
-        ) : null}
-        {session.archivedAt ? (
-          <span className="rounded-full border border-line px-2 py-0.5 text-xs text-muted">
-            {t('archived')}
-          </span>
-        ) : null}
-        <button
-          type="button"
-          onClick={() => void update({ pinned: !session.pinned })}
-          className="rounded border border-line px-2 py-0.5 text-xs"
-        >
-          {session.pinned ? t('unpin') : t('pin')}
-        </button>
-        <button
-          type="button"
-          onClick={() => void update({ archived: !session.archivedAt })}
-          className="rounded border border-line px-2 py-0.5 text-xs"
-        >
-          {session.archivedAt ? t('restore') : t('archive')}
-        </button>
-      </div>
-      {session.objective ? (
-        <p className="whitespace-pre-wrap text-sm text-muted">
-          <span className="font-medium text-text">{t('purpose')}: </span>
-          {session.objective}
-        </p>
-      ) : null}
-      <label className="flex flex-wrap items-center gap-2 text-sm">
-        {t('chooseTeam')}
-        <select
-          value={team?.corralId ?? ''}
-          onChange={(e) => void update({ corralId: e.target.value || null })}
-          className="rounded border border-line bg-surface px-2 py-1"
-        >
-          <option value="">{t('noTeam')}</option>
-          {corrals.map((c) => (
-            <option key={c.corralId} value={c.corralId}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-        {team ? (
-          <Link
-            to="/corrals/$corralId/edit"
-            params={{ corralId: team.corralId }}
-            className="text-xs underline"
+    <details className="session-details shrink-0 border-b border-line/40 px-5 py-2 text-xs">
+      <summary className="flex cursor-pointer list-none items-center gap-2 text-muted">
+        <ChevronDown size={13} />
+        {td('sessionDetails')}
+        <span className="ml-auto truncate">{team?.name}</span>
+      </summary>
+      <div className="flex flex-col gap-3 py-3">
+        <WorkbenchHeader session={session} team={team} active={active} />
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="text-base font-semibold">{session.title}</h2>
+          {session.pinned ? (
+            <span className="rounded-full border border-line px-2 py-0.5 text-xs">
+              {t('pinned')}
+            </span>
+          ) : null}
+          {session.archivedAt ? (
+            <span className="rounded-full border border-line px-2 py-0.5 text-xs text-muted">
+              {t('archived')}
+            </span>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => void update({ pinned: !session.pinned })}
+            className="rounded border border-line px-2 py-0.5 text-xs"
           >
-            {team.name}
-          </Link>
+            {session.pinned ? t('unpin') : t('pin')}
+          </button>
+          <button
+            type="button"
+            onClick={() => void update({ archived: !session.archivedAt })}
+            className="rounded border border-line px-2 py-0.5 text-xs"
+          >
+            {session.archivedAt ? t('restore') : t('archive')}
+          </button>
+        </div>
+        {session.objective ? (
+          <p className="whitespace-pre-wrap text-sm text-muted">
+            <span className="font-medium text-text">{t('purpose')}: </span>
+            {session.objective}
+          </p>
         ) : null}
-      </label>
-      {error ? (
-        <p role="alert" className="text-sm text-danger">
-          {error}
-        </p>
-      ) : null}
-    </header>
+        <label className="flex flex-wrap items-center gap-2 text-sm">
+          {t('chooseTeam')}
+          <select
+            value={team?.corralId ?? ''}
+            onChange={(e) => void update({ corralId: e.target.value || null })}
+            className="rounded border border-line bg-surface px-2 py-1"
+          >
+            <option value="">{t('noTeam')}</option>
+            {corrals.map((c) => (
+              <option key={c.corralId} value={c.corralId}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+          {team ? (
+            <Link
+              to="/corrals/$corralId/edit"
+              params={{ corralId: team.corralId }}
+              className="text-xs underline"
+            >
+              {team.name}
+            </Link>
+          ) : null}
+        </label>
+        {error ? (
+          <p role="alert" className="text-sm text-danger">
+            {error}
+          </p>
+        ) : null}
+      </div>
+    </details>
   );
 }
 
@@ -687,18 +742,17 @@ function EntryCard({ entry, runs }: { entry: SessionEntry; runs: RunSummary[] })
   const format = useFormatter();
   const run = entry.runId ? runs.find((r) => r.runId === entry.runId) : undefined;
   return (
-    <article
-      data-testid={`entry-${entry.entryId}`}
-      className="flex flex-col gap-2 rounded-lg border border-line bg-raised p-3"
-    >
-      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
-        <span>{t('youAsked', { intent: t(`intent.${entry.intent}`) })}</span>
-        <span>
-          {t(`state.${entry.state}`)} ·{' '}
-          {format.dateTime(new Date(entry.createdAt), { timeStyle: 'short', dateStyle: 'short' })}
-        </span>
+    <article data-testid={`entry-${entry.entryId}`} className="chat-turn flex flex-col gap-5">
+      <div className="user-message">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted">
+          <span>{t('youAsked', { intent: t(`intent.${entry.intent}`) })}</span>
+          <span>
+            {t(`state.${entry.state}`)} ·{' '}
+            {format.dateTime(new Date(entry.createdAt), { timeStyle: 'short', dateStyle: 'short' })}
+          </span>
+        </div>
+        <p className="whitespace-pre-wrap text-sm leading-6">{entry.text}</p>
       </div>
-      <p className="whitespace-pre-wrap text-sm">{entry.text}</p>
       {entry.detail ? (
         <p role="note" className="text-xs text-danger">
           {entry.detail}
@@ -773,25 +827,10 @@ function RunCard({ run, nested = false }: { run: RunSummary; nested?: boolean })
   const t = useTranslations('Sessions');
   const ts = useTranslations('Status');
   const tf = useTranslations('Files');
-  const { transport, workspaces } = useServices();
+  const { workspaces } = useServices();
   const checks = useContext(RunChecks);
   const check = checks.of(run.runId);
   const ended = TERMINAL_RUN_STATUSES.has(run.status);
-  const [result, setResult] = useState<{ text: string; id: string } | null>(null);
-  useEffect(() => {
-    if (!ended) return;
-    let live = true;
-    void (async () => {
-      const { projection } = await transport.getSnapshot(run.runId);
-      const id = finalResultId(projection);
-      if (!id) return;
-      const text = await transport.getArtifactText(run.runId, id);
-      if (live && text !== null) setResult({ text, id });
-    })().catch(() => {});
-    return () => {
-      live = false;
-    };
-  }, [transport, run.runId, ended]);
   const inSession = (view: 'results' | 'run') =>
     run.sessionId ? (
       <Link
@@ -811,11 +850,11 @@ function RunCard({ run, nested = false }: { run: RunSummary; nested?: boolean })
     <section
       aria-label={run.runId}
       data-testid={`run-card-${run.runId}`}
-      className={`flex flex-col gap-2 ${nested ? 'border-t border-line pt-2' : 'rounded-lg border border-line bg-raised p-3'}`}
+      className={`flex min-w-0 flex-col gap-3 ${nested ? '' : 'mb-6'}`}
     >
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <StatusBadge status={run.status} />
-        <span className="font-mono text-muted">{run.runId}</span>
+        <span className="sr-only">{run.runId}</span>
         {inSession('results')}
         {inSession('run')}
       </div>
@@ -835,14 +874,7 @@ function RunCard({ run, nested = false }: { run: RunSummary; nested?: boolean })
             : t('notChecked')}
         </p>
       ) : null}
-      {result ? (
-        <div className="flex flex-col gap-1">
-          <p className="text-xs text-muted">{t('agentSummary')}</p>
-          <div className="max-h-72 overflow-auto rounded border border-line bg-surface p-2">
-            <SafeMarkdown text={result.text} />
-          </div>
-        </div>
-      ) : null}
+      <RunMessage runId={run.runId} sessionId={run.sessionId ?? null} live={!ended} />
       {ended && workspaces && run.sessionId ? (
         <p className="flex flex-wrap items-center gap-2 text-xs">
           <span className="text-muted">{t('nextActions')}:</span>
@@ -925,6 +957,8 @@ function Composer({
   active,
   queued,
   onChange,
+  reference,
+  onReferenceUsed,
 }: {
   session: WorkSession;
   team: CorralSummary | null;
@@ -932,6 +966,8 @@ function Composer({
   active: RunSummary | null;
   queued: SessionEntry[];
   onChange: () => void;
+  reference: FileReference | null;
+  onReferenceUsed: () => void;
 }) {
   const t = useTranslations('Sessions');
   const services = useServices();
@@ -1168,159 +1204,172 @@ function Composer({
     (intent === 'steer' && !steerTarget);
 
   return (
-    <section aria-label={t('requestLabel')} className="flex flex-col gap-2">
-      {queued.length > 0 ? (
-        <div className="flex flex-col gap-1 rounded-md border border-line p-2">
-          <h3 className="text-xs font-semibold">{t('queueHeading')}</h3>
-          <ul className="flex flex-col gap-1">
-            {queued.map((entry) => (
-              <li key={entry.entryId} className="flex flex-wrap items-center gap-2 text-sm">
-                <span className="min-w-0 flex-1 whitespace-pre-wrap">{entry.text}</span>
-                <button
-                  type="button"
-                  disabled={Boolean(active) || busy || !team}
-                  onClick={() => void startQueued(entry)}
-                  className="rounded border border-accent px-2 py-0.5 text-xs text-accent disabled:opacity-50"
-                >
-                  {t('startNow')}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void editQueued(entry)}
-                  className="rounded border border-line px-2 py-0.5 text-xs"
-                >
-                  {t('editQueued')}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void removeQueued(entry)}
-                  className="rounded border border-line px-2 py-0.5 text-xs"
-                >
-                  {t('remove')}
-                </button>
-              </li>
-            ))}
-          </ul>
-          <label className="flex items-start gap-2 text-xs">
-            <input
-              type="checkbox"
-              checked={autoStart}
-              onChange={(e) => setAutoStart(e.target.checked)}
-            />
-            <span>
-              {t('autoStart')}
-              <span className="block text-muted">{t('autoStartHint')}</span>
-            </span>
-          </label>
-        </div>
-      ) : null}
-      {active && !ownActive ? (
-        <p role="note" className="text-xs text-warning">
-          {t('busyElsewhere', { runId: active.runId })}
-        </p>
-      ) : null}
-      <fieldset className="flex flex-wrap gap-1 text-xs">
-        <legend className="sr-only">{t('intentLabel')}</legend>
-        {allowed.map((value) => (
-          <label
-            key={value}
-            className={`cursor-pointer rounded px-2 py-1 focus-within:outline-2 focus-within:outline-accent ${
-              intent === value ? 'bg-accent text-on-accent' : 'border border-line'
-            }`}
-          >
-            <input
-              type="radio"
-              name="session-intent"
-              value={value}
-              checked={intent === value}
-              onChange={() => setChosen(value)}
-              className="sr-only"
-            />
-            {t(`intent.${value}`)}
-          </label>
-        ))}
-      </fieldset>
-      <p className="text-xs text-muted">{t(`intentHint.${intent}`)}</p>
-      {intent === 'steer' && steerTarget ? (
-        <p
-          data-testid="target-chip"
-          className="self-start rounded-full border border-accent px-2 py-0.5 text-xs"
+    <ComposerSurface.Shell>
+      <ComposerSurface.Host>
+        <section
+          aria-label={t('requestLabel')}
+          className="flex max-h-[48dvh] flex-col gap-2 overflow-y-auto p-3 sm:p-4"
         >
-          {t('targetChip', {
-            label: targets.find((x) => x.id === steerTarget)?.label ?? steerTarget,
-          })}
-        </p>
-      ) : null}
-      {intent === 'steer' ? (
-        <label className="flex items-center gap-2 text-xs">
-          {t('target')}
-          <select
-            value={steerTarget}
-            onChange={(e) => setTarget(e.target.value)}
-            className="rounded border border-line bg-surface px-1 py-0.5"
-          >
-            {targets.length === 0 ? <option value="">{t('noTarget')}</option> : null}
-            {targets.map((x) => (
-              <option key={x.id} value={x.id}>
-                {x.label}
-              </option>
+          {queued.length > 0 ? (
+            <div className="flex flex-col gap-1 rounded-md border border-line p-2">
+              <h3 className="text-xs font-semibold">{t('queueHeading')}</h3>
+              <ul className="flex flex-col gap-1">
+                {queued.map((entry) => (
+                  <li key={entry.entryId} className="flex flex-wrap items-center gap-2 text-sm">
+                    <span className="min-w-0 flex-1 whitespace-pre-wrap">{entry.text}</span>
+                    <button
+                      type="button"
+                      disabled={Boolean(active) || busy || !team}
+                      onClick={() => void startQueued(entry)}
+                      className="rounded border border-accent px-2 py-0.5 text-xs text-accent disabled:opacity-50"
+                    >
+                      {t('startNow')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void editQueued(entry)}
+                      className="rounded border border-line px-2 py-0.5 text-xs"
+                    >
+                      {t('editQueued')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void removeQueued(entry)}
+                      className="rounded border border-line px-2 py-0.5 text-xs"
+                    >
+                      {t('remove')}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <label className="flex items-start gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={autoStart}
+                  onChange={(e) => setAutoStart(e.target.checked)}
+                />
+                <span>
+                  {t('autoStart')}
+                  <span className="block text-muted">{t('autoStartHint')}</span>
+                </span>
+              </label>
+            </div>
+          ) : null}
+          {active && !ownActive ? (
+            <p role="note" className="text-xs text-warning">
+              {t('busyElsewhere', { runId: active.runId })}
+            </p>
+          ) : null}
+          <fieldset className="flex flex-wrap gap-1 text-xs">
+            <legend className="sr-only">{t('intentLabel')}</legend>
+            {allowed.map((value) => (
+              <label
+                key={value}
+                className={`cursor-pointer rounded px-2 py-1 focus-within:outline-2 focus-within:outline-accent ${
+                  intent === value
+                    ? 'bg-sidebar-selected text-text'
+                    : 'text-muted hover:bg-sidebar-selected/50'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="session-intent"
+                  value={value}
+                  checked={intent === value}
+                  onChange={() => setChosen(value)}
+                  className="sr-only"
+                />
+                {t(`intent.${value}`)}
+              </label>
             ))}
-          </select>
-        </label>
-      ) : null}
-      {(intent === 'next' || intent === 'explain') && latest ? (
-        <p className="text-xs text-muted">{t('fromResult', { label: latest.label })}</p>
-      ) : null}
-      {(intent === 'next' || intent === 'explain') && team ? (
-        <PreRunSummary session={session} team={team} mode={runMode} intent={intent} />
-      ) : null}
-      {intent === 'next' && !team ? <p className="text-xs text-warning">{t('noTeamYet')}</p> : null}
-      {intent === 'explain' && !latest ? (
-        <p className="text-xs text-warning">{t('noResult')}</p>
-      ) : null}
-      <textarea
-        aria-label={t('requestLabel')}
-        value={text}
-        rows={4}
-        onChange={(e) => {
-          setText(e.target.value);
-          writeDraft(session.sessionId, e.target.value);
-        }}
-        onKeyDown={onKeyDown}
-        className="rounded border border-line bg-surface p-2 text-sm"
-      />
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="text-xs text-muted">{t('sendHint')}</span>
-        <div className="flex items-center gap-2">
-          {mode === 'server' && live && (intent === 'next' || intent === 'explain') ? (
-            <label className="flex items-center gap-1 text-xs">
-              {t('mode')}
+          </fieldset>
+          <p className="sr-only">{t(`intentHint.${intent}`)}</p>
+          {intent === 'steer' && steerTarget ? (
+            <p
+              data-testid="target-chip"
+              className="self-start rounded-full border border-accent px-2 py-0.5 text-xs"
+            >
+              {t('targetChip', {
+                label: targets.find((x) => x.id === steerTarget)?.label ?? steerTarget,
+              })}
+            </p>
+          ) : null}
+          {intent === 'steer' ? (
+            <label className="flex items-center gap-2 text-xs">
+              {t('target')}
               <select
-                value={runMode}
-                onChange={(e) => setRunMode(e.target.value as 'mock' | 'live')}
+                value={steerTarget}
+                onChange={(e) => setTarget(e.target.value)}
                 className="rounded border border-line bg-surface px-1 py-0.5"
               >
-                <option value="mock">{t('modeMock')}</option>
-                <option value="live">{t('modeLive')}</option>
+                {targets.length === 0 ? <option value="">{t('noTarget')}</option> : null}
+                {targets.map((x) => (
+                  <option key={x.id} value={x.id}>
+                    {x.label}
+                  </option>
+                ))}
               </select>
             </label>
           ) : null}
-          <button
-            type="button"
-            disabled={busy || !text.trim() || unavailable}
-            onClick={() => void send()}
-            className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent disabled:opacity-50"
-          >
-            {t('send')}
-          </button>
-        </div>
-      </div>
-      {error ? (
-        <p role="alert" className="text-sm text-danger">
-          {error}
-        </p>
-      ) : null}
-    </section>
+          {(intent === 'next' || intent === 'explain') && latest ? (
+            <p className="text-xs text-muted">{t('fromResult', { label: latest.label })}</p>
+          ) : null}
+          {(intent === 'next' || intent === 'explain') && team ? (
+            <PreRunSummary session={session} team={team} mode={runMode} intent={intent} />
+          ) : null}
+          {intent === 'next' && !team ? (
+            <p className="text-xs text-warning">{t('noTeamYet')}</p>
+          ) : null}
+          {intent === 'explain' && !latest ? (
+            <p className="text-xs text-warning">{t('noResult')}</p>
+          ) : null}
+          <RequestInput
+            projectId={session.projectId}
+            sessionId={session.sessionId}
+            reference={reference}
+            onReferenceUsed={onReferenceUsed}
+            value={text}
+            onChange={(value) => {
+              setText(value);
+              writeDraft(session.sessionId, value);
+            }}
+            onKeyDown={onKeyDown}
+          />
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-[10px] text-muted">{t('sendHint')}</span>
+            <div className="flex items-center gap-2">
+              {mode === 'server' && live && (intent === 'next' || intent === 'explain') ? (
+                <label className="flex items-center gap-1 text-xs">
+                  {t('mode')}
+                  <select
+                    value={runMode}
+                    onChange={(e) => setRunMode(e.target.value as 'mock' | 'live')}
+                    className="rounded border border-line bg-surface px-1 py-0.5"
+                  >
+                    <option value="mock">{t('modeMock')}</option>
+                    <option value="live">{t('modeLive')}</option>
+                  </select>
+                </label>
+              ) : null}
+              <button
+                type="button"
+                disabled={busy || !text.trim() || unavailable}
+                onClick={() => void send()}
+                aria-label={t('send')}
+                className="grid size-9 place-items-center rounded-full bg-accent text-on-accent disabled:opacity-40"
+              >
+                <ArrowUp size={18} />
+              </button>
+            </div>
+          </div>
+          {error ? (
+            <p role="alert" className="text-sm text-danger">
+              {error}
+            </p>
+          ) : null}
+        </section>
+      </ComposerSurface.Host>
+    </ComposerSurface.Shell>
   );
 }
 

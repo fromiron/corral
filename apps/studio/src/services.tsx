@@ -13,6 +13,7 @@ import {
   createKeyValueCorralRepository,
   explainDefinition,
   type KeyValueStore,
+  type RunArchive,
   type RuntimeTransport,
   type StartRunResult,
 } from '@corral/core';
@@ -29,6 +30,7 @@ export interface StudioServices {
   mode: 'server' | 'browser';
   repository: CorralRepository;
   transport: RuntimeTransport;
+  readHistory: (runId: string) => Promise<RunArchive>;
   session: RunSessionStore;
   /** False when Corrals do not outlive this tab (browser storage refused). */
   persistent: boolean;
@@ -109,6 +111,7 @@ export async function createStudioServices(): Promise<StudioServices> {
       mode: 'server',
       repository: new RestCorralRepository(http),
       transport,
+      readHistory: (runId) => transport.exportRun(runId, { privateTranscript: true }),
       session: createRunSession(transport),
       persistent: true,
       sessionMissing: !(await hasSession(http)),
@@ -120,7 +123,7 @@ export async function createStudioServices(): Promise<StudioServices> {
     };
   }
   const { store, persistent } = browserStore(window.location.pathname === '/demo');
-  const { transport, workspace } = createDemoRuntime();
+  const { transport, workspace, readHistory } = createDemoRuntime();
   const repository = createKeyValueCorralRepository(store, {
     clock: systemClock,
     newCorralId: () => `corral_${crypto.randomUUID().slice(0, 8)}`,
@@ -133,6 +136,7 @@ export async function createStudioServices(): Promise<StudioServices> {
     live: false,
     repository,
     transport,
+    readHistory,
     session: createRunSession(transport),
     // An in-memory example folder in the demo worker (02-UX-Spec §10).
     workspaces: createDemoWorkspaces(workspace, repository, transport),

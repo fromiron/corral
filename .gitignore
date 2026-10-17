@@ -18,3 +18,5 @@ tests/live/.last-run.json
 
 # Production-only performance fixture output
 dist-performance/
+apps/desktop/staging/
+apps/desktop/release/
