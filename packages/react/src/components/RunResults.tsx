@@ -362,7 +362,7 @@ function ResultReader({
         {text === undefined ? (
           <p className="text-sm text-muted">{failed ? t('unavailable') : ta('loading')}</p>
         ) : diff ? (
-          <pre className="mx-auto max-w-4xl whitespace-pre-wrap break-words font-mono text-[13px]">
+          <pre className="mx-auto max-w-4xl whitespace-pre-wrap break-words font-mono text-ui">
             {diff.map((line, index) => (
               <span
                 // biome-ignore lint/suspicious/noArrayIndexKey: lines have no identity beyond their position
@@ -375,7 +375,7 @@ function ResultReader({
             ))}
           </pre>
         ) : format === 'source' ? (
-          <pre className="mx-auto max-w-4xl whitespace-pre-wrap break-words font-mono text-[13px]">
+          <pre className="mx-auto max-w-4xl whitespace-pre-wrap break-words font-mono text-ui">
             {text}
           </pre>
         ) : format === 'preview' ? (

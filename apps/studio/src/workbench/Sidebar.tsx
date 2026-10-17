@@ -376,13 +376,13 @@ export const Sidebar = memo(function Sidebar() {
                 >
                   <span className="flex items-center gap-2">
                     <span
-                      className={`min-w-0 flex-1 truncate text-[13px] ${active ? 'font-medium text-text' : 'text-text/85'}`}
+                      className={`min-w-0 flex-1 truncate text-ui ${active ? 'font-medium text-text' : 'text-text/85'}`}
                     >
                       {session.title}
                     </span>
                     {session.pinned ? <Pin size={12} className="shrink-0 text-muted" /> : null}
                   </span>
-                  <span className="mt-1 flex items-center gap-1.5 text-[11px] text-muted">
+                  <span className="mt-1 flex items-center gap-1.5 text-2xs text-muted">
                     {run?.status === 'running' ? (
                       <LoaderCircle size={11} className="animate-spin motion-reduce:animate-none" />
                     ) : run?.status === 'failed' ? (
@@ -470,7 +470,7 @@ export const Sidebar = memo(function Sidebar() {
         >
           <BookOpen size={17} />
         </Link>
-        <span className="ml-auto pr-2 text-[11px] text-muted">Corral Workbench</span>
+        <span className="ml-auto pr-2 text-2xs text-muted">Corral Workbench</span>
       </div>
       <Dialog
         open={Boolean(editing)}

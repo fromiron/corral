@@ -263,7 +263,7 @@ export function FilePanel({
               <SourceCode path={active} text={content.text} onSelect={setRange} />
             </Suspense>
           </section>
-          <p className="text-[11px] text-muted">{t('referencePermission')}</p>
+          <p className="text-2xs text-muted">{t('referencePermission')}</p>
         </>
       ) : content ? (
         <p className="text-xs text-muted">

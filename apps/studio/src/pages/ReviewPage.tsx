@@ -392,7 +392,7 @@ function FileDiff({
           >
             {t('downloadFile')}
           </button>
-          <pre className="overflow-auto whitespace-pre-wrap break-all rounded border border-line bg-surface p-2 font-mono text-[13px]">
+          <pre className="overflow-auto whitespace-pre-wrap break-all rounded border border-line bg-surface p-2 font-mono text-ui">
             {source}
           </pre>
         </div>

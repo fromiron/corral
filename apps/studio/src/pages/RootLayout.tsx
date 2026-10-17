@@ -210,7 +210,7 @@ function ProjectSwitcher() {
           else if (value)
             void navigate({ to: '/projects/$projectId', params: { projectId: value } });
         }}
-        className="max-w-44 rounded-md border border-transparent bg-transparent py-1 pr-2 text-[13px] font-medium text-text hover:bg-raised"
+        className="max-w-44 rounded-md border border-transparent bg-transparent py-1 pr-2 text-ui font-medium text-text hover:bg-raised"
       >
         {options.some((p) => p.projectId === current) ? null : <option value="">—</option>}
         {options.map((p) => (
