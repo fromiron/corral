@@ -127,6 +127,31 @@ export function registerHarnessRoutes(
         }),
     );
   }
+  app.get<CheckParams>(
+    `${prefix}/projects/:projectId/mcp-servers/:commandId/launch`,
+    (request, reply) =>
+      action(reply, () =>
+        files.inspectMcpServer(
+          Identifier.parse(request.params.projectId),
+          Identifier.parse(request.params.commandId),
+        ),
+      ),
+  );
+  app.put<CheckParams>(
+    `${prefix}/projects/:projectId/mcp-servers/:commandId/trust`,
+    (request, reply) =>
+      action(reply, () => {
+        const input = z
+          .strictObject({ fingerprint: ContentHash, trusted: z.boolean() })
+          .parse(request.body);
+        return files.trustMcpServer(
+          Identifier.parse(request.params.projectId),
+          Identifier.parse(request.params.commandId),
+          input.fingerprint,
+          input.trusted,
+        );
+      }),
+  );
   app.get(`${prefix}/resources`, async () => service.store.listResources());
   app.get(`${prefix}/profiles`, async () => service.store.listProfiles());
   app.post(`${prefix}/reviews`, (request, reply) =>

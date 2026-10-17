@@ -13,6 +13,7 @@ import {
   type ProjectToolConfigRevision,
   type Receipt,
   type RegisteredCheck,
+  type RegisteredMcpServer,
   type ReviewRecipeRevision,
   type RunCommand,
   RunEvent,
@@ -766,6 +767,30 @@ export class HarnessApi {
   private readonly http: Http;
   constructor(options: HttpOptions) {
     this.http = new Http(options);
+  }
+  inspectMcpServer(
+    projectId: string,
+    serverId: string,
+  ): Promise<{
+    server: RegisteredMcpServer;
+    configRevision: number;
+    fingerprint: string;
+    trustedAt: string | null;
+  }> {
+    return this.http.json(
+      `/harness/projects/${encodeURIComponent(projectId)}/mcp-servers/${encodeURIComponent(serverId)}/launch`,
+    );
+  }
+  trustMcpServer(
+    projectId: string,
+    serverId: string,
+    fingerprint: string,
+    trusted: boolean,
+  ): Promise<{ fingerprint: string; trustedAt: string | null }> {
+    return this.http.json(
+      `/harness/projects/${encodeURIComponent(projectId)}/mcp-servers/${encodeURIComponent(serverId)}/trust`,
+      { method: 'PUT', body: JSON.stringify({ fingerprint, trusted }) },
+    );
   }
   resources(): Promise<HarnessResourceView[]> {
     return this.http.json('/harness/resources');

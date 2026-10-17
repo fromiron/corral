@@ -33,6 +33,7 @@ import {
   PiWriteInput,
   ProjectToolConfig,
   type RegisteredCheck,
+  type RegisteredMcpServer,
   ReviewRecipeRevision,
   type Scheduler,
   type VerificationOwner,
@@ -526,6 +527,74 @@ export class WorkspaceService implements FileTools {
       fingerprint,
       trustedAt: this.projectTools.trust({ projectId, kind, id: commandId, fingerprint }),
     };
+  }
+
+  private async mcpFingerprint(root: string, revision: number, server: RegisteredMcpServer) {
+    return server.transport === 'stdio'
+      ? (await launchFingerprint(root, revision, server)).fingerprint
+      : sha256(Buffer.from(canonicalJson({ revision, server })));
+  }
+
+  async inspectMcpServer(projectId: string, serverId: string) {
+    const binding = this.binding(projectId);
+    if (!binding?.trusted)
+      throw new WorkspaceError('CAPABILITY_DENIED', 'trust the repository before inspecting tools');
+    const config = this.projectTools.latest(projectId);
+    const server = config?.mcpServers?.find((server) => server.id === serverId);
+    if (!config || !server) throw new WorkspaceError('TARGET_NOT_FOUND', 'no such registered tool');
+    const fingerprint = await this.mcpFingerprint(binding.root_path, config.revision, server);
+    return {
+      server,
+      configRevision: config.revision,
+      fingerprint,
+      trustedAt: this.projectTools.trust({ projectId, kind: 'mcp', id: serverId, fingerprint }),
+    };
+  }
+
+  async trustMcpServer(projectId: string, serverId: string, fingerprint: string, trusted: boolean) {
+    if (trusted) {
+      const inspected = await this.inspectMcpServer(projectId, serverId);
+      if (
+        inspected.fingerprint !== fingerprint ||
+        this.projectTools.latest(projectId)?.revision !== inspected.configRevision
+      )
+        throw new WorkspaceError('REVISION_CONFLICT', 'launch fingerprint changed');
+    }
+    const target = { projectId, kind: 'mcp' as const, id: serverId, fingerprint };
+    this.projectTools.setTrust(target, trusted);
+    return { fingerprint, trustedAt: this.projectTools.trust(target) };
+  }
+
+  async runtimeMcp(runId: string, selection: CheckExecution['selection']) {
+    const { row, config } = this.projectToolContext({ runId, selection });
+    const servers: { server: RegisteredMcpServer; fingerprint: string }[] = [];
+    for (const id of selection.mcpServerIds ?? []) {
+      const server = config.mcpServers?.find((server) => server.id === id);
+      if (!server) throw new ToolRefusal('CAPABILITY_DENIED', 'MCP server is not selected');
+      const fingerprint = await this.mcpFingerprint(row.worktree_path, config.revision, server);
+      if (
+        !this.projectTools.trust({ projectId: selection.projectId, kind: 'mcp', id, fingerprint })
+      )
+        throw new ToolRefusal('CAPABILITY_DENIED', 'MCP launch requires current fingerprint trust');
+      servers.push({ server, fingerprint });
+    }
+    return { cwd: row.worktree_path, servers };
+  }
+
+  workingDirectoryForRun(runId: string): string | null {
+    const found = this.worktreeOfRun(runId);
+    if (!found) return null;
+    const session = this.db
+      .prepare('SELECT project_id FROM work_sessions WHERE id = ?')
+      .get(found.sessionId) as { project_id: string } | undefined;
+    const binding = session ? this.binding(session.project_id) : null;
+    if (
+      !binding?.trusted ||
+      binding.id !== found.row.binding_id ||
+      !existsSync(found.row.worktree_path)
+    )
+      throw new ToolRefusal('CAPABILITY_DENIED', 'trusted working copy unavailable');
+    return found.row.worktree_path;
   }
 
   async trustProjectTool(

@@ -227,3 +227,12 @@ CORRAL_SPIKE_NODE=~/.local/share/fnm/node-versions/v24.19.0/installation/bin/nod
 - `processChannel`의 PID 있는 오류는 강제 종료를 요청하되 실제 exit까지 기다린다. SDK 시작 IPC 전에 private PID/boot ID/start ticks 기록을 만들고, server workspace lock 뒤 이전 worker를 복구한다. Linux PID 재사용은 kill하지 않으며, 다른 OS의 살아 있는 이전 PID는 복구 미확인으로 거절한다. 관련 실제 자식 프로세스 13 tests와 server 시작 복구 4 tests 통과.
 - H4: 고정 OMP commit `647f9fa5dfae227d48a9588251f1a8439811e0e2`의 실제 Rust Hashline v2를 빌드하고 `corral eval --hashline-binary`로 전체 쓰기/Pi edit/Hashline의 6 fixture × 3 방법을 실행했다. 본문/BOM/CRLF/유니코드/EOF와 stale 보호를 확인했다. 중복 문자열의 Pi 거절은 의도된 안전 동작이다. 결과는 `docs/evaluation/Harness-Coding-Tools-Results.md`/JSON, 재현은 `tools/evaluation/README.md`. 모델 품질/토큰 절감 주장은 하지 않는다. CLI/server 23 tests 및 server/CLI typecheck 통과.
 - 남은 주요 작업은 H8 MCP·OAuth·managed cwd·LSP 쓰기 제안, H6 실제 SDK 다섯 조건의 종합 비교 fixture, mock+harness 동작 정리, 마지막 전체 회귀/desktop/Computer Use 및 PR이다. codemode 실제 Worker 상한에 대해서도 취소·생성 실패·프로세스 복구의 최종 통합 증거를 묶어 검토한다.
+
+### MCP 구현 중 체크포인트
+
+- `@earendil-works/pi-mcp@1.3.0`은 이미 SDK의 전이 의존성이므로 server/adapter의 직접 의존성으로 선언했다(MIT, Node >=22.19, cross-spawn만 자체 의존). 새 런타임 패키지는 없다.
+- `RegisteredMcpServer`(stdio/HTTP, direct/codemode, timeout, none/bearer/OAuth credential reference/scope), optional mcpServers/mcpServerIds, 기존 hash 보존, migration 0010의 기존 trust 행 보존을 구현했다. 관련 20 tests, 이어지는 구형 편집기 보존 테스트와 typecheck 통과. 코드 모드 체크박스가 저장 전 상태를 표시하지 못하던 단순 상태 연결도 고쳤다.
+- MCP trust/current working-copy fingerprint와 고정 revision 조회, 다른 project 거절, 원본 코드/인증 scope 변화 거절을 구현 중이며 새 파일 broker 테스트가 통과했다. 서버 inspect/trust API와 client 메서드는 연결했다. 아직 MCP 실행/인증/UI 완료 아님.
+- 다음 OAuth 구현은 **pi-mcp 공개** `McpOAuthProvider`, `authorizeMcp`, `adaptOAuthProvider`, `OAuthCallbackServer`를 사용한다. pi-coding-agent의 내부 `McpOAuthCredentialStore`는 root export가 없으므로 private deep import하지 않는다. Host의 별도 workspace 밖 private 저장소에 OAuth state/refresh를 두고, worker에는 고정 서버 ID 요청에 대한 bearer만 private IPC로 전달할 계획이다. scope 확장은 자동 처리하지 않는다. 로컬 MCP/OAuth fixture로 검증한다.
+- SDK `createMcpExtension`에 명시 loadConfig/createTransport를 제공하고 ambient mcp.json/미등록 서버를 거절한다. 내장 `/mcp` manager는 앱의 불변 설정·인증 경로를 우회하지 않게 노출하지 않는다. 동적 도구 registry 및 native 부모 승인 경계는 이미 구현됐다. 종료 시 session_shutdown await가 필요하다.
+- 모의 실행도 수정했다. `harness.simulated`를 별도로 기록해 실제 SDK load/provider payload를 꾸미지 않고 기본 Corral 흐름만 실행한다. UI에 실행하지 않은 범위를 표시한다. 통합 704 passed/3 opt-in skipped 후 별도 허위 provider 기록 거절 테스트 포함 core harness 23 tests 통과.
