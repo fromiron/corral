@@ -8,7 +8,7 @@ function handle(page: Page, nodeId: string, port: string) {
 }
 
 async function agentToOutput(page: Page) {
-  await page.getByRole('button', { name: 'New Corral' }).click();
+  await page.getByRole('button', { name: 'New team' }).click();
   await expect(page).toHaveURL(/\/corrals\/corral_[a-z0-9]+\/edit/);
   await page.getByRole('button', { name: 'Add Agent' }).click();
   await page.getByRole('button', { name: 'Add Output' }).click();
@@ -23,15 +23,61 @@ test('[TC-CAN-001-H] a run on the local server saves first, finishes, and surviv
   await corral.open('/');
   await expect(page.getByText('Local · simulated', { exact: true })).toBeVisible();
   await agentToOutput(page);
+  for (const returnBeforeResponse of [false, true]) {
+    await page
+      .getByRole('textbox', { name: 'Team name', exact: true })
+      .fill(`Saved team ${returnBeforeResponse}`);
+    let release!: () => void, entered!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const committed = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const teamPath = new URL(page.url()).pathname
+      .replace('/edit', '')
+      .replace('/corrals/', '/api/v1/corrals/');
+    await page.route(
+      `**${teamPath}`,
+      async (route) => {
+        if (route.request().method() !== 'PUT') return route.fallback();
+        const response = await route.fetch();
+        entered();
+        await held;
+        await route.fulfill({ response });
+      },
+      { times: 1 },
+    );
+    const finished = page.waitForResponse(
+      (response) => response.url().endsWith(teamPath) && response.request().method() === 'PUT',
+    );
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await committed;
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    if (returnBeforeResponse) {
+      await page.getByRole('link', { name: 'Back to work', exact: true }).click();
+      await expect(page.getByRole('button', { name: 'Saving…', exact: true })).toBeDisabled();
+    }
+    release();
+    await finished;
+    if (!returnBeforeResponse)
+      await page.getByRole('link', { name: 'Back to work', exact: true }).click();
+    await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect(page.getByText('● Unsaved changes', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Redo', exact: true }).click();
+    await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
+  }
+  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   // The run started from a saved revision: nothing is left unsaved.
   await expect(page.getByText('All changes saved')).toBeVisible();
   await expect(page.getByTestId('run-output')).toContainText('Agent 1 (agent_1) turn 2');
 
-  await page.getByRole('link', { name: 'Open run page' }).click();
+  await page.getByRole('link', { name: 'Open execution page' }).click();
   await expect(page).toHaveURL(/\/runs\/run_[a-f0-9]+/);
   // CR-009: a finished run opens on its results; these checks are about the run view.
-  await page.getByRole('tab', { name: 'Run', exact: true }).click();
+  await page.getByRole('tab', { name: 'Execution', exact: true }).click();
   await page.reload();
   await expect(page.getByTestId('run-output')).toContainText('Agent 1 (agent_1) turn 2');
   expect(corral.errors).toEqual([]);
@@ -46,6 +92,7 @@ test.describe('slow replies', () => {
   }) => {
     await corral.open('/');
     await agentToOutput(page);
+    await page.getByRole('tab', { name: 'Test run', exact: true }).click();
     await page.getByRole('button', { name: 'Run', exact: true }).click();
     const box = page.getByLabel('Instruction');
     await box.fill('Use primary sources only.');
@@ -65,8 +112,9 @@ test.describe('slow replies', () => {
   }) => {
     await corral.open('/');
     await agentToOutput(page);
+    await page.getByRole('tab', { name: 'Test run', exact: true }).click();
     await page.getByRole('button', { name: 'Run', exact: true }).click();
-    await page.getByRole('link', { name: 'Open run page' }).click();
+    await page.getByRole('link', { name: 'Open execution page' }).click();
     await expect(page).toHaveURL(/\/runs\/run_[a-f0-9]+/);
     const runPath = new URL(page.url()).pathname;
 
@@ -95,6 +143,7 @@ test('[TC-SEC-002-H] Studio works under the strict CSP, and a tab without a sess
   });
   await corral.open('/');
   await agentToOutput(page);
+  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   await expect(page.getByTestId('run-output')).toContainText('turn 2');
   expect(violations).toEqual([]);

@@ -4,10 +4,7 @@ import {
   ApprovalPanel,
   ArtifactViewer,
   CorralCanvas,
-  createEditorStore,
   createRunSession,
-  draftFromDefinition,
-  type EditorStore,
   EditorToolbar,
   exportDocuments,
   NodeInspector,
@@ -30,31 +27,34 @@ import { useStore } from 'zustand';
 import { DemoGuide } from '../demo/DemoGuide.tsx';
 import { DEMO_TEMPLATE_IDS, type DemoTemplateId } from '../demo/templates.ts';
 import { useModelPrices } from '../prices.ts';
-import { setCurrentProject, useCurrentProject } from '../projects.ts';
+import { setCurrentProject } from '../projects.ts';
 import { demoRoute, editorRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
+import {
+  discardEditorCopy,
+  type EditorWorkingCopy,
+  editorWorkingCopy,
+} from '../workbench/editorDraft.ts';
 import { HarnessRoleSettings } from '../workbench/HarnessRoleSettings.tsx';
 import { LoopRecipeSettings } from '../workbench/LoopRecipeSettings.tsx';
 import { RunHarnessOverrides } from '../workbench/RunHarnessOverrides.tsx';
 import { RunRoleOverrides } from '../workbench/RunRoleOverrides.tsx';
+import { TabRow } from '../workbench/TabRow.tsx';
 import { useModelProfiles } from '../workbench/useModels.ts';
 import { useRunMode } from '../workbench/useRunMode.ts';
 
 export function EditorPage() {
   const record = editorRoute.useLoaderData();
+  const { repository } = useServices();
   const { fromRun, fromVersion, fromSession } = editorRoute.useSearch();
   // CR-010: the header shows the Corral's project, and `/` returns to it.
   useEffect(() => setCurrentProject(record.projectId), [record.projectId]);
-  // A fresh editor (and undo history) for each Corral.
-  const editor = useMemo(
-    () => createEditorStore(draftFromDefinition(record.definition, record.layout)),
-    [record],
-  );
+  const copy = useMemo(() => editorWorkingCopy(repository, record), [repository, record]);
   return (
     <Editor
-      key={record.corralId}
+      key={`${record.projectId}:${record.corralId}:${record.definitionRevision}:${record.layoutRevision}`}
       record={record}
-      editor={editor}
+      workingCopy={copy}
       startFrom={
         fromRun && fromVersion
           ? { runId: fromRun, artifactVersionId: fromVersion, label: fromVersion }
@@ -83,18 +83,17 @@ export function TeamDesign({ corralId }: { corralId: string }) {
       live = false;
     };
   }, [repository, corralId]);
-  const editor = useMemo(
-    () =>
-      record ? createEditorStore(draftFromDefinition(record.definition, record.layout)) : null,
-    [record],
+  const copy = useMemo(
+    () => (record ? editorWorkingCopy(repository, record) : null),
+    [repository, record],
   );
   if (record === undefined) return <p className="p-4 text-sm text-muted">…</p>;
-  if (!record || !editor) return <p className="p-4 text-sm text-muted">{t('noTeam')}</p>;
+  if (!record || !copy) return <p className="p-4 text-sm text-muted">{t('noTeam')}</p>;
   return (
     <Editor
       key={record.corralId}
       record={record}
-      editor={editor}
+      workingCopy={copy}
       inSession
       toolbar={<span className="text-xs text-muted">{t('teamNote')}</span>}
     />
@@ -103,15 +102,13 @@ export function TeamDesign({ corralId }: { corralId: string }) {
 
 export function DemoPage() {
   const { record, template } = demoRoute.useLoaderData();
-  const editor = useMemo(
-    () => createEditorStore(draftFromDefinition(record.definition, record.layout)),
-    [record],
-  );
+  const { repository } = useServices();
+  const copy = useMemo(() => editorWorkingCopy(repository, record), [repository, record]);
   return (
     <Editor
       key={record.corralId}
       record={record}
-      editor={editor}
+      workingCopy={copy}
       toolbar={<TemplatePicker current={template} />}
       guide={
         template === 'research-team'
@@ -168,15 +165,14 @@ type StartFromChoice = { runId: string; artifactVersionId: string; label: string
 
 function Editor({
   record,
-  editor,
   toolbar,
   guide,
   startFrom = null,
   inSession = false,
   fromSession = null,
+  workingCopy,
 }: {
   record: CorralRecord;
-  editor: EditorStore;
   /** Extra controls for the toolbar (the demo's template picker). */
   toolbar?: ReactNode;
   /** A guide shown above the run controls (the demo team's guide). */
@@ -187,9 +183,12 @@ function Editor({
   inSession?: boolean;
   /** Opened from this session: show the way back and when edits apply (UX-10). */
   fromSession?: string | null;
+  workingCopy: EditorWorkingCopy;
 }) {
   const t = useTranslations('Editor');
+  const n = useTranslations('Navigation');
   const services = useServices();
+  const { editor, saved, saving, message } = useStore(workingCopy);
   const { repository, mode, live } = services;
   const session = useMemo(() => {
     const key = JSON.stringify([record.projectId, record.corralId]);
@@ -202,27 +201,39 @@ function Editor({
   }, [services, record.projectId, record.corralId]);
   const profiles = useModelProfiles();
   const draft = useStore(editor, (s) => s.draft);
-  const [saved, setSaved] = useState({ record, draft: editor.getState().draft });
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
+  const selectedNodeId = useStore(editor, (state) => state.selectedNodeId);
+  const [inspector, setInspector] = useState<'design' | 'run'>(
+    startFrom || guide ? 'run' : 'design',
+  );
+  const showDesign = useCallback(() => setInspector('design'), []);
+  useEffect(() => {
+    if (selectedNodeId) showDesign();
+  }, [selectedNodeId, showDesign]);
   // Undo back to the saved draft returns the same object, so identity is the dirty check.
-  const dirty = draft !== saved.draft;
+  const dirty = saving || draft !== saved.draft;
   const dirtyRef = useRef(dirty);
   dirtyRef.current = dirty;
 
   useBlocker({
-    shouldBlockFn: () => dirtyRef.current && !window.confirm(t('leaveUnsaved')),
+    shouldBlockFn: ({ next }) => {
+      if (!dirtyRef.current || next.pathname.startsWith('/settings')) return false;
+      if (!window.confirm(t('leaveUnsaved'))) return true;
+      discardEditorCopy(repository, record);
+      return false;
+    },
     enableBeforeUnload: () => dirtyRef.current,
   });
 
   /** Saves the draft; resolves to the saved record, or null when saving failed. */
   const save = useCallback(async (): Promise<CorralRecord | null> => {
+    const { saved, saving } = workingCopy.getState();
+    if (saving) return null;
     const current = editor.getState().draft;
     if (current === saved.draft) {
-      setMessage({ text: t('noChanges'), error: false });
+      workingCopy.setState({ message: { text: t('noChanges'), error: false } });
       return saved.record;
     }
-    setSaving(true);
+    workingCopy.setState({ saving: true });
     try {
       const result = await repository.save({
         definition: current.definition,
@@ -230,22 +241,29 @@ function Editor({
         expectedDefinitionRevision: saved.record.definitionRevision,
       });
       if (!result.ok) {
-        setMessage({ text: result.message, error: true });
+        workingCopy.setState({ message: { text: result.message, error: true } });
         return null;
       }
-      setSaved({ record: result.record, draft: current });
-      setMessage({
-        text: t('savedResult', {
-          definition: String(result.changed.definition),
-          layout: String(result.changed.layout),
-        }),
-        error: false,
+      workingCopy.setState({
+        saved: { record: result.record, draft: current },
+        message: {
+          text: t('savedResult', {
+            definition: String(result.changed.definition),
+            layout: String(result.changed.layout),
+          }),
+          error: false,
+        },
       });
       return result.record;
+    } catch (error) {
+      workingCopy.setState({
+        message: { text: error instanceof Error ? error.message : String(error), error: true },
+      });
+      return null;
     } finally {
-      setSaving(false);
+      workingCopy.setState({ saving: false });
     }
-  }, [editor, repository, saved, t]);
+  }, [editor, repository, t, workingCopy]);
 
   // The local server runs saved revisions only, so a run saves first (C-057).
   const beforeStart =
@@ -355,30 +373,67 @@ function Editor({
                 <ValidationPanel />
               </aside>
               <div className="editor-canvas relative min-h-0 min-w-0">
-                <CorralCanvas />
+                <CorralCanvas onNodeSelect={showDesign} />
                 <CanvasNotice />
               </div>
-              <aside className="editor-inspector flex min-h-0 min-w-0 flex-col gap-6 overflow-auto border-l border-line p-3">
-                <NodeInspector
-                  profiles={profiles}
-                  loopSettings={(node) => (
-                    <LoopRecipeSettings
-                      key={`${node.id}:${node.reviewRecipe?.revision ?? 0}`}
-                      node={node}
-                      projectId={record.projectId}
+              <aside className="editor-inspector flex min-h-0 min-w-0 flex-col overflow-auto border-l border-line">
+                {!inSession ? (
+                  <div className="sticky top-0 z-10 border-b border-line bg-surface p-2">
+                    <TabRow
+                      id="team-tools"
+                      label={n('teamTools')}
+                      values={['design', 'run']}
+                      current={inspector}
+                      text={(value) => n(value === 'design' ? 'design' : 'testRun')}
+                      onChoose={setInspector}
                     />
-                  )}
-                  roleSettings={(role, nodeId) => (
-                    <HarnessRoleSettings key={nodeId} role={role} nodeId={nodeId} />
-                  )}
-                />
-                {inSession ? null : (
-                  <RunSide
-                    beforeStart={beforeStart}
-                    liveAvailable={live}
-                    guide={guide}
-                    initialStartFrom={startFrom}
+                  </div>
+                ) : null}
+                <section
+                  id="team-tools-design-panel"
+                  role={inSession ? 'region' : 'tabpanel'}
+                  aria-label={inSession ? n('design') : undefined}
+                  aria-labelledby={inSession ? undefined : 'team-tools-design-tab'}
+                  hidden={!inSession && inspector !== 'design'}
+                  className="p-3"
+                >
+                  <NodeInspector
+                    profiles={profiles}
+                    loopSettings={(node) => (
+                      <LoopRecipeSettings
+                        key={`${node.id}:${node.reviewRecipe?.revision ?? 0}`}
+                        node={node}
+                        projectId={record.projectId}
+                      />
+                    )}
+                    roleSettings={(role, nodeId) => (
+                      <HarnessRoleSettings
+                        key={nodeId}
+                        role={role}
+                        nodeId={nodeId}
+                        projectId={record.projectId}
+                      />
+                    )}
                   />
+                </section>
+                {inSession ? null : (
+                  <div
+                    id="team-tools-run-panel"
+                    role="tabpanel"
+                    aria-labelledby="team-tools-run-tab"
+                    hidden={inspector !== 'run'}
+                    className="p-3"
+                  >
+                    <RunSide
+                      startDisabled={saving}
+                      projectId={record.projectId}
+                      onStarted={() => setInspector('run')}
+                      beforeStart={beforeStart}
+                      liveAvailable={live}
+                      guide={guide}
+                      initialStartFrom={startFrom}
+                    />
+                  </div>
                 )}
               </aside>
             </main>
@@ -390,20 +445,26 @@ function Editor({
 }
 
 function RunSide({
+  startDisabled,
+  projectId,
+  onStarted,
   beforeStart,
   liveAvailable,
   guide,
   initialStartFrom,
 }: {
+  projectId: string;
+  startDisabled: boolean;
+  onStarted: () => void;
   beforeStart?: (() => Promise<SavedRevision | null>) | undefined;
   liveAvailable: boolean;
   guide?: GuideSlot | undefined;
   initialStartFrom: StartFromChoice | null;
 }) {
   const t = useTranslations('Editor');
+  const n = useTranslations('Navigation');
   const { session, editor } = useStudioStores();
   const definition = useStore(editor, (state) => state.draft.definition);
-  const projectId = useCurrentProject();
   const runMode = useRunMode(projectId, 'corral', definition.id);
   const profiles = useModelProfiles();
   const [roleOverrides, setRoleOverrides] = useState<RoleRunOverrides>({});
@@ -424,28 +485,45 @@ function RunSide({
   const prices = useModelPrices();
   // CR-007: the next run's starting point, until it starts or the person clears it.
   const [startFrom, setStartFrom] = useState<StartFromChoice | null>(initialStartFrom);
+  const [setupOpen, setSetupOpen] = useState(true);
+  const chooseStartFrom = (value: StartFromChoice) => {
+    setStartFrom(value);
+    setSetupOpen(true);
+  };
   return (
     <section aria-labelledby="run-heading" className="flex flex-col gap-3">
       {guide?.(session, setChosen)}
-      <RunRoleOverrides
-        roles={roles}
-        profiles={profiles}
-        value={roleOverrides}
-        onChange={setRoleOverrides}
-      />
-      <RunHarnessOverrides
-        roles={roles}
-        projectId={projectId}
-        value={harnessOverrides}
-        onChange={(value) => setSelection({ key, value })}
-      />
+      <p className="text-xs text-muted">{n('directRunHint')}</p>
+      <details
+        open={setupOpen}
+        onToggle={(event) => setSetupOpen(event.currentTarget.open)}
+        className="rounded-lg border border-line p-3"
+      >
+        <summary className="cursor-pointer text-sm font-medium">{n('prepareExecution')}</summary>
+        <p className="my-2 text-xs text-muted">{n('runOverridesHint')}</p>
+        <RunRoleOverrides
+          roles={roles}
+          profiles={profiles}
+          value={roleOverrides}
+          onChange={setRoleOverrides}
+        />
+        <RunHarnessOverrides
+          roles={roles}
+          projectId={projectId}
+          value={harnessOverrides}
+          onChange={(value) => setSelection({ key, value })}
+        />
+      </details>
       {runMode.error ? <p role="alert">{t('modeSaveFailed')}</p> : null}
       <RunControls
+        startDisabled={startDisabled}
         mode={runMode.mode}
         onModeChange={runMode.select}
         harnessOverrides={harnessOverrides}
         roleOverrides={roleOverrides}
         onStarted={() => {
+          setSetupOpen(false);
+          onStarted();
           setChosen(null);
           setSelection(null);
           setRoleOverrides({});
@@ -457,14 +535,19 @@ function RunSide({
         onClearStartFrom={() => setStartFrom(null)}
         {...(beforeStart ? { beforeStart } : {})}
       />
-      <RunView session={session} onSteer={setChosen} onStartFrom={setStartFrom} prices={prices} />
+      <RunView
+        session={session}
+        onSteer={setChosen}
+        onStartFrom={chooseStartFrom}
+        prices={prices}
+      />
       <ApprovalPanel session={session} onOpenArtifact={setViewing} />
       {viewing ? (
         <ArtifactViewer
           session={session}
           versionId={viewing}
           onClose={() => setViewing(null)}
-          onStartFrom={setStartFrom}
+          onStartFrom={chooseStartFrom}
         />
       ) : null}
       {runId ? (

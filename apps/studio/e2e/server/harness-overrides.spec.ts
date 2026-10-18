@@ -47,6 +47,7 @@ test('[TC-HAR-003-H] previews a run-only work style, uses its pinned layer and c
   }, definition);
   corral.fake?.answerWith('Run override applied.');
   await page.goto(`${corral.server.url}/corrals/${corralId}/edit`);
+  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
   await page.getByText('Work styles for this run', { exact: true }).click();
   const select = page.getByRole('combobox', { name: 'Run work style for writer', exact: true });
   await select.click();
@@ -77,8 +78,10 @@ test('[TC-HAR-003-H] previews a run-only work style, uses its pinned layer and c
   await page.getByRole('button', { name: 'Preview run style for writer', exact: true }).click();
   await expect(page.getByTestId('run-harness-preview')).toContainText('limited');
   await page.getByLabel('Agents').selectOption({ label: 'Live models (uses your sign-in)' });
+  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   await expect(page.getByTestId('run-status').first()).toContainText('Succeeded');
+  await page.getByText('Prepare an execution', { exact: true }).click();
   await expect(select).toContainText('Keep role settings');
   const state = await page.evaluate(async () => {
     const runs = await (await fetch('/api/v1/runs')).json();

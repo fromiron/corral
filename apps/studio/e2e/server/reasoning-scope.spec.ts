@@ -3,7 +3,7 @@ import type { Page } from '@playwright/test';
 import { expect, test } from './harness.ts';
 
 async function importTeam(page: Page, id: string) {
-  await page.getByRole('link', { name: 'Corrals', exact: true }).click();
+  await page.getByRole('link', { name: 'Project home', exact: true }).click();
   const definition = linearCorral(['writer'], id);
   definition.name = id;
   await page.locator('input[type=file]').setInputFiles({
@@ -12,6 +12,7 @@ async function importTeam(page: Page, id: string) {
     buffer: Buffer.from(JSON.stringify(definition)),
   });
   await expect(page).toHaveURL(/\/edit$/);
+  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
 }
 
 test('[TC-RSN-004-N] another team never inherits the previous run or its canvas status', async ({
@@ -20,11 +21,12 @@ test('[TC-RSN-004-N] another team never inherits the previous run or its canvas 
 }) => {
   await corral.open('/');
   await importTeam(page, 'team-a');
+  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   await expect(page.getByTestId('run-status')).toContainText('Succeeded');
   await importTeam(page, 'team-b');
   await expect(page.getByTestId('run-status')).toHaveCount(0);
-  await expect(page.getByRole('link', { name: 'Open run page' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Open execution page' })).toHaveCount(0);
   await expect(page.locator('.react-flow__node[data-id="output"]')).not.toContainText('Completed');
   expect(corral.server.coordinator.listRuns()).toHaveLength(1);
 });
@@ -39,10 +41,12 @@ test.describe('explicit live selection', () => {
     await importTeam(page, 'team-a');
     await page.getByRole('combobox', { name: 'Agents', exact: true }).selectOption('live');
     await page.reload();
+    await page.getByRole('tab', { name: 'Test run', exact: true }).click();
     await expect(page.getByRole('combobox', { name: 'Agents', exact: true })).toHaveValue('live');
     const path = new URL(page.url()).pathname;
     await corral.restart();
     await corral.open(path);
+    await page.getByRole('tab', { name: 'Test run', exact: true }).click();
     await expect(page.getByRole('combobox', { name: 'Agents', exact: true })).toHaveValue('live');
     await importTeam(page, 'team-b');
     await expect(page.getByRole('combobox', { name: 'Agents', exact: true })).toHaveValue('mock');
@@ -66,6 +70,7 @@ test('[TC-RSN-001-H] role reasoning survives save, reload and undo', async ({ pa
   await page.getByRole('option', { name: 'High', exact: true }).click();
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
   await expect(effort).toContainText('Low');
+  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
   await page.getByText('Model and reasoning for this run', { exact: true }).click();
   const oneRun = page.getByTestId('run-role-overrides');
   await oneRun.getByRole('combobox', { name: 'Reasoning effort', exact: true }).click();
@@ -78,6 +83,7 @@ test('[TC-RSN-001-H] role reasoning survives save, reload and undo', async ({ pa
   await expect(
     oneRun.getByRole('combobox', { name: 'Reasoning effort', exact: true }),
   ).toContainText('High');
+  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   await expect(page.getByTestId('run-status')).toContainText('Succeeded');
   await expect(page.getByTestId('reasoning-summary').first()).toContainText('high');
@@ -134,6 +140,7 @@ test.describe('ordered explicit mode choices', () => {
     release();
     await Promise.all([liveSaved, mockSaved]);
     await page.reload();
+    await page.getByRole('tab', { name: 'Test run', exact: true }).click();
     await expect(mode).toHaveValue('mock');
   });
 });

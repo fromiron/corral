@@ -22,6 +22,7 @@ export function RunControls({
   roleOverrides,
   mode: chosenMode,
   onModeChange,
+  startDisabled = false,
 }: {
   onStarted?: (runId: string) => void;
   beforeStart?: () => Promise<SavedRevision | null>;
@@ -34,6 +35,8 @@ export function RunControls({
   roleOverrides?: RoleRunOverrides;
   mode?: 'mock' | 'live';
   onModeChange?: (mode: 'mock' | 'live') => void;
+  /** A shared save may still be pending after a settings detour. */
+  startDisabled?: boolean;
 }) {
   const t = useTranslations('Run');
   const { editor, session } = useStudioStores();
@@ -48,7 +51,7 @@ export function RunControls({
   const running = projection !== null && !TERMINAL_RUN_STATUSES.has(projection.status);
 
   const start = async () => {
-    if (!compiled.definition || !compiled.runnable || unavailable) return;
+    if (!compiled.definition || !compiled.runnable || unavailable || startDisabled) return;
     setStarting(true);
     try {
       const saved = beforeStart ? await beforeStart() : undefined;
@@ -81,7 +84,7 @@ export function RunControls({
         <button
           type="button"
           onClick={start}
-          disabled={!compiled.runnable || running || starting || unavailable}
+          disabled={!compiled.runnable || running || starting || unavailable || startDisabled}
           className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent disabled:opacity-50"
         >
           {starting ? t('starting') : t('start')}

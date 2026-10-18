@@ -12,6 +12,7 @@ test('[TC-RNS-001-N] an unsent instruction stays bound to its original execution
     mimeType: 'application/json',
     buffer: Buffer.from(JSON.stringify(linearCorral(['writer', 'reviewer']))),
   });
+  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   const panel = page.getByRole('region', { name: 'Reins', exact: true });
   const input = page.getByLabel('Instruction', { exact: true });

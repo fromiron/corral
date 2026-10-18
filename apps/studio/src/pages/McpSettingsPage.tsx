@@ -2,10 +2,9 @@ import type { HarnessApi, McpProbeResult } from '@corral/client';
 import type { ProjectToolConfigRevision, RegisteredMcpServer } from '@corral/contracts';
 import { Plus, Search } from '@corral/react/icons';
 import { Button } from '@corral/react/ui';
-import { Link } from '@tanstack/react-router';
+import { Link, useBlocker } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { useCurrentProject } from '../projects.ts';
 import { useServices } from '../services.tsx';
 import { useManagementConfirmation } from '../workbench/harness/ConfirmAction.tsx';
 import { McpEditor, mcpDraft } from '../workbench/harness/McpEditor.tsx';
@@ -16,26 +15,29 @@ import {
   TargetPicker,
   useHarnessTarget,
 } from '../workbench/harness/Target.tsx';
+import { useSettingsNavigation } from '../workbench/navigation.ts';
 import { McpConnection } from './McpSettings.tsx';
 import { SettingsLayout } from './SettingsPage.tsx';
 
 export function McpSettingsPage() {
   const { harnesses } = useServices(),
-    projectId = useCurrentProject();
+    { projectId } = useSettingsNavigation();
   const t = useTranslations('Harness');
   return (
     <SettingsLayout active="mcp">
-      {harnesses ? (
+      {harnesses && projectId ? (
         <McpManager key={projectId} api={harnesses} projectId={projectId} />
-      ) : (
+      ) : !harnesses ? (
         <p className="p-8">{t('localOnly')}</p>
-      )}
+      ) : null}
     </SettingsLayout>
   );
 }
 function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) {
   const t = useTranslations('Resources'),
     h = useTranslations('Harness');
+  const n = useTranslations('Navigation');
+  const navigation = useSettingsNavigation();
   const { repository, workspaces } = useServices();
   const target = useHarnessTarget(api, projectId);
   const confirmation = useManagementConfirmation();
@@ -61,8 +63,15 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
     verified?.tools
       .filter((tool) => target.profile?.allowedTools.includes(tool.name))
       .map((tool) => tool.name) ?? [];
-  const dirtyTools = [...picked].sort().join(',') !== [...actual].sort().join(',');
+  const dirtyTools =
+    target.selection !== 'library' && [...picked].sort().join(',') !== [...actual].sort().join(',');
   const leave = () => !dirtyTools || window.confirm(t('leaveUnsaved'));
+  const dirtyRef = useRef(dirtyTools);
+  dirtyRef.current = dirtyTools;
+  useBlocker({
+    shouldBlockFn: () => dirtyRef.current && !window.confirm(t('leaveUnsaved')),
+    enableBeforeUnload: () => dirtyRef.current,
+  });
   useEffect(() => {
     active.current = true;
     return () => {
@@ -163,11 +172,14 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
           {t('add')}
         </Button>
       </header>
-      <TargetPicker target={target} beforeChange={leave} />
       {error ? (
         <p role="alert" className="text-sm text-danger">
           {error}{' '}
-          <Link to="/settings" search={{ section: 'workspace' }} className="underline">
+          <Link
+            to="/settings"
+            search={{ ...navigation.search, section: 'workspace' }}
+            className="underline"
+          >
             {h('manageChecks')}
           </Link>
         </p>
@@ -261,6 +273,25 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
               {t('enabled')}
             </label>
             <p className="text-xs text-muted">{t('mcpEnableHint')}</p>
+            {target.selection === 'library' ? (
+              <Button variant="outline" className="self-start" onClick={target.connect}>
+                {n('connectWorkStyle')}
+              </Button>
+            ) : (
+              <div className="flex flex-col gap-2">
+                <TargetPicker target={target} beforeChange={leave} />
+                <Button
+                  variant="ghost"
+                  className="self-end"
+                  disabled={target.busy}
+                  onClick={() => {
+                    if (leave()) target.setSelection('library');
+                  }}
+                >
+                  {n('finishConnecting')}
+                </Button>
+              </div>
+            )}
             {target.profile ? (
               <>
                 <label className="flex items-center gap-2 text-sm">

@@ -15,7 +15,7 @@ async function trackErrors(page: Page): Promise<string[]> {
 
 async function newCorral(page: Page, query = '') {
   await page.goto(`/${query}`);
-  await page.getByRole('button', { name: 'New Corral' }).click();
+  await page.getByRole('button', { name: 'New team' }).click();
   await expect(page).toHaveURL(/\/corrals\/corral_[a-z0-9]+\/edit/);
 }
 
@@ -39,7 +39,7 @@ async function buildAgentToOutput(page: Page) {
   await expect(page.getByText('Ready to run.')).toBeVisible();
 }
 
-test('[TC-CAN-001-H] nodes dropped on an empty canvas and connected run as drawn', async ({
+test('[TC-CAN-001-H] [TC-UX-004-H] nodes dropped on an empty canvas and connected run as drawn', async ({
   page,
 }) => {
   const errors = await trackErrors(page);
@@ -47,6 +47,11 @@ test('[TC-CAN-001-H] nodes dropped on an empty canvas and connected run as drawn
   await expect(page.getByText('Demo · simulated', { exact: true })).toBeVisible();
 
   await buildAgentToOutput(page);
+  await expect(page.getByRole('tab', { name: 'Design', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
   await page.getByRole('button', { name: 'Run', exact: true }).click();
 
   await expect(page.getByTestId('run-output')).toContainText('Agent 1 (agent_1) turn 2');
@@ -62,6 +67,12 @@ test('[TC-CAN-002-H] saving a layout move bumps only the layout revision, and su
 }) => {
   await newCorral(page);
   await buildAgentToOutput(page);
+  // Settings is a detour, not an instruction to discard an unsaved graph.
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(page.getByTestId('settings-sidebar')).toBeVisible();
+  await page.getByRole('link', { name: 'Back to work', exact: true }).click();
+  await expect(page.locator('.react-flow__node')).toHaveCount(2);
+  await expect(page.getByText('● Unsaved changes', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByTestId('revisions')).toHaveText('Definition r2 · Layout r2');
 
@@ -103,6 +114,7 @@ test('[TC-CAN-004-H] [TC-RUN-003-H] an imported team with a Loop validates and r
   await expect(page.getByText('Ready to run.')).toBeVisible();
 
   // Two review rounds, then the person approves the decision and the final output.
+  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   const decision = page.locator('[data-testid^="approval-"]').filter({ hasText: 'Your decision' });
   await expect(decision).toBeVisible({ timeout: 15_000 });
@@ -153,7 +165,7 @@ test('the workspace and editor have no serious automated accessibility violation
       .map((v) => `${v.id}: ${v.nodes.length} nodes`);
   expect(await serious()).toEqual([]);
 
-  await page.getByRole('button', { name: 'New Corral' }).click();
+  await page.getByRole('button', { name: 'New team' }).click();
   await buildAgentToOutput(page);
   await page.locator('.react-flow__node[data-id="agent_1"]').click();
   expect(await serious()).toEqual([]);

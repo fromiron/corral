@@ -938,5 +938,15 @@
     "tasks": [
       "C-085"
     ]
+  },
+  {
+    "requirementId": "CRL-UX-004",
+    "tests": [
+      "TC-UX-004-H",
+      "TC-UX-004-N"
+    ],
+    "tasks": [
+      "C-086"
+    ]
   }
 ]

@@ -11,6 +11,7 @@ import {
   HarnessDetails,
   QuestionsPanel,
   ReinsPanel,
+  ResultReader,
   RunActions,
   RunCanvas,
   type RunCanvasLayout,
@@ -19,6 +20,7 @@ import {
   RunResults,
   type RunSessionStore,
   runCanvasLayout,
+  runResults,
   StatusBadge,
   TaskBoard,
   Timeline,
@@ -65,11 +67,13 @@ export function RunDetail({
   search,
   setSearch,
   embedded = false,
+  compact = false,
 }: {
   runId: string;
   search: RunDetailSearch;
   setSearch: (patch: RunDetailSearch) => void;
   embedded?: boolean;
+  compact?: boolean;
 }) {
   const t = useTranslations('RunPage');
   const { session: sharedSession, editorSessions, transport, repository } = useServices();
@@ -142,6 +146,16 @@ export function RunDetail({
     );
   }
   const opened = openedEnded?.runId === runId ? openedEnded.ended : null;
+  if (compact)
+    return (
+      <CompactRunWorkspace
+        key={runId}
+        session={session}
+        definition={definition}
+        search={search}
+        setSearch={setSearch}
+      />
+    );
   return (
     <RunWorkspace
       key={runId}
@@ -152,6 +166,169 @@ export function RunDetail({
       setSearch={setSearch}
       embedded={embedded}
     />
+  );
+}
+
+/** A session observes and controls its run here; the graph and full history keep their own page. */
+function CompactRunWorkspace({
+  session,
+  definition,
+  search,
+  setSearch,
+}: {
+  session: RunSessionStore;
+  definition: CorralDefinition;
+  search: RunDetailSearch;
+  setSearch: (patch: RunDetailSearch) => void;
+}) {
+  const t = useTranslations('RunPage');
+  const n = useTranslations('Navigation');
+  const b = useTranslations('Budget');
+  const navigate = useNavigate();
+  const projection = useStore(session, (state) => state.projection);
+  const target = useSteerTarget(session, search.execution ?? null);
+  const controls = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLElement | null>(null);
+  const detailsLink = useRef<HTMLAnchorElement>(null);
+  const { previewUrl } = useServices();
+  const prices = useModelPrices();
+  useEffect(() => {
+    if (search.execution) {
+      controls.current?.focus({ preventScroll: true });
+      controls.current?.scrollIntoView({ block: 'nearest' });
+    }
+  }, [search.execution]);
+  if (!projection) return null;
+  const version =
+    search.view === 'results'
+      ? (search.result ?? search.artifact)
+      : (search.artifact ?? search.result);
+  const results = search.view === 'results' ? runResults(projection) : null;
+  const result = results
+    ? [...results.final, ...results.intermediate.flatMap((group) => group.versions)].find(
+        (item) => item.artifactVersionId === version,
+      )
+    : null;
+  const startFrom = projection.corralId
+    ? (from: { runId: string; artifactVersionId: string }) =>
+        void navigate({
+          to: '/corrals/$corralId/edit',
+          params: { corralId: projection.corralId ?? '' },
+          search: { fromRun: from.runId, fromVersion: from.artifactVersionId },
+        })
+    : null;
+  return (
+    <div className="flex h-full min-h-0 flex-col" data-testid="compact-run">
+      <RunSummary session={session} definition={definition} compact />
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-3">
+        <Link
+          ref={detailsLink}
+          to="/runs/$runId"
+          params={{ runId: projection.runId }}
+          search={{ ...search, view: search.view ?? 'run' }}
+          className="rounded-md border border-line bg-raised px-3 py-2 text-center text-sm hover:bg-sidebar-accent"
+        >
+          {n('openRunDetails')}
+        </Link>
+        <details className="rounded-lg border border-line p-2 text-xs">
+          <summary className="cursor-pointer font-medium">
+            {b('heading')} ·{' '}
+            {b('meterCallsText', {
+              used: projection.budget.modelCalls,
+              max: (projection.limits ?? definition.limits).maxModelCalls,
+            })}
+          </summary>
+          <div className="mt-2">
+            <BudgetInspector session={session} prices={prices} />
+          </div>
+        </details>
+        <section aria-label={t('executions')} className="flex flex-col gap-2">
+          <h3 className="text-xs font-medium text-muted">{t('executions')}</h3>
+          <ExecutionTree
+            session={session}
+            compact
+            selectedExecutionId={search.execution ?? null}
+            onSteer={(execution) => {
+              trigger.current =
+                document.activeElement instanceof HTMLElement ? document.activeElement : null;
+              setSearch({ execution, view: 'run' });
+            }}
+          />
+        </section>
+        <ApprovalPanel
+          session={session}
+          compact
+          onOpenArtifact={(artifact) => setSearch({ artifact, view: 'run', result: undefined })}
+        />
+        {result ? (
+          <div className="rounded-lg border border-line">
+            <div className="flex justify-end p-2">
+              <button
+                type="button"
+                className="rounded px-2 py-1 text-xs text-muted hover:bg-raised"
+                onClick={() => setSearch({ artifact: undefined, result: undefined })}
+              >
+                {n('closeResult')}
+              </button>
+            </div>
+            <ResultReader
+              key={result.artifactVersionId}
+              session={session}
+              item={result}
+              {...(previewUrl ? { previewUrl } : {})}
+              {...(startFrom ? { onStartFrom: startFrom } : {})}
+            />
+          </div>
+        ) : version ? (
+          <ArtifactViewer
+            session={session}
+            versionId={version}
+            onOpen={(artifact) => setSearch({ artifact, view: 'run', result: undefined })}
+            {...(startFrom ? { onStartFrom: startFrom } : {})}
+            onClose={() => setSearch({ artifact: undefined, result: undefined })}
+          />
+        ) : null}
+        <div
+          ref={controls}
+          tabIndex={-1}
+          hidden={!search.execution}
+          className="rounded-lg border border-line p-3 outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        >
+          <div className="mb-3 flex justify-end">
+            <button
+              type="button"
+              className="rounded px-2 py-1 text-xs text-muted hover:bg-raised"
+              onClick={() => {
+                setSearch({ execution: undefined });
+                (trigger.current?.isConnected ? trigger.current : detailsLink.current)?.focus();
+              }}
+            >
+              {n('closeControls')}
+            </button>
+          </div>
+          {search.execution && !projection.executions[search.execution] ? (
+            <p role="alert" className="mb-3 text-xs text-warning">
+              {t('executionMissing', { executionId: search.execution })}
+            </p>
+          ) : null}
+          <ReinsPanel session={session} target={target} />
+          {search.execution && target ? (
+            <details className="mt-4">
+              <summary className="cursor-pointer text-xs font-medium">{t('conversation')}</summary>
+              <div className="mt-2 flex h-64 flex-col">
+                <ExecutionTranscript
+                  session={session}
+                  executionId={target.executionId}
+                  onOpenArtifact={(artifact) =>
+                    setSearch({ artifact, view: 'run', result: undefined })
+                  }
+                />
+              </div>
+            </details>
+          ) : null}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -366,13 +543,15 @@ function useSavedLayout(definition: CorralDefinition, corralId: string | null) {
 function RunSummary({
   session,
   definition,
-  view,
+  view = 'run',
   onView,
+  compact = false,
 }: {
   session: RunSessionStore;
   definition: CorralDefinition;
-  view: RunPageView;
-  onView: (view: RunPageView) => void;
+  view?: RunPageView;
+  onView?: (view: RunPageView) => void;
+  compact?: boolean;
 }) {
   const t = useTranslations('RunPage');
   const tr = useTranslations('Run');
@@ -409,18 +588,20 @@ function RunSummary({
     >
       <div className="flex min-w-0 flex-col gap-1">
         <div className="flex flex-wrap items-center gap-2">
-          <ViewSwitch view={view} onView={onView} />
+          {onView ? <ViewSwitch view={view} onView={onView} /> : null}
           <h2 className="text-base font-semibold">{definition.name}</h2>
-          <span className="font-mono text-xs text-muted">{projection.runId}</span>
+          {!compact ? (
+            <span className="font-mono text-xs text-muted">{projection.runId}</span>
+          ) : null}
           <span aria-live="polite" data-testid="run-status">
             <StatusBadge status={projection.status} />
           </span>
-          {corralId ? (
+          {corralId && !compact ? (
             <Link to="/corrals/$corralId/edit" params={{ corralId }} className="text-xs underline">
               {t('openCorral')}
             </Link>
           ) : null}
-          {projection.startedFrom ? (
+          {projection.startedFrom && !compact ? (
             <span className="text-xs text-muted">
               {t('startedFrom')}:{' '}
               <Link

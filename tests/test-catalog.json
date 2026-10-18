@@ -2064,5 +2064,27 @@
     "status": "planned",
     "adapter": "mock unless explicitly live",
     "evidence": null
+  },
+  {
+    "id": "TC-UX-004-H",
+    "requirements": [
+      "CRL-UX-004"
+    ],
+    "suite": "unit+e2e",
+    "scenario": "CR-023 탐색·설정·복귀, 세션 실행·상세·Reins, 팀 설계·직접 실행을 기존 주요 E2E에서 통합 검증한다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-UX-004-N",
+    "requirements": [
+      "CRL-UX-004"
+    ],
+    "suite": "unit+e2e",
+    "scenario": "잘못된 설정 프로젝트, 미저장 이탈, 중복 조작·늦은 응답·과거 실행 선택·IME·좁은 창에서 대상이나 초안을 잃거나 자동 실행하면 실패한다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
   }
 ]

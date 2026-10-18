@@ -15,12 +15,13 @@ async function finishedRun(
       join(EXAMPLES, 'research-brief.layout.json'),
     ]);
   await expect(page).toHaveURL(/\/edit$/);
+  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   await expect(page.getByTestId('run-status')).toContainText('Succeeded', { timeout: 15_000 });
-  await page.getByRole('link', { name: 'Open run page' }).click();
+  await page.getByRole('link', { name: 'Open execution page' }).click();
   await expect(page).toHaveURL(/\/runs\/run_[a-f0-9]+$/);
   // CR-009: a finished run opens on its results; these checks are about the run view.
-  await page.getByRole('tab', { name: 'Run', exact: true }).click();
+  await page.getByRole('tab', { name: 'Execution', exact: true }).click();
   return new URL(page.url()).pathname;
 }
 
@@ -29,7 +30,7 @@ test('[TC-OBS-001-H] a reload keeps the chosen execution and the saved layout', 
   corral,
 }) => {
   await finishedRun(page, corral);
-  await expect(page.getByText('Layout from the saved Corral')).toBeVisible();
+  await expect(page.getByText('Layout from the saved team')).toBeVisible();
   const row = page.locator('li[data-execution-id]').filter({ hasText: 'Research Helper' }).first();
   const executionId = await row.getAttribute('data-execution-id');
   await row.getByRole('button', { name: 'Steer' }).first().click();

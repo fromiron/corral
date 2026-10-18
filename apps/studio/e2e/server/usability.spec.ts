@@ -17,9 +17,10 @@ async function session(page: Page, corral: Harness, definition = linearCorral(['
   });
   await expect(page).toHaveURL(/\/edit$/);
   await page.getByRole('link', { name: 'New session', exact: true }).click();
-  await page.getByLabel('Purpose').fill('Review the release plan');
-  await page.getByRole('button', { name: 'Start session', exact: true }).click();
   await expect(page).toHaveURL(/\/sessions\/session_/);
+  await expect(page.getByRole('combobox', { name: 'Team', exact: true })).toContainText(
+    definition.name,
+  );
 }
 
 test('[WBTST-004] UX-015-01 new-session drafts survive team setup and become an editable first request', async ({
@@ -27,17 +28,59 @@ test('[WBTST-004] UX-015-01 new-session drafts survive team setup and become an 
   corral,
 }) => {
   await corral.open('/');
-  await page.getByRole('link', { name: 'New session', exact: true }).click();
+  await page.getByText('Session details (optional)', { exact: true }).click();
   await page.getByLabel('Purpose').fill('Keep this purpose through team setup');
+  await page.getByRole('tab', { name: /^Teams/ }).click();
   await page
     .getByRole('article')
     .filter({ hasText: 'Single agent' })
     .getByRole('button', { name: 'Edit this team' })
     .click();
   await expect(page).toHaveURL(/\/edit$/);
-  await page.getByRole('link', { name: 'New session', exact: true }).click();
+  await page.goBack();
+  await page.getByText('Session details (optional)', { exact: true }).click();
   await expect(page.getByLabel('Purpose')).toHaveValue('Keep this purpose through team setup');
-  await page.getByRole('button', { name: 'Start session', exact: true }).click();
+  let release!: () => void,
+    entered!: () => void,
+    creates = 0;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const committed = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  await page.route('**/api/v1/sessions', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    creates++;
+    const response = await route.fetch();
+    entered();
+    await held;
+    await route.fulfill({ response });
+  });
+  const finished = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/api/v1/sessions') && response.request().method() === 'POST',
+  );
+  await page.getByRole('link', { name: 'New session', exact: true }).click();
+  await committed;
+  await expect(page.getByLabel('Purpose')).toBeDisabled();
+  await expect(page.getByRole('combobox', { name: 'Team', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('link', { name: 'Shortcuts', exact: true }).click();
+  release();
+  await finished;
+  await page.getByRole('link', { name: 'Back to work', exact: true }).click();
+  await expect(page).toHaveURL(/\/projects\/default$/);
+  expect(creates).toBe(1);
+  await expect(
+    page
+      .getByTestId('app-sidebar')
+      .getByRole('link', { name: /^Keep this purpose through team setup/ }),
+  ).toHaveCount(1);
+  await page
+    .getByTestId('app-sidebar')
+    .getByRole('link', { name: /^Keep this purpose through team setup/ })
+    .click();
   await expect(request(page)).toHaveValue('Keep this purpose through team setup');
   expect(corral.server.coordinator.listRuns()).toHaveLength(0);
   // Nothing to ask about yet: the only choice is a follow-up, so no intent picker shows.
@@ -169,6 +212,7 @@ test('[WBTST-004] UX-015-07 approvals name exact versions and keep review inside
     .definition as CorralDefinition;
   await session(page, corral, definition);
   const sessionUrl = new URL(page.url()).pathname;
+  await request(page).fill('Review the release plan and request approval.');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   // The decision shows in the conversation and, while its result is open, beside it (UX-03).
   const decision = timeline(page)
@@ -181,6 +225,13 @@ test('[WBTST-004] UX-015-07 approvals name exact versions and keep review inside
   await decision.getByRole('button', { name: 'draft v2', exact: true }).click();
   await expect.poll(() => new URL(page.url()).pathname).toBe(sessionUrl);
   await expect(page.getByRole('article', { name: 'draft v2', exact: true })).toBeVisible();
+  const observer = page.getByRole('tabpanel', { name: 'Execution', exact: true });
+  await observer.getByRole('button', { name: 'review v2', exact: true }).click();
+  await expect(
+    observer.getByRole('region', { name: 'review · Version 2', exact: true }),
+  ).toBeVisible();
+  await decision.getByRole('button', { name: 'draft v2', exact: true }).click();
+  await expect(observer.getByRole('article', { name: 'draft v2', exact: true })).toBeVisible();
   await decision.getByRole('button', { name: 'Continue with this version' }).click();
   const final = timeline(page)
     .locator('[data-testid^="approval-"]')

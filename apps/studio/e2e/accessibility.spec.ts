@@ -47,6 +47,9 @@ test('[TC-UX-001-H] keyboard alone adds, selects, moves, connects, deletes, undo
   await page.keyboard.press('Enter');
   await activate(page, page.getByRole('button', { name: 'Connect', exact: true }));
   await expect(page.getByText('Ready to run.')).toBeVisible();
+  await tabTo(page, page.getByRole('tab', { name: 'Design', exact: true }));
+  await page.keyboard.press('ArrowRight');
+  await expect(page.getByRole('tab', { name: 'Test run', exact: true })).toBeFocused();
   await activate(page, page.getByRole('button', { name: 'Run', exact: true }));
   await activate(page, page.getByRole('button', { name: 'Pause run', exact: true }));
   await expect(page.getByTestId('run-status')).toContainText('Paused', { timeout: 10_000 });
@@ -65,6 +68,7 @@ for (const instruction of ['일차 자료만 사용하고 확인하지 못한 �
     page,
   }) => {
     await page.goto('/demo?template=starter&delay=3000');
+    await page.getByRole('tab', { name: 'Test run', exact: true }).click();
     await page.getByRole('button', { name: 'Run', exact: true }).click();
     await page.getByRole('button', { name: 'Pause run', exact: true }).click();
     await expect(page.getByTestId('run-status')).toContainText('Paused', { timeout: 10_000 });

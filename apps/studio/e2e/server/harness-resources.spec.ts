@@ -93,7 +93,7 @@ test.describe('extension input during an SDK run', () => {
   });
 });
 
-test('[TC-HAR-004-H] install, trust, save and preview a mandatory skill through Settings', async ({
+test('[TC-HAR-004-H] [TC-UX-004-N] install, trust, save and preview a mandatory skill through Settings', async ({
   page,
   corral,
 }) => {
@@ -113,8 +113,15 @@ test('[TC-HAR-004-H] install, trust, save and preview a mandatory skill through 
       join(source, 'skills', 'writing', 'SKILL.md'),
       '---\nname: writing\ndescription: Write with sources.\n---\nAlways cite the source.',
     );
-    page.on('dialog', (dialog) => void dialog.accept());
+    const dialogs: string[] = [];
+    page.on('dialog', (dialog) => {
+      dialogs.push(dialog.message());
+      void dialog.accept();
+    });
     await corral.open('/settings/skills');
+    await expect(
+      page.getByRole('combobox', { name: 'Configure usage for', exact: true }),
+    ).toHaveCount(0);
     await page.getByRole('button', { name: 'Add', exact: true }).click();
     await page.getByRole('combobox', { name: 'Add method', exact: true }).click();
     await page.getByRole('option', { name: 'Import folder', exact: true }).click();
@@ -124,10 +131,30 @@ test('[TC-HAR-004-H] install, trust, save and preview a mandatory skill through 
     await page.getByRole('button', { name: 'Save to library', exact: true }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await page.getByRole('button', { name: 'Trust this content', exact: true }).click();
-    await page.goto(`${corral.server.url}/settings/harness`);
+    const projectId = await page.evaluate(async () => {
+      const { csrfToken } = await (await fetch('/api/v1/session')).json();
+      const response = await fetch('/api/v1/projects', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-corral-csrf': csrfToken },
+        body: JSON.stringify({ name: 'Other project' }),
+      });
+      if (!response.ok) throw new Error('Project setup failed');
+      return (await response.json()).project.projectId as string;
+    });
+    await page.goto(`${corral.server.url}/settings/harness?projectId=default`);
     await page.getByLabel('Work style name', { exact: true }).fill('Evidence writer');
     await page.getByLabel('Use skill writing', { exact: true }).check();
     await page.getByLabel('Skill mode writing', { exact: true }).selectOption('mandatory');
+    await page.getByRole('combobox', { name: 'Project tools and defaults', exact: true }).click();
+    await page.getByRole('option', { name: 'Other project', exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`/settings/harness\\?projectId=${projectId}`));
+    await expect(page.getByLabel('Work style name', { exact: true })).toHaveValue(
+      'Evidence writer',
+    );
+    expect(dialogs).toEqual([]);
+    await page
+      .getByRole('combobox', { name: 'Apply after saving', exact: true })
+      .selectOption('project');
     let failListOnce = true;
     await page.route('**/api/v1/harness/profile-management', async (route) => {
       if (failListOnce && route.request().method() === 'GET') {
@@ -143,6 +170,18 @@ test('[TC-HAR-004-H] install, trust, save and preview a mandatory skill through 
     });
     await page.getByRole('button', { name: 'Save work style', exact: true }).click();
     await expect(page.getByTestId('harness-status')).toContainText('Saved revision 1');
+    const defaults = await page.evaluate(
+      async (projectId) =>
+        Promise.all(
+          ['default', projectId].map(async (id) =>
+            (await fetch(`/api/v1/harness/defaults/project/${id}`)).json(),
+          ),
+        ),
+      projectId,
+    );
+    expect(defaults[0].binding).toBeNull();
+    expect(defaults[1].scopeId).toBe(projectId);
+    expect(defaults[1].binding?.revision).toBe(1);
     await expect(page.getByRole('button', { name: 'Save work style', exact: true })).toBeDisabled();
     await page.getByRole('button', { name: 'Load saved list again', exact: true }).click();
     expect(
@@ -171,6 +210,7 @@ test('[TC-HAR-004-H] install, trust, save and preview a mandatory skill through 
     await page.getByRole('button', { name: 'Save to library', exact: true }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await page.getByRole('button', { name: 'Trust this content', exact: true }).click();
+    await page.getByRole('button', { name: 'Add to a work style', exact: true }).click();
     await page.getByRole('combobox', { name: 'Configure usage for', exact: true }).click();
     await page.getByRole('option', { name: 'Evidence writer · r1', exact: true }).click();
     await page.getByLabel('Use in Evidence writer', { exact: true }).click();
@@ -212,6 +252,7 @@ test('[TC-HAR-004-H] install, trust, save and preview a mandatory skill through 
     await page
       .getByRole('button', { name: /^writing/ })
       .filter({ hasText: 'Referenced by 1 work styles' })
+      .filter({ hasNotText: 'An edited copy is available.' })
       .click();
     await expect(page.getByText('Always cite the revised source.', { exact: false })).toBeVisible();
 

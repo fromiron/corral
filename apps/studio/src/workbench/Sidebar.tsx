@@ -1,5 +1,5 @@
 // Adapted from T3 Code Sidebar's grouped rows and action menus (MIT). See THIRD-PARTY-NOTICES/T3-Code.md.
-import type { ProjectSummary, RunSummary, WorkSession } from '@corral/core';
+import type { CorralSummary, ProjectSummary, RunSummary, WorkSession } from '@corral/core';
 import { StatusDot } from '@corral/react';
 import {
   ChevronDown,
@@ -42,6 +42,7 @@ import {
 } from '../projects.ts';
 import { useServices } from '../services.tsx';
 import { shortcutLabel } from '../shortcuts.ts';
+import { useSettingsNavigation } from './navigation.ts';
 import { changePreferences, preferences } from './preferences.ts';
 import { useModelProfiles } from './useModels.ts';
 
@@ -53,6 +54,7 @@ export function useCorralSidebar() {
   const version = useProjectsVersion();
   const current = useCurrentProject();
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [corrals, setCorrals] = useState<CorralSummary[]>([]);
   const [sessions, setSessions] = useState<WorkSession[]>([]);
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [inbox, setInbox] = useState(0);
@@ -80,14 +82,17 @@ export function useCorralSidebar() {
   }, [repository, version]);
   useEffect(() => {
     void href;
+    void version;
     let live = true;
-    void repository.listSessions(current).then(
-      (list) => {
-        if (live)
+    void Promise.all([repository.listSessions(current), repository.list()]).then(
+      ([list, teams]) => {
+        if (live) {
+          setCorrals(teams);
           setSessions((all) => [
             ...all.filter((s) => s.projectId !== current),
             ...list.filter((s) => !s.archivedAt),
           ]);
+        }
       },
       (failure: unknown) => {
         if (live) setError(failure instanceof Error ? failure.message : String(failure));
@@ -96,7 +101,7 @@ export function useCorralSidebar() {
     return () => {
       live = false;
     };
-  }, [repository, current, href]);
+  }, [repository, current, href, version]);
   useEffect(() => {
     let live = true;
     const refresh = () => {
@@ -134,7 +139,7 @@ export function useCorralSidebar() {
       clearInterval(timer);
     };
   }, [transport, workspaces, current, td]);
-  return { projects, sessions, runs, inbox, error, current };
+  return { projects, corrals, sessions, runs, inbox, error, current };
 }
 
 const ENDED = new Set(['succeeded', 'failed', 'cancelled', 'interrupted']);
@@ -155,7 +160,11 @@ function useAgo() {
   };
 }
 
-export const Sidebar = memo(function Sidebar() {
+export const Sidebar = memo(function Sidebar({
+  model,
+}: {
+  model: ReturnType<typeof useCorralSidebar>;
+}) {
   const t = useTranslations('Desktop');
   const tw = useTranslations('Workbench');
   const tp = useTranslations('Projects');
@@ -169,7 +178,7 @@ export const Sidebar = memo(function Sidebar() {
   const router = useRouter();
   const navigate = useNavigate();
   const path = useRouterState({ select: (s) => s.location.pathname });
-  const model = useCorralSidebar();
+  const settingsNavigation = useSettingsNavigation();
   const [query, setQuery] = useState('');
   const [editing, setEditing] = useState<WorkSession | null>(null);
   const [title, setTitle] = useState('');
@@ -300,7 +309,7 @@ export const Sidebar = memo(function Sidebar() {
           <input
             type="search"
             aria-label={tw('searchSessions')}
-            placeholder={t('search')}
+            placeholder={tw('searchSessions')}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="min-w-0 flex-1 bg-transparent text-ui text-text outline-none placeholder:text-muted"
@@ -498,7 +507,7 @@ export const Sidebar = memo(function Sidebar() {
           variant="ghost-muted"
           size="sm"
           className="gap-2"
-          onClick={() => void navigate({ to: '/settings' })}
+          onClick={() => void navigate({ to: '/settings', search: settingsNavigation.search })}
         >
           <Settings />
           {t('settings')}
@@ -518,7 +527,11 @@ export const Sidebar = memo(function Sidebar() {
           {/* UX-06: "live models" only when a model is actually connected. */}
           <button
             type="button"
-            onClick={() => (live && !connected ? void navigate({ to: '/settings/models' }) : null)}
+            onClick={() =>
+              live && !connected
+                ? void navigate({ to: '/settings/models', search: settingsNavigation.search })
+                : null
+            }
             className="ml-auto flex items-center gap-1.5 rounded px-1.5 py-1 text-2xs text-muted"
           >
             <span

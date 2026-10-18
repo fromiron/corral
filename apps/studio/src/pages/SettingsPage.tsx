@@ -1,70 +1,22 @@
-import { Folder, Info, Keyboard, Monitor, Moon, Settings, Sun } from '@corral/react/icons';
+import { Monitor, Moon, Sun } from '@corral/react/icons';
 import { Button } from '@corral/react/ui';
-import { Link } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
 import { ShortcutTable } from '../CommandPalette.tsx';
 import { DesktopWorkspace, desktop } from '../desktop.tsx';
 import { LOCALES, type Locale, useLocale } from '../locale.tsx';
-import { useCurrentProject } from '../projects.ts';
 import { settingsRoute } from '../router.tsx';
+import { useSettingsNavigation } from '../workbench/navigation.ts';
 import { changePreferences, type Theme, usePreferences } from '../workbench/preferences.ts';
+import { SettingsProjectPicker } from '../workbench/SettingsNavigation.tsx';
 import { WorkFolderSection } from './FilesViews.tsx';
 import { WorkspaceToolSettings } from './ProjectToolSettings.tsx';
 
 export function SettingsLayout({ children, active }: { children: ReactNode; active: string }) {
-  const t = useTranslations('Desktop');
-  const harness = useTranslations('Harness');
-  const resources = useTranslations('Resources');
   return (
-    <div className="settings-layout flex h-full min-h-0 flex-col overflow-auto md:flex-row">
-      <nav
-        aria-label={t('settings')}
-        className="flex shrink-0 gap-1 overflow-x-auto border-b border-line p-4 md:w-52 md:flex-col md:border-r md:border-b-0"
-      >
-        <h2 className="mb-4 hidden px-2 text-lg font-semibold md:block">{t('settings')}</h2>
-        {(['general', 'workspace', 'shortcuts', 'about'] as const).map((section) => {
-          const Icon = { general: Settings, workspace: Folder, shortcuts: Keyboard, about: Info }[
-            section
-          ];
-          return (
-            <Link
-              key={section}
-              to="/settings"
-              search={{ section }}
-              className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${active === section ? 'bg-sidebar-selected font-medium' : 'text-muted hover:bg-raised'}`}
-            >
-              <Icon size={16} />
-              <span>{t(section)}</span>
-            </Link>
-          );
-        })}
-        <Link
-          to="/settings/models"
-          className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${active === 'models' ? 'bg-sidebar-selected font-medium' : 'text-muted hover:bg-raised'}`}
-        >
-          <Monitor size={16} />
-          {t('models')}
-        </Link>
-        <Link
-          to="/settings/harness"
-          className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${active === 'harness' ? 'bg-sidebar-selected font-medium' : 'text-muted hover:bg-raised'}`}
-        >
-          <Settings size={16} />
-          {harness('heading')}
-        </Link>
-        {(['skills', 'hooks', 'mcp'] as const).map((section) => (
-          <Link
-            key={section}
-            to={`/settings/${section}`}
-            className={`flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm ${active === section ? 'bg-sidebar-selected font-medium' : 'text-muted hover:bg-raised'}`}
-          >
-            <Settings size={16} />
-            {resources(section)}
-          </Link>
-        ))}
-      </nav>
-      <div className="min-w-0 flex-1 overflow-y-auto">{children}</div>
+    <div className="settings-layout flex h-full min-h-0 flex-col" data-settings-section={active}>
+      {active === 'workspace' || active === 'mcp' ? <SettingsProjectPicker /> : null}
+      <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
     </div>
   );
 }
@@ -74,7 +26,7 @@ export function SettingsPage() {
   const { section = 'general' } = settingsRoute.useSearch();
   const { theme, sendKey, notify } = usePreferences();
   const { locale, setLocale } = useLocale();
-  const project = useCurrentProject();
+  const { projectId: project } = useSettingsNavigation();
   return (
     <SettingsLayout active={section}>
       <main className="mx-auto flex max-w-3xl flex-col gap-6 p-6 sm:p-10">
@@ -169,13 +121,15 @@ export function SettingsPage() {
                 ))}
               </select>
             </section>
+            <DesktopWorkspace />
           </>
         ) : section === 'workspace' ? (
-          <>
-            <DesktopWorkspace />
-            <WorkFolderSection projectId={project} />
-            <WorkspaceToolSettings key={project} projectId={project} />
-          </>
+          project ? (
+            <>
+              <WorkFolderSection projectId={project} />
+              <WorkspaceToolSettings key={project} projectId={project} />
+            </>
+          ) : null
         ) : section === 'shortcuts' ? (
           <section className="rounded-xl bg-raised p-5">
             <ShortcutTable />

@@ -33,7 +33,11 @@ test('[TC-HAR-016-H] reviews an MCP server, completes local OAuth and pins its r
         await new Promise((resolve) => setTimeout(resolve, 500));
       await route.fallback();
     });
-    await corral.open('/settings/mcp');
+    await corral.open('/settings/mcp?projectId=missing');
+    await expect(page.getByRole('button', { name: 'Add', exact: true })).toHaveCount(0);
+    await page.getByRole('combobox', { name: 'Applies to project', exact: true }).click();
+    await page.getByRole('option', { name: 'My project', exact: true }).click();
+    await expect(page).toHaveURL(/\/settings\/mcp\?projectId=default/);
     await page.evaluate(async (source) => {
       const { csrfToken } = await (await fetch('/api/v1/session')).json();
       for (const [method, body] of [
@@ -71,15 +75,16 @@ test('[TC-HAR-016-H] reviews an MCP server, completes local OAuth and pins its r
       .click();
     await expect(page.getByText(/Connection checked at/)).toBeVisible();
     expect(fixture.mcpCalls).toBe(0);
-    await page.goto(`${corral.server.url}/settings/harness`);
+    await page.goto(`${corral.server.url}/settings/harness?projectId=default`);
     await page.getByLabel('Work style name', { exact: true }).fill('MCP writer');
     await page
       .getByRole('combobox', { name: 'Policy', exact: true })
       .selectOption('trusted-native');
     await page.getByRole('button', { name: 'Save work style', exact: true }).click();
     await expect(page.getByTestId('harness-status')).toContainText('Saved revision 1');
-    await page.goto(`${corral.server.url}/settings/mcp`);
+    await page.goto(`${corral.server.url}/settings/mcp?projectId=default`);
     await page.getByRole('button', { name: /^Local docs/ }).click();
+    await page.getByRole('button', { name: 'Connect a work style', exact: true }).click();
     await page.getByRole('combobox', { name: 'Configure usage for', exact: true }).click();
     await page.getByRole('option', { name: 'MCP writer · r1', exact: true }).click();
     await page
@@ -129,7 +134,7 @@ test('[TC-HAR-016-H] reviews an MCP server, completes local OAuth and pins its r
     await page.goto(`${corral.server.url}/runs/${ids.runId}?view=run`);
     await expect(page.getByTestId('run-status').first()).toContainText('Succeeded');
     expect(fixture.mcpCalls).toBe(1);
-    await page.goto(`${corral.server.url}/settings/mcp`);
+    await page.goto(`${corral.server.url}/settings/mcp?projectId=default`);
     await page.getByRole('button', { name: /^Local docs/ }).click();
     await page.getByRole('button', { name: 'Review launch for Local docs', exact: true }).click();
 

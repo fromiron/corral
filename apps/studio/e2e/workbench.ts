@@ -14,11 +14,13 @@ export async function teamFromTemplate(page: Page, name = 'Single agent') {
     .click();
   await expect(page).toHaveURL(/\/edit$/);
   await page.goBack();
-  await expect(page.getByRole('textbox', { name: 'Purpose' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Start session', exact: true })).toBeVisible();
 }
 
 /** On a project page: starts a session with this purpose and its first team. */
 export async function startSession(page: Page, purpose: string) {
+  if (!(await page.getByRole('textbox', { name: 'Purpose' }).isVisible()))
+    await page.getByText('Session details (optional)', { exact: true }).click();
   await page.getByRole('textbox', { name: 'Purpose' }).fill(purpose);
   await page.getByRole('button', { name: 'Start session' }).click();
   await expect(page).toHaveURL(/\/sessions\/session_/);

@@ -23,6 +23,7 @@ import { SettingsPage } from './pages/SettingsPage.tsx';
 import { WorkspacePage } from './pages/WorkspacePage.tsx';
 import { currentProject, projectOfRun } from './projects.ts';
 import type { StudioServices } from './services.tsx';
+import { type SettingsSearch, validateSettingsSearch } from './workbench/navigation.ts';
 
 // Routes from Spec §4.1.
 
@@ -257,7 +258,8 @@ export const settingsRoute = createRoute({
   path: '/settings',
   validateSearch: (
     search: Record<string, unknown>,
-  ): { section?: 'general' | 'workspace' | 'shortcuts' | 'about' } => ({
+  ): SettingsSearch & { section?: 'general' | 'workspace' | 'shortcuts' | 'about' } => ({
+    ...validateSettingsSearch(search),
     ...(['general', 'workspace', 'shortcuts', 'about'].includes(String(search.section))
       ? { section: search.section as 'general' | 'workspace' | 'shortcuts' | 'about' }
       : {}),
@@ -268,28 +270,33 @@ export const settingsRoute = createRoute({
 export const harnessSettingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/settings/harness',
+  validateSearch: validateSettingsSearch,
   component: HarnessSettingsPage,
 });
 
 export const skillSettingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/settings/skills',
+  validateSearch: validateSettingsSearch,
   component: SkillSettingsPage,
 });
 export const hookSettingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/settings/hooks',
+  validateSearch: validateSettingsSearch,
   component: HookSettingsPage,
 });
 export const mcpSettingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/settings/mcp',
+  validateSearch: validateSettingsSearch,
   component: McpSettingsPage,
 });
 
 export const modelSettingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/settings/models',
+  validateSearch: validateSettingsSearch,
   loader: async ({ context }) => {
     const api = context.services.models;
     if (!api) return { profiles: [], providers: [], catalog: [], config: null };

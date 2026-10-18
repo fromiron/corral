@@ -111,7 +111,7 @@ export function flowEdges(
   return [...control, ...links];
 }
 
-export function CorralCanvas() {
+export function CorralCanvas({ onNodeSelect }: { onNodeSelect?: () => void } = {}) {
   const t = useTranslations('Canvas');
   const { editor } = useStudioStores();
   const draft = useStore(editor, (s) => s.draft);
@@ -298,6 +298,7 @@ export function CorralCanvas() {
         edges={edges}
         nodeTypes={nodeTypes}
         onNodesChange={onNodesChange}
+        onNodeClick={onNodeSelect}
         onEdgesChange={onEdgesChange}
         onDelete={onDelete}
         onConnect={onConnect}

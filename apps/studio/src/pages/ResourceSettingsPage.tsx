@@ -5,7 +5,6 @@ import { Button } from '@corral/react/ui';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { useCurrentProject } from '../projects.ts';
 import { useServices } from '../services.tsx';
 import { useManagementConfirmation } from '../workbench/harness/ConfirmAction.tsx';
 import { ResourceEditor } from '../workbench/harness/ResourceEditor.tsx';
@@ -17,6 +16,7 @@ import {
   TargetPicker,
   useHarnessTarget,
 } from '../workbench/harness/Target.tsx';
+import { useSettingsNavigation } from '../workbench/navigation.ts';
 import { SettingsLayout } from './SettingsPage.tsx';
 
 const keyOf = (entry: HarnessEntryKey) => `${entry.resourceHash}:${entry.entry}`;
@@ -33,17 +33,12 @@ export function HookSettingsPage() {
 }
 function ResourceSettingsPage({ kind }: { kind: 'skill' | 'extension' }) {
   const { harnesses } = useServices(),
-    projectId = useCurrentProject();
+    { projectId } = useSettingsNavigation();
   const t = useTranslations('Harness');
   return (
     <SettingsLayout active={kind === 'skill' ? 'skills' : 'hooks'}>
       {harnesses ? (
-        <ResourceManager
-          key={`${projectId}:${kind}`}
-          api={harnesses}
-          projectId={projectId}
-          kind={kind}
-        />
+        <ResourceManager key={kind} api={harnesses} projectId={projectId} kind={kind} />
       ) : (
         <p className="p-8">{t('localOnly')}</p>
       )}
@@ -56,11 +51,13 @@ function ResourceManager({
   kind,
 }: {
   api: HarnessApi;
-  projectId: string;
+  projectId: string | undefined;
   kind: 'skill' | 'extension';
 }) {
   const t = useTranslations('Resources'),
     h = useTranslations('Harness');
+  const n = useTranslations('Navigation');
+  const navigation = useSettingsNavigation();
   const target = useHarnessTarget(api, projectId);
   const confirmation = useManagementConfirmation();
   const [entries, setEntries] = useState<HarnessEntryView[]>([]),
@@ -179,7 +176,6 @@ function ResourceManager({
           {t('add')}
         </Button>
       </header>
-      <TargetPicker target={target} />
       {error ? (
         <p role="alert" className="text-sm text-danger">
           {error}
@@ -233,6 +229,7 @@ function ResourceManager({
                     <span className="flex flex-wrap gap-2 text-xs text-muted">
                       <span>{entry.resource.trustedAt ? h('trusted') : h('untrusted')}</span>
                       {entry.archivedAt ? <span>{t('archived')}</span> : null}
+                      {entry.successor ? <span>{t('newCopy')}</span> : null}
                       {entry.profiles.length ? (
                         <span>{t('profileCount', { count: entry.profiles.length })}</span>
                       ) : null}
@@ -273,6 +270,23 @@ function ResourceManager({
                 {t('editCopy')}
               </Button>
             </div>
+            {target.selection === 'library' ? (
+              <Button variant="outline" className="self-start" onClick={target.connect}>
+                {n('addToWorkStyle')}
+              </Button>
+            ) : (
+              <div className="flex flex-col gap-2">
+                <TargetPicker target={target} />
+                <Button
+                  variant="ghost"
+                  className="self-end"
+                  disabled={target.busy}
+                  onClick={() => target.setSelection('library')}
+                >
+                  {n('finishConnecting')}
+                </Button>
+              </div>
+            )}
             {target.profile ? (
               <div className="flex flex-col gap-3 rounded-lg bg-raised p-3">
                 <label className="flex items-center gap-2 text-sm">
@@ -364,6 +378,7 @@ function ResourceManager({
               )}
               <Link
                 to="/settings/harness"
+                search={navigation.search}
                 className="mt-2 inline-block text-sm text-accent underline"
               >
                 {t('manageProfiles')}

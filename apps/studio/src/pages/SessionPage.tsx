@@ -55,6 +55,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -70,12 +71,19 @@ import { ComposerSurface } from '../workbench/ComposerSurface.tsx';
 import { type IntentLock, resolveIntent } from '../workbench/composerIntent.ts';
 import { type MentionItem, mentionToken, pickedReferences } from '../workbench/composerMenu.ts';
 import { FilePanel, type FileReference } from '../workbench/FilePanel.tsx';
+import { useSettingsNavigation } from '../workbench/navigation.ts';
 import { isSendKey, usePreferences } from '../workbench/preferences.ts';
 import { EDIT_REQUEST, editRequest, RefusalHelp } from '../workbench/RefusalHelp.tsx';
 import { RunHarnessOverrides } from '../workbench/RunHarnessOverrides.tsx';
 import { RunMessage } from '../workbench/RunMessage.tsx';
 import { RunRoleOverrides } from '../workbench/RunRoleOverrides.tsx';
-import { readComposerDraft, writeComposerDraft } from '../workbench/sessionDraft.ts';
+import {
+  COMPOSER_DRAFT_SENT,
+  clearSentComposerDraft,
+  readComposerDraft,
+  writeComposerDraft,
+} from '../workbench/sessionDraft.ts';
+import { TabRow } from '../workbench/TabRow.tsx';
 import { TopbarActions } from '../workbench/TopbarSlot.tsx';
 import { useMentionSearch } from '../workbench/useMentionSearch.ts';
 import {
@@ -164,7 +172,11 @@ export function SessionPage() {
   const reference =
     pendingReference?.sessionId === session.sessionId ? pendingReference.value : null;
   const setSearch = (patch: Partial<typeof search>) => {
-    const next = validateSessionSearch({ ...search, ...patch });
+    const next = validateSessionSearch({
+      ...search,
+      ...patch,
+      ...(patch.view === 'results' ? { artifact: undefined } : {}),
+    });
     rememberView({ ...next });
     void navigate({ search: () => next });
   };
@@ -188,6 +200,7 @@ export function SessionPage() {
         panelTabs={
           panel ? (
             <TabRow
+              id="session-panels"
               label={tw('panelTabs')}
               values={PANELS}
               current={panel}
@@ -226,6 +239,8 @@ export function SessionPage() {
           panel ? (
             <div
               role="tabpanel"
+              id={`session-panels-${panel}-panel`}
+              aria-labelledby={`session-panels-${panel}-tab`}
               aria-label={tw(`panel.${panel}`)}
               className={
                 panel === 'run' ? 'flex h-full min-h-0 flex-col' : 'flex flex-col gap-3 p-3'
@@ -257,54 +272,6 @@ export function SessionPage() {
         }
       />
     </>
-  );
-}
-
-/** A WAI-ARIA tab row; arrow keys move between tabs. */
-function TabRow<T extends string>({
-  label,
-  values,
-  current,
-  text,
-  onChoose,
-}: {
-  label: string;
-  values: T[];
-  current: T;
-  text: (value: T) => string;
-  onChoose: (value: T) => void;
-}) {
-  const refs = useRef<Partial<Record<T, HTMLButtonElement | null>>>({});
-  const move = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
-    const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
-    if (!step) return;
-    event.preventDefault();
-    const next = values[(index + step + values.length) % values.length] as T;
-    onChoose(next);
-    refs.current[next]?.focus();
-  };
-  return (
-    <div role="tablist" aria-label={label} className="flex items-center gap-0.5">
-      {values.map((value, index) => (
-        <button
-          key={value}
-          ref={(el) => {
-            refs.current[value] = el;
-          }}
-          type="button"
-          role="tab"
-          aria-selected={current === value}
-          tabIndex={current === value ? 0 : -1}
-          onClick={() => onChoose(value)}
-          onKeyDown={(event) => move(event, index)}
-          className={`h-7 shrink-0 rounded-md px-2.5 text-ui transition-colors ${
-            current === value ? 'bg-subtle font-medium text-text' : 'text-muted hover:text-text'
-          }`}
-        >
-          {text(value)}
-        </button>
-      ))}
-    </div>
   );
 }
 
@@ -708,6 +675,7 @@ function RunPanel({
           key={runId}
           runId={runId}
           embedded
+          compact
           search={{
             execution: search.execution,
             artifact: search.artifact,
@@ -1218,6 +1186,7 @@ function Composer({
 }) {
   const t = useTranslations('Sessions');
   const tc = useTranslations('Composer');
+  const navigation = useSettingsNavigation();
   const tr = useTranslations('Reins');
   const services = useServices();
   const { repository, transport, mode, live } = services;
@@ -1364,15 +1333,33 @@ function Composer({
     setTarget(value);
     if (text) setLock({ intent: 'steer', target: value });
   };
-  useEffect(() => {
-    writeComposerDraft(session.sessionId, {
+  const composerDraft = useMemo(
+    () => ({
       text,
       intent: lock?.intent ?? null,
       target: lock?.target ?? null,
       targetLabel: lock?.target ? (targetNames.current.get(lock.target) ?? null) : null,
       references: picked.filter((item) => pickedReferences(text, [item]).length > 0),
-    });
-  }, [session.sessionId, text, lock, picked]);
+    }),
+    [text, lock, picked],
+  );
+  const draftRevision = useRef(0);
+  useEffect(() => {
+    draftRevision.current = writeComposerDraft(session.sessionId, composerDraft);
+  }, [session.sessionId, composerDraft]);
+  useEffect(() => {
+    const sent = (event: Event) => {
+      const detail = (event as CustomEvent<{ sessionId: string; revision: number }>).detail;
+      if (detail.sessionId !== session.sessionId || detail.revision !== draftRevision.current)
+        return;
+      setPicked([]);
+      setChosen(null);
+      setLock(null);
+      setText('');
+    };
+    window.addEventListener(COMPOSER_DRAFT_SENT, sent);
+    return () => window.removeEventListener(COMPOSER_DRAFT_SENT, sent);
+  }, [session.sessionId]);
 
   // References restored from a draft are checked once: a result version, run or role that is
   // gone is marked, never swapped for another with the same name (UX-02).
@@ -1441,7 +1428,7 @@ function Composer({
 
   const record = async (entry: Parameters<typeof repository.addSessionEntry>[1]) => {
     const saved = await repository.addSessionEntry(session.sessionId, entry);
-    if (!saved.ok) setError(t('failed', { message: saved.message }));
+    if (!saved.ok) throw new Error(t('failed', { message: saved.message }));
   };
 
   /** Starts a follow-up with the team; returns the run or why not. */
@@ -1495,6 +1482,8 @@ function Composer({
   const send = async () => {
     const body = text.trim();
     if (!body || busy) return;
+    const submittedRevision = writeComposerDraft(session.sessionId, composerDraft);
+    draftRevision.current = submittedRevision;
     setBusy(true);
     setError(null);
     setRefusal(null);
@@ -1576,10 +1565,7 @@ function Composer({
         return;
       }
       pending.current = null;
-      setPicked([]);
-      setChosen(null);
-      setLock(null);
-      setText('');
+      clearSentComposerDraft(session.sessionId, submittedRevision);
       await router.invalidate();
       onChange();
     } catch (failure) {
@@ -1934,7 +1920,7 @@ function Composer({
                   roles: notReady.map((r) => `${r.name} (${r.profileId})`).join(', '),
                 })}
               </span>
-              <Button size="xs" render={<Link to="/settings/models" />}>
+              <Button size="xs" render={<Link to="/settings/models" search={navigation.search} />}>
                 {tc('models.connect')}
               </Button>
               <Button variant="outline" size="xs" onClick={() => setRunMode('mock')}>
@@ -2172,7 +2158,9 @@ function Composer({
               </Button>
             ) : null}
             {mode === 'server' ? (
-              <Button render={<Link to="/settings/models" />}>{tc('models.settings')}</Button>
+              <Button render={<Link to="/settings/models" search={navigation.search} />}>
+                {tc('models.settings')}
+              </Button>
             ) : null}
           </DialogFooter>
         </DialogPopup>

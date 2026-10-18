@@ -7,6 +7,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useRemembered } from '../pages/Workbench.tsx';
 import { useServices } from '../services.tsx';
+import { useSettingsNavigation } from './navigation.ts';
 import { useWorkspaceFiles } from './useWorkspaceFiles.ts';
 
 const SourceCode = lazy(() =>
@@ -32,6 +33,7 @@ export function FilePanel({
 }) {
   const t = useTranslations('Desktop');
   const tf = useTranslations('Files');
+  const navigation = useSettingsNavigation();
   const { workspaces } = useServices();
   const [savedSource, setSource] = useRemembered<'project' | 'session' | null>(
     `corral:file-source:v1:${sessionId}`,
@@ -96,7 +98,11 @@ export function FilePanel({
     return (
       <div className="space-y-2 p-3 text-xs text-muted">
         {error ? <p role="alert">{error}</p> : <p>{t('linkToBrowse')}</p>}
-        <Link to="/settings" search={{ section: 'workspace' }} className="text-accent underline">
+        <Link
+          to="/settings"
+          search={{ ...navigation.search, projectId, section: 'workspace' }}
+          className="text-accent underline"
+        >
           {t('workspace')}
         </Link>
       </div>

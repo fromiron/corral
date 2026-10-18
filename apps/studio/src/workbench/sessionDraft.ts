@@ -7,6 +7,8 @@ import type { MentionItem } from './composerMenu.ts';
 const key = (sessionId: string) => `corral:session-draft:${sessionId}`;
 const INTENTS: readonly SessionIntent[] = ['next', 'queue', 'steer', 'explain'];
 const KINDS = ['file', 'folder', 'result', 'run', 'role'];
+export const COMPOSER_DRAFT_SENT = 'corral:composer-draft-sent';
+const revisions = new Map<string, { value: string | null; revision: number }>();
 
 export interface ComposerDraft {
   text: string;
@@ -72,13 +74,34 @@ export function readComposerDraft(sessionId: string): ComposerDraft {
 }
 
 export function writeComposerDraft(sessionId: string, draft: ComposerDraft) {
+  const value = serializeComposerDraft(draft);
+  const previous = revisions.get(sessionId);
+  const revision = previous?.value === value ? previous.revision : (previous?.revision ?? 0) + 1;
+  revisions.set(sessionId, { value, revision });
   try {
-    const value = serializeComposerDraft(draft);
     if (value) window.localStorage.setItem(key(sessionId), value);
     else window.localStorage.removeItem(key(sessionId));
   } catch {
     // The draft remains usable in the current page when storage is unavailable.
   }
+  return revision;
+}
+
+/** Completion may arrive in settings or in a new Composer; only consume the sent draft. */
+export function clearSentComposerDraft(sessionId: string, revision: number) {
+  const current = revisions.get(sessionId);
+  if (current?.revision !== revision) return;
+  try {
+    if (
+      serializeComposerDraft(parseComposerDraft(window.localStorage.getItem(key(sessionId)))) !==
+      current.value
+    )
+      return;
+  } catch {
+    // Without storage the mounted Composer still owns its in-memory draft revision.
+  }
+  writeComposerDraft(sessionId, empty());
+  window.dispatchEvent(new CustomEvent(COMPOSER_DRAFT_SENT, { detail: { sessionId, revision } }));
 }
 
 /** The text of a draft (older callers and the new-session purpose). */

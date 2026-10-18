@@ -1665,5 +1665,23 @@
     "done": "CR-022 주요 경계 및 실제 패키지 관리/실행 검증 통과",
     "status": "planned",
     "evidence": "docs/plans/Resource-Management-Plan.md"
+  },
+  {
+    "id": "C-086",
+    "phase": "P12",
+    "title": "전체 UI 구조와 작업 복귀 개선",
+    "dependsOn": [
+      "C-085"
+    ],
+    "requirements": [
+      "CRL-UX-004"
+    ],
+    "files": [
+      "apps/studio/",
+      "packages/react/src/messages/"
+    ],
+    "done": "CR-023 전체 수용 기준과 실제 패키지 UI 검증 통과",
+    "status": "implemented",
+    "evidence": "docs/plans/UI-Structure-Plan.md"
   }
 ]

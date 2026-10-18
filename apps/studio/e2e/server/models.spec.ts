@@ -14,7 +14,7 @@ async function openModels(page: Page) {
 test.use({ live: true });
 
 async function agentToOutput(page: Page) {
-  await page.getByRole('button', { name: 'New Corral' }).click();
+  await page.getByRole('button', { name: 'New team' }).click();
   await page.getByRole('button', { name: 'Add Agent' }).click();
   await page.getByRole('button', { name: 'Add Output' }).click();
   await page
@@ -23,6 +23,7 @@ async function agentToOutput(page: Page) {
       page.locator('.react-flow__node[data-id="output_1"] .react-flow__handle[data-handleid="in"]'),
     );
   await expect(page.getByText('Ready to run.')).toBeVisible();
+  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
 }
 
 test('[TC-SEC-002-H] signing in from Settings shows status and expiry, never the token', async ({
@@ -60,6 +61,7 @@ test('a live run is refused until sign-in, then runs on the signed-in model', as
   await corral.open('/');
   await agentToOutput(page);
   await page.getByLabel('Agents').selectOption({ label: 'Live models (uses your sign-in)' });
+  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('Settings → Models');
 
@@ -87,6 +89,7 @@ test('a live run is refused until sign-in, then runs on the signed-in model', as
       }),
     )
     .toBe(true);
+  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   await expect(page.getByTestId('run-output')).toHaveText('Live answer from the model.');
   await expect(page.getByTestId('run-status')).toContainText('Succeeded');
@@ -118,9 +121,10 @@ test.describe('a borrowed Codex CLI login (CR-004)', () => {
     expect(content).not.toContain('secret');
     expect(content).not.toContain('auth.json');
 
-    await page.getByRole('link', { name: 'Corrals' }).click();
+    await page.getByRole('link', { name: 'Back to work', exact: true }).click();
     await agentToOutput(page);
     await page.getByLabel('Agents').selectOption({ label: 'Live models (uses your sign-in)' });
+    await page.getByRole('tab', { name: 'Test run', exact: true }).click();
     await page.getByRole('button', { name: 'Run', exact: true }).click();
     await expect(page.getByTestId('run-output')).toHaveText('Answer through the Codex login.');
     expect(corral.fake?.seen.tokens.length).toBeGreaterThan(0);
@@ -145,9 +149,10 @@ test('[TC-SEC-002-H] an API key typed under Models runs live, is never shown, an
   await expect(page.getByTestId('profile-model-a')).toContainText('Ready');
   expect(await page.content()).not.toContain('sk-e2e-entered-secret');
 
-  await page.getByRole('link', { name: 'Corrals' }).click();
+  await page.getByRole('link', { name: 'Back to work', exact: true }).click();
   await agentToOutput(page);
   await page.getByLabel('Agents').selectOption({ label: 'Live models (uses your sign-in)' });
+  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   await expect(page.getByTestId('run-output')).toHaveText('Answer with an entered key.');
   expect(corral.fake?.seen.tokens.every((token) => token === 'sk-e2e-entered-secret')).toBe(true);
@@ -188,9 +193,10 @@ test.describe('a keyless OpenAI-compatible endpoint (CR-005)', () => {
     await expect(local.getByRole('button', { name: 'Sign in' })).toHaveCount(0);
     await expect(page.getByTestId('profile-model-a')).toContainText('Ready');
 
-    await page.getByRole('link', { name: 'Corrals' }).click();
+    await page.getByRole('link', { name: 'Back to work', exact: true }).click();
     await agentToOutput(page);
     await page.getByLabel('Agents').selectOption({ label: 'Live models (uses your sign-in)' });
+    await page.getByRole('tab', { name: 'Test run', exact: true }).click();
     await page.getByRole('button', { name: 'Run', exact: true }).click();
     await expect(page.getByTestId('run-output')).toHaveText('Answer from the local model.');
     expect(corral.endpoint?.authorizations.every((a) => a === 'Bearer no-key')).toBe(true);
