@@ -17,7 +17,7 @@ export { RunActions } from './components/RunActions.tsx';
 export { RunCanvas } from './components/RunCanvas.tsx';
 export { type ComparedRun, RunComparison } from './components/RunComparison.tsx';
 export { RunControls } from './components/RunControls.tsx';
-export { isHtmlDocument, RunResults } from './components/RunResults.tsx';
+export { isHtmlDocument, ResultReader, RunResults } from './components/RunResults.tsx';
 export { describeEvent, EventText, RunReason } from './components/RunText.tsx';
 export { ExecutionTree, RunOutput, RunView } from './components/RunView.tsx';
 export { SafeMarkdown } from './components/SafeMarkdown.tsx';

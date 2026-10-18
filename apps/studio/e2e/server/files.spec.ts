@@ -89,8 +89,8 @@ test('[WBTST-016] a session works in its own copy, and its changes are reviewed 
   const scratch = mkdtempSync(join(tmpdir(), 'corral-e2e-def-'));
   try {
     await corral.open('/');
-    await page.getByRole('tab', { name: /^Work folder/ }).click();
-    const folder = page.getByRole('region', { name: 'Work folder' });
+    await page.getByRole('tab', { name: /^Project folder/ }).click();
+    const folder = page.getByRole('region', { name: 'Project folder' });
     await folder.getByLabel('Folder path on this computer').fill(original);
     await folder.getByRole('button', { name: 'Link folder' }).click();
     await expect(folder).toContainText('no uncommitted changes');
@@ -105,7 +105,8 @@ test('[WBTST-016] a session works in its own copy, and its changes are reviewed 
     await page.getByRole('tab', { name: /^Teams/ }).click();
     await page.locator('input[type=file]').setInputFiles([writerWithFiles(scratch)]);
     await expect(page).toHaveURL(/\/edit$/);
-    await page.getByRole('link', { name: 'Corrals', exact: true }).click();
+    await page.getByRole('link', { name: 'Project home', exact: true }).click();
+    await page.getByText('Session details (optional)', { exact: true }).click();
     await page.getByLabel('Purpose').fill('Keep notes in the repository');
     await page.getByRole('button', { name: 'Start session' }).click();
     await expect(page).toHaveURL(/\/sessions\/session_/);

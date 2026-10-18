@@ -195,7 +195,7 @@ function ResultButton({
   return bare ? button : <li>{button}</li>;
 }
 
-function ResultReader({
+export function ResultReader({
   session,
   item,
   previewUrl,

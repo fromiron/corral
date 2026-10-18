@@ -16,14 +16,15 @@ const approve = async (page: Page, kind: 'Your decision' | 'Final output') => {
 
 async function finishedTeamRun(page: Page) {
   await page.goto('/demo?delay=150');
+  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   await approve(page, 'Your decision');
   await approve(page, 'Final output');
   await expect(page.getByTestId('run-status')).toContainText('Succeeded');
-  await page.getByRole('link', { name: 'Open run page' }).click();
+  await page.getByRole('link', { name: 'Open execution page' }).click();
   await expect(page).toHaveURL(/\/runs\/run_/);
   // CR-009: a finished run opens on its results; these checks are about the run view.
-  await page.getByRole('tab', { name: 'Run', exact: true }).click();
+  await page.getByRole('tab', { name: 'Execution', exact: true }).click();
 }
 
 const graph = (page: Page) => page.getByRole('application', { name: 'Run graph' });
@@ -33,7 +34,7 @@ test('[TC-OBS-001-H] the Run page shows the graph with execution counts, and a n
 }) => {
   await finishedTeamRun(page);
   await expect(graph(page).locator('.react-flow__node')).toHaveCount(9);
-  await expect(page.getByText('Layout from the saved Corral')).toBeVisible();
+  await expect(page.getByText('Layout from the saved team')).toBeVisible();
   const writer = graph(page).locator('.react-flow__node[data-id="write"]');
   await expect(writer).toContainText('2 executions');
   await expect(writer.locator('[data-run-status]')).toHaveAttribute('data-run-status', 'done');

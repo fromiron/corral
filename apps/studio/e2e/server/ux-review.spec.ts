@@ -16,8 +16,6 @@ async function session(page: Page, corral: Harness) {
   });
   await expect(page).toHaveURL(/\/edit$/);
   await page.getByRole('link', { name: 'New session', exact: true }).click();
-  await page.getByLabel('Purpose').fill('Review fixes');
-  await page.getByRole('button', { name: 'Start session', exact: true }).click();
   await expect(page).toHaveURL(/\/sessions\/session_/);
 }
 
@@ -26,8 +24,45 @@ test('[TC-UX-02-H] a referenced result keeps its exact version through a reload'
   corral,
 }) => {
   await session(page, corral);
+  const sendAcrossSettings = async (nextDraft?: string) => {
+    let release!: () => void,
+      entered!: () => void,
+      heldOnce = false;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const committed = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    await page.route('**/api/v1/runs', async (route) => {
+      if (route.request().method() !== 'POST' || heldOnce) return route.fallback();
+      heldOnce = true;
+      const response = await route.fetch();
+      entered();
+      await held;
+      await route.fulfill({ response });
+    });
+    const finished = page.waitForResponse(
+      (response) =>
+        response.url().endsWith('/api/v1/runs') && response.request().method() === 'POST',
+    );
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
+    await committed;
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await page.getByRole('link', { name: 'Shortcuts', exact: true }).click();
+    if (nextDraft !== undefined) {
+      await page.getByRole('link', { name: 'Back to work', exact: true }).click();
+      await requestBox(page).fill(nextDraft);
+    }
+    release();
+    await finished;
+    if (nextDraft === undefined)
+      await page.getByRole('link', { name: 'Back to work', exact: true }).click();
+    await expect(requestBox(page)).toHaveValue(nextDraft ?? '');
+    await page.unroute('**/api/v1/runs');
+  };
   await requestBox(page).fill('First draft');
-  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await sendAcrossSettings();
   await expect(page.getByTestId('chat-timeline').getByText('Succeeded')).toBeVisible({
     timeout: 20_000,
   });
@@ -47,7 +82,7 @@ test('[TC-UX-02-H] a referenced result keeps its exact version through a reload'
   await page.reload();
   await expect(chips.getByRole('listitem')).toHaveCount(1);
   await expect(chips.locator('[data-missing]')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await sendAcrossSettings('Keep this newer unsent draft');
   await expect.poll(() => corral.server.coordinator.listRuns().length).toBe(2);
   const second = corral.server.coordinator.listRuns().find((r) => r.runId !== first?.runId);
   // The reference reached the run as that exact version: its text is in the new brief (CR-016).

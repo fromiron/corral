@@ -117,6 +117,7 @@ test('[TC-DEV-005-H] a previewed future prompt patch changes only the downstream
   await page.getByLabel('Kind', { exact: true }).selectOption('task_output');
   await page.getByLabel('From', { exact: true }).selectOption('agent_2');
   await page.getByRole('button', { name: 'Add', exact: true }).click();
+  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   await page.getByRole('button', { name: 'Pause run', exact: true }).click();
   await expect(page.getByTestId('run-status')).toContainText('Paused');
@@ -160,11 +161,12 @@ test('[TC-DEV-005-H] the default demo team delegates, asks, revises once and fin
       runtimeRequests.push(request.url());
   });
   await page.goto('/demo?delay=200');
-  await expect(page.getByLabel('Corral name')).toHaveValue('Research team');
+  await expect(page.getByLabel('Team name')).toHaveValue('Research team');
   await expect(page.getByText('Demo · simulated', { exact: true })).toBeVisible();
   await expect(page.getByText('Ready to run.')).toBeVisible();
   await expect(step(page, 'start')).toHaveAttribute('data-state', 'current');
   await context.setOffline(true);
+  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
   await page.getByRole('button', { name: 'Run', exact: true }).click();
 
   // Research hands two parts to helpers, which appear under it in the call tree.
@@ -193,6 +195,7 @@ test('[TC-DEV-005-N] a rejected approval does not finish the run or the guide', 
   page,
 }) => {
   await page.goto('/demo?delay=150');
+  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   const card = page.locator('[data-testid^="approval-"]').filter({ hasText: 'Your decision' });
   await expect(card).toBeVisible({ timeout: 20_000 });
@@ -214,6 +217,7 @@ test('[TC-DEV-005-H] the guide can pause at round 2 so a visitor has time to ste
   await page.goto('/demo?delay=1200');
   const arm = step(page, 'steer').getByLabel('Pause the run when the round 2 Writer starts');
   await arm.check();
+  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   // The guide pauses through the normal run command, and points Reins at the round 2 Writer.
   await expect(page.getByTestId('run-status')).toContainText('Paused', { timeout: 20_000 });

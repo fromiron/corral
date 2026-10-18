@@ -1,6 +1,7 @@
 import { Button } from '@corral/react/ui';
 import { Link } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
+import { useSettingsNavigation } from './navigation.ts';
 import { refusalKind } from './refusal.ts';
 
 /** Fired with a request's text to take it back into the request box (UX-04). */
@@ -30,6 +31,7 @@ export function RefusalHelp({
   onQueue?: () => void;
 }) {
   const t = useTranslations('Refusal');
+  const navigation = useSettingsNavigation();
   const kind = refusalKind({ code, message, network });
   return (
     <div
@@ -44,7 +46,7 @@ export function RefusalHelp({
       </p>
       <div className="flex flex-wrap gap-1">
         {kind === 'signin' || kind === 'profile' ? (
-          <Button size="xs" render={<Link to="/settings/models" />}>
+          <Button size="xs" render={<Link to="/settings/models" search={navigation.search} />}>
             {t('connect')}
           </Button>
         ) : null}

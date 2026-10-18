@@ -19,30 +19,125 @@ import {
   type ErrorComponentProps,
   Link,
   Outlet,
+  useBlocker,
   useNavigate,
   useRouter,
   useRouterState,
 } from '@tanstack/react-router';
-import { type CSSProperties, useEffect, useRef, useState } from 'react';
+import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { CommandLayer } from '../CommandPalette.tsx';
 import { desktop, onTopbarDoubleClick } from '../desktop.tsx';
-import { projectName, useCurrentProject, useProjectsVersion } from '../projects.ts';
+import { projectName } from '../projects.ts';
 import { useServices } from '../services.tsx';
 import { shortcutLabel } from '../shortcuts.ts';
+import { hasUnsavedEditorCopy } from '../workbench/editorDraft.ts';
+import {
+  SettingsNavigationContext,
+  validateSettingsSearch,
+  workHref,
+} from '../workbench/navigation.ts';
 import { applyTheme, changePreferences, usePreferences } from '../workbench/preferences.ts';
-import { Sidebar } from '../workbench/Sidebar.tsx';
+import { SettingsNavigation, settingsSection } from '../workbench/SettingsNavigation.tsx';
+import { Sidebar, useCorralSidebar } from '../workbench/Sidebar.tsx';
 import { TopbarSlotContext } from '../workbench/TopbarSlot.tsx';
 
 export function RootLayout() {
+  const { repository } = useServices();
+  useBlocker({
+    shouldBlockFn: () => false,
+    enableBeforeUnload: () => hasUnsavedEditorCopy(repository),
+  });
   const t = useTranslations('Studio');
   const tw = useTranslations('Workbench');
   const tp = useTranslations('CommandPalette');
+  const tn = useTranslations('Navigation');
+  const td = useTranslations('Desktop');
+  const th = useTranslations('Harness');
+  const tr = useTranslations('Resources');
+  const projectsText = useTranslations('Projects');
   const prefs = usePreferences();
-  const location = useRouterState({ select: (s) => s.location.href });
+  const location = useRouterState({ select: (s) => s.location });
+  // Run/Inbox/desktop notifications live for the frame, including settings and narrow dialogs.
+  const sidebar = useCorralSidebar();
   const data = useRouterState({ select: (s) => s.matches.at(-1)?.loaderData }) as
-    | { session?: { title: string } }
+    | {
+        project?: ProjectSummary;
+        projectId?: string;
+        session?: { title: string; projectId: string };
+        definition?: { name: string };
+      }
     | undefined;
+  const settings = location.pathname.startsWith('/settings');
+  const selectedRun = sidebar.runs.find(
+    (run) => location.pathname === `/runs/${encodeURIComponent(run.runId)}`,
+  );
+  const projectId =
+    settings || location.pathname === '/projects'
+      ? undefined
+      : (data?.project?.projectId ??
+        data?.session?.projectId ??
+        data?.projectId ??
+        (selectedRun
+          ? (selectedRun.projectId ??
+            sidebar.sessions.find((session) => session.sessionId === selectedRun.sessionId)
+              ?.projectId ??
+            sidebar.corrals.find((team) => team.corralId === selectedRun.corralId)?.projectId)
+          : undefined));
+  const project = sidebar.projects.find((item) => item.projectId === projectId) ?? data?.project;
+  const [lastWork, setLastWork] = useState<{ href: string; projectId?: string } | null>(null);
+  const search = validateSettingsSearch(location.search);
+  const settingsProjectId = sidebar.projects.find(
+    (item) =>
+      item.projectId === (search.projectId ?? (search.returnTo ? undefined : lastWork?.projectId)),
+  )?.projectId;
+  const returnTo =
+    search.returnTo ??
+    lastWork?.href ??
+    (settingsProjectId ? `/projects/${encodeURIComponent(settingsProjectId)}` : '/projects');
+  const entryProjectId = settings ? settingsProjectId : projectId;
+  const workLocation = workHref(location.href) ?? '/projects';
+  const entryReturnTo = settings ? returnTo : workLocation;
+  const settingsNavigation = useMemo(
+    () => ({
+      projects: sidebar.projects,
+      projectId: entryProjectId,
+      returnTo,
+      search: { ...(entryProjectId ? { projectId: entryProjectId } : {}), returnTo: entryReturnTo },
+    }),
+    [sidebar.projects, entryProjectId, returnTo, entryReturnTo],
+  );
+  useEffect(() => {
+    if (!settings) setLastWork({ href: workLocation, ...(projectId ? { projectId } : {}) });
+  }, [settings, workLocation, projectId]);
+  const section = settingsSection(location.pathname, location.search.section);
+  const settingsTitle = !settings
+    ? ''
+    : section === 'harness'
+      ? location.hash.replace(/^#/, '') === 'project-defaults'
+        ? tn('projectDefaults')
+        : th('heading')
+      : ['skills', 'hooks', 'mcp'].includes(section)
+        ? tr(section)
+        : section === 'workspace'
+          ? tn('projectFolder')
+          : td(section);
+  const pageTitle = settings
+    ? settingsTitle
+    : (data?.session?.title ??
+      data?.definition?.name ??
+      (location.pathname === '/projects'
+        ? projectsText('allProjects')
+        : selectedRun
+          ? tn('runDetails')
+          : location.pathname === '/compare'
+            ? tn('compare')
+            : location.pathname === '/demo'
+              ? tn('demo')
+              : ''));
+  const activeRun = sidebar.runs.find(
+    (run) => !['succeeded', 'failed', 'cancelled', 'interrupted'].includes(run.status),
+  );
   const [mobileOpen, setMobileOpen] = useState(false);
   const [narrow, setNarrow] = useState(() => matchMedia('(max-width: 1023px)').matches);
   const sidebarTrigger = useRef<HTMLButtonElement>(null);
@@ -58,9 +153,9 @@ export function RootLayout() {
     return () => media.removeEventListener('change', update);
   }, []);
   useEffect(() => {
-    void location;
+    void location.href;
     setMobileOpen(false);
-  }, [location]);
+  }, [location.href]);
   useEffect(() => {
     // The desktop window and its title bar buttons follow the page's theme (CR-017).
     const update = () => {
@@ -77,136 +172,167 @@ export function RootLayout() {
   }, [prefs.sidebarOpen]);
   return (
     <TooltipProvider>
-      <TopbarSlotContext.Provider value={slot}>
-        <div
-          className="app-shell"
-          data-sidebar-open={prefs.sidebarOpen}
-          style={{ '--app-sidebar-width': `${prefs.sidebarWidth}px` } as CSSProperties}
-        >
-          {narrow ? (
-            <Dialog open={mobileOpen} onOpenChange={setMobileOpen}>
-              <DialogPopup
-                className="mobile-sidebar-dialog"
-                showCloseButton={false}
-                bottomStickOnMobile={false}
-                finalFocus={sidebarTrigger}
-              >
-                <DialogTitle className="sr-only">{tw('expandSidebar')}</DialogTitle>
-                <Sidebar />
-              </DialogPopup>
-            </Dialog>
-          ) : (
-            <aside className="app-sidebar">
-              <Sidebar />
-            </aside>
-          )}
-          {/* biome-ignore lint/a11y/useSemanticElements: WAI-ARIA window splitter */}
+      <SettingsNavigationContext.Provider value={settingsNavigation}>
+        <TopbarSlotContext.Provider value={slot}>
           <div
-            role="separator"
-            aria-label={tw('resizeSidebar')}
-            aria-orientation="vertical"
-            tabIndex={0}
-            aria-valuenow={prefs.sidebarWidth}
-            aria-valuemin={220}
-            aria-valuemax={420}
-            className="app-sidebar-resizer"
-            onPointerDown={(e) => {
-              drag.current = { x: e.clientX, width: prefs.sidebarWidth };
-              e.currentTarget.setPointerCapture(e.pointerId);
-            }}
-            onPointerMove={(e) => {
-              if (drag.current)
-                changePreferences({
-                  sidebarWidth: drag.current.width + e.clientX - drag.current.x,
-                });
-            }}
-            onPointerUp={() => {
-              drag.current = null;
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-                e.preventDefault();
-                changePreferences({
-                  sidebarWidth: prefs.sidebarWidth + (e.key === 'ArrowRight' ? 16 : -16),
-                });
-              }
-            }}
-          />
-          <div className="app-main">
-            {/* biome-ignore lint/a11y/noStaticElementInteractions: a title bar's double click is a pointer convenience; the window menu does the same */}
-            <header className="app-topbar" onDoubleClick={onTopbarDoubleClick}>
-              <h1 className="sr-only">{t('title')}</h1>
-              <Tooltip content={tw('expandSidebar')} shortcut={shortcutLabel('view.sidebar')}>
-                <Button
-                  ref={sidebarTrigger}
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={tw('expandSidebar')}
-                  className="app-sidebar-trigger"
-                  onClick={() => {
-                    changePreferences({ sidebarOpen: true });
-                    setMobileOpen((v) => !v);
-                  }}
+            className="app-shell"
+            data-sidebar-open={prefs.sidebarOpen}
+            style={{ '--app-sidebar-width': `${prefs.sidebarWidth}px` } as CSSProperties}
+          >
+            {narrow ? (
+              <Dialog open={mobileOpen} onOpenChange={setMobileOpen}>
+                <DialogPopup
+                  className="mobile-sidebar-dialog"
+                  showCloseButton={false}
+                  bottomStickOnMobile={false}
+                  finalFocus={sidebarTrigger}
                 >
-                  <PanelLeft />
-                </Button>
-              </Tooltip>
-              <ProjectSwitcher />
-              {data?.session ? (
-                <h2 className="flex min-w-0 items-center text-ui font-medium">
-                  <span aria-hidden="true" className="mr-1.5 text-muted/50">
-                    /
-                  </span>
-                  <span className="truncate">{data.session.title}</span>
-                </h2>
-              ) : null}
-              <div ref={setSlot} className="ml-auto flex shrink-0 items-center gap-1" />
-              <Tooltip content={tp('button')} shortcut={shortcutLabel('palette')}>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={tp('button')}
-                  onClick={() =>
-                    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }))
-                  }
+                  <DialogTitle className="sr-only">{tw('expandSidebar')}</DialogTitle>
+                  {settings ? (
+                    <SettingsNavigation inbox={sidebar.inbox} currentProject={sidebar.current} />
+                  ) : (
+                    <Sidebar model={sidebar} />
+                  )}
+                </DialogPopup>
+              </Dialog>
+            ) : (
+              <aside className="app-sidebar">
+                {settings ? (
+                  <SettingsNavigation inbox={sidebar.inbox} currentProject={sidebar.current} />
+                ) : (
+                  <Sidebar model={sidebar} />
+                )}
+              </aside>
+            )}
+            {/* biome-ignore lint/a11y/useSemanticElements: WAI-ARIA window splitter */}
+            <div
+              role="separator"
+              aria-label={tw('resizeSidebar')}
+              aria-orientation="vertical"
+              tabIndex={0}
+              aria-valuenow={prefs.sidebarWidth}
+              aria-valuemin={220}
+              aria-valuemax={420}
+              className="app-sidebar-resizer"
+              onPointerDown={(e) => {
+                drag.current = { x: e.clientX, width: prefs.sidebarWidth };
+                e.currentTarget.setPointerCapture(e.pointerId);
+              }}
+              onPointerMove={(e) => {
+                if (drag.current)
+                  changePreferences({
+                    sidebarWidth: drag.current.width + e.clientX - drag.current.x,
+                  });
+              }}
+              onPointerUp={() => {
+                drag.current = null;
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                  e.preventDefault();
+                  changePreferences({
+                    sidebarWidth: prefs.sidebarWidth + (e.key === 'ArrowRight' ? 16 : -16),
+                  });
+                }
+              }}
+            />
+            <div className="app-main">
+              {/* biome-ignore lint/a11y/noStaticElementInteractions: a title bar's double click is a pointer convenience; the window menu does the same */}
+              <header className="app-topbar" onDoubleClick={onTopbarDoubleClick}>
+                <h1 className="sr-only">{t('title')}</h1>
+                <Tooltip content={tw('expandSidebar')} shortcut={shortcutLabel('view.sidebar')}>
+                  <Button
+                    ref={sidebarTrigger}
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={tw('expandSidebar')}
+                    className="app-sidebar-trigger"
+                    onClick={() => {
+                      changePreferences({ sidebarOpen: true });
+                      setMobileOpen((v) => !v);
+                    }}
+                  >
+                    <PanelLeft />
+                  </Button>
+                </Tooltip>
+                <nav
+                  aria-label={tn('location')}
+                  className="flex min-w-0 items-center gap-1.5 text-ui"
                 >
-                  <Search />
-                </Button>
-              </Tooltip>
-            </header>
-            <div className="app-outlet">
-              <Outlet />
+                  {settings ? (
+                    <span className="shrink-0 text-muted">{td('settings')}</span>
+                  ) : narrow || !prefs.sidebarOpen ? (
+                    <ProjectSwitcher projects={sidebar.projects} projectId={projectId} />
+                  ) : project ? (
+                    <Link
+                      to="/projects/$projectId"
+                      params={{ projectId: project.projectId }}
+                      className="max-w-52 truncate text-muted hover:text-text"
+                    >
+                      {projectName(project, projectsText('defaultName'))}
+                    </Link>
+                  ) : null}
+                  {pageTitle ? (
+                    <>
+                      {settings || project ? (
+                        <span aria-hidden="true" className="text-muted/50">
+                          /
+                        </span>
+                      ) : null}
+                      <h2 className="truncate font-medium">{pageTitle}</h2>
+                    </>
+                  ) : null}
+                </nav>
+                {settings && activeRun ? (
+                  <Link
+                    to="/runs/$runId"
+                    params={{ runId: activeRun.runId }}
+                    className="ml-auto shrink-0 text-xs text-accent"
+                  >
+                    {tn('activeRun')}
+                  </Link>
+                ) : null}
+                <div ref={setSlot} className="ml-auto flex shrink-0 items-center gap-1" />
+                <Tooltip content={tp('button')} shortcut={shortcutLabel('palette')}>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={tp('button')}
+                    onClick={() =>
+                      window.dispatchEvent(
+                        new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }),
+                      )
+                    }
+                  >
+                    <Search />
+                  </Button>
+                </Tooltip>
+              </header>
+              <div className="app-outlet">
+                <Outlet />
+              </div>
             </div>
+            <CommandLayer />
           </div>
-          <CommandLayer />
-        </div>
-      </TopbarSlotContext.Provider>
+        </TopbarSlotContext.Provider>
+      </SettingsNavigationContext.Provider>
     </TooltipProvider>
   );
 }
 
 /** The project Studio works in (CR-010); choosing one opens it, or the list of all. */
-function ProjectSwitcher() {
+function ProjectSwitcher({
+  projects,
+  projectId,
+}: {
+  projects: ProjectSummary[];
+  projectId?: string;
+}) {
   const t = useTranslations('Projects');
-  const { repository } = useServices();
+  const n = useTranslations('Navigation');
   const navigate = useNavigate();
-  const current = useCurrentProject();
-  const version = useProjectsVersion();
-  const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
-  useEffect(() => {
-    void version;
-    let live = true;
-    repository.listProjects().then(
-      (list) => live && setProjects(list),
-      () => live && setProjects(null),
-    );
-    return () => {
-      live = false;
-    };
-  }, [repository, version]);
-  if (!projects) return null;
-  const options = projects.filter((p) => !p.archivedAt || p.projectId === current);
-  const chosen = options.find((p) => p.projectId === current);
+  const options = projects.filter((p) => !p.archivedAt || p.projectId === projectId);
+  const chosen = options.find((p) => p.projectId === projectId);
   return (
     <Menu>
       <MenuTrigger
@@ -214,17 +340,19 @@ function ProjectSwitcher() {
           <Button
             variant="ghost"
             size="sm"
-            aria-label={t('label')}
+            aria-label={n('switchProject')}
             className="min-w-0 max-w-52 gap-1 px-2 font-medium"
           />
         }
       >
-        <span className="truncate">{chosen ? projectName(chosen, t('defaultName')) : '—'}</span>
+        <span className="truncate">
+          {chosen ? projectName(chosen, t('defaultName')) : t('allProjects')}
+        </span>
         <ChevronDown className="size-3.5 text-muted" />
       </MenuTrigger>
       <MenuPopup align="start" className="min-w-56">
         <MenuRadioGroup
-          value={chosen ? current : ''}
+          value={chosen ? projectId : ''}
           onValueChange={(value) =>
             void navigate({ to: '/projects/$projectId', params: { projectId: String(value) } })
           }

@@ -191,10 +191,12 @@ export function ExecutionTree({
   session,
   onSteer,
   selectedExecutionId = null,
+  compact = false,
 }: {
   session: RunSessionStore;
   onSteer: (executionId: string) => void;
   selectedExecutionId?: string | null;
+  compact?: boolean;
 }) {
   const t = useTranslations('Run');
   const projection = useStore(session, (s) => s.projection);
@@ -210,6 +212,7 @@ export function ExecutionTree({
       labelOf={(nodeId) => definition?.nodes.find((n) => n.id === nodeId)?.label ?? nodeId}
       onSteer={onSteer}
       selectedExecutionId={selectedExecutionId}
+      compact={compact}
     />
   );
 }
@@ -225,12 +228,14 @@ function ExecutionRows({
   labelOf,
   onSteer,
   selectedExecutionId = null,
+  compact = false,
 }: {
   projection: RunProjection;
   streams: Record<string, StreamText>;
   labelOf: (nodeId: string) => string;
   onSteer: (executionId: string) => void;
   selectedExecutionId?: string | null;
+  compact?: boolean;
 }) {
   const childrenOf = new Map<string | null, string[]>();
   for (const id of projection.executionOrder) {
@@ -248,6 +253,7 @@ function ExecutionRows({
           labelOf={labelOf}
           onSteer={onSteer}
           selected={id === selectedExecutionId}
+          compact={compact}
           nested={childrenOf.has(id) ? rows(id) : null}
         />
       ))}
@@ -264,6 +270,7 @@ function ExecutionRow({
   onSteer,
   selected,
   nested,
+  compact,
 }: {
   id: string;
   projection: RunProjection;
@@ -272,6 +279,7 @@ function ExecutionRow({
   onSteer: (executionId: string) => void;
   selected: boolean;
   nested: ReactNode;
+  compact: boolean;
 }) {
   const t = useTranslations('Run');
   const execution = projection.executions[id];
@@ -297,7 +305,8 @@ function ExecutionRow({
       <div className="flex items-center justify-between gap-2">
         <span className="flex flex-col">
           <span className="font-medium">
-            {labelOf(execution.nodeId)} · {id}
+            {labelOf(execution.nodeId)}
+            {compact ? '' : ` · ${id}`}
           </span>
           <span className="text-muted">
             {execution.item ? `${t('item', execution.item)} · ` : ''}
@@ -313,11 +322,11 @@ function ExecutionRow({
             onClick={() => onSteer(id)}
             className="rounded border border-line px-1.5 py-0.5"
           >
-            {t('steerThis')}
+            {t(compact ? 'openControls' : 'steerThis')}
           </button>
         </span>
       </div>
-      {openCall && projection.modelCalls[openCall] ? (
+      {!compact && openCall && projection.modelCalls[openCall] ? (
         <ReasoningSummary call={projection.modelCalls[openCall]} />
       ) : null}
       {waiting ? (
@@ -338,8 +347,10 @@ function ExecutionRow({
         </p>
       ) : null}
       {execution.error ? <p className="mt-1 text-danger">{execution.error}</p> : null}
-      {live?.completed ? <p className="mt-1 font-medium">{t('completedResponse')}</p> : null}
-      {live?.text ? (
+      {!compact && live?.completed ? (
+        <p className="mt-1 font-medium">{t('completedResponse')}</p>
+      ) : null}
+      {!compact && live?.text ? (
         <p
           data-testid="live-text"
           aria-live="off"

@@ -25,6 +25,7 @@ import { currentProject, projectName } from './projects.ts';
 import { useServices } from './services.tsx';
 import { LOCAL_KEYS, SHORTCUTS, type ShortcutId, shortcutFor, shortcutLabel } from './shortcuts.ts';
 import { createFromTemplate, WORKSPACE_TEMPLATES } from './templates.ts';
+import { useSettingsNavigation } from './workbench/navigation.ts';
 import { changePreferences, preferences, usePreferences } from './workbench/preferences.ts';
 
 /** True while the user types in a field or composes with an IME: global keys stay quiet. */
@@ -109,6 +110,7 @@ export function CommandLayer() {
 
 /** Commands that work everywhere in Studio: new session, the sidebar, settings, history. */
 function useGlobalCommands(showHelp: () => void) {
+  const navigation = useSettingsNavigation();
   const t = useTranslations('Commands');
   const th = useTranslations('Harness');
   const navigate = useNavigate();
@@ -169,7 +171,7 @@ function useGlobalCommands(showHelp: () => void) {
       group: go,
       shortcutId: 'settings',
       shortcut: shortcutLabel('settings'),
-      run: () => navigate({ to: '/settings' }),
+      run: () => navigate({ to: '/settings', search: navigation.search }),
     },
     {
       id: 'go:back',
@@ -229,6 +231,7 @@ export function Modal({
 }
 
 function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void }) {
+  const navigation = useSettingsNavigation();
   const t = useTranslations('CommandPalette');
   const tw = useTranslations('Workspace');
   const tp = useTranslations('Projects');
@@ -381,7 +384,7 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
               id: 'go:models',
               title: t('goModels'),
               group: t('groups.go'),
-              run: () => navigate({ to: '/settings/models' }),
+              run: () => navigate({ to: '/settings/models', search: navigation.search }),
             },
           ]
         : []),
@@ -397,7 +400,7 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
       ...fromTemplate,
       ...(help ? [{ ...help, run: onHelp }] : []),
     ];
-  }, [dynamic, registered, services, navigate, t, tw, tp, onHelp]);
+  }, [dynamic, registered, services, navigate, t, tw, tp, onHelp, navigation.search]);
 
   const ranked = rankCommands(query, commands) as AppCommand[];
   // One heading per group, in the order the groups first appear in the ranking.

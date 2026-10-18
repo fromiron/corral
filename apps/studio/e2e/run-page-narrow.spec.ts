@@ -6,12 +6,13 @@ test.use({ viewport: { width: 375, height: 812 } });
 
 async function finishedRun(page: import('@playwright/test').Page) {
   await page.goto('/demo?template=starter&delay=100');
+  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   await expect(page.getByTestId('run-status')).toContainText('Succeeded', { timeout: 20_000 });
-  await page.getByRole('link', { name: 'Open run page' }).click();
+  await page.getByRole('link', { name: 'Open execution page' }).click();
   await expect(page).toHaveURL(/\/runs\//);
   // CR-009: a finished run opens on its results; these checks are about the run view.
-  await page.getByRole('tab', { name: 'Run', exact: true }).click();
+  await page.getByRole('tab', { name: 'Execution', exact: true }).click();
 }
 
 test('[TC-UX-001-H] a narrow Run page shows one panel at a time and never scrolls sideways', async ({
@@ -42,5 +43,5 @@ test('[TC-UX-001-H] a narrow Run page shows one panel at a time and never scroll
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   );
   expect(overflow).toBeLessThanOrEqual(0);
-  await expect(page.getByRole('region', { name: 'Run summary' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Execution summary' })).toBeVisible();
 });

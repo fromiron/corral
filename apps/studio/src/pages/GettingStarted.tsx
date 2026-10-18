@@ -2,6 +2,7 @@ import { Link } from '@tanstack/react-router';
 import { type ReactNode, useEffect, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
+import { useSettingsNavigation } from '../workbench/navigation.ts';
 
 // Roadmap 17: the first steps, checked off from what has actually happened. Kept in browser
 // storage only for the viewer's conveniences: "hidden" and "a run page was read".
@@ -39,6 +40,7 @@ export function GettingStarted({
   onDraft: () => void;
 }) {
   const t = useTranslations('GettingStarted');
+  const navigation = useSettingsNavigation();
   const headingId = useId();
   const { mode, live, models } = useServices();
   const [hidden, setHidden] = useState(() => stored(HIDDEN));
@@ -67,7 +69,7 @@ export function GettingStarted({
             done: signedIn === true,
             title: t('model'),
             action: (
-              <Link to="/settings/models" className="underline">
+              <Link to="/settings/models" search={navigation.search} className="underline">
                 {t('modelAction')}
               </Link>
             ),

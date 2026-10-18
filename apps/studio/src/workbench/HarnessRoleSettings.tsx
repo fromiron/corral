@@ -6,15 +6,23 @@ import { Link } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { HarnessPreviewView } from '../pages/HarnessSettingsPage.tsx';
-import { useCurrentProject } from '../projects.ts';
 import { useServices } from '../services.tsx';
+import { useSettingsNavigation } from './navigation.ts';
 
-export function HarnessRoleSettings({ role, nodeId }: { role: AgentRole; nodeId: string }) {
+export function HarnessRoleSettings({
+  role,
+  nodeId,
+  projectId,
+}: {
+  role: AgentRole;
+  nodeId: string;
+  projectId: string;
+}) {
   const t = useTranslations('Harness'),
     r = useTranslations('Resources');
   const { harnesses: api } = useServices();
   const { editor } = useStudioStores();
-  const projectId = useCurrentProject();
+  const navigation = useSettingsNavigation();
   const [profiles, setProfiles] = useState<HarnessProfileView[]>([]);
   const [preview, setPreview] = useState<HarnessPreview | null>(null);
   const [error, setError] = useState('');
@@ -91,7 +99,11 @@ export function HarnessRoleSettings({ role, nodeId }: { role: AgentRole; nodeId:
           }}
         />
       </div>
-      <Link to="/settings/harness" className="text-xs text-accent underline">
+      <Link
+        to="/settings/harness"
+        search={{ ...navigation.search, projectId }}
+        className="text-xs text-accent underline"
+      >
         {t('manage')}
       </Link>
       {role.harness ? (

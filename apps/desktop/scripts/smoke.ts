@@ -95,7 +95,8 @@ try {
     .filter({ hasText: 'Single agent' })
     .getByRole('button', { name: 'Edit this team' })
     .click();
-  await page.getByRole('link', { name: 'Corrals', exact: true }).click();
+  await page.getByRole('link', { name: 'Project home', exact: true }).click();
+  await page.getByText('Session details (optional)', { exact: true }).click();
   await page.getByLabel('Purpose').fill('Desktop packaged smoke');
   await page.getByRole('button', { name: 'Start session' }).click();
   await page
@@ -137,10 +138,7 @@ try {
       ),
     )
     .toBe('#151615');
-  await page
-    .getByTestId('app-sidebar')
-    .getByRole('link', { name: /^Desktop packaged smoke/ })
-    .click();
+  await page.getByRole('link', { name: 'Back to work', exact: true }).click();
   await page
     .getByRole('combobox', { name: 'Request', exact: true })
     .fill('A draft preserved across restart');

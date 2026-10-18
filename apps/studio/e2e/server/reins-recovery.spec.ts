@@ -26,6 +26,7 @@ test('[TC-RACE-08] a lost command response recovers its receipt without submitti
     }
     await route.continue();
   });
+  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   const input = page.getByLabel('Instruction', { exact: true });
   await input.fill('Recover this instruction exactly once.');

@@ -13,10 +13,11 @@ import { Button } from '@corral/react/ui';
 import { Link, useBlocker } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { useCurrentProject } from '../projects.ts';
 import { useServices } from '../services.tsx';
 import { useManagementConfirmation } from '../workbench/harness/ConfirmAction.tsx';
 import { operationId, profileInput, rememberHarnessTarget } from '../workbench/harness/Target.tsx';
+import { useSettingsNavigation } from '../workbench/navigation.ts';
+import { SettingsProjectPicker } from '../workbench/SettingsNavigation.tsx';
 import { SettingsLayout } from './SettingsPage.tsx';
 
 const field = 'w-full rounded-md border border-line bg-surface p-2 text-sm';
@@ -123,13 +124,15 @@ export function HarnessPreviewView({ preview }: { preview: HarnessPreview }) {
 }
 
 export function HarnessSettingsPage() {
-  const projectId = useCurrentProject();
-  return <HarnessSettingsEditor key={projectId} projectId={projectId} />;
+  const { projectId } = useSettingsNavigation();
+  return <HarnessSettingsEditor projectId={projectId} />;
 }
 
-function HarnessSettingsEditor({ projectId }: { projectId: string }) {
+function HarnessSettingsEditor({ projectId }: { projectId: string | undefined }) {
   const t = useTranslations('Harness'),
     r = useTranslations('Resources');
+  const n = useTranslations('Navigation');
+  const navigation = useSettingsNavigation();
   const { harnesses: api } = useServices();
   const [resources, setResources] = useState<HarnessResourceView[]>([]);
   const [profiles, setProfiles] = useState<HarnessProfileView[]>([]);
@@ -140,15 +143,21 @@ function HarnessSettingsEditor({ projectId }: { projectId: string }) {
   const pendingOperation = useRef<{ json: string; id: string } | null>(null);
   const [defaults, setDefaults] = useState<HarnessDefault[]>([]);
   const [toolsState, setToolsState] = useState<{
-    projectId: string;
+    projectId: string | undefined;
     value: ProjectToolConfigRevision | null;
   } | null>(null);
-  const projectTools = toolsState?.projectId === projectId ? toolsState.value : null;
+  const projectTools = toolsState && toolsState.projectId === projectId ? toolsState.value : null;
   const [selected, setSelected] = useState<HarnessProfileRevision | null>(null);
   const [profile, setProfile] = useState<HarnessProfile>(emptyProfile);
   const [toolNames, setToolNames] = useState(emptyProfile().allowedTools.join(', '));
   const [commands, setCommands] = useState('');
-  const [preview, setPreview] = useState<HarnessPreview | null>(null);
+  const [previewState, setPreviewState] = useState<{
+    projectId: string | undefined;
+    value: HarnessPreview;
+  } | null>(null);
+  const preview = previewState?.projectId === projectId ? (previewState?.value ?? null) : null;
+  const setPreview = (value: HarnessPreview | null) =>
+    setPreviewState(value ? { projectId, value } : null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -162,8 +171,8 @@ function HarnessSettingsEditor({ projectId }: { projectId: string }) {
       api.resources(),
       api.profileManagement(),
       api.default('personal', 'default'),
-      api.default('project', projectId),
-      api.projectTools(projectId),
+      projectId ? api.default('project', projectId) : null,
+      projectId ? api.projectTools(projectId) : null,
       api.entries(),
     ]).then(
       ([r, p, personal, project, tools, entries]) => {
@@ -171,7 +180,7 @@ function HarnessSettingsEditor({ projectId }: { projectId: string }) {
           setResources(r);
           setEntries(entries);
           setProfiles(p);
-          setDefaults([personal, project]);
+          setDefaults([personal, ...(project ? [project] : [])]);
           setToolsState({ projectId, value: tools });
         }
       },
@@ -235,7 +244,10 @@ function HarnessSettingsEditor({ projectId }: { projectId: string }) {
   const dirtyRef = useRef(dirty);
   dirtyRef.current = dirty;
   useBlocker({
-    shouldBlockFn: () => dirtyRef.current && !window.confirm(r('leaveUnsaved')),
+    shouldBlockFn: ({ next }) =>
+      next.pathname !== '/settings/harness' &&
+      dirtyRef.current &&
+      !window.confirm(r('leaveUnsaved')),
     enableBeforeUnload: () => dirtyRef.current,
   });
   const meta = selected ? profiles.find((p) => p.profileId === selected.profileId) : null;
@@ -243,8 +255,14 @@ function HarnessSettingsEditor({ projectId }: { projectId: string }) {
     !entries.find((e) => e.resourceHash === hash && e.entry === entry)?.archivedAt ||
     profile.resources.some((ref) => ref.resourceHash === hash && ref.entry === entry);
   const canPreview =
+    Boolean(projectId) &&
     selected !== null &&
     JSON.stringify({ ...selected, ...pendingProfile }) === JSON.stringify(selected);
+  const currentDefaults = defaults.filter(
+    (value) => value.scope === 'personal' || value.scopeId === projectId,
+  );
+  const missingSaveTarget =
+    saveTarget !== 'standalone' && !currentDefaults.some((value) => value.scope === saveTarget);
   return (
     <SettingsLayout active="harness">
       <main className="mx-auto flex max-w-5xl flex-col gap-7 p-6 sm:p-10">
@@ -252,6 +270,12 @@ function HarnessSettingsEditor({ projectId }: { projectId: string }) {
           <h2 className="text-2xl font-semibold">{t('heading')}</h2>
           <p className="mt-2 text-sm text-muted">{t('intro')}</p>
         </div>
+        {api ? (
+          <div id="project-context" className="rounded-lg border border-line p-3">
+            <SettingsProjectPicker label={n('projectContext')} disabled={busy} className="" />
+            <p className="mt-2 text-xs text-muted">{n('projectContextHint')}</p>
+          </div>
+        ) : null}
         {!api ? (
           <p>{t('localOnly')}</p>
         ) : (
@@ -408,13 +432,13 @@ function HarnessSettingsEditor({ projectId }: { projectId: string }) {
                 <p className="text-sm text-warning">{t('nativeWarning')}</p>
               ) : null}
               <nav className="flex flex-wrap gap-3 text-sm text-accent">
-                <Link to="/settings/skills" className="underline">
+                <Link to="/settings/skills" search={navigation.search} className="underline">
                   {r('skills')}
                 </Link>
-                <Link to="/settings/hooks" className="underline">
+                <Link to="/settings/hooks" search={navigation.search} className="underline">
                   {r('hooks')}
                 </Link>
-                <Link to="/settings/mcp" className="underline">
+                <Link to="/settings/mcp" search={navigation.search} className="underline">
                   {r('mcp')}
                 </Link>
               </nav>
@@ -726,15 +750,21 @@ function HarnessSettingsEditor({ projectId }: { projectId: string }) {
                 >
                   <option value="standalone">{r('standalone')}</option>
                   <option value="personal">{r('personal')}</option>
-                  <option value="project">{r('project')}</option>
+                  <option value="project" disabled={!projectId}>
+                    {r('project')}
+                  </option>
                 </select>
               </label>
               <div className="flex flex-wrap gap-2">
                 <Button
-                  disabled={!profile.name.trim() || (selected !== null && !dirty)}
+                  disabled={
+                    !profile.name.trim() || missingSaveTarget || (selected !== null && !dirty)
+                  }
                   onClick={() =>
                     void work(async () => {
-                      const target = defaults.find((value) => value.scope === saveTarget);
+                      const target = currentDefaults.find((value) => value.scope === saveTarget);
+                      if (saveTarget !== 'standalone' && !target)
+                        throw new Error(n('projectRequired'));
                       const input = {
                         profileId:
                           selected?.profileId ??
@@ -783,7 +813,11 @@ function HarnessSettingsEditor({ projectId }: { projectId: string }) {
                       });
                       if (updated)
                         setDefaults((current) =>
-                          current.map((value) => (value.scope === updated.scope ? updated : value)),
+                          current.map((value) =>
+                            value.scope === updated.scope && value.scopeId === updated.scopeId
+                              ? updated
+                              : value,
+                          ),
                         );
                       setNotice(t('saved', { revision: saved.revision }));
                       window.dispatchEvent(new Event('corral:harness-changed'));
@@ -803,6 +837,7 @@ function HarnessSettingsEditor({ projectId }: { projectId: string }) {
                   disabled={!canPreview}
                   onClick={() =>
                     selected &&
+                    projectId &&
                     canPreview &&
                     void work(async () =>
                       setPreview(await api.preview(bindingOf(selected), projectId)),
@@ -812,15 +847,29 @@ function HarnessSettingsEditor({ projectId }: { projectId: string }) {
                   {t('preview')}
                 </Button>
               </div>
-              {selected && !canPreview ? (
+              {selected && !canPreview && projectId ? (
                 <p className="text-xs text-muted">{t('saveBeforePreview')}</p>
               ) : null}
               {preview && canPreview ? <HarnessPreviewView preview={preview} /> : null}
             </fieldset>
-            <fieldset disabled={busy} className="flex flex-col gap-3 border-t border-line pt-5">
+            <fieldset
+              id="project-defaults"
+              disabled={busy}
+              className="flex flex-col gap-3 border-t border-line pt-5"
+            >
               <legend className="px-1 text-lg font-semibold">{t('defaults')}</legend>
               <p className="text-xs text-muted">{t('defaultsHint')}</p>
-              {defaults.map((value) => (
+              {!projectId ? (
+                <Link
+                  to="/settings/harness"
+                  search={navigation.search}
+                  hash="project-context"
+                  className="text-xs text-accent underline"
+                >
+                  {n('chooseProjectDefaults')}
+                </Link>
+              ) : null}
+              {currentDefaults.map((value) => (
                 <label
                   key={`${value.scope}:${value.scopeId}`}
                   className="flex flex-col gap-1 text-sm"
@@ -841,7 +890,9 @@ function HarnessSettingsEditor({ projectId }: { projectId: string }) {
                           picked ? bindingOf(picked) : null,
                         );
                         setDefaults((current) =>
-                          current.map((d) => (d.scope === saved.scope ? saved : d)),
+                          current.map((d) =>
+                            d.scope === saved.scope && d.scopeId === saved.scopeId ? saved : d,
+                          ),
                         );
                         setPreview(null);
                         setNotice(t('defaultSaved'));

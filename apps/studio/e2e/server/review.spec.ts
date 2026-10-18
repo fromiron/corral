@@ -15,11 +15,12 @@ test('[TC-RUN-003-H] [TC-ART-004-H] [TC-OBS-001-H] a review loop revises the dra
       join(EXAMPLES, 'research-team.layout.json'),
     ]);
   await expect(page).toHaveURL(/\/edit$/);
+  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   const decision = page.locator('[data-testid^="approval-"]').filter({ hasText: 'Your decision' });
   await expect(decision).toBeVisible({ timeout: 15_000 });
 
-  await page.getByRole('link', { name: 'Open run page' }).click();
+  await page.getByRole('link', { name: 'Open execution page' }).click();
   await expect(page.getByTestId('run-status')).toContainText('Waiting for you');
   // The decision is about draft@2 and the review that passed it, judged by the run's criteria.
   const card = page.locator('[data-testid^="approval-"]');

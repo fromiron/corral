@@ -11,15 +11,16 @@ function handle(page: Page, nodeId: string, port: string) {
 
 /** A one-agent Corral run to its end, then its Run page. */
 async function finishedRun(page: Page) {
-  await page.getByRole('button', { name: 'New Corral' }).click();
+  await page.getByRole('button', { name: 'New team' }).click();
   await expect(page).toHaveURL(/\/corrals\/corral_[a-z0-9]+\/edit/);
   await page.getByRole('button', { name: 'Add Agent' }).click();
   await page.getByRole('button', { name: 'Add Output' }).click();
   await handle(page, 'agent_1', 'out').dragTo(handle(page, 'output_1', 'in'));
   await expect(page.getByText('Ready to run.')).toBeVisible();
+  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   await expect(page.getByTestId('run-status')).toContainText('Succeeded', { timeout: 15_000 });
-  await page.getByRole('link', { name: 'Open run page' }).click();
+  await page.getByRole('link', { name: 'Open execution page' }).click();
   await expect(page).toHaveURL(/\/runs\/run_[a-f0-9]+/);
 }
 

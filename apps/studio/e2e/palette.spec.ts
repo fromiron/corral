@@ -6,7 +6,7 @@ test('[TC-UX-001-H] Ctrl+K opens the command palette; typing filters and Enter r
   page,
 }) => {
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Corrals' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Teams' })).toBeVisible();
   await page.keyboard.press('Control+k');
   const palette = page.getByRole('dialog', { name: 'Command palette' });
   await expect(palette).toBeVisible();
@@ -16,7 +16,7 @@ test('[TC-UX-001-H] Ctrl+K opens the command palette; typing filters and Enter r
   await expect(palette.getByRole('option').first()).toHaveText(/Research team/);
   await input.press('Enter');
   await expect(page).toHaveURL(/\/corrals\/[^/]+\/edit$/);
-  await expect(page.getByLabel('Corral name')).toHaveValue('Research team');
+  await expect(page.getByLabel('Team name')).toHaveValue('Research team');
   await expect(page.locator('.react-flow__node')).toHaveCount(9);
 });
 
@@ -24,7 +24,7 @@ test('[TC-UX-001-N] the palette closes with Escape, and an IME composition Enter
   page,
 }) => {
   await page.goto('/');
-  const opener = page.getByRole('button', { name: 'New Corral' });
+  const opener = page.getByRole('button', { name: 'New team' });
   await opener.focus();
   // CR-010: `/` opens the current project; the page must stay exactly where it is.
   const before = page.url();

@@ -26,7 +26,6 @@ import { workspaceRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
 import { TeamDraftDialog } from '../TeamDraftDialog.tsx';
 import { createFromTemplate, WORKSPACE_TEMPLATES } from '../templates.ts';
-import { ComposerSurface } from '../workbench/ComposerSurface.tsx';
 import { isSendKey, usePreferences } from '../workbench/preferences.ts';
 import { writeDraft } from '../workbench/sessionDraft.ts';
 import { InboxSection, WorkFolderSection } from './FilesViews.tsx';
@@ -366,7 +365,7 @@ export function WorkspacePage() {
             <ProjectHeader project={project} onError={(message) => setErrors([message])} />
             {archived ? null : (
               <StartSession
-                key={newSession ? 'new' : 'start'}
+                key={`${projectId}:${newSession ? 'new' : 'start'}`}
                 focus={Boolean(newSession)}
                 projectId={projectId}
                 corrals={corrals}
@@ -648,18 +647,26 @@ function StartSession({
 }) {
   const t = useTranslations('Sessions');
   const tw = useTranslations('Workspace');
+  const n = useTranslations('Navigation');
   const { repository } = useServices();
   const { sendKey } = usePreferences();
   const navigate = useNavigate();
   const box = useRef<HTMLTextAreaElement>(null);
+  const startButton = useRef<HTMLButtonElement>(null);
+  const creating = useRef(false);
+  const active = useRef(true);
+  const automatic = useRef(false);
   const [draft, saveDraft] = useRemembered(`corral:new-session:v1:${projectId}`, {
     title: '',
     objective: '',
     corralId: '',
   });
   const title = typeof draft?.title === 'string' ? draft.title : '';
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
   const objective = typeof draft?.objective === 'string' ? draft.objective : '';
   const corralId = typeof draft?.corralId === 'string' ? draft.corralId : '';
+  const [detailsOpen, setDetailsOpen] = useState(Boolean(title || objective));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // UX-09: a suggested team (a template) can be chosen here; it is made when the session starts,
@@ -667,20 +674,25 @@ function StartSession({
   const suggested = WORKSPACE_TEMPLATES.filter((id) => id !== 'blank');
   const isSuggested = (value: string) =>
     value.startsWith('template:') && suggested.includes(value.slice(9) as never);
-  const team =
-    corrals.some((c) => c.corralId === corralId) || isSuggested(corralId)
+  const chooseTeam = (available: CorralSummary[]) =>
+    available.some((c) => c.corralId === corralId) || isSuggested(corralId)
       ? corralId
-      : (corrals[0]?.corralId ?? 'template:starter');
+      : (available[0]?.corralId ?? 'template:starter');
+  const team = chooseTeam(corrals);
   useEffect(() => {
-    if (focus) box.current?.focus();
-  }, [focus]);
+    active.current = true;
+    return () => {
+      active.current = false;
+    };
+  }, []);
   // "Start a session with this team" on a template card picks it here.
   useEffect(() => {
     const pick = (event: Event) => {
+      if (creating.current) return;
       const id = (event as CustomEvent<string>).detail;
       saveDraft({ title, objective, corralId: `template:${id}` });
-      box.current?.scrollIntoView({ block: 'center' });
-      box.current?.focus();
+      startButton.current?.scrollIntoView({ block: 'center' });
+      startButton.current?.focus();
     };
     window.addEventListener(START_WITH_TEMPLATE, pick);
     return () => window.removeEventListener(START_WITH_TEMPLATE, pick);
@@ -688,82 +700,127 @@ function StartSession({
 
   const create = async (event?: FormEvent) => {
     event?.preventDefault();
-    if (saving || (!title.trim() && !objective.trim())) return;
+    if (creating.current) return;
+    creating.current = true;
+    const submittedDraft = JSON.stringify(draftRef.current);
     setSaving(true);
     setError(null);
     try {
-      let teamId = team;
-      if (isSuggested(team)) {
-        const id = team.slice(9) as (typeof suggested)[number];
+      // A cached project loader may still predate an import when the new-session link opens.
+      let teamId = focus
+        ? chooseTeam((await repository.list()).filter((item) => item.projectId === projectId))
+        : team;
+      if (!active.current) return;
+      if (isSuggested(teamId)) {
+        const id = teamId.slice(9) as (typeof suggested)[number];
         const made = await createFromTemplate(repository, id, tw(`template.${id}.name`), projectId);
         if (!made.ok) return setError(made.message);
         teamId = made.corralId;
       }
       const result = await repository.createSession({
         projectId,
-        title,
+        title: title.trim() || (objective.trim() ? '' : t('new')),
         objective,
         corralId: teamId || null,
       });
       if (!result.ok) return setError(result.message);
       writeDraft(result.session.sessionId, objective);
-      saveDraft({ title: '', objective: '', corralId: '' });
+      projectsChanged();
+      if (!active.current) return;
+      if (JSON.stringify(draftRef.current) === submittedDraft)
+        saveDraft({ title: '', objective: '', corralId: '' });
       await navigate({
         to: '/sessions/$sessionId',
         params: { sessionId: result.session.sessionId },
+        replace: focus,
       });
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : String(failure));
+      if (active.current) setError(failure instanceof Error ? failure.message : String(failure));
     } finally {
-      setSaving(false);
+      creating.current = false;
+      if (active.current) setSaving(false);
     }
   };
 
+  // The explicit new-session link opens the composer once; it never starts a Run.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: later form edits must not create another session
+  useEffect(() => {
+    if (!focus || automatic.current) return;
+    automatic.current = true;
+    void create();
+  }, [focus]);
+
   return (
-    <form onSubmit={create} aria-label={t('new')} className="flex flex-col gap-2">
-      <ComposerSurface.Host className="flex flex-col gap-1 px-3 pt-3 pb-2">
-        <textarea
-          ref={box}
-          aria-label={t('objectiveLabel')}
-          placeholder={t('objectivePlaceholder')}
-          value={objective}
-          rows={3}
-          onChange={(e) => saveDraft({ title, objective: e.target.value, corralId })}
-          onKeyDown={(e) => {
-            if (e.nativeEvent.isComposing || e.keyCode === 229) return;
-            if (isSendKey(e, sendKey)) {
-              e.preventDefault();
-              void create();
-            }
+    <form
+      onSubmit={create}
+      aria-label={t('new')}
+      className="flex flex-col gap-4 rounded-xl border border-line bg-surface p-4"
+    >
+      <div>
+        <h2 className="text-sm font-semibold">{t('new')}</h2>
+        <p className="mt-1 text-xs text-muted">{n('firstRequestHint')}</p>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Select
+          variant="chip"
+          disabled={saving}
+          label={t('teamLabel')}
+          value={team}
+          onValueChange={(value) => {
+            if (!creating.current) saveDraft({ title, objective, corralId: value });
           }}
-          className="min-h-20 w-full resize-none bg-transparent px-1 text-sm leading-6 outline-none placeholder:text-muted/80"
+          options={[
+            ...corrals.map((c) => ({ value: c.corralId, label: c.name })),
+            ...suggested.map((id) => ({
+              value: `template:${id}`,
+              label: tw('suggestedTeam', { name: tw(`template.${id}.name`) }),
+              hint: tw(`template.${id}.body`),
+            })),
+          ]}
         />
-        <div className="flex items-center gap-1">
-          <Select
-            variant="chip"
-            label={t('teamLabel')}
-            value={team}
-            onValueChange={(value) => saveDraft({ title, objective, corralId: value })}
-            options={[
-              ...corrals.map((c) => ({ value: c.corralId, label: c.name })),
-              ...suggested.map((id) => ({
-                value: `template:${id}`,
-                label: tw('suggestedTeam', { name: tw(`template.${id}.name`) }),
-                hint: tw(`template.${id}.body`),
-              })),
-            ]}
-          />
-          <Button
-            type="submit"
-            size="sm"
-            className="ml-auto"
-            disabled={saving || (!title.trim() && !objective.trim())}
+        <Button ref={startButton} type="submit" size="sm" className="ml-auto" disabled={saving}>
+          {t('create')}
+        </Button>
+      </div>
+      <details open={detailsOpen} onToggle={(event) => setDetailsOpen(event.currentTarget.open)}>
+        <summary className="cursor-pointer text-xs text-muted">{n('sessionDetails')}</summary>
+        <div className="mt-3 flex flex-col gap-2">
+          <label
+            htmlFor={`new-session-title-${projectId}`}
+            className="flex flex-col gap-1 text-xs text-muted"
           >
-            {t('create')}
-          </Button>
+            {n('sessionName')}
+            <Input
+              id={`new-session-title-${projectId}`}
+              disabled={saving}
+              aria-label={n('sessionName')}
+              value={title}
+              onChange={(event) => saveDraft({ title: event.target.value, objective, corralId })}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-muted">
+            {t('objectiveLabel')}
+            <textarea
+              ref={box}
+              disabled={saving}
+              aria-label={t('objectiveLabel')}
+              placeholder={t('objectivePlaceholder')}
+              value={objective}
+              rows={3}
+              onChange={(e) => saveDraft({ title, objective: e.target.value, corralId })}
+              onKeyDown={(e) => {
+                if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+                if (isSendKey(e, sendKey)) {
+                  e.preventDefault();
+                  void create();
+                }
+              }}
+              className="min-h-20 w-full resize-y rounded-md border border-line bg-transparent px-2 py-1 text-sm leading-6 outline-none focus-visible:ring-2 focus-visible:ring-accent placeholder:text-muted/80"
+            />
+          </label>
+          <p className="text-2xs text-muted">{n('optionalPurposeHint')}</p>
         </div>
-      </ComposerSurface.Host>
-      <p className="px-2 text-2xs text-muted">{t('startHint')}</p>
+      </details>
       {error ? (
         <p role="alert" className="text-sm text-danger">
           {error}

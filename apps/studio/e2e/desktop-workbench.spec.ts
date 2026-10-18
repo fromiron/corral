@@ -1,10 +1,17 @@
+import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
-import { requestBox, startSession, teamFromTemplate } from './workbench.ts';
+import { panelTab, requestBox, startSession, teamFromTemplate } from './workbench.ts';
 
-async function openSession(page: Page) {
+async function openSession(page: Page, blank = false) {
   await page.goto('/?delay=50');
   await teamFromTemplate(page);
-  await startSession(page, 'Desktop workbench');
+  if (blank) {
+    await expect(page.getByRole('button', { name: 'Start session', exact: true })).toBeEnabled();
+    await page.getByRole('button', { name: 'Start session', exact: true }).click();
+    await expect(page).toHaveURL(/\/sessions\/session_/);
+    await expect(requestBox(page)).toHaveValue('');
+    await expect(page.getByTestId('chat-timeline').getByRole('article')).toHaveCount(0);
+  } else await startSession(page, 'Desktop workbench');
 }
 
 test('[TC-UX-001-H] DW-08 narrow navigation contains focus and Escape restores its trigger', async ({
@@ -31,10 +38,10 @@ test('[TC-UX-001-H] DW-08 narrow navigation contains focus and Escape restores i
   await expect(trigger).toBeFocused();
 });
 
-test('[TC-UX-001-H] DW-02/03 the composer stays docked while the conversation scrolls and drafts survive a tab change', async ({
+test('[TC-UX-004-H] DW-02/03 settings replace navigation and return to the same work and draft', async ({
   page,
 }) => {
-  await openSession(page);
+  await openSession(page, true);
   const composer = page.getByTestId('chat-composer');
   const input = requestBox(page);
   await expect(composer).toBeVisible();
@@ -46,14 +53,32 @@ test('[TC-UX-001-H] DW-02/03 the composer stays docked while the conversation sc
   await input.press('Control+Enter');
   await expect(page.getByTestId('chat-timeline').getByText('Succeeded')).toBeVisible();
   await input.fill('Preserve this follow-up draft');
+  await panelTab(page, 'Execution');
+  const workUrl = page.url();
   // Away from the session and back: the draft is still there.
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await expect(page).toHaveURL(/\/settings/);
-  await page
-    .getByTestId('app-sidebar')
-    .getByRole('link', { name: /^Desktop workbench/ })
-    .click();
+  await expect(page.getByTestId('app-sidebar')).toHaveCount(0);
+  await expect(page.getByTestId('settings-sidebar')).toBeVisible();
+  await expect(
+    page.getByRole('banner').getByRole('button', { name: 'Project', exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole('link', { name: 'Shortcuts', exact: true }).click();
+  await page.getByRole('button', { name: 'Hide the sidebar', exact: true }).click();
+  await expect(page.getByTestId('settings-sidebar')).toBeHidden();
+  await page.getByRole('button', { name: 'Show the sidebar', exact: true }).click();
+  await page.getByRole('link', { name: 'Back to work', exact: true }).click();
+  await expect(page).toHaveURL(workUrl);
+  await expect(page.getByRole('tab', { name: 'Execution', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
   await expect(input).toHaveValue('Preserve this follow-up draft');
+  expect(
+    (await new AxeBuilder({ page }).analyze()).violations
+      .filter((finding) => finding.impact === 'serious' || finding.impact === 'critical')
+      .map((finding) => finding.id),
+  ).toEqual([]);
   const before = await composer.boundingBox();
   await page.getByTestId('chat-timeline').evaluate((node) => {
     node.scrollTop = 0;
@@ -74,12 +99,9 @@ test('[TC-UX-001-H] DW-05 a file opens in a remembered tab and its line referenc
   await page.getByRole('tab', { name: 'Files', exact: true }).click();
   await expect(page.getByText('Link a work folder to browse files.')).toBeVisible();
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await page.getByRole('link', { name: 'Work folder', exact: true }).click();
+  await page.getByRole('link', { name: 'Project folder', exact: true }).click();
   await page.getByRole('button', { name: 'Link folder', exact: true }).click();
-  await page
-    .getByTestId('app-sidebar')
-    .getByRole('link', { name: /^Desktop workbench/ })
-    .click();
+  await page.getByRole('link', { name: 'Back to work', exact: true }).click();
   await expect(page.getByRole('tab', { name: 'Files', exact: true })).toHaveAttribute(
     'aria-selected',
     'true',
