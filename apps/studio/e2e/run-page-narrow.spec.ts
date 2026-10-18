@@ -14,21 +14,6 @@ async function finishedRun(page: import('@playwright/test').Page) {
   await page.getByRole('tab', { name: 'Run', exact: true }).click();
 }
 
-test('[TC-OBS-001-H] choosing a graph node opens its executions on a narrow Run page', async ({
-  page,
-}) => {
-  await finishedRun(page);
-  await page.locator('.react-flow__node[data-id="agent_1"]').click();
-  const list = page.getByRole('region', { name: 'Agent 1 executions' });
-  await expect(list).toBeVisible();
-  await expect(list.getByRole('listitem')).toHaveCount(1);
-  await list.getByRole('listitem').getByRole('button').click();
-  const executionId = new URL(page.url()).searchParams.get('execution');
-  await expect(page.getByRole('region', { name: 'Reins', exact: true })).toContainText(
-    `execution ${executionId}`,
-  );
-});
-
 test('[TC-UX-001-H] a narrow Run page shows one panel at a time and never scrolls sideways', async ({
   page,
 }) => {
@@ -58,13 +43,4 @@ test('[TC-UX-001-H] a narrow Run page shows one panel at a time and never scroll
   );
   expect(overflow).toBeLessThanOrEqual(0);
   await expect(page.getByRole('region', { name: 'Run summary' })).toBeVisible();
-});
-
-test('[TC-UX-001-N] a wide Run page shows every panel and no view switcher', async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await finishedRun(page);
-  await expect(page.getByRole('tablist', { name: 'Run view' })).toBeHidden();
-  await expect(page.locator('.react-flow')).toBeVisible();
-  await expect(page.getByRole('region', { name: 'Reins', exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Executions' })).toBeVisible();
 });

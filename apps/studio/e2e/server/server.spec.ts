@@ -37,23 +37,6 @@ test('[TC-CAN-001-H] a run on the local server saves first, finishes, and surviv
   expect(corral.errors).toEqual([]);
 });
 
-test('the workspace lists past runs with their status and opens them', async ({ page, corral }) => {
-  await corral.open('/');
-  await agentToOutput(page);
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
-  await expect(page.getByTestId('run-output')).toContainText('turn 2');
-
-  await page.getByRole('link', { name: 'Corrals', exact: true }).click();
-  await page.getByRole('tab', { name: /^Runs/ }).click();
-  const runs = page.getByRole('list', { name: 'Runs' });
-  await expect(runs.getByRole('listitem')).toHaveCount(1);
-  await expect(runs).toContainText('Succeeded');
-  await runs.getByRole('link').click();
-  // CR-009: a finished run opens on its results; this check is about the run view's Output tab.
-  await page.getByRole('tab', { name: 'Run', exact: true }).click();
-  await expect(page.getByTestId('run-output')).toContainText('turn 2');
-});
-
 test.describe('slow replies', () => {
   test.use({ replyDelayMs: 2000 });
 

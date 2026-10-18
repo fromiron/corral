@@ -34,7 +34,7 @@ Linux x64 Electron 패키지에 포함된 Node·서버·Studio·두 Pi worker를
 
 검사 완료 Run은 새 작업 복사본에서 시작했다. 소스 폴더와 `check.mjs` hash는 그대로이고 작업 복사본의 `tags.mjs`만 변경됐다. 저장된 역할 둘은 Luna/low를 유지하고, Run snapshot과 실제 payload에는 이번 실행의 Sol/high·Luna/auto가 기록됐다. 실행 후 composer의 일회성 설정도 초기화됐다.
 
-재시작 뒤 이력·live 선택은 유지되고 자동 재실행은 없었다(호출 수 39회 그대로). 이후 Luna provider_default Run `run_490133324df44df9aa7ee6caf7b261fd`가 세 요청 모두 실제 추론 필드를 생략하고 성공했다. 최종 실호출은 **42/48회, Run 9개**다. 첫 검사 선택 누락 Run은 검사 완료 증거에서 제외한다.
+재시작 뒤 이력·live 선택은 유지되고 자동 재실행은 없었다(호출 수 39회 그대로). 이후 Luna provider_default Run `run_490133324df44df9aa7ee6caf7b261fd`가 세 요청 모두 실제 추론 필드를 생략하고 성공했다. 이 시점의 실호출은 **42/48회, Run 9개**다. 첫 검사 선택 누락 Run은 검사 완료 증거에서 제외한다.
 
 최종 결과 화면의 고정 “파일 변경·검증 명령 없음” 문구도 실제 검사 이력과 모순됨을 확인했다. WBTST-010을 실패 재현 후 수정하여 이 근거 없는 배지를 제거했다. 실행·검토·제출 상태는 그대로 표시한다.
 
@@ -57,3 +57,27 @@ CI의 Playwright는 컨테이너 CPU 배정과 별개로 호스트 CPU 수를 �
 ## 증거 범위
 
 자동 판정의 배선과 실제 적용을 확인했으며 분류 정확도, 모델 내부 추론량, 비용 절감률은 측정하지 않았다. 수동·자동 설정의 provider wire 검증 범위는 Pi 1.3의 OpenAI Responses / Codex Responses다. 다른 transport에는 검증되지 않은 수동 선택을 허용하지 않는다. macOS·Windows 패키지는 이번 검증 대상이 아니다.
+
+
+## 스킬·hook 실사용 추가 검증
+
+격리된 검증 작업 공간에 직접 작성한 `SKILL.md`와 Pi 확장 파일을 실제 설정 화면에서 검토·설치·신뢰한 뒤 새 작업 방식 r1에 선택했다. discovery/install/preview 단계에서는 hook 기록 파일이 만들어지지 않았다. 자동 스킬 모드, 패키지명으로 한정한 시작 명령, 필수 확장을 역할에 저장하고 Sol/auto로 실행했다.
+
+Run `run_ba878d5837d64a099c554a0acaedb9ac`에서 `read`가 등록된 스킬 파일을 읽었고, 독립 hook 기록으로 `session_start`, 시작 명령, `before_agent_start`, `before_provider_request`, `tool_call`, `tool_result`, `agent_end`를 확인했다. 첫 요청에는 hook 지침만, 스킬 읽기 후 요청에는 스킬 지침도 들어갔다. 결과물은 두 지침의 서로 다른 표식과 12,300원 계산을 포함했다. provider 본문·키·사용자 파일은 hook 로그에 저장하지 않았다.
+
+이 실행은 완료 후 추가 요청이 4회 Run 한도를 만나 역할만 실패로 표시됐다. 이를 정상 완료 증거로 집계하지 않는다. SDK와 legacy에서 red test로 재현했고, Coordinator의 성공적인 제출/답변 응답을 받은 경우 Pi의 공개 `finishTurn` API로 도구 처리를 마친 뒤 종료하도록 수정했다. 거절된 제출은 다음 요청을 계속 허용한다. 필수 확장 실패와 취소 처리는 유지한다. SDK/legacy 관련 57개 회귀가 통과했으며, 최종 빌드 재검증은 후속 기록으로 구분한다.
+
+## E2E 정리
+
+사용자 요청에 따라 기본 E2E 실행을 179개에서 84개로 줄였다. 세부 기준과 남긴 경계는 `docs/Test-Strategy.md` §10에 기록했다. Firefox Loop 승인 실패는 먼저 수정·통과시킨 뒤 그대로 남겼다. 새 skip/retry/timeout 완화는 없다.
+
+
+최종 패키지에서 스킬·hook 검증을 반복했다. Sol/auto Run `run_5e76b940bd2047aca3dc05b01972409e`와 Luna/high 일회성 override Run `run_dea0d8c85220471c8e0960a53fe43743`는 각각 실제 요청 3회로 `read → write_artifact → submit_result`를 완료했다. 두 역할 모두 정상 종료, 제출 뒤 추가 요청·한도 초과 없음, 스킬/확장 hash와 r1 고정, 스킬 읽기 전후 실제 payload의 표식 포함 여부, hook 6종과 시작 명령을 확인했다. legacy Luna/provider_default Run `run_263dc92656a24111a5e8065d59182ab5`도 두 요청으로 정상 종료하고 추론 필드를 생략했다.
+
+전체 실제 요청은 54회, 준비 호출은 55회다. 사용자가 추가 검증의 배치 호출 한도를 폐지했으며 제품 Run 한도는 유지했다. 실제 ONNX 적용은 24요청이며 fallback은 없었다. 첫 스킬 Run의 실패와 provider retry도 기록에 포함하고 정상 완료와 구분한다.
+
+초기 파일 검증 뒤 원본에 반영한 기록 `integration_0a24a1ae`(2026-10-18 03:00:19 UTC)가 있다. 최신 재확인에서는 반영된 `tags.mjs`의 hash가 승인된 integration의 after hash와 작업 복사본에 일치했고, 검사 파일은 변하지 않았다. 에이전트 실행 당시 원본 불변 증거와 이후 명시적 반영 결과를 구분한다.
+
+후속 Linux AppImage SHA-256: `360481f9cbac386b74ffbdf3489b8ef9ab18d5a4732439a9af0e9d547203592c`. native DW-07 smoke를 다시 통과했다.
+
+축소 gate의 첫 실행에서 CLI eval 하나가 5초 제한을 넘었다(990 passed / 1 failed / 5 skipped). 같은 컨테이너에서 해당 검사는 2.2초에 통과했다. CLI/SDK가 별도 프로세스를 생성하므로 CI Vitest worker도 2개로 제한해 병렬 테스트의 CPU 경합을 줄였다. 테스트의 timeout과 단정은 유지한다.

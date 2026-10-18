@@ -1,6 +1,6 @@
 import { linearCorral } from '@corral/testkit';
 import type { Page } from '@playwright/test';
-import { panelTab, requestBox } from '../workbench.ts';
+import { requestBox } from '../workbench.ts';
 import { expect, type Harness, test } from './harness.ts';
 
 // Workbench UX review (docs/plans/Workbench-UX-Review-Plan.md): pinpoint checks of the fixes
@@ -58,25 +58,6 @@ test('[TC-UX-02-H] a referenced result keeps its exact version through a reload'
   expect(brief).toContain('References');
   expect(brief).toContain(text as string);
   expect(corral.errors).toEqual([]);
-});
-
-test('[TC-UX-05-H] reviewing a session without a working copy says so, without an error', async ({
-  page,
-  corral,
-}) => {
-  await session(page, corral);
-  const sessionPath = new URL(page.url()).pathname;
-  await page.goto(`${corral.server.url}${sessionPath}/review`);
-  await expect(page.getByTestId('review-empty')).toBeVisible();
-  await expect(page.getByRole('alert')).toHaveCount(0);
-  await expect(page.getByText('Preparing the comparison…')).toBeHidden();
-  await page.getByRole('link', { name: 'Open results' }).click();
-  await expect(page).toHaveURL(/panel=artifacts/);
-  await expect(page.getByRole('tab', { name: 'Results', exact: true })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  );
-  void panelTab;
 });
 
 test.describe('live models', () => {

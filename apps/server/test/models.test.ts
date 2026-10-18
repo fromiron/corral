@@ -308,15 +308,11 @@ describe('API keys and OpenAI-compatible endpoints (CR-005)', () => {
   const LOCAL_PROFILES = [{ id: 'model-a', provider: 'local', model: 'llama3.2' }];
 
   function scriptEndpoint(endpoint: Awaited<ReturnType<typeof startCompatibleEndpoint>>) {
-    let calls = 0;
     endpoint.setReply((body) => {
-      calls += 1;
       const written = [...JSON.stringify(body).matchAll(/artv_[a-f0-9]{32}/g)].at(-1)?.[0];
-      if (calls % 3 === 1)
+      if (!written)
         return { toolCall: { name: 'write_artifact', args: { text: 'Local answer.' } } };
-      if (calls % 3 === 2)
-        return { toolCall: { name: 'submit_result', args: { artifactVersionIds: [written] } } };
-      return 'Done.';
+      return { toolCall: { name: 'submit_result', args: { artifactVersionIds: [written] } } };
     });
   }
 

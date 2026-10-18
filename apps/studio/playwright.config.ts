@@ -28,7 +28,13 @@ export default defineConfig({
     },
     {
       name: 'firefox',
-      testIgnore: ['server/**', 'performance/**'],
+      // Cross-browser coverage is for canvas, keyboard/IME and responsive navigation.
+      testMatch: [
+        'studio.spec.ts',
+        'accessibility.spec.ts',
+        'palette.spec.ts',
+        'run-page-narrow.spec.ts',
+      ],
       use: { ...devices['Desktop Firefox'], viewport: { width: 1280, height: 800 } },
     },
     {

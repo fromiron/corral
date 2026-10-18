@@ -177,6 +177,32 @@ function runtime(
 }
 
 describe('SDK worker through the product adapter (H2)', () => {
+  it.each([true, false])(
+    '[TC-HAR-001-H] a %s accepted submission ends without a confirmation request',
+    async (accepted) => {
+      const run = runtime(
+        [
+          fauxAssistantMessage(
+            [fauxToolCall('submit_result', { artifactVersionIds: ['artv_1'] })],
+            { stopReason: 'toolUse' },
+          ),
+          fauxAssistantMessage('Submission was refused.'),
+        ],
+        '',
+        {
+          executeTool: async (toolCallId) =>
+            accepted
+              ? { ok: true, toolCallId, result: {} }
+              : { ok: false, toolCallId, error: { code: 'CAPABILITY_DENIED', message: 'refused' } },
+        },
+      );
+      expect(
+        await (await run.adapter.start(run.input, run.host)).waitForSettlement(),
+      ).toMatchObject({ outcome: 'succeeded' });
+      expect(run.requests).toHaveLength(accepted ? 1 : 2);
+    },
+  );
+
   it('[TC-HAR-016-H] runs the official MCP extension in the selected copy with owned native calls', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'corral-mcp-copy-'));
     scratch.push(cwd);

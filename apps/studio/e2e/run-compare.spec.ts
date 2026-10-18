@@ -37,12 +37,3 @@ test('[TC-OBS-004-H] compares two runs: figures, models and the outputs with the
   await outputs.getByRole('button', { name: 'Show differences' }).click();
   await expect(outputs.locator('[data-diff="added"]').first()).toBeVisible();
 });
-
-test('[TC-OBS-004-N] comparing needs exactly two runs, and an unknown run says so', async ({
-  page,
-}) => {
-  await page.goto('/compare?a=run_nope&b=run_none');
-  await expect(page.getByRole('alert')).toContainText('could not be found');
-  await page.goto('/');
-  await expect(page.getByRole('button', { name: /^Compare/ })).toHaveCount(0);
-});

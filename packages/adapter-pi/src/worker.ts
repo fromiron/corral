@@ -126,6 +126,7 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
       maxOutputTokens: number;
       reasoning?: ReasoningResolution;
     } | null = null;
+    let completionAccepted = false;
     let chunk = 0;
     const authorized = new Map<string, string>();
 
@@ -143,6 +144,9 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
         if (reply.type !== 'tool_result' || !reply.ok) {
           throw new Error(reply.type === 'tool_result' ? (reply.reason ?? 'refused') : 'refused');
         }
+        // Only the Coordinator's successful tool reply establishes completion.
+        if (name === 'submit_result' || (name === 'reply' && start.assignment.kind === 'question'))
+          completionAccepted = true;
         return {
           content: [{ type: 'text', text: JSON.stringify(reply.result ?? {}) }],
           details: reply.result ?? {},
@@ -183,6 +187,7 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
       },
       getApiKey: () => keyOf(permit?.apiKey),
       toolExecution: 'sequential',
+      finishTurn: () => (completionAccepted ? { action: 'end' } : undefined),
       prepareRequest: async ({ context }) => {
         let preparedContext = context;
         const prepare = async () => {

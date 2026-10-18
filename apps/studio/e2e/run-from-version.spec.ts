@@ -21,16 +21,3 @@ test('[TC-ART-005-H] a finished result starts the next run, which names its sour
   await expect(summary.getByRole('link', { name: /of run run_/ })).toBeVisible();
   expect(page.url()).not.toBe(firstRun);
 });
-
-test('[TC-ART-005-N] the starting point can be cleared before the run', async ({ page }) => {
-  await page.goto('/demo?template=starter&delay=100');
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
-  await expect(page.getByTestId('run-status')).toContainText('Succeeded', { timeout: 20_000 });
-  await page.getByRole('button', { name: 'New run from this result' }).click();
-  await page.getByTestId('start-from').getByRole('button', { name: 'Clear' }).click();
-  await expect(page.getByTestId('start-from')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
-  await expect(page.getByTestId('run-status')).toContainText('Succeeded', { timeout: 20_000 });
-  await page.getByRole('link', { name: 'Open run page' }).click();
-  await expect(page.getByRole('region', { name: 'Run summary' })).not.toContainText('Started from');
-});

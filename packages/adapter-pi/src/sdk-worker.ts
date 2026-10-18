@@ -137,6 +137,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
     const ack = async (frame: Record<string, unknown>) => {
       if ((await call(frame)).type !== 'ack') throw new Error('host refused');
     };
+    let completionAccepted = false;
     let notifications = Promise.resolve();
     let reported = false;
     let requiredExtensionFailed = false;
@@ -525,6 +526,12 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
                   ? (reply.reason ?? 'Corral tool refused')
                   : 'Corral tool refused',
               );
+            // Only the Coordinator's successful tool reply establishes completion.
+            if (
+              name === 'submit_result' ||
+              (name === 'reply' && start.assignment.kind === 'question')
+            )
+              completionAccepted = true;
             return {
               content: [{ type: 'text', text: JSON.stringify(reply.result ?? {}) }],
               details: reply.result ?? {},
@@ -808,6 +815,11 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
         sessionManager: SessionManager.inMemory(cwd),
         settingsManager: settings,
       }));
+      const finishTurn = session.agent.finishTurn;
+      session.agent.finishTurn = async (turn, signal) => {
+        const decision = await finishTurn?.(turn, signal);
+        return completionAccepted ? { action: 'end' } : (decision ?? undefined);
+      };
       const extensionRuntime = loader.getExtensions().runtime;
       const refreshTools = extensionRuntime.refreshTools;
       extensionRuntime.refreshTools = () => {

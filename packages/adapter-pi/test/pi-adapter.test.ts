@@ -50,13 +50,16 @@ async function liveRun(
 describe('Pi adapter under the Coordinator (C-017–C-019)', () => {
   it('runs a live step: the model writes and submits through Corral tools', async () => {
     const { transport, credentialCalls } = liveRuntime(writeThenSubmit('Final answer.'));
-    const { runId, events } = await liveRun(transport);
+    const { runId, events } = await liveRun(transport, (d) => {
+      d.limits = { ...d.limits, maxModelCalls: 2 };
+    });
     const final = await waitForProjection(transport, runId, settled);
     expect(final.status).toBe('succeeded');
+    expect(Object.values(final.executions).map((e) => e.status)).toEqual(['succeeded']);
     const output = final.output?.artifactVersionIds[0] ?? '';
     expect(await transport.getArtifactText(runId, output)).toBe('Final answer.');
     // One credential lookup per model request, and the token is in no event.
-    expect(credentialCalls).toEqual(['openai/faux-1', 'openai/faux-1', 'openai/faux-1']);
+    expect(credentialCalls).toEqual(['openai/faux-1', 'openai/faux-1']);
     await Promise.resolve();
     expect(JSON.stringify(events)).not.toContain(ACCESS_TOKEN);
   });

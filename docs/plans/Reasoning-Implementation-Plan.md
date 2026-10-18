@@ -11,7 +11,7 @@
 - [x] 역할/컴포저/실행 기록 UI, undo/import/export
 - [x] 다른 팀 Run 표시 차단, 명시 live/mock 선택 보존
 - [x] 결정적 회귀·로컬 act·빌드·desktop 검증
-- [x] 실제 계정 Sol/Luna low/high/auto, 역할 변경·파일/check·재시작, 최대 48회
+- [x] 실제 계정 Sol/Luna low/high/auto, 역할 변경·파일/check·재시작 (초기 48회; 추가 검증 한도는 사용자 요청으로 해제)
 - 전달 단계: 커밋·PR exact-head CI·머지·main 동기화. 최종 전달 여부는 이 변경의 PR merge 상태와 main commit을 기준으로 확인한다.
 
 ## 작업 기록
