@@ -42,6 +42,8 @@ import { extensionUi } from './extension-ui.ts';
 import { lockResources } from './locked-resources.ts';
 import { mcpExtension } from './mcp.ts';
 import { PROTOCOL_VERSION, SdkHostFrame, type SdkStartFrame } from './protocol.ts';
+import { assertReasoningCapabilities, reasoningRequest, verifyReasoningWire } from './reasoning.ts';
+import { requestReasoningInput } from './reasoning-input.ts';
 import { brokerParameters, describeTool } from './static-tools.ts';
 import { normalizeUsage } from './usage.ts';
 import type { WorkerDeps } from './worker.ts';
@@ -67,6 +69,14 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
   let nextRequest = 0;
   const waiting = new Map<string, (reply: Reply) => void>();
   const directives = new Map<string, DeliveredDirective>();
+  const deferredSteers = new Map<string, DeliveredDirective>();
+  let preparingRequest = false;
+  const steer = (directive: DeliveredDirective) => {
+    void session?.steer(directiveText(directive)).catch(() => {
+      cancelled = true;
+      void session?.abort();
+    });
+  };
   port.onFrame((raw) => {
     const parsed = SdkHostFrame.safeParse(raw);
     if (!parsed.success) {
@@ -92,7 +102,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
       for (const [requestId, resolveReply] of waiting)
         resolveReply({
           type: 'refused',
-          protocolVersion: 2,
+          protocolVersion: PROTOCOL_VERSION,
           executionId,
           requestId,
           reason: 'cancelled',
@@ -102,11 +112,10 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
     } else if (frame.type === 'directive') {
       if (directives.has(frame.directiveId) || cancelled) return;
       directives.set(frame.directiveId, frame);
-      if (session?.isStreaming)
-        void session.steer(directiveText(frame)).catch(() => {
-          cancelled = true;
-          void session?.abort();
-        });
+      if (session?.isStreaming) {
+        if (preparingRequest) deferredSteers.set(frame.directiveId, frame);
+        else steer(frame);
+      }
     } else {
       waiting.get(frame.requestId)?.(frame);
       waiting.delete(frame.requestId);
@@ -148,6 +157,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
         start.model.endpoint,
       );
       if (!model) throw new Error('model unavailable');
+      assertReasoningCapabilities(model, start.reasoningCapabilities);
       failureCode = 'policy_denied';
       if (
         start.harness.policy === 'strict' &&
@@ -224,6 +234,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
             name: model.name,
             api: 'corral-proxy',
             reasoning: model.reasoning,
+            ...(model.thinkingLevelMap ? { thinkingLevelMap: model.thinkingLevelMap } : {}),
             input: model.input,
             cost: model.cost,
             contextWindow: model.contextWindow,
@@ -256,7 +267,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
                 `Skill resources: skills/${skill.name}/\n${skill.content}`;
             }
           }
-          const requestContext = normalizeContext(owned);
+          let requestContext = normalizeContext(owned);
           // Core has one active request per execution. Nested provider requests queue here too.
           requests = requests.then(async () => {
             let modelCallId: string | undefined;
@@ -265,21 +276,70 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
               await registryUpdates;
               if (requiredExtensionFailed) throw new Error('required extension failed');
               if (cancelled || options?.signal?.aborted) throw new Error('cancelled');
-              const record = requestRecord(requestContext, requestPurpose, directives);
-              const permit = await call({ type: 'prepare_request', ...record });
+              preparingRequest = true;
+              let preparedDirectiveIds: string[] = [];
+              const prepare = async () => {
+                const present = JSON.stringify(requestContext.messages);
+                const missing = [...directives.values()].filter(
+                  (d) => !present.includes(JSON.stringify(directiveText(d)).slice(1, -1)),
+                );
+                if (missing.length)
+                  requestContext = {
+                    ...requestContext,
+                    messages: [
+                      ...requestContext.messages,
+                      {
+                        role: 'user',
+                        content: missing.map(directiveText).join('\n\n'),
+                        timestamp: deps.now(),
+                      },
+                    ],
+                  };
+                const record = requestRecord(requestContext, requestPurpose, directives);
+                preparedDirectiveIds = record.directiveIds;
+                const assignment =
+                  start.assignment.kind === 'delegated'
+                    ? start.assignment.brief
+                    : start.assignment.kind === 'question'
+                      ? start.assignment.body
+                      : '';
+                return call({
+                  type: 'prepare_request',
+                  ...record,
+                  reasoningInput: requestReasoningInput(
+                    requestContext,
+                    requestPurpose,
+                    assignment,
+                    record.directiveIds,
+                  ),
+                });
+              };
+              let permit = await prepare();
+              for (let retries = 0; permit.type === 'reprepare' && retries < 2; retries++) {
+                for (const directive of permit.directives)
+                  directives.set(directive.directiveId, directive);
+                permit = await prepare();
+              }
               if (permit.type !== 'permit' || cancelled || options?.signal?.aborted)
                 throw new Error('request refused');
+              preparingRequest = false;
+              for (const [id, directive] of deferredSteers) {
+                if (!preparedDirectiveIds.includes(id)) steer(directive);
+                deferredSteers.delete(id);
+              }
               modelCallId = permit.modelCallId;
               await ack({ type: 'request_dispatched', modelCallId });
               if (cancelled || options?.signal?.aborted)
                 throw new Error('cancelled before dispatch');
-              const stream = await deps.streamFn(model, requestContext, {
-                ...options,
+              const chosen = reasoningRequest(model, options, permit.reasoning);
+              const stream = await deps.streamFn(chosen.model, requestContext, {
+                ...chosen.options,
                 apiKey: start.model.endpoint?.keyless ? undefined : (permit.apiKey ?? undefined),
                 maxTokens: permit.maxOutputTokens,
                 onPayload: async (payload, payloadModel) => {
                   const updated = await options?.onPayload?.(payload, payloadModel);
                   const actual = cleanJson(updated ?? payload);
+                  const wire = verifyReasoningWire(model, actual, permit.reasoning);
                   const serialized = canonicalJson(actual);
                   for (const skill of mandatory)
                     if (!serialized.includes(JSON.stringify(skill.content).slice(1, -1)))
@@ -289,6 +349,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
                     modelCallId,
                     payloadHash: hashOf(actual),
                     payloadBytes: Buffer.byteLength(serialized),
+                    ...(wire ? { reasoning: wire } : {}),
                   });
                   if (cancelled || options?.signal?.aborted)
                     throw new Error('cancelled before HTTP dispatch');
@@ -339,6 +400,8 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
                 error: proxyMessage(answer),
               });
               out.end(proxyMessage(answer));
+            } finally {
+              preparingRequest = false;
             }
           });
           return out;

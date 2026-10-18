@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
@@ -15,6 +15,7 @@ import {
 
 export interface Workspace {
   root: string;
+  id: string;
   dbPath: string;
   config: WorkspaceConfig;
   policy: InstallationPolicy;
@@ -24,6 +25,14 @@ const CONFIG = join('.corral', 'config.json');
 
 export function prepareWorkspace(root: string): Workspace {
   mkdirSync(join(root, '.corral'), { recursive: true, mode: 0o700 });
+  const identity = join(root, '.corral', 'workspace-id');
+  try {
+    writeFileSync(identity, randomUUID(), { flag: 'wx', mode: 0o600 });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+  }
+  const id = readFileSync(identity, 'utf8').trim();
+  if (!/^[a-f0-9-]{36}$/.test(id)) throw new Error('invalid workspace identity');
   const configPath = join(root, CONFIG);
   let raw: unknown = { schemaVersion: '0.1' };
   if (existsSync(configPath)) {
@@ -37,6 +46,7 @@ export function prepareWorkspace(root: string): Workspace {
   if (!parsed.ok) throw new Error(`${CONFIG}: ${parsed.errors.join('; ')}`);
   return {
     root,
+    id,
     dbPath: join(root, '.corral', 'corral.db'),
     config: parsed.config,
     policy: installationPolicy(parsed.config),
@@ -85,4 +95,28 @@ export function writeModelConfig(
   writeFileSync(temporary, `${JSON.stringify(next, null, 2)}\n`);
   renameSync(temporary, path);
   return { ok: true, config: parsed.config, revision: configRevision(root) };
+}
+
+/** Explicit apply opt-in; preserves observer settings and guards concurrent config edits. */
+export function writeReasoningApply(root: string, apply: boolean, expectedRevision: string) {
+  if (configRevision(root) !== expectedRevision) return { ok: false as const };
+  const path = join(root, CONFIG);
+  const raw = existsSync(path)
+    ? (JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>)
+    : { schemaVersion: '0.1' };
+  const current = parseWorkspaceConfig(raw);
+  if (!current.ok) return { ok: false as const };
+  const reasoning_effort = {
+    ...(current.config.decisions?.reasoning_effort ?? {
+      mode: 'off' as const,
+      providers: ['local-model'],
+    }),
+    apply,
+  };
+  const next = { ...raw, decisions: { reasoning_effort } };
+  const parsed = parseWorkspaceConfig(next);
+  if (!parsed.ok) return { ok: false as const };
+  writeFileSync(`${path}.tmp`, `${JSON.stringify(next, null, 2)}\n`, { mode: 0o600 });
+  renameSync(`${path}.tmp`, path);
+  return { ok: true as const, config: parsed.config };
 }

@@ -2,6 +2,7 @@ import { TERMINAL_EXECUTION_STATUSES, TERMINAL_RUN_STATUSES } from '@corral/cont
 import type { RunProjection } from '@corral/core';
 import {
   ExecutionTranscript,
+  ReasoningSummary,
   type ResultItem,
   ReviewSummary,
   RunReason,
@@ -115,6 +116,9 @@ export function RunMessage({
         {name(execution.executionId)}
       </Link>
       <StatusBadge status={execution.status} />
+      {execution.modelCallIds.at(-1) ? (
+        <ReasoningSummary call={projection.modelCalls[execution.modelCallIds.at(-1)!]!} />
+      ) : null}
       {execution.waitingOn ? (
         <span className="text-muted">
           {trun(`waiting.${execution.waitingOn.kind}`, {
@@ -216,6 +220,11 @@ export function RunMessage({
                   <summary className="flex cursor-pointer items-center gap-2 py-1.5">
                     <span className="font-medium">{name(id)}</span>
                     <StatusBadge status={execution.status} />
+                    {execution.modelCallIds.at(-1) ? (
+                      <ReasoningSummary
+                        call={projection.modelCalls[execution.modelCallIds.at(-1)!]!}
+                      />
+                    ) : null}
                   </summary>
                   <ExecutionTranscript session={store} executionId={id} />
                 </details>

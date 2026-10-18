@@ -1084,3 +1084,42 @@ describe('SDK worker through the product adapter (H2)', () => {
     expect(await handle.waitForSettlement()).toMatchObject({ outcome: 'cancelled' });
   });
 });
+
+it('[TC-RSN-003-N] a steer absorbed by reprepare does not trigger an extra SDK turn', async () => {
+  const entered = new Gate(),
+    release = new Gate();
+  const directive = { directiveId: 'during_prepare', text: 'Include only the accepted scope.' };
+  let prepares = 0,
+    requests = 0;
+  const contexts: string[] = [];
+  const response = (context: { messages: unknown[] }) => {
+    requests++;
+    contexts.push(JSON.stringify(context.messages));
+    return fauxAssistantMessage('Final answer.');
+  };
+  const run = runtime([response, response], '', {
+    pendingDirectives: () => (prepares ? [directive] : []),
+    prepareModelRequest: async () => {
+      if (++prepares === 1) {
+        entered.open();
+        await release.wait();
+        throw new Error('REASONING_STALE');
+      }
+      return {
+        modelCallId: `call_${prepares}`,
+        contextSnapshotId: `context_${prepares}`,
+        profile: 'model-a',
+        maxOutputTokens: 256,
+        directives: [directive],
+      };
+    },
+  });
+  const handle = await run.adapter.start(run.input, run.host);
+  await entered.wait();
+  handle.pushDirective?.(directive);
+  await Promise.resolve();
+  release.open();
+  await handle.waitForSettlement();
+  expect(contexts[0]?.split(directive.text)).toHaveLength(2);
+  expect(requests).toBe(1);
+});

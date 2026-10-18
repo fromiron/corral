@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { HarnessBindingRef } from './harness.ts';
 import { Identifier, SchemaVersion } from './ids.ts';
+import { ReasoningPolicy } from './reasoning.ts';
 import { ReviewRecipeRevision } from './review-recipe.ts';
 
 // Canonical definition of a Corral (Technical-Design §4.1). Layout lives in CanvasLayout.
@@ -69,6 +70,7 @@ export const AgentRole = z.strictObject({
   name: z.string().min(1),
   prompt: z.string().min(1).max(20000),
   modelProfile: Identifier,
+  reasoning: ReasoningPolicy.optional(),
   allowedWorkTools: z.array(WorkTool).max(8),
   allowedCollaborationTools: z.array(CollaborationTool).max(6),
   outputContract: OutputContract,

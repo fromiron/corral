@@ -190,13 +190,13 @@ describe('RunResults view (CR-009)', () => {
     expect(onSelect).toHaveBeenCalledWith('v_c');
   });
 
-  it('[WBTST-010] shows run, review and file-work states apart', async () => {
+  it('[WBTST-010] separates run, review and submission without inventing file-work evidence', async () => {
     wrap(<RunResults session={finalThree()} selectedId="v_a" onSelect={vi.fn()} />);
     const states = screen.getByRole('list', { name: 'Result state' });
     expect(states).toHaveTextContent('Run: Succeeded');
     expect(states).toHaveTextContent('Review: none');
     expect(states).toHaveTextContent('Submitted');
-    expect(states).toHaveTextContent('No file changes or checks in this run');
+    expect(states).not.toHaveTextContent('No file changes or checks in this run');
   });
 
   it('[WBTST-009] shows a failed run’s work as a partial result, not “pending”', async () => {

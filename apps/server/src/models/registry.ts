@@ -1,5 +1,8 @@
-import type { EndpointSpec } from '@corral/adapter-pi';
-import type { ModelProfileSnapshot, TeamPlan } from '@corral/contracts';
+import {
+  type EndpointSpec,
+  modelReasoningCapabilities as reasoningCapabilities,
+} from '@corral/adapter-pi';
+import type { ModelProfileSnapshot, ReasoningCapabilities, TeamPlan } from '@corral/contracts';
 import type { ModelResolution, ModelResolver } from '@corral/core';
 import type { AuthEvent, AuthPrompt, CredentialStore, Models } from '@earendil-works/pi-ai';
 import { ENDPOINT_ORIGIN, type Endpoint } from './endpoints.ts';
@@ -100,6 +103,7 @@ export interface ModelProfileView {
   modelName: string | null;
   available: boolean;
   reasoning: boolean | null;
+  reasoningCapabilities: ReasoningCapabilities;
   contextWindow: number | null;
   maxOutputTokens: number | null;
   method: AuthMethod | null;
@@ -205,6 +209,7 @@ export class ModelRegistry implements ModelResolver {
         profile,
         provider: config.provider,
         modelId: config.model,
+        reasoning: reasoningCapabilities(this.models.getModel(config.provider, config.model)),
         // The run record knows oauth and api_key; a keyless endpoint is recorded as api_key.
         auth: method === 'none' ? 'api_key' : method,
       },
@@ -415,6 +420,7 @@ export class ModelRegistry implements ModelResolver {
         modelName: model?.name ?? null,
         available: Boolean(model),
         reasoning: model?.reasoning ?? null,
+        reasoningCapabilities: reasoningCapabilities(model),
         contextWindow: model?.contextWindow ?? null,
         maxOutputTokens: model?.maxTokens ?? null,
         method,

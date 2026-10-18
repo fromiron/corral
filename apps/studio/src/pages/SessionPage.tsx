@@ -1,4 +1,5 @@
 import type { FileChangeView } from '@corral/client';
+import type { RoleRunOverrides } from '@corral/contracts';
 import {
   type HarnessOverrides,
   type RunReference,
@@ -73,6 +74,7 @@ import { isSendKey, usePreferences } from '../workbench/preferences.ts';
 import { EDIT_REQUEST, editRequest, RefusalHelp } from '../workbench/RefusalHelp.tsx';
 import { RunHarnessOverrides } from '../workbench/RunHarnessOverrides.tsx';
 import { RunMessage } from '../workbench/RunMessage.tsx';
+import { RunRoleOverrides } from '../workbench/RunRoleOverrides.tsx';
 import { readComposerDraft, writeComposerDraft } from '../workbench/sessionDraft.ts';
 import { TopbarActions } from '../workbench/TopbarSlot.tsx';
 import { useMentionSearch } from '../workbench/useMentionSearch.ts';
@@ -82,6 +84,7 @@ import {
   useModelProfiles,
   useTeamRoles,
 } from '../workbench/useModels.ts';
+import { useRunMode } from '../workbench/useRunMode.ts';
 import { useBinding, WORKSPACE_CHANGED, WorkingCopyPanel } from './FilesViews.tsx';
 import { Checks } from './ReviewPage.tsx';
 import { RunDetail } from './RunPage.tsx';
@@ -1229,7 +1232,8 @@ function Composer({
   const [lock, setLock] = useState<IntentLock | null>(
     restored.text && restored.intent ? { intent: restored.intent, target: restored.target } : null,
   );
-  const [runMode, setRunMode] = useState<'mock' | 'live'>('mock');
+  const modeChoice = useRunMode(session.projectId, 'session', session.sessionId);
+  const { mode: runMode, select: setRunMode } = modeChoice;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // UX-04: why the last request did not start; the text stays in the box to send again.
@@ -1257,6 +1261,10 @@ function Composer({
   const roles = useTeamRoles(team);
   const harnessKey = JSON.stringify([session.sessionId, team?.corralId, team?.definitionRevision]);
   const [runStyles, setRunStyles] = useState<{ key: string; value: HarnessOverrides } | null>(null);
+  const [roleChoices, setRoleChoices] = useState<{ key: string; value: RoleRunOverrides } | null>(
+    null,
+  );
+  const roleOverrides = roleChoices?.key === harnessKey ? roleChoices.value : {};
   const harnessOverrides = runStyles?.key === harnessKey ? runStyles.value : {};
   const [recall, setRecall] = useState(-1);
   const input = useRef<HTMLTextAreaElement>(null);
@@ -1442,6 +1450,7 @@ function Composer({
     commandId: string = newCommandId(),
     refs: RunReference[] = [],
     overrides: HarnessOverrides = {},
+    roleChoices: RoleRunOverrides = {},
   ): Promise<{ runId: string | null; detail: string | null; code?: string | undefined }> => {
     if (!team) return { runId: null, detail: t('noTeamYet') };
     const corral = await repository.get(team.corralId);
@@ -1455,6 +1464,7 @@ function Composer({
       ...(latest ? { startFrom: { runId: latest.runId, artifactVersionId: latest.id } } : {}),
       ...(refs.length ? { references: refs } : {}),
       ...(Object.keys(overrides).length ? { harnessOverrides: overrides } : {}),
+      ...(Object.keys(roleChoices).length ? { roleOverrides: roleChoices } : {}),
     };
     const result = await transport.startRun(
       mode === 'server'
@@ -1492,10 +1502,19 @@ function Composer({
       if (intent === 'next') {
         const refs = references;
         const commandId = commandFor(
-          `next\u0000${body}\u0000${JSON.stringify([refs, harnessOverrides, runMode])}`,
+          `next\u0000${body}\u0000${JSON.stringify([refs, harnessOverrides, roleOverrides, runMode])}`,
         );
-        const { runId, detail, code } = await startNext(body, commandId, refs, harnessOverrides);
-        if (runId) setRunStyles(null);
+        const { runId, detail, code } = await startNext(
+          body,
+          commandId,
+          refs,
+          harnessOverrides,
+          roleOverrides,
+        );
+        if (runId) {
+          setRunStyles(null);
+          setRoleChoices(null);
+        }
         await record({
           intent,
           text: body,
@@ -1699,9 +1718,19 @@ function Composer({
   // before it is sent, with the way to connect it.
   const notReady =
     runMode === 'live' && (intent === 'next' || intent === 'explain') && profiles
-      ? roles.filter((r) => !profiles.some((p) => p.profileId === r.profileId && p.available))
+      ? roles.filter(
+          (r) =>
+            !profiles.some(
+              (p) =>
+                p.profileId === (roleOverrides[r.roleId]?.modelProfile ?? r.profileId) &&
+                p.available,
+            ),
+        )
       : [];
+  const liveUnavailable =
+    runMode === 'live' && !live && (intent === 'next' || intent === 'explain');
   const unavailable =
+    liveUnavailable ||
     notReady.length > 0 ||
     resolved.blocked !== null ||
     missingChips.length > 0 ||
@@ -1844,13 +1873,21 @@ function Composer({
         </section>
       ) : null}
       {intent === 'next' ? (
-        <RunHarnessOverrides
-          roles={roles}
-          projectId={session.projectId}
-          value={harnessOverrides}
-          onChange={(value) => setRunStyles({ key: harnessKey, value })}
-          disabled={busy}
-        />
+        <>
+          <RunRoleOverrides
+            roles={roles}
+            profiles={profiles}
+            value={roleOverrides}
+            onChange={(value) => setRoleChoices({ key: harnessKey, value })}
+          />
+          <RunHarnessOverrides
+            roles={roles}
+            projectId={session.projectId}
+            value={harnessOverrides}
+            onChange={(value) => setRunStyles({ key: harnessKey, value })}
+            disabled={busy}
+          />
+        </>
       ) : null}
       <ComposerSurface.Host>
         <section aria-label={t('requestLabel')} className="flex flex-col gap-1 px-3 pt-2.5 pb-2">
@@ -2040,7 +2077,7 @@ function Composer({
                 ]}
               />
             ) : null}
-            {canLive ? (
+            {canLive || runMode === 'live' ? (
               <Select
                 variant="chip"
                 label={t('mode')}
@@ -2089,6 +2126,8 @@ function Composer({
         {intent === 'explain' && !latest ? (
           <span className="text-warning">{t('noResult')}</span>
         ) : null}
+        {modeChoice.error ? <p role="alert">{tc('modeSaveFailed')}</p> : null}
+        {liveUnavailable ? <p role="alert">{tc('liveUnavailable')}</p> : null}
         {(intent === 'next' || intent === 'explain') && team ? (
           <PreRunSummary session={session} team={team} mode={runMode} intent={intent} />
         ) : null}

@@ -145,14 +145,10 @@ class WorkerExecution {
     this.handle = {
       cancel: (reason) => this.cancel(reason),
       waitForSettlement: () => this.settlement,
-      ...(resources
-        ? {
-            pushDirective: (directive: { directiveId: string; text: string }) => {
-              if (this.state === 'running' && !this.pendingSettlement)
-                this.send({ type: 'directive', ...directive });
-            },
-          }
-        : {}),
+      pushDirective: (directive: { directiveId: string; text: string }) => {
+        if (this.state === 'running' && !this.pendingSettlement)
+          this.send({ type: 'directive', ...directive });
+      },
     };
   }
 
@@ -225,6 +221,9 @@ class WorkerExecution {
       this.send({
         type: 'start',
         model: this.model,
+        ...(this.input.model.reasoning
+          ? { reasoningCapabilities: this.input.model.reasoning }
+          : {}),
         role: { name: role.name, prompt: role.prompt, outputContract: role.outputContract },
         inputs: this.input.inputs.map(({ name, artifactVersionId, text }) => ({
           name,
@@ -280,8 +279,8 @@ class WorkerExecution {
         askTo: this.input.capabilities.askTo,
         ...(this.resources ? { harness: this.input.harness, resources: this.resources } : {}),
       });
-      if (this.resources)
-        for (const directive of this.host.pendingDirectives!())
+      if (this.host.pendingDirectives)
+        for (const directive of this.host.pendingDirectives())
           this.send({ type: 'directive', ...directive });
       return;
     }
@@ -382,6 +381,7 @@ class WorkerExecution {
               modelCallId: frame.modelCallId,
               payloadHash: frame.payloadHash,
               payloadBytes: frame.payloadBytes,
+              ...(frame.reasoning ? { reasoning: frame.reasoning } : {}),
             });
           } else if (frame.type === 'native_tool_start')
             await this.host.beginNativeTool!(frame.toolCallId, frame.argsHash);
@@ -416,6 +416,7 @@ class WorkerExecution {
                   sections: frame.sections,
                 })
               : undefined,
+            frame.reasoningInput,
           );
           const apiKey = await this.options.credentials(this.input.model);
           this.send({
@@ -424,10 +425,17 @@ class WorkerExecution {
             modelCallId: permit.modelCallId,
             maxOutputTokens: permit.maxOutputTokens,
             directives: permit.directives,
+            ...(permit.reasoning ? { reasoning: permit.reasoning } : {}),
             apiKey,
           });
         } catch (error) {
-          this.send({ type: 'refused', requestId: frame.requestId, reason: reasonOf(error) });
+          if (error instanceof Error && error.message === 'REASONING_STALE')
+            this.send({
+              type: 'reprepare',
+              requestId: frame.requestId,
+              directives: this.host.pendingDirectives?.() ?? [],
+            });
+          else this.send({ type: 'refused', requestId: frame.requestId, reason: reasonOf(error) });
         }
         return;
       }

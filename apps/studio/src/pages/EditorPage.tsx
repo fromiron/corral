@@ -1,10 +1,11 @@
-import type { HarnessOverrides } from '@corral/contracts';
+import type { HarnessOverrides, RoleRunOverrides } from '@corral/contracts';
 import type { CorralRecord } from '@corral/core';
 import {
   ApprovalPanel,
   ArtifactViewer,
   CorralCanvas,
   createEditorStore,
+  createRunSession,
   draftFromDefinition,
   type EditorStore,
   EditorToolbar,
@@ -35,7 +36,9 @@ import { useServices } from '../services.tsx';
 import { HarnessRoleSettings } from '../workbench/HarnessRoleSettings.tsx';
 import { LoopRecipeSettings } from '../workbench/LoopRecipeSettings.tsx';
 import { RunHarnessOverrides } from '../workbench/RunHarnessOverrides.tsx';
+import { RunRoleOverrides } from '../workbench/RunRoleOverrides.tsx';
 import { useModelProfiles } from '../workbench/useModels.ts';
+import { useRunMode } from '../workbench/useRunMode.ts';
 
 export function EditorPage() {
   const record = editorRoute.useLoaderData();
@@ -186,7 +189,17 @@ function Editor({
   fromSession?: string | null;
 }) {
   const t = useTranslations('Editor');
-  const { repository, session, mode, live } = useServices();
+  const services = useServices();
+  const { repository, mode, live } = services;
+  const session = useMemo(() => {
+    const key = JSON.stringify([record.projectId, record.corralId]);
+    let view = services.editorSessions.get(key);
+    if (!view) {
+      view = createRunSession(services.transport);
+      services.editorSessions.set(key, view);
+    }
+    return view;
+  }, [services, record.projectId, record.corralId]);
   const profiles = useModelProfiles();
   const draft = useStore(editor, (s) => s.draft);
   const [saved, setSaved] = useState({ record, draft: editor.getState().draft });
@@ -391,9 +404,14 @@ function RunSide({
   const { session, editor } = useStudioStores();
   const definition = useStore(editor, (state) => state.draft.definition);
   const projectId = useCurrentProject();
+  const runMode = useRunMode(projectId, 'corral', definition.id);
+  const profiles = useModelProfiles();
+  const [roleOverrides, setRoleOverrides] = useState<RoleRunOverrides>({});
   const roles = definition.roles.map((role) => ({
     roleId: role.id,
     name: role.name,
+    profileId: role.modelProfile,
+    ...(role.reasoning ? { reasoning: role.reasoning } : {}),
     ...(role.harness ? { harness: role.harness } : {}),
   }));
   const key = JSON.stringify([projectId, definition.id, roles]);
@@ -409,17 +427,28 @@ function RunSide({
   return (
     <section aria-labelledby="run-heading" className="flex flex-col gap-3">
       {guide?.(session, setChosen)}
+      <RunRoleOverrides
+        roles={roles}
+        profiles={profiles}
+        value={roleOverrides}
+        onChange={setRoleOverrides}
+      />
       <RunHarnessOverrides
         roles={roles}
         projectId={projectId}
         value={harnessOverrides}
         onChange={(value) => setSelection({ key, value })}
       />
+      {runMode.error ? <p role="alert">{t('modeSaveFailed')}</p> : null}
       <RunControls
+        mode={runMode.mode}
+        onModeChange={runMode.select}
         harnessOverrides={harnessOverrides}
+        roleOverrides={roleOverrides}
         onStarted={() => {
           setChosen(null);
           setSelection(null);
+          setRoleOverrides({});
           setViewing(null);
           setStartFrom(null);
         }}

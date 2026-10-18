@@ -10,6 +10,8 @@ export { HarnessDetails } from './components/HarnessDetails.tsx';
 export { NodeInspector } from './components/NodeInspector.tsx';
 export { NodePalette } from './components/NodePalette.tsx';
 export { QuestionsPanel } from './components/QuestionsPanel.tsx';
+export { ReasoningSelect } from './components/ReasoningSelect.tsx';
+export { ReasoningSummary } from './components/ReasoningSummary.tsx';
 export { ReinsPanel, type SteerTarget } from './components/ReinsPanel.tsx';
 export { RunActions } from './components/RunActions.tsx';
 export { RunCanvas } from './components/RunCanvas.tsx';

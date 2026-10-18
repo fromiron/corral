@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { Identifier } from './ids.ts';
+import { ReasoningWire } from './reasoning.ts';
 
 /** An immutable profile revision, never a path or a mutable "latest" alias (CR-018). */
 export const HarnessBindingRef = z.strictObject({
@@ -176,6 +177,7 @@ export type ModelRequestRecord = z.infer<typeof ModelRequestRecord>;
 
 /** The provider-specific JSON after payload hooks; no headers or credentials. */
 export const ProviderPayloadRecord = z.strictObject({
+  reasoning: ReasoningWire.optional(),
   modelCallId: Identifier,
   payloadHash: ContentHash,
   payloadBytes: z

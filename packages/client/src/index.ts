@@ -1,3 +1,4 @@
+import type { ReasoningCapabilities } from '@corral/contracts';
 import {
   type CorralDefinition,
   type CreateRunRequest,
@@ -116,6 +117,19 @@ async function apiError(response: Response): Promise<ApiError> {
     );
   } catch {
     return new ApiError(response.status, 'UNKNOWN', response.statusText);
+  }
+}
+
+export class RunModesApi {
+  private readonly http: Http;
+  constructor(options: HttpOptions) {
+    this.http = new Http(options);
+  }
+  read(): Promise<{ workspaceId: string; modes: Record<string, 'mock' | 'live'> }> {
+    return this.http.json('/run-modes');
+  }
+  async set(key: string, mode: 'mock' | 'live'): Promise<void> {
+    await this.http.json('/run-modes', { method: 'PUT', body: JSON.stringify({ key, mode }) });
   }
 }
 
@@ -625,6 +639,14 @@ export interface ProviderAuthView {
   permissionsOk: boolean;
 }
 
+export interface ReasoningSettings {
+  apply: boolean;
+  available: boolean;
+  version: string | null;
+  reason: string | null;
+  revision: string;
+}
+
 export interface ModelProfileView {
   profileId: string;
   provider: string;
@@ -633,6 +655,7 @@ export interface ModelProfileView {
   modelName: string | null;
   available: boolean;
   reasoning: boolean | null;
+  reasoningCapabilities?: ReasoningCapabilities;
   contextWindow: number | null;
   maxOutputTokens: number | null;
   method: 'oauth' | 'api_key' | 'none' | null;
@@ -693,6 +716,15 @@ export class ModelsApi {
     this.http = new Http(options);
   }
 
+  reasoning(): Promise<ReasoningSettings> {
+    return this.http.json('/models/reasoning');
+  }
+  setReasoning(apply: boolean, revision: string): Promise<ReasoningSettings> {
+    return this.http.json('/models/reasoning', {
+      method: 'PUT',
+      body: JSON.stringify({ apply, revision }),
+    });
+  }
   profiles(): Promise<ModelProfileView[]> {
     return this.http.json('/model-profiles');
   }

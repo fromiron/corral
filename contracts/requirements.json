@@ -454,5 +454,29 @@
     "requirement": "LSP 조회와 변경 제안은 등록 서버·문서 버전에 묶고 모든 대상 경로·hash를 확인한 broker 적용만 허용한다.",
     "owner": "storage",
     "phase": "P12"
+  },
+  {
+    "id": "CRL-RSN-001",
+    "requirement": "역할별 수동 추론·모델·Run override·미래 패치를 고정하고 실제 요청까지 적용한다.",
+    "owner": "runtime",
+    "phase": "P12"
+  },
+  {
+    "id": "CRL-RSN-002",
+    "requirement": "로컬 ONNX turn/tool-step 판정을 요청 전에 적용하고 취소·stale·timeout·상한을 지킨다.",
+    "owner": "runtime",
+    "phase": "P12"
+  },
+  {
+    "id": "CRL-RSN-003",
+    "requirement": "선택·적용·wire·fallback을 기록하고 구자료·재시작·SDK/legacy 호환성을 지킨다.",
+    "owner": "runtime",
+    "phase": "P12"
+  },
+  {
+    "id": "CRL-RSN-004",
+    "requirement": "편집기 Run 소유권을 격리하고 범위별 명시 실행 모드를 보존한다.",
+    "owner": "studio",
+    "phase": "P12"
   }
 ]

@@ -1932,5 +1932,93 @@
     "status": "planned",
     "adapter": "mock unless explicitly live",
     "evidence": null
+  },
+  {
+    "id": "TC-RSN-001-H",
+    "requirements": [
+      "CRL-RSN-001"
+    ],
+    "suite": "integration",
+    "scenario": "역할별 수동 추론·모델·Run override·미래 패치를 고정하고 실제 요청까지 적용한다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-RSN-001-N",
+    "requirements": [
+      "CRL-RSN-001"
+    ],
+    "suite": "integration",
+    "scenario": "실패·취소·중복·늦은 이벤트 및 범위 누출 반례: 역할별 수동 추론·모델·Run override·미래 패치를 고정하고 실제 요청까지 적용한다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-RSN-002-H",
+    "requirements": [
+      "CRL-RSN-002"
+    ],
+    "suite": "integration",
+    "scenario": "로컬 ONNX turn/tool-step 판정을 요청 전에 적용하고 취소·stale·timeout·상한을 지킨다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-RSN-002-N",
+    "requirements": [
+      "CRL-RSN-002"
+    ],
+    "suite": "integration",
+    "scenario": "실패·취소·중복·늦은 이벤트 및 범위 누출 반례: 로컬 ONNX turn/tool-step 판정을 요청 전에 적용하고 취소·stale·timeout·상한을 지킨다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-RSN-003-H",
+    "requirements": [
+      "CRL-RSN-003"
+    ],
+    "suite": "integration",
+    "scenario": "선택·적용·wire·fallback을 기록하고 구자료·재시작·SDK/legacy 호환성을 지킨다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-RSN-003-N",
+    "requirements": [
+      "CRL-RSN-003"
+    ],
+    "suite": "integration",
+    "scenario": "실패·취소·중복·늦은 이벤트 및 범위 누출 반례: 선택·적용·wire·fallback을 기록하고 구자료·재시작·SDK/legacy 호환성을 지킨다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-RSN-004-H",
+    "requirements": [
+      "CRL-RSN-004"
+    ],
+    "suite": "e2e",
+    "scenario": "편집기 Run 소유권을 격리하고 범위별 명시 실행 모드를 보존한다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-RSN-004-N",
+    "requirements": [
+      "CRL-RSN-004"
+    ],
+    "suite": "e2e",
+    "scenario": "실패·취소·중복·늦은 이벤트 및 범위 누출 반례: 편집기 Run 소유권을 격리하고 범위별 명시 실행 모드를 보존한다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
   }
 ]

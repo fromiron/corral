@@ -12,6 +12,9 @@ import {
   McpChallenge,
   ModelRequestRecord,
   ProviderPayloadRecord,
+  ReasoningCapabilities,
+  ReasoningInput,
+  ReasoningResolution,
   RegisteredMcpServer,
   ResourcePath,
 } from '@corral/contracts';
@@ -23,8 +26,8 @@ import { EndpointSpec } from './endpoint.ts';
 // mismatch. Nothing the model writes decides which execution or permission a frame belongs to.
 // Frames can carry an access token (`permit.apiKey`): they are never logged or stored.
 
-export const PROTOCOL_VERSION = 2;
-export const LEGACY_PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 4;
+export const LEGACY_PROTOCOL_VERSION = 3;
 
 const head = {
   protocolVersion: z.literal(LEGACY_PROTOCOL_VERSION),
@@ -45,7 +48,18 @@ export const WorkerUsage = z.strictObject({
 
 export const WorkerFrame = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('ready'), protocolVersion: z.literal(LEGACY_PROTOCOL_VERSION) }),
-  z.strictObject({ type: z.literal('prepare_request'), ...head, requestId: RequestId }),
+  z.strictObject({
+    type: z.literal('prepare_request'),
+    ...head,
+    requestId: RequestId,
+    reasoningInput: ReasoningInput.optional(),
+  }),
+  z.strictObject({
+    type: z.literal('request_record'),
+    ...head,
+    requestId: RequestId,
+    ...ProviderPayloadRecord.shape,
+  }),
   z.strictObject({ type: z.literal('request_dispatched'), ...head, modelCallId: Identifier }),
   z.strictObject({
     type: z.literal('authorize_tool'),
@@ -108,6 +122,7 @@ export type WorkerTool = z.infer<typeof WorkerTool>;
 export const StartFrame = z.strictObject({
   type: z.literal('start'),
   ...head,
+  reasoningCapabilities: ReasoningCapabilities.optional(),
   model: z.strictObject({
     provider: Identifier,
     modelId: z.string().min(1).max(200),
@@ -145,8 +160,17 @@ export const StartFrame = z.strictObject({
 
 export const HostFrame = z.discriminatedUnion('type', [
   StartFrame,
+  z.strictObject({ type: z.literal('directive'), ...head, directiveId: Identifier, text: Text }),
+  z.strictObject({
+    type: z.literal('reprepare'),
+    ...head,
+    requestId: RequestId,
+    directives: z.array(z.strictObject({ directiveId: Identifier, text: Text })),
+  }),
+  z.strictObject({ type: z.literal('ack'), ...head, requestId: RequestId }),
   z.strictObject({
     type: z.literal('permit'),
+    reasoning: ReasoningResolution.optional(),
     ...head,
     requestId: RequestId,
     modelCallId: Identifier,
@@ -257,6 +281,7 @@ export const SdkWorkerFrame = z.union([
     ...sdkHead,
     requestId: RequestId,
     ...ModelRequestRecord.shape,
+    reasoningInput: ReasoningInput.optional(),
   }),
   z.strictObject({
     type: z.literal('request_dispatched'),
@@ -275,12 +300,6 @@ export const SdkWorkerFrame = z.union([
     ...sdkHead,
     requestId: RequestId,
     update: HarnessToolsUpdate,
-  }),
-  z.strictObject({
-    type: z.literal('request_record'),
-    ...sdkHead,
-    requestId: RequestId,
-    ...ProviderPayloadRecord.shape,
   }),
   z.strictObject({
     type: z.literal('native_tool_start'),
@@ -315,7 +334,5 @@ export const SdkHostFrame = z.union([
     .filter((frame) => frame.shape.type.value !== 'start')
     .map((frame) => frame.extend({ protocolVersion: z.literal(PROTOCOL_VERSION) })),
   SdkStartFrame,
-  z.strictObject({ type: z.literal('ack'), ...sdkHead, requestId: RequestId }),
-  z.strictObject({ type: z.literal('directive'), ...sdkHead, directiveId: Identifier, text: Text }),
 ]);
 export type SdkHostFrame = z.infer<typeof SdkHostFrame>;

@@ -3,6 +3,7 @@ import { useId } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import type { RunSessionStore } from '../run/session.ts';
+import { ReasoningSummary } from './ReasoningSummary.tsx';
 
 type Decision = RunProjection['decisions'][string];
 const LEVELS = ['low', 'medium', 'high', 'xhigh'] as const;
@@ -14,11 +15,14 @@ const LEVELS = ['low', 'medium', 'high', 'xhigh'] as const;
  */
 export function EffortJudgments({ session }: { session: RunSessionStore }) {
   const t = useTranslations('Judgments');
+  const tr = useTranslations('Reasoning');
   const headingId = useId();
   const projection = useStore(session, (s) => s.projection);
   const definition = useStore(session, (s) => s.definition);
   const settings = projection?.decisionSettings?.reasoning_effort;
-  if (!projection || !settings) return null;
+  if (!projection) return null;
+  const applied = Object.values(projection.modelCalls).filter((call) => call.reasoning);
+  if (!settings && !applied.length) return null;
   const labelOf = (executionId: string) => {
     const nodeId = projection.executions[executionId]?.nodeId;
     return definition?.nodes.find((n) => n.id === nodeId)?.label ?? nodeId ?? executionId;
@@ -29,7 +33,7 @@ export function EffortJudgments({ session }: { session: RunSessionStore }) {
     byCall.set(d.modelCallId, [...(byCall.get(d.modelCallId) ?? []), d]);
   }
   const calls = [...byCall.keys()];
-  const unavailable = settings.providers.filter((p) => !p.available);
+  const unavailable = settings?.providers.filter((p) => !p.available) ?? [];
   return (
     <section
       aria-labelledby={headingId}
@@ -38,7 +42,23 @@ export function EffortJudgments({ session }: { session: RunSessionStore }) {
       <h3 id={headingId} className="font-semibold">
         {t('heading')}
       </h3>
-      {settings.mode === 'off' ? (
+      {applied.length ? (
+        <details open>
+          <summary className="font-medium">{tr('appliedHeading')}</summary>
+          <ul className="mt-2 flex flex-col gap-2">
+            {applied.map((call) => (
+              <li key={call.modelCallId} className="flex flex-col">
+                <span>
+                  {labelOf(call.executionId)} · {call.modelCallId}
+                </span>
+                <ReasoningSummary call={call} />
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
+      {applied.length ? <h4 className="font-medium">{tr('observeHeading')}</h4> : null}
+      {settings?.mode !== 'observe' ? (
         <p className="text-muted">{t('off')}</p>
       ) : (
         <>

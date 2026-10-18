@@ -19,6 +19,7 @@ import type {
   ProviderPayloadRecord,
 } from './harness.ts';
 import type { McpChallenge } from './project-tools.ts';
+import type { ReasoningInput, ReasoningResolution } from './reasoning.ts';
 
 // Injectable runtime ports (Implementation Plan §4, CRL-DEV-002). Types only.
 
@@ -45,7 +46,8 @@ export type IdKind =
   | 'effect'
   | 'question'
   | 'approval'
-  | 'decision';
+  | 'decision'
+  | 'preparation';
 
 export interface IdFactory {
   next(kind: IdKind): string;
@@ -111,6 +113,7 @@ export interface DeliveredDirective {
 }
 
 export interface RequestPermit {
+  reasoning?: ReasoningResolution;
   modelCallId: string;
   contextSnapshotId: string;
   profile: string;
@@ -158,7 +161,10 @@ export interface TextDelta {
 }
 
 export interface AgentHost {
-  prepareModelRequest(record?: ModelRequestRecord): Promise<RequestPermit>;
+  prepareModelRequest(
+    record?: ModelRequestRecord,
+    reasoningInput?: ReasoningInput,
+  ): Promise<RequestPermit>;
   /** SDK-only: unsupported hosts must refuse SDK execution. */
   reportHarness?(report: HarnessReport): Promise<void>;
   simulateHarness?(): Promise<void>;
@@ -229,6 +235,8 @@ export interface DecisionProvider {
   /** True, or why it cannot answer right now (not installed, unsupported platform, …). */
   available(): true | string;
   decide(question: EffortQuestion, cancellation: DecisionCancellation): Promise<unknown>;
+  /** Local apply path; a complete turn/tool-step input, not the observer excerpt. */
+  decideRequest?(input: ReasoningInput, cancellation: DecisionCancellation): Promise<unknown>;
 }
 
 /** Set when the judgment is no longer wanted (timeout, cancelled execution, run ended). */

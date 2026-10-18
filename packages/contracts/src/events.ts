@@ -20,6 +20,7 @@ import {
   ProviderPayloadRecord,
 } from './harness.ts';
 import { Identifier, SchemaVersion } from './ids.ts';
+import { ReasoningApplySettings, ReasoningCapabilities, ReasoningResolution } from './reasoning.ts';
 import { ReviewIssue } from './review.ts';
 import { RecipeStopReason } from './review-recipe.ts';
 import { ExecutionActivity, ExecutionStatus, ReviewVerdict, RunStatus } from './states.ts';
@@ -64,6 +65,7 @@ export const ModelProfileSnapshot = z.strictObject({
   provider: Identifier.nullable(),
   modelId: z.string().min(1).nullable(),
   auth: z.enum(['oauth', 'api_key', 'mock']),
+  reasoning: ReasoningCapabilities.optional(),
 });
 export type ModelProfileSnapshot = z.infer<typeof ModelProfileSnapshot>;
 
@@ -89,6 +91,7 @@ export const RunStarted = event(
     criteriaVersionId: Identifier.optional(),
     /** Judgment settings fixed for the run (CR-003). Absent when the runtime has none. */
     decisions: RunDecisionSettings.optional(),
+    reasoningApply: ReasoningApplySettings.optional(),
     /** The earlier version whose text this run's brief starts from (CR-007). */
     startedFrom: StartFrom.optional(),
     harnesses: z.record(Identifier, EffectiveHarnessSnapshot).optional(),
@@ -471,6 +474,7 @@ export const ModelRequestPrepared = event(
     contextSnapshotId: Identifier,
     profile: Identifier,
     configRevision: z.int().min(0),
+    reasoning: ReasoningResolution.optional(),
     directiveIds: Ids,
     inputArtifactVersionIds: Ids,
   }),

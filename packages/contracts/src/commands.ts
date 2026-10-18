@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { CorralDefinition, RunInput } from './definition.ts';
 import { ExtensionUiValue, HarnessOverrides } from './harness.ts';
 import { Identifier, SchemaVersion } from './ids.ts';
+import { ReasoningPolicy, RoleRunOverrides } from './reasoning.ts';
 
 // Commands from contracts/command.schema.json. A command is an intent; the Coordinator
 // decides whether it becomes events (Technical-Design §5.2).
@@ -59,8 +60,18 @@ export type CancelCommand = z.infer<typeof CancelCommand>;
 
 // A future-node patch must change something; only model profile and prompt are patchable
 // (RNS-009: no structure, permission or tool changes during a run).
-const nodeFuture = { kind: z.literal('node_future'), nodeId: Identifier };
+const nodeFuture = {
+  kind: z.literal('node_future'),
+  nodeId: Identifier,
+  reasoning: ReasoningPolicy.optional(),
+};
 export const PatchPayload = z.union([
+  z.strictObject({
+    ...nodeFuture,
+    modelProfile: Identifier.optional(),
+    prompt: z.string().min(1).optional(),
+    reasoning: ReasoningPolicy,
+  }),
   z.strictObject({ ...nodeFuture, modelProfile: Identifier, prompt: z.string().min(1).optional() }),
   z.strictObject({ ...nodeFuture, modelProfile: Identifier.optional(), prompt: z.string().min(1) }),
   z.strictObject({
@@ -193,6 +204,7 @@ export const StartRunRequest = z.strictObject({
   sessionId: Identifier.optional(),
   references: RunReferences.optional(),
   harnessOverrides: HarnessOverrides.optional(),
+  roleOverrides: RoleRunOverrides.optional(),
 });
 export type StartRunRequest = z.infer<typeof StartRunRequest>;
 
@@ -211,5 +223,6 @@ export const CreateRunRequest = z.strictObject({
   sessionId: Identifier.optional(),
   references: RunReferences.optional(),
   harnessOverrides: HarnessOverrides.optional(),
+  roleOverrides: RoleRunOverrides.optional(),
 });
 export type CreateRunRequest = z.infer<typeof CreateRunRequest>;

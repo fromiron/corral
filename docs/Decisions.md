@@ -268,3 +268,11 @@ Electron은 창·OS 대화상자·서버 수명을 소유한다. 서버와 Pi wo
 - `pi-core` 역할의 이벤트·hash·골든은 바뀌지 않는다.
 - Pi 업그레이드는 별도 변경으로 하고, S1·S2·S4 회귀 테스트(`packages/adapter-pi/test/spike/`)를 통과해야 한다.
 - 스파이크 결과는 [HAR-pi-sdk-spikes](spikes/HAR-pi-sdk-spikes.md)에 있다.
+
+## ADR-028: 추론 정책은 역할 소유, 적용값은 요청 permit 소유
+
+**상태:** 채택 (2026-10-18, CR-021). ADR-025의 off/observe는 유지하며 별도 apply 경로를 추가한다.
+
+**결정:** 역할·Run override·미래 실행 patch에서 정책을 고정한다. 자동 판정은 슬롯·예산 전 비동기 준비이며 동기 gate가 아니다. owner/attempt/context/지시를 재검사한 뒤 commit과 permit에 같은 해석을 기록한다. 두 Pi runtime은 permit을 최종 권위로 사용한다. 구 자료의 hash/동작을 보존하고 수동 미지원 값은 거절한다.
+
+**결과:** turn/tool-step 학습 입력과 bounded 로컬 worker를 재사용한다. 늦은 판정으로 전송된 요청을 바꾸지 않는다. 선택·판정·실제 wire·fallback을 구분한다. 비용·품질 우열은 별도 평가다.

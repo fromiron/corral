@@ -4,6 +4,7 @@ import { useFormatter, useTranslations } from 'use-intl';
 import { diffLines } from '../artifacts/diff.ts';
 import { type CompareKey, compareRuns } from '../run/compare.ts';
 import { estimateRunCost, type ModelPrices } from '../run/cost.ts';
+import { ReasoningSummary } from './ReasoningSummary.tsx';
 import { SafeMarkdown } from './SafeMarkdown.tsx';
 
 export interface ComparedRun {
@@ -25,6 +26,7 @@ export function RunComparison({
   prices?: ModelPrices | undefined;
 }) {
   const t = useTranslations('Compare');
+  const tr = useTranslations('Reasoning');
   const tStatus = useTranslations('Status');
   const format = useFormatter();
   const tableId = useId();
@@ -101,6 +103,28 @@ export function RunComparison({
         </tbody>
       </table>
 
+      <details className="rounded border border-line p-2 text-xs">
+        <summary className="cursor-pointer font-medium">{tr('appliedHeading')}</summary>
+        <div className="mt-2 grid gap-3 md:grid-cols-2">
+          {[a, b].map((run) => (
+            <div key={run.projection.runId}>
+              <h4 className="mb-2 font-medium">{run.name ?? run.projection.runId}</h4>
+              <ul className="flex flex-col gap-2">
+                {Object.values(run.projection.modelCalls).map((call) => (
+                  <li key={call.modelCallId}>
+                    <span>
+                      {run.projection.executions[call.executionId]?.nodeId} · {
+                        call.modelCallId
+                      }{' '}
+                    </span>
+                    <ReasoningSummary call={call} />
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      </details>
       <section aria-labelledby={outputsId} className="flex flex-col gap-2">
         <div className="flex items-center justify-between gap-2">
           <h3 id={outputsId} className="text-sm font-semibold">

@@ -5,6 +5,7 @@ import type {
   InputBindingKind,
   LoopNode,
   OutputContract,
+  ReasoningCapabilities,
 } from '@corral/contracts';
 import { inputPortsOf, outputPortsOf } from '@corral/core';
 import { type ReactNode, useId, useState } from 'react';
@@ -12,6 +13,7 @@ import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { useStudioStores } from '../context.tsx';
 import { checkConnection, connectCapability, type EditorDraft, findNode } from '../editor/model.ts';
+import { ReasoningSelect } from './ReasoningSelect.tsx';
 
 const CONTRACTS: OutputContract[] = ['text', 'notes', 'draft', 'review'];
 const BINDING_KINDS: InputBindingKind[] = [
@@ -38,6 +40,7 @@ export interface ProfileOption {
   profileId: string;
   label: string;
   available: boolean;
+  reasoningCapabilities?: ReasoningCapabilities | undefined;
 }
 
 /**
@@ -200,6 +203,13 @@ function NodeProperties({
               />
             )}
           </label>
+          <ReasoningSelect
+            value={role.reasoning}
+            capabilities={
+              profiles?.find((p) => p.profileId === role.modelProfile)?.reasoningCapabilities
+            }
+            onChange={(reasoning) => update(node.id, { reasoning })}
+          />
           <label className="flex items-start gap-2 text-xs">
             <input
               type="checkbox"

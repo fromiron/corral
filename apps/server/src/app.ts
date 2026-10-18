@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { recoverSdkWorkers } from '@corral/adapter-pi';
@@ -75,7 +75,12 @@ import {
   sessionCookie,
 } from './security.ts';
 import { boundedSseWriter, flushSseRecord, MAX_SSE_BUFFER_BYTES } from './sse.ts';
-import { configRevision, prepareWorkspace, writeModelConfig } from './workspace.ts';
+import {
+  configRevision,
+  prepareWorkspace,
+  writeModelConfig,
+  writeReasoningApply,
+} from './workspace.ts';
 import { acquireWorkspaceOwnership } from './workspace-ownership.ts';
 
 // The local server (C-015, C-055, C-057): REST commands and queries, SSE for committed events,
@@ -316,7 +321,10 @@ async function createCorralServer(
   const decisionProviders = [new LocalHeuristicProvider(), ...(options.decisionProviders ?? [])];
   // A configured, installed provider loads ahead of the first judgment (the local model takes
   // a few seconds to load). A failed load only makes its judgments fail; the server keeps going.
-  for (const id of judgmentSettings(workspace.config).reasoning_effort.providers) {
+  for (const id of new Set([
+    ...judgmentSettings(workspace.config).reasoning_effort.providers,
+    ...(workspace.config.decisions?.reasoning_effort.apply ? ['local-model'] : []),
+  ])) {
     const provider = decisionProviders.find((p) => p.id === id) as
       | (DecisionProvider & { warmUp?: () => Promise<unknown> })
       | undefined;
@@ -350,6 +358,10 @@ async function createCorralServer(
   });
   resources.defer(() => harnesses.dispose());
 
+  const judgmentConfig = {
+    providers: decisionProviders,
+    settings: judgmentSettings(workspace.config),
+  };
   const coordinator = new Coordinator({
     clock,
     ids,
@@ -369,10 +381,7 @@ async function createCorralServer(
     corrals,
     policy: workspace.policy,
     sessionId: backendSessionId,
-    judgments: {
-      providers: decisionProviders,
-      settings: judgmentSettings(workspace.config),
-    },
+    judgments: judgmentConfig,
   });
 
   const token = options.bootstrapToken ?? newBootstrapToken();
@@ -455,6 +464,28 @@ async function createCorralServer(
     backendSessionId,
     live: registry !== null,
   }));
+  // Stored with the workspace so a new loopback port does not reset an explicit choice.
+  const modeChoices = z.record(z.string().min(1).max(512), z.enum(['mock', 'live']));
+  const modesPath = join(workspace.root, '.corral', 'run-modes.json');
+  const readModes = (): Record<string, 'mock' | 'live'> => {
+    try {
+      return modeChoices.parse(JSON.parse(readFileSync(modesPath, 'utf8')));
+    } catch {
+      return {};
+    }
+  };
+  app.get('/api/v1/run-modes', async () => ({ workspaceId: workspace.id, modes: readModes() }));
+  app.put('/api/v1/run-modes', async (request, reply) => {
+    const choice = z
+      .strictObject({ key: z.string().min(1).max(512), mode: z.enum(['mock', 'live']) })
+      .safeParse(request.body);
+    if (!choice.success) return fail(reply, 'SCHEMA_INVALID', 'invalid run mode selection');
+    const modes = readModes();
+    modes[choice.data.key] = choice.data.mode;
+    writeFileSync(`${modesPath}.tmp`, JSON.stringify(modes), { mode: 0o600 });
+    renameSync(`${modesPath}.tmp`, modesPath);
+    return { ok: true };
+  });
   app.post('/api/v1/session', async (request, reply) => {
     const session = sessions.redeem((request.body as { token?: unknown } | null)?.token);
     if (!session) return fail(reply, 'SESSION_INVALID', 'this link was already used or is wrong');
@@ -666,6 +697,43 @@ async function createCorralServer(
     if (!registry) return noLive(reply);
     await registry.logout(request.params.providerId);
     return registry.authView();
+  });
+
+  const reasoningSettings = () => {
+    const provider = decisionProviders.find((p) => p.id === 'local-model' && p.privacy === 'local');
+    const availability = provider?.available();
+    return {
+      apply: workspace.config.decisions?.reasoning_effort.apply === true,
+      available: availability === true,
+      version: provider?.version ?? null,
+      reason:
+        availability === true ? null : 'Local judge is unavailable. Run corral judge install.',
+      revision: configRevision(workspace.root),
+    };
+  };
+  app.get('/api/v1/models/reasoning', async () => reasoningSettings());
+  app.put('/api/v1/models/reasoning', async (request, reply) => {
+    const parsed = z
+      .strictObject({ apply: z.boolean(), revision: z.string().min(1) })
+      .safeParse(request.body);
+    if (!parsed.success) return fail(reply, 'SCHEMA_INVALID', 'invalid reasoning setting');
+    const changed = writeReasoningApply(workspace.root, parsed.data.apply, parsed.data.revision);
+    if (!changed.ok)
+      return reply
+        .code(409)
+        .send({ error: { code: 'SCHEMA_INVALID', message: 'config changed; reload settings' } });
+    workspace.config = changed.config;
+    judgmentConfig.settings = judgmentSettings(changed.config);
+    if (parsed.data.apply) {
+      const provider = decisionProviders.find((p) => p.id === 'local-model');
+      if (
+        provider?.available() === true &&
+        'warmUp' in provider &&
+        typeof provider.warmUp === 'function'
+      )
+        void provider.warmUp().catch(() => {});
+    }
+    return reasoningSettings();
   });
 
   // ── model settings (CR-008) ────────────────────────────────────────────────

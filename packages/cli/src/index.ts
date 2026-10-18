@@ -429,11 +429,12 @@ async function judge(action: string | undefined, modelDir: string | undefined, i
 /** `inspect --judgments`: each request's effort judgments side by side (CR-003, C-071). */
 export function judgmentReport(projection: RunProjection): string {
   const settings = projection.decisionSettings?.reasoning_effort;
-  if (!settings) return `Run ${projection.runId} recorded no judgment settings.`;
+  const applied = Object.values(projection.modelCalls ?? {}).filter((call) => call.reasoning);
+  if (!settings && !applied.length) return `Run ${projection.runId} recorded no judgment settings.`;
   const lines = [
-    `Effort judgments for ${projection.runId} (${settings.mode === 'observe' ? 'observe only, not applied' : 'off'})`,
+    `Effort judgments for ${projection.runId} (${settings?.mode === 'observe' ? 'observe only, not applied' : 'off'})`,
   ];
-  for (const p of settings.providers.filter((p) => !p.available))
+  for (const p of settings?.providers.filter((p) => !p.available) ?? [])
     lines.push(`  ${p.id}: ${p.reason ?? 'unavailable'}`);
   const calls = projection.executionOrder.flatMap((id) =>
     (projection.executions[id]?.modelCallIds ?? []).map((call) => ({
@@ -463,7 +464,17 @@ export function judgmentReport(projection: RunProjection): string {
       );
     }
   }
-  if (decisions.length === 0) lines.push('No requests were judged.');
+  if (decisions.length === 0 && !applied.length) lines.push('No requests were judged.');
+  if (applied.length) {
+    lines.push('Applied reasoning (separate from observe-only judgments):');
+    for (const call of applied) {
+      const r = call.reasoning!;
+      const requested = r.requested.mode === 'fixed' ? r.requested.level : r.requested.mode;
+      lines.push(
+        `${call.modelCallId} ${projection.executions[call.executionId]?.nodeId ?? call.executionId} ${requested} -> ${r.resolved ?? 'provider_default'} [${r.source}${r.fallback ? `: ${r.fallback}` : ''}] wire=${call.reasoningWire ? (call.reasoningWire.value ?? 'omitted') : 'unverified'}${r.judgeVersion ? ` ${r.judgeVersion}` : ''}`,
+      );
+    }
+  }
   return lines.join('\n');
 }
 

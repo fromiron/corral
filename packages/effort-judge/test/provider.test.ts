@@ -139,3 +139,87 @@ describe('local-model provider (C-072)', () => {
     await expect(provider.decide(question(), never)).rejects.toThrow('bad model');
   });
 });
+
+it('[TC-RSN-002-H] sends a v6 tool step through the step formatter', async () => {
+  const dir = installed();
+  writeFileSync(
+    join(dir, 'calibration.json'),
+    JSON.stringify({ temperature: 1, inputFormat: 'rp', maxTokens: 256, steps: 1 }),
+  );
+  const seen: number[][] = [];
+  const provider = new OnnxEffortProvider({
+    dir,
+    session: async () => ({
+      run: async (ids) => {
+        seen.push(ids);
+        return [0, 0, 5, 0];
+      },
+    }),
+  });
+  const input = {
+    kind: 'step' as const,
+    request: 'ab',
+    prevRequest: '',
+    prev: '',
+    step: 1,
+    plan: 'ab',
+    calls: [{ name: 'read', args: '{}', result: 'ab ab' }],
+    directiveIds: [],
+  };
+  const answer = await provider.decideRequest(input, never);
+  expect(DecisionAnswer.parse(answer).answer).toBe('high');
+  expect(seen).toHaveLength(1);
+  expect(seen[0]!.length).toBeLessThanOrEqual(256);
+  await provider.close();
+});
+
+it('[TC-RSN-002-N] a timed-out inference keeps its slot until the real work ends', async () => {
+  const { vi } = await import('vitest');
+  vi.useFakeTimers();
+  let finish!: (value: number[]) => void;
+  let running = 0,
+    peak = 0;
+  const provider = new OnnxEffortProvider({
+    dir: installed(),
+    session: async () => ({
+      run: async () => {
+        peak = Math.max(peak, ++running);
+        const value = await new Promise<number[]>((resolve) => {
+          finish = resolve;
+        });
+        running--;
+        return value;
+      },
+    }),
+  });
+  const input = {
+    kind: 'turn' as const,
+    request: 'ab',
+    prev: '',
+    prevRequest: '',
+    step: 0,
+    plan: '',
+    calls: [],
+    directiveIds: [],
+  };
+  try {
+    await provider.warmUp();
+    const first = provider.decideRequest(input, never).catch((error: Error) => error.cause);
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(await first).toBe('timeout');
+    const waiting = [0, 1, 2].map(() =>
+      provider.decideRequest(input, never).catch((error: Error) => error.cause),
+    );
+    await expect(provider.decideRequest(input, never)).rejects.toThrow('queue full');
+    expect(running).toBe(1);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(await Promise.all(waiting)).toEqual(['timeout', 'timeout', 'timeout']);
+    finish([0, 1, 0, 0]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(peak).toBe(1);
+    expect(running).toBe(0);
+    await provider.close();
+  } finally {
+    vi.useRealTimers();
+  }
+});

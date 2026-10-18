@@ -469,3 +469,7 @@ v0.2 첫 질문 종류는 `reasoning_effort` v1이다([ADR-025](Decisions.md)). 
 `GraphRunner`와 `AgentAdapter`는 분리한다. LangGraph가 맡는 순회와 Pi가 맡는 모델/도구 세션을 변경해도 public command/event contract가 변하지 않게 한다. 다만 adapter 교체만으로 모든 프레임워크 내부를 관측할 수 있다고 약속하지 않는다.
 
 기술 스파이크 실패 시 순서는 **계약 재확인 → 해당 adapter만 수정 → ADR로 기반 변경 검토**다. 상태 계약을 약화하거나 D&D를 제외하는 것은 해결책이 아니다.
+
+## CR-021 역할 추론 적용 경계
+
+[CR-021](change-requests/CR-021-role-reasoning-apply.md), ADR-028에 따라 요청 전 비동기 판정 준비와 최종 동기 admission/commit을 분리한다. 관찰 observer는 요청을 변경하지 않는다. 고정된 모델 capability와 역할 정책을 요청 permit, 두 Pi worker 및 최종 payload 검증까지 전달한다. 편집기의 Run 연결과 실행 모드 선호값은 workspace/project/team/session 범위를 지킨다.

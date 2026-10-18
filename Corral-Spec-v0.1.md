@@ -112,7 +112,7 @@ MVP의 캔버스 전체가 하나의 Corral이다. 그 안에 Loop 영역과 Age
 
 실행 중 노드 추가/삭제/재연결, 임의 역할 생성, 자유로운 병렬 그래프와 `join:any`, 다중 사용자 편집, 다른 사람의 원격 에이전트, A2A, 임의 셸 실행과 동일 작업 복사본의 동시 수정, 프로세스 재시작 후 자동 재개, 임의 시점의 외부 작업 재실행, 중첩 Corral/Subflow, 자동 판단 라우팅, Local/Jev 판정의 요청 적용과 Hybrid, LiteLLM, 과거 산출물의 직접 수정은 제외한다.
 
-v0.2의 관찰 전용 `reasoning_effort` 판정은 요청을 바꾸지 않으므로 위 제외와 별개로 §13과 [CR-003](docs/change-requests/CR-003-admission-hooks-effort-observe.md)에서 다룬다.
+[CR-021](docs/change-requests/CR-021-role-reasoning-apply.md)의 수동·자동 추론 적용은 후속 승인 범위다. v0.2의 관찰 전용 `reasoning_effort` 판정은 요청을 바꾸지 않으므로 위 제외와 별개로 §13과 [CR-003](docs/change-requests/CR-003-admission-hooks-effort-observe.md)에서 다룬다.
 
 브라우저 재접속은 지원한다. 이는 **살아 있는 로컬 실행에 다시 연결하는 것**이며, 죽은 실행을 살리는 crash resume이 아니다.
 
@@ -404,7 +404,7 @@ CLI 실행도 같은 Coordinator를 사용한다. 승인 대기 시 --watch 터�
 
 ## 13. 이후 확장
 
-v0.2는 **Local/Jev의 수동 교체 가능한 DecisionProvider**를 구현한다. 질문 종류·후보·응답 검증이 같은 범위에서만 전환하고, 성능 우열이나 자동 절감은 별도 평가한다. 첫 질문 종류는 모델 요청별 `reasoning_effort`(후보 `low | medium | high | xhigh`)이며 **관찰 전용**으로 시작한다. 판정은 기록만 하고 요청 permit·예산·worker 요청을 바꾸지 않는다. 적용은 관찰 데이터 평가 뒤 별도 CR로 다룬다([CR-003](docs/change-requests/CR-003-admission-hooks-effort-observe.md), [ADR-025](docs/Decisions.md)). v0.3은 Corral 중첩/재사용과 더 넓은 그래프, 이후는 외부 AgentAdapter/A2A·LiteLLM·crash resume을 다룬다. 모델 연결은 Pi가 지원하는 provider·인증 방식 전체로 확장한다. Anthropic 구독 OAuth는 Anthropic 정책상 제외하고 API 키로 지원한다([CR-001](docs/change-requests/CR-001-openai-oauth-first.md)).
+v0.2는 **Local/Jev의 수동 교체 가능한 DecisionProvider**를 구현한다. 질문 종류·후보·응답 검증이 같은 범위에서만 전환하고, 성능 우열이나 자동 절감은 별도 평가한다. 첫 질문 종류는 모델 요청별 `reasoning_effort`(후보 `low | medium | high | xhigh`)이며 **관찰 전용**으로 시작한다. 판정은 기록만 하고 요청 permit·예산·worker 요청을 바꾸지 않는다. CR-021은 역할별 수동 설정과 로컬 turn/tool-step 자동 판정의 요청 전 적용을 추가한다. 기존 off/observe 계약은 유지한다([CR-003](docs/change-requests/CR-003-admission-hooks-effort-observe.md), [ADR-025](docs/Decisions.md)). v0.3은 Corral 중첩/재사용과 더 넓은 그래프, 이후는 외부 AgentAdapter/A2A·LiteLLM·crash resume을 다룬다. 모델 연결은 Pi가 지원하는 provider·인증 방식 전체로 확장한다. Anthropic 구독 OAuth는 Anthropic 정책상 제외하고 API 키로 지원한다([CR-001](docs/change-requests/CR-001-openai-oauth-first.md)).
 
 현재 스펙의 MVP 게이트를 후속 기능으로 대신하지 않는다. 비용 최적화가 없더라도 D&D와 협업·Reins를 검증하면 MVP는 성립한다.
 

@@ -72,10 +72,15 @@ export function RunDetail({
   embedded?: boolean;
 }) {
   const t = useTranslations('RunPage');
-  const { session, transport, repository } = useServices();
+  const { session: sharedSession, editorSessions, transport, repository } = useServices();
+  const session = useMemo(
+    () =>
+      [...editorSessions.values()].find((view) => view.getState().runId === runId) ?? sharedSession,
+    [editorSessions, sharedSession, runId],
+  );
   const activeRunId = useStore(session, (s) => s.runId);
   const missing = useStore(session, (s) => s.missingRunId === runId);
-  const error = useStore(session, (s) => s.streamError);
+  const error = useStore(session, (s) => s.streamError ?? s.definitionError);
   const definition = useStore(session, (s) => s.definition);
 
   // A direct link or a reload: follow the run from the runtime's record.
@@ -120,6 +125,7 @@ export function RunDetail({
         <p role="status" className="text-sm text-muted">
           {error ?? (missing ? t('missing') : t('loading'))}
         </p>
+        {activeRunId === runId ? <RunActions session={session} /> : null}
         {error ? (
           <button
             type="button"

@@ -2,6 +2,7 @@ import type {
   CorralDefinition,
   EffectiveHarnessSnapshot,
   ModelProfileSnapshot,
+  ReasoningApplySettings,
   Receipt,
   RunEvent,
   RunStatus,
@@ -27,6 +28,7 @@ export interface RunSnapshot {
   models: Record<string, ModelProfileSnapshot>;
   /** Role IDs to pinned harnesses; absent for legacy runs. */
   harnesses?: Record<string, EffectiveHarnessSnapshot>;
+  reasoningApply?: ReasoningApplySettings;
   startedAt: string;
 }
 

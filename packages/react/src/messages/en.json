@@ -219,7 +219,10 @@
     "startFrom": "The next run starts from {label} of run {runId}: its text is added to the brief.",
     "clearStartFrom": "Clear",
     "item": "Item {index} of {total}",
-    "harnessSimulation": "Simulated flow only. Skills, extensions and workspace tools were not executed."
+    "harnessSimulation": "Simulated flow only. Skills, extensions and workspace tools were not executed.",
+    "liveUnavailable": "Live models are unavailable. Connect them or choose simulated mode.",
+    "definitionUnavailable": "Run settings are unavailable. Status updates remain connected.",
+    "retryDefinition": "Reload settings"
   },
   "Reins": {
     "heading": "Reins",
@@ -379,7 +382,8 @@
     "leaveUnsaved": "Leave without saving? Your unsaved changes will be lost.",
     "openRun": "Open run page",
     "backToSession": "Back to the session",
-    "appliesNextRun": "Saved changes apply from the session's next run; runs already started keep their team."
+    "appliesNextRun": "Saved changes apply from the session's next run; runs already started keep their team.",
+    "modeSaveFailed": "Could not save the run mode. Your selection stays in this view."
   },
   "RunPage": {
     "retry": "Retry loading run",
@@ -633,7 +637,8 @@
       "criteria": "Review criteria (one per line)",
       "maxOutputTokens": "Output token allowance",
       "maxModelCalls": "Model call allowance",
-      "maxSpawns": "Child execution allowance"
+      "maxSpawns": "Child execution allowance",
+      "reasoning": "Model and reasoning"
     },
     "current": "Current",
     "proposed": "Proposed value",
@@ -659,7 +664,8 @@
     "notActivated": "No execution or iteration activation recorded yet.",
     "loadingCriteria": "Loading current criteria…",
     "finished": "This run has ended. Its settings history remains available.",
-    "snapshotsUnchanged": "Requests already prepared retain their recorded input snapshots."
+    "snapshotsUnchanged": "Requests already prepared retain their recorded input snapshots.",
+    "reasoningModel": "Also change model profile (blank keeps current)"
   },
   "Demo": {
     "template": "Demo template",
@@ -1059,7 +1065,6 @@
     "stale": "stale",
     "submitted": "Submitted",
     "notSubmitted": "Not submitted",
-    "noFileWork": "No file changes or checks in this run",
     "format": "Show as",
     "formats": {
       "document": "Document",
@@ -1636,7 +1641,9 @@
         "missing": "Not set up here",
         "simulated": "Simulated (demo)"
       }
-    }
+    },
+    "modeSaveFailed": "Could not save the run mode. Your selection stays in this view.",
+    "liveUnavailable": "Live models are unavailable. Connect them or choose simulated mode."
   },
   "Commands": {
     "newSession": "New session",
@@ -1940,5 +1947,59 @@
       "failed": "Failed",
       "uncertain": "Unconfirmed"
     }
+  },
+  "Reasoning": {
+    "label": "Reasoning effort",
+    "inherit": "Use saved role setting",
+    "legacy": "Keep existing behavior (unset)",
+    "provider_default": "Provider default",
+    "auto": "Automatic (local judge)",
+    "unsupported": "unsupported",
+    "autoHint": "Review automatic application settings for this workspace.",
+    "unsupportedHint": "This model does not support this level. Choose another model or effort level.",
+    "runOverrides": "Model and reasoning for this run",
+    "model": "Model",
+    "saved": "Role default",
+    "workspaceHeading": "Automatic reasoning",
+    "enableApply": "Apply local judgments in this workspace",
+    "applyHint": "Applies to new runs with automatic roles. Manual settings stay fixed; judge failures use medium with a recorded reason.",
+    "ready": "Ready",
+    "installHint": "Local judge unavailable. Install with {command}. Until then automatic roles use medium.",
+    "settingsError": "Could not read or save settings. Reload and try again.",
+    "unrecorded": "Reasoning not recorded",
+    "payload": "Payload verified",
+    "unverified": "not yet verified",
+    "omitted": "omitted",
+    "level": {
+      "off": "Off",
+      "minimal": "Minimal",
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High",
+      "xhigh": "Extra high",
+      "max": "Maximum"
+    },
+    "source": {
+      "fixed": "Manual",
+      "provider_default": "Provider default",
+      "local-model": "ONNX applied",
+      "fallback": "Fallback",
+      "compaction": "Compaction base"
+    },
+    "kind": {
+      "turn": "Turn",
+      "step": "Tool step",
+      "compaction": "Compaction"
+    },
+    "fallback": {
+      "unavailable": "Judge unavailable",
+      "timeout": "Timed out",
+      "provider_error": "Judge error",
+      "invalid_response": "Invalid answer",
+      "limit": "Judgment limit",
+      "missing_input": "Missing input"
+    },
+    "appliedHeading": "Applied reasoning by request",
+    "observeHeading": "Observe-only judgments (not applied)"
   }
 }

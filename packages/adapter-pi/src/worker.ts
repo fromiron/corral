@@ -1,3 +1,6 @@
+import { createHash } from 'node:crypto';
+import type { DeliveredDirective } from '@corral/contracts';
+import { canonicalJson, type ReasoningResolution } from '@corral/contracts';
 import { Agent, type AgentTool, type StreamFn } from '@earendil-works/pi-agent-core';
 import type { AssistantMessage, Model } from '@earendil-works/pi-ai';
 import type { Channel } from './channel.ts';
@@ -7,6 +10,8 @@ import {
   LEGACY_PROTOCOL_VERSION as PROTOCOL_VERSION,
   type StartFrame,
 } from './protocol.ts';
+import { assertReasoningCapabilities, reasoningRequest, verifyReasoningWire } from './reasoning.ts';
+import { requestReasoningInput } from './reasoning-input.ts';
 import { normalizeUsage } from './usage.ts';
 import {
   directiveText,
@@ -35,13 +40,14 @@ export interface WorkerDeps {
   ): Model<string> | undefined;
 }
 
-type Reply = Exclude<HostFrame, StartFrame | { type: 'cancel' }>;
+type Reply = Exclude<HostFrame, StartFrame | { type: 'cancel' | 'directive' }>;
 
 export function runWorker(port: Channel, deps: WorkerDeps): void {
   let executionId: string | null = null;
   let agent: Agent | null = null;
   let cancelled = false;
   let nextRequest = 0;
+  const directives = new Map<string, DeliveredDirective>();
   const waiting = new Map<string, (reply: Reply) => void>();
 
   port.onFrame((raw) => {
@@ -58,7 +64,20 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
     if (frame.executionId !== executionId) return;
     if (frame.type === 'cancel') {
       cancelled = true;
+      for (const [requestId, resolve] of waiting)
+        resolve({
+          type: 'refused',
+          protocolVersion: PROTOCOL_VERSION,
+          executionId,
+          requestId,
+          reason: 'cancelled',
+        });
+      waiting.clear();
       agent?.abort();
+      return;
+    }
+    if (frame.type === 'directive') {
+      directives.set(frame.directiveId, frame);
       return;
     }
     waiting.get(frame.requestId)?.(frame);
@@ -94,8 +113,19 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
       return;
     }
 
-    let permit: { modelCallId: string; apiKey: string | null; maxOutputTokens: number } | null =
-      null;
+    try {
+      assertReasoningCapabilities(model, start.reasoningCapabilities);
+    } catch {
+      settle('failed', 'model reasoning capabilities changed');
+      return;
+    }
+
+    let permit: {
+      modelCallId: string;
+      apiKey: string | null;
+      maxOutputTokens: number;
+      reasoning?: ReasoningResolution;
+    } | null = null;
     let chunk = 0;
     const authorized = new Map<string, string>();
 
@@ -124,10 +154,28 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
       initialState: { model, systemPrompt: systemPrompt(start), tools },
       // Each request carries the token and output cap from its own permit.
       streamFn: (m, context, options) => {
-        const stream = deps.streamFn(m, context, {
-          ...options,
+        const active = permit;
+        const chosen = reasoningRequest(m, options, active?.reasoning);
+        const stream = deps.streamFn(chosen.model, context, {
+          ...chosen.options,
           ...(keyOf(permit?.apiKey) ? { apiKey: keyOf(permit?.apiKey) } : {}),
           ...(permit ? { maxTokens: permit.maxOutputTokens } : {}),
+          onPayload: async (payload, payloadModel) => {
+            const actual = (await options?.onPayload?.(payload, payloadModel)) ?? payload;
+            const wire = verifyReasoningWire(m, actual, active?.reasoning);
+            if (active) {
+              const serialized = canonicalJson(JSON.parse(JSON.stringify(actual)));
+              const reply = await call({
+                type: 'request_record',
+                modelCallId: active.modelCallId,
+                payloadHash: createHash('sha256').update(serialized).digest('hex'),
+                payloadBytes: Buffer.byteLength(serialized),
+                ...(wire ? { reasoning: wire } : {}),
+              });
+              if (reply.type !== 'ack' || cancelled) throw new Error('provider payload refused');
+            }
+            return actual;
+          },
         });
         if (permit)
           port.send({ type: 'request_dispatched', ...head, modelCallId: permit.modelCallId });
@@ -136,24 +184,62 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
       getApiKey: () => keyOf(permit?.apiKey),
       toolExecution: 'sequential',
       prepareRequest: async ({ context }) => {
-        const reply = await call({ type: 'prepare_request' });
-        if (reply.type !== 'permit') {
-          throw new Error(reply.type === 'refused' ? reply.reason : 'the request was refused');
+        let preparedContext = context;
+        const prepare = async () => {
+          const present = JSON.stringify(preparedContext.messages);
+          const missing = [...directives.values()].filter(
+            (d) => !present.includes(JSON.stringify(directiveText([d])).slice(1, -1)),
+          );
+          if (missing.length)
+            preparedContext = {
+              ...preparedContext,
+              messages: [
+                ...preparedContext.messages,
+                { role: 'user', content: directiveText(missing), timestamp: Date.now() },
+              ],
+            };
+          const assignment =
+            start.assignment.kind === 'delegated'
+              ? start.assignment.brief
+              : start.assignment.kind === 'question'
+                ? start.assignment.body
+                : '';
+          return call({
+            type: 'prepare_request',
+            reasoningInput: requestReasoningInput(preparedContext, 'turn', assignment, [
+              ...directives.keys(),
+            ]),
+          });
+        };
+        let reply = await prepare();
+        for (let retries = 0; reply.type === 'reprepare' && retries < 2; retries++) {
+          for (const directive of reply.directives)
+            directives.set(directive.directiveId, directive);
+          reply = await prepare();
         }
+        if (reply.type !== 'permit' || cancelled) throw new Error('the request was refused');
         permit = {
           modelCallId: reply.modelCallId,
           apiKey: reply.apiKey,
           maxOutputTokens: reply.maxOutputTokens,
+          ...(reply.reasoning ? { reasoning: reply.reasoning } : {}),
         };
         chunk = 0;
-        if (reply.directives.length === 0) return undefined;
-        // Directives fixed into this request's snapshot, and only those (C-052 rule 3).
-        const directive = {
-          role: 'user' as const,
-          content: [{ type: 'text' as const, text: directiveText(reply.directives) }],
-          timestamp: Date.now(),
-        };
-        return { context: { ...context, messages: [...context.messages, directive] } };
+        // Older hosts may deliver a directive only with the permit (compatibility path).
+        const present = JSON.stringify(preparedContext.messages);
+        const missing = reply.directives.filter(
+          (d) => !present.includes(JSON.stringify(directiveText([d])).slice(1, -1)),
+        );
+        for (const directive of reply.directives) directives.set(directive.directiveId, directive);
+        if (missing.length)
+          preparedContext = {
+            ...preparedContext,
+            messages: [
+              ...preparedContext.messages,
+              { role: 'user', content: directiveText(missing), timestamp: Date.now() },
+            ],
+          };
+        return preparedContext === context ? undefined : { context: preparedContext };
       },
       beforeToolCall: async ({ toolCall }) => {
         const args = { ...((toolCall.arguments ?? {}) as Record<string, unknown>) };

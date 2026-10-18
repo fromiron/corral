@@ -644,3 +644,33 @@ it('[TC-RUN-008] repairs a broken stream from a committed completed response on 
   });
   store.getState().dispose();
 });
+
+it('[TC-RSN-004-N] a failed effective-definition read never disconnects an accepted run', async () => {
+  const gate = new Gate();
+  const transport = new InProcessTransport(
+    new Coordinator({
+      clock: new FakeClock(),
+      ids: new SequentialIdFactory(),
+      agents: new ScriptedAgentAdapter({ turns: 1, beforeReply: () => gate.wait() }),
+    }),
+  );
+  const read = vi
+    .spyOn(transport, 'getRunDefinition')
+    .mockRejectedValueOnce(new Error('metadata unavailable'));
+  const start = vi.spyOn(transport, 'startRun');
+  const subscribe = vi.spyOn(transport, 'subscribe');
+  const store = createRunSession(transport);
+  try {
+    await store.getState().start(linearCorral(['writer']));
+    expect(subscribe).toHaveBeenCalledTimes(1);
+    expect(store.getState().projection).not.toBeNull();
+    const runId = store.getState().runId!;
+    await store.getState().open(runId);
+    expect(read).toHaveBeenCalledTimes(2);
+    expect(start).toHaveBeenCalledTimes(1);
+    expect(store.getState().definition).not.toBeNull();
+  } finally {
+    gate.open();
+    store.getState().dispose();
+  }
+});

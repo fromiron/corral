@@ -25,8 +25,7 @@ type Format = 'document' | 'source' | 'preview';
 /**
  * Everything a run produced, read in a wide pane (CR-009): the Output's final results, the
  * work in between grouped by artifact, and a failed run's work as a partial result. Run,
- * review and submission are shown apart; this runtime makes no file changes or checks, which
- * is said in words rather than shown as a pass.
+ * review and submission are shown apart. File/check evidence belongs to the session panels.
  */
 export function RunResults({
   session,
@@ -295,9 +294,6 @@ function ResultReader({
           </li>
           <li className="rounded border border-line px-2 py-0.5">
             {item.submitted ? t('submitted') : t('notSubmitted')}
-          </li>
-          <li className="rounded border border-dashed border-line px-2 py-0.5 text-muted">
-            {t('noFileWork')}
           </li>
         </ul>
         <div className="flex flex-wrap items-center gap-2 text-xs">

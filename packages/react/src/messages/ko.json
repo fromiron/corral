@@ -219,7 +219,10 @@
     "startFrom": "다음 Run은 {runId} Run의 {label}에서 시작합니다. 그 본문이 브리프에 붙습니다.",
     "clearStartFrom": "지우기",
     "item": "항목 {index}/{total}",
-    "harnessSimulation": "기본 흐름만 모의 실행했습니다. 스킬·확장·작업 사본 도구는 실행하지 않았습니다."
+    "harnessSimulation": "기본 흐름만 모의 실행했습니다. 스킬·확장·작업 사본 도구는 실행하지 않았습니다.",
+    "liveUnavailable": "실제 모델을 사용할 수 없습니다. 연결하거나 모의 실행을 선택하세요.",
+    "definitionUnavailable": "실행 설정을 읽지 못했습니다. 상태 연결은 유지됩니다.",
+    "retryDefinition": "설정 다시 읽기"
   },
   "Reins": {
     "heading": "Reins",
@@ -379,7 +382,8 @@
     "leaveUnsaved": "저장하지 않고 나갈까요? 저장하지 않은 변경이 사라집니다.",
     "openRun": "Run 페이지 열기",
     "backToSession": "세션으로 돌아가기",
-    "appliesNextRun": "저장한 변경은 세션의 다음 Run부터 적용돼요. 이미 시작한 Run은 그대로예요."
+    "appliesNextRun": "저장한 변경은 세션의 다음 Run부터 적용돼요. 이미 시작한 Run은 그대로예요.",
+    "modeSaveFailed": "실행 모드 저장에 실패했습니다. 현재 화면에서는 선택을 유지합니다."
   },
   "RunPage": {
     "retry": "Run 다시 불러오기",
@@ -633,7 +637,8 @@
       "criteria": "검토 기준(한 줄에 하나)",
       "maxOutputTokens": "출력 토큰 한도",
       "maxModelCalls": "모델 호출 한도",
-      "maxSpawns": "하위 실행 한도"
+      "maxSpawns": "하위 실행 한도",
+      "reasoning": "모델·추론"
     },
     "current": "현재",
     "proposed": "바꿀 값",
@@ -659,7 +664,8 @@
     "notActivated": "아직 이 설정을 쓴 실행이나 회차가 없습니다.",
     "loadingCriteria": "현재 기준을 불러오는 중…",
     "finished": "이 Run은 끝났습니다. 설정 변경 기록은 계속 볼 수 있습니다.",
-    "snapshotsUnchanged": "이미 준비된 요청은 기록된 입력 스냅샷을 그대로 씁니다."
+    "snapshotsUnchanged": "이미 준비된 요청은 기록된 입력 스냅샷을 그대로 씁니다.",
+    "reasoningModel": "모델 프로필도 변경 (빈칸이면 유지)"
   },
   "Demo": {
     "template": "데모 템플릿",
@@ -1059,7 +1065,6 @@
     "stale": "기준 바뀜",
     "submitted": "제출됨",
     "notSubmitted": "제출 안 됨",
-    "noFileWork": "이 Run에는 파일 변경·검증 명령이 없음",
     "format": "보기 형식",
     "formats": {
       "document": "문서",
@@ -1636,7 +1641,9 @@
         "missing": "여기에 설정 없음",
         "simulated": "시뮬레이션(데모)"
       }
-    }
+    },
+    "modeSaveFailed": "실행 모드 저장에 실패했습니다. 현재 화면에서는 선택을 유지합니다.",
+    "liveUnavailable": "실제 모델을 사용할 수 없습니다. 연결하거나 모의 실행을 선택하세요."
   },
   "Commands": {
     "newSession": "새 세션",
@@ -1940,5 +1947,59 @@
       "failed": "실패",
       "uncertain": "확인 불가"
     }
+  },
+  "Reasoning": {
+    "label": "추론 노력",
+    "inherit": "저장된 역할 설정 사용",
+    "legacy": "기존 동작 유지 (설정 없음)",
+    "provider_default": "공급자 기본값",
+    "auto": "자동 (로컬 판정)",
+    "unsupported": "미지원",
+    "autoHint": "이 작업 공간의 자동 적용 설정 확인",
+    "unsupportedHint": "현재 모델은 이 단계를 지원하지 않습니다. 다른 모델이나 추론 단계를 선택하세요.",
+    "runOverrides": "이번 실행의 모델·추론 설정",
+    "model": "모델",
+    "saved": "역할 기본값",
+    "workspaceHeading": "자동 추론 판정",
+    "enableApply": "이 작업 공간에서 로컬 판정 결과 적용",
+    "applyHint": "자동으로 설정한 역할의 새 실행에만 적용됩니다. 수동 설정은 유지되며, 판정 실패 시 보통 단계와 사유를 기록합니다.",
+    "ready": "사용 가능",
+    "installHint": "로컬 판정기 없음 · 터미널에서 {command}로 설치하세요. 설치 전에는 보통 단계으로 실행됩니다.",
+    "settingsError": "설정을 저장하거나 읽지 못했습니다. 새로고침 후 다시 시도하세요.",
+    "unrecorded": "추론 설정 미기록",
+    "payload": "요청 확인",
+    "unverified": "아직 확인 안 됨",
+    "omitted": "생략",
+    "level": {
+      "off": "끄기",
+      "minimal": "최소",
+      "low": "낮음",
+      "medium": "보통",
+      "high": "높음",
+      "xhigh": "매우 높음",
+      "max": "최대"
+    },
+    "source": {
+      "fixed": "수동",
+      "provider_default": "공급자 기본",
+      "local-model": "ONNX 판정 적용",
+      "fallback": "기본값 대체",
+      "compaction": "요약 기본값"
+    },
+    "kind": {
+      "turn": "첫 요청/후속 대화",
+      "step": "도구 단계",
+      "compaction": "요약"
+    },
+    "fallback": {
+      "unavailable": "판정기 사용 불가",
+      "timeout": "시간 초과",
+      "provider_error": "판정기 오류",
+      "invalid_response": "잘못된 판정 응답",
+      "limit": "판정 한도",
+      "missing_input": "판정 입력 없음"
+    },
+    "appliedHeading": "요청별 추론 적용 기록",
+    "observeHeading": "관찰 전용 판정 (요청에 미적용)"
   }
 }

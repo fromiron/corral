@@ -1,3 +1,4 @@
+import type { RoleRunOverrides } from '@corral/contracts';
 import {
   type CommandError,
   type CorralDefinition,
@@ -26,6 +27,7 @@ export interface RunSessionState {
   runId: string | null;
   /** The definition this run started from (labels for the run view). */
   definition: CorralDefinition | null;
+  definitionError: string | null;
   projection: RunProjection | null;
   /** Every committed event of the run, in order (Timeline, C-060). */
   events: RunEvent[];
@@ -56,6 +58,7 @@ export interface RunSessionState {
     mode?: 'mock' | 'live',
     startFrom?: StartFrom,
     harnessOverrides?: HarnessOverrides,
+    roleOverrides?: RoleRunOverrides,
   ): Promise<void>;
   /** Follows an existing run, such as after a reload or from a link. */
   open(runId: string): Promise<void>;
@@ -184,6 +187,16 @@ export function createRunSession(
       });
     };
 
+    const refreshDefinition = async (runId: string, version: number) => {
+      try {
+        const definition = await transport.getRunDefinition(runId);
+        if (generation !== version) return;
+        set({ definition, definitionError: definition ? null : 'Run definition unavailable' });
+      } catch {
+        if (generation === version) set({ definitionError: 'Run definition unavailable' });
+      }
+    };
+
     const reset = () => {
       generation++;
       unsubscribe?.();
@@ -191,6 +204,7 @@ export function createRunSession(
       set({
         runId: null,
         definition: null,
+        definitionError: null,
         projection: null,
         events: [],
         streams: {},
@@ -311,6 +325,7 @@ export function createRunSession(
     return {
       runId: null,
       definition: null,
+      definitionError: null,
       projection: null,
       events: [],
       streams: {},
@@ -324,13 +339,14 @@ export function createRunSession(
       commandError: null,
       unconfirmedCommands: {},
 
-      async start(definition, saved, mode = 'mock', startFrom, harnessOverrides) {
+      async start(definition, saved, mode = 'mock', startFrom, harnessOverrides, roleOverrides) {
         reset();
         const version = generation;
         const commandId = newCommandId();
         const from = {
           ...(startFrom ? { startFrom } : {}),
           ...(harnessOverrides && Object.keys(harnessOverrides).length ? { harnessOverrides } : {}),
+          ...(roleOverrides && Object.keys(roleOverrides).length ? { roleOverrides } : {}),
         };
         try {
           const { runId, receipt } = await transport.startRun(
@@ -345,8 +361,9 @@ export function createRunSession(
             });
             return;
           }
-          set({ runId, definition });
+          set({ runId, definition: null });
           await follow(runId, version);
+          await refreshDefinition(runId, version);
         } catch (error) {
           if (generation === version) set({ streamError: String(error) });
         }
@@ -363,7 +380,10 @@ export function createRunSession(
       },
 
       async open(runId) {
-        if (get().runId === runId && unsubscribe) return;
+        if (get().runId === runId && unsubscribe) {
+          if (!get().definition) await refreshDefinition(runId, generation);
+          return;
+        }
         reset();
         const version = generation;
         try {
