@@ -42,6 +42,7 @@ const McpCommon = {
   name: Launch.name,
   timeoutMs: Launch.timeoutMs.max(300000),
   exposure: z.enum(['direct', 'codemode']),
+  enabled: z.boolean().optional(),
 };
 export const McpAuth = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('none') }),

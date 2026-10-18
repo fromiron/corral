@@ -1,9 +1,5 @@
 import type { HarnessPreview } from '@corral/client';
-import type {
-  HarnessBindingRef,
-  HarnessOverrides,
-  HarnessProfileRevision,
-} from '@corral/contracts';
+import type { HarnessBindingRef, HarnessOverrides, HarnessProfileView } from '@corral/contracts';
 import { Button, Select } from '@corral/react/ui';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -25,7 +21,7 @@ export function RunHarnessOverrides({
 }) {
   const { harnesses: api } = useServices();
   const t = useTranslations('Harness');
-  const [profiles, setProfiles] = useState<HarnessProfileRevision[]>([]);
+  const [profiles, setProfiles] = useState<HarnessProfileView[]>([]);
   const [failed, setFailed] = useState(false);
   const [preview, setPreview] = useState<{
     key: string;
@@ -47,7 +43,7 @@ export function RunHarnessOverrides({
   useEffect(() => {
     if (!api) return;
     let active = true;
-    void api.profiles().then(
+    void api.profileManagement().then(
       (profiles) => {
         if (active) setProfiles(profiles);
       },
@@ -90,10 +86,16 @@ export function RunHarnessOverrides({
                     )
                       ? [{ value: selected, label: selected }]
                       : []),
-                    ...profiles.map((profile) => ({
-                      value: `${profile.profileId}:${profile.revision}`,
-                      label: `${profile.name} · r${profile.revision}`,
-                    })),
+                    ...profiles
+                      .filter(
+                        (profile) =>
+                          !profile.archivedAt ||
+                          `${profile.profileId}:${profile.revision}` === selected,
+                      )
+                      .map((profile) => ({
+                        value: `${profile.profileId}:${profile.revision}`,
+                        label: `${profile.name} · r${profile.revision}`,
+                      })),
                   ]}
                   onValueChange={(selection) => {
                     const profile = profiles.find(

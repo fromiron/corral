@@ -33,7 +33,7 @@ test('[TC-HAR-016-H] reviews an MCP server, completes local OAuth and pins its r
         await new Promise((resolve) => setTimeout(resolve, 500));
       await route.fallback();
     });
-    await corral.open('/settings/harness');
+    await corral.open('/settings/mcp');
     await page.evaluate(async (source) => {
       const { csrfToken } = await (await fetch('/api/v1/session')).json();
       for (const [method, body] of [
@@ -49,17 +49,15 @@ test('[TC-HAR-016-H] reviews an MCP server, completes local OAuth and pins its r
       }
     }, source);
     await page.reload();
-    await page.getByLabel('MCP server ID', { exact: true }).fill('docs');
-    await page.getByLabel('MCP server name', { exact: true }).fill('Local docs');
-    await page.getByRole('combobox', { name: 'MCP transport', exact: true }).selectOption('http');
+    await page.getByRole('button', { name: 'Add', exact: true }).click();
+    await page.getByLabel('Server name', { exact: true }).fill('Local docs');
     await page.getByLabel('MCP endpoint', { exact: true }).fill(fixture.url);
-    await page
-      .getByRole('combobox', { name: 'MCP authentication', exact: true })
-      .selectOption('oauth');
-    await page.getByLabel('Credential reference', { exact: true }).fill('docs-login');
+    await page.getByRole('combobox', { name: 'MCP authentication', exact: true }).click();
+    await page.getByRole('option', { name: 'OAuth', exact: true }).click();
     await page.getByLabel('OAuth scopes', { exact: true }).fill('docs:read');
-    await page.getByRole('button', { name: 'Save MCP server', exact: true }).click();
-    await expect(page.getByText('Saved project tools revision 1', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await page.getByLabel('Enabled for this project', { exact: true }).check();
     await page.getByRole('button', { name: 'Review launch for Local docs', exact: true }).click();
     await page.getByRole('button', { name: 'Trust this launch', exact: true }).click();
     await page.getByRole('button', { name: 'Sign in to Local docs', exact: true }).click();
@@ -68,20 +66,33 @@ test('[TC-HAR-016-H] reviews an MCP server, completes local OAuth and pins its r
     const callback = await popup;
     await expect(page.getByText('Credentials saved', { exact: true })).toBeVisible();
     await callback.close();
+    await page
+      .getByRole('button', { name: 'Test connection & discover tools', exact: true })
+      .click();
+    await expect(page.getByText(/Connection checked at/)).toBeVisible();
+    expect(fixture.mcpCalls).toBe(0);
+    await page.goto(`${corral.server.url}/settings/harness`);
     await page.getByLabel('Work style name', { exact: true }).fill('MCP writer');
     await page
       .getByRole('combobox', { name: 'Policy', exact: true })
       .selectOption('trusted-native');
-    await page.getByLabel('Select MCP servers for this style', { exact: true }).check();
-    await page.getByLabel('Use MCP server Local docs', { exact: true }).check();
-    await page.getByText('Allowed tool names', { exact: true }).first().click();
-    await page
-      .getByRole('textbox', { name: 'Allowed tool names', exact: true })
-      .fill('write_artifact, submit_result, mcp__docs__echo');
     await page.getByRole('button', { name: 'Save work style', exact: true }).click();
-    await page.getByRole('button', { name: 'Preview effective settings', exact: true }).click();
-    await expect(page.getByTestId('harness-preview')).toContainText('MCP servers: docs');
-    corral.fake?.answerWith('MCP completed.', { mcpCall: { name: 'mcp__docs__echo', args: {} } });
+    await expect(page.getByTestId('harness-status')).toContainText('Saved revision 1');
+    await page.goto(`${corral.server.url}/settings/mcp`);
+    await page.getByRole('button', { name: /^Local docs/ }).click();
+    await page.getByRole('combobox', { name: 'Configure usage for', exact: true }).click();
+    await page.getByRole('option', { name: 'MCP writer · r1', exact: true }).click();
+    await page
+      .getByRole('button', { name: 'Test connection & discover tools', exact: true })
+      .click();
+    await page.getByLabel('echo', { exact: false }).check();
+    await page.getByRole('button', { name: 'Use selected tools and server', exact: true }).click();
+    await expect(page.getByText(/Editing from MCP writer · r2/)).toBeVisible();
+    const toolName = await page.evaluate(async () => {
+      const config = await (await fetch('/api/v1/harness/projects/default/tools')).json();
+      return `mcp__${config.mcpServers[0].id}__echo`;
+    });
+    corral.fake?.answerWith('MCP completed.', { mcpCall: { name: toolName, args: {} } });
     const definition = linearCorral(['writer']);
     definition.roles[0]!.modelProfile = 'model-b';
     const ids = await page.evaluate(async (definition) => {
@@ -118,7 +129,8 @@ test('[TC-HAR-016-H] reviews an MCP server, completes local OAuth and pins its r
     await page.goto(`${corral.server.url}/runs/${ids.runId}?view=run`);
     await expect(page.getByTestId('run-status').first()).toContainText('Succeeded');
     expect(fixture.mcpCalls).toBe(1);
-    await page.goto(`${corral.server.url}/settings/harness`);
+    await page.goto(`${corral.server.url}/settings/mcp`);
+    await page.getByRole('button', { name: /^Local docs/ }).click();
     await page.getByRole('button', { name: 'Review launch for Local docs', exact: true }).click();
 
     await page.getByRole('button', { name: 'Revoke launch trust', exact: true }).click();

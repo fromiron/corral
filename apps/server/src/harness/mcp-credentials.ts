@@ -32,6 +32,7 @@ interface Saved {
 }
 interface Login {
   key: string;
+  binding: string;
   state: 'pending' | 'ready' | 'failed' | 'cancelled';
   controller: AbortController;
   close(): Promise<void>;
@@ -153,7 +154,7 @@ export class McpCredentials {
     const initial = this.guard(key, check);
     await initial();
     initial.current();
-    const deleting = this.delete(projectId, server);
+    const deleting = this.clear(key);
     const guard = this.guard(key, check);
     await deleting;
     await guard();
@@ -181,6 +182,7 @@ export class McpCredentials {
     let closing: Promise<void> | undefined;
     const login: Login = {
       key,
+      binding,
       state: 'pending',
       controller,
       close: () => (closing ??= callback.close()),
@@ -261,7 +263,19 @@ export class McpCredentials {
     await login.close();
   }
   async delete(projectId: string, server: HttpServer) {
-    const { key } = this.identity(projectId, server);
+    const { key, binding } = this.identity(projectId, server);
+    // Older configurations may share a pre-CR-022 reference with a different endpoint.
+    if (existsSync(join(this.directory, `${key}.json`)) && !this.load(key, binding)) return;
+    if (
+      [...this.logins.values()].some(
+        (login) => login.key === key && login.state === 'pending' && login.binding !== binding,
+      )
+    )
+      return;
+    await this.clear(key);
+  }
+
+  private async clear(key: string) {
     this.generations.set(key, (this.generations.get(key) ?? 0) + 1);
     rmSync(join(this.directory, `${key}.json`), { force: true });
     for (const [id, login] of [...this.logins]) if (login.key === key) await this.cancelOAuth(id);

@@ -12,7 +12,7 @@ import { oauthFixture } from './fixtures/mcp-oauth.ts';
 
 let server: CorralServer | undefined;
 let root: string;
-it('[TC-HAR-016-H] binds browser OAuth to reviewed settings and allows logout after trust revocation', async () => {
+it('[TC-HAR-016-H] [TC-MGR-002-H] [TC-MGR-002-N] binds browser OAuth to reviewed settings and allows logout after trust revocation', async () => {
   root = mkdtempSync(join(tmpdir(), 'corral-mcp-api-'));
   const source = join(root, 'source');
   execFileSync('git', ['init', '-q', source]);
@@ -62,11 +62,16 @@ it('[TC-HAR-016-H] binds browser OAuth to reviewed settings and allows logout af
         },
       ],
     };
-    expect(
-      (await call('/harness/projects/default/tools', { expectedRevision: 0, config }, 'PUT'))
-        .status,
-    ).toBe(200);
-    const path = '/harness/projects/default/mcp-servers/docs';
+    const { id: _id, auth: _auth, ...draft } = config.mcpServers[0]!;
+    const createRequest = {
+      expectedRevision: 0,
+      operationId: 'create-docs',
+      draft: { ...draft, enabled: true, auth: { kind: 'oauth', scope: 'docs:read' } },
+    };
+    const created = await call('/harness/projects/default/mcp', createRequest);
+    expect(created.status, JSON.stringify(created.body)).toBe(200);
+    const serverId = created.body.mcpServers[0].id;
+    const path = `/harness/projects/default/mcp-servers/${serverId}`;
     const { fingerprint } = (await call(`${path}/launch`)).body;
     expect((await call(`${path}/auth`, { action: 'sign_in', fingerprint })).status).toBe(400);
     await call(`${path}/trust`, { fingerprint, trusted: true }, 'PUT');
@@ -79,8 +84,118 @@ it('[TC-HAR-016-H] binds browser OAuth to reviewed settings and allows logout af
     const status = await call(`${path}/auth`);
     expect(status.body).toMatchObject({ state: 'ready', kind: 'oauth' });
     expect(JSON.stringify(status.body)).not.toContain('fixture-access');
-    await call(`${path}/trust`, { fingerprint, trusted: false }, 'PUT');
-    expect((await call(`${path}/auth`, { action: 'sign_out', fingerprint })).status).toBe(200);
+    // TC-MGR-002-H: diagnostics use the real protocol without executing a tool or a model.
+    const probe = await call(`${path}/probe`, {
+      operationId: 'probe-docs',
+      configRevision: 1,
+      fingerprint,
+    });
+    expect(probe.status, JSON.stringify(probe.body)).toBe(200);
+    expect(probe.body.tools[0]?.name).toBe(`mcp__${serverId}__echo`);
+    expect(fixture.mcpCalls).toBe(0);
+    expect((await call('/harness/mcp-probes/late-probe', {}, 'DELETE')).status).toBe(200);
+    const lateProbe = await call(`${path}/probe`, {
+      operationId: 'late-probe',
+      configRevision: 1,
+      fingerprint,
+    });
+    expect(lateProbe.status).toBe(400);
+    expect(lateProbe.body.error.message).toBe('MCP probe cancelled');
+
+    let entered!: () => void, release!: () => void;
+    const waiting = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    fixture.delayTools(async () => {
+      entered();
+      await gate;
+    });
+    let probeFinished = false;
+    const pending = call(`${path}/probe`, {
+      operationId: 'probe-cancel',
+      configRevision: 1,
+      fingerprint,
+    }).then((value) => {
+      probeFinished = true;
+      return value;
+    });
+    await waiting;
+    expect((await call('/harness/projects/default/mcp', createRequest)).status).toBe(200);
+    expect(probeFinished).toBe(false);
+    expect(
+      (
+        await call('/harness/projects/default/mcp', {
+          ...createRequest,
+          draft: { ...createRequest.draft, name: 'Different' },
+        })
+      ).status,
+    ).toBe(400);
+    expect(probeFinished).toBe(false);
+    expect(
+      (await call('/harness/projects/default/mcp', { ...createRequest, operationId: 'stale-save' }))
+        .status,
+    ).toBe(409);
+    expect(probeFinished).toBe(false);
+
+    expect((await call('/harness/mcp-probes/probe-cancel', {}, 'DELETE')).status).toBe(200);
+    release();
+    fixture.delayTools();
+    expect((await pending).body.error.message).toBe('MCP probe cancelled');
+    const update = await call(
+      '/harness/projects/default/tools',
+      {
+        expectedRevision: 1,
+        config: {
+          checks: [],
+          lspServers: [],
+          mcpServers: [
+            {
+              ...created.body.mcpServers[0],
+              auth: { ...created.body.mcpServers[0].auth, scope: 'docs:write' },
+            },
+          ],
+        },
+      },
+      'PUT',
+    );
+    expect(update.status).toBe(200);
+    expect(update.body.mcpServers[0].auth.credentialRef).not.toBe(
+      created.body.mcpServers[0].auth.credentialRef,
+    );
+    const current = (await call(`${path}/launch`)).body;
+    await call(`${path}/trust`, { fingerprint: current.fingerprint, trusted: true }, 'PUT');
+    fixture.scope('docs:write');
+    const loginNext = await call(`${path}/auth`, {
+      action: 'sign_in',
+      fingerprint: current.fingerprint,
+    });
+    await fetch(loginNext.body.url);
+    await expect
+      .poll(async () => (await call(`/harness/mcp-logins/${loginNext.body.loginId}`)).body.state)
+      .toBe('ready');
+    expect((await call('/harness/projects/default/mcp-history')).body).toContainEqual(
+      expect.objectContaining({
+        configRevision: 1,
+        canRestore: false,
+        server: expect.objectContaining({
+          auth: expect.objectContaining({
+            credentialRef: created.body.mcpServers[0].auth.credentialRef,
+          }),
+        }),
+      }),
+    );
+    expect((await call(`${path}/auth`, { action: 'sign_out', fingerprint })).status).toBe(409);
+    expect(
+      (await call(`${path}/auth`, { action: 'sign_out', fingerprint, configRevision: 1 })).status,
+    ).toBe(200);
+    expect((await call(`${path}/auth`)).body.state).toBe('ready');
+    await call(`${path}/trust`, { fingerprint: current.fingerprint, trusted: false }, 'PUT');
+    expect(
+      (await call(`${path}/auth`, { action: 'sign_out', fingerprint: current.fingerprint })).status,
+    ).toBe(200);
     expect((await call(`${path}/auth`)).body.state).toBe('missing');
   } finally {
     await fixture.close();
@@ -338,7 +453,9 @@ it('[TC-HAR-004-H] [TC-HAR-004-N] resource API requires review and trust, pins r
   expect((await call('/resources')).body).toEqual([]);
   const installed = await call('/resources', { reviewId: reviewed.body.reviewId });
   expect(installed.body.trustedAt).toBeNull();
-  expect((await call('/resources', { reviewId: reviewed.body.reviewId })).status).toBe(400);
+  expect((await call('/resources', { reviewId: reviewed.body.reviewId })).body).toEqual(
+    installed.body,
+  );
   const profile = {
     name: 'Writer',
     policy: 'trusted-native',

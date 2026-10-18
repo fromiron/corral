@@ -2020,5 +2020,49 @@
     "status": "planned",
     "adapter": "mock unless explicitly live",
     "evidence": null
+  },
+  {
+    "id": "TC-MGR-001-H",
+    "requirements": [
+      "CRL-MGR-001"
+    ],
+    "suite": "integration",
+    "scenario": "스킬·Hook·작업 방식 작성·사본 편집·선택·보관/복구에서 불변 내용과 신뢰·범위·revision을 보존한다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-MGR-001-N",
+    "requirements": [
+      "CRL-MGR-001"
+    ],
+    "suite": "integration",
+    "scenario": "실패·취소·중복·늦은 응답·경합에서 경계를 우회하지 않는다: 스킬·Hook·작업 방식 작성·사본 편집·선택·보관/복구에서 불변 내용과 신뢰·범위·revision을 보존한다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-MGR-002-H",
+    "requirements": [
+      "CRL-MGR-002"
+    ],
+    "suite": "integration",
+    "scenario": "MCP 설정·인증·무모델 연결 시험·도구 선택·비활성·삭제에서 고정 설정과 프로세스 소유권을 보존한다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-MGR-002-N",
+    "requirements": [
+      "CRL-MGR-002"
+    ],
+    "suite": "integration",
+    "scenario": "실패·취소·중복·늦은 응답·경합에서 경계를 우회하지 않는다: MCP 설정·인증·무모델 연결 시험·도구 선택·비활성·삭제에서 고정 설정과 프로세스 소유권을 보존한다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
   }
 ]

@@ -35,6 +35,16 @@ export class SqliteProjectToolStore {
     return row ? ProjectToolConfigRevision.parse(JSON.parse(row.config_json)) : null;
   }
 
+  history(projectId: string): ProjectToolConfigRevision[] {
+    return (
+      this.db
+        .prepare(
+          'SELECT config_json FROM project_tool_revisions WHERE project_id = ? ORDER BY revision DESC',
+        )
+        .all(projectId) as { config_json: string }[]
+    ).map((row) => ProjectToolConfigRevision.parse(JSON.parse(row.config_json)));
+  }
+
   save(
     projectId: string,
     expectedRevision: number,

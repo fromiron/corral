@@ -37,6 +37,17 @@ async function login(ctx: Awaited<ReturnType<typeof setup>>, check = current) {
   return result;
 }
 describe('TC-HAR-016 MCP credentials', () => {
+  it('[TC-MGR-002-N] an old configuration cannot log out a newer binding that reused a legacy credential reference', async () => {
+    const ctx = await setup();
+    const previous = { ...ctx.server, auth: { kind: 'bearer' as const, credentialRef: 'legacy' } };
+    const next = { ...previous, url: `${previous.url}/changed` };
+    await ctx.credentials.saveBearer('p', previous, 'old-fixture-token', current);
+    await ctx.credentials.saveBearer('p', next, 'new-fixture-token', current);
+    await ctx.credentials.delete('p', previous);
+    expect(ctx.credentials.status('p', next).state).toBe('ready');
+    expect(await ctx.credentials.authorization('p', next, current)).toBe('new-fixture-token');
+  });
+
   it('uses real PKCE, stores private credentials outside configuration, and returns only status', async () => {
     const ctx = await setup();
     await login(ctx);

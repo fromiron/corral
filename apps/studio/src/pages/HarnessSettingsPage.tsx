@@ -1,19 +1,22 @@
 import type { HarnessPreview } from '@corral/client';
 import type {
   HarnessDefault,
+  HarnessEntryView,
   HarnessProfile,
   HarnessProfileRevision,
-  HarnessResource,
+  HarnessProfileView,
   HarnessResourceView,
   ProjectToolConfigRevision,
 } from '@corral/contracts';
-import { WorkTool } from '@corral/contracts';
+import { canonicalJson, WorkTool } from '@corral/contracts';
 import { Button } from '@corral/react/ui';
-import { useEffect, useId, useState } from 'react';
+import { Link, useBlocker } from '@tanstack/react-router';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useCurrentProject } from '../projects.ts';
 import { useServices } from '../services.tsx';
-import { ProjectToolSettings } from './ProjectToolSettings.tsx';
+import { useManagementConfirmation } from '../workbench/harness/ConfirmAction.tsx';
+import { operationId, profileInput, rememberHarnessTarget } from '../workbench/harness/Target.tsx';
 import { SettingsLayout } from './SettingsPage.tsx';
 
 const field = 'w-full rounded-md border border-line bg-surface p-2 text-sm';
@@ -120,12 +123,21 @@ export function HarnessPreviewView({ preview }: { preview: HarnessPreview }) {
 }
 
 export function HarnessSettingsPage() {
-  const t = useTranslations('Harness');
-  const { harnesses: api } = useServices();
   const projectId = useCurrentProject();
-  const id = useId();
+  return <HarnessSettingsEditor key={projectId} projectId={projectId} />;
+}
+
+function HarnessSettingsEditor({ projectId }: { projectId: string }) {
+  const t = useTranslations('Harness'),
+    r = useTranslations('Resources');
+  const { harnesses: api } = useServices();
   const [resources, setResources] = useState<HarnessResourceView[]>([]);
-  const [profiles, setProfiles] = useState<HarnessProfileRevision[]>([]);
+  const [profiles, setProfiles] = useState<HarnessProfileView[]>([]);
+  const [entries, setEntries] = useState<HarnessEntryView[]>([]);
+  const [search, setSearch] = useState(''),
+    [archived, setArchived] = useState(false),
+    [saveTarget, setSaveTarget] = useState('standalone');
+  const pendingOperation = useRef<{ json: string; id: string } | null>(null);
   const [defaults, setDefaults] = useState<HarnessDefault[]>([]);
   const [toolsState, setToolsState] = useState<{
     projectId: string;
@@ -136,29 +148,28 @@ export function HarnessSettingsPage() {
   const [profile, setProfile] = useState<HarnessProfile>(emptyProfile);
   const [toolNames, setToolNames] = useState(emptyProfile().allowedTools.join(', '));
   const [commands, setCommands] = useState('');
-  const [kind, setKind] = useState<'local' | 'package' | 'pi-home'>('local');
-  const [source, setSource] = useState('');
-  const [review, setReview] = useState<{ reviewId: string; resource: HarnessResource } | null>(
-    null,
-  );
   const [preview, setPreview] = useState<HarnessPreview | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const confirmation = useManagementConfirmation();
+  const [refreshFailed, setRefreshFailed] = useState(false);
   useEffect(() => {
     if (!api) return;
     let active = true;
     setError('');
     void Promise.all([
       api.resources(),
-      api.profiles(),
+      api.profileManagement(),
       api.default('personal', 'default'),
       api.default('project', projectId),
       api.projectTools(projectId),
+      api.entries(),
     ]).then(
-      ([r, p, personal, project, tools]) => {
+      ([r, p, personal, project, tools, entries]) => {
         if (active) {
           setResources(r);
+          setEntries(entries);
           setProfiles(p);
           setDefaults([personal, project]);
           setToolsState({ projectId, value: tools });
@@ -182,7 +193,9 @@ export function HarnessSettingsPage() {
       setBusy(false);
     }
   }
-  function choose(next: HarnessProfileRevision | null) {
+  function choose(next: HarnessProfileRevision | null, saved = false) {
+    if (!saved && dirty && !window.confirm(r('leaveUnsaved'))) return;
+    if (next && api) rememberHarnessTarget(api, projectId, `profile:${next.profileId}`);
     setSelected(next);
     setProfile(next ?? emptyProfile());
     setToolNames((next ?? emptyProfile()).allowedTools.join(', '));
@@ -204,7 +217,6 @@ export function HarnessSettingsPage() {
     }));
     setPreview(null);
   }
-  const selectedKey = selected ? `${selected.profileId}:${selected.revision}` : '';
   const pendingProfile: HarnessProfile = {
     name: profile.name,
     policy: profile.policy,
@@ -218,12 +230,24 @@ export function HarnessSettingsPage() {
       .map((command) => command.trim())
       .filter(Boolean),
   };
+  const dirty =
+    canonicalJson(pendingProfile) !== canonicalJson(profileInput(selected ?? emptyProfile()));
+  const dirtyRef = useRef(dirty);
+  dirtyRef.current = dirty;
+  useBlocker({
+    shouldBlockFn: () => dirtyRef.current && !window.confirm(r('leaveUnsaved')),
+    enableBeforeUnload: () => dirtyRef.current,
+  });
+  const meta = selected ? profiles.find((p) => p.profileId === selected.profileId) : null;
+  const visibleEntry = (hash: string, entry: string) =>
+    !entries.find((e) => e.resourceHash === hash && e.entry === entry)?.archivedAt ||
+    profile.resources.some((ref) => ref.resourceHash === hash && ref.entry === entry);
   const canPreview =
     selected !== null &&
     JSON.stringify({ ...selected, ...pendingProfile }) === JSON.stringify(selected);
   return (
     <SettingsLayout active="harness">
-      <main className="mx-auto flex max-w-3xl flex-col gap-7 p-6 sm:p-10">
+      <main className="mx-auto flex max-w-5xl flex-col gap-7 p-6 sm:p-10">
         <div>
           <h2 className="text-2xl font-semibold">{t('heading')}</h2>
           <p className="mt-2 text-sm text-muted">{t('intro')}</p>
@@ -240,163 +264,124 @@ export function HarnessSettingsPage() {
             <p data-testid="harness-status" role="status" aria-live="polite" className="text-sm">
               {busy ? t('busy') : notice}
             </p>
-            <fieldset disabled={busy} className="flex min-w-0 flex-col gap-4">
-              <legend className="mb-3 text-lg font-semibold">{t('resources')}</legend>
-              <label className="flex flex-col gap-1 text-sm">
-                {t('sourceKind')}
-                <select
-                  className={field}
-                  value={kind}
-                  onChange={(e) => {
-                    setKind(e.target.value as typeof kind);
-                    setReview(null);
-                  }}
+            {refreshFailed ? (
+              <div role="alert" className="flex items-center gap-3 text-sm">
+                <span>{r('savedListFailed')}</span>
+                <Button
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() =>
+                    void work(async () => {
+                      setProfiles(await api.profileManagement());
+                      setRefreshFailed(false);
+                      if (selected) setNotice(t('saved', { revision: selected.revision }));
+                    })
+                  }
                 >
-                  <option value="local">{t('local')}</option>
-                  <option value="package">{t('package')}</option>
-                  <option value="pi-home">{t('piHome')}</option>
-                </select>
-              </label>
-              <label className="flex flex-col gap-1 text-sm">
-                {t('source')}
-                <input
-                  disabled={kind === 'pi-home'}
-                  className={field}
-                  value={source}
-                  onChange={(e) => {
-                    setSource(e.target.value);
-                    setReview(null);
-                  }}
-                  aria-describedby={`${id}-source-hint`}
-                />
-              </label>
-              <p id={`${id}-source-hint`} className="text-xs text-muted">
-                {kind === 'pi-home' ? t('piHomeHint', { folder: '~/.pi/agent' }) : t('sourceHint')}
-              </p>
-              <Button
-                className="self-start"
-                disabled={kind !== 'pi-home' && !source.trim()}
-                onClick={() =>
-                  void work(async () => {
-                    setReview(await api.review(kind, source.trim()));
-                    setSource('');
-                  })
-                }
-              >
-                {t('review')}
-              </Button>
-              {review ? (
-                <section
-                  className="flex flex-col gap-3 border-y border-line py-4"
-                  aria-label={t('review')}
-                >
-                  <p className="font-medium">
-                    {review.resource.name} · {review.resource.version}
-                  </p>
-                  <p className="text-xs text-muted">
-                    {review.resource.license ?? t('unknownLicense')}
-                  </p>
-                  <p className="break-all font-mono text-2xs">SHA-256 {review.resource.hash}</p>
-                  {review.resource.extensions.length ? (
-                    <p className="text-sm text-warning">{t('nativeWarning')}</p>
-                  ) : null}
-                  <details>
-                    <summary className="cursor-pointer text-sm">
-                      {t('files', { count: review.resource.files.length })}
-                    </summary>
-                    <ul className="max-h-48 overflow-auto text-xs">
-                      {review.resource.files.map((file) => (
-                        <li key={file.path} className="break-all py-1">
-                          {file.path} · {file.bytes} B · {file.hash.slice(0, 12)}
-                        </li>
-                      ))}
-                    </ul>
-                  </details>
-                  <div className="flex gap-2">
-                    <Button
-                      onClick={() =>
-                        void work(async () => {
-                          await api.install(review.reviewId);
-                          setResources(await api.resources());
-                          setReview(null);
-                        })
-                      }
-                    >
-                      {t('install')}
-                    </Button>
-                    <Button variant="ghost" onClick={() => setReview(null)}>
-                      {t('dismiss')}
-                    </Button>
-                  </div>
-                </section>
-              ) : null}
-              {resources.length ? (
-                <ul className="divide-y divide-line">
-                  {resources.map((resource) => (
-                    <li
-                      key={resource.hash}
-                      data-testid={`resource-${resource.name}`}
-                      className="flex flex-col gap-2 py-3"
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="text-sm font-medium">
-                          {resource.name} · {resource.version}
-                        </span>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() =>
-                            void work(async () => {
-                              await api.trust(resource.hash, !resource.trustedAt);
-                              setResources(await api.resources());
-                              setPreview(null);
-                            })
-                          }
-                        >
-                          {resource.trustedAt ? t('revoke') : t('trust')}
-                        </Button>
-                      </div>
-                      <p className="text-xs text-muted">
-                        {resource.trustedAt ? t('trusted') : t('untrusted')} ·{' '}
-                        {resource.license ?? t('unknownLicense')}
-                      </p>
-                      {resource.extensions.length ? (
-                        <p className="text-xs text-warning">{t('nativeWarning')}</p>
-                      ) : null}
-                      <p className="break-all font-mono text-2xs text-muted">{resource.hash}</p>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-sm text-muted">{t('noResources')}</p>
-              )}
-            </fieldset>
+                  {r('refreshProfiles')}
+                </Button>
+              </div>
+            ) : null}
             <fieldset
               disabled={busy}
               className="flex min-w-0 flex-col gap-4 border-t border-line pt-5"
             >
               <legend className="px-1 text-lg font-semibold">{t('heading')}</legend>
-              <label className="flex flex-col gap-1 text-sm">
-                {t('profile')}
-                <select
-                  className={field}
+              <div className="flex flex-col gap-3 rounded-xl border border-line p-4">
+                <div className="flex flex-wrap items-center gap-3">
+                  <input
+                    className={field}
+                    aria-label={r('profileSearch')}
+                    placeholder={r('profileSearch')}
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                  />
+                  <label className="flex shrink-0 items-center gap-2 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={archived}
+                      onChange={(e) => setArchived(e.target.checked)}
+                    />
+                    {r('showArchived')}
+                  </label>
+                  <Button variant="outline" onClick={() => choose(null)}>
+                    {t('newProfile')}
+                  </Button>
+                </div>
+                <ul
+                  className="flex max-h-48 flex-col gap-1 overflow-auto"
                   aria-label={t('profile')}
-                  value={selectedKey}
-                  onChange={(e) =>
-                    choose(
-                      profiles.find((p) => `${p.profileId}:${p.revision}` === e.target.value) ??
-                        null,
-                    )
-                  }
                 >
-                  <option value="">{t('newProfile')}</option>
-                  {profiles.map((p) => (
-                    <option key={p.profileId} value={`${p.profileId}:${p.revision}`}>
-                      {p.name} · r{p.revision}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  {profiles
+                    .filter(
+                      (p) =>
+                        Boolean(p.archivedAt) === archived &&
+                        p.name.toLocaleLowerCase().includes(search.toLocaleLowerCase()),
+                    )
+                    .map((p) => (
+                      <li key={p.profileId}>
+                        <button
+                          type="button"
+                          aria-pressed={selected?.profileId === p.profileId}
+                          className={`w-full rounded-lg px-3 py-2 text-left text-sm ${selected?.profileId === p.profileId ? 'bg-sidebar-selected' : 'hover:bg-raised'}`}
+                          onClick={() => choose(p)}
+                        >
+                          {p.name} · r{p.revision}
+                          {p.archivedAt ? ` · ${r('archived')}` : ''}
+                        </button>
+                      </li>
+                    ))}
+                </ul>
+              </div>
+              {selected ? (
+                <div className="flex flex-col gap-3">
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setSelected(null);
+                        setProfile({
+                          ...profileInput(profile),
+                          name: r('copyName', { name: profile.name }),
+                        });
+                        setPreview(null);
+                      }}
+                    >
+                      {r('copy')}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      onClick={() => {
+                        if (!meta) return;
+                        const save = () =>
+                          void work(async () => {
+                            await api.archiveProfile(
+                              meta.profileId,
+                              meta.managementRevision,
+                              !meta.archivedAt,
+                              operationId(),
+                            );
+                            setProfiles(await api.profileManagement());
+                          });
+                        if (meta.archivedAt) save();
+                        else confirmation.request(r('archiveConfirm'), save);
+                      }}
+                    >
+                      {r(meta?.archivedAt ? 'restore' : 'archive')}
+                    </Button>
+                  </div>
+                  {meta?.usages.length ? (
+                    <div className="text-xs text-muted">
+                      <p>{r('usages')}</p>
+                      {meta.usages.map((usage) => (
+                        <p key={usage.id}>
+                          {usage.scope} · {usage.name} · r{usage.revision}
+                        </p>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
               <label className="flex flex-col gap-1 text-sm">
                 {t('name')}
                 <input
@@ -422,114 +407,173 @@ export function HarnessSettingsPage() {
               {profile.policy === 'trusted-native' ? (
                 <p className="text-sm text-warning">{t('nativeWarning')}</p>
               ) : null}
-              {resources.map((resource) => (
-                <div key={resource.hash} className="flex flex-col gap-3 border-t border-line pt-3">
-                  <p className="text-sm font-medium">
-                    {resource.name} · {resource.version} ·{' '}
-                    {resource.trustedAt ? t('trusted') : t('untrusted')}
-                  </p>
-                  {resource.skills.map((skill) => {
-                    const selection = profile.resources.find(
-                      (r) => r.resourceHash === resource.hash && r.entry === skill.entry,
-                    );
-                    return (
-                      <div key={skill.entry} className="flex flex-col gap-1">
-                        <label className="flex items-center gap-2 text-sm">
-                          <input
-                            type="checkbox"
-                            checked={!!selection}
-                            disabled={!selection && !resource.trustedAt}
-                            onChange={(e) =>
-                              selectResource(
-                                resource.hash,
-                                skill.entry,
-                                e.target.checked
-                                  ? {
-                                      resourceHash: resource.hash,
-                                      entry: skill.entry,
-                                      kind: 'skill',
-                                      required: false,
-                                      skillMode: 'auto',
-                                    }
-                                  : null,
-                              )
-                            }
-                          />
-                          {t('useSkill', { name: skill.name })}
-                        </label>
-                        <p className="text-xs text-muted">{skill.description}</p>
-                        {selection ? (
-                          <select
-                            aria-label={t('skillMode', { name: skill.name })}
-                            className={field}
-                            value={selection.skillMode ?? 'auto'}
-                            onChange={(e) =>
-                              selectResource(resource.hash, skill.entry, {
-                                ...selection,
-                                skillMode: e.target.value as 'auto' | 'explicit' | 'mandatory',
-                              })
-                            }
-                          >
-                            {(['auto', 'explicit', 'mandatory'] as const).map((mode) => (
-                              <option key={mode} value={mode}>
-                                {t(mode)}
-                              </option>
-                            ))}
-                          </select>
-                        ) : null}
-                      </div>
-                    );
-                  })}
-                  {resource.extensions.map((entry) => {
-                    const selection = profile.resources.find(
-                      (r) => r.resourceHash === resource.hash && r.entry === entry,
-                    );
-                    return (
-                      <div key={entry} className="flex flex-col gap-1">
-                        <label className="flex items-center gap-2 text-sm">
-                          <input
-                            type="checkbox"
-                            checked={!!selection}
-                            disabled={
-                              !selection && (!resource.trustedAt || profile.policy === 'strict')
-                            }
-                            onChange={(e) =>
-                              selectResource(
-                                resource.hash,
-                                entry,
-                                e.target.checked
-                                  ? {
-                                      resourceHash: resource.hash,
-                                      entry,
-                                      kind: 'extension',
-                                      required: true,
-                                    }
-                                  : null,
-                              )
-                            }
-                          />
-                          {t('useExtension', { name: entry })}
-                        </label>
-                        {selection ? (
-                          <label className="flex items-center gap-2 text-xs">
-                            <input
-                              type="checkbox"
-                              checked={selection.required}
-                              onChange={(e) =>
-                                selectResource(resource.hash, entry, {
-                                  ...selection,
-                                  required: e.target.checked,
-                                })
-                              }
-                            />
-                            {t('required', { name: entry })}
-                          </label>
-                        ) : null}
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
+              <nav className="flex flex-wrap gap-3 text-sm text-accent">
+                <Link to="/settings/skills" className="underline">
+                  {r('skills')}
+                </Link>
+                <Link to="/settings/hooks" className="underline">
+                  {r('hooks')}
+                </Link>
+                <Link to="/settings/mcp" className="underline">
+                  {r('mcp')}
+                </Link>
+              </nav>
+              {resources
+                .filter((resource) =>
+                  [...resource.skills.map((skill) => skill.entry), ...resource.extensions].some(
+                    (entry) => visibleEntry(resource.hash, entry),
+                  ),
+                )
+                .map((resource) => (
+                  <div
+                    key={resource.hash}
+                    className="flex flex-col gap-3 border-t border-line pt-3"
+                  >
+                    <p className="text-sm font-medium">
+                      {resource.skills.length + resource.extensions.length === 1
+                        ? (entries.find((value) => value.resourceHash === resource.hash)?.name ??
+                          resource.name)
+                        : resource.name}{' '}
+                      · {resource.version} · {resource.trustedAt ? t('trusted') : t('untrusted')}
+                    </p>
+                    {resource.skills
+                      .filter((skill) => visibleEntry(resource.hash, skill.entry))
+                      .map((skill) => {
+                        const selection = profile.resources.find(
+                          (r) => r.resourceHash === resource.hash && r.entry === skill.entry,
+                        );
+                        return (
+                          <div key={skill.entry} className="flex flex-col gap-1">
+                            <label className="flex items-center gap-2 text-sm">
+                              <input
+                                type="checkbox"
+                                checked={!!selection}
+                                disabled={!selection && !resource.trustedAt}
+                                onChange={(e) =>
+                                  selectResource(
+                                    resource.hash,
+                                    skill.entry,
+                                    e.target.checked
+                                      ? {
+                                          resourceHash: resource.hash,
+                                          entry: skill.entry,
+                                          kind: 'skill',
+                                          required: false,
+                                          skillMode: 'auto',
+                                        }
+                                      : null,
+                                  )
+                                }
+                              />
+                              {t('useSkill', {
+                                name:
+                                  entries.find(
+                                    (e) =>
+                                      e.resourceHash === resource.hash && e.entry === skill.entry,
+                                  )?.name ?? skill.name,
+                              })}
+                              {entries.find(
+                                (e) => e.resourceHash === resource.hash && e.entry === skill.entry,
+                              )?.archivedAt ? (
+                                <span className="text-xs text-warning">
+                                  {r('archivedSelected')}
+                                </span>
+                              ) : null}
+                            </label>
+                            <p className="text-xs text-muted">{skill.description}</p>
+                            {selection ? (
+                              <select
+                                aria-label={t('skillMode', { name: skill.name })}
+                                className={field}
+                                value={selection.skillMode ?? 'auto'}
+                                onChange={(e) =>
+                                  selectResource(resource.hash, skill.entry, {
+                                    ...selection,
+                                    skillMode: e.target.value as 'auto' | 'explicit' | 'mandatory',
+                                  })
+                                }
+                              >
+                                {(['auto', 'explicit', 'mandatory'] as const).map((mode) => (
+                                  <option key={mode} value={mode}>
+                                    {t(mode)}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    {resource.extensions
+                      .filter((entry) => visibleEntry(resource.hash, entry))
+                      .map((entry) => {
+                        const selection = profile.resources.find(
+                          (r) => r.resourceHash === resource.hash && r.entry === entry,
+                        );
+                        return (
+                          <div key={entry} className="flex flex-col gap-1">
+                            <label className="flex items-center gap-2 text-sm">
+                              <input
+                                type="checkbox"
+                                checked={!!selection}
+                                disabled={
+                                  !selection && (!resource.trustedAt || profile.policy === 'strict')
+                                }
+                                onChange={(e) =>
+                                  selectResource(
+                                    resource.hash,
+                                    entry,
+                                    e.target.checked
+                                      ? {
+                                          resourceHash: resource.hash,
+                                          entry,
+                                          kind: 'extension',
+                                          required: true,
+                                        }
+                                      : null,
+                                  )
+                                }
+                              />
+                              {t('useExtension', {
+                                name:
+                                  entries.find(
+                                    (e) => e.resourceHash === resource.hash && e.entry === entry,
+                                  )?.name ?? entry,
+                              })}
+                              {entries.find(
+                                (e) => e.resourceHash === resource.hash && e.entry === entry,
+                              )?.archivedAt ? (
+                                <span className="text-xs text-warning">
+                                  {r('archivedSelected')}
+                                </span>
+                              ) : null}
+                            </label>
+                            {selection ? (
+                              <label className="flex items-center gap-2 text-xs">
+                                <input
+                                  type="checkbox"
+                                  checked={selection.required}
+                                  onChange={(e) =>
+                                    selectResource(resource.hash, entry, {
+                                      ...selection,
+                                      required: e.target.checked,
+                                    })
+                                  }
+                                />
+                                {t('required', {
+                                  name:
+                                    entries.find(
+                                      (value) =>
+                                        value.resourceHash === resource.hash &&
+                                        value.entry === entry,
+                                    )?.name ?? entry,
+                                })}
+                              </label>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                  </div>
+                ))}
               <p className="text-xs text-muted">{t('skillScripts')}</p>
               {(
                 [
@@ -673,20 +717,82 @@ export function HarnessSettingsPage() {
                 />
               </label>
               <p className="text-xs text-muted">{t('commandsHint')}</p>
+              <label className="flex flex-col gap-1 text-sm">
+                {r('saveTo')}
+                <select
+                  className={field}
+                  value={saveTarget}
+                  onChange={(e) => setSaveTarget(e.target.value)}
+                >
+                  <option value="standalone">{r('standalone')}</option>
+                  <option value="personal">{r('personal')}</option>
+                  <option value="project">{r('project')}</option>
+                </select>
+              </label>
               <div className="flex flex-wrap gap-2">
                 <Button
-                  disabled={!profile.name.trim()}
+                  disabled={!profile.name.trim() || (selected !== null && !dirty)}
                   onClick={() =>
                     void work(async () => {
-                      const saved = await api.save(
-                        selected?.profileId ?? `harness_${crypto.randomUUID().replaceAll('-', '')}`,
-                        selected?.revision ?? 0,
-                        pendingProfile,
-                      );
-                      setProfiles(await api.profiles());
-                      choose(saved);
+                      const target = defaults.find((value) => value.scope === saveTarget);
+                      const input = {
+                        profileId:
+                          selected?.profileId ??
+                          `harness_${crypto.randomUUID().replaceAll('-', '')}`,
+                        expectedRevision: selected?.revision ?? 0,
+                        profile: pendingProfile,
+                        ...(target
+                          ? {
+                              target: {
+                                scope: target.scope,
+                                scopeId: target.scopeId,
+                                expectedRevision: target.revision,
+                                binding: target.binding,
+                                ...(target.scope === 'project'
+                                  ? { projectToolsRevision: projectTools?.revision ?? 0 }
+                                  : {}),
+                              },
+                            }
+                          : {}),
+                      };
+                      const json = canonicalJson({
+                        ...input,
+                        profileId: selected?.profileId ?? 'new',
+                      });
+                      if (pendingOperation.current?.json !== json)
+                        pendingOperation.current = { json, id: operationId() };
+                      // A retry must retain the generated profile ID as well as the operation ID.
+                      if (!selected) input.profileId = `harness_${pendingOperation.current.id}`;
+                      const { profile: saved, target: updated } = await api.publish({
+                        ...input,
+                        operationId: pendingOperation.current.id,
+                      });
+                      pendingOperation.current = null;
+                      choose(saved, true);
+                      setProfiles((current) => {
+                        const prior = current.find((value) => value.profileId === saved.profileId);
+                        return [
+                          ...current.filter((value) => value.profileId !== saved.profileId),
+                          {
+                            ...saved,
+                            managementRevision: prior?.managementRevision ?? 0,
+                            archivedAt: prior?.archivedAt ?? null,
+                            usages: prior?.usages ?? [],
+                          },
+                        ];
+                      });
+                      if (updated)
+                        setDefaults((current) =>
+                          current.map((value) => (value.scope === updated.scope ? updated : value)),
+                        );
                       setNotice(t('saved', { revision: saved.revision }));
                       window.dispatchEvent(new Event('corral:harness-changed'));
+                      try {
+                        setProfiles(await api.profileManagement());
+                        setRefreshFailed(false);
+                      } catch {
+                        setRefreshFailed(true);
+                      }
                     })
                   }
                 >
@@ -711,18 +817,6 @@ export function HarnessSettingsPage() {
               ) : null}
               {preview && canPreview ? <HarnessPreviewView preview={preview} /> : null}
             </fieldset>
-            {toolsState?.projectId === projectId ? (
-              <ProjectToolSettings
-                key={projectId}
-                api={api}
-                projectId={projectId}
-                config={projectTools}
-                onChange={(saved) => {
-                  setToolsState({ projectId, value: saved });
-                  setPreview(null);
-                }}
-              />
-            ) : null}
             <fieldset disabled={busy} className="flex flex-col gap-3 border-t border-line pt-5">
               <legend className="px-1 text-lg font-semibold">{t('defaults')}</legend>
               <p className="text-xs text-muted">{t('defaultsHint')}</p>
@@ -765,17 +859,25 @@ export function HarnessSettingsPage() {
                         {value.binding.profileId} · r{value.binding.revision}
                       </option>
                     ) : null}
-                    {profiles.map((p) => (
-                      <option key={p.profileId} value={`${p.profileId}:${p.revision}`}>
-                        {p.name} · r{p.revision}
-                      </option>
-                    ))}
+                    {profiles
+                      .filter(
+                        (p) =>
+                          !p.archivedAt ||
+                          (value.binding?.profileId === p.profileId &&
+                            value.binding.revision === p.revision),
+                      )
+                      .map((p) => (
+                        <option key={p.profileId} value={`${p.profileId}:${p.revision}`}>
+                          {p.name} · r{p.revision}
+                        </option>
+                      ))}
                   </select>
                 </label>
               ))}
             </fieldset>
           </>
         )}
+        {confirmation.dialog}
       </main>
     </SettingsLayout>
   );

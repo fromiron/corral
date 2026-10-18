@@ -398,6 +398,31 @@ CREATE TABLE lsp_proposals (
 CREATE INDEX lsp_proposals_by_session ON lsp_proposals(session_id,created_at);
 `,
   },
+  {
+    name: '0012_harness_management',
+    sql: `
+CREATE TABLE harness_entry_management (
+  hash TEXT NOT NULL REFERENCES harness_resources(hash),
+  entry TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK(kind IN ('skill','extension')),
+  revision INTEGER NOT NULL,
+  archived_at TEXT,
+  successor_json TEXT,
+  display_name TEXT,
+  PRIMARY KEY(hash, entry, kind)
+) STRICT;
+CREATE TABLE harness_profile_management (
+  profile_id TEXT PRIMARY KEY,
+  revision INTEGER NOT NULL,
+  archived_at TEXT
+) STRICT;
+CREATE TABLE harness_management_receipts (
+  operation_id TEXT PRIMARY KEY,
+  request_hash TEXT NOT NULL,
+  result_json TEXT NOT NULL
+) STRICT;
+`,
+  },
 ];
 
 /** History queries must neither recover active runs nor migrate the workspace. */

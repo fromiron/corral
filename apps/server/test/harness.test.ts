@@ -85,6 +85,170 @@ function setup(
 }
 
 describe('resource discovery, trust and resolution (H3)', () => {
+  it('[TC-MGR-001-N] cancellation belongs to a review operation, not shared content', async () => {
+    const s = setup();
+    const a = await s.service.discoverLocal(s.source);
+    const b = await s.service.discoverLocal(s.source);
+    expect(a.resource.hash).toBe(b.resource.hash);
+    expect(a.reviewId).not.toBe(b.reviewId);
+    s.service.cancelReview(a.reviewId);
+    const saved = s.service.install(b.reviewId);
+    expect(s.service.install(b.reviewId)).toEqual(saved);
+    const c = await s.service.discoverLocal(s.source);
+    s.service.cancelReview(a.reviewId);
+    expect(s.service.install(c.reviewId).hash).toBe(saved.hash);
+  });
+  it('[TC-MGR-002-N] a deleted project server cannot be published into a new default', () => {
+    const { service } = setup();
+    const server = {
+      id: 'docs',
+      name: 'Docs',
+      transport: 'http' as const,
+      url: 'https://example.invalid/mcp',
+      timeoutMs: 1000,
+      exposure: 'direct' as const,
+      auth: { kind: 'none' as const },
+    };
+    service.projectTools.save('default', 0, { checks: [], lspServers: [], mcpServers: [server] });
+    service.projectTools.save('default', 1, { checks: [], lspServers: [], mcpServers: [] });
+    expect(() =>
+      service.publish({
+        operationId: 'stale-project',
+        profileId: 'new-profile',
+        expectedRevision: 0,
+        profile: {
+          name: 'MCP',
+          policy: 'trusted-native',
+          allowedTools: [],
+          resources: [],
+          startupCommands: [],
+          mcpServerIds: ['docs'],
+        },
+        target: { scope: 'project', scopeId: 'default', expectedRevision: 0, binding: null },
+      }),
+    ).toThrow('selected project tool is not registered');
+    expect(service.store.listProfiles()).toHaveLength(0);
+    expect(service.store.getDefault('project', 'default').revision).toBe(0);
+  });
+  it('[TC-MGR-001-N] validates actual standalone documents and round-trips generated hooks without executing source', async () => {
+    const s = setup();
+    const service = new HarnessService({ root: s.resourceRoot, db: s.db, clock: new FakeClock() });
+    const review = await service.reviewDocument({
+      kind: 'skill',
+      name: '문서 검토',
+      content:
+        '---\nname: audit-check\ndescription: Check the result.\ncustom: keep-me\n---\nRead the receipt.',
+    });
+    const skill = service.install(review.reviewId);
+    expect(service.entries().find((entry) => entry.resourceHash === skill.hash)?.name).toBe(
+      '문서 검토',
+    );
+    expect(
+      service.readEntry({ resourceHash: skill.hash, kind: 'skill', entry: 'skills/SKILL.md' })
+        .content,
+    ).toContain('custom: keep-me');
+    await expect(
+      service.reviewDocument({ kind: 'skill', name: 'Bad', content: 'no frontmatter' }),
+    ).rejects.toThrow();
+    await expect(
+      service.reviewDocument({ kind: 'skill', name: 'Big', content: '가'.repeat(30000) }),
+    ).rejects.toThrow('size limit');
+    const hook = {
+      template: 'confirm' as const,
+      title: "'); throw new Error('not code",
+      message: 'Continue?',
+    };
+    const hookReview = await service.reviewDocument({
+      kind: 'extension',
+      name: '시작 확인',
+      content: 'generated',
+      hook,
+    });
+    const installed = service.install(hookReview.reviewId);
+    const key = {
+      resourceHash: installed.hash,
+      kind: 'extension' as const,
+      entry: 'extensions/hook.ts',
+    };
+    expect(service.readEntry(key).hook).toEqual(hook);
+    expect(() => service.readEntry({ ...key, entry: '../package.json' })).toThrow();
+    expect(() => service.readEntry({ ...key, entry: 'package.json' })).toThrow(
+      'unknown resource entry',
+    );
+    expect(existsSync(s.marker)).toBe(false);
+  });
+  it('[TC-MGR-001-H] edits a copied entry without changing old snapshots, trust or sibling files', async () => {
+    const s = setup();
+    const review = await s.service.discoverLocal(s.source);
+    const first = s.service.install(review.reviewId);
+    s.service.trust(first.hash, true);
+    s.service.saveProfile('writer', 0, s.profile(first.hash));
+    const before = s.service.preview({ profileId: 'writer', revision: 1 }, 'default');
+    const key = {
+      resourceHash: first.hash,
+      entry: 'skills/writing/SKILL.md',
+      kind: 'skill' as const,
+    };
+    const changed = await s.service.reviewDocument({
+      kind: 'skill',
+      name: 'Edited writing',
+      base: key,
+      content: '---\nname: writing\ndescription: Write clearly.\n---\nKeep revised sources.',
+    });
+    const second = s.service.install(changed.reviewId);
+    expect(s.service.install(changed.reviewId).hash).toBe(second.hash);
+    expect(second.hash).not.toBe(first.hash);
+    expect(second.trustedAt).toBeNull();
+    expect(s.service.readEntry(key).content).toContain('Keep sources.');
+    expect(s.service.preview({ profileId: 'writer', revision: 1 }, 'default')).toEqual(before);
+    expect(second.files.find((file) => file.path === 'extensions/echo.ts')).toEqual(
+      first.files.find((file) => file.path === 'extensions/echo.ts'),
+    );
+    const revision = s.service.store.entryManagement(key).managementRevision;
+    const archived = s.service.archiveEntry(key, revision, true, 'archive-writing');
+    expect(archived.archivedAt).toBeTruthy();
+    expect(s.service.archiveEntry(key, revision, true, 'archive-writing')).toEqual(archived);
+    expect(s.service.preview({ profileId: 'writer', revision: 1 }, 'default')).toEqual(before);
+    expect(() => s.service.archiveEntry(key, 0, false, 'stale')).toThrow(
+      'management revision changed',
+    );
+    expect(existsSync(s.marker)).toBe(false);
+  });
+  it('[TC-MGR-001-N] publishes one revision/default atomically and refuses stale or reused operations', async () => {
+    const { service } = setup();
+    const profile: HarnessProfile = {
+      name: 'Empty',
+      policy: 'strict',
+      allowedTools: [],
+      resources: [],
+      startupCommands: [],
+    };
+    const input = {
+      operationId: 'publish-once',
+      profileId: 'empty',
+      expectedRevision: 0,
+      profile,
+      target: {
+        scope: 'personal' as const,
+        scopeId: 'default',
+        expectedRevision: 0,
+        binding: null,
+      },
+    };
+    const saved = service.publish(input);
+    expect(service.publish(input)).toEqual(saved);
+    expect(service.store.getDefault('personal', 'default').binding).toEqual({
+      profileId: 'empty',
+      revision: 1,
+    });
+    expect(() => service.publish({ ...input, profile: { ...profile, name: 'Different' } })).toThrow(
+      'operation payload changed',
+    );
+    expect(() =>
+      service.publish({ ...input, operationId: 'stale-default', expectedRevision: 1 }),
+    ).toThrow('default revision changed');
+    expect(service.store.listProfiles()[0]?.revision).toBe(1);
+  });
   it('[TC-HAR-003-H] previews static broker descriptors without executing native resources', async () => {
     const s = setup();
     const review = await s.service.discoverLocal(s.source);
@@ -147,6 +311,42 @@ describe('resource discovery, trust and resolution (H3)', () => {
         revision: 1,
       }).snapshot.projectTools?.mcpServerIds ?? [],
     ).toEqual([]);
+  });
+  it('[TC-MGR-002-N] disabling a server affects future composition without rewriting pinned settings', () => {
+    const { service } = setup();
+    const server = {
+      id: 'docs',
+      name: 'Docs',
+      transport: 'http' as const,
+      url: 'https://example.invalid/mcp',
+      timeoutMs: 1000,
+      exposure: 'direct' as const,
+      auth: { kind: 'none' as const },
+    };
+    const original = service.projectTools.save('default', 0, {
+      checks: [],
+      lspServers: [],
+      mcpServers: [server],
+    });
+    service.saveProfile('mcp', 0, {
+      name: 'MCP',
+      policy: 'trusted-native',
+      allowedTools: ['mcp__docs__read'],
+      resources: [],
+      startupCommands: [],
+      mcpServerIds: ['docs'],
+    });
+    const before = service.preview({ profileId: 'mcp', revision: 1 }, 'default');
+    service.projectTools.save('default', 1, {
+      checks: [],
+      lspServers: [],
+      mcpServers: [{ ...server, enabled: false }],
+    });
+    const after = service.preview({ profileId: 'mcp', revision: 1 }, 'default');
+    expect(after.snapshot.projectTools?.mcpServerIds ?? []).toEqual([]);
+    expect(after.snapshot.diagnostics).toContain('mcp_server_disabled');
+    expect(before.snapshot.projectTools?.mcpServerIds).toEqual(['docs']);
+    expect(service.projectTools.get('default', 1)).toEqual(original);
   });
   it('[TC-HAR-005-N] an explicit skill command must be a complete command token in the brief', async () => {
     const s = setup();
@@ -360,7 +560,7 @@ describe('resource discovery, trust and resolution (H3)', () => {
     writeFileSync(join(s.source, 'skills/writing/SKILL.md'), 'different source after review');
     const installed = s.service.install(review.reviewId);
     expect(installed.hash).toBe(review.resource.hash);
-    expect(() => s.service.install(review.reviewId)).toThrow(/review/i);
+    expect(s.service.install(review.reviewId)).toEqual(installed);
   });
 
   it('[TC-HAR-008-N] personal and project restrictions cannot be weakened by a role', async () => {

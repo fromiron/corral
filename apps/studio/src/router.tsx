@@ -11,8 +11,10 @@ import { type DemoTemplateId, demoTemplate } from './demo/templates.ts';
 import { ComparePage } from './pages/ComparePage.tsx';
 import { DemoPage, EditorPage } from './pages/EditorPage.tsx';
 import { HarnessSettingsPage } from './pages/HarnessSettingsPage.tsx';
+import { McpSettingsPage } from './pages/McpSettingsPage.tsx';
 import { ModelSettingsPage } from './pages/ModelSettingsPage.tsx';
 import { ProjectsPage } from './pages/ProjectsPage.tsx';
+import { HookSettingsPage, SkillSettingsPage } from './pages/ResourceSettingsPage.tsx';
 import { ReviewPage } from './pages/ReviewPage.tsx';
 import { ErrorView, NotFoundView, RootLayout } from './pages/RootLayout.tsx';
 import { RunPage } from './pages/RunPage.tsx';
@@ -269,6 +271,22 @@ export const harnessSettingsRoute = createRoute({
   component: HarnessSettingsPage,
 });
 
+export const skillSettingsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/settings/skills',
+  component: SkillSettingsPage,
+});
+export const hookSettingsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/settings/hooks',
+  component: HookSettingsPage,
+});
+export const mcpSettingsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/settings/mcp',
+  component: McpSettingsPage,
+});
+
 export const modelSettingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/settings/models',
@@ -324,6 +342,9 @@ export function createStudioRouter(services: StudioServices) {
       runRoute,
       modelSettingsRoute,
       harnessSettingsRoute,
+      skillSettingsRoute,
+      hookSettingsRoute,
+      mcpSettingsRoute,
       settingsRoute,
       compareRoute,
       ...(import.meta.env.MODE === 'performance' ? [createPerformanceRoute()] : []),

@@ -1,308 +1,32 @@
-import type { HarnessApi } from '@corral/client';
-import { type ProjectToolConfigRevision, RegisteredMcpServer } from '@corral/contracts';
+import type { HarnessApi, McpProbeResult } from '@corral/client';
+import type { RegisteredMcpServer } from '@corral/contracts';
 import { Button } from '@corral/react/ui';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
+import { field, operationId } from '../workbench/harness/Target.tsx';
 
-const field = 'w-full rounded-md border border-line bg-surface p-2 text-sm';
-const empty = {
-  id: '',
-  name: '',
-  transport: 'stdio',
-  argv: '',
-  url: '',
-  auth: 'none',
-  credentialRef: '',
-  scope: '',
-  clientId: '',
-  exposure: 'direct',
-  seconds: '30',
-};
-export function McpSettings({
-  api,
-  projectId,
-  config,
-  onChange,
-}: {
-  api: HarnessApi;
-  projectId: string;
-  config: ProjectToolConfigRevision | null;
-  onChange(config: ProjectToolConfigRevision): void;
-}) {
-  const t = useTranslations('Harness');
-  const [draft, setDraft] = useState(empty),
-    [editing, setEditing] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false),
-    [error, setError] = useState(''),
-    [notice, setNotice] = useState('');
-  async function save(servers: RegisteredMcpServer[]) {
-    setBusy(true);
-    setError('');
-    setNotice('');
-    try {
-      const saved = await api.saveProjectTools(projectId, config?.revision ?? 0, {
-        checks: config?.checks ?? [],
-        lspServers: config?.lspServers ?? [],
-        mcpServers: servers,
-      });
-      onChange(saved);
-      setDraft(empty);
-      setEditing(null);
-      setNotice(t('toolsSaved', { revision: saved.revision }));
-    } catch (error) {
-      setError(error instanceof Error ? error.message : t('error'));
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <section className="flex flex-col gap-3 border-t border-line pt-5" aria-label={t('projectMcp')}>
-      <h4 className="font-medium">{t('projectMcp')}</h4>
-      <p className="text-xs text-muted">{t('mcpSetupHint')}</p>
-      {error ? (
-        <p role="alert" className="text-sm text-danger">
-          {error}
-        </p>
-      ) : null}
-      {notice ? (
-        <p role="status" className="text-sm">
-          {notice}
-        </p>
-      ) : null}
-      {!config?.mcpServers?.length ? (
-        <p className="text-xs text-muted">{t('noProjectMcp')}</p>
-      ) : null}
-      {(config?.mcpServers ?? []).map((server) => (
-        <div
-          key={`${config?.revision}:${server.id}`}
-          className="flex flex-col gap-2 border-b border-line pb-3"
-        >
-          <McpConnection api={api} projectId={projectId} server={server} />
-          <div className="flex gap-2">
-            <Button
-              variant="ghost"
-              disabled={busy}
-              onClick={() => {
-                setEditing(server.id);
-                setDraft({
-                  ...empty,
-                  id: server.id,
-                  name: server.name,
-                  transport: server.transport,
-                  exposure: server.exposure,
-                  seconds: String(server.timeoutMs / 1000),
-                  ...(server.transport === 'stdio'
-                    ? { argv: server.argv.join('\n') }
-                    : {
-                        url: server.url,
-                        auth: server.auth.kind,
-                        ...(server.auth.kind !== 'none'
-                          ? { credentialRef: server.auth.credentialRef }
-                          : {}),
-                        ...(server.auth.kind === 'oauth'
-                          ? { scope: server.auth.scope, clientId: server.auth.clientId ?? '' }
-                          : {}),
-                      }),
-                });
-              }}
-            >
-              {t('editLsp', { name: server.name })}
-            </Button>
-            <Button
-              variant="ghost"
-              disabled={busy}
-              onClick={() =>
-                void save((config?.mcpServers ?? []).filter((item) => item.id !== server.id))
-              }
-            >
-              {t('removeLsp', { name: server.name })}
-            </Button>
-          </div>
-        </div>
-      ))}
-      <fieldset disabled={busy} className="flex flex-col gap-3">
-        <legend className="py-2 font-medium">{t('configureMcp')}</legend>
-        {(['id', 'name'] as const).map((key) => (
-          <label key={key} className="flex flex-col gap-1 text-sm">
-            {t(key === 'id' ? 'mcpId' : 'mcpName')}
-            <input
-              className={field}
-              value={draft[key]}
-              disabled={key === 'id' && !!editing}
-              onChange={(e) => setDraft({ ...draft, [key]: e.target.value })}
-            />
-          </label>
-        ))}
-        <label className="flex flex-col gap-1 text-sm">
-          {t('mcpTransport')}
-          <select
-            className={field}
-            value={draft.transport}
-            onChange={(e) => setDraft({ ...draft, transport: e.target.value })}
-          >
-            <option value="stdio">{t('mcpStdio')}</option>
-            <option value="http">{t('mcpHttp')}</option>
-          </select>
-        </label>
-        {draft.transport === 'stdio' ? (
-          <>
-            <label className="flex flex-col gap-1 text-sm">
-              {t('mcpArgv')}
-              <textarea
-                className={field}
-                rows={3}
-                value={draft.argv}
-                onChange={(e) => setDraft({ ...draft, argv: e.target.value })}
-              />
-            </label>
-            <p className="text-xs text-muted">{t('mcpArgvHint')}</p>
-          </>
-        ) : (
-          <>
-            <label className="flex flex-col gap-1 text-sm">
-              {t('mcpUrl')}
-              <input
-                type="url"
-                className={field}
-                value={draft.url}
-                onChange={(e) => setDraft({ ...draft, url: e.target.value })}
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
-              {t('mcpAuth')}
-              <select
-                className={field}
-                value={draft.auth}
-                onChange={(e) => setDraft({ ...draft, auth: e.target.value })}
-              >
-                <option value="none">{t('mcpAuthNone')}</option>
-                <option value="bearer">{t('mcpAuthBearer')}</option>
-                <option value="oauth">OAuth</option>
-              </select>
-            </label>
-            {draft.auth !== 'none' ? (
-              <label className="flex flex-col gap-1 text-sm">
-                {t('mcpCredentialRef')}
-                <input
-                  className={field}
-                  value={draft.credentialRef}
-                  onChange={(e) => setDraft({ ...draft, credentialRef: e.target.value })}
-                />
-              </label>
-            ) : null}
-            {draft.auth === 'oauth' ? (
-              <>
-                {(['scope', 'clientId'] as const).map((key) => (
-                  <label key={key} className="flex flex-col gap-1 text-sm">
-                    {t(key === 'scope' ? 'mcpScope' : 'mcpClientId')}
-                    <input
-                      className={field}
-                      value={draft[key]}
-                      onChange={(e) => setDraft({ ...draft, [key]: e.target.value })}
-                    />
-                  </label>
-                ))}
-              </>
-            ) : null}
-          </>
-        )}
-        <label className="flex flex-col gap-1 text-sm">
-          {t('mcpExposure')}
-          <select
-            className={field}
-            value={draft.exposure}
-            onChange={(e) => setDraft({ ...draft, exposure: e.target.value })}
-          >
-            <option value="direct">{t('mcpDirect')}</option>
-            <option value="codemode">{t('mcpCodemode')}</option>
-          </select>
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          {t('mcpTimeout')}
-          <input
-            className={field}
-            type="number"
-            min={1}
-            max={300}
-            value={draft.seconds}
-            onChange={(e) => setDraft({ ...draft, seconds: e.target.value })}
-          />
-        </label>
-        <div className="flex gap-2">
-          <Button
-            onClick={() => {
-              const parsed = RegisteredMcpServer.safeParse({
-                id: draft.id.trim(),
-                name: draft.name.trim(),
-                transport: draft.transport,
-                exposure: draft.exposure,
-                timeoutMs: Number(draft.seconds) * 1000,
-                ...(draft.transport === 'stdio'
-                  ? {
-                      argv: draft.argv
-                        .split('\n')
-                        .map((line) => line.trim())
-                        .filter(Boolean),
-                    }
-                  : {
-                      url: draft.url.trim(),
-                      auth: {
-                        kind: draft.auth,
-                        ...(draft.auth !== 'none'
-                          ? { credentialRef: draft.credentialRef.trim() }
-                          : {}),
-                        ...(draft.auth === 'oauth'
-                          ? {
-                              scope: draft.scope.trim(),
-                              ...(draft.clientId.trim() ? { clientId: draft.clientId.trim() } : {}),
-                            }
-                          : {}),
-                      },
-                    }),
-              });
-              if (!parsed.success) {
-                setError(t('invalidMcp'));
-                return;
-              }
-              if (!editing && config?.mcpServers?.some((server) => server.id === parsed.data.id)) {
-                setError(t('duplicateLsp'));
-                return;
-              }
-              void save([
-                ...(config?.mcpServers ?? []).filter((server) => server.id !== editing),
-                parsed.data,
-              ]);
-            }}
-          >
-            {t('saveMcp')}
-          </Button>
-          {editing ? (
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setEditing(null);
-                setDraft(empty);
-              }}
-            >
-              {t('cancelLsp')}
-            </Button>
-          ) : null}
-        </div>
-      </fieldset>
-    </section>
-  );
-}
-
-function McpConnection({
+export function McpConnection({
   api,
   projectId,
   server,
+  copies,
+  onProbe,
+  disabled = false,
 }: {
   api: HarnessApi;
   projectId: string;
   server: RegisteredMcpServer;
+  copies: { id: string; name: string }[];
+  onProbe(result: McpProbeResult | null): void;
+  disabled?: boolean;
 }) {
-  const t = useTranslations('Harness');
+  const t = useTranslations('Harness'),
+    r = useTranslations('Resources');
+  const [sessionId, setSessionId] = useState('');
+  const [probeId, setProbeId] = useState<string | null>(null);
+  const probeRef = useRef<string | null>(null);
+  const sessionRef = useRef(sessionId);
+  sessionRef.current = sessionId;
   const [launch, setLaunch] = useState<Awaited<ReturnType<HarnessApi['inspectMcpServer']>> | null>(
     null,
   );
@@ -318,8 +42,29 @@ function McpConnection({
     active.current = true;
     return () => {
       active.current = false;
+      if (probeRef.current) void api.cancelMcpProbe(probeRef.current).catch(() => {});
     };
-  }, []);
+  }, [api]);
+  useEffect(() => {
+    let owned = true;
+    setLaunch(null);
+    setStatus(null);
+    void Promise.all([
+      api.inspectMcpServer(projectId, server.id, sessionId ? { sessionId } : {}),
+      api.mcpAuthStatus(projectId, server.id),
+    ]).then(
+      ([launch, status]) => {
+        if (owned) {
+          setLaunch(launch);
+          setStatus(status);
+        }
+      },
+      (e) => owned && setError(e.message),
+    );
+    return () => {
+      owned = false;
+    };
+  }, [api, projectId, server.id, sessionId]);
   useEffect(() => {
     if (!login) return;
     let ended = false,
@@ -332,8 +77,10 @@ function McpConnection({
           timer = setTimeout(() => void poll(), 1000);
           return;
         }
-        if (next.state === 'ready') setStatus(await api.mcpAuthStatus(projectId, server.id));
-        else if (next.state === 'failed') setError(t('mcpLoginFailed'));
+        if (next.state === 'ready') {
+          const value = await api.mcpAuthStatus(projectId, server.id);
+          if (!ended) setStatus(value);
+        } else if (next.state === 'failed') setError(t('mcpLoginFailed'));
         if (!ended) setLogin(null);
       } catch {
         if (!ended) {
@@ -362,18 +109,39 @@ function McpConnection({
   }
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-sm font-medium">
-        {server.name} <span className="text-muted">{server.id}</span>
-      </p>
+      {server.transport === 'stdio' ? (
+        <label className="flex flex-col gap-1 text-sm">
+          {r('workingCopy')}
+          <select
+            className={field}
+            value={sessionId}
+            disabled={disabled || busy || !!probeId}
+            onChange={(e) => {
+              setSessionId(e.target.value);
+              onProbe(null);
+            }}
+          >
+            <option value="">{r('chooseCopy')}</option>
+            {copies.map((copy) => (
+              <option key={copy.id} value={copy.id}>
+                {copy.name}
+              </option>
+            ))}
+          </select>
+          {!copies.length ? <span className="text-xs text-muted">{r('copyRequired')}</span> : null}
+        </label>
+      ) : null}
       <p className="break-all font-mono text-xs">
         {server.transport === 'stdio' ? server.argv.join(' ') : server.url}
       </p>
       <Button
         variant="outline"
-        disabled={busy}
+        disabled={disabled || busy || !!probeId}
         onClick={() =>
           void work(async () => {
-            setLaunch(await api.inspectMcpServer(projectId, server.id));
+            setLaunch(
+              await api.inspectMcpServer(projectId, server.id, sessionId ? { sessionId } : {}),
+            );
             setStatus(await api.mcpAuthStatus(projectId, server.id));
           })
         }
@@ -382,10 +150,13 @@ function McpConnection({
       </Button>
       {launch ? (
         <>
-          <p className="break-all font-mono text-xs">{launch.fingerprint}</p>
+          <details className="text-xs text-muted">
+            <summary>{r('launchDetails')}</summary>
+            <p className="break-all font-mono">{launch.fingerprint}</p>
+          </details>
           <Button
             variant="outline"
-            disabled={busy}
+            disabled={disabled || busy || !!probeId}
             onClick={() =>
               void work(async () => {
                 await api.trustMcpServer(
@@ -393,8 +164,11 @@ function McpConnection({
                   server.id,
                   launch.fingerprint,
                   !launch.trustedAt,
+                  sessionId || undefined,
                 );
-                setLaunch(await api.inspectMcpServer(projectId, server.id));
+                setLaunch(
+                  await api.inspectMcpServer(projectId, server.id, sessionId ? { sessionId } : {}),
+                );
               })
             }
           >
@@ -427,7 +201,7 @@ function McpConnection({
                     />
                   </label>
                   <Button
-                    disabled={busy || !launch.trustedAt || !token}
+                    disabled={disabled || busy || !launch.trustedAt || !token}
                     onClick={() =>
                       void work(async () => {
                         try {
@@ -450,7 +224,7 @@ function McpConnection({
                 </>
               ) : (
                 <Button
-                  disabled={busy || !launch.trustedAt || !!login}
+                  disabled={disabled || busy || !launch.trustedAt || !!login}
                   onClick={() =>
                     void work(async () => {
                       const next = await api.signInMcp(projectId, server.id, launch.fingerprint);
@@ -488,10 +262,17 @@ function McpConnection({
               {status?.state === 'ready' ? (
                 <Button
                   variant="ghost"
-                  disabled={busy}
+                  disabled={disabled || busy || !!probeId}
                   onClick={() =>
                     void work(async () => {
-                      setStatus(await api.signOutMcp(projectId, server.id, launch.fingerprint));
+                      setStatus(
+                        await api.signOutMcp(
+                          projectId,
+                          server.id,
+                          launch.fingerprint,
+                          launch.configRevision,
+                        ),
+                      );
                       setLogin(null);
                     })
                   }
@@ -503,6 +284,61 @@ function McpConnection({
           ) : null}
         </>
       ) : null}
+      <div className="mt-3 flex flex-col gap-2 border-t border-line pt-3">
+        <p className="text-xs text-muted">{r('probeHint')}</p>
+        <Button
+          variant="outline"
+          disabled={
+            busy ||
+            !!probeId ||
+            !launch?.trustedAt ||
+            status?.state === 'missing' ||
+            (server.transport === 'stdio' && !sessionId)
+          }
+          onClick={() => {
+            if (!launch) return;
+            const id = operationId();
+            probeRef.current = id;
+            setProbeId(id);
+            setError('');
+            onProbe(null);
+            void api
+              .probeMcp(projectId, server.id, {
+                operationId: id,
+                configRevision: launch.configRevision,
+                fingerprint: launch.fingerprint,
+                ...(sessionId ? { sessionId } : {}),
+              })
+              .then(
+                (result) => {
+                  if (active.current && probeRef.current === id && sessionRef.current === sessionId)
+                    onProbe(result);
+                },
+                (e) => {
+                  if (active.current && probeRef.current === id) setError(e.message);
+                },
+              )
+              .finally(() => {
+                if (active.current && probeRef.current === id) {
+                  setProbeId(null);
+                  probeRef.current = null;
+                }
+              });
+          }}
+        >
+          {r(probeId ? 'probeRunning' : 'probe')}
+        </Button>
+        {probeId ? (
+          <Button
+            variant="ghost"
+            onClick={() => {
+              void api.cancelMcpProbe(probeId).catch((e) => active.current && setError(e.message));
+            }}
+          >
+            {r('cancelProbe')}
+          </Button>
+        ) : null}
+      </div>
       {error ? (
         <p role="alert" className="text-sm text-danger">
           {error}

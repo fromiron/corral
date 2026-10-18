@@ -109,7 +109,7 @@ test('[TC-HAR-012-H] selects a registered check, approves its SDK call and reads
         owner: { kind: 'execution', runId: ids.runId },
       },
     });
-    await page.goto(`${corral.server.url}/settings/harness`);
+    await page.goto(`${corral.server.url}/settings?section=workspace`);
     await page.getByRole('button', { name: 'Review launch for Types', exact: true }).click();
     await page.getByRole('button', { name: 'Trust this launch', exact: true }).click();
     await expect(

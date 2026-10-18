@@ -71,6 +71,7 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
     try {
       await work();
       await reload();
+      window.dispatchEvent(new Event(WORKSPACE_CHANGED));
     } catch (failure) {
       setError(
         t('failed', { message: failure instanceof Error ? failure.message : String(failure) }),

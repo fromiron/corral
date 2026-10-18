@@ -6,12 +6,20 @@ import {
   type ErrorCode,
   type HarnessBindingRef,
   type HarnessDefault,
+  type HarnessDocumentDraft,
+  type HarnessEntryKey,
+  type HarnessEntryView,
+  type HarnessManagementState,
   type HarnessProfile,
   type HarnessProfileRevision,
+  type HarnessProfileView,
+  type HarnessPublish,
   type HarnessResource,
   type HarnessResourceView,
   type LspProposal,
   type LspProposalSummary,
+  type ManagedHook,
+  type McpServerDraft,
   type ProjectToolConfig,
   type ProjectToolConfigRevision,
   type Receipt,
@@ -797,6 +805,14 @@ export interface HarnessPreview {
   dynamic: boolean;
 }
 
+export interface McpProbeResult {
+  operationId: string;
+  configRevision: number;
+  fingerprint: string;
+  observedAt: string;
+  tools: { name: string; title: string; description: string; schemaHash: string }[];
+}
+
 export class HarnessApi {
   private readonly http: Http;
   constructor(options: HttpOptions) {
@@ -839,10 +855,11 @@ export class HarnessApi {
     projectId: string,
     serverId: string,
     fingerprint: string,
+    configRevision?: number,
   ): ReturnType<HarnessApi['mcpAuthStatus']> {
     return this.http.json(
       `/harness/projects/${encodeURIComponent(projectId)}/mcp-servers/${encodeURIComponent(serverId)}/auth`,
-      { method: 'POST', body: JSON.stringify({ action: 'sign_out', fingerprint }) },
+      { method: 'POST', body: JSON.stringify({ action: 'sign_out', fingerprint, configRevision }) },
     );
   }
   mcpLoginStatus(
@@ -858,6 +875,7 @@ export class HarnessApi {
   inspectMcpServer(
     projectId: string,
     serverId: string,
+    options: { revision?: number; sessionId?: string } = {},
   ): Promise<{
     server: RegisteredMcpServer;
     configRevision: number;
@@ -865,7 +883,11 @@ export class HarnessApi {
     trustedAt: string | null;
   }> {
     return this.http.json(
-      `/harness/projects/${encodeURIComponent(projectId)}/mcp-servers/${encodeURIComponent(serverId)}/launch`,
+      `/harness/projects/${encodeURIComponent(projectId)}/mcp-servers/${encodeURIComponent(serverId)}/launch?${new URLSearchParams(
+        Object.entries(options)
+          .filter(([, value]) => value !== undefined)
+          .map(([key, value]) => [key, String(value)]),
+      )}`,
     );
   }
   trustMcpServer(
@@ -873,14 +895,127 @@ export class HarnessApi {
     serverId: string,
     fingerprint: string,
     trusted: boolean,
+    sessionId?: string,
   ): Promise<{ fingerprint: string; trustedAt: string | null }> {
     return this.http.json(
       `/harness/projects/${encodeURIComponent(projectId)}/mcp-servers/${encodeURIComponent(serverId)}/trust`,
-      { method: 'PUT', body: JSON.stringify({ fingerprint, trusted }) },
+      { method: 'PUT', body: JSON.stringify({ fingerprint, trusted, sessionId }) },
     );
   }
   resources(): Promise<HarnessResourceView[]> {
     return this.http.json('/harness/resources');
+  }
+  resource(hash: string): Promise<HarnessResourceView> {
+    return this.http.json(`/harness/resources/${encodeURIComponent(hash)}`);
+  }
+  entries(): Promise<HarnessEntryView[]> {
+    return this.http.json('/harness/entries');
+  }
+  saveMcp(
+    projectId: string,
+    expectedRevision: number,
+    operationId: string,
+    draft: McpServerDraft,
+    serverId?: string,
+  ): Promise<ProjectToolConfigRevision> {
+    return this.http.json(`/harness/projects/${encodeURIComponent(projectId)}/mcp`, {
+      method: 'POST',
+      body: JSON.stringify({ expectedRevision, operationId, draft, serverId }),
+    });
+  }
+  removeMcp(
+    projectId: string,
+    serverId: string,
+    expectedRevision: number,
+    operationId: string,
+    restoreRevision?: number,
+  ): Promise<ProjectToolConfigRevision> {
+    return this.http.json(
+      `/harness/projects/${encodeURIComponent(projectId)}/mcp-servers/${encodeURIComponent(serverId)}/remove`,
+      { method: 'POST', body: JSON.stringify({ expectedRevision, operationId, restoreRevision }) },
+    );
+  }
+  mcpHistory(projectId: string): Promise<
+    {
+      server: RegisteredMcpServer;
+      configRevision: number;
+      canRestore: boolean;
+      fingerprint: string | null;
+    }[]
+  > {
+    return this.http.json(`/harness/projects/${encodeURIComponent(projectId)}/mcp-history`);
+  }
+  mcpUsages(
+    projectId: string,
+    serverId: string,
+  ): Promise<
+    {
+      id: string;
+      binding: HarnessBindingRef;
+      scope: 'personal' | 'project' | 'role';
+      name: string;
+    }[]
+  > {
+    return this.http.json(
+      `/harness/projects/${encodeURIComponent(projectId)}/mcp-servers/${encodeURIComponent(serverId)}/usages`,
+    );
+  }
+  probeMcp(
+    projectId: string,
+    serverId: string,
+    input: { operationId: string; configRevision: number; fingerprint: string; sessionId?: string },
+  ): Promise<McpProbeResult> {
+    return this.http.json(
+      `/harness/projects/${encodeURIComponent(projectId)}/mcp-servers/${encodeURIComponent(serverId)}/probe`,
+      { method: 'POST', body: JSON.stringify(input) },
+    );
+  }
+  cancelMcpProbe(operationId: string): Promise<{ ok: boolean }> {
+    return this.http.json(`/harness/mcp-probes/${encodeURIComponent(operationId)}`, {
+      method: 'DELETE',
+    });
+  }
+  readEntry(key: HarnessEntryKey): Promise<{ content: string; hook: ManagedHook | null }> {
+    return this.http.json('/harness/entries/read', { method: 'POST', body: JSON.stringify(key) });
+  }
+  reviewDocument(draft: HarnessDocumentDraft): ReturnType<HarnessApi['review']> {
+    return this.http.json('/harness/documents/review', {
+      method: 'POST',
+      body: JSON.stringify(draft),
+    });
+  }
+  cancelReview(reviewId: string): Promise<{ ok: boolean }> {
+    return this.http.json(`/harness/reviews/${encodeURIComponent(reviewId)}`, { method: 'DELETE' });
+  }
+  archiveEntry(
+    key: HarnessEntryKey,
+    expectedRevision: number,
+    archived: boolean,
+    operationId: string,
+  ): Promise<HarnessManagementState> {
+    return this.http.json('/harness/entries/archive', {
+      method: 'PUT',
+      body: JSON.stringify({ key, expectedRevision, archived, operationId }),
+    });
+  }
+  profileManagement(): Promise<HarnessProfileView[]> {
+    return this.http.json('/harness/profile-management');
+  }
+  archiveProfile(
+    profileId: string,
+    expectedRevision: number,
+    archived: boolean,
+    operationId: string,
+  ): Promise<HarnessManagementState> {
+    return this.http.json(`/harness/profile-management/${encodeURIComponent(profileId)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ expectedRevision, archived, operationId }),
+    });
+  }
+  publish(
+    input: HarnessPublish,
+  ): Promise<{ profile: HarnessProfileRevision; target: HarnessDefault | null }> {
+    return this.http.json('/harness/publish', { method: 'POST', body: JSON.stringify(input) });
   }
   projectTools(projectId: string): Promise<ProjectToolConfigRevision | null> {
     return this.http.json(`/harness/projects/${encodeURIComponent(projectId)}/tools`);

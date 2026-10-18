@@ -411,3 +411,7 @@ v0.2는 **Local/Jev의 수동 교체 가능한 DecisionProvider**를 구현한�
 ---
 
 **구현상 세부 계약은 [Technical-Design.md](docs/Technical-Design.md), 요구사항 전체는 [requirements.json](contracts/requirements.json), 테스트 설계는 [Test-Strategy.md](docs/Test-Strategy.md)에 있다.**
+
+### 리소스 관리 확장
+
+[CR-022](docs/change-requests/CR-022-resource-management.md)에 따라 설정에서 스킬·Hook·MCP 추가·편집·선택·제거/복구를 제공한다. 실행 자산은 불변이며 설치·신뢰·선택·적용을 분리한다.

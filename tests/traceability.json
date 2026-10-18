@@ -918,5 +918,25 @@
     "tasks": [
       "C-084"
     ]
+  },
+  {
+    "requirementId": "CRL-MGR-001",
+    "tests": [
+      "TC-MGR-001-H",
+      "TC-MGR-001-N"
+    ],
+    "tasks": [
+      "C-085"
+    ]
+  },
+  {
+    "requirementId": "CRL-MGR-002",
+    "tests": [
+      "TC-MGR-002-H",
+      "TC-MGR-002-N"
+    ],
+    "tasks": [
+      "C-085"
+    ]
   }
 ]

@@ -18,6 +18,7 @@ import {
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PiAgentAdapter } from '../src/adapter.ts';
 import { memoryChannelPair } from '../src/channel.ts';
+import { probeMcp } from '../src/mcp-probe.ts';
 import type { SdkResources } from '../src/protocol.ts';
 import { runSdkWorker } from '../src/sdk-worker.ts';
 import { ACCESS_TOKEN, recordingHost } from './harness.ts';
@@ -203,14 +204,32 @@ describe('SDK worker through the product adapter (H2)', () => {
     },
   );
 
-  it('[TC-HAR-016-H] runs the official MCP extension in the selected copy with owned native calls', async () => {
+  it('[TC-HAR-016-H] [TC-MGR-002-H] runs the official MCP extension in the selected copy with owned native calls', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'corral-mcp-copy-'));
     scratch.push(cwd);
     writeFileSync(join(cwd, 'marker.txt'), 'managed copy');
     writeFileSync(
       join(cwd, 'server.mjs'),
-      `import {createInterface} from 'node:readline';import {readFileSync} from 'node:fs';const input=createInterface({input:process.stdin});input.on('line',line=>{const m=JSON.parse(line);if(m.id===undefined)return;const result=m.method==='initialize'?{protocolVersion:m.params.protocolVersion,capabilities:{tools:{}},serverInfo:{name:'fixture',version:'1'}}:m.method==='tools/list'?{tools:[{name:'echo',description:'Read fixture',inputSchema:{type:'object',properties:{}},annotations:{readOnlyHint:true,openWorldHint:false}},{name:'forbidden',description:'Not allowed',inputSchema:{type:'object',properties:{}}}]}:m.method==='tools/call'?{content:[{type:'text',text:readFileSync('marker.txt','utf8')}]}:{};process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result})+'\\n');});`,
+      `import {createInterface} from 'node:readline';import {readFileSync} from 'node:fs';const input=createInterface({input:process.stdin});input.on('line',line=>{const m=JSON.parse(line);if(m.id===undefined)return;const result=m.method==='initialize'?{protocolVersion:m.params.protocolVersion,capabilities:{tools:{}},serverInfo:{name:'fixture',version:'1'}}:m.method==='tools/list'?{tools:[{name:'echo',description:'Read fixture',inputSchema:{type:'object',properties:{}},annotations:{readOnlyHint:true,openWorldHint:false}},{name:'forbidden',description:'Not allowed',inputSchema:{type:'object',properties:{}}},...['a-b','a_b','long_'.repeat(20)].map(name=>({name,inputSchema:{type:'object',properties:{}}}))]}:m.method==='tools/call'?{content:[{type:'text',text:readFileSync('marker.txt','utf8')}]}:{};process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result})+'\\n');});`,
     );
+    const discovered = await probeMcp({
+      server: {
+        id: 'docs',
+        name: 'Docs',
+        transport: 'stdio',
+        argv: [process.execPath, 'server.mjs'],
+        exposure: 'direct',
+        timeoutMs: 5000,
+      },
+      cwd,
+      leaseDirectory: join(cwd, 'probe-leases'),
+      signal: new AbortController().signal,
+      authorization: async () => undefined,
+    });
+    const allowedNames = discovered
+      .filter((tool) => tool.title !== 'forbidden')
+      .map((tool) => tool.name);
+    expect(new Set(discovered.map((tool) => tool.name)).size).toBe(5);
     const updates: unknown[] = [],
       began: string[] = [];
     let sawResult = false;
@@ -221,7 +240,7 @@ describe('SDK worker through the product adapter (H2)', () => {
             context.messages.flatMap((message) =>
               message.role === 'system' ? (message.toolsAdded ?? []).map((tool) => tool.name) : [],
             ),
-          ).toContain('mcp__docs__echo');
+          ).toEqual(expect.arrayContaining(allowedNames));
           expect(
             context.messages.flatMap((message) =>
               message.role === 'system' ? (message.toolsAdded ?? []).map((tool) => tool.name) : [],
@@ -271,7 +290,7 @@ describe('SDK worker through the product adapter (H2)', () => {
         ],
       },
     );
-    run.input.harness!.allowedTools = ['mcp__docs__echo'];
+    run.input.harness!.allowedTools = allowedNames;
     run.input.harness!.projectTools = {
       projectId: 'p',
       revision: 1,
