@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import { recoverSdkWorkers } from '@corral/adapter-pi';
 import {
   type AgentAdapter,
+  AutoModelChoice,
+  AutoTemplate,
   CanvasLayout,
   type Clock,
   type CommandError,
@@ -17,14 +19,17 @@ import {
   type IdFactory,
   type Receipt,
   type RunEvent,
+  RunReferences,
   SCHEMA_VERSION,
   type Scheduler,
+  SchemaVersion,
   StartFrom,
   TERMINAL_RUN_STATUSES,
 } from '@corral/contracts';
 import {
   Coordinator,
   compileDefinition,
+  createAutoStarter,
   explainDefinition,
   exportRunArchive,
   type InstallationPolicy,
@@ -216,6 +221,7 @@ const UpdateSession = z.strictObject({
   title: z.string().max(200).optional(),
   objective: z.string().max(20_000).optional(),
   corralId: Identifier.nullable().optional(),
+  auto: AutoModelChoice.nullable().optional(),
   pinned: z.boolean().optional(),
   archived: z.boolean().optional(),
   expectedRevision: z.int().min(1),
@@ -228,6 +234,11 @@ const NewEntry = z.strictObject({
   executionId: Identifier.nullable().optional(),
   detail: z.string().max(2000).nullable().optional(),
   commandId: Identifier.nullable().optional(),
+  // The template an auto request ran with (CR-024).
+  auto: z
+    .strictObject({ template: AutoTemplate, source: z.enum(['model', 'local', 'fallback']) })
+    .nullable()
+    .optional(),
 });
 const EntryChange = z.strictObject({
   state: EntryState,
@@ -241,6 +252,17 @@ const ExplainRequest = z.strictObject({
   modelProfile: Identifier,
   mode: z.enum(['mock', 'live']),
   startFrom: StartFrom.optional(),
+});
+// CR-024: a request in an auto session; the runtime chooses the template and builds the team.
+const AutoRunRequest = z.strictObject({
+  schemaVersion: SchemaVersion,
+  commandId: Identifier,
+  sessionId: Identifier,
+  brief: z.string().trim().min(1).max(20_000),
+  choice: AutoModelChoice,
+  mode: z.enum(['mock', 'live']),
+  startFrom: StartFrom.optional(),
+  references: RunReferences.optional(),
 });
 const CreateProject = z.strictObject({
   name: z.string().max(200),
@@ -873,6 +895,67 @@ async function createCorralServer(
       ...(body.startFrom ? { startFrom: body.startFrom } : {}),
     });
     if (result.runId && explainTree) await trackRunFiles(result.runId, body.sessionId, explainTree);
+    const status = result.receipt.error ? STATUS[result.receipt.error.code] : resend ? 200 : 201;
+    return reply.code(status).send(result);
+  });
+
+  // An auto session's request (CR-024): one capped choice request, then one run of the chosen
+  // template. A resend returns the first start; a dropped connection while choosing starts none.
+  const autoStarter = createAutoStarter<AbortSignal>({
+    startRun: (request) => coordinator.startRun(request),
+    previousStart: (commandId) => {
+      const result = coordinator.startResult(commandId);
+      if (!result) return null;
+      const autoRoute = result.runId
+        ? (coordinator.getRunSnapshot(result.runId)?.autoRoute ?? null)
+        : null;
+      return { ...result, autoRoute };
+    },
+    precheck: (request) => {
+      const error = coordinator.startRefusal(
+        request.choice.modelProfile,
+        request.mode,
+        request.choice.reasoning,
+      );
+      return error ? { runId: null, receipt: refusedStart(request, error) } : null;
+    },
+    route: ({ brief, choice, mode, signal }) =>
+      mode === 'live' && registry ? registry.routeAuto(brief, choice, signal) : null,
+  });
+  app.post('/api/v1/runs/auto', async (request, reply) => {
+    const body = parse(AutoRunRequest, request, reply);
+    if (!body) return reply;
+    const resend = coordinator.hasStartCommand(body.commandId);
+    if (!resend && !(await corrals.getSession(body.sessionId))) {
+      return fail(reply, 'TARGET_NOT_FOUND', 'no such session');
+    }
+    const startTree = resend ? null : await files.currentTree(body.sessionId);
+    const dropped = new AbortController();
+    const onClose = () => {
+      if (!reply.raw.writableEnded) dropped.abort();
+    };
+    reply.raw.once('close', onClose);
+    let result: Awaited<ReturnType<typeof autoStarter.start>>;
+    try {
+      result = await autoStarter.start(
+        {
+          commandId: body.commandId,
+          sessionId: body.sessionId,
+          brief: body.brief,
+          choice: body.choice,
+          mode: body.mode,
+          ...(body.startFrom ? { startFrom: body.startFrom } : {}),
+          ...(body.references ? { references: body.references } : {}),
+        },
+        { fileTools: startTree !== null, signal: dropped.signal },
+      );
+    } catch (error) {
+      if (dropped.signal.aborted) return reply;
+      throw error;
+    } finally {
+      reply.raw.off('close', onClose);
+    }
+    if (result.runId && startTree) await trackRunFiles(result.runId, body.sessionId, startTree);
     const status = result.receipt.error ? STATUS[result.receipt.error.code] : resend ? 200 : 201;
     return reply.code(status).send(result);
   });

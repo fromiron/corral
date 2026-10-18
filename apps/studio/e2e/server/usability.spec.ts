@@ -18,6 +18,9 @@ async function session(page: Page, corral: Harness, definition = linearCorral(['
   await expect(page).toHaveURL(/\/edit$/);
   await page.getByRole('link', { name: 'New session', exact: true }).click();
   await expect(page).toHaveURL(/\/sessions\/session_/);
+  // CR-024: a new session starts in auto mode; these journeys run the imported team.
+  await page.getByRole('combobox', { name: 'Team', exact: true }).click();
+  await page.getByRole('option', { name: definition.name, exact: true }).click();
   await expect(page.getByRole('combobox', { name: 'Team', exact: true })).toContainText(
     definition.name,
   );

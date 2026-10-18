@@ -1,4 +1,5 @@
 import type {
+  AutoRoute,
   CorralDefinition,
   EffectiveHarnessSnapshot,
   ModelProfileSnapshot,
@@ -29,6 +30,8 @@ export interface RunSnapshot {
   /** Role IDs to pinned harnesses; absent for legacy runs. */
   harnesses?: Record<string, EffectiveHarnessSnapshot>;
   reasoningApply?: ReasoningApplySettings;
+  /** The auto choice the definition came from (CR-024); absent for chosen teams. */
+  autoRoute?: AutoRoute;
   startedAt: string;
 }
 

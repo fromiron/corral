@@ -636,7 +636,7 @@ describe('auto sessions (CR-024)', () => {
       body: JSON.stringify({ projectId: 'default', title: 'Quick question' }),
     });
     expect(created.status).toBe(201);
-    return created.body.sessionId as string;
+    return created.body.session.sessionId as string;
   }
   const autoStart = (context: Awaited<ReturnType<typeof start>>, body: Record<string, unknown>) =>
     context.json('/runs/auto', {
@@ -678,6 +678,20 @@ describe('auto sessions (CR-024)', () => {
     expect(done.status).toBe('succeeded');
     const runs = await transport.listRuns();
     expect(runs.find((r) => r.runId === started.body.runId)?.sessionId).toBe(sessionId);
+    // The session records which template the request ran with.
+    const entry = await context.json(`/sessions/${sessionId}/entries`, {
+      method: 'POST',
+      body: JSON.stringify({
+        intent: 'next',
+        text: 'What does CR-024 change?',
+        state: 'started',
+        runId: started.body.runId,
+        commandId: 'cmd_auto_live',
+        auto: { template: 'single', source: 'model' },
+      }),
+    });
+    expect(entry.status).toBeLessThan(300);
+    expect(entry.body.session.entries[0].auto).toEqual({ template: 'single', source: 'model' });
 
     const again = await autoStart(context, body);
     expect(again.status).toBe(200);

@@ -17,6 +17,12 @@ async function session(page: Page, corral: Harness) {
   await expect(page).toHaveURL(/\/edit$/);
   await page.getByRole('link', { name: 'New session', exact: true }).click();
   await expect(page).toHaveURL(/\/sessions\/session_/);
+  // CR-024: a new session starts in auto mode; these checks run the imported team.
+  await page.getByRole('combobox', { name: 'Team', exact: true }).click();
+  await page.getByRole('option', { name: linearCorral(['writer']).name, exact: true }).click();
+  await expect(page.getByRole('combobox', { name: 'Team', exact: true })).toContainText(
+    linearCorral(['writer']).name,
+  );
 }
 
 test('[TC-UX-02-H] a referenced result keeps its exact version through a reload', async ({
@@ -103,15 +109,14 @@ test.describe('live models', () => {
   }) => {
     await session(page, corral);
     await requestBox(page).fill('Use the live model');
-    await page.getByRole('combobox', { name: 'Run mode' }).click();
-    await page.getByRole('option', { name: 'Live models' }).click();
+    // CR-024: with live models possible, a session runs live; it offers no simulated way out.
+    await expect(page.getByRole('combobox', { name: 'Run mode' })).toHaveCount(0);
     await expect(page.getByTestId('models-not-ready')).toContainText('model-a');
     await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
     await expect(page.getByTestId('app-sidebar')).toContainText('no model connected');
-    // /model shows each role's model and that it needs a sign-in.
-    await page.getByRole('button', { name: 'Use simulated agents' }).click();
-    await expect(page.getByTestId('models-not-ready')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Use simulated agents' })).toHaveCount(0);
     await expect(requestBox(page)).toHaveValue('Use the live model');
+    // /model shows each role's model and that it needs a sign-in.
     await requestBox(page).fill('/model');
     await requestBox(page).press('Enter');
     await expect(page.getByTestId('model-assignments')).toContainText('Sign-in needed');

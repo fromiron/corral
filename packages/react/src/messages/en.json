@@ -1228,7 +1228,18 @@
     "editTeam": "Open team design",
     "objectivePlaceholder": "What should this session work on?",
     "startHint": "Starts a session with this purpose. Nothing runs until you send the first request.",
-    "appliesAt": "at its next model request"
+    "appliesAt": "at its next model request",
+    "autoTeam": "Auto",
+    "autoModel": "Model",
+    "autoHint": "Auto picks one agent or a small team for each request, on the model shown.",
+    "autoNotReady": "{model} is not connected. Connect it under Settings › Models, or choose another model.",
+    "autoFallback": "choice failed, ran one agent",
+    "autoTemplate": {
+      "single": "Auto · one agent",
+      "write_review": "Auto · write and review",
+      "research_write_review": "Auto · research, write and review"
+    },
+    "preRunAuto": "Auto · {model} · reasoning: {reasoning} · files: {files} · {mode}"
   },
   "Files": {
     "folderHeading": "Project folder",
@@ -2154,7 +2165,7 @@
     "activeRun": "View active execution",
     "openRunDetails": "Open execution details",
     "closeControls": "Close controls",
-    "firstRequestHint": "Choose a team, then write your request in the session.",
+    "firstRequestHint": "Leave the team on Auto or choose one, then write your request in the session.",
     "sessionDetails": "Session details (optional)",
     "sessionName": "Session name",
     "optionalPurposeHint": "A long-term purpose is optional. It is never sent automatically.",

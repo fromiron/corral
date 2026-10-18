@@ -251,20 +251,19 @@ describe('starting an auto run (CR-024)', () => {
 
   it('[TC-AUTO-003-N] a cancelled choice starts nothing; the same command ID chooses once and starts one run', async () => {
     const s = setup();
-    const controller = new AbortController();
+    const signal = { aborted: false };
+    let abort = () => {};
     s.answerWith(
       () =>
         new Promise((resolve) => {
-          controller.signal.addEventListener('abort', () =>
-            resolve({ ok: false, reason: 'model_error' }),
-          );
+          abort = () => {
+            signal.aborted = true;
+            resolve({ ok: false, reason: 'model_error' });
+          };
         }),
     );
-    const cancelled = s.starter.start(request('cmd_cancel'), {
-      fileTools: false,
-      signal: controller.signal,
-    });
-    controller.abort();
+    const cancelled = s.starter.start(request('cmd_cancel'), { fileTools: false, signal });
+    abort();
     await expect(cancelled).rejects.toThrow();
     expect(s.coordinator.hasStartCommand('cmd_cancel')).toBe(false);
 

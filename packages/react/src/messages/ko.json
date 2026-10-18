@@ -1228,7 +1228,18 @@
     "editTeam": "팀 설계 열기",
     "objectivePlaceholder": "이 세션에서 무엇을 할까요?",
     "startHint": "이 목적으로 세션을 시작해요. 첫 요청을 보내기 전에는 아무것도 실행하지 않아요.",
-    "appliesAt": "다음 모델 요청에"
+    "appliesAt": "다음 모델 요청에",
+    "autoTeam": "자동",
+    "autoModel": "모델",
+    "autoHint": "요청마다 표시된 모델로 에이전트 하나나 작은 팀을 골라 시작합니다.",
+    "autoNotReady": "{model}이(가) 연결되지 않았습니다. 설정 › 모델에서 연결하거나 다른 모델을 고르세요.",
+    "autoFallback": "선택 실패, 에이전트 하나로 실행",
+    "autoTemplate": {
+      "single": "자동 · 에이전트 하나",
+      "write_review": "자동 · 작성·검토",
+      "research_write_review": "자동 · 조사·작성·검토"
+    },
+    "preRunAuto": "자동 · {model} · 추론: {reasoning} · 파일: {files} · {mode}"
   },
   "Files": {
     "folderHeading": "프로젝트 폴더",
@@ -2154,7 +2165,7 @@
     "activeRun": "진행 중 실행 보기",
     "openRunDetails": "실행 상세 열기",
     "closeControls": "제어 닫기",
-    "firstRequestHint": "팀을 고른 뒤 세션에서 요청을 작성하세요.",
+    "firstRequestHint": "팀은 자동으로 두거나 직접 고른 뒤, 세션에서 요청을 작성하세요.",
     "sessionDetails": "세션 정보 (선택)",
     "sessionName": "세션 이름",
     "optionalPurposeHint": "장기적인 목적은 선택 사항이며 자동으로 전송되지 않습니다.",

@@ -1,4 +1,6 @@
 import {
+  AutoModelChoice,
+  type AutoTemplate,
   CanvasLayout,
   type Clock,
   type CorralDefinition,
@@ -68,13 +70,22 @@ export interface SessionEntry {
   detail: string | null;
   /** The command it was sent as, so its receipt and Reins delivery can be looked up. */
   commandId?: string | null;
+  /** The template an auto request ran with (CR-024); absent for a chosen team. */
+  auto?: SessionEntryAuto | null;
+}
+
+export interface SessionEntryAuto {
+  template: AutoTemplate;
+  source: 'model' | 'local' | 'fallback';
 }
 
 export interface WorkSession {
   sessionId: string;
   projectId: string;
-  /** The team follow-ups run with; null until one is chosen. */
+  /** The team follow-ups run with; null means auto mode (CR-024). */
   corralId: string | null;
+  /** The model and reasoning auto mode uses; null until chosen (CR-024). */
+  auto: AutoModelChoice | null;
   title: string;
   objective: string;
   pinned: boolean;
@@ -89,6 +100,7 @@ export interface SessionChange {
   title?: string;
   objective?: string;
   corralId?: string | null;
+  auto?: AutoModelChoice | null;
   pinned?: boolean;
   archived?: boolean;
   expectedRevision: number;
@@ -110,6 +122,7 @@ export interface NewSessionEntry {
   executionId?: string | null;
   detail?: string | null;
   commandId?: string | null;
+  auto?: SessionEntryAuto | null;
 }
 
 export interface CorralRecord {
@@ -207,6 +220,7 @@ export function planSessionCreate(
       sessionId: context.sessionId,
       projectId: input.projectId,
       corralId: input.corralId ?? null,
+      auto: null,
       title,
       objective,
       pinned: false,
@@ -233,6 +247,8 @@ export function planSessionUpdate(
       error: 'revision_conflict',
       message: `This session was changed elsewhere (revision ${current.revision}). Reload first.`,
     };
+  if (change.auto && !AutoModelChoice.safeParse(change.auto).success)
+    return { ok: false, error: 'invalid', message: 'The auto model choice is not valid.' };
   const title = change.title?.trim();
   if (title !== undefined && (!title || title.length > TITLE_MAX))
     return {
@@ -247,6 +263,7 @@ export function planSessionUpdate(
       ...(title !== undefined ? { title } : {}),
       ...(change.objective !== undefined ? { objective: change.objective.trim() } : {}),
       ...(change.corralId !== undefined ? { corralId: change.corralId } : {}),
+      ...(change.auto !== undefined ? { auto: change.auto } : {}),
       ...(change.pinned !== undefined ? { pinned: change.pinned } : {}),
       ...(change.archived === undefined
         ? {}
@@ -288,6 +305,7 @@ export function planSessionEntry(
           executionId: entry.executionId ?? null,
           detail: entry.detail ?? null,
           commandId: entry.commandId ?? null,
+          ...(entry.auto ? { auto: entry.auto } : {}),
         },
       ],
     },
@@ -615,7 +633,8 @@ export function createKeyValueCorralRepository(
     if (raw === null) return [];
     const parsed = safeJson(raw);
     if (!Array.isArray(parsed)) throw new Error('The saved session list cannot be read.');
-    return parsed as WorkSession[];
+    // Sessions saved before auto mode have no choice yet (CR-024).
+    return (parsed as WorkSession[]).map((x) => ({ ...x, auto: x.auto ?? null }));
   };
   const findSession = (sessionId: string) =>
     readSessions().find((x) => x.sessionId === sessionId) ?? null;

@@ -1,7 +1,8 @@
 import type { FileChangeView } from '@corral/client';
-import type { RoleRunOverrides } from '@corral/contracts';
+import type { AutoModelChoice, ReasoningPolicy, RoleRunOverrides } from '@corral/contracts';
 import {
   type HarnessOverrides,
+  ReasoningLevel,
   type RunReference,
   TERMINAL_EXECUTION_STATUSES,
   TERMINAL_RUN_STATUSES,
@@ -11,6 +12,7 @@ import type {
   RunProjection,
   RunSummary,
   SessionEntry,
+  SessionEntryAuto,
   SessionIntent,
   WorkSession,
 } from '@corral/core';
@@ -65,6 +67,12 @@ import { projectsChanged, setCurrentProject } from '../projects.ts';
 import { type SessionSearch, sessionRoute, validateSessionSearch } from '../router.tsx';
 import { useServices } from '../services.tsx';
 import { sendKeyLabel, shortcutLabel } from '../shortcuts.ts';
+import {
+  autoChoiceFor,
+  autoCommandSeed,
+  autoNotReady,
+  sessionRunMode,
+} from '../workbench/autoChoice.ts';
 import { ChatView } from '../workbench/ChatView.tsx';
 import { ComposerInput } from '../workbench/ComposerInput.tsx';
 import { ComposerSurface } from '../workbench/ComposerSurface.tsx';
@@ -92,7 +100,6 @@ import {
   useModelProfiles,
   useTeamRoles,
 } from '../workbench/useModels.ts';
-import { useRunMode } from '../workbench/useRunMode.ts';
 import { useBinding, WORKSPACE_CHANGED, WorkingCopyPanel } from './FilesViews.tsx';
 import { Checks } from './ReviewPage.tsx';
 import { RunDetail } from './RunPage.tsx';
@@ -482,7 +489,7 @@ function SessionActions({
             <MenuSubTrigger>
               {t('chooseTeam')}
               <span className="ml-auto max-w-28 truncate pl-3 text-xs text-muted-foreground">
-                {team?.name ?? t('noTeam')}
+                {team?.name ?? t('autoTeam')}
               </span>
             </MenuSubTrigger>
             <MenuSubPopup>
@@ -491,7 +498,7 @@ function SessionActions({
                 onValueChange={(value) => void update({ corralId: String(value) || null })}
               >
                 <MenuRadioItem value="" closeOnClick>
-                  {t('noTeam')}
+                  {t('autoTeam')}
                 </MenuRadioItem>
                 {corrals.map((c) => (
                   <MenuRadioItem key={c.corralId} value={c.corralId} closeOnClick>
@@ -922,14 +929,18 @@ function EntryCard({
   });
   // A plain follow-up needs no label; queue, instruction and question say what they were.
   const label = entry.intent === 'next' ? null : t(`intentShort.${entry.intent}`);
+  // CR-024: what an auto request ran with; not a team the person chose.
+  const auto = entry.auto
+    ? `${t(`autoTemplate.${entry.auto.template}`)}${entry.auto.source === 'fallback' ? ` (${t('autoFallback')})` : ''}`
+    : null;
   const state =
     entry.state === 'started' || entry.state === 'sent' ? null : t(`state.${entry.state}`);
   return (
     <article data-testid={`entry-${entry.entryId}`} className="chat-turn flex flex-col gap-4">
       <div className="user-message" title={when}>
-        {label || state ? (
+        {label || auto || state ? (
           <p className="mb-1 text-2xs font-medium text-muted">
-            {[label, state].filter(Boolean).join(' · ')}
+            {[label, auto, state].filter(Boolean).join(' · ')}
           </p>
         ) : null}
         <p className="whitespace-pre-wrap text-sm leading-6">{entry.text}</p>
@@ -1188,6 +1199,7 @@ function Composer({
   const tc = useTranslations('Composer');
   const navigation = useSettingsNavigation();
   const tr = useTranslations('Reins');
+  const tq = useTranslations('Reasoning');
   const services = useServices();
   const { repository, transport, mode, live } = services;
   const prefs = usePreferences();
@@ -1201,8 +1213,9 @@ function Composer({
   const [lock, setLock] = useState<IntentLock | null>(
     restored.text && restored.intent ? { intent: restored.intent, target: restored.target } : null,
   );
-  const modeChoice = useRunMode(session.projectId, 'session', session.sessionId);
-  const { mode: runMode, select: setRunMode } = modeChoice;
+  // CR-024: sessions are live wherever live is possible; simulation stays in the demo and
+  // the team editor.
+  const runMode = sessionRunMode(mode, live);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // UX-04: why the last request did not start; the text stays in the box to send again.
@@ -1223,10 +1236,12 @@ function Composer({
   );
   const [confirmStop, setConfirmStop] = useState(false);
   const [teamOpen, setTeamOpen] = useState(false);
-  const [modeOpen, setModeOpen] = useState(false);
+  const [autoModelOpen, setAutoModelOpen] = useState(false);
+  const [autoReasoningOpen, setAutoReasoningOpen] = useState(false);
   const [modelsOpen, setModelsOpen] = useState(false);
   // UX-06: which model each role uses, and whether it is connected.
   const profiles = useModelProfiles();
+  const autoChoice = autoChoiceFor(session.auto, profiles);
   const roles = useTeamRoles(team);
   const harnessKey = JSON.stringify([session.sessionId, team?.corralId, team?.definitionRevision]);
   const [runStyles, setRunStyles] = useState<{ key: string; value: HarnessOverrides } | null>(null);
@@ -1438,8 +1453,13 @@ function Composer({
     refs: RunReference[] = [],
     overrides: HarnessOverrides = {},
     roleChoices: RoleRunOverrides = {},
-  ): Promise<{ runId: string | null; detail: string | null; code?: string | undefined }> => {
-    if (!team) return { runId: null, detail: t('noTeamYet') };
+  ): Promise<{
+    runId: string | null;
+    detail: string | null;
+    code?: string | undefined;
+    auto?: SessionEntryAuto | null;
+  }> => {
+    if (!team) return startAuto(brief, commandId, refs);
     const corral = await repository.get(team.corralId);
     if (!corral) return { runId: null, detail: t('noTeamYet') };
     const input = { brief, criteria: corral.definition.input.criteria };
@@ -1470,6 +1490,37 @@ function Composer({
     };
   };
 
+  /** CR-024: with no team chosen, the runtime picks a template for this request. */
+  const startAuto = async (brief: string, commandId: string, refs: RunReference[]) => {
+    const result = await services.startAuto({
+      commandId,
+      sessionId: session.sessionId,
+      brief,
+      choice: autoChoice,
+      mode: runMode,
+      ...(latest ? { startFrom: { runId: latest.runId, artifactVersionId: latest.id } } : {}),
+      ...(refs.length ? { references: refs } : {}),
+    });
+    return {
+      runId: result.runId,
+      detail: result.receipt.error?.message ?? null,
+      code: result.receipt.error?.code,
+      auto: result.autoRoute
+        ? { template: result.autoRoute.template, source: result.autoRoute.source }
+        : null,
+    };
+  };
+
+  /** Saves the auto model and reasoning with the session (CR-024). */
+  const updateAuto = async (auto: AutoModelChoice) => {
+    const result = await repository.updateSession(session.sessionId, {
+      auto,
+      expectedRevision: session.revision,
+    });
+    if (!result.ok) setError(t('failed', { message: result.message }));
+    else await router.invalidate();
+  };
+
   /** A refused request keeps its text, intent and references so it can be fixed and resent. */
   const refused = async (message: string, code?: string) => {
     // A refusal is final for that command; the next attempt is a new command.
@@ -1491,9 +1542,11 @@ function Composer({
       if (intent === 'next') {
         const refs = references;
         const commandId = commandFor(
-          `next\u0000${body}\u0000${JSON.stringify([refs, harnessOverrides, roleOverrides, runMode])}`,
+          team
+            ? `next\u0000${body}\u0000${JSON.stringify([refs, harnessOverrides, roleOverrides, runMode])}`
+            : autoCommandSeed(body, refs, autoChoice),
         );
-        const { runId, detail, code } = await startNext(
+        const { runId, detail, code, auto } = await startNext(
           body,
           commandId,
           refs,
@@ -1511,8 +1564,9 @@ function Composer({
           runId,
           detail,
           commandId,
+          ...(auto ? { auto } : {}),
         });
-        if (!runId) return await refused(detail ?? t('noTeamYet'), code);
+        if (!runId) return await refused(detail ?? t('failed', { message: '' }), code);
       } else if (intent === 'queue') {
         await record({ intent, text: body, state: 'queued' });
       } else if (intent === 'steer' && ownActive && steerTarget) {
@@ -1536,7 +1590,10 @@ function Composer({
         if (receipt.error) return await refused(receipt.error.message, receipt.error.code);
       } else if (intent === 'explain') {
         const corral = team ? await repository.get(team.corralId) : null;
-        const profile = corral?.definition.roles[0]?.modelProfile ?? 'model-a';
+        // An auto session asks with its own model (CR-024).
+        const profile = team
+          ? (corral?.definition.roles[0]?.modelProfile ?? 'model-a')
+          : autoChoice.modelProfile;
         if (!latest) {
           setError(t('noResult'));
           return;
@@ -1659,7 +1716,7 @@ function Composer({
     const ended = wasActive.current && !active;
     wasActive.current = Boolean(ownActive);
     const next = queued[0];
-    if (ended && autoStart && next && team) void startQueued(next);
+    if (ended && autoStart && next) void startQueued(next);
   }, [active, ownActive]);
 
   const updateTeam = async (corralId: string) => {
@@ -1713,18 +1770,24 @@ function Composer({
             ),
         )
       : [];
+  // CR-024: an auto request on a disconnected model is stopped, never simulated instead.
+  const autoBlocked =
+    !team &&
+    (intent === 'next' || intent === 'explain') &&
+    profiles !== null &&
+    autoNotReady(autoChoice, profiles, runMode);
+  const autoProfile = profiles?.find((p) => p.profileId === autoChoice.modelProfile);
   const liveUnavailable =
     runMode === 'live' && !live && (intent === 'next' || intent === 'explain');
   const unavailable =
     liveUnavailable ||
+    autoBlocked ||
     notReady.length > 0 ||
     resolved.blocked !== null ||
     missingChips.length > 0 ||
-    (intent === 'next' && !team) ||
     (intent === 'explain' && !latest) ||
     (intent === 'steer' && !steerTarget);
   const stopping = Boolean(ownActive) && !text.trim();
-  const canLive = mode === 'server' && live && (intent === 'next' || intent === 'explain');
   const why = (allowedHere: boolean) => (allowedHere ? undefined : tc('notNow'));
 
   useRegisterCommands('composer', [
@@ -1777,21 +1840,9 @@ function Composer({
       title: t('chooseTeam'),
       group: tc('groupRequest'),
       slash: 'team',
-      keywords: corrals.map((c) => c.name),
+      keywords: [t('autoTeam'), ...corrals.map((c) => c.name)],
       run: () => setTeamOpen(true),
     },
-    ...(mode === 'server' && live
-      ? [
-          {
-            id: 'composer:mode',
-            title: t('mode'),
-            group: tc('groupRequest'),
-            slash: 'mode',
-            keywords: [t('modeMock'), t('modeLive')],
-            run: () => setModeOpen(true),
-          },
-        ]
-      : []),
     {
       id: 'composer:models',
       title: tc('models.title'),
@@ -1842,7 +1893,7 @@ function Composer({
                 <Button
                   variant="ghost"
                   size="xs"
-                  disabled={Boolean(active) || busy || !team}
+                  disabled={Boolean(active) || busy}
                   onClick={() => void startQueued(entry)}
                 >
                   {t('startNow')}
@@ -1923,8 +1974,19 @@ function Composer({
               <Button size="xs" render={<Link to="/settings/models" search={navigation.search} />}>
                 {tc('models.connect')}
               </Button>
-              <Button variant="outline" size="xs" onClick={() => setRunMode('mock')}>
-                {tc('models.useSimulated')}
+            </div>
+          ) : null}
+          {autoBlocked ? (
+            <div
+              role="alert"
+              data-testid="models-not-ready"
+              className="flex flex-wrap items-center gap-2 rounded-lg bg-warning/10 px-2.5 py-1.5 text-xs text-warning"
+            >
+              <span className="min-w-0 flex-1">
+                {t('autoNotReady', { model: autoProfile?.label ?? autoChoice.modelProfile })}
+              </span>
+              <Button size="xs" render={<Link to="/settings/models" search={navigation.search} />}>
+                {tc('models.connect')}
               </Button>
             </div>
           ) : null}
@@ -2058,24 +2120,56 @@ function Composer({
                 onOpenChange={setTeamOpen}
                 onValueChange={(value) => void updateTeam(value)}
                 options={[
-                  { value: '', label: t('noTeam') },
+                  { value: '', label: t('autoTeam') },
                   ...corrals.map((c) => ({ value: c.corralId, label: c.name })),
                 ]}
               />
             ) : null}
-            {canLive || runMode === 'live' ? (
-              <Select
-                variant="chip"
-                label={t('mode')}
-                value={runMode}
-                open={modeOpen}
-                onOpenChange={setModeOpen}
-                onValueChange={setRunMode}
-                options={[
-                  { value: 'mock', label: t('modeMock') },
-                  { value: 'live', label: t('modeLive') },
-                ]}
-              />
+            {!team && (intent === 'next' || intent === 'explain') && profiles ? (
+              <>
+                <Select
+                  variant="chip"
+                  label={t('autoModel')}
+                  value={autoChoice.modelProfile}
+                  open={autoModelOpen}
+                  onOpenChange={setAutoModelOpen}
+                  // Another model may not support the saved reasoning; it starts unset.
+                  onValueChange={(value) => void updateAuto({ modelProfile: String(value) })}
+                  options={profiles.map((p) => ({ value: p.profileId, label: p.label }))}
+                />
+                <Select
+                  variant="chip"
+                  label={tq('label')}
+                  value={reasoningValue(autoChoice.reasoning)}
+                  open={autoReasoningOpen}
+                  onOpenChange={setAutoReasoningOpen}
+                  onValueChange={(value) => {
+                    const reasoning = reasoningFrom(String(value));
+                    void updateAuto(
+                      reasoning
+                        ? { modelProfile: autoChoice.modelProfile, reasoning }
+                        : { modelProfile: autoChoice.modelProfile },
+                    );
+                  }}
+                  options={[
+                    { value: '', label: tq('legacy') },
+                    {
+                      value: 'provider_default',
+                      label: tq('provider_default'),
+                      disabled: !autoProfile?.reasoningCapabilities?.providerDefault,
+                    },
+                    ...(autoProfile?.reasoningCapabilities?.levels ?? []).map((level) => ({
+                      value: level,
+                      label: tq(`level.${level}`),
+                    })),
+                    {
+                      value: 'auto',
+                      label: tq('auto'),
+                      disabled: !autoProfile?.reasoningCapabilities?.levels.includes('medium'),
+                    },
+                  ]}
+                />
+              </>
             ) : null}
             <div className="ml-auto flex items-center gap-1">
               {stopping ? (
@@ -2108,11 +2202,18 @@ function Composer({
         </section>
       </ComposerSurface.Host>
       <div className="flex min-h-5 flex-wrap items-center gap-x-2 px-4 pt-1.5 text-2xs text-muted">
-        {intent === 'next' && !team ? <span className="text-warning">{t('noTeamYet')}</span> : null}
+        {(intent === 'next' || intent === 'explain') && !team ? (
+          <AutoPreRunSummary
+            session={session}
+            model={autoProfile?.label ?? autoChoice.modelProfile}
+            reasoning={autoChoice.reasoning}
+            mode={runMode}
+            intent={intent}
+          />
+        ) : null}
         {intent === 'explain' && !latest ? (
           <span className="text-warning">{t('noResult')}</span>
         ) : null}
-        {modeChoice.error ? <p role="alert">{tc('modeSaveFailed')}</p> : null}
         {liveUnavailable ? <p role="alert">{tc('liveUnavailable')}</p> : null}
         {(intent === 'next' || intent === 'explain') && team ? (
           <PreRunSummary session={session} team={team} mode={runMode} intent={intent} />
@@ -2140,7 +2241,13 @@ function Composer({
             </DialogDescription>
           </DialogHeader>
           <DialogPanel>
-            <ModelAssignments roles={roles} profiles={profiles} />
+            {team ? (
+              <ModelAssignments roles={roles} profiles={profiles} />
+            ) : (
+              <p className="text-sm text-muted" data-testid="auto-model">
+                {t('autoHint')} {autoProfile?.label ?? autoChoice.modelProfile}
+              </p>
+            )}
           </DialogPanel>
           <DialogFooter>
             {team ? (
@@ -2292,6 +2399,59 @@ function PreRunSummary({
   return text ? <span data-testid="pre-run">{text}</span> : null;
 }
 
+/** What an auto request would start with (CR-024): its model, reasoning and file work. */
+function AutoPreRunSummary({
+  session,
+  model,
+  reasoning,
+  mode,
+  intent,
+}: {
+  session: WorkSession;
+  model: string;
+  reasoning: ReasoningPolicy | undefined;
+  mode: 'mock' | 'live';
+  intent: 'next' | 'explain';
+}) {
+  const t = useTranslations('Sessions');
+  const tq = useTranslations('Reasoning');
+  const { workspaces } = useServices();
+  const [copy, setCopy] = useState(false);
+  const [workspaceRevision, setWorkspaceRevision] = useState(0);
+  useEffect(() => {
+    const changed = () => setWorkspaceRevision((value) => value + 1);
+    window.addEventListener(WORKSPACE_CHANGED, changed);
+    return () => window.removeEventListener(WORKSPACE_CHANGED, changed);
+  }, []);
+  useEffect(() => {
+    void workspaceRevision;
+    let live = true;
+    void (workspaces?.worktree(session.sessionId) ?? Promise.resolve(null))
+      .catch(() => null)
+      .then((found) => live && setCopy(Boolean(found)));
+    return () => {
+      live = false;
+    };
+  }, [workspaces, session.sessionId, workspaceRevision]);
+  const level =
+    reasoning?.mode === 'fixed'
+      ? tq(`level.${reasoning.level}`)
+      : reasoning
+        ? tq(reasoning.mode)
+        : tq('legacy');
+  return (
+    <span data-testid="pre-run">
+      {t('preRunAuto', {
+        model,
+        reasoning: level,
+        // Auto roles get file tools only with a working copy (CR-024).
+        files: intent === 'next' && copy ? t('filesCopy') : t('filesNone'),
+        mode: mode === 'live' ? t('modeLive') : t('modeMock'),
+      })}
+    </span>
+  );
+}
+
 /** Each role of the team, the model profile it uses, and whether that model is ready (UX-06). */
 function ModelAssignments({
   roles,
@@ -2328,4 +2488,15 @@ function ModelAssignments({
       })}
     </ul>
   );
+}
+
+/** The reasoning chip's value: a level, a mode, or '' for unset (CR-021, CR-024). */
+function reasoningValue(policy: ReasoningPolicy | undefined): string {
+  return policy?.mode === 'fixed' ? policy.level : (policy?.mode ?? '');
+}
+
+function reasoningFrom(value: string): ReasoningPolicy | undefined {
+  if (!value) return undefined;
+  if (value === 'auto' || value === 'provider_default') return { mode: value };
+  return { mode: 'fixed', level: ReasoningLevel.parse(value) };
 }

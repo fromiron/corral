@@ -22,6 +22,9 @@ export async function startSession(page: Page, purpose: string) {
   if (!(await page.getByRole('textbox', { name: 'Purpose' }).isVisible()))
     await page.getByText('Session details (optional)', { exact: true }).click();
   await page.getByRole('textbox', { name: 'Purpose' }).fill(purpose);
+  // CR-024: without a choice a session starts in auto mode; this helper keeps the first team.
+  await page.getByRole('combobox', { name: 'Team', exact: true }).click();
+  await page.getByRole('option').nth(1).click();
   await page.getByRole('button', { name: 'Start session' }).click();
   await expect(page).toHaveURL(/\/sessions\/session_/);
 }

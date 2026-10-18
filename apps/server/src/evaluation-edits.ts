@@ -134,7 +134,7 @@ export async function evaluateCodingTools(
           const sessionId = `session_${method}`,
             runId = `run_${method}`;
           db.prepare(
-            "INSERT INTO work_sessions VALUES (?, 'default', NULL, 'Fixture', '', 0, 1, 'x', 'x', NULL, '[]')",
+            "INSERT INTO work_sessions (id, project_id, corral_id, title, objective, pinned, revision, created_at, updated_at, archived_at, entries_json) VALUES (?, 'default', NULL, 'Fixture', '', 0, 1, 'x', 'x', NULL, '[]')",
           ).run(sessionId);
           db.prepare(
             "INSERT INTO runs (id,corral_id,definition_hash,snapshot_json,status,last_seq,projection_json,started_at,project_id,session_id) VALUES (?,'c','h','{}','running',0,'{}','x','default',?)",

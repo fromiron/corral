@@ -1,31 +1,40 @@
 import type { AutoModelChoice, RunReference } from '@corral/contracts';
 import type { ProfileInfo } from './useModels.ts';
 
-// CR-024: not implemented yet.
+// CR-024: sessions run live wherever live is possible, so a session never falls back to
+// simulated agents on its own. An auto session uses one model and reasoning for the choice
+// and for every role of the template it runs.
 
-export function sessionRunMode(_runtime: 'server' | 'browser', _live: boolean): 'mock' | 'live' {
-  throw new Error('not implemented');
+/** Simulation only where live cannot run: the in-browser demo or a simulated-only server. */
+export function sessionRunMode(runtime: 'server' | 'browser', live: boolean): 'mock' | 'live' {
+  return runtime === 'server' && live ? 'live' : 'mock';
 }
 
+/** The saved choice, or the first connected model; the demo's agents use the default profile. */
 export function autoChoiceFor(
-  _saved: AutoModelChoice | null,
-  _profiles: ProfileInfo[] | null,
+  saved: AutoModelChoice | null,
+  profiles: ProfileInfo[] | null,
 ): AutoModelChoice {
-  throw new Error('not implemented');
+  if (saved) return saved;
+  const first = profiles?.find((p) => p.available) ?? profiles?.[0];
+  return { modelProfile: first?.profileId ?? 'model-a' };
 }
 
+/** A live auto request whose model is unknown or not connected does not start. */
 export function autoNotReady(
-  _choice: AutoModelChoice,
-  _profiles: ProfileInfo[] | null,
-  _mode: 'mock' | 'live',
+  choice: AutoModelChoice,
+  profiles: ProfileInfo[] | null,
+  mode: 'mock' | 'live',
 ): boolean {
-  throw new Error('not implemented');
+  if (mode !== 'live') return false;
+  return !profiles?.some((p) => p.profileId === choice.modelProfile && p.available);
 }
 
+/** What makes two sends the same command: the text, references and the model choice. */
 export function autoCommandSeed(
-  _text: string,
-  _references: RunReference[],
-  _choice: AutoModelChoice,
+  text: string,
+  references: RunReference[],
+  choice: AutoModelChoice,
 ): string {
-  throw new Error('not implemented');
+  return `auto\u0000${text}\u0000${JSON.stringify([references, choice.modelProfile, choice.reasoning ?? null])}`;
 }

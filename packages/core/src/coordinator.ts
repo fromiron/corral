@@ -699,6 +699,7 @@ export class Coordinator {
       mode: request.mode,
       models,
       ...(Object.keys(harnesses).length ? { harnesses } : {}),
+      ...('autoRoute' in request && request.autoRoute ? { autoRoute: request.autoRoute } : {}),
       ...(this.judgments?.settings.reasoning_effort.apply
         ? {
             reasoningApply: {
@@ -779,6 +780,7 @@ export class Coordinator {
           ...(snapshot.harnesses ? { harnesses: snapshot.harnesses } : {}),
           ...(snapshot.reasoningApply ? { reasoningApply: snapshot.reasoningApply } : {}),
           ...(request.startFrom ? { startedFrom: request.startFrom } : {}),
+          ...(snapshot.autoRoute ? { autoRoute: snapshot.autoRoute } : {}),
           ...(this.judgments
             ? {
                 decisions: resolveDecisionSettings(this.judgments, {
@@ -1835,6 +1837,38 @@ export class Coordinator {
   /** Whether a run-creation command is already recorded (a resend, not a new run). */
   hasStartCommand(commandId: string): boolean {
     return this.store.getCommand(START_SCOPE, commandId) !== null;
+  }
+
+  /**
+   * Why a run on this model and reasoning would be refused now (CR-024), so an auto request
+   * asks no model for a choice that could not start.
+   */
+  startRefusal(
+    profile: string,
+    mode: 'mock' | 'live',
+    reasoning?: ReasoningPolicy,
+  ): CommandError | null {
+    const active = this.store.listRuns().find((r) => !TERMINAL_RUN_STATUSES.has(r.status));
+    if (active)
+      return {
+        code: 'RUN_ALREADY_ACTIVE',
+        message: `run ${active.runId} is still ${active.status}; one run at a time`,
+      };
+    const resolution = this.models.resolve(profile, mode);
+    if (!resolution.ok)
+      return { code: resolution.code, message: `${profile}: ${resolution.reason}` };
+    const error = reasoningError(
+      reasoning,
+      resolution.snapshot,
+      this.judgments?.settings.reasoning_effort.apply === true,
+    );
+    return error ? { code: 'CAPABILITY_DENIED', message: error } : null;
+  }
+
+  /** What an earlier start command returned; null if this command never started a run. */
+  startResult(commandId: string): StartRunResult | null {
+    const previous = this.store.getCommand(START_SCOPE, commandId);
+    return previous ? { runId: previous.runId, receipt: previous.receipt } : null;
   }
 
   getReceipt(runId: string, commandId: string): Receipt | null {

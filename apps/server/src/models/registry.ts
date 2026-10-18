@@ -2,8 +2,20 @@ import {
   type EndpointSpec,
   modelReasoningCapabilities as reasoningCapabilities,
 } from '@corral/adapter-pi';
-import type { ModelProfileSnapshot, ReasoningCapabilities, TeamPlan } from '@corral/contracts';
-import type { ModelResolution, ModelResolver } from '@corral/core';
+import type {
+  AutoModelChoice,
+  ModelProfileSnapshot,
+  ReasoningCapabilities,
+  TeamPlan,
+} from '@corral/contracts';
+import {
+  AUTO_ROUTE_MAX_OUTPUT_TOKENS,
+  AUTO_ROUTE_TIMEOUT_MS,
+  AUTO_ROUTER_PROMPT,
+  type ModelResolution,
+  type ModelResolver,
+  type RouteAnswer,
+} from '@corral/core';
 import type { AuthEvent, AuthPrompt, CredentialStore, Models } from '@earendil-works/pi-ai';
 import { ENDPOINT_ORIGIN, type Endpoint } from './endpoints.ts';
 import {
@@ -290,6 +302,63 @@ export class ModelRegistry implements ModelResolver {
     return plan
       ? { ok: true, plan, model: { provider, modelId } }
       : unavailable("the model's answer was not a usable team plan; use the local suggestion");
+  }
+
+  /**
+   * The auto choice for a session request (CR-024): one capped request to the session's model.
+   * The caller checks the profile first and records only the parsed choice, never this text.
+   */
+  async routeAuto(
+    brief: string,
+    choice: AutoModelChoice,
+    signal?: AbortSignal,
+  ): Promise<RouteAnswer> {
+    const resolution = this.resolve(choice.modelProfile, 'live');
+    if (!resolution.ok || !resolution.snapshot.provider || !resolution.snapshot.modelId)
+      return { ok: false, reason: 'model_error' };
+    const model = this.models.getModel(resolution.snapshot.provider, resolution.snapshot.modelId);
+    if (!model) return { ok: false, reason: 'model_error' };
+    const policy = choice.reasoning;
+    // auto starts from its medium baseline (CR-021); the provider's default sends nothing.
+    const level =
+      policy?.mode === 'auto' ? 'medium' : policy?.mode === 'fixed' ? policy.level : null;
+    const reasoning =
+      level === 'minimal' ||
+      level === 'low' ||
+      level === 'medium' ||
+      level === 'high' ||
+      level === 'xhigh'
+        ? level
+        : undefined;
+    const timeout = AbortSignal.timeout(AUTO_ROUTE_TIMEOUT_MS);
+    try {
+      const answer = await this.models
+        .streamSimple(
+          model,
+          {
+            systemPrompt: AUTO_ROUTER_PROMPT,
+            messages: [{ role: 'user', content: brief, timestamp: Date.now() }],
+          },
+          {
+            maxTokens: AUTO_ROUTE_MAX_OUTPUT_TOKENS,
+            signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+            ...(reasoning ? { reasoning } : {}),
+          },
+        )
+        .result();
+      const usage = answer.usage
+        ? { inputTokens: answer.usage.input, outputTokens: answer.usage.output }
+        : null;
+      if (answer.stopReason === 'aborted')
+        return { ok: false, reason: timeout.aborted ? 'timeout' : 'model_error' };
+      if (answer.stopReason === 'error') return { ok: false, reason: 'model_error' };
+      const text = answer.content.map((part) => (part.type === 'text' ? part.text : '')).join('');
+      return { ok: true, text, usage };
+    } catch {
+      return { ok: false, reason: timeout.aborted ? 'timeout' : 'model_error' };
+    } finally {
+      void this.refreshStatus();
+    }
   }
 
   /** The profiles in use (what `.corral/config.json` names, or the defaults). */
