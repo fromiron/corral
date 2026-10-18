@@ -1,5 +1,7 @@
 import { z } from 'zod';
+import { HarnessBindingRef } from './harness.ts';
 import { Identifier, SchemaVersion } from './ids.ts';
+import { ReviewRecipeRevision } from './review-recipe.ts';
 
 // Canonical definition of a Corral (Technical-Design §4.1). Layout lives in CanvasLayout.
 
@@ -20,6 +22,13 @@ export const InputBinding = z.strictObject({
   optional: z.boolean().optional(),
 });
 export type InputBinding = z.infer<typeof InputBinding>;
+
+export const ItemRef = z.strictObject({
+  batchId: Identifier,
+  index: z.int().min(1).max(4),
+  total: z.int().min(1).max(4),
+});
+export type ItemRef = z.infer<typeof ItemRef>;
 
 // File tools (CR-012) work only inside a session's managed worktree.
 export const WorkTool = z.enum([
@@ -63,6 +72,7 @@ export const AgentRole = z.strictObject({
   allowedWorkTools: z.array(WorkTool).max(8),
   allowedCollaborationTools: z.array(CollaborationTool).max(6),
   outputContract: OutputContract,
+  harness: HarnessBindingRef.optional(),
 });
 export type AgentRole = z.infer<typeof AgentRole>;
 
@@ -96,6 +106,7 @@ export const LoopNode = z.strictObject({
   type: z.literal('loop'),
   label: z.string().min(1),
   maxIterations: z.int().min(1).max(10),
+  reviewRecipe: ReviewRecipeRevision.optional(),
 });
 export type LoopNode = z.infer<typeof LoopNode>;
 

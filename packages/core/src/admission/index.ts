@@ -2,6 +2,10 @@ import {
   type AgentStartInput,
   type ErrorCode,
   FILE_TOOLS,
+  LspQuery,
+  PiEditInput,
+  PiWriteInput,
+  ResourcePath,
   type RunEvent,
   type RunLimits,
   TERMINAL_EXECUTION_STATUSES,
@@ -57,6 +61,11 @@ export interface ModelGateView {
 }
 
 export interface ToolGateView extends ModelGateView {
+  simulation?: boolean;
+  /** Only the owning batch may exclude its open effect when rechecking the next item. */
+  currentEffectId?: string;
+  harnessRead?: boolean;
+  descriptor?: import('@corral/contracts').ToolDescriptor;
   proposal: ToolProposal;
   policy: InstallationPolicy;
   /** Callable nodes this node may delegate to or ask (capability links). */
@@ -296,6 +305,116 @@ const roleAllowlist: Gate<ToolGateView> = {
     const { args } = proposal;
     const collaboration = input.role.allowedCollaborationTools as readonly string[];
     const allow: GateDecision = { kind: 'allow' };
+    if (
+      (proposal.name === 'spawn_subagents' && args.mode === 'items') ||
+      (input.item && ['spawn_subagents', 'ask'].includes(proposal.name))
+    ) {
+      const ancestors = new Set<string>([input.executionId]);
+      let parent = p.executions[input.executionId]?.parentExecutionId;
+      while (parent) {
+        ancestors.add(parent);
+        parent = p.executions[parent]?.parentExecutionId;
+      }
+      if (
+        Object.values(p.executions).some(
+          (e) => !TERMINAL_EXECUTION_STATUSES.has(e.status) && !ancestors.has(e.executionId),
+        )
+      )
+        return denied('item delegation requires all other executions to settle');
+      if (
+        Object.values(p.effects).some(
+          (e) =>
+            e.kind === 'tool' &&
+            e.scope === input.executionId &&
+            e.status === 'admitted' &&
+            e.effectId !== view.currentEffectId,
+        )
+      )
+        return denied('item delegation requires pending tools to settle');
+    }
+    if (
+      view.simulation &&
+      ![
+        'write_artifact',
+        'submit_result',
+        'spawn_subagents',
+        'await_tasks',
+        'ask',
+        'reply',
+        'read_artifact',
+      ].includes(proposal.name)
+    )
+      return denied('this tool needs an actual harness execution');
+    if (input.harness && !view.descriptor && !view.simulation)
+      return denied('tool is absent from the loaded harness');
+    if (input.harness && !input.harness.allowedTools.includes(proposal.name))
+      return denied('tool is not allowed by this harness');
+    if (view.descriptor?.source.startsWith('extension:')) {
+      return input.harness?.policy === 'trusted-native' &&
+        input.harness.allowedTools.includes(proposal.name)
+        ? allow
+        : denied('native tool is not allowed by this harness');
+    }
+    if (proposal.name === 'run_check') {
+      if (!input.harness?.projectTools || !view.fileTools)
+        return denied('no selected project checks');
+      if (Object.keys(args).length !== 1 || typeof args.commandId !== 'string')
+        return refuse('SCHEMA_INVALID', 'run_check accepts only a registered commandId');
+      return input.harness.projectTools.checkIds.includes(args.commandId)
+        ? allow
+        : denied('check is not selected by this role');
+    }
+    if (proposal.name === 'lsp_query') {
+      if (
+        !input.harness?.projectTools ||
+        !view.fileTools ||
+        !input.role.allowedWorkTools.includes('read_file')
+      )
+        return denied('role may not query worktree language servers');
+      const query = LspQuery.safeParse(args);
+      if (!query.success) return refuse('SCHEMA_INVALID', 'invalid language server query');
+      if (query.data.path.startsWith('skills/'))
+        return denied('language servers cannot read skill resources');
+      return input.harness.projectTools.lspServerIds.includes(query.data.serverId)
+        ? allow
+        : denied('language server is not selected by this role');
+    }
+    if (proposal.name === 'edit' || proposal.name === 'write') {
+      if (
+        !input.harness ||
+        !view.fileTools ||
+        !input.role.allowedWorkTools.includes('write_file') ||
+        (proposal.name === 'edit' && !input.role.allowedWorkTools.includes('read_file'))
+      )
+        return denied('role may not modify the worktree');
+      const parsed = (proposal.name === 'edit' ? PiEditInput : PiWriteInput).safeParse(args);
+      if (!parsed.success) return refuse('SCHEMA_INVALID', 'invalid coding tool arguments');
+      if (parsed.data.path.startsWith('skills/')) return denied('skill resources are read only');
+      return allow;
+    }
+    if (proposal.name === 'read') {
+      if (
+        !input.harness ||
+        typeof args.path !== 'string' ||
+        !ResourcePath.safeParse(args.path).success ||
+        Object.keys(args).some((key) => !['path', 'offset', 'limit'].includes(key)) ||
+        [args.offset, args.limit].some(
+          (value) => value !== undefined && (!Number.isSafeInteger(value) || Number(value) < 1),
+        )
+      )
+        return refuse('SCHEMA_INVALID', 'invalid read arguments');
+      const path = args.path;
+      if (path.startsWith('skills/'))
+        return view.harnessRead &&
+          input.harness.resources.some(
+            (resource) => resource.kind === 'skill' && resource.skillName === path.split('/')[1],
+          )
+          ? allow
+          : denied('skill is not bound to this role');
+      return view.fileTools && input.role.allowedWorkTools.includes('read_file')
+        ? allow
+        : denied('role may not read the worktree');
+    }
     if (['search', 'read_document'].includes(proposal.name)) {
       if (
         !(input.role.allowedWorkTools as readonly string[]).includes(proposal.name) ||
@@ -367,8 +486,16 @@ const roleAllowlist: Gate<ToolGateView> = {
       }
       case 'spawn_subagents': {
         const tasks = args.tasks;
+        if (args.mode !== undefined && args.mode !== 'items')
+          return refuse('SCHEMA_INVALID', 'unknown delegation mode');
         if (!Array.isArray(tasks) || tasks.length === 0 || tasks.length > 4) {
           return refuse('SCHEMA_INVALID', 'tasks must list 1 to 4 tasks');
+        }
+        if (args.mode === 'items' && input.item)
+          return denied('nested item batches are not allowed');
+        if (args.mode === 'items' || input.item) {
+          if (input.item && tasks.length !== 1)
+            return denied('item descendants must run one at a time');
         }
         for (const task of tasks as { targetNodeId?: unknown; brief?: unknown }[]) {
           if (typeof task?.brief !== 'string' || !task.brief.trim() || task.brief.length > 4000) {
@@ -484,7 +611,10 @@ const limits: Gate<ToolGateView> = {
         );
       }
       // Reserve resident capacity for the whole batch, or none of it (Technical-Design §8.1).
-      if (live + count > policy.maxResidentExecutions) {
+      if (
+        live + (proposal.name === 'spawn_subagents' && args.mode === 'items' ? 1 : count) >
+        policy.maxResidentExecutions
+      ) {
         return refuse(
           'RESOURCE_CAPACITY',
           `at most ${policy.maxResidentExecutions} executions may be alive at once`,

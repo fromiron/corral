@@ -19,7 +19,14 @@ export function createDemoWorkspaces(
     if (!session) throw new Error('no such session');
     return session.projectId;
   };
+  const noLsp = async (): Promise<never> => {
+    throw new Error('Language server changes require the local backend.');
+  };
   return {
+    lspProposals: async () => [],
+    lspProposal: noLsp,
+    applyLspProposal: noLsp,
+    dismissLspProposal: noLsp,
     listFiles: (scope, path) => as(call('listFiles', scope, path)),
     searchFiles: (scope, query, limit) => as(call('searchFiles', scope, query, limit)),
     readFile: (scope, path) => as(call('readFile', scope, path)),
@@ -39,6 +46,7 @@ export function createDemoWorkspaces(
     markReviewed: (sessionId) => as(call('markReviewed', sessionId)),
     verifications: (sessionId) => as(call('verifications', sessionId)),
     verify: () => as(call('verify')),
+    cancelVerification: () => as(call('verify')),
     fileOperations: (sessionId) => as(call('fileOperations', sessionId)),
     runSnapshots: (sessionId) => as(call('runSnapshots', sessionId)),
     comments: (sessionId) => as(call('listComments', sessionId)),

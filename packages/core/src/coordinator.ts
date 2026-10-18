@@ -1,3 +1,4 @@
+import type { McpChallenge } from '@corral/contracts';
 import {
   type AgentAdapter,
   type AgentHandle,
@@ -5,23 +6,38 @@ import {
   type AgentObservation,
   type AgentSettlement,
   type AgentStartInput,
+  type AnswerExtensionUiCommand,
   type Assignment,
+  type BrokerFileToolName,
+  CheckPlan,
   type Clock,
   type CommandError,
   type CorralDefinition,
   CreateRunRequest,
+  type DecisionCancellation,
   type DecisionNode,
+  EffectiveHarnessSnapshot,
   type EventPayload,
+  ExtensionUiNotice,
+  ExtensionUiRequest,
+  type ExtensionUiResult,
   FILE_TOOLS,
-  type FileToolName,
+  type HarnessBindingRef,
+  HarnessReport,
+  HarnessToolsUpdate,
   type IdFactory,
   type InputBinding,
+  LspQuery,
   type ModelProfileSnapshot,
+  ModelRequestRecord,
+  ProviderPayloadRecord,
   type Receipt,
+  type RecipeStopReason,
   type RequestPermit,
   type ResolveApprovalCommand,
   type ResolvedInput,
   ReviewArtifact,
+  type ReviewRecipeRevision,
   RunCommand,
   RunEvent,
   type RunEventType,
@@ -34,8 +50,10 @@ import {
   TERMINAL_EXECUTION_STATUSES,
   TERMINAL_RUN_STATUSES,
   type ToolAuthorization,
+  type ToolDescriptor,
   type ToolOutcome,
   type ToolProposal,
+  VerificationReport,
 } from '@corral/contracts';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js';
@@ -64,6 +82,7 @@ import {
 import { definitionHash } from './definition-hash.ts';
 import { LogicalDeadline } from './limits.ts';
 import { applyEvent, emptyProjection, type RunProjection } from './projection.ts';
+import { recipeAttempts } from './review-recipe.ts';
 import { planRun } from './run-plan.ts';
 import {
   type GraphRunner,
@@ -154,9 +173,32 @@ export interface ExternalTools {
  */
 export interface FileTools {
   available(runId: string): boolean;
+  pinCriteria?(runId: string, files: ReviewRecipeRevision['criteriaFiles']): Promise<void>;
+  validateCriteria?(runId: string): Promise<boolean>;
+  currentTreeForRun?(runId: string): Promise<string | null>;
+  planLsp?(
+    input: import('@corral/contracts').LspExecution,
+    cancellation: ToolCancellation,
+  ): Promise<import('@corral/contracts').CheckPlan>;
+  runLsp?(
+    input: import('@corral/contracts').LspExecution,
+    plan: import('@corral/contracts').CheckPlan,
+    approvedFingerprint: string | null,
+    cancellation: ToolCancellation,
+  ): Promise<import('@corral/contracts').LspReport>;
+  planCheck?(
+    input: import('@corral/contracts').CheckExecution,
+    cancellation: ToolCancellation,
+  ): Promise<import('@corral/contracts').CheckPlan>;
+  runCheck?(
+    input: import('@corral/contracts').CheckExecution,
+    plan: import('@corral/contracts').CheckPlan,
+    approvedFingerprint: string | null,
+    cancellation: ToolCancellation,
+  ): Promise<import('@corral/contracts').VerificationReport & { stale: boolean }>;
   execute(
     input: {
-      name: FileToolName;
+      name: BrokerFileToolName;
       args: Record<string, unknown>;
       runId: string;
       executionId: string;
@@ -175,9 +217,16 @@ export class ToolRefusal extends Error {
   }
 }
 
+export class ToolTerminationUnconfirmed extends ToolRefusal {
+  constructor(message = 'tool process termination could not be confirmed') {
+    super('CAPABILITY_DENIED', message);
+  }
+}
+
 export interface CoordinatorDeps {
   tools?: ExternalTools;
   files?: FileTools;
+  harnesses?: HarnessResolver;
   clock: Clock;
   ids: IdFactory;
   agents: AgentAdapter;
@@ -198,6 +247,23 @@ export interface CoordinatorDeps {
   admission?: AdmissionConfig;
   /** reasoning_effort judgment providers and workspace settings (CR-003). Observe only. */
   judgments?: JudgmentConfig;
+}
+
+/** Resolves immutable, trusted revisions without importing extension code. */
+export interface HarnessResolver {
+  resolve(
+    binding: HarnessBindingRef,
+    definition: CorralDefinition,
+    roleId: string,
+    options?: { runOverride?: HarnessBindingRef; sessionId?: string },
+  ): EffectiveHarnessSnapshot | null;
+  readSkill?(snapshot: EffectiveHarnessSnapshot, path: string): Record<string, unknown>;
+  checkMcpTool?(input: AgentStartInput, name: string, args: Record<string, unknown>): Promise<void>;
+  mcpAuthorization?(
+    input: AgentStartInput,
+    serverId: string,
+    challenge?: McpChallenge,
+  ): Promise<string | undefined>;
 }
 
 const NO_DEADLINES: Scheduler = { after: () => () => {} };
@@ -237,7 +303,20 @@ interface Subscriber {
   onFrame: ((frame: StreamFrame) => void) | undefined;
 }
 
+interface RecipeCandidate {
+  artifactVersionId: string;
+  contentHash: string;
+  checks: VerificationReport[];
+  resultRefs: string[];
+}
+interface RecipeRun {
+  recipe: ReviewRecipeRevision;
+  cancelDeadline(): void;
+  candidates: Map<string, RecipeCandidate>;
+  failureSignature?: string;
+}
 interface LiveRun {
+  recipes: Map<string, RecipeRun>;
   runId: string;
   snapshot: RunSnapshot;
   plan: CompiledPlan;
@@ -260,8 +339,21 @@ interface LiveRun {
   questions: Map<string, OpenQuestion>;
   /** Executions whose cancel the Coordinator asked for: they settle as cancelled. */
   cancelRequested: Set<string>;
+  closingExecutions: Set<string>;
   /** Pending approvals and how to continue once the person decides (C-029). */
   approvals: Map<string, (decision: 'approve' | 'reject') => void>;
+  toolApprovals: Map<
+    string,
+    {
+      input: AgentStartInput;
+      effectId: string;
+      due: number;
+      expire(reason: 'cancelled' | 'timeout' | 'execution_ended'): void;
+    }
+  >;
+  extensionUi: Map<string, PendingExtensionUi>;
+  uiRequestCount: number;
+  uiNoticeCount: number;
   /** The inputs each execution was started with: what a reviewer actually reviewed. */
   inputsByExecution: Map<string, ResolvedInput[]>;
   /** What each execution was started with, for judgments of its requests (CR-003). */
@@ -274,7 +366,13 @@ interface LiveRun {
   requestDeadlines: Map<string, () => void>;
   nodePatches: Map<
     string,
-    { patchId: string; modelProfile: string; prompt: string; revision: number }
+    {
+      patchId: string;
+      modelProfile: string;
+      model: ModelProfileSnapshot;
+      prompt: string;
+      revision: number;
+    }
   >;
   assignments: Map<string, ExecutionSpec>;
   executionOutcomes: Map<string, Promise<StepOutcome>>;
@@ -293,8 +391,17 @@ interface OpenQuestion {
   deadline: LogicalDeadline;
 }
 
+interface PendingExtensionUi {
+  requestId: string;
+  input: AgentStartInput;
+  request: ExtensionUiRequest;
+  due: number;
+  finish(result: ExtensionUiResult): void;
+}
+
 /** What starts an execution: its node, place in the call tree and reason to exist. */
 interface ExecutionSpec {
+  item?: AgentStartInput['item'];
   previousExecutionId?: string;
   taskId?: string;
   attemptNo?: number;
@@ -316,6 +423,8 @@ interface PreparedExecution {
 /** A refused tool call; `limit` marks the refusals that also record `limit.reached`. */
 /** The opening and closing events every executed tool call commits. */
 interface ToolFrame {
+  parentCancellation?: ToolCancellation;
+  effectId: string;
   toolCallId: string;
   opening: EventDraft[];
   closing(resultRef: string | null, error?: string | null): EventDraft[];
@@ -353,7 +462,9 @@ export class Coordinator {
   private readonly timers: Scheduler;
   private readonly tools: ExternalTools | undefined;
   private readonly files: FileTools | undefined;
+  private readonly harnesses: HarnessResolver | undefined;
   private readonly live = new Map<string, LiveRun>();
+  private readonly codemodeWorkers = new Map<string, { runId: string; executionId: string }>();
   private readonly subscribers = new Set<Subscriber>();
   private storageError: string | null = null;
   private terminationUnconfirmed = false;
@@ -373,6 +484,7 @@ export class Coordinator {
     this.timers = deps.timers ?? NO_DEADLINES;
     this.tools = deps.tools;
     this.files = deps.files;
+    this.harnesses = deps.harnesses;
     this.gates = resolveGates(deps.admission);
     this.judgments = deps.judgments;
     this.observers = [
@@ -465,7 +577,8 @@ export class Coordinator {
     const unusable: { code: CommandError['code']; message: string }[] = [];
     for (const profile of new Set(planned.definition.roles.map((r) => r.modelProfile))) {
       const resolution = this.models.resolve(profile, request.mode);
-      if (resolution.ok) models[profile] = resolution.snapshot;
+      if (resolution.ok)
+        models[profile] = JSON.parse(canonicalJson(resolution.snapshot)) as ModelProfileSnapshot;
       else unusable.push({ code: resolution.code, message: `${profile}: ${resolution.reason}` });
     }
     const [firstUnusable] = unusable;
@@ -483,6 +596,63 @@ export class Coordinator {
       });
     }
 
+    const harnesses: Record<string, EffectiveHarnessSnapshot> = {};
+    for (const roleId of Object.keys(request.harnessOverrides ?? {}))
+      if (!planned.definition.roles.some((role) => role.id === roleId && role.harness))
+        return refuse({
+          code: 'CAPABILITY_DENIED',
+          message: 'run work style requires a role with a bound harness',
+        });
+    for (const role of planned.definition.roles) {
+      if (!role.harness) continue;
+      try {
+        const snapshot = EffectiveHarnessSnapshot.parse(
+          this.harnesses?.resolve(role.harness, planned.definition, role.id, {
+            ...(request.harnessOverrides?.[role.id]
+              ? { runOverride: request.harnessOverrides[role.id] }
+              : {}),
+            ...(request.sessionId ? { sessionId: request.sessionId } : {}),
+          }),
+        );
+        if (
+          snapshot.binding.profileId !== role.harness.profileId ||
+          snapshot.binding.revision !== role.harness.revision ||
+          (snapshot.policy === 'strict' && snapshot.resources.some((r) => r.kind === 'extension'))
+        )
+          throw new Error('invalid binding');
+        harnesses[role.id] = snapshot;
+      } catch {
+        return refuse({
+          code: 'CAPABILITY_DENIED',
+          message: `harness for role ${role.id} is unavailable, untrusted or incompatible`,
+        });
+      }
+    }
+    for (const node of planned.definition.nodes) {
+      if (node.type !== 'loop' || !node.reviewRecipe) continue;
+      const recipe = node.reviewRecipe;
+      const candidate = planned.definition.nodes.find(
+        (candidate) => candidate.id === recipe.candidateNodeId,
+      );
+      const harness = candidate?.type === 'agent' ? harnesses[candidate.roleId] : undefined;
+      if (
+        recipe.checkIds.length &&
+        (!this.files?.planCheck ||
+          !this.files.runCheck ||
+          !this.files.currentTreeForRun ||
+          !harness?.allowedTools.includes('run_check') ||
+          !recipe.checkIds.every((id) => harness.projectTools?.checkIds.includes(id)))
+      )
+        return refuse({
+          code: 'CAPABILITY_DENIED',
+          message: 'recipe checks must be selected by the candidate role in an available worktree',
+        });
+      if (recipe.criteriaFiles.length && (!this.files?.pinCriteria || !this.files.validateCriteria))
+        return refuse({
+          code: 'CAPABILITY_DENIED',
+          message: 'recipe criteria files require the file broker',
+        });
+    }
     const runId = this.ids.next('run');
     const definition = planned.definition;
     const snapshot: RunSnapshot = {
@@ -495,6 +665,7 @@ export class Coordinator {
       criteriaVersionId: this.ids.next('criteria_version'),
       mode: request.mode,
       models,
+      ...(Object.keys(harnesses).length ? { harnesses } : {}),
       startedAt: this.clock.nowIso(),
     };
     const run: LiveRun = {
@@ -506,11 +677,17 @@ export class Coordinator {
       activations: new Map(),
       handles: new Map(),
       rounds: new Map(),
+      recipes: new Map(),
       slots: { free: definition.limits.maxModelConcurrency, waiters: [], held: new Map() },
       taskOutcomes: new Map(),
       questions: new Map(),
       cancelRequested: new Set(),
+      closingExecutions: new Set(),
       approvals: new Map(),
+      toolApprovals: new Map(),
+      extensionUi: new Map(),
+      uiRequestCount: 0,
+      uiNoticeCount: 0,
       inputsByExecution: new Map(),
       startInputs: new Map(),
       capStop: null,
@@ -541,6 +718,7 @@ export class Coordinator {
           modelProfiles: Object.values(models),
           limits: definition.limits,
           criteriaVersionId: snapshot.criteriaVersionId,
+          ...(snapshot.harnesses ? { harnesses: snapshot.harnesses } : {}),
           ...(request.startFrom ? { startedFrom: request.startFrom } : {}),
           ...(this.judgments
             ? {
@@ -779,6 +957,8 @@ export class Coordinator {
     try {
       if (command.type === 'steer') return this.steer(command, payloadHash);
       if (command.type === 'resolve_approval') return this.resolveApproval(command, payloadHash);
+      if (command.type === 'answer_extension_ui')
+        return this.answerExtensionUi(command, payloadHash);
       return this.control(command, payloadHash);
     } catch {
       return unavailable(command.commandId, command.runId, this.storageError);
@@ -846,7 +1026,7 @@ export class Coordinator {
   }
 
   private control(
-    command: Exclude<RunCommand, SteerCommand | ResolveApprovalCommand>,
+    command: Exclude<RunCommand, SteerCommand | ResolveApprovalCommand | AnswerExtensionUiCommand>,
     payloadHash: string,
   ): Receipt {
     const run = this.live.get(command.runId);
@@ -1114,6 +1294,7 @@ export class Coordinator {
       this.refuseControl(command, payloadHash, { code, message });
     let before: Record<string, unknown> = {},
       after: Record<string, unknown> = {};
+    let patchedModel: ModelProfileSnapshot | undefined;
     const node =
       'nodeId' in change ? run.snapshot.definition.nodes.find((n) => n.id === change.nodeId) : null;
     if ('nodeId' in change && !node)
@@ -1133,10 +1314,17 @@ export class Coordinator {
         ...(change.modelProfile ? { modelProfile: change.modelProfile } : {}),
         ...(change.prompt ? { prompt: change.prompt } : {}),
       };
-      const resolved = this.models.resolve(String(after.modelProfile), run.snapshot.mode);
-      if (!resolved.ok) return refuse(resolved.code, resolved.reason);
+      if (change.modelProfile) {
+        const resolved = this.models.resolve(change.modelProfile, run.snapshot.mode);
+        if (!resolved.ok) return refuse(resolved.code, resolved.reason);
+        patchedModel = JSON.parse(canonicalJson(resolved.snapshot)) as ModelProfileSnapshot;
+        after.modelSnapshot = patchedModel;
+      } else patchedModel = current?.model ?? run.snapshot.models[role.modelProfile];
+      if (!patchedModel) return refuse('CAPABILITY_DENIED', 'the pinned model is unavailable');
     } else if (change.kind === 'loop_limit') {
       if (node?.type !== 'loop') return refuse('SCHEMA_INVALID', 'loop_limit requires a Loop node');
+      if (node.reviewRecipe && change.maxIterations > recipeAttempts(node.reviewRecipe))
+        return refuse('LIMIT_REACHED', 'loop limit exceeds the pinned review recipe');
       if (change.maxIterations > this.policy.maxLoopIterations)
         return refuse('LIMIT_REACHED', 'loop cap exceeds installation policy');
       before = { maxIterations: run.plan.loops[node.id]?.maxIterations ?? node.maxIterations };
@@ -1150,6 +1338,11 @@ export class Coordinator {
       );
       after = { ...change.changes };
     } else {
+      if (run.snapshot.definition.nodes.some((node) => node.type === 'loop' && node.reviewRecipe))
+        return refuse(
+          'CRITERIA_CHANGE_REQUIRES_NEW_RUN',
+          'review recipe criteria require a new run',
+        );
       const current = run.pendingCriteriaVersionId ?? run.criteriaVersionId;
       if (change.baseCriteriaVersionId !== current)
         return refuse('STALE_CONTROL_REVISION', 'the criteria version changed');
@@ -1206,6 +1399,7 @@ export class Coordinator {
       run.nodePatches.set(change.nodeId, {
         patchId,
         modelProfile: String(after.modelProfile),
+        model: patchedModel as ModelProfileSnapshot,
         prompt: String(after.prompt),
         revision: run.projection.controlRevision,
       });
@@ -1486,6 +1680,7 @@ export class Coordinator {
         );
       },
     );
+    run.handles.get(executionId)?.pushDirective?.({ directiveId, text: command.payload.text });
     const stored = this.store.getCommand(runId, command.commandId);
     if (!stored) throw new Error(`command ${command.commandId} was not recorded`);
     return this.currentReceipt(stored);
@@ -1702,6 +1897,14 @@ export class Coordinator {
       isOpen: open,
       record: (drafts) => {
         if (!open() || this.storageError) return false;
+        // An ended worker cannot collect a judgment. Its admitted provider effect still closes.
+        drafts = drafts.filter(
+          (draft) =>
+            !draft.executionId ||
+            !run.closingExecutions.has(draft.executionId) ||
+            draft.type === 'effect.settled',
+        );
+        if (!drafts.length) return false;
         const allowed = new Set([
           'decision.requested',
           'decision.observed',
@@ -1765,6 +1968,7 @@ export class Coordinator {
       }
     }
     if (TERMINAL_RUN_STATUSES.has(projection.status)) {
+      for (const recipe of run.recipes.values()) recipe.cancelDeadline();
       this.live.delete(run.runId);
       run.cancelDeadline();
       this.wake(run);
@@ -1983,6 +2187,26 @@ export class Coordinator {
         await this.boundary(run);
         const loop = run.plan.loops[loopId];
         if (!loop) throw new Error(`plan has no Loop ${loopId}`);
+        const node = run.snapshot.definition.nodes.find((node) => node.id === loopId);
+        if (node?.type === 'loop' && node.reviewRecipe && !run.recipes.has(loopId)) {
+          const recipe = node.reviewRecipe;
+          run.recipes.set(loopId, {
+            recipe,
+            candidates: new Map(),
+            cancelDeadline: this.timers.after(recipe.maxWallMs, () =>
+              this.stopRecipe(run, loopId, 'deadline'),
+            ),
+          });
+          if (recipe.criteriaFiles.length) {
+            try {
+              await this.files?.pinCriteria?.(run.runId, recipe.criteriaFiles);
+            } catch {
+              this.stopRecipe(run, loopId, 'criteria_changed');
+              throw new Error('recipe criteria changed');
+            }
+          }
+          await this.boundary(run);
+        }
         if (run.pendingCriteriaVersionId) {
           run.criteriaVersionId = run.pendingCriteriaVersionId;
           run.pendingCriteriaVersionId = null;
@@ -2022,9 +2246,214 @@ export class Coordinator {
         const round = run.rounds.get(loopId);
         if (round?.no !== no) throw new Error(`Loop ${loopId} round ${no} is not open`);
         this.commit(run, [this.roundFinished(run, loopId, round.iterationId, outcome)]);
+        if (outcome === 'pass') run.recipes.get(loopId)?.cancelDeadline();
         run.rounds.delete(loopId);
       },
     };
+  }
+
+  private recipeHead(run: LiveRun, loopNodeId: string, recipe: ReviewRecipeRevision) {
+    return {
+      loopNodeId,
+      recipeId: recipe.recipeId,
+      revision: recipe.revision,
+      recipeHash: hashOf(recipe),
+      criteriaVersionId: run.criteriaVersionId,
+    };
+  }
+
+  private stopRecipe(
+    run: LiveRun,
+    loopId: string,
+    reason: RecipeStopReason,
+    candidateVersionId?: string,
+  ) {
+    const state = run.recipes.get(loopId);
+    if (!state || TERMINAL_RUN_STATUSES.has(run.projection.status) || run.stop.aborted) return;
+    this.commit(run, [
+      {
+        type: 'recipe.stopped',
+        payload: {
+          ...this.recipeHead(run, loopId, state.recipe),
+          reason,
+          candidateVersionId:
+            candidateVersionId ?? [...state.candidates.values()].at(-1)?.artifactVersionId ?? null,
+        },
+      },
+    ]);
+    this.failRun(run, `review_recipe:${reason}`);
+  }
+
+  private recipeForExecution(run: LiveRun, executionId: string) {
+    const iterationId = run.projection.executions[executionId]?.iterationId;
+    const loopId = iterationId ? run.projection.iterations[iterationId]?.loopNodeId : undefined;
+    const state = loopId ? run.recipes.get(loopId) : undefined;
+    return loopId && state ? { loopId, state } : null;
+  }
+
+  private recipeUsage(run: LiveRun, loopId: string) {
+    const reservations = Object.values(run.projection.budget.reservations).filter(
+      (reservation) => this.recipeForExecution(run, reservation.scope)?.loopId === loopId,
+    );
+    const tokens = reservations.reduce(
+      (total, reservation) => total + (reservation.actual ?? reservation.reserved),
+      0,
+    );
+    return { calls: reservations.length, tokens };
+  }
+
+  private recipeAllowance(run: LiveRun, executionId: string): number {
+    const context = this.recipeForExecution(run, executionId);
+    if (!context) return Number.POSITIVE_INFINITY;
+    const { loopId, state } = context;
+    const { calls, tokens: used } = this.recipeUsage(run, loopId);
+    const reason =
+      calls >= state.recipe.maxModelCalls
+        ? 'call_limit'
+        : used >= state.recipe.maxOutputTokens
+          ? 'token_limit'
+          : null;
+    if (reason) {
+      this.stopRecipe(run, loopId, reason);
+      throw new Error(`review recipe stopped: ${reason}`);
+    }
+    return state.recipe.maxOutputTokens - used;
+  }
+
+  private recipeSubmission(
+    run: LiveRun,
+    input: AgentStartInput,
+    ids: string[],
+  ): RecipeStopReason | null {
+    const context = this.recipeForExecution(run, input.executionId);
+    if (!context || context.state.recipe.candidateNodeId !== input.nodeId) return null;
+    const { state } = context;
+    const artifactVersionId = ids[0];
+    const artifact = artifactVersionId ? run.projection.artifacts[artifactVersionId] : null;
+    if (ids.length !== 1 || !artifact || state.candidates.has(input.executionId))
+      return 'invalid_submission';
+    if (
+      !state.recipe.checkIds.length &&
+      [...state.candidates.values()].some(
+        (candidate) => candidate.contentHash === artifact.contentHash,
+      )
+    )
+      return 'repeated_output';
+    state.candidates.set(input.executionId, {
+      artifactVersionId: artifact.artifactVersionId,
+      contentHash: artifact.contentHash,
+      checks: [],
+      resultRefs: [],
+    });
+    return null;
+  }
+
+  private async recipeCriteriaValid(run: LiveRun, state: RecipeRun): Promise<boolean> {
+    if (!state.recipe.criteriaFiles.length) return true;
+    try {
+      return (await this.files?.validateCriteria?.(run.runId)) === true;
+    } catch {
+      return false;
+    }
+  }
+
+  private async recipeEvidenceProblem(
+    run: LiveRun,
+    loopId: string,
+    state: RecipeRun,
+    candidate: RecipeCandidate,
+  ): Promise<RecipeStopReason | null> {
+    const usage = this.recipeUsage(run, loopId);
+    if (usage.tokens > state.recipe.maxOutputTokens) return 'token_limit';
+    if (usage.calls > state.recipe.maxModelCalls) return 'call_limit';
+    if (!(await this.recipeCriteriaValid(run, state))) return 'criteria_changed';
+    if (candidate.checks.length !== state.recipe.checkIds.length) return 'check_error';
+    const tree = candidate.checks[0]?.tree;
+    try {
+      if (tree && (await this.files?.currentTreeForRun?.(run.runId)) !== tree) return 'check_stale';
+    } catch {
+      return 'check_stale';
+    }
+    return null;
+  }
+
+  private async recipeBoundaryProblem(
+    run: LiveRun,
+    loopId: string,
+    state: RecipeRun,
+    candidate: RecipeCandidate,
+  ): Promise<RecipeStopReason | null> {
+    for (;;) {
+      await this.boundary(run);
+      const problem = await this.recipeEvidenceProblem(run, loopId, state, candidate);
+      if (run.stop.aborted || TERMINAL_RUN_STATUSES.has(run.projection.status))
+        throw new Error('recipe cancelled');
+      if (run.projection.status === 'running') return problem;
+    }
+  }
+
+  private async checkRecipeSubmission(
+    run: LiveRun,
+    input: AgentStartInput,
+    invoke: (commandId: string) => Promise<ToolOutcome>,
+  ): Promise<RecipeStopReason | null> {
+    const context = this.recipeForExecution(run, input.executionId);
+    const candidate = context?.state.candidates.get(input.executionId);
+    if (!context || !candidate) return null;
+    const { state } = context;
+    if (!(await this.recipeCriteriaValid(run, state))) return 'criteria_changed';
+    for (const commandId of state.recipe.checkIds) {
+      if (run.stop.aborted || run.cancelRequested.has(input.executionId)) return 'check_error';
+      const outcome = await invoke(commandId);
+      if (!outcome.ok) return 'check_error';
+      const { stale, ...raw } = outcome.result;
+      const parsed = VerificationReport.safeParse(raw);
+      if (!parsed.success) return 'check_error';
+      const report = parsed.data;
+      if (
+        report.commandId !== commandId ||
+        report.configRevision !== input.harness?.projectTools?.revision ||
+        report.owner.kind !== 'execution' ||
+        report.owner.runId !== run.runId ||
+        report.owner.executionId !== input.executionId ||
+        report.owner.attemptNo !== input.attemptNo
+      )
+        return 'check_error';
+      if (stale !== false || candidate.checks.some((check) => check.tree !== report.tree))
+        return 'check_stale';
+      if (
+        report.state !== 'completed' ||
+        !report.cleanupConfirmed ||
+        report.targetUnchanged !== true ||
+        !['pass', 'fail'].includes(report.verdict)
+      )
+        return 'check_error';
+      candidate.checks.push(report);
+      candidate.resultRefs.push(`result_${outcome.toolCallId}`);
+    }
+    if (!(await this.recipeCriteriaValid(run, state))) return 'criteria_changed';
+    const tree = candidate.checks[0]?.tree;
+    if (tree && (await this.files?.currentTreeForRun?.(run.runId)) !== tree) return 'check_stale';
+    if (
+      tree &&
+      [...state.candidates.entries()].some(
+        ([owner, other]) =>
+          owner !== input.executionId &&
+          other.contentHash === candidate.contentHash &&
+          other.checks[0]?.tree === tree,
+      )
+    )
+      return 'repeated_output';
+    const failed = candidate.checks.filter((check) => check.verdict === 'fail');
+    if (failed.length) {
+      const signature = hashOf({
+        tree,
+        checks: failed.map((check) => ({ id: check.commandId, exitCode: check.exitCode })),
+      });
+      if (state.failureSignature === signature) return 'repeated_failure';
+      state.failureSignature = signature;
+    } else delete state.failureSignature;
+    return null;
   }
 
   private roundFinished(
@@ -2103,7 +2532,8 @@ export class Coordinator {
     const role = patch
       ? { ...baseRole, modelProfile: patch.modelProfile, prompt: patch.prompt }
       : baseRole;
-    const model = this.models.resolve(role.modelProfile, run.snapshot.mode);
+    const model = patch?.model ?? run.snapshot.models[role.modelProfile];
+    if (!model) throw new Error('the pinned model is unavailable');
     const label = (id: string) => {
       const target = definition.nodes.find((n) => n.id === id);
       return { nodeId: id, label: target?.label ?? id };
@@ -2114,6 +2544,9 @@ export class Coordinator {
     const executionId = this.ids.next('execution');
     const effectId = this.ids.next('effect');
     const attemptNo = spec.attemptNo ?? 1;
+    const item =
+      spec.item ??
+      (spec.parentExecutionId ? run.startInputs.get(spec.parentExecutionId)?.item : undefined);
     const input: AgentStartInput = {
       runId: run.runId,
       executionId,
@@ -2121,26 +2554,53 @@ export class Coordinator {
       nodeId: spec.nodeId,
       attemptNo,
       role,
+      ...(run.snapshot.harnesses?.[role.id] ? { harness: run.snapshot.harnesses[role.id] } : {}),
       modelProfile: role.modelProfile,
       mode: run.snapshot.mode,
-      model: model.ok
-        ? model.snapshot
-        : (run.snapshot.models[role.modelProfile] ?? {
-            profile: role.modelProfile,
-            provider: null,
-            modelId: null,
-            auth: 'mock',
-          }),
+      model: JSON.parse(canonicalJson(model)) as ModelProfileSnapshot,
       depth: spec.depth,
       round: spec.iterationId ? (run.projection.iterations[spec.iterationId]?.no ?? null) : null,
       criteriaVersionId: run.criteriaVersionId,
       assignment: spec.assignment,
+      ...(item ? { item } : {}),
       capabilities: {
         delegateTo: callables.delegate.map(label),
         askTo: callables.question.map(label),
       },
-      inputs: [...spec.given, ...this.resolveInputs(run, node.inputBindings, spec.iterationId)],
+      inputs: [
+        ...spec.given,
+        ...this.resolveInputs(
+          run,
+          item ? [{ kind: 'run_input', name: 'criteria' }] : node.inputBindings,
+          spec.iterationId,
+        ),
+      ],
     };
+    const recipeLoop = spec.iterationId
+      ? run.projection.iterations[spec.iterationId]?.loopNodeId
+      : undefined;
+    const recipe = recipeLoop ? run.recipes.get(recipeLoop) : undefined;
+    if (
+      recipe &&
+      !item &&
+      (node.id === recipe.recipe.candidateNodeId || role.id === recipe.recipe.evaluatorRoleId)
+    ) {
+      const candidate = [...recipe.candidates.values()].at(-1);
+      for (const [index, check] of (candidate?.checks ?? []).entries())
+        input.inputs.push({
+          name: `recipe_check_${check.commandId}`,
+          kind: 'explicit_version',
+          artifactVersionId: candidate?.resultRefs[index] ?? null,
+          text: canonicalJson({
+            verificationId: check.verificationId,
+            tree: check.tree,
+            verdict: check.verdict,
+            state: check.state,
+            output: check.output.text.slice(0, 2000),
+            truncated: check.output.truncated || check.output.text.length > 2000,
+          }),
+        });
+    }
     run.inputsByExecution.set(executionId, input.inputs);
     run.startInputs.set(executionId, input);
     run.assignments.set(executionId, spec);
@@ -2163,6 +2623,7 @@ export class Coordinator {
         payload: {
           executionId,
           parentExecutionId: spec.parentExecutionId,
+          ...(item ? { item } : {}),
           ...(spec.previousExecutionId ? { previousExecutionId: spec.previousExecutionId } : {}),
           nodeId: spec.nodeId,
           taskId,
@@ -2214,14 +2675,25 @@ export class Coordinator {
         run.handles.set(input.executionId, handle);
         if (run.cancelRequested.has(input.executionId)) await handle.cancel('cancelled');
         settlement = await handle.waitForSettlement();
-        await Promise.all(run.toolOutcomes.get(input.executionId) ?? []);
       } catch (error) {
         settlement = { outcome: 'failed', error: String(error) };
       } finally {
+        run.closingExecutions.add(input.executionId);
+        for (const pending of run.toolApprovals.values())
+          if (pending.input.executionId === input.executionId) pending.expire('execution_ended');
+        for (const pending of run.extensionUi.values())
+          if (pending.input.executionId === input.executionId)
+            this.closeExtensionUi(run, pending.requestId, 'execution_ended');
+        for (const listener of run.cancelListeners.get(input.executionId) ?? []) listener();
+        // A worker can end while awaiting a child; stop children before draining those tools.
+        await this.cancelChildren(run, input.executionId, 'the parent execution ended');
+        await Promise.allSettled(run.toolOutcomes.get(input.executionId) ?? []);
         run.handles.delete(input.executionId);
       }
-      // An execution owns its children: they end before it does (Spec §7.2).
-      await this.cancelChildren(run, input.executionId, 'the parent execution ended');
+      if (settlement.terminationMode !== 'unconfirmed')
+        for (const [lease, owner] of this.codemodeWorkers)
+          if (owner.runId === run.runId && owner.executionId === input.executionId)
+            this.codemodeWorkers.delete(lease);
       return this.settle(run, input, effectId, settlement);
     })();
     run.taskOutcomes.set(input.taskId, outcome);
@@ -2243,6 +2715,9 @@ export class Coordinator {
 
   private requestCancel(run: LiveRun, executionId: string, reason: string) {
     run.cancelRequested.add(executionId);
+    for (const pending of run.extensionUi.values())
+      if (pending.input.executionId === executionId)
+        this.closeExtensionUi(run, pending.requestId, 'cancelled');
     for (const listener of run.cancelListeners.get(executionId) ?? []) listener();
     for (const child of this.liveChildren(run, executionId))
       this.requestCancel(run, child.executionId, reason);
@@ -2313,6 +2788,9 @@ export class Coordinator {
     effectId: string,
     settlement: AgentSettlement,
   ): StepOutcome {
+    for (const pending of run.extensionUi.values())
+      if (pending.input.executionId === input.executionId)
+        this.closeExtensionUi(run, pending.requestId, 'execution_ended');
     const execution = run.projection.executions[input.executionId];
     if (!execution || TERMINAL_EXECUTION_STATUSES.has(execution.status) || this.storageError) {
       // Already ended elsewhere (run over, storage closed): a late report changes nothing.
@@ -2364,7 +2842,11 @@ export class Coordinator {
     );
     for (const effect of Object.values(run.projection.effects)) {
       // A model request still open when its agent stopped may or may not have been billed.
-      if (effect.kind !== 'model_request' || effect.scope !== input.executionId) continue;
+      if (
+        (effect.kind !== 'model_request' && !(input.harness && effect.kind === 'tool')) ||
+        effect.scope !== input.executionId
+      )
+        continue;
       if (effect.status !== 'admitted') continue;
       drafts.push({
         type: 'effect.settled',
@@ -2494,6 +2976,15 @@ export class Coordinator {
     }
     if (run.stop.aborted || TERMINAL_RUN_STATUSES.has(run.projection.status)) return;
     await this.boundary(run);
+    for (const [loopId, state] of run.recipes) {
+      const candidate = [...state.candidates.values()].at(-1);
+      if (!candidate || !versions.includes(candidate.artifactVersionId)) continue;
+      const problem = await this.recipeBoundaryProblem(run, loopId, state, candidate);
+      if (problem) {
+        this.stopRecipe(run, loopId, problem, candidate.artifactVersionId);
+        return;
+      }
+    }
     // The output and the run's success are one fact: readers never see one without the other.
     this.commit(run, [
       {
@@ -2539,6 +3030,45 @@ export class Coordinator {
     const reviewVersionId = bound[0];
     if (!reviewVersionId) throw new Error(`${nodeId} has no review to read`);
     const recorded = this.recordReview(run, reviewVersionId);
+    const recipe =
+      node && 'loopId' in node && node.loopId ? run.recipes.get(node.loopId) : undefined;
+    if (recipe && node && 'loopId' in node && node.loopId) {
+      const candidateExecution =
+        run.projection.nodeExecutions[recipe.recipe.candidateNodeId]?.at(-1);
+      const candidate = candidateExecution ? recipe.candidates.get(candidateExecution) : undefined;
+      if (
+        !candidate ||
+        recorded.targetVersionId !== candidate.artifactVersionId ||
+        recorded.verdict === 'inconclusive'
+      ) {
+        this.stopRecipe(run, node.loopId, 'review_invalid', candidate?.artifactVersionId);
+        throw new Error('review recipe stopped');
+      }
+      const problem = await this.recipeBoundaryProblem(run, node.loopId, recipe, candidate);
+      if (problem) {
+        this.stopRecipe(run, node.loopId, problem, candidate.artifactVersionId);
+        throw new Error('review recipe stopped');
+      }
+      const tree = candidate.checks[0]?.tree ?? null;
+      const verdict = candidate.checks.some((check) => check.verdict === 'fail')
+        ? 'revise'
+        : recorded.verdict;
+      this.commit(run, [
+        {
+          type: 'recipe.evaluated',
+          payload: {
+            ...this.recipeHead(run, node.loopId, recipe.recipe),
+            iterationId: round as string,
+            candidateVersionId: candidate.artifactVersionId,
+            reviewVersionId,
+            checkReportIds: candidate.checks.map((check) => check.verificationId),
+            tree,
+            verdict,
+          },
+        },
+      ]);
+      return verdict;
+    }
     if (run.pendingCriteriaVersionId) {
       const requested = this.requestApproval(run, 'user_action', [
         recorded.targetVersionId,
@@ -2624,24 +3154,171 @@ export class Coordinator {
     run: LiveRun,
     kind: 'final_output' | 'loop_cap' | 'user_action',
     subjectVersionIds: string[],
+    request?: { tool: NonNullable<EventPayload<'approval.requested'>['tool']>; body: string },
   ): { approvalId: string; decision: Promise<'approve' | 'reject'> } {
     const approvalId = this.ids.next('approval');
     const decision = new Promise<'approve' | 'reject'>((resolve) => {
       run.approvals.set(approvalId, resolve);
     });
+    this.commit(
+      run,
+      [
+        {
+          type: 'approval.requested',
+          payload: {
+            approvalId,
+            kind,
+            subjectVersionIds,
+            criteriaVersionId: request
+              ? null
+              : (run.pendingCriteriaVersionId ?? run.criteriaVersionId),
+            ...(request ? { tool: request.tool } : {}),
+          },
+        },
+        ...(request && ['paused', 'pausing'].includes(run.projection.status)
+          ? []
+          : [runState(run.projection.status, 'awaiting_user', `approval_requested: ${kind}`)]),
+      ],
+      request
+        ? () => this.store.putArtifactText(run.runId, request.tool.bodyRef, request.body)
+        : undefined,
+    );
+    return { approvalId, decision };
+  }
+
+  private async requestLaunchApproval(
+    run: LiveRun,
+    input: AgentStartInput,
+    tool: ToolFrame,
+    plan: CheckPlan,
+    cancellation: ToolCancellation,
+  ): Promise<boolean> {
+    if (cancellation.aborted || run.stop.aborted || run.uiRequestCount >= 100) return false;
+    const execution = run.projection.executions[input.executionId];
+    if (
+      !execution ||
+      !['active', 'waiting_approval'].includes(execution.status) ||
+      execution.attemptNo !== input.attemptNo ||
+      run.projection.tasks[input.taskId]?.activeExecutionId !== input.executionId ||
+      run.projection.effects[tool.effectId]?.status !== 'admitted'
+    )
+      return false;
+    const bodyRef = this.ids.next('artifact_version');
+    const timeoutMs = 300000;
+    const request = this.requestApproval(run, 'user_action', [bodyRef], {
+      tool: {
+        purpose: plan.purpose ?? 'check',
+        executionId: input.executionId,
+        attemptNo: input.attemptNo,
+        effectId: tool.effectId,
+        toolCallId: tool.toolCallId,
+        bodyRef,
+        fingerprint: plan.fingerprint,
+        targetTree: plan.tree,
+        deadline: new Date(Date.parse(this.clock.nowIso()) + timeoutMs).toISOString(),
+      },
+      body: canonicalJson(plan),
+    });
+    run.uiRequestCount += 1;
+    let cancelTimer = () => {},
+      off = () => {};
+    const cleanup = () => {
+      cancelTimer();
+      off();
+      run.toolApprovals.delete(request.approvalId);
+    };
+    const expire = (reason: 'cancelled' | 'timeout' | 'execution_ended') => {
+      if (!run.toolApprovals.has(request.approvalId)) return;
+      const resume = run.approvals.get(request.approvalId);
+      run.approvals.delete(request.approvalId);
+      cleanup();
+      if (!this.storageError && run.projection.approvals[request.approvalId]?.status === 'pending')
+        this.commit(run, [
+          {
+            type: 'approval.resolved',
+            executionId: input.executionId,
+            payload: {
+              approvalId: request.approvalId,
+              decision: 'reject',
+              actor: RUNTIME.id,
+              subjectVersionIds: [bodyRef],
+              reason,
+            },
+          },
+        ]);
+      resume?.('reject');
+    };
+    run.toolApprovals.set(request.approvalId, {
+      input,
+      effectId: tool.effectId,
+      due: this.clock.monotonicMs() + timeoutMs,
+      expire,
+    });
     this.commit(run, [
       {
-        type: 'approval.requested',
+        type: 'execution.state_changed',
+        executionId: input.executionId,
         payload: {
-          approvalId,
-          kind,
-          subjectVersionIds,
-          criteriaVersionId: run.pendingCriteriaVersionId ?? run.criteriaVersionId,
+          executionId: input.executionId,
+          from: execution.status,
+          to: 'waiting_approval',
+          activity: null,
+          waitingOn: {
+            kind: 'approval',
+            targetIds: [request.approvalId],
+            reasonCode: plan.purpose === 'lsp' ? 'lsp_launch' : 'check_launch',
+            since: this.clock.nowIso(),
+            deadline: new Date(Date.parse(this.clock.nowIso()) + timeoutMs).toISOString(),
+            required: true,
+          },
         },
       },
-      runState(run.projection.status, 'awaiting_user', `approval_requested: ${kind}`),
     ]);
-    return { approvalId, decision };
+    cancelTimer = this.timers.after(timeoutMs, () => expire('timeout'));
+    off = cancellation.onCancel(() => expire('cancelled'));
+    try {
+      return (await request.decision) === 'approve';
+    } finally {
+      cleanup();
+      const owner = run.projection.executions[input.executionId];
+      const drafts: EventDraft[] = [];
+      if (
+        !this.storageError &&
+        owner?.status === 'waiting_approval' &&
+        !run.cancelRequested.has(input.executionId) &&
+        !run.closingExecutions.has(input.executionId) &&
+        ![...run.toolApprovals.values()].some(
+          (pending) => pending.input.executionId === input.executionId,
+        ) &&
+        ![...run.extensionUi.values()].some(
+          (pending) => pending.input.executionId === input.executionId,
+        )
+      )
+        drafts.push({
+          type: 'execution.state_changed',
+          executionId: input.executionId,
+          payload: {
+            executionId: input.executionId,
+            from: 'waiting_approval',
+            to: ['paused', 'pausing'].includes(run.projection.status) ? 'paused' : 'active',
+            activity: 'tool',
+            waitingOn: null,
+          },
+        });
+      if (
+        !this.storageError &&
+        !run.stop.aborted &&
+        !run.cancelRequested.has(input.executionId) &&
+        !run.closingExecutions.has(input.executionId) &&
+        run.projection.status === 'awaiting_user' &&
+        !run.approvals.size &&
+        !run.extensionUi.size &&
+        !Object.values(run.projection.tasks).some((task) => task.status === 'blocked')
+      )
+        drafts.push(runState('awaiting_user', 'running', 'tool_approval_closed'));
+      if (drafts.length) this.commit(run, drafts);
+      this.wake(run);
+    }
   }
 
   /** At the Loop cap: ask for one more round, unless the installation's hard cap is reached. */
@@ -2650,6 +3327,15 @@ export class Coordinator {
     loopId: string,
     rounds: number,
   ): Promise<'continue' | 'stop'> {
+    const recipe = run.recipes.get(loopId)?.recipe;
+    if (recipe && rounds >= recipeAttempts(recipe)) {
+      this.stopRecipe(
+        run,
+        loopId,
+        recipe.maxAttempts <= recipe.maxRepairs + 1 ? 'attempt_limit' : 'repair_limit',
+      );
+      throw new Error('review recipe stopped');
+    }
     if (rounds >= this.policy.maxLoopIterations) {
       run.capStop = 'hard_cap';
       this.commit(run, [
@@ -2706,6 +3392,26 @@ export class Coordinator {
         message: `approval ${approvalId} is already ${approval.status}`,
       });
     }
+    if (approval.tool) {
+      const pending = run.toolApprovals.get(approvalId);
+      const owner = run.projection.executions[approval.tool.executionId];
+      if (pending && this.clock.monotonicMs() >= pending.due) pending.expire('timeout');
+      if (
+        !pending ||
+        this.clock.monotonicMs() >= pending.due ||
+        !owner ||
+        TERMINAL_EXECUTION_STATUSES.has(owner.status) ||
+        owner.attemptNo !== approval.tool.attemptNo ||
+        run.cancelRequested.has(owner.executionId) ||
+        run.closingExecutions.has(owner.executionId) ||
+        run.projection.tasks[pending.input.taskId]?.activeExecutionId !== owner.executionId ||
+        run.projection.effects[pending.effectId]?.status !== 'admitted'
+      )
+        return refuse({
+          code: 'APPROVAL_STALE',
+          message: 'the check approval owner is no longer current',
+        });
+    }
     if (command.expectedControlRevision !== run.projection.controlRevision) {
       return refuse({
         code: 'STALE_CONTROL_REVISION',
@@ -2742,7 +3448,9 @@ export class Coordinator {
           : [
               runState(
                 run.projection.status,
-                Object.values(run.projection.tasks).some((t) => t.status === 'blocked')
+                run.approvals.size > 1 ||
+                  run.extensionUi.size > 0 ||
+                  Object.values(run.projection.tasks).some((t) => t.status === 'blocked')
                   ? 'awaiting_user'
                   : 'running',
                 'approval_resolved',
@@ -2810,11 +3518,290 @@ export class Coordinator {
 
   // ── agent host: the only way an agent affects the run ─────────────────────
 
+  private uiContinuation(run: LiveRun, pending: PendingExtensionUi): EventDraft[] {
+    const { executionId } = pending.input;
+    if (
+      run.stop.aborted ||
+      run.cancelRequested.has(executionId) ||
+      TERMINAL_RUN_STATUSES.has(run.projection.status) ||
+      run.projection.status === 'cancelling'
+    )
+      return [];
+    const execution = run.projection.executions[executionId];
+    const drafts: EventDraft[] =
+      execution?.status === 'waiting_approval'
+        ? [
+            {
+              type: 'execution.state_changed',
+              executionId,
+              payload: {
+                executionId,
+                from: execution.status,
+                to: ['paused', 'pausing'].includes(run.projection.status) ? 'paused' : 'active',
+                activity: null,
+                waitingOn: null,
+              },
+            },
+          ]
+        : [];
+    if (
+      run.projection.status === 'awaiting_user' &&
+      run.extensionUi.size === 1 &&
+      !run.approvals.size &&
+      !Object.values(run.projection.tasks).some((task) => task.status === 'blocked')
+    )
+      drafts.push(runState('awaiting_user', 'running', 'extension_ui_closed'));
+    return drafts;
+  }
+
+  private closeExtensionUi(
+    run: LiveRun,
+    requestId: string,
+    reason: 'timeout' | 'cancelled' | 'execution_ended',
+  ) {
+    const pending = run.extensionUi.get(requestId);
+    if (!pending) return;
+    try {
+      if (!this.storageError && !TERMINAL_RUN_STATUSES.has(run.projection.status))
+        this.commit(run, [
+          {
+            type: 'extension.ui_expired',
+            executionId: pending.input.executionId,
+            payload: {
+              requestId,
+              executionId: pending.input.executionId,
+              attemptNo: pending.input.attemptNo,
+              reason,
+            },
+          },
+          ...this.uiContinuation(run, pending),
+        ]);
+    } finally {
+      run.extensionUi.delete(requestId);
+      pending.finish({ status: reason === 'timeout' ? 'expired' : 'cancelled' });
+      this.wake(run);
+    }
+  }
+
+  private requestExtensionUi(
+    run: LiveRun,
+    input: AgentStartInput,
+    raw: ExtensionUiRequest,
+    cancellation?: DecisionCancellation,
+  ): Promise<ExtensionUiResult> {
+    const request = ExtensionUiRequest.parse(raw);
+    const { executionId, attemptNo } = input;
+    const execution = run.projection.executions[executionId];
+    if (
+      !input.harness ||
+      input.harness.policy !== 'trusted-native' ||
+      !execution ||
+      execution.status !== 'active' ||
+      run.stop.aborted ||
+      run.cancelRequested.has(executionId) ||
+      !['running', 'awaiting_user'].includes(run.projection.status) ||
+      run.projection.tasks[input.taskId]?.activeExecutionId !== executionId ||
+      this.storageError
+    )
+      throw new Error('extension UI target is unavailable');
+    if (cancellation?.aborted) return Promise.resolve({ status: 'cancelled' });
+    if (
+      run.uiRequestCount >= 100 ||
+      [...run.extensionUi.values()].some((pending) => pending.input.executionId === executionId)
+    )
+      throw new Error('extension UI request limit reached');
+    const requestId = this.ids.next('approval');
+    const bodyRef = this.ids.next('artifact_version');
+    const body = canonicalJson(request);
+    const due = this.clock.monotonicMs() + request.timeoutMs;
+    const deadline = new Date(Date.parse(this.clock.nowIso()) + request.timeoutMs).toISOString();
+    let resolve!: (result: ExtensionUiResult) => void;
+    let cancelTimer = () => {};
+    let unsubscribe = () => {};
+    const result = new Promise<ExtensionUiResult>((done) => {
+      resolve = done;
+    });
+    const pending: PendingExtensionUi = {
+      requestId,
+      input,
+      request,
+      due,
+      finish: (answer) => {
+        cancelTimer();
+        unsubscribe();
+        resolve(answer);
+      },
+    };
+    this.commit(
+      run,
+      [
+        {
+          type: 'extension.ui_requested',
+          executionId,
+          payload: {
+            requestId,
+            executionId,
+            attemptNo,
+            kind: request.kind,
+            bodyRef,
+            bodyHash: hashOf(request),
+            deadline,
+          },
+        },
+        {
+          type: 'execution.state_changed',
+          executionId,
+          payload: {
+            executionId,
+            from: execution.status,
+            to: 'waiting_approval',
+            activity: null,
+            waitingOn: {
+              kind: 'approval',
+              targetIds: [requestId],
+              reasonCode: 'extension_ui',
+              since: this.clock.nowIso(),
+              deadline,
+              required: true,
+            },
+          },
+        },
+        ...(run.projection.status === 'running'
+          ? [runState('running', 'awaiting_user', 'extension_ui_requested')]
+          : []),
+      ],
+      () => this.store.putArtifactText(run.runId, bodyRef, body),
+    );
+    run.extensionUi.set(requestId, pending);
+    run.uiRequestCount += 1;
+    cancelTimer = this.timers.after(request.timeoutMs, () =>
+      this.closeExtensionUi(run, requestId, 'timeout'),
+    );
+    unsubscribe =
+      cancellation?.onCancel(() => this.closeExtensionUi(run, requestId, 'cancelled')) ??
+      (() => {});
+    return result;
+  }
+
+  private answerExtensionUi(command: AnswerExtensionUiCommand, payloadHash: string): Receipt {
+    const run = this.live.get(command.runId);
+    const pending = run?.extensionUi.get(command.payload.requestId);
+    const refuse = (code: CommandError['code'], message: string) =>
+      this.refuseControl(command, payloadHash, { code, message });
+    if (!run || !pending) return refuse('TARGET_TERMINAL', 'the extension UI request has closed');
+    const { input, request } = pending;
+    if (
+      command.payload.executionId !== input.executionId ||
+      command.payload.attemptNo !== input.attemptNo ||
+      run.cancelRequested.has(input.executionId) ||
+      run.projection.tasks[input.taskId]?.activeExecutionId !== input.executionId
+    )
+      return refuse('TARGET_TERMINAL', 'the extension UI target changed');
+    if (pending.due <= this.clock.monotonicMs()) {
+      this.closeExtensionUi(run, pending.requestId, 'timeout');
+      return refuse('TARGET_TERMINAL', 'the extension UI request expired');
+    }
+    if (command.expectedControlRevision !== run.projection.controlRevision)
+      return refuse('STALE_CONTROL_REVISION', 'the control revision changed');
+    const value = command.payload.value;
+    if (
+      value !== null &&
+      (request.kind === 'confirm'
+        ? typeof value !== 'boolean'
+        : typeof value !== 'string' ||
+          (request.kind === 'select' && !request.options.includes(value)))
+    )
+      return refuse('SCHEMA_INVALID', 'the answer does not match the requested input');
+    const answerRef = this.ids.next('artifact_version');
+    const receipt = this.controlReceipt(
+      run,
+      command,
+      payloadHash,
+      [
+        {
+          type: 'extension.ui_answered',
+          executionId: input.executionId,
+          payload: {
+            requestId: pending.requestId,
+            executionId: input.executionId,
+            attemptNo: input.attemptNo,
+            answerRef,
+            answerHash: hashOf(value),
+          },
+        },
+        ...this.uiContinuation(run, pending),
+      ],
+      'applied',
+      'immediate',
+      () => this.store.putArtifactText(run.runId, answerRef, canonicalJson(value)),
+    );
+    run.extensionUi.delete(pending.requestId);
+    pending.finish(value === null ? { status: 'cancelled' } : { status: 'answered', value });
+    this.wake(run);
+    return receipt;
+  }
+
   private hostFor(run: LiveRun, input: AgentStartInput): AgentHost {
-    const { executionId } = input;
+    const { executionId, harness } = input;
     const agent: Actor = { kind: 'agent', id: executionId };
     let lastCall: { modelCallId: string; contextSnapshotId: string; effectId: string } | null =
       null;
+    let harnessState: 'unloaded' | 'loaded' | 'simulated' | 'failed' = 'unloaded';
+    let toolsRevision = 1;
+    const descriptors = new Map<string, ToolDescriptor>();
+    const validateDescriptors = (tools: ToolDescriptor[]) => {
+      const names = new Set<string>();
+      for (const descriptor of tools) {
+        if (names.has(descriptor.name)) throw new Error('duplicate descriptor');
+        names.add(descriptor.name);
+        if (
+          descriptor.source !== 'corral' &&
+          (harness?.policy !== 'trusted-native' ||
+            (!(
+              (descriptor.source === 'extension:pi-codemode@1.3.0' &&
+                descriptor.name === 'codemode' &&
+                harness.allowedTools.includes('codemode')) ||
+              (descriptor.source === 'extension:pi-mcp@1.3.0' &&
+                (harness.projectTools?.mcpServerIds?.some((id) =>
+                  descriptor.name.startsWith(`mcp__${id}__`),
+                ) ||
+                  [
+                    'list_mcp_resources',
+                    'list_mcp_resource_templates',
+                    'read_mcp_resource',
+                  ].includes(descriptor.name)))
+            ) &&
+              !harness.resources.some(
+                (r) =>
+                  r.kind === 'extension' &&
+                  descriptor.source === `extension:${r.name}@${r.version}`,
+              )))
+        )
+          throw new Error('unbound native tool');
+      }
+    };
+    const nativeEffects = new Map<string, string>();
+    const nativeCloseListeners = new Map<string, Set<() => void>>();
+    const parentRefusal = (proposal: ToolProposal): Refusal | null => {
+      let parentId = proposal.parentToolCallId;
+      while (parentId !== undefined) {
+        const parent = nativeEffects.get(parentId);
+        if (!harness || !parent || run.projection.effects[parent]?.status !== 'admitted')
+          return {
+            kind: 'refuse',
+            code: 'CAPABILITY_DENIED',
+            message: 'nested tool parent is closed or unknown',
+          };
+        parentId = authorized.get(parentId)?.proposal.parentToolCallId;
+      }
+      return null;
+    };
+    const recordedPayloads = new Set<string>();
+    const toolView = (proposal: ToolProposal): ToolGateView => ({
+      ...this.toolView(run, input, proposal),
+      ...(harnessState === 'simulated' ? { simulation: true } : {}),
+      ...(descriptors.has(proposal.name) ? { descriptor: descriptors.get(proposal.name)! } : {}),
+    });
 
     const requireActive = () => {
       const status = run.projection.executions[executionId]?.status;
@@ -2822,22 +3809,47 @@ export class Coordinator {
         status !== 'active' ||
         run.projection.status !== 'running' ||
         run.cancelRequested.has(executionId) ||
+        run.closingExecutions.has(executionId) ||
         run.projection.tasks[input.taskId]?.activeExecutionId !== executionId ||
         this.storageError
       ) {
         throw new Error(`execution ${executionId} is not active`);
       }
     };
+    const requireOwned = () => {
+      const execution = run.projection.executions[executionId];
+      if (
+        !execution ||
+        TERMINAL_EXECUTION_STATUSES.has(execution.status) ||
+        TERMINAL_RUN_STATUSES.has(run.projection.status) ||
+        run.cancelRequested.has(executionId) ||
+        run.closingExecutions.has(executionId) ||
+        execution.attemptNo !== input.attemptNo ||
+        run.projection.tasks[input.taskId]?.activeExecutionId !== executionId ||
+        this.storageError
+      )
+        throw new Error('execution owner is closed');
+    };
 
     // Authorized calls of this execution; each may run once.
-    const authorized = new Map<string, { proposal: ToolProposal; ran: boolean }>();
+    const authorized = new Map<
+      string,
+      { proposal: ToolProposal; ran: boolean; descriptorHash?: string }
+    >();
 
-    const authorizeTool = async (proposal: ToolProposal): Promise<ToolAuthorization> => {
+    const authorizeTool = async (
+      proposal: ToolProposal,
+      automatic = false,
+    ): Promise<ToolAuthorization> => {
+      if (harness && harnessState !== 'loaded' && harnessState !== 'simulated')
+        throw new Error('harness not loaded');
+      // A caller cannot change the approved object while awaiting execution.
+      if (harness) proposal = JSON.parse(canonicalJson(proposal)) as ToolProposal;
       const questionId = proposal.name === 'reply' ? proposal.args.questionId : null;
       // Checks a pause cannot change run before the safe boundary (Technical-Design §5.4).
-      const early = toolRefusal(
-        runGates(this.gates['tool.pre_boundary'], this.toolView(run, input, proposal)),
-      );
+      const early =
+        parentRefusal(proposal) ??
+        toolRefusal(runGates(this.gates['tool.pre_boundary'], toolView(proposal)));
       if (early) {
         const error: CommandError = { code: early.code, message: early.message };
         if (proposal.name === 'reply') {
@@ -2859,7 +3871,7 @@ export class Coordinator {
         this.commit(run, [
           {
             type: 'tool.requested',
-            actor: agent,
+            actor: automatic ? RUNTIME : agent,
             executionId,
             payload: { executionId, toolCallId, name: proposal.name, validatedArgs: {} },
           },
@@ -2876,9 +3888,9 @@ export class Coordinator {
       } while (run.projection.status !== 'running');
       requireActive();
       const toolCallId = this.ids.next('tool_call');
-      const refusal = toolRefusal(
-        runGates(this.gates['tool.authorize'], this.toolView(run, input, proposal)),
-      );
+      const refusal =
+        parentRefusal(proposal) ??
+        toolRefusal(runGates(this.gates['tool.authorize'], toolView(proposal)));
       const error: CommandError | null = refusal
         ? { code: refusal.code, message: refusal.message }
         : null;
@@ -2891,13 +3903,21 @@ export class Coordinator {
       this.commit(run, [
         {
           type: 'tool.requested',
-          actor: agent,
+          actor: automatic ? RUNTIME : agent,
           executionId,
           payload: {
             executionId,
             toolCallId,
             name: proposal.name,
-            validatedArgs: error ? {} : summarizeArgs(proposal.args),
+            ...(proposal.parentToolCallId ? { parentToolCallId: proposal.parentToolCallId } : {}),
+            validatedArgs: error
+              ? {}
+              : harness
+                ? {
+                    hash: hashOf(proposal.args),
+                    bytes: utf8ToBytes(canonicalJson(proposal.args)).length,
+                  }
+                : summarizeArgs(proposal.args),
           },
         },
         error
@@ -2909,7 +3929,11 @@ export class Coordinator {
           : {
               type: 'tool.allowed',
               executionId,
-              payload: { executionId, toolCallId, policyVersion: TOOL_POLICY_VERSION },
+              payload: {
+                executionId,
+                toolCallId,
+                policyVersion: harness ? 'role-allowlist@2' : TOOL_POLICY_VERSION,
+              },
             },
         ...(refusal?.limit
           ? [
@@ -2941,7 +3965,11 @@ export class Coordinator {
           : []),
       ]);
       if (error) return { ok: false, toolCallId, error };
-      authorized.set(toolCallId, { proposal, ran: false });
+      authorized.set(toolCallId, {
+        proposal,
+        ran: false,
+        ...(harness ? { descriptorHash: hashOf(descriptors.get(proposal.name) ?? null) } : {}),
+      });
       return { ok: true, toolCallId };
     };
 
@@ -2951,6 +3979,12 @@ export class Coordinator {
       } while (run.projection.status !== 'running');
       requireActive();
       const call = authorized.get(toolCallId);
+      if (call && descriptors.get(call.proposal.name)?.source.startsWith('extension:'))
+        return {
+          ok: false,
+          toolCallId,
+          error: { code: 'CAPABILITY_DENIED', message: 'native calls execute in their worker' },
+        };
       if (!call || call.ran) {
         return {
           ok: false,
@@ -2961,9 +3995,18 @@ export class Coordinator {
           },
         };
       }
-      const refusal = toolRefusal(
-        runGates(this.gates['tool.execute'], this.toolView(run, input, call.proposal)),
-      );
+      if (harness && call.descriptorHash !== hashOf(descriptors.get(call.proposal.name) ?? null))
+        return {
+          ok: false,
+          toolCallId,
+          error: {
+            code: 'CAPABILITY_DENIED',
+            message: 'tool registration changed after authorization',
+          },
+        };
+      const refusal =
+        parentRefusal(call.proposal) ??
+        toolRefusal(runGates(this.gates['tool.execute'], toolView(call.proposal)));
       if (refusal)
         return { ok: false, toolCallId, error: { code: refusal.code, message: refusal.message } };
       call.ran = true;
@@ -2982,20 +4025,49 @@ export class Coordinator {
         },
         { type: 'tool.started', executionId, payload: { executionId, toolCallId, effectId } },
       ];
-      const closing = (resultRef: string | null, error: string | null = null): EventDraft[] => [
-        {
-          type: 'tool.finished',
-          executionId,
-          payload: { executionId, toolCallId, resultRef, error },
-        },
-        {
-          type: 'effect.settled',
-          executionId,
-          payload: { effectId, outcome: error ? 'failed' : 'succeeded' },
-        },
-      ];
-      const tool = { opening, closing, toolCallId };
+      const closing = (resultRef: string | null, error: string | null = null): EventDraft[] =>
+        run.projection.effects[effectId] && run.projection.effects[effectId]?.status !== 'admitted'
+          ? []
+          : [
+              {
+                type: 'tool.finished',
+                executionId,
+                payload: { executionId, toolCallId, resultRef, error },
+              },
+              {
+                type: 'effect.settled',
+                executionId,
+                payload: { effectId, outcome: error ? 'failed' : 'succeeded' },
+              },
+            ];
+      const tool: ToolFrame = { opening, closing, toolCallId, effectId };
+      if (call.proposal.parentToolCallId)
+        tool.parentCancellation = {
+          get aborted() {
+            return parentRefusal(call.proposal) !== null;
+          },
+          onCancel(fn) {
+            const owners: Set<() => void>[] = [];
+            let parentId = call.proposal.parentToolCallId;
+            while (parentId) {
+              const listeners = nativeCloseListeners.get(parentId) ?? new Set<() => void>();
+              nativeCloseListeners.set(parentId, listeners);
+              listeners.add(fn);
+              owners.push(listeners);
+              parentId = authorized.get(parentId)?.proposal.parentToolCallId;
+            }
+            if (this.aborted) fn();
+            return () => {
+              for (const listeners of owners) listeners.delete(fn);
+            };
+          },
+        };
       switch (call.proposal.name) {
+        case 'read':
+        case 'run_check':
+        case 'lsp_query':
+        case 'edit':
+        case 'write':
         case 'search':
         case 'read_document':
         case 'list_files':
@@ -3005,7 +4077,14 @@ export class Coordinator {
         case 'move_file':
           return this.externalTool(run, input, call.proposal, tool);
         case 'spawn_subagents':
-          return this.spawnTool(run, input, call.proposal, tool);
+          return this.spawnTool(run, input, call.proposal, tool, (proposal) =>
+            toolRefusal(
+              runGates(this.gates['tool.execute'], {
+                ...toolView(proposal),
+                currentEffectId: effectId,
+              }),
+            ),
+          );
         case 'await_tasks':
           return this.awaitTool(run, input, call.proposal, tool);
         case 'ask':
@@ -3014,6 +4093,39 @@ export class Coordinator {
           return this.replyTool(run, input, call.proposal, tool);
         case 'read_artifact':
           return this.readTool(run, input, call.proposal, tool);
+      }
+      if (call.proposal.name === 'submit_result') {
+        let reason = this.recipeSubmission(
+          run,
+          input,
+          call.proposal.args.artifactVersionIds as string[],
+        );
+        if (!reason)
+          reason = await this.checkRecipeSubmission(run, input, async (commandId) => {
+            const authorized = await authorizeTool(
+              { name: 'run_check', args: { commandId } },
+              true,
+            );
+            return authorized.ok ? executeTool(authorized.toolCallId) : authorized;
+          });
+        await this.boundary(run, executionId);
+        requireActive();
+        if (reason) {
+          this.commit(run, [...tool.opening, ...tool.closing(null, reason)]);
+          const context = this.recipeForExecution(run, executionId);
+          if (context)
+            this.stopRecipe(
+              run,
+              context.loopId,
+              reason,
+              (call.proposal.args.artifactVersionIds as string[])[0],
+            );
+          return {
+            ok: false,
+            toolCallId,
+            error: { code: 'LIMIT_REACHED', message: `review recipe stopped: ${reason}` },
+          };
+        }
       }
       const { drafts, result, extra } = this.toolDrafts(
         run,
@@ -3039,12 +4151,267 @@ export class Coordinator {
       return outcome;
     };
     return {
-      prepareModelRequest: async (): Promise<RequestPermit> => {
+      ...(harness
+        ? {
+            requestExtensionUi: (
+              request: ExtensionUiRequest,
+              cancellation?: DecisionCancellation,
+            ) => this.requestExtensionUi(run, input, request, cancellation),
+            notifyExtensionUi: async (raw: ExtensionUiNotice) => {
+              const notice = ExtensionUiNotice.parse(raw);
+              if (
+                run.stop.aborted ||
+                run.cancelRequested.has(executionId) ||
+                TERMINAL_RUN_STATUSES.has(run.projection.status) ||
+                TERMINAL_EXECUTION_STATUSES.has(
+                  run.projection.executions[executionId]?.status ?? 'failed',
+                ) ||
+                this.storageError
+              )
+                throw new Error('extension UI target has ended');
+              if (++run.uiNoticeCount > 1000)
+                throw new Error('extension notification limit reached');
+              const bodyRef = this.ids.next('artifact_version');
+              this.commit(
+                run,
+                [
+                  {
+                    type: 'extension.ui_notified',
+                    executionId,
+                    payload: {
+                      executionId,
+                      kind: notice.kind,
+                      key: hashOf(notice.key),
+                      level: notice.level,
+                      bodyRef,
+                      bodyHash: hashOf(notice),
+                    },
+                  },
+                ],
+                () => this.store.putArtifactText(run.runId, bodyRef, canonicalJson(notice)),
+              );
+            },
+            recordProviderPayload: async (raw: ProviderPayloadRecord) => {
+              requireActive();
+              if (harnessState === 'simulated')
+                throw new Error('simulation cannot report a provider payload');
+              const record = ProviderPayloadRecord.parse(raw);
+              const call = run.projection.modelCalls[record.modelCallId];
+              if (
+                !call ||
+                call.executionId !== executionId ||
+                call.finished ||
+                lastCall?.modelCallId !== record.modelCallId ||
+                recordedPayloads.has(record.modelCallId)
+              )
+                throw new Error('unknown or already recorded request');
+              this.commit(run, [{ type: 'model.payload_recorded', executionId, payload: record }]);
+              recordedPayloads.add(record.modelCallId);
+            },
+            pendingDirectives: () =>
+              run.projection.directiveOrder.flatMap((id) => {
+                const d = run.projection.directives[id];
+                return d?.targetExecutionId === executionId && d.status === 'queued'
+                  ? [{ directiveId: id, text: d.text }]
+                  : [];
+              }),
+            simulateHarness: async () => {
+              requireActive();
+              if (input.mode !== 'mock' || harnessState !== 'unloaded')
+                throw new Error('unexpected harness simulation');
+              this.commit(run, [
+                {
+                  type: 'harness.simulated',
+                  executionId,
+                  payload: { snapshotHash: harness.snapshotHash },
+                },
+              ]);
+              harnessState = 'simulated';
+            },
+            reportHarness: async (raw: HarnessReport) => {
+              requireActive();
+              const report = HarnessReport.parse(raw);
+              if (harnessState !== 'unloaded' || report.snapshotHash !== harness.snapshotHash)
+                throw new Error('unexpected harness report');
+              if (!report.ok) {
+                this.commit(run, [
+                  {
+                    type: 'harness.load_failed',
+                    executionId,
+                    payload: { snapshotHash: report.snapshotHash, code: report.code },
+                  },
+                ]);
+                harnessState = 'failed';
+                return;
+              }
+              validateDescriptors(report.tools);
+              for (const command of report.commands ?? []) {
+                if (
+                  harness.policy === 'strict' ||
+                  !harness.resources.some(
+                    (resource) =>
+                      resource.kind === 'extension' &&
+                      command.source === `extension:${resource.name}@${resource.version}`,
+                  )
+                )
+                  throw new Error('unbound extension command');
+              }
+              this.commit(run, [
+                {
+                  type: 'harness.loaded',
+                  executionId,
+                  payload: {
+                    snapshotHash: report.snapshotHash,
+                    tools: report.tools,
+                    diagnostics: report.diagnostics,
+                    ...(report.commands ? { commands: report.commands } : {}),
+                  },
+                },
+              ]);
+              for (const descriptor of report.tools) descriptors.set(descriptor.name, descriptor);
+              harnessState = 'loaded';
+            },
+            updateHarnessTools: async (raw) => {
+              requireOwned();
+              const update = HarnessToolsUpdate.parse(raw);
+              if (
+                harnessState !== 'loaded' ||
+                update.snapshotHash !== harness.snapshotHash ||
+                update.expectedRevision !== toolsRevision
+              )
+                throw new Error('unexpected tool registry revision');
+              validateDescriptors(update.tools);
+              this.commit(run, [
+                {
+                  type: 'harness.tools_updated',
+                  executionId,
+                  payload: {
+                    snapshotHash: update.snapshotHash,
+                    revision: toolsRevision + 1,
+                    tools: update.tools,
+                  },
+                },
+              ]);
+              descriptors.clear();
+              for (const descriptor of update.tools) descriptors.set(descriptor.name, descriptor);
+              toolsRevision += 1;
+            },
+            mcpAuthorization: async (serverId: string, challenge?: McpChallenge) => {
+              requireOwned();
+              if (
+                harness.policy !== 'trusted-native' ||
+                !harness.projectTools?.mcpServerIds?.includes(serverId) ||
+                !this.harnesses?.mcpAuthorization
+              )
+                throw new Error('MCP server is not selected');
+              const token = await this.harnesses.mcpAuthorization(input, serverId, challenge);
+              requireOwned();
+              return token;
+            },
+            beginNativeTool: async (toolCallId: string, argsHash: string) => {
+              await this.boundary(run, executionId);
+              requireActive();
+              const call = authorized.get(toolCallId);
+              if (
+                !call ||
+                call.ran ||
+                parentRefusal(call.proposal) ||
+                call.descriptorHash !== hashOf(descriptors.get(call.proposal.name) ?? null) ||
+                !descriptors.get(call.proposal.name)?.source.startsWith('extension:') ||
+                hashOf(call.proposal.args) !== argsHash
+              )
+                throw new Error('native call is not authorized');
+              const refusal = toolRefusal(
+                runGates(this.gates['tool.execute'], toolView(call.proposal)),
+              );
+              if (refusal) throw new Error('native call refused');
+              if (descriptors.get(call.proposal.name)?.source === 'extension:pi-mcp@1.3.0') {
+                if (!this.harnesses?.checkMcpTool) throw new Error('MCP trust unavailable');
+                await this.harnesses.checkMcpTool(input, call.proposal.name, call.proposal.args);
+                requireActive();
+                if (
+                  call.ran ||
+                  parentRefusal(call.proposal) ||
+                  call.descriptorHash !== hashOf(descriptors.get(call.proposal.name) ?? null)
+                )
+                  throw new Error('native call changed');
+              }
+              const codemode =
+                descriptors.get(call.proposal.name)?.source === 'extension:pi-codemode@1.3.0';
+              if (codemode && this.codemodeWorkers.size >= 2)
+                throw new Error('codemode worker capacity reached');
+              const effectId = this.ids.next('effect');
+              this.commit(run, [
+                {
+                  type: 'effect.admitted',
+                  executionId,
+                  payload: {
+                    effectId,
+                    kind: 'tool',
+                    scope: executionId,
+                    epoch: input.attemptNo,
+                    reservationId: null,
+                  },
+                },
+                {
+                  type: 'tool.started',
+                  executionId,
+                  payload: { executionId, toolCallId, effectId, management: 'unmanaged_native' },
+                },
+              ]);
+              call.ran = true;
+              nativeEffects.set(toolCallId, effectId);
+              if (codemode) this.codemodeWorkers.set(effectId, { runId: run.runId, executionId });
+            },
+            finishNativeTool: async (toolCallId: string, outcome: 'succeeded' | 'failed') => {
+              requireOwned();
+              const effectId = nativeEffects.get(toolCallId);
+              if (!effectId || run.projection.effects[effectId]?.status !== 'admitted')
+                throw new Error('native call is closed');
+              this.commit(run, [
+                {
+                  type: 'tool.finished',
+                  executionId,
+                  payload: {
+                    executionId,
+                    toolCallId,
+                    resultRef: null,
+                    error: outcome === 'failed' ? 'native_tool_failed' : null,
+                  },
+                },
+                { type: 'effect.settled', executionId, payload: { effectId, outcome } },
+              ]);
+              nativeEffects.delete(toolCallId);
+              this.codemodeWorkers.delete(effectId);
+              for (const listener of nativeCloseListeners.get(toolCallId) ?? []) listener();
+              nativeCloseListeners.delete(toolCallId);
+            },
+          }
+        : {}),
+      prepareModelRequest: async (rawRecord?: ModelRequestRecord): Promise<RequestPermit> => {
+        if (harness && harnessState !== 'loaded' && harnessState !== 'simulated')
+          throw new Error('harness not loaded');
+        if (harness && harnessState === 'loaded' && !rawRecord)
+          throw new Error('SDK request record is required');
+        if (harnessState === 'simulated' && rawRecord)
+          throw new Error('simulation cannot report an SDK request');
+        const record = rawRecord ? ModelRequestRecord.parse(rawRecord) : undefined;
+        if (record && !harness) throw new Error('unexpected SDK request record');
+        for (const id of record?.directiveIds ?? []) {
+          const directive = run.projection.directives[id];
+          if (
+            !directive ||
+            directive.targetExecutionId !== executionId ||
+            !['queued', 'attached_to_request', 'delivered'].includes(directive.status)
+          )
+            throw new Error('unknown directive in request');
+        }
         do {
           await this.boundary(run, executionId);
         } while (run.projection.status !== 'running');
         requireActive();
         const view: ModelGateView = { projection: run.projection, limits: run.limits, input };
+        this.recipeAllowance(run, executionId);
         const request = runGates(this.gates['model.request'], view);
         if (request.kind === 'refuse') this.refuseModelRequest(run, request);
         if (request.kind === 'require_approval') {
@@ -3079,6 +4446,13 @@ export class Coordinator {
             await this.boundary(run, executionId);
           } while (run.projection.status !== 'running');
           requireActive();
+        } catch (error) {
+          this.releaseSlot(run);
+          throw error;
+        }
+        let recipeRemaining: number;
+        try {
+          recipeRemaining = this.recipeAllowance(run, executionId);
         } catch (error) {
           this.releaseSlot(run);
           throw error;
@@ -3121,16 +4495,31 @@ export class Coordinator {
           throw new Error(`LIMIT_REACHED: ${admitted.limitKind}`);
         }
         const modelCallId = this.ids.next('model_call');
+        admitted.maxOutputTokens = Math.min(admitted.maxOutputTokens, recipeRemaining);
         const contextSnapshotId = this.ids.next('context_snapshot');
         const effectId = this.ids.next('effect');
         run.slots.held.set(modelCallId, executionId);
         // The snapshot takes every directive queued for this execution right now.
         const queued = run.projection.directiveOrder
           .map((id) => run.projection.directives[id])
-          .filter((d) => d?.targetExecutionId === executionId && d.status === 'queued')
+          .filter(
+            (d) =>
+              d?.targetExecutionId === executionId &&
+              d.status === 'queued' &&
+              (!record || record.directiveIds.includes(d.directiveId)),
+          )
           .map((d) => ({ directiveId: d?.directiveId ?? '', text: d?.text ?? '' }));
         const directiveIds = queued.map((d) => d.directiveId);
         this.commit(run, [
+          ...(record && harness
+            ? [
+                {
+                  type: 'model.request_recorded',
+                  executionId,
+                  payload: { ...record, modelCallId, snapshotHash: harness.snapshotHash },
+                } satisfies EventDraft,
+              ]
+            : []),
           {
             type: 'budget.reserved',
             executionId,
@@ -3365,6 +4754,7 @@ export class Coordinator {
       callables: run.plan.callables[input.nodeId] ?? { delegate: [], question: [] },
       externalTools: Boolean(this.tools),
       fileTools: this.files?.available(run.runId) ?? false,
+      harnessRead: Boolean(this.harnesses?.readSkill),
       responderOf: (questionId) => run.questions.get(questionId)?.responderExecutionId,
       readable: () => this.readable(run, input),
     };
@@ -3494,6 +4884,7 @@ export class Coordinator {
 
   /** The latest version the same node wrote in the previous round of its Loop. */
   private previousRoundOutput(run: LiveRun, input: AgentStartInput) {
+    if (input.item) return null;
     const iterationId = run.projection.executions[input.executionId]?.iterationId;
     const previous = iterationId ? this.previousRound(run, iterationId) : null;
     if (!previous) return null;
@@ -3517,7 +4908,9 @@ export class Coordinator {
     input: AgentStartInput,
     proposal: ToolProposal,
     tool: ToolFrame,
+    recheck: (proposal: ToolProposal) => Refusal | null,
   ): Promise<ToolOutcome> {
+    if (proposal.args.mode === 'items') return this.spawnItems(run, input, proposal, tool, recheck);
     const tasks = proposal.args.tasks as { targetNodeId: string; brief: string }[];
     const children = tasks.map((task) =>
       this.prepareExecution(run, {
@@ -3540,6 +4933,114 @@ export class Coordinator {
       toolCallId: tool.toolCallId,
       result: { taskIds: children.map((c) => c.input.taskId) },
     };
+  }
+
+  private async spawnItems(
+    run: LiveRun,
+    input: AgentStartInput,
+    proposal: ToolProposal,
+    tool: ToolFrame,
+    recheck: (proposal: ToolProposal) => Refusal | null,
+  ): Promise<ToolOutcome> {
+    const tasks = proposal.args.tasks as { targetNodeId: string; brief: string }[];
+    const results: { taskId: string; status: string; artifactVersionIds: string[] }[] = [];
+    const { executionId } = input;
+    const cancelled = () =>
+      run.stop.aborted ||
+      run.cancelRequested.has(executionId) ||
+      run.closingExecutions.has(executionId);
+    let error: string | null = null;
+    this.commit(run, tool.opening);
+    try {
+      for (const [index, task] of tasks.entries()) {
+        await this.boundary(run, executionId);
+        if (cancelled()) {
+          error = 'scope cancelled';
+          break;
+        }
+        const refusal = recheck({ ...proposal, args: { mode: 'items', tasks: [task] } });
+        if (refusal) {
+          error = refusal.message;
+          break;
+        }
+        const child = this.prepareExecution(run, {
+          nodeId: task.targetNodeId,
+          iterationId: run.projection.executions[executionId]?.iterationId ?? null,
+          parentExecutionId: executionId,
+          depth: input.depth + 1,
+          assignment: { kind: 'delegated', brief: task.brief, parentExecutionId: executionId },
+          item: { batchId: tool.toolCallId, index: index + 1, total: tasks.length },
+          given: [{ name: 'task', kind: 'run_input', artifactVersionId: null, text: task.brief }],
+        });
+        const from = run.projection.executions[executionId]!.status;
+        this.commit(run, [
+          ...child.drafts,
+          {
+            type: 'execution.state_changed',
+            executionId,
+            payload: {
+              executionId,
+              from,
+              to: 'waiting_children',
+              activity: null,
+              waitingOn: {
+                kind: 'children',
+                targetIds: [child.input.executionId],
+                reasonCode: 'awaiting_item',
+                since: this.clock.nowIso(),
+                deadline: null,
+                required: true,
+              },
+            },
+          },
+        ]);
+        const outcome = await this.launch(run, child);
+        const state = run.projection.tasks[child.input.taskId];
+        results.push({
+          taskId: child.input.taskId,
+          status: state?.status ?? 'failed',
+          artifactVersionIds:
+            state?.status === 'completed' ? state.submittedArtifactVersionIds : [],
+        });
+        if (!outcome.ok || cancelled()) {
+          if (cancelled()) error = 'scope cancelled';
+          break;
+        }
+      }
+    } catch {
+      error = cancelled() ? 'scope cancelled' : 'item batch stopped';
+    } finally {
+      if (!cancelled() && run.projection.executions[executionId]?.status === 'waiting_children')
+        this.commit(run, [
+          {
+            type: 'execution.state_changed',
+            executionId,
+            payload: {
+              executionId,
+              from: 'waiting_children',
+              to: 'active',
+              activity: 'model',
+              waitingOn: null,
+            },
+          },
+        ]);
+      this.commit(run, tool.closing(null, error));
+    }
+    return error
+      ? {
+          ok: false,
+          toolCallId: tool.toolCallId,
+          error: { code: 'TARGET_TERMINAL', message: error },
+        }
+      : {
+          ok: true,
+          toolCallId: tool.toolCallId,
+          result: {
+            taskIds: results.map((row) => row.taskId),
+            tasks: results,
+            remaining: tasks.length - results.length,
+          },
+        };
   }
 
   /** Waits for the caller's children; the caller holds no model slot meanwhile. */
@@ -3848,9 +5349,15 @@ export class Coordinator {
       for (const listener of listeners) listener();
     };
     scopeListeners.add(abort);
+    const offParent = tool.parentCancellation?.onCancel(abort);
     const cancellation: ToolCancellation = {
       get aborted() {
-        return timedOut || run.cancelRequested.has(executionId);
+        return (
+          timedOut ||
+          Boolean(tool.parentCancellation?.aborted) ||
+          run.cancelRequested.has(executionId) ||
+          run.closingExecutions.has(executionId)
+        );
       },
       onCancel(fn) {
         listeners.add(fn);
@@ -3860,7 +5367,7 @@ export class Coordinator {
         };
       },
     };
-    const cancelTimer = this.timers.after(30_000, () => {
+    const timeout = () => {
       timedOut = true;
       abort();
       this.submit({
@@ -3870,17 +5377,87 @@ export class Coordinator {
         type: 'cancel',
         payload: { scope: { kind: 'execution', executionId }, reason: 'tool_timeout' },
       });
-    });
+    };
+    let cancelTimer = this.timers.after(30_000, timeout);
     this.commit(run, tool.opening);
     try {
-      const fileTool = (FILE_TOOLS as readonly string[]).includes(proposal.name);
+      const fileTool =
+        (FILE_TOOLS as readonly string[]).includes(proposal.name) ||
+        proposal.name === 'edit' ||
+        proposal.name === 'write';
       let result: Record<string, unknown>;
-      if (fileTool) {
+      if (proposal.name === 'run_check' || proposal.name === 'lsp_query') {
+        const files = this.files,
+          selection = input.harness?.projectTools;
+        if (!files || !selection)
+          throw new ToolRefusal('CAPABILITY_DENIED', 'project tools unavailable');
+        const owner = {
+          runId: input.runId,
+          executionId: input.executionId,
+          attemptNo: input.attemptNo,
+          effectId: tool.effectId,
+          selection,
+        };
+        let plan: CheckPlan;
+        let execute: (approved: string | null) => Promise<Record<string, unknown>>;
+        if (proposal.name === 'run_check') {
+          if (!files.planCheck || !files.runCheck)
+            throw new ToolRefusal('CAPABILITY_DENIED', 'check runner unavailable');
+          const check = { ...owner, commandId: String(proposal.args.commandId) };
+          plan = CheckPlan.parse(await files.planCheck(check, cancellation));
+          const runCheck = files.runCheck.bind(files);
+          execute = (approved) => runCheck(check, plan, approved, cancellation);
+        } else {
+          if (!files.planLsp || !files.runLsp)
+            throw new ToolRefusal('CAPABILITY_DENIED', 'language server runner unavailable');
+          const query = { ...owner, query: LspQuery.parse(proposal.args) };
+          plan = CheckPlan.parse(await files.planLsp(query, cancellation));
+          const runLsp = files.runLsp.bind(files);
+          execute = (approved) => runLsp(query, plan, approved, cancellation);
+        }
+        if (cancellation.aborted) throw new ToolRefusal('TARGET_TERMINAL', 'launch cancelled');
+        cancelTimer();
+        let approved: string | null = null;
+        if (!plan.trusted) {
+          if (!(await this.requestLaunchApproval(run, input, tool, plan, cancellation)))
+            throw new ToolRefusal('CAPABILITY_DENIED', 'tool launch was not approved');
+          approved = plan.fingerprint;
+        }
+        await this.boundary(run, executionId);
+        if (cancellation.aborted) throw new ToolRefusal('TARGET_TERMINAL', 'launch cancelled');
+        cancelTimer = this.timers.after(plan.timeoutMs + 120000, timeout);
+        result = await execute(approved);
+      } else if (proposal.name === 'read') {
+        const path = String(proposal.args.path);
+        if (path.startsWith('skills/')) {
+          if (!input.harness || !this.harnesses?.readSkill)
+            throw new ToolRefusal('CAPABILITY_DENIED', 'skill broker unavailable');
+          result = this.harnesses.readSkill(input.harness, path);
+        } else {
+          if (!this.files) throw new ToolRefusal('CAPABILITY_DENIED', 'worktree unavailable');
+          result = await this.files.execute(
+            {
+              name: 'read_file',
+              args: { path },
+              runId: run.runId,
+              executionId,
+              toolCallId: tool.toolCallId,
+            },
+            cancellation,
+          );
+        }
+        const lines = String(result.text ?? '').split('\n');
+        const offset = Number(proposal.args.offset ?? 1);
+        if (offset > lines.length)
+          throw new ToolRefusal('SCHEMA_INVALID', 'read offset is beyond the end of the file');
+        if (utf8ToBytes(lines[offset - 1] ?? '').length > 50 * 1024)
+          throw new ToolRefusal('LIMIT_REACHED', 'the requested line exceeds the read size limit');
+      } else if (fileTool) {
         const files = this.files;
         if (!files) throw new ToolRefusal('CAPABILITY_DENIED', 'no worktree for this run');
         result = await files.execute(
           {
-            name: proposal.name as FileToolName,
+            name: proposal.name as BrokerFileToolName,
             args: proposal.args,
             runId: run.runId,
             executionId,
@@ -3902,7 +5479,18 @@ export class Coordinator {
           cancellation,
         );
       }
-      if (cancellation.aborted || TERMINAL_RUN_STATUSES.has(run.projection.status)) {
+      if (proposal.name === 'run_check' && result.cleanupConfirmed === false)
+        throw new ToolTerminationUnconfirmed();
+      const execution = run.projection.executions[executionId];
+      if (
+        cancellation.aborted ||
+        TERMINAL_RUN_STATUSES.has(run.projection.status) ||
+        !execution ||
+        TERMINAL_EXECUTION_STATUSES.has(execution.status) ||
+        execution.attemptNo !== input.attemptNo ||
+        run.projection.tasks[input.taskId]?.activeExecutionId !== executionId ||
+        run.projection.effects[tool.effectId]?.status !== 'admitted'
+      ) {
         this.commit(run, [
           ...tool.closing(null, 'scope cancelled'),
           {
@@ -3936,7 +5524,28 @@ export class Coordinator {
       // A file backend's refusal (conflict, path policy) is told to the agent as it is.
       const refusal = error instanceof ToolRefusal ? error : null;
       const message = refusal?.message ?? 'external tool failed';
-      this.commit(run, tool.closing(null, message));
+      if (error instanceof ToolTerminationUnconfirmed) {
+        if (run.projection.effects[tool.effectId]?.status === 'admitted')
+          this.commit(run, [
+            {
+              type: 'tool.finished',
+              executionId,
+              payload: {
+                executionId,
+                toolCallId: tool.toolCallId,
+                resultRef: null,
+                error: message,
+              },
+            },
+            {
+              type: 'effect.settled',
+              executionId,
+              payload: { effectId: tool.effectId, outcome: 'unknown' },
+            },
+          ]);
+        this.terminationUnconfirmed = true;
+        this.failRun(run, 'termination_unconfirmed');
+      } else this.commit(run, tool.closing(null, message));
       return {
         ok: false,
         toolCallId: tool.toolCallId,
@@ -3945,6 +5554,7 @@ export class Coordinator {
     } finally {
       cancelTimer();
       scopeListeners.delete(abort);
+      offParent?.();
       listeners.clear();
     }
   }

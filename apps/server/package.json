@@ -19,9 +19,11 @@
     "@corral/runner-langgraph": "workspace:*",
     "@corral/storage-sqlite": "workspace:*",
     "@corral/testkit": "workspace:*",
-    "@earendil-works/pi-ai": "1.2.0",
+    "@earendil-works/pi-ai": "1.3.0",
+    "@earendil-works/pi-mcp": "1.3.0",
     "@fastify/static": "10.1.6",
     "fastify": "5.12.7",
+    "vscode-languageserver-protocol": "3.18.4",
     "zod": "4.6.7"
   },
   "devDependencies": {

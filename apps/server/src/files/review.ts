@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { lstat, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
-import type { Clock } from '@corral/contracts';
+import { type Clock, RecipeStopReason } from '@corral/contracts';
 import type { Db } from '@corral/storage-sqlite';
 import { safeRelative, WorkspaceError, type WorkspaceService } from './service.ts';
 
@@ -54,7 +54,15 @@ export interface IntegrationView {
 }
 
 export interface InboxItem {
-  kind: 'decision' | 'queued' | 'uncertain_write' | 'integration' | 'check_failed' | 'unreviewed';
+  kind:
+    | 'decision'
+    | 'queued'
+    | 'uncertain_write'
+    | 'integration'
+    | 'check_failed'
+    | 'unreviewed'
+    | 'recipe_stopped'
+    | 'lsp_proposal';
   sessionId: string;
   sessionTitle: string;
   runId: string | null;
@@ -523,7 +531,28 @@ export class ReviewService {
   ): InboxItem[] {
     const items: InboxItem[] = [];
     const titleOf = new Map(sessions.map((s) => [s.sessionId, s.title]));
+    const seenSessions = new Set<string>();
     for (const run of runs) {
+      const latest = run.sessionId !== null && !seenSessions.has(run.sessionId);
+      if (run.sessionId) seenSessions.add(run.sessionId);
+      if (latest && run.status === 'failed' && run.sessionId && titleOf.has(run.sessionId)) {
+        const row = this.db
+          .prepare(
+            "SELECT json_extract(projection_json, '$.statusReason') AS reason FROM runs WHERE id = ?",
+          )
+          .get(run.runId) as { reason: string | null } | undefined;
+        const reason = row?.reason?.startsWith('review_recipe:')
+          ? RecipeStopReason.safeParse(row.reason.slice('review_recipe:'.length))
+          : null;
+        if (reason?.success)
+          items.push({
+            kind: 'recipe_stopped',
+            sessionId: run.sessionId,
+            sessionTitle: titleOf.get(run.sessionId) ?? '',
+            runId: run.runId,
+            detail: reason.data,
+          });
+      }
       if (run.status === 'awaiting_user' && run.sessionId && titleOf.has(run.sessionId))
         items.push({
           kind: 'decision',
@@ -543,6 +572,17 @@ export class ReviewService {
           sessionTitle: title,
           runId: null,
           detail: entry.text.slice(0, 120),
+        });
+      const proposals = this.db
+        .prepare("SELECT COUNT(*) AS n FROM lsp_proposals WHERE session_id=? AND state='pending'")
+        .get(id) as { n: number };
+      if (proposals.n > 0)
+        items.push({
+          kind: 'lsp_proposal',
+          sessionId: id,
+          sessionTitle: title,
+          runId: null,
+          detail: String(proposals.n),
         });
       const uncertain = this.db
         .prepare(

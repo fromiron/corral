@@ -6,10 +6,18 @@ import {
   type AgentStartInput,
   FILE_TOOLS,
   type ModelProfileSnapshot,
+  ModelRequestRecord,
 } from '@corral/contracts';
 import type { Channel } from './channel.ts';
 import type { EndpointSpec } from './endpoint.ts';
-import { PROTOCOL_VERSION, WorkerFrame, type WorkerTool } from './protocol.ts';
+import {
+  LEGACY_PROTOCOL_VERSION,
+  PROTOCOL_VERSION,
+  SdkResources,
+  SdkWorkerFrame,
+  WorkerFrame,
+  type WorkerTool,
+} from './protocol.ts';
 
 // Host side of the Pi worker (C-017). The adapter turns worker frames into AgentHost calls,
 // one at a time and in order, so a request permit is committed before the next frame runs.
@@ -19,6 +27,8 @@ import { PROTOCOL_VERSION, WorkerFrame, type WorkerTool } from './protocol.ts';
 export interface PiAdapterOptions {
   /** A fresh worker for one execution (ADR-017: spawned when needed). */
   spawn(): Channel;
+  spawnSdk?(): Channel;
+  harness?(input: AgentStartInput): Promise<SdkResources>;
   /** Access token for the provider of this model, asked per request; null for keyless. */
   credentials(model: ModelProfileSnapshot): Promise<string | null>;
   /** How long a cancelled worker may take to stop before it is terminated. */
@@ -39,16 +49,42 @@ export class PiAgentAdapter implements AgentAdapter {
   }
 
   async start(input: AgentStartInput, host: AgentHost): Promise<AgentHandle> {
+    let resources: SdkResources | undefined;
+    if (input.role.harness) {
+      if (
+        !input.harness ||
+        !this.options.spawnSdk ||
+        !this.options.harness ||
+        !host.reportHarness ||
+        !host.pendingDirectives ||
+        !host.beginNativeTool ||
+        !host.finishNativeTool ||
+        input.harness.binding.profileId !== input.role.harness.profileId ||
+        input.harness.binding.revision !== input.role.harness.revision
+      )
+        throw new Error('the harness runtime is unavailable or unresolved');
+      try {
+        resources = SdkResources.parse(await this.options.harness(input));
+      } catch {
+        throw new Error('harness resources could not be prepared');
+      }
+    } else if (input.harness) throw new Error('unexpected harness snapshot');
     const { provider, modelId } = input.model;
     if (input.mode !== 'live' || !provider || !modelId) {
       throw new Error('the Pi adapter runs live models only');
     }
     const endpoint = this.options.endpoint?.(input.model) ?? undefined;
-    return new WorkerExecution(input, host, this.options, {
-      provider,
-      modelId,
-      ...(endpoint ? { endpoint } : {}),
-    }).handle;
+    return new WorkerExecution(
+      input,
+      host,
+      this.options,
+      {
+        provider,
+        modelId,
+        ...(endpoint ? { endpoint } : {}),
+      },
+      resources,
+    ).handle;
   }
 }
 
@@ -61,50 +97,69 @@ class WorkerExecution {
   private resolve!: (settlement: AgentSettlement) => void;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private pendingSettlement: AgentSettlement | null = null;
+  private readonly uiRequests = new Map<string, AbortController>();
+  private readonly uiRequestIds = new Set<string>();
 
   private readonly input: AgentStartInput;
   private readonly host: AgentHost;
   private readonly options: PiAdapterOptions;
   private readonly model: WorkerModel;
+  private readonly resources: SdkResources | undefined;
 
   constructor(
     input: AgentStartInput,
     host: AgentHost,
     options: PiAdapterOptions,
     model: WorkerModel,
+    resources?: SdkResources,
   ) {
     this.input = input;
     this.host = host;
     this.options = options;
     this.model = model;
+    this.resources = resources;
     this.settlement = new Promise((resolve) => {
       this.resolve = resolve;
     });
-    this.channel = options.spawn();
+    this.channel = resources ? options.spawnSdk!() : options.spawn();
     this.channel.onFrame((raw) => {
       this.queue = this.queue.then(() => this.receive(raw)).catch(() => this.violation());
     });
-    this.channel.onExit((code) => {
+    this.channel.onExit((code, cleanupConfirmed = true) => {
       // Drain already-received IPC before deciding whether the worker supplied a result.
       void this.queue.finally(() => {
         this.finish(
-          this.pendingSettlement ?? {
-            outcome: 'failed',
-            error: `the model worker stopped unexpectedly (${code === null ? 'killed' : `exit ${code}`})`,
-          },
+          !cleanupConfirmed
+            ? {
+                outcome: 'failed',
+                terminationMode: 'unconfirmed',
+                error: 'termination_unconfirmed',
+              }
+            : (this.pendingSettlement ?? {
+                outcome: 'failed',
+                error: `the model worker stopped unexpectedly (${code === null ? 'killed' : `exit ${code}`})`,
+              }),
         );
       });
     });
     this.handle = {
       cancel: (reason) => this.cancel(reason),
       waitForSettlement: () => this.settlement,
+      ...(resources
+        ? {
+            pushDirective: (directive: { directiveId: string; text: string }) => {
+              if (this.state === 'running' && !this.pendingSettlement)
+                this.send({ type: 'directive', ...directive });
+            },
+          }
+        : {}),
     };
   }
 
   private send(frame: Record<string, unknown>) {
     this.channel.send({
       ...frame,
-      protocolVersion: PROTOCOL_VERSION,
+      protocolVersion: this.resources ? PROTOCOL_VERSION : LEGACY_PROTOCOL_VERSION,
       executionId: this.input.executionId,
     });
   }
@@ -112,6 +167,8 @@ class WorkerExecution {
   private finish(settlement: AgentSettlement) {
     if (this.state === 'done') return;
     this.state = 'done';
+    for (const controller of this.uiRequests.values()) controller.abort();
+    this.uiRequests.clear();
     if (this.timer) clearTimeout(this.timer);
     this.resolve(settlement);
   }
@@ -139,6 +196,7 @@ class WorkerExecution {
 
   private async cancel(reason: string) {
     if (this.state === 'done' || this.pendingSettlement) return;
+    for (const controller of this.uiRequests.values()) controller.abort();
     this.send({ type: 'cancel', reason });
     this.timer = setTimeout(
       () => {
@@ -157,7 +215,7 @@ class WorkerExecution {
 
   private async receive(raw: unknown) {
     if (this.state === 'done' || this.pendingSettlement) return;
-    const parsed = WorkerFrame.safeParse(raw);
+    const parsed = (this.resources ? SdkWorkerFrame : WorkerFrame).safeParse(raw);
     if (!parsed.success) return this.violation();
     const frame = parsed.data;
     if (frame.type === 'ready') {
@@ -177,7 +235,36 @@ class WorkerExecution {
         round: this.input.round,
         // Only the tools this role may use, and that its links make meaningful, are offered;
         // the host still checks every call.
-        tools: offeredTools(this.input),
+        tools: this.resources
+          ? [
+              ...offeredTools(this.input).filter((name) =>
+                this.input.harness?.allowedTools.includes(name),
+              ),
+              ...(this.input.harness?.allowedTools.includes('read') &&
+              (this.input.role.allowedWorkTools.includes('read_file') ||
+                this.input.harness.resources.some((resource) => resource.kind === 'skill'))
+                ? ['read']
+                : []),
+              ...(this.input.harness?.allowedTools.includes('write') &&
+              role.allowedWorkTools.includes('write_file')
+                ? ['write']
+                : []),
+              ...(this.input.harness?.allowedTools.includes('edit') &&
+              role.allowedWorkTools.includes('write_file') &&
+              role.allowedWorkTools.includes('read_file')
+                ? ['edit']
+                : []),
+              ...(this.input.harness?.allowedTools.includes('run_check') &&
+              this.input.harness.projectTools?.checkIds.length
+                ? ['run_check']
+                : []),
+              ...(this.input.harness?.allowedTools.includes('lsp_query') &&
+              role.allowedWorkTools.includes('read_file') &&
+              this.input.harness.projectTools?.lspServerIds.length
+                ? ['lsp_query']
+                : []),
+            ]
+          : offeredTools(this.input),
         assignment:
           this.input.assignment.kind === 'delegated'
             ? { kind: 'delegated', brief: this.input.assignment.brief }
@@ -188,9 +275,14 @@ class WorkerExecution {
                   body: this.input.assignment.body,
                 }
               : { kind: 'scheduled' },
+        ...(this.input.item ? { item: this.input.item } : {}),
         delegateTo: this.input.capabilities.delegateTo,
         askTo: this.input.capabilities.askTo,
+        ...(this.resources ? { harness: this.input.harness, resources: this.resources } : {}),
       });
+      if (this.resources)
+        for (const directive of this.host.pendingDirectives!())
+          this.send({ type: 'directive', ...directive });
       return;
     }
     if (this.state !== 'running' || frame.executionId !== this.input.executionId) {
@@ -198,12 +290,133 @@ class WorkerExecution {
     }
 
     switch (frame.type) {
+      case 'ui_request': {
+        if (this.uiRequestIds.has(frame.requestId)) return this.violation();
+        this.uiRequestIds.add(frame.requestId);
+        const controller = new AbortController();
+        this.uiRequests.set(frame.requestId, controller);
+        try {
+          if (!this.host.requestExtensionUi) throw new Error('extension UI unavailable');
+          // Human input must not block the queue that carries its abort and the worker's exit.
+          const result = this.host.requestExtensionUi(frame.request, {
+            get aborted() {
+              return controller.signal.aborted;
+            },
+            onCancel: (listener) => {
+              controller.signal.addEventListener('abort', listener, { once: true });
+              return () => controller.signal.removeEventListener('abort', listener);
+            },
+          });
+          void result
+            .then(
+              (answer) => {
+                if (this.state === 'running' && !this.pendingSettlement)
+                  this.send({ type: 'ui_answer', requestId: frame.requestId, result: answer });
+              },
+              () => {
+                if (this.state === 'running' && !this.pendingSettlement)
+                  this.send({
+                    type: 'refused',
+                    requestId: frame.requestId,
+                    reason: 'extension UI unavailable',
+                  });
+              },
+            )
+            .finally(() => this.uiRequests.delete(frame.requestId));
+        } catch {
+          this.uiRequests.delete(frame.requestId);
+          this.send({
+            type: 'refused',
+            requestId: frame.requestId,
+            reason: 'extension UI unavailable',
+          });
+        }
+        return;
+      }
+      case 'ui_cancel':
+        this.uiRequests.get(frame.requestId)?.abort();
+        return;
+      case 'ui_notice':
+        try {
+          if (!this.host.notifyExtensionUi) throw new Error('extension UI unavailable');
+          await this.host.notifyExtensionUi(frame.notice);
+          this.send({ type: 'ack', requestId: frame.requestId });
+        } catch {
+          this.send({
+            type: 'refused',
+            requestId: frame.requestId,
+            reason: 'extension UI unavailable',
+          });
+        }
+        return;
+      case 'mcp_authorization':
+        try {
+          if (!this.resources || !this.host.mcpAuthorization) throw new Error('unavailable');
+          const token = await this.host.mcpAuthorization(frame.serverId, frame.challenge);
+          this.send({
+            type: 'mcp_authorization',
+            requestId: frame.requestId,
+            ...(token ? { token } : {}),
+          });
+        } catch {
+          this.send({
+            type: 'refused',
+            requestId: frame.requestId,
+            reason: 'MCP authorization unavailable',
+          });
+        }
+        return;
+      case 'harness_report':
+      case 'harness_tools':
+      case 'request_record':
+      case 'native_tool_start':
+      case 'native_tool_finish': {
+        try {
+          if (frame.type === 'harness_report') await this.host.reportHarness!(frame.report);
+          else if (frame.type === 'harness_tools')
+            await this.host.updateHarnessTools!(frame.update);
+          else if (frame.type === 'request_record') {
+            if (!this.host.recordProviderPayload)
+              throw new Error('provider request recording unavailable');
+            await this.host.recordProviderPayload({
+              modelCallId: frame.modelCallId,
+              payloadHash: frame.payloadHash,
+              payloadBytes: frame.payloadBytes,
+            });
+          } else if (frame.type === 'native_tool_start')
+            await this.host.beginNativeTool!(frame.toolCallId, frame.argsHash);
+          else await this.host.finishNativeTool!(frame.toolCallId, frame.outcome);
+          this.send({ type: 'ack', requestId: frame.requestId });
+        } catch (error) {
+          this.send({ type: 'refused', requestId: frame.requestId, reason: reasonOf(error) });
+        }
+        return;
+      }
       case 'request_dispatched':
-        await this.host.modelRequestDispatched?.(frame.modelCallId);
+        if (this.resources && !('requestId' in frame)) return this.violation();
+        try {
+          await this.host.modelRequestDispatched?.(frame.modelCallId);
+          if ('requestId' in frame) this.send({ type: 'ack', requestId: frame.requestId });
+        } catch (error) {
+          if ('requestId' in frame)
+            this.send({ type: 'refused', requestId: frame.requestId, reason: reasonOf(error) });
+          else throw error;
+        }
         return;
       case 'prepare_request': {
         try {
-          const permit = await this.host.prepareModelRequest();
+          if (this.resources && !('purpose' in frame)) return this.violation();
+          const permit = await this.host.prepareModelRequest(
+            'purpose' in frame
+              ? ModelRequestRecord.parse({
+                  purpose: frame.purpose,
+                  directiveIds: frame.directiveIds,
+                  contextHash: frame.contextHash,
+                  contextBytes: frame.contextBytes,
+                  sections: frame.sections,
+                })
+              : undefined,
+          );
           const apiKey = await this.options.credentials(this.input.model);
           this.send({
             type: 'permit',
@@ -220,7 +433,11 @@ class WorkerExecution {
       }
       case 'authorize_tool': {
         try {
-          const decision = await this.host.authorizeTool({ name: frame.name, args: frame.args });
+          const decision = await this.host.authorizeTool({
+            name: frame.name,
+            args: frame.args,
+            ...(frame.parentToolCallId ? { parentToolCallId: frame.parentToolCallId } : {}),
+          });
           this.send({
             type: 'tool_authorization',
             requestId: frame.requestId,

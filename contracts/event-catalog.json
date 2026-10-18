@@ -243,5 +243,65 @@
     "type": "decision.failed",
     "requiredContent": "decisionId,reason,latencyMs",
     "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "harness.loaded",
+    "requiredContent": "snapshotHash,tools,diagnostics (no paths or bodies)",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "harness.load_failed",
+    "requiredContent": "snapshotHash,code",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "model.request_recorded",
+    "requiredContent": "modelCallId,snapshotHash,purpose,directiveIds,contextHash,contextBytes,sections",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "model.payload_recorded",
+    "requiredContent": "modelCallId,payloadHash,payloadBytes (final provider JSON, no headers or bodies)",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "extension.ui_requested",
+    "requiredContent": "requestId,executionId,attemptNo,kind,bodyRef,bodyHash,deadline",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "extension.ui_answered",
+    "requiredContent": "requestId,executionId,attemptNo,answerRef,answerHash",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "extension.ui_expired",
+    "requiredContent": "requestId,executionId,attemptNo,reason",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "extension.ui_notified",
+    "requiredContent": "executionId,kind,key,level,bodyRef,bodyHash",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "recipe.evaluated",
+    "requiredContent": "loopNodeId,recipeId,revision,recipeHash,criteriaVersionId,iterationId,candidateVersionId,reviewVersionId,checkReportIds,tree,verdict",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "recipe.stopped",
+    "requiredContent": "loopNodeId,recipeId,revision,recipeHash,criteriaVersionId,candidateVersionId,reason",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "harness.tools_updated",
+    "requiredContent": "snapshotHash,revision,tools (no paths or bodies)",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "harness.simulated",
+    "requiredContent": "snapshotHash (declared settings only, no SDK loading claim)",
+    "status": "payload_schema_to_implement"
   }
 ]

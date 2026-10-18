@@ -1,9 +1,55 @@
+import { RunEvent } from '@corral/contracts';
 import { describe, expect, it, vi } from 'vitest';
-import { registeredCommands, runShortcut, setCommands } from './commandRegistry.ts';
+import {
+  harnessCommands,
+  registeredCommands,
+  runShortcut,
+  setCommands,
+} from './commandRegistry.ts';
 
 // Workbench polish P2/P4: one list of commands for `/`, ⌘K, menus and shortcuts.
 
 describe('command registry', () => {
+  it('[TC-HAR-007-N] extension commands retain their target and package alias and cannot run after startup', () => {
+    const event = RunEvent.parse({
+      schemaVersion: '0.1',
+      eventId: 'event_1',
+      runId: 'run_1',
+      runSeq: 1,
+      recordedAt: '2026-10-18T00:00:00.000Z',
+      actor: { kind: 'runtime', id: 'runtime' },
+      causedByEventIds: [],
+      executionId: 'exec_1',
+      type: 'harness.loaded',
+      payload: {
+        snapshotHash: 'a'.repeat(64),
+        tools: [],
+        diagnostics: [],
+        commands: [
+          {
+            name: 'pause',
+            invocation: 'pause',
+            alias: 'fixture:pause',
+            source: 'extension:fixture@1.0.0',
+            description: 'Mode',
+            condition: 'startup',
+          },
+        ],
+      },
+    });
+    const commands = harnessCommands([event], 'Extensions', 'Startup only');
+    expect(commands).toMatchObject([
+      {
+        source: 'extension',
+        targetExecutionId: 'exec_1',
+        condition: 'startup',
+        slash: 'fixture:pause',
+        disabled: true,
+        hint: 'Startup only',
+      },
+    ]);
+    expect(commands[0]?.id).toContain('run_1:exec_1');
+  });
   it('keeps the same list when only the functions change, and runs the newest one', () => {
     const first = vi.fn();
     const second = vi.fn();

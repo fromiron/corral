@@ -8,6 +8,7 @@ import {
   type SourcePort,
   type TargetPort,
 } from '@corral/contracts';
+import { recipeAttempts, reviewCriteriaHash } from '../review-recipe.ts';
 import {
   DECISION_PORTS,
   DECISION_RULE,
@@ -133,6 +134,7 @@ export function compileDefinition(input: unknown, options: CompileOptions = {}):
   checkCapabilities(context, graph);
   checkBindings(context, graph);
   checkReviewerCriteria(context);
+  checkReviewRecipes(context);
   checkModelProfiles(context, options);
   if (context.hasErrors()) return fail(context.diagnostics);
 
@@ -151,6 +153,60 @@ const BLOCKING = new Set<DiagnosticCode>([
   'LOOP_BOUNDARY',
   'ENTRY_INVALID',
 ]);
+
+function checkReviewRecipes(c: Context) {
+  for (const loop of c.definition.nodes) {
+    if (loop.type !== 'loop' || !loop.reviewRecipe) continue;
+    const recipe = loop.reviewRecipe,
+      candidate = c.nodes.get(recipe.candidateNodeId);
+    const members = c.definition.nodes.filter(
+      (node) => 'loopId' in node && node.loopId === loop.id,
+    );
+    const reviewer = members.find(
+      (node) => node.type === 'agent' && node.roleId === recipe.evaluatorRoleId,
+    );
+    const decision = members.find((node) => node.type === 'decision' && node.mode === 'review');
+    const edge = (from: string, port: string, to: string, targetPort = 'in') =>
+      c.definition.controlEdges.some(
+        (edge) =>
+          edge.source === from &&
+          edge.sourcePort === port &&
+          edge.target === to &&
+          edge.targetPort === targetPort,
+      );
+    if (recipe.criteriaHash !== reviewCriteriaHash(c.definition.input.criteria))
+      c.error('REVIEW_CONTRACT', 'recipe criteria changed; save a new recipe revision', {
+        nodeId: loop.id,
+      });
+    if (
+      members.length !== 3 ||
+      candidate?.type !== 'agent' ||
+      candidate.loopId !== loop.id ||
+      candidate.invocation !== 'scheduled' ||
+      reviewer?.type !== 'agent' ||
+      reviewer.id === candidate.id ||
+      c.roleOf(reviewer.id)?.outputContract !== 'review' ||
+      decision?.type !== 'decision' ||
+      !edge(loop.id, 'body', candidate.id) ||
+      !edge(candidate.id, 'out', reviewer.id) ||
+      !edge(reviewer.id, 'out', decision.id) ||
+      !edge(decision.id, 'pass', loop.id, 'exit') ||
+      !edge(decision.id, 'revise', loop.id, 'repeat') ||
+      !reviewer.inputBindings.some(
+        (binding) => binding.kind === 'task_output' && binding.sourceNodeId === candidate.id,
+      ) ||
+      !reviewer.inputBindings.some(
+        (binding) => binding.kind === 'run_input' && binding.name === 'criteria',
+      ) ||
+      decision.inputBindings[0]?.sourceNodeId !== reviewer.id
+    )
+      c.error(
+        'REVIEW_CONTRACT',
+        'recipe requires a candidate, criteria-bound reviewer and review decision in this Loop',
+        { nodeId: loop.id },
+      );
+  }
+}
 
 /**
  * A reviewer that is not given the criteria text can only guess what to check (#20). A warning:
@@ -747,7 +803,9 @@ function lower(c: Context, graph: Graph): CompiledPlan {
         steps[id] = {
           kind: 'loop',
           nodeId: id,
-          maxIterations: node.maxIterations,
+          maxIterations: node.reviewRecipe
+            ? Math.min(node.maxIterations, recipeAttempts(node.reviewRecipe))
+            : node.maxIterations,
           body: targetOf(id, 'body') as PlanTarget,
           next: targetOf(id, 'next') as PlanTarget,
         };

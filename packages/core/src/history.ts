@@ -1,5 +1,6 @@
 import {
   CorralDefinition,
+  EffectiveHarnessSnapshot,
   Identifier,
   ModelProfileSnapshot,
   RunEvent,
@@ -22,6 +23,7 @@ const Snapshot = z.strictObject({
   criteriaVersionId: Identifier,
   mode: z.enum(['mock', 'live']),
   models: z.record(Identifier, ModelProfileSnapshot),
+  harnesses: z.record(Identifier, EffectiveHarnessSnapshot).optional(),
   startedAt: z.iso.datetime(),
 });
 const PublicArchive = z.strictObject({
@@ -196,6 +198,10 @@ function recordReferences(events: readonly RunEvent[]): Set<string> {
       add(event.payload.after.criteriaVersionId);
     }
     if (event.type === 'model.finished') add(event.payload.responseRef);
+    if (event.type === 'approval.requested' && event.payload.tool) add(event.payload.tool.bodyRef);
+    if (event.type === 'extension.ui_requested' || event.type === 'extension.ui_notified')
+      add(event.payload.bodyRef);
+    if (event.type === 'extension.ui_answered') add(event.payload.answerRef);
     if (event.type === 'tool.finished' && event.payload.resultRef) {
       const kind = tools.get(event.payload.toolCallId);
       const ref = event.payload.resultRef;

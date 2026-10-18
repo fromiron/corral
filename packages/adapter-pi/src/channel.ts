@@ -1,4 +1,9 @@
 import { type ChildProcess, fork } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { recordWorkerLease, recoverSdkWorkers } from './worker-leases.ts';
 
 // The transport between host and one worker (ADR-017: one child process per execution,
 // spawned when needed). The protocol does not depend on it, so tests use a memory pair and
@@ -8,7 +13,7 @@ export interface Channel {
   send(frame: unknown): void;
   onFrame(handler: (frame: unknown) => void): void;
   /** Called once when the worker is gone; `code` is null when it was killed by a signal. */
-  onExit(handler: (code: number | null) => void): void;
+  onExit(handler: (code: number | null, cleanupConfirmed?: boolean) => void): void;
   kill(): void;
 }
 
@@ -53,32 +58,124 @@ export function memoryChannelPair(): { host: Channel; worker: Channel } {
  * A worker in its own Node process over the IPC channel. stdout is ignored and stderr is
  * kept only as a short diagnostic tail, never parsed as protocol (Technical-Design §7.4).
  */
-export function processChannel(entry: string, options: { env?: NodeJS.ProcessEnv } = {}): Channel {
+export function processChannel(
+  entry: string,
+  options: { env?: NodeJS.ProcessEnv; leaseDirectory?: string; childLeaseDirectory?: string } = {},
+): Channel {
+  const processOwner = randomUUID();
   const child: ChildProcess = fork(entry, [], {
     stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
     serialization: 'json',
+    detached: process.platform !== 'win32',
+    // Parent eval/debug/preload flags do not describe the standalone worker entry.
+    execArgv: [],
     // The worker needs no secrets from the environment: credentials arrive per request.
     env: {
       NODE_ENV: process.env.NODE_ENV ?? 'production',
       PATH: process.env.PATH ?? '',
+      ...(process.platform === 'win32' ? {} : { CORRAL_WORKER_GROUP: '1' }),
       ...options.env,
+      CORRAL_PROCESS_OWNER: processOwner,
     },
   });
   child.stderr?.on('data', () => {});
   let exited = false;
-  const exitHandlers: ((code: number | null) => void)[] = [];
-  child.on('exit', (code) => {
+  let releaseLease = () => {};
+  const exitHandlers: ((code: number | null, cleanupConfirmed?: boolean) => void)[] = [];
+  const stopChildren = () => {
+    if (process.platform !== 'win32' && child.pid) {
+      try {
+        process.kill(-child.pid, 'SIGKILL');
+      } catch {
+        /* The group is already gone. */
+      }
+    }
+  };
+  const ended = (code: number | null) => {
+    if (exited) return;
+    stopChildren();
     exited = true;
-    for (const handler of exitHandlers) handler(code);
+    const confirmed = (cleanupConfirmed = true) => {
+      try {
+        if (cleanupConfirmed) releaseLease();
+      } catch {
+        /* Remaining records are rechecked at startup. */
+      }
+      for (const handler of exitHandlers) handler(code, cleanupConfirmed);
+    };
+    if (options.childLeaseDirectory) {
+      void recoverSdkWorkers(options.childLeaseDirectory)
+        .then(() => {
+          rmSync(options.childLeaseDirectory!, { recursive: true, force: true });
+          confirmed();
+        })
+        .catch(() => {
+          confirmed(false);
+        });
+    } else confirmed();
+  };
+  child.on('exit', ended);
+  child.on('error', () => {
+    if (!child.pid) ended(null);
+    else {
+      stopChildren();
+      child.kill('SIGKILL');
+    }
   });
+  if (options.leaseDirectory && child.pid) {
+    try {
+      releaseLease = recordWorkerLease(options.leaseDirectory, child.pid, processOwner);
+    } catch (error) {
+      stopChildren();
+      child.kill('SIGKILL');
+      throw error;
+    }
+  }
   return {
     send: (frame) => {
-      if (!exited && child.connected) child.send(frame as never);
+      if (!exited && child.connected) child.send(frame as never, () => {});
     },
     onFrame: (handler) => void child.on('message', handler),
     onExit: (handler) => void exitHandlers.push(handler),
     kill: () => {
-      if (!exited) child.kill('SIGKILL');
+      if (!exited) {
+        stopChildren();
+        child.kill('SIGKILL');
+      }
     },
   };
+}
+
+/** Compatibility isolation for trusted native extensions; this is not an OS sandbox. */
+export function sdkProcessChannel(
+  entry: string,
+  options: { leaseDirectory?: string } = {},
+): Channel {
+  const directory = mkdtempSync(join(tmpdir(), 'corral-sdk-'));
+  const childLeaseDirectory = join(options.leaseDirectory ?? directory, `children-${randomUUID()}`);
+  try {
+    const channel = processChannel(entry, {
+      ...options,
+      childLeaseDirectory,
+      env: {
+        CORRAL_WORKER_DIR: directory,
+        CORRAL_WORKER_LEASE_DIR: childLeaseDirectory,
+        HOME: directory,
+        XDG_CONFIG_HOME: join(directory, 'config'),
+        CLAUDE_CONFIG_DIR: join(directory, 'claude'),
+        JITI_FS_CACHE: join(directory, 'jiti'),
+        GIT_CONFIG_NOSYSTEM: '1',
+        GIT_TERMINAL_PROMPT: '0',
+        NPM_CONFIG_USERCONFIG: join(directory, 'user.npmrc'),
+        NPM_CONFIG_GLOBALCONFIG: join(directory, 'global.npmrc'),
+      },
+    });
+    channel.onExit((_code, confirmed) => {
+      if (confirmed !== false) rmSync(directory, { recursive: true, force: true });
+    });
+    return channel;
+  } catch (error) {
+    rmSync(directory, { recursive: true, force: true });
+    throw error;
+  }
 }

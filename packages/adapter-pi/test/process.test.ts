@@ -1,5 +1,8 @@
 import { fork } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { createConnection } from 'node:net';
 import { join } from 'node:path';
+import { canonicalJson, type RunEvent } from '@corral/contracts';
 import {
   Coordinator,
   InProcessTransport,
@@ -11,8 +14,8 @@ import { startCompatibleEndpoint } from '@corral/testkit/endpoint';
 import { afterEach, describe, expect, it } from 'vitest';
 import { PiAgentAdapter } from '../src/adapter.ts';
 import { processChannel } from '../src/channel.ts';
-import { WORKER_ENTRY } from '../src/index.ts';
-import { PROTOCOL_VERSION } from '../src/protocol.ts';
+import { SDK_WORKER_ENTRY, sdkProcessChannel, WORKER_ENTRY } from '../src/index.ts';
+import { LEGACY_PROTOCOL_VERSION as PROTOCOL_VERSION } from '../src/protocol.ts';
 import { liveModels } from './harness.ts';
 
 const FIXTURE = join(import.meta.dirname, 'fixtures', 'faux-worker.ts');
@@ -48,6 +51,43 @@ async function run(transport: InProcessTransport) {
 }
 
 describe('worker in a child process (C-017, ADR-017)', () => {
+  it.skipIf(process.platform === 'win32').each(['kill', 'exit'])(
+    '[TC-HAR-006-N] worker %s also ends its ordinary child processes',
+    async (mode) => {
+      const channel = processChannel(join(import.meta.dirname, 'fixtures', 'process-group.ts'));
+      const ready = new Promise<{ port: number; pid: number }>((resolve) =>
+        channel.onFrame((frame) => resolve(frame as { port: number; pid: number })),
+      );
+      const exited = new Promise<void>((resolve) => channel.onExit(() => resolve()));
+      const child = await ready;
+      const listening = () =>
+        new Promise<boolean>((resolve) => {
+          const socket = createConnection({ host: '127.0.0.1', port: child.port });
+          socket.once('connect', () => {
+            socket.destroy();
+            resolve(true);
+          });
+          socket.once('error', () => {
+            socket.destroy();
+            resolve(false);
+          });
+        });
+      try {
+        expect(await listening()).toBe(true);
+        if (mode === 'kill') channel.kill();
+        else channel.send({ type: 'exit' });
+        await exited;
+        await expect.poll(listening).toBe(false);
+      } finally {
+        channel.kill();
+        try {
+          process.kill(child.pid, 'SIGKILL');
+        } catch {
+          /* Already stopped as expected. */
+        }
+      }
+    },
+  );
   it('[TC-RUN-007-N] exits when the owning coordinator process disconnects', async () => {
     const child = fork(join(import.meta.dirname, 'fixtures', 'orphan-worker.ts'), [], {
       stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
@@ -123,15 +163,19 @@ describe('worker in a child process (C-017, ADR-017)', () => {
   }, 30_000);
 
   it.each([
-    ['keyless', true, 'Bearer no-key'],
-    ['keyed', false, 'Bearer per-request-key'],
+    ['keyless core', true, 'Bearer no-key', false],
+    ['keyed core', false, 'Bearer per-request-key', false],
+    ['keyless SDK', true, 'Bearer no-key', true],
+    ['keyed SDK', false, 'Bearer per-request-key', true],
   ])(
     '[TC-SEC-002-H] runs a live step on a %s OpenAI-compatible endpoint, with only the right key (CR-005)',
-    async (_name, keyless, authorization) => {
+    async (_name, keyless, authorization, sdk) => {
       const endpoint = await startCompatibleEndpoint();
       try {
         let calls = 0;
+        const payloadHashes: string[] = [];
         endpoint.setReply((body) => {
+          payloadHashes.push(createHash('sha256').update(canonicalJson(body)).digest('hex'));
           calls += 1;
           const written = [...JSON.stringify(body).matchAll(/artv_[A-Za-z0-9]+/g)].at(-1)?.[0];
           if (calls === 1)
@@ -140,12 +184,31 @@ describe('worker in a child process (C-017, ADR-017)', () => {
             return { toolCall: { name: 'submit_result', args: { artifactVersionIds: [written] } } };
           return 'Done.';
         });
+        const harness = {
+          binding: { profileId: 'empty', revision: 1 },
+          snapshotHash: 'a'.repeat(64),
+          piVersion: '1.3.0' as const,
+          policyRevision: 1,
+          policy: 'strict' as const,
+          resources: [],
+          allowedTools: ['write_artifact', 'submit_result'],
+          tools: [],
+          diagnostics: [],
+        };
         const transport = new InProcessTransport(
           new Coordinator({
             clock: new FakeClock(),
             ids: new SequentialIdFactory(),
+            ...(sdk ? { harnesses: { resolve: () => harness } } : {}),
             agents: new PiAgentAdapter({
               spawn: () => processChannel(WORKER_ENTRY),
+              spawnSdk: () => sdkProcessChannel(SDK_WORKER_ENTRY),
+              harness: async () => ({
+                extensions: [],
+                skills: [],
+                startupCommands: [],
+                bundles: [],
+              }),
               // The host never hands a key for a keyless endpoint; the worker drops one anyway.
               credentials: async () => 'per-request-key',
               endpoint: (model) =>
@@ -179,13 +242,33 @@ describe('worker in a child process (C-017, ADR-017)', () => {
             },
           }),
         );
-        const { runId, final } = await run(transport);
+        const definition = linearCorral(['writer']);
+        if (sdk) definition.roles[0]!.harness = harness.binding;
+        const result = await transport.startRun({
+          schemaVersion: '0.1',
+          commandId: 'cmd_process',
+          definition,
+          mode: 'live',
+        });
+        const runId = result.runId!;
+        const final = await waitForProjection(transport, runId, settled);
         expect(final.status).toBe('succeeded');
         const output = final.output?.artifactVersionIds[0] ?? '';
         expect(await transport.getArtifactText(runId, output)).toBe('Hi from the endpoint');
         expect(endpoint.models.every((m) => m === 'llama3.2')).toBe(true);
         expect(endpoint.authorizations.length).toBeGreaterThan(1);
         expect(endpoint.authorizations.every((a) => a === authorization)).toBe(true);
+        if (sdk) {
+          const events: RunEvent[] = [];
+          const stop = transport.subscribe(runId, 0, { onEvent: (event) => events.push(event) });
+          await Promise.resolve();
+          stop();
+          expect(
+            events
+              .filter((e) => e.type === 'model.payload_recorded')
+              .map((e) => e.payload.payloadHash),
+          ).toEqual(payloadHashes);
+        }
       } finally {
         await endpoint.close();
       }

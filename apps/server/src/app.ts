@@ -1,11 +1,14 @@
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { recoverSdkWorkers } from '@corral/adapter-pi';
 import {
   type AgentAdapter,
   CanvasLayout,
   type Clock,
   type CommandError,
+  ContentHash,
   CorralDefinitionDraft,
   CreateRunRequest,
   type DecisionProvider,
@@ -43,6 +46,10 @@ import { z } from 'zod';
 import packageJson from '../package.json' with { type: 'json' };
 import { ReviewService } from './files/review.ts';
 import { type ChangeScope, WorkspaceError, WorkspaceService } from './files/service.ts';
+import { McpCredentials } from './harness/mcp-credentials.ts';
+import { McpService } from './harness/mcp-service.ts';
+import { registerHarnessRoutes } from './harness/routes.ts';
+import { HarnessService } from './harness/service.ts';
 import { ImportInput, type InputOptions, InputRegistry } from './inputs.ts';
 import {
   assertOutsideWorkspace,
@@ -116,7 +123,11 @@ export interface LiveModels {
   /** Models a subscription sign-in may call (pi-ai's ChatGPT-account catalog for OpenAI). */
   subscriptionModels?: (providerId: string) => ReadonlySet<string> | null;
   /** The agent adapter for live runs; it asks the registry for each request's token. */
-  agents(registry: ModelRegistry): AgentAdapter;
+  agents(
+    registry: ModelRegistry,
+    harnesses: HarnessService,
+    workerLeaseDirectory: string,
+  ): AgentAdapter;
   /** Profiles when the workspace names none; they follow the available sign-in (CR-004). */
   defaultProfiles?: () => Promise<ProfileConfig[]>;
 }
@@ -124,8 +135,14 @@ export interface LiveModels {
 /** Simulated agents for mock runs, real ones for live runs (fixed per run in its snapshot). */
 function routeByMode(mock: AgentAdapter, live: AgentAdapter | null): AgentAdapter {
   return {
-    start: (input, host) => {
-      if (input.mode === 'mock') return mock.start(input, host);
+    start: async (input, host) => {
+      if (input.mode === 'mock') {
+        if (input.harness) {
+          if (!host.simulateHarness) throw new Error('harness simulation is unavailable');
+          await host.simulateHarness();
+        }
+        return mock.start(input, host);
+      }
       if (!live) return Promise.reject(new Error('this server has no live model connection'));
       return live.start(input, host);
     },
@@ -137,6 +154,10 @@ export interface CorralServer {
   bootstrapUrl: string;
   policy: InstallationPolicy;
   coordinator: Coordinator;
+  prepareEvaluation(target: {
+    projectId: string;
+    baseCommit: string;
+  }): Promise<{ sessionId: string; baseCommit: string }>;
   close(): Promise<void>;
 }
 
@@ -258,6 +279,8 @@ async function createCorralServer(
   assertLoopback(host);
   resources.defer(acquireWorkspaceOwnership(options.workspace));
   const workspace = prepareWorkspace(options.workspace);
+  const workerLeaseDirectory = join(workspace.root, '.corral', 'sdk-workers');
+  await recoverSdkWorkers(workerLeaseDirectory);
   const clock = options.clock ?? systemClock;
   const ids = options.ids ?? new RandomIdFactory();
   const db = openDatabase(workspace.dbPath);
@@ -307,9 +330,25 @@ async function createCorralServer(
     clock,
     worktreeRoot: options.worktreeRoot ?? defaultWorktreeRoot(),
     forbidden: [join(workspace.root, '.corral'), userConfigDir()],
+    timers: options.timers ?? systemTimers,
   });
+  resources.defer(() => files.dispose());
 
   const review = new ReviewService({ db, clock, files });
+  const mcpConfigDir = options.live?.configDir ?? userConfigDir();
+  assertOutsideWorkspace(mcpConfigDir, workspace.root);
+  const mcpCredentials = new McpCredentials({
+    directory: join(mcpConfigDir, 'mcp', createHash('sha256').update(workspace.root).digest('hex')),
+  });
+  resources.defer(() => mcpCredentials.dispose());
+  const mcp = new McpService(files, mcpCredentials);
+  const harnesses = new HarnessService({
+    mcp,
+    db,
+    clock,
+    root: join(workspace.root, '.corral', 'harness'),
+  });
+  resources.defer(() => harnesses.dispose());
 
   const coordinator = new Coordinator({
     clock,
@@ -317,12 +356,15 @@ async function createCorralServer(
     timers: options.timers ?? systemTimers,
     agents: routeByMode(
       options.agents,
-      registry && options.live ? options.live.agents(registry) : null,
+      registry && options.live
+        ? options.live.agents(registry, harnesses, workerLeaseDirectory)
+        : null,
     ),
     ...(registry ? { models: registry } : {}),
     store,
     tools: inputs,
     files,
+    harnesses,
     runner: new LangGraphRunner(),
     corrals,
     policy: workspace.policy,
@@ -570,6 +612,8 @@ async function createCorralServer(
       return fail(reply, 'SCHEMA_INVALID', 'invalid history archive');
     }
   });
+
+  registerHarnessRoutes(app, harnesses, files);
 
   // ── models (C-058) ─────────────────────────────────────────────────────────
   // Status and expiry only; tokens never appear in these answers (ADR-019).
@@ -1002,12 +1046,66 @@ async function createCorralServer(
       return workspaceFail(reply, error);
     }
   });
+  app.post<{ Params: { sessionId: string; verificationId: string } }>(
+    '/api/v1/sessions/:sessionId/verifications/:verificationId/cancel',
+    async (request, reply) => {
+      if (!(await sessionOr404(reply, request.params.sessionId))) return reply;
+      try {
+        files.cancelVerification(request.params.sessionId, request.params.verificationId);
+        return reply.code(204).send();
+      } catch (error) {
+        return workspaceFail(reply, error);
+      }
+    },
+  );
   app.get<SessionParams>('/api/v1/sessions/:sessionId/run-snapshots', async (request) =>
     files.runSnapshots(request.params.sessionId),
   );
   app.get<SessionParams>('/api/v1/sessions/:sessionId/file-operations', async (request) =>
     files.fileOperations(request.params.sessionId),
   );
+
+  app.get<SessionParams>('/api/v1/sessions/:sessionId/lsp-proposals', async (request, reply) => {
+    if (!(await sessionOr404(reply, request.params.sessionId))) return reply;
+    try {
+      return files.lspProposals(request.params.sessionId);
+    } catch (error) {
+      return workspaceFail(reply, error);
+    }
+  });
+  type ProposalParams = { Params: { sessionId: string; proposalId: string } };
+  app.get<ProposalParams>(
+    '/api/v1/sessions/:sessionId/lsp-proposals/:proposalId',
+    async (request, reply) => {
+      if (!(await sessionOr404(reply, request.params.sessionId))) return reply;
+      try {
+        return files.lspProposal(
+          request.params.sessionId,
+          Identifier.parse(request.params.proposalId),
+        );
+      } catch (error) {
+        return workspaceFail(reply, error);
+      }
+    },
+  );
+  for (const action of ['apply', 'dismiss'] as const)
+    app.post<ProposalParams>(
+      `/api/v1/sessions/:sessionId/lsp-proposals/:proposalId/${action}`,
+      async (request, reply) => {
+        if (!(await sessionOr404(reply, request.params.sessionId))) return reply;
+        const body = z.strictObject({ hash: ContentHash }).safeParse(request.body);
+        if (!body.success)
+          return fail(reply, 'SCHEMA_INVALID', 'the reviewed proposal hash is required');
+        try {
+          const id = Identifier.parse(request.params.proposalId);
+          return action === 'apply'
+            ? await files.applyLspProposal(request.params.sessionId, id, body.data.hash)
+            : files.dismissLspProposal(request.params.sessionId, id, body.data.hash);
+        } catch (error) {
+          return workspaceFail(reply, error);
+        }
+      },
+    );
 
   // ── Review comments, decisions, applying and reverting (CR-013) ──────────────
   const Tree = z.string().regex(/^[0-9a-f]{40,64}$/);
@@ -1284,7 +1382,17 @@ async function createCorralServer(
               (patch.before.criteriaVersionId === versionId ||
                 patch.after.criteriaVersionId === versionId),
           ) ||
-          coordinator.getRunSnapshot(runId)?.criteriaVersionId === versionId);
+          coordinator.getRunSnapshot(runId)?.criteriaVersionId === versionId ||
+          store
+            .readEvents(runId, 0)
+            .some(
+              (event) =>
+                ((event.type === 'extension.ui_requested' ||
+                  event.type === 'extension.ui_notified') &&
+                  event.payload.bodyRef === versionId) ||
+                (event.type === 'extension.ui_answered' && event.payload.answerRef === versionId) ||
+                (event.type === 'approval.requested' && event.payload.tool?.bodyRef === versionId),
+            ));
       const text = known ? coordinator.getArtifactText(runId, versionId) : null;
       return text === null ? fail(reply, 'TARGET_NOT_FOUND', 'no such version') : { text };
     },
@@ -1431,6 +1539,19 @@ async function createCorralServer(
     bootstrapUrl: `${url}/#bootstrap=${token}`,
     policy: workspace.policy,
     coordinator,
+    async prepareEvaluation(target) {
+      const created = await corrals.createSession({
+        projectId: target.projectId,
+        title: 'Evaluation',
+      });
+      if (!created.ok) throw new Error(created.message);
+      const copy = await files.createWorktree(
+        created.session.sessionId,
+        target.projectId,
+        target.baseCommit,
+      );
+      return { sessionId: created.session.sessionId, baseCommit: copy.baseCommit };
+    },
     async close() {
       for (const close of [...streams]) close();
       await resources.disposeAsync();

@@ -24,7 +24,7 @@
 | 계약 | Zod 4 | REST/IPC/정의/command validation 및 JSON Schema 생성 | MIT; TypeBox는 Pi 어댑터 내부 경계에 제한 | S13,S07 |
 | 로컬 API | Fastify 5 | 세션, 명령, 조회, SSE, 일관된 오류 | MIT; SSE 취소/정적 UI/보안 plugin 호환성 검사 | S14,S38 |
 | 그래프 실행 | @langchain/langgraph | 검증된 정적 그래프/제한된 loop 실행 | MIT. 제품의 authoritative task/patch 상태를 중복 소유하지 않음 | S04,S05,S40 |
-| 에이전트 | @earendil-works/pi-agent-core + pi-ai | 모델 tool loop·stream·훅·취소 | MIT, 확인 릴리스1.2.0; coding-agent의 임의 shell loader는 제외 | S06,S07,S36 |
+| 에이전트 | @earendil-works/pi-agent-core + pi-ai + pi-coding-agent | 기본 tool loop, 역할별 명시 SDK 세션(CR-018) | MIT, 모두 1.3.0 정확 고정. 내장 shell·파일·자동 리소스 탐색 제외 | S06,S07,S36 |
 | 저장 | SQLite + better-sqlite3 + Drizzle | 로컬 영속 이벤트·투영·텍스트 산출물의 atomic commit | SQLite public domain / driver MIT / ORM Apache-2.0 | S15,S20~23,S34 |
 | 단위·통합 | Vitest | pure reducer, timeout·fake timer, DB/API 통합 | MIT; 관측 릴리스5.0.4를 무조건 채택하지 말고 호환 검증 | S16,S39 |
 | 성질 테스트 | fast-check | 무작위 command interleaving·예산·취소 불변식 | MIT; seed와 shrink 결과 보존 | S17 |
@@ -331,3 +331,26 @@ https://api.github.com/repos/vitest-dev/vitest/releases?per_page=1
 https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/LICENSE
 
 확인일: 2026-10-14. MIT, 해당 OSS 라이브러리 범위. 외부 호스팅 서비스 조건과 구별.
+
+## 개인 하네스 런타임 의존성 (CR-018, 2026-10-18)
+
+H1에서 검증한 `@earendil-works/pi-coding-agent@1.3.0`을 H2에서 adapter-pi의 runtime dependency로 옮긴다. 새 프레임워크나 별도 확장 로더는 추가하지 않는다. 공개 SDK 타입과 공식 [v1.3.0 SDK 문서](https://github.com/earendil-works/pi/blob/v1.3.0/packages/coding-agent/docs/sdk.md)를 기준으로 한다. Node >=22.19.0 요구를 동봉 Node 24.19.0이 만족하며, 실제 자식 프로세스 + 로컬 HTTP provider 테스트에서 확인했다. TypeScript 선언이 배포 패키지에 포함된다.
+
+정확한 registry integrity·MIT 라이선스·배포일·전이 의존성은 `dependency-lock.json` 및 `pnpm-lock.yaml`에 고정한다. SDK는 worker에서만 import한다. 기본 core worker와 Studio 브라우저 번들에 SDK를 import하지 않는다. pi-tui, jiti, 이미지 처리 및 향후 MCP/codemode 관련 의존성으로 설치 크기가 증가하며, desktop 패키징 검증은 R1 완료 조건에 포함한다. Native 확장은 샌드박스가 아니며 HOME/XDG/Claude/jiti 경로 격리는 사용자 설정 오염 방지용이다. 엄격 정책에서는 네이티브 확장을 거절한다.
+
+## LSP 통신 (CR-019, 2026-10-18)
+
+- `vscode-languageserver-protocol@3.18.4`를 서버에만 추가한다. [Microsoft의 공개 프로토콜 구현](https://github.com/microsoft/vscode-languageserver-node)을 사용하며 별도 JSON-RPC 프레이머를 만들지 않는다. 공식 저장소의 3.18.4 릴리스 기록과 정확한 npm 배포 타입을 확인했다. Context7 도구는 이 세션에 제공되지 않았다.
+- MIT이며 TypeScript 선언을 포함한다. 전이 의존은 `vscode-jsonrpc@9.0.3`(MIT, Node >=14)와 `vscode-languageserver-types@3.18.4`(MIT)뿐이다. 프로젝트의 Node 24.19를 사용한다. npm unpacked 크기는 각각 404,899 / 225,485 / 414,344 bytes(합계 약 1 MiB)이며 Studio 브라우저 의존성이 아니다. 설치 스크립트는 실행하지 않았다.
+- 설치 후 production audit에 알려진 취약점이 없음을 확인했다. 실제 LSP 서버는 자동 설치하지 않고 사용자가 등록·검토·신뢰한 argv만 실행한다. 서버 프로세스의 직접 파일/네트워크 접근을 OS 샌드박스로 제한한다고 보장하지 않는다.
+
+## codemode 종료 관찰 패치 (CR-020, 2026-10-18)
+
+- 기존 MIT `@earendil-works/pi-coding-agent@1.3.0`에 버전 고정 [pnpm patch](https://pnpm.io/10.x/cli/patch)를 적용한다. `patches/@earendil-works__pi-coding-agent@1.3.0.patch`가 공식 codemode factory와 tool 옵션에서 `onWorkerStarted(toolCallId, exited)`를 전달한다. 실제 실행기·QuickJS·작업 제한 로직을 복사하거나 교체하지 않는다.
+- 설치된 `@earendil-works/pi-codemode@1.3.0`의 공개 `CodemodeSandboxOptions.onWorkerStarted(exited)`를 사용한다. `dist/runtime/host.js`는 실제 Node Worker exit에서만 이 Promise를 해결한다. `sandbox.close()`와 도구 결과는 종료 요청 직후 반환할 수 있으므로 host capacity 반환의 근거로 쓰지 않는다.
+- 새 의존성은 없다. JS 두 파일의 콜백 전달 두 줄과 배포 TypeScript 선언 두 곳만 확장한다. 미사용 시 기존 호출자는 동일하게 동작하며 기존 Node >=22.19.0 / 동봉 Node 24.19.0 요구를 유지한다. Studio 브라우저 번들에는 포함하지 않는다.
+- patch는 정확한 1.3.0에만 적용한다. Pi 업그레이드 시 공식 옵션 도입 여부, Worker 생성 실패·실제 종료·취소 후 늦은 종료를 다시 검증하고 불필요해진 patch를 제거한다. 일반 CI의 `codemode-lifecycle.test.ts`가 실제 로컬 Worker로 콜백 전달을 확인한다.
+
+## MCP transport와 OAuth (CR-020, 2026-10-18)
+
+이미 Pi coding-agent의 전이 의존성인 `@earendil-works/pi-mcp@1.3.0`을 server/adapter의 직접 의존성으로도 선언한다. [Pi 공식 MCP 패키지](https://github.com/earendil-works/pi/tree/v1.3.0/packages/mcp)의 공개 StdioTransport/StreamableHttpTransport, MCP client, OAuth provider·PKCE callback·flow를 재사용하여 프로토콜과 인증 코드를 다시 만들지 않는다. 설치된 배포의 MIT, Node >=22.19.0, TypeScript 선언, 유일한 자체 의존성 cross-spawn 7.0.6을 확인했다. 기존에 설치된 정확한 버전이므로 새 전이 런타임 패키지는 늘지 않으며 Studio 의존성도 아니다. 직전 production audit는 0 advisories다. 설치 스크립트는 실행하지 않았다. Context7을 검색했으나 제공되지 않아 설치된 1.3.0 공개 선언과 구현을 대조했다.

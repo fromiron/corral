@@ -1,0 +1,232 @@
+import { fork } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { expect, it, vi } from 'vitest';
+import { processChannel, recoverSdkWorkers, sdkProcessChannel } from '../src/index.ts';
+
+it.skipIf(process.platform !== 'linux')(
+  '[TC-HAR-016-N] failed child cleanup reports unconfirmed exit instead of leaving the host waiting',
+  async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'corral-sdk-mcp-invalid-'));
+    const channel = sdkProcessChannel(join(import.meta.dirname, 'fixtures/mcp-owner.ts'), {
+      leaseDirectory: directory,
+    });
+    const exited = new Promise<boolean | undefined>((resolve) =>
+      channel.onExit((_code, confirmed) => resolve(confirmed)),
+    );
+    let pid: number | undefined;
+    try {
+      const info = await new Promise<{ pid: number }>((resolve) =>
+        channel.onFrame((frame) => resolve(frame as { pid: number })),
+      );
+      pid = info.pid;
+      const children = readdirSync(directory).find((name) => name.startsWith('children-'));
+      if (!children) throw new Error('child registry missing');
+      writeFileSync(join(directory, children, 'broken.json'), 'invalid');
+      channel.kill();
+      const outcome = await Promise.race([
+        exited,
+        new Promise<string>((resolve) => setTimeout(() => resolve('never notified'), 300)),
+      ]);
+      expect(outcome).toBe(false);
+    } finally {
+      channel.kill();
+      if (pid)
+        try {
+          process.kill(-pid, 'SIGKILL');
+        } catch {}
+      rmSync(directory, { recursive: true, force: true });
+    }
+  },
+);
+
+it.skipIf(process.platform !== 'linux')(
+  '[TC-HAR-016-N] killing an SDK owner reaps separately grouped MCP processes before reporting exit',
+  async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'corral-sdk-mcp-'));
+    const channel = sdkProcessChannel(join(import.meta.dirname, 'fixtures/mcp-owner.ts'), {
+      leaseDirectory: directory,
+    });
+    const exited = new Promise<void>((resolve) => channel.onExit(() => resolve()));
+    let pid: number | undefined;
+    try {
+      const info = await new Promise<{ pid: number }>((resolve) =>
+        channel.onFrame((frame) => resolve(frame as { pid: number })),
+      );
+      pid = info.pid;
+      expect(() => process.kill(pid!, 0)).not.toThrow();
+      channel.kill();
+      await exited;
+      const state = () => {
+        try {
+          return readFileSync(`/proc/${pid}/stat`, 'utf8').split(') ')[1]?.[0];
+        } catch {
+          return null;
+        }
+      };
+      expect([null, 'Z', 'X']).toContain(state());
+      await recoverSdkWorkers(directory);
+      expect(readdirSync(directory)).toEqual([]);
+    } finally {
+      channel.kill();
+      if (pid)
+        try {
+          process.kill(-pid, 'SIGKILL');
+        } catch {}
+      rmSync(directory, { recursive: true, force: true });
+    }
+  },
+);
+
+import { recordWorkerLease } from '../src/worker-leases.ts';
+
+it.skipIf(process.platform !== 'linux')(
+  '[TC-HAR-016-N] recovery discovers child registries created while owners are stopping',
+  async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'corral-late-registry-'));
+    const spawn = () =>
+      fork(join(import.meta.dirname, 'fixtures/orphan-worker.ts'), [], {
+        detached: true,
+        execArgv: [],
+        stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
+      });
+    const owner = spawn(),
+      child = spawn();
+    const closed = [owner, child].map(
+      (process) => new Promise<void>((resolve) => process.once('exit', () => resolve())),
+    );
+    const kill = process.kill.bind(process);
+    let spy: ReturnType<typeof vi.spyOn> | undefined;
+    try {
+      await Promise.all(
+        [owner, child].map(
+          (process) => new Promise<void>((resolve) => process.once('message', () => resolve())),
+        ),
+      );
+      recordWorkerLease(directory, owner.pid!);
+      spy = vi.spyOn(process, 'kill').mockImplementation((pid, signal) => {
+        if (pid === -owner.pid! && signal === 'SIGKILL')
+          recordWorkerLease(join(directory, 'children-late'), child.pid!);
+        return kill(pid, signal);
+      });
+      await recoverSdkWorkers(directory);
+      expect(readdirSync(directory)).toEqual([]);
+      const state = () => {
+        try {
+          return readFileSync(`/proc/${child.pid}/stat`, 'utf8').split(') ')[1]?.[0];
+        } catch {
+          return null;
+        }
+      };
+      expect([null, 'Z', 'X']).toContain(state());
+    } finally {
+      spy?.mockRestore();
+      for (const process of [owner, child]) {
+        try {
+          kill(-process.pid!, 'SIGKILL');
+        } catch {}
+      }
+      await Promise.all(closed);
+      rmSync(directory, { recursive: true, force: true });
+    }
+  },
+);
+
+it.skipIf(process.platform !== 'linux').each([true, false])(
+  '[TC-HAR-016-N] checks ownership after the recorded leader exits (matching marker=%s)',
+  async (matching) => {
+    const directory = mkdtempSync(join(tmpdir(), 'corral-mcp-recovery-'));
+    const owner = randomUUID();
+    const leader = fork(join(import.meta.dirname, 'fixtures/process-group.ts'), [], {
+      detached: true,
+      execArgv: [],
+      stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
+      env: { ...process.env, CORRAL_PROCESS_OWNER: owner },
+    });
+    const info = await new Promise<{ port: number; pid: number }>((resolve) =>
+      leader.once('message', resolve),
+    );
+    const pid = leader.pid!;
+    try {
+      recordWorkerLease(directory, pid, matching ? owner : randomUUID());
+      const exited = new Promise<void>((resolve) => leader.once('exit', () => resolve()));
+      leader.send({ exit: true });
+      await exited;
+      expect(() => process.kill(info.pid, 0)).not.toThrow();
+      if (matching) await recoverSdkWorkers(directory);
+      else await expect(recoverSdkWorkers(directory)).rejects.toThrow(/unconfirmed/);
+      const state = () => {
+        try {
+          return readFileSync(`/proc/${info.pid}/stat`, 'utf8').split(') ')[1]?.[0];
+        } catch {
+          return null;
+        }
+      };
+      if (matching) {
+        expect([null, 'Z', 'X']).toContain(state());
+        expect(readdirSync(directory)).toEqual([]);
+      } else {
+        expect([null, 'Z', 'X']).not.toContain(state());
+        expect(readdirSync(directory)).toHaveLength(1);
+      }
+    } finally {
+      try {
+        process.kill(-pid, 'SIGKILL');
+      } catch {}
+      leader.kill('SIGKILL');
+      rmSync(directory, { recursive: true, force: true });
+    }
+  },
+);
+
+it.skipIf(process.platform !== 'linux')(
+  '[TC-HAR-017-N] recovers an owned SDK process before new worker capacity is available',
+  async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'corral-worker-recovery-'));
+    const channel = processChannel(join(import.meta.dirname, 'fixtures/orphan-worker.ts'), {
+      leaseDirectory: directory,
+    });
+    const exited = new Promise<void>((resolve) => channel.onExit(() => resolve()));
+    try {
+      await new Promise<void>((resolve) => channel.onFrame(() => resolve()));
+      expect(readdirSync(directory).filter((n) => n.endsWith('.json'))).toHaveLength(1);
+      await recoverSdkWorkers(directory);
+      await exited;
+      expect(readdirSync(directory)).toEqual([]);
+    } finally {
+      channel.kill();
+      await exited;
+      rmSync(directory, { recursive: true, force: true });
+    }
+  },
+);
+it.skipIf(process.platform !== 'linux')(
+  '[TC-HAR-017-N] a reused PID record never kills a different process',
+  async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'corral-worker-recovery-'));
+    const channel = processChannel(join(import.meta.dirname, 'fixtures/orphan-worker.ts'), {
+      leaseDirectory: directory,
+    });
+    const exited = new Promise<void>((resolve) => channel.onExit(() => resolve()));
+    let ended = false;
+    channel.onExit(() => {
+      ended = true;
+    });
+    try {
+      await new Promise<void>((resolve) => channel.onFrame(() => resolve()));
+      const path = join(directory, readdirSync(directory).find((n) => n.endsWith('.json'))!);
+      const record = JSON.parse(readFileSync(path, 'utf8'));
+      record.startTicks = '0';
+      writeFileSync(path, JSON.stringify(record));
+      await recoverSdkWorkers(directory);
+      expect(ended).toBe(false);
+      expect(() => process.kill(record.pid, 0)).not.toThrow();
+    } finally {
+      channel.kill();
+      await exited;
+      rmSync(directory, { recursive: true, force: true });
+    }
+  },
+);

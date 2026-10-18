@@ -1536,5 +1536,401 @@
     "status": "planned",
     "adapter": "mock unless explicitly live",
     "evidence": null
+  },
+  {
+    "id": "TC-HAR-001-H",
+    "requirements": [
+      "CRL-HAR-001"
+    ],
+    "suite": "unit",
+    "scenario": "일반 요청·자동 재시도·압축 요약·확장의 중첩 모델 호출이 각각 permit을 받고, dispatch 수가 permit 수와 같다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-HAR-001-N",
+    "requirements": [
+      "CRL-HAR-001"
+    ],
+    "suite": "unit",
+    "scenario": "permit이 거절되면 모델에 닿지 않고, 확장이 다른 provider를 부르면 자격 증명이 없어 네트워크 요청 없이 실패한다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-HAR-002-H",
+    "requirements": [
+      "CRL-HAR-002"
+    ],
+    "suite": "unit",
+    "scenario": "다른 확장이 실행 중에 바꾼 인자를 Corral이 승인하고 그 인자로만 실행되며, 도구 안의 중첩 호출도 부모 id와 함께 승인된다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-HAR-002-N",
+    "requirements": [
+      "CRL-HAR-002"
+    ],
+    "suite": "unit",
+    "scenario": "거절·승인 핸들러 예외는 직접·중첩 호출을 실행하지 않고, Pi 내장 도구는 선언되지 않는다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-HAR-003-H",
+    "requirements": [
+      "CRL-HAR-003"
+    ],
+    "suite": "unit",
+    "scenario": "확장이 넣은 system prompt 구획이 provider가 받은 요청에 보이고, 도구 중 도착한 지시가 다음 요청부터 포함된다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-HAR-003-N",
+    "requirements": [
+      "CRL-HAR-003"
+    ],
+    "suite": "unit",
+    "scenario": "미리보기와 다른 구획·지시 누락·기록의 로컬 경로 노출은 실패로 드러난다(H2에서 추가).",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-HAR-004-H",
+    "requirements": [
+      "CRL-HAR-004"
+    ],
+    "suite": "unit",
+    "scenario": "바인딩한 확장과 스킬만 로드되고 Corral 확장이 마지막이다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-HAR-004-N",
+    "requirements": [
+      "CRL-HAR-004"
+    ],
+    "suite": "unit",
+    "scenario": "함정 HOME과 작업 폴더의 확장·스킬·AGENTS.md·.pi/SYSTEM.md가 요청에 나타나지 않는다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-HAR-005-H",
+    "requirements": [
+      "CRL-HAR-005"
+    ],
+    "suite": "unit",
+    "scenario": "가상 경로로 목록에 오른 스킬을 Corral read로 읽고, 필수 스킬 본문이 압축 뒤 요청에도 있다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-HAR-005-N",
+    "requirements": [
+      "CRL-HAR-005"
+    ],
+    "suite": "unit",
+    "scenario": "read 도구가 없으면 Pi는 스킬을 나열하지 않고, 가상 경로의 /skill: 확장은 Pi가 하지 못한다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-HAR-006-H",
+    "requirements": [
+      "CRL-HAR-006"
+    ],
+    "suite": "unit",
+    "scenario": "필수 확장이 모두 로드되면 실행이 시작된다(H2).",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-HAR-006-N",
+    "requirements": [
+      "CRL-HAR-006"
+    ],
+    "suite": "unit",
+    "scenario": "필수 확장 로드 실패는 fallback 없이 실행 실패다(H2).",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-HAR-007-H",
+    "requirements": [
+      "CRL-HAR-007"
+    ],
+    "suite": "unit",
+    "scenario": "실행 전 명령이 모델 호출 없이 이후 요청을 바꾸고, 대화상자가 제목·timeout과 함께 host에 도착해 host 답을 받는다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-HAR-007-N",
+    "requirements": [
+      "CRL-HAR-007"
+    ],
+    "suite": "unit",
+    "scenario": "실행 중 확장 명령은 Pi가 거절한다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-HAR-008-H",
+    "requirements": [
+      "CRL-HAR-008"
+    ],
+    "suite": "unit",
+    "scenario": "조건을 지키는 엄격 역할은 저장·시작된다(H3).",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-HAR-008-N",
+    "requirements": [
+      "CRL-HAR-008"
+    ],
+    "suite": "unit",
+    "scenario": "provider 등록 확장이나 annotations 없는 도구를 붙인 엄격 역할은 저장·시작 때 거절된다(H3).",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-HAR-009-H",
+    "requirements": [
+      "CRL-HAR-009"
+    ],
+    "suite": "unit",
+    "scenario": "기존 정의·이벤트·hash를 유지하며 하네스 바인딩과 실행 snapshot을 선택적으로 추가한다. 잘못된 revision·중복 도구·엄격 정책 충돌은 시작 전에 거절한다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-HAR-009-N",
+    "requirements": [
+      "CRL-HAR-009"
+    ],
+    "suite": "unit",
+    "scenario": "잘못된 입력·취소·중복·늦은 이벤트에서 권한/대상/버전/상한을 우회하지 않는다: 기존 정의·이벤트·hash를 유지하며 하네스 바인딩과 실행 snapshot을 선택적으로 추가한다. 잘못된 revision·중복 도구·엄격 정책 충돌은 시작 전에 거절한다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-HAR-010-H",
+    "requirements": [
+      "CRL-HAR-010"
+    ],
+    "suite": "unit",
+    "scenario": "Pi read/edit/write 계약을 기존 broker에 제공하고 범위 밖 경로·심볼릭 링크·stale 편집을 거절한다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-HAR-010-N",
+    "requirements": [
+      "CRL-HAR-010"
+    ],
+    "suite": "unit",
+    "scenario": "잘못된 입력·취소·중복·늦은 이벤트에서 권한/대상/버전/상한을 우회하지 않는다: Pi read/edit/write 계약을 기존 broker에 제공하고 범위 밖 경로·심볼릭 링크·stale 편집을 거절한다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-HAR-011-H",
+    "requirements": [
+      "CRL-HAR-011"
+    ],
+    "suite": "unit",
+    "scenario": "파일 읽기 근거는 execution별로 분리되며 다른 실행의 읽기를 쓰기 근거로 사용할 수 없다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-HAR-011-N",
+    "requirements": [
+      "CRL-HAR-011"
+    ],
+    "suite": "unit",
+    "scenario": "잘못된 입력·취소·중복·늦은 이벤트에서 권한/대상/버전/상한을 우회하지 않는다: 파일 읽기 근거는 execution별로 분리되며 다른 실행의 읽기를 쓰기 근거로 사용할 수 없다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-HAR-012-H",
+    "requirements": [
+      "CRL-HAR-012"
+    ],
+    "suite": "unit",
+    "scenario": "등록 검증은 Run/execution/attempt 소유권, 별도 시작 tree, fingerprint, 주입 시계와 취소 가능한 프로세스 수명을 가진다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-HAR-012-N",
+    "requirements": [
+      "CRL-HAR-012"
+    ],
+    "suite": "unit",
+    "scenario": "잘못된 입력·취소·중복·늦은 이벤트에서 권한/대상/버전/상한을 우회하지 않는다: 등록 검증은 Run/execution/attempt 소유권, 별도 시작 tree, fingerprint, 주입 시계와 취소 가능한 프로세스 수명을 가진다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-HAR-013-H",
+    "requirements": [
+      "CRL-HAR-013"
+    ],
+    "suite": "unit",
+    "scenario": "검증 실행 상태와 판정을 분리하며 오류·취소·stale 결과는 완료 근거가 되지 않는다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-HAR-013-N",
+    "requirements": [
+      "CRL-HAR-013"
+    ],
+    "suite": "unit",
+    "scenario": "잘못된 입력·취소·중복·늦은 이벤트에서 권한/대상/버전/상한을 우회하지 않는다: 검증 실행 상태와 판정을 분리하며 오류·취소·stale 결과는 완료 근거가 되지 않는다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-HAR-014-H",
+    "requirements": [
+      "CRL-HAR-014"
+    ],
+    "suite": "unit",
+    "scenario": "불변 recipe 기준과 첫 시도를 포함한 횟수·시간·토큰 상한 안에서만 검토·수정을 반복하며 무진전·부모 취소 시 멈춘다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-HAR-014-N",
+    "requirements": [
+      "CRL-HAR-014"
+    ],
+    "suite": "unit",
+    "scenario": "잘못된 입력·취소·중복·늦은 이벤트에서 권한/대상/버전/상한을 우회하지 않는다: 불변 recipe 기준과 첫 시도를 포함한 횟수·시간·토큰 상한 안에서만 검토·수정을 반복하며 무진전·부모 취소 시 멈춘다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-HAR-015-H",
+    "requirements": [
+      "CRL-HAR-015"
+    ],
+    "suite": "unit",
+    "scenario": "항목별 입력을 격리하고 부모 예산·취소·위임 깊이를 보존하며 같은 작업 복사본의 병렬 변경을 거절한다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-HAR-015-N",
+    "requirements": [
+      "CRL-HAR-015"
+    ],
+    "suite": "unit",
+    "scenario": "잘못된 입력·취소·중복·늦은 이벤트에서 권한/대상/버전/상한을 우회하지 않는다: 항목별 입력을 격리하고 부모 예산·취소·위임 깊이를 보존하며 같은 작업 복사본의 병렬 변경을 거절한다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-HAR-016-H",
+    "requirements": [
+      "CRL-HAR-016"
+    ],
+    "suite": "unit",
+    "scenario": "명시적으로 신뢰한 MCP 서버만 실행하며 모든 도구를 최종 인자로 승인하고 취소·오류 시 수명을 정리한다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-HAR-016-N",
+    "requirements": [
+      "CRL-HAR-016"
+    ],
+    "suite": "unit",
+    "scenario": "잘못된 입력·취소·중복·늦은 이벤트에서 권한/대상/버전/상한을 우회하지 않는다: 명시적으로 신뢰한 MCP 서버만 실행하며 모든 도구를 최종 인자로 승인하고 취소·오류 시 수명을 정리한다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-HAR-017-H",
+    "requirements": [
+      "CRL-HAR-017"
+    ],
+    "suite": "unit",
+    "scenario": "codemode 중첩 호출도 도구 승인·부모 예산을 거치며 전 세션 worker 상한 2와 취소를 지킨다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-HAR-017-N",
+    "requirements": [
+      "CRL-HAR-017"
+    ],
+    "suite": "unit",
+    "scenario": "잘못된 입력·취소·중복·늦은 이벤트에서 권한/대상/버전/상한을 우회하지 않는다: codemode 중첩 호출도 도구 승인·부모 예산을 거치며 전 세션 worker 상한 2와 취소를 지킨다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-HAR-018-H",
+    "requirements": [
+      "CRL-HAR-018"
+    ],
+    "suite": "unit",
+    "scenario": "LSP 조회와 변경 제안은 등록 서버·문서 버전에 묶고 모든 대상 경로·hash를 확인한 broker 적용만 허용한다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-HAR-018-N",
+    "requirements": [
+      "CRL-HAR-018"
+    ],
+    "suite": "unit",
+    "scenario": "잘못된 입력·취소·중복·늦은 이벤트에서 권한/대상/버전/상한을 우회하지 않는다: LSP 조회와 변경 제안은 등록 서버·문서 버전에 묶고 모든 대상 경로·hash를 확인한 broker 적용만 허용한다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
   }
 ]

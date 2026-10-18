@@ -1,3 +1,4 @@
+import type { HarnessOverrides } from '@corral/contracts';
 import type { CorralRecord } from '@corral/core';
 import {
   ApprovalPanel,
@@ -28,9 +29,12 @@ import { useStore } from 'zustand';
 import { DemoGuide } from '../demo/DemoGuide.tsx';
 import { DEMO_TEMPLATE_IDS, type DemoTemplateId } from '../demo/templates.ts';
 import { useModelPrices } from '../prices.ts';
-import { setCurrentProject } from '../projects.ts';
+import { setCurrentProject, useCurrentProject } from '../projects.ts';
 import { demoRoute, editorRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
+import { HarnessRoleSettings } from '../workbench/HarnessRoleSettings.tsx';
+import { LoopRecipeSettings } from '../workbench/LoopRecipeSettings.tsx';
+import { RunHarnessOverrides } from '../workbench/RunHarnessOverrides.tsx';
 import { useModelProfiles } from '../workbench/useModels.ts';
 
 export function EditorPage() {
@@ -342,7 +346,19 @@ function Editor({
                 <CanvasNotice />
               </div>
               <aside className="editor-inspector flex min-h-0 min-w-0 flex-col gap-6 overflow-auto border-l border-line p-3">
-                <NodeInspector profiles={profiles} />
+                <NodeInspector
+                  profiles={profiles}
+                  loopSettings={(node) => (
+                    <LoopRecipeSettings
+                      key={`${node.id}:${node.reviewRecipe?.revision ?? 0}`}
+                      node={node}
+                      projectId={record.projectId}
+                    />
+                  )}
+                  roleSettings={(role, nodeId) => (
+                    <HarnessRoleSettings key={nodeId} role={role} nodeId={nodeId} />
+                  )}
+                />
                 {inSession ? null : (
                   <RunSide
                     beforeStart={beforeStart}
@@ -372,7 +388,17 @@ function RunSide({
   initialStartFrom: StartFromChoice | null;
 }) {
   const t = useTranslations('Editor');
-  const { session } = useStudioStores();
+  const { session, editor } = useStudioStores();
+  const definition = useStore(editor, (state) => state.draft.definition);
+  const projectId = useCurrentProject();
+  const roles = definition.roles.map((role) => ({
+    roleId: role.id,
+    name: role.name,
+    ...(role.harness ? { harness: role.harness } : {}),
+  }));
+  const key = JSON.stringify([projectId, definition.id, roles]);
+  const [selection, setSelection] = useState<{ key: string; value: HarnessOverrides } | null>(null);
+  const harnessOverrides = selection?.key === key ? selection.value : {};
   const runId = useStore(session, (s) => s.runId);
   const [chosen, setChosen] = useState<string | null>(null);
   const target = useSteerTarget(session, chosen);
@@ -383,9 +409,17 @@ function RunSide({
   return (
     <section aria-labelledby="run-heading" className="flex flex-col gap-3">
       {guide?.(session, setChosen)}
+      <RunHarnessOverrides
+        roles={roles}
+        projectId={projectId}
+        value={harnessOverrides}
+        onChange={(value) => setSelection({ key, value })}
+      />
       <RunControls
+        harnessOverrides={harnessOverrides}
         onStarted={() => {
           setChosen(null);
+          setSelection(null);
           setViewing(null);
           setStartFrom(null);
         }}

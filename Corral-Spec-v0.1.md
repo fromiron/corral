@@ -106,9 +106,11 @@ MVP의 캔버스 전체가 하나의 Corral이다. 그 안에 Loop 영역과 Age
 | 품질 | mock 통합 시나리오, 실모델 계약 스모크, 접근성·부하·취소 경합 테스트 |
 | 공개 데모 | API 키 없는 모의 팀. D&D와 Reins에 실제로 반응하는 데모 |
 
+개인 하네스 확장 범위: 역할별 Pi 표준 스킬·신뢰한 네이티브 확장([CR-018](docs/change-requests/CR-018-pi-standard-harness.md)), broker 코딩 도구·자동 검증·제한된 개선([CR-019](docs/change-requests/CR-019-harness-verification.md)), 제한된 항목 반복·MCP·codemode·LSP 변경 제안([CR-020](docs/change-requests/CR-020-harness-composition.md)). 관리 경로는 Coordinator가 허가·기록하며, 네이티브 확장 코드의 직접 filesystem/network/process 효과는 통제하지 않는다. OS 격리를 제공한다고 표시하지 않는다.
+
 ### 3.2 이번 MVP에 넣지 않을 것
 
-실행 중 노드 추가/삭제/재연결, 임의 역할 생성, 자유로운 병렬 그래프와 `join:any`, 다중 사용자 편집, 다른 사람의 원격 에이전트, A2A/MCP 확장 로딩, 셸/코딩/파일 동시 수정, 프로세스 재시작 후 자동 재개, 임의 시점의 외부 작업 재실행, 중첩 Corral/Subflow, 자동 판단 라우팅, Local/Jev 판정의 요청 적용과 Hybrid, LiteLLM, 과거 산출물의 직접 수정은 제외한다.
+실행 중 노드 추가/삭제/재연결, 임의 역할 생성, 자유로운 병렬 그래프와 `join:any`, 다중 사용자 편집, 다른 사람의 원격 에이전트, A2A, 임의 셸 실행과 동일 작업 복사본의 동시 수정, 프로세스 재시작 후 자동 재개, 임의 시점의 외부 작업 재실행, 중첩 Corral/Subflow, 자동 판단 라우팅, Local/Jev 판정의 요청 적용과 Hybrid, LiteLLM, 과거 산출물의 직접 수정은 제외한다.
 
 v0.2의 관찰 전용 `reasoning_effort` 판정은 요청을 바꾸지 않으므로 위 제외와 별개로 §13과 [CR-003](docs/change-requests/CR-003-admission-hooks-effort-observe.md)에서 다룬다.
 

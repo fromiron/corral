@@ -5,9 +5,20 @@ import type {
   EffortFeatures,
   EffortLevel,
 } from './decisions.ts';
-import type { AgentRole, InputBindingKind } from './definition.ts';
+import type { AgentRole, InputBindingKind, ItemRef } from './definition.ts';
 import type { CommandError } from './errors.ts';
 import type { ModelProfileSnapshot } from './events.ts';
+import type {
+  EffectiveHarnessSnapshot,
+  ExtensionUiNotice,
+  ExtensionUiRequest,
+  ExtensionUiResult,
+  HarnessReport,
+  HarnessToolsUpdate,
+  ModelRequestRecord,
+  ProviderPayloadRecord,
+} from './harness.ts';
+import type { McpChallenge } from './project-tools.ts';
 
 // Injectable runtime ports (Implementation Plan §4, CRL-DEV-002). Types only.
 
@@ -87,8 +98,11 @@ export interface AgentStartInput {
   /** The completion criteria version the run works against; reviews must name it. */
   criteriaVersionId: string;
   assignment: Assignment;
+  item?: ItemRef;
   capabilities: { delegateTo: CallableTarget[]; askTo: CallableTarget[] };
   inputs: ResolvedInput[];
+  /** Resolved at Run start, never a mutable profile lookup inside the worker. */
+  harness?: EffectiveHarnessSnapshot;
 }
 
 export interface DeliveredDirective {
@@ -125,6 +139,7 @@ export type AgentObservation = {
 export interface ToolProposal {
   name: string;
   args: Record<string, unknown>;
+  parentToolCallId?: string;
 }
 
 export type ToolOutcome =
@@ -143,7 +158,21 @@ export interface TextDelta {
 }
 
 export interface AgentHost {
-  prepareModelRequest(): Promise<RequestPermit>;
+  prepareModelRequest(record?: ModelRequestRecord): Promise<RequestPermit>;
+  /** SDK-only: unsupported hosts must refuse SDK execution. */
+  reportHarness?(report: HarnessReport): Promise<void>;
+  simulateHarness?(): Promise<void>;
+  updateHarnessTools?(update: HarnessToolsUpdate): Promise<void>;
+  mcpAuthorization?(serverId: string, challenge?: McpChallenge): Promise<string | undefined>;
+  requestExtensionUi?(
+    request: ExtensionUiRequest,
+    cancellation?: DecisionCancellation,
+  ): Promise<ExtensionUiResult>;
+  notifyExtensionUi?(notice: ExtensionUiNotice): Promise<void>;
+  recordProviderPayload?(record: ProviderPayloadRecord): Promise<void>;
+  pendingDirectives?(): DeliveredDirective[];
+  beginNativeTool?(toolCallId: string, argsHash: string): Promise<void>;
+  finishNativeTool?(toolCallId: string, outcome: 'succeeded' | 'failed'): Promise<void>;
   /** Reports local transport dispatch; a prepared request alone is never delivery. */
   modelRequestDispatched?(modelCallId: string): Promise<void>;
   /** Authorizes and runs a tool in one step, for agents without a separate tool phase. */
@@ -165,6 +194,7 @@ export interface AgentSettlement {
 export interface AgentHandle {
   cancel(reason: string): Promise<void>;
   waitForSettlement(): Promise<AgentSettlement>;
+  pushDirective?(directive: DeliveredDirective): void;
 }
 
 export interface AgentAdapter {

@@ -6,6 +6,7 @@ import { useStore } from 'zustand';
 import type { ModelPrices } from '../run/cost.ts';
 import type { RunSessionStore, StreamText } from '../run/session.ts';
 import { BudgetInspector } from './BudgetInspector.tsx';
+import { HarnessDetails } from './HarnessDetails.tsx';
 import { RunActions } from './RunActions.tsx';
 import { RunReason } from './RunText.tsx';
 import { SafeMarkdown } from './SafeMarkdown.tsx';
@@ -30,6 +31,9 @@ export function RunView({
   const startError = useStore(session, (s) => s.startError);
   const streamError = useStore(session, (s) => s.streamError);
   const streams = useStore(session, (s) => s.streams);
+  const simulatedHarness = useStore(session, (s) =>
+    s.events.some((event) => event.type === 'harness.simulated'),
+  );
   const labelOf = (nodeId: string) =>
     definition?.nodes.find((n) => n.id === nodeId)?.label ?? nodeId;
 
@@ -48,7 +52,9 @@ export function RunView({
       {projection ? (
         <>
           <RunActions key={projection.runId} session={session} />
+          {simulatedHarness ? <p className="text-xs text-muted">{t('harnessSimulation')}</p> : null}
           <BudgetInspector session={session} prices={prices} />
+          <HarnessDetails session={session} />
           <div className="flex items-center gap-2 text-xs">
             <span className="text-muted">{t('status')}</span>
             <span aria-live="polite" data-testid="run-status">
@@ -277,6 +283,7 @@ function ExecutionRow({
             {labelOf(execution.nodeId)} · {id}
           </span>
           <span className="text-muted">
+            {execution.item ? `${t('item', execution.item)} · ` : ''}
             {round ? `${t('round', { no: round })} · ` : ''}
             {execution.attemptNo > 1 ? `${t('attempt', { no: execution.attemptNo })} · ` : ''}
             {t('requests', { count: execution.modelCallIds.length })}

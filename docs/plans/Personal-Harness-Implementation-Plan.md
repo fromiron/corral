@@ -2,7 +2,7 @@
 
 - 작성: Claude / 2026-10-17. 기준 커밋은 `main` `8150c2e`(PR #53 병합)이다.
 - 원안: Bell의 [Corral Personal Harness 구현 계획](../proposals/personal-harness-2026-10-17.md)(2026-10-17).
-- 상태: **제안**이다. 착수하려면 Bell이 [§3](#3-먼저-바꿔야-하는-기존-결정)의 CR-018과 ADR-027을 승인해야 한다.
+- 상태: **H2–H8 구현·로컬 검증 완료** (2026-10-18). CR-018·019·020과 ADR-027을 구현했다. 최신 기능·직접 Computer Use·Oracle Pro 반례 수정·검증 경계는 [완료 보고서](../evaluation/Personal-Harness-Validation-2026-10-18.md), 전달은 [PR #55](https://github.com/fromiron/corral/pull/55)를 따른다. 아래의 초기 분석과 단계별 기록은 해당 시점의 판단이다.
 - 진행 규칙은 [AGENTS.md](../../AGENTS.md)를 그대로 따른다.
   - CR이 먼저, red test가 먼저.
   - 외부 호출·시간·ID는 주입한다.
@@ -196,7 +196,7 @@ Workbench / CLI
 
 **스파이크**
 
-모두 fake provider와 로컬 fixture로 한다. 모델 호출과 네트워크는 쓰지 않는다. 코드는 `packages/adapter-pi/spike/`에 두고 테스트로 남긴다.
+모두 fake provider와 로컬 fixture로 한다. 모델 호출과 네트워크는 쓰지 않는다. 코드는 `packages/adapter-pi/test/spike/`에 두고 테스트로 남긴다. **결과: [HAR-pi-sdk-spikes](../spikes/HAR-pi-sdk-spikes.md)(2026-10-17, 8개 모두 통과 또는 부분 통과, Go 조건 충족).**
 
 | ID | 질문 | 통과 조건 | 실패 시 |
 |---|---|---|---|
@@ -260,6 +260,15 @@ Workbench / CLI
 
 - `pi-core` 역할의 기존 단위·통합·E2E가 전부 그대로 통과한다.
 - `pi-sdk` 역할이 fixture 확장 하나로 시작·도구·취소·완료를 끝낸다.
+
+H2 구현 기록 (2026-10-18):
+
+- 선택 하네스 참조, protocol v1/v2 분리, SDK worker, credentialless proxy, 최종 인자 재검증, native effect 시작/완료 fencing을 구현했다. 기존 core worker는 v1을 유지한다.
+- Coordinator가 Run 시작 snapshot, 역할 allowlist@2, 실제 directiveId, 요청별 예산과 payload 기록을 소유한다. 요청 context는 `model.request_recorded`, 실제 HTTP JSON은 `model.payload_recorded`에 해시·크기만 기록한다.
+- 결정적 테스트: SDK 재시도·확장 중첩 호출·취소·로드 실패, 인자 변경·중복·늦은 결과, 실제 HTTP 요청과 기록 해시 일치. 기존 core/contract/adapter 회귀도 확인했다.
+- 전체 workspace typecheck, spec pack 1,250 checks 통과. production audit: 알려진 취약점 0 (422 dependencies, 2026-10-18).
+- desktop staging의 동봉 Node 24.19.0에서 SDK worker 로드 smoke 통과. 부모 eval/debug/preload 옵션을 worker에 상속하지 않도록 수정했다. staging server 561 MiB / Node 121 MiB (압축 전, 기능별 증가분은 아님).
+- H3 리소스 저장·신뢰·서버 연결·UI와 R1 전체 E2E는 이어서 구현한다. 이 기록은 사용자용 하네스 기능 전체 완료를 의미하지 않는다. 자동 threshold 압축의 제품 경로 검증은 R1 검사에 포함한다.
 
 ### H3. 리소스·역할·화면 (L, H2) → R1
 

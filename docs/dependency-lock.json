@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-17T04:08:31.547Z",
+  "generatedAt": "2026-10-17T22:36:31.883Z",
   "node": "v24.19.0",
   "packageManager": "pnpm@10.30.3",
   "note": "Registry facts for pinned direct dependencies. Compatibility evidence is the CI gate result, not this file.",
@@ -75,6 +75,23 @@
       "peerDependencies": null,
       "scope": "runtime",
       "usedBy": [
+        "@corral/spike-p0"
+      ]
+    },
+    {
+      "name": "@earendil-works/pi-agent-core",
+      "version": "1.3.0",
+      "license": "MIT",
+      "integrity": "sha512-2jvpxZs47PFD5mSQb/yK0pGHJ5yO7Nu22u9mFjHbSLRgu62vZ9rupimDSIp4arnqOadyv0AWvYHtCSpFoJV7ag==",
+      "published": "2026-10-15T19:09:49.999Z",
+      "repository": "git+https://github.com/earendil-works/pi.git",
+      "gitHead": null,
+      "engines": {
+        "node": ">=22.19.0"
+      },
+      "peerDependencies": null,
+      "scope": "runtime",
+      "usedBy": [
         "@corral/adapter-pi"
       ]
     },
@@ -84,6 +101,59 @@
       "license": "MIT",
       "integrity": "sha512-U5/1zXqfV1on7/9sbez03tT4Ru49Lvfb4+zXSDK3DBKF5cRk6KxvAOTOY3HJ4jimlZth+rs7vbJqN6iBQAoNuQ==",
       "published": "2026-10-12T23:01:40.259Z",
+      "repository": "git+https://github.com/earendil-works/pi.git",
+      "gitHead": null,
+      "engines": {
+        "node": ">=22.19.0"
+      },
+      "peerDependencies": null,
+      "scope": "runtime",
+      "usedBy": [
+        "@corral/spike-p0"
+      ]
+    },
+    {
+      "name": "@earendil-works/pi-ai",
+      "version": "1.3.0",
+      "license": "MIT",
+      "integrity": "sha512-KaBI8x7q7sPoFUXICNGD9efHzDG+oRNwVvkA9jdIsSQWH1RjFssOlEGsbLtewUPPgCrvmz0l2KTgSLXTyj3acw==",
+      "published": "2026-10-15T19:11:07.796Z",
+      "repository": "git+https://github.com/earendil-works/pi.git",
+      "gitHead": null,
+      "engines": {
+        "node": ">=22.19.0"
+      },
+      "peerDependencies": null,
+      "scope": "runtime",
+      "usedBy": [
+        "@corral/adapter-pi",
+        "@corral/live-tests",
+        "@corral/server"
+      ]
+    },
+    {
+      "name": "@earendil-works/pi-coding-agent",
+      "version": "1.3.0",
+      "license": "MIT",
+      "integrity": "sha512-V/WoCjA2hQSe3QLWIUB24cTRdtEdeLiIzkDqU5RMXV6VWuD+KGZnzVBMhglwdnQTySkehZsjt8a3g6Jd2g4nnw==",
+      "published": "2026-10-15T19:13:30.662Z",
+      "repository": "git+https://github.com/earendil-works/pi.git",
+      "gitHead": null,
+      "engines": {
+        "node": ">=22.19.0"
+      },
+      "peerDependencies": null,
+      "scope": "runtime",
+      "usedBy": [
+        "@corral/adapter-pi"
+      ]
+    },
+    {
+      "name": "@earendil-works/pi-mcp",
+      "version": "1.3.0",
+      "license": "MIT",
+      "integrity": "sha512-lbktLplmdGamM2t460Q0ziNEfpUEHDTVNf79g/AialJ3XZ+SHgNqa/OJXRR+fU+GV/l+gBhRPcyP8XkQlv8Avw==",
+      "published": "2026-10-15T19:11:17.908Z",
       "repository": "git+https://github.com/earendil-works/pi.git",
       "gitHead": null,
       "engines": {
@@ -125,7 +195,8 @@
       "peerDependencies": null,
       "scope": "runtime",
       "usedBy": [
-        "@corral/runner-langgraph"
+        "@corral/runner-langgraph",
+        "@corral/spike-p0"
       ]
     },
     {
@@ -145,7 +216,8 @@
       },
       "scope": "runtime",
       "usedBy": [
-        "@corral/runner-langgraph"
+        "@corral/runner-langgraph",
+        "@corral/spike-p0"
       ]
     },
     {
@@ -412,6 +484,7 @@
         "@corral/adapter-pi",
         "@corral/desktop",
         "@corral/effort-judge",
+        "@corral/live-tests",
         "@corral/server",
         "@corral/storage-sqlite",
         "@corral/testkit",
@@ -504,7 +577,8 @@
       },
       "scope": "development",
       "usedBy": [
-        "@corral/react"
+        "@corral/react",
+        "@corral/spike-p0"
       ]
     },
     {
@@ -522,7 +596,8 @@
       },
       "scope": "development",
       "usedBy": [
-        "@corral/react"
+        "@corral/react",
+        "@corral/spike-p0"
       ]
     },
     {
@@ -592,6 +667,7 @@
       "peerDependencies": null,
       "scope": "runtime",
       "usedBy": [
+        "@corral/spike-p0",
         "@corral/storage-sqlite"
       ]
     },
@@ -759,7 +835,8 @@
       "peerDependencies": null,
       "scope": "development",
       "usedBy": [
-        "@corral/react"
+        "@corral/react",
+        "@corral/spike-p0"
       ]
     },
     {
@@ -994,7 +1071,23 @@
       "scope": "development",
       "usedBy": [
         "@corral/desktop",
+        "@corral/spike-p0",
         "corral"
+      ]
+    },
+    {
+      "name": "vscode-languageserver-protocol",
+      "version": "3.18.4",
+      "license": "MIT",
+      "integrity": "sha512-CCXbyr99dafRJzJH/0Ryk7ly5T8XPmSR0//OuF2w4m+9JiOin7zcAT5iET8GRE7Z9taFBejb3GbM0a0mbjdbrg==",
+      "published": "2026-09-25T08:06:26.035Z",
+      "repository": "git+https://github.com/Microsoft/vscode-languageserver-node.git",
+      "gitHead": null,
+      "engines": null,
+      "peerDependencies": null,
+      "scope": "runtime",
+      "usedBy": [
+        "@corral/server"
       ]
     },
     {
@@ -1014,6 +1107,7 @@
         "@corral/core",
         "@corral/runner-langgraph",
         "@corral/server",
+        "@corral/spike-p0",
         "@corral/storage-sqlite",
         "@corral/studio"
       ]
@@ -1040,6 +1134,14 @@
         "@corral/react",
         "@corral/studio"
       ]
+    }
+  ],
+  "reviewedSources": [
+    {
+      "name": "@pierre/diffs",
+      "version": "1.5.2",
+      "repository": "https://github.com/pierrecomputer/pierre",
+      "source": "https://diffs.com/ — official repository linked from the project site; npm package omits repository metadata."
     }
   ],
   "reviewedPrereleases": [
@@ -1088,14 +1190,6 @@
       "scope": "development",
       "reviewedAt": "2026-10-17",
       "review": "electron-builder 26.15.6 transitive Windows signing tooling via @electron/windows-sign; MIT, Node >=14, no peers. Not selected for this Linux build and not included in the app runtime. Its installer remains blocked. Exact upstream alpha is retained only in the pinned build tool graph; pnpm audit reports no advisory for postject."
-    }
-  ],
-  "reviewedSources": [
-    {
-      "name": "@pierre/diffs",
-      "version": "1.5.2",
-      "repository": "https://github.com/pierrecomputer/pierre",
-      "source": "https://diffs.com/ \u2014 official repository linked from the project site; npm package omits repository metadata."
     }
   ]
 }

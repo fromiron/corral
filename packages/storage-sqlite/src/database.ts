@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import { SqliteProjectToolStore } from './project-tool-store.ts';
 
 // One SQLite file per workspace (C-011, C-062). Durable settings follow the C-052 spike:
 // WAL, foreign keys, FULL sync. Schema changes are numbered migrations recorded in
@@ -9,6 +10,7 @@ export type Db = Database.Database;
 export interface Migration {
   name: string;
   sql: string;
+  data?: (db: Db) => void;
 }
 
 const IMMUTABLE = (table: string) => `
@@ -295,6 +297,107 @@ CREATE TABLE integration_files (
 ) STRICT;
 `,
   },
+  {
+    name: '0007_personal_harness',
+    sql: `
+CREATE TABLE harness_resources (
+  hash TEXT PRIMARY KEY,
+  resource_json TEXT NOT NULL,
+  created_at TEXT NOT NULL
+) STRICT;
+CREATE TABLE harness_resource_trust (
+  hash TEXT PRIMARY KEY REFERENCES harness_resources(hash),
+  trusted_at TEXT
+) STRICT;
+CREATE TABLE harness_profile_revisions (
+  profile_id TEXT NOT NULL,
+  revision INTEGER NOT NULL CHECK (revision >= 1),
+  profile_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (profile_id, revision)
+) STRICT;
+CREATE TABLE harness_defaults (
+  scope TEXT NOT NULL CHECK (scope IN ('personal', 'project')),
+  scope_id TEXT NOT NULL,
+  revision INTEGER NOT NULL CHECK (revision >= 1),
+  profile_id TEXT,
+  profile_revision INTEGER,
+  PRIMARY KEY (scope, scope_id),
+  FOREIGN KEY (profile_id, profile_revision) REFERENCES harness_profile_revisions(profile_id, revision)
+) STRICT;
+${IMMUTABLE('harness_resources')}
+${IMMUTABLE('harness_profile_revisions')}
+`,
+  },
+  {
+    name: '0008_project_tools',
+    sql: `
+CREATE TABLE project_tool_revisions (
+  project_id TEXT NOT NULL,
+  revision INTEGER NOT NULL CHECK (revision >= 1),
+  config_json TEXT NOT NULL,
+  PRIMARY KEY (project_id, revision)
+) STRICT;
+CREATE TABLE project_tool_trust (
+  project_id TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('check', 'lsp')),
+  tool_id TEXT NOT NULL,
+  fingerprint TEXT NOT NULL,
+  trusted_at TEXT,
+  PRIMARY KEY (project_id, kind, tool_id, fingerprint)
+) STRICT;
+${IMMUTABLE('project_tool_revisions')}
+`,
+    data(db) {
+      const rows = db
+        .prepare('SELECT project_id, verify_json, updated_at FROM workspace_bindings')
+        .all() as { project_id: string; verify_json: string; updated_at: string }[];
+      for (const row of rows) {
+        const store = new SqliteProjectToolStore(db, {
+          nowIso: () => row.updated_at,
+          monotonicMs: () => 0,
+        });
+        store.save(row.project_id, 0, { checks: JSON.parse(row.verify_json), lspServers: [] });
+      }
+    },
+  },
+  {
+    name: '0009_verification_reports',
+    sql: 'ALTER TABLE verifications ADD COLUMN report_json TEXT;',
+  },
+  {
+    name: '0010_mcp_trust',
+    sql: `
+CREATE TABLE project_tool_trust_next (
+  project_id TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('check', 'lsp', 'mcp')),
+  tool_id TEXT NOT NULL,
+  fingerprint TEXT NOT NULL,
+  trusted_at TEXT,
+  PRIMARY KEY (project_id, kind, tool_id, fingerprint)
+) STRICT;
+INSERT INTO project_tool_trust_next SELECT * FROM project_tool_trust;
+DROP TABLE project_tool_trust;
+ALTER TABLE project_tool_trust_next RENAME TO project_tool_trust;
+`,
+  },
+  {
+    name: '0011_lsp_proposals',
+    sql: `
+CREATE TABLE lsp_proposals (
+ id TEXT PRIMARY KEY,
+ session_id TEXT NOT NULL,
+ content_json TEXT NOT NULL,
+ summary_json TEXT NOT NULL,
+ content_hash TEXT NOT NULL,
+ state TEXT NOT NULL CHECK(state IN ('pending','applying','applied','partial','failed','stale','dismissed')),
+ outcomes_json TEXT NOT NULL,
+ created_at TEXT NOT NULL,
+ updated_at TEXT NOT NULL
+) STRICT;
+CREATE INDEX lsp_proposals_by_session ON lsp_proposals(session_id,created_at);
+`,
+  },
 ];
 
 /** History queries must neither recover active runs nor migrate the workspace. */
@@ -338,6 +441,7 @@ export function migrate(db: Db) {
     const migration = MIGRATIONS[version] as Migration;
     db.transaction(() => {
       db.exec(migration.sql);
+      migration.data?.(db);
       db.pragma(`user_version = ${version + 1}`);
     })();
   }

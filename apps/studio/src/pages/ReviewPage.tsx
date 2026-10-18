@@ -22,6 +22,7 @@ import { reviewRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
 import { latestResult, startFollowUp, steer, steerTargets } from '../sessionActions.ts';
 import { useBinding } from './FilesViews.tsx';
+import { LspProposals } from './LspProposals.tsx';
 import { WorkbenchLayout } from './Workbench.tsx';
 
 // Reviewing a session's file changes (CR-012; WBT-15): a fixed comparison range, the files it
@@ -47,7 +48,7 @@ export function ReviewPage() {
   const { session } = reviewRoute.useLoaderData();
   const search = reviewRoute.useSearch();
   const navigate = useNavigate({ from: '/sessions/$sessionId/review' });
-  const { workspaces, transport } = useServices();
+  const { workspaces, transport, mode } = useServices();
   const scope = scopeFromSearch(search);
   const scopeKey = scope.kind === 'run' ? `run:${scope.runId}` : scope.kind;
   const [changes, setChanges] = useState<ChangeSetView | null>(null);
@@ -279,6 +280,29 @@ export function ReviewPage() {
               )}
             </section>
             <aside className="flex min-h-0 flex-col gap-3 overflow-auto border-line p-3 md:border-l">
+              {workspaces && mode === 'server' ? (
+                <LspProposals
+                  key={session.sessionId}
+                  api={workspaces}
+                  sessionId={session.sessionId}
+                  version={version}
+                  onApplied={() => setVersion((current) => current + 1)}
+                  renderFile={(proposal, file) => (
+                    <FileDiff
+                      path={file.path}
+                      loadKey={`${proposal.hash}:${file.path}`}
+                      load={async () => ({
+                        before: { kind: 'text', text: file.before },
+                        after: { kind: 'text', text: file.after },
+                      })}
+                      reviewedKey={`proposal:${proposal.hash}:${file.path}`}
+                      reviewed={reviewed}
+                      comments={[]}
+                    />
+                  )}
+                />
+              ) : null}
+
               <CommentsPanel
                 session={session}
                 runs={runs}
@@ -477,6 +501,16 @@ export function Checks({
   const t = useTranslations('Files');
   const { workspaces, mode } = useServices();
   const [results, setResults] = useState<VerificationResultView[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const checkAction = async (action: Promise<unknown>) => {
+    setError(null);
+    try {
+      await action;
+      await reload();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
+    }
+  };
   const reload = useCallback(async () => {
     if (workspaces) setResults(await workspaces.verifications(sessionId).catch(() => []));
   }, [workspaces, sessionId]);
@@ -496,6 +530,14 @@ export function Checks({
       <h3 id="checks-heading" className="text-sm font-semibold">
         {t('checksHeading')}
       </h3>
+      {mode !== 'browser' && commands.length ? (
+        <p className="text-xs text-muted">{t('isolatedChecksNote')}</p>
+      ) : null}
+      {error ? (
+        <p role="alert" className="text-xs text-danger">
+          {error}
+        </p>
+      ) : null}
       {commands.length === 0 ? (
         <p className="text-xs text-muted">
           {mode === 'browser' ? t('checksServerOnly') : t('noChecks')}
@@ -507,7 +549,7 @@ export function Checks({
             key={command.id}
             type="button"
             disabled={running}
-            onClick={() => void workspaces?.verify(sessionId, command.id).then(reload)}
+            onClick={() => workspaces && void checkAction(workspaces.verify(sessionId, command.id))}
             className="rounded border border-accent px-2 py-0.5 text-xs text-accent disabled:opacity-50"
           >
             {t('runCheck', { name: command.name })}
@@ -528,8 +570,21 @@ export function Checks({
                   r.state === 'passed' ? 'text-success' : r.state === 'running' ? '' : 'text-danger'
                 }
               >
-                {t(`checkState.${r.state}`)}
+                {r.report ? t(`checkReportState.${r.report.state}`) : t(`checkState.${r.state}`)}
               </span>
+              {r.report ? <span>{t(`checkVerdict.${r.report.verdict}`)}</span> : null}
+              {r.state === 'running' && r.report?.owner.kind === 'manual' ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() =>
+                    workspaces &&
+                    void checkAction(workspaces.cancelVerification(sessionId, r.verificationId))
+                  }
+                >
+                  {t('cancelCheck')}
+                </Button>
+              ) : null}
               {r.endedAt ? (
                 <span className="text-muted">
                   {t('checkMeta', { code: r.exitCode ?? '—', ms: r.durationMs ?? 0 })}
@@ -538,6 +593,25 @@ export function Checks({
               {r.timedOut ? <span className="text-danger">{t('timedOut')}</span> : null}
               {r.stale ? <span className="text-warning">{t('stale')}</span> : null}
             </div>
+            {r.report ? (
+              <details className="text-muted">
+                <summary>{t('checkEvidence')}</summary>
+                <p>
+                  {t('checkFingerprint', {
+                    revision: r.report.configRevision,
+                    hash: r.report.fingerprint.slice(0, 12),
+                    tree: r.tree.slice(0, 12),
+                  })}
+                </p>
+                <p>{t('checkRetention', { date: r.report.retainUntil })}</p>
+                {!r.report.cleanupConfirmed && r.report.endedAt ? (
+                  <p className="text-warning">{t('checkCleanupUnknown')}</p>
+                ) : null}
+                {r.report.targetUnchanged === false ? (
+                  <p className="text-warning">{t('checkTargetChanged')}</p>
+                ) : null}
+              </details>
+            ) : null}
             {r.output ? (
               <details>
                 <summary className="cursor-pointer text-muted">{r.argv.join(' ')}</summary>

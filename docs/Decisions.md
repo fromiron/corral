@@ -36,6 +36,8 @@
 
 ## ADR-005: Pi agent-core를 worker로 감싼다
 
+**상태:** ADR-027이 역할별 SDK 실행에 한해 부분 대체(2026-10-18). 기본 pi-core 실행은 유지한다.
+
 **결정:** coding-agent 전체 대신 agent-core+pi-ai, 명시한 도구만 제공한다. worker는 host RPC로 신규 효과를 요청한다.
 
 **이유:** 원하는 역할은 코딩 전용이 아니며, 권한과 사용량을 host가 검증해야 한다.
@@ -219,7 +221,7 @@
 
 **이유:** 검사가 `coordinator.ts` 곳곳에 흩어져 있어 새 정책(추론 강도 판정, 이후 도구 권한)을 넣을 자리가 없고 단위 시험도 어렵다. 동기 gate는 기술 설계 §5.1의 "검사와 commit 사이에 비동기 작업 없음"을 지킨다.
 
-**결과·제약:** 기본 gate 집합은 리팩터 전 golden 이벤트 열과 바이트 단위로 같아야 하며 `tool.allowed.policyVersion`도 `role-allowlist@1`을 유지한다. 닫힌 질문에 대한 reply 검사는 지금처럼 안전 경계 대기 앞에 둔다. 사용자 정의 hook, 런타임 로딩, 공개 플러그인 API는 만들지 않는다(기술 설계 §15). Cordis식 동적 효과 스코프는 채택하지 않는다.
+**결과·제약:** 기본 gate 집합은 리팩터 전 golden 이벤트 열과 바이트 단위로 같아야 하며 `tool.allowed.policyVersion`도 `role-allowlist@1`을 유지한다. 닫힌 질문에 대한 reply 검사는 지금처럼 안전 경계 대기 앞에 둔다. Corral admission gate의 사용자 정의 hook, 런타임 로딩, 공개 플러그인 API는 만들지 않는다(기술 설계 §15). ADR-027의 Pi 확장 hook은 worker 안에서만 실행하며 이 gate를 교체하지 못한다. Cordis식 동적 효과 스코프는 채택하지 않는다.
 
 ## ADR-025: DecisionProvider는 관찰 전용 reasoning_effort로 시작하고 Run 시작 시 고정한다
 
@@ -240,3 +242,29 @@
 Electron은 창·OS 대화상자·서버 수명을 소유한다. 서버와 Pi worker는 동봉 Node 24.19로 실행해 Electron ABI와 SQLite/ONNX 런타임을 분리한다. renderer는 기존 loopback 세션/CSRF 경계로 API를 쓰며 Node 권한을 받지 않는다. 기존 workspace는 명시적으로 선택하며 자동 이관하지 않는다. 웹 Studio도 같은 UI를 사용한다.
 
 **결과·제약:** Linux x64 AppImage가 첫 대상이다. 원본의 원격 환경·터미널·Git 쓰기·플러그인 플랫폼은 이식하지 않는다. native module·worker·자원 경로는 개발 실행과 설치 패키지에서 각각 검증한다.
+
+## ADR-027: Pi coding-agent SDK를 역할별 실행 방식으로 추가한다
+
+**상태:** 채택 (2026-10-18, [CR-018](change-requests/CR-018-pi-standard-harness.md)). H1 S1·S2·S4 통과와 Bell의 H2–H8 구현 계속 요청에 따른다. ADR-005를 역할별 SDK 실행에 한해 부분 대체한다.
+
+**결정:**
+
+- 역할마다 실행 방식 `pi-core`(기존 agent-core worker) 또는 `pi-sdk`(`@earendil-works/pi-coding-agent` SDK)를 고르고, Run 시작 시 고정한다.
+- `pi-sdk`는 기존과 같은 실행 단위 worker 프로세스 안에서만 돈다.
+- 모델 요청은 자격 증명 없는 `ModelRuntime`에 등록한 Corral provider 하나로만 보낸다. 이 provider는 요청마다 host permit을 받는다.
+- 리소스는 핀 고정한 경로만 로드한다(`noExtensions`·`noSkills`·`noContextFiles` + 명시 경로).
+- system prompt는 `systemPromptOverride`·`appendSystemPromptOverride`로 Corral 값에 고정한다. SDK 경로는 project trust를 적용하지 않아서, 이것이 없으면 프로젝트 `.pi/SYSTEM.md`가 들어간다(스파이크 F1).
+- 설정은 in-memory로 둔다(`cacheWarming: off`). 세션도 in-memory다.
+- Pi 내장 도구는 끈다.
+- Corral 확장을 마지막에 로드한다. 이 확장이 `tool_call`에서 최종 인자를 host에 승인받는다.
+- 필수 확장이 실패하면 실행이 실패한다. `pi-core`로 fallback하지 않는다.
+
+**이유:** Agent Skills·Pi 패키지를 원형 그대로 쓰려면 공식 리소스 로더와 확장 런타임이 필요하다. 1.3.0 SDK에는 `streamFn`·`prepareRequest` 주입 옵션이 없다. 그래서 모든 요청이 지나는 `modelRuntime.streamSimple`에 등록한 provider가 공개 API 안의 유일한 통제 지점이다.
+
+**결과·제약:**
+
+- 확장 코드는 worker 권한으로 직접 fs·network·process를 쓸 수 있다. 이것을 "신뢰한 네이티브 코드"로 표시하고 통제를 약속하지 않는다.
+- OS 격리는 제공하지 않는다.
+- `pi-core` 역할의 이벤트·hash·골든은 바뀌지 않는다.
+- Pi 업그레이드는 별도 변경으로 하고, S1·S2·S4 회귀 테스트(`packages/adapter-pi/test/spike/`)를 통과해야 한다.
+- 스파이크 결과는 [HAR-pi-sdk-spikes](spikes/HAR-pi-sdk-spikes.md)에 있다.

@@ -140,9 +140,14 @@ test('[WBTST-016] a session works in its own copy, and its changes are reviewed 
       page.getByTestId('file-diff').locator('[data-line-type="change-addition"]').first(),
     ).toBeVisible();
     await page.getByRole('button', { name: 'Run Notes exist' }).click();
-    await expect(page.getByTestId('check-result').first()).toContainText('Passed', {
+    await expect(
+      page.getByTestId('check-result').first().getByText('Completed', { exact: true }),
+    ).toBeVisible({
       timeout: 20_000,
     });
+    await expect(
+      page.getByTestId('check-result').first().getByText('Pass', { exact: true }),
+    ).toBeVisible();
 
     // The linked folder itself was never written by the run.
     expect(existsSync(join(original, 'notes'))).toBe(false);

@@ -1,10 +1,21 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { rename, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { openDatabase } from '@corral/storage-sqlite';
-import { FakeClock } from '@corral/testkit';
-import { afterEach, describe, expect, it } from 'vitest';
+import { dirname, join } from 'node:path';
+import { openDatabase, SqliteProjectToolStore } from '@corral/storage-sqlite';
+import { FakeClock, Gate } from '@corral/testkit';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ReviewService } from '../src/files/review.ts';
 import { safeRelative, WorkspaceService } from '../src/files/service.ts';
 
 // The file broker's rules (CR-012): paths, the read-before-change rule, and what a stop leaves.
@@ -19,7 +30,11 @@ afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-async function setup() {
+async function setup(
+  edit?: ConstructorParameters<typeof WorkspaceService>[0]['edit'],
+  io?: ConstructorParameters<typeof WorkspaceService>[0]['io'],
+  lsp?: ConstructorParameters<typeof WorkspaceService>[0]['lsp'],
+) {
   const original = temp();
   const git = (...args: string[]) =>
     execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@e', ...args], { cwd: original });
@@ -41,22 +56,965 @@ async function setup() {
     clock: new FakeClock(),
     worktreeRoot: join(temp(), 'worktrees'),
     forbidden: [],
+    ...(edit ? { edit } : {}),
+    ...(io ? { io } : {}),
+    ...(lsp ? { lsp } : {}),
   });
   await service.bind('default', original);
   await service.configure('default', { trusted: true });
   await service.createWorktree('session_1', 'default');
   const call = (
-    name: 'read_file' | 'write_file' | 'delete_file' | 'move_file',
+    name: 'read_file' | 'write_file' | 'delete_file' | 'move_file' | 'edit' | 'write',
     args: Record<string, unknown>,
+    executionId = 'exec_1',
   ) =>
     service.execute(
-      { name, args, runId: 'run_1', executionId: 'exec_1', toolCallId: `tool_${Math.random()}` },
+      { name, args, runId: 'run_1', executionId, toolCallId: `tool_${Math.random()}` },
       { aborted: false, onCancel: () => () => {} },
     );
   return { db, service, call, original };
 }
 
 describe('file broker (CR-012)', () => {
+  it('[TC-HAR-014-N] concurrent criteria pinning cannot replace the first immutable set', async () => {
+    const s = await setup();
+    const file = await s.call('read_file', { path: 'a.txt' });
+    const results = await Promise.allSettled([
+      s.service.pinCriteria('run_1', [{ path: 'a.txt', sha256: String(file.sha256) }]),
+      s.service.pinCriteria('run_1', []),
+    ]);
+    expect(results.map((result) => result.status)).toEqual(['fulfilled', 'rejected']);
+    await expect(s.call('write_file', { path: 'a.txt', text: 'changed' })).rejects.toThrow(
+      /criteria/,
+    );
+    s.db.close();
+  });
+  it('[TC-HAR-016-N] MCP launch trust is tied to pinned configuration, working copy code and authentication scope', async () => {
+    const s = await setup();
+    try {
+      const local = {
+        id: 'local',
+        name: 'Local',
+        transport: 'stdio' as const,
+        argv: [process.execPath, 'a.txt'],
+        exposure: 'direct' as const,
+        timeoutMs: 10000,
+      };
+      const remote = {
+        id: 'docs',
+        name: 'Docs',
+        transport: 'http' as const,
+        url: 'https://example.invalid/mcp',
+        exposure: 'direct' as const,
+        timeoutMs: 10000,
+        auth: { kind: 'oauth' as const, credentialRef: 'docs_login', scope: 'read:docs' },
+      };
+      const config = s.service.configureProjectTools('default', 0, {
+        checks: [],
+        lspServers: [],
+        mcpServers: [local, remote],
+      });
+      const selection = {
+        projectId: 'default',
+        revision: config.revision,
+        hash: config.hash,
+        checkIds: [],
+        lspServerIds: [],
+        mcpServerIds: ['local', 'docs'],
+      };
+      await expect(s.service.runtimeMcp('run_1', selection)).rejects.toThrow(/trust/);
+      for (const id of ['local', 'docs']) {
+        const inspected = await s.service.inspectMcpServer('default', id);
+        await s.service.trustMcpServer('default', id, inspected.fingerprint, true);
+      }
+      const runtime = await s.service.runtimeMcp('run_1', selection);
+      expect(runtime.servers.map((row) => row.server.id)).toEqual(['local', 'docs']);
+      expect(runtime.cwd).toBe(s.service.copyOf('session_1')!.worktree);
+      await expect(
+        s.service.runtimeMcp('run_1', { ...selection, projectId: 'other' }),
+      ).rejects.toThrow();
+      const oldRemote = await s.service.inspectMcpServer('default', 'docs');
+      s.service.configureProjectTools('default', 1, {
+        checks: [],
+        lspServers: [],
+        mcpServers: [local, { ...remote, auth: { ...remote.auth, scope: 'write:docs' } }],
+      });
+      expect((await s.service.inspectMcpServer('default', 'docs')).fingerprint).not.toBe(
+        oldRemote.fingerprint,
+      );
+      expect((await s.service.runtimeMcp('run_1', selection)).servers[1]!.server).toEqual(remote);
+      writeFileSync(join(runtime.cwd, 'a.txt'), 'changed server code');
+      await expect(s.service.runtimeMcp('run_1', selection)).rejects.toThrow(/trust/);
+    } finally {
+      s.db.close();
+    }
+  });
+  it('[TC-HAR-016-N] changing legacy check settings retains MCP definitions', async () => {
+    const s = await setup();
+    try {
+      const mcp = {
+        id: 'docs',
+        name: 'Docs',
+        transport: 'http' as const,
+        url: 'https://example.invalid/mcp',
+        exposure: 'direct' as const,
+        timeoutMs: 10000,
+        auth: { kind: 'none' as const },
+      };
+      s.service.configureProjectTools('default', 0, {
+        checks: [],
+        lspServers: [],
+        mcpServers: [mcp],
+      });
+      await s.service.configure('default', { verifyCommands: [] });
+      expect(s.service.projectTools.latest('default')?.mcpServers).toEqual([mcp]);
+    } finally {
+      s.db.close();
+    }
+  });
+  it('[TC-HAR-014-H] creates comparison copies from the exact requested commit even after the source HEAD moves', async () => {
+    const s = await setup();
+    try {
+      const first = s.service.worktreeView('session_1')!.baseCommit;
+      writeFileSync(join(s.original, 'a.txt'), 'new source\n');
+      execFileSync(
+        'git',
+        ['-c', 'user.name=t', '-c', 'user.email=t@e', 'commit', '-qam', 'second'],
+        { cwd: s.original },
+      );
+      s.db
+        .prepare(
+          "INSERT INTO work_sessions VALUES ('session_2', 'default', NULL, 't', '', 0, 1, 'x', 'x', NULL, '[]')",
+        )
+        .run();
+      const second = await s.service.createWorktree('session_2', 'default', first);
+      expect(second.baseCommit).toBe(first);
+      expect(readFileSync(join(s.service.copyOf('session_2')!.worktree, 'a.txt'), 'utf8')).toBe(
+        'one\n',
+      );
+      expect(readFileSync(join(s.original, 'a.txt'), 'utf8')).toBe('new source\n');
+    } finally {
+      s.db.close();
+    }
+  });
+  it('[TC-HAR-014-N] pins recipe criteria without lending read evidence and rejects changes or a new baseline', async () => {
+    const s = await setup();
+    try {
+      const source = { sha256: createHash('sha256').update('one\n').digest('hex') };
+      await s.service.pinCriteria('run_1', [{ path: 'a.txt', sha256: source.sha256 }]);
+      expect(await s.service.validateCriteria('run_1')).toBe(true);
+      await expect(s.call('write_file', { path: 'a.txt', text: 'weaker' })).rejects.toThrow(
+        /criteria/,
+      );
+      await s.call('read_file', { path: 'a.txt' });
+      for (const [name, args] of [
+        ['write_file', { path: 'a.txt', text: 'weaker' }],
+        ['delete_file', { path: 'a.txt' }],
+        ['move_file', { from: 'a.txt', to: 'b.txt' }],
+      ] as const)
+        await expect(s.call(name, args)).rejects.toThrow(/criteria/);
+      await expect(
+        s.service.pinCriteria('run_1', [{ path: 'a.txt', sha256: 'a'.repeat(64) }]),
+      ).rejects.toThrow(/criteria/);
+      const root = s.service.copyOf('session_1')?.worktree;
+      if (!root) throw new Error('no copy');
+      writeFileSync(join(root, 'a.txt'), 'native mutation');
+      expect(await s.service.validateCriteria('run_1')).toBe(false);
+    } finally {
+      s.db.close();
+    }
+  });
+  async function lspSetup(
+    mode = 'normal',
+    lsp?: ConstructorParameters<typeof WorkspaceService>[0]['lsp'],
+    io?: ConstructorParameters<typeof WorkspaceService>[0]['io'],
+  ) {
+    const s = await setup(undefined, io, lsp);
+    const root = s.service.copyOf('session_1')?.worktree;
+    if (!root) throw new Error('missing copy');
+    const fixture = readFileSync(
+      new URL('./fixtures/lsp-server.mjs', import.meta.url),
+      'utf8',
+    ).replace(
+      "'vscode-languageserver-protocol/node'",
+      JSON.stringify(import.meta.resolve('vscode-languageserver-protocol/node')),
+    );
+    writeFileSync(join(root, 'server.mjs'), fixture);
+    writeFileSync(join(root, 'b.txt'), 'target\n');
+    const config = s.service.configureProjectTools('default', 0, {
+      checks: [],
+      lspServers: [
+        {
+          id: 'fixture',
+          name: 'Fixture LSP',
+          argv: [process.execPath, 'server.mjs', mode],
+          timeoutMs: 1000,
+          languageIds: ['plaintext'],
+          fileExtensions: ['.txt'],
+        },
+      ],
+    });
+    const input = {
+      runId: 'run_1',
+      executionId: 'exec_1',
+      attemptNo: 1,
+      effectId: 'effect_lsp',
+      selection: {
+        projectId: 'default',
+        revision: config.revision,
+        hash: config.hash,
+        checkIds: [],
+        lspServerIds: ['fixture'],
+      },
+      query: {
+        serverId: 'fixture',
+        path: 'a.txt',
+        operation: 'definition' as const,
+        position: { line: 0, character: 0 },
+      },
+    };
+    return { ...s, root, input, cancellation: { aborted: false, onCancel: () => () => {} } };
+  }
+  async function proposalSetup(io?: ConstructorParameters<typeof WorkspaceService>[0]['io']) {
+    const s = await lspSetup(
+      'normal',
+      {
+        query: async (input) => ({
+          kind: 'edits',
+          actions: [
+            {
+              title: 'Update names',
+              edit: {
+                documentChanges: [
+                  {
+                    textDocument: { uri: input.document.uri, version: 1 },
+                    edits: [
+                      {
+                        range: { start: { line: 0, character: 0 }, end: { line: 0, character: 3 } },
+                        newText: 'updated',
+                      },
+                    ],
+                  },
+                  {
+                    textDocument: {
+                      uri: new URL('./b.txt', input.document.uri).href,
+                      version: null,
+                    },
+                    edits: [
+                      {
+                        range: { start: { line: 0, character: 0 }, end: { line: 0, character: 6 } },
+                        newText: 'changed',
+                      },
+                    ],
+                  },
+                ],
+              },
+            },
+          ],
+          durationMs: 1,
+          truncated: false,
+        }),
+      },
+      io,
+    );
+    const input = {
+      ...s.input,
+      query: { ...s.input.query, operation: 'rename' as const, newName: 'updated' },
+    };
+    const plan = await s.service.planLsp(input, s.cancellation);
+    const result = await s.service.runLsp(input, plan, plan.fingerprint, s.cancellation);
+    if (result.result.kind !== 'proposals' || !result.result.proposals[0])
+      throw new Error('proposal missing');
+    const proposal = s.service.lspProposal('session_1', result.result.proposals[0].proposalId);
+    return { ...s, input, proposal };
+  }
+  it.each(['ignored-target', 'ignored-source', 'filtered-target'])(
+    '[TC-HAR-018-N] refuses LSP changes whose original bytes are outside the fixed tree (%s)',
+    async (kind) => {
+      const s = await lspSetup('normal', {
+        query: async (input) => {
+          if (kind === 'ignored-target') writeFileSync(join(s.root, 'b.txt'), 'external\n');
+          return {
+            kind: 'edits',
+            actions: [
+              {
+                title: 'Old rename',
+                edit: {
+                  changes: {
+                    [new URL('./b.txt', input.document.uri).href]: [
+                      {
+                        range: { start: { line: 0, character: 0 }, end: { line: 0, character: 6 } },
+                        newText: 'changed',
+                      },
+                    ],
+                  },
+                },
+              },
+            ],
+            durationMs: 1,
+            truncated: false,
+          };
+        },
+      });
+      if (kind === 'filtered-target') {
+        writeFileSync(join(s.root, '.gitattributes'), 'b.txt text eol=lf\n');
+        writeFileSync(join(s.root, 'b.txt'), 'target\r\n');
+      } else writeFileSync(join(s.root, '.gitignore'), 'b.txt\n');
+      const input = {
+        ...s.input,
+        query: {
+          ...s.input.query,
+          path: kind === 'ignored-source' ? 'b.txt' : 'a.txt',
+          operation: 'rename' as const,
+          newName: 'changed',
+        },
+      };
+      const plan = await s.service.planLsp(input, s.cancellation);
+      try {
+        await expect(
+          s.service.runLsp(input, plan, plan.fingerprint, s.cancellation),
+        ).rejects.toThrow(/snapshot|fixed tree/);
+        expect(s.service.lspProposals('session_1')).toEqual([]);
+        expect(readFileSync(join(s.root, 'b.txt'), 'utf8')).toBe(
+          kind === 'ignored-target'
+            ? 'external\n'
+            : kind === 'filtered-target'
+              ? 'target\r\n'
+              : 'target\n',
+        );
+      } finally {
+        s.db.close();
+      }
+    },
+  );
+  it('[TC-HAR-018-H] surfaces pending language-server proposals in the session inbox until reviewed', async () => {
+    const s = await proposalSetup();
+    const review = new ReviewService({ db: s.db, clock: new FakeClock(), files: s.service });
+    const sessions = [{ sessionId: 'session_1', title: 'Proposal session', entries: [] }];
+    expect(review.inbox(sessions, [])).toContainEqual({
+      kind: 'lsp_proposal',
+      sessionId: 'session_1',
+      sessionTitle: 'Proposal session',
+      runId: null,
+      detail: '1',
+    });
+    s.service.dismissLspProposal('session_1', s.proposal.proposalId, s.proposal.hash);
+    expect(review.inbox(sessions, []).some((item) => item.kind === 'lsp_proposal')).toBe(false);
+    s.db.close();
+  });
+  it('[TC-HAR-018-H] persists a pinned proposal, waits for explicit idle-session apply and never writes twice', async () => {
+    const s = await proposalSetup();
+    expect(s.proposal.state).toBe('pending');
+    expect(s.service.lspProposals('session_1')).toHaveLength(1);
+    expect(readFileSync(join(s.root, 'a.txt'), 'utf8')).toBe('one\n');
+    expect(readFileSync(join(s.root, 'b.txt'), 'utf8')).toBe('target\n');
+    await expect(
+      s.service.applyLspProposal('session_1', s.proposal.proposalId, s.proposal.hash),
+    ).rejects.toThrow(/run|Run/);
+    s.db.prepare("UPDATE runs SET status='succeeded' WHERE id='run_1'").run();
+    await expect(
+      s.service.applyLspProposal('session_1', s.proposal.proposalId, '0'.repeat(64)),
+    ).rejects.toThrow(/hash|changed/);
+    expect(
+      (await s.service.applyLspProposal('session_1', s.proposal.proposalId, s.proposal.hash)).state,
+    ).toBe('applied');
+    expect(readFileSync(join(s.root, 'a.txt'), 'utf8')).toBe('updated\n');
+    expect(readFileSync(join(s.root, 'b.txt'), 'utf8')).toBe('changed\n');
+    expect(
+      (await s.service.applyLspProposal('session_1', s.proposal.proposalId, s.proposal.hash)).state,
+    ).toBe('applied');
+    expect(s.db.prepare('SELECT * FROM file_operations').all()).toHaveLength(2);
+    expect(() => s.service.lspProposal('different_session', s.proposal.proposalId)).toThrow();
+    s.db.close();
+  });
+  it('[TC-HAR-018-N] preflights every file before the first write and rejects a stale proposal', async () => {
+    const s = await proposalSetup();
+    s.db.prepare("UPDATE runs SET status='succeeded' WHERE id='run_1'").run();
+    writeFileSync(join(s.root, 'b.txt'), 'external change\n');
+    const result = await s.service.applyLspProposal(
+      'session_1',
+      s.proposal.proposalId,
+      s.proposal.hash,
+    );
+    expect(result.state).toBe('stale');
+    expect(readFileSync(join(s.root, 'a.txt'), 'utf8')).toBe('one\n');
+    expect(s.db.prepare('SELECT * FROM file_operations').all()).toHaveLength(0);
+    s.db.close();
+  });
+  it('[TC-HAR-018-N] rechecks working-copy identity after waiting for its lease', async () => {
+    const s = await proposalSetup();
+    s.db.prepare("UPDATE runs SET status='succeeded' WHERE id='run_1'").run();
+    const entered = new Gate(),
+      release = new Gate();
+    const target = s.service as unknown as {
+      lease<T>(path: string, work: () => Promise<T>): Promise<T>;
+    };
+    const lease = target.lease.bind(target);
+    const spy = vi.spyOn(target, 'lease').mockImplementationOnce(async (path, work) => {
+      entered.open();
+      await release.wait();
+      return lease(path, work);
+    });
+    const applying = s.service.applyLspProposal(
+      'session_1',
+      s.proposal.proposalId,
+      s.proposal.hash,
+    );
+    await entered.wait();
+    s.db
+      .prepare(
+        "UPDATE session_worktrees SET created_at='2026-10-18T01:00:00Z' WHERE session_id='session_1'",
+      )
+      .run();
+    release.open();
+    try {
+      expect((await applying).state).toBe('stale');
+      expect(readFileSync(join(s.root, 'a.txt'), 'utf8')).toBe('one\n');
+      expect(s.db.prepare('SELECT * FROM file_operations').all()).toHaveLength(0);
+    } finally {
+      spy.mockRestore();
+      s.db.close();
+    }
+  });
+  it('[TC-HAR-018-N] dismissing during asynchronous preflight cannot apply or overwrite the dismissal', async () => {
+    for (const stale of [false, true]) {
+      const s = await proposalSetup();
+      s.db.prepare("UPDATE runs SET status='succeeded' WHERE id='run_1'").run();
+      const entered = new Gate(),
+        release = new Gate();
+      const target = s.service as unknown as { snapshotTree(path: string): Promise<string> };
+      const snapshot = target.snapshotTree.bind(target);
+      const spy = vi.spyOn(target, 'snapshotTree').mockImplementationOnce(async (path) => {
+        entered.open();
+        await release.wait();
+        return stale ? '0'.repeat(40) : snapshot(path);
+      });
+      const applying = s.service.applyLspProposal(
+        'session_1',
+        s.proposal.proposalId,
+        s.proposal.hash,
+      );
+      await entered.wait();
+      expect(
+        s.service.dismissLspProposal('session_1', s.proposal.proposalId, s.proposal.hash).state,
+      ).toBe('dismissed');
+      release.open();
+      try {
+        expect((await applying).state).toBe('dismissed');
+        expect(readFileSync(join(s.root, 'a.txt'), 'utf8')).toBe('one\n');
+        expect(s.db.prepare('SELECT * FROM file_operations').all()).toHaveLength(0);
+      } finally {
+        spy.mockRestore();
+        s.db.close();
+      }
+    }
+  });
+  it('[TC-HAR-018-N] preserves partial writes and recovers uncertain files without replaying them', async () => {
+    const s = await proposalSetup({
+      rename: async (from, to) => {
+        if (String(to).endsWith('/b.txt')) throw new Error('injected IO failure');
+        await rename(from, to);
+      },
+    });
+    s.db.prepare("UPDATE runs SET status='succeeded' WHERE id='run_1'").run();
+    const result = await s.service.applyLspProposal(
+      'session_1',
+      s.proposal.proposalId,
+      s.proposal.hash,
+    );
+    expect(result.state).toBe('partial');
+    expect(result.outcomes).toEqual([
+      { path: 'a.txt', state: 'applied' },
+      { path: 'b.txt', state: 'failed' },
+    ]);
+    expect(readFileSync(join(s.root, 'a.txt'), 'utf8')).toBe('updated\n');
+    expect(readFileSync(join(s.root, 'b.txt'), 'utf8')).toBe('target\n');
+    s.db.prepare("UPDATE lsp_proposals SET state='applying' WHERE id=?").run(s.proposal.proposalId);
+    s.db.prepare("UPDATE file_operations SET state='planned' WHERE path='b.txt'").run();
+    const recovered = new WorkspaceService({
+      db: s.db,
+      clock: new FakeClock(),
+      worktreeRoot: dirname(s.root),
+      forbidden: [],
+    });
+    const restored = recovered.lspProposal('session_1', s.proposal.proposalId);
+    expect(restored.state).toBe('partial');
+    expect(restored.outcomes).toEqual([
+      { path: 'a.txt', state: 'applied' },
+      { path: 'b.txt', state: 'uncertain' },
+    ]);
+    await recovered.applyLspProposal('session_1', s.proposal.proposalId, s.proposal.hash);
+    expect(s.db.prepare('SELECT * FROM file_operations').all()).toHaveLength(2);
+    s.db.close();
+  });
+  it('[TC-HAR-018-N] a cancelled server reply cannot create a late proposal', async () => {
+    let aborted = false;
+    const s = await lspSetup('normal', {
+      query: async (input) => {
+        aborted = true;
+        return {
+          kind: 'edits',
+          actions: [
+            {
+              title: 'Late',
+              edit: {
+                changes: {
+                  [input.document.uri]: [
+                    {
+                      range: { start: { line: 0, character: 0 }, end: { line: 0, character: 3 } },
+                      newText: 'late',
+                    },
+                  ],
+                },
+              },
+            },
+          ],
+          durationMs: 1,
+          truncated: false,
+        };
+      },
+    });
+    const input = {
+      ...s.input,
+      query: { ...s.input.query, operation: 'rename' as const, newName: 'late' },
+    };
+    const cancellation = {
+      get aborted() {
+        return aborted;
+      },
+      onCancel: () => () => {},
+    };
+    const plan = await s.service.planLsp(input, cancellation);
+    await expect(s.service.runLsp(input, plan, plan.fingerprint, cancellation)).rejects.toThrow(
+      /cancelled/,
+    );
+    expect(s.service.lspProposals('session_1')).toEqual([]);
+    expect(readFileSync(join(s.root, 'a.txt'), 'utf8')).toBe('one\n');
+    s.db.close();
+  });
+  it('[TC-HAR-010-H] LSP results are relative, pinned and do not create agent write evidence for returned locations', async () => {
+    const s = await lspSetup('other_file');
+    const plan = await s.service.planLsp(s.input, s.cancellation);
+    await expect(s.service.runLsp(s.input, plan, null, s.cancellation)).rejects.toThrow(
+      /approval|trust/,
+    );
+    const result = await s.service.runLsp(s.input, plan, plan.fingerprint, s.cancellation);
+    expect(result).toMatchObject({
+      serverId: 'fixture',
+      configRevision: 1,
+      source: { path: 'a.txt', version: 1 },
+      result: {
+        kind: 'locations',
+        locations: [
+          {
+            path: 'b.txt',
+            range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
+          },
+        ],
+      },
+    });
+    expect(JSON.stringify(result)).not.toContain(s.root);
+    await expect(s.call('write_file', { path: 'b.txt', text: 'must read first' })).rejects.toThrow(
+      /read.*before/,
+    );
+    await expect(s.call('write_file', { path: 'a.txt', text: 'must read first' })).rejects.toThrow(
+      /read.*before/,
+    );
+    await expect(
+      s.service.planLsp(
+        { ...s.input, query: { ...s.input.query, serverId: 'unbound' } },
+        s.cancellation,
+      ),
+    ).rejects.toThrow(/selected|registered/);
+  });
+  it('[TC-HAR-018-N] LSP cannot return a file URI outside the managed worktree', async () => {
+    const s = await lspSetup('out_of_scope');
+    const plan = await s.service.planLsp(s.input, s.cancellation);
+    await expect(s.service.runLsp(s.input, plan, plan.fingerprint, s.cancellation)).rejects.toThrow(
+      /scope|outside/,
+    );
+  });
+  it('[TC-HAR-010-N] a file change during an LSP query invalidates the result', async () => {
+    const entered = new Gate(),
+      release = new Gate();
+    const s = await lspSetup('normal', {
+      query: async (input) => {
+        entered.open();
+        await release.wait();
+        return {
+          kind: 'locations' as const,
+          locations: [
+            {
+              uri: input.document.uri,
+              range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
+            },
+          ],
+          durationMs: 1,
+          truncated: false,
+        };
+      },
+    });
+    const plan = await s.service.planLsp(s.input, s.cancellation);
+    const pending = s.service.runLsp(s.input, plan, plan.fingerprint, s.cancellation);
+    const rejected = expect(pending).rejects.toThrow(/changed|stale/);
+    await entered.wait();
+    writeFileSync(join(s.root, 'a.txt'), 'changed');
+    release.open();
+    await rejected;
+  });
+  it('[TC-HAR-010-N] an edit cannot resurrect a deleted original or replace its frozen hash with a later read', async () => {
+    for (const kind of ['deleted', 'reread']) {
+      const entered = new Gate(),
+        release = new Gate();
+      const { service, call } = await setup(async () => {
+        entered.open();
+        await release.wait();
+        return { text: 'edited', result: { content: [], details: { diff: '', patch: '' } } };
+      });
+      const root = service.copyOf('session_1')?.worktree;
+      if (!root) throw new Error('no copy');
+      await call('read_file', { path: 'a.txt' });
+      const pending = call('edit', {
+        path: 'a.txt',
+        edits: [{ oldText: 'one', newText: 'edited' }],
+      });
+      const rejected = expect(pending).rejects.toThrow(/changed|missing|precondition/);
+      await entered.wait();
+      if (kind === 'deleted') rmSync(join(root, 'a.txt'));
+      else {
+        writeFileSync(join(root, 'a.txt'), 'external');
+        await call('read_file', { path: 'a.txt' });
+      }
+      release.open();
+      await rejected;
+      if (kind === 'deleted') expect(existsSync(join(root, 'a.txt'))).toBe(false);
+      else expect(readFileSync(join(root, 'a.txt'), 'utf8')).toBe('external');
+    }
+  });
+  it('[TC-HAR-010-H] broker edit preserves BOM and CRLF bytes through the public Pi transformer', async () => {
+    const { service, call } = await setup();
+    const root = service.copyOf('session_1')?.worktree;
+    if (!root) throw new Error('no copy');
+    writeFileSync(join(root, 'a.txt'), '\ufeffone\r\ntwo\r\n');
+    await call('read_file', { path: 'a.txt' });
+    await call('edit', { path: 'a.txt', edits: [{ oldText: 'one', newText: 'ONE' }] });
+    expect(readFileSync(join(root, 'a.txt'), 'utf8')).toBe('\ufeffONE\r\ntwo\r\n');
+  });
+  it('[TC-HAR-011-N] cancellation or destination creation after staging cannot be overwritten and temporary files are removed', async () => {
+    for (const reason of ['cancel', 'created']) {
+      let aborted = false,
+        root = '';
+      const { service, call } = await setup(undefined, {
+        writeFile: async (...args: Parameters<typeof writeFile>) => {
+          await writeFile(...args);
+          if (reason === 'cancel') aborted = true;
+          else writeFileSync(join(root, 'new.txt'), 'external');
+        },
+      });
+      root = service.copyOf('session_1')?.worktree ?? '';
+      await call('read_file', { path: 'a.txt' });
+      const path = reason === 'cancel' ? 'a.txt' : 'new.txt';
+      await expect(
+        service.execute(
+          {
+            name: 'write_file',
+            args: { path, text: 'agent' },
+            runId: 'run_1',
+            executionId: 'exec_1',
+            toolCallId: 'write_guard',
+          },
+          {
+            get aborted() {
+              return aborted;
+            },
+            onCancel: () => () => {},
+          },
+        ),
+      ).rejects.toThrow();
+      expect(readFileSync(join(root, path), 'utf8')).toBe(
+        reason === 'cancel' ? 'one\n' : 'external',
+      );
+      expect(
+        (await service.listFiles({ kind: 'session', id: 'session_1' })).files.some((file) =>
+          file.path.includes('.corral-'),
+        ),
+      ).toBe(false);
+    }
+  });
+  it('[TC-HAR-011-N] a successful file replacement with failed bookkeeping stays uncertain, not failed', async () => {
+    const { service, call, db } = await setup();
+    await call('read_file', { path: 'a.txt' });
+    db.exec(
+      "CREATE TRIGGER reject_applied BEFORE UPDATE ON file_operations WHEN NEW.state = 'applied' BEGIN SELECT RAISE(ABORT, 'test recording failed'); END;",
+    );
+    await expect(
+      call('write_file', { path: 'a.txt', text: 'physically changed' }),
+    ).rejects.toThrow();
+    expect((db.prepare('SELECT state FROM file_operations').get() as { state: string }).state).toBe(
+      'uncertain',
+    );
+    expect(readFileSync(join(service.copyOf('session_1')?.worktree ?? '', 'a.txt'), 'utf8')).toBe(
+      'physically changed',
+    );
+  });
+  it('[TC-HAR-012-N] automatic checks enforce pinned selection, exact fingerprint approval, owner and stale-tree rejection', async () => {
+    const { service, call } = await setup();
+    await service.configure('default', {
+      verifyCommands: [
+        {
+          id: 'ok',
+          name: 'OK',
+          argv: [process.execPath, '-e', 'process.exit(0)'],
+          timeoutMs: 10000,
+        },
+      ],
+    });
+    const config = service.projectTools.latest('default');
+    if (!config) throw new Error('missing config');
+    const selection = {
+      projectId: 'default',
+      revision: config.revision,
+      hash: config.hash,
+      checkIds: ['ok'],
+      lspServerIds: [],
+    };
+    const context = {
+      runId: 'run_1',
+      executionId: 'exec_1',
+      attemptNo: 1,
+      effectId: 'effect_check',
+      selection,
+      commandId: 'ok',
+    };
+    const cancellation = { aborted: false, onCancel: () => () => {} };
+    const plan = await service.planCheck(context, cancellation);
+    expect(plan.trusted).toBe(false);
+    await expect(service.runCheck(context, plan, null, cancellation)).rejects.toThrow(
+      /approval|trust/,
+    );
+    await expect(
+      service.planCheck({ ...context, commandId: 'unknown' }, cancellation),
+    ).rejects.toThrow(/selected|registered/);
+    await expect(service.runCheck(context, plan, 'f'.repeat(64), cancellation)).rejects.toThrow(
+      /approval|fingerprint/,
+    );
+    const report = await service.runCheck(context, plan, plan.fingerprint, cancellation);
+    expect(report).toMatchObject({
+      owner: {
+        kind: 'execution',
+        runId: 'run_1',
+        executionId: 'exec_1',
+        attemptNo: 1,
+        effectId: 'effect_check',
+      },
+      state: 'completed',
+      verdict: 'pass',
+      stale: false,
+    });
+    await expect(service.runCheck(context, plan, plan.fingerprint, cancellation)).rejects.toThrow(
+      /already|duplicate/,
+    );
+    service.projectTools.setTrust(
+      { projectId: 'default', kind: 'check', id: 'ok', fingerprint: plan.fingerprint },
+      true,
+    );
+    const trusted = await service.planCheck(context, cancellation);
+    expect(trusted.trusted).toBe(true);
+    service.projectTools.setTrust(
+      { projectId: 'default', kind: 'check', id: 'ok', fingerprint: plan.fingerprint },
+      false,
+    );
+    await expect(service.runCheck(context, trusted, null, cancellation)).rejects.toThrow(
+      /trust|approval/,
+    );
+    await call('read_file', { path: 'a.txt' });
+    await call('write_file', { path: 'a.txt', text: 'new tree' });
+    await expect(service.runCheck(context, plan, plan.fingerprint, cancellation)).rejects.toThrow(
+      /tree|changed/,
+    );
+  });
+  it('[TC-HAR-013-H] manual checks use owned frozen copies and retain separate state and verdict', async () => {
+    const { service, call, db } = await setup();
+    await service.configure('default', {
+      verifyCommands: [
+        {
+          id: 'copy',
+          name: 'Copy check',
+          argv: [
+            process.execPath,
+            '-e',
+            "require('fs').writeFileSync('a.txt','changed only by check'); console.log('checked');",
+          ],
+          timeoutMs: 10000,
+        },
+      ],
+    });
+    const id = await service.verify('session_1', 'default', 'copy');
+    const report = await service.waitVerification(id);
+    expect(report).toMatchObject({
+      owner: { kind: 'manual', sessionId: 'session_1' },
+      state: 'completed',
+      verdict: 'inconclusive',
+      targetUnchanged: false,
+      cleanupConfirmed: true,
+    });
+    expect(await call('read_file', { path: 'a.txt' })).toMatchObject({ text: 'one\n' });
+    const before = service.verifications('session_1', await service.currentTree('session_1'))[0];
+    expect(before).toMatchObject({ state: 'error', stale: false, report });
+    await call('write_file', { path: 'a.txt', text: 'changed after check' });
+    expect(
+      service.verifications('session_1', await service.currentTree('session_1'))[0],
+    ).toMatchObject({ stale: true });
+    expect(db.prepare('SELECT report_json FROM verifications WHERE id = ?').get(id)).toBeTruthy();
+  });
+  it('[TC-HAR-012-N] manual cancellation is session scoped and shutdown drains owned checks', async () => {
+    const { service } = await setup();
+    await service.configure('default', {
+      verifyCommands: [
+        {
+          id: 'wait',
+          name: 'Wait',
+          argv: [process.execPath, '-e', 'setInterval(()=>{},1000)'],
+          timeoutMs: 10000,
+        },
+      ],
+    });
+    const id = await service.verify('session_1', 'default', 'wait');
+    expect(() => service.cancelVerification('other_session', id)).toThrow();
+    service.cancelVerification('session_1', id);
+    expect(await service.waitVerification(id)).toMatchObject({
+      state: 'cancelled',
+      verdict: 'not_evaluated',
+    });
+    const next = await service.verify('session_1', 'default', 'wait');
+    await service.dispose();
+    expect(await service.waitVerification(next)).toMatchObject({
+      state: 'cancelled',
+      verdict: 'not_evaluated',
+    });
+  });
+  it('[TC-HAR-012-H] existing workspace settings write immutable check revisions and read their authority', async () => {
+    const { service, db } = await setup();
+    const check = { id: 'types', name: 'Types', argv: ['node', 'check.mjs'], timeoutMs: 10000 };
+    await service.configure('default', { verifyCommands: [check] });
+    const store = new SqliteProjectToolStore(db, new FakeClock());
+    const first = store.latest('default');
+    expect(first).toMatchObject({ checks: [check] });
+    await service.configure('default', { verifyCommands: [] });
+    expect(store.latest('default')?.revision).toBe((first?.revision ?? 0) + 1);
+    expect(store.get('default', first?.revision ?? 0)?.checks).toEqual([check]);
+    db.prepare('UPDATE workspace_bindings SET verify_json = ?').run(JSON.stringify([check]));
+    expect((await service.view('default'))?.verifyCommands).toEqual([]);
+    await expect(
+      service.configure('default', { verifyCommands: [{ ...check, argv: [] }] }),
+    ).rejects.toThrow();
+    expect(store.latest('default')?.checks).toEqual([]);
+  });
+  it('[TC-HAR-010-N] cancellation or an external change during edit calculation leaves the file untouched', async () => {
+    for (const cause of ['cancel', 'changed']) {
+      const entered = new Gate();
+      const release = new Gate();
+      let aborted = false;
+      const { service, call, db } = await setup(async () => {
+        entered.open();
+        await release.wait();
+        return {
+          text: 'two\n',
+          result: {
+            content: [{ type: 'text', text: 'Changed.' }],
+            details: { diff: 'diff', patch: 'patch', firstChangedLine: 1 },
+          },
+        };
+      });
+      await call('read_file', { path: 'a.txt' });
+      const root = (
+        service as unknown as { worktree(id: string): { worktree_path: string } }
+      ).worktree('session_1').worktree_path;
+      const pending = service.execute(
+        {
+          name: 'edit',
+          args: { path: 'a.txt', edits: [{ oldText: 'one', newText: 'two' }] },
+          runId: 'run_1',
+          executionId: 'exec_1',
+          toolCallId: 'tool_edit',
+        },
+        {
+          get aborted() {
+            return aborted;
+          },
+          onCancel: () => () => {},
+        },
+      );
+      const rejected = expect(pending).rejects.toThrow(
+        cause === 'cancel' ? /cancelled/ : /changed since/,
+      );
+      await entered.wait();
+      if (cause === 'cancel') aborted = true;
+      else writeFileSync(join(root, 'a.txt'), 'external\n');
+      release.open();
+      await rejected;
+      expect(readFileSync(join(root, 'a.txt'), 'utf8')).toBe(
+        cause === 'cancel' ? 'one\n' : 'external\n',
+      );
+      expect(db.prepare('SELECT COUNT(*) AS n FROM file_operations').get()).toEqual({ n: 0 });
+    }
+  });
+  it('[TC-HAR-010-H] Pi edit and write use the same read evidence and recorded atomic write path', async () => {
+    const { call, db } = await setup();
+    await call('read_file', { path: 'a.txt' });
+    const edit = await call('edit', { path: 'a.txt', edits: [{ oldText: 'one', newText: 'two' }] });
+    expect(edit).toMatchObject({
+      path: 'a.txt',
+      piResult: {
+        content: [{ type: 'text', text: 'Successfully replaced 1 block(s) in a.txt.' }],
+        details: { firstChangedLine: 1 },
+      },
+    });
+    expect(await call('read_file', { path: 'a.txt' })).toMatchObject({ text: 'two\n' });
+    await call('write', { path: 'new.txt', content: 'A new file.' });
+    expect(await call('read_file', { path: 'new.txt' })).toMatchObject({ text: 'A new file.' });
+    expect(
+      db.prepare("SELECT COUNT(*) AS n FROM file_operations WHERE state = 'applied'").get(),
+    ).toEqual({ n: 2 });
+  });
+  it('[TC-HAR-010-N] all edit blocks must validate before any bytes are changed', async () => {
+    const { call, db } = await setup();
+    await call('read_file', { path: 'a.txt' });
+    await expect(
+      call('edit', {
+        path: 'a.txt',
+        edits: [
+          { oldText: 'one', newText: 'two' },
+          { oldText: 'missing', newText: 'three' },
+        ],
+      }),
+    ).rejects.toMatchObject({ code: 'SCHEMA_INVALID', message: expect.stringContaining('a.txt') });
+    expect(await call('read_file', { path: 'a.txt' })).toMatchObject({ text: 'one\n' });
+    expect(db.prepare('SELECT COUNT(*) AS n FROM file_operations').get()).toEqual({ n: 0 });
+  });
+  it('[TC-HAR-011-N] a different execution or restarted attempt cannot borrow another execution’s read', async () => {
+    const { call } = await setup();
+    await call('read_file', { path: 'a.txt' }, 'exec_a');
+    await expect(
+      call('write_file', { path: 'a.txt', text: 'unread overwrite' }, 'exec_b'),
+    ).rejects.toThrow(/read a.txt/);
+    await expect(call('delete_file', { path: 'a.txt' }, 'exec_a_retry')).rejects.toThrow(
+      /read a.txt/,
+    );
+  });
+  it('[TC-HAR-011-H] [TC-HAR-011-N] B writing after A reads does not refresh A’s evidence', async () => {
+    const { call } = await setup();
+    await call('read_file', { path: 'a.txt' }, 'exec_a');
+    await call('read_file', { path: 'a.txt' }, 'exec_b');
+    await call('write_file', { path: 'a.txt', text: 'B changed this\n' }, 'exec_b');
+    await expect(
+      call('write_file', { path: 'a.txt', text: 'A stale change\n' }, 'exec_a'),
+    ).rejects.toThrow(/changed since/);
+    await call('read_file', { path: 'a.txt' }, 'exec_a');
+    await expect(
+      call('write_file', { path: 'a.txt', text: 'A reviewed change\n' }, 'exec_a'),
+    ).resolves.toMatchObject({ created: false });
+  });
   it('[DW-05] browsing stays inside its project or session and does not grant an agent a read', async () => {
     const { service, call, original } = await setup();
     const scope = { kind: 'project' as const, id: 'default' };
@@ -262,6 +1220,32 @@ describe('review, applying and reverting (CR-013)', () => {
       'queued',
       'unreviewed',
     ]);
+    db.prepare(
+      "UPDATE runs SET projection_json = json_object('statusReason','review_recipe:attempt_limit') WHERE id = 'run_1'",
+    ).run();
+    expect(
+      review.inbox(
+        [{ sessionId: 'session_1', title: 't', entries: [] }],
+        [{ runId: 'run_1', status: 'failed', sessionId: 'session_1' }],
+      ),
+    ).toContainEqual({
+      kind: 'recipe_stopped',
+      sessionId: 'session_1',
+      sessionTitle: 't',
+      runId: 'run_1',
+      detail: 'attempt_limit',
+    });
+    expect(
+      review
+        .inbox(
+          [{ sessionId: 'session_1', title: 't', entries: [] }],
+          [
+            { runId: 'newer', status: 'succeeded', sessionId: 'session_1' },
+            { runId: 'run_1', status: 'failed', sessionId: 'session_1' },
+          ],
+        )
+        .some((item) => item.kind === 'recipe_stopped'),
+    ).toBe(false);
   });
 });
 

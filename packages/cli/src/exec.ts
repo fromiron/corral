@@ -1,6 +1,12 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import type { CorralDefinition } from '@corral/contracts';
+import {
+  type CorralDefinition,
+  canonicalJson,
+  type EvalExpectation,
+  type EvalGroup,
+  EvalSuiteDocument,
+} from '@corral/contracts';
 import {
   compileDefinition,
   type RunProjection,
@@ -26,6 +32,16 @@ export interface ExecResult {
   outputTokens: number;
   unknownTokensHeld: number;
   executions: number;
+  candidateOutput: string | null;
+  definitionHash: string | null;
+  metricsComplete: boolean;
+  modelRetries: number | null;
+  executionRestarts: number;
+  repairRounds: number;
+  humanRequests: number | null;
+  harnessHashes: string[];
+  recipeHashes: string[];
+  toolsExecuted: string[];
   /** reasoning_effort judgments by provider: answer → count (observe only). */
   judgments: Record<string, Record<string, number>>;
 }
@@ -37,7 +53,11 @@ export async function executeOnce(
   transport: RuntimeTransport,
   definition: CorralDefinition,
   mode: 'mock' | 'live',
-  { signal, now = () => performance.now() }: { signal: AbortSignal; now?: () => number },
+  {
+    signal,
+    sessionId,
+    now = () => performance.now(),
+  }: { signal: AbortSignal; sessionId?: string; now?: () => number },
 ): Promise<ExecResult> {
   signal.throwIfAborted();
   const started = now();
@@ -46,6 +66,7 @@ export async function executeOnce(
     commandId: commandId(),
     definition,
     mode,
+    ...(sessionId ? { sessionId } : {}),
   });
   if (!runId)
     throw new Error(
@@ -64,6 +85,42 @@ export async function executeOnce(
   if (signal.aborted) onAbort();
   let projection: RunProjection;
   let needsUser = false;
+  let observedSeq = 0,
+    targetSeq = Number.POSITIVE_INFINITY,
+    metricsFailed = false,
+    wake = () => {};
+  let modelRetries = 0,
+    humanRequests = 0;
+  const harnessHashes = new Set<string>(),
+    recipeHashes = new Set<string>(),
+    toolsExecuted = new Set<string>(),
+    toolNames = new Map<string, string>();
+  const offMetrics = transport.subscribe(runId, 0, {
+    onEvent(event) {
+      if (event.runSeq <= observedSeq) return;
+      observedSeq = event.runSeq;
+      if (event.type === 'model.request_recorded' && event.payload.purpose === 'retry')
+        modelRetries += 1;
+      if (event.type === 'approval.requested' || event.type === 'extension.ui_requested')
+        humanRequests += 1;
+      if (event.type === 'run.started')
+        for (const harness of Object.values(event.payload.harnesses ?? {}))
+          harnessHashes.add(harness.snapshotHash);
+      if (event.type === 'recipe.evaluated' || event.type === 'recipe.stopped')
+        recipeHashes.add(event.payload.recipeHash);
+      if (event.type === 'tool.requested')
+        toolNames.set(event.payload.toolCallId, event.payload.name);
+      if (event.type === 'tool.started') {
+        const name = toolNames.get(event.payload.toolCallId);
+        if (name) toolsExecuted.add(name);
+      }
+      if (observedSeq >= targetSeq) wake();
+    },
+    onError() {
+      metricsFailed = true;
+      wake();
+    },
+  });
   try {
     projection = await waitForProjection(
       transport,
@@ -75,13 +132,53 @@ export async function executeOnce(
       await cancel('headless run needs a person: no automatic approval');
       projection = await waitForProjection(transport, runId, (p) => ENDED.has(p.status));
     }
+    targetSeq = projection.lastSeq;
+    if (observedSeq < targetSeq && !metricsFailed)
+      await new Promise<void>((resolve) => {
+        wake = resolve;
+      });
   } finally {
     signal.removeEventListener('abort', onAbort);
+    offMetrics();
   }
   const texts = await Promise.all(
     (projection.output?.artifactVersionIds ?? []).map((id) => transport.getArtifactText(runId, id)),
   );
   const judgments: ExecResult['judgments'] = {};
+  const recipeNode = definition.nodes.find((node) => node.type === 'loop' && node.reviewRecipe);
+  const candidates =
+    recipeNode?.type === 'loop' && recipeNode.reviewRecipe
+      ? [recipeNode.reviewRecipe.candidateNodeId]
+      : definition.nodes.flatMap((node) =>
+          node.type === 'output'
+            ? node.inputBindings.flatMap((binding) =>
+                binding.kind === 'task_output' && binding.sourceNodeId
+                  ? [binding.sourceNodeId]
+                  : [],
+              )
+            : [],
+        );
+  const candidateIds = [
+    ...new Set(
+      candidates.flatMap((nodeId) => {
+        const executionId = projection.nodeExecutions[nodeId]?.at(-1);
+        if (!executionId) return [];
+        const execution = projection.executions[executionId];
+        const submitted = execution
+          ? projection.tasks[execution.taskId]?.submittedArtifactVersionIds
+          : undefined;
+        return submitted?.length
+          ? submitted
+          : Object.values(projection.artifacts)
+              .filter((artifact) => artifact.authorExecutionId === executionId)
+              .slice(-1)
+              .map((artifact) => artifact.artifactVersionId);
+      }),
+    ),
+  ];
+  const candidateTexts = await Promise.all(
+    candidateIds.map((id) => transport.getArtifactText(runId, id)),
+  );
   for (const d of Object.values(projection.decisions ?? {})) {
     const byAnswer = judgments[d.provider] ?? {};
     const key = d.status === 'observed' ? (d.answer ?? 'unknown') : d.status;
@@ -99,13 +196,32 @@ export async function executeOnce(
     outputTokens: projection.budget.spent,
     unknownTokensHeld: projection.budget.unknownOutstanding,
     executions: projection.executionOrder.length,
+    candidateOutput: candidateTexts.some((text) => text !== null)
+      ? candidateTexts.filter((text) => text !== null).join('\n\n')
+      : null,
+    definitionHash: projection.definitionHash,
+    metricsComplete: !metricsFailed && observedSeq >= targetSeq,
+    modelRetries: metricsFailed ? null : modelRetries,
+    executionRestarts: Object.values(projection.executions).filter(
+      (execution) => execution.attemptNo > 1,
+    ).length,
+    repairRounds: Object.values(projection.loopIterations).reduce(
+      (count, iterations) => count + Math.max(0, iterations.length - 1),
+      0,
+    ),
+    humanRequests: metricsFailed ? null : humanRequests,
+    harnessHashes: [...harnessHashes],
+    recipeHashes: [...recipeHashes],
+    toolsExecuted: [...toolsExecuted],
     judgments,
   };
 }
 
 export interface EvalSuite {
-  briefs: { id: string; brief: string }[];
-  variants: { id: string; corral: string; definition: CorralDefinition }[];
+  comparison?: EvalSuiteDocument['comparison'];
+  workspace?: EvalSuiteDocument['workspace'];
+  briefs: EvalSuiteDocument['briefs'];
+  variants: (EvalSuiteDocument['variants'][number] & { definition: CorralDefinition })[];
 }
 
 /** Reads and checks a suite file; every problem is reported before anything runs. */
@@ -113,68 +229,115 @@ export function loadSuite(
   path: string,
 ): { ok: true; suite: EvalSuite } | { ok: false; errors: string[] } {
   const errors: string[] = [];
-  let raw: { schemaVersion?: unknown; briefs?: unknown; variants?: unknown };
+  let document: EvalSuiteDocument;
   try {
-    raw = JSON.parse(readFileSync(path, 'utf8'));
+    if (statSync(path).size > 4 * 1024 * 1024)
+      return { ok: false, errors: ['suite exceeds 4 MiB'] };
+    const parsed = EvalSuiteDocument.safeParse(JSON.parse(readFileSync(path, 'utf8')));
+    if (!parsed.success)
+      return { ok: false, errors: parsed.error.issues.map((issue) => issue.message) };
+    document = parsed.data;
   } catch {
-    return { ok: false, errors: [`${path} is not valid JSON`] };
+    return { ok: false, errors: ['suite is not valid JSON'] };
   }
-  if (raw.schemaVersion !== '0.1') errors.push('schemaVersion must be "0.1"');
-  const briefs = Array.isArray(raw.briefs)
-    ? (raw.briefs as { id?: unknown; brief?: unknown }[])
-    : [];
-  const variants = Array.isArray(raw.variants)
-    ? (raw.variants as { id?: unknown; corral?: unknown }[])
-    : [];
-  if (briefs.length === 0) errors.push('briefs must list at least one brief');
-  if (variants.length === 0) errors.push('variants must list at least one variant');
-  const seen = (kind: string) => {
-    const ids = new Set<string>();
-    return (id: unknown) => {
-      if (typeof id !== 'string' || !id) errors.push(`every ${kind} needs an id`);
-      else if (ids.has(id)) errors.push(`duplicate ${kind} id ${id}`);
-      else ids.add(id);
-    };
-  };
-  const briefId = seen('brief');
-  for (const b of briefs) {
-    briefId(b.id);
-    if (typeof b.brief !== 'string' || !b.brief.trim())
-      errors.push(`brief ${String(b.id)} is empty`);
-  }
-  const variantId = seen('variant');
   const loaded: EvalSuite['variants'] = [];
-  for (const v of variants) {
-    variantId(v.id);
-    const file = typeof v.corral === 'string' ? resolve(dirname(path), v.corral) : '';
-    if (!file || !existsSync(file)) {
-      errors.push(`variant ${String(v.id)}: ${String(v.corral)} not found`);
+  for (const variant of document.variants) {
+    const file = resolve(dirname(path), variant.corral);
+    if (!existsSync(file)) {
+      errors.push(`variant ${variant.id}: Corral file not found`);
       continue;
     }
-    const compiled = compileDefinition(JSON.parse(readFileSync(file, 'utf8')));
-    if (!compiled.ok) {
-      errors.push(
-        `variant ${String(v.id)}: invalid Corral (${compiled.diagnostics.map((d) => d.code).join(', ')})`,
-      );
-      continue;
+    try {
+      if (statSync(file).size > 4 * 1024 * 1024) throw new Error('oversized');
+      const compiled = compileDefinition(JSON.parse(readFileSync(file, 'utf8')));
+      if (!compiled.ok) {
+        errors.push(
+          `variant ${variant.id}: invalid Corral (${compiled.diagnostics.map((diagnostic) => diagnostic.code).join(', ')})`,
+        );
+        continue;
+      }
+      loaded.push({ ...variant, definition: compiled.definition });
+    } catch {
+      errors.push(`variant ${variant.id}: invalid Corral JSON`);
     }
-    loaded.push({ id: String(v.id), corral: String(v.corral), definition: compiled.definition });
   }
   if (errors.length) return { ok: false, errors };
   return {
     ok: true,
     suite: {
-      briefs: briefs.map((b) => ({ id: String(b.id), brief: String(b.brief) })),
+      ...(document.comparison ? { comparison: document.comparison } : {}),
+      ...(document.workspace ? { workspace: document.workspace } : {}),
+      briefs: document.briefs,
       variants: loaded,
     },
   };
 }
 
+export interface QualityResult {
+  finalCorrect: boolean;
+  candidateCorrect: boolean | null;
+  falsePass: boolean;
+  unnecessaryRejection: boolean | null;
+}
+function matchesExpected(text: string, expected: EvalExpectation): boolean {
+  if (expected.kind === 'exact') return text === expected.text;
+  if (expected.kind === 'includes') return expected.all.every((part) => text.includes(part));
+  try {
+    return canonicalJson(JSON.parse(text)) === canonicalJson(expected.value);
+  } catch {
+    return false;
+  }
+}
+function qualityOf(
+  result: ExecResult,
+  expected: EvalExpectation | undefined,
+): QualityResult | null {
+  if (!expected) return null;
+  const finalCorrect =
+    result.status === 'succeeded' &&
+    result.output !== null &&
+    matchesExpected(result.output, expected);
+  const candidateCorrect =
+    result.candidateOutput === null ? null : matchesExpected(result.candidateOutput, expected);
+  const rejected = ['attempt_limit', 'repair_limit', 'repeated_output', 'repeated_failure'].some(
+    (reason) => result.reason === `review_recipe:${reason}`,
+  );
+  return {
+    finalCorrect,
+    candidateCorrect,
+    falsePass: result.status === 'succeeded' && !finalCorrect,
+    unnecessaryRejection:
+      result.needsUser || (result.status !== 'succeeded' && !rejected) || candidateCorrect === null
+        ? null
+        : rejected && candidateCorrect,
+  };
+}
+
 export interface EvalReport {
   mode: 'mock' | 'live';
-  results: (ExecResult & { variant: string; brief: string })[];
+  results: (ExecResult & {
+    variant: string;
+    brief: string;
+    phase: 'calibration' | 'holdout';
+    group?: EvalGroup;
+    quality: QualityResult | null;
+    workspace?: { sessionId: string; baseCommit: string };
+  })[];
   summary: {
     variant: string;
+    phase: 'calibration' | 'holdout';
+    group?: EvalGroup;
+    quality: {
+      expectedRuns: number;
+      finalCorrect: number;
+      finalAccuracy: number | null;
+      falsePasses: number;
+      unnecessaryRejections: number;
+    };
+    meanModelRetries: number | null;
+    meanExecutionRestarts: number;
+    meanRepairRounds: number;
+    humanRequests: number | null;
     runs: number;
     succeeded: number;
     needsUser: number;
@@ -194,46 +357,102 @@ export async function runSuite(
   transport: RuntimeTransport,
   suite: EvalSuite,
   mode: 'mock' | 'live',
-  options: { signal: AbortSignal; onResult?: (line: string) => void },
+  options: {
+    signal: AbortSignal;
+    onResult?: (line: string) => void;
+    prepareWorkspace?: (
+      target: NonNullable<EvalSuite['workspace']>,
+    ) => Promise<{ sessionId: string; baseCommit: string }>;
+  },
 ): Promise<EvalReport> {
+  if (suite.workspace && !options.prepareWorkspace)
+    throw new Error('evaluation workspace provider is required');
   const results: EvalReport['results'] = [];
   for (const brief of suite.briefs) {
     for (const variant of suite.variants) {
       if (options.signal.aborted) break;
       const definition = structuredClone(variant.definition);
       definition.input = { ...definition.input, brief: brief.brief };
-      const result = await executeOnce(transport, definition, mode, options);
-      results.push({ ...result, variant: variant.id, brief: brief.id });
+      const workspace = suite.workspace
+        ? await options.prepareWorkspace!(suite.workspace)
+        : undefined;
+      if (workspace && workspace.baseCommit !== suite.workspace?.baseCommit)
+        throw new Error('evaluation workspace does not match the pinned commit');
+      const result = await executeOnce(transport, definition, mode, {
+        ...options,
+        ...(workspace ? { sessionId: workspace.sessionId } : {}),
+      });
+      results.push({
+        ...result,
+        ...(workspace ? { workspace } : {}),
+        variant: variant.id,
+        brief: brief.id,
+        phase: brief.phase ?? 'holdout',
+        ...(variant.group ? { group: variant.group } : {}),
+        quality: qualityOf(result, brief.expected),
+      });
       options.onResult?.(
         `${variant.id} × ${brief.id}: ${result.status} · ${result.modelCalls} calls`,
       );
     }
   }
-  const summary = suite.variants.map((variant) => {
-    const rows = results.filter((r) => r.variant === variant.id);
-    return {
-      variant: variant.id,
-      runs: rows.length,
-      succeeded: rows.filter((r) => r.status === 'succeeded').length,
-      needsUser: rows.filter((r) => r.needsUser).length,
-      failed: rows.filter((r) => r.status !== 'succeeded' && !r.needsUser).length,
-      meanModelCalls: mean(rows.map((r) => r.modelCalls)),
-      meanOutputTokens: mean(rows.map((r) => r.outputTokens)),
-      meanWallMs: mean(rows.map((r) => r.wallMs)),
-      meanExecutions: mean(rows.map((r) => r.executions)),
-    };
-  });
+  const summary = suite.variants.flatMap((variant) =>
+    [...new Set(suite.briefs.map((brief) => brief.phase ?? 'holdout'))].map((phase) => {
+      const rows = results.filter((r) => r.variant === variant.id && r.phase === phase);
+      const scored = rows.flatMap((row) => (row.quality ? [row.quality] : [])),
+        finalCorrect = scored.filter((row) => row.finalCorrect).length;
+      return {
+        variant: variant.id,
+        phase,
+        ...(variant.group ? { group: variant.group } : {}),
+        quality: {
+          expectedRuns: scored.length,
+          finalCorrect,
+          finalAccuracy: scored.length ? finalCorrect / scored.length : null,
+          falsePasses: scored.filter((row) => row.falsePass).length,
+          unnecessaryRejections: scored.filter((row) => row.unnecessaryRejection).length,
+        },
+        meanModelRetries: rows.some((row) => row.modelRetries === null)
+          ? null
+          : mean(rows.map((row) => row.modelRetries ?? 0)),
+        meanExecutionRestarts: mean(rows.map((row) => row.executionRestarts)),
+        meanRepairRounds: mean(rows.map((row) => row.repairRounds)),
+        humanRequests: rows.some((row) => row.humanRequests === null)
+          ? null
+          : rows.reduce((count, row) => count + (row.humanRequests ?? 0), 0),
+        runs: rows.length,
+        succeeded: rows.filter((r) => r.status === 'succeeded').length,
+        needsUser: rows.filter((r) => r.needsUser).length,
+        failed: rows.filter((r) => r.status !== 'succeeded' && !r.needsUser).length,
+        meanModelCalls: mean(rows.map((r) => r.modelCalls)),
+        meanOutputTokens: mean(rows.map((r) => r.outputTokens)),
+        meanWallMs: mean(rows.map((r) => r.wallMs)),
+        meanExecutions: mean(rows.map((r) => r.executions)),
+      };
+    }),
+  );
   return { mode, results, summary };
 }
 
-/** The summary as a Markdown table. It measures cost and time, not answer quality. */
+/** Costs and oracle-scored quality stay separate; calibration never joins holdout. */
 export function summaryTable(report: EvalReport): string {
   const head =
-    '| variant | runs | succeeded | needs a person | failed | model calls | output tokens | wall ms | executions |';
-  const rule = '|---|---:|---:|---:|---:|---:|---:|---:|---:|';
+    '| variant | phase | runs | succeeded | needs a person | failed | model calls | output tokens | wall ms | executions |';
+  const rule = '|---|---|---:|---:|---:|---:|---:|---:|---:|---:|';
   const rows = report.summary.map(
     (s) =>
-      `| ${s.variant} | ${s.runs} | ${s.succeeded} | ${s.needsUser} | ${s.failed} | ${s.meanModelCalls} | ${s.meanOutputTokens} | ${s.meanWallMs} | ${s.meanExecutions} |`,
+      `| ${s.variant} | ${s.phase} | ${s.runs} | ${s.succeeded} | ${s.needsUser} | ${s.failed} | ${s.meanModelCalls} | ${s.meanOutputTokens} | ${s.meanWallMs} | ${s.meanExecutions} |`,
   );
-  return [head, rule, ...rows].join('\n');
+  const quality = report.summary.some((row) => row.quality.expectedRuns)
+    ? [
+        '',
+        '| variant | phase | expected tasks | final accuracy | false passes | unnecessary rejections | retries | restarts | repairs | human requests |',
+        '|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|',
+        ...report.summary.map(
+          (row) =>
+            `| ${row.variant} | ${row.phase} | ${row.quality.expectedRuns} | ${row.quality.finalAccuracy === null ? 'unmeasured' : `${(row.quality.finalAccuracy * 100).toFixed(1)}%`} | ${row.quality.falsePasses} | ${row.quality.unnecessaryRejections} | ${row.meanModelRetries ?? 'unknown'} | ${row.meanExecutionRestarts} | ${row.meanRepairRounds} | ${row.humanRequests ?? 'unknown'} |`,
+        ),
+      ]
+    : [];
+  return [head, rule, ...rows, ...quality].join('\n');
 }

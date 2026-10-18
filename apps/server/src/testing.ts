@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { endpointProvider, memoryChannelPair, PiAgentAdapter, runWorker } from '@corral/adapter-pi';
+import type { LspQuery } from '@corral/contracts';
 import {
   createFauxCore,
   createModels,
@@ -9,6 +10,7 @@ import {
   envApiKeyAuth,
   fauxAssistantMessage,
   fauxToolCall,
+  type JsonObject,
   type OAuthAuth,
 } from '@earendil-works/pi-ai';
 import type { LiveModels } from './app.ts';
@@ -176,8 +178,29 @@ export function fakeOpenAI(
     subscriptionModels: (providerId) =>
       providerId === 'openai' ? new Set(['gpt-test-a', 'gpt-test-b']) : null,
     getDeviceId: () => '00000000-0000-4000-8000-000000000001',
-    agents: (registry) =>
+    agents: (registry, harnesses) =>
       new PiAgentAdapter({
+        harness: (input) => harnesses.runtimeResources(input),
+        spawnSdk: () => {
+          const { host, worker } = memoryChannelPair();
+          mkdirSync(configDir, { recursive: true });
+          const directory = mkdtempSync(join(configDir, 'sdk-fixture-'));
+          // Test-only SDK sessions use the same deterministic model and never provider HTTP.
+          void import('@corral/adapter-pi/sdk-worker')
+            .then(({ runSdkWorker }) =>
+              runSdkWorker(worker, {
+                directory,
+                now: () => Date.now(),
+                streamFn: (model, context, streamOptions) => {
+                  seen.tokens.push(streamOptions?.apiKey);
+                  return faux.streamSimple(model, context, streamOptions);
+                },
+                resolveModel: (provider, id) => models.getModel(provider, id),
+              }),
+            )
+            .catch(() => worker.kill());
+          return host;
+        },
         spawn: () => {
           const { host, worker } = memoryChannelPair();
           // Like the real worker: an endpoint (CR-005) is built from its start frame alone.
@@ -204,8 +227,36 @@ export function fakeOpenAI(
   };
 
   /** Scripts one live step: write `text`, submit it, finish. */
-  const answerWith = (text: string) => {
+  const answerWith = (
+    text: string,
+    options: {
+      checkId?: string;
+      lspQuery?: LspQuery;
+      mcpCall?: { name: string; args: JsonObject };
+    } = {},
+  ) => {
     faux.setResponses([
+      ...(options.mcpCall
+        ? [
+            fauxAssistantMessage([fauxToolCall(options.mcpCall.name, options.mcpCall.args)], {
+              stopReason: 'toolUse',
+            }),
+          ]
+        : []),
+      ...(options.lspQuery
+        ? [
+            fauxAssistantMessage([fauxToolCall('lsp_query', options.lspQuery)], {
+              stopReason: 'toolUse',
+            }),
+          ]
+        : []),
+      ...(options.checkId
+        ? [
+            fauxAssistantMessage([fauxToolCall('run_check', { commandId: options.checkId })], {
+              stopReason: 'toolUse',
+            }),
+          ]
+        : []),
       fauxAssistantMessage([fauxToolCall('write_artifact', { text })], { stopReason: 'toolUse' }),
       (context) => {
         const written =
@@ -222,5 +273,15 @@ export function fakeOpenAI(
   /** Scripts one plain text answer (for a host request such as a team draft). */
   const replyText = (text: string) => faux.setResponses([fauxAssistantMessage(text)]);
 
-  return { live, credentials, configDir, seen, answerWith, replyText };
+  return {
+    live,
+    credentials,
+    configDir,
+    seen,
+    answerWith,
+    replyText,
+    setResponses: (steps: Parameters<typeof faux.setResponses>[0]) => faux.setResponses(steps),
+  };
 }
+
+export { type FauxResponseStep, fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai';

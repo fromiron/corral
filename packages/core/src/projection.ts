@@ -4,6 +4,7 @@ import type {
   EventPayload,
   ExecutionActivity,
   ExecutionStatus,
+  ItemRef,
   ModelProfileSnapshot,
   NormalizedUsage,
   OutputContract,
@@ -22,6 +23,7 @@ import { applyProgressEvent, emptyProgress, type ProgressState } from './limits.
 // coordinator and in every client, so a replayed log and a live view cannot drift.
 
 export interface ExecutionView {
+  item?: ItemRef;
   executionId: string;
   nodeId: string;
   taskId: string;
@@ -169,6 +171,7 @@ export interface ApprovalView {
   /** The exact versions this decision is about; the first is the one being approved. */
   subjectVersionIds: string[];
   criteriaVersionId: string | null;
+  tool?: EventPayload<'approval.requested'>['tool'];
   status: 'pending' | 'approved' | 'rejected' | 'stale';
 }
 
@@ -572,6 +575,7 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
         subjectVersionIds,
         criteriaVersionId,
         status: 'pending',
+        ...(event.payload.tool ? { tool: event.payload.tool } : {}),
       };
       return { ...p, approvals: { ...p.approvals, [approvalId]: approval } };
     }
@@ -733,7 +737,7 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
               approvals: Object.fromEntries(
                 Object.entries(p.approvals).map(([id, a]) => [
                   id,
-                  a.status === 'pending' ? { ...a, status: 'stale' as const } : a,
+                  a.status === 'pending' && !a.tool ? { ...a, status: 'stale' as const } : a,
                 ]),
               ),
             }
@@ -758,6 +762,18 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
     // Committed facts that later phases project (review P5, Reins P6, budget P7). Until then
     // they are kept in the log only.
     case 'tool.allowed':
+    case 'harness.loaded':
+    case 'harness.simulated':
+    case 'harness.tools_updated':
+    case 'recipe.evaluated':
+    case 'recipe.stopped':
+    case 'harness.load_failed':
+    case 'extension.ui_requested':
+    case 'extension.ui_answered':
+    case 'extension.ui_expired':
+    case 'extension.ui_notified':
+    case 'model.request_recorded':
+    case 'model.payload_recorded':
     case 'tool.started':
     case 'limit.reached':
     case 'cancel.requested':
@@ -833,6 +849,7 @@ function executionCreated(p: RunProjection, event: EventOf<'execution.created'>)
     attemptNo,
     parentExecutionId,
     previousExecutionId: event.payload.previousExecutionId ?? null,
+    ...(event.payload.item ? { item: event.payload.item } : {}),
     depth,
     iterationId,
     modelProfile: event.payload.modelProfile,

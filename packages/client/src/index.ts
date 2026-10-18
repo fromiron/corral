@@ -1,13 +1,28 @@
 import {
   type CorralDefinition,
   type CreateRunRequest,
+  type EffectiveHarnessSnapshot,
   type ErrorCode,
+  type HarnessBindingRef,
+  type HarnessDefault,
+  type HarnessProfile,
+  type HarnessProfileRevision,
+  type HarnessResource,
+  type HarnessResourceView,
+  type LspProposal,
+  type LspProposalSummary,
+  type ProjectToolConfig,
+  type ProjectToolConfigRevision,
   type Receipt,
+  type RegisteredCheck,
+  type RegisteredMcpServer,
+  type ReviewRecipeRevision,
   type RunCommand,
   RunEvent,
   type StartRunRequest,
   type StreamFrame,
   type TeamPlan,
+  type VerificationReport,
 } from '@corral/contracts';
 import type {
   CorralRecord,
@@ -744,6 +759,205 @@ export class ModelsApi {
 
 // ── work folders and file changes (CR-012) ──────────────────────────────────
 
+export interface HarnessPreview {
+  snapshot: EffectiveHarnessSnapshot;
+  sections: { source: 'skill'; name: string; text: string }[];
+  dynamic: boolean;
+}
+
+export class HarnessApi {
+  private readonly http: Http;
+  constructor(options: HttpOptions) {
+    this.http = new Http(options);
+  }
+  mcpAuthStatus(
+    projectId: string,
+    serverId: string,
+  ): Promise<{
+    state: 'ready' | 'missing' | 'not_required';
+    kind: 'none' | 'bearer' | 'oauth';
+    expiresAt?: number;
+  }> {
+    return this.http.json(
+      `/harness/projects/${encodeURIComponent(projectId)}/mcp-servers/${encodeURIComponent(serverId)}/auth`,
+    );
+  }
+  saveMcpBearer(
+    projectId: string,
+    serverId: string,
+    fingerprint: string,
+    token: string,
+  ): ReturnType<HarnessApi['mcpAuthStatus']> {
+    return this.http.json(
+      `/harness/projects/${encodeURIComponent(projectId)}/mcp-servers/${encodeURIComponent(serverId)}/auth`,
+      { method: 'POST', body: JSON.stringify({ action: 'bearer', fingerprint, token }) },
+    );
+  }
+  signInMcp(
+    projectId: string,
+    serverId: string,
+    fingerprint: string,
+  ): Promise<{ loginId: string; url: string }> {
+    return this.http.json(
+      `/harness/projects/${encodeURIComponent(projectId)}/mcp-servers/${encodeURIComponent(serverId)}/auth`,
+      { method: 'POST', body: JSON.stringify({ action: 'sign_in', fingerprint }) },
+    );
+  }
+  signOutMcp(
+    projectId: string,
+    serverId: string,
+    fingerprint: string,
+  ): ReturnType<HarnessApi['mcpAuthStatus']> {
+    return this.http.json(
+      `/harness/projects/${encodeURIComponent(projectId)}/mcp-servers/${encodeURIComponent(serverId)}/auth`,
+      { method: 'POST', body: JSON.stringify({ action: 'sign_out', fingerprint }) },
+    );
+  }
+  mcpLoginStatus(
+    loginId: string,
+  ): Promise<{ state: 'pending' | 'ready' | 'failed' | 'cancelled' }> {
+    return this.http.json(`/harness/mcp-logins/${encodeURIComponent(loginId)}`);
+  }
+  cancelMcpLogin(loginId: string): Promise<{ ok: boolean }> {
+    return this.http.json(`/harness/mcp-logins/${encodeURIComponent(loginId)}`, {
+      method: 'DELETE',
+    });
+  }
+  inspectMcpServer(
+    projectId: string,
+    serverId: string,
+  ): Promise<{
+    server: RegisteredMcpServer;
+    configRevision: number;
+    fingerprint: string;
+    trustedAt: string | null;
+  }> {
+    return this.http.json(
+      `/harness/projects/${encodeURIComponent(projectId)}/mcp-servers/${encodeURIComponent(serverId)}/launch`,
+    );
+  }
+  trustMcpServer(
+    projectId: string,
+    serverId: string,
+    fingerprint: string,
+    trusted: boolean,
+  ): Promise<{ fingerprint: string; trustedAt: string | null }> {
+    return this.http.json(
+      `/harness/projects/${encodeURIComponent(projectId)}/mcp-servers/${encodeURIComponent(serverId)}/trust`,
+      { method: 'PUT', body: JSON.stringify({ fingerprint, trusted }) },
+    );
+  }
+  resources(): Promise<HarnessResourceView[]> {
+    return this.http.json('/harness/resources');
+  }
+  projectTools(projectId: string): Promise<ProjectToolConfigRevision | null> {
+    return this.http.json(`/harness/projects/${encodeURIComponent(projectId)}/tools`);
+  }
+  criteriaFiles(
+    projectId: string,
+    paths: string[],
+  ): Promise<ReviewRecipeRevision['criteriaFiles']> {
+    return this.http.json(`/harness/projects/${encodeURIComponent(projectId)}/criteria-files`, {
+      method: 'POST',
+      body: JSON.stringify({ paths }),
+    });
+  }
+  saveProjectTools(
+    projectId: string,
+    expectedRevision: number,
+    config: ProjectToolConfig,
+  ): Promise<ProjectToolConfigRevision> {
+    return this.http.json(`/harness/projects/${encodeURIComponent(projectId)}/tools`, {
+      method: 'PUT',
+      body: JSON.stringify({ expectedRevision, config }),
+    });
+  }
+  inspectProjectTool(
+    projectId: string,
+    kind: 'check' | 'lsp',
+    commandId: string,
+  ): Promise<{
+    command: RegisteredCheck;
+    configRevision: number;
+    fingerprint: string;
+    trustedAt: string | null;
+  }> {
+    return this.http.json(
+      `/harness/projects/${encodeURIComponent(projectId)}/${kind === 'check' ? 'checks' : 'lsp-servers'}/${encodeURIComponent(commandId)}/launch`,
+    );
+  }
+  trustProjectTool(
+    projectId: string,
+    kind: 'check' | 'lsp',
+    commandId: string,
+    fingerprint: string,
+    trusted: boolean,
+  ): Promise<{ fingerprint: string; trustedAt: string | null }> {
+    return this.http.json(
+      `/harness/projects/${encodeURIComponent(projectId)}/${kind === 'check' ? 'checks' : 'lsp-servers'}/${encodeURIComponent(commandId)}/trust`,
+      { method: 'PUT', body: JSON.stringify({ fingerprint, trusted }) },
+    );
+  }
+  profiles(): Promise<HarnessProfileRevision[]> {
+    return this.http.json('/harness/profiles');
+  }
+  profile(binding: HarnessBindingRef): Promise<HarnessProfileRevision> {
+    return this.http.json(
+      `/harness/profiles/${encodeURIComponent(binding.profileId)}/${binding.revision}`,
+    );
+  }
+  review(
+    kind: 'local' | 'package' | 'pi-home',
+    source: string,
+  ): Promise<{ reviewId: string; resource: HarnessResource }> {
+    return this.http.json('/harness/reviews', {
+      method: 'POST',
+      body: JSON.stringify(kind === 'pi-home' ? { kind } : { kind, source }),
+    });
+  }
+  install(reviewId: string): Promise<HarnessResourceView> {
+    return this.http.json('/harness/resources', {
+      method: 'POST',
+      body: JSON.stringify({ reviewId }),
+    });
+  }
+  trust(hash: string, trusted: boolean): Promise<HarnessResourceView> {
+    return this.http.json(`/harness/resources/${encodeURIComponent(hash)}/trust`, {
+      method: 'PUT',
+      body: JSON.stringify({ trusted }),
+    });
+  }
+  save(
+    profileId: string,
+    expectedRevision: number,
+    profile: HarnessProfile,
+  ): Promise<HarnessProfileRevision> {
+    return this.http.json(`/harness/profiles/${encodeURIComponent(profileId)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ expectedRevision, profile }),
+    });
+  }
+  preview(
+    binding: HarnessBindingRef,
+    projectId: string,
+    runOverride?: HarnessBindingRef,
+  ): Promise<HarnessPreview> {
+    return this.http.json('/harness/preview', {
+      method: 'POST',
+      body: JSON.stringify({ binding, projectId, ...(runOverride ? { runOverride } : {}) }),
+    });
+  }
+  default(scope: HarnessDefault['scope'], scopeId: string): Promise<HarnessDefault> {
+    return this.http.json(`/harness/defaults/${scope}/${encodeURIComponent(scopeId)}`);
+  }
+  setDefault(current: HarnessDefault, binding: HarnessBindingRef | null): Promise<HarnessDefault> {
+    return this.http.json(
+      `/harness/defaults/${current.scope}/${encodeURIComponent(current.scopeId)}`,
+      { method: 'PUT', body: JSON.stringify({ expectedRevision: current.revision, binding }) },
+    );
+  }
+}
+
 export interface VerifyCommand {
   id: string;
   name: string;
@@ -826,6 +1040,7 @@ export interface VerificationResultView {
   startedAt: string;
   endedAt: string | null;
   stale: boolean;
+  report?: VerificationReport | null;
 }
 
 export interface FileOperationView {
@@ -929,11 +1144,40 @@ export class WorkspacesApi {
     const query = new URLSearchParams({ from, to, path }).toString();
     return this.send(`/sessions/${encodeURIComponent(sessionId)}/changes/file?${query}`);
   }
+  lspProposals(sessionId: string): Promise<LspProposalSummary[]> {
+    return this.send(`/sessions/${encodeURIComponent(sessionId)}/lsp-proposals`);
+  }
+  lspProposal(sessionId: string, id: string): Promise<LspProposal> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/lsp-proposals/${encodeURIComponent(id)}`,
+    );
+  }
+  applyLspProposal(sessionId: string, id: string, hash: string): Promise<LspProposal> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/lsp-proposals/${encodeURIComponent(id)}/apply`,
+      'POST',
+      { hash },
+    );
+  }
+  dismissLspProposal(sessionId: string, id: string, hash: string): Promise<LspProposal> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/lsp-proposals/${encodeURIComponent(id)}/dismiss`,
+      'POST',
+      { hash },
+    );
+  }
   markReviewed(sessionId: string): Promise<null> {
     return this.send(`/sessions/${encodeURIComponent(sessionId)}/reviewed`, 'POST');
   }
   verifications(sessionId: string): Promise<VerificationResultView[]> {
     return this.send(`/sessions/${encodeURIComponent(sessionId)}/verifications`);
+  }
+  cancelVerification(sessionId: string, verificationId: string): Promise<void> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/verifications/${encodeURIComponent(verificationId)}/cancel`,
+      'POST',
+      {},
+    );
   }
   verify(sessionId: string, commandId: string): Promise<{ verificationId: string }> {
     return this.send(`/sessions/${encodeURIComponent(sessionId)}/verifications`, 'POST', {
@@ -1081,7 +1325,15 @@ export interface IntegrationResultView {
 }
 
 export interface InboxItemView {
-  kind: 'decision' | 'queued' | 'uncertain_write' | 'integration' | 'check_failed' | 'unreviewed';
+  kind:
+    | 'decision'
+    | 'queued'
+    | 'uncertain_write'
+    | 'integration'
+    | 'check_failed'
+    | 'unreviewed'
+    | 'recipe_stopped'
+    | 'lsp_proposal';
   sessionId: string;
   sessionTitle: string;
   runId: string | null;

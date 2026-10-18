@@ -10,9 +10,18 @@ import {
   EvidenceLevel,
   RunDecisionSettings,
 } from './decisions.ts';
-import { OutputContract, RunLimits } from './definition.ts';
+import { ItemRef, OutputContract, RunLimits } from './definition.ts';
+import {
+  ContentHash,
+  EffectiveHarnessSnapshot,
+  HarnessReport,
+  HarnessToolsUpdate,
+  ModelRequestRecord,
+  ProviderPayloadRecord,
+} from './harness.ts';
 import { Identifier, SchemaVersion } from './ids.ts';
 import { ReviewIssue } from './review.ts';
+import { RecipeStopReason } from './review-recipe.ts';
 import { ExecutionActivity, ExecutionStatus, ReviewVerdict, RunStatus } from './states.ts';
 
 // RunEvent = envelope (contracts/event-envelope.schema.json) + a typed payload for each entry
@@ -82,6 +91,7 @@ export const RunStarted = event(
     decisions: RunDecisionSettings.optional(),
     /** The earlier version whose text this run's brief starts from (CR-007). */
     startedFrom: StartFrom.optional(),
+    harnesses: z.record(Identifier, EffectiveHarnessSnapshot).optional(),
   }),
 );
 export const RunStateChanged = event(
@@ -100,6 +110,7 @@ export const ExecutionCreated = event(
     executionId: Identifier,
     parentExecutionId: Identifier.nullable(),
     previousExecutionId: Identifier.optional(),
+    item: ItemRef.optional(),
     nodeId: Identifier,
     taskId: Identifier,
     attemptNo: z.int().min(1),
@@ -239,6 +250,36 @@ export const ReviewStale = event(
     cause: z.string().min(1),
   }),
 );
+const recipeHead = {
+  loopNodeId: Identifier,
+  recipeId: Identifier,
+  revision: z.int().min(1),
+  recipeHash: ContentHash,
+  criteriaVersionId: Identifier,
+};
+export const RecipeEvaluated = event(
+  'recipe.evaluated',
+  z.strictObject({
+    ...recipeHead,
+    iterationId: Identifier,
+    candidateVersionId: Identifier,
+    reviewVersionId: Identifier,
+    checkReportIds: Ids,
+    tree: z
+      .string()
+      .regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/)
+      .nullable(),
+    verdict: ReviewVerdict,
+  }),
+);
+export const RecipeStopped = event(
+  'recipe.stopped',
+  z.strictObject({
+    ...recipeHead,
+    reason: RecipeStopReason,
+    candidateVersionId: Identifier.nullable(),
+  }),
+);
 export const LoopIterationStarted = event(
   'loop.iteration_started',
   z.strictObject({
@@ -265,6 +306,19 @@ export const ApprovalRequested = event(
     kind: z.enum(['final_output', 'loop_cap', 'user_action']),
     subjectVersionIds: Ids,
     criteriaVersionId: Identifier.nullable(),
+    tool: z
+      .strictObject({
+        purpose: z.enum(['check', 'lsp']).optional(),
+        executionId: Identifier,
+        attemptNo: z.int().min(1),
+        effectId: Identifier,
+        toolCallId: Identifier,
+        bodyRef: Identifier,
+        fingerprint: z.string().regex(/^[a-f0-9]{64}$/),
+        targetTree: z.string().regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/),
+        deadline: z.iso.datetime(),
+      })
+      .optional(),
   }),
 );
 export const ApprovalResolved = event(
@@ -274,6 +328,7 @@ export const ApprovalResolved = event(
     decision: z.enum(['approve', 'reject']),
     actor: Identifier,
     subjectVersionIds: Ids,
+    reason: z.enum(['cancelled', 'timeout', 'execution_ended']).optional(),
   }),
 );
 export const OutputFinalized = event(
@@ -372,6 +427,7 @@ export const ToolRequested = event(
   z.strictObject({
     executionId: Identifier,
     toolCallId: Identifier,
+    parentToolCallId: Identifier.optional(),
     name: z.string().min(1),
     /** Validated arguments; large values are replaced by size and hash. */
     validatedArgs: z.record(z.string(), z.unknown()),
@@ -391,7 +447,12 @@ export const ToolBlocked = event(
 );
 export const ToolStarted = event(
   'tool.started',
-  z.strictObject({ executionId: Identifier, toolCallId: Identifier, effectId: Identifier }),
+  z.strictObject({
+    executionId: Identifier,
+    toolCallId: Identifier,
+    effectId: Identifier,
+    management: z.literal('unmanaged_native').optional(),
+  }),
 );
 export const ToolFinished = event(
   'tool.finished',
@@ -516,7 +577,67 @@ export const DecisionFailed = event(
   z.strictObject({ ...decisionHead, reason: DecisionFailureReason, latencyMs: Count }),
 );
 
+export const HarnessLoaded = event('harness.loaded', HarnessReport.options[0].omit({ ok: true }));
+export const HarnessSimulated = event(
+  'harness.simulated',
+  z.strictObject({ snapshotHash: ContentHash }),
+);
+export const HarnessToolsUpdated = event(
+  'harness.tools_updated',
+  HarnessToolsUpdate.omit({ expectedRevision: true }).extend({ revision: z.int().min(2) }),
+);
+export const HarnessLoadFailed = event(
+  'harness.load_failed',
+  HarnessReport.options[1].omit({ ok: true }),
+);
+export const ModelRequestRecorded = event(
+  'model.request_recorded',
+  ModelRequestRecord.extend({ modelCallId: Identifier, snapshotHash: ContentHash }),
+);
+export const ModelPayloadRecorded = event('model.payload_recorded', ProviderPayloadRecord);
+
+const uiTarget = { requestId: Identifier, executionId: Identifier, attemptNo: z.int().min(1) };
+export const ExtensionUiRequested = event(
+  'extension.ui_requested',
+  z.strictObject({
+    ...uiTarget,
+    kind: z.enum(['select', 'confirm', 'input']),
+    bodyRef: Identifier,
+    bodyHash: ContentHash,
+    deadline: z.iso.datetime(),
+  }),
+);
+export const ExtensionUiAnswered = event(
+  'extension.ui_answered',
+  z.strictObject({ ...uiTarget, answerRef: Identifier, answerHash: ContentHash }),
+);
+export const ExtensionUiExpired = event(
+  'extension.ui_expired',
+  z.strictObject({ ...uiTarget, reason: z.enum(['timeout', 'cancelled', 'execution_ended']) }),
+);
+export const ExtensionUiNotified = event(
+  'extension.ui_notified',
+  z.strictObject({
+    executionId: Identifier,
+    kind: z.enum(['notify', 'status', 'unsupported']),
+    key: z.string().min(1).max(100),
+    level: z.enum(['info', 'warning', 'error']),
+    bodyRef: Identifier,
+    bodyHash: ContentHash,
+  }),
+);
+
 export const RunEvent = z.discriminatedUnion('type', [
+  ExtensionUiRequested,
+  ExtensionUiAnswered,
+  ExtensionUiExpired,
+  ExtensionUiNotified,
+  HarnessLoaded,
+  HarnessSimulated,
+  HarnessToolsUpdated,
+  HarnessLoadFailed,
+  ModelRequestRecorded,
+  ModelPayloadRecorded,
   RunStarted,
   RunStateChanged,
   RunInterrupted,
@@ -534,6 +655,8 @@ export const RunEvent = z.discriminatedUnion('type', [
   ArtifactVersionCreated,
   ArtifactRead,
   ReviewRecorded,
+  RecipeEvaluated,
+  RecipeStopped,
   ReviewStale,
   LoopIterationStarted,
   LoopIterationFinished,

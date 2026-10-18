@@ -1,4 +1,20 @@
-import { Identifier } from '@corral/contracts';
+import {
+  ContentHash,
+  EffectiveHarnessSnapshot,
+  ExtensionUiNotice,
+  ExtensionUiRequest,
+  ExtensionUiResult,
+  HarnessReport,
+  HarnessResource,
+  HarnessToolsUpdate,
+  Identifier,
+  ItemRef,
+  McpChallenge,
+  ModelRequestRecord,
+  ProviderPayloadRecord,
+  RegisteredMcpServer,
+  ResourcePath,
+} from '@corral/contracts';
 import { z } from 'zod';
 import { EndpointSpec } from './endpoint.ts';
 
@@ -7,10 +23,11 @@ import { EndpointSpec } from './endpoint.ts';
 // mismatch. Nothing the model writes decides which execution or permission a frame belongs to.
 // Frames can carry an access token (`permit.apiKey`): they are never logged or stored.
 
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
+export const LEGACY_PROTOCOL_VERSION = 1;
 
 const head = {
-  protocolVersion: z.literal(PROTOCOL_VERSION),
+  protocolVersion: z.literal(LEGACY_PROTOCOL_VERSION),
   executionId: Identifier,
 };
 const RequestId = z.string().regex(/^req_\d{1,9}$/);
@@ -27,7 +44,7 @@ export const WorkerUsage = z.strictObject({
 // ── worker → host ────────────────────────────────────────────────────────────
 
 export const WorkerFrame = z.discriminatedUnion('type', [
-  z.strictObject({ type: z.literal('ready'), protocolVersion: z.literal(PROTOCOL_VERSION) }),
+  z.strictObject({ type: z.literal('ready'), protocolVersion: z.literal(LEGACY_PROTOCOL_VERSION) }),
   z.strictObject({ type: z.literal('prepare_request'), ...head, requestId: RequestId }),
   z.strictObject({ type: z.literal('request_dispatched'), ...head, modelCallId: Identifier }),
   z.strictObject({
@@ -36,6 +53,7 @@ export const WorkerFrame = z.discriminatedUnion('type', [
     requestId: RequestId,
     name: z.string().min(1).max(64),
     args: z.record(z.string(), z.unknown()),
+    parentToolCallId: Identifier.optional(),
   }),
   z.strictObject({
     type: z.literal('execute_tool'),
@@ -111,6 +129,7 @@ export const StartFrame = z.strictObject({
   /** The criteria version reviews must name, and the Loop round (null outside a Loop). */
   criteriaVersionId: Identifier,
   round: z.int().min(1).nullable(),
+  item: ItemRef.optional(),
   /** Tools this execution may propose. The host still checks every call. */
   tools: z.array(WorkerTool),
   /** Why the execution exists: its own step, a delegated task, or a question to answer. */
@@ -162,3 +181,141 @@ export const HostFrame = z.discriminatedUnion('type', [
 ]);
 export type HostFrame = z.infer<typeof HostFrame>;
 export type StartFrame = z.infer<typeof StartFrame>;
+
+/** Private IPC configuration. Never persisted in run events or exports. */
+export const SdkResources = z.strictObject({
+  cwd: z.string().min(1).optional(),
+  mcp: z
+    .array(z.strictObject({ server: RegisteredMcpServer, fingerprint: ContentHash }))
+    .max(16)
+    .optional(),
+  bundles: z
+    .array(
+      z.strictObject({
+        root: z.string().min(1),
+        hash: ContentHash,
+        files: HarnessResource.shape.files,
+      }),
+    )
+    .max(64),
+  extensions: z
+    .array(
+      z.strictObject({ path: z.string().min(1), hash: ContentHash, source: z.string().min(1) }),
+    )
+    .max(64),
+  skills: z
+    .array(
+      z.strictObject({
+        name: Identifier,
+        description: z.string().max(1000),
+        hash: ContentHash,
+        entry: ResourcePath,
+        mode: z.enum(['auto', 'explicit', 'mandatory']),
+        content: z.string().max(64 * 1024),
+      }),
+    )
+    .max(64),
+  startupCommands: z.array(z.string().min(1).max(1000)).max(16),
+});
+export type SdkResources = z.infer<typeof SdkResources>;
+const sdkHead = { protocolVersion: z.literal(PROTOCOL_VERSION), executionId: Identifier };
+export const SdkStartFrame = StartFrame.extend({
+  ...sdkHead,
+  tools: z.array(
+    z.union([WorkerTool, z.enum(['read', 'edit', 'write', 'run_check', 'lsp_query'])]),
+  ),
+  harness: EffectiveHarnessSnapshot,
+  resources: SdkResources,
+});
+export type SdkStartFrame = z.infer<typeof SdkStartFrame>;
+export const SdkWorkerFrame = z.union([
+  z.strictObject({
+    type: z.literal('mcp_authorization'),
+    ...sdkHead,
+    requestId: RequestId,
+    serverId: Identifier,
+    challenge: McpChallenge.optional(),
+  }),
+  z.strictObject({
+    type: z.literal('ui_request'),
+    ...sdkHead,
+    requestId: RequestId,
+    request: ExtensionUiRequest,
+  }),
+  z.strictObject({ type: z.literal('ui_cancel'), ...sdkHead, requestId: RequestId }),
+  z.strictObject({
+    type: z.literal('ui_notice'),
+    ...sdkHead,
+    requestId: RequestId,
+    notice: ExtensionUiNotice,
+  }),
+  ...WorkerFrame.options.map((frame) =>
+    frame.extend({ protocolVersion: z.literal(PROTOCOL_VERSION) }),
+  ),
+  z.strictObject({
+    type: z.literal('prepare_request'),
+    ...sdkHead,
+    requestId: RequestId,
+    ...ModelRequestRecord.shape,
+  }),
+  z.strictObject({
+    type: z.literal('request_dispatched'),
+    ...sdkHead,
+    requestId: RequestId,
+    modelCallId: Identifier,
+  }),
+  z.strictObject({
+    type: z.literal('harness_report'),
+    ...sdkHead,
+    requestId: RequestId,
+    report: HarnessReport,
+  }),
+  z.strictObject({
+    type: z.literal('harness_tools'),
+    ...sdkHead,
+    requestId: RequestId,
+    update: HarnessToolsUpdate,
+  }),
+  z.strictObject({
+    type: z.literal('request_record'),
+    ...sdkHead,
+    requestId: RequestId,
+    ...ProviderPayloadRecord.shape,
+  }),
+  z.strictObject({
+    type: z.literal('native_tool_start'),
+    ...sdkHead,
+    requestId: RequestId,
+    toolCallId: Identifier,
+    argsHash: ContentHash,
+  }),
+  z.strictObject({
+    type: z.literal('native_tool_finish'),
+    ...sdkHead,
+    requestId: RequestId,
+    toolCallId: Identifier,
+    outcome: z.enum(['succeeded', 'failed']),
+  }),
+]);
+export type SdkWorkerFrame = z.infer<typeof SdkWorkerFrame>;
+export const SdkHostFrame = z.union([
+  z.strictObject({
+    type: z.literal('mcp_authorization'),
+    ...sdkHead,
+    requestId: RequestId,
+    token: z.string().max(16000).optional(),
+  }),
+  z.strictObject({
+    type: z.literal('ui_answer'),
+    ...sdkHead,
+    requestId: RequestId,
+    result: ExtensionUiResult,
+  }),
+  ...HostFrame.options
+    .filter((frame) => frame.shape.type.value !== 'start')
+    .map((frame) => frame.extend({ protocolVersion: z.literal(PROTOCOL_VERSION) })),
+  SdkStartFrame,
+  z.strictObject({ type: z.literal('ack'), ...sdkHead, requestId: RequestId }),
+  z.strictObject({ type: z.literal('directive'), ...sdkHead, directiveId: Identifier, text: Text }),
+]);
+export type SdkHostFrame = z.infer<typeof SdkHostFrame>;

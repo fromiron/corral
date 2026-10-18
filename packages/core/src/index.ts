@@ -21,12 +21,14 @@ export {
   type DecisionPolicy,
   type DefinitionSource,
   type FileTools,
+  type HarnessResolver,
   type ModelResolution,
   type ModelResolver,
   SIMULATED_MODELS,
   type StartRunResult,
   type ToolCancellation,
   ToolRefusal,
+  ToolTerminationUnconfirmed,
 } from './coordinator.ts';
 export { LocalHeuristicProvider } from './decisions/heuristic.ts';
 export {
@@ -41,6 +43,7 @@ export * from './history.ts';
 export * from './limits.ts';
 export * from './projection.ts';
 export * from './repository/index.ts';
+export { reviewCriteriaHash } from './review-recipe.ts';
 export * from './run-plan.ts';
 export * from './runner.ts';
 export * from './session-runs.ts';
