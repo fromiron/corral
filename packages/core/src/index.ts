@@ -10,6 +10,7 @@ export {
   type ObserverView,
   type ToolGateView,
 } from './admission/index.ts';
+export * from './auto-team.ts';
 export * from './budget.ts';
 export { canonicalJson } from './canonical-json.ts';
 export * from './compiler/index.ts';
@@ -48,4 +49,5 @@ export * from './run-plan.ts';
 export * from './runner.ts';
 export * from './session-runs.ts';
 export * from './store/run-store.ts';
+export * from './team-draft.ts';
 export * from './transport.ts';

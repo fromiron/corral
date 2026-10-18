@@ -948,5 +948,45 @@
     "tasks": [
       "C-086"
     ]
+  },
+  {
+    "requirementId": "CRL-AUTO-001",
+    "tests": [
+      "TC-AUTO-001-H",
+      "TC-AUTO-001-N"
+    ],
+    "tasks": [
+      "C-087"
+    ]
+  },
+  {
+    "requirementId": "CRL-AUTO-002",
+    "tests": [
+      "TC-AUTO-002-H",
+      "TC-AUTO-002-N"
+    ],
+    "tasks": [
+      "C-087"
+    ]
+  },
+  {
+    "requirementId": "CRL-AUTO-003",
+    "tests": [
+      "TC-AUTO-003-H",
+      "TC-AUTO-003-N"
+    ],
+    "tasks": [
+      "C-087"
+    ]
+  },
+  {
+    "requirementId": "CRL-AUTO-004",
+    "tests": [
+      "TC-AUTO-004-H",
+      "TC-AUTO-004-N"
+    ],
+    "tasks": [
+      "C-087"
+    ]
   }
 ]

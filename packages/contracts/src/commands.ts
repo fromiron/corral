@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AutoRoute } from './auto-team.ts';
 import { CorralDefinition, RunInput } from './definition.ts';
 import { ExtensionUiValue, HarnessOverrides } from './harness.ts';
 import { Identifier, SchemaVersion } from './ids.ts';
@@ -205,6 +206,8 @@ export const StartRunRequest = z.strictObject({
   references: RunReferences.optional(),
   harnessOverrides: HarnessOverrides.optional(),
   roleOverrides: RoleRunOverrides.optional(),
+  /** The auto choice this run's definition came from (CR-024); set by the runtime's starter. */
+  autoRoute: AutoRoute.optional(),
 });
 export type StartRunRequest = z.infer<typeof StartRunRequest>;
 

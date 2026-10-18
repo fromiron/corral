@@ -2086,5 +2086,93 @@
     "status": "planned",
     "adapter": "mock unless explicitly live",
     "evidence": null
+  },
+  {
+    "id": "TC-AUTO-001-H",
+    "requirements": [
+      "CRL-AUTO-001"
+    ],
+    "suite": "unit+server",
+    "scenario": "auto 세션 만들기·모델/추론 저장·revision 충돌, 팀 없는 구 세션이 auto로 읽히고 명시 팀 세션은 그대로다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-AUTO-001-N",
+    "requirements": [
+      "CRL-AUTO-001"
+    ],
+    "suite": "unit+server",
+    "scenario": "잘못된 모델 선택 값과 stale revision 저장을 거절하고 기존 값과 초안을 덮지 않는다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-AUTO-002-H",
+    "requirements": [
+      "CRL-AUTO-002"
+    ],
+    "suite": "unit+server",
+    "scenario": "세 템플릿이 컴파일러 검증을 통과하고 모든 역할에 선택한 모델·추론이 들어가며 작업 사본이 있으면 파일 도구가 붙는다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-AUTO-002-N",
+    "requirements": [
+      "CRL-AUTO-002"
+    ],
+    "suite": "unit+server",
+    "scenario": "작업 사본이 없으면 파일 도구가 없고 허용 밖 템플릿 ID는 정의를 만들지 않는다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-AUTO-003-H",
+    "requirements": [
+      "CRL-AUTO-003"
+    ],
+    "suite": "unit+server",
+    "scenario": "모델 선택 응답으로 고른 템플릿의 Run이 하나 시작되고 run.started에 선택 결과·입력 hash·사용량이 남으며 한도에서 선택 요청을 뺀다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-AUTO-003-N",
+    "requirements": [
+      "CRL-AUTO-003"
+    ],
+    "suite": "unit+server",
+    "scenario": "허용 밖 ID·깨진 JSON·시간 초과는 single 대체와 사유, 취소는 Run 없음, 같은 command ID 재전송은 선택 재호출 없이 같은 Run, 응답 원문은 남지 않는다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-AUTO-004-H",
+    "requirements": [
+      "CRL-AUTO-004"
+    ],
+    "suite": "unit",
+    "scenario": "live 가능 서버의 세션 Composer는 실행 모드 선택 없이 live로 보내고 auto 모델·추론 칩을 보여 준다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-AUTO-004-N",
+    "requirements": [
+      "CRL-AUTO-004"
+    ],
+    "suite": "unit",
+    "scenario": "모델 미연결이면 mock으로 바꾸지 않고 시작을 막으며 데모는 시뮬레이션 표시를 유지하고 팀 편집기 모드 선택은 남는다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
   }
 ]

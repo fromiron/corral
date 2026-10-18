@@ -233,9 +233,12 @@ export function fakeOpenAI(
       checkId?: string;
       lspQuery?: LspQuery;
       mcpCall?: { name: string; args: JsonObject };
+      /** A plain answer to a host request first, such as the auto choice (CR-024). */
+      hostReply?: string;
     } = {},
   ) => {
     faux.setResponses([
+      ...(options.hostReply !== undefined ? [fauxAssistantMessage(options.hostReply)] : []),
       ...(options.mcpCall
         ? [
             fauxAssistantMessage([fauxToolCall(options.mcpCall.name, options.mcpCall.args)], {

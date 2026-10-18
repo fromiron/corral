@@ -305,6 +305,63 @@ export function describeCorralRepositoryContract(
         expect(archived.ok && archived.session.archivedAt).toBeTruthy();
         expect((await repo.getSession(b.session.sessionId))?.entries).toHaveLength(1);
       });
+
+      it('[TC-AUTO-001-H] new sessions are auto; the auto model and reasoning save with a revision; a team keeps its team', async () => {
+        const repo = makeRepository();
+        const auto = await repo.createSession({ projectId: 'default', title: 'Quick question' });
+        if (!auto.ok) throw new Error(auto.message);
+        expect(auto.session).toMatchObject({ corralId: null, auto: null });
+        const chosen = await repo.updateSession(auto.session.sessionId, {
+          auto: { modelProfile: 'model-b', reasoning: { mode: 'fixed', level: 'high' } },
+          expectedRevision: 1,
+        });
+        expect(chosen.ok && chosen.session.auto).toEqual({
+          modelProfile: 'model-b',
+          reasoning: { mode: 'fixed', level: 'high' },
+        });
+        expect((await repo.getSession(auto.session.sessionId))?.auto).toEqual({
+          modelProfile: 'model-b',
+          reasoning: { mode: 'fixed', level: 'high' },
+        });
+        const entry = await repo.addSessionEntry(auto.session.sessionId, {
+          intent: 'next',
+          text: 'What is a run?',
+          state: 'started',
+          runId: 'run_1',
+          auto: { template: 'single', source: 'model' },
+        });
+        expect(entry.ok && entry.session.entries[0]?.auto).toEqual({
+          template: 'single',
+          source: 'model',
+        });
+        const team = await repo.createSession({
+          projectId: 'default',
+          title: 'With a team',
+          corralId: 'corral_x',
+        });
+        expect(team.ok && team.session).toMatchObject({ corralId: 'corral_x', auto: null });
+      });
+
+      it('[TC-AUTO-001-N] a stale revision or a malformed auto choice saves nothing', async () => {
+        const repo = makeRepository();
+        const created = await repo.createSession({ projectId: 'default', title: 'S' });
+        if (!created.ok) throw new Error(created.message);
+        const id = created.session.sessionId;
+        await repo.updateSession(id, { auto: { modelProfile: 'model-a' }, expectedRevision: 1 });
+        expect(
+          await repo.updateSession(id, { auto: { modelProfile: 'model-b' }, expectedRevision: 1 }),
+        ).toMatchObject({ ok: false, error: 'revision_conflict' });
+        for (const bad of [
+          { modelProfile: '' },
+          { modelProfile: 'model-a', reasoning: { mode: 'fixed', level: 'huge' } },
+          { modelProfile: 'model-a', tools: ['shell'] },
+        ]) {
+          expect(
+            await repo.updateSession(id, { auto: bad as never, expectedRevision: 2 }),
+          ).toMatchObject({ ok: false, error: 'invalid' });
+        }
+        expect((await repo.getSession(id))?.auto).toEqual({ modelProfile: 'model-a' });
+      });
     });
   });
 }
