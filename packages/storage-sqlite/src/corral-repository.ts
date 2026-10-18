@@ -23,7 +23,7 @@ import {
   type SaveRequest,
   type SaveResult,
   type SessionChange,
-  type SessionEntryState,
+  type SessionEntryChange,
   type SessionResult,
   sortProjects,
   sortSessions,
@@ -106,18 +106,19 @@ export class SqliteCorralRepository implements CorralRepository, DefinitionSourc
       moveCorral: db.prepare('UPDATE corrals SET project_id = ?, updated_at = ? WHERE id = ?'),
       sessions: db.prepare(
         `SELECT id, project_id, corral_id, title, objective, pinned, revision, created_at,
-           updated_at, archived_at, entries_json FROM work_sessions WHERE project_id = ?`,
+           updated_at, archived_at, entries_json, auto_json FROM work_sessions WHERE project_id = ?`,
       ),
       session: db.prepare(
         `SELECT id, project_id, corral_id, title, objective, pinned, revision, created_at,
-           updated_at, archived_at, entries_json FROM work_sessions WHERE id = ?`,
+           updated_at, archived_at, entries_json, auto_json FROM work_sessions WHERE id = ?`,
       ),
       upsertSession: db.prepare(
         `INSERT INTO work_sessions (id, project_id, corral_id, title, objective, pinned, revision,
-           created_at, updated_at, archived_at, entries_json)
+           created_at, updated_at, archived_at, entries_json, auto_json)
          VALUES (@sessionId, @projectId, @corralId, @title, @objective, @pinned, @revision,
-           @createdAt, @updatedAt, @archivedAt, @entries)
+           @createdAt, @updatedAt, @archivedAt, @entries, @auto)
          ON CONFLICT (id) DO UPDATE SET corral_id = excluded.corral_id, title = excluded.title,
+           auto_json = excluded.auto_json,
            objective = excluded.objective, pinned = excluded.pinned,
            revision = excluded.revision, updated_at = excluded.updated_at,
            archived_at = excluded.archived_at, entries_json = excluded.entries_json`,
@@ -255,7 +256,7 @@ export class SqliteCorralRepository implements CorralRepository, DefinitionSourc
   async updateSessionEntry(
     sessionId: string,
     entryId: string,
-    change: { state: SessionEntryState; runId?: string | null; detail?: string | null },
+    change: SessionEntryChange,
   ): Promise<SessionResult> {
     return this.db.transaction(() =>
       this.saveSession(
@@ -281,6 +282,7 @@ export class SqliteCorralRepository implements CorralRepository, DefinitionSourc
       ...s,
       pinned: s.pinned ? 1 : 0,
       entries: JSON.stringify(s.entries),
+      auto: s.auto ? JSON.stringify(s.auto) : null,
     });
     return result;
   }
@@ -394,6 +396,7 @@ interface SessionRow {
   updated_at: string;
   archived_at: string | null;
   entries_json: string;
+  auto_json: string | null;
 }
 
 function sessionFromRow(row: SessionRow): WorkSession {
@@ -409,6 +412,7 @@ function sessionFromRow(row: SessionRow): WorkSession {
     updatedAt: row.updated_at,
     archivedAt: row.archived_at,
     entries: readJson(row.entries_json, row.id),
+    auto: row.auto_json === null ? null : readJson(row.auto_json, row.id),
   };
 }
 

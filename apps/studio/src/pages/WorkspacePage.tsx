@@ -674,10 +674,9 @@ function StartSession({
   const suggested = WORKSPACE_TEMPLATES.filter((id) => id !== 'blank');
   const isSuggested = (value: string) =>
     value.startsWith('template:') && suggested.includes(value.slice(9) as never);
+  // CR-024: without a chosen team ('') the session starts in auto mode.
   const chooseTeam = (available: CorralSummary[]) =>
-    available.some((c) => c.corralId === corralId) || isSuggested(corralId)
-      ? corralId
-      : (available[0]?.corralId ?? 'template:starter');
+    available.some((c) => c.corralId === corralId) || isSuggested(corralId) ? corralId : '';
   const team = chooseTeam(corrals);
   useEffect(() => {
     active.current = true;
@@ -770,6 +769,7 @@ function StartSession({
             if (!creating.current) saveDraft({ title, objective, corralId: value });
           }}
           options={[
+            { value: '', label: t('autoTeam') },
             ...corrals.map((c) => ({ value: c.corralId, label: c.name })),
             ...suggested.map((id) => ({
               value: `template:${id}`,

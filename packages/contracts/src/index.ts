@@ -1,3 +1,4 @@
+export * from './auto-team.ts';
 export { canonicalJson } from './canonical-json.ts';
 export * from './coding.ts';
 export * from './commands.ts';

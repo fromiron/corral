@@ -33,6 +33,7 @@ import {
   ModelRequestRecord,
   ProviderPayloadRecord,
   ReasoningInput,
+  type ReasoningLevel,
   type ReasoningPolicy,
   type ReasoningResolution,
   type Receipt,
@@ -73,6 +74,7 @@ import {
   runGates,
   type ToolGateView,
 } from './admission/index.ts';
+import { AUTO_ROUTE_MAX_OUTPUT_TOKENS, type AutoStart, autoDefinition } from './auto-team.ts';
 import { admitModelRequest, settlementFor } from './budget.ts';
 import { canonicalJson } from './canonical-json.ts';
 import type { CompiledPlan } from './compiler/index.ts';
@@ -536,6 +538,7 @@ export class Coordinator {
     }
     const request = parsed.data;
     const payloadHash = hashOf(request);
+    const originalRequestHash = 'autoRoute' in request ? request.autoRoute?.requestHash : undefined;
     const previous = this.store.getCommand(START_SCOPE, request.commandId);
     if (previous) {
       if (previous.payloadHash !== payloadHash) {
@@ -551,7 +554,12 @@ export class Coordinator {
       const receipt = rejected(request.commandId, 'none', error);
       // A definition that cannot run stays refused for this commandId; a busy workspace not.
       if (error.code !== 'RUN_ALREADY_ACTIVE') {
-        this.recordStart({ payloadHash, receipt, runId: null });
+        this.recordStart({
+          payloadHash,
+          receipt,
+          runId: null,
+          ...(originalRequestHash ? { originalRequestHash } : {}),
+        });
       }
       return { runId: null, receipt };
     };
@@ -699,6 +707,7 @@ export class Coordinator {
       mode: request.mode,
       models,
       ...(Object.keys(harnesses).length ? { harnesses } : {}),
+      ...('autoRoute' in request && request.autoRoute ? { autoRoute: request.autoRoute } : {}),
       ...(this.judgments?.settings.reasoning_effort.apply
         ? {
             reasoningApply: {
@@ -779,6 +788,7 @@ export class Coordinator {
           ...(snapshot.harnesses ? { harnesses: snapshot.harnesses } : {}),
           ...(snapshot.reasoningApply ? { reasoningApply: snapshot.reasoningApply } : {}),
           ...(request.startFrom ? { startedFrom: request.startFrom } : {}),
+          ...(snapshot.autoRoute ? { autoRoute: snapshot.autoRoute } : {}),
           ...(this.judgments
             ? {
                 decisions: resolveDecisionSettings(this.judgments, {
@@ -789,6 +799,27 @@ export class Coordinator {
             : {}),
         },
       },
+      ...(snapshot.autoRoute && snapshot.autoRoute.source !== 'local'
+        ? [
+            {
+              type: 'budget.reserved',
+              payload: {
+                reservationId: 'auto_route',
+                modelCallId: null,
+                scope: runId,
+                amount: { outputTokens: AUTO_ROUTE_MAX_OUTPUT_TOKENS, modelCalls: 1 },
+              },
+            } satisfies EventDraft,
+            {
+              type: 'budget.settled',
+              payload: {
+                reservationId: 'auto_route',
+                actual: { outputTokens: snapshot.autoRoute.usage?.outputTokens ?? null },
+                unknownOutstanding: snapshot.autoRoute.usage ? 0 : AUTO_ROUTE_MAX_OUTPUT_TOKENS,
+              },
+            } satisfies EventDraft,
+          ]
+        : []),
       runState('created', 'validating', 'run_requested'),
       runState('validating', 'running', 'validation_passed'),
     ]);
@@ -820,6 +851,7 @@ export class Coordinator {
           scope: START_SCOPE,
           commandId: request.commandId,
           payloadHash,
+          ...(originalRequestHash ? { originalRequestHash } : {}),
           receipt,
           runId,
           directiveId: null,
@@ -977,7 +1009,12 @@ export class Coordinator {
     return { definition: { ...parsed, input: { ...parsed.input, brief } } };
   }
 
-  private recordStart(record: { payloadHash: string; receipt: Receipt; runId: string | null }) {
+  private recordStart(record: {
+    payloadHash: string;
+    receipt: Receipt;
+    runId: string | null;
+    originalRequestHash?: string;
+  }) {
     try {
       this.persist(() =>
         this.store.putCommand({
@@ -1835,6 +1872,103 @@ export class Coordinator {
   /** Whether a run-creation command is already recorded (a resend, not a new run). */
   hasStartCommand(commandId: string): boolean {
     return this.store.getCommand(START_SCOPE, commandId) !== null;
+  }
+
+  /**
+   * Why a run on this model and reasoning would be refused now (CR-024), so an auto request
+   * asks no model for a choice that could not start.
+   */
+  startRefusal(
+    profile: string,
+    mode: 'mock' | 'live',
+    reasoning?: ReasoningPolicy | { mode: 'route' },
+  ): CommandError | null {
+    const active = this.store.listRuns().find((r) => !TERMINAL_RUN_STATUSES.has(r.status));
+    if (active)
+      return {
+        code: 'RUN_ALREADY_ACTIVE',
+        message: `run ${active.runId} is still ${active.status}; one run at a time`,
+      };
+    const resolution = this.models.resolve(profile, mode);
+    if (!resolution.ok)
+      return { code: resolution.code, message: `${profile}: ${resolution.reason}` };
+    // Choosing per request (CR-024 §7) starts from medium, so the model must support it.
+    if (reasoning?.mode === 'route')
+      return resolution.snapshot.auth === 'mock' ||
+        resolution.snapshot.reasoning?.levels.includes('medium')
+        ? null
+        : {
+            code: 'CAPABILITY_DENIED',
+            message: 'choosing reasoning per request needs a model with a medium level',
+          };
+    const error = reasoningError(
+      reasoning,
+      resolution.snapshot,
+      this.judgments?.settings.reasoning_effort.apply === true,
+    );
+    return error ? { code: 'CAPABILITY_DENIED', message: error } : null;
+  }
+
+  /** The reasoning levels a profile supports; null when unknown or simulated (CR-024 §7). */
+  reasoningLevels(profile: string, mode: 'mock' | 'live'): readonly ReasoningLevel[] | null {
+    const resolution = this.models.resolve(profile, mode);
+    return resolution.ok ? (resolution.snapshot.reasoning?.levels ?? null) : null;
+  }
+
+  /** What an earlier start command returned; null if this command never started a run. */
+  startResult(
+    commandId: string,
+    originalRequestHash?: string,
+    original?: AutoStart,
+  ): StartRunResult | null {
+    const previous = this.store.getCommand(START_SCOPE, commandId);
+    if (previous && originalRequestHash && previous.originalRequestHash !== originalRequestHash) {
+      const snapshot =
+        !previous.originalRequestHash && previous.runId
+          ? this.store.getRun(previous.runId)?.snapshot
+          : null;
+      const route = snapshot?.autoRoute;
+      if (
+        !original ||
+        !snapshot ||
+        !route ||
+        route.requestHash ||
+        route.modelProfile !== original.choice.modelProfile ||
+        canonicalJson(route.reasoning ?? null) !==
+          canonicalJson(original.choice.reasoning ?? null) ||
+        route.inputHash !== bytesToHex(sha256(utf8ToBytes(original.brief)))
+      )
+        return { runId: null, receipt: conflict(commandId, previous.receipt.runId) };
+      // Legacy snapshots contain seeded references; restore only the original input for hashing.
+      const replay: StartRunRequest = {
+        schemaVersion: '0.1',
+        commandId: original.commandId,
+        definition: {
+          ...snapshot.definition,
+          input: {
+            ...snapshot.definition.input,
+            brief: original.brief,
+            criteria:
+              original.criteria ??
+              autoDefinition({
+                id: snapshot.definition.id,
+                template: route.template,
+                brief: original.brief,
+                choice: original.choice,
+                fileTools: false,
+              }).input.criteria,
+          },
+        },
+        mode: original.mode,
+        ...(original.sessionId ? { sessionId: original.sessionId } : {}),
+        ...(original.startFrom ? { startFrom: original.startFrom } : {}),
+        ...(original.references?.length ? { references: original.references } : {}),
+        autoRoute: route,
+      };
+      if (hashOf(replay) !== previous.payloadHash)
+        return { runId: null, receipt: conflict(commandId, previous.receipt.runId) };
+    }
+    return previous ? { runId: previous.runId, receipt: previous.receipt } : null;
   }
 
   getReceipt(runId: string, commandId: string): Receipt | null {

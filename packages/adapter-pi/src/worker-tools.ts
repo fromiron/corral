@@ -126,6 +126,7 @@ export function systemPrompt(start: PromptStart): string {
         '"evidenceRefs": []}. A revise verdict needs at least one issue.',
       // Ids the schema accepts, tied to the criteria text in the "criteria" input (#20).
       'For criterionId use c1 for the first criterion in the criteria input, c2 for the second, and so on; use "general" for an issue no criterion covers.',
+      'For both evidenceRefs arrays, use only evidence identifiers actually supplied in the inputs or tool results (artifactVersionId, sourceId, or documentId), matching ^[A-Za-z][A-Za-z0-9_.:-]{0,119}$. Do not invent IDs or use headings, quoted prose, or URLs; use [] for brief or criteria without a supplied evidence identifier.',
     );
   }
   if (start.tools.includes('spawn_subagents')) {

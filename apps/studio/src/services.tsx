@@ -1,4 +1,7 @@
 import {
+  type AutoCancelRequest,
+  type AutoCancelResult,
+  type AutoRunStart,
   HarnessApi,
   HttpSseTransport,
   hasSession,
@@ -11,7 +14,9 @@ import {
 } from '@corral/client';
 import type { Clock } from '@corral/contracts';
 import {
+  type AutoStartResult,
   type CorralRepository,
+  createAutoStarter,
   createKeyValueCorralRepository,
   explainDefinition,
   type KeyValueStore,
@@ -49,6 +54,10 @@ export interface StudioServices {
   previewUrl?: (runId: string, artifactVersionId: string) => string;
   /** A question about a result, as its own run in a session (CR-011). */
   startExplain: (request: ExplainStart) => Promise<StartRunResult>;
+  /** A request in an auto session (CR-024): the runtime picks the template and starts it. */
+  startAuto: (request: AutoRunStart, signal?: AbortSignal) => Promise<AutoStartResult>;
+  /** Server cancellation also reconciles a start whose HTTP response was lost. */
+  cancelAuto?: (request: AutoCancelRequest) => Promise<AutoCancelResult>;
   /** Work folders and file changes (CR-012); the browser demo has an in-memory one. */
   workspaces: WorkspacesClient | null;
 }
@@ -135,15 +144,20 @@ export async function createStudioServices(): Promise<StudioServices> {
       live: health.live,
       previewUrl: (runId, artifactVersionId) => transport.previewUrl(runId, artifactVersionId),
       startExplain: (request) => transport.startExplain(request),
+      startAuto: (request, signal) => transport.startAuto(request, signal),
+      cancelAuto: (request) => transport.cancelAuto(request),
       workspaces: new WorkspacesApi(http),
     };
   }
   const { store, persistent } = browserStore(window.location.pathname === '/demo');
   const { transport, workspace, readHistory } = createDemoRuntime();
+  // The demo's agents are simulated, so the local rule chooses and no model is called.
+  const autoStarter = createAutoStarter({ startRun: (request) => transport.startRun(request) });
   const repository = createKeyValueCorralRepository(store, {
     clock: systemClock,
     newCorralId: () => `corral_${crypto.randomUUID().slice(0, 8)}`,
   });
+  const workspaces = createDemoWorkspaces(workspace, repository, transport);
   return {
     mode: 'browser',
     persistent,
@@ -159,7 +173,14 @@ export async function createStudioServices(): Promise<StudioServices> {
     runModes: {},
     saveRunMode: async () => {},
     // An in-memory example folder in the demo worker (02-UX-Spec §10).
-    workspaces: createDemoWorkspaces(workspace, repository, transport),
+    workspaces,
+    startAuto: async (request, signal) => {
+      const copy = await workspaces.worktree(request.sessionId).catch(() => null);
+      return autoStarter.start(request, {
+        fileTools: Boolean(copy),
+        ...(signal ? { signal } : {}),
+      });
+    },
     // The in-browser runtime runs inline definitions itself.
     startExplain: ({ question, modelProfile, sessionId, startFrom, ...rest }) =>
       transport.startRun({

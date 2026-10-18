@@ -2132,6 +2132,193 @@
                 ],
                 "additionalProperties": false
               }
+            },
+            "autoRoute": {
+              "type": "object",
+              "properties": {
+                "template": {
+                  "type": "string",
+                  "enum": [
+                    "single",
+                    "write_review",
+                    "research_write_review"
+                  ]
+                },
+                "templateVersion": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "model",
+                    "local",
+                    "fallback"
+                  ]
+                },
+                "fallback": {
+                  "type": "string",
+                  "enum": [
+                    "invalid_answer",
+                    "timeout",
+                    "model_error",
+                    "output_limit"
+                  ]
+                },
+                "reason": {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                "modelProfile": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                },
+                "reasoning": {
+                  "anyOf": [
+                    {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "mode": {
+                              "type": "string",
+                              "const": "fixed"
+                            },
+                            "level": {
+                              "type": "string",
+                              "enum": [
+                                "off",
+                                "minimal",
+                                "low",
+                                "medium",
+                                "high",
+                                "xhigh",
+                                "max"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "mode",
+                            "level"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "mode": {
+                              "type": "string",
+                              "const": "auto"
+                            }
+                          },
+                          "required": [
+                            "mode"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "mode": {
+                              "type": "string",
+                              "const": "provider_default"
+                            }
+                          },
+                          "required": [
+                            "mode"
+                          ],
+                          "additionalProperties": false
+                        }
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "mode": {
+                          "type": "string",
+                          "const": "route"
+                        }
+                      },
+                      "required": [
+                        "mode"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "reasoningChoice": {
+                  "type": "object",
+                  "properties": {
+                    "level": {
+                      "type": "string",
+                      "enum": [
+                        "low",
+                        "medium",
+                        "high"
+                      ]
+                    },
+                    "source": {
+                      "type": "string",
+                      "enum": [
+                        "model",
+                        "local",
+                        "fallback"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "level",
+                    "source"
+                  ],
+                  "additionalProperties": false
+                },
+                "inputHash": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                },
+                "requestHash": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                },
+                "usage": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "inputTokens": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "outputTokens": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": [
+                        "inputTokens",
+                        "outputTokens"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "template",
+                "templateVersion",
+                "source",
+                "reason",
+                "modelProfile",
+                "inputHash",
+                "usage"
+              ],
+              "additionalProperties": false
             }
           },
           "required": [

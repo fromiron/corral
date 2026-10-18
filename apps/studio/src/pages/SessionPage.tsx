@@ -1,5 +1,5 @@
-import type { FileChangeView } from '@corral/client';
-import type { RoleRunOverrides } from '@corral/contracts';
+import type { AutoCancelResult, FileChangeView } from '@corral/client';
+import type { AutoModelChoice, AutoReasoning, RoleRunOverrides } from '@corral/contracts';
 import {
   type HarnessOverrides,
   type RunReference,
@@ -7,10 +7,12 @@ import {
   TERMINAL_RUN_STATUSES,
 } from '@corral/contracts';
 import type {
+  AutoStartResult,
   CorralSummary,
   RunProjection,
   RunSummary,
   SessionEntry,
+  SessionEntryAuto,
   SessionIntent,
   WorkSession,
 } from '@corral/core';
@@ -65,6 +67,14 @@ import { projectsChanged, setCurrentProject } from '../projects.ts';
 import { type SessionSearch, sessionRoute, validateSessionSearch } from '../router.tsx';
 import { useServices } from '../services.tsx';
 import { sendKeyLabel, shortcutLabel } from '../shortcuts.ts';
+import {
+  autoChoiceFor,
+  autoCommandSeed,
+  autoNotReady,
+  reasoningFrom,
+  reasoningValue,
+  sessionRunMode,
+} from '../workbench/autoChoice.ts';
 import { ChatView } from '../workbench/ChatView.tsx';
 import { ComposerInput } from '../workbench/ComposerInput.tsx';
 import { ComposerSurface } from '../workbench/ComposerSurface.tsx';
@@ -92,7 +102,6 @@ import {
   useModelProfiles,
   useTeamRoles,
 } from '../workbench/useModels.ts';
-import { useRunMode } from '../workbench/useRunMode.ts';
 import { useBinding, WORKSPACE_CHANGED, WorkingCopyPanel } from './FilesViews.tsx';
 import { Checks } from './ReviewPage.tsx';
 import { RunDetail } from './RunPage.tsx';
@@ -482,17 +491,22 @@ function SessionActions({
             <MenuSubTrigger>
               {t('chooseTeam')}
               <span className="ml-auto max-w-28 truncate pl-3 text-xs text-muted-foreground">
-                {team?.name ?? t('noTeam')}
+                {team?.name ?? (session.corralId ? t('selectedTeamUnavailable') : t('autoTeam'))}
               </span>
             </MenuSubTrigger>
             <MenuSubPopup>
               <MenuRadioGroup
-                value={team?.corralId ?? ''}
+                value={session.corralId ?? ''}
                 onValueChange={(value) => void update({ corralId: String(value) || null })}
               >
                 <MenuRadioItem value="" closeOnClick>
-                  {t('noTeam')}
+                  {t('autoTeam')}
                 </MenuRadioItem>
+                {session.corralId && !team ? (
+                  <MenuRadioItem value={session.corralId} disabled>
+                    {t('selectedTeamUnavailable')}
+                  </MenuRadioItem>
+                ) : null}
                 {corrals.map((c) => (
                   <MenuRadioItem key={c.corralId} value={c.corralId} closeOnClick>
                     {c.name}
@@ -914,6 +928,7 @@ function EntryCard({
   onPanel: (panel: SessionPanel, run?: Partial<SessionSearch>) => void;
 }) {
   const t = useTranslations('Sessions');
+  const tq = useTranslations('Reasoning');
   const format = useFormatter();
   const run = entry.runId ? runs.find((r) => r.runId === entry.runId) : undefined;
   const when = format.dateTime(new Date(entry.createdAt), {
@@ -922,14 +937,41 @@ function EntryCard({
   });
   // A plain follow-up needs no label; queue, instruction and question say what they were.
   const label = entry.intent === 'next' ? null : t(`intentShort.${entry.intent}`);
+  // CR-024: what an auto request ran with; not a team the person chose.
+  const auto = entry.auto
+    ? [
+        `${t(`autoTemplate.${entry.auto.template}`)}${entry.auto.source === 'fallback' ? ` (${t('autoFallback')})` : ''}`,
+        entry.auto.fallback ? t(`autoFallbackReason.${entry.auto.fallback}`) : null,
+        entry.auto.modelProfile,
+        entry.auto.requestedReasoning?.mode === 'fixed'
+          ? tq(`level.${entry.auto.requestedReasoning.level}`)
+          : entry.auto.requestedReasoning?.mode === 'route'
+            ? t('reasoningRoute')
+            : entry.auto.requestedReasoning
+              ? tq(entry.auto.requestedReasoning.mode)
+              : entry.auto.modelProfile
+                ? tq('legacy')
+                : null,
+        // CR-024 §7: the level the start model picked for this request.
+        entry.auto.reasoning
+          ? `${t('reasoningPicked', { level: tq(`level.${entry.auto.reasoning}`) })}${entry.auto.reasoningSource ? ` (${t(`reasoningSource.${entry.auto.reasoningSource}`)})` : ''}`
+          : null,
+        entry.auto.reason,
+      ]
+        .filter(Boolean)
+        .join(' · ')
+    : null;
   const state =
     entry.state === 'started' || entry.state === 'sent' ? null : t(`state.${entry.state}`);
   return (
     <article data-testid={`entry-${entry.entryId}`} className="chat-turn flex flex-col gap-4">
       <div className="user-message" title={when}>
-        {label || state ? (
-          <p className="mb-1 text-2xs font-medium text-muted">
-            {[label, state].filter(Boolean).join(' · ')}
+        {label || auto || state ? (
+          <p
+            data-testid={entry.auto ? 'entry-auto' : undefined}
+            className="mb-1 text-2xs font-medium text-muted"
+          >
+            {[label, auto, state].filter(Boolean).join(' · ')}
           </p>
         ) : null}
         <p className="whitespace-pre-wrap text-sm leading-6">{entry.text}</p>
@@ -1163,6 +1205,9 @@ function finalResultId(projection: RunProjection): string | null {
   return projection.output?.artifactVersionIds[0] ?? null;
 }
 
+// Keep only uncertain command metadata across SPA navigation, never request controllers.
+const pendingSessionCommands = new Map<string, { key: string; commandId: string }>();
+
 function Composer({
   session,
   team,
@@ -1188,6 +1233,7 @@ function Composer({
   const tc = useTranslations('Composer');
   const navigation = useSettingsNavigation();
   const tr = useTranslations('Reins');
+  const tq = useTranslations('Reasoning');
   const services = useServices();
   const { repository, transport, mode, live } = services;
   const prefs = usePreferences();
@@ -1201,9 +1247,45 @@ function Composer({
   const [lock, setLock] = useState<IntentLock | null>(
     restored.text && restored.intent ? { intent: restored.intent, target: restored.target } : null,
   );
-  const modeChoice = useRunMode(session.projectId, 'session', session.sessionId);
-  const { mode: runMode, select: setRunMode } = modeChoice;
+  // CR-024: sessions are live wherever live is possible; simulation stays in the demo and
+  // the team editor.
+  const runMode = sessionRunMode(mode, live);
   const [busy, setBusy] = useState(false);
+  const [choosingAuto, setChoosingAuto] = useState(false);
+  const autoRequest = useRef<{
+    controller: AbortController;
+    commandId: string;
+    result: Promise<AutoStartResult>;
+    cancellation?: Promise<AutoCancelResult>;
+  } | null>(null);
+  const cancelAuto = useCallback(() => {
+    const request = autoRequest.current;
+    if (!request || request.cancellation) return;
+    const cancelCommandId = newCommandId();
+    request.cancellation = services.cancelAuto
+      ? services.cancelAuto({
+          commandId: request.commandId,
+          sessionId: session.sessionId,
+          cancelCommandId,
+        })
+      : request.result.then(
+          async (start) => ({
+            start,
+            cancellation: start.runId
+              ? await transport.sendCommand({
+                  schemaVersion: '0.1',
+                  commandId: cancelCommandId,
+                  runId: start.runId,
+                  type: 'cancel',
+                  payload: { scope: { kind: 'run' }, reason: 'User cancelled the auto request' },
+                })
+              : null,
+          }),
+          () => ({ start: null, cancellation: null }),
+        );
+    request.controller.abort();
+  }, [services, session.sessionId, transport]);
+  useEffect(() => () => cancelAuto(), [cancelAuto]);
   const [error, setError] = useState<string | null>(null);
   // UX-04: why the last request did not start; the text stays in the box to send again.
   const [refusal, setRefusal] = useState<{
@@ -1223,10 +1305,14 @@ function Composer({
   );
   const [confirmStop, setConfirmStop] = useState(false);
   const [teamOpen, setTeamOpen] = useState(false);
-  const [modeOpen, setModeOpen] = useState(false);
+  const [autoModelOpen, setAutoModelOpen] = useState(false);
+  const [autoReasoningOpen, setAutoReasoningOpen] = useState(false);
   const [modelsOpen, setModelsOpen] = useState(false);
   // UX-06: which model each role uses, and whether it is connected.
   const profiles = useModelProfiles();
+  const autoChoice = autoChoiceFor(session.auto, profiles);
+  const isAuto = session.corralId === null;
+  const missingTeam = !isAuto && !team;
   const roles = useTeamRoles(team);
   const harnessKey = JSON.stringify([session.sessionId, team?.corralId, team?.definitionRevision]);
   const [runStyles, setRunStyles] = useState<{ key: string; value: HarnessOverrides } | null>(null);
@@ -1247,10 +1333,18 @@ function Composer({
   });
   // One command ID per request: a retry after a lost answer reuses it, so the runtime returns
   // the first receipt instead of starting a second run (02-UX-Spec §6).
-  const pending = useRef<{ key: string; commandId: string } | null>(null);
+  const pending = useRef(pendingSessionCommands.get(session.sessionId) ?? null);
   const commandFor = (key: string) => {
-    if (pending.current?.key !== key) pending.current = { key, commandId: newCommandId() };
+    if (pending.current?.key !== key) {
+      pending.current = { key, commandId: newCommandId() };
+      pendingSessionCommands.set(session.sessionId, pending.current);
+    }
     return pending.current.commandId;
+  };
+  const clearPending = () => {
+    if (pendingSessionCommands.get(session.sessionId) === pending.current)
+      pendingSessionCommands.delete(session.sessionId);
+    pending.current = null;
   };
   const [autoStart, setAutoStart] = useRemembered(`corral:auto-queue:${session.sessionId}`, false);
 
@@ -1438,8 +1532,18 @@ function Composer({
     refs: RunReference[] = [],
     overrides: HarnessOverrides = {},
     roleChoices: RoleRunOverrides = {},
-  ): Promise<{ runId: string | null; detail: string | null; code?: string | undefined }> => {
-    if (!team) return { runId: null, detail: t('noTeamYet') };
+  ): Promise<{
+    runId: string | null;
+    detail: string | null;
+    code?: string | undefined;
+    auto?: SessionEntryAuto | null;
+    cancelled?: boolean;
+    cancelError?: string;
+  }> => {
+    if (!team)
+      return isAuto
+        ? startAuto(brief, commandId, refs)
+        : { runId: null, detail: t('selectedTeamMissing') };
     const corral = await repository.get(team.corralId);
     if (!corral) return { runId: null, detail: t('noTeamYet') };
     const input = { brief, criteria: corral.definition.input.criteria };
@@ -1470,10 +1574,89 @@ function Composer({
     };
   };
 
+  /** CR-024: with no team chosen, the runtime picks a template for this request. */
+  const startAuto = async (brief: string, commandId: string, refs: RunReference[]) => {
+    const controller = new AbortController();
+    const request: NonNullable<typeof autoRequest.current> = {
+      controller,
+      commandId,
+      result: services.startAuto(
+        {
+          commandId,
+          sessionId: session.sessionId,
+          brief,
+          choice: autoChoice,
+          mode: runMode,
+          ...(latest ? { startFrom: { runId: latest.runId, artifactVersionId: latest.id } } : {}),
+          ...(refs.length ? { references: refs } : {}),
+        },
+        controller.signal,
+      ),
+    };
+    autoRequest.current = request;
+    setChoosingAuto(true);
+    try {
+      let result: AutoStartResult;
+      try {
+        result = await request.result;
+      } catch (failure) {
+        if (!request.cancellation) throw failure;
+        const cancelled = await request.cancellation;
+        if (!cancelled.start) throw new DOMException('Cancelled', 'AbortError');
+        result = cancelled.start;
+      }
+      const cancellation = request.cancellation ? await request.cancellation : null;
+      // A dropped HTTP response can hide a committed run; keep its original receipt.
+      if (cancellation?.start) result = cancellation.start;
+      return {
+        runId: result.runId,
+        detail: result.receipt.error?.message ?? null,
+        code: result.receipt.error?.code,
+        cancelled: cancellation !== null,
+        ...(cancellation?.cancellation?.error
+          ? { cancelError: cancellation.cancellation.error.message }
+          : {}),
+        auto: result.autoRoute
+          ? {
+              template: result.autoRoute.template,
+              source: result.autoRoute.source,
+              reason: result.autoRoute.reason,
+              modelProfile: result.autoRoute.modelProfile,
+              ...(result.autoRoute.fallback ? { fallback: result.autoRoute.fallback } : {}),
+              ...(result.autoRoute.reasoning
+                ? { requestedReasoning: result.autoRoute.reasoning }
+                : {}),
+              ...(result.autoRoute.reasoningChoice
+                ? {
+                    reasoning: result.autoRoute.reasoningChoice.level,
+                    reasoningSource: result.autoRoute.reasoningChoice.source,
+                  }
+                : {}),
+            }
+          : null,
+      };
+    } finally {
+      if (autoRequest.current === request) {
+        autoRequest.current = null;
+        setChoosingAuto(false);
+      }
+    }
+  };
+
+  /** Saves the auto model and reasoning with the session (CR-024). */
+  const updateAuto = async (auto: AutoModelChoice) => {
+    const result = await repository.updateSession(session.sessionId, {
+      auto,
+      expectedRevision: session.revision,
+    });
+    if (!result.ok) setError(t('failed', { message: result.message }));
+    else await router.invalidate();
+  };
+
   /** A refused request keeps its text, intent and references so it can be fixed and resent. */
   const refused = async (message: string, code?: string) => {
     // A refusal is final for that command; the next attempt is a new command.
-    pending.current = null;
+    clearPending();
     setRefusal({ message, code });
     await router.invalidate();
     onChange();
@@ -1481,7 +1664,7 @@ function Composer({
 
   const send = async () => {
     const body = text.trim();
-    if (!body || busy) return;
+    if (!body || busy || unavailable) return;
     const submittedRevision = writeComposerDraft(session.sessionId, composerDraft);
     draftRevision.current = submittedRevision;
     setBusy(true);
@@ -1491,9 +1674,11 @@ function Composer({
       if (intent === 'next') {
         const refs = references;
         const commandId = commandFor(
-          `next\u0000${body}\u0000${JSON.stringify([refs, harnessOverrides, roleOverrides, runMode])}`,
+          team
+            ? `next\u0000${body}\u0000${JSON.stringify([refs, harnessOverrides, roleOverrides, runMode])}`
+            : autoCommandSeed(body, refs, autoChoice),
         );
-        const { runId, detail, code } = await startNext(
+        const { runId, detail, code, auto, cancelled, cancelError } = await startNext(
           body,
           commandId,
           refs,
@@ -1511,8 +1696,16 @@ function Composer({
           runId,
           detail,
           commandId,
+          ...(auto ? { auto } : {}),
         });
-        if (!runId) return await refused(detail ?? t('noTeamYet'), code);
+        if (cancelled) {
+          clearPending();
+          if (cancelError) setError(cancelError);
+          await router.invalidate();
+          onChange();
+          return;
+        }
+        if (!runId) return await refused(detail ?? t('failed', { message: '' }), code);
       } else if (intent === 'queue') {
         await record({ intent, text: body, state: 'queued' });
       } else if (intent === 'steer' && ownActive && steerTarget) {
@@ -1536,7 +1729,10 @@ function Composer({
         if (receipt.error) return await refused(receipt.error.message, receipt.error.code);
       } else if (intent === 'explain') {
         const corral = team ? await repository.get(team.corralId) : null;
-        const profile = corral?.definition.roles[0]?.modelProfile ?? 'model-a';
+        // An auto session asks with its own model (CR-024).
+        const profile = team
+          ? (corral?.definition.roles[0]?.modelProfile ?? 'model-a')
+          : autoChoice.modelProfile;
         if (!latest) {
           setError(t('noResult'));
           return;
@@ -1564,11 +1760,15 @@ function Composer({
       } else {
         return;
       }
-      pending.current = null;
+      clearPending();
       clearSentComposerDraft(session.sessionId, submittedRevision);
       await router.invalidate();
       onChange();
     } catch (failure) {
+      if (failure instanceof DOMException && failure.name === 'AbortError') {
+        clearPending();
+        return;
+      }
       // The answer was lost: the request may or may not have arrived. The text stays, and a
       // retry reuses the same command ID, so the runtime returns the first receipt (UX-04).
       setRefusal({
@@ -1624,14 +1824,27 @@ function Composer({
   const startQueued = async (entry: SessionEntry) => {
     setBusy(true);
     try {
-      const { runId, detail } = await startNext(entry.text);
-      await repository.updateSessionEntry(session.sessionId, entry.entryId, {
+      const commandId = commandFor(
+        `queue\u0000${entry.entryId}\u0000${team?.corralId ?? autoCommandSeed(entry.text, [], autoChoice)}`,
+      );
+      const { runId, detail, auto, cancelError } = await startNext(entry.text, commandId);
+      const saved = await repository.updateSessionEntry(session.sessionId, entry.entryId, {
         state: runId ? 'started' : 'refused',
         runId,
         detail,
+        ...(auto ? { auto } : {}),
       });
+      if (!saved.ok) throw new Error(t('failed', { message: saved.message }));
+      clearPending();
+      if (cancelError) setError(cancelError);
       await router.invalidate();
       onChange();
+    } catch (failure) {
+      if (failure instanceof DOMException && failure.name === 'AbortError') clearPending();
+      else
+        setError(
+          t('failed', { message: failure instanceof Error ? failure.message : String(failure) }),
+        );
     } finally {
       setBusy(false);
     }
@@ -1659,7 +1872,7 @@ function Composer({
     const ended = wasActive.current && !active;
     wasActive.current = Boolean(ownActive);
     const next = queued[0];
-    if (ended && autoStart && next && team) void startQueued(next);
+    if (ended && autoStart && next) void startQueued(next);
   }, [active, ownActive]);
 
   const updateTeam = async (corralId: string) => {
@@ -1713,18 +1926,25 @@ function Composer({
             ),
         )
       : [];
+  // CR-024: an auto request on a disconnected model is stopped, never simulated instead.
+  const autoBlocked =
+    isAuto &&
+    (intent === 'next' || intent === 'explain') &&
+    profiles !== null &&
+    autoNotReady(autoChoice, profiles, runMode);
+  const autoProfile = profiles?.find((p) => p.profileId === autoChoice.modelProfile);
   const liveUnavailable =
     runMode === 'live' && !live && (intent === 'next' || intent === 'explain');
   const unavailable =
     liveUnavailable ||
+    autoBlocked ||
     notReady.length > 0 ||
     resolved.blocked !== null ||
     missingChips.length > 0 ||
-    (intent === 'next' && !team) ||
+    (missingTeam && (intent === 'next' || intent === 'explain')) ||
     (intent === 'explain' && !latest) ||
     (intent === 'steer' && !steerTarget);
   const stopping = Boolean(ownActive) && !text.trim();
-  const canLive = mode === 'server' && live && (intent === 'next' || intent === 'explain');
   const why = (allowedHere: boolean) => (allowedHere ? undefined : tc('notNow'));
 
   useRegisterCommands('composer', [
@@ -1777,21 +1997,9 @@ function Composer({
       title: t('chooseTeam'),
       group: tc('groupRequest'),
       slash: 'team',
-      keywords: corrals.map((c) => c.name),
+      keywords: [t('autoTeam'), ...corrals.map((c) => c.name)],
       run: () => setTeamOpen(true),
     },
-    ...(mode === 'server' && live
-      ? [
-          {
-            id: 'composer:mode',
-            title: t('mode'),
-            group: tc('groupRequest'),
-            slash: 'mode',
-            keywords: [t('modeMock'), t('modeLive')],
-            run: () => setModeOpen(true),
-          },
-        ]
-      : []),
     {
       id: 'composer:models',
       title: tc('models.title'),
@@ -1842,7 +2050,7 @@ function Composer({
                 <Button
                   variant="ghost"
                   size="xs"
-                  disabled={Boolean(active) || busy || !team}
+                  disabled={Boolean(active) || busy || missingTeam}
                   onClick={() => void startQueued(entry)}
                 >
                   {t('startNow')}
@@ -1923,10 +2131,26 @@ function Composer({
               <Button size="xs" render={<Link to="/settings/models" search={navigation.search} />}>
                 {tc('models.connect')}
               </Button>
-              <Button variant="outline" size="xs" onClick={() => setRunMode('mock')}>
-                {tc('models.useSimulated')}
+            </div>
+          ) : null}
+          {autoBlocked ? (
+            <div
+              role="alert"
+              data-testid="models-not-ready"
+              className="flex flex-wrap items-center gap-2 rounded-lg bg-warning/10 px-2.5 py-1.5 text-xs text-warning"
+            >
+              <span className="min-w-0 flex-1">
+                {t('autoNotReady', { model: autoProfile?.label ?? autoChoice.modelProfile })}
+              </span>
+              <Button size="xs" render={<Link to="/settings/models" search={navigation.search} />}>
+                {tc('models.connect')}
               </Button>
             </div>
+          ) : null}
+          {missingTeam && (intent === 'next' || intent === 'explain') ? (
+            <p role="alert" data-testid="selected-team-missing" className="text-xs text-warning">
+              {t('selectedTeamMissing')}
+            </p>
           ) : null}
           {refusal ? (
             <RefusalHelp
@@ -2053,32 +2277,93 @@ function Composer({
               <Select
                 variant="chip"
                 label={t('teamLabel')}
-                value={team?.corralId ?? ''}
+                value={session.corralId ?? ''}
                 open={teamOpen}
                 onOpenChange={setTeamOpen}
                 onValueChange={(value) => void updateTeam(value)}
                 options={[
-                  { value: '', label: t('noTeam') },
+                  { value: '', label: t('autoTeam') },
+                  ...(missingTeam && session.corralId
+                    ? [
+                        {
+                          value: session.corralId,
+                          label: t('selectedTeamUnavailable'),
+                          disabled: true,
+                        },
+                      ]
+                    : []),
                   ...corrals.map((c) => ({ value: c.corralId, label: c.name })),
                 ]}
               />
             ) : null}
-            {canLive || runMode === 'live' ? (
-              <Select
-                variant="chip"
-                label={t('mode')}
-                value={runMode}
-                open={modeOpen}
-                onOpenChange={setModeOpen}
-                onValueChange={setRunMode}
-                options={[
-                  { value: 'mock', label: t('modeMock') },
-                  { value: 'live', label: t('modeLive') },
-                ]}
-              />
+            {isAuto && (intent === 'next' || intent === 'explain') && profiles ? (
+              <>
+                <Select
+                  variant="chip"
+                  label={t('autoModel')}
+                  value={autoChoice.modelProfile}
+                  open={autoModelOpen}
+                  onOpenChange={setAutoModelOpen}
+                  // Another model may not support the saved reasoning; it starts unset.
+                  onValueChange={(value) => void updateAuto({ modelProfile: String(value) })}
+                  options={profiles.map((p) => ({ value: p.profileId, label: p.label }))}
+                />
+                {intent === 'next' ? (
+                  <Select
+                    variant="chip"
+                    label={tq('label')}
+                    value={reasoningValue(autoChoice.reasoning)}
+                    open={autoReasoningOpen}
+                    onOpenChange={setAutoReasoningOpen}
+                    onValueChange={(value) => {
+                      const reasoning = reasoningFrom(String(value));
+                      void updateAuto(
+                        reasoning
+                          ? { modelProfile: autoChoice.modelProfile, reasoning }
+                          : { modelProfile: autoChoice.modelProfile },
+                      );
+                    }}
+                    options={[
+                      { value: '', label: tq('legacy') },
+                      {
+                        value: 'provider_default',
+                        label: tq('provider_default'),
+                        disabled: !autoProfile?.reasoningCapabilities?.providerDefault,
+                      },
+                      ...(autoProfile?.reasoningCapabilities?.levels ?? []).map((level) => ({
+                        value: level,
+                        label: tq(`level.${level}`),
+                      })),
+                      {
+                        value: 'auto',
+                        label: tq('auto'),
+                        disabled: !autoProfile?.reasoningCapabilities?.levels.includes('medium'),
+                      },
+                      {
+                        // CR-024 §7: the start model picks low, medium or high per request.
+                        value: 'route',
+                        label: t('reasoningRoute'),
+                        disabled: !autoProfile?.reasoningCapabilities?.levels.includes('medium'),
+                      },
+                    ]}
+                  />
+                ) : null}
+              </>
             ) : null}
             <div className="ml-auto flex items-center gap-1">
-              {stopping ? (
+              {choosingAuto ? (
+                <Tooltip content={t('cancelAutoChoice')}>
+                  <Button
+                    variant="outline"
+                    size="icon-sm"
+                    aria-label={t('cancelAutoChoice')}
+                    className="rounded-full"
+                    onClick={cancelAuto}
+                  >
+                    <Square className="fill-current" />
+                  </Button>
+                </Tooltip>
+              ) : stopping ? (
                 <Tooltip content={tr('cancelRun')} shortcut={shortcutLabel('run.stop')}>
                   <Button
                     variant="outline"
@@ -2108,11 +2393,18 @@ function Composer({
         </section>
       </ComposerSurface.Host>
       <div className="flex min-h-5 flex-wrap items-center gap-x-2 px-4 pt-1.5 text-2xs text-muted">
-        {intent === 'next' && !team ? <span className="text-warning">{t('noTeamYet')}</span> : null}
+        {(intent === 'next' || intent === 'explain') && isAuto ? (
+          <AutoPreRunSummary
+            session={session}
+            model={autoProfile?.label ?? autoChoice.modelProfile}
+            reasoning={autoChoice.reasoning}
+            mode={runMode}
+            intent={intent}
+          />
+        ) : null}
         {intent === 'explain' && !latest ? (
           <span className="text-warning">{t('noResult')}</span>
         ) : null}
-        {modeChoice.error ? <p role="alert">{tc('modeSaveFailed')}</p> : null}
         {liveUnavailable ? <p role="alert">{tc('liveUnavailable')}</p> : null}
         {(intent === 'next' || intent === 'explain') && team ? (
           <PreRunSummary session={session} team={team} mode={runMode} intent={intent} />
@@ -2140,7 +2432,15 @@ function Composer({
             </DialogDescription>
           </DialogHeader>
           <DialogPanel>
-            <ModelAssignments roles={roles} profiles={profiles} />
+            {team ? (
+              <ModelAssignments roles={roles} profiles={profiles} />
+            ) : (
+              <p className="text-sm text-muted" data-testid={isAuto ? 'auto-model' : undefined}>
+                {missingTeam
+                  ? t('selectedTeamMissing')
+                  : `${t('autoHint')} ${autoProfile?.label ?? autoChoice.modelProfile}`}
+              </p>
+            )}
           </DialogPanel>
           <DialogFooter>
             {team ? (
@@ -2290,6 +2590,61 @@ function PreRunSummary({
     t,
   ]);
   return text ? <span data-testid="pre-run">{text}</span> : null;
+}
+
+/** What an auto request would start with (CR-024): its model, reasoning and file work. */
+function AutoPreRunSummary({
+  session,
+  model,
+  reasoning,
+  mode,
+  intent,
+}: {
+  session: WorkSession;
+  model: string;
+  reasoning: AutoReasoning | undefined;
+  mode: 'mock' | 'live';
+  intent: 'next' | 'explain';
+}) {
+  const t = useTranslations('Sessions');
+  const tq = useTranslations('Reasoning');
+  const { workspaces } = useServices();
+  const [copy, setCopy] = useState(false);
+  const [workspaceRevision, setWorkspaceRevision] = useState(0);
+  useEffect(() => {
+    const changed = () => setWorkspaceRevision((value) => value + 1);
+    window.addEventListener(WORKSPACE_CHANGED, changed);
+    return () => window.removeEventListener(WORKSPACE_CHANGED, changed);
+  }, []);
+  useEffect(() => {
+    void workspaceRevision;
+    let live = true;
+    void (workspaces?.worktree(session.sessionId) ?? Promise.resolve(null))
+      .catch(() => null)
+      .then((found) => live && setCopy(Boolean(found)));
+    return () => {
+      live = false;
+    };
+  }, [workspaces, session.sessionId, workspaceRevision]);
+  const level =
+    reasoning?.mode === 'fixed'
+      ? tq(`level.${reasoning.level}`)
+      : reasoning?.mode === 'route'
+        ? t('reasoningRoute')
+        : reasoning
+          ? tq(reasoning.mode)
+          : tq('legacy');
+  return (
+    <span data-testid="pre-run">
+      {t(intent === 'explain' ? 'preRunAutoExplain' : 'preRunAuto', {
+        model,
+        reasoning: level,
+        // Auto roles get file tools only with a working copy (CR-024).
+        files: intent === 'next' && copy ? t('filesCopy') : t('filesNone'),
+        mode: mode === 'live' ? t('modeLive') : t('modeMock'),
+      })}
+    </span>
+  );
 }
 
 /** Each role of the team, the model profile it uses, and whether that model is ready (UX-06). */

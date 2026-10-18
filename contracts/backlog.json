@@ -1683,5 +1683,31 @@
     "done": "CR-023 전체 수용 기준과 실제 패키지 UI 검증 통과",
     "status": "implemented",
     "evidence": "docs/plans/UI-Structure-Plan.md"
+  },
+  {
+    "id": "C-087",
+    "phase": "P12",
+    "title": "세션 auto 팀 선택과 세션 시뮬레이션 제거",
+    "dependsOn": [
+      "C-086"
+    ],
+    "requirements": [
+      "CRL-AUTO-001",
+      "CRL-AUTO-002",
+      "CRL-AUTO-003",
+      "CRL-AUTO-004",
+      "CRL-AUTO-005"
+    ],
+    "files": [
+      "packages/contracts/src/",
+      "packages/core/src/",
+      "packages/storage-sqlite/src/",
+      "apps/server/src/",
+      "apps/studio/",
+      "packages/react/src/messages/"
+    ],
+    "done": "CR-024 수용 기준과 실제 패키지 UI 검증 통과",
+    "status": "implemented",
+    "evidence": "docs/change-requests/CR-024-session-auto-team.md"
   }
 ]

@@ -136,6 +136,7 @@ export function describeRunStoreContract(
         scope: older.runId,
         commandId: 'cmd_1',
         payloadHash: 'h',
+        originalRequestHash: 'original_auto_request',
         receipt: {
           commandId: 'cmd_1',
           runId: older.runId,
@@ -154,6 +155,9 @@ export function describeRunStoreContract(
         store.putCommand(command);
       });
       expect(() => store.transaction(() => store.putCommand(command))).toThrow();
+      expect(store.getCommand(older.runId, command.commandId)?.originalRequestHash).toBe(
+        command.originalRequestHash,
+      );
       expect(store.listRuns().map((r) => r.runId)).toEqual([newer.runId, older.runId]);
     });
 

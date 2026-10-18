@@ -423,6 +423,15 @@ CREATE TABLE harness_management_receipts (
 ) STRICT;
 `,
   },
+  {
+    // CR-024: the model and reasoning an auto session uses; NULL until chosen.
+    name: '0013_session_auto',
+    sql: 'ALTER TABLE work_sessions ADD COLUMN auto_json TEXT;',
+  },
+  {
+    name: '0014_auto_command_identity',
+    sql: 'ALTER TABLE commands ADD COLUMN original_request_hash TEXT;',
+  },
 ];
 
 /** History queries must neither recover active runs nor migrate the workspace. */

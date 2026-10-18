@@ -404,6 +404,30 @@ describe('projects in SQLite (CR-010)', () => {
     expect(before.length).toBeGreaterThan(0);
   });
 
+  it('[TC-AUTO-001-H] a session saved before auto mode opens as auto with no model chosen', async () => {
+    const path = tempFile();
+    const old = new Database(path);
+    const before = MIGRATIONS.length - 1;
+    for (const migration of MIGRATIONS.slice(0, before))
+      old.exec((migration as { sql: string }).sql);
+    old.pragma(`user_version = ${before}`);
+    old
+      .prepare(
+        `INSERT INTO work_sessions (id, project_id, corral_id, title, objective, pinned, revision,
+           created_at, updated_at, archived_at, entries_json)
+         VALUES ('session_old', 'default', NULL, 'Old', '', 0, 3, '2026-10-01T00:00:00.000Z',
+           '2026-10-01T00:00:00.000Z', NULL, '[]')`,
+      )
+      .run();
+    old.close();
+    const repo = repository(openDatabase(path));
+    expect(await repo.getSession('session_old')).toMatchObject({
+      corralId: null,
+      auto: null,
+      revision: 3,
+    });
+  });
+
   it('puts runs of inline definitions in the default project', async () => {
     const db = openDatabase(':memory:');
     const transport = new InProcessTransport(

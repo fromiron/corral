@@ -1,10 +1,31 @@
 import {
   type EndpointSpec,
   modelReasoningCapabilities as reasoningCapabilities,
+  reasoningRequest,
 } from '@corral/adapter-pi';
-import type { ModelProfileSnapshot, ReasoningCapabilities, TeamPlan } from '@corral/contracts';
-import type { ModelResolution, ModelResolver } from '@corral/core';
-import type { AuthEvent, AuthPrompt, CredentialStore, Models } from '@earendil-works/pi-ai';
+import type {
+  AutoModelChoice,
+  AutoRouteLevel,
+  ModelProfileSnapshot,
+  ReasoningCapabilities,
+  TeamPlan,
+} from '@corral/contracts';
+import {
+  AUTO_ROUTE_MAX_OUTPUT_TOKENS,
+  AUTO_ROUTE_TIMEOUT_MS,
+  autoRouterPrompt,
+  fixedReasoning,
+  type ModelResolution,
+  type ModelResolver,
+  type RouteAnswer,
+} from '@corral/core';
+import type {
+  AssistantMessage,
+  AuthEvent,
+  AuthPrompt,
+  CredentialStore,
+  Models,
+} from '@earendil-works/pi-ai';
 import { ENDPOINT_ORIGIN, type Endpoint } from './endpoints.ts';
 import {
   DRAFT_MAX_OUTPUT_TOKENS,
@@ -37,6 +58,7 @@ export const DEFAULT_PROFILES: readonly ProfileConfig[] = [
  * apps to use subscription credentials (CR-001 §2). They take an API key instead.
  */
 const NO_SUBSCRIPTION_OAUTH = new Set(['anthropic']);
+const AUTO_ROUTE_MAX_RESPONSE_BYTES = 256;
 
 /** How a provider is reached: `none` is a keyless local endpoint (CR-005). */
 export type AuthMethod = 'oauth' | 'api_key' | 'none';
@@ -290,6 +312,125 @@ export class ModelRegistry implements ModelResolver {
     return plan
       ? { ok: true, plan, model: { provider, modelId } }
       : unavailable("the model's answer was not a usable team plan; use the local suggestion");
+  }
+
+  /**
+   * The auto choice for a session request (CR-024): one capped request to the session's model.
+   * The caller checks the profile first and records only the parsed choice, never this text.
+   */
+  async routeAuto(
+    brief: string,
+    choice: AutoModelChoice,
+    signal?: AbortSignal,
+    levels?: readonly AutoRouteLevel[],
+  ): Promise<RouteAnswer> {
+    const resolution = this.resolve(choice.modelProfile, 'live');
+    if (!resolution.ok || !resolution.snapshot.provider || !resolution.snapshot.modelId)
+      return { ok: false, reason: 'model_error' };
+    const model = this.models.getModel(resolution.snapshot.provider, resolution.snapshot.modelId);
+    if (!model) return { ok: false, reason: 'model_error' };
+    const policy = choice.reasoning;
+    const requested =
+      policy?.mode === 'auto' || policy?.mode === 'route'
+        ? ({ mode: 'fixed', level: 'medium' } as const)
+        : (policy ?? ({ mode: 'provider_default' } as const));
+    const stop = new AbortController();
+    const requestSignal = signal ? AbortSignal.any([signal, stop.signal]) : stop.signal;
+    let timedOut = false;
+    let limited = false;
+    let terminal = false;
+    let latest: AssistantMessage | undefined;
+    const usage = () =>
+      latest?.usage && (terminal || latest.usage.input > 0 || latest.usage.output > 0)
+        ? { inputTokens: latest.usage.input, outputTokens: latest.usage.output }
+        : null;
+    const failed = (): RouteAnswer => ({
+      ok: false,
+      reason: limited ? 'output_limit' : timedOut ? 'timeout' : 'model_error',
+      usage: usage(),
+    });
+    const timer = setTimeout(() => {
+      timedOut = true;
+      stop.abort();
+    }, AUTO_ROUTE_TIMEOUT_MS);
+    let off = () => {};
+    try {
+      if (requestSignal.aborted) return failed();
+      const request = reasoningRequest(
+        model,
+        {
+          maxTokens: AUTO_ROUTE_MAX_OUTPUT_TOKENS,
+          signal: requestSignal,
+        },
+        fixedReasoning(requested, 'auto_route'),
+      );
+      const aborted = new Promise<RouteAnswer>((resolve) => {
+        const abort = () => resolve(failed());
+        requestSignal.addEventListener('abort', abort, { once: true });
+        off = () => requestSignal.removeEventListener('abort', abort);
+      });
+      const stream = this.models.streamSimple(
+        request.model,
+        {
+          systemPrompt: autoRouterPrompt(levels),
+          messages: [{ role: 'user', content: brief, timestamp: Date.now() }],
+        },
+        request.options,
+      );
+      const consume = async (): Promise<RouteAnswer> => {
+        let bytes = 0;
+        for await (const event of stream) {
+          terminal = event.type === 'done' || event.type === 'error';
+          latest =
+            event.type === 'done'
+              ? event.message
+              : event.type === 'error'
+                ? event.error
+                : event.partial;
+          if (requestSignal.aborted) return failed();
+          if ('delta' in event) bytes += Buffer.byteLength(event.delta);
+          if (bytes > AUTO_ROUTE_MAX_RESPONSE_BYTES) {
+            limited = true;
+            stop.abort();
+            return failed();
+          }
+        }
+        if (requestSignal.aborted) return failed();
+        latest = await stream.result();
+        terminal = true;
+        const responseBytes = latest.content.reduce(
+          (total, part) =>
+            total +
+            Buffer.byteLength(
+              part.type === 'text'
+                ? part.text
+                : part.type === 'thinking'
+                  ? part.thinking
+                  : `${part.name}${JSON.stringify(part.arguments)}`,
+            ),
+          0,
+        );
+        if (
+          responseBytes > AUTO_ROUTE_MAX_RESPONSE_BYTES ||
+          latest.usage.output > AUTO_ROUTE_MAX_OUTPUT_TOKENS
+        ) {
+          limited = true;
+          stop.abort();
+          return failed();
+        }
+        if (latest.stopReason === 'aborted' || latest.stopReason === 'error') return failed();
+        const text = latest.content.map((part) => (part.type === 'text' ? part.text : '')).join('');
+        return { ok: true, text, usage: usage() };
+      };
+      // OAuth omits wire caps; bound visible output and waiting even when cancellation is ignored.
+      return await Promise.race([consume(), aborted]);
+    } catch {
+      return failed();
+    } finally {
+      clearTimeout(timer);
+      off();
+      void this.refreshStatus();
+    }
   }
 
   /** The profiles in use (what `.corral/config.json` names, or the defaults). */

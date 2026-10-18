@@ -25,7 +25,7 @@ const temp = (name: string) => {
   return dir;
 };
 
-function makeFake(options: { env?: Record<string, string> } = {}) {
+function makeFake(options: { env?: Record<string, string>; reasoningApi?: boolean } = {}) {
   const made = fakeOpenAI({ ...options, configDir: temp('config') });
   return { ...made, respond: () => made.answerWith('Live answer.') };
 }
@@ -626,5 +626,185 @@ describe('editing profiles and endpoints from the Models page (CR-008)', () => {
     });
     expect(stale.status).toBe(409);
     expect(readFileSync(join(context.workspace, '.corral', 'config.json'), 'utf-8')).toBe(before);
+  });
+});
+
+describe('auto sessions (CR-024)', () => {
+  async function autoSession(context: Awaited<ReturnType<typeof start>>) {
+    const created = await context.json('/sessions', {
+      method: 'POST',
+      body: JSON.stringify({ projectId: 'default', title: 'Quick question' }),
+    });
+    expect(created.status).toBe(201);
+    return created.body.session.sessionId as string;
+  }
+  const autoStart = (context: Awaited<ReturnType<typeof start>>, body: Record<string, unknown>) =>
+    context.json('/runs/auto', {
+      method: 'POST',
+      body: JSON.stringify({ schemaVersion: '0.1', mode: 'live', ...body }),
+    });
+
+  it('[TC-AUTO-003-H] asks the chosen model once with a cap, starts the chosen template, and a resend asks nothing', async () => {
+    const fake = makeFake();
+    const context = await start(fake);
+    await signIn(context.json);
+    const sessionId = await autoSession(context);
+    fake.answerWith('Live answer.', {
+      hostReply: '{"template":"single","reason":"A short question."}',
+    });
+    const body = {
+      commandId: 'cmd_auto_live',
+      sessionId,
+      brief: 'What does CR-024 change?',
+      choice: { modelProfile: 'model-b' },
+    };
+    const started = await autoStart(context, body);
+    expect(started.status).toBe(201);
+    expect(started.body.autoRoute).toMatchObject({
+      template: 'single',
+      source: 'model',
+      reason: 'A short question.',
+      modelProfile: 'model-b',
+    });
+    expect(fake.seen.hostRequests).toHaveLength(1);
+    expect(fake.seen.hostRequests[0]?.maxTokens).toBe(256);
+    expect(fake.seen.hostRequests[0]?.text).toContain('What does CR-024 change?');
+    const transport = new HttpSseTransport({ baseUrl: context.server.url, fetch: context.call });
+    const done = await waitForProjection(
+      transport,
+      started.body.runId,
+      (p) => p.status === 'succeeded' || p.status === 'failed',
+    );
+    expect(done.status).toBe('succeeded');
+    const runs = await transport.listRuns();
+    expect(runs.find((r) => r.runId === started.body.runId)?.sessionId).toBe(sessionId);
+    // The session records which template the request ran with.
+    const entry = await context.json(`/sessions/${sessionId}/entries`, {
+      method: 'POST',
+      body: JSON.stringify({
+        intent: 'next',
+        text: 'What does CR-024 change?',
+        state: 'started',
+        runId: started.body.runId,
+        commandId: 'cmd_auto_live',
+        auto: { template: 'single', source: 'model' },
+      }),
+    });
+    expect(entry.status).toBeLessThan(300);
+    expect(entry.body.session.entries[0].auto).toEqual({ template: 'single', source: 'model' });
+
+    const again = await autoStart(context, body);
+    expect(again.status).toBe(200);
+    expect(again.body.runId).toBe(started.body.runId);
+    expect(again.body.autoRoute).toEqual(started.body.autoRoute);
+    expect(fake.seen.hostRequests).toHaveLength(1);
+  });
+
+  it('[TC-AUTO-005-H] the start model picks the reasoning level and every role runs it', async () => {
+    const fake = makeFake({ reasoningApi: true });
+    const context = await start(fake);
+    await signIn(context.json);
+    const sessionId = await autoSession(context);
+    fake.answerWith('Live answer.', {
+      hostReply: '{"template":"single","reason":"Short.","reasoning":"high"}',
+    });
+    const started = await autoStart(context, {
+      commandId: 'cmd_auto_route',
+      sessionId,
+      brief: 'Explain the change.',
+      choice: { modelProfile: 'model-a', reasoning: { mode: 'route' } },
+    });
+    expect(started.status).toBe(201);
+    expect(started.body.autoRoute).toMatchObject({
+      reasoning: { mode: 'route' },
+      reasoningChoice: { level: 'high', source: 'model' },
+    });
+    const roles = context.server.coordinator.getRunSnapshot(started.body.runId)?.definition.roles;
+    expect(roles?.map((r) => r.reasoning)).toEqual([{ mode: 'fixed', level: 'high' }]);
+    const entry = await context.json(`/sessions/${sessionId}/entries`, {
+      method: 'POST',
+      body: JSON.stringify({
+        intent: 'next',
+        text: 'Explain the change.',
+        state: 'started',
+        runId: started.body.runId,
+        auto: { template: 'single', source: 'model', reasoning: 'high' },
+      }),
+    });
+    expect(entry.status).toBeLessThan(300);
+  });
+
+  it('[TC-AUTO-005-N] a model with no reasoning levels cannot choose per request; no model is asked', async () => {
+    const fake = makeFake();
+    const context = await start(fake);
+    await signIn(context.json);
+    const sessionId = await autoSession(context);
+    const refused = await autoStart(context, {
+      commandId: 'cmd_auto_route_no',
+      sessionId,
+      brief: 'Explain the change.',
+      choice: { modelProfile: 'model-a', reasoning: { mode: 'route' } },
+    });
+    expect(refused.body.runId).toBeNull();
+    expect(refused.body.receipt.error.code).toBe('CAPABILITY_DENIED');
+    expect(fake.seen.hostRequests).toHaveLength(0);
+  });
+
+  it('[TC-AUTO-003-N] an unusable answer falls back to single; no sign-in or a missing session asks no model', async () => {
+    const fake = makeFake();
+    const context = await start(fake);
+    const sessionId = await autoSession(context);
+    const signedOut = await autoStart(context, {
+      commandId: 'cmd_auto_out',
+      sessionId,
+      brief: 'Hello',
+      choice: { modelProfile: 'model-a' },
+    });
+    expect(signedOut.body.runId).toBeNull();
+    expect(fake.seen.hostRequests).toHaveLength(0);
+
+    await signIn(context.json);
+    const missing = await autoStart(context, {
+      commandId: 'cmd_auto_missing',
+      sessionId: 'session_missing',
+      brief: 'Hello',
+      choice: { modelProfile: 'model-a' },
+    });
+    expect(missing.status).toBe(404);
+    expect(fake.seen.hostRequests).toHaveLength(0);
+
+    fake.answerWith('Live answer.', { hostReply: 'A poem team: roses-are-red' });
+    const fallback = await autoStart(context, {
+      commandId: 'cmd_auto_bad',
+      sessionId,
+      brief: 'Hello',
+      choice: { modelProfile: 'model-a' },
+    });
+    expect(fallback.body.autoRoute).toMatchObject({
+      template: 'single',
+      source: 'fallback',
+      fallback: 'invalid_answer',
+    });
+    expect(context.responses.join('\n')).not.toContain('roses-are-red');
+    expect(context.responses.join('\n')).not.toContain('secret');
+
+    // Simulated runs on this server choose by the local rule and call no model.
+    const transport = new HttpSseTransport({ baseUrl: context.server.url, fetch: context.call });
+    await waitForProjection(transport, fallback.body.runId, (p) =>
+      ['succeeded', 'failed'].includes(p.status),
+    );
+    const before = fake.seen.hostRequests.length;
+    const simulated = await autoStart(context, {
+      commandId: 'cmd_auto_mock',
+      sessionId,
+      brief: 'Compare three vendors',
+      mode: 'mock',
+      choice: { modelProfile: 'model-a' },
+    });
+    expect(simulated.body.autoRoute).toMatchObject({
+      template: 'research_write_review',
+      source: 'local',
+    });
+    expect(fake.seen.hostRequests).toHaveLength(before);
   });
 });

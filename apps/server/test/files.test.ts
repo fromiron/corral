@@ -44,7 +44,7 @@ async function setup(
   git('commit', '-q', '-m', 'first');
   const db = openDatabase(':memory:');
   db.prepare(
-    "INSERT INTO work_sessions VALUES ('session_1', 'default', NULL, 't', '', 0, 1, 'x', 'x', NULL, '[]')",
+    "INSERT INTO work_sessions (id, project_id, corral_id, title, objective, pinned, revision, created_at, updated_at, archived_at, entries_json) VALUES ('session_1', 'default', NULL, 't', '', 0, 1, 'x', 'x', NULL, '[]')",
   ).run();
   db.prepare(
     `INSERT INTO runs (id, corral_id, definition_hash, snapshot_json, status, last_seq,
@@ -184,7 +184,7 @@ describe('file broker (CR-012)', () => {
       );
       s.db
         .prepare(
-          "INSERT INTO work_sessions VALUES ('session_2', 'default', NULL, 't', '', 0, 1, 'x', 'x', NULL, '[]')",
+          "INSERT INTO work_sessions (id, project_id, corral_id, title, objective, pinned, revision, created_at, updated_at, archived_at, entries_json) VALUES ('session_2', 'default', NULL, 't', '', 0, 1, 'x', 'x', NULL, '[]')",
         )
         .run();
       const second = await s.service.createWorktree('session_2', 'default', first);

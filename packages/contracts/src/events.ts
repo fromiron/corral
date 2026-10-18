@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AutoRoute } from './auto-team.ts';
 import { CancelScope, StartFrom } from './commands.ts';
 import {
   DecisionFailureReason,
@@ -95,6 +96,8 @@ export const RunStarted = event(
     /** The earlier version whose text this run's brief starts from (CR-007). */
     startedFrom: StartFrom.optional(),
     harnesses: z.record(Identifier, EffectiveHarnessSnapshot).optional(),
+    /** The auto choice the definition came from (CR-024). */
+    autoRoute: AutoRoute.optional(),
   }),
 );
 export const RunStateChanged = event(
