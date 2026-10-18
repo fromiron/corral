@@ -26,7 +26,7 @@ import {
   TERMINAL_RUN_STATUSES,
 } from '@corral/contracts';
 import {
-  AUTO_ROUTE_TIMEOUT_MS,
+  autoDefinition,
   Coordinator,
   compileDefinition,
   createAutoStarter,
@@ -905,7 +905,26 @@ async function createCorralServer(
       // Choosing can take 30 seconds; edits before the run belong to its starting tree.
       const startTree = request.sessionId ? await files.currentTree(request.sessionId) : null;
       if (signal?.aborted) throw new Error('the auto request was cancelled before a run started');
-      const result = coordinator.startRun(request);
+      const route = request.autoRoute;
+      const result = coordinator.startRun(
+        route
+          ? {
+              ...request,
+              definition: autoDefinition({
+                id: request.definition.id,
+                template: route.template,
+                brief: request.definition.input.brief,
+                criteria: request.definition.input.criteria,
+                choice: {
+                  modelProfile: route.modelProfile,
+                  ...(route.reasoning ? { reasoning: route.reasoning } : {}),
+                },
+                fileTools: startTree !== null,
+                ...(route.reasoningChoice ? { routeLevel: route.reasoningChoice.level } : {}),
+              }),
+            }
+          : request,
+      );
       if (result.runId && startTree && request.sessionId)
         await trackRunFiles(result.runId, request.sessionId, startTree);
       return result;
@@ -935,10 +954,8 @@ async function createCorralServer(
     string,
     { sessionId: string; controller: AbortController; work: Promise<AutoResult> }
   >();
-  const autoFences = new Map<string, { sessionId: string; timer: ReturnType<typeof setTimeout> }>();
   resources.defer(() => {
     for (const pending of autoRequests.values()) pending.controller.abort();
-    for (const fence of autoFences.values()) clearTimeout(fence.timer);
   });
   const cancelledAuto = (commandId: string): AutoResult => ({
     runId: null,
@@ -977,13 +994,6 @@ async function createCorralServer(
       const resend = coordinator.hasStartCommand(body.commandId);
       if (!resend && !(await corrals.getSession(body.sessionId)))
         return fail(reply, 'TARGET_NOT_FOUND', 'no such session');
-      const fence = autoFences.get(body.commandId);
-      if (fence && !resend) {
-        if (fence.sessionId !== body.sessionId)
-          return fail(reply, 'IDEMPOTENCY_CONFLICT', 'the command belongs to another session');
-        return reply.send(cancelledAuto(body.commandId));
-      }
-      const hasWorktree = !resend && files.worktreeView(body.sessionId) !== null;
       const work = autoStarter.start(
         {
           commandId: body.commandId,
@@ -994,7 +1004,7 @@ async function createCorralServer(
           ...(body.startFrom ? { startFrom: body.startFrom } : {}),
           ...(body.references ? { references: body.references } : {}),
         },
-        { fileTools: hasWorktree, signal: dropped.signal },
+        { fileTools: false, signal: dropped.signal },
       );
       if (!autoRequests.has(body.commandId)) {
         const pending = { sessionId: body.sessionId, controller: dropped, work };
@@ -1012,7 +1022,7 @@ async function createCorralServer(
         if (reply.raw.destroyed) return reply;
         return reply.send(recordedAuto(body.commandId) ?? cancelledAuto(body.commandId));
       }
-      if (autoFences.get(body.commandId)?.sessionId === body.sessionId)
+      if (recordedAuto(body.commandId)?.receipt.status === 'cancelled')
         return reply.send(recordedAuto(body.commandId) ?? cancelledAuto(body.commandId));
       throw error;
     } finally {
@@ -1040,20 +1050,15 @@ async function createCorralServer(
       const run = previous?.runId
         ? coordinator.listRuns().find((run) => run.runId === previous.runId)
         : null;
-      const fence = autoFences.get(commandId);
       if (
         (pending && pending.sessionId !== body.sessionId) ||
-        (run && (run.sessionId !== body.sessionId || !previous?.autoRoute)) ||
-        (fence && fence.sessionId !== body.sessionId)
+        (run && (run.sessionId !== body.sessionId || !previous?.autoRoute))
       )
         return fail(reply, 'TARGET_NOT_FOUND', 'no such auto request in this session');
-      if (fence) clearTimeout(fence.timer);
-      // A cancel may overtake its POST; keep a fence for the selection's bounded lifetime.
-      autoFences.set(commandId, {
-        sessionId: body.sessionId,
-        timer: setTimeout(() => autoFences.delete(commandId), AUTO_ROUTE_TIMEOUT_MS),
-      });
+      const stopped = coordinator.cancelAutoStart(commandId, body.sessionId);
       pending?.controller.abort();
+      if (stopped.receipt.error)
+        return fail(reply, stopped.receipt.error.code, stopped.receipt.error.message);
       await pending?.work.catch(() => undefined);
       const start = recordedAuto(commandId);
       if (!start?.runId) return { start: null, cancellation: null };

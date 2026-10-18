@@ -44,7 +44,7 @@
 | PATCH /sessions/:id/entries/:entryId | `{state, runId?, detail?, auto?}` | 기록 상태와 선택 결과 갱신(대기 → 시작 등) |
 | POST /runs/explain | `{commandId, sessionId, question, modelProfile, mode, startFrom?}` | 결과 질문 Run(에이전트 하나). 세션의 프로젝트에 기록 |
 | POST /runs/auto | `{schemaVersion, commandId, sessionId, brief, choice, mode, startFrom?, references?}` | 모델이 기본 템플릿을 고른 뒤 `{runId,receipt,autoRoute}`. 같은 ID·같은 내용은 재사용하고 다른 내용은 409. 선택 비용은 실행 예산에 포함 |
-| POST /runs/auto/:commandId/cancel | `{sessionId,cancelCommandId}` | 선택을 중단하고 원래 시작 명령을 확인한다. 이미 시작됐으면 기존 Coordinator cancel 경로를 사용하며 `{start,cancellation}` receipt를 돌려줘 UI가 확정된 실행을 놓치지 않게 한다 |
+| POST /runs/auto/:commandId/cancel | `{sessionId,cancelCommandId}` | 시작 전 취소는 세션 범위의 영구 명령으로 저장하고 선택을 중단한다. 원래 시작 명령을 확인한다. 이미 시작됐으면 기존 Coordinator cancel 경로를 사용하며 `{start,cancellation}` receipt를 돌려줘 UI가 확정된 실행을 놓치지 않게 한다 |
 | GET·PUT·PATCH·DELETE /projects/:id/workspace | PUT `{path}`, PATCH `{trusted?, verifyCommands?}` | 작업 폴더 연결·신뢰·검증 명령(CR-012). Corral 데이터 안 폴더는 `CAPABILITY_DENIED` |
 | GET·POST·DELETE /sessions/:id/worktree | — | 세션 작업 복사본(신뢰한 Git 저장소의 HEAD에서) |
 | GET /projects/:id/workspace/files · GET /sessions/:id/worktree/files | `path?` 상대 폴더 | 읽기 전용 파일 목록 `{files:[{path,bytes}],truncated}`. Git ignore 적용, 최대 500개. `.git`·`.corral`·symlink 제외(CR-014 DW-05) |

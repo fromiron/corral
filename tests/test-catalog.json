@@ -2148,7 +2148,7 @@
       "CRL-AUTO-003"
     ],
     "suite": "unit+server+e2e",
-    "scenario": "잘못된 JSON·출력 초과·시간 초과는 single 대체, 취소·화면 이탈은 Run 없음, 같은 ID의 다른 내용은 충돌이다. 실패의 알려진 사용량과 미확정 예약을 보존하며 파일 기준은 선택 이후에 잡는다.",
+    "scenario": "잘못된 JSON·출력 초과·시간 초과는 single 대체, 취소·화면 이탈은 Run 없음, 같은 ID의 다른 내용은 충돌이고 응답 유실 후에는 최초 시작 버전·모드까지 재전송한다. 시작 전 취소는 시간 경과·재시작 후에도 유지되며, 파일 권한과 기준 트리는 함께 확정한다. 실패의 알려진 사용량과 미확정 예약을 보존하며 파일 기준은 선택 이후에 잡는다.",
     "status": "planned",
     "adapter": "mock unless explicitly live",
     "evidence": null
