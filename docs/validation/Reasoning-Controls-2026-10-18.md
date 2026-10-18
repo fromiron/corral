@@ -40,13 +40,19 @@ Linux x64 Electron 패키지에 포함된 Node·서버·Studio·두 Pi worker를
 
 Linux x64 AppImage와 native DW-07 smoke가 통과했다. smoke는 격리 app-data, SQLite 이력, draft/theme/route, 단일 인스턴스, 종료 결정, renderer/sidecar 복구, 시작 실패 재시도, 재열기 및 호스트 Node/pnpm 부재를 확인했다.
 
-최종 Linux AppImage SHA-256: `a2f0c1acaf34964f698e8888fd245dd30e69e58e91a1d8e861fde7c53cd5a1f8`. 마지막 변경은 결과 배지 제거이며, 새 패키지에서 저장된 검사 완료 Run을 다시 열어 수정된 표시를 확인했다.
+결과 배지 수정 시점 Linux AppImage SHA-256 (아래 접힌 패널 최적화 전): `a2f0c1acaf34964f698e8888fd245dd30e69e58e91a1d8e861fde7c53cd5a1f8`. 마지막 변경은 결과 배지 제거이며, 새 패키지에서 저장된 검사 완료 Run을 다시 열어 수정된 표시를 확인했다.
 
 CI의 Playwright는 컨테이너 CPU 배정과 별개로 호스트 CPU 수를 읽어 6개 브라우저 worker를 띄웠고, Firefox의 짧은 지시 입력 구간과 키보드·승인 대기에서 시간 실패를 재현했다. CI worker를 2개로 명시했다. 재시도, 단정, timeout은 변경하지 않았다.
 
-## 최종 로컬 게이트
+## 초기 구현의 로컬 게이트
 
-`act pull_request -j gate -W .github/workflows/pr.yml` 완료(exit 0). Ubuntu 24.04 image, Node 24.19.0, pnpm 10.30.3, Python 3.12, CPU affinity 0–3을 사용했다. 스펙 1,307 checks, 생성 스키마, lint, typecheck, unit 988 passed / 5 opt-in skipped, build, E2E 178 passed / 1 skipped가 통과했다. 실패한 선행 실행을 성공으로 집계하지 않았다. 최종 코드의 모든 정규 E2E를 2 workers, retry 0으로 다시 실행했다.
+`act pull_request -j gate -W .github/workflows/pr.yml` 완료(exit 0). Ubuntu 24.04 image, Node 24.19.0, pnpm 10.30.3, Python 3.12, CPU affinity 0–3을 사용했다. 스펙 1,307 checks, 생성 스키마, lint, typecheck, unit 988 passed / 5 opt-in skipped, build, E2E 178 passed / 1 skipped가 통과했다. 실패한 선행 실행을 성공으로 집계하지 않았다. 초기 구현의 모든 정규 E2E를 2 workers, retry 0으로 다시 실행했다.
+
+## PR CI에서 발견한 추가 UI 부담
+
+첫 PR CI는 unit/build 통과 후 Firefox Loop 승인 E2E 하나가 15초 안에 승인을 표시하지 못했다(177 passed / 1 failed / 1 skipped). 1 CPU·2 worker로 재현했을 때 두 번 모두 실패했다. trace에는 접힌 설정 선택 상자까지 반복 렌더링되는 기록이 있었고, `RunRoleOverrides`가 숨겨진 Base UI 선택 상자를 계속 마운트하고 있었다.
+
+선택 상자는 패널을 열 때만 마운트하도록 바꿨다. 값은 상위 상태에 유지한다. 숨겨진 selector가 마운트되는 단위 테스트를 red → green으로 확인했고, 같은 1 CPU·2 worker 조건의 Loop E2E 두 번 모두 통과했다(20.7/20.8초는 전체 테스트 시간이며 승인 대기 15초 단정은 그대로). 패널 닫기·다시 열기·일회성 high 적용·저장된 low 유지도 검증한다. 재시도나 timeout 완화로 통과 처리하지 않았다.
 
 ## 증거 범위
 

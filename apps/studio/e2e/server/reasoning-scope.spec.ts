@@ -70,6 +70,14 @@ test('[TC-RSN-001-H] role reasoning survives save, reload and undo', async ({ pa
   const oneRun = page.getByTestId('run-role-overrides');
   await oneRun.getByRole('combobox', { name: 'Reasoning effort', exact: true }).click();
   await page.getByRole('option', { name: 'High', exact: true }).click();
+  await page.getByText('Model and reasoning for this run', { exact: true }).click();
+  await expect(oneRun.getByRole('combobox', { name: 'Reasoning effort', exact: true })).toHaveCount(
+    0,
+  );
+  await page.getByText('Model and reasoning for this run', { exact: true }).click();
+  await expect(
+    oneRun.getByRole('combobox', { name: 'Reasoning effort', exact: true }),
+  ).toContainText('High');
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   await expect(page.getByTestId('run-status')).toContainText('Succeeded');
   await expect(page.getByTestId('reasoning-summary').first()).toContainText('high');
