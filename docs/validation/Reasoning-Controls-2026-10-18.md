@@ -81,3 +81,6 @@ Run `run_ba878d5837d64a099c554a0acaedb9ac`에서 `read`가 등록된 스킬 파�
 후속 Linux AppImage SHA-256: `360481f9cbac386b74ffbdf3489b8ef9ab18d5a4732439a9af0e9d547203592c`. native DW-07 smoke를 다시 통과했다.
 
 축소 gate의 첫 실행에서 CLI eval 하나가 5초 제한을 넘었다(990 passed / 1 failed / 5 skipped). 같은 컨테이너에서 해당 검사는 2.2초에 통과했다. CLI/SDK가 별도 프로세스를 생성하므로 CI Vitest worker도 2개로 제한해 병렬 테스트의 CPU 경합을 줄였다. 테스트의 timeout과 단정은 유지한다.
+
+
+최종 hosted gate에서 MCP 테스트의 사전 workspace 연결이 간헐적으로 401을 반환했다(82 passed / 1 failed / 1 skipped). 문서 load 이후 비동기 session bootstrap이 끝나기 전에 테스트 API 설정을 시작하는 경합이었다. 기존 MCP 테스트에 bootstrap 500ms 지연을 넣어 같은 401을 재현했다. 공통 E2E `open()`이 인증 확인 뒤 마운트되는 앱 sidebar까지 기다리도록 수정했다. 제품 코드는 바꾸지 않았고 실패 단정·인증·timeout은 유지한다.

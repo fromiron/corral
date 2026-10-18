@@ -131,6 +131,8 @@ export const test = base.extend<{
       async open(path = '/') {
         const token = server.bootstrapUrl.split('#')[1];
         await page.goto(`${server.url}${path}#${token}`);
+        // Studio mounts only after redeeming the bootstrap cookie and checking the session.
+        await expect(page.getByTestId('app-sidebar')).toBeVisible();
       },
       async restart() {
         await server.close();

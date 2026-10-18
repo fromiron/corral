@@ -27,6 +27,12 @@ test('[TC-HAR-016-H] reviews an MCP server, completes local OAuth and pins its r
       '-qm',
       'fixture',
     ]);
+    // A loaded document can precede completion of the asynchronous session bootstrap.
+    await page.route('**/api/v1/session', async (route) => {
+      if (route.request().method() === 'POST')
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      await route.fallback();
+    });
     await corral.open('/settings/harness');
     await page.evaluate(async (source) => {
       const { csrfToken } = await (await fetch('/api/v1/session')).json();
@@ -39,7 +45,7 @@ test('[TC-HAR-016-H] reviews an MCP server, completes local OAuth and pins its r
           headers: { 'content-type': 'application/json', 'x-corral-csrf': csrfToken },
           body: JSON.stringify(body),
         });
-        if (!response.ok) throw new Error('setup failed');
+        if (!response.ok) throw new Error(`setup ${method}: ${response.status}`);
       }
     }, source);
     await page.reload();
