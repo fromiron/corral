@@ -1,7 +1,8 @@
 import {
   AutoModelChoice,
-  type AutoRouteLevel,
-  type AutoTemplate,
+  AutoReasoning,
+  AutoRoute,
+  AutoRouteLevel,
   CanvasLayout,
   type Clock,
   type CorralDefinition,
@@ -75,11 +76,27 @@ export interface SessionEntry {
   auto?: SessionEntryAuto | null;
 }
 
-export interface SessionEntryAuto {
-  template: AutoTemplate;
-  source: 'model' | 'local' | 'fallback';
-  /** The level the start model picked when the session lets it choose (CR-024 §7). */
-  reasoning?: AutoRouteLevel;
+export const SessionEntryAuto = AutoRoute.pick({
+  template: true,
+  source: true,
+  reason: true,
+  modelProfile: true,
+  fallback: true,
+})
+  // Older entries only saved the template and chosen level.
+  .partial({ reason: true, modelProfile: true })
+  .extend({
+    reasoning: AutoRouteLevel.optional(),
+    requestedReasoning: AutoReasoning.optional(),
+    reasoningSource: z.enum(['model', 'local', 'fallback']).optional(),
+  });
+export type SessionEntryAuto = z.infer<typeof SessionEntryAuto>;
+
+export interface SessionEntryChange {
+  state: SessionEntryState;
+  runId?: string | null;
+  detail?: string | null;
+  auto?: SessionEntryAuto | null;
 }
 
 export interface WorkSession {
@@ -194,7 +211,7 @@ export interface CorralRepository {
   updateSessionEntry(
     sessionId: string,
     entryId: string,
-    change: { state: SessionEntryState; runId?: string | null; detail?: string | null },
+    change: SessionEntryChange,
   ): Promise<SessionResult>;
 }
 
@@ -319,7 +336,7 @@ export function planSessionEntryUpdate(
   current: WorkSession | null,
   sessionId: string,
   entryId: string,
-  change: { state: SessionEntryState; runId?: string | null; detail?: string | null },
+  change: SessionEntryChange,
   now: string,
 ): SessionResult {
   if (!current)
@@ -338,6 +355,7 @@ export function planSessionEntryUpdate(
               state: change.state,
               ...(change.runId !== undefined ? { runId: change.runId } : {}),
               ...(change.detail !== undefined ? { detail: change.detail } : {}),
+              ...(change.auto !== undefined ? { auto: change.auto } : {}),
             }
           : e,
       ),

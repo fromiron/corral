@@ -1,4 +1,5 @@
 import {
+  AutoRoute,
   CorralDefinition,
   EffectiveHarnessSnapshot,
   Identifier,
@@ -26,6 +27,7 @@ const Snapshot = z.strictObject({
   models: z.record(Identifier, ModelProfileSnapshot),
   harnesses: z.record(Identifier, EffectiveHarnessSnapshot).optional(),
   reasoningApply: ReasoningApplySettings.optional(),
+  autoRoute: AutoRoute.optional(),
   startedAt: z.iso.datetime(),
 });
 const PublicArchive = z.strictObject({
@@ -131,6 +133,7 @@ export function openRunArchive(input: unknown) {
     first.payload.mode !== snapshot.mode ||
     canonicalJson(first.payload.reasoningApply ?? null) !==
       canonicalJson(snapshot.reasoningApply ?? null) ||
+    canonicalJson(first.payload.autoRoute ?? null) !== canonicalJson(snapshot.autoRoute ?? null) ||
     (first.payload.criteriaVersionId !== undefined &&
       first.payload.criteriaVersionId !== snapshot.criteriaVersionId) ||
     canonicalJson(

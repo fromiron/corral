@@ -72,7 +72,7 @@ describe('auto templates (CR-024)', () => {
     ).toHaveLength(3);
   });
 
-  it('[TC-AUTO-002-N] no working copy means no file tools; an unknown template builds nothing; the choice request comes off the limits', () => {
+  it('[TC-AUTO-002-N] no working copy means no file tools; an unknown template builds nothing; templates keep the original limits', () => {
     for (const template of AUTO_TEMPLATES) {
       const definition = autoDefinition({
         id: 'auto_s1',
@@ -101,10 +101,8 @@ describe('auto templates (CR-024)', () => {
       brief: 'Hi',
       choice: CHOICE,
       fileTools: false,
-      routeOutputTokens: 40,
     });
-    expect(charged.limits.maxModelCalls).toBe(DEFAULT_LIMITS.maxModelCalls - 1);
-    expect(charged.limits.maxOutputTokens).toBe(DEFAULT_LIMITS.maxOutputTokens - 40);
+    expect(charged.limits).toEqual(DEFAULT_LIMITS);
   });
 });
 
@@ -157,8 +155,8 @@ function setup() {
   });
   const starter = createAutoStarter({
     startRun: (request) => coordinator.startRun(request),
-    previousStart: (commandId) => {
-      const result = coordinator.startResult(commandId);
+    previousStart: (commandId, requestHash) => {
+      const result = coordinator.startResult(commandId, requestHash);
       if (!result) return null;
       const autoRoute = result.runId
         ? (coordinator.getRunSnapshot(result.runId)?.autoRoute ?? null)
@@ -216,7 +214,7 @@ describe('starting an auto run (CR-024)', () => {
     const started = await startedEvent(s, result.runId ?? '');
     expect(started?.type === 'run.started' && started.payload.autoRoute).toEqual(result.autoRoute);
     expect(started?.type === 'run.started' && started.payload.limits.maxModelCalls).toBe(
-      DEFAULT_LIMITS.maxModelCalls - 1,
+      DEFAULT_LIMITS.maxModelCalls,
     );
     expect(s.coordinator.getRunSnapshot(result.runId ?? '')?.definition.roles).toHaveLength(3);
 

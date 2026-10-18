@@ -43,6 +43,7 @@ export * from './fuzzy.ts';
 export * from './history.ts';
 export * from './limits.ts';
 export * from './projection.ts';
+export { fixedReasoning } from './reasoning.ts';
 export * from './repository/index.ts';
 export { reviewCriteriaHash } from './review-recipe.ts';
 export * from './run-plan.ts';

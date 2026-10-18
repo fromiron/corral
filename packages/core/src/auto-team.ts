@@ -19,6 +19,7 @@ import {
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js';
 import { z } from 'zod';
+import { canonicalJson } from './canonical-json.ts';
 import type { StartRunResult } from './coordinator.ts';
 import { draftFromPlan, planFromGoal, type TeamWording } from './team-draft.ts';
 
@@ -82,11 +83,6 @@ export interface AutoDefinitionInput {
   choice: AutoModelChoice;
   /** The session has a working copy, so the roles get file tools. */
   fileTools: boolean;
-  /**
-   * Output tokens the choice request used: with a number, one model call and these tokens
-   * come off this run's limits. Null or absent when no model was called.
-   */
-  routeOutputTokens?: number | null;
   /** With `route` reasoning: the level the start model picked; medium when absent. */
   routeLevel?: AutoRouteLevel;
 }
@@ -129,16 +125,15 @@ export function autoDefinition(input: AutoDefinitionInput): CorralDefinition {
       allowedWorkTools: tools,
     };
   });
-  const used = input.routeOutputTokens;
-  const limits =
-    used === null || used === undefined
-      ? definition.limits
-      : {
-          ...definition.limits,
-          maxModelCalls: Math.max(1, definition.limits.maxModelCalls - 1),
-          maxOutputTokens: Math.max(1, definition.limits.maxOutputTokens - used),
-        };
-  return { ...definition, roles, limits };
+  const nodes = definition.nodes.map((node) =>
+    node.type === 'agent' && node.roleId === 'reviewer'
+      ? {
+          ...node,
+          inputBindings: [...node.inputBindings, { kind: 'run_input' as const, name: 'brief' }],
+        }
+      : node,
+  );
+  return { ...definition, roles, nodes };
 }
 
 export const AUTO_ROUTE_MAX_OUTPUT_TOKENS = 256;
@@ -161,7 +156,8 @@ export function autoRouterPrompt(levels?: readonly AutoRouteLevel[]): string {
           `Reasoning is how hard every agent thinks, one of: ${levels.join(', ')}. Use low for simple questions and quick edits, medium for ordinary work, high only for hard analysis, design or tricky code.`,
         ]
       : []),
-    `Write the reason in the request's language, in at most ${AUTO_REASON_MAX} characters.`,
+    "Write the reason in the request's language, in at most 40 characters.",
+    'Keep the complete JSON response below 256 UTF-8 bytes.',
   ].join('\n');
 }
 
@@ -170,7 +166,7 @@ export const AUTO_ROUTER_PROMPT = autoRouterPrompt();
 const RouteAnswerText = z.strictObject({
   template: AutoTemplate,
   reason: z.string().trim().min(1).max(AUTO_REASON_MAX),
-  reasoning: z.string().max(20).optional(),
+  reasoning: z.unknown().optional(),
 });
 
 /**
@@ -206,7 +202,11 @@ export function localAutoRoute(brief: string): { template: AutoTemplate; reason:
 
 export type RouteAnswer =
   | { ok: true; text: string; usage: { inputTokens: number; outputTokens: number } | null }
-  | { ok: false; reason: 'timeout' | 'model_error' };
+  | {
+      ok: false;
+      reason: 'timeout' | 'model_error' | 'output_limit';
+      usage?: { inputTokens: number; outputTokens: number } | null;
+    };
 
 export interface AutoStart {
   commandId: string;
@@ -230,9 +230,13 @@ const cancelled = () => new Error('the auto request was cancelled before a run s
 
 export interface AutoStarterDeps<S extends AutoSignal = AutoSignal> {
   /** The Coordinator itself, or a transport to it (the in-browser runtime). */
-  startRun(request: StartRunRequest): StartRunResult | Promise<StartRunResult>;
-  /** The earlier start of a command and the choice it recorded; null if never started. */
-  previousStart?(commandId: string): AutoStartResult | null;
+  startRun(request: StartRunRequest, signal?: S): StartRunResult | Promise<StartRunResult>;
+  /** The earlier start after checking its original request identity; null if never recorded. */
+  previousStart?(
+    commandId: string,
+    requestHash: string,
+    request: AutoStart,
+  ): AutoStartResult | null;
   /** A refusal before any choice is asked for (busy, model not connected); null to go on. */
   precheck?(request: AutoStart): StartRunResult | null;
   /** The reasoning levels the model supports; null or absent when unknown (simulated). */
@@ -256,7 +260,24 @@ export interface AutoStarterDeps<S extends AutoSignal = AutoSignal> {
 
 export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoStarterDeps<S>) {
   // One choice per command ID: a resend while choosing waits for that choice.
-  const pending = new Map<string, Promise<AutoStartResult>>();
+  const pending = new Map<string, { requestHash: string; result: Promise<AutoStartResult> }>();
+  const conflict = (request: AutoStart, runId = 'none'): AutoStartResult => ({
+    runId: null,
+    autoRoute: null,
+    receipt: {
+      commandId: request.commandId,
+      runId,
+      status: 'rejected',
+      acceptedSeq: null,
+      target: `run:${runId}`,
+      requestedBoundary: 'immediate',
+      relatedEventIds: [],
+      error: {
+        code: 'IDEMPOTENCY_CONFLICT',
+        message: 'the command was already used with a different payload',
+      },
+    },
+  });
 
   const choose = async (request: AutoStart, signal: S | undefined) => {
     // `route`: the model picks one of low, medium and high that this model supports.
@@ -283,7 +304,7 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
       };
     const answer = await asked;
     if (signal?.aborted) throw cancelled();
-    const usage = answer.ok ? answer.usage : null;
+    const usage = answer.usage ?? null;
     const picked = answer.ok ? parseAutoRoute(answer.text, levels) : null;
     if (picked) {
       const { reasoning: level, ...rest } = picked;
@@ -291,7 +312,6 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
         ...rest,
         source: 'model' as const,
         usage,
-        called: true,
         ...(level ? { reasoningChoice: { level, source: 'model' as const } } : medium('fallback')),
       };
     }
@@ -301,7 +321,6 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
       source: 'fallback' as const,
       fallback: answer.ok ? ('invalid_answer' as const) : answer.reason,
       usage,
-      called: true,
       ...medium('fallback'),
     };
   };
@@ -309,18 +328,21 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
   const run = async (
     request: AutoStart,
     context: { fileTools: boolean; signal?: S },
+    requestHash: string,
   ): Promise<AutoStartResult> => {
     const signal = context.signal;
     if (signal?.aborted) throw cancelled();
     const refused = deps.precheck?.(request);
     if (refused) return { ...refused, autoRoute: null };
-    const { called, ...chosen } = { called: false, ...(await choose(request, signal)) };
+    const chosen = await choose(request, signal);
+    if (signal?.aborted) throw cancelled();
     const autoRoute: AutoRoute = {
       ...chosen,
       templateVersion: AUTO_TEMPLATE_VERSION,
       modelProfile: request.choice.modelProfile,
       ...(request.choice.reasoning ? { reasoning: request.choice.reasoning } : {}),
       inputHash: bytesToHex(sha256(utf8ToBytes(request.brief))),
+      requestHash,
     };
     const definition = autoDefinition({
       id: `auto_${(request.sessionId ?? request.commandId).replace(/^session_/, '')}`,
@@ -329,19 +351,21 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
       ...(request.criteria ? { criteria: request.criteria } : {}),
       choice: request.choice,
       fileTools: context.fileTools,
-      routeOutputTokens: called ? (autoRoute.usage?.outputTokens ?? 0) : null,
       ...(autoRoute.reasoningChoice ? { routeLevel: autoRoute.reasoningChoice.level } : {}),
     });
-    const result = await deps.startRun({
-      schemaVersion: '0.1',
-      commandId: request.commandId,
-      definition,
-      mode: request.mode,
-      ...(request.sessionId ? { sessionId: request.sessionId } : {}),
-      ...(request.startFrom ? { startFrom: request.startFrom } : {}),
-      ...(request.references?.length ? { references: request.references } : {}),
-      autoRoute,
-    });
+    const result = await deps.startRun(
+      {
+        schemaVersion: '0.1',
+        commandId: request.commandId,
+        definition,
+        mode: request.mode,
+        ...(request.sessionId ? { sessionId: request.sessionId } : {}),
+        ...(request.startFrom ? { startFrom: request.startFrom } : {}),
+        ...(request.references?.length ? { references: request.references } : {}),
+        autoRoute,
+      },
+      signal,
+    );
     return { ...result, autoRoute: result.runId ? autoRoute : null };
   };
 
@@ -350,12 +374,23 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
       request: AutoStart,
       context: { fileTools: boolean; signal?: S },
     ): Promise<AutoStartResult> {
-      const previous = deps.previousStart?.(request.commandId);
-      if (previous) return Promise.resolve(previous);
+      const requestHash = bytesToHex(sha256(utf8ToBytes(canonicalJson(request))));
+      const previous = deps.previousStart?.(request.commandId, requestHash, request);
+      if (previous)
+        return Promise.resolve(
+          previous.autoRoute?.requestHash && previous.autoRoute.requestHash !== requestHash
+            ? conflict(request, previous.runId ?? 'none')
+            : previous,
+        );
       const running = pending.get(request.commandId);
-      if (running) return running;
-      const work = run(request, context).finally(() => pending.delete(request.commandId));
-      pending.set(request.commandId, work);
+      if (running)
+        return running.requestHash === requestHash
+          ? running.result
+          : Promise.resolve(conflict(request));
+      const work = run(request, context, requestHash).finally(() =>
+        pending.delete(request.commandId),
+      );
+      pending.set(request.commandId, { requestHash, result: work });
       return work;
     },
   };

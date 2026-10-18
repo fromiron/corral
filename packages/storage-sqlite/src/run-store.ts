@@ -17,6 +17,10 @@ export class SqliteRunStore implements RunStore {
 
   constructor(db: Db) {
     this.db = db;
+    // History readers open older files without migrating them.
+    const hasRequestHash = (db.pragma('table_info(commands)') as { name: string }[]).some(
+      (column) => column.name === 'original_request_hash',
+    );
     this.sql = {
       insertRun: db.prepare(
         // The run joins its session's project (CR-011), else its saved Corral's project as it
@@ -43,10 +47,12 @@ export class SqliteRunStore implements RunStore {
       insertEvent: db.prepare(
         'INSERT INTO run_events (run_id, seq, event_id, type, event_json) VALUES (?, ?, ?, ?, ?)',
       ),
-      insertCommand: db.prepare(
-        `INSERT INTO commands (scope, command_id, run_id, payload_hash, receipt_json, directive_id)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-      ),
+      insertCommand: hasRequestHash
+        ? db.prepare(
+            `INSERT INTO commands (scope, command_id, run_id, payload_hash, receipt_json, directive_id, original_request_hash)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          )
+        : null,
       insertArtifact: db.prepare(
         'INSERT INTO artifact_texts (run_id, artifact_version_id, text_body) VALUES (?, ?, ?)',
       ),
@@ -59,7 +65,8 @@ export class SqliteRunStore implements RunStore {
         'SELECT event_json FROM run_events WHERE run_id = ? AND seq > ? ORDER BY seq LIMIT ?',
       ),
       getCommand: db.prepare(
-        `SELECT scope, command_id, run_id, payload_hash, receipt_json, directive_id
+        `SELECT scope, command_id, run_id, payload_hash, receipt_json, directive_id,
+           ${hasRequestHash ? 'original_request_hash' : 'NULL AS original_request_hash'}
          FROM commands WHERE scope = ? AND command_id = ?`,
       ),
       getArtifact: db.prepare(
@@ -118,6 +125,8 @@ export class SqliteRunStore implements RunStore {
   }
 
   putCommand(command: StoredCommand) {
+    if (!this.sql.insertCommand)
+      throw new Error('command writes require the current database schema');
     this.sql.insertCommand.run(
       command.scope,
       command.commandId,
@@ -125,6 +134,7 @@ export class SqliteRunStore implements RunStore {
       command.payloadHash,
       JSON.stringify(command.receipt),
       command.directiveId,
+      command.originalRequestHash ?? null,
     );
   }
 
@@ -179,6 +189,7 @@ export class SqliteRunStore implements RunStore {
           payload_hash: string;
           receipt_json: string;
           directive_id: string | null;
+          original_request_hash: string | null;
         }
       | undefined;
     if (!row) return null;
@@ -189,6 +200,7 @@ export class SqliteRunStore implements RunStore {
       payloadHash: row.payload_hash,
       receipt: JSON.parse(row.receipt_json),
       directiveId: row.directive_id,
+      ...(row.original_request_hash ? { originalRequestHash: row.original_request_hash } : {}),
     };
   }
 

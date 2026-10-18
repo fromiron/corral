@@ -38,6 +38,7 @@ import {
   type VerificationReport,
 } from '@corral/contracts';
 import type {
+  AutoStartResult,
   CorralRecord,
   CorralRepository,
   CorralSummary,
@@ -52,7 +53,7 @@ import type {
   SaveRequest,
   SaveResult,
   SessionChange,
-  SessionEntryState,
+  SessionEntryChange,
   SessionResult,
   StartRunResult,
   TransportHandlers,
@@ -68,6 +69,17 @@ export interface AutoRunStart {
   mode: 'mock' | 'live';
   startFrom?: StartFrom;
   references?: RunReference[];
+}
+
+export interface AutoCancelRequest {
+  commandId: string;
+  sessionId: string;
+  cancelCommandId: string;
+}
+
+export interface AutoCancelResult {
+  start: AutoStartResult | null;
+  cancellation: Receipt | null;
 }
 
 // Studio's side of the local server (C-015, ADR-016). Same contracts as the in-process
@@ -268,10 +280,12 @@ export class HttpSseTransport implements RuntimeTransport {
   /** A request in an auto session (CR-024): the runtime chooses the template and starts it. */
   async startAuto(
     request: AutoRunStart,
+    signal?: AbortSignal,
   ): Promise<StartRunResult & { autoRoute: AutoRoute | null }> {
     const response = await this.http.request('/runs/auto', {
       method: 'POST',
       body: JSON.stringify({ schemaVersion: '0.1', ...request }),
+      ...(signal ? { signal } : {}),
     });
     const body = (await response.json()) as Partial<StartRunResult> & {
       autoRoute?: AutoRoute | null;
@@ -279,6 +293,13 @@ export class HttpSseTransport implements RuntimeTransport {
     };
     if (!body.receipt) throw await apiErrorFrom(response, body);
     return { runId: body.runId ?? null, receipt: body.receipt, autoRoute: body.autoRoute ?? null };
+  }
+
+  cancelAuto({ commandId, ...body }: AutoCancelRequest): Promise<AutoCancelResult> {
+    return this.http.json(`/runs/auto/${encodeURIComponent(commandId)}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
   }
 
   /** Where an HTML result opens as a sandboxed document (CR-009); framed by Studio only. */
@@ -586,7 +607,7 @@ export class RestCorralRepository implements CorralRepository {
   updateSessionEntry(
     sessionId: string,
     entryId: string,
-    change: { state: SessionEntryState; runId?: string | null; detail?: string | null },
+    change: SessionEntryChange,
   ): Promise<SessionResult> {
     return this.projectWrite(
       `/sessions/${encodeURIComponent(sessionId)}/entries/${encodeURIComponent(entryId)}`,

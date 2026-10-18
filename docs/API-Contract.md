@@ -39,10 +39,12 @@
 | GET /projects | — | 프로젝트 목록: 기본 프로젝트 먼저, 보관 포함(`archivedAt`) |
 | GET /sessions?projectId= | — | 프로젝트의 작업 세션(고정 먼저, 최근 활동 순), 각 `entries` 포함(CR-011) |
 | POST /sessions | `{projectId, title, objective?, corralId?}` | 새 세션. 제목이 비면 목적 첫 줄 |
-| GET·PATCH /sessions/:id | `{title?, objective?, corralId?, pinned?, archived?, expectedRevision}` | 세션 읽기·수정(revision 검사) |
-| POST /sessions/:id/entries | `{intent, text, state, runId?, executionId?, detail?}` | 요청 기록 추가(본문은 이후 불변) |
-| PATCH /sessions/:id/entries/:entryId | `{state, runId?, detail?}` | 기록 상태만 갱신(대기 → 시작 등) |
+| GET·PATCH /sessions/:id | `{title?, objective?, corralId?, auto?, pinned?, archived?, expectedRevision}` | 세션 읽기·수정(revision 검사). `corralId:null`은 auto이며 명시 팀 조회 실패와 구별한다. `auto`는 모델 프로필·추론 설정(CR-024) |
+| POST /sessions/:id/entries | `{intent, text, state, runId?, executionId?, detail?, auto?}` | 요청 기록 추가(본문은 이후 불변). `auto`에는 실행별 템플릿·선택 사유·모델·추론·대체 정보를 보존 |
+| PATCH /sessions/:id/entries/:entryId | `{state, runId?, detail?, auto?}` | 기록 상태와 선택 결과 갱신(대기 → 시작 등) |
 | POST /runs/explain | `{commandId, sessionId, question, modelProfile, mode, startFrom?}` | 결과 질문 Run(에이전트 하나). 세션의 프로젝트에 기록 |
+| POST /runs/auto | `{schemaVersion, commandId, sessionId, brief, choice, mode, startFrom?, references?}` | 모델이 기본 템플릿을 고른 뒤 `{runId,receipt,autoRoute}`. 같은 ID·같은 내용은 재사용하고 다른 내용은 409. 선택 비용은 실행 예산에 포함 |
+| POST /runs/auto/:commandId/cancel | `{sessionId,cancelCommandId}` | 선택을 중단하고 원래 시작 명령을 확인한다. 이미 시작됐으면 기존 Coordinator cancel 경로를 사용하며 `{start,cancellation}` receipt를 돌려줘 UI가 확정된 실행을 놓치지 않게 한다 |
 | GET·PUT·PATCH·DELETE /projects/:id/workspace | PUT `{path}`, PATCH `{trusted?, verifyCommands?}` | 작업 폴더 연결·신뢰·검증 명령(CR-012). Corral 데이터 안 폴더는 `CAPABILITY_DENIED` |
 | GET·POST·DELETE /sessions/:id/worktree | — | 세션 작업 복사본(신뢰한 Git 저장소의 HEAD에서) |
 | GET /projects/:id/workspace/files · GET /sessions/:id/worktree/files | `path?` 상대 폴더 | 읽기 전용 파일 목록 `{files:[{path,bytes}],truncated}`. Git ignore 적용, 최대 500개. `.git`·`.corral`·symlink 제외(CR-014 DW-05) |

@@ -2162,7 +2162,8 @@
                   "enum": [
                     "invalid_answer",
                     "timeout",
-                    "model_error"
+                    "model_error",
+                    "output_limit"
                   ]
                 },
                 "reason": {
@@ -2273,6 +2274,10 @@
                   "additionalProperties": false
                 },
                 "inputHash": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                },
+                "requestHash": {
                   "type": "string",
                   "pattern": "^[0-9a-f]{64}$"
                 },

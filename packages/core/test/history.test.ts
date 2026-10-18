@@ -11,6 +11,7 @@ import { exportRunArchive, openRunArchive } from '../src/history.ts';
 import {
   applyEvent,
   Coordinator,
+  createAutoStarter,
   InMemoryRunStore,
   InProcessTransport,
   waitForProjection,
@@ -88,6 +89,51 @@ describe('record archives', () => {
     expect(reopened).not.toHaveProperty('submit');
     expect(reopened).not.toHaveProperty('startRun');
     expect(Object.isFrozen(reopened.projection)).toBe(true);
+  });
+
+  it('[TC-AUTO-003-H] [TC-OBS-003-H] [TC-OBS-003-N] reopens a completed auto run and rejects changed or missing route metadata', async () => {
+    const store = new InMemoryRunStore();
+    const coordinator = new Coordinator({
+      store,
+      clock: new FakeClock(),
+      ids: new SequentialIdFactory(),
+      agents: new ScriptedAgentAdapter({ turns: 1 }),
+    });
+    const runtime = new InProcessTransport(coordinator);
+    const starter = createAutoStarter({ startRun: (request) => coordinator.startRun(request) });
+    const { runId, autoRoute } = await starter.start(
+      {
+        commandId: 'cmd_auto_archive',
+        brief: 'What is a run?',
+        mode: 'mock',
+        choice: { modelProfile: 'model-a', reasoning: { mode: 'route' } },
+      },
+      { fileTools: false },
+    );
+    if (!runId || !autoRoute) throw new Error('auto run expected');
+    const final = await waitForProjection(runtime, runId, (p) => p.status === 'succeeded');
+    const archive = exportRunArchive(store, runId, { privateTranscript: true });
+    if (archive.visibility !== 'private') throw new Error('private archive expected');
+    const opened = openRunArchive(JSON.parse(JSON.stringify(archive)));
+    if (opened.visibility !== 'private') throw new Error('private archive expected');
+    expect(opened.snapshot.autoRoute).toEqual(autoRoute);
+    expect(opened.projection).toEqual(final);
+    for (const altered of [undefined, { ...autoRoute, reason: 'Changed choice.' }]) {
+      expect(() =>
+        openRunArchive({ ...archive, snapshot: { ...archive.snapshot, autoRoute: altered } }),
+      ).toThrow(/snapshot does not match its run start/);
+      expect(() =>
+        openRunArchive({
+          ...archive,
+          events: archive.events.map((event) =>
+            event.type === 'run.started'
+              ? { ...event, payload: { ...event.payload, autoRoute: altered } }
+              : event,
+          ),
+        }),
+      ).toThrow(/snapshot does not match its run start/);
+    }
+    expect(JSON.stringify(exportRunArchive(store, runId))).not.toContain('autoRoute');
   });
 
   it('[TC-OBS-003-H] exports committed final response text and verifies its archived body', async () => {

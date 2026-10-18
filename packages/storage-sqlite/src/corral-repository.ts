@@ -23,7 +23,7 @@ import {
   type SaveRequest,
   type SaveResult,
   type SessionChange,
-  type SessionEntryState,
+  type SessionEntryChange,
   type SessionResult,
   sortProjects,
   sortSessions,
@@ -256,7 +256,7 @@ export class SqliteCorralRepository implements CorralRepository, DefinitionSourc
   async updateSessionEntry(
     sessionId: string,
     entryId: string,
-    change: { state: SessionEntryState; runId?: string | null; detail?: string | null },
+    change: SessionEntryChange,
   ): Promise<SessionResult> {
     return this.db.transaction(() =>
       this.saveSession(

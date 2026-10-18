@@ -387,6 +387,39 @@ export function describeCorralRepositoryContract(
           reasoning: 'low',
         });
       });
+
+      it('[TC-AUTO-005-H] a queued auto request keeps its routing explanation and reasoning when started', async () => {
+        const repo = makeRepository();
+        const created = await repo.createSession({ projectId: 'default', title: 'Auto queue' });
+        if (!created.ok) throw new Error(created.message);
+        const id = created.session.sessionId;
+        const queued = await repo.addSessionEntry(id, {
+          intent: 'queue',
+          text: 'Write a reply',
+          state: 'queued',
+        });
+        if (!queued.ok) throw new Error(queued.message);
+        const auto = {
+          template: 'single' as const,
+          source: 'model' as const,
+          reason: 'A short question',
+          modelProfile: 'model-a',
+          requestedReasoning: { mode: 'route' as const },
+          reasoning: 'medium' as const,
+          reasoningSource: 'fallback' as const,
+        };
+        const updated = await repo.updateSessionEntry(
+          id,
+          queued.session.entries[0]?.entryId ?? '',
+          {
+            state: 'started',
+            runId: 'run_auto_queue',
+            auto,
+          },
+        );
+        expect(updated.ok && updated.session.entries[0]?.auto).toEqual(auto);
+        expect((await repo.getSession(id))?.entries[0]?.auto).toEqual(auto);
+      });
     });
   });
 }

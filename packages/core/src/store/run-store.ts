@@ -48,6 +48,8 @@ export interface StoredCommand {
   scope: string;
   commandId: string;
   payloadHash: string;
+  /** Original auto request identity, including refusals that have no run snapshot. */
+  originalRequestHash?: string;
   receipt: Receipt;
   runId: string | null;
   directiveId: string | null;

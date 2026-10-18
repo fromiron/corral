@@ -11,7 +11,7 @@ export const AUTO_TEMPLATES = TEAM_PATTERNS;
 export const AutoTemplate = z.enum(AUTO_TEMPLATES);
 export type AutoTemplate = z.infer<typeof AutoTemplate>;
 /** Changes whenever a template's roles, tools or wiring change. */
-export const AUTO_TEMPLATE_VERSION = 1;
+export const AUTO_TEMPLATE_VERSION = 2;
 
 /** Levels the start model may pick from when it chooses the reasoning (CR-024 §7). */
 export const AUTO_ROUTE_LEVELS = ['low', 'medium', 'high'] as const;
@@ -43,7 +43,7 @@ export const AutoRoute = z.strictObject({
   templateVersion: z.int().min(1),
   /** model: the start model chose; local: the local rule (no model call); fallback: single. */
   source: z.enum(['model', 'local', 'fallback']),
-  fallback: z.enum(['invalid_answer', 'timeout', 'model_error']).optional(),
+  fallback: z.enum(['invalid_answer', 'timeout', 'model_error', 'output_limit']).optional(),
   reason: z.string().max(AUTO_REASON_MAX),
   modelProfile: Identifier,
   /** The reasoning the session asked for. */
@@ -54,6 +54,11 @@ export const AutoRoute = z.strictObject({
     .optional(),
   /** Hash of the request text the choice was made for. */
   inputHash: z.string().regex(/^[0-9a-f]{64}$/),
+  /** Original auto command identity, independent of the generated template or worktree. */
+  requestHash: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/)
+    .optional(),
   /** The choice request's usage; null when no model was called or it reported none. */
   usage: z.strictObject({ inputTokens: z.int().min(0), outputTokens: z.int().min(0) }).nullable(),
 });

@@ -6,8 +6,6 @@ import { recoverSdkWorkers } from '@corral/adapter-pi';
 import {
   type AgentAdapter,
   AutoModelChoice,
-  AutoRouteLevel,
-  AutoTemplate,
   CanvasLayout,
   type Clock,
   type CommandError,
@@ -28,6 +26,7 @@ import {
   TERMINAL_RUN_STATUSES,
 } from '@corral/contracts';
 import {
+  AUTO_ROUTE_TIMEOUT_MS,
   Coordinator,
   compileDefinition,
   createAutoStarter,
@@ -40,6 +39,7 @@ import {
   type ProjectResult,
   planRun,
   type SaveResult,
+  SessionEntryAuto,
   type SessionResult,
   ToolRefusal,
 } from '@corral/core';
@@ -236,19 +236,13 @@ const NewEntry = z.strictObject({
   detail: z.string().max(2000).nullable().optional(),
   commandId: Identifier.nullable().optional(),
   // The template an auto request ran with (CR-024).
-  auto: z
-    .strictObject({
-      template: AutoTemplate,
-      source: z.enum(['model', 'local', 'fallback']),
-      reasoning: AutoRouteLevel.optional(),
-    })
-    .nullable()
-    .optional(),
+  auto: SessionEntryAuto.nullable().optional(),
 });
 const EntryChange = z.strictObject({
   state: EntryState,
   runId: Identifier.nullable().optional(),
   detail: z.string().max(2000).nullable().optional(),
+  auto: SessionEntryAuto.nullable().optional(),
 });
 const ExplainRequest = z.strictObject({
   commandId: Identifier,
@@ -907,9 +901,17 @@ async function createCorralServer(
   // An auto session's request (CR-024): one capped choice request, then one run of the chosen
   // template. A resend returns the first start; a dropped connection while choosing starts none.
   const autoStarter = createAutoStarter<AbortSignal>({
-    startRun: (request) => coordinator.startRun(request),
-    previousStart: (commandId) => {
-      const result = coordinator.startResult(commandId);
+    startRun: async (request, signal) => {
+      // Choosing can take 30 seconds; edits before the run belong to its starting tree.
+      const startTree = request.sessionId ? await files.currentTree(request.sessionId) : null;
+      if (signal?.aborted) throw new Error('the auto request was cancelled before a run started');
+      const result = coordinator.startRun(request);
+      if (result.runId && startTree && request.sessionId)
+        await trackRunFiles(result.runId, request.sessionId, startTree);
+      return result;
+    },
+    previousStart: (commandId, requestHash, original) => {
+      const result = coordinator.startResult(commandId, requestHash, original);
       if (!result) return null;
       const autoRoute = result.runId
         ? (coordinator.getRunSnapshot(result.runId)?.autoRoute ?? null)
@@ -928,22 +930,61 @@ async function createCorralServer(
     route: ({ brief, choice, mode, signal, levels }) =>
       mode === 'live' && registry ? registry.routeAuto(brief, choice, signal, levels) : null,
   });
+  type AutoResult = Awaited<ReturnType<typeof autoStarter.start>>;
+  const autoRequests = new Map<
+    string,
+    { sessionId: string; controller: AbortController; work: Promise<AutoResult> }
+  >();
+  const autoFences = new Map<string, { sessionId: string; timer: ReturnType<typeof setTimeout> }>();
+  resources.defer(() => {
+    for (const pending of autoRequests.values()) pending.controller.abort();
+    for (const fence of autoFences.values()) clearTimeout(fence.timer);
+  });
+  const cancelledAuto = (commandId: string): AutoResult => ({
+    runId: null,
+    autoRoute: null,
+    receipt: {
+      commandId,
+      runId: 'none',
+      status: 'cancelled',
+      acceptedSeq: null,
+      target: 'run:none',
+      requestedBoundary: 'immediate',
+      relatedEventIds: [],
+    },
+  });
+  const recordedAuto = (commandId: string): AutoResult | null => {
+    const result = coordinator.startResult(commandId);
+    return result
+      ? {
+          ...result,
+          autoRoute: result.runId
+            ? (coordinator.getRunSnapshot(result.runId)?.autoRoute ?? null)
+            : null,
+        }
+      : null;
+  };
   app.post('/api/v1/runs/auto', async (request, reply) => {
     const body = parse(AutoRunRequest, request, reply);
     if (!body) return reply;
-    const resend = coordinator.hasStartCommand(body.commandId);
-    if (!resend && !(await corrals.getSession(body.sessionId))) {
-      return fail(reply, 'TARGET_NOT_FOUND', 'no such session');
-    }
-    const startTree = resend ? null : await files.currentTree(body.sessionId);
     const dropped = new AbortController();
     const onClose = () => {
       if (!reply.raw.writableEnded) dropped.abort();
     };
     reply.raw.once('close', onClose);
-    let result: Awaited<ReturnType<typeof autoStarter.start>>;
+    if (reply.raw.destroyed || request.raw.aborted) dropped.abort();
     try {
-      result = await autoStarter.start(
+      const resend = coordinator.hasStartCommand(body.commandId);
+      if (!resend && !(await corrals.getSession(body.sessionId)))
+        return fail(reply, 'TARGET_NOT_FOUND', 'no such session');
+      const fence = autoFences.get(body.commandId);
+      if (fence && !resend) {
+        if (fence.sessionId !== body.sessionId)
+          return fail(reply, 'IDEMPOTENCY_CONFLICT', 'the command belongs to another session');
+        return reply.send(cancelledAuto(body.commandId));
+      }
+      const hasWorktree = !resend && files.worktreeView(body.sessionId) !== null;
+      const work = autoStarter.start(
         {
           commandId: body.commandId,
           sessionId: body.sessionId,
@@ -953,18 +994,86 @@ async function createCorralServer(
           ...(body.startFrom ? { startFrom: body.startFrom } : {}),
           ...(body.references ? { references: body.references } : {}),
         },
-        { fileTools: startTree !== null, signal: dropped.signal },
+        { fileTools: hasWorktree, signal: dropped.signal },
       );
+      if (!autoRequests.has(body.commandId)) {
+        const pending = { sessionId: body.sessionId, controller: dropped, work };
+        autoRequests.set(body.commandId, pending);
+        const clear = () => {
+          if (autoRequests.get(body.commandId) === pending) autoRequests.delete(body.commandId);
+        };
+        void work.then(clear, clear);
+      }
+      const result = await work;
+      const status = result.receipt.error ? STATUS[result.receipt.error.code] : resend ? 200 : 201;
+      return reply.code(status).send(result);
     } catch (error) {
-      if (dropped.signal.aborted) return reply;
+      if (dropped.signal.aborted) {
+        if (reply.raw.destroyed) return reply;
+        return reply.send(recordedAuto(body.commandId) ?? cancelledAuto(body.commandId));
+      }
+      if (autoFences.get(body.commandId)?.sessionId === body.sessionId)
+        return reply.send(recordedAuto(body.commandId) ?? cancelledAuto(body.commandId));
       throw error;
     } finally {
       reply.raw.off('close', onClose);
     }
-    if (result.runId && startTree) await trackRunFiles(result.runId, body.sessionId, startTree);
-    const status = result.receipt.error ? STATUS[result.receipt.error.code] : resend ? 200 : 201;
-    return reply.code(status).send(result);
   });
+  app.post<{ Params: { commandId: string } }>(
+    '/api/v1/runs/auto/:commandId/cancel',
+    async (request, reply) => {
+      const body = parse(
+        z.strictObject({ sessionId: Identifier, cancelCommandId: Identifier }),
+        request,
+        reply,
+      );
+      if (!body) return reply;
+      const { commandId } = request.params;
+      if (!Identifier.safeParse(commandId).success)
+        return fail(reply, 'SCHEMA_INVALID', 'invalid start command');
+      if (body.cancelCommandId === commandId)
+        return fail(reply, 'SCHEMA_INVALID', 'cancellation needs its own command ID');
+      if (!(await corrals.getSession(body.sessionId)))
+        return fail(reply, 'TARGET_NOT_FOUND', 'no such session');
+      const pending = autoRequests.get(commandId);
+      const previous = recordedAuto(commandId);
+      const run = previous?.runId
+        ? coordinator.listRuns().find((run) => run.runId === previous.runId)
+        : null;
+      const fence = autoFences.get(commandId);
+      if (
+        (pending && pending.sessionId !== body.sessionId) ||
+        (run && (run.sessionId !== body.sessionId || !previous?.autoRoute)) ||
+        (fence && fence.sessionId !== body.sessionId)
+      )
+        return fail(reply, 'TARGET_NOT_FOUND', 'no such auto request in this session');
+      if (fence) clearTimeout(fence.timer);
+      // A cancel may overtake its POST; keep a fence for the selection's bounded lifetime.
+      autoFences.set(commandId, {
+        sessionId: body.sessionId,
+        timer: setTimeout(() => autoFences.delete(commandId), AUTO_ROUTE_TIMEOUT_MS),
+      });
+      pending?.controller.abort();
+      await pending?.work.catch(() => undefined);
+      const start = recordedAuto(commandId);
+      if (!start?.runId) return { start: null, cancellation: null };
+      const committed = coordinator.listRuns().find((run) => run.runId === start.runId);
+      if (committed?.sessionId !== body.sessionId || !start.autoRoute)
+        return fail(reply, 'TARGET_NOT_FOUND', 'no such auto request in this session');
+      const cancellation =
+        !TERMINAL_RUN_STATUSES.has(committed.status) ||
+        coordinator.getReceipt(start.runId, body.cancelCommandId)
+          ? coordinator.submit({
+              schemaVersion: SCHEMA_VERSION,
+              commandId: body.cancelCommandId,
+              runId: start.runId,
+              type: 'cancel',
+              payload: { scope: { kind: 'run' }, reason: 'User cancelled the auto request' },
+            })
+          : null;
+      return { start, cancellation };
+    },
+  );
 
   // ── Work folders and file changes (CR-012) ───────────────────────────────────
   /** A run's start snapshot is recorded, and its end snapshot taken when it ends. */

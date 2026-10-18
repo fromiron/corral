@@ -29,5 +29,5 @@ export const WORKER_ENTRY = fileURLToPath(new URL('./worker-main.ts', import.met
 export const SDK_WORKER_ENTRY = fileURLToPath(new URL('./sdk-worker-main.ts', import.meta.url));
 
 export { type McpProbeTool, probeMcp } from './mcp-probe.ts';
-export { modelReasoningCapabilities } from './reasoning.ts';
+export { modelReasoningCapabilities, reasoningRequest } from './reasoning.ts';
 export { staticToolDescriptors } from './static-tools.ts';

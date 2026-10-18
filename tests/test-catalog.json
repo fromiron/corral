@@ -2092,7 +2092,7 @@
     "requirements": [
       "CRL-AUTO-001"
     ],
-    "suite": "unit+server",
+    "suite": "unit+server+e2e",
     "scenario": "auto 세션 만들기·모델/추론 저장·revision 충돌, 팀 없는 구 세션이 auto로 읽히고 명시 팀 세션은 그대로다.",
     "status": "planned",
     "adapter": "mock unless explicitly live",
@@ -2103,8 +2103,8 @@
     "requirements": [
       "CRL-AUTO-001"
     ],
-    "suite": "unit+server",
-    "scenario": "잘못된 모델 선택 값과 stale revision 저장을 거절하고 기존 값과 초안을 덮지 않는다.",
+    "suite": "unit+server+e2e",
+    "scenario": "잘못된 모델 선택 값과 stale revision 저장을 거절하고 기존 값과 초안을 덮지 않는다. 사라진 명시 팀은 자동 팀으로 바꾸지 않고 재선택을 요구한다.",
     "status": "planned",
     "adapter": "mock unless explicitly live",
     "evidence": null
@@ -2115,7 +2115,7 @@
       "CRL-AUTO-002"
     ],
     "suite": "unit+server",
-    "scenario": "세 템플릿이 컴파일러 검증을 통과하고 모든 역할에 선택한 모델·추론이 들어가며 작업 사본이 있으면 파일 도구가 붙는다.",
+    "scenario": "세 템플릿이 컴파일러 검증을 통과하고 모든 역할에 선택한 모델·추론이 들어가며 reviewer는 원래 요청을 받는다. 작업 사본이 있으면 파일 도구가 붙는다.",
     "status": "planned",
     "adapter": "mock unless explicitly live",
     "evidence": null
@@ -2136,8 +2136,8 @@
     "requirements": [
       "CRL-AUTO-003"
     ],
-    "suite": "unit+server",
-    "scenario": "모델 선택 응답으로 고른 템플릿의 Run이 하나 시작되고 run.started에 선택 결과·입력 hash·사용량이 남으며 한도에서 선택 요청을 뺀다.",
+    "suite": "unit+server+e2e",
+    "scenario": "모델이 고른 템플릿의 Run 하나와 선택 기록이 남고 선택 비용은 Coordinator 예산에 반영되어 한도 patch 이후에도 유지된다. 완료된 자동 실행의 private 기록을 export하고 다시 연다.",
     "status": "planned",
     "adapter": "mock unless explicitly live",
     "evidence": null
@@ -2147,8 +2147,8 @@
     "requirements": [
       "CRL-AUTO-003"
     ],
-    "suite": "unit+server",
-    "scenario": "허용 밖 ID·깨진 JSON·시간 초과는 single 대체와 사유, 취소는 Run 없음, 같은 command ID 재전송은 선택 재호출 없이 같은 Run, 응답 원문은 남지 않는다.",
+    "suite": "unit+server+e2e",
+    "scenario": "잘못된 JSON·출력 초과·시간 초과는 single 대체, 취소·화면 이탈은 Run 없음, 같은 ID의 다른 내용은 충돌이다. 실패의 알려진 사용량과 미확정 예약을 보존하며 파일 기준은 선택 이후에 잡는다.",
     "status": "planned",
     "adapter": "mock unless explicitly live",
     "evidence": null
@@ -2158,8 +2158,8 @@
     "requirements": [
       "CRL-AUTO-004"
     ],
-    "suite": "unit",
-    "scenario": "live 가능 서버의 세션 Composer는 실행 모드 선택 없이 live로 보내고 auto 모델·추론 칩을 보여 준다.",
+    "suite": "unit+server+e2e",
+    "scenario": "live 가능 서버의 세션 Composer는 실행 모드 선택 없이 live로 보내고 auto 모델·추론 칩을 보여 준다. Explain에는 적용되지 않는 추론 선택을 표시하지 않는다.",
     "status": "planned",
     "adapter": "mock unless explicitly live",
     "evidence": null
@@ -2169,7 +2169,7 @@
     "requirements": [
       "CRL-AUTO-004"
     ],
-    "suite": "unit",
+    "suite": "unit+server+e2e",
     "scenario": "모델 미연결이면 mock으로 바꾸지 않고 시작을 막으며 데모는 시뮬레이션 표시를 유지하고 팀 편집기 모드 선택은 남는다.",
     "status": "planned",
     "adapter": "mock unless explicitly live",
@@ -2180,8 +2180,8 @@
     "requirements": [
       "CRL-AUTO-005"
     ],
-    "suite": "unit+server",
-    "scenario": "시작 모델이 고른 추론 단계가 모든 역할에 fixed로 들어가고 run.started·세션 기록에 요청 설정과 고른 단계·출처가 남는다. 선택 요청에는 지원 단계 후보만 보인다.",
+    "suite": "unit+server+e2e",
+    "scenario": "시작 모델이 고른 추론 단계가 모든 역할에 fixed로 들어가고 run.started·직접/대기 세션 기록에 요청 설정·고른 단계·사유·대체 출처가 남는다. 선택 요청에는 지원 단계 후보만 보인다.",
     "status": "planned",
     "adapter": "mock unless explicitly live",
     "evidence": null
@@ -2191,8 +2191,8 @@
     "requirements": [
       "CRL-AUTO-005"
     ],
-    "suite": "unit+server",
-    "scenario": "후보 밖·누락 단계는 medium 대체와 사유, 템플릿 대체·로컬 규칙은 medium, medium 미지원 모델의 route는 선택 요청 없이 거절된다.",
+    "suite": "unit+server+e2e",
+    "scenario": "후보 밖·누락·잘못된 타입의 단계는 템플릿을 유지하고 medium으로 대체한다. 템플릿 대체·로컬 규칙은 medium, medium 미지원 모델의 route는 선택 요청 없이 거절된다.",
     "status": "planned",
     "adapter": "mock unless explicitly live",
     "evidence": null

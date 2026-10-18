@@ -1241,7 +1241,18 @@
     },
     "preRunAuto": "Auto · {model} · reasoning: {reasoning} · files: {files} · {mode}",
     "reasoningRoute": "Chosen per request",
-    "reasoningPicked": "reasoning {level}"
+    "reasoningPicked": "reasoning {level}",
+    "cancelAutoChoice": "Cancel team selection",
+    "selectedTeamUnavailable": "Selected team unavailable",
+    "selectedTeamMissing": "The selected team was deleted or moved. Choose a team or Auto before sending.",
+    "preRunAutoExplain": "Auto · {model} · files: {files} · {mode}",
+    "autoFallbackReason": {
+      "invalid_answer": "Invalid model response",
+      "timeout": "Choice timed out",
+      "model_error": "Choice request failed",
+      "output_limit": "Choice output limit reached"
+    },
+    "reasoningSource": { "model": "model choice", "local": "local choice", "fallback": "fallback" }
   },
   "Files": {
     "folderHeading": "Project folder",

@@ -26,12 +26,13 @@
    - 구성은 CR-006 패턴과 같은 모양이다. 도구 권한·바인딩·Loop·한도는 템플릿이 고정한다. 사람이 설계한 팀이 아니므로 최종 승인 대기를 두지 않는다.
    - 세션에 작업 사본이 있으면 CR-012 파일 도구를 허용한다. 작성 역할(`worker`·`writer`)은 읽기·쓰기, 나머지 역할은 읽기(`list_files`·`read_file`)만 받는다. 작업 사본이 없으면 `write_artifact`만 허용한다. 모든 템플릿은 기존 컴파일러 검증을 통과해야 한다.
 3. **시작 모델의 선택.** `auto`로 보낸 `next` 요청은 다음 순서로 처리한다.
-   1. 세션에 고른 모델·추론으로 선택 요청을 한 번 보낸다. 출력 256 토큰, 시간 30초로 제한한다.
+   1. 세션에 고른 모델·추론으로 선택 요청을 한 번 보낸다. 전송 경로가 지원하면 출력 256 토큰을 요청하고, 모든 경로에서 스트림의 관측 가능한 출력(text·thinking)을 UTF-8 256바이트로 제한하며 30초 안에 선택 처리를 끝낸다. 한도를 넘으면 요청을 중단하고 `single`로 대체한다.
+      - ChatGPT 구독 OAuth는 공급자가 출력 토큰 상한 필드를 거절한다. 이 경로에서는 바이트·시간 제한으로 응답 수집을 중단하며, 스트림에 노출되지 않는 내부 추론 토큰의 생성 상한까지 보장하지 않는다. 공급자가 보고한 실제 사용량은 실패·중단 응답에도 보존하고 이번 Run의 예산에 포함한다. 한도를 지원하는 것처럼 표시하지 않는다.
    2. 응답에서 `{ template, reason }` JSON만 받아 엄격히 검증한다. 허용 ID 밖의 값, 형식 오류, 시간 초과는 `single`로 대체하고 그 사유를 기록한다.
    3. 고른 템플릿으로 Run을 하나 시작한다.
-   - 선택 요청은 Run이 생기기 전 서버가 보내는 요청이다(CR-006 모델 요청과 같은 경로). 그 대신 결과는 Coordinator의 Run 시작 명령으로만 기록한다. `run.started`에 선택 결과(템플릿 ID·버전·출처·대체 사유·모델·추론·입력 hash·사용량)를 남기고, 모델 요청을 썼으면 이번 Run의 모델 요청 한도에서 1회와 그 출력 토큰을 뺀다. 모델 응답 원문은 남기지 않는다.
+   - 선택 요청은 Run이 생기기 전 서버가 보내는 요청이다(CR-006 모델 요청과 같은 경로). 그 대신 결과는 Coordinator의 Run 시작 명령으로만 기록한다. `run.started`에 선택 결과(템플릿 ID·버전·출처·대체 사유·모델·추론·입력 hash·사용량)를 남기고, 모델 요청을 썼으면 1회와 출력 사용량을 Coordinator의 예산 기록으로 반영한다. 실행 중 한도를 바꾸어도 이 사용량은 유지한다. 보고된 사용량이 없으면 알려지지 않은 사용량으로 예약해 보수적으로 계산한다. 모델 응답 원문은 남기지 않는다.
    - 선택 요청의 추론은 `fixed(level)`이면 그 단계, `auto`이면 CR-021 기준값 medium, `provider_default`나 생략이면 공급자 기본이다.
-   - 같은 command ID가 이미 Run 시작 명령으로 기록돼 있으면 선택 요청 없이 그 결과를 돌려준다. 처리 중인 같은 command ID는 그 처리를 기다린다. 응답 연결이 선택 중에 끊기면 Run을 시작하지 않는다.
+   - 같은 command ID와 같은 요청 내용이 이미 Run 시작 명령으로 기록돼 있으면 선택 요청 없이 그 결과를 돌려준다. 처리 중인 같은 명령도 그 처리를 기다린다. 같은 ID에 다른 세션·본문·모델·추론·참조를 보내면 충돌로 거절한다. 응답 연결이 선택 중에 끊기거나 Composer를 떠나면 Run을 시작하지 않는다. 파일 변경의 시작 snapshot은 선택 대기가 끝난 뒤 실제 Run을 시작하기 직전에 기록한다.
 4. **모델과 추론.** `auto` 세션은 모델 프로필 하나와 추론 설정(`fixed(level)`/`auto`/`provider_default`, CR-021)을 저장한다.
    - 그 값은 선택 요청과 고른 템플릿의 모든 역할에 이번 Run의 역할 override로 적용한다. CR-021의 우선순위·지원 단계 검사·거절 규칙을 그대로 따른다.
    - `auto` 세션의 결과 질문(`explain`)은 팀 첫 역할 대신 이 모델을 쓴다.
@@ -39,7 +40,7 @@
    - 모델이 연결되지 않았으면 mock으로 바꾸지 않는다. 시작을 막고 연결 안내를 보여 준다.
    - live가 불가능한 곳(브라우저 데모, 시뮬레이션 전용 서버)에서는 세션이 시뮬레이션만 쓰고, 그 사실을 계속 표시한다. 데모의 선택은 CR-006 로컬 제안 규칙으로 하며 모델을 호출하지 않는다.
    - 팀 편집기의 직접 실행은 mock/live 선택을 유지한다. 이전에 저장된 세션 범위 `mock` 값은 live 가능 서버에서 무시한다.
-6. **표시.** Run 카드와 실행 전 요약은 `자동 · <템플릿 이름>`, 선택 사유, 대체 여부, 모델·추론을 보여 준다. 사용자가 고르지 않은 팀 이름처럼 보이게 하지 않는다.
+6. **표시.** Run 카드와 실행 전 요약은 `자동 · <템플릿 이름>`, 선택 사유, 대체 여부, 모델·추론을 보여 준다. 직접 전송과 대기 요청 실행에 같은 기록을 사용하며, 사용자가 고르지 않은 팀 이름처럼 보이게 하지 않는다. `explain`은 선택한 모델을 사용하지만 요청별 추론 선택을 지원하지 않으므로 추론 선택 칩이나 적용 요약을 표시하지 않는다.
 7. **요청별 추론 선택(보완).** auto 세션의 추론 설정에 `route`(요청마다 시작 모델이 선택)를 더한다. CR-021의 `fixed`/`auto`/`provider_default`와 별개이며, auto 세션의 저장값에서만 쓴다. 역할 정의와 Run 계약의 추론 정책은 그대로 `fixed`다.
    - 후보는 low·medium·high 중 그 모델이 지원하는 단계다. medium이 없는 모델에서는 `route`를 고를 수 없고, 서버도 선택 요청 전에 거절한다.
    - 선택 요청은 템플릿과 함께 `reasoning`을 받는다. 후보 밖이거나 빠졌으면 템플릿 선택은 그대로 두고 추론만 medium으로 대체하며 그 사실을 기록한다. 템플릿이 대체(`single`)되면 추론도 medium이다. 로컬 규칙(데모·시뮬레이션)도 medium이다.
@@ -69,4 +70,22 @@
 - E2E(빌드한 Studio): server·chromium 프로젝트 전체 실행 뒤, 영향받은 spec 13개 재실행 통과. 기존 E2E 중 "새 세션은 첫 팀"을 전제한 셋업(`startSession`, `usability`·`ux-review`·`files` helper)은 팀을 명시적으로 고르게 바꾸었고 단언은 유지했다. TC-UX-04-H는 CR-021 §7의 "시뮬레이션으로 보내기" 대신 이 CR §5에 맞춰 선택지 부재와 차단을 단언한다. TC-RSN-004-H(편집기 실행 모드 기억)는 병렬 전체 실행에서 한 번 실패했고 단독 2회 반복은 통과했다. 이 변경이 건드리지 않은 경로다.
 - 실계정(임시 작업 공간, `corral dev --port 4318`): GPT-6.1 Sol·low와 GPT-6 Luna·low에서 선택 요청 1회로 `single`을 고르고 Run 성공. `run.started`에 선택·사용량이 남고 모델 요청 한도가 1 줄었으며, 실제 요청에 low가 적용됐다. 이 과정에서 세션 기록 API가 `auto` 필드를 거절해 Run이 시작돼도 기록이 실패하는 결함을 찾아 시험을 먼저 추가하고 고쳤다.
 - §7 보완: 새 시험 6개 중 5개가 구현 전 실패(`f080bf5`), 명령 ID 구분 시험은 기존 구현으로 이미 통과. 서버의 "추론 단계가 없는 모델은 route 거절" 시험(TC-AUTO-005-N)은 구현 뒤 추가했다. 서버 시험용 가짜 OpenAI에 Responses API 표시를 켜는 opt-in 옵션을 더해 실제 지원 단계로 검증했다. 전체 vitest 1031 통과, lint·typecheck·spec:check 통과. 실계정: GPT-6 Luna·`route`에서 시작 모델이 `single`·low를 골랐고 모든 요청에 low가 적용됐다.
+
+## PR #59 수정 회귀 (2026-10-18)
+
+12개 검토 항목은 기존 CRL-AUTO-001~005 범위에서 수정한다. 회귀 시험은 먼저 기존 구현에서 실패를 확인한 뒤 추가했다.
+
+- `packages/core/test/auto-team-regressions.test.ts`: 한도 patch 이후 선택 비용, 미확정·실패 사용량, reviewer의 원래 요청, 중복 내용 충돌, 잘못된 추론 타입, 늦은 취소.
+- `packages/core/test/history.test.ts`: 자동 실행 종료 뒤 private export/open, 선택 metadata의 삭제·변조 거절.
+- `packages/storage-sqlite/test/auto-command-identity.test.ts`: additive migration, backend 재시작 뒤 성공·거절 명령의 원래 요청 식별.
+- `packages/storage-sqlite/test/auto-legacy-replay.test.ts`: 구버전 자동 실행의 동일 요청 재전송과 다른 내용 충돌.
+- `packages/cli/test/legacy-history.test.ts`: migration 없는 구버전 DB의 읽기 전용 inspect·export와 원본 보존.
+- `apps/server/test/auto-route.test.ts`: max·공급자 기본 추론의 실제 직렬화, 출력 수집량, 비협조적 공급자의 시간 초과, 실패 사용량.
+- `packages/adapter-pi/test/worker-tools.test.ts`: reviewer의 근거 참조는 제공된 artifact·source·document 식별자를 사용하고, 식별자 없는 요청·기준 본문은 참조 배열에 넣지 않는다는 출력 계약. 실모델이 근거에 본문을 넣어 검토 형식 오류로 대기하던 반례를 보완한다.
+- `apps/server/test/auto-baseline.test.ts`: 선택 대기 중 실행 전 편집과 동시 재전송을 실행 변경 내역에 포함하지 않음.
+- `apps/server/test/auto-cancel.test.ts`: 선택 중·시작 확정 뒤 취소, 늦게 도착한 시작 요청, 세션 범위와 명령 충돌.
+- `apps/studio/e2e/server/auto-regressions.spec.ts`: 선택 취소·화면 이동·초안 보존, 시작 응답 지연과 취소 응답 유실 뒤 재전송, 사라진 명시 팀, 직접·대기 요청의 선택 기록, Explain 추론 UI.
+- `tests/live/auto-team.live.test.ts`: `CORRAL_AUTO_LIVE=1`에서만 실제 모델의 `write_review` 선택→검토 통과→실행 성공→private 기록 재열기를 검사한다. 전체 36회 요청·360초 상한이며 원문과 인증정보 없이 소스 hash와 검증 metadata를 `test-results/live/auto-team.json`에 남긴다.
+
+템플릿 버전은 reviewer 입력이 추가된 **2**다. SQLite `0014_auto_command_identity`는 nullable 명령 식별 열만 추가하며 기존 Run·명령 내용을 덮어쓰지 않는다. 구버전 기록의 읽기 전용 조회는 migration 없이 유지한다.
 

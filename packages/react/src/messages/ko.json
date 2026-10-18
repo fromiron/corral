@@ -1241,7 +1241,18 @@
     },
     "preRunAuto": "자동 · {model} · 추론: {reasoning} · 파일: {files} · {mode}",
     "reasoningRoute": "요청마다 선택",
-    "reasoningPicked": "추론 {level}"
+    "reasoningPicked": "추론 {level}",
+    "cancelAutoChoice": "팀 선택 취소",
+    "selectedTeamUnavailable": "선택한 팀을 찾을 수 없음",
+    "selectedTeamMissing": "선택한 팀이 삭제되거나 이동했습니다. 보낼 팀이나 자동을 다시 선택하세요.",
+    "preRunAutoExplain": "자동 · {model} · 파일: {files} · {mode}",
+    "autoFallbackReason": {
+      "invalid_answer": "모델 응답 형식 오류",
+      "timeout": "선택 시간 초과",
+      "model_error": "선택 요청 실패",
+      "output_limit": "선택 응답 한도 초과"
+    },
+    "reasoningSource": { "model": "모델 선택", "local": "로컬 선택", "fallback": "대체 적용" }
   },
   "Files": {
     "folderHeading": "프로젝트 폴더",

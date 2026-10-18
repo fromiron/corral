@@ -1,4 +1,6 @@
 import {
+  type AutoCancelRequest,
+  type AutoCancelResult,
   type AutoRunStart,
   HarnessApi,
   HttpSseTransport,
@@ -53,7 +55,9 @@ export interface StudioServices {
   /** A question about a result, as its own run in a session (CR-011). */
   startExplain: (request: ExplainStart) => Promise<StartRunResult>;
   /** A request in an auto session (CR-024): the runtime picks the template and starts it. */
-  startAuto: (request: AutoRunStart) => Promise<AutoStartResult>;
+  startAuto: (request: AutoRunStart, signal?: AbortSignal) => Promise<AutoStartResult>;
+  /** Server cancellation also reconciles a start whose HTTP response was lost. */
+  cancelAuto?: (request: AutoCancelRequest) => Promise<AutoCancelResult>;
   /** Work folders and file changes (CR-012); the browser demo has an in-memory one. */
   workspaces: WorkspacesClient | null;
 }
@@ -140,7 +144,8 @@ export async function createStudioServices(): Promise<StudioServices> {
       live: health.live,
       previewUrl: (runId, artifactVersionId) => transport.previewUrl(runId, artifactVersionId),
       startExplain: (request) => transport.startExplain(request),
-      startAuto: (request) => transport.startAuto(request),
+      startAuto: (request, signal) => transport.startAuto(request, signal),
+      cancelAuto: (request) => transport.cancelAuto(request),
       workspaces: new WorkspacesApi(http),
     };
   }
@@ -169,9 +174,12 @@ export async function createStudioServices(): Promise<StudioServices> {
     saveRunMode: async () => {},
     // An in-memory example folder in the demo worker (02-UX-Spec §10).
     workspaces,
-    startAuto: async (request) => {
+    startAuto: async (request, signal) => {
       const copy = await workspaces.worktree(request.sessionId).catch(() => null);
-      return autoStarter.start(request, { fileTools: Boolean(copy) });
+      return autoStarter.start(request, {
+        fileTools: Boolean(copy),
+        ...(signal ? { signal } : {}),
+      });
     },
     // The in-browser runtime runs inline definitions itself.
     startExplain: ({ question, modelProfile, sessionId, startFrom, ...rest }) =>
