@@ -2174,52 +2174,69 @@
                   "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
                 },
                 "reasoning": {
-                  "oneOf": [
+                  "anyOf": [
                     {
-                      "type": "object",
-                      "properties": {
-                        "mode": {
-                          "type": "string",
-                          "const": "fixed"
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "mode": {
+                              "type": "string",
+                              "const": "fixed"
+                            },
+                            "level": {
+                              "type": "string",
+                              "enum": [
+                                "off",
+                                "minimal",
+                                "low",
+                                "medium",
+                                "high",
+                                "xhigh",
+                                "max"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "mode",
+                            "level"
+                          ],
+                          "additionalProperties": false
                         },
-                        "level": {
-                          "type": "string",
-                          "enum": [
-                            "off",
-                            "minimal",
-                            "low",
-                            "medium",
-                            "high",
-                            "xhigh",
-                            "max"
-                          ]
+                        {
+                          "type": "object",
+                          "properties": {
+                            "mode": {
+                              "type": "string",
+                              "const": "auto"
+                            }
+                          },
+                          "required": [
+                            "mode"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "mode": {
+                              "type": "string",
+                              "const": "provider_default"
+                            }
+                          },
+                          "required": [
+                            "mode"
+                          ],
+                          "additionalProperties": false
                         }
-                      },
-                      "required": [
-                        "mode",
-                        "level"
-                      ],
-                      "additionalProperties": false
+                      ]
                     },
                     {
                       "type": "object",
                       "properties": {
                         "mode": {
                           "type": "string",
-                          "const": "auto"
-                        }
-                      },
-                      "required": [
-                        "mode"
-                      ],
-                      "additionalProperties": false
-                    },
-                    {
-                      "type": "object",
-                      "properties": {
-                        "mode": {
-                          "type": "string",
-                          "const": "provider_default"
+                          "const": "route"
                         }
                       },
                       "required": [
@@ -2228,6 +2245,32 @@
                       "additionalProperties": false
                     }
                   ]
+                },
+                "reasoningChoice": {
+                  "type": "object",
+                  "properties": {
+                    "level": {
+                      "type": "string",
+                      "enum": [
+                        "low",
+                        "medium",
+                        "high"
+                      ]
+                    },
+                    "source": {
+                      "type": "string",
+                      "enum": [
+                        "model",
+                        "local",
+                        "fallback"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "level",
+                    "source"
+                  ],
+                  "additionalProperties": false
                 },
                 "inputHash": {
                   "type": "string",

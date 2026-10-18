@@ -25,7 +25,7 @@ const temp = (name: string) => {
   return dir;
 };
 
-function makeFake(options: { env?: Record<string, string> } = {}) {
+function makeFake(options: { env?: Record<string, string>; reasoningApi?: boolean } = {}) {
   const made = fakeOpenAI({ ...options, configDir: temp('config') });
   return { ...made, respond: () => made.answerWith('Live answer.') };
 }
@@ -701,7 +701,7 @@ describe('auto sessions (CR-024)', () => {
   });
 
   it('[TC-AUTO-005-H] the start model picks the reasoning level and every role runs it', async () => {
-    const fake = makeFake();
+    const fake = makeFake({ reasoningApi: true });
     const context = await start(fake);
     await signIn(context.json);
     const sessionId = await autoSession(context);
@@ -732,6 +732,22 @@ describe('auto sessions (CR-024)', () => {
       }),
     });
     expect(entry.status).toBeLessThan(300);
+  });
+
+  it('[TC-AUTO-005-N] a model with no reasoning levels cannot choose per request; no model is asked', async () => {
+    const fake = makeFake();
+    const context = await start(fake);
+    await signIn(context.json);
+    const sessionId = await autoSession(context);
+    const refused = await autoStart(context, {
+      commandId: 'cmd_auto_route_no',
+      sessionId,
+      brief: 'Explain the change.',
+      choice: { modelProfile: 'model-a', reasoning: { mode: 'route' } },
+    });
+    expect(refused.body.runId).toBeNull();
+    expect(refused.body.receipt.error.code).toBe('CAPABILITY_DENIED');
+    expect(fake.seen.hostRequests).toHaveLength(0);
   });
 
   it('[TC-AUTO-003-N] an unusable answer falls back to single; no sign-in or a missing session asks no model', async () => {

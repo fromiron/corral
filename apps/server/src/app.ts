@@ -6,6 +6,7 @@ import { recoverSdkWorkers } from '@corral/adapter-pi';
 import {
   type AgentAdapter,
   AutoModelChoice,
+  AutoRouteLevel,
   AutoTemplate,
   CanvasLayout,
   type Clock,
@@ -236,7 +237,11 @@ const NewEntry = z.strictObject({
   commandId: Identifier.nullable().optional(),
   // The template an auto request ran with (CR-024).
   auto: z
-    .strictObject({ template: AutoTemplate, source: z.enum(['model', 'local', 'fallback']) })
+    .strictObject({
+      template: AutoTemplate,
+      source: z.enum(['model', 'local', 'fallback']),
+      reasoning: AutoRouteLevel.optional(),
+    })
     .nullable()
     .optional(),
 });
@@ -919,8 +924,9 @@ async function createCorralServer(
       );
       return error ? { runId: null, receipt: refusedStart(request, error) } : null;
     },
-    route: ({ brief, choice, mode, signal }) =>
-      mode === 'live' && registry ? registry.routeAuto(brief, choice, signal) : null,
+    levels: (choice, mode) => coordinator.reasoningLevels(choice.modelProfile, mode),
+    route: ({ brief, choice, mode, signal, levels }) =>
+      mode === 'live' && registry ? registry.routeAuto(brief, choice, signal, levels) : null,
   });
   app.post('/api/v1/runs/auto', async (request, reply) => {
     const body = parse(AutoRunRequest, request, reply);

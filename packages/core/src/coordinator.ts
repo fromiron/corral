@@ -33,6 +33,7 @@ import {
   ModelRequestRecord,
   ProviderPayloadRecord,
   ReasoningInput,
+  type ReasoningLevel,
   type ReasoningPolicy,
   type ReasoningResolution,
   type Receipt,
@@ -1846,7 +1847,7 @@ export class Coordinator {
   startRefusal(
     profile: string,
     mode: 'mock' | 'live',
-    reasoning?: ReasoningPolicy,
+    reasoning?: ReasoningPolicy | { mode: 'route' },
   ): CommandError | null {
     const active = this.store.listRuns().find((r) => !TERMINAL_RUN_STATUSES.has(r.status));
     if (active)
@@ -1857,12 +1858,27 @@ export class Coordinator {
     const resolution = this.models.resolve(profile, mode);
     if (!resolution.ok)
       return { code: resolution.code, message: `${profile}: ${resolution.reason}` };
+    // Choosing per request (CR-024 §7) starts from medium, so the model must support it.
+    if (reasoning?.mode === 'route')
+      return resolution.snapshot.auth === 'mock' ||
+        resolution.snapshot.reasoning?.levels.includes('medium')
+        ? null
+        : {
+            code: 'CAPABILITY_DENIED',
+            message: 'choosing reasoning per request needs a model with a medium level',
+          };
     const error = reasoningError(
       reasoning,
       resolution.snapshot,
       this.judgments?.settings.reasoning_effort.apply === true,
     );
     return error ? { code: 'CAPABILITY_DENIED', message: error } : null;
+  }
+
+  /** The reasoning levels a profile supports; null when unknown or simulated (CR-024 §7). */
+  reasoningLevels(profile: string, mode: 'mock' | 'live'): readonly ReasoningLevel[] | null {
+    const resolution = this.models.resolve(profile, mode);
+    return resolution.ok ? (resolution.snapshot.reasoning?.levels ?? null) : null;
   }
 
   /** What an earlier start command returned; null if this command never started a run. */

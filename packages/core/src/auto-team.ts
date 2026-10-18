@@ -1,11 +1,14 @@
 import {
   AUTO_REASON_MAX,
+  AUTO_ROUTE_LEVELS,
   AUTO_TEMPLATE_VERSION,
   type AutoModelChoice,
   type AutoRoute,
+  type AutoRouteLevel,
   AutoTemplate,
   type CorralDefinition,
   FILE_TOOLS,
+  type ReasoningLevel,
   type RunReference,
   type StartFrom,
   type StartRunRequest,
@@ -84,6 +87,8 @@ export interface AutoDefinitionInput {
    * come off this run's limits. Null or absent when no model was called.
    */
   routeOutputTokens?: number | null;
+  /** With `route` reasoning: the level the start model picked; medium when absent. */
+  routeLevel?: AutoRouteLevel;
 }
 
 export function autoDefinition(input: AutoDefinitionInput): CorralDefinition {
@@ -103,6 +108,12 @@ export function autoDefinition(input: AutoDefinitionInput): CorralDefinition {
     finalApproval: false,
   };
   const { definition } = draftFromPlan(plan, input.id, WORDING.labels);
+  // Roles always get a CR-021 policy: `route` becomes the level picked for this request.
+  const asked = input.choice.reasoning;
+  const reasoning =
+    asked?.mode === 'route'
+      ? { mode: 'fixed' as const, level: input.routeLevel ?? ('medium' as const) }
+      : asked;
   const roles = definition.roles.map((role) => {
     const writes = WRITERS.has(role.id as TeamSlot);
     const tools: WorkTool[] = input.fileTools
@@ -114,7 +125,7 @@ export function autoDefinition(input: AutoDefinitionInput): CorralDefinition {
         ? `${role.prompt}${FILE_NOTE}${writes ? WRITE_NOTE : ''}`
         : role.prompt,
       modelProfile: input.choice.modelProfile,
-      ...(input.choice.reasoning ? { reasoning: input.choice.reasoning } : {}),
+      ...(reasoning ? { reasoning } : {}),
       allowedWorkTools: tools,
     };
   });
@@ -133,20 +144,43 @@ export function autoDefinition(input: AutoDefinitionInput): CorralDefinition {
 export const AUTO_ROUTE_MAX_OUTPUT_TOKENS = 256;
 export const AUTO_ROUTE_TIMEOUT_MS = 30_000;
 
-export const AUTO_ROUTER_PROMPT = `You choose how a request to a team of AI agents is handled. Answer with one JSON object and nothing else: {"template": "<id>", "reason": "<one short sentence>"}.
-Templates:
-- single: one agent answers or does the work directly. Questions, explanations, small edits and short tasks.
-- write_review: a planner outlines, a writer drafts, a reviewer checks and asks for revisions. Documents or changes that need a careful check.
-- research_write_review: a researcher collects facts and sources, then a writer drafts and a reviewer checks. Comparisons, investigations and anything that needs sources.
-Prefer single unless the request clearly needs a review or research. Write the reason in the request's language, in at most ${AUTO_REASON_MAX} characters.`;
+/** The choice request's instructions; with levels, the model also picks the reasoning. */
+export function autoRouterPrompt(levels?: readonly AutoRouteLevel[]): string {
+  const shape = levels
+    ? '{"template": "<id>", "reasoning": "<level>", "reason": "<one short sentence>"}'
+    : '{"template": "<id>", "reason": "<one short sentence>"}';
+  return [
+    `You choose how a request to a team of AI agents is handled. Answer with one JSON object and nothing else: ${shape}.`,
+    'Templates:',
+    '- single: one agent answers or does the work directly. Questions, explanations, small edits and short tasks.',
+    '- write_review: a planner outlines, a writer drafts, a reviewer checks and asks for revisions. Documents or changes that need a careful check.',
+    '- research_write_review: a researcher collects facts and sources, then a writer drafts and a reviewer checks. Comparisons, investigations and anything that needs sources.',
+    'Prefer single unless the request clearly needs a review or research.',
+    ...(levels
+      ? [
+          `Reasoning is how hard every agent thinks, one of: ${levels.join(', ')}. Use low for simple questions and quick edits, medium for ordinary work, high only for hard analysis, design or tricky code.`,
+        ]
+      : []),
+    `Write the reason in the request's language, in at most ${AUTO_REASON_MAX} characters.`,
+  ].join('\n');
+}
+
+export const AUTO_ROUTER_PROMPT = autoRouterPrompt();
 
 const RouteAnswerText = z.strictObject({
   template: AutoTemplate,
   reason: z.string().trim().min(1).max(AUTO_REASON_MAX),
+  reasoning: z.string().max(20).optional(),
 });
 
-/** The start model's answer: one JSON object naming an allowed template, or null. */
-export function parseAutoRoute(text: string): { template: AutoTemplate; reason: string } | null {
+/**
+ * The start model's answer: one JSON object naming an allowed template, or null. With
+ * `levels`, `reasoning` is the picked level when it is one of them, otherwise null.
+ */
+export function parseAutoRoute(
+  text: string,
+  levels?: readonly AutoRouteLevel[],
+): { template: AutoTemplate; reason: string; reasoning?: AutoRouteLevel | null } | null {
   const start = text.indexOf('{');
   const end = text.lastIndexOf('}');
   if (start < 0 || end <= start) return null;
@@ -157,7 +191,11 @@ export function parseAutoRoute(text: string): { template: AutoTemplate; reason: 
     return null;
   }
   const parsed = RouteAnswerText.safeParse(value);
-  return parsed.success ? parsed.data : null;
+  if (!parsed.success) return null;
+  const { template, reason, reasoning } = parsed.data;
+  if (!levels) return { template, reason };
+  const level = levels.find((l) => l === reasoning) ?? null;
+  return { template, reason, reasoning: level };
 }
 
 /** The choice without a model (the demo, simulated runs): the CR-006 local suggestion. */
@@ -197,6 +235,11 @@ export interface AutoStarterDeps<S extends AutoSignal = AutoSignal> {
   previousStart?(commandId: string): AutoStartResult | null;
   /** A refusal before any choice is asked for (busy, model not connected); null to go on. */
   precheck?(request: AutoStart): StartRunResult | null;
+  /** The reasoning levels the model supports; null or absent when unknown (simulated). */
+  levels?(
+    choice: AutoModelChoice,
+    mode: 'mock' | 'live',
+  ): readonly ReasoningLevel[] | null | undefined;
   /**
    * The start model. Null (or no function) means the local rule chooses and no model is
    * called, as for simulated runs.
@@ -206,6 +249,8 @@ export interface AutoStarterDeps<S extends AutoSignal = AutoSignal> {
     choice: AutoModelChoice;
     mode: 'mock' | 'live';
     signal: S | undefined;
+    /** With `route` reasoning: the levels the model may pick from. */
+    levels?: readonly AutoRouteLevel[];
   }): Promise<RouteAnswer> | null;
 }
 
@@ -214,18 +259,42 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
   const pending = new Map<string, Promise<AutoStartResult>>();
 
   const choose = async (request: AutoStart, signal: S | undefined) => {
+    // `route`: the model picks one of low, medium and high that this model supports.
+    const routing = request.choice.reasoning?.mode === 'route';
+    const supported = routing ? deps.levels?.(request.choice, request.mode) : null;
+    const levels = routing
+      ? AUTO_ROUTE_LEVELS.filter((level) => !supported || supported.includes(level))
+      : undefined;
+    const medium = (source: 'local' | 'fallback') =>
+      routing ? { reasoningChoice: { level: 'medium' as const, source } } : {};
     const asked = deps.route?.({
       brief: request.brief,
       choice: request.choice,
       mode: request.mode,
       signal,
+      ...(levels ? { levels } : {}),
     });
-    if (!asked) return { ...localAutoRoute(request.brief), source: 'local' as const, usage: null };
+    if (!asked)
+      return {
+        ...localAutoRoute(request.brief),
+        source: 'local' as const,
+        usage: null,
+        ...medium('local'),
+      };
     const answer = await asked;
     if (signal?.aborted) throw cancelled();
     const usage = answer.ok ? answer.usage : null;
-    const picked = answer.ok ? parseAutoRoute(answer.text) : null;
-    if (picked) return { ...picked, source: 'model' as const, usage, called: true };
+    const picked = answer.ok ? parseAutoRoute(answer.text, levels) : null;
+    if (picked) {
+      const { reasoning: level, ...rest } = picked;
+      return {
+        ...rest,
+        source: 'model' as const,
+        usage,
+        called: true,
+        ...(level ? { reasoningChoice: { level, source: 'model' as const } } : medium('fallback')),
+      };
+    }
     return {
       template: 'single' as const,
       reason: '',
@@ -233,6 +302,7 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
       fallback: answer.ok ? ('invalid_answer' as const) : answer.reason,
       usage,
       called: true,
+      ...medium('fallback'),
     };
   };
 
@@ -260,6 +330,7 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
       choice: request.choice,
       fileTools: context.fileTools,
       routeOutputTokens: called ? (autoRoute.usage?.outputTokens ?? 0) : null,
+      ...(autoRoute.reasoningChoice ? { routeLevel: autoRoute.reasoningChoice.level } : {}),
     });
     const result = await deps.startRun({
       schemaVersion: '0.1',

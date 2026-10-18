@@ -1239,7 +1239,9 @@
       "write_review": "자동 · 작성·검토",
       "research_write_review": "자동 · 조사·작성·검토"
     },
-    "preRunAuto": "자동 · {model} · 추론: {reasoning} · 파일: {files} · {mode}"
+    "preRunAuto": "자동 · {model} · 추론: {reasoning} · 파일: {files} · {mode}",
+    "reasoningRoute": "요청마다 선택",
+    "reasoningPicked": "추론 {level}"
   },
   "Files": {
     "folderHeading": "프로젝트 폴더",

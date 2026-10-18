@@ -1707,7 +1707,7 @@
       "packages/react/src/messages/"
     ],
     "done": "CR-024 수용 기준과 실제 패키지 UI 검증 통과",
-    "status": "planned",
+    "status": "implemented",
     "evidence": "docs/change-requests/CR-024-session-auto-team.md"
   }
 ]

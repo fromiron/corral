@@ -13,10 +13,25 @@ export type AutoTemplate = z.infer<typeof AutoTemplate>;
 /** Changes whenever a template's roles, tools or wiring change. */
 export const AUTO_TEMPLATE_VERSION = 1;
 
+/** Levels the start model may pick from when it chooses the reasoning (CR-024 §7). */
+export const AUTO_ROUTE_LEVELS = ['low', 'medium', 'high'] as const;
+export const AutoRouteLevel = z.enum(AUTO_ROUTE_LEVELS);
+export type AutoRouteLevel = z.infer<typeof AutoRouteLevel>;
+
+/**
+ * An auto session's reasoning: a CR-021 policy for every role, or `route`, where the start
+ * model picks a level with the template. Roles always receive a CR-021 policy.
+ */
+export const AutoReasoning = z.union([
+  ReasoningPolicy,
+  z.strictObject({ mode: z.literal('route') }),
+]);
+export type AutoReasoning = z.infer<typeof AutoReasoning>;
+
 /** The model and reasoning an auto session uses for the choice and for every role. */
 export const AutoModelChoice = z.strictObject({
   modelProfile: Identifier,
-  reasoning: ReasoningPolicy.optional(),
+  reasoning: AutoReasoning.optional(),
 });
 export type AutoModelChoice = z.infer<typeof AutoModelChoice>;
 
@@ -31,7 +46,12 @@ export const AutoRoute = z.strictObject({
   fallback: z.enum(['invalid_answer', 'timeout', 'model_error']).optional(),
   reason: z.string().max(AUTO_REASON_MAX),
   modelProfile: Identifier,
-  reasoning: ReasoningPolicy.optional(),
+  /** The reasoning the session asked for. */
+  reasoning: AutoReasoning.optional(),
+  /** With `route`: the level every role ran with, and who picked it. */
+  reasoningChoice: z
+    .strictObject({ level: AutoRouteLevel, source: z.enum(['model', 'local', 'fallback']) })
+    .optional(),
   /** Hash of the request text the choice was made for. */
   inputHash: z.string().regex(/^[0-9a-f]{64}$/),
   /** The choice request's usage; null when no model was called or it reported none. */

@@ -1,4 +1,9 @@
-import type { AutoModelChoice, RunReference } from '@corral/contracts';
+import {
+  type AutoModelChoice,
+  type AutoReasoning,
+  ReasoningLevel,
+  type RunReference,
+} from '@corral/contracts';
 import type { ProfileInfo } from './useModels.ts';
 
 // CR-024: sessions run live wherever live is possible, so a session never falls back to
@@ -39,10 +44,13 @@ export function autoCommandSeed(
   return `auto\u0000${text}\u0000${JSON.stringify([references, choice.modelProfile, choice.reasoning ?? null])}`;
 }
 
-export function reasoningValue(_policy: unknown): string {
-  throw new Error('not implemented');
+/** The reasoning chip's value: a level, a mode, `route`, or '' for unset (CR-021, CR-024). */
+export function reasoningValue(policy: AutoReasoning | undefined): string {
+  return policy?.mode === 'fixed' ? policy.level : (policy?.mode ?? '');
 }
 
-export function reasoningFrom(_value: string): unknown {
-  throw new Error('not implemented');
+export function reasoningFrom(value: string): AutoReasoning | undefined {
+  if (!value) return undefined;
+  if (value === 'auto' || value === 'provider_default' || value === 'route') return { mode: value };
+  return { mode: 'fixed', level: ReasoningLevel.parse(value) };
 }

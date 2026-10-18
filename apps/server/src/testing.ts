@@ -40,6 +40,8 @@ export function fakeOpenAI(
     configDir?: string;
     /** Also lay a Codex CLI login (CR-004) under the config directory, read only. */
     codexLogin?: { mode?: number };
+    /** Label the models as the Responses API, so they report reasoning levels (CR-021). */
+    reasoningApi?: boolean;
   } = {},
 ) {
   const seen = {
@@ -88,6 +90,7 @@ export function fakeOpenAI(
   };
   const faux = createFauxCore({
     provider: 'openai',
+    ...(options.reasoningApi ? { api: 'openai-responses' } : {}),
     models: [
       { id: 'gpt-test-a', name: 'Test A', reasoning: true, contextWindow: 1000, maxTokens: 500 },
       { id: 'gpt-test-b', name: 'Test B' },

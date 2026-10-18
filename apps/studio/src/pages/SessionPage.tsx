@@ -1,5 +1,5 @@
 import type { FileChangeView } from '@corral/client';
-import type { AutoModelChoice, ReasoningPolicy, RoleRunOverrides } from '@corral/contracts';
+import type { AutoModelChoice, AutoReasoning, RoleRunOverrides } from '@corral/contracts';
 import {
   type HarnessOverrides,
   ReasoningLevel,
@@ -71,6 +71,8 @@ import {
   autoChoiceFor,
   autoCommandSeed,
   autoNotReady,
+  reasoningFrom,
+  reasoningValue,
   sessionRunMode,
 } from '../workbench/autoChoice.ts';
 import { ChatView } from '../workbench/ChatView.tsx';
@@ -921,6 +923,7 @@ function EntryCard({
   onPanel: (panel: SessionPanel, run?: Partial<SessionSearch>) => void;
 }) {
   const t = useTranslations('Sessions');
+  const tq = useTranslations('Reasoning');
   const format = useFormatter();
   const run = entry.runId ? runs.find((r) => r.runId === entry.runId) : undefined;
   const when = format.dateTime(new Date(entry.createdAt), {
@@ -931,7 +934,15 @@ function EntryCard({
   const label = entry.intent === 'next' ? null : t(`intentShort.${entry.intent}`);
   // CR-024: what an auto request ran with; not a team the person chose.
   const auto = entry.auto
-    ? `${t(`autoTemplate.${entry.auto.template}`)}${entry.auto.source === 'fallback' ? ` (${t('autoFallback')})` : ''}`
+    ? [
+        `${t(`autoTemplate.${entry.auto.template}`)}${entry.auto.source === 'fallback' ? ` (${t('autoFallback')})` : ''}`,
+        // CR-024 §7: the level the start model picked for this request.
+        entry.auto.reasoning
+          ? t('reasoningPicked', { level: tq(`level.${entry.auto.reasoning}`) })
+          : null,
+      ]
+        .filter(Boolean)
+        .join(' · ')
     : null;
   const state =
     entry.state === 'started' || entry.state === 'sent' ? null : t(`state.${entry.state}`);
@@ -1506,7 +1517,13 @@ function Composer({
       detail: result.receipt.error?.message ?? null,
       code: result.receipt.error?.code,
       auto: result.autoRoute
-        ? { template: result.autoRoute.template, source: result.autoRoute.source }
+        ? {
+            template: result.autoRoute.template,
+            source: result.autoRoute.source,
+            ...(result.autoRoute.reasoningChoice
+              ? { reasoning: result.autoRoute.reasoningChoice.level }
+              : {}),
+          }
         : null,
     };
   };
@@ -2167,6 +2184,12 @@ function Composer({
                       label: tq('auto'),
                       disabled: !autoProfile?.reasoningCapabilities?.levels.includes('medium'),
                     },
+                    {
+                      // CR-024 §7: the start model picks low, medium or high per request.
+                      value: 'route',
+                      label: t('reasoningRoute'),
+                      disabled: !autoProfile?.reasoningCapabilities?.levels.includes('medium'),
+                    },
                   ]}
                 />
               </>
@@ -2409,7 +2432,7 @@ function AutoPreRunSummary({
 }: {
   session: WorkSession;
   model: string;
-  reasoning: ReasoningPolicy | undefined;
+  reasoning: AutoReasoning | undefined;
   mode: 'mock' | 'live';
   intent: 'next' | 'explain';
 }) {
@@ -2436,9 +2459,11 @@ function AutoPreRunSummary({
   const level =
     reasoning?.mode === 'fixed'
       ? tq(`level.${reasoning.level}`)
-      : reasoning
-        ? tq(reasoning.mode)
-        : tq('legacy');
+      : reasoning?.mode === 'route'
+        ? t('reasoningRoute')
+        : reasoning
+          ? tq(reasoning.mode)
+          : tq('legacy');
   return (
     <span data-testid="pre-run">
       {t('preRunAuto', {
@@ -2488,15 +2513,4 @@ function ModelAssignments({
       })}
     </ul>
   );
-}
-
-/** The reasoning chip's value: a level, a mode, or '' for unset (CR-021, CR-024). */
-function reasoningValue(policy: ReasoningPolicy | undefined): string {
-  return policy?.mode === 'fixed' ? policy.level : (policy?.mode ?? '');
-}
-
-function reasoningFrom(value: string): ReasoningPolicy | undefined {
-  if (!value) return undefined;
-  if (value === 'auto' || value === 'provider_default') return { mode: value };
-  return { mode: 'fixed', level: ReasoningLevel.parse(value) };
 }

@@ -68,4 +68,5 @@
 - 단위·서버: 전체 vitest 1023 통과. lint·typecheck·spec:check(pack validation PASS) 통과.
 - E2E(빌드한 Studio): server·chromium 프로젝트 전체 실행 뒤, 영향받은 spec 13개 재실행 통과. 기존 E2E 중 "새 세션은 첫 팀"을 전제한 셋업(`startSession`, `usability`·`ux-review`·`files` helper)은 팀을 명시적으로 고르게 바꾸었고 단언은 유지했다. TC-UX-04-H는 CR-021 §7의 "시뮬레이션으로 보내기" 대신 이 CR §5에 맞춰 선택지 부재와 차단을 단언한다. TC-RSN-004-H(편집기 실행 모드 기억)는 병렬 전체 실행에서 한 번 실패했고 단독 2회 반복은 통과했다. 이 변경이 건드리지 않은 경로다.
 - 실계정(임시 작업 공간, `corral dev --port 4318`): GPT-6.1 Sol·low와 GPT-6 Luna·low에서 선택 요청 1회로 `single`을 고르고 Run 성공. `run.started`에 선택·사용량이 남고 모델 요청 한도가 1 줄었으며, 실제 요청에 low가 적용됐다. 이 과정에서 세션 기록 API가 `auto` 필드를 거절해 Run이 시작돼도 기록이 실패하는 결함을 찾아 시험을 먼저 추가하고 고쳤다.
+- §7 보완: 새 시험 6개 중 5개가 구현 전 실패(`f080bf5`), 명령 ID 구분 시험은 기존 구현으로 이미 통과. 서버의 "추론 단계가 없는 모델은 route 거절" 시험(TC-AUTO-005-N)은 구현 뒤 추가했다. 서버 시험용 가짜 OpenAI에 Responses API 표시를 켜는 opt-in 옵션을 더해 실제 지원 단계로 검증했다. 전체 vitest 1031 통과, lint·typecheck·spec:check 통과. 실계정: GPT-6 Luna·`route`에서 시작 모델이 `single`·low를 골랐고 모든 요청에 low가 적용됐다.
 

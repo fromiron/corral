@@ -1239,7 +1239,9 @@
       "write_review": "Auto · write and review",
       "research_write_review": "Auto · research, write and review"
     },
-    "preRunAuto": "Auto · {model} · reasoning: {reasoning} · files: {files} · {mode}"
+    "preRunAuto": "Auto · {model} · reasoning: {reasoning} · files: {files} · {mode}",
+    "reasoningRoute": "Chosen per request",
+    "reasoningPicked": "reasoning {level}"
   },
   "Files": {
     "folderHeading": "Project folder",

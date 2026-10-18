@@ -4,6 +4,7 @@ import {
 } from '@corral/adapter-pi';
 import type {
   AutoModelChoice,
+  AutoRouteLevel,
   ModelProfileSnapshot,
   ReasoningCapabilities,
   TeamPlan,
@@ -11,7 +12,7 @@ import type {
 import {
   AUTO_ROUTE_MAX_OUTPUT_TOKENS,
   AUTO_ROUTE_TIMEOUT_MS,
-  AUTO_ROUTER_PROMPT,
+  autoRouterPrompt,
   type ModelResolution,
   type ModelResolver,
   type RouteAnswer,
@@ -312,6 +313,7 @@ export class ModelRegistry implements ModelResolver {
     brief: string,
     choice: AutoModelChoice,
     signal?: AbortSignal,
+    levels?: readonly AutoRouteLevel[],
   ): Promise<RouteAnswer> {
     const resolution = this.resolve(choice.modelProfile, 'live');
     if (!resolution.ok || !resolution.snapshot.provider || !resolution.snapshot.modelId)
@@ -319,9 +321,14 @@ export class ModelRegistry implements ModelResolver {
     const model = this.models.getModel(resolution.snapshot.provider, resolution.snapshot.modelId);
     if (!model) return { ok: false, reason: 'model_error' };
     const policy = choice.reasoning;
-    // auto starts from its medium baseline (CR-021); the provider's default sends nothing.
+    // auto and route start from the medium baseline (CR-021); the provider's default sends
+    // nothing.
     const level =
-      policy?.mode === 'auto' ? 'medium' : policy?.mode === 'fixed' ? policy.level : null;
+      policy?.mode === 'auto' || policy?.mode === 'route'
+        ? 'medium'
+        : policy?.mode === 'fixed'
+          ? policy.level
+          : null;
     const reasoning =
       level === 'minimal' ||
       level === 'low' ||
@@ -336,7 +343,7 @@ export class ModelRegistry implements ModelResolver {
         .streamSimple(
           model,
           {
-            systemPrompt: AUTO_ROUTER_PROMPT,
+            systemPrompt: autoRouterPrompt(levels),
             messages: [{ role: 'user', content: brief, timestamp: Date.now() }],
           },
           {

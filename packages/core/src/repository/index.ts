@@ -1,5 +1,6 @@
 import {
   AutoModelChoice,
+  type AutoRouteLevel,
   type AutoTemplate,
   CanvasLayout,
   type Clock,
@@ -77,6 +78,8 @@ export interface SessionEntry {
 export interface SessionEntryAuto {
   template: AutoTemplate;
   source: 'model' | 'local' | 'fallback';
+  /** The level the start model picked when the session lets it choose (CR-024 §7). */
+  reasoning?: AutoRouteLevel;
 }
 
 export interface WorkSession {
