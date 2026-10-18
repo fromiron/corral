@@ -38,3 +38,11 @@ export function autoCommandSeed(
 ): string {
   return `auto\u0000${text}\u0000${JSON.stringify([references, choice.modelProfile, choice.reasoning ?? null])}`;
 }
+
+export function reasoningValue(_policy: unknown): string {
+  throw new Error('not implemented');
+}
+
+export function reasoningFrom(_value: string): unknown {
+  throw new Error('not implemented');
+}

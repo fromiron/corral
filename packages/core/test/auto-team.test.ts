@@ -292,3 +292,111 @@ describe('starting an auto run (CR-024)', () => {
     expect(again.autoRoute).toEqual(a.autoRoute);
   });
 });
+
+describe('per-request reasoning (CR-024 §7)', () => {
+  const routeChoice = { modelProfile: 'model-a', reasoning: { mode: 'route' as const } };
+  function routed(
+    answerText: string,
+    levels: string[] | null = ['minimal', 'low', 'medium', 'high', 'xhigh'],
+  ) {
+    const store = new InMemoryRunStore();
+    const coordinator = new Coordinator({
+      store,
+      clock: new FakeClock(),
+      ids: new SequentialIdFactory(),
+      agents: new ScriptedAgentAdapter({ turns: 1 }),
+    });
+    const seen: { levels: readonly string[] | undefined }[] = [];
+    const starter = createAutoStarter({
+      startRun: (r) => coordinator.startRun(r),
+      levels: () => levels as never,
+      route: (input) => {
+        seen.push({ levels: input.levels });
+        return Promise.resolve({ ok: true, text: answerText, usage: null });
+      },
+    });
+    return { coordinator, starter, seen };
+  }
+  const roleLevels = (s: ReturnType<typeof routed>, runId: string | null) =>
+    s.coordinator
+      .getRunSnapshot(runId ?? '')
+      ?.definition.roles.map((r) => (r.reasoning?.mode === 'fixed' ? r.reasoning.level : null));
+
+  it('[TC-AUTO-005-H] the start model picks the level with the template; every role runs it fixed', async () => {
+    expect(
+      parseAutoRoute('{"template":"single","reason":"Short.","reasoning":"low"}', [
+        'low',
+        'medium',
+        'high',
+      ]),
+    ).toEqual({ template: 'single', reason: 'Short.', reasoning: 'low' });
+    const s = routed('{"template":"write_review","reason":"Needs care.","reasoning":"high"}');
+    const result = await s.starter.start(
+      { commandId: 'cmd_r1', brief: 'Draft the plan.', mode: 'mock', choice: routeChoice },
+      { fileTools: false },
+    );
+    expect(s.seen).toEqual([{ levels: ['low', 'medium', 'high'] }]);
+    expect(roleLevels(s, result.runId)).toEqual(['high', 'high', 'high']);
+    expect(result.autoRoute).toMatchObject({
+      template: 'write_review',
+      reasoning: { mode: 'route' },
+      reasoningChoice: { level: 'high', source: 'model' },
+    });
+  });
+
+  it('[TC-AUTO-005-N] an unsupported or missing level, a fallback template and the local rule run medium', async () => {
+    for (const [text, levels, template] of [
+      ['{"template":"single","reason":"x","reasoning":"xhigh"}', undefined, 'single'],
+      ['{"template":"write_review","reason":"x"}', undefined, 'write_review'],
+      [
+        '{"template":"single","reason":"x","reasoning":"high"}',
+        ['minimal', 'low', 'medium'],
+        'single',
+      ],
+      ['not json', undefined, 'single'],
+    ] as const) {
+      const s = routed(text, levels ? [...levels] : undefined);
+      const result = await s.starter.start(
+        { commandId: 'cmd_r2', brief: 'Hi', mode: 'mock', choice: routeChoice },
+        { fileTools: false },
+      );
+      expect(result.autoRoute?.template, text).toBe(template);
+      expect(result.autoRoute?.reasoningChoice, text).toEqual({
+        level: 'medium',
+        source: 'fallback',
+      });
+      expect(new Set(roleLevels(s, result.runId))).toEqual(new Set(['medium']));
+    }
+    const s = routed('');
+    const local = createAutoStarter({ startRun: (r) => s.coordinator.startRun(r) });
+    const result = await local.start(
+      { commandId: 'cmd_r3', brief: 'Hi', mode: 'mock', choice: routeChoice },
+      { fileTools: false },
+    );
+    expect(result.autoRoute?.reasoningChoice).toEqual({ level: 'medium', source: 'local' });
+
+    // A model without medium cannot choose per request: refused before any choice is asked.
+    const strict = new Coordinator({
+      store: new InMemoryRunStore(),
+      clock: new FakeClock(),
+      ids: new SequentialIdFactory(),
+      agents: new ScriptedAgentAdapter({ turns: 1 }),
+      models: {
+        resolve: (profile) => ({
+          ok: true,
+          snapshot: {
+            profile,
+            provider: 'openai',
+            modelId: 'm',
+            auth: 'api_key',
+            reasoning: { levels: ['low', 'high'], providerDefault: true },
+          },
+        }),
+      },
+    });
+    expect(strict.startRefusal('model-a', 'live', { mode: 'route' })?.code).toBe(
+      'CAPABILITY_DENIED',
+    );
+    expect(strict.startRefusal('model-a', 'live', { mode: 'fixed', level: 'low' })).toBeNull();
+  });
+});

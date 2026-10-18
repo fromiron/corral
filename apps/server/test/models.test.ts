@@ -700,6 +700,40 @@ describe('auto sessions (CR-024)', () => {
     expect(fake.seen.hostRequests).toHaveLength(1);
   });
 
+  it('[TC-AUTO-005-H] the start model picks the reasoning level and every role runs it', async () => {
+    const fake = makeFake();
+    const context = await start(fake);
+    await signIn(context.json);
+    const sessionId = await autoSession(context);
+    fake.answerWith('Live answer.', {
+      hostReply: '{"template":"single","reason":"Short.","reasoning":"high"}',
+    });
+    const started = await autoStart(context, {
+      commandId: 'cmd_auto_route',
+      sessionId,
+      brief: 'Explain the change.',
+      choice: { modelProfile: 'model-a', reasoning: { mode: 'route' } },
+    });
+    expect(started.status).toBe(201);
+    expect(started.body.autoRoute).toMatchObject({
+      reasoning: { mode: 'route' },
+      reasoningChoice: { level: 'high', source: 'model' },
+    });
+    const roles = context.server.coordinator.getRunSnapshot(started.body.runId)?.definition.roles;
+    expect(roles?.map((r) => r.reasoning)).toEqual([{ mode: 'fixed', level: 'high' }]);
+    const entry = await context.json(`/sessions/${sessionId}/entries`, {
+      method: 'POST',
+      body: JSON.stringify({
+        intent: 'next',
+        text: 'Explain the change.',
+        state: 'started',
+        runId: started.body.runId,
+        auto: { template: 'single', source: 'model', reasoning: 'high' },
+      }),
+    });
+    expect(entry.status).toBeLessThan(300);
+  });
+
   it('[TC-AUTO-003-N] an unusable answer falls back to single; no sign-in or a missing session asks no model', async () => {
     const fake = makeFake();
     const context = await start(fake);

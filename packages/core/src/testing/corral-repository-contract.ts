@@ -362,6 +362,31 @@ export function describeCorralRepositoryContract(
         }
         expect((await repo.getSession(id))?.auto).toEqual({ modelProfile: 'model-a' });
       });
+
+      it('[TC-AUTO-005-H] an auto session can let the start model choose the reasoning', async () => {
+        const repo = makeRepository();
+        const created = await repo.createSession({ projectId: 'default', title: 'S' });
+        if (!created.ok) throw new Error(created.message);
+        const saved = await repo.updateSession(created.session.sessionId, {
+          auto: { modelProfile: 'model-a', reasoning: { mode: 'route' } },
+          expectedRevision: 1,
+        });
+        expect(saved.ok && saved.session.auto).toEqual({
+          modelProfile: 'model-a',
+          reasoning: { mode: 'route' },
+        });
+        const entry = await repo.addSessionEntry(created.session.sessionId, {
+          intent: 'next',
+          text: 'Hi',
+          state: 'started',
+          auto: { template: 'single', source: 'model', reasoning: 'low' },
+        });
+        expect(entry.ok && entry.session.entries[0]?.auto).toEqual({
+          template: 'single',
+          source: 'model',
+          reasoning: 'low',
+        });
+      });
     });
   });
 }

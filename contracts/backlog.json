@@ -1695,7 +1695,8 @@
       "CRL-AUTO-001",
       "CRL-AUTO-002",
       "CRL-AUTO-003",
-      "CRL-AUTO-004"
+      "CRL-AUTO-004",
+      "CRL-AUTO-005"
     ],
     "files": [
       "packages/contracts/src/",
@@ -1706,7 +1707,7 @@
       "packages/react/src/messages/"
     ],
     "done": "CR-024 수용 기준과 실제 패키지 UI 검증 통과",
-    "status": "implemented",
+    "status": "planned",
     "evidence": "docs/change-requests/CR-024-session-auto-team.md"
   }
 ]

@@ -520,5 +520,11 @@
     "requirement": "CR-024 live 가능 서버의 세션 Composer는 시뮬레이션을 제공하지 않고 모델 미연결 시 mock 대체 없이 시작을 막으며, 데모·시뮬레이션 전용 서버와 팀 편집기 직접 실행은 기존 모드를 유지한다.",
     "owner": "studio",
     "phase": "P12"
+  },
+  {
+    "id": "CRL-AUTO-005",
+    "requirement": "CR-024 §7 auto 세션의 route 추론은 시작 모델이 템플릿과 함께 지원되는 low·medium·high 중 하나를 고르고, 후보 밖·누락은 medium 대체와 사유 기록, medium 미지원 모델은 선택 요청 전에 거절하며, 고른 단계를 모든 역할에 fixed로 적용한다.",
+    "owner": "core",
+    "phase": "P12"
   }
 ]

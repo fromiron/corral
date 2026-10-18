@@ -2174,5 +2174,27 @@
     "status": "planned",
     "adapter": "mock unless explicitly live",
     "evidence": null
+  },
+  {
+    "id": "TC-AUTO-005-H",
+    "requirements": [
+      "CRL-AUTO-005"
+    ],
+    "suite": "unit+server",
+    "scenario": "시작 모델이 고른 추론 단계가 모든 역할에 fixed로 들어가고 run.started·세션 기록에 요청 설정과 고른 단계·출처가 남는다. 선택 요청에는 지원 단계 후보만 보인다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-AUTO-005-N",
+    "requirements": [
+      "CRL-AUTO-005"
+    ],
+    "suite": "unit+server",
+    "scenario": "후보 밖·누락 단계는 medium 대체와 사유, 템플릿 대체·로컬 규칙은 medium, medium 미지원 모델의 route는 선택 요청 없이 거절된다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
   }
 ]

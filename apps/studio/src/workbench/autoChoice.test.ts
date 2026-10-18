@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { autoChoiceFor, autoCommandSeed, autoNotReady, sessionRunMode } from './autoChoice.ts';
+import {
+  autoChoiceFor,
+  autoCommandSeed,
+  autoNotReady,
+  reasoningFrom,
+  reasoningValue,
+  sessionRunMode,
+} from './autoChoice.ts';
 import type { ProfileInfo } from './useModels.ts';
 
 // CR-024: sessions run live wherever live is possible; auto sessions use one model and
@@ -45,5 +52,30 @@ describe('the auto model choice (CR-024)', () => {
         reasoning: { mode: 'fixed', level: 'high' },
       }),
     ).not.toBe(a);
+  });
+});
+
+describe('per-request reasoning (CR-024 §7)', () => {
+  it('[TC-AUTO-005-H] the reasoning chip round-trips route, modes and levels', () => {
+    for (const policy of [
+      { mode: 'route' as const },
+      { mode: 'auto' as const },
+      { mode: 'provider_default' as const },
+      { mode: 'fixed' as const, level: 'low' as const },
+    ])
+      expect(reasoningFrom(reasoningValue(policy))).toEqual(policy);
+    expect(reasoningValue(undefined)).toBe('');
+    expect(reasoningFrom('')).toBeUndefined();
+  });
+
+  it('[TC-AUTO-005-N] choosing per request is a different command from a fixed level', () => {
+    expect(
+      autoCommandSeed('Hi', [], { modelProfile: 'model-a', reasoning: { mode: 'route' } }),
+    ).not.toBe(
+      autoCommandSeed('Hi', [], {
+        modelProfile: 'model-a',
+        reasoning: { mode: 'fixed', level: 'medium' },
+      }),
+    );
   });
 });
