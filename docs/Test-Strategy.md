@@ -2,7 +2,7 @@
 
 ## 1. 무엇을 테스트하는가
 
-제품 기능은 아직 구현되지 않았다. 이 문서 패키지에 있는 test-catalog는 **구현해야 할 테스트 설계**다. 앱 테스트를 실행했다거나 통과했다는 보고가 아니다. 패키지 생성 시 수행하는 JSON·참조·ID 검사는 문서 일관성 검증이며 별도 Validation Report에 기록한다.
+이 문서의 test-catalog는 테스트 설계이며, 실제 실행 결과는 날짜·대상 commit이 있는 검증 보고서로 구분한다. JSON·참조·ID 검사는 문서 일관성 검증으로, 앱 테스트 통과를 대신하지 않는다.
 
 단위 테스트는 순수 decide/reduce, graph parser, budget allocator, version binding, scope matcher를 검증한다. contract 테스트는 JSON schema, Pi source event mapping, provider usage normalization, worker IPC, API receipt를 검증한다. 통합은 SQLite+Coordinator+mock effects, E2E는 브라우저에서 D&D와 Reins의 전체 흐름, live는 실제 provider 기능, performance는 고정된 부하 fixture를 사용한다.
 
@@ -79,7 +79,7 @@ Scenario: 지시를 받은 요청과 시간상 뒤의 요청을 구분한다
 
 ## 8. UX·성능 검증
 
-Playwright는 1280/1440/1920 폭, keyboard-only flow, drag/connect/delete/undo, IME composition, dialog focus return, reduced motion을 검사한다. 실제 브라우저로 Chromium과 Firefox를 필수, WebKit은 지원 선언 전 smoke한다. Storybook은 waiting reason/긴 한국어·일본어/네트워크 단절/expired directive/unknown usage 상태를 고정한다.
+Playwright는 핵심 사용자 흐름, drag/connect/delete/undo, keyboard-only, IME composition, 좁은 화면의 탐색·포커스를 검사한다. Chromium은 주 실행 경로를, Firefox는 Canvas·키보드·IME·좁은 Run 탐색의 브라우저 차이를 검사한다. 같은 업무 흐름을 모든 브라우저에서 반복하지 않는다. WebKit은 지원 선언 전 smoke한다. Storybook은 waiting reason/긴 한국어·일본어/네트워크 단절/expired directive/unknown usage 상태를 고정한다.
 
 성능 fixture는 20 nodes, 100 executions, 10k events, 50 incoming frames/s다. production build에서 테스트하고 브라우저/CPU/메모리/실행시간을 기록한다. 로컬 command receipt p95 200ms, event-to-UI p95 300ms를 초기 목표로 둔다. 스트림 텍스트 수신량이 가변이면 함께 기록한다. 실제 모델 지연을 frontend 지연으로 섞지 않는다.
 
@@ -88,3 +88,14 @@ Playwright는 1280/1440/1920 폭, keyboard-only flow, drag/connect/delete/undo, 
 각 feature의 evidence에는 테스트 명령, exit code, 실행 일시, fixture/schema commit hash, 실패 시 trace, live 여부를 둔다. 비밀키나 private transcript를 공개하지 않는다. RED 증거는 임시 feature branch/작업 기록에 보관하고 보호된 main을 실패 상태로 유지할 필요는 없다.
 
 `test-catalog.json`의 status는 구현 테스트를 실행하기 전까지 planned다. evidence가 없는 테스트를 passed로 변경하지 않는다. `traceability.json`은 요구사항의 완성도를 수치로 과장하기 위한 것이 아니라 빠진 계약을 찾는 자료다.
+
+
+## 10. E2E 유지 범위 (2026-10-18)
+
+Bell의 요청에 따라 기본 Playwright 실행을 179개에서 84개로 축소했다(Chromium 32, Firefox 11, 실제 로컬 서버 41; 측정 opt-in 1개 포함). 테스트 본문 39개를 삭제하고, 나머지 Firefox 중복 실행을 핵심 조작으로 제한했다. 일반 gate에서 제외하려고 파일을 다른 폴더로 옮기거나 skip을 추가하지 않았다.
+
+- 남긴 흐름: 생성·D&D·저장, 세션 후속 요청·큐, Reins와 미래 patch, Loop 승인/거절, 취소 후 부분 결과, 복구·중복 명령, 프로젝트 소유권, 모델 인증·추론 범위, 파일 작업/검사, 스킬·확장·LSP·MCP 등록과 실행, HTML 격리·CSP.
+- 삭제한 반복: 온보딩 체크 표시, 도움말 문구, 단순 페이지·탭 표시, 같은 IME 동작의 언어별 복제, viewport별 표시 반복, 데모/서버의 중복 결과 탐색과 초안 생성. 핵심 키보드·포커스·접근성 검사는 유지한다.
+- 하위 검사: graph/예산/취소/버전 불변식은 core와 adapter 통합, 결과/비교/Run 상태는 react 단위, 데모 단계는 guide/template 단위 테스트에서 검증한다. UI가 표시하는 모든 문구를 별도 E2E로 만들지 않는다.
+- 신규 E2E는 기존 흐름에 없는 중요한 기능·실패 분기 또는 실제 브라우저/서버 경계의 재현이 있을 때만 추가한다. 순수 상태·텍스트 검사는 해당 단위/통합에 둔다.
+- 이번 CI에서 실패한 Firefox Loop 승인 검사는 그대로 유지했다. 실패 중인 단정을 삭제하거나 timeout/retry를 완화한 것이 아니다. 실제 provider 호출은 opt-in live 검증으로 분리한다.

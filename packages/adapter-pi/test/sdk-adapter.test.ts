@@ -177,6 +177,32 @@ function runtime(
 }
 
 describe('SDK worker through the product adapter (H2)', () => {
+  it.each([true, false])(
+    '[TC-HAR-001-H] a %s accepted submission ends without a confirmation request',
+    async (accepted) => {
+      const run = runtime(
+        [
+          fauxAssistantMessage(
+            [fauxToolCall('submit_result', { artifactVersionIds: ['artv_1'] })],
+            { stopReason: 'toolUse' },
+          ),
+          fauxAssistantMessage('Submission was refused.'),
+        ],
+        '',
+        {
+          executeTool: async (toolCallId) =>
+            accepted
+              ? { ok: true, toolCallId, result: {} }
+              : { ok: false, toolCallId, error: { code: 'CAPABILITY_DENIED', message: 'refused' } },
+        },
+      );
+      expect(
+        await (await run.adapter.start(run.input, run.host)).waitForSettlement(),
+      ).toMatchObject({ outcome: 'succeeded' });
+      expect(run.requests).toHaveLength(accepted ? 1 : 2);
+    },
+  );
+
   it('[TC-HAR-016-H] runs the official MCP extension in the selected copy with owned native calls', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'corral-mcp-copy-'));
     scratch.push(cwd);
@@ -1083,4 +1109,43 @@ describe('SDK worker through the product adapter (H2)', () => {
     gate.open();
     expect(await handle.waitForSettlement()).toMatchObject({ outcome: 'cancelled' });
   });
+});
+
+it('[TC-RSN-003-N] a steer absorbed by reprepare does not trigger an extra SDK turn', async () => {
+  const entered = new Gate(),
+    release = new Gate();
+  const directive = { directiveId: 'during_prepare', text: 'Include only the accepted scope.' };
+  let prepares = 0,
+    requests = 0;
+  const contexts: string[] = [];
+  const response = (context: { messages: unknown[] }) => {
+    requests++;
+    contexts.push(JSON.stringify(context.messages));
+    return fauxAssistantMessage('Final answer.');
+  };
+  const run = runtime([response, response], '', {
+    pendingDirectives: () => (prepares ? [directive] : []),
+    prepareModelRequest: async () => {
+      if (++prepares === 1) {
+        entered.open();
+        await release.wait();
+        throw new Error('REASONING_STALE');
+      }
+      return {
+        modelCallId: `call_${prepares}`,
+        contextSnapshotId: `context_${prepares}`,
+        profile: 'model-a',
+        maxOutputTokens: 256,
+        directives: [directive],
+      };
+    },
+  });
+  const handle = await run.adapter.start(run.input, run.host);
+  await entered.wait();
+  handle.pushDirective?.(directive);
+  await Promise.resolve();
+  release.open();
+  await handle.waitForSettlement();
+  expect(contexts[0]?.split(directive.text)).toHaveLength(2);
+  expect(requests).toBe(1);
 });

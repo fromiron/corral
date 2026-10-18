@@ -16,6 +16,7 @@ import {
   CreateRunRequest,
   type DecisionCancellation,
   type DecisionNode,
+  type DecisionProvider,
   EffectiveHarnessSnapshot,
   type EventPayload,
   ExtensionUiNotice,
@@ -31,6 +32,9 @@ import {
   type ModelProfileSnapshot,
   ModelRequestRecord,
   ProviderPayloadRecord,
+  ReasoningInput,
+  type ReasoningPolicy,
+  type ReasoningResolution,
   type Receipt,
   type RecipeStopReason,
   type RequestPermit,
@@ -82,6 +86,7 @@ import {
 import { definitionHash } from './definition-hash.ts';
 import { LogicalDeadline } from './limits.ts';
 import { applyEvent, emptyProjection, type RunProjection } from './projection.ts';
+import { automaticReasoning, fixedReasoning, reasoningError } from './reasoning.ts';
 import { recipeAttempts } from './review-recipe.ts';
 import { planRun } from './run-plan.ts';
 import {
@@ -358,6 +363,9 @@ interface LiveRun {
   inputsByExecution: Map<string, ResolvedInput[]>;
   /** What each execution was started with, for judgments of its requests (CR-003). */
   startInputs: Map<string, AgentStartInput>;
+  reasoningCalls: number;
+  reasoningProvider: DecisionProvider | undefined;
+  reasoningMaxCalls: number;
   /** Why a Loop stopped at its cap: the person declined, or the hard cap was reached. */
   limits: RunLimits;
   criteriaVersionId: string;
@@ -371,6 +379,7 @@ interface LiveRun {
       modelProfile: string;
       model: ModelProfileSnapshot;
       prompt: string;
+      reasoning?: ReasoningPolicy;
       revision: number;
     }
   >;
@@ -493,6 +502,13 @@ export class Coordinator {
         ? [
             createDecisionHub({
               providers: deps.judgments.providers,
+              reserveCall: (runId, limit) => {
+                const run = this.live.get(runId);
+                const used = run?.reasoningCalls ?? limit;
+                const allowed = Boolean(run && used < limit);
+                if (run && allowed) run.reasoningCalls++;
+                return { used, allowed };
+              },
               settingsOf: (runId) => this.live.get(runId)?.projection.decisionSettings ?? null,
               startInputOf: (runId, executionId) =>
                 this.live.get(runId)?.startInputs.get(executionId) ?? null,
@@ -566,6 +582,15 @@ export class Coordinator {
         .join('; ');
       return refuse({ code, message });
     }
+    for (const [roleId, override] of Object.entries(request.roleOverrides ?? {})) {
+      const role = planned.definition.roles.find((role) => role.id === roleId);
+      if (!role)
+        return refuse({
+          code: 'TARGET_NOT_FOUND',
+          message: 'run role override names an unknown role',
+        });
+      Object.assign(role, override);
+    }
     const loopRounds = Math.max(
       0,
       ...Object.values(planned.plan.loops).map((l) => l.maxIterations),
@@ -587,6 +612,14 @@ export class Coordinator {
         code: firstUnusable.code,
         message: unusable.map((u) => u.message).join('; '),
       });
+    }
+    for (const role of planned.definition.roles) {
+      const error = reasoningError(
+        role.reasoning,
+        models[role.modelProfile]!,
+        this.judgments?.settings.reasoning_effort.apply === true,
+      );
+      if (error) return refuse({ code: 'CAPABILITY_DENIED', message: `${role.id}: ${error}` });
     }
     const active = this.store.listRuns().find((r) => !TERMINAL_RUN_STATUSES.has(r.status));
     if (active) {
@@ -666,6 +699,23 @@ export class Coordinator {
       mode: request.mode,
       models,
       ...(Object.keys(harnesses).length ? { harnesses } : {}),
+      ...(this.judgments?.settings.reasoning_effort.apply
+        ? {
+            reasoningApply: {
+              enabled: true,
+              provider: 'local-model' as const,
+              version:
+                this.judgments.providers.find(
+                  (p) => p.id === 'local-model' && p.privacy === 'local',
+                )?.version ?? null,
+              maxCalls: Math.min(
+                100,
+                this.judgments.settings.reasoning_effort.maxCalls ??
+                  definition.limits.maxModelCalls,
+              ),
+            },
+          }
+        : {}),
       startedAt: this.clock.nowIso(),
     };
     const run: LiveRun = {
@@ -690,6 +740,14 @@ export class Coordinator {
       uiNoticeCount: 0,
       inputsByExecution: new Map(),
       startInputs: new Map(),
+      reasoningCalls: 0,
+      reasoningProvider: this.judgments?.providers.find(
+        (p) => p.id === 'local-model' && p.privacy === 'local',
+      ),
+      reasoningMaxCalls: Math.min(
+        100,
+        this.judgments?.settings.reasoning_effort.maxCalls ?? definition.limits.maxModelCalls,
+      ),
       capStop: null,
       limits: { ...definition.limits },
       criteriaVersionId: snapshot.criteriaVersionId,
@@ -719,6 +777,7 @@ export class Coordinator {
           limits: definition.limits,
           criteriaVersionId: snapshot.criteriaVersionId,
           ...(snapshot.harnesses ? { harnesses: snapshot.harnesses } : {}),
+          ...(snapshot.reasoningApply ? { reasoningApply: snapshot.reasoningApply } : {}),
           ...(request.startFrom ? { startedFrom: request.startFrom } : {}),
           ...(this.judgments
             ? {
@@ -1308,11 +1367,15 @@ export class Coordinator {
       before = {
         modelProfile: current?.modelProfile ?? role.modelProfile,
         prompt: current?.prompt ?? role.prompt,
+        ...((current?.reasoning ?? role.reasoning)
+          ? { reasoning: current?.reasoning ?? role.reasoning }
+          : {}),
       };
       after = {
         ...before,
         ...(change.modelProfile ? { modelProfile: change.modelProfile } : {}),
         ...(change.prompt ? { prompt: change.prompt } : {}),
+        ...(change.reasoning ? { reasoning: change.reasoning } : {}),
       };
       if (change.modelProfile) {
         const resolved = this.models.resolve(change.modelProfile, run.snapshot.mode);
@@ -1321,6 +1384,12 @@ export class Coordinator {
         after.modelSnapshot = patchedModel;
       } else patchedModel = current?.model ?? run.snapshot.models[role.modelProfile];
       if (!patchedModel) return refuse('CAPABILITY_DENIED', 'the pinned model is unavailable');
+      const error = reasoningError(
+        after.reasoning as ReasoningPolicy | undefined,
+        patchedModel,
+        run.snapshot.reasoningApply?.enabled === true,
+      );
+      if (error) return refuse('CAPABILITY_DENIED', error);
     } else if (change.kind === 'loop_limit') {
       if (node?.type !== 'loop') return refuse('SCHEMA_INVALID', 'loop_limit requires a Loop node');
       if (node.reviewRecipe && change.maxIterations > recipeAttempts(node.reviewRecipe))
@@ -1401,6 +1470,7 @@ export class Coordinator {
         modelProfile: String(after.modelProfile),
         model: patchedModel as ModelProfileSnapshot,
         prompt: String(after.prompt),
+        ...(after.reasoning ? { reasoning: after.reasoning as ReasoningPolicy } : {}),
         revision: run.projection.controlRevision,
       });
     else if (change.kind === 'loop_limit') {
@@ -2530,7 +2600,12 @@ export class Coordinator {
     }
     const patch = run.nodePatches.get(spec.nodeId);
     const role = patch
-      ? { ...baseRole, modelProfile: patch.modelProfile, prompt: patch.prompt }
+      ? {
+          ...baseRole,
+          modelProfile: patch.modelProfile,
+          prompt: patch.prompt,
+          ...(patch.reasoning ? { reasoning: patch.reasoning } : {}),
+        }
       : baseRole;
     const model = patch?.model ?? run.snapshot.models[role.modelProfile];
     if (!model) throw new Error('the pinned model is unavailable');
@@ -3797,6 +3872,7 @@ export class Coordinator {
       return null;
     };
     const recordedPayloads = new Set<string>();
+    let preparing = false;
     const toolView = (proposal: ToolProposal): ToolGateView => ({
       ...this.toolView(run, input, proposal),
       ...(harnessState === 'simulated' ? { simulation: true } : {}),
@@ -4191,30 +4267,6 @@ export class Coordinator {
                 () => this.store.putArtifactText(run.runId, bodyRef, canonicalJson(notice)),
               );
             },
-            recordProviderPayload: async (raw: ProviderPayloadRecord) => {
-              requireActive();
-              if (harnessState === 'simulated')
-                throw new Error('simulation cannot report a provider payload');
-              const record = ProviderPayloadRecord.parse(raw);
-              const call = run.projection.modelCalls[record.modelCallId];
-              if (
-                !call ||
-                call.executionId !== executionId ||
-                call.finished ||
-                lastCall?.modelCallId !== record.modelCallId ||
-                recordedPayloads.has(record.modelCallId)
-              )
-                throw new Error('unknown or already recorded request');
-              this.commit(run, [{ type: 'model.payload_recorded', executionId, payload: record }]);
-              recordedPayloads.add(record.modelCallId);
-            },
-            pendingDirectives: () =>
-              run.projection.directiveOrder.flatMap((id) => {
-                const d = run.projection.directives[id];
-                return d?.targetExecutionId === executionId && d.status === 'queued'
-                  ? [{ directiveId: id, text: d.text }]
-                  : [];
-              }),
             simulateHarness: async () => {
               requireActive();
               if (input.mode !== 'mock' || harnessState !== 'unloaded')
@@ -4388,215 +4440,334 @@ export class Coordinator {
             },
           }
         : {}),
-      prepareModelRequest: async (rawRecord?: ModelRequestRecord): Promise<RequestPermit> => {
-        if (harness && harnessState !== 'loaded' && harnessState !== 'simulated')
-          throw new Error('harness not loaded');
-        if (harness && harnessState === 'loaded' && !rawRecord)
-          throw new Error('SDK request record is required');
-        if (harnessState === 'simulated' && rawRecord)
-          throw new Error('simulation cannot report an SDK request');
-        const record = rawRecord ? ModelRequestRecord.parse(rawRecord) : undefined;
-        if (record && !harness) throw new Error('unexpected SDK request record');
-        for (const id of record?.directiveIds ?? []) {
-          const directive = run.projection.directives[id];
-          if (
-            !directive ||
-            directive.targetExecutionId !== executionId ||
-            !['queued', 'attached_to_request', 'delivered'].includes(directive.status)
-          )
-            throw new Error('unknown directive in request');
-        }
-        do {
-          await this.boundary(run, executionId);
-        } while (run.projection.status !== 'running');
+      recordProviderPayload: async (raw: ProviderPayloadRecord) => {
         requireActive();
-        const view: ModelGateView = { projection: run.projection, limits: run.limits, input };
-        this.recipeAllowance(run, executionId);
-        const request = runGates(this.gates['model.request'], view);
-        if (request.kind === 'refuse') this.refuseModelRequest(run, request);
-        if (request.kind === 'require_approval') {
-          this.commit(run, [
-            {
-              type: 'limit.reached',
-              payload: {
-                limitKind: request.limit.kind,
-                used: request.limit.used,
-                reserved: request.limit.reserved ?? 0,
-                max: request.limit.max,
-              },
-            },
-          ]);
-          const requested = this.requestApproval(run, 'user_action', [run.criteriaVersionId]);
-          run.boundaries.add(executionId);
-          try {
-            if ((await requested.decision) !== 'approve')
-              throw new Error(`${request.limit.kind} stopped`);
-          } finally {
-            run.boundaries.delete(executionId);
+        if (harnessState === 'simulated')
+          throw new Error('simulation cannot report a provider payload');
+        const record = ProviderPayloadRecord.parse(raw);
+        const call = run.projection.modelCalls[record.modelCallId];
+        if (
+          !call ||
+          call.executionId !== executionId ||
+          call.finished ||
+          lastCall?.modelCallId !== record.modelCallId ||
+          recordedPayloads.has(record.modelCallId)
+        )
+          throw new Error('unknown or already recorded request');
+        this.commit(run, [{ type: 'model.payload_recorded', executionId, payload: record }]);
+        recordedPayloads.add(record.modelCallId);
+      },
+      pendingDirectives: () =>
+        run.projection.directiveOrder.flatMap((id) => {
+          const d = run.projection.directives[id];
+          return d?.targetExecutionId === executionId && d.status === 'queued'
+            ? [{ directiveId: id, text: d.text }]
+            : [];
+        }),
+      prepareModelRequest: async (
+        rawRecord?: ModelRequestRecord,
+        rawReasoning?: ReasoningInput,
+      ): Promise<RequestPermit> => {
+        if (preparing) throw new Error('request preparation already in progress');
+        preparing = true;
+        try {
+          if (harness && harnessState !== 'loaded' && harnessState !== 'simulated')
+            throw new Error('harness not loaded');
+          if (harness && harnessState === 'loaded' && !rawRecord)
+            throw new Error('SDK request record is required');
+          if (harnessState === 'simulated' && rawRecord)
+            throw new Error('simulation cannot report an SDK request');
+          const record = rawRecord ? ModelRequestRecord.parse(rawRecord) : undefined;
+          if (record && !harness) throw new Error('unexpected SDK request record');
+          for (const id of record?.directiveIds ?? []) {
+            const directive = run.projection.directives[id];
+            if (
+              !directive ||
+              directive.targetExecutionId !== executionId ||
+              !['queued', 'attached_to_request', 'delivered'].includes(directive.status)
+            )
+              throw new Error('unknown directive in request');
           }
           do {
             await this.boundary(run, executionId);
           } while (run.projection.status !== 'running');
           requireActive();
-        }
-        // Wait for a model slot; a waiting execution is not in a request and holds none.
-        await this.acquireSlot(run, executionId);
-        try {
-          do {
-            await this.boundary(run, executionId);
-          } while (run.projection.status !== 'running');
-          requireActive();
-        } catch (error) {
-          this.releaseSlot(run);
-          throw error;
-        }
-        let recipeRemaining: number;
-        try {
-          recipeRemaining = this.recipeAllowance(run, executionId);
-        } catch (error) {
-          this.releaseSlot(run);
-          throw error;
-        }
-        const limits = run.limits;
-        const admit = runGates(this.gates['model.admit'], {
-          projection: run.projection,
-          limits,
-          input,
-        });
-        if (admit.kind !== 'allow') {
-          this.releaseSlot(run);
-          this.refuseModelRequest(
-            run,
-            admit.kind === 'refuse'
-              ? admit
-              : {
-                  kind: 'refuse',
-                  code: 'CAPABILITY_DENIED',
-                  message: 'admission cannot wait for approval after a slot is held',
+          const view: ModelGateView = { projection: run.projection, limits: run.limits, input };
+          this.recipeAllowance(run, executionId);
+          const request = runGates(this.gates['model.request'], view);
+          if (request.kind === 'refuse') this.refuseModelRequest(run, request);
+          if (request.kind === 'require_approval') {
+            this.commit(run, [
+              {
+                type: 'limit.reached',
+                payload: {
+                  limitKind: request.limit.kind,
+                  used: request.limit.used,
+                  reserved: request.limit.reserved ?? 0,
+                  max: request.limit.max,
                 },
-          );
-        }
-        // The reservation itself is the Coordinator's: even without a budget gate, a request the
-        // budget cannot cover is not admitted.
-        const admitted = admitModelRequest(run.projection.budget, limits);
-        if (!admitted.ok) {
-          this.releaseSlot(run);
+              },
+            ]);
+            const requested = this.requestApproval(run, 'user_action', [run.criteriaVersionId]);
+            run.boundaries.add(executionId);
+            try {
+              if ((await requested.decision) !== 'approve')
+                throw new Error(`${request.limit.kind} stopped`);
+            } finally {
+              run.boundaries.delete(executionId);
+            }
+            do {
+              await this.boundary(run, executionId);
+            } while (run.projection.status !== 'running');
+            requireActive();
+          }
+          const privateInput = rawReasoning ? ReasoningInput.parse(rawReasoning) : undefined;
+          const queuedIds = () =>
+            run.projection.directiveOrder.filter((id) => {
+              const d = run.projection.directives[id];
+              return d?.targetExecutionId === executionId && d.status === 'queued';
+            });
+          const fingerprint = () =>
+            hashOf({
+              directives: queuedIds(),
+              artifacts: run.projection.artifactReads[executionId] ?? [],
+              revision: run.projection.executions[executionId]?.configRevision,
+              descriptors: [...descriptors.values()],
+              model: input.model,
+              policy: input.role.reasoning ?? null,
+            });
+          for (const id of privateInput?.directiveIds ?? []) {
+            const directive = run.projection.directives[id];
+            if (
+              !directive ||
+              directive.targetExecutionId !== executionId ||
+              !['queued', 'attached_to_request', 'delivered'].includes(directive.status)
+            )
+              throw new Error('unknown directive in reasoning input');
+          }
+          const preparedAt = fingerprint();
+          const auto = input.role.reasoning?.mode === 'auto';
+          if (
+            auto &&
+            privateInput &&
+            queuedIds().some((id) => !privateInput.directiveIds.includes(id))
+          )
+            throw new Error('REASONING_STALE');
+          const preparationId = this.ids.next('preparation');
+          let reasoning = fixedReasoning(input.role.reasoning, preparationId);
+          if (auto) {
+            const listeners = run.cancelListeners.get(executionId) ?? new Set<() => void>();
+            run.cancelListeners.set(executionId, listeners);
+            const cancellation: DecisionCancellation = {
+              get aborted() {
+                try {
+                  requireOwned();
+                  return false;
+                } catch {
+                  return true;
+                }
+              },
+              onCancel(fn) {
+                listeners.add(fn);
+                if (this.aborted) fn();
+                return () => listeners.delete(fn);
+              },
+            };
+            const exhausted = run.reasoningCalls >= run.reasoningMaxCalls;
+            if (!exhausted) run.reasoningCalls++;
+            run.boundaries.add(executionId);
+            try {
+              reasoning = await automaticReasoning(
+                privateInput,
+                {
+                  requested: { mode: 'auto' },
+                  resolved: 'medium',
+                  source: 'fallback',
+                  preparationId,
+                  ...(privateInput
+                    ? { inputHash: hashOf(privateInput), kind: privateInput.kind }
+                    : {}),
+                },
+                run.reasoningProvider,
+                input.model.reasoning?.levels ?? ['low', 'medium', 'high', 'xhigh'],
+                cancellation,
+                this.timers,
+                exhausted,
+              );
+            } finally {
+              run.boundaries.delete(executionId);
+            }
+            const paused = run.projection.status !== 'running';
+            do {
+              await this.boundary(run, executionId);
+            } while (run.projection.status !== 'running');
+            requireActive();
+            if (paused || fingerprint() !== preparedAt) throw new Error('REASONING_STALE');
+          }
+          // Wait for a model slot; a waiting execution is not in a request and holds none.
+          await this.acquireSlot(run, executionId);
+          try {
+            do {
+              await this.boundary(run, executionId);
+            } while (run.projection.status !== 'running');
+            requireActive();
+            if (auto && fingerprint() !== preparedAt) throw new Error('REASONING_STALE');
+          } catch (error) {
+            this.releaseSlot(run);
+            throw error;
+          }
+          let recipeRemaining: number;
+          try {
+            recipeRemaining = this.recipeAllowance(run, executionId);
+          } catch (error) {
+            this.releaseSlot(run);
+            throw error;
+          }
+          const limits = run.limits;
+          const admit = runGates(this.gates['model.admit'], {
+            projection: run.projection,
+            limits,
+            input,
+          });
+          if (admit.kind !== 'allow') {
+            this.releaseSlot(run);
+            this.refuseModelRequest(
+              run,
+              admit.kind === 'refuse'
+                ? admit
+                : {
+                    kind: 'refuse',
+                    code: 'CAPABILITY_DENIED',
+                    message: 'admission cannot wait for approval after a slot is held',
+                  },
+            );
+          }
+          // The reservation itself is the Coordinator's: even without a budget gate, a request the
+          // budget cannot cover is not admitted.
+          const admitted = admitModelRequest(run.projection.budget, limits);
+          if (!admitted.ok) {
+            this.releaseSlot(run);
+            this.commit(run, [
+              {
+                type: 'limit.reached',
+                payload: {
+                  limitKind: admitted.limitKind,
+                  used: admitted.used,
+                  reserved: admitted.reserved,
+                  max: admitted.max,
+                },
+              },
+            ]);
+            throw new Error(`LIMIT_REACHED: ${admitted.limitKind}`);
+          }
+          const modelCallId = this.ids.next('model_call');
+          admitted.maxOutputTokens = Math.min(admitted.maxOutputTokens, recipeRemaining);
+          const contextSnapshotId = this.ids.next('context_snapshot');
+          const effectId = this.ids.next('effect');
+          run.slots.held.set(modelCallId, executionId);
+          // The snapshot takes every directive queued for this execution right now.
+          const queued = run.projection.directiveOrder
+            .map((id) => run.projection.directives[id])
+            .filter(
+              (d) =>
+                d?.targetExecutionId === executionId &&
+                d.status === 'queued' &&
+                (!record || record.directiveIds.includes(d.directiveId)),
+            )
+            .map((d) => ({ directiveId: d?.directiveId ?? '', text: d?.text ?? '' }));
+          const directiveIds = queued.map((d) => d.directiveId);
           this.commit(run, [
+            ...(record && harness
+              ? [
+                  {
+                    type: 'model.request_recorded',
+                    executionId,
+                    payload: { ...record, modelCallId, snapshotHash: harness.snapshotHash },
+                  } satisfies EventDraft,
+                ]
+              : []),
             {
-              type: 'limit.reached',
+              type: 'budget.reserved',
+              executionId,
               payload: {
-                limitKind: admitted.limitKind,
-                used: admitted.used,
-                reserved: admitted.reserved,
-                max: admitted.max,
+                reservationId: modelCallId,
+                modelCallId,
+                scope: executionId,
+                amount: { outputTokens: admitted.maxOutputTokens, modelCalls: 1 },
+              },
+            },
+            ...directiveIds.map(
+              (directiveId): EventDraft => ({
+                type: 'directive.attached',
+                executionId,
+                payload: { directiveId, contextSnapshotId, modelCallId },
+              }),
+            ),
+            {
+              type: 'model.request_prepared',
+              executionId,
+              payload: {
+                executionId,
+                modelCallId,
+                contextSnapshotId,
+                profile: input.modelProfile,
+                ...(reasoning ? { reasoning } : {}),
+                configRevision: run.projection.executions[executionId]?.configRevision ?? 0,
+                directiveIds,
+                inputArtifactVersionIds: [
+                  ...new Set([
+                    ...(run.inputsByExecution.get(executionId) ?? input.inputs).flatMap((i) =>
+                      i.artifactVersionId ? [i.artifactVersionId] : [],
+                    ),
+                    ...(run.projection.artifactReads[executionId] ?? []),
+                  ]),
+                ],
+              },
+            },
+            {
+              type: 'effect.admitted',
+              executionId,
+              payload: {
+                effectId,
+                kind: 'model_request',
+                scope: executionId,
+                epoch: input.attemptNo,
+                reservationId: modelCallId,
               },
             },
           ]);
-          throw new Error(`LIMIT_REACHED: ${admitted.limitKind}`);
-        }
-        const modelCallId = this.ids.next('model_call');
-        admitted.maxOutputTokens = Math.min(admitted.maxOutputTokens, recipeRemaining);
-        const contextSnapshotId = this.ids.next('context_snapshot');
-        const effectId = this.ids.next('effect');
-        run.slots.held.set(modelCallId, executionId);
-        // The snapshot takes every directive queued for this execution right now.
-        const queued = run.projection.directiveOrder
-          .map((id) => run.projection.directives[id])
-          .filter(
-            (d) =>
-              d?.targetExecutionId === executionId &&
-              d.status === 'queued' &&
-              (!record || record.directiveIds.includes(d.directiveId)),
-          )
-          .map((d) => ({ directiveId: d?.directiveId ?? '', text: d?.text ?? '' }));
-        const directiveIds = queued.map((d) => d.directiveId);
-        this.commit(run, [
-          ...(record && harness
-            ? [
-                {
-                  type: 'model.request_recorded',
-                  executionId,
-                  payload: { ...record, modelCallId, snapshotHash: harness.snapshotHash },
-                } satisfies EventDraft,
-              ]
-            : []),
-          {
-            type: 'budget.reserved',
-            executionId,
-            payload: {
-              reservationId: modelCallId,
-              modelCallId,
-              scope: executionId,
-              amount: { outputTokens: admitted.maxOutputTokens, modelCalls: 1 },
-            },
-          },
-          ...directiveIds.map(
-            (directiveId): EventDraft => ({
-              type: 'directive.attached',
-              executionId,
-              payload: { directiveId, contextSnapshotId, modelCallId },
+          lastCall = { modelCallId, contextSnapshotId, effectId };
+          run.requestDeadlines.set(
+            modelCallId,
+            this.timers.after(run.limits.modelTimeoutMs, () => {
+              if (
+                run.projection.effects[effectId]?.status !== 'admitted' ||
+                TERMINAL_RUN_STATUSES.has(run.projection.status)
+              )
+                return;
+              this.submit({
+                schemaVersion: '0.1',
+                runId: run.runId,
+                commandId: `timeout_${modelCallId}`,
+                type: 'cancel',
+                payload: {
+                  scope: { kind: 'execution', executionId },
+                  reason: 'model_request_timeout',
+                },
+              });
             }),
-          ),
-          {
-            type: 'model.request_prepared',
-            executionId,
-            payload: {
-              executionId,
-              modelCallId,
-              contextSnapshotId,
-              profile: input.modelProfile,
-              configRevision: run.projection.executions[executionId]?.configRevision ?? 0,
-              directiveIds,
-              inputArtifactVersionIds: [
-                ...new Set([
-                  ...(run.inputsByExecution.get(executionId) ?? input.inputs).flatMap((i) =>
-                    i.artifactVersionId ? [i.artifactVersionId] : [],
-                  ),
-                  ...(run.projection.artifactReads[executionId] ?? []),
-                ]),
-              ],
-            },
-          },
-          {
-            type: 'effect.admitted',
-            executionId,
-            payload: {
-              effectId,
-              kind: 'model_request',
-              scope: executionId,
-              epoch: input.attemptNo,
-              reservationId: modelCallId,
-            },
-          },
-        ]);
-        lastCall = { modelCallId, contextSnapshotId, effectId };
-        run.requestDeadlines.set(
-          modelCallId,
-          this.timers.after(run.limits.modelTimeoutMs, () => {
-            if (
-              run.projection.effects[effectId]?.status !== 'admitted' ||
-              TERMINAL_RUN_STATUSES.has(run.projection.status)
-            )
-              return;
-            this.submit({
-              schemaVersion: '0.1',
-              runId: run.runId,
-              commandId: `timeout_${modelCallId}`,
-              type: 'cancel',
-              payload: {
-                scope: { kind: 'execution', executionId },
-                reason: 'model_request_timeout',
-              },
-            });
-          }),
-        );
-        return {
-          modelCallId,
-          contextSnapshotId,
-          profile: input.modelProfile,
-          maxOutputTokens: admitted.maxOutputTokens,
-          directives: queued,
-        };
+          );
+          return {
+            modelCallId,
+            contextSnapshotId,
+            profile: input.modelProfile,
+            maxOutputTokens: admitted.maxOutputTokens,
+            directives: queued,
+            ...(reasoning ? { reasoning } : {}),
+          };
+        } finally {
+          preparing = false;
+        }
       },
 
       modelRequestDispatched: async (modelCallId: string) => {

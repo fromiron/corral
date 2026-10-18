@@ -13,6 +13,8 @@ export * from './layout.ts';
 export * from './lsp.ts';
 export type * from './ports.ts';
 export * from './project-tools.ts';
+export * from './reasoning.ts';
+export { chooseReasoningLevel } from './reasoning-cost.ts';
 export * from './receipt.ts';
 export * from './review.ts';
 export * from './review-recipe.ts';

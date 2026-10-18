@@ -1,14 +1,16 @@
-import { PatchPayload, TERMINAL_RUN_STATUSES } from '@corral/contracts';
+import { PatchPayload, type ReasoningPolicy, TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import { useEffect, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import type { RunSessionStore } from '../run/session.ts';
+import { ReasoningSelect } from './ReasoningSelect.tsx';
 import { StatusBadge } from './StatusBadge.tsx';
 
 type PatchKind = PatchPayload['kind'];
 type Field =
   | 'prompt'
   | 'modelProfile'
+  | 'reasoning'
   | 'maxIterations'
   | 'criteria'
   | 'maxOutputTokens'
@@ -31,6 +33,8 @@ export function SettingsPatchPanel({
   const [selectedNode, setSelectedNode] = useState(nodeId ?? '');
   const [field, setField] = useState<Field>('maxOutputTokens');
   const [proposed, setProposed] = useState('');
+  const [reasoning, setReasoning] = useState<ReasoningPolicy | null>(null);
+  const [reasoningModel, setReasoningModel] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<{
     payload: PatchPayload;
@@ -67,7 +71,7 @@ export function SettingsPatchPanel({
       (settings, patch) => Object.assign(settings, patch.after),
       node?.type === 'loop'
         ? { maxIterations: node.maxIterations }
-        : { prompt: role?.prompt, modelProfile: role?.modelProfile },
+        : { prompt: role?.prompt, modelProfile: role?.modelProfile, reasoning: role?.reasoning },
     );
   const limits = projection.limits ?? definition.limits;
   const current =
@@ -77,13 +81,15 @@ export function SettingsPatchPanel({
         ? criteriaId
           ? (criteriaText ?? t('loadingCriteria'))
           : definition.input.criteria.join('\n')
-        : String(nodeSettings[field] ?? '');
+        : field === 'reasoning'
+          ? JSON.stringify(nodeSettings.reasoning ?? null)
+          : String(nodeSettings[field] ?? '');
   const target = kind === 'run_limits' || kind === 'criteria' ? projection.runId : (node?.id ?? '');
   const fields: Field[] =
     kind === 'run_limits'
       ? ['maxOutputTokens', 'maxModelCalls', 'maxSpawns']
       : kind === 'node_future'
-        ? ['prompt', 'modelProfile']
+        ? ['prompt', 'modelProfile', 'reasoning']
         : kind === 'loop_limit'
           ? ['maxIterations']
           : ['criteria'];
@@ -118,7 +124,14 @@ export function SettingsPatchPanel({
             }
           : kind === 'loop_limit'
             ? { kind, nodeId: node?.id, maxIterations: Number(value) }
-            : { kind, nodeId: node?.id, [field]: value };
+            : field === 'reasoning'
+              ? {
+                  kind,
+                  nodeId: node?.id,
+                  reasoning,
+                  ...(reasoningModel.trim() ? { modelProfile: reasoningModel.trim() } : {}),
+                }
+              : { kind, nodeId: node?.id, [field]: value };
     const parsed = PatchPayload.safeParse(candidate);
     if (!parsed.success || !value) {
       setError(t('invalid'));
@@ -225,17 +238,44 @@ export function SettingsPatchPanel({
             <p className="text-muted">
               {t('current')}: <span className="whitespace-pre-wrap break-words">{current}</span>
             </p>
-            <label htmlFor={`${id}-value`}>{t('proposed')}</label>
-            <textarea
-              id={`${id}-value`}
-              value={proposed}
-              onChange={(event) => {
-                setProposed(event.target.value);
-                setPreview(null);
-              }}
-              rows={3}
-              className="rounded border border-line bg-surface p-2"
-            />
+            {field === 'reasoning' ? (
+              <>
+                <ReasoningSelect
+                  value={reasoning}
+                  onChange={(value) => {
+                    setReasoning(value);
+                    setProposed(value?.mode === 'fixed' ? value.level : (value?.mode ?? ''));
+                    setPreview(null);
+                  }}
+                />
+                <label className="flex flex-col gap-1">
+                  {t('reasoningModel')}
+                  <input
+                    className="rounded border border-line bg-surface p-2"
+                    placeholder={String(nodeSettings.modelProfile ?? '')}
+                    value={reasoningModel}
+                    onChange={(event) => {
+                      setReasoningModel(event.target.value);
+                      setPreview(null);
+                    }}
+                  />
+                </label>
+              </>
+            ) : (
+              <>
+                <label htmlFor={`${id}-value`}>{t('proposed')}</label>
+                <textarea
+                  id={`${id}-value`}
+                  value={proposed}
+                  onChange={(event) => {
+                    setProposed(event.target.value);
+                    setPreview(null);
+                  }}
+                  rows={3}
+                  className="rounded border border-line bg-surface p-2"
+                />
+              </>
+            )}
             <button
               type="button"
               disabled={

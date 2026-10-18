@@ -1,8 +1,7 @@
 // The text the judge model sees, in the formats it was trained on (calibration.json
 // `inputFormat`). Derived from mixdog `src/runtime/effort-judge/judge-input.mjs` and
 // `judge-worker.mjs` (Apache-2.0; see ../NOTICE.md). Changes for Corral: TypeScript; Corral
-// judges each model request of an execution as a turn whose "request" is the request excerpt
-// (CR-003 §3.5) and has no previous reply, so step judgments are not used.
+// keeps the observer excerpt path and applies full turn/tool-step inputs under CR-021.
 import type { CompactTokenizer } from './tokenizer.ts';
 
 const FENCE = /```+[\s\S]*?(?:```+|$)/g;
@@ -92,5 +91,38 @@ export function inputIds(
   if (format === 'pack') return packIds(tokenizer, request, prevRequest, prev, maxTokens);
   const room = maxTokens - tokenizer.prefix.length - tokenizer.suffix.length;
   const body = tokenizer.encode(judgeText(format, request, prev, prevRequest)).slice(0, room);
+  return [...tokenizer.prefix, ...body, ...tokenizer.suffix];
+}
+
+/** Mixdog v6 step format; only ordinary assistant text and actual tool results. */
+export function stepJudgeText(input: {
+  request: string;
+  step: number;
+  plan: string;
+  calls: { name: string; args: string; result: string }[];
+}): string {
+  const parts = [`step ${input.step}`, `request: ${cleanJudgeText(head(input.request, 300))}`];
+  const plan = cleanJudgeText(tail(input.plan, 300));
+  if (plan) parts.push(`plan: ${plan}`);
+  for (const call of input.calls.slice(0, 3)) {
+    parts.push(`call: ${call.name} ${cleanJudgeText(head(call.args, 160))}`);
+    const result = cleanJudgeText(stepResultWindow(call.result));
+    parts.push(
+      `result: ${Array.from(result).length > 500 ? `${head(result, 300)} … ${tail(result, 200)}` : result}`,
+    );
+  }
+  return parts.join('\n');
+}
+export function stepResultWindow(text: string): string {
+  return Array.from(text).length <= 3000 ? text : `${head(text, 2000)}\n…\n${tail(text, 1000)}`;
+}
+export function stepInputIds(
+  tokenizer: CompactTokenizer,
+  maxTokens: number,
+  input: Parameters<typeof stepJudgeText>[0],
+): number[] {
+  const body = tokenizer
+    .encode(stepJudgeText(input))
+    .slice(0, maxTokens - tokenizer.prefix.length - tokenizer.suffix.length);
   return [...tokenizer.prefix, ...body, ...tokenizer.suffix];
 }

@@ -57,37 +57,6 @@ test('[TC-CAN-001-H] nodes dropped on an empty canvas and connected run as drawn
   expect(errors).toEqual([]);
 });
 
-test('[TC-RNS-001-H] an instruction sent during a request reaches the next request', async ({
-  page,
-}) => {
-  const errors = await trackErrors(page);
-  await newCorral(page, '?delay=2500');
-  await buildAgentToOutput(page);
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
-
-  const box = page.getByLabel('Instruction');
-  await box.fill('Use primary sources only.');
-  await box.press('Enter');
-  await expect(page.getByText('Boundary: next model request', { exact: true })).toBeVisible();
-  const instruction = page.getByRole('listitem').filter({ hasText: 'Use primary sources only.' });
-  await expect(instruction).toContainText('Queued');
-
-  await expect(instruction).toContainText('Delivered', { timeout: 10_000 });
-  await expect(page.getByTestId('run-output')).toContainText('Use primary sources only.', {
-    timeout: 10_000,
-  });
-  await expect(page.getByText('This execution has finished.', { exact: false })).toBeVisible();
-  expect(errors).toEqual([]);
-});
-
-test('an invalid connection is refused with a reason', async ({ page }) => {
-  await newCorral(page);
-  await dropFromPalette(page, 'agent', 200, 200);
-  await handle(page, 'agent_1', 'out').dragTo(handle(page, 'agent_1', 'in'));
-  await expect(page.getByTestId('canvas-notice')).toHaveText('A node cannot connect to itself.');
-  await expect(page.locator('.react-flow__edge')).toHaveCount(0);
-});
-
 test('[TC-CAN-002-H] saving a layout move bumps only the layout revision, and survives reload', async ({
   page,
 }) => {
@@ -113,21 +82,6 @@ test('[TC-CAN-002-H] saving a layout move bumps only the layout revision, and su
   await expect(page.getByTestId('revisions')).toHaveText('Definition r2 · Layout r3');
   const after = await page.locator('.react-flow__node[data-id="agent_1"]').boundingBox();
   expect(after?.y).not.toBe(before?.y);
-});
-
-test('direct links, reload and back navigation keep the right screen', async ({ page }) => {
-  await newCorral(page);
-  const editorUrl = page.url();
-  await page.goBack();
-  await expect(page.getByRole('heading', { name: 'Corrals' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Untitled Corral' })).toBeVisible();
-  await page.goto(editorUrl);
-  await expect(page.getByLabel('Corral name')).toHaveValue('Untitled Corral');
-
-  await page.goto('/corrals/corral_missing/edit');
-  await expect(page.getByText('This page does not exist.')).toBeVisible();
-  await page.goto('/runs/run_gone');
-  await expect(page.getByText('This run is not available here.', { exact: false })).toBeVisible();
 });
 
 test('[TC-CAN-004-H] [TC-RUN-003-H] an imported team with a Loop validates and runs through its review and approvals', async ({

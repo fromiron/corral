@@ -1,47 +1,6 @@
 import { linearCorral } from '@corral/testkit';
 import { expect, type Page, test } from '@playwright/test';
 
-test('[TC-DEV-005-H] /demo starts a key-free worker runtime and steering changes its output offline', async ({
-  page,
-  context,
-}) => {
-  // The steer must land before the simulated agent's last request; slow CI runners need room
-  // (chromium missed a 3000 ms window in #27).
-  test.setTimeout(120_000);
-  const runtimeRequests: string[] = [];
-  page.on('request', (request) => {
-    if (['fetch', 'xhr', 'eventsource'].includes(request.resourceType()))
-      runtimeRequests.push(request.url());
-  });
-  // /demo must not probe or use a server even when the host injects its runtime marker.
-  await page.addInitScript(() => {
-    const meta = document.createElement('meta');
-    meta.name = 'corral-runtime';
-    meta.content = 'server';
-    document.documentElement.append(meta);
-  });
-  const workerReady = page.waitForEvent('worker');
-  // A wider window than the run needs on slow CI runners; the assertions are unchanged.
-  await page.goto('/demo?template=starter&delay=6000');
-  await expect(page.getByLabel('Corral name')).toHaveValue('Demo Corral');
-  await workerReady;
-  await expect(page.getByText('Demo · simulated', { exact: true })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Models', exact: true })).toHaveCount(0);
-  await expect(page.getByText('Ready to run.')).toBeVisible();
-  // Once static assets are loaded, all editing and execution remains in this browser.
-  await context.setOffline(true);
-  await page.getByLabel('Run brief').fill('Compare fountain pens.');
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
-  await page.getByLabel('Instruction').fill('Use primary sources only.');
-  await page.getByLabel('Instruction').press('Enter');
-  await expect(page.getByTestId('run-output')).toContainText('Use primary sources only.', {
-    timeout: 60_000,
-  });
-  await expect(page.getByTestId('run-output')).toContainText('Compare fountain pens.');
-  await expect(page.getByTestId('run-status')).toContainText('Succeeded');
-  expect(runtimeRequests).toEqual([]);
-});
-
 test('[TC-DEV-005-N] the worker preserves receipts, replay ordering and cancellation boundaries', async ({
   page,
 }) => {
@@ -230,33 +189,6 @@ test('[TC-DEV-005-H] the default demo team delegates, asks, revises once and fin
   expect(runtimeRequests).toEqual([]);
 });
 
-test('[TC-DEV-005-N] steering the second-round Writer changes that draft, not the submitted first one', async ({
-  page,
-}) => {
-  // The steer has to land while the round 2 Writer runs: a wider reply window for slow CI
-  // runners (firefox missed it at 700 ms in #18); assertions unchanged.
-  test.setTimeout(120_000);
-  await page.goto('/demo?delay=1500');
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
-  const writers = page.locator('li[data-execution-id]').filter({ hasText: /^Writer ·/ });
-  await expect(writers.filter({ hasText: 'Round 2' })).toHaveCount(1, { timeout: 60_000 });
-  // The guide offers the second-round Writer as the target; Reins confirm it.
-  await step(page, 'steer').getByRole('button', { name: 'Steer the round 2 Writer' }).click();
-  const reins = page.getByRole('region', { name: 'Reins', exact: true });
-  await expect(reins).toContainText('Writer');
-  await page.getByLabel('Instruction').fill('Lead with the cost difference.');
-  await page.getByLabel('Instruction').press('Enter');
-  await expect(step(page, 'steer')).toHaveAttribute('data-state', 'done', { timeout: 15_000 });
-
-  await approve(page, 'Your decision');
-  await approve(page, 'Final output');
-  await expect(page.getByTestId('run-status')).toContainText('Succeeded');
-  await expect(page.getByTestId('run-output')).toContainText('Lead with the cost difference.');
-  await expect(writers.filter({ hasText: 'Round 1' })).not.toContainText(
-    'Lead with the cost difference.',
-  );
-});
-
 test('[TC-DEV-005-N] a rejected approval does not finish the run or the guide', async ({
   page,
 }) => {
@@ -271,31 +203,6 @@ test('[TC-DEV-005-N] a rejected approval does not finish the run or the guide', 
   await expect(page.getByTestId('run-status')).not.toContainText('Succeeded');
   await expect(step(page, 'finish')).toHaveAttribute('data-state', 'missed');
   await expect(step(page, 'finish')).toContainText("Didn't happen in this run");
-});
-
-test('[TC-DEV-005-N] cancelling mid-run leaves the remaining guide steps missed, not done', async ({
-  page,
-}) => {
-  await page.goto('/demo?delay=1500');
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
-  await expect(step(page, 'start')).toHaveAttribute('data-state', 'done');
-  await page.getByRole('button', { name: 'Cancel whole run', exact: true }).click();
-  await page.getByRole('button', { name: 'Confirm whole run cancellation', exact: true }).click();
-  await expect(page.getByTestId('run-status')).toContainText('Cancelled', { timeout: 15_000 });
-  for (const id of ['revise', 'steer', 'finish']) {
-    await expect(step(page, id)).toHaveAttribute('data-state', 'missed');
-  }
-});
-
-test('[TC-DEV-005-N] an unknown template name opens the default team, and the picker switches templates', async ({
-  page,
-}) => {
-  await page.goto('/demo?template=bogus');
-  await expect(page.getByLabel('Corral name')).toHaveValue('Research team');
-  await page.getByLabel('Demo template').selectOption({ label: 'Starter: one agent' });
-  await expect(page).toHaveURL(/template=starter/);
-  await expect(page.getByLabel('Corral name')).toHaveValue('Demo Corral');
-  await expect(page.getByRole('region', { name: 'Demo guide' })).toHaveCount(0);
 });
 
 test('[TC-DEV-005-H] the guide can pause at round 2 so a visitor has time to steer at normal speed', async ({

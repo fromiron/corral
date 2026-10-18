@@ -1,4 +1,4 @@
-import type { RunEvent } from '@corral/contracts';
+import type { ReasoningResolution, ReasoningWire, RunEvent } from '@corral/contracts';
 import type { RunProjection } from '@corral/core';
 import type { StreamText } from './session.ts';
 
@@ -17,6 +17,8 @@ export type TranscriptEntry =
     }
   | {
       kind: 'request';
+      reasoning?: ReasoningResolution;
+      reasoningWire?: ReasoningWire;
       seq: number;
       modelCallId: string;
       no: number;
@@ -92,6 +94,10 @@ export function buildTranscript(
         const call = event.payload.modelCallId;
         entries.push({
           kind: 'request',
+          ...(event.payload.reasoning ? { reasoning: event.payload.reasoning } : {}),
+          ...(projection.modelCalls[call]?.reasoningWire
+            ? { reasoningWire: projection.modelCalls[call]!.reasoningWire! }
+            : {}),
           seq: event.runSeq,
           modelCallId: call,
           no: ++requests,

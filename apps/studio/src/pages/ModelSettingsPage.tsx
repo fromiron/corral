@@ -1,4 +1,4 @@
-import type { ModelProfileView, ProviderAuthView } from '@corral/client';
+import type { ModelProfileView, ProviderAuthView, ReasoningSettings } from '@corral/client';
 import { useRouter } from '@tanstack/react-router';
 import { type FormEvent, useEffect, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
@@ -37,6 +37,7 @@ export function ModelSettingsPage() {
         ) : (
           <>
             <p className="text-sm text-muted">{t('intro')}</p>
+            <ReasoningSettingsPanel />
             <section aria-labelledby="providers-heading" className="flex flex-col gap-2">
               <h3 id="providers-heading" className="text-sm font-semibold">
                 {t('providers')}
@@ -331,6 +332,69 @@ function ProfilesTable({ profiles }: { profiles: ModelProfileView[] }) {
           ))}
         </tbody>
       </table>
+    </section>
+  );
+}
+
+function ReasoningSettingsPanel() {
+  const t = useTranslations('Reasoning');
+  const { models } = useServices();
+  const [settings, setSettings] = useState<ReasoningSettings | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(false);
+  useEffect(() => {
+    let mounted = true;
+    void models?.reasoning().then(
+      (value) => {
+        if (mounted) setSettings(value);
+      },
+      () => {
+        if (mounted) setError(true);
+      },
+    );
+    return () => {
+      mounted = false;
+    };
+  }, [models]);
+  return (
+    <section
+      className="flex flex-col gap-2 rounded-lg border border-line p-3"
+      aria-label={t('workspaceHeading')}
+    >
+      <h3 className="font-semibold">{t('workspaceHeading')}</h3>
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={settings?.apply ?? false}
+          disabled={!settings || busy}
+          onChange={async (event) => {
+            if (!models || !settings) return;
+            setBusy(true);
+            setError(false);
+            try {
+              setSettings(await models.setReasoning(event.target.checked, settings.revision));
+            } catch {
+              setError(true);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        />
+        {t('enableApply')}
+      </label>
+      <p className="text-xs text-muted">{t('applyHint')}</p>
+      {settings ? (
+        <p className="text-xs">
+          {settings.available
+            ? `${settings.version} · ${t('ready')}`
+            : t('installHint', { command: 'corral judge install' })}
+        </p>
+      ) : null}
+      {error ? (
+        <p role="alert" className="text-sm text-danger">
+          {t('settingsError')}
+        </p>
+      ) : null}
     </section>
   );
 }

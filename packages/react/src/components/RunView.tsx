@@ -7,6 +7,7 @@ import type { ModelPrices } from '../run/cost.ts';
 import type { RunSessionStore, StreamText } from '../run/session.ts';
 import { BudgetInspector } from './BudgetInspector.tsx';
 import { HarnessDetails } from './HarnessDetails.tsx';
+import { ReasoningSummary } from './ReasoningSummary.tsx';
 import { RunActions } from './RunActions.tsx';
 import { RunReason } from './RunText.tsx';
 import { SafeMarkdown } from './SafeMarkdown.tsx';
@@ -29,6 +30,7 @@ export function RunView({
   const projection = useStore(session, (s) => s.projection);
   const definition = useStore(session, (s) => s.definition);
   const startError = useStore(session, (s) => s.startError);
+  const definitionError = useStore(session, (s) => s.definitionError);
   const streamError = useStore(session, (s) => s.streamError);
   const streams = useStore(session, (s) => s.streams);
   const simulatedHarness = useStore(session, (s) =>
@@ -42,6 +44,21 @@ export function RunView({
       {startError ? (
         <p role="alert" className="text-xs text-danger">
           {t('rejected', { message: startError.message })}
+        </p>
+      ) : null}
+      {definitionError ? (
+        <p role="alert" className="text-xs text-warning">
+          {t('definitionUnavailable')}{' '}
+          <button
+            type="button"
+            className="underline"
+            onClick={() => {
+              const runId = session.getState().runId;
+              if (runId) void session.getState().open(runId);
+            }}
+          >
+            {t('retryDefinition')}
+          </button>
         </p>
       ) : null}
       {streamError ? (
@@ -300,6 +317,9 @@ function ExecutionRow({
           </button>
         </span>
       </div>
+      {openCall && projection.modelCalls[openCall] ? (
+        <ReasoningSummary call={projection.modelCalls[openCall]} />
+      ) : null}
       {waiting ? (
         <p className="mt-1 text-muted" data-testid="waiting-on">
           {t(`waiting.${waiting.kind}`, { count: waiting.targetIds.length })}:{' '}

@@ -120,6 +120,7 @@ export const WorkspaceConfig = z.strictObject({
     .strictObject({
       reasoning_effort: z.strictObject({
         mode: z.enum(['off', 'observe']),
+        apply: z.boolean().optional(),
         providers: z.array(Identifier).min(1).max(2),
         maxCalls: z.int().min(0).max(100).optional(),
         allowExternal: z.boolean().optional(),

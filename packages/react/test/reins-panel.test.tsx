@@ -11,6 +11,7 @@ function fakeSession(steer = vi.fn(async () => ({}) as never)): RunSessionStore 
   return createStore<RunSessionState>(() => ({
     runId: 'run_0001',
     definition: null,
+    definitionError: null,
     projection: null,
     events: [],
     streams: {},

@@ -878,5 +878,45 @@
       "C-079",
       "C-083"
     ]
+  },
+  {
+    "requirementId": "CRL-RSN-001",
+    "tests": [
+      "TC-RSN-001-H",
+      "TC-RSN-001-N"
+    ],
+    "tasks": [
+      "C-084"
+    ]
+  },
+  {
+    "requirementId": "CRL-RSN-002",
+    "tests": [
+      "TC-RSN-002-H",
+      "TC-RSN-002-N"
+    ],
+    "tasks": [
+      "C-084"
+    ]
+  },
+  {
+    "requirementId": "CRL-RSN-003",
+    "tests": [
+      "TC-RSN-003-H",
+      "TC-RSN-003-N"
+    ],
+    "tasks": [
+      "C-084"
+    ]
+  },
+  {
+    "requirementId": "CRL-RSN-004",
+    "tests": [
+      "TC-RSN-004-H",
+      "TC-RSN-004-N"
+    ],
+    "tasks": [
+      "C-084"
+    ]
   }
 ]

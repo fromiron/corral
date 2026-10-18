@@ -3,6 +3,7 @@ import {
   EffectiveHarnessSnapshot,
   Identifier,
   ModelProfileSnapshot,
+  ReasoningApplySettings,
   RunEvent,
   RunStatus,
 } from '@corral/contracts';
@@ -24,6 +25,7 @@ const Snapshot = z.strictObject({
   mode: z.enum(['mock', 'live']),
   models: z.record(Identifier, ModelProfileSnapshot),
   harnesses: z.record(Identifier, EffectiveHarnessSnapshot).optional(),
+  reasoningApply: ReasoningApplySettings.optional(),
   startedAt: z.iso.datetime(),
 });
 const PublicArchive = z.strictObject({
@@ -127,6 +129,8 @@ export function openRunArchive(input: unknown) {
     first.payload.definitionHash !== snapshot.definitionHash ||
     first.payload.corralId !== snapshot.definition.id ||
     first.payload.mode !== snapshot.mode ||
+    canonicalJson(first.payload.reasoningApply ?? null) !==
+      canonicalJson(snapshot.reasoningApply ?? null) ||
     (first.payload.criteriaVersionId !== undefined &&
       first.payload.criteriaVersionId !== snapshot.criteriaVersionId) ||
     canonicalJson(

@@ -26,6 +26,7 @@ export interface JudgmentConfig {
   settings: {
     reasoning_effort: {
       mode: 'off' | 'observe';
+      apply?: boolean;
       /** Provider ids, at most two (two = side-by-side comparison, plan v0.1 §11). */
       providers: readonly string[];
       /** Judgment calls per run; default the run's model request limit, at most 100. */
@@ -135,6 +136,7 @@ export interface DecisionHubDeps {
   /** The input the execution was started with. */
   startInputOf(runId: string, executionId: string): AgentStartInput | null;
   providers: readonly DecisionProvider[];
+  reserveCall?(runId: string, limit: number): { used: number; allowed: boolean };
 }
 
 /**
@@ -176,8 +178,13 @@ export function createDecisionHub(deps: DecisionHubDeps): AdmissionObserver {
         input: effortInput(view.projection, input, event.payload.modelCallId),
       };
       for (const provider of providers) {
-        const used = calls.get(context.runId) ?? 0;
-        if (used >= settings.maxCalls) {
+        const usedLocal = calls.get(context.runId) ?? 0;
+        const reserved = deps.reserveCall?.(context.runId, settings.maxCalls) ?? {
+          used: usedLocal,
+          allowed: usedLocal < settings.maxCalls,
+        };
+        const used = reserved.used;
+        if (!reserved.allowed) {
           if (!limited.has(context.runId)) {
             limited.add(context.runId);
             context.record([
@@ -194,7 +201,7 @@ export function createDecisionHub(deps: DecisionHubDeps): AdmissionObserver {
           }
           return;
         }
-        calls.set(context.runId, used + 1);
+        if (!deps.reserveCall) calls.set(context.runId, used + 1);
         judge(provider, question, context);
       }
     },

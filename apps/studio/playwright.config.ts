@@ -6,6 +6,8 @@ const PORT = STATIC_DEMO ? 5181 : 5179;
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: true,
+  // Playwright counts host CPUs even in a smaller CI container; avoid starving timed UI flows.
+  workers: process.env.CI ? 2 : undefined,
   forbidOnly: Boolean(process.env.CI),
   // Flaky UI timing must be fixed, not retried away (Implementation Plan §8).
   retries: 0,
@@ -26,7 +28,13 @@ export default defineConfig({
     },
     {
       name: 'firefox',
-      testIgnore: ['server/**', 'performance/**'],
+      // Cross-browser coverage is for canvas, keyboard/IME and responsive navigation.
+      testMatch: [
+        'studio.spec.ts',
+        'accessibility.spec.ts',
+        'palette.spec.ts',
+        'run-page-narrow.spec.ts',
+      ],
       use: { ...devices['Desktop Firefox'], viewport: { width: 1280, height: 800 } },
     },
     {

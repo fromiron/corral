@@ -1,5 +1,5 @@
 import type { ModelProfileView } from '@corral/client';
-import type { HarnessBindingRef } from '@corral/contracts';
+import type { HarnessBindingRef, ReasoningCapabilities, ReasoningPolicy } from '@corral/contracts';
 import type { CorralSummary } from '@corral/core';
 import { useEffect, useState } from 'react';
 import { useServices } from '../services.tsx';
@@ -12,6 +12,7 @@ export interface ProfileInfo {
   /** "OpenAI · gpt-5" */
   label: string;
   available: boolean;
+  reasoningCapabilities?: ReasoningCapabilities | undefined;
 }
 
 const MODELS_CHANGED = 'corral:models-changed';
@@ -44,6 +45,7 @@ export function useModelProfiles(): ProfileInfo[] | null {
         setProfiles(
           list.map((p) => ({
             profileId: p.profileId,
+            reasoningCapabilities: p.reasoningCapabilities,
             label: `${p.providerName} · ${p.modelName ?? p.modelId}`,
             // Ready to call: the model is known, a sign-in or key is set, and a subscription
             // sign-in may use this model.
@@ -67,6 +69,7 @@ export interface RoleModel {
   name: string;
   profileId: string;
   harness?: HarnessBindingRef;
+  reasoning?: ReasoningPolicy;
 }
 
 /** The roles of a team and the model profile each one uses (saved revision). */
@@ -86,6 +89,7 @@ export function useTeamRoles(team: CorralSummary | null): RoleModel[] {
             roleId: r.id,
             name: r.name,
             profileId: r.modelProfile,
+            ...(r.reasoning ? { reasoning: r.reasoning } : {}),
             ...(r.harness ? { harness: r.harness } : {}),
           })) ?? [],
         ),

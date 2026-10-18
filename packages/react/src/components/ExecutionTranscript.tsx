@@ -3,6 +3,7 @@ import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import type { RunSessionStore } from '../run/session.ts';
 import { buildTranscript, type TranscriptEntry } from '../run/transcript.ts';
+import { ReasoningSummary } from './ReasoningSummary.tsx';
 import { SafeMarkdown } from './SafeMarkdown.tsx';
 
 /**
@@ -103,6 +104,7 @@ function Entry({
       return (
         <p className="flex flex-wrap items-center gap-1 text-muted">
           <span>{t('request', { no: entry.no })}</span>
+          <ReasoningSummary call={entry} />
           {entry.directives.length > 0 ? (
             <span className="rounded border border-accent/50 px-1 text-accent">
               {t('withInstructions', { count: entry.directives.length })}

@@ -50,13 +50,16 @@ async function liveRun(
 describe('Pi adapter under the Coordinator (C-017–C-019)', () => {
   it('runs a live step: the model writes and submits through Corral tools', async () => {
     const { transport, credentialCalls } = liveRuntime(writeThenSubmit('Final answer.'));
-    const { runId, events } = await liveRun(transport);
+    const { runId, events } = await liveRun(transport, (d) => {
+      d.limits = { ...d.limits, maxModelCalls: 2 };
+    });
     const final = await waitForProjection(transport, runId, settled);
     expect(final.status).toBe('succeeded');
+    expect(Object.values(final.executions).map((e) => e.status)).toEqual(['succeeded']);
     const output = final.output?.artifactVersionIds[0] ?? '';
     expect(await transport.getArtifactText(runId, output)).toBe('Final answer.');
     // One credential lookup per model request, and the token is in no event.
-    expect(credentialCalls).toEqual(['openai/faux-1', 'openai/faux-1', 'openai/faux-1']);
+    expect(credentialCalls).toEqual(['openai/faux-1', 'openai/faux-1']);
     await Promise.resolve();
     expect(JSON.stringify(events)).not.toContain(ACCESS_TOKEN);
   });
@@ -498,4 +501,51 @@ describe('reviews through Pi (C-027)', () => {
     await waitForProjection(transport, runId, settled);
     expect(prompts[0]).toContain('c1 for the first criterion');
   });
+});
+
+it('[TC-RSN-003-N] a directive delivered while legacy preparation waits is present in its permitted context', async () => {
+  const { createFauxCore } = await import('@earendil-works/pi-ai');
+  const { runWorker } = await import('../src/worker.ts');
+  const faux = createFauxCore({});
+  let seen = '';
+  faux.setResponses([
+    (context) => {
+      seen = JSON.stringify(context.messages);
+      return fauxAssistantMessage('done');
+    },
+  ]);
+  const preparing = new Gate(),
+    release = new Gate();
+  const directive = {
+    directiveId: 'late_directive',
+    text: 'Include this instruction exactly once.',
+  };
+  const { host } = recordingHost({
+    prepareModelRequest: async () => {
+      preparing.open();
+      await release.wait();
+      return {
+        modelCallId: 'call_1',
+        contextSnapshotId: 'context_1',
+        profile: 'model-a',
+        maxOutputTokens: 256,
+        directives: [directive],
+      };
+    },
+  });
+  const adapter = new PiAgentAdapter({
+    spawn: () => {
+      const pair = memoryChannelPair();
+      runWorker(pair.worker, { streamFn: faux.streamSimple, resolveModel: () => faux.getModel() });
+      return pair.host;
+    },
+    credentials: async () => ACCESS_TOKEN,
+  });
+  const handle = await adapter.start(startInput(), host);
+  await preparing.wait();
+  handle.pushDirective?.(directive);
+  await tick();
+  release.open();
+  await handle.waitForSettlement();
+  expect(seen.split(directive.text)).toHaveLength(2);
 });

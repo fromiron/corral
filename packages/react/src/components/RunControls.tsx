@@ -1,3 +1,4 @@
+import type { RoleRunOverrides } from '@corral/contracts';
 import { type HarnessOverrides, type StartFrom, TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import { useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -18,6 +19,9 @@ export function RunControls({
   startFrom = null,
   onClearStartFrom,
   harnessOverrides,
+  roleOverrides,
+  mode: chosenMode,
+  onModeChange,
 }: {
   onStarted?: (runId: string) => void;
   beforeStart?: () => Promise<SavedRevision | null>;
@@ -27,18 +31,24 @@ export function RunControls({
   startFrom?: (StartFrom & { label: string }) | null;
   onClearStartFrom?: () => void;
   harnessOverrides?: HarnessOverrides;
+  roleOverrides?: RoleRunOverrides;
+  mode?: 'mock' | 'live';
+  onModeChange?: (mode: 'mock' | 'live') => void;
 }) {
   const t = useTranslations('Run');
   const { editor, session } = useStudioStores();
   const draft = useStore(editor, (s) => s.draft);
   const projection = useStore(session, (s) => s.projection);
   const [starting, setStarting] = useState(false);
-  const [mode, setMode] = useState<'mock' | 'live'>('mock');
+  const [localMode, setLocalMode] = useState<'mock' | 'live'>('mock');
+  const mode = chosenMode ?? localMode;
+  const setMode = onModeChange ?? setLocalMode;
+  const unavailable = mode === 'live' && !liveAvailable;
   const compiled = useMemo(() => compileDraft(draft), [draft]);
   const running = projection !== null && !TERMINAL_RUN_STATUSES.has(projection.status);
 
   const start = async () => {
-    if (!compiled.definition || !compiled.runnable) return;
+    if (!compiled.definition || !compiled.runnable || unavailable) return;
     setStarting(true);
     try {
       const saved = beforeStart ? await beforeStart() : undefined;
@@ -48,11 +58,12 @@ export function RunControls({
         .start(
           compiled.definition,
           saved,
-          liveAvailable ? mode : 'mock',
+          mode,
           startFrom
             ? { runId: startFrom.runId, artifactVersionId: startFrom.artifactVersionId }
             : undefined,
           harnessOverrides,
+          roleOverrides,
         );
       const runId = session.getState().runId;
       if (runId) onStarted?.(runId);
@@ -70,7 +81,7 @@ export function RunControls({
         <button
           type="button"
           onClick={start}
-          disabled={!compiled.runnable || running || starting}
+          disabled={!compiled.runnable || running || starting || unavailable}
           className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent disabled:opacity-50"
         >
           {starting ? t('starting') : t('start')}
@@ -91,7 +102,7 @@ export function RunControls({
           </button>
         </div>
       ) : null}
-      {liveAvailable ? (
+      {liveAvailable || mode === 'live' ? (
         <label className="flex items-center gap-2 text-xs">
           <span className="text-muted">{t('agents')}</span>
           <select
@@ -103,6 +114,11 @@ export function RunControls({
             <option value="live">{t('modeLive')}</option>
           </select>
         </label>
+      ) : null}
+      {unavailable ? (
+        <p role="alert" className="text-xs text-muted">
+          {t('liveUnavailable')}
+        </p>
       ) : null}
       {!compiled.runnable ? (
         <p className="text-xs text-muted">

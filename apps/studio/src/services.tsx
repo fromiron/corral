@@ -6,6 +6,7 @@ import {
   openSession,
   probeServer,
   RestCorralRepository,
+  RunModesApi,
   WorkspacesApi,
 } from '@corral/client';
 import type { Clock } from '@corral/contracts';
@@ -25,7 +26,7 @@ import { createDemoRuntime } from './runtime.ts';
 
 // App-wide services. Studio served by the local server talks to it (saved Corrals, persistent
 // runs); opened any other way it runs the in-browser runtime with simulated agents (ADR-016).
-// One run session per page: a workspace has at most one active run.
+// Run pages and team editors keep separate views; the Coordinator owns active runs.
 
 export interface StudioServices {
   mode: 'server' | 'browser';
@@ -33,6 +34,9 @@ export interface StudioServices {
   transport: RuntimeTransport;
   readHistory: (runId: string) => Promise<RunArchive>;
   session: RunSessionStore;
+  editorSessions: Map<string, RunSessionStore>;
+  runModes: Record<string, 'mock' | 'live'>;
+  saveRunMode: (key: string, mode: 'mock' | 'live') => Promise<void>;
   /** False when Corrals do not outlive this tab (browser storage refused). */
   persistent: boolean;
   /** Server mode without a valid session: the bootstrap link must be opened again. */
@@ -109,12 +113,21 @@ export async function createStudioServices(): Promise<StudioServices> {
     const token = takeBootstrapToken();
     if (token) await openSession(http, token);
     const transport = new HttpSseTransport(http);
+    const modesApi = new RunModesApi(http);
+    const choices = await modesApi.read().catch(() => ({ modes: {} }));
+    let modeWrite: Promise<void> = Promise.resolve();
     return {
       mode: 'server',
       repository: new RestCorralRepository(http),
       transport,
       readHistory: (runId) => transport.exportRun(runId, { privateTranscript: true }),
       session: createRunSession(transport),
+      editorSessions: new Map(),
+      runModes: choices.modes,
+      saveRunMode: (key, mode) => {
+        modeWrite = modeWrite.catch(() => {}).then(() => modesApi.set(key, mode));
+        return modeWrite;
+      },
       persistent: true,
       sessionMissing: !(await hasSession(http)),
       models: new ModelsApi(http),
@@ -142,6 +155,9 @@ export async function createStudioServices(): Promise<StudioServices> {
     transport,
     readHistory,
     session: createRunSession(transport),
+    editorSessions: new Map(),
+    runModes: {},
+    saveRunMode: async () => {},
     // An in-memory example folder in the demo worker (02-UX-Spec §10).
     workspaces: createDemoWorkspaces(workspace, repository, transport),
     // The in-browser runtime runs inline definitions itself.

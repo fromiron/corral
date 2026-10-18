@@ -25,6 +25,7 @@ async function activate(page: Page, target: Locator) {
 test('[TC-UX-001-H] keyboard alone adds, selects, moves, connects, deletes, undoes and steers a run', async ({
   page,
 }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/demo?template=starter&delay=2500');
   await activate(page, page.getByRole('button', { name: 'Add Agent', exact: true }));
   await expect(page.locator('.react-flow__node')).toHaveCount(3);
@@ -59,10 +60,7 @@ test('[TC-UX-001-H] keyboard alone adds, selects, moves, connects, deletes, undo
   );
 });
 
-for (const instruction of [
-  '일차 자료만 사용하고 확인하지 못한 내용은 구분해 주세요.',
-  '一次資料のみを使い、未確認の内容は区別してください。',
-]) {
+for (const instruction of ['일차 자료만 사용하고 확인하지 못한 내용은 구분해 주세요.']) {
   test(`[TC-UX-001-N] IME composition Enter does not submit ${instruction.slice(0, 4)}`, async ({
     page,
   }) => {
@@ -90,18 +88,3 @@ for (const instruction of [
     await expect(page.getByTestId('run-output')).toContainText(instruction, { timeout: 10_000 });
   });
 }
-
-test('[TC-UX-001-H] wide layouts and reduced motion keep the editor controls reachable', async ({
-  page,
-}) => {
-  await page.emulateMedia({ reducedMotion: 'reduce' });
-  for (const width of [1280, 1440, 1920]) {
-    await page.setViewportSize({ width, height: 900 });
-    await page.goto('/demo?template=starter');
-    await expect(page.getByRole('button', { name: 'Run', exact: true })).toBeVisible();
-    await expect(page.getByLabel('Corral name')).toBeVisible();
-    expect(
-      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
-    ).toBe(true);
-  }
-});

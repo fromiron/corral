@@ -198,7 +198,13 @@ describe('model sign-in and profiles (C-058, ADR-019)', () => {
     while (events.length < final.lastSeq) await new Promise((r) => setTimeout(r, 10));
     const startedEvent = events.find((e) => e.type === 'run.started');
     expect(startedEvent?.type === 'run.started' && startedEvent.payload.modelProfiles).toEqual([
-      { profile: 'model-a', provider: 'openai', modelId: 'gpt-test-a', auth: 'oauth' },
+      {
+        profile: 'model-a',
+        provider: 'openai',
+        modelId: 'gpt-test-a',
+        auth: 'oauth',
+        reasoning: { levels: [], providerDefault: false },
+      },
     ]);
     // The worker received the access token per request, and no event carries it.
     expect(fake.seen.tokens.length).toBeGreaterThan(0);
@@ -302,15 +308,11 @@ describe('API keys and OpenAI-compatible endpoints (CR-005)', () => {
   const LOCAL_PROFILES = [{ id: 'model-a', provider: 'local', model: 'llama3.2' }];
 
   function scriptEndpoint(endpoint: Awaited<ReturnType<typeof startCompatibleEndpoint>>) {
-    let calls = 0;
     endpoint.setReply((body) => {
-      calls += 1;
       const written = [...JSON.stringify(body).matchAll(/artv_[a-f0-9]{32}/g)].at(-1)?.[0];
-      if (calls % 3 === 1)
+      if (!written)
         return { toolCall: { name: 'write_artifact', args: { text: 'Local answer.' } } };
-      if (calls % 3 === 2)
-        return { toolCall: { name: 'submit_result', args: { artifactVersionIds: [written] } } };
-      return 'Done.';
+      return { toolCall: { name: 'submit_result', args: { artifactVersionIds: [written] } } };
     });
   }
 

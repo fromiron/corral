@@ -8,6 +8,8 @@ import type {
   ModelProfileSnapshot,
   NormalizedUsage,
   OutputContract,
+  ReasoningResolution,
+  ReasoningWire,
   RunDecisionSettings,
   RunEvent,
   RunLimits,
@@ -67,6 +69,8 @@ export interface DirectiveView {
 }
 
 export interface ModelCallView {
+  reasoning?: ReasoningResolution;
+  reasoningWire?: ReasoningWire;
   modelCallId: string;
   executionId: string;
   contextSnapshotId: string;
@@ -422,6 +426,7 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
         contextSnapshotId,
         profile,
         configRevision: event.payload.configRevision,
+        ...(event.payload.reasoning ? { reasoning: event.payload.reasoning } : {}),
         directiveIds: event.payload.directiveIds,
         inputArtifactVersionIds: event.payload.inputArtifactVersionIds,
         finished: false,
@@ -436,6 +441,18 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
       return updateExecution(withCall, executionId, {
         modelCallIds: [...execution.modelCallIds, modelCallId],
       });
+    }
+    case 'model.payload_recorded': {
+      const call = p.modelCalls[event.payload.modelCallId];
+      return call && event.payload.reasoning
+        ? {
+            ...p,
+            modelCalls: {
+              ...p.modelCalls,
+              [call.modelCallId]: { ...call, reasoningWire: event.payload.reasoning },
+            },
+          }
+        : p;
     }
     case 'model.finished': {
       return updateModelCall(p, event.payload.modelCallId, {
@@ -773,7 +790,6 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
     case 'extension.ui_expired':
     case 'extension.ui_notified':
     case 'model.request_recorded':
-    case 'model.payload_recorded':
     case 'tool.started':
     case 'limit.reached':
     case 'cancel.requested':

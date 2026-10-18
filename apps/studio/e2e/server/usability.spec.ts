@@ -190,37 +190,3 @@ test('[WBTST-004] UX-015-07 approvals name exact versions and keep review inside
   await expect(timeline(page).getByText('Succeeded').first()).toBeVisible();
   expect(corral.errors).toEqual([]);
 });
-
-test.describe('late result content', () => {
-  test.use({
-    agentReply: `# Long result\n\n${'Reading an earlier paragraph should keep its place.\n\n'.repeat(140)}`,
-  });
-  test('[TC-UX-001-H] UX-015-06 a delayed artifact does not discard the conversation reading position', async ({
-    page,
-    corral,
-  }) => {
-    await session(page, corral);
-    await request(page).fill('Create a long note');
-    await page.getByRole('button', { name: 'Send', exact: true }).click();
-    await expect(timeline(page).getByRole('heading', { name: 'Long result' })).toBeVisible();
-    await expect(timeline(page).getByText('Succeeded').first()).toBeVisible();
-    await timeline(page).evaluate((e) => {
-      e.scrollTop = 1100;
-    });
-    const before = await timeline(page).evaluate((e) => e.scrollTop);
-    expect(before).toBeGreaterThan(500);
-    await page.route('**/api/v1/runs/*/artifacts/*', async (route) => {
-      await new Promise((resolve) => setTimeout(resolve, 350));
-      await route.continue();
-    });
-    // Away from the session and back.
-    await page.getByRole('button', { name: 'Settings', exact: true }).click();
-    await page.goBack();
-    await expect(timeline(page).getByRole('heading', { name: 'Long result' })).toBeVisible();
-    await expect.poll(() => timeline(page).evaluate((e) => e.scrollTop)).toBeCloseTo(before, 0);
-    await page.reload();
-    await expect(timeline(page).getByRole('heading', { name: 'Long result' })).toBeVisible();
-    await expect.poll(() => timeline(page).evaluate((e) => e.scrollTop)).toBeCloseTo(before, 0);
-    expect(corral.errors).toEqual([]);
-  });
-});

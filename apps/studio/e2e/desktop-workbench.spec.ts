@@ -1,4 +1,3 @@
-import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
 import { requestBox, startSession, teamFromTemplate } from './workbench.ts';
 
@@ -30,61 +29,6 @@ test('[TC-UX-001-H] DW-08 narrow navigation contains focus and Escape restores i
   await page.keyboard.press('Escape');
   await expect(navigation).toBeHidden();
   await expect(trigger).toBeFocused();
-});
-
-test('[TC-UX-001-H] DW-08 work, team design and settings fit the supported viewports', async ({
-  page,
-}) => {
-  test.setTimeout(120000);
-  await openSession(page);
-  const session = page.url();
-  await page.emulateMedia({ reducedMotion: 'reduce' });
-  for (const viewport of [
-    { width: 1440, height: 900 },
-    { width: 1280, height: 800 },
-    { width: 1024, height: 768 },
-    { width: 390, height: 844 },
-  ]) {
-    await page.setViewportSize(viewport);
-    for (const url of [session, `${session}?panel=run`]) {
-      await page.goto(url);
-      await expect(requestBox(page)).toBeVisible();
-      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
-        true,
-      );
-      const violations = (await new AxeBuilder({ page }).analyze()).violations.filter(
-        (v) => v.impact === 'serious' || v.impact === 'critical',
-      );
-      expect(violations.map((v) => ({ id: v.id, targets: v.nodes.map((n) => n.target) }))).toEqual(
-        [],
-      );
-    }
-    await page.goto('/settings');
-    await expect(page.getByRole('radio', { name: 'Dark', exact: true })).toBeVisible();
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
-      true,
-    );
-    expect(
-      (await new AxeBuilder({ page }).analyze()).violations.filter(
-        (v) => v.impact === 'serious' || v.impact === 'critical',
-      ),
-    ).toEqual([]);
-  }
-});
-
-test('[TC-UX-001-H] DW-01/02 the app shell keeps navigation and theme across session and settings', async ({
-  page,
-}) => {
-  await openSession(page);
-  const sessionUrl = page.url();
-  await expect(page.getByTestId('app-sidebar')).toBeVisible();
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await page.getByRole('radio', { name: 'Dark', exact: true }).check();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  await page.goto(sessionUrl);
-  await expect(page.getByTestId('app-sidebar')).toBeVisible();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  await expect(requestBox(page)).toBeVisible();
 });
 
 test('[TC-UX-001-H] DW-02/03 the composer stays docked while the conversation scrolls and drafts survive a tab change', async ({

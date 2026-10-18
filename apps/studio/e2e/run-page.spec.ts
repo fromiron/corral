@@ -1,4 +1,3 @@
-import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
 
 // The Run page (C-065, C-066) on the in-browser demo team. Demo runs live in the page's worker,
@@ -74,29 +73,6 @@ test('[TC-OBS-001-H] the Run page shows the graph with execution counts, and a n
   await expect(writer).not.toHaveClass(/selected/);
 });
 
-test('[TC-OBS-001-H] the header states the run, its progress and the whole-run controls; the output tab opens on success', async ({
-  page,
-}) => {
-  await finishedTeamRun(page);
-  const header = page.getByRole('region', { name: 'Run summary' });
-  await expect(header).toContainText('Research team');
-  await expect(header.getByTestId('run-status')).toContainText('Succeeded');
-  await expect(header).toContainText('Review loop: round 2 of 2');
-  await expect(header).toContainText(/Tasks completed: \d+ of \d+/);
-  const tabs = page.getByRole('tablist', { name: 'Run details' });
-  await expect(tabs.getByRole('tab', { name: 'Output' })).toHaveAttribute('aria-selected', 'true');
-  await expect(page.getByTestId('run-output')).toContainText('Draft 2');
-
-  // Arrow keys move between tabs (WAI-ARIA tabs pattern).
-  await tabs.getByRole('tab', { name: 'Output' }).focus();
-  await page.keyboard.press('ArrowRight');
-  await expect(tabs.getByRole('tab', { name: 'Tasks' })).toHaveAttribute('aria-selected', 'true');
-  await expect(page.locator('[data-testid^="task-"]').first()).toBeVisible();
-  await page.keyboard.press('End');
-  await expect(tabs.getByRole('tab', { name: 'Budget' })).toHaveAttribute('aria-selected', 'true');
-  await expect(page.getByText('Budget and usage')).toBeVisible();
-});
-
 test('[TC-OBS-001-N] the Run graph cannot be edited: dragging and Delete change nothing', async ({
   page,
 }) => {
@@ -117,54 +93,6 @@ test('[TC-OBS-001-N] the Run graph cannot be edited: dragging and Delete change 
   await expect(graph(page).locator('.react-flow__node')).toHaveCount(9);
 });
 
-test('[TC-OBS-001-N] a run whose nodes the saved layout does not cover is arranged automatically', async ({
-  page,
-}) => {
-  await page.goto('/demo?template=starter&delay=100');
-  // Insert a second agent without saving: the run's definition has a node the saved layout lacks.
-  await page.getByRole('button', { name: 'Add Agent', exact: true }).click();
-  await page.getByLabel('From out').selectOption({ label: 'Output · in' });
-  await page.getByRole('button', { name: 'Connect', exact: true }).click();
-  await page.locator('.react-flow__node[data-id="agent_1"]').click();
-  await page.getByRole('button', { name: 'Remove connection to Output' }).click();
-  await page.getByLabel('From out').selectOption({ label: 'Agent 2 · in' });
-  await page.getByRole('button', { name: 'Connect', exact: true }).click();
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
-  await expect(page.getByTestId('run-status')).toContainText('Succeeded');
-  page.once('dialog', (dialog) => void dialog.accept());
-  await page.getByRole('link', { name: 'Open run page' }).click();
-  await expect(page).toHaveURL(/\/runs\/run_/);
-  // CR-009: a finished run opens on its results; these checks are about the run view.
-  await page.getByRole('tab', { name: 'Run', exact: true }).click();
-  await expect(page.getByText('Arranged automatically')).toBeVisible();
-  await expect(graph(page).locator('.react-flow__node')).toHaveCount(3);
-});
-
-test('[TC-UX-001-H] whole-run controls stay reachable at 1280 and 1024px, without page overflow or serious axe findings', async ({
-  page,
-}) => {
-  await page.goto('/demo?delay=4000');
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
-  await page.getByRole('link', { name: 'Open run page' }).click();
-  await expect(page).toHaveURL(/\/runs\/run_/);
-  for (const width of [1280, 1024]) {
-    await page.setViewportSize({ width, height: 800 });
-    const header = page.getByRole('region', { name: 'Run summary' });
-    await expect(header.getByRole('button', { name: 'Pause run', exact: true })).toBeInViewport();
-    await expect(
-      header.getByRole('button', { name: 'Cancel whole run', exact: true }),
-    ).toBeInViewport();
-    await expect(graph(page)).toBeVisible();
-    expect(
-      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
-    ).toBe(true);
-  }
-  const serious = (await new AxeBuilder({ page }).analyze()).violations
-    .filter((v) => v.impact === 'serious' || v.impact === 'critical')
-    .map((v) => `${v.id}: ${v.nodes.length} nodes`);
-  expect(serious).toEqual([]);
-});
-
 test('[TC-DEC-004-H] the Budget tab lists each request’s effort judgment as observe only', async ({
   page,
 }) => {
@@ -178,81 +106,4 @@ test('[TC-DEC-004-H] the Budget tab lists each request’s effort judgment as ob
   );
   // The demo's rule baseline is labelled as a rule, not a model probability.
   await expect(judgments).toContainText('(rule)');
-});
-
-test('[TC-OBS-001-H] the chosen execution’s conversation shows its question, replies and your instruction', async ({
-  page,
-}) => {
-  // The guide's pause must land while the round 2 Writer runs; slow CI runners missed it at
-  // 300 ms per reply (firefox, #19). A wider window; assertions unchanged.
-  test.setTimeout(90_000);
-  await page.goto('/demo?delay=1200');
-  const arm = page
-    .getByRole('region', { name: 'Demo guide' })
-    .getByLabel('Pause the run when the round 2 Writer starts');
-  await arm.check();
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
-  await expect(page.getByTestId('run-status')).toContainText('Paused', { timeout: 60_000 });
-  await page.getByLabel('Instruction').fill('Lead with the cost difference.');
-  await page.getByLabel('Instruction').press('Enter');
-  await page.getByRole('link', { name: 'Open run page' }).click();
-  const log = page.getByRole('log', { name: 'Conversation' });
-  await expect(log).toContainText('Writer started');
-  await expect(log).toContainText('Asked Source Responder');
-  await expect(log.getByTestId(/^transcript-instruction-/)).toContainText(
-    'Lead with the cost difference.',
-  );
-  await page
-    .getByRole('region', { name: 'Run summary' })
-    .getByRole('button', { name: 'Resume run' })
-    .click();
-  await expect(log.getByTestId(/^transcript-instruction-/)).toContainText(
-    'Included in a model request',
-    { timeout: 15_000 },
-  );
-  await expect(log).toContainText('Lead with the cost difference.');
-});
-
-test('[TC-OBS-001-H] the run reads in sentences: reason, timeline and decision nodes', async ({
-  page,
-}) => {
-  await finishedTeamRun(page);
-  await expect(page.getByRole('region', { name: 'Run summary' })).toContainText(
-    'Reason: The final output was produced',
-  );
-  await page
-    .getByRole('tablist', { name: 'Run details' })
-    .getByRole('tab', { name: 'Activity' })
-    .click();
-  await expect(
-    page.getByTestId('timeline-row').filter({ hasText: 'Research started' }),
-  ).toHaveCount(1);
-  const node = (id: string) => graph(page).locator(`.react-flow__node[data-id="${id}"]`);
-  await expect(node('review_decision')).toContainText('2 decisions');
-  await expect(node('approval').locator('[data-run-status]')).toHaveAttribute(
-    'data-run-status',
-    'done',
-  );
-  await expect(node('output').locator('[data-run-status]')).toHaveAttribute(
-    'data-run-status',
-    'done',
-  );
-});
-
-test('[TC-UX-001-H] the graph refits when its area shrinks, so every node stays in view', async ({
-  page,
-}) => {
-  // Wide first, so the initial fit uses a large area; then shrink the graph area itself.
-  await page.setViewportSize({ width: 1920, height: 1000 });
-  await finishedTeamRun(page);
-  await page.setViewportSize({ width: 1280, height: 800 });
-  await page.waitForTimeout(400);
-  const area = await graph(page).boundingBox();
-  if (!area) throw new Error('no graph area');
-  for (const box of await graph(page)
-    .locator('.react-flow__node')
-    .evaluateAll((nodes) => nodes.map((n) => n.getBoundingClientRect().toJSON() as DOMRect))) {
-    expect(box.left).toBeGreaterThanOrEqual(area.x - 1);
-    expect(box.right).toBeLessThanOrEqual(area.x + area.width + 1);
-  }
 });

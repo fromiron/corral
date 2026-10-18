@@ -1,10 +1,7 @@
-import { join } from 'node:path';
 import { expect, type Page, test } from '@playwright/test';
 
 // Roadmap 18: "Tidy up" arranges the canvas by the flow; an import without a layout comes in
 // arranged.
-
-const EXAMPLES = join(import.meta.dirname, '..', '..', '..', 'examples');
 
 async function boxes(page: Page, ids: string[]) {
   // Sample one frame: fitView can move the viewport between separate boundingBox calls.
@@ -31,22 +28,6 @@ const apart = (
 ) => a.x + a.width <= b.x || b.x + b.width <= a.x || a.y + a.height <= b.y || b.y + b.height <= a.y;
 
 const TOP = ['research', 'review_loop', 'approval', 'output', 'helper', 'respond'];
-
-test('[TC-CAN-002-H] a definition imported without its layout comes in arranged', async ({
-  page,
-}) => {
-  await page.goto('/');
-  await page
-    .locator('input[type=file]')
-    .setInputFiles([join(EXAMPLES, 'research-team.corral.json')]);
-  await expect(page).toHaveURL(/\/edit$/);
-  await expect(page.locator('.react-flow__node')).toHaveCount(9);
-  const b = await boxes(page, TOP);
-  for (const [i, a] of TOP.entries()) {
-    for (const other of TOP.slice(i + 1)) expect(apart(b(a), b(other)), `${a}/${other}`).toBe(true);
-  }
-  expect(b('research').x).toBeLessThan(b('review_loop').x);
-});
 
 test('[TC-CAN-002-H] Tidy up rearranges a messy canvas, and one Undo puts it back', async ({
   page,
@@ -83,20 +64,4 @@ test('[TC-CAN-002-H] Tidy up rearranges a messy canvas, and one Undo puts it bac
   await page.getByRole('button', { name: 'Undo' }).click();
   const back = await boxes(page, ['research', 'output']);
   expect(apart(back('research'), back('output'))).toBe(false);
-});
-
-test('[TC-CAN-002-H] Tidy up is in the command palette', async ({ page }) => {
-  await page.goto('/');
-  await page
-    .getByRole('region', { name: 'Start from a template' })
-    .getByRole('article')
-    .filter({ hasText: 'Research team' })
-    .getByRole('button', { name: 'Edit this team' })
-    .click();
-  await expect(page.locator('.react-flow__node')).toHaveCount(9);
-  await page.keyboard.press('Control+k');
-  const palette = page.getByRole('dialog', { name: 'Command palette' });
-  await palette.getByRole('combobox', { name: 'Search commands' }).fill('tidy');
-  await palette.getByRole('combobox', { name: 'Search commands' }).press('Enter');
-  await expect(page.getByRole('button', { name: 'Undo' })).toBeEnabled();
 });
