@@ -1642,5 +1642,28 @@
     "done": "CR-021 결정적 회귀와 실제 Sol/Luna 수동·자동 요청 적용 검증 완료",
     "status": "planned",
     "evidence": "docs/plans/Reasoning-Implementation-Plan.md"
+  },
+  {
+    "id": "C-085",
+    "phase": "P12",
+    "title": "스킬·Hook·MCP 관리 생명주기",
+    "dependsOn": [
+      "C-084"
+    ],
+    "requirements": [
+      "CRL-MGR-001",
+      "CRL-MGR-002"
+    ],
+    "files": [
+      "packages/contracts/",
+      "packages/storage-sqlite/",
+      "packages/adapter-pi/",
+      "packages/client/",
+      "apps/server/",
+      "apps/studio/"
+    ],
+    "done": "CR-022 주요 경계 및 실제 패키지 관리/실행 검증 통과",
+    "status": "planned",
+    "evidence": "docs/plans/Resource-Management-Plan.md"
   }
 ]

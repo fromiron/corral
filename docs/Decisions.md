@@ -276,3 +276,9 @@ Electron은 창·OS 대화상자·서버 수명을 소유한다. 서버와 Pi wo
 **결정:** 역할·Run override·미래 실행 patch에서 정책을 고정한다. 자동 판정은 슬롯·예산 전 비동기 준비이며 동기 gate가 아니다. owner/attempt/context/지시를 재검사한 뒤 commit과 permit에 같은 해석을 기록한다. 두 Pi runtime은 permit을 최종 권위로 사용한다. 구 자료의 hash/동작을 보존하고 수동 미지원 값은 거절한다.
 
 **결과:** turn/tool-step 학습 입력과 bounded 로컬 worker를 재사용한다. 늦은 판정으로 전송된 요청을 바꾸지 않는다. 선택·판정·실제 wire·fallback을 구분한다. 비용·품질 우열은 별도 평가다.
+
+## ADR-029: 리소스 관리와 실행 참조를 분리한다
+
+**상태:** 채택 (2026-10-18, CR-022).
+
+목록·표시명·보관·편집 후속 버전은 관리 메타데이터다. 실행은 기존 content hash·profile/config revision·fingerprint만 사용한다. 편집은 사본, 제거는 복구 가능한 보관, 선택 변경은 명시적인 새 revision이다. 관리형 Hook은 일반 Pi extension을 생성하며 MCP probe는 공개 client로 모델 없이 연결과 도구 목록만 관측한다. 기존 합성·신뢰·프로세스 소유 경계는 유지한다.

@@ -10,6 +10,7 @@ export async function oauthFixture() {
   let mcpCalls = 0;
   let refreshes = 0;
   let grantScope = 'docs:read';
+  let beforeTools: (() => Promise<void>) | undefined;
   let beforeRefresh: (() => Promise<void>) | undefined;
   const server = createServer(async (request, response) => {
     const url = new URL(request.url ?? '/', origin);
@@ -57,7 +58,8 @@ export async function oauthFixture() {
           capabilities: { tools: {} },
           serverInfo: { name: 'docs', version: '1' },
         };
-      if (message.method === 'tools/list')
+      if (message.method === 'tools/list') {
+        await beforeTools?.();
         result = {
           tools: [
             {
@@ -68,6 +70,7 @@ export async function oauthFixture() {
             },
           ],
         };
+      }
       if (message.method === 'tools/call') {
         mcpCalls++;
         result = { content: [{ type: 'text', text: 'Local MCP result' }] };
@@ -131,6 +134,9 @@ export async function oauthFixture() {
     },
     scope(value: string) {
       grantScope = value;
+    },
+    delayTools(fn?: () => Promise<void>) {
+      beforeTools = fn;
     },
     delayRefresh(fn: () => Promise<void>) {
       beforeRefresh = fn;

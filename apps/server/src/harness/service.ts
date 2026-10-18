@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
@@ -27,15 +27,23 @@ import {
   EffectiveHarnessSnapshot,
   type HarnessBindingRef,
   type HarnessDefault,
+  HarnessDocumentDraft,
+  HarnessEntryKey,
+  type HarnessEntryView,
   HarnessProfile,
   type HarnessProfileRevision,
+  HarnessPublish,
   HarnessResource,
   type HarnessResourceView,
+  ManagedHook,
+  McpServerDraft,
   type PackageInspection,
   PinnedPackageSource,
+  RegisteredMcpServer,
   ResourcePath,
 } from '@corral/contracts';
 import { type Db, SqliteHarnessStore, SqliteProjectToolStore } from '@corral/storage-sqlite';
+import { managedHookSource } from './managed-hook.ts';
 import type { McpService } from './mcp-service.ts';
 
 interface ResourceReview {
@@ -43,6 +51,8 @@ interface ResourceReview {
   resource: HarnessResource;
   directory: string;
   expiresAt: number;
+  previous?: HarnessEntryKey;
+  display?: { entry: string; kind: HarnessEntryKey['kind']; name: string };
 }
 const MAX_RESOURCE_BYTES = 128 * 1024 * 1024;
 const MAX_SKILL_BYTES = 64 * 1024;
@@ -54,6 +64,7 @@ export class HarnessService {
   readonly store: SqliteHarnessStore;
   readonly projectTools: SqliteProjectToolStore;
   private readonly root: string;
+  private readonly newId: () => string;
   readonly mcp: McpService | undefined;
   private readonly db: Db;
   private readonly clock: Clock;
@@ -63,6 +74,7 @@ export class HarnessService {
 
   constructor(options: {
     root: string;
+    newId?: () => string;
     mcp?: McpService;
     db: Db;
     clock: Clock;
@@ -70,6 +82,7 @@ export class HarnessService {
     download?: (source: string, directory: string) => Promise<PackageInspection>;
   }) {
     this.root = resolve(options.root);
+    this.newId = options.newId ?? randomUUID;
     this.mcp = options.mcp;
     this.db = options.db;
     this.clock = options.clock;
@@ -79,6 +92,302 @@ export class HarnessService {
     this.projectTools = new SqliteProjectToolStore(options.db, options.clock);
     mkdirSync(join(this.root, 'reviews'), { recursive: true, mode: 0o700 });
     mkdirSync(join(this.root, 'resources'), { recursive: true, mode: 0o700 });
+  }
+
+  entries(): HarnessEntryView[] {
+    const profiles = this.store.referencedProfiles();
+    return this.store.listResources().flatMap((resource) =>
+      [
+        ...resource.skills.map((skill) => ({
+          entry: skill.entry,
+          kind: 'skill' as const,
+          name: skill.name,
+          description: skill.description,
+        })),
+        ...resource.extensions.map((entry) => ({
+          entry,
+          kind: 'extension' as const,
+          name: entry.split('/').at(-1) ?? resource.name,
+          description: '',
+        })),
+      ].map((entry) => {
+        const key = { resourceHash: resource.hash, entry: entry.entry, kind: entry.kind };
+        const { files, ...bundle } = resource;
+        return {
+          ...entry,
+          ...key,
+          ...this.store.entryManagement(key),
+          resource: { ...bundle, fileCount: files.length },
+          name: this.store.entryManagement(key).displayName ?? entry.name,
+          profiles: profiles
+            .filter((profile) =>
+              profile.resources.some(
+                (ref) =>
+                  ref.resourceHash === key.resourceHash &&
+                  ref.entry === key.entry &&
+                  ref.kind === key.kind,
+              ),
+            )
+            .map(({ profileId, revision, name }) => ({ profileId, revision, name })),
+        };
+      }),
+    );
+  }
+
+  readEntry(raw: HarnessEntryKey): { content: string; hook: ManagedHook | null } {
+    const key = HarnessEntryKey.parse(raw);
+    const resource = this.verify(key.resourceHash);
+    if (
+      key.kind === 'skill'
+        ? !resource.skills.some((skill) => skill.entry === key.entry)
+        : !resource.extensions.includes(key.entry)
+    )
+      throw new Error('unknown resource entry');
+    const bytes = readFileSync(join(this.directory(key.resourceHash), key.entry));
+    if (bytes.length > MAX_SKILL_BYTES) throw new Error('resource editor size limit exceeded');
+    const content = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    let hook: ManagedHook | null = null;
+    const metadata = join(this.directory(key.resourceHash), 'corral-managed-hooks.json');
+    if (key.kind === 'extension' && existsSync(metadata)) {
+      try {
+        const raw = JSON.parse(readFileSync(metadata, 'utf8'));
+        const parsed = ManagedHook.safeParse(raw.version === 1 ? raw.entries?.[key.entry] : null);
+        if (parsed.success && managedHookSource(parsed.data) === content) hook = parsed.data;
+      } catch {
+        /* Imported metadata is advisory; the source is always available. */
+      }
+    }
+    return { content, hook };
+  }
+
+  async reviewDocument(raw: HarnessDocumentDraft) {
+    const draft = HarnessDocumentDraft.parse(raw);
+    if (draft.base && draft.base.kind !== draft.kind) throw new Error('resource kind conflict');
+    if (draft.hook && draft.kind !== 'extension') throw new Error('resource kind conflict');
+    const content = draft.hook ? managedHookSource(draft.hook) : draft.content;
+    if (
+      !content.trim() ||
+      Buffer.byteLength(content, 'utf8') > MAX_SKILL_BYTES ||
+      content.includes('\0')
+    )
+      throw new Error('resource editor size limit exceeded');
+    this.expireReviews();
+    const directory = mkdtempSync(join(this.root, 'reviews', 'edit-'));
+    const entry =
+      draft.base?.entry ?? (draft.kind === 'skill' ? 'skills/SKILL.md' : 'extensions/hook.ts');
+    try {
+      if (draft.base) {
+        this.readEntry(draft.base);
+        scan(this.directory(draft.base.resourceHash), directory);
+      }
+      mkdirSync(dirname(join(directory, entry)), { recursive: true, mode: 0o700 });
+      writeFileSync(join(directory, entry), content, { mode: 0o600 });
+      const manifest = join(directory, 'package.json');
+      const prior = existsSync(manifest)
+        ? JSON.parse(readFileSync(manifest, 'utf8'))
+        : {
+            name: 'corral-managed-resource',
+            version: '1.0.0',
+            pi: draft.kind === 'skill' ? { skills: ['./skills'] } : { extensions: [entry] },
+          };
+      writeFileSync(manifest, JSON.stringify({ ...prior, corralDisplayName: draft.name }), {
+        mode: 0o600,
+      });
+      if (draft.kind === 'extension') {
+        const metadata = join(directory, 'corral-managed-hooks.json');
+        let entries: Record<string, unknown> = {};
+        if (existsSync(metadata)) {
+          try {
+            entries = JSON.parse(readFileSync(metadata, 'utf8')).entries ?? {};
+          } catch {
+            /* Source-only copy. */
+          }
+        }
+        delete entries[entry];
+        if (draft.hook) entries[entry] = draft.hook;
+        writeFileSync(metadata, JSON.stringify({ version: 1, entries }), { mode: 0o600 });
+      }
+      const inspection = await this.inspect(directory);
+      if (
+        draft.kind === 'skill'
+          ? !inspection.skills.some((skill) => skill.entry === entry)
+          : !inspection.extensions.includes(entry)
+      )
+        throw new Error('document is not a valid resource entry');
+      const files = scan(directory);
+      const result = this.retainReview(
+        directory,
+        HarnessResource.parse({
+          ...inspection,
+          hash: treeHash(files),
+          files,
+          sourceKind: 'local',
+          sourceLabel: draft.base ? 'Edited copy' : 'Created in Corral',
+          createdAt: this.clock.nowIso(),
+        }),
+      );
+      const retained = this.reviews.get(result.reviewId)!;
+      if (draft.base) retained.previous = draft.base;
+      retained.display = { entry, kind: draft.kind, name: draft.name };
+      return result;
+    } catch (error) {
+      rmSync(directory, { recursive: true, force: true });
+      throw error;
+    }
+  }
+
+  cancelReview(reviewId: string) {
+    const review = this.reviews.get(reviewId);
+    if (review) rmSync(review.directory, { recursive: true, force: true });
+    this.reviews.delete(reviewId);
+  }
+
+  archiveEntry(
+    raw: HarnessEntryKey,
+    expectedRevision: number,
+    archived: boolean,
+    operationId: string,
+  ) {
+    const key = HarnessEntryKey.parse(raw);
+    return this.store.receipt(operationId, { key, expectedRevision, archived }, () => {
+      const resource = this.store.getResource(key.resourceHash);
+      if (
+        !resource ||
+        (key.kind === 'skill'
+          ? !resource.skills.some((skill) => skill.entry === key.entry)
+          : !resource.extensions.includes(key.entry))
+      )
+        throw new Error('unknown resource entry');
+      return this.store.manageEntry(key, expectedRevision, archived);
+    });
+  }
+
+  archiveProfile(
+    profileId: string,
+    expectedRevision: number,
+    archived: boolean,
+    operationId: string,
+  ) {
+    return this.store.receipt(operationId, { profileId, expectedRevision, archived }, () =>
+      this.store.manageProfile(profileId, expectedRevision, archived),
+    );
+  }
+
+  publish(raw: HarnessPublish) {
+    const input = HarnessPublish.parse(raw);
+    return this.store.receipt(input.operationId, input, () => {
+      if (input.target) {
+        const current = this.store.getDefault(input.target.scope, input.target.scopeId);
+        if (
+          current.revision !== input.target.expectedRevision ||
+          canonicalJson(current.binding) !== canonicalJson(input.target.binding)
+        )
+          throw new Error('default revision changed');
+        if (
+          input.target.scope === 'project' &&
+          input.target.projectToolsRevision !== undefined &&
+          (this.projectTools.latest(input.target.scopeId)?.revision ?? 0) !==
+            input.target.projectToolsRevision
+        )
+          throw new Error('project tool revision changed');
+      }
+      const profile = this.saveProfile(input.profileId, input.expectedRevision, input.profile);
+      const target = input.target
+        ? this.setDefault(input.target.scope, input.target.scopeId, input.target.expectedRevision, {
+            profileId: profile.profileId,
+            revision: profile.revision,
+          })
+        : null;
+      return { profile, target };
+    });
+  }
+
+  saveMcp(
+    projectId: string,
+    expectedRevision: number,
+    operationId: string,
+    raw: McpServerDraft,
+    serverId?: string,
+  ) {
+    const draft = McpServerDraft.parse(raw);
+    if (!this.mcp) throw new Error('MCP runtime unavailable');
+    return this.mcp.updateTools(
+      projectId,
+      expectedRevision,
+      () => {
+        const config = this.projectTools.latest(projectId);
+        const previous = config?.mcpServers?.find((server) => server.id === serverId);
+        if (serverId && !previous) throw new Error('no such registered tool');
+        const server = RegisteredMcpServer.parse({
+          ...draft,
+          id: serverId ?? `mcp_${randomUUID().replaceAll('-', '').slice(0, 20)}`,
+          ...(draft.transport === 'http' && draft.auth.kind !== 'none'
+            ? {
+                auth: {
+                  ...draft.auth,
+                  credentialRef:
+                    previous?.transport === 'http' && previous.auth.kind !== 'none'
+                      ? previous.auth.credentialRef
+                      : `credential_${randomUUID()}`,
+                },
+              }
+            : {}),
+        });
+        return {
+          checks: config?.checks ?? [],
+          lspServers: config?.lspServers ?? [],
+          mcpServers: [
+            ...(config?.mcpServers ?? []).filter((item) => item.id !== server.id),
+            server,
+          ],
+        };
+      },
+      {
+        operationId,
+        input: { projectId, expectedRevision, draft, ...(serverId ? { serverId } : {}) },
+      },
+    );
+  }
+
+  removeMcp(
+    projectId: string,
+    expectedRevision: number,
+    operationId: string,
+    serverId: string,
+    restoreRevision?: number,
+  ) {
+    if (!this.mcp) throw new Error('MCP runtime unavailable');
+    return this.mcp.updateTools(
+      projectId,
+      expectedRevision,
+      () => {
+        const config = this.projectTools.latest(projectId);
+        let servers = (config?.mcpServers ?? []).filter((server) => server.id !== serverId);
+        if (restoreRevision !== undefined) {
+          if (config?.mcpServers?.some((server) => server.id === serverId))
+            throw new Error('MCP server is already registered');
+          const server = this.projectTools
+            .get(projectId, restoreRevision)
+            ?.mcpServers?.find((item) => item.id === serverId);
+          if (!server) throw new Error('no such registered tool');
+          servers = [...servers, { ...server, enabled: false }];
+        }
+        return {
+          checks: config?.checks ?? [],
+          lspServers: config?.lspServers ?? [],
+          mcpServers: servers,
+        };
+      },
+      {
+        operationId,
+        input: {
+          projectId,
+          expectedRevision,
+          serverId,
+          ...(restoreRevision === undefined ? {} : { restoreRevision }),
+        },
+      },
+    );
   }
 
   async discoverLocal(source: string) {
@@ -168,12 +477,7 @@ export class HarnessService {
 
   private retainReview(directory: string, resource: HarnessResource) {
     this.checkEntries(resource);
-    const reviewId = `review_${resource.hash}`;
-    const existing = this.reviews.get(reviewId);
-    if (existing) {
-      rmSync(directory, { recursive: true, force: true });
-      return { reviewId, resource: existing.resource };
-    }
+    const reviewId = `review_${this.newId()}`;
     this.reviews.set(reviewId, {
       reviewId,
       resource,
@@ -311,20 +615,46 @@ export class HarnessService {
   }
 
   install(reviewId: string): HarnessResourceView {
-    this.expireReviews();
-    const review = this.reviews.get(reviewId);
-    if (!review) throw new Error('resource review expired or already installed');
-    if (treeHash(scan(review.directory)) !== review.resource.hash)
-      throw new Error('reviewed resource changed');
-    const destination = this.directory(review.resource.hash);
-    if (existsSync(destination)) {
-      if (treeHash(scan(destination)) !== review.resource.hash)
-        throw new Error('installed resource integrity changed');
-      rmSync(review.directory, { recursive: true, force: true });
-    } else renameSync(review.directory, destination);
-    const installed = this.store.putResource(review.resource);
-    this.reviews.delete(reviewId);
-    return installed;
+    return this.store.receipt(`install_${reviewId}`, { reviewId }, () => {
+      this.expireReviews();
+      const review = this.reviews.get(reviewId);
+      if (!review) throw new Error('resource review expired or already installed');
+      if (treeHash(scan(review.directory)) !== review.resource.hash)
+        throw new Error('reviewed resource changed');
+      const destination = this.directory(review.resource.hash);
+      if (existsSync(destination)) {
+        if (treeHash(scan(destination)) !== review.resource.hash)
+          throw new Error('installed resource integrity changed');
+        rmSync(review.directory, { recursive: true, force: true });
+      } else renameSync(review.directory, destination);
+      const installed = this.store.putResource(review.resource);
+      if (review.display) {
+        const key = {
+          resourceHash: installed.hash,
+          entry: review.display.entry,
+          kind: review.display.kind,
+        };
+        const current = this.store.entryManagement(key);
+        this.store.manageEntry(
+          key,
+          current.managementRevision,
+          current.archivedAt !== null,
+          undefined,
+          review.display.name,
+        );
+      }
+      if (review.previous && review.previous.resourceHash !== installed.hash) {
+        const current = this.store.entryManagement(review.previous);
+        this.store.manageEntry(
+          review.previous,
+          current.managementRevision,
+          current.archivedAt !== null,
+          { ...review.previous, resourceHash: installed.hash },
+        );
+      }
+      this.reviews.delete(reviewId);
+      return installed;
+    });
   }
 
   trust(resourceHash: string, trusted: boolean) {
@@ -374,7 +704,7 @@ export class HarnessService {
       if (scope === 'project' && personal)
         layers.push({ scope: 'personal', profile: this.profile(personal) });
       layers.push({ scope, profile: this.profile(binding) });
-      this.compose(layers, binding);
+      this.compose(layers, binding, scope === 'project' ? scopeId : undefined);
     }
     return this.store.setDefault(scope, scopeId, expectedRevision, binding);
   }
@@ -430,8 +760,9 @@ export class HarnessService {
       );
     };
     const checkIds = selection('checkIds'),
-      lspServerIds = selection('lspServerIds'),
-      mcpServerIds = selection('mcpServerIds');
+      lspServerIds = selection('lspServerIds');
+    let mcpServerIds = selection('mcpServerIds');
+    let disabledMcp = false;
     if (mcpServerIds.length && policy === 'strict')
       throw new Error('MCP requires trusted-native policy');
     let projectTools: EffectiveHarnessSnapshot['projectTools'];
@@ -444,6 +775,11 @@ export class HarnessService {
         mcpServerIds.some((id) => !config.mcpServers?.some((server) => server.id === id))
       )
         throw new Error('selected project tool is not registered');
+      const enabled = mcpServerIds.filter(
+        (id) => config.mcpServers?.find((server) => server.id === id)?.enabled !== false,
+      );
+      disabledMcp = enabled.length !== mcpServerIds.length;
+      mcpServerIds = enabled;
       projectTools = {
         projectId,
         revision: config.revision,
@@ -474,6 +810,7 @@ export class HarnessService {
     const sections: { source: 'skill'; name: string; text: string }[] = [];
     const names = new Set<string>();
     const diagnostics: string[] = [];
+    if (disabledMcp) diagnostics.push('mcp_server_disabled');
     let mandatoryBytes = 0;
     for (const selectedResource of selected.values()) {
       const resource = this.verify(selectedResource.resourceHash);

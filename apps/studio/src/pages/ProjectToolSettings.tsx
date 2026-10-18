@@ -2,9 +2,10 @@ import type { HarnessApi } from '@corral/client';
 import { type ProjectToolConfigRevision, RegisteredLspServer } from '@corral/contracts';
 import { Button } from '@corral/react/ui';
 import { Link } from '@tanstack/react-router';
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { McpSettings } from './McpSettings.tsx';
+import { useServices } from '../services.tsx';
+import { WORKSPACE_CHANGED } from './FilesViews.tsx';
 
 const field = 'w-full rounded-md border border-line bg-surface p-2 text-sm';
 const empty = { id: '', name: '', argv: '', languages: '', extensions: '', seconds: '30' };
@@ -272,7 +273,41 @@ export function ProjectToolSettings({
           ) : null}
         </div>
       </fieldset>
-      <McpSettings api={api} projectId={projectId} config={config} onChange={onChange} />
     </section>
   );
+}
+
+export function WorkspaceToolSettings({ projectId }: { projectId: string }) {
+  const { harnesses: api } = useServices();
+  const t = useTranslations('Harness');
+  const [config, setConfig] = useState<ProjectToolConfigRevision | null>(null),
+    [loaded, setLoaded] = useState(false),
+    [error, setError] = useState('');
+  useEffect(() => {
+    let active = true;
+    const refresh = () => {
+      if (api)
+        void api.projectTools(projectId).then(
+          (value) => {
+            if (active) {
+              setConfig(value);
+              setLoaded(true);
+              setError('');
+            }
+          },
+          () => active && setError(t('loadFailed')),
+        );
+    };
+    refresh();
+    window.addEventListener(WORKSPACE_CHANGED, refresh);
+    return () => {
+      active = false;
+      window.removeEventListener(WORKSPACE_CHANGED, refresh);
+    };
+  }, [api, projectId, t]);
+  return error ? (
+    <p role="alert">{error}</p>
+  ) : api && loaded ? (
+    <ProjectToolSettings api={api} projectId={projectId} config={config} onChange={setConfig} />
+  ) : null;
 }

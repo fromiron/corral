@@ -43,7 +43,7 @@ import {
   VerificationReport,
 } from '@corral/contracts';
 import { type FileTools, rankFuzzy, type ToolCancellation, ToolRefusal } from '@corral/core';
-import { type Db, SqliteProjectToolStore } from '@corral/storage-sqlite';
+import { type Db, SqliteHarnessStore, SqliteProjectToolStore } from '@corral/storage-sqlite';
 import { systemTimers } from '../runtime.ts';
 import { redactToolText } from './check-output.ts';
 import { GitError, git, gitText } from './git.ts';
@@ -504,7 +504,7 @@ export class WorkspaceService implements FileTools {
 
   // ── session worktrees ───────────────────────────────────────────────────────
 
-  configureProjectTools(projectId: string, expectedRevision: number, raw: ProjectToolConfig) {
+  validateProjectTools(projectId: string, expectedRevision: number, raw: ProjectToolConfig) {
     const binding = this.binding(projectId);
     if (!binding?.trusted)
       throw new WorkspaceError(
@@ -512,13 +512,70 @@ export class WorkspaceService implements FileTools {
         'trust the repository before configuring tools',
       );
     const config = ProjectToolConfig.parse(raw);
+    const prior = this.projectTools.latest(projectId);
+    if ((prior?.revision ?? 0) !== expectedRevision)
+      throw new WorkspaceError('REVISION_CONFLICT', 'project tool revision changed');
+    const removed = (prior?.mcpServers ?? []).filter(
+      (server) => !config.mcpServers?.some((next) => next.id === server.id),
+    );
+    if (removed.some((server) => this.mcpUsages(projectId, server.id).length))
+      throw new WorkspaceError(
+        'CAPABILITY_DENIED',
+        'Remove this MCP server from the settings that use it first.',
+      );
+    for (const server of config.mcpServers ?? []) {
+      const old = prior?.mcpServers?.find((item) => item.id === server.id);
+      if (!old) {
+        const historic = this.projectTools
+          .history(projectId)
+          .flatMap((revision) => revision.mcpServers ?? [])
+          .find((item) => item.id === server.id);
+        if (
+          historic &&
+          canonicalJson({ ...historic, enabled: false }) !==
+            canonicalJson({ ...server, enabled: false })
+        )
+          throw new WorkspaceError(
+            'SCHEMA_INVALID',
+            'MCP server ID was already used; create a new server.',
+          );
+      }
+      if (
+        server.transport === 'http' &&
+        server.auth.kind !== 'none' &&
+        old?.transport === 'http' &&
+        old.auth.kind !== 'none'
+      ) {
+        const { credentialRef: _oldRef, ...oldAuth } = old.auth;
+        const { credentialRef: _newRef, ...newAuth } = server.auth;
+        if (
+          old.auth.credentialRef === server.auth.credentialRef &&
+          (old.url !== server.url || canonicalJson(oldAuth) !== canonicalJson(newAuth))
+        )
+          server.auth.credentialRef = `credential_${randomUUID()}`;
+      }
+    }
+    return config;
+  }
+
+  configureProjectTools(projectId: string, expectedRevision: number, raw: ProjectToolConfig) {
     return this.db.transaction(() => {
+      const config = this.validateProjectTools(projectId, expectedRevision, raw);
+      const binding = this.binding(projectId);
+      if (!binding) throw new WorkspaceError('TARGET_NOT_FOUND', 'workspace binding missing');
       const saved = this.projectTools.save(projectId, expectedRevision, config);
       this.db
         .prepare('UPDATE workspace_bindings SET verify_json = ?, updated_at = ? WHERE id = ?')
         .run(JSON.stringify(saved.checks), this.clock.nowIso(), binding.id);
       return saved;
     })();
+  }
+
+  mcpUsages(projectId: string, serverId: string) {
+    const harnesses = new SqliteHarnessStore(this.db, this.clock);
+    return harnesses
+      .currentBindings(projectId)
+      .filter((item) => harnesses.getProfile(item.binding)?.mcpServerIds?.includes(serverId));
   }
 
   async criteriaFiles(
@@ -565,11 +622,14 @@ export class WorkspaceService implements FileTools {
       : sha256(Buffer.from(canonicalJson({ revision, server })));
   }
 
-  async inspectMcpServer(projectId: string, serverId: string) {
+  async inspectMcpServer(projectId: string, serverId: string, revision?: number) {
     const binding = this.binding(projectId);
     if (!binding?.trusted)
       throw new WorkspaceError('CAPABILITY_DENIED', 'trust the repository before inspecting tools');
-    const config = this.projectTools.latest(projectId);
+    const config =
+      revision === undefined
+        ? this.projectTools.latest(projectId)
+        : this.projectTools.get(projectId, revision);
     const server = config?.mcpServers?.find((server) => server.id === serverId);
     if (!config || !server) throw new WorkspaceError('TARGET_NOT_FOUND', 'no such registered tool');
     const fingerprint = await this.mcpFingerprint(binding.root_path, config.revision, server);
@@ -581,9 +641,60 @@ export class WorkspaceService implements FileTools {
     };
   }
 
-  async trustMcpServer(projectId: string, serverId: string, fingerprint: string, trusted: boolean) {
+  async mcpProbeContext(projectId: string, serverId: string, revision: number, sessionId?: string) {
+    const inspected = await this.inspectMcpServer(projectId, serverId, revision);
+    if (this.projectTools.latest(projectId)?.revision !== revision)
+      throw new WorkspaceError('REVISION_CONFLICT', 'project tool revision changed');
+    if (inspected.server.transport === 'http')
+      return { ...inspected, cwd: undefined, copyIdentity: null };
+    const row = sessionId ? this.worktree(sessionId) : null;
+    const session = sessionId
+      ? (this.db.prepare('SELECT project_id FROM work_sessions WHERE id = ?').get(sessionId) as
+          | { project_id: string }
+          | undefined)
+      : null;
+    const binding = this.binding(projectId);
+    if (
+      !row ||
+      session?.project_id !== projectId ||
+      !binding?.trusted ||
+      row.binding_id !== binding.id
+    )
+      throw new WorkspaceError(
+        'CAPABILITY_DENIED',
+        'Choose an existing session working copy to test this server.',
+      );
+    const identity = await stat(row.worktree_path);
+    const fingerprint = await this.mcpFingerprint(row.worktree_path, revision, inspected.server);
+    return {
+      ...inspected,
+      fingerprint,
+      trustedAt: this.projectTools.trust({ projectId, kind: 'mcp', id: serverId, fingerprint }),
+      cwd: row.worktree_path,
+      copyIdentity: sha256(
+        Buffer.from(
+          canonicalJson({ sessionId, binding: binding.id, dev: identity.dev, ino: identity.ino }),
+        ),
+      ),
+    };
+  }
+
+  async trustMcpServer(
+    projectId: string,
+    serverId: string,
+    fingerprint: string,
+    trusted: boolean,
+    sessionId?: string,
+  ) {
     if (trusted) {
-      const inspected = await this.inspectMcpServer(projectId, serverId);
+      const inspected = sessionId
+        ? await this.mcpProbeContext(
+            projectId,
+            serverId,
+            this.projectTools.latest(projectId)?.revision ?? 0,
+            sessionId,
+          )
+        : await this.inspectMcpServer(projectId, serverId);
       if (
         inspected.fingerprint !== fingerprint ||
         this.projectTools.latest(projectId)?.revision !== inspected.configRevision
@@ -600,7 +711,8 @@ export class WorkspaceService implements FileTools {
     const servers: { server: RegisteredMcpServer; fingerprint: string }[] = [];
     for (const id of selection.mcpServerIds ?? []) {
       const server = config.mcpServers?.find((server) => server.id === id);
-      if (!server) throw new ToolRefusal('CAPABILITY_DENIED', 'MCP server is not selected');
+      if (!server || server.enabled === false)
+        throw new ToolRefusal('CAPABILITY_DENIED', 'MCP server is not selected');
       const fingerprint = await this.mcpFingerprint(row.worktree_path, config.revision, server);
       if (
         !this.projectTools.trust({ projectId: selection.projectId, kind: 'mcp', id, fingerprint })

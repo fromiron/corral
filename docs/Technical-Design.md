@@ -473,3 +473,7 @@ v0.2 첫 질문 종류는 `reasoning_effort` v1이다([ADR-025](Decisions.md)). 
 ## CR-021 역할 추론 적용 경계
 
 [CR-021](change-requests/CR-021-role-reasoning-apply.md), ADR-028에 따라 요청 전 비동기 판정 준비와 최종 동기 admission/commit을 분리한다. 관찰 observer는 요청을 변경하지 않는다. 고정된 모델 capability와 역할 정책을 요청 permit, 두 Pi worker 및 최종 payload 검증까지 전달한다. 편집기의 Run 연결과 실행 모드 선호값은 workspace/project/team/session 범위를 지킨다.
+
+### 리소스 관리
+
+[CR-022](change-requests/CR-022-resource-management.md), ADR-029에 따라 스킬·Hook·MCP 관리 화면을 분리한다. 별도 관리 메타데이터와 요청 receipt는 실행 snapshot을 변경하지 않는다. 기본 작업 방식 편집은 profile/default CAS를 원자적으로 반영하며 MCP 연결 시험은 고정 설정·인증·관리 사본에 묶는다.

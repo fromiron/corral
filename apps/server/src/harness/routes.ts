@@ -1,10 +1,16 @@
+import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import {
   ContentHash,
+  canonicalJson,
   HarnessBindingRef,
+  HarnessDocumentDraft,
+  HarnessEntryKey,
   HarnessProfile,
+  HarnessPublish,
   Identifier,
+  McpServerDraft,
   ProjectToolConfig,
   ResourcePath,
 } from '@corral/contracts';
@@ -33,6 +39,19 @@ const safeErrors = new Set([
   'MCP launch requires current fingerprint trust',
   'Sign in to the configured MCP server again.',
   'The saved MCP sign-in cannot be read; sign in again.',
+  'resource editor size limit exceeded',
+  'document is not a valid resource entry',
+  'operation payload changed',
+  'Remove this MCP server from the settings that use it first.',
+  'MCP server ID was already used; create a new server.',
+  'Choose an existing session working copy to test this server.',
+  'MCP probe is busy or cleanup is unconfirmed',
+  'MCP probe cancelled',
+  'MCP probe timed out',
+  'MCP probe failed',
+  'MCP probe authorization failed',
+  'MCP probe cleanup unconfirmed',
+  'MCP settings are being saved; retry after completion',
 ]);
 
 /** Filesystem, package-manager and parser errors never reach the browser verbatim. */
@@ -46,6 +65,7 @@ async function action(reply: FastifyReply, work: () => unknown) {
         'profile revision changed',
         'default revision changed',
         'project tool revision changed',
+        'management revision changed',
       ].includes(message) ||
       (error instanceof WorkspaceError && error.code === 'REVISION_CONFLICT');
     return reply.code(conflict ? 409 : 400).send({
@@ -67,16 +87,59 @@ export function registerHarnessRoutes(
   files: WorkspaceService,
 ) {
   const prefix = '/api/v1/harness';
+  const archive = z.strictObject({
+    expectedRevision: revision,
+    archived: z.boolean(),
+    operationId: Identifier,
+  });
+  app.get(`${prefix}/entries`, () => service.entries());
+  app.post(`${prefix}/entries/read`, (request, reply) =>
+    action(reply, () => service.readEntry(HarnessEntryKey.parse(request.body))),
+  );
+  app.post(`${prefix}/documents/review`, (request, reply) =>
+    action(reply, () => service.reviewDocument(HarnessDocumentDraft.parse(request.body))),
+  );
+  app.delete<{ Params: { reviewId: string } }>(`${prefix}/reviews/:reviewId`, (request, reply) =>
+    action(reply, () => {
+      service.cancelReview(Identifier.parse(request.params.reviewId));
+      return { ok: true };
+    }),
+  );
+  app.put(`${prefix}/entries/archive`, (request, reply) =>
+    action(reply, () => {
+      const body = archive.extend({ key: HarnessEntryKey }).parse(request.body);
+      return service.archiveEntry(body.key, body.expectedRevision, body.archived, body.operationId);
+    }),
+  );
+  app.get(`${prefix}/profile-management`, () => service.store.profileViews());
+  app.put<{ Params: { profileId: string } }>(
+    `${prefix}/profile-management/:profileId`,
+    (request, reply) =>
+      action(reply, () => {
+        const body = archive.parse(request.body);
+        return service.archiveProfile(
+          Identifier.parse(request.params.profileId),
+          body.expectedRevision,
+          body.archived,
+          body.operationId,
+        );
+      }),
+  );
+  app.post(`${prefix}/publish`, (request, reply) =>
+    action(reply, () => service.publish(HarnessPublish.parse(request.body))),
+  );
   type ProjectParams = { Params: { projectId: string } };
   type CheckParams = { Params: { projectId: string; commandId: string } };
   const mcp = () => {
     if (!service.mcp) throw new Error('MCP runtime unavailable');
     return service.mcp;
   };
-  const configuredMcp = (projectId: string, id: string) => {
-    const server = files.projectTools
-      .latest(projectId)
-      ?.mcpServers?.find((server) => server.id === id);
+  const configuredMcp = (projectId: string, id: string, configRevision?: number) => {
+    const server = (
+      configRevision === undefined
+        ? files.projectTools.latest(projectId)
+        : files.projectTools.get(projectId, configRevision)
+    )?.mcpServers?.find((server) => server.id === id);
     if (!server) throw new Error('no such registered tool');
     return server;
   };
@@ -103,12 +166,27 @@ export function registerHarnessRoutes(
               token: z.string().min(1).max(16000),
             }),
             z.strictObject({ action: z.literal('sign_in'), fingerprint: ContentHash }),
-            z.strictObject({ action: z.literal('sign_out'), fingerprint: ContentHash }),
+            z.strictObject({
+              action: z.literal('sign_out'),
+              fingerprint: ContentHash,
+              configRevision: z.int().positive().optional(),
+            }),
           ])
           .parse(request.body);
         const projectId = Identifier.parse(request.params.projectId);
         if (body.action === 'sign_out') {
-          const server = configuredMcp(projectId, Identifier.parse(request.params.commandId));
+          const revision = body.configRevision ?? files.projectTools.latest(projectId)?.revision;
+          const server = configuredMcp(
+            projectId,
+            Identifier.parse(request.params.commandId),
+            revision,
+          );
+          if (
+            server.transport === 'http' &&
+            createHash('sha256').update(canonicalJson({ revision, server })).digest('hex') !==
+              body.fingerprint
+          )
+            throw new WorkspaceError('REVISION_CONFLICT', 'MCP authentication target changed');
           if (server.transport === 'http' && server.auth.kind !== 'none')
             await mcp().credentials.delete(projectId, server);
           return mcp().credentials.status(projectId, server);
@@ -152,15 +230,101 @@ export function registerHarnessRoutes(
         ),
     ),
   );
-  app.put<ProjectParams>(`${prefix}/projects/:projectId/tools`, (request, reply) =>
+  app.post<ProjectParams>(`${prefix}/projects/:projectId/mcp`, (request, reply) =>
+    action(reply, async () => {
+      const body = z
+        .strictObject({
+          expectedRevision: revision,
+          operationId: Identifier,
+          draft: McpServerDraft,
+          serverId: Identifier.optional(),
+        })
+        .parse(request.body);
+      const projectId = Identifier.parse(request.params.projectId);
+      return service.saveMcp(
+        projectId,
+        body.expectedRevision,
+        body.operationId,
+        body.draft,
+        body.serverId,
+      );
+    }),
+  );
+  app.post<CheckParams>(
+    `${prefix}/projects/:projectId/mcp-servers/:commandId/remove`,
+    (request, reply) =>
+      action(reply, async () => {
+        const body = z
+          .strictObject({
+            expectedRevision: revision,
+            operationId: Identifier,
+            restoreRevision: z.int().positive().optional(),
+          })
+          .parse(request.body);
+        const projectId = Identifier.parse(request.params.projectId);
+        return service.removeMcp(
+          projectId,
+          body.expectedRevision,
+          body.operationId,
+          Identifier.parse(request.params.commandId),
+          body.restoreRevision,
+        );
+      }),
+  );
+  app.get<ProjectParams>(`${prefix}/projects/:projectId/mcp-history`, (request, reply) =>
     action(reply, () => {
+      const projectId = Identifier.parse(request.params.projectId);
+      const current = service.projectTools.latest(projectId)?.mcpServers ?? [];
+      const seen = new Set(current.map((server) => server.id));
+      const authKey = (server: (typeof current)[number]) =>
+        server.transport === 'http' && server.auth.kind !== 'none'
+          ? canonicalJson({ id: server.id, url: server.url, auth: server.auth })
+          : null;
+      const credentials = new Set(current.map(authKey));
+      return service.projectTools.history(projectId).flatMap((config) =>
+        (config.mcpServers ?? []).flatMap((server) => {
+          const canRestore = !seen.has(server.id);
+          const key = authKey(server);
+          const retiredAuth = key !== null && !credentials.has(key);
+          seen.add(server.id);
+          credentials.add(key);
+          if (!canRestore && !retiredAuth) return [];
+          return [
+            {
+              server,
+              configRevision: config.revision,
+              canRestore,
+              fingerprint:
+                server.transport === 'http'
+                  ? createHash('sha256')
+                      .update(canonicalJson({ revision: config.revision, server }))
+                      .digest('hex')
+                  : null,
+            },
+          ];
+        }),
+      );
+    }),
+  );
+  app.get<CheckParams>(
+    `${prefix}/projects/:projectId/mcp-servers/:commandId/usages`,
+    (request, reply) =>
+      action(reply, () =>
+        files.mcpUsages(
+          Identifier.parse(request.params.projectId),
+          Identifier.parse(request.params.commandId),
+        ),
+      ),
+  );
+  app.put<ProjectParams>(`${prefix}/projects/:projectId/tools`, (request, reply) =>
+    action(reply, async () => {
       const input = z
         .strictObject({ expectedRevision: revision, config: ProjectToolConfig })
         .parse(request.body);
-      return files.configureProjectTools(
+      return mcp().updateTools(
         Identifier.parse(request.params.projectId),
         input.expectedRevision,
-        input.config,
+        () => input.config,
       );
     }),
   );
@@ -199,29 +363,92 @@ export function registerHarnessRoutes(
   app.get<CheckParams>(
     `${prefix}/projects/:projectId/mcp-servers/:commandId/launch`,
     (request, reply) =>
-      action(reply, () =>
-        files.inspectMcpServer(
-          Identifier.parse(request.params.projectId),
-          Identifier.parse(request.params.commandId),
-        ),
-      ),
+      action(reply, async () => {
+        const query = z
+          .object({
+            revision: z.coerce.number().int().positive().optional(),
+            sessionId: Identifier.optional(),
+          })
+          .parse(request.query);
+        const projectId = Identifier.parse(request.params.projectId),
+          serverId = Identifier.parse(request.params.commandId);
+        if (!query.sessionId) return files.inspectMcpServer(projectId, serverId, query.revision);
+        const { cwd: _cwd, ...view } = await files.mcpProbeContext(
+          projectId,
+          serverId,
+          query.revision ?? files.projectTools.latest(projectId)?.revision ?? 0,
+          query.sessionId,
+        );
+        return view;
+      }),
   );
   app.put<CheckParams>(
     `${prefix}/projects/:projectId/mcp-servers/:commandId/trust`,
     (request, reply) =>
-      action(reply, () => {
+      action(reply, async () => {
         const input = z
-          .strictObject({ fingerprint: ContentHash, trusted: z.boolean() })
+          .strictObject({
+            fingerprint: ContentHash,
+            trusted: z.boolean(),
+            sessionId: Identifier.optional(),
+          })
           .parse(request.body);
+        if (!input.trusted)
+          await mcp().cancelProbe(undefined, Identifier.parse(request.params.projectId));
         return files.trustMcpServer(
           Identifier.parse(request.params.projectId),
           Identifier.parse(request.params.commandId),
           input.fingerprint,
           input.trusted,
+          input.sessionId,
         );
       }),
   );
+  app.post<CheckParams>(
+    `${prefix}/projects/:projectId/mcp-servers/:commandId/probe`,
+    (request, reply) =>
+      action(reply, async () => {
+        const input = z
+          .strictObject({
+            operationId: Identifier,
+            configRevision: z.int().positive(),
+            fingerprint: ContentHash,
+            sessionId: Identifier.optional(),
+          })
+          .parse(request.body);
+        const cancel = () => {
+          void mcp()
+            .cancelProbe(input.operationId)
+            .catch(() => {});
+        };
+        reply.raw.once('close', cancel);
+        try {
+          return await mcp().probe(
+            Identifier.parse(request.params.projectId),
+            Identifier.parse(request.params.commandId),
+            input,
+          );
+        } finally {
+          reply.raw.off('close', cancel);
+        }
+      }),
+  );
+  app.delete<{ Params: { operationId: string } }>(
+    `${prefix}/mcp-probes/:operationId`,
+    (request, reply) =>
+      action(reply, async () => {
+        await mcp().cancelProbe(Identifier.parse(request.params.operationId));
+        return { ok: true };
+      }),
+  );
   app.get(`${prefix}/resources`, async () => service.store.listResources());
+  app.get<{ Params: { hash: string } }>(`${prefix}/resources/:hash`, (request, reply) =>
+    action(reply, () => {
+      const resource = service.store.getResource(ContentHash.parse(request.params.hash));
+      if (!resource) throw new Error('resource not found');
+      return resource;
+    }),
+  );
   app.get(`${prefix}/profiles`, async () => service.store.listProfiles());
   app.post(`${prefix}/reviews`, (request, reply) =>
     action(reply, () => {

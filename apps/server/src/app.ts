@@ -38,7 +38,12 @@ import {
   ToolRefusal,
 } from '@corral/core';
 import { LangGraphRunner } from '@corral/runner-langgraph';
-import { openDatabase, SqliteCorralRepository, SqliteRunStore } from '@corral/storage-sqlite';
+import {
+  openDatabase,
+  SqliteCorralRepository,
+  SqliteHarnessStore,
+  SqliteRunStore,
+} from '@corral/storage-sqlite';
 import type { CredentialStore, MutableModels } from '@earendil-works/pi-ai';
 import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
@@ -349,7 +354,12 @@ async function createCorralServer(
     directory: join(mcpConfigDir, 'mcp', createHash('sha256').update(workspace.root).digest('hex')),
   });
   resources.defer(() => mcpCredentials.dispose());
-  const mcp = new McpService(files, mcpCredentials);
+  const mcp = new McpService(files, mcpCredentials, {
+    store: new SqliteHarnessStore(db, clock),
+    clock,
+    leaseDirectory: workerLeaseDirectory,
+  });
+  resources.defer(() => mcp.cancelProbe());
   const harnesses = new HarnessService({
     mcp,
     db,

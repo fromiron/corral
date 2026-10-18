@@ -1,5 +1,5 @@
 import type { HarnessPreview } from '@corral/client';
-import type { AgentRole, HarnessProfileRevision } from '@corral/contracts';
+import type { AgentRole, HarnessProfileView } from '@corral/contracts';
 import { useStudioStores } from '@corral/react';
 import { Button, Select } from '@corral/react/ui';
 import { Link } from '@tanstack/react-router';
@@ -10,11 +10,12 @@ import { useCurrentProject } from '../projects.ts';
 import { useServices } from '../services.tsx';
 
 export function HarnessRoleSettings({ role, nodeId }: { role: AgentRole; nodeId: string }) {
-  const t = useTranslations('Harness');
+  const t = useTranslations('Harness'),
+    r = useTranslations('Resources');
   const { harnesses: api } = useServices();
   const { editor } = useStudioStores();
   const projectId = useCurrentProject();
-  const [profiles, setProfiles] = useState<HarnessProfileRevision[]>([]);
+  const [profiles, setProfiles] = useState<HarnessProfileView[]>([]);
   const [preview, setPreview] = useState<HarnessPreview | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -25,7 +26,7 @@ export function HarnessRoleSettings({ role, nodeId }: { role: AgentRole; nodeId:
     if (!api) return;
     let active = true;
     const refresh = () => {
-      void api.profiles().then(
+      void api.profileManagement().then(
         (p) => active && setProfiles(p),
         () => active && setError(t('loadFailed')),
       );
@@ -68,10 +69,15 @@ export function HarnessRoleSettings({ role, nodeId }: { role: AgentRole; nodeId:
                   },
                 ]
               : []),
-            ...profiles.map((profile) => ({
-              value: `${profile.profileId}:${profile.revision}`,
-              label: `${profile.name} · r${profile.revision}`,
-            })),
+            ...profiles
+              .filter(
+                (profile) =>
+                  !profile.archivedAt || `${profile.profileId}:${profile.revision}` === selection,
+              )
+              .map((profile) => ({
+                value: `${profile.profileId}:${profile.revision}`,
+                label: `${profile.name} · r${profile.revision}${profile.archivedAt ? ` · ${r('archived')}` : ''}`,
+              })),
           ]}
           onValueChange={(value) => {
             const profile = profiles.find(
@@ -91,6 +97,13 @@ export function HarnessRoleSettings({ role, nodeId }: { role: AgentRole; nodeId:
       {role.harness ? (
         <>
           <p className="text-xs text-muted">{t('pinned', { revision: role.harness.revision })}</p>
+          {profiles.some(
+            (profile) =>
+              profile.profileId === role.harness?.profileId &&
+              profile.revision > role.harness.revision,
+          ) ? (
+            <p className="text-xs text-warning">{r('profileOlder')}</p>
+          ) : null}
           <Button
             variant="outline"
             size="sm"

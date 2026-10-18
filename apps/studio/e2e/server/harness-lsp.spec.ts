@@ -37,7 +37,7 @@ test('[TC-HAR-010-H] registers and selects a language server, approves an SDK qu
     writeFileSync(join(source, 'main.ts'), 'const n = 1;\n');
     git('add', '.');
     git('commit', '-qm', 'fixture');
-    await corral.open('/settings/harness');
+    await corral.open('/settings?section=workspace');
     await page.evaluate(async (source) => {
       const { csrfToken } = await (await fetch('/api/v1/session')).json();
       const call = async (path: string, body: unknown, method: string) => {
@@ -62,6 +62,7 @@ test('[TC-HAR-010-H] registers and selects a language server, approves an SDK qu
     await page.getByLabel('File extensions', { exact: true }).fill('.ts');
     await page.getByRole('button', { name: 'Save language server', exact: true }).click();
     await expect(page.getByText('Saved project tools revision 1', { exact: true })).toBeVisible();
+    await page.goto(`${corral.server.url}/settings/harness`);
     await page.getByLabel('Work style name', { exact: true }).fill('LSP writer');
     await page.getByLabel('Select language servers for this style', { exact: true }).check();
     await page.getByLabel('Use language server Fixture server', { exact: true }).check();
@@ -115,7 +116,7 @@ test('[TC-HAR-010-H] registers and selects a language server, approves an SDK qu
     await expect(page.getByText('node lsp.mjs', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Run this query once', exact: true }).click();
     await expect(page.getByTestId('run-status').first()).toContainText('Succeeded');
-    await page.goto(`${corral.server.url}/settings/harness`);
+    await page.goto(`${corral.server.url}/settings?section=workspace`);
     await page
       .getByRole('button', { name: 'Review launch for Fixture server', exact: true })
       .click();
