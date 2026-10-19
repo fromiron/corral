@@ -2013,7 +2013,9 @@
     "permissionAddRule": "규칙 추가",
     "skillDelivery": "제공자 요청에서 확인한 전체 지침 본문",
     "noSkillsDelivered": "없음",
-    "skillDeliveryUnknown": "측정하지 않음"
+    "skillDeliveryUnknown": "측정하지 않음",
+    "personalDefaultHint": "이 서버의 모든 프로젝트에서 다음 실행에 적용합니다.",
+    "projectDefaultHint": "선택한 프로젝트의 다음 실행에 적용합니다."
   },
   "Recipe": {
     "heading": "검토 규칙",
@@ -2333,7 +2335,8 @@
     "directRunHint": "이 팀을 직접 실행해 봅니다. 이 실행은 세션에 추가되지 않습니다.",
     "prepareExecution": "실행 준비",
     "runOverridesHint": "이 설정은 다음 실행에만 적용됩니다. 저장된 팀 설정은 유지됩니다.",
-    "closeResult": "결과 닫기"
+    "closeResult": "결과 닫기",
+    "personalDefaults": "개인 기본 작업 방식"
   },
   "WorkPlan": {
     "heading": "작업 계획",

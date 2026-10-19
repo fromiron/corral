@@ -2013,7 +2013,9 @@
     "permissionAddRule": "Add rule",
     "skillDelivery": "Complete skill bodies found in the provider payload",
     "noSkillsDelivered": "None",
-    "skillDeliveryUnknown": "Not measured"
+    "skillDeliveryUnknown": "Not measured",
+    "personalDefaultHint": "Applies to future runs across projects on this server.",
+    "projectDefaultHint": "Applies to future runs in the selected project."
   },
   "Recipe": {
     "heading": "Review recipe",
@@ -2333,7 +2335,8 @@
     "directRunHint": "Test this team directly. This execution is not added to a session.",
     "prepareExecution": "Prepare an execution",
     "runOverridesHint": "These choices apply to the next execution. The saved team stays the same.",
-    "closeResult": "Close result"
+    "closeResult": "Close result",
+    "personalDefaults": "Personal default work style"
   },
   "WorkPlan": {
     "heading": "Work plan",

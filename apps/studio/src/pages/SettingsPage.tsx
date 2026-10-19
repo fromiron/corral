@@ -15,7 +15,9 @@ import { WorkspaceToolSettings } from './ProjectToolSettings.tsx';
 export function SettingsLayout({ children, active }: { children: ReactNode; active: string }) {
   return (
     <div className="settings-layout flex h-full min-h-0 flex-col" data-settings-section={active}>
-      {active === 'workspace' || active === 'mcp' ? <SettingsProjectPicker /> : null}
+      {active === 'workspace' || active === 'mcp' || active === 'project-defaults' ? (
+        <SettingsProjectPicker />
+      ) : null}
       <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
     </div>
   );

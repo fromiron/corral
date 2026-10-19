@@ -1,6 +1,5 @@
 import type { HarnessPreview } from '@corral/client';
 import type {
-  HarnessDefault,
   HarnessEntryView,
   HarnessProfile,
   HarnessProfileRevision,
@@ -144,10 +143,8 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
   const [profiles, setProfiles] = useState<HarnessProfileView[]>([]);
   const [entries, setEntries] = useState<HarnessEntryView[]>([]);
   const [search, setSearch] = useState(''),
-    [archived, setArchived] = useState(false),
-    [saveTarget, setSaveTarget] = useState('standalone');
+    [archived, setArchived] = useState(false);
   const pendingOperation = useRef<{ json: string; id: string } | null>(null);
-  const [defaults, setDefaults] = useState<HarnessDefault[]>([]);
   const [toolsState, setToolsState] = useState<{
     projectId: string | undefined;
     value: ProjectToolConfigRevision | null;
@@ -176,17 +173,14 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
     void Promise.all([
       api.resources(),
       api.profileManagement(),
-      api.default('personal', 'default'),
-      projectId ? api.default('project', projectId) : null,
       projectId ? api.projectTools(projectId) : null,
       api.entries(),
     ]).then(
-      ([r, p, personal, project, tools, entries]) => {
+      ([r, p, tools, entries]) => {
         if (active) {
           setResources(r);
           setEntries(entries);
           setProfiles(p);
-          setDefaults([personal, ...(project ? [project] : [])]);
           setToolsState({ projectId, value: tools });
         }
       },
@@ -265,11 +259,6 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
     Boolean(projectId) &&
     selected !== null &&
     JSON.stringify({ ...selected, ...pendingProfile }) === JSON.stringify(selected);
-  const currentDefaults = defaults.filter(
-    (value) => value.scope === 'personal' || value.scopeId === projectId,
-  );
-  const missingSaveTarget =
-    saveTarget !== 'standalone' && !currentDefaults.some((value) => value.scope === saveTarget);
   return (
     <SettingsLayout active="harness">
       <main className="mx-auto flex max-w-5xl flex-col gap-7 p-6 sm:p-10">
@@ -756,49 +745,17 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                 />
               </label>
               <p className="text-xs text-muted">{t('commandsHint')}</p>
-              <label className="flex flex-col gap-1 text-sm">
-                {r('saveTo')}
-                <select
-                  className={field}
-                  value={saveTarget}
-                  onChange={(e) => setSaveTarget(e.target.value)}
-                >
-                  <option value="standalone">{r('standalone')}</option>
-                  <option value="personal">{r('personal')}</option>
-                  <option value="project" disabled={!projectId}>
-                    {r('project')}
-                  </option>
-                </select>
-              </label>
               <div className="flex flex-wrap gap-2">
                 <Button
-                  disabled={
-                    !profile.name.trim() || missingSaveTarget || (selected !== null && !dirty)
-                  }
+                  disabled={!profile.name.trim() || (selected !== null && !dirty)}
                   onClick={() =>
                     void work(async () => {
-                      const target = currentDefaults.find((value) => value.scope === saveTarget);
-                      if (saveTarget !== 'standalone' && !target)
-                        throw new Error(n('projectRequired'));
                       const input = {
                         profileId:
                           selected?.profileId ??
                           `harness_${crypto.randomUUID().replaceAll('-', '')}`,
                         expectedRevision: selected?.revision ?? 0,
                         profile: pendingProfile,
-                        ...(target
-                          ? {
-                              target: {
-                                scope: target.scope,
-                                scopeId: target.scopeId,
-                                expectedRevision: target.revision,
-                                binding: target.binding,
-                                ...(target.scope === 'project'
-                                  ? { projectToolsRevision: projectTools?.revision ?? 0 }
-                                  : {}),
-                              },
-                            }
-                          : {}),
                       };
                       const json = canonicalJson({
                         ...input,
@@ -808,7 +765,7 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                         pendingOperation.current = { json, id: operationId() };
                       // A retry must retain the generated profile ID as well as the operation ID.
                       if (!selected) input.profileId = `harness_${pendingOperation.current.id}`;
-                      const { profile: saved, target: updated } = await api.publish({
+                      const { profile: saved } = await api.publish({
                         ...input,
                         operationId: pendingOperation.current.id,
                       });
@@ -826,14 +783,6 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                           },
                         ];
                       });
-                      if (updated)
-                        setDefaults((current) =>
-                          current.map((value) =>
-                            value.scope === updated.scope && value.scopeId === updated.scopeId
-                              ? updated
-                              : value,
-                          ),
-                        );
                       setNotice(t('saved', { revision: saved.revision }));
                       window.dispatchEvent(new Event('corral:harness-changed'));
                       try {
@@ -866,80 +815,6 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                 <p className="text-xs text-muted">{t('saveBeforePreview')}</p>
               ) : null}
               {preview && canPreview ? <HarnessPreviewView preview={preview} /> : null}
-            </fieldset>
-            <fieldset
-              id="project-defaults"
-              disabled={busy}
-              className="flex flex-col gap-3 border-t border-line pt-5"
-            >
-              <legend className="px-1 text-lg font-semibold">{t('defaults')}</legend>
-              <p className="text-xs text-muted">{t('defaultsHint')}</p>
-              {!projectId ? (
-                <Link
-                  to="/settings/harness"
-                  search={navigation.search}
-                  hash="project-context"
-                  className="text-xs text-accent underline"
-                >
-                  {n('chooseProjectDefaults')}
-                </Link>
-              ) : null}
-              {currentDefaults.map((value) => (
-                <label
-                  key={`${value.scope}:${value.scopeId}`}
-                  className="flex flex-col gap-1 text-sm"
-                >
-                  {t(value.scope)}
-                  <select
-                    className={field}
-                    value={
-                      value.binding ? `${value.binding.profileId}:${value.binding.revision}` : ''
-                    }
-                    onChange={(e) =>
-                      void work(async () => {
-                        const picked = profiles.find(
-                          (p) => `${p.profileId}:${p.revision}` === e.target.value,
-                        );
-                        const saved = await api.setDefault(
-                          value,
-                          picked ? bindingOf(picked) : null,
-                        );
-                        setDefaults((current) =>
-                          current.map((d) =>
-                            d.scope === saved.scope && d.scopeId === saved.scopeId ? saved : d,
-                          ),
-                        );
-                        setPreview(null);
-                        setNotice(t('defaultSaved'));
-                      })
-                    }
-                  >
-                    <option value="">{t('none')}</option>
-                    {value.binding &&
-                    !profiles.some(
-                      (p) =>
-                        p.profileId === value.binding?.profileId &&
-                        p.revision === value.binding.revision,
-                    ) ? (
-                      <option value={`${value.binding.profileId}:${value.binding.revision}`}>
-                        {value.binding.profileId} · r{value.binding.revision}
-                      </option>
-                    ) : null}
-                    {profiles
-                      .filter(
-                        (p) =>
-                          !p.archivedAt ||
-                          (value.binding?.profileId === p.profileId &&
-                            value.binding.revision === p.revision),
-                      )
-                      .map((p) => (
-                        <option key={p.profileId} value={`${p.profileId}:${p.revision}`}>
-                          {p.name} · r{p.revision}
-                        </option>
-                      ))}
-                  </select>
-                </label>
-              ))}
             </fieldset>
           </>
         )}
