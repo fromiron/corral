@@ -23,6 +23,11 @@ test('[TC-UX-001-H] DW-08 narrow navigation contains focus and Escape restores i
   await trigger.click();
   const navigation = page.getByRole('dialog');
   await expect(navigation).toBeVisible();
+  await expect(navigation).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await expect(page.locator('[data-slot="dialog-backdrop"]')).toHaveCSS(
+    'background-color',
+    /^(?:oklab\(0 0 0 \/ 0\.4\)|rgba\(0, 0, 0, 0\.4\))$/,
+  );
   for (let i = 0; i < 20; i++) {
     await page.keyboard.press('Tab');
     await expect

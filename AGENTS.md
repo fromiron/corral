@@ -12,3 +12,4 @@
 8. library를 추가할 때 버전·라이선스·공식 근거·Node/peer compat를 기록한다. 문서가 RC를 예시로 든다는 이유로 RC를 기본 설치하지 않는다.
 9. 검증을 못 했으면 못 했다고 보고한다. 통합 테스트 없이 현재 API가 지원할 것이라고 단정하지 않는다.
 10. spec 변경이 필요하면 Change Request와 관련 테스트·ADR를 먼저 갱신한다. red test를 삭제하거나 완화해서 완료하지 않는다.
+11. 디자인/UI 개선은 `apps/server/resources/builtin/design/skills/`의 leeskills에서 작업 범위에 맞는 스킬을 읽고 적용한다. 기존 토큰·공용 컴포넌트를 우선 재사용하고 실제 화면과 관련 회귀를 확인한다.

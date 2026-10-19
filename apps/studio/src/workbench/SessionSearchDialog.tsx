@@ -3,6 +3,8 @@ import {
   Button,
   Dialog,
   DialogDescription,
+  DialogHeader,
+  DialogPanel,
   DialogPopup,
   DialogTitle,
   Input,
@@ -69,9 +71,11 @@ export function SessionSearchDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogPopup className="max-w-2xl">
-        <DialogTitle>{t('title')}</DialogTitle>
-        <DialogDescription>{t('privacy')}</DialogDescription>
-        <div className="mt-3 space-y-3">
+        <DialogHeader>
+          <DialogTitle>{t('title')}</DialogTitle>
+          <DialogDescription>{t('privacy')}</DialogDescription>
+        </DialogHeader>
+        <DialogPanel className="space-y-3">
           <Input
             aria-label={t('query')}
             value={query}
@@ -181,7 +185,7 @@ export function SessionSearchDialog({
               {error}
             </p>
           ) : null}
-        </div>
+        </DialogPanel>
       </DialogPopup>
     </Dialog>
   );
