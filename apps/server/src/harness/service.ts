@@ -12,6 +12,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   downloadPiPackage,
   inspectPiPackage,
@@ -43,6 +44,7 @@ import {
   ResourcePath,
 } from '@corral/contracts';
 import { type Db, SqliteHarnessStore, SqliteProjectToolStore } from '@corral/storage-sqlite';
+import builtinManifest from '../../resources/builtin/manifest.json' with { type: 'json' };
 import { managedHookSource } from './managed-hook.ts';
 import type { McpService } from './mcp-service.ts';
 
@@ -390,6 +392,23 @@ export class HarnessService {
     );
   }
 
+  async discoverBuiltin(id: string) {
+    if (!Object.hasOwn(builtinManifest, id)) throw new Error('unknown built-in pack');
+    const manifest = builtinManifest[id as keyof typeof builtinManifest];
+    const source = fileURLToPath(new URL(`../../resources/builtin/${id}/`, import.meta.url));
+    const review = await this.discoverLocal(source);
+    if (
+      review.resource.hash !== manifest.hash ||
+      review.resource.skills.length !== manifest.skills ||
+      review.resource.extensions.length
+    ) {
+      this.cancelReview(review.reviewId);
+      throw new Error('built-in pack integrity changed');
+    }
+    review.resource.sourceLabel = manifest.source;
+    return review;
+  }
+
   async discoverLocal(source: string) {
     this.expireReviews();
     const original = this.sourceDirectory(source);
@@ -611,6 +630,12 @@ export class HarnessService {
       text: new TextDecoder('utf-8', { fatal: true }).decode(bytes),
       sha256: file.hash,
       resourceHash: ref.hash,
+      boundSkills: snapshot.resources
+        .filter((resource) => resource.kind === 'skill' && resource.skillName && resource.entry)
+        .map((resource) => ({
+          name: resource.skillName,
+          path: `skills/${resource.skillName}/SKILL.md`,
+        })),
     };
   }
 
@@ -855,10 +880,14 @@ export class HarnessService {
     const dynamic =
       resources.some((resource) => resource.kind === 'extension') ||
       allowedTools.some((name) => !tools.some((tool) => tool.name === name));
+    const permissionPolicies = layers.flatMap((layer) =>
+      layer.profile.permissionPolicy ? [layer.profile.permissionPolicy] : [],
+    );
     const resolved = {
+      ...(permissionPolicies.length ? { permissionPolicies } : {}),
       binding: binding ?? { profileId: last.profileId, revision: last.revision },
       piVersion: '1.3.0' as const,
-      policyRevision: 1,
+      policyRevision: permissionPolicies.length ? 2 : 1,
       policy,
       resources,
       allowedTools,

@@ -37,6 +37,7 @@ export function ResourceEditor({
   const t = useTranslations('Resources'),
     h = useTranslations('Harness');
   const [mode, setMode] = useState(entry ? 'edit' : 'new');
+  const [builtin, setBuiltin] = useState('core');
   const [name, setName] = useState(entry?.name ?? '');
   const [description, setDescription] = useState(''),
     [content, setContent] = useState('');
@@ -97,10 +98,14 @@ export function ResourceEditor({
     setError('');
     try {
       let result: Awaited<ReturnType<HarnessApi['review']>>;
-      if (['local', 'pi-home', 'package'].includes(mode))
+      if (['local', 'pi-home', 'package', 'builtin'].includes(mode))
         result = await api.review(
-          mode as 'local' | 'pi-home' | 'package',
-          mode === 'package' ? `${packageKind}:${source.trim()}@${pin.trim()}` : source.trim(),
+          mode as 'local' | 'pi-home' | 'package' | 'builtin',
+          mode === 'builtin'
+            ? builtin
+            : mode === 'package'
+              ? `${packageKind}:${source.trim()}@${pin.trim()}`
+              : source.trim(),
         );
       else {
         const text =
@@ -167,6 +172,7 @@ export function ResourceEditor({
                     })
                   }
                   options={[
+                    ...(kind === 'skill' ? [{ value: 'builtin', label: t('builtin') }] : []),
                     { value: 'new', label: t('create') },
                     { value: 'file', label: t('importFile') },
                     { value: 'local', label: t('importFolder') },
@@ -259,6 +265,19 @@ export function ResourceEditor({
                   <p className="text-xs text-muted">{t('folderHint')}</p>
                 )}
               </>
+            ) : mode === 'builtin' ? (
+              <div className="flex flex-col gap-2 text-sm">
+                <Select
+                  label={t('builtin')}
+                  value={builtin}
+                  onValueChange={(value) => change(() => setBuiltin(value))}
+                  options={['core', 'coding', 'design', 'browser'].map((value) => ({
+                    value,
+                    label: t(`builtinPacks.${value}`),
+                  }))}
+                />
+                <p className="text-xs text-muted">{t('builtinHint')}</p>
+              </div>
             ) : mode === 'pi-home' ? (
               <p className="text-sm text-muted">{h('piHomeHint', { folder: '~/.pi/agent' })}</p>
             ) : (

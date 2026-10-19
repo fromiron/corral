@@ -91,3 +91,68 @@ it.each([null, JSON.stringify({ ...plan, fingerprint: 'c'.repeat(64) })])(
     ).toBeVisible();
   },
 );
+
+it.each([false, true])(
+  '[TC-SAFE-002-H] [TC-SAFE-002-N] tool approval shows final arguments and refuses a tampered body (%s)',
+  async (tampered) => {
+    const { toolPermissionPlan } = await import('@corral/core');
+    const permission = toolPermissionPlan(
+      { snapshotHash: 'c'.repeat(64), policyRevision: 2 },
+      {
+        name: 'send',
+        source: 'extension:fixture@1.0.0',
+        schemaHash: 'd'.repeat(64),
+        exposure: 'direct',
+        sideEffect: 'external',
+      },
+      { content: 'Approved content' },
+    );
+    const resolveApproval = vi.fn(async () => ({ status: 'applied' }) as Receipt);
+    const session = sessionStore({
+      projection: projectionWith({
+        status: 'awaiting_user',
+        approvals: {
+          approval_tool: {
+            approvalId: 'approval_tool',
+            kind: 'user_action',
+            subjectVersionIds: ['tool_body'],
+            criteriaVersionId: null,
+            status: 'pending',
+            tool: {
+              purpose: 'tool',
+              executionId: 'exec_1',
+              attemptNo: 1,
+              toolCallId: 'tool_1',
+              bodyRef: 'tool_body',
+              fingerprint: permission.fingerprint,
+              deadline: '2099-10-18T00:00:00.000Z',
+            },
+          },
+        },
+      }),
+      resolveApproval,
+      artifactTexts: {
+        tool_body: JSON.stringify(
+          tampered ? { ...permission, arguments: { content: 'Different content' } } : permission,
+        ),
+      },
+    });
+    render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <ApprovalPanel session={session} onOpenArtifact={() => {}} />
+      </IntlProvider>,
+    );
+    const button = screen.getByRole('button', { name: 'Allow once' });
+    if (tampered) {
+      await vi.waitFor(() => expect(screen.getByRole('alert')).toBeVisible());
+      expect(button).toBeDisabled();
+    } else {
+      await vi.waitFor(() => expect(button).toBeEnabled());
+      expect(screen.getByText(/Approved content/)).toBeVisible();
+      fireEvent.click(button);
+      await vi.waitFor(() =>
+        expect(resolveApproval).toHaveBeenCalledWith('approval_tool', 'approve'),
+      );
+    }
+  },
+);

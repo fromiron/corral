@@ -64,7 +64,7 @@ describe('estimateRunCost (roadmap 15)', () => {
     expect(estimate).toMatchObject({ pricedCalls: 2, unknownCalls: 0, subscriptionCalls: 0 });
   });
 
-  it('[TC-OBS-004-N] subscription, simulated, unpriced and unreported calls are never priced as zero', () => {
+  it('[TC-STATUS-001-N] [TC-OBS-004-N] subscription, simulated, unpriced and unreported calls are never priced as zero', () => {
     const p = projectionWith({
       modelProfiles: {
         sub: snapshot('sub', 'oauth'),

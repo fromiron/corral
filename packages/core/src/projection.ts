@@ -110,6 +110,8 @@ export interface ToolCallView {
   executionId: string;
   name: string;
   status: 'requested' | 'blocked';
+  phase?: 'allowed' | 'running' | 'finished' | 'failed';
+  effectId?: string;
   reason: string | null;
   resultRef?: string | null;
 }
@@ -185,6 +187,7 @@ export interface PatchView extends EventPayload<'patch.committed'> {
 }
 
 export interface ReviewView {
+  design?: EventPayload<'review.recorded'>['design'];
   stale: boolean;
   newCriteriaVersionId: string | null;
   reviewVersionId: string;
@@ -224,6 +227,9 @@ export interface RunProjection {
   iterations: Record<string, IterationView>;
   questions: Record<string, QuestionView>;
   approvals: Record<string, ApprovalView>;
+  runtimeCheckpoints?: Record<string, EventPayload<'runtime.checkpoint_created'>>;
+  compactions?: Record<string, EventPayload<'context.compaction_changed'>>;
+  workPlans?: Record<string, EventPayload<'work_plan.updated'>>;
   /** Reviews as recorded by the runtime (C-027), in order. */
   reviews: Record<string, ReviewView>;
   /** Bumped by control changes (patches, P6); approvals and patches must name it. */
@@ -524,6 +530,22 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
       };
       return { ...p, toolCalls: { ...p.toolCalls, [toolCallId]: call } };
     }
+    case 'tool.allowed':
+    case 'tool.started': {
+      const call = p.toolCalls[event.payload.toolCallId];
+      if (!call) return p;
+      return {
+        ...p,
+        toolCalls: {
+          ...p.toolCalls,
+          [call.toolCallId]: {
+            ...call,
+            phase: event.type === 'tool.started' ? 'running' : 'allowed',
+            ...(event.type === 'tool.started' ? { effectId: event.payload.effectId } : {}),
+          },
+        },
+      };
+    }
     case 'tool.blocked': {
       const call = p.toolCalls[event.payload.toolCallId];
       if (!call) return p;
@@ -539,6 +561,7 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
           ...p.toolCalls,
           [call.toolCallId]: {
             ...call,
+            phase: event.payload.error ? 'failed' : 'finished',
             resultRef: event.payload.resultRef,
             reason: event.payload.error,
           },
@@ -609,6 +632,7 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
       const { reviewVersionId, targetVersionId, criteriaVersionId, verdict, issues } =
         event.payload;
       const review: ReviewView = {
+        ...(event.payload.design ? { design: event.payload.design } : {}),
         stale: false,
         newCriteriaVersionId: null,
         reviewVersionId,
@@ -773,24 +797,46 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
           : { iterationIds: [...patch.iterationIds, event.payload.iterationId] };
       return { ...p, patches: { ...p.patches, [patch.patchId]: { ...patch, ...activation } } };
     }
+    case 'runtime.checkpoint_created':
+      return {
+        ...p,
+        runtimeCheckpoints: {
+          ...p.runtimeCheckpoints,
+          [event.payload.checkpointId]: event.payload,
+        },
+      };
+    case 'runtime.checkpoint_skipped':
+      return p;
+    case 'context.compaction_changed':
+      return { ...p, compactions: { ...p.compactions, [event.payload.commandId]: event.payload } };
+    case 'work_plan.updated':
+      return {
+        ...p,
+        workPlans: {
+          ...p.workPlans,
+          [event.payload.scope === 'team' ? 'team' : event.payload.executionId]: event.payload,
+        },
+      };
     case 'budget.reserved':
     case 'budget.settled':
       return { ...p, budget: applyBudgetEvent(p.budget, event) };
     // Committed facts that later phases project (review P5, Reins P6, budget P7). Until then
     // they are kept in the log only.
-    case 'tool.allowed':
     case 'harness.loaded':
     case 'harness.simulated':
     case 'harness.tools_updated':
     case 'recipe.evaluated':
     case 'recipe.stopped':
     case 'harness.load_failed':
+    case 'user_input.requested':
+    case 'user_input.answered':
+    case 'user_input.closed':
     case 'extension.ui_requested':
     case 'extension.ui_answered':
     case 'extension.ui_expired':
     case 'extension.ui_notified':
     case 'model.request_recorded':
-    case 'tool.started':
+    case 'skill.read':
     case 'limit.reached':
     case 'cancel.requested':
     case 'cancel.confirmed':

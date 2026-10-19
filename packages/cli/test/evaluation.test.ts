@@ -94,7 +94,7 @@ it('[TC-HAR-014-H] counts a correct candidate rejected by a recipe and records t
   });
   expect(report.results[0]?.recipeHashes).toHaveLength(1);
 });
-it('[TC-HAR-014-H] counts committed SDK retry purposes once when the event stream replays frames', async () => {
+it('[TC-QEVAL-002-N] [TC-HAR-014-H] counts committed SDK retry purposes once when the event stream replays frames', async () => {
   const definition = linearCorral(['writer']);
   definition.roles[0]!.harness = { profileId: 'sample', revision: 1 };
   const coordinator = new Coordinator({
@@ -107,7 +107,15 @@ it('[TC-HAR-014-H] counts committed SDK retry purposes once when the event strea
         piVersion: '1.3.0',
         policyRevision: 1,
         policy: 'strict',
-        resources: [],
+        resources: ['writing', 'unwanted'].map((name) => ({
+          hash: 'd'.repeat(64),
+          name,
+          version: '1',
+          kind: 'skill' as const,
+          required: false,
+          entry: `${name}/SKILL.md`,
+          skillName: name,
+        })),
         allowedTools: ['write_artifact', 'submit_result'],
         tools: [],
         diagnostics: [],
@@ -135,6 +143,19 @@ it('[TC-HAR-014-H] counts committed SDK retry purposes once when the event strea
               contextHash: 'c'.repeat(64),
               contextBytes: 10,
               sections: [],
+            });
+            await host.recordProviderPayload!({
+              modelCallId: permit.modelCallId,
+              payloadHash: 'e'.repeat(64),
+              payloadBytes: 100,
+              skills: [
+                {
+                  name: 'unwanted',
+                  resourceHash: 'd'.repeat(64),
+                  bodyHash: 'f'.repeat(64),
+                  bytes: 10,
+                },
+              ],
             });
             await host.observe({
               kind: 'model_completed',
@@ -165,15 +186,39 @@ it('[TC-HAR-014-H] counts committed SDK retry purposes once when the event strea
         handlers.onEvent(event);
       },
     });
-  const result = await executeOnce(transport, definition, 'mock', {
-    signal: new AbortController().signal,
-  });
+  const report = await runSuite(
+    transport,
+    {
+      briefs: [
+        {
+          id: 'one',
+          brief: 'Check routing',
+          skillExpectation: { required: ['writing'], forbidden: ['unwanted'] },
+        },
+      ],
+      variants: [{ id: 'fixture', corral: 'fixture.json', definition }],
+    },
+    'mock',
+    { signal: new AbortController().signal },
+  );
+  const result = report.results[0]!;
   expect(result).toMatchObject({
     status: 'succeeded',
     modelCalls: 2,
     modelRetries: 1,
     metricsComplete: true,
     harnessHashes: ['a'.repeat(64)],
+  });
+  expect(result.skillEvidence).toMatchObject({
+    bound: ['unwanted', 'writing'],
+    delivered: ['unwanted'],
+    payloads: 2,
+    procedureAdherence: null,
+  });
+  expect(result.activation).toEqual({
+    missing: ['writing'],
+    forbidden: ['unwanted'],
+    passed: false,
   });
   expect(result.toolsExecuted.sort()).toEqual(['submit_result', 'write_artifact']);
 });
@@ -320,4 +365,93 @@ it('[TC-HAR-014-N] validates the five comparison groups and expectations before 
     }),
   );
   expect(loadSuite(path).ok).toBe(false);
+});
+
+it('[TC-QEVAL-001-H] runs bounded skill comparisons with fresh repetitions and separate holdout results', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'corral-skill-eval-'));
+  roots.push(root);
+  writeFileSync(join(root, 'base.json'), JSON.stringify(linearCorral(['writer'])));
+  const path = join(root, 'suite.json');
+  writeFileSync(
+    path,
+    JSON.stringify({
+      schemaVersion: '0.1',
+      comparison: 'skill_quality',
+      repetitions: 2,
+      workspace: { projectId: 'default', baseCommit: 'a'.repeat(40) },
+      briefs: ['calibration', 'holdout'].map((phase) => ({
+        id: phase,
+        phase,
+        brief: 'Answer',
+        expected: { kind: 'json', value: { answer: 42 } },
+      })),
+      variants: ['baseline', 'prompt_only'].map((group) => ({
+        id: group,
+        group,
+        corral: 'base.json',
+      })),
+    }),
+  );
+  const loaded = loadSuite(path);
+  expect(loaded.ok, JSON.stringify(loaded)).toBe(true);
+  if (!loaded.ok) return;
+  let prepared = 0;
+  const report = await runSuite(runtime(), loaded.suite, 'mock', {
+    signal: new AbortController().signal,
+    prepareWorkspace: async (target) => ({
+      sessionId: `session_${++prepared}`,
+      baseCommit: target.baseCommit,
+    }),
+  });
+  expect(report).toMatchObject({ comparison: 'skill_quality', repetitions: 2 });
+  expect(report.results).toHaveLength(8);
+  expect(prepared).toBe(8);
+  expect(new Set(report.results.map((row) => row.repetition))).toEqual(new Set([1, 2]));
+  expect(report.summary).toHaveLength(4);
+  expect(report.summary.every((row) => row.runs === 2 && row.quality.finalAccuracy === 1)).toBe(
+    true,
+  );
+
+  const controller = new AbortController();
+  const cancelled = await runSuite(runtime(), { ...loaded.suite, workspace: undefined }, 'mock', {
+    signal: controller.signal,
+    onResult: () => controller.abort(),
+  });
+  expect(cancelled.results).toHaveLength(1);
+});
+
+it('[TC-QEVAL-001-N] refuses missing baselines, mixed groups and unbounded repetition before loading a run', () => {
+  const root = mkdtempSync(join(tmpdir(), 'corral-skill-eval-invalid-'));
+  roots.push(root);
+  writeFileSync(join(root, 'base.json'), JSON.stringify(linearCorral(['writer'])));
+  const path = join(root, 'suite.json');
+  const suite = {
+    schemaVersion: '0.1',
+    comparison: 'skill_quality',
+    repetitions: 2,
+    briefs: [{ id: 'one', brief: 'Answer' }],
+    variants: ['baseline', 'prompt_only'].map((group) => ({
+      id: group,
+      group,
+      corral: 'base.json',
+    })),
+  };
+  writeFileSync(path, JSON.stringify(suite));
+  expect(loadSuite(path).ok).toBe(true);
+  for (const patch of [
+    { variants: suite.variants.slice(1) },
+    {
+      variants: [...suite.variants, { id: 'duplicate', group: 'prompt_only', corral: 'base.json' }],
+    },
+    { variants: [suite.variants[0], { id: 'old', group: 'coding_tool', corral: 'base.json' }] },
+    { comparison: 'personal_harness' },
+    { repetitions: 11 },
+    {
+      repetitions: 10,
+      briefs: Array.from({ length: 100 }, (_, i) => ({ id: `task_${i}`, brief: 'Answer' })),
+    },
+  ]) {
+    writeFileSync(path, JSON.stringify({ ...suite, ...patch }));
+    expect(loadSuite(path).ok, JSON.stringify(patch)).toBe(false);
+  }
 });

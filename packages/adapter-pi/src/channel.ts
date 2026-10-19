@@ -1,4 +1,4 @@
-import { type ChildProcess, fork } from 'node:child_process';
+import { type ChildProcess, type ForkOptions, fork } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -60,7 +60,12 @@ export function memoryChannelPair(): { host: Channel; worker: Channel } {
  */
 export function processChannel(
   entry: string,
-  options: { env?: NodeJS.ProcessEnv; leaseDirectory?: string; childLeaseDirectory?: string } = {},
+  options: {
+    env?: NodeJS.ProcessEnv;
+    leaseDirectory?: string;
+    childLeaseDirectory?: string;
+    launch?: Pick<ForkOptions, 'execPath' | 'execArgv'>;
+  } = {},
 ): Channel {
   const processOwner = randomUUID();
   const child: ChildProcess = fork(entry, [], {
@@ -69,6 +74,7 @@ export function processChannel(
     detached: process.platform !== 'win32',
     // Parent eval/debug/preload flags do not describe the standalone worker entry.
     execArgv: [],
+    ...options.launch,
     // The worker needs no secrets from the environment: credentials arrive per request.
     env: {
       NODE_ENV: process.env.NODE_ENV ?? 'production',

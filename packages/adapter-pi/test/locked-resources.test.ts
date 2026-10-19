@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { canonicalJson, type EffectiveHarnessSnapshot } from '@corral/contracts';
 import { afterEach, expect, it } from 'vitest';
 import { lockResources } from '../src/locked-resources.ts';
+import type { SdkResources } from '../src/protocol.ts';
 
 const roots: string[] = [];
 afterEach(() => {
@@ -68,4 +69,53 @@ it('[TC-HAR-004-N] changed content, a forged manifest or a symlink cannot reach 
   rmSync(join(s.source, 'extension.ts'));
   symlinkSync('/etc/passwd', join(s.source, 'extension.ts'));
   expect(() => lockResources(s.resources, s.snapshot, s.worker)).toThrow();
+});
+
+it('[TC-BPACK-001-H] [TC-BPACK-001-N] a shared pack hash does not authorize an unbound sibling skill', () => {
+  const s = setup();
+  const files = ['bound', 'sibling'].map((name) => {
+    const path = `skills/${name}/SKILL.md`;
+    mkdirSync(join(s.source, 'skills', name), { recursive: true });
+    writeFileSync(join(s.source, path), name);
+    return { path, hash: hash(name), bytes: Buffer.byteLength(name) };
+  });
+  const resourceHash = hash(canonicalJson(files));
+  const entry = 'skills/bound/SKILL.md';
+  s.snapshot.resources = [
+    {
+      hash: resourceHash,
+      name: 'design',
+      version: '0.7.0',
+      kind: 'skill',
+      required: true,
+      entry,
+      skillName: 'bound',
+      skillMode: 'explicit',
+    },
+  ];
+  const selected: SdkResources['skills'][number] = {
+    name: 'bound',
+    description: 'Bound skill',
+    entry,
+    mode: 'explicit',
+    content: 'bound',
+    hash: resourceHash,
+  };
+  const resources: SdkResources = {
+    extensions: [],
+    startupCommands: [],
+    bundles: [{ root: s.source, hash: resourceHash, files }],
+    skills: [selected],
+  };
+  expect(() => lockResources(resources, s.snapshot, s.worker)).not.toThrow();
+  resources.skills.push({
+    ...selected,
+    name: 'sibling',
+    entry: 'skills/sibling/SKILL.md',
+    content: 'sibling',
+  });
+  expect(() => lockResources(resources, s.snapshot, s.worker)).toThrow('skill is not bound');
+  resources.skills.pop();
+  rmSync(join(s.source, entry));
+  expect(() => lockResources(resources, s.snapshot, s.worker)).toThrow();
 });

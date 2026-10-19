@@ -2,7 +2,7 @@ import { type ExtensionUiRequest, type Receipt, RunEvent } from '@corral/contrac
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { IntlProvider } from 'use-intl';
 import { expect, it, vi } from 'vitest';
-import { ExtensionUiPanel } from '../src/components/ExtensionUiPanel.tsx';
+import { InteractionPanel } from '../src/components/InteractionPanel.tsx';
 import messages from '../src/messages/en.json' with { type: 'json' };
 import type { SessionCommand } from '../src/run/session.ts';
 import { projectionWith, sessionStore } from '../src/stories/fixtures.tsx';
@@ -67,7 +67,7 @@ it('[TC-HAR-007-H] shows a scoped extension prompt, sends its exact attempt and 
   });
   render(
     <IntlProvider locale="en" messages={messages} timeZone="UTC">
-      <ExtensionUiPanel session={session} />
+      <InteractionPanel session={session} />
     </IntlProvider>,
   );
   expect(screen.getByText('Choose a style')).toBeVisible();
@@ -118,5 +118,97 @@ it('[TC-HAR-007-H] shows a scoped extension prompt, sends its exact attempt and 
         payload: { requestId: 'ui_1', executionId: 'exec_1', attemptNo: 2, value: null },
       }),
     ),
+  );
+});
+
+it('[TC-INPUT-001-H] asks for an explicit choice and submits free text with its schema and current revision', async () => {
+  const event = RunEvent.parse({
+    schemaVersion: '0.1',
+    eventId: 'event_user',
+    runId: 'run_story',
+    runSeq: 1,
+    recordedAt: '2026-10-18T00:00:00.000Z',
+    actor: { kind: 'runtime', id: 'runtime' },
+    causedByEventIds: [],
+    type: 'user_input.requested',
+    payload: {
+      requestId: 'user_1',
+      executionId: 'exec_1',
+      attemptNo: 1,
+      bodyRef: 'body_user',
+      schemaHash: 'b'.repeat(64),
+      deadline: '2026-10-18T00:01:00.000Z',
+    },
+  });
+  const sendCommand = vi.fn(async (_command: SessionCommand) => ({ status: 'applied' }) as Receipt);
+  const session = sessionStore({
+    runId: 'run_story',
+    events: [event],
+    sendCommand,
+    projection: projectionWith({
+      status: 'awaiting_user',
+      controlRevision: 4,
+      executions: {
+        exec_1: {
+          executionId: 'exec_1',
+          nodeId: 'writer',
+          taskId: 'task_1',
+          attemptNo: 1,
+          parentExecutionId: null,
+          previousExecutionId: null,
+          depth: 0,
+          iterationId: null,
+          modelProfile: 'model-a',
+          configRevision: 0,
+          criteriaVersionId: null,
+          status: 'waiting_approval',
+          activity: null,
+          waitingOn: null,
+          modelCallIds: [],
+          error: null,
+        },
+      },
+    }),
+    artifactTexts: {
+      body_user: JSON.stringify({
+        key: 'format',
+        questions: [
+          {
+            id: 'format',
+            prompt: 'Choose format',
+            kind: 'single',
+            allowFreeText: true,
+            options: [
+              { id: 'short', label: 'Short', recommended: true },
+              { id: 'long', label: 'Long' },
+            ],
+          },
+        ],
+      }),
+    },
+  });
+  render(
+    <IntlProvider locale="en" messages={messages} timeZone="UTC">
+      <InteractionPanel session={session} />
+    </IntlProvider>,
+  );
+  expect(screen.getByRole('button', { name: 'Send answer' })).toBeDisabled();
+  expect(screen.getByRole('radio', { name: /Short/ })).not.toBeChecked();
+  fireEvent.change(screen.getByRole('textbox', { name: 'Your answer' }), {
+    target: { value: 'A table' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Send answer' }));
+  await vi.waitFor(() =>
+    expect(sendCommand).toHaveBeenCalledWith({
+      type: 'answer_user',
+      expectedControlRevision: 4,
+      payload: {
+        requestId: 'user_1',
+        executionId: 'exec_1',
+        attemptNo: 1,
+        schemaHash: 'b'.repeat(64),
+        answers: [{ questionId: 'format', text: 'A table' }],
+      },
+    }),
   );
 });

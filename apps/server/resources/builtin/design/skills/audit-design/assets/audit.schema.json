@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Slop signal audit input",
+  "type": "object",
+  "required": [
+    "artifact",
+    "categories",
+    "hard_failures"
+  ],
+  "properties": {
+    "artifact": {
+      "type": "object",
+      "required": [
+        "name",
+        "primary_user",
+        "primary_task"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "primary_user": {
+          "type": "string"
+        },
+        "primary_task": {
+          "type": "string"
+        },
+        "inspected": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "not_inspected": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "categories": {
+      "type": "object",
+      "required": [
+        "content_grounding",
+        "task_structure",
+        "visual_entropy",
+        "typography_spacing_alignment",
+        "component_necessity",
+        "image_relevance_authenticity",
+        "accessibility",
+        "motion_interaction"
+      ]
+    },
+    "hard_failures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "evidence_state",
+          "evidence"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "evidence_state": {
+            "enum": [
+              "observed",
+              "measured",
+              "inferred",
+              "unknown"
+            ]
+          },
+          "evidence": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "findings": {
+      "type": "array"
+    }
+  }
+}

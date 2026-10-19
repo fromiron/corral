@@ -1,5 +1,7 @@
+import { createHash } from 'node:crypto';
 import {
   type EndpointSpec,
+  type ModelBroker,
   modelReasoningCapabilities as reasoningCapabilities,
   reasoningRequest,
 } from '@corral/adapter-pi';
@@ -7,9 +9,12 @@ import type {
   AutoModelChoice,
   AutoRouteLevel,
   ModelProfileSnapshot,
+  ProfileContextOverrides,
+  ProfileContextPolicy,
   ReasoningCapabilities,
   TeamPlan,
 } from '@corral/contracts';
+import { canonicalJson } from '@corral/contracts';
 import {
   AUTO_ROUTE_MAX_OUTPUT_TOKENS,
   AUTO_ROUTE_TIMEOUT_MS,
@@ -18,6 +23,8 @@ import {
   type ModelResolution,
   type ModelResolver,
   type RouteAnswer,
+  resolveProfileContext,
+  SPEC_HARD_CAPS,
 } from '@corral/core';
 import type {
   AssistantMessage,
@@ -38,10 +45,11 @@ import {
 // and model; credentials stay in pi-ai's credential store on this computer. Views and errors
 // carry status and expiry only: no token, key or callback URL ever leaves through them.
 
-export interface ProfileConfig {
+export interface ProfileConfig extends ProfileContextOverrides {
   id: string;
   provider: string;
   model: string;
+  workerIsolation?: 'linux-bwrap';
 }
 
 /**
@@ -127,6 +135,7 @@ export interface ModelProfileView {
   reasoning: boolean | null;
   reasoningCapabilities: ReasoningCapabilities;
   contextWindow: number | null;
+  contextPolicy?: ProfileContextPolicy;
   maxOutputTokens: number | null;
   method: AuthMethod | null;
   keyConfigured: boolean;
@@ -135,6 +144,8 @@ export interface ModelProfileView {
 }
 
 export interface RegistryOptions {
+  configRevision?: string;
+  maxOutputTokensPerCall?: number;
   credentials: CredentialStore;
   getDeviceId(): string;
   now?: () => number;
@@ -173,7 +184,12 @@ export class ModelRegistry implements ModelResolver {
   }
 
   private providers(): string[] {
-    return [...new Set(this.profiles.map((p) => p.provider))];
+    return [
+      ...new Set([
+        ...this.profiles.map((p) => p.provider),
+        ...(this.options.endpoints?.keys() ?? []),
+      ]),
+    ];
   }
 
   /** Re-reads sign-in status; the resolver answers from this (run start is synchronous). */
@@ -201,6 +217,12 @@ export class ModelRegistry implements ModelResolver {
     }
     const config = this.profiles.find((p) => p.id === profile);
     if (!config) return { ok: false, code: 'GRAPH_INVALID', reason: 'no such model profile' };
+    if (config.workerIsolation && process.platform !== 'linux')
+      return {
+        ok: false,
+        code: 'CAPABILITY_DENIED',
+        reason: 'Linux worker isolation is unavailable on this OS',
+      };
     if (!this.models.getModel(config.provider, config.model)) {
       return {
         ok: false,
@@ -225,12 +247,28 @@ export class ModelRegistry implements ModelResolver {
         reason: `${config.model} is not available with a subscription sign-in; set the profile in .corral/config.json to one of ${[...allowed].join(', ')}`,
       };
     }
+    const context = this.contextPolicy(config);
+    if (context.errors.length)
+      return { ok: false, code: 'CAPABILITY_DENIED', reason: context.errors.join('; ') };
     return {
       ok: true,
       snapshot: {
         profile,
         provider: config.provider,
         modelId: config.model,
+        contextWindow:
+          context.policy?.contextWindow ??
+          this.models.getModel(config.provider, config.model)!.contextWindow,
+        ...(context.policy ? { contextPolicy: context.policy } : {}),
+        imageInput: this.models.getModel(config.provider, config.model)!.input.includes('image'),
+        ...(this.options.endpoints?.get(config.provider)
+          ? {
+              endpointHash: createHash('sha256')
+                .update(canonicalJson(this.options.endpoints.get(config.provider)!.spec))
+                .digest('hex'),
+            }
+          : {}),
+        ...(config.workerIsolation ? { workerIsolation: config.workerIsolation } : {}),
         reasoning: reasoningCapabilities(this.models.getModel(config.provider, config.model)),
         // The run record knows oauth and api_key; a keyless endpoint is recorded as api_key.
         auth: method === 'none' ? 'api_key' : method,
@@ -239,6 +277,21 @@ export class ModelRegistry implements ModelResolver {
   }
 
   /** The access token for one request; pi-ai refreshes an expired OAuth token first. */
+  modelBroker(snapshot: ModelProfileSnapshot): ModelBroker {
+    const model =
+      snapshot.provider && snapshot.modelId
+        ? this.models.getModel(snapshot.provider, snapshot.modelId)
+        : undefined;
+    if (!model) throw new Error('the pinned sandbox model is unavailable');
+    return {
+      model: snapshot.contextPolicy
+        ? { ...model, contextWindow: snapshot.contextPolicy.contextWindow }
+        : model,
+      streamFn: (selected, context, options) =>
+        this.models.streamSimple(selected, context, options),
+    };
+  }
+
   async credentials(model: ModelProfileSnapshot): Promise<string | null> {
     if (!model.provider || !model.modelId) return null;
     // A keyless endpoint gets no key from this computer (CR-005 §4).
@@ -323,11 +376,21 @@ export class ModelRegistry implements ModelResolver {
     choice: AutoModelChoice,
     signal?: AbortSignal,
     levels?: readonly AutoRouteLevel[],
+    pinned?: ModelProfileSnapshot,
   ): Promise<RouteAnswer> {
-    const resolution = this.resolve(choice.modelProfile, 'live');
+    const resolution = pinned
+      ? { ok: true as const, snapshot: pinned }
+      : this.resolve(choice.modelProfile, 'live');
     if (!resolution.ok || !resolution.snapshot.provider || !resolution.snapshot.modelId)
       return { ok: false, reason: 'model_error' };
-    const model = this.models.getModel(resolution.snapshot.provider, resolution.snapshot.modelId);
+    const selected = this.models.getModel(
+      resolution.snapshot.provider,
+      resolution.snapshot.modelId,
+    );
+    const model =
+      selected && resolution.snapshot.contextPolicy
+        ? { ...selected, contextWindow: resolution.snapshot.contextPolicy.contextWindow }
+        : selected;
     if (!model) return { ok: false, reason: 'model_error' };
     const policy = choice.reasoning;
     const requested =
@@ -442,10 +505,49 @@ export class ModelRegistry implements ModelResolver {
    * Profiles and endpoints saved from the Models page (CR-008). Runs already started keep the
    * profile snapshot they started with.
    */
-  async reconfigure(profiles: readonly ProfileConfig[], endpoints: ReadonlyMap<string, Endpoint>) {
+  async reconfigure(
+    profiles: readonly ProfileConfig[],
+    endpoints: ReadonlyMap<string, Endpoint>,
+    configRevision = this.options.configRevision,
+  ) {
     this.profiles = profiles;
-    this.options = { ...this.options, endpoints };
+    this.options = { ...this.options, endpoints, ...(configRevision ? { configRevision } : {}) };
     await this.refreshStatus();
+  }
+
+  setConfigRevision(configRevision: string) {
+    this.options = { ...this.options, configRevision };
+  }
+
+  contextPolicy(
+    profile: ProfileConfig,
+    endpoints = this.options.endpoints,
+    configRevision = this.options.configRevision ?? 'none',
+  ) {
+    const endpoint = endpoints?.get(profile.provider);
+    const configured = endpoint?.contextWindows?.get(profile.model);
+    const model = endpoint
+      ? endpoint.spec.models.find((model) => model.id === profile.model)
+      : this.models.getModel(profile.provider, profile.model);
+    return resolveProfileContext(
+      profile,
+      {
+        contextWindow: configured ?? model?.contextWindow ?? null,
+        source: endpoint ? (configured !== undefined ? 'endpoint' : 'fallback') : 'catalog',
+      },
+      configRevision,
+      this.options.maxOutputTokensPerCall ?? SPEC_HARD_CAPS.maxOutputTokensPerCall,
+    );
+  }
+
+  contextPolicies(
+    profiles = this.profiles,
+    endpoints = this.options.endpoints,
+    revision = this.options.configRevision ?? 'none',
+  ) {
+    return Object.fromEntries(
+      profiles.map((profile) => [profile.id, this.contextPolicy(profile, endpoints, revision)]),
+    );
   }
 
   /** Profiles that name a provider neither pi-ai nor the given endpoints know. */
@@ -553,6 +655,7 @@ export class ModelRegistry implements ModelResolver {
     return this.profiles.map((profile) => {
       const model = this.models.getModel(profile.provider, profile.model);
       const method = this.status.get(profile.provider)?.method ?? null;
+      const context = this.contextPolicy(profile);
       return {
         profileId: profile.id,
         provider: profile.provider,
@@ -562,7 +665,8 @@ export class ModelRegistry implements ModelResolver {
         available: Boolean(model),
         reasoning: model?.reasoning ?? null,
         reasoningCapabilities: reasoningCapabilities(model),
-        contextWindow: model?.contextWindow ?? null,
+        contextWindow: context.policy?.contextWindow ?? model?.contextWindow ?? null,
+        ...(context.policy ? { contextPolicy: context.policy } : {}),
         maxOutputTokens: model?.maxTokens ?? null,
         method,
         keyConfigured: method !== null,

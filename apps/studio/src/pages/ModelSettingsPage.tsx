@@ -4,6 +4,7 @@ import { type FormEvent, useEffect, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { modelSettingsRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
+import { ApiKeyInput } from './ApiKeyInput.tsx';
 import { ModelConfigEditor } from './ModelConfigEditor.tsx';
 import { SettingsLayout } from './SettingsPage.tsx';
 
@@ -37,13 +38,17 @@ export function ModelSettingsPage() {
         ) : (
           <>
             <p className="text-sm text-muted">{t('intro')}</p>
-            <ReasoningSettingsPanel />
+            <ReasoningSettingsPanel key={config?.revision} />
             <section aria-labelledby="providers-heading" className="flex flex-col gap-2">
               <h3 id="providers-heading" className="text-sm font-semibold">
                 {t('providers')}
               </h3>
               {providers.map((provider) => (
-                <ProviderCard key={provider.providerId} provider={provider} />
+                <ProviderCard
+                  key={`${provider.providerId}:${config?.modelProviders.find((endpoint) => endpoint.id === provider.providerId)?.baseUrl ?? ''}`}
+                  provider={provider}
+                  revision={config?.revision}
+                />
               ))}
             </section>
             {editing && config ? (
@@ -73,7 +78,13 @@ export function ModelSettingsPage() {
   );
 }
 
-function ProviderCard({ provider }: { provider: ProviderAuthView }) {
+function ProviderCard({
+  provider,
+  revision,
+}: {
+  provider: ProviderAuthView;
+  revision: string | undefined;
+}) {
   const t = useTranslations('Models');
   const format = useFormatter();
   const { models } = useServices();
@@ -81,6 +92,7 @@ function ProviderCard({ provider }: { provider: ProviderAuthView }) {
   const [redirect, setRedirect] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const login = provider.login;
   const borrowed = provider.source === 'codex-cli';
   // A key the page can remove: one entered here, not one from the server environment.
@@ -88,9 +100,12 @@ function ProviderCard({ provider }: { provider: ProviderAuthView }) {
 
   const act = async (action: () => Promise<unknown>) => {
     setBusy(true);
+    setError(null);
     try {
       await action();
       await router.invalidate();
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : String(failure));
     } finally {
       setBusy(false);
     }
@@ -109,7 +124,7 @@ function ProviderCard({ provider }: { provider: ProviderAuthView }) {
     const key = apiKey.trim();
     if (!key) return;
     void act(async () => {
-      await models?.setApiKey(provider.providerId, key);
+      await models?.setApiKey(provider.providerId, key, revision);
       setApiKey('');
     });
   };
@@ -192,19 +207,8 @@ function ProviderCard({ provider }: { provider: ProviderAuthView }) {
 
       {provider.methods.apiKey && (!provider.signedIn || borrowed) && !login ? (
         <form onSubmit={saveKey} className="flex flex-col gap-1">
-          <label htmlFor={`key-${provider.providerId}`} className="text-xs text-muted">
-            {t('apiKeyLabel')}
-          </label>
-          <div className="flex gap-2">
-            <input
-              id={`key-${provider.providerId}`}
-              type="password"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              autoComplete="off"
-              spellCheck={false}
-              className="min-w-0 flex-1 rounded border border-line bg-surface px-2 py-1 font-mono text-xs"
-            />
+          <div className="flex items-end gap-2">
+            <ApiKeyInput value={apiKey} onChange={setApiKey} disabled={busy} />
             <button
               type="submit"
               disabled={busy || !apiKey.trim()}
@@ -215,6 +219,12 @@ function ProviderCard({ provider }: { provider: ProviderAuthView }) {
           </div>
           <p className="text-xs text-muted">{t('keyHint')}</p>
         </form>
+      ) : null}
+
+      {error ? (
+        <p role="alert" className="text-sm text-danger">
+          {error}
+        </p>
       ) : null}
 
       {login && login.state !== 'failed' ? (
@@ -339,6 +349,7 @@ function ProfilesTable({ profiles }: { profiles: ModelProfileView[] }) {
 function ReasoningSettingsPanel() {
   const t = useTranslations('Reasoning');
   const { models } = useServices();
+  const router = useRouter();
   const [settings, setSettings] = useState<ReasoningSettings | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
@@ -373,6 +384,7 @@ function ReasoningSettingsPanel() {
             setError(false);
             try {
               setSettings(await models.setReasoning(event.target.checked, settings.revision));
+              await router.invalidate();
             } catch {
               setError(true);
             } finally {

@@ -1,0 +1,321 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Visual entropy budget",
+  "type": "object",
+  "required": [
+    "artifact",
+    "observed",
+    "limits",
+    "exceptions"
+  ],
+  "properties": {
+    "artifact": {
+      "type": "string",
+      "minLength": 1
+    },
+    "observed": {
+      "type": "object",
+      "required": [
+        "layout_grammars",
+        "typeface_families",
+        "type_roles",
+        "accent_colors",
+        "radius_tokens",
+        "shadow_levels",
+        "surface_styles",
+        "primary_cta_styles",
+        "secondary_cta_styles",
+        "motion_patterns",
+        "decorative_image_families"
+      ],
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "limits": {
+      "type": "object",
+      "required": [
+        "layout_grammars",
+        "typeface_families",
+        "type_roles",
+        "accent_colors",
+        "radius_tokens",
+        "shadow_levels",
+        "surface_styles",
+        "primary_cta_styles",
+        "secondary_cta_styles",
+        "motion_patterns",
+        "decorative_image_families"
+      ],
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "radius_scope": {
+      "enum": [
+        "none",
+        "evaluated",
+        "unknown"
+      ]
+    },
+    "radius_scope_evidence": {
+      "type": "string",
+      "minLength": 1
+    },
+    "radius_relationships": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "location",
+          "kind",
+          "evidence_state",
+          "evidence"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "location": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "enum": [
+              "shared-contour",
+              "independent",
+              "pill-or-circle"
+            ]
+          },
+          "rule": {
+            "enum": [
+              "semantic-step",
+              "concentric-offset"
+            ]
+          },
+          "outer_token": {
+            "type": "string",
+            "minLength": 1
+          },
+          "inner_token": {
+            "type": "string",
+            "minLength": 1
+          },
+          "token_steps_inward": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "outer_radius": {
+            "type": "number",
+            "minimum": 0
+          },
+          "inner_radius": {
+            "type": "number",
+            "minimum": 0
+          },
+          "inset": {
+            "type": "number",
+            "minimum": 0
+          },
+          "tolerance": {
+            "type": "number",
+            "minimum": 0
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          },
+          "evidence_state": {
+            "enum": [
+              "observed",
+              "measured",
+              "inferred",
+              "unknown"
+            ]
+          },
+          "evidence": {
+            "type": "string",
+            "minLength": 1
+          },
+          "exception": {
+            "type": "object",
+            "required": [
+              "reason",
+              "evidence"
+            ],
+            "properties": {
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              },
+              "evidence": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "required": [
+                "kind"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "shared-contour"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "rule"
+              ]
+            }
+          },
+          {
+            "if": {
+              "required": [
+                "rule"
+              ],
+              "properties": {
+                "rule": {
+                  "const": "semantic-step"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "outer_token",
+                "inner_token",
+                "token_steps_inward"
+              ]
+            }
+          },
+          {
+            "if": {
+              "required": [
+                "rule"
+              ],
+              "properties": {
+                "rule": {
+                  "const": "concentric-offset"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "outer_radius",
+                "inner_radius",
+                "inset"
+              ]
+            }
+          },
+          {
+            "if": {
+              "required": [
+                "kind"
+              ],
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "independent",
+                    "pill-or-circle"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "reason"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "exceptions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "metric",
+          "reason",
+          "evidence"
+        ],
+        "properties": {
+          "metric": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "evidence": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "radius_scope"
+        ],
+        "properties": {
+          "radius_scope": {
+            "const": "evaluated"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "radius_scope_evidence",
+          "radius_relationships"
+        ],
+        "properties": {
+          "radius_relationships": {
+            "minItems": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "radius_scope"
+        ],
+        "properties": {
+          "radius_scope": {
+            "enum": [
+              "none",
+              "unknown"
+            ]
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "radius_scope_evidence",
+          "radius_relationships"
+        ],
+        "properties": {
+          "radius_relationships": {
+            "maxItems": 0
+          }
+        }
+      }
+    }
+  ]
+}

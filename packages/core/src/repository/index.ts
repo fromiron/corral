@@ -7,9 +7,16 @@ import {
   type Clock,
   type CorralDefinition,
   CorralDefinitionDraft,
+  type ImageAttachment,
+  ImageAttachments,
   type NodeLayout,
+  QualityPreset,
+  RunInput,
+  type TextAttachment,
+  UltraSelection,
 } from '@corral/contracts';
 import { z } from 'zod';
+import { validTextAttachments } from '../attachments.ts';
 import { canonicalJson } from '../canonical-json.ts';
 import { definitionHash } from '../definition-hash.ts';
 
@@ -59,6 +66,12 @@ export type SessionEntryState =
   | 'dismissed';
 
 export interface SessionEntry {
+  ultra?: UltraSelection;
+  qualityPreset?: 'default' | 'ultra';
+  images?: ImageAttachment[];
+  attachments?: TextAttachment[];
+  taskScope?: RunInput['taskScope'];
+  verificationScope?: RunInput['verificationScope'];
   entryId: string;
   intent: SessionIntent;
   /** What the person wrote; never changed once saved. */
@@ -77,6 +90,8 @@ export interface SessionEntry {
 }
 
 export const SessionEntryAuto = AutoRoute.pick({
+  ultra: true,
+  qualityPreset: true,
   template: true,
   source: true,
   reason: true,
@@ -135,6 +150,12 @@ export type SessionResult =
     };
 
 export interface NewSessionEntry {
+  ultra?: UltraSelection;
+  qualityPreset?: 'default' | 'ultra';
+  images?: ImageAttachment[];
+  attachments?: TextAttachment[];
+  taskScope?: RunInput['taskScope'];
+  verificationScope?: RunInput['verificationScope'];
   intent: SessionIntent;
   text: string;
   state: SessionEntryState;
@@ -303,9 +324,72 @@ export function planSessionEntry(
 ): SessionResult {
   if (!current)
     return { ok: false, error: 'not_found', message: `Session ${sessionId} does not exist.` };
+  if (
+    entry.images &&
+    (!ImageAttachments.safeParse(entry.images).success || entry.intent !== 'next')
+  )
+    return {
+      ok: false,
+      error: 'invalid',
+      message: 'images require valid immutable references and next intent',
+    };
+  if (entry.attachments && (!validTextAttachments(entry.attachments) || entry.intent !== 'next'))
+    return {
+      ok: false,
+      error: 'invalid',
+      message: 'text attachments require valid immutable content and next intent',
+    };
+  if (
+    !RunInput.pick({ taskScope: true, verificationScope: true }).safeParse({
+      taskScope: entry.taskScope,
+      verificationScope: entry.verificationScope,
+    }).success
+  )
+    return { ok: false, error: 'invalid', message: 'invalid request scope' };
+  if (
+    entry.qualityPreset !== undefined &&
+    (!QualityPreset.safeParse(entry.qualityPreset).success || entry.intent !== 'next')
+  )
+    return { ok: false, error: 'invalid', message: 'quality preset requires a next request' };
   const text = entry.text.trim();
+  if (
+    entry.ultra &&
+    (!UltraSelection.safeParse(entry.ultra).success ||
+      entry.intent !== 'next' ||
+      entry.qualityPreset !== 'ultra')
+  )
+    return {
+      ok: false,
+      error: 'invalid',
+      message: 'Ultra model selection requires an Ultra next request',
+    };
   if (!text || text.length > ENTRY_MAX)
     return { ok: false, error: 'invalid', message: `A request has 1 to ${ENTRY_MAX} characters.` };
+  if (entry.commandId) {
+    const previous = current.entries.find((value) => value.commandId === entry.commandId);
+    if (previous) {
+      const identity = (value: NewSessionEntry) =>
+        canonicalJson({
+          intent: value.intent,
+          text: value.text.trim(),
+          runId: value.runId ?? null,
+          executionId: value.executionId ?? null,
+          attachments: value.attachments ?? [],
+          images: value.images ?? [],
+          qualityPreset: value.qualityPreset ?? null,
+          ...(value.ultra ? { ultra: value.ultra } : {}),
+          taskScope: value.taskScope ?? null,
+          verificationScope: value.verificationScope ?? null,
+        });
+      return identity(previous) === identity(entry)
+        ? { ok: true, session: current }
+        : {
+            ok: false,
+            error: 'invalid',
+            message: 'this request entry was already recorded with different content',
+          };
+    }
+  }
   if (current.entries.length >= ENTRIES_MAX)
     return { ok: false, error: 'invalid', message: 'This session is full; start a new one.' };
   return {
@@ -326,6 +410,16 @@ export function planSessionEntry(
           detail: entry.detail ?? null,
           commandId: entry.commandId ?? null,
           ...(entry.auto ? { auto: entry.auto } : {}),
+          ...(entry.qualityPreset ? { qualityPreset: entry.qualityPreset } : {}),
+          ...(entry.ultra ? { ultra: UltraSelection.parse(entry.ultra) } : {}),
+          ...(entry.taskScope ? { taskScope: entry.taskScope } : {}),
+          ...(entry.verificationScope ? { verificationScope: entry.verificationScope } : {}),
+          ...(entry.attachments?.length
+            ? { attachments: JSON.parse(canonicalJson(entry.attachments)) as TextAttachment[] }
+            : {}),
+          ...(entry.images?.length
+            ? { images: JSON.parse(canonicalJson(entry.images)) as ImageAttachment[] }
+            : {}),
         },
       ],
     },

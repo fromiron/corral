@@ -1,0 +1,77 @@
+{
+  "artifact": "Example product page",
+  "observed": {
+    "layout_grammars": 3,
+    "typeface_families": 2,
+    "type_roles": 8,
+    "accent_colors": 4,
+    "radius_tokens": 5,
+    "shadow_levels": 3,
+    "surface_styles": 6,
+    "primary_cta_styles": 2,
+    "secondary_cta_styles": 3,
+    "motion_patterns": 5,
+    "decorative_image_families": 2
+  },
+  "limits": {
+    "layout_grammars": 1,
+    "typeface_families": 1,
+    "type_roles": 6,
+    "accent_colors": 1,
+    "radius_tokens": 2,
+    "shadow_levels": 1,
+    "surface_styles": 3,
+    "primary_cta_styles": 1,
+    "secondary_cta_styles": 1,
+    "motion_patterns": 2,
+    "decorative_image_families": 0
+  },
+  "radius_scope": "evaluated",
+  "radius_scope_evidence": "Rendered nested surfaces and computed radius tokens were inspected.",
+  "radius_relationships": [
+    {
+      "id": "hero-card-panel",
+      "location": "Hero card > product preview panel",
+      "kind": "shared-contour",
+      "rule": "semantic-step",
+      "outer_token": "radius-20",
+      "inner_token": "radius-20",
+      "token_steps_inward": 0,
+      "evidence_state": "measured",
+      "evidence": "Computed styles use the same 20px radius on both nested contours."
+    },
+    {
+      "id": "dialog-content",
+      "location": "Dialog shell > dialog content surface",
+      "kind": "shared-contour",
+      "rule": "semantic-step",
+      "outer_token": "radius-28",
+      "inner_token": "radius-20",
+      "token_steps_inward": 1,
+      "evidence_state": "measured",
+      "evidence": "The declared semantic scale places radius-20 one step inside radius-28."
+    },
+    {
+      "id": "project-card-image",
+      "location": "Project card > inset image",
+      "kind": "shared-contour",
+      "rule": "concentric-offset",
+      "outer_radius": 20,
+      "inner_radius": 12,
+      "inset": 8,
+      "tolerance": 1,
+      "evidence_state": "measured",
+      "evidence": "Computed pixels show a 20px outer radius and 12px inner radius across an 8px inset."
+    }
+  ],
+  "exceptions": [
+    {
+      "metric": "typeface_families",
+      "reason": "The second family is a monospaced face for code examples.",
+      "evidence": "Code blocks are a primary product-use artifact."
+    }
+  ],
+  "notes": [
+    "Status colors were inventoried separately and are not counted as accents."
+  ]
+}

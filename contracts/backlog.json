@@ -1709,5 +1709,598 @@
     "done": "CR-024 수용 기준과 실제 패키지 UI 검증 통과",
     "status": "implemented",
     "evidence": "docs/change-requests/CR-024-session-auto-team.md"
+  },
+  {
+    "id": "C-088",
+    "phase": "M0",
+    "title": "통합 개선 계약과 기준선 등록",
+    "dependsOn": [
+      "C-087"
+    ],
+    "requirements": [
+      "CRL-DEV-003"
+    ],
+    "files": [
+      "docs/change-requests/",
+      "docs/plans/Corral-Improvement-Execution-Plan-2026-10-19.md",
+      "tools/spec-check/tc-tags.ts",
+      "tools/spec-check/tc-tags.test.ts"
+    ],
+    "done": "CR-025~036과 첫 구현 범위의 추적을 등록하고 기존 자동 시작·세션·파일·하네스 회귀를 확인한다.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/Integrated-Improvement-M0-2026-10-19.md"
+  },
+  {
+    "id": "C-089",
+    "phase": "M0",
+    "title": "기본팩 평가의 비교군과 반복 실행",
+    "dependsOn": [
+      "C-088"
+    ],
+    "requirements": [
+      "CRL-QEVAL-001"
+    ],
+    "files": [
+      "packages/contracts/src/evaluation.ts",
+      "packages/cli/src/exec.ts"
+    ],
+    "done": "올바른 새 비교가 실행되고 기존 비교군 혼합·중복·누락·과도한 실행을 시작 전에 거절한다.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/Integrated-Improvement-M0-2026-10-19.md"
+  },
+  {
+    "id": "C-090",
+    "phase": "M0",
+    "title": "Linux 격리 가능성 검증",
+    "dependsOn": [
+      "C-088"
+    ],
+    "requirements": [
+      "CRL-SBX-001"
+    ],
+    "files": [
+      "tools/sandbox/",
+      "tools/release/sandbox.test.ts"
+    ],
+    "done": "실제 Linux probe와 실패 경계를 확인하고 OS별 미검증 범위를 기록한다.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/Integrated-Improvement-M0-2026-10-19.md"
+  },
+  {
+    "id": "C-091",
+    "phase": "M0",
+    "title": "내장팩 manifest와 참조 무결성",
+    "dependsOn": [
+      "C-088"
+    ],
+    "requirements": [
+      "CRL-BPACK-001"
+    ],
+    "files": [
+      "packages/adapter-pi/test/locked-resources.test.ts",
+      "docs/evaluation/Integrated-Improvement-M0-2026-10-19.md"
+    ],
+    "done": "고정 원본·누락/entry 경계의 검사와 기존 resource loader 재사용 근거를 확보한다.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/Integrated-Improvement-M0-2026-10-19.md"
+  },
+  {
+    "id": "C-092",
+    "phase": "M1",
+    "title": "모든 runtime의 승인된 도구 인자 고정",
+    "dependsOn": [
+      "C-088"
+    ],
+    "requirements": [
+      "CRL-SAFE-001"
+    ],
+    "files": [
+      "packages/core/src/coordinator.ts",
+      "packages/core/test/tool-lifecycle.test.ts"
+    ],
+    "done": "승인 이후 인자 변경에도 승인된 호출만 한 번 실행하고 기존 native descriptor/취소 경계를 유지한다.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/Integrated-Improvement-M0-2026-10-19.md"
+  },
+  {
+    "id": "C-093",
+    "phase": "M1",
+    "title": "구조화 사용자 질문과 공통 대기 조회",
+    "dependsOn": [
+      "C-092"
+    ],
+    "requirements": [
+      "CRL-INPUT-001"
+    ],
+    "files": [
+      "packages/contracts/src/user-input.ts",
+      "packages/core/src/coordinator.ts",
+      "packages/adapter-pi/src/",
+      "packages/react/src/components/",
+      "packages/cli/src/exec.ts"
+    ],
+    "done": "질문 왕복·중복/잘못된 schema·취소·pause·시간 경과·private export 경계와 두 runtime/CLI/UI를 검증한다.",
+    "status": "implemented"
+  },
+  {
+    "id": "C-094",
+    "phase": "M1",
+    "title": "구조화 도구 정책과 호출별 승인",
+    "dependsOn": [
+      "C-092",
+      "C-093"
+    ],
+    "requirements": [
+      "CRL-SAFE-002"
+    ],
+    "files": [
+      "packages/contracts/src/harness.ts",
+      "packages/core/src/coordinator.ts",
+      "packages/core/src/tool-policy.ts",
+      "apps/server/src/harness/service.ts",
+      "apps/studio/src/pages/HarnessSettingsPage.tsx",
+      "packages/react/src/components/ApprovalPanel.tsx"
+    ],
+    "done": "deny/cap/strict 경계·승인 중 descriptor 변경·한 번 실행·기존 check/LSP 승인과 profile revision을 검증한다.",
+    "status": "implemented"
+  },
+  {
+    "id": "C-095",
+    "phase": "M1",
+    "title": "작업 계획과 검증 근거",
+    "dependsOn": [
+      "C-093"
+    ],
+    "requirements": [
+      "CRL-PLAN-001"
+    ],
+    "files": [
+      "packages/contracts/src/work-plan.ts",
+      "packages/core/src/coordinator.ts",
+      "packages/core/src/projection.ts",
+      "packages/adapter-pi/src/",
+      "packages/react/src/components/WorkPlanPanel.tsx"
+    ],
+    "done": "revision 경합·소유권·검증 없는 완료/검증 항목 삭제·stale tree를 거절하고 실제 근거와 계획/Task 완료 구분을 확인한다.",
+    "status": "implemented"
+  },
+  {
+    "id": "C-096",
+    "phase": "M1",
+    "title": "결정적 프롬프트와 실제 전달 기록",
+    "dependsOn": [
+      "C-095"
+    ],
+    "requirements": [
+      "CRL-PROMPT-001"
+    ],
+    "files": [
+      "packages/adapter-pi/src/worker-tools.ts",
+      "packages/adapter-pi/src/worker.ts",
+      "packages/adapter-pi/src/sdk-worker.ts",
+      "packages/core/src/coordinator.ts"
+    ],
+    "done": "필수 프롬프트·콘텐츠 hash·명시 바인딩·두 runtime의 실제 전달/실패 경계와 기존 회귀를 검증한다.",
+    "status": "implemented"
+  },
+  {
+    "id": "C-097",
+    "phase": "M1",
+    "title": "Core/Coding/leeskills 내장 콘텐츠와 명시 선택",
+    "dependsOn": [
+      "C-091",
+      "C-096"
+    ],
+    "requirements": [
+      "CRL-BPACK-002"
+    ],
+    "files": [
+      "apps/server/resources/builtin/",
+      "apps/server/src/harness/",
+      "apps/studio/src/workbench/harness/ResourceEditor.tsx"
+    ],
+    "done": "필수 프롬프트·콘텐츠 hash·명시 바인딩·두 runtime의 실제 전달/실패 경계와 기존 회귀를 검증한다.",
+    "status": "implemented"
+  },
+  {
+    "id": "C-098",
+    "phase": "M1",
+    "title": "텍스트 첨부와 요청 단위 대화",
+    "dependsOn": [
+      "C-093",
+      "C-095",
+      "C-097"
+    ],
+    "requirements": [
+      "CRL-CHAT-001"
+    ],
+    "files": [
+      "packages/contracts/src/commands.ts",
+      "packages/core/src/coordinator.ts",
+      "apps/studio/src/pages/SessionPage.tsx",
+      "apps/studio/src/workbench/ChatView.tsx",
+      "apps/studio/src/workbench/sessionDraft.ts"
+    ],
+    "done": "MIME/UTF-8/크기/개수/hash·취소/재시도·초안 revision·소유 Run과 대화 위치·IME를 기존 사용자 흐름에서 검증한다.",
+    "status": "implemented"
+  },
+  {
+    "id": "C-099",
+    "phase": "M1",
+    "title": "TaskBrief와 명시적인 검토 범위",
+    "dependsOn": [
+      "C-096",
+      "C-098"
+    ],
+    "requirements": [
+      "CRL-PROMPT-002"
+    ],
+    "files": [
+      "packages/contracts/src/definition.ts",
+      "packages/contracts/src/ports.ts",
+      "packages/core/src/coordinator.ts",
+      "packages/core/src/auto-team.ts",
+      "apps/server/src/app.ts",
+      "apps/studio/src/pages/SessionPage.tsx"
+    ],
+    "done": "검토 전용 파일 쓰기/native 시작 거절과 명시 범위의 snapshot/프롬프트/UI/재시도 연결을 검증한다.",
+    "status": "implemented"
+  },
+  {
+    "id": "C-100",
+    "phase": "M1",
+    "title": "실행별 변경 요약과 긴 대화 위치 보존",
+    "dependsOn": [
+      "C-098",
+      "C-099"
+    ],
+    "requirements": [
+      "CRL-CHAT-002"
+    ],
+    "files": [
+      "apps/studio/src/workbench/ChatView.tsx",
+      "apps/studio/src/pages/SessionPage.tsx"
+    ],
+    "done": "고정 tree 요약과 1000개 요청에서 제한된 DOM, 설정 왕복 앵커, 입력 focus 및 기존 파일 회귀를 검증한다.",
+    "status": "implemented"
+  },
+  {
+    "id": "C-101",
+    "phase": "M2",
+    "title": "파일 체크포인트와 보존·안전 복구",
+    "dependsOn": [
+      "C-100"
+    ],
+    "requirements": [
+      "CRL-CKPT-001"
+    ],
+    "files": [
+      "apps/server/src/files/service.ts",
+      "packages/storage-sqlite/src/database.ts",
+      "apps/server/src/app.ts",
+      "packages/core/src/coordinator.ts",
+      "packages/client/src/index.ts",
+      "apps/studio/src/pages/FilesViews.tsx"
+    ],
+    "done": "생성/복구 전 보존·수정 충돌·중단·pin/GC·기존 파일 회귀를 확인한다.",
+    "status": "implemented"
+  },
+  {
+    "id": "C-102",
+    "phase": "M2",
+    "title": "네 실행 상태 요약과 컨텍스트 계측",
+    "dependsOn": [
+      "C-101"
+    ],
+    "requirements": [
+      "CRL-STATUS-001"
+    ],
+    "files": [
+      "apps/studio/src/pages/RunPage.tsx",
+      "apps/studio/src/workbench/RunStatusCards.tsx",
+      "packages/adapter-pi/src/request-record.ts",
+      "apps/server/src/models/registry.ts"
+    ],
+    "done": "실제 요청 추정 기록과 알려지지 않은 값 표시, 동일 실행 Reins/검토 연결 및 기존 비용 회귀를 검증한다.",
+    "status": "implemented"
+  },
+  {
+    "id": "C-103",
+    "phase": "M2",
+    "title": "디자인 보고서와 선호 출처·호출 템플릿",
+    "dependsOn": [
+      "C-102"
+    ],
+    "requirements": [
+      "CRL-DESIGN-001"
+    ],
+    "files": [
+      "packages/contracts/src/review.ts",
+      "packages/core/src/design-review.ts",
+      "packages/core/src/coordinator.ts",
+      "packages/react/src/components/ArtifactViewer.tsx",
+      "apps/studio/src/pages/SessionPage.tsx"
+    ],
+    "done": "targeted→release 승격·가짜 선호/근거 거절, 보고서 링크와 입력 템플릿을 기존 리뷰 회귀에서 확인한다.",
+    "status": "implemented"
+  },
+  {
+    "id": "C-104",
+    "phase": "M2",
+    "title": "소유 로컬 브라우저 검증 recipe",
+    "dependsOn": [
+      "C-103"
+    ],
+    "requirements": [
+      "CRL-BROWSER-001"
+    ],
+    "files": [
+      "packages/contracts/src/project-tools.ts",
+      "packages/adapter-pi/src/mcp-transport.ts",
+      "packages/adapter-pi/src/browser-launcher.ts",
+      "apps/server/src/harness/mcp-service.ts",
+      "apps/studio/src/workbench/harness/McpEditor.tsx"
+    ],
+    "done": "실제 고정 MCP/브라우저 fixture의 정상·실패·취소·자식 종료와 금지 도구/origin 거절을 확인한다.",
+    "status": "implemented"
+  },
+  {
+    "id": "C-105",
+    "phase": "M2",
+    "title": "Skill 선택·읽기·전달과 검증 평가 지표",
+    "dependsOn": [
+      "C-104"
+    ],
+    "requirements": [
+      "CRL-QEVAL-002"
+    ],
+    "files": [
+      "packages/contracts/src/evaluation.ts",
+      "packages/contracts/src/harness.ts",
+      "packages/core/src/coordinator.ts",
+      "packages/adapter-pi/src/sdk-worker.ts",
+      "packages/cli/src/exec.ts"
+    ],
+    "done": "누락/불필요 전달·중복 이벤트·unknown 사용량·고정 기대 품질을 deterministic suite로 검증한다.",
+    "status": "implemented"
+  },
+  {
+    "id": "C-106",
+    "phase": "M2",
+    "title": "이미지 첨부와 모델 capability·실제 전달",
+    "dependsOn": [
+      "C-105"
+    ],
+    "requirements": [
+      "CRL-IMAGE-001"
+    ],
+    "files": [
+      "packages/contracts/src/attachments.ts",
+      "packages/core/src/coordinator.ts",
+      "packages/core/src/history.ts",
+      "apps/server/src/images.ts",
+      "packages/adapter-pi/src/worker.ts",
+      "packages/adapter-pi/src/sdk-worker.ts",
+      "apps/studio/src/workbench/ImageAttachments.tsx"
+    ],
+    "done": "업로드/재시도/초안/세션 소유권과 변조/지원 불명 모델 거절, private export 및 실제 요청 전달을 검증한다.",
+    "status": "implemented"
+  },
+  {
+    "id": "C-107",
+    "phase": "M3",
+    "title": "Linux worker OS 격리와 host 모델 broker",
+    "dependsOn": [
+      "C-106"
+    ],
+    "requirements": [
+      "CRL-SBX-002"
+    ],
+    "files": [
+      "packages/adapter-pi/src/sandbox-channel.ts",
+      "packages/adapter-pi/src/model-bridge.ts",
+      "apps/server/src/live-models.ts",
+      "apps/server/src/models/registry.ts",
+      "apps/studio/src/pages/ModelConfigEditor.tsx"
+    ],
+    "done": "실제 OS 파일/network/IPC/후손 종료와 credential 없는 worker의 단일 permit provider 전달·실패/취소를 검증한다.",
+    "status": "implemented"
+  },
+  {
+    "id": "C-108",
+    "phase": "M3",
+    "title": "정확한 변경 조각 선택과 원본 반영·사본 되돌리기",
+    "dependsOn": [
+      "C-107"
+    ],
+    "requirements": [
+      "CRL-HUNK-001"
+    ],
+    "files": [
+      "packages/contracts/src/checkpoints.ts",
+      "apps/server/src/files/service.ts",
+      "apps/server/src/files/review.ts",
+      "apps/server/src/app.ts",
+      "apps/studio/src/pages/ReviewPage.tsx"
+    ],
+    "done": "from/to·patch/file hash·lease와 대상별 복구 전 checkpoint로 선택 변경만 반영하고 사용자 수정·symlink·중단을 보호한다.",
+    "status": "implemented"
+  },
+  {
+    "id": "C-109",
+    "phase": "M3",
+    "title": "보호 컨텍스트와 안전한 SDK 압축 요청",
+    "dependsOn": [
+      "C-108"
+    ],
+    "requirements": [
+      "CRL-COMPACT-001"
+    ],
+    "files": [
+      "packages/contracts/src/commands.ts",
+      "packages/contracts/src/harness.ts",
+      "packages/core/src/coordinator.ts",
+      "packages/adapter-pi/src/sdk-worker.ts",
+      "packages/adapter-pi/src/worker.ts",
+      "apps/studio/src/workbench/RunStatusCards.tsx"
+    ],
+    "done": "계획/질문/지시/기준/리소스 보호와 요청별 예산, 안전 경계·실패·취소·중복 처리를 검증한다.",
+    "status": "implemented"
+  },
+  {
+    "id": "C-110",
+    "phase": "M3",
+    "title": "불변 실행 checkpoint와 검증된 새 Run 이어하기",
+    "dependsOn": [
+      "C-109"
+    ],
+    "requirements": [
+      "CRL-RESUME-001"
+    ],
+    "files": [
+      "packages/contracts/src/runtime-checkpoints.ts",
+      "packages/core/src/coordinator.ts",
+      "packages/core/src/history.ts",
+      "packages/adapter-pi/src/worker.ts",
+      "packages/adapter-pi/src/sdk-worker.ts",
+      "apps/server/src/files/service.ts",
+      "apps/server/src/app.ts",
+      "apps/studio/src/workbench/RunStatusCards.tsx"
+    ],
+    "done": "cold restart 뒤 원래 terminal 상태와 새 lineage, current tree/resource/usage/unknown effects 거절, 신규 permit/read ledger 및 실제 메시지 복원을 검증한다.",
+    "status": "implemented"
+  },
+  {
+    "id": "C-111",
+    "phase": "M3",
+    "title": "세션 검색·작업 탭·메시지 분기",
+    "dependsOn": [
+      "C-110"
+    ],
+    "requirements": [
+      "CRL-CONTINUITY-001"
+    ],
+    "files": [
+      "apps/server/src/session-search.ts",
+      "apps/studio/src/workbench/Sidebar.tsx",
+      "apps/studio/src/workbench/SessionTabs.tsx",
+      "apps/server/src/app.ts",
+      "packages/core/src/coordinator.ts"
+    ],
+    "done": "다국어 private 검색·보관/삭제·재색인, 초안/URL 보존, 선택 지점 뒤 정보 배제와 새 파일 사본/lineage를 확인한다.",
+    "status": "implemented"
+  },
+  {
+    "id": "C-112",
+    "phase": "M3",
+    "title": "웹 본문 추출·불변 수집 근거와 승인 fixture 검증",
+    "dependsOn": [
+      "C-111"
+    ],
+    "requirements": [
+      "CRL-WEB-001"
+    ],
+    "files": [
+      "apps/server/src/safe-http.ts",
+      "apps/server/src/inputs.ts",
+      "apps/server/src/web-extraction.ts",
+      "packages/storage-sqlite/src/database.ts",
+      "packages/adapter-pi/test/browser.test.ts"
+    ],
+    "done": "HTML 원문/본문/version/time/hash 고정과 기존 URL/DNS/MIME/취소 경계, 승인한 로컬 browser fixture의 소유권·assertion을 검증한다.",
+    "status": "implemented"
+  },
+  {
+    "id": "C-113",
+    "phase": "M4",
+    "title": "명시 Ultra 기본 프리셋과 제한된 검토 수정",
+    "dependsOn": [
+      "C-112"
+    ],
+    "requirements": [
+      "CRL-ULTRA-001"
+    ],
+    "files": [
+      "packages/core/src/auto-team.ts",
+      "packages/core/src/coordinator.ts",
+      "apps/studio/src/pages/SessionPage.tsx"
+    ],
+    "done": "고정 팀·read-only 검토·수정 최대 2회·default 및 예산/권한 보존과 동일 과제 결정적 비교를 확인한다.",
+    "status": "implemented"
+  },
+  {
+    "id": "C-114",
+    "phase": "M4",
+    "title": "격리 후보 비교·예산 예약·명시 단일 승격",
+    "dependsOn": [
+      "C-113"
+    ],
+    "requirements": [
+      "CRL-ULTRA-002"
+    ],
+    "files": [
+      "packages/core/src/coordinator.ts",
+      "packages/core/src/candidate-budget.ts",
+      "apps/server/src/files/service.ts",
+      "packages/storage-sqlite/src/database.ts",
+      "apps/studio/src/pages/SessionPage.tsx"
+    ],
+    "done": "후보 최대5/동시3, 사본/검사/취소 소유권, 80% admission과 마무리 예약, 전원 실패 및 정확한 후보 단일 승격을 확인한다.",
+    "status": "planned"
+  },
+  {
+    "id": "C-118",
+    "phase": "M4",
+    "title": "복수 LLM Ultra 협업과 provider별 최대 추론",
+    "dependsOn": [
+      "C-113"
+    ],
+    "requirements": [
+      "CRL-ULTRA-003"
+    ],
+    "files": [
+      "packages/core/src/auto-team.ts",
+      "packages/core/src/coordinator.ts",
+      "packages/adapter-pi/src/reasoning.ts",
+      "apps/studio/src/pages/SessionPage.tsx"
+    ],
+    "done": "명시 모델 배정·필수 교차 검토·제한된 병렬 위임·최대 추론 wire와 공유 예산·취소를 검증하고 UI/API/CLI 및 과거 snapshot을 보존한다.",
+    "status": "planned"
+  },
+  {
+    "id": "C-119",
+    "phase": "M4",
+    "title": "컴포저 실행 메뉴와 독립 모델·추론 선택",
+    "dependsOn": [
+      "C-118"
+    ],
+    "requirements": [
+      "CRL-COMPOSER-001"
+    ],
+    "files": [
+      "apps/studio/src/pages/SessionPage.tsx",
+      "apps/studio/src/workbench/TextAttachments.tsx"
+    ],
+    "done": "메뉴·첨부 초안·모델/노력 독립성과 저장 경쟁 및 기존 전송 계약을 확인한다.",
+    "status": "implemented"
+  },
+  {
+    "id": "C-120",
+    "phase": "M4",
+    "title": "프로필별 컨텍스트·압축 설정과 Run snapshot",
+    "dependsOn": [
+      "C-118"
+    ],
+    "requirements": [
+      "CRL-CONTEXT-001"
+    ],
+    "files": [
+      "packages/core/src/config.ts",
+      "apps/server/src/models/registry.ts",
+      "packages/adapter-pi/src/sdk-worker.ts",
+      "apps/studio/src/pages/ModelConfigEditor.tsx"
+    ],
+    "done": "설정/해석/원자 저장·Run 고정·버전별 worker 전달·Pi 임계 및 permit 정책·UI 경고/보존을 확인한다.",
+    "status": "implemented"
   }
 ]

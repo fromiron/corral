@@ -300,3 +300,50 @@ Electron은 창·OS 대화상자·서버 수명을 소유한다. 서버와 Pi wo
 **검증:** 정상·출력 초과·비협조적인 공급자의 시간 초과·중단 후 사용량·재전송 충돌·한도 patch·파일 기준·기록 roundtrip을 결정적으로 검사한다. 실제 모델 검토 팀의 종료와 private 기록 조회는 별도 opt-in과 요청 상한으로 검증한다.
 
 ADR-031 보완(2026-10-18): 불명확한 시작은 최초 요청 전체를 재전송한다. 시작 전 명시 취소는 기존 명령 저장소에 세션 범위로 영구 기록하고, 파일 도구 허용과 기준 트리는 같은 실행 직전 상태에서 결정한다. 시간 제한 메모리 fence로 취소를 확정하지 않는다.
+
+## ADR-032: 개선 평가와 실행 기능을 기존 경로에 단계적으로 연결한다
+
+**상태:** 채택 (2026-10-19, [통합 실행 계획](plans/Corral-Improvement-Execution-Plan-2026-10-19.md), CR-025~036 순차 구현 요청).
+
+기존 Coordinator/Pi/SQLite·명령/receipt·리소스·파일 broker를 유지한다. 공통 대기는 projection, TaskBrief는 기존 입력/기준의 투영으로 시작한다. 첫 배포는 대화·질문/계획·읽기 전용 diff·기본팩 선택이며 복구/hunk는 checkpoint 뒤에 연결한다. D&D와 Reins는 기존 회귀로 계속 검증한다.
+
+`corral eval`의 `personal_harness` 비교군을 유지하고 `skill_quality`를 별도 종류로 추가한다. baseline과 필요한 비교군만 선택하며 반복 횟수와 총 case 상한을 검증한다. 각 반복은 독립 작업 사본을 사용하고 calibration/holdout 및 mock/live 근거를 구별한다. 평가 이름만으로 해당 Skill이 실제 전달됐거나 품질이 향상됐다고 판단하지 않는다.
+
+사용자 요청에 따라 새로운 사용자 동작·데이터/권한 경계의 핵심 실패를 먼저 확인하고 기존 시험을 우선 확장한다. 단순 문구/구조 변경이나 구현 내부를 따라가는 테스트는 추가하지 않는다. OS PoC와 콘텐츠 검사도 제품 지원/실모델 품질과 구별한다.
+
+## ADR-033: 격리 worker의 모델 네트워크는 host permit으로만 연다
+
+CR-025 C-107. network namespace를 host와 공유하는 proxy는 격리로 표시하지 않는다. Linux bubblewrap 안에는 애플리케이션 runtime과 바인딩된 콘텐츠만 읽기 전용으로 보인다. 자격 증명은 host에 남으며 host Pi provider가 고정 모델·출력 상한·reasoning permit으로 스트림을 연다. 기존 request/payload 기록은 같은 IPC를 통해 확인한 다음 HTTP 전송한다. provider URL이나 임의 headers, payload 수정은 worker 권한이 아니다. profile opt-in이므로 기존 snapshot을 재해석하지 않으며, 미지원 native 기능은 실패하고 fallback하지 않는다.
+
+
+## ADR-034: 후보 비교는 Coordinator의 고정 recipe, 실행·파일·검증 소유권은 명시한다
+
+**Upstream 근거:** Bell의 후속 요청으로 [Pi/OMP/pi-subagents/Codex/Claude Code/DeepSeek 비교](spikes/Ultra-Upstream-Harness-Review-2026-10-19.md)를 추가했다. 기존 Corral 병렬 execution을 재사용하며, 자식 준비 전 용량 예약·정확한 실행 회차의 취소·시작한 효과의 정리 대기·사본 실패 시 보존 원칙을 적용한다. Pi 플러그인은 금지하지 않지만 외부 runner가 Corral의 예산/권한 경계를 대체할 수 있다고 가정하지 않는다.
+
+**상태:** 채택 (2026-10-19, CR-031 C-114). 사용자 지정 [Oracle 세션](https://chatgpt.com/g/g-p-6ad1f206e5ec8191904cfee1105213e3-corral/c/6ad4cfb8-3fe0-83ec-9099-aa745252231f)의 Pro/최대 파워에서 구조 설명을 바탕으로 교차 검토했다. 이 의견은 미푸시 코드를 직접 검사한 증거가 아니다.
+
+일반 GraphRunner와 모델용 협업 도구는 변경하지 않는다. 후보 비교의 고정 recipe가 실행 구조이며 기존 definition은 역할·도구의 원본이라는 사실을 별도로 기록한다. Coordinator의 prepareExecution→commit→launch와 기존 settlement/취소/예산/lease를 사용한다. execution→candidate→workspace는 durable binding이며 worker 인자로 사본을 선택하지 않는다. scope가 빠진 Run 단독 파일 조회는 후보 실행에서 fallback하지 않는다.
+
+planner는 한 번, 후보들은 동일 기준/계획을 사용한다. 후보 작성 후 host 전용의 격리된 등록 검사 효과와 유효한 동일 대상 review pass가 모두 있어야 선택할 수 있다. 검증 미지원/불확정은 사람의 선택으로 우회하지 못한다. 모든 후보 종료 후 하나를 명시 선택하고 최종 검사→관리 사본 승격을 수행한다. 원본 반영/commit/push는 포함하지 않는다.
+
+예산은 기존 Run 원장을 사용한다. planner 전에 마무리 2회 capped 요청을 총상한 안에서 보호하며, 80% 기준에는 사용/예약/unknown과 마무리 hold 및 신규 요청 상한을 포함한다. draining 진입은 되돌리지 않는다. 후보 준비/대기열 재개와 실제 permit 발급 직전 모두 검사한다. final 단계는 후보 신규 실행을 닫고 hold를 실제 요청 예약으로 전환한다. 비용 표시는 금액 hard cap이라는 보장이 아니다.
+
+worker의 check/LSP 금지는 유지한다. 등록 검사 runner를 host 소유 후보 scope와 OS 격리로 실행하며 검증용 고정 tree 사본과 임시 쓰기 공간을 사용한다. 검증 경로 없는 환경에서는 planner 비용을 쓰기 전에 비교 실행을 거절한다. crash/unknown/late 결과는 자동 재실행/승격하지 않고 기존 복구 원장을 보존한다.
+
+## ADR-035: Ultra의 기본은 모델 pool을 고정한 협업이며 최대 추론은 별도 해석한다
+
+Bell의 2026-10-19 목표 명확화와 [Oracle 재검토](spikes/Ultra-Multi-Provider-Oracle-2026-10-19.md)에 따른다. C113의 단일 모델 snapshot은 보존한다. 새 versioned Ultra는 기존 profile과 그래프/위임으로 복수 LLM을 배정하고 다른 모델의 검토를 필수로 둔다. 모델별 최대 지원 추론을 실제 Pi wire에서 확인하며 generic ultra enum을 provider에 보내지 않는다. 승인된 pool과 전송 범위 밖 fallback, 출력 한도의 조용한 증가, 검증 생략 성공은 허용하지 않는다. C114의 후보 복제/승격은 선택적 별도 전략이다. 새 하네스 의존성은 추가하지 않는다.
+
+첫 협업 버전은 기존 review recipe의 optional 준비 단계를 사용한다. writer→synthesizer→다른 모델 reviewer 순서를 정적으로 고정하고 최종 output은 검토한 종합본만 참조한다. 최대 2개 선택 보조 에이전트는 기존 spawn/await/settlement 경로를 사용하며 파일 도구나 재위임 권한이 없다. 필수 단계의 최소 capped 호출 여유와 80% draining 상태는 기존 Run 예산에서 계산한다. 별도 예산 원장이나 실행 scheduler는 추가하지 않는다. 코딩 검사의 격리 실행과 다른 provider 확대는 별도 후속 단계이며, 현재 모델 verdict로 프로젝트 테스트 통과를 주장하지 않는다.
+
+다른 provider도 [Pi 호환 기준](spikes/Pi-Provider-Compatibility-2026-10-19.md)에 따라 Pi의 공개 모델 metadata와 실제 serializer를 우선한다. 회사별 하드코딩으로 effort 체계를 통일하지 않으며 API/인증 계열별로 conformance를 확인한다. fingerprint는 Pi compat와 모델 출력 한도 변화까지 감지한다. 아직 검증되지 않은 계열을 단순 metadata 노출만으로 Ultra 지원 완료라고 표시하지 않는다.
+
+## ADR-036: 프로필 컨텍스트는 공통 해석 후 Run에 고정한다
+
+**상태:** 채택 (2026-10-19, CR-037, Bell의 설정·런타임 전체 구현 요청).
+
+프로필 override와 endpoint 원본 명시값을 정규화 fallback과 구분한다. 같은 provider/model의 카탈로그만 참조하며 Pi 1.3.0 기본 reserve/keep 값을 바꾸지 않는다. 명시 정책은 관계를 검증하고, 기존 무설정 경로는 경고와 함께 보존한다. 설정 편집은 초안 원본 revision으로 원자 저장하며 다른 설정 변경에 자동 재기준하지 않는다.
+
+자동 선택 최초 호출 전에 모델별 정책을 준비하고 Coordinator snapshot에 기록한다. 후속 역할과 지원 재개는 이 정책을 사용한다. 복구는 현재 provider/model/auth/endpoint/추론 바인딩을 계속 검증하며, 과거 정책 부재도 그대로 보존한다. 기존 Reins의 명시 모델 교체는 유지하되 같은 바인딩의 컨텍스트 설정 변경을 실행 중 적용하는 경로로 사용하지 않는다.
+
+Pi SDK는 카탈로그 복사본과 proxy 모델에 같은 컨텍스트를 적용하고 SettingsManager의 compaction 값만 추가한다. Pi core는 컨텍스트만 적용하며 압축 미지원을 화면에 명시한다. IPC는 core 5 / SDK 6으로 올려 구버전 혼용을 거절한다. 기존 purpose/permit/예산/취소 경로와 최종 요약 출력 cap 우선순위는 유지한다. 새 의존성이나 압축 알고리즘 복제는 추가하지 않는다.

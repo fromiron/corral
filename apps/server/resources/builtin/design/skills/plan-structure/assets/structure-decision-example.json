@@ -1,0 +1,40 @@
+{
+  "primary_user": "Hiring manager",
+  "primary_task": "Compare relevant project experience and find a contact path",
+  "dominant_grammar": "portfolio-index",
+  "organizing_key": "project",
+  "content_sequence": [
+    "Name and current role",
+    "Project rows with year, role, scope, and artifact",
+    "Concise experience ledger",
+    "Contact"
+  ],
+  "navigation": {
+    "mode": "anchor",
+    "items": [
+      "Work",
+      "Experience",
+      "Contact"
+    ]
+  },
+  "responsive_reflow": [
+    "Keep project name before metadata",
+    "Stack year, role, and scope below the name",
+    "Place the artifact after its text alternative and caption"
+  ],
+  "growth_test": "Fifty projects remain one filterable index using the same record schema.",
+  "rejected_patterns": [
+    {
+      "pattern": "chronological-ledger",
+      "reason": "Time is secondary to comparing project relevance."
+    },
+    {
+      "pattern": "product-service",
+      "reason": "The artifact is not selling one standardized service."
+    }
+  ],
+  "hybrid_justification": null,
+  "unknowns": [
+    "Whether project confidentiality requires anonymized names"
+  ]
+}

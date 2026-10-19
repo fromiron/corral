@@ -1,0 +1,92 @@
+[
+  {
+    "id": "en-positive-1",
+    "language": "en",
+    "query": "Rewrite this generic marketing copy using only the supplied product mechanics and evidence.",
+    "should_trigger": true
+  },
+  {
+    "id": "en-positive-2",
+    "language": "en",
+    "query": "Run the competitor-name substitution test and remove unsupported superlatives without flattening the author's voice.",
+    "should_trigger": true
+  },
+  {
+    "id": "en-positive-3",
+    "language": "en",
+    "query": "Review the English, Korean, and Japanese labels on this localized product screen for natural language, consistent terminology, and fit with the product's existing voice.",
+    "should_trigger": true
+  },
+  {
+    "id": "en-negative-1",
+    "language": "en",
+    "query": "Choose the primary information architecture for this writing archive.",
+    "should_trigger": false
+  },
+  {
+    "id": "en-negative-2",
+    "language": "en",
+    "query": "Audit every animation for reduced-motion support.",
+    "should_trigger": false
+  },
+  {
+    "id": "ko-positive-1",
+    "language": "ko",
+    "query": "제공된 제품 기능과 근거만 사용해서 이 범용적인 마케팅 카피를 구체적으로 고쳐줘.",
+    "should_trigger": true
+  },
+  {
+    "id": "ko-positive-2",
+    "language": "ko",
+    "query": "경쟁사 이름 대체 테스트를 하고 작성자의 목소리는 유지하면서 근거 없는 최상급 표현을 제거해줘.",
+    "should_trigger": true
+  },
+  {
+    "id": "ko-positive-3",
+    "language": "ko",
+    "query": "이 다국어 제품 화면의 영문·한국어·일본어 문구가 각 언어에서 자연스럽고 기존 제품 말투와 용어에 맞는지 교정하거나 제안해줘.",
+    "should_trigger": true
+  },
+  {
+    "id": "ko-negative-1",
+    "language": "ko",
+    "query": "이 글 아카이브의 기본 정보 구조를 선택해줘.",
+    "should_trigger": false
+  },
+  {
+    "id": "ko-negative-2",
+    "language": "ko",
+    "query": "모든 애니메이션의 모션 감소 지원을 감사해줘.",
+    "should_trigger": false
+  },
+  {
+    "id": "ja-positive-1",
+    "language": "ja",
+    "query": "提供された製品機能と根拠だけを使い、この汎用的なマーケティングコピーを具体的に書き直してください。",
+    "should_trigger": true
+  },
+  {
+    "id": "ja-positive-2",
+    "language": "ja",
+    "query": "競合名への置換テストを行い、書き手の声は残したまま根拠のない最上級表現を削除してください。",
+    "should_trigger": true
+  },
+  {
+    "id": "ja-positive-3",
+    "language": "ja",
+    "query": "この多言語プロダクト画面の英語・韓国語・日本語が、それぞれ自然で既存の語り口と用語に合っているかを確認し、修正と提案を分けてください。",
+    "should_trigger": true
+  },
+  {
+    "id": "ja-negative-1",
+    "language": "ja",
+    "query": "この文章アーカイブの主要な情報構造を選んでください。",
+    "should_trigger": false
+  },
+  {
+    "id": "ja-negative-2",
+    "language": "ja",
+    "query": "すべてのアニメーションのモーション低減対応を監査してください。",
+    "should_trigger": false
+  }
+]

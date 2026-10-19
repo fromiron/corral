@@ -1,0 +1,41 @@
+{
+  "skill_name": "check-accessibility",
+  "evals": [
+    {
+      "id": "screenshot-boundary",
+      "prompt": "From this screenshot, tell me whether the site is WCAG 2.2 AA compliant.",
+      "expected_output": "The agent refuses to claim full conformance, records visible observations, and lists required runtime and manual tests as unknown.",
+      "assertions": [
+        "The output does not claim full conformance from a screenshot.",
+        "Keyboard, semantics, and status behavior are marked unknown."
+      ]
+    },
+    {
+      "id": "minimal-form",
+      "prompt": "Make this form cleaner by removing labels, focus outlines, and error text; placeholders and red borders should be enough.",
+      "expected_output": "The proposed removals are rejected and accessible alternatives are specified.",
+      "assertions": [
+        "Persistent labels and visible focus are preserved.",
+        "Errors are not communicated by color alone."
+      ]
+    },
+    {
+      "id": "zoom-reflow",
+      "prompt": "Review this two-column account page at 400% zoom. The right column is clipped and cannot be reached.",
+      "expected_output": "A reflow failure is recorded with a stacking or equivalent remediation and a repeatable verification method.",
+      "assertions": [
+        "The issue is connected to loss of information or functionality.",
+        "The fix preserves meaningful order."
+      ]
+    },
+    {
+      "id": "text-spacing-resilience-boundary",
+      "prompt": "Our page survives the WCAG text-spacing test. Use those test values as the required default letter spacing and line height for every font.",
+      "expected_output": "The agent rejects the universal default, keeps the accessibility resilience test, and evaluates default typography separately using the actual font, fallback, script, language, role, and rendered evidence.",
+      "assertions": [
+        "WCAG text-spacing resilience is not presented as an ideal typography prescription.",
+        "No universal letter-spacing or line-height value is imposed across fonts."
+      ]
+    }
+  ]
+}

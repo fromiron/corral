@@ -1,6 +1,6 @@
 import {
-  ENDPOINT_DEFAULTS,
   type EndpointSpec,
+  endpointModelDefaults,
   endpointProvider,
   KEYLESS_PLACEHOLDER,
 } from '@corral/adapter-pi';
@@ -20,6 +20,8 @@ export interface Endpoint {
   origin: string;
   /** host[:port] for display; no path, no key. */
   host: string;
+  /** Only user-specified values, before endpoint defaults are filled in. */
+  contextWindows?: ReadonlyMap<string, number>;
 }
 
 export function endpointsFrom(configs: readonly ModelProviderConfig[] = []): Map<string, Endpoint> {
@@ -30,15 +32,33 @@ export function endpointsFrom(configs: readonly ModelProviderConfig[] = []): Map
         name: config.name,
         baseUrl: config.baseUrl,
         keyless: config.access === 'none',
-        models: config.models.map((m) => ({
-          id: m.id,
-          ...(m.name ? { name: m.name } : {}),
-          contextWindow: m.contextWindow ?? ENDPOINT_DEFAULTS.contextWindow,
-          maxOutput: m.maxOutput ?? ENDPOINT_DEFAULTS.maxOutput,
-          reasoning: m.reasoning ?? false,
-        })),
+        models: config.models.map((m) => {
+          const defaults = endpointModelDefaults(config.baseUrl, m.id);
+          const imageInput = m.imageInput ?? defaults.imageInput;
+          return {
+            id: m.id,
+            ...(m.name ? { name: m.name } : {}),
+            contextWindow: m.contextWindow ?? defaults.contextWindow,
+            maxOutput: m.maxOutput ?? defaults.maxOutput,
+            reasoning: m.reasoning ?? defaults.reasoning,
+            ...(imageInput !== undefined ? { imageInput } : {}),
+          };
+        }),
       };
-      return [config.id, { providerId: config.id, spec, origin: url.origin, host: url.host }];
+      return [
+        config.id,
+        {
+          providerId: config.id,
+          spec,
+          origin: url.origin,
+          host: url.host,
+          contextWindows: new Map(
+            config.models.flatMap((model) =>
+              model.contextWindow === undefined ? [] : [[model.id, model.contextWindow]],
+            ),
+          ),
+        },
+      ];
     }),
   );
 }

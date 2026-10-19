@@ -1,0 +1,74 @@
+[
+  {
+    "id": "en-positive-1",
+    "language": "en",
+    "query": "Audit every animation and decide whether to keep, reduce, replace, or remove it with a static equivalent.",
+    "should_trigger": true
+  },
+  {
+    "id": "en-positive-2",
+    "language": "en",
+    "query": "Remove scroll hijacking and define reduced-motion behavior without losing state feedback.",
+    "should_trigger": true
+  },
+  {
+    "id": "en-negative-1",
+    "language": "en",
+    "query": "Rewrite the hero copy so it is less generic and more evidence-backed.",
+    "should_trigger": false
+  },
+  {
+    "id": "en-negative-2",
+    "language": "en",
+    "query": "Identify which customer logos are unsupported by the source material.",
+    "should_trigger": false
+  },
+  {
+    "id": "ko-positive-1",
+    "language": "ko",
+    "query": "모든 애니메이션을 감사하고 정적 대안을 포함해 유지·축소·대체·제거 중 하나로 결정해줘.",
+    "should_trigger": true
+  },
+  {
+    "id": "ko-positive-2",
+    "language": "ko",
+    "query": "상태 피드백은 보존하면서 스크롤 하이재킹을 제거하고 모션 감소 동작을 정의해줘.",
+    "should_trigger": true
+  },
+  {
+    "id": "ko-negative-1",
+    "language": "ko",
+    "query": "히어로 카피를 덜 범용적이고 근거 중심으로 고쳐줘.",
+    "should_trigger": false
+  },
+  {
+    "id": "ko-negative-2",
+    "language": "ko",
+    "query": "출처 자료로 확인되지 않는 고객 로고를 찾아줘.",
+    "should_trigger": false
+  },
+  {
+    "id": "ja-positive-1",
+    "language": "ja",
+    "query": "すべてのアニメーションを監査し、静的な代替も含めて維持・低減・置換・削除を決めてください。",
+    "should_trigger": true
+  },
+  {
+    "id": "ja-positive-2",
+    "language": "ja",
+    "query": "状態フィードバックを残したままスクロールジャックを廃止し、モーション低減時の動作を定義してください。",
+    "should_trigger": true
+  },
+  {
+    "id": "ja-negative-1",
+    "language": "ja",
+    "query": "ヒーローコピーを、より具体的で根拠のある文章に書き直してください。",
+    "should_trigger": false
+  },
+  {
+    "id": "ja-negative-2",
+    "language": "ja",
+    "query": "資料で裏付けられていない顧客ロゴを特定してください。",
+    "should_trigger": false
+  }
+]

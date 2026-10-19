@@ -5,10 +5,11 @@ import type {
   EffortFeatures,
   EffortLevel,
 } from './decisions.ts';
-import type { AgentRole, InputBindingKind, ItemRef } from './definition.ts';
+import type { AgentRole, InputBindingKind, ItemRef, TaskBrief } from './definition.ts';
 import type { CommandError } from './errors.ts';
 import type { ModelProfileSnapshot } from './events.ts';
 import type {
+  CompactionReport,
   EffectiveHarnessSnapshot,
   ExtensionUiNotice,
   ExtensionUiRequest,
@@ -16,10 +17,16 @@ import type {
   HarnessReport,
   HarnessToolsUpdate,
   ModelRequestRecord,
+  ProtectedContext,
   ProviderPayloadRecord,
 } from './harness.ts';
 import type { McpChallenge } from './project-tools.ts';
 import type { ReasoningInput, ReasoningResolution } from './reasoning.ts';
+import type {
+  RuntimeCheckpointRecord,
+  RuntimeCheckpointState,
+  RuntimeContext,
+} from './runtime-checkpoints.ts';
 
 // Injectable runtime ports (Implementation Plan §4, CRL-DEV-002). Types only.
 
@@ -82,6 +89,9 @@ export interface CallableTarget {
 }
 
 export interface AgentStartInput {
+  resumeContext?: RuntimeCheckpointState;
+  images?: ImageInput[];
+  taskBrief?: TaskBrief;
   runId: string;
   executionId: string;
   taskId: string;
@@ -99,6 +109,7 @@ export interface AgentStartInput {
   round: number | null;
   /** The completion criteria version the run works against; reviews must name it. */
   criteriaVersionId: string;
+  teamPlanOwner?: boolean;
   assignment: Assignment;
   item?: ItemRef;
   capabilities: { delegateTo: CallableTarget[]; askTo: CallableTarget[] };
@@ -161,6 +172,9 @@ export interface TextDelta {
 }
 
 export interface AgentHost {
+  checkpointContext?(context: RuntimeContext): Promise<RuntimeCheckpointRecord | null>;
+  protectedContext?(): ProtectedContext;
+  reportCompaction?(report: CompactionReport): Promise<void>;
   prepareModelRequest(
     record?: ModelRequestRecord,
     reasoningInput?: ReasoningInput,
@@ -198,6 +212,7 @@ export interface AgentSettlement {
 }
 
 export interface AgentHandle {
+  requestCompaction?(commandId: string): void;
   cancel(reason: string): Promise<void>;
   waitForSettlement(): Promise<AgentSettlement>;
   pushDirective?(directive: DeliveredDirective): void;
@@ -244,3 +259,5 @@ export interface DecisionCancellation {
   readonly aborted: boolean;
   onCancel(fn: () => void): () => void;
 }
+
+import type { ImageInput } from './attachments.ts';

@@ -9,6 +9,7 @@ import { type FormEvent, useCallback, useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { desktop } from '../desktop.tsx';
 import { useServices } from '../services.tsx';
+import { CheckpointPanel } from '../workbench/CheckpointPanel.tsx';
 
 // Work folders and working copies in Studio (CR-012), on the local server or the demo's
 // in-memory example folder.
@@ -307,6 +308,9 @@ export function WorkingCopyPanel({
           </button>
         </div>
       )}
+      {worktree && !worktree.missing ? (
+        <CheckpointPanel key={sessionId} sessionId={sessionId} />
+      ) : null}
       {error ? (
         <p role="alert" className="text-sm text-danger">
           {error}

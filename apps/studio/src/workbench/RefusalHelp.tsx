@@ -1,3 +1,4 @@
+import type { ImageAttachment, TextAttachment, UltraSelection } from '@corral/contracts';
 import { Button } from '@corral/react/ui';
 import { Link } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
@@ -7,8 +8,20 @@ import { refusalKind } from './refusal.ts';
 /** Fired with a request's text to take it back into the request box (UX-04). */
 export const EDIT_REQUEST = 'corral:edit-request';
 
-export function editRequest(text: string) {
-  window.dispatchEvent(new CustomEvent(EDIT_REQUEST, { detail: text }));
+export function editRequest(
+  text: string,
+  metadata?: {
+    attachments?: TextAttachment[];
+    images?: ImageAttachment[];
+    qualityPreset?: 'default' | 'ultra';
+    ultra?: UltraSelection;
+    taskScope?: 'work' | 'review_only';
+    verificationScope?: 'targeted' | 'release';
+  },
+) {
+  window.dispatchEvent(
+    new CustomEvent(EDIT_REQUEST, { detail: metadata ? { text, ...metadata } : text }),
+  );
 }
 
 /**

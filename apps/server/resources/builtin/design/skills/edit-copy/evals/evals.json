@@ -1,0 +1,98 @@
+{
+  "skill_name": "edit-copy",
+  "evals": [
+    {
+      "id": "generic-saas-hero",
+      "prompt": "Rewrite 'Unlock seamless collaboration and supercharge your team's future' using these facts: the app lets architecture teams annotate PDFs and assign comments.",
+      "expected_output": "A concise rewrite grounded in PDF annotation and comment assignment, with no invented result.",
+      "assertions": [
+        "The rewrite names the actual task.",
+        "The rewrite removes unsupported future and performance claims.",
+        "No metric is invented."
+      ]
+    },
+    {
+      "id": "unsupported-superlative",
+      "prompt": "Our draft says 'the fastest design review platform' but we have no benchmark. Make it specific.",
+      "expected_output": "The superlative is removed or marked unresolved; the rewrite uses known mechanics.",
+      "assertions": [
+        "The output does not retain the unsupported 'fastest' claim as fact.",
+        "The issue and evidence status are explicit."
+      ]
+    },
+    {
+      "id": "preserve-voice",
+      "prompt": "This is a playful personal site. Remove generic marketing filler but keep the author's dry humor.",
+      "expected_output": "Specificity improves without flattening distinctive voice.",
+      "assertions": [
+        "The output does not equate minimal copy with corporate tone.",
+        "Authorial phrases are retained when they convey identity."
+      ]
+    },
+    {
+      "id": "english-product-voice",
+      "prompt": "Review the English settings label 'Initiate the repository configuration procedure.' The approved labels around it are 'Choose a workspace' and 'Connect GitHub.' The action opens repository settings. Correct objective problems, suggest subjective tone changes, and keep any wording that already fits.",
+      "expected_output": "A concise label is proposed from the supplied action and neighboring product voice without importing another company's tone.",
+      "assertions": [
+        "The decision uses the approved neighboring labels as voice evidence.",
+        "The proposed label preserves the repository-settings action.",
+        "Objective corrections and optional style suggestions are distinguished."
+      ]
+    },
+    {
+      "id": "korean-product-voice",
+      "prompt": "같은 설정 화면의 기존 문구는 '워크스페이스를 고르세요', 'GitHub를 연결하세요'입니다. '저장소 구성 절차의 개시를 진행하세요'를 제품 말투와 자연스러운 한국어에 맞게 검토하고, 확실한 교정과 선택 가능한 제안을 구분해 주세요. 이 동작은 저장소 설정을 엽니다.",
+      "expected_output": "번역투를 줄인 문구가 제시되며, 주변 문구의 높임말과 실제 동작을 유지한다.",
+      "assertions": [
+        "조사, 명사화, 번역 어순을 한국어 문맥에서 검토한다.",
+        "주변 문구의 말투를 임의의 새 브랜드 보이스로 바꾸지 않는다.",
+        "저장소 설정을 여는 동작을 다른 기능으로 바꾸지 않는다."
+      ]
+    },
+    {
+      "id": "japanese-product-voice",
+      "prompt": "同じ設定画面では「ワークスペースを選ぶ」「GitHub に接続する」を使っています。「リポジトリの構成手順を開始することができます」を、実際の動作と周囲の語り口に合わせて見直してください。この操作はリポジトリ設定を開きます。明確な誤りの修正と任意の提案を分けてください。",
+      "expected_output": "直訳調を抑えたラベルを提案し、周囲の文体とリポジトリ設定を開く意味を保つ。",
+      "assertions": [
+        "文の長さ、名詞の連続、可能表現を日本語の文脈で確認する。",
+        "周囲のラベルと文体をそろえる。",
+        "別の製品の語り口を持ち込まない。"
+      ]
+    },
+    {
+      "id": "multilingual-screen-parity",
+      "prompt": "Review one save action across a localized settings screen. Approved neighboring labels are English 'Cancel' and 'Reset changes,' Korean '취소' and '변경 사항 초기화,' and Japanese 'キャンセル' and '変更をリセット.' Drafts: English 'Finalize the implementation of your configuration modifications.' Korean '구성 수정 사항의 구현을 최종화하세요.' Japanese '構成の変更の実装を最終化してください。' The action saves configuration changes. Improve each locale and check meaning, terminology, and action priority without forcing literal translations.",
+      "expected_output": "Each locale receives a natural, product-consistent save label while the same task and action priority are preserved.",
+      "assertions": [
+        "Each locale is reviewed in its own language before comparison.",
+        "The supplied neighboring labels, rather than an outside house style, provide the voice evidence.",
+        "The result preserves the save action in all locales.",
+        "Equivalent meaning does not require identical grammar or sentence length.",
+        "The review does not infer authorship from the awkward source copy."
+      ]
+    },
+    {
+      "id": "localization-runtime-integrity",
+      "prompt": "Review the `settings.saveSummary` entry in the English, Korean, and Japanese locale catalogs while preserving its implementation contract. Each entry contains `<strong>{workspace}</strong>`, an `{audience, select, owner {...} team {...} other {...}}` branch, a `{count, plural, one {...} other {...}}` branch, `{storageUsed}`, and `{savedAt, date, short}`. The visible branch text should read naturally in its locale. The runtime owns the shared catalog key, placeholder identities, `<strong>` boundary, all ICU branches, date formatting, and `storageUsed` output from locale-aware `Intl.NumberFormat` unit formatting. Do not hard-code a source-locale number or unit string.",
+      "expected_output": "Copy decisions improve only human-readable branch text while keeping cross-locale key mapping, placeholder identities, markup, select and plural branches, and locale-aware date, number, and unit formatting intact.",
+      "assertions": [
+        "Every locale catalog retains the settings.saveSummary key with the same meaning and action.",
+        "The count, workspace, audience, storageUsed, and savedAt placeholders are not renamed or removed.",
+        "The strong markup boundary and owner, team, other, one, and other branches remain complete.",
+        "Dates, numbers, and units stay with their locale-aware formatters rather than becoming source-locale literals.",
+        "Any uncertainty about runtime syntax is reported instead of guessed."
+      ]
+    },
+    {
+      "id": "scoped-copy-edit-delivery",
+      "prompt": "Edit only the Korean save-complete message in the supplied locale file. Current value: 저장이 성공적으로 완료되었어요. Approved nearby messages use the concise 합니다 register; keep the canonical message key, all other entries, and the verified meaning that saving has completed. Apply the correction and report the changed file, the checks you ran, anything you could not verify, and how to undo only this edit.",
+      "expected_output": "A concise, voice-grounded correction applied to the actual locale entry, with unchanged runtime key and surrounding data, followed by proportionate verification and rollback.",
+      "assertions": [
+        "The file is actually edited and the output identifies the changed file or diff.",
+        "The key, unrelated entries, save-complete meaning, and approved register are preserved.",
+        "The report distinguishes checks actually run from unavailable runtime checks and gives a scoped rollback.",
+        "A simple correction does not expand into a full design audit or marketing rewrite."
+      ]
+    }
+  ]
+}

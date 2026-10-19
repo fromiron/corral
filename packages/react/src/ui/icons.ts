@@ -20,6 +20,8 @@ export {
   Download,
   Ellipsis,
   ExternalLink,
+  Eye,
+  EyeOff,
   File,
   FileCode,
   FileDiff,

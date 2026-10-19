@@ -1,11 +1,13 @@
-import { CheckPlan, type Receipt } from '@corral/contracts';
+import { CheckPlan, type Receipt, ToolPermissionPlan } from '@corral/contracts';
+import { validToolPermissionPlan } from '@corral/core';
 import { useEffect, useId, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import type { RunSessionStore } from '../run/session.ts';
 import { Button } from '../ui/button.tsx';
-import { ExtensionUiPanel } from './ExtensionUiPanel.tsx';
+import { InteractionPanel } from './InteractionPanel.tsx';
 import { RecipeStatusPanel } from './RecipeStatusPanel.tsx';
+import { WorkPlanPanel } from './WorkPlanPanel.tsx';
 
 /**
  * Decisions waiting for the person (C-029, Spec §7.5): each names the exact versions and the
@@ -40,6 +42,7 @@ export function ApprovalPanel({
   const criteria = useStore(session, (s) => (criteriaId ? s.artifactTexts[criteriaId] : undefined));
   const [busy, setBusy] = useState(false);
   const [refused, setRefused] = useState<Receipt | null>(null);
+  const [toolPlans, setToolPlans] = useState<Record<string, ToolPermissionPlan | null>>({});
   const [checkPlans, setCheckPlans] = useState<Record<string, CheckPlan | null>>({});
 
   useEffect(() => {
@@ -52,6 +55,13 @@ export function ApprovalPanel({
           if (session.getState().artifactTexts[bodyRef] === undefined)
             await session.getState().loadArtifact(bodyRef);
           const text = session.getState().artifactTexts[bodyRef];
+          if (approval.tool?.purpose === 'tool') {
+            const plan = ToolPermissionPlan.parse(JSON.parse(text ?? 'null'));
+            if (plan.fingerprint !== fingerprint || !validToolPermissionPlan(plan))
+              throw new Error('permission changed');
+            if (active) setToolPlans((previous) => ({ ...previous, [bodyRef]: plan }));
+            return;
+          }
           const plan = CheckPlan.parse(JSON.parse(text ?? 'null'));
           if (
             plan.fingerprint !== fingerprint ||
@@ -61,7 +71,10 @@ export function ApprovalPanel({
             throw new Error('approval changed');
           if (active) setCheckPlans((previous) => ({ ...previous, [bodyRef]: plan }));
         } catch {
-          if (active) setCheckPlans((previous) => ({ ...previous, [bodyRef]: null }));
+          if (active) {
+            setCheckPlans((previous) => ({ ...previous, [bodyRef]: null }));
+            setToolPlans((previous) => ({ ...previous, [bodyRef]: null }));
+          }
         }
       })();
     }
@@ -78,7 +91,8 @@ export function ApprovalPanel({
     return (
       <>
         <RecipeStatusPanel session={session} onOpenArtifact={onOpenArtifact} />
-        <ExtensionUiPanel session={session} />
+        <InteractionPanel session={session} />
+        <WorkPlanPanel session={session} />
       </>
     );
   const label = (id: string) =>
@@ -98,7 +112,8 @@ export function ApprovalPanel({
   return (
     <>
       <RecipeStatusPanel session={session} onOpenArtifact={onOpenArtifact} />
-      <ExtensionUiPanel session={session} />
+      <InteractionPanel session={session} />
+      <WorkPlanPanel session={session} />
       <section aria-labelledby={headingId} className={`flex flex-col gap-2 ${className ?? ''}`}>
         <h3 id={headingId} className={compact ? 'sr-only' : 'text-ui font-semibold'}>
           {t('heading')}
@@ -129,10 +144,18 @@ export function ApprovalPanel({
           >
             <p className="font-medium">
               {approval.tool
-                ? t(approval.tool.purpose === 'lsp' ? 'lspHeading' : 'checkHeading')
+                ? t(
+                    approval.tool.purpose === 'tool'
+                      ? 'toolHeading'
+                      : approval.tool.purpose === 'lsp'
+                        ? 'lspHeading'
+                        : 'checkHeading',
+                  )
                 : t(`kind.${approval.kind}`)}
             </p>
-            {approval.tool ? (
+            {approval.tool?.purpose === 'tool' ? (
+              <PermissionDetails plan={toolPlans[approval.tool.bodyRef]} />
+            ) : approval.tool ? (
               <div className="flex min-w-0 flex-col gap-1">
                 {checkPlans[approval.tool.bodyRef] ? (
                   <>
@@ -152,7 +175,7 @@ export function ApprovalPanel({
                         attempt: approval.tool.attemptNo,
                         revision: checkPlans[approval.tool.bodyRef]?.configRevision ?? 0,
                         fingerprint: approval.tool.fingerprint.slice(0, 12),
-                        tree: approval.tool.targetTree.slice(0, 12),
+                        tree: approval.tool.targetTree?.slice(0, 12) ?? '—',
                       })}
                     </p>
                     <p className="text-muted">
@@ -202,16 +225,36 @@ export function ApprovalPanel({
             <div className={`flex gap-2 ${compact ? 'ml-auto' : ''}`}>
               <Button
                 size="sm"
-                disabled={busy || !!(approval.tool && !checkPlans[approval.tool.bodyRef])}
+                disabled={
+                  busy ||
+                  !!(
+                    approval.tool &&
+                    !(approval.tool.purpose === 'tool'
+                      ? toolPlans[approval.tool.bodyRef]
+                      : checkPlans[approval.tool.bodyRef])
+                  )
+                }
                 title={
                   approval.tool
-                    ? t(approval.tool.purpose === 'lsp' ? 'lspOnce' : 'checkOnce')
+                    ? t(
+                        approval.tool.purpose === 'tool'
+                          ? 'toolOnce'
+                          : approval.tool.purpose === 'lsp'
+                            ? 'lspOnce'
+                            : 'checkOnce',
+                      )
                     : t(`then.${approval.kind}`)
                 }
                 onClick={() => void decide(approval.approvalId, 'approve')}
               >
                 {approval.tool
-                  ? t(approval.tool.purpose === 'lsp' ? 'approveLsp' : 'approveCheck')
+                  ? t(
+                      approval.tool.purpose === 'tool'
+                        ? 'approveTool'
+                        : approval.tool.purpose === 'lsp'
+                          ? 'approveLsp'
+                          : 'approveCheck',
+                    )
                   : t(`approveAs.${approval.kind}`)}
               </Button>
               <Button
@@ -221,7 +264,13 @@ export function ApprovalPanel({
                 onClick={() => void decide(approval.approvalId, 'reject')}
               >
                 {approval.tool
-                  ? t(approval.tool.purpose === 'lsp' ? 'rejectLsp' : 'rejectCheck')
+                  ? t(
+                      approval.tool.purpose === 'tool'
+                        ? 'rejectTool'
+                        : approval.tool.purpose === 'lsp'
+                          ? 'rejectLsp'
+                          : 'rejectCheck',
+                    )
                   : t(`rejectAs.${approval.kind}`)}
               </Button>
             </div>
@@ -234,5 +283,32 @@ export function ApprovalPanel({
         ))}
       </section>
     </>
+  );
+}
+
+function PermissionDetails({ plan }: { plan: ToolPermissionPlan | null | undefined }) {
+  const t = useTranslations('Approvals');
+  if (!plan)
+    return (
+      <p role={plan === null ? 'alert' : 'status'}>
+        {t(plan === null ? 'checkUnavailable' : 'checkLoading')}
+      </p>
+    );
+  return (
+    <div className="flex min-w-0 flex-col gap-2">
+      <p className="font-medium">
+        {plan.descriptor.name} · {plan.descriptor.source}
+      </p>
+      <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-all rounded bg-surface p-2">
+        {JSON.stringify(plan.arguments, null, 2)}
+      </pre>
+      <p className="text-muted">{t('toolOnce')}</p>
+      <details>
+        <summary className="cursor-pointer">{t('toolIdentity')}</summary>
+        <p className="break-all">{plan.descriptorHash}</p>
+        <p>{t('toolPolicyRevision', { revision: plan.policyRevision })}</p>
+        <p className="break-all">{plan.fingerprint}</p>
+      </details>
+    </div>
   );
 }

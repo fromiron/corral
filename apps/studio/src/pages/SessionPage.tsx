@@ -1,10 +1,20 @@
 import type { AutoCancelResult, AutoRunStart, FileChangeView } from '@corral/client';
-import type { AutoModelChoice, AutoReasoning, RoleRunOverrides } from '@corral/contracts';
+import type {
+  AutoModelChoice,
+  AutoReasoning,
+  RoleRunOverrides,
+  TextAttachment,
+} from '@corral/contracts';
 import {
   type HarnessOverrides,
+  IMAGE_MAX_COUNT,
+  type ImageAttachment,
+  ImageAttachments,
   type RunReference,
   TERMINAL_EXECUTION_STATUSES,
   TERMINAL_RUN_STATUSES,
+  TEXT_ATTACHMENT_MAX_COUNT,
+  UltraSelection,
 } from '@corral/contracts';
 import type {
   AutoStartResult,
@@ -16,14 +26,17 @@ import type {
   SessionIntent,
   WorkSession,
 } from '@corral/core';
-import { ApprovalPanel, RunActions, runResults, StatusBadge } from '@corral/react';
+import { validTextAttachments } from '@corral/core';
+import { runResults, StatusBadge } from '@corral/react';
 import {
   ArrowUp,
   AtSign,
   Ellipsis,
   FileDiff,
+  FileText,
   MessageSquare,
   PanelRight,
+  Plus,
   Square,
   X,
 } from '@corral/react/icons';
@@ -67,11 +80,12 @@ import { projectsChanged, setCurrentProject } from '../projects.ts';
 import { type SessionSearch, sessionRoute, validateSessionSearch } from '../router.tsx';
 import { useServices } from '../services.tsx';
 import { sendKeyLabel, shortcutLabel } from '../shortcuts.ts';
+import { AutoModelMenu } from '../workbench/AutoModelMenu.tsx';
 import {
   autoChoiceFor,
   autoCommandSeed,
   autoNotReady,
-  reasoningFrom,
+  autoReasoningUnsupported,
   reasoningValue,
   sessionRunMode,
 } from '../workbench/autoChoice.ts';
@@ -81,9 +95,12 @@ import { ComposerSurface } from '../workbench/ComposerSurface.tsx';
 import { type IntentLock, resolveIntent } from '../workbench/composerIntent.ts';
 import { type MentionItem, mentionToken, pickedReferences } from '../workbench/composerMenu.ts';
 import { FilePanel, type FileReference } from '../workbench/FilePanel.tsx';
+import { ImageAttachmentList, ImageAttachmentPicker } from '../workbench/ImageAttachments.tsx';
+import { MessageBranch } from '../workbench/MessageBranch.tsx';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
 import { isSendKey, usePreferences } from '../workbench/preferences.ts';
 import { EDIT_REQUEST, editRequest, RefusalHelp } from '../workbench/RefusalHelp.tsx';
+import { RunChanges } from '../workbench/RunChanges.tsx';
 import { RunHarnessOverrides } from '../workbench/RunHarnessOverrides.tsx';
 import { RunMessage } from '../workbench/RunMessage.tsx';
 import { RunRoleOverrides } from '../workbench/RunRoleOverrides.tsx';
@@ -94,7 +111,9 @@ import {
   writeComposerDraft,
 } from '../workbench/sessionDraft.ts';
 import { TabRow } from '../workbench/TabRow.tsx';
+import { TextAttachmentList, TextAttachmentPicker } from '../workbench/TextAttachments.tsx';
 import { TopbarActions } from '../workbench/TopbarSlot.tsx';
+import { defaultUltraSelection, UltraModels } from '../workbench/UltraModels.tsx';
 import { useMentionSearch } from '../workbench/useMentionSearch.ts';
 import {
   type ProfileInfo,
@@ -113,7 +132,7 @@ import { useRemembered, WorkbenchLayout } from './Workbench.tsx';
 const newCommandId = () => `cmd_${globalThis.crypto.randomUUID()}`;
 
 /** The session's runs, kept current while one is working. */
-function useSessionRuns(sessionId: string) {
+function useSessionRuns(sessionId: string, selectedRunId?: string) {
   const { transport } = useServices();
   const [all, setAll] = useState<RunSummary[]>([]);
   const [tick, setTick] = useState(0);
@@ -122,6 +141,8 @@ function useSessionRuns(sessionId: string) {
   const refresh = useCallback(() => setTick((n) => n + 1), []);
   useEffect(() => {
     void tick;
+    void sessionId;
+    void selectedRunId;
     let live = true;
     transport.listRuns().then(
       (runs) => {
@@ -134,7 +155,7 @@ function useSessionRuns(sessionId: string) {
     return () => {
       live = false;
     };
-  }, [transport, tick]);
+  }, [transport, tick, sessionId, selectedRunId]);
   const active = all.find((r) => !TERMINAL_RUN_STATUSES.has(r.status)) ?? null;
   useEffect(() => {
     if (!active && !lost) return;
@@ -169,7 +190,7 @@ export function SessionPage() {
   const viewKey = JSON.stringify(search);
   useEffect(() => rememberView(JSON.parse(viewKey)), [viewKey, rememberView]);
   const navigate = useNavigate({ from: '/sessions/$sessionId' });
-  const { runs, active, refresh, lost } = useSessionRuns(session.sessionId);
+  const { runs, active, refresh, lost } = useSessionRuns(session.sessionId, search.run);
   useEffect(() => setCurrentProject(session.projectId), [session.projectId]);
   const team = corrals.find((c) => c.corralId === session.corralId) ?? null;
   const ts = useTranslations('Sessions');
@@ -593,6 +614,12 @@ function WorkTab({
   onPanel: (panel: SessionPanel, run?: Partial<SessionSearch>) => void;
 }) {
   const t = useTranslations('Sessions');
+  const { session: liveSession } = useServices();
+  const activeId = active?.sessionId === session.sessionId ? active.runId : null;
+  const messageId = sessionRoute.useSearch().message;
+  useEffect(() => {
+    if (activeId) void liveSession.getState().open(activeId);
+  }, [liveSession, activeId]);
   // Entries in order; runs that no entry names (started elsewhere) are shown after them.
   const named = new Set(session.entries.flatMap((e) => (e.runId ? [e.runId] : [])));
   const loose = runs.filter((r) => !named.has(r.runId));
@@ -602,7 +629,28 @@ function WorkTab({
   return (
     <RunChecks.Provider value={runChecks}>
       <ChatView
+        key={session.sessionId}
         sessionId={session.sessionId}
+        messageId={messageId}
+        items={[
+          ...session.entries
+            .filter((e) => e.state !== 'queued' && e.state !== 'dismissed')
+            .map((entry) => ({
+              id: entry.entryId,
+              content: (
+                <EntryCard
+                  sessionId={session.sessionId}
+                  entry={entry}
+                  runs={runs}
+                  onPanel={onPanel}
+                />
+              ),
+            })),
+          ...loose.map((run) => ({
+            id: run.runId,
+            content: <RunCard run={run} onPanel={onPanel} />,
+          })),
+        ]}
         composer={
           <Composer
             key={session.sessionId}
@@ -628,18 +676,7 @@ function WorkTab({
               </p>
             </div>
           ) : null}
-          {session.entries
-            .filter((e) => e.state !== 'queued' && e.state !== 'dismissed')
-            .map((entry) => (
-              <EntryCard key={entry.entryId} entry={entry} runs={runs} onPanel={onPanel} />
-            ))}
-          {loose.map((run) => (
-            <RunCard key={run.runId} run={run} onPanel={onPanel} />
-          ))}
         </section>
-        {active && active.sessionId === session.sessionId ? (
-          <ActiveDecisions runId={active.runId} onPanel={onPanel} />
-        ) : null}
       </ChatView>
     </RunChecks.Provider>
   );
@@ -687,6 +724,7 @@ function RunPanel({
       <div className="min-h-0 flex-1">
         <RunDetail
           key={runId}
+          sessionId={runs.find((run) => run.runId === runId)?.sessionId ?? null}
           runId={runId}
           embedded
           compact
@@ -895,34 +933,13 @@ function ChecksPanel({ session }: { session: WorkSession }) {
   );
 }
 
-/** Decisions the session's working run waits for, answered here (WB-OBS-002). */
-function ActiveDecisions({
-  runId,
-  onPanel,
-}: {
-  runId: string;
-  onPanel: (panel: SessionPanel, run?: Partial<SessionSearch>) => void;
-}) {
-  const { session } = useServices();
-  useEffect(() => {
-    void session.getState().open(runId);
-  }, [session, runId]);
-  return (
-    <>
-      <RunActions session={session} compact />
-      <ApprovalPanel
-        session={session}
-        onOpenArtifact={(id) => onPanel('run', { run: runId, view: 'results', result: id })}
-      />
-    </>
-  );
-}
-
 function EntryCard({
+  sessionId,
   entry,
   runs,
   onPanel,
 }: {
+  sessionId: string;
   entry: SessionEntry;
   runs: RunSummary[];
   onPanel: (panel: SessionPanel, run?: Partial<SessionSearch>) => void;
@@ -942,21 +959,25 @@ function EntryCard({
     ? [
         `${t(`autoTemplate.${entry.auto.template}`)}${entry.auto.source === 'fallback' ? ` (${t('autoFallback')})` : ''}`,
         entry.auto.fallback ? t(`autoFallbackReason.${entry.auto.fallback}`) : null,
-        entry.auto.modelProfile,
-        entry.auto.requestedReasoning?.mode === 'fixed'
-          ? tq(`level.${entry.auto.requestedReasoning.level}`)
-          : entry.auto.requestedReasoning?.mode === 'route'
-            ? t('reasoningRoute')
-            : entry.auto.requestedReasoning
-              ? tq(entry.auto.requestedReasoning.mode)
-              : entry.auto.modelProfile
-                ? tq('legacy')
-                : null,
+        entry.auto.ultra?.modelProfiles.join(', ') ?? entry.auto.modelProfile,
+        entry.auto.ultra
+          ? Object.entries(entry.auto.ultra.reasoning)
+              .map(([profile, level]) => `${profile}: ${tq(`level.${level}`)}`)
+              .join(', ')
+          : entry.auto.requestedReasoning?.mode === 'fixed'
+            ? tq(`level.${entry.auto.requestedReasoning.level}`)
+            : entry.auto.requestedReasoning?.mode === 'route'
+              ? t('reasoningRoute')
+              : entry.auto.requestedReasoning
+                ? tq(entry.auto.requestedReasoning.mode)
+                : entry.auto.modelProfile
+                  ? tq('legacy')
+                  : null,
         // CR-024 §7: the level the start model picked for this request.
         entry.auto.reasoning
           ? `${t('reasoningPicked', { level: tq(`level.${entry.auto.reasoning}`) })}${entry.auto.reasoningSource ? ` (${t(`reasoningSource.${entry.auto.reasoningSource}`)})` : ''}`
           : null,
-        entry.auto.reason,
+        entry.auto.qualityPreset === 'ultra' ? 'Ultra' : entry.auto.reason,
       ]
         .filter(Boolean)
         .join(' · ')
@@ -975,13 +996,36 @@ function EntryCard({
           </p>
         ) : null}
         <p className="whitespace-pre-wrap text-sm leading-6">{entry.text}</p>
+        {entry.attachments?.length ? <TextAttachmentList attachments={entry.attachments} /> : null}
+        {entry.images?.length ? (
+          <ImageAttachmentList sessionId={sessionId} images={entry.images} />
+        ) : null}
         <span className="sr-only">
           {t('youAsked', { intent: t(`intent.${entry.intent}`) })} · {t(`state.${entry.state}`)} ·{' '}
           {when}
         </span>
       </div>
+      {entry.runId && run && (entry.intent === 'next' || entry.intent === 'explain') ? (
+        <MessageBranch
+          runId={entry.runId}
+          requestStart
+          disabled={!TERMINAL_RUN_STATUSES.has(run.status)}
+        />
+      ) : null}
       {entry.detail && entry.state === 'refused' ? (
-        <RefusalHelp message={entry.detail} onEdit={() => editRequest(entry.text)} />
+        <RefusalHelp
+          message={entry.detail}
+          onEdit={() =>
+            editRequest(entry.text, {
+              attachments: entry.attachments,
+              images: entry.images,
+              qualityPreset: entry.qualityPreset ?? entry.auto?.qualityPreset,
+              ultra: entry.ultra ?? entry.auto?.ultra,
+              taskScope: entry.taskScope,
+              verificationScope: entry.verificationScope,
+            })
+          }
+        />
       ) : entry.detail ? (
         <p role="note" className="text-xs text-danger">
           {entry.detail}
@@ -1104,25 +1148,15 @@ function RunCard({
           {t('didNotFinish', { status: ts(run.status) })}
         </p>
       ) : null}
-      <RunMessage runId={run.runId} sessionId={run.sessionId ?? null} live={!ended} />
+      <RunMessage
+        runId={run.runId}
+        sessionId={run.sessionId ?? null}
+        live={!ended}
+        onOpenArtifact={(result) => onPanel('run', { run: run.runId, view: 'results', result })}
+      />
       {/* Only a session with a working copy has changes to review (its checks are known). */}
       {ended && checks.known && run.sessionId ? (
-        <div>
-          <Button
-            variant="outline"
-            size="xs"
-            render={
-              <Link
-                to="/sessions/$sessionId/review"
-                params={{ sessionId: run.sessionId }}
-                search={{ scope: 'run', runId: run.runId }}
-              />
-            }
-          >
-            <FileDiff />
-            {t('reviewChanges')}
-          </Button>
-        </div>
+        <RunChanges sessionId={run.sessionId} runId={run.runId} />
       ) : null}
     </section>
   );
@@ -1244,6 +1278,33 @@ function Composer({
   // UX-02: the draft comes back with its intent, target and exact references.
   const [restored] = useState(() => readComposerDraft(session.sessionId));
   const [text, setText] = useState(restored.text);
+  const [attachments, setAttachments] = useState<TextAttachment[]>(restored.attachments ?? []);
+  const [attachmentsBusy, setAttachmentsBusy] = useState(false);
+  const [images, setImages] = useState<ImageAttachment[]>(restored.images ?? []);
+  const [imagesBusy, setImagesBusy] = useState(false);
+  const textFiles = useRef<HTMLInputElement>(null);
+  const imageFiles = useRef<HTMLInputElement>(null);
+  const [attachmentEpoch, setAttachmentEpoch] = useState(0);
+  const autoSaving = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const [confirmedAuto, setConfirmedAuto] = useState<{
+    revision: number;
+    choice: AutoModelChoice;
+  } | null>(null);
+  const [qualityPreset, setQualityPreset] = useState<'default' | 'ultra'>(
+    restored.qualityPreset ?? 'default',
+  );
+  const [ultraDraft, setUltraDraft] = useState<UltraSelection | null>(restored.ultra ?? null);
+  const [reviewOnly, setReviewOnly] = useState(restored.taskScope === 'review_only');
+  const [verificationScope, setVerificationScope] = useState<'targeted' | 'release'>(
+    restored.verificationScope ?? 'targeted',
+  );
   const [chosen, setChosen] = useState<SessionIntent | null>(null);
   const [target, setTarget] = useState<string>('');
   // UX-01: what the request is (and for whom) is fixed once typing starts.
@@ -1309,11 +1370,33 @@ function Composer({
   const [confirmStop, setConfirmStop] = useState(false);
   const [teamOpen, setTeamOpen] = useState(false);
   const [autoModelOpen, setAutoModelOpen] = useState(false);
-  const [autoReasoningOpen, setAutoReasoningOpen] = useState(false);
   const [modelsOpen, setModelsOpen] = useState(false);
   // UX-06: which model each role uses, and whether it is connected.
   const profiles = useModelProfiles();
-  const autoChoice = autoChoiceFor(session.auto, profiles);
+  const autoChoice = autoChoiceFor(
+    confirmedAuto && confirmedAuto.revision > session.revision
+      ? confirmedAuto.choice
+      : session.auto,
+    profiles,
+  );
+  const ultraProfiles = useMemo(
+    () =>
+      runMode === 'mock'
+        ? [...new Set([autoChoice.modelProfile, 'model-a', 'model-b'])].map((profileId) => ({
+            profileId,
+            label: `${t('modeMock')} · ${profileId}`,
+            available: true,
+            reasoningCapabilities: { levels: ['max' as const], providerDefault: true },
+          }))
+        : profiles,
+    [runMode, profiles, autoChoice.modelProfile, t],
+  );
+  const ultra = useMemo(
+    () => ultraDraft ?? defaultUltraSelection(autoChoice.modelProfile, ultraProfiles),
+    [ultraDraft, autoChoice.modelProfile, ultraProfiles],
+  );
+  const requestChoice =
+    qualityPreset === 'ultra' ? { modelProfile: autoChoice.modelProfile } : autoChoice;
   const isAuto = session.corralId === null;
   const missingTeam = !isAuto && !team;
   const roles = useTeamRoles(team);
@@ -1412,9 +1495,9 @@ function Composer({
   const targetName = (id: string) => targetNames.current.get(id) ?? id;
 
   /** Changes the text; the first character fixes what the request is and for whom. */
-  const write = (value: string) => {
+  const write = (value: string | ((current: string) => string)) => {
     setText(value);
-    if (!value) setLock(null);
+    if (value === '') setLock(null);
     else if (!lock) setLock({ intent, target: intent === 'steer' ? steerTarget || null : null });
   };
   /** An explicit choice by the person; it becomes the new fixed intent while text is typed. */
@@ -1437,8 +1520,13 @@ function Composer({
       target: lock?.target ?? null,
       targetLabel: lock?.target ? (targetNames.current.get(lock.target) ?? null) : null,
       references: picked.filter((item) => pickedReferences(text, [item]).length > 0),
+      ...(attachments.length ? { attachments } : {}),
+      ...(images.length ? { images } : {}),
+      ...(reviewOnly ? { taskScope: 'review_only' as const } : {}),
+      ...(verificationScope === 'release' ? { verificationScope } : {}),
+      ...(qualityPreset === 'ultra' ? { qualityPreset, ultra } : {}),
     }),
-    [text, lock, picked],
+    [text, lock, picked, attachments, images, reviewOnly, verificationScope, qualityPreset, ultra],
   );
   const draftRevision = useRef(0);
   useEffect(() => {
@@ -1446,10 +1534,22 @@ function Composer({
   }, [session.sessionId, composerDraft]);
   useEffect(() => {
     const sent = (event: Event) => {
-      const detail = (event as CustomEvent<{ sessionId: string; revision: number }>).detail;
+      const detail = (
+        event as CustomEvent<{ sessionId: string; revision: number; preserveAttachments?: boolean }>
+      ).detail;
       if (detail.sessionId !== session.sessionId || detail.revision !== draftRevision.current)
         return;
       setPicked([]);
+      if (!detail.preserveAttachments) {
+        setAttachments([]);
+        setImages([]);
+      }
+      setAttachmentEpoch((epoch) => epoch + 1);
+      setAttachmentsBusy(false);
+      setImagesBusy(false);
+      setReviewOnly(false);
+      setVerificationScope('targeted');
+      setQualityPreset('default');
       setChosen(null);
       setLock(null);
       setText('');
@@ -1535,6 +1635,7 @@ function Composer({
     refs: RunReference[] = [],
     overrides: HarnessOverrides = {},
     roleChoices: RoleRunOverrides = {},
+    scope: { taskScope?: 'review_only'; verificationScope?: 'release' } = {},
   ): Promise<{
     runId: string | null;
     detail: string | null;
@@ -1545,11 +1646,11 @@ function Composer({
   }> => {
     if (!team)
       return isAuto
-        ? startAuto(brief, commandId, refs)
+        ? startAuto(brief, commandId, refs, scope)
         : { runId: null, detail: t('selectedTeamMissing') };
     const corral = await repository.get(team.corralId);
     if (!corral) return { runId: null, detail: t('noTeamYet') };
-    const input = { brief, criteria: corral.definition.input.criteria };
+    const input = { ...corral.definition.input, brief, ...scope };
     const common = {
       schemaVersion: '0.1' as const,
       commandId,
@@ -1578,13 +1679,26 @@ function Composer({
   };
 
   /** CR-024: with no team chosen, the runtime picks a template for this request. */
-  const startAuto = async (brief: string, commandId: string, refs: RunReference[]) => {
+  const startAuto = async (
+    brief: string,
+    commandId: string,
+    refs: RunReference[],
+    scope: { taskScope?: 'review_only'; verificationScope?: 'release' },
+  ) => {
+    if (
+      qualityPreset === 'ultra' &&
+      (!UltraSelection.safeParse(ultra).success ||
+        ultra.verifierProfile === autoChoice.modelProfile)
+    )
+      return { runId: null, detail: tc('ultraNeedsModels'), code: 'CAPABILITY_DENIED' };
     const controller = new AbortController();
     const proposed: AutoRunStart = {
+      ...scope,
       commandId,
       sessionId: session.sessionId,
       brief,
-      choice: autoChoice,
+      choice: requestChoice,
+      ...(qualityPreset === 'ultra' ? { qualityPreset, ultra } : {}),
       mode: runMode,
       ...(latest ? { startFrom: { runId: latest.runId, artifactVersionId: latest.id } } : {}),
       ...(refs.length ? { references: refs } : {}),
@@ -1627,6 +1741,10 @@ function Composer({
         auto: result.autoRoute
           ? {
               template: result.autoRoute.template,
+              ...(result.autoRoute.ultra ? { ultra: result.autoRoute.ultra } : {}),
+              ...(result.autoRoute.qualityPreset
+                ? { qualityPreset: result.autoRoute.qualityPreset }
+                : {}),
               source: result.autoRoute.source,
               reason: result.autoRoute.reason,
               modelProfile: result.autoRoute.modelProfile,
@@ -1653,12 +1771,40 @@ function Composer({
 
   /** Saves the auto model and reasoning with the session (CR-024). */
   const updateAuto = async (auto: AutoModelChoice) => {
-    const result = await repository.updateSession(session.sessionId, {
-      auto,
-      expectedRevision: session.revision,
-    });
-    if (!result.ok) setError(t('failed', { message: result.message }));
-    else await router.invalidate();
+    if (autoSaving.current || busy) return;
+    autoSaving.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await repository.updateSession(session.sessionId, {
+        auto,
+        expectedRevision: Math.max(session.revision, confirmedAuto?.revision ?? 0),
+      });
+      if (!mounted.current) return;
+      if (!result.ok) throw new Error(result.message);
+      setConfirmedAuto({ revision: result.session.revision, choice: auto });
+      if (auto.modelProfile !== autoChoice.modelProfile)
+        setUltraDraft(
+          qualityPreset === 'ultra'
+            ? {
+                ...ultra,
+                verifierProfile:
+                  ultra.verifierProfile === auto.modelProfile
+                    ? autoChoice.modelProfile
+                    : ultra.verifierProfile,
+              }
+            : null,
+        );
+      await router.invalidate();
+    } catch (failure) {
+      if (mounted.current)
+        setError(
+          t('failed', { message: failure instanceof Error ? failure.message : String(failure) }),
+        );
+    } finally {
+      autoSaving.current = false;
+      if (mounted.current) setBusy(false);
+    }
   };
 
   /** A refused request keeps its text, intent and references so it can be fixed and resent. */
@@ -1672,7 +1818,7 @@ function Composer({
 
   const send = async () => {
     const body = text.trim();
-    if (!body || busy || unavailable) return;
+    if (!body || busy || autoSaving.current || unavailable) return;
     const submittedRevision = writeComposerDraft(session.sessionId, composerDraft);
     draftRevision.current = submittedRevision;
     setBusy(true);
@@ -1680,11 +1826,22 @@ function Composer({
     setRefusal(null);
     try {
       if (intent === 'next') {
-        const refs = references;
+        const refs: RunReference[] = [...references, ...attachments, ...images];
+        const scope = {
+          ...(reviewOnly ? { taskScope: 'review_only' as const } : {}),
+          ...(verificationScope === 'release' ? { verificationScope } : {}),
+        };
         const commandId = commandFor(
           team
-            ? `next\u0000${body}\u0000${JSON.stringify([refs, harnessOverrides, roleOverrides, runMode])}`
-            : autoCommandSeed(body, refs, autoChoice),
+            ? `next\u0000${body}\u0000${JSON.stringify([refs, harnessOverrides, roleOverrides, runMode, scope])}`
+            : autoCommandSeed(
+                body,
+                refs,
+                requestChoice,
+                scope,
+                qualityPreset,
+                qualityPreset === 'ultra' ? ultra : undefined,
+              ),
         );
         const { runId, detail, code, auto, cancelled, cancelError } = await startNext(
           body,
@@ -1692,12 +1849,15 @@ function Composer({
           refs,
           harnessOverrides,
           roleOverrides,
+          scope,
         );
         if (runId) {
           setRunStyles(null);
           setRoleChoices(null);
         }
         await record({
+          ...scope,
+          ...(isAuto && !team && qualityPreset === 'ultra' ? { qualityPreset, ultra } : {}),
           intent,
           text: body,
           state: runId ? 'started' : 'refused',
@@ -1705,6 +1865,8 @@ function Composer({
           detail,
           commandId,
           ...(auto ? { auto } : {}),
+          ...(attachments.length ? { attachments } : {}),
+          ...(images.length ? { images } : {}),
         });
         if (cancelled) {
           clearPending();
@@ -1769,7 +1931,7 @@ function Composer({
         return;
       }
       clearPending();
-      clearSentComposerDraft(session.sessionId, submittedRevision);
+      clearSentComposerDraft(session.sessionId, submittedRevision, intent !== 'next');
       await router.invalidate();
       onChange();
     } catch (failure) {
@@ -1791,9 +1953,47 @@ function Composer({
   // "Edit the request again" on a refused turn brings its text back here.
   useEffect(() => {
     const take = (event: Event) => {
-      const value = (event as CustomEvent<string>).detail;
-      if (typeof value !== 'string') return;
-      setText(value);
+      const value = (
+        event as CustomEvent<
+          | string
+          | {
+              text: string;
+              attachments?: TextAttachment[];
+              images?: ImageAttachment[];
+              taskScope?: string;
+              verificationScope?: string;
+              qualityPreset?: string;
+              ultra?: UltraSelection;
+            }
+        >
+      ).detail;
+      if (
+        typeof value !== 'string' &&
+        (typeof value !== 'object' ||
+          !value ||
+          typeof value.text !== 'string' ||
+          (value.attachments !== undefined && !validTextAttachments(value.attachments)) ||
+          (value.images !== undefined && !ImageAttachments.safeParse(value.images).success))
+      )
+        return;
+      setText(typeof value === 'string' ? value : value.text);
+      setAttachmentEpoch((epoch) => epoch + 1);
+      setAttachmentsBusy(false);
+      setImagesBusy(false);
+      setAttachments(typeof value === 'string' ? [] : (value.attachments ?? []));
+      setImages(typeof value === 'string' ? [] : (value.images ?? []));
+      setQualityPreset(
+        typeof value === 'object' && value.qualityPreset === 'ultra' ? 'ultra' : 'default',
+      );
+      setUltraDraft(
+        typeof value === 'object'
+          ? (UltraSelection.strip().safeParse(value.ultra).data ?? null)
+          : null,
+      );
+      setReviewOnly(typeof value === 'object' && value.taskScope === 'review_only');
+      setVerificationScope(
+        typeof value === 'object' && value.verificationScope === 'release' ? 'release' : 'targeted',
+      );
       setLock(null);
       setRefusal(null);
       requestAnimationFrame(() => input.current?.focus());
@@ -1863,7 +2063,15 @@ function Composer({
   };
   /** Editing a queued task takes it back into the box; sending again records a new version. */
   const editQueued = async (entry: SessionEntry) => {
+    setAttachmentEpoch((epoch) => epoch + 1);
+    setAttachmentsBusy(false);
+    setImagesBusy(false);
     setText(entry.text);
+    setAttachments(entry.attachments ?? []);
+    setImages(entry.images ?? []);
+    setReviewOnly(false);
+    setVerificationScope('targeted');
+    setQualityPreset('default');
     setChosen('queue');
     setLock({ intent: 'queue', target: null });
     await repository.updateSessionEntry(session.sessionId, entry.entryId, {
@@ -1917,7 +2125,25 @@ function Composer({
       if (next < -1 || next >= history.length) return;
       event.preventDefault();
       setRecall(next);
+      setAttachmentEpoch((epoch) => epoch + 1);
+      setAttachmentsBusy(false);
+      setImagesBusy(false);
       write(next === -1 ? '' : (history[next] ?? ''));
+      const recalledEntry =
+        next === -1 ? undefined : session.entries.findLast((entry) => entry.text === history[next]);
+      setAttachments(recalledEntry?.attachments ?? []);
+      setImages(recalledEntry?.images ?? []);
+      setUltraDraft(
+        UltraSelection.strip().safeParse(recalledEntry?.ultra ?? recalledEntry?.auto?.ultra).data ??
+          null,
+      );
+      setQualityPreset(
+        (recalledEntry?.qualityPreset ?? recalledEntry?.auto?.qualityPreset) === 'ultra'
+          ? 'ultra'
+          : 'default',
+      );
+      setReviewOnly(recalledEntry?.taskScope === 'review_only');
+      setVerificationScope(recalledEntry?.verificationScope === 'release' ? 'release' : 'targeted');
     }
   };
 
@@ -1941,11 +2167,38 @@ function Composer({
     profiles !== null &&
     autoNotReady(autoChoice, profiles, runMode);
   const autoProfile = profiles?.find((p) => p.profileId === autoChoice.modelProfile);
+  const reasoningBlocked =
+    isAuto &&
+    intent === 'next' &&
+    qualityPreset !== 'ultra' &&
+    autoReasoningUnsupported(autoChoice, profiles, runMode);
+  const ultraBlocked =
+    isAuto &&
+    !team &&
+    intent === 'next' &&
+    qualityPreset === 'ultra' &&
+    (!UltraSelection.safeParse(ultra).success ||
+      !ultra.modelProfiles.includes(autoChoice.modelProfile) ||
+      ultra.verifierProfile === autoChoice.modelProfile ||
+      ultra.modelProfiles.some(
+        (id) =>
+          !ultraProfiles?.some(
+            (profile) =>
+              profile.profileId === id &&
+              profile.available &&
+              profile.reasoningCapabilities?.levels.length,
+          ),
+      ));
   const liveUnavailable =
     runMode === 'live' && !live && (intent === 'next' || intent === 'explain');
   const unavailable =
     liveUnavailable ||
+    attachmentsBusy ||
+    imagesBusy ||
+    ((reviewOnly || verificationScope === 'release') && intent !== 'next') ||
     autoBlocked ||
+    reasoningBlocked ||
+    ultraBlocked ||
     notReady.length > 0 ||
     resolved.blocked !== null ||
     missingChips.length > 0 ||
@@ -1999,6 +2252,17 @@ function Composer({
       disabled: !ownActive,
       hint: why(Boolean(ownActive)),
       run: () => setConfirmStop(true),
+    },
+    {
+      id: 'composer:ultra',
+      title: tc('qualityUltra'),
+      group: tc('groupRequest'),
+      slash: 'ultra',
+      disabled: !isAuto || Boolean(team) || busy || intent !== 'next',
+      run: () => {
+        setQualityPreset('ultra');
+        input.current?.focus();
+      },
     },
     {
       id: 'composer:team',
@@ -2209,6 +2473,75 @@ function Composer({
               ))}
             </ul>
           ) : null}
+          <div className="flex flex-wrap items-center gap-3 text-xs">
+            {isAuto && !team ? (
+              <Select
+                label={tc('qualityPreset')}
+                value={qualityPreset}
+                disabled={busy || intent !== 'next'}
+                onValueChange={setQualityPreset}
+                options={[
+                  { value: 'default', label: tc('qualityDefault') },
+                  { value: 'ultra', label: tc('qualityUltra') },
+                ]}
+              />
+            ) : null}
+            {isAuto && !team && qualityPreset === 'ultra' ? (
+              <UltraModels
+                primary={autoChoice.modelProfile}
+                profiles={ultraProfiles}
+                value={ultra}
+                onChange={setUltraDraft}
+                disabled={busy || intent !== 'next'}
+              />
+            ) : null}
+            <label className="flex items-center gap-1">
+              <input
+                type="checkbox"
+                checked={reviewOnly}
+                disabled={busy}
+                onChange={(event) => setReviewOnly(event.target.checked)}
+              />
+              {tc('reviewOnly')}
+            </label>
+            <Select
+              label={tc('verificationScope')}
+              value={verificationScope}
+              disabled={busy}
+              onValueChange={setVerificationScope}
+              options={[
+                { value: 'targeted', label: tc('targetedScope') },
+                { value: 'release', label: tc('releaseScope') },
+              ]}
+            />
+            {(reviewOnly || verificationScope === 'release') && intent !== 'next' ? (
+              <span role="status">{tc('scopeNextOnly')}</span>
+            ) : null}
+          </div>
+          <ImageAttachmentPicker
+            key={`images:${attachmentEpoch}`}
+            inputRef={imageFiles}
+            enabled={intent === 'next'}
+            sessionId={session.sessionId}
+            value={images}
+            onChange={setImages}
+            onBusyChange={setImagesBusy}
+            disabled={busy}
+          />
+          {images.length > 0 && intent !== 'next' ? (
+            <p role="status" className="text-xs text-muted">
+              {tc('imagesNextOnly')}
+            </p>
+          ) : null}
+          <TextAttachmentPicker
+            key={`text:${attachmentEpoch}`}
+            inputRef={textFiles}
+            value={attachments}
+            onChange={setAttachments}
+            onLoading={setAttachmentsBusy}
+            disabled={busy}
+            enabled={intent === 'next'}
+          />
           <ComposerInput
             inputRef={input}
             label={t('requestLabel')}
@@ -2244,6 +2577,74 @@ function Composer({
                 <AtSign />
               </Button>
             </Tooltip>
+            <Menu>
+              <MenuTrigger
+                render={
+                  <Button
+                    variant="ghost-muted"
+                    size="icon-sm"
+                    aria-label={tc('attachmentActions')}
+                    disabled={busy || attachmentsBusy || imagesBusy || intent !== 'next'}
+                  />
+                }
+              >
+                <Plus />
+              </MenuTrigger>
+              <MenuPopup align="start">
+                {mode === 'server' ? (
+                  <MenuItem
+                    disabled={images.length >= IMAGE_MAX_COUNT}
+                    onClick={() => imageFiles.current?.click()}
+                  >
+                    {tc('attachImages')}
+                  </MenuItem>
+                ) : null}
+                <MenuItem
+                  disabled={attachments.length >= TEXT_ATTACHMENT_MAX_COUNT}
+                  onClick={() => textFiles.current?.click()}
+                >
+                  {tc('attachText')}
+                </MenuItem>
+              </MenuPopup>
+            </Menu>
+            <Menu>
+              <MenuTrigger
+                render={
+                  <Button
+                    variant="ghost-muted"
+                    size="icon-sm"
+                    aria-label={tc('templateActions')}
+                    disabled={busy}
+                  />
+                }
+              >
+                <FileText />
+              </MenuTrigger>
+              <MenuPopup align="start">
+                {['audit', 'tokens', 'verify'].map((value) => (
+                  <MenuItem
+                    key={value}
+                    onClick={() =>
+                      write((current) =>
+                        [
+                          current.trim(),
+                          tc(`designTemplates.${value}.prompt`, {
+                            askTool: 'ask_user',
+                            skill: 'verify-changes',
+                            reviewContract:
+                              'write_artifact → review JSON design: {reportVersionId, preferences: [], tokenProposalVersionId?}; actual user answers: {origin: user_answer, requestId, questionId, appliedTo}; AI proposals: {origin: ai_delegated, appliedTo}',
+                          }),
+                        ]
+                          .filter(Boolean)
+                          .join('\n\n'),
+                      )
+                    }
+                  >
+                    {tc(`designTemplates.${value}.name`)}
+                  </MenuItem>
+                ))}
+              </MenuPopup>
+            </Menu>
             {allowed.length > 1 && !resolved.blocked ? (
               <Select
                 variant="chip"
@@ -2305,58 +2706,20 @@ function Composer({
               />
             ) : null}
             {isAuto && (intent === 'next' || intent === 'explain') && profiles ? (
-              <>
-                <Select
-                  variant="chip"
-                  label={t('autoModel')}
-                  value={autoChoice.modelProfile}
-                  open={autoModelOpen}
-                  onOpenChange={setAutoModelOpen}
-                  // Another model may not support the saved reasoning; it starts unset.
-                  onValueChange={(value) => void updateAuto({ modelProfile: String(value) })}
-                  options={profiles.map((p) => ({ value: p.profileId, label: p.label }))}
-                />
-                {intent === 'next' ? (
-                  <Select
-                    variant="chip"
-                    label={tq('label')}
-                    value={reasoningValue(autoChoice.reasoning)}
-                    open={autoReasoningOpen}
-                    onOpenChange={setAutoReasoningOpen}
-                    onValueChange={(value) => {
-                      const reasoning = reasoningFrom(String(value));
-                      void updateAuto(
-                        reasoning
-                          ? { modelProfile: autoChoice.modelProfile, reasoning }
-                          : { modelProfile: autoChoice.modelProfile },
-                      );
-                    }}
-                    options={[
-                      { value: '', label: tq('legacy') },
-                      {
-                        value: 'provider_default',
-                        label: tq('provider_default'),
-                        disabled: !autoProfile?.reasoningCapabilities?.providerDefault,
-                      },
-                      ...(autoProfile?.reasoningCapabilities?.levels ?? []).map((level) => ({
-                        value: level,
-                        label: tq(`level.${level}`),
-                      })),
-                      {
-                        value: 'auto',
-                        label: tq('auto'),
-                        disabled: !autoProfile?.reasoningCapabilities?.levels.includes('medium'),
-                      },
-                      {
-                        // CR-024 §7: the start model picks low, medium or high per request.
-                        value: 'route',
-                        label: t('reasoningRoute'),
-                        disabled: !autoProfile?.reasoningCapabilities?.levels.includes('medium'),
-                      },
-                    ]}
-                  />
-                ) : null}
-              </>
+              <AutoModelMenu
+                value={autoChoice}
+                profiles={
+                  qualityPreset === 'ultra' && intent === 'next'
+                    ? profiles.filter((profile) => ultra.modelProfiles.includes(profile.profileId))
+                    : profiles
+                }
+                showReasoning={intent === 'next'}
+                ultra={qualityPreset === 'ultra'}
+                disabled={busy}
+                open={autoModelOpen}
+                onOpenChange={setAutoModelOpen}
+                onChange={(value) => void updateAuto(value)}
+              />
             ) : null}
             <div className="ml-auto flex items-center gap-1">
               {choosingAuto ? (
@@ -2406,6 +2769,7 @@ function Composer({
             session={session}
             model={autoProfile?.label ?? autoChoice.modelProfile}
             reasoning={autoChoice.reasoning}
+            ultra={qualityPreset === 'ultra' && intent === 'next'}
             mode={runMode}
             intent={intent}
           />
@@ -2414,6 +2778,12 @@ function Composer({
           <span className="text-warning">{t('noResult')}</span>
         ) : null}
         {liveUnavailable ? <p role="alert">{tc('liveUnavailable')}</p> : null}
+        {ultraBlocked ? <p role="status">{tc('ultraNeedsModels')}</p> : null}
+        {reasoningBlocked ? (
+          <p role="status" data-testid="reasoning-not-supported" className="text-warning">
+            {tc('reasoningUnsupportedHint')}
+          </p>
+        ) : null}
         {(intent === 'next' || intent === 'explain') && team ? (
           <PreRunSummary session={session} team={team} mode={runMode} intent={intent} />
         ) : null}
@@ -2607,15 +2977,18 @@ function AutoPreRunSummary({
   reasoning,
   mode,
   intent,
+  ultra,
 }: {
   session: WorkSession;
   model: string;
   reasoning: AutoReasoning | undefined;
   mode: 'mock' | 'live';
   intent: 'next' | 'explain';
+  ultra: boolean;
 }) {
   const t = useTranslations('Sessions');
   const tq = useTranslations('Reasoning');
+  const tc = useTranslations('Composer');
   const { workspaces } = useServices();
   const [copy, setCopy] = useState(false);
   const [workspaceRevision, setWorkspaceRevision] = useState(0);
@@ -2634,8 +3007,9 @@ function AutoPreRunSummary({
       live = false;
     };
   }, [workspaces, session.sessionId, workspaceRevision]);
-  const level =
-    reasoning?.mode === 'fixed'
+  const level = ultra
+    ? tc('ultraMaximumShort')
+    : reasoning?.mode === 'fixed'
       ? tq(`level.${reasoning.level}`)
       : reasoning?.mode === 'route'
         ? t('reasoningRoute')

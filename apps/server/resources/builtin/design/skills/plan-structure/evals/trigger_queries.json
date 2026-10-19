@@ -1,0 +1,74 @@
+[
+  {
+    "id": "en-positive-1",
+    "language": "en",
+    "query": "Choose whether this portfolio should use a timeline, project index, or catalog from the user's retrieval task.",
+    "should_trigger": true
+  },
+  {
+    "id": "en-positive-2",
+    "language": "en",
+    "query": "Select one information structure that still works when these records grow tenfold.",
+    "should_trigger": true
+  },
+  {
+    "id": "en-negative-1",
+    "language": "en",
+    "query": "Rewrite this vague hero copy using the supplied product facts.",
+    "should_trigger": false
+  },
+  {
+    "id": "en-negative-2",
+    "language": "en",
+    "query": "Check whether the menu focus indicator is visible.",
+    "should_trigger": false
+  },
+  {
+    "id": "ko-positive-1",
+    "language": "ko",
+    "query": "사용자의 탐색 과제를 기준으로 이 포트폴리오를 타임라인·프로젝트 인덱스·카탈로그 중에서 선택해줘.",
+    "should_trigger": true
+  },
+  {
+    "id": "ko-positive-2",
+    "language": "ko",
+    "query": "레코드가 열 배로 늘어나도 유지되는 하나의 정보 구조를 골라줘.",
+    "should_trigger": true
+  },
+  {
+    "id": "ko-negative-1",
+    "language": "ko",
+    "query": "제공된 제품 사실을 사용해서 이 모호한 히어로 카피를 고쳐줘.",
+    "should_trigger": false
+  },
+  {
+    "id": "ko-negative-2",
+    "language": "ko",
+    "query": "메뉴의 포커스 표시가 보이는지만 확인해줘.",
+    "should_trigger": false
+  },
+  {
+    "id": "ja-positive-1",
+    "language": "ja",
+    "query": "利用者の検索タスクを基準に、このポートフォリオを年表・プロジェクト索引・カタログのどれにするか選んでください。",
+    "should_trigger": true
+  },
+  {
+    "id": "ja-positive-2",
+    "language": "ja",
+    "query": "レコードが10倍に増えても維持できる一つの情報構造を選んでください。",
+    "should_trigger": true
+  },
+  {
+    "id": "ja-negative-1",
+    "language": "ja",
+    "query": "提供された製品情報を使って、この曖昧なヒーローコピーを書き直してください。",
+    "should_trigger": false
+  },
+  {
+    "id": "ja-negative-2",
+    "language": "ja",
+    "query": "メニューのフォーカス表示が見えるかだけ確認してください。",
+    "should_trigger": false
+  }
+]

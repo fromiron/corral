@@ -9,8 +9,10 @@ import {
 import { describe, expect, it } from 'vitest';
 import {
   Coordinator,
+  exportRunArchive,
   InMemoryRunStore,
   InProcessTransport,
+  openRunArchive,
   SPEC_HARD_CAPS,
   waitForProjection,
 } from '../src/index.ts';
@@ -56,6 +58,76 @@ const brief = (s: ReturnType<typeof setup>, index: number) =>
   s.starts[index]?.inputs.find((i) => i.name === 'brief')?.text ?? '';
 
 describe('references in a start request (CR-016)', () => {
+  it('[TC-IMAGE-001-H] [TC-IMAGE-001-N] image references require ownership and model support, and only private history contains their body', async () => {
+    const image = {
+      kind: 'image_attachment' as const,
+      imageId: 'image_fixture',
+      name: 'private.png',
+      mime: 'image/png' as const,
+      bytes: 3,
+      sha256: 'a'.repeat(64),
+      width: 1,
+      height: 1,
+    };
+    let supported = false;
+    const starts: AgentStartInput[] = [];
+    const store = new InMemoryRunStore();
+    const coordinator = new Coordinator({
+      store,
+      clock: new FakeClock(),
+      ids: new SequentialIdFactory(),
+      images: {
+        read: (sessionId, ref) =>
+          sessionId === 'session_1' && ref.sha256 === image.sha256
+            ? { ...ref, data: 'AQID' }
+            : null,
+      },
+      models: {
+        resolve: (profile) => ({
+          ok: true,
+          snapshot: { profile, provider: null, modelId: null, auth: 'mock', imageInput: supported },
+        }),
+      },
+      agents: new ScriptedAgentAdapter({
+        turns: 1,
+        beforeReply: async (_turn, input) => {
+          starts.push(input);
+        },
+      }),
+    });
+    const request = {
+      schemaVersion: '0.1' as const,
+      commandId: 'no_image_model',
+      definition: linearCorral(['writer']),
+      mode: 'mock' as const,
+      sessionId: 'session_1',
+      references: [image],
+    };
+    expect(coordinator.startRun(request).receipt.error?.code).toBe('CAPABILITY_DENIED');
+    supported = true;
+    expect(
+      coordinator.startRun({ ...request, commandId: 'foreign_image', sessionId: 'other_session' })
+        .runId,
+    ).toBeNull();
+    const started = coordinator.startRun({ ...request, commandId: 'image_supported' });
+    expect(started.runId).toBeTruthy();
+    await waitForProjection(
+      new InProcessTransport(coordinator),
+      started.runId!,
+      (p) => p.status === 'succeeded',
+    );
+    expect(starts[0]?.images).toEqual([{ ...image, data: 'AQID' }]);
+    expect(starts[0]?.role.allowedWorkTools).toEqual(request.definition.roles[0]?.allowedWorkTools);
+    expect(JSON.stringify(exportRunArchive(store, started.runId!))).not.toMatch(
+      /AQID|private\.png/,
+    );
+    const archived = openRunArchive(
+      exportRunArchive(store, started.runId!, { privateTranscript: true }),
+    );
+    expect(archived.visibility).toBe('private');
+    if (archived.visibility === 'private')
+      expect(archived.artifacts[image.imageId]).toContain('AQID');
+  });
   it('[TC-REF-001-H] lists files, folders, runs and roles as pointers after the brief', async () => {
     const s = setup();
     const first = await run(s, 'cmd_first');
@@ -152,4 +224,36 @@ describe('references in a start request (CR-016)', () => {
     expect(b.runId).toBe(a.result.runId);
     expect(s.coordinator.listRuns()).toHaveLength(1);
   });
+});
+
+it('[TC-CHAT-001-H] [TC-CHAT-001-N] text attachments are immutable private input, never file permission, and invalid bodies do not start', async () => {
+  const text = 'Private attachment 한국어';
+  const attachment = {
+    kind: 'text_attachment' as const,
+    name: 'notes.md',
+    mime: 'text/markdown' as const,
+    bytes: 28,
+    sha256: 'c4ce4971cceb0ca9b36537379b41e4cc64e6f638776d94eb0791c76460fd90b8',
+    text,
+  };
+  const s = setup();
+  const valid = await run(s, 'with_text', [attachment]);
+  expect(valid.result.receipt.status).toBe('applied');
+  expect(brief(s, 0)).toContain(text);
+  expect(brief(s, 0)).toContain('source data');
+  expect(s.starts[0]?.role.allowedWorkTools).not.toContain('read_file');
+  expect(JSON.stringify(s.coordinator.getSnapshot(valid.result.runId!).projection)).not.toContain(
+    text,
+  );
+  for (const [index, refs] of [
+    [{ ...attachment, text: 'changed' }],
+    [{ ...attachment, bytes: 1 }],
+    [{ ...attachment, name: '../secret.md' }],
+    [{ ...attachment, mime: 'image/png' }],
+    [{ ...attachment, text: 'x'.repeat(65537) }],
+    Array.from({ length: 6 }, (_, n) => ({ ...attachment, name: `${n}.md` })),
+  ].entries()) {
+    expect((await run(s, `invalid_text_${index}`, refs as RunReference[])).result.runId).toBeNull();
+  }
+  expect(s.coordinator.listRuns()).toHaveLength(1);
 });

@@ -9,6 +9,8 @@ import { useServices } from '../services.tsx';
 
 export interface ProfileInfo {
   profileId: string;
+  provider?: string;
+  modelId?: string;
   /** "OpenAI · gpt-5" */
   label: string;
   available: boolean;
@@ -45,6 +47,8 @@ export function useModelProfiles(): ProfileInfo[] | null {
         setProfiles(
           list.map((p) => ({
             profileId: p.profileId,
+            provider: p.provider,
+            modelId: p.modelId,
             reasoningCapabilities: p.reasoningCapabilities,
             label: `${p.providerName} · ${p.modelName ?? p.modelId}`,
             // Ready to call: the model is known, a sign-in or key is set, and a subscription

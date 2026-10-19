@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Motion inventory",
+  "type": "object",
+  "required": [
+    "artifact",
+    "patterns"
+  ],
+  "properties": {
+    "artifact": {
+      "type": "string",
+      "minLength": 1
+    },
+    "patterns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "trigger",
+          "purpose",
+          "essential",
+          "decision",
+          "information_conveyed",
+          "static_equivalent",
+          "reduced_motion_behavior"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "trigger": {
+            "type": "string",
+            "minLength": 1
+          },
+          "purpose": {
+            "type": "string",
+            "minLength": 1
+          },
+          "essential": {
+            "type": "boolean"
+          },
+          "decision": {
+            "enum": [
+              "keep",
+              "reduce",
+              "replace",
+              "remove"
+            ]
+          },
+          "information_conveyed": {
+            "type": "boolean"
+          },
+          "static_equivalent": {
+            "type": "boolean"
+          },
+          "reduced_motion_behavior": {
+            "type": "string"
+          },
+          "verification": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "unknowns": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

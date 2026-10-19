@@ -13,10 +13,12 @@ import {
 } from '@corral/contracts';
 import { SPEC_HARD_CAPS, waitForProjection } from '@corral/core';
 import { describeTransportContract } from '@corral/core/testing';
+import { openDatabase } from '@corral/storage-sqlite';
 import { Gate, linearCorral, ScriptedAgentAdapter } from '@corral/testkit';
 import { afterEach, describe, expect, it } from 'vitest';
 import researchTeam from '../../../examples/research-team.corral.json' with { type: 'json' };
 import { type CorralServer, startCorralServer } from '../src/index.ts';
+import { InputRegistry } from '../src/inputs.ts';
 
 const TOKEN = 'test-bootstrap-token-0123456789abcdef';
 const servers: CorralServer[] = [];
@@ -934,7 +936,9 @@ describe('registered input API and tool integration (C-043, C-044)', () => {
   it('imports text, searches and reads by ID through authorized Coordinator tools', async () => {
     let documentId = '';
     const seen: unknown[] = [];
+    const workspace = tempWorkspace();
     const server = await start({
+      workspace,
       agents: new ScriptedAgentAdapter({
         turns: 1,
         script: async (_input, host) => {
@@ -948,6 +952,38 @@ describe('registered input API and tool integration (C-043, C-044)', () => {
       }),
     });
     const { call } = await browser(server);
+    const db = openDatabase(join(workspace, '.corral/corral.db'));
+    let webDocument: Record<string, unknown>;
+    try {
+      const inputs = new InputRegistry(db, {
+        network: {
+          resolve: async () => [{ address: '8.8.8.8', family: 4 }],
+          request: async () => ({
+            status: 200,
+            headers: { 'content-type': 'text/html' },
+            body: (async function* () {
+              yield Buffer.from('<main>Private source</main>');
+            })(),
+            close() {},
+          }),
+        },
+      });
+      const source = await inputs.importSource({ url: 'https://source.example/article' });
+      webDocument = await inputs.read({ sourceId: source.sourceId }, 'live');
+    } finally {
+      db.close();
+    }
+    const sourceUrl = `${server.url}/api/v1/documents/${webDocument.documentId}/source`;
+    expect((await fetch(sourceUrl)).status).toBe(401);
+    const evidence = await call(sourceUrl);
+    expect(evidence.status).toBe(200);
+    expect(evidence.headers.get('cache-control')).toBe('no-store');
+    expect(evidence.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(await evidence.json()).toMatchObject({
+      rawText: '<main>Private source</main>',
+      metadata: webDocument.source,
+    });
+
     const response = await call(`${server.url}/api/v1/documents/import`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -960,7 +996,11 @@ describe('registered input API and tool integration (C-043, C-044)', () => {
     expect(response.status).toBe(201);
     documentId = (await response.json()).documentId;
     const listed = await (await call(`${server.url}/api/v1/documents`)).json();
-    expect(listed).toMatchObject([{ id: documentId, kind: 'document', bytes: 17 }]);
+    expect(listed).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: documentId, kind: 'document', bytes: 17 }),
+      ]),
+    );
     const definition = linearCorral(['writer']);
     definition.roles[0]?.allowedWorkTools.push('search', 'read_document');
     const created = server.coordinator.startRun({
@@ -1159,6 +1199,43 @@ describe('REST: work sessions (CR-011)', () => {
     });
     if (!session.ok) throw new Error(session.message);
     const sessionId = session.session.sessionId;
+    const imageUrl = `${server.url}/api/v1/sessions/${sessionId}/images`;
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4AWP4z8DwHwAFAAH/e+m+7wAAAABJRU5ErkJggg==',
+      'base64',
+    );
+    expect(
+      (
+        await fetch(`${imageUrl}?name=pixel.png`, {
+          method: 'POST',
+          headers: { 'content-type': 'image/png', origin: server.url },
+          body: png,
+        })
+      ).status,
+    ).toBe(401);
+    const upload = await call(`${imageUrl}?name=pixel.png`, {
+      method: 'POST',
+      headers: { 'content-type': 'image/png' },
+      body: png,
+    });
+    expect(upload.status).toBe(201);
+    const image = await upload.json();
+    const downloaded = await call(`${imageUrl}/${image.imageId}`);
+    expect(downloaded.status).toBe(200);
+    expect(downloaded.headers.get('content-type')).toBe('image/png');
+    expect(downloaded.headers.get('cache-control')).toBe('no-store');
+    expect(
+      (await call(`${server.url}/api/v1/sessions/session_foreign/images/${image.imageId}`)).status,
+    ).toBe(404);
+    expect(
+      (
+        await call(`${imageUrl}?name=pixel.png`, {
+          method: 'POST',
+          headers: { 'content-type': 'image/png' },
+          body: 'not a png',
+        })
+      ).status,
+    ).toBe(400);
 
     const first = await transport.startRun({
       schemaVersion: '0.1',

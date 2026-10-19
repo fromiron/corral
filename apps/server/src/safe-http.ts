@@ -172,9 +172,17 @@ export async function readHttps(
     signal?: AbortSignal;
     timeoutMs?: number;
     json?: boolean;
+    html?: boolean;
     headers?: Record<string, string>;
   } = {},
-): Promise<{ text: string; mimeType: string }> {
+): Promise<{
+  text: string;
+  mimeType: string;
+  finalUrl: string;
+  rawBody: Buffer;
+  lastModified: string | null;
+  requests: number;
+}> {
   const network = options.network ?? systemNetwork;
   const timeout = AbortSignal.timeout(options.timeoutMs ?? 30_000);
   const signal = options.signal ? AbortSignal.any([options.signal, timeout]) : timeout;
@@ -184,7 +192,13 @@ export async function readHttps(
       const address = await resolvePublic(url, network, signal);
       signal.throwIfAborted();
       const response = await aborted(
-        network.request(url, address, signal, options.headers),
+        network.request(
+          url,
+          address,
+          signal,
+          options.headers ??
+            (options.html ? { accept: 'text/plain, text/markdown, text/html' } : undefined),
+        ),
         signal,
       );
       try {
@@ -201,9 +215,17 @@ export async function readHttps(
         const contentType = response.headers['content-type'];
         const mimeType =
           typeof contentType === 'string' ? contentType.split(';')[0]?.trim().toLowerCase() : '';
-        const allowed = options.json ? ['application/json'] : ['text/plain', 'text/markdown'];
+        const allowed = options.json
+          ? ['application/json']
+          : ['text/plain', 'text/markdown', ...(options.html ? ['text/html'] : [])];
         if (!mimeType || !allowed.includes(mimeType))
-          throw new InputError('source must be plain text or Markdown');
+          throw new InputError('source MIME type is not allowed');
+        const charset =
+          typeof contentType === 'string'
+            ? /charset\s*=\s*["']?([\w-]+)/i.exec(contentType)?.[1]?.toLowerCase()
+            : undefined;
+        if (charset && !['utf-8', 'utf8', 'us-ascii'].includes(charset))
+          throw new InputError('source charset must be UTF-8');
         const encoding = response.headers['content-encoding'];
         if (encoding && encoding !== 'identity')
           throw new InputError('compressed source bodies are not accepted');
@@ -219,9 +241,24 @@ export async function readHttps(
           if (bytes > MAX_INPUT_BYTES) throw new InputError('source exceeds 1 MiB');
           chunks.push(item.value);
         }
-        const text = new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks));
+        const rawBody = Buffer.concat(chunks);
+        if (charset === 'us-ascii' && rawBody.some((byte) => byte > 127))
+          throw new InputError('source charset does not match its body');
+        const text = new TextDecoder('utf-8', { fatal: true }).decode(rawBody);
         if (text.includes('\u0000')) throw new InputError('source is not text');
-        return { text, mimeType };
+        const modified = response.headers['last-modified'];
+        const lastModified =
+          typeof modified === 'string' && Number.isFinite(Date.parse(modified))
+            ? new Date(modified).toISOString()
+            : null;
+        return {
+          text,
+          mimeType,
+          finalUrl: url.href,
+          rawBody,
+          lastModified,
+          requests: redirects + 1,
+        };
       } finally {
         response.close();
       }

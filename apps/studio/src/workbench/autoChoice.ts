@@ -3,6 +3,7 @@ import {
   type AutoReasoning,
   ReasoningLevel,
   type RunReference,
+  type UltraSelection,
 } from '@corral/contracts';
 import type { ProfileInfo } from './useModels.ts';
 
@@ -35,13 +36,37 @@ export function autoNotReady(
   return !profiles?.some((p) => p.profileId === choice.modelProfile && p.available);
 }
 
+/** Preserve an unsupported request; the person chooses a new effort explicitly. */
+export function autoReasoningUnsupported(
+  choice: AutoModelChoice,
+  profiles: ProfileInfo[] | null,
+  mode: 'mock' | 'live',
+): boolean {
+  if (!choice.reasoning || mode === 'mock' || !profiles) return false;
+  const capability = profiles.find(
+    (profile) => profile.profileId === choice.modelProfile,
+  )?.reasoningCapabilities;
+  return choice.reasoning.mode === 'provider_default'
+    ? !capability?.providerDefault
+    : !capability?.levels.includes(
+        choice.reasoning.mode === 'fixed' ? choice.reasoning.level : 'medium',
+      );
+}
+
 /** User-edited request identity; the pending command separately freezes mode and startFrom. */
 export function autoCommandSeed(
   text: string,
   references: RunReference[],
   choice: AutoModelChoice,
+  scope?: { taskScope?: 'work' | 'review_only'; verificationScope?: 'targeted' | 'release' },
+  qualityPreset?: 'default' | 'ultra',
+  ultra?: UltraSelection,
 ): string {
-  return `auto\u0000${text}\u0000${JSON.stringify([references, choice.modelProfile, choice.reasoning ?? null])}`;
+  const identity: unknown[] = [references, choice.modelProfile, choice.reasoning ?? null];
+  if (scope?.taskScope || scope?.verificationScope) identity.push(scope);
+  if (qualityPreset === 'ultra') identity.push({ qualityPreset });
+  if (ultra) identity.push({ ultra });
+  return `auto\u0000${text}\u0000${JSON.stringify(identity)}`;
 }
 
 /** The reasoning chip's value: a level, a mode, `route`, or '' for unset (CR-021, CR-024). */

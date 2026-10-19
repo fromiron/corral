@@ -1,0 +1,110 @@
+[
+  {
+    "id": "en-positive-1",
+    "language": "en",
+    "query": "Audit whether our Figma, Storybook, React component, and live states follow one reusable component contract.",
+    "should_trigger": true
+  },
+  {
+    "id": "en-positive-2",
+    "language": "en",
+    "query": "Define required anatomy, optional slots, states, responsive behavior, accessibility, and design-code parity for this component.",
+    "should_trigger": true
+  },
+  {
+    "id": "en-positive-3",
+    "language": "en",
+    "query": "Audit the same-looking controls that behave differently, the competing primary actions, hidden profile actions, and our legacy-to-new design-system adoption plan.",
+    "should_trigger": true
+  },
+  {
+    "id": "en-negative-1",
+    "language": "en",
+    "query": "Consolidate our spacing, color, radius, and typography tokens without reviewing component behavior.",
+    "should_trigger": false
+  },
+  {
+    "id": "en-negative-2",
+    "language": "en",
+    "query": "Rewrite this generic landing-page headline using the supplied product facts.",
+    "should_trigger": false
+  },
+  {
+    "id": "ko-positive-1",
+    "language": "ko",
+    "query": "Figma·Storybook·React 컴포넌트·실서비스의 상태가 하나의 재사용 컴포넌트 계약을 따르는지 감사해줘.",
+    "should_trigger": true
+  },
+  {
+    "id": "ko-positive-2",
+    "language": "ko",
+    "query": "이 컴포넌트의 필수 anatomy, 선택 슬롯, 상태, 반응형 동작, 접근성, 디자인-코드 일치 규칙을 정의해줘.",
+    "should_trigger": true
+  },
+  {
+    "id": "ko-positive-3",
+    "language": "ko",
+    "query": "똑같이 생겼지만 동작이 다른 컨트롤, 경쟁하는 주 액션, 메뉴 안에 숨은 중요 액션, 기존 디자인 시스템에서 새 시스템으로의 도입 계획을 함께 감사해줘.",
+    "should_trigger": true
+  },
+  {
+    "id": "ko-negative-1",
+    "language": "ko",
+    "query": "컴포넌트 동작은 보지 말고 간격·색상·radius·타이포그래피 토큰만 통합해줘.",
+    "should_trigger": false
+  },
+  {
+    "id": "ko-negative-2",
+    "language": "ko",
+    "query": "제공된 제품 사실을 사용해서 이 범용적인 랜딩 페이지 헤드라인을 고쳐줘.",
+    "should_trigger": false
+  },
+  {
+    "id": "ja-positive-1",
+    "language": "ja",
+    "query": "Figma・Storybook・Reactコンポーネント・本番利用の状態が一つの再利用可能なコンポーネント契約に従うか監査してください。",
+    "should_trigger": true
+  },
+  {
+    "id": "ja-positive-2",
+    "language": "ja",
+    "query": "このコンポーネントの必須構造、任意スロット、状態、レスポンシブ動作、アクセシビリティ、デザインとコードの整合性を定義してください。",
+    "should_trigger": true
+  },
+  {
+    "id": "ja-positive-3",
+    "language": "ja",
+    "query": "同じ見た目なのに挙動が異なる操作、競合する主要アクション、メニュー内に隠れた重要操作、旧デザインシステムから新システムへの導入計画をまとめて監査してください。",
+    "should_trigger": true
+  },
+  {
+    "id": "ja-negative-1",
+    "language": "ja",
+    "query": "コンポーネントの動作は確認せず、余白・色・角丸・タイポグラフィのトークンだけを統合してください。",
+    "should_trigger": false
+  },
+  {
+    "id": "ja-negative-2",
+    "language": "ja",
+    "query": "提供された製品情報を使って、この汎用的なランディングページの見出しを書き直してください。",
+    "should_trigger": false
+  },
+  {
+    "id": "en-negative-3",
+    "language": "en",
+    "query": "Check whether the nested corner radii in this card are coherent.",
+    "should_trigger": false
+  },
+  {
+    "id": "ko-negative-3",
+    "language": "ko",
+    "query": "이 카드의 중첩된 모서리 radius가 일관적인지 확인해 줘.",
+    "should_trigger": false
+  },
+  {
+    "id": "ja-negative-3",
+    "language": "ja",
+    "query": "このカードの入れ子になった角丸が整合しているか確認してください。",
+    "should_trigger": false
+  }
+]

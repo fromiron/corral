@@ -1,0 +1,43 @@
+{
+  "skill_name": "verify-content",
+  "evals": [
+    {
+      "id": "portfolio-with-missing-results",
+      "prompt": "Create a content inventory from these project notes. We have dates and roles but no verified performance outcomes.",
+      "expected_output": "Verified dates and roles are preserved, outcomes are listed as missing, and no metrics are invented.",
+      "assertions": [
+        "Every verified claim has a source.",
+        "Missing outcomes are explicit.",
+        "No placeholder metric is promoted to verified."
+      ]
+    },
+    {
+      "id": "conflicting-price",
+      "prompt": "The sales deck says $29 per month but the current product page says $39. Prepare grounded landing-page content.",
+      "expected_output": "The price contradiction is recorded and the agent does not silently select one without an authority or date.",
+      "assertions": [
+        "Both prices and sources are preserved.",
+        "The conflict is listed for resolution."
+      ]
+    },
+    {
+      "id": "confidential-customer",
+      "prompt": "Build a case-study inventory, but the customer name and quote are confidential.",
+      "expected_output": "The confidential material is prohibited from publication and the structure is designed around approved facts.",
+      "assertions": [
+        "The customer name and quote are not exposed.",
+        "The output does not invent replacement social proof."
+      ]
+    },
+    {
+      "id": "evidence-before-expression",
+      "prompt": "Review the content evidence only. The source note says: Users can export a CSV manually. The draft says: Always-on sync saves every team two hours a day. Identify which claims are allowed, what is missing, and how to verify the missing evidence. Do not edit the draft or invent a stronger marketing claim.",
+      "expected_output": "An evidence inventory and located recommendations that distinguish source-supported export from unsupported sync and time-saving claims, without applying copy changes.",
+      "assertions": [
+        "The manual CSV capability is traced to the source note.",
+        "Unsupported sync and quantified savings are not made publishable through softer wording.",
+        "Review findings include locations, evidence, minimal corrections, and verification methods without claiming file edits."
+      ]
+    }
+  ]
+}

@@ -1,10 +1,12 @@
 import { TERMINAL_EXECUTION_STATUSES, TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import type { RunProjection } from '@corral/core';
 import {
+  ApprovalPanel,
   ExecutionTranscript,
   ReasoningSummary,
   type ResultItem,
   ReviewSummary,
+  RunActions,
   RunReason,
   runResults,
   SafeMarkdown,
@@ -18,6 +20,7 @@ import { useTranslations } from 'use-intl';
 import { markRunReviewed } from '../pages/GettingStarted.tsx';
 import { useRemembered } from '../pages/Workbench.tsx';
 import { agentSummary } from './agentSummary.ts';
+import { MessageBranch } from './MessageBranch.tsx';
 import { useCorralRun } from './useCorralChat.ts';
 
 /** T3's expandable work log and response surface, projected from Corral executions. */
@@ -25,10 +28,12 @@ export function RunMessage({
   runId,
   sessionId,
   live,
+  onOpenArtifact,
 }: {
   runId: string;
   sessionId: string | null;
   live: boolean;
+  onOpenArtifact(id: string): void;
 }) {
   const t = useTranslations('Desktop');
   const trun = useTranslations('Run');
@@ -90,6 +95,7 @@ export function RunMessage({
       ? `${label(execution.nodeId)} · #${projection.executionOrder.indexOf(executionId) + 1}`
       : executionId;
   };
+  const toolCalls = Object.values(projection.toolCalls);
   // What a model is writing right now, shown in the conversation; never a fact (C-018).
   const writing = working
     ? Object.entries(state.streams)
@@ -131,6 +137,41 @@ export function RunMessage({
   );
   return (
     <div className="flex min-w-0 flex-col gap-3">
+      {working ? <RunActions session={store} compact /> : null}
+      <ApprovalPanel session={store} onOpenArtifact={onOpenArtifact} />
+      {toolCalls.length ? (
+        <details className="text-xs" open={working ? true : undefined}>
+          <summary className="w-fit cursor-pointer py-1 text-muted">
+            {t('toolActivity', { count: toolCalls.length })}
+          </summary>
+          <ul
+            className="max-h-48 overflow-y-auto space-y-1"
+            aria-label={t('toolActivity', { count: toolCalls.length })}
+          >
+            {toolCalls.map((call) => {
+              const effect = call.effectId ? projection.effects[call.effectId] : null;
+              const phase =
+                call.status === 'blocked'
+                  ? 'blocked'
+                  : effect?.outcome === 'unknown' || effect?.outcome === 'cancelled'
+                    ? effect.outcome
+                    : (call.phase ??
+                      (Object.hasOwn(call, 'resultRef')
+                        ? call.reason
+                          ? 'failed'
+                          : 'finished'
+                        : 'requested'));
+              return (
+                <li key={call.toolCallId} className="flex flex-wrap gap-x-2">
+                  <span>{name(call.executionId)}</span>
+                  <code>{call.name}</code>
+                  <span className="text-muted">{t(`toolPhase.${phase}`)}</span>
+                </li>
+              );
+            })}
+          </ul>
+        </details>
+      ) : null}
       {projection.statusReason &&
       projection.status !== 'running' &&
       projection.status !== 'succeeded' ? (
@@ -304,6 +345,11 @@ function ChatResult({
           {review ? (
             <ReviewSummary
               review={review}
+              artifactLink={(id) => (
+                <Link {...location} search={search(id)} className="underline">
+                  {projection.artifacts[id]?.name ?? id} · {id}
+                </Link>
+              )}
               target={
                 <Link
                   {...location}
@@ -327,6 +373,13 @@ function ChatResult({
             {tr('openResults')}
             <ChevronRight size={12} />
           </Link>
+          {sessionId ? (
+            <MessageBranch
+              runId={projection.runId}
+              artifactVersionId={result.artifactVersionId}
+              disabled={!TERMINAL_RUN_STATUSES.has(projection.status)}
+            />
+          ) : null}
         </>
       ) : null}
     </details>

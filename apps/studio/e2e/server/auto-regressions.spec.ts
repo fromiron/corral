@@ -27,7 +27,7 @@ async function autoSession(page: Page, corral: Harness) {
   await corral.open('/');
   await page.getByRole('button', { name: 'Start session', exact: true }).click();
   await expect(page).toHaveURL(/\/sessions\/session_/);
-  await expect(page.getByRole('combobox', { name: 'Model', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Model', exact: true })).toBeVisible();
   return new URL(page.url()).pathname.split('/').at(-1) ?? '';
 }
 
@@ -161,13 +161,44 @@ test('[TC-AUTO-005-N] questions hide the auto reasoning setting they cannot appl
   await requestBox(page).fill('Make one result');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('succeeded');
+  // A terminal Run can precede the submission acknowledgement that unlocks the composer.
+  await expect(page.getByLabel('Attach text files', { exact: true })).toBeEnabled();
+  await page.getByLabel('Attach text files', { exact: true }).setInputFiles({
+    name: 'later.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('Only for a later request'),
+  });
+  await expect(page.getByRole('button', { name: 'Remove later.txt', exact: true })).toBeVisible();
   await page.getByRole('combobox', { name: 'What this is', exact: true }).click();
   await page.getByRole('option', { name: /^Question/ }).click();
-  await expect(page.getByRole('combobox', { name: 'Model', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Model', exact: true })).toBeVisible();
   await expect(page.getByRole('combobox', { name: 'Reasoning effort', exact: true })).toHaveCount(
     0,
   );
   await expect(page.getByTestId('pre-run')).not.toContainText('Chosen per request');
+  await expect(page.getByRole('button', { name: 'Model', exact: true })).not.toContainText(
+    'Chosen per request',
+  );
+  await page.getByRole('button', { name: 'Model', exact: true }).click();
+  await expect(page.getByRole('menu', { name: 'Model', exact: true })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'Reasoning effort', exact: true })).toHaveCount(
+    0,
+  );
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('menu', { name: 'Model', exact: true })).toBeHidden();
+  await requestBox(page).fill('Explain this result');
+  const sending = page.waitForRequest(
+    (request) => request.method() === 'POST' && request.url().endsWith('/runs/explain'),
+  );
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  const sent = (await sending).postDataJSON();
+  expect(sent).not.toHaveProperty('attachments');
+  expect(JSON.stringify(sent)).not.toContain('Only for a later request');
+  await expect.poll(() => corral.server.coordinator.listRuns().length).toBe(2);
+  await expect(requestBox(page)).toHaveValue('');
+  await expect(page.getByRole('button', { name: 'Remove later.txt', exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Remove later.txt', exact: true })).toBeVisible();
 });
 
 for (const stop of ['cancel', 'navigate'] as const) {
@@ -436,3 +467,70 @@ for (const outcome of ['failed', 'succeeded'] as const) {
     expect(corral.server.coordinator.listRuns()).toHaveLength(1);
   });
 }
+
+test.describe('quality presets', () => {
+  test.use({ live: false, codexLogin: false, reasoningApi: false });
+  test('[TC-ULTRA-003-H] the selected model pool survives settings and runs synthesis before cross-model review', async ({
+    page,
+    corral,
+  }) => {
+    const sessionId = await autoSession(page, corral);
+    await write(page, `/sessions/${sessionId}`, 'PATCH', {
+      expectedRevision: 1,
+      auto: { modelProfile: 'model-a', reasoning: { mode: 'fixed', level: 'low' } },
+    });
+    await page.reload();
+    const url = page.url();
+    await requestBox(page).fill('/ultra');
+    await requestBox(page).press('Enter');
+    await expect(page.getByRole('combobox', { name: 'Quality preset', exact: true })).toContainText(
+      'Ultra',
+    );
+    await requestBox(page).fill('Hello from the fixed quality fixture');
+    await page.getByRole('combobox', { name: 'Quality preset', exact: true }).click();
+    await page.getByRole('option', { name: 'Ultra · plan, work and review', exact: true }).click();
+    const verifier = page.getByRole('checkbox', { name: /model-b/ });
+    await verifier.uncheck();
+    await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
+    await verifier.check();
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await expect(page).toHaveURL(/\/settings/);
+    await page.goto(url);
+    await expect(requestBox(page)).toHaveValue('Hello from the fixed quality fixture');
+    await expect(page.getByRole('combobox', { name: 'Quality preset', exact: true })).toContainText(
+      'Ultra',
+    );
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
+    await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('succeeded');
+    const runId = corral.server.coordinator.listRuns()[0]!.runId;
+    const snapshot = corral.server.coordinator.getRunSnapshot(runId)!;
+    expect(snapshot.mode).toBe('mock');
+    expect(snapshot.autoRoute?.qualityPreset).toBe('ultra');
+    expect(snapshot.autoRoute?.ultra).toMatchObject({
+      version: 1,
+      modelProfiles: ['model-a', 'model-b'],
+      verifierProfile: 'model-b',
+    });
+    expect(snapshot.definition.roles.find((role) => role.id === 'reviewer')?.modelProfile).toBe(
+      'model-b',
+    );
+    expect(snapshot.definition.roles.find((role) => role.id === 'synthesizer')?.modelProfile).toBe(
+      'model-a',
+    );
+    expect(
+      snapshot.definition.roles.every(
+        (role) => role.reasoning?.mode === 'fixed' && role.reasoning.level === 'max',
+      ),
+    ).toBe(true);
+    expect(
+      await page.evaluate(
+        async (id) =>
+          (await fetch(`/api/v1/sessions/${id}`).then((response) => response.json())).auto,
+        sessionId,
+      ),
+    ).toEqual({ modelProfile: 'model-a', reasoning: { mode: 'fixed', level: 'low' } });
+    await page.reload();
+    await expect(page.getByTestId('entry-auto')).toContainText('Ultra');
+    expect(corral.server.coordinator.listRuns()).toHaveLength(1);
+  });
+});

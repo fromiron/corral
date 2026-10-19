@@ -303,5 +303,45 @@
     "type": "harness.simulated",
     "requiredContent": "snapshotHash (declared settings only, no SDK loading claim)",
     "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "user_input.requested",
+    "requiredContent": "requestId,executionId,attemptNo,bodyRef,schemaHash,deadline",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "user_input.answered",
+    "requiredContent": "requestId,executionId,attemptNo,answerRef,answerHash",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "user_input.closed",
+    "requiredContent": "requestId,executionId,attemptNo,reason",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "work_plan.updated",
+    "requiredContent": "scope,executionId,attemptNo,revision,criteriaVersionId,bodyRef,bodyHash",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "skill.read",
+    "requiredContent": "executionId,toolCallId,skillName,resourceHash,path,bodyHash",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "context.compaction_changed",
+    "requiredContent": "commandId,executionId,attemptNo,phase,context hashes,owned compaction modelCallIds; no private body",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "runtime.checkpoint_created",
+    "requiredContent": "private manifest/context references, hashes, owner, tree, byte count",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "runtime.checkpoint_skipped",
+    "requiredContent": "executionId,capacity reason",
+    "status": "payload_schema_to_implement"
   }
 ]

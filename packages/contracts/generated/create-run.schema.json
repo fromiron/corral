@@ -22,6 +22,77 @@
     "input": {
       "type": "object",
       "properties": {
+        "images": {
+          "maxItems": 3,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "image_attachment"
+              },
+              "imageId": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120,
+                "pattern": "^[^/\\\\\\p{Cc}]+$"
+              },
+              "mime": {
+                "type": "string",
+                "const": "image/png"
+              },
+              "bytes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1048576
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "width": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2048
+              },
+              "height": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2048
+              }
+            },
+            "required": [
+              "kind",
+              "imageId",
+              "name",
+              "mime",
+              "bytes",
+              "sha256",
+              "width",
+              "height"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "taskScope": {
+          "type": "string",
+          "enum": [
+            "work",
+            "review_only"
+          ]
+        },
+        "verificationScope": {
+          "type": "string",
+          "enum": [
+            "targeted",
+            "release"
+          ]
+        },
         "brief": {
           "type": "string",
           "minLength": 1
@@ -76,6 +147,106 @@
       "type": "array",
       "items": {
         "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "image_attachment"
+              },
+              "imageId": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120,
+                "pattern": "^[^/\\\\\\p{Cc}]+$"
+              },
+              "mime": {
+                "type": "string",
+                "const": "image/png"
+              },
+              "bytes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1048576
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "width": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2048
+              },
+              "height": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2048
+              }
+            },
+            "required": [
+              "kind",
+              "imageId",
+              "name",
+              "mime",
+              "bytes",
+              "sha256",
+              "width",
+              "height"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "text_attachment"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120,
+                "pattern": "^[^/\\\\\\p{Cc}]+$"
+              },
+              "mime": {
+                "type": "string",
+                "enum": [
+                  "text/plain",
+                  "text/markdown",
+                  "application/json",
+                  "text/csv"
+                ]
+              },
+              "bytes": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 65536
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "text": {
+                "type": "string",
+                "maxLength": 65536,
+                "pattern": "^[^\\p{Cs}\\0]*$"
+              }
+            },
+            "required": [
+              "kind",
+              "name",
+              "mime",
+              "bytes",
+              "sha256",
+              "text"
+            ],
+            "additionalProperties": false
+          },
           {
             "type": "object",
             "properties": {

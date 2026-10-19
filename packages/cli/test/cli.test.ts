@@ -339,6 +339,41 @@ describe('judgments the run ended before (#22)', () => {
 });
 
 describe('headless exec and eval (roadmap Core-③)', () => {
+  it('[TC-ULTRA-001-H] [TC-ULTRA-001-N] headless built-in Ultra uses the same bounded workflow and rejects custom-team conversion', async () => {
+    const cwd = workspace(),
+      output: string[] = [];
+    const brief = join(cwd, 'brief.txt');
+    writeFileSync(brief, 'Hello');
+    expect(
+      await runCli(
+        [
+          'exec',
+          'auto',
+          '--ultra',
+          '--ultra-models',
+          'model-a,model-b',
+          '--ultra-verifier',
+          'model-b',
+          '--input',
+          brief,
+          '--demo',
+          '--json',
+        ],
+        io(cwd, output),
+      ),
+      output.join('\n'),
+    ).toBe(0);
+    const result = JSON.parse(output.at(-1)!);
+    expect(result).toMatchObject({ status: 'succeeded', repairRounds: 1 });
+    expect(result.executions).toBeGreaterThanOrEqual(7);
+    expect(result.executions).toBeLessThanOrEqual(11);
+    expect(await runCli(['exec', 'auto', '--ultra', '--input', brief, '--demo'], io(cwd, []))).toBe(
+      1,
+    );
+    const custom = join(cwd, 'custom.json');
+    writeFileSync(custom, JSON.stringify(linearCorral(['worker'])));
+    expect(await runCli(['exec', custom, '--ultra', '--demo'], io(cwd, []))).toBe(1);
+  });
   const io = (cwd: string, output: string[]) => ({
     cwd,
     write: (line: string) => output.push(line),
@@ -457,4 +492,62 @@ describe('headless exec and eval (roadmap Core-③)', () => {
     expect(lines.join('\n')).toMatch(/duplicate variant id v|missing\.corral\.json/);
     expect(existsSync(join(cwd, '.corral', 'corral.db'))).toBe(false);
   });
+});
+
+it('[TC-INPUT-001-H] [TC-INPUT-001-N] headless questions return needs_input and only a schema-bound answer continues the run', async () => {
+  const question = {
+    key: 'format',
+    questions: [{ id: 'format', kind: 'text', prompt: 'Private format question' }],
+  };
+  const coordinator = new Coordinator({
+    clock: new FakeClock(),
+    ids: new SequentialIdFactory(),
+    agents: {
+      start: async (_input, host) => {
+        const settlement = (async () => {
+          const answer = await host.invokeTool({ name: 'ask_user', args: question });
+          if (!answer.ok || answer.result.status !== 'answered')
+            return { outcome: 'cancelled' as const };
+          const written = await host.invokeTool({ name: 'write_artifact', args: { text: 'Done' } });
+          if (!written.ok) return { outcome: 'failed' as const };
+          await host.invokeTool({
+            name: 'submit_result',
+            args: { artifactVersionIds: [written.result.artifactVersionId] },
+          });
+          return { outcome: 'succeeded' as const };
+        })();
+        return { cancel: async () => {}, waitForSettlement: () => settlement };
+      },
+    },
+  });
+  const transport = new InProcessTransport(coordinator);
+  const definition = linearCorral(['writer']);
+  definition.roles[0]!.allowedCollaborationTools.push('ask_user');
+  const first = await executeOnce(transport, definition, 'mock', {
+    signal: new AbortController().signal,
+  });
+  expect(first).toMatchObject({ status: 'needs_input', needsUser: true });
+  expect((await transport.getSnapshot(first.runId)).projection.status).toBe('awaiting_user');
+  const pending = first.pendingInput?.[0];
+  expect(pending?.request.key).toBe('format');
+  await transport.sendCommand({
+    schemaVersion: '0.1',
+    commandId: 'cancel_input',
+    runId: first.runId,
+    type: 'cancel',
+    payload: { scope: { kind: 'run' }, reason: 'fixture' },
+  });
+  await waitForProjection(transport, first.runId, (p) => p.status === 'cancelled');
+  const second = await executeOnce(transport, definition, 'mock', {
+    signal: new AbortController().signal,
+    wallNow: () => Date.parse('2026-10-15T00:00:00Z'),
+    answers: [
+      {
+        key: 'format',
+        schemaHash: pending!.schemaHash,
+        answers: [{ questionId: 'format', text: 'Table' }],
+      },
+    ],
+  });
+  expect(second).toMatchObject({ status: 'succeeded', needsUser: false, output: 'Done' });
 });

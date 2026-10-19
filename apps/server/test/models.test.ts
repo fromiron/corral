@@ -203,6 +203,24 @@ describe('model sign-in and profiles (C-058, ADR-019)', () => {
         provider: 'openai',
         modelId: 'gpt-test-a',
         auth: 'oauth',
+        imageInput: false,
+        contextWindow: 1000,
+        contextPolicy: {
+          version: 1,
+          contextWindow: 1000,
+          reserveTokens: 16384,
+          keepRecentTokens: 20000,
+          explicit: false,
+          configRevision: expect.any(String),
+          baseContextWindow: 1000,
+          baseSource: 'catalog',
+          sources: {
+            contextWindow: 'catalog',
+            reserveTokens: 'pi_default',
+            keepRecentTokens: 'pi_default',
+          },
+          warnings: ['legacy_inconsistent'],
+        },
         reasoning: { levels: [], providerDefault: false },
       },
     ]);
@@ -435,6 +453,34 @@ describe('API keys and OpenAI-compatible endpoints (CR-005)', () => {
       /modelProviders/,
     );
   });
+
+  it('[TC-SEC-002-H] [TC-SEC-002-N] a registered endpoint needs no profile to save a key and refuses a stale config revision', async () => {
+    const fake = makeFake();
+    const context = await start(
+      fake,
+      FAKE_PROFILES,
+      endpointConfig('https://example.test/v1', 'api_key'),
+    );
+    const auth = (await context.json('/model-auth')).body;
+    expect(auth.find((p: { providerId: string }) => p.providerId === 'local')).toMatchObject({
+      methods: { apiKey: true },
+      signedIn: false,
+    });
+    const { revision } = (await context.json('/model-config')).body;
+    const request = (rev: string, key: string) =>
+      context.json('/model-auth/local/api-key', {
+        method: 'PUT',
+        body: JSON.stringify({ revision: rev, key }),
+      });
+    expect((await request(revision, 'fixture-endpoint-key')).status).toBe(200);
+    const credentials = readFileSync(join(fake.configDir, 'credentials.json'), 'utf8');
+    expect((await request('stale', 'fixture-replacement-key')).status).toBe(409);
+    expect(readFileSync(join(fake.configDir, 'credentials.json'), 'utf8')).toBe(credentials);
+    expect(context.responses.join('\n')).not.toContain('fixture-endpoint-key');
+    expect(readFileSync(join(context.workspace, '.corral', 'config.json'), 'utf8')).not.toContain(
+      'fixture-endpoint-key',
+    );
+  });
 });
 
 describe('team drafts from a goal (CR-006)', () => {
@@ -519,6 +565,99 @@ describe('team drafts from a goal (CR-006)', () => {
 });
 
 describe('editing profiles and endpoints from the Models page (CR-008)', () => {
+  it('[TC-CONTEXT-001-H] [TC-CONTEXT-001-N] validates resolved profile policies before writing and returns the same saved effective values', async () => {
+    const context = await start(makeFake());
+    const current = (await context.json('/model-config')).body;
+    const path = join(context.workspace, '.corral', 'config.json');
+    const before = readFileSync(path, 'utf8');
+    const update = (profile: Record<string, unknown>, revision = current.revision) =>
+      context.json('/model-config', {
+        method: 'PUT',
+        body: JSON.stringify({
+          revision,
+          modelProfiles: [{ ...FAKE_PROFILES[0], ...profile }],
+          modelProviders: [],
+        }),
+      });
+    expect((await update({ contextWindow: 32000 })).status).toBe(400);
+    expect(readFileSync(path, 'utf8')).toBe(before);
+    const saved = await update({
+      contextWindow: 64000,
+      compaction: { reserveTokens: 0, keepRecentTokens: 0 },
+    });
+    expect(saved.status).toBe(200);
+    expect(saved.body.effectiveProfiles['model-a']).toMatchObject({
+      errors: [],
+      policy: {
+        contextWindow: 64000,
+        reserveTokens: 0,
+        keepRecentTokens: 0,
+        configRevision: saved.body.revision,
+        sources: {
+          contextWindow: 'profile',
+          reserveTokens: 'profile',
+          keepRecentTokens: 'profile',
+        },
+      },
+    });
+    const profiles = (await context.json('/model-profiles')).body;
+    expect(profiles[0]).toMatchObject({
+      contextWindow: 64000,
+      contextPolicy: saved.body.effectiveProfiles['model-a'].policy,
+    });
+    expect((await update({ contextWindow: 128000 })).status).toBe(409);
+    expect(JSON.parse(readFileSync(path, 'utf8')).modelProfiles[0].compaction).toEqual({
+      reserveTokens: 0,
+      keepRecentTokens: 0,
+    });
+  });
+  it('[TC-CONTEXT-001-H] [TC-CONTEXT-001-N] resolves profile aliases separately and never borrows another provider catalog limit', async () => {
+    const context = await start(makeFake());
+    const current = (await context.json('/model-config')).body;
+    const profiles = [
+      { ...FAKE_PROFILES[0], id: 'first', contextWindow: 64000 },
+      { ...FAKE_PROFILES[0], id: 'second', contextWindow: 96000 },
+      { id: 'fallback', provider: 'local', model: 'gpt-test-a' },
+      { id: 'explicit', provider: 'local', model: 'other' },
+      { id: 'unknown', provider: 'openai', model: 'missing' },
+    ];
+    const providers = [
+      {
+        id: 'local',
+        name: 'Local',
+        baseUrl: 'http://127.0.0.1:11434/v1',
+        access: 'none',
+        models: [{ id: 'gpt-test-a' }, { id: 'other', contextWindow: 128000 }],
+      },
+    ];
+    const preview = await context.json('/model-config/preview', {
+      method: 'POST',
+      body: JSON.stringify({
+        revision: current.revision,
+        modelProfiles: profiles,
+        modelProviders: providers,
+      }),
+    });
+    expect(preview.status).toBe(200);
+    const effective = preview.body.effectiveProfiles;
+    expect(effective.first.policy).toMatchObject({
+      contextWindow: 64000,
+      baseContextWindow: 1000,
+      baseSource: 'catalog',
+    });
+    expect(effective.second.policy.contextWindow).toBe(96000);
+    expect(effective.fallback.policy).toMatchObject({
+      contextWindow: 32000,
+      baseSource: 'fallback',
+      warnings: ['legacy_inconsistent'],
+    });
+    expect(effective.explicit.policy).toMatchObject({
+      contextWindow: 128000,
+      baseSource: 'endpoint',
+    });
+    expect(effective.unknown.policy).toBeNull();
+    expect((await context.json('/model-config')).body.revision).toBe(current.revision);
+  });
   const configOf = (workspace: string) =>
     JSON.parse(readFileSync(join(workspace, '.corral', 'config.json'), 'utf-8'));
 
@@ -558,12 +697,18 @@ describe('editing profiles and endpoints from the Models page (CR-008)', () => {
         revision: current.body.revision,
         modelProfiles: [
           { id: 'model-a', provider: 'openai', model: 'gpt-test-b' },
-          { id: 'model-b', provider: 'openai', model: 'gpt-test-a' },
+          {
+            id: 'model-b',
+            provider: 'openai',
+            model: 'gpt-test-a',
+            workerIsolation: 'linux-bwrap',
+          },
         ],
         modelProviders: [],
       }),
     });
     expect(saved.status).toBe(200);
+    expect(saved.body.modelProfiles[1].workerIsolation).toBe('linux-bwrap');
     expect(saved.body.revision).not.toBe(current.body.revision);
     const file = configOf(context.workspace);
     expect(file.hardCaps).toEqual({ maxModelCalls: 50 });
@@ -626,6 +771,28 @@ describe('editing profiles and endpoints from the Models page (CR-008)', () => {
     });
     expect(stale.status).toBe(409);
     expect(readFileSync(join(context.workspace, '.corral', 'config.json'), 'utf-8')).toBe(before);
+  });
+
+  it('[TC-SEC-002-N] reads externally changed model fields and revision from the same file snapshot', async () => {
+    const context = await start(makeFake());
+    const before = (await context.json('/model-config')).body;
+    const path = join(context.workspace, '.corral', 'config.json');
+    const current = JSON.parse(readFileSync(path, 'utf8'));
+    current.modelProfiles[0].model = 'gpt-test-b';
+    writeFileSync(path, JSON.stringify(current));
+    const after = (await context.json('/model-config')).body;
+    expect(after.revision).not.toBe(before.revision);
+    expect(after.modelProfiles[0].model).toBe('gpt-test-b');
+    const stale = await context.json('/model-config', {
+      method: 'PUT',
+      body: JSON.stringify({
+        revision: before.revision,
+        modelProfiles: before.modelProfiles,
+        modelProviders: [],
+      }),
+    });
+    expect(stale.status).toBe(409);
+    expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual(current);
   });
 });
 

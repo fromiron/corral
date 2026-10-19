@@ -6,6 +6,7 @@ export { editText, PiEditError } from './edit.ts';
 export {
   ENDPOINT_DEFAULTS,
   EndpointSpec,
+  endpointModelDefaults,
   endpointProvider,
   KEYLESS_PLACEHOLDER,
   requestKeyAuth,
@@ -28,6 +29,10 @@ export { recoverSdkWorkers } from './worker-leases.ts';
 export const WORKER_ENTRY = fileURLToPath(new URL('./worker-main.ts', import.meta.url));
 export const SDK_WORKER_ENTRY = fileURLToPath(new URL('./sdk-worker-main.ts', import.meta.url));
 
+export { assertBrowserCall, BROWSER_TOOLS } from './browser-policy.ts';
 export { type McpProbeTool, probeMcp } from './mcp-probe.ts';
+export { type ModelBroker, modelBridgeChannel } from './model-bridge.ts';
 export { modelReasoningCapabilities, reasoningRequest } from './reasoning.ts';
+
+export { sandboxChannel } from './sandbox-channel.ts';
 export { staticToolDescriptors } from './static-tools.ts';

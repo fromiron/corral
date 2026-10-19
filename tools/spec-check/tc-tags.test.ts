@@ -6,9 +6,16 @@ describe('extractTcTags', () => {
     const source = `
       it('[TC-CAN-002-H] layout move keeps hash', () => {});
       test('[TC-RACE-07] snapshot/subscribe handoff', () => {});
+      it('[TC-REF-003-F] rejects a missing reference', () => {});
+      it('[TC-REF-006-D] duplicate request uses its receipt', () => {});
       it('untagged helper test', () => {});
     `;
-    expect(extractTcTags(source)).toEqual(['TC-CAN-002-H', 'TC-RACE-07']);
+    expect(extractTcTags(source)).toEqual([
+      'TC-CAN-002-H',
+      'TC-RACE-07',
+      'TC-REF-003-F',
+      'TC-REF-006-D',
+    ]);
   });
 
   it('ignores ID-like text that is not a bracketed tag', () => {

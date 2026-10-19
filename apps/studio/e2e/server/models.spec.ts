@@ -141,7 +141,12 @@ test('[TC-SEC-002-H] an API key typed under Models runs live, is never shown, an
   await corral.open('/');
   await openModels(page);
   const openai = page.getByTestId('provider-openai');
-  await openai.getByLabel('API key').fill('sk-e2e-entered-secret');
+  await openai.getByLabel('API key', { exact: true }).fill('sk-e2e-entered-secret');
+  await expect(openai.getByLabel('API key', { exact: true })).toHaveAttribute('type', 'password');
+  await openai.getByRole('button', { name: 'Show API key', exact: true }).click();
+  await expect(openai.getByLabel('API key', { exact: true })).toHaveAttribute('type', 'text');
+  await openai.getByRole('button', { name: 'Hide API key', exact: true }).click();
+  await expect(openai.getByLabel('API key', { exact: true })).toHaveAttribute('type', 'password');
   await openai.getByRole('button', { name: 'Save key' }).click();
   await expect(openai.getByTestId('auth-status')).toContainText('Using the API key you entered');
   // The key field gives way to "Remove key"; the key is not kept in the page.
@@ -250,6 +255,146 @@ test('[TC-UX-003-H] asks the signed-in model for a team draft once and opens it 
 });
 
 test.describe('editing models on the Models page (CR-008)', () => {
+  test('[TC-SEC-002-H] [TC-SEC-002-N] an inline endpoint key stays out of config and retries after a partial save', async ({
+    page,
+    corral,
+  }) => {
+    await corral.open('/settings/models');
+    await page.getByRole('button', { name: 'Edit models' }).click();
+    const editor = page.getByRole('region', { name: 'Edit models' });
+    await editor.getByRole('button', { name: 'Add endpoint' }).click();
+    await editor.getByLabel('Endpoint id 1').fill('hive');
+    await editor.getByLabel('Endpoint name 1').fill('Hive');
+    await editor.getByLabel('Address of endpoint 1').fill('https://api-cdn.thehive.ai/api/v3');
+    await editor.getByLabel('Models of endpoint 1').fill('deepseek-ai/deepseek-v4.1-flash-1017');
+    await editor.getByLabel('Access of endpoint 1').selectOption('api_key');
+    const key = editor.getByLabel('API key', { exact: true });
+    await expect(key).toBeVisible();
+    await expect(key).toHaveAttribute('type', 'password');
+    await key.fill('fixture-inline-key');
+    await editor.getByRole('button', { name: 'Show API key', exact: true }).click();
+    await expect(key).toHaveAttribute('type', 'text');
+    await editor.getByRole('button', { name: 'Hide API key', exact: true }).click();
+    await expect(key).toHaveAttribute('type', 'password');
+    await editor.getByLabel('Address of endpoint 1').fill('https://api-cdn.thehive.ai/api/v3/');
+    await expect(key).toHaveValue('');
+    await key.fill('fixture-inline-key');
+    let failOnce = true;
+    await page.route('**/model-auth/hive/api-key', async (route) => {
+      if (failOnce) {
+        failOnce = false;
+        await route.fulfill({
+          status: 503,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            error: { code: 'COMMAND_NOT_SUPPORTED', message: 'fixture key store unavailable' },
+          }),
+        });
+      } else await route.continue();
+    });
+    await editor.getByRole('button', { name: 'Save models' }).click();
+    await expect(editor.getByRole('alert')).toContainText(
+      'Settings saved, but API key saving failed',
+    );
+    await expect(key).toHaveValue('fixture-inline-key');
+    const stored = await page.evaluate(async () => (await fetch('/api/v1/model-config')).json());
+    expect(stored.modelProviders[0].id).toBe('hive');
+    expect(stored.modelProfiles.every((p: { provider: string }) => p.provider === 'openai')).toBe(
+      true,
+    );
+    expect(JSON.stringify(stored)).not.toContain('fixture-inline-key');
+    await editor.getByRole('button', { name: 'Save models' }).click();
+    await expect(editor).toHaveCount(0);
+    await expect(page.getByTestId('provider-hive').getByTestId('auth-status')).toContainText(
+      'Using the API key you entered',
+    );
+    expect(await page.content()).not.toContain('fixture-inline-key');
+    expect(corral.errors.filter((e) => !e.includes('503'))).toEqual([]);
+  });
+
+  test('[TC-SEC-002-H] saving an endpoint and local reasoning settings in either order preserves both', async ({
+    page,
+    corral,
+  }) => {
+    await corral.open('/settings/models');
+    const apply = page.getByRole('checkbox', {
+      name: 'Allow automatic reasoning in all projects on this server',
+    });
+    await expect(apply).toBeEnabled();
+    const changed = page.waitForResponse(
+      (r) => r.url().endsWith('/models/reasoning') && r.request().method() === 'PUT',
+    );
+    await apply.click();
+    expect((await changed).status()).toBe(200);
+    await expect(apply).toBeChecked();
+    await page.getByRole('button', { name: 'Edit models' }).click();
+    const editor = page.getByRole('region', { name: 'Edit models' });
+    await editor.getByRole('button', { name: 'Add endpoint' }).click();
+    await editor.getByLabel('Endpoint id 1').fill('hive');
+    await editor.getByLabel('Endpoint name 1').fill('Hive');
+    await editor.getByLabel('Address of endpoint 1').fill('https://api-cdn.thehive.ai/api/v3');
+    await editor.getByLabel('Access of endpoint 1').selectOption('api_key');
+    await editor.getByLabel('Models of endpoint 1').fill('deepseek-ai/deepseek-v4.1-flash-1017');
+    const saved = page.waitForResponse(
+      (r) => r.url().endsWith('/model-config') && r.request().method() === 'PUT',
+    );
+    await editor.getByRole('button', { name: 'Save models' }).click();
+    expect((await saved).status()).toBe(200);
+    await expect(editor).toHaveCount(0);
+    await expect(apply).toBeChecked();
+    const toggled = page.waitForResponse(
+      (r) => r.url().endsWith('/models/reasoning') && r.request().method() === 'PUT',
+    );
+    await apply.click();
+    expect((await toggled).status()).toBe(200);
+    await page.reload();
+    await expect(apply).not.toBeChecked();
+    await page.getByRole('button', { name: 'Edit models' }).click();
+    await expect(editor.getByLabel('Endpoint name 1')).toHaveValue('Hive');
+    expect(corral.errors).toEqual([]);
+  });
+
+  test('[TC-SEC-002-N] a refreshed loader cannot overwrite a concurrent model edit and keeps the local endpoint draft', async ({
+    page,
+    corral,
+  }) => {
+    await corral.open('/settings/models');
+    await page.getByRole('button', { name: 'Edit models' }).click();
+    const editor = page.getByRole('region', { name: 'Edit models' });
+    await editor.getByRole('button', { name: 'Add endpoint' }).click();
+    await editor.getByLabel('Endpoint id 1').fill('local');
+    await editor.getByLabel('Endpoint name 1').fill('Keep my draft');
+    await editor.getByLabel('Address of endpoint 1').fill('http://127.0.0.1:11434/v1');
+    await editor.getByLabel('Models of endpoint 1').fill('llama3.2');
+    await page.evaluate(async () => {
+      const { csrfToken } = await (await fetch('/api/v1/session')).json();
+      const config = await (await fetch('/api/v1/model-config')).json();
+      config.modelProfiles[0].model = 'gpt-test-b';
+      const response = await fetch('/api/v1/model-config', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json', 'x-corral-csrf': csrfToken },
+        body: JSON.stringify({
+          revision: config.revision,
+          modelProfiles: config.modelProfiles,
+          modelProviders: config.modelProviders,
+        }),
+      });
+      if (!response.ok) throw new Error('fixture config update failed');
+    });
+    // Signing in refreshes the parent loader while the editor stays mounted.
+    await page
+      .getByTestId('provider-openai')
+      .getByRole('button', { name: 'Sign in', exact: true })
+      .click();
+    await expect(page.getByRole('link', { name: 'Open the sign-in page' })).toBeVisible();
+    await editor.getByRole('button', { name: 'Save models' }).click();
+    await expect(editor.getByRole('alert')).toContainText('Models changed');
+    await expect(editor.getByLabel('Endpoint name 1')).toHaveValue('Keep my draft');
+    const saved = await page.evaluate(async () => (await fetch('/api/v1/model-config')).json());
+    expect(saved.modelProfiles[0].model).toBe('gpt-test-b');
+    expect(saved.modelProviders).toEqual([]);
+  });
+
   test('[TC-SEC-002-H] changes a profile’s model and adds a local endpoint, saved to the workspace', async ({
     page,
     corral,
@@ -266,6 +411,7 @@ test.describe('editing models on the Models page (CR-008)', () => {
     await editor.getByLabel('Models of endpoint 1').fill('llama3.2');
     await editor.getByLabel('Provider of model-b').selectOption({ label: 'Ollama' });
     await editor.getByLabel('Model of model-b').selectOption({ label: 'llama3.2' });
+    await editor.getByRole('checkbox', { name: 'Linux isolation · model-b' }).check();
     await editor.getByRole('button', { name: 'Save models' }).click();
 
     await expect(page.getByRole('region', { name: 'Edit models' })).toHaveCount(0);
@@ -274,6 +420,8 @@ test.describe('editing models on the Models page (CR-008)', () => {
     await expect(page.getByTestId('provider-ollama')).toContainText('No key needed');
     await page.reload();
     await expect(page.getByTestId('profile-model-a')).toContainText('openai/gpt-test-b');
+    await page.getByRole('button', { name: 'Edit models' }).click();
+    await expect(page.getByRole('checkbox', { name: 'Linux isolation · model-b' })).toBeChecked();
     expect(corral.errors).toEqual([]);
   });
 
@@ -294,5 +442,102 @@ test.describe('editing models on the Models page (CR-008)', () => {
     await editor.getByRole('button', { name: 'Cancel' }).click();
     await expect(page.getByTestId('provider-lan')).toHaveCount(0);
     expect(corral.errors.filter((e) => !e.includes('400'))).toEqual([]);
+  });
+});
+
+test('[TC-CONTEXT-001-H] [TC-CONTEXT-001-N] profile context preview, explicit zero, round-trip and a concurrent reasoning save', async ({
+  page,
+  corral,
+}) => {
+  await corral.open('/settings/models');
+  await page.getByRole('button', { name: 'Edit models', exact: true }).click();
+  const editor = page.getByRole('region', { name: 'Edit models' });
+  await editor.getByLabel('Context window · model-a').fill('64000');
+  await editor.getByLabel('Summary reserve · model-a').fill('0');
+  await editor.getByLabel('Recent history · model-a').fill('0');
+  await expect(editor.getByTestId('context-policy-model-a')).toContainText('64,000');
+  await expect(editor.getByTestId('context-policy-model-a')).toContainText(
+    'below the request output cap',
+  );
+  await editor.getByRole('button', { name: 'Save models' }).click();
+  await expect(editor).toHaveCount(0);
+  await page.reload();
+  await page.getByRole('button', { name: 'Edit models', exact: true }).click();
+  await expect(editor.getByLabel('Summary reserve · model-a')).toHaveValue('0');
+  await expect(editor.getByLabel('Recent history · model-a')).toHaveValue('0');
+  await editor.getByLabel('Context window · model-a').fill('96000');
+  const changed = page.waitForResponse(
+    (r) => r.url().endsWith('/models/reasoning') && r.request().method() === 'PUT',
+  );
+  await page
+    .getByRole('checkbox', { name: 'Allow automatic reasoning in all projects on this server' })
+    .click();
+  expect((await changed).status()).toBe(200);
+  await editor.getByRole('button', { name: 'Save models' }).click();
+  await expect(editor.getByRole('alert')).toContainText('Models changed');
+  await expect(editor.getByLabel('Context window · model-a')).toHaveValue('96000');
+  const saved = await page.evaluate(async () => (await fetch('/api/v1/model-config')).json());
+  expect(saved.modelProfiles[0]).toMatchObject({
+    contextWindow: 64000,
+    compaction: { reserveTokens: 0, keepRecentTokens: 0 },
+  });
+  expect(JSON.stringify(saved.modelProfiles)).not.toContain('uid');
+});
+
+test('[TC-CONTEXT-001-H] endpoint renaming keeps original model metadata', async ({
+  page,
+  corral,
+}) => {
+  await corral.open('/settings/models');
+  await page.evaluate(async () => {
+    const { csrfToken } = await (await fetch('/api/v1/session')).json();
+    const config = await (await fetch('/api/v1/model-config')).json();
+    const result = await fetch('/api/v1/model-config', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', 'x-corral-csrf': csrfToken },
+      body: JSON.stringify({
+        revision: config.revision,
+        modelProfiles: config.modelProfiles,
+        modelProviders: [
+          {
+            id: 'original',
+            name: 'Local',
+            baseUrl: 'http://127.0.0.1:11434/v1',
+            access: 'none',
+            models: [
+              {
+                id: 'fixture-model',
+                name: 'Metadata',
+                contextWindow: 128000,
+                maxOutput: 8192,
+                reasoning: true,
+                imageInput: true,
+              },
+            ],
+          },
+        ],
+      }),
+    });
+    if (!result.ok) throw new Error('fixture save failed');
+  });
+  await page.reload();
+  await page.getByRole('button', { name: 'Edit models', exact: true }).click();
+  const editor = page.getByRole('region', { name: 'Edit models' });
+  await editor.getByLabel('Endpoint id 1').fill('renamed');
+  await editor.getByRole('button', { name: 'Save models' }).click();
+  await expect(editor).toHaveCount(0);
+  const saved = await page.evaluate(async () => (await fetch('/api/v1/model-config')).json());
+  expect(saved.modelProviders[0]).toMatchObject({
+    id: 'renamed',
+    models: [
+      {
+        id: 'fixture-model',
+        name: 'Metadata',
+        contextWindow: 128000,
+        maxOutput: 8192,
+        reasoning: true,
+        imageInput: true,
+      },
+    ],
   });
 });

@@ -455,12 +455,13 @@ export function registerHarnessRoutes(
       const input = z
         .union([
           z.strictObject({
-            kind: z.enum(['local', 'package']),
+            kind: z.enum(['local', 'package', 'builtin']),
             source: z.string().min(1).max(1000),
           }),
           z.strictObject({ kind: z.literal('pi-home') }),
         ])
         .parse(request.body);
+      if (input.kind === 'builtin') return service.discoverBuiltin(input.source);
       if (input.kind === 'pi-home') return service.discoverPiHome(join(homedir(), '.pi', 'agent'));
       return input.kind === 'local'
         ? service.discoverLocal(input.source)

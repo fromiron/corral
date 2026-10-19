@@ -64,8 +64,34 @@ export const McpUrl = z
         /^http:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:[/?][^#]*)?$/i.test(value))
     );
   }, 'MCP requires HTTPS or loopback HTTP without URL credentials');
+export const LocalBrowserRecipe = z.strictObject({
+  fixtureOnly: z.literal(true),
+  backendVersion: z.literal('0.0.83'),
+  origin: z
+    .string()
+    .regex(/^http:\/\/127\.0\.0\.1:[1-9][0-9]{3,4}$/)
+    .refine((value) => {
+      const port = Number(value.slice(value.lastIndexOf(':') + 1));
+      return port >= 1024 && port <= 65535;
+    }, 'one loopback fixture origin on port 1024-65535 is required'),
+  executablePath: z
+    .string()
+    .min(1)
+    .max(4096)
+    .refine(
+      (value) => value.startsWith('/') && !value.includes('\0'),
+      'an installed browser executable is required',
+    ),
+  readyText: z.string().trim().min(1).max(200),
+});
+export type LocalBrowserRecipe = z.infer<typeof LocalBrowserRecipe>;
 export const RegisteredMcpServer = z.discriminatedUnion('transport', [
-  z.strictObject({ ...McpCommon, transport: z.literal('stdio'), argv: Launch.argv }),
+  z.strictObject({
+    ...McpCommon,
+    transport: z.literal('stdio'),
+    argv: Launch.argv,
+    browser: LocalBrowserRecipe.optional(),
+  }),
   z.strictObject({ ...McpCommon, transport: z.literal('http'), url: McpUrl, auth: McpAuth }),
 ]);
 export type RegisteredMcpServer = z.infer<typeof RegisteredMcpServer>;

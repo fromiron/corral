@@ -1,0 +1,97 @@
+{
+  "project": "예시 운동 기록 앱",
+  "language": "ko",
+  "title": "운동 기록 앱 디자인 토큰 제안",
+  "summary": "기존 토큰이 없는 신규 앱입니다. 사용자가 질의에 답한 방향(브랜드 색, 밝은·어두운 화면, 약간 둥근 모서리)을 반영했고, 글꼴은 AI에게 맡겼습니다. 이 파일은 구조를 보여 주는 예시 데이터이며 실제 프로젝트의 측정값이 아닙니다.",
+  "status": "proposed",
+  "mode": "new-system",
+  "approach": "guided",
+  "preferences": [
+    {"question": "color-family", "choice": "custom", "detail": "oklch(52% 0.17 255)"},
+    {"question": "theme", "choice": "both"},
+    {"question": "type-style", "choice": "delegate"},
+    {"question": "corner-style", "choice": "subtle"}
+  ],
+  "prepared": "예시 데이터",
+  "evidence_basis": [
+    "질의 답변 4개 (예시)",
+    "제품 요구사항: 운동 중 한 손으로 기록, 한국어 화면 (예시)"
+  ],
+  "specimen_text": "오늘 3세트를 기록했어요",
+  "naming": {
+    "primitive": {"separator": "-", "parts": [{"text": "gray", "label": "색 계열"}, {"text": "900", "label": "단계"}]},
+    "semantic": {"separator": "-", "parts": [{"text": "text", "label": "범주"}, {"text": "primary", "label": "역할"}]}
+  },
+  "breakpoints": [],
+  "foundations": {
+    "color": {
+      "primitives": [
+        {"name": "blue-60", "group": "blue", "step": "60", "value": "oklch(52% 0.17 255)", "current_values": [], "evidence": ["사용자 답변(색 계열): 브랜드 색 oklch(52% 0.17 255)"], "based_on": ["color-family"]},
+        {"name": "blue-40", "group": "blue", "step": "40", "value": "oklch(72% 0.12 255)", "current_values": [], "evidence": [], "basis": "hypothesis", "rationale": "어두운 화면에서 브랜드 색과 같은 색상(255)을 유지하되 명도를 높여 대비를 확보합니다.", "based_on": ["color-family", "theme"]},
+        {"name": "gray-0", "group": "gray", "step": "0", "value": "oklch(100% 0 0)", "current_values": [], "evidence": [], "basis": "hypothesis", "rationale": "밝은 화면의 기본 배경입니다.", "based_on": ["theme"]},
+        {"name": "gray-100", "group": "gray", "step": "100", "value": "oklch(96% 0.005 255)", "current_values": [], "evidence": [], "basis": "hypothesis", "rationale": "어두운 화면의 본문 글자색입니다. 순백보다 눈부심이 적도록 브랜드 색상 쪽으로 아주 약하게 기울였습니다.", "based_on": ["theme"]},
+        {"name": "gray-600", "group": "gray", "step": "600", "value": "oklch(48% 0.015 255)", "current_values": [], "evidence": [], "basis": "hypothesis", "rationale": "밝은 화면의 보조 글자색입니다. 흰 배경에서 4.5:1 이상을 목표로 합니다."},
+        {"name": "gray-900", "group": "gray", "step": "900", "value": "oklch(24% 0.015 255)", "current_values": [], "evidence": [], "basis": "hypothesis", "rationale": "밝은 화면의 본문 글자색입니다."},
+        {"name": "gray-950", "group": "gray", "step": "950", "value": "oklch(17% 0.012 255)", "current_values": [], "evidence": [], "basis": "hypothesis", "rationale": "어두운 화면의 기본 배경입니다. 완전한 검정보다 번짐이 적습니다.", "based_on": ["theme"]},
+        {"name": "red-60", "group": "red", "step": "60", "value": "rgb(196, 33, 58)", "current_values": [], "evidence": [], "basis": "hypothesis", "rationale": "오류 상태 색입니다. 브랜드 색과 구분되도록 강조 색 예산과 별도로 둡니다."}
+      ],
+      "semantic": [
+        {"name": "surface-page", "role": "페이지 배경", "references": {"light": "gray-0", "dark": "gray-950"}, "status": "proposed"},
+        {"name": "text-primary", "role": "본문과 기록 숫자", "references": {"light": "gray-900", "dark": "gray-100"}, "status": "proposed", "contrast": {"against": "surface-page", "minimum": 4.5}},
+        {"name": "text-secondary", "role": "보조 설명과 단위", "references": {"light": "gray-600", "dark": "unknown"}, "status": "proposed", "contrast": {"against": "surface-page", "minimum": 4.5}},
+        {"name": "action-primary", "role": "주요 버튼과 링크 글자", "references": {"light": "blue-60", "dark": "blue-40"}, "status": "proposed", "contrast": {"against": "surface-page", "minimum": 4.5}},
+        {"name": "status-negative", "role": "입력 오류", "references": {"light": "red-60", "dark": "unknown"}, "status": "proposed", "contrast": {"against": "surface-page", "minimum": 4.5}}
+      ]
+    },
+    "typography": {
+      "primitives": [
+        {
+          "name": "type-body",
+          "value": {"font_family": "system-ui, -apple-system, \"Apple SD Gothic Neo\", \"Noto Sans KR\", sans-serif", "font_size": "1rem", "font_weight": "400", "line_height": "1.6", "letter_spacing": "unknown"},
+          "current_values": [],
+          "evidence": [],
+          "basis": "hypothesis",
+          "rationale": "글꼴은 AI에게 맡긴 항목입니다. 한국어 본문을 웹 글꼴 없이 바로 보여 주도록 시스템 글꼴을 고르고, 자간은 렌더링 확인 전까지 정하지 않았습니다."
+        }
+      ],
+      "semantic": [
+        {"name": "text-body", "role": "본문과 기록 목록", "references": {"default": "type-body"}, "status": "proposed"}
+      ]
+    },
+    "spacing": {
+      "primitives": [
+        {"name": "space-2", "value": "0.5rem", "current_values": [], "evidence": [], "basis": "hypothesis", "rationale": "기록 목록 안의 숫자와 단위 사이 간격입니다."},
+        {"name": "space-4", "value": "1rem", "current_values": [], "evidence": [], "basis": "hypothesis", "rationale": "관련 항목 사이 간격입니다."},
+        {"name": "space-6", "value": "1.5rem", "current_values": [], "evidence": [], "basis": "hypothesis", "rationale": "한 손 조작을 고려한 구역 사이 간격입니다."}
+      ],
+      "semantic": [
+        {"name": "content-gap", "role": "관련 항목 사이", "references": {"default": "space-2"}, "status": "proposed"},
+        {"name": "section-gap", "role": "구역 사이", "references": {"default": "space-6"}, "status": "proposed"}
+      ]
+    },
+    "radius": {
+      "primitives": [
+        {"name": "radius-4", "value": "4px", "current_values": [], "evidence": [], "basis": "hypothesis", "rationale": "'약간 둥글게' 답변에 따라 입력창과 버튼에 작은 반경을 씁니다.", "based_on": ["corner-style"]},
+        {"name": "radius-8", "value": "8px", "current_values": [], "evidence": [], "basis": "hypothesis", "rationale": "기록 카드의 바깥 반경입니다. 안쪽 요소가 4px 여백으로 들어가 4px 반경과 동심을 이룹니다.", "based_on": ["corner-style"]}
+      ],
+      "semantic": [
+        {"name": "control-corner", "role": "입력창과 버튼", "references": {"default": "radius-4"}, "relationship": "independent", "status": "proposed"},
+        {"name": "card-corner", "role": "기록 카드", "references": {"default": "radius-8"}, "relationship": "shared-contour", "status": "proposed"}
+      ]
+    }
+  },
+  "changes": [],
+  "decisions": {
+    "proposed": [
+      "브랜드 색은 주요 액션에만 쓰고, 어두운 화면에서는 같은 색상의 밝은 단계를 씁니다."
+    ],
+    "retained": [],
+    "rejected": [
+      "버튼 전체를 알약 모양으로 만드는 안: '약간 둥글게' 답변과 맞지 않습니다."
+    ],
+    "open": [
+      "어두운 화면의 보조 글자색과 오류 색은 렌더링해서 대비를 확인한 뒤 정합니다.",
+      "글자 자간은 실제 한국어 문장을 렌더링한 뒤 정합니다."
+    ]
+  }
+}

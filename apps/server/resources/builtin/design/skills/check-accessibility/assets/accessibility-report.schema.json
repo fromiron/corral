@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Accessibility simplicity report",
+  "type": "object",
+  "required": [
+    "artifact",
+    "target",
+    "evidence",
+    "checks",
+    "accepted_risks"
+  ],
+  "properties": {
+    "artifact": {
+      "type": "string",
+      "minLength": 1
+    },
+    "target": {
+      "type": "object",
+      "required": [
+        "standard",
+        "level"
+      ],
+      "properties": {
+        "standard": {
+          "type": "string"
+        },
+        "level": {
+          "enum": [
+            "A",
+            "AA",
+            "AAA",
+            "project"
+          ]
+        }
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "criterion",
+          "level",
+          "required",
+          "status",
+          "evidence",
+          "impact",
+          "fix",
+          "verification"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "criterion": {
+            "type": "string"
+          },
+          "level": {
+            "enum": [
+              "A",
+              "AA",
+              "AAA",
+              "project"
+            ]
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "pass",
+              "fail",
+              "unknown",
+              "not-applicable"
+            ]
+          },
+          "evidence": {
+            "type": "string"
+          },
+          "impact": {
+            "type": "string"
+          },
+          "fix": {
+            "type": "string"
+          },
+          "verification": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "accepted_risks": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

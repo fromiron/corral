@@ -26,8 +26,8 @@ import {
 
 export interface PiAdapterOptions {
   /** A fresh worker for one execution (ADR-017: spawned when needed). */
-  spawn(): Channel;
-  spawnSdk?(): Channel;
+  spawn(input: AgentStartInput): Channel;
+  spawnSdk?(input: AgentStartInput, resources: SdkResources): Channel;
   harness?(input: AgentStartInput): Promise<SdkResources>;
   /** Access token for the provider of this model, asked per request; null for keyless. */
   credentials(model: ModelProfileSnapshot): Promise<string | null>;
@@ -37,7 +37,13 @@ export interface PiAdapterOptions {
   endpoint?(model: ModelProfileSnapshot): EndpointSpec | null;
 }
 
-type WorkerModel = { provider: string; modelId: string; endpoint?: EndpointSpec };
+type WorkerModel = {
+  contextWindow?: number;
+  provider: string;
+  modelId: string;
+  auth: ModelProfileSnapshot['auth'];
+  endpoint?: EndpointSpec;
+};
 
 const INVALID = 'the model worker sent an invalid message';
 
@@ -69,6 +75,20 @@ export class PiAgentAdapter implements AgentAdapter {
         throw new Error('harness resources could not be prepared');
       }
     } else if (input.harness) throw new Error('unexpected harness snapshot');
+    if (input.model.workerIsolation && resources) {
+      if (
+        input.harness?.policy !== 'strict' ||
+        resources.extensions.length ||
+        resources.mcp?.length ||
+        resources.startupCommands.length ||
+        input.harness.projectTools?.checkIds.length ||
+        input.harness.projectTools?.lspServerIds.length
+      )
+        throw new Error(
+          'Linux isolation supports content-only strict harnesses; native execution is unavailable',
+        );
+      resources = { ...resources, cwd: '/home/worker' };
+    }
     const { provider, modelId } = input.model;
     if (input.mode !== 'live' || !provider || !modelId) {
       throw new Error('the Pi adapter runs live models only');
@@ -81,6 +101,10 @@ export class PiAgentAdapter implements AgentAdapter {
       {
         provider,
         modelId,
+        auth: input.model.auth,
+        ...(input.model.contextPolicy
+          ? { contextWindow: input.model.contextPolicy.contextWindow }
+          : {}),
         ...(endpoint ? { endpoint } : {}),
       },
       resources,
@@ -98,6 +122,7 @@ class WorkerExecution {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private pendingSettlement: AgentSettlement | null = null;
   private readonly uiRequests = new Map<string, AbortController>();
+  private pendingCompaction: string | null = null;
   private readonly uiRequestIds = new Set<string>();
 
   private readonly input: AgentStartInput;
@@ -121,7 +146,7 @@ class WorkerExecution {
     this.settlement = new Promise((resolve) => {
       this.resolve = resolve;
     });
-    this.channel = resources ? options.spawnSdk!() : options.spawn();
+    this.channel = resources ? options.spawnSdk!(input, resources) : options.spawn(input);
     this.channel.onFrame((raw) => {
       this.queue = this.queue.then(() => this.receive(raw)).catch(() => this.violation());
     });
@@ -143,6 +168,17 @@ class WorkerExecution {
       });
     });
     this.handle = {
+      ...(resources && host.reportCompaction
+        ? {
+            requestCompaction: (commandId: string) => {
+              this.pendingCompaction = commandId;
+              if (this.state === 'running' && !this.pendingSettlement) {
+                this.send({ type: 'compact', commandId });
+                this.pendingCompaction = null;
+              }
+            },
+          }
+        : {}),
       cancel: (reason) => this.cancel(reason),
       waitForSettlement: () => this.settlement,
       pushDirective: (directive: { directiveId: string; text: string }) => {
@@ -231,6 +267,10 @@ class WorkerExecution {
           text,
         })),
         criteriaVersionId: this.input.criteriaVersionId,
+        ...(this.input.resumeContext ? { resumeContext: this.input.resumeContext } : {}),
+        ...(this.input.taskBrief ? { taskBrief: this.input.taskBrief } : {}),
+        ...(this.input.images?.length ? { images: this.input.images } : {}),
+        ...(this.input.teamPlanOwner ? { teamPlanOwner: true } : {}),
         round: this.input.round,
         // Only the tools this role may use, and that its links make meaningful, are offered;
         // the host still checks every call.
@@ -277,8 +317,25 @@ class WorkerExecution {
         ...(this.input.item ? { item: this.input.item } : {}),
         delegateTo: this.input.capabilities.delegateTo,
         askTo: this.input.capabilities.askTo,
-        ...(this.resources ? { harness: this.input.harness, resources: this.resources } : {}),
+        ...(this.resources
+          ? {
+              harness: this.input.harness,
+              resources: this.resources,
+              ...(this.input.model.contextPolicy
+                ? {
+                    compaction: {
+                      reserveTokens: this.input.model.contextPolicy.reserveTokens,
+                      keepRecentTokens: this.input.model.contextPolicy.keepRecentTokens,
+                    },
+                  }
+                : {}),
+            }
+          : {}),
       });
+      if (this.pendingCompaction) {
+        this.send({ type: 'compact', commandId: this.pendingCompaction });
+        this.pendingCompaction = null;
+      }
       if (this.host.pendingDirectives)
         for (const directive of this.host.pendingDirectives())
           this.send({ type: 'directive', ...directive });
@@ -289,6 +346,52 @@ class WorkerExecution {
     }
 
     switch (frame.type) {
+      case 'compaction_report': {
+        try {
+          if (!this.host.reportCompaction) throw new Error('compaction unavailable');
+          await this.host.reportCompaction(frame.report);
+          this.send({ type: 'ack', requestId: frame.requestId });
+        } catch {
+          this.send({
+            type: 'refused',
+            requestId: frame.requestId,
+            reason: 'compaction report refused',
+          });
+        }
+        return;
+      }
+      case 'checkpoint_context': {
+        try {
+          this.send({
+            type: 'runtime_checkpoint',
+            requestId: frame.requestId,
+            value: (await this.host.checkpointContext?.(frame.value)) ?? null,
+          });
+        } catch {
+          this.send({
+            type: 'refused',
+            requestId: frame.requestId,
+            reason: 'runtime checkpoint unavailable',
+          });
+        }
+        return;
+      }
+      case 'get_protected_context': {
+        try {
+          this.send({
+            type: 'protected_context',
+            requestId: frame.requestId,
+            value: this.host.protectedContext?.() ?? null,
+          });
+        } catch {
+          this.send({
+            type: 'refused',
+            requestId: frame.requestId,
+            reason: 'protected context unavailable',
+          });
+        }
+        return;
+      }
       case 'ui_request': {
         if (this.uiRequestIds.has(frame.requestId)) return this.violation();
         this.uiRequestIds.add(frame.requestId);
@@ -381,6 +484,7 @@ class WorkerExecution {
               modelCallId: frame.modelCallId,
               payloadHash: frame.payloadHash,
               payloadBytes: frame.payloadBytes,
+              ...(frame.skills ? { skills: frame.skills } : {}),
               ...(frame.reasoning ? { reasoning: frame.reasoning } : {}),
             });
           } else if (frame.type === 'native_tool_start')
@@ -410,12 +514,14 @@ class WorkerExecution {
             'purpose' in frame
               ? ModelRequestRecord.parse({
                   purpose: frame.purpose,
+                  runtime: frame.runtime,
                   directiveIds: frame.directiveIds,
                   contextHash: frame.contextHash,
                   contextBytes: frame.contextBytes,
                   sections: frame.sections,
+                  ...(frame.contextEstimate ? { contextEstimate: frame.contextEstimate } : {}),
                 })
-              : undefined,
+              : frame.record,
             frame.reasoningInput,
           );
           const apiKey = await this.options.credentials(this.input.model);
@@ -429,7 +535,10 @@ class WorkerExecution {
             apiKey,
           });
         } catch (error) {
-          if (error instanceof Error && error.message === 'REASONING_STALE')
+          if (
+            error instanceof Error &&
+            ['REASONING_STALE', 'CONTEXT_STALE'].includes(error.message)
+          )
             this.send({
               type: 'reprepare',
               requestId: frame.requestId,
@@ -521,6 +630,8 @@ function offeredTools(input: AgentStartInput): WorkerTool[] {
   if (role.allowedWorkTools.includes('read_document')) tools.push('read_document');
   if (role.allowedWorkTools.includes('write_artifact')) tools.push('write_artifact');
   for (const file of FILE_TOOLS) if (role.allowedWorkTools.includes(file)) tools.push(file);
+  if (may('update_plan')) tools.push('update_plan');
+  if (may('ask_user')) tools.push('ask_user');
   if (may('read_artifact')) tools.push('read_artifact');
   if (may('spawn_subagents') && capabilities.delegateTo.length > 0) tools.push('spawn_subagents');
   if (may('await_tasks') && capabilities.delegateTo.length > 0) tools.push('await_tasks');

@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { canonicalJson, type McpChallenge, RegisteredMcpServer } from '@corral/contracts';
 import { McpClient } from '@earendil-works/pi-mcp';
 import { z } from 'zod';
+import { BROWSER_TOOLS } from './browser-policy.ts';
 import type { McpProbeTool } from './mcp-probe.ts';
 import { createCorralMcpTransport } from './mcp-transport.ts';
 import { processPort } from './worker-process.ts';
@@ -77,7 +78,14 @@ port.onFrame((raw) => {
           const value = pageSchema.parse(
             await client.request('tools/list', cursor ? { cursor } : {}),
           );
-          tools.push(...value.tools);
+          tools.push(
+            ...value.tools.filter(
+              (tool) =>
+                input.server.transport !== 'stdio' ||
+                !input.server.browser ||
+                BROWSER_TOOLS.has(tool.name),
+            ),
+          );
           if (tools.length > 128) throw new Error('tool list limit');
           if (!value.nextCursor) {
             cursor = undefined;

@@ -7,6 +7,7 @@ import {
   type AgentAdapter,
   AutoModelChoice,
   CanvasLayout,
+  CaptureCheckpoint,
   type Clock,
   type CommandError,
   ContentHash,
@@ -14,16 +15,30 @@ import {
   CreateRunRequest,
   type DecisionProvider,
   type ErrorCode,
+  HunkPlanRequest,
+  HunkRequest,
   Identifier,
   type IdFactory,
+  IMAGE_MAX_BYTES,
+  ImageAttachment,
+  ImageAttachments,
+  MessageBranchPoint,
+  MessageBranchRequest,
+  QualityPreset,
   type Receipt,
+  RestoreCheckpoint,
+  ResumeRuntimeRequest,
   type RunEvent,
+  RunInput,
   RunReferences,
   SCHEMA_VERSION,
   type Scheduler,
   SchemaVersion,
+  SessionSearchRequest,
   StartFrom,
   TERMINAL_RUN_STATUSES,
+  TextAttachments,
+  UltraSelection,
 } from '@corral/contracts';
 import {
   autoDefinition,
@@ -37,6 +52,7 @@ import {
   LocalHeuristicProvider,
   openRunArchive,
   type ProjectResult,
+  parseWorkspaceConfig,
   planRun,
   type SaveResult,
   SessionEntryAuto,
@@ -61,6 +77,7 @@ import { McpCredentials } from './harness/mcp-credentials.ts';
 import { McpService } from './harness/mcp-service.ts';
 import { registerHarnessRoutes } from './harness/routes.ts';
 import { HarnessService } from './harness/service.ts';
+import { ImageStore } from './images.ts';
 import { ImportInput, type InputOptions, InputRegistry } from './inputs.ts';
 import {
   assertOutsideWorkspace,
@@ -85,10 +102,13 @@ import {
   Sessions,
   sessionCookie,
 } from './security.ts';
+import { prepareBranchSession } from './session-branches.ts';
+import { SessionSearch } from './session-search.ts';
 import { boundedSseWriter, flushSseRecord, MAX_SSE_BUFFER_BYTES } from './sse.ts';
 import {
   configRevision,
   prepareWorkspace,
+  readWorkspaceConfig,
   writeModelConfig,
   writeReasoningApply,
 } from './workspace.ts';
@@ -228,6 +248,12 @@ const UpdateSession = z.strictObject({
   expectedRevision: z.int().min(1),
 });
 const NewEntry = z.strictObject({
+  ultra: UltraSelection.optional(),
+  qualityPreset: QualityPreset.optional(),
+  images: ImageAttachments.optional(),
+  taskScope: RunInput.shape.taskScope,
+  verificationScope: RunInput.shape.verificationScope,
+  attachments: TextAttachments.optional(),
   intent: z.enum(['next', 'queue', 'steer', 'explain']),
   text: z.string().max(20_000),
   state: EntryState,
@@ -254,6 +280,10 @@ const ExplainRequest = z.strictObject({
 });
 // CR-024: a request in an auto session; the runtime chooses the template and builds the team.
 const AutoRunRequest = z.strictObject({
+  ultra: UltraSelection.optional(),
+  qualityPreset: QualityPreset.optional(),
+  taskScope: RunInput.shape.taskScope,
+  verificationScope: RunInput.shape.verificationScope,
   schemaVersion: SchemaVersion,
   commandId: Identifier,
   sessionId: Identifier,
@@ -315,6 +345,7 @@ async function createCorralServer(
   const clock = options.clock ?? systemClock;
   const ids = options.ids ?? new RandomIdFactory();
   const db = openDatabase(workspace.dbPath);
+  const images = new ImageStore(db, clock);
   resources.defer(() => {
     db.close();
   });
@@ -340,6 +371,8 @@ async function createCorralServer(
           ? { subscriptionModels: options.live.subscriptionModels }
           : {}),
         endpoints,
+        configRevision: workspace.configRevision,
+        maxOutputTokensPerCall: workspace.policy.maxOutputTokensPerCall,
       },
     );
     await registry.refreshStatus();
@@ -357,7 +390,7 @@ async function createCorralServer(
     if (provider?.available() === true) void provider.warmUp?.().catch(() => {});
   }
   const store = new SqliteRunStore(db);
-  const inputs = new InputRegistry(db, options.inputs);
+  const inputs = new InputRegistry(db, { ...options.inputs, clock });
   // CR-012: linked folders, session worktrees and the file broker.
   const files = new WorkspaceService({
     db,
@@ -394,6 +427,8 @@ async function createCorralServer(
     settings: judgmentSettings(workspace.config),
   };
   const coordinator = new Coordinator({
+    runtimeRecovery: { confirm: () => recoverSdkWorkers(workerLeaseDirectory) },
+    images,
     clock,
     ids,
     timers: options.timers ?? systemTimers,
@@ -647,6 +682,16 @@ async function createCorralServer(
 
   // Registered document IDs are stable across server restarts; raw paths never enter tools.
   app.get('/api/v1/documents', async () => inputs.list());
+  app.get<{ Params: { documentId: string } }>(
+    '/api/v1/documents/:documentId/source',
+    async (request, reply) => {
+      reply.header('cache-control', 'no-store').header('x-content-type-options', 'nosniff');
+      if (!/^doc_[a-f0-9]{64}$/.test(request.params.documentId))
+        return fail(reply, 'SCHEMA_INVALID', 'invalid document ID');
+      const source = inputs.sourceEvidence(request.params.documentId);
+      return source ?? fail(reply, 'TARGET_NOT_FOUND', 'source evidence not found');
+    },
+  );
   app.post('/api/v1/documents/import', async (request, reply) => {
     const body = parse(ImportInput, request, reply);
     if (!body) return reply;
@@ -699,8 +744,17 @@ async function createCorralServer(
   // CR-005: a key typed under Settings → Models; stored on this computer, never sent back.
   app.put<ProviderParams>('/api/v1/model-auth/:providerId/api-key', async (request, reply) => {
     if (!registry) return noLive(reply);
-    const body = parse(z.strictObject({ key: z.string().trim().min(1).max(1000) }), request, reply);
+    const body = parse(
+      z.strictObject({
+        key: z.string().trim().min(1).max(1000),
+        revision: z.string().min(1).max(100).optional(),
+      }),
+      request,
+      reply,
+    );
     if (!body) return reply;
+    if (body.revision !== undefined && body.revision !== configRevision(workspace.root))
+      return fail(reply, 'REVISION_CONFLICT', 'the config changed before the key was saved');
     try {
       await registry.setApiKey(request.params.providerId, body.key);
     } catch (error) {
@@ -754,6 +808,8 @@ async function createCorralServer(
         .code(409)
         .send({ error: { code: 'SCHEMA_INVALID', message: 'config changed; reload settings' } });
     workspace.config = changed.config;
+    workspace.configRevision = changed.revision;
+    registry?.setConfigRevision(changed.revision);
     judgmentConfig.settings = judgmentSettings(changed.config);
     if (parsed.data.apply) {
       const provider = decisionProviders.find((p) => p.id === 'local-model');
@@ -772,25 +828,55 @@ async function createCorralServer(
   app.get('/api/v1/model-catalog', async () => registry?.catalog() ?? []);
   app.get('/api/v1/model-config', async (_request, reply) => {
     if (!registry) return noLive(reply);
+    let snapshot: ReturnType<typeof readWorkspaceConfig>;
+    try {
+      snapshot = readWorkspaceConfig(workspace.root);
+    } catch {
+      return fail(reply, 'SCHEMA_INVALID', 'workspace configuration is invalid');
+    }
     return {
-      modelProfiles: registry.profileConfigs(),
-      modelProviders: workspace.config.modelProviders ?? [],
-      usingDefaults: workspace.config.modelProfiles === undefined,
-      revision: configRevision(workspace.root),
+      modelProfiles:
+        snapshot.config.modelProfiles ??
+        (await options.live?.defaultProfiles?.()) ??
+        DEFAULT_PROFILES,
+      modelProviders: snapshot.config.modelProviders ?? [],
+      usingDefaults: snapshot.config.modelProfiles === undefined,
+      revision: snapshot.revision,
+      effectiveProfiles: registry.contextPolicies(
+        snapshot.config.modelProfiles ?? registry.profileConfigs(),
+        endpointsFrom(snapshot.config.modelProviders),
+        snapshot.revision,
+      ),
+    };
+  });
+  const modelConfigBody = z.strictObject({
+    revision: z.string().min(1).max(100),
+    modelProfiles: z.array(z.unknown()).max(20),
+    modelProviders: z.array(z.unknown()).max(10),
+  });
+  app.post('/api/v1/model-config/preview', async (request, reply) => {
+    if (!registry) return noLive(reply);
+    const body = parse(modelConfigBody, request, reply);
+    if (!body) return reply;
+    const parsed = parseWorkspaceConfig({
+      schemaVersion: '0.1',
+      modelProfiles: body.modelProfiles,
+      modelProviders: body.modelProviders,
+    });
+    if (!parsed.ok) return fail(reply, 'SCHEMA_INVALID', parsed.errors.join('; '));
+    return {
+      revision: body.revision,
+      effectiveProfiles: registry.contextPolicies(
+        parsed.config.modelProfiles ?? [],
+        endpointsFrom(parsed.config.modelProviders),
+        body.revision,
+      ),
     };
   });
   app.put('/api/v1/model-config', async (request, reply) => {
     const live = options.live;
     if (!registry || !live) return noLive(reply);
-    const body = parse(
-      z.strictObject({
-        revision: z.string().min(1).max(100),
-        modelProfiles: z.array(z.unknown()).max(20),
-        modelProviders: z.array(z.unknown()).max(10),
-      }),
-      request,
-      reply,
-    );
+    const body = parse(modelConfigBody, request, reply);
     if (!body) return reply;
     const current = registry;
     const written = writeModelConfig(
@@ -802,6 +888,11 @@ async function createCorralServer(
         return [
           ...endpointClashes(live.models, next),
           ...current.unknownProviders(config.modelProfiles ?? [], next),
+          ...(config.modelProfiles ?? []).flatMap((profile, index) =>
+            current
+              .contextPolicy(profile, next, body.revision)
+              .errors.map((error) => `modelProfiles.${index}: ${error}`),
+          ),
         ];
       },
     );
@@ -813,14 +904,20 @@ async function createCorralServer(
       );
     }
     workspace.config = written.config;
+    workspace.configRevision = written.revision;
     const endpoints = endpointsFrom(written.config.modelProviders);
     registerEndpoints(live.models, endpoints);
-    await current.reconfigure(written.config.modelProfiles ?? DEFAULT_PROFILES, endpoints);
+    await current.reconfigure(
+      written.config.modelProfiles ?? DEFAULT_PROFILES,
+      endpoints,
+      written.revision,
+    );
     return {
       modelProfiles: current.profileConfigs(),
       modelProviders: written.config.modelProviders ?? [],
       usingDefaults: false,
       revision: written.revision,
+      effectiveProfiles: current.contextPolicies(),
     };
   });
 
@@ -901,7 +998,14 @@ async function createCorralServer(
   // An auto session's request (CR-024): one capped choice request, then one run of the chosen
   // template. A resend returns the first start; a dropped connection while choosing starts none.
   const autoStarter = createAutoStarter<AbortSignal>({
-    startRun: async (request, signal) => {
+    prepareModels: (request) =>
+      coordinator.prepareModels(
+        request.ultra?.modelProfiles ?? [request.choice.modelProfile],
+        request.mode,
+      ),
+    resolveUltra: (selection, primary, mode, models) =>
+      coordinator.resolveUltra(selection, primary, mode, models),
+    startRun: async (request, signal, models) => {
       // Choosing can take 30 seconds; edits before the run belong to its starting tree.
       const startTree = request.sessionId ? await files.currentTree(request.sessionId) : null;
       if (signal?.aborted) throw new Error('the auto request was cancelled before a run started');
@@ -913,8 +1017,12 @@ async function createCorralServer(
               definition: autoDefinition({
                 id: request.definition.id,
                 template: route.template,
+                ...(route.qualityPreset ? { qualityPreset: route.qualityPreset } : {}),
+                ...(route.ultra ? { ultra: route.ultra } : {}),
                 brief: request.definition.input.brief,
                 criteria: request.definition.input.criteria,
+                taskScope: request.definition.input.taskScope,
+                verificationScope: request.definition.input.verificationScope,
                 choice: {
                   modelProfile: route.modelProfile,
                   ...(route.reasoning ? { reasoning: route.reasoning } : {}),
@@ -924,6 +1032,7 @@ async function createCorralServer(
               }),
             }
           : request,
+        models,
       );
       if (result.runId && startTree && request.sessionId)
         await trackRunFiles(result.runId, request.sessionId, startTree);
@@ -942,12 +1051,15 @@ async function createCorralServer(
         request.choice.modelProfile,
         request.mode,
         request.choice.reasoning,
+        request.references?.some((reference) => reference.kind === 'image_attachment'),
       );
       return error ? { runId: null, receipt: refusedStart(request, error) } : null;
     },
     levels: (choice, mode) => coordinator.reasoningLevels(choice.modelProfile, mode),
-    route: ({ brief, choice, mode, signal, levels }) =>
-      mode === 'live' && registry ? registry.routeAuto(brief, choice, signal, levels) : null,
+    route: ({ brief, choice, mode, signal, levels, models }) =>
+      mode === 'live' && registry
+        ? registry.routeAuto(brief, choice, signal, levels, models?.[choice.modelProfile])
+        : null,
   });
   type AutoResult = Awaited<ReturnType<typeof autoStarter.start>>;
   const autoRequests = new Map<
@@ -999,8 +1111,12 @@ async function createCorralServer(
           commandId: body.commandId,
           sessionId: body.sessionId,
           brief: body.brief,
+          ...(body.qualityPreset ? { qualityPreset: body.qualityPreset } : {}),
+          ...(body.ultra ? { ultra: body.ultra } : {}),
           choice: body.choice,
           mode: body.mode,
+          ...(body.taskScope ? { taskScope: body.taskScope } : {}),
+          ...(body.verificationScope ? { verificationScope: body.verificationScope } : {}),
           ...(body.startFrom ? { startFrom: body.startFrom } : {}),
           ...(body.references ? { references: body.references } : {}),
         },
@@ -1108,6 +1224,145 @@ async function createCorralServer(
   };
   type ProjectParams = { Params: { projectId: string } };
   type SessionParams = { Params: { sessionId: string } };
+
+  app.addContentTypeParser(
+    'image/png',
+    { parseAs: 'buffer', bodyLimit: IMAGE_MAX_BYTES },
+    (_request, body, done) => done(null, body),
+  );
+  app.post<SessionParams & { Querystring: { name?: string } }>(
+    '/api/v1/sessions/:sessionId/images',
+    { bodyLimit: IMAGE_MAX_BYTES },
+    async (request, reply) => {
+      try {
+        const name = ImageAttachment.shape.name.parse(request.query.name);
+        if (request.headers['content-type'] !== 'image/png' || !Buffer.isBuffer(request.body))
+          return fail(reply, 'SCHEMA_INVALID', 'normalized PNG input required');
+        return reply.code(201).send(images.put(request.params.sessionId, name, request.body));
+      } catch {
+        return fail(
+          reply,
+          'SCHEMA_INVALID',
+          'image unavailable, invalid, or over its size/dimension/storage limit',
+        );
+      }
+    },
+  );
+  app.get<{ Params: { sessionId: string; imageId: string } }>(
+    '/api/v1/sessions/:sessionId/images/:imageId',
+    async (request, reply) => {
+      try {
+        const image = images.body(request.params.sessionId, request.params.imageId);
+        if (!image) return fail(reply, 'TARGET_NOT_FOUND', 'image is unavailable in this session');
+        return reply
+          .header('cache-control', 'no-store')
+          .header('content-type', 'image/png')
+          .header('x-content-type-options', 'nosniff')
+          .send(image.bytes);
+      } catch {
+        return fail(reply, 'STORAGE_UNAVAILABLE', 'image integrity could not be verified');
+      }
+    },
+  );
+
+  app.post<SessionParams>('/api/v1/sessions/:sessionId/hunks/preview', async (request, reply) => {
+    const body = parse(HunkRequest, request, reply);
+    if (!body) return reply;
+    try {
+      return await files.hunks(request.params.sessionId, body);
+    } catch (error) {
+      return workspaceFail(reply, error);
+    }
+  });
+  app.post<SessionParams>('/api/v1/sessions/:sessionId/hunks/plan', async (request, reply) => {
+    const body = parse(HunkPlanRequest, request, reply);
+    if (!body) return reply;
+    try {
+      return await coordinator.withFileRestore(() =>
+        files.planHunks(request.params.sessionId, body),
+      );
+    } catch (error) {
+      return workspaceFail(reply, error);
+    }
+  });
+
+  app.get<SessionParams>('/api/v1/sessions/:sessionId/checkpoints', async (request) => ({
+    checkpoints: files.checkpoints(request.params.sessionId),
+    restores: files.checkpointRestores(request.params.sessionId),
+  }));
+  app.post<SessionParams>('/api/v1/sessions/:sessionId/checkpoints', async (request, reply) => {
+    const body = parse(CaptureCheckpoint, request, reply);
+    if (!body) return reply;
+    try {
+      return await coordinator.withFileRestore(() =>
+        files.captureCheckpoint(request.params.sessionId, body),
+      );
+    } catch (error) {
+      return workspaceFail(reply, error);
+    }
+  });
+  app.post<SessionParams>('/api/v1/sessions/:sessionId/checkpoints/pin', async (request, reply) => {
+    const body = parse(
+      z.strictObject({ checkpointId: Identifier, pinned: z.boolean() }),
+      request,
+      reply,
+    );
+    if (!body) return reply;
+    try {
+      files.pinCheckpoint(request.params.sessionId, body.checkpointId, body.pinned);
+      return reply.code(204).send();
+    } catch (error) {
+      return workspaceFail(reply, error);
+    }
+  });
+  app.post<SessionParams>(
+    '/api/v1/sessions/:sessionId/checkpoints/prune',
+    async (request, reply) => {
+      const body = parse(z.strictObject({}), request, reply);
+      if (!body) return reply;
+      try {
+        return await coordinator.withFileRestore(() =>
+          files.pruneCheckpoints(request.params.sessionId),
+        );
+      } catch (error) {
+        return workspaceFail(reply, error);
+      }
+    },
+  );
+  app.post<SessionParams>(
+    '/api/v1/sessions/:sessionId/checkpoints/plan',
+    async (request, reply) => {
+      const body = parse(
+        RestoreCheckpoint.pick({ checkpointId: true, manifestHash: true }),
+        request,
+        reply,
+      );
+      if (!body) return reply;
+      try {
+        return await files.planCheckpointRestore(
+          request.params.sessionId,
+          body.checkpointId,
+          body.manifestHash,
+        );
+      } catch (error) {
+        return workspaceFail(reply, error);
+      }
+    },
+  );
+  app.post<SessionParams>(
+    '/api/v1/sessions/:sessionId/checkpoints/restore',
+    async (request, reply) => {
+      const body = parse(RestoreCheckpoint, request, reply);
+      if (!body) return reply;
+      try {
+        return await coordinator.withFileRestore(() =>
+          files.restoreCheckpoint(request.params.sessionId, body),
+        );
+      } catch (error) {
+        return workspaceFail(reply, error);
+      }
+    },
+  );
 
   // DW-05: the browser chooses a registered scope, never an absolute filesystem root.
   for (const [kind, base] of [
@@ -1521,14 +1776,20 @@ async function createCorralServer(
       if (!body) return reply;
       return reply
         .code(201)
-        .send(await review.integrate(request.params.sessionId, body.decisionId));
+        .send(
+          await coordinator.withFileRestore(() =>
+            review.integrate(request.params.sessionId, body.decisionId),
+          ),
+        );
     }),
   );
   app.post<{ Params: { sessionId: string; integrationId: string } }>(
     '/api/v1/sessions/:sessionId/integrations/:integrationId/revert',
     async (request, reply) => {
       try {
-        return await review.revert(request.params.sessionId, request.params.integrationId);
+        return await coordinator.withFileRestore(() =>
+          review.revert(request.params.sessionId, request.params.integrationId),
+        );
       } catch (error) {
         return workspaceFail(reply, error);
       }
@@ -1609,7 +1870,102 @@ async function createCorralServer(
     },
   );
 
+  app.post('/api/v1/runs/branch/preview', async (request, reply) => {
+    const body = parse(MessageBranchPoint, request, reply);
+    if (!body) return reply;
+    try {
+      return coordinator.branchPreview(body);
+    } catch (error) {
+      return workspaceFail(reply, error);
+    }
+  });
+  app.post('/api/v1/runs/branch', async (request, reply) => {
+    const body = parse(MessageBranchRequest, request, reply);
+    if (!body) return reply;
+    const resend = coordinator.hasStartCommand(body.commandId);
+    const result = await coordinator.branchRun(body, (plan) =>
+      prepareBranchSession(db, clock, files, images, body, plan),
+    );
+    const sessionId = result.runId ? store.getRun(result.runId)?.sessionId : null;
+    if (result.runId && sessionId) {
+      if (!resend) {
+        const tree = coordinator.getRunSnapshot(result.runId)?.branchedFrom?.tree;
+        if (tree) await trackRunFiles(result.runId, sessionId, tree);
+      }
+      const saved = await corrals.addSessionEntry(sessionId, {
+        intent: 'next',
+        state: 'started',
+        text: 'Continue from the selected message',
+        runId: result.runId,
+        commandId: body.commandId,
+      });
+      if (!saved.ok)
+        return fail(
+          reply,
+          'STORAGE_UNAVAILABLE',
+          'the branch started but its entry could not be saved; retry this request',
+        );
+    }
+    return reply
+      .code(result.receipt.error ? STATUS[result.receipt.error.code] : resend ? 200 : 201)
+      .send({ ...result, sessionId: sessionId ?? null });
+  });
+  app.get<{ Params: { runId: string; artifactId: string } }>(
+    '/api/v1/runs/:runId/artifacts/:artifactId/branches',
+    async (request) =>
+      db
+        .prepare(
+          "SELECT b.session_id AS sessionId,c.run_id AS runId,s.title FROM message_branches b JOIN work_sessions s ON s.id=b.session_id LEFT JOIN commands c ON c.scope='*' AND c.command_id=b.command_id WHERE b.source_run_id=? AND b.artifact_id=? ORDER BY b.created_at",
+        )
+        .all(request.params.runId, request.params.artifactId),
+  );
+
+  const sessionSearch = new SessionSearch(db);
+  app.post('/api/v1/sessions/search', async (request, reply) => {
+    const body = parse(SessionSearchRequest, request, reply);
+    if (!body) return reply;
+    return reply.header('cache-control', 'private, no-store').send(sessionSearch.search(body));
+  });
+  app.post('/api/v1/sessions/search/rebuild', async (_request, reply) => {
+    sessionSearch.rebuild();
+    return reply.code(204).send();
+  });
+
   type RunParams = { Params: { runId: string } };
+  app.get<RunParams>('/api/v1/runs/:runId/runtime-checkpoints', async (request, reply) => {
+    try {
+      return await coordinator.runtimeCheckpoints(request.params.runId);
+    } catch {
+      return fail(reply, 'TARGET_NOT_FOUND', 'runtime checkpoints unavailable');
+    }
+  });
+  app.post<RunParams>('/api/v1/runs/:runId/resume-runtime', async (request, reply) => {
+    const body = parse(ResumeRuntimeRequest.omit({ sourceRunId: true }), request, reply);
+    if (!body) return reply;
+    const source = store.getRun(request.params.runId);
+    const resend = coordinator.hasStartCommand(body.commandId);
+    const tree = source?.sessionId && !resend ? await files.currentTree(source.sessionId) : null;
+    const result = await coordinator.resumeRuntime({ ...body, sourceRunId: request.params.runId });
+    if (result.runId && source?.sessionId) {
+      if (tree) await trackRunFiles(result.runId, source.sessionId, tree);
+      const saved = await corrals.addSessionEntry(source.sessionId, {
+        intent: 'next',
+        state: 'started',
+        text: 'Continue from a runtime checkpoint',
+        runId: result.runId,
+        commandId: body.commandId,
+      });
+      if (!saved.ok)
+        return fail(
+          reply,
+          'STORAGE_UNAVAILABLE',
+          'the new Run started but its session entry could not be saved; retry this request',
+        );
+    }
+    return reply
+      .code(result.receipt.error ? STATUS[result.receipt.error.code] : resend ? 200 : 201)
+      .send(result);
+  });
   app.post<RunParams>('/api/v1/runs/:runId/export', async (request, reply) => {
     const body = parse(
       z.strictObject({ privateTranscript: z.boolean().optional() }),
@@ -1654,6 +2010,9 @@ async function createCorralServer(
       const known =
         projection &&
         (projection.artifacts[versionId] ||
+          coordinator
+            .getRunSnapshot(runId)
+            ?.definition.input.images?.some((image) => image.imageId === versionId) ||
           Object.values(projection.modelCalls).some((call) => call.responseRef === versionId) ||
           Object.values(projection.toolCalls).some((call) => call.resultRef === versionId) ||
           projection.currentCriteriaVersionId === versionId ||
@@ -1668,10 +2027,13 @@ async function createCorralServer(
             .readEvents(runId, 0)
             .some(
               (event) =>
-                ((event.type === 'extension.ui_requested' ||
+                ((event.type === 'work_plan.updated' ||
+                  event.type === 'user_input.requested' ||
+                  event.type === 'extension.ui_requested' ||
                   event.type === 'extension.ui_notified') &&
                   event.payload.bodyRef === versionId) ||
-                (event.type === 'extension.ui_answered' && event.payload.answerRef === versionId) ||
+                ((event.type === 'user_input.answered' || event.type === 'extension.ui_answered') &&
+                  event.payload.answerRef === versionId) ||
                 (event.type === 'approval.requested' && event.payload.tool?.bodyRef === versionId),
             ));
       const text = known ? coordinator.getArtifactText(runId, versionId) : null;

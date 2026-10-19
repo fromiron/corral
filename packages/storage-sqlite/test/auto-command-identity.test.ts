@@ -26,11 +26,14 @@ describe('durable auto command identity', () => {
   it('adds the optional identity without rewriting legacy commands', () => {
     const file = path();
     const legacy = new Database(file);
-    for (const migration of MIGRATIONS.slice(0, -1)) {
+    const before = MIGRATIONS.findIndex(
+      (migration) => migration.name === '0014_auto_command_identity',
+    );
+    for (const migration of MIGRATIONS.slice(0, before)) {
       legacy.exec(migration.sql);
       migration.data?.(legacy);
     }
-    legacy.pragma(`user_version = ${MIGRATIONS.length - 1}`);
+    legacy.pragma(`user_version = ${before}`);
     const receipt = {
       commandId: 'cmd_legacy',
       status: 'rejected',

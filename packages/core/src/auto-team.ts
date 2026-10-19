@@ -6,14 +6,20 @@ import {
   type AutoRoute,
   type AutoRouteLevel,
   AutoTemplate,
+  type CommandError,
   type CorralDefinition,
   FILE_TOOLS,
+  type ModelProfileSnapshot,
+  type QualityPreset,
   type ReasoningLevel,
+  type RunInput,
   type RunReference,
   type StartFrom,
   type StartRunRequest,
   type TeamPlan,
   type TeamSlot,
+  type UltraSelection,
+  type UltraTeamSnapshot,
   type WorkTool,
 } from '@corral/contracts';
 import { sha256 } from '@noble/hashes/sha2.js';
@@ -21,7 +27,9 @@ import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js';
 import { z } from 'zod';
 import { canonicalJson } from './canonical-json.ts';
 import type { StartRunResult } from './coordinator.ts';
+import { reviewCriteriaHash } from './review-recipe.ts';
 import { draftFromPlan, planFromGoal, type TeamWording } from './team-draft.ts';
+import { applyUltraTeam, type UltraResolution } from './ultra-team.ts';
 
 // CR-024: a session without a chosen team runs in auto mode. A start model picks one of the
 // built-in templates (the CR-006 patterns); the template fixes roles, tools, wiring and
@@ -32,7 +40,7 @@ const WORDING: TeamWording = {
   roles: {
     worker: {
       name: 'Assistant',
-      duty: 'Do what the request asks, directly and completely. State any assumption in the result instead of asking back.',
+      duty: 'Do what the request asks, directly and completely. State routine assumptions; use ask_user when a missing decision would materially change the work.',
     },
     planner: {
       name: 'Planner',
@@ -76,6 +84,10 @@ const FILE_NOTE =
 const WRITE_NOTE = ' Make the changes the request asks for with the file tools.';
 
 export interface AutoDefinitionInput {
+  ultra?: UltraTeamSnapshot;
+  qualityPreset?: QualityPreset;
+  taskScope?: RunInput['taskScope'];
+  verificationScope?: RunInput['verificationScope'];
   id: string;
   template: AutoTemplate;
   brief: string;
@@ -88,7 +100,8 @@ export interface AutoDefinitionInput {
 }
 
 export function autoDefinition(input: AutoDefinitionInput): CorralDefinition {
-  const template = AutoTemplate.parse(input.template);
+  const template =
+    input.qualityPreset === 'ultra' ? 'write_review' : AutoTemplate.parse(input.template);
   const plan: TeamPlan = {
     name: NAMES[template],
     pattern: template,
@@ -99,7 +112,7 @@ export function autoDefinition(input: AutoDefinitionInput): CorralDefinition {
         ? [WORDING.criteria.direct]
         : [WORDING.criteria.direct, WORDING.criteria.sources]),
     roles: SLOTS[template].map((slot) => ({ slot, ...WORDING.roles[slot] })),
-    ...(template === 'single' ? {} : { reviewRounds: 2 }),
+    ...(template === 'single' ? {} : { reviewRounds: input.qualityPreset === 'ultra' ? 3 : 2 }),
     // Nobody designed this team, so its result does not wait for an approval.
     finalApproval: false,
   };
@@ -111,7 +124,7 @@ export function autoDefinition(input: AutoDefinitionInput): CorralDefinition {
       ? { mode: 'fixed' as const, level: input.routeLevel ?? ('medium' as const) }
       : asked;
   const roles = definition.roles.map((role) => {
-    const writes = WRITERS.has(role.id as TeamSlot);
+    const writes = WRITERS.has(role.id as TeamSlot) && input.taskScope !== 'review_only';
     const tools: WorkTool[] = input.fileTools
       ? ['write_artifact', ...(writes ? FILE_TOOLS : READ_TOOLS)]
       : ['write_artifact'];
@@ -123,6 +136,11 @@ export function autoDefinition(input: AutoDefinitionInput): CorralDefinition {
       modelProfile: input.choice.modelProfile,
       ...(reasoning ? { reasoning } : {}),
       allowedWorkTools: tools,
+      allowedCollaborationTools: [
+        ...role.allowedCollaborationTools,
+        'ask_user' as const,
+        'update_plan' as const,
+      ],
     };
   });
   const nodes = definition.nodes.map((node) =>
@@ -133,7 +151,36 @@ export function autoDefinition(input: AutoDefinitionInput): CorralDefinition {
         }
       : node,
   );
-  return { ...definition, roles, nodes };
+  if (input.qualityPreset === 'ultra') {
+    const loop = nodes.find((node) => node.type === 'loop');
+    if (loop?.type === 'loop')
+      loop.reviewRecipe = {
+        recipeId: 'ultra_review',
+        revision: 1,
+        criteriaHash: reviewCriteriaHash(definition.input.criteria),
+        candidateNodeId: 'write',
+        evaluatorRoleId: 'reviewer',
+        checkIds: [],
+        criteriaFiles: [],
+        maxAttempts: 3,
+        maxRepairs: 2,
+        maxWallMs: definition.limits.runDeadlineMs,
+        maxModelCalls: definition.limits.maxModelCalls,
+        maxOutputTokens: definition.limits.maxOutputTokens,
+      };
+  }
+  const result: CorralDefinition = {
+    ...definition,
+    input: {
+      ...definition.input,
+      ...(input.taskScope ? { taskScope: input.taskScope } : {}),
+      ...(input.verificationScope ? { verificationScope: input.verificationScope } : {}),
+    },
+    roles,
+    nodes,
+    ...(roles.some((role) => role.id === 'planner') ? { planOwnerRoleId: 'planner' } : {}),
+  };
+  return input.ultra ? applyUltraTeam(result, input.ultra) : result;
 }
 
 export const AUTO_ROUTE_MAX_OUTPUT_TOKENS = 256;
@@ -209,6 +256,10 @@ export type RouteAnswer =
     };
 
 export interface AutoStart {
+  ultra?: UltraSelection;
+  qualityPreset?: QualityPreset;
+  taskScope?: RunInput['taskScope'];
+  verificationScope?: RunInput['verificationScope'];
   commandId: string;
   sessionId?: string;
   brief: string;
@@ -229,8 +280,23 @@ export interface AutoSignal {
 const cancelled = () => new Error('the auto request was cancelled before a run started');
 
 export interface AutoStarterDeps<S extends AutoSignal = AutoSignal> {
+  prepareModels?(
+    request: AutoStart,
+  ):
+    | { ok: true; models: Record<string, ModelProfileSnapshot> }
+    | { ok: false; error: CommandError };
+  resolveUltra?(
+    selection: UltraSelection,
+    primary: string,
+    mode: 'mock' | 'live',
+    models?: Record<string, ModelProfileSnapshot>,
+  ): UltraResolution;
   /** The Coordinator itself, or a transport to it (the in-browser runtime). */
-  startRun(request: StartRunRequest, signal?: S): StartRunResult | Promise<StartRunResult>;
+  startRun(
+    request: StartRunRequest,
+    signal?: S,
+    models?: Record<string, ModelProfileSnapshot>,
+  ): StartRunResult | Promise<StartRunResult>;
   /** The earlier start after checking its original request identity; null if never recorded. */
   previousStart?(
     commandId: string,
@@ -249,6 +315,7 @@ export interface AutoStarterDeps<S extends AutoSignal = AutoSignal> {
    * called, as for simulated runs.
    */
   route?(input: {
+    models?: Record<string, ModelProfileSnapshot>;
     brief: string;
     choice: AutoModelChoice;
     mode: 'mock' | 'live';
@@ -279,7 +346,11 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
     },
   });
 
-  const choose = async (request: AutoStart, signal: S | undefined) => {
+  const choose = async (
+    request: AutoStart,
+    signal: S | undefined,
+    models?: Record<string, ModelProfileSnapshot>,
+  ) => {
     // `route`: the model picks one of low, medium and high that this model supports.
     const routing = request.choice.reasoning?.mode === 'route';
     const supported = routing ? deps.levels?.(request.choice, request.mode) : null;
@@ -288,7 +359,16 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
       : undefined;
     const medium = (source: 'local' | 'fallback') =>
       routing ? { reasoningChoice: { level: 'medium' as const, source } } : {};
+    if (request.qualityPreset === 'ultra')
+      return {
+        template: 'write_review' as const,
+        reason: 'Ultra',
+        source: 'local' as const,
+        usage: null,
+        ...medium('local'),
+      };
     const asked = deps.route?.({
+      ...(models ? { models } : {}),
       brief: request.brief,
       choice: request.choice,
       mode: request.mode,
@@ -334,10 +414,49 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
     if (signal?.aborted) throw cancelled();
     const refused = deps.precheck?.(request);
     if (refused) return { ...refused, autoRoute: null };
-    const chosen = await choose(request, signal);
+    const prepared = deps.prepareModels?.(request);
+    if (prepared && !prepared.ok)
+      return {
+        runId: null,
+        autoRoute: null,
+        receipt: { ...conflict(request).receipt, error: prepared.error },
+      };
+    const models = prepared?.models;
+    const resolvedUltra = request.ultra
+      ? request.qualityPreset !== 'ultra' || request.choice.reasoning
+        ? {
+            ok: false as const,
+            error: {
+              code: 'CAPABILITY_DENIED' as const,
+              message:
+                'Multi-model Ultra uses maximum supported reasoning; remove a manual effort setting',
+            },
+          }
+        : (deps.resolveUltra?.(
+            request.ultra,
+            request.choice.modelProfile,
+            request.mode,
+            models,
+          ) ?? {
+            ok: false as const,
+            error: {
+              code: 'CAPABILITY_DENIED' as const,
+              message: 'This runtime cannot resolve the Ultra model pool',
+            },
+          })
+      : null;
+    if (resolvedUltra && !resolvedUltra.ok)
+      return {
+        runId: null,
+        autoRoute: null,
+        receipt: { ...conflict(request).receipt, error: resolvedUltra.error },
+      };
+    const chosen = await choose(request, signal, models);
     if (signal?.aborted) throw cancelled();
     const autoRoute: AutoRoute = {
       ...chosen,
+      ...(resolvedUltra?.ok ? { ultra: resolvedUltra.snapshot } : {}),
+      ...(request.qualityPreset ? { qualityPreset: request.qualityPreset } : {}),
       templateVersion: AUTO_TEMPLATE_VERSION,
       modelProfile: request.choice.modelProfile,
       ...(request.choice.reasoning ? { reasoning: request.choice.reasoning } : {}),
@@ -347,7 +466,11 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
     const definition = autoDefinition({
       id: `auto_${(request.sessionId ?? request.commandId).replace(/^session_/, '')}`,
       template: autoRoute.template,
+      ...(autoRoute.ultra ? { ultra: autoRoute.ultra } : {}),
+      ...(request.qualityPreset ? { qualityPreset: request.qualityPreset } : {}),
       brief: request.brief,
+      ...(request.taskScope ? { taskScope: request.taskScope } : {}),
+      ...(request.verificationScope ? { verificationScope: request.verificationScope } : {}),
       ...(request.criteria ? { criteria: request.criteria } : {}),
       choice: request.choice,
       fileTools: context.fileTools,
@@ -365,6 +488,7 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
         autoRoute,
       },
       signal,
+      models,
     );
     return { ...result, autoRoute: result.runId ? autoRoute : null };
   };

@@ -2,6 +2,7 @@ import { type CanvasLayout, CorralDefinition } from '@corral/contracts';
 import { describe, expect, it } from 'vitest';
 import researchTeam from '../../../../examples/research-team.corral.json' with { type: 'json' };
 import researchLayout from '../../../../examples/research-team.layout.json' with { type: 'json' };
+import { createTextAttachment } from '../attachments.ts';
 import { definitionHash } from '../definition-hash.ts';
 import { type CorralRepository, DEFAULT_PROJECT_ID } from '../repository/index.ts';
 
@@ -363,7 +364,7 @@ export function describeCorralRepositoryContract(
         expect((await repo.getSession(id))?.auto).toEqual({ modelProfile: 'model-a' });
       });
 
-      it('[TC-AUTO-005-H] an auto session can let the start model choose the reasoning', async () => {
+      it('[TC-CHAT-001-H] [TC-CHAT-001-N] [TC-AUTO-005-H] an auto session can let the start model choose the reasoning', async () => {
         const repo = makeRepository();
         const created = await repo.createSession({ projectId: 'default', title: 'S' });
         if (!created.ok) throw new Error(created.message);
@@ -375,12 +376,28 @@ export function describeCorralRepositoryContract(
           modelProfile: 'model-a',
           reasoning: { mode: 'route' },
         });
-        const entry = await repo.addSessionEntry(created.session.sessionId, {
-          intent: 'next',
+        const request = {
+          commandId: 'cmd_record_once',
+          taskScope: 'review_only' as const,
+          attachments: [createTextAttachment('notes.txt', 'text/plain', 'Private source')],
+          intent: 'next' as const,
           text: 'Hi',
-          state: 'started',
-          auto: { template: 'single', source: 'model', reasoning: 'low' },
-        });
+          state: 'started' as const,
+          auto: {
+            template: 'single' as const,
+            source: 'model' as const,
+            reasoning: 'low' as const,
+          },
+        };
+        const entry = await repo.addSessionEntry(created.session.sessionId, request);
+        const duplicate = await repo.addSessionEntry(created.session.sessionId, request);
+        expect(duplicate.ok && duplicate.session.entries).toHaveLength(1);
+        expect(duplicate.ok && duplicate.session.entries[0]?.attachments).toEqual(
+          request.attachments,
+        );
+        expect(
+          await repo.addSessionEntry(created.session.sessionId, { ...request, text: 'Changed' }),
+        ).toMatchObject({ ok: false });
         expect(entry.ok && entry.session.entries[0]?.auto).toEqual({
           template: 'single',
           source: 'model',

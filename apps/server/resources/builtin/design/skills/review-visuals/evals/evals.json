@@ -1,0 +1,177 @@
+{
+  "skill_name": "review-visuals",
+  "evals": [
+    {
+      "id": "token-audit",
+      "prompt": "These design tokens contain five radii, four shadows, three button treatments, and six surface styles. Define a minimal consolidation plan.",
+      "expected_output": "An inventory compared with explicit limits, preserving semantic states and documenting any justified exception.",
+      "assertions": [
+        "The output distinguishes semantic states from decorative variants.",
+        "Focus and error states are not removed to meet the budget.",
+        "Duplicate candidates are prioritized for consolidation."
+      ]
+    },
+    {
+      "id": "editorial-exception",
+      "prompt": "This editorial site uses two typefaces: one for reading and one for data and code. Does that automatically fail?",
+      "expected_output": "No automatic failure; the second typeface is evaluated as a documented communication role.",
+      "assertions": [
+        "The limits are treated as defaults rather than laws.",
+        "The exception explains what would be lost by merging."
+      ]
+    },
+    {
+      "id": "status-colors",
+      "prompt": "Our app has green, amber, red, and blue status colors plus one brand accent. Reduce visual entropy without making states ambiguous.",
+      "expected_output": "Status colors are inventoried separately and preserved where they encode meaning.",
+      "assertions": [
+        "Status colors are not collapsed merely to meet the accent budget.",
+        "Accessibility remains a higher-priority constraint."
+      ]
+    },
+    {
+      "id": "nested-radius-coherence",
+      "prompt": "The outer card and inset panel both use a 20px radius. The inset is 8px. Audit the nested corners without forcing pill buttons or independent controls into the same rule.",
+      "expected_output": "A classified radius-relationship report that flags the shared-contour mismatch, preserves independent shapes, and proposes a semantic-step or measured concentric correction.",
+      "assertions": [
+        "The output does not treat a low radius-token count as sufficient.",
+        "Shared contours are distinguished from independent components and pills.",
+        "The correction includes evidence state and repeatable verification."
+      ]
+    },
+    {
+      "id": "semantic-responsive-spacing",
+      "prompt": "This page uses many one-off gaps, fixed desktop section padding on mobile, and inner wrappers with competing max widths. Audit the spacing and responsive containers without importing another design system's pixel values.",
+      "expected_output": "A role-based spacing and container audit that starts from project tokens, separates content gaps, section gaps, and container padding, and verifies grouping and overflow at representative breakpoints.",
+      "assertions": [
+        "The output does not require a universal 4/8 scale or external breakpoint table.",
+        "Responsive changes are judged by preserved grouping, task flow, and rendered behavior.",
+        "One-off values and competing width owners receive evidence-backed recommendations."
+      ]
+    },
+    {
+      "id": "font-context-typesetting",
+      "prompt": "A team copied one design system's letter-spacing and line-height values into Korean, Japanese, and code roles that use different fonts. Decide what should change.",
+      "expected_output": "A font- and context-aware typography review that records each semantic role, project token, actual font and fallback, script, size, weight, measure, and rendered evidence before recommending changes.",
+      "assertions": [
+        "The external typography table is not treated as a universal pass/fail threshold.",
+        "Letter spacing and line height are evaluated with the actual font, script, role, and rendering.",
+        "Accessibility text-spacing resilience is kept separate from ideal default typography."
+      ]
+    },
+    {
+      "id": "token-proposal-html",
+      "prompt": "Our UI has no shared token system. Propose concrete primitive and semantic tokens for typography, spacing, layout, and radius, then show the recommendation as one HTML page for review.",
+      "expected_output": "After inspecting project values and rendered use, a self-contained HTML review artifact with exact evidence-grounded token names and values, primitive-to-semantic mappings, responsive or language mappings, specimens, current-to-proposed changes, exceptions, and explicit proposal status. Unsupported values remain unknown rather than being invented.",
+      "assertions": [
+        "The output provides concrete names and values instead of a generic standardization recommendation.",
+        "Every numeric proposal traces to project source or rendered evidence; missing evidence produces an unknown value or evidence request, not a convenient invented scale.",
+        "Primitive values are separated from semantic role tokens and every semantic token has a mapping.",
+        "Previews are drawn from the proposed values, with one column per mapping context and an unknown marker where evidence is missing.",
+        "The HTML is dependency-free, accessible, responsive without page-level horizontal scrolling, free of unresolved placeholders, and labeled as proposed rather than adopted.",
+        "Codeit or another design system is used as structural inspiration, not as a source of universal numbers or copied branding."
+      ]
+    },
+    {
+      "id": "token-proposal-korean-color",
+      "prompt": "우리 서비스 CSS에서 회색이 열 가지 넘게 쓰이고 있어요. 첨부한 CSS와 화면 캡처를 근거로 컬러와 간격 토큰을 정리해서, 팀이 검토할 한국어 HTML 페이지로 만들어 주세요. 다크 모드 값은 아직 정해지지 않았어요.",
+      "expected_output": "A Korean token proposal page rendered from validated proposal data: color ramps and semantic pairs with declared contrast checks, spacing primitives and role mappings, dark-theme values left unknown, current-to-proposed changes, and the output path with remaining open decisions.",
+      "assertions": [
+        "Proposal data is validated before rendering, or the report states that the deterministic checks could not run.",
+        "Text and status colors declare their background and minimum contrast; failing pairs are reported rather than hidden.",
+        "Undecided dark-theme mappings stay unknown instead of being invented.",
+        "Page chrome, headings, and notes are Korean, with Korean line breaking that keeps words intact.",
+        "The page is checked at a wide viewport and at about 375 CSS px before it is shared."
+      ]
+    },
+    {
+      "id": "nested-radius-no-html",
+      "prompt": "Are the nested radii in evals/fixtures/nested-radius.css coherent? I don't need an HTML page or token file.",
+      "expected_output": "A focused relationship review that flags the shared contour using the same radius as its parent despite padding, classifies the pill as independent, and recommends the smallest fix without creating a token proposal JSON or HTML page.",
+      "assertions": [
+        "The card media shared contour is flagged with its padding and radius values.",
+        "The pill is classified as an independent component.",
+        "No proposal JSON or HTML file is created."
+      ]
+    },
+    {
+      "id": "new-system-hypothesis",
+      "prompt": "There are no existing tokens. Using evals/fixtures/new-product-brief.md, propose a starter color, spacing, and type token set as an HTML proposal.",
+      "expected_output": "A new-system proposal whose values are labeled as design hypotheses with rationale traced to the brief, with the approved brand color as the only observed value, contrast and reflow checked only after rendering, and undecided contexts left open.",
+      "assertions": [
+        "Proposed values are labeled as design hypotheses, not existing project values or measurements.",
+        "Each hypothesis value has a rationale tied to the brief's requirements, content, or platform.",
+        "The approved brand color is recorded as observed with its source.",
+        "Contrast or reflow results are reported only for checks actually run on the rendered proposal."
+      ]
+    },
+    {
+      "id": "dark-mode-undecided",
+      "prompt": "Propose color tokens for evals/fixtures/new-product-brief.md. We haven't decided whether we need a dark theme.",
+      "expected_output": "A proposal that maps semantic colors for the decided light context only and records the dark theme as an open decision rather than filling dark values.",
+      "assertions": [
+        "No dark-theme values are proposed as decided.",
+        "The dark theme appears as an open decision or question."
+      ]
+    },
+    {
+      "id": "approach-choice-first",
+      "prompt": "Propose design tokens for our new booking app.",
+      "expected_output": "Because the request does not say how to proceed, the response first asks one question: an AI proposal from the project or brief, or a guided proposal with a few direction questions. It does not ask the direction questions yet.",
+      "assertions": [
+        "The first reply asks only the approach question with its two options.",
+        "The direction questions are not asked before the user chooses guided."
+      ]
+    },
+    {
+      "id": "guided-asks-once",
+      "prompt": "Ask me first, then propose design tokens for the clinic app in evals/fixtures/new-product-brief.md.",
+      "expected_output": "A single message asks the remaining direction questions from the question bank with lettered options and a let-the-AI-choose option. The brief already supplies the brand color, so the color question is skipped or confirmed rather than asked open-ended. After the answers, the proposal records approach guided, preferences with question and option IDs, and based_on links from shaped values.",
+      "assertions": [
+        "All remaining questions are asked together in one message, each with at most four lettered options ending with let the AI choose.",
+        "The question about color does not override the brand color supplied in the brief.",
+        "The proposal records approach guided and one preference per answered question using question bank IDs.",
+        "Values chosen from a direction are design hypotheses with a rationale and based_on; a delegated answer is not cited in based_on."
+      ]
+    },
+    {
+      "id": "guided-skips-answered",
+      "prompt": "Let's decide the tokens together. We want a blue palette and we need both light and dark mode.",
+      "expected_output": "The color-family and theme questions are already answered and recorded as preferences; only the type-style and corner-style questions are asked.",
+      "assertions": [
+        "Only the unanswered questions are asked.",
+        "The stated answers are recorded as color-family blue and theme both.",
+        "Every color semantic token maps light and dark, using unknown where a value is not derived yet."
+      ]
+    },
+    {
+      "id": "guided-existing-tokens",
+      "prompt": "Our project already has light-theme color tokens in src/styles/tokens.css. Ask me what's missing and propose the rest.",
+      "expected_output": "The existing tokens are inventoried first. Only directions without project evidence, such as whether a dark theme is needed, are asked; observed project values are not reopened by a question.",
+      "assertions": [
+        "Questions about directions already set by observed project tokens are not asked.",
+        "An answer that changes an observed value is recorded in changes with the answer as evidence."
+      ]
+    },
+    {
+      "id": "auto-when-noninteractive",
+      "prompt": "Run unattended in CI: produce a token proposal JSON for the brief in evals/fixtures/new-product-brief.md. Nobody can answer questions.",
+      "expected_output": "The proposal uses the auto approach without asking questions, records no preferences, and leaves the undecided dark theme as an open decision.",
+      "assertions": [
+        "No question is asked.",
+        "The proposal records approach auto or omits it, with no preferences.",
+        "The dark theme stays an open decision."
+      ]
+    },
+    {
+      "id": "oklch-and-rgba-colors",
+      "prompt": "Our brand color is oklch(52% 0.17 255) and our overlay text uses rgba(31, 35, 40, 0.8). Check them against white and list each color in the formats our developers use.",
+      "expected_output": "Each color is listed in hex, rgb()/rgba(), and oklch(). Contrast is computed on the sRGB color, with the translucent text composited over white; a color outside sRGB is reported as mapped into sRGB.",
+      "assertions": [
+        "Both colors are given in hex, rgb() or rgba(), and oklch().",
+        "The translucent text's contrast is computed after compositing over the white background.",
+        "No contrast result is reported against a translucent background."
+      ]
+    }
+  ]
+}

@@ -1,15 +1,23 @@
-import type { CatalogProvider, EndpointConfig, ModelConfig, ProfileConfig } from '@corral/client';
+import {
+  ApiError,
+  type CatalogProvider,
+  type EndpointConfig,
+  type ModelConfig,
+  type ProfileConfig,
+} from '@corral/client';
 import { useRouter } from '@tanstack/react-router';
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
+import { ProfileContextDetails } from '../workbench/ProfileContextDetails.tsx';
+import { ApiKeyInput } from './ApiKeyInput.tsx';
 
 /**
  * Profiles and OpenAI-compatible endpoints, edited on the Models page and saved to
- * `.corral/config.json` (CR-008). Keys are not part of it; they stay in Settings' sign-in.
+ * `.corral/config.json` (CR-008). Keys go separately to the credential API after config saves.
  */
 export function ModelConfigEditor({
-  config,
+  config: initialConfig,
   catalog,
   onDone,
 }: {
@@ -21,12 +29,46 @@ export function ModelConfigEditor({
   const { models } = useServices();
   const router = useRouter();
   const headingId = useId();
+  // Auth polling may refresh the parent while this draft still belongs to the earlier config.
+  const [config, setConfig] = useState(initialConfig);
   const [profiles, setProfiles] = useState<ProfileRow[]>(() =>
-    config.modelProfiles.map((p) => ({ ...p, uid: uid() })),
+    config.modelProfiles.map(profileDraft),
   );
   const [endpoints, setEndpoints] = useState<EndpointDraft[]>(config.modelProviders.map(toDraft));
+  const [endpointKeys, setEndpointKeys] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  const [preview, setPreview] = useState(initialConfig.effectiveProfiles);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!models) return;
+    const controller = new AbortController();
+    setPreview(undefined);
+    setPreviewError(null);
+    const timer = setTimeout(() => {
+      try {
+        const modelProfiles = profiles.map(fromProfile);
+        void models
+          .previewConfig(
+            { revision: config.revision, modelProfiles, modelProviders: endpoints.map(fromDraft) },
+            controller.signal,
+          )
+          .then((result) => {
+            if (!controller.signal.aborted) setPreview(result.effectiveProfiles);
+          })
+          .catch(() => {
+            if (!controller.signal.aborted) setPreviewError(t('previewUnavailable'));
+          });
+      } catch {
+        setPreviewError(t('invalidNumber'));
+      }
+    }, 200);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [profiles, endpoints, config.revision, models, t]);
 
   // Providers to choose from: pi-ai's own, then the endpoints as they are being edited.
   const builtins = catalog.filter((p) => !p.endpoint);
@@ -47,24 +89,55 @@ export function ModelConfigEditor({
 
   const setProfile = (index: number, patch: Partial<ProfileRow>) =>
     setProfiles(profiles.map((p, i) => (i === index ? { ...p, ...patch } : p)));
-  const setEndpoint = (index: number, patch: Partial<EndpointDraft>) =>
+  const setEndpoint = (index: number, patch: Partial<EndpointDraft>) => {
+    const endpoint = endpoints[index]!;
+    if (patch.id !== undefined || patch.baseUrl !== undefined || patch.access !== undefined)
+      setEndpointKeys((keys) => ({ ...keys, [endpoint.uid]: '' }));
     setEndpoints(endpoints.map((e, i) => (i === index ? { ...e, ...patch } : e)));
+  };
 
   const save = async () => {
-    if (!models) return;
+    if (!models || savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
     setError(null);
+    let stage: 'config' | 'keys' | 'refresh' = 'config';
     try {
-      await models.saveConfig({
+      let modelProfiles: ProfileConfig[];
+      try {
+        modelProfiles = profiles.map(fromProfile);
+      } catch {
+        throw new Error(t('invalidNumber'));
+      }
+      const saved = await models.saveConfig({
         revision: config.revision,
-        modelProfiles: profiles.map(({ uid: _uid, ...p }) => ({ ...p, id: p.id.trim() })),
-        modelProviders: endpoints.map((e) => fromDraft(e, config.modelProviders)),
+        modelProfiles,
+        modelProviders: endpoints.map(fromDraft),
       });
+      setConfig(saved);
+      stage = 'keys';
+      for (const endpoint of endpoints) {
+        const key = endpointKeys[endpoint.uid]?.trim();
+        if (endpoint.access !== 'api_key' || !key) continue;
+        await models.setApiKey(endpoint.id.trim(), key, saved.revision);
+        setEndpointKeys((keys) => ({ ...keys, [endpoint.uid]: '' }));
+      }
+      stage = 'refresh';
       await router.invalidate();
       onDone();
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : String(failure));
+      setError(
+        t(stage === 'config' ? 'refused' : stage === 'keys' ? 'keysFailed' : 'refreshFailed', {
+          message:
+            failure instanceof ApiError && failure.code === 'REVISION_CONFLICT'
+              ? t('conflict')
+              : failure instanceof Error
+                ? failure.message
+                : String(failure),
+        }),
+      );
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
@@ -80,15 +153,19 @@ export function ModelConfigEditor({
       </h3>
       {config.usingDefaults ? <p className="text-xs text-muted">{t('usingDefaults')}</p> : null}
 
-      <fieldset className="flex flex-col gap-2">
+      <fieldset disabled={saving} className="flex flex-col gap-2">
         <legend className="text-sm font-medium">{t('profiles')}</legend>
         <p className="text-xs text-muted">{t('profilesHint')}</p>
+        <p className="text-xs text-muted">{t('isolationHint')}</p>
         {profiles.map((profile, index) => {
           const provider = choices.find((c) => c.id === profile.provider);
           const known = provider?.models.some((m) => m.id === profile.model);
           const label = profile.id || t('newProfile', { n: index + 1 });
           return (
-            <div key={profile.uid} className="flex flex-wrap items-center gap-2">
+            <div
+              key={profile.uid}
+              className="flex flex-wrap items-center gap-2 rounded border border-line p-2"
+            >
               <input
                 aria-label={t('profileId', { n: index + 1 })}
                 value={profile.id}
@@ -127,6 +204,18 @@ export function ModelConfigEditor({
                   </option>
                 ))}
               </select>
+              <label className="flex items-center gap-1 text-xs">
+                <input
+                  type="checkbox"
+                  checked={profile.workerIsolation === 'linux-bwrap'}
+                  onChange={(event) =>
+                    setProfile(index, {
+                      workerIsolation: event.target.checked ? 'linux-bwrap' : undefined,
+                    })
+                  }
+                />
+                {t('isolateProfile', { profile: label })}
+              </label>
               <button
                 type="button"
                 aria-label={t('removeProfile', { profile: label })}
@@ -135,6 +224,33 @@ export function ModelConfigEditor({
               >
                 ✕
               </button>
+              <div className="grid w-full gap-2 sm:grid-cols-3">
+                {(['contextWindow', 'reserveTokens', 'keepRecentTokens'] as const).map((key) => (
+                  <label key={key} className="flex min-w-0 flex-col gap-1 text-xs">
+                    <span>{t(key, { profile: label })}</span>
+                    <input
+                      inputMode="numeric"
+                      aria-label={t(key, { profile: label })}
+                      placeholder={t('inherit')}
+                      value={profile[key]}
+                      onChange={(event) => setProfile(index, { [key]: event.target.value })}
+                      className={`${field} min-w-0 w-full`}
+                    />
+                  </label>
+                ))}
+              </div>
+              <div className="w-full" data-testid={`context-policy-${profile.id}`}>
+                {preview?.[profile.id] ? (
+                  <>
+                    <ProfileContextDetails policy={preview[profile.id]!.policy} />
+                    {preview[profile.id]!.errors.length ? (
+                      <p className="text-xs text-danger">{t('invalidRelation')}</p>
+                    ) : null}
+                  </>
+                ) : (
+                  <p className="text-xs text-muted">{previewError ?? t('previewPending')}</p>
+                )}
+              </div>
             </div>
           );
         })}
@@ -145,6 +261,9 @@ export function ModelConfigEditor({
               ...profiles,
               {
                 uid: uid(),
+                contextWindow: '',
+                reserveTokens: '',
+                keepRecentTokens: '',
                 id: `model-${String.fromCharCode(97 + profiles.length)}`,
                 provider: choices[0]?.id ?? '',
                 model: choices[0]?.models[0]?.id ?? '',
@@ -157,7 +276,7 @@ export function ModelConfigEditor({
         </button>
       </fieldset>
 
-      <fieldset className="flex flex-col gap-2">
+      <fieldset disabled={saving} className="flex flex-col gap-2">
         <legend className="text-sm font-medium">{t('endpoints')}</legend>
         <p className="text-xs text-muted">{t('endpointsHint')}</p>
         {endpoints.map((endpoint, index) => {
@@ -167,45 +286,78 @@ export function ModelConfigEditor({
               key={endpoint.uid}
               className="grid gap-2 rounded border border-line p-2 sm:grid-cols-2"
             >
-              <input
-                aria-label={t('endpointId', { n })}
-                placeholder="ollama"
-                value={endpoint.id}
-                onChange={(e) => setEndpoint(index, { id: e.target.value })}
-                className={`${field} font-mono`}
-              />
-              <input
-                aria-label={t('endpointName', { n })}
-                placeholder="Ollama"
-                value={endpoint.name}
-                onChange={(e) => setEndpoint(index, { name: e.target.value })}
-                className={field}
-              />
-              <input
-                aria-label={t('endpointAddress', { n })}
-                placeholder="http://127.0.0.1:11434/v1"
-                value={endpoint.baseUrl}
-                onChange={(e) => setEndpoint(index, { baseUrl: e.target.value })}
-                className={`${field} font-mono sm:col-span-2`}
-              />
-              <select
-                aria-label={t('endpointAccess', { n })}
-                value={endpoint.access}
-                onChange={(e) =>
-                  setEndpoint(index, { access: e.target.value as EndpointConfig['access'] })
-                }
-                className={field}
-              >
-                <option value="none">{t('accessNone')}</option>
-                <option value="api_key">{t('accessKey')}</option>
-              </select>
+              <label className="flex flex-col gap-1 text-xs">
+                <span>{t('endpointId', { n })}</span>
+                <input
+                  aria-label={t('endpointId', { n })}
+                  placeholder="hive"
+                  value={endpoint.id}
+                  onChange={(e) => setEndpoint(index, { id: e.target.value })}
+                  className={`${field} font-mono`}
+                />
+                <span className="text-muted">{t('endpointIdHint')}</span>
+              </label>
+              <label className="flex flex-col gap-1 text-xs">
+                <span>{t('endpointName', { n })}</span>
+                <input
+                  aria-label={t('endpointName', { n })}
+                  placeholder="Hive"
+                  value={endpoint.name}
+                  onChange={(e) => setEndpoint(index, { name: e.target.value })}
+                  className={field}
+                />
+                <span className="text-muted">{t('endpointNameHint')}</span>
+              </label>
+              <label className="flex flex-col gap-1 text-xs sm:col-span-2">
+                <span>{t('endpointAddress', { n })}</span>
+                <input
+                  aria-label={t('endpointAddress', { n })}
+                  placeholder="http://127.0.0.1:11434/v1"
+                  value={endpoint.baseUrl}
+                  onChange={(e) => setEndpoint(index, { baseUrl: e.target.value })}
+                  className={`${field} font-mono sm:col-span-2`}
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-xs">
+                <span>{t('endpointAccess', { n })}</span>
+                <select
+                  aria-label={t('endpointAccess', { n })}
+                  value={endpoint.access}
+                  onChange={(e) =>
+                    setEndpoint(index, { access: e.target.value as EndpointConfig['access'] })
+                  }
+                  className={field}
+                >
+                  <option value="none">{t('accessNone')}</option>
+                  <option value="api_key">{t('accessKey')}</option>
+                </select>
+              </label>
               <button
                 type="button"
-                onClick={() => setEndpoints(endpoints.filter((_, i) => i !== index))}
-                className="justify-self-start rounded border border-line px-2 py-1 text-xs"
+                onClick={() => {
+                  setEndpointKeys((keys) => {
+                    const next = { ...keys };
+                    delete next[endpoint.uid];
+                    return next;
+                  });
+                  setEndpoints(endpoints.filter((_, i) => i !== index));
+                }}
+                className="self-end justify-self-start rounded border border-line px-2 py-1 text-xs"
               >
                 {t('removeEndpoint')}
               </button>
+              {endpoint.access === 'api_key' ? (
+                <div className="flex flex-col gap-1 sm:col-span-2">
+                  <ApiKeyInput
+                    value={endpointKeys[endpoint.uid] ?? ''}
+                    disabled={saving}
+                    onChange={(value) =>
+                      setEndpointKeys((keys) => ({ ...keys, [endpoint.uid]: value }))
+                    }
+                  />
+                  <p className="text-xs text-muted">{t('endpointKeyHint')}</p>
+                </div>
+              ) : null}
               <label className="flex flex-col gap-1 text-xs sm:col-span-2">
                 <span>{t('endpointModels', { n })}</span>
                 <textarea
@@ -223,7 +375,15 @@ export function ModelConfigEditor({
           onClick={() =>
             setEndpoints([
               ...endpoints,
-              { uid: uid(), id: '', name: '', baseUrl: '', access: 'none', models: '' },
+              {
+                uid: uid(),
+                originalModels: [],
+                id: '',
+                name: '',
+                baseUrl: '',
+                access: 'none',
+                models: '',
+              },
             ])
           }
           className="self-start rounded border border-line px-2 py-1 text-xs"
@@ -239,13 +399,14 @@ export function ModelConfigEditor({
 
       {error ? (
         <p role="alert" className="text-sm text-danger">
-          {t('refused', { message: error })}
+          {error}
         </p>
       ) : null}
       <div className="flex justify-end gap-2">
         <button
           type="button"
           onClick={onDone}
+          disabled={saving}
           className="rounded border border-line px-3 py-1.5 text-sm"
         >
           {t('cancel')}
@@ -265,10 +426,55 @@ export function ModelConfigEditor({
 
 /** A row's identity while it is edited (names can change or be empty). */
 const uid = () => globalThis.crypto.randomUUID();
-type ProfileRow = ProfileConfig & { uid: string };
+type ProfileRow = Omit<ProfileConfig, 'contextWindow' | 'compaction'> & {
+  uid: string;
+  contextWindow: string;
+  reserveTokens: string;
+  keepRecentTokens: string;
+};
+function profileDraft(profile: ProfileConfig): ProfileRow {
+  const { contextWindow, compaction, ...binding } = profile;
+  return {
+    ...binding,
+    uid: uid(),
+    contextWindow: contextWindow?.toString() ?? '',
+    reserveTokens: compaction?.reserveTokens?.toString() ?? '',
+    keepRecentTokens: compaction?.keepRecentTokens?.toString() ?? '',
+  };
+}
+function fromProfile(row: ProfileRow): ProfileConfig {
+  const { uid: _uid, contextWindow: c, reserveTokens: r, keepRecentTokens: k, ...binding } = row;
+  const number = (value: string, min: number, max = Number.MAX_SAFE_INTEGER) => {
+    if (!value.trim()) return undefined;
+    const n = Number(value);
+    if (!/^\d+$/.test(value.trim()) || !Number.isSafeInteger(n) || n < min || n > max)
+      throw new Error('invalid number');
+    return n;
+  };
+  const contextWindow = number(c, 1, 10_000_000),
+    reserveTokens = number(r, 0),
+    keepRecentTokens = number(k, 0);
+  return {
+    ...binding,
+    id: binding.id.trim(),
+    ...(contextWindow !== undefined ? { contextWindow } : {}),
+    ...(reserveTokens !== undefined || keepRecentTokens !== undefined
+      ? {
+          compaction: {
+            ...(reserveTokens !== undefined ? { reserveTokens } : {}),
+            ...(keepRecentTokens !== undefined ? { keepRecentTokens } : {}),
+          },
+        }
+      : {}),
+  };
+}
 
 /** An endpoint as edited: its models are one id per line. */
-type EndpointDraft = Omit<EndpointConfig, 'models'> & { models: string; uid: string };
+type EndpointDraft = Omit<EndpointConfig, 'models'> & {
+  models: string;
+  uid: string;
+  originalModels: EndpointConfig['models'];
+};
 
 const modelIds = (text: string) =>
   text
@@ -277,14 +483,19 @@ const modelIds = (text: string) =>
     .filter(Boolean);
 
 function toDraft(endpoint: EndpointConfig): EndpointDraft {
-  return { ...endpoint, uid: uid(), models: endpoint.models.map((m) => m.id).join('\n') };
+  return {
+    ...endpoint,
+    uid: uid(),
+    originalModels: endpoint.models,
+    models: endpoint.models.map((m) => m.id).join('\n'),
+  };
 }
 
 /** Back to the config shape, keeping the limits a model already had. */
-function fromDraft(draft: EndpointDraft, before: EndpointConfig[]): EndpointConfig {
+function fromDraft(draft: EndpointDraft): EndpointConfig {
   const id = draft.id.trim();
   // `uid` is the row's identity in the editor only.
-  const previous = before.find((e) => e.id === id)?.models ?? [];
+  const previous = draft.originalModels;
   return {
     id,
     name: draft.name.trim() || id,

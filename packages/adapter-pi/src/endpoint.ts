@@ -12,6 +12,7 @@ export const EndpointModel = z.strictObject({
   contextWindow: z.int().min(1),
   maxOutput: z.int().min(1),
   reasoning: z.boolean(),
+  imageInput: z.boolean().optional(),
 });
 
 export const EndpointSpec = z.strictObject({
@@ -25,6 +26,22 @@ export type EndpointSpec = z.infer<typeof EndpointSpec>;
 
 /** Defaults when the configuration leaves a model's limits out. */
 export const ENDPOINT_DEFAULTS = { contextWindow: 32_000, maxOutput: 4_096 } as const;
+
+function isHiveDeepSeek(baseUrl: string, modelId: string) {
+  return (
+    modelId === 'deepseek-ai/deepseek-v4.1-flash-1017' &&
+    ['https://api-cdn.thehive.ai/api/v3', 'https://api-va1.thehive.ai/api/v3'].includes(
+      baseUrl.replace(/\/+$/, ''),
+    )
+  );
+}
+
+/** Published defaults for known endpoint/model pairs; explicit configuration takes priority. */
+export function endpointModelDefaults(baseUrl: string, modelId: string) {
+  return isHiveDeepSeek(baseUrl, modelId)
+    ? { ...ENDPOINT_DEFAULTS, contextWindow: 1_000_000, reasoning: true, imageInput: true }
+    : { ...ENDPOINT_DEFAULTS, reasoning: false, imageInput: undefined };
+}
 
 /**
  * Sent to a keyless endpoint: OpenAI clients need some key, and local servers such as Ollama
@@ -55,10 +72,33 @@ export function endpointProvider(
     provider: providerId,
     baseUrl: spec.baseUrl,
     reasoning: m.reasoning,
-    input: ['text'],
+    input: m.imageInput ? ['text', 'image'] : ['text'],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: m.contextWindow,
     maxTokens: m.maxOutput,
+    // Hive exposes OpenAI effort, not the native DeepSeek thinking/max_tokens protocol.
+    ...(isHiveDeepSeek(spec.baseUrl, m.id)
+      ? {
+          headers: { Accept: 'text/event-stream' },
+          thinkingLevelMap: {
+            off: 'none',
+            minimal: null,
+            low: 'low',
+            medium: null,
+            high: 'high',
+            xhigh: null,
+            max: 'max',
+          },
+          compat: {
+            thinkingFormat: 'openai' as const,
+            supportsReasoningEffort: true,
+            supportsDeveloperRole: false,
+            supportsStore: false,
+            supportsUsageInStreaming: false,
+            maxTokensField: 'max_completion_tokens' as const,
+          },
+        }
+      : {}),
   }));
   return createProvider({
     id: providerId,

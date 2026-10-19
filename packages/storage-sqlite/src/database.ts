@@ -432,6 +432,76 @@ CREATE TABLE harness_management_receipts (
     name: '0014_auto_command_identity',
     sql: 'ALTER TABLE commands ADD COLUMN original_request_hash TEXT;',
   },
+  {
+    name: '0015_file_checkpoints',
+    sql: `
+CREATE TABLE file_checkpoints (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL REFERENCES work_sessions(id),
+  run_id TEXT,
+  kind TEXT NOT NULL,
+  manifest_json TEXT NOT NULL,
+  manifest_hash TEXT,
+  state TEXT NOT NULL CHECK (state IN ('incomplete', 'ready', 'expired')),
+  pinned INTEGER NOT NULL CHECK (pinned IN (0,1)),
+  created_at TEXT NOT NULL,
+  UNIQUE (run_id, kind)
+) STRICT;
+CREATE INDEX checkpoints_by_session ON file_checkpoints (session_id, created_at);
+CREATE TABLE checkpoint_restores (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL REFERENCES work_sessions(id),
+  request_hash TEXT NOT NULL,
+  result_json TEXT NOT NULL
+) STRICT;
+`,
+  },
+  {
+    name: '0016_input_images',
+    sql: `CREATE TABLE input_images (
+      session_id TEXT NOT NULL REFERENCES work_sessions(id), id TEXT NOT NULL,
+      metadata_json TEXT NOT NULL, body BLOB NOT NULL, created_at TEXT NOT NULL,
+      PRIMARY KEY (session_id,id)
+    ) STRICT;`,
+  },
+  {
+    name: '0017_runtime_file_checkpoints',
+    sql: `CREATE TABLE file_checkpoints_next (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL REFERENCES work_sessions(id),
+      run_id TEXT, kind TEXT NOT NULL, manifest_json TEXT NOT NULL, manifest_hash TEXT,
+      state TEXT NOT NULL CHECK (state IN ('incomplete','ready','expired')),
+      pinned INTEGER NOT NULL CHECK (pinned IN (0,1)), created_at TEXT NOT NULL
+    ) STRICT;
+    INSERT INTO file_checkpoints_next SELECT * FROM file_checkpoints;
+    DROP TABLE file_checkpoints;
+    ALTER TABLE file_checkpoints_next RENAME TO file_checkpoints;
+    CREATE INDEX checkpoints_by_session ON file_checkpoints(session_id,created_at);
+    CREATE UNIQUE INDEX checkpoint_run_boundary ON file_checkpoints(run_id,kind) WHERE kind IN ('before_run','after_run');`,
+  },
+  {
+    name: '0018_private_session_search',
+    sql: `CREATE VIRTUAL TABLE session_search_v1 USING fts5(
+      id UNINDEXED, session_id UNINDEXED, run_id UNINDEXED, entry_id UNINDEXED,
+      artifact_id UNINDEXED, sequence UNINDEXED, kind UNINDEXED, normalized,
+      tokenize='trigram'
+    );
+    CREATE TABLE session_search_state_v1 (id TEXT PRIMARY KEY, cursor TEXT NOT NULL) STRICT;`,
+  },
+  {
+    name: '0019_message_branches',
+    sql: `CREATE TABLE message_branches (
+      command_id TEXT PRIMARY KEY, request_hash TEXT NOT NULL,
+      source_run_id TEXT NOT NULL REFERENCES runs(id), artifact_id TEXT NOT NULL,
+      session_id TEXT NOT NULL UNIQUE REFERENCES work_sessions(id), created_at TEXT NOT NULL
+    ) STRICT;`,
+  },
+  {
+    name: '0020_web_source_evidence',
+    sql: `CREATE TABLE web_source_evidence (
+      document_id TEXT PRIMARY KEY REFERENCES imported_inputs(id), metadata_json TEXT NOT NULL, raw_body BLOB NOT NULL
+    ) STRICT;${IMMUTABLE('web_source_evidence')}`,
+  },
 ];
 
 /** History queries must neither recover active runs nor migrate the workspace. */

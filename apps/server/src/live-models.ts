@@ -1,7 +1,9 @@
 import {
+  modelBridgeChannel,
   PiAgentAdapter,
   processChannel,
   SDK_WORKER_ENTRY,
+  sandboxChannel,
   sdkProcessChannel,
   WORKER_ENTRY,
 } from '@corral/adapter-pi';
@@ -43,9 +45,23 @@ export function createLiveModels(): LiveModels {
       }),
     agents: (registry, harnesses, workerLeaseDirectory) =>
       new PiAgentAdapter({
-        spawn: () => processChannel(WORKER_ENTRY),
-        spawnSdk: () =>
-          sdkProcessChannel(SDK_WORKER_ENTRY, { leaseDirectory: workerLeaseDirectory }),
+        spawn: (input) =>
+          input.model.workerIsolation
+            ? modelBridgeChannel(
+                sandboxChannel(WORKER_ENTRY, { leaseDirectory: workerLeaseDirectory }),
+                registry.modelBroker(input.model),
+              )
+            : processChannel(WORKER_ENTRY, { leaseDirectory: workerLeaseDirectory }),
+        spawnSdk: (input, resources) =>
+          input.model.workerIsolation
+            ? modelBridgeChannel(
+                sandboxChannel(SDK_WORKER_ENTRY, {
+                  leaseDirectory: workerLeaseDirectory,
+                  contentRoots: resources.bundles.map((bundle) => bundle.root),
+                }),
+                registry.modelBroker(input.model),
+              )
+            : sdkProcessChannel(SDK_WORKER_ENTRY, { leaseDirectory: workerLeaseDirectory }),
         harness: (input) => harnesses.runtimeResources(input),
         cancelGraceMs: 9_000,
         credentials: (model) => registry.credentials(model),

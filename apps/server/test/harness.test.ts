@@ -383,7 +383,7 @@ describe('resource discovery, trust and resolution (H3)', () => {
       expect(Boolean(resources.skills[0]?.content), text).toBe(expected);
     }
   });
-  it('[TC-HAR-003-H] run resolution uses the same narrowing layer as preview', () => {
+  it('[TC-SAFE-002-H] [TC-HAR-003-H] [TC-HAR-008-H] run resolution uses the same narrowing layer as preview', () => {
     const { service } = setup();
     const base = {
       name: 'Base',
@@ -393,12 +393,28 @@ describe('resource discovery, trust and resolution (H3)', () => {
       startupCommands: [],
     };
     service.saveProfile('base', 0, base);
-    service.saveProfile('limited', 0, { ...base, allowedTools: ['read'] });
+    service.saveProfile('limited', 0, {
+      ...base,
+      allowedTools: ['read'],
+      permissionPolicy: { default: 'deny', rules: [] },
+    });
     const binding = { profileId: 'base', revision: 1 },
       runOverride = { profileId: 'limited', revision: 1 };
     expect(service.resolve(binding, linearCorral(['writer']), 'writer', { runOverride })).toEqual(
       service.preview(binding, 'default', runOverride).snapshot,
     );
+    const pinned = service.preview(binding, 'default', runOverride).snapshot;
+    expect(pinned.permissionPolicies).toEqual([{ default: 'deny', rules: [] }]);
+    service.saveProfile('limited', 1, {
+      ...base,
+      allowedTools: ['read'],
+      permissionPolicy: { default: 'ask', rules: [] },
+    });
+    expect(service.preview(binding, 'default', runOverride).snapshot).toEqual(pinned);
+    expect(
+      service.preview(binding, 'default', { profileId: 'limited', revision: 2 }).snapshot
+        .permissionPolicies,
+    ).toEqual([{ default: 'ask', rules: [] }]);
   });
   it('[TC-HAR-012-H] pins selected project tools in the effective snapshot and inheritance can only narrow selection', () => {
     const { service, db } = setup();
@@ -589,4 +605,61 @@ describe('resource discovery, trust and resolution (H3)', () => {
       /skill.*(large|size|limit)/i,
     );
   });
+});
+
+it('[TC-BPACK-002-H] [TC-BPACK-002-N] bundled content is reviewed and pinned, only selected entries are exposed, and sibling paths stay scoped', async () => {
+  const s = setup();
+  const service = new HarnessService({ root: s.resourceRoot, db: s.db, clock: new FakeClock() });
+  for (const [id, count] of [
+    ['core', 5],
+    ['browser', 1],
+    ['coding', 3],
+    ['design', 10],
+  ] as const) {
+    const review = await service.discoverBuiltin(id);
+    expect(review.resource.skills).toHaveLength(count);
+    expect(review.resource.extensions).toEqual([]);
+    expect(review.resource.license).toBe('MIT');
+    const resource = service.install(review.reviewId);
+    expect(resource.trustedAt).toBeNull();
+    service.trust(resource.hash, true);
+    if (id !== 'design') continue;
+    const skills = resource.skills.filter((skill) =>
+      ['design-workflow', 'review-components'].includes(skill.name),
+    );
+    service.saveProfile('design', 0, {
+      name: 'Design review',
+      policy: 'strict',
+      allowedTools: ['read'],
+      startupCommands: [],
+      resources: skills.map((skill) => ({
+        resourceHash: resource.hash,
+        kind: 'skill',
+        entry: skill.entry,
+        required: true,
+        skillMode: 'auto',
+      })),
+    });
+    const snapshot = service.preview({ profileId: 'design', revision: 1 }, 'default').snapshot;
+    const read = service.readSkill(snapshot, 'skills/design-workflow/SKILL.md');
+    expect(read.boundSkills).toEqual(
+      expect.arrayContaining([
+        { name: 'review-components', path: 'skills/review-components/SKILL.md' },
+      ]),
+    );
+    expect(JSON.stringify(read.boundSkills)).not.toContain('audit-design');
+    expect(() => service.readSkill(snapshot, 'skills/audit-design/SKILL.md')).toThrow();
+    expect(() =>
+      service.readSkill(snapshot, 'skills/design-workflow/../review-components/SKILL.md'),
+    ).toThrow();
+    const bound = snapshot.resources[0]!;
+    writeFileSync(
+      join(s.resourceRoot, 'resources', `sha256-${resource.hash}`, bound.entry!),
+      'changed',
+    );
+    expect(() => service.readSkill(snapshot, `skills/${bound.skillName}/SKILL.md`)).toThrow(
+      /integrity/,
+    );
+  }
+  await expect(service.discoverBuiltin('../private')).rejects.toThrow();
 });

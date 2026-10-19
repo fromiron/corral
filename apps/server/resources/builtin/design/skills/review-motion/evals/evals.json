@@ -1,0 +1,42 @@
+{
+  "skill_name": "review-motion",
+  "evals": [
+    {
+      "id": "scroll-reveals",
+      "prompt": "Every section fades and slides in on scroll. The page is still understandable without it. Decide what to keep.",
+      "expected_output": "The reveals are classified as nonessential and removed or reduced with content visible by default.",
+      "assertions": [
+        "The page content remains available when motion is disabled.",
+        "The decision does not keep motion merely for polish."
+      ]
+    },
+    {
+      "id": "save-feedback",
+      "prompt": "A save action moves a checkmark into view and also updates status text. Design the reduced-motion behavior.",
+      "expected_output": "Status text is preserved and the movement is reduced or replaced when motion is reduced.",
+      "assertions": [
+        "The confirmation is not removed.",
+        "A static equivalent is documented."
+      ]
+    },
+    {
+      "id": "scroll-jacking",
+      "prompt": "The site converts wheel input into full-screen slides. Users cannot freely stop between sections.",
+      "expected_output": "Scroll hijacking is a hard gate and is removed or replaced with native user-controlled scrolling.",
+      "assertions": [
+        "The output does not recommend tuning the effect as the only fix.",
+        "An equivalent user-controlled path is required."
+      ]
+    },
+    {
+      "id": "appropriate-motion-keep",
+      "prompt": "Review the save confirmation transition in evals/fixtures/appropriate-ui.html.",
+      "expected_output": "The motion is kept because it communicates a state change, is short, has a static status equivalent, and has a reduced-motion path; no change is proposed.",
+      "assertions": [
+        "The decision for the save confirmation is keep.",
+        "The output does not propose removing or redesigning the motion.",
+        "Behavior that was not exercised at runtime is reported as unknown."
+      ]
+    }
+  ]
+}

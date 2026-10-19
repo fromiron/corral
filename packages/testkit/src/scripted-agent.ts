@@ -119,9 +119,14 @@ export class ScriptedAgentAdapter implements AgentAdapter {
           return replied.ok ? { outcome: 'succeeded' } : failed(replied.error);
         }
 
-        // Delegate two parts to the first callable helper, then read what they submitted.
+        // Delegate on the first round; repairs reuse the evidence instead of spawning again.
         const delegateTo = input.capabilities.delegateTo[0];
-        if (collaboration && delegateTo && tools.includes('spawn_subagents')) {
+        if (
+          collaboration &&
+          delegateTo &&
+          tools.includes('spawn_subagents') &&
+          (input.round ?? 1) === 1
+        ) {
           const spawned = await host.invokeTool({
             name: 'spawn_subagents',
             args: {

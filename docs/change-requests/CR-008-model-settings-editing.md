@@ -66,3 +66,21 @@
   - 서버 2: 카탈로그에 자격 증명 없음, 두 키만 바뀌고 `hardCaps` 유지, 다음 Run이 새 프로필 사용; 알 수 없는 provider·내장 이름·비 loopback http·키 필드·오래된 revision 거절, 파일 불변.
   - E2E 2: 프로필 모델 변경·로컬 엔드포인트 추가 후 새로고침해도 유지; 잘못된 주소는 필드 이름으로 거절.
   - 결과: 전체 단위 테스트 584 통과, 서버 E2E 18 통과.
+
+## 2026-10-19 저장 충돌 수정
+
+Bell이 엔드포인트 저장 시 `the config changed since it was read`를 보고했다. 같은 페이지의 로컬 추론 적용 설정도 같은 config 파일을 변경하지만 모델 편집기의 revision은 갱신되지 않는 경로를 재현한다.
+
+- 파일 전체 revision과 서버의 동시 저장 거절은 유지한다. 모델 편집기는 편집 시작 시의 모델/엔드포인트를 고정한다. 저장 직전 최신 모델 항목이 그 기준과 같을 때만 최신 revision으로 저장하며, 실제 모델 변경이면 입력을 보존하고 충돌을 안내한다.
+- GET의 모델 항목과 revision은 같은 디스크 내용을 읽은 결과여야 한다. 메모리의 과거 모델 설정에 현재 파일의 revision을 붙이지 않는다.
+- 모델 저장 뒤 추론 설정도 최신 revision을 읽는다. auth/라우트 재조회가 편집 중인 draft의 기준 revision을 몰래 바꾸지 않는다.
+- 필요한 실패 시험은 추론 적용 변경과 엔드포인트 저장의 양방향 순서, 실제 동시 모델 변경/입력 보존, 외부 파일 변경의 GET snapshot이다. 실제 API 키나 유료 모델 호출은 사용하지 않는다.
+
+### 수정과 검증 결과
+
+- `model-revision-browser-red2.log`: 추론 적용을 변경한 다음 Hive 엔드포인트 저장이 200 대신 409로 거절됐다. `model-revision-browser-red.log`의 별도 동시 편집 시나리오는 auth loader 갱신 뒤 과거 draft를 저장해 충돌 안내 없이 닫히는 문제를 재현했다. 첫 checkbox 시험은 비동기 controlled 상태를 즉시 검사하는 방식 때문에 실패하여 response/최종 상태를 기다리도록 수정한 뒤 실제 409를 확인했다.
+- `model-revision-server-red.log`: 외부에서 수정한 모델 대신 메모리의 예전 모델을 현재 파일 revision과 함께 반환하는 실패를 재현했다.
+- 모델 편집 기준을 mount 시점에 고정하고 저장 직전 최신 모델 항목과 비교한다. 다른 설정만 바뀌었다면 최신 revision으로 저장하며 실제 모델 변경은 입력을 보존하고 안내한다. 조회와 저장 사이의 경합은 기존 서버 revision 검사로 거절한다. 저장 중 입력/취소도 잠가 제출 이후 입력을 버리지 않는다.
+- config GET은 한 번 읽은 파일 내용에서 값과 revision을 만든다. 모델 저장 후 추론 패널을 다시 읽고 추론 저장 후 loader를 갱신한다. 모델/추론 설정 외 사용자 데이터와 credential은 변경하지 않았다.
+- `model-revision-regression.log`: 서버 모델/Hive/config/ownership 포함 68개 통과. `model-revision-browser-green.log`: production Studio의 기존 설정 회귀와 새 경계 10개 통과. 전체 타입, spec 1,929 checks / 253 tags, production build, 변경 파일 Biome·diff 검사 통과.
+- 사용자 요청으로 기존 작업 폴더에서 수정된 개발 서버를 `127.0.0.1:4317`에 시작하고 실제 모델 설정 화면 및 기존 OpenAI 연결 표시를 확인했다. 유료 모델 호출·Hive 실서비스 도구 호출은 실행하지 않았다.

@@ -1,0 +1,52 @@
+{
+  "artifact": "Example sign-up form",
+  "target": {
+    "standard": "WCAG 2.2",
+    "level": "AA"
+  },
+  "evidence": [
+    "running page",
+    "keyboard test",
+    "browser zoom at 400%",
+    "computed color values"
+  ],
+  "checks": [
+    {
+      "id": "focus-visible",
+      "criterion": "2.4.7 Focus Visible",
+      "level": "AA",
+      "required": true,
+      "status": "fail",
+      "evidence": "The submit button outline is removed in keyboard focus.",
+      "impact": "Sighted keyboard users cannot identify the active control.",
+      "fix": "Restore a visible focus indicator with sufficient contrast.",
+      "verification": "Tab through the form and inspect every focusable control."
+    },
+    {
+      "id": "reflow",
+      "criterion": "1.4.10 Reflow",
+      "level": "AA",
+      "required": true,
+      "status": "pass",
+      "evidence": "At 320 CSS px equivalent, fields stack without horizontal scrolling.",
+      "impact": "No loss observed.",
+      "fix": "None.",
+      "verification": "Repeat after component changes."
+    },
+    {
+      "id": "screen-reader-status",
+      "criterion": "4.1.3 Status Messages",
+      "level": "AA",
+      "required": true,
+      "status": "unknown",
+      "evidence": "No screen-reader test was performed.",
+      "impact": "Submission feedback may be unavailable.",
+      "fix": "Expose status through an appropriate live region and test it.",
+      "verification": "Submit with at least one supported screen reader."
+    }
+  ],
+  "accepted_risks": [],
+  "notes": [
+    "The report is not a declaration of complete WCAG conformance."
+  ]
+}

@@ -42,6 +42,7 @@ export function fakeOpenAI(
     codexLogin?: { mode?: number };
     /** Label the models as the Responses API, so they report reasoning levels (CR-021). */
     reasoningApi?: boolean;
+    imageInput?: boolean;
   } = {},
 ) {
   const seen = {
@@ -92,7 +93,14 @@ export function fakeOpenAI(
     provider: 'openai',
     ...(options.reasoningApi ? { api: 'openai-responses' } : {}),
     models: [
-      { id: 'gpt-test-a', name: 'Test A', reasoning: true, contextWindow: 1000, maxTokens: 500 },
+      {
+        input: options.imageInput ? ['text', 'image'] : ['text'],
+        id: 'gpt-test-a',
+        name: 'Test A',
+        reasoning: true,
+        contextWindow: 1000,
+        maxTokens: 500,
+      },
       { id: 'gpt-test-b', name: 'Test B' },
       { id: 'gpt-test-b-api-only', name: 'Test B (API only)' },
     ],

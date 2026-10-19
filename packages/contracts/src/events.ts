@@ -13,6 +13,7 @@ import {
 } from './decisions.ts';
 import { ItemRef, OutputContract, RunLimits } from './definition.ts';
 import {
+  CompactionReport,
   ContentHash,
   EffectiveHarnessSnapshot,
   HarnessReport,
@@ -22,8 +23,10 @@ import {
 } from './harness.ts';
 import { Identifier, SchemaVersion } from './ids.ts';
 import { ReasoningApplySettings, ReasoningCapabilities, ReasoningResolution } from './reasoning.ts';
-import { ReviewIssue } from './review.ts';
+import { DesignReviewEvidence, ReviewIssue } from './review.ts';
 import { RecipeStopReason } from './review-recipe.ts';
+import { ResumedFrom, RuntimeCheckpointRecord } from './runtime-checkpoints.ts';
+import { BranchedFrom } from './session-continuity.ts';
 import { ExecutionActivity, ExecutionStatus, ReviewVerdict, RunStatus } from './states.ts';
 
 // RunEvent = envelope (contracts/event-envelope.schema.json) + a typed payload for each entry
@@ -66,6 +69,11 @@ export const ModelProfileSnapshot = z.strictObject({
   provider: Identifier.nullable(),
   modelId: z.string().min(1).nullable(),
   auth: z.enum(['oauth', 'api_key', 'mock']),
+  contextWindow: z.int().min(1).max(10_000_000).optional(),
+  contextPolicy: ProfileContextPolicy.optional(),
+  imageInput: z.boolean().optional(),
+  endpointHash: ContentHash.optional(),
+  workerIsolation: z.literal('linux-bwrap').optional(),
   reasoning: ReasoningCapabilities.optional(),
 });
 export type ModelProfileSnapshot = z.infer<typeof ModelProfileSnapshot>;
@@ -88,6 +96,8 @@ export const RunStarted = event(
     inputHash: Sha256Hex,
     mode: z.enum(['mock', 'live']),
     modelProfiles: z.array(ModelProfileSnapshot),
+    resumedFrom: ResumedFrom.optional(),
+    branchedFrom: BranchedFrom.optional(),
     limits: RunLimits,
     criteriaVersionId: Identifier.optional(),
     /** Judgment settings fixed for the run (CR-003). Absent when the runtime has none. */
@@ -246,6 +256,7 @@ export const ReviewRecorded = event(
     criteriaVersionId: Identifier,
     verdict: ReviewVerdict,
     issues: z.array(ReviewIssue).max(20),
+    design: DesignReviewEvidence.optional(),
   }),
 );
 export const ReviewStale = event(
@@ -314,16 +325,26 @@ export const ApprovalRequested = event(
     criteriaVersionId: Identifier.nullable(),
     tool: z
       .strictObject({
-        purpose: z.enum(['check', 'lsp']).optional(),
+        purpose: z.enum(['check', 'lsp', 'tool']).optional(),
         executionId: Identifier,
         attemptNo: z.int().min(1),
-        effectId: Identifier,
+        effectId: Identifier.optional(),
         toolCallId: Identifier,
         bodyRef: Identifier,
         fingerprint: z.string().regex(/^[a-f0-9]{64}$/),
-        targetTree: z.string().regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/),
+        targetTree: z
+          .string()
+          .regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/)
+          .optional(),
         deadline: z.iso.datetime(),
       })
+      .refine(
+        (tool) =>
+          tool.purpose === 'tool'
+            ? tool.effectId === undefined && tool.targetTree === undefined
+            : tool.effectId !== undefined && tool.targetTree !== undefined,
+        'invalid approval scope',
+      )
       .optional(),
   }),
 );
@@ -445,6 +466,15 @@ export const ToolAllowed = event(
     executionId: Identifier,
     toolCallId: Identifier,
     policyVersion: z.string().min(1),
+    permission: z
+      .strictObject({
+        decision: z.enum(['allow', 'ask']),
+        snapshotHash: ContentHash,
+        policyRevision: z.int().min(1),
+        descriptorHash: ContentHash,
+        argumentsHash: ContentHash,
+      })
+      .optional(),
   }),
 );
 export const ToolBlocked = event(
@@ -599,9 +629,20 @@ export const HarnessLoadFailed = event(
 );
 export const ModelRequestRecorded = event(
   'model.request_recorded',
-  ModelRequestRecord.extend({ modelCallId: Identifier, snapshotHash: ContentHash }),
+  ModelRequestRecord.extend({ modelCallId: Identifier, snapshotHash: ContentHash.optional() }),
 );
 export const ModelPayloadRecorded = event('model.payload_recorded', ProviderPayloadRecord);
+export const SkillRead = event(
+  'skill.read',
+  z.strictObject({
+    executionId: Identifier,
+    toolCallId: Identifier,
+    skillName: Identifier,
+    resourceHash: ContentHash,
+    path: z.string().min(1).max(4096),
+    bodyHash: ContentHash,
+  }),
+);
 
 const uiTarget = { requestId: Identifier, executionId: Identifier, attemptNo: z.int().min(1) };
 export const ExtensionUiRequested = event(
@@ -634,7 +675,70 @@ export const ExtensionUiNotified = event(
   }),
 );
 
+export const UserInputRequested = event(
+  'user_input.requested',
+  z.strictObject({
+    ...uiTarget,
+    bodyRef: Identifier,
+    schemaHash: ContentHash,
+    deadline: z.iso.datetime(),
+  }),
+);
+export const UserInputAnswered = event(
+  'user_input.answered',
+  z.strictObject({
+    ...uiTarget,
+    answerRef: Identifier,
+    answerHash: ContentHash,
+  }),
+);
+export const UserInputClosed = event(
+  'user_input.closed',
+  z.strictObject({
+    ...uiTarget,
+    reason: z.enum(['cancelled', 'execution_ended']),
+  }),
+);
+
+export const WorkPlanUpdated = event(
+  'work_plan.updated',
+  z.strictObject({
+    scope: z.enum(['execution', 'team']),
+    executionId: Identifier,
+    attemptNo: z.int().min(1),
+    revision: z.int().min(1).max(1000),
+    criteriaVersionId: Identifier,
+    bodyRef: Identifier,
+    bodyHash: ContentHash,
+  }),
+);
+export const ContextCompactionChanged = event(
+  'context.compaction_changed',
+  CompactionReport.extend({
+    executionId: Identifier,
+    attemptNo: z.int().min(1),
+    phase: z.enum(['queued', 'started', 'completed', 'failed', 'cancelled', 'skipped']),
+  }),
+);
+
+export const RuntimeCheckpointCreated = event(
+  'runtime.checkpoint_created',
+  RuntimeCheckpointRecord,
+);
+export const RuntimeCheckpointSkipped = event(
+  'runtime.checkpoint_skipped',
+  z.strictObject({ executionId: Identifier, reason: z.enum(['capacity']) }),
+);
+
 export const RunEvent = z.discriminatedUnion('type', [
+  RuntimeCheckpointCreated,
+  RuntimeCheckpointSkipped,
+  ContextCompactionChanged,
+  SkillRead,
+  WorkPlanUpdated,
+  UserInputRequested,
+  UserInputAnswered,
+  UserInputClosed,
   ExtensionUiRequested,
   ExtensionUiAnswered,
   ExtensionUiExpired,
@@ -713,3 +817,5 @@ export interface StreamFrame {
   chunkIndex: number;
   text: string;
 }
+
+import { ProfileContextPolicy } from './profile-context.ts';

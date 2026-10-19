@@ -92,6 +92,7 @@ export const test = base.extend<{
   live: boolean;
   codexLogin: boolean;
   reasoningApi: boolean;
+  imageInput: boolean;
   compatibleEndpoint: boolean;
   agentReply: string | null;
   corral: Harness;
@@ -101,12 +102,22 @@ export const test = base.extend<{
   /** Lay a Codex CLI login (CR-004) for the fake OpenAI to borrow. */
   codexLogin: [false, { option: true }],
   reasoningApi: [false, { option: true }],
+  imageInput: [false, { option: true }],
   /** Profiles on a keyless OpenAI-compatible endpoint instead of the fake OpenAI (CR-005). */
   compatibleEndpoint: [false, { option: true }],
   /** Every simulated agent replies with exactly this text (CR-009 HTML results). */
   agentReply: [null, { option: true }],
   corral: async (
-    { page, replyDelayMs, live, codexLogin, reasoningApi, compatibleEndpoint, agentReply },
+    {
+      page,
+      replyDelayMs,
+      live,
+      codexLogin,
+      reasoningApi,
+      imageInput,
+      compatibleEndpoint,
+      agentReply,
+    },
     use,
   ) => {
     const workspace = mkdtempSync(join(tmpdir(), 'corral-e2e-'));
@@ -122,6 +133,7 @@ export const test = base.extend<{
           configDir: join(workspace, '..', `${workspace.split('/').at(-1)}-config`),
           ...(codexLogin ? { codexLogin: {} } : {}),
           reasoningApi,
+          imageInput,
         })
       : null;
     const endpoint = compatibleEndpoint ? await startCompatibleEndpoint() : null;

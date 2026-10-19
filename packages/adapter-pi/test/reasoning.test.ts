@@ -74,6 +74,11 @@ it('[TC-RSN-001-N] the pinned capability excludes Sol off and detects changed se
       capability,
     ),
   ).toThrow('changed');
+  for (const changed of [
+    { ...model, maxTokens: model.maxTokens + 1 },
+    { ...model, compat: { ...model.compat, supportsMaxOutputTokens: false } },
+  ])
+    expect(() => assertReasoningCapabilities(changed, capability)).toThrow('changed');
 });
 
 it('[TC-RSN-003-N] the actual Pi serializer agrees on off, provider default and non-reasoning models', async () => {

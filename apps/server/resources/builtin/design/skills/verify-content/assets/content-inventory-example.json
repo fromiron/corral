@@ -1,0 +1,69 @@
+{
+  "context": {
+    "artifact_type": "portfolio",
+    "primary_user": "Hiring manager",
+    "primary_task": "Assess relevant frontend and design experience",
+    "success_condition": "The reviewer can identify role, scope, and contact path"
+  },
+  "facts": [
+    {
+      "id": "F-001",
+      "claim": "The author worked on the Atlas redesign in 2025.",
+      "status": "verified",
+      "sources": [
+        "project-notes.md#atlas"
+      ],
+      "confidence": "high",
+      "expires": null
+    },
+    {
+      "id": "F-002",
+      "claim": "The redesign improved conversion by 18%.",
+      "status": "placeholder",
+      "sources": [],
+      "rationale": "A draft note mentions the number but no analytics source was supplied.",
+      "confidence": "low",
+      "expires": null
+    },
+    {
+      "id": "F-003",
+      "claim": "A named enterprise client endorsed the project.",
+      "status": "prohibited",
+      "sources": [
+        "user-instruction"
+      ],
+      "rationale": "The client relationship is confidential.",
+      "confidence": "high",
+      "expires": null
+    }
+  ],
+  "content_groups": {
+    "identity": [
+      "F-001"
+    ],
+    "offer": [],
+    "proof": [],
+    "constraints": [
+      "F-003"
+    ],
+    "actions": []
+  },
+  "contradictions": [],
+  "missing": [
+    "Verified project outcome",
+    "Approved contact address"
+  ],
+  "prohibited_generation": [
+    "Do not publish the placeholder conversion metric.",
+    "Do not name the confidential client."
+  ],
+  "safe_claims": [
+    "F-001"
+  ],
+  "allowed_placeholders": [
+    "F-002"
+  ],
+  "questions": [
+    "Which approved contact address should the portfolio publish?"
+  ]
+}

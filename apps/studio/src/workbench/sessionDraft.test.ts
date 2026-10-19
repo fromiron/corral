@@ -1,3 +1,4 @@
+import { createTextAttachment } from '@corral/core';
 import { describe, expect, it } from 'vitest';
 import { parseComposerDraft, serializeComposerDraft } from './sessionDraft.ts';
 
@@ -11,13 +12,34 @@ const result = {
 };
 
 describe('composer draft (UX-02)', () => {
-  it('[TC-UX-02-H] keeps text, intent, target and references through storage', () => {
+  it('[TC-CHAT-001-H] [TC-UX-02-H] keeps text, intent, target and references through storage', () => {
     const draft = {
       text: 'Compare with @"draft v1"',
       intent: 'steer' as const,
       target: 'exec_1',
       targetLabel: 'Research · #1',
       references: [result],
+      attachments: [createTextAttachment('notes.txt', 'text/plain', 'Private body 한국어')],
+      images: [
+        {
+          kind: 'image_attachment' as const,
+          imageId: 'image_pixel',
+          name: 'pixel.png',
+          mime: 'image/png' as const,
+          bytes: 70,
+          sha256: 'a'.repeat(64),
+          width: 1,
+          height: 1,
+        },
+      ],
+      taskScope: 'review_only' as const,
+      verificationScope: 'release' as const,
+      qualityPreset: 'ultra' as const,
+      ultra: {
+        version: 1 as const,
+        modelProfiles: ['model-a', 'deepseek-hive'],
+        verifierProfile: 'deepseek-hive',
+      },
     };
     expect(parseComposerDraft(serializeComposerDraft(draft))).toEqual(draft);
   });

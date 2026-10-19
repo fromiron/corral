@@ -1,0 +1,217 @@
+{
+  "component": "Button",
+  "purpose": "Trigger one explicit user action with a visible priority.",
+  "primary_user_task": "Submit a completed form and receive clear feedback.",
+  "source_of_truth": {
+    "surface": "split",
+    "location": "Figma library for visual anatomy; packages/ui/Button.tsx for behavior",
+    "owner": "Design Systems team",
+    "change_process": "Design and code changes require one shared review and a migration note."
+  },
+  "evidence": [
+    {
+      "surface": "design",
+      "location": "Figma / Components / Button",
+      "evidence_state": "observed",
+      "notes": "Primary and secondary variants include default, hover, disabled, and loading."
+    },
+    {
+      "surface": "code",
+      "location": "packages/ui/Button.tsx",
+      "evidence_state": "observed",
+      "notes": "Primary and secondary variants exist; no loading API is implemented."
+    },
+    {
+      "surface": "test",
+      "location": "packages/ui/Button.test.tsx",
+      "evidence_state": "measured",
+      "notes": "Keyboard activation passes; focus-visible styling is not asserted."
+    }
+  ],
+  "anatomy": [
+    {
+      "name": "label",
+      "requirement": "required",
+      "role": "Names the action.",
+      "evidence_state": "observed"
+    },
+    {
+      "name": "leading-icon",
+      "requirement": "optional",
+      "role": "Supports an already understandable label.",
+      "evidence_state": "observed"
+    },
+    {
+      "name": "spinner",
+      "requirement": "conditional",
+      "role": "Indicates pending submission without removing the action name.",
+      "evidence_state": "observed"
+    }
+  ],
+  "variants": [
+    {
+      "name": "primary",
+      "purpose": "Highest-priority action in the current decision group.",
+      "required": true,
+      "status": "pass",
+      "evidence_state": "observed"
+    },
+    {
+      "name": "secondary",
+      "purpose": "Alternative action with lower priority.",
+      "required": false,
+      "status": "pass",
+      "evidence_state": "observed"
+    }
+  ],
+  "states": [
+    {
+      "name": "default",
+      "applicable": true,
+      "status": "pass",
+      "visual": "Uses the project primary-action tokens.",
+      "behavior": "Activates the supplied action once.",
+      "accessibility": "Native button role and accessible name come from the label.",
+      "evidence_state": "measured"
+    },
+    {
+      "name": "focus-visible",
+      "applicable": true,
+      "status": "fail",
+      "visual": "The browser outline is reset and no replacement is visible.",
+      "behavior": "Keyboard activation still works.",
+      "accessibility": "Keyboard focus location is not visible.",
+      "evidence_state": "measured"
+    },
+    {
+      "name": "loading",
+      "applicable": true,
+      "status": "unknown",
+      "visual": "A spinner is documented in design.",
+      "behavior": "The code API and duplicate-submission behavior are undefined.",
+      "accessibility": "Pending status announcement is undefined.",
+      "evidence_state": "unknown"
+    },
+    {
+      "name": "selected",
+      "applicable": false,
+      "status": "not-applicable",
+      "visual": "",
+      "behavior": "Use a toggle button or selection control instead.",
+      "accessibility": "",
+      "evidence_state": "inferred"
+    }
+  ],
+  "responsive_behavior": [
+    {
+      "condition": "Narrow form container",
+      "change": "The primary action may fill the container width.",
+      "preserved_information": "Label, priority, focus, pending status, and error recovery remain available.",
+      "required": true,
+      "status": "unknown",
+      "evidence_state": "unknown"
+    }
+  ],
+  "content_rules": [
+    {
+      "rule": "Use an action-specific verb phrase and keep the accessible name while loading.",
+      "reason": "The user must understand the action before and during submission.",
+      "required": true,
+      "status": "fail",
+      "evidence_state": "observed"
+    }
+  ],
+  "accessibility": [
+    {
+      "check": "accessible-name-role-value",
+      "required": true,
+      "status": "pass",
+      "evidence_state": "measured",
+      "evidence": "Rendered button exposes its text label and native role."
+    },
+    {
+      "check": "keyboard-and-focus-visible",
+      "required": true,
+      "status": "fail",
+      "evidence_state": "measured",
+      "evidence": "Enter and Space activate the button, but focus is not visibly indicated."
+    },
+    {
+      "check": "status-feedback",
+      "required": true,
+      "status": "unknown",
+      "evidence_state": "unknown",
+      "evidence": "Loading implementation is absent."
+    }
+  ],
+  "token_mappings": [
+    {
+      "role": "primary background",
+      "token": "action-primary-background",
+      "surface": "shared",
+      "evidence_state": "observed"
+    },
+    {
+      "role": "focus indicator",
+      "token": "unknown",
+      "surface": "code",
+      "evidence_state": "unknown"
+    }
+  ],
+  "parity": [
+    {
+      "surface": "design",
+      "required": true,
+      "status": "drift",
+      "evidence": "Design includes loading; code does not."
+    },
+    {
+      "surface": "documentation",
+      "required": true,
+      "status": "unknown",
+      "evidence": "No behavior contract for pending submission."
+    },
+    {
+      "surface": "code",
+      "required": true,
+      "status": "drift",
+      "evidence": "Loading API and focus-visible treatment are missing."
+    },
+    {
+      "surface": "live",
+      "required": false,
+      "status": "not-inspected",
+      "evidence": "Live product usage was outside this audit."
+    }
+  ],
+  "exceptions": [],
+  "findings": [
+    {
+      "severity": "high",
+      "location": "Button / focus-visible / code",
+      "problem": "Keyboard focus is not visibly indicated.",
+      "impact": "Keyboard users can lose their position and action context.",
+      "smallest_change": "Map the project focus token to :focus-visible without removing native fallback behavior.",
+      "verification": "Keyboard through representative button groups at normal and high zoom.",
+      "owner": "Design Systems team",
+      "evidence_state": "measured",
+      "confidence": "high"
+    },
+    {
+      "severity": "medium",
+      "location": "Button / loading / design-code parity",
+      "problem": "Design documents a pending state that code cannot express.",
+      "impact": "Products implement inconsistent duplicate-submission and status behavior.",
+      "smallest_change": "Define a loading API, retained label, disabled-action policy, and status announcement.",
+      "verification": "Component tests plus keyboard and screen-reader review.",
+      "owner": "Design Systems team",
+      "evidence_state": "observed",
+      "confidence": "high"
+    }
+  ],
+  "accepted_risks": [],
+  "unknowns": [
+    "Narrow-container behavior has not been rendered.",
+    "Live product overrides were not inspected."
+  ]
+}

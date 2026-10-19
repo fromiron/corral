@@ -1,0 +1,226 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Prune and verify report",
+  "type": "object",
+  "required": [
+    "artifact",
+    "primary_user",
+    "primary_task",
+    "success_condition",
+    "evidence",
+    "changes",
+    "checks",
+    "accepted_risks",
+    "limitations"
+  ],
+  "properties": {
+    "artifact": {
+      "type": "string",
+      "minLength": 1
+    },
+    "primary_user": {
+      "type": "string",
+      "minLength": 1
+    },
+    "primary_task": {
+      "type": "string",
+      "minLength": 1
+    },
+    "success_condition": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scope": {
+      "type": "object",
+      "description": "Optional. Without scope the report is a release verification. Targeted verification covers the declared changed surfaces only and never establishes release readiness.",
+      "required": [
+        "operation",
+        "verification"
+      ],
+      "properties": {
+        "operation": {
+          "enum": [
+            "review",
+            "edit"
+          ]
+        },
+        "verification": {
+          "enum": [
+            "targeted",
+            "release"
+          ]
+        },
+        "changed_surfaces": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "changes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "action",
+          "target",
+          "reason",
+          "evidence_state",
+          "reversible"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "action": {
+            "enum": [
+              "delete",
+              "consolidate",
+              "rewrite",
+              "replace",
+              "retain",
+              "restore"
+            ]
+          },
+          "target": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          },
+          "evidence_state": {
+            "enum": [
+              "observed",
+              "measured",
+              "inferred",
+              "unknown"
+            ]
+          },
+          "reversible": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "test",
+          "required",
+          "status",
+          "evidence_state",
+          "evidence",
+          "impact",
+          "remediation",
+          "verification",
+          "owner"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "test": {
+            "enum": [
+              "deletion",
+              "substitution",
+              "semantic-structure",
+              "glance-hierarchy",
+              "primary-task",
+              "growth",
+              "reflow",
+              "keyboard-focus",
+              "reduced-motion",
+              "provenance",
+              "assistive-technology",
+              "nested-radius-coherence",
+              "affordance-mapping",
+              "action-hierarchy",
+              "action-visibility",
+              "grouping-cues",
+              "system-lifecycle",
+              "custom"
+            ]
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "pass",
+              "fail",
+              "unknown",
+              "not-applicable",
+              "out-of-scope"
+            ]
+          },
+          "evidence_state": {
+            "enum": [
+              "observed",
+              "measured",
+              "inferred",
+              "unknown"
+            ]
+          },
+          "evidence": {
+            "type": "string",
+            "minLength": 1
+          },
+          "impact": {
+            "type": "string",
+            "minLength": 1
+          },
+          "remediation": {
+            "type": "string",
+            "minLength": 1
+          },
+          "verification": {
+            "type": "string",
+            "minLength": 1
+          },
+          "owner": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "accepted_risks": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

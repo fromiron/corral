@@ -140,6 +140,13 @@ export function HarnessDetails({ session }: { session: RunSessionStore }) {
                         {t('payloadHash')} · {payload.payloadBytes} B
                       </p>
                       <code className="break-all">{payload.payloadHash}</code>
+                      <p>
+                        {t('skillDelivery')}:{' '}
+                        {payload.skills
+                          ? payload.skills.map((skill) => skill.name).join(', ') ||
+                            t('noSkillsDelivered')
+                          : t('skillDeliveryUnknown')}
+                      </p>
                     </>
                   ) : (
                     <p>{t('payloadAbsent')}</p>

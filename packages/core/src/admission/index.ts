@@ -10,6 +10,8 @@ import {
   type RunLimits,
   TERMINAL_EXECUTION_STATUSES,
   type ToolProposal,
+  UserInputRequest,
+  WorkPlanUpdate,
 } from '@corral/contracts';
 import { utf8ToBytes } from '@noble/hashes/utils.js';
 import { admitModelRequest } from '../budget.ts';
@@ -342,6 +344,8 @@ const roleAllowlist: Gate<ToolGateView> = {
         'ask',
         'reply',
         'read_artifact',
+        'ask_user',
+        'update_plan',
       ].includes(proposal.name)
     )
       return denied('this tool needs an actual harness execution');
@@ -463,6 +467,14 @@ const roleAllowlist: Gate<ToolGateView> = {
       }
     }
     switch (proposal.name) {
+      case 'update_plan':
+        return WorkPlanUpdate.safeParse(args).success
+          ? allow
+          : refuse('SCHEMA_INVALID', 'invalid work plan');
+      case 'ask_user':
+        return UserInputRequest.safeParse(args).success
+          ? allow
+          : refuse('SCHEMA_INVALID', 'invalid user questions');
       case 'write_artifact':
         if (!input.role.allowedWorkTools.includes('write_artifact')) {
           return denied('role may not write artifacts');

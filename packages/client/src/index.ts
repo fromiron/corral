@@ -1,4 +1,13 @@
-import type { ReasoningCapabilities } from '@corral/contracts';
+import type {
+  CheckpointRestore,
+  CheckpointRestorePlan,
+  FileCheckpoint,
+  ProfileContextOverrides,
+  ProfileContextPolicy,
+  ProfileContextResolution,
+  ReasoningCapabilities,
+  RestoreCheckpoint,
+} from '@corral/contracts';
 import {
   type AutoModelChoice,
   type AutoRoute,
@@ -35,6 +44,7 @@ import {
   type StartRunRequest,
   type StreamFrame,
   type TeamPlan,
+  type UltraSelection,
   type VerificationReport,
 } from '@corral/contracts';
 import type {
@@ -62,6 +72,10 @@ import type {
 
 /** POST /api/v1/runs/auto (CR-024). */
 export interface AutoRunStart {
+  ultra?: UltraSelection;
+  qualityPreset?: 'default' | 'ultra';
+  taskScope?: 'work' | 'review_only';
+  verificationScope?: 'targeted' | 'release';
   commandId: string;
   sessionId: string;
   brief: string;
@@ -126,7 +140,8 @@ class Http {
     }
     const headers = new Headers(init.headers);
     if (needsCsrf && this.csrfToken) headers.set('x-corral-csrf', this.csrfToken);
-    if (init.body !== undefined) headers.set('content-type', 'application/json');
+    if (init.body !== undefined && !headers.has('content-type'))
+      headers.set('content-type', 'application/json');
     headers.set('accept', headers.get('accept') ?? 'application/json');
     return this.fetchImpl(`${this.baseUrl}/api/v1${path}`, {
       ...init,
@@ -717,6 +732,7 @@ export interface ModelProfileView {
   reasoning: boolean | null;
   reasoningCapabilities?: ReasoningCapabilities;
   contextWindow: number | null;
+  contextPolicy?: ProfileContextPolicy;
   maxOutputTokens: number | null;
   method: 'oauth' | 'api_key' | 'none' | null;
   keyConfigured: boolean;
@@ -739,10 +755,11 @@ export interface CatalogProvider {
   }[];
 }
 
-export interface ProfileConfig {
+export interface ProfileConfig extends ProfileContextOverrides {
   id: string;
   provider: string;
   model: string;
+  workerIsolation?: 'linux-bwrap';
 }
 
 export interface EndpointConfig {
@@ -761,6 +778,7 @@ export interface EndpointConfig {
 
 /** `.corral/config.json`'s model keys, with the revision a save must start from (CR-008). */
 export interface ModelConfig {
+  effectiveProfiles?: Record<string, ProfileContextResolution>;
   modelProfiles: ProfileConfig[];
   modelProviders: EndpointConfig[];
   /** No profiles are configured; the defaults are in use. */
@@ -821,6 +839,16 @@ export class ModelsApi {
   config(): Promise<ModelConfig> {
     return this.http.json('/model-config');
   }
+  previewConfig(
+    change: Pick<ModelConfig, 'modelProfiles' | 'modelProviders' | 'revision'>,
+    signal?: AbortSignal,
+  ): Promise<{ revision: string; effectiveProfiles: Record<string, ProfileContextResolution> }> {
+    return this.http.json('/model-config/preview', {
+      method: 'POST',
+      body: JSON.stringify(change),
+      ...(signal ? { signal } : {}),
+    });
+  }
 
   /** Saves profiles and endpoints; refused with field-named errors, never values (CR-008). */
   saveConfig(
@@ -837,10 +865,10 @@ export class ModelsApi {
   }
 
   /** Stores an API key on the server (CR-005); the answer never contains it. */
-  setApiKey(providerId: string, key: string): Promise<ProviderAuthView[]> {
+  setApiKey(providerId: string, key: string, revision?: string): Promise<ProviderAuthView[]> {
     return this.http.json(`/model-auth/${encodeURIComponent(providerId)}/api-key`, {
       method: 'PUT',
-      body: JSON.stringify({ key }),
+      body: JSON.stringify({ key, ...(revision ? { revision } : {}) }),
     });
   }
 
@@ -1126,7 +1154,7 @@ export class HarnessApi {
     );
   }
   review(
-    kind: 'local' | 'package' | 'pi-home',
+    kind: 'local' | 'package' | 'pi-home' | 'builtin',
     source: string,
   ): Promise<{ reviewId: string; resource: HarnessResource }> {
     return this.http.json('/harness/reviews', {
@@ -1280,6 +1308,20 @@ export class WorkspacesApi {
   constructor(options: HttpOptions) {
     this.http = new Http(options);
   }
+  uploadImage(
+    sessionId: string,
+    name: string,
+    body: Blob,
+    signal?: AbortSignal,
+  ): Promise<import('@corral/contracts').ImageAttachment> {
+    return this.http.json(
+      `/sessions/${encodeURIComponent(sessionId)}/images?${new URLSearchParams({ name })}`,
+      { method: 'POST', headers: { 'content-type': 'image/png' }, body, signal },
+    );
+  }
+  imageUrl(sessionId: string, imageId: string): string {
+    return `${this.http.baseUrl}/api/v1/sessions/${encodeURIComponent(sessionId)}/images/${encodeURIComponent(imageId)}`;
+  }
 
   private async send<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
     const response = await this.http.request(path, {
@@ -1353,6 +1395,90 @@ export class WorkspacesApi {
         ? `scope=run&runId=${encodeURIComponent(scope.runId)}`
         : `scope=${scope.kind}`;
     return this.send(`/sessions/${encodeURIComponent(sessionId)}/changes?${query}`);
+  }
+  hunks(
+    sessionId: string,
+    input: import('@corral/contracts').HunkRequest,
+  ): Promise<import('@corral/contracts').HunkSet> {
+    return this.send(`/sessions/${encodeURIComponent(sessionId)}/hunks/preview`, 'POST', input);
+  }
+  planHunks(
+    sessionId: string,
+    input: import('@corral/contracts').HunkPlanRequest,
+  ): Promise<CheckpointRestorePlan> {
+    return this.send(`/sessions/${encodeURIComponent(sessionId)}/hunks/plan`, 'POST', input);
+  }
+  branchPreview(
+    point: import('@corral/contracts').MessageBranchPoint,
+  ): Promise<import('@corral/contracts').MessageBranchPreview> {
+    return this.send('/runs/branch/preview', 'POST', point);
+  }
+  branchMessage(
+    request: import('@corral/contracts').MessageBranchRequest,
+  ): Promise<StartRunResult & { sessionId: string | null }> {
+    return this.send('/runs/branch', 'POST', request);
+  }
+  messageBranches(
+    runId: string,
+    artifactId: string,
+  ): Promise<{ sessionId: string; runId: string | null; title: string }[]> {
+    return this.send(
+      `/runs/${encodeURIComponent(runId)}/artifacts/${encodeURIComponent(artifactId)}/branches`,
+    );
+  }
+  searchSessions(
+    request: import('@corral/contracts').SessionSearchRequest,
+  ): Promise<import('@corral/contracts').SessionSearchResult> {
+    return this.send('/sessions/search', 'POST', request);
+  }
+  rebuildSessionSearch(): Promise<null> {
+    return this.send('/sessions/search/rebuild', 'POST', {});
+  }
+  runtimeCheckpoints(runId: string): Promise<import('@corral/contracts').RuntimeCheckpointView[]> {
+    return this.send(`/runs/${encodeURIComponent(runId)}/runtime-checkpoints`);
+  }
+  resumeRuntime(
+    request: import('@corral/contracts').ResumeRuntimeRequest,
+  ): Promise<StartRunResult> {
+    const { sourceRunId, ...body } = request;
+    return this.send(`/runs/${encodeURIComponent(sourceRunId)}/resume-runtime`, 'POST', body);
+  }
+  checkpoints(
+    sessionId: string,
+  ): Promise<{ checkpoints: FileCheckpoint[]; restores: CheckpointRestore[] }> {
+    return this.send(`/sessions/${encodeURIComponent(sessionId)}/checkpoints`);
+  }
+  captureCheckpoint(
+    sessionId: string,
+    input: { checkpointId: string; label: string },
+  ): Promise<FileCheckpoint> {
+    return this.send(`/sessions/${encodeURIComponent(sessionId)}/checkpoints`, 'POST', input);
+  }
+  pinCheckpoint(sessionId: string, checkpointId: string, pinned: boolean): Promise<null> {
+    return this.send(`/sessions/${encodeURIComponent(sessionId)}/checkpoints/pin`, 'POST', {
+      checkpointId,
+      pinned,
+    });
+  }
+  pruneCheckpoints(sessionId: string): Promise<{ expired: string[] }> {
+    return this.send(`/sessions/${encodeURIComponent(sessionId)}/checkpoints/prune`, 'POST', {});
+  }
+  planCheckpointRestore(
+    sessionId: string,
+    checkpointId: string,
+    manifestHash: string,
+  ): Promise<CheckpointRestorePlan> {
+    return this.send(`/sessions/${encodeURIComponent(sessionId)}/checkpoints/plan`, 'POST', {
+      checkpointId,
+      manifestHash,
+    });
+  }
+  restoreCheckpoint(sessionId: string, input: RestoreCheckpoint): Promise<CheckpointRestore> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/checkpoints/restore`,
+      'POST',
+      input,
+    );
   }
   fileVersions(
     sessionId: string,

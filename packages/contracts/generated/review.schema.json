@@ -20,6 +20,90 @@
             "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
           }
         },
+        "design": {
+          "type": "object",
+          "properties": {
+            "reportVersionId": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+            },
+            "tokenProposalVersionId": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+            },
+            "preferences": {
+              "maxItems": 30,
+              "type": "array",
+              "items": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "origin": {
+                        "type": "string",
+                        "const": "ai_delegated"
+                      },
+                      "appliedTo": {
+                        "minItems": 1,
+                        "maxItems": 30,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        }
+                      }
+                    },
+                    "required": [
+                      "origin",
+                      "appliedTo"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "origin": {
+                        "type": "string",
+                        "const": "user_answer"
+                      },
+                      "requestId": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                      },
+                      "questionId": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                      },
+                      "appliedTo": {
+                        "minItems": 1,
+                        "maxItems": 30,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        }
+                      }
+                    },
+                    "required": [
+                      "origin",
+                      "requestId",
+                      "questionId",
+                      "appliedTo"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            }
+          },
+          "required": [
+            "reportVersionId",
+            "preferences"
+          ],
+          "additionalProperties": false
+        },
         "verdict": {
           "type": "string",
           "const": "revise"
@@ -92,6 +176,90 @@
             "type": "string",
             "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
           }
+        },
+        "design": {
+          "type": "object",
+          "properties": {
+            "reportVersionId": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+            },
+            "tokenProposalVersionId": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+            },
+            "preferences": {
+              "maxItems": 30,
+              "type": "array",
+              "items": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "origin": {
+                        "type": "string",
+                        "const": "ai_delegated"
+                      },
+                      "appliedTo": {
+                        "minItems": 1,
+                        "maxItems": 30,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        }
+                      }
+                    },
+                    "required": [
+                      "origin",
+                      "appliedTo"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "origin": {
+                        "type": "string",
+                        "const": "user_answer"
+                      },
+                      "requestId": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                      },
+                      "questionId": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                      },
+                      "appliedTo": {
+                        "minItems": 1,
+                        "maxItems": 30,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        }
+                      }
+                    },
+                    "required": [
+                      "origin",
+                      "requestId",
+                      "questionId",
+                      "appliedTo"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            }
+          },
+          "required": [
+            "reportVersionId",
+            "preferences"
+          ],
+          "additionalProperties": false
         },
         "verdict": {
           "type": "string",

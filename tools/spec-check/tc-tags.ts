@@ -8,7 +8,7 @@ export interface TagCheckResult {
   covered: string[];
 }
 
-const TAG = /\[(TC-[A-Z]+-\d{3}-[HN]|TC-RACE-\d{2})\]/g;
+const TAG = /\[(TC-[A-Z]+-\d{3}-[HNFD]|TC-RACE-\d{2})\]/g;
 
 /** Scenario IDs written as `[TC-…]` in test titles. */
 export function extractTcTags(source: string): string[] {

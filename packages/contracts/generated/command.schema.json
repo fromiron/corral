@@ -23,6 +23,60 @@
         },
         "type": {
           "type": "string",
+          "const": "compact_context"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "executionId": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+            },
+            "attemptNo": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "executionId",
+            "attemptNo"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "commandId",
+        "runId",
+        "expectedControlRevision",
+        "type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "const": "0.1"
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+        },
+        "runId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+        },
+        "expectedControlRevision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "type": {
+          "type": "string",
           "const": "answer_extension_ui"
         },
         "payload": {
@@ -61,6 +115,102 @@
             "executionId",
             "attemptNo",
             "value"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "commandId",
+        "runId",
+        "expectedControlRevision",
+        "type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "const": "0.1"
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+        },
+        "runId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+        },
+        "expectedControlRevision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "type": {
+          "type": "string",
+          "const": "answer_user"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "requestId": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+            },
+            "executionId": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+            },
+            "attemptNo": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "schemaHash": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "answers": {
+              "minItems": 1,
+              "maxItems": 4,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "questionId": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                  },
+                  "optionIds": {
+                    "maxItems": 5,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                    }
+                  },
+                  "text": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 12000
+                  }
+                },
+                "required": [
+                  "questionId"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "requestId",
+            "executionId",
+            "attemptNo",
+            "schemaHash",
+            "answers"
           ],
           "additionalProperties": false
         }

@@ -8,6 +8,7 @@ import {
   canonicalJson,
   type EffectiveHarnessSnapshot,
 } from '@corral/contracts';
+import { resolveProfileContext } from '@corral/core';
 import { Gate, linearCorral } from '@corral/testkit';
 import {
   createFauxCore,
@@ -15,12 +16,20 @@ import {
   fauxAssistantMessage,
   fauxToolCall,
 } from '@earendil-works/pi-ai';
+import { SettingsManager, shouldCompact } from '@earendil-works/pi-coding-agent';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PiAgentAdapter } from '../src/adapter.ts';
 import { memoryChannelPair } from '../src/channel.ts';
 import { probeMcp } from '../src/mcp-probe.ts';
 import type { SdkResources } from '../src/protocol.ts';
+import {
+  LEGACY_PROTOCOL_VERSION,
+  PROTOCOL_VERSION,
+  SdkStartFrame,
+  StartFrame,
+} from '../src/protocol.ts';
 import { runSdkWorker } from '../src/sdk-worker.ts';
+import { runWorker } from '../src/worker.ts';
 import { ACCESS_TOKEN, recordingHost } from './harness.ts';
 
 const scratch: string[] = [];
@@ -113,6 +122,7 @@ function runtime(
   const faux = createFauxCore(contextWindow ? { models: [{ id: 'faux-1', contextWindow }] } : {});
   faux.setResponses(responses);
   const frames: unknown[] = [];
+  const streamed: { contextWindow: number; maxTokens: number | undefined }[] = [];
   const reports: unknown[] = [];
   const requests: unknown[] = [];
   const { host, calls } = recordingHost({
@@ -144,7 +154,10 @@ function runtime(
       const pair = memoryChannelPair();
       pair.host.onFrame((frame) => frames.push(frame));
       runSdkWorker(pair.worker, {
-        streamFn: faux.streamSimple,
+        streamFn: (model, context, options) => {
+          streamed.push({ contextWindow: model.contextWindow, maxTokens: options?.maxTokens });
+          return faux.streamSimple(model, context, options);
+        },
         resolveModel: () => faux.getModel(),
         now: () => 1000,
         directory,
@@ -174,10 +187,57 @@ function runtime(
     credentials,
     cancelGraceMs: 200,
   });
-  return { adapter, host, calls, frames, reports, requests, credentials, directory, input: start };
+  return {
+    adapter,
+    host,
+    calls,
+    frames,
+    reports,
+    requests,
+    credentials,
+    directory,
+    input: start,
+    streamed,
+    catalogModel: faux.getModel(),
+  };
 }
 
 describe('SDK worker through the product adapter (H2)', () => {
+  it('[TC-CONTEXT-001-H] applies profile limits to Pi settings and stream models without changing the catalog', async () => {
+    const spy = vi.spyOn(SettingsManager, 'inMemory');
+    try {
+      const run = runtime([fauxAssistantMessage('Done.')]);
+      const before = run.catalogModel.contextWindow;
+      run.input.model.contextPolicy = resolveProfileContext(
+        { contextWindow: 64000, compaction: { reserveTokens: 0, keepRecentTokens: 0 } },
+        { contextWindow: before, source: 'catalog' },
+        'fixture',
+        256,
+      ).policy!;
+      expect(
+        await (await run.adapter.start(run.input, run.host)).waitForSettlement(),
+      ).toMatchObject({ outcome: 'succeeded' });
+      expect(run.streamed).toEqual([{ contextWindow: 64000, maxTokens: 256 }]);
+      expect(run.catalogModel.contextWindow).toBe(before);
+      expect(spy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          cacheWarming: 'off',
+          retry: expect.objectContaining({ enabled: true }),
+          compaction: { reserveTokens: 0, keepRecentTokens: 0 },
+        }),
+      );
+      const settings = SettingsManager.inMemory({
+        compaction: { reserveTokens: 0, keepRecentTokens: 0 },
+      }).getCompactionSettings();
+      expect([63999, 64000, 64001].map((n) => shouldCompact(n, 64000, settings))).toEqual([
+        false,
+        false,
+        true,
+      ]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
   it.each([true, false])(
     '[TC-HAR-001-H] a %s accepted submission ends without a confirmation request',
     async (accepted) => {
@@ -204,112 +264,124 @@ describe('SDK worker through the product adapter (H2)', () => {
     },
   );
 
-  it('[TC-HAR-016-H] [TC-MGR-002-H] runs the official MCP extension in the selected copy with owned native calls', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'corral-mcp-copy-'));
-    scratch.push(cwd);
-    writeFileSync(join(cwd, 'marker.txt'), 'managed copy');
-    writeFileSync(
-      join(cwd, 'server.mjs'),
-      `import {createInterface} from 'node:readline';import {readFileSync} from 'node:fs';const input=createInterface({input:process.stdin});input.on('line',line=>{const m=JSON.parse(line);if(m.id===undefined)return;const result=m.method==='initialize'?{protocolVersion:m.params.protocolVersion,capabilities:{tools:{}},serverInfo:{name:'fixture',version:'1'}}:m.method==='tools/list'?{tools:[{name:'echo',description:'Read fixture',inputSchema:{type:'object',properties:{}},annotations:{readOnlyHint:true,openWorldHint:false}},{name:'forbidden',description:'Not allowed',inputSchema:{type:'object',properties:{}}},...['a-b','a_b','long_'.repeat(20)].map(name=>({name,inputSchema:{type:'object',properties:{}}}))]}:m.method==='tools/call'?{content:[{type:'text',text:readFileSync('marker.txt','utf8')}]}:{};process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result})+'\\n');});`,
-    );
-    const discovered = await probeMcp({
-      server: {
-        id: 'docs',
-        name: 'Docs',
-        transport: 'stdio',
-        argv: [process.execPath, 'server.mjs'],
-        exposure: 'direct',
-        timeoutMs: 5000,
-      },
-      cwd,
-      leaseDirectory: join(cwd, 'probe-leases'),
-      signal: new AbortController().signal,
-      authorization: async () => undefined,
-    });
-    const allowedNames = discovered
-      .filter((tool) => tool.title !== 'forbidden')
-      .map((tool) => tool.name);
-    expect(new Set(discovered.map((tool) => tool.name)).size).toBe(5);
-    const updates: unknown[] = [],
-      began: string[] = [];
-    let sawResult = false;
-    const run = runtime(
-      [
-        (context) => {
-          expect(
-            context.messages.flatMap((message) =>
-              message.role === 'system' ? (message.toolsAdded ?? []).map((tool) => tool.name) : [],
-            ),
-          ).toEqual(expect.arrayContaining(allowedNames));
-          expect(
-            context.messages.flatMap((message) =>
-              message.role === 'system' ? (message.toolsAdded ?? []).map((tool) => tool.name) : [],
-            ),
-          ).not.toContain('mcp__docs__forbidden');
-          return fauxAssistantMessage([fauxToolCall('mcp__docs__echo', {})], {
-            stopReason: 'toolUse',
-          });
+  it.each([false, true])(
+    '[TC-BROWSER-001-N] [TC-HAR-016-H] [TC-MGR-002-H] MCP native calls preserve error results (%s)',
+    async (isError) => {
+      const cwd = mkdtempSync(join(tmpdir(), 'corral-mcp-copy-'));
+      scratch.push(cwd);
+      writeFileSync(join(cwd, 'marker.txt'), 'managed copy');
+      writeFileSync(
+        join(cwd, 'server.mjs'),
+        `import {createInterface} from 'node:readline';import {readFileSync} from 'node:fs';const input=createInterface({input:process.stdin});input.on('line',line=>{const m=JSON.parse(line);if(m.id===undefined)return;const result=m.method==='initialize'?{protocolVersion:m.params.protocolVersion,capabilities:{tools:{}},serverInfo:{name:'fixture',version:'1'}}:m.method==='tools/list'?{tools:[{name:'echo',description:'Read fixture',inputSchema:{type:'object',properties:{}},annotations:{readOnlyHint:true,openWorldHint:false}},{name:'forbidden',description:'Not allowed',inputSchema:{type:'object',properties:{}}},...['a-b','a_b','long_'.repeat(20)].map(name=>({name,inputSchema:{type:'object',properties:{}}}))]}:m.method==='tools/call'?{isError:${isError},content:[{type:'text',text:readFileSync('marker.txt','utf8')}]}:{};process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result})+'\\n');});`,
+      );
+      const discovered = await probeMcp({
+        server: {
+          id: 'docs',
+          name: 'Docs',
+          transport: 'stdio',
+          argv: [process.execPath, 'server.mjs'],
+          exposure: 'direct',
+          timeoutMs: 5000,
         },
-        (context) => {
-          sawResult = JSON.stringify(context.messages).includes('managed copy');
-          expect(
-            readdirSync(join(run.directory, 'durable-workers')).filter((name) =>
-              name.endsWith('.json'),
-            ),
-          ).toHaveLength(1);
-          return fauxAssistantMessage('done');
-        },
-      ],
-      '',
-      {
-        mcpAuthorization: async () => undefined,
-        updateHarnessTools: async (update) => {
-          updates.push(update);
-        },
-        beginNativeTool: async (id) => {
-          began.push(id);
-        },
-      },
-      undefined,
-      undefined,
-      [],
-      {
         cwd,
-        mcp: [
-          {
-            server: {
-              id: 'docs',
-              name: 'Docs',
-              transport: 'stdio',
-              argv: [process.execPath, 'server.mjs'],
-              exposure: 'direct',
-              timeoutMs: 5000,
-            },
-            fingerprint: 'a'.repeat(64),
+        leaseDirectory: join(cwd, 'probe-leases'),
+        signal: new AbortController().signal,
+        authorization: async () => undefined,
+      });
+      const allowedNames = discovered
+        .filter((tool) => tool.title !== 'forbidden')
+        .map((tool) => tool.name);
+      expect(new Set(discovered.map((tool) => tool.name)).size).toBe(5);
+      const updates: unknown[] = [],
+        began: string[] = [];
+      const outcomes: string[] = [];
+      let sawResult = false;
+      const run = runtime(
+        [
+          (context) => {
+            expect(
+              context.messages.flatMap((message) =>
+                message.role === 'system'
+                  ? (message.toolsAdded ?? []).map((tool) => tool.name)
+                  : [],
+              ),
+            ).toEqual(expect.arrayContaining(allowedNames));
+            expect(
+              context.messages.flatMap((message) =>
+                message.role === 'system'
+                  ? (message.toolsAdded ?? []).map((tool) => tool.name)
+                  : [],
+              ),
+            ).not.toContain('mcp__docs__forbidden');
+            return fauxAssistantMessage([fauxToolCall('mcp__docs__echo', {})], {
+              stopReason: 'toolUse',
+            });
+          },
+          (context) => {
+            sawResult = JSON.stringify(context.messages).includes('managed copy');
+            expect(
+              readdirSync(join(run.directory, 'durable-workers')).filter((name) =>
+                name.endsWith('.json'),
+              ),
+            ).toHaveLength(1);
+            return fauxAssistantMessage('done');
           },
         ],
-      },
-    );
-    run.input.harness!.allowedTools = allowedNames;
-    run.input.harness!.projectTools = {
-      projectId: 'p',
-      revision: 1,
-      hash: 'a'.repeat(64),
-      checkIds: [],
-      lspServerIds: [],
-      mcpServerIds: ['docs'],
-    };
-    expect(
-      await (await run.adapter.start(run.input, run.host)).waitForSettlement(),
-      JSON.stringify(run.frames),
-    ).toMatchObject({
-      outcome: 'succeeded',
-    });
-    expect(sawResult).toBe(true);
-    expect(readdirSync(join(run.directory, 'durable-workers'))).toEqual([]);
-    expect(began).toHaveLength(1);
-    expect(JSON.stringify(updates)).toContain('extension:pi-mcp@1.3.0');
-  });
+        '',
+        {
+          mcpAuthorization: async () => undefined,
+          updateHarnessTools: async (update) => {
+            updates.push(update);
+          },
+          finishNativeTool: async (_id, outcome) => {
+            outcomes.push(outcome);
+          },
+          beginNativeTool: async (id) => {
+            began.push(id);
+          },
+        },
+        undefined,
+        undefined,
+        [],
+        {
+          cwd,
+          mcp: [
+            {
+              server: {
+                id: 'docs',
+                name: 'Docs',
+                transport: 'stdio',
+                argv: [process.execPath, 'server.mjs'],
+                exposure: 'direct',
+                timeoutMs: 5000,
+              },
+              fingerprint: 'a'.repeat(64),
+            },
+          ],
+        },
+      );
+      run.input.harness!.allowedTools = allowedNames;
+      run.input.harness!.projectTools = {
+        projectId: 'p',
+        revision: 1,
+        hash: 'a'.repeat(64),
+        checkIds: [],
+        lspServerIds: [],
+        mcpServerIds: ['docs'],
+      };
+      expect(
+        await (await run.adapter.start(run.input, run.host)).waitForSettlement(),
+        JSON.stringify(run.frames),
+      ).toMatchObject({
+        outcome: 'succeeded',
+      });
+      expect(sawResult).toBe(true);
+      expect(readdirSync(join(run.directory, 'durable-workers'))).toEqual([]);
+      expect(began).toHaveLength(1);
+      expect(outcomes).toEqual([isError ? 'failed' : 'succeeded']);
+      expect(JSON.stringify(updates)).toContain('extension:pi-mcp@1.3.0');
+    },
+  );
 
   it('[TC-HAR-017-H] uses Pi codemode to invoke a Corral tool through the owned nested approval', async () => {
     const proposals: unknown[] = [];
@@ -789,7 +861,14 @@ describe('SDK worker through the product adapter (H2)', () => {
     expect(seen).toContain('Always cite sources.');
   });
 
-  it('[TC-HAR-001-H] automatic threshold compaction uses permits and mandatory skills remain in the following turn', async () => {
+  it('[TC-COMPACT-001-H] [TC-COMPACT-001-N] [TC-HAR-001-H] automatic threshold compaction uses permits and mandatory skills remain in the following turn', async () => {
+    const protectedText =
+      'Coordinator state: private plan, unanswered question, exact criterion and resource hash.';
+    const protectedValue = {
+      version: 1 as const,
+      text: protectedText,
+      hash: createHash('sha256').update(canonicalJson(protectedText)).digest('hex'),
+    };
     const seen: { purpose: string; text: string }[] = [];
     const responses: FauxResponseStep[] = Array.from({ length: 8 }, () => (context) => {
       seen.push({
@@ -801,10 +880,16 @@ describe('SDK worker through the product adapter (H2)', () => {
     const run = runtime(
       responses,
       `export default pi => { let round=0; pi.on('agent_before_settle', ()=>{ if(round<3){ pi.sendUserMessage(round++<2?'Context history. '.repeat(3500):'Continue briefly.',{deliverAs:'followUp'}); } }); };`,
-      {},
+      { protectedContext: () => protectedValue },
       { text: 'Always cite sources.', mode: 'mandatory', brief: 'Context history. '.repeat(3500) },
-      65536,
+      128000,
     );
+    run.input.model.contextPolicy = resolveProfileContext(
+      { contextWindow: 65536 },
+      { contextWindow: 128000, source: 'catalog' },
+      'threshold',
+      256,
+    ).policy!;
     expect(await (await run.adapter.start(run.input, run.host)).waitForSettlement()).toMatchObject({
       outcome: 'succeeded',
     });
@@ -813,9 +898,83 @@ describe('SDK worker through the product adapter (H2)', () => {
       purpose: 'turn',
       text: expect.stringContaining('Always cite sources.'),
     });
+    expect(seen.at(-1)?.text).toContain(protectedText);
     expect(run.credentials).toHaveBeenCalledTimes(seen.length);
     expect(run.calls.filter((call) => call.startsWith('observe'))).toHaveLength(seen.length);
   });
+  it.each(['success', 'error', 'cancel'])(
+    '[TC-COMPACT-001-H] [TC-COMPACT-001-N] queued manual compaction resumes at an idle boundary and preserves context on failure (mode=%s)',
+    async (mode) => {
+      const fail = mode === 'error';
+      const entered = new Gate(),
+        release = new Gate();
+      let handle!: Awaited<ReturnType<PiAgentAdapter['start']>>;
+      const phases: string[] = [];
+      let turns = 0,
+        summaryCalls = 0;
+      const marker = 'Keep this precise requirement.';
+      const responses: FauxResponseStep[] = Array.from({ length: 10 }, () => async (context) => {
+        const purpose = (run.requests.at(-1) as { purpose: string }).purpose;
+        if (purpose === 'compaction') {
+          summaryCalls++;
+          if (mode === 'cancel') {
+            entered.open();
+            await release.wait();
+          }
+          return fauxAssistantMessage(
+            fail ? '' : 'A compact summary.',
+            fail ? { stopReason: 'error', errorMessage: 'fixture summary failure' } : {},
+          );
+        }
+        turns++;
+        if (turns === 1) return fauxAssistantMessage('First response.');
+        if (turns === 2) {
+          handle.requestCompaction!('compact_manual');
+          return fauxAssistantMessage('Second response.');
+        }
+        if (fail) {
+          expect(JSON.stringify(context.messages)).toContain(marker);
+          expect(JSON.stringify(context.messages)).toContain('First response.');
+        }
+        return fauxAssistantMessage(
+          [fauxToolCall('submit_result', { artifactVersionIds: ['artv_fixture'] })],
+          { stopReason: 'toolUse' },
+        );
+      });
+      const run = runtime(
+        responses,
+        `export default pi => { let round=0; pi.on('agent_before_settle', () => { if (round++ === 0) pi.sendUserMessage('Older history. '.repeat(6000), {deliverAs:'followUp'}); }); };`,
+        {
+          reportCompaction: async (report) => {
+            phases.push(report.phase);
+          },
+        },
+        { text: marker, mode: 'mandatory', brief: `${marker} ${'History context. '.repeat(3500)}` },
+        262144,
+      );
+      run.input.model.contextPolicy = resolveProfileContext(
+        { contextWindow: 262144, compaction: { reserveTokens: 0, keepRecentTokens: 0 } },
+        { contextWindow: 262144, source: 'catalog' },
+        'fixture',
+        256,
+      ).policy!;
+      handle = await run.adapter.start(run.input, run.host);
+      if (mode === 'cancel') {
+        await entered.wait();
+        await handle.cancel('user cancelled');
+        release.open();
+      }
+      expect(await handle.waitForSettlement()).toMatchObject({
+        outcome: mode === 'cancel' ? 'cancelled' : 'succeeded',
+      });
+      expect(summaryCalls).toBeGreaterThan(0);
+      expect(run.streamed.every((call) => call.maxTokens === 256)).toBe(true);
+      expect(phases).toEqual(
+        mode === 'cancel' ? ['started'] : ['started', fail ? 'failed' : 'completed'],
+      );
+      expect(turns).toBe(mode === 'cancel' ? 2 : 3);
+    },
+  );
   it('[TC-HAR-005-H] lists auto skills virtually and formats broker reads with Pi offset and limit behavior', async () => {
     let observed = '';
     const run = runtime(
@@ -1167,4 +1326,122 @@ it('[TC-RSN-003-N] a steer absorbed by reprepare does not trigger an extra SDK t
   await handle.waitForSettlement();
   expect(contexts[0]?.split(directive.text)).toHaveLength(2);
   expect(requests).toBe(1);
+});
+
+it('[TC-INPUT-001-H] the SDK exposes the same user question schema and resumes only after its host answer', async () => {
+  const asked = new Gate(),
+    answered = new Gate();
+  let name = '';
+  const run = runtime(
+    [
+      fauxAssistantMessage(
+        [
+          fauxToolCall('ask_user', {
+            key: 'format',
+            questions: [{ id: 'format', kind: 'text', prompt: 'Choose format' }],
+          }),
+        ],
+        { stopReason: 'toolUse' },
+      ),
+      (context) => {
+        expect(JSON.stringify(context.messages)).toContain('A table');
+        return fauxAssistantMessage('Done');
+      },
+    ],
+    '',
+    {
+      authorizeTool: async (proposal) => {
+        name = proposal.name;
+        return { ok: true, toolCallId: 'tool_question' };
+      },
+      executeTool: async (toolCallId) => {
+        asked.open();
+        await answered.wait();
+        return {
+          ok: true,
+          toolCallId,
+          result: { status: 'answered', answers: [{ questionId: 'format', text: 'A table' }] },
+        };
+      },
+    },
+  );
+  run.input.role.allowedCollaborationTools.push('ask_user');
+  run.input.harness!.allowedTools.push('ask_user');
+  const handle = await run.adapter.start(run.input, run.host);
+  await asked.wait();
+  expect(name).toBe('ask_user');
+  expect(run.requests).toHaveLength(1);
+  answered.open();
+  expect(await handle.waitForSettlement()).toMatchObject({ outcome: 'succeeded' });
+  expect(run.requests).toHaveLength(2);
+});
+
+it('[TC-PROMPT-001-N] context hooks cannot replace the protected Corral role and output contract', async () => {
+  let seen = '';
+  const run = runtime(
+    [
+      (context) => {
+        seen = JSON.stringify(context.messages);
+        return fauxAssistantMessage('Done');
+      },
+    ],
+    `export default pi => pi.on('context_with_system', event => ({messages:event.messages.map(message=>message.role==='system'?{...message,content:'Replacement prompt',sections:{}}:message)}));`,
+  );
+  await (await run.adapter.start(run.input, run.host)).waitForSettlement();
+  expect(seen).toContain(run.input.role.prompt);
+  expect(seen).toContain('submit_result');
+  expect(run.requests[0]).toMatchObject({
+    sections: expect.arrayContaining([
+      expect.objectContaining({ name: 'corral_safety', source: 'corral', version: 1 }),
+    ]),
+  });
+});
+
+it('[TC-CONTEXT-001-H] [TC-CONTEXT-001-N] core worker applies context only and old IPC versions are rejected', async () => {
+  const faux = createFauxCore({});
+  faux.setResponses([fauxAssistantMessage('Done.')]);
+  const catalog = faux.getModel();
+  const before = catalog.contextWindow;
+  const start = input();
+  delete start.harness;
+  delete start.role.harness;
+  start.model.contextPolicy = resolveProfileContext(
+    { contextWindow: 64000, compaction: { reserveTokens: 0, keepRecentTokens: 0 } },
+    { contextWindow: before, source: 'catalog' },
+    'fixture',
+    256,
+  ).policy!;
+  const seen: number[] = [];
+  let frame: unknown;
+  const adapter = new PiAgentAdapter({
+    credentials: async () => ACCESS_TOKEN,
+    spawn: () => {
+      const pair = memoryChannelPair();
+      pair.worker.onFrame((value) => {
+        if ((value as { type: string }).type === 'start') frame = value;
+      });
+      runWorker(pair.worker, {
+        resolveModel: () => catalog,
+        streamFn: (model, context, options) => {
+          seen.push(model.contextWindow);
+          return faux.streamSimple(model, context, options);
+        },
+      });
+      return pair.host;
+    },
+  });
+  const { host } = recordingHost();
+  expect(await (await adapter.start(start, host)).waitForSettlement()).toMatchObject({
+    outcome: 'succeeded',
+  });
+  expect(seen).toEqual([64000]);
+  expect(catalog.contextWindow).toBe(before);
+  expect(frame).toMatchObject({
+    protocolVersion: LEGACY_PROTOCOL_VERSION,
+    model: { contextWindow: 64000 },
+  });
+  expect(frame).not.toHaveProperty('compaction');
+  expect(StartFrame.safeParse({ ...(frame as object), protocolVersion: 3 }).success).toBe(false);
+  expect(SdkStartFrame.safeParse({ ...(frame as object), protocolVersion: 4 }).success).toBe(false);
+  expect(PROTOCOL_VERSION).not.toBe(LEGACY_PROTOCOL_VERSION);
 });

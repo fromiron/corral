@@ -9,12 +9,14 @@ import type {
   ProjectToolConfigRevision,
 } from '@corral/contracts';
 import { canonicalJson, WorkTool } from '@corral/contracts';
+import { toolDescriptorHash } from '@corral/core';
 import { Button } from '@corral/react/ui';
 import { Link, useBlocker } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
 import { useManagementConfirmation } from '../workbench/harness/ConfirmAction.tsx';
+import { PermissionPolicyEditor } from '../workbench/harness/PermissionPolicyEditor.tsx';
 import { operationId, profileInput, rememberHarnessTarget } from '../workbench/harness/Target.tsx';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
 import { SettingsProjectPicker } from '../workbench/SettingsNavigation.tsx';
@@ -35,6 +37,8 @@ const emptyProfile = (): HarnessProfile => ({
     'spawn_subagents',
     'await_tasks',
     'ask',
+    'ask_user',
+    'update_plan',
     'reply',
     'read_artifact',
   ],
@@ -79,6 +83,8 @@ export function HarnessPreviewView({ preview }: { preview: HarnessPreview }) {
                 {t(`toolEffects.${tool.sideEffect}`)}
                 <p className="break-all font-mono text-2xs text-muted">
                   {t('toolSchema', { hash: tool.schemaHash })}
+                  <br />
+                  {t('permissionDescriptor')}: {toolDescriptorHash(tool)}
                 </p>
               </li>
             ))}
@@ -227,6 +233,7 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
     setPreview(null);
   }
   const pendingProfile: HarnessProfile = {
+    ...(profile.permissionPolicy ? { permissionPolicy: profile.permissionPolicy } : {}),
     name: profile.name,
     policy: profile.policy,
     resources: profile.resources,
@@ -701,6 +708,14 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                   ) : null}
                 </div>
               ))}
+              <PermissionPolicyEditor
+                value={profile.permissionPolicy}
+                tools={preview?.snapshot.tools ?? []}
+                names={pendingProfile.allowedTools}
+                onChange={(permissionPolicy) =>
+                  setProfile((current) => ({ ...current, permissionPolicy }))
+                }
+              />
               <details>
                 <summary className="cursor-pointer text-sm">{t('allowedTools')}</summary>
                 <label className="mt-2 flex items-center gap-2 text-sm">

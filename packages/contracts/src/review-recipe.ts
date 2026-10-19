@@ -8,6 +8,7 @@ export const ReviewRecipeRevision = z.strictObject({
   revision: z.int().min(1),
   criteriaHash: ContentHash,
   candidateNodeId: Identifier,
+  preparationNodeId: Identifier.optional(),
   evaluatorRoleId: Identifier,
   checkIds: z
     .array(Identifier)
