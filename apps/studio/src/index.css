@@ -97,6 +97,39 @@
   font-size: 12px;
   color: var(--muted);
 }
+.settings-row .text-danger {
+  color: var(--danger);
+}
+.settings-row .text-warning {
+  color: var(--warning);
+}
+@layer components {
+  .settings-surface,
+  .settings-list {
+    border-radius: 12px;
+    background: var(--raised);
+  }
+  .settings-surface {
+    padding: 18px;
+  }
+  .settings-list {
+    min-width: 0;
+  }
+  .settings-field {
+    width: 100%;
+    border: 0;
+    border-radius: 8px;
+    background: var(--raised);
+    padding: 8px 12px;
+    font-size: 14px;
+    color: inherit;
+  }
+  .settings-surface .settings-field,
+  .settings-row .settings-field,
+  .settings-list .settings-field {
+    background: var(--surface);
+  }
+}
 .dropdown-glass {
   background: var(--raised);
   border: 1px solid var(--line);

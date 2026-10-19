@@ -134,7 +134,7 @@ function ProviderCard({
 
   return (
     <article
-      className="flex flex-col gap-2 rounded-lg border border-line bg-raised p-3"
+      className="settings-surface flex flex-col gap-3"
       data-testid={`provider-${provider.providerId}`}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -232,16 +232,14 @@ function ProviderCard({
       ) : null}
 
       {login && login.state !== 'failed' ? (
-        <div className="flex flex-col gap-2 rounded-md border border-line p-2 text-sm">
+        <div className="flex flex-col gap-2 rounded-lg bg-surface p-3 text-sm">
           {login.authUrl ? (
-            <a
-              href={login.authUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="self-start rounded-md bg-accent px-3 py-1.5 font-medium text-on-accent"
+            <Button
+              className="self-start"
+              render={<a href={login.authUrl} target="_blank" rel="noopener noreferrer" />}
             >
               {t('openSignIn')}
-            </a>
+            </Button>
           ) : null}
           <p className="text-xs text-muted">
             {login.state === 'exchanging' ? t('exchanging') : t('openHint')}
@@ -257,7 +255,7 @@ function ProviderCard({
                 onChange={(e) => setRedirect(e.target.value)}
                 autoComplete="off"
                 spellCheck={false}
-                className="min-w-0 flex-1 rounded border border-line bg-surface px-2 py-1 font-mono text-xs"
+                className="settings-field min-w-0 flex-1 font-mono"
               />
               <Button
                 variant="outline"
@@ -313,47 +311,35 @@ function ProfilesTable({ profiles }: { profiles: ModelProfileView[] }) {
       <h3 id="profiles-heading" className="text-sm font-semibold">
         {t('profiles')}
       </h3>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[36rem] text-left text-sm">
-          <thead className="text-xs text-muted">
-            <tr>
-              <th className="py-1">{t('profile')}</th>
-              <th>{t('model')}</th>
-              <th>{t('context')}</th>
-              <th>{t('maxOutput')}</th>
-              <th>{t('status')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {profiles.map((profile) => (
-              <tr
-                key={profile.profileId}
-                className="border-t border-line"
-                data-testid={`profile-${profile.profileId}`}
-              >
-                <td className="py-1 font-mono text-xs">{profile.profileId}</td>
-                <td>
-                  {profile.modelName ?? profile.modelId}{' '}
-                  <span className="font-mono text-xs text-muted">
-                    {profile.provider}/{profile.modelId}
-                  </span>
-                </td>
-                <td>{tokens(profile.contextWindow)}</td>
-                <td>{tokens(profile.maxOutputTokens)}</td>
-                <td>
-                  {!profile.available
-                    ? t('unknownModel')
-                    : profile.method === 'oauth' && profile.subscriptionSupported === false
-                      ? t('notWithSubscription')
-                      : profile.keyConfigured
-                        ? t('ready')
-                        : t('needsSignIn')}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <ul className="flex flex-col gap-3">
+        {profiles.map((profile) => (
+          <li
+            key={profile.profileId}
+            className="settings-row"
+            data-testid={`profile-${profile.profileId}`}
+          >
+            <div>
+              <h3>{profile.modelName ?? profile.modelId}</h3>
+              <p>
+                {profile.profileId} · {profile.provider}/{profile.modelId}
+              </p>
+              <p>
+                {t('context')} {tokens(profile.contextWindow)} · {t('maxOutput')}{' '}
+                {tokens(profile.maxOutputTokens)}
+              </p>
+            </div>
+            <p>
+              {!profile.available
+                ? t('unknownModel')
+                : profile.method === 'oauth' && profile.subscriptionSupported === false
+                  ? t('notWithSubscription')
+                  : profile.keyConfigured
+                    ? t('ready')
+                    : t('needsSignIn')}
+            </p>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }
@@ -380,11 +366,23 @@ function ReasoningSettingsPanel() {
     };
   }, [models]);
   return (
-    <section
-      className="flex flex-col gap-3 border-t border-line pt-6"
-      aria-label={t('workspaceHeading')}
-    >
-      <h3 className="font-semibold">{t('workspaceHeading')}</h3>
+    <section className="settings-row" aria-label={t('workspaceHeading')}>
+      <div>
+        <h3>{t('workspaceHeading')}</h3>
+        <p>{t('applyHint')}</p>
+        {settings ? (
+          <p>
+            {settings.available
+              ? `${settings.version} · ${t('ready')}`
+              : t('installHint', { command: 'corral judge install' })}
+          </p>
+        ) : null}
+        {error ? (
+          <p role="alert" className="text-danger">
+            {t('settingsError')}
+          </p>
+        ) : null}
+      </div>
       <label className="flex items-center gap-2 text-sm">
         <input
           type="checkbox"
@@ -406,19 +404,6 @@ function ReasoningSettingsPanel() {
         />
         {t('enableApply')}
       </label>
-      <p className="text-xs text-muted">{t('applyHint')}</p>
-      {settings ? (
-        <p className="text-xs">
-          {settings.available
-            ? `${settings.version} · ${t('ready')}`
-            : t('installHint', { command: 'corral judge install' })}
-        </p>
-      ) : null}
-      {error ? (
-        <p role="alert" className="text-sm text-danger">
-          {t('settingsError')}
-        </p>
-      ) : null}
     </section>
   );
 }

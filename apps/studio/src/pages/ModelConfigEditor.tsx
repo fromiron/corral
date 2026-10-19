@@ -143,12 +143,9 @@ export function ModelConfigEditor({
     }
   };
 
-  const field = 'rounded border border-line bg-surface px-2 py-1 text-sm';
+  const field = 'settings-field';
   return (
-    <section
-      aria-labelledby={headingId}
-      className="flex flex-col gap-4 rounded-lg border border-accent/60 bg-raised p-3"
-    >
+    <section aria-labelledby={headingId} className="settings-surface flex flex-col gap-4">
       <h3 id={headingId} className="text-sm font-semibold">
         {t('heading')}
       </h3>
@@ -163,10 +160,7 @@ export function ModelConfigEditor({
           const known = provider?.models.some((m) => m.id === profile.model);
           const label = profile.id || t('newProfile', { n: index + 1 });
           return (
-            <div
-              key={profile.uid}
-              className="flex flex-wrap items-center gap-2 rounded border border-line p-2"
-            >
+            <div key={profile.uid} className="flex flex-wrap items-center gap-3">
               <input
                 aria-label={t('profileId', { n: index + 1 })}
                 value={profile.id}
@@ -283,10 +277,7 @@ export function ModelConfigEditor({
         {endpoints.map((endpoint, index) => {
           const n = index + 1;
           return (
-            <div
-              key={endpoint.uid}
-              className="grid gap-2 rounded border border-line p-2 sm:grid-cols-2"
-            >
+            <div key={endpoint.uid} className="grid gap-3 sm:grid-cols-2">
               <label className="flex flex-col gap-1 text-xs">
                 <span>{t('endpointId', { n })}</span>
                 <input

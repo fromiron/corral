@@ -386,10 +386,7 @@ export function ResourceEditor({
               </p>
             ) : null}
             {review ? (
-              <section
-                className="rounded-lg border border-line p-3 text-sm"
-                aria-label={h('review')}
-              >
+              <section className="rounded-lg bg-surface p-3 text-sm" aria-label={h('review')}>
                 <p className="font-medium">{t('reviewReady')}</p>
                 <ul className="mt-2 list-inside list-disc">
                   {review.resource.skills.map((skill) => (

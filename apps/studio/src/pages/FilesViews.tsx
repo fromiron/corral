@@ -86,85 +86,81 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
   };
 
   return (
-    <section
-      aria-labelledby="folder-heading"
-      className="flex flex-col gap-2 rounded-md border border-line p-3"
-    >
-      <h2 id="folder-heading" className="text-sm font-semibold">
-        {t('folderHeading')}
-      </h2>
-      <p className="text-xs text-muted">{t('folderIntro')}</p>
-      {mode === 'browser' ? <p className="text-xs text-warning">{t('demoFolder')}</p> : null}
+    <div className="flex flex-col gap-6">
+      <p className="text-sm text-muted">{t('folderIntro')}</p>
+      {mode === 'browser' ? <p className="text-sm text-warning">{t('demoFolder')}</p> : null}
       {!binding ? (
-        <form onSubmit={link} className="flex flex-wrap items-end gap-2">
-          <label className="flex min-w-64 flex-1 flex-col gap-1 text-xs">
-            {t('pathLabel')}
+        <form onSubmit={link} className="settings-row">
+          <div>
+            <h3>{t('pathLabel')}</h3>
+          </div>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:items-end">
             <input
               value={path}
               onChange={(e) => setPath(e.target.value)}
               spellCheck={false}
-              className="rounded border border-line bg-surface px-2 py-1 font-mono text-sm"
+              aria-label={t('pathLabel')}
+              className="settings-field font-mono sm:w-80"
             />
-          </label>
-          {desktop ? (
-            <Button
-              variant="outline"
-              size="sm"
-              type="button"
-              onClick={() =>
-                void act(async () => {
-                  const folder = await desktop?.pickFolder();
-                  if (folder) setPath(folder);
-                })
-              }
-              className="self-start"
-            >
-              {t('chooseFolder')}
-            </Button>
-          ) : null}
-          <Button
-            variant="outline"
-            size="sm"
-            type="submit"
-            disabled={!path.trim()}
-            className="self-start"
-          >
-            {t('link')}
-          </Button>
+            <div className="flex gap-2">
+              {desktop ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  type="button"
+                  onClick={() =>
+                    void act(async () => {
+                      const folder = await desktop?.pickFolder();
+                      if (folder) setPath(folder);
+                    })
+                  }
+                >
+                  {t('chooseFolder')}
+                </Button>
+              ) : null}
+              <Button variant="outline" size="sm" type="submit" disabled={!path.trim()}>
+                {t('link')}
+              </Button>
+            </div>
+          </div>
         </form>
       ) : (
-        <div className="flex flex-col gap-2 text-sm">
-          <div className="flex flex-wrap items-center gap-2">
-            <code className="rounded bg-surface px-1 text-xs" title={binding.path}>
-              {binding.path.split('/').slice(-2).join('/')}
-            </code>
+        <>
+          <section className="settings-row">
+            <div>
+              <h3>{t('pathLabel')}</h3>
+              <p title={binding.path}>{binding.path}</p>
+              {binding.missing ? (
+                <p role="alert" className="text-danger">
+                  {t('folderMissing', { path: binding.path })}
+                </p>
+              ) : null}
+              {binding.isGit && binding.status ? (
+                <p>
+                  {t('gitStatus', {
+                    branch: binding.status.branch ?? '—',
+                    head: binding.status.head ?? '—',
+                    changed: binding.status.changed,
+                  })}
+                </p>
+              ) : null}
+              {!binding.isGit ? <p className="text-warning">{t('notGit')}</p> : null}
+            </div>
             <Button
               variant="outline"
               size="sm"
               type="button"
               onClick={() => void act(() => workspaces.unbind(projectId))}
-              className="self-start"
             >
               {t('unlink')}
             </Button>
-          </div>
-          {binding.missing ? (
-            <p role="alert" className="text-xs text-danger">
-              {t('folderMissing', { path: binding.path })}
-            </p>
-          ) : null}
-          {binding.isGit && binding.status ? (
-            <p className="text-xs text-muted">
-              {t('gitStatus', {
-                branch: binding.status.branch ?? '—',
-                head: binding.status.head ?? '—',
-                changed: binding.status.changed,
-              })}
-            </p>
-          ) : null}
-          {!binding.isGit ? <p className="text-xs text-warning">{t('notGit')}</p> : null}
+          </section>
           {binding.isGit ? (
-            <label className="flex items-start gap-2 text-xs">
+            <label className="settings-row">
+              <span>
+                <span className="text-sm font-medium">{t('trust')}</span>
+                <span className="mt-1 block text-xs text-muted">{t('trustHint')}</span>
+              </span>
               <input
                 type="checkbox"
                 checked={binding.trusted}
@@ -172,26 +168,23 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
                   void act(() => workspaces.configure(projectId, { trusted: e.target.checked }))
                 }
               />
-              <span>
-                <span className="font-medium">{t('trust')}</span>
-                <span className="block text-muted">{t('trustHint')}</span>
-              </span>
             </label>
           ) : null}
           {binding.trusted ? (
-            <div className="flex flex-col gap-1">
-              <label className="flex flex-col gap-1 text-xs">
-                <span className="font-medium">{t('checksHeading')}</span>
-                <span className="text-muted">{t('checksHint')}</span>
-                <textarea
-                  rows={3}
-                  value={checks ?? formatChecks(binding.verifyCommands)}
-                  placeholder={t('checksPlaceholder')}
-                  onChange={(e) => setChecks(e.target.value)}
-                  spellCheck={false}
-                  className="rounded border border-line bg-surface px-2 py-1 font-mono text-xs"
-                />
-              </label>
+            <section className="settings-surface flex flex-col gap-3">
+              <div>
+                <h3 className="text-sm font-medium">{t('checksHeading')}</h3>
+                <p className="mt-1 text-xs text-muted">{t('checksHint')}</p>
+              </div>
+              <textarea
+                rows={3}
+                value={checks ?? formatChecks(binding.verifyCommands)}
+                placeholder={t('checksPlaceholder')}
+                onChange={(e) => setChecks(e.target.value)}
+                spellCheck={false}
+                aria-label={t('checksHeading')}
+                className="settings-field font-mono"
+              />
               <Button
                 variant="outline"
                 size="sm"
@@ -209,16 +202,16 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
               >
                 {t('saveChecks')}
               </Button>
-            </div>
+            </section>
           ) : null}
-        </div>
+        </>
       )}
       {error ? (
         <p role="alert" className="text-sm text-danger">
           {error}
         </p>
       ) : null}
-    </section>
+    </div>
   );
 }
 

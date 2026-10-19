@@ -53,8 +53,8 @@ function ServerTools({
   const [probe, setProbe] = useState<McpProbeResult | null>(null);
   const verified = probe?.configRevision === revision ? probe : null;
   return (
-    <section className="flex flex-col gap-3 border-t border-line pt-3">
-      <h3 className="font-medium">{server.name}</h3>
+    <section className="flex flex-col gap-3">
+      <h3 className="text-sm font-medium">{server.name}</h3>
       <McpConnection
         api={api}
         projectId={projectId}
@@ -67,7 +67,13 @@ function ServerTools({
           <legend className="mb-2 text-sm font-medium">{t('selectTools')}</legend>
           {!verified.tools.length ? <p className="text-sm text-muted">{t('probeEmpty')}</p> : null}
           {verified.tools.map((tool) => (
-            <label key={tool.name} className="flex items-start gap-2 text-sm">
+            <label key={tool.name} className="settings-row">
+              <span>
+                <span className="text-sm font-medium">{tool.title || tool.name}</span>
+                {tool.description ? (
+                  <span className="mt-1 block text-xs text-muted">{tool.description}</span>
+                ) : null}
+              </span>
               <input
                 type="checkbox"
                 checked={allowedTools.includes(tool.name)}
@@ -79,10 +85,6 @@ function ServerTools({
                   )
                 }
               />
-              <span>
-                {tool.title}
-                <span className="block text-xs text-muted">{tool.description}</span>
-              </span>
             </label>
           ))}
           <p className="text-xs text-muted">{t('nextRun')}</p>

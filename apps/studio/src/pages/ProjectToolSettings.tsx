@@ -6,7 +6,7 @@ import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
 import { WORKSPACE_CHANGED } from './FilesViews.tsx';
 
-const field = 'w-full rounded-md border border-line bg-surface p-2 text-sm';
+const field = 'settings-field';
 const empty = { id: '', name: '', argv: '', languages: '', extensions: '', seconds: '30' };
 export function ProjectToolSettings({
   api,
@@ -54,7 +54,7 @@ export function ProjectToolSettings({
     setNotice(t('toolsSaved', { revision: saved.revision }));
   }
   return (
-    <section className="flex flex-col gap-4 border-t border-line pt-5" aria-labelledby={heading}>
+    <section className="flex flex-col gap-4" aria-labelledby={heading}>
       <h3 id={heading} className="text-lg font-semibold">
         {t('projectTools')}
       </h3>
@@ -87,7 +87,7 @@ export function ProjectToolSettings({
             const key = `${kind}:${tool.id}`,
               launch = launches[key];
             return (
-              <div key={key} className="flex flex-col gap-2 border-b border-line pb-3">
+              <div key={key} className="settings-surface flex flex-col gap-2">
                 <p className="text-sm font-medium">
                   {tool.name} <span className="text-muted">{tool.id}</span>
                 </p>
@@ -173,7 +173,7 @@ export function ProjectToolSettings({
           })}
         </div>
       ))}
-      <fieldset disabled={busy} className="flex flex-col gap-3">
+      <fieldset disabled={busy} className="settings-surface flex flex-col gap-3">
         <legend className="mb-3 font-medium">{t('configureLsp')}</legend>
         {(
           [

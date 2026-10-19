@@ -159,31 +159,25 @@ export function SettingsPage() {
           </section>
         ) : (
           <>
-            <div className="flex items-center gap-3">
-              <span className="corral-mark text-xl">c</span>
-              <div>
-                <h3 className="text-lg font-semibold">Corral Workbench</h3>
-                {serverVersion ? (
-                  <p className="text-sm text-muted">
-                    {t('serverVersion', { version: serverVersion })}
-                  </p>
-                ) : null}
-              </div>
-            </div>
             <p className="text-sm text-muted">{t('aboutText')}</p>
-            <DesktopAbout />
-            <Button
-              variant="outline"
-              render={
-                <a
-                  href="https://github.com/fromiron/corral/releases"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                />
-              }
-            >
-              {t('releases')}
-            </Button>
+            <DesktopAbout serverVersion={serverVersion} />
+            <section className="settings-row">
+              <div>
+                <h3>{t('releases')}</h3>
+              </div>
+              <Button
+                variant="outline"
+                render={
+                  <a
+                    href="https://github.com/fromiron/corral/releases"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  />
+                }
+              >
+                {t('releases')}
+              </Button>
+            </section>
           </>
         )}
       </main>

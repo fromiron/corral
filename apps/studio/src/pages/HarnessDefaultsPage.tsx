@@ -149,13 +149,13 @@ function DefaultsEditor({ scope, scopeId }: { scope: 'personal' | 'project'; sco
           </p>
         </>
       )}
-      <Link
-        to="/settings/harness"
-        search={navigation.search}
-        className="text-sm text-accent underline"
+      <Button
+        variant="outline"
+        className="self-start"
+        render={<Link to="/settings/harness" search={navigation.search} />}
       >
         {r('manageProfiles')}
-      </Link>
+      </Button>
     </>
   );
 }

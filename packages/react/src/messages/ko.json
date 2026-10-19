@@ -1673,7 +1673,8 @@
     },
     "switchWorkspaceHint": "데이터 폴더를 전환하면 앱 서버를 다시 시작합니다. 전환 전에 확인을 요청합니다.",
     "sendCombination": "보내기: {send} · 줄바꿈: {newline}",
-    "serverVersion": "서버 버전 {version}"
+    "serverVersion": "서버 버전 {version}",
+    "version": "버전"
   },
   "Composer": {
     "commands": "명령",

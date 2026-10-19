@@ -1673,7 +1673,8 @@
     },
     "switchWorkspaceHint": "Switching data folders restarts the app server. You will be asked to confirm before switching.",
     "sendCombination": "Send: {send} · New line: {newline}",
-    "serverVersion": "Server version {version}"
+    "serverVersion": "Server version {version}",
+    "version": "Version"
   },
   "Composer": {
     "commands": "Commands",

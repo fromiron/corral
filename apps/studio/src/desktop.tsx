@@ -51,59 +51,72 @@ export function DesktopWorkspace() {
     void operation().catch(() => setError(t('desktopUnavailable')));
   };
   return (
-    <section className="space-y-3 rounded-lg border border-line p-4">
-      <h3 className="text-sm font-semibold">{t('appWorkspace')}</h3>
-      <p className="text-xs text-muted">{t('appWorkspaceHint')}</p>
-      <Button size="sm" variant="ghost" onClick={() => act(() => desktop.revealWorkspace())}>
-        {t('revealWorkspace')}
-      </Button>
-      <div className="space-y-3 border-t border-line pt-4">
-        <p className="text-xs text-muted">{t('switchWorkspaceHint')}</p>
-        <Button size="sm" variant="outline" onClick={() => act(() => desktop.openWorkspace())}>
-          <FolderOpen />
-          {t('openWorkspace')}
-        </Button>
+    <section className="settings-row">
+      <div>
+        <h3>{t('openWorkspace')}</h3>
+        <p>{t('appWorkspaceHint')}</p>
+        <p>{t('switchWorkspaceHint')}</p>
+        {error ? (
+          <p role="alert" className="text-danger">
+            {error}
+          </p>
+        ) : null}
       </div>
-      {error ? (
-        <p role="alert" className="text-xs text-danger">
-          {error}
-        </p>
-      ) : null}
+      <Button variant="outline" onClick={() => act(() => desktop.openWorkspace())}>
+        <FolderOpen />
+        {t('openWorkspace')}
+      </Button>
     </section>
   );
 }
 
-export function DesktopAbout() {
+export function DesktopAbout({ serverVersion }: { serverVersion?: string }) {
   const t = useTranslations('Desktop');
   const [info, setInfo] = useState<DesktopInfo | null>(null);
   const [error, setError] = useState(false);
   useEffect(() => {
     if (desktop) void desktop.info().then(setInfo, () => setError(true));
   }, []);
-  if (!desktop) return null;
+  const version = info
+    ? `Corral ${info.version} · ${info.platform} · Node ${info.node}`
+    : serverVersion
+      ? t('serverVersion', { version: serverVersion })
+      : null;
+  const reveal = () => {
+    setError(false);
+    void desktop?.revealWorkspace().catch(() => setError(true));
+  };
   return (
-    <section className="space-y-3 border-t border-line pt-4">
+    <>
+      {version ? (
+        <section className="settings-row">
+          <div>
+            <h3>{t('version')}</h3>
+            <p>{version}</p>
+            {info && !info.gitAvailable ? (
+              <p role="status" className="text-warning">
+                {t('gitMissing')}
+              </p>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
       {info ? (
-        <>
-          <p className="text-sm">
-            Corral {info.version} · {info.platform} · Node {info.node}
-          </p>
-          <details className="text-sm">
-            <summary className="cursor-pointer">{t('workspaceLocation')}</summary>
-            <code className="mt-2 block break-all text-xs">{info.workspace}</code>
-          </details>
-          {!info.gitAvailable ? (
-            <p role="status" className="text-sm text-warning">
-              {t('gitMissing')}
-            </p>
-          ) : null}
-        </>
+        <section className="settings-row">
+          <div>
+            <h3>{t('appWorkspace')}</h3>
+            <p className="break-all">{info.workspace}</p>
+          </div>
+          <Button variant="outline" onClick={reveal}>
+            {t('revealWorkspace')}
+          </Button>
+        </section>
       ) : null}
       {error ? (
         <p role="alert" className="text-sm text-danger">
           {t('desktopUnavailable')}
         </p>
       ) : null}
-    </section>
+    </>
   );
 }

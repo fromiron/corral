@@ -1,6 +1,6 @@
 import type { HarnessApi } from '@corral/client';
 import type { HarnessEntryKey, HarnessEntryView, ManagedHook } from '@corral/contracts';
-import { Plus, Search } from '@corral/react/icons';
+import { Plus } from '@corral/react/icons';
 import { Button } from '@corral/react/ui';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
@@ -103,50 +103,48 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
   }
   return (
     <main className="settings-content">
-      <header className="flex items-start justify-between gap-4">
+      <div>
+        <h2 className="text-2xl font-semibold tracking-tight">
+          {t(kind === 'skill' ? 'skills' : 'hooks')}
+        </h2>
+        <p className="mt-2 text-sm text-muted">
+          {t(kind === 'skill' ? 'skillsIntro' : 'hooksIntro')}
+        </p>
+      </div>
+      <section className="settings-row">
         <div>
-          <h2 className="text-2xl font-semibold tracking-tight">
-            {t(kind === 'skill' ? 'skills' : 'hooks')}
-          </h2>
-          <p className="mt-2 max-w-2xl text-sm text-muted">
-            {t(kind === 'skill' ? 'skillsIntro' : 'hooksIntro')}
-          </p>
+          <h3>{t('library')}</h3>
         </div>
         <Button ref={add} onClick={() => setEditor({})}>
           <Plus size={16} />
           {t('add')}
         </Button>
-      </header>
+      </section>
+      <section className="settings-row">
+        <div>
+          <h3>{t('search')}</h3>
+        </div>
+        <input
+          aria-label={t('search')}
+          className={`${field} sm:w-72`}
+          value={search}
+          placeholder={t('search')}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </section>
+      <section className="settings-row">
+        <div>
+          <h3>{t('showArchived')}</h3>
+        </div>
+        <input type="checkbox" checked={archived} onChange={(e) => setArchived(e.target.checked)} />
+      </section>
       {error ? (
         <p role="alert" className="text-sm text-danger">
           {error}
         </p>
       ) : null}
-      <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(16rem,0.8fr)_minmax(22rem,1.2fr)]">
-        <section
-          className="max-h-[70vh] min-w-0 overflow-y-auto rounded-xl border border-line"
-          aria-label={t('library')}
-        >
-          <div className="flex flex-col gap-3 border-b border-line p-4">
-            <label className="flex items-center gap-2">
-              <Search size={16} />
-              <input
-                aria-label={t('search')}
-                className={field}
-                value={search}
-                placeholder={t('search')}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </label>
-            <label className="flex items-center gap-2 text-xs">
-              <input
-                type="checkbox"
-                checked={archived}
-                onChange={(e) => setArchived(e.target.checked)}
-              />
-              {t('showArchived')}
-            </label>
-          </div>
+      <div className="flex flex-col gap-6">
+        <section className="settings-list max-h-80 overflow-y-auto" aria-label={t('library')}>
           {!loaded ? (
             <p role="status" className="p-5 text-sm text-muted">
               {h('busy')}
@@ -154,14 +152,14 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
           ) : !filtered.length ? (
             <p className="p-5 text-sm text-muted">{t(search ? 'noMatches' : 'empty')}</p>
           ) : (
-            <ul className="divide-y divide-line">
+            <ul className="flex flex-col">
               {filtered.map((entry) => (
                 <li key={keyOf(entry)}>
                   <button
                     type="button"
                     aria-pressed={selection === keyOf(entry)}
                     onClick={() => setSelection(keyOf(entry))}
-                    className={`flex w-full flex-col gap-2 p-4 text-left hover:bg-raised ${selection === keyOf(entry) ? 'bg-sidebar-selected' : ''}`}
+                    className={`flex w-full flex-col gap-2 p-4 text-left hover:bg-surface ${selection === keyOf(entry) ? 'bg-sidebar-selected' : ''}`}
                   >
                     <span className="font-medium">{entry.name}</span>
                     {entry.description ? (
@@ -182,15 +180,11 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
           )}
         </section>
         {selected ? (
-          <section
-            key={keyOf(selected)}
-            className="flex min-w-0 flex-col gap-4 rounded-xl border border-line p-5"
-            aria-label={t('details')}
-          >
-            <div className="flex flex-wrap items-start justify-between gap-3">
+          <section key={keyOf(selected)} className="flex flex-col gap-6" aria-label={t('details')}>
+            <section className="settings-row">
               <div>
-                <h3 className="text-lg font-semibold">{selected.name}</h3>
-                <p className="mt-1 text-xs text-muted">
+                <h3>{selected.name}</h3>
+                <p>
                   {t(
                     selected.resource.sourceLabel === 'Created in Corral'
                       ? 'savedCopy'
@@ -210,22 +204,13 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
               >
                 {t('editCopy')}
               </Button>
-            </div>
-            <Link
-              to="/settings/harness"
-              search={navigation.search}
-              className="text-sm text-accent underline"
-            >
-              {n('addToWorkStyle')}
-            </Link>
-            {!selected.resource.trustedAt ? (
-              <p className="text-sm text-warning">{t('trustBeforeUse')}</p>
-            ) : null}
-            {kind === 'extension' ? (
-              <p className="text-xs text-warning">{h('nativeWarning')}</p>
-            ) : null}
-            <EntryContent api={api} entry={selected} />
-            <div className="flex flex-wrap gap-2">
+            </section>
+            <section className="settings-row">
+              <div>
+                <h3>{selected.resource.trustedAt ? h('trusted') : h('untrusted')}</h3>
+                <p>{selected.resource.trustedAt ? t('packageTrust') : t('trustBeforeUse')}</p>
+                {kind === 'extension' ? <p className="text-warning">{h('nativeWarning')}</p> : null}
+              </div>
               <Button
                 variant="outline"
                 disabled={busy}
@@ -235,8 +220,13 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
               >
                 {selected.resource.trustedAt ? h('revoke') : h('trust')}
               </Button>
+            </section>
+            <section className="settings-row">
+              <div>
+                <h3>{t(selected.archivedAt ? 'restore' : 'archive')}</h3>
+              </div>
               <Button
-                variant="ghost"
+                variant="outline"
                 disabled={busy}
                 onClick={() => {
                   const save = () =>
@@ -254,49 +244,55 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
               >
                 {t(selected.archivedAt ? 'restore' : 'archive')}
               </Button>
-            </div>
-            <p className="text-xs text-muted">{t('packageTrust')}</p>
-            <div className="border-t border-line pt-4">
-              <h4 className="text-sm font-medium">{t('usages')}</h4>
-              {selected.profiles.length ? (
-                <ul className="mt-2 flex flex-col gap-1 text-sm">
-                  {selected.profiles.map((profile) => (
-                    <li key={`${profile.profileId}:${profile.revision}`}>
-                      {profile.name} · r{profile.revision}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="mt-2 text-sm text-muted">{t('unused')}</p>
-              )}
-              <Link
-                to="/settings/harness"
-                search={navigation.search}
-                className="mt-2 inline-block text-sm text-accent underline"
-              >
-                {t('manageProfiles')}
-              </Link>
-            </div>
+            </section>
+            <section className="settings-row">
+              <div>
+                <h3>{n('addToWorkStyle')}</h3>
+                <p>
+                  {selected.profiles.length
+                    ? selected.profiles
+                        .map((profile) => `${profile.name} · r${profile.revision}`)
+                        .join(', ')
+                    : t('unused')}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  render={<Link to="/settings/harness" search={navigation.search} />}
+                >
+                  {n('addToWorkStyle')}
+                </Button>
+                <Button
+                  variant="outline"
+                  render={<Link to="/settings/harness" search={navigation.search} />}
+                >
+                  {t('manageProfiles')}
+                </Button>
+              </div>
+            </section>
             {selected.successor ? (
-              <p className="text-sm">
-                {t('newCopy')}{' '}
-                <button
-                  type="button"
-                  className="text-accent underline"
+              <section className="settings-row">
+                <div>
+                  <h3>{t('newCopy')}</h3>
+                </div>
+                <Button
+                  variant="outline"
                   onClick={() => {
                     setArchived(false);
                     setSelection(keyOf(selected.successor!));
                   }}
                 >
                   {t('viewCopy')}
-                </button>
-              </p>
+                </Button>
+              </section>
             ) : null}
+            <section className="settings-surface">
+              <EntryContent api={api} entry={selected} />
+            </section>
           </section>
         ) : (
-          <div className="flex min-h-64 items-center justify-center rounded-xl border border-dashed border-line p-6 text-sm text-muted">
-            {t('selectItem')}
-          </div>
+          <p className="text-sm text-muted">{t('selectItem')}</p>
         )}
       </div>
       {editor ? (
