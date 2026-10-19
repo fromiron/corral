@@ -676,5 +676,11 @@
     "requirement": "CR-031-A: mode와 독립된 명시 Ultra는 검증된 built-in planner/writer/reviewer와 최대 두 번 수정을 사용하며 사용자 팀·모델/effort·정책·예산을 자동 변경하지 않는다. 기본 경로와 재시도 identity를 유지하고 같은 과제로 결과/총비용을 비교한다.",
     "owner": "core",
     "phase": "M4"
+  },
+  {
+    "id": "CRL-ULTRA-002",
+    "requirement": "CR-031-B: 후보는 동일 Run/baseline/criteria와 별도 사본/lease를 사용하고 검증 실패·불확정 후보를 제외한다. 총예산의 80%에서 새 후보/수정을 차단하며 마무리 비용을 보호한다. 명시 한 후보만 안전 승격하고 all-fail을 성공으로 만들지 않는다.",
+    "owner": "core",
+    "phase": "M4"
   }
 ]

@@ -24,3 +24,16 @@
 모델과 명시 reasoning, installation policy, 기존 기본 예산은 유지하며 template 선택 모델 호출은 생략한다. route reasoning은 기존 local 기본 medium을 쓰고 출처를 기록한다. 후보 fan-out과 80% 마무리 예약은 다음 C-114에서 같은 총예산 안에 추가한다. 기본/Ultra의 동일 과제 결정적 비교는 기능과 사용량 계측 증거이며 실제 품질 개선 주장이 아니다. UI 선택은 초안·재시도 identity와 Run/entry 기록에 남는다.
 
 C-113의 토글과 `/ultra`, `corral exec auto --ultra`는 `createAutoStarter`에서 고정 정의를 만들어 같은 Coordinator 시작 경로로 전달한다. CLI custom 파일에는 적용하지 않으며 별도 파일 권한을 부여하지 않는다. 선택은 시작 metadata와 세션 요청/초안에 기록해 거절된 요청의 다시 편집도 보존한다.
+
+
+## C-114 같은 Run 안의 후보 비교
+
+Bell의 후속 요청에 따라 [upstream 비교](../spikes/Ultra-Upstream-Harness-Review-2026-10-19.md)를 먼저 수행했다. Pi 플러그인은 일괄 배제하지 않으며, 기존 Corral의 병렬 실행 경로와 공개 하네스의 용량·취소·권한 상속·사본 보존 패턴을 재사용한다. 별도 CLI 자식이 Corral permit을 우회하는 설치는 후보 실행 경로로 채택하지 않는다.
+
+단일 Ultra에 명시 candidate comparison을 추가한다. 기본 3개/최대 5개와 동시 3개 이하를 분리한다. Coordinator가 고정 candidate recipe와 기존 execution/worker/permit/settlement 경로를 사용한다. 별도 병렬 Run이나 모델이 호출할 새 오케스트레이션 도구는 만들지 않는다. candidate별 동일 baseline·criteria·model·허용 도구, 별도 durable worktree와 execution 소유권을 고정한다. file broker는 후보 execution을 세션의 기본 사본으로 fallback하지 않는다.
+
+계획/후보/검토/수정/최종 검증은 같은 Run 예산이다. 마지막 검증을 위한 최소 모델 호출/출력 예약을 기존 총상한 안에서 보호한다. spent+reserved+unknown 사용량으로 80%를 판단해 새 후보/수정을 중지하고, 모델 permit 직전에도 보호된 마무리 예약을 차감한다. 입력/금액을 측정하지 못한 비용은 0으로 간주하거나 금액 상한이라고 표시하지 않는다.
+
+후보 작업은 OS 격리와 등록된 검사 실행을 제공하는 환경에서만 시작한다. 코드 후보의 필수 검사가 없거나 unsupported/cancelled/unknown/failed/stale이면 acceptable이 아니다. 검사도 private host 경로·키·외부 network를 노출하지 않는 별도 격리 경로에서 수행하고 후보의 고정 tree·설정/실행 fingerprint에 묶는다. 단순 모델 verdict를 테스트 통과로 대체하지 않는다.
+
+결과는 후보별 diff/근거/사용량과 함께 비교하고 사람의 정확한 후보 선택 뒤 하나만 승격한다. 전원 실패는 no_acceptable_candidate다. 승격은 worker 종료/미정산·출처/대상 tree/hash를 재검증하고 기존 복구 전 checkpoint 및 원장을 사용한다. 자동 merge, 효과 재생, crash 후 자동 승격은 없다. 후보 취소는 해당 후보만 멈추고 Run 취소는 모든 소유 실행을 정리한다.

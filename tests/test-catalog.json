@@ -2746,5 +2746,27 @@
     "status": "planned",
     "adapter": "deterministic agents and existing auto browser fixture; no paid calls",
     "evidence": null
+  },
+  {
+    "id": "TC-ULTRA-002-H",
+    "requirements": [
+      "CRL-ULTRA-002"
+    ],
+    "suite": "integration+browser",
+    "scenario": "동일 기준의 격리 후보/검사·비용 비교와 사용자 선택 단일 승격",
+    "status": "planned",
+    "adapter": "deterministic workers, temporary Git worktrees and actual Linux isolation; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-ULTRA-002-N",
+    "requirements": [
+      "CRL-ULTRA-002"
+    ],
+    "suite": "integration+browser",
+    "scenario": "80%/미정산/마무리 예약·전원 실패·후보 취소/사본 혼선·stale/unknown 승격 차단",
+    "status": "planned",
+    "adapter": "deterministic workers, temporary Git worktrees and actual Linux isolation; no paid calls",
+    "evidence": null
   }
 ]

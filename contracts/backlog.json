@@ -2227,5 +2227,25 @@
     ],
     "done": "고정 팀·read-only 검토·수정 최대 2회·default 및 예산/권한 보존과 동일 과제 결정적 비교를 확인한다.",
     "status": "implemented"
+  },
+  {
+    "id": "C-114",
+    "phase": "M4",
+    "title": "격리 후보 비교·예산 예약·명시 단일 승격",
+    "dependsOn": [
+      "C-113"
+    ],
+    "requirements": [
+      "CRL-ULTRA-002"
+    ],
+    "files": [
+      "packages/core/src/coordinator.ts",
+      "packages/core/src/candidate-budget.ts",
+      "apps/server/src/files/service.ts",
+      "packages/storage-sqlite/src/database.ts",
+      "apps/studio/src/pages/SessionPage.tsx"
+    ],
+    "done": "후보 최대5/동시3, 사본/검사/취소 소유권, 80% admission과 마무리 예약, 전원 실패 및 정확한 후보 단일 승격을 확인한다.",
+    "status": "planned"
   }
 ]

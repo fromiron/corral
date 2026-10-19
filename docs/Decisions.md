@@ -314,3 +314,18 @@ ADR-031 보완(2026-10-18): 불명확한 시작은 최초 요청 전체를 재�
 ## ADR-033: 격리 worker의 모델 네트워크는 host permit으로만 연다
 
 CR-025 C-107. network namespace를 host와 공유하는 proxy는 격리로 표시하지 않는다. Linux bubblewrap 안에는 애플리케이션 runtime과 바인딩된 콘텐츠만 읽기 전용으로 보인다. 자격 증명은 host에 남으며 host Pi provider가 고정 모델·출력 상한·reasoning permit으로 스트림을 연다. 기존 request/payload 기록은 같은 IPC를 통해 확인한 다음 HTTP 전송한다. provider URL이나 임의 headers, payload 수정은 worker 권한이 아니다. profile opt-in이므로 기존 snapshot을 재해석하지 않으며, 미지원 native 기능은 실패하고 fallback하지 않는다.
+
+
+## ADR-034: 후보 비교는 Coordinator의 고정 recipe, 실행·파일·검증 소유권은 명시한다
+
+**Upstream 근거:** Bell의 후속 요청으로 [Pi/OMP/pi-subagents/Codex/Claude Code/DeepSeek 비교](spikes/Ultra-Upstream-Harness-Review-2026-10-19.md)를 추가했다. 기존 Corral 병렬 execution을 재사용하며, 자식 준비 전 용량 예약·정확한 실행 회차의 취소·시작한 효과의 정리 대기·사본 실패 시 보존 원칙을 적용한다. Pi 플러그인은 금지하지 않지만 외부 runner가 Corral의 예산/권한 경계를 대체할 수 있다고 가정하지 않는다.
+
+**상태:** 채택 (2026-10-19, CR-031 C-114). 사용자 지정 [Oracle 세션](https://chatgpt.com/g/g-p-6ad1f206e5ec8191904cfee1105213e3-corral/c/6ad4cfb8-3fe0-83ec-9099-aa745252231f)의 Pro/최대 파워에서 구조 설명을 바탕으로 교차 검토했다. 이 의견은 미푸시 코드를 직접 검사한 증거가 아니다.
+
+일반 GraphRunner와 모델용 협업 도구는 변경하지 않는다. 후보 비교의 고정 recipe가 실행 구조이며 기존 definition은 역할·도구의 원본이라는 사실을 별도로 기록한다. Coordinator의 prepareExecution→commit→launch와 기존 settlement/취소/예산/lease를 사용한다. execution→candidate→workspace는 durable binding이며 worker 인자로 사본을 선택하지 않는다. scope가 빠진 Run 단독 파일 조회는 후보 실행에서 fallback하지 않는다.
+
+planner는 한 번, 후보들은 동일 기준/계획을 사용한다. 후보 작성 후 host 전용의 격리된 등록 검사 효과와 유효한 동일 대상 review pass가 모두 있어야 선택할 수 있다. 검증 미지원/불확정은 사람의 선택으로 우회하지 못한다. 모든 후보 종료 후 하나를 명시 선택하고 최종 검사→관리 사본 승격을 수행한다. 원본 반영/commit/push는 포함하지 않는다.
+
+예산은 기존 Run 원장을 사용한다. planner 전에 마무리 2회 capped 요청을 총상한 안에서 보호하며, 80% 기준에는 사용/예약/unknown과 마무리 hold 및 신규 요청 상한을 포함한다. draining 진입은 되돌리지 않는다. 후보 준비/대기열 재개와 실제 permit 발급 직전 모두 검사한다. final 단계는 후보 신규 실행을 닫고 hold를 실제 요청 예약으로 전환한다. 비용 표시는 금액 hard cap이라는 보장이 아니다.
+
+worker의 check/LSP 금지는 유지한다. 등록 검사 runner를 host 소유 후보 scope와 OS 격리로 실행하며 검증용 고정 tree 사본과 임시 쓰기 공간을 사용한다. 검증 경로 없는 환경에서는 planner 비용을 쓰기 전에 비교 실행을 거절한다. crash/unknown/late 결과는 자동 재실행/승격하지 않고 기존 복구 원장을 보존한다.
