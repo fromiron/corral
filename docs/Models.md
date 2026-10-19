@@ -68,4 +68,41 @@ Anthropic 구독(Pro/Max) 로그인은 지원하지 않는다. Anthropic은 API 
 - 키는 넣을 때의 주소(origin)에 묶인다. 설정의 `baseUrl` origin이 바뀌면 그 키를 쓰지 않는다. 화면에는 "키를 다시 넣으세요"가 보인다.
 - id는 pi-ai 내장 공급자 이름(`openai`, `anthropic` 등)과 겹칠 수 없다.
 - 설정 파일에는 키를 넣을 수 없다. 키처럼 보이는 필드가 있으면 서버가 시작을 거부한다.
-- 모델 한도를 빼면 기본값을 쓴다: context 32,000, 출력 4,096 토큰.
+- 알려진 모델 외에는 모델 한도를 빼면 context 32,000, 출력 4,096 토큰을 쓴다.
+
+## Hive의 DeepSeek V4.1 Flash
+
+Models → 모델 편집에서 엔드포인트와 프로필을 추가한다. 이 연결은 DeepSeek 직접 API가 아닌 Hive 서비스 API 키를 사용한다.
+
+| 필드 | 값 |
+|---|---|
+| 엔드포인트 ID / 이름 | `hive` / `Hive` |
+| API 주소 | `https://api-cdn.thehive.ai/api/v3` |
+| 인증 | API 키 |
+| 모델 ID | `deepseek-ai/deepseek-v4.1-flash-1017` |
+| 새 프로필 ID / 공급자 | `deepseek-hive` / `hive` |
+
+저장 후 Hive 카드에서 키를 입력한다. 기존 OpenAI 프로필은 유지하고 새 프로필을 추가한다. 키는 채팅이나 `.corral/config.json`에 적지 않는다. VA1 계정은 `https://api-va1.thehive.ai/api/v3`를 사용하고, origin 변경 시 해당 주소에서 사용할 키를 다시 입력한다.
+
+아래는 기존 설정의 각 배열에 추가할 항목이다. 기존 배열 전체를 덮어쓰지 않는다.
+
+```json
+{
+  "modelProviders": [{
+    "id": "hive",
+    "name": "Hive",
+    "baseUrl": "https://api-cdn.thehive.ai/api/v3",
+    "access": "api_key",
+    "models": [{ "id": "deepseek-ai/deepseek-v4.1-flash-1017" }]
+  }],
+  "modelProfiles": [{
+    "id": "deepseek-hive",
+    "provider": "hive",
+    "model": "deepseek-ai/deepseek-v4.1-flash-1017"
+  }]
+}
+```
+
+공식 두 주소와 정확한 모델 ID에는 context 1,000,000, 이미지 입력, `off/low/high/max` 추론을 등록한다. 출력 기본 상한은 기존 4,096을 유지하며 명시한 모델 한도·기능 설정이 우선한다. Pi 1.3.0의 `thinkingLevelMap`과 OpenAI completions compatibility를 사용해 `off`는 `none`, `max`는 `max`로 보낸다. provider default는 effort를 생략한다. 모델 ID가 같더라도 다른 gateway에 이 설정을 적용하지 않는다.
+
+근거: [Hive 모델 API](https://docs.thehive.ai/docs/deepseek-v41-flash), [연결·인증·도구 호출 문서](https://docs.thehive.ai/docs/chat-completions-openai-compatible-llms). Hive 요청은 `max_completion_tokens`와 SSE를 사용한다. fake transport로 실제 Pi 직렬화·최종 usage chunk를 검증했으며 실제 Hive 접근 권한·도구 호출·품질·청구는 별도 live 시험 대상이다. 비용 정보가 없는 사용자 정의 엔드포인트를 무료라고 해석하지 않는다. C-118의 새 복수 LLM Ultra는 아직 구현 중이다.

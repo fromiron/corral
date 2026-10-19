@@ -51,3 +51,9 @@ Ultra에 명시 candidate comparison을 추가한다. 기본 3개/최대 5개와
 첫 구현은 OpenAI/DeepSeek의 실제 Pi serializer와 fake HTTP로 검증한다. 최종 wire의 모델·추론 설정·출력 상한을 검사하고, provider 자동 재시도를 끄며 inference HTTP dispatch는 승인된 payload로 한 번만 허용한다. OAuth처럼 wire 출력 cap을 보장하지 않는 transport는 admission 예약과 실제 사용량 상한 보장을 구분한다. Anthropic/Gemini 등은 같은 검증 계약으로 추가한다. 실제 provider 호출은 별도 opt-in이며 이번 구현의 일반 시험은 비용이 없다.
 
 구현 근거는 [Oracle 재검토](../spikes/Ultra-Multi-Provider-Oracle-2026-10-19.md)다. 구현 순서는 provider conformance → versioned 협업/예산/UI → 코딩 검사·provider 확대 → 선택적 C-114다. 필수 검사 미지원은 검증 완료로 우회하지 않는다.
+
+### Hive DeepSeek 연결
+
+Bell이 지정한 [Hive DeepSeek V4.1 Flash](https://docs.thehive.ai/docs/deepseek-v41-flash)를 기존 사용자 정의 엔드포인트로 추가한다. 공식 CDN/VA1의 `/api/v3` 주소와 정확한 모델 ID에만 공개 모델 기본값·Pi 호환 metadata를 적용한다. 모델 이름만 같거나 다른 gateway 주소이면 추측하지 않는다. 명시한 context/output/reasoning/image 설정은 보존한다.
+
+Hive의 `reasoning_effort=none|low|high|max`, `max_completion_tokens`, SSE Accept를 사용한다. DeepSeek 직접 API의 `thinking`·`max_tokens`를 복사하지 않는다. 다른 endpoint/내장 provider·origin에 묶인 키·기존 config 형식은 유지하며 새 의존성/키 저장 경로는 만들지 않는다. 모델 기본값→실제 Pi 요청→SSE 사용량과 잘못된 cap/effort 거절을 필요한 실패 시험으로 확인한다. Hive의 실제 도구 호출·과금·접근 권한은 키와 한도를 정한 별도 live 시험 전까지 미검증이다.

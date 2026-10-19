@@ -6,6 +6,7 @@ export { editText, PiEditError } from './edit.ts';
 export {
   ENDPOINT_DEFAULTS,
   EndpointSpec,
+  endpointModelDefaults,
   endpointProvider,
   KEYLESS_PLACEHOLDER,
   requestKeyAuth,

@@ -44,3 +44,13 @@ M0~M3 누적 변경은 `09fe207`에 커밋했다. CR-031, C-113, CRL-ULTRA-001, 
 - 전체 타입, spec 1,926 checks / 253 tags, lint 오류 없음, desktop runtime 준비 통과. 새 의존성 없음.
 
 **구현 경계:** 이는 C-118의 provider 기반 작업이다. 새 복수 모델 pool·역할 배정·필수 교차 검토·동적 마무리 예산·UI는 아직 미구현이며 C-118은 `planned`다. 실제 유료 API 호출, 최신 packaged GUI, hosted CI/배포는 실행하지 않았다. Codex Responses처럼 출력 cap을 받지 않는 transport를 실제 청구량 hard cap으로 보장하지 않는다.
+
+### Hive DeepSeek 연결 보완
+
+`dd52a62`의 provider 기반 작업 다음에 Bell이 지정한 Hive를 추가했다. Pi 1.3.0의 공개 `Model.thinkingLevelMap`/compat 타입과 OMP `9d5d4ac5`의 `models-config-schema-bundle.ts`에서 제공자별 effort·cap 호환 패턴을 확인했다. 기존 endpoint 등록·Models 설정·origin-bound credential을 사용하며 플러그인/라이브러리는 추가하지 않는다. Context7 도구가 없어 설치된 정확한 버전의 선언/직렬화 구현과 Hive 공식 문서를 확인했다.
+
+- `hive-red.log`: 모델 ID만 등록하면 추론 단계가 비어 있는 실패를 확인했다.
+- 공식 CDN/VA1 주소·정확한 모델 ID에 한해 공개 context/image/effort 기본값과 Pi 호환 설정을 적용한다. 명시 설정·알 수 없는 gateway·다른 모델의 기존 기본값을 보존한다.
+- 필요한 합성 시험 한 개에서 config → server registry → 실제 Pi serializer → 가짜 fetch/SSE 사용량을 확인했다. `none/low/high/max`와 provider default, cap/effort 변조 거절, 다른 origin 및 명시 한도를 함께 검증한다.
+- `hive-regression.log`: 기존 모델 인증/설정·core config·adapter endpoint/reasoning/process 포함 7개 파일, 46개 통과·OS opt-in 2개 제외. 전체 타입 검사, spec 1,928 checks / 253 tags, 변경 파일 Biome·diff 검사 통과.
+- [연결 안내](../Models.md#hive의-deepseek-v41-flash)에 추가할 주소·모델·프로필과 키 입력 위치를 기록했다. 사용자 설정·credential은 변경하지 않았다. Hive 유료 호출·실제 모델 도구 호출·최신 패키지 GUI는 미검증이다.

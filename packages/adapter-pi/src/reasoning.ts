@@ -20,8 +20,11 @@ export function modelReasoningCapabilities(model: Model<Api> | undefined): Reaso
     !(
       ['openai-responses', 'openai-codex-responses'].includes(model.api) ||
       (hasApi(model, 'openai-completions') &&
-        model.compat?.thinkingFormat === 'deepseek' &&
-        model.compat.supportsReasoningEffort !== false)
+        ((model.compat?.thinkingFormat === 'deepseek' &&
+          model.compat.supportsReasoningEffort !== false) ||
+          (model.compat?.thinkingFormat === 'openai' &&
+            model.compat.supportsReasoningEffort === true &&
+            model.thinkingLevelMap !== undefined)))
     )
   )
     return { levels: [], providerDefault: false };

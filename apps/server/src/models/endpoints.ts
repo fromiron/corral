@@ -1,6 +1,6 @@
 import {
-  ENDPOINT_DEFAULTS,
   type EndpointSpec,
+  endpointModelDefaults,
   endpointProvider,
   KEYLESS_PLACEHOLDER,
 } from '@corral/adapter-pi';
@@ -30,14 +30,18 @@ export function endpointsFrom(configs: readonly ModelProviderConfig[] = []): Map
         name: config.name,
         baseUrl: config.baseUrl,
         keyless: config.access === 'none',
-        models: config.models.map((m) => ({
-          id: m.id,
-          ...(m.name ? { name: m.name } : {}),
-          contextWindow: m.contextWindow ?? ENDPOINT_DEFAULTS.contextWindow,
-          maxOutput: m.maxOutput ?? ENDPOINT_DEFAULTS.maxOutput,
-          reasoning: m.reasoning ?? false,
-          ...(m.imageInput !== undefined ? { imageInput: m.imageInput } : {}),
-        })),
+        models: config.models.map((m) => {
+          const defaults = endpointModelDefaults(config.baseUrl, m.id);
+          const imageInput = m.imageInput ?? defaults.imageInput;
+          return {
+            id: m.id,
+            ...(m.name ? { name: m.name } : {}),
+            contextWindow: m.contextWindow ?? defaults.contextWindow,
+            maxOutput: m.maxOutput ?? defaults.maxOutput,
+            reasoning: m.reasoning ?? defaults.reasoning,
+            ...(imageInput !== undefined ? { imageInput } : {}),
+          };
+        }),
       };
       return [config.id, { providerId: config.id, spec, origin: url.origin, host: url.host }];
     }),
