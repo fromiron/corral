@@ -55,7 +55,7 @@ export function ExecutionTranscript({
         const el = event.currentTarget;
         pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
       }}
-      className="flex min-h-0 flex-col gap-2 overflow-auto rounded-md border border-line bg-surface p-2 text-xs"
+      className="flex min-h-0 flex-col gap-2 overflow-auto rounded-md fill-group p-2 text-xs"
     >
       {entries.length === 0 ? <p className="text-muted">{t('empty')}</p> : null}
       {entries.map((entry) => (
@@ -112,7 +112,7 @@ function Entry({
           ) : null}
           {entry.effort.map((e) =>
             e.answer ? (
-              <span key={e.provider} className="rounded border border-line px-1">
+              <span key={e.provider} className="rounded fill-control px-1">
                 {t('effort', { level: e.answer, provider: e.provider })}
               </span>
             ) : null,
@@ -121,7 +121,7 @@ function Entry({
       );
     case 'reply':
       return (
-        <div className="mr-8 rounded-lg border border-line bg-raised px-2 py-1">
+        <div className="mr-8 rounded-lg fill-control px-2 py-1">
           {entry.text ? (
             <SafeMarkdown text={entry.text} />
           ) : (
@@ -134,7 +134,7 @@ function Entry({
     case 'tool':
       return (
         <p className="flex flex-wrap items-center gap-1">
-          <span className="rounded border border-line px-1 font-mono">{entry.name}</span>
+          <span className="rounded fill-control px-1 font-mono">{entry.name}</span>
           <span
             className={
               entry.status === 'blocked' || entry.status === 'failed' ? 'text-danger' : 'text-muted'
@@ -156,7 +156,7 @@ function Entry({
       );
     case 'question':
       return (
-        <div className="mr-8 rounded-lg border border-line px-2 py-1">
+        <div className="mr-8 rounded-lg fill-control px-2 py-1">
           <p className="font-medium">{t('asked', { target: labelOf(entry.targetNodeId) })}</p>
           <p className="whitespace-pre-wrap">{entry.body}</p>
           {entry.answer ? (

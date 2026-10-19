@@ -54,7 +54,7 @@ export function UltraModels({
   return (
     <fieldset
       disabled={disabled}
-      className="flex w-full min-w-0 flex-col gap-2 rounded border border-line p-3 text-xs"
+      className="flex w-full min-w-0 flex-col gap-2 rounded fill-group p-3 text-xs"
     >
       <legend className="font-medium">{t('ultraModels')}</legend>
       <p className="text-muted">{t('ultraModelScope')}</p>

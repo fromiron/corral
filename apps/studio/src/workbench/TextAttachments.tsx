@@ -143,7 +143,7 @@ export function TextAttachmentList({ attachments }: { attachments: TextAttachmen
             <summary className="cursor-pointer">
               {item.name} · {item.bytes} B · {item.sha256.slice(0, 12)}
             </summary>
-            <pre className="mt-1 max-h-60 overflow-auto whitespace-pre-wrap break-all rounded border border-line p-2">
+            <pre className="mt-1 max-h-60 overflow-auto whitespace-pre-wrap break-all rounded fill-group p-2">
               {item.text}
             </pre>
           </details>

@@ -20,7 +20,7 @@ export function RecipeStatusPanel({
     <section
       data-testid="recipe-status"
       aria-label={t('heading')}
-      className="flex flex-col gap-2 rounded border border-line p-3 text-xs"
+      className="flex flex-col gap-2 rounded fill-group p-3 text-xs"
     >
       <h3 className="font-semibold">{t('heading')}</h3>
       {stopped ? (

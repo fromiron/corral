@@ -48,7 +48,7 @@ export function BudgetInspector({
   return (
     <section
       aria-labelledby={headingId}
-      className="flex flex-col gap-2 rounded border border-line p-2 text-xs"
+      className="flex flex-col gap-2 rounded fill-group p-2 text-xs"
     >
       <h3 id={headingId} className="font-semibold">
         {t('heading')}
@@ -111,7 +111,7 @@ export function BudgetInspector({
               <li
                 key={id}
                 data-testid={`budget-call-${row.modelCallId ?? id}`}
-                className="rounded border border-line p-1"
+                className="rounded fill-group p-1"
               >
                 <span className="font-mono">{row.modelCallId ?? id}</span> ·{' '}
                 <span>{t(`state.${row.status}`)}</span> ·{' '}

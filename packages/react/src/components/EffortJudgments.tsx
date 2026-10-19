@@ -37,7 +37,7 @@ export function EffortJudgments({ session }: { session: RunSessionStore }) {
   return (
     <section
       aria-labelledby={headingId}
-      className="flex flex-col gap-2 rounded border border-line p-2 text-xs"
+      className="flex flex-col gap-2 rounded fill-group p-2 text-xs"
     >
       <h3 id={headingId} className="font-semibold">
         {t('heading')}
@@ -77,7 +77,7 @@ export function EffortJudgments({ session }: { session: RunSessionStore }) {
                 <li
                   key={call}
                   data-testid={`judgment-${call}`}
-                  className="flex flex-col gap-1 rounded border border-line p-1.5"
+                  className="flex flex-col gap-1 rounded fill-group p-1.5"
                 >
                   <span>
                     <span className="font-medium">{labelOf(executionId)}</span>{' '}
@@ -102,7 +102,7 @@ function Judgment({ decision: d }: { decision: Decision }) {
     <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
       <span className="font-mono">{d.provider}</span>
       {d.status === 'observed' && d.answer ? (
-        <span className="rounded border border-line px-1 font-medium" data-level={d.answer}>
+        <span className="rounded fill-control px-1 font-medium" data-level={d.answer}>
           {t(`level.${d.answer}`)}
         </span>
       ) : null}

@@ -241,7 +241,7 @@ export function FilePanel({
                 max={lineCount}
                 value={range.start}
                 onChange={(e) => setRange((r) => ({ ...r, start: e.target.valueAsNumber || 1 }))}
-                className="w-14 rounded border border-line bg-surface px-1"
+                className="w-14 rounded fill-control px-1"
               />
             </label>
             <label>
@@ -252,7 +252,7 @@ export function FilePanel({
                 max={lineCount}
                 value={range.end}
                 onChange={(e) => setRange((r) => ({ ...r, end: e.target.valueAsNumber || 1 }))}
-                className="w-14 rounded border border-line bg-surface px-1"
+                className="w-14 rounded fill-control px-1"
               />
             </label>
             <Button
@@ -266,7 +266,7 @@ export function FilePanel({
           </div>
           <section
             aria-label={t('fileContent')}
-            className="max-h-[45vh] overflow-auto rounded border border-line bg-surface"
+            className="max-h-[45vh] overflow-auto rounded fill-group"
           >
             <Suspense fallback={<p className="p-3 text-xs text-muted">{t('loadingFile')}</p>}>
               <SourceCode path={active} text={content.text} onSelect={setRange} />

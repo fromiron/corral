@@ -103,7 +103,7 @@ export function RunComparison({
         </tbody>
       </table>
 
-      <details className="rounded border border-line p-2 text-xs">
+      <details className="rounded fill-group p-2 text-xs">
         <summary className="cursor-pointer font-medium">{tr('appliedHeading')}</summary>
         <div className="mt-2 grid gap-3 md:grid-cols-2">
           {[a, b].map((run) => (
@@ -135,14 +135,14 @@ export function RunComparison({
               type="button"
               aria-pressed={showDiff}
               onClick={() => setShowDiff(!showDiff)}
-              className="rounded border border-line px-2 py-1 text-xs"
+              className="rounded fill-control px-2 py-1 text-xs"
             >
               {showDiff ? t('sideBySide') : t('showDiff')}
             </button>
           ) : null}
         </div>
         {diff ? (
-          <pre className="overflow-x-auto rounded border border-line text-xs">
+          <pre className="overflow-x-auto rounded fill-group text-xs">
             {diff.map((line, i) => (
               <div
                 // biome-ignore lint/suspicious/noArrayIndexKey: positional diff rows
@@ -166,7 +166,7 @@ export function RunComparison({
             {[a, b].map((run) => (
               <div
                 key={run.projection.runId}
-                className="max-h-[60vh] overflow-auto rounded-md border border-line bg-surface p-2"
+                className="max-h-[60vh] overflow-auto rounded-md fill-group p-2"
               >
                 {run.output === null ? (
                   <p className="text-xs text-muted">{t('noOutput')}</p>

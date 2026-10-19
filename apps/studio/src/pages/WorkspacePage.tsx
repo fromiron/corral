@@ -261,7 +261,7 @@ export function WorkspacePage() {
             <article
               key={id}
               aria-labelledby={`template-${id}`}
-              className="flex flex-col gap-2 rounded-lg border border-line/70 p-3"
+              className="flex flex-col gap-2 rounded-lg fill-group p-3"
             >
               <h4 id={`template-${id}`} className="text-ui font-medium">
                 {t(`template.${id}.name`)}
@@ -620,7 +620,7 @@ function MoveCorral({
       aria-label={t('moveTo', { name })}
       value=""
       onChange={(event) => event.target.value && onMove(event.target.value)}
-      className="rounded border border-line bg-surface px-1 py-1"
+      className="rounded fill-control px-1 py-1"
     >
       <option value="">{t('moveChoose')}</option>
       {targets.map((p) => (
@@ -753,7 +753,7 @@ function StartSession({
     <form
       onSubmit={create}
       aria-label={t('new')}
-      className="flex flex-col gap-4 rounded-xl border border-line bg-surface p-4"
+      className="flex flex-col gap-4 rounded-xl fill-group p-4"
     >
       <div>
         <h2 className="text-sm font-semibold">{t('new')}</h2>
@@ -815,7 +815,7 @@ function StartSession({
                   void create();
                 }
               }}
-              className="min-h-20 w-full resize-y rounded-md border border-line bg-transparent px-2 py-1 text-sm leading-6 outline-none focus-visible:ring-2 focus-visible:ring-accent placeholder:text-muted/80"
+              className="min-h-20 w-full resize-y rounded-md fill-control px-2 py-1 text-sm leading-6 outline-none focus-visible:ring-2 focus-visible:ring-accent placeholder:text-muted/80"
             />
           </label>
           <p className="text-2xs text-muted">{n('optionalPurposeHint')}</p>

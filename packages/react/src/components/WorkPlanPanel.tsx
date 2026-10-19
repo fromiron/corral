@@ -51,7 +51,7 @@ export function WorkPlanPanel({ session }: { session: RunSessionStore }) {
           <details
             key={view.scope === 'team' ? 'team' : view.executionId}
             open
-            className="rounded-lg border border-line p-3 text-sm"
+            className="rounded-lg fill-group p-3 text-sm"
           >
             <summary className="cursor-pointer font-medium">
               {t('heading')} · {t(view.scope)} · {view.executionId} · v{view.revision}

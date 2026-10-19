@@ -192,7 +192,7 @@ function ExtensionPrompt({
         <select
           aria-label={request.title}
           disabled={busy}
-          className="rounded border border-line bg-surface p-2"
+          className="rounded fill-group p-2"
           value={value}
           onChange={(e) => setValue(e.target.value)}
         >
@@ -209,7 +209,7 @@ function ExtensionPrompt({
         <input
           aria-label={request.title}
           disabled={busy}
-          className="rounded border border-line bg-surface p-2"
+          className="rounded fill-group p-2"
           value={value}
           maxLength={12000}
           placeholder={request.placeholder}

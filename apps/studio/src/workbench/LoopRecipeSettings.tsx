@@ -7,7 +7,7 @@ import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { useServices } from '../services.tsx';
 
-const field = 'rounded border border-line bg-surface p-2 text-sm';
+const field = 'rounded fill-control p-2 text-sm';
 export function LoopRecipeSettings({ node, projectId }: { node: LoopNode; projectId: string }) {
   const { editor } = useStudioStores(),
     { harnesses: api } = useServices();

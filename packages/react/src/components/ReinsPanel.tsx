@@ -131,7 +131,7 @@ export function ReinsPanel({
       <h2 id={`${inputId}-heading`} className="text-sm font-semibold">
         {t('heading')}
       </h2>
-      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 rounded-md border border-line bg-raised p-2 text-xs">
+      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 rounded-md fill-group p-2 text-xs">
         <dt className="text-muted">{t('target')}</dt>
         <dd>
           {target.nodeLabel} · execution {target.executionId}
@@ -166,7 +166,7 @@ export function ReinsPanel({
             }
             onKeyDown={onKeyDown}
             rows={3}
-            className="w-full resize-y rounded-md border border-line bg-surface p-2 text-sm"
+            className="w-full resize-y rounded-md fill-group p-2 text-sm"
           />
           <p id={hintId} className="text-xs text-muted">
             {t('instructionHint')}
@@ -179,7 +179,7 @@ export function ReinsPanel({
               <button
                 type="button"
                 disabled={pending || target.finished}
-                className="rounded border border-line px-2 py-1 text-xs disabled:opacity-50"
+                className="rounded fill-control px-2 py-1 text-xs disabled:opacity-50"
                 onClick={() =>
                   setDraft({
                     ...draft,
@@ -238,7 +238,7 @@ export function ReinsPanel({
           <button
             type="button"
             onClick={() => setCancelTarget(null)}
-            className="rounded border border-line px-2 py-1"
+            className="rounded fill-control px-2 py-1"
           >
             {t('keepRunning')}
           </button>
@@ -255,7 +255,7 @@ export function ReinsPanel({
             onChange={(event) =>
               setRestartInstructions({ ...restartInstructions, [restartKey]: event.target.value })
             }
-            className="rounded border border-line bg-surface p-2"
+            className="rounded fill-group p-2"
           />
           <button
             type="button"
@@ -271,7 +271,7 @@ export function ReinsPanel({
                 },
               })
             }
-            className="rounded border border-line px-2 py-1 disabled:opacity-50"
+            className="rounded fill-control px-2 py-1 disabled:opacity-50"
           >
             {t('restart')}
           </button>
@@ -295,7 +295,7 @@ export function ReinsPanel({
                 <li
                   key={d.directiveId}
                   id={`directive-${d.directiveId}`}
-                  className="flex flex-col gap-1 rounded border border-line p-2 text-xs"
+                  className="flex flex-col gap-1 rounded fill-group p-2 text-xs"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <span className="break-words">{d.text}</span>

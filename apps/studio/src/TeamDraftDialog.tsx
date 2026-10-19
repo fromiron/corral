@@ -95,7 +95,7 @@ export function TeamDraftDialog({
               rows={4}
               onChange={(e) => setGoal(e.target.value)}
               placeholder={t('goalPlaceholder')}
-              className="rounded border border-line bg-surface px-2 py-1 text-sm"
+              className="rounded fill-control px-2 py-1 text-sm"
             />
             <div className="flex flex-wrap items-start gap-3">
               <div className="flex flex-col gap-1">
@@ -138,7 +138,7 @@ export function TeamDraftDialog({
             <button
               type="button"
               onClick={() => setPlan(null)}
-              className="rounded border border-line px-3 py-1.5 text-sm"
+              className="rounded fill-control px-3 py-1.5 text-sm"
             >
               {t('back')}
             </button>
@@ -146,7 +146,7 @@ export function TeamDraftDialog({
           <button
             type="button"
             onClick={onClose}
-            className="rounded border border-line px-3 py-1.5 text-sm"
+            className="rounded fill-control px-3 py-1.5 text-sm"
           >
             {t('cancel')}
           </button>
@@ -171,7 +171,7 @@ function PlanEditor({ plan, onChange }: { plan: TeamPlan; onChange(plan: TeamPla
   const id = useId();
   // The raw text, so a new empty line can be typed; the plan keeps the non-empty lines.
   const [criteria, setCriteria] = useState(plan.criteria.join('\n'));
-  const field = 'rounded border border-line bg-surface px-2 py-1 text-sm';
+  const field = 'rounded fill-control px-2 py-1 text-sm';
   const ordered = TEAM_SLOTS[plan.pattern].map((slot) => plan.roles.find((r) => r.slot === slot));
   const setRole = (index: number, patch: { name?: string; duty?: string }) =>
     onChange({
@@ -210,7 +210,7 @@ function PlanEditor({ plan, onChange }: { plan: TeamPlan; onChange(plan: TeamPla
         <legend className="text-sm font-medium">{t('rolesLabel')}</legend>
         {ordered.map((role, index) =>
           role ? (
-            <div key={role.slot} className="flex flex-col gap-1 rounded border border-line p-2">
+            <div key={role.slot} className="flex flex-col gap-1 rounded fill-group p-2">
               <label htmlFor={`${id}-name-${index}`} className="sr-only">
                 {t('roleName', { n: index + 1 })}
               </label>

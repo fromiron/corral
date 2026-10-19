@@ -131,7 +131,7 @@ export function HunkActions({
         </>
       )}
       {plan && !result ? (
-        <div className="space-y-2 rounded border border-line p-2">
+        <div className="space-y-2 rounded fill-group p-2">
           <p className="font-medium">
             {t(plan.target === 'original' ? 'original' : 'workingCopy')}
           </p>

@@ -98,7 +98,7 @@ export function GettingStarted({
   return (
     <section
       aria-labelledby={headingId}
-      className="flex flex-col gap-2 rounded-md border border-line bg-raised p-3"
+      className="flex flex-col gap-2 rounded-md fill-group p-3"
     >
       <div className="flex items-center justify-between gap-2">
         <h2 id={headingId} className="text-sm font-semibold">
@@ -110,7 +110,7 @@ export function GettingStarted({
             store(HIDDEN);
             setHidden(true);
           }}
-          className="rounded border border-line px-2 py-0.5 text-xs"
+          className="rounded fill-control px-2 py-0.5 text-xs"
         >
           {t('hide')}
         </button>

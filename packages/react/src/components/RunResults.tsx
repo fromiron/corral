@@ -66,7 +66,7 @@ export function RunResults({
           className="flex max-h-40 shrink-0 flex-col gap-3 overflow-auto border-b border-line p-3 @3xl:max-h-none @3xl:w-72 @3xl:border-r @3xl:border-b-0"
         >
           {results.kind === 'final' ? null : (
-            <p role="status" className="rounded border border-line p-2 text-xs text-muted">
+            <p role="status" className="rounded fill-group p-2 text-xs text-muted">
               {t(`kind.${results.kind}`, { status: projection.status })}
             </p>
           )}
@@ -179,7 +179,7 @@ function ResultButton({
       aria-current={chosen ? 'true' : undefined}
       onClick={() => onSelect(item.artifactVersionId)}
       className={`flex w-full flex-col items-start rounded border px-2 py-1 text-left text-sm ${
-        chosen ? 'border-accent bg-raised' : 'border-line'
+        chosen ? 'border-accent bg-raised' : 'border-transparent fill-group'
       }`}
     >
       <span className="font-medium">
@@ -283,16 +283,16 @@ export function ResultReader({
           </span>
         </div>
         <ul aria-label={t('stateLabel')} className="flex flex-wrap gap-2 text-xs">
-          <li className="rounded border border-line px-2 py-0.5">
+          <li className="rounded fill-control px-2 py-0.5">
             {t('runState', { status: ts(status) })}
           </li>
-          <li className="rounded border border-line px-2 py-0.5">
+          <li className="rounded fill-control px-2 py-0.5">
             {item.review
               ? t('reviewState', { verdict: ta(`verdict.${item.review.verdict}`) }) +
                 (item.review.stale ? ` · ${t('stale')}` : '')
               : t('noReview')}
           </li>
-          <li className="rounded border border-line px-2 py-0.5">
+          <li className="rounded fill-control px-2 py-0.5">
             {item.submitted ? t('submitted') : t('notSubmitted')}
           </li>
         </ul>
@@ -302,7 +302,7 @@ export function ResultReader({
             {formats.map((value) => (
               <label
                 key={value}
-                className={`cursor-pointer rounded px-2 py-1 focus-within:outline-2 focus-within:outline-accent ${format === value ? 'bg-accent text-on-accent' : 'border border-line'}`}
+                className={`cursor-pointer rounded px-2 py-1 focus-within:outline-2 focus-within:outline-accent ${format === value ? 'bg-accent text-on-accent' : 'fill-control'}`}
               >
                 <input
                   type="radio"
@@ -320,7 +320,7 @@ export function ResultReader({
             type="button"
             disabled={text === undefined}
             onClick={() => void copy()}
-            className="rounded border border-line px-2 py-1"
+            className="rounded fill-control px-2 py-1"
           >
             {copied ? t('copied') : t('copy')}
           </button>
@@ -328,7 +328,7 @@ export function ResultReader({
             type="button"
             disabled={text === undefined}
             onClick={download}
-            className="rounded border border-line px-2 py-1"
+            className="rounded fill-control px-2 py-1"
           >
             {t('download')}
           </button>
@@ -337,7 +337,7 @@ export function ResultReader({
               type="button"
               aria-pressed={comparing}
               onClick={() => setComparing(!comparing)}
-              className="rounded border border-line px-2 py-1"
+              className="rounded fill-control px-2 py-1"
             >
               {comparing ? ta('hideCompare') : t('comparePrevious')}
             </button>
@@ -346,7 +346,7 @@ export function ResultReader({
             <button
               type="button"
               onClick={() => onStartFrom({ runId, artifactVersionId: id, label })}
-              className="rounded border border-line px-2 py-1"
+              className="rounded fill-control px-2 py-1"
             >
               {ta('newRunFromVersion')}
             </button>

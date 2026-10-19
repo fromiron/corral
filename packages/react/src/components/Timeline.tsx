@@ -72,7 +72,7 @@ export function Timeline({ session }: { session: RunSessionStore }) {
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="rounded border border-line bg-surface px-1 py-0.5"
+        className="rounded fill-control px-1 py-0.5"
       >
         <option value="all">{t('all')}</option>
         {options.map(([v, text]) => (
@@ -116,7 +116,7 @@ export function Timeline({ session }: { session: RunSessionStore }) {
       <div
         ref={scrollRef}
         data-testid="timeline-scroll"
-        className="h-80 overflow-auto rounded-md border border-line"
+        className="h-80 overflow-auto rounded-md fill-group"
       >
         {shown.length === 0 ? (
           <p className="p-2 text-xs text-muted">{t('empty')}</p>
@@ -159,7 +159,7 @@ export function Timeline({ session }: { session: RunSessionStore }) {
           </ul>
         )}
       </div>
-      <div className="rounded-md border border-line p-2 text-xs" data-testid="timeline-selected">
+      <div className="rounded-md fill-group p-2 text-xs" data-testid="timeline-selected">
         <h4 className="font-semibold">{t('selected')}</h4>
         {selected ? (
           <dl className="grid grid-cols-[6rem_1fr] gap-x-2">

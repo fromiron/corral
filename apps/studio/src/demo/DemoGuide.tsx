@@ -55,7 +55,7 @@ export function DemoGuide({
   return (
     <section
       aria-labelledby="demo-guide-heading"
-      className="rounded-md border border-line bg-raised p-3 text-xs"
+      className="rounded-md fill-group p-3 text-xs"
     >
       <details open>
         <summary className="cursor-pointer">

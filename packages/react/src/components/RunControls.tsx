@@ -99,7 +99,7 @@ export function RunControls({
           <button
             type="button"
             onClick={onClearStartFrom}
-            className="rounded border border-line px-1.5 py-0.5"
+            className="rounded fill-control px-1.5 py-0.5"
           >
             {t('clearStartFrom')}
           </button>
@@ -111,7 +111,7 @@ export function RunControls({
           <select
             value={mode}
             onChange={(e) => setMode(e.target.value as 'mock' | 'live')}
-            className="rounded border border-line bg-surface px-1 py-0.5"
+            className="rounded fill-control px-1 py-0.5"
           >
             <option value="mock">{t('modeMock')}</option>
             <option value="live">{t('modeLive')}</option>

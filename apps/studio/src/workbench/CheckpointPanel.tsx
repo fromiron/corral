@@ -153,7 +153,7 @@ export function CheckpointPanel({ sessionId }: { sessionId: string }) {
           ))}
       </ul>
       {plan ? (
-        <section aria-label={t('preview')} className="rounded border border-line p-2">
+        <section aria-label={t('preview')} className="rounded fill-group p-2">
           <p className="font-medium">
             {t(plan.target === 'original' ? 'original' : 'workingCopy')}
           </p>
