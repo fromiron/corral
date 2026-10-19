@@ -141,7 +141,12 @@ test('[TC-SEC-002-H] an API key typed under Models runs live, is never shown, an
   await corral.open('/');
   await openModels(page);
   const openai = page.getByTestId('provider-openai');
-  await openai.getByLabel('API key').fill('sk-e2e-entered-secret');
+  await openai.getByLabel('API key', { exact: true }).fill('sk-e2e-entered-secret');
+  await expect(openai.getByLabel('API key', { exact: true })).toHaveAttribute('type', 'password');
+  await openai.getByRole('button', { name: 'Show API key', exact: true }).click();
+  await expect(openai.getByLabel('API key', { exact: true })).toHaveAttribute('type', 'text');
+  await openai.getByRole('button', { name: 'Hide API key', exact: true }).click();
+  await expect(openai.getByLabel('API key', { exact: true })).toHaveAttribute('type', 'password');
   await openai.getByRole('button', { name: 'Save key' }).click();
   await expect(openai.getByTestId('auth-status')).toContainText('Using the API key you entered');
   // The key field gives way to "Remove key"; the key is not kept in the page.
@@ -250,6 +255,63 @@ test('[TC-UX-003-H] asks the signed-in model for a team draft once and opens it 
 });
 
 test.describe('editing models on the Models page (CR-008)', () => {
+  test('[TC-SEC-002-H] [TC-SEC-002-N] an inline endpoint key stays out of config and retries after a partial save', async ({
+    page,
+    corral,
+  }) => {
+    await corral.open('/settings/models');
+    await page.getByRole('button', { name: 'Edit models' }).click();
+    const editor = page.getByRole('region', { name: 'Edit models' });
+    await editor.getByRole('button', { name: 'Add endpoint' }).click();
+    await editor.getByLabel('Endpoint id 1').fill('hive');
+    await editor.getByLabel('Endpoint name 1').fill('Hive');
+    await editor.getByLabel('Address of endpoint 1').fill('https://api-cdn.thehive.ai/api/v3');
+    await editor.getByLabel('Models of endpoint 1').fill('deepseek-ai/deepseek-v4.1-flash-1017');
+    await editor.getByLabel('Access of endpoint 1').selectOption('api_key');
+    const key = editor.getByLabel('API key', { exact: true });
+    await expect(key).toBeVisible();
+    await expect(key).toHaveAttribute('type', 'password');
+    await key.fill('fixture-inline-key');
+    await editor.getByRole('button', { name: 'Show API key', exact: true }).click();
+    await expect(key).toHaveAttribute('type', 'text');
+    await editor.getByRole('button', { name: 'Hide API key', exact: true }).click();
+    await expect(key).toHaveAttribute('type', 'password');
+    await editor.getByLabel('Address of endpoint 1').fill('https://api-cdn.thehive.ai/api/v3/');
+    await expect(key).toHaveValue('');
+    await key.fill('fixture-inline-key');
+    let failOnce = true;
+    await page.route('**/model-auth/hive/api-key', async (route) => {
+      if (failOnce) {
+        failOnce = false;
+        await route.fulfill({
+          status: 503,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            error: { code: 'COMMAND_NOT_SUPPORTED', message: 'fixture key store unavailable' },
+          }),
+        });
+      } else await route.continue();
+    });
+    await editor.getByRole('button', { name: 'Save models' }).click();
+    await expect(editor.getByRole('alert')).toContainText(
+      'Settings saved, but API key saving failed',
+    );
+    await expect(key).toHaveValue('fixture-inline-key');
+    const stored = await page.evaluate(async () => (await fetch('/api/v1/model-config')).json());
+    expect(stored.modelProviders[0].id).toBe('hive');
+    expect(stored.modelProfiles.every((p: { provider: string }) => p.provider === 'openai')).toBe(
+      true,
+    );
+    expect(JSON.stringify(stored)).not.toContain('fixture-inline-key');
+    await editor.getByRole('button', { name: 'Save models' }).click();
+    await expect(editor).toHaveCount(0);
+    await expect(page.getByTestId('provider-hive').getByTestId('auth-status')).toContainText(
+      'Using the API key you entered',
+    );
+    expect(await page.content()).not.toContain('fixture-inline-key');
+    expect(corral.errors.filter((e) => !e.includes('503'))).toEqual([]);
+  });
+
   test('[TC-SEC-002-H] saving an endpoint and local reasoning settings in either order preserves both', async ({
     page,
     corral,

@@ -437,6 +437,34 @@ describe('API keys and OpenAI-compatible endpoints (CR-005)', () => {
       /modelProviders/,
     );
   });
+
+  it('[TC-SEC-002-H] [TC-SEC-002-N] a registered endpoint needs no profile to save a key and refuses a stale config revision', async () => {
+    const fake = makeFake();
+    const context = await start(
+      fake,
+      FAKE_PROFILES,
+      endpointConfig('https://example.test/v1', 'api_key'),
+    );
+    const auth = (await context.json('/model-auth')).body;
+    expect(auth.find((p: { providerId: string }) => p.providerId === 'local')).toMatchObject({
+      methods: { apiKey: true },
+      signedIn: false,
+    });
+    const { revision } = (await context.json('/model-config')).body;
+    const request = (rev: string, key: string) =>
+      context.json('/model-auth/local/api-key', {
+        method: 'PUT',
+        body: JSON.stringify({ revision: rev, key }),
+      });
+    expect((await request(revision, 'fixture-endpoint-key')).status).toBe(200);
+    const credentials = readFileSync(join(fake.configDir, 'credentials.json'), 'utf8');
+    expect((await request('stale', 'fixture-replacement-key')).status).toBe(409);
+    expect(readFileSync(join(fake.configDir, 'credentials.json'), 'utf8')).toBe(credentials);
+    expect(context.responses.join('\n')).not.toContain('fixture-endpoint-key');
+    expect(readFileSync(join(context.workspace, '.corral', 'config.json'), 'utf8')).not.toContain(
+      'fixture-endpoint-key',
+    );
+  });
 });
 
 describe('team drafts from a goal (CR-006)', () => {

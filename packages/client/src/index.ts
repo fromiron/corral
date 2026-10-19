@@ -848,10 +848,10 @@ export class ModelsApi {
   }
 
   /** Stores an API key on the server (CR-005); the answer never contains it. */
-  setApiKey(providerId: string, key: string): Promise<ProviderAuthView[]> {
+  setApiKey(providerId: string, key: string, revision?: string): Promise<ProviderAuthView[]> {
     return this.http.json(`/model-auth/${encodeURIComponent(providerId)}/api-key`, {
       method: 'PUT',
-      body: JSON.stringify({ key }),
+      body: JSON.stringify({ key, ...(revision ? { revision } : {}) }),
     });
   }
 

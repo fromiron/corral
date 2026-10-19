@@ -86,6 +86,7 @@ P8 입력·기록 주소. 문서 도구에는 이 주소에서 받은 ID만 전�
 |---|---|---|
 | GET /model-profiles | — | profileId, provider, modelId, modelName, available, reasoning, contextWindow, maxOutputTokens, method(`oauth`·`api_key`·null), keyConfigured |
 | GET /model-auth | — | provider별 signedIn, method, subscription, expiresAt, 진행 중 login(state·authUrl·error) |
+| PUT /model-auth/:provider/api-key | `{key, revision?}` | 프로필의 provider 또는 등록 endpoint에 키 저장. optional config revision 불일치 시 `REVISION_CONFLICT`; 응답은 인증 상태만 포함 |
 | POST /model-auth/:provider/login | — | 202. provider 자체 로그인 시작. 사용자가 여는 authUrl을 돌려준다 |
 | POST /model-auth/:provider/login/callback | `{url}` | 브라우저의 최종 redirect 주소(자동 콜백이 닿지 않을 때) |
 | DELETE /model-auth/:provider/login | — | 진행 중 로그인 취소 |

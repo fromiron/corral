@@ -738,8 +738,17 @@ async function createCorralServer(
   // CR-005: a key typed under Settings → Models; stored on this computer, never sent back.
   app.put<ProviderParams>('/api/v1/model-auth/:providerId/api-key', async (request, reply) => {
     if (!registry) return noLive(reply);
-    const body = parse(z.strictObject({ key: z.string().trim().min(1).max(1000) }), request, reply);
+    const body = parse(
+      z.strictObject({
+        key: z.string().trim().min(1).max(1000),
+        revision: z.string().min(1).max(100).optional(),
+      }),
+      request,
+      reply,
+    );
     if (!body) return reply;
+    if (body.revision !== undefined && body.revision !== configRevision(workspace.root))
+      return fail(reply, 'REVISION_CONFLICT', 'the config changed before the key was saved');
     try {
       await registry.setApiKey(request.params.providerId, body.key);
     } catch (error) {

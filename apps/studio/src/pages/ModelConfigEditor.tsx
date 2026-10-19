@@ -3,10 +3,11 @@ import { useRouter } from '@tanstack/react-router';
 import { useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
+import { ApiKeyInput } from './ApiKeyInput.tsx';
 
 /**
  * Profiles and OpenAI-compatible endpoints, edited on the Models page and saved to
- * `.corral/config.json` (CR-008). Keys are not part of it; they stay in Settings' sign-in.
+ * `.corral/config.json` (CR-008). Keys go separately to the credential API after config saves.
  */
 export function ModelConfigEditor({
   config: initialConfig,
@@ -22,11 +23,12 @@ export function ModelConfigEditor({
   const router = useRouter();
   const headingId = useId();
   // Auth polling may refresh the parent while this draft still belongs to the earlier config.
-  const [config] = useState(initialConfig);
+  const [config, setConfig] = useState(initialConfig);
   const [profiles, setProfiles] = useState<ProfileRow[]>(() =>
     config.modelProfiles.map((p) => ({ ...p, uid: uid() })),
   );
   const [endpoints, setEndpoints] = useState<EndpointDraft[]>(config.modelProviders.map(toDraft));
+  const [endpointKeys, setEndpointKeys] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -49,13 +51,18 @@ export function ModelConfigEditor({
 
   const setProfile = (index: number, patch: Partial<ProfileRow>) =>
     setProfiles(profiles.map((p, i) => (i === index ? { ...p, ...patch } : p)));
-  const setEndpoint = (index: number, patch: Partial<EndpointDraft>) =>
+  const setEndpoint = (index: number, patch: Partial<EndpointDraft>) => {
+    const endpoint = endpoints[index]!;
+    if (patch.id !== undefined || patch.baseUrl !== undefined || patch.access !== undefined)
+      setEndpointKeys((keys) => ({ ...keys, [endpoint.uid]: '' }));
     setEndpoints(endpoints.map((e, i) => (i === index ? { ...e, ...patch } : e)));
+  };
 
   const save = async () => {
     if (!models) return;
     setSaving(true);
     setError(null);
+    let stage: 'config' | 'keys' | 'refresh' = 'config';
     try {
       const latest = await models.config();
       if (
@@ -65,15 +72,28 @@ export function ModelConfigEditor({
         await router.invalidate();
         throw new Error(t('conflict'));
       }
-      await models.saveConfig({
+      const saved = await models.saveConfig({
         revision: latest.revision,
         modelProfiles: profiles.map(({ uid: _uid, ...p }) => ({ ...p, id: p.id.trim() })),
         modelProviders: endpoints.map((e) => fromDraft(e, config.modelProviders)),
       });
+      setConfig(saved);
+      stage = 'keys';
+      for (const endpoint of endpoints) {
+        const key = endpointKeys[endpoint.uid]?.trim();
+        if (endpoint.access !== 'api_key' || !key) continue;
+        await models.setApiKey(endpoint.id.trim(), key, saved.revision);
+        setEndpointKeys((keys) => ({ ...keys, [endpoint.uid]: '' }));
+      }
+      stage = 'refresh';
       await router.invalidate();
       onDone();
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : String(failure));
+      setError(
+        t(stage === 'config' ? 'refused' : stage === 'keys' ? 'keysFailed' : 'refreshFailed', {
+          message: failure instanceof Error ? failure.message : String(failure),
+        }),
+      );
     } finally {
       setSaving(false);
     }
@@ -190,45 +210,78 @@ export function ModelConfigEditor({
               key={endpoint.uid}
               className="grid gap-2 rounded border border-line p-2 sm:grid-cols-2"
             >
-              <input
-                aria-label={t('endpointId', { n })}
-                placeholder="ollama"
-                value={endpoint.id}
-                onChange={(e) => setEndpoint(index, { id: e.target.value })}
-                className={`${field} font-mono`}
-              />
-              <input
-                aria-label={t('endpointName', { n })}
-                placeholder="Ollama"
-                value={endpoint.name}
-                onChange={(e) => setEndpoint(index, { name: e.target.value })}
-                className={field}
-              />
-              <input
-                aria-label={t('endpointAddress', { n })}
-                placeholder="http://127.0.0.1:11434/v1"
-                value={endpoint.baseUrl}
-                onChange={(e) => setEndpoint(index, { baseUrl: e.target.value })}
-                className={`${field} font-mono sm:col-span-2`}
-              />
-              <select
-                aria-label={t('endpointAccess', { n })}
-                value={endpoint.access}
-                onChange={(e) =>
-                  setEndpoint(index, { access: e.target.value as EndpointConfig['access'] })
-                }
-                className={field}
-              >
-                <option value="none">{t('accessNone')}</option>
-                <option value="api_key">{t('accessKey')}</option>
-              </select>
+              <label className="flex flex-col gap-1 text-xs">
+                <span>{t('endpointId', { n })}</span>
+                <input
+                  aria-label={t('endpointId', { n })}
+                  placeholder="hive"
+                  value={endpoint.id}
+                  onChange={(e) => setEndpoint(index, { id: e.target.value })}
+                  className={`${field} font-mono`}
+                />
+                <span className="text-muted">{t('endpointIdHint')}</span>
+              </label>
+              <label className="flex flex-col gap-1 text-xs">
+                <span>{t('endpointName', { n })}</span>
+                <input
+                  aria-label={t('endpointName', { n })}
+                  placeholder="Hive"
+                  value={endpoint.name}
+                  onChange={(e) => setEndpoint(index, { name: e.target.value })}
+                  className={field}
+                />
+                <span className="text-muted">{t('endpointNameHint')}</span>
+              </label>
+              <label className="flex flex-col gap-1 text-xs sm:col-span-2">
+                <span>{t('endpointAddress', { n })}</span>
+                <input
+                  aria-label={t('endpointAddress', { n })}
+                  placeholder="http://127.0.0.1:11434/v1"
+                  value={endpoint.baseUrl}
+                  onChange={(e) => setEndpoint(index, { baseUrl: e.target.value })}
+                  className={`${field} font-mono sm:col-span-2`}
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-xs">
+                <span>{t('endpointAccess', { n })}</span>
+                <select
+                  aria-label={t('endpointAccess', { n })}
+                  value={endpoint.access}
+                  onChange={(e) =>
+                    setEndpoint(index, { access: e.target.value as EndpointConfig['access'] })
+                  }
+                  className={field}
+                >
+                  <option value="none">{t('accessNone')}</option>
+                  <option value="api_key">{t('accessKey')}</option>
+                </select>
+              </label>
               <button
                 type="button"
-                onClick={() => setEndpoints(endpoints.filter((_, i) => i !== index))}
-                className="justify-self-start rounded border border-line px-2 py-1 text-xs"
+                onClick={() => {
+                  setEndpointKeys((keys) => {
+                    const next = { ...keys };
+                    delete next[endpoint.uid];
+                    return next;
+                  });
+                  setEndpoints(endpoints.filter((_, i) => i !== index));
+                }}
+                className="self-end justify-self-start rounded border border-line px-2 py-1 text-xs"
               >
                 {t('removeEndpoint')}
               </button>
+              {endpoint.access === 'api_key' ? (
+                <div className="flex flex-col gap-1 sm:col-span-2">
+                  <ApiKeyInput
+                    value={endpointKeys[endpoint.uid] ?? ''}
+                    disabled={saving}
+                    onChange={(value) =>
+                      setEndpointKeys((keys) => ({ ...keys, [endpoint.uid]: value }))
+                    }
+                  />
+                  <p className="text-xs text-muted">{t('endpointKeyHint')}</p>
+                </div>
+              ) : null}
               <label className="flex flex-col gap-1 text-xs sm:col-span-2">
                 <span>{t('endpointModels', { n })}</span>
                 <textarea
@@ -262,7 +315,7 @@ export function ModelConfigEditor({
 
       {error ? (
         <p role="alert" className="text-sm text-danger">
-          {t('refused', { message: error })}
+          {error}
         </p>
       ) : null}
       <div className="flex justify-end gap-2">

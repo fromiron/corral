@@ -177,7 +177,12 @@ export class ModelRegistry implements ModelResolver {
   }
 
   private providers(): string[] {
-    return [...new Set(this.profiles.map((p) => p.provider))];
+    return [
+      ...new Set([
+        ...this.profiles.map((p) => p.provider),
+        ...(this.options.endpoints?.keys() ?? []),
+      ]),
+    ];
   }
 
   /** Re-reads sign-in status; the resolver answers from this (run start is synchronous). */
