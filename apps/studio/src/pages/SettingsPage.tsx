@@ -1,11 +1,13 @@
 import { Monitor, Moon, Sun } from '@corral/react/icons';
-import { Button } from '@corral/react/ui';
+import { Button, Select } from '@corral/react/ui';
 import type { ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
 import { ShortcutTable } from '../CommandPalette.tsx';
-import { DesktopWorkspace, desktop } from '../desktop.tsx';
-import { LOCALES, type Locale, useLocale } from '../locale.tsx';
+import { DesktopAbout, DesktopWorkspace, desktop } from '../desktop.tsx';
+import { LOCALES, useLocale } from '../locale.tsx';
 import { settingsRoute } from '../router.tsx';
+import { useServices } from '../services.tsx';
+import { formatChord, sendKeyLabel } from '../shortcuts.ts';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
 import { changePreferences, type Theme, usePreferences } from '../workbench/preferences.ts';
 import { SettingsProjectPicker } from '../workbench/SettingsNavigation.tsx';
@@ -22,7 +24,7 @@ export function SettingsLayout({ children, active }: { children: ReactNode; acti
       {projectSection ? <SettingsProjectPicker /> : null}
       <div className="min-h-0 flex-1 overflow-y-auto">
         {projectSection && !projectId ? (
-          <main className="mx-auto flex max-w-3xl flex-col gap-6 p-6 sm:p-10">
+          <main className="settings-content">
             <h2 className="text-2xl font-semibold">
               {active === 'mcp'
                 ? r('mcp')
@@ -40,13 +42,14 @@ export function SettingsLayout({ children, active }: { children: ReactNode; acti
 
 export function SettingsPage() {
   const t = useTranslations('Desktop');
+  const { serverVersion } = useServices();
   const { section = 'general' } = settingsRoute.useSearch();
   const { theme, sendKey, notify } = usePreferences();
   const { locale, setLocale } = useLocale();
   const { projectId: project } = useSettingsNavigation();
   return (
     <SettingsLayout active={section}>
-      <main className="mx-auto flex max-w-3xl flex-col gap-6 p-6 sm:p-10">
+      <main className="settings-content">
         <h2 className="text-2xl font-semibold tracking-tight">{t(section)}</h2>
         {section === 'general' ? (
           <>
@@ -83,6 +86,13 @@ export function SettingsPage() {
               <div>
                 <h3>{t('sendKey')}</h3>
                 <p>{t('sendKeyHint')}</p>
+                <p>
+                  {t('sendCombination', {
+                    send: sendKeyLabel(sendKey),
+                    newline:
+                      sendKey === 'enter' ? formatChord({ shift: true, key: 'Enter' }) : 'Enter',
+                  })}
+                </p>
               </div>
               <fieldset className="flex rounded-xl bg-surface p-1">
                 <legend className="sr-only">{t('sendKey')}</legend>
@@ -104,6 +114,20 @@ export function SettingsPage() {
                 ))}
               </fieldset>
             </section>
+
+            <section className="settings-row">
+              <div>
+                <h3>{t('language')}</h3>
+                <p>{t('languageHint')}</p>
+              </div>
+              <Select
+                label={t('language')}
+                value={locale}
+                onValueChange={setLocale}
+                className="h-9"
+                options={LOCALES.map((l) => ({ value: l.id, label: l.name }))}
+              />
+            </section>
             {desktop ? (
               <section className="settings-row">
                 <div>
@@ -120,31 +144,13 @@ export function SettingsPage() {
                 </label>
               </section>
             ) : null}
-            <section className="settings-row">
-              <div>
-                <h3>{t('language')}</h3>
-                <p>{t('languageHint')}</p>
-              </div>
-              <select
-                aria-label={t('language')}
-                value={locale}
-                onChange={(e) => setLocale(e.target.value as Locale)}
-                className="rounded-lg border border-line bg-raised px-3 py-2 text-sm"
-              >
-                {LOCALES.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.name}
-                  </option>
-                ))}
-              </select>
-            </section>
             <DesktopWorkspace />
           </>
         ) : section === 'workspace' ? (
           project ? (
             <>
-              <WorkFolderSection key={project} projectId={project} />
-              <WorkspaceToolSettings key={project} projectId={project} />
+              <WorkFolderSection key={`folder:${project}`} projectId={project} />
+              <WorkspaceToolSettings key={`tools:${project}`} projectId={project} />
             </>
           ) : null
         ) : section === 'shortcuts' ? (
@@ -157,10 +163,15 @@ export function SettingsPage() {
               <span className="corral-mark text-xl">c</span>
               <div>
                 <h3 className="text-lg font-semibold">Corral Workbench</h3>
-                <p className="text-sm text-muted">{t('localFirst')}</p>
+                {serverVersion ? (
+                  <p className="text-sm text-muted">
+                    {t('serverVersion', { version: serverVersion })}
+                  </p>
+                ) : null}
               </div>
             </div>
             <p className="text-sm text-muted">{t('aboutText')}</p>
+            <DesktopAbout />
             <Button
               variant="outline"
               render={

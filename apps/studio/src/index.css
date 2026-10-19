@@ -64,6 +64,20 @@
   font-weight: 700;
   font-family: ui-monospace, monospace;
 }
+.settings-content {
+  display: flex;
+  width: 100%;
+  max-width: 64rem;
+  margin-inline: auto;
+  flex-direction: column;
+  gap: 24px;
+  padding: 24px;
+}
+@media (min-width: 640px) {
+  .settings-content {
+    padding: 40px;
+  }
+}
 .settings-row {
   display: flex;
   align-items: center;

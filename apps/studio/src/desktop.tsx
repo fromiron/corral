@@ -44,11 +44,7 @@ export function onTopbarDoubleClick(event: { target: EventTarget; currentTarget:
 
 export function DesktopWorkspace() {
   const t = useTranslations('Desktop');
-  const [info, setInfo] = useState<DesktopInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    if (desktop) void desktop.info().then(setInfo, () => setError(t('desktopUnavailable')));
-  }, [t]);
   if (!desktop) return null;
   const act = (operation: () => Promise<void>) => {
     setError(null);
@@ -58,22 +54,6 @@ export function DesktopWorkspace() {
     <section className="space-y-3 rounded-lg border border-line p-4">
       <h3 className="text-sm font-semibold">{t('appWorkspace')}</h3>
       <p className="text-xs text-muted">{t('appWorkspaceHint')}</p>
-      {info ? (
-        <>
-          <p className="text-xs text-muted">
-            Corral {info.version} · {info.platform} · Node {info.node}
-          </p>
-          <details className="text-xs">
-            <summary className="cursor-pointer">{t('workspaceLocation')}</summary>
-            <code className="mt-2 block break-all">{info.workspace}</code>
-          </details>
-          {!info.gitAvailable ? (
-            <p role="status" className="text-xs text-warning">
-              {t('gitMissing')}
-            </p>
-          ) : null}
-        </>
-      ) : null}
       <Button size="sm" variant="ghost" onClick={() => act(() => desktop.revealWorkspace())}>
         {t('revealWorkspace')}
       </Button>
@@ -87,6 +67,41 @@ export function DesktopWorkspace() {
       {error ? (
         <p role="alert" className="text-xs text-danger">
           {error}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+export function DesktopAbout() {
+  const t = useTranslations('Desktop');
+  const [info, setInfo] = useState<DesktopInfo | null>(null);
+  const [error, setError] = useState(false);
+  useEffect(() => {
+    if (desktop) void desktop.info().then(setInfo, () => setError(true));
+  }, []);
+  if (!desktop) return null;
+  return (
+    <section className="space-y-3 border-t border-line pt-4">
+      {info ? (
+        <>
+          <p className="text-sm">
+            Corral {info.version} · {info.platform} · Node {info.node}
+          </p>
+          <details className="text-sm">
+            <summary className="cursor-pointer">{t('workspaceLocation')}</summary>
+            <code className="mt-2 block break-all text-xs">{info.workspace}</code>
+          </details>
+          {!info.gitAvailable ? (
+            <p role="status" className="text-sm text-warning">
+              {t('gitMissing')}
+            </p>
+          ) : null}
+        </>
+      ) : null}
+      {error ? (
+        <p role="alert" className="text-sm text-danger">
+          {t('desktopUnavailable')}
         </p>
       ) : null}
     </section>

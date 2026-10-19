@@ -37,6 +37,7 @@ import { createDemoRuntime } from './runtime.ts';
 
 export interface StudioServices {
   mode: 'server' | 'browser';
+  serverVersion?: string;
   repository: CorralRepository;
   transport: RuntimeTransport;
   readHistory: (runId: string) => Promise<RunArchive>;
@@ -129,6 +130,7 @@ export async function createStudioServices(): Promise<StudioServices> {
     let modeWrite: Promise<void> = Promise.resolve();
     return {
       mode: 'server',
+      serverVersion: health.version,
       repository: new RestCorralRepository(http),
       transport,
       readHistory: (runId) => transport.exportRun(runId, { privateTranscript: true }),

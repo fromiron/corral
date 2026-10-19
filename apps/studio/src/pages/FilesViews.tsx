@@ -4,6 +4,7 @@ import type {
   WorkspaceBindingView,
   WorktreeView,
 } from '@corral/client';
+import { Button } from '@corral/react/ui';
 import { Link } from '@tanstack/react-router';
 import { type FormEvent, useCallback, useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -106,7 +107,9 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
             />
           </label>
           {desktop ? (
-            <button
+            <Button
+              variant="outline"
+              size="sm"
               type="button"
               onClick={() =>
                 void act(async () => {
@@ -114,18 +117,20 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
                   if (folder) setPath(folder);
                 })
               }
-              className="rounded-md border border-line px-3 py-1.5 text-sm"
+              className="self-start"
             >
               {t('chooseFolder')}
-            </button>
+            </Button>
           ) : null}
-          <button
+          <Button
+            variant="outline"
+            size="sm"
             type="submit"
             disabled={!path.trim()}
-            className="rounded-md border border-accent px-3 py-1.5 text-sm text-accent disabled:opacity-50"
+            className="self-start"
           >
             {t('link')}
-          </button>
+          </Button>
         </form>
       ) : (
         <div className="flex flex-col gap-2 text-sm">
@@ -133,13 +138,15 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
             <code className="rounded bg-surface px-1 text-xs" title={binding.path}>
               {binding.path.split('/').slice(-2).join('/')}
             </code>
-            <button
+            <Button
+              variant="outline"
+              size="sm"
               type="button"
               onClick={() => void act(() => workspaces.unbind(projectId))}
-              className="rounded border border-line px-2 py-0.5 text-xs"
+              className="self-start"
             >
               {t('unlink')}
-            </button>
+            </Button>
           </div>
           {binding.missing ? (
             <p role="alert" className="text-xs text-danger">
@@ -185,7 +192,9 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
                   className="rounded border border-line bg-surface px-2 py-1 font-mono text-xs"
                 />
               </label>
-              <button
+              <Button
+                variant="outline"
+                size="sm"
                 type="button"
                 disabled={checks === null}
                 onClick={() =>
@@ -196,10 +205,10 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
                     setChecks(null);
                   })
                 }
-                className="self-start rounded border border-line px-2 py-1 text-xs disabled:opacity-50"
+                className="self-start"
               >
                 {t('saveChecks')}
-              </button>
+              </Button>
             </div>
           ) : null}
         </div>

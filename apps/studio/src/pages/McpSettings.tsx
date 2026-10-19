@@ -1,6 +1,6 @@
 import type { HarnessApi, McpProbeResult } from '@corral/client';
 import type { RegisteredMcpServer } from '@corral/contracts';
-import { Button } from '@corral/react/ui';
+import { Button, Select } from '@corral/react/ui';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
@@ -135,26 +135,24 @@ export function McpConnection({
   return (
     <div className="flex flex-col gap-2">
       {server.transport === 'stdio' ? (
-        <label className="flex flex-col gap-1 text-sm">
+        <div className="flex flex-col gap-1 text-sm">
           {r('workingCopy')}
-          <select
-            className={field}
+          <Select
+            label={r('workingCopy')}
             value={sessionId}
             disabled={disabled || busy || !!probeId}
-            onChange={(e) => {
-              setSessionId(e.target.value);
+            className="h-9 w-full"
+            onValueChange={(value) => {
+              setSessionId(value);
               onProbe(null);
             }}
-          >
-            <option value="">{r('chooseCopy')}</option>
-            {copies.map((copy) => (
-              <option key={copy.id} value={copy.id}>
-                {copy.name}
-              </option>
-            ))}
-          </select>
+            options={[
+              { value: '', label: r('chooseCopy') },
+              ...copies.map((copy) => ({ value: copy.id, label: copy.name })),
+            ]}
+          />
           {!copies.length ? <span className="text-xs text-muted">{r('copyRequired')}</span> : null}
-        </label>
+        </div>
       ) : null}
       {manage ? (
         <>

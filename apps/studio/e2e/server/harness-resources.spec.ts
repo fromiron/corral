@@ -161,7 +161,8 @@ test('[TC-HAR-004-H] [TC-UX-004-N] install, trust, save and preview a mandatory 
     await page.goto(`${corral.server.url}/settings/harness?projectId=default`);
     await page.getByLabel('Work style name', { exact: true }).fill('Evidence writer');
     await page.getByLabel('Use skill writing', { exact: true }).check();
-    await page.getByLabel('Skill mode writing', { exact: true }).selectOption('mandatory');
+    await page.getByRole('combobox', { name: 'Skill mode writing', exact: true }).click();
+    await page.getByRole('option', { name: 'Mandatory · every turn', exact: true }).click();
     await page.getByRole('combobox', { name: 'Project tools and defaults', exact: true }).click();
     await page.getByRole('option', { name: 'Other project', exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/settings/harness\\?projectId=${projectId}`));
@@ -252,7 +253,7 @@ test('[TC-HAR-004-H] [TC-UX-004-N] install, trust, save and preview a mandatory 
     ).toBe(1);
     await expect(
       page.getByRole('combobox', { name: 'Skill mode writing', exact: true }),
-    ).toHaveValue('mandatory');
+    ).toContainText('Mandatory · every turn');
     await page.getByRole('button', { name: 'Save work style', exact: true }).click();
     await expect(page.getByTestId('harness-status')).toContainText('Saved revision 2');
     const effective = await page.evaluate(async () => {

@@ -16,7 +16,7 @@ export function HarnessDefaultsPage({ scope }: { scope: 'personal' | 'project' }
   const scopeId = scope === 'personal' ? 'default' : navigation.projectId;
   return (
     <SettingsLayout active={scope === 'personal' ? 'defaults' : 'project-defaults'}>
-      <main className="mx-auto flex max-w-3xl flex-col gap-6 p-6 sm:p-10">
+      <main className="settings-content">
         <h2 className="text-2xl font-semibold">
           {n(scope === 'personal' ? 'personalDefaults' : 'projectDefaults')}
         </h2>

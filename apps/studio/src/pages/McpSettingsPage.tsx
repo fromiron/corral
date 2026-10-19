@@ -106,7 +106,7 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
     }
   }
   return (
-    <main className="mx-auto flex max-w-6xl flex-col gap-6 p-6 sm:p-10">
+    <main className="settings-content">
       <header className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-2xl font-semibold tracking-tight">{t('mcp')}</h2>

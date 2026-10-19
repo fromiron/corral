@@ -99,6 +99,10 @@ test('[TC-UX-004-H] DW-02/03 settings replace navigation and return to the same 
 test('[TC-UX-001-H] DW-05 a file opens in a remembered tab and its line reference enters the draft', async ({
   page,
 }) => {
+  const keyWarnings: string[] = [];
+  page.on('console', (message) => {
+    if (message.text().includes('same key')) keyWarnings.push(message.text());
+  });
   await openSession(page);
   await page.getByRole('button', { name: 'Show the panel', exact: true }).click();
   await page.getByRole('tab', { name: 'Files', exact: true }).click();
@@ -144,4 +148,5 @@ test('[TC-UX-001-H] DW-05 a file opens in a remembered tab and its line referenc
   await request.fill('@src');
   await expect(page.getByRole('option', { name: /^src\/?$/ }).first()).toBeVisible();
   await expect(page.getByTestId('chat-timeline').getByRole('article')).toHaveCount(0);
+  expect(keyWarnings).toEqual([]);
 });

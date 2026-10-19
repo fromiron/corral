@@ -9,7 +9,7 @@ import type {
 } from '@corral/contracts';
 import { canonicalJson, WorkTool } from '@corral/contracts';
 import { toolDescriptorHash } from '@corral/core';
-import { Button } from '@corral/react/ui';
+import { Button, Select } from '@corral/react/ui';
 import { Link, useBlocker } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -293,7 +293,7 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
     JSON.stringify({ ...selected, ...pendingProfile }) === JSON.stringify(selected);
   return (
     <SettingsLayout active="harness">
-      <main className="mx-auto flex max-w-5xl flex-col gap-7 p-6 sm:p-10">
+      <main className="settings-content">
         <div>
           <h2 className="text-2xl font-semibold">{t('heading')}</h2>
           <p className="mt-2 text-sm text-muted">{t('intro')}</p>
@@ -442,20 +442,23 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                   onChange={(e) => setProfile({ ...profile, name: e.target.value })}
                 />
               </label>
-              <label className="flex flex-col gap-1 text-sm">
+              <div className="flex flex-col gap-1 text-sm">
                 {t('policy')}
-                <select
-                  className={field}
+                <Select
+                  label={t('policy')}
                   value={profile.policy}
-                  onChange={(e) => {
-                    setProfile({ ...profile, policy: e.target.value as HarnessProfile['policy'] });
+                  disabled={busy}
+                  className="h-9 w-full"
+                  onValueChange={(value) => {
+                    setProfile({ ...profile, policy: value });
                     setPreview(null);
                   }}
-                >
-                  <option value="strict">{t('strict')}</option>
-                  <option value="trusted-native">{t('trusted-native')}</option>
-                </select>
-              </label>
+                  options={[
+                    { value: 'strict', label: t('strict') },
+                    { value: 'trusted-native', label: t('trusted-native') },
+                  ]}
+                />
+              </div>
               {profile.policy === 'trusted-native' ? (
                 <p className="text-sm text-warning">{t('nativeWarning')}</p>
               ) : null}
@@ -534,23 +537,21 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                             </label>
                             <p className="text-xs text-muted">{skill.description}</p>
                             {selection ? (
-                              <select
-                                aria-label={t('skillMode', { name: skill.name })}
-                                className={field}
+                              <Select
+                                label={t('skillMode', { name: skill.name })}
                                 value={selection.skillMode ?? 'auto'}
-                                onChange={(e) =>
+                                disabled={busy}
+                                className="h-9 w-full"
+                                onValueChange={(value) =>
                                   selectResource(resource.hash, skill.entry, {
                                     ...selection,
-                                    skillMode: e.target.value as 'auto' | 'explicit' | 'mandatory',
+                                    skillMode: value,
                                   })
                                 }
-                              >
-                                {(['auto', 'explicit', 'mandatory'] as const).map((mode) => (
-                                  <option key={mode} value={mode}>
-                                    {t(mode)}
-                                  </option>
-                                ))}
-                              </select>
+                                options={(['auto', 'explicit', 'mandatory'] as const).map(
+                                  (mode) => ({ value: mode, label: t(mode) }),
+                                )}
+                              />
                             ) : null}
                           </div>
                         );

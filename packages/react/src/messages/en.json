@@ -928,7 +928,13 @@
     "runStop": "Stop the run",
     "recall": "Earlier request (empty box)",
     "mention": "Reference a file, folder, result, run or role",
-    "slash": "Commands (at the start of a request)"
+    "slash": "Commands (at the start of a request)",
+    "groups": {
+      "app": "App and dialogs",
+      "session": "Sessions and runs",
+      "composer": "Request input",
+      "editor": "Team editor"
+    }
   },
   "TeamDraft": {
     "title": "Draft a team from a goal",
@@ -1665,7 +1671,9 @@
       "cancelled": "Cancelled",
       "unknown": "Outcome unknown"
     },
-    "switchWorkspaceHint": "Switching data folders restarts the app server. You will be asked to confirm before switching."
+    "switchWorkspaceHint": "Switching data folders restarts the app server. You will be asked to confirm before switching.",
+    "sendCombination": "Send: {send} · New line: {newline}",
+    "serverVersion": "Server version {version}"
   },
   "Composer": {
     "commands": "Commands",

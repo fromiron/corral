@@ -928,7 +928,13 @@
     "runStop": "실행 중지",
     "recall": "이전 요청(빈 입력칸)",
     "mention": "파일·폴더·결과·실행·역할 참조",
-    "slash": "명령(요청 맨 앞)"
+    "slash": "명령(요청 맨 앞)",
+    "groups": {
+      "app": "앱 및 대화상자",
+      "session": "세션 및 실행",
+      "composer": "입력칸",
+      "editor": "팀 편집기"
+    }
   },
   "TeamDraft": {
     "title": "목표에서 팀 초안 만들기",
@@ -1665,7 +1671,9 @@
       "cancelled": "취소됨",
       "unknown": "결과 불명"
     },
-    "switchWorkspaceHint": "데이터 폴더를 전환하면 앱 서버를 다시 시작합니다. 전환 전에 확인을 요청합니다."
+    "switchWorkspaceHint": "데이터 폴더를 전환하면 앱 서버를 다시 시작합니다. 전환 전에 확인을 요청합니다.",
+    "sendCombination": "보내기: {send} · 줄바꿈: {newline}",
+    "serverVersion": "서버 버전 {version}"
   },
   "Composer": {
     "commands": "명령",

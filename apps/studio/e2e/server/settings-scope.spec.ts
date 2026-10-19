@@ -106,6 +106,16 @@ test('[TC-UX-004-H] [TC-UX-004-N] defaults have independent routes and save only
   await expect(page).toHaveURL(/settings\/defaults/);
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
   expect((await read())[1].binding).toBeNull();
+  await page.screenshot({ path: test.info().outputPath('settings-defaults-light.png') });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await personal.press('Enter');
+  await expect(page.getByRole('option', { name: 'Settings test · r1', exact: true })).toBeVisible();
+  await personal.press('Escape');
+  await expect(personal).toBeFocused();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
+  await page.screenshot({ path: test.info().outputPath('settings-defaults-narrow-dark.png') });
+  await page.setViewportSize({ width: 1280, height: 800 });
   await page.getByRole('link', { name: 'Back to work', exact: true }).click();
   await expect(page).toHaveURL(/\/projects\/default$/);
   expect(corral.errors).toHaveLength(1);

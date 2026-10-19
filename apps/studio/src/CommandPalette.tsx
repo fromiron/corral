@@ -543,24 +543,37 @@ const LABEL: Record<ShortcutId, string> = {
 export function ShortcutTable() {
   const t = useTranslations('Shortcuts');
   const { sendKey } = usePreferences();
-  const rows: [string, string][] = [
-    ...SHORTCUTS.flatMap((s): [string, string][] => {
+  const sessionIds = new Set(['session.new', 'session.jump', 'run.stop']);
+  const commands = (session: boolean): [string, string][] =>
+    SHORTCUTS.flatMap((s) => {
       const keys = shortcutLabel(s.id);
-      return keys ? [[t(LABEL[s.id] as 'palette'), keys]] : [];
-    }),
-    [t('helpKey'), '?'],
-    ...LOCAL_KEYS.map((k): [string, string] => [t(k.id), k.keys(sendKey === 'enter')]),
-  ];
+      return keys && sessionIds.has(s.id) === session ? [[t(LABEL[s.id] as 'palette'), keys]] : [];
+    });
+  const local = (ids: string[]): [string, string][] =>
+    LOCAL_KEYS.filter((k) => ids.includes(k.id)).map((k) => [t(k.id), k.keys(sendKey === 'enter')]);
+  const groups = [
+    { id: 'app', rows: [...commands(false), [t('helpKey'), '?'], ...local(['close'])] },
+    { id: 'session', rows: commands(true) },
+    { id: 'composer', rows: local(['send', 'newline', 'recall', 'mention', 'slash']) },
+    { id: 'editor', rows: local(['save', 'undo', 'redo']) },
+  ] as const;
   return (
-    <dl className="grid grid-cols-[1fr_auto] gap-x-6 gap-y-1.5">
-      {rows.map(([what, keys]) => (
-        <div key={what} className="contents">
-          <dt className="text-ui">{what}</dt>
-          <dd className="text-right">
-            <Kbd>{keys}</Kbd>
-          </dd>
-        </div>
+    <div className="flex flex-col gap-5">
+      {groups.map((group) => (
+        <section key={group.id}>
+          <h3 className="mb-2 text-sm font-semibold">{t(`groups.${group.id}`)}</h3>
+          <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-6 gap-y-1.5">
+            {group.rows.map(([what, keys]) => (
+              <div key={what} className="contents">
+                <dt className="text-ui">{what}</dt>
+                <dd className="text-right">
+                  <Kbd>{keys}</Kbd>
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </section>
       ))}
-    </dl>
+    </div>
   );
 }

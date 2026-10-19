@@ -77,9 +77,8 @@ test('[TC-HAR-016-H] reviews an MCP server, completes local OAuth and pins its r
     expect(fixture.mcpCalls).toBe(0);
     await page.goto(`${corral.server.url}/settings/harness?projectId=default`);
     await page.getByLabel('Work style name', { exact: true }).fill('MCP writer');
-    await page
-      .getByRole('combobox', { name: 'Policy', exact: true })
-      .selectOption('trusted-native');
+    await page.getByRole('combobox', { name: 'Policy', exact: true }).click();
+    await page.getByRole('option', { name: 'Trusted native extensions', exact: true }).click();
     await page.getByRole('button', { name: 'Save work style', exact: true }).click();
     await expect(page.getByTestId('harness-status')).toContainText('Saved revision 1');
     await page.goto(`${corral.server.url}/settings/mcp?projectId=default`);

@@ -267,7 +267,8 @@ test.describe('editing models on the Models page (CR-008)', () => {
     await editor.getByLabel('Endpoint name 1').fill('Hive');
     await editor.getByLabel('Address of endpoint 1').fill('https://api-cdn.thehive.ai/api/v3');
     await editor.getByLabel('Models of endpoint 1').fill('deepseek-ai/deepseek-v4.1-flash-1017');
-    await editor.getByLabel('Access of endpoint 1').selectOption('api_key');
+    await editor.getByRole('combobox', { name: 'Access of endpoint 1', exact: true }).click();
+    await page.getByRole('option', { name: 'API key', exact: true }).click();
     const key = editor.getByLabel('API key', { exact: true });
     await expect(key).toBeVisible();
     await expect(key).toHaveAttribute('type', 'password');
@@ -333,7 +334,8 @@ test.describe('editing models on the Models page (CR-008)', () => {
     await editor.getByLabel('Endpoint id 1').fill('hive');
     await editor.getByLabel('Endpoint name 1').fill('Hive');
     await editor.getByLabel('Address of endpoint 1').fill('https://api-cdn.thehive.ai/api/v3');
-    await editor.getByLabel('Access of endpoint 1').selectOption('api_key');
+    await editor.getByRole('combobox', { name: 'Access of endpoint 1', exact: true }).click();
+    await page.getByRole('option', { name: 'API key', exact: true }).click();
     await editor.getByLabel('Models of endpoint 1').fill('deepseek-ai/deepseek-v4.1-flash-1017');
     const saved = page.waitForResponse(
       (r) => r.url().endsWith('/model-config') && r.request().method() === 'PUT',
@@ -402,15 +404,18 @@ test.describe('editing models on the Models page (CR-008)', () => {
     await corral.open('/settings/models');
     await page.getByRole('button', { name: 'Edit models' }).click();
     const editor = page.getByRole('region', { name: 'Edit models' });
-    await editor.getByLabel('Model of model-a').selectOption({ label: 'Test B' });
+    await editor.getByRole('combobox', { name: 'Model of model-a', exact: true }).click();
+    await page.getByRole('option', { name: 'Test B', exact: true }).click();
 
     await editor.getByRole('button', { name: 'Add endpoint' }).click();
     await editor.getByLabel('Endpoint id 1').fill('ollama');
     await editor.getByLabel('Endpoint name 1').fill('Ollama');
     await editor.getByLabel('Address of endpoint 1').fill('http://127.0.0.1:11434/v1');
     await editor.getByLabel('Models of endpoint 1').fill('llama3.2');
-    await editor.getByLabel('Provider of model-b').selectOption({ label: 'Ollama' });
-    await editor.getByLabel('Model of model-b').selectOption({ label: 'llama3.2' });
+    await editor.getByRole('combobox', { name: 'Provider of model-b', exact: true }).click();
+    await page.getByRole('option', { name: 'Ollama', exact: true }).click();
+    await editor.getByRole('combobox', { name: 'Model of model-b', exact: true }).click();
+    await page.getByRole('option', { name: 'llama3.2', exact: true }).click();
     await editor.getByRole('checkbox', { name: 'Linux isolation · model-b' }).check();
     await editor.getByRole('button', { name: 'Save models' }).click();
 
