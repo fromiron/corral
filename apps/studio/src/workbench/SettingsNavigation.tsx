@@ -19,6 +19,8 @@ export function settingsSection(path: string, section?: unknown): string {
       'skills',
       'hooks',
       'mcp',
+      'defaults',
+      'project-defaults',
     ].includes(value)
     ? value
     : 'general';
@@ -38,15 +40,11 @@ export function SettingsNavigation({
   const w = useTranslations('Workbench');
   const navigation = useSettingsNavigation();
   const location = useRouterState({ select: (state) => state.location });
-  const active =
-    location.pathname === '/settings/harness' &&
-    location.hash.replace(/^#/, '') === 'project-defaults'
-      ? 'projectDefaults'
-      : settingsSection(location.pathname, location.search.section);
+  const active = settingsSection(location.pathname, location.search.section);
   const sections = [
     { title: t('app'), items: ['general', 'shortcuts', 'about'] },
-    { title: t('agents'), items: ['models', 'harness', 'skills', 'hooks'] },
-    { title: t('project'), items: ['workspace', 'mcp', 'projectDefaults'] },
+    { title: t('agents'), items: ['models', 'harness', 'defaults', 'skills', 'hooks'] },
+    { title: t('project'), items: ['workspace', 'mcp', 'project-defaults'] },
   ] as const;
   const paths = {
     general: '/settings',
@@ -58,18 +56,21 @@ export function SettingsNavigation({
     skills: '/settings/skills',
     hooks: '/settings/hooks',
     mcp: '/settings/mcp',
-    projectDefaults: '/settings/harness',
+    defaults: '/settings/defaults',
+    'project-defaults': '/settings/project-defaults',
   } as const;
   const label = (key: string) =>
-    key === 'projectDefaults'
+    key === 'project-defaults'
       ? t('projectDefaults')
-      : key === 'harness'
-        ? h('heading')
-        : key === 'workspace'
-          ? t('projectFolder')
-          : ['skills', 'hooks', 'mcp'].includes(key)
-            ? r(key)
-            : td(key);
+      : key === 'defaults'
+        ? t('personalDefaults')
+        : key === 'harness'
+          ? h('heading')
+          : key === 'workspace'
+            ? t('projectFolder')
+            : ['skills', 'hooks', 'mcp'].includes(key)
+              ? r(key)
+              : td(key);
   return (
     <nav
       data-testid="settings-sidebar"
@@ -101,7 +102,8 @@ export function SettingsNavigation({
               <Link
                 key={key}
                 to={paths[key]}
-                hash={key === 'projectDefaults' ? 'project-defaults' : ''}
+                activeOptions={{ exact: true, includeSearch: true, includeHash: true }}
+                inactiveProps={{ 'aria-current': undefined }}
                 search={{
                   ...navigation.search,
                   ...(['general', 'shortcuts', 'about', 'workspace'].includes(key)
@@ -169,9 +171,6 @@ export function SettingsProjectPicker({
           })
         }
       />
-      {!navigation.projectId ? (
-        <p className="mt-2 text-xs text-muted">{t('projectRequired')}</p>
-      ) : null}
     </div>
   );
 }

@@ -1,5 +1,13 @@
 import type { MessageBranchPreview } from '@corral/contracts';
-import { Button, Dialog, DialogDescription, DialogPopup, DialogTitle } from '@corral/react/ui';
+import {
+  Button,
+  Dialog,
+  DialogDescription,
+  DialogHeader,
+  DialogPanel,
+  DialogPopup,
+  DialogTitle,
+} from '@corral/react/ui';
 import { Link, useNavigate, useRouter } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -71,11 +79,13 @@ export function MessageBranch({
         }}
       >
         <DialogPopup>
-          <DialogTitle>{t(requestStart ? 'requestOpen' : 'open')}</DialogTitle>
-          <DialogDescription>
-            {t(requestStart ? 'requestDescription' : 'description')}
-          </DialogDescription>
-          <div className="mt-3 space-y-3 text-sm">
+          <DialogHeader>
+            <DialogTitle>{t(requestStart ? 'requestOpen' : 'open')}</DialogTitle>
+            <DialogDescription>
+              {t(requestStart ? 'requestDescription' : 'description')}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogPanel className="space-y-3 text-sm">
             <label>
               <input
                 type="checkbox"
@@ -163,7 +173,7 @@ export function MessageBranch({
                 {error}
               </p>
             ) : null}
-          </div>
+          </DialogPanel>
         </DialogPopup>
       </Dialog>
     </>

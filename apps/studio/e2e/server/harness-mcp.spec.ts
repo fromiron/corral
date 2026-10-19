@@ -77,22 +77,27 @@ test('[TC-HAR-016-H] reviews an MCP server, completes local OAuth and pins its r
     expect(fixture.mcpCalls).toBe(0);
     await page.goto(`${corral.server.url}/settings/harness?projectId=default`);
     await page.getByLabel('Work style name', { exact: true }).fill('MCP writer');
-    await page
-      .getByRole('combobox', { name: 'Policy', exact: true })
-      .selectOption('trusted-native');
+    await page.getByRole('combobox', { name: 'Policy', exact: true }).click();
+    await page.getByRole('option', { name: 'Trusted native extensions', exact: true }).click();
     await page.getByRole('button', { name: 'Save work style', exact: true }).click();
     await expect(page.getByTestId('harness-status')).toContainText('Saved revision 1');
     await page.goto(`${corral.server.url}/settings/mcp?projectId=default`);
     await page.getByRole('button', { name: /^Local docs/ }).click();
-    await page.getByRole('button', { name: 'Connect a work style', exact: true }).click();
-    await page.getByRole('combobox', { name: 'Configure usage for', exact: true }).click();
-    await page.getByRole('option', { name: 'MCP writer · r1', exact: true }).click();
+    await page.getByRole('link', { name: 'Connect a work style', exact: true }).click();
+    await page.getByRole('button', { name: 'MCP writer · r1', exact: true }).click();
+    await page.getByLabel('Select MCP servers for this style', { exact: true }).check();
+    await page.getByLabel('Use MCP server Local docs', { exact: true }).check();
     await page
       .getByRole('button', { name: 'Test connection & discover tools', exact: true })
       .click();
     await page.getByLabel('echo', { exact: false }).check();
-    await page.getByRole('button', { name: 'Use selected tools and server', exact: true }).click();
-    await expect(page.getByText(/Editing from MCP writer · r2/)).toBeVisible();
+    expect(
+      await page.evaluate(
+        async () => (await (await fetch('/api/v1/harness/profiles')).json())[0].revision,
+      ),
+    ).toBe(1);
+    await page.getByRole('button', { name: 'Save work style', exact: true }).click();
+    await expect(page.getByTestId('harness-status')).toContainText('Saved revision 2');
     const toolName = await page.evaluate(async () => {
       const config = await (await fetch('/api/v1/harness/projects/default/tools')).json();
       return `mcp__${config.mcpServers[0].id}__echo`;

@@ -114,15 +114,15 @@ export function RootLayout() {
   const section = settingsSection(location.pathname, location.search.section);
   const settingsTitle = !settings
     ? ''
-    : section === 'harness'
-      ? location.hash.replace(/^#/, '') === 'project-defaults'
-        ? tn('projectDefaults')
-        : th('heading')
-      : ['skills', 'hooks', 'mcp'].includes(section)
-        ? tr(section)
-        : section === 'workspace'
-          ? tn('projectFolder')
-          : td(section);
+    : section === 'defaults' || section === 'project-defaults'
+      ? tn(section === 'defaults' ? 'personalDefaults' : 'projectDefaults')
+      : section === 'harness'
+        ? th('heading')
+        : ['skills', 'hooks', 'mcp'].includes(section)
+          ? tr(section)
+          : section === 'workspace'
+            ? tn('projectFolder')
+            : td(section);
   const pageTitle = settings
     ? settingsTitle
     : (data?.session?.title ??

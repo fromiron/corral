@@ -5,6 +5,7 @@ import {
   type ModelConfig,
   type ProfileConfig,
 } from '@corral/client';
+import { Button, Select } from '@corral/react/ui';
 import { useRouter } from '@tanstack/react-router';
 import { useEffect, useId, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -142,12 +143,9 @@ export function ModelConfigEditor({
     }
   };
 
-  const field = 'rounded border border-line bg-surface px-2 py-1 text-sm';
+  const field = 'settings-field';
   return (
-    <section
-      aria-labelledby={headingId}
-      className="flex flex-col gap-4 rounded-lg border border-accent/60 bg-raised p-3"
-    >
+    <section aria-labelledby={headingId} className="settings-surface flex flex-col gap-4">
       <h3 id={headingId} className="text-sm font-semibold">
         {t('heading')}
       </h3>
@@ -162,10 +160,7 @@ export function ModelConfigEditor({
           const known = provider?.models.some((m) => m.id === profile.model);
           const label = profile.id || t('newProfile', { n: index + 1 });
           return (
-            <div
-              key={profile.uid}
-              className="flex flex-wrap items-center gap-2 rounded border border-line p-2"
-            >
+            <div key={profile.uid} className="flex flex-wrap items-center gap-3">
               <input
                 aria-label={t('profileId', { n: index + 1 })}
                 value={profile.id}
@@ -173,37 +168,33 @@ export function ModelConfigEditor({
                 onChange={(e) => setProfile(index, { id: e.target.value })}
                 className={`${field} w-32 font-mono`}
               />
-              <select
-                aria-label={t('providerOf', { profile: label })}
+              <Select
+                label={t('providerOf', { profile: label })}
                 value={profile.provider}
-                onChange={(e) => {
-                  const next = choices.find((c) => c.id === e.target.value);
-                  setProfile(index, { provider: e.target.value, model: next?.models[0]?.id ?? '' });
+                disabled={saving}
+                className="h-9"
+                onValueChange={(value) => {
+                  const next = choices.find((c) => c.id === value);
+                  setProfile(index, { provider: value, model: next?.models[0]?.id ?? '' });
                 }}
-                className={field}
-              >
-                {provider ? null : <option value={profile.provider}>{profile.provider}</option>}
-                {choices.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-              <select
-                aria-label={t('modelOf', { profile: label })}
+                options={[
+                  ...(provider ? [] : [{ value: profile.provider, label: profile.provider }]),
+                  ...choices.map((c) => ({ value: c.id, label: c.name })),
+                ]}
+              />
+              <Select
+                label={t('modelOf', { profile: label })}
                 value={profile.model}
-                onChange={(e) => setProfile(index, { model: e.target.value })}
-                className={`${field} min-w-0 flex-1`}
-              >
-                {known || !profile.model ? null : (
-                  <option value={profile.model}>{t('notInCatalog', { id: profile.model })}</option>
-                )}
-                {provider?.models.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name}
-                  </option>
-                ))}
-              </select>
+                disabled={saving}
+                className="h-9 min-w-0 flex-1"
+                onValueChange={(value) => setProfile(index, { model: value })}
+                options={[
+                  ...(known || !profile.model
+                    ? []
+                    : [{ value: profile.model, label: t('notInCatalog', { id: profile.model }) }]),
+                  ...(provider?.models.map((m) => ({ value: m.id, label: m.name })) ?? []),
+                ]}
+              />
               <label className="flex items-center gap-1 text-xs">
                 <input
                   type="checkbox"
@@ -216,14 +207,16 @@ export function ModelConfigEditor({
                 />
                 {t('isolateProfile', { profile: label })}
               </label>
-              <button
+              <Button
+                variant="outline"
+                size="sm"
                 type="button"
                 aria-label={t('removeProfile', { profile: label })}
                 onClick={() => setProfiles(profiles.filter((_, i) => i !== index))}
-                className="rounded border border-line px-2 py-1 text-xs"
+                className="self-start"
               >
                 ✕
-              </button>
+              </Button>
               <div className="grid w-full gap-2 sm:grid-cols-3">
                 {(['contextWindow', 'reserveTokens', 'keepRecentTokens'] as const).map((key) => (
                   <label key={key} className="flex min-w-0 flex-col gap-1 text-xs">
@@ -254,7 +247,9 @@ export function ModelConfigEditor({
             </div>
           );
         })}
-        <button
+        <Button
+          variant="outline"
+          size="sm"
           type="button"
           onClick={() =>
             setProfiles([
@@ -270,10 +265,10 @@ export function ModelConfigEditor({
               },
             ])
           }
-          className="self-start rounded border border-line px-2 py-1 text-xs"
+          className="self-start"
         >
           {t('addProfile')}
-        </button>
+        </Button>
       </fieldset>
 
       <fieldset disabled={saving} className="flex flex-col gap-2">
@@ -282,10 +277,7 @@ export function ModelConfigEditor({
         {endpoints.map((endpoint, index) => {
           const n = index + 1;
           return (
-            <div
-              key={endpoint.uid}
-              className="grid gap-2 rounded border border-line p-2 sm:grid-cols-2"
-            >
+            <div key={endpoint.uid} className="grid gap-3 sm:grid-cols-2">
               <label className="flex flex-col gap-1 text-xs">
                 <span>{t('endpointId', { n })}</span>
                 <input
@@ -318,21 +310,23 @@ export function ModelConfigEditor({
                   className={`${field} font-mono sm:col-span-2`}
                 />
               </label>
-              <label className="flex flex-col gap-1 text-xs">
+              <div className="flex flex-col gap-1 text-xs">
                 <span>{t('endpointAccess', { n })}</span>
-                <select
-                  aria-label={t('endpointAccess', { n })}
+                <Select
+                  label={t('endpointAccess', { n })}
                   value={endpoint.access}
-                  onChange={(e) =>
-                    setEndpoint(index, { access: e.target.value as EndpointConfig['access'] })
-                  }
-                  className={field}
-                >
-                  <option value="none">{t('accessNone')}</option>
-                  <option value="api_key">{t('accessKey')}</option>
-                </select>
-              </label>
-              <button
+                  disabled={saving}
+                  className="h-9"
+                  onValueChange={(value) => setEndpoint(index, { access: value })}
+                  options={[
+                    { value: 'none', label: t('accessNone') },
+                    { value: 'api_key', label: t('accessKey') },
+                  ]}
+                />
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
                 type="button"
                 onClick={() => {
                   setEndpointKeys((keys) => {
@@ -342,10 +336,10 @@ export function ModelConfigEditor({
                   });
                   setEndpoints(endpoints.filter((_, i) => i !== index));
                 }}
-                className="self-end justify-self-start rounded border border-line px-2 py-1 text-xs"
+                className="self-start"
               >
                 {t('removeEndpoint')}
-              </button>
+              </Button>
               {endpoint.access === 'api_key' ? (
                 <div className="flex flex-col gap-1 sm:col-span-2">
                   <ApiKeyInput
@@ -370,7 +364,9 @@ export function ModelConfigEditor({
             </div>
           );
         })}
-        <button
+        <Button
+          variant="outline"
+          size="sm"
           type="button"
           onClick={() =>
             setEndpoints([
@@ -386,10 +382,10 @@ export function ModelConfigEditor({
               },
             ])
           }
-          className="self-start rounded border border-line px-2 py-1 text-xs"
+          className="self-start"
         >
           {t('addEndpoint')}
-        </button>
+        </Button>
         {changedOrigins.length > 0 ? (
           <p className="text-xs text-warning">
             {t('originChanged', { names: changedOrigins.map((e) => e.name || e.id).join(', ') })}
@@ -403,22 +399,19 @@ export function ModelConfigEditor({
         </p>
       ) : null}
       <div className="flex justify-end gap-2">
-        <button
+        <Button
+          variant="outline"
+          size="sm"
           type="button"
           onClick={onDone}
           disabled={saving}
-          className="rounded border border-line px-3 py-1.5 text-sm"
+          className="self-start"
         >
           {t('cancel')}
-        </button>
-        <button
-          type="button"
-          disabled={saving}
-          onClick={() => void save()}
-          className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent disabled:opacity-50"
-        >
+        </Button>
+        <Button type="button" disabled={saving} onClick={() => void save()}>
           {t('save')}
-        </button>
+        </Button>
       </div>
     </section>
   );

@@ -1,4 +1,5 @@
 import type { ModelProfileView, ProviderAuthView, ReasoningSettings } from '@corral/client';
+import { Button } from '@corral/react/ui';
 import { useRouter } from '@tanstack/react-router';
 import { type FormEvent, useEffect, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
@@ -29,8 +30,8 @@ export function ModelSettingsPage() {
 
   return (
     <SettingsLayout active="models">
-      <main className="mx-auto flex max-w-4xl flex-col gap-6 p-6 sm:p-10">
-        <h2 className="text-lg font-semibold">{t('heading')}</h2>
+      <main className="settings-content">
+        <h2 className="text-2xl font-semibold">{t('heading')}</h2>
         {mode !== 'server' || !models ? (
           <p className="text-sm text-muted">{t('browserOnly')}</p>
         ) : !live ? (
@@ -38,7 +39,28 @@ export function ModelSettingsPage() {
         ) : (
           <>
             <p className="text-sm text-muted">{t('intro')}</p>
-            <ReasoningSettingsPanel key={config?.revision} />
+            {editing && config ? (
+              <ModelConfigEditor
+                config={config}
+                catalog={catalog}
+                onDone={() => setEditing(false)}
+              />
+            ) : (
+              <>
+                <ProfilesTable profiles={profiles} />
+                {config ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    type="button"
+                    onClick={() => setEditing(true)}
+                    className="self-start"
+                  >
+                    {t('editModels')}
+                  </Button>
+                ) : null}
+              </>
+            )}
             <section aria-labelledby="providers-heading" className="flex flex-col gap-2">
               <h3 id="providers-heading" className="text-sm font-semibold">
                 {t('providers')}
@@ -51,26 +73,7 @@ export function ModelSettingsPage() {
                 />
               ))}
             </section>
-            {editing && config ? (
-              <ModelConfigEditor
-                config={config}
-                catalog={catalog}
-                onDone={() => setEditing(false)}
-              />
-            ) : (
-              <>
-                <ProfilesTable profiles={profiles} />
-                {config ? (
-                  <button
-                    type="button"
-                    onClick={() => setEditing(true)}
-                    className="self-start rounded-md border border-accent px-3 py-1.5 text-sm text-accent"
-                  >
-                    {t('editModels')}
-                  </button>
-                ) : null}
-              </>
-            )}
+            <ReasoningSettingsPanel key={config?.revision} />
           </>
         )}
       </main>
@@ -131,39 +134,38 @@ function ProviderCard({
 
   return (
     <article
-      className="flex flex-col gap-2 rounded-lg border border-line bg-raised p-3"
+      className="settings-surface flex flex-col gap-3"
       data-testid={`provider-${provider.providerId}`}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h4 className="font-medium">{provider.name}</h4>
         <div className="flex items-center gap-2 text-xs">
           {(provider.method === 'oauth' && !borrowed) || ownKey ? (
-            <button
+            <Button
+              variant="outline"
+              size="sm"
               type="button"
               disabled={busy}
               onClick={() =>
                 void act(() => models?.logout(provider.providerId) ?? Promise.resolve())
               }
-              className="rounded border border-line px-2 py-1"
+              className="self-start"
             >
               {ownKey ? t('removeKey') : t('signOut')}
-            </button>
+            </Button>
           ) : null}
           {provider.methods.oauth && (!provider.signedIn || borrowed) && !login ? (
-            <button
+            <Button
+              variant="outline"
+              size="sm"
               type="button"
               disabled={busy}
               onClick={() =>
                 void act(() => models?.startLogin(provider.providerId) ?? Promise.resolve())
               }
-              className={
-                borrowed
-                  ? 'rounded border border-line px-2 py-1'
-                  : 'rounded-md bg-accent px-3 py-1.5 font-medium text-on-accent'
-              }
             >
               {borrowed ? t('signInInstead') : t('signIn')}
-            </button>
+            </Button>
           ) : null}
         </div>
       </div>
@@ -209,13 +211,15 @@ function ProviderCard({
         <form onSubmit={saveKey} className="flex flex-col gap-1">
           <div className="flex items-end gap-2">
             <ApiKeyInput value={apiKey} onChange={setApiKey} disabled={busy} />
-            <button
+            <Button
+              variant="outline"
+              size="sm"
               type="submit"
               disabled={busy || !apiKey.trim()}
-              className="rounded border border-line px-2 py-1 text-xs"
+              className="self-start"
             >
               {t('saveKey')}
-            </button>
+            </Button>
           </div>
           <p className="text-xs text-muted">{t('keyHint')}</p>
         </form>
@@ -228,16 +232,14 @@ function ProviderCard({
       ) : null}
 
       {login && login.state !== 'failed' ? (
-        <div className="flex flex-col gap-2 rounded-md border border-line p-2 text-sm">
+        <div className="flex flex-col gap-2 rounded-lg bg-surface p-3 text-sm">
           {login.authUrl ? (
-            <a
-              href={login.authUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="self-start rounded-md bg-accent px-3 py-1.5 font-medium text-on-accent"
+            <Button
+              className="self-start"
+              render={<a href={login.authUrl} target="_blank" rel="noopener noreferrer" />}
             >
               {t('openSignIn')}
-            </a>
+            </Button>
           ) : null}
           <p className="text-xs text-muted">
             {login.state === 'exchanging' ? t('exchanging') : t('openHint')}
@@ -253,25 +255,29 @@ function ProviderCard({
                 onChange={(e) => setRedirect(e.target.value)}
                 autoComplete="off"
                 spellCheck={false}
-                className="min-w-0 flex-1 rounded border border-line bg-surface px-2 py-1 font-mono text-xs"
+                className="settings-field min-w-0 flex-1 font-mono"
               />
-              <button
+              <Button
+                variant="outline"
+                size="sm"
                 type="submit"
                 disabled={busy}
-                className="rounded border border-line px-2 py-1 text-xs"
+                className="self-start"
               >
                 {t('paste')}
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
                 type="button"
                 disabled={busy}
                 onClick={() =>
                   void act(() => models?.cancelLogin(provider.providerId) ?? Promise.resolve())
                 }
-                className="rounded border border-line px-2 py-1 text-xs"
+                className="self-start"
               >
                 {t('cancel')}
-              </button>
+              </Button>
             </div>
           </form>
         </div>
@@ -279,16 +285,18 @@ function ProviderCard({
       {login?.state === 'failed' ? (
         <div role="alert" className="flex items-center gap-2 text-sm text-danger">
           {t('failed', { message: login.error ?? '' })}
-          <button
+          <Button
+            variant="outline"
+            size="sm"
             type="button"
             disabled={busy}
             onClick={() =>
               void act(() => models?.startLogin(provider.providerId) ?? Promise.resolve())
             }
-            className="rounded border border-line px-2 py-1 text-xs text-text"
+            className="self-start"
           >
             {t('tryAgain')}
-          </button>
+          </Button>
         </div>
       ) : null}
     </article>
@@ -303,45 +311,35 @@ function ProfilesTable({ profiles }: { profiles: ModelProfileView[] }) {
       <h3 id="profiles-heading" className="text-sm font-semibold">
         {t('profiles')}
       </h3>
-      <table className="w-full text-left text-sm">
-        <thead className="text-xs text-muted">
-          <tr>
-            <th className="py-1">{t('profile')}</th>
-            <th>{t('model')}</th>
-            <th>{t('context')}</th>
-            <th>{t('maxOutput')}</th>
-            <th>{t('status')}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {profiles.map((profile) => (
-            <tr
-              key={profile.profileId}
-              className="border-t border-line"
-              data-testid={`profile-${profile.profileId}`}
-            >
-              <td className="py-1 font-mono text-xs">{profile.profileId}</td>
-              <td>
-                {profile.modelName ?? profile.modelId}{' '}
-                <span className="font-mono text-xs text-muted">
-                  {profile.provider}/{profile.modelId}
-                </span>
-              </td>
-              <td>{tokens(profile.contextWindow)}</td>
-              <td>{tokens(profile.maxOutputTokens)}</td>
-              <td>
-                {!profile.available
-                  ? t('unknownModel')
-                  : profile.method === 'oauth' && profile.subscriptionSupported === false
-                    ? t('notWithSubscription')
-                    : profile.keyConfigured
-                      ? t('ready')
-                      : t('needsSignIn')}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <ul className="flex flex-col gap-3">
+        {profiles.map((profile) => (
+          <li
+            key={profile.profileId}
+            className="settings-row"
+            data-testid={`profile-${profile.profileId}`}
+          >
+            <div>
+              <h3>{profile.modelName ?? profile.modelId}</h3>
+              <p>
+                {profile.profileId} · {profile.provider}/{profile.modelId}
+              </p>
+              <p>
+                {t('context')} {tokens(profile.contextWindow)} · {t('maxOutput')}{' '}
+                {tokens(profile.maxOutputTokens)}
+              </p>
+            </div>
+            <p>
+              {!profile.available
+                ? t('unknownModel')
+                : profile.method === 'oauth' && profile.subscriptionSupported === false
+                  ? t('notWithSubscription')
+                  : profile.keyConfigured
+                    ? t('ready')
+                    : t('needsSignIn')}
+            </p>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }
@@ -368,11 +366,23 @@ function ReasoningSettingsPanel() {
     };
   }, [models]);
   return (
-    <section
-      className="flex flex-col gap-2 rounded-lg border border-line p-3"
-      aria-label={t('workspaceHeading')}
-    >
-      <h3 className="font-semibold">{t('workspaceHeading')}</h3>
+    <section className="settings-row" aria-label={t('workspaceHeading')}>
+      <div>
+        <h3>{t('workspaceHeading')}</h3>
+        <p>{t('applyHint')}</p>
+        {settings ? (
+          <p>
+            {settings.available
+              ? `${settings.version} · ${t('ready')}`
+              : t('installHint', { command: 'corral judge install' })}
+          </p>
+        ) : null}
+        {error ? (
+          <p role="alert" className="text-danger">
+            {t('settingsError')}
+          </p>
+        ) : null}
+      </div>
       <label className="flex items-center gap-2 text-sm">
         <input
           type="checkbox"
@@ -394,19 +404,6 @@ function ReasoningSettingsPanel() {
         />
         {t('enableApply')}
       </label>
-      <p className="text-xs text-muted">{t('applyHint')}</p>
-      {settings ? (
-        <p className="text-xs">
-          {settings.available
-            ? `${settings.version} · ${t('ready')}`
-            : t('installHint', { command: 'corral judge install' })}
-        </p>
-      ) : null}
-      {error ? (
-        <p role="alert" className="text-sm text-danger">
-          {t('settingsError')}
-        </p>
-      ) : null}
     </section>
   );
 }

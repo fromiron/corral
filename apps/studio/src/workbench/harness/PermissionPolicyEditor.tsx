@@ -25,7 +25,7 @@ export function PermissionPolicyEditor({
       });
   };
   return (
-    <fieldset className="flex flex-col gap-3 rounded border border-line p-3">
+    <fieldset className="settings-surface flex flex-col gap-3">
       <legend className="text-sm font-medium">{t('permissionPolicy')}</legend>
       <p className="text-xs text-muted">{t('permissionPolicyHint')}</p>
       <label className="flex items-center gap-2 text-sm">
@@ -54,7 +54,7 @@ export function PermissionPolicyEditor({
             <fieldset
               // biome-ignore lint/suspicious/noArrayIndexKey: Rules are an ordered, fully controlled editor with no local row state.
               key={index}
-              className="flex flex-col gap-2 border-t border-line pt-2"
+              className="flex flex-col gap-2 rounded-lg bg-surface p-3"
             >
               <legend className="text-xs">{t('permissionRule', { number: index + 1 })}</legend>
               <div className="grid gap-2 sm:grid-cols-2">

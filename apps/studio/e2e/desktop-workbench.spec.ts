@@ -23,6 +23,11 @@ test('[TC-UX-001-H] DW-08 narrow navigation contains focus and Escape restores i
   await trigger.click();
   const navigation = page.getByRole('dialog');
   await expect(navigation).toBeVisible();
+  await expect(navigation).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await expect(page.locator('[data-slot="dialog-backdrop"]')).toHaveCSS(
+    'background-color',
+    /^(?:oklab\(0 0 0 \/ 0\.4\)|rgba\(0, 0, 0, 0\.4\))$/,
+  );
   for (let i = 0; i < 20; i++) {
     await page.keyboard.press('Tab');
     await expect
@@ -94,12 +99,16 @@ test('[TC-UX-004-H] DW-02/03 settings replace navigation and return to the same 
 test('[TC-UX-001-H] DW-05 a file opens in a remembered tab and its line reference enters the draft', async ({
   page,
 }) => {
+  const keyWarnings: string[] = [];
+  page.on('console', (message) => {
+    if (message.text().includes('same key')) keyWarnings.push(message.text());
+  });
   await openSession(page);
   await page.getByRole('button', { name: 'Show the panel', exact: true }).click();
   await page.getByRole('tab', { name: 'Files', exact: true }).click();
   await expect(page.getByText('Link a work folder to browse files.')).toBeVisible();
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await page.getByRole('link', { name: 'Project folder', exact: true }).click();
+  await page.getByRole('link', { name: 'Folders & tools', exact: true }).click();
   await page.getByRole('button', { name: 'Link folder', exact: true }).click();
   await page.getByRole('link', { name: 'Back to work', exact: true }).click();
   await expect(page.getByRole('tab', { name: 'Files', exact: true })).toHaveAttribute(
@@ -139,4 +148,5 @@ test('[TC-UX-001-H] DW-05 a file opens in a remembered tab and its line referenc
   await request.fill('@src');
   await expect(page.getByRole('option', { name: /^src\/?$/ }).first()).toBeVisible();
   await expect(page.getByTestId('chat-timeline').getByRole('article')).toHaveCount(0);
+  expect(keyWarnings).toEqual([]);
 });

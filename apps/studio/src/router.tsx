@@ -10,6 +10,7 @@ import { lazy, Suspense } from 'react';
 import { type DemoTemplateId, demoTemplate } from './demo/templates.ts';
 import { ComparePage } from './pages/ComparePage.tsx';
 import { DemoPage, EditorPage } from './pages/EditorPage.tsx';
+import { HarnessDefaultsPage } from './pages/HarnessDefaultsPage.tsx';
 import { HarnessSettingsPage } from './pages/HarnessSettingsPage.tsx';
 import { McpSettingsPage } from './pages/McpSettingsPage.tsx';
 import { ModelSettingsPage } from './pages/ModelSettingsPage.tsx';
@@ -272,7 +273,24 @@ export const harnessSettingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/settings/harness',
   validateSearch: validateSettingsSearch,
+  beforeLoad: ({ location, search }) => {
+    if (location.hash.replace(/^#/, '') === 'project-defaults')
+      throw redirect({ to: '/settings/project-defaults', search, replace: true });
+  },
   component: HarnessSettingsPage,
+});
+
+export const personalDefaultsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/settings/defaults',
+  validateSearch: validateSettingsSearch,
+  component: () => <HarnessDefaultsPage scope="personal" />,
+});
+export const projectDefaultsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/settings/project-defaults',
+  validateSearch: validateSettingsSearch,
+  component: () => <HarnessDefaultsPage scope="project" />,
 });
 
 export const skillSettingsRoute = createRoute({
@@ -350,6 +368,8 @@ export function createStudioRouter(services: StudioServices) {
       runRoute,
       modelSettingsRoute,
       harnessSettingsRoute,
+      personalDefaultsRoute,
+      projectDefaultsRoute,
       skillSettingsRoute,
       hookSettingsRoute,
       mcpSettingsRoute,

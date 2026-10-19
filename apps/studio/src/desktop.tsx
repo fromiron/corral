@@ -44,50 +44,79 @@ export function onTopbarDoubleClick(event: { target: EventTarget; currentTarget:
 
 export function DesktopWorkspace() {
   const t = useTranslations('Desktop');
-  const [info, setInfo] = useState<DesktopInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    if (desktop) void desktop.info().then(setInfo, () => setError(t('desktopUnavailable')));
-  }, [t]);
   if (!desktop) return null;
   const act = (operation: () => Promise<void>) => {
     setError(null);
     void operation().catch(() => setError(t('desktopUnavailable')));
   };
   return (
-    <section className="space-y-3 rounded-lg border border-line p-4">
-      <h3 className="text-sm font-semibold">{t('appWorkspace')}</h3>
-      <p className="text-xs text-muted">{t('appWorkspaceHint')}</p>
-      {info ? (
-        <>
-          <p className="text-xs text-muted">
-            Corral {info.version} · {info.platform} · Node {info.node}
+    <section className="settings-row">
+      <div>
+        <h3>{t('openWorkspace')}</h3>
+        <p>{t('appWorkspaceHint')}</p>
+        <p>{t('switchWorkspaceHint')}</p>
+        {error ? (
+          <p role="alert" className="text-danger">
+            {error}
           </p>
-          <details className="text-xs">
-            <summary className="cursor-pointer">{t('workspaceLocation')}</summary>
-            <code className="mt-2 block break-all">{info.workspace}</code>
-          </details>
-          {!info.gitAvailable ? (
-            <p role="status" className="text-xs text-warning">
-              {t('gitMissing')}
-            </p>
-          ) : null}
-        </>
-      ) : null}
-      <div className="flex flex-wrap gap-2">
-        <Button size="sm" variant="outline" onClick={() => act(() => desktop.openWorkspace())}>
-          <FolderOpen />
-          {t('openWorkspace')}
-        </Button>
-        <Button size="sm" variant="ghost" onClick={() => act(() => desktop.revealWorkspace())}>
-          {t('revealWorkspace')}
-        </Button>
+        ) : null}
       </div>
+      <Button variant="outline" onClick={() => act(() => desktop.openWorkspace())}>
+        <FolderOpen />
+        {t('openWorkspace')}
+      </Button>
+    </section>
+  );
+}
+
+export function DesktopAbout({ serverVersion }: { serverVersion?: string }) {
+  const t = useTranslations('Desktop');
+  const [info, setInfo] = useState<DesktopInfo | null>(null);
+  const [error, setError] = useState(false);
+  useEffect(() => {
+    if (desktop) void desktop.info().then(setInfo, () => setError(true));
+  }, []);
+  const version = info
+    ? `Corral ${info.version} · ${info.platform} · Node ${info.node}`
+    : serverVersion
+      ? t('serverVersion', { version: serverVersion })
+      : null;
+  const reveal = () => {
+    setError(false);
+    void desktop?.revealWorkspace().catch(() => setError(true));
+  };
+  return (
+    <>
+      {version ? (
+        <section className="settings-row">
+          <div>
+            <h3>{t('version')}</h3>
+            <p>{version}</p>
+            {info && !info.gitAvailable ? (
+              <p role="status" className="text-warning">
+                {t('gitMissing')}
+              </p>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
+      {info ? (
+        <section className="settings-row">
+          <div>
+            <h3>{t('appWorkspace')}</h3>
+            <p className="break-all">{info.workspace}</p>
+          </div>
+          <Button variant="outline" onClick={reveal}>
+            {t('revealWorkspace')}
+          </Button>
+        </section>
+      ) : null}
       {error ? (
-        <p role="alert" className="text-xs text-danger">
-          {error}
+        <p role="alert" className="text-sm text-danger">
+          {t('desktopUnavailable')}
         </p>
       ) : null}
-    </section>
+    </>
   );
 }

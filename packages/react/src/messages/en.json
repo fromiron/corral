@@ -928,7 +928,13 @@
     "runStop": "Stop the run",
     "recall": "Earlier request (empty box)",
     "mention": "Reference a file, folder, result, run or role",
-    "slash": "Commands (at the start of a request)"
+    "slash": "Commands (at the start of a request)",
+    "groups": {
+      "app": "App and dialogs",
+      "session": "Sessions and runs",
+      "composer": "Request input",
+      "editor": "Team editor"
+    }
   },
   "TeamDraft": {
     "title": "Draft a team from a goal",
@@ -1562,7 +1568,7 @@
     "save": "Save",
     "settings": "Settings",
     "general": "General",
-    "workspace": "Project folder",
+    "workspace": "Folders & tools",
     "shortcuts": "Shortcuts",
     "about": "About",
     "models": "Models",
@@ -1664,7 +1670,11 @@
       "blocked": "Refused",
       "cancelled": "Cancelled",
       "unknown": "Outcome unknown"
-    }
+    },
+    "switchWorkspaceHint": "Switching data folders restarts the app server. You will be asked to confirm before switching.",
+    "sendCombination": "Send: {send} · New line: {newline}",
+    "serverVersion": "Server version {version}",
+    "version": "Version"
   },
   "Composer": {
     "commands": "Commands",
@@ -1975,7 +1985,7 @@
     "mcpCancel": "Cancel sign-in",
     "mcpLoginFailed": "Sign-in did not complete. Check server trust and scopes, then try again.",
     "selectMcp": "Select MCP servers for this style",
-    "mcpSelectionHint": "Requires trusted native policy and a session working copy. Uncheck to inherit. Test the connection and choose tools in MCP server settings; server selection alone grants no tools. Codemode exposure also needs Enable Pi codemode.",
+    "mcpSelectionHint": "Requires trusted native policy. Uncheck to inherit. Discover tools below and save the work style to apply your selection. Server selection alone grants no tools.",
     "useMcp": "Use MCP server {name}",
     "unregisteredMcp": "Unregistered MCP server: {id}",
     "selectedMcp": "MCP servers: {ids}",
@@ -2013,7 +2023,9 @@
     "permissionAddRule": "Add rule",
     "skillDelivery": "Complete skill bodies found in the provider payload",
     "noSkillsDelivered": "None",
-    "skillDeliveryUnknown": "Not measured"
+    "skillDeliveryUnknown": "Not measured",
+    "personalDefaultHint": "Applies to future runs across projects on this server.",
+    "projectDefaultHint": "Applies to future runs in the selected project."
   },
   "Recipe": {
     "heading": "Review recipe",
@@ -2297,13 +2309,14 @@
     "browserOrigin": "Fixture origin (127.0.0.1 and port)",
     "browserExecutable": "Installed Chromium executable",
     "browserReady": "Text required in the HTTP readiness response",
-    "browserDevCommand": "Registered dev server command"
+    "browserDevCommand": "Registered dev server command",
+    "configureMcpFirst": "Manage authentication and launch trust in MCP server settings before discovering tools here."
   },
   "Navigation": {
     "app": "App",
     "agents": "Agent configuration",
     "project": "Project",
-    "projectFolder": "Project folder",
+    "projectFolder": "Folders & tools",
     "backToWork": "Back to work",
     "appliesToProject": "Applies to project",
     "chooseProject": "Choose a project",
@@ -2333,7 +2346,8 @@
     "directRunHint": "Test this team directly. This execution is not added to a session.",
     "prepareExecution": "Prepare an execution",
     "runOverridesHint": "These choices apply to the next execution. The saved team stays the same.",
-    "closeResult": "Close result"
+    "closeResult": "Close result",
+    "personalDefaults": "Personal default work style"
   },
   "WorkPlan": {
     "heading": "Work plan",

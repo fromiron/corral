@@ -1,14 +1,12 @@
 import type { HarnessApi } from '@corral/client';
 import { type ProjectToolConfigRevision, RegisteredLspServer } from '@corral/contracts';
 import { Button } from '@corral/react/ui';
-import { Link } from '@tanstack/react-router';
 import { useEffect, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
-import { useSettingsNavigation } from '../workbench/navigation.ts';
 import { WORKSPACE_CHANGED } from './FilesViews.tsx';
 
-const field = 'w-full rounded-md border border-line bg-surface p-2 text-sm';
+const field = 'settings-field';
 const empty = { id: '', name: '', argv: '', languages: '', extensions: '', seconds: '30' };
 export function ProjectToolSettings({
   api,
@@ -21,7 +19,6 @@ export function ProjectToolSettings({
   config: ProjectToolConfigRevision | null;
   onChange(config: ProjectToolConfigRevision): void;
 }) {
-  const navigation = useSettingsNavigation();
   const t = useTranslations('Harness'),
     heading = useId();
   const [draft, setDraft] = useState(empty);
@@ -57,7 +54,7 @@ export function ProjectToolSettings({
     setNotice(t('toolsSaved', { revision: saved.revision }));
   }
   return (
-    <section className="flex flex-col gap-4 border-t border-line pt-5" aria-labelledby={heading}>
+    <section className="flex flex-col gap-4" aria-labelledby={heading}>
       <h3 id={heading} className="text-lg font-semibold">
         {t('projectTools')}
       </h3>
@@ -80,17 +77,7 @@ export function ProjectToolSettings({
       ).map(([kind, tools]) => (
         <div key={kind} className="flex flex-col gap-3">
           <h4 className="font-medium">{t(kind === 'check' ? 'projectChecks' : 'projectLsp')}</h4>
-          {kind === 'check' ? (
-            <Link
-              to="/settings"
-              search={{ ...navigation.search, projectId, section: 'workspace' }}
-              className="text-sm text-accent underline"
-            >
-              {t('manageChecks')}
-            </Link>
-          ) : (
-            <p className="text-xs text-muted">{t('lspSetupHint')}</p>
-          )}
+          {kind === 'lsp' ? <p className="text-xs text-muted">{t('lspSetupHint')}</p> : null}
           {!tools.length ? (
             <p className="text-xs text-muted">
               {t(kind === 'check' ? 'noProjectChecks' : 'noProjectLsp')}
@@ -100,7 +87,7 @@ export function ProjectToolSettings({
             const key = `${kind}:${tool.id}`,
               launch = launches[key];
             return (
-              <div key={key} className="flex flex-col gap-2 border-b border-line pb-3">
+              <div key={key} className="settings-surface flex flex-col gap-2">
                 <p className="text-sm font-medium">
                   {tool.name} <span className="text-muted">{tool.id}</span>
                 </p>
@@ -186,7 +173,7 @@ export function ProjectToolSettings({
           })}
         </div>
       ))}
-      <fieldset disabled={busy} className="flex flex-col gap-3">
+      <fieldset disabled={busy} className="settings-surface flex flex-col gap-3">
         <legend className="mb-3 font-medium">{t('configureLsp')}</legend>
         {(
           [

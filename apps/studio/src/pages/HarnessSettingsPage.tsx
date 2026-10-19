@@ -1,6 +1,5 @@
 import type { HarnessPreview } from '@corral/client';
 import type {
-  HarnessDefault,
   HarnessEntryView,
   HarnessProfile,
   HarnessProfileRevision,
@@ -10,19 +9,21 @@ import type {
 } from '@corral/contracts';
 import { canonicalJson, WorkTool } from '@corral/contracts';
 import { toolDescriptorHash } from '@corral/core';
-import { Button } from '@corral/react/ui';
+import { Button, Select } from '@corral/react/ui';
 import { Link, useBlocker } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
 import { useManagementConfirmation } from '../workbench/harness/ConfirmAction.tsx';
 import { PermissionPolicyEditor } from '../workbench/harness/PermissionPolicyEditor.tsx';
-import { operationId, profileInput, rememberHarnessTarget } from '../workbench/harness/Target.tsx';
+import { updateResourceSelection } from '../workbench/harness/selection.ts';
+import { operationId, profileInput } from '../workbench/harness/Target.tsx';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
 import { SettingsProjectPicker } from '../workbench/SettingsNavigation.tsx';
+import { HarnessMcpTools } from './HarnessMcpTools.tsx';
 import { SettingsLayout } from './SettingsPage.tsx';
 
-const field = 'w-full rounded-md border border-line bg-surface p-2 text-sm';
+const field = 'settings-field';
 const emptyProfile = (): HarnessProfile => ({
   name: '',
   policy: 'strict',
@@ -53,10 +54,7 @@ const bindingOf = (profile: HarnessProfileRevision) => ({
 export function HarnessPreviewView({ preview }: { preview: HarnessPreview }) {
   const t = useTranslations('Harness');
   return (
-    <section
-      data-testid="harness-preview"
-      className="flex flex-col gap-3 border-t border-line pt-4"
-    >
+    <section data-testid="harness-preview" className="settings-surface flex flex-col gap-3">
       <h3 className="font-semibold">{t('previewHeading')}</h3>
       <p className="text-sm">{t(preview.snapshot.policy)}</p>
       <dl className="text-xs">
@@ -78,7 +76,7 @@ export function HarnessPreviewView({ preview }: { preview: HarnessPreview }) {
           <p className="my-2 text-xs text-muted">{t('staticToolsHint')}</p>
           <ul className="flex flex-col gap-2 text-xs">
             {preview.snapshot.tools.map((tool) => (
-              <li key={tool.name} className="border-b border-line pb-2">
+              <li key={tool.name}>
                 <span className="font-mono">{tool.name}</span> · {tool.source} ·{' '}
                 {t(`toolEffects.${tool.sideEffect}`)}
                 <p className="break-all font-mono text-2xs text-muted">
@@ -144,10 +142,8 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
   const [profiles, setProfiles] = useState<HarnessProfileView[]>([]);
   const [entries, setEntries] = useState<HarnessEntryView[]>([]);
   const [search, setSearch] = useState(''),
-    [archived, setArchived] = useState(false),
-    [saveTarget, setSaveTarget] = useState('standalone');
+    [archived, setArchived] = useState(false);
   const pendingOperation = useRef<{ json: string; id: string } | null>(null);
-  const [defaults, setDefaults] = useState<HarnessDefault[]>([]);
   const [toolsState, setToolsState] = useState<{
     projectId: string | undefined;
     value: ProjectToolConfigRevision | null;
@@ -176,17 +172,14 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
     void Promise.all([
       api.resources(),
       api.profileManagement(),
-      api.default('personal', 'default'),
-      projectId ? api.default('project', projectId) : null,
       projectId ? api.projectTools(projectId) : null,
       api.entries(),
     ]).then(
-      ([r, p, personal, project, tools, entries]) => {
+      ([r, p, tools, entries]) => {
         if (active) {
           setResources(r);
           setEntries(entries);
           setProfiles(p);
-          setDefaults([personal, ...(project ? [project] : [])]);
           setToolsState({ projectId, value: tools });
         }
       },
@@ -210,7 +203,6 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
   }
   function choose(next: HarnessProfileRevision | null, saved = false) {
     if (!saved && dirty && !window.confirm(r('leaveUnsaved'))) return;
-    if (next && api) rememberHarnessTarget(api, projectId, `profile:${next.profileId}`);
     setSelected(next);
     setProfile(next ?? emptyProfile());
     setToolNames((next ?? emptyProfile()).allowedTools.join(', '));
@@ -223,14 +215,45 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
     entry: string,
     selection: HarnessProfile['resources'][number] | null,
   ) {
-    setProfile((current) => ({
-      ...current,
-      resources: [
-        ...current.resources.filter((r) => r.resourceHash !== resourceHash || r.entry !== entry),
-        ...(selection ? [selection] : []),
-      ],
-    }));
-    setPreview(null);
+    const key = { resourceHash, entry, kind: selection?.kind ?? ('skill' as const) };
+    const skillName = resources
+      .find((value) => value.hash === resourceHash)
+      ?.skills.find((value) => value.entry === entry)?.name;
+    const replacing = selection
+      ? profile.resources.filter((ref) => {
+          if (ref.resourceHash === resourceHash && ref.entry === entry) return false;
+          const old = entries.find(
+            (value) => value.resourceHash === ref.resourceHash && value.entry === ref.entry,
+          );
+          return (
+            (old?.successor?.resourceHash === resourceHash && old.successor.entry === entry) ||
+            (selection.kind === 'skill' &&
+              ref.kind === 'skill' &&
+              old?.resource.skills.some(
+                (skill) => skill.entry === ref.entry && skill.name === skillName,
+              ))
+          );
+        })
+      : [];
+    const apply = () => {
+      setProfile((current) =>
+        replacing.length
+          ? updateResourceSelection(current, key, true, replacing)
+          : {
+              ...current,
+              resources: [
+                ...current.resources.filter(
+                  (ref) => ref.resourceHash !== resourceHash || ref.entry !== entry,
+                ),
+                ...(selection ? [selection] : []),
+              ],
+            },
+      );
+      setPreview(null);
+    };
+    if (replacing.length)
+      confirmation.request(r('replaceVersion', { count: replacing.length }), apply);
+    else apply();
   }
   const pendingProfile: HarnessProfile = {
     ...(profile.permissionPolicy ? { permissionPolicy: profile.permissionPolicy } : {}),
@@ -265,30 +288,32 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
     Boolean(projectId) &&
     selected !== null &&
     JSON.stringify({ ...selected, ...pendingProfile }) === JSON.stringify(selected);
-  const currentDefaults = defaults.filter(
-    (value) => value.scope === 'personal' || value.scopeId === projectId,
-  );
-  const missingSaveTarget =
-    saveTarget !== 'standalone' && !currentDefaults.some((value) => value.scope === saveTarget);
   return (
     <SettingsLayout active="harness">
-      <main className="mx-auto flex max-w-5xl flex-col gap-7 p-6 sm:p-10">
+      <main className="settings-content">
         <div>
           <h2 className="text-2xl font-semibold">{t('heading')}</h2>
           <p className="mt-2 text-sm text-muted">{t('intro')}</p>
         </div>
         {api ? (
-          <div id="project-context" className="rounded-lg border border-line p-3">
-            <SettingsProjectPicker label={n('projectContext')} disabled={busy} className="" />
-            <p className="mt-2 text-xs text-muted">{n('projectContextHint')}</p>
-          </div>
+          <section id="project-context" className="settings-row">
+            <div>
+              <h3>{n('projectContext')}</h3>
+              <p>{n('projectContextHint')}</p>
+            </div>
+            <SettingsProjectPicker
+              label={n('projectContext')}
+              disabled={busy}
+              className="w-full sm:w-72"
+            />
+          </section>
         ) : null}
         {!api ? (
           <p>{t('localOnly')}</p>
         ) : (
           <>
             {error ? (
-              <p role="alert" className="rounded border border-danger/30 p-3 text-sm text-danger">
+              <p role="alert" className="text-sm text-danger">
                 {error}
               </p>
             ) : null}
@@ -313,12 +338,9 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                 </Button>
               </div>
             ) : null}
-            <fieldset
-              disabled={busy}
-              className="flex min-w-0 flex-col gap-4 border-t border-line pt-5"
-            >
-              <legend className="px-1 text-lg font-semibold">{t('heading')}</legend>
-              <div className="flex flex-col gap-3 rounded-xl border border-line p-4">
+            <fieldset disabled={busy} className="flex min-w-0 flex-col gap-4">
+              <legend className="sr-only">{t('heading')}</legend>
+              <div className="settings-list flex flex-col gap-3 p-4">
                 <div className="flex flex-wrap items-center gap-3">
                   <input
                     className={field}
@@ -354,7 +376,7 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                         <button
                           type="button"
                           aria-pressed={selected?.profileId === p.profileId}
-                          className={`w-full rounded-lg px-3 py-2 text-left text-sm ${selected?.profileId === p.profileId ? 'bg-sidebar-selected' : 'hover:bg-raised'}`}
+                          className={`w-full rounded-lg px-3 py-2 text-left text-sm ${selected?.profileId === p.profileId ? 'bg-sidebar-selected' : 'hover:bg-surface'}`}
                           onClick={() => choose(p)}
                         >
                           {p.name} · r{p.revision}
@@ -413,41 +435,58 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                   ) : null}
                 </div>
               ) : null}
-              <label className="flex flex-col gap-1 text-sm">
-                {t('name')}
+              <section className="settings-row">
+                <div>
+                  <h3>{t('name')}</h3>
+                </div>
                 <input
-                  className={field}
+                  className={`${field} sm:w-72`}
+                  aria-label={t('name')}
                   value={profile.name}
                   onChange={(e) => setProfile({ ...profile, name: e.target.value })}
                 />
-              </label>
-              <label className="flex flex-col gap-1 text-sm">
-                {t('policy')}
-                <select
-                  className={field}
+              </section>
+              <section className="settings-row">
+                <div>
+                  <h3>{t('policy')}</h3>
+                </div>
+                <Select
+                  label={t('policy')}
                   value={profile.policy}
-                  onChange={(e) => {
-                    setProfile({ ...profile, policy: e.target.value as HarnessProfile['policy'] });
+                  disabled={busy}
+                  className="h-9 w-full sm:w-72"
+                  onValueChange={(value) => {
+                    setProfile({ ...profile, policy: value });
                     setPreview(null);
                   }}
-                >
-                  <option value="strict">{t('strict')}</option>
-                  <option value="trusted-native">{t('trusted-native')}</option>
-                </select>
-              </label>
+                  options={[
+                    { value: 'strict', label: t('strict') },
+                    { value: 'trusted-native', label: t('trusted-native') },
+                  ]}
+                />
+              </section>
               {profile.policy === 'trusted-native' ? (
                 <p className="text-sm text-warning">{t('nativeWarning')}</p>
               ) : null}
-              <nav className="flex flex-wrap gap-3 text-sm text-accent">
-                <Link to="/settings/skills" search={navigation.search} className="underline">
+              <nav className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  render={<Link to="/settings/skills" search={navigation.search} />}
+                >
                   {r('skills')}
-                </Link>
-                <Link to="/settings/hooks" search={navigation.search} className="underline">
+                </Button>
+                <Button
+                  variant="outline"
+                  render={<Link to="/settings/hooks" search={navigation.search} />}
+                >
                   {r('hooks')}
-                </Link>
-                <Link to="/settings/mcp" search={navigation.search} className="underline">
+                </Button>
+                <Button
+                  variant="outline"
+                  render={<Link to="/settings/mcp" search={navigation.search} />}
+                >
                   {r('mcp')}
-                </Link>
+                </Button>
               </nav>
               {resources
                 .filter((resource) =>
@@ -456,10 +495,7 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                   ),
                 )
                 .map((resource) => (
-                  <div
-                    key={resource.hash}
-                    className="flex flex-col gap-3 border-t border-line pt-3"
-                  >
+                  <div key={resource.hash} className="flex flex-col gap-3">
                     <p className="text-sm font-medium">
                       {resource.skills.length + resource.extensions.length === 1
                         ? (entries.find((value) => value.resourceHash === resource.hash)?.name ??
@@ -474,10 +510,44 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                           (r) => r.resourceHash === resource.hash && r.entry === skill.entry,
                         );
                         return (
-                          <div key={skill.entry} className="flex flex-col gap-1">
-                            <label className="flex items-center gap-2 text-sm">
+                          <div key={skill.entry} className="flex flex-col gap-3">
+                            <label className="settings-row">
+                              <span>
+                                <span className="text-sm font-medium">
+                                  {t('useSkill', {
+                                    name:
+                                      entries.find(
+                                        (e) =>
+                                          e.resourceHash === resource.hash &&
+                                          e.entry === skill.entry,
+                                      )?.name ?? skill.name,
+                                  })}
+                                </span>
+                                <span className="mt-1 block text-xs text-muted">
+                                  {skill.description}
+                                </span>
+                                {entries.find(
+                                  (e) =>
+                                    e.resourceHash === resource.hash && e.entry === skill.entry,
+                                )?.archivedAt ? (
+                                  <span className="mt-1 block text-xs text-warning">
+                                    {r('archivedSelected')}
+                                  </span>
+                                ) : null}
+                              </span>
                               <input
                                 type="checkbox"
+                                aria-label={t(
+                                  selection?.kind === 'extension' ? 'useExtension' : 'useSkill',
+                                  {
+                                    name:
+                                      entries.find(
+                                        (e) =>
+                                          e.resourceHash === resource.hash &&
+                                          e.entry === skill.entry,
+                                      )?.name ?? skill.name,
+                                  },
+                                )}
                                 checked={!!selection}
                                 disabled={!selection && !resource.trustedAt}
                                 onChange={(e) =>
@@ -496,40 +566,28 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                                   )
                                 }
                               />
-                              {t('useSkill', {
-                                name:
-                                  entries.find(
-                                    (e) =>
-                                      e.resourceHash === resource.hash && e.entry === skill.entry,
-                                  )?.name ?? skill.name,
-                              })}
-                              {entries.find(
-                                (e) => e.resourceHash === resource.hash && e.entry === skill.entry,
-                              )?.archivedAt ? (
-                                <span className="text-xs text-warning">
-                                  {r('archivedSelected')}
-                                </span>
-                              ) : null}
                             </label>
-                            <p className="text-xs text-muted">{skill.description}</p>
                             {selection ? (
-                              <select
-                                aria-label={t('skillMode', { name: skill.name })}
-                                className={field}
-                                value={selection.skillMode ?? 'auto'}
-                                onChange={(e) =>
-                                  selectResource(resource.hash, skill.entry, {
-                                    ...selection,
-                                    skillMode: e.target.value as 'auto' | 'explicit' | 'mandatory',
-                                  })
-                                }
-                              >
-                                {(['auto', 'explicit', 'mandatory'] as const).map((mode) => (
-                                  <option key={mode} value={mode}>
-                                    {t(mode)}
-                                  </option>
-                                ))}
-                              </select>
+                              <section className="settings-row">
+                                <div>
+                                  <h3>{t('skillMode', { name: skill.name })}</h3>
+                                </div>
+                                <Select
+                                  label={t('skillMode', { name: skill.name })}
+                                  value={selection.skillMode ?? 'auto'}
+                                  disabled={busy}
+                                  className="h-9 w-full sm:w-72"
+                                  onValueChange={(value) =>
+                                    selectResource(resource.hash, skill.entry, {
+                                      ...selection,
+                                      skillMode: value,
+                                    })
+                                  }
+                                  options={(['auto', 'explicit', 'mandatory'] as const).map(
+                                    (mode) => ({ value: mode, label: t(mode) }),
+                                  )}
+                                />
+                              </section>
                             ) : null}
                           </div>
                         );
@@ -541,10 +599,34 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                           (r) => r.resourceHash === resource.hash && r.entry === entry,
                         );
                         return (
-                          <div key={entry} className="flex flex-col gap-1">
-                            <label className="flex items-center gap-2 text-sm">
+                          <div key={entry} className="flex flex-col gap-3">
+                            <label className="settings-row">
+                              <span>
+                                <span className="text-sm font-medium">
+                                  {t('useExtension', {
+                                    name:
+                                      entries.find(
+                                        (e) =>
+                                          e.resourceHash === resource.hash && e.entry === entry,
+                                      )?.name ?? entry,
+                                  })}
+                                </span>
+                                {entries.find(
+                                  (e) => e.resourceHash === resource.hash && e.entry === entry,
+                                )?.archivedAt ? (
+                                  <span className="mt-1 block text-xs text-warning">
+                                    {r('archivedSelected')}
+                                  </span>
+                                ) : null}
+                              </span>
                               <input
                                 type="checkbox"
+                                aria-label={t('useExtension', {
+                                  name:
+                                    entries.find(
+                                      (e) => e.resourceHash === resource.hash && e.entry === entry,
+                                    )?.name ?? entry,
+                                })}
                                 checked={!!selection}
                                 disabled={
                                   !selection && (!resource.trustedAt || profile.policy === 'strict')
@@ -564,22 +646,19 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                                   )
                                 }
                               />
-                              {t('useExtension', {
-                                name:
-                                  entries.find(
-                                    (e) => e.resourceHash === resource.hash && e.entry === entry,
-                                  )?.name ?? entry,
-                              })}
-                              {entries.find(
-                                (e) => e.resourceHash === resource.hash && e.entry === entry,
-                              )?.archivedAt ? (
-                                <span className="text-xs text-warning">
-                                  {r('archivedSelected')}
-                                </span>
-                              ) : null}
                             </label>
                             {selection ? (
-                              <label className="flex items-center gap-2 text-xs">
+                              <label className="settings-row">
+                                <span className="text-sm font-medium">
+                                  {t('required', {
+                                    name:
+                                      entries.find(
+                                        (value) =>
+                                          value.resourceHash === resource.hash &&
+                                          value.entry === entry,
+                                      )?.name ?? entry,
+                                  })}
+                                </span>
                                 <input
                                   type="checkbox"
                                   checked={selection.required}
@@ -590,14 +669,6 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                                     })
                                   }
                                 />
-                                {t('required', {
-                                  name:
-                                    entries.find(
-                                      (value) =>
-                                        value.resourceHash === resource.hash &&
-                                        value.entry === entry,
-                                    )?.name ?? entry,
-                                })}
                               </label>
                             ) : null}
                           </div>
@@ -640,10 +711,15 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                   },
                 ] as const
               ).map((group) => (
-                <div key={group.key} className="flex flex-col gap-2 border-t border-line pt-3">
-                  <label className="flex items-center gap-2 text-sm">
+                <div key={group.key} className="flex flex-col gap-3">
+                  <label className="settings-row">
+                    <span>
+                      <span className="text-sm font-medium">{t(group.select)}</span>
+                      <span className="mt-1 block text-xs text-muted">{t(group.hint)}</span>
+                    </span>
                     <input
                       type="checkbox"
+                      aria-label={t(group.select)}
                       checked={profile[group.key] !== undefined}
                       onChange={(event) => {
                         const checked = event.target.checked;
@@ -661,13 +737,14 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                         });
                       }}
                     />
-                    {t(group.select)}
                   </label>
-                  <p className="text-xs text-muted">{t(group.hint)}</p>
                   {profile[group.key] !== undefined ? (
-                    <div className="flex flex-col gap-2 pl-5">
+                    <div className="flex flex-col gap-3">
                       {group.items.map((item) => (
-                        <label key={item.id} className="flex items-center gap-2 text-sm">
+                        <label key={item.id} className="settings-row">
+                          <span className="text-sm font-medium">
+                            {t(group.use, { name: item.name })}
+                          </span>
                           <input
                             type="checkbox"
                             checked={profile[group.key]?.includes(item.id) ?? false}
@@ -681,13 +758,15 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                               }));
                             }}
                           />
-                          {t(group.use, { name: item.name })}
                         </label>
                       ))}
                       {profile[group.key]
                         ?.filter((id) => !group.items.some((item) => item.id === id))
                         .map((id) => (
-                          <label key={id} className="flex items-center gap-2 text-sm text-warning">
+                          <label key={id} className="settings-row">
+                            <span className="text-sm font-medium text-warning">
+                              {t(group.missing, { id })}
+                            </span>
                             <input
                               type="checkbox"
                               checked
@@ -698,7 +777,6 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                                 }))
                               }
                             />
-                            {t(group.missing, { id })}
                           </label>
                         ))}
                       {!group.items.length ? (
@@ -708,6 +786,20 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                   ) : null}
                 </div>
               ))}
+              {projectId && projectTools && profile.policy === 'trusted-native' ? (
+                <HarnessMcpTools
+                  key={`${projectId}:${projectTools.revision}:${selected?.profileId ?? 'new'}`}
+                  api={api}
+                  projectId={projectId}
+                  config={projectTools}
+                  selectedIds={profile.mcpServerIds ?? []}
+                  allowedTools={pendingProfile.allowedTools}
+                  onChange={(names) => {
+                    setToolNames(names.join(', '));
+                    setPreview(null);
+                  }}
+                />
+              ) : null}
               <PermissionPolicyEditor
                 value={profile.permissionPolicy}
                 tools={preview?.snapshot.tools ?? []}
@@ -716,89 +808,59 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                   setProfile((current) => ({ ...current, permissionPolicy }))
                 }
               />
-              <details>
-                <summary className="cursor-pointer text-sm">{t('allowedTools')}</summary>
-                <label className="mt-2 flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={pendingProfile.allowedTools.includes('codemode')}
-                    disabled={profile.policy !== 'trusted-native'}
-                    onChange={(event) =>
-                      setToolNames(
-                        [
-                          ...pendingProfile.allowedTools.filter((name) => name !== 'codemode'),
-                          ...(event.target.checked ? ['codemode'] : []),
-                        ].join(', '),
-                      )
-                    }
-                  />
-                  {t('codemode')}
-                </label>
-                <p className="text-xs text-muted">{t('codemodeHint')}</p>
-                <label className="mt-2 flex flex-col gap-1 text-sm">
-                  {t('allowedTools')}
-                  <textarea
-                    className={field}
-                    value={toolNames}
-                    onChange={(e) => setToolNames(e.target.value)}
-                    rows={3}
-                  />
-                </label>
+              <label className="settings-row">
+                <span>
+                  <span className="text-sm font-medium">{t('codemode')}</span>
+                  <span className="mt-1 block text-xs text-muted">{t('codemodeHint')}</span>
+                </span>
+                <input
+                  type="checkbox"
+                  aria-label={t('codemode')}
+                  checked={pendingProfile.allowedTools.includes('codemode')}
+                  disabled={profile.policy !== 'trusted-native'}
+                  onChange={(event) =>
+                    setToolNames(
+                      [
+                        ...pendingProfile.allowedTools.filter((name) => name !== 'codemode'),
+                        ...(event.target.checked ? ['codemode'] : []),
+                      ].join(', '),
+                    )
+                  }
+                />
+              </label>
+              <section className="settings-surface flex flex-col gap-2">
+                <h3 className="text-sm font-medium">{t('allowedTools')}</h3>
                 <p className="text-xs text-muted">{t('toolsHint')}</p>
-              </details>
-              <label className="flex flex-col gap-1 text-sm">
-                {t('commands')}
                 <textarea
                   className={field}
+                  aria-label={t('allowedTools')}
+                  value={toolNames}
+                  onChange={(e) => setToolNames(e.target.value)}
+                  rows={3}
+                />
+              </section>
+              <section className="settings-surface flex flex-col gap-2">
+                <h3 className="text-sm font-medium">{t('commands')}</h3>
+                <p className="text-xs text-muted">{t('commandsHint')}</p>
+                <textarea
+                  className={field}
+                  aria-label={t('commands')}
                   value={commands}
                   onChange={(e) => setCommands(e.target.value)}
                   rows={2}
                 />
-              </label>
-              <p className="text-xs text-muted">{t('commandsHint')}</p>
-              <label className="flex flex-col gap-1 text-sm">
-                {r('saveTo')}
-                <select
-                  className={field}
-                  value={saveTarget}
-                  onChange={(e) => setSaveTarget(e.target.value)}
-                >
-                  <option value="standalone">{r('standalone')}</option>
-                  <option value="personal">{r('personal')}</option>
-                  <option value="project" disabled={!projectId}>
-                    {r('project')}
-                  </option>
-                </select>
-              </label>
+              </section>
               <div className="flex flex-wrap gap-2">
                 <Button
-                  disabled={
-                    !profile.name.trim() || missingSaveTarget || (selected !== null && !dirty)
-                  }
+                  disabled={!profile.name.trim() || (selected !== null && !dirty)}
                   onClick={() =>
                     void work(async () => {
-                      const target = currentDefaults.find((value) => value.scope === saveTarget);
-                      if (saveTarget !== 'standalone' && !target)
-                        throw new Error(n('projectRequired'));
                       const input = {
                         profileId:
                           selected?.profileId ??
                           `harness_${crypto.randomUUID().replaceAll('-', '')}`,
                         expectedRevision: selected?.revision ?? 0,
                         profile: pendingProfile,
-                        ...(target
-                          ? {
-                              target: {
-                                scope: target.scope,
-                                scopeId: target.scopeId,
-                                expectedRevision: target.revision,
-                                binding: target.binding,
-                                ...(target.scope === 'project'
-                                  ? { projectToolsRevision: projectTools?.revision ?? 0 }
-                                  : {}),
-                              },
-                            }
-                          : {}),
                       };
                       const json = canonicalJson({
                         ...input,
@@ -808,7 +870,7 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                         pendingOperation.current = { json, id: operationId() };
                       // A retry must retain the generated profile ID as well as the operation ID.
                       if (!selected) input.profileId = `harness_${pendingOperation.current.id}`;
-                      const { profile: saved, target: updated } = await api.publish({
+                      const { profile: saved } = await api.publish({
                         ...input,
                         operationId: pendingOperation.current.id,
                       });
@@ -826,14 +888,6 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                           },
                         ];
                       });
-                      if (updated)
-                        setDefaults((current) =>
-                          current.map((value) =>
-                            value.scope === updated.scope && value.scopeId === updated.scopeId
-                              ? updated
-                              : value,
-                          ),
-                        );
                       setNotice(t('saved', { revision: saved.revision }));
                       window.dispatchEvent(new Event('corral:harness-changed'));
                       try {
@@ -866,80 +920,6 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                 <p className="text-xs text-muted">{t('saveBeforePreview')}</p>
               ) : null}
               {preview && canPreview ? <HarnessPreviewView preview={preview} /> : null}
-            </fieldset>
-            <fieldset
-              id="project-defaults"
-              disabled={busy}
-              className="flex flex-col gap-3 border-t border-line pt-5"
-            >
-              <legend className="px-1 text-lg font-semibold">{t('defaults')}</legend>
-              <p className="text-xs text-muted">{t('defaultsHint')}</p>
-              {!projectId ? (
-                <Link
-                  to="/settings/harness"
-                  search={navigation.search}
-                  hash="project-context"
-                  className="text-xs text-accent underline"
-                >
-                  {n('chooseProjectDefaults')}
-                </Link>
-              ) : null}
-              {currentDefaults.map((value) => (
-                <label
-                  key={`${value.scope}:${value.scopeId}`}
-                  className="flex flex-col gap-1 text-sm"
-                >
-                  {t(value.scope)}
-                  <select
-                    className={field}
-                    value={
-                      value.binding ? `${value.binding.profileId}:${value.binding.revision}` : ''
-                    }
-                    onChange={(e) =>
-                      void work(async () => {
-                        const picked = profiles.find(
-                          (p) => `${p.profileId}:${p.revision}` === e.target.value,
-                        );
-                        const saved = await api.setDefault(
-                          value,
-                          picked ? bindingOf(picked) : null,
-                        );
-                        setDefaults((current) =>
-                          current.map((d) =>
-                            d.scope === saved.scope && d.scopeId === saved.scopeId ? saved : d,
-                          ),
-                        );
-                        setPreview(null);
-                        setNotice(t('defaultSaved'));
-                      })
-                    }
-                  >
-                    <option value="">{t('none')}</option>
-                    {value.binding &&
-                    !profiles.some(
-                      (p) =>
-                        p.profileId === value.binding?.profileId &&
-                        p.revision === value.binding.revision,
-                    ) ? (
-                      <option value={`${value.binding.profileId}:${value.binding.revision}`}>
-                        {value.binding.profileId} · r{value.binding.revision}
-                      </option>
-                    ) : null}
-                    {profiles
-                      .filter(
-                        (p) =>
-                          !p.archivedAt ||
-                          (value.binding?.profileId === p.profileId &&
-                            value.binding.revision === p.revision),
-                      )
-                      .map((p) => (
-                        <option key={p.profileId} value={`${p.profileId}:${p.revision}`}>
-                          {p.name} · r{p.revision}
-                        </option>
-                      ))}
-                  </select>
-                </label>
-              ))}
             </fieldset>
           </>
         )}

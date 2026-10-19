@@ -928,7 +928,13 @@
     "runStop": "실행 중지",
     "recall": "이전 요청(빈 입력칸)",
     "mention": "파일·폴더·결과·실행·역할 참조",
-    "slash": "명령(요청 맨 앞)"
+    "slash": "명령(요청 맨 앞)",
+    "groups": {
+      "app": "앱 및 대화상자",
+      "session": "세션 및 실행",
+      "composer": "입력칸",
+      "editor": "팀 편집기"
+    }
   },
   "TeamDraft": {
     "title": "목표에서 팀 초안 만들기",
@@ -1562,7 +1568,7 @@
     "save": "저장",
     "settings": "설정",
     "general": "일반",
-    "workspace": "프로젝트 폴더",
+    "workspace": "폴더 및 도구",
     "shortcuts": "단축키",
     "about": "앱 정보",
     "models": "모델",
@@ -1664,7 +1670,11 @@
       "blocked": "거절됨",
       "cancelled": "취소됨",
       "unknown": "결과 불명"
-    }
+    },
+    "switchWorkspaceHint": "데이터 폴더를 전환하면 앱 서버를 다시 시작합니다. 전환 전에 확인을 요청합니다.",
+    "sendCombination": "보내기: {send} · 줄바꿈: {newline}",
+    "serverVersion": "서버 버전 {version}",
+    "version": "버전"
   },
   "Composer": {
     "commands": "명령",
@@ -1975,7 +1985,7 @@
     "mcpCancel": "로그인 취소",
     "mcpLoginFailed": "로그인을 완료하지 못했습니다. 서버 신뢰와 요청 권한을 확인하고 다시 시도하세요.",
     "selectMcp": "이 작업 방식의 MCP 서버 선택",
-    "mcpSelectionHint": "신뢰한 네이티브 정책과 세션 작업 사본이 필요합니다. 선택을 해제하면 상위 설정을 상속합니다. MCP 서버 설정에서 연결 시험 후 사용할 도구를 선택하세요. 서버 선택만으로 도구가 허용되지는 않습니다. 코드 모드 노출은 Pi 코드 모드도 켜야 합니다.",
+    "mcpSelectionHint": "신뢰된 네이티브 정책이 필요합니다. 체크를 해제하면 상속합니다. 아래에서 도구를 확인하고 선택한 뒤 작업 방식을 저장하세요. 서버 선택만으로 도구가 허용되지는 않습니다.",
     "useMcp": "MCP 서버 {name} 사용",
     "unregisteredMcp": "미등록 MCP 서버: {id}",
     "selectedMcp": "MCP 서버: {ids}",
@@ -2013,7 +2023,9 @@
     "permissionAddRule": "규칙 추가",
     "skillDelivery": "제공자 요청에서 확인한 전체 지침 본문",
     "noSkillsDelivered": "없음",
-    "skillDeliveryUnknown": "측정하지 않음"
+    "skillDeliveryUnknown": "측정하지 않음",
+    "personalDefaultHint": "이 서버의 모든 프로젝트에서 다음 실행에 적용합니다.",
+    "projectDefaultHint": "선택한 프로젝트의 다음 실행에 적용합니다."
   },
   "Recipe": {
     "heading": "검토 규칙",
@@ -2297,13 +2309,14 @@
     "browserOrigin": "시험 서버 주소(127.0.0.1과 포트)",
     "browserExecutable": "설치된 Chromium 실행 파일",
     "browserReady": "HTTP 준비 응답에 있어야 할 문구",
-    "browserDevCommand": "등록할 개발 서버 명령"
+    "browserDevCommand": "등록할 개발 서버 명령",
+    "configureMcpFirst": "인증과 실행 신뢰는 MCP 서버 설정에서 관리합니다. 준비한 서버의 도구를 여기서 확인하고 선택하세요."
   },
   "Navigation": {
     "app": "앱",
     "agents": "에이전트 구성",
     "project": "프로젝트",
-    "projectFolder": "프로젝트 폴더",
+    "projectFolder": "폴더 및 도구",
     "backToWork": "작업으로 돌아가기",
     "appliesToProject": "적용 프로젝트",
     "chooseProject": "프로젝트 선택",
@@ -2333,7 +2346,8 @@
     "directRunHint": "이 팀을 직접 실행해 봅니다. 이 실행은 세션에 추가되지 않습니다.",
     "prepareExecution": "실행 준비",
     "runOverridesHint": "이 설정은 다음 실행에만 적용됩니다. 저장된 팀 설정은 유지됩니다.",
-    "closeResult": "결과 닫기"
+    "closeResult": "결과 닫기",
+    "personalDefaults": "개인 기본 작업 방식"
   },
   "WorkPlan": {
     "heading": "작업 계획",
