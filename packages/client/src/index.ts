@@ -68,6 +68,7 @@ import type {
 
 /** POST /api/v1/runs/auto (CR-024). */
 export interface AutoRunStart {
+  qualityPreset?: 'default' | 'ultra';
   taskScope?: 'work' | 'review_only';
   verificationScope?: 'targeted' | 'release';
   commandId: string;

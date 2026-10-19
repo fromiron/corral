@@ -1735,7 +1735,11 @@
     "imageUploading": "Uploading image…",
     "imageLimit": "Attach up to 3 images per request.",
     "imageFailed": "Image upload failed. Use PNG, JPEG or WebP up to 10 MiB and 16 million pixels; the normalized PNG must fit 1 MiB. The session also needs available image storage.",
-    "imagesNextOnly": "Images are sent with a new request. Choose Continue in this session."
+    "imagesNextOnly": "Images are sent with a new request. Choose Continue in this session.",
+    "qualityPreset": "Quality preset",
+    "qualityDefault": "Default",
+    "qualityUltra": "Ultra · plan, work and review",
+    "qualityUltraHint": "Up to two revisions. Uses the selected model, reasoning and existing budget; may take longer."
   },
   "Commands": {
     "newSession": "New session",

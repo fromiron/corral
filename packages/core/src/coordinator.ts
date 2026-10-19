@@ -15,7 +15,7 @@ import {
   type CommandError,
   type CompactContextCommand,
   CompactionReport,
-  type CorralDefinition,
+  CorralDefinition,
   CreateRunRequest,
   type DecisionCancellation,
   type DecisionNode,
@@ -1241,6 +1241,42 @@ export class Coordinator {
       });
     const resolved = this.resolveDefinition(request);
     if ('error' in resolved) return refuse(resolved.error);
+    const autoRoute = 'autoRoute' in request ? request.autoRoute : undefined;
+    if (autoRoute?.qualityPreset === 'ultra') {
+      const parsedDefinition = CorralDefinition.safeParse(resolved.definition);
+      if (!parsedDefinition.success)
+        return refuse({ code: 'SCHEMA_INVALID', message: 'invalid Ultra definition' });
+      const source = parsedDefinition.data;
+      const expected = autoDefinition({
+        id: source.id,
+        template: 'write_review',
+        qualityPreset: 'ultra',
+        brief: source.input.brief,
+        criteria: source.input.criteria,
+        taskScope: source.input.taskScope,
+        verificationScope: source.input.verificationScope,
+        choice: {
+          modelProfile: autoRoute.modelProfile,
+          ...(autoRoute.reasoning ? { reasoning: autoRoute.reasoning } : {}),
+        },
+        fileTools: source.roles.some((role) => role.allowedWorkTools.includes('read_file')),
+        ...(autoRoute.reasoningChoice ? { routeLevel: autoRoute.reasoningChoice.level } : {}),
+      });
+      if (
+        autoRoute.template !== 'write_review' ||
+        autoRoute.source !== 'local' ||
+        autoRoute.usage !== null ||
+        hashOf(source) !== hashOf(expected) ||
+        Object.keys(request.roleOverrides ?? {}).length ||
+        Object.keys(request.harnessOverrides ?? {}).length
+      )
+        return refuse({
+          code: 'CAPABILITY_DENIED',
+          message:
+            'Ultra requires its unchanged built-in team; custom teams and role overrides keep their own workflow',
+        });
+    }
+
     const seeded = request.startFrom
       ? this.startFromVersion(resolved.definition, request.startFrom)
       : resolved;

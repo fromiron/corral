@@ -436,3 +436,43 @@ for (const outcome of ['failed', 'succeeded'] as const) {
     expect(corral.server.coordinator.listRuns()).toHaveLength(1);
   });
 }
+
+test.describe('quality presets', () => {
+  test.use({ live: false, codexLogin: false, reasoningApi: false });
+  test('[TC-ULTRA-001-H] the explicit preset survives settings and runs the bounded built-in review team', async ({
+    page,
+    corral,
+  }) => {
+    await autoSession(page, corral);
+    const url = page.url();
+    await requestBox(page).fill('/ultra');
+    await requestBox(page).press('Enter');
+    await expect(page.getByRole('combobox', { name: 'Quality preset', exact: true })).toContainText(
+      'Ultra',
+    );
+    await requestBox(page).fill('Hello from the fixed quality fixture');
+    await page.getByRole('combobox', { name: 'Quality preset', exact: true }).click();
+    await page.getByRole('option', { name: 'Ultra · plan, work and review', exact: true }).click();
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await expect(page).toHaveURL(/\/settings/);
+    await page.goto(url);
+    await expect(requestBox(page)).toHaveValue('Hello from the fixed quality fixture');
+    await expect(page.getByRole('combobox', { name: 'Quality preset', exact: true })).toContainText(
+      'Ultra',
+    );
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
+    await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('succeeded');
+    const runId = corral.server.coordinator.listRuns()[0]!.runId;
+    const snapshot = corral.server.coordinator.getRunSnapshot(runId)!;
+    expect(snapshot.mode).toBe('mock');
+    expect(snapshot.autoRoute?.qualityPreset).toBe('ultra');
+    expect(snapshot.definition.roles.map((role) => role.id)).toEqual([
+      'planner',
+      'writer',
+      'reviewer',
+    ]);
+    await page.reload();
+    await expect(page.getByTestId('entry-auto')).toContainText('Ultra');
+    expect(corral.server.coordinator.listRuns()).toHaveLength(1);
+  });
+});

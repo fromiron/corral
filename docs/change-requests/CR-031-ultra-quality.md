@@ -15,3 +15,12 @@
 ## 검증과 배포
 
 새 동작과 데이터·권한·취소 경계의 대표 반례만 구현 전에 실패를 확인한다. 기존 통합 시험을 우선 확장하며 문구·내부 함수·모든 조합을 따라가는 시험은 추가하지 않는다. 적용되는 정상·실패·취소·중복·늦은 이벤트 경계는 기존 시험과 합쳐 확인한다. D&D·Reins·과거 snapshot/hash·전역 활성 Run 제한을 유지한다. live/OS/브라우저 증거는 결정적 fixture와 구별한다.
+
+
+## C-113 Ultra 기본 프리셋
+
+자동 세션의 시작 요청에 optional `qualityPreset: default | ultra`를 추가한다. 기존 미지정 경로와 저장된 정의/hash는 바꾸지 않는다. Ultra는 고정 write_review 팀과 기존 immutable review recipe를 사용해 planner→writer→수정 권한 없는 reviewer를 실행한다. 최초 실행+최대 두 번 수정(3회 검토)이며 반복 실패·예산 상한·취소는 기존 Coordinator가 종료한다. 사용자 정의 팀에는 프리셋을 적용하거나 역할/권한을 변경하지 않는다.
+
+모델과 명시 reasoning, installation policy, 기존 기본 예산은 유지하며 template 선택 모델 호출은 생략한다. route reasoning은 기존 local 기본 medium을 쓰고 출처를 기록한다. 후보 fan-out과 80% 마무리 예약은 다음 C-114에서 같은 총예산 안에 추가한다. 기본/Ultra의 동일 과제 결정적 비교는 기능과 사용량 계측 증거이며 실제 품질 개선 주장이 아니다. UI 선택은 초안·재시도 identity와 Run/entry 기록에 남는다.
+
+C-113의 토글과 `/ultra`, `corral exec auto --ultra`는 `createAutoStarter`에서 고정 정의를 만들어 같은 Coordinator 시작 경로로 전달한다. CLI custom 파일에는 적용하지 않으며 별도 파일 권한을 부여하지 않는다. 선택은 시작 metadata와 세션 요청/초안에 기록해 거절된 요청의 다시 편집도 보존한다.

@@ -8,6 +8,7 @@ import {
   AutoTemplate,
   type CorralDefinition,
   FILE_TOOLS,
+  type QualityPreset,
   type ReasoningLevel,
   type RunInput,
   type RunReference,
@@ -22,6 +23,7 @@ import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js';
 import { z } from 'zod';
 import { canonicalJson } from './canonical-json.ts';
 import type { StartRunResult } from './coordinator.ts';
+import { reviewCriteriaHash } from './review-recipe.ts';
 import { draftFromPlan, planFromGoal, type TeamWording } from './team-draft.ts';
 
 // CR-024: a session without a chosen team runs in auto mode. A start model picks one of the
@@ -77,6 +79,7 @@ const FILE_NOTE =
 const WRITE_NOTE = ' Make the changes the request asks for with the file tools.';
 
 export interface AutoDefinitionInput {
+  qualityPreset?: QualityPreset;
   taskScope?: RunInput['taskScope'];
   verificationScope?: RunInput['verificationScope'];
   id: string;
@@ -91,7 +94,8 @@ export interface AutoDefinitionInput {
 }
 
 export function autoDefinition(input: AutoDefinitionInput): CorralDefinition {
-  const template = AutoTemplate.parse(input.template);
+  const template =
+    input.qualityPreset === 'ultra' ? 'write_review' : AutoTemplate.parse(input.template);
   const plan: TeamPlan = {
     name: NAMES[template],
     pattern: template,
@@ -102,7 +106,7 @@ export function autoDefinition(input: AutoDefinitionInput): CorralDefinition {
         ? [WORDING.criteria.direct]
         : [WORDING.criteria.direct, WORDING.criteria.sources]),
     roles: SLOTS[template].map((slot) => ({ slot, ...WORDING.roles[slot] })),
-    ...(template === 'single' ? {} : { reviewRounds: 2 }),
+    ...(template === 'single' ? {} : { reviewRounds: input.qualityPreset === 'ultra' ? 3 : 2 }),
     // Nobody designed this team, so its result does not wait for an approval.
     finalApproval: false,
   };
@@ -141,6 +145,24 @@ export function autoDefinition(input: AutoDefinitionInput): CorralDefinition {
         }
       : node,
   );
+  if (input.qualityPreset === 'ultra') {
+    const loop = nodes.find((node) => node.type === 'loop');
+    if (loop?.type === 'loop')
+      loop.reviewRecipe = {
+        recipeId: 'ultra_review',
+        revision: 1,
+        criteriaHash: reviewCriteriaHash(definition.input.criteria),
+        candidateNodeId: 'write',
+        evaluatorRoleId: 'reviewer',
+        checkIds: [],
+        criteriaFiles: [],
+        maxAttempts: 3,
+        maxRepairs: 2,
+        maxWallMs: definition.limits.runDeadlineMs,
+        maxModelCalls: definition.limits.maxModelCalls,
+        maxOutputTokens: definition.limits.maxOutputTokens,
+      };
+  }
   return {
     ...definition,
     input: {
@@ -227,6 +249,7 @@ export type RouteAnswer =
     };
 
 export interface AutoStart {
+  qualityPreset?: QualityPreset;
   taskScope?: RunInput['taskScope'];
   verificationScope?: RunInput['verificationScope'];
   commandId: string;
@@ -308,6 +331,14 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
       : undefined;
     const medium = (source: 'local' | 'fallback') =>
       routing ? { reasoningChoice: { level: 'medium' as const, source } } : {};
+    if (request.qualityPreset === 'ultra')
+      return {
+        template: 'write_review' as const,
+        reason: 'Ultra',
+        source: 'local' as const,
+        usage: null,
+        ...medium('local'),
+      };
     const asked = deps.route?.({
       brief: request.brief,
       choice: request.choice,
@@ -358,6 +389,7 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
     if (signal?.aborted) throw cancelled();
     const autoRoute: AutoRoute = {
       ...chosen,
+      ...(request.qualityPreset ? { qualityPreset: request.qualityPreset } : {}),
       templateVersion: AUTO_TEMPLATE_VERSION,
       modelProfile: request.choice.modelProfile,
       ...(request.choice.reasoning ? { reasoning: request.choice.reasoning } : {}),
@@ -367,6 +399,7 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
     const definition = autoDefinition({
       id: `auto_${(request.sessionId ?? request.commandId).replace(/^session_/, '')}`,
       template: autoRoute.template,
+      ...(request.qualityPreset ? { qualityPreset: request.qualityPreset } : {}),
       brief: request.brief,
       ...(request.taskScope ? { taskScope: request.taskScope } : {}),
       ...(request.verificationScope ? { verificationScope: request.verificationScope } : {}),

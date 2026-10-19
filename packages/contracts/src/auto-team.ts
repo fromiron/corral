@@ -7,6 +7,9 @@ import { TEAM_PATTERNS } from './team-plan.ts';
 // built-in templates, which have the CR-006 patterns' shapes; tools and limits come from the
 // template, never from the model's answer.
 
+export const QualityPreset = z.enum(['default', 'ultra']);
+export type QualityPreset = z.infer<typeof QualityPreset>;
+
 export const AUTO_TEMPLATES = TEAM_PATTERNS;
 export const AutoTemplate = z.enum(AUTO_TEMPLATES);
 export type AutoTemplate = z.infer<typeof AutoTemplate>;
@@ -39,6 +42,7 @@ export const AUTO_REASON_MAX = 200;
 
 /** What the start model chose, as recorded with the run; never the model's answer itself. */
 export const AutoRoute = z.strictObject({
+  qualityPreset: QualityPreset.optional(),
   template: AutoTemplate,
   templateVersion: z.int().min(1),
   /** model: the start model chose; local: the local rule (no model call); fallback: single. */

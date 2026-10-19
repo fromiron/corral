@@ -212,3 +212,10 @@ SSE의 일반 미전송 데이터는 다음 UTF-8 frame을 포함해 1 MiB로 �
 `read_document({sourceId})`는 live Run의 기존 입력 도구 경로에서만 HTTPS를 수집한다. HTML은 plain text로 추출하며 결과에 `sourceId`, 불변 `documentId`, `source` metadata를 포함한다. 원문/본문 hash, 최초·최종 URL, 수집 시각, extractor 버전과 비신뢰 출처 표시를 보존한다. 같은 URL의 새 수집은 기존 문서를 덮지 않는다. 직접 document import는 기존 plain text/Markdown만 허용한다.
 
 인증된 `GET /api/v1/documents/:documentId/source`는 `{ metadata, rawText }` JSON을 반환한다. `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`를 사용하고 HTML로 렌더링하지 않는다. 형식이 잘못된 ID는 400, 등록 출처가 없는 문서는 404다. 원문까지 포함한 workspace 입력의 저장 용량은 기존 32 MiB 상한 안에서 계산한다.
+
+
+## Ultra 기본 프리셋 (CR-031 / C-113)
+
+`POST /api/v1/runs/auto`의 optional `qualityPreset: default | ultra`는 mode와 별개다. 미지정은 기존 경로이며 Ultra는 고정 planner→writer→reviewer 팀과 최대 두 번 수정하는 review recipe를 사용한다. 실제 선택은 시작 snapshot/event의 `autoRoute.qualityPreset`에 고정한다. 모델/effort·기본 예산·정책은 유지한다. custom 팀이나 역할 override를 Ultra로 변환하지 않는다.
+
+Composer 선택과 `/ultra`는 같은 요청을 만든다. CLI는 `corral exec auto --ultra --input brief.txt [--model-profile id] [--effort low] [--demo] [--json]`이며 `exec --ultra`도 auto와 같다. CLI auto는 로컬 템플릿 선택과 같은 Coordinator 시작 경로를 사용한다. `--ultra`를 사용자 정의 Corral 파일에 적용하면 거절하며, headless auto는 파일 도구 없는 콘텐츠 작업 범위다. 명시하지 않은 모델 profile은 기존 기본 `model-a`를 사용한다.

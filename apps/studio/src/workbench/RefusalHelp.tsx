@@ -13,6 +13,7 @@ export function editRequest(
   metadata?: {
     attachments?: TextAttachment[];
     images?: ImageAttachment[];
+    qualityPreset?: 'default' | 'ultra';
     taskScope?: 'work' | 'review_only';
     verificationScope?: 'targeted' | 'release';
   },

@@ -1735,7 +1735,11 @@
     "imageUploading": "이미지 업로드 중…",
     "imageLimit": "요청당 이미지는 최대 3개입니다.",
     "imageFailed": "이미지 업로드에 실패했습니다. 10 MiB·1,600만 픽셀 이하 PNG/JPEG/WebP를 사용하세요. 변환한 PNG는 1 MiB 이하여야 하며 세션 이미지 저장 공간이 남아 있어야 합니다.",
-    "imagesNextOnly": "이미지는 새 요청에 전송됩니다. 이 세션에서 계속을 선택하세요."
+    "imagesNextOnly": "이미지는 새 요청에 전송됩니다. 이 세션에서 계속을 선택하세요.",
+    "qualityPreset": "품질 프리셋",
+    "qualityDefault": "기본",
+    "qualityUltra": "Ultra · 계획·작업·검토",
+    "qualityUltraHint": "최대 두 번 수정합니다. 선택한 모델·추론 강도와 기존 예산을 사용하며 시간이 더 걸릴 수 있습니다."
   },
   "Commands": {
     "newSession": "새 세션",

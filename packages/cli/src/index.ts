@@ -4,9 +4,10 @@ import { createReadStream, existsSync, readFileSync, statSync, writeFileSync } f
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { CodingEvalSuite, UserAnswerFile } from '@corral/contracts';
+import { CodingEvalSuite, ReasoningLevel, UserAnswerFile } from '@corral/contracts';
 import {
   applyEvent,
+  autoDefinition,
   compileDefinition,
   exportRunArchive,
   InProcessTransport,
@@ -142,7 +143,7 @@ export interface CliIO {
 }
 
 const usage =
-  'corral dev [--demo] | validate <file> | run <file> [--input <brief>] [--watch] [--demo] | inspect <run-id> [--judgments] | inspect --archive <file> | export <run-id> [--redact | --private] | judge install|status [--model-dir <dir>] | exec <file> [--input <brief>] [--answers <file>] [--demo] [--json] | eval <suite.json> [--demo] [--out <file>] | eval <coding-suite.json> --hashline-binary <fixture-driver> [--out <file>]';
+  'corral dev [--demo] | validate <file> | run <file> [--input <brief>] [--watch] [--demo] | inspect <run-id> [--judgments] | inspect --archive <file> | export <run-id> [--redact | --private] | judge install|status [--model-dir <dir>] | exec <file|auto> [--ultra] [--model-profile <id>] [--effort <level>] [--input <brief>] [--answers <file>] [--demo] [--json] | eval <suite.json> [--demo] [--out <file>] | eval <coding-suite.json> --hashline-binary <fixture-driver> [--out <file>]';
 
 export async function runCli(args: string[], io: CliIO): Promise<number> {
   let server: import('@corral/server').CorralServer | undefined;
@@ -156,6 +157,9 @@ export async function runCli(args: string[], io: CliIO): Promise<number> {
         watch: { type: 'boolean', default: false },
         input: { type: 'string' },
         answers: { type: 'string' },
+        ultra: { type: 'boolean', default: false },
+        'model-profile': { type: 'string' },
+        effort: { type: 'string' },
         workspace: { type: 'string' },
         port: { type: 'string', default: '4317' },
         static: { type: 'string' },
@@ -170,7 +174,8 @@ export async function runCli(args: string[], io: CliIO): Promise<number> {
         help: { type: 'boolean', short: 'h' },
       },
     });
-    const [command, target, extra] = positionals;
+    const [command, suppliedTarget, extra] = positionals;
+    const target = suppliedTarget ?? (command === 'exec' && values.ultra ? 'auto' : undefined);
     if (values.help || !command) {
       io.write(usage);
       return 0;
@@ -182,6 +187,13 @@ export async function runCli(args: string[], io: CliIO): Promise<number> {
       io.write(usage);
       return 1;
     }
+    if (
+      (values.ultra || values['model-profile'] || values.effort) &&
+      !(command === 'exec' && target === 'auto')
+    )
+      throw new Error(
+        'Ultra/model/effort options require exec auto; custom teams keep their own workflow',
+      );
     if (command === 'judge') return await judge(target, values['model-dir'], io);
     const workspace = resolve(io.cwd, values.workspace ?? '.');
     if (command === 'exec' || command === 'eval') {
@@ -244,7 +256,32 @@ export async function runCli(args: string[], io: CliIO): Promise<number> {
           writeFileSync(resolve(io.cwd, values.out), `${JSON.stringify(report, null, 2)}\n`);
         return report.summary.every((s) => s.runs > 0) ? 0 : 1;
       }
-      const compiled = compileDefinition(JSON.parse(readInput(resolve(io.cwd, target))));
+      const autoChoice =
+        target === 'auto'
+          ? {
+              modelProfile: values['model-profile'] ?? 'model-a',
+              ...(values.effort
+                ? {
+                    reasoning: {
+                      mode: 'fixed' as const,
+                      level: ReasoningLevel.parse(values.effort),
+                    },
+                  }
+                : {}),
+            }
+          : undefined;
+      if (autoChoice && !values.input) throw new Error('exec auto requires --input <brief file>');
+      const compiled = compileDefinition(
+        autoChoice
+          ? autoDefinition({
+              id: 'cli_auto',
+              template: 'single',
+              brief: readInput(resolve(io.cwd, values.input!)),
+              choice: autoChoice,
+              fileTools: false,
+            })
+          : JSON.parse(readInput(resolve(io.cwd, target))),
+      );
       if (!compiled.ok) {
         io.write(`Invalid Corral: ${compiled.diagnostics.map((d) => d.code).join(', ')}`);
         return 1;
@@ -258,7 +295,18 @@ export async function runCli(args: string[], io: CliIO): Promise<number> {
         new InProcessTransport(server.coordinator),
         compiled.definition,
         mode,
-        { signal: io.signal, answers },
+        {
+          signal: io.signal,
+          answers,
+          ...(autoChoice
+            ? {
+                auto: {
+                  choice: autoChoice,
+                  ...(values.ultra ? { qualityPreset: 'ultra' as const } : {}),
+                },
+              }
+            : {}),
+        },
       );
       if (values.json) io.write(JSON.stringify(result));
       else {

@@ -12,7 +12,9 @@ import {
   validUserAnswers,
 } from '@corral/contracts';
 import {
+  type AutoStart,
   compileDefinition,
+  createAutoStarter,
   type RunProjection,
   type RuntimeTransport,
   waitForProjection,
@@ -80,10 +82,12 @@ export async function executeOnce(
     signal,
     sessionId,
     answers = [],
+    auto,
     wallNow = Date.now,
     now = () => performance.now(),
   }: {
     signal: AbortSignal;
+    auto?: Pick<AutoStart, 'choice' | 'qualityPreset'>;
     sessionId?: string;
     now?: () => number;
     wallNow?: () => number;
@@ -93,13 +97,26 @@ export async function executeOnce(
   signal.throwIfAborted();
   const supplied = UserAnswerFile.parse(answers);
   const started = now();
-  const { runId, receipt } = await transport.startRun({
-    schemaVersion: '0.1',
+  const start = {
+    schemaVersion: '0.1' as const,
     commandId: commandId(),
     definition,
     mode,
     ...(sessionId ? { sessionId } : {}),
-  });
+  };
+  const { runId, receipt } = auto
+    ? await createAutoStarter({ startRun: (request) => transport.startRun(request) }).start(
+        {
+          ...auto,
+          commandId: start.commandId,
+          brief: definition.input.brief,
+          criteria: definition.input.criteria,
+          mode,
+          ...(sessionId ? { sessionId } : {}),
+        },
+        { fileTools: false, signal },
+      )
+    : await transport.startRun(start);
   if (!runId)
     throw new Error(
       `run refused: ${receipt.error?.code ?? 'UNKNOWN'} ${receipt.error?.message ?? ''}`,

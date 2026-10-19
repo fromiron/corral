@@ -966,7 +966,7 @@ function EntryCard({
         entry.auto.reasoning
           ? `${t('reasoningPicked', { level: tq(`level.${entry.auto.reasoning}`) })}${entry.auto.reasoningSource ? ` (${t(`reasoningSource.${entry.auto.reasoningSource}`)})` : ''}`
           : null,
-        entry.auto.reason,
+        entry.auto.qualityPreset === 'ultra' ? 'Ultra' : entry.auto.reason,
       ]
         .filter(Boolean)
         .join(' · ')
@@ -1008,6 +1008,7 @@ function EntryCard({
             editRequest(entry.text, {
               attachments: entry.attachments,
               images: entry.images,
+              qualityPreset: entry.qualityPreset ?? entry.auto?.qualityPreset,
               taskScope: entry.taskScope,
               verificationScope: entry.verificationScope,
             })
@@ -1269,6 +1270,9 @@ function Composer({
   const [attachmentsBusy, setAttachmentsBusy] = useState(false);
   const [images, setImages] = useState<ImageAttachment[]>(restored.images ?? []);
   const [imagesBusy, setImagesBusy] = useState(false);
+  const [qualityPreset, setQualityPreset] = useState<'default' | 'ultra'>(
+    restored.qualityPreset ?? 'default',
+  );
   const [reviewOnly, setReviewOnly] = useState(restored.taskScope === 'review_only');
   const [verificationScope, setVerificationScope] = useState<'targeted' | 'release'>(
     restored.verificationScope ?? 'targeted',
@@ -1469,8 +1473,9 @@ function Composer({
       ...(images.length ? { images } : {}),
       ...(reviewOnly ? { taskScope: 'review_only' as const } : {}),
       ...(verificationScope === 'release' ? { verificationScope } : {}),
+      ...(qualityPreset === 'ultra' ? { qualityPreset } : {}),
     }),
-    [text, lock, picked, attachments, images, reviewOnly, verificationScope],
+    [text, lock, picked, attachments, images, reviewOnly, verificationScope, qualityPreset],
   );
   const draftRevision = useRef(0);
   useEffect(() => {
@@ -1486,6 +1491,7 @@ function Composer({
       setImages([]);
       setReviewOnly(false);
       setVerificationScope('targeted');
+      setQualityPreset('default');
       setChosen(null);
       setLock(null);
       setText('');
@@ -1628,6 +1634,7 @@ function Composer({
       sessionId: session.sessionId,
       brief,
       choice: autoChoice,
+      ...(qualityPreset === 'ultra' ? { qualityPreset } : {}),
       mode: runMode,
       ...(latest ? { startFrom: { runId: latest.runId, artifactVersionId: latest.id } } : {}),
       ...(refs.length ? { references: refs } : {}),
@@ -1670,6 +1677,9 @@ function Composer({
         auto: result.autoRoute
           ? {
               template: result.autoRoute.template,
+              ...(result.autoRoute.qualityPreset
+                ? { qualityPreset: result.autoRoute.qualityPreset }
+                : {}),
               source: result.autoRoute.source,
               reason: result.autoRoute.reason,
               modelProfile: result.autoRoute.modelProfile,
@@ -1731,7 +1741,7 @@ function Composer({
         const commandId = commandFor(
           team
             ? `next\u0000${body}\u0000${JSON.stringify([refs, harnessOverrides, roleOverrides, runMode, scope])}`
-            : autoCommandSeed(body, refs, autoChoice, scope),
+            : autoCommandSeed(body, refs, autoChoice, scope, qualityPreset),
         );
         const { runId, detail, code, auto, cancelled, cancelError } = await startNext(
           body,
@@ -1747,6 +1757,7 @@ function Composer({
         }
         await record({
           ...scope,
+          ...(isAuto && !team && qualityPreset === 'ultra' ? { qualityPreset } : {}),
           intent,
           text: body,
           state: runId ? 'started' : 'refused',
@@ -1851,6 +1862,7 @@ function Composer({
               images?: ImageAttachment[];
               taskScope?: string;
               verificationScope?: string;
+              qualityPreset?: string;
             }
         >
       ).detail;
@@ -1866,6 +1878,9 @@ function Composer({
       setText(typeof value === 'string' ? value : value.text);
       setAttachments(typeof value === 'string' ? [] : (value.attachments ?? []));
       setImages(typeof value === 'string' ? [] : (value.images ?? []));
+      setQualityPreset(
+        typeof value === 'object' && value.qualityPreset === 'ultra' ? 'ultra' : 'default',
+      );
       setReviewOnly(typeof value === 'object' && value.taskScope === 'review_only');
       setVerificationScope(
         typeof value === 'object' && value.verificationScope === 'release' ? 'release' : 'targeted',
@@ -1944,6 +1959,7 @@ function Composer({
     setImages(entry.images ?? []);
     setReviewOnly(false);
     setVerificationScope('targeted');
+    setQualityPreset('default');
     setChosen('queue');
     setLock({ intent: 'queue', target: null });
     await repository.updateSessionEntry(session.sessionId, entry.entryId, {
@@ -2002,6 +2018,11 @@ function Composer({
         next === -1 ? undefined : session.entries.findLast((entry) => entry.text === history[next]);
       setAttachments(recalledEntry?.attachments ?? []);
       setImages(recalledEntry?.images ?? []);
+      setQualityPreset(
+        (recalledEntry?.qualityPreset ?? recalledEntry?.auto?.qualityPreset) === 'ultra'
+          ? 'ultra'
+          : 'default',
+      );
       setReviewOnly(recalledEntry?.taskScope === 'review_only');
       setVerificationScope(recalledEntry?.verificationScope === 'release' ? 'release' : 'targeted');
     }
@@ -2092,6 +2113,17 @@ function Composer({
       disabled: !ownActive,
       hint: why(Boolean(ownActive)),
       run: () => setConfirmStop(true),
+    },
+    {
+      id: 'composer:ultra',
+      title: tc('qualityUltra'),
+      group: tc('groupRequest'),
+      slash: 'ultra',
+      disabled: !isAuto || Boolean(team) || busy || intent !== 'next',
+      run: () => {
+        setQualityPreset('ultra');
+        input.current?.focus();
+      },
     },
     {
       id: 'composer:team',
@@ -2303,6 +2335,21 @@ function Composer({
             </ul>
           ) : null}
           <div className="flex flex-wrap items-center gap-3 text-xs">
+            {isAuto && !team ? (
+              <Select
+                label={tc('qualityPreset')}
+                value={qualityPreset}
+                disabled={busy || intent !== 'next'}
+                onValueChange={setQualityPreset}
+                options={[
+                  { value: 'default', label: tc('qualityDefault') },
+                  { value: 'ultra', label: tc('qualityUltra') },
+                ]}
+              />
+            ) : null}
+            {isAuto && !team && qualityPreset === 'ultra' ? (
+              <span role="status">{tc('qualityUltraHint')}</span>
+            ) : null}
             <label className="flex items-center gap-1">
               <input
                 type="checkbox"

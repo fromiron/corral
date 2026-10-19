@@ -3450,6 +3450,13 @@
             "autoRoute": {
               "type": "object",
               "properties": {
+                "qualityPreset": {
+                  "type": "string",
+                  "enum": [
+                    "default",
+                    "ultra"
+                  ]
+                },
                 "template": {
                   "type": "string",
                   "enum": [

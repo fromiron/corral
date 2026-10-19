@@ -41,9 +41,11 @@ export function autoCommandSeed(
   references: RunReference[],
   choice: AutoModelChoice,
   scope?: { taskScope?: 'work' | 'review_only'; verificationScope?: 'targeted' | 'release' },
+  qualityPreset?: 'default' | 'ultra',
 ): string {
   const identity: unknown[] = [references, choice.modelProfile, choice.reasoning ?? null];
   if (scope?.taskScope || scope?.verificationScope) identity.push(scope);
+  if (qualityPreset === 'ultra') identity.push({ qualityPreset });
   return `auto\u0000${text}\u0000${JSON.stringify(identity)}`;
 }
 

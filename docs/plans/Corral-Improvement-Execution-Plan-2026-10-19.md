@@ -1,6 +1,6 @@
 # Corral 통합 개선 실행 계획
 
-2026-10-19 · 순차 구현 승인 · M0~M3 구현 및 단계 회귀 확인 · M4 예정
+2026-10-19 · 순차 구현 승인 · M0~M3 구현 및 단계 회귀 확인 · M4 진행 중
 
 **첫 배포는 세션에서 요청하고, 진행을 보고, 질문과 승인에 응답하고, 변경과 근거를 검토하는 흐름을 완성한다.** 기존 Pi·Coordinator·SQLite·파일 broker를 확장한다. 이후 체크포인트와 안전한 이어하기를 완성하고, 비교 평가를 통과한 Ultra를 제공한다. D&D와 Reins는 모든 단계의 유지·회귀 검증 대상이다.
 
@@ -306,7 +306,7 @@ PR-D가 커지면 콘텐츠 manifest 검증과 런타임 활성화를 둘로 나
 | M1 | 구현·검증 완료 | C-092–100. 질문/승인/계획·팩/프롬프트·대화, M1 evidence 참조 |
 | M2 | 구현·검증 완료 | C-101–106. checkpoint/status/browser/이미지·eval, M2 evidence 참조 |
 | M3 | 구현·검증 완료 | C-107–112. Linux 격리·hunk·압축·이어하기·검색/분기·웹 추출, 지원 범위는 M3 evidence 참조 |
-| M4 | 미착수 | M3 종료 후 승인한 순서로 진행 |
+| M4 | 진행 | C-113 단일 Ultra 구현·검증 완료. 후보 비교, Skill 작성/업데이트, desktop 보완이 남음. [M4 evidence](../evaluation/Integrated-Improvement-M4-2026-10-19.md) 참조 |
 
 현재 증거는 [M0와 첫 안전 수정 보고서](../evaluation/Integrated-Improvement-M0-2026-10-19.md)에 있다. CR 승인과 단계 완료는 같은 상태가 아니다.
 

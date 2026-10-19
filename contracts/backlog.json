@@ -2209,5 +2209,23 @@
     ],
     "done": "HTML 원문/본문/version/time/hash 고정과 기존 URL/DNS/MIME/취소 경계, 승인한 로컬 browser fixture의 소유권·assertion을 검증한다.",
     "status": "implemented"
+  },
+  {
+    "id": "C-113",
+    "phase": "M4",
+    "title": "명시 Ultra 기본 프리셋과 제한된 검토 수정",
+    "dependsOn": [
+      "C-112"
+    ],
+    "requirements": [
+      "CRL-ULTRA-001"
+    ],
+    "files": [
+      "packages/core/src/auto-team.ts",
+      "packages/core/src/coordinator.ts",
+      "apps/studio/src/pages/SessionPage.tsx"
+    ],
+    "done": "고정 팀·read-only 검토·수정 최대 2회·default 및 예산/권한 보존과 동일 과제 결정적 비교를 확인한다.",
+    "status": "implemented"
   }
 ]

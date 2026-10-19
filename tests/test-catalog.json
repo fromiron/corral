@@ -2724,5 +2724,27 @@
     "status": "planned",
     "adapter": "bounded injected HTTPS and owned local browser fixture",
     "evidence": null
+  },
+  {
+    "id": "TC-ULTRA-001-H",
+    "requirements": [
+      "CRL-ULTRA-001"
+    ],
+    "suite": "integration+browser",
+    "scenario": "같은 요청의 default/Ultra 동작과 불변 모델/예산, 명시 선택·재시도·검토→수정→통과를 확인한다",
+    "status": "planned",
+    "adapter": "deterministic agents and existing auto browser fixture; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-ULTRA-001-N",
+    "requirements": [
+      "CRL-ULTRA-001"
+    ],
+    "suite": "integration+browser",
+    "scenario": "custom 팀/변조된 권한의 Ultra 시작과 세 번째 수정·반복 실패·취소 후 실행을 거절한다",
+    "status": "planned",
+    "adapter": "deterministic agents and existing auto browser fixture; no paid calls",
+    "evidence": null
   }
 ]

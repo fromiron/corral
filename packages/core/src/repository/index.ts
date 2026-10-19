@@ -10,6 +10,7 @@ import {
   type ImageAttachment,
   ImageAttachments,
   type NodeLayout,
+  QualityPreset,
   RunInput,
   type TextAttachment,
 } from '@corral/contracts';
@@ -64,6 +65,7 @@ export type SessionEntryState =
   | 'dismissed';
 
 export interface SessionEntry {
+  qualityPreset?: 'default' | 'ultra';
   images?: ImageAttachment[];
   attachments?: TextAttachment[];
   taskScope?: RunInput['taskScope'];
@@ -86,6 +88,7 @@ export interface SessionEntry {
 }
 
 export const SessionEntryAuto = AutoRoute.pick({
+  qualityPreset: true,
   template: true,
   source: true,
   reason: true,
@@ -144,6 +147,7 @@ export type SessionResult =
     };
 
 export interface NewSessionEntry {
+  qualityPreset?: 'default' | 'ultra';
   images?: ImageAttachment[];
   attachments?: TextAttachment[];
   taskScope?: RunInput['taskScope'];
@@ -338,6 +342,11 @@ export function planSessionEntry(
     }).success
   )
     return { ok: false, error: 'invalid', message: 'invalid request scope' };
+  if (
+    entry.qualityPreset !== undefined &&
+    (!QualityPreset.safeParse(entry.qualityPreset).success || entry.intent !== 'next')
+  )
+    return { ok: false, error: 'invalid', message: 'quality preset requires a next request' };
   const text = entry.text.trim();
   if (!text || text.length > ENTRY_MAX)
     return { ok: false, error: 'invalid', message: `A request has 1 to ${ENTRY_MAX} characters.` };
@@ -352,6 +361,7 @@ export function planSessionEntry(
           executionId: value.executionId ?? null,
           attachments: value.attachments ?? [],
           images: value.images ?? [],
+          qualityPreset: value.qualityPreset ?? null,
           taskScope: value.taskScope ?? null,
           verificationScope: value.verificationScope ?? null,
         });
@@ -384,6 +394,7 @@ export function planSessionEntry(
           detail: entry.detail ?? null,
           commandId: entry.commandId ?? null,
           ...(entry.auto ? { auto: entry.auto } : {}),
+          ...(entry.qualityPreset ? { qualityPreset: entry.qualityPreset } : {}),
           ...(entry.taskScope ? { taskScope: entry.taskScope } : {}),
           ...(entry.verificationScope ? { verificationScope: entry.verificationScope } : {}),
           ...(entry.attachments?.length

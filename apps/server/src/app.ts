@@ -24,6 +24,7 @@ import {
   ImageAttachments,
   MessageBranchPoint,
   MessageBranchRequest,
+  QualityPreset,
   type Receipt,
   RestoreCheckpoint,
   ResumeRuntimeRequest,
@@ -244,6 +245,7 @@ const UpdateSession = z.strictObject({
   expectedRevision: z.int().min(1),
 });
 const NewEntry = z.strictObject({
+  qualityPreset: QualityPreset.optional(),
   images: ImageAttachments.optional(),
   taskScope: RunInput.shape.taskScope,
   verificationScope: RunInput.shape.verificationScope,
@@ -274,6 +276,7 @@ const ExplainRequest = z.strictObject({
 });
 // CR-024: a request in an auto session; the runtime chooses the template and builds the team.
 const AutoRunRequest = z.strictObject({
+  qualityPreset: QualityPreset.optional(),
   taskScope: RunInput.shape.taskScope,
   verificationScope: RunInput.shape.verificationScope,
   schemaVersion: SchemaVersion,
@@ -948,6 +951,7 @@ async function createCorralServer(
               definition: autoDefinition({
                 id: request.definition.id,
                 template: route.template,
+                ...(route.qualityPreset ? { qualityPreset: route.qualityPreset } : {}),
                 brief: request.definition.input.brief,
                 criteria: request.definition.input.criteria,
                 taskScope: request.definition.input.taskScope,
@@ -1037,6 +1041,7 @@ async function createCorralServer(
           commandId: body.commandId,
           sessionId: body.sessionId,
           brief: body.brief,
+          ...(body.qualityPreset ? { qualityPreset: body.qualityPreset } : {}),
           choice: body.choice,
           mode: body.mode,
           ...(body.taskScope ? { taskScope: body.taskScope } : {}),

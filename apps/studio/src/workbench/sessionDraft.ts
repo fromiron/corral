@@ -14,6 +14,7 @@ export const COMPOSER_DRAFT_SENT = 'corral:composer-draft-sent';
 const revisions = new Map<string, { value: string | null; revision: number }>();
 
 export interface ComposerDraft {
+  qualityPreset?: 'ultra';
   images?: ImageAttachment[];
   taskScope?: 'review_only';
   verificationScope?: 'release';
@@ -58,6 +59,7 @@ export function parseComposerDraft(raw: string | null): ComposerDraft {
         ? { images: ImageAttachments.safeParse(value.images).data ?? [] }
         : {}),
       text: typeof value.text === 'string' ? value.text : '',
+      ...(value.qualityPreset === 'ultra' ? { qualityPreset: 'ultra' as const } : {}),
       ...(value.taskScope === 'review_only' ? { taskScope: 'review_only' as const } : {}),
       ...(value.verificationScope === 'release' ? { verificationScope: 'release' as const } : {}),
       ...(Array.isArray(value.attachments)
@@ -81,6 +83,7 @@ export function serializeComposerDraft(draft: ComposerDraft): string | null {
     !draft.references.length &&
     !draft.attachments?.length &&
     !draft.images?.length &&
+    !draft.qualityPreset &&
     !draft.taskScope &&
     !draft.verificationScope
   )

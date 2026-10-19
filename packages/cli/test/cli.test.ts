@@ -339,6 +339,23 @@ describe('judgments the run ended before (#22)', () => {
 });
 
 describe('headless exec and eval (roadmap Core-③)', () => {
+  it('[TC-ULTRA-001-H] [TC-ULTRA-001-N] headless built-in Ultra uses the same bounded workflow and rejects custom-team conversion', async () => {
+    const cwd = workspace(),
+      output: string[] = [];
+    const brief = join(cwd, 'brief.txt');
+    writeFileSync(brief, 'Hello');
+    expect(
+      await runCli(
+        ['exec', 'auto', '--ultra', '--input', brief, '--demo', '--json'],
+        io(cwd, output),
+      ),
+    ).toBe(0);
+    const result = JSON.parse(output.at(-1)!);
+    expect(result).toMatchObject({ status: 'succeeded', executions: 5, repairRounds: 1 });
+    const custom = join(cwd, 'custom.json');
+    writeFileSync(custom, JSON.stringify(linearCorral(['worker'])));
+    expect(await runCli(['exec', custom, '--ultra', '--demo'], io(cwd, []))).toBe(1);
+  });
   const io = (cwd: string, output: string[]) => ({
     cwd,
     write: (line: string) => output.push(line),
