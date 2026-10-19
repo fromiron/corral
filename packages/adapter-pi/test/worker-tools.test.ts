@@ -98,3 +98,22 @@ it('[TC-PROMPT-001-H] [TC-PROMPT-001-N] preserves the output contract and refuse
     systemPrompt({ ...start, role: { ...start.role, prompt: '큰'.repeat(100_000) } }),
   ).toThrow(/prompt.*limit/i);
 });
+
+it('[TC-PROMPT-001-H] identifies the configured model separately from the role, without credentials or endpoint details', () => {
+  const input = {
+    ...start,
+    model: {
+      provider: 'hive',
+      modelId: 'deepseek-ai/deepseek-v4.1-flash-1017',
+      baseUrl: 'https://private-endpoint.test',
+      apiKey: 'fixture-private-key',
+    },
+  };
+  const identity = promptSections(input).find((section) => section.name === 'corral_identity')!;
+  expect(identity.version).toBe(2);
+  expect(identity.text).toContain(
+    JSON.stringify({ provider: input.model.provider, modelId: input.model.modelId }),
+  );
+  expect(identity.text).not.toContain('fixture-private-key');
+  expect(identity.text).not.toContain('private-endpoint.test');
+});

@@ -112,6 +112,8 @@ export function promptSections(start: PromptStart): PromptSection[] {
     start.role.prompt,
     '',
     `You are ${start.role.name}, one step of a Corral team. Your output contract is "${start.role.outputContract}".`,
+    `Configured model for this execution (host metadata): ${JSON.stringify({ provider: start.model.provider, modelId: start.model.modelId })}.`,
+    "If asked which model you are using, report this configured provider/model separately from your team role. This identifies the requested model, not independent verification of the provider's internal implementation; do not invent a different model identity.",
   ];
   const operating = [
     'Complete the requested work with the smallest adequate change. Use a plan for multi-step work; skip unnecessary ceremony.',
@@ -201,7 +203,7 @@ export function promptSections(start: PromptStart): PromptSection[] {
   const parts = Object.entries(sections).map(([name, lines]) => ({
     name: `corral_${name}`,
     text: `## ${name}\n${lines.join('\n')}`,
-    version: 1,
+    version: name === 'identity' ? 2 : 1,
     reason: name,
   }));
   if (

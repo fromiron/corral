@@ -7,6 +7,10 @@
 
 ## 계약
 
+2026-10-19 모델 식별 보완: 역할명과 별도로 현재 실행에 고정된 provider/model ID를 identity section v2에 전달한다. 이는 Corral이 설정한 요청 대상이며 공급자의 내부 구현을 독립 검증한 정보가 아님을 함께 명시한다. API 키·주소·로컬 경로·다른 모델의 원시 대화는 넣지 않는다. core/SDK의 공통 prompt builder를 사용하고 과거 기록을 다시 쓰지 않는다.
+
+검증: `model-identity-red.log`에서 identity 누락을 확인한 뒤 `model-identity-green.log`의 공통 prompt/SDK 회귀 48개를 통과했다. live 전용 `hive-endpoint.live.test.ts`는 `CORRAL_HIVE_LIVE=1`에서만 실행하며 최대 3요청·회당 4,096출력·150초 Run 제한을 사용한다. 2026-10-19 실제 실행은 Hive `/api/v3`의 지정 모델에 high로 2요청, 입력 합계 2,940·출력 합계 219토큰(보고된 추론 42는 출력에 포함), 미정산 0으로 성공했다. write_artifact→submit_result와 설정 모델 ID/확인 문자열을 검증했다. 대상 source hash는 `b92a5e846e4640c0a81f5bc34e9705cc5c8bdafd93a08075457df670e31c9cd5`이며 `test-results/live/hive-endpoint.json`에 비밀 없는 증거를 기록했다. 이후 Ultra 변경 전체의 live 증거로 전용하지 않는다.
+
 1. systemPrompt와 ModelRequestRecord를 확장해 identity·operating_rules·tools_policy·safety·project_context·mandatory_skills·assignment·output_contract를 결정적으로 조립한다. 역할·출처·hash·포함 이유·추정 context를 기록한다.
 2. TaskBrief는 RunInput/assignment/criteria/snapshot 참조의 투영이다. review_only/허용 수정·targeted/release·대상 tree·선택팩·예산을 구별한다. 별도 실행 엔진을 만들지 않는다.
 3. 실제 등록 descriptor에 있는 도구만 안내한다. ask_user/update_plan의 동작 경로가 먼저 구현돼야 해당 행동 규칙을 넣는다. 필수 규칙을 조용히 잘라 넣지 않는다.
