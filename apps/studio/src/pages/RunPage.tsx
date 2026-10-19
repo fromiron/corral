@@ -137,7 +137,7 @@ export function RunDetail({
         {error ? (
           <button
             type="button"
-            className="rounded border border-line px-2 py-1 text-sm"
+            className="rounded fill-control px-2 py-1 text-sm"
             onClick={() => void session.getState().open(runId)}
           >
             {t('retry')}
@@ -231,7 +231,7 @@ function CompactRunWorkspace({
           to="/runs/$runId"
           params={{ runId: projection.runId }}
           search={{ ...search, view: search.view ?? 'run' }}
-          className="rounded-md border border-line bg-raised px-3 py-2 text-center text-sm hover:bg-sidebar-accent"
+          className="rounded-md fill-control px-3 py-2 text-center text-sm hover:bg-sidebar-accent"
         >
           {n('openRunDetails')}
         </Link>
@@ -259,7 +259,7 @@ function CompactRunWorkspace({
           onOpenArtifact={(artifact) => setSearch({ artifact, view: 'run', result: undefined })}
         />
         {result ? (
-          <div className="rounded-lg border border-line">
+          <div className="rounded-lg fill-group">
             <div className="flex justify-end p-2">
               <button
                 type="button"
@@ -297,7 +297,7 @@ function CompactRunWorkspace({
           ref={controls}
           tabIndex={-1}
           hidden={!search.execution}
-          className="rounded-lg border border-line p-3 outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          className="rounded-lg fill-group p-3 outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
           <div className="mb-3 flex justify-end">
             <button
@@ -681,11 +681,11 @@ function NodeExecutions({
   return (
     <section
       aria-label={t('nodeExecutions', { label })}
-      className="flex flex-col gap-2 rounded-md border border-line p-2 text-xs"
+      className="flex flex-col gap-2 rounded-md fill-group p-2 text-xs"
     >
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold">{t('nodeExecutions', { label })}</h2>
-        <button type="button" onClick={onClose} className="rounded border border-line px-1.5">
+        <button type="button" onClick={onClose} className="rounded fill-control px-1.5">
           {t('closeNode')}
         </button>
       </div>
@@ -702,7 +702,7 @@ function NodeExecutions({
                 aria-pressed={id === selectedExecutionId}
                 onClick={() => onChoose(id)}
                 className={`flex w-full items-center justify-between gap-2 rounded border px-2 py-1 text-left ${
-                  id === selectedExecutionId ? 'border-accent' : 'border-line'
+                  id === selectedExecutionId ? 'border-accent bg-raised' : 'border-transparent fill-group'
                 }`}
               >
                 <span>
@@ -740,7 +740,7 @@ function ViewSwitch({ view, onView }: { view: RunPageView; onView: (view: RunPag
     <div
       role="tablist"
       aria-label={t('label')}
-      className="flex rounded-md border border-line p-0.5"
+      className="flex rounded-md fill-control p-0.5"
     >
       {VIEWS.map((name, index) => (
         <button
@@ -807,7 +807,7 @@ function NarrowViews({
           tabIndex={panel === name ? 0 : -1}
           onClick={() => onChoose(name)}
           onKeyDown={(event) => move(event, index)}
-          className={`shrink-0 rounded px-2 py-1 text-xs ${panel === name ? 'bg-accent text-on-accent' : 'border border-line'}`}
+          className={`shrink-0 rounded px-2 py-1 text-xs ${panel === name ? 'bg-accent text-on-accent' : 'fill-control'}`}
         >
           {t(name)}
         </button>

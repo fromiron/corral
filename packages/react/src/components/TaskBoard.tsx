@@ -88,7 +88,7 @@ export function TaskBoard({
                         key={id}
                         type="button"
                         onClick={() => onOpenArtifact(id)}
-                        className="rounded border border-line px-1 font-mono underline-offset-2 hover:underline"
+                        className="rounded fill-control px-1 font-mono underline-offset-2 hover:underline"
                       >
                         {id}
                       </button>

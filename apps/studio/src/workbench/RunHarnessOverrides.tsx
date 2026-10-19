@@ -57,7 +57,7 @@ export function RunHarnessOverrides({
   }, [api]);
   if (!api || !roles.some((role) => role.harness)) return null;
   return (
-    <details className="rounded border border-line p-2 text-xs">
+    <details className="rounded fill-group p-2 text-xs">
       <summary className="cursor-pointer">
         {t('runStyles')}
         {Object.keys(value).length ? ` · ${Object.keys(value).length}` : ''}

@@ -2,6 +2,7 @@ import { DEFAULT_PROJECT_ID, type ProjectSummary } from '@corral/core';
 import { Link, useNavigate, useRouter } from '@tanstack/react-router';
 import { type FormEvent, useState } from 'react';
 import { useFormatter, useNow, useTranslations } from 'use-intl';
+import { desktop } from '../desktop.tsx';
 import { projectName, projectOfRun, projectsChanged, useCurrentProject } from '../projects.ts';
 import { projectsRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
@@ -57,7 +58,7 @@ export function ProjectsPage() {
       <form
         onSubmit={create}
         aria-label={t('new')}
-        className="flex flex-wrap items-end gap-2 rounded-md border border-line bg-raised p-3"
+        className="flex flex-col gap-3 rounded-md fill-group p-3"
       >
         <label className="flex flex-col gap-1 text-xs">
           {t('nameLabel')}
@@ -66,36 +67,76 @@ export function ProjectsPage() {
             onChange={(e) => setName(e.target.value)}
             maxLength={80}
             required
-            className="rounded border border-line bg-surface px-2 py-1 text-sm"
+            className="rounded fill-control px-2 py-1 text-sm"
           />
         </label>
-        <label className="flex min-w-48 flex-1 flex-col gap-1 text-xs">
+        <label className="flex flex-col gap-1 text-xs">
           {t('descriptionLabel')}
           <input
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             maxLength={500}
-            className="rounded border border-line bg-surface px-2 py-1 text-sm"
+            className="rounded fill-control px-2 py-1 text-sm"
           />
         </label>
         {workspaces ? (
-          <label className="flex min-w-48 flex-1 flex-col gap-1 text-xs">
-            {t('folderOptional')}
-            <input
-              value={folder}
-              onChange={(e) => setFolder(e.target.value)}
-              spellCheck={false}
-              aria-describedby="folder-hint"
-              className="rounded border border-line bg-surface px-2 py-1 font-mono text-sm"
-            />
+          <div className="flex flex-col gap-1 text-xs">
+            <span id="folder-label">{t('folderOptional')}</span>
+            {mode === 'server' && !desktop ? (
+              <input
+                value={folder}
+                onChange={(e) => setFolder(e.target.value)}
+                spellCheck={false}
+                aria-labelledby="folder-label"
+                aria-describedby="folder-hint"
+                className="rounded fill-control px-2 py-1 font-mono text-sm"
+              />
+            ) : (
+              <div className="flex items-center gap-2 rounded fill-control px-2 py-1 text-sm">
+                <span
+                  className="min-w-0 flex-1 truncate text-muted"
+                  title={mode === 'browser' ? undefined : folder || undefined}
+                  aria-labelledby="folder-label"
+                >
+                  {folder ? (mode === 'browser' ? t('exampleFolder') : folder) : t('noFolder')}
+                </span>
+                {mode === 'browser' && folder ? null : (
+                  <button
+                    type="button"
+                    className="shrink-0 font-medium text-accent"
+                    aria-describedby="folder-hint"
+                    onClick={() => {
+                      if (desktop) {
+                        void desktop.pickFolder().then((chosen) => {
+                          if (chosen) setFolder(chosen);
+                        });
+                        return;
+                      }
+                      setFolder('demo://example-repo');
+                    }}
+                  >
+                    {mode === 'browser' ? t('linkExample') : t('chooseFolder')}
+                  </button>
+                )}
+                {folder ? (
+                  <button
+                    type="button"
+                    className="shrink-0 text-muted"
+                    onClick={() => setFolder('')}
+                  >
+                    {t('clearFolder')}
+                  </button>
+                ) : null}
+              </div>
+            )}
             <span id="folder-hint" className="text-muted">
               {t('folderHint')}
             </span>
-          </label>
+          </div>
         ) : null}
         <button
           type="submit"
-          className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent"
+          className="self-start rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent"
         >
           {t('create')}
         </button>
@@ -145,7 +186,7 @@ export function ProjectsPage() {
               key={project.projectId}
               aria-current={project.projectId === current ? 'true' : undefined}
               className={`flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-raised p-3 ${
-                project.projectId === current ? 'border-accent' : 'border-line'
+                project.projectId === current ? 'border-accent' : 'border-transparent'
               }`}
             >
               <div className="flex min-w-0 flex-col">
@@ -166,7 +207,7 @@ export function ProjectsPage() {
               </div>
               <div className="flex items-center gap-2 text-xs">
                 {project.archivedAt ? (
-                  <span className="rounded-full border border-line px-2 py-0.5 text-muted">
+                  <span className="rounded-full fill-control px-2 py-0.5 text-muted">
                     {t('archived')}
                   </span>
                 ) : null}
@@ -175,7 +216,7 @@ export function ProjectsPage() {
                     type="button"
                     aria-label={`${project.archivedAt ? t('restore') : t('archive')}: ${label}`}
                     onClick={() => void setArchived(project, !project.archivedAt)}
-                    className="rounded border border-line px-2 py-1"
+                    className="rounded fill-control px-2 py-1"
                   >
                     {project.archivedAt ? t('restore') : t('archive')}
                   </button>

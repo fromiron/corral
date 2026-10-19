@@ -56,7 +56,7 @@ export function EditorToolbar() {
         type="button"
         onClick={() => editor.getState().undo()}
         disabled={!canUndo}
-        className="rounded-md border border-line px-2 py-1 text-xs disabled:opacity-40"
+        className="rounded-md fill-control px-2 py-1 text-xs disabled:opacity-40"
       >
         {t('undo')}
       </button>
@@ -64,7 +64,7 @@ export function EditorToolbar() {
         type="button"
         onClick={() => editor.getState().redo()}
         disabled={!canRedo}
-        className="rounded-md border border-line px-2 py-1 text-xs disabled:opacity-40"
+        className="rounded-md fill-control px-2 py-1 text-xs disabled:opacity-40"
       >
         {t('redo')}
       </button>
@@ -72,7 +72,7 @@ export function EditorToolbar() {
         type="button"
         onClick={tidy}
         disabled={empty}
-        className="rounded-md border border-line px-2 py-1 text-xs disabled:opacity-40"
+        className="rounded-md fill-control px-2 py-1 text-xs disabled:opacity-40"
       >
         {t('tidy')}
       </button>

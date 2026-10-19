@@ -133,7 +133,7 @@ export function SessionSearchDialog({
                         : {}
                   }
                   onClick={() => onOpenChange(false)}
-                  className="block rounded border border-line p-2 hover:bg-subtle"
+                  className="block rounded fill-group p-2 hover:bg-subtle"
                 >
                   <span className="text-sm font-medium">{hit.title}</span>{' '}
                   <span className="text-xs text-muted">

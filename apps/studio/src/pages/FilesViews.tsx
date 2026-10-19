@@ -93,34 +93,50 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
         <form onSubmit={link} className="settings-row">
           <div>
             <h3>{t('pathLabel')}</h3>
+            {path && mode !== 'browser' ? (
+              <p className="truncate" title={path}>
+                {path}
+              </p>
+            ) : null}
           </div>
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:items-end">
-            <input
-              value={path}
-              onChange={(e) => setPath(e.target.value)}
-              spellCheck={false}
-              aria-label={t('pathLabel')}
-              className="settings-field font-mono sm:w-80"
-            />
+            {mode === 'server' && !desktop ? (
+              <input
+                value={path}
+                onChange={(e) => setPath(e.target.value)}
+                spellCheck={false}
+                aria-label={t('pathLabel')}
+                className="settings-field font-mono sm:w-80"
+              />
+            ) : null}
             <div className="flex gap-2">
-              {desktop ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  type="button"
-                  onClick={() =>
-                    void act(async () => {
-                      const folder = await desktop?.pickFolder();
-                      if (folder) setPath(folder);
-                    })
-                  }
-                >
-                  {t('chooseFolder')}
+              {mode === 'browser' ? (
+                <Button variant="outline" size="sm" type="submit">
+                  {t('linkExample')}
                 </Button>
-              ) : null}
-              <Button variant="outline" size="sm" type="submit" disabled={!path.trim()}>
-                {t('link')}
-              </Button>
+              ) : desktop ? (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    type="button"
+                    onClick={() => {
+                      void desktop.pickFolder().then((folder) => {
+                        if (folder) setPath(folder);
+                      });
+                    }}
+                  >
+                    {t('chooseFolder')}
+                  </Button>
+                  <Button variant="outline" size="sm" type="submit" disabled={!path.trim()}>
+                    {t('link')}
+                  </Button>
+                </>
+              ) : (
+                <Button variant="outline" size="sm" type="submit" disabled={!path.trim()}>
+                  {t('link')}
+                </Button>
+              )}
             </div>
           </div>
         </form>
@@ -257,7 +273,7 @@ export function WorkingCopyPanel({
   return (
     <section
       aria-labelledby="copy-heading"
-      className="flex flex-col gap-2 rounded-md border border-line p-3 text-sm"
+      className="flex flex-col gap-2 rounded-md fill-group p-3 text-sm"
     >
       <h3 id="copy-heading" className="text-sm font-semibold">
         {t('copyHeading')}
@@ -286,7 +302,7 @@ export function WorkingCopyPanel({
               if (window.confirm(t('removeConfirm')))
                 void act(() => workspaces.removeWorktree(sessionId));
             }}
-            className="rounded border border-line px-2 py-1 text-xs"
+            className="rounded fill-control px-2 py-1 text-xs"
           >
             {t('remove')}
           </button>

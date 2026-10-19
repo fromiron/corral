@@ -33,7 +33,7 @@ export function RunActions({
   return (
     <section
       aria-label={t('runControls')}
-      className={`flex flex-col gap-2 text-xs ${compact ? '' : 'rounded-lg border border-line p-3'}`}
+      className={`flex flex-col gap-2 text-xs ${compact ? '' : 'rounded-lg fill-group p-3'}`}
     >
       {compact ? null : (
         <>

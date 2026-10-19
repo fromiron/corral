@@ -23,8 +23,8 @@ const BINDING_KINDS: InputBindingKind[] = [
   'explicit_version',
   'question_answer',
 ];
-const field = 'rounded-md border border-line bg-surface p-2 text-sm';
-const smallButton = 'rounded border border-line px-2 py-1 text-xs';
+const field = 'rounded-md fill-control p-2 text-sm';
+const smallButton = 'rounded fill-control px-2 py-1 text-xs';
 
 /** One focus session of a field is one undo step. */
 function useEditSession() {

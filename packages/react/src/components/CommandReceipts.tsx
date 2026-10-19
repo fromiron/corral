@@ -31,7 +31,7 @@ export function CommandReceipts({ session, target }: { session: RunSessionStore;
             <button
               type="button"
               disabled={pending.includes(command.commandId)}
-              className="rounded border border-line px-2 py-1 disabled:opacity-50"
+              className="rounded fill-control px-2 py-1 disabled:opacity-50"
               onClick={() =>
                 void session
                   .getState()
@@ -46,7 +46,7 @@ export function CommandReceipts({ session, target }: { session: RunSessionStore;
       {matching.map((receipt) => (
         <div
           key={receipt.commandId}
-          className="rounded border border-line p-2"
+          className="rounded fill-group p-2"
           data-testid={`receipt-${receipt.commandId}`}
         >
           <p>

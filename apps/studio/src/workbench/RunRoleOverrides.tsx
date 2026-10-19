@@ -22,7 +22,7 @@ export function RunRoleOverrides({
   if (!roles.length) return null;
   return (
     <details
-      className="rounded border border-line p-2 text-xs"
+      className="rounded fill-group p-2 text-xs"
       data-testid="run-role-overrides"
       onToggle={(event) => setOpen(event.currentTarget.open)}
     >

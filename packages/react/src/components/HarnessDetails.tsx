@@ -31,7 +31,7 @@ export function HarnessDetails({ session }: { session: RunSessionStore }) {
   const uiHistory = events.filter((event) => event.type.startsWith('extension.ui_'));
   if (!harnesses && !requests.length && !uiHistory.length) return null;
   return (
-    <details className="mb-4 rounded-lg border border-line p-3" data-testid="harness-details">
+    <details className="mb-4 rounded-lg fill-group p-3" data-testid="harness-details">
       <summary className="cursor-pointer text-sm font-semibold">{t('applied')}</summary>
       <div className="mt-3 flex flex-col gap-3">
         {uiHistory.length ? (

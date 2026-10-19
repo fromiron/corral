@@ -24,7 +24,7 @@ const codeOptions = {
 };
 
 const viewerClass =
-  'h-[min(65vh,600px)] min-h-48 overflow-auto rounded border border-line bg-surface';
+  'h-[min(65vh,600px)] min-h-48 overflow-auto rounded fill-group';
 
 function CodeFrame({ children }: { children: ReactNode }) {
   return (
@@ -148,7 +148,7 @@ export function DiffCode({
               min={1}
               value={range.start}
               onChange={(e) => setRange((r) => ({ ...r, start: e.target.valueAsNumber || 1 }))}
-              className="w-14 rounded border border-line bg-surface px-1"
+              className="w-14 rounded fill-control px-1"
             />
           </label>
           <label>
@@ -158,7 +158,7 @@ export function DiffCode({
               min={1}
               value={range.end}
               onChange={(e) => setRange((r) => ({ ...r, end: e.target.valueAsNumber || 1 }))}
-              className="w-14 rounded border border-line bg-surface px-1"
+              className="w-14 rounded fill-control px-1"
             />
           </label>
           <Button size="xs" variant="outline" disabled={!anchor} onClick={() => setOpen(true)}>
@@ -168,7 +168,7 @@ export function DiffCode({
       ) : null}
       {open && anchor && onComment ? (
         <form
-          className="space-y-2 rounded-lg border border-line bg-raised p-3"
+          className="space-y-2 rounded-lg fill-group p-3"
           onSubmit={(e) => {
             e.preventDefault();
             if (busy || !body.trim()) return;
@@ -197,7 +197,7 @@ export function DiffCode({
             value={body}
             onChange={(e) => setBody(e.target.value)}
             rows={2}
-            className="w-full rounded border border-line bg-surface p-2 text-xs"
+            className="w-full rounded fill-group p-2 text-xs"
           />
           <div className="flex gap-2">
             <Button type="submit" size="xs" disabled={busy || !body.trim()}>

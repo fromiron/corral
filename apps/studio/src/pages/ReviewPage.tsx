@@ -134,7 +134,7 @@ export function ReviewPage() {
               <select
                 value={scopeKey}
                 onChange={(e) => setScope(e.target.value)}
-                className="rounded border border-line bg-surface px-1 py-0.5"
+                className="rounded fill-control px-1 py-0.5"
               >
                 <option value="session">{t('scopes.session')}</option>
                 <option value="review">{t('scopes.review')}</option>
@@ -169,7 +169,7 @@ export function ReviewPage() {
                   .then(() => setVersion((n) => n + 1))
               }
               title={t('reviewedNote')}
-              className="ml-auto rounded border border-line px-2 py-1 text-xs"
+              className="ml-auto rounded fill-control px-2 py-1 text-xs"
             >
               {t('markReviewed')}
             </button>
@@ -445,7 +445,7 @@ function FileDiff({
           aria-pressed={isReviewed}
           onClick={() => reviewed.toggle(reviewedKey)}
           title={t('reviewedNote')}
-          className={`rounded px-2 py-0.5 text-xs ${isReviewed ? 'bg-success/20' : 'border border-line'}`}
+          className={`rounded px-2 py-0.5 text-xs ${isReviewed ? 'bg-success/20' : 'fill-control'}`}
         >
           {isReviewed ? `✓ ${t('reviewedFile')}` : t('markFileReviewed')}
         </button>
@@ -456,7 +456,7 @@ function FileDiff({
               type="button"
               aria-pressed={layout === value}
               onClick={() => setLayout(value)}
-              className={`rounded px-2 py-0.5 ${layout === value ? 'bg-accent text-on-accent' : 'border border-line'}`}
+              className={`rounded px-2 py-0.5 ${layout === value ? 'bg-accent text-on-accent' : 'fill-control'}`}
             >
               {t(value)}
             </button>
@@ -478,11 +478,11 @@ function FileDiff({
           <button
             type="button"
             onClick={download}
-            className="self-start rounded border border-line px-2 py-0.5 text-xs"
+            className="self-start rounded fill-control px-2 py-0.5 text-xs"
           >
             {t('downloadFile')}
           </button>
-          <pre className="overflow-auto whitespace-pre-wrap break-all rounded border border-line bg-surface p-2 font-mono text-ui">
+          <pre className="overflow-auto whitespace-pre-wrap break-all rounded fill-group p-2 font-mono text-ui">
             {source}
           </pre>
         </div>
@@ -574,7 +574,7 @@ export function Checks({
         {results.map((r) => (
           <li
             key={r.verificationId}
-            className="rounded border border-line p-2 text-xs"
+            className="rounded fill-group p-2 text-xs"
             data-testid="check-result"
           >
             <div className="flex flex-wrap items-center gap-2">
@@ -775,7 +775,7 @@ function CommentsPanel({
                       ?.setCommentState(session.sessionId, c.commentId, 'deleted')
                       .then(onChange)
                   }
-                  className="rounded border border-line px-1"
+                  className="rounded fill-control px-1"
                 >
                   {t('deleteDraft')}
                 </button>
@@ -787,7 +787,7 @@ function CommentsPanel({
             <select
               value={active ? target : 'next'}
               onChange={(e) => setTarget(e.target.value)}
-              className="rounded border border-line bg-surface px-1 py-0.5"
+              className="rounded fill-control px-1 py-0.5"
             >
               {active ? null : <option value="next">{t('sendNext')}</option>}
               {targets.map((x) => (
@@ -819,7 +819,7 @@ function CommentsPanel({
             {comments
               .filter((c) => c.state !== 'draft')
               .map((c) => (
-                <li key={c.commentId} className="rounded border border-line p-1">
+                <li key={c.commentId} className="rounded fill-group p-1">
                   <span className="font-mono">
                     {c.path}:{c.startLine}
                   </span>{' '}
@@ -839,7 +839,7 @@ function CommentsPanel({
                               ?.setCommentState(session.sessionId, c.commentId, state)
                               .then(onChange)
                           }
-                          className="rounded border border-line px-1"
+                          className="rounded fill-control px-1"
                         >
                           {state === 'addressed' ? t('markAddressed') : t('markObsolete')}
                         </button>
@@ -938,13 +938,13 @@ function DecisionPanel({
           type="button"
           disabled={busy}
           onClick={() => void act(() => decide('changes_requested'))}
-          className="rounded border border-line px-2 py-0.5"
+          className="rounded fill-control px-2 py-0.5"
         >
           {t('requestChanges')}
         </button>
       </div>
       {approved && linked ? (
-        <div className="flex flex-col gap-1 rounded border border-line p-2 text-xs">
+        <div className="flex flex-col gap-1 rounded fill-group p-2 text-xs">
           <h4 className="font-semibold">{t('integrateHeading')}</h4>
           <p className="text-muted">{t('integrateNote')}</p>
           <button
@@ -955,7 +955,7 @@ function DecisionPanel({
                   setPlan(await workspaces.integrationPlan(sessionId, approved.decisionId));
               })
             }
-            className="self-start rounded border border-line px-2 py-0.5"
+            className="self-start rounded fill-control px-2 py-0.5"
           >
             {t('plan')}
           </button>
@@ -990,7 +990,7 @@ function DecisionPanel({
         <div
           key={integration.integrationId}
           data-testid="integration"
-          className="flex flex-col gap-1 rounded border border-line p-2 text-xs"
+          className="flex flex-col gap-1 rounded fill-group p-2 text-xs"
         >
           <span className="font-medium">{t(`integrationState.${integration.state}`)}</span>
           <ul>
@@ -1011,7 +1011,7 @@ function DecisionPanel({
                   await reload();
                 })
               }
-              className="self-start rounded border border-line px-2 py-0.5"
+              className="self-start rounded fill-control px-2 py-0.5"
             >
               {t('revert')}
             </button>
@@ -1109,7 +1109,7 @@ function FileList({
         aria-current={selected === file.path ? 'true' : undefined}
         onClick={() => onChoose(file.path)}
         className={`flex w-full flex-col rounded border px-2 py-1 text-left text-xs ${
-          selected === file.path ? 'border-accent bg-raised' : 'border-line'
+          selected === file.path ? 'border-accent bg-raised' : 'border-transparent fill-group'
         }`}
       >
         <span className="break-all font-mono">
@@ -1133,14 +1133,14 @@ function FileList({
         placeholder={t('filterSearch')}
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        className="rounded border border-line bg-surface px-2 py-1 text-xs"
+        className="rounded fill-control px-2 py-1 text-xs"
       />
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <select
           aria-label={t('kindAll')}
           value={kind}
           onChange={(e) => setKind(e.target.value as typeof kind)}
-          className="rounded border border-line bg-surface px-1 py-0.5"
+          className="rounded fill-control px-1 py-0.5"
         >
           <option value="all">{t('kindAll')}</option>
           {(['added', 'modified', 'deleted', 'type_changed'] as const).map((value) => (

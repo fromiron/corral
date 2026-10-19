@@ -128,6 +128,63 @@
   backdrop-filter: blur(12px);
 }
 
+/* Groups are a fill. Controls on the page use the raised fill; controls inside a group use the page fill. */
+@layer components {
+  .fill-group {
+    background: var(--raised);
+  }
+
+  .fill-group .fill-group {
+    background: var(--surface);
+  }
+
+  .fill-control {
+    background: var(--raised);
+  }
+
+  .fill-group .fill-control {
+    background: var(--surface);
+  }
+
+  .fill-group .fill-group .fill-control {
+    background: var(--raised);
+  }
+
+  /* Dialogs are already a raised overlay, so groups step back to the page fill. */
+  [data-slot='dialog-popup'] .fill-group,
+  [data-slot='dialog-popup'] .fill-control {
+    background: var(--surface);
+  }
+
+  [data-slot='dialog-popup'] .fill-group .fill-control {
+    background: var(--raised);
+  }
+}
+
+/* The shared input draws its own edge. Inside a filled group that edge is a second frame. */
+.fill-group [data-slot='input-control'],
+.fill-group [data-slot='textarea-control'] {
+  background: var(--surface);
+}
+
+.fill-group .fill-group [data-slot='input-control'],
+.fill-group .fill-group [data-slot='textarea-control'],
+[data-slot='dialog-popup'] .fill-group [data-slot='input-control'],
+[data-slot='dialog-popup'] .fill-group [data-slot='textarea-control'] {
+  background: var(--raised);
+}
+
+.fill-group [data-slot='input-control']:not(:focus-within),
+.fill-group [data-slot='textarea-control']:not(:focus-within) {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.fill-group [data-slot='input-control']:not(:focus-within)::before,
+.fill-group [data-slot='textarea-control']:not(:focus-within)::before {
+  box-shadow: none;
+}
+
 @layer base {
   html,
   body,
@@ -145,6 +202,47 @@
   :focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
+  }
+
+  /* Match the ScrollArea thumb. Dialog viewports keep Base UI's hidden native bar. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--app-scrollbar-thumb) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  *::-webkit-scrollbar-button {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+
+  *::-webkit-scrollbar-track,
+  *::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: var(--app-scrollbar-thumb);
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background: var(--app-scrollbar-thumb-hover);
+  }
+
+  @media (forced-colors: active) {
+    * {
+      scrollbar-color: auto;
+    }
+
+    *::-webkit-scrollbar-thumb {
+      background: CanvasText;
+    }
   }
 
   @media (prefers-reduced-motion: reduce) {

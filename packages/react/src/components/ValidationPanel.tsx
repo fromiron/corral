@@ -87,7 +87,7 @@ export function ValidationPanel() {
                   <button
                     type="button"
                     onClick={() => giveCriteria(d.nodeId ?? '')}
-                    className="self-start rounded border border-line px-2 py-0.5"
+                    className="self-start rounded fill-control px-2 py-0.5"
                   >
                     {t('giveCriteria')}
                   </button>
@@ -130,7 +130,7 @@ function Issue({ text, at, onShow }: { text: string; at: Located; onShow: (at: L
         <button
           type="button"
           onClick={() => onShow(at)}
-          className="rounded border border-line px-1.5 py-0.5"
+          className="rounded fill-control px-1.5 py-0.5"
         >
           {t('show')}
         </button>

@@ -79,7 +79,7 @@ export function RunStatusCards({
           {branchText('source')}
         </Link>
       ) : null}
-      <details data-testid="status-environment" className="rounded border border-line p-2">
+      <details data-testid="status-environment" className="rounded fill-group p-2">
         <summary className="cursor-pointer font-medium">
           {t('environment')} · {t(projection.mode === 'mock' ? 'simulated' : 'live')}
         </summary>
@@ -108,7 +108,7 @@ export function RunStatusCards({
           </p>
         </div>
       </details>
-      <details data-testid="status-context" className="rounded border border-line p-2">
+      <details data-testid="status-context" className="rounded fill-group p-2">
         <summary className="cursor-pointer font-medium">
           {t('context')} ·{' '}
           {record?.contextEstimate
@@ -154,7 +154,7 @@ export function RunStatusCards({
           ) : null}
         </div>
       </details>
-      <details data-testid="status-connections" className="rounded border border-line p-2">
+      <details data-testid="status-connections" className="rounded fill-group p-2">
         <summary className="cursor-pointer font-medium">
           {t('connections')} · {Object.keys(projection.modelProfiles).length}
         </summary>
@@ -180,7 +180,7 @@ export function RunStatusCards({
           <HarnessDetails session={session} />
         </div>
       </details>
-      <details data-testid="status-changes" className="rounded border border-line p-2">
+      <details data-testid="status-changes" className="rounded fill-group p-2">
         <summary className="cursor-pointer font-medium">{t('changes')}</summary>
         <div className="mt-2">
           {sessionId && copy ? (

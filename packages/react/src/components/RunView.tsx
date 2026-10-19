@@ -149,7 +149,7 @@ export function RunOutput({
                 type="button"
                 onClick={() => onOpenResults(artifact.artifactVersionId)}
                 aria-label={label}
-                className="rounded border border-line px-2 py-0.5"
+                className="rounded fill-control px-2 py-0.5"
               >
                 {label} ↗
               </button>
@@ -162,7 +162,7 @@ export function RunOutput({
       ) : (
         <div
           data-testid="run-output"
-          className={`overflow-auto rounded-md border border-line bg-surface p-2 ${heading ? 'max-h-64' : ''}`}
+          className={`overflow-auto rounded-md fill-group p-2 ${heading ? 'max-h-64' : ''}`}
         >
           <SafeMarkdown text={outputText} />
         </div>
@@ -177,7 +177,7 @@ export function RunOutput({
               label: `${result.name} v${result.version}`,
             })
           }
-          className="self-start rounded border border-line px-2 py-1 text-xs"
+          className="self-start rounded fill-control px-2 py-1 text-xs"
         >
           {t('newRunFromResult')}
         </button>
@@ -300,7 +300,7 @@ function ExecutionRow({
       data-testid={`execution-${id}`}
       data-execution-id={id}
       aria-current={selected ? 'true' : undefined}
-      className={`rounded-md border p-2 text-xs ${selected ? 'border-accent ring-1 ring-accent/40' : 'border-line'}`}
+      className={`rounded-md border p-2 text-xs ${selected ? 'border-accent bg-raised ring-1 ring-accent/40' : 'border-transparent fill-group'}`}
     >
       <div className="flex items-center justify-between gap-2">
         <span className="flex flex-col">
@@ -320,7 +320,7 @@ function ExecutionRow({
           <button
             type="button"
             onClick={() => onSteer(id)}
-            className="rounded border border-line px-1.5 py-0.5"
+            className="rounded fill-control px-1.5 py-0.5"
           >
             {t(compact ? 'openControls' : 'steerThis')}
           </button>
@@ -354,7 +354,7 @@ function ExecutionRow({
         <p
           data-testid="live-text"
           aria-live="off"
-          className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap rounded border border-line bg-surface p-1 text-muted"
+          className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap rounded fill-group p-1 text-muted"
         >
           {live.text}
           {live.broken ? ` ${t('streamGap')}` : ''}

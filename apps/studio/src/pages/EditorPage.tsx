@@ -138,7 +138,7 @@ function TemplatePicker({ current }: { current: DemoTemplateId }) {
               template === 'starter' ? { ...search, template } : { ...search, template: undefined },
           });
         }}
-        className="rounded-md border border-line bg-surface px-2 py-1"
+        className="rounded-md fill-control px-2 py-1"
       >
         {DEMO_TEMPLATE_IDS.map((id) => (
           <option key={id} value={id}>
@@ -324,7 +324,7 @@ function Editor({
                   onFocus={() => editor.getState().beginBatch()}
                   onBlur={() => editor.getState().endBatch()}
                   aria-label={t('name')}
-                  className="rounded-md border border-line bg-surface px-2 py-1 font-medium"
+                  className="rounded-md fill-control px-2 py-1 font-medium"
                 />
               </label>
               <span className="text-xs text-muted" data-testid="revisions">
@@ -345,7 +345,7 @@ function Editor({
                 <button
                   type="button"
                   onClick={exportFiles}
-                  className="rounded-md border border-line px-3 py-1.5 text-sm"
+                  className="rounded-md fill-control px-3 py-1.5 text-sm"
                 >
                   {t('export')}
                 </button>
@@ -497,7 +497,7 @@ function RunSide({
       <details
         open={setupOpen}
         onToggle={(event) => setSetupOpen(event.currentTarget.open)}
-        className="rounded-lg border border-line p-3"
+        className="rounded-lg fill-group p-3"
       >
         <summary className="cursor-pointer text-sm font-medium">{n('prepareExecution')}</summary>
         <p className="my-2 text-xs text-muted">{n('runOverridesHint')}</p>

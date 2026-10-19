@@ -395,7 +395,7 @@ export function ErrorView({ error }: ErrorComponentProps) {
       <button
         type="button"
         onClick={() => router.invalidate()}
-        className="rounded border border-line px-2 py-1 text-sm"
+        className="rounded fill-control px-2 py-1 text-sm"
       >
         ↻
       </button>

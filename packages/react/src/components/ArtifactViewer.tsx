@@ -112,7 +112,7 @@ export function ArtifactViewer({
       <section
         aria-labelledby={headingId}
         data-testid="artifact-viewer"
-        className="flex flex-col gap-2 rounded-md border border-line p-2 text-xs"
+        className="flex flex-col gap-2 rounded-md fill-group p-2 text-xs"
       >
         <div className="flex items-center justify-between gap-2">
           <h3 id={headingId} className="font-semibold">
@@ -121,7 +121,7 @@ export function ArtifactViewer({
           <button
             type="button"
             onClick={onClose}
-            className="rounded border border-line px-1.5 py-0.5"
+            className="rounded fill-control px-1.5 py-0.5"
           >
             {t('close')}
           </button>
@@ -149,7 +149,7 @@ export function ArtifactViewer({
       key={id}
       type="button"
       onClick={() => open(id)}
-      className="rounded border border-line px-1 font-mono"
+      className="rounded fill-control px-1 font-mono"
     >
       {id}
     </button>
@@ -158,7 +158,7 @@ export function ArtifactViewer({
     <section
       aria-labelledby={headingId}
       data-testid="artifact-viewer"
-      className="flex flex-col gap-2 rounded-md border border-line p-2"
+      className="flex flex-col gap-2 rounded-md fill-group p-2"
     >
       <div className="flex items-center justify-between gap-2">
         <h3 id={headingId} className="text-xs font-semibold">
@@ -174,7 +174,7 @@ export function ArtifactViewer({
                 label: `${artifact.name} v${artifact.version}`,
               })
             }
-            className="ml-auto rounded border border-line px-1.5 py-0.5 text-xs"
+            className="ml-auto rounded fill-control px-1.5 py-0.5 text-xs"
           >
             {t('newRunFromVersion')}
           </button>
@@ -182,7 +182,7 @@ export function ArtifactViewer({
         <button
           type="button"
           onClick={onClose}
-          className="rounded border border-line px-1.5 py-0.5 text-xs"
+          className="rounded fill-control px-1.5 py-0.5 text-xs"
         >
           {t('close')}
         </button>
@@ -213,7 +213,7 @@ export function ArtifactViewer({
       ) : null}
       {lineage ? (
         <div
-          className="flex flex-col gap-1 rounded border border-line p-2 text-xs"
+          className="flex flex-col gap-1 rounded fill-group p-2 text-xs"
           data-testid="artifact-lineage"
         >
           <h4 className="font-semibold">{t('lineage')}</h4>
@@ -269,7 +269,7 @@ export function ArtifactViewer({
         <button
           type="button"
           onClick={() => setComparingId(comparing ? null : shownId)}
-          className="self-start rounded border border-line px-1.5 py-0.5 text-xs"
+          className="self-start rounded fill-control px-1.5 py-0.5 text-xs"
         >
           {comparing ? t('hideCompare') : t('compare', { version: parentId })}
         </button>
@@ -279,7 +279,7 @@ export function ArtifactViewer({
           <p className="text-xs text-muted">{t('loading')}</p>
         ) : (
           <pre
-            className="overflow-x-auto rounded border border-line text-xs"
+            className="overflow-x-auto rounded fill-group text-xs"
             data-testid="artifact-diff"
           >
             {diff.map((line, i) => (

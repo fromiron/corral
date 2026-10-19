@@ -25,7 +25,7 @@ export function SafeMarkdown({
   const reader = size === 'reader';
   if (/^\s*(?:<!doctype\s+html\b|<html\b)/i.test(text)) {
     return (
-      <pre className="max-w-full overflow-auto rounded border border-line bg-surface p-2 text-xs">
+      <pre className="max-w-full overflow-auto rounded fill-group p-2 text-xs">
         <code>{text}</code>
       </pre>
     );
@@ -56,7 +56,7 @@ export function SafeMarkdown({
               }
             })();
             return (
-              <span className="rounded border border-line px-1 text-xs text-muted">
+              <span className="rounded fill-control px-1 text-xs text-muted">
                 {t('imageNotLoaded', { alt: alt || t('image'), host: host || '—' })}
               </span>
             );
@@ -94,7 +94,7 @@ export function SafeMarkdown({
           ),
           pre: ({ children }) => (
             <pre
-              className={`max-w-full overflow-auto rounded border border-line bg-surface p-2 ${reader ? 'text-ui' : 'text-xs'}`}
+              className={`max-w-full overflow-auto rounded fill-group p-2 ${reader ? 'text-ui' : 'text-xs'}`}
             >
               {children}
             </pre>

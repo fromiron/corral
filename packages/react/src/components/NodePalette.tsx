@@ -35,14 +35,14 @@ export function NodePalette() {
             draggable
             onDragStart={(event) => onDragStart(event, kind)}
             data-palette-item={kind}
-            className="cursor-grab rounded-lg border border-line bg-raised p-2 active:cursor-grabbing"
+            className="cursor-grab rounded-lg fill-group p-2 active:cursor-grabbing"
           >
             <div className="text-sm font-medium">{t(kind)}</div>
             <div className="text-xs text-muted">{t(`${kind}Description`)}</div>
             <button
               type="button"
               onClick={() => add(kind)}
-              className="mt-2 rounded-md border border-line px-2 py-1 text-xs hover:bg-surface"
+              className="mt-2 rounded-md fill-control px-2 py-1 text-xs hover:bg-subtle"
             >
               {t('add', { kind: t(kind) })}
             </button>

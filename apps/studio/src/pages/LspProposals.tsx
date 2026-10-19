@@ -137,7 +137,7 @@ export function LspProposals({
                 <select
                   aria-label={t('file')}
                   disabled={busy}
-                  className="rounded border border-line bg-surface p-2"
+                  className="rounded fill-group p-2"
                   value={path}
                   onChange={(event) => setPath(event.target.value)}
                 >

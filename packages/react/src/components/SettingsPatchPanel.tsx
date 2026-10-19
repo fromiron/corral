@@ -180,7 +180,7 @@ export function SettingsPatchPanel({
     );
   }).length;
   return (
-    <details className="rounded border border-line p-2 text-xs">
+    <details className="rounded fill-group p-2 text-xs">
       <summary className="cursor-pointer font-semibold">{t('heading')}</summary>
       <div className="mt-2 flex flex-col gap-2">
         {!terminal ? (
@@ -190,7 +190,7 @@ export function SettingsPatchPanel({
               id={`${id}-kind`}
               value={kind}
               onChange={(event) => changeKind(event.target.value as PatchKind)}
-              className="rounded border border-line bg-surface p-1"
+              className="rounded fill-group p-1"
             >
               {(['run_limits', 'node_future', 'loop_limit', 'criteria'] as const).map((value) => (
                 <option key={value} value={value}>
@@ -208,7 +208,7 @@ export function SettingsPatchPanel({
                     setSelectedNode(event.target.value);
                     setPreview(null);
                   }}
-                  className="rounded border border-line bg-surface p-1"
+                  className="rounded fill-group p-1"
                 >
                   {nodes.map((candidate) => (
                     <option key={candidate.id} value={candidate.id}>
@@ -227,7 +227,7 @@ export function SettingsPatchPanel({
                 setProposed('');
                 setPreview(null);
               }}
-              className="rounded border border-line bg-surface p-1"
+              className="rounded fill-group p-1"
             >
               {fields.map((value) => (
                 <option key={value} value={value}>
@@ -251,7 +251,7 @@ export function SettingsPatchPanel({
                 <label className="flex flex-col gap-1">
                   {t('reasoningModel')}
                   <input
-                    className="rounded border border-line bg-surface p-2"
+                    className="rounded fill-group p-2"
                     placeholder={String(nodeSettings.modelProfile ?? '')}
                     value={reasoningModel}
                     onChange={(event) => {
@@ -272,7 +272,7 @@ export function SettingsPatchPanel({
                     setPreview(null);
                   }}
                   rows={3}
-                  className="rounded border border-line bg-surface p-2"
+                  className="rounded fill-group p-2"
                 />
               </>
             )}
@@ -285,7 +285,7 @@ export function SettingsPatchPanel({
                 (kind === 'criteria' && (!criteriaId || criteriaText === undefined))
               }
               onClick={prepare}
-              className="rounded border border-line px-2 py-1 disabled:opacity-50"
+              className="rounded fill-control px-2 py-1 disabled:opacity-50"
             >
               {t('preview')}
             </button>
@@ -346,7 +346,7 @@ export function SettingsPatchPanel({
           <div className="flex flex-col gap-1">
             <h4 className="font-semibold">{t('history')}</h4>
             {patches.map((patch) => (
-              <div key={patch.patchId} className="rounded border border-line p-1">
+              <div key={patch.patchId} className="rounded fill-group p-1">
                 <p>
                   <span className="font-mono">{patch.patchId}</span> · {t(`kind.${patch.kind}`)} ·{' '}
                   <StatusBadge status="applied" />
