@@ -296,3 +296,43 @@ describe('auto run regressions (CR-024)', () => {
     expect(s.calls()).toBe(1);
   });
 });
+
+describe('durable cancellation before starting an auto run', () => {
+  it('[TC-AUTO-003-N] the final start boundary respects a saved cancellation and its session', () => {
+    const s = setup();
+    const original = request('cmd_cancel_before_commit');
+    const stopped = s.coordinator.cancelAutoStart(original.commandId, original.sessionId);
+    expect(stopped.receipt.status).toBe('cancelled');
+    expect(s.coordinator.cancelAutoStart(original.commandId, original.sessionId)).toEqual(stopped);
+    const start = {
+      schemaVersion: '0.1' as const,
+      commandId: original.commandId,
+      sessionId: original.sessionId,
+      mode: original.mode,
+      definition: autoDefinition({
+        id: 'auto_test',
+        template: 'single',
+        brief: original.brief,
+        choice: original.choice,
+        fileTools: false,
+      }),
+    };
+    expect(s.coordinator.startRun(start)).toEqual(stopped);
+    expect(
+      s.coordinator.startRun({ ...start, sessionId: 'session_other' }).receipt.error?.code,
+    ).toBe('IDEMPOTENCY_CONFLICT');
+    expect(s.coordinator.listRuns()).toHaveLength(0);
+  });
+
+  it('[TC-AUTO-003-N] a failed cancellation write is not acknowledged as cancelled', () => {
+    const s = setup();
+    s.store.putCommand = () => {
+      throw new Error('test write failure');
+    };
+    const result = s.coordinator.cancelAutoStart('cmd_cancel_storage', 'session_one');
+    expect(result.receipt.status).toBe('rejected');
+    expect(result.receipt.error?.code).toBe('STORAGE_UNAVAILABLE');
+    expect(s.coordinator.admitting).toBe(false);
+    expect(s.coordinator.hasStartCommand('cmd_cancel_storage')).toBe(false);
+  });
+});

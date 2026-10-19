@@ -1,4 +1,4 @@
-import { fauxAssistantMessage } from '@corral/server/testing';
+import { fauxAssistantMessage, fauxToolCall } from '@corral/server/testing';
 import { linearCorral } from '@corral/testkit';
 import type { Page } from '@playwright/test';
 import { requestBox } from '../workbench.ts';
@@ -252,133 +252,187 @@ test('[TC-AUTO-002-N] output-capped routing shows a translated fallback reason',
   await expect(page.getByTestId('entry-auto')).not.toContainText('Sessions.autoFallbackReason');
 });
 
-test('[TC-AUTO-003-N] an unknown cancellation keeps the command across a session remount', async ({
-  page,
-  corral,
-}) => {
-  const sessionId = await autoSession(page, corral);
-  let releaseResponse!: () => void, committed!: () => void, releaseWorker!: () => void;
-  const heldResponse = new Promise<void>((resolve) => {
-    releaseResponse = resolve;
+for (const outcome of ['failed', 'succeeded'] as const) {
+  test(`[TC-AUTO-003-N] an unknown cancellation keeps the command after a ${outcome} run and session remount`, async ({
+    page,
+    corral,
+  }) => {
+    const sessionId = await autoSession(page, corral);
+    const starts: unknown[] = [];
+    page.on('request', (request) => {
+      if (request.method() === 'POST' && request.url().endsWith('/api/v1/runs/auto'))
+        starts.push(request.postDataJSON());
+    });
+    let releaseResponse!: () => void, committed!: () => void, releaseWorker!: () => void;
+    const heldResponse = new Promise<void>((resolve) => {
+      releaseResponse = resolve;
+    });
+    const started = new Promise<void>((resolve) => {
+      committed = resolve;
+    });
+    const heldWorker = new Promise<void>((resolve) => {
+      releaseWorker = resolve;
+    });
+    corral.fake?.setResponses([
+      fauxAssistantMessage('{"template":"single","reason":"Short question"}'),
+      async () => {
+        await heldWorker;
+        return outcome === 'failed'
+          ? fauxAssistantMessage('Stopped without a result')
+          : fauxAssistantMessage([fauxToolCall('write_artifact', { text: 'Completed result.' })], {
+              stopReason: 'toolUse',
+            });
+      },
+      (context) =>
+        fauxAssistantMessage(
+          [
+            fauxToolCall('submit_result', {
+              artifactVersionIds: [
+                JSON.stringify(context.messages)
+                  .match(/artv_[a-f0-9]{32}/g)
+                  ?.at(-1) ?? 'missing_artifact',
+              ],
+            }),
+          ],
+          { stopReason: 'toolUse' },
+        ),
+    ]);
+    await page.route(
+      '**/api/v1/runs/auto',
+      async (route) => {
+        const response = await route.fetch();
+        committed();
+        await heldResponse;
+        await route.fulfill({ response }).catch(() => undefined);
+      },
+      { times: 1 },
+    );
+    await page.route('**/api/v1/runs/auto/*/cancel', (route) => route.abort('failed'), {
+      times: 1,
+    });
+    const text = 'Retry this exact request only after reconciling its first command';
+    await requestBox(page).fill(text);
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
+    await started;
+    const runId = corral.server.coordinator.listRuns()[0]?.runId;
+    try {
+      await page.getByRole('button', { name: 'Cancel team selection', exact: true }).click();
+      await expect(page.getByTestId('refusal')).toHaveAttribute('data-kind', 'network');
+      await expect(page.getByTestId('refusal')).toContainText('Failed to fetch');
+    } finally {
+      releaseWorker();
+      releaseResponse();
+    }
+    await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe(outcome);
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await page.getByRole('link', { name: 'Back to work', exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`/sessions/${sessionId}`));
+    await expect(requestBox(page)).toHaveValue(text);
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
+    await expect.poll(() => starts.length).toBe(2);
+    expect(starts[1]).toEqual(starts[0]);
+    await expect
+      .poll(async () =>
+        page.evaluate(async (sessionId) => {
+          const session = await fetch(`/api/v1/sessions/${sessionId}`).then((r) => r.json());
+          return session.entries[0]?.runId;
+        }, sessionId),
+      )
+      .toBe(runId);
+    expect(corral.fake?.seen.hostRequests).toHaveLength(1);
+    expect(corral.server.coordinator.listRuns()).toHaveLength(1);
   });
-  const started = new Promise<void>((resolve) => {
-    committed = resolve;
-  });
-  const heldWorker = new Promise<void>((resolve) => {
-    releaseWorker = resolve;
-  });
-  corral.fake?.setResponses([
-    fauxAssistantMessage('{"template":"single","reason":"Short question"}'),
-    async () => {
-      await heldWorker;
-      return fauxAssistantMessage('Stopped without a result');
-    },
-  ]);
-  await page.route(
-    '**/api/v1/runs/auto',
-    async (route) => {
-      const response = await route.fetch();
-      committed();
-      await heldResponse;
-      await route.fulfill({ response }).catch(() => undefined);
-    },
-    { times: 1 },
-  );
-  await page.route('**/api/v1/runs/auto/*/cancel', (route) => route.abort('failed'), { times: 1 });
-  const text = 'Retry this exact request only after reconciling its first command';
-  await requestBox(page).fill(text);
-  await page.getByRole('button', { name: 'Send', exact: true }).click();
-  await started;
-  const runId = corral.server.coordinator.listRuns()[0]?.runId;
-  try {
-    await page.getByRole('button', { name: 'Cancel team selection', exact: true }).click();
-    await expect(page.getByTestId('refusal')).toHaveAttribute('data-kind', 'network');
-    await expect(page.getByTestId('refusal')).toContainText('Failed to fetch');
-  } finally {
-    releaseWorker();
-    releaseResponse();
-  }
-  await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('failed');
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await page.getByRole('link', { name: 'Back to work', exact: true }).click();
-  await expect(page).toHaveURL(new RegExp(`/sessions/${sessionId}`));
-  await expect(requestBox(page)).toHaveValue(text);
-  await page.getByRole('button', { name: 'Send', exact: true }).click();
-  await expect
-    .poll(async () =>
-      page.evaluate(async (sessionId) => {
-        const session = await fetch(`/api/v1/sessions/${sessionId}`).then((r) => r.json());
-        return session.entries[0]?.runId;
-      }, sessionId),
-    )
-    .toBe(runId);
-  expect(corral.fake?.seen.hostRequests).toHaveLength(1);
-  expect(corral.server.coordinator.listRuns()).toHaveLength(1);
-});
 
-test('[TC-AUTO-003-N] an unknown queued cancellation keeps its command across a session remount', async ({
-  page,
-  corral,
-}) => {
-  const sessionId = await autoSession(page, corral);
-  const text = 'Retry this queued request only after reconciling its first command';
-  await write(page, `/sessions/${sessionId}/entries`, 'POST', {
-    intent: 'queue',
-    text,
-    state: 'queued',
+  test(`[TC-AUTO-003-N] an unknown queued cancellation keeps its command after a ${outcome} run and session remount`, async ({
+    page,
+    corral,
+  }) => {
+    const sessionId = await autoSession(page, corral);
+    const starts: unknown[] = [];
+    page.on('request', (request) => {
+      if (request.method() === 'POST' && request.url().endsWith('/api/v1/runs/auto'))
+        starts.push(request.postDataJSON());
+    });
+    const text = 'Retry this queued request only after reconciling its first command';
+    await write(page, `/sessions/${sessionId}/entries`, 'POST', {
+      intent: 'queue',
+      text,
+      state: 'queued',
+    });
+    await page.reload();
+    let releaseResponse!: () => void, committed!: () => void, releaseWorker!: () => void;
+    const heldResponse = new Promise<void>((resolve) => {
+      releaseResponse = resolve;
+    });
+    const started = new Promise<void>((resolve) => {
+      committed = resolve;
+    });
+    const heldWorker = new Promise<void>((resolve) => {
+      releaseWorker = resolve;
+    });
+    corral.fake?.setResponses([
+      fauxAssistantMessage('{"template":"single","reason":"Short question"}'),
+      async () => {
+        await heldWorker;
+        return outcome === 'failed'
+          ? fauxAssistantMessage('Stopped without a result')
+          : fauxAssistantMessage([fauxToolCall('write_artifact', { text: 'Completed result.' })], {
+              stopReason: 'toolUse',
+            });
+      },
+      (context) =>
+        fauxAssistantMessage(
+          [
+            fauxToolCall('submit_result', {
+              artifactVersionIds: [
+                JSON.stringify(context.messages)
+                  .match(/artv_[a-f0-9]{32}/g)
+                  ?.at(-1) ?? 'missing_artifact',
+              ],
+            }),
+          ],
+          { stopReason: 'toolUse' },
+        ),
+    ]);
+    await page.route(
+      '**/api/v1/runs/auto',
+      async (route) => {
+        const response = await route.fetch();
+        committed();
+        await heldResponse;
+        await route.fulfill({ response }).catch(() => undefined);
+      },
+      { times: 1 },
+    );
+    await page.route('**/api/v1/runs/auto/*/cancel', (route) => route.abort('failed'), {
+      times: 1,
+    });
+    await page.getByRole('button', { name: 'Start now', exact: true }).click();
+    await started;
+    const runId = corral.server.coordinator.listRuns()[0]?.runId;
+    try {
+      await page.getByRole('button', { name: 'Cancel team selection', exact: true }).click();
+      await expect(page.getByRole('alert').filter({ hasText: 'Failed to fetch' })).toBeVisible();
+    } finally {
+      releaseWorker();
+      releaseResponse();
+    }
+    await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe(outcome);
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await page.getByRole('link', { name: 'Back to work', exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`/sessions/${sessionId}`));
+    await page.getByRole('button', { name: 'Start now', exact: true }).click();
+    await expect.poll(() => starts.length).toBe(2);
+    expect(starts[1]).toEqual(starts[0]);
+    await expect
+      .poll(async () =>
+        page.evaluate(async (sessionId) => {
+          const session = await fetch(`/api/v1/sessions/${sessionId}`).then((r) => r.json());
+          return session.entries[0]?.runId;
+        }, sessionId),
+      )
+      .toBe(runId);
+    expect(corral.fake?.seen.hostRequests).toHaveLength(1);
+    expect(corral.server.coordinator.listRuns()).toHaveLength(1);
   });
-  await page.reload();
-  let releaseResponse!: () => void, committed!: () => void, releaseWorker!: () => void;
-  const heldResponse = new Promise<void>((resolve) => {
-    releaseResponse = resolve;
-  });
-  const started = new Promise<void>((resolve) => {
-    committed = resolve;
-  });
-  const heldWorker = new Promise<void>((resolve) => {
-    releaseWorker = resolve;
-  });
-  corral.fake?.setResponses([
-    fauxAssistantMessage('{"template":"single","reason":"Short question"}'),
-    async () => {
-      await heldWorker;
-      return fauxAssistantMessage('Stopped without a result');
-    },
-  ]);
-  await page.route(
-    '**/api/v1/runs/auto',
-    async (route) => {
-      const response = await route.fetch();
-      committed();
-      await heldResponse;
-      await route.fulfill({ response }).catch(() => undefined);
-    },
-    { times: 1 },
-  );
-  await page.route('**/api/v1/runs/auto/*/cancel', (route) => route.abort('failed'), { times: 1 });
-  await page.getByRole('button', { name: 'Start now', exact: true }).click();
-  await started;
-  const runId = corral.server.coordinator.listRuns()[0]?.runId;
-  try {
-    await page.getByRole('button', { name: 'Cancel team selection', exact: true }).click();
-    await expect(page.getByRole('alert').filter({ hasText: 'Failed to fetch' })).toBeVisible();
-  } finally {
-    releaseWorker();
-    releaseResponse();
-  }
-  await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('failed');
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await page.getByRole('link', { name: 'Back to work', exact: true }).click();
-  await expect(page).toHaveURL(new RegExp(`/sessions/${sessionId}`));
-  await page.getByRole('button', { name: 'Start now', exact: true }).click();
-  await expect
-    .poll(async () =>
-      page.evaluate(async (sessionId) => {
-        const session = await fetch(`/api/v1/sessions/${sessionId}`).then((r) => r.json());
-        return session.entries[0]?.runId;
-      }, sessionId),
-    )
-    .toBe(runId);
-  expect(corral.fake?.seen.hostRequests).toHaveLength(1);
-  expect(corral.server.coordinator.listRuns()).toHaveLength(1);
-});
+}

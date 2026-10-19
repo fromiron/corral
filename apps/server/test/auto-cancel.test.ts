@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ScriptedAgentAdapter } from '@corral/testkit';
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { type CorralServer, startCorralServer } from '../src/index.ts';
 import { FAKE_PROFILES, fakeOpenAI, fauxAssistantMessage } from '../src/testing.ts';
 
@@ -26,14 +26,16 @@ async function setup() {
   });
   fake.live.agents = () => new ScriptedAgentAdapter({ turns: 1, beforeReply: () => workerGate });
   const token = 'test-bootstrap-token-0123456789abcdef';
-  const server: CorralServer = await startCorralServer({
-    workspace,
-    port: 0,
-    bootstrapToken: token,
-    worktreeRoot: join(root, 'worktrees'),
-    agents: new ScriptedAgentAdapter({ turns: 1 }),
-    live: fake.live,
-  });
+  const open = () =>
+    startCorralServer({
+      workspace,
+      port: 0,
+      bootstrapToken: token,
+      worktreeRoot: join(root, 'worktrees'),
+      agents: new ScriptedAgentAdapter({ turns: 1 }),
+      live: fake.live,
+    });
+  let server: CorralServer = await open();
   let releaseChoice = () => {};
   cleanup.push(async () => {
     releaseChoice();
@@ -41,18 +43,19 @@ async function setup() {
     await server.close();
     rmSync(root, { recursive: true, force: true });
   });
-  const login = await fetch(`${server.url}/api/v1/session`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', origin: server.url },
-    body: JSON.stringify({ token }),
-  });
-  const cookie = (login.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
+  const authenticate = () =>
+    fetch(`${server.url}/api/v1/session`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: server.url },
+      body: JSON.stringify({ token }),
+    });
+  let login = await authenticate();
   const json = async (path: string, body: unknown) => {
     const response = await fetch(`${server.url}/api/v1${path}`, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        cookie,
+        cookie: (login.headers.get('set-cookie') ?? '').split(';')[0] ?? '',
         'x-corral-csrf': login.headers.get('x-corral-csrf') ?? '',
         origin: server.url,
       },
@@ -91,7 +94,23 @@ async function setup() {
   };
   const cancel = (commandId: string, targetSession = sessionId, cancelCommandId = 'cmd_cancel') =>
     json(`/runs/auto/${commandId}/cancel`, { sessionId: targetSession, cancelCommandId });
-  return { server, fake, json, request, sessionId, cancel, holdChoice, releaseWorker };
+  return {
+    get server() {
+      return server;
+    },
+    fake,
+    json,
+    request,
+    sessionId,
+    cancel,
+    holdChoice,
+    releaseWorker,
+    async restart() {
+      await server.close();
+      server = await open();
+      login = await authenticate();
+    },
+  };
 }
 
 it('[TC-AUTO-003-N] cancels the actual pending chooser and starts no run', async () => {
@@ -211,4 +230,38 @@ it('[TC-AUTO-003-N] a reused control ID cannot return a pause receipt as cancell
   const cancelled = await s.cancel('cmd_control_collision', s.sessionId, 'cmd_control_taken');
   expect(cancelled.body.cancellation.error.code).toBe('IDEMPOTENCY_CONFLICT');
   expect(s.server.coordinator.listRuns()[0]?.status).not.toBe('cancelling');
+});
+
+it('[TC-AUTO-003-N] a pre-start cancellation survives the routing timeout', async () => {
+  const s = await setup();
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  try {
+    let status: number | undefined;
+    const cancelled = s.cancel('cmd_expired').then((response) => {
+      status = response.status;
+    });
+    await vi.waitFor(() => expect(status).toBe(200));
+    await cancelled;
+    vi.advanceTimersByTime(30_001);
+  } finally {
+    vi.useRealTimers();
+  }
+  const late = await s.json('/runs/auto', s.request('cmd_expired'));
+  expect(late.body.receipt.status).toBe('cancelled');
+  expect(late.body.runId).toBeNull();
+  expect(s.fake.seen.hostRequests).toHaveLength(0);
+  expect(s.server.coordinator.listRuns()).toHaveLength(0);
+});
+
+it('[TC-AUTO-003-N] a pre-start cancellation survives restart and remains session scoped', async () => {
+  const s = await setup();
+  expect((await s.cancel('cmd_restart')).status).toBe(200);
+  await s.restart();
+  const late = await s.json('/runs/auto', s.request('cmd_restart'));
+  expect(late.body.receipt.status).toBe('cancelled');
+  expect(late.body.runId).toBeNull();
+  expect(s.fake.seen.hostRequests).toHaveLength(0);
+  expect(s.server.coordinator.listRuns()).toHaveLength(0);
+  const other = await s.json('/sessions', { projectId: 'default', title: 'Other' });
+  expect((await s.cancel('cmd_restart', other.body.session.sessionId)).status).toBe(404);
 });

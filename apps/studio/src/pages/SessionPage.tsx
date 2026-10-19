@@ -1,4 +1,4 @@
-import type { AutoCancelResult, FileChangeView } from '@corral/client';
+import type { AutoCancelResult, AutoRunStart, FileChangeView } from '@corral/client';
 import type { AutoModelChoice, AutoReasoning, RoleRunOverrides } from '@corral/contracts';
 import {
   type HarnessOverrides,
@@ -1205,8 +1205,11 @@ function finalResultId(projection: RunProjection): string | null {
   return projection.output?.artifactVersionIds[0] ?? null;
 }
 
-// Keep only uncertain command metadata across SPA navigation, never request controllers.
-const pendingSessionCommands = new Map<string, { key: string; commandId: string }>();
+// Keep uncertain requests across SPA navigation, never request controllers.
+const pendingSessionCommands = new Map<
+  string,
+  { key: string; commandId: string; autoRequest?: AutoRunStart }
+>();
 
 function Composer({
   session,
@@ -1577,21 +1580,26 @@ function Composer({
   /** CR-024: with no team chosen, the runtime picks a template for this request. */
   const startAuto = async (brief: string, commandId: string, refs: RunReference[]) => {
     const controller = new AbortController();
+    const proposed: AutoRunStart = {
+      commandId,
+      sessionId: session.sessionId,
+      brief,
+      choice: autoChoice,
+      mode: runMode,
+      ...(latest ? { startFrom: { runId: latest.runId, artifactVersionId: latest.id } } : {}),
+      ...(refs.length ? { references: refs } : {}),
+    };
+    const command = pending.current;
+    // A completed run may change `latest` before its lost start receipt is recovered.
+    let body = proposed;
+    if (command?.commandId === commandId) {
+      command.autoRequest ??= structuredClone(proposed);
+      body = command.autoRequest;
+    }
     const request: NonNullable<typeof autoRequest.current> = {
       controller,
       commandId,
-      result: services.startAuto(
-        {
-          commandId,
-          sessionId: session.sessionId,
-          brief,
-          choice: autoChoice,
-          mode: runMode,
-          ...(latest ? { startFrom: { runId: latest.runId, artifactVersionId: latest.id } } : {}),
-          ...(refs.length ? { references: refs } : {}),
-        },
-        controller.signal,
-      ),
+      result: services.startAuto(body, controller.signal),
     };
     autoRequest.current = request;
     setChoosingAuto(true);

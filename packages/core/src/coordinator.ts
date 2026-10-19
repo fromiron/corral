@@ -26,6 +26,7 @@ import {
   type HarnessBindingRef,
   HarnessReport,
   HarnessToolsUpdate,
+  Identifier,
   type IdFactory,
   type InputBinding,
   LspQuery,
@@ -541,7 +542,11 @@ export class Coordinator {
     const originalRequestHash = 'autoRoute' in request ? request.autoRoute?.requestHash : undefined;
     const previous = this.store.getCommand(START_SCOPE, request.commandId);
     if (previous) {
-      if (previous.payloadHash !== payloadHash) {
+      const cancelled =
+        previous.runId === null &&
+        previous.receipt.status === 'cancelled' &&
+        previous.payloadHash === autoCancellationHash(request.sessionId);
+      if (!cancelled && previous.payloadHash !== payloadHash) {
         return { runId: null, receipt: conflict(request.commandId, previous.receipt.runId) };
       }
       return { runId: previous.runId, receipt: previous.receipt };
@@ -1874,6 +1879,51 @@ export class Coordinator {
     return this.store.getCommand(START_SCOPE, commandId) !== null;
   }
 
+  /** Reserve a cancelled auto start before its POST arrives; the command ID stays consumed. */
+  cancelAutoStart(commandId: string, sessionId: string): StartRunResult {
+    if (!Identifier.safeParse(commandId).success || !Identifier.safeParse(sessionId).success)
+      return {
+        runId: null,
+        receipt: rejected(commandId, 'none', {
+          code: 'SCHEMA_INVALID',
+          message: 'invalid auto start cancellation',
+        }),
+      };
+    const payloadHash = autoCancellationHash(sessionId);
+    const previous = this.store.getCommand(START_SCOPE, commandId);
+    if (previous) {
+      if (
+        previous.runId === null &&
+        previous.receipt.status === 'cancelled' &&
+        previous.payloadHash !== payloadHash
+      )
+        return {
+          runId: null,
+          receipt: rejected(commandId, 'none', {
+            code: 'TARGET_NOT_FOUND',
+            message: 'no such auto request in this session',
+          }),
+        };
+      return { runId: previous.runId, receipt: previous.receipt };
+    }
+    if (this.storageError)
+      return { runId: null, receipt: unavailable(commandId, 'none', this.storageError) };
+    const receipt: Receipt = {
+      commandId,
+      runId: 'none',
+      status: 'cancelled',
+      acceptedSeq: null,
+      target: 'run:none',
+      requestedBoundary: 'immediate',
+      relatedEventIds: [],
+    };
+    this.recordStart({ payloadHash, receipt, runId: null });
+    return {
+      runId: null,
+      receipt: this.storageError ? unavailable(commandId, 'none', this.storageError) : receipt,
+    };
+  }
+
   /**
    * Why a run on this model and reasoning would be refused now (CR-024), so an auto request
    * asks no model for a choice that could not start.
@@ -1922,6 +1972,14 @@ export class Coordinator {
     original?: AutoStart,
   ): StartRunResult | null {
     const previous = this.store.getCommand(START_SCOPE, commandId);
+    if (previous?.runId === null && previous.receipt.status === 'cancelled' && originalRequestHash)
+      return {
+        runId: null,
+        receipt:
+          original && previous.payloadHash === autoCancellationHash(original.sessionId)
+            ? previous.receipt
+            : conflict(commandId, previous.receipt.runId),
+      };
     if (previous && originalRequestHash && previous.originalRequestHash !== originalRequestHash) {
       const snapshot =
         !previous.originalRequestHash && previous.runId
@@ -5899,6 +5957,10 @@ function summarizeArgs(args: Record<string, unknown>): Record<string, unknown> {
     }
   }
   return summary;
+}
+
+function autoCancellationHash(sessionId: string | undefined): string {
+  return hashOf({ type: 'cancel_auto_start', sessionId: sessionId ?? null });
 }
 
 function hashOf(value: unknown): string {

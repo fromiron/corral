@@ -35,7 +35,7 @@ export function autoNotReady(
   return !profiles?.some((p) => p.profileId === choice.modelProfile && p.available);
 }
 
-/** What makes two sends the same command: the text, references and the model choice. */
+/** User-edited request identity; the pending command separately freezes mode and startFrom. */
 export function autoCommandSeed(
   text: string,
   references: RunReference[],
