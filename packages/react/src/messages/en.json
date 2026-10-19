@@ -1274,6 +1274,7 @@
     "startHint": "Starts a session with this purpose. Nothing runs until you send the first request.",
     "appliesAt": "at its next model request",
     "autoTeam": "Auto",
+    "runSettings": "Run settings",
     "autoModel": "Model",
     "autoHint": "Auto picks one agent or a small team for each request, on the model shown.",
     "autoNotReady": "{model} is not connected. Connect it under Settings › Models, or choose another model.",

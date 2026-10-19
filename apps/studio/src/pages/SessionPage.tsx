@@ -1,10 +1,5 @@
 import type { AutoCancelResult, AutoRunStart, FileChangeView } from '@corral/client';
-import type {
-  AutoModelChoice,
-  AutoReasoning,
-  RoleRunOverrides,
-  TextAttachment,
-} from '@corral/contracts';
+import type { AutoModelChoice, RoleRunOverrides, TextAttachment } from '@corral/contracts';
 import {
   type HarnessOverrides,
   IMAGE_MAX_COUNT,
@@ -987,13 +982,18 @@ function EntryCard({
   return (
     <article data-testid={`entry-${entry.entryId}`} className="chat-turn flex flex-col gap-4">
       <div className="user-message" title={when}>
-        {label || auto || state ? (
-          <p
-            data-testid={entry.auto ? 'entry-auto' : undefined}
-            className="mb-1 text-2xs font-medium text-muted"
-          >
-            {[label, auto, state].filter(Boolean).join(' · ')}
+        {label || state ? (
+          <p className="mb-1 text-2xs font-medium text-muted">
+            {[label, state].filter(Boolean).join(' · ')}
           </p>
+        ) : null}
+        {auto ? (
+          <details className="mb-1 text-2xs text-muted">
+            <summary className="w-fit cursor-pointer">{t('runSettings')}</summary>
+            <p data-testid="entry-auto" className="mt-0.5">
+              {auto}
+            </p>
+          </details>
         ) : null}
         <p className="whitespace-pre-wrap text-sm leading-6">{entry.text}</p>
         {entry.attachments?.length ? <TextAttachmentList attachments={entry.attachments} /> : null}
@@ -2765,14 +2765,7 @@ function Composer({
       </ComposerSurface.Host>
       <div className="flex min-h-5 flex-wrap items-center gap-x-2 px-4 pt-1.5 text-2xs text-muted">
         {(intent === 'next' || intent === 'explain') && isAuto ? (
-          <AutoPreRunSummary
-            session={session}
-            model={autoProfile?.label ?? autoChoice.modelProfile}
-            reasoning={autoChoice.reasoning}
-            ultra={qualityPreset === 'ultra' && intent === 'next'}
-            mode={runMode}
-            intent={intent}
-          />
+          <AutoPreRunSummary session={session} mode={runMode} intent={intent} />
         ) : null}
         {intent === 'explain' && !latest ? (
           <span className="text-warning">{t('noResult')}</span>
@@ -2970,25 +2963,17 @@ function PreRunSummary({
   return text ? <span data-testid="pre-run">{text}</span> : null;
 }
 
-/** What an auto request would start with (CR-024): its model, reasoning and file work. */
+/** Mode and file work for the next auto request. The team control says Auto, and the model menu says the model when one can be chosen. */
 function AutoPreRunSummary({
   session,
-  model,
-  reasoning,
   mode,
   intent,
-  ultra,
 }: {
   session: WorkSession;
-  model: string;
-  reasoning: AutoReasoning | undefined;
   mode: 'mock' | 'live';
   intent: 'next' | 'explain';
-  ultra: boolean;
 }) {
   const t = useTranslations('Sessions');
-  const tq = useTranslations('Reasoning');
-  const tc = useTranslations('Composer');
   const { workspaces } = useServices();
   const [copy, setCopy] = useState(false);
   const [workspaceRevision, setWorkspaceRevision] = useState(0);
@@ -3007,26 +2992,10 @@ function AutoPreRunSummary({
       live = false;
     };
   }, [workspaces, session.sessionId, workspaceRevision]);
-  const level = ultra
-    ? tc('ultraMaximumShort')
-    : reasoning?.mode === 'fixed'
-      ? tq(`level.${reasoning.level}`)
-      : reasoning?.mode === 'route'
-        ? t('reasoningRoute')
-        : reasoning
-          ? tq(reasoning.mode)
-          : tq('legacy');
-  return (
-    <span data-testid="pre-run">
-      {t(intent === 'explain' ? 'preRunAutoExplain' : 'preRunAuto', {
-        model,
-        reasoning: level,
-        // Auto roles get file tools only with a working copy (CR-024).
-        files: intent === 'next' && copy ? t('filesCopy') : t('filesNone'),
-        mode: mode === 'live' ? t('modeLive') : t('modeMock'),
-      })}
-    </span>
-  );
+  const modeLabel = mode === 'live' ? t('modeLive') : t('modeMock');
+  // Auto roles get file tools only with a working copy (CR-024).
+  const files = intent === 'next' && copy ? t('filesCopy') : null;
+  return <span data-testid="pre-run">{[files, modeLabel].filter(Boolean).join(' · ')}</span>;
 }
 
 /** Each role of the team, the model profile it uses, and whether that model is ready (UX-06). */

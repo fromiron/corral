@@ -15,12 +15,13 @@ import {
 import { Activity, ChevronRight, FileText, LoaderCircle, Pause } from '@corral/react/icons';
 import { Button } from '@corral/react/ui';
 import { Link } from '@tanstack/react-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { markRunReviewed } from '../pages/GettingStarted.tsx';
 import { useRemembered } from '../pages/Workbench.tsx';
 import { agentSummary } from './agentSummary.ts';
 import { MessageBranch } from './MessageBranch.tsx';
+import { disclosureNeedsAttention, progressListOpen } from './progressDisclosure.ts';
 import { useCorralRun } from './useCorralChat.ts';
 
 /** T3's expandable work log and response surface, projected from Corral executions. */
@@ -38,6 +39,8 @@ export function RunMessage({
   const t = useTranslations('Desktop');
   const trun = useTranslations('Run');
   const [expanded, setExpanded] = useState(false);
+  const [toolUserOpen, setToolUserOpen] = useState<boolean | null>(null);
+  const toolOpenRef = useRef(false);
   const [resultError, setResultError] = useState(false);
   const [retry, setRetry] = useState(0);
   const { store, state } = useCorralRun(runId, live, expanded);
@@ -87,8 +90,10 @@ export function RunMessage({
     ? executions.filter((execution) => !TERMINAL_EXECUTION_STATUSES.has(execution.status))
     : [];
   const summary = agentSummary(busy.map((execution) => execution.status));
-  // Failures are never folded away (CR-015-03): each failed agent and its error stays in view.
-  const failed = executions.filter((execution) => execution.status === 'failed');
+  // Failures and cancellations stay in view (CR-015-03). An ordinary success folds them.
+  const exposed = executions.filter(
+    (execution) => execution.status === 'failed' || execution.status === 'cancelled',
+  );
   const name = (executionId: string) => {
     const execution = projection.executions[executionId];
     return execution
@@ -96,6 +101,18 @@ export function RunMessage({
       : executionId;
   };
   const toolCalls = Object.values(projection.toolCalls);
+  const needsAttention = disclosureNeedsAttention({
+    runStatus: projection.status,
+    exposedExecutions: exposed.length,
+    tools: toolCalls.map((call) => ({
+      status: call.status,
+      phase: call.phase,
+      reason: call.reason,
+      effectOutcome: call.effectId ? projection.effects[call.effectId]?.outcome : null,
+    })),
+  });
+  const toolOpen = progressListOpen(working, needsAttention, toolUserOpen);
+  toolOpenRef.current = toolOpen;
   // What a model is writing right now, shown in the conversation; never a fact (C-018).
   const writing = working
     ? Object.entries(state.streams)
@@ -140,7 +157,14 @@ export function RunMessage({
       {working ? <RunActions session={store} compact /> : null}
       <ApprovalPanel session={store} onOpenArtifact={onOpenArtifact} />
       {toolCalls.length ? (
-        <details className="text-xs" open={working ? true : undefined}>
+        <details
+          className="text-xs"
+          open={toolOpen}
+          onToggle={(event) => {
+            const next = event.currentTarget.open;
+            if (next !== toolOpenRef.current) setToolUserOpen(next);
+          }}
+        >
           <summary className="w-fit cursor-pointer py-1 text-muted">
             {t('toolActivity', { count: toolCalls.length })}
           </summary>
@@ -179,10 +203,10 @@ export function RunMessage({
           {trun('reasonPrefix')} <RunReason code={projection.statusReason} nodeLabel={label} />
         </p>
       ) : null}
-      {busy.length || failed.length ? (
+      {busy.length || exposed.length ? (
         <section aria-label={t('teamActivity')} data-testid="team-activity" className="text-xs">
-          {failed.length ? (
-            <ul className="mb-1 flex flex-col gap-1">{failed.map(agentRow)}</ul>
+          {exposed.length ? (
+            <ul className="mb-1 flex flex-col gap-1">{exposed.map(agentRow)}</ul>
           ) : null}
           {busy.length ? (
             <details className="group/agents">

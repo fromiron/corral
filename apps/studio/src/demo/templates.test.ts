@@ -158,4 +158,71 @@ describe('demo replies', () => {
     const other = startInput('write', { round: 1, executionId: 'exec_0004' });
     expect(demoReply(2, other, permit(), [])).not.toContain(directive.text);
   });
+
+  it('a visitor-built agent still echoes its role prompt', () => {
+    const text = demoReply(1, withRole('write', 'agent_1_role'), permit(), []);
+    expect(text).toContain('role prompt:');
+    expect(text).toContain('model profile:');
+  });
+
+  it('a session worker answers the request without diagnostics or the previous artifact', () => {
+    const prior = 'role prompt: secret\nmodel profile: model-a\nbrief: first run body';
+    const brief = `한 문장으로 안녕이라고 답해줘.\n\nStart from this earlier version:\n(draft v1 from run run_1)\n\n${prior}`;
+    const input = withRole('write', 'worker', {
+      modelProfile: 'model-a',
+      inputs: [{ name: 'brief', kind: 'run_input', artifactVersionId: null, text: brief }],
+    });
+    input.role = { ...input.role, prompt: 'Do what the request asks, directly and completely.' };
+    const text = demoReply(2, input, permit(), []);
+    expect(text).toContain('한 문장으로 안녕이라고 답해줘.');
+    expect(text).not.toContain('role prompt:');
+    expect(text).not.toContain('model profile:');
+    expect(text).not.toContain('Start from this earlier version');
+    expect(text).not.toContain('first run body');
+    expect(text).not.toContain('Do what the request asks');
+  });
+
+  it('a session planner answers the request without a settings echo', () => {
+    const input = withRole('write', 'planner', {
+      inputs: [
+        {
+          name: 'brief',
+          kind: 'run_input',
+          artifactVersionId: null,
+          text: '계획을 세워 줘.\n\nStart from this earlier version:\n(draft v1 from run run_1)\n\nrole prompt: secret',
+        },
+      ],
+    });
+    const text = demoReply(2, input, permit(), []);
+    expect(text).toContain('계획을 세워 줘.');
+    expect(text).not.toContain('role prompt:');
+    expect(text).not.toContain('Start from this earlier version');
+  });
+
+  it('a session worker shows a directive from the delivery turn onward', () => {
+    const input = withRole('write', 'worker', { executionId: 'exec_worker' });
+    const directive = {
+      directiveId: 'dir_0009',
+      text: 'Keyboard instructions reach the next request.',
+    };
+    expect(demoReply(1, input, permit(), [])).not.toContain(directive.text);
+    expect(demoReply(2, input, permit([directive]), [])).toContain(directive.text);
+    expect(demoReply(3, input, permit(), [])).toContain(directive.text);
+  });
 });
+
+function withRole(
+  nodeId: string,
+  roleId: string,
+  overrides: Partial<AgentStartInput> = {},
+): AgentStartInput {
+  const input = startInput(nodeId, overrides);
+  return {
+    ...input,
+    role: {
+      ...input.role,
+      id: roleId,
+      name: roleId === 'worker' ? 'Assistant' : input.role.name,
+    },
+  };
+}

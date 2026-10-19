@@ -17,18 +17,30 @@ export type DemoReply = (
 ) => string;
 
 const TEAM_ROLES = new Set(['researcher', 'helper', 'writer', 'reviewer']);
+/** Session auto roles whose reply is the person's request, not a settings echo. */
+const SESSION_ANSWERS = new Set(['worker', 'planner']);
 
 export function createDemoReply(): DemoReply {
   // Directives already delivered to each execution stay in its later requests' context.
   const delivered = new Map<string, DeliveredDirective[]>();
   return (turn, input, permit, notes) => {
-    if (!TEAM_ROLES.has(input.role.id)) return echoReply(turn, input, permit, notes);
+    // Visitor-built corrals echo settings so a prompt edit stays visible in the run output.
+    // The session auto worker is the person's answer: the request and any delivered
+    // instruction, without the role prompt, model profile, or a previous artifact body.
+    if (!TEAM_ROLES.has(input.role.id) && !SESSION_ANSWERS.has(input.role.id)) {
+      return echoReply(turn, input, permit, notes);
+    }
     const directives = [...(delivered.get(input.executionId) ?? []), ...permit.directives];
     delivered.set(input.executionId, directives);
     // A responder answers in its one request (ScriptedAgentAdapter); others use DEMO_TURNS.
     const last = input.assignment.kind === 'question' ? 1 : DEMO_TURNS;
     const header = `> Simulated ${input.role.name} reply, request ${turn} of ${last}. No model was called.`;
-    const body = turn < last ? progress(input) : final(input, notes);
+    const body =
+      turn < last
+        ? progress(input)
+        : SESSION_ANSWERS.has(input.role.id)
+          ? workerAnswer(input)
+          : final(input, notes);
     return [header, instructions(directives), body].filter(Boolean).join('\n\n');
   };
 }
@@ -55,6 +67,16 @@ function instructions(directives: readonly DeliveredDirective[]): string {
     '**Following your instructions**',
     ...directives.map((d) => `- “${d.text}” (${d.directiveId})`),
   ].join('\n');
+}
+
+const START_FROM = '\n\nStart from this earlier version:\n';
+
+/** The person's own request. A later run's brief also carries the prior artifact (CR-007); that tail stays model input and is not the answer. */
+function workerAnswer(input: AgentStartInput): string {
+  const raw = input.inputs.find((i) => i.name === 'brief')?.text ?? '';
+  const at = raw.indexOf(START_FROM);
+  const request = (at === -1 ? raw : raw.slice(0, at)).trim();
+  return request || 'No request text was given.';
 }
 
 const brief = (input: AgentStartInput) =>
