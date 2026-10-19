@@ -161,11 +161,14 @@ test('[TC-AUTO-005-N] questions hide the auto reasoning setting they cannot appl
   await requestBox(page).fill('Make one result');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('succeeded');
+  // A terminal Run can precede the submission acknowledgement that unlocks the composer.
+  await expect(page.getByLabel('Attach text files', { exact: true })).toBeEnabled();
   await page.getByLabel('Attach text files', { exact: true }).setInputFiles({
     name: 'later.txt',
     mimeType: 'text/plain',
     buffer: Buffer.from('Only for a later request'),
   });
+  await expect(page.getByRole('button', { name: 'Remove later.txt', exact: true })).toBeVisible();
   await page.getByRole('combobox', { name: 'What this is', exact: true }).click();
   await page.getByRole('option', { name: /^Question/ }).click();
   await expect(page.getByRole('button', { name: 'Model', exact: true })).toBeVisible();
