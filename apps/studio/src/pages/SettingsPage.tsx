@@ -13,12 +13,27 @@ import { WorkFolderSection } from './FilesViews.tsx';
 import { WorkspaceToolSettings } from './ProjectToolSettings.tsx';
 
 export function SettingsLayout({ children, active }: { children: ReactNode; active: string }) {
+  const { projectId } = useSettingsNavigation();
+  const n = useTranslations('Navigation');
+  const r = useTranslations('Resources');
+  const projectSection = ['workspace', 'mcp', 'project-defaults'].includes(active);
   return (
     <div className="settings-layout flex h-full min-h-0 flex-col" data-settings-section={active}>
-      {active === 'workspace' || active === 'mcp' || active === 'project-defaults' ? (
-        <SettingsProjectPicker />
-      ) : null}
-      <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
+      {projectSection ? <SettingsProjectPicker /> : null}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {projectSection && !projectId ? (
+          <main className="mx-auto flex max-w-3xl flex-col gap-6 p-6 sm:p-10">
+            <h2 className="text-2xl font-semibold">
+              {active === 'mcp'
+                ? r('mcp')
+                : n(active === 'workspace' ? 'projectFolder' : 'projectDefaults')}
+            </h2>
+            <p className="text-sm text-muted">{n('projectRequired')}</p>
+          </main>
+        ) : (
+          children
+        )}
+      </div>
     </div>
   );
 }
@@ -128,7 +143,7 @@ export function SettingsPage() {
         ) : section === 'workspace' ? (
           project ? (
             <>
-              <WorkFolderSection projectId={project} />
+              <WorkFolderSection key={project} projectId={project} />
               <WorkspaceToolSettings key={project} projectId={project} />
             </>
           ) : null

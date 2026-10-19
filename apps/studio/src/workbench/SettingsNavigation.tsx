@@ -171,9 +171,6 @@ export function SettingsProjectPicker({
           })
         }
       />
-      {!navigation.projectId ? (
-        <p className="mt-2 text-xs text-muted">{t('projectRequired')}</p>
-      ) : null}
     </div>
   );
 }

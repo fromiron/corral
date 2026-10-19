@@ -104,7 +104,7 @@ test('[TC-UX-001-H] DW-05 a file opens in a remembered tab and its line referenc
   await page.getByRole('tab', { name: 'Files', exact: true }).click();
   await expect(page.getByText('Link a work folder to browse files.')).toBeVisible();
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await page.getByRole('link', { name: 'Project folder', exact: true }).click();
+  await page.getByRole('link', { name: 'Folders & tools', exact: true }).click();
   await page.getByRole('button', { name: 'Link folder', exact: true }).click();
   await page.getByRole('link', { name: 'Back to work', exact: true }).click();
   await expect(page.getByRole('tab', { name: 'Files', exact: true })).toHaveAttribute(

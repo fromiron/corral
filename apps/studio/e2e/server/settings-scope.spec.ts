@@ -1,5 +1,35 @@
 import { expect, test } from './harness.ts';
 
+test('[TC-UX-004-N] project settings share an explicit empty state and keep their target on navigation', async ({
+  page,
+  corral,
+}) => {
+  await corral.open('/settings?section=workspace');
+  for (const name of ['Folders & tools', 'MCP servers', 'Default work style']) {
+    await page.getByTestId('settings-sidebar').getByRole('link', { name, exact: true }).click();
+    const body = page.locator('.settings-layout');
+    await expect(body.getByRole('heading', { name, exact: true })).toHaveCount(1);
+    await expect(
+      body.getByText('Choose the project whose settings you want to manage.', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      body.getByRole('combobox', { name: 'Applies to project', exact: true }),
+    ).toHaveCount(1);
+    await expect(body.getByRole('button', { name: /^(Save|Add)$/ })).toHaveCount(0);
+  }
+  await page.getByRole('combobox', { name: 'Applies to project', exact: true }).click();
+  await page.getByRole('option', { name: 'My project', exact: true }).click();
+  await page
+    .getByTestId('settings-sidebar')
+    .getByRole('link', { name: 'Folders & tools', exact: true })
+    .click();
+  await expect(page).toHaveURL(/projectId=default/);
+  await expect(
+    page.getByRole('link', { name: 'Register commands in work folder settings', exact: true }),
+  ).toHaveCount(0);
+  expect(corral.errors).toEqual([]);
+});
+
 test('[TC-UX-004-H] [TC-UX-004-N] defaults have independent routes and save only their explicit scope', async ({
   page,
   corral,

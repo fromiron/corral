@@ -1,11 +1,9 @@
 import type { HarnessApi } from '@corral/client';
 import { type ProjectToolConfigRevision, RegisteredLspServer } from '@corral/contracts';
 import { Button } from '@corral/react/ui';
-import { Link } from '@tanstack/react-router';
 import { useEffect, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
-import { useSettingsNavigation } from '../workbench/navigation.ts';
 import { WORKSPACE_CHANGED } from './FilesViews.tsx';
 
 const field = 'w-full rounded-md border border-line bg-surface p-2 text-sm';
@@ -21,7 +19,6 @@ export function ProjectToolSettings({
   config: ProjectToolConfigRevision | null;
   onChange(config: ProjectToolConfigRevision): void;
 }) {
-  const navigation = useSettingsNavigation();
   const t = useTranslations('Harness'),
     heading = useId();
   const [draft, setDraft] = useState(empty);
@@ -80,17 +77,7 @@ export function ProjectToolSettings({
       ).map(([kind, tools]) => (
         <div key={kind} className="flex flex-col gap-3">
           <h4 className="font-medium">{t(kind === 'check' ? 'projectChecks' : 'projectLsp')}</h4>
-          {kind === 'check' ? (
-            <Link
-              to="/settings"
-              search={{ ...navigation.search, projectId, section: 'workspace' }}
-              className="text-sm text-accent underline"
-            >
-              {t('manageChecks')}
-            </Link>
-          ) : (
-            <p className="text-xs text-muted">{t('lspSetupHint')}</p>
-          )}
+          {kind === 'lsp' ? <p className="text-xs text-muted">{t('lspSetupHint')}</p> : null}
           {!tools.length ? (
             <p className="text-xs text-muted">
               {t(kind === 'check' ? 'noProjectChecks' : 'noProjectLsp')}
