@@ -2,19 +2,13 @@ import type { HarnessApi, McpProbeResult } from '@corral/client';
 import type { ProjectToolConfigRevision, RegisteredMcpServer } from '@corral/contracts';
 import { Plus, Search } from '@corral/react/icons';
 import { Button } from '@corral/react/ui';
-import { Link, useBlocker } from '@tanstack/react-router';
+import { Link } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
 import { useManagementConfirmation } from '../workbench/harness/ConfirmAction.tsx';
 import { McpEditor, mcpDraft } from '../workbench/harness/McpEditor.tsx';
-import {
-  field,
-  operationId,
-  profileInput,
-  TargetPicker,
-  useHarnessTarget,
-} from '../workbench/harness/Target.tsx';
+import { field, operationId } from '../workbench/harness/Target.tsx';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
 import { McpConnection } from './McpSettings.tsx';
 import { SettingsLayout } from './SettingsPage.tsx';
@@ -38,8 +32,6 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
     h = useTranslations('Harness');
   const n = useTranslations('Navigation');
   const navigation = useSettingsNavigation();
-  const { repository, workspaces } = useServices();
-  const target = useHarnessTarget(api, projectId);
   const confirmation = useManagementConfirmation();
   const [config, setConfig] = useState<ProjectToolConfigRevision | null>(null),
     [loaded, setLoaded] = useState(false);
@@ -47,10 +39,8 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
   const [search, setSearch] = useState(''),
     [selection, setSelection] = useState('');
   const [editor, setEditor] = useState<{ server?: RegisteredMcpServer } | null>(null);
-  const [copies, setCopies] = useState<{ id: string; name: string }[]>([]);
   const [usages, setUsages] = useState<Awaited<ReturnType<HarnessApi['mcpUsages']>>>([]);
-  const [probe, setProbe] = useState<McpProbeResult | null>(null),
-    [picked, setPicked] = useState<string[]>([]);
+  const [probe, setProbe] = useState<McpProbeResult | null>(null);
   const [pendingEnabled, setPendingEnabled] = useState<{ id: string; value: boolean } | null>(null);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
@@ -59,19 +49,6 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
     add = useRef<HTMLButtonElement>(null);
   const selected = config?.mcpServers?.find((server) => server.id === selection);
   const verified = probe?.configRevision === config?.revision ? probe : null;
-  const actual =
-    verified?.tools
-      .filter((tool) => target.profile?.allowedTools.includes(tool.name))
-      .map((tool) => tool.name) ?? [];
-  const dirtyTools =
-    target.selection !== 'library' && [...picked].sort().join(',') !== [...actual].sort().join(',');
-  const leave = () => !dirtyTools || window.confirm(t('leaveUnsaved'));
-  const dirtyRef = useRef(dirtyTools);
-  dirtyRef.current = dirtyTools;
-  useBlocker({
-    shouldBlockFn: () => dirtyRef.current && !window.confirm(t('leaveUnsaved')),
-    enableBeforeUnload: () => dirtyRef.current,
-  });
   useEffect(() => {
     active.current = true;
     return () => {
@@ -109,35 +86,6 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
       owned = false;
     };
   }, [api, projectId, selection, config?.revision]);
-  useEffect(() => {
-    let owned = true;
-    if (selected?.transport === 'stdio' && workspaces)
-      void repository
-        .listSessions(projectId)
-        .then(async (sessions) => {
-          const list = await Promise.all(
-            sessions.map(async (session) => {
-              const copy = await workspaces.worktree(session.sessionId).catch(() => null);
-              return copy && !copy.missing ? { id: session.sessionId, name: session.title } : null;
-            }),
-          );
-          if (owned)
-            setCopies(
-              list.filter((value): value is { id: string; name: string } => value !== null),
-            );
-        })
-        .catch((e) => owned && setError(e.message));
-    return () => {
-      owned = false;
-    };
-  }, [projectId, repository, workspaces, selected?.transport]);
-  useEffect(() => {
-    setPicked(
-      probe?.tools
-        .filter((tool) => target.profile?.allowedTools.includes(tool.name))
-        .map((tool) => tool.name) ?? [],
-    );
-  }, [probe, target.profile]);
   async function work(action: () => Promise<ProjectToolConfigRevision>) {
     setBusy(true);
     setError('');
@@ -147,7 +95,6 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
         setConfig(saved);
         setProbe(null);
         refresh((n) => n + 1);
-        target.reload();
       }
     } catch (e) {
       if (active.current) setError(e instanceof Error ? e.message : String(e));
@@ -158,8 +105,6 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
       }
     }
   }
-  const selectedIds =
-    target.profile?.mcpServerIds ?? target.preview?.snapshot.projectTools?.mcpServerIds ?? [];
   return (
     <main className="mx-auto flex max-w-6xl flex-col gap-6 p-6 sm:p-10">
       <header className="flex items-start justify-between gap-4">
@@ -217,7 +162,7 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
                       type="button"
                       aria-pressed={selection === server.id}
                       onClick={() => {
-                        if (leave()) setSelection(server.id);
+                        setSelection(server.id);
                       }}
                       className={`flex w-full flex-col gap-2 p-4 text-left hover:bg-raised ${selection === server.id ? 'bg-sidebar-selected' : ''}`}
                     >
@@ -273,57 +218,18 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
               {t('enabled')}
             </label>
             <p className="text-xs text-muted">{t('mcpEnableHint')}</p>
-            {target.selection === 'library' ? (
-              <Button variant="outline" className="self-start" onClick={target.connect}>
-                {n('connectWorkStyle')}
-              </Button>
-            ) : (
-              <div className="flex flex-col gap-2">
-                <TargetPicker target={target} beforeChange={leave} />
-                <Button
-                  variant="ghost"
-                  className="self-end"
-                  disabled={target.busy}
-                  onClick={() => {
-                    if (leave()) target.setSelection('library');
-                  }}
-                >
-                  {n('finishConnecting')}
-                </Button>
-              </div>
-            )}
-            {target.profile ? (
-              <>
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.includes(selected.id)}
-                    disabled={
-                      target.busy ||
-                      (target.profile.policy === 'strict' && !selectedIds.includes(selected.id))
-                    }
-                    onChange={(e) =>
-                      void target.save({
-                        ...profileInput(target.profile!),
-                        mcpServerIds: e.target.checked
-                          ? [...new Set([...selectedIds, selected.id])]
-                          : selectedIds.filter((id) => id !== selected.id),
-                      })
-                    }
-                  />
-                  {t('useInProfile', { name: target.profile.name })}
-                </label>
-                {target.profile.policy === 'strict' ? (
-                  <p className="text-xs text-warning">{t('nativePolicy')}</p>
-                ) : null}
-              </>
-            ) : null}
+            <Link
+              to="/settings/harness"
+              search={navigation.search}
+              className="text-sm text-accent underline"
+            >
+              {n('connectWorkStyle')}
+            </Link>
             <McpConnection
               key={`${config.revision}:${selected.id}`}
               api={api}
               projectId={projectId}
               server={selected}
-              copies={copies}
               onProbe={setProbe}
               disabled={busy}
             />
@@ -338,54 +244,14 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
                 {!verified.tools.length ? (
                   <p className="text-sm text-muted">{t('probeEmpty')}</p>
                 ) : (
-                  <fieldset
-                    disabled={!target.profile || target.busy || target.profile.policy === 'strict'}
-                  >
-                    <legend className="mb-2 text-sm font-medium">{t('selectTools')}</legend>
-                    <ul className="flex max-h-64 flex-col gap-3 overflow-auto">
-                      {verified.tools.map((tool) => (
-                        <li key={tool.name}>
-                          <label className="flex items-start gap-2 text-sm">
-                            <input
-                              type="checkbox"
-                              checked={picked.includes(tool.name)}
-                              onChange={(e) =>
-                                setPicked((current) =>
-                                  e.target.checked
-                                    ? [...current, tool.name]
-                                    : current.filter((name) => name !== tool.name),
-                                )
-                              }
-                            />
-                            <span>
-                              {tool.title}
-                              <span className="mt-1 block text-xs text-muted">
-                                {tool.description}
-                              </span>
-                            </span>
-                          </label>
-                        </li>
-                      ))}
-                    </ul>
-                    <Button
-                      className="mt-3"
-                      onClick={() =>
-                        target.profile &&
-                        void target.save({
-                          ...profileInput(target.profile),
-                          mcpServerIds: [...new Set([...selectedIds, selected.id])],
-                          allowedTools: [
-                            ...target.profile.allowedTools.filter(
-                              (name) => !name.startsWith(`mcp__${selected.id}__`),
-                            ),
-                            ...picked,
-                          ],
-                        })
-                      }
-                    >
-                      {t('allowTools')}
-                    </Button>
-                  </fieldset>
+                  <ul className="flex flex-col gap-2 text-sm">
+                    {verified.tools.map((tool) => (
+                      <li key={tool.name}>
+                        {tool.title}
+                        <p className="text-xs text-muted">{tool.description}</p>
+                      </li>
+                    ))}
+                  </ul>
                 )}
                 <p className="text-xs text-muted">{t('toolDiscoveryHint')}</p>
               </div>

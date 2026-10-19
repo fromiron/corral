@@ -231,21 +231,30 @@ test('[TC-HAR-004-H] [TC-UX-004-N] install, trust, save and preview a mandatory 
     await page.getByRole('button', { name: 'Save to library', exact: true }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await page.getByRole('button', { name: 'Trust this content', exact: true }).click();
-    await page.getByRole('button', { name: 'Add to a work style', exact: true }).click();
-    await page.getByRole('combobox', { name: 'Configure usage for', exact: true }).click();
-    await page.getByRole('option', { name: 'Evidence writer · r1', exact: true }).click();
-    await page.getByLabel('Use in Evidence writer', { exact: true }).click();
+    await page.getByRole('link', { name: 'Add to a work style', exact: true }).click();
+    await expect(page).toHaveURL(/settings\/harness/);
+    await page.getByRole('button', { name: 'Evidence writer · r1', exact: true }).click();
+    const replacement = page
+      .getByRole('checkbox', { name: 'Use skill writing', exact: true })
+      .and(page.locator(':not(:checked)'));
+    await replacement.click();
     const confirm = page.getByRole('dialog', { name: 'Confirm change', exact: true });
     await expect(confirm).toContainText('Replace 1 previous');
     await confirm.getByRole('button', { name: 'Cancel', exact: true }).click();
-    await expect(page.getByLabel('Use in Evidence writer', { exact: true })).not.toBeChecked();
-    await expect(page.getByLabel('Use in Evidence writer', { exact: true })).toBeFocused();
-    await page.getByLabel('Use in Evidence writer', { exact: true }).click();
+    await expect(replacement).not.toBeChecked();
+    await expect(replacement).toBeFocused();
+    await replacement.click();
     await confirm.getByRole('button', { name: 'Confirm', exact: true }).click();
-    await expect(page.getByText(/Editing from Evidence writer · r2/)).toBeVisible();
+    expect(
+      await page.evaluate(
+        async () => (await (await fetch('/api/v1/harness/profiles')).json())[0].revision,
+      ),
+    ).toBe(1);
     await expect(
       page.getByRole('combobox', { name: 'Skill mode writing', exact: true }),
     ).toHaveValue('mandatory');
+    await page.getByRole('button', { name: 'Save work style', exact: true }).click();
+    await expect(page.getByTestId('harness-status')).toContainText('Saved revision 2');
     const effective = await page.evaluate(async () => {
       const profile = (await (await fetch('/api/v1/harness/profiles')).json()).find(
         (p: { name: string }) => p.name === 'Evidence writer',
@@ -264,10 +273,18 @@ test('[TC-HAR-004-H] [TC-UX-004-N] install, trust, save and preview a mandatory 
     });
     expect(effective.sections[0]?.text).toContain('Always cite the revised source.');
 
+    await page.goto(`${corral.server.url}/settings/skills`);
+    await page
+      .getByRole('button', { name: /^writing/ })
+      .filter({ hasText: 'Referenced by 1 work styles' })
+      .filter({ hasNotText: 'An edited copy is available.' })
+      .click();
     await page.getByRole('button', { name: 'Remove from list', exact: true }).click();
     await confirm.getByRole('button', { name: 'Confirm', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Restore', exact: true })).toBeVisible();
-    await expect(page.getByLabel('Use in Evidence writer', { exact: true })).toBeChecked();
+    await expect(
+      page.getByRole('combobox', { name: 'Configure usage for', exact: true }),
+    ).toHaveCount(0);
     await page.getByRole('button', { name: 'Restore', exact: true }).click();
     await page.reload();
     await page

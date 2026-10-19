@@ -16,9 +16,11 @@ import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
 import { useManagementConfirmation } from '../workbench/harness/ConfirmAction.tsx';
 import { PermissionPolicyEditor } from '../workbench/harness/PermissionPolicyEditor.tsx';
-import { operationId, profileInput, rememberHarnessTarget } from '../workbench/harness/Target.tsx';
+import { updateResourceSelection } from '../workbench/harness/selection.ts';
+import { operationId, profileInput } from '../workbench/harness/Target.tsx';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
 import { SettingsProjectPicker } from '../workbench/SettingsNavigation.tsx';
+import { HarnessMcpTools } from './HarnessMcpTools.tsx';
 import { SettingsLayout } from './SettingsPage.tsx';
 
 const field = 'w-full rounded-md border border-line bg-surface p-2 text-sm';
@@ -204,7 +206,6 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
   }
   function choose(next: HarnessProfileRevision | null, saved = false) {
     if (!saved && dirty && !window.confirm(r('leaveUnsaved'))) return;
-    if (next && api) rememberHarnessTarget(api, projectId, `profile:${next.profileId}`);
     setSelected(next);
     setProfile(next ?? emptyProfile());
     setToolNames((next ?? emptyProfile()).allowedTools.join(', '));
@@ -217,14 +218,45 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
     entry: string,
     selection: HarnessProfile['resources'][number] | null,
   ) {
-    setProfile((current) => ({
-      ...current,
-      resources: [
-        ...current.resources.filter((r) => r.resourceHash !== resourceHash || r.entry !== entry),
-        ...(selection ? [selection] : []),
-      ],
-    }));
-    setPreview(null);
+    const key = { resourceHash, entry, kind: selection?.kind ?? ('skill' as const) };
+    const skillName = resources
+      .find((value) => value.hash === resourceHash)
+      ?.skills.find((value) => value.entry === entry)?.name;
+    const replacing = selection
+      ? profile.resources.filter((ref) => {
+          if (ref.resourceHash === resourceHash && ref.entry === entry) return false;
+          const old = entries.find(
+            (value) => value.resourceHash === ref.resourceHash && value.entry === ref.entry,
+          );
+          return (
+            (old?.successor?.resourceHash === resourceHash && old.successor.entry === entry) ||
+            (selection.kind === 'skill' &&
+              ref.kind === 'skill' &&
+              old?.resource.skills.some(
+                (skill) => skill.entry === ref.entry && skill.name === skillName,
+              ))
+          );
+        })
+      : [];
+    const apply = () => {
+      setProfile((current) =>
+        replacing.length
+          ? updateResourceSelection(current, key, true, replacing)
+          : {
+              ...current,
+              resources: [
+                ...current.resources.filter(
+                  (ref) => ref.resourceHash !== resourceHash || ref.entry !== entry,
+                ),
+                ...(selection ? [selection] : []),
+              ],
+            },
+      );
+      setPreview(null);
+    };
+    if (replacing.length)
+      confirmation.request(r('replaceVersion', { count: replacing.length }), apply);
+    else apply();
   }
   const pendingProfile: HarnessProfile = {
     ...(profile.permissionPolicy ? { permissionPolicy: profile.permissionPolicy } : {}),
@@ -697,6 +729,20 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                   ) : null}
                 </div>
               ))}
+              {projectId && projectTools && profile.policy === 'trusted-native' ? (
+                <HarnessMcpTools
+                  key={`${projectId}:${projectTools.revision}:${selected?.profileId ?? 'new'}`}
+                  api={api}
+                  projectId={projectId}
+                  config={projectTools}
+                  selectedIds={profile.mcpServerIds ?? []}
+                  allowedTools={pendingProfile.allowedTools}
+                  onChange={(names) => {
+                    setToolNames(names.join(', '));
+                    setPreview(null);
+                  }}
+                />
+              ) : null}
               <PermissionPolicyEditor
                 value={profile.permissionPolicy}
                 tools={preview?.snapshot.tools ?? []}

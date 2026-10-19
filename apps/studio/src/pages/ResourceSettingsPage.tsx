@@ -8,14 +8,7 @@ import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
 import { useManagementConfirmation } from '../workbench/harness/ConfirmAction.tsx';
 import { ResourceEditor } from '../workbench/harness/ResourceEditor.tsx';
-import { updateResourceSelection } from '../workbench/harness/selection.ts';
-import {
-  field,
-  operationId,
-  profileInput,
-  TargetPicker,
-  useHarnessTarget,
-} from '../workbench/harness/Target.tsx';
+import { field, operationId } from '../workbench/harness/Target.tsx';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
 import { SettingsLayout } from './SettingsPage.tsx';
 
@@ -32,33 +25,23 @@ export function HookSettingsPage() {
   return <ResourceSettingsPage kind="extension" />;
 }
 function ResourceSettingsPage({ kind }: { kind: 'skill' | 'extension' }) {
-  const { harnesses } = useServices(),
-    { projectId } = useSettingsNavigation();
+  const { harnesses } = useServices();
   const t = useTranslations('Harness');
   return (
     <SettingsLayout active={kind === 'skill' ? 'skills' : 'hooks'}>
       {harnesses ? (
-        <ResourceManager key={kind} api={harnesses} projectId={projectId} kind={kind} />
+        <ResourceManager key={kind} api={harnesses} kind={kind} />
       ) : (
         <p className="p-8">{t('localOnly')}</p>
       )}
     </SettingsLayout>
   );
 }
-function ResourceManager({
-  api,
-  projectId,
-  kind,
-}: {
-  api: HarnessApi;
-  projectId: string | undefined;
-  kind: 'skill' | 'extension';
-}) {
+function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'extension' }) {
   const t = useTranslations('Resources'),
     h = useTranslations('Harness');
   const n = useTranslations('Navigation');
   const navigation = useSettingsNavigation();
-  const target = useHarnessTarget(api, projectId);
   const confirmation = useManagementConfirmation();
   const [entries, setEntries] = useState<HarnessEntryView[]>([]),
     [loaded, setLoaded] = useState(false);
@@ -118,48 +101,6 @@ function ResourceManager({
       if (alive.current) setBusy(false);
     }
   }
-  const selectedRef =
-    selected && target.profile?.resources.find((ref) => keyOf(ref) === keyOf(selected));
-  const inherited =
-    selected &&
-    !selectedRef &&
-    target.preview?.snapshot.resources.some(
-      (ref) => `${ref.hash}:${ref.entry}` === keyOf(selected),
-    );
-  const changeSelection = (use: boolean, mode?: 'auto' | 'explicit' | 'mandatory') => {
-    if (!selected || !target.profile) return;
-    if (use && kind === 'extension' && target.profile.policy === 'strict') {
-      target.setError(t('nativePolicy'));
-      return;
-    }
-    const skillName = selected.resource.skills.find(
-      (skill) => skill.entry === selected.entry,
-    )?.name;
-    const replacing = use
-      ? target.profile.resources.filter((ref) => {
-          if (keyOf(ref) === keyOf(selected)) return false;
-          const old = entries.find((entry) => keyOf(entry) === keyOf(ref));
-          return (
-            (old?.successor && keyOf(old.successor) === keyOf(selected)) ||
-            (kind === 'skill' &&
-              ref.kind === 'skill' &&
-              old?.resource.skills.some(
-                (skill) => skill.entry === ref.entry && skill.name === skillName,
-              ))
-          );
-        })
-      : [];
-    const profile = target.profile;
-    const save = () =>
-      void work(() =>
-        target.save(
-          updateResourceSelection(profileInput(profile), refOf(selected), use, replacing, mode),
-        ),
-      );
-    if (replacing.length)
-      confirmation.request(t('replaceVersion', { count: replacing.length }), save);
-    else save();
-  };
   return (
     <main className="mx-auto flex max-w-6xl flex-col gap-6 p-6 sm:p-10">
       <header className="flex items-start justify-between gap-4">
@@ -270,61 +211,13 @@ function ResourceManager({
                 {t('editCopy')}
               </Button>
             </div>
-            {target.selection === 'library' ? (
-              <Button variant="outline" className="self-start" onClick={target.connect}>
-                {n('addToWorkStyle')}
-              </Button>
-            ) : (
-              <div className="flex flex-col gap-2">
-                <TargetPicker target={target} />
-                <Button
-                  variant="ghost"
-                  className="self-end"
-                  disabled={target.busy}
-                  onClick={() => target.setSelection('library')}
-                >
-                  {n('finishConnecting')}
-                </Button>
-              </div>
-            )}
-            {target.profile ? (
-              <div className="flex flex-col gap-3 rounded-lg bg-raised p-3">
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={Boolean(selectedRef || inherited)}
-                    disabled={
-                      busy ||
-                      target.busy ||
-                      inherited ||
-                      (!selectedRef &&
-                        (Boolean(selected.archivedAt) || !selected.resource.trustedAt))
-                    }
-                    onChange={(e) => changeSelection(e.target.checked)}
-                  />
-                  {t('useInProfile', { name: target.profile.name })}
-                </label>
-                {inherited ? <p className="text-xs text-muted">{t('inherited')}</p> : null}
-                {selectedRef && kind === 'skill' ? (
-                  <label className="flex items-center gap-3 text-sm">
-                    {h('skillMode', { name: selected.name })}
-                    <select
-                      className={field}
-                      disabled={busy || target.busy}
-                      value={selectedRef.skillMode ?? 'auto'}
-                      onChange={(e) =>
-                        changeSelection(true, e.target.value as 'auto' | 'explicit' | 'mandatory')
-                      }
-                    >
-                      <option value="auto">{h('auto')}</option>
-                      <option value="explicit">{h('explicit')}</option>
-                      <option value="mandatory">{h('mandatory')}</option>
-                    </select>
-                  </label>
-                ) : null}
-                <p className="text-xs text-muted">{t('nextRun')}</p>
-              </div>
-            ) : null}
+            <Link
+              to="/settings/harness"
+              search={navigation.search}
+              className="text-sm text-accent underline"
+            >
+              {n('addToWorkStyle')}
+            </Link>
             {!selected.resource.trustedAt ? (
               <p className="text-sm text-warning">{t('trustBeforeUse')}</p>
             ) : null}

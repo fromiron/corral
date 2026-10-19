@@ -3,25 +3,50 @@ import type { RegisteredMcpServer } from '@corral/contracts';
 import { Button } from '@corral/react/ui';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
+import { useServices } from '../services.tsx';
 import { field, operationId } from '../workbench/harness/Target.tsx';
 
 export function McpConnection({
   api,
   projectId,
   server,
-  copies,
+  manage = true,
   onProbe,
   disabled = false,
 }: {
   api: HarnessApi;
   projectId: string;
   server: RegisteredMcpServer;
-  copies: { id: string; name: string }[];
+  manage?: boolean;
   onProbe(result: McpProbeResult | null): void;
   disabled?: boolean;
 }) {
   const t = useTranslations('Harness'),
     r = useTranslations('Resources');
+  const { repository, workspaces } = useServices();
+  const [copies, setCopies] = useState<{ id: string; name: string }[]>([]);
+  useEffect(() => {
+    let owned = true;
+    if (server.transport === 'stdio' && workspaces)
+      void repository
+        .listSessions(projectId)
+        .then(async (sessions) => {
+          const list = await Promise.all(
+            sessions.map(async (session) => {
+              const copy = await workspaces.worktree(session.sessionId).catch(() => null);
+              return copy && !copy.missing ? { id: session.sessionId, name: session.title } : null;
+            }),
+          );
+          if (owned)
+            setCopies(
+              list.filter((value): value is { id: string; name: string } => value !== null),
+            );
+        })
+        .catch((e) => owned && setError(e.message));
+    return () => {
+      owned = false;
+    };
+  }, [projectId, repository, workspaces, server.transport]);
   const [sessionId, setSessionId] = useState('');
   const [probeId, setProbeId] = useState<string | null>(null);
   const probeRef = useRef<string | null>(null);
@@ -131,164 +156,179 @@ export function McpConnection({
           {!copies.length ? <span className="text-xs text-muted">{r('copyRequired')}</span> : null}
         </label>
       ) : null}
-      <p className="break-all font-mono text-xs">
-        {server.transport === 'stdio' ? server.argv.join(' ') : server.url}
-      </p>
-      <Button
-        variant="outline"
-        disabled={disabled || busy || !!probeId}
-        onClick={() =>
-          void work(async () => {
-            setLaunch(
-              await api.inspectMcpServer(projectId, server.id, sessionId ? { sessionId } : {}),
-            );
-            setStatus(await api.mcpAuthStatus(projectId, server.id));
-          })
-        }
-      >
-        {t('reviewCheck', { name: server.name })}
-      </Button>
-      {launch ? (
+      {manage ? (
         <>
-          <details className="text-xs text-muted">
-            <summary>{r('launchDetails')}</summary>
-            <p className="break-all font-mono">{launch.fingerprint}</p>
-          </details>
+          <p className="break-all font-mono text-xs">
+            {server.transport === 'stdio' ? server.argv.join(' ') : server.url}
+          </p>
           <Button
             variant="outline"
             disabled={disabled || busy || !!probeId}
             onClick={() =>
               void work(async () => {
-                await api.trustMcpServer(
-                  projectId,
-                  server.id,
-                  launch.fingerprint,
-                  !launch.trustedAt,
-                  sessionId || undefined,
-                );
                 setLaunch(
                   await api.inspectMcpServer(projectId, server.id, sessionId ? { sessionId } : {}),
                 );
+                setStatus(await api.mcpAuthStatus(projectId, server.id));
               })
             }
           >
-            {t(launch.trustedAt ? 'revokeCheckTrust' : 'trustCheck')}
+            {t('reviewCheck', { name: server.name })}
           </Button>
-          {status ? (
-            <p role="status" className="text-sm">
-              {t(
-                status.state === 'ready'
-                  ? 'mcpReady'
-                  : status.state === 'missing'
-                    ? 'mcpMissing'
-                    : 'mcpNoAuth',
-              )}
-            </p>
-          ) : null}
-          {server.transport === 'http' && server.auth.kind !== 'none' ? (
+          {launch ? (
             <>
-              <p className="text-xs text-muted">{t('mcpAuthHint')}</p>
-              {server.auth.kind === 'bearer' ? (
+              <details className="text-xs text-muted">
+                <summary>{r('launchDetails')}</summary>
+                <p className="break-all font-mono">{launch.fingerprint}</p>
+              </details>
+              <Button
+                variant="outline"
+                disabled={disabled || busy || !!probeId}
+                onClick={() =>
+                  void work(async () => {
+                    await api.trustMcpServer(
+                      projectId,
+                      server.id,
+                      launch.fingerprint,
+                      !launch.trustedAt,
+                      sessionId || undefined,
+                    );
+                    setLaunch(
+                      await api.inspectMcpServer(
+                        projectId,
+                        server.id,
+                        sessionId ? { sessionId } : {},
+                      ),
+                    );
+                  })
+                }
+              >
+                {t(launch.trustedAt ? 'revokeCheckTrust' : 'trustCheck')}
+              </Button>
+              {status ? (
+                <p role="status" className="text-sm">
+                  {t(
+                    status.state === 'ready'
+                      ? 'mcpReady'
+                      : status.state === 'missing'
+                        ? 'mcpMissing'
+                        : 'mcpNoAuth',
+                  )}
+                </p>
+              ) : null}
+              {server.transport === 'http' && server.auth.kind !== 'none' ? (
                 <>
-                  <label className="flex flex-col gap-1 text-sm">
-                    {t('mcpToken')}
-                    <input
-                      type="password"
-                      autoComplete="off"
-                      className={field}
-                      value={token}
-                      onChange={(e) => setToken(e.target.value)}
-                    />
-                  </label>
-                  <Button
-                    disabled={disabled || busy || !launch.trustedAt || !token}
-                    onClick={() =>
-                      void work(async () => {
-                        try {
+                  <p className="text-xs text-muted">{t('mcpAuthHint')}</p>
+                  {server.auth.kind === 'bearer' ? (
+                    <>
+                      <label className="flex flex-col gap-1 text-sm">
+                        {t('mcpToken')}
+                        <input
+                          type="password"
+                          autoComplete="off"
+                          className={field}
+                          value={token}
+                          onChange={(e) => setToken(e.target.value)}
+                        />
+                      </label>
+                      <Button
+                        disabled={disabled || busy || !launch.trustedAt || !token}
+                        onClick={() =>
+                          void work(async () => {
+                            try {
+                              setStatus(
+                                await api.saveMcpBearer(
+                                  projectId,
+                                  server.id,
+                                  launch.fingerprint,
+                                  token,
+                                ),
+                              );
+                            } finally {
+                              setToken('');
+                            }
+                          })
+                        }
+                      >
+                        {t('mcpSaveToken')}
+                      </Button>
+                    </>
+                  ) : (
+                    <Button
+                      disabled={disabled || busy || !launch.trustedAt || !!login}
+                      onClick={() =>
+                        void work(async () => {
+                          const next = await api.signInMcp(
+                            projectId,
+                            server.id,
+                            launch.fingerprint,
+                          );
+                          if (active.current) setLogin(next);
+                          else await api.cancelMcpLogin(next.loginId);
+                        })
+                      }
+                    >
+                      {t('mcpSignIn', { name: server.name })}
+                    </Button>
+                  )}
+                  {login ? (
+                    <div className="flex flex-wrap items-center gap-3">
+                      <a
+                        href={login.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-sm text-accent underline"
+                      >
+                        {t('mcpContinue')}
+                      </a>
+                      <Button
+                        variant="ghost"
+                        onClick={() =>
+                          void work(async () => {
+                            await api.cancelMcpLogin(login.loginId);
+                            setLogin(null);
+                          })
+                        }
+                      >
+                        {t('mcpCancel')}
+                      </Button>
+                    </div>
+                  ) : null}
+                  {status?.state === 'ready' ? (
+                    <Button
+                      variant="ghost"
+                      disabled={disabled || busy || !!probeId}
+                      onClick={() =>
+                        void work(async () => {
                           setStatus(
-                            await api.saveMcpBearer(
+                            await api.signOutMcp(
                               projectId,
                               server.id,
                               launch.fingerprint,
-                              token,
+                              launch.configRevision,
                             ),
                           );
-                        } finally {
-                          setToken('');
-                        }
-                      })
-                    }
-                  >
-                    {t('mcpSaveToken')}
-                  </Button>
+                          setLogin(null);
+                        })
+                      }
+                    >
+                      {t('mcpSignOut', { name: server.name })}
+                    </Button>
+                  ) : null}
                 </>
-              ) : (
-                <Button
-                  disabled={disabled || busy || !launch.trustedAt || !!login}
-                  onClick={() =>
-                    void work(async () => {
-                      const next = await api.signInMcp(projectId, server.id, launch.fingerprint);
-                      if (active.current) setLogin(next);
-                      else await api.cancelMcpLogin(next.loginId);
-                    })
-                  }
-                >
-                  {t('mcpSignIn', { name: server.name })}
-                </Button>
-              )}
-              {login ? (
-                <div className="flex flex-wrap items-center gap-3">
-                  <a
-                    href={login.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-sm text-accent underline"
-                  >
-                    {t('mcpContinue')}
-                  </a>
-                  <Button
-                    variant="ghost"
-                    onClick={() =>
-                      void work(async () => {
-                        await api.cancelMcpLogin(login.loginId);
-                        setLogin(null);
-                      })
-                    }
-                  >
-                    {t('mcpCancel')}
-                  </Button>
-                </div>
-              ) : null}
-              {status?.state === 'ready' ? (
-                <Button
-                  variant="ghost"
-                  disabled={disabled || busy || !!probeId}
-                  onClick={() =>
-                    void work(async () => {
-                      setStatus(
-                        await api.signOutMcp(
-                          projectId,
-                          server.id,
-                          launch.fingerprint,
-                          launch.configRevision,
-                        ),
-                      );
-                      setLogin(null);
-                    })
-                  }
-                >
-                  {t('mcpSignOut', { name: server.name })}
-                </Button>
               ) : null}
             </>
           ) : null}
         </>
-      ) : null}
+      ) : (
+        <p className="text-xs text-muted">{r('configureMcpFirst')}</p>
+      )}
       <div className="mt-3 flex flex-col gap-2 border-t border-line pt-3">
         <p className="text-xs text-muted">{r('probeHint')}</p>
         <Button
           variant="outline"
           disabled={
+            disabled ||
             busy ||
             !!probeId ||
             !launch?.trustedAt ||
