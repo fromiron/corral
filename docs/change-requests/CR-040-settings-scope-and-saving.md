@@ -61,3 +61,10 @@ PR/push/merge와 전체 릴리스 판정은 이번 요청에 포함하지 않는
   MCP 인증·discovery·선택·저장·고정 revision 실행까지 4 E2E와 선택 유틸리티 단위 시험.
 - 라이브러리의 공용 프로필/기본값 publish 경로와 중복 대상 선택기를 제거했다.
   MCP 연결·취소·신뢰/인증 검사는 기존 McpConnection을 재사용한다.
+
+### 3. 데이터 폴더 전환 확인
+
+- 실패: 격리 Electron에서 idle 전환 시 확인 콜백 1회를 기대했으나 0회로 실패.
+- 통과: 같은 smoke에서 취소 후 URL·workspace 유지, 확인 후 전환·원래 폴더 복귀.
+  기존 SQLite 이력·초안·테마·single instance·활성 Run 종료·renderer/sidecar 복구도 통과.
+- Linux staged runtime을 새로 준비해 검증했다. 개인 데이터 폴더와 유료 호출은 사용하지 않았다.

@@ -127,17 +127,31 @@ async function activeRuns(): Promise<number | null> {
   });
 }
 
-async function confirmStop(): Promise<boolean> {
+async function confirmStop(nextWorkspace?: string): Promise<boolean> {
   const active = await activeRuns();
-  if (active === 0 || !window) return true;
+  if (!window || (active === 0 && !nextWorkspace)) return true;
   const ko = app.getLocale().startsWith('ko');
   const result = await dialog.showMessageBox(window, {
     type: 'question',
-    message: ko ? '진행 중인 작업을 중단할까요?' : 'Stop the current work?',
-    detail: ko
-      ? '실행 중인 작업이 중단될 수 있습니다. 기록은 보존되며 다음에 자동 재개하지 않습니다.'
-      : 'Active runs will be interrupted. Their history is kept; they will not resume automatically.',
-    buttons: ko ? ['계속 실행', '중단하고 계속'] : ['Keep running', 'Stop and continue'],
+    message: nextWorkspace
+      ? ko
+        ? '다른 데이터 폴더로 전환할까요?'
+        : 'Switch data folder?'
+      : ko
+        ? '진행 중인 작업을 중단할까요?'
+        : 'Stop the current work?',
+    detail: nextWorkspace
+      ? `${ko ? '앱 서버를 다시 시작합니다. 기존 데이터는 유지됩니다.' : 'The app server will restart. Existing data is kept.'}${active !== 0 ? (ko ? ' 진행 중인 작업은 중단되며 자동 재개하지 않습니다.' : ' Active work will stop and will not resume automatically.') : ''}\n\n${nextWorkspace}`
+      : ko
+        ? '실행 중인 작업이 중단될 수 있습니다. 기록은 보존되며 다음에 자동 재개하지 않습니다.'
+        : 'Active runs will be interrupted. Their history is kept; they will not resume automatically.',
+    buttons: nextWorkspace
+      ? ko
+        ? ['취소', '전환']
+        : ['Cancel', 'Switch']
+      : ko
+        ? ['계속 실행', '중단하고 계속']
+        : ['Keep running', 'Stop and continue'],
     defaultId: 0,
     cancelId: 0,
   });
@@ -295,7 +309,7 @@ async function openWorkspaceAt(path: string) {
   if (!window || switching || closing || path === saved.workspace || !isAbsolute(path)) return;
   switching = true;
   try {
-    if (!(await confirmStop())) return;
+    if (!(await confirmStop(path))) return;
     await stopServer();
     saved.workspace = path;
     saved.recent = recentWorkspaces(saved.recent, path);

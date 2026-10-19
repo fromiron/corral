@@ -1664,7 +1664,8 @@
       "blocked": "Refused",
       "cancelled": "Cancelled",
       "unknown": "Outcome unknown"
-    }
+    },
+    "switchWorkspaceHint": "Switching data folders restarts the app server. You will be asked to confirm before switching."
   },
   "Composer": {
     "commands": "Commands",

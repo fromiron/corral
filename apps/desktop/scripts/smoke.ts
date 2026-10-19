@@ -60,6 +60,99 @@ try {
           .windowControlsOverlay?.visible ?? 'unsupported',
     ),
   );
+  // CR-040: switching an idle workspace still asks; cancelling preserves the running server.
+  const initialWorkspace = await page.evaluate(
+    async () =>
+      (
+        await (
+          window as unknown as { corralDesktop: { info(): Promise<{ workspace: string }> } }
+        ).corralDesktop.info()
+      ).workspace,
+  );
+  const switchTarget = join(data, 'switch-target');
+  mkdirSync(switchTarget);
+  await application.evaluate(({ dialog }, workspace) => {
+    const state = process as typeof process & { switchPrompts?: number };
+    state.switchPrompts = 0;
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [workspace] });
+    dialog.showMessageBox = async () => {
+      state.switchPrompts = (state.switchPrompts ?? 0) + 1;
+      return { response: 0, checkboxChecked: false };
+    };
+  }, switchTarget);
+  const initialUrl = page.url();
+  await page.evaluate(() => {
+    void (
+      window as unknown as { corralDesktop: { openWorkspace(): Promise<void> } }
+    ).corralDesktop.openWorkspace();
+  });
+  await expect
+    .poll(() =>
+      application?.evaluate(
+        () => (process as typeof process & { switchPrompts?: number }).switchPrompts,
+      ),
+    )
+    .toBe(1);
+  assert.equal(page.url(), initialUrl);
+  assert.equal(
+    await page.evaluate(
+      async () =>
+        (
+          await (
+            window as unknown as { corralDesktop: { info(): Promise<{ workspace: string }> } }
+          ).corralDesktop.info()
+        ).workspace,
+    ),
+    initialWorkspace,
+  );
+  await application.evaluate(({ dialog }) => {
+    dialog.showMessageBox = async () => ({ response: 1, checkboxChecked: false });
+  });
+  await page.evaluate(() => {
+    void (
+      window as unknown as { corralDesktop: { openWorkspace(): Promise<void> } }
+    ).corralDesktop.openWorkspace();
+  });
+  await expect
+    .poll(async () =>
+      page
+        .evaluate(
+          async () =>
+            (
+              await (
+                window as unknown as { corralDesktop: { info(): Promise<{ workspace: string }> } }
+              ).corralDesktop.info()
+            ).workspace,
+        )
+        .catch(() => null),
+    )
+    .toBe(switchTarget);
+  await page.waitForURL(/^http:\/\/127\.0\.0\.1:\d+\//);
+  await expect(page.getByTestId('app-sidebar')).toBeVisible();
+  await application.evaluate(({ dialog }, workspace) => {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [workspace] });
+  }, initialWorkspace);
+  await page.evaluate(() => {
+    void (
+      window as unknown as { corralDesktop: { openWorkspace(): Promise<void> } }
+    ).corralDesktop.openWorkspace();
+  });
+  await expect
+    .poll(async () =>
+      page
+        .evaluate(
+          async () =>
+            (
+              await (
+                window as unknown as { corralDesktop: { info(): Promise<{ workspace: string }> } }
+              ).corralDesktop.info()
+            ).workspace,
+        )
+        .catch(() => null),
+    )
+    .toBe(initialWorkspace);
+  await expect(page.getByTestId('app-sidebar')).toBeVisible();
+  console.log('Idle workspace switch confirmation, cancel and reopen passed');
   // Double-clicking the empty top bar maximizes, as a system title bar does.
   await page.getByRole('banner').dispatchEvent('dblclick');
   await expect
@@ -225,6 +318,7 @@ try {
   await recovery.waitForURL(/^http:\/\/127\.0\.0\.1:\d+\//, { timeout: 30000 });
   await application.evaluate(({ dialog }, workspace) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [workspace] });
+    dialog.showMessageBox = async () => ({ response: 1, checkboxChecked: false });
   }, state.workspace);
   await recovery.evaluate(() => {
     void (

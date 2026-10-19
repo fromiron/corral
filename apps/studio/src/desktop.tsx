@@ -74,13 +74,14 @@ export function DesktopWorkspace() {
           ) : null}
         </>
       ) : null}
-      <div className="flex flex-wrap gap-2">
+      <Button size="sm" variant="ghost" onClick={() => act(() => desktop.revealWorkspace())}>
+        {t('revealWorkspace')}
+      </Button>
+      <div className="space-y-3 border-t border-line pt-4">
+        <p className="text-xs text-muted">{t('switchWorkspaceHint')}</p>
         <Button size="sm" variant="outline" onClick={() => act(() => desktop.openWorkspace())}>
           <FolderOpen />
           {t('openWorkspace')}
-        </Button>
-        <Button size="sm" variant="ghost" onClick={() => act(() => desktop.revealWorkspace())}>
-          {t('revealWorkspace')}
         </Button>
       </div>
       {error ? (
