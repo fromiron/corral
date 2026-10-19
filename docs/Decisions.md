@@ -335,3 +335,5 @@ worker의 check/LSP 금지는 유지한다. 등록 검사 runner를 host 소유 
 Bell의 2026-10-19 목표 명확화와 [Oracle 재검토](spikes/Ultra-Multi-Provider-Oracle-2026-10-19.md)에 따른다. C113의 단일 모델 snapshot은 보존한다. 새 versioned Ultra는 기존 profile과 그래프/위임으로 복수 LLM을 배정하고 다른 모델의 검토를 필수로 둔다. 모델별 최대 지원 추론을 실제 Pi wire에서 확인하며 generic ultra enum을 provider에 보내지 않는다. 승인된 pool과 전송 범위 밖 fallback, 출력 한도의 조용한 증가, 검증 생략 성공은 허용하지 않는다. C114의 후보 복제/승격은 선택적 별도 전략이다. 새 하네스 의존성은 추가하지 않는다.
 
 첫 협업 버전은 기존 review recipe의 optional 준비 단계를 사용한다. writer→synthesizer→다른 모델 reviewer 순서를 정적으로 고정하고 최종 output은 검토한 종합본만 참조한다. 최대 2개 선택 보조 에이전트는 기존 spawn/await/settlement 경로를 사용하며 파일 도구나 재위임 권한이 없다. 필수 단계의 최소 capped 호출 여유와 80% draining 상태는 기존 Run 예산에서 계산한다. 별도 예산 원장이나 실행 scheduler는 추가하지 않는다. 코딩 검사의 격리 실행과 다른 provider 확대는 별도 후속 단계이며, 현재 모델 verdict로 프로젝트 테스트 통과를 주장하지 않는다.
+
+다른 provider도 [Pi 호환 기준](spikes/Pi-Provider-Compatibility-2026-10-19.md)에 따라 Pi의 공개 모델 metadata와 실제 serializer를 우선한다. 회사별 하드코딩으로 effort 체계를 통일하지 않으며 API/인증 계열별로 conformance를 확인한다. fingerprint는 Pi compat와 모델 출력 한도 변화까지 감지한다. 아직 검증되지 않은 계열을 단순 metadata 노출만으로 Ultra 지원 완료라고 표시하지 않는다.

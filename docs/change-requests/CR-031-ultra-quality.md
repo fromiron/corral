@@ -60,6 +60,8 @@ Ultra에 명시 candidate comparison을 추가한다. 기본 3개/최대 5개와
 
 OpenAI 기존 OAuth 회귀도 포함한다. Pi 1.3.0은 공식 OpenAI Responses의 ChatGPT 로그인에서 `max_output_tokens`를 생략한다. 이 경로만 고정된 Run 인증 방식과 공식 provider/API/baseURL로 식별해 생략을 허용하고, API 키·다른 endpoint의 cap 누락은 계속 거절한다. 비밀 값은 추가로 저장/전송하지 않으며 worker에는 인증 방식만 전달한다. OAuth의 실제 출력량 hard cap을 보장한다고 표시하지 않는다.
 
+Bell의 후속 지시에 따라 다른 제공자도 Pi의 모델 카탈로그·`getSupportedThinkingLevels`·`thinkingLevelMap`·API별 compat·인증/직렬화를 우선 사용한다. 회사 이름마다 임의의 최고 추론 표를 만들지 않는다. wire에 영향을 주는 compat·thinkingLevelMap·모델 출력 상한의 변경도 고정 metadata identity에서 감지한다. 지원 확대는 회사별 복제보다 Pi의 API/인증 계열별 conformance로 진행한다. 일반 연결 가능과 Ultra 최대 추론 검증 완료는 구분하며 아직 검증하지 않은 API 계열을 지원 완료로 표시하지 않는다.
+
 ### Hive DeepSeek 연결
 
 Bell이 지정한 [Hive DeepSeek V4.1 Flash](https://docs.thehive.ai/docs/deepseek-v41-flash)를 기존 사용자 정의 엔드포인트로 추가한다. 공식 CDN/VA1의 `/api/v3` 주소와 정확한 모델 ID에만 공개 모델 기본값·Pi 호환 metadata를 적용한다. 모델 이름만 같거나 다른 gateway 주소이면 추측하지 않는다. 명시한 context/output/reasoning/image 설정은 보존한다.

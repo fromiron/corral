@@ -43,6 +43,9 @@ export function modelReasoningCapabilities(model: Model<Api> | undefined): Reaso
         ...capabilities,
         model: model.id,
         provider: model.provider,
+        compat: model.compat ?? null,
+        thinkingLevelMap: model.thinkingLevelMap ?? null,
+        maxTokens: model.maxTokens,
         serializer: 'pi-1.3.0',
       }),
     )
