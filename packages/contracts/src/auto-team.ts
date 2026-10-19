@@ -11,7 +11,7 @@ export const AUTO_TEMPLATES = TEAM_PATTERNS;
 export const AutoTemplate = z.enum(AUTO_TEMPLATES);
 export type AutoTemplate = z.infer<typeof AutoTemplate>;
 /** Changes whenever a template's roles, tools or wiring change. */
-export const AUTO_TEMPLATE_VERSION = 2;
+export const AUTO_TEMPLATE_VERSION = 3;
 
 /** Levels the start model may pick from when it chooses the reasoning (CR-024 §7). */
 export const AUTO_ROUTE_LEVELS = ['low', 'medium', 'high'] as const;

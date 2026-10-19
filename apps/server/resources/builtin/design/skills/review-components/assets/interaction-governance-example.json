@@ -1,0 +1,217 @@
+{
+  "artifact": "Profile header, article list, and shared design-system adoption",
+  "decision_context": "Follow an author, access profile actions, scan articles, and migrate the shared UI safely.",
+  "evidence": [
+    {
+      "location": "Profile page before-and-after screenshots",
+      "evidence_state": "observed",
+      "notes": "The original view gives Follow and Message equal visual weight, hides Share and Bookmark in an overflow menu, and wraps every article in a bordered card."
+    },
+    {
+      "location": "packages/profile/ProfileHeader.tsx",
+      "evidence_state": "observed",
+      "notes": "The action API distinguishes follow, message, share, and bookmark, but does not declare priority or disclosure policy."
+    },
+    {
+      "location": "Design-system migration plan",
+      "evidence_state": "unknown",
+      "notes": "No versioned legacy-to-target mapping or deprecation gate was supplied."
+    }
+  ],
+  "affordance_mappings": [
+    {
+      "id": "profile-icon-containers",
+      "location": "Profile metadata row",
+      "visual_treatment": "Blue filled rounded containers match the primary action treatment.",
+      "perceived_role": "Operable buttons",
+      "actual_behavior": "Static metadata icons with no action",
+      "expectation": "different-behavior-distinguishable",
+      "required": true,
+      "status": "fail",
+      "evidence_state": "observed",
+      "evidence": "The static icons and the primary action share the same button-like surface treatment."
+    },
+    {
+      "id": "selected-bottom-navigation",
+      "location": "Bottom navigation",
+      "visual_treatment": "The selected destination uses a filled icon plus a persistent text label.",
+      "perceived_role": "Current navigation destination",
+      "actual_behavior": "Navigates to the destination and exposes the current state.",
+      "expectation": "same-look-same-behavior",
+      "required": true,
+      "status": "pass",
+      "evidence_state": "observed",
+      "evidence": "Selection is communicated by shape and label rather than colour alone."
+    }
+  ],
+  "action_groups": [
+    {
+      "id": "profile-relationship-actions",
+      "location": "Profile header",
+      "user_decision": "Choose whether to follow the author or start a message.",
+      "primary_actions": [
+        "Follow",
+        "Message"
+      ],
+      "secondary_actions": [],
+      "destructive_actions": [],
+      "priority_exception_reason": "",
+      "reading_and_focus_order": "Back, profile identity, Follow, Message, Share, Bookmark.",
+      "required": true,
+      "status": "fail",
+      "evidence_state": "observed",
+      "evidence": "Both actions use the same filled treatment, and no product requirement establishes equal priority."
+    },
+    {
+      "id": "article-navigation",
+      "location": "Article list",
+      "user_decision": "Open one article from the profile.",
+      "primary_actions": [
+        "Open article"
+      ],
+      "secondary_actions": [],
+      "destructive_actions": [],
+      "priority_exception_reason": "",
+      "reading_and_focus_order": "Article title precedes metadata and the record link follows source order.",
+      "required": true,
+      "status": "pass",
+      "evidence_state": "observed",
+      "evidence": "Each repeated record has one clear navigation action."
+    }
+  ],
+  "action_visibility": [
+    {
+      "action": "Share profile",
+      "location": "Profile header overflow menu",
+      "importance": "utility",
+      "frequency": "frequent",
+      "visibility": "disclosed",
+      "disclosure_steps": 1,
+      "disclosure_reason": "",
+      "available_space_evidence": "The header has room for two icon actions beside the back control.",
+      "alternative_path": "",
+      "required": true,
+      "status": "fail",
+      "evidence_state": "observed",
+      "evidence": "Share is available only after opening the overflow menu despite visible free space."
+    },
+    {
+      "action": "Delete profile",
+      "location": "Profile settings overflow menu",
+      "importance": "destructive",
+      "frequency": "rare",
+      "visibility": "disclosed",
+      "disclosure_steps": 2,
+      "disclosure_reason": "The destructive action should not compete with frequent profile actions and requires confirmation.",
+      "available_space_evidence": "Persistent placement is not needed for the supported task.",
+      "alternative_path": "Profile settings > Account > Delete profile",
+      "required": true,
+      "status": "pass",
+      "evidence_state": "inferred",
+      "evidence": "The declared information architecture provides a stable settings path and confirmation step."
+    }
+  ],
+  "grouping_decisions": [
+    {
+      "location": "Article list",
+      "relationship": "Title, metadata, author, and image belong to one repeated article record.",
+      "current_cues": [
+        "proximity",
+        "alignment",
+        "similarity",
+        "container"
+      ],
+      "recommended_cues": [
+        "proximity",
+        "alignment",
+        "similarity"
+      ],
+      "container_justification": "",
+      "required": true,
+      "status": "pass",
+      "evidence_state": "observed",
+      "evidence": "Repeated alignment, spacing, and record schema preserve grouping after the borders are removed."
+    }
+  ],
+  "system_lifecycle": {
+    "applicable": true,
+    "system_scope": "Shared colour, typography, action, navigation, and article-record components.",
+    "governance_model": "hybrid",
+    "authoritative_surfaces": [
+      {
+        "dimension": "Visual anatomy and tokens",
+        "surface": "design",
+        "location": "Figma / Shared UI",
+        "owner": "Design Systems team"
+      },
+      {
+        "dimension": "Runtime behaviour and accessibility",
+        "surface": "code",
+        "location": "packages/ui",
+        "owner": "Design Systems engineering"
+      },
+      {
+        "dimension": "Usage and migration guidance",
+        "surface": "documentation",
+        "location": "Storybook and migration guide",
+        "owner": "Design Systems team"
+      }
+    ],
+    "contribution_process": "Design and implementation changes require a shared review from the design-system owner and one consuming product team.",
+    "decision_process": "Material changes record the problem, evidence, owner decision, affected consumers, and review trigger.",
+    "versioning_and_changelog": "Component releases use semantic versions and a consumer-facing changelog.",
+    "roadmap": "Prioritize semantic colour and typography, then migrate touched components during feature work.",
+    "adoption_strategy": "Adopt incrementally and record component adoption status by product surface.",
+    "legacy_mapping": "",
+    "coexistence_rules": "Legacy and target components may coexist only when each usage is labeled and has an owner.",
+    "deprecation_gate": "",
+    "owners": [
+      "Design Systems team",
+      "Consuming product teams"
+    ],
+    "required": true,
+    "status": "unknown",
+    "evidence_state": "unknown",
+    "evidence": "The supplied plan has no complete legacy mapping or measurable removal gate."
+  },
+  "findings": [
+    {
+      "severity": "high",
+      "location": "Profile metadata row",
+      "problem": "Static icons use the same button-like treatment as an operable primary action.",
+      "impact": "People may attempt to operate non-interactive content or miss the actual action model.",
+      "smallest_change": "Remove the action surface treatment from static icons or make the intended interaction explicit.",
+      "verification": "Compare pointer, keyboard, and touch behaviour with the declared affordance map.",
+      "owner": "Profile team",
+      "evidence_state": "observed",
+      "confidence": "high"
+    },
+    {
+      "severity": "medium",
+      "location": "Profile header actions",
+      "problem": "Follow and Message compete as equal primary actions without an equal-priority requirement.",
+      "impact": "The next step is less clear at the main profile decision point.",
+      "smallest_change": "Declare one primary action for this context or document why the actions have equal priority.",
+      "verification": "Run the glance-hierarchy and primary-task tests on the revised action group.",
+      "owner": "Profile team",
+      "evidence_state": "observed",
+      "confidence": "high"
+    },
+    {
+      "severity": "medium",
+      "location": "Design-system migration plan",
+      "problem": "The adoption plan has no complete legacy mapping or deprecation gate.",
+      "impact": "Old and new components can coexist indefinitely without measurable convergence.",
+      "smallest_change": "Record current-to-target mappings, adoption status, removal criteria, owners, and review dates.",
+      "verification": "Audit one release against the mapping and confirm obsolete usages can be enumerated.",
+      "owner": "Design Systems team",
+      "evidence_state": "unknown",
+      "confidence": "medium"
+    }
+  ],
+  "accepted_risks": [],
+  "unknowns": [
+    "Production analytics do not establish how often Share and Bookmark are used.",
+    "The design-system migration inventory was not supplied."
+  ]
+}

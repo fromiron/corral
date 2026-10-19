@@ -57,7 +57,14 @@ describe('registered HTTPS input boundary (C-043)', () => {
         },
       }),
     });
-    expect(result).toEqual({ text: '한글', mimeType: 'text/plain' });
+    expect(result).toEqual({
+      text: '한글',
+      mimeType: 'text/plain',
+      finalUrl: 'https://source.example/doc',
+      rawBody: Buffer.from('한글'),
+      requests: 1,
+      lastModified: null,
+    });
     expect(lookups).toBe(1);
     expect(pin).toBe('8.8.8.8');
   });
@@ -102,6 +109,8 @@ describe('registered HTTPS input boundary (C-043)', () => {
   it('limits redirects, MIME, declared/streamed size and never executes HTML', async () => {
     for (const res of [
       response('<script>bad()</script>', { 'content-type': 'text/html' }),
+      response('한글', { 'content-type': 'text/plain; charset=us-ascii' }),
+      response('text', { 'content-type': 'text/plain; charset=shift-jis' }),
       response('', { 'content-length': String(MAX_INPUT_BYTES + 1) }),
       response('x'.repeat(MAX_INPUT_BYTES + 1)),
       response('', { location: '/again' }, 302),

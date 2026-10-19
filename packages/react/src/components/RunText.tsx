@@ -145,6 +145,7 @@ export function EventText({
 }
 
 const REASONS = new Set([
+  'user_input_requested',
   'run_requested',
   'validation_passed',
   'output_finalized',

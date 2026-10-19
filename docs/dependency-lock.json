@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-17T22:36:31.883Z",
+  "generatedAt": "2026-10-19T05:30:12.489Z",
   "node": "v24.19.0",
   "packageManager": "pnpm@10.30.3",
   "note": "Registry facts for pinned direct dependencies. Compatibility evidence is the CI gate result, not this file.",
@@ -256,6 +256,23 @@
       ]
     },
     {
+      "name": "@playwright/mcp",
+      "version": "0.0.83",
+      "license": "Apache-2.0",
+      "integrity": "sha512-oNcl+Ae2/IAjhfPeP46BfIkSakfmprY+aOtkv5MjrQ4lPav4/yNtPhL0iq8SlIM90oApWgBDUxaNKvktazUKOg==",
+      "published": "2026-09-28T23:19:13.609Z",
+      "repository": "git+https://github.com/microsoft/playwright-mcp.git",
+      "gitHead": "f183dad4a52965583e3cc1d59b88cdc279e2e57d",
+      "engines": {
+        "node": ">=18"
+      },
+      "peerDependencies": null,
+      "scope": "runtime",
+      "usedBy": [
+        "@corral/adapter-pi"
+      ]
+    },
+    {
       "name": "@playwright/test",
       "version": "1.64.1",
       "license": "Apache-2.0",
@@ -489,6 +506,21 @@
         "@corral/storage-sqlite",
         "@corral/testkit",
         "corral"
+      ]
+    },
+    {
+      "name": "@types/pngjs",
+      "version": "6.0.5",
+      "license": "MIT",
+      "integrity": "sha512-0k5eKfrA83JOZPppLtS2C7OUtyNAl2wKNxfyYl9Q5g9lPkgBl/9hNyAu6HuEH2J4XmIv2znEpkDd0SaZVxW6iQ==",
+      "published": "2024-05-02T19:35:34.759Z",
+      "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+      "gitHead": null,
+      "engines": null,
+      "peerDependencies": null,
+      "scope": "development",
+      "usedBy": [
+        "@corral/server"
       ]
     },
     {
@@ -822,6 +854,21 @@
       ]
     },
     {
+      "name": "parse5",
+      "version": "8.0.1",
+      "license": "MIT",
+      "integrity": "sha512-z1e/HMG90obSGeidlli3hj7cbocou0/wa5HacvI3ASx34PecNjNQeaHNo5WIZpWofN9kgkqV1q5YvXe3F0FoPw==",
+      "published": "2026-04-19T20:16:16.612Z",
+      "repository": "git://github.com/inikulin/parse5.git",
+      "gitHead": "0d56627fc924d40f560fd260ade0e1a935e2369c",
+      "engines": null,
+      "peerDependencies": null,
+      "scope": "runtime",
+      "usedBy": [
+        "@corral/server"
+      ]
+    },
+    {
       "name": "playwright",
       "version": "1.64.1",
       "license": "Apache-2.0",
@@ -837,6 +884,23 @@
       "usedBy": [
         "@corral/react",
         "@corral/spike-p0"
+      ]
+    },
+    {
+      "name": "pngjs",
+      "version": "7.0.0",
+      "license": "MIT",
+      "integrity": "sha512-LKWqWJRhstyYo9pGvgor/ivk2w94eSjE3RGVuzLGlr3NmD8bf7RcYGze1mNdEHRP6TRP6rMuDHk5t44hnTRyow==",
+      "published": "2023-02-20T06:59:21.772Z",
+      "repository": "git://github.com/pngjs/pngjs.git",
+      "gitHead": null,
+      "engines": {
+        "node": ">=14.19.0"
+      },
+      "peerDependencies": null,
+      "scope": "runtime",
+      "usedBy": [
+        "@corral/server"
       ]
     },
     {
@@ -1190,6 +1254,38 @@
       "scope": "development",
       "reviewedAt": "2026-10-17",
       "review": "electron-builder 26.15.6 transitive Windows signing tooling via @electron/windows-sign; MIT, Node >=14, no peers. Not selected for this Linux build and not included in the app runtime. Its installer remains blocked. Exact upstream alpha is retained only in the pinned build tool graph; pnpm audit reports no advisory for postject."
+    },
+    {
+      "name": "playwright",
+      "version": "1.64.0-alpha-1790635538000",
+      "license": "Apache-2.0",
+      "integrity": "sha512-/5XDUMxpOd/9AojJtWDFIRV3EJZNQ0AwvK69wgt3CPzy8wTgiBG9pX45VfxtqtvIRGwfWzMhrvawNKreG69Snw==",
+      "published": "2026-09-28T22:50:35.411Z",
+      "repository": "git+https://github.com/microsoft/playwright.git",
+      "gitHead": "e8149b8257d32dcf8f72573ecc43e72439da7080",
+      "engines": {
+        "node": ">=20"
+      },
+      "peerDependencies": null,
+      "scope": "runtime",
+      "reviewedAt": "2026-10-19",
+      "review": "Exact transitive runtime selected by official @playwright/mcp 0.0.83, Apache-2.0 with TypeScript types and Node compatibility checked on Node 24.19.0. No API override or unpinned npx install. Tested owned anonymous loopback navigation, explicit snapshot/readiness/assertions, failed assertion and process cleanup with Chromium. External production environments remain unavailable until M3 OS isolation. pnpm audit --prod found zero advisories on review date."
+    },
+    {
+      "name": "playwright-core",
+      "version": "1.64.0-alpha-1790635538000",
+      "license": "Apache-2.0",
+      "integrity": "sha512-pNwaXirhXMRLaRQs4NQ18EpTdtDoFwyPH9FOaaDC7YXG4hpwE2xmwCic/1srbuExVQC7zT9LJSJpDBAru+Vo9A==",
+      "published": "2026-09-28T22:52:15.870Z",
+      "repository": "git+https://github.com/microsoft/playwright.git",
+      "gitHead": "e8149b8257d32dcf8f72573ecc43e72439da7080",
+      "engines": {
+        "node": ">=20"
+      },
+      "peerDependencies": null,
+      "scope": "runtime",
+      "reviewedAt": "2026-10-19",
+      "review": "Exact transitive runtime selected by official @playwright/mcp 0.0.83, Apache-2.0 with TypeScript types and Node compatibility checked on Node 24.19.0. No API override or unpinned npx install. Tested owned anonymous loopback navigation, explicit snapshot/readiness/assertions, failed assertion and process cleanup with Chromium. External production environments remain unavailable until M3 OS isolation. pnpm audit --prod found zero advisories on review date."
     }
   ]
 }

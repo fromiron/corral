@@ -88,6 +88,7 @@ export interface NodeChange {
   inputBindings?: InputBinding[];
   /** Lets the role change files in the session's working copy (CR-012): all file tools. */
   fileTools?: boolean;
+  teamPlanOwner?: boolean;
 }
 
 export interface DraftCompilation {
@@ -155,7 +156,7 @@ function newRole(id: string, name: string): AgentRole {
     prompt: DEFAULT_AGENT_PROMPT,
     modelProfile: 'model-a',
     allowedWorkTools: ['write_artifact'],
-    allowedCollaborationTools: ['submit_result'],
+    allowedCollaborationTools: ['submit_result', 'ask_user', 'update_plan'],
     outputContract: 'text',
   };
 }
@@ -334,6 +335,13 @@ export function updateNode(draft: EditorDraft, nodeId: string, change: NodeChang
   if (next.type === 'agent') {
     const roleId = next.roleId;
     const roleChange: Partial<AgentRole> = {};
+    if (change.teamPlanOwner)
+      roleChange.allowedCollaborationTools = [
+        ...new Set([
+          ...(roles.find((r) => r.id === roleId)?.allowedCollaborationTools ?? []),
+          'update_plan' as const,
+        ]),
+      ];
     if (change.prompt !== undefined) roleChange.prompt = change.prompt;
     if (change.outputContract) roleChange.outputContract = change.outputContract;
     if (change.modelProfile) roleChange.modelProfile = change.modelProfile;
@@ -400,8 +408,18 @@ export function updateNode(draft: EditorDraft, nodeId: string, change: NodeChang
   if (next.type === 'output' && change.requireApproval !== undefined)
     next = { ...next, requireApproval: change.requireApproval };
   setNode(next);
+  const { planOwnerRoleId, ...definition } = draft.definition;
+  const owner =
+    next.type === 'agent' && change.teamPlanOwner !== undefined
+      ? change.teamPlanOwner
+        ? next.roleId
+        : planOwnerRoleId === next.roleId
+          ? undefined
+          : planOwnerRoleId
+      : planOwnerRoleId;
   return withDefinition(draft, {
-    ...draft.definition,
+    ...definition,
+    ...(owner ? { planOwnerRoleId: owner } : {}),
     nodes,
     roles,
     controlEdges,
@@ -440,10 +458,12 @@ export function removeNode(draft: EditorDraft, nodeId: string): EditorDraft {
     });
   const usedRoles = new Set(nodes.flatMap((n) => (n.type === 'agent' ? [n.roleId] : [])));
   const { [nodeId]: _gone, ...layout } = draft.layout;
+  const { planOwnerRoleId, ...remainingDefinition } = definition;
   return withDefinition(
     { ...draft, layout },
     {
-      ...definition,
+      ...remainingDefinition,
+      ...(planOwnerRoleId && usedRoles.has(planOwnerRoleId) ? { planOwnerRoleId } : {}),
       nodes,
       roles: definition.roles.filter((r) => usedRoles.has(r.id)),
       controlEdges: definition.controlEdges.filter(

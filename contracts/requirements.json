@@ -526,5 +526,149 @@
     "requirement": "CR-024 §7 auto 세션의 route 추론은 시작 모델이 템플릿과 함께 지원되는 low·medium·high 중 하나를 고르고, 후보 밖·누락은 medium 대체와 사유 기록, medium 미지원 모델은 선택 요청 전에 거절하며, 고른 단계를 모든 역할에 fixed로 적용한다.",
     "owner": "core",
     "phase": "P12"
+  },
+  {
+    "id": "CRL-QEVAL-001",
+    "requirement": "CR-036: 기존 personal_harness를 보존하고 skill_quality 비교군·반복·총 실행 상한을 검증하며 고정 기준과 calibration/holdout을 보존한다.",
+    "owner": "cli",
+    "phase": "M0"
+  },
+  {
+    "id": "CRL-SBX-001",
+    "requirement": "CR-025 M0: Linux의 파일·네트워크·IPC·프로세스 격리 PoC를 별도 fixture에서 검사하고 미지원/실패를 지원으로 표시하지 않는다. 제품 worker 격리 보장과 구별한다.",
+    "owner": "adapter",
+    "phase": "M0"
+  },
+  {
+    "id": "CRL-BPACK-001",
+    "requirement": "CR-034 M0: 고정 leeskills의 manifest·참조 closure·라이선스와 Pi runtime 지원 경계를 확인하고 누락·변조·미바인딩 entry를 거절한다.",
+    "owner": "harness",
+    "phase": "M0"
+  },
+  {
+    "id": "CRL-SAFE-001",
+    "requirement": "CR-025-A: 모든 runtime의 도구 승인은 최종 제안의 사본에 고정하고 이후 호출자의 인자 변경·중복 실행을 허용하지 않는다. 실행 직전 기존 capability/descriptor/정책 검사를 유지한다.",
+    "owner": "core",
+    "phase": "M1"
+  },
+  {
+    "id": "CRL-INPUT-001",
+    "requirement": "CR-028-A: 사용자 질문을 private body와 schema hash에 고정하고 owner/attempt/revision이 맞는 답변 한 번만 반영한다. 시간 경과는 needs_input을 유지하고 취소·재시작·다른 대기를 보존한다. 두 Pi runtime과 CLI/UI에서 같은 계약을 사용한다.",
+    "owner": "core",
+    "phase": "M1"
+  },
+  {
+    "id": "CRL-SAFE-002",
+    "requirement": "CR-025-A: 불변 profile 정책의 deny 우선·descriptor/hash·인자/상대 경로 조건과 기본 ask/deny를 적용한다. 승인은 정확한 호출 한 번에만 쓰고 실행 직전 재검사하며 다음 Run 규칙 저장과 분리한다.",
+    "owner": "core",
+    "phase": "M1"
+  },
+  {
+    "id": "CRL-PLAN-001",
+    "requirement": "CR-028-B: execution 또는 명시 planner 소유의 작업 계획은 revision·현재 criteria를 검사하며 진행 항목은 계획마다 하나다. 검증 필수 완료에는 같은 Run/attempt의 현재 tree에 대한 실제 통과 근거가 필요하고 계획 완료는 Task/Run 완료를 만들지 않는다.",
+    "owner": "core",
+    "phase": "M1"
+  },
+  {
+    "id": "CRL-PROMPT-001",
+    "requirement": "결정적 프롬프트와 실제 전달 기록은 기존 immutable resource/model-request 경로를 확장하고 누락·변조·미바인딩·미전달을 성공으로 표시하지 않는다.",
+    "owner": "harness",
+    "phase": "M1"
+  },
+  {
+    "id": "CRL-BPACK-002",
+    "requirement": "Core/Coding/leeskills 내장 콘텐츠와 명시 선택은 기존 immutable resource/model-request 경로를 확장하고 누락·변조·미바인딩·미전달을 성공으로 표시하지 않는다.",
+    "owner": "harness",
+    "phase": "M1"
+  },
+  {
+    "id": "CRL-CHAT-001",
+    "requirement": "CR-027/032/033 M1: 요청 단위 대화에 private text attachment를 불변 hash로 연결하고 질문/승인/계획/도구 상태를 같은 Run 소유권으로 표시한다. 초안 revision·대상·설정 왕복·IME와 과거 대화 위치를 보존한다.",
+    "owner": "studio",
+    "phase": "M1"
+  },
+  {
+    "id": "CRL-PROMPT-002",
+    "requirement": "CR-026: TaskBrief는 현재 입력/criteria/assignment/권한/한도/선택 resource의 투영이다. 명시 review_only 요청은 관리 파일 쓰기와 native 확장 시작을 거절하고 targeted/release 검증 범위를 임의 승격하지 않는다.",
+    "owner": "core",
+    "phase": "M1"
+  },
+  {
+    "id": "CRL-CHAT-002",
+    "requirement": "CR-027/032/033: 고정 Run tree의 읽기 전용 변경 요약, 긴 요청 목록 가상화와 ID/offset 앵커, 과거 읽기 및 focus를 보존한다. 알 수 없는 줄 수나 실행 상태를 성공/0으로 추정하지 않는다.",
+    "owner": "studio",
+    "phase": "M1"
+  },
+  {
+    "id": "CRL-CKPT-001",
+    "requirement": "CR-030-A: session/Run/event sequence를 가진 hash manifest와 Git ref를 완성한 체크포인트만 사용한다. 복구는 현재 tree와 파일 전제/lease, 복구 전 보존본 및 불확실 결과를 기록하며 활성/종료 미확인 Run과 경쟁하지 않는다. 고정 tree·보존 pin·명시 GC를 제공한다.",
+    "owner": "server",
+    "phase": "M2"
+  },
+  {
+    "id": "CRL-STATUS-001",
+    "requirement": "CR-029: 환경·선택 실행 컨텍스트/비용·연결·변경 4개 요약은 불변 snapshot/실측 이벤트를 사용한다. 컨텍스트 추정과 사용량/미정산/알 수 없음을 구분하고 실행별 컨텍스트를 합산하지 않는다.",
+    "owner": "studio",
+    "phase": "M2"
+  },
+  {
+    "id": "CRL-DESIGN-001",
+    "requirement": "CR-034-D/E: 상세 디자인 보고서를 불변 산출물로 연결하고 targeted 결과를 release 승인으로 사용하지 않는다. 보고된 관찰·등록 검사·사용자 실제 답변·AI 위임을 구별한다. 호출 템플릿은 입력만 작성하고 권한을 늘리지 않는다.",
+    "owner": "core",
+    "phase": "M2"
+  },
+  {
+    "id": "CRL-BROWSER-001",
+    "requirement": "CR-035 M2: 등록 dev server와 고정 Playwright MCP를 실행 소유 임시 프로필/출력 디렉터리로 시작하고 loopback fixture에서 관찰·명시 assertion을 수집한다. 임의 evaluate/upload/install/외부 origin/개인 profile을 허용하지 않으며 timeout/취소 후 소유 자식만 종료한다.",
+    "owner": "adapter",
+    "phase": "M2"
+  },
+  {
+    "id": "CRL-QEVAL-002",
+    "requirement": "CR-036: 바인딩/본문 읽기/실제 provider payload 전달과 절차 준수/결과 품질을 구분한다. 고정 기대 Skill의 누락/불필요 활성화와 추정/미정산 usage를 재생 중복 없이 기록하며 품질 미측정을 성공으로 간주하지 않는다.",
+    "owner": "cli",
+    "phase": "M2"
+  },
+  {
+    "id": "CRL-IMAGE-001",
+    "requirement": "CR-027/036: 이미지 첨부는 bounded PNG로 정규화해 세션 소유 바이너리와 불변 Run private 본문을 저장한다. hash/MIME/크기/치수/개수와 모든 역할의 이미지 capability를 검증하고 두 runtime의 실제 payload 포함을 확인한다.",
+    "owner": "server",
+    "phase": "M2"
+  },
+  {
+    "id": "CRL-SBX-002",
+    "requirement": "CR-025-B: 명시 Linux 격리 profile은 자격 증명/원본/DB/Git/network를 worker에서 숨기고 host의 고정 모델·단일 permit broker만 사용한다. 미지원/실패는 fallback하지 않으며 소유 후손과 호출을 종료한다.",
+    "owner": "adapter",
+    "phase": "M3"
+  },
+  {
+    "id": "CRL-HUNK-001",
+    "requirement": "CR-027-D: 고정 tree의 hunk 선택·patch/file hash와 현재 대상 tree를 재검사하고 복구 전 checkpoint·lease 아래 원본 반영과 작업 사본 되돌리기를 구별한다. 사용자 수정·부분 실패·불확실 결과는 덮거나 자동 반복하지 않는다.",
+    "owner": "server",
+    "phase": "M3"
+  },
+  {
+    "id": "CRL-COMPACT-001",
+    "requirement": "CR-030-B: 압축은 Coordinator의 소유 실행 보호 컨텍스트와 고정 프롬프트를 제거하지 않고 실제 모델 호출 예산을 쓴다. 수동 요청은 현재 attempt/revision과 SDK 안전 경계에서 처리하며 실패/취소 시 기존 context를 보존한다.",
+    "owner": "core",
+    "phase": "M3"
+  },
+  {
+    "id": "CRL-RESUME-001",
+    "requirement": "CR-030-C: versioned private runtime checkpoint는 원래 Run을 바꾸지 않고 검증된 새 Run으로 이어간다. worker 종료·resource/model/criteria/tree·pending·unknown usage/effect/file operation을 검사하고 옛 permit/read ledger/도구 효과를 자동 재생하지 않는다. 복구 불가능 상태는 명시 거절한다.",
+    "owner": "core",
+    "phase": "M3"
+  },
+  {
+    "id": "CRL-CONTINUITY-001",
+    "requirement": "CR-032-B/C: 범위가 표시된 private 검색과 세션 탭은 기존 초안/실행 수/URL을 유지한다. 메시지 분기는 고정 지점과 checkpoint만 사용하고 미래 context를 주입하지 않으며 원본/형제와 파일 상태를 보존한다.",
+    "owner": "server",
+    "phase": "M3"
+  },
+  {
+    "id": "CRL-WEB-001",
+    "requirement": "CR-035-D: 등록된 HTTPS 웹 근거는 안전한 본문 추출과 source/document provenance를 제공하며 URL/DNS/IP/redirect/MIME/용량 경계를 유지한다. 원문과 추출본 및 수집 metadata는 불변이고 지침 권한을 얻지 않는다.",
+    "owner": "server",
+    "phase": "M3"
   }
 ]

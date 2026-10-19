@@ -350,84 +350,90 @@ export class ReviewService {
   }
 
   async integrate(sessionId: string, decisionId: string): Promise<IntegrationView> {
-    const copy = this.copy(sessionId);
-    const decision = this.decision(sessionId, decisionId);
-    const plan = await this.plan(sessionId, decisionId);
-    const id = `integration_${randomUUID().slice(0, 8)}`;
-    this.db
-      .prepare(
-        `INSERT INTO integrations (id, session_id, decision_id, from_tree, to_tree, state, created_at,
+    return this.files.withOriginalCheckpoint(
+      sessionId,
+      'Before whole-file integration',
+      async () => {
+        const copy = this.copy(sessionId);
+        const decision = this.decision(sessionId, decisionId);
+        const plan = await this.plan(sessionId, decisionId);
+        const id = `integration_${randomUUID().slice(0, 8)}`;
+        this.db
+          .prepare(
+            `INSERT INTO integrations (id, session_id, decision_id, from_tree, to_tree, state, created_at,
            updated_at) VALUES (?, ?, ?, ?, ?, 'applying', ?, ?)`,
-      )
-      .run(
-        id,
-        sessionId,
-        decisionId,
-        copy.baseTree,
-        String(decision.to_tree),
-        now(this.clock),
-        now(this.clock),
-      );
-    const record = this.db.prepare(
-      `INSERT INTO integration_files (integration_id, path, action, expected_hash, after_hash, outcome,
+          )
+          .run(
+            id,
+            sessionId,
+            decisionId,
+            copy.baseTree,
+            String(decision.to_tree),
+            now(this.clock),
+            now(this.clock),
+          );
+        const record = this.db.prepare(
+          `INSERT INTO integration_files (integration_id, path, action, expected_hash, after_hash, outcome,
          detail) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    );
-    const settle = this.db.prepare(
-      'UPDATE integration_files SET outcome = ?, detail = ? WHERE integration_id = ? AND path = ?',
-    );
-    for (const file of plan) {
-      const base = await this.files.blob(copy.worktree, copy.baseTree, file.path);
-      const target = await this.files.blob(copy.worktree, String(decision.to_tree), file.path);
-      const expected = base ? sha256(base) : null;
-      const after = target ? sha256(target) : null;
-      if (file.outcome !== 'apply') {
-        record.run(
-          id,
-          file.path,
-          file.action,
-          expected,
-          after,
-          file.outcome === 'skip' ? 'skipped' : 'conflict',
-          file.reason,
         );
-        continue;
-      }
-      // Recorded before the folder is touched, so a stop leaves an uncertain file, not a lost one.
-      record.run(id, file.path, file.action, expected, after, 'planned', null);
-      try {
-        // The folder may have changed since the plan: check again right before writing.
-        const state = await originalState(copy.root, file.path);
-        const current =
-          state.kind === 'file' ? state.hash : state.kind === 'absent' ? null : 'other';
-        if (current !== expected) {
-          settle.run('conflict', 'changed in the folder while applying', id, file.path);
-          continue;
+        const settle = this.db.prepare(
+          'UPDATE integration_files SET outcome = ?, detail = ? WHERE integration_id = ? AND path = ?',
+        );
+        for (const file of plan) {
+          const base = await this.files.blob(copy.worktree, copy.baseTree, file.path);
+          const target = await this.files.blob(copy.worktree, String(decision.to_tree), file.path);
+          const expected = base ? sha256(base) : null;
+          const after = target ? sha256(target) : null;
+          if (file.outcome !== 'apply') {
+            record.run(
+              id,
+              file.path,
+              file.action,
+              expected,
+              after,
+              file.outcome === 'skip' ? 'skipped' : 'conflict',
+              file.reason,
+            );
+            continue;
+          }
+          // Recorded before the folder is touched, so a stop leaves an uncertain file, not a lost one.
+          record.run(id, file.path, file.action, expected, after, 'planned', null);
+          try {
+            // The folder may have changed since the plan: check again right before writing.
+            const state = await originalState(copy.root, file.path);
+            const current =
+              state.kind === 'file' ? state.hash : state.kind === 'absent' ? null : 'other';
+            if (current !== expected) {
+              settle.run('conflict', 'changed in the folder while applying', id, file.path);
+              continue;
+            }
+            const full = join(copy.root, file.path);
+            if (file.action === 'delete') await unlink(full);
+            else await writeAtomically(full, target as Buffer);
+            settle.run('applied', null, id, file.path);
+          } catch (error) {
+            settle.run(
+              'failed',
+              String(error instanceof Error ? error.message : error).slice(0, 200),
+              id,
+              file.path,
+            );
+          }
         }
-        const full = join(copy.root, file.path);
-        if (file.action === 'delete') await unlink(full);
-        else await writeAtomically(full, target as Buffer);
-        settle.run('applied', null, id, file.path);
-      } catch (error) {
-        settle.run(
-          'failed',
-          String(error instanceof Error ? error.message : error).slice(0, 200),
-          id,
-          file.path,
-        );
-      }
-    }
-    const outcomes = this.integrationFiles(id).map((f) => f.outcome);
-    const state = outcomes.every((o) => o === 'applied' || o === 'skipped')
-      ? 'applied'
-      : outcomes.some((o) => o === 'applied')
-        ? 'partial'
-        : outcomes.some((o) => o === 'failed')
-          ? 'failed'
-          : 'conflict';
-    this.db
-      .prepare('UPDATE integrations SET state = ?, updated_at = ? WHERE id = ?')
-      .run(state, now(this.clock), id);
-    return this.integration(id);
+        const outcomes = this.integrationFiles(id).map((f) => f.outcome);
+        const state = outcomes.every((o) => o === 'applied' || o === 'skipped')
+          ? 'applied'
+          : outcomes.some((o) => o === 'applied')
+            ? 'partial'
+            : outcomes.some((o) => o === 'failed')
+              ? 'failed'
+              : 'conflict';
+        this.db
+          .prepare('UPDATE integrations SET state = ?, updated_at = ? WHERE id = ?')
+          .run(state, now(this.clock), id);
+        return this.integration(id);
+      },
+    );
   }
 
   private integrationFiles(id: string) {
@@ -473,54 +479,57 @@ export class ReviewService {
 
   /** Undoes applied files that still hold what was applied; later edits are left alone. */
   async revert(sessionId: string, integrationId: string): Promise<IntegrationView> {
-    const copy = this.copy(sessionId);
-    const row = this.db
-      .prepare('SELECT * FROM integrations WHERE id = ? AND session_id = ?')
-      .get(integrationId, sessionId) as Record<string, string> | undefined;
-    if (!row) throw new WorkspaceError('TARGET_NOT_FOUND', 'no such integration');
-    const settle = this.db.prepare(
-      'UPDATE integration_files SET outcome = ?, detail = ? WHERE integration_id = ? AND path = ?',
-    );
-    for (const file of this.integrationFiles(integrationId)) {
-      if (file.outcome !== 'applied') continue;
-      const state = await originalState(copy.root, file.path);
-      const current = state.kind === 'file' ? state.hash : state.kind === 'absent' ? null : 'other';
-      if (current !== file.after_hash) {
-        settle.run(
-          'revert_conflict',
-          'changed in the folder after it was applied',
-          integrationId,
-          file.path,
-        );
-        continue;
+    return this.files.withOriginalCheckpoint(sessionId, 'Before integration revert', async () => {
+      const copy = this.copy(sessionId);
+      const row = this.db
+        .prepare('SELECT * FROM integrations WHERE id = ? AND session_id = ?')
+        .get(integrationId, sessionId) as Record<string, string> | undefined;
+      if (!row) throw new WorkspaceError('TARGET_NOT_FOUND', 'no such integration');
+      const settle = this.db.prepare(
+        'UPDATE integration_files SET outcome = ?, detail = ? WHERE integration_id = ? AND path = ?',
+      );
+      for (const file of this.integrationFiles(integrationId)) {
+        if (file.outcome !== 'applied') continue;
+        const state = await originalState(copy.root, file.path);
+        const current =
+          state.kind === 'file' ? state.hash : state.kind === 'absent' ? null : 'other';
+        if (current !== file.after_hash) {
+          settle.run(
+            'revert_conflict',
+            'changed in the folder after it was applied',
+            integrationId,
+            file.path,
+          );
+          continue;
+        }
+        try {
+          const base = await this.files.blob(copy.worktree, String(row.from_tree), file.path);
+          const full = join(copy.root, file.path);
+          if (base) await writeAtomically(full, base);
+          else await unlink(full);
+          settle.run('reverted', null, integrationId, file.path);
+        } catch (error) {
+          settle.run(
+            'failed',
+            String(error instanceof Error ? error.message : error).slice(0, 200),
+            integrationId,
+            file.path,
+          );
+        }
       }
-      try {
-        const base = await this.files.blob(copy.worktree, String(row.from_tree), file.path);
-        const full = join(copy.root, file.path);
-        if (base) await writeAtomically(full, base);
-        else await unlink(full);
-        settle.run('reverted', null, integrationId, file.path);
-      } catch (error) {
-        settle.run(
-          'failed',
-          String(error instanceof Error ? error.message : error).slice(0, 200),
-          integrationId,
-          file.path,
-        );
-      }
-    }
-    const outcomes = this.integrationFiles(integrationId).map((f) => f.outcome);
-    if (outcomes.some((o) => o === 'reverted'))
-      this.db
-        .prepare('UPDATE integrations SET state = ?, updated_at = ? WHERE id = ?')
-        .run(
-          outcomes.every((o) => o !== 'applied' && o !== 'revert_conflict')
-            ? 'reverted'
-            : 'partial',
-          now(this.clock),
-          integrationId,
-        );
-    return this.integration(integrationId);
+      const outcomes = this.integrationFiles(integrationId).map((f) => f.outcome);
+      if (outcomes.some((o) => o === 'reverted'))
+        this.db
+          .prepare('UPDATE integrations SET state = ?, updated_at = ? WHERE id = ?')
+          .run(
+            outcomes.every((o) => o !== 'applied' && o !== 'revert_conflict')
+              ? 'reverted'
+              : 'partial',
+            now(this.clock),
+            integrationId,
+          );
+      return this.integration(integrationId);
+    });
   }
 
   // ── what needs a person ─────────────────────────────────────────────────────

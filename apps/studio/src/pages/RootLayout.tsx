@@ -38,6 +38,7 @@ import {
   workHref,
 } from '../workbench/navigation.ts';
 import { applyTheme, changePreferences, usePreferences } from '../workbench/preferences.ts';
+import { SessionTabs } from '../workbench/SessionTabs.tsx';
 import { SettingsNavigation, settingsSection } from '../workbench/SettingsNavigation.tsx';
 import { Sidebar, useCorralSidebar } from '../workbench/Sidebar.tsx';
 import { TopbarSlotContext } from '../workbench/TopbarSlot.tsx';
@@ -308,6 +309,7 @@ export function RootLayout() {
                   </Button>
                 </Tooltip>
               </header>
+              <SessionTabs sessions={sidebar.sessions} />
               <div className="app-outlet">
                 <Outlet />
               </div>

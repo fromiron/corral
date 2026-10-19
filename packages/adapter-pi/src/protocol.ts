@@ -1,4 +1,5 @@
 import {
+  CompactionReport,
   ContentHash,
   EffectiveHarnessSnapshot,
   ExtensionUiNotice,
@@ -8,15 +9,21 @@ import {
   HarnessResource,
   HarnessToolsUpdate,
   Identifier,
+  ImageInput,
   ItemRef,
   McpChallenge,
   ModelRequestRecord,
+  ProtectedContext,
   ProviderPayloadRecord,
   ReasoningCapabilities,
   ReasoningInput,
   ReasoningResolution,
   RegisteredMcpServer,
   ResourcePath,
+  RuntimeCheckpointRecord,
+  RuntimeCheckpointState,
+  RuntimeContext,
+  TaskBrief,
 } from '@corral/contracts';
 import { z } from 'zod';
 import { EndpointSpec } from './endpoint.ts';
@@ -48,10 +55,18 @@ export const WorkerUsage = z.strictObject({
 
 export const WorkerFrame = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('ready'), protocolVersion: z.literal(LEGACY_PROTOCOL_VERSION) }),
+  z.strictObject({ type: z.literal('get_protected_context'), ...head, requestId: RequestId }),
+  z.strictObject({
+    type: z.literal('checkpoint_context'),
+    ...head,
+    requestId: RequestId,
+    value: RuntimeContext,
+  }),
   z.strictObject({
     type: z.literal('prepare_request'),
     ...head,
     requestId: RequestId,
+    record: ModelRequestRecord.optional(),
     reasoningInput: ReasoningInput.optional(),
   }),
   z.strictObject({
@@ -111,6 +126,8 @@ export const WorkerTool = z.enum([
   'delete_file',
   'move_file',
   'submit_result',
+  'ask_user',
+  'update_plan',
   'spawn_subagents',
   'await_tasks',
   'ask',
@@ -143,6 +160,10 @@ export const StartFrame = z.strictObject({
   ),
   /** The criteria version reviews must name, and the Loop round (null outside a Loop). */
   criteriaVersionId: Identifier,
+  taskBrief: TaskBrief.optional(),
+  resumeContext: RuntimeCheckpointState.optional(),
+  images: z.array(ImageInput).max(3).optional(),
+  teamPlanOwner: z.boolean().optional(),
   round: z.int().min(1).nullable(),
   item: ItemRef.optional(),
   /** Tools this execution may propose. The host still checks every call. */
@@ -160,6 +181,18 @@ export const StartFrame = z.strictObject({
 
 export const HostFrame = z.discriminatedUnion('type', [
   StartFrame,
+  z.strictObject({
+    type: z.literal('runtime_checkpoint'),
+    ...head,
+    requestId: RequestId,
+    value: RuntimeCheckpointRecord.nullable(),
+  }),
+  z.strictObject({
+    type: z.literal('protected_context'),
+    ...head,
+    requestId: RequestId,
+    value: ProtectedContext.nullable(),
+  }),
   z.strictObject({ type: z.literal('directive'), ...head, directiveId: Identifier, text: Text }),
   z.strictObject({
     type: z.literal('reprepare'),
@@ -254,6 +287,12 @@ export const SdkStartFrame = StartFrame.extend({
 export type SdkStartFrame = z.infer<typeof SdkStartFrame>;
 export const SdkWorkerFrame = z.union([
   z.strictObject({
+    type: z.literal('compaction_report'),
+    ...sdkHead,
+    requestId: RequestId,
+    report: CompactionReport,
+  }),
+  z.strictObject({
     type: z.literal('mcp_authorization'),
     ...sdkHead,
     requestId: RequestId,
@@ -318,6 +357,7 @@ export const SdkWorkerFrame = z.union([
 ]);
 export type SdkWorkerFrame = z.infer<typeof SdkWorkerFrame>;
 export const SdkHostFrame = z.union([
+  z.strictObject({ type: z.literal('compact'), ...sdkHead, commandId: Identifier }),
   z.strictObject({
     type: z.literal('mcp_authorization'),
     ...sdkHead,

@@ -7,6 +7,7 @@ export { EditorToolbar, isTextEditingEvent, TIDY_EVENT } from './components/Edit
 export { EffortJudgments } from './components/EffortJudgments.tsx';
 export { ExecutionTranscript } from './components/ExecutionTranscript.tsx';
 export { HarnessDetails } from './components/HarnessDetails.tsx';
+export { InteractionPanel } from './components/InteractionPanel.tsx';
 export { NodeInspector } from './components/NodeInspector.tsx';
 export { NodePalette } from './components/NodePalette.tsx';
 export { QuestionsPanel } from './components/QuestionsPanel.tsx';
@@ -25,6 +26,7 @@ export { StatusBadge, StatusDot, statusTone } from './components/StatusBadge.tsx
 export { TaskBoard } from './components/TaskBoard.tsx';
 export { Timeline } from './components/Timeline.tsx';
 export { ValidationPanel } from './components/ValidationPanel.tsx';
+export { WorkPlanPanel } from './components/WorkPlanPanel.tsx';
 export { StudioStoresProvider, useStudioStores } from './context.tsx';
 export * from './editor/model.ts';
 export {

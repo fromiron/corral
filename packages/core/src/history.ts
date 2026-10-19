@@ -1,12 +1,17 @@
 import {
   AutoRoute,
+  BranchedFrom,
   CorralDefinition,
   EffectiveHarnessSnapshot,
   Identifier,
+  ImageInput,
   ModelProfileSnapshot,
   ReasoningApplySettings,
+  ResumedFrom,
   RunEvent,
   RunStatus,
+  RuntimeCheckpointManifest,
+  RuntimeCheckpointState,
 } from '@corral/contracts';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js';
@@ -17,6 +22,8 @@ import { applyEvent, emptyProjection } from './projection.ts';
 import type { RunStore } from './store/run-store.ts';
 
 const Snapshot = z.strictObject({
+  resumedFrom: ResumedFrom.optional(),
+  branchedFrom: BranchedFrom.optional(),
   definition: CorralDefinition,
   definitionHash: z.string().regex(/^[0-9a-f]{64}$/),
   source: z
@@ -88,6 +95,9 @@ export function exportRunArchive(
         },
       };
     const versionIds = new Set([
+      ...(run.snapshot.definition.input.images ?? []).map((image) => image.imageId),
+      ...(run.snapshot.resumedFrom ? [run.snapshot.resumedFrom.contextRef] : []),
+      ...(run.snapshot.branchedFrom?.contextRef ? [run.snapshot.branchedFrom.contextRef] : []),
       run.snapshot.criteriaVersionId,
       ...Object.keys(run.projection.artifacts),
       ...recordReferences(events),
@@ -134,6 +144,10 @@ export function openRunArchive(input: unknown) {
     canonicalJson(first.payload.reasoningApply ?? null) !==
       canonicalJson(snapshot.reasoningApply ?? null) ||
     canonicalJson(first.payload.autoRoute ?? null) !== canonicalJson(snapshot.autoRoute ?? null) ||
+    canonicalJson(first.payload.branchedFrom ?? null) !==
+      canonicalJson(snapshot.branchedFrom ?? null) ||
+    canonicalJson(first.payload.resumedFrom ?? null) !==
+      canonicalJson(snapshot.resumedFrom ?? null) ||
     (first.payload.criteriaVersionId !== undefined &&
       first.payload.criteriaVersionId !== snapshot.criteriaVersionId) ||
     canonicalJson(
@@ -154,6 +168,23 @@ export function openRunArchive(input: unknown) {
   for (const id of recordReferences(archive.events)) {
     if (!(id in archive.artifacts)) throw new Error('archive is missing a criteria version');
   }
+  if (snapshot.resumedFrom)
+    RuntimeCheckpointState.parse(
+      JSON.parse(archive.artifacts[snapshot.resumedFrom.contextRef] ?? 'null'),
+    );
+  if (snapshot.branchedFrom?.contextRef) {
+    const state = RuntimeCheckpointState.parse(
+      JSON.parse(archive.artifacts[snapshot.branchedFrom.contextRef] ?? 'null'),
+    );
+    if (bytesToHex(sha256(utf8ToBytes(canonicalJson(state)))) !== snapshot.branchedFrom.contextHash)
+      throw new Error('branch context changed');
+  }
+  for (const reference of snapshot.definition.input.images ?? []) {
+    const image = ImageInput.parse(JSON.parse(archive.artifacts[reference.imageId] ?? 'null'));
+    const { data: _data, ...metadata } = image;
+    if (canonicalJson(metadata) !== canonicalJson(reference))
+      throw new Error('archive image identity changed');
+  }
   for (const [id, text] of Object.entries(archive.artifacts)) {
     if (archive.bodyHashes[id] !== bytesToHex(sha256(utf8ToBytes(text))))
       throw new Error('archive body hash does not match');
@@ -162,6 +193,22 @@ export function openRunArchive(input: unknown) {
     throw new Error('archive body manifest is incomplete');
   let projection = emptyProjection(archive.runId);
   for (const event of archive.events) {
+    if (event.type === 'runtime.checkpoint_created') {
+      const manifest = RuntimeCheckpointManifest.parse(
+        JSON.parse(archive.artifacts[event.payload.manifestRef] ?? 'null'),
+      );
+      const state = RuntimeCheckpointState.parse(
+        JSON.parse(archive.artifacts[event.payload.contextRef] ?? 'null'),
+      );
+      if (
+        manifest.runId !== archive.runId ||
+        manifest.checkpointId !== event.payload.checkpointId ||
+        manifest.contextRef !== event.payload.contextRef ||
+        bytesToHex(sha256(utf8ToBytes(canonicalJson(manifest)))) !== event.payload.manifestHash ||
+        bytesToHex(sha256(utf8ToBytes(canonicalJson(state)))) !== manifest.contextHash
+      )
+        throw new Error('archive runtime checkpoint changed');
+    }
     if (event.runId !== archive.runId) throw new Error('archive contains a different run');
     if (event.type === 'patch.committed' && event.payload.kind === 'criteria') {
       const { criteriaVersionId, criteria } = event.payload.after;
@@ -205,10 +252,20 @@ function recordReferences(events: readonly RunEvent[]): Set<string> {
       add(event.payload.after.criteriaVersionId);
     }
     if (event.type === 'model.finished') add(event.payload.responseRef);
+    if (event.type === 'runtime.checkpoint_created') {
+      add(event.payload.contextRef);
+      add(event.payload.manifestRef);
+    }
     if (event.type === 'approval.requested' && event.payload.tool) add(event.payload.tool.bodyRef);
-    if (event.type === 'extension.ui_requested' || event.type === 'extension.ui_notified')
+    if (
+      event.type === 'work_plan.updated' ||
+      event.type === 'user_input.requested' ||
+      event.type === 'extension.ui_requested' ||
+      event.type === 'extension.ui_notified'
+    )
       add(event.payload.bodyRef);
-    if (event.type === 'extension.ui_answered') add(event.payload.answerRef);
+    if (event.type === 'user_input.answered' || event.type === 'extension.ui_answered')
+      add(event.payload.answerRef);
     if (event.type === 'tool.finished' && event.payload.resultRef) {
       const kind = tools.get(event.payload.toolCallId);
       const ref = event.payload.resultRef;

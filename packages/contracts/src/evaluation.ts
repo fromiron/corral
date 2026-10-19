@@ -24,6 +24,15 @@ export const EvalGroup = z.enum([
   'coding_tool',
 ]);
 export type EvalGroup = z.infer<typeof EvalGroup>;
+export const SkillEvalGroup = z.enum([
+  'baseline',
+  'prompt_only',
+  'core_skills',
+  'design_skills',
+  'specialist_skills',
+]);
+export const EvalSuiteGroup = z.union([EvalGroup, SkillEvalGroup]);
+export type EvalSuiteGroup = z.infer<typeof EvalSuiteGroup>;
 export const EvalWorkspace = z.strictObject({
   projectId: Identifier,
   baseCommit: z.string().regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/),
@@ -32,7 +41,8 @@ const label = z.string().min(1).max(80);
 export const EvalSuiteDocument = z
   .strictObject({
     schemaVersion: SchemaVersion,
-    comparison: z.literal('personal_harness').optional(),
+    comparison: z.enum(['personal_harness', 'skill_quality']).optional(),
+    repetitions: z.int().min(1).max(10).optional(),
     workspace: EvalWorkspace.optional(),
     briefs: z
       .array(
@@ -41,6 +51,19 @@ export const EvalSuiteDocument = z
           brief: z.string().min(1).max(20000),
           phase: z.enum(['calibration', 'holdout']).optional(),
           expected: EvalExpectation.optional(),
+          skillExpectation: z
+            .strictObject({
+              required: z.array(Identifier).max(64),
+              forbidden: z.array(Identifier).max(64),
+            })
+            .refine(
+              (value) =>
+                new Set(value.required).size === value.required.length &&
+                new Set(value.forbidden).size === value.forbidden.length &&
+                !value.required.some((name) => value.forbidden.includes(name)),
+              'skill expectations must be distinct',
+            )
+            .optional(),
         }),
       )
       .min(1)
@@ -50,13 +73,33 @@ export const EvalSuiteDocument = z
         z.strictObject({
           id: label,
           corral: z.string().min(1).max(1000),
-          group: EvalGroup.optional(),
+          group: EvalSuiteGroup.optional(),
         }),
       )
       .min(1)
       .max(20),
   })
   .superRefine((suite, ctx) => {
+    const groups = suite.variants.map((variant) => variant.group);
+    if (suite.comparison === 'skill_quality') {
+      if (
+        groups.length < 2 ||
+        !groups.includes('baseline') ||
+        new Set(groups).size !== groups.length ||
+        groups.some((group) => !SkillEvalGroup.safeParse(group).success)
+      )
+        ctx.addIssue({
+          code: 'custom',
+          message: 'skill_quality requires baseline and distinct skill comparison groups',
+        });
+      if (suite.briefs.length * suite.variants.length * (suite.repetitions ?? 1) > 500)
+        ctx.addIssue({ code: 'custom', message: 'skill_quality exceeds 500 case executions' });
+    } else {
+      if (suite.repetitions !== undefined)
+        ctx.addIssue({ code: 'custom', message: 'repetitions requires skill_quality' });
+      if (groups.some((group) => group !== undefined && !EvalGroup.safeParse(group).success))
+        ctx.addIssue({ code: 'custom', message: 'skill comparison groups require skill_quality' });
+    }
     for (const [name, rows] of [
       ['brief', suite.briefs],
       ['variant', suite.variants],

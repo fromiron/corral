@@ -67,6 +67,7 @@ export const McpServerDraft = z.discriminatedUnion('transport', [
     ...McpDraftCommon,
     transport: z.literal('stdio'),
     argv: RegisteredMcpServer.options[0].shape.argv,
+    browser: RegisteredMcpServer.options[0].shape.browser,
   }),
   z.strictObject({
     ...McpDraftCommon,

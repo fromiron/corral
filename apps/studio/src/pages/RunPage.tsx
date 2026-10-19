@@ -34,6 +34,8 @@ import { useModelPrices } from '../prices.ts';
 import { projectOfRun, setCurrentProject } from '../projects.ts';
 import { runRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
+import { MessageBranch } from '../workbench/MessageBranch.tsx';
+import { RunStatusCards } from '../workbench/RunStatusCards.tsx';
 import { markRunReviewed } from './GettingStarted.tsx';
 
 /** What a run's detail keeps in the address: the view, chosen execution, version and result. */
@@ -68,7 +70,9 @@ export function RunDetail({
   setSearch,
   embedded = false,
   compact = false,
+  sessionId = null,
 }: {
+  sessionId?: string | null;
   runId: string;
   search: RunDetailSearch;
   setSearch: (patch: RunDetailSearch) => void;
@@ -150,6 +154,7 @@ export function RunDetail({
     return (
       <CompactRunWorkspace
         key={runId}
+        sessionId={sessionId}
         session={session}
         definition={definition}
         search={search}
@@ -172,18 +177,19 @@ export function RunDetail({
 /** A session observes and controls its run here; the graph and full history keep their own page. */
 function CompactRunWorkspace({
   session,
+  sessionId,
   definition,
   search,
   setSearch,
 }: {
   session: RunSessionStore;
+  sessionId: string | null;
   definition: CorralDefinition;
   search: RunDetailSearch;
   setSearch: (patch: RunDetailSearch) => void;
 }) {
   const t = useTranslations('RunPage');
   const n = useTranslations('Navigation');
-  const b = useTranslations('Budget');
   const navigate = useNavigate();
   const projection = useStore(session, (state) => state.projection);
   const target = useSteerTarget(session, search.execution ?? null);
@@ -191,7 +197,6 @@ function CompactRunWorkspace({
   const trigger = useRef<HTMLElement | null>(null);
   const detailsLink = useRef<HTMLAnchorElement>(null);
   const { previewUrl } = useServices();
-  const prices = useModelPrices();
   useEffect(() => {
     if (search.execution) {
       controls.current?.focus({ preventScroll: true });
@@ -230,18 +235,11 @@ function CompactRunWorkspace({
         >
           {n('openRunDetails')}
         </Link>
-        <details className="rounded-lg border border-line p-2 text-xs">
-          <summary className="cursor-pointer font-medium">
-            {b('heading')} ·{' '}
-            {b('meterCallsText', {
-              used: projection.budget.modelCalls,
-              max: (projection.limits ?? definition.limits).maxModelCalls,
-            })}
-          </summary>
-          <div className="mt-2">
-            <BudgetInspector session={session} prices={prices} />
-          </div>
-        </details>
+        <RunStatusCards
+          session={session}
+          sessionId={sessionId}
+          executionId={search.execution ?? null}
+        />
         <section aria-label={t('executions')} className="flex flex-col gap-2">
           <h3 className="text-xs font-medium text-muted">{t('executions')}</h3>
           <ExecutionTree
@@ -286,6 +284,13 @@ function CompactRunWorkspace({
             onOpen={(artifact) => setSearch({ artifact, view: 'run', result: undefined })}
             {...(startFrom ? { onStartFrom: startFrom } : {})}
             onClose={() => setSearch({ artifact: undefined, result: undefined })}
+          />
+        ) : null}
+        {sessionId && (result || version) ? (
+          <MessageBranch
+            runId={projection.runId}
+            artifactVersionId={result?.artifactVersionId ?? version!}
+            disabled={!TERMINAL_RUN_STATUSES.has(projection.status)}
           />
         ) : null}
         <div

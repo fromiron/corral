@@ -1,4 +1,7 @@
+import type { TextAttachment } from '@corral/contracts';
+import { type ImageAttachment, ImageAttachments } from '@corral/contracts';
 import type { SessionIntent } from '@corral/core';
+import { validTextAttachments } from '@corral/core';
 import type { MentionItem } from './composerMenu.ts';
 
 // A session's unsent request, kept in this browser (UX-02): the text, what it is for (intent
@@ -11,6 +14,10 @@ export const COMPOSER_DRAFT_SENT = 'corral:composer-draft-sent';
 const revisions = new Map<string, { value: string | null; revision: number }>();
 
 export interface ComposerDraft {
+  images?: ImageAttachment[];
+  taskScope?: 'review_only';
+  verificationScope?: 'release';
+  attachments?: TextAttachment[];
   text: string;
   intent: SessionIntent | null;
   target: string | null;
@@ -47,7 +54,15 @@ export function parseComposerDraft(raw: string | null): ComposerDraft {
   try {
     const value = JSON.parse(raw) as Record<string, unknown>;
     return {
+      ...(value.images !== undefined
+        ? { images: ImageAttachments.safeParse(value.images).data ?? [] }
+        : {}),
       text: typeof value.text === 'string' ? value.text : '',
+      ...(value.taskScope === 'review_only' ? { taskScope: 'review_only' as const } : {}),
+      ...(value.verificationScope === 'release' ? { verificationScope: 'release' as const } : {}),
+      ...(Array.isArray(value.attachments)
+        ? { attachments: validTextAttachments(value.attachments) ? value.attachments : [] }
+        : {}),
       intent: INTENTS.includes(value.intent as SessionIntent)
         ? (value.intent as SessionIntent)
         : null,
@@ -61,7 +76,15 @@ export function parseComposerDraft(raw: string | null): ComposerDraft {
 }
 
 export function serializeComposerDraft(draft: ComposerDraft): string | null {
-  if (!draft.text && !draft.references.length) return null;
+  if (
+    !draft.text &&
+    !draft.references.length &&
+    !draft.attachments?.length &&
+    !draft.images?.length &&
+    !draft.taskScope &&
+    !draft.verificationScope
+  )
+    return null;
   return JSON.stringify({ v: 2, ...draft });
 }
 

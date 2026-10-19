@@ -1,6 +1,7 @@
 import { ReviewArtifact } from '@corral/contracts';
 import { expect, it } from 'vitest';
-import { systemPrompt } from '../src/worker-tools.ts';
+import { assertImagePayload, assertProtectedPayload } from '../src/request-record.ts';
+import { promptSections, systemPrompt } from '../src/worker-tools.ts';
 
 const start = {
   type: 'start',
@@ -19,6 +20,44 @@ const start = {
   delegateTo: [],
   askTo: [],
 } satisfies Parameters<typeof systemPrompt>[0];
+
+it('[TC-IMAGE-001-N] an image removed or replaced with base64 prose is not image delivery', () => {
+  const images = [{ data: 'AQID', mime: 'image/png' as const }];
+  expect(() =>
+    assertImagePayload(
+      {
+        messages: [
+          { content: [{ type: 'image_url', image_url: { url: 'data:image/png;base64,AQID' } }] },
+        ],
+      },
+      images,
+    ),
+  ).not.toThrow();
+  expect(() =>
+    assertImagePayload(
+      { input: [{ content: [{ type: 'input_image', image_url: 'data:image/png;base64,AQID' }] }] },
+      images,
+    ),
+  ).not.toThrow();
+  expect(() =>
+    assertImagePayload(
+      {
+        messages: [
+          {
+            content: [
+              { type: 'image', source: { type: 'base64', data: 'AQID', media_type: 'image/png' } },
+            ],
+          },
+        ],
+      },
+      images,
+    ),
+  ).not.toThrow();
+  expect(() =>
+    assertImagePayload({ messages: [{ content: 'data:image/png;base64,AQID' }] }, images),
+  ).toThrow(/image/);
+  expect(() => assertImagePayload({ messages: [] }, images)).toThrow(/image/);
+});
 
 it('[TC-ART-003-N] tells reviewers what both evidenceRefs arrays can contain', () => {
   const prompt = systemPrompt(start);
@@ -43,4 +82,19 @@ it('[TC-ART-003-N] keeps prose and URLs invalid while allowing provided artifact
   expect(ReviewArtifact.safeParse(review).success).toBe(true);
   for (const reference of ['brief: Write a short answer.', 'https://example.test/source'])
     expect(ReviewArtifact.safeParse({ ...review, evidenceRefs: [reference] }).success).toBe(false);
+});
+
+it('[TC-PROMPT-001-H] [TC-PROMPT-001-N] preserves the output contract and refuses an oversized protected prompt instead of truncating it', () => {
+  expect(systemPrompt(start)).toContain('artv_actual');
+  expect(systemPrompt(start)).toContain('crit_actual');
+  const sections = promptSections(start);
+  expect(() =>
+    assertProtectedPayload({ messages: [{ content: systemPrompt(start) }] }, sections),
+  ).not.toThrow();
+  expect(() => assertProtectedPayload({ messages: [{ content: 'removed' }] }, sections)).toThrow(
+    /removed/,
+  );
+  expect(() =>
+    systemPrompt({ ...start, role: { ...start.role, prompt: '큰'.repeat(100_000) } }),
+  ).toThrow(/prompt.*limit/i);
 });

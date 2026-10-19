@@ -56,6 +56,9 @@ function setup(
   options: {
     files?: FileTools;
     fileTools?: boolean;
+    plans?: boolean;
+    reviewOnly?: boolean;
+    isolation?: boolean;
     harness?: Partial<NonNullable<ConstructorParameters<typeof Coordinator>[0]['harnesses']>>;
   } = {},
 ) {
@@ -70,6 +73,22 @@ function setup(
     timers: clock,
     ids: new SequentialIdFactory(),
     store,
+    ...(options.isolation
+      ? {
+          models: {
+            resolve: (profile: string) => ({
+              ok: true as const,
+              snapshot: {
+                profile,
+                provider: null,
+                modelId: null,
+                auth: 'mock' as const,
+                workerIsolation: 'linux-bwrap' as const,
+              },
+            }),
+          },
+        }
+      : {}),
     ...(options.files ? { files: options.files } : {}),
     ...(resolve
       ? {
@@ -97,6 +116,8 @@ function setup(
   });
   const definition = linearCorral(['writer']);
   definition.roles[0]!.harness = snapshot.binding;
+  if (options.reviewOnly) definition.input.taskScope = 'review_only';
+  if (options.plans) definition.roles[0]!.allowedCollaborationTools.push('update_plan');
   if (options.fileTools) definition.roles[0]!.allowedWorkTools = ['read_file', 'write_file'];
   const result = coordinator.startRun({
     schemaVersion: '0.1',
@@ -129,6 +150,30 @@ async function loaded() {
 }
 
 describe('Coordinator harness boundary (H2)', () => {
+  it('[TC-SBX-002-N] isolated model profiles cannot launch native harnesses or host command recipes', () => {
+    const native = setup(true, snapshot, { isolation: true });
+    expect(native.result.runId).toBeNull();
+    const command = setup(
+      true,
+      {
+        ...snapshot,
+        policy: 'strict',
+        resources: [],
+        allowedTools: ['run_check'],
+        projectTools: {
+          projectId: 'default',
+          revision: 1,
+          hash: 'c'.repeat(64),
+          checkIds: ['types'],
+          lspServerIds: [],
+        },
+      },
+      { isolation: true },
+    );
+    command.done.open();
+    expect(command.result.runId).toBeNull();
+  });
+
   it('[TC-HAR-003-N] simulation cannot fabricate an SDK load or provider payload record', async () => {
     const s = setup();
     await s.started.wait();
@@ -191,6 +236,7 @@ describe('Coordinator harness boundary (H2)', () => {
     });
     const definition = linearCorral(['writer']);
     definition.roles[0]!.harness = snapshot.binding;
+
     definition.roles[0]!.allowedCollaborationTools.push('spawn_subagents');
     const writer = definition.nodes.find((n) => n.type === 'agent')!;
     definition.nodes.push({ ...writer, id: 'helper', invocation: 'callable' });
@@ -446,7 +492,7 @@ describe('Coordinator harness boundary (H2)', () => {
       }).receipt.error?.code,
     ).toBe('IDEMPOTENCY_CONFLICT');
   });
-  it('[TC-HAR-010-H] a selected LSP query uses the owned launch approval and cannot run without read permission', async () => {
+  it('[TC-HAR-010-H] [TC-HAR-008-H] a selected LSP query uses the owned launch approval and cannot run without read permission', async () => {
     const query = {
       serverId: 'typescript',
       path: 'source.ts',
@@ -634,7 +680,7 @@ describe('Coordinator harness boundary (H2)', () => {
     ).toMatchObject({ decision: 'reject', reason: 'timeout' });
     s.done.open();
   });
-  it('[TC-HAR-012-H] a registered check waits for an exact owned approval and executes only once', async () => {
+  it('[TC-PLAN-001-H] [TC-PLAN-001-N] [TC-HAR-012-H] a registered check waits for an exact owned approval and executes only once', async () => {
     const plan: CheckPlan = {
       commandId: 'types',
       name: 'Types',
@@ -680,7 +726,7 @@ describe('Coordinator harness boundary (H2)', () => {
       ...snapshot,
       policy: 'strict',
       resources: [],
-      allowedTools: ['run_check'],
+      allowedTools: ['run_check', 'update_plan'],
       projectTools: {
         projectId: 'default',
         revision: 1,
@@ -689,19 +735,25 @@ describe('Coordinator harness boundary (H2)', () => {
         lspServerIds: [],
       },
     };
+    let currentTree = plan.tree;
     const s = setup(true, selected, {
+      plans: true,
       files: {
         available: () => true,
         execute: async () => ({}),
         planCheck: async () => plan,
         runCheck,
+        currentTreeForRun: async () => currentTree,
       },
     });
     await s.started.wait();
     await s.host().reportHarness!({
       ok: true,
       snapshotHash: selected.snapshotHash,
-      tools: [{ ...descriptor, name: 'run_check', source: 'corral', sideEffect: 'external' }],
+      tools: [
+        { ...descriptor, name: 'run_check', source: 'corral', sideEffect: 'external' },
+        { ...descriptor, name: 'update_plan', source: 'corral' },
+      ],
       diagnostics: [],
     });
     expect(
@@ -763,6 +815,31 @@ describe('Coordinator harness boundary (H2)', () => {
     expect(() =>
       openRunArchive(exportRunArchive(s.store, s.input().runId, { privateTranscript: true })),
     ).not.toThrow();
+    const update = {
+      scope: 'execution',
+      expectedRevision: 0,
+      criteriaVersionId: s.input().criteriaVersionId,
+      items: [
+        {
+          id: 'verify',
+          title: 'Verify current files',
+          status: 'completed',
+          requiresVerification: true,
+          evidenceRefs: [`result_${auth.toolCallId}`],
+        },
+      ],
+    };
+    expect(await s.host().invokeTool({ name: 'update_plan', args: update })).toMatchObject({
+      ok: true,
+      result: { revision: 1 },
+    });
+    currentTree = '0'.repeat(40);
+    expect(
+      await s.host().invokeTool({ name: 'update_plan', args: { ...update, expectedRevision: 1 } }),
+    ).toMatchObject({ ok: false });
+    expect(
+      s.coordinator.getSnapshot(s.input().runId).projection.tasks[s.input().taskId]?.status,
+    ).not.toBe('completed');
     s.done.open();
   });
 
@@ -1238,4 +1315,177 @@ describe('Coordinator harness boundary (H2)', () => {
     expect(second.directives).toEqual(queued);
     s.done.open();
   });
+});
+
+it('[TC-SAFE-002-H] [TC-SAFE-002-N] native permissions bind the final arguments and descriptor, deny wins, and a changed registration cannot use a grant', async () => {
+  const selected: EffectiveHarnessSnapshot = {
+    ...snapshot,
+    permissionPolicies: [
+      {
+        default: 'ask',
+        rules: [
+          {
+            tool: 'echo',
+            action: 'allow',
+            descriptorHash: hash(descriptor),
+            arguments: { operation: 'read' },
+          },
+          { tool: 'echo', action: 'deny', arguments: { target: 'private' } },
+        ],
+      },
+    ],
+  };
+  const s = setup(true, selected);
+  expect(s.result.runId).not.toBeNull();
+  await s.started.wait();
+  await s.host().reportHarness!({
+    ok: true,
+    snapshotHash: selected.snapshotHash,
+    tools: [descriptor],
+    diagnostics: [],
+  });
+  try {
+    expect(
+      await s
+        .host()
+        .authorizeTool({ name: 'echo', args: { operation: 'read', target: 'private' } }),
+    ).toMatchObject({ ok: false });
+    const allowed = await s.host().authorizeTool({ name: 'echo', args: { operation: 'read' } });
+    expect(allowed.ok).toBe(true);
+    await s.host().beginNativeTool!(allowed.toolCallId, hash({ operation: 'read' }));
+    await s.host().finishNativeTool!(allowed.toolCallId, 'succeeded');
+    const proposal = {
+      name: 'echo',
+      args: { operation: 'send', content: 'Private approved content' },
+    };
+    const call = await s.host().authorizeTool(proposal);
+    expect(call.ok).toBe(true);
+    const begin = s.host().beginNativeTool!(call.toolCallId, hash(proposal.args)).then(
+      () => 'began',
+      () => 'refused',
+    );
+    await vi.waitFor(() =>
+      expect(s.events().some((e) => e.type === 'approval.requested')).toBe(true),
+    );
+    const event = s.events().find((e) => e.type === 'approval.requested');
+    if (!event || event.type !== 'approval.requested') throw new Error('missing approval');
+    expect(JSON.stringify(s.events())).not.toContain('Private approved content');
+    expect(s.events().filter((e) => e.type === 'tool.started')).toHaveLength(1);
+    await expect(s.host().beginNativeTool!(call.toolCallId, hash(proposal.args))).rejects.toThrow();
+    await s.host().updateHarnessTools!({
+      snapshotHash: selected.snapshotHash,
+      expectedRevision: 1,
+      tools: [{ ...descriptor, schemaHash: 'f'.repeat(64) }],
+    });
+    expect(
+      s.coordinator.submit({
+        schemaVersion: '0.1',
+        commandId: 'grant',
+        runId: s.input().runId,
+        type: 'resolve_approval',
+        expectedControlRevision: 0,
+        payload: {
+          approvalId: event.payload.approvalId,
+          decision: 'approve',
+          subjectVersionId: event.payload.subjectVersionIds[0]!,
+        },
+      }).status,
+    ).toBe('applied');
+    expect(await begin).toBe('refused');
+    expect(s.events().filter((e) => e.type === 'tool.started')).toHaveLength(1);
+  } finally {
+    s.done.open();
+  }
+});
+
+it('[TC-SAFE-002-H] [TC-SAFE-002-N] core tools enforce path boundaries and role caps, then execute a granted call only once', async () => {
+  const read: ToolDescriptor = { ...descriptor, name: 'read_file', source: 'corral' };
+  const remove: ToolDescriptor = { ...read, name: 'delete_file' };
+  const paths: unknown[] = [];
+  const selected: EffectiveHarnessSnapshot = {
+    ...snapshot,
+    policy: 'strict',
+    resources: [],
+    allowedTools: ['read_file', 'delete_file'],
+    permissionPolicies: [
+      {
+        default: 'ask',
+        rules: [
+          {
+            tool: 'read_file',
+            action: 'allow',
+            descriptorHash: hash(read),
+            path: { argument: 'path', prefix: 'src' },
+          },
+          { tool: 'read_file', action: 'deny', arguments: { path: 'src/private' } },
+          { tool: 'delete_file', action: 'allow', descriptorHash: hash(remove) },
+        ],
+      },
+    ],
+  };
+  const s = setup(true, selected, {
+    fileTools: true,
+    files: {
+      available: () => true,
+      execute: async (value) => {
+        paths.push(value.args.path);
+        return { text: 'fixture' };
+      },
+    },
+  });
+  await s.started.wait();
+  await s.host().reportHarness!({
+    ok: true,
+    snapshotHash: selected.snapshotHash,
+    tools: [read, remove],
+    diagnostics: [],
+  });
+  try {
+    expect(
+      await s.host().authorizeTool({ name: 'read_file', args: { path: 'src/private' } }),
+    ).toMatchObject({ ok: false });
+    expect(
+      await s.host().authorizeTool({ name: 'delete_file', args: { path: 'src/file' } }),
+    ).toMatchObject({ ok: false });
+    expect(
+      await s.host().invokeTool({ name: 'read_file', args: { path: 'src/file' } }),
+    ).toMatchObject({ ok: true });
+    const call = await s
+      .host()
+      .authorizeTool({ name: 'read_file', args: { path: 'src-other/file' } });
+    const running = s.host().executeTool(call.toolCallId);
+    await vi.waitFor(() =>
+      expect(s.events().some((e) => e.type === 'approval.requested')).toBe(true),
+    );
+    expect(await s.host().executeTool(call.toolCallId)).toMatchObject({ ok: false });
+    const event = s.events().find((e) => e.type === 'approval.requested');
+    if (!event || event.type !== 'approval.requested') throw new Error('missing approval');
+    expect(paths).toEqual(['src/file']);
+    expect(
+      s.coordinator.submit({
+        schemaVersion: '0.1',
+        commandId: 'grant_read',
+        runId: s.input().runId,
+        type: 'resolve_approval',
+        expectedControlRevision: 0,
+        payload: {
+          approvalId: event.payload.approvalId,
+          decision: 'approve',
+          subjectVersionId: event.payload.subjectVersionIds[0]!,
+        },
+      }).status,
+    ).toBe('applied');
+    expect(await running).toMatchObject({ ok: true });
+    expect(await s.host().executeTool(call.toolCallId)).toMatchObject({ ok: false });
+    expect(paths).toEqual(['src/file', 'src-other/file']);
+  } finally {
+    s.done.open();
+  }
+});
+
+it('[TC-PROMPT-002-N] review-only scope refuses native startup before an execution exists', () => {
+  const s = setup(true, snapshot, { reviewOnly: true });
+  expect(s.result.runId).toBeNull();
+  expect(s.result.receipt.error?.code).toBe('CAPABILITY_DENIED');
+  expect(s.coordinator.listRuns()).toHaveLength(0);
 });

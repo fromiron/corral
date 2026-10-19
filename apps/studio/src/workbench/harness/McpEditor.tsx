@@ -25,7 +25,12 @@ export function mcpDraft(server: RegisteredMcpServer): McpServerDraft {
     timeoutMs: server.timeoutMs,
   };
   return server.transport === 'stdio'
-    ? { ...common, transport: 'stdio', argv: server.argv }
+    ? {
+        ...common,
+        transport: 'stdio',
+        argv: server.argv,
+        ...(server.browser ? { browser: server.browser } : {}),
+      }
     : {
         ...common,
         transport: 'http',
@@ -75,6 +80,13 @@ export function McpEditor({
     );
   const [exposure, setExposure] = useState(server?.exposure ?? 'direct'),
     [seconds, setSeconds] = useState(String((server?.timeoutMs ?? 30000) / 1000));
+  const initialBrowser = server?.transport === 'stdio' ? server.browser : undefined;
+  const [localBrowser, setLocalBrowser] = useState(Boolean(initialBrowser));
+  const [browserOrigin, setBrowserOrigin] = useState(
+    initialBrowser?.origin ?? 'http://127.0.0.1:3000',
+  );
+  const [browserExecutable, setBrowserExecutable] = useState(initialBrowser?.executablePath ?? '');
+  const [readyText, setReadyText] = useState(initialBrowser?.readyText ?? '');
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
     [dirty, setDirty] = useState(false);
@@ -93,10 +105,23 @@ export function McpEditor({
       name,
       transport,
       enabled: server ? server.enabled !== false : false,
-      exposure,
+      exposure: transport === 'stdio' && localBrowser ? 'direct' : exposure,
       timeoutMs: Number(seconds) * 1000,
       ...(transport === 'stdio'
-        ? { argv: [command, ...args.split('\n').filter(Boolean)] }
+        ? {
+            argv: [command, ...args.split('\n').filter(Boolean)],
+            ...(localBrowser
+              ? {
+                  browser: {
+                    fixtureOnly: true,
+                    backendVersion: '0.0.83',
+                    origin: browserOrigin,
+                    executablePath: browserExecutable,
+                    readyText,
+                  },
+                }
+              : {}),
+          }
         : {
             url,
             auth:
@@ -179,8 +204,48 @@ export function McpEditor({
             </div>
             {transport === 'stdio' ? (
               <>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={localBrowser}
+                    onChange={(event) => setLocalBrowser(event.target.checked)}
+                  />
+                  {t('browserFixture')}
+                </label>
+                {localBrowser ? (
+                  <>
+                    <p className="text-xs text-muted">{t('browserFixtureHint')}</p>
+                    <label className="flex flex-col gap-1 text-sm">
+                      {t('browserOrigin')}
+                      <input
+                        className={field}
+                        value={browserOrigin}
+                        onChange={(event) => setBrowserOrigin(event.target.value)}
+                        required
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-sm">
+                      {t('browserExecutable')}
+                      <input
+                        className={field}
+                        value={browserExecutable}
+                        onChange={(event) => setBrowserExecutable(event.target.value)}
+                        required
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-sm">
+                      {t('browserReady')}
+                      <input
+                        className={field}
+                        value={readyText}
+                        onChange={(event) => setReadyText(event.target.value)}
+                        required
+                      />
+                    </label>
+                  </>
+                ) : null}
                 <label className="flex flex-col gap-1 text-sm">
-                  {t('command')}
+                  {t(localBrowser ? 'browserDevCommand' : 'command')}
                   <input
                     className={field}
                     required

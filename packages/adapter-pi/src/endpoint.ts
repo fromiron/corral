@@ -12,6 +12,7 @@ export const EndpointModel = z.strictObject({
   contextWindow: z.int().min(1),
   maxOutput: z.int().min(1),
   reasoning: z.boolean(),
+  imageInput: z.boolean().optional(),
 });
 
 export const EndpointSpec = z.strictObject({
@@ -55,7 +56,7 @@ export function endpointProvider(
     provider: providerId,
     baseUrl: spec.baseUrl,
     reasoning: m.reasoning,
-    input: ['text'],
+    input: m.imageInput ? ['text', 'image'] : ['text'],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: m.contextWindow,
     maxTokens: m.maxOutput,

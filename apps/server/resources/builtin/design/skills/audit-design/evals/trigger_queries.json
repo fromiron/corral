@@ -1,0 +1,128 @@
+[
+  {
+    "id": "en-positive-1",
+    "language": "en",
+    "query": "Score this existing UI for observable slop signals and give me a prioritized removal plan without guessing who made it.",
+    "should_trigger": true
+  },
+  {
+    "id": "en-positive-2",
+    "language": "en",
+    "query": "Compare these before and after screens with the same anti-slop rubric and evidence limits.",
+    "should_trigger": true
+  },
+  {
+    "id": "en-negative-1",
+    "language": "en",
+    "query": "Write a new product landing page from these verified notes.",
+    "should_trigger": false
+  },
+  {
+    "id": "en-negative-2",
+    "language": "en",
+    "query": "Check only the contrast ratio of this button.",
+    "should_trigger": false
+  },
+  {
+    "id": "ko-positive-1",
+    "language": "ko",
+    "query": "이 기존 UI의 관찰 가능한 슬롭 신호를 점수화하고 제작자를 추측하지 말고 제거 우선순위를 제안해줘.",
+    "should_trigger": true
+  },
+  {
+    "id": "ko-positive-2",
+    "language": "ko",
+    "query": "수정 전후 화면을 같은 안티 슬롭 기준과 근거 한계로 비교해줘.",
+    "should_trigger": true
+  },
+  {
+    "id": "ko-negative-1",
+    "language": "ko",
+    "query": "검증된 자료로 새로운 제품 랜딩 페이지를 작성해줘.",
+    "should_trigger": false
+  },
+  {
+    "id": "ko-negative-2",
+    "language": "ko",
+    "query": "이 버튼의 명도 대비만 확인해줘.",
+    "should_trigger": false
+  },
+  {
+    "id": "ja-positive-1",
+    "language": "ja",
+    "query": "この既存UIの観察可能なスロップ信号を採点し、制作者を推測せずに削除の優先順位を示してください。",
+    "should_trigger": true
+  },
+  {
+    "id": "ja-positive-2",
+    "language": "ja",
+    "query": "変更前後の画面を、同じアンチスロップ基準と証拠の制約で比較してください。",
+    "should_trigger": true
+  },
+  {
+    "id": "ja-negative-1",
+    "language": "ja",
+    "query": "検証済みの資料から新しい製品ランディングページを書いてください。",
+    "should_trigger": false
+  },
+  {
+    "id": "ja-negative-2",
+    "language": "ja",
+    "query": "このボタンのコントラスト比だけを確認してください。",
+    "should_trigger": false
+  },
+  {
+    "id": "en-negative-3",
+    "language": "en",
+    "query": "Change this button label from Submit to Save changes.",
+    "should_trigger": false
+  },
+  {
+    "id": "en-negative-4",
+    "language": "en",
+    "query": "Document the loading, disabled, and error states of our Select component.",
+    "should_trigger": false
+  },
+  {
+    "id": "en-negative-5",
+    "language": "en",
+    "query": "I reduced the radius on the card image; verify that the change didn't break anything.",
+    "should_trigger": false
+  },
+  {
+    "id": "ko-negative-3",
+    "language": "ko",
+    "query": "이 버튼 문구를 Submit에서 Save changes로 바꿔 줘.",
+    "should_trigger": false
+  },
+  {
+    "id": "ko-negative-4",
+    "language": "ko",
+    "query": "Select 컴포넌트의 로딩·비활성·오류 상태를 문서로 정리해 줘.",
+    "should_trigger": false
+  },
+  {
+    "id": "ko-negative-5",
+    "language": "ko",
+    "query": "카드 이미지의 radius를 줄였어. 이 변경이 다른 걸 깨뜨리지 않았는지 검증해 줘.",
+    "should_trigger": false
+  },
+  {
+    "id": "ja-negative-3",
+    "language": "ja",
+    "query": "このボタンの文言をSubmitからSave changesに変えてください。",
+    "should_trigger": false
+  },
+  {
+    "id": "ja-negative-4",
+    "language": "ja",
+    "query": "Selectコンポーネントの読み込み中・無効・エラー状態をまとめてください。",
+    "should_trigger": false
+  },
+  {
+    "id": "ja-negative-5",
+    "language": "ja",
+    "query": "カード画像の角丸を小さくしました。この変更で何も壊れていないか検証してください。",
+    "should_trigger": false
+  }
+]

@@ -1,0 +1,10 @@
+{
+  "name": "@corral/builtin-coding",
+  "version": "1.0.0",
+  "license": "MIT",
+  "pi": {
+    "skills": [
+      "skills"
+    ]
+  }
+}

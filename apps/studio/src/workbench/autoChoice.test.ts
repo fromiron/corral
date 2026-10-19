@@ -47,6 +47,9 @@ describe('the auto model choice (CR-024)', () => {
     expect(autoCommandSeed('Hello', [], { modelProfile: 'model-a' })).toBe(a);
     expect(autoCommandSeed('Hello', [], { modelProfile: 'model-b' })).not.toBe(a);
     expect(
+      autoCommandSeed('Hello', [], { modelProfile: 'model-a' }, { taskScope: 'review_only' }),
+    ).not.toBe(a);
+    expect(
       autoCommandSeed('Hello', [], {
         modelProfile: 'model-a',
         reasoning: { mode: 'fixed', level: 'high' },

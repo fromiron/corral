@@ -22,7 +22,39 @@ export function createDemoWorkspaces(
   const noLsp = async (): Promise<never> => {
     throw new Error('Language server changes require the local backend.');
   };
+  const noCheckpoints = async (): Promise<never> => {
+    throw new Error('File checkpoints require the local server.');
+  };
   return {
+    uploadImage: async () => {
+      throw new Error('Image attachments require the local server.');
+    },
+    imageUrl: () => '',
+    branchPreview: async () => {
+      throw new Error('Message branches require the local server.');
+    },
+    branchMessage: async () => {
+      throw new Error('Message branches require the local server.');
+    },
+    messageBranches: async () => [],
+    searchSessions: async () => {
+      throw new Error('Private search requires the local server.');
+    },
+    rebuildSessionSearch: async () => {
+      throw new Error('Private search requires the local server.');
+    },
+    runtimeCheckpoints: async () => [],
+    resumeRuntime: async () => {
+      throw new Error('Runtime recovery requires the local server.');
+    },
+    checkpoints: async () => ({ checkpoints: [], restores: [] }),
+    captureCheckpoint: noCheckpoints,
+    pinCheckpoint: noCheckpoints,
+    pruneCheckpoints: noCheckpoints,
+    planCheckpointRestore: noCheckpoints,
+    restoreCheckpoint: noCheckpoints,
+    hunks: noCheckpoints,
+    planHunks: noCheckpoints,
     lspProposals: async () => [],
     lspProposal: noLsp,
     applyLspProposal: noLsp,

@@ -149,7 +149,8 @@
     "briefHint": "Used when a run has no request of its own. In a session, the request you send is the brief.",
     "advanced": "Advanced",
     "profileMissing": "{profile} (not set up here)",
-    "profileSignIn": "sign-in needed"
+    "profileSignIn": "sign-in needed",
+    "teamPlanOwner": "Own the team work plan (one planner per team)"
   },
   "Validation": {
     "heading": "Before running",
@@ -540,7 +541,14 @@
     "staleReview": "Stale review: evaluated against {previous}; current criteria is {current}.",
     "reference": "Recorded reference",
     "unavailable": "This recorded reference is unavailable.",
-    "newRunFromVersion": "New run from this version"
+    "newRunFromVersion": "New run from this version",
+    "designTargeted": "Targeted review · no release decision",
+    "designReleaseReport": "Release-scope report · no release approval",
+    "designEvidenceNote": "Reported observations. This adapter does not establish schema-validator or browser-test success.",
+    "designReport": "Detailed report",
+    "tokenProposal": "Token proposal",
+    "preferenceAnswer": "References a recorded user answer",
+    "preferenceAi": "AI proposed the values"
   },
   "Approvals": {
     "heading": "Waiting for you",
@@ -585,7 +593,13 @@
     "lspHeading": "Approve language server launch",
     "lspOnce": "Runs this query once in the working copy. A language server is native code with access to this computer; it is not sandboxed. Future launches need permission unless you trust the fingerprint in project settings.",
     "approveLsp": "Run this query once",
-    "rejectLsp": "Decline this query"
+    "rejectLsp": "Decline this query",
+    "toolHeading": "Tool permission",
+    "toolOnce": "Allow this exact call once. Save rules separately in harness settings for future runs.",
+    "approveTool": "Allow once",
+    "rejectTool": "Deny",
+    "toolIdentity": "Tool identity and call fingerprint",
+    "toolPolicyRevision": "Policy revision {revision}"
   },
   "Budget": {
     "heading": "Budget and usage",
@@ -851,7 +865,8 @@
     "runner_finished_without_output": "The graph ended without an output",
     "loop_cap_declined": "You declined another round of {node}",
     "rejected": "You rejected {node}",
-    "final_output_rejected": "You rejected the final output"
+    "final_output_rejected": "You rejected the final output",
+    "user_input_requested": "Waiting for your answer"
   },
   "CommandPalette": {
     "label": "Command palette",
@@ -999,7 +1014,9 @@
     "originChanged": "{names}: the address points somewhere new, so its saved key will not be sent there. Enter the key again after saving.",
     "refused": "Not saved: {message}",
     "cancel": "Cancel",
-    "save": "Save models"
+    "save": "Save models",
+    "isolateProfile": "Linux isolation · {profile}",
+    "isolationHint": "Linux isolation keeps model keys and network in the host. Requires bubblewrap. Supports file tools and content-only strict harnesses; check commands, language servers, native extensions and MCP are unavailable. Launch failure stops execution without fallback."
   },
   "Compare": {
     "heading": "Compare runs",
@@ -1252,7 +1269,11 @@
       "model_error": "Choice request failed",
       "output_limit": "Choice output limit reached"
     },
-    "reasoningSource": { "model": "model choice", "local": "local choice", "fallback": "fallback" }
+    "reasoningSource": {
+      "model": "model choice",
+      "local": "local choice",
+      "fallback": "fallback"
+    }
   },
   "Files": {
     "folderHeading": "Project folder",
@@ -1286,7 +1307,7 @@
       "run": "Run {runId}",
       "git": "Linked folder (Git working tree)"
     },
-    "noBaseline": "No baseline was recorded for this run.",
+    "noBaseline": "A fixed start/end comparison is not available for this run.",
     "noChanges": "No changes in this range.",
     "files": "{count, plural, one {# file} other {# files}}",
     "status": {
@@ -1614,6 +1635,19 @@
       "waitingMessage": "{count} waiting for a reply",
       "starting": "{count} about to start",
       "stopping": "{count} stopping"
+    },
+    "uncountedChanges": "{count, plural, one {# file has no line count (binary or unavailable)} other {# files have no line count (binary or unavailable)}}",
+    "retryChanges": "Changes unavailable · retry",
+    "toolActivity": "Tools · {count}",
+    "toolPhase": {
+      "requested": "Requested",
+      "allowed": "Authorized · waiting to start",
+      "running": "Running",
+      "finished": "Done",
+      "failed": "Failed",
+      "blocked": "Refused",
+      "cancelled": "Cancelled",
+      "unknown": "Outcome unknown"
     }
   },
   "Composer": {
@@ -1668,7 +1702,40 @@
       }
     },
     "modeSaveFailed": "Could not save the run mode. Your selection stays in this view.",
-    "liveUnavailable": "Live models are unavailable. Connect them or choose simulated mode."
+    "liveUnavailable": "Live models are unavailable. Connect them or choose simulated mode.",
+    "attachText": "Attach text files",
+    "attachmentLoading": "Reading files…",
+    "removeAttachment": "Remove {name}",
+    "attachments": "Attached text files",
+    "attachmentError": "Choose up to 5 UTF-8 text files, each at most 64 KiB. Binary or invalid files cannot be attached.",
+    "attachmentsNextOnly": "Text attachments belong to a new request. Choose Next or remove the attachments before sending.",
+    "reviewOnly": "Review only · no file changes",
+    "verificationScope": "Verification scope",
+    "targetedScope": "Targeted checks",
+    "releaseScope": "Release checks",
+    "scopeNextOnly": "These scope choices apply to a new request. Choose Next or reset the scope.",
+    "designTemplate": "Design task template",
+    "designTemplates": {
+      "audit": {
+        "name": "Review an interface",
+        "prompt": "Review the specified interface with the bound design skills. Preserve its users, tasks and identity. Report observed issues, evidence and limitations. Do not infer browser or assistive-technology results from code. Produce a detailed report; a targeted review is not release approval."
+      },
+      "tokens": {
+        "name": "Propose design tokens",
+        "prompt": "Propose design tokens from the supplied product evidence. Reuse preferences already given. Use {askTool} only for missing decisions; distinguish AI delegation from a user choosing specific values. Record question/request IDs and where answers were used. The proposal is an artifact, not applied code."
+      },
+      "verify": {
+        "name": "Verify a design change",
+        "prompt": "Verify the specified change with the bound {skill} skill. State targeted or release scope and limitations. Store the detailed report as an artifact and submit only the final review. Follow this review contract: {reviewContract}. Distinguish report validation, code checks and actual browser evidence."
+      }
+    },
+    "imageAttachments": "Attached images",
+    "attachImages": "Attach images",
+    "removeImage": "Remove image {name}",
+    "imageUploading": "Uploading image…",
+    "imageLimit": "Attach up to 3 images per request.",
+    "imageFailed": "Image upload failed. Use PNG, JPEG or WebP up to 10 MiB and 16 million pixels; the normalized PNG must fit 1 MiB. The session also needs available image storage.",
+    "imagesNextOnly": "Images are sent with a new request. Choose Continue in this session."
   },
   "Commands": {
     "newSession": "New session",
@@ -1889,7 +1956,33 @@
       "workspace": "Changes the working copy",
       "external": "External process or service",
       "unknown": "Side effects not classified"
-    }
+    },
+    "userQuestions": "Waiting for your answer",
+    "questionUnavailable": "The question could not be loaded. Try again or cancel the run.",
+    "recommended": "Recommended",
+    "yourAnswer": "Your answer",
+    "permissionPolicy": "Tool permission rules",
+    "permissionPolicyHint": "Saved rules apply to future runs. Deny takes precedence; allow never expands role or strict permissions. Use an exact descriptor from preview or a permission request.",
+    "permissionEnabled": "Apply additional tool rules",
+    "permissionDefault": "When no rule matches",
+    "permissionAsk": "Ask each time",
+    "permissionDeny": "Deny",
+    "permissionAllow": "Allow matching calls",
+    "permissionRule": "Rule {number}",
+    "permissionTool": "Tool",
+    "permissionAction": "Decision",
+    "permissionDescriptor": "Exact descriptor hash (required for allow)",
+    "permissionPath": "Limit to a relative path",
+    "permissionArgument": "Argument name",
+    "permissionPrefix": "Relative folder or file",
+    "permissionEquals": "Equals",
+    "permissionRemoveCondition": "Remove condition",
+    "permissionAddCondition": "Add argument condition",
+    "permissionRemoveRule": "Remove rule",
+    "permissionAddRule": "Add rule",
+    "skillDelivery": "Complete skill bodies found in the provider payload",
+    "noSkillsDelivered": "None",
+    "skillDeliveryUnknown": "Not measured"
   },
   "Recipe": {
     "heading": "Review recipe",
@@ -2159,7 +2252,21 @@
     "savedListFailed": "Saved successfully, but the list could not be refreshed.",
     "refreshProfiles": "Load saved list again",
     "confirmChange": "Confirm change",
-    "confirm": "Confirm"
+    "confirm": "Confirm",
+    "builtin": "Built-in skill pack",
+    "builtinHint": "Review the bundled content, install it, then explicitly trust and select the entries for a profile. Installing a pack does not activate every skill.",
+    "builtinPacks": {
+      "core": "Corral Core · 5 skills",
+      "coding": "Corral Coding · 3 skills",
+      "design": "leeskills · 10 design skills (pinned 0.7.0)",
+      "browser": "Local browser verification"
+    },
+    "browserFixture": "Owned local browser fixture",
+    "browserFixtureHint": "Linux · Playwright MCP 0.0.83. Starts this dev server in the working copy and an isolated browser. Use a trusted anonymous fixture. External origins, redirects, WebSockets, uploads and arbitrary code are blocked. This is not OS isolation. Existing runtime permissions still apply.",
+    "browserOrigin": "Fixture origin (127.0.0.1 and port)",
+    "browserExecutable": "Installed Chromium executable",
+    "browserReady": "Text required in the HTTP readiness response",
+    "browserDevCommand": "Registered dev server command"
   },
   "Navigation": {
     "app": "App",
@@ -2196,5 +2303,198 @@
     "prepareExecution": "Prepare an execution",
     "runOverridesHint": "These choices apply to the next execution. The saved team stays the same.",
     "closeResult": "Close result"
+  },
+  "WorkPlan": {
+    "heading": "Work plan",
+    "execution": "Agent",
+    "team": "Team",
+    "pending": "Pending",
+    "in_progress": "In progress",
+    "completed": "Completed",
+    "verification": "Verification required",
+    "evidence": "Evidence ({count})",
+    "scopeHint": "Plan progress is separate from task completion. Evidence refers to the recorded target and criteria.",
+    "staleCriteria": "The completion criteria have changed since this plan.",
+    "unavailable": "The plan or evidence could not be loaded.",
+    "loading": "Loading plan…",
+    "retry": "Retry"
+  },
+  "Checkpoints": {
+    "heading": "File checkpoints",
+    "scope": "Includes tracked and unignored files, including binary files. Ignored files, empty folders and external actions are not restored.",
+    "label": "Checkpoint name",
+    "capture": "Save checkpoint",
+    "refresh": "Refresh checkpoints",
+    "prune": "Expire old unpinned checkpoints",
+    "retention": "Keeps the latest 50 and the last 30 days. Pinned checkpoints and restore history stay retained.",
+    "pin": "Keep",
+    "preview": "Preview restore",
+    "restoreExplain": "Restore {count} changed files in the displayed target. A pinned copy is saved first. If files changed since this preview, restore is refused.",
+    "restore": "Restore working copy",
+    "close": "Close preview",
+    "loadFailed": "Could not load checkpoints.",
+    "restoreResult": "Restore: {state}",
+    "kind": {
+      "before_run": "Before Run",
+      "after_run": "After Run",
+      "before_restore": "Before restore",
+      "hunk_proposal": "Selected change proposal",
+      "runtime": "Runtime boundary"
+    },
+    "state": {
+      "ready": "Ready",
+      "incomplete": "Incomplete",
+      "expired": "Expired"
+    },
+    "restoreState": {
+      "applying": "In progress",
+      "applied": "Applied",
+      "partial": "Partial · inspect changes before continuing",
+      "uncertain": "Uncertain · inspect changes before continuing",
+      "refused": "Refused · no restore applied"
+    },
+    "localOnly": "File checkpoints are available in the local app.",
+    "original": "Original folder",
+    "workingCopy": "Session working copy",
+    "restoreOriginal": "Restore original folder"
+  },
+  "RunStatus": {
+    "environment": "Environment",
+    "simulated": "Simulated",
+    "live": "Live models",
+    "browser": "Browser demo",
+    "local": "Local backend",
+    "readOnly": "Review only · managed file changes disabled",
+    "rolePermissions": "File permissions follow the selected role",
+    "noOsIsolation": "Operating system isolation is not active",
+    "unknownCopy": "Working copy status unknown",
+    "managedCopy": "Managed session working copy",
+    "noCopy": "No working copy",
+    "noSession": "No session working copy linked",
+    "context": "Context and cost",
+    "estimate": "About {count, number} message tokens",
+    "unknown": "Unknown",
+    "lastRequest": "Last recorded request for this execution",
+    "capacity": "Model context limit: {value} tokens",
+    "estimateNote": "Pi message estimate, not a provider token count. Request overhead and model tokenization may differ. Other agents are not added to this context.",
+    "connections": "Connections",
+    "connectionNote": "Authentication and model identity at run start. This does not verify that the connection is still available.",
+    "auth": {
+      "oauth": "Subscription sign-in",
+      "api_key": "API access",
+      "mock": "Simulated"
+    },
+    "pinnedProfiles": "{count} pinned runtime profiles",
+    "failedLoads": "{count} runtime resource loads failed",
+    "modelSettings": "Model settings",
+    "changes": "Changes",
+    "fixedRun": "Fixed start/end trees for this Run",
+    "changesSoFar": "Changes observed so far for this Run",
+    "linuxIsolationRequested": "Linux worker isolation requested by model profile. Model network is brokered by the host; inspect execution failures if launch did not complete. Host tools retain their own permissions.",
+    "compactRequest": "Compact at next safe boundary",
+    "compactHint": "Queues history compaction after current tools and questions settle. Compaction uses this Run’s model budget; current work and permissions stay in place.",
+    "compactUnavailable": "Manual compaction requires an SDK execution.",
+    "compactUnconfirmed": "This execution ended before compaction completion was confirmed.",
+    "compactPhase": {
+      "queued": "Compaction requested; waiting for a safe boundary.",
+      "started": "Compacting history.",
+      "completed": "History compacted. Protected context remains available.",
+      "failed": "Compaction failed. Previous history was retained.",
+      "cancelled": "Compaction cancelled.",
+      "skipped": "Compaction was skipped because the task had already finished."
+    }
+  },
+  "Hunks": {
+    "heading": "Apply selected changes",
+    "hint": "Review approval, original-folder changes and working-copy reversal are separate actions. Files must still match the fixed comparison. A recovery checkpoint is saved before applying.",
+    "load": "Select changed parts",
+    "part": "Part {number}",
+    "showPatch": "Show this patch",
+    "planOriginal": "Preview original-folder changes",
+    "planRevert": "Preview working-copy reversal",
+    "original": "Target: original folder",
+    "workingCopy": "Target: session working copy",
+    "approval": "Apply {count} selected parts of {path}. User edits after this preview cause a conflict.",
+    "applyOriginal": "Approve and apply to original",
+    "revertCopy": "Approve and revert working copy",
+    "failed": "The selected change could not be prepared.",
+    "state": {
+      "applying": "Applying…",
+      "applied": "Selected changes applied. A recovery checkpoint was saved.",
+      "partial": "Only part may have changed. Inspect the files and recovery checkpoint.",
+      "uncertain": "The outcome is unknown. Inspect the files before another change.",
+      "refused": "No change was applied. Prepare a fresh preview."
+    }
+  },
+  "RuntimeRecovery": {
+    "title": "Runtime recovery",
+    "scope": "Continues a stopped single-agent Run in a new Run with its remaining budget. Native extensions, teams and loops are not supported. The source Run is kept.",
+    "empty": "No verified runtime checkpoint. Send a new request to continue from the existing results.",
+    "unavailable": "Runtime recovery is unavailable.",
+    "tree": "Files: {tree}",
+    "noFiles": "no working copy",
+    "remaining": "{calls} model calls and {tokens} output tokens remaining",
+    "continue": "Continue in a new Run",
+    "blockers": {
+      "termination_unverified": "Previous worker termination is unverified.",
+      "source_not_stopped": "The source Run is still active or already succeeded.",
+      "worker_not_stopped": "A worker has not stopped.",
+      "unsupported_state": "This runtime state cannot be restored.",
+      "criteria_changed": "The criteria changed after this checkpoint.",
+      "unsettled_effects": "Some effects or model usage are unconfirmed.",
+      "pending_interaction": "A question or approval remains unresolved.",
+      "checkpoint_capacity": "Checkpoint storage reached its limit.",
+      "newer_instruction": "A newer instruction is missing from this checkpoint.",
+      "newer_external_effect": "An external action occurred after this checkpoint.",
+      "model_changed": "The model profile or endpoint changed.",
+      "resources_changed": "The pinned harness resources changed.",
+      "files_changed_or_uncertain": "Files changed or a file operation is unconfirmed.",
+      "budget_exhausted": "No model budget remains.",
+      "checkpoint_corrupt": "Checkpoint integrity could not be verified.",
+      "already_resumed": "This Run already has a continuation."
+    }
+  },
+  "SessionTabs": {
+    "label": "Session tabs",
+    "close": "Close {title} tab"
+  },
+  "SessionSearch": {
+    "title": "Search sessions and results",
+    "privacy": "Search stays in this local workspace. Private messages are included only when selected.",
+    "query": "Search text",
+    "private": "Include private messages and results",
+    "archived": "Include archived",
+    "failed": "Search is unavailable. Retry or rebuild the index.",
+    "metadata": "Metadata",
+    "private_transcript": "Private transcript",
+    "count": "{count} matches",
+    "previous": "Previous",
+    "next": "Next",
+    "rebuild": "Rebuild search index",
+    "kind": {
+      "session": "Session",
+      "entry": "Request",
+      "artifact": "Result",
+      "response": "Model response",
+      "interaction": "Interaction"
+    }
+  },
+  "MessageBranch": {
+    "open": "Branch from this message",
+    "description": "Start a separate session and Run from this fixed result. Later messages stay in the source branch.",
+    "contextOnly": "Use message context only",
+    "checkpoint": "Continue with the captured context and file checkpoint.",
+    "context_only": "Context-only branch: a new request based on this result, without restoring a runtime checkpoint.",
+    "point": "Source event {sequence}",
+    "tree": "New working copy from checkpoint {tree}. Tracked and unignored files are included.",
+    "noFiles": "No files are restored.",
+    "budget": "New budget: {model} · up to {calls} model calls and {tokens} output tokens.",
+    "start": "Create branch and start",
+    "siblings": "Other branches from this message",
+    "source": "Open the source Run",
+    "unavailable": "This checkpoint cannot be branched. Try context-only or inspect the source Run.",
+    "requestOpen": "Branch before this request",
+    "requestDescription": "Start this original request in a separate session and Run, using its original team and criteria.",
+    "requestBoundary": "Starts at the original request boundary, before any model response."
   }
 }

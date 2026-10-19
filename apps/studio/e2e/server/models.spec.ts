@@ -266,6 +266,7 @@ test.describe('editing models on the Models page (CR-008)', () => {
     await editor.getByLabel('Models of endpoint 1').fill('llama3.2');
     await editor.getByLabel('Provider of model-b').selectOption({ label: 'Ollama' });
     await editor.getByLabel('Model of model-b').selectOption({ label: 'llama3.2' });
+    await editor.getByRole('checkbox', { name: 'Linux isolation · model-b' }).check();
     await editor.getByRole('button', { name: 'Save models' }).click();
 
     await expect(page.getByRole('region', { name: 'Edit models' })).toHaveCount(0);
@@ -274,6 +275,8 @@ test.describe('editing models on the Models page (CR-008)', () => {
     await expect(page.getByTestId('provider-ollama')).toContainText('No key needed');
     await page.reload();
     await expect(page.getByTestId('profile-model-a')).toContainText('openai/gpt-test-b');
+    await page.getByRole('button', { name: 'Edit models' }).click();
+    await expect(page.getByRole('checkbox', { name: 'Linux isolation · model-b' })).toBeChecked();
     expect(corral.errors).toEqual([]);
   });
 

@@ -86,6 +86,7 @@ export const ModelProviderConfig = z.strictObject({
         contextWindow: z.int().min(1).max(10_000_000).optional(),
         maxOutput: z.int().min(1).max(1_000_000).optional(),
         reasoning: z.boolean().optional(),
+        imageInput: z.boolean().optional(),
       }),
     )
     .min(1)
@@ -109,6 +110,7 @@ export const WorkspaceConfig = z.strictObject({
         id: Identifier,
         provider: Identifier,
         model: z.string().min(1).max(200),
+        workerIsolation: z.literal('linux-bwrap').optional(),
       }),
     )
     .max(20)

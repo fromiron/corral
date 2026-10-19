@@ -21,6 +21,7 @@ import { useTranslations } from 'use-intl';
 import { reviewRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
 import { latestResult, startFollowUp, steer, steerTargets } from '../sessionActions.ts';
+import { HunkActions } from '../workbench/HunkActions.tsx';
 import { useBinding } from './FilesViews.tsx';
 import { LspProposals } from './LspProposals.tsx';
 import { WorkbenchLayout } from './Workbench.tsx';
@@ -278,6 +279,17 @@ export function ReviewPage() {
               ) : (
                 <p className="text-sm text-muted">{t('chooseFile')}</p>
               )}
+              {scope.kind !== 'git' && selected && changes?.from && changes.to ? (
+                <HunkActions
+                  key={`${session.sessionId}:${selected}:${changes.from}:${changes.to}`}
+                  sessionId={session.sessionId}
+                  from={changes.from}
+                  to={changes.to}
+                  path={selected}
+                  active={runs.some((run) => !TERMINAL_RUN_STATUSES.has(run.status))}
+                  onApplied={() => setVersion((value) => value + 1)}
+                />
+              ) : null}
             </section>
             <aside className="flex min-h-0 flex-col gap-3 overflow-auto border-line p-3 md:border-l">
               {workspaces && mode === 'server' ? (
@@ -312,11 +324,13 @@ export function ReviewPage() {
               />
               {scope.kind === 'session' && changes?.from && changes.to ? (
                 <DecisionPanel
+                  key={session.sessionId}
                   sessionId={session.sessionId}
                   from={changes.from}
                   to={changes.to}
                   changed={version}
                   linked={Boolean(binding)}
+                  active={runs.some((run) => !TERMINAL_RUN_STATUSES.has(run.status))}
                 />
               ) : null}
               <Checks sessionId={session.sessionId} binding={binding ?? null} changed={version} />
@@ -848,12 +862,14 @@ function DecisionPanel({
   to,
   changed,
   linked,
+  active,
 }: {
   sessionId: string;
   from: string;
   to: string;
   changed: number;
   linked: boolean;
+  active: boolean;
 }) {
   const t = useTranslations('Review');
   const { workspaces } = useServices();
@@ -861,6 +877,18 @@ function DecisionPanel({
   const [integrations, setIntegrations] = useState<IntegrationResultView[]>([]);
   const [plan, setPlan] = useState<IntegrationPlanFile[] | null>(null);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const act = async (work: () => Promise<unknown>) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await work();
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : String(failure));
+    } finally {
+      setBusy(false);
+    }
+  };
   const reload = useCallback(async () => {
     if (!workspaces) return;
     setDecisions(await workspaces.decisions(sessionId).catch(() => []));
@@ -886,6 +914,11 @@ function DecisionPanel({
         {t('decisionHeading')}
       </h3>
       <p className="text-xs text-muted">{t('decisionScope')}</p>
+      {error ? (
+        <p role="alert" className="text-xs text-danger">
+          {error}
+        </p>
+      ) : null}
       {latest ? (
         <p className="text-xs" data-testid="decision">
           {t(`decisionState.${latest.decision}`)}
@@ -895,14 +928,16 @@ function DecisionPanel({
       <div className="flex flex-wrap gap-1 text-xs">
         <button
           type="button"
-          onClick={() => void decide('approved')}
+          disabled={busy}
+          onClick={() => void act(() => decide('approved'))}
           className="rounded border border-accent px-2 py-0.5 text-accent"
         >
           {t('approve')}
         </button>
         <button
           type="button"
-          onClick={() => void decide('changes_requested')}
+          disabled={busy}
+          onClick={() => void act(() => decide('changes_requested'))}
           className="rounded border border-line px-2 py-0.5"
         >
           {t('requestChanges')}
@@ -915,7 +950,10 @@ function DecisionPanel({
           <button
             type="button"
             onClick={() =>
-              void workspaces?.integrationPlan(sessionId, approved.decisionId).then(setPlan)
+              void act(async () => {
+                if (workspaces)
+                  setPlan(await workspaces.integrationPlan(sessionId, approved.decisionId));
+              })
             }
             className="self-start rounded border border-line px-2 py-0.5"
           >
@@ -932,14 +970,13 @@ function DecisionPanel({
               </ul>
               <button
                 type="button"
-                disabled={busy || applying === 0}
+                disabled={busy || active || applying === 0}
                 onClick={() => {
-                  setBusy(true);
-                  void workspaces
-                    ?.integrate(sessionId, approved.decisionId)
-                    .then(() => setPlan(null))
-                    .then(reload)
-                    .finally(() => setBusy(false));
+                  void act(async () => {
+                    await workspaces?.integrate(sessionId, approved.decisionId);
+                    setPlan(null);
+                    await reload();
+                  });
                 }}
                 className="self-start rounded-md bg-accent px-2 py-1 font-medium text-on-accent disabled:opacity-50"
               >
@@ -967,8 +1004,12 @@ function DecisionPanel({
             <button
               type="button"
               title={t('revertNote')}
+              disabled={busy || active}
               onClick={() =>
-                void workspaces?.revert(sessionId, integration.integrationId).then(reload)
+                void act(async () => {
+                  await workspaces?.revert(sessionId, integration.integrationId);
+                  await reload();
+                })
               }
               className="self-start rounded border border-line px-2 py-0.5"
             >

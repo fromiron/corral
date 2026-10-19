@@ -20,12 +20,20 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { editText, PiEditError } from '@corral/adapter-pi';
 import {
   type BrokerFileToolName,
+  CaptureCheckpoint,
   type CheckExecution,
   CheckPlan,
+  CheckpointManifest,
+  type CheckpointRestore,
+  type CheckpointRestorePlan,
   type Clock,
   canonicalJson,
   type EditTextRequest,
   type EditTextResult,
+  type FileCheckpoint,
+  HunkPlanRequest,
+  HunkRequest,
+  type HunkSet,
   type LspExecution,
   LspProposal,
   LspProposalContent,
@@ -37,6 +45,7 @@ import {
   ProjectToolConfig,
   type RegisteredCheck,
   type RegisteredMcpServer,
+  RestoreCheckpoint,
   ReviewRecipeRevision,
   type Scheduler,
   type VerificationOwner,
@@ -297,6 +306,7 @@ export class WorkspaceService implements FileTools {
   private readonly forbidden: string[];
   /** Per-worktree write lease: one Corral write at a time (WB-WSP-003). */
   private readonly leases = new Map<string, Promise<unknown>>();
+  private readonly pendingSnapshots = new Map<string, Promise<string | null>>();
   /** Run → execution → path hash: another attempt's read never authorizes an overwrite. */
   private readonly reads = new Map<string, Map<string, Map<string, string>>>();
   private readonly edit: (
@@ -317,6 +327,10 @@ export class WorkspaceService implements FileTools {
     edit?: (request: EditTextRequest, cancellation: ToolCancellation) => Promise<EditTextResult>;
   }) {
     this.db = options.db;
+    this.db
+      .prepare(`UPDATE checkpoint_restores SET result_json=json_set(result_json, '$.state', 'uncertain')
+      WHERE json_extract(result_json, '$.state')='applying'`)
+      .run();
     this.io = { writeFile, rename, unlink, link, ...options.io };
     this.clock = options.clock;
     this.projectTools = new SqliteProjectToolStore(options.db, options.clock);
@@ -618,7 +632,14 @@ export class WorkspaceService implements FileTools {
 
   private async mcpFingerprint(root: string, revision: number, server: RegisteredMcpServer) {
     return server.transport === 'stdio'
-      ? (await launchFingerprint(root, revision, server)).fingerprint
+      ? (
+          await launchFingerprint(
+            root,
+            revision,
+            server,
+            server.browser ? [server.browser.executablePath] : [],
+          )
+        ).fingerprint
       : sha256(Buffer.from(canonicalJson({ revision, server })));
   }
 
@@ -845,7 +866,565 @@ export class WorkspaceService implements FileTools {
       .run(this.clock.nowIso(), sessionId);
   }
 
+  /** A restore target is always a trusted session-owned copy or its linked original repository. */
+  private async checkpointTarget(
+    sessionId: string,
+    target: 'working_copy' | 'original' = 'working_copy',
+  ) {
+    const row = this.worktree(sessionId);
+    if (!row) throw new WorkspaceError('TARGET_NOT_FOUND', 'this session has no working copy');
+    const binding = this.db
+      .prepare('SELECT * FROM workspace_bindings WHERE id=? AND trusted=1')
+      .get(row.binding_id) as BindingRow | undefined;
+    if (!binding)
+      throw new WorkspaceError('CAPABILITY_DENIED', 'trust the repository before changing files');
+    if (target === 'working_copy') return row;
+    const root = await realpath(binding.root_path);
+    const common = async (path: string) =>
+      realpath(resolve(path, await gitText(path, ['rev-parse', '--git-common-dir'])));
+    if ((await common(root)) !== (await common(row.worktree_path)))
+      throw new WorkspaceError('REVISION_CONFLICT', 'the linked Git repository changed');
+    return { ...row, worktree_path: root };
+  }
+
+  /** Serializes legacy whole-file integration with hunk/restore writes and preserves its target first. */
+  async withOriginalCheckpoint<T>(
+    sessionId: string,
+    label: string,
+    work: () => Promise<T>,
+  ): Promise<T> {
+    const row = await this.checkpointTarget(sessionId, 'original');
+    return this.lease(row.worktree_path, async () => {
+      await this.checkpointAt(row, {
+        checkpointId: `checkpoint_${randomUUID().replaceAll('-', '')}`,
+        label,
+        kind: 'before_restore',
+        target: 'original',
+        pinned: true,
+      });
+      return work();
+    });
+  }
+
+  private async requireSessionTree(sessionId: string, tree: string) {
+    const row = this.worktree(sessionId);
+    if (!row) throw new WorkspaceError('TARGET_NOT_FOUND', 'this session has no working copy');
+    if (
+      [row.base_tree, row.reviewed_tree].includes(tree) ||
+      this.db
+        .prepare('SELECT 1 FROM run_snapshots WHERE session_id=? AND tree=?')
+        .get(sessionId, tree) ||
+      this.checkpoints(sessionId).some((item) => item.state === 'ready' && item.tree === tree)
+    )
+      return;
+    const latest = await gitText(row.worktree_path, [
+      'rev-parse',
+      '--verify',
+      `refs/corral/${sessionId}/latest`,
+    ]).catch(() => null);
+    if (latest !== tree)
+      throw new WorkspaceError(
+        'REVISION_CONFLICT',
+        'the diff tree is not retained by this session',
+      );
+  }
+
+  private async hunkPatch(sessionId: string, raw: unknown) {
+    const input = HunkRequest.parse(raw),
+      path = safeRelative(input.path);
+    if (/[\r\n]/.test(path))
+      throw new WorkspaceError('CAPABILITY_DENIED', 'hunk paths cannot contain line breaks');
+    const row = this.worktree(sessionId);
+    if (!row) throw new WorkspaceError('TARGET_NOT_FOUND', 'this session has no working copy');
+    await this.requireSessionTree(sessionId, input.from);
+    await this.requireSessionTree(sessionId, input.to);
+    const modes: string[] = [];
+    for (const tree of [input.from, input.to]) {
+      const value = await gitText(row.worktree_path, ['ls-tree', tree, '--', `:(literal)${path}`]);
+      if (value && !/^(100644|100755) blob /.test(value))
+        throw new WorkspaceError('CAPABILITY_DENIED', 'hunks support plain text files only');
+      modes.push(value.split(' ')[0] ?? '');
+    }
+    if (modes[0] && modes[1] && modes[0] !== modes[1])
+      throw new WorkspaceError('CAPABILITY_DENIED', 'file mode changes require whole-file review');
+    const sides = await this.fileVersions(sessionId, input.from, input.to, path);
+    if ([sides.before, sides.after].some((side) => !['text', 'absent'].includes(side.kind)))
+      throw new WorkspaceError('CAPABILITY_DENIED', 'hunks require UTF-8 text up to 1 MiB');
+    const patch = (
+      await git(
+        row.worktree_path,
+        [
+          'diff',
+          '--no-color',
+          '--no-ext-diff',
+          '--no-textconv',
+          '--full-index',
+          '--no-renames',
+          '--unified=3',
+          input.from,
+          input.to,
+          '--',
+          `:(literal)${path}`,
+        ],
+        { maxBuffer: 3 * MAX_TEXT },
+      )
+    ).stdout.toString('utf8');
+    const chunks = patch.split(/(?=^@@ )/m),
+      header = chunks.shift() ?? '';
+    if (!chunks.length || chunks.length > 200)
+      throw new WorkspaceError(
+        'CAPABILITY_DENIED',
+        'this diff has no selectable text hunks or exceeds 200 hunks',
+      );
+    const patchHash = sha256(Buffer.from(patch));
+    const hunks = chunks.map((patch, index) => ({
+      id: sha256(Buffer.from(`${patchHash}:${index}:${patch}`)),
+      patch,
+    }));
+    return { ...input, path, patchHash, hunks, header, row, sides };
+  }
+
+  async hunks(sessionId: string, raw: unknown): Promise<HunkSet> {
+    const {
+      header: _header,
+      row: _row,
+      sides: _sides,
+      ...view
+    } = await this.hunkPatch(sessionId, raw);
+    return view;
+  }
+
+  async planHunks(sessionId: string, raw: unknown): Promise<CheckpointRestorePlan> {
+    const input = HunkPlanRequest.parse(raw);
+    const requestHash = sha256(Buffer.from(canonicalJson({ sessionId, ...input })));
+    const existing = this.checkpoints(sessionId).find((item) => item.checkpointId === input.planId);
+    if (existing) {
+      if (existing.state !== 'ready' || existing.hunk?.requestHash !== requestHash)
+        throw new WorkspaceError('REVISION_CONFLICT', 'hunk plan identity has different content');
+      return {
+        checkpointId: existing.checkpointId,
+        manifestHash: existing.manifestHash!,
+        target: existing.target,
+        expectedTree: existing.hunk.expectedTree,
+        targetTree: existing.tree!,
+        files: [{ path: input.path, status: input.action }],
+      };
+    }
+    const patch = await this.hunkPatch(sessionId, {
+      from: input.from,
+      to: input.to,
+      path: input.path,
+    });
+    if (
+      patch.patchHash !== input.patchHash ||
+      input.hunkIds.some((id) => !patch.hunks.some((hunk) => hunk.id === id))
+    )
+      throw new WorkspaceError('REVISION_CONFLICT', 'selected patch changed');
+    const target = input.action === 'apply_original' ? 'original' : 'working_copy';
+    const row = await this.checkpointTarget(sessionId, target);
+    return this.lease(row.worktree_path, async () => {
+      const expectedSide =
+        input.action === 'apply_original' ? patch.sides.before : patch.sides.after;
+      const beforeHash =
+        expectedSide.kind === 'text' ? sha256(Buffer.from(expectedSide.text)) : null;
+      await expectFile(row.worktree_path, patch.path, beforeHash);
+      const expectedTree = await this.snapshotTree(row.worktree_path);
+      const index = join(tmpdir(), `corral-hunks-${randomUUID()}`),
+        env = { GIT_INDEX_FILE: index };
+      try {
+        await git(row.worktree_path, ['read-tree', expectedTree], { env });
+        const selected = Buffer.from(
+          patch.header +
+            patch.hunks
+              .filter((hunk) => input.hunkIds.includes(hunk.id))
+              .map((hunk) => hunk.patch)
+              .join(''),
+        );
+        const args = [
+          'apply',
+          '--cached',
+          '--whitespace=nowarn',
+          ...(input.action === 'revert_working_copy' ? ['--reverse'] : []),
+        ];
+        await git(row.worktree_path, [...args, '--check'], { env, input: selected });
+        await git(row.worktree_path, args, { env, input: selected });
+        const tree = await gitText(row.worktree_path, ['write-tree'], env);
+        const after = await this.blob(row.worktree_path, tree, patch.path);
+        const hunk = {
+          ...input,
+          requestHash,
+          expectedTree,
+          beforeHash,
+          afterHash: after ? sha256(after) : null,
+        };
+        const { planId: _planId, ...evidence } = hunk;
+        const checkpoint = await this.checkpointAt(row, {
+          checkpointId: input.planId,
+          label: 'Selected hunk proposal',
+          kind: 'hunk_proposal',
+          target,
+          hunk: evidence,
+          tree,
+          pinned: true,
+        });
+        return {
+          checkpointId: checkpoint.checkpointId,
+          manifestHash: checkpoint.manifestHash!,
+          target,
+          expectedTree,
+          targetTree: tree,
+          files: [{ path: patch.path, status: input.action }],
+        };
+      } finally {
+        await rm(index, { force: true });
+      }
+    });
+  }
+
   // ── snapshots ───────────────────────────────────────────────────────────────
+
+  checkpoints(sessionId: string): FileCheckpoint[] {
+    const rows = this.db
+      .prepare(
+        'SELECT * FROM file_checkpoints WHERE session_id=? ORDER BY created_at DESC, rowid DESC',
+      )
+      .all(sessionId) as {
+      manifest_json: string;
+      manifest_hash: string | null;
+      state: FileCheckpoint['state'];
+      pinned: number;
+    }[];
+    return rows.map((row) => ({
+      ...JSON.parse(row.manifest_json),
+      manifestHash: row.manifest_hash,
+      state: row.state,
+      pinned: row.pinned === 1,
+    }));
+  }
+
+  private async checkpointAt(
+    row: WorktreeRow,
+    input: {
+      checkpointId: string;
+      label: string;
+      kind: CheckpointManifest['kind'];
+      target?: CheckpointManifest['target'];
+      hunk?: CheckpointManifest['hunk'];
+      runId?: string;
+      tree?: string;
+      pinned: boolean;
+    },
+  ): Promise<FileCheckpoint> {
+    const existing = this.db
+      .prepare('SELECT session_id FROM file_checkpoints WHERE id=?')
+      .get(input.checkpointId) as { session_id: string } | undefined;
+    if (existing) {
+      const found = this.checkpoints(existing.session_id).find(
+        (item) => item.checkpointId === input.checkpointId,
+      )!;
+      if (
+        existing.session_id !== row.session_id ||
+        found.label !== input.label ||
+        found.kind !== input.kind ||
+        (found.target ?? 'working_copy') !== (input.target ?? 'working_copy') ||
+        found.hunk?.requestHash !== input.hunk?.requestHash ||
+        (input.tree !== undefined && found.tree !== input.tree)
+      )
+        throw new WorkspaceError(
+          'REVISION_CONFLICT',
+          'checkpoint identity already belongs to another request',
+        );
+      if (found.state !== 'ready')
+        throw new WorkspaceError('REVISION_CONFLICT', 'checkpoint is not complete');
+      return found;
+    }
+    const run = input.runId
+      ? (this.db.prepare('SELECT session_id,last_seq FROM runs WHERE id=?').get(input.runId) as
+          | { session_id: string; last_seq: number }
+          | undefined)
+      : undefined;
+    if (input.runId && run?.session_id !== row.session_id)
+      throw new WorkspaceError(
+        'TARGET_NOT_FOUND',
+        'checkpoint Run does not belong to this session',
+      );
+    const draft = {
+      version: 2 as const,
+      target: input.target ?? 'working_copy',
+      ...(input.hunk ? { hunk: input.hunk } : {}),
+      checkpointId: input.checkpointId,
+      sessionId: row.session_id,
+      runId: input.runId ?? null,
+      runSeq: input.kind === 'before_run' ? 0 : (run?.last_seq ?? null),
+      kind: input.kind,
+      label: input.label,
+      tree: null,
+      createdAt: this.clock.nowIso(),
+      files: 'tracked_and_unignored' as const,
+    };
+    this.db
+      .prepare(`INSERT INTO file_checkpoints (id,session_id,run_id,kind,manifest_json,manifest_hash,state,pinned,created_at)
+      VALUES (?,?,?,?,?,NULL,'incomplete',?,?)`)
+      .run(
+        input.checkpointId,
+        row.session_id,
+        draft.runId,
+        input.kind,
+        canonicalJson(draft),
+        Number(input.pinned),
+        draft.createdAt,
+      );
+    const manifest = CheckpointManifest.parse({
+      ...draft,
+      tree: input.tree ?? (await this.snapshotTree(row.worktree_path)),
+    });
+    const body = canonicalJson(manifest),
+      hash = sha256(Buffer.from(body));
+    this.db
+      .prepare('UPDATE file_checkpoints SET manifest_json=?,manifest_hash=? WHERE id=?')
+      .run(body, hash, input.checkpointId);
+    await this.pin(
+      row.worktree_path,
+      this.checkpointRef(row.session_id, input.checkpointId),
+      manifest.tree,
+    );
+    this.db.prepare("UPDATE file_checkpoints SET state='ready' WHERE id=?").run(input.checkpointId);
+    return { ...manifest, manifestHash: hash, state: 'ready', pinned: input.pinned };
+  }
+
+  async captureCheckpoint(sessionId: string, raw: unknown): Promise<FileCheckpoint> {
+    const input = CaptureCheckpoint.parse(raw);
+    const row = await this.checkpointTarget(sessionId, input.target);
+    return this.lease(row.worktree_path, () =>
+      this.checkpointAt(row, { ...input, kind: 'manual', pinned: true }),
+    );
+  }
+
+  private checkpointRef(sessionId: string, checkpointId: string) {
+    return `refs/corral/${sessionId}/checkpoints/${sha256(Buffer.from(checkpointId))}`;
+  }
+
+  pinCheckpoint(sessionId: string, checkpointId: string, pinned: boolean) {
+    const result = this.db
+      .prepare("UPDATE file_checkpoints SET pinned=? WHERE id=? AND session_id=? AND state='ready'")
+      .run(Number(pinned), checkpointId, sessionId);
+    if (!result.changes) throw new WorkspaceError('TARGET_NOT_FOUND', 'no complete checkpoint');
+  }
+
+  async pruneCheckpoints(sessionId: string) {
+    const row = this.worktree(sessionId);
+    if (!row) throw new WorkspaceError('TARGET_NOT_FOUND', 'this session has no working copy');
+    return this.lease(row.worktree_path, async () => {
+      const referenced = new Set(
+        this.checkpointRestores(sessionId).flatMap((item) => [
+          item.checkpointId,
+          item.beforeCheckpointId,
+        ]),
+      );
+      const cutoff = Date.parse(this.clock.nowIso()) - 30 * 86400_000;
+      const expired: string[] = [];
+      for (const checkpoint of this.checkpoints(sessionId)
+        .filter((item) => item.state === 'ready')
+        .slice(50)) {
+        if (
+          checkpoint.pinned ||
+          checkpoint.kind === 'runtime' ||
+          referenced.has(checkpoint.checkpointId) ||
+          Date.parse(checkpoint.createdAt) >= cutoff
+        )
+          continue;
+        this.db
+          .prepare("UPDATE file_checkpoints SET state='expired' WHERE id=?")
+          .run(checkpoint.checkpointId);
+        await git(row.worktree_path, [
+          'update-ref',
+          '-d',
+          this.checkpointRef(sessionId, checkpoint.checkpointId),
+        ]);
+        expired.push(checkpoint.checkpointId);
+      }
+      return { expired };
+    });
+  }
+
+  checkpointRestores(sessionId: string): CheckpointRestore[] {
+    return (
+      this.db
+        .prepare(
+          'SELECT result_json FROM checkpoint_restores WHERE session_id=? ORDER BY rowid DESC',
+        )
+        .all(sessionId) as { result_json: string }[]
+    ).map((row) => JSON.parse(row.result_json));
+  }
+
+  async planCheckpointRestore(
+    sessionId: string,
+    checkpointId: string,
+    manifestHash: string,
+  ): Promise<CheckpointRestorePlan> {
+    const selected = this.checkpoints(sessionId).find((item) => item.checkpointId === checkpointId);
+    const row = await this.checkpointTarget(sessionId, selected?.target);
+    if (!row) throw new WorkspaceError('TARGET_NOT_FOUND', 'this session has no working copy');
+    return this.lease(row.worktree_path, async () => {
+      const checkpoint = this.checkpoints(sessionId).find(
+        (item) => item.checkpointId === checkpointId,
+      );
+      if (
+        !checkpoint ||
+        checkpoint.state !== 'ready' ||
+        !checkpoint.tree ||
+        checkpoint.manifestHash !== manifestHash
+      )
+        throw new WorkspaceError('REVISION_CONFLICT', 'checkpoint is not complete or has changed');
+      const expectedTree = await this.snapshotTree(row.worktree_path);
+      if (checkpoint.hunk && checkpoint.hunk.expectedTree !== expectedTree)
+        throw new WorkspaceError('REVISION_CONFLICT', 'hunk target changed since preview');
+      return {
+        checkpointId,
+        manifestHash,
+        target: checkpoint.target ?? 'working_copy',
+        expectedTree,
+        targetTree: checkpoint.tree,
+        files: await this.changedPaths(row.worktree_path, expectedTree, checkpoint.tree),
+      };
+    });
+  }
+
+  async restoreCheckpoint(sessionId: string, raw: unknown): Promise<CheckpointRestore> {
+    const request = RestoreCheckpoint.parse(raw);
+    const requestHash = sha256(Buffer.from(canonicalJson({ sessionId, ...request })));
+    const selected = this.checkpoints(sessionId).find(
+      (item) => item.checkpointId === request.checkpointId,
+    );
+    const row = await this.checkpointTarget(sessionId, selected?.target);
+    if (!row) throw new WorkspaceError('TARGET_NOT_FOUND', 'this session has no working copy');
+    return this.lease(row.worktree_path, async () => {
+      const previous = this.db
+        .prepare('SELECT request_hash,result_json FROM checkpoint_restores WHERE id=?')
+        .get(request.operationId) as { request_hash: string; result_json: string } | undefined;
+      if (previous) {
+        if (previous.request_hash !== requestHash)
+          throw new WorkspaceError('REVISION_CONFLICT', 'restore identity has different content');
+        return JSON.parse(previous.result_json) as CheckpointRestore;
+      }
+      const record = this.db
+        .prepare('SELECT * FROM file_checkpoints WHERE id=? AND session_id=?')
+        .get(request.checkpointId, sessionId) as
+        | { state: string; manifest_json: string; manifest_hash: string }
+        | undefined;
+      if (!record || record.state !== 'ready')
+        throw new WorkspaceError('TARGET_NOT_FOUND', 'checkpoint is not complete');
+      if (
+        record.manifest_hash !== request.manifestHash ||
+        sha256(Buffer.from(record.manifest_json)) !== request.manifestHash
+      )
+        throw new WorkspaceError('REVISION_CONFLICT', 'checkpoint manifest changed');
+      const manifest = CheckpointManifest.parse(JSON.parse(record.manifest_json));
+      const refTree = await gitText(row.worktree_path, [
+        'rev-parse',
+        '--verify',
+        this.checkpointRef(sessionId, request.checkpointId),
+      ]);
+      if (
+        manifest.sessionId !== sessionId ||
+        manifest.checkpointId !== request.checkpointId ||
+        refTree !== manifest.tree
+      )
+        throw new WorkspaceError('REVISION_CONFLICT', 'checkpoint retention reference changed');
+      if ((await this.snapshotTree(row.worktree_path)) !== request.expectedTree)
+        throw new WorkspaceError(
+          'REVISION_CONFLICT',
+          'working copy changed since the restore was prepared',
+        );
+      if (manifest.hunk) {
+        if (manifest.hunk.expectedTree !== request.expectedTree)
+          throw new WorkspaceError(
+            'REVISION_CONFLICT',
+            'hunk approval belongs to another target tree',
+          );
+        await expectFile(row.worktree_path, manifest.hunk.path, manifest.hunk.beforeHash);
+      }
+      const paths = await this.changedPaths(row.worktree_path, request.expectedTree, manifest.tree);
+      if (paths.length > 10000)
+        throw new WorkspaceError('CAPABILITY_DENIED', 'restore is limited to 10000 files');
+      for (const file of paths) {
+        safeRelative(file.path);
+        await assertPlainPath(row.worktree_path, file.path);
+        for (const tree of [request.expectedTree, manifest.tree]) {
+          const entry = await gitText(row.worktree_path, [
+            'ls-tree',
+            tree,
+            '--',
+            `:(literal)${file.path}`,
+          ]);
+          if (entry && !/^(100644|100755) blob /.test(entry))
+            throw new WorkspaceError('CAPABILITY_DENIED', 'restore supports plain files only');
+        }
+        if (paths.some((other) => other.path.startsWith(`${file.path}/`)))
+          throw new WorkspaceError(
+            'CAPABILITY_DENIED',
+            'file/directory transitions require manual recovery',
+          );
+      }
+      const beforeId = `checkpoint_${requestHash.slice(0, 32)}`;
+      const result: CheckpointRestore = {
+        operationId: request.operationId,
+        target: manifest.target ?? 'working_copy',
+        checkpointId: request.checkpointId,
+        beforeCheckpointId: beforeId,
+        from: request.expectedTree,
+        to: manifest.tree,
+        state: 'applying',
+        createdAt: this.clock.nowIso(),
+      };
+      const save = () =>
+        this.db
+          .prepare('UPDATE checkpoint_restores SET result_json=? WHERE id=?')
+          .run(canonicalJson(result), request.operationId);
+      this.db
+        .prepare(
+          'INSERT INTO checkpoint_restores (id,session_id,request_hash,result_json) VALUES (?,?,?,?)',
+        )
+        .run(request.operationId, sessionId, requestHash, canonicalJson(result));
+      const index = join(tmpdir(), `corral-restore-${randomUUID()}`);
+      const env = { GIT_INDEX_FILE: index };
+      try {
+        await this.checkpointAt(row, {
+          checkpointId: beforeId,
+          label: 'Before checkpoint restore',
+          kind: 'before_restore',
+          target: manifest.target ?? 'working_copy',
+          tree: request.expectedTree,
+          pinned: true,
+        });
+        if ((await this.snapshotTree(row.worktree_path)) !== request.expectedTree)
+          throw new Error('changed before restore');
+        const currentTarget = await this.checkpointTarget(sessionId, manifest.target);
+        if (currentTarget.worktree_path !== row.worktree_path)
+          throw new Error('restore target changed');
+        await git(row.worktree_path, ['read-tree', request.expectedTree], { env });
+        await git(row.worktree_path, ['update-index', '--refresh'], { env });
+        // Git refuses dirty paths and untracked collisions; never --reset or --force.
+        await git(
+          row.worktree_path,
+          ['read-tree', '-u', '-m', request.expectedTree, manifest.tree],
+          { env },
+        );
+        if (manifest.hunk)
+          await expectFile(row.worktree_path, manifest.hunk.path, manifest.hunk.afterHash);
+        result.state =
+          (await this.snapshotTree(row.worktree_path)) === manifest.tree ? 'applied' : 'partial';
+      } catch {
+        const current = await this.snapshotTree(row.worktree_path).catch(() => null);
+        result.state =
+          current === request.expectedTree ? 'refused' : current ? 'partial' : 'uncertain';
+      } finally {
+        await rm(index, { force: true });
+      }
+      save();
+      return result;
+    });
+  }
 
   private async pin(worktree: string, ref: string, tree: string) {
     await git(worktree, ['update-ref', ref, tree]);
@@ -878,15 +1457,34 @@ export class WorkspaceService implements FileTools {
     if (!row) return null;
     const existing = this.runTree(runId, phase);
     if (existing) return existing;
-    const tree = await this.lease(row.worktree_path, () => this.snapshotTree(row.worktree_path));
-    await this.pin(row.worktree_path, `refs/corral/${sessionId}/runs/${runId}/${phase}`, tree);
-    this.db
-      .prepare(
-        `INSERT OR IGNORE INTO run_snapshots (run_id, phase, session_id, tree, captured_at)
+    const key = `${runId}:${phase}`;
+    const pending = this.pendingSnapshots.get(key);
+    if (pending) return pending;
+    const work = this.lease(row.worktree_path, async () => {
+      const tree = await this.snapshotTree(row.worktree_path);
+      await this.pin(row.worktree_path, `refs/corral/${sessionId}/runs/${runId}/${phase}`, tree);
+      this.db
+        .prepare(
+          `INSERT OR IGNORE INTO run_snapshots (run_id, phase, session_id, tree, captured_at)
          VALUES (?, ?, ?, ?, ?)`,
-      )
-      .run(runId, phase, sessionId, tree, this.clock.nowIso());
-    return tree;
+        )
+        .run(runId, phase, sessionId, tree, this.clock.nowIso());
+      await this.checkpointAt(row, {
+        checkpointId: `checkpoint_${sha256(Buffer.from(`${runId}:${phase}`)).slice(0, 32)}`,
+        label: phase === 'start' ? 'Before Run' : 'After Run',
+        kind: phase === 'start' ? 'before_run' : 'after_run',
+        runId,
+        tree,
+        pinned: false,
+      });
+      return tree;
+    });
+    this.pendingSnapshots.set(key, work);
+    try {
+      return await work;
+    } finally {
+      this.pendingSnapshots.delete(key);
+    }
   }
 
   /** Each run's start and end trees in this session, for "was this checked?" on run cards. */
@@ -907,6 +1505,16 @@ export class WorkspaceService implements FileTools {
          VALUES (?, 'start', ?, ?, ?)`,
       )
       .run(runId, sessionId, tree, this.clock.nowIso());
+    await this.lease(row.worktree_path, () =>
+      this.checkpointAt(row, {
+        checkpointId: `checkpoint_${sha256(Buffer.from(`${runId}:start`)).slice(0, 32)}`,
+        label: 'Before Run',
+        kind: 'before_run',
+        runId,
+        tree,
+        pinned: false,
+      }),
+    );
   }
 
   private runTree(runId: string, phase: 'start' | 'end'): string | null {
@@ -955,9 +1563,10 @@ export class WorkspaceService implements FileTools {
     const start = this.runTree(scope.runId, 'start');
     if (!start)
       return { from: null, to: null, unavailable: 'no baseline was recorded for this run', row };
-    const end = runEnded(scope.runId)
-      ? ((await this.snapshotRun(scope.runId, sessionId, 'end')) ?? (await now()))
-      : await now();
+    if (runEnded(scope.runId)) await this.pendingSnapshots.get(`${scope.runId}:end`);
+    const end = runEnded(scope.runId) ? this.runTree(scope.runId, 'end') : await now();
+    if (!end)
+      return { from: start, to: null, unavailable: 'no end tree was recorded for this run', row };
     return { from: start, to: end, unavailable: null, row };
   }
 
@@ -2050,6 +2659,174 @@ export class WorkspaceService implements FileTools {
 
   available(runId: string): boolean {
     return this.worktreeOfRun(runId) !== null;
+  }
+
+  runStartFiles(runId: string): import('@corral/contracts').RuntimeFiles | null {
+    const source = this.worktreeOfRun(runId);
+    const checkpoint = source
+      ? this.checkpoints(source.sessionId).find(
+          (item) => item.runId === runId && item.kind === 'before_run' && item.state === 'ready',
+        )
+      : undefined;
+    return checkpoint?.tree && checkpoint.manifestHash
+      ? {
+          checkpointId: checkpoint.checkpointId,
+          manifestHash: checkpoint.manifestHash,
+          tree: checkpoint.tree,
+        }
+      : null;
+  }
+
+  async branchRuntimeFiles(
+    sourceRunId: string,
+    reference: import('@corral/contracts').RuntimeFiles,
+    sessionId: string,
+  ): Promise<string> {
+    const source = this.worktreeOfRun(sourceRunId);
+    if (!source)
+      throw new WorkspaceError('TARGET_NOT_FOUND', 'the source working copy is unavailable');
+    const row = await this.checkpointTarget(source.sessionId, 'working_copy');
+    const checkpoint = this.checkpoints(source.sessionId).find(
+      (item) => item.checkpointId === reference.checkpointId,
+    );
+    if (
+      !checkpoint ||
+      checkpoint.runId !== sourceRunId ||
+      checkpoint.state !== 'ready' ||
+      checkpoint.tree !== reference.tree ||
+      checkpoint.manifestHash !== reference.manifestHash ||
+      (checkpoint.target ?? 'working_copy') !== 'working_copy' ||
+      (await gitText(row.worktree_path, [
+        'rev-parse',
+        this.checkpointRef(source.sessionId, reference.checkpointId),
+      ])) !== reference.tree
+    )
+      throw new WorkspaceError('REVISION_CONFLICT', 'the source checkpoint changed');
+    const binding = this.db
+      .prepare('SELECT project_id FROM workspace_bindings WHERE id=?')
+      .get(row.binding_id) as { project_id: string };
+    const target = this.db
+      .prepare('SELECT project_id FROM work_sessions WHERE id=?')
+      .get(sessionId) as { project_id: string } | undefined;
+    if (!target || target.project_id !== binding.project_id || sessionId === source.sessionId)
+      throw new WorkspaceError(
+        'CAPABILITY_DENIED',
+        'a branch requires a separate session in the same project',
+      );
+    const checkpointId = `branch_${reference.checkpointId}`;
+    const finishBaseline = async () => {
+      const target = this.worktree(sessionId)!;
+      await this.lease(target.worktree_path, async () => {
+        if ((await this.snapshotTree(target.worktree_path)) !== reference.tree)
+          throw new WorkspaceError(
+            'REVISION_CONFLICT',
+            'the new branch was edited before its baseline was fixed',
+          );
+        await this.pin(target.worktree_path, `refs/corral/${sessionId}/base`, reference.tree);
+        this.db
+          .prepare('UPDATE session_worktrees SET base_tree=? WHERE session_id=?')
+          .run(reference.tree, sessionId);
+      });
+      return reference.tree;
+    };
+    if (this.worktree(sessionId)) {
+      const existing = this.checkpoints(sessionId).find(
+        (item) => item.checkpointId === checkpointId,
+      );
+      if (
+        existing?.tree === reference.tree &&
+        existing.state === 'ready' &&
+        (await this.currentTree(sessionId)) === reference.tree
+      )
+        return finishBaseline();
+      throw new WorkspaceError(
+        'REVISION_CONFLICT',
+        'the branch working copy already exists or is incomplete',
+      );
+    }
+    await this.createWorktree(sessionId, binding.project_id, row.base_commit);
+    const copy = await this.checkpointTarget(sessionId, 'working_copy');
+    const saved = await this.lease(copy.worktree_path, () =>
+      this.checkpointAt(copy, {
+        checkpointId,
+        label: 'Message branch baseline',
+        kind: 'manual',
+        tree: reference.tree,
+        pinned: true,
+      }),
+    );
+    const plan = await this.planCheckpointRestore(sessionId, checkpointId, saved.manifestHash!);
+    const restored = await this.restoreCheckpoint(sessionId, {
+      operationId: `restore_${checkpointId}`,
+      checkpointId,
+      manifestHash: saved.manifestHash!,
+      expectedTree: plan.expectedTree,
+    });
+    if (restored.state !== 'applied')
+      throw new WorkspaceError('REVISION_CONFLICT', 'the branch working copy is incomplete');
+    return finishBaseline();
+  }
+
+  async captureRuntimeFiles(
+    runId: string,
+    checkpointId: string,
+  ): Promise<import('@corral/contracts').RuntimeFiles> {
+    const found = this.worktreeOfRun(runId);
+    if (!found) throw new ToolRefusal('CAPABILITY_DENIED', 'runtime files require a working copy');
+    const row = await this.checkpointTarget(found.sessionId, 'working_copy');
+    return this.lease(row.worktree_path, async () => {
+      const checkpoint = await this.checkpointAt(row, {
+        checkpointId,
+        runId,
+        label: 'Runtime boundary',
+        kind: 'runtime',
+        pinned: true,
+      });
+      if (!checkpoint.tree || !checkpoint.manifestHash) throw new Error('runtime files incomplete');
+      return { checkpointId, manifestHash: checkpoint.manifestHash, tree: checkpoint.tree };
+    });
+  }
+
+  async verifyRuntimeFiles(
+    runId: string,
+    reference: import('@corral/contracts').RuntimeFiles,
+  ): Promise<boolean> {
+    const found = this.worktreeOfRun(runId);
+    if (!found) return false;
+    const row = await this.checkpointTarget(found.sessionId, 'working_copy');
+    return this.lease(row.worktree_path, async () => {
+      const checkpoint = this.checkpoints(found.sessionId).find(
+        (item) => item.checkpointId === reference.checkpointId,
+      );
+      if (
+        !checkpoint ||
+        checkpoint.runId !== runId ||
+        checkpoint.state !== 'ready' ||
+        checkpoint.manifestHash !== reference.manifestHash ||
+        checkpoint.tree !== reference.tree ||
+        checkpoint.target !== 'working_copy'
+      )
+        return false;
+      if (
+        this.db
+          .prepare(
+            "SELECT 1 FROM file_operations WHERE session_id=? AND state IN ('planned','uncertain') LIMIT 1",
+          )
+          .get(found.sessionId) ||
+        this.checkpointRestores(found.sessionId).some((item) =>
+          ['applying', 'partial', 'uncertain'].includes(item.state),
+        )
+      )
+        return false;
+      const pinned = await git(row.worktree_path, [
+        'rev-parse',
+        this.checkpointRef(found.sessionId, reference.checkpointId),
+      ]);
+      return (
+        pinned.stdout.toString('utf8').trim() === reference.tree &&
+        (await this.snapshotTree(row.worktree_path)) === reference.tree
+      );
+    });
   }
 
   async currentTreeForRun(runId: string): Promise<string | null> {

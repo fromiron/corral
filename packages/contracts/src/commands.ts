@@ -1,9 +1,16 @@
 import { z } from 'zod';
+import {
+  ImageAttachment,
+  ImageAttachments,
+  TextAttachment,
+  TextAttachments,
+} from './attachments.ts';
 import { AutoRoute } from './auto-team.ts';
 import { CorralDefinition, RunInput } from './definition.ts';
-import { ExtensionUiValue, HarnessOverrides } from './harness.ts';
+import { ContentHash, ExtensionUiValue, HarnessOverrides } from './harness.ts';
 import { Identifier, SchemaVersion } from './ids.ts';
 import { ReasoningPolicy, RoleRunOverrides } from './reasoning.ts';
+import { UserAnswers } from './user-input.ts';
 
 // Commands from contracts/command.schema.json. A command is an intent; the Coordinator
 // decides whether it becomes events (Technical-Design §5.2).
@@ -140,8 +147,30 @@ export const AnswerExtensionUiCommand = z.strictObject({
 });
 export type AnswerExtensionUiCommand = z.infer<typeof AnswerExtensionUiCommand>;
 
+export const AnswerUserCommand = z.strictObject({
+  ...requiredRevision,
+  type: z.literal('answer_user'),
+  payload: z.strictObject({
+    requestId: Identifier,
+    executionId: Identifier,
+    attemptNo: z.int().min(1),
+    schemaHash: ContentHash,
+    answers: UserAnswers,
+  }),
+});
+export type AnswerUserCommand = z.infer<typeof AnswerUserCommand>;
+
+export const CompactContextCommand = z.strictObject({
+  ...requiredRevision,
+  type: z.literal('compact_context'),
+  payload: z.strictObject({ executionId: Identifier, attemptNo: z.int().min(1) }),
+});
+export type CompactContextCommand = z.infer<typeof CompactContextCommand>;
+
 export const RunCommand = z.discriminatedUnion('type', [
+  CompactContextCommand,
   AnswerExtensionUiCommand,
+  AnswerUserCommand,
   SteerCommand,
   PauseCommand,
   ResumeCommand,
@@ -179,6 +208,8 @@ const ReferencePath = z
  * reads files only through the tools its roles already have. A result is copied at this version.
  */
 export const RunReference = z.discriminatedUnion('kind', [
+  ImageAttachment,
+  TextAttachment,
   z.strictObject({
     kind: z.literal('file'),
     path: ReferencePath,
@@ -193,7 +224,15 @@ export const RunReference = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('role'), roleId: Identifier }),
 ]);
 export type RunReference = z.infer<typeof RunReference>;
-export const RunReferences = z.array(RunReference).max(20);
+export const RunReferences = z
+  .array(RunReference)
+  .max(20)
+  .refine(
+    (refs) =>
+      TextAttachments.safeParse(refs.filter((ref) => ref.kind === 'text_attachment')).success &&
+      ImageAttachments.safeParse(refs.filter((ref) => ref.kind === 'image_attachment')).success,
+    'invalid attachment count or duplicates',
+  );
 
 export const StartRunRequest = z.strictObject({
   schemaVersion: SchemaVersion,

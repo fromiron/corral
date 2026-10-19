@@ -203,6 +203,8 @@ describe('model sign-in and profiles (C-058, ADR-019)', () => {
         provider: 'openai',
         modelId: 'gpt-test-a',
         auth: 'oauth',
+        imageInput: false,
+        contextWindow: 1000,
         reasoning: { levels: [], providerDefault: false },
       },
     ]);
@@ -558,12 +560,18 @@ describe('editing profiles and endpoints from the Models page (CR-008)', () => {
         revision: current.body.revision,
         modelProfiles: [
           { id: 'model-a', provider: 'openai', model: 'gpt-test-b' },
-          { id: 'model-b', provider: 'openai', model: 'gpt-test-a' },
+          {
+            id: 'model-b',
+            provider: 'openai',
+            model: 'gpt-test-a',
+            workerIsolation: 'linux-bwrap',
+          },
         ],
         modelProviders: [],
       }),
     });
     expect(saved.status).toBe(200);
+    expect(saved.body.modelProfiles[1].workerIsolation).toBe('linux-bwrap');
     expect(saved.body.revision).not.toBe(current.body.revision);
     const file = configOf(context.workspace);
     expect(file.hardCaps).toEqual({ maxModelCalls: 50 });

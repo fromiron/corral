@@ -205,3 +205,10 @@ workspace의 활성 Run은 하나지만 탭은 여러 개일 수 있다. 탭별 
 SSE의 일반 미전송 데이터는 다음 UTF-8 frame을 포함해 1 MiB로 제한한다. 초과하면 이미 쓴 prefix를 flush하고 연결을 종료하여 재접속 cursor가 앞으로 진행한다. 단일 committed domain event가 1 MiB보다 크면 구독을 먼저 해제하고 기존 prefix를 flush한 뒤, 그 이벤트 하나를 64 KiB 이하의 UTF-8 바이트 조각으로 순차 전송한다. 각 쓰기의 완료를 기다리며, 완전한 frame을 보낸 뒤 연결을 닫는다. 10초 동안 flush되지 않는 소켓은 강제 종료한다. 다음 연결은 완전히 받은 이벤트의 cursor부터 재개한다. 기존에 저장한 큰 이벤트도 생략·축약하지 않는다([CR-002](change-requests/CR-002-oversized-domain-replay.md), [ADR-023](Decisions.md)).
 
 추가 전송 큐는 1 MiB 이내이고, 큰 이벤트 전송·파싱에는 현재 domain record 하나의 직렬화 크기에 비례하는 메모리가 필요하다. HTTP 입력의 2 MiB 제한이 patch의 before+after나 기존 내부 기록의 event 크기를 제한하지는 않는다. 클라이언트는 서버 형식의 domain frame 하나를 끝까지 조립한 뒤 RunEvent schema를 검사한다. 잘못된 domain event는 오류로 중지하고 무한 재시도하지 않는다. 고정 상한 예외는 128자 이내의 서버 형식 domain 헤더에만 적용한다. domain이 아닌 frame·주석·불완전 헤더는 2 MiB UTF-8 이내다. 비영속 텍스트 frame·heartbeat는 큰 domain event의 예외를 사용하지 않는다.
+
+
+## 등록 웹 문서의 출처 (CR-035 / C-112)
+
+`read_document({sourceId})`는 live Run의 기존 입력 도구 경로에서만 HTTPS를 수집한다. HTML은 plain text로 추출하며 결과에 `sourceId`, 불변 `documentId`, `source` metadata를 포함한다. 원문/본문 hash, 최초·최종 URL, 수집 시각, extractor 버전과 비신뢰 출처 표시를 보존한다. 같은 URL의 새 수집은 기존 문서를 덮지 않는다. 직접 document import는 기존 plain text/Markdown만 허용한다.
+
+인증된 `GET /api/v1/documents/:documentId/source`는 `{ metadata, rawText }` JSON을 반환한다. `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`를 사용하고 HTML로 렌더링하지 않는다. 형식이 잘못된 ID는 400, 등록 출처가 없는 문서는 404다. 원문까지 포함한 workspace 입력의 저장 용량은 기존 32 MiB 상한 안에서 계산한다.

@@ -117,7 +117,9 @@ it('[TC-AUTO-003-H] [TC-AUTO-003-N] replays an exact legacy auto command after m
       commandId: refusal.commandId,
       references: refusal.references,
     });
-    db.exec('ALTER TABLE commands DROP COLUMN original_request_hash');
+    db.exec(
+      'DROP TABLE web_source_evidence; DROP TABLE message_branches; DROP TABLE session_search_v1; DROP TABLE session_search_state_v1; DROP TABLE checkpoint_restores; DROP TABLE file_checkpoints; DROP TABLE input_images; ALTER TABLE commands DROP COLUMN original_request_hash',
+    );
     db.pragma('user_version = 13');
     db.close();
     db = openDatabase(file);

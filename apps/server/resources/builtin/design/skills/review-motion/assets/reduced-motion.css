@@ -1,0 +1,33 @@
+/*
+  Example only. Adapt selectors and states to the product.
+
+  Start from a usable static state. Add nonessential motion only when the user
+  has not requested reduced motion.
+*/
+
+.motion-component {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .motion-component[data-transitioning="true"] {
+    transition:
+      opacity 160ms ease,
+      transform 160ms ease;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .decorative-motion,
+  .parallax-layer,
+  .scroll-reveal-placeholder {
+    animation: none;
+    transition: none;
+    transform: none;
+  }
+}

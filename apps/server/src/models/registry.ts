@@ -1,5 +1,7 @@
+import { createHash } from 'node:crypto';
 import {
   type EndpointSpec,
+  type ModelBroker,
   modelReasoningCapabilities as reasoningCapabilities,
   reasoningRequest,
 } from '@corral/adapter-pi';
@@ -10,6 +12,7 @@ import type {
   ReasoningCapabilities,
   TeamPlan,
 } from '@corral/contracts';
+import { canonicalJson } from '@corral/contracts';
 import {
   AUTO_ROUTE_MAX_OUTPUT_TOKENS,
   AUTO_ROUTE_TIMEOUT_MS,
@@ -42,6 +45,7 @@ export interface ProfileConfig {
   id: string;
   provider: string;
   model: string;
+  workerIsolation?: 'linux-bwrap';
 }
 
 /**
@@ -201,6 +205,12 @@ export class ModelRegistry implements ModelResolver {
     }
     const config = this.profiles.find((p) => p.id === profile);
     if (!config) return { ok: false, code: 'GRAPH_INVALID', reason: 'no such model profile' };
+    if (config.workerIsolation && process.platform !== 'linux')
+      return {
+        ok: false,
+        code: 'CAPABILITY_DENIED',
+        reason: 'Linux worker isolation is unavailable on this OS',
+      };
     if (!this.models.getModel(config.provider, config.model)) {
       return {
         ok: false,
@@ -231,6 +241,16 @@ export class ModelRegistry implements ModelResolver {
         profile,
         provider: config.provider,
         modelId: config.model,
+        contextWindow: this.models.getModel(config.provider, config.model)!.contextWindow,
+        imageInput: this.models.getModel(config.provider, config.model)!.input.includes('image'),
+        ...(this.options.endpoints?.get(config.provider)
+          ? {
+              endpointHash: createHash('sha256')
+                .update(canonicalJson(this.options.endpoints.get(config.provider)!.spec))
+                .digest('hex'),
+            }
+          : {}),
+        ...(config.workerIsolation ? { workerIsolation: config.workerIsolation } : {}),
         reasoning: reasoningCapabilities(this.models.getModel(config.provider, config.model)),
         // The run record knows oauth and api_key; a keyless endpoint is recorded as api_key.
         auth: method === 'none' ? 'api_key' : method,
@@ -239,6 +259,19 @@ export class ModelRegistry implements ModelResolver {
   }
 
   /** The access token for one request; pi-ai refreshes an expired OAuth token first. */
+  modelBroker(snapshot: ModelProfileSnapshot): ModelBroker {
+    const model =
+      snapshot.provider && snapshot.modelId
+        ? this.models.getModel(snapshot.provider, snapshot.modelId)
+        : undefined;
+    if (!model) throw new Error('the pinned sandbox model is unavailable');
+    return {
+      model,
+      streamFn: (selected, context, options) =>
+        this.models.streamSimple(selected, context, options),
+    };
+  }
+
   async credentials(model: ModelProfileSnapshot): Promise<string | null> {
     if (!model.provider || !model.modelId) return null;
     // A keyless endpoint gets no key from this computer (CR-005 §4).

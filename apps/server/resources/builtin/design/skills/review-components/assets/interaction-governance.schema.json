@@ -1,0 +1,599 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "leeskills interaction governance extension",
+  "description": "Optional companion to a component contract for affordance mapping, action priority, disclosure, grouping cues, and design-system lifecycle.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "artifact",
+    "decision_context",
+    "evidence",
+    "affordance_mappings",
+    "action_groups",
+    "action_visibility",
+    "grouping_decisions",
+    "system_lifecycle",
+    "findings",
+    "accepted_risks",
+    "unknowns"
+  ],
+  "properties": {
+    "artifact": {
+      "type": "string",
+      "minLength": 1
+    },
+    "decision_context": {
+      "type": "string",
+      "minLength": 1
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "location",
+          "evidence_state",
+          "notes"
+        ],
+        "properties": {
+          "location": {
+            "type": "string",
+            "minLength": 1
+          },
+          "evidence_state": {
+            "enum": [
+              "observed",
+              "measured",
+              "inferred",
+              "unknown"
+            ]
+          },
+          "notes": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "affordance_mappings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "location",
+          "visual_treatment",
+          "perceived_role",
+          "actual_behavior",
+          "expectation",
+          "required",
+          "status",
+          "evidence_state",
+          "evidence"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "location": {
+            "type": "string",
+            "minLength": 1
+          },
+          "visual_treatment": {
+            "type": "string",
+            "minLength": 1
+          },
+          "perceived_role": {
+            "type": "string",
+            "minLength": 1
+          },
+          "actual_behavior": {
+            "type": "string",
+            "minLength": 1
+          },
+          "expectation": {
+            "enum": [
+              "same-look-same-behavior",
+              "different-behavior-distinguishable",
+              "justified-exception"
+            ]
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "pass",
+              "fail",
+              "unknown",
+              "not-applicable"
+            ]
+          },
+          "evidence_state": {
+            "enum": [
+              "observed",
+              "measured",
+              "inferred",
+              "unknown"
+            ]
+          },
+          "evidence": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "action_groups": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "location",
+          "user_decision",
+          "primary_actions",
+          "secondary_actions",
+          "destructive_actions",
+          "priority_exception_reason",
+          "reading_and_focus_order",
+          "required",
+          "status",
+          "evidence_state",
+          "evidence"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "location": {
+            "type": "string",
+            "minLength": 1
+          },
+          "user_decision": {
+            "type": "string",
+            "minLength": 1
+          },
+          "primary_actions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "uniqueItems": true
+          },
+          "secondary_actions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "uniqueItems": true
+          },
+          "destructive_actions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "uniqueItems": true
+          },
+          "priority_exception_reason": {
+            "type": "string"
+          },
+          "reading_and_focus_order": {
+            "type": "string",
+            "minLength": 1
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "pass",
+              "fail",
+              "unknown",
+              "not-applicable"
+            ]
+          },
+          "evidence_state": {
+            "enum": [
+              "observed",
+              "measured",
+              "inferred",
+              "unknown"
+            ]
+          },
+          "evidence": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "action_visibility": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "action",
+          "location",
+          "importance",
+          "frequency",
+          "visibility",
+          "disclosure_steps",
+          "disclosure_reason",
+          "available_space_evidence",
+          "alternative_path",
+          "required",
+          "status",
+          "evidence_state",
+          "evidence"
+        ],
+        "properties": {
+          "action": {
+            "type": "string",
+            "minLength": 1
+          },
+          "location": {
+            "type": "string",
+            "minLength": 1
+          },
+          "importance": {
+            "enum": [
+              "primary",
+              "secondary",
+              "destructive",
+              "recovery",
+              "utility"
+            ]
+          },
+          "frequency": {
+            "enum": [
+              "frequent",
+              "occasional",
+              "rare",
+              "unknown"
+            ]
+          },
+          "visibility": {
+            "enum": [
+              "persistent",
+              "contextual",
+              "disclosed",
+              "unavailable"
+            ]
+          },
+          "disclosure_steps": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "disclosure_reason": {
+            "type": "string"
+          },
+          "available_space_evidence": {
+            "type": "string"
+          },
+          "alternative_path": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "pass",
+              "fail",
+              "unknown",
+              "not-applicable"
+            ]
+          },
+          "evidence_state": {
+            "enum": [
+              "observed",
+              "measured",
+              "inferred",
+              "unknown"
+            ]
+          },
+          "evidence": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "grouping_decisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "location",
+          "relationship",
+          "current_cues",
+          "recommended_cues",
+          "container_justification",
+          "required",
+          "status",
+          "evidence_state",
+          "evidence"
+        ],
+        "properties": {
+          "location": {
+            "type": "string",
+            "minLength": 1
+          },
+          "relationship": {
+            "type": "string",
+            "minLength": 1
+          },
+          "current_cues": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "proximity",
+                "alignment",
+                "similarity",
+                "container"
+              ]
+            },
+            "uniqueItems": true
+          },
+          "recommended_cues": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "enum": [
+                "proximity",
+                "alignment",
+                "similarity",
+                "container"
+              ]
+            },
+            "uniqueItems": true
+          },
+          "container_justification": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "pass",
+              "fail",
+              "unknown",
+              "not-applicable"
+            ]
+          },
+          "evidence_state": {
+            "enum": [
+              "observed",
+              "measured",
+              "inferred",
+              "unknown"
+            ]
+          },
+          "evidence": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "system_lifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "applicable",
+        "system_scope",
+        "governance_model",
+        "authoritative_surfaces",
+        "contribution_process",
+        "decision_process",
+        "versioning_and_changelog",
+        "roadmap",
+        "adoption_strategy",
+        "legacy_mapping",
+        "coexistence_rules",
+        "deprecation_gate",
+        "owners",
+        "required",
+        "status",
+        "evidence_state",
+        "evidence"
+      ],
+      "properties": {
+        "applicable": {
+          "type": "boolean"
+        },
+        "system_scope": {
+          "type": "string"
+        },
+        "governance_model": {
+          "enum": [
+            "central",
+            "federated",
+            "distributed",
+            "solo",
+            "hybrid",
+            "unknown",
+            "not-applicable"
+          ]
+        },
+        "authoritative_surfaces": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "dimension",
+              "surface",
+              "location",
+              "owner"
+            ],
+            "properties": {
+              "dimension": {
+                "type": "string",
+                "minLength": 1
+              },
+              "surface": {
+                "enum": [
+                  "design",
+                  "documentation",
+                  "code",
+                  "live",
+                  "split"
+                ]
+              },
+              "location": {
+                "type": "string",
+                "minLength": 1
+              },
+              "owner": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "contribution_process": {
+          "type": "string"
+        },
+        "decision_process": {
+          "type": "string"
+        },
+        "versioning_and_changelog": {
+          "type": "string"
+        },
+        "roadmap": {
+          "type": "string"
+        },
+        "adoption_strategy": {
+          "type": "string"
+        },
+        "legacy_mapping": {
+          "type": "string"
+        },
+        "coexistence_rules": {
+          "type": "string"
+        },
+        "deprecation_gate": {
+          "type": "string"
+        },
+        "owners": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "status": {
+          "enum": [
+            "pass",
+            "fail",
+            "unknown",
+            "not-applicable"
+          ]
+        },
+        "evidence_state": {
+          "enum": [
+            "observed",
+            "measured",
+            "inferred",
+            "unknown"
+          ]
+        },
+        "evidence": {
+          "type": "string"
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "severity",
+          "location",
+          "problem",
+          "impact",
+          "smallest_change",
+          "verification",
+          "owner",
+          "evidence_state",
+          "confidence"
+        ],
+        "properties": {
+          "severity": {
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ]
+          },
+          "location": {
+            "type": "string",
+            "minLength": 1
+          },
+          "problem": {
+            "type": "string",
+            "minLength": 1
+          },
+          "impact": {
+            "type": "string",
+            "minLength": 1
+          },
+          "smallest_change": {
+            "type": "string",
+            "minLength": 1
+          },
+          "verification": {
+            "type": "string",
+            "minLength": 1
+          },
+          "owner": {
+            "type": "string",
+            "minLength": 1
+          },
+          "evidence_state": {
+            "enum": [
+              "observed",
+              "measured",
+              "inferred",
+              "unknown"
+            ]
+          },
+          "confidence": {
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ]
+          }
+        }
+      }
+    },
+    "accepted_risks": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "unknowns": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  }
+}

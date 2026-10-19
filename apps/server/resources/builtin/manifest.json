@@ -1,0 +1,26 @@
+{
+  "core": {
+    "hash": "825f6aff2d9b3e676bb29d0e3a5e7a5592305e47c6b3fb59fd589f721a430b33",
+    "files": 8,
+    "skills": 5,
+    "source": "Corral 1.0.0"
+  },
+  "coding": {
+    "hash": "a18292ceed4c9fa842777f0a77f0b0012a5e16f294cbaf1e654c9530447bf6e8",
+    "files": 6,
+    "skills": 3,
+    "source": "Corral 1.0.0"
+  },
+  "design": {
+    "hash": "d47a35d0a544dc4a061ceb33f7d45b062d41a3fc32f9bb64c325ea6bfc2ba827",
+    "files": 93,
+    "skills": 10,
+    "source": "leeskills@1472032c0521c7f76f8811973b4cbe6b67804988"
+  },
+  "browser": {
+    "hash": "7a43b4ccfce8d313e6ddf6631cbc6dd00c65882d865c1af19478d8f2f87f8741",
+    "files": 4,
+    "skills": 1,
+    "source": "Corral browser verification 1.0.0"
+  }
+}

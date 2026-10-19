@@ -74,9 +74,16 @@ export async function launchFingerprint(
   directory: string,
   revision: number,
   command: RegisteredCheck,
+  externalExecutables: string[] = [],
 ) {
   const root = await realpath(directory);
   const executable = await executablePath(command.argv[0] as string, root);
+  const external = await Promise.all(
+    externalExecutables.map(async (path) => {
+      const resolved = await executablePath(path, root);
+      return { path: resolved, hash: await fileHash(resolved) };
+    }),
+  );
   const files: Record<string, string | null> = {};
   for (const name of new Set([
     ...LOCKFILES,
@@ -101,6 +108,7 @@ export async function launchFingerprint(
       command,
       executable: await fileHash(executable),
       files,
+      ...(external.length ? { external } : {}),
       nodeVersion: process.version,
     }),
   };

@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { setImmediate } from 'node:timers/promises';
+import { type Clock, canonicalJson, WebSourceEvidence } from '@corral/contracts';
 import type { Db } from '@corral/storage-sqlite';
 import { z } from 'zod';
 import {
@@ -11,6 +12,7 @@ import {
   sourceUrl,
   systemNetwork,
 } from './safe-http.ts';
+import { extractHtml } from './web-extraction.ts';
 
 const DocumentInput = z.strictObject({
   title: z.string().trim().min(1).max(200),
@@ -45,9 +47,10 @@ export interface LiveSearch {
 }
 export interface InputOptions {
   network?: Network;
+  clock?: Pick<Clock, 'nowIso'>;
   liveSearch?: LiveSearch;
 }
-const hash = (value: string) => createHash('sha256').update(value).digest('hex');
+const hash = (value: string | Uint8Array) => createHash('sha256').update(value).digest('hex');
 const parse = <T>(schema: z.ZodType<T>, input: unknown): T => {
   const result = schema.safeParse(input);
   if (!result.success) throw new InputError('invalid input tool arguments');
@@ -60,10 +63,12 @@ export class InputRegistry {
   private readonly network: Network;
   private readonly liveSearch: LiveSearch | undefined;
   private searched = 0;
+  private readonly clock: Pick<Clock, 'nowIso'>;
   constructor(db: Db, options: InputOptions = {}) {
     this.db = db;
     this.network = options.network ?? systemNetwork;
     this.liveSearch = options.liveSearch;
+    this.clock = options.clock ?? { nowIso: () => new Date().toISOString() };
     if (
       this.liveSearch &&
       (!Number.isInteger(this.liveSearch.maxRequests) ||
@@ -118,15 +123,18 @@ export class InputRegistry {
     });
     return { sourceId, title: url.hostname };
   }
-  private insert(row: InputRow) {
+  private insert(row: InputRow, rawBytes = 0) {
     if (this.db.prepare('SELECT id FROM imported_inputs WHERE id = ?').get(row.id)) return;
     this.db.transaction(() => {
       const usage = this.db
         .prepare(
-          'SELECT count(*) AS count, coalesce(sum(length(CAST(text AS BLOB))), 0) AS bytes FROM imported_inputs',
+          'SELECT count(*) AS count, coalesce(sum(length(CAST(text AS BLOB))), 0) + (SELECT coalesce(sum(length(raw_body)), 0) FROM web_source_evidence) AS bytes FROM imported_inputs',
         )
         .get() as { count: number; bytes: number };
-      if (usage.count >= 1000 || usage.bytes + Buffer.byteLength(row.text) > 32 * MAX_INPUT_BYTES)
+      if (
+        usage.count >= 1000 ||
+        usage.bytes + Buffer.byteLength(row.text) + rawBytes > 32 * MAX_INPUT_BYTES
+      )
         throw new InputError('workspace input capacity reached');
       this.db
         .prepare(
@@ -147,13 +155,77 @@ export class InputRegistry {
       | undefined;
     if (!row) throw new InputError('input is not registered');
     signal.throwIfAborted();
-    if (row.kind === 'document')
-      return { documentId: id, title: row.title, mimeType: row.mime_type, text: row.text };
+    if (row.kind === 'document') {
+      const source = this.sourceEvidence(id)?.metadata;
+      return {
+        documentId: id,
+        title: row.title,
+        mimeType: row.mime_type,
+        text: row.text,
+        ...(source ? { sourceId: source.sourceId, source } : {}),
+      };
+    }
     if (mode !== 'live') throw new InputError('mock runs read imported documents only');
-    const loaded = await readHttps(row.url ?? '', { network: this.network, signal });
+    const loaded = await readHttps(row.url ?? '', { network: this.network, signal, html: true });
+    const extracted =
+      loaded.mimeType === 'text/html' ? await extractHtml(loaded.text, signal) : null;
     signal.throwIfAborted();
-    const document = this.importDocument({ title: row.title, ...loaded });
-    return { sourceId: id, ...document };
+    const document = parse(DocumentInput, {
+      title: extracted?.title || row.title.slice(0, 200),
+      mimeType: extracted ? 'text/plain' : loaded.mimeType,
+      text: extracted?.text ?? loaded.text,
+    });
+    const source = WebSourceEvidence.parse({
+      version: 1,
+      sourceId: id,
+      originalUrl: row.url,
+      finalUrl: loaded.finalUrl,
+      fetchedAt: this.clock.nowIso(),
+      rawMime: loaded.mimeType,
+      rawHash: hash(loaded.rawBody),
+      contentHash: hash(document.text),
+      rawBytes: loaded.rawBody.length,
+      requests: loaded.requests,
+      extractor: extracted ? 'corral-html-1/parse5-8.0.1' : 'corral-text-1',
+      publishedAt: extracted?.publishedAt ?? null,
+      modifiedAt: extracted?.modifiedAt ?? null,
+      lastModified: loaded.lastModified,
+      trust: 'untrusted',
+    });
+    const documentId = `doc_${hash(canonicalJson({ document, source }))}`;
+    this.db.transaction(() => {
+      this.insert(
+        {
+          id: documentId,
+          kind: 'document',
+          title: document.title,
+          mime_type: document.mimeType,
+          text: document.text,
+          url: null,
+        },
+        loaded.rawBody.length,
+      );
+      this.db
+        .prepare(
+          'INSERT OR IGNORE INTO web_source_evidence(document_id, metadata_json, raw_body) VALUES (?, ?, ?)',
+        )
+        .run(documentId, canonicalJson(source), loaded.rawBody);
+    })();
+    return { sourceId: id, documentId, ...document, source };
+  }
+  sourceEvidence(documentId: string) {
+    if (!/^doc_[a-f0-9]{64}$/.test(documentId)) throw new InputError('invalid document ID');
+    const row = this.db
+      .prepare('SELECT metadata_json, raw_body FROM web_source_evidence WHERE document_id = ?')
+      .get(documentId) as { metadata_json: string; raw_body: Uint8Array } | undefined;
+    if (!row) return null;
+    const metadata = WebSourceEvidence.parse(JSON.parse(row.metadata_json));
+    if (hash(row.raw_body) !== metadata.rawHash || row.raw_body.length !== metadata.rawBytes)
+      throw new InputError('source evidence integrity check failed');
+    return {
+      metadata,
+      rawText: new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(row.raw_body),
+    };
   }
   async search(
     input: unknown,

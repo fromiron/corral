@@ -1,0 +1,84 @@
+{
+  "artifact": "Account settings page: submit button label",
+  "scope": {
+    "operation": "edit",
+    "verification": "targeted",
+    "changed_surfaces": [
+      "evals/fixtures/button-page.html: form submit button label"
+    ],
+    "rationale": "Only the submit button label changed from \"Submit\" to \"Save changes\"; layout, styles, and other content are unchanged."
+  },
+  "primary_user": "Signed-in account owner",
+  "primary_task": "Save updated account details",
+  "success_condition": "The user recognizes the button as saving their changes and can operate it",
+  "evidence": [
+    "Before and after diff of evals/fixtures/button-page.html",
+    "Source inspection of the button element and its styles",
+    "Browser renders at 320 CSS px and 200% text size after the change"
+  ],
+  "changes": [
+    {
+      "id": "button-label",
+      "action": "rewrite",
+      "target": "Form submit button label",
+      "reason": "\"Save changes\" states the outcome; \"Submit\" does not.",
+      "evidence_state": "observed",
+      "reversible": true
+    }
+  ],
+  "checks": [
+    {
+      "id": "label-meaning",
+      "test": "primary-task",
+      "required": true,
+      "status": "pass",
+      "evidence_state": "observed",
+      "evidence": "The new label names the saving outcome and matches the form's purpose.",
+      "impact": "Users understand that the button saves their details.",
+      "remediation": "None.",
+      "verification": "Read the label in the context of the form heading and fields.",
+      "owner": "Content design"
+    },
+    {
+      "id": "accessible-name",
+      "test": "semantic-structure",
+      "required": true,
+      "status": "pass",
+      "evidence_state": "observed",
+      "evidence": "The button has no aria-label, so its accessible name is the visible text \"Save changes\".",
+      "impact": "Voice-control and screen-reader users hear and can say the same label.",
+      "remediation": "None.",
+      "verification": "Inspect the button markup for overriding name attributes.",
+      "owner": "Engineering"
+    },
+    {
+      "id": "label-wrapping",
+      "test": "reflow",
+      "required": true,
+      "status": "pass",
+      "evidence_state": "measured",
+      "evidence": "Rendered at 320 CSS px and with 200% text size: the label stays on one line at 320 px and wraps to two lines without clipping at 200%.",
+      "impact": "The longer label remains readable and operable in narrow and enlarged layouts.",
+      "remediation": "None.",
+      "verification": "Repeat the 320 CSS px and 200% text renders after any further label change.",
+      "owner": "Engineering"
+    },
+    {
+      "id": "unrelated-baseline",
+      "test": "growth",
+      "required": false,
+      "status": "out-of-scope",
+      "evidence_state": "observed",
+      "evidence": "The change does not affect records, layout grammar, or content volume.",
+      "impact": "Not evaluated by this targeted verification.",
+      "remediation": "Run release verification before a release decision.",
+      "verification": "Include in the next release verification.",
+      "owner": "QA"
+    }
+  ],
+  "accepted_risks": [],
+  "limitations": [
+    "Targeted to the changed label; this is not a release or WCAG conformance decision.",
+    "Assistive-technology output was not sampled; the accessible name was checked in markup."
+  ]
+}

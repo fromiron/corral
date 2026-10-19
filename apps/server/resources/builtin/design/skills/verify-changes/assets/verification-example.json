@@ -1,0 +1,185 @@
+{
+  "artifact": "Example portfolio redesign",
+  "primary_user": "Hiring manager",
+  "primary_task": "Identify relevant work and reach the author",
+  "success_condition": "The reviewer can find role, scope, evidence, and contact without an unnecessary detour",
+  "evidence": [
+    "before and after screenshots at 1440 and 390 CSS px",
+    "rendered page",
+    "keyboard test",
+    "grounded content inventory",
+    "reduced-motion test"
+  ],
+  "changes": [
+    {
+      "id": "C-001",
+      "action": "delete",
+      "target": "generic three-card values section",
+      "reason": "The cards repeated claims already stated in the verified project summaries and added no decision-relevant evidence.",
+      "evidence_state": "observed",
+      "reversible": true
+    },
+    {
+      "id": "C-002",
+      "action": "restore",
+      "target": "visible keyboard focus indicator",
+      "reason": "The prior simplification removed the only visible focus cue.",
+      "evidence_state": "observed",
+      "reversible": true
+    }
+  ],
+  "checks": [
+    {
+      "id": "deletion-core",
+      "test": "deletion",
+      "required": true,
+      "status": "pass",
+      "evidence_state": "observed",
+      "evidence": "Removing the values cards did not remove a unique fact, task step, state, or contact path.",
+      "impact": "The page is shorter and preserves the hiring review task.",
+      "remediation": "None.",
+      "verification": "Compare the grounded fact inventory with the rendered page and repeat the primary task.",
+      "owner": "Design lead"
+    },
+    {
+      "id": "substitution-copy",
+      "test": "substitution",
+      "required": true,
+      "status": "pass",
+      "evidence_state": "observed",
+      "evidence": "Project copy contains named roles, dates, constraints, and outputs that do not fit an unrelated company.",
+      "impact": "The page retains a specific author identity.",
+      "remediation": "None.",
+      "verification": "Repeat the substitution test after copy changes.",
+      "owner": "Content designer"
+    },
+    {
+      "id": "semantic-order",
+      "test": "semantic-structure",
+      "required": true,
+      "status": "pass",
+      "evidence_state": "measured",
+      "evidence": "Heading and source order inspection shows identity, work index, project details, and contact in task order.",
+      "impact": "The structure remains understandable without decorative layout.",
+      "remediation": "None.",
+      "verification": "Inspect the accessibility tree and document outline after markup changes.",
+      "owner": "Frontend engineer"
+    },
+    {
+      "id": "glance-orientation",
+      "test": "glance-hierarchy",
+      "required": true,
+      "status": "pass",
+      "evidence_state": "observed",
+      "evidence": "Name, role, selected work, and contact remain distinct at a brief glance.",
+      "impact": "Initial orientation is preserved.",
+      "remediation": "None.",
+      "verification": "Repeat with representative viewport screenshots.",
+      "owner": "Design lead"
+    },
+    {
+      "id": "primary-task-path",
+      "test": "primary-task",
+      "required": true,
+      "status": "pass",
+      "evidence_state": "measured",
+      "evidence": "A reviewer can open a relevant project and reach contact in the declared path without blocked controls.",
+      "impact": "The primary task remains complete.",
+      "remediation": "None.",
+      "verification": "Run the documented task script on each release candidate.",
+      "owner": "Product owner"
+    },
+    {
+      "id": "growth-projects",
+      "test": "growth",
+      "required": true,
+      "status": "pass",
+      "evidence_state": "inferred",
+      "evidence": "A fixture with 60 projects uses the same project-index record schema and pagination rule.",
+      "impact": "The archive can grow without new card families.",
+      "remediation": "Validate with production data when available.",
+      "verification": "Render the large fixture at supported viewports.",
+      "owner": "Frontend engineer"
+    },
+    {
+      "id": "reflow-baseline",
+      "test": "reflow",
+      "required": true,
+      "status": "pass",
+      "evidence_state": "measured",
+      "evidence": "At 320 CSS px equivalent, content stacks without loss or unintended horizontal scrolling.",
+      "impact": "Content remains available at the declared zoom and viewport baseline.",
+      "remediation": "None.",
+      "verification": "Repeat at 400% zoom in the supported desktop browser and at 320 CSS px.",
+      "owner": "QA engineer"
+    },
+    {
+      "id": "keyboard-path",
+      "test": "keyboard-focus",
+      "required": true,
+      "status": "pass",
+      "evidence_state": "measured",
+      "evidence": "All links and controls are reachable in task order and focus remains visible and unobscured.",
+      "impact": "Keyboard users retain the primary path.",
+      "remediation": "None.",
+      "verification": "Repeat the keyboard script after navigation or overlay changes.",
+      "owner": "QA engineer"
+    },
+    {
+      "id": "motion-preference",
+      "test": "reduced-motion",
+      "required": true,
+      "status": "pass",
+      "evidence_state": "measured",
+      "evidence": "Decorative entry movement is removed when reduced motion is enabled; state feedback remains.",
+      "impact": "The interface preserves information without unnecessary movement.",
+      "remediation": "None.",
+      "verification": "Exercise every motion pattern with the OS preference enabled.",
+      "owner": "Frontend engineer"
+    },
+    {
+      "id": "proof-trace",
+      "test": "provenance",
+      "required": true,
+      "status": "pass",
+      "evidence_state": "observed",
+      "evidence": "Each project claim maps to an approved project note; no customer metric or quote is displayed without a source.",
+      "impact": "The simplified page does not replace missing proof with fabricated proof.",
+      "remediation": "None.",
+      "verification": "Reconcile rendered claims against the content inventory before release.",
+      "owner": "Content owner"
+    },
+    {
+      "id": "nested-radius-contours",
+      "test": "nested-radius-coherence",
+      "required": true,
+      "status": "pass",
+      "evidence_state": "measured",
+      "evidence": "The shared project-card and image contours use a 20px outer radius and 12px inner radius across an 8px inset.",
+      "impact": "The simplified surfaces retain a coherent nested contour without adding radius variants.",
+      "remediation": "None.",
+      "verification": "Recompute the concentric offset and compare rendered corners at supported viewports.",
+      "owner": "Design systems engineer"
+    },
+    {
+      "id": "screen-reader-sample",
+      "test": "assistive-technology",
+      "required": false,
+      "status": "unknown",
+      "evidence_state": "unknown",
+      "evidence": "No screen-reader sampling was included in this example scope.",
+      "impact": "Some runtime announcements or navigation behavior may remain unverified.",
+      "remediation": "Add sampling when the project support matrix requires it.",
+      "verification": "Run the primary task with the declared screen-reader and browser combinations.",
+      "owner": "Accessibility reviewer"
+    }
+  ],
+  "accepted_risks": [],
+  "limitations": [
+    "This example is a report contract demonstration, not evidence about a real site.",
+    "The non-required assistive-technology sample remains unknown."
+  ],
+  "notes": [
+    "Passing this validator does not establish complete accessibility conformance or usability."
+  ]
+}

@@ -51,9 +51,10 @@ async function setup(
        projection_json, started_at, project_id, session_id)
      VALUES ('run_1', 'c', 'h', '{}', 'running', 0, '{}', 'x', 'default', 'session_1')`,
   ).run();
+  const clock = new FakeClock();
   const service = new WorkspaceService({
     db,
-    clock: new FakeClock(),
+    clock,
     worktreeRoot: join(temp(), 'worktrees'),
     forbidden: [],
     ...(edit ? { edit } : {}),
@@ -72,10 +73,283 @@ async function setup(
       { name, args, runId: 'run_1', executionId, toolCallId: `tool_${Math.random()}` },
       { aborted: false, onCancel: () => () => {} },
     );
-  return { db, service, call, original };
+  return { db, service, call, original, clock };
 }
 
 describe('file broker (CR-012)', () => {
+  it('[TC-CONTINUITY-001-N] [TC-RESUME-001-N] runtime file identity refuses changed, foreign and uncertain trees', async () => {
+    const s = await setup();
+    const root = s.service.copyOf('session_1')!.worktree;
+    try {
+      const reference = await s.service.captureRuntimeFiles('run_1', 'runtime_files');
+      await s.service.captureRuntimeFiles('run_1', 'runtime_files_second');
+      expect(await s.service.verifyRuntimeFiles('run_1', reference)).toBe(true);
+      expect(await s.service.verifyRuntimeFiles('run_missing', reference)).toBe(false);
+      expect(
+        await s.service.verifyRuntimeFiles('run_1', { ...reference, manifestHash: '0'.repeat(64) }),
+      ).toBe(false);
+      writeFileSync(join(root, 'a.txt'), 'Changed after boundary');
+      expect(await s.service.verifyRuntimeFiles('run_1', reference)).toBe(false);
+      s.db
+        .prepare(
+          "INSERT INTO work_sessions (id,project_id,corral_id,title,objective,pinned,revision,created_at,updated_at,archived_at,entries_json) VALUES ('session_branch','default',NULL,'Branch','',0,1,'x','x',NULL,'[]')",
+        )
+        .run();
+      expect(await s.service.branchRuntimeFiles('run_1', reference, 'session_branch')).toBe(
+        reference.tree,
+      );
+      const branchRoot = s.service.copyOf('session_branch')!.worktree;
+      expect(readFileSync(join(branchRoot, 'a.txt'), 'utf8')).toBe('one\n');
+      expect(readFileSync(join(root, 'a.txt'), 'utf8')).toBe('Changed after boundary');
+      expect(await s.service.branchRuntimeFiles('run_1', reference, 'session_branch')).toBe(
+        reference.tree,
+      );
+      expect(
+        (await s.service.changes('session_branch', { kind: 'session' }, () => true)).files,
+      ).toEqual([]);
+      writeFileSync(join(root, 'a.txt'), 'one\n');
+      s.db
+        .prepare(
+          'INSERT INTO checkpoint_restores (id,session_id,request_hash,result_json) VALUES (?,?,?,?)',
+        )
+        .run(
+          'restore_uncertain',
+          'session_1',
+          'a'.repeat(64),
+          JSON.stringify({ state: 'uncertain' }),
+        );
+      expect(await s.service.verifyRuntimeFiles('run_1', reference)).toBe(false);
+    } finally {
+      s.db.close();
+    }
+  });
+  it('[TC-HUNK-001-H] [TC-HUNK-001-N] selected hunks preserve other changes and the index, checkpoint the correct target and reject stale edits', async () => {
+    const s = await setup();
+    const root = s.service.copyOf('session_1')!.worktree;
+    try {
+      const lines = Array.from({ length: 24 }, (_, i) => `line ${i + 1}\n`);
+      const baseline = lines.join('');
+      writeFileSync(join(root, 'a.txt'), baseline);
+      writeFileSync(join(s.original, 'a.txt'), baseline);
+      writeFileSync(join(s.original, 'unrelated.txt'), 'keep');
+      const indexBefore = readFileSync(join(s.original, '.git/index'));
+      const before = await s.service.captureCheckpoint('session_1', {
+        checkpointId: 'before_hunks',
+        label: 'Before hunks',
+      });
+      lines[1] = 'first change\n';
+      lines[21] = 'second change\n';
+      writeFileSync(join(root, 'a.txt'), lines.join(''));
+      const after = await s.service.captureCheckpoint('session_1', {
+        checkpointId: 'after_hunks',
+        label: 'After hunks',
+      });
+      const request = { from: before.tree!, to: after.tree!, path: 'a.txt' };
+      const hunks = await s.service.hunks('session_1', request);
+      expect(hunks.hunks).toHaveLength(2);
+      const planInput = {
+        ...request,
+        planId: 'hunk_original',
+        patchHash: hunks.patchHash,
+        hunkIds: [hunks.hunks[0]!.id],
+        action: 'apply_original' as const,
+      };
+      const plan = await s.service.planHunks('session_1', planInput);
+      expect(plan.target).toBe('original');
+      const restore = {
+        operationId: 'apply_hunk',
+        checkpointId: plan.checkpointId,
+        manifestHash: plan.manifestHash,
+        expectedTree: plan.expectedTree,
+      };
+      writeFileSync(join(s.original, 'a.txt'), 'user edit');
+      await expect(s.service.restoreCheckpoint('session_1', restore)).rejects.toThrow(/changed/);
+      expect(readFileSync(join(s.original, 'a.txt'), 'utf8')).toBe('user edit');
+      writeFileSync(join(s.original, 'a.txt'), baseline);
+      const applied = await s.service.restoreCheckpoint('session_1', restore);
+      expect(applied.state).toBe('applied');
+      expect(await s.service.restoreCheckpoint('session_1', restore)).toEqual(applied);
+      expect(readFileSync(join(s.original, 'a.txt'), 'utf8')).toBe(
+        baseline.replace('line 2\n', 'first change\n'),
+      );
+      expect(readFileSync(join(s.original, 'unrelated.txt'), 'utf8')).toBe('keep');
+      expect(readFileSync(join(s.original, '.git/index'))).toEqual(indexBefore);
+      expect(
+        s.service
+          .checkpoints('session_1')
+          .find((item) => item.checkpointId === applied.beforeCheckpointId),
+      ).toMatchObject({ target: 'original', state: 'ready', pinned: true });
+      await expect(
+        s.service.planHunks('session_1', {
+          ...planInput,
+          planId: 'bad_hunk',
+          patchHash: 'f'.repeat(64),
+        }),
+      ).rejects.toThrow();
+      const reverse = await s.service.planHunks('session_1', {
+        ...planInput,
+        planId: 'hunk_reverse',
+        action: 'revert_working_copy',
+        hunkIds: [hunks.hunks[1]!.id],
+      });
+      expect(
+        (
+          await s.service.restoreCheckpoint('session_1', {
+            operationId: 'revert_hunk',
+            checkpointId: reverse.checkpointId,
+            manifestHash: reverse.manifestHash,
+            expectedTree: reverse.expectedTree,
+          })
+        ).state,
+      ).toBe('applied');
+      expect(readFileSync(join(root, 'a.txt'), 'utf8')).toBe(
+        baseline.replace('line 2\n', 'first change\n'),
+      );
+      await expect(
+        s.service.planHunks('session_1', { ...planInput, hunkIds: [hunks.hunks[1]!.id] }),
+      ).rejects.toThrow(/identity/);
+      await expect(s.service.hunks('session_other', request)).rejects.toThrow();
+      rmSync(join(s.original, 'a.txt'));
+      const outside = join(temp(), 'protected');
+      writeFileSync(outside, 'protected');
+      symlinkSync(outside, join(s.original, 'a.txt'));
+      await expect(
+        s.service.planHunks('session_1', { ...planInput, planId: 'hunk_symlink' }),
+      ).rejects.toThrow();
+      expect(readFileSync(outside, 'utf8')).toBe('protected');
+    } finally {
+      s.db.close();
+    }
+  });
+
+  it('[TC-CKPT-001-H] [TC-CKPT-001-N] checkpoints preserve a recovery copy and refuse stale, foreign and incomplete restores', async () => {
+    const s = await setup();
+    const root = s.service.copyOf('session_1')!.worktree;
+    try {
+      writeFileSync(join(root, 'image.bin'), Buffer.from([0, 1, 2, 255]));
+      const checkpoint = await s.service.captureCheckpoint('session_1', {
+        checkpointId: 'checkpoint_one',
+        label: 'Before edit',
+      });
+      expect(checkpoint.state).toBe('ready');
+      expect(
+        await s.service.captureCheckpoint('session_1', {
+          checkpointId: 'checkpoint_one',
+          label: 'Before edit',
+        }),
+      ).toEqual(checkpoint);
+      writeFileSync(join(root, 'a.txt'), 'user changes\n');
+      const expectedTree = await s.service.currentTree('session_1');
+      writeFileSync(join(root, 'a.txt'), 'newer user changes\n');
+      await expect(
+        s.service.restoreCheckpoint('session_1', {
+          operationId: 'restore_stale',
+          checkpointId: checkpoint.checkpointId,
+          manifestHash: checkpoint.manifestHash,
+          expectedTree,
+        }),
+      ).rejects.toThrow(/changed/);
+      expect(readFileSync(join(root, 'a.txt'), 'utf8')).toBe('newer user changes\n');
+      const restore = await s.service.restoreCheckpoint('session_1', {
+        operationId: 'restore_one',
+        checkpointId: checkpoint.checkpointId,
+        manifestHash: checkpoint.manifestHash,
+        expectedTree: await s.service.currentTree('session_1'),
+      });
+      expect(restore.state).toBe('applied');
+      expect(readFileSync(join(root, 'a.txt'), 'utf8')).toBe('one\n');
+      expect(readFileSync(join(root, 'image.bin'))).toEqual(Buffer.from([0, 1, 2, 255]));
+      expect(
+        s.service
+          .checkpoints('session_1')
+          .find((item) => item.checkpointId === restore.beforeCheckpointId),
+      ).toMatchObject({ state: 'ready', pinned: true, kind: 'before_restore' });
+      expect(readFileSync(join(s.original, 'a.txt'), 'utf8')).toBe('one\n');
+      await expect(
+        s.service.restoreCheckpoint('different_session', {
+          operationId: 'restore_other',
+          checkpointId: checkpoint.checkpointId,
+          manifestHash: checkpoint.manifestHash,
+          expectedTree: checkpoint.tree,
+        }),
+      ).rejects.toThrow();
+      rmSync(join(root, 'a.txt'));
+      symlinkSync(join(s.original, 'a.txt'), join(root, 'a.txt'));
+      await expect(
+        s.service.restoreCheckpoint('session_1', {
+          operationId: 'restore_link',
+          checkpointId: checkpoint.checkpointId,
+          manifestHash: checkpoint.manifestHash,
+          expectedTree: await s.service.currentTree('session_1'),
+        }),
+      ).rejects.toThrow();
+      expect(readFileSync(join(s.original, 'a.txt'), 'utf8')).toBe('one\n');
+      rmSync(join(root, 'a.txt'));
+      writeFileSync(join(root, 'a.txt'), 'one\n');
+      for (let i = 0; i < 52; i++) {
+        await s.service.captureCheckpoint('session_1', {
+          checkpointId: `checkpoint_gc${i}`,
+          label: `GC ${i}`,
+        });
+        if (i > 0) s.service.pinCheckpoint('session_1', `checkpoint_gc${i}`, false);
+        s.clock.advance(1);
+      }
+      s.clock.advance(31 * 86400_000);
+      expect((await s.service.pruneCheckpoints('session_1')).expired).toEqual(['checkpoint_gc1']);
+      expect(
+        s.service.checkpoints('session_1').find((item) => item.checkpointId === 'checkpoint_gc0')
+          ?.state,
+      ).toBe('ready');
+      const pending = { ...restore, operationId: 'restore_crashed', state: 'applying' };
+      s.db
+        .prepare(
+          'INSERT INTO checkpoint_restores (id,session_id,request_hash,result_json) VALUES (?,?,?,?)',
+        )
+        .run(pending.operationId, 'session_1', 'fixture', JSON.stringify(pending));
+      const recovered = new WorkspaceService({
+        db: s.db,
+        clock: s.clock,
+        worktreeRoot: join(temp(), 'recovery'),
+        forbidden: [],
+      });
+      expect(
+        recovered
+          .checkpointRestores('session_1')
+          .find((item) => item.operationId === pending.operationId)?.state,
+      ).toBe('uncertain');
+      s.db
+        .prepare("UPDATE file_checkpoints SET state='incomplete' WHERE id=?")
+        .run(checkpoint.checkpointId);
+      await expect(
+        s.service.restoreCheckpoint('session_1', {
+          operationId: 'restore_incomplete',
+          checkpointId: checkpoint.checkpointId,
+          manifestHash: checkpoint.manifestHash,
+          expectedTree: checkpoint.tree,
+        }),
+      ).rejects.toThrow(/complete/);
+    } finally {
+      s.db.close();
+    }
+  });
+  it('[TC-CHAT-002-N] reading a finished run never invents its missing end tree from later user changes', async () => {
+    const s = await setup();
+    try {
+      await s.service.snapshotRun('run_1', 'session_1', 'start');
+      const snapshots = s.service.runSnapshots('session_1');
+      writeFileSync(join(s.service.copyOf('session_1')!.worktree, 'a.txt'), 'later user edit');
+      const changes = await s.service.changes(
+        'session_1',
+        { kind: 'run', runId: 'run_1' },
+        () => true,
+      );
+      expect(changes.to).toBeNull();
+      expect(changes.unavailable).toBeTruthy();
+      expect(s.service.runSnapshots('session_1')).toEqual(snapshots);
+    } finally {
+      s.db.close();
+    }
+  });
   it('[TC-HAR-014-N] concurrent criteria pinning cannot replace the first immutable set', async () => {
     const s = await setup();
     const file = await s.call('read_file', { path: 'a.txt' });

@@ -53,6 +53,32 @@ suite에 `comparison: "personal_harness"`를 지정하면 정확히 다섯 varia
 
 실제 모델 실행은 비용·사용량이 생긴다. 일반 CI는 시뮬레이션 또는 명시적인 로컬 fake provider만 쓴다(AGENTS 4). 결정적 테스트의 정답률은 계측/기능 검증이며 실제 모델의 품질 개선 수치가 아니다.
 
+## 기본팩 비교
+
+[CR-036](change-requests/CR-036-quality-evaluation.md)의 `comparison: "skill_quality"`는 기존 `personal_harness`와 별개다. `baseline`과 비교할 군을 선택한다. 허용 군은 `baseline`, `prompt_only`, `core_skills`, `design_skills`, `specialist_skills`이며 중복·혼합·baseline 누락을 실행 전에 거절한다. 기존 5군 비교의 의미는 바뀌지 않는다.
+
+`repetitions`는 이 비교 종류에서만 사용할 수 있으며 기본 1, 최대 10이다. brief × variant × repetitions는 최대 500이다. 각 반복은 독립 Run이며 workspace가 지정되면 같은 고정 commit에서 새 세션/작업 사본을 만든다. 취소 후에는 다음 반복을 시작하지 않는다. 개별 Run의 기존 예산도 그대로 적용된다.
+
+```json
+{
+  "schemaVersion": "0.1",
+  "comparison": "skill_quality",
+  "repetitions": 3,
+  "briefs": [{
+    "id": "scope",
+    "brief": "검토만 요청한 작업의 조작 범위를 JSON으로 답하세요.",
+    "phase": "holdout",
+    "expected": { "kind": "json", "value": { "scope": "review_only" } }
+  }],
+  "variants": [
+    { "id": "base", "group": "baseline", "corral": "baseline.corral.json" },
+    { "id": "prompt", "group": "prompt_only", "corral": "prompt.corral.json" }
+  ]
+}
+```
+
+두 Corral 파일은 사용자가 동일 모델/예산/기준으로 준비한 실제 정의를 참조한다. 군 이름은 조건의 선언이며 자동으로 프롬프트나 Skill을 설치·선택하지 않는다. JSON 보고서의 comparison/repetitions와 각 실행의 repetition·definitionHash·harnessHashes로 조건과 반복을 식별한다. calibration/holdout은 계속 분리 집계한다. M0의 fixture 통과는 비교 실행 경로 확인이며 내장팩이나 실제 모델의 품질 향상 증거가 아니다.
+
 ## 기록
 
 H4 편집 도구 비교는 [fixture 실행 안내](../tools/evaluation/README.md)를 따른다. `corral eval examples/eval/coding-tools.json --hashline-binary <fixture-driver>`가 현재 전체 쓰기·Pi edit·원본 Hashline을 동일 broker 조건에서 비교한다. 이 실험은 위의 LLM 대조군 평가와 별도다.

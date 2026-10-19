@@ -101,6 +101,7 @@ export const workspaceRoute = createRoute({
 /** One work session (CR-011): its requests, runs, queue and the input box. */
 /** The session workbench's tabs and choices (02-UX-Spec §9: view state in the address). */
 export interface SessionSearch {
+  message?: string | undefined;
   /** Old links only (`tab=run`); read into `panel`. */
   tab?: 'work' | 'team' | 'run' | undefined;
   /** The open side panel tab; none means the panel is closed. */
@@ -127,7 +128,7 @@ export function validateSessionSearch(search: Record<string, unknown>): SessionS
   // Run detail used to be a main tab; old links open it in the panel.
   if (search.tab === 'run') out.panel = 'run';
   if (search.view === 'results' || search.view === 'run') out.view = search.view;
-  for (const key of ['run', 'execution', 'artifact', 'result'] as const) {
+  for (const key of ['run', 'execution', 'artifact', 'result', 'message'] as const) {
     const value = text(search[key]);
     if (value) out[key] = value;
   }

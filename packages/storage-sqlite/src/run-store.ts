@@ -56,7 +56,9 @@ export class SqliteRunStore implements RunStore {
       insertArtifact: db.prepare(
         'INSERT INTO artifact_texts (run_id, artifact_version_id, text_body) VALUES (?, ?, ?)',
       ),
-      getRun: db.prepare('SELECT snapshot_json, projection_json FROM runs WHERE id = ?'),
+      getRun: db.prepare(
+        'SELECT snapshot_json, projection_json, session_id FROM runs WHERE id = ?',
+      ),
       listRuns: db.prepare(
         `SELECT id, status, corral_id, started_at, project_id, session_id FROM runs
          ORDER BY started_at DESC, rowid DESC`,
@@ -144,7 +146,7 @@ export class SqliteRunStore implements RunStore {
 
   getRun(runId: string): StoredRun | null {
     const row = this.sql.getRun.get(runId) as
-      | { snapshot_json: string; projection_json: string }
+      | { snapshot_json: string; projection_json: string; session_id: string | null }
       | undefined;
     if (!row) return null;
     let projection = JSON.parse(row.projection_json) as RunProjection;
@@ -153,7 +155,12 @@ export class SqliteRunStore implements RunStore {
     if (!projection || Object.keys(initial).some((key) => !Object.hasOwn(projection, key))) {
       projection = this.readEvents(runId, 0).reduce(applyEvent, initial);
     }
-    return { runId, snapshot: JSON.parse(row.snapshot_json), projection };
+    return {
+      runId,
+      snapshot: JSON.parse(row.snapshot_json),
+      projection,
+      sessionId: row.session_id,
+    };
   }
 
   listRuns(): RunSummary[] {

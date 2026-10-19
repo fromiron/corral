@@ -1,0 +1,10 @@
+{
+  "name": "@corral/builtin-browser",
+  "version": "1.0.0",
+  "license": "MIT",
+  "pi": {
+    "skills": [
+      "skills"
+    ]
+  }
+}

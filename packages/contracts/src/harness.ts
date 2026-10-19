@@ -47,6 +47,49 @@ export const ToolDescriptor = z.strictObject({
   sideEffect: z.enum(['none', 'workspace', 'external', 'unknown']),
 });
 export type ToolDescriptor = z.infer<typeof ToolDescriptor>;
+export const ToolPermissionPolicy = z.strictObject({
+  default: z.enum(['ask', 'deny']),
+  rules: z
+    .array(
+      z
+        .strictObject({
+          tool: ToolDescriptor.shape.name,
+          action: z.enum(['allow', 'ask', 'deny']),
+          descriptorHash: ContentHash.optional(),
+          arguments: z
+            .record(
+              z.string().regex(/^[A-Za-z_][A-Za-z0-9_]{0,63}$/),
+              z.union([z.string().max(2000), z.number().finite(), z.boolean(), z.null()]),
+            )
+            .refine((value) => Object.keys(value).length <= 16, 'too many argument conditions')
+            .optional(),
+          path: z
+            .strictObject({
+              argument: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]{0,63}$/),
+              prefix: ResourcePath,
+            })
+            .optional(),
+        })
+        .refine(
+          (rule) => rule.action !== 'allow' || rule.descriptorHash !== undefined,
+          'allow requires an exact descriptor hash',
+        ),
+    )
+    .max(64),
+});
+export type ToolPermissionPolicy = z.infer<typeof ToolPermissionPolicy>;
+export const ToolPermissionPlan = z.strictObject({
+  purpose: z.literal('tool'),
+  descriptor: ToolDescriptor,
+  arguments: z.record(z.string(), z.unknown()),
+  argumentsHash: ContentHash,
+  descriptorHash: ContentHash,
+  snapshotHash: ContentHash,
+  policyRevision: z.int().min(1),
+  fingerprint: ContentHash,
+});
+export type ToolPermissionPlan = z.infer<typeof ToolPermissionPlan>;
+
 export const HarnessToolsUpdate = z.strictObject({
   snapshotHash: ContentHash,
   expectedRevision: z.int().min(1),
@@ -74,6 +117,7 @@ export const EffectiveHarnessSnapshot = z.strictObject({
   resources: z.array(HarnessResourceRef).max(64),
   allowedTools: z.array(ToolDescriptor.shape.name).max(128),
   tools: z.array(ToolDescriptor).max(128),
+  permissionPolicies: z.array(ToolPermissionPolicy).max(4).optional(),
   diagnostics: z.array(Identifier).max(64),
   projectTools: z
     .strictObject({
@@ -154,8 +198,28 @@ export const ExtensionUiNotice = z.strictObject({
 export type ExtensionUiNotice = z.infer<typeof ExtensionUiNotice>;
 
 /** The final context at the Corral provider boundary, before dispatch. */
+export const CompactionReport = z.strictObject({
+  commandId: Identifier,
+  phase: z.enum(['started', 'completed', 'failed', 'cancelled', 'skipped']),
+  beforeHash: ContentHash.optional(),
+  afterHash: ContentHash.optional(),
+  modelCallIds: z.array(Identifier).max(100),
+});
+export type CompactionReport = z.infer<typeof CompactionReport>;
+
+export const ProtectedContext = z.strictObject({
+  version: z.literal(1),
+  text: z.string().max(256 * 1024),
+  hash: ContentHash,
+});
+export type ProtectedContext = z.infer<typeof ProtectedContext>;
+
 export const ModelRequestRecord = z.strictObject({
   purpose: z.enum(['turn', 'compaction', 'retry', 'extension']),
+  runtime: z.enum(['pi-core', 'pi-sdk']).optional(),
+  contextEstimate: z
+    .strictObject({ tokens: z.int().min(0), method: z.literal('pi-1.3.0-messages') })
+    .optional(),
   directiveIds: z.array(Identifier).max(256),
   contextHash: ContentHash,
   contextBytes: z
@@ -167,6 +231,8 @@ export const ModelRequestRecord = z.strictObject({
       z.strictObject({
         name: Identifier,
         source: z.enum(['corral', 'skill', 'runtime']),
+        version: z.int().min(1).optional(),
+        reason: Identifier.optional(),
         hash: ContentHash,
         bytes: z.int().min(0),
       }),
@@ -177,6 +243,17 @@ export type ModelRequestRecord = z.infer<typeof ModelRequestRecord>;
 
 /** The provider-specific JSON after payload hooks; no headers or credentials. */
 export const ProviderPayloadRecord = z.strictObject({
+  skills: z
+    .array(
+      z.strictObject({
+        name: Identifier,
+        resourceHash: ContentHash,
+        bodyHash: ContentHash,
+        bytes: z.int().min(1),
+      }),
+    )
+    .max(64)
+    .optional(),
   reasoning: ReasoningWire.optional(),
   modelCallId: Identifier,
   payloadHash: ContentHash,
@@ -188,6 +265,7 @@ export const ProviderPayloadRecord = z.strictObject({
 export type ProviderPayloadRecord = z.infer<typeof ProviderPayloadRecord>;
 
 export const HarnessProfile = z.strictObject({
+  permissionPolicy: ToolPermissionPolicy.optional(),
   name: z.string().trim().min(1).max(100),
   policy: z.enum(['strict', 'trusted-native']),
   allowedTools: z.array(ToolDescriptor.shape.name).max(128),

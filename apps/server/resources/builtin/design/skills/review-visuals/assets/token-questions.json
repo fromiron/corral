@@ -1,0 +1,176 @@
+{
+  "version": 1,
+  "description": "Question bank for guided design-token proposals. It is the single source for the questions an agent asks, the IDs recorded in a proposal's preferences, and the labels the renderer shows. Ask in the user's language; any client can send the plain-text form printed by scripts/token_questions.py.",
+  "messages": {
+    "approach_intro": {
+      "en": "Before proposing design tokens, choose how to proceed.",
+      "ko": "디자인 토큰을 제안하기 전에 진행 방식을 골라 주세요.",
+      "ja": "デザイントークンを提案する前に、進め方を選んでください。"
+    },
+    "approach_hint": {
+      "en": "Reply with A or B.",
+      "ko": "A 또는 B로 답해 주세요.",
+      "ja": "AかBで答えてください。"
+    },
+    "core_intro": {
+      "en": "To set the direction of the design tokens, please answer {count} short questions.",
+      "ko": "디자인 토큰 방향을 정하기 위해 짧은 질문 {count}개에 답해 주세요.",
+      "ja": "デザイントークンの方向を決めるため、短い質問{count}つに答えてください。"
+    },
+    "answer_hint": {
+      "en": "Reply on one line, for example: {example}. To answer in your own words, write the question number followed by your answer.",
+      "ko": "한 줄로 답해 주세요. 예: {example}. 목록에 없으면 질문 번호 뒤에 직접 적어 주세요.",
+      "ja": "1行で答えてください。例: {example}。一覧にない場合は、質問の番号に続けて書いてください。"
+    },
+    "follow_up_intro": {
+      "en": "One more question:",
+      "ko": "하나만 더 여쭤볼게요.",
+      "ja": "もう1つだけ質問です。"
+    },
+    "custom_label": {
+      "en": "Or write your own:",
+      "ko": "직접 입력:",
+      "ja": "自由入力:"
+    }
+  },
+  "questions": [
+    {
+      "id": "approach",
+      "stage": "approach",
+      "prompt": {
+        "en": "How should the design token proposal be made?",
+        "ko": "디자인 토큰 제안을 어떻게 진행할까요?",
+        "ja": "デザイントークンの提案をどう進めますか?"
+      },
+      "options": [
+        {
+          "id": "auto",
+          "label": {
+            "en": "AI proposal: analyze the project and propose",
+            "ko": "AI 자동 제안: 프로젝트를 분석해 바로 제안",
+            "ja": "AI自動提案: プロジェクトを分析して提案"
+          }
+        },
+        {
+          "id": "guided",
+          "label": {
+            "en": "Guided: answer 4 short questions first",
+            "ko": "질의 기반 제안: 짧은 질문 4개에 먼저 답하기",
+            "ja": "質問で決める: 先に短い質問4つに答える"
+          }
+        }
+      ],
+      "custom": null
+    },
+    {
+      "id": "color-family",
+      "stage": "core",
+      "prompt": {
+        "en": "Which color family should lead the interface?",
+        "ko": "화면의 주된 색 계열은 무엇이 좋을까요?",
+        "ja": "画面の主な色の系統はどれがよいですか?"
+      },
+      "options": [
+        {"id": "blue", "label": {"en": "Blue or navy", "ko": "파랑·남색", "ja": "青・紺"}},
+        {"id": "green", "label": {"en": "Green or teal", "ko": "초록·청록", "ja": "緑・青緑"}},
+        {"id": "warm", "label": {"en": "Warm (red or orange)", "ko": "따뜻한 색(빨강·주황)", "ja": "暖色(赤・オレンジ)"}},
+        {"id": "delegate", "label": {"en": "Let the AI choose", "ko": "AI에게 맡기기", "ja": "AIに任せる"}}
+      ],
+      "custom": {
+        "en": "another hue, neutral, or an existing brand color such as #0f766e, rgb(15, 118, 110), or oklch(51.1% 0.086 186.4)",
+        "ko": "다른 색 계열, 무채색, 또는 기존 브랜드 색(예: #0f766e, rgb(15, 118, 110), oklch(51.1% 0.086 186.4))",
+        "ja": "ほかの色の系統、無彩色、または既存のブランドカラー(例: #0f766e、rgb(15, 118, 110)、oklch(51.1% 0.086 186.4))"
+      }
+    },
+    {
+      "id": "theme",
+      "stage": "core",
+      "prompt": {
+        "en": "Which screen theme should the tokens support?",
+        "ko": "어떤 화면 테마를 지원할까요?",
+        "ja": "どの画面テーマに対応しますか?"
+      },
+      "options": [
+        {"id": "light", "label": {"en": "Light screens", "ko": "밝은 화면", "ja": "明るい画面"}},
+        {"id": "dark", "label": {"en": "Dark screens", "ko": "어두운 화면", "ja": "暗い画面"}},
+        {"id": "both", "label": {"en": "Both light and dark", "ko": "밝은 화면과 어두운 화면 모두", "ja": "明るい画面と暗い画面の両方"}},
+        {"id": "delegate", "label": {"en": "Let the AI choose", "ko": "AI에게 맡기기", "ja": "AIに任せる"}}
+      ],
+      "custom": null
+    },
+    {
+      "id": "type-style",
+      "stage": "core",
+      "prompt": {
+        "en": "What typeface style fits the product?",
+        "ko": "어떤 글꼴 스타일이 어울릴까요?",
+        "ja": "どの書体のスタイルが合いますか?"
+      },
+      "options": [
+        {"id": "system", "label": {"en": "System default (light, covers Korean and Japanese)", "ko": "시스템 기본 글꼴(가볍고 한글·일본어 지원)", "ja": "システム標準(軽く、韓国語・日本語に対応)"}},
+        {"id": "sans", "label": {"en": "Clean sans-serif", "ko": "깔끔한 산세리프", "ja": "すっきりしたサンセリフ"}},
+        {"id": "serif", "label": {"en": "Serif for a reading or editorial tone", "ko": "읽기·에디토리얼 느낌의 세리프", "ja": "読み物らしいセリフ"}},
+        {"id": "delegate", "label": {"en": "Let the AI choose", "ko": "AI에게 맡기기", "ja": "AIに任せる"}}
+      ],
+      "custom": {
+        "en": "a specific font, such as Pretendard",
+        "ko": "특정 글꼴 이름(예: Pretendard)",
+        "ja": "特定のフォント名(例: Noto Sans JP)"
+      }
+    },
+    {
+      "id": "corner-style",
+      "stage": "core",
+      "prompt": {
+        "en": "How rounded should corners be?",
+        "ko": "모서리는 얼마나 둥글게 할까요?",
+        "ja": "角はどのくらい丸くしますか?"
+      },
+      "options": [
+        {"id": "sharp", "label": {"en": "Square", "ko": "각지게", "ja": "角ばった形"}},
+        {"id": "subtle", "label": {"en": "Slightly rounded", "ko": "약간 둥글게", "ja": "少し丸く"}},
+        {"id": "rounded", "label": {"en": "Rounded", "ko": "둥글게", "ja": "丸く"}},
+        {"id": "delegate", "label": {"en": "Let the AI choose", "ko": "AI에게 맡기기", "ja": "AIに任せる"}}
+      ],
+      "custom": {
+        "en": "another shape, such as pill-shaped buttons only",
+        "ko": "다른 형태(예: 버튼만 알약 모양)",
+        "ja": "ほかの形(例: ボタンだけピル型)"
+      }
+    },
+    {
+      "id": "brand-color-value",
+      "stage": "follow-up",
+      "after": "color-family",
+      "when": "The color-family answer mentions an existing brand color without giving its value.",
+      "prompt": {
+        "en": "What is the brand color value? Hex, rgb(), rgba(), or oklch() all work, for example #0f766e or oklch(51.1% 0.086 186.4).",
+        "ko": "브랜드 색 값은 무엇인가요? hex, rgb(), rgba(), oklch() 모두 됩니다. 예: #0f766e 또는 oklch(51.1% 0.086 186.4)",
+        "ja": "ブランドカラーの値は何ですか? hex、rgb()、rgba()、oklch() のどれでも構いません。例: #0f766e または oklch(51.1% 0.086 186.4)"
+      },
+      "options": [],
+      "custom": {
+        "en": "a color value in hex, rgb(), rgba(), or oklch()",
+        "ko": "hex, rgb(), rgba(), oklch() 형식의 색 값",
+        "ja": "hex、rgb()、rgba()、oklch() 形式の色の値"
+      }
+    },
+    {
+      "id": "content-languages",
+      "stage": "follow-up",
+      "after": "type-style",
+      "when": "The type-style answer names a specific font and the content languages are unknown.",
+      "prompt": {
+        "en": "Which languages will the interface show? The font has to cover them.",
+        "ko": "화면에 어떤 언어가 나오나요? 글꼴이 그 언어를 지원해야 합니다.",
+        "ja": "画面に表示する言語は何ですか? フォントがその言語に対応している必要があります。"
+      },
+      "options": [],
+      "custom": {
+        "en": "the languages, such as English and Korean",
+        "ko": "언어(예: 한국어와 영어)",
+        "ja": "言語(例: 日本語と英語)"
+      }
+    }
+  ]
+}

@@ -1,0 +1,251 @@
+{
+  "project": "Clinic scheduling (new product)",
+  "language": "en",
+  "title": "Starter token proposal",
+  "summary": "A first color, spacing, layout, and type proposal for a new scheduling product with no existing tokens. Only the brand color is an observed project value; the rest are design hypotheses to render and check.",
+  "status": "proposed",
+  "mode": "new-system",
+  "prepared": "Evaluation fixture example",
+  "evidence_basis": [
+    "evals/fixtures/new-product-brief.md (requirements, platform, content, accessibility baseline)",
+    "Approved brand color supplied in the brief"
+  ],
+  "specimen_text": "Booked · Arrived · Cancelled · No-show",
+  "naming": {
+    "primitive": {
+      "separator": "-",
+      "parts": [
+        {
+          "text": "space",
+          "label": "category"
+        },
+        {
+          "text": "4",
+          "label": "step"
+        }
+      ]
+    },
+    "semantic": {
+      "separator": "-",
+      "parts": [
+        {
+          "text": "text",
+          "label": "category"
+        },
+        {
+          "text": "primary",
+          "label": "role"
+        }
+      ]
+    }
+  },
+  "breakpoints": [
+    {
+      "name": "narrow",
+      "min_width": "0px",
+      "basis": "hypothesis",
+      "rationale": "Therapists use phones between sessions; start from the smallest width."
+    },
+    {
+      "name": "wide",
+      "min_width": "64rem",
+      "basis": "hypothesis",
+      "rationale": "Front-desk staff use desktop screens for dense appointment tables."
+    }
+  ],
+  "foundations": {
+    "color": {
+      "primitives": [
+        {
+          "name": "teal-700",
+          "group": "teal",
+          "step": "700",
+          "value": "#0f766e",
+          "current_values": [
+            "#0f766e"
+          ],
+          "evidence": [
+            "Brief: approved brand color"
+          ]
+        },
+        {
+          "name": "gray-0",
+          "group": "gray",
+          "step": "0",
+          "value": "#ffffff",
+          "current_values": [],
+          "evidence": [],
+          "basis": "hypothesis",
+          "rationale": "Neutral page background for dense tables."
+        },
+        {
+          "name": "gray-900",
+          "group": "gray",
+          "step": "900",
+          "value": "#1f2328",
+          "current_values": [],
+          "evidence": [],
+          "basis": "hypothesis",
+          "rationale": "Body text color with high contrast on white for AA tables."
+        }
+      ],
+      "semantic": [
+        {
+          "name": "surface-page",
+          "role": "Page background",
+          "references": {
+            "light": "gray-0"
+          },
+          "status": "proposed"
+        },
+        {
+          "name": "text-primary",
+          "role": "Body and table text",
+          "references": {
+            "light": "gray-900"
+          },
+          "status": "proposed",
+          "contrast": {
+            "against": "surface-page",
+            "minimum": 4.5
+          }
+        },
+        {
+          "name": "action-primary",
+          "role": "Primary action background",
+          "references": {
+            "light": "teal-700"
+          },
+          "status": "proposed",
+          "contrast": {
+            "against": "surface-page",
+            "minimum": 4.5
+          }
+        }
+      ]
+    },
+    "spacing": {
+      "primitives": [
+        {
+          "name": "space-2",
+          "value": "0.5rem",
+          "current_values": [],
+          "evidence": [],
+          "basis": "hypothesis",
+          "rationale": "Tight gap inside dense table rows."
+        },
+        {
+          "name": "space-4",
+          "value": "1rem",
+          "current_values": [],
+          "evidence": [],
+          "basis": "hypothesis",
+          "rationale": "Gap between related form fields and cards."
+        },
+        {
+          "name": "space-8",
+          "value": "2rem",
+          "current_values": [],
+          "evidence": [],
+          "basis": "hypothesis",
+          "rationale": "Separation between page sections on wide screens."
+        }
+      ],
+      "semantic": [
+        {
+          "name": "content-gap",
+          "role": "Gap between related items",
+          "references": {
+            "default": "space-2",
+            "wide": "space-4"
+          },
+          "status": "proposed"
+        },
+        {
+          "name": "section-gap",
+          "role": "Gap between page sections",
+          "references": {
+            "default": "space-4",
+            "wide": "space-8"
+          },
+          "status": "proposed"
+        }
+      ]
+    },
+    "layout": {
+      "primitives": [
+        {
+          "name": "page-padding-narrow",
+          "value": "1rem",
+          "current_values": [],
+          "evidence": [],
+          "basis": "hypothesis",
+          "rationale": "Keeps tap targets away from phone edges."
+        },
+        {
+          "name": "page-padding-wide",
+          "value": "2rem",
+          "current_values": [],
+          "evidence": [],
+          "basis": "hypothesis",
+          "rationale": "Room around wide tables on desktop."
+        }
+      ],
+      "semantic": [
+        {
+          "name": "page-padding",
+          "role": "Inline padding of the page container",
+          "owner": "App shell",
+          "diagram": "page-padding",
+          "references": {
+            "narrow": "page-padding-narrow",
+            "wide": "page-padding-wide"
+          },
+          "status": "proposed"
+        }
+      ]
+    },
+    "typography": {
+      "primitives": [
+        {
+          "name": "type-body",
+          "value": {
+            "font_family": "system-ui, sans-serif",
+            "font_size": "1rem",
+            "font_weight": "400",
+            "line_height": "1.5",
+            "letter_spacing": "unknown"
+          },
+          "current_values": [],
+          "evidence": [],
+          "basis": "hypothesis",
+          "rationale": "System fonts cover Korean and English patient names without loading web fonts; letter spacing stays unknown until rendered with both scripts."
+        }
+      ],
+      "semantic": [
+        {
+          "name": "text-body",
+          "role": "Table cells and body text",
+          "references": {
+            "default": "type-body"
+          },
+          "status": "proposed"
+        }
+      ]
+    }
+  },
+  "changes": [],
+  "decisions": {
+    "proposed": [
+      "Use the approved brand color for primary actions only."
+    ],
+    "retained": [],
+    "rejected": [
+      "A second accent color: no requirement in the brief."
+    ],
+    "open": [
+      "Dark theme: undecided in the brief; no dark values are proposed.",
+      "Status colors for booked, arrived, cancelled, and no-show need a rendered contrast check before values are proposed."
+    ]
+  }
+}

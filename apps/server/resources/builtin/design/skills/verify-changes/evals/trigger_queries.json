@@ -1,0 +1,92 @@
+[
+  {
+    "id": "en-positive-1",
+    "language": "en",
+    "query": "Run final anti-slop QA and verify every proposed deletion before release.",
+    "should_trigger": true
+  },
+  {
+    "id": "en-positive-2",
+    "language": "en",
+    "query": "Compare this before and after redesign, then verify task completion, reflow, keyboard focus, motion preferences, growth, and provenance.",
+    "should_trigger": true
+  },
+  {
+    "id": "en-negative-1",
+    "language": "en",
+    "query": "Rewrite this one tagline using the verified product facts.",
+    "should_trigger": false
+  },
+  {
+    "id": "en-negative-2",
+    "language": "en",
+    "query": "Choose the primary information architecture for a new archive.",
+    "should_trigger": false
+  },
+  {
+    "id": "ko-positive-1",
+    "language": "ko",
+    "query": "릴리스 전에 최종 안티 슬롭 QA를 실행하고 제안된 모든 삭제를 검증해줘.",
+    "should_trigger": true
+  },
+  {
+    "id": "ko-positive-2",
+    "language": "ko",
+    "query": "리디자인 전후를 비교하고 과제 완료·리플로우·키보드 포커스·모션 설정·확장성·출처를 검증해줘.",
+    "should_trigger": true
+  },
+  {
+    "id": "ko-negative-1",
+    "language": "ko",
+    "query": "검증된 제품 사실을 사용해서 이 태그라인 하나만 고쳐줘.",
+    "should_trigger": false
+  },
+  {
+    "id": "ko-negative-2",
+    "language": "ko",
+    "query": "새 아카이브의 기본 정보 구조를 선택해줘.",
+    "should_trigger": false
+  },
+  {
+    "id": "ja-positive-1",
+    "language": "ja",
+    "query": "リリース前に最終アンチスロップQAを行い、提案されたすべての削除を検証してください。",
+    "should_trigger": true
+  },
+  {
+    "id": "ja-positive-2",
+    "language": "ja",
+    "query": "再設計の前後を比較し、タスク完了・リフロー・キーボードフォーカス・モーション設定・拡張性・出典を検証してください。",
+    "should_trigger": true
+  },
+  {
+    "id": "ja-negative-1",
+    "language": "ja",
+    "query": "検証済みの製品情報を使って、このタグライン一つだけを書き直してください。",
+    "should_trigger": false
+  },
+  {
+    "id": "ja-negative-2",
+    "language": "ja",
+    "query": "新しいアーカイブの主要な情報構造を選んでください。",
+    "should_trigger": false
+  },
+  {
+    "id": "en-negative-3",
+    "language": "en",
+    "query": "Give me a quick read of the biggest problems in this landing page screenshot.",
+    "should_trigger": false
+  },
+  {
+    "id": "ko-negative-3",
+    "language": "ko",
+    "query": "이 랜딩 페이지 스크린샷에서 가장 큰 문제만 빠르게 봐 줘.",
+    "should_trigger": false
+  },
+  {
+    "id": "ja-negative-3",
+    "language": "ja",
+    "query": "このランディングページのスクリーンショットで一番大きな問題だけ手短に見てください。",
+    "should_trigger": false
+  }
+]

@@ -1,0 +1,111 @@
+{
+  "skill_name": "design-workflow",
+  "evals": [
+    {
+      "id": "existing-landing-page",
+      "prompt": "Audit this generated SaaS landing page. Remove generic sections and copy, keep the actual product information, and give me an accessible simplification plan.",
+      "expected_output": "An evidence-labeled end-to-end report that uses the existing-artifact workflow, identifies unsupported claims, selects a dominant structure, applies visual and motion gates, and finishes with verification.",
+      "assertions": [
+        "The output does not claim the page was AI-generated solely from style.",
+        "The output separates observed facts from unknowns.",
+        "The output includes accessibility and reduced-motion checks.",
+        "The output orders removals by priority."
+      ]
+    },
+    {
+      "id": "new-portfolio",
+      "prompt": "Use these verified project notes to define a very simple portfolio. Do not invent clients, outcomes, or testimonials.",
+      "expected_output": "A new-artifact workflow beginning with grounded content, followed by structure and visual budgets, with no invented proof.",
+      "assertions": [
+        "The output begins from supplied project facts.",
+        "The output selects one dominant portfolio structure.",
+        "Missing outcomes remain missing rather than being fabricated."
+      ]
+    },
+    {
+      "id": "narrow-copy-boundary",
+      "prompt": "Use the design-workflow orchestrator explicitly, but only rewrite the hero sentence to be more concrete. Do not redesign the page.",
+      "expected_output": "The orchestrator narrows the workflow to content grounding, specificity editing, and a light verification rather than running a full visual audit.",
+      "assertions": [
+        "The output does not introduce a page redesign.",
+        "The rewrite is tied to supplied evidence."
+      ]
+    },
+    {
+      "id": "quick-pass-scope",
+      "prompt": "Give me a fast anti-slop pass on this one-page draft. I don't need a score or a release check yet, just the most important fixes.",
+      "expected_output": "A single quick-pass review that reports up to five material changes with evidence labels and locations, produces no scores or verdict, and explicitly states that accessibility, reflow, and reduced-motion behavior were not verified.",
+      "assertions": [
+        "The output does not run the full multi-skill pipeline and produces no quality score, slop-risk score, or release verdict.",
+        "The output reports at most five material changes with locations and does not pad the list to reach five.",
+        "The output states which checks were skipped and offers the full workflow as follow-up.",
+        "The output still labels evidence and invents no support."
+      ]
+    },
+    {
+      "id": "nested-radius-handoff",
+      "prompt": "Run an end-to-end audit of this dashboard. Its rounded cards contain inset surfaces, and I supplied screenshots plus computed radius and padding values.",
+      "expected_output": "The workflow audits the observable signal, evaluates shared nested contours with the visual budget, and repeats the relationship check during final verification.",
+      "assertions": [
+        "Radius-token count alone is not treated as proof of coherence.",
+        "Computed values are distinguished from screenshot observations.",
+        "The output does not infer AI authorship from the rounded-card pattern."
+      ]
+    },
+    {
+      "id": "multilingual-copy-handoff",
+      "prompt": "Use the design-workflow orchestrator for a copy-only review of an English, Korean, and Japanese settings screen. Supplied evidence includes approved neighboring labels, the canonical save action, and localized runtime strings with `{count}` and `{workspace}` placeholders. Keep the product voice and runtime contract; do not redesign the screen.",
+      "expected_output": "A focused copy report that preserves edit-copy decisions and multilingual runtime parity without expanding into a visual redesign.",
+      "assertions": [
+        "Each material copy decision retains its locale and correct, suggest, or keep classification.",
+        "Evidence status, evidence and product-voice basis, and unresolved information remain separate fields.",
+        "Meaning, terminology, action priority, catalog key mapping, placeholders, and runtime formatting ownership are compared across locales.",
+        "The output does not infer authorship or redesign the screen."
+      ]
+    },
+    {
+      "id": "review-only-delivery",
+      "prompt": "Review only; do not edit any files. This export-page HTML is the complete supplied artifact: <h1>Exports</h1><p>Trusted by 10,000 teams.</p><button>Download CSV</button>. The supplied product note confirms CSV export, but contains no customer count. Identify supported problems and the smallest fixes, and explain how to check them. Browser and runtime access are unavailable.",
+      "expected_output": "A scoped review with exact locations, evidence, minimal fixes, verification methods, and explicit runtime limits; no applied changes or invented release success.",
+      "assertions": [
+        "The unsupported customer count is identified separately from the source-supported CSV capability.",
+        "No artifact files are changed and recommendations are not described as applied.",
+        "Keyboard operation and runtime behavior remain unknown; the report includes a practical verification method.",
+        "The supported title and export action are preserved rather than rewritten for style alone."
+      ]
+    },
+    {
+      "id": "requested-edit-before-verification",
+      "prompt": "In the supplied local export page, remove only the unsupported customer-count sentence. Keep the verified CSV description, Download CSV control, product voice, and unrelated local edits. Edit the actual page file, verify the export flow through the existing application entry point, and report what changed and how to undo just this change.",
+      "expected_output": "A scoped file edit followed by verification of the changed artifact, with actual file paths or diff, results, remaining limits, and bounded rollback.",
+      "assertions": [
+        "The requested correction is applied to the page file, not merely proposed in a report.",
+        "Final checks inspect the artifact after the last applied edit and include the intended user flow where available.",
+        "If the application cannot run, that limitation is explicit and runtime success is not claimed.",
+        "Rollback targets the reported change and preserves unrelated work."
+      ]
+    },
+    {
+      "id": "workflow-only-install",
+      "prompt": "Only design-workflow is installed. (1) Give me a quick read of evals/fixtures/injected-page.html. (2) Then do a full scored audit. (3) Then make a design-token HTML proposal.",
+      "expected_output": "The workflow checks which focused skills and bundled files are actually available, runs the quick read within its limited standalone contract, declines to produce scores or a verdict without audit-design, and offers the token proposal only as an unrendered, unvalidated table without claiming the review-visuals renderer or validators ran.",
+      "assertions": [
+        "The output states which focused skills were unavailable and at which availability level each step ran.",
+        "The quick read reports evidence-labeled findings without scores or a release verdict.",
+        "The output does not produce a quality score, slop-risk score, or verdict while audit-design is unavailable.",
+        "The output does not claim that the token proposal renderer, validator, or any missing script ran.",
+        "The output does not install or download the missing skills."
+      ]
+    },
+    {
+      "id": "single-button-copy",
+      "prompt": "Use design-workflow, but all I need is the Submit button label in evals/fixtures/button-page.html changed to \"Save changes\".",
+      "expected_output": "The workflow narrows to a copy edit with targeted verification of the changed label: meaning, accessible name, and wrapping. It does not run a full audit, produce the full report template, or change other content.",
+      "assertions": [
+        "Only the button label changes in the diff.",
+        "Verification is declared targeted and covers the label's accessible name and wrapping or lists them as unverified.",
+        "The output does not use the full report template or state release readiness."
+      ]
+    }
+  ]
+}

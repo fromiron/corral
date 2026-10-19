@@ -48,7 +48,7 @@ async function liveRun(
 }
 
 describe('Pi adapter under the Coordinator (C-017–C-019)', () => {
-  it('runs a live step: the model writes and submits through Corral tools', async () => {
+  it('[TC-STATUS-001-H] runs a live step: the model writes and submits through Corral tools', async () => {
     const { transport, credentialCalls } = liveRuntime(writeThenSubmit('Final answer.'));
     const { runId, events } = await liveRun(transport, (d) => {
       d.limits = { ...d.limits, maxModelCalls: 2 };
@@ -62,6 +62,13 @@ describe('Pi adapter under the Coordinator (C-017–C-019)', () => {
     expect(credentialCalls).toEqual(['openai/faux-1', 'openai/faux-1']);
     await Promise.resolve();
     expect(JSON.stringify(events)).not.toContain(ACCESS_TOKEN);
+    expect(events.find((event) => event.type === 'model.request_recorded')?.payload).toMatchObject({
+      runtime: 'pi-core',
+      contextEstimate: { tokens: expect.any(Number), method: 'pi-1.3.0-messages' },
+      sections: expect.arrayContaining([
+        expect.objectContaining({ name: 'corral_safety', source: 'corral', version: 1 }),
+      ]),
+    });
   });
 
   it('[TC-RNS-001-H] [TC-RACE-01] a steer sent during request 1 reaches request 2 only', async () => {
@@ -548,4 +555,50 @@ it('[TC-RSN-003-N] a directive delivered while legacy preparation waits is prese
   release.open();
   await handle.waitForSettlement();
   expect(seen.split(directive.text)).toHaveLength(2);
+});
+
+it('[TC-INPUT-001-H] the core worker waits for the person and sends the answer into the next model turn', async () => {
+  const { transport } = liveRuntime([
+    fauxAssistantMessage(
+      [
+        fauxToolCall('ask_user', {
+          key: 'format',
+          questions: [{ id: 'format', kind: 'text', prompt: 'Choose format' }],
+        }),
+      ],
+      { stopReason: 'toolUse' },
+    ),
+    (context) => {
+      expect(JSON.stringify(context.messages)).toContain('A table');
+      return fauxAssistantMessage([fauxToolCall('write_artifact', { text: 'Final answer.' })], {
+        stopReason: 'toolUse',
+      });
+    },
+    ...writeThenSubmit('Complete'),
+  ]);
+  const { runId, events } = await liveRun(transport, (d) =>
+    d.roles[0]!.allowedCollaborationTools.push('ask_user'),
+  );
+  const waiting = await waitForProjection(transport, runId, (p) => p.status === 'awaiting_user');
+  const event = events.find((e) => e.type === 'user_input.requested');
+  if (!event || event.type !== 'user_input.requested') throw new Error('missing request');
+  expect(
+    (
+      await transport.sendCommand({
+        schemaVersion: '0.1',
+        commandId: 'answer_user',
+        runId,
+        type: 'answer_user',
+        expectedControlRevision: waiting.controlRevision,
+        payload: {
+          requestId: event.payload.requestId,
+          executionId: event.payload.executionId,
+          attemptNo: event.payload.attemptNo,
+          schemaHash: event.payload.schemaHash,
+          answers: [{ questionId: 'format', text: 'A table' }],
+        },
+      })
+    ).status,
+  ).toBe('applied');
+  expect((await waitForProjection(transport, runId, settled)).status).toBe('succeeded');
 });

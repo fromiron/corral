@@ -1,0 +1,146 @@
+[
+  {
+    "id": "en-positive-1",
+    "language": "en",
+    "query": "Audit this landing page as a whole and remove generic structure, copy, and motion without losing real product evidence or accessibility.",
+    "should_trigger": true
+  },
+  {
+    "id": "en-positive-2",
+    "language": "en",
+    "query": "Turn these verified product notes into a minimal, evidence-grounded, accessible site and finish with release verification.",
+    "should_trigger": true
+  },
+  {
+    "id": "en-positive-3",
+    "language": "en",
+    "query": "Give this one-screen draft a quick anti-slop pass — no score or release check, just the most important generic-design fixes.",
+    "should_trigger": true
+  },
+  {
+    "id": "en-negative-1",
+    "language": "en",
+    "query": "Rewrite this one hero sentence in plain English without reviewing the rest of the page.",
+    "should_trigger": false
+  },
+  {
+    "id": "en-negative-2",
+    "language": "en",
+    "query": "Check only whether this button meets the required contrast ratio.",
+    "should_trigger": false
+  },
+  {
+    "id": "en-negative-3",
+    "language": "en",
+    "query": "Change the label on this one button from Submit to Send.",
+    "should_trigger": false
+  },
+  {
+    "id": "ko-positive-1",
+    "language": "ko",
+    "query": "이 랜딩 페이지 전체를 감사해서 실제 제품 근거와 접근성은 보존하고, 범용적인 구조·카피·모션을 정리해줘.",
+    "should_trigger": true
+  },
+  {
+    "id": "ko-positive-2",
+    "language": "ko",
+    "query": "검증된 제품 자료로 간결하고 접근 가능한 사이트를 설계하고 마지막 릴리스 검증까지 진행해줘.",
+    "should_trigger": true
+  },
+  {
+    "id": "ko-positive-3",
+    "language": "ko",
+    "query": "이 한 화면짜리 초안만 점수나 릴리스 검증 없이 AI 슬롭 신호를 빠르게 검토하고 중요한 수정만 알려줘.",
+    "should_trigger": true
+  },
+  {
+    "id": "ko-negative-1",
+    "language": "ko",
+    "query": "페이지의 나머지는 검토하지 말고 이 히어로 문장 하나만 쉬운 말로 고쳐줘.",
+    "should_trigger": false
+  },
+  {
+    "id": "ko-negative-2",
+    "language": "ko",
+    "query": "이 버튼 하나의 명도 대비만 확인해줘.",
+    "should_trigger": false
+  },
+  {
+    "id": "ko-negative-3",
+    "language": "ko",
+    "query": "이 버튼 하나의 문구만 '제출'에서 '보내기'로 바꿔줘.",
+    "should_trigger": false
+  },
+  {
+    "id": "ja-positive-1",
+    "language": "ja",
+    "query": "このランディングページ全体を監査し、実在する製品の根拠とアクセシビリティを保ったまま、汎用的な構成・コピー・動きを整理してください。",
+    "should_trigger": true
+  },
+  {
+    "id": "ja-positive-2",
+    "language": "ja",
+    "query": "検証済みの製品資料から、簡潔でアクセシブルなサイトを設計し、最後のリリース検証まで行ってください。",
+    "should_trigger": true
+  },
+  {
+    "id": "ja-positive-3",
+    "language": "ja",
+    "query": "この1画面のドラフトだけ、スコアやリリース検証なしでAIスロップ信号を素早くレビューし、重要な修正だけ教えてください。",
+    "should_trigger": true
+  },
+  {
+    "id": "ja-negative-1",
+    "language": "ja",
+    "query": "ページ全体は見直さず、このヒーロー文一つだけを分かりやすく書き直してください。",
+    "should_trigger": false
+  },
+  {
+    "id": "ja-negative-2",
+    "language": "ja",
+    "query": "このボタン一つのコントラスト比だけを確認してください。",
+    "should_trigger": false
+  },
+  {
+    "id": "ja-negative-3",
+    "language": "ja",
+    "query": "このボタン一つのラベルだけを「送信」から「送る」に変更してください。",
+    "should_trigger": false
+  },
+  {
+    "id": "en-negative-4",
+    "language": "en",
+    "query": "Add a reduced-motion fallback to this one carousel.",
+    "should_trigger": false
+  },
+  {
+    "id": "en-negative-5",
+    "language": "en",
+    "query": "Review the states of our Button component across the Figma library and the React code.",
+    "should_trigger": false
+  },
+  {
+    "id": "ko-negative-4",
+    "language": "ko",
+    "query": "이 캐러셀 하나에만 동작 줄이기 대체 동작을 추가해 줘.",
+    "should_trigger": false
+  },
+  {
+    "id": "ko-negative-5",
+    "language": "ko",
+    "query": "Figma 라이브러리와 React 코드에서 Button 컴포넌트의 상태를 검토해 줘.",
+    "should_trigger": false
+  },
+  {
+    "id": "ja-negative-4",
+    "language": "ja",
+    "query": "このカルーセル1つだけに、モーションを減らす設定時の代替動作を追加してください。",
+    "should_trigger": false
+  },
+  {
+    "id": "ja-negative-5",
+    "language": "ja",
+    "query": "FigmaライブラリとReactコードでButtonコンポーネントの状態を確認してください。",
+    "should_trigger": false
+  }
+]

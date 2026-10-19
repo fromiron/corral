@@ -9,6 +9,7 @@ import {
   type CorralDefinition,
   FILE_TOOLS,
   type ReasoningLevel,
+  type RunInput,
   type RunReference,
   type StartFrom,
   type StartRunRequest,
@@ -32,7 +33,7 @@ const WORDING: TeamWording = {
   roles: {
     worker: {
       name: 'Assistant',
-      duty: 'Do what the request asks, directly and completely. State any assumption in the result instead of asking back.',
+      duty: 'Do what the request asks, directly and completely. State routine assumptions; use ask_user when a missing decision would materially change the work.',
     },
     planner: {
       name: 'Planner',
@@ -76,6 +77,8 @@ const FILE_NOTE =
 const WRITE_NOTE = ' Make the changes the request asks for with the file tools.';
 
 export interface AutoDefinitionInput {
+  taskScope?: RunInput['taskScope'];
+  verificationScope?: RunInput['verificationScope'];
   id: string;
   template: AutoTemplate;
   brief: string;
@@ -111,7 +114,7 @@ export function autoDefinition(input: AutoDefinitionInput): CorralDefinition {
       ? { mode: 'fixed' as const, level: input.routeLevel ?? ('medium' as const) }
       : asked;
   const roles = definition.roles.map((role) => {
-    const writes = WRITERS.has(role.id as TeamSlot);
+    const writes = WRITERS.has(role.id as TeamSlot) && input.taskScope !== 'review_only';
     const tools: WorkTool[] = input.fileTools
       ? ['write_artifact', ...(writes ? FILE_TOOLS : READ_TOOLS)]
       : ['write_artifact'];
@@ -123,6 +126,11 @@ export function autoDefinition(input: AutoDefinitionInput): CorralDefinition {
       modelProfile: input.choice.modelProfile,
       ...(reasoning ? { reasoning } : {}),
       allowedWorkTools: tools,
+      allowedCollaborationTools: [
+        ...role.allowedCollaborationTools,
+        'ask_user' as const,
+        'update_plan' as const,
+      ],
     };
   });
   const nodes = definition.nodes.map((node) =>
@@ -133,7 +141,17 @@ export function autoDefinition(input: AutoDefinitionInput): CorralDefinition {
         }
       : node,
   );
-  return { ...definition, roles, nodes };
+  return {
+    ...definition,
+    input: {
+      ...definition.input,
+      ...(input.taskScope ? { taskScope: input.taskScope } : {}),
+      ...(input.verificationScope ? { verificationScope: input.verificationScope } : {}),
+    },
+    roles,
+    nodes,
+    ...(roles.some((role) => role.id === 'planner') ? { planOwnerRoleId: 'planner' } : {}),
+  };
 }
 
 export const AUTO_ROUTE_MAX_OUTPUT_TOKENS = 256;
@@ -209,6 +227,8 @@ export type RouteAnswer =
     };
 
 export interface AutoStart {
+  taskScope?: RunInput['taskScope'];
+  verificationScope?: RunInput['verificationScope'];
   commandId: string;
   sessionId?: string;
   brief: string;
@@ -348,6 +368,8 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
       id: `auto_${(request.sessionId ?? request.commandId).replace(/^session_/, '')}`,
       template: autoRoute.template,
       brief: request.brief,
+      ...(request.taskScope ? { taskScope: request.taskScope } : {}),
+      ...(request.verificationScope ? { verificationScope: request.verificationScope } : {}),
       ...(request.criteria ? { criteria: request.criteria } : {}),
       choice: request.choice,
       fileTools: context.fileTools,

@@ -1,3 +1,4 @@
+import { ImageInput } from '@corral/contracts';
 import { artifactLineage, type RunProjection } from '@corral/core';
 import { type ReactNode, useEffect, useId, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -53,7 +54,8 @@ export function ArtifactViewer({
 
   const knownReference = Boolean(
     projection &&
-      (projection.currentCriteriaVersionId === shownId ||
+      (definition?.input.images?.some((image) => image.imageId === shownId) ||
+        projection.currentCriteriaVersionId === shownId ||
         Object.values(projection.artifacts).some((value) => value.criteriaVersionId === shownId) ||
         Object.values(projection.executions).some((value) => value.criteriaVersionId === shownId) ||
         Object.values(projection.reviews).some(
@@ -97,6 +99,14 @@ export function ArtifactViewer({
     [comparing, text, parentText],
   );
 
+  let image: ReturnType<typeof ImageInput.safeParse> | null = null;
+  if (!artifact && knownReference && text !== undefined) {
+    try {
+      image = ImageInput.safeParse(JSON.parse(text));
+    } catch {
+      /* Ordinary text reference. */
+    }
+  }
   if (!artifact)
     return (
       <section
@@ -117,7 +127,15 @@ export function ArtifactViewer({
           </button>
         </div>
         {knownReference && text !== undefined ? (
-          <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words">{text}</pre>
+          image?.success ? (
+            <img
+              className="max-h-96 max-w-full object-contain"
+              alt={image.data.name}
+              src={`data:${image.data.mime};base64,${image.data.data}`}
+            />
+          ) : (
+            <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words">{text}</pre>
+          )
         ) : (
           <p role="status" className="text-muted">
             {canLoad && loadedId !== shownId ? t('loading') : t('unavailable')}
@@ -244,7 +262,9 @@ export function ArtifactViewer({
           <p className="text-muted">{t('lineageNote')}</p>
         </div>
       ) : null}
-      {review ? <ReviewSummary review={review} target={link(review.targetVersionId)} /> : null}
+      {review ? (
+        <ReviewSummary review={review} target={link(review.targetVersionId)} artifactLink={link} />
+      ) : null}
       {parentId ? (
         <button
           type="button"
@@ -295,9 +315,11 @@ export function ArtifactViewer({
 export function ReviewSummary({
   review,
   target,
+  artifactLink,
 }: {
   review: RunProjection['reviews'][string];
   target: ReactNode;
+  artifactLink?: (id: string) => ReactNode;
 }) {
   const t = useTranslations('Artifact');
   return (
@@ -314,6 +336,35 @@ export function ReviewSummary({
             current: review.newCriteriaVersionId ?? '—',
           })}
         </p>
+      ) : null}
+      {review.design ? (
+        <div className="space-y-1 border-l border-line pl-2 text-muted">
+          <p>{t(review.design.scope === 'targeted' ? 'designTargeted' : 'designReleaseReport')}</p>
+          <p>{t('designEvidenceNote')}</p>
+          <p>
+            {t('designReport')} ·{' '}
+            {artifactLink?.(review.design.reportVersionId) ?? review.design.reportVersionId}
+          </p>
+          {review.design.tokenProposalVersionId ? (
+            <p>
+              {t('tokenProposal')} ·{' '}
+              {artifactLink?.(review.design.tokenProposalVersionId) ??
+                review.design.tokenProposalVersionId}
+            </p>
+          ) : null}
+          {review.design.preferenceSources.map((source, index) => (
+            <p
+              key={
+                source.origin === 'user_answer'
+                  ? `${source.requestId}:${source.questionId}`
+                  : `ai:${index}`
+              }
+            >
+              {t(source.origin === 'user_answer' ? 'preferenceAnswer' : 'preferenceAi')}
+              {source.origin === 'user_answer' ? ` · ${source.requestId}/${source.questionId}` : ''}
+            </p>
+          ))}
+        </div>
       ) : null}
       {review.issues.length > 0 ? (
         <div>

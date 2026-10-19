@@ -36,10 +36,10 @@ export interface GitResult {
 export function git(
   cwd: string,
   args: string[],
-  options: { env?: Record<string, string>; maxBuffer?: number } = {},
+  options: { env?: Record<string, string>; maxBuffer?: number; input?: Buffer } = {},
 ): Promise<GitResult> {
   return new Promise((resolve, reject) => {
-    execFile(
+    const child = execFile(
       'git',
       [...SAFE_CONFIG, ...args],
       {
@@ -69,6 +69,8 @@ export function git(
         resolve({ stdout, stderr: stderr.toString() });
       },
     );
+    child.stdin?.on('error', () => {});
+    child.stdin?.end(options.input);
   });
 }
 

@@ -2196,5 +2196,533 @@
     "status": "planned",
     "adapter": "mock unless explicitly live",
     "evidence": null
+  },
+  {
+    "id": "TC-QEVAL-001-H",
+    "requirements": [
+      "CRL-QEVAL-001"
+    ],
+    "suite": "unit+integration",
+    "scenario": "올바른 새 비교가 실행되고 기존 비교군 혼합·중복·누락·과도한 실행을 시작 전에 거절한다.",
+    "status": "planned",
+    "adapter": "fixture; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-QEVAL-001-N",
+    "requirements": [
+      "CRL-QEVAL-001"
+    ],
+    "suite": "unit+integration",
+    "scenario": "비교군 혼합·중복/기준선 누락·반복 상한 위반과 취소는 잘못된 비교 실행을 만들지 않는다.",
+    "status": "planned",
+    "adapter": "fixture; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-SBX-001-H",
+    "requirements": [
+      "CRL-SBX-001"
+    ],
+    "suite": "os-probe",
+    "scenario": "실제 Linux probe와 실패 경계를 확인하고 OS별 미검증 범위를 기록한다.",
+    "status": "planned",
+    "adapter": "fixture; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-SBX-001-N",
+    "requirements": [
+      "CRL-SBX-001"
+    ],
+    "suite": "os-probe",
+    "scenario": "격리 실행이 불가능하거나 host 접근/프로세스 정리를 확인하지 못하면 실패/미지원으로 남기며 비격리 재실행하지 않는다.",
+    "status": "planned",
+    "adapter": "fixture; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-BPACK-001-H",
+    "requirements": [
+      "CRL-BPACK-001"
+    ],
+    "suite": "unit+integration",
+    "scenario": "고정 원본·누락/entry 경계의 검사와 기존 resource loader 재사용 근거를 확보한다.",
+    "status": "planned",
+    "adapter": "fixture; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-BPACK-001-N",
+    "requirements": [
+      "CRL-BPACK-001"
+    ],
+    "suite": "unit+integration",
+    "scenario": "같은 pack의 미바인딩 Skill·누락 reference·변조·symlink는 loader에 들어가지 않는다.",
+    "status": "planned",
+    "adapter": "fixture; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-SAFE-001-H",
+    "requirements": [
+      "CRL-SAFE-001"
+    ],
+    "suite": "unit",
+    "scenario": "기본 runtime과 SDK의 도구 승인이 정확한 최종 인자에 고정된다.",
+    "status": "planned",
+    "adapter": "mock",
+    "evidence": null
+  },
+  {
+    "id": "TC-SAFE-001-N",
+    "requirements": [
+      "CRL-SAFE-001"
+    ],
+    "suite": "unit",
+    "scenario": "승인 뒤 원본 객체를 바꾸거나 같은 호출을 재실행해도 효과를 바꾸거나 중복 실행할 수 없다.",
+    "status": "planned",
+    "adapter": "mock",
+    "evidence": null
+  },
+  {
+    "id": "TC-INPUT-001-H",
+    "requirements": [
+      "CRL-INPUT-001"
+    ],
+    "suite": "unit+integration",
+    "scenario": "사용자 질문은 두 runtime에서 표시·응답되고 private 기록으로 재생된다.",
+    "status": "planned",
+    "adapter": "fixture; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-INPUT-001-N",
+    "requirements": [
+      "CRL-INPUT-001"
+    ],
+    "suite": "unit+integration",
+    "scenario": "잘못된 선택·hash·revision·중복/늦은 답변을 거절하고 시간 경과·pause·취소에서 임의 진행하지 않는다.",
+    "status": "planned",
+    "adapter": "fixture; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-SAFE-002-H",
+    "requirements": [
+      "CRL-SAFE-002"
+    ],
+    "suite": "unit+integration",
+    "scenario": "구조화 규칙과 호출별 승인으로 정확한 최종 인자만 실행한다.",
+    "status": "planned",
+    "adapter": "fixture; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-SAFE-002-N",
+    "requirements": [
+      "CRL-SAFE-002"
+    ],
+    "suite": "unit+integration",
+    "scenario": "deny·role/strict 제한을 allow가 넓히지 못하고 stale descriptor·취소·중복 실행은 거절한다.",
+    "status": "planned",
+    "adapter": "fixture; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-PLAN-001-H",
+    "requirements": [
+      "CRL-PLAN-001"
+    ],
+    "suite": "unit+integration",
+    "scenario": "소유 execution/planner가 계획을 기록하고 실제 현재 검사 근거로 검증 단계를 완료한다.",
+    "status": "planned",
+    "adapter": "fixture; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-PLAN-001-N",
+    "requirements": [
+      "CRL-PLAN-001"
+    ],
+    "suite": "unit+integration",
+    "scenario": "stale revision/criteria·다중 진행·검증 없는 완료·타 실행 근거와 계획만으로 Task 완료를 거절한다.",
+    "status": "planned",
+    "adapter": "fixture; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-PROMPT-001-H",
+    "requirements": [
+      "CRL-PROMPT-001"
+    ],
+    "suite": "unit+integration",
+    "scenario": "결정적 프롬프트와 실제 전달 기록의 실제 적용과 기존 경로 호환성을 검증한다.",
+    "status": "planned",
+    "adapter": "fixture; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-PROMPT-001-N",
+    "requirements": [
+      "CRL-PROMPT-001"
+    ],
+    "suite": "unit+integration",
+    "scenario": "필수 내용 누락·변조·범위 밖 참조·지원하지 않는 적용은 명확히 거절한다.",
+    "status": "planned",
+    "adapter": "fixture; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-BPACK-002-H",
+    "requirements": [
+      "CRL-BPACK-002"
+    ],
+    "suite": "unit+integration",
+    "scenario": "Core/Coding/leeskills 내장 콘텐츠와 명시 선택의 실제 적용과 기존 경로 호환성을 검증한다.",
+    "status": "planned",
+    "adapter": "fixture; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-BPACK-002-N",
+    "requirements": [
+      "CRL-BPACK-002"
+    ],
+    "suite": "unit+integration",
+    "scenario": "필수 내용 누락·변조·범위 밖 참조·지원하지 않는 적용은 명확히 거절한다.",
+    "status": "planned",
+    "adapter": "fixture; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-CHAT-001-H",
+    "requirements": [
+      "CRL-CHAT-001"
+    ],
+    "suite": "unit+integration+browser",
+    "scenario": "텍스트 첨부·질문/승인·계획이 해당 요청과 연결되고 설정 왕복 후 초안과 읽던 위치가 보존된다.",
+    "status": "planned",
+    "adapter": "fixture; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-CHAT-001-N",
+    "requirements": [
+      "CRL-CHAT-001"
+    ],
+    "suite": "unit+integration+browser",
+    "scenario": "잘못된 hash/MIME/크기·늦은 전송 응답·다른 요청 대상·IME 입력은 자료 소실이나 잘못된 실행을 만들지 않는다.",
+    "status": "planned",
+    "adapter": "fixture; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-PROMPT-002-H",
+    "requirements": [
+      "CRL-PROMPT-002"
+    ],
+    "suite": "unit+integration",
+    "scenario": "TaskBrief는 현재 immutable input·실효 권한·검증 범위·리소스 참조를 전달한다.",
+    "status": "planned",
+    "adapter": "fixture; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-PROMPT-002-N",
+    "requirements": [
+      "CRL-PROMPT-002"
+    ],
+    "suite": "unit+integration",
+    "scenario": "검토 전용 요청의 파일 쓰기와 native 시작을 차단하고 기존 정의/다음 요청을 변경하지 않는다.",
+    "status": "planned",
+    "adapter": "fixture; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-CHAT-002-H",
+    "requirements": [
+      "CRL-CHAT-002"
+    ],
+    "suite": "browser",
+    "scenario": "읽기 전용 Run 요약 및 긴 대화의 제한된 DOM과 저장된 요청 앵커 복원",
+    "status": "planned",
+    "adapter": "fixture; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-CHAT-002-N",
+    "requirements": [
+      "CRL-CHAT-002"
+    ],
+    "suite": "browser",
+    "scenario": "이전 요청 읽기 중 최신으로 끌려가지 않고 다른 요청의 focus/결과가 섞이지 않는다",
+    "status": "planned",
+    "adapter": "fixture; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-CKPT-001-H",
+    "requirements": [
+      "CRL-CKPT-001"
+    ],
+    "suite": "unit+integration+browser",
+    "scenario": "불변 체크포인트 생성·조회·pin과 현재 tree를 확인한 복구·복구 전 보존",
+    "status": "planned",
+    "adapter": "local Git/SQLite fixture; no external calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-CKPT-001-N",
+    "requirements": [
+      "CRL-CKPT-001"
+    ],
+    "suite": "unit+integration+browser",
+    "scenario": "외부 수정/링크/중단/다른 세션/활성 Run 경쟁·불완전 manifest는 복구 불가",
+    "status": "planned",
+    "adapter": "local Git/SQLite fixture; no external calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-STATUS-001-H",
+    "requirements": [
+      "CRL-STATUS-001"
+    ],
+    "suite": "integration+browser",
+    "scenario": "기록된 실행별 context 추정·고정 모델 한도와 4개 상태 요약 연결",
+    "status": "planned",
+    "adapter": "fixture; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-STATUS-001-N",
+    "requirements": [
+      "CRL-STATUS-001"
+    ],
+    "suite": "integration+browser",
+    "scenario": "미기록 context/비용/연결을 0이나 검증 완료로 표시하지 않으며 선택 실행을 보존",
+    "status": "planned",
+    "adapter": "fixture; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-DESIGN-001-H",
+    "requirements": [
+      "CRL-DESIGN-001"
+    ],
+    "suite": "unit+integration",
+    "scenario": "상세 보고서·토큰 제안과 실제 사용자 선호 출처를 정규화된 리뷰에 연결",
+    "status": "planned",
+    "adapter": "local report fixtures",
+    "evidence": null
+  },
+  {
+    "id": "TC-DESIGN-001-N",
+    "requirements": [
+      "CRL-DESIGN-001"
+    ],
+    "suite": "unit+integration",
+    "scenario": "부분검증 승격·존재하지 않는 보고서/사용자 답변·필수 확인 실패를 pass로 처리하지 않는다",
+    "status": "planned",
+    "adapter": "local report fixtures",
+    "evidence": null
+  },
+  {
+    "id": "TC-BROWSER-001-H",
+    "requirements": [
+      "CRL-BROWSER-001"
+    ],
+    "suite": "integration",
+    "scenario": "고정 MCP로 소유 dev server의 관찰/준비/행동/결과 assertion을 수행한다",
+    "status": "planned",
+    "adapter": "owned loopback browser fixture; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-BROWSER-001-N",
+    "requirements": [
+      "CRL-BROWSER-001"
+    ],
+    "suite": "integration",
+    "scenario": "개인 profile·금지 도구·외부 origin·timeout/취소를 차단하고 소유 자식을 정리한다",
+    "status": "planned",
+    "adapter": "owned loopback browser fixture; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-QEVAL-002-H",
+    "requirements": [
+      "CRL-QEVAL-002"
+    ],
+    "suite": "unit+integration",
+    "scenario": "고정 Skill 선택/읽기/실제 전달과 expected 결과를 별도로 집계한다",
+    "status": "planned",
+    "adapter": "fixture; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-QEVAL-002-N",
+    "requirements": [
+      "CRL-QEVAL-002"
+    ],
+    "suite": "unit+integration",
+    "scenario": "미측정/누락/불필요 Skill 전달 및 중복 frame을 성공/0/이중 비용으로 표시하지 않는다",
+    "status": "planned",
+    "adapter": "fixture; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-IMAGE-001-H",
+    "requirements": [
+      "CRL-IMAGE-001"
+    ],
+    "suite": "unit+integration+browser",
+    "scenario": "정규화 이미지가 세션/Run에 불변 저장되고 초안·history·두 provider payload에 전달된다",
+    "status": "planned",
+    "adapter": "local image/HTTP fixtures; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-IMAGE-001-N",
+    "requirements": [
+      "CRL-IMAGE-001"
+    ],
+    "suite": "unit+integration+browser",
+    "scenario": "잘못된 PNG/치수/해시·다른 세션 참조·미지원 모델·이미지 제거 payload는 거절한다",
+    "status": "planned",
+    "adapter": "local image/HTTP fixtures; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-SBX-002-H",
+    "requirements": [
+      "CRL-SBX-002"
+    ],
+    "suite": "integration",
+    "scenario": "실제 Linux 격리의 IPC와 host permit HTTP 모델 호출·내용팩이 동작한다",
+    "status": "planned",
+    "adapter": "Linux opt-in and local HTTP; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-SBX-002-N",
+    "requirements": [
+      "CRL-SBX-002"
+    ],
+    "suite": "integration",
+    "scenario": "host 파일/network/credential 접근·permit 재사용·payload 변경을 거절하고 취소 시 소유 후손만 종료한다",
+    "status": "planned",
+    "adapter": "Linux opt-in and local HTTP; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-HUNK-001-H",
+    "requirements": [
+      "CRL-HUNK-001"
+    ],
+    "suite": "integration+browser",
+    "scenario": "선택한 변경 조각만 원본/사본에 반영하고 대상별 복구 전 보존본과 사용자 index를 유지한다",
+    "status": "planned",
+    "adapter": "temporary Git worktrees; no external writes",
+    "evidence": null
+  },
+  {
+    "id": "TC-HUNK-001-N",
+    "requirements": [
+      "CRL-HUNK-001"
+    ],
+    "suite": "integration+browser",
+    "scenario": "오래된 파일/patch/tree·다른 세션·symlink를 거절하고 중복/부분 실패를 재실행하지 않는다",
+    "status": "planned",
+    "adapter": "temporary Git worktrees; no external writes",
+    "evidence": null
+  },
+  {
+    "id": "TC-COMPACT-001-H",
+    "requirements": [
+      "CRL-COMPACT-001"
+    ],
+    "suite": "integration+browser",
+    "scenario": "자동/수동 압축 뒤 최신 보호 계획/질문/지시/기준/리소스가 남으며 목적별 모델 비용을 기록한다",
+    "status": "planned",
+    "adapter": "deterministic SDK provider; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-COMPACT-001-N",
+    "requirements": [
+      "CRL-COMPACT-001"
+    ],
+    "suite": "integration+browser",
+    "scenario": "오래된 attempt/revision·중복·완료된 실행·unsupported runtime을 거절하고 실패/취소 시 context를 유지한다",
+    "status": "planned",
+    "adapter": "deterministic SDK provider; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-RESUME-001-H",
+    "requirements": [
+      "CRL-RESUME-001"
+    ],
+    "suite": "integration+browser",
+    "scenario": "안전 checkpoint의 private history가 cold restart 뒤 새 Run/실행에 복원되고 이전 Run/사용량/소유권을 보존한다",
+    "status": "planned",
+    "adapter": "SQLite, temporary worktrees and deterministic providers; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-RESUME-001-N",
+    "requirements": [
+      "CRL-RESUME-001"
+    ],
+    "suite": "integration+browser",
+    "scenario": "변조/미완성/잘못된 scope·tree/resource/model 변경·pending/unknown usage/effects·복구 불가 상태를 거절하고 중복 시작을 막는다",
+    "status": "planned",
+    "adapter": "SQLite, temporary worktrees and deterministic providers; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-CONTINUITY-001-H",
+    "requirements": [
+      "CRL-CONTINUITY-001"
+    ],
+    "suite": "integration+browser",
+    "scenario": "metadata/private 다국어 검색, 초안/탭 복귀와 선택 메시지부터의 새 분기",
+    "status": "planned",
+    "adapter": "SQLite and browser fixtures; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-CONTINUITY-001-N",
+    "requirements": [
+      "CRL-CONTINUITY-001"
+    ],
+    "suite": "integration+browser",
+    "scenario": "보관/삭제/인덱스 재구축, 중복/손상 checkpoint 및 선택 지점 이후 정보·파일의 역주입을 거절한다",
+    "status": "planned",
+    "adapter": "SQLite and browser fixtures; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-WEB-001-H",
+    "requirements": [
+      "CRL-WEB-001"
+    ],
+    "suite": "integration",
+    "scenario": "등록 HTML source에서 본문·원문/hash/version/time을 고정하고 이전 수집을 보존한다",
+    "status": "planned",
+    "adapter": "bounded injected HTTPS and owned local browser fixture",
+    "evidence": null
+  },
+  {
+    "id": "TC-WEB-001-N",
+    "requirements": [
+      "CRL-WEB-001"
+    ],
+    "suite": "integration",
+    "scenario": "script·MIME 위장·private redirect/DNS·과대 입력·취소를 거절하며 네트워크와 policy 권한을 넓히지 않는다",
+    "status": "planned",
+    "adapter": "bounded injected HTTPS and owned local browser fixture",
+    "evidence": null
   }
 ]

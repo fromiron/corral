@@ -1,0 +1,182 @@
+[
+  {
+    "id": "en-positive-1",
+    "language": "en",
+    "query": "Count and consolidate the type, radius, shadow, surface, CTA, image, and motion variants in this design system.",
+    "should_trigger": true
+  },
+  {
+    "id": "en-positive-2",
+    "language": "en",
+    "query": "Decide whether the second typeface and extra colors have documented communication roles or are unnecessary variants.",
+    "should_trigger": true
+  },
+  {
+    "id": "en-positive-3",
+    "language": "en",
+    "query": "Audit these nested cards: the inner panel repeats the outer corner radius even though it is inset.",
+    "should_trigger": true
+  },
+  {
+    "id": "en-positive-4",
+    "language": "en",
+    "query": "Audit this design system's semantic spacing, responsive containers, and font-aware letter spacing and line height without imposing another system's pixel values.",
+    "should_trigger": true
+  },
+  {
+    "id": "en-positive-5",
+    "language": "en",
+    "query": "Propose primitive and semantic design tokens with concrete names and values, then present typography, spacing, layout, and radius in one HTML review page.",
+    "should_trigger": true
+  },
+  {
+    "id": "en-negative-1",
+    "language": "en",
+    "query": "Rewrite this pricing paragraph to make the offer more concrete.",
+    "should_trigger": false
+  },
+  {
+    "id": "en-negative-2",
+    "language": "en",
+    "query": "Check this form for keyboard traps and missing labels.",
+    "should_trigger": false
+  },
+  {
+    "id": "en-negative-3",
+    "language": "en",
+    "query": "Calculate the radius of a circle with a 20-pixel diameter.",
+    "should_trigger": false
+  },
+  {
+    "id": "ko-positive-1",
+    "language": "ko",
+    "query": "이 디자인 시스템의 글꼴·반경·그림자·표면·CTA·이미지·모션 변형을 세고 통합해줘.",
+    "should_trigger": true
+  },
+  {
+    "id": "ko-positive-2",
+    "language": "ko",
+    "query": "두 번째 글꼴과 추가 색상이 실제 전달 역할을 갖는지 불필요한 변형인지 판단해줘.",
+    "should_trigger": true
+  },
+  {
+    "id": "ko-positive-3",
+    "language": "ko",
+    "query": "안쪽으로 들어간 패널이 바깥 카드와 같은 모서리 반경을 반복하는 중첩 구조를 검사해줘.",
+    "should_trigger": true
+  },
+  {
+    "id": "ko-positive-4",
+    "language": "ko",
+    "query": "다른 디자인 시스템의 픽셀 값을 강제하지 말고 시멘틱 간격·반응형 컨테이너·폰트별 자간과 행간을 점검해줘.",
+    "should_trigger": true
+  },
+  {
+    "id": "ko-positive-5",
+    "language": "ko",
+    "query": "구체적인 이름과 수치가 있는 Primitive·Semantic 디자인 토큰을 제안하고 Typography·Spacing·Layout·Radius를 하나의 HTML 검토 페이지로 보여줘.",
+    "should_trigger": true
+  },
+  {
+    "id": "ko-negative-1",
+    "language": "ko",
+    "query": "이 가격 문단의 제안을 더 구체적인 카피로 고쳐줘.",
+    "should_trigger": false
+  },
+  {
+    "id": "ko-negative-2",
+    "language": "ko",
+    "query": "이 폼의 키보드 트랩과 누락된 레이블만 확인해줘.",
+    "should_trigger": false
+  },
+  {
+    "id": "ko-negative-3",
+    "language": "ko",
+    "query": "지름이 20픽셀인 원의 반지름을 계산해줘.",
+    "should_trigger": false
+  },
+  {
+    "id": "ja-positive-1",
+    "language": "ja",
+    "query": "このデザインシステムの書体・角丸・影・面・CTA・画像・動きのバリエーションを数えて統合してください。",
+    "should_trigger": true
+  },
+  {
+    "id": "ja-positive-2",
+    "language": "ja",
+    "query": "二つ目の書体と追加色に伝達上の役割があるか、不要なバリエーションかを判断してください。",
+    "should_trigger": true
+  },
+  {
+    "id": "ja-positive-3",
+    "language": "ja",
+    "query": "内側に入ったパネルが外側カードと同じ角丸を繰り返す入れ子構造を監査してください。",
+    "should_trigger": true
+  },
+  {
+    "id": "ja-positive-4",
+    "language": "ja",
+    "query": "別のデザインシステムの数値を強制せず、セマンティックな余白、レスポンシブコンテナ、フォント別の字間と行間を監査してください。",
+    "should_trigger": true
+  },
+  {
+    "id": "ja-positive-5",
+    "language": "ja",
+    "query": "具体的な名前と値を持つPrimitive・Semanticデザイントークンを提案し、Typography・Spacing・Layout・Radiusを一つのHTMLレビューページで示してください。",
+    "should_trigger": true
+  },
+  {
+    "id": "ja-negative-1",
+    "language": "ja",
+    "query": "この料金説明を、内容が具体的に伝わるコピーに書き直してください。",
+    "should_trigger": false
+  },
+  {
+    "id": "ja-negative-2",
+    "language": "ja",
+    "query": "このフォームのキーボードトラップと不足ラベルだけを確認してください。",
+    "should_trigger": false
+  },
+  {
+    "id": "ja-negative-3",
+    "language": "ja",
+    "query": "直径20ピクセルの円の半径を計算してください。",
+    "should_trigger": false
+  },
+  {
+    "id": "en-negative-4",
+    "language": "en",
+    "query": "Document the loading, disabled, and error states of our Select component across design and code.",
+    "should_trigger": false
+  },
+  {
+    "id": "ko-negative-4",
+    "language": "ko",
+    "query": "디자인과 코드에서 Select 컴포넌트의 로딩·비활성·오류 상태를 정리해 줘.",
+    "should_trigger": false
+  },
+  {
+    "id": "ja-negative-4",
+    "language": "ja",
+    "query": "デザインとコードでSelectコンポーネントの読み込み中・無効・エラー状態をまとめてください。",
+    "should_trigger": false
+  },
+  {
+    "id": "en-positive-6",
+    "language": "en",
+    "query": "Ask me a few questions about colors, dark mode, fonts, and corners, then propose design tokens for my new app.",
+    "should_trigger": true
+  },
+  {
+    "id": "ko-positive-6",
+    "language": "ko",
+    "query": "색, 다크 모드, 글꼴, 모서리에 대해 몇 가지 물어본 다음 새 앱의 디자인 토큰을 제안해 줘.",
+    "should_trigger": true
+  },
+  {
+    "id": "ja-positive-6",
+    "language": "ja",
+    "query": "色、ダークモード、フォント、角について少し質問してから、新しいアプリのデザイントークンを提案してください。",
+    "should_trigger": true
+  }
+]

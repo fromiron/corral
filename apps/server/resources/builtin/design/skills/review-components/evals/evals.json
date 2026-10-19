@@ -1,0 +1,65 @@
+{
+  "skill_name": "review-components",
+  "evals": [
+    {
+      "id": "button-design-code-drift",
+      "prompt": "Our Figma button has default, hover, disabled, and loading variants. The React component has no loading prop and removes the focus outline. Audit the component contract before release.",
+      "expected_output": "A component contract audit that separates visual variants from runtime behavior, blocks release for missing focus-visible and required loading behavior, and assigns design-code drift with a verification plan.",
+      "assertions": [
+        "Required and optional anatomy are distinguished.",
+        "Focus-visible and loading are evaluated as behavior and accessibility contracts, not only visual states.",
+        "Design-code parity is classified and required failures or unknowns block mechanical release readiness."
+      ]
+    },
+    {
+      "id": "localized-text-field-contract",
+      "prompt": "Define a reusable text-field contract for English, Korean, and Japanese forms. It needs labels, helper text, validation, word limits, mobile layout, keyboard use, and screen-reader feedback.",
+      "expected_output": "A project-grounded contract covering anatomy, applicable states, multilingual content expansion, responsive behavior, keyboard and status feedback, without copying another design system's dimensions.",
+      "assertions": [
+        "The output tests long and multilingual content rather than only ideal labels.",
+        "Error feedback is not carried by color alone.",
+        "External component dimensions are not treated as project requirements."
+      ]
+    },
+    {
+      "id": "identity-exception",
+      "prompt": "This portfolio uses a custom hand-drawn project marker that is part of the author's identity. Standardize the project-list component without deleting that marker.",
+      "expected_output": "A contract that preserves a justified identity anchor, documents its semantic and accessibility role, and standardizes only unrelated drift.",
+      "assertions": [
+        "Consistency is not treated as a requirement to erase identity.",
+        "The exception has evidence, an owner, and a review trigger.",
+        "The marker still receives a defined accessible and responsive behavior."
+      ]
+    },
+    {
+      "id": "affordance-action-disclosure",
+      "prompt": "On this profile screen, static metadata icons look like buttons, Follow and Message are equally prominent, and Share is hidden in an overflow menu despite available space. Audit the interaction contract.",
+      "expected_output": "An evidence-labeled extension report that separates perceived affordance from actual behavior, evaluates action priority inside the profile decision context, records Share's disclosure cost and available-space evidence, and proposes the smallest verifiable changes.",
+      "assertions": [
+        "The same-look and same-behavior relationship is audited without claiming that every action needs a unique style.",
+        "Primary-action priority is scoped to the specific user decision rather than imposed on the whole page.",
+        "The overflow placement is neither automatically accepted nor rejected; importance, disclosure steps, hiding reason, and an adequate path are evaluated."
+      ]
+    },
+    {
+      "id": "design-system-adoption-lifecycle",
+      "prompt": "We have audited our legacy components and proposed a new shared library. Define a safe incremental adoption contract covering Figma, code, Storybook, old and new coexistence, consumer releases, and eventual removal.",
+      "expected_output": "A project-owned lifecycle contract with authoritative surfaces, governance, contribution flow, versioning and changelog, legacy-to-target mappings, adoption status, coexistence rules, owners, roadmap, and measurable deprecation gates.",
+      "assertions": [
+        "The output does not require a central team or ambassador program when another accountable governance model fits the project.",
+        "A legacy-to-target mapping and bounded coexistence policy are explicit rather than implied by a component inventory.",
+        "External spacing, type, radius, shadow, or target-size examples are not copied as universal pass/fail rules."
+      ]
+    },
+    {
+      "id": "appropriate-component-keep",
+      "prompt": "Review the Save draft button in evals/fixtures/appropriate-ui.html as a reusable component. Only flag real problems.",
+      "expected_output": "A proportionate component review that records the supported states and accessible name, marks unsupplied surfaces as not inspected, and does not invent drift or require unrelated states.",
+      "assertions": [
+        "The output does not require states the component does not use.",
+        "Design, documentation, and live surfaces that were not supplied are marked not-inspected.",
+        "No change is recommended without a supported user or maintainer impact."
+      ]
+    }
+  ]
+}

@@ -1,5 +1,10 @@
 import { createHash } from 'node:crypto';
-import { type McpProbeTool, probeMcp, type SdkResources } from '@corral/adapter-pi';
+import {
+  assertBrowserCall,
+  type McpProbeTool,
+  probeMcp,
+  type SdkResources,
+} from '@corral/adapter-pi';
 import {
   type AgentStartInput,
   type Clock,
@@ -227,6 +232,9 @@ export class McpService {
       throw new Error('MCP server is not selected');
     const runtime = await this.files.runtimeMcp(input.runId, selection);
     const id = /^mcp__(.+?)__/.exec(name)?.[1];
+    const selected = runtime.servers.find(({ server }) => server.id === id)?.server;
+    if (selected?.transport === 'stdio' && selected.browser)
+      assertBrowserCall(selected.browser, name.slice(`mcp__${id}__`.length), args);
     if (
       id
         ? !runtime.servers.some(({ server }) => server.id === id)

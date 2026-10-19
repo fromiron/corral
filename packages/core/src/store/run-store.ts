@@ -1,10 +1,12 @@
 import type {
   AutoRoute,
+  BranchedFrom,
   CorralDefinition,
   EffectiveHarnessSnapshot,
   ModelProfileSnapshot,
   ReasoningApplySettings,
   Receipt,
+  ResumedFrom,
   RunEvent,
   RunStatus,
 } from '@corral/contracts';
@@ -17,6 +19,8 @@ import type { RunProjection } from '../projection.ts';
 
 /** What a run was started with, fixed for its whole life (C-057, CRL-CAN-002). */
 export interface RunSnapshot {
+  resumedFrom?: ResumedFrom;
+  branchedFrom?: BranchedFrom;
   /** The definition as run, with the run input applied. Later edits never reach it. */
   definition: CorralDefinition;
   definitionHash: string;

@@ -1,0 +1,30 @@
+{
+  "artifact": "Example product page",
+  "patterns": [
+    {
+      "id": "hero-parallax",
+      "trigger": "scroll",
+      "purpose": "Decorative depth",
+      "essential": false,
+      "decision": "remove",
+      "information_conveyed": false,
+      "static_equivalent": true,
+      "reduced_motion_behavior": "No movement; use the final static composition.",
+      "verification": "Scroll with normal and reduced-motion preferences."
+    },
+    {
+      "id": "save-confirmation",
+      "trigger": "form submit",
+      "purpose": "Confirm that changes were saved",
+      "essential": false,
+      "decision": "reduce",
+      "information_conveyed": true,
+      "static_equivalent": true,
+      "reduced_motion_behavior": "Show the status text immediately without translation.",
+      "verification": "Submit by keyboard and confirm status text is announced."
+    }
+  ],
+  "unknowns": [
+    "Autoplay behavior was not supplied."
+  ]
+}

@@ -1,7 +1,14 @@
 import type { AutoCancelResult, AutoRunStart, FileChangeView } from '@corral/client';
-import type { AutoModelChoice, AutoReasoning, RoleRunOverrides } from '@corral/contracts';
+import type {
+  AutoModelChoice,
+  AutoReasoning,
+  RoleRunOverrides,
+  TextAttachment,
+} from '@corral/contracts';
 import {
   type HarnessOverrides,
+  type ImageAttachment,
+  ImageAttachments,
   type RunReference,
   TERMINAL_EXECUTION_STATUSES,
   TERMINAL_RUN_STATUSES,
@@ -16,7 +23,8 @@ import type {
   SessionIntent,
   WorkSession,
 } from '@corral/core';
-import { ApprovalPanel, RunActions, runResults, StatusBadge } from '@corral/react';
+import { validTextAttachments } from '@corral/core';
+import { runResults, StatusBadge } from '@corral/react';
 import {
   ArrowUp,
   AtSign,
@@ -81,9 +89,12 @@ import { ComposerSurface } from '../workbench/ComposerSurface.tsx';
 import { type IntentLock, resolveIntent } from '../workbench/composerIntent.ts';
 import { type MentionItem, mentionToken, pickedReferences } from '../workbench/composerMenu.ts';
 import { FilePanel, type FileReference } from '../workbench/FilePanel.tsx';
+import { ImageAttachmentList, ImageAttachmentPicker } from '../workbench/ImageAttachments.tsx';
+import { MessageBranch } from '../workbench/MessageBranch.tsx';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
 import { isSendKey, usePreferences } from '../workbench/preferences.ts';
 import { EDIT_REQUEST, editRequest, RefusalHelp } from '../workbench/RefusalHelp.tsx';
+import { RunChanges } from '../workbench/RunChanges.tsx';
 import { RunHarnessOverrides } from '../workbench/RunHarnessOverrides.tsx';
 import { RunMessage } from '../workbench/RunMessage.tsx';
 import { RunRoleOverrides } from '../workbench/RunRoleOverrides.tsx';
@@ -94,6 +105,7 @@ import {
   writeComposerDraft,
 } from '../workbench/sessionDraft.ts';
 import { TabRow } from '../workbench/TabRow.tsx';
+import { TextAttachmentList, TextAttachmentPicker } from '../workbench/TextAttachments.tsx';
 import { TopbarActions } from '../workbench/TopbarSlot.tsx';
 import { useMentionSearch } from '../workbench/useMentionSearch.ts';
 import {
@@ -113,7 +125,7 @@ import { useRemembered, WorkbenchLayout } from './Workbench.tsx';
 const newCommandId = () => `cmd_${globalThis.crypto.randomUUID()}`;
 
 /** The session's runs, kept current while one is working. */
-function useSessionRuns(sessionId: string) {
+function useSessionRuns(sessionId: string, selectedRunId?: string) {
   const { transport } = useServices();
   const [all, setAll] = useState<RunSummary[]>([]);
   const [tick, setTick] = useState(0);
@@ -122,6 +134,8 @@ function useSessionRuns(sessionId: string) {
   const refresh = useCallback(() => setTick((n) => n + 1), []);
   useEffect(() => {
     void tick;
+    void sessionId;
+    void selectedRunId;
     let live = true;
     transport.listRuns().then(
       (runs) => {
@@ -134,7 +148,7 @@ function useSessionRuns(sessionId: string) {
     return () => {
       live = false;
     };
-  }, [transport, tick]);
+  }, [transport, tick, sessionId, selectedRunId]);
   const active = all.find((r) => !TERMINAL_RUN_STATUSES.has(r.status)) ?? null;
   useEffect(() => {
     if (!active && !lost) return;
@@ -169,7 +183,7 @@ export function SessionPage() {
   const viewKey = JSON.stringify(search);
   useEffect(() => rememberView(JSON.parse(viewKey)), [viewKey, rememberView]);
   const navigate = useNavigate({ from: '/sessions/$sessionId' });
-  const { runs, active, refresh, lost } = useSessionRuns(session.sessionId);
+  const { runs, active, refresh, lost } = useSessionRuns(session.sessionId, search.run);
   useEffect(() => setCurrentProject(session.projectId), [session.projectId]);
   const team = corrals.find((c) => c.corralId === session.corralId) ?? null;
   const ts = useTranslations('Sessions');
@@ -593,6 +607,12 @@ function WorkTab({
   onPanel: (panel: SessionPanel, run?: Partial<SessionSearch>) => void;
 }) {
   const t = useTranslations('Sessions');
+  const { session: liveSession } = useServices();
+  const activeId = active?.sessionId === session.sessionId ? active.runId : null;
+  const messageId = sessionRoute.useSearch().message;
+  useEffect(() => {
+    if (activeId) void liveSession.getState().open(activeId);
+  }, [liveSession, activeId]);
   // Entries in order; runs that no entry names (started elsewhere) are shown after them.
   const named = new Set(session.entries.flatMap((e) => (e.runId ? [e.runId] : [])));
   const loose = runs.filter((r) => !named.has(r.runId));
@@ -602,7 +622,28 @@ function WorkTab({
   return (
     <RunChecks.Provider value={runChecks}>
       <ChatView
+        key={session.sessionId}
         sessionId={session.sessionId}
+        messageId={messageId}
+        items={[
+          ...session.entries
+            .filter((e) => e.state !== 'queued' && e.state !== 'dismissed')
+            .map((entry) => ({
+              id: entry.entryId,
+              content: (
+                <EntryCard
+                  sessionId={session.sessionId}
+                  entry={entry}
+                  runs={runs}
+                  onPanel={onPanel}
+                />
+              ),
+            })),
+          ...loose.map((run) => ({
+            id: run.runId,
+            content: <RunCard run={run} onPanel={onPanel} />,
+          })),
+        ]}
         composer={
           <Composer
             key={session.sessionId}
@@ -628,18 +669,7 @@ function WorkTab({
               </p>
             </div>
           ) : null}
-          {session.entries
-            .filter((e) => e.state !== 'queued' && e.state !== 'dismissed')
-            .map((entry) => (
-              <EntryCard key={entry.entryId} entry={entry} runs={runs} onPanel={onPanel} />
-            ))}
-          {loose.map((run) => (
-            <RunCard key={run.runId} run={run} onPanel={onPanel} />
-          ))}
         </section>
-        {active && active.sessionId === session.sessionId ? (
-          <ActiveDecisions runId={active.runId} onPanel={onPanel} />
-        ) : null}
       </ChatView>
     </RunChecks.Provider>
   );
@@ -687,6 +717,7 @@ function RunPanel({
       <div className="min-h-0 flex-1">
         <RunDetail
           key={runId}
+          sessionId={runs.find((run) => run.runId === runId)?.sessionId ?? null}
           runId={runId}
           embedded
           compact
@@ -895,34 +926,13 @@ function ChecksPanel({ session }: { session: WorkSession }) {
   );
 }
 
-/** Decisions the session's working run waits for, answered here (WB-OBS-002). */
-function ActiveDecisions({
-  runId,
-  onPanel,
-}: {
-  runId: string;
-  onPanel: (panel: SessionPanel, run?: Partial<SessionSearch>) => void;
-}) {
-  const { session } = useServices();
-  useEffect(() => {
-    void session.getState().open(runId);
-  }, [session, runId]);
-  return (
-    <>
-      <RunActions session={session} compact />
-      <ApprovalPanel
-        session={session}
-        onOpenArtifact={(id) => onPanel('run', { run: runId, view: 'results', result: id })}
-      />
-    </>
-  );
-}
-
 function EntryCard({
+  sessionId,
   entry,
   runs,
   onPanel,
 }: {
+  sessionId: string;
   entry: SessionEntry;
   runs: RunSummary[];
   onPanel: (panel: SessionPanel, run?: Partial<SessionSearch>) => void;
@@ -975,13 +985,34 @@ function EntryCard({
           </p>
         ) : null}
         <p className="whitespace-pre-wrap text-sm leading-6">{entry.text}</p>
+        {entry.attachments?.length ? <TextAttachmentList attachments={entry.attachments} /> : null}
+        {entry.images?.length ? (
+          <ImageAttachmentList sessionId={sessionId} images={entry.images} />
+        ) : null}
         <span className="sr-only">
           {t('youAsked', { intent: t(`intent.${entry.intent}`) })} · {t(`state.${entry.state}`)} ·{' '}
           {when}
         </span>
       </div>
+      {entry.runId && run && (entry.intent === 'next' || entry.intent === 'explain') ? (
+        <MessageBranch
+          runId={entry.runId}
+          requestStart
+          disabled={!TERMINAL_RUN_STATUSES.has(run.status)}
+        />
+      ) : null}
       {entry.detail && entry.state === 'refused' ? (
-        <RefusalHelp message={entry.detail} onEdit={() => editRequest(entry.text)} />
+        <RefusalHelp
+          message={entry.detail}
+          onEdit={() =>
+            editRequest(entry.text, {
+              attachments: entry.attachments,
+              images: entry.images,
+              taskScope: entry.taskScope,
+              verificationScope: entry.verificationScope,
+            })
+          }
+        />
       ) : entry.detail ? (
         <p role="note" className="text-xs text-danger">
           {entry.detail}
@@ -1104,25 +1135,15 @@ function RunCard({
           {t('didNotFinish', { status: ts(run.status) })}
         </p>
       ) : null}
-      <RunMessage runId={run.runId} sessionId={run.sessionId ?? null} live={!ended} />
+      <RunMessage
+        runId={run.runId}
+        sessionId={run.sessionId ?? null}
+        live={!ended}
+        onOpenArtifact={(result) => onPanel('run', { run: run.runId, view: 'results', result })}
+      />
       {/* Only a session with a working copy has changes to review (its checks are known). */}
       {ended && checks.known && run.sessionId ? (
-        <div>
-          <Button
-            variant="outline"
-            size="xs"
-            render={
-              <Link
-                to="/sessions/$sessionId/review"
-                params={{ sessionId: run.sessionId }}
-                search={{ scope: 'run', runId: run.runId }}
-              />
-            }
-          >
-            <FileDiff />
-            {t('reviewChanges')}
-          </Button>
-        </div>
+        <RunChanges sessionId={run.sessionId} runId={run.runId} />
       ) : null}
     </section>
   );
@@ -1244,6 +1265,14 @@ function Composer({
   // UX-02: the draft comes back with its intent, target and exact references.
   const [restored] = useState(() => readComposerDraft(session.sessionId));
   const [text, setText] = useState(restored.text);
+  const [attachments, setAttachments] = useState<TextAttachment[]>(restored.attachments ?? []);
+  const [attachmentsBusy, setAttachmentsBusy] = useState(false);
+  const [images, setImages] = useState<ImageAttachment[]>(restored.images ?? []);
+  const [imagesBusy, setImagesBusy] = useState(false);
+  const [reviewOnly, setReviewOnly] = useState(restored.taskScope === 'review_only');
+  const [verificationScope, setVerificationScope] = useState<'targeted' | 'release'>(
+    restored.verificationScope ?? 'targeted',
+  );
   const [chosen, setChosen] = useState<SessionIntent | null>(null);
   const [target, setTarget] = useState<string>('');
   // UX-01: what the request is (and for whom) is fixed once typing starts.
@@ -1309,7 +1338,6 @@ function Composer({
   const [confirmStop, setConfirmStop] = useState(false);
   const [teamOpen, setTeamOpen] = useState(false);
   const [autoModelOpen, setAutoModelOpen] = useState(false);
-  const [autoReasoningOpen, setAutoReasoningOpen] = useState(false);
   const [modelsOpen, setModelsOpen] = useState(false);
   // UX-06: which model each role uses, and whether it is connected.
   const profiles = useModelProfiles();
@@ -1437,8 +1465,12 @@ function Composer({
       target: lock?.target ?? null,
       targetLabel: lock?.target ? (targetNames.current.get(lock.target) ?? null) : null,
       references: picked.filter((item) => pickedReferences(text, [item]).length > 0),
+      ...(attachments.length ? { attachments } : {}),
+      ...(images.length ? { images } : {}),
+      ...(reviewOnly ? { taskScope: 'review_only' as const } : {}),
+      ...(verificationScope === 'release' ? { verificationScope } : {}),
     }),
-    [text, lock, picked],
+    [text, lock, picked, attachments, images, reviewOnly, verificationScope],
   );
   const draftRevision = useRef(0);
   useEffect(() => {
@@ -1450,6 +1482,10 @@ function Composer({
       if (detail.sessionId !== session.sessionId || detail.revision !== draftRevision.current)
         return;
       setPicked([]);
+      setAttachments([]);
+      setImages([]);
+      setReviewOnly(false);
+      setVerificationScope('targeted');
       setChosen(null);
       setLock(null);
       setText('');
@@ -1535,6 +1571,7 @@ function Composer({
     refs: RunReference[] = [],
     overrides: HarnessOverrides = {},
     roleChoices: RoleRunOverrides = {},
+    scope: { taskScope?: 'review_only'; verificationScope?: 'release' } = {},
   ): Promise<{
     runId: string | null;
     detail: string | null;
@@ -1545,11 +1582,11 @@ function Composer({
   }> => {
     if (!team)
       return isAuto
-        ? startAuto(brief, commandId, refs)
+        ? startAuto(brief, commandId, refs, scope)
         : { runId: null, detail: t('selectedTeamMissing') };
     const corral = await repository.get(team.corralId);
     if (!corral) return { runId: null, detail: t('noTeamYet') };
-    const input = { brief, criteria: corral.definition.input.criteria };
+    const input = { ...corral.definition.input, brief, ...scope };
     const common = {
       schemaVersion: '0.1' as const,
       commandId,
@@ -1578,9 +1615,15 @@ function Composer({
   };
 
   /** CR-024: with no team chosen, the runtime picks a template for this request. */
-  const startAuto = async (brief: string, commandId: string, refs: RunReference[]) => {
+  const startAuto = async (
+    brief: string,
+    commandId: string,
+    refs: RunReference[],
+    scope: { taskScope?: 'review_only'; verificationScope?: 'release' },
+  ) => {
     const controller = new AbortController();
     const proposed: AutoRunStart = {
+      ...scope,
       commandId,
       sessionId: session.sessionId,
       brief,
@@ -1680,11 +1723,15 @@ function Composer({
     setRefusal(null);
     try {
       if (intent === 'next') {
-        const refs = references;
+        const refs: RunReference[] = [...references, ...attachments, ...images];
+        const scope = {
+          ...(reviewOnly ? { taskScope: 'review_only' as const } : {}),
+          ...(verificationScope === 'release' ? { verificationScope } : {}),
+        };
         const commandId = commandFor(
           team
-            ? `next\u0000${body}\u0000${JSON.stringify([refs, harnessOverrides, roleOverrides, runMode])}`
-            : autoCommandSeed(body, refs, autoChoice),
+            ? `next\u0000${body}\u0000${JSON.stringify([refs, harnessOverrides, roleOverrides, runMode, scope])}`
+            : autoCommandSeed(body, refs, autoChoice, scope),
         );
         const { runId, detail, code, auto, cancelled, cancelError } = await startNext(
           body,
@@ -1692,12 +1739,14 @@ function Composer({
           refs,
           harnessOverrides,
           roleOverrides,
+          scope,
         );
         if (runId) {
           setRunStyles(null);
           setRoleChoices(null);
         }
         await record({
+          ...scope,
           intent,
           text: body,
           state: runId ? 'started' : 'refused',
@@ -1705,6 +1754,8 @@ function Composer({
           detail,
           commandId,
           ...(auto ? { auto } : {}),
+          ...(attachments.length ? { attachments } : {}),
+          ...(images.length ? { images } : {}),
         });
         if (cancelled) {
           clearPending();
@@ -1791,9 +1842,34 @@ function Composer({
   // "Edit the request again" on a refused turn brings its text back here.
   useEffect(() => {
     const take = (event: Event) => {
-      const value = (event as CustomEvent<string>).detail;
-      if (typeof value !== 'string') return;
-      setText(value);
+      const value = (
+        event as CustomEvent<
+          | string
+          | {
+              text: string;
+              attachments?: TextAttachment[];
+              images?: ImageAttachment[];
+              taskScope?: string;
+              verificationScope?: string;
+            }
+        >
+      ).detail;
+      if (
+        typeof value !== 'string' &&
+        (typeof value !== 'object' ||
+          !value ||
+          typeof value.text !== 'string' ||
+          (value.attachments !== undefined && !validTextAttachments(value.attachments)) ||
+          (value.images !== undefined && !ImageAttachments.safeParse(value.images).success))
+      )
+        return;
+      setText(typeof value === 'string' ? value : value.text);
+      setAttachments(typeof value === 'string' ? [] : (value.attachments ?? []));
+      setImages(typeof value === 'string' ? [] : (value.images ?? []));
+      setReviewOnly(typeof value === 'object' && value.taskScope === 'review_only');
+      setVerificationScope(
+        typeof value === 'object' && value.verificationScope === 'release' ? 'release' : 'targeted',
+      );
       setLock(null);
       setRefusal(null);
       requestAnimationFrame(() => input.current?.focus());
@@ -1864,6 +1940,10 @@ function Composer({
   /** Editing a queued task takes it back into the box; sending again records a new version. */
   const editQueued = async (entry: SessionEntry) => {
     setText(entry.text);
+    setAttachments(entry.attachments ?? []);
+    setImages(entry.images ?? []);
+    setReviewOnly(false);
+    setVerificationScope('targeted');
     setChosen('queue');
     setLock({ intent: 'queue', target: null });
     await repository.updateSessionEntry(session.sessionId, entry.entryId, {
@@ -1918,6 +1998,12 @@ function Composer({
       event.preventDefault();
       setRecall(next);
       write(next === -1 ? '' : (history[next] ?? ''));
+      const recalledEntry =
+        next === -1 ? undefined : session.entries.findLast((entry) => entry.text === history[next]);
+      setAttachments(recalledEntry?.attachments ?? []);
+      setImages(recalledEntry?.images ?? []);
+      setReviewOnly(recalledEntry?.taskScope === 'review_only');
+      setVerificationScope(recalledEntry?.verificationScope === 'release' ? 'release' : 'targeted');
     }
   };
 
@@ -1945,6 +2031,13 @@ function Composer({
     runMode === 'live' && !live && (intent === 'next' || intent === 'explain');
   const unavailable =
     liveUnavailable ||
+    attachmentsBusy ||
+    imagesBusy ||
+    ((attachments.length > 0 ||
+      images.length > 0 ||
+      reviewOnly ||
+      verificationScope === 'release') &&
+      intent !== 'next') ||
     autoBlocked ||
     notReady.length > 0 ||
     resolved.blocked !== null ||
@@ -2209,6 +2302,79 @@ function Composer({
               ))}
             </ul>
           ) : null}
+          <div className="flex flex-wrap items-center gap-3 text-xs">
+            <label className="flex items-center gap-1">
+              <input
+                type="checkbox"
+                checked={reviewOnly}
+                disabled={busy}
+                onChange={(event) => setReviewOnly(event.target.checked)}
+              />
+              {tc('reviewOnly')}
+            </label>
+            <Select
+              label={tc('verificationScope')}
+              value={verificationScope}
+              disabled={busy}
+              onValueChange={setVerificationScope}
+              options={[
+                { value: 'targeted', label: tc('targetedScope') },
+                { value: 'release', label: tc('releaseScope') },
+              ]}
+            />
+            {(reviewOnly || verificationScope === 'release') && intent !== 'next' ? (
+              <span role="status">{tc('scopeNextOnly')}</span>
+            ) : null}
+          </div>
+          <Select
+            label={tc('designTemplate')}
+            value=""
+            disabled={busy}
+            size="xs"
+            variant="ghost"
+            options={[
+              { value: '', label: tc('designTemplate') },
+              ...['audit', 'tokens', 'verify'].map((value) => ({
+                value,
+                label: tc(`designTemplates.${value}.name`),
+              })),
+            ]}
+            onValueChange={(value) => {
+              if (['audit', 'tokens', 'verify'].includes(value))
+                setText((current) =>
+                  [
+                    current.trim(),
+                    tc(`designTemplates.${value}.prompt`, {
+                      askTool: 'ask_user',
+                      skill: 'verify-changes',
+                      reviewContract:
+                        'write_artifact → review JSON design: {reportVersionId, preferences: [], tokenProposalVersionId?}; actual user answers: {origin: user_answer, requestId, questionId, appliedTo}; AI proposals: {origin: ai_delegated, appliedTo}',
+                    }),
+                  ]
+                    .filter(Boolean)
+                    .join('\n\n'),
+                );
+            }}
+          />
+          <ImageAttachmentPicker
+            sessionId={session.sessionId}
+            value={images}
+            onChange={setImages}
+            onBusyChange={setImagesBusy}
+            disabled={busy || intent !== 'next'}
+          />
+          {images.length > 0 && intent !== 'next' ? (
+            <p role="status" className="text-xs text-muted">
+              {tc('imagesNextOnly')}
+            </p>
+          ) : null}
+          <TextAttachmentPicker
+            value={attachments}
+            onChange={setAttachments}
+            onLoading={setAttachmentsBusy}
+            disabled={busy}
+            enabled={intent === 'next'}
+          />
           <ComposerInput
             inputRef={input}
             label={t('requestLabel')}
@@ -2305,58 +2471,57 @@ function Composer({
               />
             ) : null}
             {isAuto && (intent === 'next' || intent === 'explain') && profiles ? (
-              <>
-                <Select
-                  variant="chip"
-                  label={t('autoModel')}
-                  value={autoChoice.modelProfile}
-                  open={autoModelOpen}
-                  onOpenChange={setAutoModelOpen}
-                  // Another model may not support the saved reasoning; it starts unset.
-                  onValueChange={(value) => void updateAuto({ modelProfile: String(value) })}
-                  options={profiles.map((p) => ({ value: p.profileId, label: p.label }))}
-                />
-                {intent === 'next' ? (
-                  <Select
-                    variant="chip"
-                    label={tq('label')}
-                    value={reasoningValue(autoChoice.reasoning)}
-                    open={autoReasoningOpen}
-                    onOpenChange={setAutoReasoningOpen}
-                    onValueChange={(value) => {
-                      const reasoning = reasoningFrom(String(value));
-                      void updateAuto(
-                        reasoning
-                          ? { modelProfile: autoChoice.modelProfile, reasoning }
-                          : { modelProfile: autoChoice.modelProfile },
-                      );
-                    }}
-                    options={[
-                      { value: '', label: tq('legacy') },
-                      {
-                        value: 'provider_default',
-                        label: tq('provider_default'),
-                        disabled: !autoProfile?.reasoningCapabilities?.providerDefault,
-                      },
-                      ...(autoProfile?.reasoningCapabilities?.levels ?? []).map((level) => ({
-                        value: level,
-                        label: tq(`level.${level}`),
-                      })),
-                      {
-                        value: 'auto',
-                        label: tq('auto'),
-                        disabled: !autoProfile?.reasoningCapabilities?.levels.includes('medium'),
-                      },
-                      {
-                        // CR-024 §7: the start model picks low, medium or high per request.
-                        value: 'route',
-                        label: t('reasoningRoute'),
-                        disabled: !autoProfile?.reasoningCapabilities?.levels.includes('medium'),
-                      },
-                    ]}
-                  />
-                ) : null}
-              </>
+              <Select
+                variant="chip"
+                label={t('autoModel')}
+                value={`model:${autoChoice.modelProfile}`}
+                open={autoModelOpen}
+                onOpenChange={setAutoModelOpen}
+                onValueChange={(value) => {
+                  if (value.startsWith('model:')) void updateAuto({ modelProfile: value.slice(6) });
+                  else if (value.startsWith('reason:')) {
+                    const reasoning = reasoningFrom(value.slice(7));
+                    void updateAuto(
+                      reasoning
+                        ? { modelProfile: autoChoice.modelProfile, reasoning }
+                        : { modelProfile: autoChoice.modelProfile },
+                    );
+                  }
+                }}
+                options={[
+                  ...profiles.map((profile) => ({
+                    value: `model:${profile.profileId}`,
+                    label:
+                      profile.profileId === autoChoice.modelProfile && intent === 'next'
+                        ? `${profile.label} · ${autoChoice.reasoning?.mode === 'fixed' ? tq(`level.${autoChoice.reasoning.level}`) : autoChoice.reasoning?.mode === 'route' ? t('reasoningRoute') : tq(autoChoice.reasoning?.mode ?? 'legacy')}`
+                        : profile.label,
+                  })),
+                  ...(intent === 'next'
+                    ? [
+                        { value: 'reason:', label: `${tq('label')} · ${tq('legacy')}` },
+                        {
+                          value: 'reason:provider_default',
+                          label: `${tq('label')} · ${tq('provider_default')}`,
+                          disabled: !autoProfile?.reasoningCapabilities?.providerDefault,
+                        },
+                        ...(autoProfile?.reasoningCapabilities?.levels ?? []).map((level) => ({
+                          value: `reason:${level}`,
+                          label: `${tq('label')} · ${tq(`level.${level}`)}`,
+                        })),
+                        {
+                          value: 'reason:auto',
+                          label: `${tq('label')} · ${tq('auto')}`,
+                          disabled: !autoProfile?.reasoningCapabilities?.levels.includes('medium'),
+                        },
+                        {
+                          value: 'reason:route',
+                          label: `${tq('label')} · ${t('reasoningRoute')}`,
+                          disabled: !autoProfile?.reasoningCapabilities?.levels.includes('medium'),
+                        },
+                      ]
+                    : []),
+                ]}
+              />
             ) : null}
             <div className="ml-auto flex items-center gap-1">
               {choosingAuto ? (

@@ -1,0 +1,74 @@
+[
+  {
+    "id": "en-positive-1",
+    "language": "en",
+    "query": "Check that this minimal redesign preserved labels, semantics, keyboard operation, visible focus, errors, and reflow.",
+    "should_trigger": true
+  },
+  {
+    "id": "en-positive-2",
+    "language": "en",
+    "query": "Audit the relevant WCAG 2.2 AA checks and mark runtime behavior unknown when it was not tested.",
+    "should_trigger": true
+  },
+  {
+    "id": "en-negative-1",
+    "language": "en",
+    "query": "Rewrite this generic marketing paragraph using the verified product facts.",
+    "should_trigger": false
+  },
+  {
+    "id": "en-negative-2",
+    "language": "en",
+    "query": "Count and consolidate the shadow and radius variants in this interface.",
+    "should_trigger": false
+  },
+  {
+    "id": "ko-positive-1",
+    "language": "ko",
+    "query": "이 미니멀 리디자인이 레이블·시맨틱·키보드 조작·포커스·오류·리플로우를 보존했는지 확인해줘.",
+    "should_trigger": true
+  },
+  {
+    "id": "ko-positive-2",
+    "language": "ko",
+    "query": "관련 WCAG 2.2 AA 항목을 감사하고 테스트하지 않은 런타임 동작은 unknown으로 표시해줘.",
+    "should_trigger": true
+  },
+  {
+    "id": "ko-negative-1",
+    "language": "ko",
+    "query": "검증된 제품 사실로 이 범용적인 마케팅 문단을 고쳐줘.",
+    "should_trigger": false
+  },
+  {
+    "id": "ko-negative-2",
+    "language": "ko",
+    "query": "이 인터페이스의 그림자와 모서리 반경 변형을 세고 통합해줘.",
+    "should_trigger": false
+  },
+  {
+    "id": "ja-positive-1",
+    "language": "ja",
+    "query": "このミニマルな再設計で、ラベル・セマンティクス・キーボード操作・フォーカス・エラー・リフローが保たれているか確認してください。",
+    "should_trigger": true
+  },
+  {
+    "id": "ja-positive-2",
+    "language": "ja",
+    "query": "関連するWCAG 2.2 AA項目を監査し、未検証の実行時動作はunknownとして記録してください。",
+    "should_trigger": true
+  },
+  {
+    "id": "ja-negative-1",
+    "language": "ja",
+    "query": "検証済みの製品情報を使って、この汎用的なマーケティング文を書き直してください。",
+    "should_trigger": false
+  },
+  {
+    "id": "ja-negative-2",
+    "language": "ja",
+    "query": "このインターフェースの影と角丸のバリエーションを数えて統合してください。",
+    "should_trigger": false
+  }
+]

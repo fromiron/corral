@@ -458,3 +458,61 @@ describe('headless exec and eval (roadmap Core-③)', () => {
     expect(existsSync(join(cwd, '.corral', 'corral.db'))).toBe(false);
   });
 });
+
+it('[TC-INPUT-001-H] [TC-INPUT-001-N] headless questions return needs_input and only a schema-bound answer continues the run', async () => {
+  const question = {
+    key: 'format',
+    questions: [{ id: 'format', kind: 'text', prompt: 'Private format question' }],
+  };
+  const coordinator = new Coordinator({
+    clock: new FakeClock(),
+    ids: new SequentialIdFactory(),
+    agents: {
+      start: async (_input, host) => {
+        const settlement = (async () => {
+          const answer = await host.invokeTool({ name: 'ask_user', args: question });
+          if (!answer.ok || answer.result.status !== 'answered')
+            return { outcome: 'cancelled' as const };
+          const written = await host.invokeTool({ name: 'write_artifact', args: { text: 'Done' } });
+          if (!written.ok) return { outcome: 'failed' as const };
+          await host.invokeTool({
+            name: 'submit_result',
+            args: { artifactVersionIds: [written.result.artifactVersionId] },
+          });
+          return { outcome: 'succeeded' as const };
+        })();
+        return { cancel: async () => {}, waitForSettlement: () => settlement };
+      },
+    },
+  });
+  const transport = new InProcessTransport(coordinator);
+  const definition = linearCorral(['writer']);
+  definition.roles[0]!.allowedCollaborationTools.push('ask_user');
+  const first = await executeOnce(transport, definition, 'mock', {
+    signal: new AbortController().signal,
+  });
+  expect(first).toMatchObject({ status: 'needs_input', needsUser: true });
+  expect((await transport.getSnapshot(first.runId)).projection.status).toBe('awaiting_user');
+  const pending = first.pendingInput?.[0];
+  expect(pending?.request.key).toBe('format');
+  await transport.sendCommand({
+    schemaVersion: '0.1',
+    commandId: 'cancel_input',
+    runId: first.runId,
+    type: 'cancel',
+    payload: { scope: { kind: 'run' }, reason: 'fixture' },
+  });
+  await waitForProjection(transport, first.runId, (p) => p.status === 'cancelled');
+  const second = await executeOnce(transport, definition, 'mock', {
+    signal: new AbortController().signal,
+    wallNow: () => Date.parse('2026-10-15T00:00:00Z'),
+    answers: [
+      {
+        key: 'format',
+        schemaHash: pending!.schemaHash,
+        answers: [{ questionId: 'format', text: 'Table' }],
+      },
+    ],
+  });
+  expect(second).toMatchObject({ status: 'succeeded', needsUser: false, output: 'Done' });
+});

@@ -1,8 +1,13 @@
 import { randomUUID } from 'node:crypto';
+import { lstatSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { McpChallenge, RegisteredMcpServer } from '@corral/contracts';
 import { StdioTransport, StreamableHttpTransport } from '@earendil-works/pi-mcp';
+import { assertBrowserCall } from './browser-policy.ts';
 import { recordWorkerLease } from './worker-leases.ts';
+
+const BROWSER_ENTRY = fileURLToPath(new URL('./browser-launcher.ts', import.meta.url));
 
 export function createCorralMcpTransport(
   server: RegisteredMcpServer,
@@ -12,10 +17,24 @@ export function createCorralMcpTransport(
   leaseDirectory: string,
 ) {
   if (server.transport === 'stdio') {
+    let command = server.argv[0]!,
+      args = server.argv.slice(1);
+    if (server.browser) {
+      if (process.platform !== 'linux' || !cwd)
+        throw new Error('owned browser requires a Linux working copy');
+      mkdirSync(directory, { recursive: true, mode: 0o700 });
+      if (!lstatSync(directory).isDirectory() || lstatSync(directory).isSymbolicLink())
+        throw new Error('private browser directory unavailable');
+      const owned = mkdtempSync(join(directory, 'browser-'));
+      const config = join(owned, 'owner.json');
+      writeFileSync(config, JSON.stringify(server), { mode: 0o600, flag: 'wx' });
+      command = process.execPath;
+      args = [BROWSER_ENTRY, config];
+    }
     const processOwner = randomUUID();
     const transport = new StdioTransport({
-      command: server.argv[0]!,
-      args: server.argv.slice(1),
+      command,
+      args,
       cwd,
       inheritEnv: false,
       env: {
@@ -35,6 +54,30 @@ export function createCorralMcpTransport(
     });
     const start = transport.start.bind(transport);
     const close = transport.close.bind(transport);
+    const send = transport.send.bind(transport);
+    if (server.browser)
+      transport.send = async (message) => {
+        if ('method' in message) {
+          if (message.method === 'tools/call') {
+            const params = message.params as { name?: unknown; arguments?: unknown } | undefined;
+            if (
+              !params ||
+              typeof params.name !== 'string' ||
+              !params.arguments ||
+              typeof params.arguments !== 'object' ||
+              Array.isArray(params.arguments)
+            )
+              throw new Error('invalid browser tool call');
+            assertBrowserCall(
+              server.browser!,
+              params.name,
+              params.arguments as Record<string, unknown>,
+            );
+          } else if (message.method.startsWith('resources/'))
+            throw new Error('browser resource access is unavailable');
+        }
+        await send(message);
+      };
     let lease: ReturnType<typeof recordWorkerLease> | undefined;
     transport.onClose(() => {
       void lease?.reap().catch(() => {});

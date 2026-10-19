@@ -83,6 +83,7 @@ export function ModelConfigEditor({
       <fieldset className="flex flex-col gap-2">
         <legend className="text-sm font-medium">{t('profiles')}</legend>
         <p className="text-xs text-muted">{t('profilesHint')}</p>
+        <p className="text-xs text-muted">{t('isolationHint')}</p>
         {profiles.map((profile, index) => {
           const provider = choices.find((c) => c.id === profile.provider);
           const known = provider?.models.some((m) => m.id === profile.model);
@@ -127,6 +128,18 @@ export function ModelConfigEditor({
                   </option>
                 ))}
               </select>
+              <label className="flex items-center gap-1 text-xs">
+                <input
+                  type="checkbox"
+                  checked={profile.workerIsolation === 'linux-bwrap'}
+                  onChange={(event) =>
+                    setProfile(index, {
+                      workerIsolation: event.target.checked ? 'linux-bwrap' : undefined,
+                    })
+                  }
+                />
+                {t('isolateProfile', { profile: label })}
+              </label>
               <button
                 type="button"
                 aria-label={t('removeProfile', { profile: label })}

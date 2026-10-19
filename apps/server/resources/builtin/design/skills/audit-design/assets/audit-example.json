@@ -1,0 +1,77 @@
+{
+  "artifact": {
+    "name": "Example product landing page",
+    "primary_user": "Prospective small-team buyer",
+    "primary_task": "Understand the product and decide whether to start a trial",
+    "inspected": [
+      "desktop screenshot",
+      "page copy"
+    ],
+    "not_inspected": [
+      "DOM",
+      "keyboard behavior",
+      "mobile layout"
+    ]
+  },
+  "categories": {
+    "content_grounding": {
+      "score": 12,
+      "max": 20,
+      "evidence_state": "observed",
+      "evidence": "Three outcome claims have no cited source."
+    },
+    "task_structure": {
+      "score": 10,
+      "max": 15,
+      "evidence_state": "observed",
+      "evidence": "The primary action is visible, but benefits repeat in three sections."
+    },
+    "visual_entropy": {
+      "score": 8,
+      "max": 15,
+      "evidence_state": "measured",
+      "evidence": "Four surface styles and three CTA treatments were counted."
+    },
+    "typography_spacing_alignment": {
+      "score": 11,
+      "max": 15,
+      "evidence_state": "observed",
+      "evidence": "Hierarchy is readable; secondary copy appears faint."
+    },
+    "component_necessity": {
+      "score": 6,
+      "max": 10,
+      "evidence_state": "observed",
+      "evidence": "Two card grids repeat the same points."
+    },
+    "image_relevance_authenticity": {
+      "score": 5,
+      "max": 10,
+      "evidence_state": "observed",
+      "evidence": "Hero art is decorative and no real product view is supplied."
+    },
+    "accessibility": {
+      "score": 3,
+      "max": 10,
+      "evidence_state": "unknown",
+      "evidence": "Only a screenshot was available; contrast and focus were not measured."
+    },
+    "motion_interaction": {
+      "score": 2,
+      "max": 5,
+      "evidence_state": "unknown",
+      "evidence": "Motion behavior was not supplied."
+    }
+  },
+  "hard_failures": [],
+  "findings": [
+    {
+      "priority": 1,
+      "evidence_state": "observed",
+      "location": "Benefits sections",
+      "signal": "Three sections repeat the same outcome claims.",
+      "impact": "Increases scanning cost without adding evidence.",
+      "change": "Consolidate into one evidence-backed list."
+    }
+  ]
+}

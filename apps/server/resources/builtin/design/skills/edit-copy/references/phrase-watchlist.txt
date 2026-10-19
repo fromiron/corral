@@ -1,0 +1,103 @@
+# language|phrase|category
+en|unlock|generic-imperative
+en|reimagine|generic-imperative
+en|revolutionize|unsupported-transformation
+en|transform your|unsupported-transformation
+en|seamless|unexplained-quality
+en|seamlessly|unexplained-quality
+en|empower|abstract-benefit
+en|innovative|unsupported-superlative
+en|cutting-edge|unsupported-superlative
+en|next-generation|unsupported-superlative
+en|world-class|unsupported-superlative
+en|industry-leading|unsupported-superlative
+en|best-in-class|unsupported-superlative
+en|future-proof|unsupported-promise
+en|supercharge|generic-imperative
+en|elevate your|generic-imperative
+en|effortless|unexplained-quality
+en|powerful|unexplained-quality
+en|all-in-one|scope-claim
+en|everything you need|scope-claim
+en|trusted by|social-proof
+en|save time|unquantified-benefit
+en|built for the future|unsupported-promise
+en|delve|generic-imperative
+en|dive into|generic-imperative
+en|leverage|generic-imperative
+en|streamline|generic-imperative
+en|harness the power|generic-imperative
+en|unleash|generic-imperative
+en|look no further|generic-imperative
+en|to the next level|generic-imperative
+en|game-changing|unsupported-superlative
+en|game changer|unsupported-superlative
+en|state-of-the-art|unsupported-superlative
+en|revolutionary|unsupported-transformation
+en|robust|unexplained-quality
+en|intuitive|unexplained-quality
+en|frictionless|unexplained-quality
+en|lightning-fast|unexplained-quality
+en|blazing fast|unexplained-quality
+en|peace of mind|abstract-benefit
+en|designed with you in mind|abstract-benefit
+en|your one-stop|scope-claim
+en|whether you're|scope-claim
+en|in today's fast-paced|generic-context
+en|it's not just|contrast-framing
+en|more than just|contrast-framing
+ko|혁신적인|unsupported-superlative
+ko|차세대|unsupported-superlative
+ko|최고의|unsupported-superlative
+ko|완벽한|unsupported-superlative
+ko|원활한|unexplained-quality
+ko|강력한|unexplained-quality
+ko|경험을 재정의|unsupported-transformation
+ko|비즈니스를 혁신|unsupported-transformation
+ko|무한한 가능성|abstract-benefit
+ko|모든 것을 한 곳에서|scope-claim
+ko|새로운 기준|unsupported-superlative
+ko|미래를 열다|unsupported-promise
+ko|시간을 절약|unquantified-benefit
+ko|손쉽게|unexplained-quality
+ko|스마트한|unexplained-quality
+ko|최적화된|unexplained-quality
+ko|획기적인|unsupported-superlative
+ko|압도적인|unsupported-superlative
+ko|국내 최초|unsupported-superlative
+ko|업계 최고|unsupported-superlative
+ko|세계적 수준|unsupported-superlative
+ko|게임 체인저|unsupported-superlative
+ko|한 차원 높은|unsupported-superlative
+ko|다양한 기능|abstract-benefit
+ko|특별한 경험|abstract-benefit
+ko|잠재력을 깨우|generic-imperative
+ko|누구나 쉽게|scope-claim
+ko|모두를 위한|scope-claim
+ko|생산성을 높여|unquantified-benefit
+ko|그 이상입니다|contrast-framing
+ja|革新的|unsupported-superlative
+ja|次世代|unsupported-superlative
+ja|最高の|unsupported-superlative
+ja|シームレス|unexplained-quality
+ja|強力な|unexplained-quality
+ja|体験を再定義|unsupported-transformation
+ja|未来を切り拓く|unsupported-promise
+ja|すべてを一つに|scope-claim
+ja|業界をリード|unsupported-superlative
+ja|時間を節約|unquantified-benefit
+ja|圧倒的な|unsupported-superlative
+ja|画期的な|unsupported-superlative
+ja|業界初|unsupported-superlative
+ja|世界水準|unsupported-superlative
+ja|ゲームチェンジャー|unsupported-superlative
+ja|直感的な|unexplained-quality
+ja|スマートな|unexplained-quality
+ja|最適化された|unexplained-quality
+ja|可能性を解き放つ|abstract-benefit
+ja|特別な体験|abstract-benefit
+ja|あらゆるニーズ|scope-claim
+ja|誰でも簡単に|scope-claim
+ja|ワンストップ|scope-claim
+ja|生産性を向上|unquantified-benefit
+ja|だけではありません|contrast-framing

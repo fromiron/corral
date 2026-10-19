@@ -36,6 +36,7 @@ export function endpointsFrom(configs: readonly ModelProviderConfig[] = []): Map
           contextWindow: m.contextWindow ?? ENDPOINT_DEFAULTS.contextWindow,
           maxOutput: m.maxOutput ?? ENDPOINT_DEFAULTS.maxOutput,
           reasoning: m.reasoning ?? false,
+          ...(m.imageInput !== undefined ? { imageInput: m.imageInput } : {}),
         })),
       };
       return [config.id, { providerId: config.id, spec, origin: url.origin, host: url.host }];

@@ -94,6 +94,78 @@ const submittedBy = (p: RunProjection, executionId: string | undefined) =>
   p.tasks[p.executions[executionId ?? '']?.taskId ?? '']?.submittedArtifactVersionIds[0];
 
 describe('review loop and approvals (C-026–C-029)', () => {
+  it('[TC-DESIGN-001-H] [TC-DESIGN-001-N] a real detailed report passes only its declared review scope', async () => {
+    for (const scope of ['targeted', 'release'] as const) {
+      const fallback = new ScriptedAgentAdapter({ turns: 1 });
+      const transport = new InProcessTransport(
+        new Coordinator({
+          clock: new FakeClock(),
+          ids: new SequentialIdFactory(),
+          agents: {
+            start: async (input, host) => {
+              if (input.role.outputContract !== 'review') return fallback.start(input, host);
+              const work = (async () => {
+                const report = await host.invokeTool({
+                  name: 'write_artifact',
+                  args: {
+                    text: JSON.stringify({
+                      scope: {
+                        verification: 'targeted',
+                        changed_surfaces: ['label'],
+                        rationale: 'Label only',
+                      },
+                      checks: [
+                        { id: 'label', required: true, status: 'pass', evidence_state: 'observed' },
+                      ],
+                    }),
+                  },
+                });
+                if (!report.ok) throw new Error('report refused');
+                const review = await host.invokeTool({
+                  name: 'write_artifact',
+                  args: {
+                    text: JSON.stringify({
+                      targetArtifactVersionId: input.inputs.find((item) => item.name === 'draft')
+                        ?.artifactVersionId,
+                      criteriaVersionId: input.criteriaVersionId,
+                      verdict: 'pass',
+                      issues: [],
+                      evidenceRefs: [],
+                      design: { reportVersionId: report.result.artifactVersionId, preferences: [] },
+                    }),
+                  },
+                });
+                if (!review.ok) throw new Error('review refused');
+                await host.invokeTool({
+                  name: 'submit_result',
+                  args: { artifactVersionIds: [review.result.artifactVersionId] },
+                });
+                return { outcome: 'succeeded' as const };
+              })();
+              return { cancel: async () => {}, waitForSettlement: () => work };
+            },
+          },
+        }),
+      );
+      const definition = Definition.parse(researchTeam);
+      definition.input.verificationScope = scope;
+      const { runId, events } = await start(transport, definition);
+      const p = await waitForProjection(
+        transport,
+        runId,
+        (value) => pending(value) !== null || done(value),
+      );
+      expect(Object.values(p.reviews)[0]?.verdict).toBe(
+        scope === 'targeted' ? 'pass' : 'inconclusive',
+      );
+      if (scope === 'targeted')
+        expect(events.find((event) => event.type === 'review.recorded')?.payload).toMatchObject({
+          design: { scope: 'targeted', releaseReady: false },
+        });
+      await resolve(transport, runId, 'reject');
+      await waitForProjection(transport, runId, done);
+    }
+  });
   it('[TC-RUN-003-H] [TC-ART-002-H] [TC-ART-002-N] round 2 reviews the new draft, then two approvals finalize the output', async () => {
     const transport = runtime();
     const { runId, events } = await start(transport);
@@ -154,9 +226,18 @@ describe('review loop and approvals (C-026–C-029)', () => {
     expect(Object.values(final.reviews).at(-1)?.verdict).toBe('pass');
   });
 
-  it('[TC-ART-003-H] [TC-ART-003-N] a malformed or mismatched review is never a pass', async () => {
+  it('[TC-DESIGN-001-N] [TC-ART-003-H] [TC-ART-003-N] a malformed or mismatched review is never a pass', async () => {
     for (const bad of [
       () => 'not json at all',
+      (draft: string, criteria: string) =>
+        JSON.stringify({
+          targetArtifactVersionId: draft,
+          criteriaVersionId: criteria,
+          verdict: 'pass',
+          issues: [],
+          evidenceRefs: [],
+          design: { reportVersionId: 'missing_report', preferences: [] },
+        }),
       (_draft: string, criteria: string) =>
         JSON.stringify({
           targetArtifactVersionId: 'artv_9999',

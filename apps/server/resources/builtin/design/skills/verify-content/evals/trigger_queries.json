@@ -1,0 +1,74 @@
+[
+  {
+    "id": "en-positive-1",
+    "language": "en",
+    "query": "Before designing, turn these source files into a verified content inventory and mark unsupported claims.",
+    "should_trigger": true
+  },
+  {
+    "id": "en-positive-2",
+    "language": "en",
+    "query": "The documents disagree about price; preserve both sources and identify what must be resolved before publication.",
+    "should_trigger": true
+  },
+  {
+    "id": "en-negative-1",
+    "language": "en",
+    "query": "Choose between a timeline and a project index for this portfolio.",
+    "should_trigger": false
+  },
+  {
+    "id": "en-negative-2",
+    "language": "en",
+    "query": "Reduce the number of shadows and radius tokens in this design system.",
+    "should_trigger": false
+  },
+  {
+    "id": "ko-positive-1",
+    "language": "ko",
+    "query": "디자인하기 전에 이 자료들을 검증된 콘텐츠 인벤토리로 만들고 근거 없는 주장을 표시해줘.",
+    "should_trigger": true
+  },
+  {
+    "id": "ko-positive-2",
+    "language": "ko",
+    "query": "문서마다 가격이 다르니 두 출처를 모두 보존하고 게시 전에 해결할 항목을 정리해줘.",
+    "should_trigger": true
+  },
+  {
+    "id": "ko-negative-1",
+    "language": "ko",
+    "query": "이 포트폴리오를 타임라인과 프로젝트 인덱스 중 무엇으로 구성할지 골라줘.",
+    "should_trigger": false
+  },
+  {
+    "id": "ko-negative-2",
+    "language": "ko",
+    "query": "이 디자인 시스템의 그림자와 모서리 반경 토큰 수를 줄여줘.",
+    "should_trigger": false
+  },
+  {
+    "id": "ja-positive-1",
+    "language": "ja",
+    "query": "デザインを始める前に、これらの資料を検証済みコンテンツ一覧にまとめ、根拠のない主張を示してください。",
+    "should_trigger": true
+  },
+  {
+    "id": "ja-positive-2",
+    "language": "ja",
+    "query": "資料ごとに価格が異なるため、両方の出典を残し、公開前に解決すべき点を整理してください。",
+    "should_trigger": true
+  },
+  {
+    "id": "ja-negative-1",
+    "language": "ja",
+    "query": "このポートフォリオをタイムラインとプロジェクト索引のどちらにするか選んでください。",
+    "should_trigger": false
+  },
+  {
+    "id": "ja-negative-2",
+    "language": "ja",
+    "query": "このデザインシステムの影と角丸トークンの数を減らしてください。",
+    "should_trigger": false
+  }
+]

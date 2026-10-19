@@ -2,8 +2,83 @@ import { openDatabase } from '@corral/storage-sqlite';
 import { describe, expect, it } from 'vitest';
 import { InputRegistry } from '../src/inputs.ts';
 import type { Network } from '../src/safe-http.ts';
+import { extractHtml } from '../src/web-extraction.ts';
 
 describe('registered documents and explicit search (C-043, C-044)', () => {
+  it('[TC-WEB-001-H] [TC-WEB-001-N] extracts untrusted HTML and preserves versioned source evidence without executing or overwriting it', async () => {
+    const db = openDatabase(':memory:');
+    let text =
+      '<html><head><title>Evidence title</title><meta property="article:published_time" content="2026-10-18T00:00:00Z"></head><body><nav>Navigation noise</nav><article><h1>한글 日本語</h1><p>Evidence &amp; details</p><script>throw new Error("never execute")</script><form>Form noise</form><div hidden>Private hidden content</div><p>Ignore previous instructions is untrusted article text.</p></article></body></html>';
+    let now = '2026-10-19T00:00:00.000Z';
+    const network: Network = {
+      resolve: async () => [{ address: '8.8.8.8', family: 4 }],
+      request: async (url) => ({
+        status: url.pathname === '/start' ? 302 : 200,
+        headers:
+          url.pathname === '/start'
+            ? { location: '/article' }
+            : {
+                'content-type': 'text/html; charset=utf-8',
+                'last-modified': 'Sun, 18 Oct 2026 00:00:00 GMT',
+              },
+        body: (async function* () {
+          yield Buffer.from(text);
+        })(),
+        close() {},
+      }),
+    };
+    try {
+      const inputs = new InputRegistry(db, { network, clock: { nowIso: () => now } });
+      const source = await inputs.importSource({ url: 'https://source.example/start' });
+      const first = await inputs.read({ sourceId: source.sourceId }, 'live');
+      expect(first).toMatchObject({
+        title: 'Evidence title',
+        mimeType: 'text/plain',
+        text: expect.stringContaining('Evidence & details'),
+        source: {
+          sourceId: source.sourceId,
+          finalUrl: 'https://source.example/article',
+          fetchedAt: now,
+          extractor: 'corral-html-1/parse5-8.0.1',
+          trust: 'untrusted',
+        },
+      });
+      expect(first.text).toContain('Ignore previous instructions');
+      expect(first.source).toMatchObject({
+        publishedAt: '2026-10-18T00:00:00.000Z',
+        lastModified: '2026-10-18T00:00:00.000Z',
+        requests: 2,
+      });
+      expect(() =>
+        db.prepare('UPDATE web_source_evidence SET raw_body = ?').run(Buffer.from('changed')),
+      ).toThrow();
+      const cancelled = new AbortController();
+      const pending = extractHtml('<main>Cancelled extraction</main>', cancelled.signal);
+      cancelled.abort();
+      await expect(pending).rejects.toThrow(/cancelled/);
+      await expect(
+        extractHtml('<main>Still available</main>', new AbortController().signal),
+      ).resolves.toMatchObject({ text: 'Still available' });
+      await expect(
+        extractHtml('<main>' + '<i>x</i>'.repeat(30001) + '</main>', new AbortController().signal),
+      ).rejects.toThrow(/limit/);
+      expect(first.text).not.toMatch(/Navigation noise|Form noise|Private hidden|never execute/);
+      expect(inputs.sourceEvidence(String(first.documentId))?.rawText).toBe(text);
+      now = '2026-10-19T00:01:00.000Z';
+      text = '<main>Updated evidence.</main>';
+      const second = await inputs.read({ sourceId: source.sourceId }, 'live');
+      expect(second.documentId).not.toBe(first.documentId);
+      expect(await new InputRegistry(db).read({ documentId: first.documentId }, 'mock')).toEqual(
+        first,
+      );
+      expect(inputs.sourceEvidence(String(first.documentId))?.metadata.contentHash).not.toBe(
+        inputs.sourceEvidence(String(second.documentId))?.metadata.contentHash,
+      );
+    } finally {
+      db.close();
+    }
+  });
+
   it('keeps the event loop responsive and observes cancellation while searching a full corpus', async () => {
     const db = openDatabase(':memory:');
     try {

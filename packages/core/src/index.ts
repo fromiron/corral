@@ -10,6 +10,7 @@ export {
   type ObserverView,
   type ToolGateView,
 } from './admission/index.ts';
+export * from './attachments.ts';
 export * from './auto-team.ts';
 export * from './budget.ts';
 export { canonicalJson } from './canonical-json.ts';
@@ -41,6 +42,7 @@ export {
 export { definitionHash } from './definition-hash.ts';
 export * from './fuzzy.ts';
 export * from './history.ts';
+export * from './interactions.ts';
 export * from './limits.ts';
 export * from './projection.ts';
 export { fixedReasoning } from './reasoning.ts';
@@ -51,4 +53,5 @@ export * from './runner.ts';
 export * from './session-runs.ts';
 export * from './store/run-store.ts';
 export * from './team-draft.ts';
+export { toolDescriptorHash, toolPermissionPlan, validToolPermissionPlan } from './tool-policy.ts';
 export * from './transport.ts';

@@ -354,3 +354,24 @@ H1에서 검증한 `@earendil-works/pi-coding-agent@1.3.0`을 H2에서 adapter-p
 ## MCP transport와 OAuth (CR-020, 2026-10-18)
 
 이미 Pi coding-agent의 전이 의존성인 `@earendil-works/pi-mcp@1.3.0`을 server/adapter의 직접 의존성으로도 선언한다. [Pi 공식 MCP 패키지](https://github.com/earendil-works/pi/tree/v1.3.0/packages/mcp)의 공개 StdioTransport/StreamableHttpTransport, MCP client, OAuth provider·PKCE callback·flow를 재사용하여 프로토콜과 인증 코드를 다시 만들지 않는다. 설치된 배포의 MIT, Node >=22.19.0, TypeScript 선언, 유일한 자체 의존성 cross-spawn 7.0.6을 확인했다. 기존에 설치된 정확한 버전이므로 새 전이 런타임 패키지는 늘지 않으며 Studio 의존성도 아니다. 직전 production audit는 0 advisories다. 설치 스크립트는 실행하지 않았다. Context7을 검색했으나 제공되지 않아 설치된 1.3.0 공개 선언과 구현을 대조했다.
+
+## CR-035 로컬 브라우저 backend (2026-10-19)
+
+기존 pi-mcp의 stdio/프로세스 lease 경로에 Microsoft의 `@playwright/mcp` **0.0.83**을 정확히 고정했다. Apache-2.0, TypeScript 선언 제공, Node >=18(현재 Node 24.19.0). wrapper와 두 전이 패키지는 설치 시 약 18.4 MiB이며 브라우저 바이너리는 자동 다운로드하거나 개인 프로필에서 가져오지 않는다. 사용자가 지정한 설치된 Chromium 실행 파일까지 실행 fingerprint에 포함한다.
+
+공식 MCP 고정 의존성인 `playwright`/`playwright-core` **1.64.0-alpha-1790635538000**은 별도 검토 예외로 기록했다. 안정판으로 강제 치환하거나 `npx @latest`를 실행하지 않는다. 실제 loopback fixture에서 명시 snapshot·준비 assertion·클릭·결과 assertion·거짓 assertion·외부 origin/redirect 거절·시작 timeout·소유 자식 종료를 검증했다. `pnpm audit --prod`는 조회 시 알려진 advisory 0건이며 무취약 보장은 아니다. 새 런타임은 OS 격리 전 신뢰한 비로그인 로컬 fixture로 제한한다.
+
+`--allowed-origins`는 redirect를 포함한 보안 격리를 보장하지 않으므로 HTTP 응답의 redirect를 거절하고 WebSocket/다운로드를 차단하는 호스트 생성 초기화를 추가했다. 이 브라우저 제약도 운영체제 격리로 표시하지 않는다. ([공식 설정 설명](https://github.com/microsoft/playwright-mcp), [고정 패키지](https://www.npmjs.com/package/@playwright/mcp/v/0.0.83))
+
+### C-106 이미지 정규화
+
+이미 lockfile에 있던 `pngjs@7.0.0`(MIT, Node >=14.19.0)을 서버의 직접 의존성으로 고정하고 `@types/pngjs@6.0.5`(MIT)를 개발 의존성으로 추가했다. 순수 JavaScript PNG 디코더를 서버에서만 사용하므로 브라우저 번들/네이티브 설치가 늘지 않는다. 기존 7.0.0 소스·동기 API와 타입을 확인했고 새 파서를 직접 만들지 않았다. 수신 전에 1 MiB·2048×2048·8-bit RGB/RGBA·non-interlaced 구조를 제한하고 CRC 디코드/재인코드로 부수 메타데이터를 제거한다. 브라우저는 표준 ImageBitmap/Canvas로 PNG·JPEG·WebP를 정규화한다. 레지스트리의 게시일/engine/integrity/license는 dependency-lock에 기록했고 현재 production audit은 0건이다. 유지보수 빈도가 낮은 안정판이므로 새로운 포맷을 열 때는 다시 검토한다. 공식 소스: https://github.com/pngjs/pngjs/tree/v7.0.0
+
+
+### C-112 웹 본문 추출 (2026-10-19)
+
+이미 설치된 `parse5@8.0.1`을 서버 직접 의존성으로 고정했다. MIT, 자체 TypeScript 선언, 별도 Node engine/peer 요구 없음이며 현재 Node 24.19.0에서 실제 Worker 추출을 검증했다. 표준 HTML 파서로 기존 jsdom/rehype 생태계에서도 사용하는 의존성이다. [공식 parse API](https://parse5.js.org/functions/parse5.parse.html)와 설치 버전의 공개 선언·라이선스를 대조했다. Context7은 이 세션에 제공되지 않았다.
+
+parse5 설치 크기는 약 444 KiB이며 기존 전이 의존성 `entities@8.1.0`(BSD-2-Clause)을 재사용한다. Studio 번들에 넣지 않고 서버의 제한된 Worker에서만 실행한다. DOM/스크립트 실행이나 하위 리소스 fetch는 없다. 입력/출력 1 MiB, 노드 30,000개, 동시 4개, 5초·메모리 상한을 적용하며 취소 시 Worker 종료를 기다린다. 플랫폼 API는 [Node 24.19.0 Worker 문서](https://nodejs.org/download/release/v24.19.0/docs/api/worker_threads.html)를 확인했다. 이 Worker는 응답성·용량 경계이며 OS sandbox라는 보장은 하지 않는다.
+
+registry integrity/배포일/라이선스는 dependency-lock에 기록했다. production audit는 이번 조회에서 알려진 취약점 0건이다. 라이브 HTML/CSS 렌더링과 본문 품질 점수는 제공하지 않으며 발행/수정 시각은 페이지가 선언한 비신뢰 metadata다.

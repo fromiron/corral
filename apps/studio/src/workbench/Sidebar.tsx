@@ -44,6 +44,7 @@ import { useServices } from '../services.tsx';
 import { shortcutLabel } from '../shortcuts.ts';
 import { useSettingsNavigation } from './navigation.ts';
 import { changePreferences, preferences } from './preferences.ts';
+import { SessionSearchDialog } from './SessionSearchDialog.tsx';
 import { useModelProfiles } from './useModels.ts';
 
 export function useCorralSidebar() {
@@ -180,6 +181,8 @@ export const Sidebar = memo(function Sidebar({
   const path = useRouterState({ select: (s) => s.location.pathname });
   const settingsNavigation = useSettingsNavigation();
   const [query, setQuery] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchText = useTranslations('SessionSearch');
   const [editing, setEditing] = useState<WorkSession | null>(null);
   const [title, setTitle] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -316,6 +319,23 @@ export const Sidebar = memo(function Sidebar({
           />
         </div>
       </div>
+      {mode === 'server' ? (
+        <>
+          <Button
+            variant="ghost-muted"
+            size="xs"
+            className="mx-3 mb-1"
+            onClick={() => setSearchOpen(true)}
+          >
+            {searchText('title')}
+          </Button>
+          <SessionSearchDialog
+            open={searchOpen}
+            onOpenChange={setSearchOpen}
+            initialQuery={query}
+          />
+        </>
+      ) : null}
       {model.inbox > 0 ? (
         <Link
           to="/projects/$projectId"

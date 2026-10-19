@@ -1,0 +1,1467 @@
+<!doctype html>
+<html lang="{{DOCUMENT_LANGUAGE}}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="data:,">
+  <title>{{DOCUMENT_TITLE}}</title>
+  <style>
+    /*
+      Document chrome only. These variables style this review page; they are
+      not proposed product tokens. Previews read the proposal's own values
+      through inline custom properties such as --token-value.
+      Chrome budget: one sans stack per script plus mono, 5 type roles,
+      1 accent, 2 radius tokens, 0 shadows, 3 surfaces (canvas, panel, well).
+    */
+    :root {
+      color-scheme: light;
+      --c-canvas: #eff0f4;
+      --c-panel: #ffffff;
+      --c-well: #f6f6f6;
+      --c-grid: #f1f1f4;
+      --c-border: #e5e5ea;
+      --c-border-strong: #8a8e99;
+      --c-text: #333236;
+      --c-muted: #66666e;
+      --c-accent: #2f4fd0;
+      --c-dark: #1f2128;
+      --c-on-dark: #f6f7f9;
+      --c-unknown-text: #7a4b00;
+      --c-unknown-bg: #fff5d6;
+
+      --space-1: 4px;
+      --space-2: 8px;
+      --space-3: 12px;
+      --space-4: 16px;
+      --space-5: 24px;
+      --space-6: 32px;
+      --space-7: 48px;
+      --space-8: 64px;
+      --space-9: 96px;
+
+      --radius-control: 6px;
+      --radius-surface: 16px;
+
+      --text-display: clamp(2rem, 1.5rem + 2vw, 3rem);
+      --text-title: 1.75rem;
+      --text-heading: 1.25rem;
+      --text-body: 1rem;
+      --text-small: 0.8125rem;
+
+      --sidebar-width: 264px;
+      --doc-width: 840px;
+
+      --font-sans: "Pretendard", system-ui, -apple-system, "Segoe UI", "Apple SD Gothic Neo",
+        "Malgun Gothic", "Noto Sans KR", "Noto Sans CJK KR", sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    :lang(ja) {
+      --font-sans: system-ui, -apple-system, "Hiragino Sans", "Yu Gothic UI",
+        "Meiryo", "Noto Sans JP", "Noto Sans CJK JP", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { -webkit-text-size-adjust: 100%; }
+
+    @media (prefers-reduced-motion: no-preference) {
+      html { scroll-behavior: smooth; }
+    }
+
+    body {
+      margin: 0;
+      color: var(--c-text);
+      background: var(--c-canvas);
+      font-family: var(--font-sans);
+      font-size: var(--text-body);
+      line-height: 1.7;
+      letter-spacing: -0.01em;
+      overflow-wrap: break-word;
+    }
+
+    html:lang(ko) body { word-break: keep-all; }
+    html:lang(ko) body, html:lang(ja) body { line-height: 1.8; }
+
+    a { color: var(--c-accent); text-underline-offset: 0.2em; }
+
+    :focus-visible { outline: 2px solid var(--c-accent); outline-offset: 2px; }
+
+    h1, h2, h3, p, figure, dl, dd { margin: 0; }
+
+    h1, h2, h3 { line-height: 1.3; }
+    h1 { font-size: var(--text-display); font-weight: 700; letter-spacing: -0.015em; }
+    h2 { font-size: var(--text-title); font-weight: 700; }
+    h3 { font-size: var(--text-heading); font-weight: 600; }
+
+    .skip-link {
+      position: absolute;
+      z-index: 20;
+      top: var(--space-2);
+      left: var(--space-2);
+      padding: var(--space-2) var(--space-3);
+      border-radius: var(--radius-control);
+      background: var(--c-text);
+      color: var(--c-panel);
+      transform: translateY(-200%);
+    }
+
+    .skip-link:focus { transform: none; }
+
+    /* App shell: navigation on the canvas, content on one white panel. */
+    .app {
+      display: grid;
+      grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 0;
+      align-self: start;
+      max-height: 100vh;
+      padding: var(--space-7) var(--space-6);
+      overflow-y: auto;
+    }
+
+    .brand { display: grid; gap: var(--space-1); }
+
+    .brand strong { font-size: var(--text-body); }
+
+    .brand span,
+    .muted-small,
+    .anatomy-label,
+    .ramp-step span,
+        .stat dt,
+    .eyebrow {
+      color: var(--c-muted);
+      font-size: var(--text-small);
+    }
+
+    .badge {
+      display: inline-flex;
+      gap: var(--space-2);
+      align-items: center;
+      justify-self: start;
+      margin-top: var(--space-3);
+      padding: 2px var(--space-2);
+      border: 1px solid var(--c-border);
+      border-radius: var(--radius-control);
+      background: var(--c-panel);
+      font-size: var(--text-small);
+      font-weight: 600;
+    }
+
+    .badge::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--c-unknown-text);
+    }
+
+    .nav { margin-top: var(--space-6); }
+
+    .nav-group {
+      margin-bottom: var(--space-2);
+      font-size: var(--text-body);
+      font-weight: 600;
+    }
+
+    .nav ul { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+
+    .nav a {
+      display: flex;
+      gap: var(--space-2);
+      align-items: center;
+      padding: 6px 0;
+      color: var(--c-muted);
+      font-size: var(--text-body);
+      text-decoration: none;
+    }
+
+    .nav a::before {
+      content: "";
+      flex: none;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: transparent;
+    }
+
+    .nav a:hover { color: var(--c-text); }
+
+    .nav a[aria-current="location"] { color: var(--c-accent); font-weight: 600; }
+    .nav a[aria-current="location"]::before { background: var(--c-accent); }
+
+    .panel {
+      min-width: 0;
+      margin: var(--space-4) var(--space-4) var(--space-4) 0;
+      padding: var(--space-8) var(--space-5) var(--space-9);
+      border-radius: var(--radius-surface);
+      background: var(--c-panel);
+    }
+
+    .doc { max-width: var(--doc-width); margin: 0 auto; }
+
+    /* Page intro */
+    .intro { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-4); }
+
+    .intro h1, .meta dd, td.evidence, .muted-small { overflow-wrap: anywhere; }
+
+    .eyebrow { font-weight: 600; }
+
+    .lede { max-width: 66ch; color: var(--c-muted); }
+
+    .meta {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: var(--space-4);
+      padding-top: var(--space-4);
+      border-top: 1px solid var(--c-border);
+    }
+
+    .meta dt { color: var(--c-muted); font-size: var(--text-small); }
+    .meta dd { font-weight: 600; }
+
+    .notice {
+      padding: var(--space-4) var(--space-5);
+      border-radius: var(--radius-surface);
+      background: var(--c-well);
+    }
+
+    .notice strong { display: block; margin-bottom: var(--space-1); }
+
+    /* Sections */
+    .doc-section {
+      margin-top: var(--space-8);
+      padding-top: var(--space-8);
+      border-top: 1px solid var(--c-border);
+      scroll-margin-top: var(--space-5);
+    }
+
+    .doc-section > p,
+    .sub > p { max-width: 66ch; margin-top: var(--space-3); color: var(--c-muted); }
+
+    .sub { margin-top: var(--space-7); }
+
+    .sub > h3 + * { margin-top: var(--space-4); }
+    .sub > h3 + p + * { margin-top: var(--space-5); }
+
+    /* Illustration stage with a faint grid, used for diagrams. */
+    .stage {
+      display: grid;
+      place-items: center;
+      gap: var(--space-5);
+      margin-top: var(--space-6);
+      padding: var(--space-7) var(--space-5);
+      border: 1px solid var(--c-border);
+      border-radius: var(--radius-surface);
+      background-color: var(--c-panel);
+      background-image:
+        linear-gradient(var(--c-grid) 1px, transparent 1px),
+        linear-gradient(90deg, var(--c-grid) 1px, transparent 1px);
+      background-size: 24px 24px;
+    }
+
+    .model {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: var(--space-6);
+      width: 100%;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .model li {
+      display: grid;
+      gap: 2px;
+      align-content: center;
+      padding: var(--space-3) var(--space-4);
+      border: 1px solid var(--c-border);
+      border-radius: var(--radius-control);
+      background: var(--c-panel);
+      text-align: center;
+    }
+
+    .model li { position: relative; }
+
+    .model li + li::before {
+      content: "\2192";
+      content: "\2192" / "";
+      position: absolute;
+      top: 50%;
+      left: calc(-1 * var(--space-6));
+      width: var(--space-6);
+      color: var(--c-muted);
+      text-align: center;
+      transform: translateY(-50%);
+    }
+
+    .model li span { color: var(--c-muted); font-size: var(--text-small); }
+
+    .anatomy {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-3);
+      align-items: flex-start;
+      justify-content: center;
+      margin: 0;
+    }
+
+    .anatomy-part { display: grid; gap: var(--space-2); justify-items: center; }
+
+    .anatomy-text {
+      padding: var(--space-2) var(--space-4);
+      border-radius: var(--radius-surface);
+      background: var(--c-well);
+      font-size: var(--text-display);
+      font-weight: 700;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+
+    .anatomy-sep {
+      padding-top: var(--space-2);
+      font-size: var(--text-display);
+      font-weight: 700;
+      line-height: 1.2;
+    }
+
+    .anatomy-label { color: var(--c-accent); font-weight: 600; }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: var(--space-3);
+    }
+
+    .stat { padding: var(--space-4); border-radius: var(--radius-surface); background: var(--c-well); }
+
+    .stat dd {
+      margin-top: var(--space-1);
+      font-size: var(--text-heading);
+      font-variant-numeric: tabular-nums;
+      font-weight: 700;
+    }
+
+    .points {
+      display: grid;
+      gap: var(--space-1);
+      margin: var(--space-3) 0 0;
+      padding-left: var(--space-5);
+      color: var(--c-muted);
+    }
+
+    /* Tables: open rows, muted header, chip-styled token names. */
+    .table-wrap { overflow-x: auto; }
+
+    table { width: 100%; border-collapse: collapse; }
+
+    caption {
+      padding-bottom: var(--space-2);
+      color: var(--c-muted);
+      font-size: var(--text-small);
+      text-align: left;
+    }
+
+    th, td {
+      padding: var(--space-4) var(--space-3) var(--space-4) 0;
+      border-bottom: 1px solid var(--c-border);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th:last-child, td:last-child { padding-right: 0; }
+
+    thead th {
+      padding-top: 0;
+      color: var(--c-muted);
+      font-size: var(--text-small);
+      font-weight: 500;
+      white-space: nowrap;
+    }
+
+    tbody th { font-weight: 400; }
+
+    td.evidence { min-width: 18ch; color: var(--c-muted); font-size: var(--text-small); }
+
+    td.role { min-width: 14ch; }
+
+    td.preview { width: 1%; }
+
+    .token,
+    .value,
+    code {
+      font-family: var(--font-mono);
+      font-size: var(--text-small);
+    }
+
+    .token {
+      display: inline-block;
+      padding: 2px var(--space-2);
+      border-radius: var(--radius-control);
+      background: var(--c-well);
+      color: var(--c-text);
+      white-space: nowrap;
+    }
+
+    .value { white-space: nowrap; }
+
+    .contrast-check + .contrast-check { margin-top: var(--space-3); }
+
+
+
+    /* A mapped primitive in one context column (breakpoint, language, theme). */
+    .ref {
+      display: inline-flex;
+      gap: var(--space-2);
+      align-items: center;
+      padding: 2px var(--space-2);
+      border: 1px solid var(--c-border);
+      border-radius: var(--radius-control);
+      background: var(--c-panel);
+      font-family: var(--font-mono);
+      font-size: var(--text-small);
+      white-space: nowrap;
+    }
+
+    .ref.is-dark { border-color: var(--c-dark); background: var(--c-dark); color: var(--c-on-dark); }
+
+    /* Markers share one quiet tag shape: neutral gray, or yellow for unknown. */
+    .tag,
+    .unknown {
+      display: inline-block;
+      padding: 1px var(--space-2);
+      border-radius: var(--radius-control);
+      background: var(--c-well);
+      color: var(--c-muted);
+      font-size: var(--text-small);
+      font-weight: 500;
+      white-space: nowrap;
+    }
+
+    .unknown { background: var(--c-unknown-bg); color: var(--c-unknown-text); }
+
+    .legend { display: grid; gap: var(--space-2); margin: 0; }
+    .legend div { display: grid; grid-template-columns: minmax(96px, max-content) minmax(0, 1fr); gap: var(--space-3); align-items: baseline; }
+    .legend dt, .legend dd { margin: 0; }
+    .legend dd { color: var(--c-muted); font-size: var(--text-small); }
+
+    .decision-title { margin: 0; font-size: var(--text-small); font-weight: 600; }
+
+    .role > * + * { margin-top: var(--space-1); }
+
+    /* Previews render the proposal's values. */
+    .chip {
+      flex: none;
+      width: 28px;
+      height: 14px;
+      border: 1px solid var(--c-border-strong);
+      border-radius: var(--radius-control);
+      background: var(--token-value);
+    }
+
+    .mini-swatch {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      margin-right: var(--space-1);
+      border: 1px solid var(--c-border-strong);
+      border-radius: 50%;
+      background: var(--token-value);
+      vertical-align: -1px;
+    }
+
+    .color-swatch {
+      display: block;
+      width: 40px;
+      height: 28px;
+      border: 1px solid var(--c-border-strong);
+      border-radius: var(--radius-control);
+      background: var(--token-value);
+    }
+
+    .pair {
+      display: inline-grid;
+      place-items: center;
+      min-width: 72px;
+      height: 40px;
+      padding: 0 var(--space-3);
+      border: 1px solid var(--c-border-strong);
+      border-radius: var(--radius-control);
+      background: var(--token-bg);
+      color: var(--token-fg);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .ramp-group + .ramp-group { margin-top: var(--space-6); }
+    .ramp-group + .table-wrap { margin-top: var(--space-7); }
+
+    .ramp-group h4 { margin: 0 0 var(--space-2); font-size: var(--text-small); font-weight: 600; }
+
+    .ramp {
+      display: grid;
+      grid-auto-columns: minmax(48px, 120px);
+      grid-auto-flow: column;
+      overflow-x: auto;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .ramp-step { display: grid; gap: var(--space-1); align-content: start; }
+
+    .ramp-step::before {
+      content: "";
+      height: 56px;
+      border-block: 1px solid rgb(0 0 0 / 0.08);
+      background: var(--token-value);
+    }
+
+    .ramp-step:first-child::before {
+      border-left: 1px solid rgb(0 0 0 / 0.08);
+      border-radius: var(--radius-control) 0 0 var(--radius-control);
+    }
+
+    .ramp-step:last-child::before {
+      border-right: 1px solid rgb(0 0 0 / 0.08);
+      border-radius: 0 var(--radius-control) var(--radius-control) 0;
+    }
+
+    .ramp-step:only-child::before { border-radius: var(--radius-control); }
+
+    .ramp-step.is-unknown::before {
+      background: repeating-linear-gradient(135deg, var(--c-unknown-bg) 0 6px, var(--c-panel) 6px 12px);
+    }
+
+    .ramp-step strong { padding-right: var(--space-1); font-size: var(--text-small); }
+
+    .ramp-step span { padding-right: var(--space-1); font-family: var(--font-mono); }
+
+    .space-bar {
+      display: block;
+      width: var(--token-value);
+      max-width: 160px;
+      height: var(--space-4);
+      background: var(--c-accent);
+    }
+
+    .radius-corner {
+      display: block;
+      width: 56px;
+      height: 56px;
+      border-top: 2px solid var(--c-accent);
+      border-left: 2px solid var(--c-accent);
+      border-top-left-radius: var(--token-value);
+    }
+
+    .specimen {
+      max-width: 36ch;
+      font-family: var(--token-font-family);
+      font-size: var(--token-font-size);
+      font-weight: var(--token-font-weight);
+      line-height: var(--token-line-height);
+      letter-spacing: var(--token-letter-spacing);
+    }
+
+    .type-values {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-1) var(--space-4);
+      margin-top: var(--space-3);
+      font-size: var(--text-small);
+    }
+
+    .type-values div { display: flex; gap: var(--space-2); }
+    .type-values dt { color: var(--c-muted); }
+    .type-values dd { font-family: var(--font-mono); }
+
+    /* Layout frames */
+    .frames {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: var(--space-4);
+    }
+
+    .frame { display: grid; gap: var(--space-3); }
+
+    .frame-canvas {
+      padding: var(--space-4);
+      border: 1px solid var(--c-border);
+      background: repeating-linear-gradient(135deg, var(--c-grid) 0 6px, var(--c-panel) 6px 12px);
+    }
+
+    .frame-content {
+      display: grid;
+      place-items: center;
+      min-height: 88px;
+      padding: var(--space-2);
+      border: 1px dashed var(--c-accent);
+      background: var(--c-panel);
+      font-size: var(--text-small);
+      text-align: center;
+    }
+
+    .frame figcaption { font-size: var(--text-small); }
+    .frame figcaption strong { display: block; font-size: var(--text-body); }
+
+    /* Decisions */
+    .decisions {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: var(--space-4);
+    }
+
+    .decision {
+      padding: var(--space-5);
+      border: 1px solid var(--c-border);
+      border-radius: var(--radius-surface);
+    }
+
+    .decision ul { display: grid; gap: var(--space-2); margin: var(--space-3) 0 0; padding-left: var(--space-5); }
+
+    .doc-footer {
+      margin-top: var(--space-8);
+      padding-top: var(--space-5);
+      border-top: 1px solid var(--c-border);
+      color: var(--c-muted);
+      font-size: var(--text-small);
+    }
+
+    .placeholder-warning {
+      padding: var(--space-3) var(--space-4);
+      border: 1px dashed var(--c-unknown-text);
+      border-radius: var(--radius-surface);
+      background: var(--c-unknown-bg);
+      color: var(--c-unknown-text);
+      font-weight: 600;
+    }
+
+    @media (max-width: 960px) {
+      body { background: var(--c-panel); }
+
+      .app { grid-template-columns: minmax(0, 1fr); }
+
+      .sidebar {
+        z-index: 5;
+        display: grid;
+        gap: var(--space-2);
+        max-height: none;
+        padding: var(--space-3) var(--space-4) 0;
+        border-bottom: 1px solid var(--c-border);
+        background: var(--c-panel);
+      }
+
+      .brand { grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: var(--space-3); }
+      .brand strong { grid-area: 1 / 1; }
+      .brand span { grid-area: 2 / 1; }
+      .brand .badge { grid-area: 1 / 2 / span 2; margin-top: 0; }
+
+      .nav { margin: 0 calc(-1 * var(--space-4)); padding: 0 var(--space-4); overflow-x: auto; }
+      .nav-group { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+      /* Size the list to its links so the end padding stays inside the scroll area. */
+      .nav ul { display: flex; gap: var(--space-4); width: max-content; padding-inline-end: var(--space-4); }
+      .nav a { padding: var(--space-2) 0 var(--space-3); white-space: nowrap; }
+      .nav a::before { display: none; }
+      .nav a[aria-current="location"] { box-shadow: inset 0 -2px 0 var(--c-accent); }
+
+      .panel { margin: 0; padding: var(--space-6) var(--space-4) var(--space-8); border-radius: 0; }
+
+      .doc-section { margin-top: var(--space-7); padding-top: var(--space-7); scroll-margin-top: 120px; }
+
+      .stage { padding: var(--space-6) var(--space-3); }
+      .model { grid-template-columns: minmax(0, 1fr); }
+      .model li + li::before {
+        content: "\2193";
+        content: "\2193" / "";
+        top: calc(-1 * var(--space-6));
+        left: 0;
+        width: 100%;
+        height: var(--space-6);
+        line-height: 32px;
+        transform: none;
+      }
+      .anatomy-text, .anatomy-sep { font-size: var(--text-title); }
+      .anatomy-text { white-space: normal; overflow-wrap: anywhere; }
+      .anatomy { max-width: 100%; }
+      table { min-width: 560px; }
+    }
+
+    @media print {
+      body { background: var(--c-panel); }
+      .skip-link, .nav, .placeholder-warning { display: none; }
+      .app { display: block; }
+      .sidebar { position: static; padding: 0 0 var(--space-5); }
+      .panel { margin: 0; padding: 0; }
+      .table-wrap, .ramp { overflow: visible; }
+      tr, .stage, .frame, .decision, .stat, .ramp-group { break-inside: avoid; }
+      h2, h3, h4 { break-after: avoid; }
+      * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+  </style>
+</head>
+<body data-proposal-status="proposed">
+  <!--
+    Manual fill: replace every double-brace placeholder with project evidence,
+    or put <span class="unknown" data-i18n="unknown">unknown</span> in the value
+    cell and drop the matching preview. Duplicate rows, ramp steps, contexts,
+    and frames as needed. Remove out-of-scope sections from both the page and
+    the navigation. Keep body[data-proposal-status="proposed"] until owners
+    adopt the tokens. scripts/render_token_proposal.py renders this same markup
+    and stylesheet from a validated JSON proposal.
+  -->
+  <!-- shell:start -->
+  <a class="skip-link" href="#content" data-i18n="skip">Skip to token proposal</a>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <strong>{{PROJECT_NAME}}</strong>
+        <span data-i18n="brand_suffix">Design token proposal</span>
+        <span class="badge" data-i18n="status_badge">Proposal</span>
+      </div>
+      <nav class="nav" aria-labelledby="nav-label">
+        <p id="nav-label" class="nav-group" data-i18n="nav_label">Foundations</p>
+        <ul>
+          <li><a href="#overview" data-i18n="overview">Overview</a></li>
+          <li><a href="#color" data-i18n="color">Color</a></li>
+          <li><a href="#typography" data-i18n="typography">Typography</a></li>
+          <li><a href="#spacing" data-i18n="spacing">Spacing</a></li>
+          <li><a href="#layout" data-i18n="layout">Layout</a></li>
+          <li><a href="#radius" data-i18n="radius">Radius</a></li>
+          <li><a href="#changes" data-i18n="changes">Changes</a></li>
+          <li><a href="#decisions" data-i18n="decisions">Decisions</a></li>
+        </ul>
+      </nav>
+    </aside>
+
+    <main id="content" class="panel" tabindex="-1">
+      <div class="doc">
+        <header class="intro">
+          <p class="eyebrow" data-i18n="breadcrumb">Foundations / Token proposal</p>
+          <h1>{{DOCUMENT_TITLE}}</h1>
+          <p class="lede">{{PROPOSAL_SUMMARY}}</p>
+          <dl class="meta">
+            <div><dt data-i18n="meta_basis">Evidence basis</dt><dd>{{EVIDENCE_BASIS}}</dd></div>
+            <div><dt data-i18n="meta_prepared">Prepared</dt><dd>{{PREPARED_DATE}}</dd></div>
+            <div><dt data-i18n="meta_status">Status</dt><dd data-i18n="status_value">Proposed, not adopted</dd></div>
+          </dl>
+          <div class="notice">
+            <strong data-i18n="boundary_title">Review boundary</strong>
+            <p data-i18n="boundary_text">These names and values are proposals derived from the inspected project. Values without source or rendered evidence stay unknown. Confirm them with implementation owners before adoption.</p>
+          </div>
+        </header>
+
+        <section id="overview" class="doc-section" aria-labelledby="overview-title">
+          <h2 id="overview-title" data-i18n="model_title">Token model</h2>
+          <p data-i18n="model_intro">Primitive tokens hold reusable values. Semantic tokens name a role and reference primitives per breakpoint, language, or theme. Components consume semantic tokens only.</p>
+          <figure class="stage">
+            <ol class="model">
+              <li><strong data-i18n="model_primitive">Primitive</strong><span data-i18n="model_primitive_desc">A stable value with no component meaning.</span></li>
+              <li><strong data-i18n="model_semantic">Semantic</strong><span data-i18n="model_semantic_desc">A role that maps to primitives by context.</span></li>
+              <li><strong data-i18n="model_component">Component</strong><span data-i18n="model_component_desc">Consumes semantic tokens, never raw values.</span></li>
+            </ol>
+          </figure>
+
+          <div class="sub">
+            <h3 data-i18n="naming_title">Token naming</h3>
+            <p data-i18n="naming_intro">Names follow one pattern so designers and developers can predict a token without looking up raw values.</p>
+            <figure class="stage">
+              <div class="anatomy" role="group" aria-labelledby="anatomy-primitive-label">
+                <div class="anatomy-part"><span class="anatomy-text">{{NAME_PART_1}}</span><span class="anatomy-label">{{NAME_PART_1_LABEL}}</span></div>
+                <span class="anatomy-sep" aria-hidden="true">-</span>
+                <div class="anatomy-part"><span class="anatomy-text">{{NAME_PART_2}}</span><span class="anatomy-label">{{NAME_PART_2_LABEL}}</span></div>
+              </div>
+              <figcaption id="anatomy-primitive-label" class="muted-small" data-i18n="anatomy_primitive">Primitive name</figcaption>
+            </figure>
+          </div>
+
+          <div class="sub">
+            <h3 data-i18n="summary_title">Consolidation summary</h3>
+            <dl class="stats">
+              <div class="stat"><dt data-i18n="color">Color</dt><dd>{{COLOR_CURRENT_COUNT}} → {{COLOR_PRIMITIVE_COUNT}}</dd></div>
+              <div class="stat"><dt data-i18n="typography">Typography</dt><dd>{{TYPE_CURRENT_COUNT}} → {{TYPE_PRIMITIVE_COUNT}}</dd></div>
+              <div class="stat"><dt data-i18n="spacing">Spacing</dt><dd>{{SPACE_CURRENT_COUNT}} → {{SPACE_PRIMITIVE_COUNT}}</dd></div>
+              <div class="stat"><dt data-i18n="radius">Radius</dt><dd>{{RADIUS_CURRENT_COUNT}} → {{RADIUS_PRIMITIVE_COUNT}}</dd></div>
+            </dl>
+            <p class="muted-small" data-i18n="stats_note">Observed raw values → proposed primitives.</p>
+          </div>
+        </section>
+
+        <section id="color" class="doc-section" aria-labelledby="color-title">
+          <h2 id="color-title" data-i18n="color">Color</h2>
+          <p data-i18n="color_intro">Inventory status, data, and validation colors separately from accents. Semantic pairs list the measured contrast against their declared background.</p>
+          <div class="sub">
+            <h3 data-i18n="primitives">Primitive tokens</h3>
+            <div class="ramp-group">
+              <h4>{{COLOR_GROUP_NAME}}</h4>
+              <ol class="ramp" aria-label="{{COLOR_GROUP_NAME}}">
+                <li class="ramp-step" style="--token-value: {{COLOR_VALUE}}"><strong>{{COLOR_STEP}}</strong><span>{{COLOR_VALUE}}</span></li>
+              </ol>
+            </div>
+            <div class="table-wrap" role="region" aria-labelledby="color-primitives-caption" tabindex="0">
+              <table>
+                <caption id="color-primitives-caption" data-i18n="color_primitives_caption">Color primitives</caption>
+                <thead><tr><th scope="col" data-i18n="th_name">Name</th><th scope="col" data-i18n="th_preview">Preview</th><th scope="col" data-i18n="th_value">Value</th><th scope="col" data-i18n="th_consolidates">Consolidates</th><th scope="col" data-i18n="th_evidence">Evidence</th></tr></thead>
+                <tbody>
+                  <tr><th scope="row"><code class="token">{{COLOR_PRIMITIVE_NAME}}</code></th><td class="preview"><span class="color-swatch" style="--token-value: {{COLOR_VALUE}}" aria-hidden="true"></span></td><td class="value">{{COLOR_VALUE}}</td><td class="value">{{COLOR_CURRENT_VALUES}}</td><td class="evidence">{{COLOR_EVIDENCE}}</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="sub">
+            <h3 data-i18n="semantic">Semantic tokens</h3>
+            <div class="table-wrap" role="region" aria-labelledby="color-semantic-caption" tabindex="0">
+              <table>
+                <caption id="color-semantic-caption" data-i18n="color_semantic_caption">Color roles mapped to primitives</caption>
+                <thead><tr><th scope="col" data-i18n="th_name">Name</th><th scope="col">{{CONTEXT_NAME}}</th><th scope="col" data-i18n="th_contrast">Contrast</th><th scope="col" data-i18n="th_role">Role</th></tr></thead>
+                <tbody>
+                  <tr><th scope="row"><code class="token">{{COLOR_SEMANTIC_NAME}}</code></th><td><span class="ref"><span class="chip" style="--token-value: {{COLOR_FG_VALUE}}" aria-hidden="true"></span>{{COLOR_PRIMITIVE_REFERENCE}}</span></td><td><span class="pair" style="--token-fg: {{COLOR_FG_VALUE}}; --token-bg: {{COLOR_BG_VALUE}}" aria-hidden="true">Aa 가 あ</span><p class="value">{{COLOR_CONTRAST}}</p></td><td class="role"><p>{{COLOR_ROLE}}</p><p class="tag">{{COLOR_STATUS}}</p></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section id="typography" class="doc-section" aria-labelledby="typography-title">
+          <h2 id="typography-title" data-i18n="typography">Typography</h2>
+          <p data-i18n="typography_intro">Each primitive belongs to an actual font, fallback, script, and role. Specimens render the proposed values; tracking and leading are not reused across fonts without evidence.</p>
+          <div class="sub">
+            <h3 data-i18n="primitives">Primitive tokens</h3>
+            <div class="table-wrap" role="region" aria-labelledby="type-primitives-caption" tabindex="0">
+              <table>
+                <caption id="type-primitives-caption" data-i18n="type_primitives_caption">Typography primitives</caption>
+                <thead><tr><th scope="col" data-i18n="th_name">Name</th><th scope="col" data-i18n="th_specimen">Specimen</th></tr></thead>
+                <tbody>
+                  <tr><th scope="row"><code class="token">{{TYPE_PRIMITIVE_NAME}}</code><p class="muted-small">{{TYPE_EVIDENCE}}</p></th><td><p class="specimen" style="--token-font-family: {{TYPE_FONT_FAMILY}}; --token-font-size: {{TYPE_FONT_SIZE}}; --token-font-weight: {{TYPE_FONT_WEIGHT}}; --token-line-height: {{TYPE_LINE_HEIGHT}}; --token-letter-spacing: {{TYPE_LETTER_SPACING}}">{{TYPE_SPECIMEN_TEXT}}</p><dl class="type-values"><div><dt data-i18n="font_size">Size</dt><dd>{{TYPE_FONT_SIZE}}</dd></div><div><dt data-i18n="font_weight">Weight</dt><dd>{{TYPE_FONT_WEIGHT}}</dd></div><div><dt data-i18n="line_height">Line height</dt><dd>{{TYPE_LINE_HEIGHT}}</dd></div><div><dt data-i18n="letter_spacing">Letter spacing</dt><dd>{{TYPE_LETTER_SPACING}}</dd></div><div><dt data-i18n="font_family">Font</dt><dd>{{TYPE_FONT_FAMILY}}</dd></div></dl></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="sub">
+            <h3 data-i18n="semantic">Semantic tokens</h3>
+            <div class="table-wrap" role="region" aria-labelledby="type-semantic-caption" tabindex="0">
+              <table>
+                <caption id="type-semantic-caption" data-i18n="type_semantic_caption">Text roles mapped to primitives</caption>
+                <thead><tr><th scope="col" data-i18n="th_name">Name</th><th scope="col">{{CONTEXT_NAME}}</th><th scope="col" data-i18n="th_role">Role</th></tr></thead>
+                <tbody>
+                  <tr><th scope="row"><code class="token">{{TYPE_SEMANTIC_NAME}}</code></th><td><span class="ref">{{TYPE_PRIMITIVE_REFERENCE}}</span></td><td class="role"><p>{{TYPE_ROLE}}</p><p class="tag">{{TYPE_STATUS}}</p></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section id="spacing" class="doc-section" aria-labelledby="spacing-title">
+          <h2 id="spacing-title" data-i18n="spacing">Spacing</h2>
+          <p data-i18n="spacing_intro">Keep one small primitive scale. Semantic roles such as content gap, section gap, and container padding map to primitives per breakpoint; no universal 4/8 rule is assumed.</p>
+          <div class="sub">
+            <h3 data-i18n="primitives">Primitive tokens</h3>
+            <p data-i18n="space_note">Bars are drawn at the proposed size, capped at 160 px.</p>
+            <div class="table-wrap" role="region" aria-labelledby="space-primitives-caption" tabindex="0">
+              <table>
+                <caption id="space-primitives-caption" data-i18n="space_primitives_caption">Spacing primitives</caption>
+                <thead><tr><th scope="col" data-i18n="th_name">Name</th><th scope="col" data-i18n="th_preview">Preview</th><th scope="col" data-i18n="th_value">Value</th><th scope="col" data-i18n="th_consolidates">Consolidates</th><th scope="col" data-i18n="th_evidence">Evidence</th></tr></thead>
+                <tbody>
+                  <tr><th scope="row"><code class="token">{{SPACE_PRIMITIVE_NAME}}</code></th><td class="preview"><span class="space-bar" style="--token-value: {{SPACE_VALUE}}" aria-hidden="true"></span></td><td class="value">{{SPACE_VALUE}}</td><td class="value">{{SPACE_CURRENT_VALUES}}</td><td class="evidence">{{SPACE_EVIDENCE}}</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="sub">
+            <h3 data-i18n="semantic">Semantic tokens</h3>
+            <div class="table-wrap" role="region" aria-labelledby="space-semantic-caption" tabindex="0">
+              <table>
+                <caption id="space-semantic-caption" data-i18n="space_semantic_caption">Spacing roles mapped to primitives</caption>
+                <thead><tr><th scope="col" data-i18n="th_name">Name</th><th scope="col">{{CONTEXT_NAME}}</th><th scope="col" data-i18n="th_role">Role</th></tr></thead>
+                <tbody>
+                  <tr><th scope="row"><code class="token">{{SPACE_SEMANTIC_NAME}}</code></th><td><span class="ref">{{SPACE_PRIMITIVE_REFERENCE}}</span></td><td class="role"><p>{{SPACE_ROLE}}</p><p class="tag">{{SPACE_STATUS}}</p></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section id="layout" class="doc-section" aria-labelledby="layout-title">
+          <h2 id="layout-title" data-i18n="layout">Layout</h2>
+          <p data-i18n="layout_intro">Assign page padding and width limits to explicit containers at the project's own breakpoints. Inner elements do not need to fill the container.</p>
+          <div class="sub">
+            <h3 data-i18n="breakpoints">Breakpoints and containers</h3>
+            <div class="frames">
+              <figure class="frame">
+                <div class="frame-canvas"><div class="frame-content">{{LAYOUT_CONTENT_WIDTH}}</div></div>
+                <figcaption><strong>{{BREAKPOINT_NAME}} · {{BREAKPOINT_MIN_WIDTH}}</strong><span data-i18n="frame_padding">Page padding</span> {{LAYOUT_PADDING}}</figcaption>
+              </figure>
+            </div>
+          </div>
+          <div class="sub">
+            <h3 data-i18n="semantic">Semantic tokens</h3>
+            <div class="table-wrap" role="region" aria-labelledby="layout-semantic-caption" tabindex="0">
+              <table>
+                <caption id="layout-semantic-caption" data-i18n="layout_semantic_caption">Layout roles mapped to primitives</caption>
+                <thead><tr><th scope="col" data-i18n="th_name">Name</th><th scope="col">{{CONTEXT_NAME}}</th><th scope="col" data-i18n="th_role">Role</th></tr></thead>
+                <tbody>
+                  <tr><th scope="row"><code class="token">{{LAYOUT_SEMANTIC_NAME}}</code></th><td><span class="ref">{{LAYOUT_PRIMITIVE_REFERENCE}}</span></td><td class="role"><p>{{LAYOUT_ROLE}}</p><p class="muted-small"><span data-i18n="th_owner">Owner</span>: {{LAYOUT_OWNER}}</p><p class="tag">{{LAYOUT_STATUS}}</p></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section id="radius" class="doc-section" aria-labelledby="radius-title">
+          <h2 id="radius-title" data-i18n="radius">Radius</h2>
+          <p data-i18n="radius_intro">Map reusable values to shape roles. Shared nested contours step inward; independent controls, pills, and circles are classified rather than forced into one formula.</p>
+          <div class="sub">
+            <h3 data-i18n="primitives">Primitive tokens</h3>
+            <p data-i18n="radius_note">Each corner is drawn with the proposed radius.</p>
+            <div class="table-wrap" role="region" aria-labelledby="radius-primitives-caption" tabindex="0">
+              <table>
+                <caption id="radius-primitives-caption" data-i18n="radius_primitives_caption">Radius primitives</caption>
+                <thead><tr><th scope="col" data-i18n="th_name">Name</th><th scope="col" data-i18n="th_preview">Preview</th><th scope="col" data-i18n="th_value">Value</th><th scope="col" data-i18n="th_consolidates">Consolidates</th><th scope="col" data-i18n="th_evidence">Evidence</th></tr></thead>
+                <tbody>
+                  <tr><th scope="row"><code class="token">{{RADIUS_PRIMITIVE_NAME}}</code></th><td class="preview"><span class="radius-corner" style="--token-value: {{RADIUS_VALUE}}" aria-hidden="true"></span></td><td class="value">{{RADIUS_VALUE}}</td><td class="value">{{RADIUS_CURRENT_VALUES}}</td><td class="evidence">{{RADIUS_EVIDENCE}}</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="sub">
+            <h3 data-i18n="semantic">Semantic tokens</h3>
+            <div class="table-wrap" role="region" aria-labelledby="radius-semantic-caption" tabindex="0">
+              <table>
+                <caption id="radius-semantic-caption" data-i18n="radius_semantic_caption">Shape roles mapped to primitives</caption>
+                <thead><tr><th scope="col" data-i18n="th_name">Name</th><th scope="col">{{CONTEXT_NAME}}</th><th scope="col" data-i18n="th_relationship">Nesting</th><th scope="col" data-i18n="th_role">Role</th></tr></thead>
+                <tbody>
+                  <tr><th scope="row"><code class="token">{{RADIUS_SEMANTIC_NAME}}</code></th><td><span class="ref">{{RADIUS_PRIMITIVE_REFERENCE}}</span></td><td>{{RADIUS_RELATIONSHIP}}</td><td class="role"><p>{{RADIUS_ROLE}}</p><p class="tag">{{RADIUS_STATUS}}</p></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section id="changes" class="doc-section" aria-labelledby="changes-title">
+          <h2 id="changes-title" data-i18n="changes">Changes</h2>
+          <p data-i18n="changes_intro">Current values and aliases mapped to the proposal, including deletions and retained exceptions.</p>
+          <div class="sub">
+            <div class="table-wrap" role="region" aria-labelledby="changes-caption" tabindex="0">
+              <table>
+                <caption id="changes-caption" data-i18n="changes_caption">Current to proposed</caption>
+                <thead><tr><th scope="col" data-i18n="th_current">Current</th><th scope="col" data-i18n="th_proposed">Proposed</th><th scope="col" data-i18n="th_action">Action</th><th scope="col" data-i18n="th_evidence">Evidence</th></tr></thead>
+                <tbody>
+                  <tr><td class="value">{{CURRENT_VALUE_OR_ALIAS}}</td><td><code class="token">{{PROPOSED_TOKEN}}</code></td><td>{{CHANGE_ACTION}}</td><td class="evidence">{{CHANGE_EVIDENCE}}</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section id="decisions" class="doc-section" aria-labelledby="decisions-title">
+          <h2 id="decisions-title" data-i18n="decisions">Decisions</h2>
+          <p data-i18n="decisions_intro">Key decisions, retained exceptions, rejected alternatives, and remaining work stay separate so the page cannot imply an approved standard.</p>
+          <div class="sub decisions">
+            <div class="decision"><h3 class="decision-title" data-i18n="decision_proposed">Key decisions</h3><ul><li>{{PROPOSED_DECISION}}</li></ul></div>
+            <div class="decision"><h3 class="decision-title" data-i18n="decision_retained">Retained exceptions</h3><ul><li>{{RETAINED_EXCEPTION}}</li></ul></div>
+            <div class="decision"><h3 class="decision-title" data-i18n="decision_rejected">Rejected</h3><ul><li>{{REJECTED_ALTERNATIVE}}</li></ul></div>
+            <div class="decision"><h3 class="decision-title" data-i18n="decision_open">Remaining work</h3><ul><li>{{OPEN_QUESTION}}</li></ul></div>
+          </div>
+        </section>
+
+        <footer class="doc-footer" data-i18n="footer">Review artifact. Values become authoritative only after project owners adopt them and implementation verification passes.</footer>
+      </div>
+    </main>
+  </div>
+  <!-- shell:end -->
+  <script type="application/json" id="chrome-strings">
+{
+  "en": {
+    "skip": "Skip to token proposal",
+    "brand_suffix": "Design token proposal",
+    "status_badge": "Proposal",
+    "nav_label": "Foundations",
+    "overview": "Overview",
+    "color": "Color",
+    "typography": "Typography",
+    "spacing": "Spacing",
+    "layout": "Layout",
+    "radius": "Radius",
+    "changes": "Changes",
+    "decisions": "Decisions",
+    "breadcrumb": "Foundations / Token proposal",
+    "meta_basis": "Evidence basis",
+    "meta_prepared": "Prepared",
+    "meta_status": "Status",
+    "meta_approach": "Approach",
+    "approach_auto": "AI proposal",
+    "approach_guided": "Guided by your answers",
+    "choices_title": "Your choices",
+    "choices_intro": "Answers to the guided questions and the tokens each answer shaped. Values chosen from a direction are marked Newly chosen; answers left to the AI shape no listed token.",
+    "choices_caption": "Guided answers",
+    "th_question": "Question",
+    "th_answer": "Answer",
+    "th_shaped": "Tokens shaped",
+    "choice_custom": "Written answer",
+    "status_value": "Proposed, not adopted",
+    "boundary_title": "Review boundary",
+    "boundary_text": "These names and values are proposals derived from the inspected project. Values without source or rendered evidence stay unknown. Confirm them with implementation owners before adoption.",
+    "model_intro": "Primitive tokens hold reusable values. Semantic tokens name a role and reference primitives per breakpoint, language, or theme. Components consume semantic tokens only.",
+    "model_primitive": "Primitive",
+    "model_primitive_desc": "A stable value with no component meaning.",
+    "model_semantic": "Semantic",
+    "model_semantic_desc": "A role that maps to primitives by context.",
+    "model_component": "Component",
+    "model_component_desc": "Consumes semantic tokens, never raw values.",
+    "stats_title": "Consolidation summary",
+    "stats_note": "Observed raw values → proposed primitives.",
+    "primitives": "Primitive tokens",
+    "semantic": "Semantic tokens",
+    "color_intro": "Inventory status, data, and validation colors separately from accents. Semantic pairs list the measured contrast against their declared background.",
+    "typography_intro": "Each primitive belongs to an actual font, fallback, script, and role. Specimens render the proposed values; tracking and leading are not reused across fonts without evidence.",
+    "spacing_intro": "Keep one small primitive scale. Semantic roles such as content gap, section gap, and container padding map to primitives per breakpoint; no universal 4/8 rule is assumed.",
+    "layout_intro": "Assign page padding and width limits to explicit containers at the project's own breakpoints. Inner elements do not need to fill the container.",
+    "radius_intro": "Map reusable values to shape roles. Shared nested contours step inward; independent controls, pills, and circles are classified rather than forced into one formula.",
+    "changes_intro": "Current values and aliases mapped to the proposal, including deletions and retained exceptions.",
+    "decisions_intro": "Key decisions, retained exceptions, rejected alternatives, and remaining work stay separate so the page cannot imply an approved standard.",
+    "color_primitives_caption": "Color primitives",
+    "color_semantic_caption": "Color roles mapped to primitives",
+    "type_primitives_caption": "Typography primitives",
+    "type_semantic_caption": "Text roles mapped to primitives",
+    "space_primitives_caption": "Spacing primitives",
+    "space_semantic_caption": "Spacing roles mapped to primitives",
+    "layout_primitives_caption": "Layout primitives",
+    "layout_semantic_caption": "Layout roles mapped to primitives",
+    "radius_primitives_caption": "Radius primitives",
+    "radius_semantic_caption": "Shape roles mapped to primitives",
+    "changes_caption": "Current to proposed",
+    "breakpoints": "Breakpoints and containers",
+    "frame_padding": "Page padding",
+    "frame_width": "Content width",
+    "th_preview": "Preview",
+    "th_name": "Name",
+    "th_value": "Value",
+    "th_formats": "Formats",
+    "srgb_mapped": "Mapped to sRGB",
+    "color_formats_note": "Hex, rgb(), and oklch() are converted from the proposed value and rounded. For an oklch() color outside sRGB, hex and rgb() show the color mapped into sRGB, and contrast uses that color.",
+    "th_consolidates": "Consolidates",
+    "th_evidence": "Evidence",
+    "th_role": "Role",
+    "th_mapping": "Mapping",
+    "th_contrast": "Contrast",
+    "th_status": "Status",
+    "th_specimen": "Specimen",
+    "th_owner": "Owner",
+    "th_relationship": "Nesting",
+    "th_current": "Current",
+    "th_proposed": "Proposed",
+    "th_action": "Action",
+    "font_family": "Font",
+    "font_size": "Size",
+    "font_weight": "Weight",
+    "line_height": "Line height",
+    "letter_spacing": "Letter spacing",
+    "unknown": "unknown",
+    "hypothesis": "Newly chosen",
+    "boundary_text_new_system": "This is a new-system proposal. Values marked Newly chosen were picked for this proposal from the stated requirements, content, brand, and platform constraints; they are not existing project values or measurements. Render and check them, and confirm open decisions with project owners before adoption.",
+    "none": "None recorded",
+    "status_proposed": "Proposed",
+    "status_retained": "Retained",
+    "status_unknown": "Unknown",
+    "action_merge": "Merge",
+    "action_rename": "Rename",
+    "action_delete": "Delete",
+    "action_retain": "Retain",
+    "action_add": "Add",
+    "relationship_shared-contour": "Shared contour",
+    "relationship_independent": "Independent",
+    "relationship_pill-or-circle": "Pill or circle",
+    "contrast_fail": "below",
+    "decision_proposed": "Key decisions",
+    "legend_title": "Markers",
+    "legend_intro": "A semantic token without a marker is proposed in this document.",
+    "legend_retained": "An existing project token, kept as it is.",
+    "legend_hypothesis": "No project value existed, so this value was newly chosen. Check it after rendering.",
+    "legend_unknown": "Not decided yet because there is no evidence.",
+    "legend_srgb": "Shown as the nearest color an sRGB screen can display.",
+    "decision_retained": "Retained exceptions",
+    "decision_rejected": "Rejected",
+    "decision_open": "Remaining work",
+    "specimen_text": "Grounded type stays readable at 1,280 px and 375 px.",
+    "footer": "Review artifact. Values become authoritative only after project owners adopt them and implementation verification passes.",
+    "placeholder_warning": "Template incomplete: {count} placeholder(s) remain. Replace them or mark the values unknown before sharing.",
+    "naming_title": "Token naming",
+    "naming_intro": "Names follow one pattern so designers and developers can predict a token without looking up raw values.",
+    "anatomy_primitive": "Primitive name",
+    "anatomy_semantic": "Semantic name",
+    "contrast_pass": "meets",
+    "model_title": "Token model",
+    "summary_title": "Consolidation summary",
+    "contexts": "Contexts",
+    "open_count": "Open values",
+    "space_note": "Bars are drawn at the proposed size, capped at 160 px.",
+    "radius_note": "Each corner is drawn with the proposed radius.",
+    "ramp_label": "Palette"
+  },
+  "ko": {
+    "skip": "토큰 제안 본문으로 건너뛰기",
+    "brand_suffix": "디자인 토큰 제안",
+    "status_badge": "제안",
+    "nav_label": "기초 요소",
+    "overview": "개요",
+    "color": "컬러",
+    "typography": "타이포그래피",
+    "spacing": "간격",
+    "layout": "레이아웃",
+    "radius": "모서리 반경",
+    "changes": "변경 사항",
+    "decisions": "결정 사항",
+    "breadcrumb": "기초 요소 / 토큰 제안",
+    "meta_basis": "근거",
+    "meta_prepared": "작성일",
+    "meta_status": "상태",
+    "meta_approach": "제안 방식",
+    "approach_auto": "AI 자동 제안",
+    "approach_guided": "질의 기반 제안",
+    "choices_title": "선택한 방향",
+    "choices_intro": "질의에 답한 내용과 각 답변으로 정한 토큰입니다. 방향에서 고른 값은 '새로 정한 값'으로 표시하며, AI에게 맡긴 항목에는 토큰을 연결하지 않습니다.",
+    "choices_caption": "질의 답변",
+    "th_question": "질문",
+    "th_answer": "답변",
+    "th_shaped": "반영한 토큰",
+    "choice_custom": "직접 입력",
+    "status_value": "제안 단계이며 아직 도입되지 않았습니다",
+    "boundary_title": "검토 범위",
+    "boundary_text": "이 문서의 이름과 값은 확인한 프로젝트 자료에서 도출한 제안입니다. 소스나 렌더링 근거가 없는 값은 '알 수 없음'으로 남겨 두었습니다. 도입 전에 구현 담당자와 함께 확인해 주세요.",
+    "model_intro": "프리미티브 토큰은 재사용할 값을 담고, 시맨틱 토큰은 역할에 이름을 붙여 브레이크포인트·언어·테마별로 프리미티브를 참조합니다. 컴포넌트는 시맨틱 토큰만 사용합니다.",
+    "model_primitive": "프리미티브",
+    "model_primitive_desc": "컴포넌트 의미가 없는 고정 값",
+    "model_semantic": "시맨틱",
+    "model_semantic_desc": "맥락에 따라 프리미티브를 참조하는 역할",
+    "model_component": "컴포넌트",
+    "model_component_desc": "원시 값 대신 시맨틱 토큰을 사용",
+    "stats_title": "통합 요약",
+    "stats_note": "현재 사용 중인 원시 값 수 → 제안 프리미티브 수",
+    "primitives": "프리미티브 토큰",
+    "semantic": "시맨틱 토큰",
+    "color_intro": "상태·데이터·검증 색상은 강조 색상과 따로 정리합니다. 시맨틱 조합에는 지정한 배경색과의 대비를 함께 표시합니다.",
+    "typography_intro": "프리미티브는 실제 글꼴, 대체 글꼴, 문자 체계, 역할마다 따로 정의합니다. 견본은 제안 값으로 렌더링하며, 근거 없이 다른 글꼴의 자간과 행간을 가져다 쓰지 않습니다.",
+    "spacing_intro": "프리미티브 스케일은 작게 유지합니다. 콘텐츠 간격, 섹션 간격, 컨테이너 여백 같은 시맨틱 역할은 브레이크포인트별로 프리미티브를 참조하며, 4/8 배수 규칙을 전제로 하지 않습니다.",
+    "layout_intro": "페이지 여백과 최대 너비는 프로젝트의 브레이크포인트에서 명시된 컨테이너가 담당합니다. 내부 요소가 컨테이너를 가득 채울 필요는 없습니다.",
+    "radius_intro": "재사용할 값을 형태 역할에 연결합니다. 윤곽을 공유하는 중첩 요소는 안쪽으로 갈수록 반경을 줄이고, 독립 컨트롤·알약형·원형은 하나의 공식에 끼워 맞추지 않고 따로 분류합니다.",
+    "changes_intro": "현재 값과 별칭이 제안 토큰에 어떻게 대응하는지 정리했습니다. 삭제 항목과 유지하는 예외도 포함합니다.",
+    "decisions_intro": "주요 결정, 유지하는 예외, 채택하지 않은 대안, 남은 과제를 구분해 승인된 표준처럼 읽히지 않도록 합니다.",
+    "color_primitives_caption": "컬러 프리미티브",
+    "color_semantic_caption": "컬러 역할과 참조 프리미티브",
+    "type_primitives_caption": "타이포그래피 프리미티브",
+    "type_semantic_caption": "텍스트 역할과 참조 프리미티브",
+    "space_primitives_caption": "간격 프리미티브",
+    "space_semantic_caption": "간격 역할과 참조 프리미티브",
+    "layout_primitives_caption": "레이아웃 프리미티브",
+    "layout_semantic_caption": "레이아웃 역할과 참조 프리미티브",
+    "radius_primitives_caption": "모서리 반경 프리미티브",
+    "radius_semantic_caption": "형태 역할과 참조 프리미티브",
+    "changes_caption": "현재 값 → 제안 토큰",
+    "breakpoints": "브레이크포인트와 컨테이너",
+    "frame_padding": "페이지 여백",
+    "frame_width": "콘텐츠 너비",
+    "th_preview": "미리보기",
+    "th_name": "이름",
+    "th_value": "값",
+    "th_formats": "색 표기",
+    "srgb_mapped": "sRGB로 변환",
+    "color_formats_note": "hex, rgb(), oklch() 표기는 제안 값을 변환해 반올림한 값입니다. sRGB 범위를 벗어난 oklch() 색은 hex와 rgb()에 sRGB로 변환한 색을 보여 주며, 대비도 그 색으로 계산합니다.",
+    "th_consolidates": "통합 대상",
+    "th_evidence": "근거",
+    "th_role": "역할",
+    "th_mapping": "참조",
+    "th_contrast": "대비",
+    "th_status": "상태",
+    "th_specimen": "견본",
+    "th_owner": "담당 컨테이너",
+    "th_relationship": "중첩 관계",
+    "th_current": "현재",
+    "th_proposed": "제안",
+    "th_action": "처리",
+    "font_family": "글꼴",
+    "font_size": "크기",
+    "font_weight": "굵기",
+    "line_height": "행간",
+    "letter_spacing": "자간",
+    "unknown": "알 수 없음",
+    "hypothesis": "새로 정한 값",
+    "boundary_text_new_system": "신규 시스템 제안입니다. '새로 정한 값'으로 표시한 값은 제시된 요구사항·콘텐츠·브랜드·플랫폼 제약에서 이번에 새로 고른 값이며, 기존 프로젝트 값이나 측정 결과가 아닙니다. 렌더링해서 검사하고, 미확정 결정은 도입 전에 프로젝트 담당자와 확인해 주세요.",
+    "none": "기록 없음",
+    "status_proposed": "제안",
+    "status_retained": "유지",
+    "status_unknown": "알 수 없음",
+    "action_merge": "통합",
+    "action_rename": "이름 변경",
+    "action_delete": "삭제",
+    "action_retain": "유지",
+    "action_add": "추가",
+    "relationship_shared-contour": "윤곽 공유",
+    "relationship_independent": "독립",
+    "relationship_pill-or-circle": "알약형·원형",
+    "contrast_fail": "기준 미달",
+    "decision_proposed": "주요 결정",
+    "legend_title": "표시 안내",
+    "legend_intro": "표시가 없는 시맨틱 토큰은 이번에 제안하는 토큰입니다.",
+    "legend_retained": "현재 프로젝트 토큰을 그대로 둡니다.",
+    "legend_hypothesis": "프로젝트에 값이 없어 이번에 새로 고른 값입니다. 렌더링해서 확인해야 합니다.",
+    "legend_unknown": "근거가 없어 아직 정하지 않았습니다.",
+    "legend_srgb": "sRGB 화면에서 표시할 수 있는 가장 가까운 색으로 바꿔 보여 줍니다.",
+    "decision_retained": "유지하는 예외",
+    "decision_rejected": "채택하지 않은 대안",
+    "decision_open": "남은 과제",
+    "specimen_text": "근거 있는 글자는 1,280px에서도 375px에서도 잘 읽힙니다.",
+    "footer": "검토용 문서입니다. 프로젝트 담당자가 도입하고 구현 검증을 통과한 뒤에만 기준 값이 됩니다.",
+    "placeholder_warning": "템플릿 미완성: 자리표시자 {count}개가 남아 있습니다. 공유하기 전에 값을 채우거나 '알 수 없음'으로 표시해 주세요.",
+    "naming_title": "토큰 이름 규칙",
+    "naming_intro": "디자이너와 개발자가 원시 값을 찾아보지 않고도 토큰을 예측할 수 있도록 하나의 규칙으로 이름을 짓습니다.",
+    "anatomy_primitive": "프리미티브 이름",
+    "anatomy_semantic": "시맨틱 이름",
+    "contrast_pass": "충족",
+    "model_title": "토큰 구조",
+    "summary_title": "통합 요약",
+    "contexts": "맥락",
+    "open_count": "미확정 값",
+    "space_note": "막대는 제안 크기 그대로 그리며, 최대 160px까지 표시합니다.",
+    "radius_note": "각 모서리는 제안한 반경으로 그렸습니다.",
+    "ramp_label": "팔레트"
+  },
+  "ja": {
+    "skip": "トークン提案の本文へ移動",
+    "brand_suffix": "デザイントークン提案",
+    "status_badge": "提案",
+    "nav_label": "基礎要素",
+    "overview": "概要",
+    "color": "カラー",
+    "typography": "タイポグラフィ",
+    "spacing": "スペーシング",
+    "layout": "レイアウト",
+    "radius": "角丸",
+    "changes": "変更点",
+    "decisions": "決定事項",
+    "breadcrumb": "基礎要素 / トークン提案",
+    "meta_basis": "根拠",
+    "meta_prepared": "作成日",
+    "meta_status": "ステータス",
+    "meta_approach": "提案の方法",
+    "approach_auto": "AI自動提案",
+    "approach_guided": "質問による提案",
+    "choices_title": "選んだ方向",
+    "choices_intro": "質問への回答と、各回答から決めたトークンです。方向から選んだ値は「新たに決めた値」と示し、AIに任せた項目にはトークンを結び付けません。",
+    "choices_caption": "質問への回答",
+    "th_question": "質問",
+    "th_answer": "回答",
+    "th_shaped": "反映したトークン",
+    "choice_custom": "自由入力",
+    "status_value": "提案段階で、まだ導入されていません",
+    "boundary_title": "レビューの範囲",
+    "boundary_text": "このページの名前と値は、確認したプロジェクト資料から導いた提案です。ソースやレンダリング結果の根拠がない値は「不明」のままにしています。導入前に実装担当者と確認してください。",
+    "model_intro": "プリミティブトークンは再利用する値を持ち、セマンティックトークンは役割に名前を付けて、ブレークポイント・言語・テーマごとにプリミティブを参照します。コンポーネントはセマンティックトークンだけを使います。",
+    "model_primitive": "プリミティブ",
+    "model_primitive_desc": "コンポーネントの意味を持たない固定値",
+    "model_semantic": "セマンティック",
+    "model_semantic_desc": "文脈に応じてプリミティブを参照する役割",
+    "model_component": "コンポーネント",
+    "model_component_desc": "生の値ではなくセマンティックトークンを使用",
+    "stats_title": "統合のまとめ",
+    "stats_note": "現在使われている生の値の数 → 提案するプリミティブの数",
+    "primitives": "プリミティブトークン",
+    "semantic": "セマンティックトークン",
+    "color_intro": "状態・データ・検証の色は、アクセントカラーとは分けて整理します。セマンティックの組み合わせには、指定した背景色とのコントラストを示します。",
+    "typography_intro": "プリミティブは、実際のフォント、代替フォント、文字体系、役割ごとに定義します。見本は提案値で表示し、根拠なく別のフォントの字間や行間を流用しません。",
+    "spacing_intro": "プリミティブのスケールは小さく保ちます。コンテンツ間隔、セクション間隔、コンテナ余白などのセマンティックな役割は、ブレークポイントごとにプリミティブを参照します。4/8の倍数ルールは前提にしません。",
+    "layout_intro": "ページ余白と最大幅は、プロジェクトのブレークポイントで明示したコンテナが担います。内側の要素がコンテナいっぱいに広がる必要はありません。",
+    "radius_intro": "再利用する値を形の役割に対応付けます。輪郭を共有する入れ子の要素は内側ほど角丸を小さくし、独立したコントロールやピル型・円形は一つの式に当てはめず分類します。",
+    "changes_intro": "現在の値やエイリアスと提案トークンの対応です。削除するものと、維持する例外も含みます。",
+    "decisions_intro": "主な決定、維持する例外、採用しなかった案、残りの課題を分けて記載し、承認済みの標準と誤解されないようにします。",
+    "color_primitives_caption": "カラーのプリミティブ",
+    "color_semantic_caption": "カラーの役割と参照先",
+    "type_primitives_caption": "タイポグラフィのプリミティブ",
+    "type_semantic_caption": "テキストの役割と参照先",
+    "space_primitives_caption": "スペーシングのプリミティブ",
+    "space_semantic_caption": "スペーシングの役割と参照先",
+    "layout_primitives_caption": "レイアウトのプリミティブ",
+    "layout_semantic_caption": "レイアウトの役割と参照先",
+    "radius_primitives_caption": "角丸のプリミティブ",
+    "radius_semantic_caption": "形の役割と参照先",
+    "changes_caption": "現在の値 → 提案トークン",
+    "breakpoints": "ブレークポイントとコンテナ",
+    "frame_padding": "ページ余白",
+    "frame_width": "コンテンツ幅",
+    "th_preview": "プレビュー",
+    "th_name": "名前",
+    "th_value": "値",
+    "th_formats": "色の表記",
+    "srgb_mapped": "sRGBに変換",
+    "color_formats_note": "hex、rgb()、oklch() の表記は提案値を変換して丸めた値です。sRGB の範囲外の oklch() の色は、hex と rgb() に sRGB へ変換した色を示し、コントラストもその色で計算します。",
+    "th_consolidates": "統合対象",
+    "th_evidence": "根拠",
+    "th_role": "役割",
+    "th_mapping": "参照先",
+    "th_contrast": "コントラスト",
+    "th_status": "ステータス",
+    "th_specimen": "見本",
+    "th_owner": "担当コンテナ",
+    "th_relationship": "入れ子の関係",
+    "th_current": "現在",
+    "th_proposed": "提案",
+    "th_action": "対応",
+    "font_family": "フォント",
+    "font_size": "サイズ",
+    "font_weight": "ウェイト",
+    "line_height": "行間",
+    "letter_spacing": "字間",
+    "unknown": "不明",
+    "hypothesis": "新たに決めた値",
+    "boundary_text_new_system": "新規システムの提案です。「新たに決めた値」と示した値は、示された要件・コンテンツ・ブランド・プラットフォームの制約から今回新しく選んだもので、既存のプロジェクトの値や測定結果ではありません。レンダリングして確認し、未確定の判断は導入前にプロジェクト担当者と確認してください。",
+    "none": "記録なし",
+    "status_proposed": "提案",
+    "status_retained": "維持",
+    "status_unknown": "不明",
+    "action_merge": "統合",
+    "action_rename": "名前変更",
+    "action_delete": "削除",
+    "action_retain": "維持",
+    "action_add": "追加",
+    "relationship_shared-contour": "輪郭を共有",
+    "relationship_independent": "独立",
+    "relationship_pill-or-circle": "ピル型・円形",
+    "contrast_fail": "基準未満",
+    "decision_proposed": "主な決定",
+    "legend_title": "表示の見方",
+    "legend_intro": "表示のないセマンティックトークンは、今回提案するトークンです。",
+    "legend_retained": "現在のプロジェクトのトークンをそのまま残します。",
+    "legend_hypothesis": "プロジェクトに値がなかったため、今回新たに選んだ値です。レンダリングして確認する必要があります。",
+    "legend_unknown": "根拠がないため、まだ決めていません。",
+    "legend_srgb": "sRGBの画面で表示できる最も近い色に変換して示します。",
+    "decision_retained": "維持する例外",
+    "decision_rejected": "採用しなかった案",
+    "decision_open": "残りの課題",
+    "specimen_text": "根拠のある文字組みは、1,280pxでも375pxでも読みやすく保たれます。",
+    "footer": "レビュー用の資料です。プロジェクト担当者が導入し、実装の検証を通過した後に初めて正式な値になります。",
+    "placeholder_warning": "テンプレート未完成：プレースホルダーが{count}個残っています。共有する前に値を入れるか「不明」と明記してください。",
+    "naming_title": "トークンの命名規則",
+    "naming_intro": "デザイナーと開発者が生の値を調べなくてもトークンを推測できるよう、一つの規則で命名します。",
+    "anatomy_primitive": "プリミティブ名",
+    "anatomy_semantic": "セマンティック名",
+    "contrast_pass": "基準を満たす",
+    "model_title": "トークンの構造",
+    "summary_title": "統合のまとめ",
+    "contexts": "文脈",
+    "open_count": "未確定の値",
+    "space_note": "バーは提案サイズのまま描画し、最大160pxまで表示します。",
+    "radius_note": "各角は提案した角丸で描画しています。",
+    "ramp_label": "パレット"
+  }
+}
+  </script>
+  <script>
+    (() => {
+      const root = document.documentElement;
+      let strings = {};
+      try {
+        const all = JSON.parse(document.getElementById("chrome-strings").textContent);
+        const lang = (root.getAttribute("lang") || "en").toLowerCase().split("-")[0];
+        strings = all[lang] || all.en;
+      } catch (error) {
+        strings = {};
+      }
+
+      // Localize chrome text in the hand-filled template.
+      for (const element of document.querySelectorAll("[data-i18n]")) {
+        const value = strings[element.getAttribute("data-i18n")];
+        if (value) element.textContent = value;
+      }
+
+      // Warn when double-brace placeholders remain anywhere in the page.
+      const pattern = new RegExp("\\{\\{[A-Z0-9_]+\\}\\}", "g");
+      const found = new Set(root.outerHTML.match(pattern) || []);
+      if (found.size > 0) {
+        const warning = document.createElement("p");
+        warning.className = "placeholder-warning";
+        warning.setAttribute("role", "status");
+        const template = strings.placeholder_warning || "{count} placeholder(s) remain.";
+        warning.textContent = template.replace("{count}", String(found.size));
+        const intro = document.querySelector(".intro");
+        if (intro) intro.prepend(warning);
+      }
+
+      // Mark the section in view in the navigation.
+      const links = new Map(
+        [...document.querySelectorAll('.nav a[href^="#"]')].map((link) => [link.hash.slice(1), link]),
+      );
+      const sections = [...links.keys()].map((id) => document.getElementById(id)).filter(Boolean);
+      if (sections.length === 0) return;
+      const nav = document.querySelector(".nav");
+      // On narrow screens the navigation scrolls sideways; keep the marked link
+      // visible by moving only the navigation, never the page.
+      const reveal = (link) => {
+        if (!nav || nav.scrollWidth <= nav.clientWidth) return;
+        const box = nav.getBoundingClientRect();
+        const item = link.getBoundingClientRect();
+        const gutter = 16;
+        if (item.left < box.left + gutter) nav.scrollLeft -= box.left + gutter - item.left;
+        else if (item.right > box.right - gutter) nav.scrollLeft += item.right - (box.right - gutter);
+      };
+      const mark = (id) => {
+        for (const [key, link] of links) {
+          if (key === id) {
+            if (!link.hasAttribute("aria-current")) reveal(link);
+            link.setAttribute("aria-current", "location");
+          } else {
+            link.removeAttribute("aria-current");
+          }
+        }
+      };
+      const sectionInView = () => {
+        // Short final sections never reach the top of the viewport, so the
+        // end of the page selects the last section.
+        const root = document.documentElement;
+        if (window.innerHeight + window.scrollY >= root.scrollHeight - 2) {
+          return sections[sections.length - 1].id;
+        }
+        const line = window.innerHeight * 0.25;
+        let current = sections[0];
+        for (const section of sections) {
+          if (section.getBoundingClientRect().top <= line) current = section;
+        }
+        return current.id;
+      };
+      // A navigation jump keeps its target marked until the reader scrolls;
+      // otherwise a short section reached at the page end would mark another.
+      let pinned = false;
+      let frame = 0;
+      const follow = () => {
+        if (pinned || frame) return;
+        frame = window.requestAnimationFrame(() => {
+          frame = 0;
+          mark(sectionInView());
+        });
+      };
+      const pin = () => {
+        const id = decodeURIComponent(window.location.hash.slice(1));
+        if (!links.has(id)) return;
+        pinned = true;
+        mark(id);
+      };
+      const release = () => {
+        pinned = false;
+      };
+      for (const link of links.values()) {
+        link.addEventListener("click", () => window.setTimeout(pin));
+      }
+      window.addEventListener("hashchange", pin);
+      for (const type of ["wheel", "touchstart", "keydown", "mousedown"]) {
+        window.addEventListener(type, release, { passive: true });
+      }
+      window.addEventListener("scroll", follow, { passive: true });
+      window.addEventListener("resize", follow, { passive: true });
+      if (links.has(decodeURIComponent(window.location.hash.slice(1)))) pin();
+      else mark(sectionInView());
+    })();
+  </script>
+</body>
+</html>

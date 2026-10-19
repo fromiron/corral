@@ -79,7 +79,7 @@ function writerWithFiles(dir: string) {
   return path;
 }
 
-test('[WBTST-016] a session works in its own copy, and its changes are reviewed and checked', async ({
+test('[TC-HUNK-001-H] [TC-CKPT-001-H] [TC-CHAT-002-H] [WBTST-016] a session works in its own copy, and its changes are reviewed and checked', async ({
   page,
   corral,
 }) => {
@@ -133,6 +133,11 @@ test('[WBTST-016] a session works in its own copy, and its changes are reviewed 
     await page.getByRole('button', { name: 'Send' }).click();
     const card = page.locator('[data-testid^="entry-"]').first();
     await expect(card.getByText('Succeeded')).toBeVisible({ timeout: 20_000 });
+    await expect(card.getByTestId('run-change-summary')).toContainText(/1 changed file · \+\d+ −0/);
+    await expect(card.getByRole('link', { name: /1 changed file/ })).toHaveAttribute(
+      'href',
+      /scope=run/,
+    );
 
     await copy.getByRole('link', { name: 'Review changes' }).click();
     await expect(page).toHaveURL(/\/review/);
@@ -182,6 +187,56 @@ test('[WBTST-016] a session works in its own copy, and its changes are reviewed 
     await page.getByRole('button', { name: 'Revert' }).click();
     await expect(page.getByTestId('integration').first()).toContainText('Reverted');
     expect(existsSync(join(original, 'notes', 'writer.md'))).toBe(false);
+    const parts = page.getByRole('region', { name: 'Apply selected changes', exact: true });
+    await parts.getByRole('button', { name: 'Select changed parts' }).click();
+    await parts.getByRole('checkbox', { name: /Part 1/ }).check();
+    await parts.getByRole('button', { name: 'Preview original-folder changes' }).click();
+    await expect(parts).toContainText('Target: original folder');
+    await parts.getByRole('button', { name: 'Approve and apply to original' }).click();
+    await expect.poll(() => existsSync(join(original, 'notes', 'writer.md'))).toBe(true);
+    await page.goto(
+      new URL(
+        `/sessions/${new URL(page.url()).pathname.split('/')[2]}?panel=changes`,
+        page.url(),
+      ).toString(),
+    );
+    const checkpoints = page.getByRole('region', { name: 'File checkpoints', exact: true });
+    const originalBackup = checkpoints
+      .getByTestId('checkpoint-row')
+      .filter({ hasText: 'Before restore' })
+      .filter({ hasText: 'Original folder' })
+      .first();
+    await originalBackup.getByRole('button', { name: 'Preview restore' }).click();
+    const originalPreview = checkpoints.getByRole('region', { name: 'Preview restore' });
+    await expect(originalPreview).toContainText('Original folder');
+    await originalPreview.getByRole('button', { name: 'Restore original folder' }).click();
+    await expect.poll(() => existsSync(join(original, 'notes', 'writer.md'))).toBe(false);
+
+    await checkpoints.getByLabel('Checkpoint name').fill('After review');
+    await checkpoints.getByRole('button', { name: 'Save checkpoint', exact: true }).click();
+    await expect(
+      checkpoints.getByTestId('checkpoint-row').filter({ hasText: 'After review' }),
+    ).toContainText('Ready');
+    const baseline = checkpoints
+      .getByTestId('checkpoint-row')
+      .filter({ hasText: 'Before Run' })
+      .last();
+    await baseline.getByRole('button', { name: 'Preview restore' }).click();
+    const preview = checkpoints.getByRole('region', { name: 'Preview restore' });
+    await expect(preview).toContainText('notes/writer.md');
+    await preview.getByRole('button', { name: 'Restore working copy' }).click();
+    await expect(
+      checkpoints
+        .getByTestId('checkpoint-restore')
+        .filter({ hasText: 'Session working copy' })
+        .first(),
+    ).toContainText('Restore: Applied');
+    await expect(
+      checkpoints
+        .getByTestId('checkpoint-row')
+        .filter({ hasText: 'Before restore' })
+        .filter({ hasText: 'Session working copy' }),
+    ).toBeVisible();
     expect(corral.errors).toEqual([]);
   } finally {
     rmSync(original, { recursive: true, force: true });

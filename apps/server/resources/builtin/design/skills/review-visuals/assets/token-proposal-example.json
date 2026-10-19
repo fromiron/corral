@@ -1,0 +1,550 @@
+{
+  "project": "예시 학습 대시보드",
+  "language": "ko",
+  "title": "예시 학습 대시보드 디자인 토큰 제안",
+  "summary": "현재 CSS에서 확인한 색상 17개, 간격 11개, 모서리 반경 7개 값을 역할 기준으로 정리한 제안입니다. 이 파일은 구조를 보여 주는 예시 데이터이며 실제 프로젝트의 측정값이 아닙니다.",
+  "status": "proposed",
+  "prepared": "2026-10-01",
+  "evidence_basis": [
+    "src/styles/*.css (예시)",
+    "1440·768·375px 렌더링 캡처 (예시)"
+  ],
+  "specimen_text": "오늘의 학습 목표를 확인하고 다음 강의로 이동하세요.",
+  "naming": {
+    "primitive": {
+      "separator": "-",
+      "parts": [
+        {
+          "text": "gray",
+          "label": "계열"
+        },
+        {
+          "text": "90",
+          "label": "단계"
+        }
+      ]
+    },
+    "semantic": {
+      "separator": "-",
+      "parts": [
+        {
+          "text": "text",
+          "label": "분류"
+        },
+        {
+          "text": "primary",
+          "label": "역할"
+        }
+      ]
+    }
+  },
+  "breakpoints": [
+    {
+      "name": "wide",
+      "min_width": "1280px",
+      "evidence": [
+        "src/styles/breakpoints.css:3 (예시)"
+      ]
+    },
+    {
+      "name": "medium",
+      "min_width": "768px",
+      "evidence": [
+        "src/styles/breakpoints.css:4 (예시)"
+      ]
+    },
+    {
+      "name": "narrow",
+      "min_width": "0px",
+      "evidence": [
+        "src/styles/breakpoints.css:5 (예시)"
+      ]
+    }
+  ],
+  "foundations": {
+    "color": {
+      "primitives": [
+        {
+          "name": "gray-0",
+          "group": "gray",
+          "step": "0",
+          "value": "#ffffff",
+          "current_values": [
+            "#fff",
+            "#ffffff"
+          ],
+          "evidence": [
+            "src/styles/base.css:8 (예시)"
+          ]
+        },
+        {
+          "name": "gray-10",
+          "group": "gray",
+          "step": "10",
+          "value": "#f6f6f6",
+          "current_values": [
+            "#f5f5f5",
+            "#f6f6f6",
+            "#f7f7f7"
+          ],
+          "evidence": [
+            "src/styles/card.css:4 (예시)"
+          ]
+        },
+        {
+          "name": "gray-30",
+          "group": "gray",
+          "step": "30",
+          "value": "#d5d6dd",
+          "current_values": [
+            "#d5d6dd",
+            "#d9d9de"
+          ],
+          "evidence": [
+            "src/styles/table.css:19 (예시)"
+          ]
+        },
+        {
+          "name": "gray-60",
+          "group": "gray",
+          "step": "60",
+          "value": "#66666e",
+          "current_values": [
+            "#666",
+            "#66666e",
+            "#6b6b72"
+          ],
+          "evidence": [
+            "src/styles/text.css:11 (예시)"
+          ]
+        },
+        {
+          "name": "gray-90",
+          "group": "gray",
+          "step": "90",
+          "value": "#333236",
+          "current_values": [
+            "#333",
+            "#333236"
+          ],
+          "evidence": [
+            "src/styles/text.css:3 (예시)"
+          ]
+        },
+        {
+          "name": "blue-50",
+          "group": "blue",
+          "step": "50",
+          "value": "#2f4fd0",
+          "current_values": [
+            "#2f4fd0",
+            "#3050d2"
+          ],
+          "evidence": [
+            "src/styles/link.css:2 (예시)"
+          ]
+        },
+        {
+          "name": "blue-10",
+          "group": "blue",
+          "step": "10",
+          "value": "#eef1fd",
+          "current_values": [
+            "#eef1fd"
+          ],
+          "evidence": [
+            "src/styles/badge.css:6 (예시)"
+          ]
+        },
+        {
+          "name": "red-60",
+          "group": "red",
+          "step": "60",
+          "value": "#c4213a",
+          "current_values": [
+            "#c4213a",
+            "#d0243f"
+          ],
+          "evidence": [
+            "src/styles/form.css:41 (예시)"
+          ]
+        }
+      ],
+      "semantic": [
+        {
+          "name": "text-primary",
+          "role": "본문과 제목 텍스트",
+          "references": {
+            "light": "gray-90",
+            "dark": "gray-0"
+          },
+          "contrast": {
+            "against": "surface-default",
+            "minimum": 4.5
+          },
+          "status": "proposed"
+        },
+        {
+          "name": "text-secondary",
+          "role": "보조 설명과 캡션",
+          "references": {
+            "light": "gray-60",
+            "dark": "unknown"
+          },
+          "contrast": {
+            "against": "surface-default",
+            "minimum": 4.5
+          },
+          "usage": "다크 테마 값은 아직 측정하지 않았습니다.",
+          "status": "proposed"
+        },
+        {
+          "name": "surface-default",
+          "role": "페이지와 카드 배경",
+          "references": {
+            "light": "gray-0",
+            "dark": "gray-90"
+          },
+          "status": "proposed"
+        },
+        {
+          "name": "status-negative",
+          "role": "입력 오류와 실패 상태",
+          "references": {
+            "light": "red-60"
+          },
+          "contrast": {
+            "against": "surface-default",
+            "minimum": 4.5
+          },
+          "status": "retained"
+        }
+      ]
+    },
+    "typography": {
+      "primitives": [
+        {
+          "name": "type-heading-l",
+          "value": {
+            "font_family": "\"Pretendard\", system-ui, sans-serif",
+            "font_size": "28px",
+            "font_weight": "700",
+            "line_height": "1.4",
+            "letter_spacing": "-0.01em"
+          },
+          "current_values": [
+            "28px/700",
+            "30px/700"
+          ],
+          "evidence": [
+            "src/styles/heading.css:5 (예시)",
+            "375px 캡처에서 두 줄 줄바꿈 확인 (예시)"
+          ]
+        },
+        {
+          "name": "type-body-m",
+          "value": {
+            "font_family": "\"Pretendard\", system-ui, sans-serif",
+            "font_size": "16px",
+            "font_weight": "400",
+            "line_height": "1.7",
+            "letter_spacing": "0"
+          },
+          "current_values": [
+            "16px/400",
+            "15px/400"
+          ],
+          "evidence": [
+            "src/styles/text.css:3 (예시)"
+          ]
+        },
+        {
+          "name": "type-body-m-ja",
+          "value": {
+            "font_family": "\"Noto Sans JP\", system-ui, sans-serif",
+            "font_size": "16px",
+            "font_weight": "400",
+            "line_height": "unknown",
+            "letter_spacing": "0"
+          },
+          "specimen": "今日の学習目標を確認して、次の講義に進みましょう。",
+          "current_values": [
+            "16px/400"
+          ],
+          "evidence": [
+            "src/locales/ja/styles.css:2 (예시)"
+          ]
+        }
+      ],
+      "semantic": [
+        {
+          "name": "text-page-title",
+          "role": "페이지 제목",
+          "references": {
+            "default": "type-heading-l"
+          },
+          "status": "proposed"
+        },
+        {
+          "name": "text-body",
+          "role": "본문",
+          "references": {
+            "ko": "type-body-m",
+            "ja": "type-body-m-ja"
+          },
+          "usage": "일본어 행간은 렌더링 확인 후 결정합니다.",
+          "status": "proposed"
+        }
+      ]
+    },
+    "spacing": {
+      "primitives": [
+        {
+          "name": "space-2",
+          "value": "8px",
+          "current_values": [
+            "6px",
+            "8px"
+          ],
+          "evidence": [
+            "src/styles/list.css:7 (예시)"
+          ]
+        },
+        {
+          "name": "space-4",
+          "value": "16px",
+          "current_values": [
+            "14px",
+            "15px",
+            "16px"
+          ],
+          "evidence": [
+            "src/styles/card.css:9 (예시)"
+          ]
+        },
+        {
+          "name": "space-6",
+          "value": "24px",
+          "current_values": [
+            "22px",
+            "24px"
+          ],
+          "evidence": [
+            "src/styles/section.css:2 (예시)"
+          ]
+        },
+        {
+          "name": "space-10",
+          "value": "40px",
+          "current_values": [
+            "40px",
+            "42px"
+          ],
+          "evidence": [
+            "src/styles/section.css:3 (예시)"
+          ]
+        },
+        {
+          "name": "space-16",
+          "value": "64px",
+          "current_values": [
+            "60px",
+            "64px"
+          ],
+          "evidence": [
+            "src/styles/page.css:4 (예시)"
+          ]
+        }
+      ],
+      "semantic": [
+        {
+          "name": "space-content-gap",
+          "role": "같은 그룹 안의 요소 간격",
+          "references": {
+            "wide": "space-4",
+            "medium": "space-4",
+            "narrow": "space-2"
+          },
+          "status": "proposed"
+        },
+        {
+          "name": "space-section-gap",
+          "role": "섹션 사이 간격",
+          "references": {
+            "wide": "space-16",
+            "medium": "space-10",
+            "narrow": "space-10"
+          },
+          "status": "proposed"
+        }
+      ]
+    },
+    "layout": {
+      "primitives": [
+        {
+          "name": "layout-width-1120",
+          "value": "1120px",
+          "current_values": [
+            "1100px",
+            "1120px",
+            "1140px"
+          ],
+          "evidence": [
+            "src/components/PageShell.css:6 (예시)"
+          ]
+        },
+        {
+          "name": "layout-width-fluid",
+          "value": "100%",
+          "current_values": [
+            "100%"
+          ],
+          "evidence": [
+            "src/components/PageShell.css:14 (예시)"
+          ]
+        }
+      ],
+      "semantic": [
+        {
+          "name": "layout-content-width",
+          "role": "본문 컨테이너 최대 너비",
+          "owner": "PageShell",
+          "diagram": "content-width",
+          "references": {
+            "wide": "layout-width-1120",
+            "medium": "layout-width-fluid",
+            "narrow": "layout-width-fluid"
+          },
+          "status": "proposed"
+        },
+        {
+          "name": "layout-page-padding",
+          "role": "화면 가장자리 여백",
+          "owner": "PageShell",
+          "diagram": "page-padding",
+          "references": {
+            "wide": "space-10",
+            "medium": "space-6",
+            "narrow": "space-4"
+          },
+          "status": "proposed"
+        }
+      ]
+    },
+    "radius": {
+      "primitives": [
+        {
+          "name": "radius-8",
+          "value": "8px",
+          "current_values": [
+            "6px",
+            "8px"
+          ],
+          "evidence": [
+            "src/styles/button.css:3 (예시)"
+          ]
+        },
+        {
+          "name": "radius-16",
+          "value": "16px",
+          "current_values": [
+            "14px",
+            "16px",
+            "20px"
+          ],
+          "evidence": [
+            "src/styles/card.css:2 (예시)"
+          ]
+        },
+        {
+          "name": "radius-full",
+          "value": "999px",
+          "current_values": [
+            "999px",
+            "50%"
+          ],
+          "evidence": [
+            "src/styles/avatar.css:2 (예시)"
+          ]
+        }
+      ],
+      "semantic": [
+        {
+          "name": "corner-control",
+          "role": "버튼, 입력 필드",
+          "references": {
+            "default": "radius-8"
+          },
+          "relationship": "independent",
+          "status": "proposed"
+        },
+        {
+          "name": "corner-card",
+          "role": "카드와 패널",
+          "references": {
+            "default": "radius-16"
+          },
+          "relationship": "shared-contour",
+          "usage": "카드 안쪽 면은 corner-control로 한 단계 줄입니다.",
+          "status": "proposed"
+        },
+        {
+          "name": "corner-pill",
+          "role": "태그, 아바타",
+          "references": {
+            "default": "radius-full"
+          },
+          "relationship": "pill-or-circle",
+          "status": "retained"
+        }
+      ]
+    }
+  },
+  "changes": [
+    {
+      "current": "#3050d2",
+      "proposed": "blue-50",
+      "action": "merge",
+      "evidence": [
+        "색상 차이 1단계, 용도 동일 (예시)"
+      ]
+    },
+    {
+      "current": "15px, 14px 간격",
+      "proposed": "space-4",
+      "action": "merge",
+      "evidence": [
+        "카드 내부 간격으로만 사용 (예시)"
+      ]
+    },
+    {
+      "current": "$card-radius-lg (20px)",
+      "proposed": "corner-card",
+      "action": "rename",
+      "evidence": [
+        "카드 세 곳에서만 사용 (예시)"
+      ]
+    },
+    {
+      "current": "$shadow-glow",
+      "action": "delete",
+      "evidence": [
+        "상태를 전달하지 않는 장식 그림자 (예시)"
+      ]
+    }
+  ],
+  "decisions": {
+    "proposed": [
+      "간격은 다섯 단계로 통합하고 역할별 시맨틱 토큰만 컴포넌트에서 사용합니다."
+    ],
+    "retained": [
+      "오류 색상 red-60은 상태 전달에 필요하므로 강조 색상 예산과 별도로 유지합니다."
+    ],
+    "rejected": [
+      "모든 간격을 4/8 배수로 강제하는 안은 현재 근거가 없어 채택하지 않았습니다."
+    ],
+    "open": [
+      "일본어 본문 행간과 다크 테마의 보조 텍스트 색상은 렌더링 확인이 필요합니다."
+    ]
+  }
+}

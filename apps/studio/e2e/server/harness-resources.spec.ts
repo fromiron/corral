@@ -6,7 +6,7 @@ import { expect, test } from './harness.ts';
 
 test.describe('extension input during an SDK run', () => {
   test.use({ live: true, codexLogin: true });
-  test('[TC-HAR-007-H] answers a startup prompt through the Run view and records the applied snapshot', async ({
+  test('[TC-COMPACT-001-N] [TC-HAR-007-H] answers a startup prompt through the Run view and records the applied snapshot', async ({
     page,
     corral,
   }) => {
@@ -28,7 +28,7 @@ test.describe('extension input during an SDK run', () => {
       const definition = linearCorral(['writer']);
       definition.roles[0]!.modelProfile = 'model-b';
       definition.roles[0]!.harness = { profileId: 'ui-test', revision: 1 };
-      const runId = await page.evaluate(
+      const started = await page.evaluate(
         async ({ source, definition }) => {
           const { csrfToken } = await (await fetch('/api/v1/session')).json();
           const call = async (path: string, body: unknown, method = 'POST') => {
@@ -68,22 +68,39 @@ test.describe('extension input during an SDK run', () => {
             definition,
             layout: { viewport: { x: 0, y: 0, zoom: 1 }, nodes: {} },
           });
+          const workSession = await call('/sessions', {
+            projectId: 'default',
+            title: 'SDK context',
+            corralId: saved.record.corralId,
+          });
           const result = await call('/runs', {
             schemaVersion: '0.1',
             commandId: 'start-ui-test',
+            sessionId: workSession.session.sessionId,
             corralId: saved.record.corralId,
             definitionRevision: saved.record.definitionRevision,
             mode: 'live',
           });
-          return result.runId as string;
+          return {
+            runId: result.runId as string,
+            sessionId: workSession.session.sessionId as string,
+          };
         },
         { source, definition },
       );
       corral.fake?.answerWith('The confirmed result.');
-      await page.goto(`${corral.server.url}/runs/${runId}?view=run`);
-      await expect(page.getByText('Continue the test run?', { exact: true })).toBeVisible();
-      await page.getByRole('button', { name: 'Confirm', exact: true }).click();
-      await expect(page.getByText('Input received.', { exact: false })).toBeVisible();
+      await page.goto(
+        `${corral.server.url}/sessions/${started.sessionId}?panel=run&run=${started.runId}&view=run`,
+      );
+      const detail = page.getByTestId('compact-run');
+      await expect(detail.getByText('Continue the test run?', { exact: true })).toBeVisible();
+      await detail.getByTestId('status-context').locator(':scope > summary').click();
+      await detail.getByRole('button', { name: 'Compact at next safe boundary' }).click();
+      await expect(detail).toContainText('Compaction requested; waiting for a safe boundary.');
+      await expect(detail.getByText('Continue the test run?', { exact: true })).toBeVisible();
+      await detail.getByRole('button', { name: 'Confirm', exact: true }).click();
+      await expect(detail.getByText('Input received.', { exact: false })).toBeVisible();
+      await expect(detail).toContainText('Compaction failed. Previous history was retained.');
       await expect(page.getByTestId('run-status').first()).toContainText('Succeeded');
       await expect(page.getByRole('button', { name: 'Confirm', exact: true })).toHaveCount(0);
       expect(corral.errors).toEqual([]);

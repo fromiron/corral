@@ -1,0 +1,95 @@
+{
+  "skill_name": "verify-changes",
+  "evals": [
+    {
+      "id": "delete-without-harming-task",
+      "prompt": "The redesign is finished. Remove anything unnecessary, but verify that hiring managers can still identify my role, project evidence, and contact path.",
+      "expected_output": "The agent runs deletion and primary-task tests, distinguishes unique evidence from repetition, and produces a reversible change ledger.",
+      "assertions": [
+        "The output does not equate empty space or fewer elements with success by itself.",
+        "Each deletion has an evidence state and verification method.",
+        "The task and contact path are explicitly rechecked."
+      ]
+    },
+    {
+      "id": "screenshot-limit",
+      "prompt": "Here is one desktop screenshot. Confirm that keyboard, reflow, semantics, and reduced-motion behavior all pass after simplification.",
+      "expected_output": "The agent marks runtime checks unknown and does not infer passes from the screenshot.",
+      "assertions": [
+        "Keyboard, semantic, reflow, and motion behavior are not marked pass without runtime evidence.",
+        "The output specifies repeatable tests."
+      ]
+    },
+    {
+      "id": "growth-and-provenance",
+      "prompt": "QA this minimal product archive before release. It currently has six records but will have hundreds, and a marketing metric has no source yet.",
+      "expected_output": "The agent checks growth using the stable schema and blocks or removes the unsupported metric until evidence is supplied.",
+      "assertions": [
+        "The unsupported metric is not preserved as verified copy.",
+        "The growth test evaluates the dominant structure rather than adding decorative card variants."
+      ]
+    },
+    {
+      "id": "verify-nested-radius-repair",
+      "prompt": "The redesign changed nested card radii from one repeated token to an outer 20px and inner 12px radius with an 8px inset. Verify the repair before release.",
+      "expected_output": "A nested-radius-coherence check that validates the declared contour relationship, compares rendered results, and keeps accessibility clipping checks separate.",
+      "assertions": [
+        "The output verifies the radius relationship rather than counting tokens only.",
+        "The result records measured evidence and a repeatable method.",
+        "The check does not claim that the prior design was AI-generated."
+      ]
+    },
+    {
+      "id": "verify-responsive-type-and-spacing",
+      "prompt": "The redesign consolidated spacing tokens, changed container padding on mobile, and adjusted Japanese heading line height. Verify the result before release.",
+      "expected_output": "A project-token and rendered-evidence verification covering semantic spacing roles, representative breakpoints, container ownership, and font-aware typography without importing external numeric thresholds.",
+      "assertions": [
+        "The output distinguishes content gaps, section gaps, and container padding.",
+        "Typography verification records the actual font, fallback, script, role, and multi-line rendering.",
+        "User-applied text-spacing resilience is tested separately from default typography quality."
+      ]
+    },
+    {
+      "id": "recheck-after-consolidation",
+      "prompt": "Finish the requested simplification of the supplied settings page. Earlier keyboard checks passed before the latest edits. Two duplicate help paragraphs remain; consolidate them only if the recovery instructions survive. Apply the justified change, verify the final page through its normal settings route, and keep unrelated edits.",
+      "expected_output": "A deletion/consolidation decision, a reversible applied change if supported, and fresh affected checks after that change rather than reuse of the earlier pass.",
+      "assertions": [
+        "Deletion and consolidation decisions remain part of the skill, including reasons to retain necessary recovery content.",
+        "The output separates the actual diff or changed-file paths from unapplied proposals.",
+        "Checks affected by the latest edit are repeated or explicitly reported as unverified; earlier success is not reused as current evidence.",
+        "The closeout includes outcomes, remaining unknowns, and a rollback method preserving unrelated edits."
+      ]
+    },
+    {
+      "id": "targeted-button-copy",
+      "prompt": "I changed one button label from \"Submit\" to \"Save changes\" in evals/fixtures/button-page.html. Verify the change.",
+      "expected_output": "A targeted verification that checks meaning, accessible name, locale handling if any, and wrapping for the changed label, records unrelated baseline checks as out of scope, and does not state release readiness.",
+      "assertions": [
+        "The report declares the verification scope as targeted.",
+        "Checks unrelated to the label are recorded as out of scope, not as pass, unknown, or not applicable.",
+        "The output does not state release readiness or WCAG conformance.",
+        "The output does not propose or apply deletions beyond the requested change."
+      ]
+    },
+    {
+      "id": "targeted-css-radius",
+      "prompt": "I changed .card > .card-media in evals/fixtures/nested-radius.css to use a smaller radius. Verify just that change.",
+      "expected_output": "A targeted verification that repeats the nested-radius coherence check on the changed contour and checks the affected surface's reflow, without running the whole release set.",
+      "assertions": [
+        "The nested-radius-coherence check is repeated against the changed CSS.",
+        "Unaffected baseline checks are recorded as out of scope.",
+        "The output does not claim release readiness."
+      ]
+    },
+    {
+      "id": "release-full",
+      "prompt": "We're about to ship the redesigned settings page. Run the full release verification on the before and after versions.",
+      "expected_output": "A release-scope verification that includes every baseline check, classifies each as pass, fail, unknown, or not applicable, and blocks release on required failures or unknowns unless an accountable owner accepts the exact risk.",
+      "assertions": [
+        "Every baseline check appears in the report.",
+        "No check is recorded as out of scope in release verification.",
+        "Required unknowns block release unless explicitly accepted."
+      ]
+    }
+  ]
+}

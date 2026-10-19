@@ -4,7 +4,7 @@ import { createReadStream, existsSync, readFileSync, statSync, writeFileSync } f
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { CodingEvalSuite } from '@corral/contracts';
+import { CodingEvalSuite, UserAnswerFile } from '@corral/contracts';
 import {
   applyEvent,
   compileDefinition,
@@ -142,7 +142,7 @@ export interface CliIO {
 }
 
 const usage =
-  'corral dev [--demo] | validate <file> | run <file> [--input <brief>] [--watch] [--demo] | inspect <run-id> [--judgments] | inspect --archive <file> | export <run-id> [--redact | --private] | judge install|status [--model-dir <dir>] | exec <file> [--input <brief>] [--demo] [--json] | eval <suite.json> [--demo] [--out <file>] | eval <coding-suite.json> --hashline-binary <fixture-driver> [--out <file>]';
+  'corral dev [--demo] | validate <file> | run <file> [--input <brief>] [--watch] [--demo] | inspect <run-id> [--judgments] | inspect --archive <file> | export <run-id> [--redact | --private] | judge install|status [--model-dir <dir>] | exec <file> [--input <brief>] [--answers <file>] [--demo] [--json] | eval <suite.json> [--demo] [--out <file>] | eval <coding-suite.json> --hashline-binary <fixture-driver> [--out <file>]';
 
 export async function runCli(args: string[], io: CliIO): Promise<number> {
   let server: import('@corral/server').CorralServer | undefined;
@@ -155,6 +155,7 @@ export async function runCli(args: string[], io: CliIO): Promise<number> {
         demo: { type: 'boolean', default: false },
         watch: { type: 'boolean', default: false },
         input: { type: 'string' },
+        answers: { type: 'string' },
         workspace: { type: 'string' },
         port: { type: 'string', default: '4317' },
         static: { type: 'string' },
@@ -249,12 +250,15 @@ export async function runCli(args: string[], io: CliIO): Promise<number> {
         return 1;
       }
       if (values.input) compiled.definition.input.brief = readInput(resolve(io.cwd, values.input));
+      const answers = values.answers
+        ? UserAnswerFile.parse(JSON.parse(readInput(resolve(io.cwd, values.answers))))
+        : [];
       server = await startHeadless(values, workspace);
       const result = await executeOnce(
         new InProcessTransport(server.coordinator),
         compiled.definition,
         mode,
-        { signal: io.signal },
+        { signal: io.signal, answers },
       );
       if (values.json) io.write(JSON.stringify(result));
       else {
@@ -265,7 +269,9 @@ export async function runCli(args: string[], io: CliIO): Promise<number> {
       }
       if (result.needsUser) {
         io.write(
-          'This Corral needs a person to approve or decide; exec never decides for you, so the run was cancelled. Use Studio or `corral run --watch`.',
+          result.status === 'needs_input'
+            ? 'User input is required. --json includes the question and schema hash; --answers accepts explicitly supplied matching answers. The local runtime will close when exec exits.'
+            : 'This Corral needs a person to approve or decide; exec never decides for you, so the run was cancelled. Use Studio or `corral run --watch`.',
         );
         return 3;
       }

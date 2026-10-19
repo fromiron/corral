@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Grounded content inventory",
+  "type": "object",
+  "required": [
+    "context",
+    "facts",
+    "content_groups",
+    "contradictions",
+    "missing",
+    "prohibited_generation",
+    "safe_claims",
+    "allowed_placeholders",
+    "questions"
+  ],
+  "properties": {
+    "context": {
+      "type": "object",
+      "required": [
+        "artifact_type",
+        "primary_user",
+        "primary_task",
+        "success_condition"
+      ],
+      "properties": {
+        "artifact_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "primary_user": {
+          "type": "string",
+          "minLength": 1
+        },
+        "primary_task": {
+          "type": "string",
+          "minLength": 1
+        },
+        "success_condition": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "facts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "claim",
+          "status",
+          "sources",
+          "confidence"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "claim": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "enum": [
+              "verified",
+              "inferred",
+              "placeholder",
+              "prohibited"
+            ]
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "rationale": {
+            "type": "string"
+          },
+          "confidence": {
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ]
+          },
+          "expires": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "content_groups": {
+      "type": "object"
+    },
+    "contradictions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "missing": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "prohibited_generation": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "safe_claims": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "allowed_placeholders": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "questions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  }
+}

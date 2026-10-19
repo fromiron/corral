@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { HarnessBindingRef } from './harness.ts';
+import { ImageAttachments } from './attachments.ts';
+import { ContentHash, HarnessBindingRef, HarnessResourceRef } from './harness.ts';
 import { Identifier, SchemaVersion } from './ids.ts';
 import { ReasoningPolicy } from './reasoning.ts';
 import { ReviewRecipeRevision } from './review-recipe.ts';
@@ -59,6 +60,8 @@ export const CollaborationTool = z.enum([
   'reply',
   'read_artifact',
   'submit_result',
+  'ask_user',
+  'update_plan',
 ]);
 export type CollaborationTool = z.infer<typeof CollaborationTool>;
 
@@ -72,7 +75,7 @@ export const AgentRole = z.strictObject({
   modelProfile: Identifier,
   reasoning: ReasoningPolicy.optional(),
   allowedWorkTools: z.array(WorkTool).max(8),
-  allowedCollaborationTools: z.array(CollaborationTool).max(6),
+  allowedCollaborationTools: z.array(CollaborationTool).max(8),
   outputContract: OutputContract,
   harness: HarnessBindingRef.optional(),
 });
@@ -192,12 +195,34 @@ export const DEFAULT_LIMITS: RunLimits = {
 
 /** What a run works on: the brief and the completion criteria (Spec §5.1). */
 export const RunInput = z.strictObject({
+  images: ImageAttachments.optional(),
+  taskScope: z.enum(['work', 'review_only']).optional(),
+  verificationScope: z.enum(['targeted', 'release']).optional(),
   brief: z.string().min(1),
   criteria: z.array(z.string().min(1)).min(1).max(20),
 });
 export type RunInput = z.infer<typeof RunInput>;
 
+/** A projection of owned inputs and effective capabilities, not another task state machine. */
+export const TaskBrief = z.strictObject({
+  version: z.literal(1),
+  inputHash: ContentHash,
+  criteriaVersionId: Identifier,
+  assignment: z.enum(['scheduled', 'delegated', 'question']),
+  outputContract: OutputContract,
+  taskScope: z.enum(['work', 'review_only']),
+  verificationScope: z.enum(['targeted', 'release']),
+  canModifyFiles: z.boolean(),
+  limits: RunLimits,
+  sourceRefs: z
+    .array(z.strictObject({ name: z.string().min(1), artifactVersionId: Identifier.nullable() }))
+    .max(1000),
+  resources: z.array(HarnessResourceRef).max(64),
+});
+export type TaskBrief = z.infer<typeof TaskBrief>;
+
 export const CorralDefinition = z.strictObject({
+  planOwnerRoleId: Identifier.optional(),
   schemaVersion: SchemaVersion,
   id: Identifier,
   name: z.string().min(1),

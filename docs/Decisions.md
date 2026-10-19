@@ -300,3 +300,17 @@ Electron은 창·OS 대화상자·서버 수명을 소유한다. 서버와 Pi wo
 **검증:** 정상·출력 초과·비협조적인 공급자의 시간 초과·중단 후 사용량·재전송 충돌·한도 patch·파일 기준·기록 roundtrip을 결정적으로 검사한다. 실제 모델 검토 팀의 종료와 private 기록 조회는 별도 opt-in과 요청 상한으로 검증한다.
 
 ADR-031 보완(2026-10-18): 불명확한 시작은 최초 요청 전체를 재전송한다. 시작 전 명시 취소는 기존 명령 저장소에 세션 범위로 영구 기록하고, 파일 도구 허용과 기준 트리는 같은 실행 직전 상태에서 결정한다. 시간 제한 메모리 fence로 취소를 확정하지 않는다.
+
+## ADR-032: 개선 평가와 실행 기능을 기존 경로에 단계적으로 연결한다
+
+**상태:** 채택 (2026-10-19, [통합 실행 계획](plans/Corral-Improvement-Execution-Plan-2026-10-19.md), CR-025~036 순차 구현 요청).
+
+기존 Coordinator/Pi/SQLite·명령/receipt·리소스·파일 broker를 유지한다. 공통 대기는 projection, TaskBrief는 기존 입력/기준의 투영으로 시작한다. 첫 배포는 대화·질문/계획·읽기 전용 diff·기본팩 선택이며 복구/hunk는 checkpoint 뒤에 연결한다. D&D와 Reins는 기존 회귀로 계속 검증한다.
+
+`corral eval`의 `personal_harness` 비교군을 유지하고 `skill_quality`를 별도 종류로 추가한다. baseline과 필요한 비교군만 선택하며 반복 횟수와 총 case 상한을 검증한다. 각 반복은 독립 작업 사본을 사용하고 calibration/holdout 및 mock/live 근거를 구별한다. 평가 이름만으로 해당 Skill이 실제 전달됐거나 품질이 향상됐다고 판단하지 않는다.
+
+사용자 요청에 따라 새로운 사용자 동작·데이터/권한 경계의 핵심 실패를 먼저 확인하고 기존 시험을 우선 확장한다. 단순 문구/구조 변경이나 구현 내부를 따라가는 테스트는 추가하지 않는다. OS PoC와 콘텐츠 검사도 제품 지원/실모델 품질과 구별한다.
+
+## ADR-033: 격리 worker의 모델 네트워크는 host permit으로만 연다
+
+CR-025 C-107. network namespace를 host와 공유하는 proxy는 격리로 표시하지 않는다. Linux bubblewrap 안에는 애플리케이션 runtime과 바인딩된 콘텐츠만 읽기 전용으로 보인다. 자격 증명은 host에 남으며 host Pi provider가 고정 모델·출력 상한·reasoning permit으로 스트림을 연다. 기존 request/payload 기록은 같은 IPC를 통해 확인한 다음 HTTP 전송한다. provider URL이나 임의 headers, payload 수정은 worker 권한이 아니다. profile opt-in이므로 기존 snapshot을 재해석하지 않으며, 미지원 native 기능은 실패하고 fallback하지 않는다.

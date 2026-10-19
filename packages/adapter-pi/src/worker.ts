@@ -12,10 +12,19 @@ import {
 } from './protocol.ts';
 import { assertReasoningCapabilities, reasoningRequest, verifyReasoningWire } from './reasoning.ts';
 import { requestReasoningInput } from './reasoning-input.ts';
+import {
+  assertImagePayload,
+  assertProtectedPayload,
+  checkpointContext,
+  requestRecord,
+  resumedMessages,
+  withProtectedContext,
+} from './request-record.ts';
 import { normalizeUsage } from './usage.ts';
 import {
   directiveText,
   parametersOf,
+  promptSections,
   safe,
   systemPrompt,
   TOOL_TEXT,
@@ -126,6 +135,13 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
       maxOutputTokens: number;
       reasoning?: ReasoningResolution;
     } | null = null;
+    let protectedSections: ReturnType<typeof promptSections>;
+    try {
+      protectedSections = promptSections(start);
+    } catch {
+      settle('failed', 'protected prompt limit exceeded');
+      return;
+    }
     let completionAccepted = false;
     let chunk = 0;
     const authorized = new Map<string, string>();
@@ -155,7 +171,12 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
     }));
 
     agent = new Agent({
-      initialState: { model, systemPrompt: systemPrompt(start), tools },
+      initialState: {
+        model,
+        systemPrompt: systemPrompt(start),
+        tools,
+        messages: resumedMessages(start.resumeContext),
+      },
       // Each request carries the token and output cap from its own permit.
       streamFn: (m, context, options) => {
         const active = permit;
@@ -166,6 +187,8 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
           ...(permit ? { maxTokens: permit.maxOutputTokens } : {}),
           onPayload: async (payload, payloadModel) => {
             const actual = (await options?.onPayload?.(payload, payloadModel)) ?? payload;
+            assertProtectedPayload(actual, protectedSections);
+            assertImagePayload(actual, start.images);
             const wire = verifyReasoningWire(m, actual, active?.reasoning);
             if (active) {
               const serialized = canonicalJson(JSON.parse(JSON.stringify(actual)));
@@ -174,6 +197,7 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
                 modelCallId: active.modelCallId,
                 payloadHash: createHash('sha256').update(serialized).digest('hex'),
                 payloadBytes: Buffer.byteLength(serialized),
+                skills: [],
                 ...(wire ? { reasoning: wire } : {}),
               });
               if (reply.type !== 'ack' || cancelled) throw new Error('provider payload refused');
@@ -191,6 +215,16 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
       prepareRequest: async ({ context }) => {
         let preparedContext = context;
         const prepare = async () => {
+          const state = await call({ type: 'get_protected_context' });
+          if (state.type !== 'protected_context') throw new Error('protected context refused');
+          if (state.value) {
+            const protectedState = withProtectedContext(preparedContext, state.value);
+            preparedContext = protectedState.context;
+            protectedSections = [
+              ...protectedSections.filter((section) => section.name !== 'corral_state'),
+              protectedState.section,
+            ];
+          }
           const present = JSON.stringify(preparedContext.messages);
           const missing = [...directives.values()].filter(
             (d) => !present.includes(JSON.stringify(directiveText([d])).slice(1, -1)),
@@ -209,8 +243,23 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
               : start.assignment.kind === 'question'
                 ? start.assignment.body
                 : '';
+          const saved = await call({
+            type: 'checkpoint_context',
+            value: checkpointContext(preparedContext, 'pi-core'),
+          });
+          if (saved.type !== 'runtime_checkpoint') throw new Error('runtime checkpoint refused');
           return call({
             type: 'prepare_request',
+            record: requestRecord(
+              preparedContext,
+              'turn',
+              'pi-core',
+              [...directives.values()].map((d) => ({
+                directiveId: d.directiveId,
+                text: directiveText([d]),
+              })),
+              protectedSections,
+            ),
             reasoningInput: requestReasoningInput(preparedContext, 'turn', assignment, [
               ...directives.keys(),
             ]),
@@ -290,7 +339,10 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
     });
 
     try {
-      await agent.prompt(userPrompt(start));
+      await agent.prompt(
+        userPrompt(start),
+        start.images?.map((image) => ({ type: 'image', data: image.data, mimeType: image.mime })),
+      );
     } catch (error) {
       settle(cancelled ? 'cancelled' : 'failed', String(error));
       return;

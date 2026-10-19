@@ -40,8 +40,11 @@ export function autoCommandSeed(
   text: string,
   references: RunReference[],
   choice: AutoModelChoice,
+  scope?: { taskScope?: 'work' | 'review_only'; verificationScope?: 'targeted' | 'release' },
 ): string {
-  return `auto\u0000${text}\u0000${JSON.stringify([references, choice.modelProfile, choice.reasoning ?? null])}`;
+  const identity: unknown[] = [references, choice.modelProfile, choice.reasoning ?? null];
+  if (scope?.taskScope || scope?.verificationScope) identity.push(scope);
+  return `auto\u0000${text}\u0000${JSON.stringify(identity)}`;
 }
 
 /** The reasoning chip's value: a level, a mode, `route`, or '' for unset (CR-021, CR-024). */

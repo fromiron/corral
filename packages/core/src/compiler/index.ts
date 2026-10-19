@@ -341,6 +341,16 @@ function checkIdentity(c: Context) {
     if (roles.has(role.id)) c.error('DUPLICATE_ID', `role id ${role.id} is used twice`);
     roles.add(role.id);
   }
+  if (
+    definition.planOwnerRoleId &&
+    (!roles.has(definition.planOwnerRoleId) ||
+      definition.nodes.filter((n) => n.type === 'agent' && n.roleId === definition.planOwnerRoleId)
+        .length !== 1)
+  )
+    c.error(
+      'UNKNOWN_REFERENCE',
+      'the team plan owner must name one role with exactly one agent node',
+    );
   const connections = new Set<string>();
   for (const edge of definition.controlEdges) {
     if (connections.has(edge.id))
