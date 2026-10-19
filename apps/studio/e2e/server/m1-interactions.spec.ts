@@ -78,9 +78,10 @@ test('[TC-IMAGE-001-H] [TC-STATUS-001-H] [TC-CHAT-001-H] [TC-CHAT-001-N] attachm
   await page.getByRole('button', { name: 'Start session', exact: true }).click();
   await expect(page).toHaveURL(/\/sessions\/session_/);
   const url = page.url();
-  await page.getByRole('combobox', { name: 'Model', exact: true }).click();
-  await page.getByRole('option', { name: 'Reasoning effort · Low', exact: true }).click();
-  await expect(page.getByRole('combobox', { name: 'Model', exact: true })).toContainText('Low');
+  await page.getByRole('button', { name: 'Model', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Reasoning effort', exact: true }).hover();
+  await page.getByRole('menuitemradio', { name: 'Low', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Model', exact: true })).toContainText('Low');
   await page.getByRole('checkbox', { name: 'Review only · no file changes' }).check();
   await requestBox(page).fill('Read the attachment and use my chosen format');
   await page

@@ -317,7 +317,9 @@ test.describe('editing models on the Models page (CR-008)', () => {
     corral,
   }) => {
     await corral.open('/settings/models');
-    const apply = page.getByRole('checkbox', { name: 'Apply local judgments in this workspace' });
+    const apply = page.getByRole('checkbox', {
+      name: 'Allow automatic reasoning in all projects on this server',
+    });
     await expect(apply).toBeEnabled();
     const changed = page.waitForResponse(
       (r) => r.url().endsWith('/models/reasoning') && r.request().method() === 'PUT',
@@ -440,5 +442,102 @@ test.describe('editing models on the Models page (CR-008)', () => {
     await editor.getByRole('button', { name: 'Cancel' }).click();
     await expect(page.getByTestId('provider-lan')).toHaveCount(0);
     expect(corral.errors.filter((e) => !e.includes('400'))).toEqual([]);
+  });
+});
+
+test('[TC-CONTEXT-001-H] [TC-CONTEXT-001-N] profile context preview, explicit zero, round-trip and a concurrent reasoning save', async ({
+  page,
+  corral,
+}) => {
+  await corral.open('/settings/models');
+  await page.getByRole('button', { name: 'Edit models', exact: true }).click();
+  const editor = page.getByRole('region', { name: 'Edit models' });
+  await editor.getByLabel('Context window · model-a').fill('64000');
+  await editor.getByLabel('Summary reserve · model-a').fill('0');
+  await editor.getByLabel('Recent history · model-a').fill('0');
+  await expect(editor.getByTestId('context-policy-model-a')).toContainText('64,000');
+  await expect(editor.getByTestId('context-policy-model-a')).toContainText(
+    'below the request output cap',
+  );
+  await editor.getByRole('button', { name: 'Save models' }).click();
+  await expect(editor).toHaveCount(0);
+  await page.reload();
+  await page.getByRole('button', { name: 'Edit models', exact: true }).click();
+  await expect(editor.getByLabel('Summary reserve · model-a')).toHaveValue('0');
+  await expect(editor.getByLabel('Recent history · model-a')).toHaveValue('0');
+  await editor.getByLabel('Context window · model-a').fill('96000');
+  const changed = page.waitForResponse(
+    (r) => r.url().endsWith('/models/reasoning') && r.request().method() === 'PUT',
+  );
+  await page
+    .getByRole('checkbox', { name: 'Allow automatic reasoning in all projects on this server' })
+    .click();
+  expect((await changed).status()).toBe(200);
+  await editor.getByRole('button', { name: 'Save models' }).click();
+  await expect(editor.getByRole('alert')).toContainText('Models changed');
+  await expect(editor.getByLabel('Context window · model-a')).toHaveValue('96000');
+  const saved = await page.evaluate(async () => (await fetch('/api/v1/model-config')).json());
+  expect(saved.modelProfiles[0]).toMatchObject({
+    contextWindow: 64000,
+    compaction: { reserveTokens: 0, keepRecentTokens: 0 },
+  });
+  expect(JSON.stringify(saved.modelProfiles)).not.toContain('uid');
+});
+
+test('[TC-CONTEXT-001-H] endpoint renaming keeps original model metadata', async ({
+  page,
+  corral,
+}) => {
+  await corral.open('/settings/models');
+  await page.evaluate(async () => {
+    const { csrfToken } = await (await fetch('/api/v1/session')).json();
+    const config = await (await fetch('/api/v1/model-config')).json();
+    const result = await fetch('/api/v1/model-config', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', 'x-corral-csrf': csrfToken },
+      body: JSON.stringify({
+        revision: config.revision,
+        modelProfiles: config.modelProfiles,
+        modelProviders: [
+          {
+            id: 'original',
+            name: 'Local',
+            baseUrl: 'http://127.0.0.1:11434/v1',
+            access: 'none',
+            models: [
+              {
+                id: 'fixture-model',
+                name: 'Metadata',
+                contextWindow: 128000,
+                maxOutput: 8192,
+                reasoning: true,
+                imageInput: true,
+              },
+            ],
+          },
+        ],
+      }),
+    });
+    if (!result.ok) throw new Error('fixture save failed');
+  });
+  await page.reload();
+  await page.getByRole('button', { name: 'Edit models', exact: true }).click();
+  const editor = page.getByRole('region', { name: 'Edit models' });
+  await editor.getByLabel('Endpoint id 1').fill('renamed');
+  await editor.getByRole('button', { name: 'Save models' }).click();
+  await expect(editor).toHaveCount(0);
+  const saved = await page.evaluate(async () => (await fetch('/api/v1/model-config')).json());
+  expect(saved.modelProviders[0]).toMatchObject({
+    id: 'renamed',
+    models: [
+      {
+        id: 'fixture-model',
+        name: 'Metadata',
+        contextWindow: 128000,
+        maxOutput: 8192,
+        reasoning: true,
+        imageInput: true,
+      },
+    ],
   });
 });

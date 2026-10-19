@@ -18,6 +18,7 @@ export interface Workspace {
   id: string;
   dbPath: string;
   config: WorkspaceConfig;
+  configRevision: string;
   policy: InstallationPolicy;
 }
 
@@ -33,12 +34,13 @@ export function prepareWorkspace(root: string): Workspace {
   }
   const id = readFileSync(identity, 'utf8').trim();
   if (!/^[a-f0-9-]{36}$/.test(id)) throw new Error('invalid workspace identity');
-  const { config } = readWorkspaceConfig(root);
+  const { config, revision } = readWorkspaceConfig(root);
   return {
     root,
     id,
     dbPath: join(root, '.corral', 'corral.db'),
     config,
+    configRevision: revision,
     policy: installationPolicy(config),
   };
 }
@@ -126,5 +128,5 @@ export function writeReasoningApply(root: string, apply: boolean, expectedRevisi
   if (!parsed.ok) return { ok: false as const };
   writeFileSync(`${path}.tmp`, `${JSON.stringify(next, null, 2)}\n`, { mode: 0o600 });
   renameSync(`${path}.tmp`, path);
-  return { ok: true as const, config: parsed.config };
+  return { ok: true as const, config: parsed.config, revision: configRevision(root) };
 }

@@ -7,11 +7,13 @@ import type {
 } from '@corral/contracts';
 import {
   type HarnessOverrides,
+  IMAGE_MAX_COUNT,
   type ImageAttachment,
   ImageAttachments,
   type RunReference,
   TERMINAL_EXECUTION_STATUSES,
   TERMINAL_RUN_STATUSES,
+  TEXT_ATTACHMENT_MAX_COUNT,
   UltraSelection,
 } from '@corral/contracts';
 import type {
@@ -31,8 +33,10 @@ import {
   AtSign,
   Ellipsis,
   FileDiff,
+  FileText,
   MessageSquare,
   PanelRight,
+  Plus,
   Square,
   X,
 } from '@corral/react/icons';
@@ -76,11 +80,12 @@ import { projectsChanged, setCurrentProject } from '../projects.ts';
 import { type SessionSearch, sessionRoute, validateSessionSearch } from '../router.tsx';
 import { useServices } from '../services.tsx';
 import { sendKeyLabel, shortcutLabel } from '../shortcuts.ts';
+import { AutoModelMenu } from '../workbench/AutoModelMenu.tsx';
 import {
   autoChoiceFor,
   autoCommandSeed,
   autoNotReady,
-  reasoningFrom,
+  autoReasoningUnsupported,
   reasoningValue,
   sessionRunMode,
 } from '../workbench/autoChoice.ts';
@@ -1277,6 +1282,21 @@ function Composer({
   const [attachmentsBusy, setAttachmentsBusy] = useState(false);
   const [images, setImages] = useState<ImageAttachment[]>(restored.images ?? []);
   const [imagesBusy, setImagesBusy] = useState(false);
+  const textFiles = useRef<HTMLInputElement>(null);
+  const imageFiles = useRef<HTMLInputElement>(null);
+  const [attachmentEpoch, setAttachmentEpoch] = useState(0);
+  const autoSaving = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const [confirmedAuto, setConfirmedAuto] = useState<{
+    revision: number;
+    choice: AutoModelChoice;
+  } | null>(null);
   const [qualityPreset, setQualityPreset] = useState<'default' | 'ultra'>(
     restored.qualityPreset ?? 'default',
   );
@@ -1353,7 +1373,12 @@ function Composer({
   const [modelsOpen, setModelsOpen] = useState(false);
   // UX-06: which model each role uses, and whether it is connected.
   const profiles = useModelProfiles();
-  const autoChoice = autoChoiceFor(session.auto, profiles);
+  const autoChoice = autoChoiceFor(
+    confirmedAuto && confirmedAuto.revision > session.revision
+      ? confirmedAuto.choice
+      : session.auto,
+    profiles,
+  );
   const ultraProfiles = useMemo(
     () =>
       runMode === 'mock'
@@ -1470,9 +1495,9 @@ function Composer({
   const targetName = (id: string) => targetNames.current.get(id) ?? id;
 
   /** Changes the text; the first character fixes what the request is and for whom. */
-  const write = (value: string) => {
+  const write = (value: string | ((current: string) => string)) => {
     setText(value);
-    if (!value) setLock(null);
+    if (value === '') setLock(null);
     else if (!lock) setLock({ intent, target: intent === 'steer' ? steerTarget || null : null });
   };
   /** An explicit choice by the person; it becomes the new fixed intent while text is typed. */
@@ -1509,12 +1534,19 @@ function Composer({
   }, [session.sessionId, composerDraft]);
   useEffect(() => {
     const sent = (event: Event) => {
-      const detail = (event as CustomEvent<{ sessionId: string; revision: number }>).detail;
+      const detail = (
+        event as CustomEvent<{ sessionId: string; revision: number; preserveAttachments?: boolean }>
+      ).detail;
       if (detail.sessionId !== session.sessionId || detail.revision !== draftRevision.current)
         return;
       setPicked([]);
-      setAttachments([]);
-      setImages([]);
+      if (!detail.preserveAttachments) {
+        setAttachments([]);
+        setImages([]);
+      }
+      setAttachmentEpoch((epoch) => epoch + 1);
+      setAttachmentsBusy(false);
+      setImagesBusy(false);
       setReviewOnly(false);
       setVerificationScope('targeted');
       setQualityPreset('default');
@@ -1739,14 +1771,39 @@ function Composer({
 
   /** Saves the auto model and reasoning with the session (CR-024). */
   const updateAuto = async (auto: AutoModelChoice) => {
-    const result = await repository.updateSession(session.sessionId, {
-      auto,
-      expectedRevision: session.revision,
-    });
-    if (!result.ok) setError(t('failed', { message: result.message }));
-    else {
-      if (auto.modelProfile !== autoChoice.modelProfile) setUltraDraft(null);
+    if (autoSaving.current || busy) return;
+    autoSaving.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await repository.updateSession(session.sessionId, {
+        auto,
+        expectedRevision: Math.max(session.revision, confirmedAuto?.revision ?? 0),
+      });
+      if (!mounted.current) return;
+      if (!result.ok) throw new Error(result.message);
+      setConfirmedAuto({ revision: result.session.revision, choice: auto });
+      if (auto.modelProfile !== autoChoice.modelProfile)
+        setUltraDraft(
+          qualityPreset === 'ultra'
+            ? {
+                ...ultra,
+                verifierProfile:
+                  ultra.verifierProfile === auto.modelProfile
+                    ? autoChoice.modelProfile
+                    : ultra.verifierProfile,
+              }
+            : null,
+        );
       await router.invalidate();
+    } catch (failure) {
+      if (mounted.current)
+        setError(
+          t('failed', { message: failure instanceof Error ? failure.message : String(failure) }),
+        );
+    } finally {
+      autoSaving.current = false;
+      if (mounted.current) setBusy(false);
     }
   };
 
@@ -1761,7 +1818,7 @@ function Composer({
 
   const send = async () => {
     const body = text.trim();
-    if (!body || busy || unavailable) return;
+    if (!body || busy || autoSaving.current || unavailable) return;
     const submittedRevision = writeComposerDraft(session.sessionId, composerDraft);
     draftRevision.current = submittedRevision;
     setBusy(true);
@@ -1874,7 +1931,7 @@ function Composer({
         return;
       }
       clearPending();
-      clearSentComposerDraft(session.sessionId, submittedRevision);
+      clearSentComposerDraft(session.sessionId, submittedRevision, intent !== 'next');
       await router.invalidate();
       onChange();
     } catch (failure) {
@@ -1920,6 +1977,9 @@ function Composer({
       )
         return;
       setText(typeof value === 'string' ? value : value.text);
+      setAttachmentEpoch((epoch) => epoch + 1);
+      setAttachmentsBusy(false);
+      setImagesBusy(false);
       setAttachments(typeof value === 'string' ? [] : (value.attachments ?? []));
       setImages(typeof value === 'string' ? [] : (value.images ?? []));
       setQualityPreset(
@@ -2003,6 +2063,9 @@ function Composer({
   };
   /** Editing a queued task takes it back into the box; sending again records a new version. */
   const editQueued = async (entry: SessionEntry) => {
+    setAttachmentEpoch((epoch) => epoch + 1);
+    setAttachmentsBusy(false);
+    setImagesBusy(false);
     setText(entry.text);
     setAttachments(entry.attachments ?? []);
     setImages(entry.images ?? []);
@@ -2062,6 +2125,9 @@ function Composer({
       if (next < -1 || next >= history.length) return;
       event.preventDefault();
       setRecall(next);
+      setAttachmentEpoch((epoch) => epoch + 1);
+      setAttachmentsBusy(false);
+      setImagesBusy(false);
       write(next === -1 ? '' : (history[next] ?? ''));
       const recalledEntry =
         next === -1 ? undefined : session.entries.findLast((entry) => entry.text === history[next]);
@@ -2101,6 +2167,11 @@ function Composer({
     profiles !== null &&
     autoNotReady(autoChoice, profiles, runMode);
   const autoProfile = profiles?.find((p) => p.profileId === autoChoice.modelProfile);
+  const reasoningBlocked =
+    isAuto &&
+    intent === 'next' &&
+    qualityPreset !== 'ultra' &&
+    autoReasoningUnsupported(autoChoice, profiles, runMode);
   const ultraBlocked =
     isAuto &&
     !team &&
@@ -2124,12 +2195,9 @@ function Composer({
     liveUnavailable ||
     attachmentsBusy ||
     imagesBusy ||
-    ((attachments.length > 0 ||
-      images.length > 0 ||
-      reviewOnly ||
-      verificationScope === 'release') &&
-      intent !== 'next') ||
+    ((reviewOnly || verificationScope === 'release') && intent !== 'next') ||
     autoBlocked ||
+    reasoningBlocked ||
     ultraBlocked ||
     notReady.length > 0 ||
     resolved.blocked !== null ||
@@ -2450,42 +2518,15 @@ function Composer({
               <span role="status">{tc('scopeNextOnly')}</span>
             ) : null}
           </div>
-          <Select
-            label={tc('designTemplate')}
-            value=""
-            disabled={busy}
-            size="xs"
-            variant="ghost"
-            options={[
-              { value: '', label: tc('designTemplate') },
-              ...['audit', 'tokens', 'verify'].map((value) => ({
-                value,
-                label: tc(`designTemplates.${value}.name`),
-              })),
-            ]}
-            onValueChange={(value) => {
-              if (['audit', 'tokens', 'verify'].includes(value))
-                setText((current) =>
-                  [
-                    current.trim(),
-                    tc(`designTemplates.${value}.prompt`, {
-                      askTool: 'ask_user',
-                      skill: 'verify-changes',
-                      reviewContract:
-                        'write_artifact → review JSON design: {reportVersionId, preferences: [], tokenProposalVersionId?}; actual user answers: {origin: user_answer, requestId, questionId, appliedTo}; AI proposals: {origin: ai_delegated, appliedTo}',
-                    }),
-                  ]
-                    .filter(Boolean)
-                    .join('\n\n'),
-                );
-            }}
-          />
           <ImageAttachmentPicker
+            key={`images:${attachmentEpoch}`}
+            inputRef={imageFiles}
+            enabled={intent === 'next'}
             sessionId={session.sessionId}
             value={images}
             onChange={setImages}
             onBusyChange={setImagesBusy}
-            disabled={busy || intent !== 'next'}
+            disabled={busy}
           />
           {images.length > 0 && intent !== 'next' ? (
             <p role="status" className="text-xs text-muted">
@@ -2493,6 +2534,8 @@ function Composer({
             </p>
           ) : null}
           <TextAttachmentPicker
+            key={`text:${attachmentEpoch}`}
+            inputRef={textFiles}
             value={attachments}
             onChange={setAttachments}
             onLoading={setAttachmentsBusy}
@@ -2534,6 +2577,74 @@ function Composer({
                 <AtSign />
               </Button>
             </Tooltip>
+            <Menu>
+              <MenuTrigger
+                render={
+                  <Button
+                    variant="ghost-muted"
+                    size="icon-sm"
+                    aria-label={tc('attachmentActions')}
+                    disabled={busy || attachmentsBusy || imagesBusy || intent !== 'next'}
+                  />
+                }
+              >
+                <Plus />
+              </MenuTrigger>
+              <MenuPopup align="start">
+                {mode === 'server' ? (
+                  <MenuItem
+                    disabled={images.length >= IMAGE_MAX_COUNT}
+                    onClick={() => imageFiles.current?.click()}
+                  >
+                    {tc('attachImages')}
+                  </MenuItem>
+                ) : null}
+                <MenuItem
+                  disabled={attachments.length >= TEXT_ATTACHMENT_MAX_COUNT}
+                  onClick={() => textFiles.current?.click()}
+                >
+                  {tc('attachText')}
+                </MenuItem>
+              </MenuPopup>
+            </Menu>
+            <Menu>
+              <MenuTrigger
+                render={
+                  <Button
+                    variant="ghost-muted"
+                    size="icon-sm"
+                    aria-label={tc('templateActions')}
+                    disabled={busy}
+                  />
+                }
+              >
+                <FileText />
+              </MenuTrigger>
+              <MenuPopup align="start">
+                {['audit', 'tokens', 'verify'].map((value) => (
+                  <MenuItem
+                    key={value}
+                    onClick={() =>
+                      write((current) =>
+                        [
+                          current.trim(),
+                          tc(`designTemplates.${value}.prompt`, {
+                            askTool: 'ask_user',
+                            skill: 'verify-changes',
+                            reviewContract:
+                              'write_artifact → review JSON design: {reportVersionId, preferences: [], tokenProposalVersionId?}; actual user answers: {origin: user_answer, requestId, questionId, appliedTo}; AI proposals: {origin: ai_delegated, appliedTo}',
+                          }),
+                        ]
+                          .filter(Boolean)
+                          .join('\n\n'),
+                      )
+                    }
+                  >
+                    {tc(`designTemplates.${value}.name`)}
+                  </MenuItem>
+                ))}
+              </MenuPopup>
+            </Menu>
             {allowed.length > 1 && !resolved.blocked ? (
               <Select
                 variant="chip"
@@ -2595,60 +2706,19 @@ function Composer({
               />
             ) : null}
             {isAuto && (intent === 'next' || intent === 'explain') && profiles ? (
-              <Select
-                variant="chip"
-                label={t('autoModel')}
-                value={`model:${autoChoice.modelProfile}`}
+              <AutoModelMenu
+                value={autoChoice}
+                profiles={
+                  qualityPreset === 'ultra' && intent === 'next'
+                    ? profiles.filter((profile) => ultra.modelProfiles.includes(profile.profileId))
+                    : profiles
+                }
+                showReasoning={intent === 'next'}
+                ultra={qualityPreset === 'ultra'}
+                disabled={busy}
                 open={autoModelOpen}
                 onOpenChange={setAutoModelOpen}
-                onValueChange={(value) => {
-                  if (value.startsWith('model:'))
-                    void updateAuto({
-                      ...(qualityPreset === 'ultra' ? autoChoice : {}),
-                      modelProfile: value.slice(6),
-                    });
-                  else if (value.startsWith('reason:')) {
-                    const reasoning = reasoningFrom(value.slice(7));
-                    void updateAuto(
-                      reasoning
-                        ? { modelProfile: autoChoice.modelProfile, reasoning }
-                        : { modelProfile: autoChoice.modelProfile },
-                    );
-                  }
-                }}
-                options={[
-                  ...profiles.map((profile) => ({
-                    value: `model:${profile.profileId}`,
-                    label:
-                      profile.profileId === autoChoice.modelProfile && intent === 'next'
-                        ? `${profile.label} · ${qualityPreset === 'ultra' ? tc('ultraMaximumShort') : autoChoice.reasoning?.mode === 'fixed' ? tq(`level.${autoChoice.reasoning.level}`) : autoChoice.reasoning?.mode === 'route' ? t('reasoningRoute') : tq(autoChoice.reasoning?.mode ?? 'legacy')}`
-                        : profile.label,
-                  })),
-                  ...(intent === 'next' && qualityPreset !== 'ultra'
-                    ? [
-                        { value: 'reason:', label: `${tq('label')} · ${tq('legacy')}` },
-                        {
-                          value: 'reason:provider_default',
-                          label: `${tq('label')} · ${tq('provider_default')}`,
-                          disabled: !autoProfile?.reasoningCapabilities?.providerDefault,
-                        },
-                        ...(autoProfile?.reasoningCapabilities?.levels ?? []).map((level) => ({
-                          value: `reason:${level}`,
-                          label: `${tq('label')} · ${tq(`level.${level}`)}`,
-                        })),
-                        {
-                          value: 'reason:auto',
-                          label: `${tq('label')} · ${tq('auto')}`,
-                          disabled: !autoProfile?.reasoningCapabilities?.levels.includes('medium'),
-                        },
-                        {
-                          value: 'reason:route',
-                          label: `${tq('label')} · ${t('reasoningRoute')}`,
-                          disabled: !autoProfile?.reasoningCapabilities?.levels.includes('medium'),
-                        },
-                      ]
-                    : []),
-                ]}
+                onChange={(value) => void updateAuto(value)}
               />
             ) : null}
             <div className="ml-auto flex items-center gap-1">
@@ -2709,6 +2779,11 @@ function Composer({
         ) : null}
         {liveUnavailable ? <p role="alert">{tc('liveUnavailable')}</p> : null}
         {ultraBlocked ? <p role="status">{tc('ultraNeedsModels')}</p> : null}
+        {reasoningBlocked ? (
+          <p role="status" data-testid="reasoning-not-supported" className="text-warning">
+            {tc('reasoningUnsupportedHint')}
+          </p>
+        ) : null}
         {(intent === 'next' || intent === 'explain') && team ? (
           <PreRunSummary session={session} team={team} mode={runMode} intent={intent} />
         ) : null}

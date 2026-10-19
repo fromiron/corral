@@ -1,4 +1,9 @@
-import { Identifier, type RunLimits, SchemaVersion } from '@corral/contracts';
+import {
+  Identifier,
+  ProfileContextOverrides,
+  type RunLimits,
+  SchemaVersion,
+} from '@corral/contracts';
 import { z } from 'zod';
 
 // Workspace configuration and the installation policy (C-062, Spec §9, ADR-019). The config
@@ -111,6 +116,7 @@ export const WorkspaceConfig = z.strictObject({
         provider: Identifier,
         model: z.string().min(1).max(200),
         workerIsolation: z.literal('linux-bwrap').optional(),
+        ...ProfileContextOverrides.shape,
       }),
     )
     .max(20)
@@ -145,6 +151,16 @@ function credentialPaths(value: unknown, path: string[] = []): string[] {
   if (!value || typeof value !== 'object') return [];
   return Object.entries(value).flatMap(([key, item]) => {
     const here = [...path, key];
+    const compactionNumber =
+      path.length === 3 &&
+      path[0] === 'modelProfiles' &&
+      /^\d+$/.test(path[1]!) &&
+      path[2] === 'compaction' &&
+      (key === 'reserveTokens' || key === 'keepRecentTokens') &&
+      typeof item === 'number' &&
+      Number.isSafeInteger(item) &&
+      item >= 0;
+    if (compactionNumber) return [];
     return CREDENTIAL_KEY.test(key) ? [here.join('.')] : credentialPaths(item, here);
   });
 }

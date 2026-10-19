@@ -33,8 +33,8 @@ import { EndpointSpec } from './endpoint.ts';
 // mismatch. Nothing the model writes decides which execution or permission a frame belongs to.
 // Frames can carry an access token (`permit.apiKey`): they are never logged or stored.
 
-export const PROTOCOL_VERSION = 4;
-export const LEGACY_PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 6;
+export const LEGACY_PROTOCOL_VERSION = 5;
 
 const head = {
   protocolVersion: z.literal(LEGACY_PROTOCOL_VERSION),
@@ -141,6 +141,7 @@ export const StartFrame = z.strictObject({
   ...head,
   reasoningCapabilities: ReasoningCapabilities.optional(),
   model: z.strictObject({
+    contextWindow: z.int().min(1).max(10_000_000).optional(),
     provider: Identifier,
     modelId: z.string().min(1).max(200),
     auth: z.enum(['oauth', 'api_key', 'mock']).optional(),
@@ -279,6 +280,9 @@ export type SdkResources = z.infer<typeof SdkResources>;
 const sdkHead = { protocolVersion: z.literal(PROTOCOL_VERSION), executionId: Identifier };
 export const SdkStartFrame = StartFrame.extend({
   ...sdkHead,
+  compaction: z
+    .strictObject({ reserveTokens: z.int().min(0), keepRecentTokens: z.int().min(0) })
+    .optional(),
   tools: z.array(
     z.union([WorkerTool, z.enum(['read', 'edit', 'write', 'run_check', 'lsp_query'])]),
   ),

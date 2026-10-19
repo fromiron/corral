@@ -75,3 +75,23 @@ M0~M3 누적 변경은 `09fe207`에 커밋했다. CR-031, C-113, CRL-ULTRA-001, 
 | 빌드 | `ultra-final-build.log` Studio production 빌드 통과; 기존 큰 chunk 경고 유지 |
 
 **남은 범위:** C-118의 격리 프로젝트 검사/고정 tree 연동과 provider conformance 확대는 계속 진행한다. 현재 모델 검토는 실제 코드 검사 통과를 뜻하지 않는다. 실제 복수 제공자 Ultra 전체 호출·품질/비용 비교·최신 packaged GUI·hosted CI/배포는 미검증이다. C-114 후보 비교/승격도 아직 완료하지 않았다. 새 의존성은 없다.
+
+## C-119 / C-120: 컴포저 조작과 프로필 컨텍스트
+
+Bell의 첨부 제안과 “프로필 컨텍스트 설정과 런타임 구현까지 모두 포함” 승인을 CR-037/038과 ADR-036으로 기록했다. C-118의 아직 남은 범위를 완료로 바꾸지 않는다.
+
+- 첨부·템플릿을 `@` 옆 명령 메뉴로 옮기고 입력 요소를 메뉴 밖에 유지했다. 모델·추론 라디오 그룹을 분리했으며 저장 완료 전 추가 변경/전송을 막는다. 지원하지 않는 요청값은 보존해 표시하고 새 요청만 차단한다. 질문 등 다른 의도에서는 첨부를 payload에서 제외하고 초안에 남긴다. 첨부가 있는 초안의 제출 revision 비교에서 JSON 키 순서 때문에 지우지 못하던 오류도 수정했다.
+- 모델 편집에 선택적인 C/R/K 입력과 유효값·출처·임계점·경고를 추가했다. 빈 칸/0을 구별하고 숫자·관계·credential 필터·원본 revision을 검증한다. endpoint 편집 행 원본 metadata를 보존해 ID 변경 시 한도가 사라지지 않는다.
+- 자동 chooser 전 모델별 정책을 준비해 Run에 고정하고 AgentStartInput→버전 IPC→core/SDK에 전달한다. SDK 원본/proxy 모델 복사와 SettingsManager를 사용한다. 기존 SDK retry/cache 설정, permit 최종 요약 cap, 자동·수동 압축/취소 경로를 유지한다. core는 C만 적용하며 압축 미지원이 표시된다. 지원 재개는 기존 정책과 과거 부재를 유지하며 모델 바인딩 변경은 계속 거절한다.
+
+| 검증 | 결과 |
+|---|---|
+| 필요한 실패 | `composer-controls-red.log`, `profile-context-config-red.log`, `profile-context-server-red.log`, `profile-context-freeze-red.log`, `profile-context-worker-red.log`, `profile-context-ui-red.log` |
+| 핵심/회귀 | `context-final-focused.log` 85개 통과: 숫자·출처·동시 저장·chooser 이전 고정·후속 역할·재개·SDK/Pi core·R=0 cap·기존 Reins |
+| 브라우저 | `context-browser.log` 29개 통과: 모델/키/자동 세션 회귀, 메뉴·저장 잠금·비지원 선택·모바일 키보드, 프로필 preview/저장/재열람·0·동시 설정 충돌·endpoint metadata |
+| 실제 Linux worker / 로컬 HTTP | `context-isolation.log` 63개 통과: 격리 IPC·네트워크/자격 증명 경계·프로세스·SDK 압축 회귀. 외부 유료 호출 없음 |
+| 정적 검사 | 전체 타입, spec 1,952 checks / 257 tags, 생성 schema, lint 오류 없음. 후속 변경 영향 타입 재검사 |
+| 전체 suite 1차 | 1,153개 통과·2개 실패·9개 opt-in 제외. 기존 Reins 명시 모델 교체와 한국어 기술 용어 실패는 수정하고 관련 85개를 재검사했다. 최종 전체 suite는 PR `act` gate로 검증 |
+| 개발 화면 | 최신 production Studio + 재시작 서버에서 실제 Hive 유효 C=1,000,000 / R=16,384 / K=20,000, 출처·임계점·SDK 범위 표시 확인. 사용자 설정은 저장하지 않음 |
+
+새 의존성은 없다. 이 변경의 유료 모델 호출·모델 품질 비교·패키지 설치 GUI 검증은 하지 않았다. 압축 알고리즘은 Pi 그대로이며 공급자의 실제 한도를 늘리지 않는다.

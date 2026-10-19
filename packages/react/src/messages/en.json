@@ -1024,7 +1024,15 @@
     "cancel": "Cancel",
     "save": "Save models",
     "isolateProfile": "Linux isolation · {profile}",
-    "isolationHint": "Linux isolation keeps model keys and network in the host. Requires bubblewrap. Supports file tools and content-only strict harnesses; check commands, language servers, native extensions and MCP are unavailable. Launch failure stops execution without fallback."
+    "isolationHint": "Linux isolation keeps model keys and network in the host. Requires bubblewrap. Supports file tools and content-only strict harnesses; check commands, language servers, native extensions and MCP are unavailable. Launch failure stops execution without fallback.",
+    "contextWindow": "Context window · {profile}",
+    "reserveTokens": "Summary reserve · {profile}",
+    "keepRecentTokens": "Recent history · {profile}",
+    "inherit": "Use default",
+    "invalidNumber": "Use safe integers: context 1–10,000,000, compaction 0 or above. Leave blank to inherit.",
+    "invalidRelation": "Reserve must be below context; recent history must be below context minus reserve.",
+    "previewPending": "Calculating effective values…",
+    "previewUnavailable": "Cannot calculate effective values. Check the profile and connection settings."
   },
   "Compare": {
     "heading": "Compare runs",
@@ -1716,7 +1724,7 @@
     "removeAttachment": "Remove {name}",
     "attachments": "Attached text files",
     "attachmentError": "Choose up to 5 UTF-8 text files, each at most 64 KiB. Binary or invalid files cannot be attached.",
-    "attachmentsNextOnly": "Text attachments belong to a new request. Choose Next or remove the attachments before sending.",
+    "attachmentsNextOnly": "Text files are excluded from this message and kept in your draft for a new request.",
     "reviewOnly": "Review only · no file changes",
     "verificationScope": "Verification scope",
     "targetedScope": "Targeted checks",
@@ -1743,7 +1751,7 @@
     "imageUploading": "Uploading image…",
     "imageLimit": "Attach up to 3 images per request.",
     "imageFailed": "Image upload failed. Use PNG, JPEG or WebP up to 10 MiB and 16 million pixels; the normalized PNG must fit 1 MiB. The session also needs available image storage.",
-    "imagesNextOnly": "Images are sent with a new request. Choose Continue in this session.",
+    "imagesNextOnly": "Images are excluded from this message and kept in your draft for a new request.",
     "qualityPreset": "Quality preset",
     "qualityDefault": "Default",
     "qualityUltra": "Ultra · plan, work and review",
@@ -1754,7 +1762,11 @@
     "ultraNeedsModels": "Select at least two distinct connected models and a different verifier.",
     "ultraModelScope": "Selected connections may receive this request, attachments, authorized project inputs and derived results. Other models can assist as read-only specialists.",
     "ultraMaximum": "Uses each model’s highest verified reasoning level within the existing budget. Your normal effort setting is preserved. Up to two revisions.",
-    "ultraMaximumShort": "Maximum supported reasoning"
+    "ultraMaximumShort": "Maximum supported reasoning",
+    "attachmentActions": "Attachments",
+    "templateActions": "Templates",
+    "unsupportedReasoning": "Unsupported",
+    "reasoningUnsupportedHint": "This model does not support the requested reasoning policy. Choose a supported effort before sending a new request."
   },
   "Commands": {
     "newSession": "New session",
@@ -2097,9 +2109,9 @@
     "runOverrides": "Model and reasoning for this run",
     "model": "Model",
     "saved": "Role default",
-    "workspaceHeading": "Automatic reasoning",
-    "enableApply": "Apply local judgments in this workspace",
-    "applyHint": "Applies to new runs with automatic roles. Manual settings stay fixed; judge failures use medium with a recorded reason.",
+    "workspaceHeading": "Automatic reasoning · server-wide",
+    "enableApply": "Allow automatic reasoning in all projects on this server",
+    "applyHint": "After saving, applies to roles set to automatic in newly started runs on this Corral server workspace. Running runs and fixed reasoning settings stay unchanged.",
     "ready": "Ready",
     "installHint": "Local judge unavailable. Install with {command}. Until then automatic roles use medium.",
     "settingsError": "Could not read or save settings. Reload and try again.",
@@ -2515,5 +2527,30 @@
     "requestOpen": "Branch before this request",
     "requestDescription": "Start this original request in a separate session and Run, using its original team and criteria.",
     "requestBoundary": "Starts at the original request boundary, before any model response."
+  },
+  "ProfileContext": {
+    "contextWindow": "Effective context",
+    "reserveTokens": "Effective summary reserve",
+    "keepRecentTokens": "Effective recent history",
+    "threshold": "Automatic compaction threshold: estimated tokens greater than {value, number}.",
+    "hint": "Blank inherits; zero is explicit. Compaction applies only to Pi SDK harness runs. Pi core applies context only. Provider limits do not change.",
+    "sdk": "Pi SDK policy frozen for this Run. Zero does not disable compaction or guarantee removal of all history.",
+    "legacy": "This Pi core execution applies context only; compaction settings are unsupported and not applied.",
+    "mock": "Recorded for a simulated Run; no real model compaction is performed.",
+    "unknown": "No context policy was recorded. Current settings cannot reconstruct historical values.",
+    "base": "Base limit: {value, number} · {source}",
+    "revision": "Config revision",
+    "source": {
+      "profile": "profile override",
+      "endpoint": "endpoint override",
+      "catalog": "model catalog",
+      "fallback": "connection fallback",
+      "pi_default": "Pi default"
+    },
+    "warning": {
+      "legacy_inconsistent": "Legacy defaults are inconsistent and preserved for compatibility. Explicit overrides must satisfy the policy.",
+      "reserve_below_output": "Summary reserve is below the request output cap. Corral’s permit still sets the final summary output cap.",
+      "above_model_limit": "Context exceeds the base model limit; the provider may refuse the request."
+    }
   }
 }

@@ -7,6 +7,7 @@ import {
 import { expect, it } from 'vitest';
 import { memoryChannelPair } from '../src/channel.ts';
 import { modelBridgeChannel, workerModelBridge } from '../src/model-bridge.ts';
+import { LEGACY_PROTOCOL_VERSION } from '../src/protocol.ts';
 
 it('[TC-SBX-002-H] [TC-SBX-002-N] the host keeps credentials and permit limits, refuses changed payloads and replayed calls', async () => {
   const { host, worker } = memoryChannelPair();
@@ -42,7 +43,7 @@ it('[TC-SBX-002-H] [TC-SBX-002-N] the host keeps credentials and permit limits, 
   bridge.port.onFrame((frame) => received.push(frame));
   const permit = {
     type: 'permit',
-    protocolVersion: 3,
+    protocolVersion: LEGACY_PROTOCOL_VERSION,
     executionId: 'exec_1',
     requestId: 'req_1',
     modelCallId: 'mc_1',

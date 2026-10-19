@@ -109,11 +109,19 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
         port.send({ ...frame, ...head, requestId });
       });
 
-    const model = deps.resolveModel(
+    const catalogModel = deps.resolveModel(
       start.model.provider,
       start.model.modelId,
       start.model.endpoint,
     );
+    const model = catalogModel
+      ? {
+          ...catalogModel,
+          ...(start.model.contextWindow !== undefined
+            ? { contextWindow: start.model.contextWindow }
+            : {}),
+        }
+      : undefined;
     // A keyless endpoint never gets a key, whatever a permit carries (CR-005 §4).
     const keyless = start.model.endpoint?.keyless === true;
     const keyOf = (apiKey: string | null | undefined) =>

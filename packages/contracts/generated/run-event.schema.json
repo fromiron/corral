@@ -2636,6 +2636,117 @@
                     "minimum": 1,
                     "maximum": 10000000
                   },
+                  "contextPolicy": {
+                    "type": "object",
+                    "properties": {
+                      "version": {
+                        "type": "number",
+                        "const": 1
+                      },
+                      "contextWindow": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 10000000
+                      },
+                      "reserveTokens": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "keepRecentTokens": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "explicit": {
+                        "type": "boolean"
+                      },
+                      "configRevision": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 100
+                      },
+                      "baseContextWindow": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 10000000
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "baseSource": {
+                        "type": "string",
+                        "enum": [
+                          "endpoint",
+                          "catalog",
+                          "fallback"
+                        ]
+                      },
+                      "sources": {
+                        "type": "object",
+                        "properties": {
+                          "contextWindow": {
+                            "type": "string",
+                            "enum": [
+                              "profile",
+                              "endpoint",
+                              "catalog",
+                              "fallback"
+                            ]
+                          },
+                          "reserveTokens": {
+                            "type": "string",
+                            "enum": [
+                              "profile",
+                              "pi_default"
+                            ]
+                          },
+                          "keepRecentTokens": {
+                            "type": "string",
+                            "enum": [
+                              "profile",
+                              "pi_default"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "contextWindow",
+                          "reserveTokens",
+                          "keepRecentTokens"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "warnings": {
+                        "maxItems": 3,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "legacy_inconsistent",
+                            "reserve_below_output",
+                            "above_model_limit"
+                          ]
+                        }
+                      }
+                    },
+                    "required": [
+                      "version",
+                      "contextWindow",
+                      "reserveTokens",
+                      "keepRecentTokens",
+                      "explicit",
+                      "configRevision",
+                      "baseContextWindow",
+                      "baseSource",
+                      "sources",
+                      "warnings"
+                    ],
+                    "additionalProperties": false
+                  },
                   "imageInput": {
                     "type": "boolean"
                   },

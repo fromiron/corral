@@ -16,6 +16,7 @@ export * from './json-schema.ts';
 export * from './layout.ts';
 export * from './lsp.ts';
 export type * from './ports.ts';
+export * from './profile-context.ts';
 export * from './project-tools.ts';
 export * from './reasoning.ts';
 export { chooseReasoningLevel } from './reasoning-cost.ts';

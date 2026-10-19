@@ -70,6 +70,7 @@ export const ModelProfileSnapshot = z.strictObject({
   modelId: z.string().min(1).nullable(),
   auth: z.enum(['oauth', 'api_key', 'mock']),
   contextWindow: z.int().min(1).max(10_000_000).optional(),
+  contextPolicy: ProfileContextPolicy.optional(),
   imageInput: z.boolean().optional(),
   endpointHash: ContentHash.optional(),
   workerIsolation: z.literal('linux-bwrap').optional(),
@@ -816,3 +817,5 @@ export interface StreamFrame {
   chunkIndex: number;
   text: string;
 }
+
+import { ProfileContextPolicy } from './profile-context.ts';

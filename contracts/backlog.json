@@ -2266,5 +2266,41 @@
     ],
     "done": "명시 모델 배정·필수 교차 검토·제한된 병렬 위임·최대 추론 wire와 공유 예산·취소를 검증하고 UI/API/CLI 및 과거 snapshot을 보존한다.",
     "status": "planned"
+  },
+  {
+    "id": "C-119",
+    "phase": "M4",
+    "title": "컴포저 실행 메뉴와 독립 모델·추론 선택",
+    "dependsOn": [
+      "C-118"
+    ],
+    "requirements": [
+      "CRL-COMPOSER-001"
+    ],
+    "files": [
+      "apps/studio/src/pages/SessionPage.tsx",
+      "apps/studio/src/workbench/TextAttachments.tsx"
+    ],
+    "done": "메뉴·첨부 초안·모델/노력 독립성과 저장 경쟁 및 기존 전송 계약을 확인한다.",
+    "status": "implemented"
+  },
+  {
+    "id": "C-120",
+    "phase": "M4",
+    "title": "프로필별 컨텍스트·압축 설정과 Run snapshot",
+    "dependsOn": [
+      "C-118"
+    ],
+    "requirements": [
+      "CRL-CONTEXT-001"
+    ],
+    "files": [
+      "packages/core/src/config.ts",
+      "apps/server/src/models/registry.ts",
+      "packages/adapter-pi/src/sdk-worker.ts",
+      "apps/studio/src/pages/ModelConfigEditor.tsx"
+    ],
+    "done": "설정/해석/원자 저장·Run 고정·버전별 worker 전달·Pi 임계 및 permit 정책·UI 경고/보존을 확인한다.",
+    "status": "implemented"
   }
 ]

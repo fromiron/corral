@@ -52,6 +52,7 @@ import {
   LocalHeuristicProvider,
   openRunArchive,
   type ProjectResult,
+  parseWorkspaceConfig,
   planRun,
   type SaveResult,
   SessionEntryAuto,
@@ -370,6 +371,8 @@ async function createCorralServer(
           ? { subscriptionModels: options.live.subscriptionModels }
           : {}),
         endpoints,
+        configRevision: workspace.configRevision,
+        maxOutputTokensPerCall: workspace.policy.maxOutputTokensPerCall,
       },
     );
     await registry.refreshStatus();
@@ -805,6 +808,8 @@ async function createCorralServer(
         .code(409)
         .send({ error: { code: 'SCHEMA_INVALID', message: 'config changed; reload settings' } });
     workspace.config = changed.config;
+    workspace.configRevision = changed.revision;
+    registry?.setConfigRevision(changed.revision);
     judgmentConfig.settings = judgmentSettings(changed.config);
     if (parsed.data.apply) {
       const provider = decisionProviders.find((p) => p.id === 'local-model');
@@ -837,20 +842,41 @@ async function createCorralServer(
       modelProviders: snapshot.config.modelProviders ?? [],
       usingDefaults: snapshot.config.modelProfiles === undefined,
       revision: snapshot.revision,
+      effectiveProfiles: registry.contextPolicies(
+        snapshot.config.modelProfiles ?? registry.profileConfigs(),
+        endpointsFrom(snapshot.config.modelProviders),
+        snapshot.revision,
+      ),
+    };
+  });
+  const modelConfigBody = z.strictObject({
+    revision: z.string().min(1).max(100),
+    modelProfiles: z.array(z.unknown()).max(20),
+    modelProviders: z.array(z.unknown()).max(10),
+  });
+  app.post('/api/v1/model-config/preview', async (request, reply) => {
+    if (!registry) return noLive(reply);
+    const body = parse(modelConfigBody, request, reply);
+    if (!body) return reply;
+    const parsed = parseWorkspaceConfig({
+      schemaVersion: '0.1',
+      modelProfiles: body.modelProfiles,
+      modelProviders: body.modelProviders,
+    });
+    if (!parsed.ok) return fail(reply, 'SCHEMA_INVALID', parsed.errors.join('; '));
+    return {
+      revision: body.revision,
+      effectiveProfiles: registry.contextPolicies(
+        parsed.config.modelProfiles ?? [],
+        endpointsFrom(parsed.config.modelProviders),
+        body.revision,
+      ),
     };
   });
   app.put('/api/v1/model-config', async (request, reply) => {
     const live = options.live;
     if (!registry || !live) return noLive(reply);
-    const body = parse(
-      z.strictObject({
-        revision: z.string().min(1).max(100),
-        modelProfiles: z.array(z.unknown()).max(20),
-        modelProviders: z.array(z.unknown()).max(10),
-      }),
-      request,
-      reply,
-    );
+    const body = parse(modelConfigBody, request, reply);
     if (!body) return reply;
     const current = registry;
     const written = writeModelConfig(
@@ -862,6 +888,11 @@ async function createCorralServer(
         return [
           ...endpointClashes(live.models, next),
           ...current.unknownProviders(config.modelProfiles ?? [], next),
+          ...(config.modelProfiles ?? []).flatMap((profile, index) =>
+            current
+              .contextPolicy(profile, next, body.revision)
+              .errors.map((error) => `modelProfiles.${index}: ${error}`),
+          ),
         ];
       },
     );
@@ -873,14 +904,20 @@ async function createCorralServer(
       );
     }
     workspace.config = written.config;
+    workspace.configRevision = written.revision;
     const endpoints = endpointsFrom(written.config.modelProviders);
     registerEndpoints(live.models, endpoints);
-    await current.reconfigure(written.config.modelProfiles ?? DEFAULT_PROFILES, endpoints);
+    await current.reconfigure(
+      written.config.modelProfiles ?? DEFAULT_PROFILES,
+      endpoints,
+      written.revision,
+    );
     return {
       modelProfiles: current.profileConfigs(),
       modelProviders: written.config.modelProviders ?? [],
       usingDefaults: false,
       revision: written.revision,
+      effectiveProfiles: current.contextPolicies(),
     };
   });
 
@@ -961,8 +998,14 @@ async function createCorralServer(
   // An auto session's request (CR-024): one capped choice request, then one run of the chosen
   // template. A resend returns the first start; a dropped connection while choosing starts none.
   const autoStarter = createAutoStarter<AbortSignal>({
-    resolveUltra: (selection, primary, mode) => coordinator.resolveUltra(selection, primary, mode),
-    startRun: async (request, signal) => {
+    prepareModels: (request) =>
+      coordinator.prepareModels(
+        request.ultra?.modelProfiles ?? [request.choice.modelProfile],
+        request.mode,
+      ),
+    resolveUltra: (selection, primary, mode, models) =>
+      coordinator.resolveUltra(selection, primary, mode, models),
+    startRun: async (request, signal, models) => {
       // Choosing can take 30 seconds; edits before the run belong to its starting tree.
       const startTree = request.sessionId ? await files.currentTree(request.sessionId) : null;
       if (signal?.aborted) throw new Error('the auto request was cancelled before a run started');
@@ -989,6 +1032,7 @@ async function createCorralServer(
               }),
             }
           : request,
+        models,
       );
       if (result.runId && startTree && request.sessionId)
         await trackRunFiles(result.runId, request.sessionId, startTree);
@@ -1012,8 +1056,10 @@ async function createCorralServer(
       return error ? { runId: null, receipt: refusedStart(request, error) } : null;
     },
     levels: (choice, mode) => coordinator.reasoningLevels(choice.modelProfile, mode),
-    route: ({ brief, choice, mode, signal, levels }) =>
-      mode === 'live' && registry ? registry.routeAuto(brief, choice, signal, levels) : null,
+    route: ({ brief, choice, mode, signal, levels, models }) =>
+      mode === 'live' && registry
+        ? registry.routeAuto(brief, choice, signal, levels, models?.[choice.modelProfile])
+        : null,
   });
   type AutoResult = Awaited<ReturnType<typeof autoStarter.start>>;
   const autoRequests = new Map<

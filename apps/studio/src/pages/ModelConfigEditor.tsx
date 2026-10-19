@@ -1,8 +1,15 @@
-import type { CatalogProvider, EndpointConfig, ModelConfig, ProfileConfig } from '@corral/client';
+import {
+  ApiError,
+  type CatalogProvider,
+  type EndpointConfig,
+  type ModelConfig,
+  type ProfileConfig,
+} from '@corral/client';
 import { useRouter } from '@tanstack/react-router';
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
+import { ProfileContextDetails } from '../workbench/ProfileContextDetails.tsx';
 import { ApiKeyInput } from './ApiKeyInput.tsx';
 
 /**
@@ -25,12 +32,43 @@ export function ModelConfigEditor({
   // Auth polling may refresh the parent while this draft still belongs to the earlier config.
   const [config, setConfig] = useState(initialConfig);
   const [profiles, setProfiles] = useState<ProfileRow[]>(() =>
-    config.modelProfiles.map((p) => ({ ...p, uid: uid() })),
+    config.modelProfiles.map(profileDraft),
   );
   const [endpoints, setEndpoints] = useState<EndpointDraft[]>(config.modelProviders.map(toDraft));
   const [endpointKeys, setEndpointKeys] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  const [preview, setPreview] = useState(initialConfig.effectiveProfiles);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!models) return;
+    const controller = new AbortController();
+    setPreview(undefined);
+    setPreviewError(null);
+    const timer = setTimeout(() => {
+      try {
+        const modelProfiles = profiles.map(fromProfile);
+        void models
+          .previewConfig(
+            { revision: config.revision, modelProfiles, modelProviders: endpoints.map(fromDraft) },
+            controller.signal,
+          )
+          .then((result) => {
+            if (!controller.signal.aborted) setPreview(result.effectiveProfiles);
+          })
+          .catch(() => {
+            if (!controller.signal.aborted) setPreviewError(t('previewUnavailable'));
+          });
+      } catch {
+        setPreviewError(t('invalidNumber'));
+      }
+    }, 200);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [profiles, endpoints, config.revision, models, t]);
 
   // Providers to choose from: pi-ai's own, then the endpoints as they are being edited.
   const builtins = catalog.filter((p) => !p.endpoint);
@@ -59,23 +97,22 @@ export function ModelConfigEditor({
   };
 
   const save = async () => {
-    if (!models) return;
+    if (!models || savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
     setError(null);
     let stage: 'config' | 'keys' | 'refresh' = 'config';
     try {
-      const latest = await models.config();
-      if (
-        JSON.stringify([latest.modelProfiles, latest.modelProviders]) !==
-        JSON.stringify([config.modelProfiles, config.modelProviders])
-      ) {
-        await router.invalidate();
-        throw new Error(t('conflict'));
+      let modelProfiles: ProfileConfig[];
+      try {
+        modelProfiles = profiles.map(fromProfile);
+      } catch {
+        throw new Error(t('invalidNumber'));
       }
       const saved = await models.saveConfig({
-        revision: latest.revision,
-        modelProfiles: profiles.map(({ uid: _uid, ...p }) => ({ ...p, id: p.id.trim() })),
-        modelProviders: endpoints.map((e) => fromDraft(e, config.modelProviders)),
+        revision: config.revision,
+        modelProfiles,
+        modelProviders: endpoints.map(fromDraft),
       });
       setConfig(saved);
       stage = 'keys';
@@ -91,10 +128,16 @@ export function ModelConfigEditor({
     } catch (failure) {
       setError(
         t(stage === 'config' ? 'refused' : stage === 'keys' ? 'keysFailed' : 'refreshFailed', {
-          message: failure instanceof Error ? failure.message : String(failure),
+          message:
+            failure instanceof ApiError && failure.code === 'REVISION_CONFLICT'
+              ? t('conflict')
+              : failure instanceof Error
+                ? failure.message
+                : String(failure),
         }),
       );
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
@@ -119,7 +162,10 @@ export function ModelConfigEditor({
           const known = provider?.models.some((m) => m.id === profile.model);
           const label = profile.id || t('newProfile', { n: index + 1 });
           return (
-            <div key={profile.uid} className="flex flex-wrap items-center gap-2">
+            <div
+              key={profile.uid}
+              className="flex flex-wrap items-center gap-2 rounded border border-line p-2"
+            >
               <input
                 aria-label={t('profileId', { n: index + 1 })}
                 value={profile.id}
@@ -178,6 +224,33 @@ export function ModelConfigEditor({
               >
                 ✕
               </button>
+              <div className="grid w-full gap-2 sm:grid-cols-3">
+                {(['contextWindow', 'reserveTokens', 'keepRecentTokens'] as const).map((key) => (
+                  <label key={key} className="flex min-w-0 flex-col gap-1 text-xs">
+                    <span>{t(key, { profile: label })}</span>
+                    <input
+                      inputMode="numeric"
+                      aria-label={t(key, { profile: label })}
+                      placeholder={t('inherit')}
+                      value={profile[key]}
+                      onChange={(event) => setProfile(index, { [key]: event.target.value })}
+                      className={`${field} min-w-0 w-full`}
+                    />
+                  </label>
+                ))}
+              </div>
+              <div className="w-full" data-testid={`context-policy-${profile.id}`}>
+                {preview?.[profile.id] ? (
+                  <>
+                    <ProfileContextDetails policy={preview[profile.id]!.policy} />
+                    {preview[profile.id]!.errors.length ? (
+                      <p className="text-xs text-danger">{t('invalidRelation')}</p>
+                    ) : null}
+                  </>
+                ) : (
+                  <p className="text-xs text-muted">{previewError ?? t('previewPending')}</p>
+                )}
+              </div>
             </div>
           );
         })}
@@ -188,6 +261,9 @@ export function ModelConfigEditor({
               ...profiles,
               {
                 uid: uid(),
+                contextWindow: '',
+                reserveTokens: '',
+                keepRecentTokens: '',
                 id: `model-${String.fromCharCode(97 + profiles.length)}`,
                 provider: choices[0]?.id ?? '',
                 model: choices[0]?.models[0]?.id ?? '',
@@ -299,7 +375,15 @@ export function ModelConfigEditor({
           onClick={() =>
             setEndpoints([
               ...endpoints,
-              { uid: uid(), id: '', name: '', baseUrl: '', access: 'none', models: '' },
+              {
+                uid: uid(),
+                originalModels: [],
+                id: '',
+                name: '',
+                baseUrl: '',
+                access: 'none',
+                models: '',
+              },
             ])
           }
           className="self-start rounded border border-line px-2 py-1 text-xs"
@@ -342,10 +426,55 @@ export function ModelConfigEditor({
 
 /** A row's identity while it is edited (names can change or be empty). */
 const uid = () => globalThis.crypto.randomUUID();
-type ProfileRow = ProfileConfig & { uid: string };
+type ProfileRow = Omit<ProfileConfig, 'contextWindow' | 'compaction'> & {
+  uid: string;
+  contextWindow: string;
+  reserveTokens: string;
+  keepRecentTokens: string;
+};
+function profileDraft(profile: ProfileConfig): ProfileRow {
+  const { contextWindow, compaction, ...binding } = profile;
+  return {
+    ...binding,
+    uid: uid(),
+    contextWindow: contextWindow?.toString() ?? '',
+    reserveTokens: compaction?.reserveTokens?.toString() ?? '',
+    keepRecentTokens: compaction?.keepRecentTokens?.toString() ?? '',
+  };
+}
+function fromProfile(row: ProfileRow): ProfileConfig {
+  const { uid: _uid, contextWindow: c, reserveTokens: r, keepRecentTokens: k, ...binding } = row;
+  const number = (value: string, min: number, max = Number.MAX_SAFE_INTEGER) => {
+    if (!value.trim()) return undefined;
+    const n = Number(value);
+    if (!/^\d+$/.test(value.trim()) || !Number.isSafeInteger(n) || n < min || n > max)
+      throw new Error('invalid number');
+    return n;
+  };
+  const contextWindow = number(c, 1, 10_000_000),
+    reserveTokens = number(r, 0),
+    keepRecentTokens = number(k, 0);
+  return {
+    ...binding,
+    id: binding.id.trim(),
+    ...(contextWindow !== undefined ? { contextWindow } : {}),
+    ...(reserveTokens !== undefined || keepRecentTokens !== undefined
+      ? {
+          compaction: {
+            ...(reserveTokens !== undefined ? { reserveTokens } : {}),
+            ...(keepRecentTokens !== undefined ? { keepRecentTokens } : {}),
+          },
+        }
+      : {}),
+  };
+}
 
 /** An endpoint as edited: its models are one id per line. */
-type EndpointDraft = Omit<EndpointConfig, 'models'> & { models: string; uid: string };
+type EndpointDraft = Omit<EndpointConfig, 'models'> & {
+  models: string;
+  uid: string;
+  originalModels: EndpointConfig['models'];
+};
 
 const modelIds = (text: string) =>
   text
@@ -354,14 +483,19 @@ const modelIds = (text: string) =>
     .filter(Boolean);
 
 function toDraft(endpoint: EndpointConfig): EndpointDraft {
-  return { ...endpoint, uid: uid(), models: endpoint.models.map((m) => m.id).join('\n') };
+  return {
+    ...endpoint,
+    uid: uid(),
+    originalModels: endpoint.models,
+    models: endpoint.models.map((m) => m.id).join('\n'),
+  };
 }
 
 /** Back to the config shape, keeping the limits a model already had. */
-function fromDraft(draft: EndpointDraft, before: EndpointConfig[]): EndpointConfig {
+function fromDraft(draft: EndpointDraft): EndpointConfig {
   const id = draft.id.trim();
   // `uid` is the row's identity in the editor only.
-  const previous = before.find((e) => e.id === id)?.models ?? [];
+  const previous = draft.originalModels;
   return {
     id,
     name: draft.name.trim() || id,

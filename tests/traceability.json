@@ -1269,5 +1269,25 @@
     "tasks": [
       "C-118"
     ]
+  },
+  {
+    "requirementId": "CRL-COMPOSER-001",
+    "tests": [
+      "TC-COMPOSER-001-H",
+      "TC-COMPOSER-001-N"
+    ],
+    "tasks": [
+      "C-119"
+    ]
+  },
+  {
+    "requirementId": "CRL-CONTEXT-001",
+    "tests": [
+      "TC-CONTEXT-001-H",
+      "TC-CONTEXT-001-N"
+    ],
+    "tasks": [
+      "C-120"
+    ]
   }
 ]

@@ -38,6 +38,7 @@ export interface PiAdapterOptions {
 }
 
 type WorkerModel = {
+  contextWindow?: number;
   provider: string;
   modelId: string;
   auth: ModelProfileSnapshot['auth'];
@@ -101,6 +102,9 @@ export class PiAgentAdapter implements AgentAdapter {
         provider,
         modelId,
         auth: input.model.auth,
+        ...(input.model.contextPolicy
+          ? { contextWindow: input.model.contextPolicy.contextWindow }
+          : {}),
         ...(endpoint ? { endpoint } : {}),
       },
       resources,
@@ -313,7 +317,20 @@ class WorkerExecution {
         ...(this.input.item ? { item: this.input.item } : {}),
         delegateTo: this.input.capabilities.delegateTo,
         askTo: this.input.capabilities.askTo,
-        ...(this.resources ? { harness: this.input.harness, resources: this.resources } : {}),
+        ...(this.resources
+          ? {
+              harness: this.input.harness,
+              resources: this.resources,
+              ...(this.input.model.contextPolicy
+                ? {
+                    compaction: {
+                      reserveTokens: this.input.model.contextPolicy.reserveTokens,
+                      keepRecentTokens: this.input.model.contextPolicy.keepRecentTokens,
+                    },
+                  }
+                : {}),
+            }
+          : {}),
       });
       if (this.pendingCompaction) {
         this.send({ type: 'compact', commandId: this.pendingCompaction });

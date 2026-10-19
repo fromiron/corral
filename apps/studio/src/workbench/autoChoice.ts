@@ -36,6 +36,23 @@ export function autoNotReady(
   return !profiles?.some((p) => p.profileId === choice.modelProfile && p.available);
 }
 
+/** Preserve an unsupported request; the person chooses a new effort explicitly. */
+export function autoReasoningUnsupported(
+  choice: AutoModelChoice,
+  profiles: ProfileInfo[] | null,
+  mode: 'mock' | 'live',
+): boolean {
+  if (!choice.reasoning || mode === 'mock' || !profiles) return false;
+  const capability = profiles.find(
+    (profile) => profile.profileId === choice.modelProfile,
+  )?.reasoningCapabilities;
+  return choice.reasoning.mode === 'provider_default'
+    ? !capability?.providerDefault
+    : !capability?.levels.includes(
+        choice.reasoning.mode === 'fixed' ? choice.reasoning.level : 'medium',
+      );
+}
+
 /** User-edited request identity; the pending command separately freezes mode and startFrom. */
 export function autoCommandSeed(
   text: string,

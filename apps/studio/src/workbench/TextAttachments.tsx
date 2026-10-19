@@ -5,7 +5,7 @@ import {
 } from '@corral/contracts';
 import { createTextAttachment } from '@corral/core';
 import { Button } from '@corral/react/ui';
-import { useEffect, useRef, useState } from 'react';
+import { type RefObject, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 
 const sourceFile = /\.(txt|md|markdown|json|csv|ts|tsx|js|jsx|py|css|html|xml|ya?ml|log)$/i;
@@ -16,12 +16,14 @@ export function TextAttachmentPicker({
   onLoading,
   disabled,
   enabled,
+  inputRef,
 }: {
   value: TextAttachment[];
   onChange(value: TextAttachment[]): void;
   onLoading(loading: boolean): void;
   disabled: boolean;
   enabled: boolean;
+  inputRef?: RefObject<HTMLInputElement | null>;
 }) {
   const t = useTranslations('Composer');
   const input = useRef<HTMLInputElement>(null);
@@ -77,7 +79,7 @@ export function TextAttachmentPicker({
   return (
     <div className="flex flex-col gap-1">
       <input
-        ref={input}
+        ref={inputRef ?? input}
         type="file"
         multiple
         accept="text/*,.txt,.md,.json,.csv,.ts,.tsx,.js,.jsx,.py,.css,.html,.xml,.yaml,.yml,.log"
@@ -92,15 +94,17 @@ export function TextAttachmentPicker({
         }}
       />
       <div className="flex flex-wrap gap-1">
-        <Button
-          type="button"
-          size="xs"
-          variant="ghost"
-          disabled={disabled || !enabled || loading || value.length >= TEXT_ATTACHMENT_MAX_COUNT}
-          onClick={() => input.current?.click()}
-        >
-          {t(loading ? 'attachmentLoading' : 'attachText')}
-        </Button>
+        {!inputRef ? (
+          <Button
+            type="button"
+            size="xs"
+            variant="ghost"
+            disabled={disabled || !enabled || loading || value.length >= TEXT_ATTACHMENT_MAX_COUNT}
+            onClick={() => input.current?.click()}
+          >
+            {t(loading ? 'attachmentLoading' : 'attachText')}
+          </Button>
+        ) : null}
         {value.map((item, index) => (
           <Button
             key={`${item.name}:${item.sha256}`}

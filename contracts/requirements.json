@@ -688,5 +688,17 @@
     "requirement": "CR-031 C-118: 새 Ultra는 명시 pool의 복수 모델에 역할을 고정하고 최대 지원 추론과 필수 교차 검토를 수행한다. 실제 provider wire/한 번의 dispatch/공유 예산/취소를 검증하고 legacy snapshot과 승인한 입력 범위를 보존한다.",
     "owner": "core",
     "phase": "M4"
+  },
+  {
+    "id": "CRL-COMPOSER-001",
+    "requirement": "컴포저 실행 메뉴와 독립 모델·추론 선택. 메뉴·첨부 초안·모델/노력 독립성과 저장 경쟁 및 기존 전송 계약을 확인한다.",
+    "owner": "studio",
+    "phase": "M4"
+  },
+  {
+    "id": "CRL-CONTEXT-001",
+    "requirement": "프로필별 컨텍스트·압축 설정과 Run snapshot. 설정/해석/원자 저장·Run 고정·버전별 worker 전달·Pi 임계 및 permit 정책·UI 경고/보존을 확인한다.",
+    "owner": "core",
+    "phase": "M4"
   }
 ]

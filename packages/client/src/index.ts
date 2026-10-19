@@ -2,6 +2,9 @@ import type {
   CheckpointRestore,
   CheckpointRestorePlan,
   FileCheckpoint,
+  ProfileContextOverrides,
+  ProfileContextPolicy,
+  ProfileContextResolution,
   ReasoningCapabilities,
   RestoreCheckpoint,
 } from '@corral/contracts';
@@ -729,6 +732,7 @@ export interface ModelProfileView {
   reasoning: boolean | null;
   reasoningCapabilities?: ReasoningCapabilities;
   contextWindow: number | null;
+  contextPolicy?: ProfileContextPolicy;
   maxOutputTokens: number | null;
   method: 'oauth' | 'api_key' | 'none' | null;
   keyConfigured: boolean;
@@ -751,7 +755,7 @@ export interface CatalogProvider {
   }[];
 }
 
-export interface ProfileConfig {
+export interface ProfileConfig extends ProfileContextOverrides {
   id: string;
   provider: string;
   model: string;
@@ -774,6 +778,7 @@ export interface EndpointConfig {
 
 /** `.corral/config.json`'s model keys, with the revision a save must start from (CR-008). */
 export interface ModelConfig {
+  effectiveProfiles?: Record<string, ProfileContextResolution>;
   modelProfiles: ProfileConfig[];
   modelProviders: EndpointConfig[];
   /** No profiles are configured; the defaults are in use. */
@@ -833,6 +838,16 @@ export class ModelsApi {
 
   config(): Promise<ModelConfig> {
     return this.http.json('/model-config');
+  }
+  previewConfig(
+    change: Pick<ModelConfig, 'modelProfiles' | 'modelProviders' | 'revision'>,
+    signal?: AbortSignal,
+  ): Promise<{ revision: string; effectiveProfiles: Record<string, ProfileContextResolution> }> {
+    return this.http.json('/model-config/preview', {
+      method: 'POST',
+      body: JSON.stringify(change),
+      ...(signal ? { signal } : {}),
+    });
   }
 
   /** Saves profiles and endpoints; refused with field-named errors, never values (CR-008). */

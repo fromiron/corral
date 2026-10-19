@@ -20,6 +20,8 @@ export interface Endpoint {
   origin: string;
   /** host[:port] for display; no path, no key. */
   host: string;
+  /** Only user-specified values, before endpoint defaults are filled in. */
+  contextWindows?: ReadonlyMap<string, number>;
 }
 
 export function endpointsFrom(configs: readonly ModelProviderConfig[] = []): Map<string, Endpoint> {
@@ -43,7 +45,20 @@ export function endpointsFrom(configs: readonly ModelProviderConfig[] = []): Map
           };
         }),
       };
-      return [config.id, { providerId: config.id, spec, origin: url.origin, host: url.host }];
+      return [
+        config.id,
+        {
+          providerId: config.id,
+          spec,
+          origin: url.origin,
+          host: url.host,
+          contextWindows: new Map(
+            config.models.flatMap((model) =>
+              model.contextWindow === undefined ? [] : [[model.id, model.contextWindow]],
+            ),
+          ),
+        },
+      ];
     }),
   );
 }

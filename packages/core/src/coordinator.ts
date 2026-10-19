@@ -764,7 +764,11 @@ export class Coordinator {
           )
         )
           blockers.push('newer_external_effect');
-        const model = this.models.resolve(state.role.modelProfile, 'live');
+        const model = this.resumeModel(
+          state.role.modelProfile,
+          'live',
+          source.snapshot.models[state.role.modelProfile],
+        );
         if (!model.ok || hashOf(model.snapshot) !== manifest.modelHash)
           blockers.push('model_changed');
         try {
@@ -1150,7 +1154,11 @@ export class Coordinator {
           await this.runtimeRecovery.confirm();
         }
         for (const [profile, hash] of Object.entries(branch.modelHashes)) {
-          const model = this.models.resolve(profile, branch.source.snapshot.mode);
+          const model = this.resumeModel(
+            profile,
+            branch.source.snapshot.mode,
+            branch.source.snapshot.models[profile],
+          );
           if (!model.ok || hashOf(model.snapshot) !== hash)
             throw new ToolRefusal('CAPABILITY_DENIED', 'branch model changed');
         }
@@ -1188,14 +1196,51 @@ export class Coordinator {
     }
   }
 
-  startRun(raw: StartRunRequest | CreateRunRequest): StartRunResult {
-    return this.startRunWithRecovery(raw);
+  prepareModels(
+    profiles: readonly string[],
+    mode: 'mock' | 'live',
+  ):
+    | { ok: true; models: Record<string, ModelProfileSnapshot> }
+    | { ok: false; error: CommandError } {
+    const models: Record<string, ModelProfileSnapshot> = {};
+    for (const profile of new Set(profiles)) {
+      const result = this.models.resolve(profile, mode);
+      if (!result.ok)
+        return { ok: false, error: { code: result.code, message: `${profile}: ${result.reason}` } };
+      models[profile] = JSON.parse(canonicalJson(result.snapshot)) as ModelProfileSnapshot;
+    }
+    return { ok: true, models };
+  }
+
+  // Recovery checks today's binding, but continues the original context policy (including absence).
+  private resumeModel(
+    profile: string,
+    mode: 'mock' | 'live',
+    frozen: ModelProfileSnapshot | undefined,
+  ): ModelResolution {
+    const current = this.models.resolve(profile, mode);
+    if (!current.ok || !frozen) return current;
+    const {
+      contextWindow: _currentWindow,
+      contextPolicy: _currentPolicy,
+      ...binding
+    } = current.snapshot;
+    const { contextWindow: _oldWindow, contextPolicy: _oldPolicy, ...oldBinding } = frozen;
+    return hashOf(binding) === hashOf(oldBinding) ? { ok: true, snapshot: frozen } : current;
+  }
+
+  startRun(
+    raw: StartRunRequest | CreateRunRequest,
+    preparedModels?: Record<string, ModelProfileSnapshot>,
+  ): StartRunResult {
+    return this.startRunWithRecovery(raw, undefined, undefined, preparedModels);
   }
 
   private startRunWithRecovery(
     raw: StartRunRequest | CreateRunRequest,
     recovery?: ReturnType<Coordinator['loadRuntimeCheckpoint']> & { requestHash: string },
     branch?: ReturnType<Coordinator['prepareMessageBranch']> & { requestHash: string },
+    preparedModels?: Record<string, ModelProfileSnapshot>,
   ): StartRunResult {
     const parsed =
       'definition' in raw ? StartRunRequest.safeParse(raw) : CreateRunRequest.safeParse(raw);
@@ -1252,7 +1297,12 @@ export class Coordinator {
           message: 'Multi-model Ultra requires its maximum supported reasoning policy',
         });
       const { reasoning: _reasoning, ...selection } = autoRoute.ultra;
-      const chosen = this.resolveUltra(selection, autoRoute.modelProfile, request.mode);
+      const chosen = this.resolveUltra(
+        selection,
+        autoRoute.modelProfile,
+        request.mode,
+        preparedModels,
+      );
       if (!chosen.ok) return refuse(chosen.error);
       if (hashOf(chosen.snapshot) !== hashOf(autoRoute.ultra))
         return refuse({
@@ -1333,7 +1383,18 @@ export class Coordinator {
     const models: Record<string, ModelProfileSnapshot> = {};
     const unusable: { code: CommandError['code']; message: string }[] = [];
     for (const profile of new Set(planned.definition.roles.map((r) => r.modelProfile))) {
-      const resolution = this.models.resolve(profile, request.mode);
+      const frozen = (recovery?.source ?? branch?.source)?.snapshot.models[profile];
+      const resolution: ModelResolution = preparedModels
+        ? preparedModels[profile]
+          ? { ok: true, snapshot: preparedModels[profile] }
+          : {
+              ok: false,
+              code: 'CAPABILITY_DENIED',
+              reason: 'profile was not prepared before routing',
+            }
+        : frozen
+          ? this.resumeModel(profile, request.mode, frozen)
+          : this.models.resolve(profile, request.mode);
       if (resolution.ok)
         models[profile] = JSON.parse(canonicalJson(resolution.snapshot)) as ModelProfileSnapshot;
       else unusable.push({ code: resolution.code, message: `${profile}: ${resolution.reason}` });
@@ -2373,7 +2434,11 @@ export class Coordinator {
         ...(change.reasoning ? { reasoning: change.reasoning } : {}),
       };
       if (change.modelProfile) {
-        const resolved = this.models.resolve(change.modelProfile, run.snapshot.mode);
+        const resolved = this.resumeModel(
+          change.modelProfile,
+          run.snapshot.mode,
+          run.snapshot.models[change.modelProfile],
+        );
         if (!resolved.ok) return refuse(resolved.code, resolved.reason);
         patchedModel = JSON.parse(canonicalJson(resolved.snapshot)) as ModelProfileSnapshot;
         after.modelSnapshot = patchedModel;
@@ -2944,8 +3009,25 @@ export class Coordinator {
   }
 
   /** Resolve every selected Ultra model before any paid planning or worker call. */
-  resolveUltra(selection: UltraSelection, primary: string, mode: 'mock' | 'live') {
-    return resolveUltraSelection(selection, primary, mode, this.models);
+  resolveUltra(
+    selection: UltraSelection,
+    primary: string,
+    mode: 'mock' | 'live',
+    preparedModels?: Record<string, ModelProfileSnapshot>,
+  ) {
+    return resolveUltraSelection(
+      selection,
+      primary,
+      mode,
+      preparedModels
+        ? {
+            resolve: (profile) =>
+              preparedModels[profile]
+                ? { ok: true, snapshot: preparedModels[profile] }
+                : { ok: false, code: 'CAPABILITY_DENIED', reason: 'profile was not prepared' },
+          }
+        : this.models,
+    );
   }
 
   /** The reasoning levels a profile supports; null when unknown or simulated (CR-024 §7). */

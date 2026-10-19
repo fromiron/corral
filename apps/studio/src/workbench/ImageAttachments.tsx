@@ -1,6 +1,6 @@
 import { IMAGE_MAX_BYTES, IMAGE_MAX_COUNT, type ImageAttachment } from '@corral/contracts';
 import { Button } from '@corral/react/ui';
-import { useEffect, useId, useRef, useState } from 'react';
+import { type RefObject, useEffect, useId, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
 
@@ -66,12 +66,16 @@ export function ImageAttachmentPicker({
   disabled,
   onChange,
   onBusyChange,
+  inputRef,
+  enabled = true,
 }: {
   sessionId: string;
   value: ImageAttachment[];
   disabled: boolean;
   onChange(value: ImageAttachment[]): void;
   onBusyChange(busy: boolean): void;
+  inputRef?: RefObject<HTMLInputElement | null>;
+  enabled?: boolean;
 }) {
   const { mode, workspaces } = useServices();
   const t = useTranslations('Composer');
@@ -116,28 +120,30 @@ export function ImageAttachmentPicker({
   return (
     <div className="flex flex-wrap items-center gap-2">
       <input
-        ref={input}
+        ref={inputRef ?? input}
         id={id}
         type="file"
         multiple
         accept="image/png,image/jpeg,image/webp"
         aria-label={t('attachImages')}
         className="sr-only"
-        disabled={disabled || busy}
+        disabled={disabled || !enabled || busy}
         onChange={(event) => {
           const files = [...(event.target.files ?? [])];
           event.target.value = '';
           void pick(files);
         }}
       />
-      <Button
-        size="xs"
-        variant="ghost"
-        disabled={disabled || busy || value.length >= IMAGE_MAX_COUNT}
-        onClick={() => input.current?.click()}
-      >
-        {t(busy ? 'imageUploading' : 'attachImages')}
-      </Button>
+      {!inputRef ? (
+        <Button
+          size="xs"
+          variant="ghost"
+          disabled={disabled || busy || value.length >= IMAGE_MAX_COUNT}
+          onClick={() => input.current?.click()}
+        >
+          {t(busy ? 'imageUploading' : 'attachImages')}
+        </Button>
+      ) : null}
       {value.map((image) => (
         <Button
           key={image.imageId}

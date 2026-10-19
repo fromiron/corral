@@ -165,11 +165,19 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
         : Promise.resolve());
     let failureCode: Extract<HarnessReport, { ok: false }>['code'] = 'sdk_start_failed';
     try {
-      const model = deps.resolveModel(
+      const catalogModel = deps.resolveModel(
         start.model.provider,
         start.model.modelId,
         start.model.endpoint,
       );
+      const model = catalogModel
+        ? {
+            ...catalogModel,
+            ...(start.model.contextWindow !== undefined
+              ? { contextWindow: start.model.contextWindow }
+              : {}),
+          }
+        : undefined;
       if (!model) throw new Error('model unavailable');
       assertReasoningCapabilities(model, start.reasoningCapabilities);
       failureCode = 'policy_denied';
@@ -783,6 +791,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
         }
       };
       const settings = SettingsManager.inMemory({
+        ...(start.compaction ? { compaction: start.compaction } : {}),
         cacheWarming: 'off',
         retry: { enabled: true, maxRetries: 2, baseDelayMs: 1, maxAgentDelayMs: 5 },
       });

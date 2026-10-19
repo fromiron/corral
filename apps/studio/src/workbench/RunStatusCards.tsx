@@ -7,6 +7,7 @@ import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { useModelPrices } from '../prices.ts';
 import { useServices } from '../services.tsx';
+import { ProfileContextDetails } from './ProfileContextDetails.tsx';
 import { RunChanges } from './RunChanges.tsx';
 import { RuntimeRecovery } from './RuntimeRecovery.tsx';
 
@@ -119,6 +120,14 @@ export function RunStatusCards({
             {node?.label ?? selected ?? t('unknown')} · {t('lastRequest')}
           </p>
           <p>{t('capacity', { value: model?.contextWindow?.toLocaleString() ?? t('unknown') })}</p>
+          <ProfileContextDetails
+            policy={model?.contextPolicy}
+            runtime={
+              projection.mode === 'mock'
+                ? 'mock'
+                : (record?.runtime ?? (role?.harness ? 'pi-sdk' : 'pi-core'))
+            }
+          />
           <p className="text-muted">{t('estimateNote')}</p>
           {record ? (
             <p>

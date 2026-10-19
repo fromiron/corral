@@ -2790,5 +2790,49 @@
     "status": "planned",
     "adapter": "actual Pi serializers and deterministic local provider HTTP; no paid calls",
     "evidence": null
+  },
+  {
+    "id": "TC-COMPOSER-001-H",
+    "requirements": [
+      "CRL-COMPOSER-001"
+    ],
+    "suite": "integration+browser",
+    "scenario": "메뉴·첨부 초안·모델/노력 독립성과 저장 경쟁 및 기존 전송 계약을 확인한다.",
+    "status": "planned",
+    "adapter": "deterministic fixtures and actual browser; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-COMPOSER-001-N",
+    "requirements": [
+      "CRL-COMPOSER-001"
+    ],
+    "suite": "integration+browser",
+    "scenario": "미지원·충돌·오래된 응답·취소와 기존 값/예산/권한 보존",
+    "status": "planned",
+    "adapter": "deterministic fixtures and actual browser; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-CONTEXT-001-H",
+    "requirements": [
+      "CRL-CONTEXT-001"
+    ],
+    "suite": "integration+browser",
+    "scenario": "설정/해석/원자 저장·Run 고정·버전별 worker 전달·Pi 임계 및 permit 정책·UI 경고/보존을 확인한다.",
+    "status": "planned",
+    "adapter": "deterministic fixtures and actual browser; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-CONTEXT-001-N",
+    "requirements": [
+      "CRL-CONTEXT-001"
+    ],
+    "suite": "integration+browser",
+    "scenario": "미지원·충돌·오래된 응답·취소와 기존 값/예산/권한 보존",
+    "status": "planned",
+    "adapter": "deterministic fixtures and actual browser; no paid calls",
+    "evidence": null
   }
 ]

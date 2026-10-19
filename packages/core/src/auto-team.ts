@@ -6,8 +6,10 @@ import {
   type AutoRoute,
   type AutoRouteLevel,
   AutoTemplate,
+  type CommandError,
   type CorralDefinition,
   FILE_TOOLS,
+  type ModelProfileSnapshot,
   type QualityPreset,
   type ReasoningLevel,
   type RunInput,
@@ -278,9 +280,23 @@ export interface AutoSignal {
 const cancelled = () => new Error('the auto request was cancelled before a run started');
 
 export interface AutoStarterDeps<S extends AutoSignal = AutoSignal> {
-  resolveUltra?(selection: UltraSelection, primary: string, mode: 'mock' | 'live'): UltraResolution;
+  prepareModels?(
+    request: AutoStart,
+  ):
+    | { ok: true; models: Record<string, ModelProfileSnapshot> }
+    | { ok: false; error: CommandError };
+  resolveUltra?(
+    selection: UltraSelection,
+    primary: string,
+    mode: 'mock' | 'live',
+    models?: Record<string, ModelProfileSnapshot>,
+  ): UltraResolution;
   /** The Coordinator itself, or a transport to it (the in-browser runtime). */
-  startRun(request: StartRunRequest, signal?: S): StartRunResult | Promise<StartRunResult>;
+  startRun(
+    request: StartRunRequest,
+    signal?: S,
+    models?: Record<string, ModelProfileSnapshot>,
+  ): StartRunResult | Promise<StartRunResult>;
   /** The earlier start after checking its original request identity; null if never recorded. */
   previousStart?(
     commandId: string,
@@ -299,6 +315,7 @@ export interface AutoStarterDeps<S extends AutoSignal = AutoSignal> {
    * called, as for simulated runs.
    */
   route?(input: {
+    models?: Record<string, ModelProfileSnapshot>;
     brief: string;
     choice: AutoModelChoice;
     mode: 'mock' | 'live';
@@ -329,7 +346,11 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
     },
   });
 
-  const choose = async (request: AutoStart, signal: S | undefined) => {
+  const choose = async (
+    request: AutoStart,
+    signal: S | undefined,
+    models?: Record<string, ModelProfileSnapshot>,
+  ) => {
     // `route`: the model picks one of low, medium and high that this model supports.
     const routing = request.choice.reasoning?.mode === 'route';
     const supported = routing ? deps.levels?.(request.choice, request.mode) : null;
@@ -347,6 +368,7 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
         ...medium('local'),
       };
     const asked = deps.route?.({
+      ...(models ? { models } : {}),
       brief: request.brief,
       choice: request.choice,
       mode: request.mode,
@@ -392,6 +414,14 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
     if (signal?.aborted) throw cancelled();
     const refused = deps.precheck?.(request);
     if (refused) return { ...refused, autoRoute: null };
+    const prepared = deps.prepareModels?.(request);
+    if (prepared && !prepared.ok)
+      return {
+        runId: null,
+        autoRoute: null,
+        receipt: { ...conflict(request).receipt, error: prepared.error },
+      };
+    const models = prepared?.models;
     const resolvedUltra = request.ultra
       ? request.qualityPreset !== 'ultra' || request.choice.reasoning
         ? {
@@ -402,7 +432,12 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
                 'Multi-model Ultra uses maximum supported reasoning; remove a manual effort setting',
             },
           }
-        : (deps.resolveUltra?.(request.ultra, request.choice.modelProfile, request.mode) ?? {
+        : (deps.resolveUltra?.(
+            request.ultra,
+            request.choice.modelProfile,
+            request.mode,
+            models,
+          ) ?? {
             ok: false as const,
             error: {
               code: 'CAPABILITY_DENIED' as const,
@@ -416,7 +451,7 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
         autoRoute: null,
         receipt: { ...conflict(request).receipt, error: resolvedUltra.error },
       };
-    const chosen = await choose(request, signal);
+    const chosen = await choose(request, signal, models);
     if (signal?.aborted) throw cancelled();
     const autoRoute: AutoRoute = {
       ...chosen,
@@ -453,6 +488,7 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
         autoRoute,
       },
       signal,
+      models,
     );
     return { ...result, autoRoute: result.runId ? autoRoute : null };
   };

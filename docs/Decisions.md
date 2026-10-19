@@ -337,3 +337,13 @@ Bell의 2026-10-19 목표 명확화와 [Oracle 재검토](spikes/Ultra-Multi-Pro
 첫 협업 버전은 기존 review recipe의 optional 준비 단계를 사용한다. writer→synthesizer→다른 모델 reviewer 순서를 정적으로 고정하고 최종 output은 검토한 종합본만 참조한다. 최대 2개 선택 보조 에이전트는 기존 spawn/await/settlement 경로를 사용하며 파일 도구나 재위임 권한이 없다. 필수 단계의 최소 capped 호출 여유와 80% draining 상태는 기존 Run 예산에서 계산한다. 별도 예산 원장이나 실행 scheduler는 추가하지 않는다. 코딩 검사의 격리 실행과 다른 provider 확대는 별도 후속 단계이며, 현재 모델 verdict로 프로젝트 테스트 통과를 주장하지 않는다.
 
 다른 provider도 [Pi 호환 기준](spikes/Pi-Provider-Compatibility-2026-10-19.md)에 따라 Pi의 공개 모델 metadata와 실제 serializer를 우선한다. 회사별 하드코딩으로 effort 체계를 통일하지 않으며 API/인증 계열별로 conformance를 확인한다. fingerprint는 Pi compat와 모델 출력 한도 변화까지 감지한다. 아직 검증되지 않은 계열을 단순 metadata 노출만으로 Ultra 지원 완료라고 표시하지 않는다.
+
+## ADR-036: 프로필 컨텍스트는 공통 해석 후 Run에 고정한다
+
+**상태:** 채택 (2026-10-19, CR-037, Bell의 설정·런타임 전체 구현 요청).
+
+프로필 override와 endpoint 원본 명시값을 정규화 fallback과 구분한다. 같은 provider/model의 카탈로그만 참조하며 Pi 1.3.0 기본 reserve/keep 값을 바꾸지 않는다. 명시 정책은 관계를 검증하고, 기존 무설정 경로는 경고와 함께 보존한다. 설정 편집은 초안 원본 revision으로 원자 저장하며 다른 설정 변경에 자동 재기준하지 않는다.
+
+자동 선택 최초 호출 전에 모델별 정책을 준비하고 Coordinator snapshot에 기록한다. 후속 역할과 지원 재개는 이 정책을 사용한다. 복구는 현재 provider/model/auth/endpoint/추론 바인딩을 계속 검증하며, 과거 정책 부재도 그대로 보존한다. 기존 Reins의 명시 모델 교체는 유지하되 같은 바인딩의 컨텍스트 설정 변경을 실행 중 적용하는 경로로 사용하지 않는다.
+
+Pi SDK는 카탈로그 복사본과 proxy 모델에 같은 컨텍스트를 적용하고 SettingsManager의 compaction 값만 추가한다. Pi core는 컨텍스트만 적용하며 압축 미지원을 화면에 명시한다. IPC는 core 5 / SDK 6으로 올려 구버전 혼용을 거절한다. 기존 purpose/permit/예산/취소 경로와 최종 요약 출력 cap 우선순위는 유지한다. 새 의존성이나 압축 알고리즘 복제는 추가하지 않는다.

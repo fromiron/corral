@@ -27,7 +27,7 @@ async function autoSession(page: Page, corral: Harness) {
   await corral.open('/');
   await page.getByRole('button', { name: 'Start session', exact: true }).click();
   await expect(page).toHaveURL(/\/sessions\/session_/);
-  await expect(page.getByRole('combobox', { name: 'Model', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Model', exact: true })).toBeVisible();
   return new URL(page.url()).pathname.split('/').at(-1) ?? '';
 }
 
@@ -161,13 +161,39 @@ test('[TC-AUTO-005-N] questions hide the auto reasoning setting they cannot appl
   await requestBox(page).fill('Make one result');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('succeeded');
+  await page.getByLabel('Attach text files', { exact: true }).setInputFiles({
+    name: 'later.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('Only for a later request'),
+  });
   await page.getByRole('combobox', { name: 'What this is', exact: true }).click();
   await page.getByRole('option', { name: /^Question/ }).click();
-  await expect(page.getByRole('combobox', { name: 'Model', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Model', exact: true })).toBeVisible();
   await expect(page.getByRole('combobox', { name: 'Reasoning effort', exact: true })).toHaveCount(
     0,
   );
   await expect(page.getByTestId('pre-run')).not.toContainText('Chosen per request');
+  await expect(page.getByRole('button', { name: 'Model', exact: true })).not.toContainText(
+    'Chosen per request',
+  );
+  await page.getByRole('button', { name: 'Model', exact: true }).click();
+  await expect(page.getByRole('menuitem', { name: 'Reasoning effort', exact: true })).toHaveCount(
+    0,
+  );
+  await page.keyboard.press('Escape');
+  await requestBox(page).fill('Explain this result');
+  const sending = page.waitForRequest(
+    (request) => request.method() === 'POST' && request.url().endsWith('/runs/explain'),
+  );
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  const sent = (await sending).postDataJSON();
+  expect(sent).not.toHaveProperty('attachments');
+  expect(JSON.stringify(sent)).not.toContain('Only for a later request');
+  await expect.poll(() => corral.server.coordinator.listRuns().length).toBe(2);
+  await expect(requestBox(page)).toHaveValue('');
+  await expect(page.getByRole('button', { name: 'Remove later.txt', exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Remove later.txt', exact: true })).toBeVisible();
 });
 
 for (const stop of ['cancel', 'navigate'] as const) {

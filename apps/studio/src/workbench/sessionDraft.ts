@@ -123,20 +123,26 @@ export function writeComposerDraft(sessionId: string, draft: ComposerDraft) {
 }
 
 /** Completion may arrive in settings or in a new Composer; only consume the sent draft. */
-export function clearSentComposerDraft(sessionId: string, revision: number) {
+export function clearSentComposerDraft(
+  sessionId: string,
+  revision: number,
+  preserveAttachments = false,
+) {
   const current = revisions.get(sessionId);
   if (current?.revision !== revision) return;
   try {
-    if (
-      serializeComposerDraft(parseComposerDraft(window.localStorage.getItem(key(sessionId)))) !==
-      current.value
-    )
-      return;
+    if (window.localStorage.getItem(key(sessionId)) !== current.value) return;
   } catch {
     // Without storage the mounted Composer still owns its in-memory draft revision.
   }
-  writeComposerDraft(sessionId, empty());
-  window.dispatchEvent(new CustomEvent(COMPOSER_DRAFT_SENT, { detail: { sessionId, revision } }));
+  const previous = parseComposerDraft(current.value);
+  writeComposerDraft(sessionId, {
+    ...empty(),
+    ...(preserveAttachments ? { attachments: previous.attachments, images: previous.images } : {}),
+  });
+  window.dispatchEvent(
+    new CustomEvent(COMPOSER_DRAFT_SENT, { detail: { sessionId, revision, preserveAttachments } }),
+  );
 }
 
 /** The text of a draft (older callers and the new-session purpose). */
