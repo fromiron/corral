@@ -214,6 +214,7 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
               </span>
               <input
                 type="checkbox"
+                aria-label={t('enabled')}
                 checked={
                   pendingEnabled?.id === selected.id
                     ? pendingEnabled.value

@@ -163,6 +163,7 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
               </span>
               <input
                 type="checkbox"
+                aria-label={t('trust')}
                 checked={binding.trusted}
                 onChange={(e) =>
                   void act(() => workspaces.configure(projectId, { trusted: e.target.checked }))
