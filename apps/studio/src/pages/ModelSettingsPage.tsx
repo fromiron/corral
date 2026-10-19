@@ -37,7 +37,7 @@ export function ModelSettingsPage() {
         ) : (
           <>
             <p className="text-sm text-muted">{t('intro')}</p>
-            <ReasoningSettingsPanel />
+            <ReasoningSettingsPanel key={config?.revision} />
             <section aria-labelledby="providers-heading" className="flex flex-col gap-2">
               <h3 id="providers-heading" className="text-sm font-semibold">
                 {t('providers')}
@@ -339,6 +339,7 @@ function ProfilesTable({ profiles }: { profiles: ModelProfileView[] }) {
 function ReasoningSettingsPanel() {
   const t = useTranslations('Reasoning');
   const { models } = useServices();
+  const router = useRouter();
   const [settings, setSettings] = useState<ReasoningSettings | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
@@ -373,6 +374,7 @@ function ReasoningSettingsPanel() {
             setError(false);
             try {
               setSettings(await models.setReasoning(event.target.checked, settings.revision));
+              await router.invalidate();
             } catch {
               setError(true);
             } finally {

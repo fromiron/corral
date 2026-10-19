@@ -1013,6 +1013,7 @@
     "addEndpoint": "엔드포인트 추가",
     "originChanged": "{names}: 주소가 바뀌어 저장된 키는 새 주소로 보내지 않습니다. 저장한 뒤 키를 다시 넣으세요.",
     "refused": "저장하지 않았습니다: {message}",
+    "conflict": "다른 곳에서 모델 설정이 바뀌었습니다. 입력한 내용은 유지했습니다. 취소 후 편집기를 다시 열면 최신 설정을 불러옵니다.",
     "cancel": "취소",
     "save": "모델 저장",
     "isolateProfile": "리눅스 격리 · {profile}",

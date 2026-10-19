@@ -9,7 +9,7 @@ import { useServices } from '../services.tsx';
  * `.corral/config.json` (CR-008). Keys are not part of it; they stay in Settings' sign-in.
  */
 export function ModelConfigEditor({
-  config,
+  config: initialConfig,
   catalog,
   onDone,
 }: {
@@ -21,6 +21,8 @@ export function ModelConfigEditor({
   const { models } = useServices();
   const router = useRouter();
   const headingId = useId();
+  // Auth polling may refresh the parent while this draft still belongs to the earlier config.
+  const [config] = useState(initialConfig);
   const [profiles, setProfiles] = useState<ProfileRow[]>(() =>
     config.modelProfiles.map((p) => ({ ...p, uid: uid() })),
   );
@@ -55,8 +57,16 @@ export function ModelConfigEditor({
     setSaving(true);
     setError(null);
     try {
+      const latest = await models.config();
+      if (
+        JSON.stringify([latest.modelProfiles, latest.modelProviders]) !==
+        JSON.stringify([config.modelProfiles, config.modelProviders])
+      ) {
+        await router.invalidate();
+        throw new Error(t('conflict'));
+      }
       await models.saveConfig({
-        revision: config.revision,
+        revision: latest.revision,
         modelProfiles: profiles.map(({ uid: _uid, ...p }) => ({ ...p, id: p.id.trim() })),
         modelProviders: endpoints.map((e) => fromDraft(e, config.modelProviders)),
       });
@@ -80,7 +90,7 @@ export function ModelConfigEditor({
       </h3>
       {config.usingDefaults ? <p className="text-xs text-muted">{t('usingDefaults')}</p> : null}
 
-      <fieldset className="flex flex-col gap-2">
+      <fieldset disabled={saving} className="flex flex-col gap-2">
         <legend className="text-sm font-medium">{t('profiles')}</legend>
         <p className="text-xs text-muted">{t('profilesHint')}</p>
         <p className="text-xs text-muted">{t('isolationHint')}</p>
@@ -170,7 +180,7 @@ export function ModelConfigEditor({
         </button>
       </fieldset>
 
-      <fieldset className="flex flex-col gap-2">
+      <fieldset disabled={saving} className="flex flex-col gap-2">
         <legend className="text-sm font-medium">{t('endpoints')}</legend>
         <p className="text-xs text-muted">{t('endpointsHint')}</p>
         {endpoints.map((endpoint, index) => {
@@ -259,6 +269,7 @@ export function ModelConfigEditor({
         <button
           type="button"
           onClick={onDone}
+          disabled={saving}
           className="rounded border border-line px-3 py-1.5 text-sm"
         >
           {t('cancel')}

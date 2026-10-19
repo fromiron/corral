@@ -635,6 +635,28 @@ describe('editing profiles and endpoints from the Models page (CR-008)', () => {
     expect(stale.status).toBe(409);
     expect(readFileSync(join(context.workspace, '.corral', 'config.json'), 'utf-8')).toBe(before);
   });
+
+  it('[TC-SEC-002-N] reads externally changed model fields and revision from the same file snapshot', async () => {
+    const context = await start(makeFake());
+    const before = (await context.json('/model-config')).body;
+    const path = join(context.workspace, '.corral', 'config.json');
+    const current = JSON.parse(readFileSync(path, 'utf8'));
+    current.modelProfiles[0].model = 'gpt-test-b';
+    writeFileSync(path, JSON.stringify(current));
+    const after = (await context.json('/model-config')).body;
+    expect(after.revision).not.toBe(before.revision);
+    expect(after.modelProfiles[0].model).toBe('gpt-test-b');
+    const stale = await context.json('/model-config', {
+      method: 'PUT',
+      body: JSON.stringify({
+        revision: before.revision,
+        modelProfiles: before.modelProfiles,
+        modelProviders: [],
+      }),
+    });
+    expect(stale.status).toBe(409);
+    expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual(current);
+  });
 });
 
 describe('auto sessions (CR-024)', () => {

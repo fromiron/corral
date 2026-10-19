@@ -33,23 +33,31 @@ export function prepareWorkspace(root: string): Workspace {
   }
   const id = readFileSync(identity, 'utf8').trim();
   if (!/^[a-f0-9-]{36}$/.test(id)) throw new Error('invalid workspace identity');
-  const configPath = join(root, CONFIG);
-  let raw: unknown = { schemaVersion: '0.1' };
-  if (existsSync(configPath)) {
-    try {
-      raw = JSON.parse(readFileSync(configPath, 'utf-8'));
-    } catch {
-      throw new Error(`${CONFIG} is not valid JSON`);
-    }
-  }
-  const parsed = parseWorkspaceConfig(raw);
-  if (!parsed.ok) throw new Error(`${CONFIG}: ${parsed.errors.join('; ')}`);
+  const { config } = readWorkspaceConfig(root);
   return {
     root,
     id,
     dbPath: join(root, '.corral', 'corral.db'),
+    config,
+    policy: installationPolicy(config),
+  };
+}
+
+/** Values and their save guard must come from the same bytes, even after an external edit. */
+export function readWorkspaceConfig(root: string) {
+  const path = join(root, CONFIG);
+  const text = existsSync(path) ? readFileSync(path, 'utf8') : null;
+  let raw: unknown;
+  try {
+    raw = text === null ? { schemaVersion: '0.1' } : JSON.parse(text);
+  } catch {
+    throw new Error(`${CONFIG} is not valid JSON`);
+  }
+  const parsed = parseWorkspaceConfig(raw);
+  if (!parsed.ok) throw new Error(`${CONFIG}: ${parsed.errors.join('; ')}`);
+  return {
     config: parsed.config,
-    policy: installationPolicy(parsed.config),
+    revision: text === null ? 'none' : createHash('sha256').update(text).digest('hex'),
   };
 }
 

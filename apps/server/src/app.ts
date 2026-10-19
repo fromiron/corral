@@ -106,6 +106,7 @@ import { boundedSseWriter, flushSseRecord, MAX_SSE_BUFFER_BYTES } from './sse.ts
 import {
   configRevision,
   prepareWorkspace,
+  readWorkspaceConfig,
   writeModelConfig,
   writeReasoningApply,
 } from './workspace.ts';
@@ -810,11 +811,20 @@ async function createCorralServer(
   app.get('/api/v1/model-catalog', async () => registry?.catalog() ?? []);
   app.get('/api/v1/model-config', async (_request, reply) => {
     if (!registry) return noLive(reply);
+    let snapshot: ReturnType<typeof readWorkspaceConfig>;
+    try {
+      snapshot = readWorkspaceConfig(workspace.root);
+    } catch {
+      return fail(reply, 'SCHEMA_INVALID', 'workspace configuration is invalid');
+    }
     return {
-      modelProfiles: registry.profileConfigs(),
-      modelProviders: workspace.config.modelProviders ?? [],
-      usingDefaults: workspace.config.modelProfiles === undefined,
-      revision: configRevision(workspace.root),
+      modelProfiles:
+        snapshot.config.modelProfiles ??
+        (await options.live?.defaultProfiles?.()) ??
+        DEFAULT_PROFILES,
+      modelProviders: snapshot.config.modelProviders ?? [],
+      usingDefaults: snapshot.config.modelProfiles === undefined,
+      revision: snapshot.revision,
     };
   });
   app.put('/api/v1/model-config', async (request, reply) => {

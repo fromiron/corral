@@ -250,6 +250,87 @@ test('[TC-UX-003-H] asks the signed-in model for a team draft once and opens it 
 });
 
 test.describe('editing models on the Models page (CR-008)', () => {
+  test('[TC-SEC-002-H] saving an endpoint and local reasoning settings in either order preserves both', async ({
+    page,
+    corral,
+  }) => {
+    await corral.open('/settings/models');
+    const apply = page.getByRole('checkbox', { name: 'Apply local judgments in this workspace' });
+    await expect(apply).toBeEnabled();
+    const changed = page.waitForResponse(
+      (r) => r.url().endsWith('/models/reasoning') && r.request().method() === 'PUT',
+    );
+    await apply.click();
+    expect((await changed).status()).toBe(200);
+    await expect(apply).toBeChecked();
+    await page.getByRole('button', { name: 'Edit models' }).click();
+    const editor = page.getByRole('region', { name: 'Edit models' });
+    await editor.getByRole('button', { name: 'Add endpoint' }).click();
+    await editor.getByLabel('Endpoint id 1').fill('hive');
+    await editor.getByLabel('Endpoint name 1').fill('Hive');
+    await editor.getByLabel('Address of endpoint 1').fill('https://api-cdn.thehive.ai/api/v3');
+    await editor.getByLabel('Access of endpoint 1').selectOption('api_key');
+    await editor.getByLabel('Models of endpoint 1').fill('deepseek-ai/deepseek-v4.1-flash-1017');
+    const saved = page.waitForResponse(
+      (r) => r.url().endsWith('/model-config') && r.request().method() === 'PUT',
+    );
+    await editor.getByRole('button', { name: 'Save models' }).click();
+    expect((await saved).status()).toBe(200);
+    await expect(editor).toHaveCount(0);
+    await expect(apply).toBeChecked();
+    const toggled = page.waitForResponse(
+      (r) => r.url().endsWith('/models/reasoning') && r.request().method() === 'PUT',
+    );
+    await apply.click();
+    expect((await toggled).status()).toBe(200);
+    await page.reload();
+    await expect(apply).not.toBeChecked();
+    await page.getByRole('button', { name: 'Edit models' }).click();
+    await expect(editor.getByLabel('Endpoint name 1')).toHaveValue('Hive');
+    expect(corral.errors).toEqual([]);
+  });
+
+  test('[TC-SEC-002-N] a refreshed loader cannot overwrite a concurrent model edit and keeps the local endpoint draft', async ({
+    page,
+    corral,
+  }) => {
+    await corral.open('/settings/models');
+    await page.getByRole('button', { name: 'Edit models' }).click();
+    const editor = page.getByRole('region', { name: 'Edit models' });
+    await editor.getByRole('button', { name: 'Add endpoint' }).click();
+    await editor.getByLabel('Endpoint id 1').fill('local');
+    await editor.getByLabel('Endpoint name 1').fill('Keep my draft');
+    await editor.getByLabel('Address of endpoint 1').fill('http://127.0.0.1:11434/v1');
+    await editor.getByLabel('Models of endpoint 1').fill('llama3.2');
+    await page.evaluate(async () => {
+      const { csrfToken } = await (await fetch('/api/v1/session')).json();
+      const config = await (await fetch('/api/v1/model-config')).json();
+      config.modelProfiles[0].model = 'gpt-test-b';
+      const response = await fetch('/api/v1/model-config', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json', 'x-corral-csrf': csrfToken },
+        body: JSON.stringify({
+          revision: config.revision,
+          modelProfiles: config.modelProfiles,
+          modelProviders: config.modelProviders,
+        }),
+      });
+      if (!response.ok) throw new Error('fixture config update failed');
+    });
+    // Signing in refreshes the parent loader while the editor stays mounted.
+    await page
+      .getByTestId('provider-openai')
+      .getByRole('button', { name: 'Sign in', exact: true })
+      .click();
+    await expect(page.getByRole('link', { name: 'Open the sign-in page' })).toBeVisible();
+    await editor.getByRole('button', { name: 'Save models' }).click();
+    await expect(editor.getByRole('alert')).toContainText('Models changed');
+    await expect(editor.getByLabel('Endpoint name 1')).toHaveValue('Keep my draft');
+    const saved = await page.evaluate(async () => (await fetch('/api/v1/model-config')).json());
+    expect(saved.modelProfiles[0].model).toBe('gpt-test-b');
+    expect(saved.modelProviders).toEqual([]);
+  });
+
   test('[TC-SEC-002-H] changes a profile’s model and adds a local endpoint, saved to the workspace', async ({
     page,
     corral,

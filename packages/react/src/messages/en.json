@@ -1013,6 +1013,7 @@
     "addEndpoint": "Add endpoint",
     "originChanged": "{names}: the address points somewhere new, so its saved key will not be sent there. Enter the key again after saving.",
     "refused": "Not saved: {message}",
+    "conflict": "Models changed elsewhere. Your entries are still here. Cancel and reopen the editor to start from the latest settings.",
     "cancel": "Cancel",
     "save": "Save models",
     "isolateProfile": "Linux isolation · {profile}",
