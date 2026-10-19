@@ -7,6 +7,8 @@
 
 ## 계약
 
+**2026-10-19 사용자 목표 보완:** Ultra의 목적은 서로 다른 회사의 복수 LLM을 최대 지원 추론으로 협업시키는 것이다. 아래 C-113의 단일 모델/effort 유지 조건은 legacy recipe에만 적용한다. 새 기본 Ultra는 versioned 모델 pool·역할 배정·최대 지원 추론·필수 교차 검토를 사용한다. C-114의 후보 비교는 선택 기능이며 동일 모델 조건을 제거한다. 기존 절대 예산·권한·취소 경계는 유지한다.
+
 1. mode mock/live와 독립된 qualityPreset default/ultra를 시작 snapshot에 선택적으로 추가한다. 지원 built-in 팀만 planner→executor→verifier로 실행하며 수정은 최대 2회다.
 2. 후보 비교는 검증 OS 격리·checkpoint·eval 뒤에 도입한다. 후보 기본 3/최대 5, 모델 동시성 최대 3을 분리하고 후보별 worktree/lease/비용을 소유한다.
 3. 필수 검증 실패 후보를 먼저 제외하고 후보 하나만 승격한다. 전원 실패는 no_acceptable_candidate다. 자동 병합이나 사용자 팀·권한 변경은 하지 않는다.
@@ -30,10 +32,22 @@ C-113의 토글과 `/ultra`, `corral exec auto --ultra`는 `createAutoStarter`�
 
 Bell의 후속 요청에 따라 [upstream 비교](../spikes/Ultra-Upstream-Harness-Review-2026-10-19.md)를 먼저 수행했다. Pi 플러그인은 일괄 배제하지 않으며, 기존 Corral의 병렬 실행 경로와 공개 하네스의 용량·취소·권한 상속·사본 보존 패턴을 재사용한다. 별도 CLI 자식이 Corral permit을 우회하는 설치는 후보 실행 경로로 채택하지 않는다.
 
-단일 Ultra에 명시 candidate comparison을 추가한다. 기본 3개/최대 5개와 동시 3개 이하를 분리한다. Coordinator가 고정 candidate recipe와 기존 execution/worker/permit/settlement 경로를 사용한다. 별도 병렬 Run이나 모델이 호출할 새 오케스트레이션 도구는 만들지 않는다. candidate별 동일 baseline·criteria·model·허용 도구, 별도 durable worktree와 execution 소유권을 고정한다. file broker는 후보 execution을 세션의 기본 사본으로 fallback하지 않는다.
+Ultra에 명시 candidate comparison을 추가한다. 기본 3개/최대 5개와 동시 3개 이하를 분리한다. Coordinator가 고정 candidate recipe와 기존 execution/worker/permit/settlement 경로를 사용한다. 별도 병렬 Run이나 모델이 호출할 새 오케스트레이션 도구는 만들지 않는다. candidate별 동일 baseline·criteria·허용 도구와 명시 모델 배정, 별도 durable worktree와 execution 소유권을 고정한다. file broker는 후보 execution을 세션의 기본 사본으로 fallback하지 않는다.
 
 계획/후보/검토/수정/최종 검증은 같은 Run 예산이다. 마지막 검증을 위한 최소 모델 호출/출력 예약을 기존 총상한 안에서 보호한다. spent+reserved+unknown 사용량으로 80%를 판단해 새 후보/수정을 중지하고, 모델 permit 직전에도 보호된 마무리 예약을 차감한다. 입력/금액을 측정하지 못한 비용은 0으로 간주하거나 금액 상한이라고 표시하지 않는다.
 
 후보 작업은 OS 격리와 등록된 검사 실행을 제공하는 환경에서만 시작한다. 코드 후보의 필수 검사가 없거나 unsupported/cancelled/unknown/failed/stale이면 acceptable이 아니다. 검사도 private host 경로·키·외부 network를 노출하지 않는 별도 격리 경로에서 수행하고 후보의 고정 tree·설정/실행 fingerprint에 묶는다. 단순 모델 verdict를 테스트 통과로 대체하지 않는다.
 
 결과는 후보별 diff/근거/사용량과 함께 비교하고 사람의 정확한 후보 선택 뒤 하나만 승격한다. 전원 실패는 no_acceptable_candidate다. 승격은 worker 종료/미정산·출처/대상 tree/hash를 재검증하고 기존 복구 전 checkpoint 및 원장을 사용한다. 자동 merge, 효과 재생, crash 후 자동 승격은 없다. 후보 취소는 해당 후보만 멈추고 Run 취소는 모든 소유 실행을 정리한다.
+
+## C-118 복수 LLM Ultra
+
+사용자가 고른 기존 profile pool과 planner/executor/synthesizer/verifier 배정을 고정한다. 최소 서로 다른 모델 두 개이며 같은 회사의 두 모델도 지원하되 여러 회사라고 표시하지 않는다. 기본 배정은 주 모델의 계획·작성·종합과 다른 모델의 읽기 전용 검토다. 읽기 전용 specialist는 기존 callable/spawn/await 경로를 사용하고 추가 위임을 하지 않는다. 한 실행에서 파일 작성자는 하나다. 교차 검토는 정적 필수 단계이며 종합본의 정확한 버전을 검토한다.
+
+`maximum_supported`는 오케스트레이션과 별도 정책이다. Pi의 해당 모델/transport에서 검증한 최고 제어를 기존 출력·호출 상한 안에서 적용한다. 일반 effort 설정은 보존하고 새 Ultra 요청의 명시적 수동 effort 충돌은 거절한다. 과거 recipe/hash를 새 기본값으로 해석하지 않는다. mapping 미검증·필수 모델 미연결은 비용 발생 전 거절하며 다른 provider로 조용히 fallback하지 않는다.
+
+전송 범위는 선택한 연결에 이번 요청·첨부·승인한 프로젝트 파일·파생 산출물·지시가 전달될 수 있다는 Run 단위 계약이다. 새로운 provider에는 이전 provider의 원시 대화·추론 서명·로그를 복사하지 않는다. UI/API/CLI는 같은 설정과 재시도 identity를 사용한다.
+
+첫 구현은 OpenAI/DeepSeek의 실제 Pi serializer와 fake HTTP로 검증한다. 최종 wire의 모델·추론 설정·출력 상한을 검사하고, provider 자동 재시도를 끄며 inference HTTP dispatch는 승인된 payload로 한 번만 허용한다. OAuth처럼 wire 출력 cap을 보장하지 않는 transport는 admission 예약과 실제 사용량 상한 보장을 구분한다. Anthropic/Gemini 등은 같은 검증 계약으로 추가한다. 실제 provider 호출은 별도 opt-in이며 이번 구현의 일반 시험은 비용이 없다.
+
+구현 근거는 [Oracle 재검토](../spikes/Ultra-Multi-Provider-Oracle-2026-10-19.md)다. 구현 순서는 provider conformance → versioned 협업/예산/UI → 코딩 검사·provider 확대 → 선택적 C-114다. 필수 검사 미지원은 검증 완료로 우회하지 않는다.

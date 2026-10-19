@@ -2768,5 +2768,27 @@
     "status": "planned",
     "adapter": "deterministic workers, temporary Git worktrees and actual Linux isolation; no paid calls",
     "evidence": null
+  },
+  {
+    "id": "TC-ULTRA-003-H",
+    "requirements": [
+      "CRL-ULTRA-003"
+    ],
+    "suite": "integration+browser",
+    "scenario": "실제 Pi serializer/fake HTTP의 복수 provider routing·최대 추론·공유 예산과 교차 검토",
+    "status": "planned",
+    "adapter": "actual Pi serializers and deterministic local provider HTTP; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-ULTRA-003-N",
+    "requirements": [
+      "CRL-ULTRA-003"
+    ],
+    "suite": "integration+browser",
+    "scenario": "legacy와 요청 identity 보존, 변조·추가 dispatch·잘못된 wire·필수 모델 부재·취소/unknown 경계 차단",
+    "status": "planned",
+    "adapter": "actual Pi serializers and deterministic local provider HTTP; no paid calls",
+    "evidence": null
   }
 ]

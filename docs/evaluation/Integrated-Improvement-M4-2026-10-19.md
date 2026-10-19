@@ -32,3 +32,15 @@ M0~M3 누적 변경은 `09fe207`에 커밋했다. CR-031, C-113, CRL-ULTRA-001, 
 - 변경한 TS 파일 Biome 및 `git diff --check` 통과.
 
 **구현 경계:** helper는 아직 Coordinator permit 경로에 연결하지 않았다. 다중 후보 실행/파일 scope/검사/선택/승격과 draining latch는 후속 구현 대상이며 C-114는 `planned`다. 위 결과는 후보 비교 전체의 통과 증거가 아니다. 외부 플러그인을 설치하거나 실제 모델 호출을 하지 않았다.
+
+## C-118 준비: 복수 제공자 추론·요청 경계
+
+사용자가 복수 회사 LLM의 최대 추론 협업을 명확히 하여 CR-031·ADR-035·C-118을 등록했다. [Oracle 재검토](../spikes/Ultra-Multi-Provider-Oracle-2026-10-19.md)는 실제 미푸시 소스와 전체 Ultra diff를 첨부해 완료했다. C-113은 과거 단일 모델 프리셋으로 보존하고 C-118을 우선한다.
+
+- 설치된 Pi 1.3.0의 OpenAI 설정 메시지와 DeepSeek 추론 형식·출력 한도를 실제 serializer로 검증한다. 잘못된 effort·모델·출력 한도 필드는 전송 전에 거절한다.
+- core/SDK/격리 host bridge 모두 한 permit에서 승인된 모델·주소·본문의 HTTP 요청을 한 번만 허용한다. Pi 재시도를 끄고 SSE fetch 경계에서 재전송·redirect·취소 후 전송을 차단한다.
+- 필요한 red: `ultra-providers-red.log`, `ultra-dispatch-red.log`, `ultra-provider-field-red.log`. 정상 OpenAI 설정 메시지의 오거절, 승인 없는 전송, 다른 cap 필드 수용을 각각 재현했다.
+- 전체 회귀 `ultra-provider-full.log`: 179개 파일·1,136개 통과, opt-in 9개 제외. Linux bubblewrap 실제 core/SDK worker → host permit → 로컬 HTTP → 도구 결과 왕복과 기존 process 회귀는 `ultra-provider-http.log` 16개 통과했다.
+- 전체 타입, spec 1,926 checks / 253 tags, lint 오류 없음, desktop runtime 준비 통과. 새 의존성 없음.
+
+**구현 경계:** 이는 C-118의 provider 기반 작업이다. 새 복수 모델 pool·역할 배정·필수 교차 검토·동적 마무리 예산·UI는 아직 미구현이며 C-118은 `planned`다. 실제 유료 API 호출, 최신 packaged GUI, hosted CI/배포는 실행하지 않았다. Codex Responses처럼 출력 cap을 받지 않는 transport를 실제 청구량 hard cap으로 보장하지 않는다.

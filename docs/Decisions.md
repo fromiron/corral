@@ -329,3 +329,7 @@ planner는 한 번, 후보들은 동일 기준/계획을 사용한다. 후보 �
 예산은 기존 Run 원장을 사용한다. planner 전에 마무리 2회 capped 요청을 총상한 안에서 보호하며, 80% 기준에는 사용/예약/unknown과 마무리 hold 및 신규 요청 상한을 포함한다. draining 진입은 되돌리지 않는다. 후보 준비/대기열 재개와 실제 permit 발급 직전 모두 검사한다. final 단계는 후보 신규 실행을 닫고 hold를 실제 요청 예약으로 전환한다. 비용 표시는 금액 hard cap이라는 보장이 아니다.
 
 worker의 check/LSP 금지는 유지한다. 등록 검사 runner를 host 소유 후보 scope와 OS 격리로 실행하며 검증용 고정 tree 사본과 임시 쓰기 공간을 사용한다. 검증 경로 없는 환경에서는 planner 비용을 쓰기 전에 비교 실행을 거절한다. crash/unknown/late 결과는 자동 재실행/승격하지 않고 기존 복구 원장을 보존한다.
+
+## ADR-035: Ultra의 기본은 모델 pool을 고정한 협업이며 최대 추론은 별도 해석한다
+
+Bell의 2026-10-19 목표 명확화와 [Oracle 재검토](spikes/Ultra-Multi-Provider-Oracle-2026-10-19.md)에 따른다. C113의 단일 모델 snapshot은 보존한다. 새 versioned Ultra는 기존 profile과 그래프/위임으로 복수 LLM을 배정하고 다른 모델의 검토를 필수로 둔다. 모델별 최대 지원 추론을 실제 Pi wire에서 확인하며 generic ultra enum을 provider에 보내지 않는다. 승인된 pool과 전송 범위 밖 fallback, 출력 한도의 조용한 증가, 검증 생략 성공은 허용하지 않는다. C114의 후보 복제/승격은 선택적 별도 전략이다. 새 하네스 의존성은 추가하지 않는다.

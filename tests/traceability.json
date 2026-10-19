@@ -1259,5 +1259,15 @@
     "tasks": [
       "C-114"
     ]
+  },
+  {
+    "requirementId": "CRL-ULTRA-003",
+    "tests": [
+      "TC-ULTRA-003-H",
+      "TC-ULTRA-003-N"
+    ],
+    "tasks": [
+      "C-118"
+    ]
   }
 ]

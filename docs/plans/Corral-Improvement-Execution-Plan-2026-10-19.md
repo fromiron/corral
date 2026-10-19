@@ -170,6 +170,7 @@ M3의 첫 실제 브라우저 상호작용은 사용자가 승인한 테스트 �
 | ID | 작업과 산출물 | 완료 판정 |
 |---|---|---|
 | M4-1 | CR-031-A `qualityPreset`의 default/ultra 선택, 검증된 built-in 팀의 planner→executor→verifier, 수정 최대 2회 | 기본 경로/hash와 mode 유지. verifier 기본 수정 권한 없음. model/effort·정책·예산을 조용히 올리지 않음. default와 같은 과제로 비교 |
+| M4-1b | CR-031 C-118 복수 LLM 협업 Ultra와 최대 지원 추론 | 2026-10-19 사용자 목표 보완. 명시 pool·역할 배정·전송 범위, 기존 그래프/위임과 다른 모델의 필수 검토. provider conformance → 협업/예산/UI → 코딩 검사·provider 확대 순서. C-113은 legacy로 보존 |
 | M4-2 | CR-031-B 후보별 worktree/lease/비용과 단일 후보 승격 | OS 격리·checkpoint·eval 선행. 기본 후보 3/최대 5와 동시 실행 최대 3 분리. 전원 실패는 `no_acceptable_candidate`. 자동 병합은 첫 범위 제외 |
 | M4-3 | CR-036-C 기존 Skill 편집기에 trigger/output fixture·eval·채택 추가 | 생성물은 draft revision에 머무름. 자기 grader 수정·현재 Run 지침 덮어쓰기·자기 활성화 차단 |
 | M4-4 | CR-036-D upstream diff·호환성·eval·사용자 채택·rollback 관리 | source/license/reference/script/권한 변경을 함께 검토. 기존 사용자 수정·진행 Run·복구 checkpoint의 revision을 보존 |
@@ -306,7 +307,7 @@ PR-D가 커지면 콘텐츠 manifest 검증과 런타임 활성화를 둘로 나
 | M1 | 구현·검증 완료 | C-092–100. 질문/승인/계획·팩/프롬프트·대화, M1 evidence 참조 |
 | M2 | 구현·검증 완료 | C-101–106. checkpoint/status/browser/이미지·eval, M2 evidence 참조 |
 | M3 | 구현·검증 완료 | C-107–112. Linux 격리·hunk·압축·이어하기·검색/분기·웹 추출, 지원 범위는 M3 evidence 참조 |
-| M4 | 진행 | C-113 단일 Ultra 구현·검증 완료. 후보 비교, Skill 작성/업데이트, desktop 보완이 남음. [M4 evidence](../evaluation/Integrated-Improvement-M4-2026-10-19.md) 참조 |
+| M4 | 진행 | C-113 단일 Ultra 구현·검증 완료(legacy). 사용자 목표 보완으로 C-118 복수 LLM·최대 추론 협업을 우선 구현한다. C-114 후보 비교는 선택 전략이며 Skill 작성/업데이트와 desktop 보완도 남음. [M4 evidence](../evaluation/Integrated-Improvement-M4-2026-10-19.md) 참조 |
 
 현재 증거는 [M0와 첫 안전 수정 보고서](../evaluation/Integrated-Improvement-M0-2026-10-19.md)에 있다. CR 승인과 단계 완료는 같은 상태가 아니다.
 

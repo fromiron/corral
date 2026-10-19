@@ -44,6 +44,7 @@ import { mcpExtension } from './mcp.ts';
 import { PROTOCOL_VERSION, SdkHostFrame, type SdkStartFrame } from './protocol.ts';
 import { assertReasoningCapabilities, reasoningRequest, verifyReasoningWire } from './reasoning.ts';
 import { requestReasoningInput } from './reasoning-input.ts';
+import { providerRequestFence } from './request-fence.ts';
 import {
   assertImagePayload,
   assertProtectedPayload,
@@ -426,8 +427,11 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
               if (cancelled || options?.signal?.aborted)
                 throw new Error('cancelled before dispatch');
               const chosen = reasoningRequest(model, options, permit.reasoning);
+              const fence = providerRequestFence(model, undefined, options?.signal);
               const stream = await deps.streamFn(chosen.model, requestContext, {
                 ...chosen.options,
+                maxRetries: 0,
+                ...(fence ? { fetch: fence.fetch, transport: 'sse' as const } : {}),
                 apiKey: start.model.endpoint?.keyless ? undefined : (permit.apiKey ?? undefined),
                 maxTokens: permit.maxOutputTokens,
                 onPayload: async (payload, payloadModel) => {
@@ -441,7 +445,12 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
                     throw new Error('original request missing from payload');
                   if (requestPurpose === 'turn' || requestPurpose === 'retry')
                     assertImagePayload(actual, start.images);
-                  const wire = verifyReasoningWire(model, actual, permit.reasoning);
+                  const wire = verifyReasoningWire(
+                    model,
+                    actual,
+                    permit.reasoning,
+                    permit.maxOutputTokens,
+                  );
                   const serialized = canonicalJson(actual);
                   for (const skill of mandatory)
                     if (!serialized.includes(JSON.stringify(skill.content).slice(1, -1)))
@@ -465,6 +474,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
                   });
                   if (cancelled || options?.signal?.aborted)
                     throw new Error('cancelled before HTTP dispatch');
+                  fence?.approve(actual);
                   return actual;
                 },
               });

@@ -1,6 +1,7 @@
 import { canonicalJson, ReasoningResolution } from '@corral/contracts';
 import type { StreamFn } from '@earendil-works/pi-agent-core';
 import {
+  type Api,
   type AssistantMessageEvent,
   createAssistantMessageEventStream,
   type Message,
@@ -11,6 +12,7 @@ import {
 import { z } from 'zod';
 import type { Channel } from './channel.ts';
 import { reasoningRequest } from './reasoning.ts';
+import { providerRequestFence } from './request-fence.ts';
 
 const LIMIT = 16 * 1024 * 1024;
 const id = z.string().regex(/^stream_[1-9][0-9]{0,5}$/);
@@ -39,7 +41,7 @@ const isBridge = (frame: unknown): frame is Record<string, unknown> =>
   Boolean(frame && typeof frame === 'object' && (frame as { bridge?: unknown }).bridge === 'model');
 
 export interface ModelBroker {
-  model: Model<string>;
+  model: Model<Api>;
   streamFn: StreamFn;
 }
 
@@ -104,6 +106,7 @@ export function modelBridgeChannel(channel: Channel, options: ModelBroker): Chan
     };
     void (async () => {
       try {
+        const fence = providerRequestFence(options.model, undefined, request.abort.signal);
         // No worker-provided URL, headers, key, output limit or provider-specific options.
         const resolved = reasoningRequest(
           options.model,
@@ -111,6 +114,7 @@ export function modelBridgeChannel(channel: Channel, options: ModelBroker): Chan
             apiKey: allowed.apiKey ?? undefined,
             maxTokens: allowed.maxOutputTokens,
             maxRetries: 0,
+            ...(fence ? { fetch: fence.fetch, transport: 'sse' as const } : {}),
             signal: request.abort.signal,
             onPayload: async (payload) => {
               if (request.abort.signal.aborted || stopped) throw new Error('cancelled');
@@ -124,6 +128,7 @@ export function modelBridgeChannel(channel: Channel, options: ModelBroker): Chan
               });
               if (!accepted || request.abort.signal.aborted || stopped)
                 throw new Error('provider payload refused');
+              fence?.approve(payload);
               return payload;
             },
           },

@@ -2247,5 +2247,24 @@
     ],
     "done": "후보 최대5/동시3, 사본/검사/취소 소유권, 80% admission과 마무리 예약, 전원 실패 및 정확한 후보 단일 승격을 확인한다.",
     "status": "planned"
+  },
+  {
+    "id": "C-118",
+    "phase": "M4",
+    "title": "복수 LLM Ultra 협업과 provider별 최대 추론",
+    "dependsOn": [
+      "C-113"
+    ],
+    "requirements": [
+      "CRL-ULTRA-003"
+    ],
+    "files": [
+      "packages/core/src/auto-team.ts",
+      "packages/core/src/coordinator.ts",
+      "packages/adapter-pi/src/reasoning.ts",
+      "apps/studio/src/pages/SessionPage.tsx"
+    ],
+    "done": "명시 모델 배정·필수 교차 검토·제한된 병렬 위임·최대 추론 wire와 공유 예산·취소를 검증하고 UI/API/CLI 및 과거 snapshot을 보존한다.",
+    "status": "planned"
   }
 ]
