@@ -54,3 +54,24 @@ M0~M3 누적 변경은 `09fe207`에 커밋했다. CR-031, C-113, CRL-ULTRA-001, 
 - 필요한 합성 시험 한 개에서 config → server registry → 실제 Pi serializer → 가짜 fetch/SSE 사용량을 확인했다. `none/low/high/max`와 provider default, cap/effort 변조 거절, 다른 origin 및 명시 한도를 함께 검증한다.
 - `hive-regression.log`: 기존 모델 인증/설정·core config·adapter endpoint/reasoning/process 포함 7개 파일, 46개 통과·OS opt-in 2개 제외. 전체 타입 검사, spec 1,928 checks / 253 tags, 변경 파일 Biome·diff 검사 통과.
 - [연결 안내](../Models.md#hive의-deepseek-v41-flash)에 추가할 주소·모델·프로필과 키 입력 위치를 기록했다. 사용자 설정·credential은 변경하지 않았다. Hive 유료 호출·실제 모델 도구 호출·최신 패키지 GUI는 미검증이다.
+
+## C-118 협업·예산·UI 단계와 실제 Hive 확인
+
+사용자가 저장한 Hive 키로 실제 연결 확인을 요청했다. 별도 opt-in live 시험은 최대 3회/요청당 출력 4,096 한도 중 2회만 사용했다. `run_165a318f5d28440f9d80311d5d9813f4`에서 공식 CDN의 `deepseek-ai/deepseek-v4.1-flash-1017`, 요청/실제 wire `high`, write_artifact→submit_result와 usage를 확인했다. 입력 2,940/출력 219, 미확정 예약 0이다. 이 시험은 사용자 세션과 분리한 메모리 Run이며 사용자 본문을 보내지 않았다. 증거의 source hash는 `b92a5e846e4640c0a81f5bc34e9705cc5c8bdafd93a08075457df670e31c9cd5`로, 이후 Ultra 변경 전체의 live 증거로 간주하지 않는다. 모델 신원 프롬프트와 live 시험은 `0801f2b`에 커밋했다.
+
+협업 단계는 `ultra-team-red.log`, `ultra-team-runtime-red.log`, `ultra-team-budget-red.log`에서 별도 모델 검토·종합·마무리 예산 부재의 실패를 확인한 뒤 구현했다.
+
+- `ultra.version: 1`의 2~5개 모델 pool, 주 모델 planner/writer/synthesizer와 다른 모델 reviewer를 고정한다. 서로 다른 회사도 사용하며 같은 모델 ID의 별칭은 거절한다. helper는 읽기 전용 산출물 도구만 갖고 재위임하지 않는다. 기존 Coordinator의 spawn/await/permit/settlement를 재사용한다.
+- 최대 지원 추론을 모델별 metadata로 고정하고 미연결·미검증·명시 수동 effort 충돌은 호출 전에 거절한다. 선택 위임은 활성 2/전체 4, 전역 모델 요청 3, 수정 2회다. 미래 필수 단계의 최소 2회 capped 호출을 같은 예산에서 보호하고 80% draining을 유지한다. 취소/unknown 정산은 기존 원장을 사용한다.
+- UI/초안/세션 기록/재시도 identity/API/CLI에 선택을 연결했다. 브라우저 설정 왕복과 다시 열기에서도 선택을 보존하며 일반 모드의 추론 강도는 바꾸지 않는다. 실제 개발 화면에서 OpenAI Sol 주 모델 + Hive DeepSeek 검토자 선택과 일반 설정 복원을 확인했다. 실제 Ultra 요청을 추가로 보내지는 않았다.
+- OpenAI OAuth의 Pi 1.3.0 출력 cap 생략을 API 키 경로와 혼동하는 회귀를 `ultra-oauth-cap-red.log`에서 실제 serializer로 재현했다. 고정 auth/provider/API/baseURL이 공식 OAuth인 경우만 허용하며 API 키·다른 endpoint의 cap 누락은 계속 거절한다. core/SDK worker에 비밀이 아닌 인증 방식만 전달한다. 실제 OpenAI 계정 재호출은 하지 않았다.
+
+| 검증 | 결과 |
+|---|---|
+| 전체 회귀 | `ultra-final-full.log`: 181개 파일·1,146개 통과, opt-in 9개 제외 |
+| 브라우저 | `ultra-multi-browser.log`: 자동 세션 기존 경계와 새 Ultra, 14개 통과 |
+| 실제 Linux worker/로컬 HTTP | `ultra-final-isolation.log`: core/SDK 격리 worker와 HTTP/프로세스 회귀 17개 통과; 실제 서비스 호출 아님 |
+| 타입·계약·추적 | `ultra-final-types.log` 전체 타입 통과, `ultra-final-spec.log` 1,929 checks / 253 tags, schema 재생성 |
+| 빌드 | `ultra-final-build.log` Studio production 빌드 통과; 기존 큰 chunk 경고 유지 |
+
+**남은 범위:** C-118의 격리 프로젝트 검사/고정 tree 연동과 provider conformance 확대는 계속 진행한다. 현재 모델 검토는 실제 코드 검사 통과를 뜻하지 않는다. 실제 복수 제공자 Ultra 전체 호출·품질/비용 비교·최신 packaged GUI·hosted CI/배포는 미검증이다. C-114 후보 비교/승격도 아직 완료하지 않았다. 새 의존성은 없다.

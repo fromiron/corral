@@ -439,11 +439,16 @@ for (const outcome of ['failed', 'succeeded'] as const) {
 
 test.describe('quality presets', () => {
   test.use({ live: false, codexLogin: false, reasoningApi: false });
-  test('[TC-ULTRA-001-H] the explicit preset survives settings and runs the bounded built-in review team', async ({
+  test('[TC-ULTRA-003-H] the selected model pool survives settings and runs synthesis before cross-model review', async ({
     page,
     corral,
   }) => {
-    await autoSession(page, corral);
+    const sessionId = await autoSession(page, corral);
+    await write(page, `/sessions/${sessionId}`, 'PATCH', {
+      expectedRevision: 1,
+      auto: { modelProfile: 'model-a', reasoning: { mode: 'fixed', level: 'low' } },
+    });
+    await page.reload();
     const url = page.url();
     await requestBox(page).fill('/ultra');
     await requestBox(page).press('Enter');
@@ -453,6 +458,10 @@ test.describe('quality presets', () => {
     await requestBox(page).fill('Hello from the fixed quality fixture');
     await page.getByRole('combobox', { name: 'Quality preset', exact: true }).click();
     await page.getByRole('option', { name: 'Ultra · plan, work and review', exact: true }).click();
+    const verifier = page.getByRole('checkbox', { name: /model-b/ });
+    await verifier.uncheck();
+    await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
+    await verifier.check();
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     await expect(page).toHaveURL(/\/settings/);
     await page.goto(url);
@@ -466,11 +475,29 @@ test.describe('quality presets', () => {
     const snapshot = corral.server.coordinator.getRunSnapshot(runId)!;
     expect(snapshot.mode).toBe('mock');
     expect(snapshot.autoRoute?.qualityPreset).toBe('ultra');
-    expect(snapshot.definition.roles.map((role) => role.id)).toEqual([
-      'planner',
-      'writer',
-      'reviewer',
-    ]);
+    expect(snapshot.autoRoute?.ultra).toMatchObject({
+      version: 1,
+      modelProfiles: ['model-a', 'model-b'],
+      verifierProfile: 'model-b',
+    });
+    expect(snapshot.definition.roles.find((role) => role.id === 'reviewer')?.modelProfile).toBe(
+      'model-b',
+    );
+    expect(snapshot.definition.roles.find((role) => role.id === 'synthesizer')?.modelProfile).toBe(
+      'model-a',
+    );
+    expect(
+      snapshot.definition.roles.every(
+        (role) => role.reasoning?.mode === 'fixed' && role.reasoning.level === 'max',
+      ),
+    ).toBe(true);
+    expect(
+      await page.evaluate(
+        async (id) =>
+          (await fetch(`/api/v1/sessions/${id}`).then((response) => response.json())).auto,
+        sessionId,
+      ),
+    ).toEqual({ modelProfile: 'model-a', reasoning: { mode: 'fixed', level: 'low' } });
     await page.reload();
     await expect(page.getByTestId('entry-auto')).toContainText('Ultra');
     expect(corral.server.coordinator.listRuns()).toHaveLength(1);

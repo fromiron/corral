@@ -1747,7 +1747,14 @@
     "qualityPreset": "Quality preset",
     "qualityDefault": "Default",
     "qualityUltra": "Ultra · plan, work and review",
-    "qualityUltraHint": "Up to two revisions. Uses the selected model, reasoning and existing budget; may take longer."
+    "qualityUltraHint": "Up to two revisions with required cross-model review.",
+    "ultraModels": "Ultra models",
+    "ultraPrimary": "plan, execute, synthesize",
+    "ultraVerifier": "Required verifier",
+    "ultraNeedsModels": "Select at least two distinct connected models and a different verifier.",
+    "ultraModelScope": "Selected connections may receive this request, attachments, authorized project inputs and derived results. Other models can assist as read-only specialists.",
+    "ultraMaximum": "Uses each model’s highest verified reasoning level within the existing budget. Your normal effort setting is preserved. Up to two revisions.",
+    "ultraMaximumShort": "Maximum supported reasoning"
   },
   "Commands": {
     "newSession": "New session",

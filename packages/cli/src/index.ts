@@ -143,7 +143,7 @@ export interface CliIO {
 }
 
 const usage =
-  'corral dev [--demo] | validate <file> | run <file> [--input <brief>] [--watch] [--demo] | inspect <run-id> [--judgments] | inspect --archive <file> | export <run-id> [--redact | --private] | judge install|status [--model-dir <dir>] | exec <file|auto> [--ultra] [--model-profile <id>] [--effort <level>] [--input <brief>] [--answers <file>] [--demo] [--json] | eval <suite.json> [--demo] [--out <file>] | eval <coding-suite.json> --hashline-binary <fixture-driver> [--out <file>]';
+  'corral dev [--demo] | validate <file> | run <file> [--input <brief>] [--watch] [--demo] | inspect <run-id> [--judgments] | inspect --archive <file> | export <run-id> [--redact | --private] | judge install|status [--model-dir <dir>] | exec <file|auto> [--ultra --ultra-models <id,id> --ultra-verifier <id>] [--model-profile <id>] [--effort <level>] [--input <brief>] [--answers <file>] [--demo] [--json] | eval <suite.json> [--demo] [--out <file>] | eval <coding-suite.json> --hashline-binary <fixture-driver> [--out <file>]';
 
 export async function runCli(args: string[], io: CliIO): Promise<number> {
   let server: import('@corral/server').CorralServer | undefined;
@@ -158,6 +158,8 @@ export async function runCli(args: string[], io: CliIO): Promise<number> {
         input: { type: 'string' },
         answers: { type: 'string' },
         ultra: { type: 'boolean', default: false },
+        'ultra-models': { type: 'string' },
+        'ultra-verifier': { type: 'string' },
         'model-profile': { type: 'string' },
         effort: { type: 'string' },
         workspace: { type: 'string' },
@@ -188,12 +190,22 @@ export async function runCli(args: string[], io: CliIO): Promise<number> {
       return 1;
     }
     if (
-      (values.ultra || values['model-profile'] || values.effort) &&
+      (values.ultra ||
+        values['ultra-models'] ||
+        values['ultra-verifier'] ||
+        values['model-profile'] ||
+        values.effort) &&
       !(command === 'exec' && target === 'auto')
     )
       throw new Error(
         'Ultra/model/effort options require exec auto; custom teams keep their own workflow',
       );
+    if (values.ultra && (values.effort || !values['ultra-models'] || !values['ultra-verifier']))
+      throw new Error(
+        'Ultra requires --ultra-models <profile,profile> and --ultra-verifier <profile>; maximum supported reasoning replaces --effort',
+      );
+    if (!values.ultra && (values['ultra-models'] || values['ultra-verifier']))
+      throw new Error('Ultra model selection requires --ultra');
     if (command === 'judge') return await judge(target, values['model-dir'], io);
     const workspace = resolve(io.cwd, values.workspace ?? '.');
     if (command === 'exec' || command === 'eval') {
@@ -298,11 +310,24 @@ export async function runCli(args: string[], io: CliIO): Promise<number> {
         {
           signal: io.signal,
           answers,
+          resolveUltra: (selection, primary, mode) =>
+            server!.coordinator.resolveUltra(selection, primary, mode),
           ...(autoChoice
             ? {
                 auto: {
                   choice: autoChoice,
-                  ...(values.ultra ? { qualityPreset: 'ultra' as const } : {}),
+                  ...(values.ultra
+                    ? {
+                        qualityPreset: 'ultra' as const,
+                        ultra: {
+                          version: 1 as const,
+                          modelProfiles: values['ultra-models']!.split(',').map((profile) =>
+                            profile.trim(),
+                          ),
+                          verifierProfile: values['ultra-verifier']!,
+                        },
+                      }
+                    : {}),
                 },
               }
             : {}),

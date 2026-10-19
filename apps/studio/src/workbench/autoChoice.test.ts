@@ -46,6 +46,20 @@ describe('the auto model choice (CR-024)', () => {
     const a = autoCommandSeed('Hello', [], { modelProfile: 'model-a' });
     expect(autoCommandSeed('Hello', [], { modelProfile: 'model-a' })).toBe(a);
     expect(autoCommandSeed('Hello', [], { modelProfile: 'model-b' })).not.toBe(a);
+    const pool = {
+      version: 1 as const,
+      modelProfiles: ['model-a', 'model-b'],
+      verifierProfile: 'model-b',
+    };
+    expect(
+      autoCommandSeed('Hello', [], { modelProfile: 'model-a' }, undefined, 'ultra', pool),
+    ).not.toBe(
+      autoCommandSeed('Hello', [], { modelProfile: 'model-a' }, undefined, 'ultra', {
+        ...pool,
+        modelProfiles: ['model-a', 'model-c'],
+        verifierProfile: 'model-c',
+      }),
+    );
     expect(
       autoCommandSeed('Hello', [], { modelProfile: 'model-a' }, { taskScope: 'review_only' }),
     ).not.toBe(a);

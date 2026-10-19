@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { Identifier } from './ids.ts';
-import { ReasoningPolicy } from './reasoning.ts';
+import { ReasoningLevel, ReasoningPolicy } from './reasoning.ts';
 import { TEAM_PATTERNS } from './team-plan.ts';
 
 // CR-024: a session without a chosen team runs in auto mode. A start model picks one of the
@@ -9,6 +9,18 @@ import { TEAM_PATTERNS } from './team-plan.ts';
 
 export const QualityPreset = z.enum(['default', 'ultra']);
 export type QualityPreset = z.infer<typeof QualityPreset>;
+
+export const UltraSelection = z.strictObject({
+  version: z.literal(1),
+  modelProfiles: z.array(Identifier).min(2).max(5),
+  verifierProfile: Identifier,
+});
+export type UltraSelection = z.infer<typeof UltraSelection>;
+/** Requested pool plus the highest verified control for each model, fixed before execution. */
+export const UltraTeamSnapshot = UltraSelection.extend({
+  reasoning: z.record(Identifier, ReasoningLevel),
+});
+export type UltraTeamSnapshot = z.infer<typeof UltraTeamSnapshot>;
 
 export const AUTO_TEMPLATES = TEAM_PATTERNS;
 export const AutoTemplate = z.enum(AUTO_TEMPLATES);
@@ -43,6 +55,7 @@ export const AUTO_REASON_MAX = 200;
 /** What the start model chose, as recorded with the run; never the model's answer itself. */
 export const AutoRoute = z.strictObject({
   qualityPreset: QualityPreset.optional(),
+  ultra: UltraTeamSnapshot.optional(),
   template: AutoTemplate,
   templateVersion: z.int().min(1),
   /** model: the start model chose; local: the local rule (no model call); fallback: single. */

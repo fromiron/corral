@@ -1005,7 +1005,7 @@
     "endpoints": "OpenAI 호환 엔드포인트",
     "endpointsHint": "API 주소와 모델 ID를 추가하고, 프로필에서 이 연결을 선택하세요. 주소는 HTTPS를 쓰고, HTTP는 이 컴퓨터(127.0.0.1)에만 씁니다.",
     "endpointId": "연결 ID {n}",
-    "endpointIdHint": "프로필이 참조하는 고유 값입니다. 예: hive",
+    "endpointIdHint": "프로필에서 이 연결을 참조할 때 사용하는 고유 값입니다.",
     "endpointName": "표시 이름 {n} (선택)",
     "endpointNameHint": "화면에 보여줄 이름입니다. 비워두면 연결 ID를 사용합니다.",
     "endpointKeyHint": "모델 저장을 누르면 키도 이 컴퓨터에 별도로 보관합니다. 비워두면 기존 키를 유지합니다. 저장된 키는 다시 불러오지 않습니다.",
@@ -1747,7 +1747,14 @@
     "qualityPreset": "품질 프리셋",
     "qualityDefault": "기본",
     "qualityUltra": "Ultra · 계획·작업·검토",
-    "qualityUltraHint": "최대 두 번 수정합니다. 선택한 모델·추론 강도와 기존 예산을 사용하며 시간이 더 걸릴 수 있습니다."
+    "qualityUltraHint": "다른 모델의 필수 검토를 거치며 최대 두 번 수정합니다.",
+    "ultraModels": "Ultra 참여 모델",
+    "ultraPrimary": "계획·실행·종합",
+    "ultraVerifier": "필수 검토 모델",
+    "ultraNeedsModels": "연결된 서로 다른 모델 두 개 이상과 별도의 검토 모델을 선택하세요.",
+    "ultraModelScope": "선택한 연결에 이번 요청·첨부·허용한 프로젝트 자료·파생 결과가 전달될 수 있습니다. 다른 모델은 읽기 전용 보조 역할로 참여할 수 있습니다.",
+    "ultraMaximum": "기존 예산 안에서 모델별로 검증된 최고 추론 단계를 사용합니다. 일반 모드의 추론 설정은 유지하며 최대 두 번 수정합니다.",
+    "ultraMaximumShort": "최대 지원 추론"
   },
   "Commands": {
     "newSession": "새 세션",

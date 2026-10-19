@@ -346,12 +346,30 @@ describe('headless exec and eval (roadmap Core-③)', () => {
     writeFileSync(brief, 'Hello');
     expect(
       await runCli(
-        ['exec', 'auto', '--ultra', '--input', brief, '--demo', '--json'],
+        [
+          'exec',
+          'auto',
+          '--ultra',
+          '--ultra-models',
+          'model-a,model-b',
+          '--ultra-verifier',
+          'model-b',
+          '--input',
+          brief,
+          '--demo',
+          '--json',
+        ],
         io(cwd, output),
       ),
+      output.join('\n'),
     ).toBe(0);
     const result = JSON.parse(output.at(-1)!);
-    expect(result).toMatchObject({ status: 'succeeded', executions: 5, repairRounds: 1 });
+    expect(result).toMatchObject({ status: 'succeeded', repairRounds: 1 });
+    expect(result.executions).toBeGreaterThanOrEqual(7);
+    expect(result.executions).toBeLessThanOrEqual(11);
+    expect(await runCli(['exec', 'auto', '--ultra', '--input', brief, '--demo'], io(cwd, []))).toBe(
+      1,
+    );
     const custom = join(cwd, 'custom.json');
     writeFileSync(custom, JSON.stringify(linearCorral(['worker'])));
     expect(await runCli(['exec', custom, '--ultra', '--demo'], io(cwd, []))).toBe(1);

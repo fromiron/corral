@@ -13,6 +13,7 @@ import {
 } from '@corral/contracts';
 import {
   type AutoStart,
+  type Coordinator,
   compileDefinition,
   createAutoStarter,
   type RunProjection,
@@ -83,11 +84,13 @@ export async function executeOnce(
     sessionId,
     answers = [],
     auto,
+    resolveUltra,
     wallNow = Date.now,
     now = () => performance.now(),
   }: {
     signal: AbortSignal;
-    auto?: Pick<AutoStart, 'choice' | 'qualityPreset'>;
+    auto?: Pick<AutoStart, 'choice' | 'qualityPreset' | 'ultra'>;
+    resolveUltra?: Coordinator['resolveUltra'];
     sessionId?: string;
     now?: () => number;
     wallNow?: () => number;
@@ -105,7 +108,10 @@ export async function executeOnce(
     ...(sessionId ? { sessionId } : {}),
   };
   const { runId, receipt } = auto
-    ? await createAutoStarter({ startRun: (request) => transport.startRun(request) }).start(
+    ? await createAutoStarter({
+        startRun: (request) => transport.startRun(request),
+        ...(resolveUltra ? { resolveUltra } : {}),
+      }).start(
         {
           ...auto,
           commandId: start.commandId,

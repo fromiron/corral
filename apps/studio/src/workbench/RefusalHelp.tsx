@@ -1,4 +1,4 @@
-import type { TextAttachment } from '@corral/contracts';
+import type { ImageAttachment, TextAttachment, UltraSelection } from '@corral/contracts';
 import { Button } from '@corral/react/ui';
 import { Link } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
@@ -14,6 +14,7 @@ export function editRequest(
     attachments?: TextAttachment[];
     images?: ImageAttachment[];
     qualityPreset?: 'default' | 'ultra';
+    ultra?: UltraSelection;
     taskScope?: 'work' | 'review_only';
     verificationScope?: 'targeted' | 'release';
   },
@@ -81,5 +82,3 @@ export function RefusalHelp({
     </div>
   );
 }
-
-import type { ImageAttachment } from '@corral/contracts';

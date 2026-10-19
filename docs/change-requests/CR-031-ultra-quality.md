@@ -52,6 +52,14 @@ Ultra에 명시 candidate comparison을 추가한다. 기본 3개/최대 5개와
 
 구현 근거는 [Oracle 재검토](../spikes/Ultra-Multi-Provider-Oracle-2026-10-19.md)다. 구현 순서는 provider conformance → versioned 협업/예산/UI → 코딩 검사·provider 확대 → 선택적 C-114다. 필수 검사 미지원은 검증 완료로 우회하지 않는다.
 
+첫 협업 선택 형식은 `ultra: {version: 1, modelProfiles: [2~5개], verifierProfile}`이다. 주 모델은 기존 choice이며 계획·실행·종합을 담당하고, 선택한 다른 모델이 필수 검토를 담당한다. 나머지 선택 모델은 읽기 전용 callable specialist가 된다. 동일 모델 ID의 프로필 별칭은 별개 모델로 세지 않는다. 최고 지원 추론은 사전 검증한 profile metadata로 해석하여 snapshot에 고정한다. 모델 기본값/임의 medium으로 묵시적으로 대체하지 않는다. 전역 동시 요청 3, 한 번에 자식 2, 전체 선택 위임 4, 재귀 위임 없음, 수정 최대 2회다.
+
+기존 review recipe에 optional `preparationNodeId`를 추가하여 실행→종합(candidate)→검토→판정의 엄격한 4단계 Loop를 지원한다. 미지정된 과거 recipe의 3단계 검사/hash는 유지한다. 준비 단계도 같은 Loop의 scheduled agent여야 하며 검토 대상은 종합본으로 고정한다.
+
+이 협업 단계의 모델 검토는 실제 프로젝트 테스트를 대체하지 않는다. 역할 프롬프트는 실행 근거가 있는 검사만 보고하고 미실행을 명시하도록 한다. host 소유 격리 검사와 고정 tree 연동은 다음 단계이며 C-114 후보 승격의 필수 검사 조건을 완화하지 않는다. CLI 새 Ultra는 명시 pool/verifier를 요구하고 수동 effort와의 충돌을 거절한다. 기존 선택 필드 없는 API/저장 기록은 legacy 계약을 유지한다.
+
+OpenAI 기존 OAuth 회귀도 포함한다. Pi 1.3.0은 공식 OpenAI Responses의 ChatGPT 로그인에서 `max_output_tokens`를 생략한다. 이 경로만 고정된 Run 인증 방식과 공식 provider/API/baseURL로 식별해 생략을 허용하고, API 키·다른 endpoint의 cap 누락은 계속 거절한다. 비밀 값은 추가로 저장/전송하지 않으며 worker에는 인증 방식만 전달한다. OAuth의 실제 출력량 hard cap을 보장한다고 표시하지 않는다.
+
 ### Hive DeepSeek 연결
 
 Bell이 지정한 [Hive DeepSeek V4.1 Flash](https://docs.thehive.ai/docs/deepseek-v41-flash)를 기존 사용자 정의 엔드포인트로 추가한다. 공식 CDN/VA1의 `/api/v3` 주소와 정확한 모델 ID에만 공개 모델 기본값·Pi 호환 metadata를 적용한다. 모델 이름만 같거나 다른 gateway 주소이면 추측하지 않는다. 명시한 context/output/reasoning/image 설정은 보존한다.

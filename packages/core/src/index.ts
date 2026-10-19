@@ -55,3 +55,4 @@ export * from './store/run-store.ts';
 export * from './team-draft.ts';
 export { toolDescriptorHash, toolPermissionPlan, validToolPermissionPlan } from './tool-policy.ts';
 export * from './transport.ts';
+export { resolveUltraSelection } from './ultra-team.ts';

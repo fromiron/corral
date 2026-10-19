@@ -3457,6 +3457,54 @@
                     "ultra"
                   ]
                 },
+                "ultra": {
+                  "type": "object",
+                  "properties": {
+                    "version": {
+                      "type": "number",
+                      "const": 1
+                    },
+                    "modelProfiles": {
+                      "minItems": 2,
+                      "maxItems": 5,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                      }
+                    },
+                    "verifierProfile": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                    },
+                    "reasoning": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                      },
+                      "additionalProperties": {
+                        "type": "string",
+                        "enum": [
+                          "off",
+                          "minimal",
+                          "low",
+                          "medium",
+                          "high",
+                          "xhigh",
+                          "max"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "version",
+                    "modelProfiles",
+                    "verifierProfile",
+                    "reasoning"
+                  ],
+                  "additionalProperties": false
+                },
                 "template": {
                   "type": "string",
                   "enum": [

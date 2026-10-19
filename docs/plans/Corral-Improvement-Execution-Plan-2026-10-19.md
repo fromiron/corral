@@ -307,7 +307,7 @@ PR-D가 커지면 콘텐츠 manifest 검증과 런타임 활성화를 둘로 나
 | M1 | 구현·검증 완료 | C-092–100. 질문/승인/계획·팩/프롬프트·대화, M1 evidence 참조 |
 | M2 | 구현·검증 완료 | C-101–106. checkpoint/status/browser/이미지·eval, M2 evidence 참조 |
 | M3 | 구현·검증 완료 | C-107–112. Linux 격리·hunk·압축·이어하기·검색/분기·웹 추출, 지원 범위는 M3 evidence 참조 |
-| M4 | 진행 | C-113 단일 Ultra 구현·검증 완료(legacy). 사용자 목표 보완으로 C-118 복수 LLM·최대 추론 협업을 우선 구현한다. C-114 후보 비교는 선택 전략이며 Skill 작성/업데이트와 desktop 보완도 남음. [M4 evidence](../evaluation/Integrated-Improvement-M4-2026-10-19.md) 참조 |
+| M4 | 진행 | C-113 legacy 보존. C-118 복수 모델 pool·최대 추론·병렬 보조·종합/교차 검토·예산·UI/API/CLI 구현 및 회귀 확인. Hive 실제 high 호출도 별도 확인. C-118의 격리 코드 검사/provider 확대, C-114 후보 비교, Skill 작성/업데이트와 desktop 보완은 남음. [M4 evidence](../evaluation/Integrated-Improvement-M4-2026-10-19.md) 참조 |
 
 현재 증거는 [M0와 첫 안전 수정 보고서](../evaluation/Integrated-Improvement-M0-2026-10-19.md)에 있다. CR 승인과 단계 완료는 같은 상태가 아니다.
 

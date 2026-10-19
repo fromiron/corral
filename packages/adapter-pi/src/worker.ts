@@ -193,7 +193,13 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
             const actual = (await options?.onPayload?.(payload, payloadModel)) ?? payload;
             assertProtectedPayload(actual, protectedSections);
             assertImagePayload(actual, start.images);
-            const wire = verifyReasoningWire(m, actual, active?.reasoning, active?.maxOutputTokens);
+            const wire = verifyReasoningWire(
+              m,
+              actual,
+              active?.reasoning,
+              active?.maxOutputTokens,
+              start.model.auth,
+            );
             if (active) {
               const serialized = canonicalJson(JSON.parse(JSON.stringify(actual)));
               const reply = await call({

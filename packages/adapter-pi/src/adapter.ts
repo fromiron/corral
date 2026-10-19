@@ -37,7 +37,12 @@ export interface PiAdapterOptions {
   endpoint?(model: ModelProfileSnapshot): EndpointSpec | null;
 }
 
-type WorkerModel = { provider: string; modelId: string; endpoint?: EndpointSpec };
+type WorkerModel = {
+  provider: string;
+  modelId: string;
+  auth: ModelProfileSnapshot['auth'];
+  endpoint?: EndpointSpec;
+};
 
 const INVALID = 'the model worker sent an invalid message';
 
@@ -95,6 +100,7 @@ export class PiAgentAdapter implements AgentAdapter {
       {
         provider,
         modelId,
+        auth: input.model.auth,
         ...(endpoint ? { endpoint } : {}),
       },
       resources,

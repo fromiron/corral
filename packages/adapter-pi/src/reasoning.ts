@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import {
   canonicalJson,
+  type ModelProfileSnapshot,
   type ReasoningCapabilities,
   type ReasoningResolution,
   type ReasoningWire,
@@ -82,6 +83,7 @@ export function verifyReasoningWire(
   payload: unknown,
   resolution: ReasoningResolution | undefined,
   maxOutputTokens?: number,
+  auth?: ModelProfileSnapshot['auth'],
 ): ReasoningWire | undefined {
   if (!resolution) return undefined;
   if (!payload || typeof payload !== 'object') throw new Error('invalid provider payload');
@@ -133,7 +135,11 @@ export function verifyReasoningWire(
       : body.max_output_tokens;
     const unsupported =
       model.api === 'openai-codex-responses' ||
-      (hasApi(model, 'openai-responses') && model.compat?.supportsMaxOutputTokens === false);
+      (hasApi(model, 'openai-responses') &&
+        (model.compat?.supportsMaxOutputTokens === false ||
+          (auth === 'oauth' &&
+            model.provider === 'openai' &&
+            model.baseUrl === 'https://api.openai.com/v1')));
     if (
       cap === undefined
         ? !unsupported

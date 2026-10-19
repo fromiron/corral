@@ -159,6 +159,7 @@ function checkReviewRecipes(c: Context) {
     if (loop.type !== 'loop' || !loop.reviewRecipe) continue;
     const recipe = loop.reviewRecipe,
       candidate = c.nodes.get(recipe.candidateNodeId);
+    const preparation = recipe.preparationNodeId ? c.nodes.get(recipe.preparationNodeId) : null;
     const members = c.definition.nodes.filter(
       (node) => 'loopId' in node && node.loopId === loop.id,
     );
@@ -179,7 +180,15 @@ function checkReviewRecipes(c: Context) {
         nodeId: loop.id,
       });
     if (
-      members.length !== 3 ||
+      members.length !== (recipe.preparationNodeId ? 4 : 3) ||
+      (recipe.preparationNodeId &&
+        (preparation?.type !== 'agent' ||
+          preparation.invocation !== 'scheduled' ||
+          preparation.loopId !== loop.id ||
+          preparation.id === candidate?.id ||
+          preparation.id === reviewer?.id ||
+          !edge(loop.id, 'body', preparation.id) ||
+          !edge(preparation.id, 'out', recipe.candidateNodeId))) ||
       candidate?.type !== 'agent' ||
       candidate.loopId !== loop.id ||
       candidate.invocation !== 'scheduled' ||
@@ -187,7 +196,7 @@ function checkReviewRecipes(c: Context) {
       reviewer.id === candidate.id ||
       c.roleOf(reviewer.id)?.outputContract !== 'review' ||
       decision?.type !== 'decision' ||
-      !edge(loop.id, 'body', candidate.id) ||
+      (!recipe.preparationNodeId && !edge(loop.id, 'body', candidate.id)) ||
       !edge(candidate.id, 'out', reviewer.id) ||
       !edge(reviewer.id, 'out', decision.id) ||
       !edge(decision.id, 'pass', loop.id, 'exit') ||

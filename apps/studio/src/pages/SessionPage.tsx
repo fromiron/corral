@@ -12,6 +12,7 @@ import {
   type RunReference,
   TERMINAL_EXECUTION_STATUSES,
   TERMINAL_RUN_STATUSES,
+  UltraSelection,
 } from '@corral/contracts';
 import type {
   AutoStartResult,
@@ -107,6 +108,7 @@ import {
 import { TabRow } from '../workbench/TabRow.tsx';
 import { TextAttachmentList, TextAttachmentPicker } from '../workbench/TextAttachments.tsx';
 import { TopbarActions } from '../workbench/TopbarSlot.tsx';
+import { defaultUltraSelection, UltraModels } from '../workbench/UltraModels.tsx';
 import { useMentionSearch } from '../workbench/useMentionSearch.ts';
 import {
   type ProfileInfo,
@@ -952,16 +954,20 @@ function EntryCard({
     ? [
         `${t(`autoTemplate.${entry.auto.template}`)}${entry.auto.source === 'fallback' ? ` (${t('autoFallback')})` : ''}`,
         entry.auto.fallback ? t(`autoFallbackReason.${entry.auto.fallback}`) : null,
-        entry.auto.modelProfile,
-        entry.auto.requestedReasoning?.mode === 'fixed'
-          ? tq(`level.${entry.auto.requestedReasoning.level}`)
-          : entry.auto.requestedReasoning?.mode === 'route'
-            ? t('reasoningRoute')
-            : entry.auto.requestedReasoning
-              ? tq(entry.auto.requestedReasoning.mode)
-              : entry.auto.modelProfile
-                ? tq('legacy')
-                : null,
+        entry.auto.ultra?.modelProfiles.join(', ') ?? entry.auto.modelProfile,
+        entry.auto.ultra
+          ? Object.entries(entry.auto.ultra.reasoning)
+              .map(([profile, level]) => `${profile}: ${tq(`level.${level}`)}`)
+              .join(', ')
+          : entry.auto.requestedReasoning?.mode === 'fixed'
+            ? tq(`level.${entry.auto.requestedReasoning.level}`)
+            : entry.auto.requestedReasoning?.mode === 'route'
+              ? t('reasoningRoute')
+              : entry.auto.requestedReasoning
+                ? tq(entry.auto.requestedReasoning.mode)
+                : entry.auto.modelProfile
+                  ? tq('legacy')
+                  : null,
         // CR-024 §7: the level the start model picked for this request.
         entry.auto.reasoning
           ? `${t('reasoningPicked', { level: tq(`level.${entry.auto.reasoning}`) })}${entry.auto.reasoningSource ? ` (${t(`reasoningSource.${entry.auto.reasoningSource}`)})` : ''}`
@@ -1009,6 +1015,7 @@ function EntryCard({
               attachments: entry.attachments,
               images: entry.images,
               qualityPreset: entry.qualityPreset ?? entry.auto?.qualityPreset,
+              ultra: entry.ultra ?? entry.auto?.ultra,
               taskScope: entry.taskScope,
               verificationScope: entry.verificationScope,
             })
@@ -1273,6 +1280,7 @@ function Composer({
   const [qualityPreset, setQualityPreset] = useState<'default' | 'ultra'>(
     restored.qualityPreset ?? 'default',
   );
+  const [ultraDraft, setUltraDraft] = useState<UltraSelection | null>(restored.ultra ?? null);
   const [reviewOnly, setReviewOnly] = useState(restored.taskScope === 'review_only');
   const [verificationScope, setVerificationScope] = useState<'targeted' | 'release'>(
     restored.verificationScope ?? 'targeted',
@@ -1346,6 +1354,24 @@ function Composer({
   // UX-06: which model each role uses, and whether it is connected.
   const profiles = useModelProfiles();
   const autoChoice = autoChoiceFor(session.auto, profiles);
+  const ultraProfiles = useMemo(
+    () =>
+      runMode === 'mock'
+        ? [...new Set([autoChoice.modelProfile, 'model-a', 'model-b'])].map((profileId) => ({
+            profileId,
+            label: `${t('modeMock')} · ${profileId}`,
+            available: true,
+            reasoningCapabilities: { levels: ['max' as const], providerDefault: true },
+          }))
+        : profiles,
+    [runMode, profiles, autoChoice.modelProfile, t],
+  );
+  const ultra = useMemo(
+    () => ultraDraft ?? defaultUltraSelection(autoChoice.modelProfile, ultraProfiles),
+    [ultraDraft, autoChoice.modelProfile, ultraProfiles],
+  );
+  const requestChoice =
+    qualityPreset === 'ultra' ? { modelProfile: autoChoice.modelProfile } : autoChoice;
   const isAuto = session.corralId === null;
   const missingTeam = !isAuto && !team;
   const roles = useTeamRoles(team);
@@ -1473,9 +1499,9 @@ function Composer({
       ...(images.length ? { images } : {}),
       ...(reviewOnly ? { taskScope: 'review_only' as const } : {}),
       ...(verificationScope === 'release' ? { verificationScope } : {}),
-      ...(qualityPreset === 'ultra' ? { qualityPreset } : {}),
+      ...(qualityPreset === 'ultra' ? { qualityPreset, ultra } : {}),
     }),
-    [text, lock, picked, attachments, images, reviewOnly, verificationScope, qualityPreset],
+    [text, lock, picked, attachments, images, reviewOnly, verificationScope, qualityPreset, ultra],
   );
   const draftRevision = useRef(0);
   useEffect(() => {
@@ -1627,14 +1653,20 @@ function Composer({
     refs: RunReference[],
     scope: { taskScope?: 'review_only'; verificationScope?: 'release' },
   ) => {
+    if (
+      qualityPreset === 'ultra' &&
+      (!UltraSelection.safeParse(ultra).success ||
+        ultra.verifierProfile === autoChoice.modelProfile)
+    )
+      return { runId: null, detail: tc('ultraNeedsModels'), code: 'CAPABILITY_DENIED' };
     const controller = new AbortController();
     const proposed: AutoRunStart = {
       ...scope,
       commandId,
       sessionId: session.sessionId,
       brief,
-      choice: autoChoice,
-      ...(qualityPreset === 'ultra' ? { qualityPreset } : {}),
+      choice: requestChoice,
+      ...(qualityPreset === 'ultra' ? { qualityPreset, ultra } : {}),
       mode: runMode,
       ...(latest ? { startFrom: { runId: latest.runId, artifactVersionId: latest.id } } : {}),
       ...(refs.length ? { references: refs } : {}),
@@ -1677,6 +1709,7 @@ function Composer({
         auto: result.autoRoute
           ? {
               template: result.autoRoute.template,
+              ...(result.autoRoute.ultra ? { ultra: result.autoRoute.ultra } : {}),
               ...(result.autoRoute.qualityPreset
                 ? { qualityPreset: result.autoRoute.qualityPreset }
                 : {}),
@@ -1711,7 +1744,10 @@ function Composer({
       expectedRevision: session.revision,
     });
     if (!result.ok) setError(t('failed', { message: result.message }));
-    else await router.invalidate();
+    else {
+      if (auto.modelProfile !== autoChoice.modelProfile) setUltraDraft(null);
+      await router.invalidate();
+    }
   };
 
   /** A refused request keeps its text, intent and references so it can be fixed and resent. */
@@ -1741,7 +1777,14 @@ function Composer({
         const commandId = commandFor(
           team
             ? `next\u0000${body}\u0000${JSON.stringify([refs, harnessOverrides, roleOverrides, runMode, scope])}`
-            : autoCommandSeed(body, refs, autoChoice, scope, qualityPreset),
+            : autoCommandSeed(
+                body,
+                refs,
+                requestChoice,
+                scope,
+                qualityPreset,
+                qualityPreset === 'ultra' ? ultra : undefined,
+              ),
         );
         const { runId, detail, code, auto, cancelled, cancelError } = await startNext(
           body,
@@ -1757,7 +1800,7 @@ function Composer({
         }
         await record({
           ...scope,
-          ...(isAuto && !team && qualityPreset === 'ultra' ? { qualityPreset } : {}),
+          ...(isAuto && !team && qualityPreset === 'ultra' ? { qualityPreset, ultra } : {}),
           intent,
           text: body,
           state: runId ? 'started' : 'refused',
@@ -1863,6 +1906,7 @@ function Composer({
               taskScope?: string;
               verificationScope?: string;
               qualityPreset?: string;
+              ultra?: UltraSelection;
             }
         >
       ).detail;
@@ -1880,6 +1924,11 @@ function Composer({
       setImages(typeof value === 'string' ? [] : (value.images ?? []));
       setQualityPreset(
         typeof value === 'object' && value.qualityPreset === 'ultra' ? 'ultra' : 'default',
+      );
+      setUltraDraft(
+        typeof value === 'object'
+          ? (UltraSelection.strip().safeParse(value.ultra).data ?? null)
+          : null,
       );
       setReviewOnly(typeof value === 'object' && value.taskScope === 'review_only');
       setVerificationScope(
@@ -2018,6 +2067,10 @@ function Composer({
         next === -1 ? undefined : session.entries.findLast((entry) => entry.text === history[next]);
       setAttachments(recalledEntry?.attachments ?? []);
       setImages(recalledEntry?.images ?? []);
+      setUltraDraft(
+        UltraSelection.strip().safeParse(recalledEntry?.ultra ?? recalledEntry?.auto?.ultra).data ??
+          null,
+      );
       setQualityPreset(
         (recalledEntry?.qualityPreset ?? recalledEntry?.auto?.qualityPreset) === 'ultra'
           ? 'ultra'
@@ -2048,6 +2101,23 @@ function Composer({
     profiles !== null &&
     autoNotReady(autoChoice, profiles, runMode);
   const autoProfile = profiles?.find((p) => p.profileId === autoChoice.modelProfile);
+  const ultraBlocked =
+    isAuto &&
+    !team &&
+    intent === 'next' &&
+    qualityPreset === 'ultra' &&
+    (!UltraSelection.safeParse(ultra).success ||
+      !ultra.modelProfiles.includes(autoChoice.modelProfile) ||
+      ultra.verifierProfile === autoChoice.modelProfile ||
+      ultra.modelProfiles.some(
+        (id) =>
+          !ultraProfiles?.some(
+            (profile) =>
+              profile.profileId === id &&
+              profile.available &&
+              profile.reasoningCapabilities?.levels.length,
+          ),
+      ));
   const liveUnavailable =
     runMode === 'live' && !live && (intent === 'next' || intent === 'explain');
   const unavailable =
@@ -2060,6 +2130,7 @@ function Composer({
       verificationScope === 'release') &&
       intent !== 'next') ||
     autoBlocked ||
+    ultraBlocked ||
     notReady.length > 0 ||
     resolved.blocked !== null ||
     missingChips.length > 0 ||
@@ -2348,7 +2419,13 @@ function Composer({
               />
             ) : null}
             {isAuto && !team && qualityPreset === 'ultra' ? (
-              <span role="status">{tc('qualityUltraHint')}</span>
+              <UltraModels
+                primary={autoChoice.modelProfile}
+                profiles={ultraProfiles}
+                value={ultra}
+                onChange={setUltraDraft}
+                disabled={busy || intent !== 'next'}
+              />
             ) : null}
             <label className="flex items-center gap-1">
               <input
@@ -2525,7 +2602,11 @@ function Composer({
                 open={autoModelOpen}
                 onOpenChange={setAutoModelOpen}
                 onValueChange={(value) => {
-                  if (value.startsWith('model:')) void updateAuto({ modelProfile: value.slice(6) });
+                  if (value.startsWith('model:'))
+                    void updateAuto({
+                      ...(qualityPreset === 'ultra' ? autoChoice : {}),
+                      modelProfile: value.slice(6),
+                    });
                   else if (value.startsWith('reason:')) {
                     const reasoning = reasoningFrom(value.slice(7));
                     void updateAuto(
@@ -2540,10 +2621,10 @@ function Composer({
                     value: `model:${profile.profileId}`,
                     label:
                       profile.profileId === autoChoice.modelProfile && intent === 'next'
-                        ? `${profile.label} · ${autoChoice.reasoning?.mode === 'fixed' ? tq(`level.${autoChoice.reasoning.level}`) : autoChoice.reasoning?.mode === 'route' ? t('reasoningRoute') : tq(autoChoice.reasoning?.mode ?? 'legacy')}`
+                        ? `${profile.label} · ${qualityPreset === 'ultra' ? tc('ultraMaximumShort') : autoChoice.reasoning?.mode === 'fixed' ? tq(`level.${autoChoice.reasoning.level}`) : autoChoice.reasoning?.mode === 'route' ? t('reasoningRoute') : tq(autoChoice.reasoning?.mode ?? 'legacy')}`
                         : profile.label,
                   })),
-                  ...(intent === 'next'
+                  ...(intent === 'next' && qualityPreset !== 'ultra'
                     ? [
                         { value: 'reason:', label: `${tq('label')} · ${tq('legacy')}` },
                         {
@@ -2618,6 +2699,7 @@ function Composer({
             session={session}
             model={autoProfile?.label ?? autoChoice.modelProfile}
             reasoning={autoChoice.reasoning}
+            ultra={qualityPreset === 'ultra' && intent === 'next'}
             mode={runMode}
             intent={intent}
           />
@@ -2626,6 +2708,7 @@ function Composer({
           <span className="text-warning">{t('noResult')}</span>
         ) : null}
         {liveUnavailable ? <p role="alert">{tc('liveUnavailable')}</p> : null}
+        {ultraBlocked ? <p role="status">{tc('ultraNeedsModels')}</p> : null}
         {(intent === 'next' || intent === 'explain') && team ? (
           <PreRunSummary session={session} team={team} mode={runMode} intent={intent} />
         ) : null}
@@ -2819,15 +2902,18 @@ function AutoPreRunSummary({
   reasoning,
   mode,
   intent,
+  ultra,
 }: {
   session: WorkSession;
   model: string;
   reasoning: AutoReasoning | undefined;
   mode: 'mock' | 'live';
   intent: 'next' | 'explain';
+  ultra: boolean;
 }) {
   const t = useTranslations('Sessions');
   const tq = useTranslations('Reasoning');
+  const tc = useTranslations('Composer');
   const { workspaces } = useServices();
   const [copy, setCopy] = useState(false);
   const [workspaceRevision, setWorkspaceRevision] = useState(0);
@@ -2846,8 +2932,9 @@ function AutoPreRunSummary({
       live = false;
     };
   }, [workspaces, session.sessionId, workspaceRevision]);
-  const level =
-    reasoning?.mode === 'fixed'
+  const level = ultra
+    ? tc('ultraMaximumShort')
+    : reasoning?.mode === 'fixed'
       ? tq(`level.${reasoning.level}`)
       : reasoning?.mode === 'route'
         ? t('reasoningRoute')

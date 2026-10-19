@@ -107,4 +107,22 @@ Models → 모델 편집에서 엔드포인트와 프로필을 추가한다. 이
 
 공식 두 주소와 정확한 모델 ID에는 context 1,000,000, 이미지 입력, `off/low/high/max` 추론을 등록한다. 출력 기본 상한은 기존 4,096을 유지하며 명시한 모델 한도·기능 설정이 우선한다. Pi 1.3.0의 `thinkingLevelMap`과 OpenAI completions compatibility를 사용해 `off`는 `none`, `max`는 `max`로 보낸다. provider default는 effort를 생략한다. 모델 ID가 같더라도 다른 gateway에 이 설정을 적용하지 않는다.
 
-근거: [Hive 모델 API](https://docs.thehive.ai/docs/deepseek-v41-flash), [연결·인증·도구 호출 문서](https://docs.thehive.ai/docs/chat-completions-openai-compatible-llms). Hive 요청은 `max_completion_tokens`와 SSE를 사용한다. fake transport로 실제 Pi 직렬화·최종 usage chunk를 검증했으며 실제 Hive 접근 권한·도구 호출·품질·청구는 별도 live 시험 대상이다. 비용 정보가 없는 사용자 정의 엔드포인트를 무료라고 해석하지 않는다. C-118의 새 복수 LLM Ultra는 아직 구현 중이다.
+근거: [Hive 모델 API](https://docs.thehive.ai/docs/deepseek-v41-flash), [연결·인증·도구 호출 문서](https://docs.thehive.ai/docs/chat-completions-openai-compatible-llms). Hive 요청은 `max_completion_tokens`와 SSE를 사용한다. 2026-10-19 별도 opt-in 시험에서 실제 Hive 모델의 `high` 요청 2회와 산출물 작성·제출, usage 응답을 확인했다. 모델 품질 개선·최대 추론의 실제 청구량·복수 제공자 전체 live Ultra 검증과는 구분한다. 비용 정보가 없는 사용자 정의 엔드포인트를 무료라고 해석하지 않는다.
+
+## 복수 모델 Ultra
+
+자동 세션에서 **Ultra** 또는 `/ultra`를 선택하면 참여 모델과 필수 검토 모델을 고를 수 있다. 최소 서로 다른 모델 2개, 최대 5개다. 주 모델이 계획·실행·종합하고, 선택한 다른 모델이 종합본을 검토한다. 필요한 경우 읽기 전용 보조 에이전트를 병렬로 사용한다. 같은 회사의 다른 모델도 가능하며, 같은 모델의 프로필 별칭 두 개는 서로 다른 모델로 세지 않는다.
+
+Ultra는 각 모델에서 검증된 최고 추론 단계를 사용한다. 일반 모드에 저장한 추론 강도는 바꾸지 않는다. 미연결 모델이나 최고 추론 매핑이 확인되지 않은 모델은 시작 전에 거절한다. 선택한 연결에는 이번 요청·첨부·허용한 프로젝트 자료·파생 결과가 전달될 수 있다.
+
+기존 총예산 안에서 동시 모델 요청 최대 3개, 활성 보조 에이전트 2개, 전체 위임 4개, 수정 최대 2회다. 남은 필수 단계의 최소 호출/출력을 보호하며 예산 80% 경계에서는 새 선택 위임과 수정을 멈춘다. 이는 마무리 성공 보장이나 실제 금액 상한이 아니다. 모델 검토 통과는 프로젝트 테스트 실행·통과를 뜻하지 않는다.
+
+CLI 예시(연결된 프로필 ID를 사용):
+
+```sh
+pnpm corral exec auto --ultra --model-profile model-b \
+  --ultra-models model-b,deepseek-hive --ultra-verifier deepseek-hive \
+  --input brief.txt
+```
+
+새 Ultra CLI의 `--effort`는 허용하지 않는다. HTTP 자동 실행 요청에는 기존 `qualityPreset: "ultra"`와 함께 `ultra: {"version": 1, "modelProfiles": ["model-b", "deepseek-hive"], "verifierProfile": "deepseek-hive"}`를 전달하고 `choice.reasoning`을 생략한다. 선택과 해석된 추론 단계는 Run snapshot에 남으며 실행 도중 모델 교체는 새 Run이 필요하다. 과거 `ultra` 선택 필드가 없는 단일 모델 기록은 기존 방식으로 해석한다.

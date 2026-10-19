@@ -450,6 +450,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
                     actual,
                     permit.reasoning,
                     permit.maxOutputTokens,
+                    start.model.auth,
                   );
                   const serialized = canonicalJson(actual);
                   for (const skill of mandatory)

@@ -1,5 +1,9 @@
-import type { TextAttachment } from '@corral/contracts';
-import { type ImageAttachment, ImageAttachments } from '@corral/contracts';
+import {
+  type ImageAttachment,
+  ImageAttachments,
+  type TextAttachment,
+  UltraSelection,
+} from '@corral/contracts';
 import type { SessionIntent } from '@corral/core';
 import { validTextAttachments } from '@corral/core';
 import type { MentionItem } from './composerMenu.ts';
@@ -14,6 +18,7 @@ export const COMPOSER_DRAFT_SENT = 'corral:composer-draft-sent';
 const revisions = new Map<string, { value: string | null; revision: number }>();
 
 export interface ComposerDraft {
+  ultra?: UltraSelection;
   qualityPreset?: 'ultra';
   images?: ImageAttachment[];
   taskScope?: 'review_only';
@@ -60,6 +65,9 @@ export function parseComposerDraft(raw: string | null): ComposerDraft {
         : {}),
       text: typeof value.text === 'string' ? value.text : '',
       ...(value.qualityPreset === 'ultra' ? { qualityPreset: 'ultra' as const } : {}),
+      ...(UltraSelection.safeParse(value.ultra).success
+        ? { ultra: UltraSelection.parse(value.ultra) }
+        : {}),
       ...(value.taskScope === 'review_only' ? { taskScope: 'review_only' as const } : {}),
       ...(value.verificationScope === 'release' ? { verificationScope: 'release' as const } : {}),
       ...(Array.isArray(value.attachments)
@@ -84,6 +92,7 @@ export function serializeComposerDraft(draft: ComposerDraft): string | null {
     !draft.attachments?.length &&
     !draft.images?.length &&
     !draft.qualityPreset &&
+    !draft.ultra &&
     !draft.taskScope &&
     !draft.verificationScope
   )

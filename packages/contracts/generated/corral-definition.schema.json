@@ -489,6 +489,10 @@
                     "type": "string",
                     "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
                   },
+                  "preparationNodeId": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                  },
                   "evaluatorRoleId": {
                     "type": "string",
                     "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"

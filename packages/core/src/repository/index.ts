@@ -13,6 +13,7 @@ import {
   QualityPreset,
   RunInput,
   type TextAttachment,
+  UltraSelection,
 } from '@corral/contracts';
 import { z } from 'zod';
 import { validTextAttachments } from '../attachments.ts';
@@ -65,6 +66,7 @@ export type SessionEntryState =
   | 'dismissed';
 
 export interface SessionEntry {
+  ultra?: UltraSelection;
   qualityPreset?: 'default' | 'ultra';
   images?: ImageAttachment[];
   attachments?: TextAttachment[];
@@ -88,6 +90,7 @@ export interface SessionEntry {
 }
 
 export const SessionEntryAuto = AutoRoute.pick({
+  ultra: true,
   qualityPreset: true,
   template: true,
   source: true,
@@ -147,6 +150,7 @@ export type SessionResult =
     };
 
 export interface NewSessionEntry {
+  ultra?: UltraSelection;
   qualityPreset?: 'default' | 'ultra';
   images?: ImageAttachment[];
   attachments?: TextAttachment[];
@@ -348,6 +352,17 @@ export function planSessionEntry(
   )
     return { ok: false, error: 'invalid', message: 'quality preset requires a next request' };
   const text = entry.text.trim();
+  if (
+    entry.ultra &&
+    (!UltraSelection.safeParse(entry.ultra).success ||
+      entry.intent !== 'next' ||
+      entry.qualityPreset !== 'ultra')
+  )
+    return {
+      ok: false,
+      error: 'invalid',
+      message: 'Ultra model selection requires an Ultra next request',
+    };
   if (!text || text.length > ENTRY_MAX)
     return { ok: false, error: 'invalid', message: `A request has 1 to ${ENTRY_MAX} characters.` };
   if (entry.commandId) {
@@ -362,6 +377,7 @@ export function planSessionEntry(
           attachments: value.attachments ?? [],
           images: value.images ?? [],
           qualityPreset: value.qualityPreset ?? null,
+          ...(value.ultra ? { ultra: value.ultra } : {}),
           taskScope: value.taskScope ?? null,
           verificationScope: value.verificationScope ?? null,
         });
@@ -395,6 +411,7 @@ export function planSessionEntry(
           commandId: entry.commandId ?? null,
           ...(entry.auto ? { auto: entry.auto } : {}),
           ...(entry.qualityPreset ? { qualityPreset: entry.qualityPreset } : {}),
+          ...(entry.ultra ? { ultra: UltraSelection.parse(entry.ultra) } : {}),
           ...(entry.taskScope ? { taskScope: entry.taskScope } : {}),
           ...(entry.verificationScope ? { verificationScope: entry.verificationScope } : {}),
           ...(entry.attachments?.length

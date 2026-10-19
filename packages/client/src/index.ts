@@ -41,6 +41,7 @@ import {
   type StartRunRequest,
   type StreamFrame,
   type TeamPlan,
+  type UltraSelection,
   type VerificationReport,
 } from '@corral/contracts';
 import type {
@@ -68,6 +69,7 @@ import type {
 
 /** POST /api/v1/runs/auto (CR-024). */
 export interface AutoRunStart {
+  ultra?: UltraSelection;
   qualityPreset?: 'default' | 'ultra';
   taskScope?: 'work' | 'review_only';
   verificationScope?: 'targeted' | 'release';

@@ -38,6 +38,7 @@ import {
   StartFrom,
   TERMINAL_RUN_STATUSES,
   TextAttachments,
+  UltraSelection,
 } from '@corral/contracts';
 import {
   autoDefinition,
@@ -246,6 +247,7 @@ const UpdateSession = z.strictObject({
   expectedRevision: z.int().min(1),
 });
 const NewEntry = z.strictObject({
+  ultra: UltraSelection.optional(),
   qualityPreset: QualityPreset.optional(),
   images: ImageAttachments.optional(),
   taskScope: RunInput.shape.taskScope,
@@ -277,6 +279,7 @@ const ExplainRequest = z.strictObject({
 });
 // CR-024: a request in an auto session; the runtime chooses the template and builds the team.
 const AutoRunRequest = z.strictObject({
+  ultra: UltraSelection.optional(),
   qualityPreset: QualityPreset.optional(),
   taskScope: RunInput.shape.taskScope,
   verificationScope: RunInput.shape.verificationScope,
@@ -958,6 +961,7 @@ async function createCorralServer(
   // An auto session's request (CR-024): one capped choice request, then one run of the chosen
   // template. A resend returns the first start; a dropped connection while choosing starts none.
   const autoStarter = createAutoStarter<AbortSignal>({
+    resolveUltra: (selection, primary, mode) => coordinator.resolveUltra(selection, primary, mode),
     startRun: async (request, signal) => {
       // Choosing can take 30 seconds; edits before the run belong to its starting tree.
       const startTree = request.sessionId ? await files.currentTree(request.sessionId) : null;
@@ -971,6 +975,7 @@ async function createCorralServer(
                 id: request.definition.id,
                 template: route.template,
                 ...(route.qualityPreset ? { qualityPreset: route.qualityPreset } : {}),
+                ...(route.ultra ? { ultra: route.ultra } : {}),
                 brief: request.definition.input.brief,
                 criteria: request.definition.input.criteria,
                 taskScope: request.definition.input.taskScope,
@@ -1061,6 +1066,7 @@ async function createCorralServer(
           sessionId: body.sessionId,
           brief: body.brief,
           ...(body.qualityPreset ? { qualityPreset: body.qualityPreset } : {}),
+          ...(body.ultra ? { ultra: body.ultra } : {}),
           choice: body.choice,
           mode: body.mode,
           ...(body.taskScope ? { taskScope: body.taskScope } : {}),

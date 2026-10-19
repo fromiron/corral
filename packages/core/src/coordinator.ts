@@ -76,6 +76,7 @@ import {
   type ToolOutcome,
   type ToolPermissionPlan,
   type ToolProposal,
+  type UltraSelection,
   UserInputRequest,
   VerificationReport,
   validUserAnswers,
@@ -132,6 +133,7 @@ import {
   type StoredCommand,
 } from './store/run-store.ts';
 import { toolPermission, toolPermissionPlan } from './tool-policy.ts';
+import { resolveUltraSelection, ULTRA_STAGES, ultraBudgetAllowance } from './ultra-team.ts';
 
 // The single place domain state is decided (ADR-003, C-012/C-013). A command is validated and
 // turned into events; the events, the projection they produce, the command record and artifact
@@ -370,6 +372,7 @@ interface LiveRun {
    * open. A parent waiting for children or an answer holds none.
    */
   slots: { free: number; waiters: (() => void)[]; held: Map<string, string> };
+  ultraDraining: boolean;
   /** How every started execution ended, by task (await_tasks, a parent's own end). */
   taskOutcomes: Map<string, Promise<StepOutcome>>;
   /** Open questions and how to wake their askers. */
@@ -1242,6 +1245,21 @@ export class Coordinator {
     const resolved = this.resolveDefinition(request);
     if ('error' in resolved) return refuse(resolved.error);
     const autoRoute = 'autoRoute' in request ? request.autoRoute : undefined;
+    if (autoRoute?.ultra) {
+      if (autoRoute.qualityPreset !== 'ultra' || autoRoute.reasoning)
+        return refuse({
+          code: 'CAPABILITY_DENIED',
+          message: 'Multi-model Ultra requires its maximum supported reasoning policy',
+        });
+      const { reasoning: _reasoning, ...selection } = autoRoute.ultra;
+      const chosen = this.resolveUltra(selection, autoRoute.modelProfile, request.mode);
+      if (!chosen.ok) return refuse(chosen.error);
+      if (hashOf(chosen.snapshot) !== hashOf(autoRoute.ultra))
+        return refuse({
+          code: 'CAPABILITY_DENIED',
+          message: 'Ultra model reasoning metadata changed before the run started',
+        });
+    }
     if (autoRoute?.qualityPreset === 'ultra') {
       const parsedDefinition = CorralDefinition.safeParse(resolved.definition);
       if (!parsedDefinition.success)
@@ -1251,6 +1269,7 @@ export class Coordinator {
         id: source.id,
         template: 'write_review',
         qualityPreset: 'ultra',
+        ...(autoRoute.ultra ? { ultra: autoRoute.ultra } : {}),
         brief: source.input.brief,
         criteria: source.input.criteria,
         taskScope: source.input.taskScope,
@@ -1545,6 +1564,7 @@ export class Coordinator {
       rounds: new Map(),
       recipes: new Map(),
       slots: { free: definition.limits.maxModelConcurrency, waiters: [], held: new Map() },
+      ultraDraining: false,
       taskOutcomes: new Map(),
       questions: new Map(),
       cancelRequested: new Set(),
@@ -2311,6 +2331,21 @@ export class Coordinator {
     const change = command.payload;
     const refuse = (code: CommandError['code'], message: string) =>
       this.refuseControl(command, payloadHash, { code, message });
+    if (
+      run.snapshot.autoRoute?.ultra &&
+      change.kind === 'node_future' &&
+      (change.modelProfile || change.reasoning)
+    )
+      return refuse(
+        'CAPABILITY_DENIED',
+        'Changing an Ultra model or its maximum reasoning requires a new run',
+      );
+    if (
+      run.snapshot.autoRoute?.ultra &&
+      change.kind === 'run_limits' &&
+      (change.changes.maxSpawns ?? 0) > 4
+    )
+      return refuse('CAPABILITY_DENIED', 'Ultra permits at most four optional delegations');
     let before: Record<string, unknown> = {},
       after: Record<string, unknown> = {};
     let patchedModel: ModelProfileSnapshot | undefined;
@@ -2906,6 +2941,11 @@ export class Coordinator {
       this.judgments?.settings.reasoning_effort.apply === true,
     );
     return error ? { code: 'CAPABILITY_DENIED', message: error } : null;
+  }
+
+  /** Resolve every selected Ultra model before any paid planning or worker call. */
+  resolveUltra(selection: UltraSelection, primary: string, mode: 'mock' | 'live') {
+    return resolveUltraSelection(selection, primary, mode, this.models);
   }
 
   /** The reasoning levels a profile supports; null when unknown or simulated (CR-024 §7). */
@@ -4211,6 +4251,52 @@ export class Coordinator {
     }
   }
 
+  private ultraAllowance(run: LiveRun, input: AgentStartInput, optional = input.depth > 0) {
+    if (!run.snapshot.autoRoute?.ultra) return null;
+    let nodeId = input.nodeId;
+    let parent = run.projection.executions[input.executionId]?.parentExecutionId;
+    while (parent) {
+      const execution = run.projection.executions[parent];
+      if (!execution) break;
+      nodeId = execution.nodeId;
+      parent = execution.parentExecutionId;
+    }
+    const stage = ULTRA_STAGES.find((stage) => stage === nodeId);
+    if (!stage) return { draining: true, maxOutputTokens: 0 };
+    const allowance = ultraBudgetAllowance(
+      run.projection.budget,
+      run.limits,
+      stage,
+      optional,
+      run.ultraDraining,
+    );
+    run.ultraDraining ||= allowance.draining;
+    return allowance;
+  }
+
+  private ultraSpawnRefusal(
+    run: LiveRun,
+    input: AgentStartInput,
+    proposal: ToolProposal,
+  ): Refusal | null {
+    if (!run.snapshot.autoRoute?.ultra) return null;
+    const count = proposal.args.mode === 'items' ? 1 : (proposal.args.tasks as unknown[]).length;
+    const active = Object.values(run.projection.executions).filter(
+      (execution) =>
+        execution.parentExecutionId !== null && !TERMINAL_EXECUTION_STATUSES.has(execution.status),
+    ).length;
+    const allowance = this.ultraAllowance(run, input, true);
+    const message =
+      input.depth > 0
+        ? 'Ultra specialists cannot delegate further'
+        : count + active > 2
+          ? 'Ultra allows at most two active specialists'
+          : !allowance?.maxOutputTokens
+            ? 'Ultra is preserving its remaining budget for required synthesis and verification'
+            : null;
+    return message ? { kind: 'refuse', code: 'LIMIT_REACHED', message } : null;
+  }
+
   private async finalizeOutput(run: LiveRun, outputNodeId: string) {
     await this.boundary(run);
     const output = run.snapshot.definition.nodes.find((n) => n.id === outputNodeId);
@@ -4312,6 +4398,20 @@ export class Coordinator {
       const verdict = candidate.checks.some((check) => check.verdict === 'fail')
         ? 'revise'
         : recorded.verdict;
+      if (verdict === 'revise' && run.snapshot.autoRoute?.ultra) {
+        const next = ultraBudgetAllowance(
+          run.projection.budget,
+          run.limits,
+          'write',
+          false,
+          run.ultraDraining,
+        );
+        run.ultraDraining ||= next.draining;
+        if (run.ultraDraining || !next.maxOutputTokens) {
+          this.stopRecipe(run, node.loopId, 'token_limit', candidate.artifactVersionId);
+          throw new Error('Ultra stopped revisions to preserve its completion budget');
+        }
+      }
       this.commit(run, [
         {
           type: 'recipe.evaluated',
@@ -6589,6 +6689,11 @@ export class Coordinator {
           let recipeRemaining: number;
           try {
             recipeRemaining = this.recipeAllowance(run, executionId);
+            const ultra = this.ultraAllowance(run, input);
+            if (ultra) {
+              if (!ultra.maxOutputTokens) throw new Error('LIMIT_REACHED: Ultra completion budget');
+              recipeRemaining = Math.min(recipeRemaining, ultra.maxOutputTokens);
+            }
           } catch (error) {
             this.releaseSlot(run);
             throw error;
@@ -7055,7 +7160,18 @@ export class Coordinator {
     tool: ToolFrame,
     recheck: (proposal: ToolProposal) => Refusal | null,
   ): Promise<ToolOutcome> {
-    if (proposal.args.mode === 'items') return this.spawnItems(run, input, proposal, tool, recheck);
+    const check = (candidate: ToolProposal) =>
+      this.ultraSpawnRefusal(run, input, candidate) ?? recheck(candidate);
+    if (proposal.args.mode === 'items') return this.spawnItems(run, input, proposal, tool, check);
+    const refused = this.ultraSpawnRefusal(run, input, proposal);
+    if (refused) {
+      this.commit(run, [...tool.opening, ...tool.closing(null, refused.message)]);
+      return {
+        ok: false,
+        toolCallId: tool.toolCallId,
+        error: { code: refused.code, message: refused.message },
+      };
+    }
     const tasks = proposal.args.tasks as { targetNodeId: string; brief: string }[];
     const children = tasks.map((task) =>
       this.prepareExecution(run, {

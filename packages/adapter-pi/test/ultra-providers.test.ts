@@ -18,6 +18,57 @@ import {
 import { providerRequestFence } from '../src/request-fence.ts';
 import { sandboxChannel } from '../src/sandbox-channel.ts';
 
+it('[TC-ULTRA-003-N] accepts Pi ChatGPT OAuth cap omission only for the pinned official transport, while API keys retain their cap', async () => {
+  const model = builtinModels().getModel('openai', 'gpt-6.1-sol')!;
+  const resolution: ReasoningResolution = {
+    requested: { mode: 'fixed', level: 'high' },
+    resolved: 'high',
+    source: 'fixed',
+    preparationId: 'oauth_fixture',
+  };
+  for (const auth of ['oauth', 'api_key'] as const) {
+    const request = reasoningRequest(model, { maxTokens: 4096 }, resolution);
+    let captured: unknown;
+    const result = await responses(
+      request.model as Model<'openai-responses'>,
+      normalizeContext({ messages: [{ role: 'user', content: 'Fixture', timestamp: 0 }] }),
+      {
+        ...request.options,
+        apiKey: auth === 'oauth' ? 'fixture-chatgpt-token' : 'sk-fixture',
+        fetch: async () => {
+          throw new Error('network forbidden');
+        },
+        onPayload: (payload) => {
+          captured = payload;
+          throw new Error('captured before send');
+        },
+      },
+    ).result();
+    expect(result.errorMessage).toContain('captured before send');
+    expect((captured as { max_output_tokens?: number }).max_output_tokens).toBe(
+      auth === 'oauth' ? undefined : 4096,
+    );
+    expect(verifyReasoningWire(model, captured, resolution, 4096, auth)).toEqual({
+      kind: 'effort',
+      value: 'high',
+    });
+    if (auth === 'oauth') {
+      expect(() => verifyReasoningWire(model, captured, resolution, 4096, 'api_key')).toThrow(
+        'output',
+      );
+      expect(() =>
+        verifyReasoningWire(
+          { ...model, baseUrl: 'https://gateway.example/v1' },
+          captured,
+          resolution,
+          4096,
+          'oauth',
+        ),
+      ).toThrow('output');
+    }
+  }
+});
+
 it('[TC-ULTRA-003-H] [TC-ULTRA-003-N] resolves OpenAI and DeepSeek maximum from actual Pi payloads and rejects changed effort or output caps', async () => {
   const catalog = builtinModels();
   for (const [provider, id] of [

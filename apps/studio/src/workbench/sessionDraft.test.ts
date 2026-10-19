@@ -34,6 +34,12 @@ describe('composer draft (UX-02)', () => {
       ],
       taskScope: 'review_only' as const,
       verificationScope: 'release' as const,
+      qualityPreset: 'ultra' as const,
+      ultra: {
+        version: 1 as const,
+        modelProfiles: ['model-a', 'deepseek-hive'],
+        verifierProfile: 'deepseek-hive',
+      },
     };
     expect(parseComposerDraft(serializeComposerDraft(draft))).toEqual(draft);
   });

@@ -22,6 +22,8 @@ import {
   type KeyValueStore,
   type RunArchive,
   type RuntimeTransport,
+  resolveUltraSelection,
+  SIMULATED_MODELS,
   type StartRunResult,
 } from '@corral/core';
 import { createRunSession, type RunSessionStore } from '@corral/react';
@@ -152,7 +154,11 @@ export async function createStudioServices(): Promise<StudioServices> {
   const { store, persistent } = browserStore(window.location.pathname === '/demo');
   const { transport, workspace, readHistory } = createDemoRuntime();
   // The demo's agents are simulated, so the local rule chooses and no model is called.
-  const autoStarter = createAutoStarter({ startRun: (request) => transport.startRun(request) });
+  const autoStarter = createAutoStarter({
+    startRun: (request) => transport.startRun(request),
+    resolveUltra: (selection, primary, mode) =>
+      resolveUltraSelection(selection, primary, mode, SIMULATED_MODELS),
+  });
   const repository = createKeyValueCorralRepository(store, {
     clock: systemClock,
     newCorralId: () => `corral_${crypto.randomUUID().slice(0, 8)}`,

@@ -143,6 +143,7 @@ export const StartFrame = z.strictObject({
   model: z.strictObject({
     provider: Identifier,
     modelId: z.string().min(1).max(200),
+    auth: z.enum(['oauth', 'api_key', 'mock']).optional(),
     /** An OpenAI-compatible endpoint's non-secret definition (CR-005); absent for pi-ai's own. */
     endpoint: EndpointSpec.optional(),
   }),
