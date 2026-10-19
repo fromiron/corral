@@ -1,4 +1,3 @@
-// Adapted from T3 Code ChatView's timeline/composer layout (MIT). See THIRD-PARTY-NOTICES/T3-Code.md.
 import { ArrowDown } from '@corral/react/icons';
 import { Button } from '@corral/react/ui';
 import { defaultRangeExtractor, useVirtualizer } from '@tanstack/react-virtual';

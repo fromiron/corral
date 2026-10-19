@@ -1,4 +1,3 @@
-// Adapted from T3 Code ComposerSurface (MIT). See THIRD-PARTY-NOTICES/T3-Code.md.
 import { cn } from '@corral/react/ui';
 import type { ComponentProps } from 'react';
 

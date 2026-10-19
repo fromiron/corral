@@ -1,5 +1,4 @@
 // The composer's text box with one menu for `/` commands and `@` references (CR-016), after
-// T3 Code's ComposerCommandMenu (MIT; see THIRD-PARTY-NOTICES/T3-Code.md): one list, grouped,
 // keyboard first, IME safe. The renderer only reads names; picking a file grants nothing.
 import { rankFuzzy } from '@corral/core';
 import { Bot, File, FileText, Folder, History, type LucideIcon, Slash } from '@corral/react/icons';

@@ -1,4 +1,3 @@
-// Adapted from T3 Code, Copyright (c) 2026 T3 Tools Inc. (MIT). See THIRD-PARTY-NOTICES/T3-Code.md.
 const DIALOG_BACKDROP_BASE_CLASS =
   'fixed inset-0 z-50 transition-all duration-200 data-ending-style:opacity-0 data-starting-style:opacity-0';
 
