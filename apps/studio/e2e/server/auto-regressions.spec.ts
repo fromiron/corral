@@ -180,10 +180,12 @@ test('[TC-AUTO-005-N] questions hide the auto reasoning setting they cannot appl
     'Chosen per request',
   );
   await page.getByRole('button', { name: 'Model', exact: true }).click();
+  await expect(page.getByRole('menu', { name: 'Model', exact: true })).toBeVisible();
   await expect(page.getByRole('menuitem', { name: 'Reasoning effort', exact: true })).toHaveCount(
     0,
   );
   await page.keyboard.press('Escape');
+  await expect(page.getByRole('menu', { name: 'Model', exact: true })).toBeHidden();
   await requestBox(page).fill('Explain this result');
   const sending = page.waitForRequest(
     (request) => request.method() === 'POST' && request.url().endsWith('/runs/explain'),
