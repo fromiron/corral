@@ -1,4 +1,4 @@
-import { type ChildProcess, spawn } from 'node:child_process';
+import type { ChildProcess, spawn } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -30,6 +30,7 @@ import {
   RenameRequest,
   ShutdownRequest,
 } from 'vscode-languageserver-protocol/node';
+import { HostProcessCapacityError, spawnOwnedProcess } from '../processes/owned-process.ts';
 import { killProcessGroup, processGroupGone } from './process-group.ts';
 
 // The protocol validator requires an edit even for an unresolved literal action.
@@ -83,7 +84,7 @@ export class LspRunner {
   }) {
     this.clock = options.clock;
     this.timers = options.timers;
-    this.spawn = options.spawn ?? spawn;
+    this.spawn = options.spawn ?? (spawnOwnedProcess as typeof spawn);
   }
 
   private deadline<T>(promise: Promise<T>, ms: number): Promise<T> {
@@ -398,7 +399,13 @@ export class LspRunner {
       }
     } catch (error) {
       failure =
-        error instanceof LspFailure ? error : new LspFailure('language server query failed');
+        error instanceof LspFailure
+          ? error
+          : new LspFailure(
+              error instanceof HostProcessCapacityError
+                ? error.message
+                : 'language server query failed',
+            );
     } finally {
       finishing = true;
       cancelDeadline();
@@ -413,7 +420,7 @@ export class LspRunner {
       connection?.dispose();
       token.dispose();
       bounded.destroy();
-      const processClosed = await this.deadline(closed, 3000).then(
+      const processClosed = await this.deadline(closed, 8000).then(
         () => true,
         () => false,
       );

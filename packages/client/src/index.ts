@@ -8,6 +8,31 @@ import type {
   ReasoningCapabilities,
   RestoreCheckpoint,
 } from '@corral/contracts';
+import { canonicalJson } from '@corral/core';
+import type { CommandRecovery, StartRecovery } from './recovery.ts';
+import { VaultClient } from './vault-api.ts';
+
+export type {
+  ModelCatalogMetadata,
+  ModelImportCommit,
+  ModelImportPreview,
+  ModelImportSource,
+} from './models-import.ts';
+export type { StartPreviewInput, WorkspacePreview } from './preview.ts';
+export { type CommandRecovery, createStartRecovery, type StartRecovery } from './recovery.ts';
+export type * from './vault.ts';
+export { VaultClient } from './vault-api.ts';
+export type {
+  VoiceCall,
+  VoiceClient,
+  VoiceConfiguration,
+  VoiceProfile,
+  VoiceStartInput,
+  VoiceTarget,
+  VoiceTranscript,
+  VoiceTranscriptReceipt,
+} from './voice.ts';
+
 import {
   type AutoModelChoice,
   type AutoRoute,
@@ -72,6 +97,8 @@ import type {
 
 /** POST /api/v1/runs/auto (CR-024). */
 export interface AutoRunStart {
+  harness?: import('@corral/contracts').HarnessBindingRef;
+  permissionMode?: import('@corral/contracts').PermissionMode;
   ultra?: UltraSelection;
   qualityPreset?: 'default' | 'ultra';
   taskScope?: 'work' | 'review_only';
@@ -170,6 +197,32 @@ async function apiError(response: Response): Promise<ApiError> {
   }
 }
 
+export class VoiceApi {
+  private readonly http: Http;
+  constructor(options: HttpOptions) {
+    this.http = new Http(options);
+  }
+  configuration(): Promise<import('./voice.ts').VoiceConfiguration> {
+    return this.http.json('/voice');
+  }
+  start(
+    input: import('./voice.ts').VoiceStartInput,
+    signal?: AbortSignal,
+  ): Promise<import('./voice.ts').VoiceCall> {
+    return this.http.json('/voice/calls', {
+      method: 'POST',
+      body: JSON.stringify(input),
+      ...(signal ? { signal } : {}),
+    });
+  }
+  async stop(callId: string): Promise<void> {
+    const response = await this.http.request(`/voice/calls/${encodeURIComponent(callId)}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) throw await apiError(response);
+  }
+}
+
 export class RunModesApi {
   private readonly http: Http;
   constructor(options: HttpOptions) {
@@ -180,6 +233,12 @@ export class RunModesApi {
   }
   async set(key: string, mode: 'mock' | 'live'): Promise<void> {
     await this.http.json('/run-modes', { method: 'PUT', body: JSON.stringify({ key, mode }) });
+  }
+}
+
+export class VaultApi extends VaultClient {
+  constructor(options: HttpOptions) {
+    super(new Http(options));
   }
 }
 
@@ -227,9 +286,32 @@ const RECONNECT_DELAYS_MS = [250, 500, 1000, 2000, 4000];
 
 export class HttpSseTransport implements RuntimeTransport {
   private readonly http: Http;
+  private readonly recovery?: { commands: CommandRecovery; starts: StartRecovery };
 
-  constructor(options: HttpOptions) {
+  constructor(
+    options: HttpOptions,
+    recovery?: { commands: CommandRecovery; starts: StartRecovery },
+  ) {
     this.http = new Http(options);
+    this.recovery = recovery;
+  }
+
+  private async recoverStart(
+    path: string,
+    request: { commandId: string },
+  ): Promise<(StartRunResult & { autoRoute?: AutoRoute | null }) | null> {
+    if (!this.recovery) return null;
+    this.recovery.starts.pending(path, request);
+    const response = await this.http.request(
+      `/start-commands/${encodeURIComponent(request.commandId)}`,
+    );
+    if (response.status === 404) return null;
+    if (!response.ok) throw await apiError(response);
+    const result = (await response.json()) as StartRunResult & { autoRoute?: AutoRoute | null };
+    if (result.receipt?.commandId !== request.commandId)
+      throw new Error('Start receipt identity mismatch.');
+    this.recovery.starts.confirmed(request.commandId);
+    return result;
   }
 
   async startRun(request: StartRunRequest | CreateRunRequest): Promise<StartRunResult> {
@@ -239,16 +321,38 @@ export class HttpSseTransport implements RuntimeTransport {
         receipt: refused(request.commandId, 'SCHEMA_INVALID', 'save the Corral first'),
       };
     }
+    // Standalone Editor RunControls creates a new view/ID after reload. Recover the exact
+    // unresolved saved-revision request before considering it a new Run.
+    request = this.recovery?.starts.prepare('/runs', request) ?? request;
+    const recovered = await this.recoverStart('/runs', request);
+    if (recovered) return recovered;
     const response = await this.http.request('/runs', {
       method: 'POST',
       body: JSON.stringify(request),
     });
     const body = (await response.json()) as Partial<StartRunResult> & { error?: ApiError };
     if (!body.receipt) throw await apiErrorFrom(response, body);
+    this.recovery?.starts.confirmed(request.commandId);
     return { runId: body.runId ?? null, receipt: body.receipt };
   }
 
   async sendCommand(command: RunCommand): Promise<Receipt> {
+    if (this.recovery) {
+      const prior = this.recovery.commands
+        .commands(command.runId)
+        .find(
+          (candidate) =>
+            canonicalJson({ ...candidate, commandId: '' }) ===
+            canonicalJson({ ...command, commandId: '' }),
+        );
+      if (prior) command = prior;
+      this.recovery.commands.pending(command);
+      const receipt = await this.getReceipt(command.runId, command.commandId);
+      if (receipt) {
+        this.recovery.commands.confirmed(command.runId, command.commandId);
+        return receipt;
+      }
+    }
     const response = await this.http.request(
       `/runs/${encodeURIComponent(command.runId)}/commands`,
       {
@@ -258,6 +362,7 @@ export class HttpSseTransport implements RuntimeTransport {
     );
     const body = (await response.json()) as Receipt & { error?: unknown };
     if (!('status' in body)) throw await apiErrorFrom(response, body);
+    this.recovery?.commands.confirmed(command.runId, command.commandId);
     return body;
   }
 
@@ -283,12 +388,15 @@ export class HttpSseTransport implements RuntimeTransport {
     mode: 'mock' | 'live';
     startFrom?: { runId: string; artifactVersionId: string };
   }): Promise<StartRunResult> {
+    const recovered = await this.recoverStart('/runs/explain', request);
+    if (recovered) return recovered;
     const response = await this.http.request('/runs/explain', {
       method: 'POST',
       body: JSON.stringify(request),
     });
     const body = (await response.json()) as Partial<StartRunResult> & { error?: ApiError };
     if (!body.receipt) throw await apiErrorFrom(response, body);
+    this.recovery?.starts.confirmed(request.commandId);
     return { runId: body.runId ?? null, receipt: body.receipt };
   }
 
@@ -297,6 +405,8 @@ export class HttpSseTransport implements RuntimeTransport {
     request: AutoRunStart,
     signal?: AbortSignal,
   ): Promise<StartRunResult & { autoRoute: AutoRoute | null }> {
+    const recovered = await this.recoverStart('/runs/auto', request);
+    if (recovered) return { ...recovered, autoRoute: recovered.autoRoute ?? null };
     const response = await this.http.request('/runs/auto', {
       method: 'POST',
       body: JSON.stringify({ schemaVersion: '0.1', ...request }),
@@ -307,6 +417,7 @@ export class HttpSseTransport implements RuntimeTransport {
       error?: ApiError;
     };
     if (!body.receipt) throw await apiErrorFrom(response, body);
+    this.recovery?.starts.confirmed(request.commandId);
     return { runId: body.runId ?? null, receipt: body.receipt, autoRoute: body.autoRoute ?? null };
   }
 
@@ -710,7 +821,7 @@ export interface ProviderAuthView {
   login: LoginView | null;
   /** Where the sign-in comes from: Corral's own, or the Codex CLI login read only (CR-004). */
   source: 'corral' | 'codex-cli' | 'environment' | null;
-  /** False when the borrowed Codex login file is readable by other users. */
+  /** True only when borrowed login permissions are verified private; false includes unknown. */
   permissionsOk: boolean;
 }
 
@@ -836,6 +947,35 @@ export class ModelsApi {
     return this.http.json('/model-catalog');
   }
 
+  importPreview(
+    source: import('./models-import.ts').ModelImportSource,
+    path?: string,
+  ): Promise<import('./models-import.ts').ModelImportPreview> {
+    return this.http.json('/model-imports/preview', {
+      method: 'POST',
+      body: JSON.stringify({ source, ...(path ? { path } : {}) }),
+    });
+  }
+
+  importCommit(
+    change: import('./models-import.ts').ModelImportCommit,
+  ): Promise<
+    Pick<ModelConfig, 'revision' | 'modelProfiles' | 'modelProviders'> & { keyFailures: string[] }
+  > {
+    return this.http.json('/model-imports/commit', {
+      method: 'POST',
+      body: JSON.stringify(change),
+    });
+  }
+
+  catalogMetadata(): Promise<import('./models-import.ts').ModelCatalogMetadata | null> {
+    return this.http.json('/model-catalog/metadata');
+  }
+
+  refreshCatalogMetadata(): Promise<import('./models-import.ts').ModelCatalogMetadata | null> {
+    return this.http.json('/model-catalog/metadata/refresh', { method: 'POST' });
+  }
+
   config(): Promise<ModelConfig> {
     return this.http.json('/model-config');
   }
@@ -894,6 +1034,42 @@ export interface McpProbeResult {
 }
 
 export class HarnessApi {
+  registerPackageMcp(
+    hash: string,
+    contributionId: string,
+    projectId: string,
+    expectedRevision: number,
+    operationId: string,
+  ): Promise<import('@corral/contracts').ProjectToolConfigRevision> {
+    return this.http.json(`/harness/packages/${encodeURIComponent(hash)}/mcp`, {
+      method: 'POST',
+      body: JSON.stringify({ contributionId, projectId, expectedRevision, operationId }),
+    });
+  }
+  packages(): Promise<import('@corral/contracts').PackageView[]> {
+    return this.http.json('/harness/packages');
+  }
+  reviewPackage(
+    kind: 'local' | 'package',
+    source: string,
+    previousHash?: string,
+  ): Promise<import('@corral/contracts').PackageReview> {
+    return this.http.json('/harness/packages/review', {
+      method: 'POST',
+      body: JSON.stringify({ kind, source, ...(previousHash ? { previousHash } : {}) }),
+    });
+  }
+  managePackage(
+    hash: string,
+    expectedRevision: number,
+    status: 'enabled' | 'disabled' | 'removed',
+    operationId: string,
+  ): Promise<import('@corral/contracts').PackageView> {
+    return this.http.json(`/harness/packages/${encodeURIComponent(hash)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ expectedRevision, status, operationId }),
+    });
+  }
   private readonly http: Http;
   constructor(options: HttpOptions) {
     this.http = new Http(options);
@@ -966,7 +1142,7 @@ export class HarnessApi {
       `/harness/projects/${encodeURIComponent(projectId)}/mcp-servers/${encodeURIComponent(serverId)}/launch?${new URLSearchParams(
         Object.entries(options)
           .filter(([, value]) => value !== undefined)
-          .map(([key, value]) => [key, String(value)]),
+          .map(([key, value]): [string, string] => [key, String(value)]),
       )}`,
     );
   }
@@ -1301,12 +1477,68 @@ export interface FileOperationView {
   created_at: string;
 }
 
+export interface WorktreeCommandView {
+  id: string;
+  run_id: string;
+  state: 'running' | 'completed' | 'failed' | 'cancelled' | 'uncertain';
+  cwd: string;
+  shellId: string;
+  mode?: 'foreground' | 'service';
+  command: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 /** Folders, working copies, changes and checks on the local server (CR-012). */
 export class WorkspacesApi {
   private readonly http: Http;
 
   constructor(options: HttpOptions) {
     this.http = new Http(options);
+  }
+  commands(sessionId: string): Promise<WorktreeCommandView[]> {
+    return this.send(`/sessions/${encodeURIComponent(sessionId)}/processes`);
+  }
+  commandReport(
+    sessionId: string,
+    operationId: string,
+  ): Promise<import('@corral/contracts').CommandReport> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/processes/${encodeURIComponent(operationId)}`,
+    );
+  }
+  commandOutput(
+    sessionId: string,
+    operationId: string,
+    offset = 0,
+  ): Promise<{ text: string; nextOffset: number; bytes: number; truncated: boolean }> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/processes/${encodeURIComponent(operationId)}/output?offset=${offset}`,
+    );
+  }
+  stopCommand(
+    sessionId: string,
+    operationId: string,
+  ): Promise<import('@corral/contracts').CommandReport> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/processes/${encodeURIComponent(operationId)}/stop`,
+      'POST',
+    );
+  }
+  previews(sessionId: string): Promise<import('./preview.ts').WorkspacePreview[]> {
+    return this.send(`/sessions/${encodeURIComponent(sessionId)}/previews`);
+  }
+  startPreview(
+    sessionId: string,
+    input: import('./preview.ts').StartPreviewInput,
+  ): Promise<import('./preview.ts').WorkspacePreview> {
+    return this.send(`/sessions/${encodeURIComponent(sessionId)}/previews`, 'POST', input);
+  }
+  stopPreview(sessionId: string, leaseId: string): Promise<void> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/previews/${encodeURIComponent(leaseId)}`,
+      'DELETE',
+    );
   }
   uploadImage(
     sessionId: string,

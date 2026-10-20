@@ -26,6 +26,15 @@ export function createDemoWorkspaces(
     throw new Error('File checkpoints require the local server.');
   };
   return {
+    commands: async () => [],
+    commandReport: noCheckpoints,
+    commandOutput: noCheckpoints,
+    stopCommand: noCheckpoints,
+    previews: async () => [],
+    startPreview: async () => {
+      throw new Error('File previews require the local server.');
+    },
+    stopPreview: async () => {},
     uploadImage: async () => {
       throw new Error('Image attachments require the local server.');
     },

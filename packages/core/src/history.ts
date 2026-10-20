@@ -1,11 +1,14 @@
 import {
   AutoRoute,
+  BinaryArtifact,
   BranchedFrom,
   CorralDefinition,
   EffectiveHarnessSnapshot,
   Identifier,
+  ImageGenerationProfile,
   ImageInput,
   ModelProfileSnapshot,
+  PermissionMode,
   ReasoningApplySettings,
   ResumedFrom,
   RunEvent,
@@ -14,7 +17,7 @@ import {
   RuntimeCheckpointState,
 } from '@corral/contracts';
 import { sha256 } from '@noble/hashes/sha2.js';
-import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js';
+import { bytesToHex, hexToBytes, utf8ToBytes } from '@noble/hashes/utils.js';
 import { z } from 'zod';
 import { canonicalJson } from './canonical-json.ts';
 import { definitionHash } from './definition-hash.ts';
@@ -22,6 +25,8 @@ import { applyEvent, emptyProjection } from './projection.ts';
 import type { RunStore } from './store/run-store.ts';
 
 const Snapshot = z.strictObject({
+  permissionMode: PermissionMode.optional(),
+  imageProfiles: z.record(Identifier, ImageGenerationProfile).optional(),
   resumedFrom: ResumedFrom.optional(),
   branchedFrom: BranchedFrom.optional(),
   definition: CorralDefinition,
@@ -58,8 +63,20 @@ const PublicArchive = z.strictObject({
   }),
 });
 const PrivateArchive = z.strictObject({
+  media: z
+    .record(
+      Identifier,
+      z.strictObject({
+        descriptor: BinaryArtifact,
+        dataHex: z
+          .string()
+          .max(64 * 1024 * 1024)
+          .regex(/^(?:[a-f0-9]{2})+$/),
+      }),
+    )
+    .optional(),
   format: z.literal('corral-history'),
-  formatVersion: z.literal(1),
+  formatVersion: z.union([z.literal(1), z.literal(2)]),
   visibility: z.literal('private'),
   runId: Identifier,
   lastSeq: z.int().positive(),
@@ -103,20 +120,33 @@ export function exportRunArchive(
       ...recordReferences(events),
     ]);
     const artifacts: Record<string, string> = {};
+    const media: Record<string, { descriptor: BinaryArtifact; dataHex: string }> = {};
     for (const id of versionIds) {
       const text = store.getArtifactText(runId, id);
       if (text === null) throw new Error('private history is missing a referenced record body');
       artifacts[id] = text;
+      const descriptor = run.projection.artifacts[id]?.media;
+      if (descriptor) {
+        const bytes = store.getArtifactBinary?.(runId, id);
+        if (
+          !bytes ||
+          bytes.length !== descriptor.bytes ||
+          bytesToHex(sha256(bytes)) !== descriptor.sha256
+        )
+          throw new Error('private history is missing verified generated image bytes');
+        media[id] = { descriptor, dataHex: bytesToHex(bytes) };
+      }
     }
     return PrivateArchive.parse({
       format: 'corral-history',
-      formatVersion: 1,
+      formatVersion: Object.keys(media).length ? 2 : 1,
       visibility: 'private',
       runId,
       lastSeq: run.projection.lastSeq,
       snapshot: run.snapshot,
       events,
       artifacts,
+      ...(Object.keys(media).length ? { media } : {}),
       bodyHashes: Object.fromEntries(
         Object.entries(artifacts).map(([id, text]) => [id, bytesToHex(sha256(utf8ToBytes(text)))]),
       ),
@@ -131,6 +161,8 @@ export function openRunArchive(input: unknown) {
     if (event.runSeq !== index + 1) throw new Error('archive event sequence is incomplete');
   }
   if (archive.visibility === 'public') return freeze(archive);
+  if (archive.formatVersion === 1 && Object.keys(archive.media ?? {}).length)
+    throw new Error('generated media requires archive format version 2');
   const first = archive.events[0];
   if (first?.type !== 'run.started') throw new Error('archive has no run start');
   if (archive.lastSeq !== archive.events.length)
@@ -141,6 +173,9 @@ export function openRunArchive(input: unknown) {
     first.payload.definitionHash !== snapshot.definitionHash ||
     first.payload.corralId !== snapshot.definition.id ||
     first.payload.mode !== snapshot.mode ||
+    first.payload.permissionMode !== snapshot.permissionMode ||
+    canonicalJson(first.payload.imageProfiles ?? null) !==
+      canonicalJson(snapshot.imageProfiles ?? null) ||
     canonicalJson(first.payload.reasoningApply ?? null) !==
       canonicalJson(snapshot.reasoningApply ?? null) ||
     canonicalJson(first.payload.autoRoute ?? null) !== canonicalJson(snapshot.autoRoute ?? null) ||
@@ -229,7 +264,20 @@ export function openRunArchive(input: unknown) {
     const bytes = utf8ToBytes(text);
     if (bytes.length !== artifact.byteLength || bytesToHex(sha256(bytes)) !== artifact.contentHash)
       throw new Error('archive artifact content does not match its committed hash');
+    if (artifact.media) {
+      const blob = archive.media?.[id];
+      if (!blob || canonicalJson(blob.descriptor) !== canonicalJson(artifact.media))
+        throw new Error('archive generated image descriptor is missing or changed');
+      const binary = hexToBytes(blob.dataHex);
+      if (
+        binary.length !== artifact.media.bytes ||
+        bytesToHex(sha256(binary)) !== artifact.media.sha256
+      )
+        throw new Error('archive generated image content does not match its committed hash');
+    }
   }
+  if (Object.keys(archive.media ?? {}).some((id) => !projection.artifacts[id]?.media))
+    throw new Error('archive contains unreferenced generated image bytes');
   return freeze({ ...archive, projection });
 }
 

@@ -1,4 +1,10 @@
-import type { ImageAttachment, TextAttachment, UltraSelection } from '@corral/contracts';
+import type {
+  HarnessBindingRef,
+  ImageAttachment,
+  PermissionMode,
+  TextAttachment,
+  UltraSelection,
+} from '@corral/contracts';
 import { Button } from '@corral/react/ui';
 import { Link } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
@@ -11,6 +17,8 @@ export const EDIT_REQUEST = 'corral:edit-request';
 export function editRequest(
   text: string,
   metadata?: {
+    harness?: HarnessBindingRef;
+    permissionMode?: PermissionMode;
     attachments?: TextAttachment[];
     images?: ImageAttachment[];
     qualityPreset?: 'default' | 'ultra';

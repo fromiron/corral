@@ -2,10 +2,16 @@ import {
   type AgentStartInput,
   type ErrorCode,
   FILE_TOOLS,
+  GenerateImageArgs,
+  HashlineEditInput,
   LspQuery,
   PiEditInput,
   PiWriteInput,
+  PreviewActionArgs,
+  PreviewAppArgs,
+  PreviewFileArgs,
   ResourcePath,
+  RunCommandArgs,
   type RunEvent,
   type RunLimits,
   TERMINAL_EXECUTION_STATUSES,
@@ -66,18 +72,27 @@ export interface ToolGateView extends ModelGateView {
   simulation?: boolean;
   /** Only the owning batch may exclude its open effect when rechecking the next item. */
   currentEffectId?: string;
+  reservedSpawns?: number;
+  pendingChildContinuation?: boolean;
   harnessRead?: boolean;
   descriptor?: import('@corral/contracts').ToolDescriptor;
   proposal: ToolProposal;
   policy: InstallationPolicy;
   /** Callable nodes this node may delegate to or ask (capability links). */
-  callables: { delegate: readonly string[]; question: readonly string[] };
+  callables: {
+    delegate: readonly string[];
+    question: readonly string[];
+    parentQuestion?: readonly string[];
+    replyToChildren?: boolean;
+  };
   /** Whether search/read_document have a backend in this runtime. */
   externalTools: boolean;
   /** Whether this run's session has a managed worktree for file tools (CR-012). */
   fileTools: boolean;
   /** The execution answering an open question, if the question is open. */
   responderOf(questionId: string): string | undefined;
+  /** Exact current parent, only when the pinned delegate link opted in. */
+  parentQuestionTarget?(nodeId: string): string | undefined;
   /** Versions this execution may read (its own, its inputs, its children's, …). */
   readable(): ReadonlySet<string>;
 }
@@ -359,6 +374,78 @@ const roleAllowlist: Gate<ToolGateView> = {
         ? allow
         : denied('native tool is not allowed by this harness');
     }
+    if (proposal.name === 'run_command') {
+      if (
+        !view.fileTools ||
+        input.harness?.policy !== 'trusted-native' ||
+        !input.role.allowedWorkTools.includes('run_command') ||
+        input.taskBrief?.taskScope === 'review_only'
+      )
+        return denied('role may not launch trusted worktree commands');
+      return RunCommandArgs.safeParse(args).success
+        ? allow
+        : refuse('SCHEMA_INVALID', 'invalid worktree command');
+    }
+    if (['preview_file', 'preview_app', 'preview_action'].includes(proposal.name)) {
+      if (
+        !input.role.allowedWorkTools.some((tool) => tool === proposal.name) ||
+        !view.fileTools ||
+        (proposal.name === 'preview_file' && !input.role.allowedWorkTools.includes('read_file')) ||
+        (proposal.name !== 'preview_file' &&
+          (input.harness?.policy !== 'trusted-native' ||
+            input.taskBrief?.taskScope === 'review_only'))
+      )
+        return denied('role may not use this workspace preview capability');
+      const schema =
+        proposal.name === 'preview_file'
+          ? PreviewFileArgs
+          : proposal.name === 'preview_app'
+            ? PreviewAppArgs
+            : PreviewActionArgs;
+      return schema.safeParse(args).success
+        ? allow
+        : refuse('SCHEMA_INVALID', 'invalid owned preview request');
+    }
+    if (proposal.name === 'generate_image') {
+      if (
+        !input.role.allowedWorkTools.includes('generate_image') ||
+        !input.role.imageProfile ||
+        input.taskBrief?.taskScope === 'review_only'
+      )
+        return denied('role may not generate images');
+      const parsed = GenerateImageArgs.safeParse(args);
+      return parsed.success && parsed.data.profileId === input.role.imageProfile
+        ? allow
+        : refuse('SCHEMA_INVALID', 'image tool requires the role image profile');
+    }
+    if (proposal.name === 'read_hashline' || proposal.name === 'edit_hashline') {
+      if (
+        input.role.editingMode !== 'hashline' ||
+        !view.fileTools ||
+        !input.role.allowedWorkTools.includes('read_file')
+      )
+        return denied('role may not use Hashline');
+      if (proposal.name === 'read_hashline')
+        return Object.keys(args).every((key) => ['path', 'offset', 'limit'].includes(key)) &&
+          [args.offset, args.limit].every(
+            (value) => value === undefined || (Number.isSafeInteger(value) && Number(value) >= 1),
+          ) &&
+          ResourcePath.safeParse(args.path).success &&
+          !String(args.path).startsWith('skills/')
+          ? allow
+          : refuse('SCHEMA_INVALID', 'invalid Hashline read');
+      const parsed = HashlineEditInput.safeParse(args);
+      if (!parsed.success) return refuse('SCHEMA_INVALID', 'invalid Hashline edit');
+      if (
+        !input.role.allowedWorkTools.includes('write_file') ||
+        parsed.data.path.startsWith('skills/') ||
+        (/^\s*REM\b/m.test(parsed.data.ops) &&
+          !input.role.allowedWorkTools.includes('delete_file')) ||
+        (/^\s*MV\b/m.test(parsed.data.ops) && !input.role.allowedWorkTools.includes('move_file'))
+      )
+        return denied('role may not perform this Hashline change');
+      return allow;
+    }
     if (proposal.name === 'run_check') {
       if (!input.harness?.projectTools || !view.fileTools)
         return denied('no selected project checks');
@@ -385,6 +472,7 @@ const roleAllowlist: Gate<ToolGateView> = {
     }
     if (proposal.name === 'edit' || proposal.name === 'write') {
       if (
+        input.role.editingMode === 'hashline' ||
         !input.harness ||
         !view.fileTools ||
         !input.role.allowedWorkTools.includes('write_file') ||
@@ -486,6 +574,10 @@ const roleAllowlist: Gate<ToolGateView> = {
         if (!input.role.allowedCollaborationTools.includes('submit_result')) {
           return denied('role may not submit results');
         }
+        if (view.pendingChildContinuation)
+          return denied(
+            'answer pending child questions and finish the interrupted child wait before submitting',
+          );
         const ids = args.artifactVersionIds;
         const owned =
           Array.isArray(ids) &&
@@ -527,6 +619,12 @@ const roleAllowlist: Gate<ToolGateView> = {
       case 'await_tasks': {
         if (
           Array.isArray(args.taskIds) &&
+          !Object.values(p.questions).some(
+            (q) =>
+              q.status === 'open' &&
+              q.delivery === 'parent' &&
+              q.targetExecutionId === input.executionId,
+          ) &&
           createsWaitCycle(
             p,
             input.executionId,
@@ -555,13 +653,26 @@ const roleAllowlist: Gate<ToolGateView> = {
           return refuse('SCHEMA_INVALID', 'body must be 1 to 12000 characters');
         }
         if (
+          input.capabilities.askTo.some(
+            (target) => target.delivery === 'parent' && target.nodeId === args.targetNodeId,
+          ) &&
+          !view.parentQuestionTarget?.(String(args.targetNodeId))
+        )
+          return refuse('TARGET_TERMINAL', 'the parent question owner is no longer current');
+        if (
           typeof args.targetNodeId !== 'string' ||
-          !callables.question.includes(args.targetNodeId)
+          (!view.parentQuestionTarget?.(args.targetNodeId) &&
+            !callables.question.includes(args.targetNodeId))
         ) {
           return denied(
             `${input.nodeId} may not ask ${String(args.targetNodeId)}: no capability link`,
           );
         }
+        if (
+          Array.isArray(args.artifactRefs) &&
+          args.artifactRefs.some((id) => typeof id !== 'string' || !view.readable().has(id))
+        )
+          return denied('question references must be readable by the asker');
         return allow;
       case 'reply': {
         const question = p.questions[String(args.questionId)];
@@ -578,6 +689,11 @@ const roleAllowlist: Gate<ToolGateView> = {
               )
             : denied('this execution was not asked that question');
         }
+        if (
+          Array.isArray(args.evidenceRefs) &&
+          args.evidenceRefs.some((id) => typeof id !== 'string' || !view.readable().has(id))
+        )
+          return denied('answer evidence must be readable by the responder');
         return allow;
       }
       case 'read_artifact': {
@@ -598,7 +714,8 @@ const roleAllowlist: Gate<ToolGateView> = {
 const limits: Gate<ToolGateView> = {
   id: 'limits',
   version: 1,
-  check: ({ input, proposal, projection: p, limits, policy }) => {
+  check: (view) => {
+    const { input, proposal, projection: p, limits, policy, parentQuestionTarget } = view;
     const { args } = proposal;
     // Children and responders share one budget of dynamic executions (Spec §7.2).
     const capacity = (count: number): GateDecision => {
@@ -615,7 +732,7 @@ const limits: Gate<ToolGateView> = {
           { kind: 'depth', used: input.depth, max: limits.maxDelegationDepth },
         );
       }
-      if (spawned + count > limits.maxSpawns) {
+      if (spawned + (view.reservedSpawns ?? 0) + count > limits.maxSpawns) {
         return refuse(
           'LIMIT_REACHED',
           `this run may start ${limits.maxSpawns} delegated or responding executions`,
@@ -654,7 +771,9 @@ const limits: Gate<ToolGateView> = {
             max: limits.maxQuestions,
           });
         }
-        return capacity(1);
+        return typeof args.targetNodeId === 'string' && parentQuestionTarget?.(args.targetNodeId)
+          ? { kind: 'allow' }
+          : capacity(1);
       }
     }
     return { kind: 'allow' };

@@ -1,6 +1,6 @@
 import { linearCorral } from '@corral/testkit';
 import type { Page } from '@playwright/test';
-import { requestBox } from '../workbench.ts';
+import { requestBox, selectSessionTeam } from '../workbench.ts';
 import { expect, type Harness, test } from './harness.ts';
 
 // Workbench UX review (docs/plans/Workbench-UX-Review-Plan.md): pinpoint checks of the fixes
@@ -18,17 +18,13 @@ async function session(page: Page, corral: Harness) {
   await page.getByRole('link', { name: 'New session', exact: true }).click();
   await expect(page).toHaveURL(/\/sessions\/session_/);
   // CR-024: a new session starts in auto mode; these checks run the imported team.
-  await page.getByRole('combobox', { name: 'Team', exact: true }).click();
-  await page.getByRole('option', { name: linearCorral(['writer']).name, exact: true }).click();
-  await expect(page.getByRole('combobox', { name: 'Team', exact: true })).toContainText(
-    linearCorral(['writer']).name,
-  );
+  await selectSessionTeam(page, linearCorral(['writer']).name);
 }
 
 test('[TC-UX-02-H] a referenced result keeps its exact version through a reload', async ({
   page,
   corral,
-}) => {
+}, testInfo) => {
   await session(page, corral);
   const sendAcrossSettings = async (nextDraft?: string) => {
     let release!: () => void,
@@ -81,6 +77,7 @@ test('[TC-UX-02-H] a referenced result keeps its exact version through a reload'
   await requestBox(page).fill('Compare with @');
   const references = page.getByRole('listbox', { name: 'References' });
   await expect(references.getByRole('option').first()).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('references-popup.png') });
   await references.getByRole('group', { name: 'Results' }).getByRole('option').first().click();
   const chips = page.getByRole('list', { name: 'References' });
   await expect(chips.getByRole('listitem')).toHaveCount(1);

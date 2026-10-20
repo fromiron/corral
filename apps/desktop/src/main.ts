@@ -11,13 +11,21 @@ import {
   Menu,
   type MenuItemConstructorOptions,
   Notification,
+  nativeImage,
   nativeTheme,
+  powerSaveBlocker,
   protocol,
   screen,
   shell,
+  Tray,
 } from 'electron';
+import { type DesktopRun, RunSleepBlocker, runRoute } from './lifecycle.ts';
+import { installStudioMicrophone } from './microphone.ts';
+import { DesktopPreviews } from './preview.ts';
+import { RemoteHostController } from './remote-host-controller.ts';
 import {
   type DesktopCommand,
+  desktopAccelerators,
   externalUrl,
   localRoute,
   notificationText,
@@ -25,6 +33,8 @@ import {
   themeColors,
   trustedSender,
 } from './security.ts';
+import { hasWindowUnsavedEdits } from './unsaved.ts';
+import { DesktopUpdater } from './updater.ts';
 
 app.setName('Corral');
 const dataArg = process.argv.find((arg) => arg.startsWith('--data-dir='))?.slice(11);
@@ -50,6 +60,9 @@ interface SavedState {
   /** The page's last theme, so the window opens in it (CR-017). */
   dark?: boolean;
   recent: string[];
+  closeToTray: boolean;
+  keepAwake: boolean;
+  keepAwakeWhileWaiting: boolean;
 }
 const saved: SavedState = {
   workspace: join(app.getPath('userData'), 'workspaces', 'default'),
@@ -59,6 +72,9 @@ const saved: SavedState = {
   height: 900,
   maximized: false,
   recent: [],
+  closeToTray: false,
+  keepAwake: true,
+  keepAwakeWhileWaiting: false,
 };
 try {
   const value = JSON.parse(readFileSync(stateFile, 'utf8'));
@@ -77,6 +93,8 @@ try {
   saved.maximized = value.maximized === true;
   if (typeof value.dark === 'boolean') saved.dark = value.dark;
   saved.recent = recentWorkspaces(value.recent, saved.workspace);
+  for (const key of ['closeToTray', 'keepAwake', 'keepAwakeWhileWaiting'] as const)
+    if (typeof value[key] === 'boolean') saved[key] = value[key];
 } catch {
   /* First launch or invalid saved window state uses defaults. */
 }
@@ -85,11 +103,148 @@ let window: BrowserWindow | null = null;
 let child: ChildProcess | null = null;
 let origin: string | null = null;
 let status: 'starting' | 'ready' | 'failed' = 'starting';
+let cleanupFailed = false;
 let gitAvailable = false;
 let closing = false;
 let switching = false;
 let allowQuit = false;
+let discardEdits = false;
 let generation = 0;
+let tray: Tray | null = null;
+let remoteHosts: RemoteHostController | null = null;
+let updater: DesktopUpdater | null = null;
+let keybindings: Partial<Record<DesktopCommand, string>> | null = null;
+let capturingShortcut = false;
+const accelerator = (id: DesktopCommand, fallback: string) =>
+  keybindings === null ? fallback : keybindings[id];
+let activityTimer: NodeJS.Timeout | null = null;
+let desktopRuns: DesktopRun[] = [];
+let pollingActivity = false;
+const awake = new RunSleepBlocker(powerSaveBlocker);
+const previews = new DesktopPreviews(
+  async (sessionId, leaseId) =>
+    (await sidecarRequest({ type: 'preview-target', sessionId, leaseId })).target,
+);
+
+function showWindow() {
+  if (window?.isMinimized()) window.restore();
+  window?.show();
+  window?.focus();
+}
+
+function refreshTray() {
+  awake.update(desktopRuns, saved.keepAwake, saved.keepAwakeWhileWaiting);
+  if (!tray) return;
+  const ko = app.getLocale().startsWith('ko');
+  tray.setToolTip(`Corral · ${desktopRuns.length} ${ko ? '진행 중' : 'active'}`);
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: ko ? 'Corral 열기' : 'Open Corral', click: showWindow },
+      ...desktopRuns.slice(0, 20).map(
+        (run): MenuItemConstructorOptions => ({
+          label: `${run.title || (ko ? '작업' : 'Work')} · ${
+            (
+              {
+                running: ko ? '실행 중' : 'Running',
+                paused: ko ? '일시정지' : 'Paused',
+                awaiting_user: ko ? '응답 필요' : 'Needs input',
+                cancelling: ko ? '취소 중' : 'Cancelling',
+              } as Record<string, string>
+            )[run.status] ?? (ko ? '준비 중' : 'Preparing')
+          }`,
+          submenu: [
+            {
+              label: ko ? '작업 열기' : 'Open work',
+              click: () => {
+                showWindow();
+                if (origin && window) void window.loadURL(`${origin}${runRoute(run)}`);
+              },
+            },
+            {
+              label: ko ? '실행 취소…' : 'Cancel run…',
+              enabled: run.status !== 'cancelling',
+              click: () => void cancelTrayRun(run),
+            },
+          ],
+        }),
+      ),
+      ...(desktopRuns.length
+        ? []
+        : [{ label: ko ? '진행 중인 작업 없음' : 'No active work', enabled: false }]),
+      { type: 'separator' },
+      { label: ko ? '종료' : 'Quit', click: () => void quit() },
+    ]),
+  );
+}
+
+async function cancelTrayRun(run: DesktopRun) {
+  showWindow();
+  if (!window || !child?.connected) return;
+  const answer = await dialog.showMessageBox(window, {
+    type: 'question',
+    message: app.getLocale().startsWith('ko') ? '이 실행을 취소할까요?' : 'Cancel this run?',
+    detail: run.title ?? '',
+    buttons: app.getLocale().startsWith('ko')
+      ? ['계속 실행', '실행 취소']
+      : ['Keep running', 'Cancel run'],
+    defaultId: 0,
+    cancelId: 0,
+  });
+  if (answer.response !== 1) return;
+  try {
+    await sidecarRequest({
+      type: 'cancel-run',
+      runId: run.runId,
+      controlRevision: run.controlRevision,
+    });
+    await pollActivity();
+  } catch {
+    dialog.showErrorBox(
+      'Corral',
+      'The cancellation could not be confirmed. Open the run to inspect its state.',
+    );
+  }
+}
+
+async function sidecarRequest(message: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const sidecar = child;
+  if (!sidecar?.connected) throw new Error('Server unavailable');
+  const id = crypto.randomUUID();
+  return new Promise((done, reject) => {
+    const finish = (value: Record<string, unknown> | null) => {
+      clearTimeout(timer);
+      sidecar.off('message', receive);
+      if (value && !value.error) done(value);
+      else reject(new Error('Server request failed'));
+    };
+    const receive = (value: unknown) => {
+      if (value && typeof value === 'object' && 'id' in value && value.id === id)
+        finish(value as Record<string, unknown>);
+    };
+    const timer = setTimeout(() => finish(null), 3000);
+    sidecar.on('message', receive);
+    sidecar.send({ ...message, id }, (error) => {
+      if (error) finish(null);
+    });
+  });
+}
+
+async function pollActivity() {
+  if (pollingActivity || status !== 'ready') return;
+  const own = generation;
+  pollingActivity = true;
+  try {
+    const activity = await sidecarRequest({ type: 'status' });
+    if (own === generation && Array.isArray(activity.runs)) {
+      desktopRuns = activity.runs as DesktopRun[];
+      refreshTray();
+    }
+  } catch {
+    // Unknown status must not be mistaken for all runs having stopped.
+  } finally {
+    pollingActivity = false;
+  }
+}
 const persist = () => {
   try {
     if (window && !window.isDestroyed()) {
@@ -158,29 +313,79 @@ async function confirmStop(nextWorkspace?: string): Promise<boolean> {
   return result.response === 1;
 }
 
-async function stopServer() {
+async function stopServer(idleOnly = false) {
+  if (cleanupFailed) return false;
+  if (!idleOnly) previews.closeAll();
   const sidecar = child;
-  child = null;
+  if (!sidecar || sidecar.exitCode !== null || sidecar.signalCode !== null) return true;
+  const stopped = await new Promise<boolean>((done) => {
+    const finish = (confirmed: boolean) => {
+      clearTimeout(force);
+      sidecar.off('exit', exited);
+      sidecar.off('message', refused);
+      done(confirmed);
+    };
+    const exited = () => finish(true);
+    const refused = (message: unknown) => {
+      if (
+        message &&
+        typeof message === 'object' &&
+        'type' in message &&
+        message.type === 'stop-failed' &&
+        'cleanupFailed' in message &&
+        message.cleanupFailed === true
+      ) {
+        cleanupFailed = true;
+        status = 'failed';
+        origin = null;
+        if (window && !window.isDestroyed()) {
+          void window
+            .loadURL(STARTUP)
+            .catch(() =>
+              dialog.showErrorBox(
+                'Corral cleanup is incomplete',
+                'Some resources could not be stopped safely. The app will retain ownership and will not reopen or switch workspaces.',
+              ),
+            );
+          showWindow();
+        }
+        finish(false);
+        return;
+      }
+      if (
+        message &&
+        typeof message === 'object' &&
+        'type' in message &&
+        message.type === 'stop-refused'
+      )
+        finish(false);
+    };
+    const force = setTimeout(() => {
+      // An unconfirmed shutdown keeps the host and its ownership alive. In particular,
+      // killing just the Windows parent could strand its descendants.
+      finish(false);
+    }, 15000);
+    sidecar.once('exit', exited);
+    sidecar.on('message', refused);
+    if (sidecar.connected) sidecar.send({ type: idleOnly ? 'stop-if-idle' : 'stop' }, () => {});
+  });
+  if (!stopped) {
+    if (!idleOnly) {
+      showWindow();
+      dialog.showErrorBox(
+        'Corral could not stop',
+        'Process cleanup is still pending. The app will stay open to preserve ownership. Wait for the work to stop and try again.',
+      );
+    }
+    return false;
+  }
+  if (child === sidecar) child = null;
   generation++;
   origin = null;
-  if (!sidecar || sidecar.exitCode !== null || sidecar.signalCode !== null) return;
-  await new Promise<void>((done) => {
-    const force = setTimeout(() => {
-      // The sidecar owns its process group, including Pi children. Never leave them running.
-      try {
-        if (sidecar.pid) process.kill(-sidecar.pid, 'SIGKILL');
-      } catch {
-        sidecar.kill('SIGKILL');
-      }
-      done();
-    }, 8000);
-    sidecar.once('exit', () => {
-      clearTimeout(force);
-      done();
-    });
-    if (sidecar.connected) sidecar.send({ type: 'stop' }, () => {});
-    else sidecar.kill('SIGTERM');
-  });
+  previews.closeAll();
+  desktopRuns = [];
+  refreshTray();
+  return true;
 }
 
 async function startServer() {
@@ -217,10 +422,11 @@ async function startServer() {
         join(app.getPath('userData'), 'worktrees'),
       ],
       {
-        execPath: join(runtime, 'node'),
+        execPath: join(runtime, process.platform === 'win32' ? 'node.exe' : 'node'),
         cwd: saved.workspace,
         env,
         detached: true,
+        windowsHide: true,
         stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
         serialization: 'json',
         execArgv: [],
@@ -237,12 +443,14 @@ async function startServer() {
       if (own !== generation) return;
       const message = value as {
         type?: string;
+        cleanupFailed?: boolean;
         url?: string;
         bootstrapUrl?: string;
         git?: boolean;
       };
       if (message.type === 'failed') {
         clearTimeout(timer);
+        if (message.cleanupFailed === true) cleanupFailed = true;
         fail();
         return;
       }
@@ -262,6 +470,7 @@ async function startServer() {
       origin = url.origin;
       saved.port = Number(url.port);
       status = 'ready';
+      void pollActivity();
       gitAvailable = message.git === true;
       persist();
       if (window && !window.isDestroyed())
@@ -274,6 +483,8 @@ async function startServer() {
     sidecar.once('exit', () => {
       clearTimeout(timer);
       if (child === sidecar) child = null;
+      desktopRuns = [];
+      refreshTray();
       fail();
     });
   } catch {
@@ -284,14 +495,62 @@ async function startServer() {
 async function quit() {
   if (closing || switching) return;
   closing = true;
+  if (await hasUnsavedEdits()) {
+    showWindow();
+    if (
+      !window ||
+      (
+        await dialog.showMessageBox(window, {
+          type: 'question',
+          message: app.getLocale().startsWith('ko')
+            ? '저장하지 않은 편집 내용을 버리고 종료할까요?'
+            : 'Discard unsaved edits and quit?',
+          buttons: app.getLocale().startsWith('ko')
+            ? ['계속 편집', '버리고 종료']
+            : ['Keep editing', 'Discard and quit'],
+          defaultId: 0,
+          cancelId: 0,
+        })
+      ).response !== 1
+    ) {
+      closing = false;
+      return;
+    }
+    discardEdits = true;
+  }
   if (!(await confirmStop())) {
     closing = false;
+    discardEdits = false;
     return;
   }
   persist();
-  await stopServer();
+  if (!(await stopServer())) {
+    closing = false;
+    discardEdits = false;
+    return;
+  }
+  try {
+    await remoteHosts?.dispose();
+  } catch {
+    closing = false;
+    discardEdits = false;
+    await startServer();
+    showWindow();
+    dialog.showErrorBox(
+      'Corral',
+      'Remote connection cleanup is still pending. Local work has been reopened; try quitting again after cleanup completes.',
+    );
+    return;
+  }
+  if (activityTimer) clearInterval(activityTimer);
+  awake.dispose();
+  tray?.destroy();
   allowQuit = true;
   app.quit();
+}
+
+async function hasUnsavedEdits() {
+  return hasWindowUnsavedEdits(BrowserWindow.getAllWindows());
 }
 
 async function chooseWorkspace() {
@@ -309,8 +568,17 @@ async function openWorkspaceAt(path: string) {
   if (!window || switching || closing || path === saved.workspace || !isAbsolute(path)) return;
   switching = true;
   try {
+    if (await hasUnsavedEdits()) {
+      await dialog.showMessageBox(window, {
+        type: 'info',
+        message: app.getLocale().startsWith('ko')
+          ? '편집 내용을 저장한 뒤 작업 공간을 전환하세요.'
+          : 'Save your edits before switching workspaces.',
+      });
+      return;
+    }
     if (!(await confirmStop(path))) return;
-    await stopServer();
+    if (!(await stopServer())) return;
     saved.workspace = path;
     saved.recent = recentWorkspaces(saved.recent, path);
     saved.route = '/';
@@ -342,7 +610,7 @@ function buildMenu() {
         submenu: [
           {
             label: say('New session', '새 세션'),
-            accelerator: 'CommandOrControl+N',
+            accelerator: accelerator('session.new', 'CommandOrControl+N'),
             click: command('session.new'),
           },
           { type: 'separator' },
@@ -352,10 +620,26 @@ function buildMenu() {
             enabled: recent.length > 0,
             submenu: recent.length ? recent : [{ label: '—', enabled: false }],
           },
+          ...(remoteHosts ? [remoteHosts.menuItem()] : []),
+          {
+            label: say('Show update backups', '업데이트 전 백업 보기'),
+            click: () => {
+              const backups = join(saved.workspace, '.corral', 'update-backups');
+              if (existsSync(backups)) shell.showItemInFolder(backups);
+              else if (window)
+                void dialog.showMessageBox(window, {
+                  type: 'info',
+                  message: say(
+                    'A workspace backup is created before an update is installed.',
+                    '업데이트를 설치하기 전에 작업 공간 백업이 만들어집니다.',
+                  ),
+                });
+            },
+          },
           { type: 'separator' },
           {
             label: say('Settings', '설정'),
-            accelerator: 'CommandOrControl+,',
+            accelerator: accelerator('settings', 'CommandOrControl+,'),
             click: command('settings'),
           },
           { type: 'separator' },
@@ -384,33 +668,33 @@ function buildMenu() {
         submenu: [
           {
             label: say('Command palette', '명령 팔레트'),
-            accelerator: 'CommandOrControl+K',
+            accelerator: accelerator('palette', 'CommandOrControl+K'),
             click: command('palette'),
           },
           {
             label: say('Toggle sidebar', '사이드바'),
-            accelerator: 'CommandOrControl+B',
+            accelerator: accelerator('view.sidebar', 'CommandOrControl+B'),
             click: command('view.sidebar'),
           },
           {
             label: say('Toggle side panel', '사이드 패널'),
-            accelerator: 'CommandOrControl+Alt+B',
+            accelerator: accelerator('view.panel', 'CommandOrControl+Alt+B'),
             click: command('view.panel'),
           },
           {
             label: say('Go to request box', '요청 입력칸으로'),
-            accelerator: 'CommandOrControl+L',
+            accelerator: accelerator('composer.focus', 'CommandOrControl+L'),
             click: command('composer.focus'),
           },
           { type: 'separator' },
           {
             label: say('Back', '뒤로'),
-            accelerator: 'CommandOrControl+[',
+            accelerator: accelerator('nav.back', 'CommandOrControl+['),
             click: command('nav.back'),
           },
           {
             label: say('Forward', '앞으로'),
-            accelerator: 'CommandOrControl+]',
+            accelerator: accelerator('nav.forward', 'CommandOrControl+]'),
             click: command('nav.forward'),
           },
           { type: 'separator' },
@@ -425,11 +709,52 @@ function buildMenu() {
       },
       { role: 'windowMenu' },
       {
-        role: 'help',
+        label: say('Background', '백그라운드'),
         submenu: [
           {
+            label: say('Close window to tray', '창을 닫으면 트레이로 숨기기'),
+            type: 'checkbox',
+            checked: saved.closeToTray,
+            enabled: !!tray,
+            click: (item) => {
+              saved.closeToTray = item.checked;
+              persist();
+            },
+          },
+          {
+            label: say('Keep awake while working', '작업 중 절전 방지'),
+            type: 'checkbox',
+            checked: saved.keepAwake,
+            click: (item) => {
+              saved.keepAwake = item.checked;
+              persist();
+              refreshTray();
+              buildMenu();
+            },
+          },
+          {
+            label: say(
+              'Also keep awake while paused or awaiting input',
+              '일시정지·응답 대기 중에도 절전 방지',
+            ),
+            type: 'checkbox',
+            checked: saved.keepAwakeWhileWaiting,
+            enabled: saved.keepAwake,
+            click: (item) => {
+              saved.keepAwakeWhileWaiting = item.checked;
+              persist();
+              refreshTray();
+            },
+          },
+        ],
+      },
+      {
+        role: 'help',
+        submenu: [
+          ...(updater?.menuItems() ?? []),
+          {
             label: say('Keyboard shortcuts', '키보드 단축키'),
-            accelerator: 'CommandOrControl+/',
+            accelerator: accelerator('help', 'CommandOrControl+/'),
             click: command('help'),
           },
           {
@@ -530,6 +855,14 @@ else {
     for (const name of ['resize', 'move', 'maximize', 'unmaximize'] as const)
       window.on(name as 'resize', keepBounds);
     const contents = window.webContents;
+    contents.on('will-prevent-unload', (event) => {
+      if ((allowQuit || cleanupFailed) && discardEdits) event.preventDefault();
+    });
+    contents.on('before-input-event', (_event, input) => {
+      contents.setIgnoreMenuShortcuts(
+        capturingShortcut || input.isComposing || (input.control && input.alt),
+      );
+    });
     // Text fields get cut, copy, paste and spelling; links get "copy link" (CR-017).
     contents.on('context-menu', (_event, params) => {
       const ko = app.getLocale().startsWith('ko');
@@ -571,8 +904,7 @@ else {
         dialog.showErrorBox('Corral could not recover', 'Restart Corral to reopen this workspace.');
       });
     });
-    contents.session.setPermissionRequestHandler((_web, _permission, callback) => callback(false));
-    contents.session.setPermissionCheckHandler(() => false);
+    installStudioMicrophone(contents.session, () => ({ window, origin }));
     contents.on('will-attach-webview', (event) => event.preventDefault());
     contents.setWindowOpenHandler(({ url }) => {
       const safe = externalUrl(url);
@@ -596,7 +928,10 @@ else {
     window.on('close', (event) => {
       if (!allowQuit) {
         event.preventDefault();
-        void quit();
+        if (saved.closeToTray && tray) {
+          persist();
+          window?.hide();
+        } else void quit();
       }
     });
     window.on('closed', () => {
@@ -622,6 +957,7 @@ else {
       platform: process.platform,
       overlay: process.platform !== 'darwin',
       status,
+      cleanupFailed,
       gitAvailable,
       workspace: saved.workspace,
       node: '24.19.0',
@@ -631,7 +967,7 @@ else {
       else if (action === 'maximize') {
         if (window?.isMaximized()) window.unmaximize();
         else window?.maximize();
-      } else if (action === 'close') void quit();
+      } else if (action === 'close') window?.close();
       else throw new Error('Unknown window action');
     });
     handle('theme', (dark) => {
@@ -664,6 +1000,17 @@ else {
       return selected.canceled ? null : (selected.filePaths[0] ?? null);
     });
     handle('open-workspace', chooseWorkspace);
+    handle('shortcuts', (value) => {
+      keybindings = desktopAccelerators(value);
+      capturingShortcut = Object.keys(value as object).length === 0;
+      window?.webContents.setIgnoreMenuShortcuts(capturingShortcut);
+      buildMenu();
+    });
+    handle('open-preview', (sessionId, leaseId) => {
+      if (typeof sessionId !== 'string' || typeof leaseId !== 'string')
+        throw new Error('Invalid preview identity');
+      return previews.open(sessionId, leaseId);
+    });
     handle('reveal-workspace', () => {
       if (existsSync(saved.workspace)) shell.showItemInFolder(saved.workspace);
     });
@@ -677,12 +1024,81 @@ else {
       switching = true;
       try {
         if (!(await confirmStop())) return;
-        await stopServer();
+        if (!(await stopServer())) return;
         await startServer();
       } finally {
         switching = false;
       }
     });
+    try {
+      const icon = nativeImage.createFromPath(join(runtime, 'icon.png'));
+      if (!icon.isEmpty()) {
+        tray = new Tray(icon.resize({ width: 20, height: 20 }));
+        tray.on('click', showWindow);
+        refreshTray();
+      }
+    } catch {
+      // Some desktop sessions have no notification area; closing continues to quit.
+    }
+    try {
+      remoteHosts = new RemoteHostController(() => window);
+    } catch {
+      dialog.showErrorBox(
+        'Corral · Remote hosts',
+        'Remote host registrations could not be opened. Local work remains available.',
+      );
+    }
+    updater = new DesktopUpdater({
+      parent: () => window,
+      runtime,
+      storageVersion: async () => {
+        const response = await sidecarRequest({ type: 'update-status' });
+        if (!Number.isSafeInteger(response.storageVersion)) throw new Error('Storage unavailable');
+        return response.storageVersion as number;
+      },
+      changed: buildMenu,
+      prepare: async () => {
+        if (closing || switching) return false;
+        closing = true;
+        const windows = BrowserWindow.getAllWindows();
+        for (const item of windows) item.setEnabled(false);
+        const restore = () => {
+          closing = false;
+          for (const item of windows) if (!item.isDestroyed()) item.setEnabled(true);
+        };
+        try {
+          if (await hasUnsavedEdits()) {
+            restore();
+            return false;
+          }
+          persist();
+          if (!(await stopServer(true))) {
+            restore();
+            return false;
+          }
+          previews.closeAll();
+          await remoteHosts?.dispose();
+          remoteHosts = null;
+          awake.dispose();
+          allowQuit = true;
+          return true;
+        } catch {
+          restore();
+          if (!child) await startServer();
+          return false;
+        }
+      },
+      recover: async () => {
+        closing = false;
+        allowQuit = false;
+        for (const item of BrowserWindow.getAllWindows()) item.setEnabled(true);
+        if (!remoteHosts) remoteHosts = new RemoteHostController(() => window);
+        await startServer();
+        buildMenu();
+      },
+    });
+    activityTimer = setInterval(() => void pollActivity(), 2000);
+    activityTimer.unref();
     buildMenu();
     await startServer();
   });

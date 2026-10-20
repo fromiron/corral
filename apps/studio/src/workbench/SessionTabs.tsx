@@ -3,11 +3,17 @@ import { X } from '@corral/react/icons';
 import { useNavigate, useRouterState } from '@tanstack/react-router';
 import { useEffect, useRef } from 'react';
 import { useTranslations } from 'use-intl';
+import { useRegisterCommands } from '../commandRegistry.ts';
 import { desktop } from '../desktop.tsx';
 import { useRemembered } from '../pages/Workbench.tsx';
+import { useShortcutBindings } from '../shortcutBindings.ts';
+import { shortcutLabel } from '../shortcuts.ts';
 
 export function SessionTabs({ sessions }: { sessions: WorkSession[] }) {
+  useShortcutBindings();
   const t = useTranslations('SessionTabs');
+  const ts = useTranslations('Shortcuts');
+  const tp = useTranslations('CommandPalette');
   const location = useRouterState({ select: (state) => state.location });
   const navigate = useNavigate();
   const activeId = /^\/sessions\/([^/]+)(?:\/|$)/.exec(location.pathname)?.[1];
@@ -48,25 +54,26 @@ export function SessionTabs({ sessions }: { sessions: WorkSession[] }) {
   useEffect(() => {
     if (visibleActiveId) activeTab.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }, [visibleActiveId]);
-  useEffect(() => {
-    if (!desktop) return;
-    const select = (event: KeyboardEvent) => {
-      if (
-        !(event.metaKey || event.ctrlKey) ||
-        event.altKey ||
-        event.shiftKey ||
-        !/^[1-9]$/.test(event.key)
-      )
-        return;
-      const tab = navigation.current[Number(event.key) - 1];
-      if (tab) {
-        event.preventDefault();
-        void navigate({ href: tab.href });
-      }
-    };
-    window.addEventListener('keydown', select);
-    return () => window.removeEventListener('keydown', select);
-  }, [navigate]);
+  useRegisterCommands(
+    'session-tabs',
+    desktop
+      ? [
+          {
+            id: 'session:jump',
+            title: ts('sessionJump'),
+            group: tp('groups.sessions'),
+            shortcutId: 'session.jump',
+            shortcut: shortcutLabel('session.jump'),
+            disabled: !visible.length,
+            run: () => {},
+            jump: (digit) => {
+              const tab = navigation.current[digit - 1];
+              if (tab) void navigate({ href: tab.href });
+            },
+          },
+        ]
+      : [],
+  );
   if (!visible.length) return null;
   return (
     <nav

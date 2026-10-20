@@ -82,6 +82,7 @@ export function writeModelConfig(
   expectedRevision: string,
   /** Checks that need the runtime (known providers); errors stop the write. */
   check: (config: WorkspaceConfig) => string[] = () => [],
+  operation?: WorkspaceConfig['modelSettingsOperation'],
 ):
   | { ok: true; config: WorkspaceConfig; revision: string }
   | { ok: false; conflict: boolean; errors: string[] } {
@@ -92,10 +93,14 @@ export function writeModelConfig(
   const raw = existsSync(path)
     ? (JSON.parse(readFileSync(path, 'utf-8')) as Record<string, unknown>)
     : { schemaVersion: '0.1' };
+  // A normal edit supersedes any vault checkpoint. The owner checkpoint and model
+  // configuration share the same atomic file replacement.
+  delete raw.modelSettingsOperation;
   const next = {
     ...raw,
     modelProfiles: change.modelProfiles,
     modelProviders: change.modelProviders,
+    ...(operation ? { modelSettingsOperation: operation } : {}),
   };
   const parsed = parseWorkspaceConfig(next);
   if (!parsed.ok) return { ok: false, conflict: false, errors: parsed.errors };

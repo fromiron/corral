@@ -44,6 +44,7 @@ export function git(
       [...SAFE_CONFIG, ...args],
       {
         cwd,
+        windowsHide: true,
         encoding: 'buffer',
         maxBuffer: options.maxBuffer ?? 64 * 1024 * 1024,
         env: {

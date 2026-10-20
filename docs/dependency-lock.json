@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-19T05:30:12.489Z",
+  "generatedAt": "2026-10-20T14:19:00.244Z",
   "node": "v24.19.0",
   "packageManager": "pnpm@10.30.3",
   "note": "Registry facts for pinned direct dependencies. Compatibility evidence is the CI gate result, not this file.",
@@ -288,6 +288,23 @@
       "usedBy": [
         "@corral/desktop",
         "@corral/studio"
+      ]
+    },
+    {
+      "name": "@smithy/signature-v4",
+      "version": "5.7.4",
+      "license": "Apache-2.0",
+      "integrity": "sha512-tHy0K0VtqNd5Y7Y41h0a0Lhh0L1GzC08dTWg0F7vRJWFtTENg7IZikf3wQkanYIRdb7ngoIPMTmqgUi401fEeQ==",
+      "published": "2026-09-25T19:48:20.344Z",
+      "repository": "https://github.com/smithy-lang/smithy-typescript.git",
+      "gitHead": "67b94cc461a7fea6a4ffe1e4b03a54841af39c21",
+      "engines": {
+        "node": ">=18.0.0"
+      },
+      "peerDependencies": null,
+      "scope": "runtime",
+      "usedBy": [
+        "@corral/server"
       ]
     },
     {
@@ -765,6 +782,21 @@
       },
       "peerDependencies": null,
       "scope": "development",
+      "usedBy": [
+        "@corral/desktop"
+      ]
+    },
+    {
+      "name": "electron-updater",
+      "version": "6.8.9",
+      "license": "MIT",
+      "integrity": "sha512-ZhVxM9iGONUpZGI1FxdMRgJjUFXi7AYGVa5PwKlO1tV1/4zDxQmfKpXOHVztKrd6L9rLcFjERvi1Mf2vxyTkig==",
+      "published": "2026-06-05T06:18:09.685Z",
+      "repository": "git+https://github.com/electron-userland/electron-builder.git",
+      "gitHead": null,
+      "engines": null,
+      "peerDependencies": null,
+      "scope": "runtime",
       "usedBy": [
         "@corral/desktop"
       ]

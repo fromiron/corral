@@ -18,8 +18,14 @@ interface DesktopBridge {
   window(action: 'minimize' | 'maximize' | 'close'): Promise<void>;
   pickFolder(): Promise<string | null>;
   openWorkspace(): Promise<void>;
+  shortcuts(
+    bindings: Partial<
+      Record<string, { key: string; mod?: boolean; shift?: boolean; alt?: boolean }>
+    >,
+  ): Promise<void>;
   revealWorkspace(): Promise<void>;
   openExternal(url: string): Promise<void>;
+  openPreview(sessionId: string, leaseId: string): Promise<void>;
   retry(): Promise<void>;
   theme(dark: boolean): Promise<void>;
   notify(title: string, body: string): Promise<boolean>;
@@ -30,9 +36,16 @@ interface DesktopBridge {
 declare global {
   interface Window {
     corralDesktop?: DesktopBridge;
+    corralRemote?: {
+      readonly hostId: string;
+      openPreview(sessionId: string, leaseId: string): Promise<void>;
+    };
   }
 }
 export const desktop = typeof window === 'undefined' ? undefined : window.corralDesktop;
+/** Remote hosts expose only host-scoped preview, never local filesystem/window capabilities. */
+export const previewDesktop =
+  typeof window === 'undefined' ? undefined : (window.corralDesktop ?? window.corralRemote);
 
 /**
  * Double-clicking the empty top bar maximizes or restores the window, as a system title bar

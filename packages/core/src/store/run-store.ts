@@ -3,7 +3,9 @@ import type {
   BranchedFrom,
   CorralDefinition,
   EffectiveHarnessSnapshot,
+  ImageGenerationProfile,
   ModelProfileSnapshot,
+  PermissionMode,
   ReasoningApplySettings,
   Receipt,
   ResumedFrom,
@@ -19,6 +21,8 @@ import type { RunProjection } from '../projection.ts';
 
 /** What a run was started with, fixed for its whole life (C-057, CRL-CAN-002). */
 export interface RunSnapshot {
+  imageProfiles?: Record<string, ImageGenerationProfile>;
+  permissionMode?: PermissionMode;
   resumedFrom?: ResumedFrom;
   branchedFrom?: BranchedFrom;
   /** The definition as run, with the run input applied. Later edits never reach it. */
@@ -88,6 +92,7 @@ export interface RunStore {
   readEvents(runId: string, afterSeq: number, limit?: number): RunEvent[];
   getCommand(scope: string, commandId: string): StoredCommand | null;
   getArtifactText(runId: string, artifactVersionId: string): string | null;
+  getArtifactBinary?(runId: string, artifactVersionId: string): Uint8Array | null;
 }
 
 /** Store for tests and the in-browser runtime. Rolls back by restoring a copy on failure. */

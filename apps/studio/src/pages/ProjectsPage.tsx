@@ -7,6 +7,7 @@ import { projectName, projectOfRun, projectsChanged, useCurrentProject } from '.
 import { projectsRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
 import { createDemoExamples } from '../templates.ts';
+import { GitCloneFolder } from '../workbench/GitCloneFolder.tsx';
 
 /** /projects (CR-010): every project, a new one, and archived ones on request. */
 export function ProjectsPage() {
@@ -55,6 +56,7 @@ export function ProjectsPage() {
     <main className="mx-auto flex max-w-4xl flex-col gap-4 p-6">
       <h2 className="text-lg font-semibold">{t('heading')}</h2>
       <p className="text-sm text-muted">{t('intro')}</p>
+      {mode === 'server' && workspaces ? <GitCloneFolder onSelect={setFolder} /> : null}
       <form
         onSubmit={create}
         aria-label={t('new')}

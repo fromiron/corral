@@ -4,6 +4,7 @@ import {
   activityLine,
   agentActivity,
   changesPresentation,
+  fileChangeSignals,
   planBodyStatus,
   presentContext,
   selectPresentedPlan,
@@ -42,6 +43,25 @@ const body = (revision: number, statuses: Array<'pending' | 'in_progress' | 'com
 });
 
 describe('chat widget selectors', () => {
+  it('[TC-ABS-003-H] refreshes file changes after hashline and shell writes, including partial failures', () => {
+    const calls = [
+      { name: 'edit_hashline', phase: 'finished' },
+      { name: 'run_command', phase: 'failed' },
+      { name: 'read_hashline', phase: 'finished' },
+      { name: 'edit_hashline', phase: 'allowed' },
+    ];
+    expect(fileChangeSignals(calls, 'running', true)).toEqual({ revision: 2, poll: false });
+  });
+  it('[TC-ABS-003-N] keeps service changes live after launch, but never polls an archived or paused run', () => {
+    const calls = [{ name: 'run_command', phase: 'finished' }];
+    expect(fileChangeSignals(calls, 'running', true)).toEqual({ revision: 1, poll: true });
+    expect(fileChangeSignals(calls, 'running', false).poll).toBe(false);
+    expect(fileChangeSignals(calls, 'paused', true).poll).toBe(false);
+    expect(fileChangeSignals(calls, 'succeeded', true).poll).toBe(false);
+    expect(
+      fileChangeSignals([{ name: 'run_command', phase: 'allowed' }], 'running', true).poll,
+    ).toBe(false);
+  });
   it('[TC-WIDGET-001-N] PLAN-04 shows live-open errors only for their current target', () => {
     const current = {
       presentationRunId: 'run_current',

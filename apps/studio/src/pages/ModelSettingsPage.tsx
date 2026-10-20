@@ -6,7 +6,9 @@ import { useFormatter, useTranslations } from 'use-intl';
 import { modelSettingsRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
 import { ApiKeyInput } from './ApiKeyInput.tsx';
+import { ImageProfileSettings } from './ImageProfileSettings.tsx';
 import { ModelConfigEditor } from './ModelConfigEditor.tsx';
+import { ModelImportPanel } from './ModelImportPanel.tsx';
 import { SettingsLayout } from './SettingsPage.tsx';
 
 /**
@@ -73,6 +75,8 @@ export function ModelSettingsPage() {
                 />
               ))}
             </section>
+            <ModelImportPanel />
+            <ImageProfileSettings modelProfiles={profiles} />
             <ReasoningSettingsPanel key={config?.revision} />
           </>
         )}

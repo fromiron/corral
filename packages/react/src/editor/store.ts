@@ -47,6 +47,8 @@ export interface EditorState {
   undo(): void;
   redo(): void;
   replaceDraft(draft: EditorDraft): void;
+  /** A reviewed import is one reversible edit, unlike loading a saved document. */
+  applyDraft(draft: EditorDraft): void;
 
   addNode(type: EditorNodeType, position: Point): string;
   duplicateNode(nodeId: string): string;
@@ -123,6 +125,7 @@ export function createEditorStore(initial: EditorDraft = emptyDraft()): EditorSt
         batchStart = null;
         set({ draft, selectedNodeId: null, notice: null, ...history([], []) });
       },
+      applyDraft: (draft) => apply(draft),
 
       addNode(type, position) {
         const added = addNode(get().draft, type, position);

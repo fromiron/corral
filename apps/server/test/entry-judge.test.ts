@@ -1,8 +1,9 @@
 import { type ChildProcess, spawn } from 'node:child_process';
+import { once } from 'node:events';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { bundledManifest } from '@corral/effort-judge';
+import { bundledManifest, defaultModelDir } from '@corral/effort-judge';
 import { linearCorral } from '@corral/testkit';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -12,8 +13,15 @@ import { afterEach, describe, expect, it } from 'vitest';
 const MAIN = join(import.meta.dirname, '..', 'src', 'main.ts');
 const children: ChildProcess[] = [];
 const dirs: string[] = [];
-afterEach(() => {
-  for (const child of children.splice(0)) child.kill('SIGKILL');
+afterEach(async () => {
+  await Promise.all(
+    children.splice(0).map(async (child) => {
+      if (child.exitCode !== null || child.signalCode !== null) return;
+      const closed = once(child, 'close');
+      child.kill('SIGKILL');
+      await closed;
+    }),
+  );
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 const temp = () => {
@@ -21,6 +29,13 @@ const temp = () => {
   dirs.push(dir);
   return dir;
 };
+const modelEnv = (dataHome: string): NodeJS.ProcessEnv => ({
+  ...process.env,
+  XDG_DATA_HOME: dataHome,
+  LOCALAPPDATA: dataHome,
+  HOME: dataHome,
+  USERPROFILE: dataHome,
+});
 
 async function serve(dataHome: string) {
   const workspace = temp();
@@ -37,7 +52,7 @@ async function serve(dataHome: string) {
   const child = spawn(
     process.execPath,
     [MAIN, '--workspace', workspace, '--port', '0', '--no-live', '--mock-delay', '10'],
-    { env: { ...process.env, XDG_DATA_HOME: dataHome }, stdio: ['ignore', 'pipe', 'pipe'] },
+    { env: modelEnv(dataHome), stdio: ['ignore', 'pipe', 'pipe'] },
   );
   children.push(child);
   const link = await new Promise<string>((resolve, reject) => {
@@ -104,7 +119,7 @@ async function decisionProviders(dataHome: string) {
 describe('the server entry point registers the local judge model (#21)', () => {
   it('[TC-DEC-001-H] an installed model is available to `pnpm serve`, with its release', async () => {
     const dataHome = temp();
-    const modelDir = join(dataHome, 'corral', 'effort-judge');
+    const modelDir = defaultModelDir(modelEnv(dataHome), process.platform, dataHome);
     mkdirSync(modelDir, { recursive: true });
     writeFileSync(
       join(modelDir, 'install.json'),

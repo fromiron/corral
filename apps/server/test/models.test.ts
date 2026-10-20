@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -7,10 +7,14 @@ import type { RunEvent } from '@corral/contracts';
 import { waitForProjection } from '@corral/core';
 import { linearCorral, ScriptedAgentAdapter } from '@corral/testkit';
 import { startCompatibleEndpoint } from '@corral/testkit/endpoint';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { type CorralServer, startCorralServer } from '../src/index.ts';
 import { assertOutsideWorkspace } from '../src/models/index.ts';
 import { FAKE_PROFILES, FAKE_REDIRECT_BAD, FAKE_REDIRECT_OK, fakeOpenAI } from '../src/testing.ts';
+import { expectPrivatePermissions } from './fixtures/private-permissions.ts';
+
+// OAuth/refresh cases perform several real Windows ACL-protected writes.
+if (process.platform === 'win32') vi.setConfig({ testTimeout: 20_000 });
 
 const TOKEN = 'test-bootstrap-token-0123456789abcdef';
 const servers: CorralServer[] = [];
@@ -153,7 +157,7 @@ describe('model sign-in and profiles (C-058, ADR-019)', () => {
 
     // The credential lives in the user's config dir, private to them, outside the workspace.
     const file = join(fake.configDir, 'credentials.json');
-    expect(statSync(file).mode & 0o777).toBe(0o600);
+    expectPrivatePermissions(file, 0o600);
     expect(readFileSync(file, 'utf-8')).toContain('access-1-secret');
     expect(() => assertOutsideWorkspace(join(context.workspace, 'x'), context.workspace)).toThrow();
     expect(context.responses.join('\n')).not.toMatch(/secret/);
@@ -345,7 +349,7 @@ describe('API keys and OpenAI-compatible endpoints (CR-005)', () => {
     expect(fake.seen.tokens.every((t) => t === 'sk-entered-key-secret')).toBe(true);
     expect(context.responses.join('\n')).not.toContain('sk-entered-key-secret');
     const file = join(fake.configDir, 'credentials.json');
-    expect(statSync(file).mode & 0o777).toBe(0o600);
+    expectPrivatePermissions(file, 0o600);
 
     const removed = await context.json('/model-auth/openai', { method: 'DELETE' });
     expect(removed.body[0]).toMatchObject({ signedIn: false, method: null });

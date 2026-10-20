@@ -20,6 +20,9 @@ contextBridge.exposeInMainWorld(
     window: (action) => ipcRenderer.invoke('desktop:window', action),
     pickFolder: () => ipcRenderer.invoke('desktop:pick-folder'),
     openWorkspace: () => ipcRenderer.invoke('desktop:open-workspace'),
+    shortcuts: (bindings) => ipcRenderer.invoke('desktop:shortcuts', bindings),
+    openPreview: (sessionId, leaseId) =>
+      ipcRenderer.invoke('desktop:open-preview', sessionId, leaseId),
     revealWorkspace: () => ipcRenderer.invoke('desktop:reveal-workspace'),
     openExternal: (url) => ipcRenderer.invoke('desktop:external', url),
     retry: () => ipcRenderer.invoke('desktop:retry'),

@@ -156,3 +156,92 @@ it.each([false, true])(
     }
   },
 );
+
+it('[TC-ABS-001-H] command approval leads with source and launch scope, keeps transport in disclosure', async () => {
+  const args = {
+    operationId: 'command_1',
+    hostId: 'host_1',
+    sessionId: 'session_1',
+    workspaceBindingId: 'binding_1',
+    worktreeId: 'worktree_1',
+    rootIdentity: 'a'.repeat(64),
+    tree: 'b'.repeat(40),
+    shellId: 'powershell',
+    command: 'Write-Output "hello"',
+    executable: 'powershell.exe',
+    argv: ['-EncodedCommand', 'TRANSPORT_ONLY_BASE64'],
+    cwd: 'src',
+    environmentHash: 'c'.repeat(64),
+    timeoutMs: 120000,
+    mode: 'service',
+    fingerprint: 'd'.repeat(64),
+    request: { command: 'Write-Output "hello"', mode: 'service' },
+  };
+  await renderCorralTool('run_command', args);
+  expect(await screen.findByText('Write-Output "hello"')).toBeVisible();
+  expect(screen.getByText('src')).toBeVisible();
+  expect(screen.getByText('PowerShell')).toBeVisible();
+  expect(screen.getByText('Service')).toBeVisible();
+  expect(screen.getByText('120 s')).toBeVisible();
+  expect(screen.getByText(/TRANSPORT_ONLY_BASE64/)).not.toBeVisible();
+  fireEvent.click(screen.getByText('Tool identity and call fingerprint'));
+  expect(screen.getByText(/TRANSPORT_ONLY_BASE64/)).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Allow once' })).toBeEnabled();
+});
+
+it('[TC-ABS-003-H] Hashline approval shows the affected path and multiline operations before technical metadata', async () => {
+  await renderCorralTool('edit_hashline', {
+    version: 1,
+    path: 'src/main.ts',
+    tag: 'A123',
+    ops: 'PUT 2\n+const value = 2;',
+  });
+  expect(await screen.findByText('src/main.ts')).toBeVisible();
+  expect(screen.getByText('PUT 2 +const value = 2;')).toBeVisible();
+  expect(screen.getByText(/"tag": "A123"/)).not.toBeVisible();
+  expect(screen.getByRole('button', { name: 'Allow once' })).toBeEnabled();
+});
+
+async function renderCorralTool(name: string, args: Record<string, unknown>) {
+  const { toolPermissionPlan } = await import('@corral/core');
+  const permission = toolPermissionPlan(
+    { snapshotHash: 'e'.repeat(64), policyRevision: 2 },
+    {
+      name,
+      source: 'corral',
+      schemaHash: 'f'.repeat(64),
+      exposure: 'direct',
+      sideEffect: 'workspace',
+    },
+    args,
+  );
+  const session = sessionStore({
+    projection: projectionWith({
+      status: 'awaiting_user',
+      approvals: {
+        approval_command: {
+          approvalId: 'approval_command',
+          kind: 'user_action',
+          subjectVersionIds: ['command_body'],
+          criteriaVersionId: null,
+          status: 'pending',
+          tool: {
+            purpose: 'tool',
+            executionId: 'exec_1',
+            attemptNo: 1,
+            toolCallId: 'tool_1',
+            bodyRef: 'command_body',
+            fingerprint: permission.fingerprint,
+            deadline: '2099-10-18T00:00:00.000Z',
+          },
+        },
+      },
+    }),
+    artifactTexts: { command_body: JSON.stringify(permission) },
+  });
+  render(
+    <IntlProvider locale="en" messages={messages} timeZone="UTC">
+      <ApprovalPanel session={session} onOpenArtifact={() => {}} />
+    </IntlProvider>,
+  );
+}

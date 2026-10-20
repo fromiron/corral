@@ -6,19 +6,36 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
-  realpathSync,
   renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { isAbsolute, join, relative, resolve } from 'node:path';
 import ts from 'typescript';
+import {
+  assertRelocatableRuntime,
+  NODE_VERSION,
+  nodeLicensePath,
+  packageManagerCommand,
+  runtimeTarget,
+} from './packaging.ts';
 
 // Deploy the existing packages, preserving every worker/asset path, then compile only our TS.
 // Native modules stay on the bundled Node ABI, independent of Electron's Node version.
-assert.equal(process.platform, 'linux', 'the current artifact is Linux x64');
-assert.equal(process.arch, 'x64');
-assert.equal(process.versions.node, '24.19.0', 'build with the reviewed bundled Node 24.19.0');
+const target = runtimeTarget(process.platform, process.arch);
+assert.equal(
+  process.versions.node,
+  NODE_VERSION,
+  `build with the reviewed bundled Node ${NODE_VERSION}`,
+);
+const nodeLicense = nodeLicensePath(process.execPath);
+// Launch pnpm's actual JS/native entry, avoiding Windows .cmd shell quoting and PATHEXT.
+const pnpmEntry = process.env.npm_execpath;
+assert(
+  pnpmEntry && existsSync(pnpmEntry),
+  'Run this script with pnpm --filter @corral/desktop prepare:runtime',
+);
+const pnpmCommand = packageManagerCommand(pnpmEntry, process.execPath);
 const desktop = resolve(import.meta.dirname, '..');
 const root = resolve(desktop, '../..');
 const sourceManifests = [
@@ -35,14 +52,27 @@ assert(
   existsSync(join(root, 'apps/studio/dist/index.html')),
   'build Studio before preparing the desktop runtime',
 );
-rmSync(staging, { recursive: true, force: true });
-rmSync(dist, { recursive: true, force: true });
+for (const path of [staging, dist]) {
+  assert(['staging', 'dist'].includes(relative(desktop, path)), 'cleanup must stay within desktop');
+  rmSync(path, { recursive: true, force: true });
+}
 mkdirSync(staging, { recursive: true });
 mkdirSync(dist, { recursive: true });
 execFileSync(
-  'pnpm',
-  ['--filter', '@corral/server', 'deploy', '--legacy', '--prod', join(staging, 'server')],
-  { cwd: root, stdio: 'inherit' },
+  pnpmCommand.executable,
+  [
+    ...pnpmCommand.args,
+    '--filter',
+    '@corral/server',
+    '--config.node-linker=hoisted',
+    '--config.prefer-symlinked-executables=false',
+    '--config.inject-workspace-packages=true',
+    '--offline',
+    'deploy',
+    '--prod',
+    join(staging, 'server'),
+  ],
+  { cwd: root, stdio: 'inherit', windowsHide: true },
 );
 
 const workerUrls: ts.TransformerFactory<ts.SourceFile> = (context) => {
@@ -56,7 +86,7 @@ const workerUrls: ts.TransformerFactory<ts.SourceFile> = (context) => {
       node.arguments[0].text.endsWith('.ts')
     ) {
       return ts.factory.updateNewExpression(node, node.expression, node.typeArguments, [
-        ts.factory.createStringLiteral(node.arguments[0].text.slice(0, -3) + '.js'),
+        ts.factory.createStringLiteral(`${node.arguments[0].text.slice(0, -3)}.js`),
         ...node.arguments.slice(1),
       ]);
     }
@@ -84,7 +114,7 @@ function compile(path: string, output = path) {
         },
         transformers: { before: [workerUrls] },
       });
-      writeFileSync(dest.slice(0, -3) + '.js', result.outputText);
+      writeFileSync(`${dest.slice(0, -3)}.js`, result.outputText);
       if (input === dest) rmSync(input);
     } else if (input !== dest && entry.isFile()) cpSync(input, dest);
   }
@@ -106,40 +136,78 @@ function compile(path: string, output = path) {
 }
 
 const internal = new Set<string>([join(staging, 'server')]);
-const store = join(staging, 'server/node_modules/.pnpm');
-for (const entry of readdirSync(store)) {
-  const scope = join(store, entry, 'node_modules/@corral');
-  if (!existsSync(scope)) continue;
-  for (const name of readdirSync(scope)) internal.add(realpathSync(join(scope, name)));
+assertRelocatableRuntime(staging);
+function collectInternalPackages(modules: string) {
+  if (!existsSync(modules)) return;
+  for (const entry of readdirSync(modules, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+    const path = join(modules, entry.name);
+    const packages = entry.name.startsWith('@')
+      ? readdirSync(path, { withFileTypes: true })
+          .filter((item) => item.isDirectory())
+          .map((item) => join(path, item.name))
+      : [path];
+    for (const directory of packages) {
+      const manifest = join(directory, 'package.json');
+      if (
+        existsSync(manifest) &&
+        JSON.parse(readFileSync(manifest, 'utf8')).name?.startsWith('@corral/')
+      )
+        internal.add(directory);
+      collectInternalPackages(join(directory, 'node_modules'));
+    }
+  }
 }
+collectInternalPackages(join(staging, 'server/node_modules'));
 for (const path of internal) {
-  assert(path.startsWith(staging), 'deploy must not reference a source checkout');
+  const inside = relative(staging, path);
+  assert(
+    !inside.startsWith('..') && !isAbsolute(inside),
+    'deploy must not reference a source checkout',
+  );
   compile(path);
 }
 compile(join(desktop, 'src'), dist);
 cpSync(join(desktop, 'src/sidecar.mjs'), join(staging, 'server/sidecar.mjs'));
 // The server entry is also the deployed root package, not a dependency of itself.
 const sidecar = join(staging, 'server/sidecar.mjs');
+for (const [path, before] of sourceManifests)
+  assert.equal(readFileSync(path, 'utf8'), before, `packaging changed a source manifest: ${path}`);
 writeFileSync(
   sidecar,
   readFileSync(sidecar, 'utf8').replace("from '@corral/server'", "from './src/index.js'"),
 );
-cpSync(process.execPath, join(staging, 'node'));
+const bundledNode = join(staging, target.node);
+cpSync(process.execPath, bundledNode);
+cpSync(join(desktop, 'build/icon.png'), join(staging, 'icon.png'));
 cpSync(join(root, 'apps/studio/dist'), join(staging, 'studio'), { recursive: true });
 cpSync(join(root, 'THIRD-PARTY-NOTICES'), join(staging, 'THIRD-PARTY-NOTICES'), {
   recursive: true,
 });
-const nodeLicense = join(dirname(process.execPath), '../LICENSE');
-assert(existsSync(nodeLicense), 'the bundled Node distribution must carry its license');
 cpSync(nodeLicense, join(staging, 'THIRD-PARTY-NOTICES/Node-LICENSE'));
 // Catch missing native modules, unresolved exports, and forgotten TS worker URLs before packaging.
-const check = `import { createRequire } from 'node:module'; import { existsSync } from 'node:fs'; import { WORKER_ENTRY, SDK_WORKER_ENTRY, PROTOCOL_VERSION, sdkProcessChannel } from '@corral/adapter-pi'; import { startCorralServer } from './src/index.js'; const require=createRequire(import.meta.url); const Database=createRequire(require.resolve('@corral/storage-sqlite'))('better-sqlite3'); const db=new Database(':memory:'); db.prepare('SELECT 1').get(); db.close(); for (const entry of [WORKER_ENTRY, SDK_WORKER_ENTRY]) if (!existsSync(entry) || !entry.endsWith('.js')) throw new Error('Pi worker missing'); createRequire(require.resolve('@corral/effort-judge'))('onnxruntime-node'); if (typeof startCorralServer !== 'function') throw new Error('server export missing'); const channel=sdkProcessChannel(SDK_WORKER_ENTRY); await new Promise((resolve,reject)=>{let ready=false;const timer=setTimeout(()=>{channel.kill();reject(new Error('SDK worker startup timeout'));},10000);channel.onFrame(frame=>{if(frame.type==='ready'&&frame.protocolVersion===PROTOCOL_VERSION){ready=true;channel.kill();}});channel.onExit(()=>{clearTimeout(timer);ready?resolve():reject(new Error('SDK worker did not load'));});});`;
-execFileSync(join(staging, 'node'), ['--input-type=module', '-e', check], {
+const checkEnv = { ...process.env };
+for (const name of ['NODE_PATH', 'NODE_OPTIONS', 'ELECTRON_RUN_AS_NODE']) delete checkEnv[name];
+execFileSync(bundledNode, [join(desktop, 'scripts/check-runtime.mjs'), join(staging, 'server')], {
   cwd: join(staging, 'server'),
   stdio: 'inherit',
+  windowsHide: true,
+  env: checkEnv,
 });
-console.log(
-  'Prepared Linux x64 runtime: Node 24.19.0, SQLite, Pi worker, ONNX runtime and Studio.',
+const inventory = assertRelocatableRuntime(staging);
+writeFileSync(
+  join(staging, 'runtime.json'),
+  JSON.stringify(
+    {
+      platform: target.platform,
+      arch: target.arch,
+      version: NODE_VERSION,
+      dependencyLayout: 'physical-hoisted',
+    },
+    null,
+    2,
+  ),
 );
-for (const [path, before] of sourceManifests)
-  assert.equal(readFileSync(path, 'utf8'), before, `packaging changed a source manifest: ${path}`);
+console.log(
+  `Prepared ${target.platform} ${target.arch} runtime: Node ${NODE_VERSION}, SQLite, both Pi workers, ONNX runtime and Studio; ${inventory.files} physical files, zero links.`,
+);

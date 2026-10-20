@@ -120,6 +120,35 @@ export class SqliteHarnessStore {
     return { managementRevision: row?.revision ?? 0, archivedAt: row?.archived_at ?? null };
   }
 
+  packageManagement(hash: string) {
+    ContentHash.parse(hash);
+    const row = this.db
+      .prepare('SELECT revision, status, updated_at FROM harness_package_management WHERE hash = ?')
+      .get(hash) as
+      | { revision: number; status: 'enabled' | 'disabled' | 'removed'; updated_at: string }
+      | undefined;
+    return {
+      managementRevision: row?.revision ?? 0,
+      status: row?.status ?? ('enabled' as const),
+      updatedAt: row?.updated_at ?? null,
+    };
+  }
+
+  managePackage(
+    hash: string,
+    expectedRevision: number,
+    status: 'enabled' | 'disabled' | 'removed',
+  ) {
+    if (!this.getResource(hash)) throw new Error('resource not installed');
+    if (this.packageManagement(hash).managementRevision !== expectedRevision)
+      throw new Error('management revision changed');
+    this.db
+      .prepare(`INSERT INTO harness_package_management VALUES (?, ?, ?, ?)
+      ON CONFLICT(hash) DO UPDATE SET revision = excluded.revision, status = excluded.status, updated_at = excluded.updated_at`)
+      .run(hash, expectedRevision + 1, status, this.clock.nowIso());
+    return this.packageManagement(hash);
+  }
+
   manageProfile(profileId: string, expectedRevision: number, archived: boolean) {
     if (!this.listProfiles().some((profile) => profile.profileId === profileId))
       throw new Error('profile not found');

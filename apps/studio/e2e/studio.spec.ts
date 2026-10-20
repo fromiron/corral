@@ -15,6 +15,7 @@ async function trackErrors(page: Page): Promise<string[]> {
 
 async function newCorral(page: Page, query = '') {
   await page.goto(`/${query}`);
+  await page.getByRole('tab', { name: /^Teams/ }).click();
   await page.getByRole('button', { name: 'New team' }).click();
   await expect(page).toHaveURL(/\/corrals\/corral_[a-z0-9]+\/edit/);
 }
@@ -51,10 +52,16 @@ test('[TC-CAN-001-H] [TC-UX-004-H] nodes dropped on an empty canvas and connecte
     'aria-selected',
     'true',
   );
+  const brief = 'Compare notebook formats for field notes.';
+  await page.getByLabel('Run brief').fill(brief);
   await page.getByRole('tab', { name: 'Test run', exact: true }).click();
   await page.getByRole('button', { name: 'Run', exact: true }).click();
 
-  await expect(page.getByTestId('run-output')).toContainText('Agent 1 (agent_1) turn 2');
+  await expect(page.getByTestId('run-status')).toContainText('Succeeded');
+  await expect(page.getByTestId('run-output')).toContainText(
+    'Simulated Agent 1 reply, request 2 of 2. No model was called.',
+  );
+  await expect(page.getByTestId('run-output')).toContainText(brief);
   await expect(page.locator('[data-execution-id]')).toHaveCount(1);
   await expect(
     page.locator('.react-flow__node[data-id="agent_1"] [data-run-status="done"]'),
@@ -101,6 +108,7 @@ test('[TC-CAN-004-H] [TC-RUN-003-H] an imported team with a Loop validates and r
   const errors = await trackErrors(page);
   // Short simulated replies: the team makes about thirty model requests over two rounds.
   await page.goto('/?delay=50');
+  await page.getByRole('tab', { name: /^Teams/ }).click();
   await page
     .locator('input[type=file]')
     .setInputFiles([
@@ -165,6 +173,7 @@ test('the workspace and editor have no serious automated accessibility violation
       .map((v) => `${v.id}: ${v.nodes.length} nodes`);
   expect(await serious()).toEqual([]);
 
+  await page.getByRole('tab', { name: /^Teams/ }).click();
   await page.getByRole('button', { name: 'New team' }).click();
   await buildAgentToOutput(page);
   await page.locator('.react-flow__node[data-id="agent_1"]').click();
@@ -175,6 +184,7 @@ test('[TC-ART-003-N] a reviewer without the criteria is flagged, and one click g
   page,
 }) => {
   await page.goto('/');
+  await page.getByRole('tab', { name: /^Teams/ }).click();
   await page
     .locator('input[type=file]')
     .setInputFiles([

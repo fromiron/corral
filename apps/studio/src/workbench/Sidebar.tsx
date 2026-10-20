@@ -40,6 +40,7 @@ import {
   useProjectsVersion,
 } from '../projects.ts';
 import { useServices } from '../services.tsx';
+import { useShortcutBindings } from '../shortcutBindings.ts';
 import { shortcutLabel } from '../shortcuts.ts';
 import { useSettingsNavigation } from './navigation.ts';
 import { changePreferences, preferences } from './preferences.ts';
@@ -165,6 +166,7 @@ export const Sidebar = memo(function Sidebar({
 }: {
   model: ReturnType<typeof useCorralSidebar>;
 }) {
+  useShortcutBindings();
   const t = useTranslations('Desktop');
   const tw = useTranslations('Workbench');
   const tp = useTranslations('Projects');
@@ -346,6 +348,9 @@ export const Sidebar = memo(function Sidebar({
         </Link>
       ) : null}
       <div className="flex items-center justify-between pt-2 pr-3 pb-1 pl-5 text-2xs font-medium text-muted">
+        <Link to="/schedules" className="hover:text-text">
+          {t('schedules')}
+        </Link>
         <Link to="/projects" className="hover:text-text">
           {tw('allProjects')}
         </Link>

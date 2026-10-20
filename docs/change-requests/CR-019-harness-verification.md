@@ -9,6 +9,10 @@
 - LSP 조회는 사용자가 등록한 서버만 실행한다. Hashline은 고정 fixture의 비교 평가 후보이며 기본 편집 방식으로 추가하지 않는다.
 - 인간 승인과 원본 반영은 별도 동작이다. 자동 commit/push/deploy는 추가하지 않는다.
 
+### CR-042의 후속 범위 확장
+
+2026-10-20 승인된 [CR-042](CR-042-desktop-capabilities.md) ABS-01/03은 이 CR의 당시 범위 중 등록 검사 외 임의 명령 제외와 평가 전용 Hashline 제한을 확장한다. `run_command`는 실제 세션 관리 사본에서 실행하는 별도 명령·service 계약이며, 이 문서의 `run_check` 등록 argv·고정 검증 사본 의미는 유지한다. Hashline은 명시 선택하는 버전 있는 `read`/`edit_hashline` 제품 경로로 추가하고, Pi `edit`의 기존 schema·원자 변환·읽기 근거·hash·lease 검사를 보존한다. 아래 fixture 비교는 과거 평가 증거로 남으며 새 제품 경로의 검증을 대신하지 않는다. 후속 기능은 [진행 기록](../evaluation/Desktop-Capabilities-Implementation-Progress.md)의 실제 입구·효과·readback 증거가 확보되기 전까지 완료로 간주하지 않는다.
+
 ## 반례·완료 조건
 
 TC-HAR-010/011: Pi 편집 계약, 변경된 읽기 근거·실행 간 혼선·경로 탈출 거절.

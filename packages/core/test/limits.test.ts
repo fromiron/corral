@@ -32,6 +32,47 @@ const waiting = (id: string, kind: 'children' | 'message', targetIds: string[]):
   }) as ExecutionView;
 
 describe('waits and finite run limits (C-038)', () => {
+  it('[TC-ABS-011-H] an addressed parent answer advances collaboration; unrelated messages and timeouts do not', () => {
+    const p = emptyProjection('run');
+    p.questions.child_question = {
+      questionId: 'child_question',
+      delivery: 'parent',
+      targetExecutionId: 'parent',
+    } as QuestionView;
+    const stalled = { ...emptyProgress(), turns: 6 };
+    expect(
+      applyProgressEvent(
+        stalled,
+        event('message.answer_committed', {
+          questionId: 'child_question',
+          responderExecutionId: 'parent',
+          body: 'Use A',
+        }),
+        p,
+      ).turns,
+    ).toBe(0);
+    expect(
+      applyProgressEvent(
+        stalled,
+        event('message.answer_committed', {
+          questionId: 'child_question',
+          responderExecutionId: 'other',
+          body: 'Use A',
+        }),
+        p,
+      ).turns,
+    ).toBe(6);
+    expect(
+      applyProgressEvent(
+        stalled,
+        event('message.closed', {
+          questionId: 'child_question',
+          outcome: 'timed_out',
+        }),
+        p,
+      ).turns,
+    ).toBe(6);
+  });
   it('[TC-RUN-005-N] wait cycles resolve question IDs to responder executions', () => {
     const p = emptyProjection('run');
     p.executions = { a: waiting('a', 'message', ['question']), b: waiting('b', 'children', ['c']) };

@@ -107,8 +107,9 @@ describe('Korean messages (UX-A5)', () => {
     expect(errors).toEqual([]);
     // Text that should be translated: anything with a lowercase English word of 4+ letters
     // outside placeholders, except product terms and technical tokens.
+    // models.dev names the catalog source; translating its domain would hide attribution.
     const allowed =
-      /\b(Corral|Corrals|Run|Reins|Loop|Coordinator|Research|Writer|Reviewer|Helper|Source|Responder|JSON|corral|json|config|revision|control|http|Ctrl|Shift|Enter|codex|chmod|auth)\b/g;
+      /\b(Corral|Corrals|Run|Reins|Loop|Coordinator|Research|Writer|Reviewer|Helper|Source|Responder|JSON|corral|json|config|revision|control|http|Ctrl|Shift|Enter|codex|chmod|auth|models\.dev)\b/g;
     const untranslated = [...koLeaves].filter(([, message]) =>
       /\b[a-z]{4,}\b/.test(parseIcu(message).text.replace(allowed, '')),
     );

@@ -109,9 +109,9 @@ test('[TC-HUNK-001-H] [TC-CKPT-001-H] [TC-CHAT-002-H] [WBTST-016] a session work
     await page.getByText('Session details (optional)', { exact: true }).click();
     await page.getByLabel('Purpose').fill('Keep notes in the repository');
     // CR-024: a new session starts in auto mode; this journey runs the imported team.
-    await page.getByRole('combobox', { name: 'Team', exact: true }).click();
+    await page.getByRole('combobox', { name: 'Corral', exact: true }).click();
     await page.getByRole('option', { name: 'Writer with files', exact: true }).click();
-    await page.getByRole('button', { name: 'Start session' }).click();
+    await page.getByRole('button', { name: 'Start chat' }).click();
     await expect(page).toHaveURL(/\/sessions\/session_/);
 
     await panelTab(page, 'Files');

@@ -9,7 +9,9 @@ import {
   type CommandError,
   type CorralDefinition,
   FILE_TOOLS,
+  type HarnessBindingRef,
   type ModelProfileSnapshot,
+  type PermissionMode,
   type QualityPreset,
   type ReasoningLevel,
   type RunInput,
@@ -84,6 +86,8 @@ const FILE_NOTE =
 const WRITE_NOTE = ' Make the changes the request asks for with the file tools.';
 
 export interface AutoDefinitionInput {
+  harness?: HarnessBindingRef;
+  commandTools?: boolean;
   ultra?: UltraTeamSnapshot;
   qualityPreset?: QualityPreset;
   taskScope?: RunInput['taskScope'];
@@ -126,7 +130,14 @@ export function autoDefinition(input: AutoDefinitionInput): CorralDefinition {
   const roles = definition.roles.map((role) => {
     const writes = WRITERS.has(role.id as TeamSlot) && input.taskScope !== 'review_only';
     const tools: WorkTool[] = input.fileTools
-      ? ['write_artifact', ...(writes ? FILE_TOOLS : READ_TOOLS)]
+      ? [
+          'write_artifact',
+          ...(writes ? FILE_TOOLS : READ_TOOLS),
+          ...(input.commandTools ? ['preview_file' as const] : []),
+          ...(writes && input.commandTools
+            ? ['run_command' as const, 'preview_app' as const, 'preview_action' as const]
+            : []),
+        ]
       : ['write_artifact'];
     return {
       ...role,
@@ -134,6 +145,7 @@ export function autoDefinition(input: AutoDefinitionInput): CorralDefinition {
         ? `${role.prompt}${FILE_NOTE}${writes ? WRITE_NOTE : ''}`
         : role.prompt,
       modelProfile: input.choice.modelProfile,
+      ...(input.harness ? { harness: { ...input.harness } } : {}),
       ...(reasoning ? { reasoning } : {}),
       allowedWorkTools: tools,
       allowedCollaborationTools: [
@@ -256,6 +268,8 @@ export type RouteAnswer =
     };
 
 export interface AutoStart {
+  harness?: HarnessBindingRef;
+  permissionMode?: PermissionMode;
   ultra?: UltraSelection;
   qualityPreset?: QualityPreset;
   taskScope?: RunInput['taskScope'];
@@ -455,6 +469,7 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
     if (signal?.aborted) throw cancelled();
     const autoRoute: AutoRoute = {
       ...chosen,
+      ...(request.harness ? { harness: { ...request.harness } } : {}),
       ...(resolvedUltra?.ok ? { ultra: resolvedUltra.snapshot } : {}),
       ...(request.qualityPreset ? { qualityPreset: request.qualityPreset } : {}),
       templateVersion: AUTO_TEMPLATE_VERSION,
@@ -473,7 +488,9 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
       ...(request.verificationScope ? { verificationScope: request.verificationScope } : {}),
       ...(request.criteria ? { criteria: request.criteria } : {}),
       choice: request.choice,
+      ...(request.harness ? { harness: request.harness } : {}),
       fileTools: context.fileTools,
+      ...(request.harness ? { commandTools: true } : {}),
       ...(autoRoute.reasoningChoice ? { routeLevel: autoRoute.reasoningChoice.level } : {}),
     });
     const result = await deps.startRun(
@@ -482,6 +499,7 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
         commandId: request.commandId,
         definition,
         mode: request.mode,
+        ...(request.permissionMode ? { permissionMode: request.permissionMode } : {}),
         ...(request.sessionId ? { sessionId: request.sessionId } : {}),
         ...(request.startFrom ? { startFrom: request.startFrom } : {}),
         ...(request.references?.length ? { references: request.references } : {}),

@@ -24,15 +24,29 @@ import Database from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
 import researchTeam from '../../../examples/research-team.corral.json' with { type: 'json' };
 import researchLayout from '../../../examples/research-team.layout.json' with { type: 'json' };
-import { MIGRATIONS, openDatabase, SqliteCorralRepository, SqliteRunStore } from '../src/index.ts';
+import {
+  MIGRATIONS,
+  openDatabase as openSqliteDatabase,
+  SqliteCorralRepository,
+  SqliteRunStore,
+} from '../src/index.ts';
 
 const dirs: string[] = [];
+const databases: Database.Database[] = [];
+function trackDatabase(db: Database.Database) {
+  databases.push(db);
+  return db;
+}
+function openDatabase(path: string) {
+  return trackDatabase(openSqliteDatabase(path));
+}
 function tempFile(name = 'corral.db') {
   const dir = mkdtempSync(join(tmpdir(), 'corral-sqlite-'));
   dirs.push(dir);
   return join(dir, name);
 }
 afterEach(() => {
+  for (const db of databases.splice(0)) if (db.open) db.close();
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -84,7 +98,7 @@ describe('SQLite database', () => {
 
   it('refuses a database written by a newer Corral instead of guessing', () => {
     const file = tempFile();
-    const raw = new Database(file);
+    const raw = trackDatabase(new Database(file));
     raw.pragma(`user_version = ${MIGRATIONS.length + 1}`);
     raw.close();
     expect(() => openDatabase(file)).toThrow(/newer/);
@@ -293,7 +307,7 @@ describe('read-only history', () => {
     const writable = openDatabase(file);
     describeOnce(new SqliteRunStore(writable));
     const before = writable.prepare('SELECT status, last_seq FROM runs').all();
-    const reader = openReadOnlyDatabase(file);
+    const reader = trackDatabase(openReadOnlyDatabase(file));
     expect(new SqliteRunStore(reader).listRuns()).toHaveLength(1);
     expect(() => reader.prepare("UPDATE runs SET status = 'interrupted'").run()).toThrow();
     expect(writable.prepare('SELECT status, last_seq FROM runs').all()).toEqual(before);
@@ -362,7 +376,7 @@ describe('projects in SQLite (CR-010)', () => {
     if (!created.ok) throw new Error(created.message);
     const runId = await runOf(source, created.record.corralId, 'cmd_old');
     const path = tempFile();
-    const old = new Database(path);
+    const old = trackDatabase(new Database(path));
     old.exec((MIGRATIONS[0] as { sql: string }).sql);
     old.exec((MIGRATIONS[1] as { sql: string }).sql);
     old.pragma('user_version = 2');
@@ -406,8 +420,9 @@ describe('projects in SQLite (CR-010)', () => {
 
   it('[TC-AUTO-001-H] a session saved before auto mode opens as auto with no model chosen', async () => {
     const path = tempFile();
-    const old = new Database(path);
-    const before = MIGRATIONS.length - 1;
+    const old = trackDatabase(new Database(path));
+    const before = MIGRATIONS.findIndex((migration) => migration.name === '0013_session_auto');
+    expect(before).toBe(12);
     for (const migration of MIGRATIONS.slice(0, before))
       old.exec((migration as { sql: string }).sql);
     old.pragma(`user_version = ${before}`);

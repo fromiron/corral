@@ -1,4 +1,4 @@
-import type { OutputContract } from '@corral/contracts';
+import type { BinaryArtifact, OutputContract } from '@corral/contracts';
 import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import type { RunProjection } from '@corral/core';
 
@@ -17,6 +17,7 @@ export interface ResultItem {
   submitted: boolean;
   byteLength: number;
   parentVersionId: string | null;
+  media?: BinaryArtifact;
   /** The latest review of this version, or null when none was recorded. */
   review: { verdict: 'pass' | 'revise' | 'inconclusive'; stale: boolean } | null;
 }
@@ -60,6 +61,7 @@ export function runResults(projection: RunProjection): RunResults {
       submitted: artifact.submitted,
       byteLength: artifact.byteLength,
       parentVersionId: artifact.parentVersionId,
+      ...(artifact.media ? { media: artifact.media } : {}),
       review: latestReview.get(id) ?? null,
     };
   };

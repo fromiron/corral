@@ -1,3 +1,5 @@
+import { isAbsolute, win32 } from 'node:path';
+
 export function externalUrl(value: unknown): string | null {
   if (typeof value !== 'string' || value.length > 8192) return null;
   try {
@@ -62,6 +64,61 @@ export function desktopCommand(value: unknown): DesktopCommand | null {
     : null;
 }
 
+/** Validate the renderer's command IDs/chords before they become native accelerators. */
+export function desktopAccelerators(value: unknown): Partial<Record<DesktopCommand, string>> {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    throw new Error('Invalid shortcut bindings');
+  const accelerators: Partial<Record<DesktopCommand, string>> = {};
+  const seen = new Set<string>();
+  for (const [id, raw] of Object.entries(value)) {
+    if (!desktopCommand(id) && !['run.stop', 'session.jump'].includes(id))
+      throw new Error('Unknown shortcut command');
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw))
+      throw new Error('Invalid shortcut chord');
+    const chord = raw as Record<string, unknown>;
+    if (
+      Object.keys(chord).some((key) => !['key', 'mod', 'shift', 'alt'].includes(key)) ||
+      chord.mod !== true ||
+      typeof chord.key !== 'string' ||
+      (chord.alt !== undefined && typeof chord.alt !== 'boolean') ||
+      (chord.shift !== undefined && typeof chord.shift !== 'boolean')
+    )
+      throw new Error('Invalid shortcut chord');
+    if (id === 'session.jump') {
+      if (chord.key !== 'Digit') throw new Error('Session jump uses digit keys');
+      for (let digit = 1; digit <= 9; digit++) {
+        const key = [
+          'CommandOrControl',
+          chord.alt ? 'Alt' : '',
+          chord.shift ? 'Shift' : '',
+          String(digit),
+        ]
+          .filter(Boolean)
+          .join('+');
+        if (seen.has(key)) throw new Error('Conflicting shortcut bindings');
+        seen.add(key);
+      }
+      continue;
+    }
+    const key = chord.key.toLowerCase();
+    if (!/^[a-z0-9,./[\]]$/.test(key) || 'acvxzysfqwt'.includes(key))
+      throw new Error('This shortcut is reserved for editing or the operating system');
+    const accelerator = [
+      'CommandOrControl',
+      chord.alt ? 'Alt' : '',
+      chord.shift ? 'Shift' : '',
+      key.toUpperCase(),
+    ]
+      .filter(Boolean)
+      .join('+');
+    if (seen.has(accelerator)) throw new Error('Conflicting shortcut bindings');
+    seen.add(accelerator);
+    const command = desktopCommand(id);
+    if (command) accelerators[command] = accelerator;
+  }
+  return accelerators;
+}
+
 /** Window colours for the page's theme; matches packages/react/src/theme.css. */
 export function themeColors(dark: unknown) {
   if (typeof dark !== 'boolean') return null;
@@ -94,7 +151,10 @@ export function notificationText(value: unknown): { title: string; body: string 
 export function recentWorkspaces(list: unknown, added: string): string[] {
   const previous = Array.isArray(list) ? list : [];
   return [added, ...previous]
-    .filter((path): path is string => typeof path === 'string' && path.startsWith('/'))
+    .filter(
+      (path): path is string =>
+        typeof path === 'string' && (isAbsolute(path) || win32.isAbsolute(path)),
+    )
     .filter((path, index, all) => all.indexOf(path) === index)
     .slice(0, 5);
 }

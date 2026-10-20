@@ -2,6 +2,14 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "properties": {
+    "permissionMode": {
+      "type": "string",
+      "enum": [
+        "ask",
+        "accept_edits",
+        "auto"
+      ]
+    },
     "schemaVersion": {
       "type": "string",
       "const": "0.1"

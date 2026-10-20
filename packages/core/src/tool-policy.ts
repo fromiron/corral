@@ -1,6 +1,8 @@
 import {
   canonicalJson,
   type EffectiveHarnessSnapshot,
+  hashlineEffectPaths,
+  type PermissionMode,
   ResourcePath,
   type ToolDescriptor,
   type ToolPermissionPlan,
@@ -15,7 +17,14 @@ export function toolPermission(
   policies: EffectiveHarnessSnapshot['permissionPolicies'],
   proposal: ToolProposal,
   descriptorHash: string | undefined,
+  mode?: PermissionMode,
+  descriptor?: ToolDescriptor,
 ): 'allow' | 'ask' | 'deny' {
+  if (
+    mode === undefined &&
+    ['generate_image', 'preview_app', 'preview_action'].includes(proposal.name)
+  )
+    mode = 'ask';
   let result: 'allow' | 'ask' = 'allow';
   for (const policy of policies ?? []) {
     const matches = policy.rules.filter(
@@ -25,7 +34,7 @@ export function toolPermission(
         Object.entries(rule.arguments ?? {}).every(
           ([key, value]) => Object.hasOwn(proposal.args, key) && proposal.args[key] === value,
         ) &&
-        (!rule.path || withinPath(proposal.args[rule.path.argument], rule.path.prefix)),
+        (!rule.path || matchesPathRule(proposal, rule)),
     );
     if (matches.some((rule) => rule.action === 'deny')) return 'deny';
     const specificity = (rule: ToolPermissionPolicy['rules'][number]) =>
@@ -40,7 +49,50 @@ export function toolPermission(
     if (action === 'deny') return 'deny';
     if (action === 'ask') result = 'ask';
   }
+  if (result === 'ask' || mode === undefined || mode === 'auto') return result;
+  if (
+    (!descriptor || descriptor.source === 'corral') &&
+    [
+      'write_artifact',
+      'submit_result',
+      'update_plan',
+      'ask_user',
+      'spawn_subagents',
+      'await_tasks',
+      'ask',
+      'reply',
+      'read_artifact',
+    ].includes(proposal.name)
+  )
+    return result;
+  const edits = ['write_file', 'delete_file', 'move_file', 'edit', 'write', 'edit_hashline'];
+  const processes = [
+    'run_command',
+    'run_check',
+    'lsp_query',
+    'generate_image',
+    'preview_app',
+    'preview_action',
+  ];
+  if (edits.includes(proposal.name)) return mode === 'ask' ? 'ask' : 'allow';
+  if (processes.includes(proposal.name) || (descriptor && descriptor.sideEffect !== 'none'))
+    return 'ask';
   return result;
+}
+
+function matchesPathRule(
+  proposal: ToolProposal,
+  rule: ToolPermissionPolicy['rules'][number],
+): boolean {
+  if (!rule.path) return true;
+  if (proposal.name !== 'edit_hashline' || rule.path.argument !== 'path')
+    return withinPath(proposal.args[rule.path.argument], rule.path.prefix);
+  const paths = hashlineEffectPaths(proposal.args);
+  // Ambiguous moves cannot obtain a scoped allow. Denials cannot be escaped by malformed ops.
+  if (!paths) return rule.action !== 'allow';
+  return rule.action === 'allow'
+    ? paths.every((path) => withinPath(path, rule.path!.prefix))
+    : paths.some((path) => withinPath(path, rule.path!.prefix));
 }
 
 function withinPath(value: unknown, prefix: string): boolean {

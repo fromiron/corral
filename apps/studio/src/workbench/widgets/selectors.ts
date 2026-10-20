@@ -1,4 +1,34 @@
 /** Pure presentation decisions for the chat widgets. No clock, network, or DOM. */
+import type { RunProjection } from '@corral/core';
+
+/** Shell services can change files after the launch tool has already finished. */
+export function fileChangeSignals(
+  calls: readonly { name: string; phase?: string }[],
+  status: string | undefined,
+  live: boolean,
+) {
+  const mutations = new Set([
+    'write_file',
+    'delete_file',
+    'move_file',
+    'write',
+    'edit',
+    'edit_hashline',
+    'run_command',
+  ]);
+  return {
+    revision: calls.filter(
+      (call) => mutations.has(call.name) && (call.phase === 'finished' || call.phase === 'failed'),
+    ).length,
+    poll:
+      live &&
+      status === 'running' &&
+      calls.some(
+        (call) =>
+          call.name === 'run_command' && (call.phase === 'running' || call.phase === 'finished'),
+      ),
+  };
+}
 
 export function widgetReadState(input: {
   presentationRunId: string | null;
@@ -410,6 +440,27 @@ export function actionRequired(input: {
     hasFailure: failed + input.unclearEffects > 0,
     count: input.pendingApprovals + input.pendingQuestions + failed + input.unclearEffects,
     summary: kinds.length === 0 ? 'none' : kinds.length === 1 ? kinds[0]! : 'mixed',
+  };
+}
+
+export function effectAttention(projection: RunProjection | null) {
+  const effects = Object.values(projection?.effects ?? {});
+  const budgetUnknown =
+    (projection?.budget.unknownOutstanding ?? 0) > 0 ||
+    (projection?.budget.imageUnknownOutstandingMicros ?? 0) > 0;
+  const terminationUnknown =
+    projection?.statusReason?.endsWith('termination_unconfirmed') === true ||
+    Object.values(projection?.executions ?? {}).some(
+      (execution) => execution.error?.endsWith('termination_unconfirmed') === true,
+    );
+  return {
+    failedEffects: effects.filter((effect) => effect.outcome === 'failed').length,
+    // A confirmed cancellation is a settled outcome. Unknown effects, unconfirmed cleanup
+    // and still-held billing remain actionable even when the run was intentionally stopped.
+    unclearEffects: Math.max(
+      effects.filter((effect) => effect.outcome === 'unknown').length,
+      budgetUnknown || terminationUnknown ? 1 : 0,
+    ),
   };
 }
 

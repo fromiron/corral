@@ -45,7 +45,7 @@
 
 주 대상은 자신만의 LLM 에이전트 팀을 구성하려는 개발자·파워유저다. Bell의 프런트엔드 포트폴리오로서 편집 UX, 실시간 상태 관리, 접근성, 성능, 오류 복구 설계를 드러낸다. 코딩 전용 제품으로 제한하지 않지만, MVP 실사용 시나리오는 조사→작성→검토 하나로 검증한다.
 
-**배포 형태:** 데스크톱 브라우저 + 로컬 Node.js 서버 + SQLite. 클라우드 계정과 설치형 데스크톱 셸은 필수가 아니다. 워크스페이스당 활성 Run은 1개로 제한하되, 과거 Run은 여러 개 보관한다. 이는 이번 MVP의 자원·UI 범위 결정이다. 다수 에이전트의 병렬 작업은 한 Run 안에서 지원한다.
+**배포 형태:** 데스크톱 브라우저 + 로컬 Node.js 서버 + SQLite. 클라우드 계정과 설치형 데스크톱 셸은 필수가 아니다. 초기 MVP는 워크스페이스당 활성 Run을 1개로 제한하고, 한 Run 안의 다수 에이전트 병렬 작업과 여러 과거 Run 보관을 지원한다. 이 자원·UI 범위는 [CR-042](docs/change-requests/CR-042-desktop-capabilities.md) ABS-06에서 고정 snapshot reader 병행과 worktree별 단일 writer로 확장하도록 승인되었다. 모든 시작 입구의 admission, host 전체 모델·worker·process 상한, `(hostId, runId)`별 제어·SSE·예산·자료 소유를 함께 구현해야 하며, 같은 작업 사본의 동시 writer를 허용한다는 뜻은 아니다. 기능별 구현·검증 상태는 [진행 기록](docs/evaluation/Desktop-Capabilities-Implementation-Progress.md)에서 구분한다.
 
 **포트폴리오 모드:** 동일한 편집기·상태 투영·Reins를 사용하되 실행 어댑터만 결정론적 mock으로 바꾼 정적 웹 데모를 제공한다. 실제 LLM처럼 가장하지 않으며 `Demo / Simulated agents`를 항상 표시한다.
 
@@ -112,6 +112,8 @@ MVP의 캔버스 전체가 하나의 Corral이다. 그 안에 Loop 영역과 Age
 
 실행 중 노드 추가/삭제/재연결, 임의 역할 생성, 자유로운 병렬 그래프와 `join:any`, 다중 사용자 편집, 다른 사람의 원격 에이전트, A2A, 임의 셸 실행과 동일 작업 복사본의 동시 수정, 프로세스 재시작 후 자동 재개, 임의 시점의 외부 작업 재실행, 중첩 Corral/Subflow, 자동 판단 라우팅, Local/Jev 판정의 요청 적용과 Hybrid, LiteLLM, 과거 산출물의 직접 수정은 제외한다.
 
+[CR-042](docs/change-requests/CR-042-desktop-capabilities.md)의 후속 승인 범위는 위 초기 제외 중 **임의 셸 실행**을 ABS-01의 실제 관리 사본 명령·service 계약으로 확장한다. 임의 프로그램은 Coordinator의 승인·effect·예산과 소유 프로세스 lease를 거쳐 실행하며, `run_check`의 등록 argv·고정 검증 사본은 별도로 유지한다. 같은 작업 사본의 동시 writer 금지와 재시작 후 효과 자동 replay 금지는 유지한다. ABS-03은 CR-019의 평가 전용 Hashline을 명시 선택하는 버전 있는 제품 편집 방식으로 확장하며 기존 Pi `edit`를 대체하지 않는다. 이 세 확장은 구현 승인이지 기능 완료 또는 기존 거절 경계를 먼저 제거하라는 지시가 아니다.
+
 [CR-021](docs/change-requests/CR-021-role-reasoning-apply.md)의 수동·자동 추론 적용은 후속 승인 범위다. v0.2의 관찰 전용 `reasoning_effort` 판정은 요청을 바꾸지 않으므로 위 제외와 별개로 §13과 [CR-003](docs/change-requests/CR-003-admission-hooks-effort-observe.md)에서 다룬다.
 
 브라우저 재접속은 지원한다. 이는 **살아 있는 로컬 실행에 다시 연결하는 것**이며, 죽은 실행을 살리는 crash resume이 아니다.
@@ -119,6 +121,8 @@ MVP의 캔버스 전체가 하나의 Corral이다. 그 안에 Loop 영역과 Age
 일반 작업 도구는 검색·문서 읽기·산출물 쓰기 3계열이다. 질문·소환·제출 등은 별도의 **협업 프로토콜 도구**다. 3종 도구라는 표현으로 협업에 필요한 인터페이스를 숨기지 않는다.
 
 ## 4. Studio 정보 구조와 UX
+
+[CR-043](docs/change-requests/CR-043-chat-first-optional-corral.md)의 후속 UX 계약은 일반 사용자의 새 대화와 요청 전송을 기본 입구로 둔다. Corral 제작·템플릿·팀 선택은 선택 사항이며, 기존 auto 실행 경로·명시 Corral·D&D·Reins를 보존한다. 아래 초기 설계 중심 정보 구조가 대화 시작의 선행 조건이 되어서는 안 된다.
 
 ### 4.1 화면
 
@@ -238,6 +242,13 @@ Task 담당 역할은 한 명이다. 동시에 활성화된 ownerExecutionId도 
 
 `question`은 허용 관계를 검사한 뒤 새로운 응답 Task를 만든다. 그 Task는 질문을 보낸 실행의 소유 하위 작업이므로 취소 전파 경계가 명확하다. 대상 역할의 다른 활성 실행에 임의로 대화를 끼워 넣지 않는다. 질문 생성도 spawnCount와 depth에 포함한다. depth는 control graph 깊이가 아니라 **동적으로 생성한 실행 계보**를 센다.
 
+CR-042 ABS-11의 Markdown import는 delegate link의 명시적 `parentQuestions: true`로
+위임한 현재 부모에게 질문할 수 있다. 이 경우 새 응답 Task 없이 같은 부모 execution·attempt에
+질문을 고정한다. 부모는 대기 중 도착한 질문에 `reply`하고 대기를 계속하며, 자식은 같은
+execution에서 답변을 받아 작업을 이어간다. 질문 수·시간·모델 예산과 현재 시도·scope 검사는
+유지하되 새 spawn/depth를 소비하지 않는다. 부모의 답변은 부모 작업 완료가 아니다.
+미지정 link와 일반 question link는 위의 기존 새 응답 Task 의미를 유지한다.
+
 ### 7.3 대기와 교착
 
 모델 호출 permit은 모델 통신 동안만 점유한다. `ask`, `await_tasks`로 기다리는 부모는 permit을 반환한다. resident worker 수의 한도와 모델 동시성의 한도를 분리한다.
@@ -352,7 +363,7 @@ localhost만 bind하더라도 임의 웹페이지의 요청을 신뢰하지 않�
 
 외부 decision provider(v0.2)는 live Run에서 workspace의 명시적 opt-in이 있을 때만 쓴다. mock Run·공개 데모·CI에서는 시작 시 거절한다. 보내는 입력은 정해진 특징 값과 UTF-8 1,500자 이하 발췌로 제한하고, 전송 전에 그 사실을 effect로 기록한다. 이벤트·export에는 발췌 본문 대신 hash만 남긴다([CR-003](docs/change-requests/CR-003-admission-hooks-effort-observe.md)).
 
-MVP worker에는 read/write shell 도구가 없고, 승인된 원격 모델 요청 외 기능은 Coordinator RPC를 거친다. 프로세스 분리는 정리·장애 격리를 위한 것이며 완전한 보안 sandbox라고 주장하지 않는다.
+초기 MVP worker에는 read/write shell 도구가 없었다. 후속 [CR-042](docs/change-requests/CR-042-desktop-capabilities.md) ABS-01의 명령 제안도 Coordinator RPC와 서버 broker를 거쳐 허가·기록·실행하고, worker가 임의 프로세스나 cwd·credential을 직접 소유하지 않는다. 프로세스 소유·정리와 cwd 제한은 OS 파일·네트워크 격리를 뜻하지 않으며 검증된 sandbox 없이 완전한 보안 격리를 주장하거나 strict 요구를 해제하지 않는다.
 
 문서 읽기는 workspace의 등록된 documentId 또는 검증된 HTTPS sourceId만 받는다. 임의 로컬 경로를 받지 않는다. 외부 URL은 SSRF 검증과 크기/타입/redirect 제한을 거친다. Markdown 출력은 HTML 실행 없이 렌더링하고 위험한 URL을 막는다. 원격 이미지 자동 로드는 기본 비활성화한다. [S24]
 

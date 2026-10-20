@@ -1,5 +1,6 @@
 // One table of keyboard shortcuts (Workbench polish P4). Tooltips, the ? help, Settings ›
 // Shortcuts and the global key handler all read it, so what is shown is what works.
+import { bindingError, readShortcutBindings, type ShortcutBindings } from './shortcutBindings.ts';
 
 const isMac = () => /Mac|iPhone|iPad/.test(globalThis.navigator?.platform ?? '');
 /** The desktop app owns its keys; a browser keeps Ctrl+N/W/T and digit keys for itself. */
@@ -70,9 +71,23 @@ export const LOCAL_KEYS = [
 ] as const;
 
 export function chordOf(id: ShortcutId): Chord | null {
-  const shortcut = SHORTCUTS.find((s) => s.id === id);
-  if (!shortcut) return null;
-  return isDesktop() || shortcut.web === undefined ? shortcut.chord : shortcut.web;
+  return effectiveShortcuts()[id] ?? null;
+}
+
+export function effectiveShortcuts(serialized?: string): ShortcutBindings {
+  const bindings: ShortcutBindings = {};
+  for (const shortcut of SHORTCUTS) {
+    const chord = isDesktop() || shortcut.web === undefined ? shortcut.chord : shortcut.web;
+    if (chord) bindings[shortcut.id] = chord;
+  }
+  for (const [id, chord] of Object.entries(readShortcutBindings(serialized))) {
+    if (
+      SHORTCUTS.some((shortcut) => shortcut.id === id) &&
+      !bindingError(id as ShortcutId, chord, bindings, isDesktop())
+    )
+      bindings[id as ShortcutId] = chord;
+  }
+  return bindings;
 }
 
 export function formatChord(chord: Chord): string {
@@ -98,11 +113,14 @@ export function shortcutLabel(id: ShortcutId): string | undefined {
 export function shortcutFor(event: KeyboardEvent): { id: ShortcutId; digit?: number } | null {
   if (event.isComposing || event.keyCode === 229) return null;
   const mod = isMac() ? event.metaKey : event.ctrlKey;
+  if ((isMac() ? event.ctrlKey : event.metaKey) || event.getModifierState?.('AltGraph'))
+    return null;
+  const bindings = effectiveShortcuts();
   for (const shortcut of SHORTCUTS) {
-    const chord = chordOf(shortcut.id);
+    const chord = bindings[shortcut.id];
     if (!chord) continue;
     if (Boolean(chord.mod) !== mod || Boolean(chord.alt) !== event.altKey) continue;
-    if (Boolean(chord.shift) !== event.shiftKey && chord.key !== '/' && chord.key !== '?') continue;
+    if (Boolean(chord.shift) !== event.shiftKey) continue;
     if (chord.key === 'Digit') {
       const digit = /^Digit([1-9])$/.exec(event.code)?.[1];
       if (digit) return { id: shortcut.id, digit: Number(digit) };

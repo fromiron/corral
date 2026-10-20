@@ -217,4 +217,10 @@ export class SqliteRunStore implements RunStore {
       | undefined;
     return row?.text_body ?? null;
   }
+  getArtifactBinary(runId: string, artifactVersionId: string): Uint8Array | null {
+    const row = this.db
+      .prepare('SELECT body FROM generated_media WHERE run_id=? AND version_id=?')
+      .get(runId, artifactVersionId) as { body: Buffer } | undefined;
+    return row?.body ?? null;
+  }
 }

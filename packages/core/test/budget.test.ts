@@ -1,7 +1,13 @@
 import { DEFAULT_LIMITS, type RunEvent } from '@corral/contracts';
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { admitModelRequest, applyBudgetEvent, emptyBudget, settlementFor } from '../src/budget.ts';
+import {
+  admitImageRequest,
+  admitModelRequest,
+  applyBudgetEvent,
+  emptyBudget,
+  settlementFor,
+} from '../src/budget.ts';
 
 const event = (type: string, payload: unknown): RunEvent => ({ type, payload }) as RunEvent;
 const reserve = (id: string, outputTokens: number) =>
@@ -13,6 +19,57 @@ const reserve = (id: string, outputTokens: number) =>
   });
 
 describe('output-token reservations (C-037)', () => {
+  it('[TC-ABS-010-N] image currency reservations remain charged when unknown and reconcile once from actual billing evidence', () => {
+    const profile = {
+      profileId: 'images',
+      modelProfileId: 'provider',
+      modelId: 'image',
+      api: 'openai-images' as const,
+      timeoutMs: 1000,
+      maxCallsPerRun: 1,
+      maxCostUsdPerCall: 0.25,
+    };
+    let budget = emptyBudget();
+    expect(admitImageRequest(budget, DEFAULT_LIMITS, profile)).toEqual({
+      ok: true,
+      costMicros: 250000,
+    });
+    budget = applyBudgetEvent(
+      budget,
+      event('budget.reserved', {
+        reservationId: 'image_one',
+        modelCallId: null,
+        scope: 'exec_a',
+        amount: {
+          outputTokens: 0,
+          modelCalls: 1,
+          image: { profileId: profile.profileId, costMicros: 250000 },
+        },
+      }),
+    );
+    expect(budget.imageReservedMicros).toBe(250000);
+    budget = applyBudgetEvent(
+      budget,
+      event('budget.settled', settlementFor(budget, 'image_one', 0, null)),
+    );
+    expect(budget).toMatchObject({
+      imageReservedMicros: 0,
+      imageSpentMicros: 0,
+      imageUnknownOutstandingMicros: 250000,
+    });
+    expect(admitImageRequest(budget, DEFAULT_LIMITS, profile)).toEqual({ ok: false });
+    expect(settlementFor(budget, 'image_one', 0, null)).toBeNull();
+    budget = applyBudgetEvent(
+      budget,
+      event('budget.settled', settlementFor(budget, 'image_one', 0, 125000)),
+    );
+    expect(budget).toMatchObject({
+      imageReservedMicros: 0,
+      imageSpentMicros: 125000,
+      imageUnknownOutstandingMicros: 0,
+    });
+    expect(settlementFor(budget, 'image_one', 0, 125000)).toBeNull();
+  });
   it('[TC-RUN-006-H] concurrent requests reserve only the remaining output budget', () => {
     const limits = { ...DEFAULT_LIMITS, maxOutputTokens: 5_000 };
     let budget = emptyBudget();

@@ -411,12 +411,28 @@ export function describeCorralRepositoryContract(
         if (!created.ok) throw new Error(created.message);
         const id = created.session.sessionId;
         const queued = await repo.addSessionEntry(id, {
+          commandId: 'queue_with_work_style',
+          harness: { profileId: 'trusted_tools', revision: 3 },
           intent: 'queue',
           text: 'Write a reply',
           state: 'queued',
         });
         if (!queued.ok) throw new Error(queued.message);
+        expect((await repo.getSession(id))?.entries[0]?.harness).toEqual({
+          profileId: 'trusted_tools',
+          revision: 3,
+        });
+        expect(
+          await repo.addSessionEntry(id, {
+            commandId: 'queue_with_work_style',
+            intent: 'queue',
+            text: 'Write a reply',
+            state: 'queued',
+            harness: { profileId: 'trusted_tools', revision: 4 },
+          }),
+        ).toMatchObject({ ok: false, error: 'invalid' });
         const auto = {
+          harness: { profileId: 'trusted_tools', revision: 3 },
           template: 'single' as const,
           source: 'model' as const,
           reason: 'A short question',

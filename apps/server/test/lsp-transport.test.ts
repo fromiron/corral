@@ -1,14 +1,17 @@
-import { spawn } from 'node:child_process';
+import type { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { FakeClock } from '@corral/testkit';
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { LspRunner } from '../src/files/lsp.ts';
+import { spawnOwnedProcess } from '../src/processes/owned-process.ts';
 import { systemTimers } from '../src/runtime.ts';
 
 const dirs: string[] = [];
+// Windows queries include native Job helper startup before the LSP handshake.
+vi.setConfig({ testTimeout: 45000 });
 afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
@@ -22,7 +25,7 @@ function fixture(mode = 'normal') {
       fileURLToPath(new URL('./fixtures/lsp-server.mjs', import.meta.url)),
       mode,
     ],
-    timeoutMs: 1000,
+    timeoutMs: process.platform === 'win32' ? 10000 : 1000,
     document: {
       uri: pathToFileURL(join(cwd, 'source.ts')).href,
       text: '😀value\n',
@@ -129,7 +132,7 @@ it('[TC-HAR-010-N] cancellation terminates the owned server and cannot publish a
     clock: new FakeClock(),
     timers: systemTimers,
     spawn: (...args: Parameters<typeof spawn>) => {
-      const child = spawn(...args);
+      const child = (spawnOwnedProcess as typeof spawn)(...args);
       pid = child.pid ?? 0;
       child.stderr?.once('data', () => controller.abort());
       return child;

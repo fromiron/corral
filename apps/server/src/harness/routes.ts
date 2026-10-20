@@ -52,6 +52,11 @@ const safeErrors = new Set([
   'MCP probe authorization failed',
   'MCP probe cleanup unconfirmed',
   'MCP settings are being saved; retry after completion',
+  'required package is disabled or removed',
+  'package name changed',
+  'package is disabled or removed',
+  'package MCP contribution not found',
+  'package requires trust before MCP launch',
 ]);
 
 /** Filesystem, package-manager and parser errors never reach the browser verbatim. */
@@ -93,6 +98,55 @@ export function registerHarnessRoutes(
     operationId: Identifier,
   });
   app.get(`${prefix}/entries`, () => service.entries());
+  app.get(`${prefix}/packages`, (_request, reply) => action(reply, () => service.packages()));
+  app.post(`${prefix}/packages/review`, (request, reply) =>
+    action(reply, () => {
+      const input = z
+        .strictObject({
+          kind: z.enum(['local', 'package']),
+          source: z.string().min(1).max(1000),
+          previousHash: ContentHash.optional(),
+        })
+        .parse(request.body);
+      return service.reviewPackage(input.kind, input.source, input.previousHash);
+    }),
+  );
+  app.put<{ Params: { hash: string } }>(`${prefix}/packages/:hash`, (request, reply) =>
+    action(reply, () => {
+      const input = z
+        .strictObject({
+          expectedRevision: revision,
+          status: z.enum(['enabled', 'disabled', 'removed']),
+          operationId: Identifier,
+        })
+        .parse(request.body);
+      return service.managePackage(
+        ContentHash.parse(request.params.hash),
+        input.expectedRevision,
+        input.status,
+        input.operationId,
+      );
+    }),
+  );
+  app.post<{ Params: { hash: string } }>(`${prefix}/packages/:hash/mcp`, (request, reply) =>
+    action(reply, () => {
+      const input = z
+        .strictObject({
+          contributionId: Identifier,
+          projectId: Identifier,
+          expectedRevision: revision,
+          operationId: Identifier,
+        })
+        .parse(request.body);
+      return service.registerPackageMcp(
+        ContentHash.parse(request.params.hash),
+        input.contributionId,
+        input.projectId,
+        input.expectedRevision,
+        input.operationId,
+      );
+    }),
+  );
   app.post(`${prefix}/entries/read`, (request, reply) =>
     action(reply, () => service.readEntry(HarnessEntryKey.parse(request.body))),
   );

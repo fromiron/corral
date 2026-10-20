@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { recoverSdkWorkers } from '@corral/adapter-pi';
+import { hasOwnedProcessReservations } from '@corral/adapter-pi/processes';
 import {
   type AgentAdapter,
   AutoModelChoice,
@@ -13,8 +14,10 @@ import {
   ContentHash,
   CorralDefinitionDraft,
   CreateRunRequest,
+  canonicalJson,
   type DecisionProvider,
   type ErrorCode,
+  HarnessBindingRef,
   HunkPlanRequest,
   HunkRequest,
   Identifier,
@@ -22,8 +25,10 @@ import {
   IMAGE_MAX_BYTES,
   ImageAttachment,
   ImageAttachments,
+  ImageInput,
   MessageBranchPoint,
   MessageBranchRequest,
+  PermissionMode,
   QualityPreset,
   type Receipt,
   RestoreCheckpoint,
@@ -77,8 +82,12 @@ import { McpCredentials } from './harness/mcp-credentials.ts';
 import { McpService } from './harness/mcp-service.ts';
 import { registerHarnessRoutes } from './harness/routes.ts';
 import { HarnessService } from './harness/service.ts';
+import { createHarnessVaultAdapters } from './harness/vault.ts';
 import { ImageStore } from './images.ts';
+import { ImageProfileStore } from './images-generation/profiles.ts';
+import { ImageGenerationService } from './images-generation/service.ts';
 import { ImportInput, type InputOptions, InputRegistry } from './inputs.ts';
+import { registerModelImportRoutes } from './models/import-routes.ts';
 import {
   assertOutsideWorkspace,
   DEFAULT_PROFILES,
@@ -90,8 +99,19 @@ import {
   registerEndpoints,
   userConfigDir,
 } from './models/index.ts';
+import { registerPreviewRoutes } from './preview/routes.ts';
+import { PreviewService } from './preview/service.ts';
+import { PreviewToolsBroker } from './preview/tools.ts';
+import { registerProjectRoutes } from './projects/routes.ts';
+import { materialsVaultAdapters } from './projects/vault.ts';
+import { drainRejectedBody } from './rejected-body.ts';
+import { onceResourceCleanup } from './resource-cleanup.ts';
 import { RandomIdFactory, systemClock, systemTimers } from './runtime.ts';
 import { InputError } from './safe-http.ts';
+import { registerScheduleRoutes } from './schedules/routes.ts';
+import { ScheduleService } from './schedules/service.ts';
+import { ScheduleStore } from './schedules/store.ts';
+import { scheduleVaultAdapter } from './schedules/vault.ts';
 import {
   assertLoopback,
   boundaryFor,
@@ -105,6 +125,11 @@ import {
 import { prepareBranchSession } from './session-branches.ts';
 import { SessionSearch } from './session-search.ts';
 import { boundedSseWriter, flushSseRecord, MAX_SSE_BUFFER_BYTES } from './sse.ts';
+import { providersVaultAdapter } from './vault/providers.ts';
+import { registerVaultRoutes } from './vault/routes.ts';
+import { VaultService } from './vault/service.ts';
+import { createSubagentsVaultAdapter } from './vault/subagents.ts';
+import { registerVoiceRoutes } from './voice/routes.ts';
 import {
   configRevision,
   prepareWorkspace,
@@ -186,10 +211,16 @@ function routeByMode(mock: AgentAdapter, live: AgentAdapter | null): AgentAdapte
 }
 
 export interface CorralServer {
+  closeIfIdle(backupForUpdate?: boolean): Promise<boolean>;
+  desktopStorageVersion(): number;
   url: string;
   bootstrapUrl: string;
   policy: InstallationPolicy;
   coordinator: Coordinator;
+  desktopPreviewTarget(
+    sessionId: string,
+    leaseId: string,
+  ): ReturnType<PreviewService['desktopTarget']>;
   prepareEvaluation(target: {
     projectId: string;
     baseCommit: string;
@@ -248,6 +279,8 @@ const UpdateSession = z.strictObject({
   expectedRevision: z.int().min(1),
 });
 const NewEntry = z.strictObject({
+  harness: HarnessBindingRef.optional(),
+  permissionMode: PermissionMode.optional(),
   ultra: UltraSelection.optional(),
   qualityPreset: QualityPreset.optional(),
   images: ImageAttachments.optional(),
@@ -280,6 +313,8 @@ const ExplainRequest = z.strictObject({
 });
 // CR-024: a request in an auto session; the runtime chooses the template and builds the team.
 const AutoRunRequest = z.strictObject({
+  harness: HarnessBindingRef.optional(),
+  permissionMode: PermissionMode.optional(),
   ultra: UltraSelection.optional(),
   qualityPreset: QualityPreset.optional(),
   taskScope: RunInput.shape.taskScope,
@@ -323,11 +358,14 @@ const receiptStatus = (receipt: Receipt) => {
 };
 
 export async function startCorralServer(options: ServerOptions): Promise<CorralServer> {
+  assertLoopback(options.host ?? '127.0.0.1');
+  const releaseOwnership = acquireWorkspaceOwnership(options.workspace);
   const resources = new AsyncDisposableStack();
+  const closeResources = onceResourceCleanup(() => resources.disposeAsync(), releaseOwnership);
   try {
-    return await createCorralServer(options, resources);
+    return await createCorralServer(options, resources, closeResources);
   } catch (error) {
-    await resources.disposeAsync();
+    await closeResources();
     throw error;
   }
 }
@@ -335,10 +373,10 @@ export async function startCorralServer(options: ServerOptions): Promise<CorralS
 async function createCorralServer(
   options: ServerOptions,
   resources: AsyncDisposableStack,
+  closeResources: () => Promise<void>,
 ): Promise<CorralServer> {
   const host = options.host ?? '127.0.0.1';
   assertLoopback(host);
-  resources.defer(acquireWorkspaceOwnership(options.workspace));
   const workspace = prepareWorkspace(options.workspace);
   const workerLeaseDirectory = join(workspace.root, '.corral', 'sdk-workers');
   await recoverSdkWorkers(workerLeaseDirectory);
@@ -399,7 +437,36 @@ async function createCorralServer(
     forbidden: [join(workspace.root, '.corral'), userConfigDir()],
     timers: options.timers ?? systemTimers,
   });
+  // Startup has already confirmed termination of recovered SDK workers above. Only leases
+  // without unresolved file, command, or checkpoint effects may now be released.
+  files.confirmWorkerRecovery();
   resources.defer(() => files.dispose());
+
+  const previews = new PreviewService({
+    readSnapshot: (_sessionId, runId, path) => files.readPreviewSnapshot(runId, path),
+    attestConnection: (sessionId, operationId, port, peerPort) =>
+      files.attestCommandConnection(sessionId, operationId, port, peerPort),
+    operationRun: async (sessionId, operationId) => {
+      const operation = files.listCommands(sessionId).find((item) => item.id === operationId);
+      if (!operation || operation.state !== 'running')
+        throw new WorkspaceError('TARGET_NOT_FOUND', 'the preview process is not running');
+      return operation.run_id;
+    },
+    resolveRoot: async (sessionId, runId) => {
+      if (
+        !(await corrals.getSession(sessionId)) ||
+        (runId && files.sessionOfRun(runId) !== sessionId)
+      )
+        throw new WorkspaceError('TARGET_NOT_FOUND', 'the preview session or run is unavailable');
+      return files.resolvePreviewRoot(sessionId);
+    },
+  });
+  resources.defer(() => previews.dispose());
+  const previewTools = new PreviewToolsBroker(previews, {
+    sessionOfRun: (runId) => files.sessionOfRun(runId),
+    directory: join(workspace.root, '.corral', 'previews'),
+  });
+  resources.defer(() => previewTools.dispose());
 
   const review = new ReviewService({ db, clock, files });
   const mcpConfigDir = options.live?.configDir ?? userConfigDir();
@@ -426,8 +493,49 @@ async function createCorralServer(
     providers: decisionProviders,
     settings: judgmentSettings(workspace.config),
   };
+  const imageProfiles = new ImageProfileStore(db, () => registry);
+  const imageGeneration = new ImageGenerationService(
+    db,
+    async (id) => imageProfiles.resolve(id),
+    () => clock.nowIso(),
+  );
+  imageGeneration.cleanupOrphans();
   const coordinator = new Coordinator({
-    runtimeRecovery: { confirm: () => recoverSdkWorkers(workerLeaseDirectory) },
+    previewTools,
+    imageGeneration: {
+      read: (runId, versionId) => {
+        const stored = imageGeneration.read(runId, versionId);
+        if (!stored) return null;
+        const image = ImageInput.safeParse({
+          kind: 'image_attachment',
+          imageId: versionId,
+          name: 'generated.png',
+          mime: stored.media.mime,
+          bytes: stored.media.bytes,
+          width: stored.media.width,
+          height: stored.media.height,
+          sha256: stored.media.sha256,
+          data: stored.bytes.toString('base64'),
+        });
+        return image.success ? image.data : null;
+      },
+      resolve: (id) => imageProfiles.resolve(id)?.profile ?? null,
+      generate: (owner, args, profile, cancellation, reservedCostUsd, referenceImages) =>
+        imageGeneration.generate(
+          owner,
+          args,
+          cancellation,
+          reservedCostUsd,
+          profile,
+          referenceImages,
+        ),
+    },
+    runtimeRecovery: {
+      confirm: async () => {
+        await recoverSdkWorkers(workerLeaseDirectory);
+        files.confirmWorkerRecovery();
+      },
+    },
     images,
     clock,
     ids,
@@ -457,16 +565,36 @@ async function createCorralServer(
   const streams = new Set<() => void>();
   const limiter = new RequestLimiter(() => clock.monotonicMs());
 
+  const requestTimeoutMs = 30_000;
   const app = Fastify({
     logger: false,
     bodyLimit: 2 * 1024 * 1024,
-    requestTimeout: 30_000,
+    requestTimeout: requestTimeoutMs,
     forceCloseConnections: true,
     return503OnClosing: true,
   });
   resources.defer(() => app.close());
+  let restartClosing = false;
+  const mutations = new Set<FastifyRequest>();
+  const handling = new WeakSet<FastifyRequest>();
+  app.addHook('onResponse', async (request) => {
+    mutations.delete(request);
+  });
+  app.addHook('preHandler', async (request) => {
+    handling.add(request);
+  });
 
   app.addHook('onRequest', async (request, reply) => {
+    if (restartClosing)
+      return reply
+        .code(503)
+        .send({ error: { code: 'STORAGE_UNAVAILABLE', message: 'The server is restarting.' } });
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method)) {
+      mutations.add(request);
+      request.raw.once('aborted', () => {
+        if (!handling.has(request)) mutations.delete(request);
+      });
+    }
     if (!boundary.hostAllowed(request.headers.host)) {
       return fail(reply, 'ORIGIN_REJECTED', 'this host name is not served here');
     }
@@ -511,7 +639,22 @@ async function createCorralServer(
     for (const [name, value] of Object.entries(headers)) reply.header(name, value);
     return payload;
   });
-  app.setErrorHandler((error: { statusCode?: number; message?: string }, _request, reply) => {
+  app.setErrorHandler(async (error: { statusCode?: number; code?: string }, request, reply) => {
+    if (error.code === 'FST_ERR_CTP_BODY_TOO_LARGE') {
+      // Closing with unread upload bytes can reset TCP before the client receives 413.
+      // Discard within bounded byte/time allowances; never parse or retain rejected data.
+      const drained = await drainRejectedBody(request.raw, {
+        bodyLimit: request.routeOptions.bodyLimit,
+        requestTimeoutMs,
+        elapsedMs: reply.elapsedTime,
+      });
+      if (drained !== 'drained') {
+        reply.hijack();
+        reply.raw.destroy();
+        mutations.delete(request);
+        return;
+      }
+    }
     if (error.statusCode === 413)
       return reply
         .code(413)
@@ -921,6 +1064,50 @@ async function createCorralServer(
     };
   });
 
+  registerModelImportRoutes(app, { workspace, registry, live: options.live });
+  registerPreviewRoutes(app, previews, previewTools);
+  const projectServices = registerProjectRoutes(app, { root: workspace.root, repository: corrals });
+  registerVoiceRoutes(app, {
+    registry,
+    hasSession: async (id) => Boolean(await corrals.getSession(id)),
+    hasRun: async (sessionId, runId) => files.sessionOfRun(runId) === sessionId,
+  });
+  app.get<{ Params: { sessionId: string } }>(
+    '/api/v1/sessions/:sessionId/processes',
+    async (request, reply) => {
+      if (!(await corrals.getSession(request.params.sessionId)))
+        return fail(reply, 'TARGET_NOT_FOUND', 'no such session');
+      return files.listCommands(request.params.sessionId);
+    },
+  );
+  app.get<{ Params: { sessionId: string; operationId: string }; Querystring: { offset?: string } }>(
+    '/api/v1/sessions/:sessionId/processes/:operationId/output',
+    async (request, reply) => {
+      if (!(await corrals.getSession(request.params.sessionId)))
+        return fail(reply, 'TARGET_NOT_FOUND', 'no such session');
+      const offset = Number(request.query.offset ?? 0);
+      if (!Number.isSafeInteger(offset) || offset < 0)
+        return fail(reply, 'SCHEMA_INVALID', 'invalid output offset');
+      return files.readCommandOutput(request.params.sessionId, request.params.operationId, offset);
+    },
+  );
+  app.get<{ Params: { sessionId: string; operationId: string } }>(
+    '/api/v1/sessions/:sessionId/processes/:operationId',
+    async (request, reply) => {
+      if (!(await corrals.getSession(request.params.sessionId)))
+        return fail(reply, 'TARGET_NOT_FOUND', 'no such session');
+      return files.commandReport(request.params.sessionId, request.params.operationId);
+    },
+  );
+  app.post<{ Params: { sessionId: string; operationId: string } }>(
+    '/api/v1/sessions/:sessionId/processes/:operationId/stop',
+    async (request, reply) => {
+      if (!(await corrals.getSession(request.params.sessionId)))
+        return fail(reply, 'TARGET_NOT_FOUND', 'no such session');
+      return files.stopCommand(request.params.sessionId, request.params.operationId);
+    },
+  );
+
   // ── team drafts (CR-006) ───────────────────────────────────────────────────
   // One model request for a goal; only a plan that passes the contract comes back.
   app.post('/api/v1/team-drafts', async (request, reply) => {
@@ -939,6 +1126,21 @@ async function createCorralServer(
 
   // ── runs ───────────────────────────────────────────────────────────────────
   app.get('/api/v1/runs', async () => coordinator.listRuns());
+  app.get<{ Params: { commandId: string } }>(
+    '/api/v1/start-commands/:commandId',
+    async (request, reply) => {
+      if (!Identifier.safeParse(request.params.commandId).success)
+        return fail(reply, 'SCHEMA_INVALID', 'invalid start command');
+      const result = coordinator.startResult(request.params.commandId);
+      if (!result) return fail(reply, 'TARGET_NOT_FOUND', 'start command is not recorded');
+      return {
+        ...result,
+        autoRoute: result.runId
+          ? (coordinator.getRunSnapshot(result.runId)?.autoRoute ?? null)
+          : null,
+      };
+    },
+  );
   app.post('/api/v1/runs', async (request, reply) => {
     const parsed = CreateRunRequest.safeParse(request.body);
     if (!parsed.success) {
@@ -1028,6 +1230,7 @@ async function createCorralServer(
                   ...(route.reasoning ? { reasoning: route.reasoning } : {}),
                 },
                 fileTools: startTree !== null,
+                ...(route.harness ? { harness: route.harness, commandTools: true } : {}),
                 ...(route.reasoningChoice ? { routeLevel: route.reasoningChoice.level } : {}),
               }),
             }
@@ -1093,6 +1296,58 @@ async function createCorralServer(
         }
       : null;
   };
+  const schedules = new ScheduleService(new ScheduleStore(db), {
+    now: () => clock.nowIso(),
+    id: () => `schedule_${crypto.randomUUID().replaceAll('-', '')}`,
+    repository: corrals,
+    start: (request, signal) => autoStarter.start(request, { fileTools: false, signal }),
+    previous: recordedAuto,
+    isRunActive: (id) => {
+      const run = coordinator.listRuns().find((item) => item.runId === id);
+      return Boolean(run && !TERMINAL_RUN_STATUSES.has(run.status));
+    },
+  });
+  registerScheduleRoutes(app, schedules);
+  app.addHook('onReady', () => schedules.start());
+  resources.defer(() => schedules.stop());
+  const vaultDirectory = join(
+    mcpConfigDir,
+    'vault',
+    createHash('sha256').update(workspace.root).digest('hex'),
+  );
+  const vault = new VaultService({
+    directory: vaultDirectory,
+    adapters: (bindings) => ({
+      automation: scheduleVaultAdapter(schedules),
+      ...createHarnessVaultAdapters({
+        harness: harnesses,
+        ...(bindings.mcp?.projectId ? { projectId: bindings.mcp.projectId } : {}),
+      }),
+      ...materialsVaultAdapters(projectServices.materials, corrals),
+      ...(registry && options.live
+        ? { providers: providersVaultAdapter({ workspace, registry, live: options.live }) }
+        : {}),
+      ...(bindings.subagents?.corralId
+        ? {
+            subagents: createSubagentsVaultAdapter({
+              repository: corrals,
+              corralId: bindings.subagents.corralId,
+              profiles: async () =>
+                (registry?.profilesView() ?? []).map((profile) => ({
+                  profileId: profile.profileId,
+                  available:
+                    profile.available &&
+                    profile.method !== null &&
+                    !(profile.method === 'oauth' && profile.subscriptionSupported === false),
+                })),
+              resolveHarness: async (binding, projectId) =>
+                harnesses.preview(binding, projectId).snapshot,
+            }),
+          }
+        : {}),
+    }),
+  });
+  registerVaultRoutes(app, { vault, directory: vaultDirectory });
   app.post('/api/v1/runs/auto', async (request, reply) => {
     const body = parse(AutoRunRequest, request, reply);
     if (!body) return reply;
@@ -1115,6 +1370,8 @@ async function createCorralServer(
           ...(body.ultra ? { ultra: body.ultra } : {}),
           choice: body.choice,
           mode: body.mode,
+          ...(body.permissionMode ? { permissionMode: body.permissionMode } : {}),
+          ...(body.harness ? { harness: body.harness } : {}),
           ...(body.taskScope ? { taskScope: body.taskScope } : {}),
           ...(body.verificationScope ? { verificationScope: body.verificationScope } : {}),
           ...(body.startFrom ? { startFrom: body.startFrom } : {}),
@@ -1199,7 +1456,8 @@ async function createCorralServer(
   // ── Work folders and file changes (CR-012) ───────────────────────────────────
   /** A run's start snapshot is recorded, and its end snapshot taken when it ends. */
   async function trackRunFiles(runId: string, sessionId: string, startTree: string) {
-    await files.recordRunStart(runId, sessionId, startTree);
+    const baseline = (await files.startBaseline(runId)) ?? startTree;
+    await files.recordRunStart(runId, sessionId, baseline);
     const stop = coordinator.subscribe(runId, 0, (event) => {
       if (event.type === 'run.state_changed' && TERMINAL_RUN_STATUSES.has(event.payload.to)) {
         stop();
@@ -1278,8 +1536,9 @@ async function createCorralServer(
     const body = parse(HunkPlanRequest, request, reply);
     if (!body) return reply;
     try {
-      return await coordinator.withFileRestore(() =>
-        files.planHunks(request.params.sessionId, body),
+      return await coordinator.withFileRestore(
+        () => files.planHunks(request.params.sessionId, body),
+        request.params.sessionId,
       );
     } catch (error) {
       return workspaceFail(reply, error);
@@ -1294,8 +1553,9 @@ async function createCorralServer(
     const body = parse(CaptureCheckpoint, request, reply);
     if (!body) return reply;
     try {
-      return await coordinator.withFileRestore(() =>
-        files.captureCheckpoint(request.params.sessionId, body),
+      return await coordinator.withFileRestore(
+        () => files.captureCheckpoint(request.params.sessionId, body),
+        request.params.sessionId,
       );
     } catch (error) {
       return workspaceFail(reply, error);
@@ -1321,8 +1581,9 @@ async function createCorralServer(
       const body = parse(z.strictObject({}), request, reply);
       if (!body) return reply;
       try {
-        return await coordinator.withFileRestore(() =>
-          files.pruneCheckpoints(request.params.sessionId),
+        return await coordinator.withFileRestore(
+          () => files.pruneCheckpoints(request.params.sessionId),
+          request.params.sessionId,
         );
       } catch (error) {
         return workspaceFail(reply, error);
@@ -1355,8 +1616,9 @@ async function createCorralServer(
       const body = parse(RestoreCheckpoint, request, reply);
       if (!body) return reply;
       try {
-        return await coordinator.withFileRestore(() =>
-          files.restoreCheckpoint(request.params.sessionId, body),
+        return await coordinator.withFileRestore(
+          () => files.restoreCheckpoint(request.params.sessionId, body),
+          request.params.sessionId,
         );
       } catch (error) {
         return workspaceFail(reply, error);
@@ -1777,8 +2039,9 @@ async function createCorralServer(
       return reply
         .code(201)
         .send(
-          await coordinator.withFileRestore(() =>
-            review.integrate(request.params.sessionId, body.decisionId),
+          await coordinator.withFileRestore(
+            () => review.integrate(request.params.sessionId, body.decisionId),
+            request.params.sessionId,
           ),
         );
     }),
@@ -1787,8 +2050,9 @@ async function createCorralServer(
     '/api/v1/sessions/:sessionId/integrations/:integrationId/revert',
     async (request, reply) => {
       try {
-        return await coordinator.withFileRestore(() =>
-          review.revert(request.params.sessionId, request.params.integrationId),
+        return await coordinator.withFileRestore(
+          () => review.revert(request.params.sessionId, request.params.integrationId),
+          request.params.sessionId,
         );
       } catch (error) {
         return workspaceFail(reply, error);
@@ -1966,6 +2230,66 @@ async function createCorralServer(
       .code(result.receipt.error ? STATUS[result.receipt.error.code] : resend ? 200 : 201)
       .send(result);
   });
+  app.get('/api/v1/image-profiles', async () => {
+    const profiles = imageProfiles.list();
+    return {
+      profiles,
+      statuses: Object.fromEntries(
+        profiles.map((profile) => [
+          profile.profileId,
+          {
+            available: Boolean(imageProfiles.resolve(profile.profileId)),
+            reason: imageProfiles.resolve(profile.profileId)
+              ? null
+              : 'Requires a configured OpenAI or compatible model profile with an API key; subscription sign-ins are unsupported.',
+          },
+        ]),
+      ),
+    };
+  });
+  app.put<{ Params: { profileId: string } }>(
+    '/api/v1/image-profiles/:profileId',
+    async (request, reply) => {
+      if ((request.body as { profileId?: unknown })?.profileId !== request.params.profileId)
+        return fail(reply, 'SCHEMA_INVALID', 'image profile identity differs from the address');
+      try {
+        return { profile: imageProfiles.put(request.body) };
+      } catch {
+        return fail(reply, 'SCHEMA_INVALID', 'invalid image generation profile');
+      }
+    },
+  );
+  app.delete<{ Params: { profileId: string } }>(
+    '/api/v1/image-profiles/:profileId',
+    async (request) => {
+      imageProfiles.remove(request.params.profileId);
+      return { ok: true };
+    },
+  );
+  app.get<{ Params: { runId: string; versionId: string }; Querystring: { download?: string } }>(
+    '/api/v1/runs/:runId/artifact-versions/:versionId/media',
+    async (request, reply) => {
+      const { runId, versionId } = request.params;
+      const artifact = coordinator.findSnapshot(runId)?.projection.artifacts[versionId];
+      if (!artifact?.media) return fail(reply, 'TARGET_NOT_FOUND', 'no generated image version');
+      const stored = imageGeneration.read(runId, versionId);
+      if (!stored || canonicalJson(stored.media) !== canonicalJson(artifact.media))
+        return fail(
+          reply,
+          'STORAGE_UNAVAILABLE',
+          'generated image bytes are unavailable or changed',
+        );
+      return reply
+        .type(stored.media.mime)
+        .header('Cache-Control', 'no-store')
+        .header(
+          'Content-Disposition',
+          `${request.query.download === '1' ? 'attachment' : 'inline'}; filename="image.png"`,
+        )
+        .header('X-Content-Type-Options', 'nosniff')
+        .send(stored.bytes);
+    },
+  );
   app.post<RunParams>('/api/v1/runs/:runId/export', async (request, reply) => {
     const body = parse(
       z.strictObject({ privateTranscript: z.boolean().optional() }),
@@ -2182,6 +2506,55 @@ async function createCorralServer(
     bootstrapUrl: `${url}/#bootstrap=${token}`,
     policy: workspace.policy,
     coordinator,
+    desktopPreviewTarget: (sessionId, leaseId) => previews.desktopTarget(sessionId, leaseId),
+    desktopStorageVersion: () => Number(db.pragma('user_version', { simple: true })),
+    async closeIfIdle(backupForUpdate = false) {
+      if (
+        restartClosing ||
+        mutations.size ||
+        autoRequests.size ||
+        !coordinator.admitting ||
+        files.hasPendingProcesses() ||
+        hasOwnedProcessReservations() ||
+        coordinator.listRuns().some((run) => !TERMINAL_RUN_STATUSES.has(run.status)) ||
+        !schedules.pauseIfIdle()
+      )
+        return false;
+      // No await may separate the idle checks and the admission gate.
+      restartClosing = true;
+      if (backupForUpdate) {
+        try {
+          const destination = join(
+            workspace.root,
+            '.corral',
+            'update-backups',
+            crypto.randomUUID(),
+          );
+          mkdirSync(destination, { recursive: true, mode: 0o700 });
+          await db.backup(join(destination, 'corral.db'));
+          const config = join(workspace.root, '.corral', 'config.json');
+          if (existsSync(config))
+            writeFileSync(join(destination, 'config.json'), readFileSync(config), { mode: 0o600 });
+          writeFileSync(
+            join(destination, 'snapshot.json'),
+            JSON.stringify({
+              createdAt: clock.nowIso(),
+              workspaceId: workspace.id,
+              wireSchemaVersion: SCHEMA_VERSION,
+              storageVersion: Number(db.pragma('user_version', { simple: true })),
+            }),
+            { mode: 0o600 },
+          );
+        } catch (error) {
+          restartClosing = false;
+          schedules.resumeAfterIdle();
+          throw error;
+        }
+      }
+      for (const close of [...streams]) close();
+      await closeResources();
+      return true;
+    },
     async prepareEvaluation(target) {
       const created = await corrals.createSession({
         projectId: target.projectId,
@@ -2197,7 +2570,7 @@ async function createCorralServer(
     },
     async close() {
       for (const close of [...streams]) close();
-      await resources.disposeAsync();
+      await closeResources();
     },
   };
 }

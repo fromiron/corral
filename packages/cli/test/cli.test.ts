@@ -136,48 +136,56 @@ describe('CLI command/query parity', () => {
     expect(await runCli(['export', 'missing', '--redact'], io)).toBe(1);
   });
 
-  it('[TC-DX-001-N] the executable handles SIGINT and persists cancellation before exiting', async () => {
-    const cwd = workspace();
-    const definition = linearCorral(['writer']);
-    const output = definition.nodes.find((node) => node.type === 'output');
-    if (output?.type === 'output') output.requireApproval = true;
-    const path = join(cwd, 'workflow.json');
-    writeFileSync(path, JSON.stringify(definition));
-    const child = spawn(
-      process.execPath,
-      [
-        fileURLToPath(new URL('../src/main.ts', import.meta.url)),
-        'run',
-        path,
-        '--demo',
-        '--watch',
-        '--port',
-        '0',
-      ],
-      { cwd, stdio: ['ignore', 'pipe', 'pipe'] },
-    );
-    let interrupted = false;
-    let stdout = '';
-    child.stdout.on('data', (chunk: Buffer) => {
-      stdout += chunk.toString();
-      if (!interrupted && stdout.includes('awaiting_user')) {
-        interrupted = true;
-        child.kill('SIGINT');
+  // On Windows child.kill('SIGINT') forcibly terminates the child; it cannot exercise
+  // the CLI's Ctrl+C handler. Keep this OS-signal test on platforms that deliver it.
+  // https://nodejs.org/api/child_process.html#subprocesskillsignal
+  // The AbortSignal -> Coordinator settlement test below runs on every platform.
+  it.skipIf(process.platform === 'win32')(
+    '[TC-DX-001-N] the executable handles POSIX SIGINT and persists cancellation before exiting',
+    async () => {
+      const cwd = workspace();
+      const definition = linearCorral(['writer']);
+      const output = definition.nodes.find((node) => node.type === 'output');
+      if (output?.type === 'output') output.requireApproval = true;
+      const path = join(cwd, 'workflow.json');
+      writeFileSync(path, JSON.stringify(definition));
+      const child = spawn(
+        process.execPath,
+        [
+          fileURLToPath(new URL('../src/main.ts', import.meta.url)),
+          'run',
+          path,
+          '--demo',
+          '--watch',
+          '--port',
+          '0',
+        ],
+        { cwd, stdio: ['ignore', 'pipe', 'pipe'] },
+      );
+      let interrupted = false;
+      let stdout = '';
+      child.stdout.on('data', (chunk: Buffer) => {
+        stdout += chunk.toString();
+        if (!interrupted && stdout.includes('awaiting_user')) {
+          interrupted = true;
+          child.kill('SIGINT');
+        }
+      });
+      const code = await new Promise<number | null>((done, reject) => {
+        child.once('exit', done);
+        child.once('error', reject);
+      });
+      expect(interrupted).toBe(true);
+      expect(code).toBe(130);
+      const db = openReadOnlyDatabase(join(cwd, '.corral', 'corral.db'));
+      try {
+        expect(new SqliteRunStore(db).listRuns().map((run) => run.status)).toEqual(['cancelled']);
+      } finally {
+        db.close();
       }
-    });
-    const code = await new Promise<number | null>((done, reject) => {
-      child.once('exit', done);
-      child.once('error', reject);
-    });
-    expect(interrupted).toBe(true);
-    expect(code).toBe(130);
-    const db = openReadOnlyDatabase(join(cwd, '.corral', 'corral.db'));
-    try {
-      expect(new SqliteRunStore(db).listRuns().map((run) => run.status)).toEqual(['cancelled']);
-    } finally {
-      db.close();
-    }
-  }, 15_000);
+    },
+    15_000,
+  );
 
   it('[TC-DX-001-N] reports invalid input without echoing a path or raw user input', async () => {
     const cwd = workspace();

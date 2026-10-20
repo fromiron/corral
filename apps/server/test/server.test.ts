@@ -273,6 +273,8 @@ describe('local security boundary (C-055)', () => {
         mimeType: 'text/plain',
         text: 'x'.repeat(2 * 1024 * 1024),
       }),
+    }).catch((cause) => {
+      throw new Error('oversized request did not receive its HTTP refusal', { cause });
     });
     expect(oversized.status).toBe(413);
     const malformed = await call(`${server.url}/api/v1/documents/import`, {
@@ -405,7 +407,7 @@ describe('REST: Corrals and runs (C-015, C-057)', () => {
     expect(await order()).toEqual(await order());
   });
 
-  it('[TC-DEV-001-H] starts a run from a saved revision once per commandId; one run at a time', async () => {
+  it('[TC-DEV-001-H] [TC-ABS-006-H] saved revisions stay exactly once while independent runs overlap', async () => {
     const gate = new Gate();
     const server = await start({
       agents: new ScriptedAgentAdapter({ turns: 1, beforeReply: () => gate.wait() }),
@@ -436,8 +438,14 @@ describe('REST: Corrals and runs (C-015, C-057)', () => {
     expect(conflict.status).toBe(409);
     expect((await conflict.json()).receipt.error.code).toBe('IDEMPOTENCY_CONFLICT');
     const second = await post({ ...body, commandId: 'cmd_run_2' });
-    expect(second.status).toBe(409);
-    expect((await second.json()).receipt.error.code).toBe('RUN_ALREADY_ACTIVE');
+    expect(second.status).toBe(201);
+    const concurrent = await second.json();
+    expect(concurrent.receipt.status).toBe('applied');
+    expect(concurrent.runId).not.toBe(created.runId);
+    expect(server.coordinator.getSnapshot(created.runId).projection.status).toBe('running');
+    const repeatedSecond = await post({ ...body, commandId: 'cmd_run_2' });
+    expect(repeatedSecond.status).toBe(200);
+    expect(await repeatedSecond.json()).toEqual(concurrent);
     const missing = await post({ ...body, commandId: 'cmd_run_3', definitionRevision: 7 });
     expect(missing.status).toBe(404);
     const inline = await post({ ...body, commandId: 'cmd_run_4', definition: linearCorral(['w']) });
@@ -445,8 +453,97 @@ describe('REST: Corrals and runs (C-015, C-057)', () => {
     gate.open();
 
     const history = await (await call(`${server.url}/api/v1/runs`)).json();
-    expect(history.map((r: { runId: string }) => r.runId)).toEqual([created.runId]);
+    expect(new Set(history.map((r: { runId: string }) => r.runId))).toEqual(
+      new Set([created.runId, concurrent.runId]),
+    );
   });
+
+  it('[TC-ABS-006-H] [TC-ABS-006-N] the HTTP entry refuses only a second writer to the same working copy', async () => {
+    const gate = new Gate();
+    const server = await start({
+      agents: new ScriptedAgentAdapter({ turns: 1, beforeReply: () => gate.wait() }),
+    });
+    const { call } = await browser(server);
+    const rest = new RestCorralRepository({ baseUrl: server.url, fetch: call });
+    const transport = new HttpSseTransport({ baseUrl: server.url, fetch: call });
+    const original = tempWorkspace();
+    const git = (...args: string[]) =>
+      execFileSync(
+        'git',
+        ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', ...args],
+        { cwd: original, stdio: 'pipe' },
+      );
+    git('init', '-q');
+    writeFileSync(join(original, 'README.md'), 'fixed input\n');
+    git('add', '.');
+    git('commit', '-qm', 'initial');
+    const write = async (path: string, method: string, body: unknown) => {
+      const response = await call(`${server.url}/api/v1${path}`, {
+        method,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      expect(response.ok).toBe(true);
+      return response;
+    };
+    await write('/projects/default/workspace', 'PUT', { path: original });
+    await write('/projects/default/workspace', 'PATCH', { trusted: true });
+    const sessions: string[] = [];
+    for (const title of ['Writer and reader', 'Independent writer']) {
+      const result = await rest.createSession({ projectId: 'default', title });
+      if (!result.ok) throw new Error(result.message);
+      sessions.push(result.session.sessionId);
+      await write(`/sessions/${result.session.sessionId}/worktree`, 'POST', {});
+    }
+    const writer = linearCorral(['writer'], 'concurrent_writer');
+    if (!writer.roles[0]) throw new Error('writer role missing');
+    writer.roles[0].allowedWorkTools = ['write_artifact', 'list_files', 'read_file', 'write_file'];
+    const reader = linearCorral(['reader'], 'concurrent_reader');
+    if (!reader.roles[0]) throw new Error('reader role missing');
+    reader.roles[0].allowedWorkTools = ['write_artifact', 'list_files', 'read_file'];
+    const w = await saved(server, writer, call),
+      r = await saved(server, reader, call);
+    const launch = (commandId: string, sessionId: string, record: typeof w) =>
+      transport.startRun({
+        schemaVersion: '0.1',
+        commandId,
+        sessionId,
+        corralId: record.corralId,
+        definitionRevision: record.definitionRevision,
+        mode: 'mock',
+      });
+    try {
+      const first = await launch('writer_a', sessions[0] ?? '', w);
+      expect(first.receipt.status).toBe('applied');
+      const duplicate = await launch('writer_a', sessions[0] ?? '', w);
+      expect(duplicate).toEqual(first);
+      const denied = await launch('writer_conflict', sessions[0] ?? '', w);
+      expect(denied.runId).toBeNull();
+      expect(denied.receipt.error?.code).toBe('RUN_ALREADY_ACTIVE');
+      const reading = await launch('reader_b', sessions[0] ?? '', r);
+      const separate = await launch('writer_c', sessions[1] ?? '', w);
+      expect(reading.receipt.status).toBe('applied');
+      expect(separate.receipt.status).toBe('applied');
+      expect(server.coordinator.listRuns()).toHaveLength(3);
+      expect(
+        [first, reading, separate].every(
+          ({ runId }) =>
+            server.coordinator.getSnapshot(runId ?? '').projection.status === 'running',
+        ),
+      ).toBe(true);
+      gate.open();
+      await Promise.all(
+        [first, reading, separate].map(({ runId }) =>
+          waitForProjection(transport, runId ?? '', (projection) =>
+            ['succeeded', 'failed', 'cancelled'].includes(projection.status),
+          ),
+        ),
+      );
+      expect(server.coordinator.listRuns().every((run) => run.status === 'succeeded')).toBe(true);
+    } finally {
+      gate.open();
+    }
+  }, 30_000);
 
   it('[TC-RACE-08] reports a queued steer as HTTP 202, not as applied', async () => {
     const gates = [new Gate(), new Gate()];
@@ -1472,5 +1569,6 @@ describe('work folders and file changes (CR-012)', () => {
       if (i === 99) throw new Error('cancelled check did not finish');
       await new Promise((resolve) => setTimeout(resolve, 20));
     }
-  });
+    // Real Windows Job startup and confirmed cancellation both occur in this flow.
+  }, 30_000);
 });

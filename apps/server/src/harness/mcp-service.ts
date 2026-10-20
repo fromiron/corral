@@ -29,6 +29,15 @@ const cancellationKey = (id: string) =>
   `probe_cancel_${createHash('sha256').update(id).digest('hex')}`;
 
 export class McpService {
+  private verifyPackage: ((hash: string) => void) | undefined;
+  setPackageVerifier(verify: (hash: string) => void) {
+    this.verifyPackage = verify;
+  }
+  private verifyOwnedPackage(server: { sourcePackageHash?: string }) {
+    if (!server.sourcePackageHash) return;
+    if (!this.verifyPackage) throw new Error('package integrity verifier unavailable');
+    this.verifyPackage(server.sourcePackageHash);
+  }
   readonly files: WorkspaceService;
   readonly credentials: McpCredentials;
   private readonly probeOptions: {
@@ -41,6 +50,7 @@ export class McpService {
     operationId: string;
     key: string;
     projectId: string;
+    serverId: string;
     controller: AbortController;
     promise: Promise<ProbeResult>;
   } | null = null;
@@ -96,8 +106,12 @@ export class McpService {
           input.configRevision,
           input.sessionId,
         );
+        this.verifyOwnedPackage(current.server);
         if (
           controller.signal.aborted ||
+          (current.server.sourcePackageHash &&
+            this.probeOptions.store.packageManagement(current.server.sourcePackageHash).status !==
+              'enabled') ||
           !current.trustedAt ||
           current.fingerprint !== input.fingerprint ||
           current.copyIdentity !== context.copyIdentity ||
@@ -140,6 +154,7 @@ export class McpService {
                   'MCP probe timed out',
                   'MCP probe authorization failed',
                   'MCP launch requires current fingerprint trust',
+                  'package requires trust before MCP launch',
                   'project tool revision changed',
                 ].includes(error.message)
               ? error.message
@@ -150,8 +165,24 @@ export class McpService {
       .finally(() => {
         if (this.probeJob?.operationId === input.operationId) this.probeJob = null;
       });
-    this.probeJob = { operationId: input.operationId, key, projectId, controller, promise };
+    this.probeJob = {
+      operationId: input.operationId,
+      key,
+      projectId,
+      serverId,
+      controller,
+      promise,
+    };
     return promise;
+  }
+
+  async cancelPackageProbe(hash: string) {
+    const job = this.probeJob;
+    if (!job) return;
+    const server = this.files.projectTools
+      .latest(job.projectId)
+      ?.mcpServers?.find((entry) => entry.id === job.serverId);
+    if (server?.sourcePackageHash === hash) await this.cancelProbe(job.operationId, job.projectId);
   }
 
   async cancelProbe(operationId?: string, projectId?: string) {
@@ -220,6 +251,7 @@ export class McpService {
       if (harness.policy !== 'trusted-native')
         throw new Error('MCP requires trusted-native policy');
       const runtime = await this.files.runtimeMcp(runId, selection);
+      for (const { server } of runtime.servers) this.verifyOwnedPackage(server);
       return { cwd: runtime.cwd, mcp: runtime.servers };
     }
     const cwd =
@@ -270,16 +302,24 @@ export class McpService {
   }
   async authentication(projectId: string, id: string, fingerprint: string) {
     const inspected = await this.files.inspectMcpServer(projectId, id);
+    this.verifyOwnedPackage(inspected.server);
     if (
       inspected.server.transport !== 'http' ||
+      (inspected.server.sourcePackageHash &&
+        this.probeOptions.store.packageManagement(inspected.server.sourcePackageHash).status !==
+          'enabled') ||
       !inspected.trustedAt ||
       inspected.fingerprint !== fingerprint
     )
       throw new Error('MCP launch requires current fingerprint trust');
     const check = async () => {
       const current = await this.files.inspectMcpServer(projectId, id);
+      this.verifyOwnedPackage(current.server);
       if (
         !current.trustedAt ||
+        (current.server.sourcePackageHash &&
+          this.probeOptions.store.packageManagement(current.server.sourcePackageHash).status !==
+            'enabled') ||
         current.fingerprint !== fingerprint ||
         canonicalJson(current.server) !== canonicalJson(inspected.server)
       )

@@ -33,6 +33,7 @@ test('[TC-CAN-002-H] Tidy up rearranges a messy canvas, and one Undo puts it bac
   page,
 }) => {
   await page.goto('/');
+  await page.getByRole('tab', { name: /^Teams/ }).click();
   await page
     .getByRole('region', { name: 'Start from a template' })
     .getByRole('article')

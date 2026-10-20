@@ -88,6 +88,13 @@ export interface NodeChange {
   inputBindings?: InputBinding[];
   /** Lets the role change files in the session's working copy (CR-012): all file tools. */
   fileTools?: boolean;
+  runCommand?: boolean;
+  generateImage?: boolean;
+  previewFile?: boolean;
+  previewApp?: boolean;
+  previewAction?: boolean;
+  imageProfile?: string | null;
+  editingMode?: AgentRole['editingMode'];
   teamPlanOwner?: boolean;
 }
 
@@ -347,10 +354,35 @@ export function updateNode(draft: EditorDraft, nodeId: string, change: NodeChang
     if (change.modelProfile) roleChange.modelProfile = change.modelProfile;
     if (change.harness) roleChange.harness = change.harness;
     if (change.reasoning) roleChange.reasoning = change.reasoning;
+    if (change.editingMode) roleChange.editingMode = change.editingMode;
     if (change.fileTools !== undefined) {
       const current = roles.find((r) => r.id === roleId)?.allowedWorkTools ?? [];
       const others = current.filter((tool) => !(FILE_TOOLS as readonly string[]).includes(tool));
       roleChange.allowedWorkTools = change.fileTools ? [...others, ...FILE_TOOLS] : others;
+    }
+    if (change.runCommand !== undefined) {
+      const current =
+        roleChange.allowedWorkTools ?? roles.find((r) => r.id === roleId)?.allowedWorkTools ?? [];
+      const others = current.filter((tool) => tool !== 'run_command');
+      roleChange.allowedWorkTools = change.runCommand ? [...others, 'run_command'] : others;
+    }
+    if (change.imageProfile) roleChange.imageProfile = change.imageProfile;
+    if (change.generateImage !== undefined) {
+      const current =
+        roleChange.allowedWorkTools ?? roles.find((r) => r.id === roleId)?.allowedWorkTools ?? [];
+      const others = current.filter((tool) => tool !== 'generate_image');
+      roleChange.allowedWorkTools = change.generateImage ? [...others, 'generate_image'] : others;
+    }
+    for (const [key, tool] of [
+      ['previewFile', 'preview_file'],
+      ['previewApp', 'preview_app'],
+      ['previewAction', 'preview_action'],
+    ] as const) {
+      if (change[key] === undefined) continue;
+      const current =
+        roleChange.allowedWorkTools ?? roles.find((r) => r.id === roleId)?.allowedWorkTools ?? [];
+      const others = current.filter((candidate) => candidate !== tool);
+      roleChange.allowedWorkTools = change[key] ? [...others, tool] : others;
     }
     if (change.label !== undefined) {
       const sharedBy = nodes.filter((n) => n.type === 'agent' && n.roleId === roleId);
@@ -363,6 +395,12 @@ export function updateNode(draft: EditorDraft, nodeId: string, change: NodeChang
       roles = roles.map((role) => {
         if (role.id !== roleId) return role;
         const { reasoning: _reasoning, ...rest } = role;
+        return rest;
+      });
+    if (change.imageProfile === null)
+      roles = roles.map((role) => {
+        if (role.id !== roleId) return role;
+        const { imageProfile: _imageProfile, ...rest } = role;
         return rest;
       });
     if (change.harness === null) {

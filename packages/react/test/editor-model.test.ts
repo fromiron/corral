@@ -369,4 +369,61 @@ describe('file tools switch (CR-012)', () => {
     const off = updateNode(on, added.nodeId, { fileTools: false });
     expect(roleOf(off)).toEqual(['write_artifact']);
   });
+  it('keeps shell permission independent of file permission and pins explicit editing choices', () => {
+    const added = addNode(emptyDraft(), 'agent', { x: 0, y: 0 });
+    const on = updateNode(added.draft, added.nodeId, {
+      fileTools: true,
+      runCommand: true,
+      editingMode: 'hashline',
+    });
+    expect(on.definition.roles[0]?.allowedWorkTools).toContain('run_command');
+    expect(on.definition.roles[0]?.editingMode).toBe('hashline');
+    expect(added.draft.definition.roles[0]).not.toHaveProperty('editingMode');
+    const filesOff = updateNode(on, added.nodeId, { fileTools: false });
+    expect(filesOff.definition.roles[0]?.allowedWorkTools).toEqual([
+      'write_artifact',
+      'run_command',
+    ]);
+    const shellOff = updateNode(filesOff, added.nodeId, { runCommand: false, editingMode: 'pi' });
+    expect(shellOff.definition.roles[0]?.allowedWorkTools).toEqual(['write_artifact']);
+    expect(shellOff.definition.roles[0]?.editingMode).toBe('pi');
+  });
+  it('[TC-ABS-010-H] persists image permission and profile independently of file and shell access', () => {
+    const added = addNode(emptyDraft(), 'agent', { x: 0, y: 0 });
+    const enabled = updateNode(added.draft, added.nodeId, {
+      generateImage: true,
+      imageProfile: 'image_profile',
+    });
+    expect(enabled.definition.roles[0]?.allowedWorkTools).toEqual([
+      'write_artifact',
+      'generate_image',
+    ]);
+    expect(enabled.definition.roles[0]?.imageProfile).toBe('image_profile');
+    const disabled = updateNode(enabled, added.nodeId, { generateImage: false });
+    expect(disabled.definition.roles[0]?.allowedWorkTools).toEqual(['write_artifact']);
+    expect(disabled.definition.roles[0]?.imageProfile).toBe('image_profile');
+    const cleared = updateNode(disabled, added.nodeId, { imageProfile: null });
+    expect(cleared.definition.roles[0]).not.toHaveProperty('imageProfile');
+    expect(added.draft.definition.roles[0]).not.toHaveProperty('imageProfile');
+  });
+  it('[TC-ABS-004-H] keeps file, service and interaction preview permissions independent', () => {
+    const added = addNode(emptyDraft(), 'agent', { x: 0, y: 0 });
+    const enabled = updateNode(added.draft, added.nodeId, {
+      previewFile: true,
+      previewApp: true,
+      previewAction: true,
+    });
+    expect(enabled.definition.roles[0]?.allowedWorkTools).toEqual([
+      'write_artifact',
+      'preview_file',
+      'preview_app',
+      'preview_action',
+    ]);
+    const disabled = updateNode(enabled, added.nodeId, { previewAction: false });
+    expect(disabled.definition.roles[0]?.allowedWorkTools).toEqual([
+      'write_artifact',
+      'preview_file',
+      'preview_app',
+    ]);
+  });
 });

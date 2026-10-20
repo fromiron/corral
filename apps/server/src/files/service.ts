@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { constants, existsSync } from 'node:fs';
+import { constants, existsSync, realpathSync } from 'node:fs';
 import {
   link,
   lstat,
@@ -27,10 +27,14 @@ import {
   type CheckpointRestore,
   type CheckpointRestorePlan,
   type Clock,
+  type CommandExecution,
+  CommandPlan,
+  CommandReport,
   canonicalJson,
   type EditTextRequest,
   type EditTextResult,
   type FileCheckpoint,
+  HashlineEditInput,
   HunkPlanRequest,
   HunkRequest,
   type HunkSet,
@@ -47,19 +51,37 @@ import {
   type RegisteredMcpServer,
   RestoreCheckpoint,
   ReviewRecipeRevision,
+  RunCommandArgs,
   type Scheduler,
   type VerificationOwner,
   VerificationReport,
 } from '@corral/contracts';
-import { type FileTools, rankFuzzy, type ToolCancellation, ToolRefusal } from '@corral/core';
+import {
+  type FileTools,
+  rankFuzzy,
+  type ToolCancellation,
+  ToolRefusal,
+  ToolTerminationUnconfirmed,
+} from '@corral/core';
 import { type Db, SqliteHarnessStore, SqliteProjectToolStore } from '@corral/storage-sqlite';
+import { CommandCapacityError, CommandRuntime } from '../processes/runtime.ts';
+import { commandEnvironment, listShells, resolveShellCommand } from '../processes/shells.ts';
 import { systemTimers } from '../runtime.ts';
 import { redactToolText } from './check-output.ts';
 import { GitError, git, gitText } from './git.ts';
+import {
+  applyHashline,
+  HashlineError,
+  type HashlineEvidence,
+  type HashlineScope,
+  mergeHashlineEvidence,
+  readHashline,
+} from './hashline.ts';
 import { launchFingerprint } from './launch-fingerprint.ts';
 import { LspRunner } from './lsp.ts';
 import { stageLspEdit } from './lsp-edits.ts';
 import { lspResults, validateLspPosition } from './lsp-results.ts';
+import { RunAccessStore } from './run-access.ts';
 import { VerificationRunner } from './verification.ts';
 
 // Work folders and file changes (CR-012). A project may link one folder, which is only
@@ -288,6 +310,18 @@ interface WorktreeRow {
 }
 
 export class WorkspaceService implements FileTools {
+  private readonly commandRuntime = new CommandRuntime();
+  private readonly pendingCommands = new Map<string, Promise<CommandReport>>();
+  private readonly pendingCommandHashes = new Map<string, string>();
+  private readonly commandServices = new Map<
+    string,
+    { runId: string; started: Promise<boolean>; completion: Promise<CommandReport> }
+  >();
+  private readonly commandEpochs = new Map<string, number>();
+  private readonly pendingCommandRuns = new Map<string, string>();
+  private disposing = false;
+  private readonly runAccess: RunAccessStore;
+  private readonly preparingRuns = new Map<string, Promise<void>>();
   private readonly criteria = new Map<string, ReviewRecipeRevision['criteriaFiles']>();
   private readonly lsp: Pick<LspRunner, 'query'>;
   private readonly io: MutationIo;
@@ -309,6 +343,7 @@ export class WorkspaceService implements FileTools {
   private readonly pendingSnapshots = new Map<string, Promise<string | null>>();
   /** Run → execution → path hash: another attempt's read never authorizes an overwrite. */
   private readonly reads = new Map<string, Map<string, Map<string, string>>>();
+  private readonly hashlineReads = new Map<string, Map<string, HashlineEvidence>>();
   private readonly edit: (
     request: EditTextRequest,
     cancellation: ToolCancellation,
@@ -327,12 +362,17 @@ export class WorkspaceService implements FileTools {
     edit?: (request: EditTextRequest, cancellation: ToolCancellation) => Promise<EditTextResult>;
   }) {
     this.db = options.db;
+    this.runAccess = new RunAccessStore(this.db);
+    this.runAccess.recover();
     this.db
       .prepare(`UPDATE checkpoint_restores SET result_json=json_set(result_json, '$.state', 'uncertain')
       WHERE json_extract(result_json, '$.state')='applying'`)
       .run();
     this.io = { writeFile, rename, unlink, link, ...options.io };
     this.clock = options.clock;
+    this.db
+      .prepare("UPDATE command_operations SET state='uncertain',updated_at=? WHERE state='running'")
+      .run(this.clock.nowIso());
     this.projectTools = new SqliteProjectToolStore(options.db, options.clock);
     this.lsp =
       options.lsp ??
@@ -800,6 +840,23 @@ export class WorkspaceService implements FileTools {
           missing: !existsSync(row.worktree_path),
         }
       : null;
+  }
+
+  async resolvePreviewRoot(sessionId: string): Promise<string> {
+    const row = this.worktree(sessionId);
+    if (!row) throw new WorkspaceError('TARGET_NOT_FOUND', 'this session has no working copy');
+    const binding = this.db
+      .prepare('SELECT trusted FROM workspace_bindings WHERE id=?')
+      .get(row.binding_id) as { trusted: number } | undefined;
+    if (!binding?.trusted)
+      throw new WorkspaceError('CAPABILITY_DENIED', 'trust the project before opening previews');
+    const root = await realpath(row.worktree_path);
+    if ((await lstat(row.worktree_path)).isSymbolicLink() || root !== resolve(row.worktree_path))
+      throw new WorkspaceError('CAPABILITY_DENIED', 'the working copy identity changed');
+    const relativeRoot = relative(this.worktreeRoot, root);
+    if (!relativeRoot || relativeRoot.startsWith('..') || isAbsolute(relativeRoot))
+      throw new WorkspaceError('CAPABILITY_DENIED', 'the working copy identity changed');
+    return root;
   }
 
   async createWorktree(
@@ -1452,7 +1509,10 @@ export class WorkspaceService implements FileTools {
 
   /** Records a run's start or end snapshot, inside the write lease so no write is half-seen. */
   async snapshotRun(runId: string, sessionId: string, phase: 'start' | 'end') {
-    if (phase === 'end') this.reads.delete(runId);
+    if (phase === 'end') {
+      this.reads.delete(runId);
+      this.hashlineReads.delete(runId);
+    }
     const row = this.worktree(sessionId);
     if (!row) return null;
     const existing = this.runTree(runId, phase);
@@ -1461,7 +1521,11 @@ export class WorkspaceService implements FileTools {
     const pending = this.pendingSnapshots.get(key);
     if (pending) return pending;
     const work = this.lease(row.worktree_path, async () => {
-      const tree = await this.snapshotTree(row.worktree_path);
+      const access = this.runAccess.get(runId);
+      const tree =
+        access?.writer === 0 && access.tree
+          ? access.tree
+          : await this.snapshotTree(row.worktree_path);
       await this.pin(row.worktree_path, `refs/corral/${sessionId}/runs/${runId}/${phase}`, tree);
       this.db
         .prepare(
@@ -1946,6 +2010,12 @@ export class WorkspaceService implements FileTools {
   }
 
   private projectToolContext(input: Pick<CheckExecution, 'runId' | 'selection'>) {
+    const access = this.runAccess.get(input.runId);
+    if (access && (access.state !== 'active' || !access.writer))
+      throw new ToolRefusal(
+        'CAPABILITY_DENIED',
+        'process tools require an active working copy writer',
+      );
     const sessionId = this.sessionOfRun(input.runId);
     const row = sessionId ? this.worktree(sessionId) : null;
     const binding = this.binding(input.selection.projectId);
@@ -2643,12 +2713,422 @@ export class WorkspaceService implements FileTools {
   }
 
   async dispose() {
+    this.disposing = true;
+    await this.commandRuntime.close();
+    await Promise.allSettled([...this.pendingCommands.values()]);
+    await Promise.allSettled(
+      [...this.commandServices.values()].map((service) => service.completion),
+    );
     const pending = [...this.checks.values()];
     for (const check of pending) check.cancel();
     await Promise.allSettled(pending.map((check) => check.completion));
+    // Run termination publishes before its end checkpoint finishes. Keep the DB and
+    // working directories alive until those already-owned Git operations have drained.
+    await Promise.allSettled([
+      ...this.pendingSnapshots.values(),
+      ...this.preparingRuns.values(),
+      ...this.leases.values(),
+    ]);
+  }
+
+  /** Updating the desktop must wait for file checkpoints as well as owned processes. */
+  hasPendingProcesses(): boolean {
+    if (
+      this.checks.size ||
+      this.pendingCommands.size ||
+      this.pendingSnapshots.size ||
+      this.preparingRuns.size ||
+      this.leases.size
+    )
+      return true;
+    return Boolean(
+      this.db
+        .prepare(`SELECT 1 FROM command_operations
+        WHERE state='running' OR report_json IS NULL OR
+        json_extract(report_json,'$.cleanupConfirmed') != 1
+        LIMIT 1`)
+        .get() ||
+        this.db
+          .prepare(`SELECT 1 FROM verifications
+        WHERE state='running' OR
+        (report_json IS NOT NULL AND json_extract(report_json,'$.cleanupConfirmed') != 1)
+        LIMIT 1`)
+          .get(),
+    );
   }
 
   // ── the file broker (FileTools) ─────────────────────────────────────────────
+
+  private commandContext(input: CommandExecution) {
+    if (this.disposing) throw new ToolRefusal('TARGET_TERMINAL', 'workspace is shutting down');
+    const found = this.worktreeOfRun(input.runId);
+    const access = this.runAccess.get(input.runId);
+    if (!found || !access || access.writer !== 1 || access.state !== 'active')
+      throw new ToolRefusal('CAPABILITY_DENIED', 'commands require an active working copy writer');
+    const binding = this.db
+      .prepare('SELECT * FROM workspace_bindings WHERE id=?')
+      .get(found.row.binding_id) as BindingRow | undefined;
+    if (!binding?.trusted)
+      throw new ToolRefusal('CAPABILITY_DENIED', 'trust the repository before running commands');
+    if (this.criteria.get(input.runId)?.length)
+      throw new ToolRefusal(
+        'CAPABILITY_DENIED',
+        'native commands cannot protect immutable review criteria',
+      );
+    return { ...found, binding };
+  }
+
+  /** Caller holds the existing worktree mutex; this does not create a second launch path. */
+  private async commandPlanAt(input: CommandExecution): Promise<CommandPlan> {
+    const { row, sessionId, binding } = this.commandContext(input);
+    const request = RunCommandArgs.parse(input.request);
+    const cwd = request.cwd && request.cwd !== '.' ? safeRelative(request.cwd) : '.';
+    const root = await realpath(row.worktree_path);
+    if (cwd !== '.') await assertPlainPath(root, cwd);
+    const directory = await realpath(join(root, cwd));
+    if (!(await stat(directory)).isDirectory() || relative(root, directory).startsWith('..'))
+      throw new ToolRefusal('CAPABILITY_DENIED', 'command directory is outside the working copy');
+    const info = await stat(root);
+    const shell = await resolveShellCommand(request.command, request.shellId);
+    const hash = (value: unknown) => sha256(Buffer.from(canonicalJson(value)));
+    const operationId = `command_${hash({
+      runId: input.runId,
+      executionId: input.executionId,
+      attemptNo: input.attemptNo,
+      effectId: input.effectId,
+    }).slice(0, 32)}`;
+    const plan = {
+      operationId,
+      hostId: 'local',
+      sessionId,
+      workspaceBindingId: binding.id,
+      worktreeId: `worktree_${sessionId}`,
+      rootIdentity: hash({ root, dev: info.dev, ino: info.ino, birthtimeMs: info.birthtimeMs }),
+      tree: await this.snapshotTree(root),
+      shellId: shell.shellId,
+      command: request.command,
+      executable: shell.executable,
+      argv: shell.args,
+      cwd,
+      environmentHash: hash(commandEnvironment('[command-home]')),
+      timeoutMs: request.timeoutMs ?? 120000,
+      mode: request.mode ?? 'foreground',
+    };
+    return CommandPlan.parse({
+      ...plan,
+      fingerprint: hash({ ...plan, executableHash: sha256(await readFile(shell.executable)) }),
+    });
+  }
+
+  async planCommand(input: CommandExecution, cancellation: ToolCancellation): Promise<CommandPlan> {
+    if (cancellation.aborted) throw new ToolRefusal('TARGET_TERMINAL', 'command cancelled');
+    const { row } = this.commandContext(input);
+    return this.lease(row.worktree_path, async () => {
+      const plan = await this.commandPlanAt(input);
+      if (cancellation.aborted) throw new ToolRefusal('TARGET_TERMINAL', 'command cancelled');
+      return plan;
+    });
+  }
+
+  runCommand(
+    input: CommandExecution,
+    rawPlan: CommandPlan,
+    approvedFingerprint: string | null,
+    cancellation: ToolCancellation,
+  ): Promise<CommandReport> {
+    const plan = CommandPlan.parse(rawPlan);
+    const requestHash = sha256(Buffer.from(canonicalJson(input)));
+    const saved = this.db
+      .prepare('SELECT request_hash FROM command_operations WHERE id=?')
+      .get(plan.operationId) as { request_hash: string } | undefined;
+    if (saved && saved.request_hash !== requestHash)
+      return Promise.reject(
+        new ToolRefusal('REVISION_CONFLICT', 'command effect identity changed'),
+      );
+    const existing = this.pendingCommands.get(plan.operationId);
+    if (existing) {
+      if (this.pendingCommandHashes.get(plan.operationId) !== requestHash)
+        return Promise.reject(
+          new ToolRefusal('REVISION_CONFLICT', 'command effect identity changed'),
+        );
+      return existing;
+    }
+    if (saved) return Promise.resolve(this.commandReport(plan.sessionId, plan.operationId));
+    const { row, sessionId } = this.commandContext(input);
+    const epoch = this.commandEpochs.get(input.runId) ?? 0;
+    const completion = this.lease(row.worktree_path, async () => {
+      const current = await this.commandPlanAt(input);
+      if (canonicalJson(current) !== canonicalJson(plan))
+        throw new ToolRefusal('REVISION_CONFLICT', 'command target or launch identity changed');
+      if (approvedFingerprint !== plan.fingerprint) {
+        const run = this.db
+          .prepare('SELECT snapshot_json FROM runs WHERE id=?')
+          .get(input.runId) as { snapshot_json: string };
+        if (approvedFingerprint !== null || JSON.parse(run.snapshot_json).permissionMode !== 'auto')
+          throw new ToolRefusal('CAPABILITY_DENIED', 'command requires exact launch approval');
+      }
+      if (
+        cancellation.aborted ||
+        this.disposing ||
+        epoch !== (this.commandEpochs.get(input.runId) ?? 0)
+      )
+        throw new ToolRefusal('TARGET_TERMINAL', 'command cancelled');
+      this.db
+        .prepare(`INSERT INTO command_operations
+        (id,session_id,run_id,request_hash,owner_json,plan_json,state,report_json,before_tree,after_tree,created_at,updated_at)
+        VALUES(?,?,?,?,?,?,'running',NULL,?,NULL,?,?)`)
+        .run(
+          plan.operationId,
+          sessionId,
+          input.runId,
+          requestHash,
+          canonicalJson({
+            hostId: plan.hostId,
+            sessionId,
+            runId: input.runId,
+            executionId: input.executionId,
+            attemptNo: input.attemptNo,
+            effectId: input.effectId,
+          }),
+          canonicalJson(plan),
+          plan.tree,
+          this.clock.nowIso(),
+          this.clock.nowIso(),
+        );
+      let lease: ReturnType<CommandRuntime['startService']>;
+      try {
+        lease = this.commandRuntime.startService(
+          {
+            operationId: plan.operationId,
+            owner: {
+              hostId: plan.hostId,
+              sessionId,
+              runId: input.runId,
+              executionId: input.executionId,
+              attemptNo: input.attemptNo,
+              effectId: input.effectId,
+            },
+            directory: join(row.worktree_path, plan.cwd),
+            command: { shellId: plan.shellId, executable: plan.executable, args: plan.argv },
+            timeoutMs: plan.timeoutMs,
+          },
+          cancellation,
+        );
+      } catch (error) {
+        if (!(error instanceof CommandCapacityError)) throw error;
+        const report = CommandReport.parse({
+          operationId: plan.operationId,
+          state: 'failed',
+          exitCode: null,
+          signal: null,
+          timedOut: false,
+          cleanupConfirmed: true,
+          output: {
+            text: error.message,
+            bytes: Buffer.byteLength(error.message),
+            hash: sha256(Buffer.from(error.message)),
+            truncated: false,
+          },
+        });
+        this.db
+          .prepare(
+            'UPDATE command_operations SET state=?,report_json=?,after_tree=?,updated_at=? WHERE id=?',
+          )
+          .run(
+            report.state,
+            canonicalJson(report),
+            plan.tree,
+            this.clock.nowIso(),
+            plan.operationId,
+          );
+        return report;
+      }
+      const finish = async (initial: CommandReport) => {
+        let report = initial;
+        let after: string | null = null;
+        try {
+          if (report.cleanupConfirmed) {
+            after = await this.snapshotTree(row.worktree_path);
+            await this.pin(row.worktree_path, `refs/corral/${sessionId}/latest`, after);
+          }
+        } catch {
+          report = { ...report, state: 'uncertain' };
+        }
+        if (!report.cleanupConfirmed) this.runAccess.release(input.runId, false);
+        this.db
+          .prepare(
+            'UPDATE command_operations SET state=?,report_json=?,after_tree=?,updated_at=? WHERE id=?',
+          )
+          .run(report.state, canonicalJson(report), after, this.clock.nowIso(), plan.operationId);
+        return CommandReport.parse(report);
+      };
+      if (plan.mode === 'service') {
+        // Keep the run's durable writer reservation, but free the per-operation mutex
+        // so the same run can edit and rebuild while its development server is alive.
+        const completion = lease.completion.then((report) =>
+          this.lease(row.worktree_path, () => finish(report)),
+        );
+        this.commandServices.set(plan.operationId, {
+          runId: input.runId,
+          started: lease.started,
+          completion,
+        });
+        void completion.catch(() => this.runAccess.release(input.runId, false));
+        return CommandReport.parse({
+          operationId: plan.operationId,
+          state: 'running',
+          exitCode: null,
+          signal: null,
+          timedOut: false,
+          cleanupConfirmed: false,
+          output: { text: '', bytes: 0, hash: sha256(Buffer.alloc(0)), truncated: false },
+        });
+      }
+      return finish(await lease.completion);
+    }).then(async (report) => {
+      const service = this.commandServices.get(plan.operationId);
+      if (report.state === 'running' && service && !(await service.started))
+        return service.completion;
+      return report;
+    });
+    this.pendingCommands.set(plan.operationId, completion);
+    this.pendingCommandRuns.set(plan.operationId, input.runId);
+    this.pendingCommandHashes.set(plan.operationId, requestHash);
+    void completion
+      .finally(() => {
+        this.pendingCommands.delete(plan.operationId);
+        this.pendingCommandHashes.delete(plan.operationId);
+        this.pendingCommandRuns.delete(plan.operationId);
+      })
+      .catch(() => {});
+    return completion;
+  }
+
+  listCommandShells() {
+    return listShells().then((shells) => shells.map(({ id, label }) => ({ id, label })));
+  }
+
+  listCommands(sessionId: string) {
+    return this.db
+      .prepare(`SELECT id,run_id,plan_json,state,before_tree,after_tree,created_at,updated_at
+      FROM command_operations WHERE session_id=? ORDER BY created_at DESC LIMIT 100`)
+      .all(sessionId)
+      .map((raw) => {
+        const row = raw as {
+          id: string;
+          run_id: string;
+          plan_json: string;
+          state: string;
+          before_tree: string;
+          after_tree: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        const plan = CommandPlan.parse(JSON.parse(row.plan_json));
+        const { plan_json: _private, ...publicRow } = row;
+        return {
+          ...publicRow,
+          shellId: plan.shellId,
+          cwd: plan.cwd,
+          mode: plan.mode,
+          command: plan.command ?? null,
+        };
+      });
+  }
+
+  commandReport(sessionId: string, operationId: string): CommandReport {
+    const row = this.db
+      .prepare('SELECT state,report_json FROM command_operations WHERE id=? AND session_id=?')
+      .get(operationId, sessionId) as { state: string; report_json: string | null } | undefined;
+    if (!row) throw new WorkspaceError('TARGET_NOT_FOUND', 'command operation is unavailable');
+    if (row.report_json) return CommandReport.parse(JSON.parse(row.report_json));
+    return CommandReport.parse({
+      operationId,
+      state: row.state === 'running' ? 'running' : 'uncertain',
+      exitCode: null,
+      signal: null,
+      timedOut: false,
+      cleanupConfirmed: false,
+      output: {
+        text:
+          row.state === 'running'
+            ? ''
+            : '[The host stopped before this command was confirmed. It was not replayed.]',
+        bytes: 0,
+        hash: sha256(Buffer.alloc(0)),
+        truncated: false,
+      },
+    });
+  }
+
+  readCommandOutput(sessionId: string, operationId: string, offset = 0) {
+    const row = this.db
+      .prepare('SELECT id FROM command_operations WHERE id=? AND session_id=?')
+      .get(operationId, sessionId);
+    if (!row) throw new WorkspaceError('TARGET_NOT_FOUND', 'command operation is unavailable');
+    const live = this.commandRuntime.read(operationId, offset);
+    if (live) return live;
+    const report = this.commandReport(sessionId, operationId);
+    if (!Number.isSafeInteger(offset) || offset < 0)
+      throw new WorkspaceError('SCHEMA_INVALID', 'invalid offset');
+    const text = report.output.text.slice(offset, offset + 8192);
+    return {
+      text,
+      nextOffset: offset + text.length,
+      bytes: report.output.bytes,
+      truncated: report.output.truncated,
+    };
+  }
+
+  async stopCommand(sessionId: string, operationId: string) {
+    const row = this.db
+      .prepare('SELECT id FROM command_operations WHERE id=? AND session_id=?')
+      .get(operationId, sessionId);
+    if (!row) throw new WorkspaceError('TARGET_NOT_FOUND', 'command operation is unavailable');
+    await this.commandRuntime.stop(operationId);
+    await this.pendingCommands.get(operationId);
+    await this.commandServices.get(operationId)?.completion;
+    return this.commandReport(sessionId, operationId);
+  }
+
+  async stopRunServices(runId: string): Promise<void> {
+    this.commandEpochs.set(runId, (this.commandEpochs.get(runId) ?? 0) + 1);
+    // Include commands whose native helper is still starting. A completed report is
+    // retained for repeat stop requests and late lifecycle callbacks.
+    const owned = this.db
+      .prepare(
+        "SELECT id FROM command_operations WHERE run_id=? AND state IN ('running','uncertain')",
+      )
+      .all(runId) as { id: string }[];
+    for (const row of owned) await this.commandRuntime.stop(row.id);
+    for (const row of owned) {
+      await this.pendingCommands.get(row.id);
+      await this.commandServices.get(row.id)?.completion;
+    }
+    await Promise.allSettled(
+      [...this.pendingCommandRuns]
+        .filter(([, owner]) => owner === runId)
+        .map(([operationId]) => this.pendingCommands.get(operationId)),
+    );
+    const unfinished = this.db
+      .prepare(
+        "SELECT 1 FROM command_operations WHERE run_id=? AND (state='running' OR report_json IS NULL OR json_extract(report_json,'$.cleanupConfirmed')!=1) LIMIT 1",
+      )
+      .get(runId);
+    if (unfinished) {
+      this.runAccess.release(runId, false);
+      throw new ToolTerminationUnconfirmed();
+    }
+  }
+
+  attestCommandConnection(sessionId: string, operationId: string, port: number, peerPort: number) {
+    const row = this.db
+      .prepare("SELECT id FROM command_operations WHERE id=? AND session_id=? AND state='running'")
+      .get(operationId, sessionId);
+    return row
+      ? this.commandRuntime.attestConnection(operationId, port, peerPort)
+      : Promise.resolve(false);
+  }
 
   private worktreeOfRun(runId: string): { row: WorktreeRow; sessionId: string } | null {
     const sessionId = this.sessionOfRun(runId);
@@ -2659,6 +3139,174 @@ export class WorkspaceService implements FileTools {
 
   available(runId: string): boolean {
     return this.worktreeOfRun(runId) !== null;
+  }
+
+  acquireRun(runId: string, sessionId: string | undefined, writer: boolean): void {
+    const row = sessionId ? this.worktree(sessionId) : null;
+    if (row) this.runAccess.acquire(runId, row.session_id, row.worktree_path, writer);
+  }
+
+  worktreeScope(sessionId: string): string | null {
+    const row = this.worktree(sessionId);
+    if (!row) return null;
+    const path = realpathSync.native(row.worktree_path);
+    return process.platform === 'win32' ? path.toLowerCase() : path;
+  }
+
+  hasUnsafeWorktreeOwner(sessionId: string): boolean {
+    const key = this.worktreeScope(sessionId);
+    return key !== null && this.runAccess.writerAt(key) !== undefined;
+  }
+
+  prepareRun(runId: string): Promise<void> {
+    const pending = this.preparingRuns.get(runId);
+    if (pending) return pending;
+    const access = this.runAccess.get(runId);
+    if (!access || access.tree) return Promise.resolve();
+    const row = this.worktree(access.session_id);
+    if (!row)
+      return Promise.reject(new ToolRefusal('TARGET_NOT_FOUND', 'working copy is unavailable'));
+    const work = this.lease(row.worktree_path, async () => {
+      const writer = this.runAccess.writerAt(access.worktree_key);
+      // A concurrent reader observes the writer's pinned input, never partially written files.
+      const tree = (!access.writer && writer?.tree) || (await this.snapshotTree(row.worktree_path));
+      await this.pin(
+        row.worktree_path,
+        `refs/corral/${access.session_id}/runs/${runId}/start`,
+        tree,
+      );
+      this.runAccess.pin(runId, tree);
+      this.db
+        .prepare(
+          "INSERT OR IGNORE INTO run_snapshots(run_id,phase,session_id,tree,captured_at) VALUES(?,'start',?,?,?)",
+        )
+        .run(runId, access.session_id, tree, this.clock.nowIso());
+      await this.checkpointAt(row, {
+        checkpointId: `checkpoint_${sha256(Buffer.from(`${runId}:start`)).slice(0, 32)}`,
+        label: 'Before Run',
+        kind: 'before_run',
+        runId,
+        tree,
+        pinned: false,
+      });
+    });
+    this.preparingRuns.set(runId, work);
+    const settled = () => {
+      if (this.preparingRuns.get(runId) === work) this.preparingRuns.delete(runId);
+    };
+    void work.then(settled, settled);
+    return work;
+  }
+
+  async startBaseline(runId: string): Promise<string | null> {
+    await this.prepareRun(runId);
+    return this.runAccess.get(runId)?.tree ?? this.runTree(runId, 'start');
+  }
+
+  /** Preview assets for reader Runs come from the same immutable tree as their file tools. */
+  async readPreviewSnapshot(runId: string, path: string): Promise<Buffer | null> {
+    const access = this.runAccess.get(runId);
+    if (access && access.state !== 'active')
+      throw new ToolRefusal('TARGET_TERMINAL', 'run file access is no longer active');
+    if (!access || access.writer) return null;
+    await this.prepareRun(runId);
+    const tree = this.runAccess.get(runId)?.tree;
+    const row = this.worktree(access.session_id);
+    if (!tree || !row) throw new ToolRefusal('TARGET_NOT_FOUND', 'run input snapshot unavailable');
+    const rel = safeRelative(path);
+    const entries = (
+      await git(row.worktree_path, ['ls-tree', '-r', '-z', '-l', tree, '--', `:(literal)${rel}`])
+    ).stdout
+      .toString('utf8')
+      .split('\0');
+    const entry = entries
+      .map((line) => /^100(?:644|755) blob ([a-f0-9]+)\s+(\d+)\t(.+)$/.exec(line))
+      .find((match) => match?.[3] === rel);
+    if (!entry?.[1])
+      throw new ToolRefusal('TARGET_NOT_FOUND', 'asset not present in the run snapshot');
+    if (Number(entry[2]) > 8 * 1024 * 1024)
+      throw new ToolRefusal('LIMIT_REACHED', 'preview asset exceeds 8 MiB');
+    return (
+      await git(row.worktree_path, ['cat-file', 'blob', entry[1]], {
+        maxBuffer: 8 * 1024 * 1024 + 1,
+      })
+    ).stdout;
+  }
+
+  releaseRun(runId: string, terminationConfirmed: boolean): void {
+    this.runAccess.release(runId, terminationConfirmed);
+    this.preparingRuns.delete(runId);
+  }
+
+  /** Call only after the adapter has positively recovered every prior worker/process group. */
+  confirmWorkerRecovery(): void {
+    this.db
+      .prepare(`UPDATE run_access SET state='released'
+      WHERE state='uncertain'
+        AND NOT EXISTS (SELECT 1 FROM command_operations c
+          WHERE c.run_id=run_access.run_id AND c.state IN ('running','uncertain'))
+        AND NOT EXISTS (SELECT 1 FROM file_operations f
+          WHERE f.session_id=run_access.session_id AND f.state IN ('planned','uncertain'))
+        AND NOT EXISTS (SELECT 1 FROM checkpoint_restores r
+          WHERE r.session_id=run_access.session_id
+            AND json_extract(r.result_json,'$.state') IN ('applying','partial','uncertain'))`)
+      .run();
+  }
+
+  async readPinnedRun(
+    input: {
+      name: string;
+      args: Record<string, unknown>;
+      runId: string;
+      executionId: string;
+      attemptNo?: number;
+    },
+    cancellation: ToolCancellation,
+  ): Promise<Record<string, unknown> | null> {
+    const access = this.runAccess.get(input.runId);
+    if (cancellation.aborted || (access && access.state !== 'active'))
+      throw new ToolRefusal('TARGET_TERMINAL', 'run file access is no longer active');
+    if (!access || access.writer) return null;
+    if (!['list_files', 'read_file', 'read_hashline'].includes(input.name))
+      throw new ToolRefusal(
+        'CAPABILITY_DENIED',
+        'a snapshot reader cannot be promoted to a writer',
+      );
+    await this.prepareRun(input.runId);
+    const tree = this.runAccess.get(input.runId)?.tree;
+    const row = this.worktree(access.session_id);
+    if (!tree || !row) throw new ToolRefusal('TARGET_NOT_FOUND', 'run input snapshot unavailable');
+    const root = row.worktree_path;
+    const path = input.args.path ? safeRelative(String(input.args.path)) : '';
+    const listing = (await git(root, ['ls-tree', '-r', '-z', '-l', tree])).stdout
+      .toString('utf8')
+      .split('\0')
+      .filter(Boolean)
+      .flatMap((line) => {
+        const match = /^100(?:644|755) blob ([a-f0-9]+)\s+(\d+)\t(.+)$/.exec(line);
+        return match ? [{ oid: match[1]!, bytes: Number(match[2]), path: match[3]! }] : [];
+      });
+    if (input.name === 'list_files') {
+      const files = listing.filter((file) => !path || file.path.startsWith(`${path}/`));
+      return {
+        files: files.slice(0, 500).map(({ path, bytes }) => ({ path, bytes })),
+        truncated: files.length > 500,
+      };
+    }
+    const file = listing.find((file) => file.path === path);
+    if (!file) throw new ToolRefusal('TARGET_NOT_FOUND', 'file not present in the run snapshot');
+    if (file.bytes > MAX_TEXT) throw new ToolRefusal('LIMIT_REACHED', 'file exceeds 1 MiB');
+    const bytes = (await git(root, ['cat-file', 'blob', file.oid], { maxBuffer: MAX_TEXT + 1 }))
+      .stdout;
+    if (input.name === 'read_hashline') {
+      const { evidence: _evidence, ...display } = this.hashlineRead(input, bytes, path);
+      return display;
+    }
+    const text = decodeText(bytes);
+    if (text === null) throw new ToolRefusal('CAPABILITY_DENIED', 'file is not UTF-8 text');
+    const hash = sha256(bytes);
+    this.readsOf(input.runId, input.executionId).set(path, hash);
+    return { path, text, sha256: hash };
   }
 
   runStartFiles(runId: string): import('@corral/contracts').RuntimeFiles | null {
@@ -2781,6 +3429,9 @@ export class WorkspaceService implements FileTools {
         label: 'Runtime boundary',
         kind: 'runtime',
         pinned: true,
+        ...(this.runAccess.get(runId)?.writer === 0
+          ? { tree: this.runAccess.get(runId)?.tree ?? undefined }
+          : {}),
       });
       if (!checkpoint.tree || !checkpoint.manifestHash) throw new Error('runtime files incomplete');
       return { checkpointId, manifestHash: checkpoint.manifestHash, tree: checkpoint.tree };
@@ -2824,12 +3475,16 @@ export class WorkspaceService implements FileTools {
       ]);
       return (
         pinned.stdout.toString('utf8').trim() === reference.tree &&
-        (await this.snapshotTree(row.worktree_path)) === reference.tree
+        (this.runAccess.get(runId)?.writer === 0
+          ? this.runAccess.get(runId)?.tree === reference.tree
+          : (await this.snapshotTree(row.worktree_path)) === reference.tree)
       );
     });
   }
 
   async currentTreeForRun(runId: string): Promise<string | null> {
+    const access = this.runAccess.get(runId);
+    if (access?.writer === 0) return this.startBaseline(runId);
     const found = this.worktreeOfRun(runId);
     return found ? this.currentTree(found.sessionId) : null;
   }
@@ -2871,10 +3526,11 @@ export class WorkspaceService implements FileTools {
   private lease<T>(worktree: string, work: () => Promise<T>): Promise<T> {
     const previous = this.leases.get(worktree) ?? Promise.resolve();
     const next = previous.then(work, work);
-    this.leases.set(
-      worktree,
-      next.catch(() => undefined),
-    );
+    const settled = () => {
+      if (this.leases.get(worktree) === tail) this.leases.delete(worktree);
+    };
+    const tail = next.then(settled, settled);
+    this.leases.set(worktree, tail);
     return next;
   }
 
@@ -2886,16 +3542,79 @@ export class WorkspaceService implements FileTools {
     return map;
   }
 
+  private hashlineScope(input: {
+    runId: string;
+    executionId: string;
+    attemptNo?: number;
+  }): HashlineScope {
+    const row = this.db.prepare('SELECT projection_json FROM runs WHERE id = ?').get(input.runId) as
+      | { projection_json: string }
+      | undefined;
+    const projection = row
+      ? (JSON.parse(row.projection_json) as {
+          executions?: Record<string, { attemptNo?: number }>;
+        })
+      : undefined;
+    const attempt = projection?.executions?.[input.executionId]?.attemptNo;
+    if (!Number.isSafeInteger(attempt) || (attempt ?? 0) < 1)
+      throw new ToolRefusal('TARGET_NOT_FOUND', 'Hashline execution attempt is unavailable');
+    if (input.attemptNo !== attempt)
+      throw new ToolRefusal('REVISION_CONFLICT', 'Hashline caller attempt is no longer current');
+    return {
+      hostId: 'local',
+      runId: input.runId,
+      executionId: input.executionId,
+      attempt: attempt as number,
+    };
+  }
+
+  private hashlineRead(
+    input: {
+      runId: string;
+      executionId: string;
+      attemptNo?: number;
+      args: Record<string, unknown>;
+    },
+    bytes: Uint8Array,
+    path: string,
+  ) {
+    try {
+      const { offset, limit } = input.args;
+      if (
+        (offset !== undefined && typeof offset !== 'number') ||
+        (limit !== undefined && typeof limit !== 'number')
+      )
+        throw new ToolRefusal(
+          'SCHEMA_INVALID',
+          'Hashline offset and limit must be positive integers',
+        );
+      return readHashline({
+        bytes,
+        path,
+        scope: this.hashlineScope(input),
+        ...(offset === undefined ? {} : { offset }),
+        ...(limit === undefined ? {} : { limit }),
+        maxOutputBytes: MAX_TEXT + 4096,
+      });
+    } catch (error) {
+      if (error instanceof HashlineError) throw new ToolRefusal(error.code, error.message);
+      throw error;
+    }
+  }
+
   async execute(
     input: {
       name: BrokerFileToolName;
       args: Record<string, unknown>;
       runId: string;
       executionId: string;
+      attemptNo?: number;
       toolCallId: string;
     },
     cancellation: ToolCancellation,
   ): Promise<Record<string, unknown>> {
+    const frozen = await this.readPinnedRun(input, cancellation);
+    if (frozen) return frozen;
     if (input.name === 'write') {
       const args = PiWriteInput.parse(input.args);
       return this.execute(
@@ -2909,6 +3628,79 @@ export class WorkspaceService implements FileTools {
     const reads = this.readsOf(input.runId, input.executionId);
     const name = input.name;
     switch (name) {
+      case 'read_hashline': {
+        if (cancellation.aborted)
+          throw new ToolRefusal('TARGET_TERMINAL', 'the task was cancelled');
+        const path = safeRelative(String(input.args.path));
+        const bytes = await textBytes(root, path);
+        const { evidence, ...display } = this.hashlineRead(input, bytes, path);
+        if (cancellation.aborted)
+          throw new ToolRefusal('TARGET_TERMINAL', 'the task was cancelled');
+        const entries = this.hashlineReads.get(input.runId) ?? new Map<string, HashlineEvidence>();
+        const key = JSON.stringify([input.executionId, path]);
+        entries.set(key, mergeHashlineEvidence(entries.get(key), evidence));
+        this.hashlineReads.set(input.runId, entries);
+        return display;
+      }
+      case 'edit_hashline': {
+        const args = HashlineEditInput.parse(input.args);
+        const path = safeRelative(args.path);
+        return this.lease(root, async () => {
+          if (cancellation.aborted)
+            throw new ToolRefusal('TARGET_TERMINAL', 'the task was cancelled');
+          const entries = this.hashlineReads.get(input.runId);
+          const key = JSON.stringify([input.executionId, path]);
+          let plan: ReturnType<typeof applyHashline>;
+          try {
+            plan = applyHashline({
+              bytes: await textBytes(root, path),
+              path,
+              scope: this.hashlineScope(input),
+              evidence: entries?.get(key),
+              tag: args.tag,
+              ops: args.ops,
+            });
+          } catch (error) {
+            if (error instanceof HashlineError) throw new ToolRefusal(error.code, error.message);
+            throw error;
+          }
+          const change =
+            plan.kind === 'write'
+              ? { name: 'write_file' as const, args: { path, text: plan.bytes.toString('utf8') } }
+              : plan.kind === 'delete'
+                ? { name: 'delete_file' as const, args: { path } }
+                : { name: 'move_file' as const, args: { from: path, to: plan.to } };
+          // Keep the evidence recheck and journaled mutation inside the same lease.
+          // No individual textual operation has been applied before this point.
+          const applied = await this.change(
+            root,
+            found.sessionId,
+            { ...input, ...change },
+            reads,
+            cancellation,
+            plan.beforeSha256,
+            () => {
+              this.hashlineScope(input);
+            },
+          );
+          entries?.delete(key);
+          // A partial Hashline read/edit must not become a whole-file Pi write grant.
+          reads.delete(path);
+          if (plan.kind === 'move') {
+            entries?.delete(JSON.stringify([input.executionId, plan.to]));
+            reads.delete(plan.to);
+          }
+          return {
+            ...applied,
+            version: 1,
+            tag: plan.tag,
+            ops: plan.ops,
+            ...(plan.firstChangedLine === undefined
+              ? {}
+              : { firstChangedLine: plan.firstChangedLine }),
+          };
+        });
+      }
       case 'edit': {
         const args = PiEditInput.parse(input.args);
         return this.lease(root, async () => {
@@ -3047,6 +3839,7 @@ export class WorkspaceService implements FileTools {
     reads: Map<string, string>,
     cancellation: ToolCancellation,
     expectedBefore?: string,
+    validateAttempt?: () => void,
   ): Promise<Record<string, unknown>> {
     const now = () => this.clock.nowIso();
     const key = (path: string) => (process.platform === 'win32' ? path.toLowerCase() : path);
@@ -3092,6 +3885,7 @@ export class WorkspaceService implements FileTools {
         .run(state, detail, now(), opId);
     const guard = () => {
       if (cancellation.aborted) throw new ToolRefusal('TARGET_TERMINAL', 'the task was cancelled');
+      validateAttempt?.();
     };
 
     if (input.name === 'write_file') {
@@ -3150,7 +3944,8 @@ export class WorkspaceService implements FileTools {
       const rel = safeRelative(String(input.args.path));
       if ((await assertPlainPath(root, rel)) !== 'file')
         throw new ToolRefusal('TARGET_NOT_FOUND', `${rel} is not a file`);
-      const before = await this.requireRead(root, rel, reads);
+      const before = expectedBefore ?? (await this.requireRead(root, rel, reads));
+      if (expectedBefore !== undefined) await expectFile(root, rel, expectedBefore);
       guard();
       plan('delete', rel, null, before, null);
       let applied = false;
@@ -3182,7 +3977,8 @@ export class WorkspaceService implements FileTools {
       throw new ToolRefusal('TARGET_NOT_FOUND', `${from} is not a file`);
     if ((await assertPlainPath(root, to)) !== 'missing')
       throw new ToolRefusal('REVISION_CONFLICT', `${to} already exists`);
-    const before = await this.requireRead(root, from, reads);
+    const before = expectedBefore ?? (await this.requireRead(root, from, reads));
+    if (expectedBefore !== undefined) await expectFile(root, from, expectedBefore);
     guard();
     plan('move', from, to, before, before);
     let applied = false;

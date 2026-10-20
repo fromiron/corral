@@ -63,7 +63,7 @@ function submitted(corral: Harness) {
 
 async function session(page: Page, corral: Harness) {
   await corral.open('/');
-  await page.getByRole('button', { name: 'Start session', exact: true }).click();
+  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
   await expect(page).toHaveURL(/\/sessions\/session_/);
 }
 

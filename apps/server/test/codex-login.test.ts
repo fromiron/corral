@@ -1,8 +1,8 @@
-import { chmodSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { builtinModels } from '@earendil-works/pi-ai/providers/all';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   codexAuthPath,
   defaultProfilesFor,
@@ -11,6 +11,11 @@ import {
   ModelRegistry,
   readCodexLogin,
 } from '../src/models/index.ts';
+import { privatePermissions } from '../src/private-files.ts';
+import { expectPrivatePermissions, fixturePermissions } from './fixtures/private-permissions.ts';
+
+// Windows checks invoke the real OS ACL APIs; allow their process startup under parallel CI.
+if (process.platform === 'win32') vi.setConfig({ testTimeout: 20_000 });
 
 // CR-004: the Codex CLI login, read only.
 
@@ -35,7 +40,7 @@ function codexFile(dir: string, tokens: Record<string, unknown> | null, mode = 0
     JSON.stringify({ auth_mode: 'chatgpt', OPENAI_API_KEY: null, tokens, last_refresh: 'x' }),
     { mode },
   );
-  chmodSync(path, mode);
+  fixturePermissions(path, mode);
   return path;
 }
 
@@ -71,9 +76,33 @@ describe('Codex CLI login source (CR-004)', () => {
   });
 
   it('[TC-SEC-002-H] CODEX_HOME moves the file; otherwise it is ~/.codex/auth.json', () => {
-    expect(codexAuthPath({ CODEX_HOME: '/x/codex' }, '/home/u')).toBe('/x/codex/auth.json');
-    expect(codexAuthPath({}, '/home/u')).toBe('/home/u/.codex/auth.json');
+    expect(codexAuthPath({ CODEX_HOME: '/x/codex' }, '/home/u')).toBe(
+      join('/x/codex', 'auth.json'),
+    );
+    expect(codexAuthPath({}, '/home/u')).toBe(join('/home/u', '.codex', 'auth.json'));
   });
+
+  it('[TC-SEC-002-N] a failed permission inspection is unknown, never verified private', () => {
+    expect(privatePermissions(join(temp(), 'absent.json'))).toBeNull();
+  });
+
+  it('[TC-SEC-002-N] upgrades an older Corral credential file with broad access before reading it', async () => {
+    const directory = temp();
+    const path = join(directory, 'credentials.json');
+    writeFileSync(
+      path,
+      JSON.stringify({
+        version: 1,
+        credentials: { openai: { type: 'api_key', key: 'fixture-private-key' } },
+      }),
+    );
+    fixturePermissions(path, 0o644);
+    expect(privatePermissions(path)).toBe(false);
+    const store = new FileCredentialStore(directory);
+    expect(await store.read('openai')).toEqual({ type: 'api_key', key: 'fixture-private-key' });
+    expectPrivatePermissions(directory, 0o700);
+    expectPrivatePermissions(path, 0o600);
+  }, 15_000);
 });
 
 describe('layered credential store (CR-004)', () => {

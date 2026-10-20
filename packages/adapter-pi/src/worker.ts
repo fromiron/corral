@@ -22,11 +22,14 @@ import {
   resumedMessages,
   withProtectedContext,
 } from './request-record.ts';
+import { corralToolResultContent } from './tool-result-content.ts';
 import { normalizeUsage } from './usage.ts';
 import {
   directiveText,
   parametersOf,
+  parentQuestionsText,
   promptSections,
+  replyCompletesAssignment,
   safe,
   systemPrompt,
   TOOL_TEXT,
@@ -172,12 +175,12 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
           throw new Error(reply.type === 'tool_result' ? (reply.reason ?? 'refused') : 'refused');
         }
         // Only the Coordinator's successful tool reply establishes completion.
-        if (name === 'submit_result' || (name === 'reply' && start.assignment.kind === 'question'))
+        if (
+          name === 'submit_result' ||
+          (name === 'reply' && replyCompletesAssignment(start.assignment, reply.result ?? {}))
+        )
           completionAccepted = true;
-        return {
-          content: [{ type: 'text', text: JSON.stringify(reply.result ?? {}) }],
-          details: reply.result ?? {},
-        };
+        return corralToolResultContent(name, reply.result ?? {});
       },
     }));
 
@@ -320,12 +323,29 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
               { role: 'user', content: directiveText(missing), timestamp: Date.now() },
             ],
           };
+        if (reply.parentQuestions?.length)
+          preparedContext = {
+            ...preparedContext,
+            messages: [
+              ...preparedContext.messages,
+              {
+                role: 'user',
+                content: parentQuestionsText(reply.parentQuestions),
+                timestamp: Date.now(),
+              },
+            ],
+          };
         return preparedContext === context ? undefined : { context: preparedContext };
       },
       beforeToolCall: async ({ toolCall }) => {
         const args = { ...((toolCall.arguments ?? {}) as Record<string, unknown>) };
-        // The question being answered is this execution's, never the model's choice.
-        if (toolCall.name === 'reply' && start.assignment.kind === 'question') {
+        // Only the omitted legacy ID defaults to the assigned question. Explicit
+        // child IDs remain subject to the Coordinator's current-execution check.
+        if (
+          toolCall.name === 'reply' &&
+          start.assignment.kind === 'question' &&
+          args.questionId === undefined
+        ) {
           args.questionId = start.assignment.questionId;
         }
         const reply = await call({ type: 'authorize_tool', name: toolCall.name, args });

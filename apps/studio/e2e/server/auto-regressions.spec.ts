@@ -1,7 +1,16 @@
+import { execFileSync } from 'node:child_process';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { fauxAssistantMessage, fauxToolCall } from '@corral/server/testing';
 import { linearCorral } from '@corral/testkit';
 import type { Page } from '@playwright/test';
-import { requestBox } from '../workbench.ts';
+import {
+  closeRequestOptions,
+  openRequestOptions,
+  panelTab,
+  requestBox,
+  selectSessionTeam,
+} from '../workbench.ts';
 import { expect, type Harness, test } from './harness.ts';
 
 async function write(page: Page, path: string, method: string, body?: unknown) {
@@ -25,7 +34,7 @@ async function write(page: Page, path: string, method: string, body?: unknown) {
 
 async function autoSession(page: Page, corral: Harness) {
   await corral.open('/');
-  await page.getByRole('button', { name: 'Start session', exact: true }).click();
+  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
   await expect(page).toHaveURL(/\/sessions\/session_/);
   await expect(page.getByRole('button', { name: 'Model', exact: true })).toBeVisible();
   return new URL(page.url()).pathname.split('/').at(-1) ?? '';
@@ -107,8 +116,7 @@ test('[TC-AUTO-001-N] a deleted selected team is unavailable, never silently aut
   await requestBox(page).press('Enter');
   expect(corral.fake?.seen.hostRequests).toHaveLength(0);
   expect(corral.server.coordinator.listRuns()).toHaveLength(0);
-  await page.getByRole('combobox', { name: 'Team', exact: true }).click();
-  await page.getByRole('option', { name: 'Auto', exact: true }).click();
+  await selectSessionTeam(page, 'Default chat');
   await expect(page.getByTestId('selected-team-missing')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeEnabled();
 });
@@ -199,6 +207,148 @@ test('[TC-AUTO-005-N] questions hide the auto reasoning setting they cannot appl
   await expect(page.getByRole('button', { name: 'Remove later.txt', exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByRole('button', { name: 'Remove later.txt', exact: true })).toBeVisible();
+});
+
+test('[TC-ABS-006-H] [TC-ABS-006-N] a question about an earlier result starts beside a writer and cancels independently', async ({
+  page,
+  corral,
+}) => {
+  test.setTimeout(90000);
+  const source = join(corral.workspace, 'source');
+  execFileSync('git', ['init', '-q', source]);
+  writeFileSync(join(source, 'README.md'), 'The original folder stays unchanged.\n');
+  const git = (...args: string[]) =>
+    execFileSync(
+      'git',
+      ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', ...args],
+      { cwd: source },
+    );
+  git('add', '.');
+  git('commit', '-qm', 'initial');
+  await corral.open('/');
+  await page.getByRole('tab', { name: /^Project folder/ }).click();
+  const folder = page.getByRole('tabpanel', { name: 'Project folder', exact: true });
+  await folder.getByLabel('Folder path on this computer').fill(source);
+  await folder.getByRole('button', { name: 'Link folder', exact: true }).click();
+  const trust = folder.getByRole('checkbox', { name: /Trust this repository/ });
+  await trust.click();
+  await expect(trust).toBeChecked();
+  // Reuse the authenticated browser session; its bootstrap token is single-use.
+  await page.goto(`${corral.server.url}/`);
+  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+  await expect(page).toHaveURL(/\/sessions\/session_/);
+  const sessionId = new URL(page.url()).pathname.split('/').at(-1) ?? '';
+  await panelTab(page, 'Changes');
+  await page
+    .getByRole('tabpanel', { name: 'Changes', exact: true })
+    .getByRole('button', { name: /Make a working copy from/ })
+    .click();
+  await expect(page.getByRole('link', { name: 'Review changes', exact: true })).toBeVisible();
+
+  corral.fake?.answerWith('Earlier result: the original folder is preserved.', {
+    hostReply: '{"template":"single","reason":"A direct request."}',
+  });
+  await requestBox(page).fill('Create the earlier result for this session.');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('succeeded');
+  const seed = corral.server.coordinator.listRuns()[0]?.runId;
+  await expect(page.getByText(/^Starts from .+ v\d+$/)).toBeVisible();
+
+  let releaseWriter!: () => void;
+  let releaseQuestion!: () => void;
+  let writerEntered = false;
+  let questionEntered = false;
+  const heldWriter = new Promise<void>((resolve) => {
+    releaseWriter = resolve;
+  });
+  const heldQuestion = new Promise<void>((resolve) => {
+    releaseQuestion = resolve;
+  });
+  corral.fake?.setResponses([
+    fauxAssistantMessage('{"template":"single","reason":"A direct request."}'),
+    async () => {
+      writerEntered = true;
+      await heldWriter;
+      return fauxAssistantMessage('Writer stopped.');
+    },
+    async (context) => {
+      questionEntered = true;
+      expect(JSON.stringify(context.messages)).toContain(
+        'Earlier result: the original folder is preserved.',
+      );
+      await heldQuestion;
+      return fauxAssistantMessage('Question stopped.');
+    },
+  ]);
+  try {
+    await requestBox(page).fill('Keep writer A working in this copy.');
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
+    await expect.poll(() => writerEntered).toBe(true);
+    await expect(requestBox(page)).toHaveValue('');
+    const writer = corral.server.coordinator.listRuns().find((run) => run.runId !== seed);
+    if (!writer) throw new Error('Writer A did not start');
+    expect(
+      corral.server.coordinator.getRunSnapshot(writer.runId)?.definition.roles[0]?.allowedWorkTools,
+    ).toContain('write_file');
+    expect(writer.status).toBe('running');
+
+    await openRequestOptions(page);
+    await page
+      .getByRole('checkbox', { name: 'Review only · no file changes', exact: true })
+      .check();
+    await closeRequestOptions(page);
+    await page.getByRole('combobox', { name: 'What this is', exact: true }).click();
+    const question = page.getByRole('option', { name: /^Question/ });
+    await expect(question).toBeVisible({ timeout: 5000 });
+    await question.click();
+    await requestBox(page).fill('Question B: why was the original folder preserved?');
+    const sending = page.waitForRequest(
+      (request) => request.method() === 'POST' && request.url().endsWith('/runs/explain'),
+    );
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
+    expect((await sending).postDataJSON()).toMatchObject({ sessionId, startFrom: { runId: seed } });
+    await expect.poll(() => questionEntered).toBe(true);
+    const reader = corral.server.coordinator
+      .listRuns()
+      .find((run) => run.runId !== seed && run.runId !== writer.runId);
+    if (!reader) throw new Error('Question B did not start');
+    expect(reader.sessionId).toBe(writer.sessionId);
+    expect(
+      corral.server.coordinator.getRunSnapshot(reader.runId)?.definition.roles[0]?.allowedWorkTools,
+    ).toEqual(['write_artifact']);
+    await page.getByRole('combobox', { name: 'Selected run', exact: true }).click();
+    await page.getByRole('option', { name: /Question B:/ }).click();
+    await expect(page).toHaveURL(new RegExp(`run=${reader.runId}`));
+    await page
+      .getByRole('region', { name: 'Request', exact: true })
+      .getByRole('button', { name: 'Cancel whole run', exact: true })
+      .click();
+    await page
+      .getByRole('dialog', { name: 'Cancel whole run', exact: true })
+      .getByRole('button', { name: 'Confirm whole run cancellation', exact: true })
+      .click();
+    await expect
+      .poll(() => corral.server.coordinator.getSnapshot(reader.runId).projection.status)
+      .toMatch(/cancelling|cancelled/);
+    releaseQuestion();
+    await expect
+      .poll(() => corral.server.coordinator.getSnapshot(reader.runId).projection.status)
+      .toBe('cancelled');
+    // A cancelled in-flight provider request may retain an unknown external effect;
+    // its attention notice takes precedence over the activity line.
+    await expect(page.getByRole('combobox', { name: 'Selected run', exact: true })).toContainText(
+      'Cancelled',
+    );
+    expect(corral.server.coordinator.getSnapshot(writer.runId).projection.status).toBe('running');
+    expect(corral.server.coordinator.getSnapshot(seed ?? '').projection.status).toBe('succeeded');
+    expect(readFileSync(join(source, 'README.md'), 'utf8')).toBe(
+      'The original folder stays unchanged.\n',
+    );
+    expect(corral.errors).toEqual([]);
+  } finally {
+    releaseQuestion();
+    releaseWriter();
+  }
 });
 
 for (const stop of ['cancel', 'navigate'] as const) {
@@ -483,23 +633,31 @@ test.describe('quality presets', () => {
     const url = page.url();
     await requestBox(page).fill('/ultra');
     await requestBox(page).press('Enter');
+    await openRequestOptions(page);
     await expect(page.getByRole('combobox', { name: 'Quality preset', exact: true })).toContainText(
       'Ultra',
     );
+    await closeRequestOptions(page);
     await requestBox(page).fill('Hello from the fixed quality fixture');
+    await openRequestOptions(page);
     await page.getByRole('combobox', { name: 'Quality preset', exact: true }).click();
     await page.getByRole('option', { name: 'Ultra · plan, work and review', exact: true }).click();
     const verifier = page.getByRole('checkbox', { name: /model-b/ });
     await verifier.uncheck();
+    await closeRequestOptions(page);
     await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
+    await openRequestOptions(page);
     await verifier.check();
+    await closeRequestOptions(page);
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     await expect(page).toHaveURL(/\/settings/);
     await page.goto(url);
     await expect(requestBox(page)).toHaveValue('Hello from the fixed quality fixture');
+    await openRequestOptions(page);
     await expect(page.getByRole('combobox', { name: 'Quality preset', exact: true })).toContainText(
       'Ultra',
     );
+    await closeRequestOptions(page);
     await page.getByRole('button', { name: 'Send', exact: true }).click();
     await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('succeeded');
     const runId = corral.server.coordinator.listRuns()[0]!.runId;

@@ -52,7 +52,10 @@ let signature = '';
 
 const sign = (list: AppCommand[]) =>
   list
-    .map((c) => `${c.id}\u0000${c.title}\u0000${c.disabled ? 1 : 0}\u0000${c.hint ?? ''}`)
+    .map(
+      (c) =>
+        `${c.id}\u0000${c.title}\u0000${c.disabled ? 1 : 0}\u0000${c.hint ?? ''}\u0000${c.shortcut ?? ''}`,
+    )
     .join('\u0001');
 
 function publish() {

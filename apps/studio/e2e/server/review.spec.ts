@@ -8,6 +8,7 @@ test('[TC-RUN-003-H] [TC-ART-004-H] [TC-OBS-001-H] a review loop revises the dra
   corral,
 }) => {
   await corral.open('/');
+  await page.getByRole('tab', { name: /^Teams/ }).click();
   await page
     .locator('input[type=file]')
     .setInputFiles([

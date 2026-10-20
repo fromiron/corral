@@ -1,0 +1,99 @@
+:root {
+  font-family: system-ui, sans-serif;
+  color: #e5e5e5;
+  background: #151515;
+  color-scheme: dark;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+main {
+  max-width: 640px;
+  padding: 28px;
+  margin: auto;
+}
+h1 {
+  font-size: 24px;
+  font-weight: 500;
+  margin: 0 0 12px;
+}
+h2 {
+  font-size: 16px;
+  font-weight: 500;
+  margin: 24px 0 16px;
+}
+p {
+  color: #aaa;
+  font-size: 14px;
+  line-height: 1.6;
+}
+label {
+  display: grid;
+  gap: 6px;
+  font-size: 14px;
+  margin-bottom: 14px;
+}
+input {
+  width: 100%;
+  border: 1px solid #444;
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: #1c1c1c;
+  color: inherit;
+  font: inherit;
+}
+button {
+  padding: 8px 12px;
+  border: 1px solid #444;
+  border-radius: 8px;
+  background: #262626;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+}
+button[type="submit"] {
+  border-color: #599d84;
+}
+button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+button:focus-visible,
+input:focus-visible {
+  outline: 2px solid #8cbaa8;
+  outline-offset: 2px;
+}
+ul {
+  list-style: none;
+  padding: 0;
+  margin: 20px 0;
+}
+li {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 0;
+  border-bottom: 1px solid #333;
+}
+li span {
+  flex: 1 1 180px;
+  overflow-wrap: anywhere;
+}
+#status {
+  min-height: 24px;
+  color: #e5e5e5;
+}
+.note,
+#bootstrap-help {
+  font-size: 12px;
+}
+@media (max-width: 480px) {
+  main {
+    padding: 20px;
+  }
+}

@@ -110,6 +110,9 @@ export async function evaluateCodingTools(
           { cwd: source, signal: options.signal },
         );
       await git('init', '-q');
+      // Evaluation inputs are exact bytes, not a developer's checkout preference.
+      // Linked worktrees inherit this setting and must receive fixture.before unchanged.
+      await git('config', 'core.autocrlf', 'false');
       writeFileSync(join(source, 'fixture.txt'), fixture.before);
       await git('add', '.');
       await git('commit', '-qm', 'fixture');
@@ -141,6 +144,8 @@ export async function evaluateCodingTools(
           ).run(runId, sessionId);
           const copy = await service.createWorktree(sessionId, 'default');
           const file = join(service.copyOf(sessionId)!.worktree, 'fixture.txt');
+          if (readFileSync(file, 'utf8') !== fixture.before)
+            throw new Error('coding evaluation checkout changed the fixture bytes');
           await service.execute(
             {
               name: 'read_file',

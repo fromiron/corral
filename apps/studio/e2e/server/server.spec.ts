@@ -8,6 +8,7 @@ function handle(page: Page, nodeId: string, port: string) {
 }
 
 async function agentToOutput(page: Page) {
+  await page.getByRole('tab', { name: /^Teams/ }).click();
   await page.getByRole('button', { name: 'New team' }).click();
   await expect(page).toHaveURL(/\/corrals\/corral_[a-z0-9]+\/edit/);
   await page.getByRole('button', { name: 'Add Agent' }).click();

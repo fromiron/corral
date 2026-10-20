@@ -8,6 +8,7 @@ async function finishedRun(
   corral: { open(path?: string): Promise<void> },
 ) {
   await corral.open('/');
+  await page.getByRole('tab', { name: /^Teams/ }).click();
   await page
     .locator('input[type=file]')
     .setInputFiles([

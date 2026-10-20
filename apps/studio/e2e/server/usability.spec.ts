@@ -2,7 +2,7 @@ import type { CorralDefinition } from '@corral/contracts';
 import { linearCorral } from '@corral/testkit';
 import type { Page } from '@playwright/test';
 import { templateForWorkspace } from '../../src/demo/templates.ts';
-import { panelTab, requestBox } from '../workbench.ts';
+import { panelTab, requestBox, selectSessionTeam } from '../workbench.ts';
 import { expect, type Harness, test } from './harness.ts';
 
 const request = requestBox;
@@ -10,6 +10,7 @@ const timeline = (page: Page) => page.getByTestId('chat-timeline');
 
 async function session(page: Page, corral: Harness, definition = linearCorral(['writer'])) {
   await corral.open('/');
+  await page.getByRole('tab', { name: /^Teams/ }).click();
   await page.locator('input[type=file]').setInputFiles({
     name: 'usability.corral.json',
     mimeType: 'application/json',
@@ -19,11 +20,7 @@ async function session(page: Page, corral: Harness, definition = linearCorral(['
   await page.getByRole('link', { name: 'New session', exact: true }).click();
   await expect(page).toHaveURL(/\/sessions\/session_/);
   // CR-024: a new session starts in auto mode; these journeys run the imported team.
-  await page.getByRole('combobox', { name: 'Team', exact: true }).click();
-  await page.getByRole('option', { name: definition.name, exact: true }).click();
-  await expect(page.getByRole('combobox', { name: 'Team', exact: true })).toContainText(
-    definition.name,
-  );
+  await selectSessionTeam(page, definition.name);
 }
 
 test('[WBTST-004] UX-015-01 new-session drafts survive team setup and become an editable first request', async ({
@@ -41,7 +38,8 @@ test('[WBTST-004] UX-015-01 new-session drafts survive team setup and become an 
     .click();
   await expect(page).toHaveURL(/\/edit$/);
   await page.goBack();
-  await page.getByText('Session details (optional)', { exact: true }).click();
+  if (!(await page.getByLabel('Purpose').isVisible()))
+    await page.getByText('Session details (optional)', { exact: true }).click();
   await expect(page.getByLabel('Purpose')).toHaveValue('Keep this purpose through team setup');
   let release!: () => void,
     entered!: () => void,
@@ -67,7 +65,7 @@ test('[WBTST-004] UX-015-01 new-session drafts survive team setup and become an 
   await page.getByRole('link', { name: 'New session', exact: true }).click();
   await committed;
   await expect(page.getByLabel('Purpose')).toBeDisabled();
-  await expect(page.getByRole('combobox', { name: 'Team', exact: true })).toBeDisabled();
+  await expect(page.getByRole('combobox', { name: 'Corral', exact: true })).toBeDisabled();
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('link', { name: 'Shortcuts', exact: true }).click();
   release();

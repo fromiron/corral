@@ -87,6 +87,7 @@ export interface ModelCallView {
 }
 
 export interface ArtifactVersionView {
+  media?: import('@corral/contracts').BinaryArtifact;
   artifactVersionId: string;
   artifactId: string;
   version: number;
@@ -158,6 +159,8 @@ export interface IterationView {
 
 /** A question from one execution to a callable role, answered by a new responder task. */
 export interface QuestionView {
+  delivery?: 'parent';
+  targetExecutionId?: string;
   questionId: string;
   /** The responder's task. */
   taskId: string;

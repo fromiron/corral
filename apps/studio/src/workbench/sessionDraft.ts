@@ -1,6 +1,8 @@
 import {
+  HarnessBindingRef,
   type ImageAttachment,
   ImageAttachments,
+  PermissionMode,
   type TextAttachment,
   UltraSelection,
 } from '@corral/contracts';
@@ -18,6 +20,8 @@ export const COMPOSER_DRAFT_SENT = 'corral:composer-draft-sent';
 const revisions = new Map<string, { value: string | null; revision: number }>();
 
 export interface ComposerDraft {
+  harness?: HarnessBindingRef;
+  permissionMode?: PermissionMode;
   ultra?: UltraSelection;
   qualityPreset?: 'ultra';
   images?: ImageAttachment[];
@@ -60,6 +64,12 @@ export function parseComposerDraft(raw: string | null): ComposerDraft {
   try {
     const value = JSON.parse(raw) as Record<string, unknown>;
     return {
+      ...(HarnessBindingRef.safeParse(value.harness).success
+        ? { harness: HarnessBindingRef.parse(value.harness) }
+        : {}),
+      ...(PermissionMode.safeParse(value.permissionMode).success
+        ? { permissionMode: PermissionMode.parse(value.permissionMode) }
+        : {}),
       ...(value.images !== undefined
         ? { images: ImageAttachments.safeParse(value.images).data ?? [] }
         : {}),
@@ -93,6 +103,8 @@ export function serializeComposerDraft(draft: ComposerDraft): string | null {
     !draft.images?.length &&
     !draft.qualityPreset &&
     !draft.ultra &&
+    !draft.permissionMode &&
+    !draft.harness &&
     !draft.taskScope &&
     !draft.verificationScope
   )

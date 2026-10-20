@@ -22,6 +22,8 @@ import {
   agentActivity,
   type ContextPresentation,
   changesPresentation,
+  effectAttention,
+  fileChangeSignals,
   type PlanRef,
   presentContext,
   selectPresentedPlan,
@@ -95,7 +97,14 @@ function useChatWidgetState(
   presentationRunId: string | null,
   live: boolean,
 ): ChatWidgetModel {
-  const { session, transport, readHistory, workspaces, mode } = useServices();
+  const { runFor, sessionFor, retainRun, transport, readHistory, workspaces, mode } = useServices();
+  const session = presentationRunId ? runFor(presentationRunId) : sessionFor(sessionId);
+  useEffect(() => {
+    if (!presentationRunId || !live) return;
+    const release = retainRun(presentationRunId);
+    void session.getState().open(presentationRunId);
+    return release;
+  }, [session, presentationRunId, live, retainRun]);
   // Token deltas update streams only. They must not rescan all committed events or plan bodies.
   const shared = useStore(
     session,
@@ -151,60 +160,77 @@ function useChatWidgetState(
   } | null>(null);
   const changes =
     changeRead?.target === target && changeRead.source === workspaces ? changeRead.value : null;
-  const fileRevision = useMemo(
-    () =>
-      Object.values(projection?.toolCalls ?? {}).filter(
-        (call) =>
-          ['write_file', 'delete_file', 'move_file', 'write', 'edit'].includes(call.name) &&
-          (call.phase === 'finished' || call.phase === 'failed'),
-      ).length,
-    [projection?.toolCalls],
+  const { revision: fileRevision, poll: pollChanges } = useMemo(
+    () => fileChangeSignals(Object.values(projection?.toolCalls ?? {}), projection?.status, live),
+    [projection?.toolCalls, projection?.status, live],
   );
   useEffect(() => {
     void fileRevision;
     void projection?.status;
     if (!presentationRunId || !workspaces) return;
     let current = true;
+    let pending = false;
     const setChanges = (value: ReturnType<typeof changesPresentation> | null) =>
       setChangeRead({ target, source: workspaces, value });
-    void workspaces
-      .worktree(sessionId)
-      .then((tree) => {
-        if (!current) return;
-        if (!tree || tree.missing) {
-          setChanges(null);
-          return;
-        }
-        return workspaces
-          .changes(sessionId, { kind: 'run', runId: presentationRunId })
-          .then((value) => {
-            if (!current) return;
-            const uncounted = value.files.filter(
-              (file) => file.additions == null || file.deletions == null,
-            ).length;
-            const lines = value.files.reduce(
-              (sum, file) => sum + (file.additions ?? 0) + (file.deletions ?? 0),
-              0,
-            );
-            setChanges(
-              changesPresentation({
-                baselineApplied: true,
-                provisional: live,
-                state: value.unavailable ? 'unavailable' : 'ready',
-                files: value.files.length,
-                lines: uncounted ? null : lines,
-                uncounted,
-              }),
-            );
-          });
-      })
-      .catch(() => {
-        if (current) setChanges({ kind: 'error' });
-      });
+    const read = () => {
+      if (pending) return;
+      pending = true;
+      void workspaces
+        .worktree(sessionId)
+        .then((tree) => {
+          if (!current) return;
+          if (!tree || tree.missing) {
+            setChanges(null);
+            return;
+          }
+          return workspaces
+            .changes(sessionId, { kind: 'run', runId: presentationRunId })
+            .then((value) => {
+              if (!current) return;
+              const uncounted = value.files.filter(
+                (file) => file.additions == null || file.deletions == null,
+              ).length;
+              const lines = value.files.reduce(
+                (sum, file) => sum + (file.additions ?? 0) + (file.deletions ?? 0),
+                0,
+              );
+              setChanges(
+                changesPresentation({
+                  baselineApplied: true,
+                  provisional: live,
+                  state: value.unavailable ? 'unavailable' : 'ready',
+                  files: value.files.length,
+                  lines: uncounted ? null : lines,
+                  uncounted,
+                }),
+              );
+            });
+        })
+        .catch(() => {
+          if (current) setChanges({ kind: 'error' });
+        })
+        .finally(() => {
+          pending = false;
+        });
+    };
+    read();
+    // A service may write later without another tool event. Keep the live run's diff fresh,
+    // with at most one read in flight; paused, terminal and historical runs do not poll.
+    const timer = pollChanges ? setInterval(read, 2000) : null;
     return () => {
       current = false;
+      if (timer !== null) clearInterval(timer);
     };
-  }, [target, workspaces, sessionId, presentationRunId, live, projection?.status, fileRevision]);
+  }, [
+    target,
+    workspaces,
+    sessionId,
+    presentationRunId,
+    live,
+    projection?.status,
+    fileRevision,
+    pollChanges,
+  ]);
 
   const plans = useMemo(() => planRefs(projection?.workPlans), [projection?.workPlans]);
   const executions = useMemo(
@@ -327,14 +353,10 @@ function useChatWidgetState(
   );
   const interactions =
     runOpen && projection ? pendingInteractions(view?.events ?? [], projection) : [];
-  const effects = Object.values(projection?.effects ?? {});
   const action = actionRequired({
     pendingApprovals: interactions.filter((item) => item.kind === 'approval').length,
     pendingQuestions: interactions.filter((item) => item.kind !== 'approval').length,
-    failedEffects: effects.filter((effect) => effect.outcome === 'failed').length,
-    unclearEffects: effects.filter(
-      (effect) => effect.outcome === 'unknown' || effect.outcome === 'cancelled',
-    ).length,
+    ...effectAttention(projection),
     runStatus: projection?.status,
   });
   const activeItem =

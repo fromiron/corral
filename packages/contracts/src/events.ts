@@ -19,9 +19,11 @@ import {
   HarnessReport,
   HarnessToolsUpdate,
   ModelRequestRecord,
+  PermissionMode,
   ProviderPayloadRecord,
 } from './harness.ts';
 import { Identifier, SchemaVersion } from './ids.ts';
+import { BinaryArtifact, ImageGenerationProfile } from './media-artifact.ts';
 import { ReasoningApplySettings, ReasoningCapabilities, ReasoningResolution } from './reasoning.ts';
 import { DesignReviewEvidence, ReviewIssue } from './review.ts';
 import { RecipeStopReason } from './review-recipe.ts';
@@ -91,6 +93,8 @@ export type NormalizedUsage = z.infer<typeof NormalizedUsage>;
 export const RunStarted = event(
   'run.started',
   z.strictObject({
+    permissionMode: PermissionMode.optional(),
+    imageProfiles: z.record(Identifier, ImageGenerationProfile).optional(),
     corralId: Identifier,
     definitionHash: Sha256Hex,
     inputHash: Sha256Hex,
@@ -196,6 +200,9 @@ export const QuestionCreated = event(
     senderExecutionId: Identifier,
     targetRoleId: Identifier,
     targetNodeId: Identifier,
+    /** Present only for the explicitly permitted existing-parent delivery route. */
+    delivery: z.literal('parent').optional(),
+    targetExecutionId: Identifier.optional(),
     body: z.string().min(1).max(12000),
     artifactRefs: Ids,
     deadline: IsoTime,
@@ -224,6 +231,7 @@ export const MessageClosed = event(
 export const ArtifactVersionCreated = event(
   'artifact.version_created',
   z.strictObject({
+    media: BinaryArtifact.optional(),
     artifactId: Identifier,
     version: z.int().min(1),
     artifactVersionId: Identifier,
@@ -532,7 +540,11 @@ export const BudgetReserved = event(
   z.strictObject({
     reservationId: Identifier,
     modelCallId: Identifier.nullable(),
-    amount: z.strictObject({ outputTokens: Count, modelCalls: Count }),
+    amount: z.strictObject({
+      outputTokens: Count,
+      modelCalls: Count,
+      image: z.strictObject({ profileId: Identifier, costMicros: Count }).optional(),
+    }),
     scope: Identifier,
   }),
 );
@@ -540,7 +552,13 @@ export const BudgetSettled = event(
   'budget.settled',
   z.strictObject({
     reservationId: Identifier,
-    actual: z.strictObject({ outputTokens: Count.nullable() }),
+    actual: z.strictObject({
+      outputTokens: Count.nullable(),
+      imageCostMicros: Count.nullable().optional(),
+      imageUsage: z
+        .strictObject({ inputTokens: Count.nullable(), outputTokens: Count.nullable() })
+        .optional(),
+    }),
     unknownOutstanding: Count,
   }),
 );

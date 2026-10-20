@@ -2,6 +2,7 @@ import {
   type AutoCancelRequest,
   type AutoCancelResult,
   type AutoRunStart,
+  createStartRecovery,
   HarnessApi,
   HttpSseTransport,
   hasSession,
@@ -10,6 +11,8 @@ import {
   probeServer,
   RestCorralRepository,
   RunModesApi,
+  VaultApi,
+  VoiceApi,
   WorkspacesApi,
 } from '@corral/client';
 import type { Clock } from '@corral/contracts';
@@ -26,9 +29,11 @@ import {
   SIMULATED_MODELS,
   type StartRunResult,
 } from '@corral/core';
-import { createRunSession, type RunSessionStore } from '@corral/react';
+import { createRunRecovery, type RunSessionStore } from '@corral/react';
 import { createContext, type ReactNode, useContext } from 'react';
 import { createDemoWorkspaces, type WorkspacesClient } from './demo/workspaces-client.ts';
+import type {} from './desktop.tsx';
+import { createRunSessions } from './runSessions.ts';
 import { createDemoRuntime } from './runtime.ts';
 
 // App-wide services. Studio served by the local server talks to it (saved Corrals, persistent
@@ -41,7 +46,10 @@ export interface StudioServices {
   repository: CorralRepository;
   transport: RuntimeTransport;
   readHistory: (runId: string) => Promise<RunArchive>;
-  session: RunSessionStore;
+  runFor: (runId: string) => RunSessionStore;
+  sessionFor: (sessionId: string) => RunSessionStore;
+  retainRun: (runId: string) => () => void;
+  disposeRuns: () => void;
   editorSessions: Map<string, RunSessionStore>;
   runModes: Record<string, 'mock' | 'live'>;
   saveRunMode: (key: string, mode: 'mock' | 'live') => Promise<void>;
@@ -63,6 +71,8 @@ export interface StudioServices {
   cancelAuto?: (request: AutoCancelRequest) => Promise<AutoCancelResult>;
   /** Work folders and file changes (CR-012); the browser demo has an in-memory one. */
   workspaces: WorkspacesClient | null;
+  voice?: import('@corral/client').VoiceClient | null;
+  vault?: import('@corral/client').VaultClient | null;
 }
 
 export interface ExplainStart {
@@ -119,22 +129,40 @@ function servedByLocalServer(): boolean {
 
 export async function createStudioServices(): Promise<StudioServices> {
   const http = { baseUrl: '' };
-  const health =
-    window.location.pathname !== '/demo' && servedByLocalServer() ? await probeServer(http) : null;
+  const needsServer = window.location.pathname !== '/demo' && servedByLocalServer();
+  const health = needsServer ? await probeServer(http) : null;
+  // A failed local or remote connection cannot change the host or persistence contract.
+  // Leave the bootstrap token intact so retry can authenticate against the same server.
+  if (needsServer && !health) throw new Error('SERVER_UNAVAILABLE');
   if (health) {
     const token = takeBootstrapToken();
     if (token) await openSession(http, token);
-    const transport = new HttpSseTransport(http);
+    const recovery = window.corralRemote
+      ? createRunRecovery(window.localStorage, window.corralRemote.hostId)
+      : undefined;
+    const transport = new HttpSseTransport(
+      http,
+      recovery && window.corralRemote
+        ? {
+            commands: recovery,
+            starts: createStartRecovery(window.localStorage, window.corralRemote.hostId),
+          }
+        : undefined,
+    );
     const modesApi = new RunModesApi(http);
     const choices = await modesApi.read().catch(() => ({ modes: {} }));
     let modeWrite: Promise<void> = Promise.resolve();
+    const runs = createRunSessions(transport, recovery);
     return {
       mode: 'server',
       serverVersion: health.version,
       repository: new RestCorralRepository(http),
       transport,
       readHistory: (runId) => transport.exportRun(runId, { privateTranscript: true }),
-      session: createRunSession(transport),
+      runFor: runs.runFor,
+      sessionFor: runs.sessionFor,
+      retainRun: runs.retainRun,
+      disposeRuns: runs.dispose,
       editorSessions: new Map(),
       runModes: choices.modes,
       saveRunMode: (key, mode) => {
@@ -151,10 +179,13 @@ export async function createStudioServices(): Promise<StudioServices> {
       startAuto: (request, signal) => transport.startAuto(request, signal),
       cancelAuto: (request) => transport.cancelAuto(request),
       workspaces: new WorkspacesApi(http),
+      voice: new VoiceApi(http),
+      vault: new VaultApi(http),
     };
   }
   const { store, persistent } = browserStore(window.location.pathname === '/demo');
   const { transport, workspace, readHistory } = createDemoRuntime();
+  const runs = createRunSessions(transport);
   // The demo's agents are simulated, so the local rule chooses and no model is called.
   const autoStarter = createAutoStarter({
     startRun: (request) => transport.startRun(request),
@@ -176,7 +207,10 @@ export async function createStudioServices(): Promise<StudioServices> {
     repository,
     transport,
     readHistory,
-    session: createRunSession(transport),
+    runFor: runs.runFor,
+    sessionFor: runs.sessionFor,
+    retainRun: runs.retainRun,
+    disposeRuns: runs.dispose,
     editorSessions: new Map(),
     runModes: {},
     saveRunMode: async () => {},

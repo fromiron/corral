@@ -1,4 +1,4 @@
-import { requestBox } from '../workbench.ts';
+import { closeRequestOptions, openRequestOptions, requestBox } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test.use({ live: true, codexLogin: true, reasoningApi: true, imageInput: true });
@@ -8,7 +8,7 @@ test('[TC-COMPOSER-001-H] attachment inputs survive their menu and templates ins
   corral,
 }) => {
   await corral.open('/');
-  await page.getByRole('button', { name: 'Start session', exact: true }).click();
+  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
   await requestBox(page).fill('Keep my draft');
   await page.getByRole('button', { name: 'Attachments', exact: true }).click({ timeout: 3000 });
   const chooser = page.waitForEvent('filechooser');
@@ -20,15 +20,19 @@ test('[TC-COMPOSER-001-H] attachment inputs survive their menu and templates ins
   });
   await expect(page.getByRole('button', { name: 'Remove notes.txt', exact: true })).toBeVisible();
   await expect(requestBox(page)).toHaveValue('Keep my draft');
+  await openRequestOptions(page);
   await page.getByRole('button', { name: 'Templates', exact: true }).click();
   const command = page.getByRole('menuitem', { name: 'Review an interface', exact: true });
   const name = await command.innerText();
   await command.click();
+  await closeRequestOptions(page);
   const once = await requestBox(page).inputValue();
   expect(once.startsWith('Keep my draft')).toBe(true);
   expect(once.length).toBeGreaterThan(20);
+  await openRequestOptions(page);
   await page.getByRole('button', { name: 'Templates', exact: true }).click();
   await page.getByRole('menuitem', { name, exact: true }).click();
+  await closeRequestOptions(page);
   expect(await requestBox(page).inputValue()).toBe(
     `${once}\n\n${once.slice('Keep my draft\n\n'.length)}`,
   );
@@ -41,7 +45,7 @@ test('[TC-COMPOSER-001-N] independent choices preserve effort and block conflict
   corral,
 }) => {
   await corral.open('/');
-  await page.getByRole('button', { name: 'Start session', exact: true }).click();
+  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
   await requestBox(page).fill('Keep this request');
   const chip = page.getByRole('button', { name: 'Model', exact: true });
   await chip.click({ timeout: 3000 });

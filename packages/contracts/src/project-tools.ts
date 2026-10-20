@@ -43,6 +43,7 @@ const McpCommon = {
   timeoutMs: Launch.timeoutMs.max(300000),
   exposure: z.enum(['direct', 'codemode']),
   enabled: z.boolean().optional(),
+  sourcePackageHash: ContentHash.optional(),
 };
 export const McpAuth = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('none') }),
@@ -79,7 +80,7 @@ export const LocalBrowserRecipe = z.strictObject({
     .min(1)
     .max(4096)
     .refine(
-      (value) => value.startsWith('/') && !value.includes('\0'),
+      (value) => (value.startsWith('/') || /^[A-Za-z]:[\\/]/.test(value)) && !value.includes('\0'),
       'an installed browser executable is required',
     ),
   readyText: z.string().trim().min(1).max(200),

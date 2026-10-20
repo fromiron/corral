@@ -5,7 +5,7 @@ import { fauxAssistantMessage, fauxToolCall, getCurrentTools } from '@earendil-w
 import { describe, expect, it } from 'vitest';
 import { PiAgentAdapter } from '../src/adapter.ts';
 import { type Channel, memoryChannelPair } from '../src/channel.ts';
-import { LEGACY_PROTOCOL_VERSION as PROTOCOL_VERSION } from '../src/protocol.ts';
+import { LEGACY_PROTOCOL_VERSION as PROTOCOL_VERSION, StartFrame } from '../src/protocol.ts';
 import { ACCESS_TOKEN, liveRuntime, recordingHost } from './harness.ts';
 
 const settled = (p: RunProjection) => ['succeeded', 'failed', 'cancelled'].includes(p.status);
@@ -156,6 +156,25 @@ describe('Pi adapter under the Coordinator (C-017–C-019)', () => {
     expect(offered).toEqual([['submit_result']]);
   });
 
+  it('keeps shell unavailable without a trusted harness while supporting the selected hashline syntax', async () => {
+    const offered: string[][] = [];
+    const { transport } = liveRuntime([
+      (context) => {
+        offered.push(getCurrentTools(context.messages).map((tool) => tool.name));
+        return fauxAssistantMessage('No command launched.');
+      },
+    ]);
+    const { runId } = await liveRun(transport, (definition) => {
+      definition.roles[0]!.allowedWorkTools = ['read_file', 'write_file', 'run_command'];
+      definition.roles[0]!.editingMode = 'hashline';
+    });
+    await waitForProjection(transport, runId, settled);
+    expect(offered[0]).toContain('read_hashline');
+    expect(offered[0]).toContain('edit_hashline');
+    expect(offered[0]).not.toContain('run_command');
+    expect(offered[0]).not.toContain('edit');
+  });
+
   it('[TC-SEC-003-H] exposes registered document and search tools only when allowed', async () => {
     const offered: string[][] = [];
     const { transport } = liveRuntime([
@@ -245,6 +264,41 @@ const tick = async () => {
 };
 
 describe('worker lifecycle and protocol checks (C-017)', () => {
+  it('[TC-ABS-004-N] file previews require read permission and app/browser tools require a trusted harness', async () => {
+    for (const readable of [false, true]) {
+      const { adapter, worker, received } = scriptedWorker();
+      const input = startInput();
+      input.role.allowedWorkTools = ['preview_file', 'preview_app', 'preview_action'];
+      if (readable) input.role.allowedWorkTools.push('read_file');
+      const handle = await adapter.start(input, recordingHost().host);
+      worker.send({ type: 'ready', protocolVersion: PROTOCOL_VERSION });
+      await tick();
+      const frame = StartFrame.parse(received.find((message) => message.type === 'start'));
+      expect(frame.tools.includes('preview_file')).toBe(readable);
+      expect(frame.tools).not.toContain('preview_app');
+      expect(frame.tools).not.toContain('preview_action');
+      worker.kill();
+      await handle.waitForSettlement();
+    }
+  });
+
+  it('[TC-ABS-010-H] offers image generation only with role permission and a configured profile', async () => {
+    for (const enabled of [false, true]) {
+      const { adapter, worker, received } = scriptedWorker();
+      const input = startInput();
+      input.role.allowedWorkTools = ['generate_image'];
+      if (enabled) input.role.imageProfile = 'illustration';
+      const handle = await adapter.start(input, recordingHost().host);
+      worker.send({ type: 'ready', protocolVersion: PROTOCOL_VERSION });
+      await tick();
+      const frame = StartFrame.parse(received.find((message) => message.type === 'start'));
+      expect(frame.tools.includes('generate_image')).toBe(enabled);
+      expect(frame.role.imageProfile).toBe(enabled ? 'illustration' : undefined);
+      worker.kill();
+      await handle.waitForSettlement();
+    }
+  });
+
   it('[TC-SEC-002-N] never persists a provider error containing request text or credentials', async () => {
     const { adapter, worker } = scriptedWorker();
     const handle = await adapter.start(startInput(), recordingHost().host);

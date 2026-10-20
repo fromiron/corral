@@ -2741,6 +2741,72 @@
         "payload": {
           "type": "object",
           "properties": {
+            "permissionMode": {
+              "type": "string",
+              "enum": [
+                "ask",
+                "accept_edits",
+                "auto"
+              ]
+            },
+            "imageProfiles": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+              },
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "bindingHash": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  },
+                  "profileId": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                  },
+                  "modelProfileId": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                  },
+                  "modelId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "api": {
+                    "type": "string",
+                    "const": "openai-images"
+                  },
+                  "timeoutMs": {
+                    "type": "integer",
+                    "minimum": 1000,
+                    "maximum": 600000
+                  },
+                  "maxCallsPerRun": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 16
+                  },
+                  "maxCostUsdPerCall": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 100
+                  }
+                },
+                "required": [
+                  "profileId",
+                  "modelProfileId",
+                  "modelId",
+                  "api",
+                  "timeoutMs",
+                  "maxCallsPerRun",
+                  "maxCostUsdPerCall"
+                ],
+                "additionalProperties": false
+              }
+            },
             "corralId": {
               "type": "string",
               "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
@@ -3729,6 +3795,25 @@
             "autoRoute": {
               "type": "object",
               "properties": {
+                "harness": {
+                  "type": "object",
+                  "properties": {
+                    "profileId": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                    },
+                    "revision": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "profileId",
+                    "revision"
+                  ],
+                  "additionalProperties": false
+                },
                 "qualityPreset": {
                   "type": "string",
                   "enum": [
@@ -5409,6 +5494,14 @@
               "type": "string",
               "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
             },
+            "delivery": {
+              "type": "string",
+              "const": "parent"
+            },
+            "targetExecutionId": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+            },
             "body": {
               "type": "string",
               "minLength": 1,
@@ -5768,6 +5861,57 @@
         "payload": {
           "type": "object",
           "properties": {
+            "media": {
+              "type": "object",
+              "properties": {
+                "version": {
+                  "type": "number",
+                  "const": 1
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "image"
+                },
+                "mime": {
+                  "type": "string",
+                  "const": "image/png"
+                },
+                "bytes": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 33554432
+                },
+                "width": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 8192
+                },
+                "height": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 8192
+                },
+                "sha256": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                },
+                "blobRef": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                }
+              },
+              "required": [
+                "version",
+                "kind",
+                "mime",
+                "bytes",
+                "width",
+                "height",
+                "sha256",
+                "blobRef"
+              ],
+              "additionalProperties": false
+            },
             "artifactId": {
               "type": "string",
               "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
@@ -9642,6 +9786,25 @@
                   "type": "integer",
                   "minimum": 0,
                   "maximum": 9007199254740991
+                },
+                "image": {
+                  "type": "object",
+                  "properties": {
+                    "profileId": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                    },
+                    "costMicros": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "profileId",
+                    "costMicros"
+                  ],
+                  "additionalProperties": false
                 }
               },
               "required": [
@@ -9769,6 +9932,52 @@
                       "type": "null"
                     }
                   ]
+                },
+                "imageCostMicros": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "imageUsage": {
+                  "type": "object",
+                  "properties": {
+                    "inputTokens": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "outputTokens": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "inputTokens",
+                    "outputTokens"
+                  ],
+                  "additionalProperties": false
                 }
               },
               "required": [

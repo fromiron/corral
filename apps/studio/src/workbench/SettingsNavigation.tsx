@@ -15,6 +15,7 @@ export function settingsSection(path: string, section?: unknown): string {
       'about',
       'workspace',
       'models',
+      'vault',
       'harness',
       'skills',
       'hooks',
@@ -38,11 +39,12 @@ export function SettingsNavigation({
   const h = useTranslations('Harness');
   const r = useTranslations('Resources');
   const w = useTranslations('Workbench');
+  const v = useTranslations('Vault');
   const navigation = useSettingsNavigation();
   const location = useRouterState({ select: (state) => state.location });
   const active = settingsSection(location.pathname, location.search.section);
   const sections = [
-    { title: t('app'), items: ['general', 'shortcuts', 'about'] },
+    { title: t('app'), items: ['general', 'shortcuts', 'vault', 'about'] },
     { title: t('agents'), items: ['models', 'harness', 'defaults', 'skills', 'hooks'] },
     { title: t('project'), items: ['workspace', 'mcp', 'project-defaults'] },
   ] as const;
@@ -52,6 +54,7 @@ export function SettingsNavigation({
     about: '/settings',
     workspace: '/settings',
     models: '/settings/models',
+    vault: '/settings/vault',
     harness: '/settings/harness',
     skills: '/settings/skills',
     hooks: '/settings/hooks',
@@ -60,17 +63,19 @@ export function SettingsNavigation({
     'project-defaults': '/settings/project-defaults',
   } as const;
   const label = (key: string) =>
-    key === 'project-defaults'
-      ? t('projectDefaults')
-      : key === 'defaults'
-        ? t('personalDefaults')
-        : key === 'harness'
-          ? h('heading')
-          : key === 'workspace'
-            ? t('projectFolder')
-            : ['skills', 'hooks', 'mcp'].includes(key)
-              ? r(key)
-              : td(key);
+    key === 'vault'
+      ? v('heading')
+      : key === 'project-defaults'
+        ? t('projectDefaults')
+        : key === 'defaults'
+          ? t('personalDefaults')
+          : key === 'harness'
+            ? h('heading')
+            : key === 'workspace'
+              ? t('projectFolder')
+              : ['skills', 'hooks', 'mcp'].includes(key)
+                ? r(key)
+                : td(key);
   return (
     <nav
       data-testid="settings-sidebar"

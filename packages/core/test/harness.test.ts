@@ -2,10 +2,12 @@ import {
   type AgentHost,
   type AgentStartInput,
   type CheckPlan,
+  type CommandPlan,
   canonicalJson,
   type EffectiveHarnessSnapshot,
   type LspReport,
   type ModelRequestRecord,
+  type PermissionMode,
   type ToolDescriptor,
   type VerificationReport,
 } from '@corral/contracts';
@@ -19,6 +21,7 @@ import {
   type FileTools,
   InMemoryRunStore,
   openRunArchive,
+  ToolTerminationUnconfirmed,
 } from '../src/index.ts';
 
 const hash = (value: unknown) => bytesToHex(sha256(utf8ToBytes(canonicalJson(value))));
@@ -59,6 +62,8 @@ function setup(
     plans?: boolean;
     reviewOnly?: boolean;
     isolation?: boolean;
+    permissionMode?: PermissionMode;
+    commandTools?: boolean;
     harness?: Partial<NonNullable<ConstructorParameters<typeof Coordinator>[0]['harnesses']>>;
   } = {},
 ) {
@@ -119,11 +124,13 @@ function setup(
   if (options.reviewOnly) definition.input.taskScope = 'review_only';
   if (options.plans) definition.roles[0]!.allowedCollaborationTools.push('update_plan');
   if (options.fileTools) definition.roles[0]!.allowedWorkTools = ['read_file', 'write_file'];
+  if (options.commandTools) definition.roles[0]!.allowedWorkTools.push('run_command');
   const result = coordinator.startRun({
     schemaVersion: '0.1',
     commandId: 'start',
     definition,
     mode: 'mock',
+    ...(options.permissionMode ? { permissionMode: options.permissionMode } : {}),
   });
   return {
     coordinator,
@@ -148,6 +155,474 @@ async function loaded() {
   });
   return s;
 }
+
+describe('worktree command and preset Coordinator path (ABS-01/02)', () => {
+  const commandDescriptor: ToolDescriptor = {
+    ...descriptor,
+    source: 'corral',
+    name: 'run_command',
+    sideEffect: 'external',
+  };
+  const plan: CommandPlan = {
+    operationId: 'operation_one',
+    hostId: 'local',
+    sessionId: 'session_one',
+    workspaceBindingId: 'workspace_one',
+    worktreeId: 'worktree_one',
+    rootIdentity: 'c'.repeat(64),
+    tree: 'd'.repeat(40),
+    shellId: 'powershell',
+    executable: 'powershell.exe',
+    argv: ['-Command', 'echo hello'],
+    cwd: '.',
+    environmentHash: 'e'.repeat(64),
+    timeoutMs: 10000,
+    fingerprint: 'f'.repeat(64),
+  };
+  async function commandSetup(
+    mode: PermissionMode,
+    reviewOnly = false,
+    strict = false,
+    service?: { stop: () => Promise<void> },
+  ) {
+    const acquireRun = vi.fn<NonNullable<FileTools['acquireRun']>>(() => {});
+    const runCommand = vi.fn<NonNullable<FileTools['runCommand']>>(async () => ({
+      operationId: plan.operationId,
+      state: service ? ('running' as const) : ('completed' as const),
+      exitCode: service ? null : 0,
+      signal: null,
+      timedOut: false,
+      cleanupConfirmed: !service,
+      output: { text: 'hello', bytes: 5, hash: 'a'.repeat(64), truncated: false },
+    }));
+    const selected = {
+      ...snapshot,
+      policy: strict ? ('strict' as const) : ('trusted-native' as const),
+      resources: [],
+      allowedTools: service ? ['run_command', 'write_artifact', 'submit_result'] : ['run_command'],
+    };
+    const s = setup(true, selected, {
+      permissionMode: mode,
+      commandTools: true,
+      reviewOnly,
+      files: {
+        acquireRun,
+        available: () => true,
+        execute: async () => ({}),
+        planCommand: async () => ({ ...plan, mode: service ? 'service' : 'foreground' }),
+        runCommand,
+        ...(service ? { stopRunServices: service.stop } : {}),
+      },
+    });
+    await s.started.wait();
+    await s.host().reportHarness!({
+      ok: true,
+      snapshotHash: selected.snapshotHash,
+      tools: [
+        commandDescriptor,
+        ...(service
+          ? [
+              { ...commandDescriptor, name: 'write_artifact', sideEffect: 'workspace' as const },
+              { ...commandDescriptor, name: 'submit_result', sideEffect: 'workspace' as const },
+            ]
+          : []),
+      ],
+      diagnostics: [],
+    });
+    return { ...s, runCommand, acquireRun };
+  }
+  it('[TC-ABS-001-N] cancellation does not finish before run-owned services confirm cleanup', async () => {
+    const stopped = new Gate();
+    const stop = vi.fn(() => stopped.wait());
+    const s = await commandSetup('auto', false, false, { stop });
+    expect(
+      (
+        await s
+          .host()
+          .invokeTool({ name: 'run_command', args: { command: 'serve', mode: 'service' } })
+      ).ok,
+    ).toBe(true);
+    s.coordinator.submit({
+      schemaVersion: '0.1',
+      commandId: 'stop_service',
+      runId: s.input().runId,
+      type: 'cancel',
+      payload: { scope: { kind: 'run' }, reason: 'stop work' },
+    });
+    await vi.waitFor(() => expect(stop).toHaveBeenCalledTimes(1));
+    expect(s.coordinator.getSnapshot(s.input().runId).projection.status).toBe('cancelling');
+    stopped.open();
+    await vi.waitFor(() =>
+      expect(s.coordinator.getSnapshot(s.input().runId).projection.status).toBe('cancelled'),
+    );
+  });
+
+  it('[TC-ABS-001-N] uncertain service shutdown fails the Run instead of confirming cancellation', async () => {
+    const s = await commandSetup('auto', false, false, {
+      stop: async () => {
+        throw new ToolTerminationUnconfirmed();
+      },
+    });
+    expect(
+      (
+        await s
+          .host()
+          .invokeTool({ name: 'run_command', args: { command: 'serve', mode: 'service' } })
+      ).ok,
+    ).toBe(true);
+    s.coordinator.submit({
+      schemaVersion: '0.1',
+      commandId: 'stop_uncertain',
+      runId: s.input().runId,
+      type: 'cancel',
+      payload: { scope: { kind: 'run' }, reason: 'stop work' },
+    });
+    await vi.waitFor(() =>
+      expect(s.coordinator.getSnapshot(s.input().runId).projection.status).toBe('failed'),
+    );
+    expect(s.events().some((event) => event.type === 'cancel.confirmed')).toBe(false);
+  });
+  it('[TC-ABS-001-N] pause waits for services before declaring the safe boundary', async () => {
+    const stopped = new Gate();
+    const stop = vi.fn(() => stopped.wait());
+    const s = await commandSetup('auto', false, false, { stop });
+    expect(
+      (
+        await s
+          .host()
+          .invokeTool({ name: 'run_command', args: { command: 'serve', mode: 'service' } })
+      ).ok,
+    ).toBe(true);
+    s.coordinator.submit({
+      schemaVersion: '0.1',
+      commandId: 'pause_service',
+      runId: s.input().runId,
+      type: 'pause',
+      payload: { scope: 'run' },
+    });
+    const waiting = s
+      .host()
+      .prepareModelRequest(record)
+      .catch(() => null);
+    await vi.waitFor(() => expect(stop).toHaveBeenCalledTimes(1));
+    expect(s.coordinator.getSnapshot(s.input().runId).projection.status).toBe('pausing');
+    stopped.open();
+    await vi.waitFor(() =>
+      expect(s.coordinator.getSnapshot(s.input().runId).projection.status).toBe('paused'),
+    );
+    s.coordinator.submit({
+      schemaVersion: '0.1',
+      commandId: 'cancel_paused_service',
+      runId: s.input().runId,
+      type: 'cancel',
+      payload: { scope: { kind: 'run' }, reason: 'finish test' },
+    });
+    await waiting;
+    await vi.waitFor(() =>
+      expect(s.coordinator.getSnapshot(s.input().runId).projection.status).toBe('cancelled'),
+    );
+  });
+  it('[TC-ABS-001-H] output success waits until its service has actually stopped', async () => {
+    const stopped = new Gate();
+    const stop = vi.fn(() => stopped.wait());
+    const s = await commandSetup('auto', false, false, { stop });
+    expect(
+      (
+        await s
+          .host()
+          .invokeTool({ name: 'run_command', args: { command: 'serve', mode: 'service' } })
+      ).ok,
+    ).toBe(true);
+    const written = await s
+      .host()
+      .invokeTool({ name: 'write_artifact', args: { text: 'Completed work' } });
+    if (!written.ok) throw new Error(written.error.message);
+    expect(
+      (
+        await s.host().invokeTool({
+          name: 'submit_result',
+          args: { artifactVersionIds: [written.result.artifactVersionId] },
+        })
+      ).ok,
+    ).toBe(true);
+    s.done.open();
+    await vi.waitFor(() => expect(stop).toHaveBeenCalledTimes(1));
+    expect(s.coordinator.getSnapshot(s.input().runId).projection.status).not.toBe('succeeded');
+    stopped.open();
+    await vi.waitFor(() =>
+      expect(s.coordinator.getSnapshot(s.input().runId).projection.status).toBe('succeeded'),
+    );
+  });
+  it('[TC-ABS-001-H] asks once using resolved launch identity and duplicate execution cannot spawn twice', async () => {
+    const s = await commandSetup('ask');
+    const auth = await s
+      .host()
+      .authorizeTool({ name: 'run_command', args: { command: 'echo hello' } });
+    expect(auth.ok).toBe(true);
+    const pending = s.host().executeTool(auth.toolCallId);
+    await vi.waitFor(() =>
+      expect(s.events().filter((e) => e.type === 'approval.requested')).toHaveLength(1),
+    );
+    expect(s.runCommand).not.toHaveBeenCalled();
+    const approval = s.events().find((e) => e.type === 'approval.requested')!;
+    if (approval.type !== 'approval.requested') throw new Error('approval missing');
+    const body = s.store.getArtifactText(s.input().runId, approval.payload.subjectVersionIds[0]!);
+    expect(JSON.parse(body!).arguments).toEqual({
+      ...plan,
+      mode: 'foreground',
+      request: { command: 'echo hello' },
+    });
+    expect(
+      s.coordinator.submit({
+        schemaVersion: '0.1',
+        commandId: 'approve_command',
+        runId: s.input().runId,
+        type: 'resolve_approval',
+        expectedControlRevision: s.coordinator.getSnapshot(s.input().runId).projection
+          .controlRevision,
+        payload: {
+          approvalId: approval.payload.approvalId,
+          decision: 'approve',
+          subjectVersionId: approval.payload.subjectVersionIds[0]!,
+        },
+      }).status,
+    ).toBe('applied');
+    expect((await pending).ok).toBe(true);
+    expect((await s.host().executeTool(auth.toolCallId)).ok).toBe(false);
+    expect(s.runCommand).toHaveBeenCalledTimes(1);
+    expect(s.runCommand.mock.calls[0]).toMatchObject([
+      { request: { command: 'echo hello' }, attemptNo: 1 },
+      plan,
+      plan.fingerprint,
+      { aborted: false, onCancel: expect.any(Function) },
+    ]);
+    expect(s.coordinator.getRunSnapshot(s.input().runId)?.permissionMode).toBe('ask');
+    s.done.open();
+  });
+  it('[TC-ABS-002-H] Auto runs an admitted command without extra approval', async () => {
+    const s = await commandSetup('auto');
+    const auth = await s
+      .host()
+      .authorizeTool({ name: 'run_command', args: { command: 'echo hello' } });
+    expect((await s.host().executeTool(auth.toolCallId)).ok).toBe(true);
+    expect(s.events().filter((e) => e.type === 'approval.requested')).toHaveLength(0);
+    s.done.open();
+  });
+  it('[TC-ABS-001-N] cancellation closes the pending launch and a late approval cannot execute it', async () => {
+    const s = await commandSetup('accept_edits');
+    const auth = await s
+      .host()
+      .authorizeTool({ name: 'run_command', args: { command: 'echo hello' } });
+    const pending = s.host().executeTool(auth.toolCallId);
+    await vi.waitFor(() =>
+      expect(s.events().some((e) => e.type === 'approval.requested')).toBe(true),
+    );
+    const event = s.events().find((e) => e.type === 'approval.requested');
+    if (!event || event.type !== 'approval.requested') throw new Error('missing approval');
+    s.coordinator.submit({
+      schemaVersion: '0.1',
+      commandId: 'cancel_command',
+      runId: s.input().runId,
+      type: 'cancel',
+      payload: { scope: { kind: 'run' }, reason: 'cancel launch' },
+    });
+    expect((await pending).ok).toBe(false);
+    expect(s.runCommand).not.toHaveBeenCalled();
+    const finished = s
+      .events()
+      .find(
+        (event) => event.type === 'tool.finished' && event.payload.toolCallId === auth.toolCallId,
+      );
+    expect(finished?.payload).toMatchObject({ error: null });
+    const started = s
+      .events()
+      .find(
+        (event) => event.type === 'tool.started' && event.payload.toolCallId === auth.toolCallId,
+      );
+    if (!started || started.type !== 'tool.started') throw new Error('missing command effect');
+    expect(
+      s
+        .events()
+        .find(
+          (event) =>
+            event.type === 'effect.settled' && event.payload.effectId === started.payload.effectId,
+        )?.payload,
+    ).toMatchObject({ outcome: 'cancelled' });
+    const late = s.coordinator.submit({
+      schemaVersion: '0.1',
+      commandId: 'late_command',
+      runId: s.input().runId,
+      type: 'resolve_approval',
+      expectedControlRevision: s.coordinator.getSnapshot(s.input().runId).projection
+        .controlRevision,
+      payload: {
+        approvalId: event.payload.approvalId,
+        decision: 'approve',
+        subjectVersionId: event.payload.subjectVersionIds[0]!,
+      },
+    });
+    expect(late.status).toBe('rejected');
+    expect(s.runCommand).not.toHaveBeenCalled();
+    s.done.open();
+  });
+  it.each([
+    ['cancelled', true, false, 'cancelled'],
+    ['failed', true, false, 'failed'],
+    ['cancelled', true, true, 'failed'],
+    ['uncertain', false, false, 'unknown'],
+  ] as const)(
+    '[TC-ABS-001-N] cancellation preserves process %s / cleanup %s / timeout %s as %s',
+    async (state, cleanupConfirmed, timedOut, outcome) => {
+      const s = await commandSetup('auto');
+      const entered = new Gate();
+      s.runCommand.mockImplementation(async (_input, _plan, _approved, cancellation) => {
+        entered.open();
+        await new Promise<void>((resolve) => cancellation.onCancel(resolve));
+        return {
+          operationId: plan.operationId,
+          state,
+          exitCode: state === 'failed' ? 9 : null,
+          signal: null,
+          timedOut,
+          cleanupConfirmed,
+          output: { text: '', bytes: 0, hash: 'a'.repeat(64), truncated: false },
+        };
+      });
+      const auth = await s
+        .host()
+        .authorizeTool({ name: 'run_command', args: { command: 'long task' } });
+      const pending = s.host().executeTool(auth.toolCallId);
+      await entered.wait();
+      s.coordinator.submit({
+        schemaVersion: '0.1',
+        commandId: 'cancel_process',
+        runId: s.input().runId,
+        type: 'cancel',
+        payload: { scope: { kind: 'run' }, reason: 'user stopped work' },
+      });
+      expect((await pending).ok).toBe(false);
+      const started = s
+        .events()
+        .find(
+          (event) => event.type === 'tool.started' && event.payload.toolCallId === auth.toolCallId,
+        );
+      if (!started || started.type !== 'tool.started') throw new Error('missing command effect');
+      expect(
+        s
+          .events()
+          .find(
+            (event) =>
+              event.type === 'effect.settled' &&
+              event.payload.effectId === started.payload.effectId,
+          )?.payload,
+      ).toMatchObject({ outcome });
+      if (outcome === 'cancelled')
+        expect(
+          s
+            .events()
+            .find(
+              (event) =>
+                event.type === 'tool.finished' && event.payload.toolCallId === auth.toolCallId,
+            )?.payload,
+        ).toMatchObject({ error: null });
+      s.done.open();
+    },
+  );
+  it('[TC-ABS-001-N] a Coordinator tool timeout remains failed even when process cancellation confirms cleanup', async () => {
+    const s = await commandSetup('auto');
+    const entered = new Gate();
+    s.runCommand.mockImplementation(async (_input, _plan, _approved, cancellation) => {
+      entered.open();
+      await new Promise<void>((resolve) => cancellation.onCancel(resolve));
+      return {
+        operationId: plan.operationId,
+        state: 'cancelled',
+        exitCode: null,
+        signal: null,
+        timedOut: false,
+        cleanupConfirmed: true,
+        output: { text: '', bytes: 0, hash: 'a'.repeat(64), truncated: false },
+      };
+    });
+    const auth = await s
+      .host()
+      .authorizeTool({ name: 'run_command', args: { command: 'long task' } });
+    const pending = s.host().executeTool(auth.toolCallId);
+    await entered.wait();
+    s.clock.advance(plan.timeoutMs + 120000);
+    expect((await pending).ok).toBe(false);
+    const started = s
+      .events()
+      .find(
+        (event) => event.type === 'tool.started' && event.payload.toolCallId === auth.toolCallId,
+      );
+    if (!started || started.type !== 'tool.started') throw new Error('missing command effect');
+    expect(
+      s
+        .events()
+        .find(
+          (event) =>
+            event.type === 'effect.settled' && event.payload.effectId === started.payload.effectId,
+        )?.payload,
+    ).toMatchObject({ outcome: 'failed' });
+    expect(
+      s
+        .events()
+        .find(
+          (event) => event.type === 'tool.finished' && event.payload.toolCallId === auth.toolCallId,
+        )?.payload,
+    ).toMatchObject({ error: 'tool timed out' });
+    s.done.open();
+  });
+  it('[TC-ABS-002-N] changed registration invalidates a pending command grant', async () => {
+    const s = await commandSetup('ask');
+    const auth = await s
+      .host()
+      .authorizeTool({ name: 'run_command', args: { command: 'echo hello' } });
+    const pending = s.host().executeTool(auth.toolCallId);
+    await vi.waitFor(() =>
+      expect(s.events().some((e) => e.type === 'approval.requested')).toBe(true),
+    );
+    const event = s.events().find((e) => e.type === 'approval.requested');
+    if (!event || event.type !== 'approval.requested') throw new Error('missing approval');
+    await s.host().updateHarnessTools!({
+      snapshotHash: snapshot.snapshotHash,
+      expectedRevision: 1,
+      tools: [{ ...commandDescriptor, schemaHash: 'e'.repeat(64) }],
+    });
+    s.coordinator.submit({
+      schemaVersion: '0.1',
+      commandId: 'changed_command',
+      runId: s.input().runId,
+      type: 'resolve_approval',
+      expectedControlRevision: s.coordinator.getSnapshot(s.input().runId).projection
+        .controlRevision,
+      payload: {
+        approvalId: event.payload.approvalId,
+        decision: 'approve',
+        subjectVersionId: event.payload.subjectVersionIds[0]!,
+      },
+    });
+    expect((await pending).ok).toBe(false);
+    expect(s.runCommand).not.toHaveBeenCalled();
+    s.done.open();
+  });
+  it('[TC-ABS-002-N] Auto cannot turn review-only or strict into command capability', async () => {
+    for (const [reviewOnly, strict] of [
+      [true, false],
+      [false, true],
+    ]) {
+      const s = await commandSetup('auto', reviewOnly, strict);
+      if (reviewOnly) expect(s.acquireRun.mock.calls[0]?.[2]).toBe(false);
+      const auth = await s
+        .host()
+        .authorizeTool({ name: 'run_command', args: { command: 'echo hello' } });
+      expect(auth.ok).toBe(false);
+      expect(s.runCommand).not.toHaveBeenCalled();
+      s.done.open();
+    }
+  });
+});
 
 describe('Coordinator harness boundary (H2)', () => {
   it('[TC-SBX-002-N] isolated model profiles cannot launch native harnesses or host command recipes', () => {

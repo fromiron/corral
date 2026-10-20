@@ -1,0 +1,4 @@
+# Built-in resource manifests hash the committed bytes on every platform.
+apps/server/resources/builtin/** text eol=lf
+# Golden event streams compare canonical JSON lines byte-for-byte.
+packages/core/test/golden/*.events.jsonl text eol=lf

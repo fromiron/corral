@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { HarnessBindingRef } from './harness.ts';
 import { Identifier } from './ids.ts';
 import { ReasoningLevel, ReasoningPolicy } from './reasoning.ts';
 import { TEAM_PATTERNS } from './team-plan.ts';
@@ -54,6 +55,8 @@ export const AUTO_REASON_MAX = 200;
 
 /** What the start model chose, as recorded with the run; never the model's answer itself. */
 export const AutoRoute = z.strictObject({
+  /** Explicitly selected work style; omitted for legacy Auto definitions. */
+  harness: HarnessBindingRef.optional(),
   qualityPreset: QualityPreset.optional(),
   ultra: UltraTeamSnapshot.optional(),
   template: AutoTemplate,

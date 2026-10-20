@@ -1,4 +1,4 @@
-import { readFileSync, statSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type {
@@ -7,6 +7,8 @@ import type {
   CredentialStore,
   OAuthCredential,
 } from '@earendil-works/pi-ai';
+import { privatePermissions } from '../private-files.ts';
+import type { VaultCredentialOwner } from './credential-store.ts';
 import { DEFAULT_PROFILES, type ProfileConfig } from './registry.ts';
 
 // CR-004: reuse the Codex CLI login, read only. Its access token works with pi-ai's
@@ -39,7 +41,7 @@ function jwtExpiry(token: string): number | null {
   }
 }
 
-export function readCodexLogin(path: string): CodexLogin {
+function loadCodexLogin(path: string): CodexLogin {
   let text: string;
   try {
     text = readFileSync(path, 'utf8');
@@ -53,10 +55,9 @@ export function readCodexLogin(path: string): CodexLogin {
     const access = parsed.tokens?.access_token;
     const expires = typeof access === 'string' ? jwtExpiry(access) : null;
     if (typeof access !== 'string' || !access || expires === null) return { state: 'unreadable' };
-    const mode = statSync(path).mode & 0o777;
     return {
       state: 'found',
-      permissionsOk: process.platform === 'win32' || (mode & 0o077) === 0,
+      permissionsOk: false,
       credential: {
         type: 'oauth',
         access,
@@ -71,6 +72,13 @@ export function readCodexLogin(path: string): CodexLogin {
   } catch {
     return { state: 'unreadable' };
   }
+}
+
+export function readCodexLogin(path: string): CodexLogin {
+  const login = loadCodexLogin(path);
+  return login.state === 'found'
+    ? { ...login, permissionsOk: privatePermissions(path) === true }
+    : login;
 }
 
 /**
@@ -91,7 +99,9 @@ export class LayeredCredentialStore implements CredentialStore {
 
   private codex(providerId: string): OAuthCredential | undefined {
     if (providerId !== this.codexProvider) return undefined;
-    const login = readCodexLogin(this.codexPath);
+    // Token resolution stays read-only and does not spawn ACL inspection per SDK read.
+    // The public sign-in status below separately verifies permissions on each request.
+    const login = loadCodexLogin(this.codexPath);
     return login.state === 'found' ? login.credential : undefined;
   }
 
@@ -99,6 +109,41 @@ export class LayeredCredentialStore implements CredentialStore {
   private readonly ownCache = new Map<string, boolean>();
   private hasOwn(providerId: string): boolean {
     return this.ownCache.get(providerId) === true;
+  }
+
+  private vaultOwner(): VaultCredentialOwner {
+    const owner = this.own as CredentialStore & Partial<VaultCredentialOwner>;
+    if (
+      !owner.readOwnForVault ||
+      !owner.applyForVault ||
+      !owner.receiptForVault ||
+      !owner.fingerprintForVault
+    )
+      throw new Error('This credential store does not support recoverable vault operations.');
+    return owner as CredentialStore & VaultCredentialOwner;
+  }
+  readOwnForVault() {
+    return this.vaultOwner().readOwnForVault();
+  }
+  fingerprintForVault(value: unknown) {
+    return this.vaultOwner().fingerprintForVault(value);
+  }
+  receiptForVault(operationId: string) {
+    return this.vaultOwner().receiptForVault(operationId);
+  }
+  async applyForVault(input: Parameters<VaultCredentialOwner['applyForVault']>[0]) {
+    const owner = this.vaultOwner();
+    const previous = await owner.readOwnForVault();
+    if (
+      !previous[this.codexProvider] &&
+      input.credentials[this.codexProvider] &&
+      this.codex(this.codexProvider)
+    )
+      throw new Error('Borrowed Codex login cannot be replaced by vault import.');
+    const receipt = await owner.applyForVault(input);
+    for (const id of new Set([...Object.keys(previous), ...Object.keys(input.credentials)]))
+      this.ownCache.set(id, Boolean(input.credentials[id]));
+    return receipt;
   }
 
   /** Where a provider's credential comes from right now. */

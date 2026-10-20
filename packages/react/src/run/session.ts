@@ -19,6 +19,7 @@ import {
   type RuntimeTransport,
 } from '@corral/core';
 import { createStore, type StoreApi } from 'zustand/vanilla';
+import type { RunRecovery } from './recovery.ts';
 
 // Live view of one run. Everything shown comes from committed events or receipts: buttons
 // show "sending" while a command is in flight, but status badges only change on server facts.
@@ -101,6 +102,7 @@ export function defaultCommandId(): string {
 export function createRunSession(
   transport: RuntimeTransport,
   newCommandId: () => string = defaultCommandId,
+  recovery?: RunRecovery,
 ): RunSessionStore {
   let unsubscribe: (() => void) | null = null;
   let generation = 0;
@@ -115,7 +117,12 @@ export function createRunSession(
      * the Timeline's event list. Events are applied in batches, so a long replay renders once.
      */
     const follow = async (runId: string, version: number) => {
-      set({ projection: emptyProjection(runId), events: [], streams: {} });
+      const restored = recovery?.events(runId) ?? [];
+      set({
+        projection: restored.reduce(applyEvent, emptyProjection(runId)),
+        events: restored,
+        streams: {},
+      });
       let pending: RunEvent[] = [];
       let scheduled = false;
       const flush = () => {
@@ -126,6 +133,7 @@ export function createRunSession(
         let projection = get().projection ?? emptyProjection(runId);
         for (const event of batch) projection = applyEvent(projection, event);
         set({ projection, events: [...get().events, ...batch], streamError: null });
+        recovery?.committed(runId, get().events);
         for (const event of batch) {
           if (event.type === 'model.finished' && event.payload.responseRef) {
             void restoreResponse(
@@ -166,7 +174,19 @@ export function createRunSession(
         }
         set({ streams });
       };
-      unsubscribe = transport.subscribe(runId, 0, {
+      // Immutable outputs referenced by cached committed events are read from the host again.
+      for (const event of restored) {
+        if (event.type === 'model.finished' && event.payload.responseRef)
+          void restoreResponse(
+            runId,
+            event.payload.modelCallId,
+            event.payload.responseRef,
+            version,
+          );
+        if (event.type === 'output.finalized')
+          void loadOutput(runId, event.payload.artifactVersionIds, version);
+      }
+      unsubscribe = transport.subscribe(runId, restored.at(-1)?.runSeq ?? 0, {
         onEvent: (event: RunEvent) => {
           pending.push(event);
           if (!scheduled) {
@@ -292,9 +312,11 @@ export function createRunSession(
       const version = generation;
       set({ commandError: null, pendingCommandIds: [...get().pendingCommandIds, commandId] });
       try {
+        recovery?.pending(command);
         const receipt =
           (recover ? await transport.getReceipt(runId, commandId) : null) ??
           (await transport.sendCommand(command));
+        recovery?.confirmed(runId, commandId);
         const unconfirmedCommands = { ...get().unconfirmedCommands };
         delete unconfirmedCommands[commandId];
         set({ unconfirmedCommands });
@@ -319,6 +341,34 @@ export function createRunSession(
       } finally {
         if (generation === version)
           set({ pendingCommandIds: get().pendingCommandIds.filter((id) => id !== commandId) });
+      }
+    };
+
+    const recoverCommands = async (runId: string, version: number) => {
+      if (!recovery) return;
+      const saved = recovery.commands(runId);
+      const unconfirmedCommands = { ...get().unconfirmedCommands };
+      for (const command of saved)
+        unconfirmedCommands[command.commandId] = {
+          command,
+          error: 'Previous response was not confirmed. Checking the host receipt.',
+        };
+      set({ unconfirmedCommands });
+      for (const command of saved) {
+        try {
+          // Reads only. A missing receipt leaves explicit retry to the person.
+          const receipt = await transport.getReceipt(runId, command.commandId);
+          if (!receipt || generation !== version) continue;
+          recovery.confirmed(runId, command.commandId);
+          const remaining = { ...get().unconfirmedCommands };
+          delete remaining[command.commandId];
+          set({
+            unconfirmedCommands: remaining,
+            receipts: { ...get().receipts, [command.commandId]: receipt },
+          });
+        } catch {
+          // Keep the exact request and ID. Connectivity errors never imply rejection.
+        }
       }
     };
 
@@ -404,6 +454,7 @@ export function createRunSession(
           }
           set({ runId, definition });
           await follow(runId, version);
+          await recoverCommands(runId, version);
         } catch (error) {
           if (generation === version) set({ streamError: String(error) });
         }
@@ -418,12 +469,12 @@ export function createRunSession(
           commandId: '',
           runId,
         });
-        const prior = Object.values(get().unconfirmedCommands).find(
-          ({ command: saved }) =>
-            canonicalJson({ ...saved, commandId: '' }) === canonicalJson(candidate),
-        );
+        const prior = [
+          ...Object.values(get().unconfirmedCommands).map((entry) => entry.command),
+          ...(recovery?.commands(runId) ?? []),
+        ].find((saved) => canonicalJson({ ...saved, commandId: '' }) === canonicalJson(candidate));
         return prior
-          ? transmit(prior.command, true)
+          ? transmit(prior, true)
           : transmit({ ...candidate, commandId: newCommandId() });
       },
 

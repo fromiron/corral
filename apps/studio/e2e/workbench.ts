@@ -1,7 +1,7 @@
 import { expect, type Page } from '@playwright/test';
 
-// Shared steps for the workbench after the polish plan (docs/plans/Workbench-Polish-Plan.md):
-// templates live in the project's Teams tab, and a session starts from the box at the top.
+// Shared user-facing steps: start a chat directly, or explicitly choose a saved Corral.
+// Advanced request controls are reached through Request options (CR-043).
 
 /** On a project page: makes a Corral from a template and comes back to the project. */
 export async function teamFromTemplate(page: Page, name = 'Single agent') {
@@ -14,7 +14,7 @@ export async function teamFromTemplate(page: Page, name = 'Single agent') {
     .click();
   await expect(page).toHaveURL(/\/edit$/);
   await page.goBack();
-  await expect(page.getByRole('button', { name: 'Start session', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Start chat', exact: true })).toBeVisible();
 }
 
 /** On a project page: starts a session with this purpose and its first team. */
@@ -23,14 +23,49 @@ export async function startSession(page: Page, purpose: string) {
     await page.getByText('Session details (optional)', { exact: true }).click();
   await page.getByRole('textbox', { name: 'Purpose' }).fill(purpose);
   // CR-024: without a choice a session starts in auto mode; this helper keeps the first team.
-  await page.getByRole('combobox', { name: 'Team', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Corral', exact: true }).click();
   await page.getByRole('option').nth(1).click();
-  await page.getByRole('button', { name: 'Start session' }).click();
+  await page.getByRole('button', { name: 'Start chat' }).click();
   await expect(page).toHaveURL(/\/sessions\/session_/);
 }
 
 /** The request box (a combobox: it opens the `/` and `@` menus). */
-export const requestBox = (page: Page) => page.getByRole('combobox', { name: 'Request' });
+export const requestBox = (page: Page) =>
+  page.getByRole('combobox', { name: 'Request', exact: true });
+
+/** Discloses the actual advanced controls, including keyboard-accessible nested menus. */
+export async function openRequestOptions(page: Page) {
+  const dialog = page.getByRole('dialog', { name: 'Request options', exact: true });
+  if (!(await dialog.isVisible()))
+    await page.getByRole('button', { name: 'Request options', exact: true }).click();
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
+
+/** Returns from advanced controls to the request without selecting or submitting anything. */
+export async function closeRequestOptions(page: Page) {
+  const dialog = page.getByRole('dialog', { name: 'Request options', exact: true });
+  if (await dialog.isVisible()) {
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+  }
+}
+
+/** Chooses an optional saved Corral through the same disclosure used by a person. */
+export async function selectSessionTeam(page: Page, name: string) {
+  const dialog = await openRequestOptions(page);
+  const picker = dialog.getByRole('combobox', { name: 'Corral', exact: true });
+  await picker.click();
+  await page.getByRole('option', { name, exact: true }).click();
+  await expect(picker).toContainText(name);
+  await closeRequestOptions(page);
+  if (name !== 'Default chat')
+    await expect(
+      page
+        .getByRole('region', { name: 'Request', exact: true })
+        .getByRole('button', { name, exact: true }),
+    ).toBeVisible();
+}
 
 /** Runs a `/` command from the request box, keeping nothing else typed. */
 export async function slash(page: Page, command: string) {

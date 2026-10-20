@@ -8,6 +8,7 @@ test('[TC-RACE-08] a lost command response recovers its receipt without submitti
   corral,
 }) => {
   await corral.open('/');
+  await page.getByRole('tab', { name: /^Teams/ }).click();
   await page.locator('input[type="file"]').setInputFiles({
     name: 'receipt-recovery.corral.json',
     mimeType: 'application/json',

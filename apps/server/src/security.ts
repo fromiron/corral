@@ -16,8 +16,9 @@ export const SECURITY_HEADERS: Record<string, string> = {
     "img-src 'self' data:",
     "font-src 'self'",
     "connect-src 'self'",
-    // HTML result previews are framed from this origin only (CR-009).
-    "frame-src 'self'",
+    // CR-042 worktree previews own isolated 127.0.0.2 listeners and opaque sandbox frames.
+    // This grants framing, never API or network permission to a preview document.
+    "frame-src 'self' http://127.0.0.2:*",
     "base-uri 'none'",
     "form-action 'self'",
     "frame-ancestors 'none'",

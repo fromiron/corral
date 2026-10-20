@@ -85,4 +85,34 @@ describe('composer draft (UX-02)', () => {
       }),
     ).toBeNull();
   });
+
+  it('keeps the permission choice before text is entered and ignores unknown modes', () => {
+    const draft = { ...parseComposerDraft(null), permissionMode: 'ask' as const };
+    expect(parseComposerDraft(serializeComposerDraft(draft))).toEqual(draft);
+    for (const permissionMode of ['ask', 'accept_edits', 'auto']) {
+      expect(
+        parseComposerDraft(JSON.stringify({ v: 2, ...draft, permissionMode })).permissionMode,
+      ).toBe(permissionMode);
+    }
+    expect(
+      parseComposerDraft(JSON.stringify({ v: 2, ...draft, permissionMode: 'unrestricted' }))
+        .permissionMode,
+    ).toBeUndefined();
+  });
+  it('keeps a pinned Auto work style without text and drops invalid revisions', () => {
+    const draft = {
+      ...parseComposerDraft(null),
+      harness: { profileId: 'reviewed-native', revision: 2 },
+    };
+    expect(parseComposerDraft(serializeComposerDraft(draft))).toEqual(draft);
+    expect(
+      parseComposerDraft(
+        JSON.stringify({
+          v: 2,
+          ...draft,
+          harness: { profileId: 'reviewed-native', revision: 0 },
+        }),
+      ).harness,
+    ).toBeUndefined();
+  });
 });

@@ -203,6 +203,192 @@ function runtime(
 }
 
 describe('SDK worker through the product adapter (H2)', () => {
+  it('[TC-ABS-010-H] preserves generated image tool results as pixels in the next model context', async () => {
+    const data =
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jZxkAAAAASUVORK5CYII=';
+    const bytes = Buffer.from(data, 'base64');
+    let imagePresent = false;
+    let base64Prose = false;
+    const run = runtime(
+      [
+        fauxAssistantMessage([fauxToolCall('read_artifact', { artifactVersionId: 'artv_image' })], {
+          stopReason: 'toolUse',
+        }),
+        (context) => {
+          for (const message of context.messages) {
+            if (message.role !== 'toolResult') continue;
+            imagePresent ||= message.content.some(
+              (part) => part.type === 'image' && part.data === data,
+            );
+            base64Prose ||= message.content.some(
+              (part) => part.type === 'text' && part.text.includes(data),
+            );
+          }
+          return fauxAssistantMessage('Image inspected.');
+        },
+      ],
+      '',
+      {
+        executeTool: async (toolCallId) => ({
+          ok: true,
+          toolCallId,
+          result: {
+            artifactVersionId: 'artv_image',
+            images: [
+              {
+                kind: 'image_attachment',
+                imageId: 'artv_image',
+                name: 'image.png',
+                mime: 'image/png',
+                bytes: bytes.length,
+                width: 1,
+                height: 1,
+                sha256: createHash('sha256').update(bytes).digest('hex'),
+                data,
+              },
+            ],
+          },
+        }),
+      },
+    );
+    run.input.role.allowedCollaborationTools = ['read_artifact'];
+    if (!run.input.harness) throw new Error('missing harness');
+    run.input.harness.allowedTools = ['read_artifact'];
+    await (await run.adapter.start(run.input, run.host)).waitForSettlement();
+    expect(imagePresent).toBe(true);
+    expect(base64Prose).toBe(false);
+  });
+
+  it.each(['trusted-native', 'strict'] as const)(
+    'offers shell commands only to an explicitly allowed trusted-native role (%s)',
+    async (policy) => {
+      let names: string[] = [];
+      let transcript = '';
+      const proposals: string[] = [];
+      const executeTool = vi.fn(async (toolCallId: string) => ({
+        ok: false as const,
+        toolCallId,
+        error: { code: 'CAPABILITY_DENIED' as const, message: 'launch cancelled before spawn' },
+      }));
+      const run = runtime(
+        [
+          (context) => {
+            names = context.messages.flatMap((message) =>
+              message.role === 'system' ? (message.toolsAdded ?? []).map((tool) => tool.name) : [],
+            );
+            return policy === 'trusted-native'
+              ? fauxAssistantMessage(
+                  [
+                    fauxToolCall('run_command', {
+                      command: 'echo hello',
+                      cwd: '.',
+                      timeoutMs: 1000,
+                    }),
+                  ],
+                  { stopReason: 'toolUse' },
+                )
+              : fauxAssistantMessage('No permitted shell.');
+          },
+          (context) => {
+            transcript = JSON.stringify(context.messages);
+            return fauxAssistantMessage('Command was refused.');
+          },
+        ],
+        '',
+        {
+          authorizeTool: async (proposal) => {
+            proposals.push(proposal.name);
+            return { ok: true, toolCallId: 'tool_command' };
+          },
+          executeTool,
+        },
+        undefined,
+        undefined,
+        [],
+        policy === 'strict' ? { extensions: [], bundles: [] } : {},
+      );
+      run.input.role.allowedWorkTools = ['run_command'];
+      run.input.harness!.allowedTools = ['run_command'];
+      run.input.harness!.policy = policy;
+      if (policy === 'strict') run.input.harness!.resources = [];
+      expect(
+        await (await run.adapter.start(run.input, run.host)).waitForSettlement(),
+      ).toMatchObject({ outcome: 'succeeded' });
+      expect(names.includes('run_command')).toBe(policy === 'trusted-native');
+      expect(proposals).toEqual(policy === 'trusted-native' ? ['run_command'] : []);
+      expect(executeTool).toHaveBeenCalledTimes(policy === 'trusted-native' ? 1 : 0);
+      if (policy === 'trusted-native')
+        expect(transcript).toContain('launch cancelled before spawn');
+    },
+  );
+  it.each(['pi', 'hashline'] as const)(
+    'pins one editing syntax while preserving independent file capabilities (%s)',
+    async (editingMode) => {
+      let names: string[] = [];
+      const run = runtime([
+        (context) => {
+          names = context.messages.flatMap((message) =>
+            message.role === 'system' ? (message.toolsAdded ?? []).map((tool) => tool.name) : [],
+          );
+          return fauxAssistantMessage('Tools inspected.');
+        },
+      ]);
+      run.input.role.allowedWorkTools = ['read_file', 'write_file', 'delete_file', 'move_file'];
+      run.input.role.editingMode = editingMode;
+      run.input.harness!.allowedTools = [
+        'read_file',
+        'write_file',
+        'delete_file',
+        'move_file',
+        'read',
+        'edit',
+        'write',
+        'read_hashline',
+        'edit_hashline',
+      ];
+      expect(
+        await (await run.adapter.start(run.input, run.host)).waitForSettlement(),
+      ).toMatchObject({ outcome: 'succeeded' });
+      expect(names).toEqual(expect.arrayContaining(['write_file', 'delete_file', 'move_file']));
+      expect(names.includes('edit')).toBe(editingMode === 'pi');
+      expect(names.includes('write')).toBe(editingMode === 'pi');
+      expect(names.includes('read_hashline')).toBe(editingMode === 'hashline');
+      expect(names.includes('edit_hashline')).toBe(editingMode === 'hashline');
+    },
+  );
+  it('does not advertise shell or hashline writes to a review-only execution', async () => {
+    let names: string[] = [];
+    const run = runtime([
+      (context) => {
+        names = context.messages.flatMap((message) =>
+          message.role === 'system' ? (message.toolsAdded ?? []).map((tool) => tool.name) : [],
+        );
+        return fauxAssistantMessage('Review only.');
+      },
+    ]);
+    run.input.role.allowedWorkTools = ['read_file', 'write_file', 'run_command'];
+    run.input.role.editingMode = 'hashline';
+    run.input.harness!.allowedTools = ['read_hashline', 'edit_hashline', 'run_command'];
+    run.input.taskBrief = {
+      version: 1,
+      inputHash: hash,
+      criteriaVersionId: run.input.criteriaVersionId,
+      assignment: 'scheduled',
+      outputContract: 'text',
+      taskScope: 'review_only',
+      verificationScope: 'targeted',
+      canModifyFiles: false,
+      limits: linearCorral(['writer']).limits,
+      sourceRefs: [],
+      resources: [],
+    };
+    expect(await (await run.adapter.start(run.input, run.host)).waitForSettlement()).toMatchObject({
+      outcome: 'succeeded',
+    });
+    expect(names).toContain('read_hashline');
+    expect(names).not.toContain('edit_hashline');
+    expect(names).not.toContain('run_command');
+  });
   it('[TC-CONTEXT-001-H] applies profile limits to Pi settings and stream models without changing the catalog', async () => {
     const spy = vi.spyOn(SettingsManager, 'inMemory');
     try {
@@ -264,6 +450,9 @@ describe('SDK worker through the product adapter (H2)', () => {
     },
   );
 
+  // Discovery and execution launch separate real MCP processes. Their combined
+  // startup, two bounded RPC phases and confirmed cleanup need an outer budget
+  // greater than either individual five-second protocol deadline.
   it.each([false, true])(
     '[TC-BROWSER-001-N] [TC-HAR-016-H] [TC-MGR-002-H] MCP native calls preserve error results (%s)',
     async (isError) => {
@@ -393,6 +582,7 @@ describe('SDK worker through the product adapter (H2)', () => {
         expect(JSON.stringify(request)).not.toContain('unmeasured_tool');
       }
     },
+    20000,
   );
 
   it('[TC-HAR-017-H] uses Pi codemode to invoke a Corral tool through the owned nested approval', async () => {
