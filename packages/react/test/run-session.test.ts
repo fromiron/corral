@@ -51,6 +51,93 @@ function until(store: ReturnType<typeof session>, check: (s: RunSessionState) =>
 }
 
 describe('run session', () => {
+  it('[TC-WIDGET-001-N] failed opening stays scoped to its requested run and ignores old failures', async () => {
+    let failOld!: (error: Error) => void;
+    const getRunDefinition = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<CorralDefinition>((_resolve, reject) => {
+            failOld = reject;
+          }),
+      )
+      .mockRejectedValueOnce(new Error('current definition unavailable'))
+      .mockResolvedValue(linearCorral(['writer']));
+    const subscribe = vi.fn(() => () => {});
+    const store = createRunSession({ getRunDefinition, subscribe } as never);
+    const old = store.getState().open('run_old');
+    await store.getState().open('run_current');
+    expect(store.getState()).toMatchObject({
+      runId: 'run_current',
+      projection: null,
+      streamError: 'Error: current definition unavailable',
+    });
+    failOld(new Error('obsolete failure'));
+    await old;
+    expect(store.getState().streamError).toBe('Error: current definition unavailable');
+    await store.getState().open('run_current');
+    expect(store.getState().runId).toBe('run_current');
+    expect(store.getState().streamError).toBeNull();
+    expect(subscribe).toHaveBeenCalledTimes(1);
+    store.getState().dispose();
+  });
+
+  it('[TC-WIDGET-001-N] retrying a broken current stream replaces its subscription once', async () => {
+    let handlers!: TransportHandlers;
+    const unsubscribe = vi.fn();
+    const subscribe = vi.fn((_runId, _seq, next: TransportHandlers) => {
+      handlers = next;
+      return unsubscribe;
+    });
+    const store = createRunSession({
+      getRunDefinition: async () => linearCorral(['writer']),
+      subscribe,
+    } as never);
+    await store.getState().open('run_current');
+    handlers.onError?.(new Error('stream disconnected'));
+    expect(store.getState().streamError).toContain('stream disconnected');
+    await store.getState().open('run_current');
+    expect(subscribe).toHaveBeenCalledTimes(2);
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
+    expect(store.getState().streamError).toBeNull();
+    store.getState().dispose();
+  });
+
+  it('explicit artifact retry refreshes only the selected body and excludes late results after navigation', async () => {
+    let finishOldRead!: (text: string) => void;
+    const getArtifactText = vi
+      .fn()
+      .mockResolvedValueOnce('invalid cached body')
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce('verified body')
+      .mockImplementationOnce(
+        () =>
+          new Promise<string>((resolve) => {
+            finishOldRead = resolve;
+          }),
+      );
+    const store = createRunSession({
+      getRunDefinition: async () => linearCorral(['writer']),
+      subscribe: () => () => {},
+      getArtifactText,
+    } as never);
+    await store.getState().open('run_1');
+    await store.getState().loadArtifact('plan_1');
+    await store.getState().loadArtifact('plan_1');
+    expect(getArtifactText).toHaveBeenCalledTimes(1);
+    await store.getState().loadArtifact('plan_1', { reload: true });
+    expect(store.getState().artifactTexts.plan_1).toBeUndefined();
+    await store.getState().loadArtifact('plan_1', { reload: true });
+    expect(store.getState().artifactTexts.plan_1).toBe('verified body');
+    const oldRead = store.getState().loadArtifact('plan_1', { reload: true });
+    await store.getState().open('run_2');
+    finishOldRead('late body');
+    await oldRead;
+    expect(store.getState().artifactTexts.plan_1).toBeUndefined();
+    expect(getArtifactText.mock.calls).toEqual(Array(4).fill(['run_1', 'plan_1']));
+    store.getState().dispose();
+  });
+
   it('follows a run to completion and loads the output text', async () => {
     const store = session();
     await store.getState().start(linearCorral(['writer']));
@@ -129,7 +216,8 @@ describe('run session', () => {
 
     const missing = createRunSession(transport);
     await missing.getState().open('run_gone');
-    expect(missing.getState().runId).toBeNull();
+    expect(missing.getState().runId).toBe('run_gone');
+    expect(missing.getState().projection).toBeNull();
     expect(missing.getState().missingRunId).toBe('run_gone');
   });
 

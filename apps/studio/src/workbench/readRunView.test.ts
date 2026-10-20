@@ -28,3 +28,64 @@ it('[DW-03] reading more than sixteen finished turns opens no event streams or c
   expect(transport.sendCommand).not.toHaveBeenCalled();
   expect(history).not.toHaveBeenCalled();
 });
+
+it('[TC-WIDGET-001-H] PERF-01 shares in-flight reads within the same transport and history boundary', async () => {
+  const transport = {
+    getSnapshot: vi.fn(async (id: string) => ({
+      projection: { ...emptyProjection(id), status: 'succeeded' as const },
+      seq: 0,
+    })),
+    getRunDefinition: vi.fn(async () => linearCorral(['writer'])),
+  };
+  const history = vi.fn(async () => null);
+  await Promise.all([
+    readRunView(transport, history, 'run_same', false),
+    readRunView(transport, history, 'run_same', false),
+  ]);
+  expect(transport.getSnapshot).toHaveBeenCalledTimes(1);
+  expect(transport.getRunDefinition).toHaveBeenCalledTimes(1);
+  await readRunView(transport, history, 'run_same', false);
+  expect(transport.getSnapshot).toHaveBeenCalledTimes(2);
+  await readRunView({ ...transport }, history, 'run_same', false);
+  expect(transport.getSnapshot).toHaveBeenCalledTimes(3);
+  await readRunView(
+    transport,
+    vi.fn(async () => null),
+    'run_same',
+    false,
+  );
+  expect(transport.getSnapshot).toHaveBeenCalledTimes(4);
+});
+
+it('[TC-WIDGET-001-N] PERF-01 rereads late settlement facts after terminal status', async () => {
+  let lastSeq = 10;
+  const transport = {
+    getSnapshot: vi.fn(async (id: string) => ({
+      projection: { ...emptyProjection(id), lastSeq, status: 'succeeded' as const },
+      seq: lastSeq,
+    })),
+    getRunDefinition: vi.fn(async () => linearCorral(['writer'])),
+  };
+  const history = vi.fn(async () => null);
+  expect((await readRunView(transport, history, 'run_late', false)).projection.lastSeq).toBe(10);
+  lastSeq = 12;
+  expect((await readRunView(transport, history, 'run_late', false)).projection.lastSeq).toBe(12);
+});
+
+it('[TC-WIDGET-001-N] PLAN-04 retries failed reads and never caches an active run as final', async () => {
+  const transport = {
+    getSnapshot: vi
+      .fn()
+      .mockRejectedValueOnce(new Error('transient'))
+      .mockImplementation(async (id: string) => ({
+        projection: { ...emptyProjection(id), status: 'running' as const },
+        seq: 0,
+      })),
+    getRunDefinition: vi.fn(async () => linearCorral(['writer'])),
+  };
+  const history = vi.fn(async () => null);
+  await expect(readRunView(transport, history, 'run_retry', false)).rejects.toThrow('transient');
+  await readRunView(transport, history, 'run_retry', false);
+  await readRunView(transport, history, 'run_retry', false);
+  expect(transport.getSnapshot).toHaveBeenCalledTimes(3);
+});

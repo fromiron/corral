@@ -10,9 +10,12 @@ import { CommandReceipts } from './CommandReceipts.tsx';
 export function RunActions({
   session,
   compact = false,
+  showCancel = true,
 }: {
   session: RunSessionStore;
   compact?: boolean;
+  /** A composer with its existing stop control only needs Pause/Resume and receipts here. */
+  showCancel?: boolean;
 }) {
   const t = useTranslations('Reins');
   const projection = useStore(session, (s) => s.projection);
@@ -58,17 +61,19 @@ export function RunActions({
           >
             {projection.status === 'paused' ? t('resume') : t('pause')}
           </Button>
-          <Button
-            variant="ghost-destructive"
-            size="xs"
-            disabled={pending || projection.status === 'cancelling'}
-            onClick={() => setConfirmCancel(true)}
-          >
-            {t('cancelRun')}
-          </Button>
+          {showCancel ? (
+            <Button
+              variant="ghost-destructive"
+              size="xs"
+              disabled={pending || projection.status === 'cancelling'}
+              onClick={() => setConfirmCancel(true)}
+            >
+              {t('cancelRun')}
+            </Button>
+          ) : null}
         </div>
       ) : null}
-      {confirmCancel && !terminal ? (
+      {showCancel && confirmCancel && !terminal ? (
         <div className="flex flex-col gap-2 rounded-lg border border-danger/40 bg-danger/5 p-3">
           <p>{t('cancelRunExplain')}</p>
           <div className="flex flex-wrap gap-1">

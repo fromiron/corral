@@ -105,9 +105,13 @@ test('[TC-IMAGE-001-H] [TC-STATUS-001-H] [TC-CHAT-001-H] [TC-CHAT-001-N] attachm
   await expect(page.getByRole('checkbox', { name: 'Review only · no file changes' })).toBeChecked();
   await expect(page.getByRole('button', { name: 'Remove image pixel.png' })).toBeVisible();
   await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(page.getByTestId('action-required')).toBeVisible();
+  await page.getByTestId('action-required').getByRole('link').click();
   const question = page.getByRole('form', { name: 'Waiting for your answer' });
   await expect(question).toHaveCount(1);
-  await expect(page.getByText('Read attachment and answer', { exact: true })).toBeVisible();
+  await expect(
+    page.getByTestId('composer-work-plan').getByText('Read attachment and answer', { exact: true }),
+  ).toBeVisible();
   const answer = question.getByRole('textbox', { name: 'Your answer' });
   await answer.fill('A table');
   expect(
@@ -142,6 +146,7 @@ test('[TC-IMAGE-001-H] [TC-STATUS-001-H] [TC-CHAT-001-H] [TC-CHAT-001-N] attachm
   ).toBe(1);
   expect(current().projection.budget.modelCalls).toBe(calls);
   await page.getByRole('button', { name: 'View run', exact: true }).click();
+  await page.getByTestId('compact-run').getByText('Executions', { exact: true }).click();
   for (const card of ['environment', 'context', 'connections', 'changes'])
     await expect(page.getByTestId(`status-${card}`)).toBeVisible();
   await page.getByTestId('status-context').locator(':scope > summary').click();

@@ -21,6 +21,17 @@ const start = {
   askTo: [],
 } satisfies Parameters<typeof systemPrompt>[0];
 
+it('[TC-WIDGET-001-N] requires plans for multistep work only when update_plan is available', () => {
+  const unavailable = systemPrompt(start);
+  expect(unavailable).not.toContain('call update_plan');
+  const available = systemPrompt({ ...start, tools: [...start.tools, 'update_plan'] });
+  expect(available).toContain('call update_plan before the first substantial step');
+  expect(available).toContain('again when the current step changes');
+  expect(available).toContain(
+    'Do not create a plan for a greeting or a short single-step question',
+  );
+});
+
 it('[TC-IMAGE-001-N] an image removed or replaced with base64 prose is not image delivery', () => {
   const images = [{ data: 'AQID', mime: 'image/png' as const }];
   expect(() =>

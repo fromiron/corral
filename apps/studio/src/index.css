@@ -146,6 +146,52 @@
 .chat-timeline {
   scrollbar-gutter: stable;
 }
+.session-widget-access {
+  display: none;
+}
+.workbench-frame[data-detail-open="true"] .session-widget-access {
+  display: flex;
+}
+.session-summary-card [data-slot="popover-trigger"],
+.session-summary-card [data-testid="run-changes-chip"] {
+  width: 100%;
+  justify-content: flex-start;
+  padding-inline: 0.5rem;
+}
+@container workbench (max-width: 900px) {
+  .session-summary-slot {
+    display: none;
+  }
+  .session-widget-access {
+    display: flex;
+  }
+}
+.corral-quiet-activity > span {
+  animation: corral-quiet-wave 1.4s ease-in-out infinite;
+}
+@keyframes corral-quiet-wave {
+  0%,
+  70%,
+  100% {
+    opacity: 0.4;
+    transform: translateY(0);
+  }
+  35% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .corral-quiet-activity > span {
+    animation: none;
+  }
+}
+/* Keep the input and response action reachable on short screens and at high zoom. */
+@media (max-height: 600px) {
+  .work-plan-items {
+    max-height: 18dvh;
+  }
+}
 .chat-turn {
   margin-bottom: 32px;
 }
@@ -226,7 +272,7 @@
   padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 12px);
   -webkit-app-region: drag;
 }
-.desktop-app .app-topbar :is(button, a, input, select) {
+.desktop-app .app-topbar :is(button, a, input, select, .session-tabs) {
   -webkit-app-region: no-drag;
 }
 

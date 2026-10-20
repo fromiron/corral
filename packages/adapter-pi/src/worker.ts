@@ -4,6 +4,7 @@ import { canonicalJson, type ReasoningResolution } from '@corral/contracts';
 import { Agent, type AgentTool, type StreamFn } from '@earendil-works/pi-agent-core';
 import type { AssistantMessage, Model } from '@earendil-works/pi-ai';
 import type { Channel } from './channel.ts';
+import { inspectContext, reconcileContextUsage } from './context-usage.ts';
 import type { EndpointSpec } from './endpoint.ts';
 import {
   HostFrame,
@@ -152,6 +153,7 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
       return;
     }
     let completionAccepted = false;
+    let measuredContext: ReturnType<typeof inspectContext> | null = null;
     let chunk = 0;
     const authorized = new Map<string, string>();
 
@@ -210,12 +212,16 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
             );
             if (active) {
               const serialized = canonicalJson(JSON.parse(JSON.stringify(actual)));
+              const contextUsage = measuredContext
+                ? reconcileContextUsage(measuredContext.usage, measuredContext.probes, serialized)
+                : undefined;
               const reply = await call({
                 type: 'request_record',
                 modelCallId: active.modelCallId,
                 payloadHash: createHash('sha256').update(serialized).digest('hex'),
                 payloadBytes: Buffer.byteLength(serialized),
                 skills: [],
+                ...(contextUsage ? { contextUsage } : {}),
                 ...(wire ? { reasoning: wire } : {}),
               });
               if (reply.type !== 'ack' || cancelled) throw new Error('provider payload refused');
@@ -267,6 +273,7 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
             value: checkpointContext(preparedContext, 'pi-core'),
           });
           if (saved.type !== 'runtime_checkpoint') throw new Error('runtime checkpoint refused');
+          measuredContext = inspectContext(preparedContext);
           return call({
             type: 'prepare_request',
             record: requestRecord(
@@ -278,6 +285,7 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
                 text: directiveText([d]),
               })),
               protectedSections,
+              { usage: measuredContext.usage },
             ),
             reasoningInput: requestReasoningInput(preparedContext, 'turn', assignment, [
               ...directives.keys(),

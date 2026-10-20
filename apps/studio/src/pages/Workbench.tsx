@@ -6,6 +6,7 @@ import {
   type PointerEvent,
   type ReactNode,
   useCallback,
+  useEffect,
   useRef,
   useState,
 } from 'react';
@@ -110,6 +111,7 @@ export function WorkbenchLayout({
   main,
   panel,
   panelTabs,
+  summary,
   panelOpen = false,
   onPanelClose,
   storageKey = 'global',
@@ -117,6 +119,8 @@ export function WorkbenchLayout({
   main: ReactNode;
   panel?: ReactNode;
   panelTabs?: ReactNode;
+  /** Current-run summary occupies the same right-side space while detail panels are closed. */
+  summary?: ReactNode;
   panelOpen?: boolean;
   onPanelClose?: () => void;
   storageKey?: string;
@@ -132,8 +136,16 @@ export function WorkbenchLayout({
   const [area, setArea] = useState<Area>('main');
   const open = Boolean(panel) && panelOpen;
   const shown: Area = open ? area : 'main';
+  useEffect(() => {
+    // A navigation action opening details must reveal them on narrow screens too.
+    // While they remain open, the person's Conversation/Panel tab choice is preserved.
+    if (open) setArea('panel');
+  }, [open]);
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-col">
+    <div
+      className="workbench-frame @container/workbench flex h-full min-h-0 min-w-0 flex-col"
+      data-detail-open={String(open)}
+    >
       {open ? (
         <div
           role="tablist"
@@ -203,6 +215,13 @@ export function WorkbenchLayout({
               <div className="min-h-0 flex-1 overflow-auto">{panel}</div>
             </aside>
           </>
+        ) : summary ? (
+          <aside
+            data-testid="session-summary-slot"
+            className="session-summary-slot mx-4 mt-6 mb-4 w-[300px] min-w-0 shrink-0 self-start"
+          >
+            {summary}
+          </aside>
         ) : null}
       </div>
     </div>

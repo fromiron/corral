@@ -15,10 +15,13 @@ export function ExecutionTranscript({
   session,
   executionId,
   onOpenArtifact,
+  compact = false,
 }: {
   session: RunSessionStore;
   executionId: string;
   onOpenArtifact?: (artifactVersionId: string) => void;
+  /** Fold each model reply until the reader opens it. The full run page stays expanded. */
+  compact?: boolean;
 }) {
   const t = useTranslations('Transcript');
   const events = useStore(session, (s) => s.events);
@@ -64,6 +67,7 @@ export function ExecutionTranscript({
           entry={entry}
           labelOf={labelOf}
           {...(onOpenArtifact ? { onOpenArtifact } : {})}
+          compact={compact}
         />
       ))}
     </div>
@@ -74,10 +78,12 @@ function Entry({
   entry,
   labelOf,
   onOpenArtifact,
+  compact = false,
 }: {
   entry: TranscriptEntry;
   labelOf: (nodeId: string) => string;
   onOpenArtifact?: (id: string) => void;
+  compact?: boolean;
 }) {
   const t = useTranslations('Transcript');
   switch (entry.kind) {
@@ -119,8 +125,8 @@ function Entry({
           )}
         </p>
       );
-    case 'reply':
-      return (
+    case 'reply': {
+      const body = (
         <div className="mr-8 rounded-lg fill-control px-2 py-1">
           {entry.text ? (
             <SafeMarkdown text={entry.text} />
@@ -131,6 +137,16 @@ function Entry({
           {entry.broken ? <p className="text-warning">{t('gap')}</p> : null}
         </div>
       );
+      if (!compact) return body;
+      return (
+        <details>
+          <summary className="cursor-pointer text-muted">
+            {t('rawReply', { no: entry.seq })}
+          </summary>
+          {body}
+        </details>
+      );
+    }
     case 'tool':
       return (
         <p className="flex flex-wrap items-center gap-1">

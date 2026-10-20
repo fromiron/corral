@@ -1,6 +1,7 @@
 import { startCompatibleEndpoint } from '@corral/testkit/endpoint';
 import { createModels } from '@earendil-works/pi-ai';
 import { afterEach, describe, expect, it } from 'vitest';
+import { inspectContext, reconcileContextUsage } from '../src/context-usage.ts';
 import { type EndpointSpec, endpointProvider, KEYLESS_PLACEHOLDER } from '../src/endpoint.ts';
 
 // CR-005: OpenAI-compatible endpoints (Ollama, LM Studio, OpenRouter) through pi-ai's
@@ -37,6 +38,48 @@ const ask = (models: ReturnType<typeof createModels>, apiKey?: string) => {
 };
 
 describe('OpenAI-compatible endpoints (CR-005)', () => {
+  it('[TC-WIDGET-002-H] measures the real Pi provider payload without adding provider usage', async () => {
+    const server = await endpoint();
+    server.setReply(() => 'Measured.');
+    const models = createModels();
+    models.setProvider(endpointProvider('local', spec(server.baseUrl, true)));
+    const model = models.getModel('local', 'llama3.2');
+    if (!model) throw new Error('no model');
+    const context = {
+      messages: [
+        { role: 'system' as const, content: 'Use the provided sources.', timestamp: 0 },
+        { role: 'user' as const, content: '한국어와日本語 자료를 찾아줘.', timestamp: 1 },
+      ],
+      tools: [
+        {
+          name: 'lookup',
+          description: 'Find supplied documents.',
+          parameters: { type: 'object', properties: { query: { type: 'string' } } },
+        },
+      ],
+    };
+    const inspected = inspectContext(context, { mcpToolNames: ['lookup'] });
+    let recorded: ReturnType<typeof reconcileContextUsage> | undefined;
+    const result = await models
+      .streamSimple(model, context, {
+        onPayload: (payload) => {
+          recorded = reconcileContextUsage(
+            inspected.usage,
+            inspected.probes,
+            JSON.stringify(payload),
+          );
+        },
+      })
+      .result();
+    expect(result.stopReason).toBe('stop');
+    expect(recorded).toMatchObject({ coverage: 'request', completeness: 'complete' });
+    expect(recorded?.parts.find((part) => part.category === 'mcp_tools')?.tokens).toBeGreaterThan(
+      0,
+    );
+    expect(recorded?.usedTokens).toBe(recorded?.parts.reduce((sum, part) => sum + part.tokens, 0));
+    expect(JSON.stringify(recorded)).not.toContain('한국어');
+  });
+
   it('[TC-SEC-002-H] a keyless local endpoint answers with only the placeholder key; a keyed one gets the request key', async () => {
     const server = await endpoint();
     server.setReply(() => 'Hello from the endpoint.');

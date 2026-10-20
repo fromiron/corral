@@ -62,8 +62,8 @@ export interface RunSessionState {
   ): Promise<void>;
   /** Follows an existing run, such as after a reload or from a link. */
   open(runId: string): Promise<void>;
-  /** Loads one version's text for viewing; versions never change, so once is enough. */
-  loadArtifact(artifactVersionId: string): Promise<void>;
+  /** Loads immutable text; reload retries a body that could not be verified by a reader. */
+  loadArtifact(artifactVersionId: string, options?: { reload?: boolean }): Promise<void>;
   steer(executionId: string, text: string): Promise<Receipt>;
   /** Approves or rejects a pending approval, for the exact subject the person was shown. */
   resolveApproval(approvalId: string, decision: 'approve' | 'reject'): Promise<Receipt>;
@@ -369,22 +369,31 @@ export function createRunSession(
         }
       },
 
-      async loadArtifact(artifactVersionId) {
+      async loadArtifact(artifactVersionId, options) {
         const runId = get().runId;
         const version = generation;
-        if (!runId || artifactVersionId in get().artifactTexts) return;
+        if (!runId || (!options?.reload && artifactVersionId in get().artifactTexts)) return;
         const text = await transport.getArtifactText(runId, artifactVersionId);
-        if (text !== null && generation === version) {
-          set({ artifactTexts: { ...get().artifactTexts, [artifactVersionId]: text } });
+        if (generation === version) {
+          if (text !== null) {
+            set({ artifactTexts: { ...get().artifactTexts, [artifactVersionId]: text } });
+          } else if (options?.reload) {
+            const artifactTexts = { ...get().artifactTexts };
+            delete artifactTexts[artifactVersionId];
+            set({ artifactTexts });
+          }
         }
       },
 
       async open(runId) {
-        if (get().runId === runId && unsubscribe) {
+        if (get().runId === runId && unsubscribe && !get().streamError) {
           if (!get().definition) await refreshDefinition(runId, generation);
           return;
         }
         reset();
+        // The requested identity owns loading, missing and failed states too. Keeping it
+        // here lets consumers display this request's error without accepting a prior run's.
+        set({ runId });
         const version = generation;
         try {
           const definition = await transport.getRunDefinition(runId);

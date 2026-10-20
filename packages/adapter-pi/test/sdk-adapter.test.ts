@@ -380,6 +380,18 @@ describe('SDK worker through the product adapter (H2)', () => {
       expect(began).toHaveLength(1);
       expect(outcomes).toEqual([isError ? 'failed' : 'succeeded']);
       expect(JSON.stringify(updates)).toContain('extension:pi-mcp@1.3.0');
+      for (const request of run.requests) {
+        expect(request).toMatchObject({
+          contextUsage: {
+            coverage: 'request',
+            completeness: 'complete',
+            parts: expect.arrayContaining([
+              expect.objectContaining({ category: 'mcp_tools', tokens: expect.any(Number) }),
+            ]),
+          },
+        });
+        expect(JSON.stringify(request)).not.toContain('unmeasured_tool');
+      }
     },
   );
 

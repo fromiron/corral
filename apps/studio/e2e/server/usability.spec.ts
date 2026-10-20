@@ -136,8 +136,9 @@ test.describe('long multi-agent output', () => {
     page,
     corral,
   }) => {
-    const definition = templateForWorkspace('research-team', 'audit_team')
-      .definition as CorralDefinition;
+    const definition = structuredClone(
+      templateForWorkspace('research-team', 'audit_team').definition,
+    ) as CorralDefinition;
     definition.limits.maxModelCalls = 12;
     await session(page, corral, definition);
     await request(page).fill('Review this release plan');
@@ -217,18 +218,22 @@ test('[WBTST-004] UX-015-07 approvals name exact versions and keep review inside
   const sessionUrl = new URL(page.url()).pathname;
   await request(page).fill('Review the release plan and request approval.');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
-  // The decision shows in the conversation and, while its result is open, beside it (UX-03).
-  const decision = timeline(page)
+  // CR-041: the dock exposes the request; the execution panel owns the one response form.
+  await expect(page.getByTestId('action-required')).toBeVisible({ timeout: 15000 });
+  await page.getByTestId('action-required').getByRole('link').click();
+  const observer = page.getByRole('tabpanel', { name: 'Execution', exact: true });
+  const decision = observer
     .locator('[data-testid^="approval-"]')
     .filter({ hasText: 'Your decision' });
   await expect(decision).toBeVisible({ timeout: 15000 });
+  await expect(page.getByRole('button', { name: 'Continue with this version' })).toHaveCount(1);
+  await expect(timeline(page).locator('[data-testid^="approval-"]')).toHaveCount(0);
   await expect(
     page.getByTestId('app-sidebar').getByRole('img', { name: 'Waiting for you', exact: true }),
   ).toBeVisible();
   await decision.getByRole('button', { name: 'draft v2', exact: true }).click();
   await expect.poll(() => new URL(page.url()).pathname).toBe(sessionUrl);
   await expect(page.getByRole('article', { name: 'draft v2', exact: true })).toBeVisible();
-  const observer = page.getByRole('tabpanel', { name: 'Execution', exact: true });
   await observer.getByRole('button', { name: 'review v2', exact: true }).click();
   await expect(
     observer.getByRole('region', { name: 'review · Version 2', exact: true }),
@@ -236,9 +241,7 @@ test('[WBTST-004] UX-015-07 approvals name exact versions and keep review inside
   await decision.getByRole('button', { name: 'draft v2', exact: true }).click();
   await expect(observer.getByRole('article', { name: 'draft v2', exact: true })).toBeVisible();
   await decision.getByRole('button', { name: 'Continue with this version' }).click();
-  const final = timeline(page)
-    .locator('[data-testid^="approval-"]')
-    .filter({ hasText: 'Final output' });
+  const final = observer.locator('[data-testid^="approval-"]').filter({ hasText: 'Final output' });
   await expect(final).toBeVisible();
   await final.getByRole('button', { name: 'Confirm as final result' }).click();
   await expect(timeline(page).getByText('Succeeded').first()).toBeVisible();

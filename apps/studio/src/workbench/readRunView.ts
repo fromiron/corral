@@ -1,10 +1,53 @@
 import { openRunArchive, type RuntimeTransport } from '@corral/core';
 import type { RunSessionState } from '@corral/react';
 
+type HistoryReader = (runId: string) => Promise<unknown>;
+type ViewTransport = Pick<RuntimeTransport, 'getSnapshot' | 'getRunDefinition'>;
+type RunView = Awaited<ReturnType<typeof loadRunView>>;
+const pendingReads = new WeakMap<
+  ViewTransport,
+  WeakMap<HistoryReader, Map<string, Promise<RunView>>>
+>();
+
 /** Finished turns are read-only snapshots; opening their work log uses the existing archive reader. */
-export async function readRunView(
-  transport: Pick<RuntimeTransport, 'getSnapshot' | 'getRunDefinition'>,
-  readHistory: (runId: string) => Promise<unknown>,
+export function readRunView(
+  transport: ViewTransport,
+  readHistory: HistoryReader,
+  runId: string,
+  details: boolean,
+) {
+  let readers = pendingReads.get(transport);
+  if (!readers) {
+    readers = new WeakMap();
+    pendingReads.set(transport, readers);
+  }
+  let reads = readers.get(readHistory);
+  if (!reads) {
+    reads = new Map();
+    readers.set(readHistory, reads);
+  }
+  const key = `${details ? 'details' : 'summary'}:${runId}`;
+  const prior = reads.get(key);
+  if (prior) return prior;
+  const cache = reads;
+  const pending = loadRunView(transport, readHistory, runId, details).then(
+    (view) => {
+      // Settlement/usage can arrive after terminal status. Reopened history must read again.
+      if (cache.get(key) === pending) cache.delete(key);
+      return view;
+    },
+    (error: unknown) => {
+      if (cache.get(key) === pending) cache.delete(key);
+      throw error;
+    },
+  );
+  cache.set(key, pending);
+  return pending;
+}
+
+async function loadRunView(
+  transport: ViewTransport,
+  readHistory: HistoryReader,
   runId: string,
   details: boolean,
 ) {

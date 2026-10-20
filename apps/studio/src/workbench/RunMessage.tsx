@@ -11,18 +11,19 @@ import {
   runResults,
   SafeMarkdown,
   StatusBadge,
+  WorkPlanPanel,
 } from '@corral/react';
 import { Activity, ChevronRight, FileText, LoaderCircle, Pause } from '@corral/react/icons';
 import { Button } from '@corral/react/ui';
 import { Link } from '@tanstack/react-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { markRunReviewed } from '../pages/GettingStarted.tsx';
 import { useRemembered } from '../pages/Workbench.tsx';
 import { agentSummary } from './agentSummary.ts';
 import { MessageBranch } from './MessageBranch.tsx';
-import { disclosureNeedsAttention, progressListOpen } from './progressDisclosure.ts';
 import { useCorralRun } from './useCorralChat.ts';
+import { toolRows } from './widgets/selectors.ts';
 
 /** T3's expandable work log and response surface, projected from Corral executions. */
 export function RunMessage({
@@ -39,8 +40,6 @@ export function RunMessage({
   const t = useTranslations('Desktop');
   const trun = useTranslations('Run');
   const [expanded, setExpanded] = useState(false);
-  const [toolUserOpen, setToolUserOpen] = useState<boolean | null>(null);
-  const toolOpenRef = useRef(false);
   const [resultError, setResultError] = useState(false);
   const [retry, setRetry] = useState(0);
   const { store, state } = useCorralRun(runId, live, expanded);
@@ -86,9 +85,12 @@ export function RunMessage({
   const label = (nodeId: string) =>
     state.definition?.nodes.find((n) => n.id === nodeId)?.label ?? nodeId;
   const executions = projection.executionOrder.flatMap((id) => projection.executions[id] ?? []);
-  const busy = working
-    ? executions.filter((execution) => !TERMINAL_EXECUTION_STATUSES.has(execution.status))
-    : [];
+  // Current session activity lives by the composer and in the agent widget.
+  // Historical failures stay visible here, while standalone consumers keep their activity row.
+  const busy =
+    working && !sessionId
+      ? executions.filter((execution) => !TERMINAL_EXECUTION_STATUSES.has(execution.status))
+      : [];
   const summary = agentSummary(busy.map((execution) => execution.status));
   // Failures and cancellations stay in view (CR-015-03). An ordinary success folds them.
   const exposed = executions.filter(
@@ -101,18 +103,14 @@ export function RunMessage({
       : executionId;
   };
   const toolCalls = Object.values(projection.toolCalls);
-  const needsAttention = disclosureNeedsAttention({
-    runStatus: projection.status,
-    exposedExecutions: exposed.length,
-    tools: toolCalls.map((call) => ({
-      status: call.status,
-      phase: call.phase,
-      reason: call.reason,
-      effectOutcome: call.effectId ? projection.effects[call.effectId]?.outcome : null,
+  const attention = toolRows(
+    toolCalls.map((call) => ({
+      toolCallId: call.toolCallId,
+      name: call.name,
+      phase: call.phase ?? call.status,
+      effect: call.effectId ? projection.effects[call.effectId]?.outcome : null,
     })),
-  });
-  const toolOpen = progressListOpen(working, needsAttention, toolUserOpen);
-  toolOpenRef.current = toolOpen;
+  ).filter((row) => row.tone !== 'ok' && row.tone !== 'running');
   // What a model is writing right now, shown in the conversation; never a fact (C-018).
   const writing = working
     ? Object.entries(state.streams)
@@ -154,49 +152,23 @@ export function RunMessage({
   );
   return (
     <div className="flex min-w-0 flex-col gap-3">
-      {working ? <RunActions session={store} compact /> : null}
-      <ApprovalPanel session={store} onOpenArtifact={onOpenArtifact} />
-      {toolCalls.length ? (
-        <details
-          className="text-xs"
-          open={toolOpen}
-          onToggle={(event) => {
-            const next = event.currentTarget.open;
-            if (next !== toolOpenRef.current) setToolUserOpen(next);
-          }}
+      {working && !sessionId ? <RunActions session={store} compact /> : null}
+      {sessionId ? null : <ApprovalPanel session={store} onOpenArtifact={onOpenArtifact} />}
+      {attention.length ? (
+        <ul
+          className="space-y-1 text-xs"
+          aria-label={t('toolActivity', { count: attention.length })}
         >
-          <summary className="w-fit cursor-pointer py-1 text-muted">
-            {t('toolActivity', { count: toolCalls.length })}
-          </summary>
-          <ul
-            className="max-h-48 overflow-y-auto space-y-1"
-            aria-label={t('toolActivity', { count: toolCalls.length })}
-          >
-            {toolCalls.map((call) => {
-              const effect = call.effectId ? projection.effects[call.effectId] : null;
-              const phase =
-                call.status === 'blocked'
-                  ? 'blocked'
-                  : effect?.outcome === 'unknown' || effect?.outcome === 'cancelled'
-                    ? effect.outcome
-                    : (call.phase ??
-                      (Object.hasOwn(call, 'resultRef')
-                        ? call.reason
-                          ? 'failed'
-                          : 'finished'
-                        : 'requested'));
-              return (
-                <li key={call.toolCallId} className="flex flex-wrap gap-x-2">
-                  <span>{name(call.executionId)}</span>
-                  <code>{call.name}</code>
-                  <span className="text-muted">{t(`toolPhase.${phase}`)}</span>
-                </li>
-              );
-            })}
-          </ul>
-        </details>
+          {attention.map((row) => (
+            <li key={row.id} className="flex flex-wrap gap-x-2">
+              <code>{row.name}</code>
+              <span className="text-danger">{t(`toolPhase.${row.tone}`)}</span>
+            </li>
+          ))}
+        </ul>
       ) : null}
       {projection.statusReason &&
+      (!sessionId || !working) &&
       projection.status !== 'running' &&
       projection.status !== 'succeeded' ? (
         <p data-testid="run-reason" className="text-xs text-muted">
@@ -268,36 +240,43 @@ export function RunMessage({
           first={index === 0}
         />
       ))}
-      <details className="work-log group/log" onToggle={(e) => setExpanded(e.currentTarget.open)}>
-        <summary className="flex w-fit cursor-pointer list-none items-center gap-1.5 rounded py-0.5 text-xs text-muted hover:text-text">
-          <Activity size={13} />
-          {t('activity')}
-          <span className="tabular-nums">{projection.executionOrder.length}</span>
-          <ChevronRight size={12} className="transition-transform group-open/log:rotate-90" />
-        </summary>
-        {expanded ? (
-          <div className="mt-2 space-y-1 border-l border-line pl-3">
-            {projection.executionOrder.map((id) => {
-              const execution = projection.executions[id];
-              if (!execution) return null;
-              return (
-                <details key={id} className="text-xs">
-                  <summary className="flex cursor-pointer items-center gap-2 py-1.5">
-                    <span className="font-medium">{name(id)}</span>
-                    <StatusBadge status={execution.status} />
-                    {execution.modelCallIds.at(-1) ? (
-                      <ReasoningSummary
-                        call={projection.modelCalls[execution.modelCallIds.at(-1)!]!}
-                      />
-                    ) : null}
-                  </summary>
-                  <ExecutionTranscript session={store} executionId={id} />
-                </details>
-              );
-            })}
-          </div>
-        ) : null}
-      </details>
+      {!working || !sessionId ? (
+        <details
+          id={`work-log-${runId}`}
+          className="work-log group/log"
+          onToggle={(e) => setExpanded(e.currentTarget.open)}
+        >
+          <summary className="flex w-fit cursor-pointer list-none items-center gap-1.5 rounded py-0.5 text-xs text-muted hover:text-text">
+            <Activity size={13} />
+            {t('activity')}
+            <span className="tabular-nums">{projection.executionOrder.length}</span>
+            <ChevronRight size={12} className="transition-transform group-open/log:rotate-90" />
+          </summary>
+          {expanded ? (
+            <div className="mt-2 space-y-1 border-l border-line pl-3">
+              <WorkPlanPanel session={store} />
+              {projection.executionOrder.map((id) => {
+                const execution = projection.executions[id];
+                if (!execution) return null;
+                return (
+                  <details key={id} className="text-xs">
+                    <summary className="flex cursor-pointer items-center gap-2 py-1.5">
+                      <span className="font-medium">{name(id)}</span>
+                      <StatusBadge status={execution.status} />
+                      {execution.modelCallIds.at(-1) ? (
+                        <ReasoningSummary
+                          call={projection.modelCalls[execution.modelCallIds.at(-1)!]!}
+                        />
+                      ) : null}
+                    </summary>
+                    <ExecutionTranscript session={store} executionId={id} compact />
+                  </details>
+                );
+              })}
+            </div>
+          ) : null}
+        </details>
+      ) : null}
       {state.streamError ? (
         <p role="alert" className="text-xs text-danger">
           {state.streamError}

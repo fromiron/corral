@@ -1,5 +1,4 @@
 import type { AgentStartInput, DeliveredDirective, RequestPermit } from '@corral/contracts';
-import { defaultReply } from '@corral/testkit';
 
 // Simulated replies for the demo team (C-063). They are fixed text, marked as simulated, and
 // built only from what the runtime handed the execution: its inputs, its assignment, the
@@ -17,19 +16,12 @@ export type DemoReply = (
 ) => string;
 
 const TEAM_ROLES = new Set(['researcher', 'helper', 'writer', 'reviewer']);
-/** Session auto roles whose reply is the person's request, not a settings echo. */
-const SESSION_ANSWERS = new Set(['worker', 'planner']);
+const SESSION_PLAN_ROLES = new Set(['worker', 'planner']);
 
 export function createDemoReply(): DemoReply {
   // Directives already delivered to each execution stay in its later requests' context.
   const delivered = new Map<string, DeliveredDirective[]>();
   return (turn, input, permit, notes) => {
-    // Visitor-built corrals echo settings so a prompt edit stays visible in the run output.
-    // The session auto worker is the person's answer: the request and any delivered
-    // instruction, without the role prompt, model profile, or a previous artifact body.
-    if (!TEAM_ROLES.has(input.role.id) && !SESSION_ANSWERS.has(input.role.id)) {
-      return echoReply(turn, input, permit, notes);
-    }
     const directives = [...(delivered.get(input.executionId) ?? []), ...permit.directives];
     delivered.set(input.executionId, directives);
     // A responder answers in its one request (ScriptedAgentAdapter); others use DEMO_TURNS.
@@ -38,27 +30,11 @@ export function createDemoReply(): DemoReply {
     const body =
       turn < last
         ? progress(input)
-        : SESSION_ANSWERS.has(input.role.id)
-          ? workerAnswer(input)
-          : final(input, notes);
+        : TEAM_ROLES.has(input.role.id) || input.assignment.kind === 'question'
+          ? final(input, notes)
+          : workerAnswer(input);
     return [header, instructions(directives), body].filter(Boolean).join('\n\n');
   };
-}
-
-/** Corrals the visitor builds: echo inputs and settings so every edit is visible. */
-function echoReply(
-  turn: number,
-  input: AgentStartInput,
-  permit: RequestPermit,
-  notes: readonly string[],
-): string {
-  return [
-    defaultReply(turn, input, permit),
-    `role prompt: ${input.role.prompt}`,
-    `model profile: ${input.modelProfile}`,
-    ...input.inputs.map((value) => `${value.name}: ${value.text}`),
-    ...notes,
-  ].join('\n');
 }
 
 function instructions(directives: readonly DeliveredDirective[]): string {
@@ -71,6 +47,70 @@ function instructions(directives: readonly DeliveredDirective[]): string {
 
 const START_FROM = '\n\nStart from this earlier version:\n';
 
+/** A short greeting stays plan-free. This phrase asks the demo to publish a real checklist. */
+const DEMO_PLAN_MARK = '단계별';
+
+const DEMO_PLAN_TITLES = [
+  '예시 · 관련 코드 확인',
+  '예시 · 변경 계획 작성',
+  '예시 · 채팅 레이아웃 수정',
+  '예시 · 회귀 테스트',
+  '예시 · 결과 정리',
+  '예시 · 화면 확인',
+  '예시 · 기록 남기기',
+] as const;
+const DEMO_PLAN_STEPS = [0, 1, 2, 3, 4, 5, 6, 7] as const;
+
+export function demoPlansFor(input: AgentStartInput): boolean {
+  if (!SESSION_PLAN_ROLES.has(input.role.id)) return false;
+  if (!input.role.allowedCollaborationTools.includes('update_plan')) return false;
+  const raw = input.inputs.find((item) => item.name === 'brief')?.text ?? '';
+  const at = raw.indexOf(START_FROM);
+  const request = (at === -1 ? raw : raw.slice(0, at)).trim();
+  return request.includes(DEMO_PLAN_MARK);
+}
+
+/** Step 0 is 0/7 with the first item in progress; later steps complete that many items. */
+export function demoPlanUpdate(step: (typeof DEMO_PLAN_STEPS)[number], criteriaVersionId: string) {
+  return {
+    scope: 'execution' as const,
+    expectedRevision: step,
+    criteriaVersionId,
+    items: DEMO_PLAN_TITLES.map((title, index) => ({
+      id: `step_${index + 1}`,
+      title,
+      status:
+        index < step
+          ? ('completed' as const)
+          : index === step
+            ? ('in_progress' as const)
+            : ('pending' as const),
+    })),
+  };
+}
+
+/** Publishes the checklist through the host. A failed update stops the sequence and leaves the reply path alone. */
+export async function publishDemoPlan(
+  input: AgentStartInput,
+  host: {
+    invokeTool(call: {
+      name: 'update_plan';
+      args: ReturnType<typeof demoPlanUpdate>;
+    }): Promise<{ ok: boolean }>;
+  },
+  wait: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  stepDelayMs = 400,
+): Promise<void> {
+  for (const step of DEMO_PLAN_STEPS) {
+    const updated = await host.invokeTool({
+      name: 'update_plan',
+      args: demoPlanUpdate(step, input.criteriaVersionId),
+    });
+    if (!updated.ok) return;
+    if (step < DEMO_PLAN_TITLES.length) await wait(stepDelayMs);
+  }
+}
+
 /** The person's own request. A later run's brief also carries the prior artifact (CR-007); that tail stays model input and is not the answer. */
 function workerAnswer(input: AgentStartInput): string {
   const raw = input.inputs.find((i) => i.name === 'brief')?.text ?? '';
@@ -79,8 +119,7 @@ function workerAnswer(input: AgentStartInput): string {
   return request || 'No request text was given.';
 }
 
-const brief = (input: AgentStartInput) =>
-  input.inputs.find((i) => i.name === 'brief')?.text ?? 'the brief';
+const brief = (input: AgentStartInput) => workerAnswer(input);
 
 const versionOf = (input: AgentStartInput, name: string) =>
   input.inputs.find((i) => i.name === name)?.artifactVersionId ?? null;

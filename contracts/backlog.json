@@ -2302,5 +2302,20 @@
     ],
     "done": "설정/해석/원자 저장·Run 고정·버전별 worker 전달·Pi 임계 및 permit 정책·UI 경고/보존을 확인한다.",
     "status": "implemented"
+  },
+  {
+    "id": "C-121",
+    "phase": "M4",
+    "title": "채팅 위젯과 실시간 작업 계획",
+    "dependsOn": ["C-120"],
+    "requirements": ["CRL-WIDGET-001"],
+    "files": [
+      "apps/studio/src/workbench/widgets/",
+      "apps/studio/src/pages/SessionPage.tsx",
+      "packages/adapter-pi/src/context-usage.ts",
+      "packages/contracts/src/harness.ts"
+    ],
+    "done": "상단 위젯·입력창 위 계획·요청 측정이 현재 실행에 연결되고 과거 탐색과 승인 경계가 유지된다.",
+    "status": "implemented"
   }
 ]

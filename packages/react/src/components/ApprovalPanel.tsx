@@ -18,6 +18,7 @@ export function ApprovalPanel({
   onOpenArtifact,
   className,
   compact = false,
+  showPlan = true,
 }: {
   session: RunSessionStore;
   onOpenArtifact: (artifactVersionId: string) => void;
@@ -25,6 +26,8 @@ export function ApprovalPanel({
   className?: string;
   /** A one-row strip beside what is being read (the results view): no explanations. */
   compact?: boolean;
+  /** The session composer already presents the current plan; detail views retain it. */
+  showPlan?: boolean;
 }) {
   const t = useTranslations('Approvals');
   const headingId = useId();
@@ -92,7 +95,7 @@ export function ApprovalPanel({
       <>
         <RecipeStatusPanel session={session} onOpenArtifact={onOpenArtifact} />
         <InteractionPanel session={session} />
-        <WorkPlanPanel session={session} />
+        {showPlan ? <WorkPlanPanel session={session} /> : null}
       </>
     );
   const label = (id: string) =>
@@ -113,7 +116,7 @@ export function ApprovalPanel({
     <>
       <RecipeStatusPanel session={session} onOpenArtifact={onOpenArtifact} />
       <InteractionPanel session={session} />
-      <WorkPlanPanel session={session} />
+      {showPlan ? <WorkPlanPanel session={session} /> : null}
       <section aria-labelledby={headingId} className={`flex flex-col gap-2 ${className ?? ''}`}>
         <h3 id={headingId} className={compact ? 'sr-only' : 'text-ui font-semibold'}>
           {t('heading')}

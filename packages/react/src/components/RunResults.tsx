@@ -200,11 +200,14 @@ export function ResultReader({
   item,
   previewUrl,
   onStartFrom,
+  embedded = false,
 }: {
   session: RunSessionStore;
   item: ResultItem;
   previewUrl?: (runId: string, artifactVersionId: string) => string | null;
   onStartFrom?: (from: { runId: string; artifactVersionId: string; label: string }) => void;
+  /** The surrounding panel already shows run status. Review and submission stay. */
+  embedded?: boolean;
 }) {
   const t = useTranslations('Results');
   const ta = useTranslations('Artifact');
@@ -283,9 +286,11 @@ export function ResultReader({
           </span>
         </div>
         <ul aria-label={t('stateLabel')} className="flex flex-wrap gap-2 text-xs">
-          <li className="rounded fill-control px-2 py-0.5">
-            {t('runState', { status: ts(status) })}
-          </li>
+          {embedded ? null : (
+            <li className="rounded fill-control px-2 py-0.5">
+              {t('runState', { status: ts(status) })}
+            </li>
+          )}
           <li className="rounded fill-control px-2 py-0.5">
             {item.review
               ? t('reviewState', { verdict: ta(`verdict.${item.review.verdict}`) }) +

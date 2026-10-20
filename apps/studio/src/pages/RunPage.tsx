@@ -1,6 +1,6 @@
 import type { CorralDefinition, NodeLayout } from '@corral/contracts';
 import { TERMINAL_EXECUTION_STATUSES, TERMINAL_RUN_STATUSES } from '@corral/contracts';
-import type { RunProjection } from '@corral/core';
+import { pendingInteractions, type RunProjection } from '@corral/core';
 import {
   ApprovalPanel,
   ArtifactViewer,
@@ -25,6 +25,7 @@ import {
   TaskBoard,
   Timeline,
   useSteerTarget,
+  WorkPlanPanel,
 } from '@corral/react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
@@ -71,6 +72,7 @@ export function RunDetail({
   embedded = false,
   compact = false,
   sessionId = null,
+  sessionStore,
 }: {
   sessionId?: string | null;
   runId: string;
@@ -78,13 +80,17 @@ export function RunDetail({
   setSearch: (patch: RunDetailSearch) => void;
   embedded?: boolean;
   compact?: boolean;
+  /** When set, this detail must not retarget the session's live run store. */
+  sessionStore?: RunSessionStore;
 }) {
   const t = useTranslations('RunPage');
   const { session: sharedSession, editorSessions, transport, repository } = useServices();
   const session = useMemo(
     () =>
-      [...editorSessions.values()].find((view) => view.getState().runId === runId) ?? sharedSession,
-    [editorSessions, sharedSession, runId],
+      sessionStore ??
+      [...editorSessions.values()].find((view) => view.getState().runId === runId) ??
+      sharedSession,
+    [sessionStore, editorSessions, sharedSession, runId],
   );
   const activeRunId = useStore(session, (s) => s.runId);
   const missing = useStore(session, (s) => s.missingRunId === runId);
@@ -194,6 +200,8 @@ function CompactRunWorkspace({
   const projection = useStore(session, (state) => state.projection);
   const target = useSteerTarget(session, search.execution ?? null);
   const controls = useRef<HTMLDivElement>(null);
+  const response = useRef<HTMLDivElement>(null);
+  const openedResponseRun = useRef<string | null>(null);
   const trigger = useRef<HTMLElement | null>(null);
   const detailsLink = useRef<HTMLAnchorElement>(null);
   const { previewUrl } = useServices();
@@ -203,17 +211,34 @@ function CompactRunWorkspace({
       controls.current?.scrollIntoView({ block: 'nearest' });
     }
   }, [search.execution]);
+  useEffect(() => {
+    if (!projection?.startedAt || openedResponseRun.current === projection.runId) return;
+    openedResponseRun.current = projection.runId;
+    // Navigation to this run may reveal an existing decision. Later events must not
+    // move focus out of the composer or an answer the person is already editing.
+    if (
+      search.execution ||
+      search.artifact ||
+      search.result ||
+      search.view === 'results' ||
+      !pendingInteractions(session.getState().events, projection).length
+    )
+      return;
+    response.current?.focus({ preventScroll: true });
+    response.current?.scrollIntoView({ block: 'nearest' });
+  }, [projection, session, search.execution, search.artifact, search.result, search.view]);
   if (!projection) return null;
   const version =
     search.view === 'results'
       ? (search.result ?? search.artifact)
       : (search.artifact ?? search.result);
-  const results = search.view === 'results' ? runResults(projection) : null;
-  const result = results
-    ? [...results.final, ...results.intermediate.flatMap((group) => group.versions)].find(
-        (item) => item.artifactVersionId === version,
-      )
-    : null;
+  const results = runResults(projection);
+  const result =
+    search.view === 'results' || search.result
+      ? [...results.final, ...results.intermediate.flatMap((group) => group.versions)].find(
+          (item) => item.artifactVersionId === version,
+        )
+      : null;
   const startFrom = projection.corralId
     ? (from: { runId: string; artifactVersionId: string }) =>
         void navigate({
@@ -226,38 +251,29 @@ function CompactRunWorkspace({
     <div className="flex h-full min-h-0 flex-col" data-testid="compact-run">
       <RunSummary session={session} definition={definition} compact />
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-3">
-        <Link
-          ref={detailsLink}
-          to="/runs/$runId"
-          params={{ runId: projection.runId }}
-          search={{ ...search, view: search.view ?? 'run' }}
-          className="rounded-md fill-control px-3 py-2 text-center text-sm hover:bg-sidebar-accent"
+        <div
+          ref={response}
+          data-run-response={projection.runId}
+          tabIndex={-1}
+          className="rounded outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
-          {n('openRunDetails')}
-        </Link>
-        <RunStatusCards
-          session={session}
-          sessionId={sessionId}
-          executionId={search.execution ?? null}
-        />
-        <section aria-label={t('executions')} className="flex flex-col gap-2">
-          <h3 className="text-xs font-medium text-muted">{t('executions')}</h3>
-          <ExecutionTree
+          <ApprovalPanel
             session={session}
             compact
-            selectedExecutionId={search.execution ?? null}
-            onSteer={(execution) => {
-              trigger.current =
-                document.activeElement instanceof HTMLElement ? document.activeElement : null;
-              setSearch({ execution, view: 'run' });
+            showPlan={false}
+            onOpenArtifact={(artifact) => {
+              const selectable = [
+                ...results.final,
+                ...results.intermediate.flatMap((group) => group.versions),
+              ].some((item) => item.artifactVersionId === artifact);
+              setSearch(
+                selectable && !projection.reviews[artifact]
+                  ? { result: artifact, view: 'results', artifact: undefined }
+                  : { artifact, view: 'run', result: undefined },
+              );
             }}
           />
-        </section>
-        <ApprovalPanel
-          session={session}
-          compact
-          onOpenArtifact={(artifact) => setSearch({ artifact, view: 'run', result: undefined })}
-        />
+        </div>
         {result ? (
           <div className="rounded-lg fill-group">
             <div className="flex justify-end p-2">
@@ -273,10 +289,20 @@ function CompactRunWorkspace({
               key={result.artifactVersionId}
               session={session}
               item={result}
+              embedded
               {...(previewUrl ? { previewUrl } : {})}
               {...(startFrom ? { onStartFrom: startFrom } : {})}
             />
           </div>
+        ) : search.result ? (
+          <p role="alert" className="text-sm text-warning">
+            {t('resultMissing', { result: search.result })}
+          </p>
+        ) : !version ? (
+          <ResultChoices
+            results={results}
+            onOpen={(id) => setSearch({ result: id, view: 'results' })}
+          />
         ) : version ? (
           <ArtifactViewer
             session={session}
@@ -332,8 +358,72 @@ function CompactRunWorkspace({
             </details>
           ) : null}
         </div>
+        <details className="rounded-lg fill-group p-2 text-sm">
+          <summary className="cursor-pointer text-xs font-medium">{t('executions')}</summary>
+          <div className="mt-3 flex flex-col gap-3">
+            <Link
+              ref={detailsLink}
+              to="/runs/$runId"
+              params={{ runId: projection.runId }}
+              search={{ ...search, view: search.view ?? 'run' }}
+              className="rounded-md fill-control px-3 py-2 text-center text-sm hover:bg-sidebar-accent"
+            >
+              {n('openRunDetails')}
+            </Link>
+            <RunStatusCards
+              session={session}
+              sessionId={sessionId}
+              executionId={search.execution ?? null}
+            />
+            <WorkPlanPanel session={session} />
+            <ExecutionTree
+              session={session}
+              compact
+              selectedExecutionId={search.execution ?? null}
+              onSteer={(execution) => {
+                trigger.current =
+                  document.activeElement instanceof HTMLElement ? document.activeElement : null;
+                setSearch({ execution, view: 'run' });
+              }}
+            />
+          </div>
+        </details>
       </div>
     </div>
+  );
+}
+
+function ResultChoices({
+  results,
+  onOpen,
+}: {
+  results: NonNullable<ReturnType<typeof runResults>>;
+  onOpen: (artifactVersionId: string) => void;
+}) {
+  const t = useTranslations('Results');
+  const items =
+    results.kind === 'partial' ? results.intermediate.map((group) => group.latest) : results.final;
+  if (!items.length)
+    return (
+      <p className="text-sm text-muted">
+        {t(`kind.${results.kind === 'final' ? 'none' : results.kind}`)}
+      </p>
+    );
+  return (
+    <ul aria-label={t('label')} className="flex flex-col gap-1">
+      {items.map((item) => (
+        <li key={item.artifactVersionId}>
+          <button
+            type="button"
+            className="w-full rounded px-2 py-1 text-left text-sm hover:bg-raised"
+            onClick={() => onOpen(item.artifactVersionId)}
+          >
+            {t('itemName', { name: item.name, version: item.version })}
+            {results.kind === 'partial' ? ` · ${t('partial')}` : ''}
+          </button>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -623,24 +713,35 @@ function RunSummary({
             </span>
           ) : null}
         </div>
-        <p className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted">
-          <span>{working.length ? t('working', { labels: working.join(', ') }) : t('idle')}</span>
-          {loops.map((text) => (
-            <span key={text}>{text}</span>
-          ))}
-          <span>
-            {t('tasks', {
-              done: tasks.filter((task) => task.status === 'completed').length,
-              total: tasks.length,
-            })}
-          </span>
-          <span>{t('requests', { count: inFlight })}</span>
-          {projection.statusReason ? (
+        {compact && projection.status === 'succeeded' && working.length === 0 ? null : (
+          <p className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted">
             <span>
-              {tr('reasonPrefix')} <RunReason code={projection.statusReason} nodeLabel={labelOf} />
+              {working.length
+                ? t('working', { labels: working.join(', ') })
+                : compact
+                  ? null
+                  : t('idle')}
             </span>
-          ) : null}
-        </p>
+            {loops.map((text) => (
+              <span key={text}>{text}</span>
+            ))}
+            {compact && inFlight === 0 ? null : <span>{t('requests', { count: inFlight })}</span>}
+            {compact ? null : (
+              <span>
+                {t('tasks', {
+                  done: tasks.filter((task) => task.status === 'completed').length,
+                  total: tasks.length,
+                })}
+              </span>
+            )}
+            {projection.statusReason && !(compact && projection.status === 'succeeded') ? (
+              <span>
+                {tr('reasonPrefix')}{' '}
+                <RunReason code={projection.statusReason} nodeLabel={labelOf} />
+              </span>
+            ) : null}
+          </p>
+        )}
       </div>
       <div className="max-h-28 w-[24rem] max-w-full overflow-auto">
         <RunActions session={session} compact />
@@ -702,7 +803,9 @@ function NodeExecutions({
                 aria-pressed={id === selectedExecutionId}
                 onClick={() => onChoose(id)}
                 className={`flex w-full items-center justify-between gap-2 rounded border px-2 py-1 text-left ${
-                  id === selectedExecutionId ? 'border-accent bg-raised' : 'border-transparent fill-group'
+                  id === selectedExecutionId
+                    ? 'border-accent bg-raised'
+                    : 'border-transparent fill-group'
                 }`}
               >
                 <span>
@@ -737,11 +840,7 @@ function ViewSwitch({ view, onView }: { view: RunPageView; onView: (view: RunPag
     refs.current[next]?.focus();
   };
   return (
-    <div
-      role="tablist"
-      aria-label={t('label')}
-      className="flex rounded-md fill-control p-0.5"
-    >
+    <div role="tablist" aria-label={t('label')} className="flex rounded-md fill-control p-0.5">
       {VIEWS.map((name, index) => (
         <button
           key={name}

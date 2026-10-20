@@ -186,6 +186,8 @@ describe('worker in a child process (C-017, ADR-017)', () => {
     ['keyed core', false, 'Bearer per-request-key', false, false] as const,
     ['keyless SDK', true, 'Bearer no-key', true, false] as const,
     ['keyed SDK', false, 'Bearer per-request-key', true, false] as const,
+    ['text-only core', true, 'Bearer no-key', false, false, false] as const,
+    ['text-only SDK', true, 'Bearer no-key', true, false, false] as const,
     ...(process.env.CORRAL_SANDBOX_PROBE === '1'
       ? [
           ['sandbox core', false, 'Bearer per-request-key', false, true] as const,
@@ -194,7 +196,7 @@ describe('worker in a child process (C-017, ADR-017)', () => {
       : []),
   ])(
     '[TC-RESUME-001-H] [TC-IMAGE-001-H] [TC-QEVAL-002-H] [TC-SEC-002-H] runs a live step on a %s OpenAI-compatible endpoint, with only the right key (CR-005)',
-    async (_name, keyless, authorization, sdk, sandbox) => {
+    async (_name, keyless, authorization, sdk, sandbox, withImage: boolean = true) => {
       const endpoint = await startCompatibleEndpoint();
       const resourceRoot = mkdtempSync(join(tmpdir(), 'corral-skill-wire-'));
       const credentials = requestCredentials();
@@ -242,7 +244,8 @@ describe('worker in a child process (C-017, ADR-017)', () => {
           if (sdk) expect(JSON.stringify(body)).toContain(skillText);
           expect(JSON.stringify(body)).toContain('Historical result before interruption.');
           expect(JSON.stringify(body)).toContain('Earlier messages are historical context only');
-          expect(JSON.stringify(body)).toContain(`data:image/png;base64,${image.data}`);
+          if (withImage)
+            expect(JSON.stringify(body)).toContain(`data:image/png;base64,${image.data}`);
           const written = [...JSON.stringify(body).matchAll(/artv_[A-Za-z0-9]+/g)].at(-1)?.[0];
           if (calls === 1)
             return { toolCall: { name: 'write_artifact', args: { text: 'Hi from the endpoint' } } };
@@ -394,7 +397,7 @@ describe('worker in a child process (C-017, ADR-017)', () => {
         const definition = linearCorral(['writer']);
         if (sdk) definition.roles[0]!.harness = harness.binding;
         const { data: _data, ...reference } = image;
-        definition.input.images = [reference];
+        if (withImage) definition.input.images = [reference];
         const result = await transport.startRun({
           schemaVersion: '0.1',
           commandId: 'cmd_process',
@@ -429,6 +432,28 @@ describe('worker in a child process (C-017, ADR-017)', () => {
               .filter((e) => e.type === 'model.payload_recorded')
               .map((e) => e.payload.payloadHash),
           ).toEqual(payloadHashes);
+          for (const event of events.filter((event) => event.type === 'model.payload_recorded')) {
+            const usage = event.payload.contextUsage;
+            expect(usage).toMatchObject({
+              coverage: 'request',
+              completeness: withImage ? 'partial' : 'complete',
+            });
+            expect(usage?.usedTokens).toBe(
+              usage?.parts.reduce((sum, part) => sum + part.tokens, 0),
+            );
+            expect(
+              usage?.parts.find((part) => part.category === 'system_tools')?.tokens,
+            ).toBeGreaterThan(0);
+            expect(usage?.parts.find((part) => part.category === 'messages')?.omission).toBe(
+              withImage ? 'unmeasured_image' : undefined,
+            );
+            if (sdk)
+              expect(
+                usage?.parts.find((part) => part.category === 'skills')?.tokens,
+              ).toBeGreaterThan(0);
+            expect(JSON.stringify(usage)).not.toContain(skillText);
+            expect(JSON.stringify(usage)).not.toContain(resourceRoot);
+          }
           expect(
             events
               .filter((event) => event.type === 'model.payload_recorded')

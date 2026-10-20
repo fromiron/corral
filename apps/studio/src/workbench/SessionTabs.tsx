@@ -43,6 +43,11 @@ export function SessionTabs({ sessions }: { sessions: WorkSession[] }) {
   });
   const navigation = useRef(visible);
   navigation.current = visible;
+  const activeTab = useRef<HTMLAnchorElement>(null);
+  const visibleActiveId = visible.find((tab) => tab.sessionId === activeId)?.sessionId;
+  useEffect(() => {
+    if (visibleActiveId) activeTab.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [visibleActiveId]);
   useEffect(() => {
     if (!desktop) return;
     const select = (event: KeyboardEvent) => {
@@ -66,7 +71,7 @@ export function SessionTabs({ sessions }: { sessions: WorkSession[] }) {
   return (
     <nav
       aria-label={t('label')}
-      className="flex shrink-0 gap-1 overflow-x-auto border-b border-line px-2 py-1"
+      className="session-tabs flex min-w-0 items-center gap-1 overflow-x-auto py-1"
     >
       {visible.map((tab, index) => (
         <div
@@ -74,6 +79,7 @@ export function SessionTabs({ sessions }: { sessions: WorkSession[] }) {
           className={`flex shrink-0 items-center rounded ${tab.sessionId === activeId ? 'bg-subtle' : ''}`}
         >
           <a
+            ref={tab.sessionId === activeId ? activeTab : undefined}
             href={tab.href}
             aria-current={tab.sessionId === activeId ? 'page' : undefined}
             onClick={(event) => {
@@ -88,14 +94,14 @@ export function SessionTabs({ sessions }: { sessions: WorkSession[] }) {
                 void navigate({ href: tab.href });
               }
             }}
-            className="max-w-48 truncate px-2 py-1 text-xs"
+            className="max-w-48 truncate px-2 py-1.5 text-xs"
             title={tab.title}
           >
             {tab.title}
           </a>
           <button
             type="button"
-            className="rounded p-1 text-muted hover:text-text"
+            className="flex size-6 shrink-0 items-center justify-center rounded text-muted hover:text-text"
             aria-label={t('close', { title: tab.title })}
             onClick={() => {
               setStored(tabs.filter((item) => item.sessionId !== tab.sessionId));

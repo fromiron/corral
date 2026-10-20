@@ -2834,5 +2834,41 @@
     "status": "planned",
     "adapter": "deterministic fixtures and actual browser; no paid calls",
     "evidence": null
+  },
+  {
+    "id": "TC-WIDGET-001-H",
+    "requirements": ["CRL-WIDGET-001"],
+    "suite": "unit+browser",
+    "scenario": "SURFACE-01 PLAN-02 PLAN-05 PLAN-07 ACTION-01. 상단 위젯과 입력창 위 계획이 현재 실행을 보여 주고, 수동 펼침과 승인 대기는 접힘에 숨지 않는다.",
+    "status": "planned",
+    "adapter": "deterministic fixtures; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-WIDGET-001-N",
+    "requirements": ["CRL-WIDGET-001"],
+    "suite": "unit+browser",
+    "scenario": "PLAN-03 PLAN-04 PLAN-06 PLAN-09 PLAN-10 PLAN-11 SURFACE-02 TOOL-02. 늦은 본문·다른 실행·끝난 팀 계획·좁은 폭·불명확 도구가 현재 화면을 덮거나 0으로 숨지 않는다.",
+    "status": "planned",
+    "adapter": "deterministic fixtures; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-WIDGET-002-H",
+    "requirements": ["CRL-WIDGET-001"],
+    "suite": "unit",
+    "scenario": "CTX-02. 요청에 포함된 메시지·시스템·스킬·도구만 같은 chars/4 기준으로 한 번 합산한다.",
+    "status": "planned",
+    "adapter": "deterministic fixtures; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-WIDGET-002-N",
+    "requirements": ["CRL-WIDGET-001"],
+    "suite": "unit",
+    "scenario": "CTX-01 CTX-03 CTX-04 CTX-05 CTX-06 CTX-07. 메시지 전용·부분 측정·공급자 usage·압축 대기·Ultra 분모·다음 모델 선택은 전체 비율로 섞지 않는다.",
+    "status": "planned",
+    "adapter": "deterministic fixtures; no paid calls",
+    "evidence": null
   }
 ]

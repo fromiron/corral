@@ -130,7 +130,7 @@ export const test = base.extend<{
     });
     const fake = live
       ? fakeOpenAI({
-          configDir: join(workspace, '..', `${workspace.split('/').at(-1)}-config`),
+          configDir: `${workspace}-config`,
           ...(codexLogin ? { codexLogin: {} } : {}),
           reasoningApi,
           imageInput,

@@ -3,16 +3,18 @@ import { canonicalJson, ModelRequestRecord } from '@corral/contracts';
 import type { AgentMessage } from '@earendil-works/pi-agent-core';
 import { getCurrentSystemMessage, getCurrentSystemPrompt } from '@earendil-works/pi-ai';
 import { estimateTokens } from '@earendil-works/pi-coding-agent';
+import { type InspectOptions, inspectContext } from './context-usage.ts';
 import type { PromptSection } from './worker-tools.ts';
 
 const hash = (value: unknown) => createHash('sha256').update(canonicalJson(value)).digest('hex');
 
 export function requestRecord(
-  context: { messages: AgentMessage[] },
+  context: { messages: AgentMessage[]; tools?: unknown[] },
   purpose: ModelRequestRecord['purpose'],
   runtime: 'pi-core' | 'pi-sdk',
   directives: { directiveId: string; text: string }[],
   protectedSections: PromptSection[],
+  sources?: InspectOptions,
 ): ModelRequestRecord {
   const value = JSON.parse(JSON.stringify(context));
   const current = getCurrentSystemMessage(context.messages);
@@ -54,6 +56,7 @@ export function requestRecord(
       tokens: context.messages.reduce((sum, message) => sum + estimateTokens(message), 0),
       method: 'pi-1.3.0-messages',
     },
+    contextUsage: sources?.usage ?? inspectContext(context, { ...sources, usage: undefined }).usage,
     directiveIds: directives.filter((d) => users.includes(d.text)).map((d) => d.directiveId),
     contextHash: hash(value),
     contextBytes: Buffer.byteLength(canonicalJson(value)),
