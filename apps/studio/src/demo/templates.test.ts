@@ -1,7 +1,19 @@
-import type { AgentStartInput, RequestPermit } from '@corral/contracts';
-import { compileDefinition } from '@corral/core';
+import {
+  type AgentStartInput,
+  type RequestPermit,
+  type RunEvent,
+  WorkPlan,
+} from '@corral/contracts';
+import {
+  autoDefinition,
+  Coordinator,
+  compileDefinition,
+  InProcessTransport,
+  waitForProjection,
+} from '@corral/core';
+import { FakeClock, ScriptedAgentAdapter, SequentialIdFactory } from '@corral/testkit';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { createDemoReply } from './script.ts';
+import { createDemoReply, demoPlansFor, demoPlanUpdate, publishDemoPlan } from './script.ts';
 import { demoTemplate } from './templates.ts';
 
 const HANGUL = /[ㄱ-ㆎ가-힣]/;
@@ -158,4 +170,262 @@ describe('demo replies', () => {
     const other = startInput('write', { round: 1, executionId: 'exec_0004' });
     expect(demoReply(2, other, permit(), [])).not.toContain(directive.text);
   });
+
+  it.each(['agent_1_role', 'explainer_role'])(
+    'a %s demo reply preserves the request without diagnostics or recursive prior results',
+    (roleId) => {
+      const prior = 'role prompt: diagnostic prompt\nmodel profile: model-a\nEarlier artifact body';
+      const raw = `Explain this result.\n\nStart from this earlier version:\n(draft v1 from run run_1)\n\n${prior}`;
+      const input = withRole('write', roleId, {
+        inputs: [{ name: 'brief', kind: 'run_input', artifactVersionId: null, text: raw }],
+      });
+      const text = demoReply(2, input, permit(), ['raw tool diagnostics']);
+      expect(text).toContain('Explain this result.');
+      expect(text).toMatch(/simulated/i);
+      expect(text).toContain('No model was called.');
+      expect(text).not.toContain('role prompt:');
+      expect(text).not.toContain('model profile:');
+      expect(text).not.toContain(input.role.prompt);
+      expect(text).not.toContain('Start from this earlier version');
+      expect(text).not.toContain('Earlier artifact body');
+      expect(text).not.toContain('raw tool diagnostics');
+      expect(input.inputs[0]?.text).toBe(raw);
+    },
+  );
+
+  it('a session worker answers the request without diagnostics or the previous artifact', () => {
+    const prior = 'role prompt: secret\nmodel profile: model-a\nbrief: first run body';
+    const brief = `한 문장으로 안녕이라고 답해줘.\n\nStart from this earlier version:\n(draft v1 from run run_1)\n\n${prior}`;
+    const input = withRole('write', 'worker', {
+      modelProfile: 'model-a',
+      inputs: [{ name: 'brief', kind: 'run_input', artifactVersionId: null, text: brief }],
+    });
+    input.role = { ...input.role, prompt: 'Do what the request asks, directly and completely.' };
+    const text = demoReply(2, input, permit(), []);
+    expect(text).toContain('한 문장으로 안녕이라고 답해줘.');
+    expect(text).not.toContain('role prompt:');
+    expect(text).not.toContain('model profile:');
+    expect(text).not.toContain('Start from this earlier version');
+    expect(text).not.toContain('first run body');
+    expect(text).not.toContain('Do what the request asks');
+  });
+
+  it('a session planner answers the request without a settings echo', () => {
+    const input = withRole('write', 'planner', {
+      inputs: [
+        {
+          name: 'brief',
+          kind: 'run_input',
+          artifactVersionId: null,
+          text: '계획을 세워 줘.\n\nStart from this earlier version:\n(draft v1 from run run_1)\n\nrole prompt: secret',
+        },
+      ],
+    });
+    const text = demoReply(2, input, permit(), []);
+    expect(text).toContain('계획을 세워 줘.');
+    expect(text).not.toContain('role prompt:');
+    expect(text).not.toContain('Start from this earlier version');
+  });
+
+  it('team research keeps its structured answer without recursively quoting an earlier result', () => {
+    const input = startInput('research', {
+      inputs: [
+        {
+          name: 'brief',
+          kind: 'run_input',
+          artifactVersionId: null,
+          text: 'Compare two tools.\n\nStart from this earlier version:\n(draft v1 from run run_1)\n\nrole prompt: diagnostic prompt\nEarlier artifact body',
+        },
+      ],
+    });
+    const text = demoReply(2, input, permit(), []);
+    expect(text).toContain('## Research notes');
+    expect(text).toContain('Brief: Compare two tools.');
+    expect(text).not.toContain('Start from this earlier version');
+    expect(text).not.toContain('Earlier artifact body');
+    expect(text).not.toContain('role prompt:');
+    expect(input.inputs[0]?.text).toContain('Earlier artifact body');
+  });
+
+  it('a short request does not publish a plan, and a staged request does through update_plan', async () => {
+    const short = withRole('write', 'worker', {
+      inputs: [{ name: 'brief', kind: 'run_input', artifactVersionId: null, text: '안녕' }],
+    });
+    short.role = { ...short.role, allowedCollaborationTools: ['update_plan', 'submit_result'] };
+    expect(demoPlansFor(short)).toBe(false);
+    const staged = withRole('write', 'worker', {
+      inputs: [
+        {
+          name: 'brief',
+          kind: 'run_input',
+          artifactVersionId: null,
+          text: '단계별로 채팅 레이아웃을 고쳐 줘.',
+        },
+      ],
+    });
+    staged.role = { ...staged.role, allowedCollaborationTools: ['update_plan', 'submit_result'] };
+    expect(demoPlansFor(staged)).toBe(true);
+    const calls: unknown[] = [];
+    await publishDemoPlan(
+      staged,
+      {
+        invokeTool: async (call) => {
+          calls.push(call.args);
+          return { ok: true };
+        },
+      },
+      async () => {},
+    );
+    expect(calls).toHaveLength(8);
+    expect(
+      demoPlanUpdate(0, staged.criteriaVersionId).items.filter(
+        (item) => item.status === 'completed',
+      ),
+    ).toHaveLength(0);
+    expect(
+      demoPlanUpdate(2, staged.criteriaVersionId).items.filter(
+        (item) => item.status === 'completed',
+      ),
+    ).toHaveLength(2);
+    expect((calls[2] as { expectedRevision: number }).expectedRevision).toBe(2);
+    expect(calls[7]).toMatchObject({
+      expectedRevision: 7,
+      items: Array.from({ length: 7 }, () => ({ status: 'completed' })),
+    });
+    expect(
+      demoPlanUpdate(7, staged.criteriaVersionId).items.every((item) =>
+        item.title.startsWith('예시'),
+      ),
+    ).toBe(true);
+  });
+
+  it('a rejected plan update stops the sequence without waiting or publishing later revisions', async () => {
+    const input = withRole('write', 'worker');
+    const calls: number[] = [];
+    const waits: number[] = [];
+    await publishDemoPlan(
+      input,
+      {
+        invokeTool: async (call) => {
+          calls.push(call.args.expectedRevision);
+          return { ok: call.args.expectedRevision === 0 };
+        },
+      },
+      async (ms) => {
+        waits.push(ms);
+      },
+    );
+    expect(calls).toEqual([0, 1]);
+    expect(waits).toHaveLength(1);
+  });
+
+  it.each([
+    { brief: '안녕', completed: [] },
+    { brief: '단계별로 채팅 레이아웃을 고쳐 줘.', completed: [0, 1, 2, 3, 4, 5, 6, 7] },
+  ])(
+    'the Coordinator persists the actual demo plan sequence for "$brief"',
+    async ({ brief, completed }) => {
+      const beforeReply: { status: string; completed: number }[] = [];
+      const coordinator = new Coordinator({
+        clock: new FakeClock(),
+        ids: new SequentialIdFactory(),
+        agents: new ScriptedAgentAdapter({
+          turns: 2,
+          reply: createDemoReply(),
+          appendNotes: false,
+          script: async (input, host) => {
+            if (demoPlansFor(input)) await publishDemoPlan(input, host, async () => {});
+            return null;
+          },
+          beforeReply: async (_turn, input) => {
+            const projection = coordinator.getSnapshot(input.runId).projection;
+            const ref = Object.values(projection.workPlans ?? {})[0];
+            const plan = ref
+              ? WorkPlan.parse(
+                  JSON.parse(coordinator.getArtifactText(input.runId, ref.bodyRef) ?? 'null'),
+                )
+              : null;
+            beforeReply.push({
+              status: projection.status,
+              completed: plan?.items.filter((item) => item.status === 'completed').length ?? 0,
+            });
+          },
+        }),
+      });
+      const transport = new InProcessTransport(coordinator);
+      const started = coordinator.startRun({
+        schemaVersion: '0.1',
+        commandId: 'cmd_demo_plan',
+        definition: autoDefinition({
+          id: 'demo_auto',
+          template: 'single',
+          brief,
+          choice: { modelProfile: 'model-a' },
+          fileTools: false,
+        }),
+        mode: 'mock',
+      });
+      expect(started.receipt.status).toBe('applied');
+      if (!started.runId) throw new Error('Demo run was not created');
+      const runId = started.runId;
+      const events: RunEvent[] = [];
+      const stop = transport.subscribe(runId, 0, { onEvent: (event) => events.push(event) });
+      try {
+        const projection = await waitForProjection(transport, runId, (run) =>
+          ['succeeded', 'failed', 'cancelled'].includes(run.status),
+        );
+        expect(projection.status).toBe('succeeded');
+        const updates = events.filter((event) => event.type === 'work_plan.updated');
+        const plans = updates.map((event) =>
+          WorkPlan.parse(
+            JSON.parse(coordinator.getArtifactText(runId, event.payload.bodyRef) ?? 'null'),
+          ),
+        );
+        expect(
+          plans.map((plan) => plan.items.filter((item) => item.status === 'completed').length),
+        ).toEqual(completed);
+        expect(updates.map((event) => event.payload.revision)).toEqual(
+          completed.map((step) => step + 1),
+        );
+        expect(beforeReply).toEqual([
+          { status: 'running', completed: completed.length ? 7 : 0 },
+          { status: 'running', completed: completed.length ? 7 : 0 },
+        ]);
+        const output = coordinator.getArtifactText(
+          runId,
+          projection.output?.artifactVersionIds[0] ?? '',
+        );
+        expect(output).toContain('No model was called.');
+      } finally {
+        stop();
+      }
+    },
+  );
+
+  it('a session worker shows a directive from the delivery turn onward', () => {
+    const input = withRole('write', 'worker', { executionId: 'exec_worker' });
+    const directive = {
+      directiveId: 'dir_0009',
+      text: 'Keyboard instructions reach the next request.',
+    };
+    expect(demoReply(1, input, permit(), [])).not.toContain(directive.text);
+    expect(demoReply(2, input, permit([directive]), [])).toContain(directive.text);
+    expect(demoReply(3, input, permit(), [])).toContain(directive.text);
+  });
 });
+
+function withRole(
+  nodeId: string,
+  roleId: string,
+  overrides: Partial<AgentStartInput> = {},
+): AgentStartInput {
+  const input = startInput(nodeId, overrides);
+  return {
+    ...input,
+    role: {
+      ...input.role,
+      id: roleId,
+      name: roleId === 'worker' ? 'Assistant' : input.role.name,
+    },
+  };
+}

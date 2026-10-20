@@ -151,37 +151,37 @@
   }
 
   /* Dialogs are already a raised overlay, so groups step back to the page fill. */
-  [data-slot='dialog-popup'] .fill-group,
-  [data-slot='dialog-popup'] .fill-control {
+  [data-slot="dialog-popup"] .fill-group,
+  [data-slot="dialog-popup"] .fill-control {
     background: var(--surface);
   }
 
-  [data-slot='dialog-popup'] .fill-group .fill-control {
+  [data-slot="dialog-popup"] .fill-group .fill-control {
     background: var(--raised);
   }
 }
 
 /* The shared input draws its own edge. Inside a filled group that edge is a second frame. */
-.fill-group [data-slot='input-control'],
-.fill-group [data-slot='textarea-control'] {
+.fill-group [data-slot="input-control"],
+.fill-group [data-slot="textarea-control"] {
   background: var(--surface);
 }
 
-.fill-group .fill-group [data-slot='input-control'],
-.fill-group .fill-group [data-slot='textarea-control'],
-[data-slot='dialog-popup'] .fill-group [data-slot='input-control'],
-[data-slot='dialog-popup'] .fill-group [data-slot='textarea-control'] {
+.fill-group .fill-group [data-slot="input-control"],
+.fill-group .fill-group [data-slot="textarea-control"],
+[data-slot="dialog-popup"] .fill-group [data-slot="input-control"],
+[data-slot="dialog-popup"] .fill-group [data-slot="textarea-control"] {
   background: var(--raised);
 }
 
-.fill-group [data-slot='input-control']:not(:focus-within),
-.fill-group [data-slot='textarea-control']:not(:focus-within) {
+.fill-group [data-slot="input-control"]:not(:focus-within),
+.fill-group [data-slot="textarea-control"]:not(:focus-within) {
   border-color: transparent;
   box-shadow: none;
 }
 
-.fill-group [data-slot='input-control']:not(:focus-within)::before,
-.fill-group [data-slot='textarea-control']:not(:focus-within)::before {
+.fill-group [data-slot="input-control"]:not(:focus-within)::before,
+.fill-group [data-slot="textarea-control"]:not(:focus-within)::before {
   box-shadow: none;
 }
 

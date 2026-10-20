@@ -1,4 +1,3 @@
-// Adapted from T3 Code ChatView's timeline/composer layout (MIT). See THIRD-PARTY-NOTICES/T3-Code.md.
 import { ArrowDown } from '@corral/react/icons';
 import { Button } from '@corral/react/ui';
 import { defaultRangeExtractor, useVirtualizer } from '@tanstack/react-virtual';
@@ -27,6 +26,7 @@ export function ChatView({
   const follow = useRef(true);
   const restoreTop = useRef<number | null>(null);
   const restoreAnchor = useRef<{ id: string; offset: number } | null>(null);
+  const readingAnchor = useRef<{ id: string; offset: number } | null>(null);
   const [atEnd, setAtEnd] = useState(true);
   const [focused, setFocused] = useState<string | null>(null);
   const virtualized = items.length > 40;
@@ -57,6 +57,7 @@ export function ChatView({
     follow.current = true;
     restoreTop.current = null;
     restoreAnchor.current = null;
+    readingAnchor.current = null;
     try {
       const raw = sessionStorage.getItem(key);
       const stored = raw === null ? null : JSON.parse(raw);
@@ -74,7 +75,7 @@ export function ChatView({
     }
     position.current = () => {
       const { items, rows, virtualized } = current.current;
-      const anchor = restoreAnchor.current;
+      const anchor = restoreAnchor.current ?? (!follow.current ? readingAnchor.current : null);
       if (anchor && items.some((item) => item.id === anchor.id)) {
         const row = [...body.querySelectorAll<HTMLElement>('[data-chat-item]')].find(
           (row) => row.dataset.chatItem === anchor.id,
@@ -119,9 +120,14 @@ export function ChatView({
     position.current();
     const observer = new ResizeObserver(() => position.current());
     observer.observe(body);
+    // The dock and the widget bar change the viewport independently of transcript content.
+    // The same owner restores the reader's row/offset or follows the end in both cases.
+    const port = new ResizeObserver(() => position.current());
+    port.observe(box);
     window.addEventListener('pagehide', remember);
     return () => {
       observer.disconnect();
+      port.disconnect();
       window.removeEventListener('pagehide', remember);
       remember();
     };
@@ -144,6 +150,7 @@ export function ChatView({
   const stopRestoring = () => {
     restoreTop.current = null;
     restoreAnchor.current = null;
+    readingAnchor.current = null;
     follow.current = false;
   };
 
@@ -152,7 +159,11 @@ export function ChatView({
       data-chat-view
       className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
     >
-      {header}
+      {header ? (
+        <div className="shrink-0 px-5 pt-3">
+          <div className="mx-auto w-full max-w-(--chat-content-max-width)">{header}</div>
+        </div>
+      ) : null}
       <section
         ref={timeline}
         data-testid="chat-timeline"
@@ -172,12 +183,20 @@ export function ChatView({
           const box = timeline.current;
           if (!box || restoreTop.current !== null || restoreAnchor.current !== null) return;
           follow.current = box.scrollHeight - box.scrollTop - box.clientHeight < 48;
+          const top = box.getBoundingClientRect().top;
+          const row = [...box.querySelectorAll<HTMLElement>('[data-chat-item]')].find(
+            (item) => item.getBoundingClientRect().bottom > top,
+          );
+          readingAnchor.current =
+            !follow.current && row
+              ? { id: row.dataset.chatItem!, offset: row.getBoundingClientRect().top - top }
+              : null;
           setAtEnd(follow.current);
         }}
       >
         <div
           ref={content}
-          className="mx-auto w-full max-w-(--chat-content-max-width) px-5 pt-8 pb-6"
+          className="mx-auto w-full max-w-(--chat-content-max-width) px-5 pt-4 pb-6"
         >
           {items.length ? (
             <ol
@@ -239,6 +258,7 @@ export function ChatView({
               onClick={() => {
                 restoreTop.current = null;
                 restoreAnchor.current = null;
+                readingAnchor.current = null;
                 follow.current = true;
                 if (timeline.current) timeline.current.scrollTop = timeline.current.scrollHeight;
               }}

@@ -486,6 +486,7 @@ class WorkerExecution {
               payloadBytes: frame.payloadBytes,
               ...(frame.skills ? { skills: frame.skills } : {}),
               ...(frame.reasoning ? { reasoning: frame.reasoning } : {}),
+              ...(frame.contextUsage ? { contextUsage: frame.contextUsage } : {}),
             });
           } else if (frame.type === 'native_tool_start')
             await this.host.beginNativeTool!(frame.toolCallId, frame.argsHash);
@@ -520,6 +521,7 @@ class WorkerExecution {
                   contextBytes: frame.contextBytes,
                   sections: frame.sections,
                   ...(frame.contextEstimate ? { contextEstimate: frame.contextEstimate } : {}),
+                  ...(frame.contextUsage ? { contextUsage: frame.contextUsage } : {}),
                 })
               : frame.record,
             frame.reasoningInput,

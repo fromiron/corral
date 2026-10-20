@@ -1,4 +1,3 @@
-// Adapted from T3 Code, Copyright (c) 2026 T3 Tools Inc. (MIT). See THIRD-PARTY-NOTICES/T3-Code.md.
 'use client';
 
 import { Input as InputPrimitive } from '@base-ui/react/input';

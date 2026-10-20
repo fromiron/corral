@@ -53,10 +53,7 @@ export function DemoGuide({
       .catch(() => undefined);
   }, [armed, target, status, session, onSteer]);
   return (
-    <section
-      aria-labelledby="demo-guide-heading"
-      className="rounded-md fill-group p-3 text-xs"
-    >
+    <section aria-labelledby="demo-guide-heading" className="rounded-md fill-group p-3 text-xs">
       <details open>
         <summary className="cursor-pointer">
           <h2 id="demo-guide-heading" className="inline text-sm font-semibold">

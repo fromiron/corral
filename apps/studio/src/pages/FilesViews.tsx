@@ -121,6 +121,7 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
                     size="sm"
                     type="button"
                     onClick={() => {
+                      if (!desktop) return;
                       void desktop.pickFolder().then((folder) => {
                         if (folder) setPath(folder);
                       });

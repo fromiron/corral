@@ -8,7 +8,7 @@ import {
   LocalHeuristicProvider,
 } from '@corral/core';
 import { ScriptedAgentAdapter, SequentialIdFactory } from '@corral/testkit';
-import { createDemoReply, DEMO_TURNS } from './demo/script.ts';
+import { createDemoReply, DEMO_TURNS, demoPlansFor, publishDemoPlan } from './demo/script.ts';
 import { DemoWorkspace } from './demo/workspace.ts';
 import {
   DEMO_WORKSPACE_METHODS,
@@ -47,6 +47,13 @@ const transport = new InProcessTransport(
       // The demo writes answers and versions read into its replies (demo/script.ts).
       appendNotes: false,
       beforeReply: () => new Promise((resolve) => setTimeout(resolve, delayMs)),
+      // A multi-step request publishes a real checklist; a short reply returns null and stays plan-free.
+      script: async (input, host) => {
+        if (demoPlansFor(input)) {
+          await publishDemoPlan(input, host, undefined, delayMs);
+        }
+        return null;
+      },
     }),
   }),
 );

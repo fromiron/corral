@@ -1,4 +1,3 @@
-// Adapted from T3 Code Sidebar's grouped rows and action menus (MIT). See THIRD-PARTY-NOTICES/T3-Code.md.
 import type { CorralSummary, ProjectSummary, RunSummary, WorkSession } from '@corral/core';
 import { StatusDot } from '@corral/react';
 import {

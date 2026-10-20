@@ -214,12 +214,57 @@ export const ProtectedContext = z.strictObject({
 });
 export type ProtectedContext = z.infer<typeof ProtectedContext>;
 
+export const ContextUsageCategory = z.enum([
+  'messages',
+  'system_prompt',
+  'system_tools',
+  'mcp_tools',
+  'skills',
+  'memory_files',
+  'instructions',
+  'other',
+]);
+export type ContextUsageCategory = z.infer<typeof ContextUsageCategory>;
+
+/** Why a category has no trustworthy number. Never a prompt, path, or secret. */
+export const ContextUsageOmission = z.enum([
+  'unmeasured_image',
+  'unsupported_payload',
+  'unmeasured_tool',
+  'measurement_error',
+  'not_in_payload',
+]);
+export type ContextUsageOmission = z.infer<typeof ContextUsageOmission>;
+
+/**
+ * Read-only estimate of one model request. `coverage: messages` is not a full-request ratio.
+ * Provider-reported usage is stored separately and is not added into `usedTokens`.
+ */
+export const ContextUsageSnapshot = z.strictObject({
+  version: z.literal(1),
+  coverage: z.enum(['messages', 'request']),
+  completeness: z.enum(['complete', 'partial', 'unmeasured', 'error']),
+  method: z.literal('pi-1.3.0-chars4'),
+  usedTokens: z.int().min(0).optional(),
+  parts: z
+    .array(
+      z.strictObject({
+        category: ContextUsageCategory,
+        tokens: z.int().min(0),
+        omission: ContextUsageOmission.optional(),
+      }),
+    )
+    .max(24),
+});
+export type ContextUsageSnapshot = z.infer<typeof ContextUsageSnapshot>;
+
 export const ModelRequestRecord = z.strictObject({
   purpose: z.enum(['turn', 'compaction', 'retry', 'extension']),
   runtime: z.enum(['pi-core', 'pi-sdk']).optional(),
   contextEstimate: z
     .strictObject({ tokens: z.int().min(0), method: z.literal('pi-1.3.0-messages') })
     .optional(),
+  contextUsage: ContextUsageSnapshot.optional(),
   directiveIds: z.array(Identifier).max(256),
   contextHash: ContentHash,
   contextBytes: z
@@ -261,6 +306,8 @@ export const ProviderPayloadRecord = z.strictObject({
     .int()
     .min(0)
     .max(32 * 1024 * 1024),
+  /** Reconciled after payload hooks. Absent on older events. */
+  contextUsage: ContextUsageSnapshot.optional(),
 });
 export type ProviderPayloadRecord = z.infer<typeof ProviderPayloadRecord>;
 

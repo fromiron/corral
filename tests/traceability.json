@@ -1289,5 +1289,17 @@
     "tasks": [
       "C-120"
     ]
+  },
+  {
+    "requirementId": "CRL-WIDGET-001",
+    "tests": [
+      "TC-WIDGET-001-H",
+      "TC-WIDGET-001-N",
+      "TC-WIDGET-002-H",
+      "TC-WIDGET-002-N"
+    ],
+    "tasks": [
+      "C-121"
+    ]
   }
 ]

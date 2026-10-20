@@ -96,10 +96,7 @@ export function GettingStarted({
   const current = steps.find((s) => !s.done)?.id;
 
   return (
-    <section
-      aria-labelledby={headingId}
-      className="flex flex-col gap-2 rounded-md fill-group p-3"
-    >
+    <section aria-labelledby={headingId} className="flex flex-col gap-2 rounded-md fill-group p-3">
       <div className="flex items-center justify-between gap-2">
         <h2 id={headingId} className="text-sm font-semibold">
           {t('heading')}

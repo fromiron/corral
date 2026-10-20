@@ -38,6 +38,7 @@ import {
   type WriteToolInput,
 } from '@earendil-works/pi-coding-agent';
 import type { Channel } from './channel.ts';
+import { inspectContext, reconcileContextUsage } from './context-usage.ts';
 import { extensionUi } from './extension-ui.ts';
 import { lockResources } from './locked-resources.ts';
 import { mcpExtension } from './mcp.ts';
@@ -341,6 +342,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
             }
           }
           let requestContext = normalizeContext(owned);
+          let measuredContext: ReturnType<typeof inspectContext>;
           // Core has one active request per execution. Nested provider requests queue here too.
           requests = requests.then(async () => {
             let modelCallId: string | undefined;
@@ -380,6 +382,22 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
                       },
                     ],
                   };
+                measuredContext = inspectContext(requestContext, {
+                  mcpToolNames: [...descriptors.values()]
+                    .filter((tool) => tool.source === 'extension:pi-mcp@1.3.0')
+                    .map((tool) => tool.name),
+                  otherToolNames: [...descriptors.values()]
+                    .filter(
+                      (tool) =>
+                        ![
+                          'corral',
+                          'extension:pi-mcp@1.3.0',
+                          'extension:pi-codemode@1.3.0',
+                        ].includes(tool.source),
+                    )
+                    .map((tool) => tool.name),
+                  skillTexts: [...skillBodies.values()].map((skill) => skill.text),
+                });
                 const record = requestRecord(
                   requestContext,
                   requestPurpose,
@@ -389,6 +407,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
                     text: directiveText(d),
                   })),
                   protectedSections,
+                  { usage: measuredContext.usage },
                 );
                 preparedDirectiveIds = record.directiveIds;
                 const assignment =
@@ -461,6 +480,11 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
                     start.model.auth,
                   );
                   const serialized = canonicalJson(actual);
+                  const contextUsage = reconcileContextUsage(
+                    measuredContext.usage,
+                    measuredContext.probes,
+                    serialized,
+                  );
                   for (const skill of mandatory)
                     if (!serialized.includes(JSON.stringify(skill.content).slice(1, -1)))
                       throw new Error('mandatory skill removed from provider payload');
@@ -480,6 +504,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
                         bytes: Buffer.byteLength(skill.text),
                       })),
                     ...(wire ? { reasoning: wire } : {}),
+                    contextUsage,
                   });
                   if (cancelled || options?.signal?.aborted)
                     throw new Error('cancelled before HTTP dispatch');

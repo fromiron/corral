@@ -141,6 +141,7 @@ export function RootLayout() {
   );
   const [mobileOpen, setMobileOpen] = useState(false);
   const [narrow, setNarrow] = useState(() => matchMedia('(max-width: 1023px)').matches);
+  const showLocation = !/^\/sessions\/[^/]+(?:\/|$)/.test(location.pathname);
   const sidebarTrigger = useRef<HTMLButtonElement>(null);
   const [slot, setSlot] = useState<HTMLElement | null>(null);
   const drag = useRef<{ x: number; width: number } | null>(null);
@@ -256,34 +257,39 @@ export function RootLayout() {
                     <PanelLeft />
                   </Button>
                 </Tooltip>
-                <nav
-                  aria-label={tn('location')}
-                  className="flex min-w-0 items-center gap-1.5 text-ui"
-                >
-                  {settings ? (
-                    <span className="shrink-0 text-muted">{td('settings')}</span>
-                  ) : narrow || !prefs.sidebarOpen ? (
-                    <ProjectSwitcher projects={sidebar.projects} projectId={projectId} />
-                  ) : project ? (
-                    <Link
-                      to="/projects/$projectId"
-                      params={{ projectId: project.projectId }}
-                      className="max-w-52 truncate text-muted hover:text-text"
-                    >
-                      {projectName(project, projectsText('defaultName'))}
-                    </Link>
-                  ) : null}
-                  {pageTitle ? (
-                    <>
-                      {settings || project ? (
-                        <span aria-hidden="true" className="text-muted/50">
-                          /
-                        </span>
-                      ) : null}
-                      <h2 className="truncate font-medium">{pageTitle}</h2>
-                    </>
-                  ) : null}
-                </nav>
+                {showLocation ? (
+                  <nav
+                    aria-label={tn('location')}
+                    className="flex min-w-0 items-center gap-1.5 text-ui"
+                  >
+                    {settings ? (
+                      <span className="shrink-0 text-muted">{td('settings')}</span>
+                    ) : narrow || !prefs.sidebarOpen ? (
+                      <ProjectSwitcher projects={sidebar.projects} projectId={projectId} />
+                    ) : project ? (
+                      <Link
+                        to="/projects/$projectId"
+                        params={{ projectId: project.projectId }}
+                        className="max-w-52 truncate text-muted hover:text-text"
+                      >
+                        {projectName(project, projectsText('defaultName'))}
+                      </Link>
+                    ) : null}
+                    {pageTitle ? (
+                      <>
+                        {settings || project ? (
+                          <span aria-hidden="true" className="text-muted/50">
+                            /
+                          </span>
+                        ) : null}
+                        <h2 className="truncate font-medium">{pageTitle}</h2>
+                      </>
+                    ) : null}
+                  </nav>
+                ) : (
+                  <h2 className="sr-only">{pageTitle}</h2>
+                )}
+                <SessionTabs sessions={sidebar.sessions} />
                 {settings && activeRun ? (
                   <Link
                     to="/runs/$runId"
@@ -309,7 +315,6 @@ export function RootLayout() {
                   </Button>
                 </Tooltip>
               </header>
-              <SessionTabs sessions={sidebar.sessions} />
               <div className="app-outlet">
                 <Outlet />
               </div>

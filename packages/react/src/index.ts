@@ -67,6 +67,12 @@ export {
 export { useSteerTarget } from './run/steer-target.ts';
 export { buildTranscript, type TranscriptEntry } from './run/transcript.ts';
 export {
+  useWorkPlanSnapshot,
+  type WorkPlanRef,
+  type WorkPlanSnapshotInput,
+  type WorkPlanStatus,
+} from './run/work-plan-snapshot.ts';
+export {
   draftFromPlan,
   planFromGoal,
   type TeamDraft,

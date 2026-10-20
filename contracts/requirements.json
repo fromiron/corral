@@ -700,5 +700,11 @@
     "requirement": "프로필별 컨텍스트·압축 설정과 Run snapshot. 설정/해석/원자 저장·Run 고정·버전별 worker 전달·Pi 임계 및 permit 정책·UI 경고/보존을 확인한다.",
     "owner": "core",
     "phase": "M4"
+  },
+  {
+    "id": "CRL-WIDGET-001",
+    "requirement": "CR-041: 채팅 상단 위젯과 입력창 위 작업 계획은 현재 실행의 update_plan·요청 측정으로 갱신된다. 메시지 추정과 전체 요청 추정을 구분하고, 과거 패널 탐색·다음 요청·승인 대기는 서로 덮지 않는다.",
+    "owner": "studio",
+    "phase": "M4"
   }
 ]

@@ -116,7 +116,7 @@ export function promptSections(start: PromptStart): PromptSection[] {
     "If asked which model you are using, report this configured provider/model separately from your team role. This identifies the requested model, not independent verification of the provider's internal implementation; do not invent a different model identity.",
   ];
   const operating = [
-    'Complete the requested work with the smallest adequate change. Use a plan for multi-step work; skip unnecessary ceremony.',
+    'Complete the requested work with the smallest adequate change.',
     'Report what was observed, inferred, and not checked. A tool request, plan completion, or artifact creation is not proof of task completion.',
   ];
   const tools = [
@@ -130,6 +130,7 @@ export function promptSections(start: PromptStart): PromptSection[] {
     );
   if (start.tools.includes('update_plan'))
     operating.push(
+      'When the work has several distinct implementation, investigation, or verification steps, call update_plan before the first substantial step and again when the current step changes. Do not create a plan for a greeting or a short single-step question.',
       `Current completion criteria version: ${start.criteriaVersionId}.`,
       start.teamPlanOwner
         ? 'You are the designated owner of the team work plan.'
