@@ -23,8 +23,7 @@ const codeOptions = {
   unsafeCSS: '[data-line-number-content] { color: var(--diffs-fg); }',
 };
 
-const viewerClass =
-  'h-[min(65vh,600px)] min-h-48 overflow-auto rounded fill-group';
+const viewerClass = 'h-[min(65vh,600px)] min-h-48 overflow-auto rounded fill-group';
 
 function CodeFrame({ children }: { children: ReactNode }) {
   return (

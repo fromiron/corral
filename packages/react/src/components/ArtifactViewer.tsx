@@ -118,11 +118,7 @@ export function ArtifactViewer({
           <h3 id={headingId} className="font-semibold">
             {t('reference')} · {shownId}
           </h3>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded fill-control px-1.5 py-0.5"
-          >
+          <button type="button" onClick={onClose} className="rounded fill-control px-1.5 py-0.5">
             {t('close')}
           </button>
         </div>
@@ -278,10 +274,7 @@ export function ArtifactViewer({
         diff === null ? (
           <p className="text-xs text-muted">{t('loading')}</p>
         ) : (
-          <pre
-            className="overflow-x-auto rounded fill-group text-xs"
-            data-testid="artifact-diff"
-          >
+          <pre className="overflow-x-auto rounded fill-group text-xs" data-testid="artifact-diff">
             {diff.map((line, i) => (
               <div
                 // Lines repeat; their position is their identity in this diff.

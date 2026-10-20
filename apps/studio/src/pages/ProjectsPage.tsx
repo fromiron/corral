@@ -93,13 +93,13 @@ export function ProjectsPage() {
               />
             ) : (
               <div className="flex items-center gap-2 rounded fill-control px-2 py-1 text-sm">
-                <span
+                <output
                   className="min-w-0 flex-1 truncate text-muted"
                   title={mode === 'browser' ? undefined : folder || undefined}
                   aria-labelledby="folder-label"
                 >
                   {folder ? (mode === 'browser' ? t('exampleFolder') : folder) : t('noFolder')}
-                </span>
+                </output>
                 {mode === 'browser' && folder ? null : (
                   <button
                     type="button"
