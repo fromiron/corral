@@ -36,7 +36,7 @@ const optionsDialog = (page: Page) =>
 test('[TC-UX-005-H] a default chat starts without a saved Corral or advanced choices and keeps its answer after reload', async ({
   page,
   corral,
-}, testInfo) => {
+}) => {
   const path = await startChat(page, corral);
   expect(await savedCorrals(page)).toEqual([]);
   expect((await session(page)).corralId).toBeNull();
@@ -68,17 +68,7 @@ test('[TC-UX-005-H] a default chat starts without a saved Corral or advanced cho
     page.getByRole('combobox', { name: 'Attach project document to this request', exact: true }),
   ).toBeHidden();
 
-  const before = await requestBox(page).boundingBox();
-  const chat = await page.locator('[data-chat-view]').boundingBox();
-  if (!before || !chat) throw new Error('The empty chat and its request box must be visible');
-  expect(before.y).toBeGreaterThan(chat.y + chat.height * 0.25);
-  expect(before.y + before.height).toBeLessThan(chat.y + chat.height * 0.8);
-  const emptyScreenshot = testInfo.outputPath('empty-default-chat.png');
-  await page.screenshot({ path: emptyScreenshot });
-  await testInfo.attach('empty-default-chat', {
-    path: emptyScreenshot,
-    contentType: 'image/png',
-  });
+  await expect(requestBox(page)).toBeInViewport();
 
   corral.fake?.answerWith('Start by writing what you want to accomplish.', {
     hostReply: '{"template":"single","reason":"One direct answer is enough"}',
@@ -103,17 +93,14 @@ test('[TC-UX-005-H] a default chat starts without a saved Corral or advanced cho
   await expect(page.getByTestId('chat-result')).toContainText(
     'Start by writing what you want to accomplish.',
   );
-  const after = await requestBox(page).boundingBox();
-  if (!after) throw new Error('The request box must remain reachable after an answer');
-  expect(after.y).toBeGreaterThan(before.y + 80);
-  expect(after.y + after.height).toBeLessThanOrEqual(800);
+  await expect(requestBox(page)).toBeInViewport();
   expect(corral.errors).toEqual([]);
 });
 
 test('[TC-UX-005-N] explicit request scope survives closing options and reload, remains visible and reaches the run', async ({
   page,
   corral,
-}, testInfo) => {
+}) => {
   await startChat(page, corral);
   await requestBox(page).fill('Review the proposed launch without editing files.');
   await optionsButton(page).click();
@@ -150,19 +137,7 @@ test('[TC-UX-005-N] explicit request scope survives closing options and reload, 
   await expect(
     dialog.getByRole('combobox', { name: 'Verification scope', exact: true }),
   ).toContainText('Release checks');
-  await expect(dialog).toHaveCSS('opacity', '1');
-  const bounds = await dialog.boundingBox();
-  if (!bounds) throw new Error('Request options must open in the narrow viewport');
-  expect(bounds.x).toBeGreaterThanOrEqual(0);
-  expect(bounds.x + bounds.width).toBeLessThanOrEqual(390);
-  expect(bounds.y).toBeGreaterThanOrEqual(0);
-  expect(bounds.y + bounds.height).toBeLessThanOrEqual(844);
-  const optionsScreenshot = testInfo.outputPath('request-options-narrow.png');
-  await page.screenshot({ path: optionsScreenshot });
-  await testInfo.attach('request-options-narrow', {
-    path: optionsScreenshot,
-    contentType: 'image/png',
-  });
+  await expect(dialog).toBeInViewport();
   await page.keyboard.press('Escape');
   await expect(optionsButton(page)).toBeFocused();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);

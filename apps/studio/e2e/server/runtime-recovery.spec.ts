@@ -55,6 +55,7 @@ test.describe('runtime continuation', () => {
     );
     await page.reload();
     const detail = page.getByTestId('compact-run');
+    await detail.getByText('Executions', { exact: true }).click();
     await detail.getByTestId('status-context').locator(':scope > summary').click();
     const recovery = detail.getByTestId('runtime-recovery');
     await expect(
@@ -98,27 +99,6 @@ test.describe('runtime continuation', () => {
       .click();
     const branch = page.getByRole('dialog');
     await expect(branch).toContainText('Continue with the captured context');
-    // Check rendered surfaces: class names alone do not prove that the CSS was emitted.
-    for (const theme of ['light', 'dark']) {
-      await page.evaluate((value) => {
-        document.documentElement.classList.toggle('dark', value === 'dark');
-        document.documentElement.dataset.theme = value;
-      }, theme);
-      await expect(branch).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-      await expect(branch).toHaveCSS('backdrop-filter', 'blur(12px)');
-      await expect(page.locator('[data-slot="dialog-backdrop"]')).toHaveCSS(
-        'background-color',
-        /^(?:oklab\(0 0 0 \/ 0\.4\)|rgba\(0, 0, 0, 0\.4\))$/,
-      );
-      await expect(branch.locator('[data-slot="dialog-header"]')).toHaveCSS('padding-left', '24px');
-      await expect(branch.locator('[data-slot="dialog-panel"]')).toHaveCSS('padding-right', '24px');
-      await test.info().attach(`branch-dialog-${theme}`, {
-        body: await branch.screenshot({
-          path: test.info().outputPath(`branch-dialog-${theme}.png`),
-        }),
-        contentType: 'image/png',
-      });
-    }
     await page.setViewportSize({ width: 390, height: 844 });
     expect(await branch.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
     await expect(branch.getByRole('button', { name: 'Create branch and start' })).toBeInViewport();
@@ -129,6 +109,7 @@ test.describe('runtime continuation', () => {
       .poll(() => new URL(page.url()).pathname)
       .not.toBe(`/sessions/${started.sessionId}`);
     await expect(page.getByTestId('compact-run')).toContainText('Succeeded');
+    await page.getByTestId('compact-run').getByText('Executions', { exact: true }).click();
     await expect(
       page.getByTestId('compact-run').getByRole('link', { name: 'Open the source Run' }),
     ).toBeVisible();

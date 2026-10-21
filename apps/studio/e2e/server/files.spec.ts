@@ -90,7 +90,7 @@ test('[TC-HUNK-001-H] [TC-CKPT-001-H] [TC-CHAT-002-H] [WBTST-016] a session work
   try {
     await corral.open('/');
     await page.getByRole('tab', { name: /^Project folder/ }).click();
-    const folder = page.getByRole('region', { name: 'Project folder' });
+    const folder = page.getByRole('tabpanel', { name: 'Project folder', exact: true });
     await folder.getByLabel('Folder path on this computer').fill(original);
     await folder.getByRole('button', { name: 'Link folder' }).click();
     await expect(folder).toContainText('no uncommitted changes');

@@ -75,7 +75,7 @@ async function send(page: Page, text: string) {
 test('[TC-WIDGET-001-H] [TC-WIDGET-002-H] live plans, context, manual collapse and an answer use the primary session flow', async ({
   page,
   corral,
-}, testInfo) => {
+}) => {
   const next = gate();
   const later = gate();
   const ask = gate();
@@ -136,20 +136,6 @@ test('[TC-WIDGET-001-H] [TC-WIDGET-002-H] live plans, context, manual collapse a
     expect(await plan.evaluate((node) => !!node.closest('[data-testid="chat-timeline"]'))).toBe(
       false,
     );
-    const summaryRect = await widgets.boundingBox();
-    const timelineRect = await page.getByTestId('chat-timeline').boundingBox();
-    if (!summaryRect || !timelineRect)
-      throw new Error('The conversation and right summary must be visible together');
-    expect(summaryRect.x).toBeGreaterThanOrEqual(timelineRect.x + timelineRect.width - 1);
-    const planRect = await plan.boundingBox();
-    const inputRect = await requestBox(page).boundingBox();
-    if (!planRect || !inputRect) throw new Error('The plan and composer must both be visible');
-    expect(planRect.y + planRect.height).toBeLessThanOrEqual(inputRect.y + 1);
-    await testInfo.attach('plan-in-progress', {
-      body: await page.screenshot(),
-      contentType: 'image/png',
-    });
-
     const context = page.getByTestId('context-usage-chip');
     await expect(context).toBeVisible();
     await context.click();
@@ -158,10 +144,6 @@ test('[TC-WIDGET-001-H] [TC-WIDGET-002-H] live plans, context, manual collapse a
     await expect(inspector).toContainText('System prompt');
     await expect(inspector).toContainText('Built-in tools');
     await expect(inspector).toContainText('Messages');
-    await testInfo.attach('context-composition', {
-      body: await page.screenshot(),
-      contentType: 'image/png',
-    });
     await page.keyboard.press('Escape');
     await expect(inspector).toBeHidden();
     await expect(context).toBeFocused();
@@ -181,10 +163,6 @@ test('[TC-WIDGET-001-H] [TC-WIDGET-002-H] live plans, context, manual collapse a
     });
     next.release();
     await expect(toggle).toContainText('1/7 done');
-    await testInfo.attach('plan-next-revision', {
-      body: await page.screenshot(),
-      contentType: 'image/png',
-    });
     expect(await originalInput?.evaluate((element) => element.isConnected)).toBe(true);
     await expect(input).toHaveValue('다음 요청 日本語');
     expect(await input.evaluate((element: HTMLTextAreaElement) => element.selectionStart)).toBe(3);
@@ -218,10 +196,6 @@ test('[TC-WIDGET-001-H] [TC-WIDGET-002-H] live plans, context, manual collapse a
       .click();
     await expect(question).toBeVisible();
     await expect(question).toHaveCount(1);
-    await testInfo.attach('answer-needed', {
-      body: await page.screenshot(),
-      contentType: 'image/png',
-    });
     await question.getByRole('textbox', { name: 'Your answer' }).fill('The compact layout');
     await question.getByRole('button', { name: 'Send answer' }).click();
     await expect(page.getByTestId('chat-result')).toContainText('ready for review');
@@ -358,15 +332,14 @@ test.describe('serialized provider context', () => {
   });
 });
 
-test('[TC-WIDGET-001-N] opening an earlier result preserves the current plan, draft, narrow controls and scroll position', async ({
+test('[TC-WIDGET-001-N] opening an earlier result preserves the draft and keeps the active Run separate', async ({
   page,
   corral,
-}, testInfo) => {
+}) => {
   await session(page, corral);
-  corral.fake?.answerWith(
-    `Earlier result.\n\n${Array.from({ length: 16 }, (_, i) => `Paragraph ${i + 1}: This is the earlier version of the conversation layout. It remains readable while another task is running.`).join('\n\n')}`,
-    { hostReply: '{"template":"single","reason":"A short answer"}' },
-  );
+  corral.fake?.answerWith('Earlier result.', {
+    hostReply: '{"template":"single","reason":"A short answer"}',
+  });
   await send(page, 'Write the earlier result.');
   await expect(page.getByTestId('chat-result')).toContainText('Earlier result.');
   await expect.poll(() => current(corral).projection.status).toBe('succeeded');
@@ -394,19 +367,6 @@ test('[TC-WIDGET-001-N] opening an earlier result preserves the current plan, dr
     expect(activeRunId).not.toBe(earlierRunId);
     await requestBox(page).fill('Do not replace this draft.');
 
-    const timeline = page.getByTestId('chat-timeline');
-    await timeline.evaluate((element) => {
-      element.scrollTop = 0;
-      element.dispatchEvent(new Event('scroll'));
-    });
-    await expect(page.getByRole('button', { name: 'Jump to latest' })).toBeVisible();
-    const before = await timeline.evaluate((element) => element.scrollTop);
-    await toggle.click();
-    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    await expect.poll(() => timeline.evaluate((element) => element.scrollTop)).toBe(before);
-    await toggle.click();
-    await expect.poll(() => timeline.evaluate((element) => element.scrollTop)).toBe(before);
-
     await page
       .getByTestId('chat-timeline')
       .getByRole('link', { name: 'Open in Results', exact: true })
@@ -414,37 +374,13 @@ test('[TC-WIDGET-001-N] opening an earlier result preserves the current plan, dr
       .click();
     await expect.poll(() => new URL(page.url()).searchParams.get('run')).toBe(earlierRunId);
     await expect(page.getByTestId('result-body')).toContainText('Earlier result.');
-    await expect(toggle).toContainText('0/7 done');
+    await expect(toggle).toHaveCount(0);
     await expect(requestBox(page)).toHaveValue('Do not replace this draft.');
     expect(current(corral).runId).toBe(activeRunId);
 
-    // Same desktop viewport, smaller chat container due to the actual result panel.
-    const view = page.locator('[data-chat-view]');
-    await expect.poll(() => view.evaluate((element) => element.clientWidth)).toBeLessThan(760);
-    await expect(page.getByTestId('session-summary-slot')).toHaveCount(0);
-    await page.getByTestId('session-summary-trigger').click();
-    await expect(page.getByTestId('session-summary-popup')).toBeVisible();
-    await expect(page.getByTestId('session-summary-card')).toBeVisible();
-    await testInfo.attach('narrow-chat-with-earlier-result', {
-      body: await page.screenshot(),
-      contentType: 'image/png',
-    });
-    // This run has only context to show; do not require an empty overflow control.
-    await expect(page.getByTestId('context-usage-chip')).toBeVisible();
-    await page.getByTestId('context-usage-chip').click();
-    await expect(page.getByTestId('context-inspector')).toBeVisible();
-    await page.keyboard.press('Escape');
-    await page.keyboard.press('Escape');
-    expect(await view.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(
-      true,
-    );
-    await expect(requestBox(page)).toBeInViewport();
-
     next.release();
     await expect.poll(() => current(corral).projection.status).toBe('succeeded');
-    // This explicit open choice survives completion even while inspecting the earlier run.
-    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
-    await expect(toggle).toContainText('0/7 done');
+    await expect(toggle).toHaveCount(0);
     await expect(page.getByTestId('result-body')).toContainText('Earlier result.');
     await expect(requestBox(page)).toHaveValue('Do not replace this draft.');
     expect(corral.errors).toEqual([]);
@@ -456,7 +392,7 @@ test('[TC-WIDGET-001-N] opening an earlier result preserves the current plan, dr
 test('[TC-WIDGET-001-H] a finished checklist does not finish its run, and only automatic disclosure collapses on success', async ({
   page,
   corral,
-}, testInfo) => {
+}) => {
   const completePlan = gate();
   const completeRun = gate();
   corral.fake?.setResponses([
@@ -493,10 +429,6 @@ test('[TC-WIDGET-001-H] a finished checklist does not finish its run, and only a
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await expect(toggle).toContainText('7/7 done');
     await expect(plan.getByRole('listitem')).toHaveCount(0);
-    await testInfo.attach('success-plan-summary', {
-      body: await page.screenshot(),
-      contentType: 'image/png',
-    });
     expect(corral.errors).toEqual([]);
   } finally {
     completePlan.release();

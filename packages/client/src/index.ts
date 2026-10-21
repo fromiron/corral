@@ -287,6 +287,7 @@ const RECONNECT_DELAYS_MS = [250, 500, 1000, 2000, 4000];
 export class HttpSseTransport implements RuntimeTransport {
   private readonly http: Http;
   private readonly recovery?: { commands: CommandRecovery; starts: StartRecovery };
+  private readonly pendingAutoIds = new Map<string, string>();
 
   constructor(
     options: HttpOptions,
@@ -388,6 +389,7 @@ export class HttpSseTransport implements RuntimeTransport {
     mode: 'mock' | 'live';
     startFrom?: { runId: string; artifactVersionId: string };
   }): Promise<StartRunResult> {
+    request = this.recovery?.starts.prepare('/runs/explain', request) ?? request;
     const recovered = await this.recoverStart('/runs/explain', request);
     if (recovered) return recovered;
     const response = await this.http.request('/runs/explain', {
@@ -405,23 +407,35 @@ export class HttpSseTransport implements RuntimeTransport {
     request: AutoRunStart,
     signal?: AbortSignal,
   ): Promise<StartRunResult & { autoRoute: AutoRoute | null }> {
-    const recovered = await this.recoverStart('/runs/auto', request);
-    if (recovered) return { ...recovered, autoRoute: recovered.autoRoute ?? null };
-    const response = await this.http.request('/runs/auto', {
-      method: 'POST',
-      body: JSON.stringify({ schemaVersion: '0.1', ...request }),
-      ...(signal ? { signal } : {}),
-    });
-    const body = (await response.json()) as Partial<StartRunResult> & {
-      autoRoute?: AutoRoute | null;
-      error?: ApiError;
-    };
-    if (!body.receipt) throw await apiErrorFrom(response, body);
-    this.recovery?.starts.confirmed(request.commandId);
-    return { runId: body.runId ?? null, receipt: body.receipt, autoRoute: body.autoRoute ?? null };
+    const callerId = request.commandId;
+    request = this.recovery?.starts.prepare('/runs/auto', request) ?? request;
+    if (callerId !== request.commandId) this.pendingAutoIds.set(callerId, request.commandId);
+    try {
+      const recovered = await this.recoverStart('/runs/auto', request);
+      if (recovered) return { ...recovered, autoRoute: recovered.autoRoute ?? null };
+      const response = await this.http.request('/runs/auto', {
+        method: 'POST',
+        body: JSON.stringify({ schemaVersion: '0.1', ...request }),
+        ...(signal ? { signal } : {}),
+      });
+      const body = (await response.json()) as Partial<StartRunResult> & {
+        autoRoute?: AutoRoute | null;
+        error?: ApiError;
+      };
+      if (!body.receipt) throw await apiErrorFrom(response, body);
+      this.recovery?.starts.confirmed(request.commandId);
+      return {
+        runId: body.runId ?? null,
+        receipt: body.receipt,
+        autoRoute: body.autoRoute ?? null,
+      };
+    } finally {
+      this.pendingAutoIds.delete(callerId);
+    }
   }
 
   cancelAuto({ commandId, ...body }: AutoCancelRequest): Promise<AutoCancelResult> {
+    commandId = this.pendingAutoIds.get(commandId) ?? commandId;
     return this.http.json(`/runs/auto/${encodeURIComponent(commandId)}/cancel`, {
       method: 'POST',
       body: JSON.stringify(body),

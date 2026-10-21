@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { panelTab, requestBox, slash, startSession, teamFromTemplate } from './workbench.ts';
+import { requestBox, slash, startSession, teamFromTemplate } from './workbench.ts';
 
 // Work sessions and input intents (CR-011, roadmap 23–24; WBTST-004) in the in-browser runtime.
 
@@ -32,25 +32,6 @@ test('[WBTST-004] a follow-up starts a new run from the last result; an IME Ente
   await expect(cards(page)).toHaveCount(1);
   await expect(cards(page).first()).toContainText('Started');
   await expect(cards(page).first().getByText('Succeeded')).toBeVisible({ timeout: 20_000 });
-
-  // CR-023: the session keeps a compact observer, with the same execution in full detail.
-  await cards(page).first().getByRole('link', { name: 'Open in Results', exact: true }).click();
-  const observer = page.getByRole('tabpanel', { name: 'Execution', exact: true });
-  await expect(observer.getByRole('tab', { name: 'Results', exact: true })).toHaveCount(0);
-  await observer.getByRole('button', { name: 'Open controls', exact: true }).first().click();
-  await expect(page.getByRole('region', { name: 'Reins', exact: true })).toBeVisible();
-  const execution = new URL(page.url()).searchParams.get('execution');
-  expect(execution).toBeTruthy();
-  await observer.getByRole('link', { name: 'Open execution details', exact: true }).click();
-  await expect(page).toHaveURL(/\/runs\/run_/);
-  expect(new URL(page.url()).searchParams.get('execution')).toBe(execution);
-  expect(new URL(page.url()).searchParams.get('view')).toBe('run');
-  await page.goBack();
-  await expect(observer).toBeVisible();
-  await page
-    .getByRole('banner')
-    .getByRole('button', { name: 'Hide the panel', exact: true })
-    .click();
 
   // The next request starts from that result; the first run is left as it was.
   await expect(page.getByText(/^Starts from .+ v\d+$/)).toBeVisible();

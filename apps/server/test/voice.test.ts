@@ -2,6 +2,7 @@ import type { ModelProfileSnapshot } from '@corral/contracts';
 import Fastify from 'fastify';
 import { afterEach, expect, it, vi } from 'vitest';
 import type { ModelRegistry } from '../src/models/registry.ts';
+import { onceResourceCleanup } from '../src/resource-cleanup.ts';
 import { registerVoiceRoutes } from '../src/voice/routes.ts';
 import { VoiceService } from '../src/voice/service.ts';
 
@@ -37,6 +38,37 @@ const provider = () =>
         }),
   );
 afterEach(() => vi.useRealTimers());
+
+it.each(['503', 'timeout'])(
+  '[TC-ABS-015-N] a hangup %s prevents successful host cleanup and retains the call for retry',
+  async (failure) => {
+    const http = provider();
+    const voice = new VoiceService(registry(), { fetch: http });
+    const app = Fastify();
+    registerVoiceRoutes(app, {
+      registry: null,
+      hasSession: async () => true,
+      hasRun: async () => true,
+      service: voice,
+    });
+    const call = await voice.start(input);
+    await app.ready();
+    http.mockImplementationOnce(async () => {
+      if (failure === 'timeout') throw new DOMException('fixture timeout', 'TimeoutError');
+      return new Response(null, { status: 503 });
+    });
+    const releaseOwnership = vi.fn();
+    const close = onceResourceCleanup(() => app.close(), releaseOwnership);
+    try {
+      await expect(close()).rejects.toMatchObject({ code: 'RESOURCE_CLEANUP_FAILED' });
+      expect(releaseOwnership).not.toHaveBeenCalled();
+      await expect(voice.start(input)).rejects.toThrow('End the current');
+    } finally {
+      await voice.stop(call.callId);
+    }
+    expect(http).toHaveBeenCalledTimes(3);
+  },
+);
 
 it('[TC-ABS-015-H] exchanges SDP through the public operation without exposing a key; owns hangup and limits', async () => {
   const http = provider();

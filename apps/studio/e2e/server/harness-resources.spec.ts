@@ -6,7 +6,7 @@ import { expect, test } from './harness.ts';
 
 test.describe('extension input during an SDK run', () => {
   test.use({ live: true, codexLogin: true });
-  test('[TC-COMPACT-001-N] [TC-HAR-007-H] answers a startup prompt through the Run view and records the applied snapshot', async ({
+  test('[TC-HAR-007-H] answers a startup prompt through the Run view and finishes the request', async ({
     page,
     corral,
   }) => {
@@ -94,13 +94,8 @@ test.describe('extension input during an SDK run', () => {
       );
       const detail = page.getByTestId('compact-run');
       await expect(detail.getByText('Continue the test run?', { exact: true })).toBeVisible();
-      await detail.getByTestId('status-context').locator(':scope > summary').click();
-      await detail.getByRole('button', { name: 'Compact at next safe boundary' }).click();
-      await expect(detail).toContainText('Compaction requested; waiting for a safe boundary.');
-      await expect(detail.getByText('Continue the test run?', { exact: true })).toBeVisible();
       await detail.getByRole('button', { name: 'Confirm', exact: true }).click();
       await expect(detail.getByText('Input received.', { exact: false })).toBeVisible();
-      await expect(detail).toContainText('Compaction failed. Previous history was retained.');
       await expect(page.getByTestId('run-status').first()).toContainText('Succeeded');
       await expect(page.getByRole('button', { name: 'Confirm', exact: true })).toHaveCount(0);
       expect(corral.errors).toEqual([]);

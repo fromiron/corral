@@ -70,14 +70,6 @@ test('[TC-CONTINUITY-001-H] [TC-CHAT-002-H] [TC-CHAT-002-N] a long conversation 
   await page.getByRole('button', { name: 'Jump to latest' }).click();
   await expect(timeline).toContainText('Request 999');
   await page.getByRole('button', { name: 'Search sessions and results', exact: true }).click();
-  await expect(page.getByRole('dialog').locator('[data-slot="dialog-header"]')).toHaveCSS(
-    'padding-left',
-    '24px',
-  );
-  await expect(page.getByRole('dialog').locator('[data-slot="dialog-panel"]')).toHaveCSS(
-    'padding-right',
-    '24px',
-  );
   const search = page.getByRole('dialog');
   await search.getByRole('textbox', { name: 'Search text' }).fill('Request 123 한국어');
   await expect(search).toContainText('0 matches');

@@ -17,6 +17,48 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
+it.each([
+  ['instructions', 'archived'],
+  ['instructions', 'removed'],
+  ['memory', 'archived'],
+  ['memory', 'removed'],
+] as const)(
+  '[TC-ABS-013-N] %s import refuses a project %s after preview without writing documents',
+  async (kind, state) => {
+    const store = new ProjectMaterials(temp());
+    let projects = [
+      {
+        projectId: 'project_a',
+        name: 'A',
+        description: '',
+        revision: 1,
+        createdAt: '',
+        updatedAt: '',
+        archivedAt: null as string | null,
+      },
+    ];
+    const adapter = materialsVaultAdapters(store, { listProjects: async () => projects })[kind];
+    const before = await adapter.capture();
+    const preview = await adapter.preview(
+      {
+        documents: [
+          { id: 'material_import', projectId: 'source', name: 'Rules', text: 'Imported' },
+        ],
+      },
+      { 'project:source': 'project_a' },
+    );
+    projects =
+      state === 'removed'
+        ? []
+        : projects.map((project) => ({ ...project, archivedAt: '2026-10-21T00:00:00Z' }));
+    await expect(adapter.apply(preview.value, before.revision, 'apply_stale')).rejects.toThrow(
+      /active local project/,
+    );
+    expect(await adapter.capture()).toEqual(before);
+    expect(await adapter.receipt?.('apply_stale')).toBeNull();
+  },
+);
+
 it('[TC-ABS-013-H] material vault apply and rollback append versions with explicit project binding', async () => {
   const root = temp();
   const store = new ProjectMaterials(root);
@@ -31,6 +73,7 @@ it('[TC-ABS-013-H] material vault apply and rollback append versions with explic
     name: 'Keep this document',
     text: 'Unrelated material',
   });
+  let archivedAt: string | null = null;
   const repository = {
     listProjects: async () => [
       {
@@ -40,7 +83,7 @@ it('[TC-ABS-013-H] material vault apply and rollback append versions with explic
         revision: 1,
         createdAt: '',
         updatedAt: '',
-        archivedAt: null,
+        archivedAt,
       },
     ],
   };
@@ -52,7 +95,12 @@ it('[TC-ABS-013-H] material vault apply and rollback append versions with explic
   await expect(adapter.preview(incoming, {})).rejects.toThrow(/Choose/);
   const preview = await adapter.preview(incoming, { 'project:source': 'project_a' });
   const applied = await adapter.apply(preview.value, before.revision, 'apply_a');
+  archivedAt = '2026-10-21T00:00:00Z';
   expect(await adapter.apply(preview.value, before.revision, 'apply_a')).toEqual(applied);
+  await expect(adapter.apply({ documents: [] }, before.revision, 'apply_a')).rejects.toThrow(
+    'reused',
+  );
+  archivedAt = null;
   expect(store.list('project_a')[0]?.text).toBe('Imported');
   expect(store.list('project_a').map((item) => item.text)).toContain('Unrelated material');
   const restored = await adapter.restore(before, applied.revision, 'restore_a');

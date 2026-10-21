@@ -17,69 +17,6 @@ async function completedConversation(page: Page) {
   await expect(page.getByTestId('chat-timeline').getByText('Succeeded')).toBeVisible();
 }
 
-test('[TC-WIDGET-001-H] SURFACE-01 SCROLL-02 summary stays in the right upper card outside the conversation scroll', async ({
-  page,
-}) => {
-  await completedConversation(page);
-  const timeline = page.getByTestId('chat-timeline');
-  const widgets = page.getByTestId('session-summary-card');
-  await expect(widgets).toBeVisible();
-  expect(
-    await widgets.evaluate((element) => Boolean(element.closest('[data-testid="chat-timeline"]'))),
-  ).toBe(false);
-  const cardBounds = await widgets.boundingBox();
-  const timelineBounds = await timeline.boundingBox();
-  if (!cardBounds || !timelineBounds)
-    throw new Error('The summary and conversation must be visible');
-  expect(cardBounds.x).toBeGreaterThanOrEqual(timelineBounds.x + timelineBounds.width);
-  expect(cardBounds.width).toBeGreaterThanOrEqual(280);
-  expect(cardBounds.width).toBeLessThanOrEqual(320);
-  expect(cardBounds.y).toBeLessThan(timelineBounds.y + 80);
-  const initialTop = (await widgets.boundingBox())!.y;
-  await timeline.evaluate((element) => {
-    element.scrollTop = element.scrollHeight / 3;
-  });
-  await expect(page.getByRole('button', { name: 'Jump to latest' })).toBeVisible();
-  await expect(widgets).toBeVisible();
-  expect((await widgets.boundingBox())!.y).toBe(initialTop);
-
-  const anchor = await timeline.evaluate((box) => {
-    const top = box.getBoundingClientRect().top;
-    const row = [...box.querySelectorAll<HTMLElement>('[data-chat-item]')].find(
-      (item) => item.getBoundingClientRect().bottom > top,
-    )!;
-    return { id: row.dataset.chatItem!, offset: row.getBoundingClientRect().top - top };
-  });
-  await requestBox(page).fill('A draft that must keep its DOM and selection');
-  await requestBox(page).evaluate((element: HTMLTextAreaElement) => {
-    element.setSelectionRange(8, 13);
-    element.dataset.identity = 'retained';
-  });
-  await page.setViewportSize({ width: 1280, height: 670 });
-  await expect
-    .poll(() =>
-      timeline
-        .locator(`[data-chat-item="${anchor.id}"]`)
-        .evaluate(
-          (row, offset) =>
-            Math.abs(
-              row.getBoundingClientRect().top -
-                row.closest('[data-testid="chat-timeline"]')!.getBoundingClientRect().top -
-                offset,
-            ),
-          anchor.offset,
-        ),
-    )
-    .toBeLessThan(4);
-  await expect(requestBox(page)).toHaveAttribute('data-identity', 'retained');
-  expect(
-    await requestBox(page).evaluate((element: HTMLTextAreaElement) => [
-      element.selectionStart,
-      element.selectionEnd,
-    ]),
-  ).toEqual([8, 13]);
-});
-
 test('[TC-WIDGET-001-H] SURFACE-02 narrow summary stays accessible and opening details selects its area', async ({
   page,
 }) => {

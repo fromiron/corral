@@ -73,8 +73,21 @@ export function materialsVaultAdapters(
         ],
       };
     },
-    apply: async (value, expectedRevision, operationId) =>
-      materials.replaceKind(kind, portable.parse(value).documents, expectedRevision, operationId),
+    apply: async (value, expectedRevision, operationId) => {
+      const { documents } = portable.parse(value);
+      // A committed operation is replayed by the material owner, including its payload check.
+      if (!materials.receipt(kind, operationId)) {
+        const projects = await repository.listProjects();
+        for (const document of documents)
+          if (
+            !projects.some(
+              (project) => project.projectId === document.projectId && !project.archivedAt,
+            )
+          )
+            throw new Error(`Choose an active local project for project:${document.projectId}.`);
+      }
+      return materials.replaceKind(kind, documents, expectedRevision, operationId);
+    },
     restore: async (snapshot, expectedRevision, operationId) =>
       materials.replaceKind(
         kind,

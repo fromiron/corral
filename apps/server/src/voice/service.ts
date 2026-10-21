@@ -207,6 +207,6 @@ export class VoiceService {
 
   async close(): Promise<void> {
     this.closed = true;
-    await Promise.allSettled([...this.calls.keys()].map((id) => this.stop(id)));
+    await Promise.all([...this.calls.keys()].map((id) => this.stop(id)));
   }
 }

@@ -120,3 +120,30 @@ macOS local-app TCP 소유권 확인은 미구현이며 요청을 차단한다. 
 [프로세스](../plans/Desktop-Native-Verification.md) · [병행 실행](../plans/Desktop-Concurrency-Verification.md) · [preview](../plans/Desktop-Preview-Verification.md) · [모델·금고](../plans/Desktop-Models-Vault-Verification.md) · [프로젝트](../plans/Desktop-Projects-Verification.md) · [위임](../plans/Desktop-Agent-Import-Verification.md) · [음성](../plans/Desktop-Voice-Verification.md) · [Desktop](../../apps/desktop/README.md).
 
 요구 CRL-ABS-001–015, 태스크 C-122–136, 시나리오 TC-ABS-001-H/N–015-H/N를 등록했다. backlog의 완료 가능한 로컬 구현에는 implemented와 이 증거 문서를 연결했다. C-125(macOS 앱 소유권), C-128(OS별 배포), C-135(실제 원격 host), C-136(실제 음성)은 남은 계약·환경 조건 때문에 in_progress로 유지한다. 테스트 카탈로그의 planned/evidence:null은 기존 문서팩의 시나리오 선언 형식이다. 실행 PASS/FAIL은 이 문서·기능별 증거·실행 로그로 구분한다.
+
+## PR #65 리뷰와 E2E 정리 — 2026-10-21
+
+기준 `df79b95`. 사용자가 리뷰 수정과 CI 오류 개선, 불필요하거나 과도한 E2E 삭제를 요청했다.
+
+- Auto/Explain은 새 UI 명령 ID가 들어와도 동일한 미확정 요청의 기존 ID로 receipt를 조회한다. Auto 복구 도중 취소도 기존 ID를 사용한다. 컴포저 자체의 영속 ID 복원은 이미 있었으므로 단순 새로고침이 항상 중복 실행을 만든다는 뜻은 아니다.
+- 음성 hangup의 503/timeout을 `close()` 성공으로 삼키지 않는다. 기존 host cleanup 경로가 실패와 소유권을 유지하며, provider 재시도에 필요한 lease도 남는다.
+- instructions/memory 금고 적용 직전에 프로젝트 존재·활성 상태를 재검증한다. 이미 확정한 operation 재조회와 payload 불일치 거절, 이전 문서 버전은 보존한다.
+- 위 반례 8개와 복구 중 취소 반례 1개를 각각 수정 전 실패로 확인했다. 수정 후 관련 5개 파일 27개 테스트가 통과했다. 외부 provider 호출은 하지 않았다.
+
+[기존 CI](https://github.com/fromiron/corral/actions/runs/39517439782)의 E2E 실패 6개를 로컬에서도 모두 재현했다. 146 PASS / 6 FAIL / 3 skip이었던 기존 결과는 그대로 실패 기록으로 남긴다.
+
+E2E 정리 기준은 사용자 결과·브라우저 연결의 검증 여부다. 재시도나 시간 제한을 늘리지 않았다.
+
+- `chat-model-label.spec.ts` 전체 2개와 `chat-surface`의 좌표·폭·DOM 동일성 시나리오 1개를 삭제했다. 모델 선택·저장·키보드 복귀는 composer/locale 테스트, 대화 위치 복원은 conversation-length, 좁은 화면 조작은 남은 chat-surface/desktop-workbench가 담당한다. 글자별 clipping과 정확한 픽셀 배치는 정규 CI 보장 범위에서 제외한다.
+- `demo`의 내부 `role prompt:` 문자열을 최종 결과에 기대하던 1개를 삭제했다. 이 출력은 의도적으로 제거된 진단 정보이며, 미래 prompt의 적용 범위는 `packages/core/test/reins.test.ts`, 진단 정보 비노출은 `apps/studio/src/demo/templates.test.ts`가 검증한다. 데모의 지시·승인·취소 흐름은 유지한다.
+- 대화/분기 테스트에 섞인 정확한 여백·blur·좌표·반복 스크린샷 검사와 부수 탐색 단계를 제거했다. 확장 질문 테스트의 수동 압축 실패 주입은 기존 SDK/React 테스트로 검증하며 E2E는 질문 응답→완료에 집중한다.
+- 파일 연결은 현재 tabpanel을 사용하고, 복구/분기 상세는 실제 Executions 펼치기를 거친다. 과거 결과 선택 시 현재 Run의 계획을 섞어 표시하라는 이전 기대는 없앴으며, 선택 결과·초안·다른 활성 Run의 독립성은 계속 검사한다.
+
+테스트 시나리오 태그는 정리 전후 모두 292/293이다. 핵심 D&D·Reins·승인·취소·복구·파일 반영/되돌리기 E2E와 별도 성능 측정은 유지한다.
+
+최종 로컬 검증:
+
+- 전체 E2E: 148 PASS / 기존 3 skip, 4.4분. 정리 전 155개에서 151개로 줄었다. Chromium·Firefox·실제 로컬 서버 프로젝트를 모두 실행했다.
+- 전체 Vitest: CI와 같은 Node 24.19.0에서 1,546 PASS / 기존 23 skip, 250개 파일 통과. 앞선 Node 24.14.0·E2E 병행 회차는 1,545 PASS / 1 FAIL / 23 skip이었다. `preview-readiness`가 403 뒤 준비 대기에서 실패했으며 단독 실행과 최종 전체 재실행은 통과했다. 원인은 확정하지 않았고 해당 테스트나 제품의 소유권 검사를 완화하지 않았다.
+- `pnpm typecheck`, `pnpm build`, `pnpm contracts:check`, `pnpm spec:check`, `git diff --check` 통과. lint 오류 0, 기존 경고 475개·정보 9개. 문서 validator 의존성은 임시 uv 환경에서 제공했다.
+- 이 검증은 외부 음성·유료 모델·SSH/S3·Windows 패키지 실행을 포함하지 않는다. GitHub의 새 커밋 CI 결과는 별도 확인한다.
