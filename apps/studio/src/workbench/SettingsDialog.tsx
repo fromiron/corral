@@ -1,11 +1,5 @@
-import {
-  Button,
-  Dialog,
-  DialogDescription,
-  DialogPopup,
-  DialogTitle,
-  Select,
-} from '@corral/react/ui';
+import { X } from '@corral/react/icons';
+import { Button, Dialog, DialogPopup, DialogTitle, Select, Tooltip } from '@corral/react/ui';
 import { useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -85,25 +79,17 @@ export function SettingsDialog({
       >
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-line px-4 py-2">
           <DialogTitle>{t('title')}</DialogTitle>
-          <Button variant="ghost" onClick={() => navigation.close?.()}>
-            {t('close')}
-          </Button>
+          <Tooltip content={t('close')}>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={t('close')}
+              onClick={() => navigation.close?.()}
+            >
+              <X />
+            </Button>
+          </Tooltip>
         </div>
-        <DialogDescription className="border-b border-line px-4 py-2 text-xs">
-          {t(
-            projectScope
-              ? 'scopeProject'
-              : section === 'harness'
-                ? 'scopeProfile'
-                : section === 'general' || section === 'shortcuts'
-                  ? 'scopeDevice'
-                  : section === 'about'
-                    ? 'scopeRead'
-                    : section === 'vault'
-                      ? 'scopeVault'
-                      : 'scopeServer',
-          )}
-        </DialogDescription>
         <div className="shrink-0 border-b border-line p-2 sm:hidden">
           <Select
             label={t('title')}

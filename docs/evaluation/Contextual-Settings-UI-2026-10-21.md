@@ -4,7 +4,7 @@
 - 계약: [CR-044](../change-requests/CR-044-contextual-settings-ui.md), [Workbench](../current/workbench.md), [위젯](../current/chat-widgets-contract.md), ADR-037.
 - 추적: C-140 / CRL-UX-006 / TC-UX-006-H,N.
 - 기준: `ab3a103`. 환경: Linux x64, Node 24.19.0, pnpm 10.30.3, Chromium/Firefox, Electron 44.4.5.
-- 최종 UI 자산: `index-C95TUVIG.js`, SHA-256 `0909b17829947cb8d8c3293004337df9ff47c772490e77d1e9ad1e13bcf92e0a`. Studio dist와 staged Desktop의 자산이 동일하다.
+- 1–6단계 native 검증 UI 자산: `index-C95TUVIG.js`, SHA-256 `0909b17829947cb8d8c3293004337df9ff47c772490e77d1e9ad1e13bcf92e0a`. Studio dist와 staged Desktop의 자산이 동일하다.
 - 외부 모델 호출 없이 기존 격리 서버·SQLite·deterministic adapter/fake provider를 사용했다. 테스트 이름의 live는 로컬 fake transport를 통한 제품 경로이며 실제 공급자 품질 검증이 아니다.
 
 ## 적용 단위
@@ -71,3 +71,16 @@ pnpm deps:check
 Windows/macOS 실기는 기존 사용자 결정대로 별도다. 실제 OS IME·스크린리더·모든 provider/host·전체 AppImage 재패키징·서명/업데이트·외부 live 호출은 이번 검증이 아니다. 한국어/일본어 composition 이벤트 시험을 실제 입력기 검증이나 새 일본어 번역 지원으로 주장하지 않는다. `native-smoke.ts`의 패키지 시나리오는 새 모달 계약에 맞췄지만 이번 실행은 `smoke.ts`의 Linux staged runtime이다. 전체 WCAG 준수나 출시 준비 완료를 선언하지 않는다.
 
 롤백은 이번 UI 커밋을 역순 revert한다. 데이터 migration·사용자 리소스 삭제는 필요하지 않다. 완료 계획은 삭제하고 Git 이력으로 보존했다.
+
+
+## 화면 코멘트 후속 정리
+
+`b655e0c` 이후 사용자 코멘트 1–5·7의 표시 정리와 8의 세로 정렬을 반영했다. 정상 연결 배지, 설정의 공통 적용 설명과 중복 복귀 링크를 제거했다. 모달은 이름·툴팁을 가진 닫기 아이콘을 사용하며, 공통 Dialog는 장식 외곽선 없이 표시하되 고대비 모드의 outline을 유지한다. 실행 상세 패널과 전체 프로젝트의 생성·보관·복원 경로는 유지한다.
+
+- 기존 UI에서 정상 배지·중복 복귀 링크에 대한 두 실패를 먼저 확인했다. 고대비 경계 검사도 실패를 확인하고 실제 outline style을 보강했다.
+- 최종 생산용 Studio build에서 설정·모델·UX 회귀 22개 통과. 별도 Workbench·언어 회귀 4개도 통과했다. 일반/좁은 공통 모달의 border 0, 고대비 outline, 키보드·Escape·초점 복귀, 미저장/늦은 저장, 미연결 차단을 확인했다.
+- 1280×800 밝은 모델 설정, 390×844 한국어 어두운 설정, 정상 연결 사이드바의 실제 fixture 화면을 확인했다. 실제 사용자 데이터나 외부 공급자는 사용하지 않았다.
+- 로컬 PR workflow의 첫 실행에서 기존 native smoke의 마지막 캡처 코드 포맷 오류 1건을 발견해 수정했다. 전역 non-null 경고는 별도 기존 경고다.
+- native smoke의 모달 닫기 selector와 단축키 검증 위치를 갱신했다. 이번 후속 스타일의 패키지/실기 재검증은 하지 않았으며 앞의 native 자산 증거와 구분한다.
+
+로그: `/tmp/corral-ui-feedback-red.log`, `/tmp/corral-ui-feedback-final.log`, `/tmp/corral-ui-feedback-models-final.log`. 중간 파일 패널 1건은 실행 중 번역 파일 수정으로 Vite가 리로드되어 발생했고 소스가 안정된 뒤 같은 검사가 통과했다. 최종 회귀의 성공과 중간 실패를 구분한다.

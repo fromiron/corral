@@ -506,7 +506,7 @@ for (const outcome of ['failed', 'succeeded'] as const) {
     }
     await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe(outcome);
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
-    await page.getByRole('link', { name: 'Back to work', exact: true }).click();
+    await page.getByRole('button', { name: 'Close settings', exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/sessions/${sessionId}`));
     await expect(requestBox(page)).toHaveValue(text);
     await page.getByRole('button', { name: 'Send', exact: true }).click();
@@ -600,7 +600,7 @@ for (const outcome of ['failed', 'succeeded'] as const) {
     }
     await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe(outcome);
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
-    await page.getByRole('link', { name: 'Back to work', exact: true }).click();
+    await page.getByRole('button', { name: 'Close settings', exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/sessions/${sessionId}`));
     await page.getByRole('button', { name: 'Start now', exact: true }).click();
     await expect.poll(() => starts.length).toBe(2);

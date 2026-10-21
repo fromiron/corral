@@ -247,13 +247,23 @@ try {
   ).toBeInViewport();
   assert(await settingsDialog.evaluate((node) => node.scrollWidth <= node.clientWidth));
   mkdirSync(join(desktop, 'release'), { recursive: true });
-  console.log('Settings zoom viewport:', await page.evaluate(() => ({ width: innerWidth, height: innerHeight, scale: devicePixelRatio })));
+  console.log(
+    'Settings zoom viewport:',
+    await page.evaluate(() => ({
+      width: innerWidth,
+      height: innerHeight,
+      scale: devicePixelRatio,
+    })),
+  );
   const zoomCapture = await application.evaluate(async ({ BrowserWindow }) => {
     const window = BrowserWindow.getAllWindows()[0];
     if (!window) throw new Error('Missing native window');
     return (await window.webContents.capturePage()).toPNG().toString('base64');
   });
-  writeFileSync(join(desktop, 'release/settings-200-percent.png'), Buffer.from(zoomCapture, 'base64'));
+  writeFileSync(
+    join(desktop, 'release/settings-200-percent.png'),
+    Buffer.from(zoomCapture, 'base64'),
+  );
   await application.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()[0]?.webContents.setZoomFactor(1),
   );

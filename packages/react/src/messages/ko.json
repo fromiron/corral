@@ -13,13 +13,7 @@
     "reviewTarget": "설정 대상 열기",
     "dismiss": "닫기",
     "title": "설정",
-    "close": "설정 닫기",
-    "scopeServer": "이 서버 · 이후 요청에 적용",
-    "scopeDevice": "이 기기 · 환경설정은 즉시 적용",
-    "scopeProject": "선택한 프로젝트 · 이후 요청에 적용",
-    "scopeProfile": "선택한 작업 방식 · 새 버전 발행; 실행 중인 요청은 기존 설정 유지",
-    "scopeVault": "이 서버 · 미리보기와 명시 확인 후 복원",
-    "scopeRead": "현재 연결 · 읽기 전용"
+    "close": "설정 닫기"
   },
   "Processes": {
     "title": "명령 실행",
@@ -88,12 +82,10 @@
     "sessionMissing": "이 탭에는 로컬 서버 세션이 없습니다. Corral 서버가 시작할 때 출력한 링크를 여세요.",
     "navModels": "모델",
     "liveBadge": "로컬 서버 / 시뮬레이션 또는 실제 에이전트",
-    "liveNote": "실제 모델을 고르지 않으면 실행은 시뮬레이션입니다. 실제 실행은 본인 로그인을 사용합니다.",
     "language": "언어",
-    "liveShort": "로컬 · 실제 모델",
     "serverShort": "로컬 · 시뮬레이션",
     "demoShort": "데모 · 시뮬레이션",
-    "liveNoModel": "로컬 · 모델 미연결",
+    "liveNoModel": "모델 연결 필요",
     "liveNoModelNote": "실제 모델을 쓸 수 있지만 아직 연결된 모델이 없어요. 설정 › 모델에서 로그인하세요. 그 전까지 실행은 시뮬레이션이에요.",
     "connectionFailed": "서버에 연결하지 못했습니다. 연결 상태를 확인한 뒤 다시 시도해 주세요.",
     "retryConnection": "다시 시도"

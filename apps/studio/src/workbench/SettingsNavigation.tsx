@@ -68,22 +68,16 @@ export function SettingsNavigation({
       aria-label={td('settings')}
       className="flex h-full min-h-0 flex-col bg-sidebar text-sm"
     >
-      <div className="flex h-[52px] shrink-0 items-center border-b border-line/50 px-4">
-        <Link
-          to={navigation.returnTo}
-          resetScroll={false}
-          onClick={(event) => {
-            if (navigation.close) {
-              event.preventDefault();
-              navigation.close();
-            }
-          }}
-          className="mr-auto flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-ui hover:bg-sidebar-accent"
-        >
-          <ArrowLeft size={16} />
-          {t('backToWork')}
-        </Link>
-        {!navigation.overlay ? (
+      {!navigation.overlay ? (
+        <div className="flex h-[52px] shrink-0 items-center border-b border-line/50 px-4">
+          <Link
+            to={navigation.returnTo}
+            resetScroll={false}
+            className="mr-auto flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-ui hover:bg-sidebar-accent"
+          >
+            <ArrowLeft size={16} />
+            {t('backToWork')}
+          </Link>
           <Button
             variant="ghost"
             size="icon-sm"
@@ -92,8 +86,8 @@ export function SettingsNavigation({
           >
             <PanelLeft />
           </Button>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
         {sections.map((group) => (
           <section key={group.title} className="mb-5" aria-label={group.title}>

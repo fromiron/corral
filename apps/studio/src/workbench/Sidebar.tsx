@@ -347,23 +347,31 @@ export const Sidebar = memo(function Sidebar({
           {tw('needsYou', { count: model.inbox })}
         </Link>
       ) : null}
-      <div className="flex items-center justify-between pt-2 pr-3 pb-1 pl-5 text-2xs font-medium text-muted">
-        <Link to="/schedules" className="hover:text-text">
+      <div className="flex flex-col gap-1 px-3 pt-2 pb-1 text-ui text-muted">
+        <Link
+          to="/schedules"
+          className="flex min-h-8 items-center rounded-md px-2 hover:bg-sidebar-accent hover:text-text"
+        >
           {t('schedules')}
         </Link>
-        <Link to="/projects" className="hover:text-text">
-          {tw('allProjects')}
-        </Link>
-        <Tooltip content={t('newProject')}>
-          <Button
-            variant="ghost-muted"
-            size="icon-xs"
-            aria-label={t('newProject')}
-            render={<Link to="/projects" />}
+        <div className="flex items-center gap-1">
+          <Link
+            to="/projects"
+            className="flex min-h-8 flex-1 items-center rounded-md px-2 hover:bg-sidebar-accent hover:text-text"
           >
-            <FolderPlus />
-          </Button>
-        </Tooltip>
+            {tw('allProjects')}
+          </Link>
+          <Tooltip content={t('newProject')}>
+            <Button
+              variant="ghost-muted"
+              size="icon-xs"
+              aria-label={t('newProject')}
+              render={<Link to="/projects" />}
+            >
+              <FolderPlus />
+            </Button>
+          </Tooltip>
+        </div>
       </div>
       {model.error ? (
         <p role="alert" className="px-5 py-1 text-xs text-danger">
@@ -536,39 +544,33 @@ export const Sidebar = memo(function Sidebar({
           <Settings />
           {t('settings')}
         </Button>
-        <Tooltip
-          side="top"
-          content={
-            mode === 'server'
-              ? live
-                ? connected
-                  ? studio('liveNote')
-                  : studio('liveNoModelNote')
-                : studio('serverNote')
-              : studio('demoNote')
-          }
-        >
-          {/* UX-06: "live models" only when a model is actually connected. */}
-          <button
-            type="button"
-            onClick={() =>
-              live && !connected ? void navigate(settingsNavigation.link('models')) : null
+        {mode === 'server' && live && connected ? null : (
+          <Tooltip
+            side="top"
+            content={
+              mode === 'server'
+                ? live
+                  ? studio('liveNoModelNote')
+                  : studio('serverNote')
+                : studio('demoNote')
             }
-            className="ml-auto flex items-center gap-1.5 rounded px-1.5 py-1 text-2xs text-muted"
           >
-            <span
-              aria-hidden="true"
-              className={`size-1.5 rounded-full ${live && connected ? 'bg-success' : 'bg-warning'}`}
-            />
-            {mode === 'server'
-              ? live
-                ? connected
-                  ? studio('liveShort')
-                  : studio('liveNoModel')
-                : studio('serverShort')
-              : studio('demoShort')}
-          </button>
-        </Tooltip>
+            <button
+              type="button"
+              onClick={() =>
+                live && !connected ? void navigate(settingsNavigation.link('models')) : null
+              }
+              className="ml-auto flex items-center gap-1.5 rounded px-1.5 py-1 text-2xs text-muted"
+            >
+              <span aria-hidden="true" className="size-1.5 rounded-full bg-warning" />
+              {mode === 'server'
+                ? live
+                  ? studio('liveNoModel')
+                  : studio('serverShort')
+                : studio('demoShort')}
+            </button>
+          </Tooltip>
+        )}
       </div>
       <Dialog
         open={Boolean(editing)}

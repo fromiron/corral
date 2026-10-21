@@ -70,7 +70,7 @@ test('[WBTST-004] UX-015-01 new-session drafts survive team setup and become an 
   await page.getByRole('link', { name: 'Shortcuts', exact: true }).click();
   release();
   await finished;
-  await page.getByRole('link', { name: 'Back to work', exact: true }).click();
+  await page.getByRole('button', { name: 'Close settings', exact: true }).click();
   await expect(page).toHaveURL(/\/projects\/default$/);
   expect(creates).toBe(1);
   await expect(

@@ -122,7 +122,7 @@ test.describe('a borrowed Codex CLI login (CR-004)', () => {
     expect(content).not.toContain('secret');
     expect(content).not.toContain('auth.json');
 
-    await page.getByRole('link', { name: 'Back to work', exact: true }).click();
+    await page.getByRole('button', { name: 'Close settings', exact: true }).click();
     await agentToOutput(page);
     await page.getByLabel('Agents').selectOption({ label: 'Live models (uses your sign-in)' });
     await page.getByRole('tab', { name: 'Test run', exact: true }).click();
@@ -155,7 +155,7 @@ test('[TC-SEC-002-H] an API key typed under Models runs live, is never shown, an
   await expect(page.getByTestId('profile-model-a')).toContainText('Ready');
   expect(await page.content()).not.toContain('sk-e2e-entered-secret');
 
-  await page.getByRole('link', { name: 'Back to work', exact: true }).click();
+  await page.getByRole('button', { name: 'Close settings', exact: true }).click();
   await agentToOutput(page);
   await page.getByLabel('Agents').selectOption({ label: 'Live models (uses your sign-in)' });
   await page.getByRole('tab', { name: 'Test run', exact: true }).click();
@@ -199,7 +199,7 @@ test.describe('a keyless OpenAI-compatible endpoint (CR-005)', () => {
     await expect(local.getByRole('button', { name: 'Sign in' })).toHaveCount(0);
     await expect(page.getByTestId('profile-model-a')).toContainText('Ready');
 
-    await page.getByRole('link', { name: 'Back to work', exact: true }).click();
+    await page.getByRole('button', { name: 'Close settings', exact: true }).click();
     await agentToOutput(page);
     await page.getByLabel('Agents').selectOption({ label: 'Live models (uses your sign-in)' });
     await page.getByRole('tab', { name: 'Test run', exact: true }).click();

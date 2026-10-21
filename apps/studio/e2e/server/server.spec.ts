@@ -56,13 +56,13 @@ test('[TC-CAN-001-H] a run on the local server saves first, finishes, and surviv
     await committed;
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     if (returnBeforeResponse) {
-      await page.getByRole('link', { name: 'Back to work', exact: true }).click();
+      await page.getByRole('button', { name: 'Close settings', exact: true }).click();
       await expect(page.getByRole('button', { name: 'Saving…', exact: true })).toBeDisabled();
     }
     release();
     await finished;
     if (!returnBeforeResponse)
-      await page.getByRole('link', { name: 'Back to work', exact: true }).click();
+      await page.getByRole('button', { name: 'Close settings', exact: true }).click();
     await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Undo', exact: true }).click();
     await expect(page.getByText('● Unsaved changes', { exact: true })).toBeVisible();

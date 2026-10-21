@@ -53,13 +53,13 @@ test('[TC-UX-02-H] a referenced result keeps its exact version through a reload'
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     await page.getByRole('link', { name: 'Shortcuts', exact: true }).click();
     if (nextDraft !== undefined) {
-      await page.getByRole('link', { name: 'Back to work', exact: true }).click();
+      await page.getByRole('button', { name: 'Close settings', exact: true }).click();
       await requestBox(page).fill(nextDraft);
     }
     release();
     await finished;
     if (nextDraft === undefined)
-      await page.getByRole('link', { name: 'Back to work', exact: true }).click();
+      await page.getByRole('button', { name: 'Close settings', exact: true }).click();
     await expect(requestBox(page)).toHaveValue(nextDraft ?? '');
     await page.unroute('**/api/v1/runs');
   };
@@ -110,7 +110,7 @@ test.describe('live models', () => {
     await expect(page.getByRole('combobox', { name: 'Run mode' })).toHaveCount(0);
     await expect(page.getByTestId('models-not-ready')).toContainText('model-a');
     await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
-    await expect(page.getByTestId('app-sidebar')).toContainText('no model connected');
+    await expect(page.getByTestId('app-sidebar')).toContainText('Connect a model');
     await expect(page.getByRole('button', { name: 'Use simulated agents' })).toHaveCount(0);
     await expect(requestBox(page)).toHaveValue('Use the live model');
     // /model shows each role's model and that it needs a sign-in.

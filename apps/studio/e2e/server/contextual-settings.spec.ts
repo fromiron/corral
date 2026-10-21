@@ -10,6 +10,10 @@ test('[TC-UX-006-H] [TC-UX-006-N] direct settings overlay preserves work, histor
   await page.goto(`${corral.server.url}/projects/default?settings=general#kept`);
   const dialog = page.getByRole('dialog', { name: 'Settings', exact: true });
   await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('link', { name: 'Back to work', exact: true })).toHaveCount(0);
+  await expect(dialog.locator('[data-slot="dialog-description"]')).toHaveCount(0);
+  await expect(dialog).toHaveCSS('border-top-width', '0px');
+  await expect(dialog.getByRole('button', { name: 'Close settings' })).toHaveText('');
   await expect(page.getByTestId('app-sidebar')).toHaveCount(1);
   await dialog.getByRole('combobox', { name: 'Language', exact: true }).click();
   await expect(page.getByRole('option', { name: 'English', exact: true })).toBeVisible();
@@ -76,6 +80,13 @@ test('[TC-UX-006-N] closing a pending save keeps its target and does not overwri
   await page.evaluate(() => history.back());
   const guard = page.getByRole('dialog', { name: 'Unsaved settings' });
   await expect(guard).toBeVisible();
+  await expect(guard).toHaveCSS('border-top-width', '0px');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(guard).toHaveCSS('border-top-width', '0px');
+  await page.emulateMedia({ forcedColors: 'active' });
+  await expect(guard).toHaveCSS('outline-style', 'solid');
+  await page.emulateMedia({ forcedColors: 'none' });
+  await page.setViewportSize({ width: 1280, height: 800 });
   await guard.getByRole('button', { name: 'Keep editing' }).click();
   let release!: () => void;
   const waiting = new Promise<void>((resolve) => {
@@ -126,6 +137,29 @@ test('[TC-UX-006-N] closing a pending save keeps its target and does not overwri
 
 test.describe('active work and credentials', () => {
   test.use({ live: true, codexLogin: true });
+  test('[TC-UX-006-H] connected sidebar keeps project navigation without a normal-state badge', async ({
+    page,
+    corral,
+  }) => {
+    await corral.open('/projects/default');
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await page.getByRole('link', { name: 'Models', exact: true }).click();
+    await expect(page.getByTestId('profile-model-a')).toContainText('Ready');
+    await page.getByRole('button', { name: 'Close settings', exact: true }).click();
+    const sidebar = page.getByTestId('app-sidebar');
+    await expect(sidebar.getByText('Local · live models', { exact: true })).toHaveCount(0);
+    const schedule = await sidebar
+      .getByRole('link', { name: 'Schedules', exact: true })
+      .boundingBox();
+    const projects = await sidebar
+      .getByRole('link', { name: 'All projects', exact: true })
+      .boundingBox();
+    if (!schedule || !projects) throw new Error('Missing sidebar navigation');
+    expect(projects.y).toBeGreaterThanOrEqual(schedule.y + schedule.height);
+    await sidebar.getByRole('link', { name: 'All projects', exact: true }).click();
+    await expect(page.getByRole('form', { name: 'New project', exact: true })).toBeVisible();
+    await page.screenshot({ path: test.info().outputPath('sidebar-connected.png') });
+  });
   test('[TC-UX-006-N] streaming keeps one subscription and approval cannot steal settings focus', async ({
     page,
     corral,

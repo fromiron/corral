@@ -68,7 +68,7 @@ test('[TC-UX-004-H] DW-02/03 settings overlay keeps the same mounted work and dr
   await expect(page.getByTestId('app-sidebar')).toHaveCount(1);
   expect(await originalInput?.evaluate((node) => node.isConnected)).toBe(true);
   await settings.getByRole('link', { name: 'Shortcuts', exact: true }).click();
-  await settings.getByRole('link', { name: 'Back to work', exact: true }).click();
+  await settings.getByRole('button', { name: 'Close settings', exact: true }).click();
   expect(await originalInput?.evaluate((node: HTMLTextAreaElement) => node.selectionStart)).toBe(4);
   await expect(page).toHaveURL(workUrl);
   await expect(page.getByRole('tab', { name: 'Execution', exact: true })).toHaveAttribute(
@@ -113,7 +113,7 @@ test('[TC-UX-001-H] DW-05 a file opens in a remembered tab and its line referenc
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('link', { name: 'Folders & tools', exact: true }).click();
   await page.getByRole('button', { name: 'Link the example folder', exact: true }).click();
-  await page.getByRole('link', { name: 'Back to work', exact: true }).click();
+  await page.getByRole('button', { name: 'Close settings', exact: true }).click();
   await expect(page.getByRole('tab', { name: 'Files', exact: true })).toHaveAttribute(
     'aria-selected',
     'true',

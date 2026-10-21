@@ -13,13 +13,7 @@
     "reviewTarget": "Open settings target",
     "dismiss": "Dismiss",
     "title": "Settings",
-    "close": "Close settings",
-    "scopeServer": "This server · changes apply to subsequent requests",
-    "scopeDevice": "This device · preferences apply immediately",
-    "scopeProject": "Selected project · changes apply to subsequent requests",
-    "scopeProfile": "Selected work style · publish a new revision; active runs keep their snapshot",
-    "scopeVault": "This server · restore only after preview and explicit confirmation",
-    "scopeRead": "Current connection · read only"
+    "close": "Close settings"
   },
   "Processes": {
     "title": "Commands",
@@ -88,12 +82,10 @@
     "sessionMissing": "This tab has no session with the local server. Open the link the Corral server printed when it started.",
     "navModels": "Models",
     "liveBadge": "Local server / Simulated or live agents",
-    "liveNote": "Runs are simulated unless you choose live models; live runs use your own sign-in.",
     "language": "Language",
-    "liveShort": "Local · live models",
     "serverShort": "Local · simulated",
     "demoShort": "Demo · simulated",
-    "liveNoModel": "Local · no model connected",
+    "liveNoModel": "Connect a model",
     "liveNoModelNote": "Live models are possible here, but no model is connected yet. Open Settings › Models to sign in; until then runs are simulated.",
     "connectionFailed": "Corral could not connect to this server. Check the connection, then try again.",
     "retryConnection": "Try again"
