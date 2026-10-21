@@ -3489,5 +3489,38 @@
     "status": "planned",
     "adapter": "existing attachment/repository/Coordinator and composer draft fixtures with public Monaco/xterm selection APIs; real in-app observation before any new E2E; no paid models",
     "evidence": null
+  },
+  {
+    "id": "TC-WBD-008-H",
+    "requirements": [
+      "CRL-WBD-008"
+    ],
+    "suite": "unit+integration",
+    "scenario": "원본과 두 관리 사본의 실제 HEAD/branch/upstream·staged/unstaged/untracked·rename/binary diff를 구분하고 status discovery→선택 diff→명시 새로고침에서 정확한 대상과 읽기 전용 의미 보존",
+    "status": "planned",
+    "adapter": "temporary real Git repositories and managed worktrees with existing SQLite/authenticated client fixtures; bounded process failure doubles where needed; real in-app observation before new E2E; no paid models or remote writes",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-008-N",
+    "requirements": [
+      "CRL-WBD-008"
+    ],
+    "suite": "unit+integration",
+    "scenario": "다른 host/binding/session/generation 및 stale HEAD/index 거절, 공백/한글/개행 raw 경로 보존, detached/unborn/shallow·symlink/gitlink/unmerged 비지원과 configured filters의 변환 전 원문 표시",
+    "status": "planned",
+    "adapter": "temporary real Git repositories and managed worktrees with existing SQLite/authenticated client fixtures; bounded process failure doubles where needed; real in-app observation before new E2E; no paid models or remote writes",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-008-F",
+    "requirements": [
+      "CRL-WBD-008"
+    ],
+    "suite": "unit+integration",
+    "scenario": "조회 중 외부 index/HEAD·binding/사본 변경과 늦은 응답, Git 실패/출력 상한/비지원 경로에서 clean 오표시·자동 retarget 방지, hook/filter/textconv/extdiff/fsmonitor/lazy fetch 미실행 및 index·원본·내부 snapshot refs 불변",
+    "status": "planned",
+    "adapter": "temporary real Git repositories and managed worktrees with existing SQLite/authenticated client fixtures; bounded process failure doubles where needed; real in-app observation before new E2E; no paid models or remote writes",
+    "evidence": null
   }
 ]

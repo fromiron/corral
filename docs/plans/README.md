@@ -4,7 +4,7 @@
 
 | 계획 | 승인 근거 | 남은 범위 |
 |---|---|---|
-| [개발 Workbench](workbench-development-implementation-plan-2026-10-21.md) | 사용자 구현 승인, CR-046 | C-142·143 기반/공통 예약부터 편집·PTY·도킹·Git·개발 여정 순차 연결 |
+| [개발 Workbench](workbench-development-implementation-plan-2026-10-21.md) | 사용자 구현 승인, CR-046 | P00–P12 구현. 사용자 요청으로 일시정지, 재개 시 P13 Git 쓰기부터. 개발 여정·플랫폼 qualification은 후속 |
 | [Ultra와 Skill 품질](ultra-and-quality.md) | CR-031·036 | C-118 미지원 provider/API 계열과 환경 검증, C-114 후보 비교. M4-3/4 구현 완료 |
 | [Desktop 완료 조건](desktop-completion.md) | CR-042·033 | C-125·128·135·136 구현/환경 검증, M4-5 중복 범위 대조 |
 

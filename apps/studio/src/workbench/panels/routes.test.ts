@@ -9,6 +9,15 @@ import {
   validateSessionSearch,
 } from './routes.ts';
 
+it('[TC-WBD-008-H] Git is a separate session pane and keeps its project/session identity', () => {
+  expect(validateSessionSearch({ panel: 'git' })).toEqual({ panel: 'git' });
+  expect(sessionPanelDescriptor('project', 'session', 'git')).toEqual({
+    kind: 'git',
+    projectId: 'project',
+    sessionId: 'session',
+  });
+});
+
 it('[TC-WBD-007-H] composer links override remembered history without making composer focus sticky', () => {
   const remembered = { panel: 'run', run: 'run_old', view: 'run', execution: 'old_call' };
   const compose = validateSessionSearch({ compose: true });

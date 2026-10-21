@@ -400,22 +400,22 @@ const sideText = (side: FileSideView) =>
 
 type NewComment = Pick<ReviewCommentView, 'side' | 'startLine' | 'endLine' | 'quote' | 'body'>;
 
-function FileDiff({
+export function FileDiff({
   path,
   loadKey,
   load,
   reviewedKey,
   reviewed,
-  comments,
+  comments = [],
   onComment,
 }: {
   path: string;
   /** Changes whenever what to load changes. */
   loadKey: string;
   load: () => Promise<{ before: FileSideView; after: FileSideView }>;
-  reviewedKey: string;
-  reviewed: ReviewedFiles;
-  comments: ReviewCommentView[];
+  reviewedKey?: string;
+  reviewed?: ReviewedFiles;
+  comments?: ReviewCommentView[];
   /** Absent where comments do not apply (the linked folder's Git state). */
   onComment?: (comment: NewComment) => Promise<void>;
 }) {
@@ -479,7 +479,7 @@ function FileDiff({
   const before = sideText(sides.before);
   const after = sideText(sides.after);
   const source = sides.after.kind === 'text' ? sides.after.text : (before ?? '');
-  const isReviewed = reviewed.has(reviewedKey);
+  const isReviewed = reviewedKey !== undefined && Boolean(reviewed?.has(reviewedKey));
   const download = () => {
     const url = URL.createObjectURL(new Blob([source], { type: 'text/plain;charset=utf-8' }));
     const link = document.createElement('a');
@@ -492,15 +492,17 @@ function FileDiff({
     <div className="flex flex-col gap-2" data-testid="file-diff">
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="break-all font-mono text-sm">{path}</h3>
-        <button
-          type="button"
-          aria-pressed={isReviewed}
-          onClick={() => reviewed.toggle(reviewedKey)}
-          title={t('reviewedNote')}
-          className={`rounded px-2 py-0.5 text-xs ${isReviewed ? 'bg-success/20' : 'fill-control'}`}
-        >
-          {isReviewed ? `✓ ${t('reviewedFile')}` : t('markFileReviewed')}
-        </button>
+        {reviewed && reviewedKey !== undefined ? (
+          <button
+            type="button"
+            aria-pressed={isReviewed}
+            onClick={() => reviewed.toggle(reviewedKey)}
+            title={t('reviewedNote')}
+            className={`rounded px-2 py-0.5 text-xs ${isReviewed ? 'bg-success/20' : 'fill-control'}`}
+          >
+            {isReviewed ? `✓ ${t('reviewedFile')}` : t('markFileReviewed')}
+          </button>
+        ) : null}
         <fieldset className="ml-auto flex gap-1 text-xs">
           {(['unified', 'split', 'raw'] as const).map((value) => (
             <button

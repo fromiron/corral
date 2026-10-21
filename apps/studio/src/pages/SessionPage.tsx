@@ -135,6 +135,7 @@ import { DockWorkbench, type DockWorkbenchHandle } from '../workbench/docking/Do
 import type { DockContextView } from '../workbench/docking/layout.ts';
 import { documentKey, documentStore } from '../workbench/documents/store.ts';
 import { FilePanel, type FileReference } from '../workbench/FilePanel.tsx';
+import { GitPanel } from '../workbench/GitPanel.tsx';
 import { ImageAttachmentList, ImageAttachmentPicker } from '../workbench/ImageAttachments.tsx';
 import { LiveVoice } from '../workbench/LiveVoice.tsx';
 import { MessageBranch } from '../workbench/MessageBranch.tsx';
@@ -325,6 +326,7 @@ export function SessionPage() {
       />
     ),
     changes: () => <ChangesPanel session={session} files={changes} />,
+    git: () => <GitPanel sessionId={session.sessionId} projectId={session.projectId} />,
     artifacts: () => (
       <ArtifactsPanel
         runs={runs}

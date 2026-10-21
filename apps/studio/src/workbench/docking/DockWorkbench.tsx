@@ -85,6 +85,7 @@ const contexts: DockContextView[] = [
   'chat',
   'files',
   'changes',
+  'git',
   'artifacts',
   'checks',
   'run',

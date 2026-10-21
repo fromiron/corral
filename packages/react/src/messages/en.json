@@ -1649,7 +1649,8 @@
       "artifacts": "Results",
       "checks": "Checks",
       "files": "Files",
-      "run": "Execution"
+      "run": "Execution",
+      "git": "Git"
     },
     "headerTeam": "Team: {name} r{revision}",
     "noTeamHeader": "No team",
@@ -3233,7 +3234,8 @@
     "pendingActions": "{count, plural, one {# response needed} other {# responses needed}}",
     "runDisconnected": "Run connection lost; its state is unconfirmed.",
     "layoutControls": "Arrange panes",
-    "savedLayout": "Custom layout"
+    "savedLayout": "Custom layout",
+    "git": "Git"
   },
   "Context": {
     "attachFailed": "Could not attach this capture. Retry from the source.",
@@ -3260,5 +3262,39 @@
     "cancel": "Cancel",
     "close": "Close",
     "readonlySnapshot": "This snapshot is read-only. Opening it does not change files or send a request."
+  },
+  "Git": {
+    "title": "Git",
+    "source": "Repository source",
+    "sessionSource": "Session working copy",
+    "projectSource": "Project original · read only",
+    "refresh": "Refresh",
+    "loading": "Reading Git state…",
+    "unavailable": "Git is unavailable for this source.",
+    "noChanges": "No changes.",
+    "selectFile": "Select a change to compare its contents.",
+    "staged": "Staged",
+    "unstaged": "Unstaged",
+    "untracked": "Untracked",
+    "conflicts": "Conflicts",
+    "conflictUnavailable": "Resolve this conflict with your Git tools before comparing it here.",
+    "branch": "Branch",
+    "head": "HEAD",
+    "upstream": "Upstream",
+    "noUpstream": "No upstream",
+    "aheadBehind": "{ahead} ahead · {behind} behind",
+    "detached": "Detached HEAD",
+    "unborn": "No commits yet",
+    "shallow": "Shallow repository",
+    "truncated": "Showing the first 2,000 changes.",
+    "rawContent": "Conversion filters are disabled. The comparison shows raw saved content.",
+    "comparison": {
+      "staged": "HEAD → index",
+      "unstaged": "Index → working file",
+      "untracked": "New file → working file"
+    },
+    "stateChanged": "Git changed after this view was loaded. Refresh to select the current change.",
+    "unsupported": "This file type cannot be compared here.",
+    "submodule": "Submodule"
   }
 }

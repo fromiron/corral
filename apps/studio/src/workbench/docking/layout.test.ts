@@ -41,6 +41,19 @@ function panel(layout: SerializedDockview, id: string) {
   return value;
 }
 
+it('[TC-WBD-008-H] Git restores as its own context without replacing internal changes', () => {
+  const layout = createPresetLayout('implementation', [
+    { id: 'context:git', descriptor: { kind: 'context', view: 'git' } },
+    { id: 'context:changes', descriptor: { kind: 'context', view: 'changes' } },
+  ]);
+  const restored = parseLayout(envelope(layout), target.hostId, target.projectId);
+  expect(restored.recovered).toBe(false);
+  expect(restored.panels.map((entry) => entry.descriptor)).toEqual([
+    { kind: 'context', view: 'git' },
+    { kind: 'context', view: 'changes' },
+  ]);
+});
+
 it('[TC-WBD-006-H] all presets and reload preserve twenty exact document references and panel IDs', () => {
   const panels = [
     ...DEFAULT_PANELS,

@@ -1,10 +1,10 @@
-export const SESSION_PANELS = ['changes', 'files', 'artifacts', 'checks', 'run'] as const;
+export const SESSION_PANELS = ['changes', 'git', 'files', 'artifacts', 'checks', 'run'] as const;
 export type SessionPanel = (typeof SESSION_PANELS)[number];
 
 /** View references only; document, process and Run owners stay in their existing stores. */
 export type PanelDescriptor =
   | {
-      kind: 'chat' | 'files' | 'changes' | 'artifacts' | 'checks' | 'review';
+      kind: 'chat' | 'files' | 'changes' | 'git' | 'artifacts' | 'checks' | 'review';
       projectId: string;
       sessionId: string;
     }
@@ -29,6 +29,7 @@ export function panelKey(services: object, panel: PanelDescriptor): string {
     case 'chat':
     case 'files':
     case 'changes':
+    case 'git':
     case 'artifacts':
     case 'checks':
     case 'review':

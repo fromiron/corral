@@ -18,6 +18,7 @@ import {
   type DecisionProvider,
   DocumentCommand,
   type ErrorCode,
+  GitDiffRequest,
   HarnessBindingRef,
   HunkPlanRequest,
   HunkRequest,
@@ -1651,11 +1652,50 @@ async function createCorralServer(
     },
   );
 
+  const gitFail = (reply: FastifyReply, error: unknown) => {
+    if (error instanceof WorkspaceError || error instanceof ToolRefusal)
+      return fail(reply, error.code, error.message);
+    return fail(reply, 'STORAGE_UNAVAILABLE', 'the Git read failed');
+  };
+  const GitDiffQuery = GitDiffRequest.omit({ target: true, head: true }).extend({
+    target: z.string().max(4096),
+    head: z.string().max(64),
+  });
   // DW-05: the browser chooses a registered scope, never an absolute filesystem root.
   for (const [kind, base] of [
     ['project', '/api/v1/projects/:id/workspace'],
     ['session', '/api/v1/sessions/:id/worktree'],
   ] as const) {
+    app.get<{ Params: { id: string } }>(`${base}/git/status`, async (request, reply) => {
+      if (!z.strictObject({}).safeParse(request.query).success)
+        return fail(reply, 'SCHEMA_INVALID', 'Git status takes no query parameters');
+      try {
+        return await files.gitStatus({ kind, id: request.params.id });
+      } catch (error) {
+        return gitFail(reply, error);
+      }
+    });
+    app.get<{ Params: { id: string } }>(`${base}/git/diff`, async (request, reply) => {
+      const query = GitDiffQuery.safeParse(request.query);
+      if (!query.success) return fail(reply, 'SCHEMA_INVALID', 'invalid Git diff query');
+      let target: unknown;
+      try {
+        target = JSON.parse(query.data.target);
+      } catch {
+        return fail(reply, 'SCHEMA_INVALID', 'invalid Git target');
+      }
+      const input = GitDiffRequest.safeParse({
+        ...query.data,
+        target,
+        head: query.data.head === '' ? null : query.data.head,
+      });
+      if (!input.success) return fail(reply, 'SCHEMA_INVALID', 'invalid Git diff query');
+      try {
+        return await files.gitDiff({ kind, id: request.params.id }, input.data);
+      } catch (error) {
+        return gitFail(reply, error);
+      }
+    });
     app.get<{ Params: { id: string } }>(`${base}/files`, async (request, reply) => {
       const query = z
         .strictObject({ path: z.string().max(4096).default('') })

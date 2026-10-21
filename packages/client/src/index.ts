@@ -5,6 +5,9 @@ import type {
   DocumentOperation,
   FileCheckpoint,
   FileDocument,
+  GitDiff,
+  GitDiffRequest,
+  GitStatus,
   ProfileContextOverrides,
   ProfileContextPolicy,
   ProfileContextResolution,
@@ -36,6 +39,12 @@ export type {
   DocumentOperation,
   DocumentVersion,
   FileDocument,
+  GitDiff,
+  GitDiffRequest,
+  GitFileSide,
+  GitHead,
+  GitStatus,
+  GitStatusEntry,
   TerminalAck,
   TerminalControllerChange,
   TerminalCreate,
@@ -45,6 +54,7 @@ export type {
   TerminalResize,
   TerminalStreamMessage,
   TerminalView,
+  UserGitTarget,
   WorkspaceTarget,
 } from '@corral/contracts';
 export type {
@@ -1835,6 +1845,19 @@ export class WorkspacesApi {
   private browsePath(scope: FileBrowseScope) {
     const id = encodeURIComponent(scope.id);
     return scope.kind === 'project' ? `/projects/${id}/workspace` : `/sessions/${id}/worktree`;
+  }
+  gitStatus(scope: FileBrowseScope): Promise<GitStatus> {
+    return this.send(`${this.browsePath(scope)}/git/status`);
+  }
+  gitDiff(scope: FileBrowseScope, input: GitDiffRequest): Promise<GitDiff> {
+    const query = new URLSearchParams({
+      target: JSON.stringify(input.target),
+      side: input.side,
+      path: input.path,
+      head: input.head ?? '',
+      indexHash: input.indexHash,
+    });
+    return this.send(`${this.browsePath(scope)}/git/diff?${query}`);
   }
   listFiles(scope: FileBrowseScope, path = ''): Promise<FileListView> {
     return this.send(`${this.browsePath(scope)}/files?${new URLSearchParams({ path })}`);

@@ -28,6 +28,9 @@ export function createDemoWorkspaces(
   const noDocuments = async (): Promise<never> => {
     throw new Error('File editing requires the local server.');
   };
+  const noGit = async (): Promise<never> => {
+    throw new Error('Git inspection requires the local server.');
+  };
   return {
     commands: async () => [],
     commandReport: noCheckpoints,
@@ -74,6 +77,8 @@ export function createDemoWorkspaces(
     listFiles: (scope, path) => as(call('listFiles', scope, path)),
     searchFiles: (scope, query, limit) => as(call('searchFiles', scope, query, limit)),
     readFile: (scope, path) => as(call('readFile', scope, path)),
+    gitStatus: noGit,
+    gitDiff: noGit,
     readDocument: noDocuments,
     changeDocument: noDocuments,
     documentOperation: noDocuments,

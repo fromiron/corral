@@ -85,3 +85,9 @@ Run 상세는 Run ID별 root store를 사용하고 그래프 편집기나 pane�
 결과·기본·상세 활동 밀도는 표시 선택이다. 원본 이벤트·prompt·도구 결과와 실행 모드·예산·Reins 대상은 보존하며, 승인·실패·중지 등 필요한 조치는 접힌 상세 밖에서도 접근할 수 있어야 한다. 세부 범위는 같은 CR을, 구현 상태는 C-151과 [활성 계획](../plans/workbench-development-implementation-plan-2026-10-21.md)을 따른다. 실제 화면 검증 결과와 환경별 한계는 별도 실행 기록으로 구분한다.
 
 P11의 구현과 Linux 인앱·관련 회귀 범위는 [C-151 검증 기록](../evaluation/Development-Workbench-Context-2026-10-21.md)을 따른다.
+
+## 읽기 전용 Git 관찰
+
+[CR-046 P12](../change-requests/CR-046-development-workbench.md)의 Git 패널은 기존 Corral snapshot 변경 검토와 별도로 실제 사용자 HEAD/index/작업 파일을 관찰한다. 원본과 세션 사본을 명시적으로 선택하며 패널 진입은 사본을 만들지 않는다. staged는 HEAD→index, unstaged는 index→디스크, untracked는 없음→디스크를 비교한다. detached/unborn/shallow, upstream과 앞섬/뒤처짐, rename·binary·미지원 비교를 구분한다.
+
+현재 target·HEAD·semantic index hash가 달라지면 재시도나 대상 교체 대신 새로고침을 요구한다. 읽기는 hooks·filter·fsmonitor·textconv·외부 diff·lazy fetch를 실행하지 않으며 사용자 index와 내부 snapshot refs를 쓰지 않는다. configured filters가 있으면 저장된 원문 비교라는 제한을 표시한다. 상세 계약은 [API 계약](../API-Contract.md), Linux 구현·환경 검증과 한계는 [C-152 기록](../evaluation/Development-Workbench-Git-Observation-2026-10-21.md)을 따른다. stage/commit·remote 실행은 P13/14 후속 범위다.

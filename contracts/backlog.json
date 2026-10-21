@@ -2957,5 +2957,27 @@
     "done": "코드/터미널/고정 hunk·검사 snapshot의 출처·본문 검증과 명시 dirty 확인, 칩 원본 이동/교체/삭제·stale 표시, next/queue/재시도의 고정 첨부와 늦은 완료·IME 보존을 검증한다. 결과/기본/상세 밀도에서도 승인·실패 접근과 현재 Run 입력·원본 이벤트를 유지한다.",
     "status": "implemented",
     "evidence": "docs/evaluation/Development-Workbench-Context-2026-10-21.md"
+  },
+  {
+    "id": "C-152",
+    "phase": "M3",
+    "title": "CR-046 원본·관리 사본의 읽기 전용 Git 관찰과 정책 분리 (P12)",
+    "dependsOn": [
+      "C-151"
+    ],
+    "requirements": [
+      "CRL-WBD-008"
+    ],
+    "files": [
+      "packages/contracts/src/",
+      "packages/client/src/index.ts",
+      "apps/server/src/files/",
+      "apps/server/src/app.ts",
+      "apps/studio/src/workbench/",
+      "packages/react/src/messages/"
+    ],
+    "done": "원본과 관리 사본의 실제 HEAD/branch/upstream·staged/unstaged/untracked·rename/binary diff 및 detached/unborn/shallow를 구분한다. 공백/한글/개행 경로, full target·HEAD/index 전후 검증, 외부 index 변경·출력 상한·비지원 형식과 filtersDisabled 표시를 확인하고 읽기만으로 hook/filter/외부 helper 실행이나 index·원본·내부 snapshot refs 변경이 없음을 검증한다.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/Development-Workbench-Git-Observation-2026-10-21.md"
   }
 ]

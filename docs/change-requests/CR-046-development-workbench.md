@@ -108,3 +108,18 @@ H는 문서 이동·preset·reload 뒤 같은 문서 ID/모델과 문맥 대상,
 - 결과/기본/상세 활동의 세 가지 밀도는 기존 projection을 보여주는 선택이다. 원본 이벤트·prompt 기록·도구 결과를 삭제하거나 실행 모드·예산·Reins 대상을 바꾸지 않는다. 승인·실패와 필요한 조치는 접힌 상세 밖에서도 발견하고 접근할 수 있어야 한다.
 
 H는 선택 snapshot→칩→next/queued next→실제 prompt, 원본 이동/교체/삭제와 세 표시 밀도다. N은 다른 출처의 동일 본문 구분, saved/dirty·UTF-16/terminal 좌표·고정 snapshot 범위, 잘못된 hash/상한·조용한 누락 거절이다. F는 늦은 캡처/확인/전송·원래 ID retry·원본 소실과 queue 자동 시작에서 원래 본문/초안/대상 보존이다. 먼저 의미 있는 실패를 확인하고 기존 compose/queue/late/IME 회귀를 재사용한다. 실제 인앱에서 확인하기 전에 새 E2E를 추가하지 않으며 유료 모델을 검증의 기본값으로 사용하지 않는다.
+
+## P12: 읽기 전용 Git 관찰과 실행 정책 분리
+
+추적: CRL-WBD-008 / C-152 / TC-WBD-008-H,N,F. 승인 계획 P12와 D5의 관찰 경로를 구체화하며 등록 시점에는 구현 전이다. 원본 폴더와 관리 사본의 실제 사용자 index를 읽는다. 읽기 요청은 인간 operation 원장에 새로 접수하지 않으며 Run·공통 writer·기존 내부 snapshot helper의 의미를 바꾸지 않는다. P13/14의 hook·credential helper·signer 실행 허용까지 승인됐다고 간주하지 않는다.
+
+- `UserGitTarget`은 `{kind:'session', ...WorkspaceTarget}` 또는 `{kind:'project', hostId, projectId, bindingId}`다. 원본도 읽기 전용으로 지원하므로 아직 commit이 없는 unborn 저장소를 관찰할 수 있다. 서버가 현재 binding·canonical root와 관리 사본 generation을 해석하며 클라이언트 target은 권한을 부여하지 않는다. 원본 쓰기·stage/commit/branch/remote 작업은 이 묶음에 포함하지 않는다.
+- `WorkspacesApi.gitStatus(scope: FileBrowseScope)`는 기존 browsePath의 `GET /git/status`에서 현재 target을 발견한다. `gitDiff(scope, {target, side, path, head, indexHash})`는 `GET /git/diff`로 선택한 기준을 읽으며 side는 staged/unstaged/untracked, head는 Git OID 또는 null이다. 상세 HTTP/Zod/client 계약은 소스 구현과 함께 API 정본에 반영한다.
+- status는 target, HEAD·branch·upstream/ahead/behind와 detached/unborn/shallow, staged/unstaged/untracked·rename을 구분하는 목록, `indexHash`, `truncated`, `filtersDisabled`를 반환한다. upstream이나 비교 정보가 없으면 그 상태를 명시하고 임의로 0 또는 clean으로 표시하지 않는다. `indexHash`는 해당 원본/사본의 실제 index를 읽은 `ls-files --stage -z`의 semantic content hash이며 index가 없으면 빈 출력의 hash다. Corral 임시 index와 `refs/corral/` snapshot을 사용자 index로 대신하지 않는다.
+- staged diff는 HEAD→index, unstaged는 index→작업 파일, untracked는 absent→작업 파일이다. before/after는 기존 text/binary/too_large/absent FileSide 형태를 재사용하고 symlink/gitlink/unmerged 등 지원하지 않는 비교는 사유를 명시한다. diff는 요청의 정확한 target·HEAD/index와 읽기 전후 기준을 확인하며 변경되면 `REVISION_CONFLICT`로 거절한다. 외부 index를 잠그거나 사용자 변경을 되돌리지 않는다.
+- status 새로고침이 다른 target을 반환하면 기존 파일 선택을 해제한다. 지연된 diff 응답을 다른 project/binding/session/generation의 선택에 붙이거나 새 대상으로 조용히 재시도하지 않는다. 읽기 실패·기준 변경·사본 소실을 변경 없음으로 바꾸지 않는다.
+- P12의 전용 읽기 정책은 hooks, clean/smudge/process filters, textconv, external diff, fsmonitor와 lazy fetch를 끄고 optional index write를 금지한다. 내부 snapshot용 helper를 전역 변경하지 않는다. configured filters가 있으면 `filtersDisabled`와 변환 전 원문을 보고 있다는 제한을 UI와 문서에 표시한다. submodule은 `--ignore-submodules=dirty`로 gitlink 변경만 표시하며 내부 dirty 상태를 별도로 조사하지 않는다.
+- Git machine format은 NUL 단위로 파싱한다. 상대 경로의 공백·한글·개행을 보존하며 trim·공백 분리·인용 문자열 역변환으로 이름을 바꾸지 않는다. 기존 경로 보호를 유지하고 지원하지 않는 경로 표현은 손실 변환 대신 명시한다. Git argv와 literal pathspec을 사용하며 사용자 경로를 shell 명령으로 만들지 않는다.
+- status 출력은 64MiB, 반환 목록은 2,000개, 파일 본문은 기존 1MiB 한도를 유지한다. 목록 제한은 truncated로 알리고 출력 실패·초과나 binary/미지원 형식을 부분적으로 정상인 clean 결과처럼 표시하지 않는다. 모델 연결 없이 읽기를 사용할 수 있다.
+
+H는 실제 임시 Git 원본과 두 관리 사본에서 status discovery·선택 diff·새로고침, staged/unstaged/untracked·rename/binary와 HEAD/branch/upstream의 구분이다. N은 raw 공백/한글/개행 경로, detached/unborn/shallow·미지원 형식·필터 제한과 다른 target/HEAD/index 거절이다. F는 조회 중 외부 index·HEAD·대상 변경, 늦은 응답·Git 실패·출력 상한에서 원래 선택과 명시 실패를 보존하고 hook/filter 등 실행 및 index·원본·내부 snapshot refs 변경이 없음을 확인한다. 의미 있는 실패 테스트를 먼저 실행하고 기존 인증/client/원본 browse·snapshot 회귀를 재사용한다. 실제 인앱 확인 전 새 E2E를 추가하지 않으며 원격 쓰기·유료 호출은 검증에 사용하지 않는다.

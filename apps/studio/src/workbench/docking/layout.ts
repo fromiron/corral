@@ -6,6 +6,7 @@ const CONTEXT_VIEWS = [
   'chat',
   'files',
   'changes',
+  'git',
   'artifacts',
   'checks',
   'run',

@@ -39,6 +39,9 @@ import {
   type EditTextResult,
   type FileCheckpoint,
   type FileDocument,
+  type GitDiff,
+  type GitDiffRequest,
+  type GitStatus,
   HashlineEditInput,
   HunkPlanRequest,
   HunkRequest,
@@ -59,6 +62,7 @@ import {
   RunCommandArgs,
   type Scheduler,
   type TerminalCreate,
+  type UserGitTarget,
   type VerificationOwner,
   VerificationReport,
   type WorkspaceTarget,
@@ -91,6 +95,7 @@ import { LspRunner } from './lsp.ts';
 import { stageLspEdit } from './lsp-edits.ts';
 import { lspResults, validateLspPosition } from './lsp-results.ts';
 import { RunAccessStore } from './run-access.ts';
+import { readUserGitDiff, readUserGitStatus } from './user-git.ts';
 import { VerificationRunner } from './verification.ts';
 import { WorkbenchOperations } from './workbench-operations.ts';
 import { WorkspaceAccessStore } from './workspace-access.ts';
@@ -2220,6 +2225,74 @@ export class WorkspaceService implements FileTools {
     if ((await lstat(root)).isSymbolicLink() || (await realpath(root)) !== root)
       throw new WorkspaceError('CAPABILITY_DENIED', 'the linked folder has moved');
     return { root, isGit: binding ? !!binding.is_git : true };
+  }
+
+  private userGitTarget(scope: FileBrowseScope, expected?: UserGitTarget): UserGitTarget {
+    let target: UserGitTarget;
+    if (scope.kind === 'session') {
+      target = { kind: 'session', ...this.documentTarget(scope.id).target };
+    } else {
+      const binding = this.binding(scope.id);
+      if (!binding)
+        throw new WorkspaceError('TARGET_NOT_FOUND', 'the linked folder is unavailable');
+      target = {
+        kind: 'project',
+        hostId: this.hostId,
+        projectId: scope.id,
+        bindingId: binding.id,
+      };
+    }
+    if (expected && canonicalJson(expected) !== canonicalJson(target))
+      throw new WorkspaceError('REVISION_CONFLICT', 'the Git target changed');
+    return target;
+  }
+
+  private async userGitRoot(scope: FileBrowseScope) {
+    const { root, isGit } = await this.browseRoot(scope);
+    if (!isGit)
+      throw new WorkspaceError('CAPABILITY_DENIED', 'the linked folder is not a Git repository');
+    const { stdout } = await git(root, ['rev-parse', '--show-prefix'], {
+      env: { GIT_CONFIG_GLOBAL: '/dev/null', GIT_NO_LAZY_FETCH: '1' },
+    });
+    // A removed nested repository must not silently discover its parent's index.
+    if (!stdout.equals(Buffer.from('\n')))
+      throw new WorkspaceError('REVISION_CONFLICT', 'the Git repository root changed');
+    return root;
+  }
+
+  async gitStatus(scope: FileBrowseScope): Promise<GitStatus> {
+    const target = this.userGitTarget(scope);
+    const root = await this.userGitRoot(scope);
+    return this.lease(root, async () => {
+      this.userGitTarget(scope, target);
+      const status = await readUserGitStatus(root);
+      this.userGitTarget(scope, target);
+      if ((await this.userGitRoot(scope)) !== root)
+        throw new WorkspaceError('REVISION_CONFLICT', 'the Git folder changed');
+      return { ...status, target };
+    });
+  }
+
+  async gitDiff(scope: FileBrowseScope, input: GitDiffRequest): Promise<GitDiff> {
+    safeRelative(input.path);
+    const target = this.userGitTarget(scope, input.target);
+    const root = await this.userGitRoot(scope);
+    return this.lease(root, async () => {
+      this.userGitTarget(scope, target);
+      const diff = await readUserGitDiff(root, input, async (path) => {
+        const rel = safeRelative(path);
+        if ((await assertPlainPath(root, rel)) === 'missing') return { kind: 'absent' };
+        const { bytes, size } = await boundedFile(root, rel);
+        if (!bytes) return { kind: 'too_large', bytes: size };
+        const text = decodeText(bytes, true);
+        return text === null ? { kind: 'binary', bytes: size } : { kind: 'text', text };
+      });
+      if (diff.originalPath) safeRelative(diff.originalPath);
+      this.userGitTarget(scope, target);
+      if ((await this.userGitRoot(scope)) !== root)
+        throw new WorkspaceError('REVISION_CONFLICT', 'the Git folder changed');
+      return { ...diff, target };
+    });
   }
 
   async listFiles(scope: FileBrowseScope, path = '') {

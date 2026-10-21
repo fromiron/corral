@@ -52,6 +52,8 @@
 | GET /projects/:id/workspace/files · GET /sessions/:id/worktree/files | `path?` 상대 폴더 | 읽기 전용 파일 목록 `{files:[{path,bytes}],truncated}`. Git ignore 적용, 최대 500개. `.git`·`.corral`·symlink 제외(CR-014 DW-05) |
 | GET /projects/:id/workspace/search · GET /sessions/:id/worktree/search | `q?`(≤200자), `limit?`(1–50, 기본 20) | `@` 참조용 이름 검색 `{items:[{path,kind:'file'\|'folder'}],truncated}`. fuzzy 순위(파일명 우선), Git ignore 적용, 후보 5만 개, 내용은 읽지 않음, symlink 제외 (CR-016) |
 | GET /projects/:id/workspace/file · GET /sessions/:id/worktree/file | `path` 상대 파일 | `{path,content}`. content는 text/binary/too_large. UTF-8·1 MiB 제한. 원본·복사본은 등록된 scope로만 선택하며 agent read ledger·권한을 바꾸지 않음 |
+| GET /projects/:id/workspace/git/status · GET /sessions/:id/worktree/git/status | — | CR-046 P12 `GitStatus`: 현재 `UserGitTarget`, `head`(oid/branch/upstream·ahead/behind/detached/unborn/shallow), 실제 사용자 index의 `indexHash`, staged/unstaged/untracked·rename/unmerged 목록, `truncated`, `filtersDisabled`. 최초 조회는 현재 대상을 발견하며 expected target을 받지 않음 |
+| GET /projects/:id/workspace/git/diff · GET /sessions/:id/worktree/git/diff | `target` JSON, `side` staged\|unstaged\|untracked, raw 상대 `path`, `head` OID(빈 문자열은 unborn null), `indexHash` | `GitDiffRequest`의 정확한 target·HEAD/index 및 읽기 전후 기준을 확인. `GitDiff`는 원래 기준과 `filtersDisabled`, 선택적 rename `originalPath`, `kind:diff`의 before/after(text/binary/too_large/absent) 또는 `kind:unsupported`의 reason(symlink/gitlink/unmerged). 변경된 대상·HEAD/index는 409 `REVISION_CONFLICT` |
 | GET /sessions/:id/worktree/document | `path` 상대 파일 | CR-046 관리 사본 문서 `{target,path,content,version,writable}`. target은 host의 workspace identity·project/binding/session/copyGeneration. UTF-8 ≤1MiB는 BOM 포함 text와 full SHA-256·bytes·BOM/EOL, binary/too_large는 version:null·writable:false. 새 파일 경로는 absent. 기존 원본 browse는 읽기 전용 유지 |
 | POST /sessions/:id/worktree/documents | `DocumentCommand` | save/create(`baseHash:null`), rename(빈 목적지만), delete(`confirmed:true`·원본 hash·복구 checkpoint). 공통 writer와 기존 lease 사용. 접수 후 `DocumentOperation` receipt, 접수 전 잘못된 target/권한/owner는 기존 오류 코드. JSON 표현은 route별 7MiB, 실제 파일은 UTF-8 1MiB 제한 |
 | GET /sessions/:id/worktree/document-operations/:operationId | — | 원래 대상과 operation ID의 receipt. pending·완료·실패 모두 상대 path/precondition/제출 hash의 intent를 보존하며 원문 text는 저장하지 않는다. 현재 사본 삭제/재생성 후에도 완료 receipt를 조회한다. 같은 ID/다른 내용은 conflict, uncertain을 자동 재실행하지 않는다 |
@@ -77,6 +79,8 @@
 | POST /projects | `{name, description?}` | 폴더 없는 새 프로젝트(이름 1–80자, 같은 이름 허용) |
 | PATCH /projects/:id | `{name?, description?, archived?, expectedRevision}` | 이름·설명·보관. 다른 revision `REVISION_CONFLICT`, 기본 프로젝트 보관·빈 이름 `SCHEMA_INVALID` |
 | DELETE /corrals/:id | — | 저장 정의 삭제. 이미 시작한 Run의 snapshot에는 영향 없음 |
+
+P12 Git 읽기의 target은 `{kind:project,hostId,projectId,bindingId}` 또는 `{kind:session,...WorkspaceTarget}`이며 서버의 기존 binding·canonical root·generation 검증과 HTTP 인증을 사용한다. `indexHash`는 해당 대상의 `ls-files --stage -z` 출력 hash이고 index가 없으면 빈 출력 hash다. status 출력 64MiB·목록 2,000개와 본문 1MiB 한도를 적용하며 초과·실패를 clean으로 표시하지 않는다. 공백·한글·개행을 포함한 path는 URLSearchParams와 NUL machine format으로 보존한다. 읽기는 operation 원장 접수·writer 예약·index 변경을 하지 않고 hooks/filter/textconv/extdiff/fsmonitor/lazy fetch를 실행하지 않는다. configured filters가 있으면 `filtersDisabled:true`로 변환 전 원문임을 표시한다. submodule은 gitlink 변경만 관찰하고 내부 dirty 상태를 조사하지 않는다. refresh에서 target이 바뀌면 선택을 해제하며 이전 diff를 새 대상으로 자동 재시도하지 않는다. 기존 내부 snapshot helper와 P13/14의 Git 쓰기 실행 허가는 이 API와 별개다. 타입 정본은 `packages/contracts/src/user-git.ts`다.
 
 P8 입력·기록 주소. 문서 도구에는 이 주소에서 받은 ID만 전달하며 로컬 경로나 원시 URL을 전달하지 않는다.
 
