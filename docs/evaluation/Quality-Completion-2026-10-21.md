@@ -31,8 +31,17 @@ Gemini는 설치된 Pi 1.3.0에서 custom fetch를 거절하는 것을 네트워
 - 실제 AppImage를 `native-smoke.ts`로 실행: TC-ABS-007-H/004-H 통과. native 창·요청·interactive preview JS/CSS·cookie 분리·외부 이동 차단·lease 종료·단축키·원격 호스트 **등록 폼**·history/draft·tray·second-instance·restart. 합성 오디오 장치 동의와 카메라 거절도 확인했다. 외부 SSH 연결·실제 음성 기기 시험으로 집계하지 않는다.
 - 산출물: `apps/desktop/release/Corral-0.1.0-x86_64.AppImage`, 343,177,388 bytes, SHA-256 `5f94e25114d5125a820f92f2194f146816281425136ac41454211794cc46c174`. 게시/배포하지 않았다. Windows portable/NSIS·macOS·서명·실제 업데이트 피드 검증은 별도다.
 
+## C-138/139 — Skill 평가·업데이트·롤백
+
+기존 CLI evaluator를 core 공용 경로로 옮겨 Skill 관리 화면에서도 같은 Coordinator·고정 정답·전달 지표를 사용한다. 기본값과 분리된 불변 평가 프로필, 동일한 모델 snapshot, fixture/정의/리소스 hash와 실제 Run ID를 남긴다. 후보와 baseline(또는 Skill 없음)을 비교하며 mock 품질과 미측정 전달은 live 품질 증거로 취급하지 않는다.
+
+사람의 검토 확인 뒤 선택한 개인/프로젝트 기본값에 Skill 하나만 바꾼 새 revision을 원자 적용한다. 변경 파일을 source/license/reference/script/manifest·권한으로 분류하고 변경 전후 본문·hash·크기를 열어 비교한다. 바이너리/64 KiB 초과 파일은 hash·크기 비교만 제공한다. 자동 upstream fetch는 하지 않는다. 롤백은 채택 당시 binding이 여전히 현재일 때만 허용하고 이전 신뢰를 다시 확인한다.
+
+셀프리뷰에서 평가 초기화 오류 뒤 `running` 잔류와 증거 callback 실패 뒤 Run 잔류를 red test로 재현한 뒤 수정했다. 취소·늦은 결과·재시작 interrupted·terminal 증거 불변·중복 operation·사용자 수정·신뢰 철회·이전 snapshot 보존을 검증했다. 내부 평가 프로필은 생성 시 보관 상태로 두어 사용자의 활성 프로필 선택 목록에 섞이지 않는다.
+
+서버/CLI/저장소/클라이언트 회귀 13개 파일 110개 통과. Linux Chromium production build E2E 3개 통과: 기존 Skill 설치/편집/기본값, SDK 확장 입력, 평가→본문 비교→검토→채택 응답 유실→같은 ID 재시도→새로고침→롤백. 평가 패널의 axe 검사 위반 0개. 전체 workspace TypeScript 검사 통과. 실제 모델 Skill 품질은 이 mock E2E와 별개다.
+
 ## 남은 순서
 
 1. Gemini 단일 dispatch 지원은 상류 adapter 제약으로 남는다. Windows/macOS 실기는 별도 후속 작업.
-2. 기존 Skill draft에 fixture/eval/명시 채택을 연결한 뒤 update/rollback.
-3. 사용 가능한 인증·외부 대상으로 실제 연동 검증. 준비되지 않은 환경은 명시한다.
+2. 사용 가능한 인증·외부 대상으로 실제 연동 검증. 준비되지 않은 환경은 명시한다.

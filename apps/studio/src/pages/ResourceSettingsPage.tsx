@@ -9,6 +9,7 @@ import { useServices } from '../services.tsx';
 import { useManagementConfirmation } from '../workbench/harness/ConfirmAction.tsx';
 import { PackageManager } from '../workbench/harness/PackageManager.tsx';
 import { ResourceEditor } from '../workbench/harness/ResourceEditor.tsx';
+import { SkillQualityPanel } from '../workbench/harness/SkillQualityPanel.tsx';
 import { field, operationId } from '../workbench/harness/Target.tsx';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
 import { SettingsLayout } from './SettingsPage.tsx';
@@ -272,6 +273,14 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
                 </Button>
               </div>
             </section>
+            {kind === 'skill' && !selected.archivedAt ? (
+              <SkillQualityPanel
+                api={api}
+                entry={selected}
+                entries={entries}
+                onChanged={() => refresh((value) => value + 1)}
+              />
+            ) : null}
             {selected.successor ? (
               <section className="settings-row">
                 <div>

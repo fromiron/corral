@@ -13,6 +13,7 @@
 | 개인 하네스 H2–H8 | CR-018–020, [하네스 상세](current/harness-contract.md) | C-077–083, [구현·로컬 검증](evaluation/Personal-Harness-Validation-2026-10-18.md) | native 확장은 OS sandbox가 아님. 당시 OS·provider 검증 범위 보존 |
 | 수동·자동 추론 | CR-021, [모델 안내](Models.md) | C-084, [실제 요청·패키지 증거](evaluation/Reasoning-Controls-2026-10-18.md) | 정확도·비용 절감이나 모든 transport 검증을 주장하지 않음 |
 | 스킬·Hook·MCP 관리 | CR-022 | C-085, [관리·실행 증거](evaluation/Resource-Management-2026-10-18.md) | 패키지 API·브라우저·native smoke 범위가 다름 |
+| Skill 평가·채택·업데이트·롤백 | CR-036-C/D | C-138/139, [현재 실행 기록](evaluation/Quality-Completion-2026-10-21.md) | 텍스트 fixture 비교. 품질 자동 승인이나 모든 공급자의 품질 향상 증거가 아님 |
 | 통합 개선 M0–M3 | CR-025–036, C-088–112 | [M0](evaluation/Integrated-Improvement-M0-2026-10-19.md), [M1](evaluation/Integrated-Improvement-M1-2026-10-19.md), [M2](evaluation/Integrated-Improvement-M2-2026-10-19.md), [M3](evaluation/Integrated-Improvement-M3-2026-10-19.md) | 격리 등 OS 제한과 실제 모델 품질 미측정은 각 기록 참조 |
 | 컴포저·컨텍스트·채팅 위젯 | CR-037–041, C-119–121 | [M4 기록](evaluation/Integrated-Improvement-M4-2026-10-19.md), [위젯 계약·증거](change-requests/CR-041-chat-widgets.md) | native IME·외부 provider 미검증 범위 유지 |
 | Desktop 확장 | CR-042, C-122–136, [상세 계약](current/desktop-contract.md) | [기능별 구현·검증](evaluation/Desktop-Capabilities-Implementation-Progress.md) | 부분 구현과 환경 대기를 아래에서 분리 |
@@ -29,7 +30,6 @@
 | C-128 / ABS-07 | 구현 있음, 플랫폼 검증 진행 | NSIS 실제 설치, macOS·지원 arch, 서명·업데이트 채널 등 | [배포 기록](evaluation/Desktop-Delivery-Verification.md) |
 | C-135 / ABS-14 | 구현 있음, 외부 통합 검증 대기 | 허용된 SSH host의 실제 연결·실행·끊김·복구 | [Desktop 잔여 계획](plans/desktop-completion.md) |
 | C-136 / ABS-15 | 구현 있음, 장치·provider 검증 대기 | 실제 마이크·양방향 음성·끼어들기·종료·대상 고정 | [음성 기록](evaluation/Desktop-Voice-Verification.md) |
-| CR-036-C/D / M4-3/4 | 승인된 후속 범위 | 기존 Skill 편집기에 fixture·eval·명시 채택, upstream diff·업데이트·rollback 연결 | [품질 잔여 계획](plans/ultra-and-quality.md) |
 | CR-033-B / M4-5 | 기존 기능과 중첩, 잔여 대조 필요 | density·알림 deep link·editor 열기·온보딩 등 중 CR-042 충족 범위를 먼저 제외. opt-in 조사 분리 | [Desktop 잔여 계획](plans/desktop-completion.md) |
 
 유료 이미지·외부 모델·S3와 실제 사용성/품질 평가는 해당 기록의 미검증 경계다. 코드가 없다는 뜻으로 새 구현 목록에 자동 추가하지 않는다. 실행하려면 이번 작업의 외부 호출·비용 승인 범위를 확인한다.

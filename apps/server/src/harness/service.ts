@@ -23,7 +23,7 @@ import type { McpChallenge } from '@corral/contracts';
 import {
   type AgentStartInput,
   type Clock,
-  type CorralDefinition,
+  CorralDefinition,
   canonicalJson,
   EffectiveHarnessSnapshot,
   type HarnessBindingRef,
@@ -65,6 +65,7 @@ const treeHash = (files: HarnessResource['files']) => hash(canonicalJson(files))
 
 /** Resource discovery and preview read bytes only. Execution imports happen in the Pi worker. */
 export class HarnessService {
+  private readonly evaluationDefinitions = new Map<string, HarnessBindingRef>();
   readonly store: SqliteHarnessStore;
   readonly projectTools: SqliteProjectToolStore;
   private readonly root: string;
@@ -231,6 +232,30 @@ export class HarnessService {
       }
     }
     return { content, hook };
+  }
+
+  reviewFile(resourceHash: string, rawPath: string) {
+    const path = ResourcePath.parse(rawPath);
+    const resource = this.verify(resourceHash);
+    const file = resource.files.find((item) => item.path === path);
+    if (!file) return null;
+    let text: string | null = null;
+    if (file.bytes <= MAX_SKILL_BYTES) {
+      const source = join(this.directory(resourceHash), path);
+      if (realpathSync(source) !== resolve(source)) throw new Error('resource file became a link');
+      const bytes = readFileSync(source);
+      if (bytes.length !== file.bytes || hash(bytes) !== file.hash) {
+        this.store.trustResource(resourceHash, false);
+        throw new Error('resource integrity changed');
+      }
+      try {
+        const decoded = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+        if (!decoded.includes('\0')) text = decoded;
+      } catch {
+        /* Binary files retain their exact hash and size for review. */
+      }
+    }
+    return { hash: file.hash, bytes: file.bytes, text };
   }
 
   async reviewDocument(raw: HarnessDocumentDraft) {
@@ -883,12 +908,42 @@ export class HarnessService {
     return this.store.setDefault(scope, scopeId, expectedRevision, binding);
   }
 
+  /** Only the exact server-generated, read-only fixture bypasses unrelated default resources. */
+  sealEvaluationDefinition(raw: CorralDefinition) {
+    const definition = CorralDefinition.parse(raw);
+    const role = definition.roles[0];
+    if (definition.roles.length !== 1 || !role?.harness)
+      throw new Error('invalid evaluation definition');
+    const profile = this.profile(role.harness);
+    if (
+      profile.policy !== 'strict' ||
+      profile.startupCommands.length ||
+      profile.allowedTools.some(
+        (tool) => !['read', 'read_artifact', 'write_artifact', 'submit_result'].includes(tool),
+      ) ||
+      profile.resources.some((resource) => resource.kind !== 'skill') ||
+      profile.resources.length > 1
+    )
+      throw new Error('invalid evaluation profile');
+    const key = hash(canonicalJson(definition));
+    this.evaluationDefinitions.set(key, role.harness);
+    return () => this.evaluationDefinitions.delete(key);
+  }
+
   resolve(
     binding: HarnessBindingRef,
     definition: CorralDefinition,
     _roleId: string,
     options?: { runOverride?: HarnessBindingRef; sessionId?: string },
   ): EffectiveHarnessSnapshot {
+    const evaluation = this.evaluationDefinitions.get(hash(canonicalJson(definition)));
+    if (
+      evaluation &&
+      canonicalJson(evaluation) === canonicalJson(binding) &&
+      !options?.sessionId &&
+      !options?.runOverride
+    )
+      return this.compose([{ scope: 'role', profile: this.profile(binding) }], binding).snapshot;
     const row = this.db.prepare('SELECT project_id FROM corrals WHERE id = ?').get(definition.id) as
       | { project_id: string }
       | undefined;

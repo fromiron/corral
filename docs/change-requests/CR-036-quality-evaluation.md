@@ -21,3 +21,17 @@
 ## C-105 전달 지표
 
 Skill 본문 읽기는 broker의 hash/소유 실행 기록, 최종 전달은 실제 provider payload에 완전한 바인딩 본문이 포함된 경우의 metadata로 기록한다. 바인딩 목록과 전달 목록은 별개이며, 부분 인용/선택 metadata만으로 full delivery를 주장하지 않는다. 과거 기록에 측정 필드가 없거나 스트림/본문을 놓치면 unknown이다. 기대/제외 Skill 목록이 있는 평가만 누락·불필요 전달을 집계한다. 절차 준수는 자동 추정하지 않고 null로 남기며 고정 expected 정답에 의한 결과 품질과 구별한다.
+
+## C-138 / M4-3 — Skill 평가와 명시 채택
+
+기존 편집기가 저장한 불변 Skill 사본을 평가 대상으로 사용한다. 편집 중 본문을 실행하거나 자동 활성화하지 않는다. 사람이 hash별로 신뢰한 Skill만 평가할 수 있다. fixture는 brief·expected output·사용해야 함/사용하면 안 됨·calibration/holdout으로 고정하고, 기준 Skill(업데이트 시 이전 버전, 신규 시 없음)과 후보를 같은 모델·추론·정책·예산으로 비교한다. 기존 `corral eval` 실행·정답/전달 지표를 core 공용 경로로 옮겨 CLI와 관리 UI가 같이 사용한다. v1 fixture는 파일·외부 도구 없는 텍스트 과제이며 coding/workspace 평가는 기존 CLI 경로를 유지한다.
+
+평가는 operation ID·입력/fixture hash·resource hash·model snapshot·Run/definition/harness hash를 보존한다. 취소·중복·재시작·늦은 결과는 다른 평가를 덮지 않는다. mock/live와 품질/전달 unknown을 분리하고, 유료 모델 실행은 UI의 명시 선택 뒤에만 시작한다. 모델이 grader나 fixture를 수정할 수 없다. 평가를 시작하기 위해 기존 기본값/프로필을 바꾸지 않는다.
+
+모든 fixture가 끝난 평가만 사람이 검토·채택할 수 있다. 채택은 품질 자동 판정이 아니며 pass/fail/unknown과 mock/live를 보여 준 뒤 명시적 검토 확인을 요구한다. 미승인 품질 임계값을 새로 정하지 않는다. 선택한 personal/project 기본값과 profile revision을 CAS로 확인하고, Skill 한 항목만 변경한 새 프로필 버전을 원자적으로 적용한다. 기존 snapshot·사용자 수정·다른 scope는 유지한다.
+
+## C-139 / M4-4 — 업데이트와 롤백
+
+기존 import/edit 사본 두 개를 비교하며 upstream을 몰래 fetch하거나 최신 버전을 추정하지 않는다. source/license/reference/script/manifest·권한 관련 변경과 나머지 파일 변경을 누락 없이 표시하고 같은 Skill identity와 현재 런타임 호환성을 확인한다. 이전 버전을 baseline으로 고정한 평가와 사람이 검토한 diff 뒤에만 업데이트한다.
+
+롤백은 해당 채택이 만든 기본값 binding이 아직 현재 값일 때만 기존 binding으로 원자 복귀한다. 다른 사용자 수정이 있으면 거절한다. 이전 리소스의 hash/신뢰/호환성을 다시 확인하고 이전 revision이나 진행 중 Run의 snapshot을 수정하지 않는다. 채택·롤백은 operation receipt로 중복/응답 유실을 처리한다.
