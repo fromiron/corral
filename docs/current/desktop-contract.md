@@ -1,48 +1,16 @@
-# Corral 데스크톱 기능 구현 계획
+---
+kind: contract
+status: current
+baseline: 373764467a52a7c6978de1272ac8253c73a27077
+---
 
-작성일: 2026-10-20 (Asia/Tokyo)
-상태: **구현 승인 — 후속 사용자 요청 “구현해”를 [CR-042](../change-requests/CR-042-desktop-capabilities.md)에 기록했다. 실제 구현·검증 결과와 환경별 한계는 [통합 기록](../evaluation/Desktop-Capabilities-Implementation-Progress.md)을 따른다.**
+# Desktop 기능 상세 계약
 
-## 1. 목표와 근거
-
-Corral에서 프로젝트를 열고, 모델을 고르고, 파일을 수정하고, 명령과 테스트를 실행하고, 결과를 미리 보고 검토하는 일을 끝낼 수 있게 한다. 실행 상태·권한·예산·산출물은 Corral Coordinator가 관리한다. D&D, 협업, Reins를 제거하거나 별도 제품으로 분리하지 않는다.
-
-최초 계획 작성 요청의 산출물은 이 문서였으며 당시 제품 코드·계약 레지스트리를 변경하지 않았다. 후속 구현 승인으로 Corral 코드와 계약 등록을 진행했다. 아래 새 타입·파일·테스트 ID는 계획 당시의 제안 이름이며, 실제 등록은 CR-042와 통합 기록에 연결한다.
-
-| 근거 | 확인한 상태 |
-|---|---|
-| Corral | `main`, `ad0bb6da6f20ca685e58b619e4e311464102a0b9`, desktop `0.1.0` |
-| 조사 방식 | 이 저장소의 문서·타입·구현·테스트 파일의 정적 대조. 이번 조사에서 유료 모델, 원격 서비스는 실행하지 않음 |
-
-구현할 때는 아래 심볼과 경로를 현재 checkout에서 다시 확인한다. 외부 저장소의 파일을 복사하지 않고 Corral 계약으로 구현한다.
-
-기준 문서:
-
-- [제품 스펙](../../Corral-Spec-v0.1.md), [헌장](../../specs/constitution.md), [Reins 계약](../../specs/reins/spec.md), [ADR 원장](../Decisions.md).
-- [작업 폴더·파일 변경 CR-012](../change-requests/CR-012-workspaces-and-file-changes.md), [검증·Pi 편집 CR-019](../change-requests/CR-019-harness-verification.md), [권한·격리 CR-025](../change-requests/CR-025-harness-safety.md).
-- [추론 적용 CR-021](../change-requests/CR-021-role-reasoning-apply.md), [브라우저 CR-035](../change-requests/CR-035-browser-and-web-evidence.md), [채팅 위젯 CR-041](../change-requests/CR-041-chat-widgets.md).
-
-## 2. 원문에서 보완할 결정
-
-| 원문 제안 | 소스에서 확인한 차이 | 이 계획의 구현 방향 |
-|---|---|---|
-| `VerificationRunner.spawn`을 넓혀 임의 명령 실행 | runner는 고정 tree를 별도 검증 worktree로 복사한다. 실제 세션 작업 사본을 고치는 셸과 의미가 다르다 | `run_check`는 그대로 유지. 세션 사본에서 실행하는 별도 명령 계약을 추가하고 프로세스 소유·종료·출력 수집만 필요한 범위에서 공유 |
-| Windows 셸 지원 추가 | `files/process-group.ts`는 Windows에서 자식 트리 종료를 확인하지 못해 `processGroupGone()`이 항상 false | Windows 프로세스 트리 소유·종료 확인을 첫 기능의 전제 조건으로 구현 |
-| Hashline을 Pi `edit`로 교체하거나 병행 | CR-019는 공식 Pi `oldText/newText` 의미와 기존 자료를 보존한다. Hashline은 **파일 태그 + 줄 번호 + 읽은 줄 근거**를 사용 | 기존 `edit` 유지. 버전 있는 Hashline 편집 방식을 추가하고 역할/Run에서 명시 선택 |
-| 태그가 맞으면 편집 | 짧은 태그는 SHA-256의 16비트 표시값이다. 머리/꼬리 연산의 stale tag 허용은 쓰지 않는다 | 짧은 태그를 쓰기 권한으로 취급하지 않는다. Corral의 원본 bytes hash·execution별 읽기 근거·lease를 항상 재검사. stale 완화는 하지 않음 |
-| Auto를 allow/ask/deny에 같은 이름으로 올림 | Corral은 다층 deny 우선, descriptor/인자/정책 revision 승인이다 | 모드는 사용자용 프리셋이며 별도 권한 원장이 아니다. 기존 deny와 strict, review-only, 도구 capability를 넓히지 않음 |
-| 활성 Run 검사 두 곳 수정 | Coordinator에 `live: Map`은 있지만 모델 슬롯은 Run별이고 Studio 서비스는 단일 `RunSessionStore`, 컴포저는 전역 busy를 가정 | 시작 입구·host 용량·사본 lease·복구·세션별 UI·구독을 하나의 변경 범위로 다룸 |
-| 파일 미리보기 추가 | Corral에 파일 패널·diff·산출물 보기가 이미 있다 | 기존 패널을 확장. 탐색기나 검토함을 중복 생성하지 않음 |
-| 로컬 fixture origin 검사 확장 | 브라우저 launcher 자체가 Linux 전용이다 | 승인된 작업 사본/preview lease 기반 origin으로 확장하고 OS별 launcher를 검증. 임의 로컬 파일 열기는 넣지 않음 |
-| 모델 목록·사고 강도 추가 | 프로필, 모델 선택, 추론 override/patch가 이미 있음 | 새 카탈로그·import만 추가하고 기존 reasoning 경로에 연결 |
-| 원격 주소를 기존 API로 호출 | 현재 서버·Electron은 loopback/동일 origin/로컬 bootstrap 경계를 가짐 | transport, 인증, 호스트 ID, SSE 복구를 설계한 뒤 연결. 단순 CORS 허용이나 `0.0.0.0` bind로 해결하지 않음 |
-| 이미지 결과를 산출물로 저장 | 현재 산출물 이벤트는 text 계열 output contract와 1 MiB 상한을 사용. 입력 이미지 저장소가 출력 이미지 계약을 대신하지 못함 | 바이너리 산출물 버전·검토·export·용량·취소 후 정산을 먼저 정의 |
-
-기존 스펙의 “활성 Run 1개”, “임의 셸 제외”, CR-019의 “Hashline은 평가 전용”은 현재 기능 범위다. 이를 새 목표의 영구 제한으로 삼지 않는다. 구현 착수 시 해당 조항을 새 CR로 명시적으로 확장한다. 기존 제한을 우회하는 경로를 새 제품 기능으로 만들지 않는다.
+승인 근거: [CR-042](../change-requests/CR-042-desktop-capabilities.md). 부모 질문의 후속 계약과 프로세스 그룹 상한은 CR-042의 해당 절이 상세 보완한다. 승인된 상세 동작·수용 기준을 당시 구현 계획에서 이관했다. 아래 단계명은 계약 식별자이며 구현 순서나 새 작업 지시가 아니다. 구현·검증의 남은 범위는 [상태표](../status.md)와 [활성 계획](../plans/README.md)을 따른다.
 
 ## 3. 전체 범위와 재사용
 
-| ID | 기능 | Corral에서 재사용 | 새로 필요한 핵심 |
+| ID | 기능 | Corral에서 재사용 | 계약이 다루는 핵심 |
 |---|---|---|---|
 | ABS-01 | 워크트리 명령 실행 | effect intent, 승인, 파일 snapshot, Reins | 임의 명령 계약, OS 셸, process lease, 출력 조회 |
 | ABS-02 | Ask / Accept edits / Auto | tool-policy, PermissionPolicyEditor, 승인 UI | 컴포저 프리셋과 Run snapshot |
@@ -60,7 +28,7 @@ Corral에서 프로젝트를 열고, 모델을 고르고, 파일을 수정하고
 | ABS-14 | 원격 Corral 호스트 | 같은 typed API/SSE, 원격 Coordinator | 호스트 등록/인증/transport/namespace |
 | ABS-15 | 라이브 음성 | 세션 next/steer, 명령 receipt | live voice transport, 마이크 lifecycle, 대상 고정 |
 
-기존 세션·worktree·검토함·대기열/editQueued·`/`·`@`·명령 팔레트·MCP·내장 스킬·로그인·한국어·체크포인트·ask_user·update_plan은 대체하지 않는다. 이 표는 첨부의 모든 기능을 포함하며 뒤 단계는 삭제 범위가 아니다.
+기존 세션·worktree·검토함·대기열/editQueued·`/`·`@`·명령 팔레트·MCP·내장 스킬·로그인·한국어·체크포인트·ask_user·update_plan은 대체하지 않는다. 기능별 구현·검증의 남은 일은 상태표에서 구분한다.
 
 ## 4. 최종 구조와 공통 계약
 
@@ -89,20 +57,9 @@ flowchart LR
 - 중복: 동일 commandId/effectId는 기존 receipt/operation을 반환한다. 모델 재시도나 SSE 재연결이 새 프로세스를 띄우지 않게 한다.
 - 재시작: 이전 효과를 자동 replay하지 않는다. 진행 중 상태는 interrupted/uncertain으로 조정하고, 확인된 프로세스 소유 관계만 정리한다. 새 실행은 명시한 재시작/체크포인트 경로를 쓴다.
 
-### 4.2 변경 파일의 배치 원칙
+### 4.2 코드와 변경 범위
 
-| 계층 | 기존 진입점 | 새 책임의 위치 제안 |
-|---|---|---|
-| wire 계약 | `packages/contracts/src/definition.ts`, `commands.ts`, `events.ts`, `harness.ts` | `command-execution.ts`, `preview.ts`, `schedules.ts`, `hosts.ts` 등 실제 기능별 파일 |
-| admission/권한 | `packages/core/src/admission/index.ts`, `tool-policy.ts`, `coordinator.ts` | 동시 실행 admission과 process effect adapter를 책임별로 분리; Coordinator는 계속 확정자 |
-| Pi | `worker-tools.ts`, `worker.ts`, `sdk-worker.ts`, `adapter.ts` | 두 runtime의 같은 도구 schema/결과/취소 매핑 |
-| 로컬 효과 | `apps/server/src/files/service.ts`, `verification.ts` | `processes/` 실행·정리, `preview/` origin·렌더링. 파일/검증 계약은 기존 service에 위임 |
-| 영속화 | `packages/storage-sqlite/src/database.ts` 및 기존 stores | operation, schedule, host와 binary artifact migration |
-| 클라이언트 | `packages/client/src/index.ts`, Studio `services.tsx` | host/run 단위 transport·store lifecycle |
-| 화면 | `SessionPage.tsx`, `Workbench.tsx`, FilePanel, ModelSettingsPage | 기능별 hook/컴포넌트. 컴포저 한 파일에 import·voice·scheduler 로직을 누적하지 않음 |
-| OS 껍질 | `apps/desktop/src/main.ts`, preload, `scripts/prepare.ts` | process/packaging/tray/update/voice별 얇은 OS adapter |
-
-이름 추가 시 `WorkTool` enum만 고치지 않는다. 현재 `AgentRole.allowedWorkTools.max(8)` 같은 상한, compiler, generated schemas, role editor, worker 설명, review-only 필터, 예산 예약, 도구 결과 renderer까지 소비자를 함께 확인한다.
+실제 패키지·owner는 [구조](architecture.md)와 각 기능의 현재 코드를 확인한다. 도구 추가 시 enum뿐 아니라 compiler·생성 schema·역할 편집기·worker·review-only 필터·예산·결과 renderer 소비처를 함께 확인한다. 과거 계획의 파일명 제안을 새 모듈 생성 지시로 사용하지 않는다.
 
 ## 5. 기능별 구현
 
@@ -136,7 +93,7 @@ flowchart LR
 
 - 승인 카드는 실제 최종 대상·명령/변경·범위·승인 수명을 표시한다. 기본 승인은 이번 호출 한 번이다.
 - 세션 허용을 무제한 tool-name grant로 두지 않는다. 반복 허용은 좁은 조건·수명을 가진 명시 정책으로 저장하며 기존 원칙대로 다음 Run부터 적용한다.
-- 실행 중 모드 변경 UI는 적용 대상을 분명히 표시한다. 이 계획의 기본은 다음 Run 적용이며 현재 승인 대기 중인 효과를 소급 승인하지 않는다. 즉시 변경이 필요하면 정책 revision과 pending approval 무효화를 포함한 별도 Reins 계약으로 확장한다.
+- 실행 중 모드 변경 UI는 적용 대상을 분명히 표시한다. 이 계약의 기본은 다음 Run 적용이며 현재 승인 대기 중인 효과를 소급 승인하지 않는다. 즉시 변경이 필요하면 정책 revision과 pending approval 무효화를 포함한 별도 Reins 계약으로 확장한다.
 - 승인·거절·타임아웃·중복 클릭·승인 직후 파일 변경·취소 뒤 늦은 승인까지 검증한다.
 
 ### ABS-03 — Hashline
@@ -242,7 +199,7 @@ flowchart LR
 - manifest는 제공 스킬·MCP·extension·선택 UI metadata, 버전/hash, 라이선스와 요청 capability를 가진다. 설치 전 diff·권한·출처를 검토하고 명시 선택한다.
 - install/upgrade/disable/uninstall은 실행 중 고정 resource를 보존하고 다음 Run 적용을 기본으로 한다. 열린 MCP/process/UI slot의 소유·해제 경로를 둔다.
 - managed extension 효과는 Coordinator broker 경로만 쓴다. Node 네이티브 코드를 실행시키면서 “직접 fs/net/process를 모두 통제한다”고 주장하지 않는다. 기존 trusted-native는 별도 비격리 신뢰 경계로 표시하고 strict와 섞지 않는다.
-- UI slot은 declarative/격리된 기여부터 시작한다. DB·filesystem 직접 접근을 제공하지 않는다. 임의 renderer JavaScript 실행은 이 계획의 기본 계약이 아니다.
+- UI slot은 declarative/격리된 기여부터 시작한다. DB·filesystem 직접 접근을 제공하지 않는다. 임의 renderer JavaScript 실행은 이 계약의 기본 계약이 아니다.
 
 ### ABS-13 — 암호화 설정 금고
 
@@ -250,7 +207,7 @@ flowchart LR
 
 - 공통 schema version과 도메인별 export/import adapter를 둔다. 로컬 절대 경로·호스트 trust·실행 권한·활성 예약·OS keychain 핸들은 portable 값과 분리한다.
 - 비밀 설정은 별도 encrypted secret 영역과 명시한 export 선택으로 다룬다. 모든 provider credential을 기본 동기화하지 않는다. OAuth 세션의 이동 가능성을 가정하지 않는다.
-- 검증된 암호화 라이브러리의 AEAD·KDF·nonce 관리를 사용한다. 암호/복구키 보관 방식과 S3 endpoint/credential은 구현 전 결정한다.
+- 검증된 암호화 라이브러리의 AEAD·KDF·nonce 관리를 사용한다. 암호화 형식과 credential 처리는 기존 vault schema·서비스 및 ABS-13 시험과 함께 확인한다.
 - S3 object revision/ETag 기반 충돌 감지, 내려받기 검증, domain별 diff, 명시 병합, 적용 journal/rollback을 구현한다. 마지막 저장 승리로 trust/secret/automation을 덮지 않는다.
 - plugin/MCP/automation 정의를 가져와도 설치·네트워크 연결·예약 실행 권한이 자동 활성화되지 않는다. 필요한 local binding을 재지정하고 검토한다.
 - migration 실패·부분 적용·잘못된 키·위조 ciphertext·서로 다른 장치의 동시 수정·삭제 tombstone을 검증한다.
@@ -278,38 +235,6 @@ flowchart LR
 - 앱 종료/호스트 전환/권한 철회 시 장치와 socket을 정리한다. 음성 token/비용·시간 상한도 운영 예산에 표시한다.
 - provider 종류와 계정 사용 가능 여부는 실제 지원 API로 확인한다. 비공개 endpoint나 하드코딩 model ID를 지원 근거로 두지 않는다.
 
-## 6. 구현 순서와 PR 단위
-
-각 행은 backend만 끝내는 단계가 아니라 실제 입구→효과→readback까지 포함하는 작업 단위다. 큰 행은 아래 수용 조건을 유지하는 여러 PR로 나눌 수 있다.
-
-| 순서 | 태스크 | 의존 | 해당 변경과 사용자 수용 조건 |
-|---|---|---|---|
-| I00 | 계약·호환성 동결 | 없음 | 새 CR/ADR·ABS 요구/TC 등록, 기존 명세 확장, 소유권/원격 namespace/자료 migration 설계. 구현 완료로 계산하지 않음 |
-| I01 | OS 프로세스 소유권 | I00 | Windows child tree + POSIX 종료 확인, output/cancel/idempotency. 기존 run_check 의미 보존 |
-| I02 | 권한 프리셋 | I00 | 컴포저→Run snapshot→실제 파일 승인·거절. deny/review-only 회귀 |
-| I03 | 명령·service 실행 | I01,I02 | 실제 세션 사본 수정→diff→취소, service 목록·stop/readback |
-| I04 | Windows 앱 전달 | I01 | bundled runtime/native deps, 설치/portable 시작·종료·재열람 |
-| I05 | Hashline | I00,I02 | 실제 read→네 ops→broker·diff, 기존 Pi edit 회귀 |
-| I06 | 파일·HTML·앱 preview | I03 | 기존 패널에서 파일/로컬 앱 열기·갱신·브라우저 assertion·정리 |
-| I07 | 모델 catalog/import | I00 | 네 도구 설정 preview/commit→모델 선택→실제 reasoning payload |
-| I08 | 동시 Run | I01,I03 | admission·host slots·snapshot 읽기·writer lease·다중 UI/SSE 모두 연결 |
-| I09 | 나머지 앱 껍질 | I04,I08 | macOS/Linux matrix, tray·awake·update·keybinding |
-| I10 | 예약 | I02,I08 | 일정 저장→한 번 발화→일반 요청→승인 알림→기록/재시작 |
-| I11 | 프로젝트·자료 | I01,I02 | clone/open→trust→사본, 지침/메모리 명시 참조·버전 고정 |
-| I12 | 이미지 | I00,I02,I07 | 생성→바이너리 버전→viewer/검토/export·취소 정산 |
-| I13 | 위임 import | I03,I05,I07 | Markdown→callable graph→spawn→결과, 권한/깊이 거절 |
-| I14 | 확장 package | I02,I08,I13 | preview→설치→실제 managed tool→disable/upgrade·실행 중 버전 보존 |
-| I15 | 원격 host | I00,I08,I09 | 등록→원격 실행/preview→끊김/재접속→receipt/event 복구 |
-| I16 | 설정 금고 | I07,I10,I11,I13,I14 | 9 domain capture→암호화→diff/merge→원자 적용·실패 복구 |
-| I17 | 라이브 음성 | I02,I07,I08 | 실제 장치/지원 provider→next/steer→receipt, 대상/재연결/취소 확인 |
-
-- **M1 — Windows 일상 작업의 최소 완결:** I00–I04. 기존 파일 편집과 새 셸로 프로젝트를 수정·검증할 수 있다.
-- **M2 — 첨부의 우선 기능 6개 완결:** I05–I08까지. Hashline·preview·모델 import·동시 세션까지 모두 실제 사용 가능해야 “일상 개발 이전 완료”라고 한다.
-- **M3 — 데스크톱 작업 확장:** I09–I13. 예약·프로젝트 자료·이미지·위임 정의와 OS별 앱 수명을 마무리한다.
-- **M4 — 플랫폼 기능:** I14–I17. 확장·원격·금고·음성을 제공한다.
-
-I05/I07, I09/I11/I12/I13처럼 의존 관계가 없는 작업은 별개 진행할 수 있다. 다만 contracts/Coordinator/SQLite migration을 동시에 편집할 때는 한 계약 변경의 소유자를 먼저 정한다. 이 계획은 인력·마감일이 정해지지 않아 날짜별 일정이나 확정 공수를 제시하지 않는다. 가장 큰 조사 비용은 Windows 프로세스 소유권, 다중 Run, 원격 인증, 금고 migration에 있다.
-
 ## 7. 호환성과 데이터 migration
 
 | 변경 | 기존 자료 처리 | 새 자료/실패 처리 |
@@ -324,27 +249,27 @@ I05/I07, I09/I11/I12/I13처럼 의존 관계가 없는 작업은 별개 진행�
 
 각 migration은 빈 DB뿐 아니라 기존 DB 복사본·부분 적용·중단 직후 재시작에서 검증한다. rollback은 새 기능 비활성화와 백업 복원 절차로 정의하고, 새 자료를 구버전이 안전하게 읽는다고 가정하지 않는다.
 
-## 8. 검증 계획
+## 8. 수용 기준과 검증
 
-아래 `TC-ABS-*`는 **미등록 제안 ID**다. 착수 시 `contracts/requirements.json`, `contracts/backlog.json`, `tests/test-catalog.json`, `tests/traceability.json`과 해당 CR에 정상/반례를 연결한다. 기존 TC를 지워 새 기대만 통과시키지 않는다.
+아래는 등록된 `TC-ABS-001-H/N`–`TC-ABS-015-H/N`의 수용 기준이다. 요구·태스크·TC의 정본 연결은 traceability를 확인한다. 기존 TC를 지워 새 기대만 통과시키지 않는다.
 
-| 제안 묶음 | 대표 정상 흐름 | 반드시 실패/거절해야 하는 반례 |
+| 등록 TC 묶음 | 대표 정상 흐름 | 반드시 실패/거절해야 하는 반례 |
 |---|---|---|
-| TC-ABS-01 | 임의 명령→실제 사본 변화→출력/exit/readback | 승인 전 실행, duplicate spawn, cwd 교체, 취소 후 자식 잔존, 재시작 자동 replay |
-| TC-ABS-02 | 세 모드의 파일/명령 처리 | Auto로 deny/strict/review-only 우회, 바뀐 인자 승인 재사용 |
-| TC-ABS-03 | 읽은 파일에 PUT/CUT/REM/MV | tag 충돌·stale·unseen line·타 실행 근거·목적지 충돌·부분 쓰기 |
-| TC-ABS-04 | HTML/앱 preview→수정 반영→브라우저 assertion | 임의 origin/file, redirect/WS 탈출, 앱 credential 공유, 종료 lease 재사용 |
-| TC-ABS-05 | 네 소스 import→프로필 선택→payload 확인 | credential 노출/실행 참조 실행, 충돌 overwrite, metadata를 capability로 오인 |
-| TC-ABS-06 | reader+writer+다른 사본 writer 병행 | 같은 사본 동시 writer, 총 permit 초과, 세션 간 취소/승인/plan 누출 |
-| TC-ABS-07 | OS별 설치→작업→tray/awake→종료/업데이트 | 개발 경로 의존, 활성 작업 중 강제 설치, orphan server, 키보드/IME 회귀 |
-| TC-ABS-08 | 일정 발화 1회→Run→승인→재열람 | 중복 tick/reconnect, DST 중복, 숨은 catch-up, 비활성화 후 늦은 시작 |
-| TC-ABS-09 | clone→연결→명시 자료 참조 | 기존 폴더 덮기, 자동 신뢰/commit, 지침 자동 권한 상승, 과거 context 변경 |
-| TC-ABS-10 | 이미지 생성→버전/검토/export | review-only 생성, 미지원 provider 대체, bytes 없는 성공, 늦은 결과 이중 과금 정산 |
-| TC-ABS-11 | 정의 import→callable→spawn | 알 수 없는 도구 조용한 허용, 부모보다 넓은 권한, depth/budget 우회 |
-| TC-ABS-12 | package review→managed tool→upgrade | 설치만으로 실행, trust 자동 확대, 활성 버전 삭제, 임의 renderer DB 접근 |
-| TC-ABS-13 | 두 장치 설정 병합·복구 | 위조/오래된 ciphertext, credential 무단 포함, 자동화 자동 활성화, partial apply |
-| TC-ABS-14 | 원격 실행→재접속→receipt 복구 | 다른 host command/cursor, localhost fallback, origin/인증 우회 |
-| TC-ABS-15 | live call→next/steer→종료 | partial 중복 제출, 잘못된 대상, 녹음 저장, 마이크/socket 잔존 |
+| TC-ABS-001-H/N | 임의 명령→실제 사본 변화→출력/exit/readback | 승인 전 실행, duplicate spawn, cwd 교체, 취소 후 자식 잔존, 재시작 자동 replay |
+| TC-ABS-002-H/N | 세 모드의 파일/명령 처리 | Auto로 deny/strict/review-only 우회, 바뀐 인자 승인 재사용 |
+| TC-ABS-003-H/N | 읽은 파일에 PUT/CUT/REM/MV | tag 충돌·stale·unseen line·타 실행 근거·목적지 충돌·부분 쓰기 |
+| TC-ABS-004-H/N | HTML/앱 preview→수정 반영→브라우저 assertion | 임의 origin/file, redirect/WS 탈출, 앱 credential 공유, 종료 lease 재사용 |
+| TC-ABS-005-H/N | 네 소스 import→프로필 선택→payload 확인 | credential 노출/실행 참조 실행, 충돌 overwrite, metadata를 capability로 오인 |
+| TC-ABS-006-H/N | reader+writer+다른 사본 writer 병행 | 같은 사본 동시 writer, 총 permit 초과, 세션 간 취소/승인/plan 누출 |
+| TC-ABS-007-H/N | OS별 설치→작업→tray/awake→종료/업데이트 | 개발 경로 의존, 활성 작업 중 강제 설치, orphan server, 키보드/IME 회귀 |
+| TC-ABS-008-H/N | 일정 발화 1회→Run→승인→재열람 | 중복 tick/reconnect, DST 중복, 숨은 catch-up, 비활성화 후 늦은 시작 |
+| TC-ABS-009-H/N | clone→연결→명시 자료 참조 | 기존 폴더 덮기, 자동 신뢰/commit, 지침 자동 권한 상승, 과거 context 변경 |
+| TC-ABS-010-H/N | 이미지 생성→버전/검토/export | review-only 생성, 미지원 provider 대체, bytes 없는 성공, 늦은 결과 이중 과금 정산 |
+| TC-ABS-011-H/N | 정의 import→callable→spawn | 알 수 없는 도구 조용한 허용, 부모보다 넓은 권한, depth/budget 우회 |
+| TC-ABS-012-H/N | package review→managed tool→upgrade | 설치만으로 실행, trust 자동 확대, 활성 버전 삭제, 임의 renderer DB 접근 |
+| TC-ABS-013-H/N | 두 장치 설정 병합·복구 | 위조/오래된 ciphertext, credential 무단 포함, 자동화 자동 활성화, partial apply |
+| TC-ABS-014-H/N | 원격 실행→재접속→receipt 복구 | 다른 host command/cursor, localhost fallback, origin/인증 우회 |
+| TC-ABS-015-H/N | live call→next/steer→종료 | partial 중복 제출, 잘못된 대상, 녹음 저장, 마이크/socket 잔존 |
 
 검증 단계:
 
@@ -355,11 +280,11 @@ I05/I07, I09/I11/I12/I13처럼 의존 관계가 없는 작업은 별개 진행�
 5. **OS 앱:** Windows 설치 산출물에서 subprocess tree·파일 잠금·PowerShell 인코딩·tray·마이크·업데이트를 확인한다. Linux CI 통과는 Windows/macOS 증거가 아니다.
 6. **외부 capability:** 이미지/voice/remote/S3는 승인된 계정·대상·호출 상한이 있는 opt-in 검증을 따로 한다. 가짜 provider 통과만으로 외부 기능 완료나 품질 향상을 주장하지 않는다.
 
-공통 체크는 변경 범위에 맞는 `pnpm spec:check`, `pnpm contracts:check`, `pnpm lint`, `pnpm typecheck`, Vitest, Studio Playwright, build다. 새로운 native dependency는 버전·라이선스·공식 지원 플랫폼·Node/Electron ABI·배포 자산을 기록한다. 이번 계획 작성에서는 이 제품 검증들을 실행하지 않았다.
+공통 체크는 변경 범위에 맞는 `pnpm spec:check`, `pnpm contracts:check`, `pnpm lint`, `pnpm typecheck`, Vitest, Studio Playwright, build다. 새로운 native dependency는 버전·라이선스·공식 지원 플랫폼·Node/Electron ABI·배포 자산을 기록한다. 실제 실행 여부와 환경은 [검증 기록](../evaluation/Desktop-Capabilities-Implementation-Progress.md)으로 확인한다.
 
 ## 9. UI 배치와 완료 판정
 
-상태·권한은 기존 토큰과 공용 컴포넌트를 쓴다. 최근 정리한 **52px 한 줄 세션 상단**, **오른쪽 작업 현황**, **입력창 위 계획**, **단일 질문/승인 대응 영역**을 유지한다.
+상태·권한은 기존 토큰과 공용 컴포넌트를 쓴다. 위젯·Todo·단일 질문/승인 대응 영역은 [채팅 위젯 계약](chat-widgets-contract.md), 기본 입력과 요청 옵션 배치는 [Workbench](workbench.md)·CR-043을 따른다.
 
 | 위치 | 새 동작 | 지켜야 할 동작 |
 |---|---|---|
@@ -370,42 +295,3 @@ I05/I07, I09/I11/I12/I13처럼 의존 관계가 없는 작업은 별개 진행�
 | 프로젝트 | open/clone·지침/메모리 | 연결·신뢰·사본 생성·원본 반영은 서로 다른 단계 |
 
 각 기능의 완료 보고에는 대상 commit/artifact/OS, 사용자 진입점, 실제 효과, 영속 readback, 취소·실패 결과, 화면 증거, 남은 제한을 포함한다. 코드·테스트·문서만 존재하고 일반 흐름에서 사용할 수 없으면 그 기능은 미완료다.
-
-## 10. 구현 착수 전 확인할 선택
-
-전체 계획을 멈출 사유가 아니라 해당 단계의 의존 결정이다. 아래는 제안 기본값이며 아직 확정된 제품 정책으로 코드에 넣지 않는다.
-
-| 결정 | 제안 기본값 | 필요한 시점 |
-|---|---|---|
-| 셸과 격리 | Windows PowerShell, 명시한 trusted-process capability; strict는 검증된 backend만 | I00–I03 |
-| service 수명 | 기본 Run 소유, 사용자가 유지한 service만 session 소유로 명시 전환 | I03 |
-| 권한 모드 변경 | 현재 Run 소급 적용 없이 다음 Run부터 | I02 |
-| 동시 writer 단위 | canonical managed worktree별 1개; 원본 merge는 원본 저장소별 | I00/I08 |
-| 예약 놓침/중복 | 미실행 구간은 놓침 표시, 같은 일정 overlap은 기록 후 건너뜀 | I10 |
-| 앱 서명·업데이트 배포 | 사용자 소유 서명/배포 계정과 channel 확정; 무서명 로컬 빌드와 정식 배포를 구별 | I04/I09 |
-| 카탈로그·이미지·음성 provider | 실제 지원 API와 계정 확인, 종류별 명시 profile, 유료 검증 상한 설정 | I07/I12/I17 |
-| 금고 비밀값·복구키 | 비밀값 기본 제외, 명시 선택한 항목만 암호화 포함; 복구키 방식 별도 확정 | I16 |
-| 원격 첫 transport | SSH tunnel + 원격 loopback Corral; HTTPS 직접 연결은 같은 host 계약의 후속 transport | I15 |
-| 구현 출처 | 이 저장소의 계약과 코드. 외부 파일을 복사하지 않음 | 착수 전 |
-
-## 부록: 구현자가 먼저 열 Corral 소스
-
-| 영역 | 소스 |
-|---|---|
-| 명령 | `core/coordinator.ts::externalTool`, `server/files/verification.ts::VerificationRunner`, `files/process-group.ts` |
-| 모드 | `core/tool-policy.ts`, `core/admission/index.ts`, `PermissionPolicyEditor.tsx`, `SessionPage.tsx` |
-| Hashline | `contracts/src/coding.ts`, `server/files/service.ts::execute/change`, `server/evaluation-edits.ts` |
-| 미리보기 | `workbench/FilePanel.tsx`, `FilesViews.tsx`, `adapter-pi/src/browser-{policy,launcher}.ts` |
-| 모델 | `server/models/registry.ts`, `credential-store.ts`, `ModelSettingsPage.tsx`, `RunRoleOverrides.tsx` |
-| 동시성 | `core/coordinator.ts::startRunWithRecovery/startRefusal/acquireSlot`, `react/src/run/session.ts`, Studio `services.tsx` |
-| 앱 | desktop `package.json`, `scripts/prepare.ts`, `src/main.ts`, Studio `commandRegistry` |
-| 예약 | `server/runtime.ts`, `server/app.ts`, Coordinator 시작 경로 |
-| 프로젝트 | `ProjectsPage.tsx`, `FilesViews.tsx`, 서버 workspace/inputs |
-| 이미지 | `server/images.ts`, `contracts/src/events.ts::ArtifactVersionCreated`, `react/ArtifactViewer.tsx` |
-| 위임 | `contracts/src/definition.ts`, core compiler/delegation, `adapter-pi/src/worker-tools.ts` |
-| 패키지 | `server/harness/service.ts`, `mcp-service.ts`, `contracts/src/harness-management.ts` |
-| 금고 | model/harness/project 설정 stores와 새 domain adapters |
-| 원격 | `server/security.ts`, desktop `main.ts`, client `index.ts`, Studio `services.tsx` |
-| 음성 | Session composer, `server/app.ts` 요청 경로, Reins 계약 |
-
-> 패키지 접두어 축약은 설명용이다. 실제 변경 목록은 각 태스크 착수 시 `rg --files`와 심볼 검색으로 확정하고, 없는 경로를 기존 파일인 것처럼 인용하지 않는다.

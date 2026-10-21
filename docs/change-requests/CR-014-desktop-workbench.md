@@ -2,7 +2,7 @@
 
 - 상태: 승인 — Bell, 2026-10-17, 계획 확정 후 "구현해".
 - 기준: Corral `da3799c`.
-- 관련: CR-009–013, 제품 스펙 §4, ADR-026. 진행과 증거는 [구현 추적](../plans/Desktop-Workbench.md).
+- 관련: CR-009–013, 제품 스펙 §4, ADR-026. 진행과 증거는 [구현 추적](../evaluation/Desktop-Workbench.md).
 
 ## 요구
 

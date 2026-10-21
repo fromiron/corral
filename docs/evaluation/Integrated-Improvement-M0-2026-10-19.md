@@ -2,7 +2,7 @@
 
 - 기준: `780591e`(PR #60 자동 시작·취소·작업 사본 수정 포함), 작업 브랜치 `feat/integrated-improvements`.
 - 요청: M0부터 CR 등록 → 핵심 실패 테스트 → 구현 → 기존 회귀. 테스트는 필요한 동작/권한 경계만 추가한다.
-- 범위: M0 C-088~091 완료, M1-1의 첫 공통 안전 수정 C-092 완료. M1 전체 완료는 아니며 나머지 단계는 [실행 계획](../plans/Corral-Improvement-Execution-Plan-2026-10-19.md)을 따른다.
+- 범위: M0 C-088~091 완료, M1-1의 첫 공통 안전 수정 C-092 완료. M1 전체 완료는 아니며 나머지 단계는 실행 계획 (Git `373764467a52:docs/plans/Corral-Improvement-Execution-Plan-2026-10-19.md`)을 따른다.
 
 ## M0 기준선과 계약
 

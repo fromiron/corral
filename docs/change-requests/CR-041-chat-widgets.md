@@ -1,6 +1,8 @@
 # CR-041: 채팅 위젯과 실시간 작업 계획
 
-- 상태: 구현 및 로컬 통합 검증 — [사용자 지정 v2 플랜](../plans/Corral-Chat-Widgets-Implementation-Plan-v2.md). 유료 provider·native IME 검증은 아래 경계에 남긴다.
+현재 상세 기준: [채팅 위젯 상세 계약](../current/chat-widgets-contract.md). 아래 원래 계획의 Git 참조는 승인 경위이며 현재 작업 목록은 [활성 계획](../plans/README.md)이다.
+
+- 상태: 구현 및 로컬 통합 검증 — 사용자 지정 v2 플랜 (Git `373764467a52:docs/plans/Corral-Chat-Widgets-Implementation-Plan-v2.md`). 유료 provider·native IME 검증은 아래 경계에 남긴다.
 - 기준: `fix/studio-chat-display`의 `1329703` 이후. CR-007 `startFromVersion`과 testkit `defaultReply`는 유지한다.
 - 추적: C-121, CRL-WIDGET-001, TC-WIDGET-001-H/N, TC-WIDGET-002-H/N.
 - 디자인: 내장 leeskills review-visuals, check-accessibility. 기존 토큰·Button·Popover 재사용. 새 폰트 없음.
@@ -79,4 +81,4 @@
 전체 비율로 승격하지 않았다. 컨텍스트 게이지의 통합 검증은 실제 Pi serializer →
 로컬 HTTP 호환 endpoint → `model.payload_recorded` → UI 경로로 별도 수행한다.
 
-최종 화면 비교와 검사 결과는 저장소 루트 `design-qa.md`에 기록한다.
+최종 화면 비교와 검사 결과는 [화면 검증 기록](../evaluation/Chat-Widgets-Design-QA.md)에 있다. 현재 배치 계약은 문서 상단의 상세 계약 링크를 따른다.

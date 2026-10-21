@@ -1,19 +1,20 @@
 ---
 kind: reference
 status: current
-baseline: a9bb0bb93411cd89a24e27d8b237b53d3e9cf813
+baseline: 373764467a52a7c6978de1272ac8253c73a27077
 ---
 
 # API와 계약 원본
 
-HTTP·이벤트·오류의 상세 의미는 [API-Contract](../API-Contract.md)를 확인한다. 초기 제안 표, 구현 추가 표, 후속 CR이 함께 있으므로 작업 범위의 서버 handler·클라이언트·계약 시험을 대조한다. 이 문서에 endpoint·필드 표를 별도 복제하지 않는다.
+HTTP·이벤트·오류의 상세 의미는 [API-Contract](../API-Contract.md)를 확인한다. 이 표는 전체 endpoint 자동 생성 목록이 아니므로 작업 범위의 서버 handler·클라이언트·계약 시험을 대조한다. 이 문서에 endpoint·필드 표를 별도 복제하지 않는다.
 
 ## 원본과 파생 자료
 
 | 대상 | 확인 위치 |
 |---|---|
 | 도메인 타입·Zod 검증 | `packages/contracts` |
-| 생성된 JSON Schema와 추적 원장 | `contracts/` |
+| 생성된 JSON Schema | `packages/contracts/generated/` |
+| 요구·태스크 추적 원장과 초기 seed schema | `contracts/` (역할은 해당 README 참조) |
 | HTTP·서비스 구현 | `apps/server` |
 | 클라이언트 | `packages/client` |
 | 생성·일치 검사 | `tools/contracts/generate.ts`, `pnpm contracts:check` |
@@ -33,4 +34,4 @@ HTTP·이벤트·오류의 상세 의미는 [API-Contract](../API-Contract.md)�
 
 계약 변경은 `pnpm contracts:check`, 추적·문서 변경은 `pnpm spec:check`와 관련 실제 시험을 실행한다. 생성 결과 일치, TC 태그 존재, schema 통과와 제품 동작 통과는 별개의 증거다.
 
-문서 이동 때문에 CR·요구사항·태스크·테스트 ID를 재발급하지 않는다. 카탈로그의 `planned`를 실행 보고서 없이 `passed`로 바꾸지 않는다. 상세 소유권은 [실행과 안전](execution-and-safety.md)을 따른다.
+문서 이동 때문에 CR·요구사항·태스크·테스트 ID를 재발급하지 않는다. 카탈로그의 `planned`는 시나리오 선언 형식으로 유지하며 실행 결과는 증거에 기록한다. 상세 소유권은 [실행과 안전](execution-and-safety.md)을 따른다.

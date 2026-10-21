@@ -1,7 +1,7 @@
 # 02-UX-Spec 구현 대조표
 
-- 대상: [02-UX-Spec](../proposals/workbench-v0.1/02-UX-Spec.md)(Workbench 개선안 v0.1).
-- 기준: main, 2026-10-17. 관련: [Workbench 개선 플랜](Workbench-Improvement-Plan.md), CR-009–CR-013.
+- 대상: 02-UX-Spec (Git `373764467a52:docs/proposals/workbench-v0.1/02-UX-Spec.md`)(Workbench 개선안 v0.1).
+- 기준: main, 2026-10-17. 관련: Workbench 개선 플랜 (Git `373764467a52:docs/plans/Workbench-Improvement-Plan.md`), CR-009–CR-013.
 - 표시: **구현**은 화면에서 동작을 확인했다. **부분**은 일부만 했고 남은 점을 적었다. **미룸**은 Bell의 지시나 이유가 있어 하지 않았다.
 
 | 절 | 요구 | 상태 | 구현과 남은 점 |
@@ -35,4 +35,4 @@
 | §10 | 키보드: 탭·패널 크기·트리·diff·Reins, IME Enter 미전송, Ctrl/⌘+Enter | 구현 | 탭은 화살표, 패널 너비는 화살표, 의견은 줄 번호 버튼. |
 | §10 | 좁은 화면 통합 diff·탭 패널 | 구현 | |
 | §10 | 모의 데모: 프로젝트 2·세션 6·다중 파일·취소·피드백 | 구현 | 브라우저 데모의 `/projects`에 "예시 프로젝트 만들기"(프로젝트 2·팀·세션 6). 두 번째 프로젝트는 예시 폴더를 연결·신뢰하고, 팀이 파일을 바꿀 수 있으며, 첫 세션에 작업 복사본이 있다. 데모 worker 안의 메모리 폴더(`demo/workspace.ts`)가 서버와 같은 규칙(경로, 읽은 뒤에만 변경, 작업 기록, Run 시작·종료 snapshot)으로 파일 도구·비교·의견·판단·반영·되돌리기를 처리한다. 검증 명령은 컴퓨터에서 명령을 실행하므로 데모에서는 "로컬 서버에서만"이라고 알린다. 새로고침하면 폴더 상태는 처음으로 돌아간다(데모 Run과 같다). |
-| §11 | 측정 목표(전환 p95 300 ms, diff p95 500 ms 등), 사용자 평가 | 구현(측정) | 2026-10-17 측정, [Performance.md](../Performance.md) "Workbench 화면 측정". 세션 500개·프로젝트 30개·바뀐 파일 301개(200 KB 파일 포함)에서 diff 표시 p95 361 ms, 세션 전환 p95 162 ms, 패널 크기 조절 long task 0, 네 화면 axe serious 0. 처음 실행의 diff 827 ms는 Myers diff·가상화·git 호출 축소로 고쳤다. 5명 사용자 평가는 사람 참가자가 필요하다. 진행 안내(참가자·환경 준비·과제 3개 스크립트·성공 기준·심각도·분석)와 결과 기록지를 [docs/evaluation](../evaluation/Workbench-Usability-Test.md)에 준비했다. 실시는 진행자(Bell)가 한다. |
+| §11 | 측정 목표(전환 p95 300 ms, diff p95 500 ms 등), 사용자 평가 | 구현(측정) | 2026-10-17 측정, [Performance.md](../Performance.md) "Workbench 화면 측정". 세션 500개·프로젝트 30개·바뀐 파일 301개(200 KB 파일 포함)에서 diff 표시 p95 361 ms, 세션 전환 p95 162 ms, 패널 크기 조절 long task 0, 네 화면 axe serious 0. 처음 실행의 diff 827 ms는 Myers diff·가상화·git 호출 축소로 고쳤다. 5명 사용자 평가는 사람 참가자가 필요하다. 진행 안내(참가자·환경 준비·과제 3개 스크립트·성공 기준·심각도·분석)와 결과 기록지를 [docs/evaluation](Workbench-Usability-Test.md)에 준비했다. 실시는 진행자(Bell)가 한다. |

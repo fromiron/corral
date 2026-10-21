@@ -67,7 +67,7 @@ CLI/설정 파일별 미지원 transport와 문법은 명시적으로 거절하�
 인앱 브라우저의 최종 화면 확인과 전체 저장소/네이티브 앱 검증은 통합 검증 기록에서 별도 추적한다.
 
 구현은 데모 동작·문서 참고를 Corral 소유 경로로 재구성했으며 데모 소스 코드를 복사하지 않았다.
-암호화·서명 의존 근거는 `docs/Dependencies-and-Sources.md`의 CR-042 항목에 기록했다.
+암호화·서명 의존 근거는 Git `4881b6377963:docs/Dependencies-and-Sources.md`의 CR-042 항목에 기록했다.
 
 ## Windows 자격 저장 권한 통합 검증
 

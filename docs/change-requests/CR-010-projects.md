@@ -3,8 +3,8 @@
 - 변경 ID / 제안자 / 날짜: CR-010 / Bell(제안 `CR-WB-001`), Claude(저장소 적용) / 2026-10-16
 - 상태: **승인**(Bell: "프로젝트별로 구분되지 않는 것이 제일 큰 문제 … 개선플랜을 작성 후 개선해", 2026-10-16. 로드맵 22번)
 - 연결 문서:
-  - [Workbench 개선 플랜](../plans/Workbench-Improvement-Plan.md) §3.2.
-  - 제안 [01 §3·§5.1](../proposals/workbench-v0.1/01-Improvement-Spec.md)과 [03 §2–§4](../proposals/workbench-v0.1/03-Technical-Design.md).
+  - Workbench 개선 플랜 (Git `373764467a52:docs/plans/Workbench-Improvement-Plan.md`) §3.2.
+  - 제안 01 §3·§5.1 (Git `373764467a52:docs/proposals/workbench-v0.1/01-Improvement-Spec.md`)과 03 §2–§4 (Git `373764467a52:docs/proposals/workbench-v0.1/03-Technical-Design.md`).
   - 스펙 §4.1 라우트, C-009·C-011 저장.
 
 ## 기존 문구

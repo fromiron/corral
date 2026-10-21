@@ -1,131 +1,46 @@
 ---
-name: Corral chat widgets and live work plan v2
-overview: 오른쪽 패널 접기 대신 채팅 상단의 상황별 정보 위젯, 입력창 위의 실제 WorkPlan, 단일 활동 표시를 구현한다. 화면 표현과 Corral 데이터 공급 경로를 필수 납품물로 고정한다.
-status: proposed
-review_date: 2026-10-19
-corral_baseline: e160c6411955193bd92e44f3088a0dce07cc5f0c
-supersedes_plan: Corral-Chat-View-Improvement-Plan.md
-must_ship:
-  - 채팅 타임라인 외부 상단에 실제 마운트된 상황별 위젯 바
-  - 컨텍스트 게이지와 구성별 상세 팝오버 및 측정 데이터 공급
-  - 입력창 바로 위에 실제 update_plan으로 갱신되는 Todo
-  - 중복을 줄인 단일 실행 활동 표시와 항상 접근 가능한 사용자 대응 정보
-  - 실행 중/갱신/종료/오류/좁은 화면의 브라우저 증거
-not_completion:
-  - CompactRunWorkspace만 수정함
-  - 기존 RunStatusCards를 disclosure 안으로 옮김
-  - Storybook 또는 하드코딩 mock에서만 위젯이 보임
-  - update_plan 발행 경로 없이 WorkPlanPanel을 이동함
-  - 측정 경로 없이 컨텍스트 알 수 없음 카드만 만듦
-  - README에 참고 링크만 추가함
-  - 위젯과 Todo를 선택 기능 또는 후속 작업으로 미룸
-todos:
-  - id: requirements-and-origin-map
-    content: 필수 UI 계약·결정적 fixture·실패 테스트를 등록한다.
-    status: pending
-  - id: session-surface-and-store
-    content: 현재 실행/패널 탐색/다음 요청을 분리하고 위젯·Todo·활성 카드의 공유 읽기 계층과 실제 슬롯을 연결한다.
-    status: pending
-  - id: work-plan-vertical-slice
-    content: 기본 Auto의 기존 update_plan 권한과 공개 작업 규약을 연결하고 ComposerWorkPlan을 실행 갱신 경로로 완성한다.
-    status: pending
-  - id: context-measurement
-    content: 메시지 추정과 전체 요청 추정을 구별하고 구성별 컨텍스트 측정·참조·선택자를 추가한다.
-    status: pending
-  - id: widget-presentation
-    content: 게이지·상태 표시·접힘 표현을 Corral 토큰과 공용 컨트롤로 실제 화면에 연결한다.
-    status: pending
-  - id: unified-activity-and-actions
-    content: 일상적인 도구 기록을 통합하고 승인·질문·실패·불명확 효과를 접힘에 묻히지 않게 한다.
-    status: pending
-  - id: results-and-demo-cleanup
-    content: 선택 산출물 우선 패널, embedded 상태 중복 정리, 데모 진단 본문 분리를 적용한다.
-    status: pending
-  - id: integrated-evidence
-    content: 늦은 응답·대상 보존·IME·스크롤·가상화·접근성·구독 수를 검증하고 시각 증거를 기록한다.
-    status: pending
+kind: contract
+status: current
+baseline: 373764467a52a7c6978de1272ac8253c73a27077
 ---
 
-# Corral 채팅 위젯·실시간 작업 계획 구현 플랜 v2
+# 채팅 위젯 상세 계약
 
-## 0. 결론과 검토 범위
-
-다른 에이전트의 안은 선택한 산출물을 먼저 읽게 만드는 오른쪽 패널 개선이다. 이 안만 구현하면 상단 위젯, 입력창 위 Todo, 그 갱신 데이터 경로는 생기지 않는다. 패널 개선은 이 플랜의 후반부 하위 작업으로 편입한다.
-
-이번 플랜은 **보여줄 위치, 화면 표현, 데이터를 만드는 경로, 실행별 표시 상태, 완료 증거**를 하나의 납품 범위로 묶는다. 위젯을 특정 기존 컴포넌트의 이름으로 부르는 것이 아니라 실제 사용자 화면에 나타나는 동작으로 검증한다.
-
-검토 시 GitHub의 Corral main은 e160c641이었다. 사용자가 제시한 화면 상태를 로컬에서 직접 재현하거나 앱을 빌드·테스트한 결과는 아니다. 작업 트리의 미커밋 변경은 확인하지 않았다. 구현 착수 시 현재 diff를 먼저 확인하고 이미 구현된 항목은 이 계약의 인수 기준으로 검증한다.
-
-스크린샷은 원하는 정보 계층과 Todo 배치의 근거다.
-
-### 다른 에이전트 안의 처리
-
-| 제안 | 처리 |
-|---|---|
-| 선택 산출물을 패널 본문 첫 내용으로 배치 | 채택. 단, 미해결 승인·질문·복구 경고는 별도 대응 영역에서 유지 |
-| compact 헤더에서 종료된 작업 수·0개 요청·일상 종료 이유 축소 | 채택. 전체 실행 상세는 보존 |
-| RunStatusCards와 ExecutionTree를 기본 접힘 | 채택. 상단 위젯을 만든 뒤 중복 상세를 정리하는 단계로 제한 |
-| ApprovalPanel도 같은 disclosure에 넣기 | 수정. 미해결 의사결정은 접힘 바깥에서 대응 가능해야 함 |
-| 채팅의 도구 목록·작업 기록·입력창을 그대로 유지 | 불채택. 실제 위젯과 Todo 슬롯 및 중복 활동 정리가 필요 |
-| CompactRunWorkspace만 변경 | 불채택. 이번 요구의 완료로 인정하지 않음 |
-| 실행 상태는 별개 사실이므로 ResultReader에도 늘 반복 | 수정. 의미는 보존하되 같은 패널의 실행 헤더 아래에는 재표시하지 않음 |
+승인 근거: [CR-041](../change-requests/CR-041-chat-widgets.md). 기본 대화 입구·요청 옵션 배치는 [CR-043](../change-requests/CR-043-chat-first-optional-corral.md)이 후속 보완한다. 승인된 상세 동작·수용 기준을 당시 구현 계획에서 이관했다. 아래 단계명은 계약 식별자이며 구현 순서나 새 작업 지시가 아니다. 구현·검증의 남은 범위는 [상태표](../status.md)와 [활성 계획](../plans/README.md)을 따른다.
 
 ## 1. 필수 화면 계약
 
 ### 1.1 배치
 
-```text
-SessionHeader
-SessionWidgetBar                          ← 채팅 상단, 타임라인 바깥
-  ContextUsageChip / AgentActivityChip / RunChangesChip / EnvironmentChip
-
-ChatTimeline                              ← 주 스크롤 영역, 기존 가상화 유지
-  사용자 요청
-  공개 진행 메시지
-  답변 또는 산출물 카드
-  작업 기록 진입점
-
-ComposerDock                              ← 채팅 하단, 타임라인 바깥
-  ActionRequiredBar                       ← 필요한 승인·질문·오류에만 표시
-  ComposerWorkPlan                        ← 입력창 바로 위, 진행 중 기본 펼침
-  RunActivityWidget                       ← 현재 단계·실행 경과·기록 진입점
-  ComposerSurface.Host                    ← 기존 입력 DOM 유지
-  ComposerSurface.ContextStrip            ← 다음 요청의 중요한 조건만
-
-RightPanel                                ← 기존 보조 패널, 제3열 추가 없음
-  선택한 결과 / diff / 실행 상세
-```
-
-실제 배치 예시(수치와 작업명은 테스트용 설계 예시):
+CR-041의 **2026-10-20 사용자 정정**을 반영한다. 초기 v2 계획의 가로 실행 요약 위젯 바는 대체됐다. 일반 대화 입구·요청 옵션은 후속 CR-043을 따른다.
 
 ```text
-[컨텍스트 약 18% ▾]  [에이전트 3 · 작업 중 2 ▾]  [이번 실행 변경 4개 ▾]
-────────────────────────────────────────────────────────────
-사용자 요청과 답변
-────────────────────────────────────────────────────────────
-작업 계획                 실행 A / Writer            2/7 완료 ▾
-  완료      관련 코드 확인
-  완료      변경 계획 작성
-  진행 중   채팅 레이아웃 수정
-  예정      회귀 테스트
-  예정      결과 정리
-  전체 7개 보기
+세션 탭·패널/메뉴/검색                  한 줄 세션 헤더
+대화 타임라인                          오른쪽 위 실행 요약 카드
+  사용자 요청·답변                       컨텍스트·에이전트·변경·환경
+  결과·기록 진입점                       상세 패널을 열면 같은 자리 대체
 
-현재: 채팅 레이아웃 수정 · 실행 경과 2분             작업 기록 ▸
-[메시지 입력                                                  ]
-[첨부·템플릿]                           [모델·추론 선택] [전송]
+컴포저 영역
+  대응 필요 알림 → 정확한 Run의 기존 질문/승인 영역으로 이동
+  작업 계획(Todo)                       입력창 바로 위
+  현재 활동·Pause/Resume·기록 진입점
+  기존 입력 DOM·다음 요청 옵션·전송
 ```
+
+가용 Workbench 폭 900px 이하 또는 상세 패널을 보는 동안은 입력창 근처의 **작업 현황** 버튼으로 같은 요약 카드를 연다. 데스크톱 카드는 약 300px의 독립된 보조 영역이며 타임라인 안이나 별도 가로 상단 바로 복원하지 않는다. 상세 패널이 그 자리를 대체하며 제3열을 만들지 않는다.
+
+세션 탭과 도구는 같은 52px 행을 사용하고, 세션 화면에서 중복된 프로젝트/세션 경로를 다시 추가하지 않는다. 접근 가능한 세션 제목·접힌 사이드바 진입점은 보존한다. 실제 배치 증거는 [화면 검증 기록](../evaluation/Chat-Widgets-Design-QA.md)에 있다.
 
 현재 작업의 문구가 Todo 헤더에 이미 보이면 RunActivityWidget은 동일 문구를 다시 반복하지 않고 실행 경과·기록 진입점만 제공한다. Todo가 접혀 있거나 없으면 활동 위젯에 현재 단계 요약을 표시한다. 승인 대기 같은 우선 상태는 ActionRequiredBar가 담당한다.
 
 ### 1.2 공간과 상호작용
 
-- 상단은 한 줄의 낮은 위젯 바로 시작한다. 커다란 KPI 카드 세 개 또는 네 개의 알 수 없음 카드를 기본으로 쌓지 않는다.
+- 실행 요약은 단일 오른쪽 카드 또는 같은 카드의 팝오버다. 알 수 없음 카드 여러 개를 기본으로 쌓지 않는다.
 - Todo와 입력창은 같은 콘텐츠 폭과 좌우 기준선을 사용한다. 단일 외곽선과 얕은 배경 단계로 묶으며 중첩 테두리·그림자를 반복하지 않는다.
-- 제안 시작값: 상단 위젯 바 36–44px, Todo 행 30–36px, 펼친 Todo 본문 최대 min(16rem, 30dvh). 실제 콘텐츠·확대·키보드 조건으로 조정하며 이 숫자는 기존 제품의 검증된 상수가 아니다.
+- Todo의 행·높이는 실제 콘텐츠·확대·키보드 조건에서 조정한다. 초기 계획의 시작값을 검증된 제품 상수로 고정하지 않는다.
 - 기본 Todo는 최대 5개 행을 읽을 수 있게 보여준다. 더 긴 계획은 완료 수와 전체 목록 진입점을 유지하고 전체 보기에서 제한된 높이의 스크롤을 제공한다.
 - Todo 항목의 텍스트 줄바꿈을 허용한다. 사용자가 보고 있는 항목을 이벤트마다 정렬·삭제·자동 스크롤하지 않는다.
-- 좁은 채팅 열에서는 위젯 텍스트를 축약하고 우선순위가 낮은 항목을 더보기로 옮긴다. 전체 화면 폭이 아니라 채팅 컨테이너 폭이 기준이다.
+- 좁은 폭에서는 같은 카드의 팝오버 진입점을 유지한다. 폭이 좁다는 이유로 위젯 정보를 제거하지 않는다.
 - 낮은 화면·200% 확대·가상 키보드에서는 Todo를 요약형으로 시작할 수 있지만, 키보드로 모든 계획에 접근할 수 있어야 한다. 미해결 승인·오류와 전송 컨트롤을 가리지 않는다.
 - viewport 위에 임의 fixed overlay를 얹지 않는다. 기존 flex/grid 안에서 공간을 확보하고 타임라인의 실제 가용 높이를 측정한다.
 
@@ -135,7 +50,7 @@ RightPanel                                ← 기존 보조 패널, 제3열 추�
 
 ## 2. 표현 경계
 
-아래 파일명은 제안 이름이지 현재 존재하는 파일이라는 뜻이 아니다.
+이 절은 표현 동작의 계약이다. 컴포넌트 이름·위치는 현재 Studio 소스를 확인하며 과거 계획의 이름으로 새 컴포넌트를 중복 생성하지 않는다.
 
 - 게이지와 분절 막대는 표시 전용이다. 고정 모델 목록, 고정 창 크기, 샘플 토큰, input/output/cache 합산으로 비율을 만들지 않는다. 기존 모델 선택 컨트롤을 대체하지 않는다. 같은 요청의 추정값으로 링·범례가 갱신되고 트리거로 상세가 열린다.
 - 진행 중에도 사용자가 접을 수 있다. auto/open/closed 선호와 실행 상태를 분리하고, 완료 후 auto만 축약한다. 헤더는 공용 Button과 disclosure다. 접힌 본문은 키보드·접근성 트리에 남지 않는다. 비공개 추론 원문을 요구하지 않는다.
@@ -150,7 +65,7 @@ RightPanel                                ← 기존 보조 패널, 제3열 추�
 
 | 대상 | 소유 정보 | 변경 계기 |
 |---|---|---|
-| presentationRunId | 상단 위젯·현재 Todo·활동 표시 | 현재 세션의 확정된 활성 Run. 없으면 마지막 실행 |
+| presentationRunId | 실행 요약 위젯·현재 Todo·활동 표시 | 현재 세션의 확정된 활성 Run. 없으면 마지막 실행 |
 | inspectedRunId / selectedResultId | 오른쪽 패널의 조회 대상 | URL과 사용자 탐색 |
 | composerDraft | 다음 본문·모드·모델·추론·첨부·시작 기준 | 사용자 입력·명시 설정 변경 |
 
@@ -160,13 +75,13 @@ RightPanel                                ← 기존 보조 패널, 제3열 추�
 
 ### 3.2 store와 구독
 
-현재 useCorralRun은 호출별로 createRunSession을 만든다. 위젯마다 이 훅을 부르면 구독과 읽기 상태가 늘어날 수 있다. 현재 실행은 하나의 소유 store를 공유하고, 상단 위젯·Todo·활성 RunMessage는 목적별 selector로 읽는다. SessionPage의 기존 store 소유권을 먼저 확인해 재사용한다.
+현재 useCorralRun은 호출별로 createRunSession을 만든다. 위젯마다 이 훅을 부르면 구독과 읽기 상태가 늘어날 수 있다. 현재 실행은 하나의 소유 store를 공유하고, 실행 요약 위젯·Todo·활성 RunMessage는 목적별 selector로 읽는다. SessionPage의 기존 store 소유권을 먼저 확인해 재사용한다.
 
 과거 실행을 보는 store는 현재 실행의 open(runId)를 갈아끼우지 않는 별도 읽기 대상으로 둔다. 같은 runId를 두 영역에서 읽을 때의 재사용과 transport/프로젝트/세션 경계를 명시하고, 구독 해제는 실제 소유자가 담당한다. 전역 상태 관리 전체 교체로 확대하지 않는다.
 
 위젯별 새 SSE·interval polling을 추가하지 않는다. 요청 기록과 WorkPlan bodyRef 변경 시에만 필요한 참조를 로딩한다. 스트리밍 토큰마다 전체 이벤트를 스캔하거나 private 본문을 다시 파싱하지 않는다.
 
-## 4. 상단 위젯 명세
+## 4. 실행 요약 위젯 명세
 
 ### 4.1 표시 조건
 
@@ -206,9 +121,9 @@ RightPanel                                ← 기존 보조 패널, 제3열 추�
 
 ### 4.3 컨텍스트 데이터 공급도 필수 구현 범위
 
-현재 request-record.ts의 contextEstimate는 context.messages의 estimateTokens 합이고 method는 pi-1.3.0-messages다. sections에는 bytes/hash 등이 있으나 화면 예시와 같은 범주별 token 점유량을 기록하지 않는다. 이 값을 전체 요청 사용량으로 이름만 바꾸면 안 된다.
+기존 `contextEstimate`는 메시지 추정(`pi-1.3.0-messages`)이며 전체 요청 측정이 아니다. CR-041의 `contextUsage`는 별도 선택 필드다. 조립 추정·최종 provider payload·legacy 메시지·부분/오류를 구분하고, 최종 hook 증거 없이 전체 비율로 승격하지 않는다. 타입·기록은 현재 contracts와 두 runtime의 request-record 경로를 따른다.
 
-구현은 다음을 포함한다.
+데이터 공급은 다음 계약을 유지한다.
 
 1. 요청 조립 지점에서 실제 messages/system sections/tool schema의 출처를 구조적으로 수집한다. 최종 payload hook 이후 포함 범위를 대조한다. 본문 키워드로 출처를 추측하지 않는다.
 2. 같은 기준의 추정기를 사용해 범주별 추정량을 만든다. provider가 확인한 입력 usage는 별도 측정 기준으로 보존하고 추정 breakdown과 섞어 맞추지 않는다. 한국어·일본어·도구 JSON·첨부가 포함된 fixture에서 한계를 기록한다.
@@ -339,7 +254,7 @@ RunStatusCards의 데이터 로딩은 위젯 selector와 공유하고, 상세 �
 
 ### 7.3 과거 설정과 다음 설정
 
-EntryCard의 당시 설정은 실행 snapshot 기반 접힌 실행 설정으로 제공한다. 입력창의 선택은 다음 요청을 뜻한다. 상단 위젯에서 실제 실행 모델을 확인할 수 있지만 그곳에서 다음 요청 모델을 편집하지 않는다. 시뮬레이션·시작 버전·파일 작업 범위 같은 중요한 차이는 다음 요청 근처에 남긴다.
+EntryCard의 당시 설정은 실행 snapshot 기반 접힌 실행 설정으로 제공한다. 입력창의 선택은 다음 요청을 뜻한다. 실행 요약 위젯에서 실제 실행 모델을 확인할 수 있지만 그곳에서 다음 요청 모델을 편집하지 않는다. 시뮬레이션·시작 버전·파일 작업 범위 같은 중요한 차이는 다음 요청 근처에 남긴다.
 
 ### 7.4 데모
 
@@ -364,57 +279,13 @@ SafeMarkdown에 role prompt 등 문자열 삭제 정규식을 넣지 않는다. 
 - 요청별 측정은 한 번 캐시하고 여러 위젯에서 전체 payload를 반복 순회하지 않는다. 대규모 토큰화로 UI thread를 막지 않는다. 필요한 작업이 커질 경우 기존 worker 구조를 우선 사용한다.
 - 위젯 열기/닫기는 네트워크 탐색·조회 외에 도메인 command를 발행하지 않는다. compact/Reins/승인/취소는 기존 정확한 대상·attempt·revision 검사와 공유 예산에 남긴다.
 
-## 9. 변경 대상 지도
-
-경로가 현재 존재하는지와 신규인지 구별한다. 동일 역할의 기존 파일이 이미 생겼으면 이름을 복제하지 말고 인수 기준에 맞게 확장한다.
-
-| 대상 | 구분 | 역할 |
-|---|---|---|
-| apps/studio/src/pages/SessionPage.tsx | 기존 | presentation 대상과 실제 상단/컴포저 슬롯 연결 |
-| apps/studio/src/workbench/ChatView.tsx | 기존 | 위젯/하단 높이와 타임라인 viewport·anchor 처리 |
-| apps/studio/src/workbench/ComposerSurface.tsx | 기존 | 기존 Host/ContextStrip 보존, 상단 Dock 연결 |
-| apps/studio/src/workbench/useCorralChat.ts | 기존 | 현재 실행 store 공유·과거 조회 분리 |
-| packages/react/src/components/WorkPlanPanel.tsx | 기존 | 공통 검증/로딩 재사용, 과거 상세 유지 |
-| packages/contracts/src/work-plan.ts | 기존 | 상태·소유자·revision 계약 유지 |
-| packages/core/src/auto-team.ts | 기존 | 기존 update_plan 권한·기본 팀 정의 확인 |
-| packages/adapter-pi/src/worker-tools.ts 등 실제 prompt 조립 경로 | 기존 | 권한 내 계획 갱신 규약 및 출처 정보 |
-| packages/adapter-pi/src/request-record.ts | 기존 | contextEstimate 범위 구분·구성별 측정 연결 |
-| packages/adapter-pi/src/worker.ts, sdk-worker.ts | 기존 | 두 runtime의 요청 측정 지점 연결 |
-| packages/contracts/src의 요청 기록 schema, 이벤트·projection·replay 경로 | 기존 확장 | additive/versioned context snapshot 참조 |
-| SessionWidgetBar.tsx, ContextUsageChip.tsx, ContextInspector.tsx | 신규 제안 | 상단 위젯과 상세 |
-| ComposerDock.tsx, ComposerWorkPlan.tsx | 신규 제안 | 실제 입력창 위 작업 계획 |
-| RunActivityWidget.tsx, ActionRequiredBar.tsx | 신규 제안 | 단일 활동 표시와 중요한 대응 |
-| QuietActivityIndicator.tsx, WorkPlanDisclosure.tsx | 신규 제안 또는 공용화 | 활동 표시와 계획 접힘 |
-| useWorkPlanSnapshot.ts, contextUsage.ts, widgetVisibility.ts | 신규 제안 | 조회·검증·표시용 순수 selector |
-| apps/studio/src/workbench/RunMessage.tsx | 기존 | 독립 완료 도구 목록 제거·기록 진입점 연결 |
-| packages/react/src/components/ExecutionTranscript.tsx | 기존 | compact 원문 기본 접힘, 기록 보존 |
-| apps/studio/src/pages/RunPage.tsx | 기존 | CompactRunWorkspace 결과 우선 및 핵심 대응 보존 |
-| packages/react/src/components/RunResults.tsx | 기존 | embedded/standalone 실행 맥락 분리 |
-| apps/studio/src/demo/script.ts 및 데모 adapter 설정 | 기존 | 진단 출력 분리·실제 도구 경로 fixture |
-
-## 10. 구현 순서: 기능을 먼저 화면에 납품
-
-| 단계 | 작업 | 눈으로 확인할 산출물 | 단계 완료 조건 |
-|---|---|---|---|
-| M0 | 짧은 CR, 현재 재현 및 실패 fixture | 목표 슬롯과 상태별 기대 화면을 기록한 기준 문서 | 요구 누락을 검출하는 테스트가 먼저 실패. 기존 테스트 삭제/완화 금지 |
-| M1 | SessionPage/ChatView/ComposerDock 슬롯과 공유 대상 연결 | 실제 세션 화면의 상단 위젯 슬롯·입력창 위 계획 영역 | 과거 패널 탐색 독립, 입력 DOM 유지, 추가 중복 구독 없음 |
-| M2 | WorkPlan 로딩·아이콘·접힘·계획 발행의 end-to-end 연결 | 실제 Coordinator 경로로 0/7 → 1/7 → 2/7 → 종료가 갱신되는 Todo | 새로고침/패널 열기 없이 단계 갱신. 단순 요청은 계획 없음. team 정적 소유자 반례 확인 |
-| M3 | 컨텍스트 계측·참조와 게이지/분절 표현 적용 | 실제 요청 기록 기반 링·범례·상세 팝오버 | 전체/부분/미측정 구분, tool schema 포함 여부 명시, 두 runtime 검사 |
-| M4 | 상황별 Agent/Changes/Environment 위젯과 단일 활동·대응 연결 | 실행 상태에 따라 필요한 위젯만 보이고 승인 대응이 노출됨 | 기존 성공 도구 목록과 중복 없음, 중요한 대기/오류를 접을 수 없음 |
-| M5 | 선택 결과 우선 패널·원문·상태·설정·데모 정리 | 채팅은 요청과 결과 중심, 패널은 선택 산출물 중심 | 기존 결과·제어·시작 기준·검증·파일 탭 회귀 통과 |
-| M6 | 반응형·스크롤·IME·접근성·성능·종합 증거 | 실제 브라우저 상태별 캡처와 전환 기록 | 아래 필수 인수 기준 및 검사 수행 상태 기록 |
-
-M1/M2의 실제 기능이 나오기 전에 패널 접기만 구현해 전체 완료를 선언하지 않는다. M2와 M3는 첫 릴리스의 필수 단계다. mock 시각 구현만 끝난 상태와 실제 데이터 연결 완료를 별도로 기록한다. 실제 provider 지원이 제한된 부분은 지원 범위와 미검증 범위를 명시하되 구현 가능한 두 runtime 계측을 선택 작업으로 미루지 않는다.
-
-기능별 UI 확인은 해당 단계에서 바로 수행한다. M6까지 잘못된 위젯 위치를 방치하지 않는다. 다중 provider의 유료 live 검사는 자동 승인되지 않으며 기존 opt-in과 비용 한도를 따른다.
-
 ## 11. 필수 인수 테스트
 
 ID는 계획용 임시 식별자이며 저장소 카탈로그 등록 시 충돌을 확인한다. 문자열 스냅샷만이 아니라 표시 위치·소유 대상·실제 이벤트·수동 선택 보존을 검증한다.
 
 | ID | 시나리오 | 통과 기준 |
 |---|---|---|
-| SURFACE-01 | 보조 패널을 닫은 채 다단계 실행 | 상단 위젯과 입력창 바로 위 Todo가 접근 가능하며 갱신됨 |
+| SURFACE-01 | 보조 패널을 닫은 채 다단계 실행 | 실행 요약 위젯과 입력창 바로 위 Todo가 접근 가능하며 갱신됨 |
 | SURFACE-02 | 채팅 열이 좁아짐 | 컨테이너 기준 축약, 가로 overflow 없음, 전체 정보 접근 유지 |
 | PLAN-01 | 실제 update_plan 발행 | Coordinator 이벤트·bodyRef를 거쳐 화면에 목록 생성 |
 | PLAN-02 | 동일 항목 in_progress→completed와 다음 항목 시작 | 상태 원·제목·완료 수가 새로고침 없이 갱신 |
@@ -465,31 +336,3 @@ ID는 계획용 임시 식별자이며 저장소 카탈로그 등록 시 충돌�
 이번 플랜은 UI 표시와 필요한 읽기용 컨텍스트 계측, 기존 권한 안에서의 계획 발행 규약을 포함한다. 예산 자동 증가, 키 자동 수집, 연결 권한 확대, 자동 compact 정책 변경, 자동 병합·배포·원본 반영, Todo 클릭 완료, 새 에이전트 실행 엔진은 포함하지 않는다.
 
 공용 컴포넌트의 재사용을 우선하고 패키지 전체 교체·추가 스크롤 엔진·새 Todo DB를 만들지 않는다. 원본 프롬프트/산출물 필터링으로 중복을 숨기지 않는다. 도메인 결과·검토·제출·실제 파일 반영을 한 성공 상태로 합치지 않는다.
-
-## 13. 구현 에이전트 전달용 요약
-
-> 목표는 CompactRunWorkspace의 접힘 정리가 아니다. 채팅 상단 SessionWidgetBar와 입력창 바로 위 ComposerWorkPlan을 실제 SessionPage에 연결한다. 게이지, 분절 막대, 활동 표시, disclosure는 Corral 토큰과 공용 컨트롤을 쓴다. 기존 update_plan/WorkPlan 이벤트로 Todo가 갱신되어야 하며, messages-only contextEstimate를 전체 컨텍스트로 오표시하지 않도록 요청 계측도 연결한다. 패널 정리는 이 기능들의 후속 단계다. 상단 위젯과 Todo가 보조 패널을 닫아도 작동하고 실제 이벤트로 갱신되는 브라우저 증거가 없으면 전체 완료로 보고하지 않는다. 현재 실행·과거 패널 탐색·다음 요청 설정, 승인/Reins/compact의 대상과 receipt 경계는 보존한다. 임의 범위 축소가 필요하면 구현 전에 누락 항목을 명시하고 승인을 받는다.
-
-## 14. 고정 소스와 근거
-
-아래 링크는 Corral 기준선의 파일 단위 참조다. 구현 자체의 검증 완료를 의미하지 않는다.
-
-### Corral
-
-- [RunPage — CompactRunWorkspace 현재 배치](https://github.com/fromiron/corral/blob/e160c6411955193bd92e44f3088a0dce07cc5f0c/apps/studio/src/pages/RunPage.tsx)
-- [RunStatusCards — 환경/컨텍스트/연결/변경 상세](https://github.com/fromiron/corral/blob/e160c6411955193bd92e44f3088a0dce07cc5f0c/apps/studio/src/workbench/RunStatusCards.tsx)
-- [ChatView — header/composer 슬롯, 위치 보존, 가상화](https://github.com/fromiron/corral/blob/e160c6411955193bd92e44f3088a0dce07cc5f0c/apps/studio/src/workbench/ChatView.tsx)
-- [ComposerSurface — Host와 ContextStrip](https://github.com/fromiron/corral/blob/e160c6411955193bd92e44f3088a0dce07cc5f0c/apps/studio/src/workbench/ComposerSurface.tsx)
-- [useCorralChat — 호출별 store 생성](https://github.com/fromiron/corral/blob/e160c6411955193bd92e44f3088a0dce07cc5f0c/apps/studio/src/workbench/useCorralChat.ts)
-- [WorkPlanPanel — private 참조와 파싱/검증](https://github.com/fromiron/corral/blob/e160c6411955193bd92e44f3088a0dce07cc5f0c/packages/react/src/components/WorkPlanPanel.tsx)
-- [WorkPlan schema — 상태/범위/revision/항목 제약](https://github.com/fromiron/corral/blob/e160c6411955193bd92e44f3088a0dce07cc5f0c/packages/contracts/src/work-plan.ts)
-- [CR-028 — 소유자, verification evidence, 계획과 Run 완료 분리](https://github.com/fromiron/corral/blob/e160c6411955193bd92e44f3088a0dce07cc5f0c/docs/change-requests/CR-028-user-interactions-and-plans.md)
-- [Auto 팀 정의 — update_plan 권한과 planOwnerRoleId](https://github.com/fromiron/corral/blob/e160c6411955193bd92e44f3088a0dce07cc5f0c/packages/core/src/auto-team.ts)
-- [request-record — 메시지 기준 추정과 sections 기록](https://github.com/fromiron/corral/blob/e160c6411955193bd92e44f3088a0dce07cc5f0c/packages/adapter-pi/src/request-record.ts)
-
-### 기존 대화에서 제공된 자료
-
-- 사용자가 제공한 두 번의 성공 실행·동일 산출물·원문·도구 목록 중복 재현 기록.
-- 사용자가 첨부한 Context 상세 및 입력창 부근 Todo 화면.
-- 사용자가 붙여 넣은 다른 에이전트의 CompactRunWorkspace 개선 제안.
-- 이전 플랜 Corral-Chat-View-Improvement-Plan.md. v2는 위젯/계획의 납품 의무, 실제 계측, 팀 계획의 정적 소유자 반례를 강화한다.

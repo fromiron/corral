@@ -1,3 +1,5 @@
+> **2026-10-20 실행 증거.** 아래 current/사용자 지시/브랜치는 당시 맥락이다. 현재 계약은 [채팅 위젯](../current/chat-widgets-contract.md), 현재 작업 범위는 [상태표](../status.md)를 따른다.
+
 # Chat widgets: implementation and visual verification
 
 Date: 2026-10-20 (Asia/Tokyo)
@@ -10,7 +12,7 @@ widgets in an independent upper-right card. This current instruction takes prior
 over the earlier plan's top widget bar. The Todo remains immediately above the composer.
 
 - Source visual: `C:/Users/Bell/AppData/Local/Temp/codex-clipboard-67d2865a-6c8c-47cc-8023-ec808646aec1.png`.
-- Accepted plan copy: `docs/plans/Corral-Chat-Widgets-Implementation-Plan-v2.md`.
+- Accepted plan copy: Git `373764467a52:docs/plans/Corral-Chat-Widgets-Implementation-Plan-v2.md`.
 - Contract amendment and root causes: `docs/change-requests/CR-041-chat-widgets.md`.
 - Branch/HEAD: `fix/studio-chat-display`, `ec5e244`, plus pre-existing and current uncommitted changes.
 - Final static bundle inspected in the in-app browser: `index-BjEk4nTX.js`, `index-Ciqj0HpQ.css`.

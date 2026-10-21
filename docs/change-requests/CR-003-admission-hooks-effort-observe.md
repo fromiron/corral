@@ -2,7 +2,7 @@
 
 - 변경 ID / 제안자 / 날짜: CR-003 / Bell(요청), Claude(초안) / 2026-10-15
 - 상태: **승인** (Bell, 2026-10-15). D1–D4는 제안안으로 확정했다. §9 순서로 요구·테스트·backlog·ADR·스펙을 갱신한다(AGENTS 10).
-- 연결 문서: [스펙](../../Corral-Spec-v0.1.md) §3.2·§8.1·§9·§10.2·§13, [구현 플랜 v0.1](../../Corral-Implementation-Plan-v0.1.md) §11, [기술 설계](../Technical-Design.md) §5·§7.3·§9.1·§15, [의존성과 출처](../Dependencies-and-Sources.md) §4
+- 연결 문서: [스펙](../current/product-contract.md) §3.2·§8.1·§9·§10.2·§13, 구현 플랜 v0.1 (Git `373764467a52:Corral-Implementation-Plan-v0.1.md`) §11, [기술 설계](../Technical-Design.md) §5·§7.3·§9.1·§15, 의존성과 출처 (Git `4881b6377963:docs/Dependencies-and-Sources.md`) §4
 
 ## 0. 요약
 

@@ -58,7 +58,7 @@ Playwright의 global setup은 production fixture를 새로 build하고, 각 테�
 
 ## Workbench 화면 측정 (02-UX-Spec §11, 2026-10-17)
 
-02-UX-Spec 구현을 마친 뒤 한 번 측정했다([UX-Spec-Conformance](plans/UX-Spec-Conformance.md)). 원본 결과는 [performance/workbench.json](performance/workbench.json)이다. 일반 E2E에는 넣지 않았고, 다시 측정하려면 `CORRAL_WORKBENCH_PERF=1`로 `e2e/server/workbench-measure.spec.ts`를 실행한다.
+02-UX-Spec 구현을 마친 뒤 한 번 측정했다([UX-Spec-Conformance](evaluation/UX-Spec-Conformance.md)). 원본 결과는 [performance/workbench.json](performance/workbench.json)이다. 일반 E2E에는 넣지 않았고, 다시 측정하려면 `CORRAL_WORKBENCH_PERF=1`로 `e2e/server/workbench-measure.spec.ts`를 실행한다.
 
 ### 측정 조건
 

@@ -1,9 +1,8 @@
-# Corral — 기술 설계 v0.1
+# Corral — 상태·전이·통신 상세 설계
 
-> **문서 역할 안내:** 초기 설계와 후속 상세 계약이 함께 있는 자료다. [현재 구조](current/architecture.md)와 [실행 경계](current/execution-and-safety.md)를 먼저 읽고 필요한 절만 참조한다. 초기 패키지 예시·도입 예정·단일 Run 가정을 현재 구현 사실로 취급하지 않는다. 유효한 상세 전이·소유권 계약을 폐기한다는 뜻은 아니다.
+현재 [구조](current/architecture.md)와 [실행 경계](current/execution-and-safety.md)를 설명하는 상세 계약이다. 구현·검증 상태는 [상태표](status.md)를 따른다. 인터페이스 코드 블록은 책임을 설명하는 개념 예시이며 설치된 Pi/LangGraph API나 그대로 컴파일할 코드가 아니다. 실제 타입·호출은 해당 패키지의 현재 소스·문서에서 확인한다.
 
-
-> 이 문서는 제품 스펙을 구현 가능한 책임·데이터·전이·통신 계약으로 분해한 설계안이다. 라이브러리 조합의 동작을 검증했다는 보고서가 아니다. 아래 인터페이스는 Corral이 구현할 포트이며, 실제 Pi/LangGraph API를 그대로 인용한 코드가 아니다.
+후속 범위: 하네스는 [하네스 계약](current/harness-contract.md), host·명령·동시성은 [Desktop 계약](current/desktop-contract.md), UI는 [Workbench](current/workbench.md)를 따른다. 과거 단일 Run·도입 예정 가정을 이 범위에 적용하지 않는다.
 
 ## 1. 아키텍처 결정
 
@@ -56,29 +55,7 @@ flowchart TB
 
 ## 2. 모노레포와 의존 방향
 
-```text
-corral/
-  apps/
-    studio/                 # React/Vite. Node/Pi/DB import 금지
-    server/                 # Fastify, 세션, REST/SSE
-  packages/
-    contracts/              # Zod schema, types, errors, generated JSON Schema
-    core/                   # Coordinator, limits, tasks, messages, pure reducers
-    runner-langgraph/       # 정적 control-flow lowering과 node callback
-    adapter-pi/             # parent/worker 프로토콜, Pi API mapping
-    storage-sqlite/         # SQL migrations, RunStore·Corral repository (ADR-021)
-    react/                  # Canvas/Reins/RunView의 내부 재사용 컴포넌트
-    testkit/                # clock/id/agent/search/store test doubles
-    cli/                    # corral dev/run/validate/inspect/export
-  specs/                    # feature spec, acceptance.feature, traceability
-  tests/{unit,contract,integration,e2e,live,performance}/
-  examples/{research-team,fixtures}/
-  docs/{adr,dependencies,runbooks}/
-```
-
-`contracts ← core ← adapter/runner/storage/server`의 방향을 지킨다. contracts/core는 DOM·React에 의존하지 않는다. `@corral/react`는 contracts와 frontend용 순수 selector만 참조한다. DB 구현이 runtime 밖으로 흘러나오지 않도록 Repository 포트를 사용한다.
-
-패키지는 초기에 내부 workspace만 사용한다. 공개 SDK 버전 호환성을 약속하거나 매 패키지를 npm에 배포하지 않는다. package names는 발행 가능 여부 미확인이다.
+실제 패키지 지도와 상태 owner는 [구조](current/architecture.md)에 한 번만 관리한다. `contracts/core`는 DOM·React에 의존하지 않는다. Studio는 DB·Pi·credential 저장소에 직접 접근하지 않으며 Repository·adapter 경계를 따른다. 내부 workspace 패키지의 존재는 공개 SDK 호환성이나 npm 배포를 뜻하지 않는다.
 
 ## 3. 식별자·revision·시간
 
@@ -443,7 +420,7 @@ React Flow controlled nodes/edges는 definition+layout의 selector 결과다. dr
 
 Canvas를 대형 채팅 메시지 렌더링과 분리한다. Timeline/실행 트리는 TanStack Virtual을 사용해 가상화하고, 전체 트리 flatten은 memoized selector로 계산한다. 이벤트는 16~50ms 단위로 화면 반영을 모을 수 있지만 영속 순서와 제어 receipt를 누락하지 않는다.
 
-자동 레이아웃은 초기 MVP 필수가 아니다. 사용자가 정한 위치를 실행 이벤트 때문에 재배치하지 않는다. 필요하면 후속 ELK adapter로 확장하되 graph compiler와 결합하지 않는다. React Flow Pro 전용 예제 코드를 제품의 필수 의존성으로 두지 않는다. Undo/Redo·멀티선택은 공개 API와 자체 command history로 구현한다.
+자동 배치는 기존 [layout 구현](../packages/react/src/run/layout.ts)을 재사용한다. 사용자가 정한 위치를 실행 이벤트 때문에 재배치하지 않으며 graph compiler와 결합하지 않는다. React Flow Pro 전용 예제 코드를 제품의 필수 의존성으로 두지 않는다. Undo/Redo·멀티선택은 공개 API와 자체 command history로 구현한다.
 
 ### 13.4 접근성
 
@@ -465,9 +442,9 @@ MVP 자료는 등록한 text/Markdown와 안전하게 추출한 HTML text다. PD
 
 ## 15. 확장 포트와 보류 기준
 
-`DecisionProvider`는 이번 단계에서 플러그인 시스템으로 만들지 않고, DecisionNode에서 결과를 받는 작은 내부 포트만 유지한다. v0.2에 동일 질문 계약의 `Local`/`Jev` adapter를 넣는다. Node.js↔Python 실행 경계를 지금부터 강제하지 않는다.
+`DecisionProvider`와 Decision 노드의 `DecisionPolicy`는 다른 계약이다. provider는 질문 종류·버전·privacy·timeout을 선언하고 Coordinator는 선언하지 않은 질문을 보내지 않는다. [CR-003](change-requests/CR-003-admission-hooks-effort-observe.md)의 off/observe는 요청을 바꾸지 않는 관찰 경로이며 기존 계약을 유지한다.
 
-v0.2 첫 질문 종류는 `reasoning_effort` v1이다([ADR-025](Decisions.md)). 이것은 Decision 노드의 `DecisionPolicy`와 별개인 `DecisionProvider` 계약이며, provider는 질문 종류·버전·privacy·timeout을 선언하고 Coordinator는 선언하지 않은 질문을 보내지 않는다. 판정은 `model.request_prepared` commit 뒤 observer가 실행하고 `decision.requested/observed/failed`로만 기록한다. 모드는 `off | observe`이며 Run 시작 시 고정한다. 요청 적용, ONNX 모델, Jev adapter는 후속 CR이다.
+ONNX 기반 로컬 판정과 역할별 요청 전 apply는 [CR-021](change-requests/CR-021-role-reasoning-apply.md)의 후속 구현이다. 초기의 “ONNX/적용은 후속” 설명으로 이를 미구현 취급하지 않는다. 실제 연결·provider 검증 범위는 [모델 안내](Models.md)와 [상태표](status.md), 미승인 확장은 [제안 지도](proposals/README.md)에 있다.
 
 `GraphRunner`와 `AgentAdapter`는 분리한다. LangGraph가 맡는 순회와 Pi가 맡는 모델/도구 세션을 변경해도 public command/event contract가 변하지 않게 한다. 다만 adapter 교체만으로 모든 프레임워크 내부를 관측할 수 있다고 약속하지 않는다.
 

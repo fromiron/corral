@@ -26,9 +26,10 @@ pnpm storybook    # 상태별 component와 접근성 검사
 | 현재 제품 계약과 기본 흐름은? | [제품](docs/current/product.md), [Workbench](docs/current/workbench.md) |
 | 상태·실행·권한을 누가 소유하는가? | [구조](docs/current/architecture.md), [실행과 안전](docs/current/execution-and-safety.md) |
 | 모델·추론·Skill·API를 바꾸려면? | [모델과 리소스](docs/current/models-and-resources.md), [API](docs/current/api.md) |
-| 남은 작업과 실제 검사 결과는? | [계획 지도](docs/plans/README.md), [검증 기록 안내](docs/evaluation/README.md) |
+| 구현된 기능과 남은 일은? | [상태표](docs/status.md), [활성 계획](docs/plans/README.md) |
+| 장기 제안과 실제 검사 결과는? | [제안 지도](docs/proposals/README.md), [검증 기록 안내](docs/evaluation/README.md) |
 
-초기 기획안과 과거 구현 계획은 기본 개발 지침이 아니다. 이력 조사와 문서 이관 대상은 [과거 자료 안내](docs/archive/README.md)에 구분한다.
+현재 문서만 작업 트리에 유지한다. 완료·대체된 계획과 초기 패키지는 Git 이력에서 조회하며 기본 개발 지침으로 읽지 않는다.
 
 ## 검증
 
@@ -58,4 +59,4 @@ pnpm release:gate
 | `packages/storage-sqlite`, `packages/adapter-pi`, `packages/runner-langgraph` | 저장과 실행 어댑터 |
 | `packages/cli`, `packages/testkit`, `tools/release`, `tests/live` | CLI·테스트 도구·출시 검사 |
 
-[MIT 라이선스](LICENSE)를 사용한다. 실제 의존성 기록은 [dependency lock](docs/dependency-lock.json), 차용물의 고지는 [THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES/) 및 각 번들 디렉터리에 있다. 과거 참고 제품의 동작을 Corral의 현재 계약으로 취급하지 않는다.
+[MIT 라이선스](LICENSE)를 사용한다. 실제 의존성 기록은 [dependency lock](docs/dependency-lock.json), 차용물의 고지는 [THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES) 및 각 번들 디렉터리에 있다. 과거 참고 제품의 동작을 Corral의 현재 계약으로 취급하지 않는다.

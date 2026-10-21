@@ -87,4 +87,4 @@ Portable·NSIS의 내부 payload는 같고 추출본은 최종 unpacked의 26,69
 
 검증 범위는 새 대화와 요청 옵션 및 영향을 받는 기존 경로다. 다른 설정 페이지 전체 개편, 새로운 실행 아키텍처, 전체 제품 접근성 인증은 범위 밖이다. 롤백 시 이번 CR-043의 UI·메시지·관련 테스트 변경만 되돌리며 앞선 ABS 기능과 사용자 workspace는 보존한다.
 
-배포 파일의 최신 identity와 네이티브 검증은 [Windows 배포 증거](../plans/Desktop-Delivery-Verification.md)를 따른다. 이전 UI의 EXE 검증을 새 UI 검증으로 표시하지 않는다.
+배포 파일의 최신 identity와 네이티브 검증은 [Windows 배포 증거](Desktop-Delivery-Verification.md)를 따른다. 이전 UI의 EXE 검증을 새 UI 검증으로 표시하지 않는다.

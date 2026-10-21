@@ -1,8 +1,10 @@
 # Corral — HTTP·이벤트·오류 계약
 
+현재 타입·생성 schema의 위치는 [API 원본 안내](current/api.md)를 따른다. 아래 표는 기능별 계약을 설명하며 전체 endpoint 자동 생성 목록이 아니다. 변경할 경로는 `apps/server/src/app.ts`·기능별 routes·`packages/client`와 함께 확인한다.
+
 ## 1. 명령과 조회
 
-모든 주소는 제안된 로컬 same-origin `/api/v1` 기준이다. 인증 세션, workspace binding, Host/Origin 검사 후 처리한다. API key는 이 API의 응답에 포함하지 않는다.
+주소는 로컬 same-origin `/api/v1` 기준이다. 인증 세션, workspace binding, Host/Origin 검사 후 처리한다. API key는 이 API의 응답에 포함하지 않는다.
 
 | Method/path | 요청 | 응답·효과 |
 |---|---|---|
@@ -14,7 +16,7 @@
 | POST /runs | commandId,corralId,definitionRevision,input,mode,startFrom?,references? | runId+receipt; validation 완료 전 모델 호출 없음. `startFrom {runId, artifactVersionId}`는 그 버전 본문을 브리프 뒤에 붙이고 `run.started.startedFrom`에 남김. 없는 Run·다른 Run의 버전은 `TARGET_NOT_FOUND`, 산출물 크기 한도 초과는 `LIMIT_REACHED` (CR-007). `references`(최대 20)는 file·folder·run·role을 포인터로 나열하고(권한 없음) result는 그 버전 본문을 복사. 없는 대상 `TARGET_NOT_FOUND`, 결과 합계 초과 `LIMIT_REACHED` (CR-016) |
 | GET /runs/:id/snapshot | — | read model + snapshotSeq |
 | GET /runs/:id/events?after=N | cursor | commit된 domain events의 SSE; token frames 별도 type |
-| POST /runs/:id/commands | command.schema.json | accepted receipt 또는 4xx; HTTP202는 적용 완료가 아님 |
+| POST /runs/:id/commands | `packages/contracts/generated/command.schema.json` | accepted receipt 또는 4xx; HTTP202는 적용 완료가 아님 |
 | GET /runs/:id/commands/:commandId | — | command 상태·관련 events·적용 scope |
 | GET /runs/:id/artifacts/:artifactId/versions/:version | — | 불변 본문·생성/읽기/지시/검토 경로 |
 | GET /model-profiles | — | public profileId·지원 capability·keyConfigured, secret 없음 |

@@ -1,40 +1,22 @@
-# Corral — 제품·실행 스펙 v0.1
+---
+kind: contract
+status: current
+baseline: 373764467a52a7c6978de1272ac8253c73a27077
+---
 
-> **문서 역할 안내:** 이 문서는 초기 기준과 후속 CR가 함께 있는 상세 자료다. 현재 작업은 [문서 지도](docs/README.md)에서 시작한다. 아래 초기 상태·권위·제외 설명을 모든 후속 변경에 그대로 적용하지 않는다. 특히 대화 시작은 CR-043, 명령·Hashline·병행 Run은 CR-042의 해당 범위를 함께 확인한다. 대체되지 않은 상세 계약은 유지하며, 이 표시는 기능 승인이나 전체 이관 완료가 아니다.
+# Corral 제품·실행 상세 계약
 
+초기 v0.1 스펙에서 유효한 상세 규칙을 이관하고 후속 승인 범위를 연결했다. 현재 사용 흐름은 [제품 요약](product.md), 구현·환경별 검증은 [상태표](../status.md), 변경 근거는 해당 CR이다. 이 문서는 구현 완료 보고서나 실행 계획이 아니다.
 
-> **Controlled autonomy. Visible collaboration. Deliberate steering.**  
-> D&D로 AI 팀을 설계하고, 규칙 안에서 자율 협업하게 하며, 진행 중에도 적용 범위와 시점을 확인하면서 개입하는 로컬 우선 도구.
+## 0. 적용 범위와 변경 근거
 
-| 문서 관리 | 값 |
-|---|---|
-| 기준일 | 2026-10-14 |
-| 상태 | 구현 착수용 설계안. 제품 기능 구현·통합 검증은 아직 수행하지 않음 |
-| 소유자 | Bell |
-| 개발 방식 | SDD(Spec-Driven Development) + TDD(Test-Driven Development) |
-| 기준 자료 | 리뷰어 MVP v1.1 PDF [B1] + 대화에서 확정한 D&D·포트폴리오·실시간 개입 요구 |
-| 관련 문서 | [구현 플랜](Corral-Implementation-Plan-v0.1.md), [기술 설계](docs/Technical-Design.md), [ADR](docs/Decisions.md) |
+사용자 확정 요구와 승인 CR에 따라 제품·기능·기술 계약을 해석한다. 초기 설계 이후 기본 대화는 CR-043, Desktop·동시 Run·명령·Hashline은 CR-042, 추론 적용은 CR-021, 복수 모델 Ultra는 CR-031로 보완됐다. 과거 제외 목록을 근거로 후속 승인 기능을 제거하지 않는다.
 
-## 0. 이 문서의 결정 권한과 읽는 순서
-
-**사용자가 확정한 목표 → 본 제품 스펙 → 기능별 수용 기준 → 기술 계약 → 구현 태스크** 순서로 해석한다. 라이브러리 편의 때문에 D&D·협업·스티어링을 제외해서는 안 된다. 테스트가 실패한다는 이유로 명세를 묵시적으로 약화하지 않는다.
-
-[B1]의 범위·구조·용어를 출발점으로 삼되, 아래의 보완은 **이번 문서에서 새로 내린 설계 결정**이다. 외부 프로젝트가 이미 이 통합 기능을 제공한다는 주장이 아니다. 라이브러리 사실과 확인 날짜는 별도 출처 문서에 분리했다.
-
-| 구분 | 처리 |
-|---|---|
-| 그대로 유지 | 첫 MVP D&D, 4종 노드, 협업 메시지, 동적 자식 실행, 제한된 검토 루프, 텍스트 산출물, 전체·개별 취소, 실행 중 구조 고정 [B1 §1·3·4·7] |
-| 구체화 | 상태 소유자=Run Coordinator, SQLite의 영속 이벤트·투영을 한 트랜잭션에서 확정, LangGraph/Pi는 실행 어댑터 |
-| 명시적 수정 | 일반 지시는 전체 정지 없이 접수 가능. 실제 전달은 다음 요청 경계. 강제 방향 변경은 일시정지/취소 후 처리 |
-| 명시적 수정 | 작업 상태에 실패·취소, 실행 상태에 대기열·일시정지 중·취소 중을 추가 |
-| 명시적 수정 | 모든 메시지에 산출물 버전을 요구하지 않고, 질문·답변·제출별 필수 참조를 다르게 정의 |
-| 명시적 수정 | 실행 전 검증을 3종에 한정하지 않고, 지원 명세의 스키마·참조·포트·권한 검증까지 포함 |
-| 명시적 수정 | 산출물 인과를 생성 시각이 아닌 요청 스냅샷·입력 버전으로 연결 |
-| 유지하되 후속 일정 명시 | Local/Jev는 MVP 직후 v0.2의 독립 마일스톤. 자동 최적화·Hybrid 정책 평가와 분리 |
+D&D·협업·Loop·Reins와 Coordinator 소유권은 유지한다. 상세 상태와 스키마는 [기술 설계](../Technical-Design.md), [API 원본](api.md), [기능 명세](../../specs/README.md)를 함께 확인한다. 날짜나 코드의 존재만으로 계약 충돌을 해소하지 않는다.
 
 ## 1. 제품 목표와 사용자
 
-### 1.1 첫 MVP가 증명할 것
+### 1.1 핵심 사용자 경험
 
 사용자가 **코드나 YAML 편집 없이** 조사·작성·검토 팀을 구성한다. 조사자가 자식 에이전트를 호출하고, 작성자가 조사자에게 질문하며, 검토 반려가 다음 반복의 수정 작업으로 이어진다. 사용자는 그 도중 지시·미래 모델 설정·한도를 바꾸거나 일부 작업을 멈출 수 있다. 화면에서 각 변경의 접수·적용·결과 연결을 확인한다.
 
@@ -48,7 +30,7 @@
 
 주 대상은 자신만의 LLM 에이전트 팀을 구성하려는 개발자·파워유저다. Bell의 프런트엔드 포트폴리오로서 편집 UX, 실시간 상태 관리, 접근성, 성능, 오류 복구 설계를 드러낸다. 코딩 전용 제품으로 제한하지 않지만, MVP 실사용 시나리오는 조사→작성→검토 하나로 검증한다.
 
-**배포 형태:** 데스크톱 브라우저 + 로컬 Node.js 서버 + SQLite. 클라우드 계정과 설치형 데스크톱 셸은 필수가 아니다. 초기 MVP는 워크스페이스당 활성 Run을 1개로 제한하고, 한 Run 안의 다수 에이전트 병렬 작업과 여러 과거 Run 보관을 지원한다. 이 자원·UI 범위는 [CR-042](docs/change-requests/CR-042-desktop-capabilities.md) ABS-06에서 고정 snapshot reader 병행과 worktree별 단일 writer로 확장하도록 승인되었다. 모든 시작 입구의 admission, host 전체 모델·worker·process 상한, `(hostId, runId)`별 제어·SSE·예산·자료 소유를 함께 구현해야 하며, 같은 작업 사본의 동시 writer를 허용한다는 뜻은 아니다. 기능별 구현·검증 상태는 [진행 기록](docs/evaluation/Desktop-Capabilities-Implementation-Progress.md)에서 구분한다.
+**배포 형태:** 브라우저 Studio + 로컬 Node.js 서버 + SQLite 및 Electron Desktop. 한 Run 안의 병렬 작업과 과거 Run 보관을 지원한다. 여러 Run의 admission·host 자원·작업 사본 소유 범위는 [CR-042](../change-requests/CR-042-desktop-capabilities.md) ABS-06의 고정 snapshot reader 병행과 worktree별 단일 writer 계약을 따른다. 모든 시작 입구의 admission, host 전체 모델·worker·process 상한, `(hostId, runId)`별 제어·SSE·예산·자료 소유를 함께 구현해야 하며, 같은 작업 사본의 동시 writer를 허용한다는 뜻은 아니다. 기능별 구현·검증 상태는 [진행 기록](../evaluation/Desktop-Capabilities-Implementation-Progress.md)에서 구분한다.
 
 **포트폴리오 모드:** 동일한 편집기·상태 투영·Reins를 사용하되 실행 어댑터만 결정론적 mock으로 바꾼 정적 웹 데모를 제공한다. 실제 LLM처럼 가장하지 않으며 `Demo / Simulated agents`를 항상 표시한다.
 
@@ -64,7 +46,7 @@
 
 **Corral은 제품명인 동시에, 팀·작업 그래프·도구 권한·공유 예산을 감싸는 실행 경계다.** Loop와 같은 의미로 사용하지 않는다. 팀 하나가 여러 번 반복될 수 있으므로 팀의 경계와 반복 제어는 분리해야 한다.
 
-MVP의 캔버스 전체가 하나의 Corral이다. 그 안에 Loop 영역과 Agent·Decision·Output을 배치한다. 여러 Corral을 중첩하거나 통째로 드롭하는 재사용 Subflow는 v0.3 이후로 둔다. 이렇게 하면 이름 때문에 다섯 번째 실행 노드나 새로운 중첩 런타임이 생기지 않는다.
+MVP의 캔버스 전체가 하나의 Corral이다. 그 안에 Loop 영역과 Agent·Decision·Output을 배치한다. Corral 중첩·재사용 Subflow는 [장기 후보](../proposals/README.md)이며 현재 지원 계약이 아니다. 이렇게 하면 이름 때문에 다섯 번째 실행 노드나 새로운 중첩 런타임이 생기지 않는다.
 
 | 제품/UI 용어 | 코드의 정식 타입·단위 | 의미와 경계 |
 |---|---|---|
@@ -104,44 +86,32 @@ MVP의 캔버스 전체가 하나의 Corral이다. 그 안에 Loop 영역과 Age
 | 관찰 | 설계 그래프의 상태 겹침, 실제 실행 트리, 협업 로그, 대기 대상, 사용량 |
 | Reins | 실행 중 지시 접수, 전체 pause/resume, 전체·개별 cancel, 미래 설정 변경, 승인·반려 |
 | 제한 | 공유 호출·토큰·소환·깊이·질문·시간 제한, 신규 효과 실행 전 검사 |
-| 연결 | Pi agent-core + pi-ai. OpenAI 구독 OAuth(ChatGPT 로그인)로 시작하며 같은 provider 안에 서로 다른 모델 프로필 2개 ([CR-001](docs/change-requests/CR-001-openai-oauth-first.md)) |
+| 연결 | Pi worker와 서버 model profile. 현재 인증·provider·호환 엔드포인트의 범위는 [모델 안내](../Models.md)를 따름 |
 | 저장 | 정의·자료·실행 로그·산출물·변경 기록. 실행 종료 후 외부 호출 없는 재열람 |
 | 품질 | mock 통합 시나리오, 실모델 계약 스모크, 접근성·부하·취소 경합 테스트 |
 | 공개 데모 | API 키 없는 모의 팀. D&D와 Reins에 실제로 반응하는 데모 |
 
-개인 하네스 확장 범위: 역할별 Pi 표준 스킬·신뢰한 네이티브 확장([CR-018](docs/change-requests/CR-018-pi-standard-harness.md)), broker 코딩 도구·자동 검증·제한된 개선([CR-019](docs/change-requests/CR-019-harness-verification.md)), 제한된 항목 반복·MCP·codemode·LSP 변경 제안([CR-020](docs/change-requests/CR-020-harness-composition.md)). 관리 경로는 Coordinator가 허가·기록하며, 네이티브 확장 코드의 직접 filesystem/network/process 효과는 통제하지 않는다. OS 격리를 제공한다고 표시하지 않는다.
+개인 하네스 확장 범위: 역할별 Pi 표준 스킬·신뢰한 네이티브 확장([CR-018](../change-requests/CR-018-pi-standard-harness.md)), broker 코딩 도구·자동 검증·제한된 개선([CR-019](../change-requests/CR-019-harness-verification.md)), 제한된 항목 반복·MCP·codemode·LSP 변경 제안([CR-020](../change-requests/CR-020-harness-composition.md)). 관리 경로는 Coordinator가 허가·기록하며, 네이티브 확장 코드의 직접 filesystem/network/process 효과는 통제하지 않는다. OS 격리를 제공한다고 표시하지 않는다.
 
-### 3.2 이번 MVP에 넣지 않을 것
+### 3.2 현재 경계와 별도 후속 범위
 
-실행 중 노드 추가/삭제/재연결, 임의 역할 생성, 자유로운 병렬 그래프와 `join:any`, 다중 사용자 편집, 다른 사람의 원격 에이전트, A2A, 임의 셸 실행과 동일 작업 복사본의 동시 수정, 프로세스 재시작 후 자동 재개, 임의 시점의 외부 작업 재실행, 중첩 Corral/Subflow, 자동 판단 라우팅, Local/Jev 판정의 요청 적용과 Hybrid, LiteLLM, 과거 산출물의 직접 수정은 제외한다.
+실행 중 그래프 구조 변경, 임의 역할 생성, 자유로운 병렬 그래프와 `join:any`, 다중 사용자 편집, 중첩 Corral/Subflow, 과거 산출물 직접 수정, 같은 작업 사본의 동시 writer와 재시작 후 외부 효과 자동 replay는 지원 계약에 포함하지 않는다. 재접속·기록 재열람·checkpoint에서 새 Run 시작과 crash resume은 구별한다.
 
-[CR-042](docs/change-requests/CR-042-desktop-capabilities.md)의 후속 승인 범위는 위 초기 제외 중 **임의 셸 실행**을 ABS-01의 실제 관리 사본 명령·service 계약으로 확장한다. 임의 프로그램은 Coordinator의 승인·effect·예산과 소유 프로세스 lease를 거쳐 실행하며, `run_check`의 등록 argv·고정 검증 사본은 별도로 유지한다. 같은 작업 사본의 동시 writer 금지와 재시작 후 효과 자동 replay 금지는 유지한다. ABS-03은 CR-019의 평가 전용 Hashline을 명시 선택하는 버전 있는 제품 편집 방식으로 확장하며 기존 Pi `edit`를 대체하지 않는다. 이 세 확장은 구현 승인이지 기능 완료 또는 기존 거절 경계를 먼저 제거하라는 지시가 아니다.
+일반 명령·service와 Hashline은 [CR-042](../change-requests/CR-042-desktop-capabilities.md)의 승인 범위다. 등록 검사와 일반 명령의 실행 사본, 효과·승인·예산·process lease를 구분하며 미지원 환경의 차단을 유지한다. 세부는 [Desktop 계약](desktop-contract.md)을 따른다.
 
-[CR-021](docs/change-requests/CR-021-role-reasoning-apply.md)의 수동·자동 추론 적용은 후속 승인 범위다. v0.2의 관찰 전용 `reasoning_effort` 판정은 요청을 바꾸지 않으므로 위 제외와 별개로 §13과 [CR-003](docs/change-requests/CR-003-admission-hooks-effort-observe.md)에서 다룬다.
+기본 대화의 자동 팀 선택은 CR-024/043, 수동·자동 추론의 요청 적용은 CR-021, 복수 모델 Ultra는 CR-031이다. 초기의 자동 라우팅·추론 적용 제외 문구로 이 범위를 되돌리지 않는다. 일반 off/observe와 apply 계약은 각각 유지한다.
 
-브라우저 재접속은 지원한다. 이는 **살아 있는 로컬 실행에 다시 연결하는 것**이며, 죽은 실행을 살리는 crash resume이 아니다.
-
-일반 작업 도구는 검색·문서 읽기·산출물 쓰기 3계열이다. 질문·소환·제출 등은 별도의 **협업 프로토콜 도구**다. 3종 도구라는 표현으로 협업에 필요한 인터페이스를 숨기지 않는다.
+코딩 도구·Skill·MCP·LSP는 [하네스 계약](harness-contract.md)을 따른다. 검색·문서 읽기·산출물 쓰기라는 초기 도구 분류가 현재 전체 도구 목록은 아니다. [활성 계획](../plans/README.md)의 잔여 구현과 [장기 후보](../proposals/README.md)는 현재 제공 기능과 구분한다.
 
 ## 4. Studio 정보 구조와 UX
 
-[CR-043](docs/change-requests/CR-043-chat-first-optional-corral.md)의 후속 UX 계약은 일반 사용자의 새 대화와 요청 전송을 기본 입구로 둔다. Corral 제작·템플릿·팀 선택은 선택 사항이며, 기존 auto 실행 경로·명시 Corral·D&D·Reins를 보존한다. 아래 초기 설계 중심 정보 구조가 대화 시작의 선행 조건이 되어서는 안 된다.
+[CR-043](../change-requests/CR-043-chat-first-optional-corral.md)의 후속 UX 계약은 일반 사용자의 새 대화와 요청 전송을 기본 입구로 둔다. Corral 제작·템플릿·팀 선택은 선택 사항이며, 기존 auto 실행 경로·명시 Corral·D&D·Reins를 보존한다. 아래 초기 설계 중심 정보 구조가 대화 시작의 선행 조건이 되어서는 안 된다.
 
 ### 4.1 화면
 
-| 경로(제안) | 화면 | 주요 동작 |
-|---|---|---|
-| `/` | Workspace | Corral 목록, 실행 이력, 환경·모델 연결 상태 |
-| `/corrals/:id/edit` | Canvas | 노드 팔레트, 연결, 속성, 오류 패널, 실행 전 미리보기 |
-| `/runs/:runId` | Run | 그래프, 실행 트리, Task Board, Timeline, Artifacts, Reins |
-| `/runs/:runId?execution=:id` | 선택 실행 상세 | 입력·모델·도구·대기 이유·적용 지시·산출물 |
-| `/runs/:runId?artifact=:id` | 버전 상세 | 본문·diff·원천 입력·검토·관련 개입 |
-| `/settings/models` | Model profiles | 서버에서 해석되는 프로필, 기능·로그인/키 상태. OAuth 로그인·로그아웃. 자격 증명 원문 표시 없음 |
-| `/settings/defaults` | 개인 기본 작업 방식 | 서버 공통 기본값을 선택하고 저장/취소 (CR-040) |
-| `/settings/project-defaults` | 프로젝트 기본 작업 방식 | 명시한 프로젝트 기본값을 선택하고 저장/취소 (CR-040) |
-| `/demo` | Public demo | 모의 실행임을 표시. 로컬 파일·네트워크·실모델 호출 없음 |
+프로젝트·세션·컴포저와 설정의 기본 흐름은 [Workbench](workbench.md), 위젯·Todo·실행 활동의 상세는 [채팅 위젯 계약](chat-widgets-contract.md)에 있다. 초기 설계의 경로 제안표를 현재 라우터나 필수 화면 배치로 재사용하지 않는다. 실제 route와 query는 `apps/studio/src/router.tsx` 및 해당 page/service 계약에서 확인한다.
 
-캔버스는 중앙, 팔레트/실행 트리는 왼쪽, 속성/Reins는 오른쪽, 협업 기록은 하단 또는 탭으로 구성한다. 좁은 화면에서는 탭 전환을 제공하되, MVP의 주 사용 환경은 1280px 이상 데스크톱이다. 1280px 미만에서도 핵심 버튼이 가려져서는 안 된다.
+편집기와 Reins는 선택 가능한 기능으로 보존한다. 좁은 화면에서도 핵심 입력·실행·중지·승인·복구에 접근할 수 있어야 한다.
 
 ### 4.2 D&D의 완료 조건
 
@@ -326,7 +296,7 @@ Run이 실제 `paused`가 되는 조건은 **활성 외부 효과가 0이고, �
 
 ## 9. 제한·예산의 초기값
 
-아래 값은 **이번 계획에서 정한 출발 설정**이며 성능 측정이나 비용 최적화 결과가 아니다. 상한을 올릴 수 있더라도 기록·누적 사용량·hard cap은 유지한다.
+아래 값은 기본 설정·설치 hard cap의 계약이며 성능 측정이나 비용 최적화 결과가 아니다. 서버 회귀 테스트가 이 표와 runtime 기본값의 일치를 검사한다. 상한을 올릴 수 있더라도 기록·누적 사용량·hard cap은 유지한다.
 
 | 항목 | 기본값 | hard cap / 조절 |
 |---|---:|---|
@@ -345,7 +315,7 @@ Run이 실제 `paused`가 되는 조건은 **활성 외부 효과가 0이고, �
 | 전체 wall deadline | 60분 | 사람 대기 포함. 만료하면 신규 실행 차단·정리 |
 | 산출물/입력 문서 | 버전당 UTF-8 1 MiB | workspace 총량 제한 별도 |
 | 무진전 | 6턴 | 단순 메시지 왕복은 진전으로 간주하지 않음 |
-| 추론 강도 판정 호출(v0.2, 관찰 전용) | Run당 모델 요청 상한과 같음 | hard cap 100. 모델 호출·토큰 예산과 별도로 센다. 도달하면 판정만 멈춤 ([CR-003](docs/change-requests/CR-003-admission-hooks-effort-observe.md)) |
+| 추론 강도 판정 호출(v0.2, 관찰 전용) | Run당 모델 요청 상한과 같음 | hard cap 100. 모델 호출·토큰 예산과 별도로 센다. 도달하면 판정만 멈춤 ([CR-003](../change-requests/CR-003-admission-hooks-effort-observe.md)) |
 | 판정 timeout | local 1초 / external 3초 | 초과는 판정 실패로 기록하고 요청에는 영향 없음 |
 
 예산은 요청 전 예약하고 종료 후 실제 usage로 정산한다. 취소 등으로 실제 usage가 없으면 예약량을 임의로 0으로 환급하지 않고 미확인 항목으로 남긴다. 모델이 엄격한 토큰 상한을 지원하지 않으면 UI가 이를 hard cap으로 주장해서는 안 된다.
@@ -362,11 +332,11 @@ SQLite에 정의 revision, 레이아웃, 실행 이벤트, Task/Execution 투영
 
 ### 10.2 기본 보안
 
-localhost만 bind하더라도 임의 웹페이지의 요청을 신뢰하지 않는다. 시작 시 발급한 세션, Host/Origin 검사, 상태 변경 요청의 CSRF 방어, rate/size 제한을 적용한다. API 키와 OAuth 토큰은 backend 환경/서버 측 credential store에서만 읽으며 Corral JSON·SQLite·클라이언트 번들·이벤트 payload·export·로그에 저장하지 않는다. OAuth 로그인은 provider 자체 흐름에서 사용자가 완료한다([CR-001](docs/change-requests/CR-001-openai-oauth-first.md)).
+localhost만 bind하더라도 임의 웹페이지의 요청을 신뢰하지 않는다. 시작 시 발급한 세션, Host/Origin 검사, 상태 변경 요청의 CSRF 방어, rate/size 제한을 적용한다. API 키와 OAuth 토큰은 backend 환경/서버 측 credential store에서만 읽으며 Corral JSON·SQLite·클라이언트 번들·이벤트 payload·export·로그에 저장하지 않는다. OAuth 로그인은 provider 자체 흐름에서 사용자가 완료한다([CR-001](../change-requests/CR-001-openai-oauth-first.md)).
 
-외부 decision provider(v0.2)는 live Run에서 workspace의 명시적 opt-in이 있을 때만 쓴다. mock Run·공개 데모·CI에서는 시작 시 거절한다. 보내는 입력은 정해진 특징 값과 UTF-8 1,500자 이하 발췌로 제한하고, 전송 전에 그 사실을 effect로 기록한다. 이벤트·export에는 발췌 본문 대신 hash만 남긴다([CR-003](docs/change-requests/CR-003-admission-hooks-effort-observe.md)).
+외부 decision provider(v0.2)는 live Run에서 workspace의 명시적 opt-in이 있을 때만 쓴다. mock Run·공개 데모·CI에서는 시작 시 거절한다. 보내는 입력은 정해진 특징 값과 UTF-8 1,500자 이하 발췌로 제한하고, 전송 전에 그 사실을 effect로 기록한다. 이벤트·export에는 발췌 본문 대신 hash만 남긴다([CR-003](../change-requests/CR-003-admission-hooks-effort-observe.md)).
 
-초기 MVP worker에는 read/write shell 도구가 없었다. 후속 [CR-042](docs/change-requests/CR-042-desktop-capabilities.md) ABS-01의 명령 제안도 Coordinator RPC와 서버 broker를 거쳐 허가·기록·실행하고, worker가 임의 프로세스나 cwd·credential을 직접 소유하지 않는다. 프로세스 소유·정리와 cwd 제한은 OS 파일·네트워크 격리를 뜻하지 않으며 검증된 sandbox 없이 완전한 보안 격리를 주장하거나 strict 요구를 해제하지 않는다.
+초기 MVP worker에는 read/write shell 도구가 없었다. 후속 [CR-042](../change-requests/CR-042-desktop-capabilities.md) ABS-01의 명령 제안도 Coordinator RPC와 서버 broker를 거쳐 허가·기록·실행하고, worker가 임의 프로세스나 cwd·credential을 직접 소유하지 않는다. 프로세스 소유·정리와 cwd 제한은 OS 파일·네트워크 격리를 뜻하지 않으며 검증된 sandbox 없이 완전한 보안 격리를 주장하거나 strict 요구를 해제하지 않는다.
 
 문서 읽기는 workspace의 등록된 documentId 또는 검증된 HTTPS sourceId만 받는다. 임의 로컬 경로를 받지 않는다. 외부 URL은 SSRF 검증과 크기/타입/redirect 제한을 거친다. Markdown 출력은 HTML 실행 없이 렌더링하고 위험한 URL을 막는다. 원격 이미지 자동 로드는 기본 비활성화한다. [S24]
 
@@ -405,29 +375,12 @@ localhost만 bind하더라도 임의 웹페이지의 요청을 신뢰하지 않�
 
 ## 12. CLI와 개발자 경험
 
-아래는 구현할 CLI 계약이다. **현재 이미 설치 가능한 명령이라는 뜻이 아니다.**
+CLI의 현재 명령·옵션은 [구현](../../packages/cli/src/index.ts)과 [exec/eval 안내](../Evaluation.md)를 따른다. 초기 계획의 명령 예시를 지원 목록으로 사용하지 않는다. CLI 실행도 같은 Coordinator의 승인·예산·취소·조회 경로를 사용하며 headless라는 이유로 사람 승인을 자동 허용하지 않는다.
 
-```bash
-corral dev                         # 로컬 Studio와 제어 서버
-corral dev --demo                  # 모의 실행 프로필
-corral validate workflow.corral.json
-corral run workflow.corral.json --input brief.md --watch
-corral inspect <run-id>            # 저장 기록 열람, 외부 호출 없음
-corral export <run-id> --redact     # 공개 가능한 기록 묶음
-```
+## 13. 확장 범위의 위치
 
-CLI 실행도 같은 Coordinator를 사용한다. 승인 대기 시 --watch 터미널과 Studio 중 어느 쪽에서든 동일한 approvalId를 해결할 수 있다. headless에서 사람이 없는데 승인을 자동 허용하지 않는다. SIGINT는 전체 취소 요청이며, CLI가 사라졌다고 서버에 남은 Run을 모르고 방치하지 않도록 명시적 detach 옵션을 별도 설계한다.
-
-## 13. 이후 확장
-
-v0.2는 **Local/Jev의 수동 교체 가능한 DecisionProvider**를 구현한다. 질문 종류·후보·응답 검증이 같은 범위에서만 전환하고, 성능 우열이나 자동 절감은 별도 평가한다. 첫 질문 종류는 모델 요청별 `reasoning_effort`(후보 `low | medium | high | xhigh`)이며 **관찰 전용**으로 시작한다. 판정은 기록만 하고 요청 permit·예산·worker 요청을 바꾸지 않는다. CR-021은 역할별 수동 설정과 로컬 turn/tool-step 자동 판정의 요청 전 적용을 추가한다. 기존 off/observe 계약은 유지한다([CR-003](docs/change-requests/CR-003-admission-hooks-effort-observe.md), [ADR-025](docs/Decisions.md)). v0.3은 Corral 중첩/재사용과 더 넓은 그래프, 이후는 외부 AgentAdapter/A2A·LiteLLM·crash resume을 다룬다. 모델 연결은 Pi가 지원하는 provider·인증 방식 전체로 확장한다. Anthropic 구독 OAuth는 Anthropic 정책상 제외하고 API 키로 지원한다([CR-001](docs/change-requests/CR-001-openai-oauth-first.md)).
-
-현재 스펙의 MVP 게이트를 후속 기능으로 대신하지 않는다. 비용 최적화가 없더라도 D&D와 협업·Reins를 검증하면 MVP는 성립한다.
-
----
-
-**구현상 세부 계약은 [Technical-Design.md](docs/Technical-Design.md), 요구사항 전체는 [requirements.json](contracts/requirements.json), 테스트 설계는 [Test-Strategy.md](docs/Test-Strategy.md)에 있다.**
+이미 승인·구현된 DecisionProvider 관찰과 추론 적용은 [CR-003](../change-requests/CR-003-admission-hooks-effort-observe.md)·[CR-021](../change-requests/CR-021-role-reasoning-apply.md), 모델 연결은 [모델 안내](../Models.md)를 따른다. 후속 구현은 [활성 계획](../plans/README.md), 미승인 확장은 [장기 후보](../proposals/README.md)에서 관리한다. 초기 v0.2/v0.3 이름으로 새 일정이나 완료 상태를 추정하지 않는다.
 
 ### 리소스 관리 확장
 
-[CR-022](docs/change-requests/CR-022-resource-management.md)에 따라 설정에서 스킬·Hook·MCP 추가·편집·선택·제거/복구를 제공한다. 실행 자산은 불변이며 설치·신뢰·선택·적용을 분리한다.
+[CR-022](../change-requests/CR-022-resource-management.md)에 따라 설정에서 스킬·Hook·MCP 추가·편집·선택·제거/복구를 제공한다. 실행 자산은 불변이며 설치·신뢰·선택·적용을 분리한다.

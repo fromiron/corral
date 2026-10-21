@@ -141,7 +141,7 @@ The local application is unsigned. NSIS installation and macOS runtime validatio
 separate release checks. The older Linux smoke script still contains Linux-specific process
 inspection; it is not evidence of Windows testing. The Windows screenshot is
 `release/native-smoke-windows.png`. Exact build identity, evidence and remaining limits are
-recorded in [the delivery verification report](../../docs/plans/Desktop-Delivery-Verification.md).
+recorded in [the delivery verification report](../../docs/evaluation/Desktop-Delivery-Verification.md).
 Rebuild and rerun this smoke after changes to the bundled sources.
 
 File/app previews opened from Studio use a separate ephemeral `WebContentsView` with no app

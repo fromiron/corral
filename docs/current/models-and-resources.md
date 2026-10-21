@@ -1,7 +1,7 @@
 ---
 kind: reference
 status: current
-baseline: a9bb0bb93411cd89a24e27d8b237b53d3e9cf813
+baseline: 373764467a52a7c6978de1272ac8253c73a27077
 ---
 
 # 모델·추론·리소스
@@ -30,6 +30,6 @@ Ultra를 초기의 단일 모델 후보 비교로 되돌리지 않는다. 일반
 
 ## 의존성과 출처
 
-설치 버전은 각 package.json과 pnpm-lock, 검사 입력은 [dependency lock](../dependency-lock.json)을 확인한다. [Dependencies-and-Sources](../Dependencies-and-Sources.md)의 과거 선정·릴리스 조사는 현재 설치 사실이 아니다.
+설치 버전은 각 package.json과 pnpm-lock, 검사 입력은 [dependency lock](../dependency-lock.json)을 확인한다. 과거 외부 제품·버전 조사는 기본 읽기 경로가 아니다.
 
-실제 차용물 고지는 [THIRD-PARTY-NOTICES](../../THIRD-PARTY-NOTICES/)에 유지한다. 외형이 바뀌었다는 이유만으로 코드·본문의 차용 관계가 사라졌다고 판단하지 않는다. 전체 외부 provider·OS 검증 여부는 해당 후보의 [검증 기록](../evaluation/README.md)으로 확인한다.
+실제 차용물 고지는 [THIRD-PARTY-NOTICES](../../THIRD-PARTY-NOTICES)에 유지한다. 외형이 바뀌었다는 이유만으로 코드·본문의 차용 관계가 사라졌다고 판단하지 않는다. 전체 외부 provider·OS 검증 여부는 해당 후보의 [검증 기록](../evaluation/README.md)으로 확인한다.

@@ -1,7 +1,7 @@
 ---
 kind: reference
 status: current
-baseline: a9bb0bb93411cd89a24e27d8b237b53d3e9cf813
+baseline: 373764467a52a7c6978de1272ac8253c73a27077
 ---
 
 # 제품 범위와 기본 흐름
@@ -33,4 +33,4 @@ Corral은 로컬 우선 AI 작업 도구다. 일반 사용자는 대화에서 �
 
 브라우저 재접속, 기록 재열람, 체크포인트에서 새 Run 시작과 죽은 프로세스의 효과 자동 재실행은 다른 기능이다. 역사 자료의 초기 제외 목록만으로 현재 기능을 거절하거나, 후속 승인을 근거로 미구현 경계를 제거하지 않는다.
 
-실행 경계는 [실행과 안전](execution-and-safety.md), UI 세부는 [Workbench](workbench.md)를 따른다. 초기 스펙의 대체되지 않은 상세 계약은 [기존 제품 스펙](../../Corral-Spec-v0.1.md)의 필요한 절만 참조한다.
+실행 경계는 [실행과 안전](execution-and-safety.md), UI 세부는 [Workbench](workbench.md)를 따른다. 그래프·Reins·예산의 상세 규칙은 [제품 상세 계약](product-contract.md)의 필요한 절만 참조한다.

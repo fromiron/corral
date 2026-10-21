@@ -2,7 +2,7 @@
 
 - 상태: 승인 — Bell, 2026-10-18, Oracle 전체 UI 구조 검토 후 `ui 개선 구현해`.
 - 기준: main `a9e1a83`, Oracle Pro의 소스·화면 01–06 검토.
-- 추적: C-086, CRL-UX-004, TC-UX-004-H/N. [구현·검증 기록](../plans/UI-Structure-Plan.md).
+- 추적: C-086, CRL-UX-004, TC-UX-004-H/N. 구현·검증 기록 (Git `373764467a52:docs/plans/UI-Structure-Plan.md`).
 - 유지: CR-011 입력 의도, CR-014 D&D·Reins·데스크톱, CR-020 합성, CR-021 추론, CR-022 불변 리소스·신뢰·명시 적용.
 
 ## 계약

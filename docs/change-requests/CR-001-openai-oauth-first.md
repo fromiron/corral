@@ -2,7 +2,7 @@
 
 - 변경 ID / 제안자 / 날짜: CR-001 / Bell / 2026-10-15
 - 상태: **승인** (Bell, 2026-10-15)
-- 연결 문서: [스펙](../../Corral-Spec-v0.1.md) §3.1·§4.1·§10.2·§11·§13, [기술 설계](../Technical-Design.md) §7.1, [ADR-019](../Decisions.md), [v0.2 보완](../plans/Corral-Implementation-Plan-v0.2-Supplement.md)
+- 연결 문서: [스펙](../current/product-contract.md) §3.1·§4.1·§10.2·§11·§13, [기술 설계](../Technical-Design.md) §7.1, [ADR-019](../Decisions.md), v0.2 보완 (Git `373764467a52:docs/plans/Corral-Implementation-Plan-v0.2-Supplement.md`)
 
 ## 기존 요구 ID와 문구
 

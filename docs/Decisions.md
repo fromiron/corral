@@ -308,7 +308,7 @@ ADR-031 보완(2026-10-18): 불명확한 시작은 최초 요청 전체를 재�
 
 ## ADR-032: 개선 평가와 실행 기능을 기존 경로에 단계적으로 연결한다
 
-**상태:** 채택 (2026-10-19, [통합 실행 계획](plans/Corral-Improvement-Execution-Plan-2026-10-19.md), CR-025~036 순차 구현 요청).
+**상태:** 채택 (2026-10-19, 통합 실행 계획 (Git `373764467a52:docs/plans/Corral-Improvement-Execution-Plan-2026-10-19.md`), CR-025~036 순차 구현 요청).
 
 기존 Coordinator/Pi/SQLite·명령/receipt·리소스·파일 broker를 유지한다. 공통 대기는 projection, TaskBrief는 기존 입력/기준의 투영으로 시작한다. 첫 배포는 대화·질문/계획·읽기 전용 diff·기본팩 선택이며 복구/hunk는 checkpoint 뒤에 연결한다. D&D와 Reins는 기존 회귀로 계속 검증한다.
 

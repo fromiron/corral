@@ -1,7 +1,7 @@
 ---
 kind: reference
 status: current
-baseline: a9bb0bb93411cd89a24e27d8b237b53d3e9cf813
+baseline: 373764467a52a7c6978de1272ac8253c73a27077
 ---
 
 # 구조와 상태 소유권
@@ -30,6 +30,6 @@ Run·Task·Execution·Approval, event sequence, control revision, 실행 효과�
 
 ## 상세 자료
 
-[기술 설계](../Technical-Design.md)의 상태 소유·전이·통신 상세를 필요한 범위만 읽는다. 그 문서의 초기 디렉터리 예시나 미도입 판단은 현재 트리를 대신하지 않는다. [CR-042](../change-requests/CR-042-desktop-capabilities.md)의 Desktop·host·동시성 변경 범위를 함께 확인한다.
+[기술 설계](../Technical-Design.md)의 상태 소유·전이·통신 상세를 필요한 범위만 읽는다. 그 문서의 인터페이스 예시는 실제 라이브러리 호출 코드가 아니다. [CR-042](../change-requests/CR-042-desktop-capabilities.md)의 Desktop·host·동시성 변경 범위를 함께 확인한다.
 
 결정의 이유와 대체 관계는 [Decisions](../Decisions.md), 실행 불변식은 [실행과 안전](execution-and-safety.md), API 변경은 [API](api.md)에 연결한다.

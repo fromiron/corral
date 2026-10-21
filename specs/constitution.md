@@ -1,7 +1,7 @@
 # Corral 제품 헌장
 
 - 태스크: C-001 · 요구: CRL-DEV-003, CRL-RNS-002
-- 기준: [스펙](../Corral-Spec-v0.1.md), [구현 플랜 v0.1](../Corral-Implementation-Plan-v0.1.md) + [v0.2 보완](../docs/plans/Corral-Implementation-Plan-v0.2-Supplement.md), [ADR 원장](../docs/Decisions.md), [CR-001](../docs/change-requests/CR-001-openai-oauth-first.md)
+- 기준: [현재 제품 계약](../docs/current/product-contract.md), [기능 명세 지도](README.md), [ADR 원장](../docs/Decisions.md)와 해당 기능의 승인 CR. 초기 구현 계획은 역사 자료이며 작업 진입점이 아니다.
 - 상태: 동결 (2026-10-15). 아래 항목을 바꾸려면 [변경 요청](../templates/change-request.md)이 먼저다.
 
 ## 1. 해석 순서
@@ -20,7 +20,7 @@
 | 불변 산출물 | `artifactId + version`은 바뀌지 않고, 제출 버전만 다음 단계로 간다 | CRL-ART-001 |
 | 정직한 표시 | 접수≠적용, 전달≠준수, 취소 요청≠취소 확정, 미확인 usage≠0 | CRL-RNS-002, CRL-OBS-004 |
 
-MVP에 넣지 않는 것은 스펙 §3.2를 따른다.
+현재 경계는 [제품 계약 §3](../docs/current/product-contract.md)와 승인된 후속 CR을 따른다. 초기 계획의 제외·단일 Run·도입 예정 문구로 후속 기능을 되돌리지 않는다.
 
 ## 3. 동결한 상태 집합
 

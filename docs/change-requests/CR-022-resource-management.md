@@ -19,4 +19,4 @@
 
 ## 범위 밖
 
-새 Hook 엔진·marketplace·HMR·범용 폼 framework·사용자 원본 삭제·과거 자산 GC는 도입하지 않는다. 구현 순서와 증거는 [계획](../plans/Resource-Management-Plan.md)에 기록한다.
+새 Hook 엔진·marketplace·HMR·범용 폼 framework·사용자 원본 삭제·과거 자산 GC는 도입하지 않는다. 구현 순서와 증거는 계획 (Git `373764467a52:docs/plans/Resource-Management-Plan.md`)에 기록한다.

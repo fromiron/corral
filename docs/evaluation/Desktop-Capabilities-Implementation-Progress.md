@@ -4,9 +4,9 @@
 브랜치: `feat/desktop-capabilities`
 시작 HEAD: `ad0bb6da6f20ca685e58b619e4e311464102a0b9`
 승인: [CR-042](../change-requests/CR-042-desktop-capabilities.md)
-범위: [구현 계획](../plans/Desktop-Capabilities-Implementation-Plan.md)의 ABS-01–15 / I00–I17.
+범위: 구현 계획 (Git `373764467a52:docs/plans/Desktop-Capabilities-Implementation-Plan.md`)의 ABS-01–15 / I00–I17.
 
-후속 UX 변경: 사용자가 요청한 기본 대화·선택적 Corral 개선은 [CR-043 셀프리뷰](Chat-First-UX-Review.md)에 기록한다. 아래 8차 UI 및 EXE 해시는 해당 UX 변경 전의 검증 이력이다. 현재 UI는 `index-DEI0pIX7.js`이며 최신 배포 identity는 [배포 증거](../plans/Desktop-Delivery-Verification.md)를 따른다.
+후속 UX 변경: 사용자가 요청한 기본 대화·선택적 Corral 개선은 [CR-043 셀프리뷰](Chat-First-UX-Review.md)에 기록한다. 아래 8차 UI 및 EXE 해시는 해당 UX 변경 전의 검증 이력이다. 현재 UI는 `index-DEI0pIX7.js`이며 최신 배포 identity는 [배포 증거](Desktop-Delivery-Verification.md)를 따른다.
 
 Windows 작업 사본에서 기능을 구현하고 인앱 브라우저와 실제 번들 Electron 앱을 검증했다. 패키지의 staging 절대 경로 참조를 수정한 뒤, staging을 사용할 수 없는 상태에서 저장소 밖으로 옮긴 앱의 전체 native 흐름도 통과했다. 서버 전체 회귀 재검사는 통과했다. 검증한 앱으로 portable/NSIS 파일을 생성했고, 최종 portable 자체의 실행·추출 runtime 동일성·정상 종료도 확인했다. 현재 코드는 커밋·공개 배포하지 않았다. 아래 남은 플랫폼·외부 환경 조건 때문에 전체 OS/서비스 완료를 선언하지 않는다. 중간 실패와 수정, 실행한 제품 흐름, 미검증 환경을 구분하며 겹치는 테스트 묶음의 통과 수를 합산하지 않는다.
 
@@ -80,7 +80,7 @@ Studio 1차 `index-DwXevtmi.js`, 2차 `index-DqcgMHff.js`, 3차 `index-xCi07lLw.
 
 서버는 app.asar 밖의 extraResources/runtime에 있으므로 app.asar hash만으로 전체 배포의 동일성을 주장하지 않는다. 기존 pnpm junction 672개가 staging 절대 경로를 참조하는 문제를 수정했다. offline physical-hoisted 배치의 runtime을 저장소 밖의 공백 있는 경로에 복사하고 staging을 옮겨 사용할 수 없게 한 뒤 검증했다. 570개 모듈·SQLite/ONNX·두 Pi worker가 복사한 runtime 내부에서 로드됐고, 실제 Windows Job의 정상 종료·부모/손자 취소, 전체 Electron UI 흐름이 통과했다. 폴더 선택→신뢰→사본→실행, native preview·단축키·원격 폼·tray·다중 인스턴스 복귀·종료/재시작·기록/초안 보존, preview를 연 채 마지막 Quit까지 포함한다. 검증 후 staging은 복원했다.
 
-배포 runtime 26,618개 실제 파일의 집계 SHA-256은 `f9205c0da186f1627d037675112b007075f8e467f2757fa1b4a47323fdb8891b`이며 실행 전후 같다. 준비 디렉터리와의 차이는 builder가 제외한 타사 Fastify 테스트 fixture의 0바이트 `.gitkeep` 두 개뿐이다. 실행 파일이나 소스의 차이가 아니며 정확한 경로를 배포 증거에 기록한다. 검증한 unpacked tree를 `--prepackaged`로 portable/NSIS에 넣어 다시 조립하지 않는다. 최종 실행 파일 hash와 app.asar hash는 [배포 증거](../plans/Desktop-Delivery-Verification.md) 및 delivery manifest를 따른다. 앞선 실패 로그는 `test-results/desktop-absorption/`와 native smoke 로그에 보존한다.
+배포 runtime 26,618개 실제 파일의 집계 SHA-256은 `f9205c0da186f1627d037675112b007075f8e467f2757fa1b4a47323fdb8891b`이며 실행 전후 같다. 준비 디렉터리와의 차이는 builder가 제외한 타사 Fastify 테스트 fixture의 0바이트 `.gitkeep` 두 개뿐이다. 실행 파일이나 소스의 차이가 아니며 정확한 경로를 배포 증거에 기록한다. 검증한 unpacked tree를 `--prepackaged`로 portable/NSIS에 넣어 다시 조립하지 않는다. 최종 실행 파일 hash와 app.asar hash는 [배포 증거](Desktop-Delivery-Verification.md) 및 delivery manifest를 따른다. 앞선 실패 로그는 `test-results/desktop-absorption/`와 native smoke 로그에 보존한다.
 
 바로 사용할 수 있는 검증된 로컬 입구는 `apps/desktop/release/win-unpacked/corral.exe`다. 새 portable은 231,593,331 bytes, NSIS는 231,836,744 bytes이며 둘 다 서명하지 않은 로컬 빌드다. portable의 첫 측정은 180초 동안 자체 압축을 해제하다 Electron 시작 전에 제한 시간에 도달했고 FAIL로 보존했다. 서버/UI 시작 제한은 바꾸지 않은 후속 측정에서 Electron은 215.951초, Studio는 245.5초에 도달했다. 중단된 이전 추출 정리가 포함되므로 깨끗한 최초 실행 시간 벤치마크가 아니다.
 
@@ -117,7 +117,7 @@ macOS local-app TCP 소유권 확인은 미구현이며 요청을 차단한다. 
 
 자동 승인 검토가 진단 폴더 17개 삭제를 정책상 차단했다. 구체적 사유는 제공되지 않았고 재시도나 우회 없이 폴더를 보존했다. 정확한 로컬 경로는 Git에서 제외된 `test-results/desktop-retained-temporary-paths.json`에 기록했다. 배포 앱과 검증용 sidecar는 종료됐고 의도적으로 제공하는 인앱 QA 서버는 유지한다.
 
-[프로세스](../plans/Desktop-Native-Verification.md) · [병행 실행](../plans/Desktop-Concurrency-Verification.md) · [preview](../plans/Desktop-Preview-Verification.md) · [모델·금고](../plans/Desktop-Models-Vault-Verification.md) · [프로젝트](../plans/Desktop-Projects-Verification.md) · [위임](../plans/Desktop-Agent-Import-Verification.md) · [음성](../plans/Desktop-Voice-Verification.md) · [Desktop](../../apps/desktop/README.md).
+[프로세스](Desktop-Native-Verification.md) · [병행 실행](Desktop-Concurrency-Verification.md) · [preview](Desktop-Preview-Verification.md) · [모델·금고](Desktop-Models-Vault-Verification.md) · [프로젝트](Desktop-Projects-Verification.md) · [위임](Desktop-Agent-Import-Verification.md) · [음성](Desktop-Voice-Verification.md) · [Desktop](../../apps/desktop/README.md).
 
 요구 CRL-ABS-001–015, 태스크 C-122–136, 시나리오 TC-ABS-001-H/N–015-H/N를 등록했다. backlog의 완료 가능한 로컬 구현에는 implemented와 이 증거 문서를 연결했다. C-125(macOS 앱 소유권), C-128(OS별 배포), C-135(실제 원격 host), C-136(실제 음성)은 남은 계약·환경 조건 때문에 in_progress로 유지한다. 테스트 카탈로그의 planned/evidence:null은 기존 문서팩의 시나리오 선언 형식이다. 실행 PASS/FAIL은 이 문서·기능별 증거·실행 로그로 구분한다.
 
