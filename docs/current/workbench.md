@@ -31,3 +31,7 @@ baseline: 373764467a52a7c6978de1272ac8253c73a27077
 현재 근거는 [Chat-first 검토](../evaluation/Chat-First-UX-Review.md), [Desktop 진행 기록](../evaluation/Desktop-Capabilities-Implementation-Progress.md), 해당 UI·서버 시험이다. 로컬 테스트 모델 응답을 외부 모델 품질 증거로 취급하지 않는다.
 
 새 UI 변경은 [AGENTS.md](../../AGENTS.md)의 디자인 스킬·공용 토큰·컴포넌트 규칙을 따른다. 다른 제품의 UI 참고는 Corral의 권한 기본값이나 실행 의미를 대체하지 않는다.
+
+## 문맥형 설정 UI 변경
+
+[CR-044](../change-requests/CR-044-contextual-settings-ui.md)는 작업 유지형 설정 모달과 Composer 표현 개선의 승인 계약이다. 구현·검증 진행은 [활성 계획](../plans/contextual-settings-ui.md)과 C-140에서 확인한다. 승인 자체를 구현 완료로 취급하지 않는다.

@@ -4,6 +4,7 @@
 
 | 계획 | 승인 근거 | 남은 범위 |
 |---|---|---|
+| [문맥형 설정 UI](contextual-settings-ui.md) | CR-044 | C-140, 콘텐츠/저장/모달/Composer/통합 검증 |
 | [Ultra와 Skill 품질](ultra-and-quality.md) | CR-031·036 | C-118 미지원 provider/API 계열과 환경 검증, C-114 후보 비교. M4-3/4 구현 완료 |
 | [Desktop 완료 조건](desktop-completion.md) | CR-042·033 | C-125·128·135·136 구현/환경 검증, M4-5 중복 범위 대조 |
 

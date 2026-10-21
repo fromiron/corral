@@ -2706,5 +2706,24 @@
     "done": "전체 파일/권한/source/license diff, 이전 버전 평가, 명시 업데이트와 CAS 롤백 및 기존 snapshot 보존을 검증한다.",
     "status": "implemented",
     "evidence": "docs/evaluation/Quality-Completion-2026-10-21.md"
+  },
+  {
+    "id": "C-140",
+    "phase": "P12",
+    "title": "CR-044 문맥형 설정과 Composer UI 정돈",
+    "dependsOn": [
+      "C-137"
+    ],
+    "requirements": [
+      "CRL-UX-006"
+    ],
+    "files": [
+      "apps/studio/src/",
+      "apps/studio/e2e/",
+      "packages/react/src/messages/"
+    ],
+    "done": "설정 왕복에서 작업/구독/초안/선택을 보존하고 저장·미저장·history·포커스·늦은 응답/비밀값 반례와 Composer 상태/요청 구분을 실제 UI로 검증한다.",
+    "status": "in_progress",
+    "evidence": "docs/change-requests/CR-044-contextual-settings-ui.md"
   }
 ]

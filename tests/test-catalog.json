@@ -3214,5 +3214,27 @@
     "status": "planned",
     "adapter": "existing eval runtime, deterministic Coordinator workers and actual browser; live opt-in separate",
     "evidence": null
+  },
+  {
+    "id": "TC-UX-006-H",
+    "requirements": [
+      "CRL-UX-006"
+    ],
+    "suite": "unit+server+e2e",
+    "scenario": "작업을 유지한 설정·독립 URL·대상별 저장·복귀와 실제 상태/다음 요청 표현",
+    "status": "planned",
+    "adapter": "existing deterministic server and browser fixtures; native OS verification separate",
+    "evidence": null
+  },
+  {
+    "id": "TC-UX-006-N",
+    "requirements": [
+      "CRL-UX-006"
+    ],
+    "suite": "unit+server+e2e",
+    "scenario": "미저장 이탈·중첩 Escape·history·저장 실패/취소/중복/늦은 응답/유실·비밀값·IME·접근성·구독/초안/정확한 대상 보존",
+    "status": "planned",
+    "adapter": "existing deterministic server and browser fixtures; native OS verification separate",
+    "evidence": null
   }
 ]
