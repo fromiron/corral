@@ -52,7 +52,7 @@ it.skipIf(process.env.CORRAL_SKILL_LIVE !== '1')(
       });
       const login = await fetch(`${server.url}/api/v1/session`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', origin: server.url },
         body: JSON.stringify({
           token: new URL(server.bootstrapUrl).hash.slice('#bootstrap='.length),
         }),
