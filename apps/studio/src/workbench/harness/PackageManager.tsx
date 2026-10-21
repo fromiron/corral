@@ -354,14 +354,14 @@ export function PackageManager({ api, onChanged }: { api: HarnessApi; onChanged:
       <Button
         variant="outline"
         className="self-start"
-        render={<Link to="/settings/harness" search={navigation.search} />}
+        render={<Link {...navigation.link('harness')} />}
       >
         {n('addToWorkStyle')}
       </Button>
       {notice ? (
         <p role="status" className="text-sm">
           {notice}{' '}
-          <Link to="/settings/mcp" search={navigation.search} className="underline">
+          <Link {...navigation.link('mcp')} className="underline">
             {t('mcpSettings')}
           </Link>
         </p>

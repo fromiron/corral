@@ -2,6 +2,7 @@ import type { RunEvent } from '@corral/contracts';
 import { useLayoutEffect, useSyncExternalStore } from 'react';
 import type { Command } from './commands.ts';
 import type { ShortcutId } from './shortcuts.ts';
+import { settingsInteractionBlocked } from './workbench/navigation.ts';
 
 // The commands Studio can run now (Workbench polish P2/P4). Each screen registers what it can
 // do; the ⌘K palette, the composer's `/` menu, the native menu and the global keys all read
@@ -105,6 +106,7 @@ export function useRegisteredCommands(): AppCommand[] {
 
 /** Runs the registered command for a shortcut; false when none is registered or it is off. */
 export function runShortcut(id: ShortcutId, digit?: number): boolean {
+  if (typeof document !== 'undefined' && settingsInteractionBlocked()) return false;
   const command = snapshot.find((c) => c.shortcutId === id && !c.disabled);
   if (!command) return false;
   if (id === 'session.jump' && digit !== undefined) {

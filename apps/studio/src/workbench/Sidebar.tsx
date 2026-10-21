@@ -42,7 +42,7 @@ import {
 import { useServices } from '../services.tsx';
 import { useShortcutBindings } from '../shortcutBindings.ts';
 import { shortcutLabel } from '../shortcuts.ts';
-import { useSettingsNavigation } from './navigation.ts';
+import { useSettingsNavigation, workHref } from './navigation.ts';
 import { changePreferences, preferences } from './preferences.ts';
 import { SessionSearchDialog } from './SessionSearchDialog.tsx';
 import { useModelProfiles } from './useModels.ts';
@@ -51,7 +51,7 @@ export function useCorralSidebar() {
   const { repository, transport, workspaces } = useServices();
   const td = useTranslations('Desktop');
   const seen = useRef<number | null>(null);
-  const href = useRouterState({ select: (s) => s.location.href });
+  const href = useRouterState({ select: (s) => workHref(s.location.href) ?? s.location.href });
   const version = useProjectsVersion();
   const current = useCurrentProject();
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
@@ -531,7 +531,7 @@ export const Sidebar = memo(function Sidebar({
           variant="ghost-muted"
           size="sm"
           className="gap-2"
-          onClick={() => void navigate({ to: '/settings', search: settingsNavigation.search })}
+          onClick={() => void navigate(settingsNavigation.link('general'))}
         >
           <Settings />
           {t('settings')}
@@ -552,9 +552,7 @@ export const Sidebar = memo(function Sidebar({
           <button
             type="button"
             onClick={() =>
-              live && !connected
-                ? void navigate({ to: '/settings/models', search: settingsNavigation.search })
-                : null
+              live && !connected ? void navigate(settingsNavigation.link('models')) : null
             }
             className="ml-auto flex items-center gap-1.5 rounded px-1.5 py-1 text-2xs text-muted"
           >

@@ -140,6 +140,7 @@ export function SettingsLeavePrompt() {
       }}
     >
       <DialogPopup
+        data-settings-guard
         showCloseButton={false}
         className="flex flex-col gap-4 p-6"
         bottomStickOnMobile={false}

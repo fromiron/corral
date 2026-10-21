@@ -515,7 +515,7 @@ export function SkillQualityPanel({
           disabled={busy || running}
         />
         {!target?.binding ? (
-          <Link className="text-sm underline" to="/settings/harness" search={navigation.search}>
+          <Link className="text-sm underline" {...navigation.link('harness')}>
             {t('configureDefaults')}
           </Link>
         ) : (

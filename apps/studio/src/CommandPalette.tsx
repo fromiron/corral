@@ -38,7 +38,7 @@ import {
   shortcutLabel,
 } from './shortcuts.ts';
 import { createFromTemplate, WORKSPACE_TEMPLATES } from './templates.ts';
-import { useSettingsNavigation } from './workbench/navigation.ts';
+import { settingsInteractionBlocked, useSettingsNavigation } from './workbench/navigation.ts';
 import { changePreferences, preferences, usePreferences } from './workbench/preferences.ts';
 
 /** True while the user types in a field or composes with an IME: global keys stay quiet. */
@@ -72,12 +72,15 @@ export function CommandLayer() {
     queueMicrotask(() => target?.focus());
   }, []);
   useEffect(() => {
-    const show = () => open('palette');
+    const show = () => {
+      if (!settingsInteractionBlocked()) open('palette');
+    };
     window.addEventListener('corral:open-palette', show);
     return () => window.removeEventListener('corral:open-palette', show);
   }, [open]);
   useEffect(() => {
     const onKey = (event: globalThis.KeyboardEvent) => {
+      if (settingsInteractionBlocked()) return;
       if (event.isComposing || event.keyCode === 229) return;
       if (help && event.key === 'Escape') {
         event.preventDefault();
@@ -115,6 +118,7 @@ export function CommandLayer() {
       const map = Object.fromEntries(
         Object.entries(effectiveShortcuts(bindings)).filter(
           ([id]) =>
+            !settingsInteractionBlocked() &&
             !capturing &&
             (!editing || ['palette', 'help', 'composer.focus', 'run.stop'].includes(id)),
         ),
@@ -135,6 +139,7 @@ export function CommandLayer() {
   useEffect(
     () =>
       desktop?.onCommand((id) => {
+        if (settingsInteractionBlocked()) return;
         if (id === 'palette') open('palette');
         else if (id === 'help') open('help');
         else runShortcut(id as ShortcutId);
@@ -226,7 +231,7 @@ function useGlobalCommands(showHelp: () => void) {
       group: go,
       shortcutId: 'settings',
       shortcut: shortcutLabel('settings'),
-      run: () => navigate({ to: '/settings', search: navigation.search }),
+      run: () => navigate(navigation.link('general')),
     },
     {
       id: 'go:back',
@@ -439,7 +444,7 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
               id: 'go:models',
               title: t('goModels'),
               group: t('groups.go'),
-              run: () => navigate({ to: '/settings/models', search: navigation.search }),
+              run: () => navigate(navigation.link('models')),
             },
           ]
         : []),
@@ -455,7 +460,7 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
       ...fromTemplate,
       ...(help ? [{ ...help, run: onHelp }] : []),
     ];
-  }, [dynamic, registered, services, navigate, t, tw, tp, onHelp, navigation.search]);
+  }, [dynamic, registered, services, navigate, t, tw, tp, onHelp, navigation.link]);
 
   const ranked = rankCommands(query, commands) as AppCommand[];
   // One heading per group, in the order the groups first appear in the ranking.

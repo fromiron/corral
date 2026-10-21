@@ -2914,10 +2914,7 @@ function Composer({
                     roles: notReady.map((r) => `${r.name} (${r.profileId})`).join(', '),
                   })}
                 </span>
-                <Button
-                  size="xs"
-                  render={<Link to="/settings/models" search={navigation.search} />}
-                >
+                <Button size="xs" render={<Link {...navigation.link('models')} />}>
                   {tc('models.connect')}
                 </Button>
               </div>
@@ -2931,10 +2928,7 @@ function Composer({
                 <span className="min-w-0 flex-1">
                   {t('autoNotReady', { model: autoProfile?.label ?? autoChoice.modelProfile })}
                 </span>
-                <Button
-                  size="xs"
-                  render={<Link to="/settings/models" search={navigation.search} />}
-                >
+                <Button size="xs" render={<Link {...navigation.link('models')} />}>
                   {tc('models.connect')}
                 </Button>
               </div>
@@ -3346,7 +3340,7 @@ function Composer({
               </Button>
             ) : null}
             {mode === 'server' ? (
-              <Button render={<Link to="/settings/models" search={navigation.search} />}>
+              <Button render={<Link {...navigation.link('models')} />}>
                 {tc('models.settings')}
               </Button>
             ) : null}

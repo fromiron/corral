@@ -262,16 +262,10 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button
-                  variant="outline"
-                  render={<Link to="/settings/harness" search={navigation.search} />}
-                >
+                <Button variant="outline" render={<Link {...navigation.link('harness')} />}>
                   {n('addToWorkStyle')}
                 </Button>
-                <Button
-                  variant="outline"
-                  render={<Link to="/settings/harness" search={navigation.search} />}
-                >
+                <Button variant="outline" render={<Link {...navigation.link('harness')} />}>
                   {t('manageProfiles')}
                 </Button>
               </div>

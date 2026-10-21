@@ -362,3 +362,17 @@
     border-top: 1px solid var(--line);
   }
 }
+
+/* Settings alone can fill a narrow viewport; other dialog sizing remains unchanged. */
+[data-slot="dialog-viewport"]:has(> [data-settings-dialog]) {
+  grid-template-rows: minmax(0, 1fr);
+  align-items: center;
+}
+[data-settings-dialog] {
+  grid-row-start: 1;
+}
+@media (max-width: 639px) {
+  [data-slot="dialog-viewport"]:has(> [data-settings-dialog]) {
+    padding: 0;
+  }
+}

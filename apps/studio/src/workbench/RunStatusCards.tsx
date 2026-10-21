@@ -7,6 +7,7 @@ import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { useModelPrices } from '../prices.ts';
 import { useServices } from '../services.tsx';
+import { useSettingsNavigation } from './navigation.ts';
 import { ProfileContextDetails } from './ProfileContextDetails.tsx';
 import { RunChanges } from './RunChanges.tsx';
 import { RuntimeRecovery } from './RuntimeRecovery.tsx';
@@ -20,6 +21,7 @@ export function RunStatusCards({
   sessionId: string | null;
   executionId: string | null;
 }) {
+  const navigation = useSettingsNavigation();
   const t = useTranslations('RunStatus');
   const branchText = useTranslations('MessageBranch');
   const { mode, workspaces } = useServices();
@@ -174,7 +176,7 @@ export function RunStatusCards({
               {t('failedLoads', { count: failedLoads.length })}
             </p>
           ) : null}
-          <Link className="underline" to="/settings/models">
+          <Link className="underline" {...navigation.link('models')}>
             {t('modelSettings')}
           </Link>
           <HarnessDetails session={session} />

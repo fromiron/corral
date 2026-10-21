@@ -138,11 +138,7 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
       {error ? (
         <p role="alert" className="text-sm text-danger">
           {error}{' '}
-          <Link
-            to="/settings"
-            search={{ ...navigation.search, section: 'workspace' }}
-            className="text-accent"
-          >
+          <Link {...navigation.link('workspace')} className="text-accent">
             {h('manageChecks')}
           </Link>
         </p>
@@ -202,10 +198,7 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
                 >
                   {t('edit')}
                 </Button>
-                <Button
-                  variant="outline"
-                  render={<Link to="/settings/harness" search={navigation.search} />}
-                >
+                <Button variant="outline" render={<Link {...navigation.link('harness')} />}>
                   {n('connectWorkStyle')}
                 </Button>
               </div>

@@ -102,11 +102,7 @@ export function FilePanel({
     return (
       <div className="space-y-2 p-3 text-xs text-muted">
         {error ? <p role="alert">{error}</p> : <p>{t('linkToBrowse')}</p>}
-        <Link
-          to="/settings"
-          search={{ ...navigation.search, projectId, section: 'workspace' }}
-          className="text-accent underline"
-        >
+        <Link {...navigation.link('workspace', projectId)} className="text-accent underline">
           {t('workspace')}
         </Link>
       </div>

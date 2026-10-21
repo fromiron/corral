@@ -67,7 +67,7 @@ export function RefusalHelp({
       </p>
       <div className="flex flex-wrap gap-1">
         {kind === 'signin' || kind === 'profile' ? (
-          <Button size="xs" render={<Link to="/settings/models" search={navigation.search} />}>
+          <Button size="xs" render={<Link {...navigation.link('models')} />}>
             {t('connect')}
           </Button>
         ) : null}

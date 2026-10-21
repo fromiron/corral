@@ -42,26 +42,12 @@ export function SettingsNavigation({
   const v = useTranslations('Vault');
   const navigation = useSettingsNavigation();
   const location = useRouterState({ select: (state) => state.location });
-  const active = settingsSection(location.pathname, location.search.section);
+  const active = navigation.section ?? settingsSection(location.pathname, location.search.section);
   const sections = [
     { title: t('app'), items: ['general', 'shortcuts', 'vault', 'about'] },
     { title: t('agents'), items: ['models', 'harness', 'defaults', 'skills', 'hooks'] },
     { title: t('project'), items: ['workspace', 'mcp', 'project-defaults'] },
   ] as const;
-  const paths = {
-    general: '/settings',
-    shortcuts: '/settings',
-    about: '/settings',
-    workspace: '/settings',
-    models: '/settings/models',
-    vault: '/settings/vault',
-    harness: '/settings/harness',
-    skills: '/settings/skills',
-    hooks: '/settings/hooks',
-    mcp: '/settings/mcp',
-    defaults: '/settings/defaults',
-    'project-defaults': '/settings/project-defaults',
-  } as const;
   const label = (key: string) =>
     key === 'vault'
       ? v('heading')
@@ -85,19 +71,28 @@ export function SettingsNavigation({
       <div className="flex h-[52px] shrink-0 items-center border-b border-line/50 px-4">
         <Link
           to={navigation.returnTo}
+          resetScroll={false}
+          onClick={(event) => {
+            if (navigation.close) {
+              event.preventDefault();
+              navigation.close();
+            }
+          }}
           className="mr-auto flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-ui hover:bg-sidebar-accent"
         >
           <ArrowLeft size={16} />
           {t('backToWork')}
         </Link>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label={w('collapseSidebar')}
-          onClick={() => changePreferences({ sidebarOpen: false })}
-        >
-          <PanelLeft />
-        </Button>
+        {!navigation.overlay ? (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={w('collapseSidebar')}
+            onClick={() => changePreferences({ sidebarOpen: false })}
+          >
+            <PanelLeft />
+          </Button>
+        ) : null}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
         {sections.map((group) => (
@@ -106,15 +101,9 @@ export function SettingsNavigation({
             {group.items.map((key) => (
               <Link
                 key={key}
-                to={paths[key]}
+                {...navigation.link(key)}
                 activeOptions={{ exact: true, includeSearch: true, includeHash: true }}
                 inactiveProps={{ 'aria-current': undefined }}
-                search={{
-                  ...navigation.search,
-                  ...(['general', 'shortcuts', 'about', 'workspace'].includes(key)
-                    ? { section: key }
-                    : {}),
-                }}
                 aria-current={active === key ? 'page' : undefined}
                 className={`mb-1 block rounded-md px-3 py-2 text-ui ${active === key ? 'bg-sidebar-selected font-medium text-text' : 'text-muted hover:bg-sidebar-accent hover:text-text'}`}
               >
@@ -166,14 +155,16 @@ export function SettingsProjectPicker({
           })),
         ]}
         onValueChange={(projectId) =>
-          void navigate({
-            to: '.',
-            search: (previous) => ({
-              ...previous,
-              ...navigation.search,
-              projectId: projectId || undefined,
-            }),
-          })
+          navigation.selectProject
+            ? navigation.selectProject(projectId)
+            : void navigate({
+                to: '.',
+                search: (previous) => ({
+                  ...previous,
+                  ...navigation.search,
+                  projectId: projectId || undefined,
+                }),
+              })
         }
       />
     </div>

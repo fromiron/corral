@@ -24,7 +24,7 @@ import {
   useRouter,
   useRouterState,
 } from '@tanstack/react-router';
-import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react';
+import { type CSSProperties, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { CommandLayer } from '../CommandPalette.tsx';
 import { desktop, onTopbarDoubleClick } from '../desktop.tsx';
@@ -35,11 +35,15 @@ import { shortcutLabel } from '../shortcuts.ts';
 import { hasUnsavedEditorCopy } from '../workbench/editorDraft.ts';
 import {
   SettingsNavigationContext,
+  standaloneSettingsLink,
+  validateSettingsOverlay,
   validateSettingsSearch,
+  withoutSettings,
   workHref,
 } from '../workbench/navigation.ts';
 import { applyTheme, changePreferences, usePreferences } from '../workbench/preferences.ts';
 import { SessionTabs } from '../workbench/SessionTabs.tsx';
+import { SettingsDialog } from '../workbench/SettingsDialog.tsx';
 import {
   SettingsLeavePrompt,
   SettingsLifecycle,
@@ -60,6 +64,8 @@ export function RootLayout() {
 function RootFrame() {
   useShortcutBindings();
   const navigate = useNavigate();
+  const router = useRouter();
+  const settingsOwner = useRef(crypto.randomUUID()).current;
   const { repository } = useServices();
   useBlocker({
     shouldBlockFn: () => false,
@@ -86,6 +92,8 @@ function RootFrame() {
       }
     | undefined;
   const settings = location.pathname.startsWith('/settings');
+  const overlaySearch = validateSettingsOverlay(location.search);
+  const overlay = !settings && Boolean(overlaySearch.settings) && Boolean(workHref(location.href));
   const selectedRun = sidebar.runs.find(
     (run) => location.pathname === `/runs/${encodeURIComponent(run.runId)}`,
   );
@@ -112,21 +120,83 @@ function RootFrame() {
     search.returnTo ??
     lastWork?.href ??
     (settingsProjectId ? `/projects/${encodeURIComponent(settingsProjectId)}` : '/projects');
-  const entryProjectId = settings ? settingsProjectId : projectId;
+  const entryProjectId = overlay
+    ? sidebar.projects.find((item) => item.projectId === overlaySearch.settingsProject)?.projectId
+    : settings
+      ? settingsProjectId
+      : projectId;
   const workLocation = workHref(location.href) ?? '/projects';
   const entryReturnTo = settings ? returnTo : workLocation;
-  const settingsNavigation = useMemo(
-    () => ({
-      projects: sidebar.projects,
-      projectId: entryProjectId,
-      returnTo,
-      search: { ...(entryProjectId ? { projectId: entryProjectId } : {}), returnTo: entryReturnTo },
-    }),
-    [sidebar.projects, entryProjectId, returnTo, entryReturnTo],
-  );
+  const closeSettings = () => {
+    const state = location.state as typeof location.state & {
+      settingsOwner?: string;
+      settingsOrigin?: number;
+    };
+    if (
+      state.settingsOwner === settingsOwner &&
+      typeof state.settingsOrigin === 'number' &&
+      state.__TSR_index === state.settingsOrigin + 1
+    ) {
+      router.history.back();
+    } else {
+      void navigate({
+        to: location.pathname,
+        search: withoutSettings(location.search),
+        hash: location.hash,
+        replace: true,
+        resetScroll: false,
+        state: (previous) => {
+          const {
+            settingsOwner: _owner,
+            settingsOrigin: _origin,
+            ...rest
+          } = previous as typeof previous & { settingsOwner?: string; settingsOrigin?: number };
+          return rest;
+        },
+      });
+    }
+  };
+  const settingsNavigation = {
+    projects: sidebar.projects,
+    projectId: entryProjectId,
+    returnTo: overlay ? workLocation : returnTo,
+    search: { ...(entryProjectId ? { projectId: entryProjectId } : {}), returnTo: entryReturnTo },
+    overlay,
+    section: overlay ? overlaySearch.settings : undefined,
+    close: overlay ? closeSettings : undefined,
+    link: (section: string, targetProject = entryProjectId) => {
+      if (settings || !workHref(location.href))
+        return standaloneSettingsLink(section, {
+          ...(targetProject ? { projectId: targetProject } : {}),
+          returnTo: entryReturnTo,
+        });
+      return {
+        to: location.pathname,
+        search: { ...location.search, settings: section, settingsProject: targetProject },
+        hash: location.hash,
+        replace: overlay,
+        resetScroll: false as const,
+        state: (previous: typeof location.state) =>
+          overlay ? previous : { ...previous, settingsOwner, settingsOrigin: previous.__TSR_index },
+      };
+    },
+    selectProject: overlay
+      ? (target: string) => {
+          void navigate({
+            to: location.pathname,
+            search: { ...location.search, settingsProject: target || undefined },
+            hash: location.hash,
+            replace: true,
+            resetScroll: false,
+            state: true,
+          });
+        }
+      : undefined,
+  };
   useEffect(() => {
-    if (!settings) setLastWork({ href: workLocation, ...(projectId ? { projectId } : {}) });
-  }, [settings, workLocation, projectId]);
+    if (!settings && !overlay)
+      setLastWork({ href: workLocation, ...(projectId ? { projectId } : {}) });
+  }, [settings, overlay, workLocation, projectId]);
   const section = settingsSection(location.pathname, location.search.section);
   const settingsTitle = !settings
     ? ''
@@ -345,10 +415,17 @@ function RootFrame() {
               <SettingsOperationStatus />
               <div className="app-outlet">
                 <Outlet />
-                <SettingsLeavePrompt />
+                {!overlay ? <SettingsLeavePrompt /> : null}
               </div>
             </div>
             <CommandLayer />
+            {overlay && overlaySearch.settings ? (
+              <SettingsDialog
+                section={overlaySearch.settings}
+                inbox={sidebar.inbox}
+                currentProject={sidebar.current}
+              />
+            ) : null}
           </div>
         </TopbarSlotContext.Provider>
       </SettingsNavigationContext.Provider>

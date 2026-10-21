@@ -513,22 +513,13 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                 <p className="text-sm text-warning">{t('nativeWarning')}</p>
               ) : null}
               <nav className="flex flex-wrap gap-2">
-                <Button
-                  variant="outline"
-                  render={<Link to="/settings/skills" search={navigation.search} />}
-                >
+                <Button variant="outline" render={<Link {...navigation.link('skills')} />}>
                   {r('skills')}
                 </Button>
-                <Button
-                  variant="outline"
-                  render={<Link to="/settings/hooks" search={navigation.search} />}
-                >
+                <Button variant="outline" render={<Link {...navigation.link('hooks')} />}>
                   {r('hooks')}
                 </Button>
-                <Button
-                  variant="outline"
-                  render={<Link to="/settings/mcp" search={navigation.search} />}
-                >
+                <Button variant="outline" render={<Link {...navigation.link('mcp')} />}>
                   {r('mcp')}
                 </Button>
               </nav>

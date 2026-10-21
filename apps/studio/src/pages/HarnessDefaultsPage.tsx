@@ -155,7 +155,7 @@ function DefaultsEditor({ scope, scopeId }: { scope: 'personal' | 'project'; sco
       <Button
         variant="outline"
         className="self-start"
-        render={<Link to="/settings/harness" search={navigation.search} />}
+        render={<Link {...navigation.link('harness')} />}
       >
         {r('manageProfiles')}
       </Button>
