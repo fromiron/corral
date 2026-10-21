@@ -77,3 +77,18 @@ H는 실제 임시 Git/SQLite에서 read→save/create→disk hash/형식/mode, 
 - 파일/preview의 기존 scope·격리 origin·lease 종료 의미와 graph revision/draft key는 유지한다. 새로운 route·원본 쓰기·독립 window·preview 실행 권한은 추가하지 않는다.
 
 대상 변환·다른 host/세션의 key·명시한 과거 Run·반복 mount 구독의 의미 있는 실패를 먼저 확인한다. 기존 navigation/settings/editor/Reins 회귀와 실제 인앱의 deep link·back/forward·설정 왕복을 확인한다. 새 E2E는 먼저 실제 화면을 관찰한 뒤 필요한 경우에만 추가한다.
+
+## P10: 도킹 배치·복구와 키보드 조작
+
+추적: CRL-WBD-006 / C-150 / TC-WBD-006-H,N,F. P09의 대상·수명 계약을 유지하는 승인 계획의 다음 묶음이다. C-150 구현과 Linux 인앱·관련 회귀를 완료했으며 [P10 실행 기록](../evaluation/Development-Workbench-Docking-2026-10-21.md)에 근거와 미검증 환경을 남긴다. [ADR-040](../Decisions.md)의 공개 Dockview/React binding 8.6.1(MIT)을 사용한다. 엔진 qualification과 의존성 설치를 제품 구현·화면 검증 완료로 간주하지 않는다.
+
+- 세션 문맥 pane은 URL이 선택한 session/Run을 따른다. 지속되는 문서 pane은 full WorkspaceTarget(host/project/binding/session/copy generation)·정규화 상대 path·viewId를 가지며 현재 세션으로 임의 변경하지 않는다. layout descriptor가 Run·문서·PTY 상태의 새 원장이 되지 않는다.
+- 안정된 workspaceId와 project별로 schemaVersion이 있는 배치 metadata만 저장한다. descriptor·group·size·active view 등 화면 참조만 담고 문서 본문·dirty buffer·자격증명·PTY 입력/출력을 복제하지 않는다. 기존 초안·모델·receipt와 영속화 경로는 별도로 유지한다.
+- 잘못되거나 알 수 없는 descriptor는 해당 pane의 placeholder로 표시한다. grid 구조를 복원할 수 없으면 기본 배치로 돌아가되 해석 가능한 문서 참조를 보존한다. 손상된 배치나 layout 초기화가 문서를 닫거나 초안·프로세스를 삭제하지 않는다.
+- 문서는 최대 20개, 중앙 문서 그룹은 1~2개이며 보조 그룹과 하단 도크를 제공한다. 대화/구현/검토 preset은 모든 문서 ID를 유지한 채 배치만 바꾼다. 상한에서 기존 문서를 조용히 제거하지 않으며 무제한 floating·별도 window는 추가하지 않는다.
+- split·resize·탭/그룹 이동은 view 배치 변경이다. 이동·preset·패널 숨김 때문에 문서를 close하거나 PTY/Run을 stop하지 않는다. 명시 문서 닫기는 기존 저장/버리기/취소와 마지막 view 보호를 거치며, 저장 중 새 편집·미확정 receipt를 clean으로 만들지 않는다.
+- PTY는 세션의 단일 TerminalPanel을 사용하고 숨김은 detach다. 프로세스·xterm/parser·문서 모델·graph draft·Run 구독과 SettingsLifecycle의 소유권은 기존 root/services에 남는다. 터미널 종료는 기존 명시 stop 경로로만 수행한다.
+- 390px에서는 한 번에 한 활성 그룹을 표시한다. 키보드로 그룹 이동·크기 변경·preset·닫기를 수행하고 논리적 focus를 유지할 수 있어야 한다. 진행 중 Run의 승인·중지는 좁은 화면이나 비활성 도크에 가려 접근할 수 없는 상태가 되지 않는다.
+- graph 전용 문서 탭 통합은 P18에서 다룬다. P10은 기존 graph/review route·deep link·설정 왕복·D&D·Reins의 의미를 보존하며 이를 조용히 대체하거나 제거하지 않는다.
+
+H는 문서 이동·preset·reload 뒤 같은 문서 ID/모델과 문맥 대상, 명시 닫기, 실제 키보드/390px의 승인·중지 접근이다. N은 다른 workspace/project/사본 참조 구분, 잘못된 descriptor, 상한에서 기존 문서 보존이다. F는 grid/저장 metadata 손상, 저장 중 이동·늦은 receipt·PTY 출력 중 숨김에서 초안과 프로세스 보존이다. 의미 있는 실패 테스트를 먼저 확인하고 기존 관련 회귀를 재사용한다. 새 E2E는 인앱 브라우저에서 실제 필요성을 확인한 뒤에만 추가한다.

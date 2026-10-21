@@ -856,5 +856,11 @@
     "requirement": "CR-046 P09: 기존 Workbench 화면의 typed panel 대상과 URL 변환을 등록하고 명시 deep link·기억한 선택·설정 왕복을 보존한다. 패널 수명과 root 소유 Run·문서·PTY·graph draft를 분리하며 과거 Run/다른 대상의 상태가 섞이지 않는다.",
     "owner": "studio",
     "phase": "M2"
+  },
+  {
+    "id": "CRL-WBD-006",
+    "requirement": "CR-046 P10: URL의 세션/Run 문맥과 full WorkspaceTarget/path/viewId의 문서를 구분해 Dockview 배치·preset·키보드 조작·복구를 제공한다. workspaceId/project별 metadata만 저장하고 문서 ID/모델·dirty 초안·PTY/Run 수명을 보존하며 손상 복구·20문서 상한·390px 승인/중지 접근과 기존 graph/review 경로를 유지한다.",
+    "owner": "studio",
+    "phase": "M2"
   }
 ]

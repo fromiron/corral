@@ -117,6 +117,11 @@ import { ComposerInput } from '../workbench/ComposerInput.tsx';
 import { ComposerSurface } from '../workbench/ComposerSurface.tsx';
 import { type IntentLock, resolveIntent } from '../workbench/composerIntent.ts';
 import { type MentionItem, mentionToken, pickedReferences } from '../workbench/composerMenu.ts';
+import { DockDocumentPanel } from '../workbench/DockDocumentPanel.tsx';
+import { DockRunControls } from '../workbench/DockRunControls.tsx';
+import { DockWorkbench, type DockWorkbenchHandle } from '../workbench/docking/DockWorkbench.tsx';
+import type { DockContextView } from '../workbench/docking/layout.ts';
+import { documentStore } from '../workbench/documents/store.ts';
 import { FilePanel, type FileReference } from '../workbench/FilePanel.tsx';
 import { ImageAttachmentList, ImageAttachmentPicker } from '../workbench/ImageAttachments.tsx';
 import { LiveVoice } from '../workbench/LiveVoice.tsx';
@@ -136,7 +141,7 @@ import {
   readComposerDraft,
   writeComposerDraft,
 } from '../workbench/sessionDraft.ts';
-import { TabRow } from '../workbench/TabRow.tsx';
+import { TerminalPanel } from '../workbench/TerminalPanel.tsx';
 import { TextAttachmentList, TextAttachmentPicker } from '../workbench/TextAttachments.tsx';
 import { TopbarActions } from '../workbench/TopbarSlot.tsx';
 import { defaultUltraSelection, UltraModels } from '../workbench/UltraModels.tsx';
@@ -147,6 +152,7 @@ import {
   useModelProfiles,
   useTeamRoles,
 } from '../workbench/useModels.ts';
+import { WorkbenchToolsPanel } from '../workbench/WorkbenchToolsPanel.tsx';
 import {
   ComposerDock,
   ComposerPlan,
@@ -156,7 +162,7 @@ import { ChatWidgetProvider } from '../workbench/widgets/useChatWidgets.tsx';
 import { useBinding, WORKSPACE_CHANGED, WorkingCopyPanel } from './FilesViews.tsx';
 import { Checks } from './ReviewPage.tsx';
 import { RunDetail } from './RunPage.tsx';
-import { useRemembered, WorkbenchLayout } from './Workbench.tsx';
+import { useRemembered } from './Workbench.tsx';
 
 // A work session (CR-011, roadmap 23–24): what was asked, the runs it started, the queue, and
 // one input box whose intent is chosen, never guessed.
@@ -202,14 +208,16 @@ function useSessionRuns(sessionId: string, selectedRunId?: string) {
 }
 
 /**
- * A session as a workbench (02-UX-Spec §2–§3; Workbench polish P1): the conversation in the
- * middle and, only when asked for, one side panel with Changes / Files / Results / Checks / Run.
- * The session's own actions sit in the top bar. Choices live in the address, so they survive
- * reloads and the back button.
+ * Context panes follow the session URL; document tabs keep their explicit workspace target.
+ * Stores own editing and execution state independently of dock placement.
  */
 export function SessionPage() {
-  const tw = useTranslations('Workbench');
   const services = useServices();
+  const dock = useRef<DockWorkbenchHandle>(null);
+  const documents =
+    services.mode === 'server' && services.workspaces
+      ? documentStore(services.workspaces)
+      : undefined;
   const { session, corrals } = sessionRoute.useLoaderData();
   const urlSearch = sessionRoute.useSearch();
   const [savedView, rememberView] = useRemembered<Record<string, unknown>>(
@@ -244,6 +252,14 @@ export function SessionPage() {
     rememberView({ ...next });
     void navigate({ search: () => next });
   };
+  const showPanel = (patch: Partial<typeof search>) => {
+    dock.current?.openContext(patch.panel ?? 'chat');
+    setSearch(patch);
+  };
+  const handleReference = (value: FileReference) => {
+    setReference({ sessionId: session.sessionId, value });
+    showPanel({ panel: undefined });
+  };
   const changes = useSessionChanges(session.sessionId, runs);
   const linkedRunIds = session.entries.flatMap((entry) => (entry.runId ? [entry.runId] : []));
   const sessionRuns = runs.filter(
@@ -257,29 +273,86 @@ export function SessionPage() {
   const liveRun =
     presentedRun && !TERMINAL_RUN_STATUSES.has(presentedRun.status) ? presentedRun : null;
   const presentationRunId = presentedRun?.runId ?? linkedRunIds.at(-1) ?? null;
-  const selectedPanel = sessionPanelDescriptor(
-    session.projectId,
-    session.sessionId,
-    panel,
-    search.run ?? runs.at(-1)?.runId,
-  );
   const panelViews: Record<SessionPanel, () => ReactNode> = {
     files: () => (
       <FilePanel
         projectId={session.projectId}
         sessionId={session.sessionId}
-        onReference={(value) => setReference({ sessionId: session.sessionId, value })}
+        onReference={handleReference}
+        onOpenDocument={(document) => dock.current?.openDocument(document) ?? false}
+        showTools={false}
       />
     ),
     changes: () => <ChangesPanel session={session} files={changes} />,
     artifacts: () => (
       <ArtifactsPanel
         runs={runs}
-        onOpen={(runId, result) => setSearch({ panel: 'run', run: runId, view: 'results', result })}
+        onOpen={(runId, result) => showPanel({ panel: 'run', run: runId, view: 'results', result })}
       />
     ),
     checks: () => <ChecksPanel session={session} />,
     run: () => <RunPanel runs={runs} search={search} setSearch={setSearch} />,
+  };
+  const renderContext = (view: DockContextView) => {
+    if (view === 'chat')
+      return (
+        <div className="flex h-full min-h-0 flex-col">
+          {lost ? (
+            <div
+              role="alert"
+              className="flex items-center gap-2 bg-danger/5 px-4 py-2 text-xs text-danger"
+            >
+              {ts('connectionLost')}
+              <Button variant="outline" size="xs" onClick={refresh}>
+                {ts('retry')}
+              </Button>
+            </div>
+          ) : null}
+          <WorkTab
+            key={panelKey(services, {
+              kind: 'chat',
+              projectId: session.projectId,
+              sessionId: session.sessionId,
+            })}
+            session={session}
+            team={team}
+            corrals={corrals}
+            runs={runs}
+            active={active}
+            liveRunId={liveRun?.runId ?? null}
+            selectedRunId={presentationRunId}
+            onChange={refresh}
+            reference={reference}
+            onReferenceUsed={() => setReference(null)}
+            onPanel={(value, run) => showPanel({ panel: value, ...run })}
+          />
+        </div>
+      );
+    if (view === 'terminal')
+      return (
+        <TerminalPanel
+          key={session.sessionId}
+          sessionId={session.sessionId}
+          projectId={session.projectId}
+        />
+      );
+    if (view === 'tools')
+      return <WorkbenchToolsPanel key={session.sessionId} sessionId={session.sessionId} />;
+    const target = sessionPanelDescriptor(
+      session.projectId,
+      session.sessionId,
+      view,
+      search.run ?? runs.at(-1)?.runId,
+    );
+    return (
+      <div
+        key={target ? panelKey(services, target) : view}
+        className={view === 'run' ? 'flex h-full min-h-0 flex-col' : 'flex flex-col gap-3 p-3'}
+      >
+        {view === 'artifacts' && presentationRunId ? <SessionWidgetCard /> : null}
+        {panelViews[view]()}
+      </div>
+    );
   };
 
   return (
@@ -291,7 +364,7 @@ export function SessionPage() {
         changes={changes}
         panel={panel}
         reopenPanel={reopenPanel}
-        onPanel={(value) => setSearch({ panel: value })}
+        onPanel={(value) => showPanel({ panel: value })}
         runs={runs}
         selectedRunId={presentationRunId}
         onSelectRun={(run) =>
@@ -309,71 +382,50 @@ export function SessionPage() {
         presentationRunId={presentationRunId}
         live={Boolean(liveRun)}
       >
-        <WorkbenchLayout
-          key={session.sessionId}
-          storageKey={session.sessionId}
-          summary={presentationRunId ? <SessionWidgetCard /> : null}
-          panelOpen={Boolean(panel)}
-          onPanelClose={() => setSearch({ panel: undefined })}
-          panelTabs={
-            panel ? (
-              <TabRow
-                id="session-panels"
-                label={tw('panelTabs')}
-                values={SESSION_PANELS}
-                current={panel}
-                text={(value) => tw(`panel.${value}`)}
-                onChoose={(value) => setSearch({ panel: value })}
+        <DockWorkbench
+          key={`${services.workspaceId ?? services.mode}:${session.projectId}`}
+          ref={dock}
+          hostId={services.workspaceId}
+          projectId={session.projectId}
+          sessionId={session.sessionId}
+          selectedPanel={panel}
+          selectionKey={`${session.sessionId}:${viewKey}`}
+          documentOwner={documents}
+          renderContext={renderContext}
+          renderDocument={(descriptor) =>
+            documents ? (
+              <DockDocumentPanel
+                owner={documents}
+                target={descriptor.target}
+                path={descriptor.path}
+                viewId={descriptor.viewId}
+                onReference={
+                  descriptor.target.sessionId === session.sessionId ? handleReference : undefined
+                }
               />
             ) : null
           }
-          main={
-            <div className="flex min-h-0 flex-1 flex-col">
-              {lost ? (
-                <div
-                  role="alert"
-                  className="flex items-center gap-2 border-b border-danger/40 bg-danger/5 px-4 py-2 text-xs text-danger"
-                >
-                  {ts('connectionLost')}
-                  <Button variant="outline" size="xs" onClick={refresh}>
-                    {ts('retry')}
-                  </Button>
-                </div>
-              ) : null}
-              <WorkTab
-                key={panelKey(services, {
-                  kind: 'chat',
-                  projectId: session.projectId,
-                  sessionId: session.sessionId,
-                })}
-                session={session}
-                team={team}
-                corrals={corrals}
-                runs={runs}
-                active={active}
-                liveRunId={liveRun?.runId ?? null}
-                selectedRunId={presentationRunId}
-                onChange={refresh}
-                reference={reference}
-                onReferenceUsed={() => setReference(null)}
-                onPanel={(value, run) => setSearch({ panel: value, ...run })}
-              />
-            </div>
-          }
-          panel={
-            panel ? (
-              <div
-                key={selectedPanel ? panelKey(services, selectedPanel) : panel}
-                role="tabpanel"
-                id={`session-panels-${panel}-panel`}
-                aria-labelledby={`session-panels-${panel}-tab`}
-                aria-label={tw(`panel.${panel}`)}
-                className={
-                  panel === 'run' ? 'flex h-full min-h-0 flex-col' : 'flex flex-col gap-3 p-3'
+          onActiveContext={(view) => {
+            const next =
+              view === 'chat' ? undefined : SESSION_PANELS.find((value) => value === view);
+            if ((view === 'chat' || next) && next !== panel) setSearch({ panel: next });
+          }}
+          controls={
+            active ? (
+              <DockRunControls
+                key={active.runId}
+                runId={active.runId}
+                onOpen={(run) =>
+                  showPanel({
+                    panel: 'run',
+                    run,
+                    view: 'run',
+                    execution: undefined,
+                    artifact: undefined,
+                    result: undefined,
+                  })
                 }
-              >
-                {panelViews[panel]()}
-              </div>
+              />
             ) : null
           }
         />

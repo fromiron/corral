@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import assert from 'node:assert/strict';
 import type { TerminalList, TerminalView } from '@corral/contracts';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -7,9 +8,15 @@ import { IntlProvider } from 'use-intl';
 import { expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { TerminalPanel } from './TerminalPanel.tsx';
+import type { TerminalStore } from './terminals/store.ts';
 
-const fixture = vi.hoisted(() => ({ state: {} }));
-vi.mock('../services.tsx', () => ({ useServices: () => ({ mode: 'server', terminals: {} }) }));
+const fixture = vi.hoisted(() => ({
+  state: {} as ReturnType<TerminalStore['getState']>,
+  workspaceId: undefined as string | undefined,
+}));
+vi.mock('../services.tsx', () => ({
+  useServices: () => ({ mode: 'server', terminals: {}, workspaceId: fixture.workspaceId }),
+}));
 vi.mock('./terminals/store.ts', () => ({
   terminalStore: () => ({
     getState: () => fixture.state,
@@ -141,5 +148,35 @@ it('[TC-WBD-004-N] the terminal escape action focuses a control outside its inpu
     await act(async () => root.unmount());
     container.remove();
     vi.unstubAllGlobals();
+  }
+});
+
+it('[TC-WBD-006-H] reopening the terminal pane restores only the selection for its workspace, project and session', () => {
+  render(terminal);
+  const session = fixture.state.sessions.session;
+  const first = fixture.state.terminals.terminal;
+  assert(session?.list && first);
+  const second = { ...terminal, terminalId: 'second', shellId: 'fish', state: 'exited' as const };
+  session.list.terminals.push(second);
+  fixture.state.terminals.second = { ...first, terminal: second };
+  const selectionKey = `corral:terminal-selection:v1:${JSON.stringify(['workspace-a', 'project', 'session'])}`;
+  localStorage.setItem(selectionKey, JSON.stringify('second'));
+  const reopen = (projectId = 'project') =>
+    renderToStaticMarkup(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <TerminalPanel sessionId="session" projectId={projectId} />
+      </IntlProvider>,
+    );
+  try {
+    fixture.workspaceId = 'workspace-a';
+    expect(reopen()).toContain('Terminal 2 · fish');
+    expect(reopen('another-project')).toContain('Terminal 1 · bash');
+    fixture.workspaceId = 'workspace-b';
+    expect(reopen()).toContain('Terminal 1 · bash');
+    fixture.workspaceId = undefined;
+    expect(reopen()).toContain('Terminal 1 · bash');
+  } finally {
+    fixture.workspaceId = undefined;
+    localStorage.removeItem(selectionKey);
   }
 });

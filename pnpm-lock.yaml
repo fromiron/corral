@@ -159,6 +159,9 @@ importers:
       '@xyflow/react':
         specifier: 12.12.0
         version: 12.12.0(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      dockview-react:
+        specifier: 8.6.1
+        version: 8.6.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       monaco-editor:
         specifier: 0.57.0
         version: 0.57.0
@@ -2693,6 +2696,18 @@ packages:
 
   dmg-builder@26.15.6:
     resolution: {integrity: sha512-nr5vQxEhM0REomp1qiHbc6V99yrfBZy+wUU56VXADfSOlLj8PdLqsHiRe7b+FbqKesiyv4ax+k1GVwGonYKuCg==}
+
+  dockview-core@8.6.1:
+    resolution: {integrity: sha512-DayOT2iM66kwlhxUYgP490UE1moxL8yZD6DVIXcX+LPowE7x537S6gwF/K8iWog+XR+aRvgwI3FJhLn90FJHTQ==}
+
+  dockview-react@8.6.1:
+    resolution: {integrity: sha512-F67LqtPsgKjQ6bvzkTnI8soXmMTu3XEFGVtKEu1UHS0sqpkaRMyQbNAP/+DF/VOGhkn0h/PwHLdehJdrF5yJrg==}
+    peerDependencies:
+      react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
+      react-dom: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
+
+  dockview@8.6.1:
+    resolution: {integrity: sha512-2WZyTw+Wln7ZX7er4XhH6S9i3InfdbdQZZo/tK26GdQudKn913ctbRN2tkZgXCN9mToGSd5aj8ANp1Lid/MMEQ==}
 
   doctrine@3.0.0:
     resolution: {integrity: sha512-yS+Q5i3hBf7GBkd4KG8a7eBNNWNGLTaEwwYWUijIYM7zrlYDM0BFXHjjPWlWZ1Rg7UaddZeIDmi9jF3HmqiQ2w==}
@@ -7105,6 +7120,18 @@ snapshots:
     transitivePeerDependencies:
       - electron-builder-squirrel-windows
       - supports-color
+
+  dockview-core@8.6.1: {}
+
+  dockview-react@8.6.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1):
+    dependencies:
+      dockview: 8.6.1
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+
+  dockview@8.6.1:
+    dependencies:
+      dockview-core: 8.6.1
 
   doctrine@3.0.0:
     dependencies:

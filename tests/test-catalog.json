@@ -3423,5 +3423,38 @@
     "status": "planned",
     "adapter": "existing root services and pure route fixtures; real in-app observation before any new E2E; no paid models",
     "evidence": null
+  },
+  {
+    "id": "TC-WBD-006-H",
+    "requirements": [
+      "CRL-WBD-006"
+    ],
+    "suite": "unit+integration",
+    "scenario": "문서 이동·preset·reload 뒤 모든 문서 ID/모델과 URL 문맥 대상 보존, 명시 닫기·키보드 조작·390px 승인/중지 접근",
+    "status": "planned",
+    "adapter": "Dockview public APIs and existing root stores with versioned layout fixtures; real in-app keyboard/390px observation before any new E2E; no paid models",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-006-N",
+    "requirements": [
+      "CRL-WBD-006"
+    ],
+    "suite": "unit+integration",
+    "scenario": "workspace/project/사본 identity 분리, 잘못된 descriptor placeholder, 20문서 상한과 기존 graph/review 경로 보존",
+    "status": "planned",
+    "adapter": "Dockview public APIs and existing root stores with versioned layout fixtures; real in-app keyboard/390px observation before any new E2E; no paid models",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-006-F",
+    "requirements": [
+      "CRL-WBD-006"
+    ],
+    "suite": "unit+integration",
+    "scenario": "손상된 grid/layout 저장 복구에서 유효 문서 참조 보존, 저장 중 이동·늦은 receipt·PTY 숨김에서 초안/프로세스 수명 유지",
+    "status": "planned",
+    "adapter": "Dockview public APIs and existing root stores with versioned layout fixtures; real in-app keyboard/390px observation before any new E2E; no paid models",
+    "evidence": null
   }
 ]

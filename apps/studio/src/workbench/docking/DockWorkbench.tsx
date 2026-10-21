@@ -1,0 +1,733 @@
+import type { WorkspaceTarget } from '@corral/contracts';
+import {
+  Button,
+  Dialog,
+  DialogDescription,
+  DialogPopup,
+  DialogTitle,
+  Select,
+} from '@corral/react/ui';
+import {
+  type DockviewApi,
+  DockviewDefaultTab,
+  DockviewReact,
+  type DockviewReadyEvent,
+  type DockviewWillDropEvent,
+  type DockviewWillShowOverlayLocationEvent,
+  type IDockviewPanel,
+  type IDockviewPanelHeaderProps,
+  type IDockviewPanelProps,
+} from 'dockview-react';
+import {
+  createContext,
+  forwardRef,
+  type ReactNode,
+  useContext,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from 'react';
+import { useTranslations } from 'use-intl';
+import { type CloseChoice, type DocumentStore, documentKey } from '../documents/store.ts';
+import type { SessionPanel } from '../panels/registry.ts';
+import {
+  addDocumentPanel,
+  createPresetLayout,
+  DEFAULT_PANELS,
+  type DockContextView,
+  type DockDocumentDescriptor,
+  type DockPanelDescriptor,
+  type DockPreset,
+  layoutStorageKey,
+  MAX_DOCUMENTS,
+  parseLayout,
+  serializeLayout,
+} from './layout.ts';
+import 'dockview-react/dist/styles/dockview.css';
+import './docking.css';
+
+export type { DockContextView, DockDocumentDescriptor } from './layout.ts';
+export interface DockOpenDocument {
+  documentKey: string;
+  target: WorkspaceTarget;
+  path: string;
+}
+export interface DockWorkbenchHandle {
+  openDocument(input: DockOpenDocument): boolean;
+  openContext(view: DockContextView): void;
+}
+export interface DockWorkbenchProps {
+  hostId?: string;
+  projectId: string;
+  sessionId: string;
+  selectedPanel?: SessionPanel | null;
+  selectionKey?: string;
+  renderContext(view: DockContextView): ReactNode;
+  renderDocument(descriptor: DockDocumentDescriptor, panelId: string): ReactNode;
+  documentOwner?: DocumentStore;
+  controls?: ReactNode;
+  onActiveContext?: (view: DockContextView) => void;
+}
+type PanelParams = { descriptor: DockPanelDescriptor };
+const RendererContext = createContext<{
+  renderContext: DockWorkbenchProps['renderContext'];
+  renderDocument: DockWorkbenchProps['renderDocument'];
+  close: (id: string) => void;
+} | null>(null);
+const theme = { name: 'corral', className: 'corral-dock-theme', gap: 4 };
+const contexts: DockContextView[] = [
+  'chat',
+  'files',
+  'changes',
+  'artifacts',
+  'checks',
+  'run',
+  'terminal',
+  'tools',
+];
+const groupNames = ['main1', 'main2', 'aux', 'bottom'] as const;
+const descriptorOf = (panel: IDockviewPanel) => (panel.params as PanelParams).descriptor;
+const records = (api: DockviewApi) =>
+  api.panels.map((panel) => ({ id: panel.id, descriptor: descriptorOf(panel) }));
+
+function DockPanel({ params, api }: IDockviewPanelProps<PanelParams>) {
+  const renderer = useContext(RendererContext);
+  const t = useTranslations('Docking');
+  const descriptor = params.descriptor;
+  return (
+    <div
+      className={`corral-dock-content ${descriptor.kind === 'document' || (descriptor.kind === 'context' && descriptor.view === 'chat') ? 'corral-dock-content-fixed' : ''}`}
+      data-dock-panel-id={api.id}
+    >
+      {descriptor.kind === 'document' ? (
+        renderer?.renderDocument(descriptor, api.id)
+      ) : descriptor.kind === 'context' ? (
+        renderer?.renderContext(descriptor.view)
+      ) : (
+        <p role="status" className="p-4 text-sm text-muted">
+          {t('unknownPanel')} {descriptor.label}
+        </p>
+      )}
+    </div>
+  );
+}
+function DockTab(props: IDockviewPanelHeaderProps<PanelParams>) {
+  const renderer = useContext(RendererContext);
+  return (
+    <DockviewDefaultTab {...props} closeActionOverride={() => renderer?.close(props.api.id)} />
+  );
+}
+const components = { workbench: DockPanel };
+
+export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>(
+  function DockWorkbench(props, ref) {
+    const t = useTranslations('Docking');
+    const current = useRef(props);
+    current.current = props;
+    const labels = useRef(t);
+    labels.current = t;
+    const apiRef = useRef<DockviewApi | null>(null);
+    const host = useRef<HTMLDivElement>(null);
+    const mutating = useRef(false);
+    const narrow = useRef(false);
+    const lastSelection = useRef({
+      sessionId: props.sessionId,
+      selectedPanel: props.selectedPanel,
+      selectionKey: props.selectionKey,
+    });
+    const retention = useRef(new Map<string, () => void>());
+    const cleanup = useRef<(() => void)[]>([]);
+    const [panels, setPanels] = useState<{ id: string; title: string }[]>([]);
+    const [active, setActive] = useState('');
+    const [preset, setPreset] = useState<DockPreset | null>('conversation');
+    const [destination, setDestination] = useState<string>('main1');
+    const [message, setMessage] = useState<string | null>(null);
+    const [closing, setClosing] = useState<{ id: string; path: string } | null>(null);
+    const [closeBusy, setCloseBusy] = useState(false);
+    const closeInFlight = useRef(false);
+    const [closeFailed, setCloseFailed] = useState(false);
+
+    function title(panel: IDockviewPanel) {
+      const descriptor = descriptorOf(panel);
+      if (descriptor.kind === 'context') return labels.current(descriptor.view);
+      if (descriptor.kind === 'unknown') return descriptor.label || labels.current('unknownPanel');
+      const entry =
+        current.current.documentOwner?.getState().documents[
+          documentKey(descriptor.target, descriptor.path)
+        ];
+      return `${entry?.dirty || entry?.pendingSave ? '● ' : ''}${descriptor.path.split('/').at(-1) ?? descriptor.path}`;
+    }
+    function refresh() {
+      const api = apiRef.current;
+      if (!api || mutating.current) return;
+      const owner = current.current.documentOwner;
+      const present = new Set<string>();
+      for (const panel of api.panels) {
+        const descriptor = descriptorOf(panel);
+        const nextTitle = title(panel);
+        if (panel.title !== nextTitle) panel.api.setTitle(nextTitle);
+        if (descriptor.kind !== 'document' || !owner) continue;
+        present.add(panel.id);
+        const key = documentKey(descriptor.target, descriptor.path);
+        if (!retention.current.has(panel.id) && owner.getState().documents[key])
+          retention.current.set(panel.id, owner.retainView(key, descriptor.viewId));
+      }
+      for (const [id, release] of retention.current)
+        if (!present.has(id)) {
+          release();
+          retention.current.delete(id);
+        }
+      setPanels(api.panels.map((panel) => ({ id: panel.id, title: title(panel) })));
+      setActive(api.activePanel?.id ?? '');
+    }
+    function saveLayout() {
+      const api = apiRef.current;
+      const { hostId, projectId } = current.current;
+      const key = layoutStorageKey(hostId, projectId);
+      if (!api || !key || !hostId || mutating.current) return;
+      try {
+        localStorage.setItem(key, serializeLayout(api.toJSON(), hostId, projectId));
+      } catch {
+        setMessage('storageFailed');
+      }
+    }
+    function mainGroups(api: DockviewApi) {
+      return api.groups.filter(
+        (group) =>
+          group.id === 'main1' ||
+          group.id === 'main2' ||
+          group.panels.some((panel) => descriptorOf(panel).kind === 'document'),
+      );
+    }
+    function findGroup(api: DockviewApi, name: string) {
+      return (
+        api.groups.find((group) => group.id === name) ??
+        (name === 'main1' ? mainGroups(api)[0] : name === 'main2' ? mainGroups(api)[1] : undefined)
+      );
+    }
+    function focus(panel: IDockviewPanel, notify = false) {
+      panel.api.setActive();
+      if (narrow.current) panel.api.maximize();
+      const descriptor = descriptorOf(panel);
+      if (notify && descriptor.kind === 'context')
+        current.current.onActiveContext?.(descriptor.view);
+      refresh();
+    }
+    function openContext(view: DockContextView, notify = false) {
+      const api = apiRef.current;
+      if (!api) return;
+      let panel = api.panels.find((item) => {
+        const descriptor = descriptorOf(item);
+        return descriptor.kind === 'context' && descriptor.view === view;
+      });
+      if (!panel) {
+        const group =
+          findGroup(
+            api,
+            view === 'chat'
+              ? 'main1'
+              : ['terminal', 'tools', 'checks'].includes(view)
+                ? 'bottom'
+                : 'aux',
+          ) ?? api.activeGroup;
+        panel = api.addPanel({
+          id: `context:${view}`,
+          component: 'workbench',
+          params: { descriptor: { kind: 'context', view } },
+          title: labels.current(view),
+          renderer: 'always',
+          ...(group ? { position: { referenceGroup: group, direction: 'within' } } : {}),
+        });
+      }
+      focus(panel, notify);
+      saveLayout();
+    }
+    function openDocument(input: DockOpenDocument) {
+      const api = apiRef.current;
+      const { hostId, projectId, documentOwner } = current.current;
+      if (
+        !api ||
+        (hostId && input.target.hostId !== hostId) ||
+        input.target.projectId !== projectId ||
+        input.documentKey !== documentKey(input.target, input.path) ||
+        !documentOwner?.getState().documents[input.documentKey]
+      ) {
+        setMessage('invalidTarget');
+        return false;
+      }
+      const existing = api.panels.find((panel) => {
+        const d = descriptorOf(panel);
+        return d.kind === 'document' && documentKey(d.target, d.path) === input.documentKey;
+      });
+      if (existing) {
+        focus(existing);
+        return true;
+      }
+      const id = `document:${crypto.randomUUID()}`;
+      const descriptor: DockDocumentDescriptor = {
+        kind: 'document',
+        target: input.target,
+        path: input.path,
+        viewId: id,
+      };
+      if (!addDocumentPanel(records(api), { id, descriptor })) {
+        setMessage('tabLimit');
+        return false;
+      }
+      let group =
+        mainGroups(api).find((item) => item.id === api.activeGroup?.id) ?? mainGroups(api)[0];
+      if (!group) {
+        if (api.groups.length >= 4) {
+          setMessage('splitLimit');
+          return false;
+        }
+        group = api.addGroup({
+          id: 'main1',
+          direction: 'left',
+          ...(api.activeGroup ? { referenceGroup: api.activeGroup } : {}),
+        });
+      }
+      const panel = api.addPanel({
+        id,
+        component: 'workbench',
+        params: { descriptor },
+        title: input.path,
+        renderer: 'always',
+        ...(group ? { position: { referenceGroup: group, direction: 'within' } } : {}),
+      });
+      setMessage(null);
+      focus(panel);
+      saveLayout();
+      return true;
+    }
+    useImperativeHandle(ref, () => ({ openDocument, openContext: (view) => openContext(view) }));
+
+    async function closePanel(id: string, choice?: CloseChoice) {
+      const api = apiRef.current;
+      const panel = api?.getPanel(id);
+      if (!api || !panel || closeInFlight.current) return;
+      const descriptor = descriptorOf(panel);
+      closeInFlight.current = true;
+      setCloseBusy(true);
+      setCloseFailed(false);
+      try {
+        const result =
+          descriptor.kind === 'document' && current.current.documentOwner
+            ? await current.current.documentOwner.closeView(
+                documentKey(descriptor.target, descriptor.path),
+                descriptor.viewId,
+                choice,
+              )
+            : 'closed';
+        if (result === 'closed') {
+          api.removePanel(panel);
+          setClosing(null);
+          refresh();
+          saveLayout();
+        } else if (result === 'cancelled') setClosing(null);
+        else if (descriptor.kind === 'document') {
+          setClosing({ id, path: descriptor.path });
+          setCloseFailed(result === 'failed');
+        }
+      } catch {
+        if (descriptor.kind === 'document') setClosing({ id, path: descriptor.path });
+        setCloseFailed(true);
+      } finally {
+        closeInFlight.current = false;
+        setCloseBusy(false);
+      }
+    }
+    function applyPreset(value: DockPreset) {
+      const api = apiRef.current;
+      if (!api) return;
+      mutating.current = true;
+      try {
+        api.fromJSON(createPresetLayout(value, records(api)), { reuseExistingPanels: true });
+        setPreset(value);
+      } finally {
+        mutating.current = false;
+      }
+      if (narrow.current && api.activePanel) api.activePanel.api.maximize();
+      refresh();
+      saveLayout();
+    }
+    function move() {
+      const api = apiRef.current;
+      const panel = api?.activePanel;
+      if (!api || !panel) return;
+      const doc = descriptorOf(panel).kind === 'document';
+      if (doc && !['main1', 'main2'].includes(destination)) {
+        setMessage('invalidTarget');
+        return;
+      }
+      let group = findGroup(api, destination);
+      if (!group) {
+        if (api.groups.length >= 4 || (doc && mainGroups(api).length >= 2)) {
+          setMessage('splitLimit');
+          return;
+        }
+        const reference = mainGroups(api)[0] ?? api.activeGroup;
+        group = api.addGroup({
+          id: destination,
+          ...(reference
+            ? { referenceGroup: reference, direction: destination === 'bottom' ? 'below' : 'right' }
+            : { direction: 'right' }),
+        });
+      }
+      panel.api.moveTo({ group });
+      setPreset(null);
+      focus(panel);
+      saveLayout();
+    }
+    function split() {
+      const api = apiRef.current;
+      const panel = api?.activePanel;
+      if (!api || !panel) return;
+      const descriptor = descriptorOf(panel);
+      if (descriptor.kind !== 'document') return;
+      if (
+        api.panels.filter((item) => descriptorOf(item).kind === 'document').length >= MAX_DOCUMENTS
+      ) {
+        setMessage('tabLimit');
+        return;
+      }
+      const id = `document:${crypto.randomUUID()}`;
+      let group = mainGroups(api).find((item) => item.id !== panel.group.id);
+      if (!group) {
+        if (mainGroups(api).length >= 2 || api.groups.length >= 4) {
+          setMessage('splitLimit');
+          return;
+        }
+        group = api.addGroup({ id: 'main2', referenceGroup: panel.group, direction: 'right' });
+      }
+      const created = api.addPanel({
+        id,
+        component: 'workbench',
+        params: { descriptor: { ...descriptor, viewId: id } },
+        title: panel.title,
+        renderer: 'always',
+        position: { referenceGroup: group, direction: 'within' },
+      });
+      setPreset(null);
+      focus(created);
+      saveLayout();
+    }
+    function resize(axis: 'width' | 'height', amount: number) {
+      const group = apiRef.current?.activeGroup;
+      if (!group || narrow.current) return;
+      group.api.setSize({
+        [axis]: Math.max(120, (axis === 'width' ? group.width : group.height) + amount),
+      });
+      setPreset(null);
+      saveLayout();
+    }
+    function allowDrop(event: DockviewWillDropEvent | DockviewWillShowOverlayLocationEvent) {
+      const api = apiRef.current;
+      const data = event.getData();
+      if (!api || !data || narrow.current) {
+        event.preventDefault();
+        return;
+      }
+      const source = api.groups.find((group) => group.id === data.groupId);
+      const moving = data.panelId
+        ? [api.getPanel(data.panelId)].filter((panel): panel is IDockviewPanel => Boolean(panel))
+        : (source?.panels ?? []);
+      const hasDocument = moving.some((panel) => descriptorOf(panel).kind === 'document');
+      const destinationGroup = event.group;
+      const isMain =
+        destinationGroup && mainGroups(api).some((group) => group.id === destinationGroup.id);
+      if (event.position === 'center') {
+        if (hasDocument && !isMain) event.preventDefault();
+        return;
+      }
+      const removesSource = Boolean(source && moving.length === source.panels.length);
+      const addedGroups = removesSource ? 0 : 1;
+      if (
+        !hasDocument ||
+        !isMain ||
+        api.groups.length + addedGroups > 4 ||
+        mainGroups(api).length + addedGroups > 2
+      )
+        event.preventDefault();
+    }
+    function onReady({ api }: DockviewReadyEvent) {
+      apiRef.current = api;
+      mutating.current = true;
+      const { hostId, projectId } = current.current;
+      const key = layoutStorageKey(hostId, projectId);
+      let loaded: ReturnType<typeof parseLayout> | null = null;
+      try {
+        if (key && hostId) loaded = parseLayout(localStorage.getItem(key), hostId, projectId);
+      } catch {
+        setMessage('storageFailed');
+      }
+      try {
+        api.fromJSON(
+          loaded?.layout ??
+            createPresetLayout(
+              'conversation',
+              loaded?.panels.length ? loaded.panels : DEFAULT_PANELS,
+            ),
+          { reuseExistingPanels: true },
+        );
+      } catch {
+        api.fromJSON(
+          createPresetLayout(
+            'conversation',
+            loaded?.panels.length ? loaded.panels : DEFAULT_PANELS,
+          ),
+          { reuseExistingPanels: true },
+        );
+        setMessage('layoutRecovered');
+      }
+      if (loaded?.layout) setPreset(null);
+      if (loaded?.recovered) setMessage('layoutRecovered');
+      mutating.current = false;
+      cleanup.current.push(
+        api.onDidLayoutChange(() => {
+          refresh();
+          saveLayout();
+        }).dispose,
+      );
+      cleanup.current.push(
+        api.onDidActivePanelChange((event) => {
+          if (mutating.current) return;
+          refresh();
+          if (event.panel && narrow.current && !event.panel.api.isMaximized())
+            event.panel.api.maximize();
+          if (event.origin === 'user' && event.panel) {
+            const descriptor = descriptorOf(event.panel);
+            if (descriptor.kind === 'context') current.current.onActiveContext?.(descriptor.view);
+          }
+        }).dispose,
+      );
+      cleanup.current.push(
+        api.onDidMovePanel(() => {
+          if (!mutating.current) setPreset(null);
+        }).dispose,
+      );
+      cleanup.current.push(api.onWillShowOverlay(allowDrop).dispose);
+      cleanup.current.push(api.onWillDrop(allowDrop).dispose);
+      refresh();
+      if (current.current.selectedPanel || !loaded?.layout)
+        openContext(current.current.selectedPanel ?? 'chat');
+      const measure = () => {
+        const width = host.current?.getBoundingClientRect().width ?? 0;
+        const next = width > 0 && width <= 600;
+        if (next === narrow.current) return;
+        narrow.current = next;
+        if (next && api.activePanel) api.activePanel.api.maximize();
+        else if (!next) api.exitMaximizedGroup();
+      };
+      const observer = new ResizeObserver(measure);
+      if (host.current) observer.observe(host.current);
+      measure();
+      cleanup.current.push(() => observer.disconnect());
+    }
+    const actions = useRef({ openContext, refresh });
+    actions.current = { openContext, refresh };
+    useEffect(() => {
+      void t;
+      actions.current.refresh();
+    }, [t]);
+    useEffect(() => {
+      const previous = lastSelection.current;
+      lastSelection.current = {
+        sessionId: props.sessionId,
+        selectedPanel: props.selectedPanel,
+        selectionKey: props.selectionKey,
+      };
+      if (
+        previous.sessionId === props.sessionId &&
+        previous.selectedPanel === props.selectedPanel &&
+        previous.selectionKey === props.selectionKey
+      )
+        return;
+      actions.current.openContext(props.selectedPanel ?? 'chat');
+    }, [props.selectedPanel, props.selectionKey, props.sessionId]);
+    useEffect(
+      () => props.documentOwner?.subscribe(() => actions.current.refresh()),
+      [props.documentOwner],
+    );
+    useEffect(
+      () => () => {
+        for (const dispose of cleanup.current.splice(0)) dispose();
+        for (const release of retention.current.values()) release();
+        retention.current.clear();
+        apiRef.current = null;
+      },
+      [],
+    );
+    const selected = apiRef.current?.getPanel(active);
+    return (
+      <RendererContext.Provider
+        value={{
+          renderContext: props.renderContext,
+          renderDocument: props.renderDocument,
+          close: (id) => void closePanel(id),
+        }}
+      >
+        <section
+          ref={host}
+          aria-label={t('title')}
+          className="corral-dock-workbench"
+          data-testid="dock-workbench"
+        >
+          <div className="corral-dock-toolbar">
+            <div className="corral-dock-select">
+              <span>{t('preset')}</span>
+              <Select
+                label={t('preset')}
+                placeholder={t('savedLayout')}
+                size="sm"
+                value={preset}
+                onValueChange={(value) => applyPreset(value as DockPreset)}
+                options={(['conversation', 'implementation', 'review'] as const).map((value) => ({
+                  value,
+                  label: t(value),
+                }))}
+              />
+            </div>
+            <div className="corral-dock-select">
+              <span>{t('activePane')}</span>
+              <Select
+                label={t('activePane')}
+                size="sm"
+                value={active}
+                onValueChange={(id) => {
+                  const panel = apiRef.current?.getPanel(id);
+                  if (panel) focus(panel, true);
+                }}
+                options={panels.map((panel) => ({ value: panel.id, label: panel.title }))}
+              />
+            </div>
+            <Select
+              label={t('openPane')}
+              placeholder={t('openPane')}
+              size="sm"
+              value=""
+              onValueChange={(value) => openContext(value as DockContextView, true)}
+              options={contexts.map((value) => ({ value, label: t(value) }))}
+            />
+            <details className="corral-dock-actions">
+              <summary>{t('layoutControls')}</summary>
+              <div className="flex flex-wrap gap-1">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => apiRef.current?.activatePrevious({ includePanel: true })}
+                >
+                  {t('previousPane')}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => apiRef.current?.activateNext({ includePanel: true })}
+                >
+                  {t('nextPane')}
+                </Button>
+                <Select
+                  label={t('moveTo')}
+                  size="sm"
+                  value={destination}
+                  onValueChange={setDestination}
+                  options={groupNames.map((value) => ({ value, label: t(value) }))}
+                />
+                <Button size="sm" variant="ghost" disabled={!selected} onClick={move}>
+                  {t('move')}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={!selected || descriptorOf(selected).kind !== 'document'}
+                  onClick={split}
+                >
+                  {t('split')}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={!selected}
+                  aria-label={t('close')}
+                  onClick={() => selected && void closePanel(selected.id)}
+                >
+                  {t('close')}
+                </Button>
+                <div className="flex gap-1">
+                  <Button size="sm" variant="ghost" onClick={() => resize('width', -80)}>
+                    {t('narrower')}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => resize('width', 80)}>
+                    {t('wider')}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => resize('height', -60)}>
+                    {t('shorter')}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => resize('height', 60)}>
+                    {t('taller')}
+                  </Button>
+                </div>
+              </div>
+            </details>
+          </div>
+          {props.controls ? <div className="corral-dock-controls">{props.controls}</div> : null}
+          {message ? (
+            <p role="status" className="px-3 py-1 text-xs text-muted">
+              {t(message)}
+            </p>
+          ) : null}
+          <div className="corral-dock-area">
+            <DockviewReact
+              components={components}
+              defaultTabComponent={DockTab}
+              theme={theme}
+              onReady={onReady}
+              disableFloatingGroups
+              getTabContextMenuItems={() => []}
+            />
+          </div>
+        </section>
+        <Dialog
+          open={Boolean(closing)}
+          onOpenChange={(open) => {
+            if (!open && !closeBusy) setClosing(null);
+          }}
+        >
+          <DialogPopup showCloseButton={false} className="flex flex-col gap-4 p-6">
+            <DialogTitle>{t('closeTitle')}</DialogTitle>
+            <DialogDescription>
+              {t('closeDescription', { path: closing?.path ?? '' })}
+            </DialogDescription>
+            {closeFailed ? (
+              <p role="alert" className="text-sm text-danger">
+                {t('closeFailed')}
+              </p>
+            ) : null}
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button
+                disabled={closeBusy}
+                onClick={() => closing && void closePanel(closing.id, 'cancel')}
+              >
+                {t('cancel')}
+              </Button>
+              <Button
+                disabled={closeBusy}
+                onClick={() => closing && void closePanel(closing.id, 'discard')}
+              >
+                {t('discard')}
+              </Button>
+              <Button
+                variant="default"
+                disabled={closeBusy}
+                onClick={() => closing && void closePanel(closing.id, 'save')}
+              >
+                {t('save')}
+              </Button>
+            </div>
+          </DialogPopup>
+        </Dialog>
+      </RendererContext.Provider>
+    );
+  },
+);

@@ -1,0 +1,103 @@
+.corral-dock-workbench {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  height: 100%;
+}
+.corral-dock-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.375rem;
+  background: var(--color-surface);
+}
+.corral-dock-toolbar [role="combobox"] {
+  max-width: 13rem;
+}
+.corral-dock-area {
+  flex: 1;
+  min-height: 300px;
+  min-width: 0;
+  overflow: hidden;
+}
+.corral-dock-area > div {
+  height: 100%;
+}
+.corral-dock-content {
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: var(--color-surface);
+}
+.corral-dock-content-fixed {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.corral-dock-theme {
+  --dv-background-color: var(--color-surface);
+  --dv-group-view-background-color: var(--color-surface);
+  --dv-tabs-and-actions-container-background-color: var(--color-raised);
+  --dv-tabs-and-actions-container-height: 36px;
+  --dv-tabs-and-actions-container-font-size: 12px;
+  --dv-activegroup-visiblepanel-tab-background-color: var(--color-surface);
+  --dv-activegroup-hiddenpanel-tab-background-color: transparent;
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--color-surface);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: transparent;
+  --dv-activegroup-visiblepanel-tab-color: var(--color-text);
+  --dv-activegroup-hiddenpanel-tab-color: var(--color-muted);
+  --dv-inactivegroup-visiblepanel-tab-color: var(--color-text);
+  --dv-inactivegroup-hiddenpanel-tab-color: var(--color-muted);
+  --dv-separator-border: var(--color-line);
+  --dv-drag-over-background-color: color-mix(in srgb, var(--color-accent) 14%, transparent);
+  --dv-drag-over-border: 1px solid var(--color-accent);
+}
+.corral-dock-theme .dv-tab:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+.corral-dock-controls {
+  flex-shrink: 0;
+  padding: 0.25rem 0.5rem;
+}
+.corral-dock-actions > summary {
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 0.375rem 0.5rem;
+  font-size: 12px;
+}
+.corral-dock-actions[open] {
+  flex-basis: 100%;
+}
+.corral-dock-actions > div {
+  padding: 0.25rem;
+}
+@media (max-width: 600px) {
+  .corral-dock-toolbar [role="combobox"] {
+    max-width: 10rem;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .corral-dock-workbench .corral-dock-theme * {
+    scroll-behavior: auto;
+    transition: none;
+    animation: none;
+  }
+}
+
+.corral-dock-select {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+}
+.corral-dock-select > span {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}

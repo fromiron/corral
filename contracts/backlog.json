@@ -2912,5 +2912,27 @@
     "done": "기존 chat/graph/Run/files/review/preview 대상의 descriptor와 경로 연결, 명시 Run과 기억한 선택 분리, root store 수명 보존 및 실제 인앱 deep link/설정 왕복을 검증한다. 도킹 배치 자체는 P10이다.",
     "status": "implemented",
     "evidence": "docs/evaluation/Development-Workbench-Panels-2026-10-21.md"
+  },
+  {
+    "id": "C-150",
+    "phase": "M2",
+    "title": "CR-046 도킹 배치·키보드·layout 복구 (P10)",
+    "dependsOn": [
+      "C-149"
+    ],
+    "requirements": [
+      "CRL-WBD-006"
+    ],
+    "files": [
+      "apps/studio/src/workbench/",
+      "apps/studio/src/pages/",
+      "apps/studio/src/index.css",
+      "apps/studio/package.json",
+      "packages/react/src/messages/",
+      "THIRD-PARTY-NOTICES/"
+    ],
+    "done": "문서 최대20개와 중앙1~2그룹·보조/하단 배치의 이동/preset/reload에서 full target/viewId·모델·dirty·PTY/Run 수명을 보존한다. 손상 descriptor/grid 복구, 명시 닫기, 키보드 이동/resize/preset/close와 실제390px 승인/중지 접근을 검증하며 기존 graph/review route를 유지한다.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/Development-Workbench-Docking-2026-10-21.md"
   }
 ]

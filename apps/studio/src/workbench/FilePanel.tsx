@@ -1,4 +1,5 @@
 import type { FileSideView } from '@corral/client';
+import type { WorkspaceTarget } from '@corral/contracts';
 import { FileText, RefreshCw, X } from '@corral/react/icons';
 import {
   Button,
@@ -54,6 +55,11 @@ export interface FileReference {
   start: number;
   end: number;
 }
+export interface OpenDocumentRequest {
+  documentKey: string;
+  target: WorkspaceTarget;
+  path: string;
+}
 export const referenceText = ({ path, start, end }: FileReference) =>
   `@${path.includes(' ') ? JSON.stringify(path) : path}:L${start}${end === start ? '' : `-L${end}`}`;
 
@@ -61,10 +67,14 @@ export function FilePanel({
   projectId,
   sessionId,
   onReference,
+  onOpenDocument,
+  showTools = true,
 }: {
   projectId: string;
   sessionId: string;
   onReference: (reference: FileReference) => void;
+  onOpenDocument?: (document: OpenDocumentRequest) => boolean;
+  showTools?: boolean;
 }) {
   const t = useTranslations('Desktop');
   const tf = useTranslations('Files');
@@ -105,6 +115,14 @@ export function FilePanel({
   const [sessionRecoveries, setSessionRecoveries] = useState<RecoveryDraft[]>([]);
   const [recoveryReadError, setRecoveryReadError] = useState(false);
   const documentKeys = useRef(new Map<string, string>());
+  const openEpoch = useRef(0);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Completed reads must not open a dock in another host or session.
+  useEffect(
+    () => () => {
+      openEpoch.current++;
+    },
+    [owner, projectId, sessionId],
+  );
   const [tabMessage, setTabMessage] = useState<string | null>(null);
   const [closing, setClosing] = useState<{ key: string; path: string } | null>(null);
   const [closeBusy, setCloseBusy] = useState(false);
@@ -129,7 +147,7 @@ export function FilePanel({
     estimateSize: () => 30,
     overscan: 6,
   });
-  const open = (path: string) => {
+  const openInline = (path: string) => {
     const next = openedFilePaths(paths, path);
     if (!next) {
       setTabMessage(te('tabLimit'));
@@ -154,6 +172,35 @@ export function FilePanel({
         entry.target.bindingId === copy.bindingId &&
         entry.target.copyGeneration === copy.copyGeneration,
     );
+  const open = async (path: string, sessionFile = false) => {
+    setReadError(null);
+    if (onOpenDocument && owner && (scopeKind === 'session' || sessionFile)) {
+      const epoch = openEpoch.current;
+      try {
+        const key = await owner.open(sessionId, path);
+        if (openEpoch.current !== epoch) return;
+        const entry = owner.getState().documents[key];
+        if (
+          entry &&
+          (entry.file.content.kind === 'text' ||
+            entry.dirty ||
+            entry.pendingSave ||
+            entry.recoveries.length)
+        ) {
+          if (onOpenDocument({ documentKey: key, target: entry.target, path: entry.path })) {
+            setTabMessage(null);
+            if (paths.includes(path)) removeTab(path);
+          } else setTabMessage(te('tabLimit'));
+          return;
+        }
+      } catch (failure) {
+        if (openEpoch.current === epoch)
+          setReadError(failure instanceof Error ? failure.message : String(failure));
+        return;
+      }
+    }
+    openInline(path);
+  };
   const retained = Object.values(documents).filter(
     (entry) =>
       entry.target.sessionId === sessionId &&
@@ -349,7 +396,7 @@ export function FilePanel({
                     variant="outline"
                     onClick={() => {
                       setSource('session');
-                      open(candidate.path);
+                      void open(candidate.path, true);
                     }}
                   >
                     {te('openRecoveryFile')}
@@ -418,7 +465,7 @@ export function FilePanel({
   if (!scope && !loading)
     return (
       <div ref={panel} className="space-y-2 p-3 text-xs text-muted">
-        <TerminalPanel sessionId={sessionId} />
+        {showTools ? <TerminalPanel projectId={projectId} sessionId={sessionId} /> : null}
         {retainedDrafts}
         {recoveryCandidates}
         {recoveryReadError ? <p role="alert">{te('recoveryReadFailed')}</p> : null}
@@ -442,12 +489,12 @@ export function FilePanel({
           {te('recoveryReadFailed')}
         </p>
       ) : null}
-      {scopeKind === 'session' ? (
+      {showTools && scopeKind === 'session' ? (
         <PreviewLeases key={`previews:${sessionId}`} sessionId={sessionId} />
       ) : null}
-      {scopeKind === 'session' ? <WorktreeCommandPanel sessionId={sessionId} /> : null}
-      <TerminalPanel sessionId={sessionId} />
-      {scopeKind === 'session' ? (
+      {showTools && scopeKind === 'session' ? <WorktreeCommandPanel sessionId={sessionId} /> : null}
+      {showTools ? <TerminalPanel projectId={projectId} sessionId={sessionId} /> : null}
+      {showTools && scopeKind === 'session' ? (
         <ServicePreview
           key={panelKey(services, { kind: 'service-preview', sessionId })}
           sessionId={sessionId}

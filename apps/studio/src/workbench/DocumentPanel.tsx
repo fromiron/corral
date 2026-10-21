@@ -15,12 +15,18 @@ export function DocumentPanel({
   viewId,
   onReference,
   readOnlyTarget = false,
+  manageView = true,
+  fill = false,
+  referencePending = false,
 }: {
   owner: DocumentStore;
   documentKey: string;
   viewId: string;
-  onReference: (reference: FileReference) => void;
+  onReference?: (reference: FileReference) => void;
   readOnlyTarget?: boolean;
+  manageView?: boolean;
+  fill?: boolean;
+  referencePending?: boolean;
 }) {
   const entry = useStore(owner, (state) => state.documents[documentKey]);
   const t = useTranslations('Documents');
@@ -30,7 +36,10 @@ export function DocumentPanel({
   const [revealRange, setRevealRange] = useState<{ startLine: number; endLine: number }>();
   const [editorFailed, setEditorFailed] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  useEffect(() => owner.retainView(documentKey, viewId), [owner, documentKey, viewId]);
+  useEffect(
+    () => (manageView ? owner.retainView(documentKey, viewId) : undefined),
+    [owner, documentKey, viewId, manageView],
+  );
   if (!entry) return null;
   const lineCount = entry.text.split(/\r\n|\r|\n/).length;
   const validRange = range.start >= 1 && range.end >= range.start && range.end <= lineCount;
@@ -44,7 +53,14 @@ export function DocumentPanel({
         !entry.conflict &&
         !entry.formatBlocked &&
         entry.dirty);
-  const canReference = !readOnlyTarget && validRange && !entry.dirty && !entry.saving && !pending;
+  const canReference =
+    Boolean(onReference) &&
+    !referencePending &&
+    !readOnlyTarget &&
+    validRange &&
+    !entry.dirty &&
+    !entry.saving &&
+    !pending;
   const perform = (work: () => Promise<unknown>) => {
     setActionError(null);
     void work().catch(() => setActionError(t('operationFailed')));
@@ -61,7 +77,10 @@ export function DocumentPanel({
         ? ''
         : t('unknownContent');
   return (
-    <div className="flex min-w-0 flex-col gap-2" data-testid="document-panel">
+    <div
+      className={`flex min-w-0 flex-col gap-2 ${fill ? 'h-full min-h-0' : ''}`}
+      data-testid="document-panel"
+    >
       <div className="flex flex-wrap items-center gap-2">
         <Button size="sm" disabled={!canSave} onClick={() => perform(save)}>
           {t(entry.saving ? 'saving' : pending && entry.canRetrySave ? 'retrySave' : 'save')}
@@ -245,15 +264,21 @@ export function DocumentPanel({
           size="sm"
           variant="outline"
           disabled={!canReference}
-          onClick={() => onReference({ path: entry.path, ...range })}
+          onClick={() => onReference?.({ path: entry.path, ...range })}
         >
           {td('referenceLines')}
         </Button>
       </div>
+      {!onReference ? <p className="text-xs text-muted">{t('otherSessionReference')}</p> : null}
+      {referencePending ? (
+        <p role="status" className="text-xs text-muted">
+          {t('loading')}
+        </p>
+      ) : null}
       {entry.dirty || pending ? <p className="text-xs text-muted">{t('dirtyReference')}</p> : null}
       <section
         aria-label={td('fileContent')}
-        className="min-w-0 overflow-hidden rounded fill-group"
+        className={`min-w-0 overflow-hidden rounded fill-group ${fill ? 'min-h-56 flex-1' : ''}`}
       >
         {editorFailed || entry.modelError || entry.formatBlocked ? (
           <>
@@ -270,7 +295,7 @@ export function DocumentPanel({
             />
           </>
         ) : entry.model ? (
-          <div className="h-[min(45vh,28rem)] min-h-56">
+          <div className={fill ? 'h-full min-h-56' : 'h-[min(45vh,28rem)] min-h-56'}>
             <Suspense fallback={<p className="p-3 text-xs text-muted">{t('loading')}</p>}>
               <CodeEditorView
                 model={entry.model}

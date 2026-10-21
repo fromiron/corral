@@ -4,6 +4,7 @@ import { lazy, Suspense, useEffect, useId, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
+import { useRemembered } from '../pages/Workbench.tsx';
 import { useServices } from '../services.tsx';
 import { panelKey } from './panels/registry.ts';
 import { type TerminalStore, terminalStore } from './terminals/store.ts';
@@ -12,18 +13,51 @@ const TerminalView = lazy(() =>
   import('./terminals/TerminalView.tsx').then((module) => ({ default: module.TerminalView })),
 );
 
-export function TerminalPanel({ sessionId }: { sessionId: string }) {
-  const { terminals, mode } = useServices();
-  return terminals && mode === 'server' ? (
-    <SessionTerminals key={sessionId} sessionId={sessionId} store={terminalStore(terminals)} />
-  ) : null;
+export function TerminalPanel({ sessionId, projectId }: { sessionId: string; projectId?: string }) {
+  const { terminals, mode, workspaceId } = useServices();
+  if (!terminals || mode !== 'server') return null;
+  const store = terminalStore(terminals);
+  if (workspaceId && projectId) {
+    const selectionKey = `corral:terminal-selection:v1:${JSON.stringify([workspaceId, projectId, sessionId])}`;
+    return (
+      <RememberedTerminals
+        key={selectionKey}
+        sessionId={sessionId}
+        store={store}
+        selectionKey={selectionKey}
+      />
+    );
+  }
+  return <SessionTerminals key={sessionId} sessionId={sessionId} store={store} />;
 }
 
-function SessionTerminals({ sessionId, store }: { sessionId: string; store: TerminalStore }) {
+function RememberedTerminals({
+  sessionId,
+  store,
+  selectionKey,
+}: {
+  sessionId: string;
+  store: TerminalStore;
+  selectionKey: string;
+}) {
+  const selection = useRemembered(selectionKey, '');
+  return <SessionTerminals sessionId={sessionId} store={store} selection={selection} />;
+}
+
+function SessionTerminals({
+  sessionId,
+  store,
+  selection,
+}: {
+  sessionId: string;
+  store: TerminalStore;
+  selection?: [string, (value: string) => void];
+}) {
   const t = useTranslations('Terminals');
   const session = useStore(store, (state) => state.sessions[sessionId]);
   const list = session?.list;
-  const [selected, select] = useState('');
+  const memorySelection = useState('');
+  const [selected, select] = selection ?? memorySelection;
   const [shell, setShell] = useState('');
   const [actionError, setActionError] = useState(false);
   const hintId = useId();

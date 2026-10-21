@@ -783,6 +783,24 @@
       ]
     },
     {
+      "name": "dockview-react",
+      "version": "8.6.1",
+      "license": "MIT",
+      "integrity": "sha512-F67LqtPsgKjQ6bvzkTnI8soXmMTu3XEFGVtKEu1UHS0sqpkaRMyQbNAP/+DF/VOGhkn0h/PwHLdehJdrF5yJrg==",
+      "published": "2026-10-19T20:24:32.365Z",
+      "repository": "git+https://github.com/dockview/dockview.git",
+      "gitHead": "a9e3092fbd5c61aef69ca0922a86bf0be53cb891",
+      "engines": null,
+      "peerDependencies": {
+        "react": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0",
+        "react-dom": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0"
+      },
+      "scope": "runtime",
+      "usedBy": [
+        "@corral/studio"
+      ]
+    },
+    {
       "name": "electron",
       "version": "44.4.5",
       "license": "MIT",
