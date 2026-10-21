@@ -105,6 +105,7 @@ import {
 import { registerPreviewRoutes } from './preview/routes.ts';
 import { PreviewService } from './preview/service.ts';
 import { PreviewToolsBroker } from './preview/tools.ts';
+import { PTY_INTERACTIVE_ROUTES, registerTerminalRoutes } from './processes/pty-routes.ts';
 import { registerProjectRoutes } from './projects/routes.ts';
 import { materialsVaultAdapters } from './projects/vault.ts';
 import { drainRejectedBody } from './rejected-body.ts';
@@ -118,6 +119,7 @@ import { scheduleVaultAdapter } from './schedules/vault.ts';
 import {
   assertLoopback,
   boundaryFor,
+  InteractiveRequestLimiter,
   newBootstrapToken,
   PREVIEW_HEADERS,
   RequestLimiter,
@@ -569,6 +571,7 @@ async function createCorralServer(
   const boundary = boundaryFor(() => port, options.extraOrigins);
   const streams = new Set<() => void>();
   const limiter = new RequestLimiter(() => clock.monotonicMs());
+  const terminalLimiter = new InteractiveRequestLimiter(() => clock.monotonicMs());
 
   const requestTimeoutMs = 30_000;
   const app = Fastify({
@@ -614,7 +617,8 @@ async function createCorralServer(
       if (queryKeys.some((key) => /token|key|secret|authorization|password/i.test(key))) {
         return fail(reply, 'SCHEMA_INVALID', 'credentials are not accepted in query strings');
       }
-      if (!limiter.allow(!safe)) {
+      const interactive = request.method === 'POST' && PTY_INTERACTIVE_ROUTES.includes(path);
+      if (!interactive && !limiter.allow(!safe)) {
         return reply
           .header('retry-after', '60')
           .code(429)
@@ -1490,6 +1494,13 @@ async function createCorralServer(
     if (!session) void fail(reply, 'TARGET_NOT_FOUND', 'no such session');
     return session;
   };
+  registerTerminalRoutes(app, {
+    terminals: files.terminals,
+    hasSession: async (sessionId) => Boolean(await corrals.getSession(sessionId)),
+    fail,
+    streams,
+    limiter: terminalLimiter,
+  });
   const runEnded = (runId: string) => {
     const status = coordinator.listRuns().find((r) => r.runId === runId)?.status;
     return status ? TERMINAL_RUN_STATUSES.has(status) : true;

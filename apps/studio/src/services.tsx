@@ -11,6 +11,7 @@ import {
   probeServer,
   RestCorralRepository,
   RunModesApi,
+  TerminalsApi,
   VaultApi,
   VoiceApi,
   WorkspacesApi,
@@ -72,6 +73,8 @@ export interface StudioServices {
   cancelAuto?: (request: AutoCancelRequest) => Promise<AutoCancelResult>;
   /** Work folders and file changes (CR-012); the browser demo has an in-memory one. */
   workspaces: WorkspacesClient | null;
+  /** User PTYs exist only on the authenticated host, never in the browser demo. */
+  terminals?: TerminalsApi | null;
   voice?: import('@corral/client').VoiceClient | null;
   vault?: import('@corral/client').VaultClient | null;
 }
@@ -181,6 +184,7 @@ export async function createStudioServices(): Promise<StudioServices> {
       startAuto: (request, signal) => transport.startAuto(request, signal),
       cancelAuto: (request) => transport.cancelAuto(request),
       workspaces: new WorkspacesApi(http),
+      terminals: new TerminalsApi(http),
       voice: new VoiceApi(http),
       vault: new VaultApi(http),
     };
@@ -201,6 +205,7 @@ export async function createStudioServices(): Promise<StudioServices> {
   const workspaces = createDemoWorkspaces(workspace, repository, transport);
   return {
     mode: 'browser',
+    terminals: null,
     persistent,
     sessionMissing: false,
     models: null,

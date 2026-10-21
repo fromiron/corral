@@ -10,7 +10,7 @@ baseline: 071276873dee4bb51491bf608e604fbb4e123475
 
 입력은 `Corral-Workbench-Ecosystem-Plan-v2-2026-10-21.md`이며 SHA-256은 `11087e6b6b940bdbca89792e5a8efd84764b326ec42664ff1d289c4d65ae4451`이다. 원문을 수정하거나 전체 제품 조사를 복제하지 않는다. 기준 코드는 PR #68을 포함하는 위 commit이며, 계획 작성 시 소스·계약·manifest를 대조했다. 이후 실행 결과는 별도 검증 기록에 남긴다.
 
-현재 진행: C-143/P03의 공통 예약·receipt·사본 generation은 구현하고 관련 회귀를 확인했다. C-142의 A/B 비교와 대상/owner 계약을 완료하고 ADR-040에 따라 기존 셸+A 엔진 연결을 선택했다. C-144/P04 문서 API는 [구현·관련 회귀](../evaluation/Development-Workbench-Documents-2026-10-21.md)를 완료했으며, [C-145·146/P05–06 편집·복구](../evaluation/Development-Workbench-Editor-2026-10-21.md)는 구현하고 Linux 인앱 흐름을 확인했다. PTY·도킹 연결과 실제 OS IME/설치판 검증은 남아 있다. [실행 기록](../evaluation/Development-Workbench-Foundation-2026-10-21.md)을 참조한다.
+현재 진행: C-143/P03의 공통 예약·receipt·사본 generation은 구현하고 관련 회귀를 확인했다. C-142의 A/B 비교와 대상/owner 계약을 완료하고 ADR-040에 따라 기존 셸+A 엔진 연결을 선택했다. C-144/P04 문서 API는 [구현·관련 회귀](../evaluation/Development-Workbench-Documents-2026-10-21.md)를 완료했으며, [C-145·146/P05–06 편집·복구](../evaluation/Development-Workbench-Editor-2026-10-21.md)는 구현하고 Linux 인앱 흐름을 확인했다. [C-147·148/P07–08 PTY](../evaluation/Development-Workbench-Terminal-2026-10-21.md)는 구현하고 Linux 인앱의 파일→PTY→Diff 흐름을 확인했다. 다음 구현은 P09 패널 registry/route bridge이며 도킹·Git·개발 여정, 실제 OS IME와 지원 플랫폼/설치판 qualification은 남아 있다. [실행 기록](../evaluation/Development-Workbench-Foundation-2026-10-21.md)을 참조한다.
 
 ## 1. 구현 순서와 제품 경계
 

@@ -11,5 +11,8 @@ ignoredBuiltDependencies:
   - onnxruntime-node
   - protobufjs
 
+onlyBuiltDependencies:
+  - node-pty@1.1.0
+
 patchedDependencies:
   '@earendil-works/pi-coding-agent@1.3.0': patches/@earendil-works__pi-coding-agent@1.3.0.patch

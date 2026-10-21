@@ -15,6 +15,7 @@ import {
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { z } from 'zod';
+import { linuxBootId as bootId, linuxProcessIdentity } from './processes/linux-identity.ts';
 
 const Lease = z.strictObject({
   version: z.literal(1),
@@ -28,15 +29,8 @@ const missing = (error: unknown) =>
   (error as NodeJS.ErrnoException).code === 'ESRCH';
 function processIdentity(pid: number) {
   try {
-    const stat = readFileSync(`/proc/${pid}/stat`, 'utf8');
-    const fields = stat
-      .slice(stat.lastIndexOf(')') + 2)
-      .trim()
-      .split(/\s+/);
-    if (!/^\d+$/.test(fields[19] ?? '')) throw new Error('worker identity unavailable');
-    return { startTicks: fields[19]!, group: Number(fields[2]), state: fields[0] };
-  } catch (error) {
-    if (missing(error)) return null;
+    return linuxProcessIdentity(pid);
+  } catch {
     throw new Error('worker identity unavailable');
   }
 }
@@ -45,11 +39,6 @@ function directoryAt(directory: string) {
   if (!lstatSync(directory).isDirectory() || lstatSync(directory).isSymbolicLink())
     throw new Error('worker registry is not a directory');
 }
-const bootId = () =>
-  process.platform === 'linux'
-    ? readFileSync('/proc/sys/kernel/random/boot_id', 'utf8').trim()
-    : null;
-
 /** Written before the host sends start; an unrecorded process cannot start codemode work. */
 export function recordWorkerLease(
   directory: string,

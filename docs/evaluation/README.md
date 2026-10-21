@@ -7,6 +7,7 @@
 | Desktop 기능·플랫폼 한계 | [전체 진행](Desktop-Capabilities-Implementation-Progress.md), [배포](Desktop-Delivery-Verification.md), [preview](Desktop-Preview-Verification.md), [동시 실행](Desktop-Concurrency-Verification.md), 나머지 Desktop 기능별 보고서 |
 | 문맥형 설정·Composer | [CR-044 구현·Linux 검증](Contextual-Settings-UI-2026-10-21.md) |
 | Workbench 식별·테두리 일관성 | [CR-045 구현·Linux 검증](Workbench-Identification-2026-10-21.md) |
+| 사용자 PTY·터미널 | [CR-046 P07–08 구현·Linux 인앱/native runtime 검증](Development-Workbench-Terminal-2026-10-21.md) |
 | 파일 편집·초안 복구 | [CR-046 P05–06 구현·Linux 인앱 검증](Development-Workbench-Editor-2026-10-21.md) |
 | 관리 사본 문서 변경 | [CR-046 P04 API·파일/HTTP 검증](Development-Workbench-Documents-2026-10-21.md) |
 | 개발 Workbench 기반 | [CR-046 공통 예약·migration과 엔진 qualification](Development-Workbench-Foundation-2026-10-21.md) |

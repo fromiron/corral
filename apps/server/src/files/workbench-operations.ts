@@ -52,6 +52,56 @@ export class WorkbenchOperations {
     );
   }
 
+  list(kind: string, sessionId?: string): WorkbenchOperation[] {
+    const rows = (
+      sessionId === undefined
+        ? this.db
+            .prepare(
+              'SELECT operation_id FROM workbench_operations WHERE kind=? ORDER BY created_at,operation_id',
+            )
+            .all(kind)
+        : this.db
+            .prepare(
+              "SELECT operation_id FROM workbench_operations WHERE kind=? AND json_extract(target_json,'$.sessionId')=? ORDER BY created_at,operation_id",
+            )
+            .all(kind, sessionId)
+    ) as { operation_id: string }[];
+    return rows.map((row) => this.get(row.operation_id) as WorkbenchOperation);
+  }
+
+  updateRunning(operationId: string, result: unknown): boolean {
+    return (
+      this.db
+        .prepare(
+          "UPDATE workbench_operations SET result_json=?,updated_at=? WHERE operation_id=? AND state='running'",
+        )
+        .run(JSON.stringify(result), this.clock.nowIso(), operationId).changes === 1
+    );
+  }
+
+  /** Called only after explicit OS identity reconciliation proves the PTY session is gone. */
+  reconcileTerminal(operationId: string, result: unknown): WorkbenchOperation {
+    return this.db
+      .transaction(() => {
+        const prior = this.get(operationId);
+        if (prior?.kind !== 'terminal')
+          throw new ToolRefusal('TARGET_NOT_FOUND', 'terminal receipt is unavailable');
+        if (prior.state !== 'uncertain' && prior.state !== 'running') return prior;
+        this.db
+          .prepare(
+            "UPDATE workbench_operations SET state='cancelled',result_json=?,updated_at=? WHERE operation_id=?",
+          )
+          .run(JSON.stringify(result), this.clock.nowIso(), operationId);
+        this.db
+          .prepare(
+            "UPDATE workspace_access SET state='released' WHERE owner_kind='user' AND owner_id=? AND state IN ('active','uncertain')",
+          )
+          .run(operationId);
+        return this.get(operationId) as WorkbenchOperation;
+      })
+      .immediate();
+  }
+
   admit(
     request: OperationRequest,
     path: string,

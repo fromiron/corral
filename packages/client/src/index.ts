@@ -18,6 +18,14 @@ import type {
   SkillKey,
   SkillRollbackRequest,
   SkillUpdatePreview,
+  TerminalAck,
+  TerminalControllerChange,
+  TerminalCreate,
+  TerminalIdentity,
+  TerminalInput,
+  TerminalList,
+  TerminalResize,
+  TerminalView,
 } from '@corral/contracts';
 import { canonicalJson } from '@corral/core';
 import type { CommandRecovery, StartRecovery } from './recovery.ts';
@@ -28,6 +36,15 @@ export type {
   DocumentOperation,
   DocumentVersion,
   FileDocument,
+  TerminalAck,
+  TerminalControllerChange,
+  TerminalCreate,
+  TerminalIdentity,
+  TerminalInput,
+  TerminalList,
+  TerminalResize,
+  TerminalStreamMessage,
+  TerminalView,
   WorkspaceTarget,
 } from '@corral/contracts';
 export type {
@@ -87,6 +104,7 @@ import {
   type StartRunRequest,
   type StreamFrame,
   type TeamPlan,
+  TerminalStreamMessage,
   type UltraSelection,
   type VerificationReport,
 } from '@corral/contracts';
@@ -584,6 +602,31 @@ async function readEvents(
   stream: (frame: StreamFrame) => void,
   stopped: () => boolean,
 ) {
+  return readSse(
+    body,
+    (frame) => {
+      if (frame.event === 'domain') {
+        let event: RunEvent;
+        try {
+          event = RunEvent.parse(JSON.parse(frame.data));
+        } catch {
+          throw new InvalidEventStream('invalid domain event');
+        }
+        deliver(event);
+      }
+      if (frame.event === 'stream') stream(JSON.parse(frame.data) as StreamFrame);
+    },
+    stopped,
+    true,
+  );
+}
+
+async function readSse(
+  body: ReadableStream<Uint8Array>,
+  receive: (frame: { event: string; data: string }) => void | Promise<void>,
+  stopped: () => boolean,
+  allowLargeDomain = false,
+) {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
@@ -595,22 +638,13 @@ async function readEvents(
       let end = buffer.indexOf('\n\n');
       while (end >= 0 && !stopped()) {
         const block = buffer.slice(0, end);
-        checkFrameSize(block);
+        checkFrameSize(block, allowLargeDomain);
         buffer = buffer.slice(end + 2);
         const frame = parseFrame(block);
-        if (frame?.event === 'domain') {
-          let event: RunEvent;
-          try {
-            event = RunEvent.parse(JSON.parse(frame.data));
-          } catch {
-            throw new InvalidEventStream('invalid domain event');
-          }
-          deliver(event);
-        }
-        if (frame?.event === 'stream') stream(JSON.parse(frame.data) as StreamFrame);
+        if (frame) await receive(frame);
         end = buffer.indexOf('\n\n');
       }
-      checkFrameSize(buffer);
+      checkFrameSize(buffer, allowLargeDomain);
     }
   } finally {
     await reader.cancel().catch(() => {});
@@ -619,10 +653,10 @@ async function readEvents(
 
 class InvalidEventStream extends Error {}
 
-function checkFrameSize(block: string) {
+function checkFrameSize(block: string, allowLargeDomain: boolean) {
   // A committed record can exceed its HTTP input (patches contain before + after).
   const header = /^(?:id: \d+\n)?event: domain\ndata: /.exec(block.slice(0, 128));
-  if (header && block.indexOf('\n', header[0].length) === -1) return;
+  if (allowLargeDomain && header && block.indexOf('\n', header[0].length) === -1) return;
   if (new TextEncoder().encode(block).byteLength > 2 * 1024 * 1024)
     throw new InvalidEventStream('event stream frame exceeds the size limit');
 }
@@ -661,6 +695,146 @@ async function apiErrorFrom(response: Response, body: unknown): Promise<ApiError
     error?.code ?? 'UNKNOWN',
     error?.message ?? response.statusText,
   );
+}
+
+/** User PTYs use authenticated HTTP controls and an output-only resumable stream. */
+export class TerminalsApi {
+  private readonly http: Http;
+  constructor(options: HttpOptions) {
+    this.http = new Http(options);
+  }
+  private path(sessionId: string, terminalId?: string) {
+    return `/sessions/${encodeURIComponent(sessionId)}/terminals${terminalId === undefined ? '' : `/${encodeURIComponent(terminalId)}`}`;
+  }
+  list(sessionId: string): Promise<TerminalList> {
+    return this.http.json(this.path(sessionId));
+  }
+  read(sessionId: string, terminalId: string): Promise<TerminalView> {
+    return this.http.json(this.path(sessionId, terminalId));
+  }
+  create(sessionId: string, input: TerminalCreate): Promise<TerminalView> {
+    return this.http.json(this.path(sessionId), { method: 'POST', body: JSON.stringify(input) });
+  }
+  control(
+    sessionId: string,
+    terminalId: string,
+    input: TerminalControllerChange,
+  ): Promise<TerminalView> {
+    return this.http.json(`${this.path(sessionId, terminalId)}/control`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+  input(sessionId: string, terminalId: string, input: TerminalInput): Promise<TerminalAck> {
+    return this.http.json(`${this.path(sessionId, terminalId)}/input`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+  resize(sessionId: string, terminalId: string, input: TerminalResize): Promise<TerminalAck> {
+    return this.http.json(`${this.path(sessionId, terminalId)}/resize`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+  stop(sessionId: string, terminalId: string, input: TerminalIdentity): Promise<TerminalView> {
+    return this.http.json(`${this.path(sessionId, terminalId)}/stop`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+  subscribe(
+    sessionId: string,
+    terminalId: string,
+    cursor: { generation: string; after: number },
+    handlers: {
+      onEvent: (event: TerminalStreamMessage) => void | Promise<void>;
+      onError?: (error: unknown) => void;
+    },
+  ): () => void {
+    const controller = new AbortController();
+    let lastSequence = cursor.after;
+    let stopped = false;
+    const stop = (error?: unknown) => {
+      if (stopped) return;
+      stopped = true;
+      controller.abort();
+      if (error !== undefined) handlers.onError?.(error);
+    };
+    const connect = async (attempt: number): Promise<void> => {
+      let failure: unknown;
+      try {
+        const query = new URLSearchParams({
+          generation: cursor.generation,
+          after: String(lastSequence),
+        });
+        const response = await this.http.request(
+          `${this.path(sessionId, terminalId)}/events?${query}`,
+          {
+            headers: { accept: 'text/event-stream', 'last-event-id': String(lastSequence) },
+            signal: controller.signal,
+          },
+        );
+        if (!response.ok || !response.body) return stop(await apiError(response));
+        await readSse(
+          response.body,
+          async (frame) => {
+            if (frame.event !== 'terminal') return;
+            let event: TerminalStreamMessage;
+            try {
+              event = TerminalStreamMessage.parse(JSON.parse(frame.data));
+            } catch {
+              throw new InvalidEventStream('invalid terminal event');
+            }
+            const generation =
+              event.type === 'status' ? event.terminal.generation : event.generation;
+            if (
+              generation !== cursor.generation ||
+              (event.type === 'status' &&
+                (event.terminal.terminalId !== terminalId ||
+                  event.terminal.target.sessionId !== sessionId))
+            )
+              throw new InvalidEventStream('terminal event identity does not match');
+            if (event.type !== 'status') {
+              if (event.sequence <= lastSequence) return;
+              if (event.sequence !== lastSequence + 1) throw new Error('terminal output gap');
+            }
+            try {
+              await handlers.onEvent(event);
+            } catch {
+              throw new InvalidEventStream('terminal rendering failed');
+            }
+            if (event.type !== 'status') lastSequence = event.sequence;
+          },
+          () => stopped,
+        );
+        attempt = 0;
+      } catch (error) {
+        if (stopped) return;
+        if (error instanceof InvalidEventStream) return stop(error);
+        failure = error;
+      }
+      if (stopped) return;
+      const delay = RECONNECT_DELAYS_MS[attempt];
+      if (delay === undefined)
+        return stop(failure ?? new Error('terminal stream could not be resumed'));
+      handlers.onError?.(failure ?? new Error('terminal stream disconnected'));
+      if (stopped) return;
+      await new Promise<void>((resolve) => {
+        const finish = () => {
+          clearTimeout(timer);
+          controller.signal.removeEventListener('abort', finish);
+          resolve();
+        };
+        const timer = setTimeout(finish, delay);
+        controller.signal.addEventListener('abort', finish, { once: true });
+        if (stopped) finish();
+      });
+      if (!stopped) await connect(attempt + 1);
+    };
+    void connect(0);
+    return () => stop();
+  }
 }
 
 // ── Corral repository ────────────────────────────────────────────────────────

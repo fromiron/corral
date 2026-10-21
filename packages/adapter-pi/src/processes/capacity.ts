@@ -26,6 +26,11 @@ export function reserveHostProcessGroup(): HostProcessReservation {
   if (process.env.CORRAL_PROCESS_CAPACITY_BROKER === '1')
     throw new Error('Worker process groups require host admission');
   if (activeProcesses >= maxHostProcesses) throw new HostProcessCapacityError();
+  return restoreHostProcessGroupReservation();
+}
+
+/** Existing owners count even above the admission limit; recovery never launches a process. */
+export function restoreHostProcessGroupReservation(): HostProcessReservation {
   activeProcesses += 1;
   let held = true;
   return {

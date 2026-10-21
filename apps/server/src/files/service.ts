@@ -58,6 +58,7 @@ import {
   ReviewRecipeRevision,
   RunCommandArgs,
   type Scheduler,
+  type TerminalCreate,
   type VerificationOwner,
   VerificationReport,
   type WorkspaceTarget,
@@ -70,6 +71,7 @@ import {
   ToolTerminationUnconfirmed,
 } from '@corral/core';
 import { type Db, SqliteHarnessStore, SqliteProjectToolStore } from '@corral/storage-sqlite';
+import { PtyRuntime, type PtyRuntimeOptions } from '../processes/pty.ts';
 import { CommandCapacityError, CommandRuntime } from '../processes/runtime.ts';
 import { commandEnvironment, listShells, resolveShellCommand } from '../processes/shells.ts';
 import { systemTimers } from '../runtime.ts';
@@ -322,6 +324,7 @@ interface WorktreeRow {
 }
 
 export class WorkspaceService implements FileTools {
+  readonly terminals: PtyRuntime;
   private readonly commandRuntime = new CommandRuntime();
   private readonly pendingCommands = new Map<string, Promise<CommandReport>>();
   private readonly pendingCommandHashes = new Map<string, string>();
@@ -375,6 +378,7 @@ export class WorkspaceService implements FileTools {
     newVerificationId?: () => string;
     newLspProposalId?: () => string;
     io?: Partial<MutationIo>;
+    pty?: Pick<PtyRuntimeOptions, 'spawn' | 'capture' | 'cleanup' | 'shells' | 'newGeneration'>;
     lsp?: Pick<LspRunner, 'query'>;
     edit?: (request: EditTextRequest, cancellation: ToolCancellation) => Promise<EditTextResult>;
   }) {
@@ -408,6 +412,23 @@ export class WorkspaceService implements FileTools {
     this.edit = options.edit ?? ((request, cancellation) => editText(request, { cancellation }));
     this.worktreeRoot = resolve(options.worktreeRoot);
     this.forbidden = [...options.forbidden, this.worktreeRoot].map((p) => resolve(p));
+    this.terminals = new PtyRuntime({
+      ...options.pty,
+      operations: this.workbenchOperations,
+      timers: options.timers,
+      target: (sessionId, expected) => {
+        const current = this.documentTarget(sessionId, expected, Boolean(expected));
+        return {
+          target: current.target,
+          path: current.row.worktree_path,
+          writable:
+            Boolean(current.binding.trusted) &&
+            !this.disposing &&
+            !this.removingWorktrees.has(sessionId),
+        };
+      },
+      prepare: (input) => this.prepareTerminal(input),
+    });
     // A write planned before the last stop has an unknown outcome; it is never redone (WB-WSP-005).
     this.db
       .prepare(
@@ -988,6 +1009,24 @@ export class WorkspaceService implements FileTools {
         throw new WorkspaceError('CAPABILITY_DENIED', 'trust the repository before changing files');
     }
     return { row, binding, target };
+  }
+
+  private async prepareTerminal(input: TerminalCreate): Promise<string> {
+    const { row } = this.documentTarget(input.target.sessionId, input.target, true);
+    return this.lease(row.worktree_path, async () => {
+      this.documentTarget(input.target.sessionId, input.target, true);
+      const directory = await realpath(row.worktree_path);
+      if (directory !== resolve(row.worktree_path))
+        throw new WorkspaceError('REVISION_CONFLICT', 'the working copy identity changed');
+      const tree = await this.snapshotTree(directory);
+      await this.pin(
+        directory,
+        `refs/corral/${input.target.sessionId}/terminals/${input.operationId}/start`,
+        tree,
+      );
+      this.workspaceAccess.pin({ kind: 'user', id: input.operationId }, tree);
+      return directory;
+    });
   }
 
   async readDocument(sessionId: string, input: string): Promise<FileDocument> {
@@ -3079,6 +3118,7 @@ export class WorkspaceService implements FileTools {
 
   async dispose() {
     this.disposing = true;
+    await this.terminals.close();
     await this.commandRuntime.close();
     await Promise.allSettled([...this.pendingCommands.values()]);
     await Promise.allSettled(

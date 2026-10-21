@@ -50,3 +50,18 @@ H는 실제 임시 Git/SQLite에서 read→save/create→disk hash/형식/mode, 
 - FilePanel에 저장·dirty/read-only·충돌·복구 경로를 텍스트와 접근 가능한 상태로 표시한다. 편집기 내부 저장 단축키는 조합 입력을 가로채지 않는다. 390px·키보드 focus·테마·worker/CSP·실제 저장→기존 Diff를 확인한다. 자동 입력을 실제 OS 한/일 IME 검증으로 보고하지 않는다.
 
 먼저 모델/복구의 의미 있는 실패 테스트를 확인한다. 기존 관련 회귀를 재사용하고, 새 E2E는 인앱 브라우저 관찰 후 필요할 때만 추가한다. 이 계약의 정본은 CR-046이며 UI/상태 소유자는 Studio, 변경 시 관련 TC와 실제 화면을 재검증한다. 새로운 저장·충돌 UI는 기존 read-only browse를 대체하지 않고 관리 사본 text에만 적용한다.
+
+## P07–08: 사용자 PTY와 terminal view
+
+추적: CRL-WBD-004 / C-147·148 / TC-WBD-004-H,N,F. 승인 계획의 strict writer·별도 사용자 owner·공통 host capacity를 유지한다. 아래의 Linux 우선 구현이 다른 OS 또는 전체 설치판 검증을 대신하지 않는다.
+
+- 사용자 PTY는 fake Run 없이 관리 사본 target/generation, 원래 create operation ID와 durable receipt로 소유한다. 현재 신뢰와 canonical 사본을 확인하고 효과 전 snapshot과 공통 writer 예약을 유지한다. 프로세스가 쓰기 가능한 동안 save/다른 writer를 허용하지 않는다. UI는 터미널 종료 확인 후 저장하거나 다른 사본을 선택하도록 안내한다.
+- node-pty는 host의 번들 Node에서 실행한다. 기존 host 12개 process-group capacity를 공유하고 서비스별 counter를 만들지 않는다. 별도 PID group의 일반 shell job도 포함한 OS 소유 단위를 확인한 뒤에만 writer/capacity를 해제한다. Linux는 bootId/PID/startTicks/SID identity와 실제 구성원 확인을 재사용한다. SID 밖으로 의도적으로 daemonize한 프로세스를 sandbox/완전 종료했다고 주장하지 않는다. 모호한 소유는 uncertain으로 남긴다.
+- shell은 기존 설치 shell 목록에서 선택하며 원본 폴더에서는 실행하지 않는다. 기존 allowlist 환경과 private HOME을 재사용하고 provider/bootstrap 자격증명이나 사용자 shell 시작 파일을 자동 전달하지 않는다. pane 숨김/route 변경은 detach이며 명시 stop과 다르다. Run 취소는 사용자 PTY를 종료하지 않는다.
+- 기존 HTTP cookie/Host/Origin/CSRF와 SSE를 사용한다. create/claim/stop은 기존 요청 상한을 유지하고 input/resize에만 작은 frame/byte 예산을 별도로 적용한다. 인증을 완화하거나 전체 쓰기 상한을 올리지 않는다. 입력·출력 본문을 영속 receipt/log/레이아웃에 복제하지 않는다.
+- 한 controller generation/attachment만 input을 보낸다. 단조 sequence와 동일 payload hash로 중복 요청을 재실행하지 않으며 ack는 host 접수이지 shell 완료가 아니다. reconnect는 지난 입력을 자동 재전송하지 않는다. 명시 takeover는 이전 controller를 무효화한다. resize는 현재 controller의 최신 크기로 수렴한다.
+- output generation/sequence와 최초 크기·성공한 resize를 포함한 처음부터의 raw 기록을 byte 상한 안에서 재생한다. 정상 view는 마지막 적용 sequence 다음부터 연결하고 새 view는 처음부터 재생한다. 상한을 넘으면 replay 불가를 명시하고 임의 ANSI tail을 정상 복구로 표시하지 않는다. 느린 SSE viewer만 분리하며 shell을 자동 종료하지 않는다. headless/serialize/WS 의존성은 이 첫 계약에 필요하지 않다.
+- host 재시작은 기존 PTY를 복원하거나 command를 replay하지 않는다. 이전 operation/OS identity를 읽고 종료 확인 또는 uncertain을 구분한다. 입력 소유권과 출력 재생은 새로운 renderer attach와 별도로 관리한다.
+- xterm은 자체 terminal parser를 대체한다. Unicode/ANSI/alt-screen·resize·선택/복사·접근성을 사용하고 OSC clipboard/title/link를 이유로 명령·URL을 자동 실행하지 않는다. 상태/종료/입력 권한은 터미널 밖의 공용 control에서도 발견 가능해야 한다.
+
+먼저 실제 발견된 별도 PGID 후손·split escape와 핵심 상태 경합의 red를 확인한다. 시간은 runaway 상한만 사용하며 불필요한 exhaustive matrix나 새 E2E를 추가하지 않는다. 새 E2E가 필요하면 먼저 인앱 브라우저에서 실제 흐름을 관찰한다. 유료 모델·원격 push·배포·merge는 이 구현에 포함하지 않는다.

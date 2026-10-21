@@ -2847,5 +2847,47 @@
     "done": "관리 사본 편집·저장→기존 Diff, 원본/binary/큰 파일 fallback, EOL 명시 변환, dirty/충돌/복구 상태, worker/CSP와 390px·키보드·CJK 입력을 실제 화면에서 확인하고 OS IME 등 미검증 환경을 명시한다.",
     "status": "implemented",
     "evidence": "docs/evaluation/Development-Workbench-Editor-2026-10-21.md"
+  },
+  {
+    "id": "C-147",
+    "phase": "M1",
+    "title": "CR-046 사용자 PTY host와 인증 attach 계약 (P07)",
+    "dependsOn": [
+      "C-142",
+      "C-143"
+    ],
+    "requirements": [
+      "CRL-WBD-004"
+    ],
+    "files": [
+      "apps/server/src/processes/",
+      "apps/server/src/files/",
+      "packages/contracts/src/",
+      "packages/client/src/",
+      "packages/adapter-pi/src/processes/",
+      "apps/desktop/"
+    ],
+    "done": "실제 Linux PTY의 별도 PGID 작업 cleanup, 공통 writer/capacity, duplicate create/input, 취소·restart uncertain, bounded replay와 인증 경계를 검증하고 미검증 OS/설치판 범위를 명시한다.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/Development-Workbench-Terminal-2026-10-21.md"
+  },
+  {
+    "id": "C-148",
+    "phase": "M1",
+    "title": "CR-046 터미널 view와 파일 편집→PTY→Diff 연결 (P08)",
+    "dependsOn": [
+      "C-146",
+      "C-147"
+    ],
+    "requirements": [
+      "CRL-WBD-004"
+    ],
+    "files": [
+      "apps/studio/src/workbench/",
+      "packages/react/src/messages/"
+    ],
+    "done": "실제 인앱에서 파일 저장→PTY의 실제 읽기/검사→Diff, detach/reconnect·explicit stop·ANSI/Unicode/resize·입력 ack 유실, 다른 Run 취소와 사용자 터미널 격리를 검증한다.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/Development-Workbench-Terminal-2026-10-21.md"
   }
 ]

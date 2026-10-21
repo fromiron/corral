@@ -24,6 +24,7 @@
     "@fastify/static": "10.1.6",
     "@smithy/signature-v4": "5.7.4",
     "fastify": "5.12.7",
+    "node-pty": "1.1.0",
     "parse5": "8.0.1",
     "pngjs": "7.0.0",
     "vscode-languageserver-protocol": "3.18.4",

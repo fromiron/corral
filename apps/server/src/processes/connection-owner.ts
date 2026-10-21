@@ -1,5 +1,6 @@
 import type { ChildProcess } from 'node:child_process';
 import { readdir, readFile, readlink } from 'node:fs/promises';
+import { linuxProcessIdentity } from '@corral/adapter-pi/processes';
 import { attestOwnedWindowsConnection } from './owned-process.ts';
 
 /** Attest a connected loopback TCP socket; no URL or numeric listener port confers trust. */
@@ -34,25 +35,18 @@ export async function attestProcessConnection(child: ChildProcess, port: number,
         .map((row) => row[9]),
     );
     if (!inodes.size) return false;
-    const identity = async (pid: string) => {
-      const raw = await readFile(`/proc/${pid}/stat`, 'utf8');
-      const fields = raw
-        .slice(raw.lastIndexOf(')') + 2)
-        .trim()
-        .split(/\s+/);
-      return { group: fields[2], start: fields[19], state: fields[0] };
-    };
     for (const pid of await readdir('/proc')) {
       if (!/^\d+$/.test(pid)) continue;
       try {
-        const before = await identity(pid);
-        if (before.group !== String(child.pid) || ['Z', 'X'].includes(before.state ?? '')) continue;
+        const before = linuxProcessIdentity(Number(pid));
+        if (!before || before.group !== child.pid || ['Z', 'X'].includes(before.state)) continue;
         for (const fd of await readdir(`/proc/${pid}/fd`)) {
           const link = await readlink(`/proc/${pid}/fd/${fd}`).catch(() => '');
           if (!inodes.has(/^socket:\[(\d+)\]$/.exec(link)?.[1])) continue;
-          const after = await identity(pid);
+          const after = linuxProcessIdentity(Number(pid));
           if (
-            before.start === after.start &&
+            after &&
+            before.startTicks === after.startTicks &&
             before.group === after.group &&
             !['Z', 'X'].includes(after.state ?? '') &&
             child.exitCode === null &&

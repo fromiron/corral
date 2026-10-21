@@ -3357,5 +3357,38 @@
     "status": "planned",
     "adapter": "injected Monaco public model and recovery storage; real in-app browser before adding any E2E; no paid providers",
     "evidence": null
+  },
+  {
+    "id": "TC-WBD-004-H",
+    "requirements": [
+      "CRL-WBD-004"
+    ],
+    "suite": "unit+integration",
+    "scenario": "사용자 PTY create/attach/input/resize/stop·실제 파일 읽기와 공유 writer/capacity·인앱 terminal/Diff 연결",
+    "status": "planned",
+    "adapter": "real temporary Git/SQLite/Linux PTY with injected gates and bounded replay; in-app browser before any new E2E; no paid models",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-004-N",
+    "requirements": [
+      "CRL-WBD-004"
+    ],
+    "suite": "unit+integration",
+    "scenario": "다른 target/controller·PID 재사용·duplicate input·replay overflow·Origin/CSRF 거절과 Run 격리",
+    "status": "planned",
+    "adapter": "real temporary Git/SQLite/Linux PTY with injected gates and bounded replay; in-app browser before any new E2E; no paid models",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-004-F",
+    "requirements": [
+      "CRL-WBD-004"
+    ],
+    "suite": "unit+integration",
+    "scenario": "spawn 전 취소·입력 ack 유실·split ANSI/resize 재생·shell보다 늦은 job 종료·restart uncertain과 소유권 보존",
+    "status": "planned",
+    "adapter": "real temporary Git/SQLite/Linux PTY with injected gates and bounded replay; in-app browser before any new E2E; no paid models",
+    "evidence": null
   }
 ]

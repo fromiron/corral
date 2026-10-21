@@ -31,6 +31,7 @@ import { canPreviewFile, FilePreview } from './FilePreview.tsx';
 import { useSettingsNavigation } from './navigation.ts';
 import { PreviewLeases } from './PreviewLeases.tsx';
 import { ServicePreview } from './ServicePreview.tsx';
+import { TerminalPanel } from './TerminalPanel.tsx';
 import { useWorkspaceFiles } from './useWorkspaceFiles.ts';
 import { WorktreeCommandPanel } from './WorktreeCommandPanel.tsx';
 
@@ -415,6 +416,7 @@ export function FilePanel({
   if (!scope && !loading)
     return (
       <div ref={panel} className="space-y-2 p-3 text-xs text-muted">
+        <TerminalPanel sessionId={sessionId} />
         {retainedDrafts}
         {recoveryCandidates}
         {recoveryReadError ? <p role="alert">{te('recoveryReadFailed')}</p> : null}
@@ -438,9 +440,14 @@ export function FilePanel({
           {te('recoveryReadFailed')}
         </p>
       ) : null}
-      {scopeKind === 'session' ? <PreviewLeases key={sessionId} sessionId={sessionId} /> : null}
+      {scopeKind === 'session' ? (
+        <PreviewLeases key={`previews:${sessionId}`} sessionId={sessionId} />
+      ) : null}
       {scopeKind === 'session' ? <WorktreeCommandPanel sessionId={sessionId} /> : null}
-      {scopeKind === 'session' ? <ServicePreview key={sessionId} sessionId={sessionId} /> : null}
+      <TerminalPanel sessionId={sessionId} />
+      {scopeKind === 'session' ? (
+        <ServicePreview key={`service:${sessionId}`} sessionId={sessionId} />
+      ) : null}
       <div className="flex items-center gap-2">
         <Select
           label={t('fileSource')}

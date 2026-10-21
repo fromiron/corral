@@ -55,6 +55,14 @@
 | GET /sessions/:id/worktree/document | `path` 상대 파일 | CR-046 관리 사본 문서 `{target,path,content,version,writable}`. target은 host의 workspace identity·project/binding/session/copyGeneration. UTF-8 ≤1MiB는 BOM 포함 text와 full SHA-256·bytes·BOM/EOL, binary/too_large는 version:null·writable:false. 새 파일 경로는 absent. 기존 원본 browse는 읽기 전용 유지 |
 | POST /sessions/:id/worktree/documents | `DocumentCommand` | save/create(`baseHash:null`), rename(빈 목적지만), delete(`confirmed:true`·원본 hash·복구 checkpoint). 공통 writer와 기존 lease 사용. 접수 후 `DocumentOperation` receipt, 접수 전 잘못된 target/권한/owner는 기존 오류 코드. JSON 표현은 route별 7MiB, 실제 파일은 UTF-8 1MiB 제한 |
 | GET /sessions/:id/worktree/document-operations/:operationId | — | 원래 대상과 operation ID의 receipt. pending·완료·실패 모두 상대 path/precondition/제출 hash의 intent를 보존하며 원문 text는 저장하지 않는다. 현재 사본 삭제/재생성 후에도 완료 receipt를 조회한다. 같은 ID/다른 내용은 conflict, uncertain을 자동 재실행하지 않는다 |
+| GET /sessions/:id/terminals | — | 현재 target·가용 shell·사용자 터미널 목록. 작업 사본이 없어도 과거 terminal 상태/중지 대상은 조회 가능 |
+| POST /sessions/:id/terminals | `TerminalCreate` | target·operationId·shellId·초기 cols/rows. 공통 writer와 host process permit을 접수하고 starting receipt 반환. 같은 ID/같은 내용은 기존 결과, 다른 내용은 conflict |
+| GET /sessions/:id/terminals/:terminalId | — | `TerminalView`: generation·state·size·lastSequence·replayAvailable·controller. OS PID/identity·절대 경로는 공개하지 않음 |
+| POST /sessions/:id/terminals/:terminalId/control | `TerminalControllerChange` | target/generation·attachmentId·expectedGeneration·claim/release·명시 takeover. 한 controller만 입력하며 takeover는 같은 attachment에도 generation을 바꿈 |
+| POST /sessions/:id/terminals/:terminalId/input | `TerminalInput` | controllerGeneration·sequence·UTF-8 ≤16KiB data. input/resize 공통 순서, 같은 최신 순서/내용만 기존 ack. 자동 stdin 재시도 없음 |
+| POST /sessions/:id/terminals/:terminalId/resize | `TerminalResize` | controller의 공통 순서로 cols 2–500, rows 1–500. 성공한 resize도 output sequence에 포함 |
+| POST /sessions/:id/terminals/:terminalId/stop | `TerminalIdentity` | target/generation 확인 후 OS 세션 종료 증거에 따라 상태/예약 정리. 불명확하면 uncertain 유지 |
+| GET /sessions/:id/terminals/:terminalId/events | generation, after 또는 Last-Event-ID | 인증된 SSE. sequenced output/resize와 unsequenced 현재 status. 화면 detach는 구독 해제만 하며 PTY를 종료하지 않음 |
 | GET /sessions/:id/changes?scope=session\|review\|run&runId= | — | 비교 범위의 from·to tree와 파일 목록(상태·줄 수·바이너리·출처) |
 | GET /sessions/:id/changes/file?from&to&path | — | 두 tree의 파일 내용(text·binary·too_large·absent) |
 | POST /sessions/:id/reviewed | — | 지금 상태를 "마지막 검토"로 기록(승인 아님) |
@@ -225,3 +233,12 @@ SSE의 일반 미전송 데이터는 다음 UTF-8 frame을 포함해 1 MiB로 �
 `POST /api/v1/runs/auto`의 optional `qualityPreset: default | ultra`는 mode와 별개다. 미지정은 기존 경로이며 Ultra는 고정 planner→writer→reviewer 팀과 최대 두 번 수정하는 review recipe를 사용한다. 실제 선택은 시작 snapshot/event의 `autoRoute.qualityPreset`에 고정한다. 모델/effort·기본 예산·정책은 유지한다. custom 팀이나 역할 override를 Ultra로 변환하지 않는다.
 
 Composer 선택과 `/ultra`는 같은 요청을 만든다. CLI는 `corral exec auto --ultra --input brief.txt [--model-profile id] [--effort low] [--demo] [--json]`이며 `exec --ultra`도 auto와 같다. CLI auto는 로컬 템플릿 선택과 같은 Coordinator 시작 경로를 사용한다. `--ultra`를 사용자 정의 Corral 파일에 적용하면 거절하며, headless auto는 파일 도구 없는 콘텐츠 작업 범위다. 명시하지 않은 모델 profile은 기존 기본 `model-a`를 사용한다.
+
+
+## 사용자 PTY 전송과 복구 (CR-046 P07–08)
+
+정본 schema는 `packages/contracts/src/terminal.ts`다. 기존 Host/Origin/cookie/CSRF 경계를 유지한다. input/resize만 일반 mutation 횟수 대신 host 공통 1초당 120 frames·256KiB 예산을 사용한다. malformed frame도 예산에 포함한다. ack는 host 수신 확인이며 명령 완료가 아니다. UI는 UTF-8 16KiB로 나누되 64KiB 대기 입력을 넘는 전체 붙여넣기는 거절하며, 연결 유실로 확정되지 않은 입력은 자동 재전송하지 않는다.
+
+출력은 최초 크기와 처음부터의 ANSI/resize 순서를 4MiB까지 보관한다. 초과하면 prefix를 폐기하고 replayAvailable=false로 표시한다. 이미 연결된 화면은 이어 읽지만 새 화면이나 cursor gap에 임의 ANSI tail을 주어 복구 성공으로 표시하지 않는다. 종료 후 보관은 5분이며 그 뒤 재생 불가를 명시한다. status metadata는 출력 cursor를 전진시키지 않는다. client는 xterm write callback 완료 후 cursor를 갱신한다. 느린 viewer는 기존 bounded SSE writer로 분리하고 셸은 유지한다.
+
+터미널은 Run과 다른 사용자 owner이고 관리 사본의 writer 및 host 공통 12 process permits를 사용한다. 터미널을 실행 중인 사본은 파일 저장/새 writer Run을 거절한다. 다른 사본의 Run 취소는 이 PTY의 종료 요청이 아니다. Linux는 boot ID/PID/startTicks/SID를 확인하고 동일 session의 실행 중 descendant가 사라진 뒤 예약을 해제한다. host 재시작은 명령을 재실행하지 않으며 uncertain owner를 용량에 복원한다. 저장된 identity를 증명할 수 없는 중단 구간이나 setsid/daemon 이탈은 완전한 OS 격리/자동 회수로 주장하지 않는다.

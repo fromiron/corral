@@ -844,5 +844,11 @@
     "requirement": "CR-046 P05–06: 관리 사본 문서당 공유 Monaco 모델과 명시 저장·마지막 view 닫기·IndexedDB 초안 복구를 제공한다. 저장 중 새 편집, 응답 유실, 충돌, 사본 identity, 형식, 원본 읽기 전용을 보존하고 실제 FilePanel·설정 왕복·키보드·좁은 화면에서 검증한다.",
     "owner": "studio",
     "phase": "M1"
+  },
+  {
+    "id": "CRL-WBD-004",
+    "requirement": "CR-046 P07–08: 관리 사본의 사용자 PTY를 Run과 구분된 owner로 실행하며 공통 writer와 host process capacity를 유지한다. 인증된 attach/input/resize/stop, 단일 입력 controller, 제한된 output 재생과 원래 receipt 복구를 제공하고 실제 터미널→파일/Diff 여정을 검증한다.",
+    "owner": "server",
+    "phase": "M1"
   }
 ]

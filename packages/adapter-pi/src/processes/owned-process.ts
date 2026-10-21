@@ -16,8 +16,12 @@ import { prepareWindowsCommand, resolveWindowsExecutable } from './windows-comma
 export {
   confirmOwnedProcessCleanup,
   HostProcessCapacityError,
+  type HostProcessReservation,
   hasOwnedProcessReservations,
+  reserveHostProcessGroup,
+  restoreHostProcessGroupReservation,
 } from './capacity.ts';
+export { type LinuxProcessIdentity, linuxBootId, linuxProcessIdentity } from './linux-identity.ts';
 
 type Ownership = {
   directory: string;

@@ -33,6 +33,7 @@ export * from './session-continuity.ts';
 export * from './skill-quality.ts';
 export * from './states.ts';
 export * from './team-plan.ts';
+export * from './terminal.ts';
 export * from './user-input.ts';
 export * from './verification.ts';
 export * from './web-evidence.ts';

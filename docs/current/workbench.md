@@ -55,3 +55,10 @@ C-140의 구현과 이번 Linux 검증은 [실행 기록](../evaluation/Contextu
 ## 관리 사본의 수동 파일 변경
 
 [CR-046 P04](../change-requests/CR-046-development-workbench.md)는 모델 연결 없이 관리 session 사본의 버전 있는 파일 읽기와 save/create/rename/delete를 제공한다. 현재 대상과 전체 content hash를 확인하고 사용자 작업 receipt를 사용하며 원본·snapshot 읽기 경로는 유지한다. 삭제는 체크포인트의 원래 bytes 포함을 확인한 뒤 수행한다. 정확한 HTTP/type 계약은 [API 계약](../API-Contract.md)·`packages/contracts/src/workbench.ts`, 구현 상태는 C-144와 [활성 계획](../plans/workbench-development-implementation-plan-2026-10-21.md)을 따른다. 편집 UI·dirty 복구·Monaco view의 승인 계약은 같은 CR의 P05–06, 구현 상태는 C-145·146으로 추적한다. 문서당 단일 모델은 화면 밖에서 유지하고 저장·닫기·복구는 명시적으로 수행한다. mixed/CR 줄바꿈은 원문을 보존한 상태에서 사용자가 LF/CRLF 변환을 선택한 뒤 편집한다. 구현·화면 검증 여부는 backlog와 실행 기록에서 확인한다.
+
+
+## 사용자 터미널
+
+[CR-046 P07–08](../change-requests/CR-046-development-workbench.md)의 터미널은 관리 사본에서 모델 연결 없이 실행하는 사용자 PTY다. 기존 명령 기록·Run 제어와 별도로 표시하며, 생성·입력 권한 인계·명시 종료와 불확실 상태 재확인을 제공한다. 화면/설정 이동은 detach이며 프로세스를 종료하지 않는다. 같은 사본의 파일 저장은 터미널 종료 확인 후 다시 가능하다.
+
+xterm view와 parser는 화면 밖 store가 소유한다. 두 번째 renderer는 읽기 전용으로 연결하고 입력은 명시적으로 가져온다. 응답이 불확실한 stdin은 재전송하지 않는다. 출력 이력 상한을 넘어 새 화면 복구가 불가능하면 그 제한을 표시한다. Shift+Escape는 터미널 새로고침 버튼으로 포커스를 옮긴다. OSC clipboard/link와 title은 실행 경로로 사용하지 않는다. Linux 구현·실제 화면·번들 runtime 검증은 [P07–08 실행 기록](../evaluation/Development-Workbench-Terminal-2026-10-21.md), HTTP와 복구 한도는 [API 계약](../API-Contract.md)을 따른다.
