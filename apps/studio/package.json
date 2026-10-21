@@ -20,6 +20,7 @@
     "@tanstack/react-router": "1.170.44",
     "@tanstack/react-virtual": "3.14.19",
     "@xyflow/react": "12.12.0",
+    "monaco-editor": "0.57.0",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "use-intl": "4.14.9",

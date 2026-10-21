@@ -32,6 +32,7 @@ import { projectName } from '../projects.ts';
 import { useServices } from '../services.tsx';
 import { useShortcutBindings } from '../shortcutBindings.ts';
 import { shortcutLabel } from '../shortcuts.ts';
+import { documentStore } from '../workbench/documents/store.ts';
 import { hasUnsavedEditorCopy } from '../workbench/editorDraft.ts';
 import {
   SettingsNavigationContext,
@@ -66,10 +67,12 @@ function RootFrame() {
   const navigate = useNavigate();
   const router = useRouter();
   const settingsOwner = useRef(crypto.randomUUID()).current;
-  const { repository } = useServices();
+  const { repository, workspaces, mode } = useServices();
   useBlocker({
     shouldBlockFn: () => false,
-    enableBeforeUnload: () => hasUnsavedEditorCopy(repository),
+    enableBeforeUnload: () =>
+      hasUnsavedEditorCopy(repository) ||
+      Boolean(mode === 'server' && workspaces && documentStore(workspaces).hasUnsaved()),
   });
   const t = useTranslations('Studio');
   const tw = useTranslations('Workbench');

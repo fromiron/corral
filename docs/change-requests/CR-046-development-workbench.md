@@ -37,3 +37,16 @@ CR·요구·실패 테스트를 먼저 등록하고 실제로 red를 확인한 �
 - Corral 내부 예약은 외부 writer에 대한 OS 원자 CAS가 아니다. 직전 hash 확인과 원자 교체 사이 외부 변경 경합 한계를 숨기지 않는다. 파일 내용과 절대 경로를 오류/receipt에 복사하지 않는다.
 
 H는 실제 임시 Git/SQLite에서 read→save/create→disk hash/형식/mode, rename·삭제 checkpoint·receipt 재조회다. N은 stale hash/다른 target/generation·Run writer·symlink/경로이탈·binary/크기·기존 rename 목적지다. F는 IO/receipt 실패와 duplicate/늦은 응답·원자성·uncertain 보존이다. 별도 UI E2E를 먼저 추가하지 않는다.
+
+## P05–06: 공유 문서 모델·복구·FilePanel 편집
+
+추적: CRL-WBD-003 / C-145·146 / TC-WBD-003-H,N,F. P04의 API를 연결하는 같은 승인 계획의 다음 묶음이다. C-145·146 구현과 Linux 인앱/관련 회귀 결과는 [실행 기록](../evaluation/Development-Workbench-Editor-2026-10-21.md)에 남겼다. 구현과 실제 환경의 검증 상태는 별도로 기록한다.
+
+- Studio workspace client별 root store가 서버의 host/project/binding/session/generation/path identity로 단일 Monaco 모델을 소유한다. view는 selection/scroll과 editor만 소유한다. 설정·route 이동이나 view unmount가 모델/undo/초안을 폐기하지 않으며 독립 창의 동기 편집은 제공하지 않는다.
+- 명시 저장은 제출 text/editVersion과 같은 operation ID를 기억한다. 성공 baseline은 제출 내용이며 그 뒤 입력은 dirty로 남는다. 응답 유실은 원래 receipt GET으로 확인하며 새 ID로 자동 재전송하지 않는다. 충돌에는 base/내 초안/현재 disk를 보존하고 명시 해결을 제공한다. 마지막 view의 닫기는 저장/버리기/취소이며 저장 뒤 새 편집·미확정 작업이 있으면 닫지 않는다.
+- 표준 IndexedDB는 renderer별 identity와 full document key로 초안을 저장한다. 다른 창의 후보를 자동 채택하거나 덮지 않는다. 복구는 명시 선택이며 stale disk와 과거 baseline을 함께 보여준다. transaction 완료를 복구 저장 ack로 사용하고 quota 오류를 표시하며 메모리 초안은 유지한다. crash 직전 ack되지 않은 입력의 영속화를 보장하지 않는다. 본문·절대 경로를 로그/telemetry에 기록하지 않는다. 삭제·재생성된 사본의 과거 초안은 같은 host/project/session의 읽기 전용 후보로 재시작 후에도 접근하며 새 사본으로 자동 적용하지 않는다.
+- Monaco public API와 지연 로딩, 기존 토큰·공용 control을 사용한다. LF/CRLF·BOM은 보존한다. Monaco가 원형을 표현할 수 없는 CR-only/mixed EOL은 원문을 보존한 읽기 상태에서 LF/CRLF 명시 변환을 선택한 뒤에만 dirty 편집으로 바뀐다. 별도 undo 엔진이나 무음 정규화를 추가하지 않는다.
+- 관리 사본 text만 편집하고 원본·demo·binary·대용량은 기존 읽기 fallback을 유지한다. 저장되지 않은 range를 저장된 파일 reference로 오인시키지 않는다. tab 상한 도달 시 기존 문서를 조용히 제거하지 않고 닫기 안내를 제공한다. beforeunload의 기존 Desktop unsaved probe에 문서 상태를 합친다.
+- FilePanel에 저장·dirty/read-only·충돌·복구 경로를 텍스트와 접근 가능한 상태로 표시한다. 편집기 내부 저장 단축키는 조합 입력을 가로채지 않는다. 390px·키보드 focus·테마·worker/CSP·실제 저장→기존 Diff를 확인한다. 자동 입력을 실제 OS 한/일 IME 검증으로 보고하지 않는다.
+
+먼저 모델/복구의 의미 있는 실패 테스트를 확인한다. 기존 관련 회귀를 재사용하고, 새 E2E는 인앱 브라우저 관찰 후 필요할 때만 추가한다. 이 계약의 정본은 CR-046이며 UI/상태 소유자는 Studio, 변경 시 관련 TC와 실제 화면을 재검증한다. 새로운 저장·충돌 UI는 기존 read-only browse를 대체하지 않고 관리 사본 text에만 적용한다.

@@ -2808,5 +2808,44 @@
     "done": "실제 임시 파일/SQLite에서 full-hash read·원자 save/create·목적지 보존 rename·복구가능 delete·target/hash/owner 충돌·idempotency/uncertain과 client HTTP 경로를 검증한다.",
     "status": "implemented",
     "evidence": "docs/evaluation/Development-Workbench-Documents-2026-10-21.md"
+  },
+  {
+    "id": "C-145",
+    "phase": "M1",
+    "title": "CR-046 공유 문서 모델과 dirty 복구 (P05)",
+    "dependsOn": [
+      "C-144"
+    ],
+    "requirements": [
+      "CRL-WBD-003"
+    ],
+    "files": [
+      "apps/studio/src/workbench/documents/",
+      "apps/studio/src/pages/RootLayout.tsx"
+    ],
+    "done": "같은 문서 모델/undo·서로 다른 사본 분리·저장 중 새 편집·같은 ID receipt 조회·명시 닫기·quota/stale 초안·설정 왕복 보존을 필요한 단위 및 실제 브라우저 흐름에서 검증한다.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/Development-Workbench-Editor-2026-10-21.md"
+  },
+  {
+    "id": "C-146",
+    "phase": "M1",
+    "title": "CR-046 FilePanel 코드 편집과 문맥 연결 (P06)",
+    "dependsOn": [
+      "C-142",
+      "C-145"
+    ],
+    "requirements": [
+      "CRL-WBD-003"
+    ],
+    "files": [
+      "apps/studio/src/workbench/FilePanel.tsx",
+      "apps/studio/src/workbench/documents/",
+      "apps/studio/package.json",
+      "THIRD-PARTY-NOTICES/"
+    ],
+    "done": "관리 사본 편집·저장→기존 Diff, 원본/binary/큰 파일 fallback, EOL 명시 변환, dirty/충돌/복구 상태, worker/CSP와 390px·키보드·CJK 입력을 실제 화면에서 확인하고 OS IME 등 미검증 환경을 명시한다.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/Development-Workbench-Editor-2026-10-21.md"
   }
 ]

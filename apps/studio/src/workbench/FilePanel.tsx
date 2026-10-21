@@ -1,12 +1,32 @@
 import type { FileSideView } from '@corral/client';
 import { FileText, RefreshCw, X } from '@corral/react/icons';
-import { Button, Input, Select } from '@corral/react/ui';
+import {
+  Button,
+  Dialog,
+  DialogDescription,
+  DialogPopup,
+  DialogTitle,
+  Input,
+  Select,
+  Textarea,
+} from '@corral/react/ui';
 import { Link } from '@tanstack/react-router';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import { useTranslations } from 'use-intl';
 import { useRemembered } from '../pages/Workbench.tsx';
 import { useServices } from '../services.tsx';
+import { DocumentPanel } from './DocumentPanel.tsx';
+import type { RecoveryDraft } from './documents/recovery.ts';
+import { type CloseChoice, type DocumentBuffer, documentStore } from './documents/store.ts';
 import { canPreviewFile, FilePreview } from './FilePreview.tsx';
 import { useSettingsNavigation } from './navigation.ts';
 import { PreviewLeases } from './PreviewLeases.tsx';
@@ -17,6 +37,15 @@ import { WorktreeCommandPanel } from './WorktreeCommandPanel.tsx';
 const SourceCode = lazy(() =>
   import('./PierreCode.tsx').then((module) => ({ default: module.SourceCode })),
 );
+const noDocuments = { documents: {} as Record<string, DocumentBuffer> };
+const noSubscription = () => () => {};
+const emptyDocuments = () => noDocuments;
+const fileViewId = (sessionId: string, path: string) => JSON.stringify(['files', sessionId, path]);
+
+export function openedFilePaths(paths: string[], path: string): string[] | null {
+  if (paths.includes(path)) return paths;
+  return paths.length < 20 ? [...paths, path] : null;
+}
 
 export interface FileReference {
   path: string;
@@ -37,14 +66,21 @@ export function FilePanel({
 }) {
   const t = useTranslations('Desktop');
   const tf = useTranslations('Files');
+  const te = useTranslations('Documents');
   const navigation = useSettingsNavigation();
-  const { workspaces, mode } = useServices();
+  const { workspaces, mode, workspaceId } = useServices();
+  const owner = workspaces && mode === 'server' ? documentStore(workspaces) : null;
+  const { documents } = useSyncExternalStore(
+    owner?.subscribe ?? noSubscription,
+    owner?.getState ?? emptyDocuments,
+    emptyDocuments,
+  );
   const [savedSource, setSource] = useRemembered<'project' | 'session' | null>(
     `corral:file-source:v1:${sessionId}`,
     null,
   );
   const source = savedSource === 'project' || savedSource === 'session' ? savedSource : undefined;
-  const { scope, list, hasCopy, loading, error, refresh } = useWorkspaceFiles(
+  const { scope, list, hasCopy, copy, loading, error, refresh } = useWorkspaceFiles(
     projectId,
     sessionId,
     source,
@@ -61,55 +97,347 @@ export function FilePanel({
   const [query, setQuery] = useState('');
   const [content, setContent] = useState<FileSideView | null>(null);
   const [readError, setReadError] = useState<string | null>(null);
+  const [documentKey, setDocumentKey] = useState<string | null>(null);
+  const [retainedKey, setRetainedKey] = useState<string | null>(null);
+  const [sessionRecoveries, setSessionRecoveries] = useState<RecoveryDraft[]>([]);
+  const [recoveryReadError, setRecoveryReadError] = useState(false);
+  const documentKeys = useRef(new Map<string, string>());
+  const [tabMessage, setTabMessage] = useState<string | null>(null);
+  const [closing, setClosing] = useState<{ key: string; path: string } | null>(null);
+  const [closeBusy, setCloseBusy] = useState(false);
+  const [closeError, setCloseError] = useState(false);
   const [range, setRange] = useState({ start: 1, end: 1 });
+  const refreshRecoveries = useCallback(async () => {
+    if (!owner || !workspaceId) return;
+    const candidates = await owner.sessionRecoveries({ hostId: workspaceId, projectId, sessionId });
+    setSessionRecoveries(candidates);
+    setRecoveryReadError(false);
+  }, [owner, workspaceId, projectId, sessionId]);
+  useEffect(() => {
+    void list;
+    void refreshRecoveries().catch(() => setRecoveryReadError(true));
+  }, [refreshRecoveries, list]);
   const files = list.files.filter((f) => f.path.toLowerCase().includes(query.toLowerCase()));
   const scroll = useRef<HTMLDivElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
   const rows = useVirtualizer({
     count: files.length,
     getScrollElement: () => scroll.current,
     estimateSize: () => 30,
     overscan: 6,
   });
-  const open = (path: string) =>
-    save({ paths: paths.includes(path) ? paths : [...paths.slice(-19), path], active: path });
-  const close = (path: string) => {
+  const open = (path: string) => {
+    const next = openedFilePaths(paths, path);
+    if (!next) {
+      setTabMessage(te('tabLimit'));
+      return;
+    }
+    setTabMessage(null);
+    save({ paths: next, active: path });
+  };
+  const removeTab = (path: string) => {
     const next = paths.filter((p) => p !== path);
     save({ paths: next, active: active === path ? (next.at(-1) ?? null) : active });
+    setTabMessage(null);
   };
   const scopeKind = scope?.kind;
   const scopeId = scope?.id;
+  const currentCopy = (entry: DocumentBuffer | undefined) =>
+    Boolean(
+      entry &&
+        copy &&
+        !copy.missing &&
+        !copy.removedAt &&
+        entry.target.bindingId === copy.bindingId &&
+        entry.target.copyGeneration === copy.copyGeneration,
+    );
+  const retained = Object.values(documents).filter(
+    (entry) =>
+      entry.target.sessionId === sessionId &&
+      (entry.dirty || entry.pendingSave) &&
+      (!scope || !currentCopy(entry)),
+  );
+  const buffered = (path: string) => {
+    const key = documentKeys.current.get(path);
+    return (
+      (key && currentCopy(documents[key]) ? documents[key] : undefined) ??
+      Object.values(documents)
+        .filter(
+          (entry) =>
+            entry.target.sessionId === sessionId && entry.path === path && currentCopy(entry),
+        )
+        .at(-1)
+    );
+  };
+  const close = async (path: string, choice?: CloseChoice, requestedKey?: string) => {
+    const entry = requestedKey
+      ? documents[requestedKey]
+      : scopeKind === 'session'
+        ? buffered(path)
+        : undefined;
+    if (!entry || !owner) return removeTab(path);
+    setCloseBusy(true);
+    setCloseError(false);
+    try {
+      const result = await owner.closeView(entry.key, fileViewId(sessionId, path), choice);
+      if (result === 'closed') {
+        if (currentCopy(entry)) removeTab(path);
+        else setRetainedKey(null);
+        setClosing(null);
+        void refreshRecoveries().catch(() => setRecoveryReadError(true));
+      } else if (result === 'cancelled') setClosing(null);
+      else {
+        setClosing({ key: entry.key, path });
+        setCloseError(result === 'failed');
+      }
+    } catch {
+      setClosing({ key: entry.key, path });
+      setCloseError(true);
+    } finally {
+      setCloseBusy(false);
+    }
+  };
   useEffect(() => {
     // A refreshed listing also invalidates the open file's content.
     void list;
-    setContent(null);
+    const previous =
+      active && scopeKind === 'session' && owner
+        ? Object.values(owner.getState().documents).find(
+            (entry) =>
+              entry.target.sessionId === sessionId &&
+              entry.path === active &&
+              entry.target.bindingId === copy?.bindingId &&
+              entry.target.copyGeneration === copy?.copyGeneration,
+          )
+        : undefined;
+    setContent(previous?.file.content ?? null);
+    setDocumentKey(previous?.key ?? null);
     setReadError(null);
     setRange({ start: 1, end: 1 });
     if (!active || !scopeKind || !scopeId || !workspaces) return;
     let live = true;
-    void workspaces.readFile({ kind: scopeKind, id: scopeId }, active).then(
-      (file) => {
-        if (live) setContent(file.content);
-      },
-      (failure: unknown) => {
-        if (live) setReadError(failure instanceof Error ? failure.message : String(failure));
-      },
-    );
+    if (scopeKind === 'session' && owner) {
+      void owner.open(sessionId, active).then(
+        (key) => {
+          if (!live) return;
+          documentKeys.current.set(active, key);
+          setDocumentKey(key);
+          setContent(owner.getState().documents[key]?.file.content ?? null);
+        },
+        (failure: unknown) => {
+          if (live) setReadError(failure instanceof Error ? failure.message : String(failure));
+        },
+      );
+    } else
+      void workspaces.readFile({ kind: scopeKind, id: scopeId }, active).then(
+        (file) => {
+          if (live) setContent(file.content);
+        },
+        (failure: unknown) => {
+          if (live) setReadError(failure instanceof Error ? failure.message : String(failure));
+        },
+      );
     return () => {
       live = false;
     };
-  }, [workspaces, active, scopeKind, scopeId, list]);
+  }, [
+    workspaces,
+    owner,
+    sessionId,
+    active,
+    scopeKind,
+    scopeId,
+    list,
+    copy?.bindingId,
+    copy?.copyGeneration,
+  ]);
+  const closeDialog = closing ? (
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open && !closeBusy) setClosing(null);
+      }}
+    >
+      <DialogPopup
+        finalFocus={() =>
+          panel.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]') ??
+          panel.current?.querySelector<HTMLElement>('button') ??
+          false
+        }
+        showCloseButton={false}
+        bottomStickOnMobile={false}
+        className="flex flex-col gap-4 p-6"
+      >
+        <DialogTitle>{te('closeTitle', { path: closing.path })}</DialogTitle>
+        <DialogDescription>{te('closeHint')}</DialogDescription>
+        {closeError || documents[closing.key]?.pendingSave ? (
+          <p role="alert" className="text-sm text-danger">
+            {te('closeFailed')}
+          </p>
+        ) : null}
+        <div className="flex flex-wrap gap-2">
+          <Button
+            disabled={
+              closeBusy ||
+              !currentCopy(documents[closing.key]) ||
+              Boolean(documents[closing.key]?.pendingSave && !documents[closing.key]?.canRetrySave)
+            }
+            onClick={() => void close(closing.path, 'save', closing.key)}
+          >
+            {te('saveClose')}
+          </Button>
+          <Button
+            variant="outline"
+            disabled={closeBusy || Boolean(documents[closing.key]?.pendingSave)}
+            onClick={() => void close(closing.path, 'discard', closing.key)}
+          >
+            {te('discard')}
+          </Button>
+          <Button
+            variant="ghost"
+            disabled={closeBusy}
+            onClick={() => void close(closing.path, 'cancel', closing.key)}
+          >
+            {te('cancel')}
+          </Button>
+        </div>
+      </DialogPopup>
+    </Dialog>
+  ) : null;
+  const candidates = sessionRecoveries.filter(
+    (candidate) =>
+      !retained.some(
+        (entry) => entry.key === candidate.documentKey && entry.text === candidate.text,
+      ),
+  );
+  const recoveryCandidates =
+    owner && candidates.length ? (
+      <section
+        className="flex min-w-0 flex-col gap-2 rounded fill-group p-3"
+        aria-label={te('recovery')}
+      >
+        <p className="text-sm font-medium">{te('recovery')}</p>
+        {candidates.map((candidate) => {
+          const sameCopy = Boolean(
+            copy &&
+              !copy.missing &&
+              !copy.removedAt &&
+              candidate.target.bindingId === copy.bindingId &&
+              candidate.target.copyGeneration === copy.copyGeneration,
+          );
+          return (
+            <details key={candidate.id} className="min-w-0 text-xs">
+              <summary className="cursor-pointer break-all py-2 font-medium">
+                {candidate.path}
+              </summary>
+              <p className="mb-2 text-muted">
+                {te(sameCopy ? 'recoveryHint' : 'previousCopyHint')}
+              </p>
+              <Textarea
+                readOnly
+                aria-label={te('draftContent')}
+                value={candidate.text}
+                className="font-mono text-xs"
+              />
+              <div className="mt-2 flex flex-wrap gap-2">
+                {sameCopy ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setSource('session');
+                      open(candidate.path);
+                    }}
+                  >
+                    {te('openRecoveryFile')}
+                  </Button>
+                ) : null}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    void owner
+                      .discardRecoveryCandidate(candidate)
+                      .then(refreshRecoveries)
+                      .catch(() => setRecoveryReadError(true));
+                  }}
+                >
+                  {te('discardRecovery')}
+                </Button>
+              </div>
+            </details>
+          );
+        })}
+      </section>
+    ) : null;
+  const retainedDrafts =
+    owner && retained.length ? (
+      <section
+        className="flex min-w-0 flex-col gap-2 rounded fill-group p-3"
+        aria-label={te(scope ? 'previousCopy' : 'preservedDrafts')}
+      >
+        <p className="text-sm font-medium">{te(scope ? 'previousCopy' : 'preservedDrafts')}</p>
+        <p className="text-xs text-muted">
+          {te(scope ? 'previousCopyHint' : 'unavailableDraftHint')}
+        </p>
+        {retained.map((entry) => (
+          <div key={entry.key} className="flex min-w-0 items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm-multiline"
+              className="min-w-0 flex-1 justify-start break-all text-left"
+              onClick={() => setRetainedKey(entry.key)}
+            >
+              {entry.path}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={t('closeFile', { path: entry.path })}
+              onClick={() => void close(entry.path, undefined, entry.key)}
+            >
+              <X />
+            </Button>
+          </div>
+        ))}
+        {retained.some((entry) => entry.key === retainedKey) && retainedKey ? (
+          <DocumentPanel
+            key={retainedKey}
+            owner={owner}
+            documentKey={retainedKey}
+            viewId={fileViewId(sessionId, documents[retainedKey]?.path ?? '')}
+            onReference={onReference}
+            readOnlyTarget
+          />
+        ) : null}
+      </section>
+    ) : null;
   if (!scope && !loading)
     return (
-      <div className="space-y-2 p-3 text-xs text-muted">
+      <div ref={panel} className="space-y-2 p-3 text-xs text-muted">
+        {retainedDrafts}
+        {recoveryCandidates}
+        {recoveryReadError ? <p role="alert">{te('recoveryReadFailed')}</p> : null}
+        {closeDialog}
         {error ? <p role="alert">{error}</p> : <p>{t('linkToBrowse')}</p>}
         <Link {...navigation.link('workspace', projectId)} className="text-accent underline">
           {t('workspace')}
         </Link>
       </div>
     );
-  const lineCount = content?.kind === 'text' ? content.text.split('\n').length : 1;
+  const currentDocument = documentKey ? documents[documentKey] : undefined;
+  const displayContent =
+    scopeKind === 'session' && owner ? (currentDocument?.file.content ?? content) : content;
+  const lineCount = displayContent?.kind === 'text' ? displayContent.text.split('\n').length : 1;
   return (
-    <div className="flex min-h-0 flex-col gap-2" data-testid="file-panel">
+    <div ref={panel} className="flex min-h-0 flex-col gap-2" data-testid="file-panel">
+      {retainedDrafts}
+      {recoveryCandidates}
+      {recoveryReadError ? (
+        <p role="alert" className="text-xs text-danger">
+          {te('recoveryReadFailed')}
+        </p>
+      ) : null}
       {scopeKind === 'session' ? <PreviewLeases key={sessionId} sessionId={sessionId} /> : null}
       {scopeKind === 'session' ? <WorktreeCommandPanel sessionId={sessionId} /> : null}
       {scopeKind === 'session' ? <ServicePreview key={sessionId} sessionId={sessionId} /> : null}
@@ -172,6 +500,11 @@ export function FilePanel({
           {t('filesTruncated')}
         </p>
       ) : null}
+      {tabMessage ? (
+        <p role="status" className="text-xs text-muted">
+          {tabMessage}
+        </p>
+      ) : null}
       <div
         role="tablist"
         aria-label={t('openFiles')}
@@ -211,14 +544,20 @@ export function FilePanel({
               }}
               className="max-w-40 truncate px-2 py-2 text-xs"
               title={path}
+              aria-label={
+                scopeKind === 'session' && buffered(path)?.dirty ? te('dirtyTab', { path }) : path
+              }
             >
               {path}
+              {scopeKind === 'session' && buffered(path)?.dirty ? (
+                <span aria-hidden="true"> ●</span>
+              ) : null}
             </button>
             <Button
               size="icon-xs"
               variant="ghost"
               aria-label={t('closeFile', { path })}
-              onClick={() => close(path)}
+              onClick={() => void close(path)}
             >
               <X />
             </Button>
@@ -230,13 +569,29 @@ export function FilePanel({
           {readError}
         </p>
       ) : null}
-      {active && !content && !readError ? (
+      {active && !displayContent && !readError ? (
         <p className="text-xs text-muted">{t('loadingFile')}</p>
       ) : null}
       {active && canPreviewFile(active) && scopeKind === 'session' && mode === 'server' ? (
         <FilePreview key={`${sessionId}:${active}`} sessionId={sessionId} path={active} />
       ) : null}
-      {content?.kind === 'text' && active ? (
+      {scopeKind === 'session' &&
+      owner &&
+      documentKey &&
+      documents[documentKey] &&
+      (documents[documentKey].file.content.kind === 'text' ||
+        documents[documentKey].dirty ||
+        documents[documentKey].pendingSave ||
+        documents[documentKey].recoveries.length) ? (
+        <DocumentPanel
+          key={documentKey}
+          owner={owner}
+          documentKey={documentKey}
+          viewId={fileViewId(sessionId, documents[documentKey].path)}
+          onReference={onReference}
+          readOnlyTarget={!currentCopy(documents[documentKey])}
+        />
+      ) : displayContent?.kind === 'text' && active ? (
         <>
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <label>
@@ -275,20 +630,21 @@ export function FilePanel({
             className="max-h-[45vh] overflow-auto rounded fill-group"
           >
             <Suspense fallback={<p className="p-3 text-xs text-muted">{t('loadingFile')}</p>}>
-              <SourceCode path={active} text={content.text} onSelect={setRange} />
+              <SourceCode path={active} text={displayContent.text} onSelect={setRange} />
             </Suspense>
           </section>
           <p className="text-2xs text-muted">{t('referencePermission')}</p>
         </>
-      ) : content ? (
+      ) : displayContent ? (
         <p className="text-xs text-muted">
-          {content.kind === 'too_large'
+          {displayContent.kind === 'too_large'
             ? tf('tooLarge')
-            : content.kind === 'binary'
+            : displayContent.kind === 'binary'
               ? tf('binary')
               : t('fileUnavailable')}
         </p>
       ) : null}
+      {closeDialog}
     </div>
   );
 }

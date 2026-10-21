@@ -12,12 +12,12 @@ import { desktop } from '../desktop.tsx';
 import { useServices } from '../services.tsx';
 import { CheckpointPanel } from '../workbench/CheckpointPanel.tsx';
 import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
+import { WORKSPACE_CHANGED } from '../workbench/workspaceEvents.ts';
 
 // Work folders and working copies in Studio (CR-012), on the local server or the demo's
 // in-memory example folder.
 
-/** Fired when a session's working copy is made or removed. */
-export const WORKSPACE_CHANGED = 'corral:workspace-changed';
+export { WORKSPACE_CHANGED };
 
 /** "Name = command args" per line; quotes keep spaces inside one argument. */
 export function parseChecks(text: string): VerifyCommand[] {

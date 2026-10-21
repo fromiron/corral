@@ -871,6 +871,21 @@
       ]
     },
     {
+      "name": "monaco-editor",
+      "version": "0.57.0",
+      "license": "MIT",
+      "integrity": "sha512-5BkI9KGoqrNvBGUe15/QlZq3OooZ8WLg1AxTpaqHRCP3HNpzPPZKE2EDz8M7c+VRmCeUw1Brp4cx/PWm3kI/5A==",
+      "published": "2026-09-24T21:33:55.189Z",
+      "repository": "git+https://github.com/microsoft/monaco-editor.git",
+      "gitHead": null,
+      "engines": null,
+      "peerDependencies": null,
+      "scope": "runtime",
+      "usedBy": [
+        "@corral/studio"
+      ]
+    },
+    {
       "name": "onnxruntime-node",
       "version": "1.30.0",
       "license": "MIT",

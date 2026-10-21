@@ -10,7 +10,7 @@ baseline: 071276873dee4bb51491bf608e604fbb4e123475
 
 입력은 `Corral-Workbench-Ecosystem-Plan-v2-2026-10-21.md`이며 SHA-256은 `11087e6b6b940bdbca89792e5a8efd84764b326ec42664ff1d289c4d65ae4451`이다. 원문을 수정하거나 전체 제품 조사를 복제하지 않는다. 기준 코드는 PR #68을 포함하는 위 commit이며, 계획 작성 시 소스·계약·manifest를 대조했다. 이후 실행 결과는 별도 검증 기록에 남긴다.
 
-현재 진행: C-143/P03의 공통 예약·receipt·사본 generation은 구현하고 관련 회귀를 확인했다. C-142의 A/B 비교와 대상/owner 계약을 완료하고 ADR-040에 따라 기존 셸+A 엔진 연결을 선택했다. C-144/P04 문서 API는 [구현·관련 회귀](../evaluation/Development-Workbench-Documents-2026-10-21.md)를 완료했으며, 편집 UI·PTY·도킹 연결은 남아 있다. [실행 기록](../evaluation/Development-Workbench-Foundation-2026-10-21.md)을 참조한다.
+현재 진행: C-143/P03의 공통 예약·receipt·사본 generation은 구현하고 관련 회귀를 확인했다. C-142의 A/B 비교와 대상/owner 계약을 완료하고 ADR-040에 따라 기존 셸+A 엔진 연결을 선택했다. C-144/P04 문서 API는 [구현·관련 회귀](../evaluation/Development-Workbench-Documents-2026-10-21.md)를 완료했으며, [C-145·146/P05–06 편집·복구](../evaluation/Development-Workbench-Editor-2026-10-21.md)는 구현하고 Linux 인앱 흐름을 확인했다. PTY·도킹 연결과 실제 OS IME/설치판 검증은 남아 있다. [실행 기록](../evaluation/Development-Workbench-Foundation-2026-10-21.md)을 참조한다.
 
 ## 1. 구현 순서와 제품 경계
 
@@ -199,13 +199,13 @@ PTY는 host에 위치한다. renderer에는 xterm view만 둔다. `CommandRuntim
 - 작업: full-hash read, guarded atomic save, create/rename의 대상 precondition. 원본/snapshot은 읽기 전용. delete는 복구 가능한 journal/checkpoint와 명시 확인 후 제공한다.
 - 반례/완료: A가 읽은 뒤 B 변경, 사본 재생성, symlink/경로 이탈, BOM/CRLF, 권한/디스크 부족, 저장 응답 유실에서 원본·draft 보존. 실제 임시 파일과 SQLite로 검증. 선행 P03.
 
-**WB-P05 shared buffer와 dirty 복구 — M, W2-04**
+**WB-P05 shared buffer와 dirty 복구 — M, W2-04, C-145 구현**
 
 - 위치: `apps/studio/src/workbench/documents/`의 store/recovery 후보, 기존 draft·Desktop unsaved 흐름 연결.
 - 작업: 문서당 단일 model, view별 selection/scroll, explicit save, last-view close의 저장/버리기/취소, crash recovery. 독립 창 동기 편집은 추가하지 않는다.
 - 반례/완료: 같은 문서 두 pane undo, 다른 사본 동일 path, 저장 중 추가 입력, storage quota 실패, stale draft 복구, 설정/route 이동 뒤 draft 유지. 선행 P04의 계약.
 
-**WB-P06 코드 편집 view와 첫 context 연결 — M, W2-04**
+**WB-P06 코드 편집 view와 첫 context 연결 — M, W2-04, C-146 구현**
 
 - 위치: FilePanel·기존 SourceCode fallback, 새 `CodeEditorView` 후보. Monaco를 선택했을 때 public API만 사용한다.
 - 작업: 읽기 view를 editor로 연결하고 dirty·read-only·충돌 상태를 표시한다. file reference로 path/range 이동, binary/대용량 fallback, 새 worker의 CSP/asset 경로 처리.

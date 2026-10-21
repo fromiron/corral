@@ -838,5 +838,11 @@
     "requirement": "CR-046 P04: 관리 사본의 target generation과 full-hash 파일 문서를 읽고 사용자 save/create/rename/delete를 공통 writer·신뢰·path·hash precondition과 durable receipt로 수행한다. BOM/EOL/mode·삭제 복구 checkpoint·원본 읽기 전용·중복/불확실 효과 경계를 보존한다.",
     "owner": "server",
     "phase": "M1"
+  },
+  {
+    "id": "CRL-WBD-003",
+    "requirement": "CR-046 P05–06: 관리 사본 문서당 공유 Monaco 모델과 명시 저장·마지막 view 닫기·IndexedDB 초안 복구를 제공한다. 저장 중 새 편집, 응답 유실, 충돌, 사본 identity, 형식, 원본 읽기 전용을 보존하고 실제 FilePanel·설정 왕복·키보드·좁은 화면에서 검증한다.",
+    "owner": "studio",
+    "phase": "M1"
   }
 ]

@@ -3324,5 +3324,38 @@
     "status": "planned",
     "adapter": "temporary Git/SQLite, injected file IO, real HTTP client; no paid providers or new E2E",
     "evidence": null
+  },
+  {
+    "id": "TC-WBD-003-H",
+    "requirements": [
+      "CRL-WBD-003"
+    ],
+    "suite": "unit+integration",
+    "scenario": "공유 모델/undo·명시 저장·형식 보존·설정 왕복·마지막 view 닫기와 실제 FilePanel 저장→Diff",
+    "status": "planned",
+    "adapter": "injected Monaco public model and recovery storage; real in-app browser before adding any E2E; no paid providers",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-003-N",
+    "requirements": [
+      "CRL-WBD-003"
+    ],
+    "suite": "unit+integration",
+    "scenario": "서로 다른 사본 격리·stale disk 충돌·mixed/CR 명시 변환·읽기 전용 및 저장되지 않은 reference 보호",
+    "status": "planned",
+    "adapter": "injected Monaco public model and recovery storage; real in-app browser before adding any E2E; no paid providers",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-003-F",
+    "requirements": [
+      "CRL-WBD-003"
+    ],
+    "suite": "unit+integration",
+    "scenario": "저장 중 새 입력·응답 유실 receipt·quota 실패·stale 복구·worker 실패에서 초안과 원문 보존",
+    "status": "planned",
+    "adapter": "injected Monaco public model and recovery storage; real in-app browser before adding any E2E; no paid providers",
+    "evidence": null
   }
 ]
