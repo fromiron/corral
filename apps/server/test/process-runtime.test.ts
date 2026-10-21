@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import type { Scheduler } from '@corral/contracts';
 import { afterEach, describe, expect, it } from 'vitest';
 import { killProcessGroup, processGroupGone } from '../src/files/process-group.ts';
+import { ownedConnection } from '../src/preview/proxy.ts';
 import { spawnOwnedProcess } from '../src/processes/owned-process.ts';
 import { CommandRuntime, type OwnedCommandInput } from '../src/processes/runtime.ts';
 import { commandEnvironment, listShells, resolveShellCommand } from '../src/processes/shells.ts';
@@ -63,6 +64,88 @@ afterEach(async () => {
 });
 
 describe('[TC-ABS-001-H] [TC-ABS-001-N] owned command runtime (real OS processes)', () => {
+  it('[TC-ABS-004-N] an unconfirmed connection times out without sending request bytes', async () => {
+    let received = 0;
+    const server = createServer((socket) =>
+      socket.on('data', (bytes) => {
+        received += bytes.length;
+      }),
+    );
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    try {
+      const address = server.address();
+      if (!address || typeof address === 'string') throw new Error('port unavailable');
+      await expect(ownedConnection('unowned', address.port, async () => false)).rejects.toThrow();
+      expect(received).toBe(0);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  }, 15000);
+  it.skipIf(process.platform !== 'linux')(
+    '[TC-ABS-004-N] waits for the service to accept the connected socket before attesting it',
+    async () => {
+      const directory = await folder();
+      const runtime = new CommandRuntime();
+      const service = runtime.startService(
+        {
+          operationId: 'delayed_accept',
+          owner: {
+            hostId: 'local',
+            sessionId: 's',
+            runId: 'r',
+            executionId: 'e',
+            attemptNo: 1,
+            effectId: 'accept',
+          },
+          directory,
+          command: {
+            shellId: 'powershell',
+            executable: process.execPath,
+            args: [
+              '-e',
+              `
+            const fs = require('node:fs'), net = require('node:net');
+            const server = net.createServer(socket => socket.on('data', data => fs.writeFileSync('received.json', JSON.stringify(data.toString()))));
+            server.listen(0, '127.0.0.1', () => {
+              fs.writeFileSync('port.json', JSON.stringify(server.address().port));
+              const wait = new Int32Array(new SharedArrayBuffer(4));
+              while (!fs.existsSync('accept.flag')) Atomics.wait(wait, 0, 0, 10);
+            });
+          `,
+            ],
+          },
+          timeoutMs: 20000,
+        },
+        live(),
+      );
+      let socket: import('node:net').Socket | undefined;
+      try {
+        const port = await json(join(directory, 'port.json'));
+        let observed: (owned: boolean) => void = () => {};
+        const firstCheck = new Promise<boolean>((resolve) => {
+          observed = resolve;
+        });
+        const connecting = ownedConnection(service.operationId, port, async (...args) => {
+          const owned = await runtime.attestConnection(...args);
+          observed(owned);
+          return owned;
+        });
+        void connecting.catch(() => {});
+        expect(await firstCheck).toBe(false);
+        await expect(readFile(join(directory, 'received.json'))).rejects.toMatchObject({
+          code: 'ENOENT',
+        });
+        await writeFile(join(directory, 'accept.flag'), '');
+        socket = await connecting;
+        socket.write('owned');
+        expect(await json(join(directory, 'received.json'))).toBe('owned');
+      } finally {
+        socket?.destroy();
+        await runtime.close();
+      }
+    },
+    30000,
+  );
   it.skipIf(!['win32', 'linux'].includes(process.platform))(
     'attests an established connection to this exact job and refuses foreign or stale endpoints',
     async () => {

@@ -7,6 +7,7 @@ import {
 } from 'node:http';
 import { connect, type Socket } from 'node:net';
 import type { Duplex } from 'node:stream';
+import { setTimeout as delay } from 'node:timers/promises';
 
 export type ConnectionAttestation = (
   operationId: string,
@@ -20,6 +21,7 @@ export async function ownedConnection(
   port: number,
   attest: ConnectionAttestation,
 ): Promise<Socket> {
+  const pending = AbortSignal.timeout(5000);
   const socket = connect({ host: '127.0.0.1', port });
   socket.setTimeout(5000, () => socket.destroy(new Error('preview connection timed out')));
   await new Promise<void>((resolve, reject) => {
@@ -27,14 +29,18 @@ export async function ownedConnection(
     socket.once('error', reject);
   });
   try {
-    if (
-      !socket.localPort ||
-      !(await attest(operationId, port, socket.localPort)) ||
-      socket.destroyed
-    )
-      throw new Error('service does not own this connection');
-    socket.setTimeout(0);
-    return socket;
+    // TCP connect may finish before accept() exposes the server socket in its process FDs.
+    while (socket.localPort && !socket.destroyed) {
+      pending.throwIfAborted();
+      if (await attest(operationId, port, socket.localPort)) {
+        pending.throwIfAborted();
+        if (socket.destroyed) break;
+        socket.setTimeout(0);
+        return socket;
+      }
+      await delay(50, undefined, { signal: pending });
+    }
+    throw new Error('service does not own this connection');
   } catch (error) {
     socket.destroy();
     throw error;

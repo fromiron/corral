@@ -147,3 +147,13 @@ E2E 정리 기준은 사용자 결과·브라우저 연결의 검증 여부다. 
 - 전체 Vitest: CI와 같은 Node 24.19.0에서 1,546 PASS / 기존 23 skip, 250개 파일 통과. 앞선 Node 24.14.0·E2E 병행 회차는 1,545 PASS / 1 FAIL / 23 skip이었다. `preview-readiness`가 403 뒤 준비 대기에서 실패했으며 단독 실행과 최종 전체 재실행은 통과했다. 원인은 확정하지 않았고 해당 테스트나 제품의 소유권 검사를 완화하지 않았다.
 - `pnpm typecheck`, `pnpm build`, `pnpm contracts:check`, `pnpm spec:check`, `git diff --check` 통과. lint 오류 0, 기존 경고 475개·정보 9개. 문서 validator 의존성은 임시 uv 환경에서 제공했다.
 - 이 검증은 외부 음성·유료 모델·SSH/S3·Windows 패키지 실행을 포함하지 않는다. GitHub의 새 커밋 CI 결과는 별도 확인한다.
+
+### GitHub에서 재현된 미리보기 연결 경합
+
+`94dbd4c`의 [PR gate](https://github.com/fromiron/corral/actions/runs/39523657077)는 문서·계약·lint·타입 검사를 통과했지만 `preview-readiness`에서 1 FAIL / 1,545 PASS / 23 skip으로 끝났다. 준비 완료 직후의 HTTP 요청이 `Owned preview unavailable`로 거절됐다.
+
+Linux 서버의 event loop를 파일 신호까지 의도적으로 막아 TCP connect가 서버 accept보다 먼저 끝나는 상황을 만들었다. 같은 연결은 accept 이전에는 소유 프로세스 FD로 확인되지 않아 기존 구현에서 즉시 거절됐고, 신호를 준 뒤에는 소유권을 확인할 수 있었다. 이 결정론적 반례가 수정 전 실패하는 것을 확인했다. 확인에 사용하는 커널 필드는 [Linux TCP 문서](https://docs.kernel.org/networking/proc_net_tcp.html)의 연결 주소·상태·inode다.
+
+`ownedConnection`은 기존 5초 연결 제한 안에서 **같은 소켓**의 소유권 확인을 기다린다. 새 소켓이나 포트 신뢰로 대체하지 않으며, 확인 전에는 HTTP/WebSocket 데이터를 보내지 않는다. 끝내 확인되지 않으면 소켓을 닫는다. 실제 지연 accept, 미확정 연결의 시간 제한·전송 0바이트, 기존 foreign/stale endpoint·HTTP/HMR 폐기 검증을 유지한다. 테스트 재시도나 E2E 시간 제한 증가는 없다.
+
+이 수정 후 Node 24.19.0 전체 Vitest는 **1,548 PASS / 기존 23 skip**이다. 서버 타입 검사·변경 파일 lint·문서 검사도 통과했다. 미리보기 E2E는 파일 preview 1개 통과 / 기존 opt-in 2개 제외이며, 전체 E2E의 148 PASS는 앞선 `94dbd4c` 결과다. 최종 커밋 전체 E2E는 GitHub PR gate에서 별도 확인한다.
