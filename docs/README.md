@@ -11,7 +11,7 @@ AI 에이전트의 문서 진입점이다. **이번 요청 → 관련 현재 계
 | 무엇이 구현됐고 무엇이 남았나? | [상태표](status.md) | [태스크 원장](../contracts/backlog.json), 해당 실행 기록 |
 | 제품 범위·그래프·Reins·기본 상한 | [제품](current/product.md) | [제품 상세](current/product-contract.md), [기능 명세](../specs/README.md) |
 | 상태 소유·실행·취소·파일 효과 | [구조](current/architecture.md), [실행과 안전](current/execution-and-safety.md) | [기술 설계](Technical-Design.md), 관련 core/server/adapter |
-| 프로젝트·세션·컴포저·편집기 | [Workbench](current/workbench.md) | [위젯 상세](current/chat-widgets-contract.md), CR-043 |
+| 프로젝트·세션·컴포저·편집기 | [Workbench](current/workbench.md) | [위젯 상세](current/chat-widgets-contract.md), CR-043·044 |
 | Desktop·명령·preview·host·음성 | [Desktop 상세](current/desktop-contract.md) | CR-042, [잔여 조건](plans/desktop-completion.md) |
 | 모델·추론·Ultra·Skill·MCP | [모델과 리소스](current/models-and-resources.md) | [모델 안내](Models.md), [하네스 상세](current/harness-contract.md) |
 | HTTP·이벤트·스키마 | [API 원본 안내](current/api.md) | [HTTP 상세](API-Contract.md), Zod·handler·client |

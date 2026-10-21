@@ -164,7 +164,9 @@ test.describe('active work and credentials', () => {
       await input.fill('Ask before choosing');
       await page.getByRole('button', { name: 'Send', exact: true }).click();
       await expect.poll(() => corral.server.coordinator.listRuns().length).toBe(1);
-      const runId = corral.server.coordinator.listRuns()[0]!.runId;
+      const run = corral.server.coordinator.listRuns()[0];
+      if (!run) throw new Error('The request did not create a run');
+      const runId = run.runId;
       await expect.poll(() => subscriptions.filter((path) => path.includes(runId)).length).toBe(1);
       await input.fill('다음 초안 日本語');
       await input.evaluate((element: HTMLTextAreaElement) => element.setSelectionRange(3, 3));
@@ -235,7 +237,16 @@ test.describe('settings layout and keyboard', () => {
     await expect(dialog).toBeVisible();
     for (let step = 0; step < 20; step++) {
       await page.keyboard.press('Tab');
-      expect(await dialog.evaluate((node) => node.contains(document.activeElement))).toBe(true);
+      await expect
+        .poll(() =>
+          dialog.evaluate((node) =>
+            node.contains(document.activeElement)
+              ? 'inside'
+              : (document.activeElement?.getAttribute('data-slot') ??
+                document.activeElement?.tagName),
+          ),
+        )
+        .toBe('inside');
     }
     await dialog.getByRole('radio', { name: 'Light', exact: true }).check();
     await dialog.getByRole('link', { name: 'Models', exact: true }).click();

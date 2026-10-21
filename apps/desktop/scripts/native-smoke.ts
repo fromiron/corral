@@ -350,6 +350,12 @@ try {
   await edit.click();
   await edit.press('Control+Shift+k');
   await expect(edit).toHaveText('Ctrl+Shift+K');
+  // Settings owns keyboard focus; native and web shortcuts cannot open background UI.
+  await page.keyboard.press('Control+k');
+  await page.keyboard.press('Control+Shift+k');
+  await expect(page.getByRole('dialog', { name: 'Settings', exact: true })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Command palette' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Close settings', exact: true }).click();
   await expect
     .poll(() =>
       application?.evaluate(({ Menu }) => {
@@ -361,12 +367,9 @@ try {
       }),
     )
     .toBe('CommandOrControl+Shift+K');
-  await page.keyboard.press('Control+k');
-  await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.keyboard.press('Control+Shift+k');
   await expect(page.getByRole('dialog', { name: 'Command palette' })).toBeVisible();
   await closePalette(page);
-  await page.getByRole('link', { name: 'Back to work', exact: true }).click();
   const managerOpened = application.waitForEvent('window');
   await nativeMenu('Remote hosts…');
   const manager = await managerOpened;

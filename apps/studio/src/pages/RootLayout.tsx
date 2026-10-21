@@ -184,10 +184,14 @@ function RootFrame() {
         replace: overlay,
         resetScroll: false as const,
         state: (previous: typeof location.state) =>
-          overlay ? previous : {
-            ...previous, settingsOwner, settingsOrigin: previous.__TSR_index,
-            settingsOneShot: Boolean(location.search.newSession || location.search.draft),
-          },
+          overlay
+            ? previous
+            : {
+                ...previous,
+                settingsOwner,
+                settingsOrigin: previous.__TSR_index,
+                settingsOneShot: Boolean(location.search.newSession || location.search.draft),
+              },
       };
     },
     selectProject: overlay
