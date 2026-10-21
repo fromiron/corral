@@ -364,3 +364,11 @@ Pi SDK는 카탈로그 복사본과 proxy 모델에 같은 컨텍스트를 적�
 - CR-045: 표시 문자열로 사용자 이름 여부를 추측하지 않는다. 새 대화 생성의 명시적 `autoTitle` 표시만 사용하며 SQLite의 추가 열은 기본 false로 기존 이름을 보존한다.
 - 공용 repository 계획에서 첫 next/queue 요청과 제목을 함께 저장한다. 수동 이름 변경은 표시를 해제하고 자동 확정도 revision을 증가시켜 오래된 편집을 거절한다. 추가 모델 호출·클라이언트별 후속 제목 쓰기는 만들지 않는다.
 - 기존 DB를 자동으로 재명명하지 않는다. 이전 바이너리는 새 schema를 열지 못하므로 롤백에는 업그레이드 전 DB 사본을 사용한다.
+
+
+## ADR-039: 사용자 작업과 Run은 같은 사본 writer 예약을 사용한다
+
+- CR-046: `run_access`를 공통 `workspace_access`로 이관하고 기존 Run API를 adapter로 유지한다. 사용자 전용 lock이나 가짜 Run을 만들면 기존 writer admission을 우회하거나 Coordinator 원장을 오염시킨다.
+- owner kind/ID를 분리하고 active/uncertain writer의 unique key는 canonical worktree path다. generation은 대상 검증용이며 unique key에 넣지 않는다. 기존 pinned tree·state는 보존한다.
+- 사용자 operation 접수+예약 및 완료 receipt+해제는 각각 SQLite transaction이다. 재시작은 uncertain, 응답 유실은 원래 ID readback이며 자동 replay하지 않는다. Run worker recovery는 사용자 owner를 해제하지 않는다.
+- 사본 generation은 기존 session 행의 정수 하나로 충분하다. 새 history 서비스·dual-write·별도 lock engine은 추가하지 않는다. strict writer가 초기 기본이고 사용자 PTY 동시 쓰기는 P22에서 결정한다.

@@ -2750,5 +2750,42 @@
     "done": "입력 포커스 대비·설정 경계/높이 일치·첫 요청 제목과 수동 이름 보존·320/390px 모델/추론·검색 범위·가져오기 안내·역할별 테두리를 실제 화면과 정상/실패/중복/늦은 이벤트 회귀로 검증한다.",
     "status": "implemented",
     "evidence": "docs/evaluation/Workbench-Identification-2026-10-21.md"
+  },
+  {
+    "id": "C-142",
+    "phase": "M0",
+    "title": "CR-046 개발 Workbench 기준과 엔진 qualification (P00–P02)",
+    "dependsOn": [
+      "C-141"
+    ],
+    "requirements": [
+      "CRL-WBD-001"
+    ],
+    "files": [
+      "docs/plans/",
+      "docs/evaluation/"
+    ],
+    "done": "기존 기능/테스트 지도, A/B 엔진 실제 fixture, 버전/라이선스/native/CSP 한계와 대상·owner 계약을 기록한다.",
+    "status": "in_progress",
+    "evidence": null
+  },
+  {
+    "id": "C-143",
+    "phase": "M1",
+    "title": "CR-046 관리 사본 generation과 공통 writer/사용자 receipt (P03)",
+    "dependsOn": [
+      "C-141"
+    ],
+    "requirements": [
+      "CRL-WBD-001"
+    ],
+    "files": [
+      "apps/server/src/files/",
+      "packages/storage-sqlite/",
+      "packages/client/src/index.ts"
+    ],
+    "done": "기존 예약을 보존해 인간/Run writer 경합·idempotency·restart uncertain·늦은 완료·사본 재생성·reader 보호를 필요한 단위/통합 시험으로 확인한다.",
+    "status": "in_progress",
+    "evidence": null
   }
 ]

@@ -826,5 +826,11 @@
     "requirement": "CR-045: 옅은 기본/선명한 포커스 입력 경계·설정 컨트롤 높이·대화 제목·좁은 화면 모델 식별을 개선하고 필터 범위와 가져오기 안내를 명확히 하며 기존 데이터·명시 이름·초안·실행·접근성을 보존한다.",
     "owner": "studio",
     "phase": "P12"
+  },
+  {
+    "id": "CRL-WBD-001",
+    "requirement": "CR-046: 기존 실행/설정/D&D/Reins를 보존해 기반 엔진을 qualification하고, 관리 사본 generation 및 인간/Run 공통 writer 예약과 durable operation receipt를 제공한다. 같은 ID 재조회, 고정 reader tree, uncertain/restart, 기존 DB 이관과 원본 읽기 전용 경계를 보존한다.",
+    "owner": "server",
+    "phase": "M0"
   }
 ]

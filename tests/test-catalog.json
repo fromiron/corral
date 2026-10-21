@@ -3258,5 +3258,38 @@
     "status": "planned",
     "adapter": "existing repository contract and isolated server/browser fixtures; no paid providers",
     "evidence": null
+  },
+  {
+    "id": "TC-WBD-001-H",
+    "requirements": [
+      "CRL-WBD-001"
+    ],
+    "suite": "unit+integration",
+    "scenario": "기존 DB/예약 이관, 같은 사본 인간·Run writer 충돌 및 다른 사본 병행, 고정 reader tree와 receipt 재조회",
+    "status": "planned",
+    "adapter": "temporary SQLite/Git and deterministic clock; engine browser/native qualification recorded separately",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-001-N",
+    "requirements": [
+      "CRL-WBD-001"
+    ],
+    "suite": "unit+integration",
+    "scenario": "다른 payload·stale generation 거절, active reader 사본 제거 금지, Run recovery의 인간 owner 보존",
+    "status": "planned",
+    "adapter": "temporary SQLite/Git and deterministic clock; engine browser/native qualification recorded separately",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-001-F",
+    "requirements": [
+      "CRL-WBD-001"
+    ],
+    "suite": "unit+integration",
+    "scenario": "접수/완료 transaction 실패 원자성, 재시작과 늦은 완료의 uncertain 예약 보존",
+    "status": "planned",
+    "adapter": "temporary SQLite/Git and deterministic clock; engine browser/native qualification recorded separately",
+    "evidence": null
   }
 ]

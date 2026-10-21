@@ -1426,5 +1426,17 @@
       "TC-UX-007-H",
       "TC-UX-007-N"
     ]
+  },
+  {
+    "requirementId": "CRL-WBD-001",
+    "tasks": [
+      "C-142",
+      "C-143"
+    ],
+    "tests": [
+      "TC-WBD-001-H",
+      "TC-WBD-001-N",
+      "TC-WBD-001-F"
+    ]
   }
 ]

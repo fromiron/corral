@@ -24,6 +24,8 @@ baseline: 373764467a52a7c6978de1272ac8253c73a27077
 
 작업 폴더 연결·신뢰·관리 사본·검토·원본 적용은 별개의 경계다. 파일 diff를 보거나 검토 체크를 했다는 이유만으로 원본 적용을 승인하지 않는다. 대상 tree가 바뀌면 검증·검토의 유효성을 다시 확인한다.
 
+[CR-046](../change-requests/CR-046-development-workbench.md)은 이 단일 writer 경계를 사용자 작업으로 확장한다. 사용자 operation은 Run과 구분한 owner/receipt를 가지며 공통 예약을 사용한다. 사본 generation과 요청 hash를 확인하고 재시작/불확실 효과를 자동 재실행하지 않는다. 구현 범위는 C-142·143과 [활성 계획](../plans/workbench-development-implementation-plan-2026-10-21.md)을 따른다.
+
 ## 명령·편집·미리보기
 
 CR-042 ABS-01의 일반 명령·service는 실제 관리 사본, Coordinator 승인·effect·예산, 소유 프로세스 lease를 사용한다. `run_check`의 등록 argv·고정 검증 사본과 혼동하지 않는다. ABS-03 Hashline은 버전 있는 명시 선택 방식이며 기존 Pi edit의 자동 대체가 아니다.
