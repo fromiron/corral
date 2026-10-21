@@ -17,6 +17,12 @@ Oracle: 인앱 ChatGPT의 현재 Pro 모델로 설계와 기준 commit을 검토
 
 검증: core Ultra/recipe + server runner/file broker 5개 파일 88개 테스트 통과(22.64초). core/server TypeScript, `spec:check` 2,090개 검사 및 TC 293/293, `contracts:check` 통과. C-118 전체 완료·다른 OS 지원·모델 품질 향상은 이 검사 연결만으로 주장하지 않는다.
 
+## Provider conformance
+
+Anthropic adaptive thinking의 기본 effort와 message-level effort를 API key/OAuth serializer + 결정적 429 HTTP로 확인했다. SDK가 본문의 beta 설정을 헤더로 옮기는 변환까지 permit에 묶으며 추가 dispatch/변조를 거절한다. provider default 및 광고한 모든 수동 추론 수준도 실제 serializer로 확인했다. 4개 파일 19개 테스트(실제 Linux Pi worker 2종 포함)가 통과했다. 이는 Anthropic 구독 로그인 지원이나 실제 공급자 품질 검증이 아니다.
+
+Gemini는 설치된 Pi 1.3.0에서 custom fetch를 거절하는 것을 네트워크 0회로 재현했다. Ultra permit 경계를 지킬 수 없어 미지원 상태를 유지한다. 구형 Anthropic budget-thinking도 이 conformance 범위 밖이다.
+
 ## 남은 순서
 
 1. Provider/API conformance와 현재 후보 GPT live 검증.

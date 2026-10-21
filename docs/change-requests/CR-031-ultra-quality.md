@@ -75,3 +75,7 @@ Hive의 `reasoning_effort=none|low|high|max`, `max_completion_tokens`, SSE Accep
 검사는 기존 worktree runner의 수명·취소·프로세스 정리를 재사용하며 bubblewrap의 별도 mount/network/PID namespace에서 실행한다. Git snapshot·checkout·status의 외부 filter를 비활성화한다. Git 사본과 읽기 전용 시스템 실행 파일만 노출하고 host home·키·Git 관리 디렉터리·네트워크를 제공하지 않는다. 의존성은 고정 tree에 포함된 것만 사용하며 host 프로젝트 node_modules를 암묵적으로 가져오거나 네트워크로 설치하지 않는다. 지원하지 않는 OS/실행 파일/의존성은 명시적 실패이고 비격리 fallback은 없다. 이 단계는 C-114 후보 병렬 구현 승인이 아니다.
 
 격리 fingerprint는 기존 등록 명령 identity에 bwrap·Node 바이너리 hash와 버전 있는 실제 mount/argv/env 정책을 포함한다. 실행 파일은 사본 내부·시스템 toolchain·현재 Node로 제한한다. bubblewrap의 전용 JSON 상태 채널에서 exec 이후 종료를 확인해야 pass/fail이 가능하며, PID namespace init 소멸을 확인하기 전에는 cleanup을 확정하지 않는다. 최종 tree 확인은 서비스 정리와 pause 경계 뒤에 수행한다. 외부 프로세스의 직접 쓰기를 완전히 잠그는 계약은 아니며, 검토/검사 증거의 정본은 기록된 후보 tree다.
+
+### Provider conformance 확대
+
+Pi 1.3.0의 Anthropic Messages adaptive-thinking 계열을 API key/OAuth의 실제 serializer와 결정적 HTTP로 검증한다. payload의 최대 추론·model·출력 cap, SDK의 beta header 이동, 1회 dispatch·취소·변조 거절을 함께 확인한 계열만 선택 가능하다. 구형 budget-thinking과 Google 계열을 검증 없이 활성화하지 않는다. 특히 설치된 Google Generative AI adapter는 per-request custom fetch를 거절하므로 현재 단일 HTTP permit을 강제할 수 없다. 이 상류 제약을 우회하기 위한 전역 fetch 교체나 SDK fork는 이번 범위에 넣지 않는다.

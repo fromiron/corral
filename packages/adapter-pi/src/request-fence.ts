@@ -7,17 +7,27 @@ export function providerRequestFence(
   fetcher = globalThis.fetch,
   signal?: AbortSignal,
 ) {
-  if (!['openai-responses', 'openai-codex-responses', 'openai-completions'].includes(model.api))
+  if (
+    ![
+      'openai-responses',
+      'openai-codex-responses',
+      'openai-completions',
+      'anthropic-messages',
+    ].includes(model.api)
+  )
     return undefined;
   const base = model.baseUrl.replace(/\/+$/, '');
   const destination = new URL(
-    model.api === 'openai-codex-responses'
-      ? base.endsWith('/codex/responses')
-        ? base
-        : `${base}${base.endsWith('/codex') ? '' : '/codex'}/responses`
-      : `${base}/${model.api === 'openai-responses' ? 'responses' : 'chat/completions'}`,
+    model.api === 'anthropic-messages'
+      ? `${base}/v1/messages?beta=true`
+      : model.api === 'openai-codex-responses'
+        ? base.endsWith('/codex/responses')
+          ? base
+          : `${base}${base.endsWith('/codex') ? '' : '/codex'}/responses`
+        : `${base}/${model.api === 'openai-responses' ? 'responses' : 'chat/completions'}`,
   ).href;
   let approved: string | undefined;
+  let transportHeaders: Record<string, string | null> | undefined;
   let sent = false;
   return {
     approve(payload: unknown) {
@@ -29,7 +39,28 @@ export function providerRequestFence(
       )
         throw new Error('provider payload model differs from the permit');
       // Pi's parameter objects contain undefined fields that its JSON transport omits.
-      approved = canonicalJson(JSON.parse(JSON.stringify(payload)));
+      const body = JSON.parse(JSON.stringify(payload)) as Record<string, unknown>;
+      if (model.api === 'anthropic-messages') {
+        transportHeaders = {};
+        // Anthropic's SDK moves these fields from the parameter object into HTTP headers.
+        for (const [field, header] of Object.entries({
+          betas: 'anthropic-beta',
+          user_profile_id: 'anthropic-user-profile-id',
+          workspace_id: 'anthropic-workspace-id',
+        })) {
+          const value = body[field];
+          if (
+            value !== undefined &&
+            (field === 'betas'
+              ? !Array.isArray(value) || value.some((item) => typeof item !== 'string')
+              : typeof value !== 'string')
+          )
+            throw new Error('invalid provider transport metadata');
+          transportHeaders[header] = value === undefined ? null : String(value);
+          delete body[field];
+        }
+      }
+      approved = canonicalJson(body);
     },
     fetch: (async (input, init) => {
       if (signal?.aborted) throw new Error('provider request cancelled');
@@ -54,6 +85,12 @@ export function providerRequestFence(
         /* Refuse without including request data in the error. */
       }
       if (serialized !== approved) throw new Error('provider payload differs from the permit');
+      const headers = new Headers(init?.headers ?? request?.headers);
+      if (
+        transportHeaders &&
+        Object.entries(transportHeaders).some(([name, value]) => headers.get(name) !== value)
+      )
+        throw new Error('provider transport metadata differs from the permit');
       if (signal?.aborted) throw new Error('provider request cancelled');
       if (sent) throw new Error('provider request has no unused permit');
       sent = true;
