@@ -19,7 +19,7 @@ function Host({ className, ...props }: ComponentProps<'div'>) {
     <div
       data-slot="composer-host"
       className={cn(
-        'relative z-10 w-full rounded-2xl border border-line bg-raised shadow-composer transition-colors focus-within:border-muted/60',
+        'relative z-10 w-full rounded-2xl bg-raised shadow-composer transition-colors has-[textarea:focus-visible]:ring-1 has-[textarea:focus-visible]:ring-ring',
         className,
       )}
       {...props}
@@ -32,7 +32,7 @@ function ContextStrip({ className, ...props }: ComponentProps<'div'>) {
     <div
       data-slot="composer-context-strip"
       className={cn(
-        'relative mx-auto flex w-[calc(100%-2rem)] items-center gap-2 rounded-b-xl border border-t-0 border-line bg-surface px-3 py-1.5 text-xs text-muted',
+        'relative mx-auto flex w-[calc(100%-2rem)] items-center gap-2 rounded-b-xl bg-raised px-3 py-1.5 text-xs text-muted',
         className,
       )}
       {...props}

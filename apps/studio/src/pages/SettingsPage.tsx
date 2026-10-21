@@ -126,7 +126,6 @@ export function SettingsPage({
                 label={t('language')}
                 value={locale}
                 onValueChange={setLocale}
-                className="h-9"
                 options={LOCALES.map((l) => ({ value: l.id, label: l.name }))}
               />
             </section>

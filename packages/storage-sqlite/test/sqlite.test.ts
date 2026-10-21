@@ -79,6 +79,49 @@ const settled = (p: RunProjection) =>
   ['succeeded', 'failed', 'cancelled', 'interrupted'].includes(p.status);
 
 describe('SQLite database', () => {
+  it('[TC-UX-007-N] migrates old session titles without guessing and keeps pending automatic titles across restart', async () => {
+    const file = tempFile();
+    const old = trackDatabase(new Database(file));
+    for (const migration of MIGRATIONS.slice(0, 27)) {
+      old.exec(migration.sql);
+      migration.data?.(old);
+    }
+    old.pragma('user_version = 27');
+    old
+      .prepare(`INSERT INTO work_sessions
+      (id, project_id, corral_id, title, objective, pinned, revision, created_at, updated_at, archived_at, entries_json)
+      VALUES ('session_legacy', 'default', NULL, 'New session', '', 0, 1, 'x', 'x', NULL, '[]')`)
+      .run();
+    old.close();
+    const upgraded = openDatabase(file);
+    const repo = repository(upgraded);
+    expect(await repo.getSession('session_legacy')).toMatchObject({
+      title: 'New session',
+      autoTitle: false,
+    });
+    await repo.addSessionEntry('session_legacy', {
+      intent: 'next',
+      text: 'Keep the legacy name',
+      state: 'started',
+    });
+    expect((await repo.getSession('session_legacy'))?.title).toBe('New session');
+    const created = await repo.createSession({
+      projectId: 'default',
+      title: 'New session',
+      autoTitle: true,
+    });
+    if (!created.ok) throw new Error(created.message);
+    upgraded.close();
+    const reopened = repository(openDatabase(file));
+    expect((await reopened.getSession(created.session.sessionId))?.autoTitle).toBe(true);
+    const named = await reopened.addSessionEntry(created.session.sessionId, {
+      intent: 'next',
+      text: 'A title after restart',
+      state: 'started',
+    });
+    expect(named.ok && named.session.title).toBe('A title after restart');
+  });
+
   it('migrates a new file to the latest schema with durable settings', () => {
     const db = openDatabase(tempFile());
     expect(db.pragma('user_version', { simple: true })).toBe(MIGRATIONS.length);

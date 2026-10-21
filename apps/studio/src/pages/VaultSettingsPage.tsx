@@ -19,7 +19,7 @@ import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle
 import { SettingsLayout } from './SettingsPage.tsx';
 
 type Choice = { value: string; label: string };
-const inputClass = 'min-w-0 rounded border border-line bg-surface px-2 py-1.5 text-sm';
+const inputClass = 'settings-field min-w-0';
 export function VaultSettingsPage() {
   const t = useTranslations('Vault');
   const projectText = useTranslations('Projects');

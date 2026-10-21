@@ -231,13 +231,7 @@ function ProviderCard({
         <form onSubmit={saveKey} className="flex flex-col gap-1">
           <div className="flex items-end gap-2">
             <ApiKeyInput value={apiKey} onChange={setApiKey} disabled={busy} />
-            <Button
-              variant="outline"
-              size="sm"
-              type="submit"
-              disabled={busy || !apiKey.trim()}
-              className="self-start"
-            >
+            <Button variant="outline" size="sm" type="submit" disabled={busy || !apiKey.trim()}>
               {t('saveKey')}
             </Button>
           </div>

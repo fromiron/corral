@@ -137,12 +137,12 @@ test('[§11] workbench timings and accessibility on a fixed workload', async ({ 
     const sidebar = page.getByRole('navigation', { name: 'Projects and sessions' });
     await page
       .getByTestId('app-sidebar')
-      .getByRole('searchbox', { name: 'Search all sessions' })
+      .getByRole('searchbox', { name: 'Filter conversations' })
       .fill('Session A');
     await sidebar.getByRole('link', { name: 'Session A' }).click();
     await page
       .getByTestId('app-sidebar')
-      .getByRole('searchbox', { name: 'Search all sessions' })
+      .getByRole('searchbox', { name: 'Filter conversations' })
       .fill('');
     await expect(page.getByRole('heading', { level: 2, name: 'Session A' })).toBeVisible();
     findings.session = await serious(page);

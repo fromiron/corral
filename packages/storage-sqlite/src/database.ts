@@ -532,6 +532,10 @@ WHEN json_extract(OLD.view_json, '$.status') <> 'running'
 BEGIN SELECT RAISE(ABORT, 'finished evaluations are immutable'); END;
 `,
   },
+  {
+    name: '0028_session_auto_title',
+    sql: 'ALTER TABLE work_sessions ADD COLUMN auto_title INTEGER NOT NULL DEFAULT 0 CHECK(auto_title IN (0,1));',
+  },
 ];
 
 /** History queries must neither recover active runs nor migrate the workspace. */

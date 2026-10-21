@@ -1,5 +1,5 @@
 import type { ModelCatalogMetadata, ModelImportPreview, ModelImportSource } from '@corral/client';
-import { Button, Select } from '@corral/react/ui';
+import { Button, Input, Select } from '@corral/react/ui';
 import { useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
@@ -80,10 +80,14 @@ export function ModelImportPanel() {
             ]}
           />
         </div>
-        <label className="flex min-w-0 flex-1 flex-col gap-1 text-sm">
+        <label
+          htmlFor={`${heading}-path`}
+          className="flex min-w-0 basis-full flex-col gap-1 text-sm sm:flex-1 sm:basis-auto"
+        >
           {t('path')}
-          <input
-            className="min-w-0 rounded border border-line bg-surface px-2 py-1.5"
+          <Input
+            id={`${heading}-path`}
+            size="sm"
             value={path}
             disabled={busy}
             placeholder={t('defaultPath')}
@@ -225,10 +229,11 @@ export function ModelImportPanel() {
               {metadata.error}
             </p>
           ) : null}
-          <label className="flex flex-col gap-1 text-sm">
+          <label htmlFor={`${heading}-filter`} className="flex flex-col gap-1 text-sm">
             {t('filter')}
-            <input
-              className="rounded border border-line bg-surface px-2 py-1.5"
+            <Input
+              id={`${heading}-filter`}
+              size="sm"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
             />

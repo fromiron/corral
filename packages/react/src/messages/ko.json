@@ -1624,7 +1624,7 @@
     "expandPanel": "패널 보이기",
     "resizeSidebar": "사이드바 너비",
     "resizePanel": "패널 너비",
-    "searchSessions": "전체 세션 검색",
+    "searchSessions": "대화 목록 필터",
     "sessions": "세션",
     "newSession": "새 세션",
     "needsYou": "확인 필요 {count}",

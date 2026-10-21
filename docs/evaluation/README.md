@@ -6,6 +6,7 @@
 |---|---|
 | Desktop 기능·플랫폼 한계 | [전체 진행](Desktop-Capabilities-Implementation-Progress.md), [배포](Desktop-Delivery-Verification.md), [preview](Desktop-Preview-Verification.md), [동시 실행](Desktop-Concurrency-Verification.md), 나머지 Desktop 기능별 보고서 |
 | 문맥형 설정·Composer | [CR-044 구현·Linux 검증](Contextual-Settings-UI-2026-10-21.md) |
+| Workbench 식별·테두리 일관성 | [CR-045 구현·Linux 검증](Workbench-Identification-2026-10-21.md) |
 | 기본 대화·Workbench | [기본 대화](Chat-First-UX-Review.md), [초기 Desktop](Desktop-Workbench.md), [UX 대조](UX-Spec-Conformance.md) |
 | 하네스·추론·리소스 | [H2–H8](Personal-Harness-Validation-2026-10-18.md), [추론](Reasoning-Controls-2026-10-18.md), [리소스](Resource-Management-2026-10-18.md) |
 | 통합 개선 | [M0](Integrated-Improvement-M0-2026-10-19.md), [M1](Integrated-Improvement-M1-2026-10-19.md), [M2](Integrated-Improvement-M2-2026-10-19.md), [M3](Integrated-Improvement-M3-2026-10-19.md), [M4](Integrated-Improvement-M4-2026-10-19.md) |

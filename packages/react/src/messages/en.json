@@ -1624,7 +1624,7 @@
     "expandPanel": "Show the panel",
     "resizeSidebar": "Sidebar width",
     "resizePanel": "Panel width",
-    "searchSessions": "Search all sessions",
+    "searchSessions": "Filter conversations",
     "sessions": "Sessions",
     "newSession": "New session",
     "needsYou": "Needs you ({count})",

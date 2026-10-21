@@ -3236,5 +3236,27 @@
     "status": "planned",
     "adapter": "existing deterministic server and browser fixtures; native OS verification separate",
     "evidence": null
+  },
+  {
+    "id": "TC-UX-007-H",
+    "requirements": [
+      "CRL-UX-007"
+    ],
+    "suite": "unit+server+e2e",
+    "scenario": "입력 포커스 대비·설정 경계/높이 일치·대화 제목 영속성·좁은 모델 표시·명확한 필터와 가져오기 동선",
+    "status": "planned",
+    "adapter": "existing repository contract and isolated server/browser fixtures; no paid providers",
+    "evidence": null
+  },
+  {
+    "id": "TC-UX-007-N",
+    "requirements": [
+      "CRL-UX-007"
+    ],
+    "suite": "unit+server+e2e",
+    "scenario": "수동/기존 이름·실패/중복/늦은 요청·stale revision·키보드/한영/테마/reflow·초안·import 실패 보존",
+    "status": "planned",
+    "adapter": "existing repository contract and isolated server/browser fixtures; no paid providers",
+    "evidence": null
   }
 ]

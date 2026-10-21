@@ -268,6 +268,7 @@ const EntryState = z.enum(['started', 'queued', 'sent', 'refused', 'undelivered'
 const CreateSession = z.strictObject({
   projectId: Identifier,
   title: z.string().max(200),
+  autoTitle: z.boolean().optional(),
   objective: z.string().max(20_000).optional(),
   corralId: Identifier.nullable().optional(),
 });

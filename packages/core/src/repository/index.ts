@@ -128,6 +128,8 @@ export interface WorkSession {
   /** The model and reasoning auto mode uses; null until chosen (CR-024). */
   auto: AutoModelChoice | null;
   title: string;
+  /** True only until the first request names a session explicitly created without a user title. */
+  autoTitle?: boolean;
   objective: string;
   pinned: boolean;
   revision: number;
@@ -231,6 +233,7 @@ export interface CorralRepository {
   createSession(input: {
     projectId: string;
     title: string;
+    autoTitle?: boolean;
     objective?: string;
     corralId?: string | null;
   }): Promise<SessionResult>;
@@ -249,7 +252,13 @@ const ENTRY_MAX = 20_000;
 const ENTRIES_MAX = 1_000;
 
 export function planSessionCreate(
-  input: { projectId: string; title: string; objective?: string; corralId?: string | null },
+  input: {
+    projectId: string;
+    title: string;
+    autoTitle?: boolean;
+    objective?: string;
+    corralId?: string | null;
+  },
   context: { now: string; sessionId: string },
 ): SessionResult {
   const objective = (input.objective ?? '').trim();
@@ -271,6 +280,7 @@ export function planSessionCreate(
       corralId: input.corralId ?? null,
       auto: null,
       title,
+      autoTitle: input.autoTitle === true,
       objective,
       pinned: false,
       revision: 1,
@@ -309,7 +319,7 @@ export function planSessionUpdate(
     ok: true,
     session: {
       ...current,
-      ...(title !== undefined ? { title } : {}),
+      ...(title !== undefined ? { title, autoTitle: false } : {}),
       ...(change.objective !== undefined ? { objective: change.objective.trim() } : {}),
       ...(change.corralId !== undefined ? { corralId: change.corralId } : {}),
       ...(change.auto !== undefined ? { auto: change.auto } : {}),
@@ -418,10 +428,22 @@ export function planSessionEntry(
   }
   if (current.entries.length >= ENTRIES_MAX)
     return { ok: false, error: 'invalid', message: 'This session is full; start a new one.' };
+  const nameFromRequest =
+    current.autoTitle && (entry.intent === 'next' || entry.intent === 'queue');
   return {
     ok: true,
     session: {
       ...current,
+      ...(nameFromRequest
+        ? {
+            title: Array.from(text.split('\n')[0] ?? text)
+              .slice(0, 60)
+              .join('')
+              .trim(),
+            autoTitle: false,
+            revision: current.revision + 1,
+          }
+        : {}),
       updatedAt: context.now,
       entries: [
         ...current.entries,

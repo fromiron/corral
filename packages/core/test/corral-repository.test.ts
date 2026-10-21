@@ -37,6 +37,38 @@ function setup() {
 describeCorralRepositoryContract('key-value (browser)', () => setup().repo);
 
 describe('key-value corral repository', () => {
+  it('[TC-UX-007-N] a failed storage write preserves the pending title and retry records one request', async () => {
+    const { store, repo } = setup();
+    const created = await repo.createSession({
+      projectId: 'default',
+      title: 'New session',
+      autoTitle: true,
+    });
+    if (!created.ok) throw new Error(created.message);
+    const originalWrite = store.setItem.bind(store);
+    store.setItem = () => {
+      throw new Error('storage is full');
+    };
+    const entry = {
+      intent: 'next' as const,
+      text: 'Persist this title atomically',
+      state: 'started' as const,
+      commandId: 'title_retry',
+    };
+    const failed = await repo.addSessionEntry(created.session.sessionId, entry);
+    expect(failed).toMatchObject({ ok: false, error: 'storage_unavailable' });
+    expect(await repo.getSession(created.session.sessionId)).toMatchObject({
+      title: 'New session',
+      autoTitle: true,
+      entries: [],
+    });
+    store.setItem = originalWrite;
+    const saved = await repo.addSessionEntry(created.session.sessionId, entry);
+    expect(saved.ok && saved.session.title).toBe(entry.text);
+    await repo.addSessionEntry(created.session.sessionId, entry);
+    expect((await repo.getSession(created.session.sessionId))?.entries).toHaveLength(1);
+  });
+
   it('refuses stored data it cannot read instead of guessing', async () => {
     const { store, repo } = setup();
     const created = await repo.save({

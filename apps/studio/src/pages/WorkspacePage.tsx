@@ -9,7 +9,6 @@ import { arrangeDraft, draftLayout, emptyDraft, importDocuments, StatusBadge } f
 import { Ellipsis } from '@corral/react/icons';
 import {
   Button,
-  buttonVariants,
   Input,
   Menu,
   MenuItem,
@@ -17,6 +16,7 @@ import {
   MenuSeparator,
   MenuTrigger,
   Select,
+  Tooltip,
 } from '@corral/react/ui';
 import { Link, useNavigate, useRouter, useRouterState } from '@tanstack/react-router';
 import { type ChangeEvent, type FormEvent, useEffect, useRef, useState } from 'react';
@@ -58,6 +58,7 @@ export function WorkspacePage() {
   const router = useRouter();
   const navigate = useNavigate();
   const [errors, setErrors] = useState<string[]>([]);
+  const importInput = useRef<HTMLInputElement>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
   // Roadmap 16: two runs picked for comparison, oldest choice dropped past two.
   const [picked, setPicked] = useState<string[]>([]);
@@ -139,22 +140,27 @@ export function WorkspacePage() {
           {t('heading')}
         </h2>
         <div className={`flex items-center gap-2 ${archived ? 'hidden' : ''}`}>
-          <label
-            className={buttonVariants({
-              variant: 'outline',
-              size: 'sm',
-              className: 'cursor-pointer focus-within:ring-2 focus-within:ring-ring',
-            })}
-          >
-            {t('import')}
-            <input
-              type="file"
-              accept=".json,application/json"
-              multiple
-              onChange={onImport}
-              className="sr-only"
-            />
-          </label>
+          <Tooltip content={t('importHint')} className="max-w-xs">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => importInput.current?.click()}
+              aria-description={t('importHint')}
+            >
+              {t('import')}
+            </Button>
+          </Tooltip>
+          <input
+            ref={importInput}
+            type="file"
+            accept=".json,application/json"
+            multiple
+            onChange={onImport}
+            aria-label={t('import')}
+            aria-description={t('importHint')}
+            tabIndex={-1}
+            className="hidden"
+          />
           <Button variant="outline" size="sm" onClick={() => setDrafting(true)}>
             {t('draftFromGoal')}
           </Button>
@@ -168,10 +174,8 @@ export function WorkspacePage() {
           ? t('storedOnServer')
           : persistent
             ? t('storedLocally')
-            : t('notPersistent')}{' '}
-        {t('importHint')}
+            : t('notPersistent')}
       </p>
-      <p className="text-sm text-muted">{t('optionalCorralsHint')}</p>
       {corrals.length === 0 ? (
         <div className="flex flex-col gap-1 rounded-lg border border-dashed border-line p-4">
           <p className="text-sm font-medium">{t('empty')}</p>
@@ -625,7 +629,7 @@ function MoveCorral({
       aria-label={t('moveTo', { name })}
       value=""
       onChange={(event) => event.target.value && onMove(event.target.value)}
-      className="rounded fill-control px-1 py-1"
+      className="rounded border border-input fill-control px-1 py-1"
     >
       <option value="">{t('moveChoose')}</option>
       {targets.map((p) => (
@@ -729,6 +733,7 @@ function StartSession({
       const result = await repository.createSession({
         projectId,
         title: title.trim() || (objective.trim() ? '' : t('new')),
+        autoTitle: !title.trim() && !objective.trim(),
         objective,
         corralId: teamId || null,
       });
@@ -830,7 +835,7 @@ function StartSession({
                   void create();
                 }
               }}
-              className="min-h-20 w-full resize-y rounded-md fill-control px-2 py-1 text-sm leading-6 outline-none focus-visible:ring-2 focus-visible:ring-accent placeholder:text-muted/80"
+              className="min-h-20 w-full resize-y rounded-md border border-input fill-control px-2 py-1 text-sm leading-6 outline-none focus-visible:ring-2 focus-visible:ring-accent placeholder:text-muted/80"
             />
           </label>
           <p className="text-2xs text-muted">{n('optionalPurposeHint')}</p>

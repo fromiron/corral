@@ -239,6 +239,103 @@ export function describeCorralRepositoryContract(
       });
     });
     describe('work sessions (CR-011)', () => {
+      it('[TC-UX-007-H] an opted-in title is finalized once with the first request and persists', async () => {
+        const repo = makeRepository();
+        const created = await repo.createSession({
+          projectId: 'default',
+          title: 'New session',
+          autoTitle: true,
+        });
+        if (!created.ok) throw new Error(created.message);
+        const id = created.session.sessionId;
+        expect((await repo.getSession(id))?.autoTitle).toBe(true);
+        const request = {
+          intent: 'next' as const,
+          text: '  Compare the storage options\nKeep the sources.  ',
+          state: 'started' as const,
+          commandId: 'title_first',
+          runId: 'run_first',
+        };
+        const first = await repo.addSessionEntry(id, request);
+        if (!first.ok) throw new Error(first.message);
+        expect(first.session).toMatchObject({
+          title: 'Compare the storage options',
+          autoTitle: false,
+          revision: 2,
+        });
+        const duplicate = await repo.addSessionEntry(id, request);
+        expect(duplicate).toEqual(first);
+        await repo.addSessionEntry(id, {
+          intent: 'next',
+          text: 'A different follow-up',
+          state: 'refused',
+        });
+        await repo.updateSessionEntry(id, first.session.entries[0]?.entryId ?? '', {
+          state: 'undelivered',
+        });
+        expect((await repo.getSession(id))?.title).toBe('Compare the storage options');
+        expect((await repo.listSessions('default'))[0]?.title).toBe('Compare the storage options');
+        expect(await repo.updateSession(id, { title: 'Stale', expectedRevision: 1 })).toMatchObject(
+          { ok: false, error: 'revision_conflict' },
+        );
+      });
+
+      it('[TC-UX-007-N] explicit, renamed and legacy titles survive later requests even when named New session', async () => {
+        const repo = makeRepository();
+        for (const autoTitle of [false, true]) {
+          const made = await repo.createSession({
+            projectId: 'default',
+            title: 'New session',
+            ...(autoTitle ? { autoTitle: true } : {}),
+          });
+          if (!made.ok) throw new Error(made.message);
+          if (autoTitle) {
+            const renamed = await repo.updateSession(made.session.sessionId, {
+              title: 'New session',
+              expectedRevision: 1,
+            });
+            expect(renamed.ok && renamed.session.autoTitle).toBe(false);
+          }
+          await repo.addSessionEntry(made.session.sessionId, {
+            intent: 'next',
+            text: 'Do not overwrite my name',
+            state: 'started',
+          });
+          expect((await repo.getSession(made.session.sessionId))?.title).toBe('New session');
+        }
+      });
+
+      it('[TC-UX-007-N] invalid requests do not consume automatic naming; queued Unicode text is bounded without splitting characters', async () => {
+        const repo = makeRepository();
+        const made = await repo.createSession({
+          projectId: 'default',
+          title: '새 세션',
+          autoTitle: true,
+        });
+        if (!made.ok) throw new Error(made.message);
+        const id = made.session.sessionId;
+        expect(
+          await repo.addSessionEntry(id, { intent: 'next', text: ' ', state: 'started' }),
+        ).toMatchObject({ ok: false, error: 'invalid' });
+        expect((await repo.getSession(id))?.autoTitle).toBe(true);
+        const result = await repo.addSessionEntry(id, {
+          intent: 'queue',
+          text: '🙂'.repeat(80),
+          state: 'queued',
+          commandId: 'unicode_title',
+        });
+        expect(result.ok && result.session.title).toBe('🙂'.repeat(60));
+        expect(
+          await repo.addSessionEntry(id, {
+            intent: 'queue',
+            text: 'changed',
+            state: 'queued',
+            commandId: 'unicode_title',
+          }),
+        ).toMatchObject({ ok: false, error: 'invalid' });
+        expect((await repo.getSession(id))?.title).toBe('🙂'.repeat(60));
+      });
+
       it('[WBTST-003] creates sessions from a purpose alone, pins, archives, and keeps entries', async () => {
         const repo = makeRepository();
         const project = await repo.createProject({ name: 'P' });
