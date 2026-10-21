@@ -24,6 +24,18 @@ export function BudgetInspector({
     0,
     limits.maxOutputTokens - budget.spent - budget.reserved - budget.unknownOutstanding,
   );
+  const imageUsd = (micros: number) =>
+    format.number(micros / 1_000_000, {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 6,
+    });
+  const imageFigures = [
+    ['imageSpent', budget.imageSpentMicros],
+    ['imageReserved', budget.imageReservedMicros],
+    ['imageUnknown', budget.imageUnknownOutstandingMicros],
+  ] as const;
   // Roadmap 15: list prices for API-key calls; a subscription or unknown usage is said so.
   const costText = () => {
     if (!prices) return '';
@@ -72,6 +84,26 @@ export function BudgetInspector({
         now={budget.modelCalls}
       />
       {prices ? <CostLine text={costText()} /> : null}
+      {imageFigures.some(([, value]) => value !== undefined) ? (
+        <>
+          <dl
+            aria-label={t('imageBudget')}
+            className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1"
+          >
+            {imageFigures.flatMap(([key, value]) =>
+              value === undefined
+                ? []
+                : [
+                    <dt key={`${key}-label`}>{t(key)}</dt>,
+                    <dd key={`${key}-amount`}>{imageUsd(value)}</dd>,
+                  ],
+            )}
+          </dl>
+          {budget.imageUnknownOutstandingMicros !== undefined ? (
+            <p className="text-muted">{t('imageUnknownNote')}</p>
+          ) : null}
+        </>
+      ) : null}
       <details>
         <summary className="cursor-pointer">{t('allFigures')}</summary>
         <dl className="mt-1 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-x-3 gap-y-1">
@@ -115,10 +147,23 @@ export function BudgetInspector({
               >
                 <span className="font-mono">{row.modelCallId ?? id}</span> ·{' '}
                 <span>{t(`state.${row.status}`)}</span> ·{' '}
-                {row.actual === null ? t('usageUnknown') : t('tokens', { count: row.actual })}
-                {row.status !== 'settled' ? (
-                  <span> · {t('held', { count: row.reserved })}</span>
-                ) : null}
+                {row.image ? (
+                  <>
+                    {row.image.actualMicros === null
+                      ? t('imageCostUnknown')
+                      : imageUsd(row.image.actualMicros)}
+                    {row.status !== 'settled' ? (
+                      <span> · {t('imageHeld', { usd: imageUsd(row.image.reservedMicros) })}</span>
+                    ) : null}
+                  </>
+                ) : (
+                  <>
+                    {row.actual === null ? t('usageUnknown') : t('tokens', { count: row.actual })}
+                    {row.status !== 'settled' ? (
+                      <span> · {t('held', { count: row.reserved })}</span>
+                    ) : null}
+                  </>
+                )}
               </li>
             ))}
           </ul>

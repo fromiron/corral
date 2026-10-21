@@ -1,14 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import {
-  chmodSync,
-  existsSync,
-  lstatSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, lstatSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { canonicalJson, type McpChallenge, type RegisteredMcpServer } from '@corral/contracts';
 import {
@@ -20,6 +11,7 @@ import {
   OAuthCallbackServer,
   parseWwwAuthenticate,
 } from '@earendil-works/pi-mcp/oauth';
+import { ensurePrivateDirectory, protectPrivatePaths } from '../private-files.ts';
 
 type HttpServer = Extract<RegisteredMcpServer, { transport: 'http' }>;
 type Check = () => Promise<void>;
@@ -56,6 +48,7 @@ export class McpCredentials {
   private readonly chains = new Map<string, Promise<unknown>>();
   private readonly logins = new Map<string, Login>();
   private disposed = false;
+  private readonly protectedFiles = new Set<string>();
 
   constructor(options: { directory: string; fetch?: typeof fetch; newId?: () => string }) {
     this.directory = options.directory;
@@ -76,6 +69,10 @@ export class McpCredentials {
     try {
       const stat = lstatSync(file);
       if (!stat.isFile() || stat.size > 256 * 1024) throw new Error();
+      if (!this.protectedFiles.has(file)) {
+        protectPrivatePaths([this.directory, file]);
+        this.protectedFiles.add(file);
+      }
       const value = JSON.parse(readFileSync(file, 'utf8')) as Saved;
       if (value.version !== 1 || typeof value.binding !== 'string') throw new Error();
       if (value.binding !== binding) return;
@@ -94,14 +91,13 @@ export class McpCredentials {
     }
   }
   private save(key: string, value: Saved) {
-    mkdirSync(this.directory, { recursive: true, mode: 0o700 });
-    if (!lstatSync(this.directory).isDirectory()) throw signIn();
-    chmodSync(this.directory, 0o700);
+    ensurePrivateDirectory(this.directory);
     const file = join(this.directory, `${key}.json`);
     const temporary = `${file}.${this.newId()}.tmp`;
     try {
       writeFileSync(temporary, JSON.stringify(value), { mode: 0o600, flag: 'wx' });
       renameSync(temporary, file);
+      this.protectedFiles.add(file);
     } finally {
       rmSync(temporary, { force: true });
     }

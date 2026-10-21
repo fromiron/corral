@@ -20,7 +20,8 @@ import {
 } from './protocol.ts';
 
 // Host side of the Pi worker (C-017). The adapter turns worker frames into AgentHost calls,
-// one at a time and in order, so a request permit is committed before the next frame runs.
+// in order, so request permits, observations and authorizations commit before tool invocation.
+// A tool's result may wait for another execution; that wait must not retain a dead worker.
 // A worker that breaks the protocol, speaks for another execution or exits early fails its
 // execution; it never completes one (Technical-Design §7.4).
 
@@ -121,6 +122,7 @@ class WorkerExecution {
   private resolve!: (settlement: AgentSettlement) => void;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private pendingSettlement: AgentSettlement | null = null;
+  private transportExited = false;
   private readonly uiRequests = new Map<string, AbortController>();
   private pendingCompaction: string | null = null;
   private readonly uiRequestIds = new Set<string>();
@@ -151,6 +153,7 @@ class WorkerExecution {
       this.queue = this.queue.then(() => this.receive(raw)).catch(() => this.violation());
     });
     this.channel.onExit((code, cleanupConfirmed = true) => {
+      this.transportExited = true;
       // Drain already-received IPC before deciding whether the worker supplied a result.
       void this.queue.finally(() => {
         this.finish(
@@ -245,6 +248,22 @@ class WorkerExecution {
     );
   }
 
+  private async executeTool(requestId: string, toolCallId: string) {
+    try {
+      const outcome = await this.host.executeTool(toolCallId);
+      if (this.transportExited || this.state !== 'running' || this.pendingSettlement) return;
+      this.send({
+        type: 'tool_result',
+        requestId,
+        ok: outcome.ok,
+        ...(outcome.ok ? { result: outcome.result } : { reason: outcome.error.message }),
+      });
+    } catch (error) {
+      if (this.transportExited || this.state !== 'running' || this.pendingSettlement) return;
+      this.send({ type: 'tool_result', requestId, ok: false, reason: reasonOf(error) });
+    }
+  }
+
   private async receive(raw: unknown) {
     if (this.state === 'done' || this.pendingSettlement) return;
     const parsed = (this.resources ? SdkWorkerFrame : WorkerFrame).safeParse(raw);
@@ -260,7 +279,12 @@ class WorkerExecution {
         ...(this.input.model.reasoning
           ? { reasoningCapabilities: this.input.model.reasoning }
           : {}),
-        role: { name: role.name, prompt: role.prompt, outputContract: role.outputContract },
+        role: {
+          name: role.name,
+          prompt: role.prompt,
+          outputContract: role.outputContract,
+          ...(role.imageProfile ? { imageProfile: role.imageProfile } : {}),
+        },
         inputs: this.input.inputs.map(({ name, artifactVersionId, text }) => ({
           name,
           artifactVersionId,
@@ -285,10 +309,12 @@ class WorkerExecution {
                 ? ['read']
                 : []),
               ...(this.input.harness?.allowedTools.includes('write') &&
+              role.editingMode !== 'hashline' &&
               role.allowedWorkTools.includes('write_file')
                 ? ['write']
                 : []),
               ...(this.input.harness?.allowedTools.includes('edit') &&
+              role.editingMode !== 'hashline' &&
               role.allowedWorkTools.includes('write_file') &&
               role.allowedWorkTools.includes('read_file')
                 ? ['edit']
@@ -317,6 +343,7 @@ class WorkerExecution {
         ...(this.input.item ? { item: this.input.item } : {}),
         delegateTo: this.input.capabilities.delegateTo,
         askTo: this.input.capabilities.askTo,
+        ...(this.input.capabilities.replyToChildren ? { replyToChildren: true } : {}),
         ...(this.resources
           ? {
               harness: this.input.harness,
@@ -533,6 +560,7 @@ class WorkerExecution {
             modelCallId: permit.modelCallId,
             maxOutputTokens: permit.maxOutputTokens,
             directives: permit.directives,
+            ...(permit.parentQuestions ? { parentQuestions: permit.parentQuestions } : {}),
             ...(permit.reasoning ? { reasoning: permit.reasoning } : {}),
             apiKey,
           });
@@ -576,22 +604,9 @@ class WorkerExecution {
         return;
       }
       case 'execute_tool': {
-        try {
-          const outcome = await this.host.executeTool(frame.toolCallId);
-          this.send({
-            type: 'tool_result',
-            requestId: frame.requestId,
-            ok: outcome.ok,
-            ...(outcome.ok ? { result: outcome.result } : { reason: outcome.error.message }),
-          });
-        } catch (error) {
-          this.send({
-            type: 'tool_result',
-            requestId: frame.requestId,
-            ok: false,
-            reason: reasonOf(error),
-          });
-        }
+        // Invoke after earlier observations/authorization, but let exit/settled frames pass
+        // while ask or await_tasks is pending. The Coordinator owns effect cancellation.
+        void this.executeTool(frame.requestId, frame.toolCallId).catch(() => this.violation());
         return;
       }
       case 'observe':
@@ -631,14 +646,41 @@ function offeredTools(input: AgentStartInput): WorkerTool[] {
   if (role.allowedWorkTools.includes('search')) tools.push('search');
   if (role.allowedWorkTools.includes('read_document')) tools.push('read_document');
   if (role.allowedWorkTools.includes('write_artifact')) tools.push('write_artifact');
+  if (role.allowedWorkTools.includes('preview_file') && role.allowedWorkTools.includes('read_file'))
+    tools.push('preview_file');
+  if (input.harness?.policy === 'trusted-native' && input.taskBrief?.taskScope !== 'review_only') {
+    if (role.allowedWorkTools.includes('preview_app')) tools.push('preview_app');
+    if (role.allowedWorkTools.includes('preview_action')) tools.push('preview_action');
+  }
+  if (
+    role.allowedWorkTools.includes('generate_image') &&
+    role.imageProfile &&
+    input.taskBrief?.taskScope !== 'review_only'
+  )
+    tools.push('generate_image');
   for (const file of FILE_TOOLS) if (role.allowedWorkTools.includes(file)) tools.push(file);
+  if (
+    role.allowedWorkTools.includes('run_command') &&
+    input.harness?.policy === 'trusted-native' &&
+    input.taskBrief?.taskScope !== 'review_only'
+  )
+    tools.push('run_command');
+  if (role.editingMode === 'hashline' && role.allowedWorkTools.includes('read_file')) {
+    tools.push('read_hashline');
+    if (
+      role.allowedWorkTools.includes('write_file') &&
+      input.taskBrief?.taskScope !== 'review_only'
+    )
+      tools.push('edit_hashline');
+  }
   if (may('update_plan')) tools.push('update_plan');
   if (may('ask_user')) tools.push('ask_user');
   if (may('read_artifact')) tools.push('read_artifact');
   if (may('spawn_subagents') && capabilities.delegateTo.length > 0) tools.push('spawn_subagents');
   if (may('await_tasks') && capabilities.delegateTo.length > 0) tools.push('await_tasks');
   if (may('ask') && capabilities.askTo.length > 0) tools.push('ask');
-  if (may('reply') && assignment.kind === 'question') tools.push('reply');
+  if (may('reply') && (assignment.kind === 'question' || capabilities.replyToChildren))
+    tools.push('reply');
   if (may('submit_result') && assignment.kind !== 'question') tools.push('submit_result');
   return tools;
 }

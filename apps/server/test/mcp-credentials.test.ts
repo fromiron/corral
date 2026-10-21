@@ -1,4 +1,4 @@
-import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { RegisteredMcpServer } from '@corral/contracts';
@@ -6,6 +6,10 @@ import { Gate } from '@corral/testkit';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { McpCredentials } from '../src/harness/mcp-credentials.ts';
 import { oauthFixture } from './fixtures/mcp-oauth.ts';
+import { expectPrivatePermissions } from './fixtures/private-permissions.ts';
+
+// OAuth/refresh cases perform several real Windows ACL-protected writes.
+if (process.platform === 'win32') vi.setConfig({ testTimeout: 20_000 });
 
 const cleanup: (() => Promise<void> | void)[] = [];
 afterEach(async () => {
@@ -60,8 +64,8 @@ describe('TC-HAR-016 MCP credentials', () => {
     expect(await ctx.credentials.authorization('p', ctx.server, current)).toBe('fixture-access-0');
     const directory = join(ctx.root, 'private');
     const path = join(directory, readdirSync(directory)[0]!);
-    expect(statSync(directory).mode & 0o777).toBe(0o700);
-    expect(statSync(path).mode & 0o777).toBe(0o600);
+    expectPrivatePermissions(directory, 0o700);
+    expectPrivatePermissions(path, 0o600);
     const content = readFileSync(path, 'utf8');
     expect(content).toContain('fixture-refresh-0');
     expect(content).not.toContain('codeVerifier');

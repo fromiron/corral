@@ -103,7 +103,9 @@ it('[TC-RUN-007-H] recovers after the owning process is killed without replaying
     import { startCorralServer } from ${JSON.stringify(new URL('../src/index.ts', import.meta.url).href)};
     import { InProcessTransport, waitForProjection } from ${JSON.stringify(new URL('../../../packages/core/src/index.ts', import.meta.url).href)};
     import { linearCorral, ScriptedAgentAdapter } from ${JSON.stringify(new URL('../../../packages/testkit/src/index.ts', import.meta.url).href)};
+    console.error('owner-readiness: starting-server');
     const server = await startCorralServer({ workspace: process.argv[1], port: 0, agents: new ScriptedAgentAdapter({ turns: 1 }) });
+    console.error('owner-readiness: awaiting-user');
     const definition = linearCorral(['writer']);
     definition.nodes.find((n) => n.type === 'output').requireApproval = true;
     const transport = new InProcessTransport(server.coordinator);
@@ -122,9 +124,19 @@ it('[TC-RUN-007-H] recovers after the owning process is killed without replaying
   const exited = once(child, 'exit');
   try {
     const message = await Promise.race([
-      once(child, 'message', { signal: AbortSignal.timeout(5000) }).then(
-        ([value]) => value as { runId: string },
-      ),
+      // Match the native Desktop's 30s cold-child startup budget (desktop/src/main.ts).
+      // This includes loading the real server modules; it is not a 5s HTTP request.
+      once(child, 'message', { signal: AbortSignal.timeout(30_000) })
+        .then(([value]) => value as { runId: string })
+        .catch((cause) => {
+          if (!(cause instanceof Error) || cause.name !== 'AbortError') throw cause;
+          const stage = stderr.includes('owner-readiness: awaiting-user')
+            ? 'starting the mock run and reaching awaiting_user'
+            : stderr.includes('owner-readiness: starting-server')
+              ? 'starting the server'
+              : 'loading production modules';
+          throw new Error(`owner IPC readiness timed out while ${stage}`, { cause });
+        }),
       exited.then(() => {
         throw new Error(`owner exited before readiness: ${stderr}`);
       }),
@@ -142,4 +154,5 @@ it('[TC-RUN-007-H] recovers after the owning process is killed without replaying
     if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
     await exited;
   }
-}, 15_000);
+  // The startup allowance above is separate from the existing crash/recovery test budget.
+}, 45_000);

@@ -148,6 +148,8 @@ export async function runHarnessComparison() {
       },
     ).trim();
   git('init', '-q');
+  // Keep source bytes identical across Windows/POSIX managed worktrees.
+  git('config', 'core.autocrlf', 'false');
   git('add', '.');
   git('commit', '-qm', 'personal harness fixture');
   const baseCommit = git('rev-parse', 'HEAD');

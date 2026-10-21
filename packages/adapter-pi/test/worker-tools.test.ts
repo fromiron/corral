@@ -1,7 +1,7 @@
 import { ReviewArtifact } from '@corral/contracts';
 import { expect, it } from 'vitest';
 import { assertImagePayload, assertProtectedPayload } from '../src/request-record.ts';
-import { promptSections, systemPrompt } from '../src/worker-tools.ts';
+import { parametersOf, promptSections, systemPrompt } from '../src/worker-tools.ts';
 
 const start = {
   type: 'start',
@@ -20,6 +20,22 @@ const start = {
   delegateTo: [],
   askTo: [],
 } satisfies Parameters<typeof systemPrompt>[0];
+
+it('[TC-ABS-010-H] supplies the configured image profile and structured generator schema to the model', () => {
+  const prompt = systemPrompt({
+    ...start,
+    role: { ...start.role, imageProfile: 'images_default' },
+    tools: ['generate_image'],
+  });
+  expect(prompt).toContain('use profileId "images_default"');
+  expect(systemPrompt(start)).not.toContain('use profileId');
+  const schema = parametersOf('generate_image', start);
+  expect(schema).toMatchObject({
+    required: ['profileId', 'prompt'],
+    properties: { size: { enum: ['1024x1024', '1536x1024', '1024x1536'] } },
+    additionalProperties: false,
+  });
+});
 
 it('[TC-WIDGET-001-N] requires plans for multistep work only when update_plan is available', () => {
   const unavailable = systemPrompt(start);

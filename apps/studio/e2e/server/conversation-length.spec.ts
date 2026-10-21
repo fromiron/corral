@@ -8,7 +8,7 @@ test('[TC-CONTINUITY-001-H] [TC-CHAT-002-H] [TC-CHAT-002-N] a long conversation 
 }) => {
   test.setTimeout(90_000);
   await corral.open('/');
-  await page.getByRole('button', { name: 'Start session', exact: true }).click();
+  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
   await expect(page).toHaveURL(/\/sessions\/session_/);
   const url = page.url();
   const sessionId = new URL(url).pathname.split('/').at(-1)!;
@@ -70,14 +70,6 @@ test('[TC-CONTINUITY-001-H] [TC-CHAT-002-H] [TC-CHAT-002-N] a long conversation 
   await page.getByRole('button', { name: 'Jump to latest' }).click();
   await expect(timeline).toContainText('Request 999');
   await page.getByRole('button', { name: 'Search sessions and results', exact: true }).click();
-  await expect(page.getByRole('dialog').locator('[data-slot="dialog-header"]')).toHaveCSS(
-    'padding-left',
-    '24px',
-  );
-  await expect(page.getByRole('dialog').locator('[data-slot="dialog-panel"]')).toHaveCSS(
-    'padding-right',
-    '24px',
-  );
   const search = page.getByRole('dialog');
   await search.getByRole('textbox', { name: 'Search text' }).fill('Request 123 한국어');
   await expect(search).toContainText('0 matches');

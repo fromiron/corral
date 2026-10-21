@@ -25,3 +25,25 @@ it('[TC-HAR-003-H] keeps cached Pi schemas identical to the installed public fac
     [],
   );
 });
+
+it('classifies shell and hashline tools without weakening their side effects', () => {
+  expect(staticToolDescriptors(['run_command', 'read_hashline', 'edit_hashline'])).toEqual([
+    expect.objectContaining({ name: 'run_command', source: 'corral', sideEffect: 'external' }),
+    expect.objectContaining({ name: 'read_hashline', source: 'corral', sideEffect: 'none' }),
+    expect.objectContaining({ name: 'edit_hashline', source: 'corral', sideEffect: 'workspace' }),
+  ]);
+});
+
+it('[TC-ABS-010-N] treats image generation as an external effect with bounded image options', () => {
+  expect(staticToolDescriptors(['generate_image'])).toEqual([
+    expect.objectContaining({ name: 'generate_image', source: 'corral', sideEffect: 'external' }),
+  ]);
+});
+
+it('[TC-ABS-004-N] classifies file previews separately from browser and app effects', () => {
+  expect(staticToolDescriptors(['preview_file', 'preview_app', 'preview_action'])).toEqual([
+    expect.objectContaining({ name: 'preview_file', source: 'corral', sideEffect: 'none' }),
+    expect.objectContaining({ name: 'preview_app', source: 'corral', sideEffect: 'external' }),
+    expect.objectContaining({ name: 'preview_action', source: 'corral', sideEffect: 'external' }),
+  ]);
+});

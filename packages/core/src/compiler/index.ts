@@ -98,7 +98,15 @@ export interface CompiledPlan {
   steps: Record<string, PlanStep>;
   loops: Record<string, LoopPlan>;
   /** Who may call whom (capability links). Calls happen only when an agent asks at runtime. */
-  callables: Record<string, { delegate: string[]; question: string[] }>;
+  callables: Record<
+    string,
+    {
+      delegate: string[];
+      question: string[];
+      parentQuestion?: string[];
+      replyToChildren?: boolean;
+    }
+  >;
   summary: {
     scheduledAgents: number;
     callableAgents: number;
@@ -677,6 +685,24 @@ function checkCapabilities(c: Context, graph: Graph) {
       continue;
     }
     const role = c.roleOf(source.id);
+    if (link.parentQuestions) {
+      const child = c.roleOf(link.targetNodeId);
+      if (link.kind !== 'delegate') {
+        c.error('CAPABILITY_TARGET', 'parent questions are an opt-in on delegate links only', {
+          linkId: link.id,
+        });
+      }
+      if (
+        !role?.allowedCollaborationTools.includes('reply') ||
+        !child?.allowedCollaborationTools.includes('ask')
+      ) {
+        c.error(
+          'CAPABILITY_NOT_ALLOWED',
+          'parent questions require the parent to allow reply and the child to allow ask',
+          { linkId: link.id },
+        );
+      }
+    }
     if (!role?.allowedCollaborationTools.includes(TOOL_FOR[link.kind])) {
       c.error(
         'CAPABILITY_NOT_ALLOWED',
@@ -706,7 +732,13 @@ function checkCapabilities(c: Context, graph: Graph) {
 
 function checkBindings(c: Context, graph: Graph) {
   const asks = new Set(
-    c.definition.capabilityLinks.filter((l) => l.kind === 'question').map((l) => l.sourceNodeId),
+    c.definition.capabilityLinks.flatMap((link) =>
+      link.kind === 'question'
+        ? [link.sourceNodeId]
+        : link.parentQuestions
+          ? [link.targetNodeId]
+          : [],
+    ),
   );
   for (const node of c.definition.nodes) {
     if (node.type === 'loop') continue;
@@ -853,6 +885,12 @@ function lower(c: Context, graph: Graph): CompiledPlan {
     const entry = callables[link.sourceNodeId] ?? { delegate: [], question: [] };
     entry[link.kind].push(link.targetNodeId);
     callables[link.sourceNodeId] = entry;
+    if (link.kind === 'delegate' && link.parentQuestions) {
+      entry.replyToChildren = true;
+      const child = callables[link.targetNodeId] ?? { delegate: [], question: [] };
+      child.parentQuestion = [...new Set([...(child.parentQuestion ?? []), link.sourceNodeId])];
+      callables[link.targetNodeId] = child;
+    }
   }
 
   const agents = definition.nodes.filter((n): n is AgentNode => n.type === 'agent');

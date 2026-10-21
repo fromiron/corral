@@ -1,7 +1,14 @@
-import { CheckPlan, type Receipt, ToolPermissionPlan } from '@corral/contracts';
+import {
+  CheckPlan,
+  CommandPlan,
+  HashlineEditInput,
+  type Receipt,
+  RunCommandArgs,
+  ToolPermissionPlan,
+} from '@corral/contracts';
 import { validToolPermissionPlan } from '@corral/core';
 import { useEffect, useId, useMemo, useState } from 'react';
-import { useTranslations } from 'use-intl';
+import { useLocale, useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import type { RunSessionStore } from '../run/session.ts';
 import { Button } from '../ui/button.tsx';
@@ -291,27 +298,111 @@ export function ApprovalPanel({
 
 function PermissionDetails({ plan }: { plan: ToolPermissionPlan | null | undefined }) {
   const t = useTranslations('Approvals');
+  const ko = useLocale().startsWith('ko');
   if (!plan)
     return (
       <p role={plan === null ? 'alert' : 'status'}>
         {t(plan === null ? 'checkUnavailable' : 'checkLoading')}
       </p>
     );
+  const summary = permissionSummary(plan, ko);
   return (
     <div className="flex min-w-0 flex-col gap-2">
-      <p className="font-medium">
-        {plan.descriptor.name} · {plan.descriptor.source}
-      </p>
-      <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-all rounded bg-surface p-2">
-        {JSON.stringify(plan.arguments, null, 2)}
-      </pre>
+      {summary ?? (
+        <>
+          <p className="font-medium">
+            {plan.descriptor.name} · {plan.descriptor.source}
+          </p>
+          <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-all rounded bg-surface p-2">
+            {JSON.stringify(plan.arguments, null, 2)}
+          </pre>
+        </>
+      )}
       <p className="text-muted">{t('toolOnce')}</p>
       <details>
         <summary className="cursor-pointer">{t('toolIdentity')}</summary>
+        {summary ? (
+          <>
+            <p className="mt-2">
+              {plan.descriptor.name} · {plan.descriptor.source}
+            </p>
+            <pre className="my-2 max-h-60 overflow-auto whitespace-pre-wrap break-all rounded bg-surface p-2">
+              {JSON.stringify(plan.arguments, null, 2)}
+            </pre>
+          </>
+        ) : null}
         <p className="break-all">{plan.descriptorHash}</p>
         <p>{t('toolPolicyRevision', { revision: plan.policyRevision })}</p>
         <p className="break-all">{plan.fingerprint}</p>
       </details>
     </div>
   );
+}
+
+const ResolvedCommand = CommandPlan.extend({ request: RunCommandArgs.optional() });
+const shellNames = {
+  powershell: 'PowerShell',
+  pwsh: 'PowerShell 7',
+  cmd: 'Command Prompt',
+  'git-bash': 'Git Bash',
+  bash: 'Bash',
+  sh: 'Shell',
+};
+
+/** Summaries only change presentation. The verified body/fingerprint still authorizes the exact call. */
+function permissionSummary(plan: ToolPermissionPlan, ko: boolean) {
+  if (plan.descriptor.source !== 'corral') return null;
+  if (plan.descriptor.name === 'run_command') {
+    const parsed = ResolvedCommand.safeParse(plan.arguments);
+    if (!parsed.success) return null;
+    const command = parsed.data;
+    const source = command.command ?? command.request?.command;
+    if (!source) return null;
+    return (
+      <div className="flex min-w-0 flex-col gap-2" data-testid="command-approval-summary">
+        <p className="font-medium">{ko ? '명령 실행' : 'Run command'}</p>
+        <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-words rounded bg-surface p-2 font-mono">
+          {source}
+        </pre>
+        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
+          <dt className="text-muted">{ko ? '셸' : 'Shell'}</dt>
+          <dd>{shellNames[command.shellId]}</dd>
+          <dt className="text-muted">{ko ? '작업 폴더' : 'Working directory'}</dt>
+          <dd className="break-words font-mono">
+            {command.cwd === '.'
+              ? ko
+                ? '세션 작업 사본의 루트'
+                : 'Session working-copy root'
+              : command.cwd}
+          </dd>
+          <dt className="text-muted">{ko ? '실행 방식' : 'Mode'}</dt>
+          <dd>
+            {command.mode === 'service'
+              ? ko
+                ? '서비스'
+                : 'Service'
+              : ko
+                ? '완료까지 실행'
+                : 'Foreground'}
+          </dd>
+          <dt className="text-muted">{ko ? '시간 제한' : 'Timeout'}</dt>
+          <dd>{command.timeoutMs / 1000} s</dd>
+        </dl>
+      </div>
+    );
+  }
+  if (plan.descriptor.name === 'edit_hashline') {
+    const parsed = HashlineEditInput.safeParse(plan.arguments);
+    if (!parsed.success) return null;
+    return (
+      <div className="flex min-w-0 flex-col gap-2" data-testid="hashline-approval-summary">
+        <p className="font-medium">{ko ? '파일 변경' : 'Edit file'}</p>
+        <p className="break-words font-mono">{parsed.data.path}</p>
+        <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-words rounded bg-surface p-2 font-mono">
+          {parsed.data.ops}
+        </pre>
+      </div>
+    );
+  }
+  return null;
 }

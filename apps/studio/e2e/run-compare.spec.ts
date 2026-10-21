@@ -6,6 +6,7 @@ test('[TC-OBS-004-H] compares two runs: figures, models and the outputs with the
   page,
 }) => {
   await page.goto('/?delay=50');
+  await page.getByRole('tab', { name: /^Teams/ }).click();
   await page
     .getByRole('region', { name: 'Start from a template' })
     .getByRole('article')

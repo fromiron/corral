@@ -9,10 +9,14 @@ import {
   type AnswerExtensionUiCommand,
   type AnswerUserCommand,
   type Assignment,
+  BinaryArtifact,
   type BrokerFileToolName,
   CheckPlan,
   type Clock,
   type CommandError,
+  type CommandExecution,
+  CommandPlan,
+  CommandReport,
   type CompactContextCommand,
   CompactionReport,
   CorralDefinition,
@@ -26,12 +30,16 @@ import {
   ExtensionUiRequest,
   type ExtensionUiResult,
   FILE_TOOLS,
+  GenerateImageArgs,
   type HarnessBindingRef,
   HarnessReport,
   HarnessToolsUpdate,
   Identifier,
   type IdFactory,
   type ImageAttachment,
+  type ImageGenerationOwner,
+  ImageGenerationProfile,
+  type ImageGenerationResult,
   ImageInput,
   type InputBinding,
   LspQuery,
@@ -40,6 +48,8 @@ import {
   MessageBranchRequest,
   type ModelProfileSnapshot,
   ModelRequestRecord,
+  type ParentQuestionMessage,
+  type PreviewToolName,
   ProtectedContext,
   ProviderPayloadRecord,
   ReasoningInput,
@@ -55,6 +65,7 @@ import {
   ReviewArtifact,
   type ReviewRecipeRevision,
   RunCommand,
+  RunCommandArgs,
   RunEvent,
   type RunEventType,
   type RunLimits,
@@ -99,7 +110,7 @@ import {
 } from './admission/index.ts';
 import { validTextAttachments } from './attachments.ts';
 import { AUTO_ROUTE_MAX_OUTPUT_TOKENS, type AutoStart, autoDefinition } from './auto-team.ts';
-import { admitModelRequest, settlementFor } from './budget.ts';
+import { admitImageRequest, admitModelRequest, settlementFor } from './budget.ts';
 import { canonicalJson } from './canonical-json.ts';
 import type { CompiledPlan } from './compiler/index.ts';
 import { type InstallationPolicy, limitViolations, SPEC_HARD_CAPS } from './config.ts';
@@ -111,6 +122,7 @@ import {
 } from './decisions/index.ts';
 import { definitionHash } from './definition-hash.ts';
 import { adaptDesignReview } from './design-review.ts';
+import { generatedImageInputs } from './generated-image-inputs.ts';
 import { LogicalDeadline } from './limits.ts';
 import { applyEvent, emptyProjection, type RunProjection } from './projection.ts';
 import { automaticReasoning, fixedReasoning, reasoningError } from './reasoning.ts';
@@ -206,6 +218,19 @@ export interface ExternalTools {
  * a run may use file tools only when `available` says its session has one.
  */
 export interface FileTools {
+  acquireRun?(runId: string, sessionId: string | undefined, writer: boolean): void;
+  prepareRun?(runId: string): Promise<void>;
+  releaseRun?(runId: string, terminationConfirmed: boolean): void;
+  stopRunServices?(runId: string): Promise<void>;
+  worktreeScope?(sessionId: string): string | null;
+  hasUnsafeWorktreeOwner?(sessionId: string): boolean;
+  planCommand?(input: CommandExecution, cancellation: ToolCancellation): Promise<CommandPlan>;
+  runCommand?(
+    input: CommandExecution,
+    plan: CommandPlan,
+    approvedFingerprint: string | null,
+    cancellation: ToolCancellation,
+  ): Promise<CommandReport>;
   runStartFiles?(runId: string): RuntimeFiles | null;
   captureRuntimeFiles?(runId: string, checkpointId: string): Promise<RuntimeFiles>;
   verifyRuntimeFiles?(runId: string, reference: RuntimeFiles): Promise<boolean>;
@@ -239,6 +264,7 @@ export interface FileTools {
       args: Record<string, unknown>;
       runId: string;
       executionId: string;
+      attemptNo?: number;
       toolCallId: string;
     },
     cancellation: ToolCancellation,
@@ -261,6 +287,33 @@ export class ToolTerminationUnconfirmed extends ToolRefusal {
 }
 
 export interface CoordinatorDeps {
+  previewTools?: {
+    closeRun(runId: string): Promise<void>;
+    closeExecution(runId: string, executionId: string): Promise<void>;
+    execute(
+      input: {
+        runId: string;
+        executionId: string;
+        attemptNo: number;
+        effectId: string;
+        name: PreviewToolName;
+        args: Record<string, unknown>;
+      },
+      cancellation: ToolCancellation,
+    ): Promise<Record<string, unknown>>;
+  };
+  imageGeneration?: {
+    read(runId: string, artifactVersionId: string): ImageInput | null;
+    resolve(profileId: string): ImageGenerationProfile | null;
+    generate(
+      owner: ImageGenerationOwner,
+      args: GenerateImageArgs,
+      profile: ImageGenerationProfile,
+      cancellation: ToolCancellation,
+      reservedCostUsd: number,
+      referenceImages?: ImageInput[],
+    ): Promise<ImageGenerationResult>;
+  };
   runtimeRecovery?: { confirm(): Promise<void> };
   images?: { read(sessionId: string, reference: ImageAttachment): ImageInput | null };
   tools?: ExternalTools;
@@ -377,6 +430,8 @@ interface LiveRun {
   taskOutcomes: Map<string, Promise<StepOutcome>>;
   /** Open questions and how to wake their askers. */
   questions: Map<string, OpenQuestion>;
+  itemBatches: Map<string, ItemBatch>;
+  interruptedChildWaits: Map<string, Set<string>>;
   /** Executions whose cancel the Coordinator asked for: they settle as cancelled. */
   cancelRequested: Set<string>;
   closingExecutions: Set<string>;
@@ -429,11 +484,26 @@ interface LiveRun {
 }
 
 interface OpenQuestion {
+  delivery?: 'parent';
   askerExecutionId: string;
+  askerAttemptNo: number;
   responderExecutionId: string;
+  responderAttemptNo: number;
   wake(result: Record<string, unknown>): void;
   cancelTimer(): void;
   deadline: LogicalDeadline;
+}
+
+interface ItemBatch {
+  batchId: string;
+  ownerExecutionId: string;
+  ownerAttemptNo: number;
+  tasks: { targetNodeId: string; brief: string }[];
+  taskIds: string[];
+  next: number;
+  currentTaskId?: string;
+  stopped: boolean;
+  waiting: boolean;
 }
 
 interface PendingUserInput {
@@ -477,11 +547,17 @@ interface PreparedExecution {
 /** A refused tool call; `limit` marks the refusals that also record `limit.reached`. */
 /** The opening and closing events every executed tool call commits. */
 interface ToolFrame {
+  descriptor?: ToolDescriptor;
+  stillAuthorized?: () => boolean;
   parentCancellation?: ToolCancellation;
   effectId: string;
   toolCallId: string;
   opening: EventDraft[];
-  closing(resultRef: string | null, error?: string | null): EventDraft[];
+  closing(
+    resultRef: string | null,
+    error?: string | null,
+    outcome?: EventPayload<'effect.settled'>['outcome'],
+  ): EventDraft[];
 }
 
 type Refusal = Extract<GateDecision, { kind: 'refuse' }>;
@@ -517,6 +593,8 @@ export class Coordinator {
   private readonly tools: ExternalTools | undefined;
   private readonly files: FileTools | undefined;
   private readonly images: CoordinatorDeps['images'];
+  private readonly imageGeneration: CoordinatorDeps['imageGeneration'];
+  private readonly previewTools: CoordinatorDeps['previewTools'];
   private readonly harnesses: HarnessResolver | undefined;
   private readonly runtimeRecovery: CoordinatorDeps['runtimeRecovery'];
   private readonly live = new Map<string, LiveRun>();
@@ -524,8 +602,16 @@ export class Coordinator {
   private readonly subscribers = new Set<Subscriber>();
   private storageError: string | null = null;
   private terminationUnconfirmed = false;
+  private hostTerminationUnconfirmed = false;
   private restoringFiles = false;
+  private readonly restoringScopes = new Set<string>();
   private readonly drainingRuns = new Set<LiveRun>();
+  private hostModels = 0;
+  private hostResidents = 0;
+  private readonly modelWaiters: { run: LiveRun; grant: () => void }[] = [];
+  private readonly serviceRuns = new Set<LiveRun>();
+  private readonly previewRuns = new Set<LiveRun>();
+  private readonly stoppingServices = new Map<LiveRun, Promise<void>>();
 
   constructor(deps: CoordinatorDeps) {
     this.clock = deps.clock;
@@ -542,6 +628,8 @@ export class Coordinator {
     this.tools = deps.tools;
     this.files = deps.files;
     this.images = deps.images;
+    this.imageGeneration = deps.imageGeneration;
+    this.previewTools = deps.previewTools;
     this.harnesses = deps.harnesses;
     this.runtimeRecovery = deps.runtimeRecovery;
     this.gates = resolveGates(deps.admission);
@@ -579,22 +667,38 @@ export class Coordinator {
   // ── run creation (C-057) ──────────────────────────────────────────────────
 
   /** File recovery owns the idle installation until its durable result is recorded. */
-  async withFileRestore<T>(work: () => Promise<T>): Promise<T> {
+  async withFileRestore<T>(work: () => Promise<T>, sessionId?: string): Promise<T> {
+    const key = sessionId ? this.fileScope(sessionId) : null;
+    const affected = (candidate: string | null | undefined) =>
+      key === null || (candidate != null && this.fileScope(candidate) === key);
     if (
-      !this.admitting ||
+      this.storageError ||
+      this.hostTerminationUnconfirmed ||
+      (key === null && !this.admitting) ||
+      (sessionId && this.files?.hasUnsafeWorktreeOwner?.(sessionId)) ||
       this.restoringFiles ||
-      this.store.listRuns().some((run) => !TERMINAL_RUN_STATUSES.has(run.status))
+      (key === null ? this.restoringScopes.size > 0 : this.restoringScopes.has(key)) ||
+      [...this.drainingRuns].some((run) => affected(this.store.getRun(run.runId)?.sessionId)) ||
+      this.store
+        .listRuns()
+        .some((run) => affected(run.sessionId) && !TERMINAL_RUN_STATUSES.has(run.status))
     )
       throw new ToolRefusal(
         'RUN_ALREADY_ACTIVE',
-        'file recovery requires an idle installation with confirmed worker termination',
+        'file recovery requires an idle target with confirmed worker termination',
       );
-    this.restoringFiles = true;
+    if (key === null) this.restoringFiles = true;
+    else this.restoringScopes.add(key);
     try {
       return await work();
     } finally {
-      this.restoringFiles = false;
+      if (key === null) this.restoringFiles = false;
+      else this.restoringScopes.delete(key);
     }
+  }
+
+  private fileScope(sessionId: string): string {
+    return this.files?.worktreeScope?.(sessionId) ?? `session:${sessionId}`;
   }
 
   private runtimeSupported(
@@ -876,6 +980,9 @@ export class Coordinator {
             commandId: request.commandId,
             definition,
             mode: 'live',
+            ...(recovery.source.snapshot.permissionMode
+              ? { permissionMode: recovery.source.snapshot.permissionMode }
+              : {}),
             ...(recovery.source.sessionId ? { sessionId: recovery.source.sessionId } : {}),
           },
           { ...recovery, requestHash },
@@ -1179,6 +1286,9 @@ export class Coordinator {
             commandId: request.commandId,
             definition: branch.definition,
             mode: branch.source.snapshot.mode,
+            ...(branch.source.snapshot.permissionMode
+              ? { permissionMode: branch.source.snapshot.permissionMode }
+              : {}),
             sessionId: prepared.sessionId,
           },
           undefined,
@@ -1279,13 +1389,17 @@ export class Coordinator {
       return { runId: null, receipt };
     };
 
-    if (this.restoringFiles && !recovery && !branch)
+    if (
+      (this.restoringFiles ||
+        (request.sessionId && this.restoringScopes.has(this.fileScope(request.sessionId)))) &&
+      !recovery &&
+      !branch
+    )
       return refuse({ code: 'RUN_ALREADY_ACTIVE', message: 'file recovery is in progress' });
-    if (this.terminationUnconfirmed || this.drainingRuns.size > 0)
+    if (this.hostTerminationUnconfirmed)
       return refuse({
         code: 'RESOURCE_CAPACITY',
-        message:
-          'a worker termination is unconfirmed; restart the backend before starting another run',
+        message: 'unscoped worker termination is unconfirmed',
       });
     const resolved = this.resolveDefinition(request);
     if ('error' in resolved) return refuse(resolved.error);
@@ -1329,6 +1443,7 @@ export class Coordinator {
           ...(autoRoute.reasoning ? { reasoning: autoRoute.reasoning } : {}),
         },
         fileTools: source.roles.some((role) => role.allowedWorkTools.includes('read_file')),
+        ...(autoRoute.harness ? { harness: autoRoute.harness, commandTools: true } : {}),
         ...(autoRoute.reasoningChoice ? { routeLevel: autoRoute.reasoningChoice.level } : {}),
       });
       if (
@@ -1354,6 +1469,42 @@ export class Coordinator {
       ? this.withReferences(seeded.definition, request.references)
       : seeded;
     if ('error' in referenced) return refuse(referenced.error);
+    const copiedImages = new Map<string, ImageInput>();
+    try {
+      const sources = [
+        ...(request.startFrom ? [request.startFrom] : []),
+        ...(branch?.preview.artifactVersionId
+          ? [{ runId: branch.source.runId, artifactVersionId: branch.preview.artifactVersionId }]
+          : []),
+        ...(request.references ?? []).flatMap((ref) => (ref.kind === 'result' ? [ref] : [])),
+      ];
+      for (const source of sources) {
+        const projection = this.findSnapshot(source.runId)?.projection;
+        if (!projection?.artifacts[source.artifactVersionId]?.media) continue;
+        for (const image of generatedImageInputs(
+          source.runId,
+          [{ artifactVersionId: source.artifactVersionId }],
+          projection.artifacts,
+          { imageInput: true },
+          this.imageGeneration?.read,
+        ))
+          copiedImages.set(image.imageId, image);
+      }
+      if (copiedImages.size) {
+        const definition = referenced.definition as CorralDefinition;
+        const inputs = [...(definition.input.images ?? [])];
+        for (const image of copiedImages.values()) {
+          const { data: _data, ...metadata } = image;
+          if (!inputs.some((input) => input.imageId === image.imageId)) inputs.push(metadata);
+        }
+        referenced.definition = { ...definition, input: { ...definition.input, images: inputs } };
+      }
+    } catch {
+      return refuse({
+        code: 'CAPABILITY_DENIED',
+        message: 'referenced generated image is unavailable or exceeds vision input limits',
+      });
+    }
     const planned = planRun(referenced.definition);
     if (!planned.ok) {
       const code = planned.issues.some((i) => i.code === 'GRAPH_INVALID')
@@ -1413,14 +1564,20 @@ export class Coordinator {
           code: 'CAPABILITY_DENIED',
           message: 'every role must use a model with confirmed image input support',
         });
-      if (!request.sessionId || !this.images)
+      if (
+        planned.definition.input.images.some((image) => !copiedImages.has(image.imageId)) &&
+        (!request.sessionId || !this.images)
+      )
         return refuse({
           code: 'CAPABILITY_DENIED',
           message: 'image input requires an owning session and image store',
         });
       try {
         for (const reference of planned.definition.input.images) {
-          const image = ImageInput.parse(this.images.read(request.sessionId, reference));
+          const image = ImageInput.parse(
+            copiedImages.get(reference.imageId) ??
+              (request.sessionId && this.images?.read(request.sessionId, reference)),
+          );
           const { data: _data, ...metadata } = image;
           if (canonicalJson(metadata) !== canonicalJson(reference))
             throw new Error('image reference changed');
@@ -1441,21 +1598,35 @@ export class Coordinator {
       );
       if (error) return refuse({ code: 'CAPABILITY_DENIED', message: `${role.id}: ${error}` });
     }
-    const active = this.store.listRuns().find((r) => !TERMINAL_RUN_STATUSES.has(r.status));
-    if (active) {
-      return refuse({
-        code: 'RUN_ALREADY_ACTIVE',
-        message: `run ${active.runId} is still ${active.status}; one run at a time`,
-      });
-    }
 
     const reviewOnly = planned.definition.input.taskScope === 'review_only';
     if (reviewOnly)
       for (const role of planned.definition.roles)
         role.allowedWorkTools = role.allowedWorkTools.filter(
-          (tool) => !['write_file', 'delete_file', 'move_file'].includes(tool),
+          (tool) =>
+            ![
+              'write_file',
+              'delete_file',
+              'move_file',
+              'run_command',
+              'generate_image',
+              'preview_app',
+              'preview_action',
+            ].includes(tool),
         );
     const harnesses: Record<string, EffectiveHarnessSnapshot> = {};
+    const imageProfiles: Record<string, ImageGenerationProfile> = {};
+    for (const role of planned.definition.roles) {
+      if (!role.allowedWorkTools.includes('generate_image')) continue;
+      const resolved = role.imageProfile && this.imageGeneration?.resolve(role.imageProfile);
+      const parsed = ImageGenerationProfile.safeParse(resolved);
+      if (!parsed.success || parsed.data.profileId !== role.imageProfile)
+        return refuse({
+          code: 'CAPABILITY_DENIED',
+          message: `${role.id}: configure an image generation profile`,
+        });
+      imageProfiles[role.id] = parsed.data;
+    }
     for (const roleId of Object.keys(request.harnessOverrides ?? {}))
       if (!planned.definition.roles.some((role) => role.id === roleId && role.harness))
         return refuse({
@@ -1556,6 +1727,39 @@ export class Coordinator {
       return refuse({ code: 'CAPABILITY_DENIED', message: 'branch model or resources changed' });
     const runId = this.ids.next('run');
     const definition = planned.definition;
+    const writesFiles =
+      definition.roles.some((role) =>
+        role.allowedWorkTools.some((tool) =>
+          [
+            'write_file',
+            'delete_file',
+            'move_file',
+            'write',
+            'edit',
+            'edit_hashline',
+            'run_command',
+            'run_check',
+            'lsp_query',
+          ].includes(tool),
+        ),
+      ) ||
+      Object.values(harnesses).some(
+        (harness) =>
+          harness.resources.some((resource) => resource.kind === 'extension') ||
+          Boolean(harness.projectTools?.mcpServerIds?.length) ||
+          Boolean(harness.projectTools?.lspServerIds?.length) ||
+          Boolean(harness.projectTools?.checkIds?.length) ||
+          harness.allowedTools.includes('codemode'),
+      );
+    try {
+      this.files?.acquireRun?.(runId, request.sessionId, writesFiles);
+    } catch (error) {
+      return refuse(
+        error instanceof ToolRefusal
+          ? { code: error.code, message: error.message }
+          : { code: 'STORAGE_UNAVAILABLE', message: 'working copy admission failed' },
+      );
+    }
     const snapshot: RunSnapshot = {
       ...(branch
         ? {
@@ -1592,8 +1796,10 @@ export class Coordinator {
           : null,
       criteriaVersionId: this.ids.next('criteria_version'),
       mode: request.mode,
+      ...(request.permissionMode ? { permissionMode: request.permissionMode } : {}),
       models,
       ...(Object.keys(harnesses).length ? { harnesses } : {}),
+      ...(Object.keys(imageProfiles).length ? { imageProfiles } : {}),
       ...('autoRoute' in request && request.autoRoute ? { autoRoute: request.autoRoute } : {}),
       ...(this.judgments?.settings.reasoning_effort.apply
         ? {
@@ -1628,6 +1834,8 @@ export class Coordinator {
       ultraDraining: false,
       taskOutcomes: new Map(),
       questions: new Map(),
+      itemBatches: new Map(),
+      interruptedChildWaits: new Map(),
       cancelRequested: new Set(),
       closingExecutions: new Set(),
       approvals: new Map(),
@@ -1671,10 +1879,12 @@ export class Coordinator {
           definitionHash: snapshot.definitionHash,
           inputHash: hashOf(definition.input),
           mode: request.mode,
+          ...(snapshot.permissionMode ? { permissionMode: snapshot.permissionMode } : {}),
           modelProfiles: Object.values(models),
           limits: definition.limits,
           criteriaVersionId: snapshot.criteriaVersionId,
           ...(snapshot.harnesses ? { harnesses: snapshot.harnesses } : {}),
+          ...(snapshot.imageProfiles ? { imageProfiles: snapshot.imageProfiles } : {}),
           ...(snapshot.reasoningApply ? { reasoningApply: snapshot.reasoningApply } : {}),
           ...(request.startFrom ? { startedFrom: request.startFrom } : {}),
           ...(snapshot.autoRoute ? { autoRoute: snapshot.autoRoute } : {}),
@@ -1763,6 +1973,7 @@ export class Coordinator {
         });
       });
     } catch {
+      this.files?.releaseRun?.(runId, true);
       return { runId: null, receipt: unavailable(request.commandId, 'none', this.storageError) };
     }
     this.live.set(runId, run);
@@ -1788,7 +1999,10 @@ export class Coordinator {
         payload: { scope: { kind: 'run' }, reason: 'run_deadline' },
       });
     });
-    this.schedule(run, () => this.drive(run));
+    this.schedule(run, async () => {
+      await this.files?.prepareRun?.(runId);
+      if (!TERMINAL_RUN_STATUSES.has(run.projection.status)) await this.drive(run);
+    });
     return { runId, receipt };
   }
 
@@ -2308,7 +2522,7 @@ export class Coordinator {
         },
       }));
       for (const executionId of unsettled) {
-        this.releaseSlots(run, executionId);
+        this.releaseSlots(run, executionId, false);
         for (const call of Object.values(run.projection.modelCalls))
           if (call.executionId === executionId) {
             run.requestDeadlines.get(call.modelCallId)?.();
@@ -2325,10 +2539,15 @@ export class Coordinator {
       }
       this.commit(run, timedOut);
       this.terminationUnconfirmed = true;
+      if (!this.files?.acquireRun || !this.files.available(run.runId))
+        this.hostTerminationUnconfirmed = true;
       this.failRun(run, 'termination_unconfirmed');
       this.wake(run);
     });
-    void Promise.all(ids.map((id) => run.executionOutcomes.get(id)))
+    void Promise.all([
+      ...ids.map((id) => run.executionOutcomes.get(id)),
+      ...(scope.kind === 'run' ? [this.stopOwnedServices(run)] : []),
+    ])
       .then(() => {
         cancelTimeout();
         if (TERMINAL_RUN_STATUSES.has(run.projection.status) || this.storageError) return;
@@ -2591,8 +2810,13 @@ export class Coordinator {
       task.status !== 'blocked' ||
       task.attemptCount !== previous.attemptNo ||
       !spec ||
-      parent?.status !== 'waiting_children' ||
-      !parent.waitingOn?.targetIds.includes(previousExecutionId)
+      !parent ||
+      !this.currentQuestionOwner(run, parent.executionId, parent.attemptNo) ||
+      !(
+        (parent.status === 'waiting_children' &&
+          parent.waitingOn?.targetIds.includes(previousExecutionId)) ||
+        run.interruptedChildWaits.get(parent.executionId)?.has(taskId)
+      )
     )
       return this.refuseControl(command, payloadHash, {
         code: 'RESTART_NOT_ALLOWED',
@@ -2601,7 +2825,8 @@ export class Coordinator {
     const spawned = Object.values(run.projection.executions).filter(
       (e) => e.parentExecutionId !== null,
     ).length;
-    if (spawned >= run.limits.maxSpawns)
+    // A retry is an additional attempt; it cannot consume a later item's reserved slot.
+    if (spawned + this.reservedItemSpawns(run) + 1 > run.limits.maxSpawns)
       return this.refuseControl(command, payloadHash, {
         code: 'LIMIT_REACHED',
         message: 'the spawn attempt limit was reached',
@@ -2644,22 +2869,26 @@ export class Coordinator {
       payloadHash,
       [
         ...prepared.drafts,
-        {
-          type: 'execution.state_changed',
-          executionId: parent.executionId,
-          payload: {
-            executionId: parent.executionId,
-            from: parent.status,
-            to: parent.status,
-            activity: parent.activity,
-            waitingOn: {
-              ...parent.waitingOn,
-              targetIds: parent.waitingOn.targetIds.map((id) =>
-                id === previousExecutionId ? prepared.input.executionId : id,
-              ),
-            },
-          },
-        },
+        ...(parent.status === 'waiting_children' && parent.waitingOn
+          ? [
+              {
+                type: 'execution.state_changed',
+                executionId: parent.executionId,
+                payload: {
+                  executionId: parent.executionId,
+                  from: parent.status,
+                  to: parent.status,
+                  activity: parent.activity,
+                  waitingOn: {
+                    ...parent.waitingOn,
+                    targetIds: parent.waitingOn.targetIds.map((id) =>
+                      id === previousExecutionId ? prepared.input.executionId : id,
+                    ),
+                  },
+                },
+              } satisfies EventDraft,
+            ]
+          : []),
         runState(run.projection.status, waiting ? 'awaiting_user' : 'running', 'task_restarted'),
       ],
       'applied',
@@ -2702,6 +2931,13 @@ export class Coordinator {
 
   private maybePaused(run: LiveRun) {
     if (run.projection.status !== 'pausing') return;
+    if (this.serviceRuns.has(run) || this.previewRuns.has(run) || this.stoppingServices.has(run)) {
+      void this.stopOwnedServices(run).then(
+        () => this.maybePaused(run),
+        () => this.failRun(run, 'service_termination_unconfirmed'),
+      );
+      return;
+    }
     const activeEffects = Object.values(run.projection.effects).some(
       (e) =>
         e.status === 'admitted' &&
@@ -2977,12 +3213,8 @@ export class Coordinator {
   ): CommandError | null {
     if (this.restoringFiles)
       return { code: 'RUN_ALREADY_ACTIVE', message: 'file recovery is in progress' };
-    const active = this.store.listRuns().find((r) => !TERMINAL_RUN_STATUSES.has(r.status));
-    if (active)
-      return {
-        code: 'RUN_ALREADY_ACTIVE',
-        message: `run ${active.runId} is still ${active.status}; one run at a time`,
-      };
+    if (this.hostTerminationUnconfirmed)
+      return { code: 'RESOURCE_CAPACITY', message: 'unscoped worker termination is unconfirmed' };
     const resolution = this.models.resolve(profile, mode);
     if (!resolution.ok)
       return { code: resolution.code, message: `${profile}: ${resolution.reason}` };
@@ -3063,6 +3295,7 @@ export class Coordinator {
         !route ||
         route.requestHash ||
         route.modelProfile !== original.choice.modelProfile ||
+        canonicalJson(route.harness ?? null) !== canonicalJson(original.harness ?? null) ||
         canonicalJson(route.reasoning ?? null) !==
           canonicalJson(original.choice.reasoning ?? null) ||
         route.inputHash !== bytesToHex(sha256(utf8ToBytes(original.brief)))
@@ -3195,6 +3428,7 @@ export class Coordinator {
     this.storageError = `facts can no longer be recorded: ${String(error)}`;
     for (const run of this.live.values()) {
       run.stop.aborted = true;
+      void this.stopOwnedServices(run).catch(() => {});
       for (const execution of Object.values(run.projection.executions))
         if (!TERMINAL_EXECUTION_STATUSES.has(execution.status))
           this.requestCancel(run, execution.executionId, 'storage unavailable');
@@ -3305,6 +3539,20 @@ export class Coordinator {
       this.live.delete(run.runId);
       run.cancelDeadline();
       this.wake(run);
+      this.files?.releaseRun?.(
+        run.runId,
+        !this.drainingRuns.has(run) &&
+          Object.values(projection.executions).every((execution) =>
+            TERMINAL_EXECUTION_STATUSES.has(execution.status),
+          ) &&
+          !this.store
+            .readEvents(run.runId, 0)
+            .some(
+              (event) =>
+                event.type === 'execution.settled' &&
+                event.payload.terminationMode === 'unconfirmed',
+            ),
+      );
     }
   }
 
@@ -3333,7 +3581,22 @@ export class Coordinator {
 
   private failRun(run: LiveRun, reason: string) {
     const status = run.projection.status;
-    if (TERMINAL_RUN_STATUSES.has(status) || this.storageError) return;
+    if (TERMINAL_RUN_STATUSES.has(status)) return;
+    if (this.storageError) {
+      void this.stopOwnedServices(run).catch(() => {});
+      return;
+    }
+    if (this.serviceRuns.has(run) || this.previewRuns.has(run) || this.stoppingServices.has(run)) {
+      run.stop.aborted = true;
+      for (const execution of Object.values(run.projection.executions))
+        if (!TERMINAL_EXECUTION_STATUSES.has(execution.status))
+          this.requestCancel(run, execution.executionId, 'run failed');
+      void this.stopOwnedServices(run).then(
+        () => this.failRun(run, reason),
+        () => this.failRun(run, 'service_termination_unconfirmed'),
+      );
+      return;
+    }
     run.stop.aborted = true;
     const active = Object.values(run.projection.executions).filter(
       (e) => !TERMINAL_EXECUTION_STATUSES.has(e.status),
@@ -3877,6 +4140,14 @@ export class Coordinator {
       return { nodeId: id, label: target?.label ?? id };
     };
     const callables = run.plan.callables[spec.nodeId] ?? { delegate: [], question: [] };
+    const parent = spec.parentExecutionId
+      ? run.projection.executions[spec.parentExecutionId]
+      : undefined;
+    const mayAskParent =
+      spec.assignment.kind === 'delegated' &&
+      parent &&
+      callables.parentQuestion?.includes(parent.nodeId) &&
+      run.projection.tasks[parent.taskId]?.activeExecutionId === parent.executionId;
 
     const taskId = spec.taskId ?? this.ids.next('task');
     const executionId = this.ids.next('execution');
@@ -3922,7 +4193,11 @@ export class Coordinator {
       ...(item ? { item } : {}),
       capabilities: {
         delegateTo: callables.delegate.map(label),
-        askTo: callables.question.map(label),
+        askTo: [
+          ...callables.question.filter((id) => !mayAskParent || id !== parent.nodeId).map(label),
+          ...(mayAskParent ? [{ ...label(parent.nodeId), delivery: 'parent' as const }] : []),
+        ],
+        ...(callables.replyToChildren ? { replyToChildren: true } : {}),
       },
       inputs: [
         ...(run.snapshot.definition.input.images ?? []).map((image) => ({
@@ -3965,6 +4240,15 @@ export class Coordinator {
         });
     }
     run.inputsByExecution.set(executionId, input.inputs);
+    const resolvedImages = generatedImageInputs(
+      run.runId,
+      input.inputs,
+      run.projection.artifacts,
+      input.model,
+      this.imageGeneration?.read,
+      input.images,
+    );
+    if (resolvedImages.length) input.images = resolvedImages;
     run.startInputs.set(executionId, input);
     run.assignments.set(executionId, spec);
     input.taskBrief = {
@@ -3976,7 +4260,7 @@ export class Coordinator {
       taskScope: run.snapshot.definition.input.taskScope ?? 'work',
       verificationScope: run.snapshot.definition.input.verificationScope ?? 'targeted',
       canModifyFiles: role.allowedWorkTools.some((tool) =>
-        ['write_file', 'delete_file', 'move_file'].includes(tool),
+        ['write_file', 'delete_file', 'move_file', 'run_command'].includes(tool),
       ),
       limits: { ...run.limits },
       sourceRefs: input.inputs.map((source) => ({
@@ -4051,7 +4335,12 @@ export class Coordinator {
     const outcome = (async () => {
       // Committed: only now does work leave the coordinator.
       let settlement: AgentSettlement;
+      let resident = false;
       try {
+        if (this.hostResidents >= this.policy.maxResidentExecutions)
+          throw new ToolRefusal('RESOURCE_CAPACITY', 'host resident worker capacity exhausted');
+        this.hostResidents++;
+        resident = true;
         const handle = await this.agents.start(input, this.hostFor(run, input));
         run.handles.set(input.executionId, handle);
         if (run.cancelRequested.has(input.executionId)) await handle.cancel('cancelled');
@@ -4060,6 +4349,9 @@ export class Coordinator {
         settlement = { outcome: 'failed', error: String(error) };
       } finally {
         run.closingExecutions.add(input.executionId);
+        this.closeExecutionQuestions(run, input.executionId);
+        for (const batch of run.itemBatches.values())
+          if (batch.ownerExecutionId === input.executionId) batch.stopped = true;
         for (const pending of run.toolApprovals.values())
           if (pending.input.executionId === input.executionId) pending.expire('execution_ended');
         for (const pending of run.extensionUi.values())
@@ -4069,7 +4361,22 @@ export class Coordinator {
         // A worker can end while awaiting a child; stop children before draining those tools.
         await this.cancelChildren(run, input.executionId, 'the parent execution ended');
         await Promise.allSettled(run.toolOutcomes.get(input.executionId) ?? []);
+        if (
+          this.previewRuns.has(run) &&
+          (settlement?.outcome !== 'succeeded' || run.cancelRequested.has(input.executionId))
+        ) {
+          try {
+            await this.previewTools?.closeExecution(run.runId, input.executionId);
+          } catch {
+            settlement = {
+              outcome: 'failed',
+              terminationMode: 'unconfirmed',
+              error: 'preview_termination_unconfirmed',
+            };
+          }
+        }
         run.handles.delete(input.executionId);
+        if (resident && settlement?.terminationMode !== 'unconfirmed') this.hostResidents--;
       }
       if (settlement.terminationMode !== 'unconfirmed')
         for (const [lease, owner] of this.codemodeWorkers)
@@ -4096,6 +4403,9 @@ export class Coordinator {
 
   private requestCancel(run: LiveRun, executionId: string, reason: string) {
     run.cancelRequested.add(executionId);
+    for (const batch of run.itemBatches.values())
+      if (batch.ownerExecutionId === executionId) batch.stopped = true;
+    this.closeExecutionQuestions(run, executionId);
     for (const pending of run.extensionUi.values())
       if (pending.input.executionId === executionId)
         this.closeExtensionUi(run, pending.requestId, 'cancelled');
@@ -4195,7 +4505,7 @@ export class Coordinator {
           ? 'the responder finished without reply'
           : 'the agent finished without submit_result'
         : settlement.error;
-    this.releaseSlots(run, input.executionId);
+    this.releaseSlots(run, input.executionId, settlement.terminationMode !== 'unconfirmed');
     for (const call of Object.values(run.projection.modelCalls))
       if (call.executionId === input.executionId) {
         run.requestDeadlines.get(call.modelCallId)?.();
@@ -4259,18 +4569,17 @@ export class Coordinator {
       });
     }
     // A responder that ends without answering closes its question; the asker is told.
-    const unanswered = [...run.questions].find(
+    const unanswered = [...run.questions].filter(
       ([, q]) => q.responderExecutionId === input.executionId,
     );
-    if (unanswered) {
-      const [questionId, question] = unanswered;
+    for (const [questionId, question] of unanswered) {
       run.questions.delete(questionId);
       question.cancelTimer();
       drafts.push(...this.askerResumes(run, question.askerExecutionId, questionId, 'cancelled'));
-      this.commit(run, drafts);
+    }
+    this.commit(run, drafts);
+    for (const [questionId, question] of unanswered) {
       question.wake({ questionId, outcome: 'cancelled' });
-    } else {
-      this.commit(run, drafts);
     }
     if (
       Object.values(run.projection.executions).every((e) =>
@@ -4281,6 +4590,8 @@ export class Coordinator {
     this.maybePaused(run);
     if (settlement.terminationMode === 'unconfirmed') {
       this.terminationUnconfirmed = true;
+      if (!this.files?.acquireRun || !this.files.available(run.runId))
+        this.hostTerminationUnconfirmed = true;
       this.failRun(run, 'termination_unconfirmed');
     }
     return outcome === 'succeeded' || submitted
@@ -4291,8 +4602,13 @@ export class Coordinator {
   // ── model slots ───────────────────────────────────────────────────────────
 
   private async acquireSlot(run: LiveRun, executionId: string): Promise<void> {
-    if (run.slots.free > 0) {
+    if (
+      run.slots.free > 0 &&
+      this.hostModels < this.policy.maxModelConcurrency &&
+      !this.modelWaiters.length
+    ) {
       run.slots.free -= 1;
+      this.hostModels++;
       return;
     }
     const listeners = run.cancelListeners.get(executionId) ?? new Set<() => void>();
@@ -4302,16 +4618,21 @@ export class Coordinator {
       await new Promise<void>((resolve, reject) => {
         const granted = () => {
           listeners.delete(cancel);
+          run.slots.free--;
+          this.hostModels++;
           resolve();
         };
+        const waiter = { run, grant: granted };
         const cancel = () => {
-          const index = run.slots.waiters.indexOf(granted);
-          if (index !== -1) run.slots.waiters.splice(index, 1);
+          const index = this.modelWaiters.indexOf(waiter);
+          if (index !== -1) this.modelWaiters.splice(index, 1);
           listeners.delete(cancel);
           reject(new Error('scope cancelled'));
+          this.drainModelWaiters();
         };
         listeners.add(cancel);
-        run.slots.waiters.push(granted);
+        this.modelWaiters.push(waiter);
+        this.drainModelWaiters();
         this.maybePaused(run);
       });
     } finally {
@@ -4320,16 +4641,25 @@ export class Coordinator {
   }
 
   private releaseSlot(run: LiveRun) {
-    const next = run.slots.waiters.shift();
-    if (next) next();
-    else run.slots.free += 1;
+    run.slots.free++;
+    this.hostModels--;
+    this.drainModelWaiters();
   }
 
-  private releaseSlots(run: LiveRun, executionId: string) {
+  private drainModelWaiters() {
+    while (this.hostModels < this.policy.maxModelConcurrency) {
+      const index = this.modelWaiters.findIndex((waiter) => waiter.run.slots.free > 0);
+      if (index < 0) return;
+      this.modelWaiters.splice(index, 1)[0]!.grant();
+    }
+  }
+
+  private releaseSlots(run: LiveRun, executionId: string, confirmed = true) {
     for (const [modelCallId, owner] of run.slots.held) {
       if (owner !== executionId) continue;
       run.slots.held.delete(modelCallId);
-      this.releaseSlot(run);
+      if (confirmed) this.releaseSlot(run);
+      else run.slots.free++;
     }
   }
 
@@ -4412,6 +4742,8 @@ export class Coordinator {
         return;
       }
     }
+    await this.stopOwnedServices(run);
+    await this.boundary(run);
     // The output and the run's success are one fact: readers never see one without the other.
     this.commit(run, [
       {
@@ -5001,7 +5333,54 @@ export class Coordinator {
       return;
     const status = run.projection.status;
     if (TERMINAL_RUN_STATUSES.has(status)) return;
+    if (this.serviceRuns.has(run) || this.previewRuns.has(run) || this.stoppingServices.has(run)) {
+      void this.stopOwnedServices(run).then(
+        () => this.endRun(run, to, reason),
+        () => this.failRun(run, 'service_termination_unconfirmed'),
+      );
+      return;
+    }
     this.commit(run, [...this.closeRounds(run), runState(status, to, reason)]);
+  }
+
+  /** Run-owned services outlive a tool call, but never a pause or confirmed Run ending. */
+  private stopOwnedServices(run: LiveRun): Promise<void> {
+    const pending = this.stoppingServices.get(run);
+    if (pending) return pending;
+    if (!this.serviceRuns.has(run) && !this.previewRuns.has(run)) return Promise.resolve();
+    const stop = Promise.resolve()
+      .then(async () => {
+        const cleanup: Promise<void>[] = [];
+        if (this.serviceRuns.has(run))
+          cleanup.push(
+            this.files?.stopRunServices
+              ? this.files.stopRunServices(run.runId)
+              : Promise.reject(new ToolTerminationUnconfirmed()),
+          );
+        if (this.previewRuns.has(run))
+          cleanup.push(
+            this.previewTools
+              ? this.previewTools.closeRun(run.runId)
+              : Promise.reject(new ToolTerminationUnconfirmed()),
+          );
+        const results = await Promise.allSettled(cleanup);
+        const failed = results.find((result) => result.status === 'rejected');
+        if (failed?.status === 'rejected') throw failed.reason;
+      })
+      .catch((error: unknown) => {
+        this.files?.releaseRun?.(run.runId, false);
+        this.terminationUnconfirmed = true;
+        if (!this.files?.acquireRun || !this.files.available(run.runId))
+          this.hostTerminationUnconfirmed = true;
+        throw error;
+      })
+      .finally(() => {
+        this.serviceRuns.delete(run);
+        this.previewRuns.delete(run);
+        this.stoppingServices.delete(run);
+      });
+    this.stoppingServices.set(run, stop);
+    return stop;
   }
 
   // ── agent host: the only way an agent affects the run ─────────────────────
@@ -5665,6 +6044,7 @@ export class Coordinator {
         questions: Object.values(run.projection.questions).filter(
           (question) =>
             question.senderExecutionId === executionId ||
+            (question.delivery === 'parent' && question.targetExecutionId === executionId) ||
             (input.assignment.kind === 'question' &&
               input.assignment.questionId === question.questionId),
         ),
@@ -5734,6 +6114,8 @@ export class Coordinator {
         harness?.permissionPolicies,
         proposal,
         descriptors.has(proposal.name) ? hashOf(descriptors.get(proposal.name)) : undefined,
+        run.snapshot.permissionMode,
+        descriptors.get(proposal.name),
       );
     const authorizeTool = async (
       proposal: ToolProposal,
@@ -5895,15 +6277,27 @@ export class Coordinator {
       toolCallId: string,
       proposal: ToolProposal,
     ): Promise<boolean> => {
-      const descriptor = descriptors.get(proposal.name);
-      const decision = toolPermission(
-        harness?.permissionPolicies,
-        proposal,
-        descriptor ? hashOf(descriptor) : undefined,
-      );
+      const descriptor = descriptors.get(proposal.name) ?? {
+        name: proposal.name,
+        source: 'corral' as const,
+        schemaHash: hashOf({ name: proposal.name }),
+        exposure: 'direct' as const,
+        sideEffect:
+          proposal.name === 'generate_image' ? ('external' as const) : ('workspace' as const),
+      };
+      const decision = permissionDecision(proposal);
       if (decision !== 'ask') return decision === 'allow';
-      if (!harness || !descriptor) return false;
-      const plan = toolPermissionPlan(harness, descriptor, proposal.args);
+      const plan = toolPermissionPlan(
+        harness ?? { snapshotHash: hashOf(run.snapshot), policyRevision: 1 },
+        descriptor,
+        proposal.name === 'generate_image'
+          ? {
+              ...proposal.args,
+              imageProfile: run.snapshot.imageProfiles?.[input.role.id],
+              reservedCostUsd: run.snapshot.imageProfiles?.[input.role.id]?.maxCostUsdPerCall,
+            }
+          : proposal.args,
+      );
       const listeners = run.cancelListeners.get(executionId) ?? new Set<() => void>();
       run.cancelListeners.set(executionId, listeners);
       return this.requestToolApproval(run, input, { toolCallId }, plan, {
@@ -5980,7 +6374,7 @@ export class Coordinator {
           toolCallId,
           error: { code: 'CAPABILITY_DENIED', message: 'tool permission denied' },
         };
-      if (permission === 'ask') {
+      if (permission === 'ask' && call.proposal.name !== 'run_command') {
         call.claimed = true;
         if (!(await permissionApproval(toolCallId, call.proposal)))
           return {
@@ -6020,7 +6414,11 @@ export class Coordinator {
         },
         { type: 'tool.started', executionId, payload: { executionId, toolCallId, effectId } },
       ];
-      const closing = (resultRef: string | null, error: string | null = null): EventDraft[] =>
+      const closing = (
+        resultRef: string | null,
+        error: string | null = null,
+        outcome: EventPayload<'effect.settled'>['outcome'] = error ? 'failed' : 'succeeded',
+      ): EventDraft[] =>
         run.projection.effects[effectId] && run.projection.effects[effectId]?.status !== 'admitted'
           ? []
           : [
@@ -6032,10 +6430,23 @@ export class Coordinator {
               {
                 type: 'effect.settled',
                 executionId,
-                payload: { effectId, outcome: error ? 'failed' : 'succeeded' },
+                payload: { effectId, outcome },
               },
             ];
-      const tool: ToolFrame = { opening, closing, toolCallId, effectId };
+      const tool: ToolFrame = {
+        opening,
+        closing,
+        toolCallId,
+        effectId,
+        ...(descriptors.get(call.proposal.name)
+          ? { descriptor: descriptors.get(call.proposal.name)! }
+          : {}),
+        stillAuthorized: () =>
+          (!harness ||
+            call.descriptorHash === hashOf(descriptors.get(call.proposal.name) ?? null)) &&
+          !toolRefusal(runGates(this.gates['tool.execute'], toolView(call.proposal))) &&
+          permissionDecision(call.proposal) !== 'deny',
+      };
       if (call.proposal.parentToolCallId)
         tool.parentCancellation = {
           get aborted() {
@@ -6058,8 +6469,16 @@ export class Coordinator {
           },
         };
       switch (call.proposal.name) {
+        case 'generate_image':
+          return this.generateImageTool(run, input, call.proposal, tool);
         case 'read':
         case 'run_check':
+        case 'run_command':
+        case 'preview_file':
+        case 'preview_app':
+        case 'preview_action':
+        case 'read_hashline':
+        case 'edit_hashline':
         case 'lsp_query':
         case 'edit':
         case 'write':
@@ -6072,16 +6491,25 @@ export class Coordinator {
         case 'move_file':
           return this.externalTool(run, input, call.proposal, tool);
         case 'spawn_subagents':
-          return this.spawnTool(run, input, call.proposal, tool, (proposal) =>
+          return this.spawnTool(run, input, call.proposal, tool, (proposal, batchId) =>
             toolRefusal(
               runGates(this.gates['tool.execute'], {
                 ...toolView(proposal),
                 currentEffectId: effectId,
+                reservedSpawns: this.reservedItemSpawns(run, batchId),
               }),
             ),
           );
         case 'await_tasks':
-          return this.awaitTool(run, input, call.proposal, tool);
+          return this.awaitTool(run, input, call.proposal, tool, (proposal, batchId) =>
+            toolRefusal(
+              runGates(this.gates['tool.execute'], {
+                ...toolView(proposal),
+                currentEffectId: effectId,
+                reservedSpawns: this.reservedItemSpawns(run, batchId),
+              }),
+            ),
+          );
         case 'update_plan':
           return this.updateWorkPlan(run, input, call.proposal, tool);
         case 'ask_user':
@@ -6681,6 +7109,7 @@ export class Coordinator {
               descriptors: [...descriptors.values()],
               model: input.model,
               policy: input.role.reasoning ?? null,
+              parentQuestions: this.parentQuestions(run, input),
             });
           for (const id of privateInput?.directiveIds ?? []) {
             const directive = run.projection.directives[id];
@@ -6722,7 +7151,11 @@ export class Coordinator {
             const exhausted = run.reasoningCalls >= run.reasoningMaxCalls;
             if (!exhausted) run.reasoningCalls++;
             run.boundaries.add(executionId);
+            let reasoningSlot = false;
             try {
+              await this.acquireSlot(run, executionId);
+              reasoningSlot = true;
+              run.boundaries.add(executionId);
               reasoning = await automaticReasoning(
                 privateInput,
                 {
@@ -6741,6 +7174,7 @@ export class Coordinator {
                 exhausted,
               );
             } finally {
+              if (reasoningSlot) this.releaseSlot(run);
               run.boundaries.delete(executionId);
             }
             const paused = run.projection.status !== 'running';
@@ -6924,6 +7358,9 @@ export class Coordinator {
             profile: input.modelProfile,
             maxOutputTokens: admitted.maxOutputTokens,
             directives: queued,
+            ...(this.parentQuestions(run, input).length
+              ? { parentQuestions: this.parentQuestions(run, input) }
+              : {}),
             ...(reasoning ? { reasoning } : {}),
           };
         } finally {
@@ -7076,6 +7513,20 @@ export class Coordinator {
   }
 
   /** What tool gates see: the run as committed, this execution and the proposed call. */
+  private reservedItemSpawns(run: LiveRun, consumingBatchId?: string) {
+    return [...run.itemBatches.values()].reduce(
+      (sum, batch) =>
+        sum +
+        (batch.stopped
+          ? 0
+          : Math.max(
+              0,
+              batch.tasks.length - batch.next - (batch.batchId === consumingBatchId ? 1 : 0),
+            )),
+      0,
+    );
+  }
+
   private toolView(run: LiveRun, input: AgentStartInput, proposal: ToolProposal): ToolGateView {
     return {
       projection: run.projection,
@@ -7083,11 +7534,29 @@ export class Coordinator {
       input,
       proposal,
       policy: this.policy,
+      reservedSpawns: this.reservedItemSpawns(run),
+      pendingChildContinuation:
+        this.parentQuestions(run, input).length > 0 ||
+        [...(run.interruptedChildWaits.get(input.executionId) ?? [])].some(
+          (id) => !['completed', 'failed'].includes(run.projection.tasks[id]?.status ?? ''),
+        ) ||
+        [...run.itemBatches.values()].some(
+          (batch) =>
+            batch.ownerExecutionId === input.executionId &&
+            !batch.stopped &&
+            batch.taskIds.length > 0,
+        ),
       callables: run.plan.callables[input.nodeId] ?? { delegate: [], question: [] },
       externalTools: Boolean(this.tools),
       fileTools: this.files?.available(run.runId) ?? false,
       harnessRead: Boolean(this.harnesses?.readSkill),
-      responderOf: (questionId) => run.questions.get(questionId)?.responderExecutionId,
+      responderOf: (questionId) => {
+        const question = run.questions.get(questionId);
+        return question && this.questionCurrent(run, question)
+          ? question.responderExecutionId
+          : undefined;
+      },
+      parentQuestionTarget: (nodeId) => this.parentQuestionTarget(run, input, nodeId)?.executionId,
       readable: () => this.readable(run, input),
     };
   }
@@ -7126,7 +7595,10 @@ export class Coordinator {
       for (const id of p.tasks[child.taskId]?.submittedArtifactVersionIds ?? []) ids.add(id);
     }
     for (const q of Object.values(p.questions)) {
-      if (input.assignment.kind === 'question' && q.questionId === input.assignment.questionId) {
+      if (
+        (input.assignment.kind === 'question' && q.questionId === input.assignment.questionId) ||
+        (q.delivery === 'parent' && q.targetExecutionId === input.executionId)
+      ) {
         for (const id of q.artifactRefs) ids.add(id);
       }
       if (q.senderExecutionId === input.executionId) {
@@ -7240,10 +7712,10 @@ export class Coordinator {
     input: AgentStartInput,
     proposal: ToolProposal,
     tool: ToolFrame,
-    recheck: (proposal: ToolProposal) => Refusal | null,
+    recheck: (proposal: ToolProposal, batchId?: string) => Refusal | null,
   ): Promise<ToolOutcome> {
-    const check = (candidate: ToolProposal) =>
-      this.ultraSpawnRefusal(run, input, candidate) ?? recheck(candidate);
+    const check = (candidate: ToolProposal, batchId?: string) =>
+      this.ultraSpawnRefusal(run, input, candidate) ?? recheck(candidate, batchId);
     if (proposal.args.mode === 'items') return this.spawnItems(run, input, proposal, tool, check);
     const refused = this.ultraSpawnRefusal(run, input, proposal);
     if (refused) {
@@ -7283,83 +7755,204 @@ export class Coordinator {
     input: AgentStartInput,
     proposal: ToolProposal,
     tool: ToolFrame,
-    recheck: (proposal: ToolProposal) => Refusal | null,
+    recheck: (proposal: ToolProposal, batchId?: string) => Refusal | null,
   ): Promise<ToolOutcome> {
-    const tasks = proposal.args.tasks as { targetNodeId: string; brief: string }[];
-    const results: { taskId: string; status: string; artifactVersionIds: string[] }[] = [];
-    const { executionId } = input;
-    const cancelled = () =>
-      run.stop.aborted ||
-      run.cancelRequested.has(executionId) ||
-      run.closingExecutions.has(executionId);
-    let error: string | null = null;
-    this.commit(run, tool.opening);
-    try {
-      for (const [index, task] of tasks.entries()) {
-        await this.boundary(run, executionId);
-        if (cancelled()) {
-          error = 'scope cancelled';
-          break;
-        }
-        const refusal = recheck({ ...proposal, args: { mode: 'items', tasks: [task] } });
-        if (refusal) {
-          error = refusal.message;
-          break;
-        }
-        const child = this.prepareExecution(run, {
-          nodeId: task.targetNodeId,
-          iterationId: run.projection.executions[executionId]?.iterationId ?? null,
-          parentExecutionId: executionId,
-          depth: input.depth + 1,
-          assignment: { kind: 'delegated', brief: task.brief, parentExecutionId: executionId },
-          item: { batchId: tool.toolCallId, index: index + 1, total: tasks.length },
-          given: [{ name: 'task', kind: 'run_input', artifactVersionId: null, text: task.brief }],
-        });
-        const from = run.projection.executions[executionId]!.status;
-        this.commit(run, [
-          ...child.drafts,
-          {
-            type: 'execution.state_changed',
-            executionId,
-            payload: {
-              executionId,
-              from,
-              to: 'waiting_children',
-              activity: null,
-              waitingOn: {
-                kind: 'children',
-                targetIds: [child.input.executionId],
-                reasonCode: 'awaiting_item',
-                since: this.clock.nowIso(),
-                deadline: null,
-                required: true,
-              },
-            },
+    const batch: ItemBatch = {
+      batchId: tool.toolCallId,
+      ownerExecutionId: input.executionId,
+      ownerAttemptNo: input.attemptNo,
+      tasks: proposal.args.tasks as ItemBatch['tasks'],
+      taskIds: [],
+      next: 0,
+      stopped: false,
+      waiting: false,
+    };
+    run.itemBatches.set(batch.batchId, batch);
+    return this.waitForChildren(run, input, tool, [], [batch], recheck);
+  }
+
+  /** A task completion, incoming parent question or cancellation wakes a child wait. */
+  private async waitForChild(run: LiveRun, input: AgentStartInput, taskId: string) {
+    for (;;) {
+      if (
+        !this.currentQuestionOwner(run, input.executionId, input.attemptNo) ||
+        run.stop.aborted ||
+        this.parentQuestions(run, input).length
+      )
+        return;
+      const task = run.projection.tasks[taskId];
+      if (!task || task.status === 'completed' || task.status === 'failed') return;
+      const active = task.activeExecutionId
+        ? run.projection.executions[task.activeExecutionId]
+        : undefined;
+      let wake!: () => void;
+      const changed = new Promise<void>((resolve) => {
+        wake = resolve;
+        run.boundaryWaiters.add(resolve);
+      });
+      try {
+        const pending =
+          active && !TERMINAL_EXECUTION_STATUSES.has(active.status)
+            ? run.taskOutcomes.get(taskId)
+            : undefined;
+        await (pending ? Promise.race([pending, changed]) : changed);
+      } finally {
+        run.boundaryWaiters.delete(wake);
+      }
+    }
+  }
+
+  private childResults(run: LiveRun, taskIds: string[]) {
+    return taskIds.map((taskId) => {
+      const task = run.projection.tasks[taskId];
+      return {
+        taskId,
+        status: task?.status ?? 'failed',
+        artifactVersionIds: task?.status === 'completed' ? task.submittedArtifactVersionIds : [],
+      };
+    });
+  }
+
+  private waitingForChildren(
+    run: LiveRun,
+    input: AgentStartInput,
+    taskIds: string[],
+    items: boolean,
+  ) {
+    const execution = run.projection.executions[input.executionId];
+    if (!execution || !this.currentQuestionOwner(run, input.executionId, input.attemptNo)) return;
+    this.commit(run, [
+      {
+        type: 'execution.state_changed',
+        executionId: input.executionId,
+        payload: {
+          executionId: input.executionId,
+          from: execution.status,
+          to: 'waiting_children',
+          activity: null,
+          waitingOn: {
+            kind: 'children',
+            targetIds: taskIds.map((id) => run.projection.tasks[id]?.activeExecutionId ?? id),
+            reasonCode: items ? 'awaiting_item' : 'awaiting_delegated_tasks',
+            since: this.clock.nowIso(),
+            deadline: null,
+            required: true,
           },
-        ]);
-        const outcome = await this.launch(run, child);
-        const state = run.projection.tasks[child.input.taskId];
-        results.push({
-          taskId: child.input.taskId,
-          status: state?.status ?? 'failed',
-          artifactVersionIds:
-            state?.status === 'completed' ? state.submittedArtifactVersionIds : [],
-        });
-        if (!outcome.ok || cancelled()) {
-          if (cancelled()) error = 'scope cancelled';
-          break;
+        },
+      },
+    ]);
+  }
+
+  /** Ordered batches retain their remaining plan across question interruptions, never respawn an item. */
+  private async waitForChildren(
+    run: LiveRun,
+    input: AgentStartInput,
+    tool: ToolFrame,
+    requested: string[],
+    batches: ItemBatch[],
+    recheck: (proposal: ToolProposal, batchId?: string) => Refusal | null,
+  ): Promise<ToolOutcome> {
+    const cancelled = () =>
+      run.stop.aborted || !this.currentQuestionOwner(run, input.executionId, input.attemptNo);
+    if (batches.some((batch) => batch.waiting)) {
+      this.commit(run, [...tool.opening, ...tool.closing(null, 'item batch already has a waiter')]);
+      return {
+        ok: false,
+        toolCallId: tool.toolCallId,
+        error: { code: 'CAPABILITY_DENIED', message: 'item batch already has a waiter' },
+      };
+    }
+    for (const batch of batches) batch.waiting = true;
+    this.commit(run, tool.opening);
+    let error: string | null = null;
+    try {
+      for (const batch of batches) {
+        while (!batch.stopped && !cancelled() && !this.parentQuestions(run, input).length) {
+          if (batch.currentTaskId) {
+            this.waitingForChildren(run, input, [batch.currentTaskId], true);
+            await this.waitForChild(run, input, batch.currentTaskId);
+            if (cancelled() || this.parentQuestions(run, input).length) break;
+            const status = run.projection.tasks[batch.currentTaskId]?.status;
+            batch.currentTaskId = undefined;
+            if (status !== 'completed') {
+              batch.stopped = true;
+              break;
+            }
+          }
+          if (batch.next >= batch.tasks.length) {
+            batch.stopped = true;
+            break;
+          }
+          await this.boundary(run, input.executionId);
+          if (cancelled() || this.parentQuestions(run, input).length) break;
+          const task = batch.tasks[batch.next]!;
+          const candidate: ToolProposal = {
+            name: 'spawn_subagents',
+            args: { mode: 'items', tasks: [task] },
+          };
+          const refusal =
+            this.ultraSpawnRefusal(run, input, candidate) ?? recheck(candidate, batch.batchId);
+          if (refusal) {
+            error = refusal.message;
+            batch.stopped = true;
+            break;
+          }
+          const child = this.prepareExecution(run, {
+            nodeId: task.targetNodeId,
+            iterationId: run.projection.executions[input.executionId]?.iterationId ?? null,
+            parentExecutionId: input.executionId,
+            depth: input.depth + 1,
+            assignment: {
+              kind: 'delegated',
+              brief: task.brief,
+              parentExecutionId: input.executionId,
+            },
+            item: { batchId: batch.batchId, index: batch.next + 1, total: batch.tasks.length },
+            given: [{ name: 'task', kind: 'run_input', artifactVersionId: null, text: task.brief }],
+          });
+          batch.next++;
+          batch.currentTaskId = child.input.taskId;
+          batch.taskIds.push(child.input.taskId);
+          this.commit(run, child.drafts);
+          this.waitingForChildren(run, input, [child.input.taskId], true);
+          void this.launch(run, child);
         }
       }
+      const inBatches = new Set(batches.flatMap((batch) => batch.taskIds));
+      const independent = requested.filter((id) => !inBatches.has(id));
+      if (independent.length && !cancelled() && !this.parentQuestions(run, input).length)
+        this.waitingForChildren(run, input, independent, false);
+      for (const taskId of independent) {
+        await this.waitForChild(run, input, taskId);
+        if (cancelled() || this.parentQuestions(run, input).length) break;
+      }
+      if (cancelled()) error = 'scope cancelled';
+      if (
+        !error &&
+        this.parentQuestions(run, input).length &&
+        batches.some((batch) => batch.taskIds.length === 0)
+      ) {
+        error = 'answer existing child questions before starting an item batch';
+        for (const batch of batches)
+          if (batch.taskIds.length === 0) {
+            batch.stopped = true;
+            run.itemBatches.delete(batch.batchId);
+          }
+      }
     } catch {
-      error = cancelled() ? 'scope cancelled' : 'item batch stopped';
+      error = cancelled() ? 'scope cancelled' : 'child wait stopped';
     } finally {
-      if (!cancelled() && run.projection.executions[executionId]?.status === 'waiting_children')
+      for (const batch of batches) batch.waiting = false;
+      if (
+        !cancelled() &&
+        run.projection.executions[input.executionId]?.status === 'waiting_children'
+      )
         this.commit(run, [
           {
             type: 'execution.state_changed',
-            executionId,
+            executionId: input.executionId,
             payload: {
-              executionId,
+              executionId: input.executionId,
               from: 'waiting_children',
               to: 'active',
               activity: 'model',
@@ -7369,107 +7962,136 @@ export class Coordinator {
         ]);
       this.commit(run, tool.closing(null, error));
     }
-    return error
-      ? {
-          ok: false,
-          toolCallId: tool.toolCallId,
-          error: { code: 'TARGET_TERMINAL', message: error },
-        }
-      : {
-          ok: true,
-          toolCallId: tool.toolCallId,
-          result: {
-            taskIds: results.map((row) => row.taskId),
-            tasks: results,
-            remaining: tasks.length - results.length,
-          },
-        };
+    if (error)
+      return {
+        ok: false,
+        toolCallId: tool.toolCallId,
+        error: { code: 'TARGET_TERMINAL', message: error },
+      };
+    const taskIds = [...new Set([...requested, ...batches.flatMap((batch) => batch.taskIds)])];
+    const parentQuestions = this.parentQuestions(run, input);
+    if (parentQuestions.length) {
+      const interrupted = run.interruptedChildWaits.get(input.executionId) ?? new Set<string>();
+      for (const taskId of taskIds) interrupted.add(taskId);
+      run.interruptedChildWaits.set(input.executionId, interrupted);
+    } else {
+      const interrupted = run.interruptedChildWaits.get(input.executionId);
+      for (const taskId of taskIds)
+        if (['completed', 'failed'].includes(run.projection.tasks[taskId]?.status ?? ''))
+          interrupted?.delete(taskId);
+    }
+    return {
+      ok: true,
+      toolCallId: tool.toolCallId,
+      result: {
+        tasks: this.childResults(run, taskIds),
+        ...(batches.length
+          ? {
+              taskIds,
+              batchId: batches[0]!.batchId,
+              remaining: batches.reduce((n, batch) => n + batch.tasks.length - batch.next, 0),
+            }
+          : {}),
+        ...(parentQuestions.length ? { parentQuestions } : {}),
+      },
+    };
   }
 
-  /** Waits for the caller's children; the caller holds no model slot meanwhile. */
+  /** Incoming child questions return control to the same parent worker, without completing it. */
   private async awaitTool(
     run: LiveRun,
     input: AgentStartInput,
     proposal: ToolProposal,
     tool: ToolFrame,
+    recheck: (proposal: ToolProposal, batchId?: string) => Refusal | null,
   ): Promise<ToolOutcome> {
-    const { executionId } = input;
     const taskIds = proposal.args.taskIds as string[];
-    const p = run.projection;
-    const targetIds = taskIds.map(
-      (taskId) =>
-        p.tasks[taskId]?.activeExecutionId ??
-        Object.values(p.executions)
-          .filter((e) => e.taskId === taskId)
-          .at(-1)?.executionId ??
-        taskId,
+    const batches = [...run.itemBatches.values()].filter(
+      (batch) =>
+        batch.ownerExecutionId === input.executionId &&
+        batch.ownerAttemptNo === input.attemptNo &&
+        batch.taskIds.some((id) => taskIds.includes(id)),
     );
-    this.commit(run, [
-      ...tool.opening,
-      {
-        type: 'execution.state_changed',
-        executionId,
-        payload: {
-          executionId,
-          from: 'active',
-          to: 'waiting_children',
-          activity: null,
-          waitingOn: {
-            kind: 'children',
-            targetIds,
-            reasonCode: 'awaiting_delegated_tasks',
-            since: this.clock.nowIso(),
-            deadline: null,
-            required: true,
-          },
-        },
-      },
-    ]);
-    for (const taskId of taskIds) {
-      for (;;) {
-        const pending = run.taskOutcomes.get(taskId);
-        await pending;
-        if (run.stop.aborted || run.cancelRequested.has(executionId)) break;
-        const task = run.projection.tasks[taskId];
-        if (task?.status === 'completed' || task?.status === 'failed') break;
-        if (task?.status === 'in_progress' && run.taskOutcomes.get(taskId) !== pending) continue;
-        await new Promise<void>((resolve) => run.boundaryWaiters.add(resolve));
-      }
-    }
-    const results = taskIds.map((taskId) => {
-      const task = run.projection.tasks[taskId];
-      return {
-        taskId,
-        status: task?.status ?? 'failed',
-        artifactVersionIds: task?.status === 'completed' ? task.submittedArtifactVersionIds : [],
-      };
-    });
-    if (run.cancelRequested.has(executionId) || run.stop.aborted) {
-      this.commit(run, tool.closing(null, 'scope cancelled'));
-      return {
-        ok: false,
-        toolCallId: tool.toolCallId,
-        error: { code: 'TARGET_TERMINAL', message: 'scope cancelled' },
-      };
-    }
-    this.commit(run, [
-      {
-        type: 'execution.state_changed',
-        executionId,
-        payload: {
-          executionId,
-          from: 'waiting_children',
-          to: 'active',
-          activity: 'model',
-          waitingOn: null,
-        },
-      },
-      ...tool.closing(null),
-    ]);
-    return { ok: true, toolCallId: tool.toolCallId, result: { tasks: results } };
+    return this.waitForChildren(run, input, tool, taskIds, batches, recheck);
   }
 
-  /** A question becomes a new responder task under the asker, answered once or closed. */
+  private currentQuestionOwner(run: LiveRun, executionId: string, attemptNo: number) {
+    const execution = run.projection.executions[executionId];
+    return Boolean(
+      execution &&
+        execution.attemptNo === attemptNo &&
+        run.projection.tasks[execution.taskId]?.activeExecutionId === executionId &&
+        !TERMINAL_EXECUTION_STATUSES.has(execution.status) &&
+        !run.cancelRequested.has(executionId) &&
+        !run.closingExecutions.has(executionId),
+    );
+  }
+
+  private questionCurrent(run: LiveRun, question: OpenQuestion) {
+    return (
+      this.currentQuestionOwner(run, question.askerExecutionId, question.askerAttemptNo) &&
+      this.currentQuestionOwner(run, question.responderExecutionId, question.responderAttemptNo)
+    );
+  }
+
+  private parentQuestionTarget(run: LiveRun, input: AgentStartInput, nodeId: string) {
+    const execution = run.projection.executions[input.executionId];
+    const parent = execution?.parentExecutionId
+      ? run.projection.executions[execution.parentExecutionId]
+      : undefined;
+    if (
+      input.assignment.kind !== 'delegated' ||
+      !parent ||
+      parent.nodeId !== nodeId ||
+      !run.plan.callables[input.nodeId]?.parentQuestion?.includes(nodeId) ||
+      !this.currentQuestionOwner(run, input.executionId, input.attemptNo) ||
+      !this.currentQuestionOwner(run, parent.executionId, parent.attemptNo)
+    )
+      return undefined;
+    return parent;
+  }
+
+  private parentQuestions(run: LiveRun, input: AgentStartInput): ParentQuestionMessage[] {
+    return [...run.questions].flatMap(([questionId, pending]) => {
+      const question = run.projection.questions[questionId];
+      return pending.delivery === 'parent' &&
+        pending.responderExecutionId === input.executionId &&
+        pending.responderAttemptNo === input.attemptNo &&
+        this.questionCurrent(run, pending) &&
+        question?.status === 'open'
+        ? [
+            {
+              questionId,
+              senderExecutionId: question.senderExecutionId,
+              body: question.body,
+              artifactRefs: question.artifactRefs,
+              deadline: question.deadline,
+            },
+          ]
+        : [];
+    });
+  }
+
+  private closeExecutionQuestions(run: LiveRun, executionId: string) {
+    for (const [questionId, question] of run.questions) {
+      if (
+        question.askerExecutionId !== executionId &&
+        question.responderExecutionId !== executionId
+      )
+        continue;
+      run.questions.delete(questionId);
+      question.cancelTimer();
+      if (!this.storageError && !TERMINAL_RUN_STATUSES.has(run.projection.status))
+        this.commit(
+          run,
+          this.askerResumes(run, question.askerExecutionId, questionId, 'cancelled'),
+        );
+      question.wake({ questionId, outcome: 'cancelled' });
+    }
+    this.wake(run);
+  }
+
+  /** A callable question starts a responder; an opted-in child addresses its existing parent. */
   private async askTool(
     run: LiveRun,
     input: AgentStartInput,
@@ -7478,6 +8100,7 @@ export class Coordinator {
   ): Promise<ToolOutcome> {
     const { executionId } = input;
     const targetNodeId = proposal.args.targetNodeId as string;
+    const parent = this.parentQuestionTarget(run, input, targetNodeId);
     const body = proposal.args.body as string;
     const artifactRefs = (
       Array.isArray(proposal.args.artifactRefs) ? proposal.args.artifactRefs : []
@@ -7485,22 +8108,24 @@ export class Coordinator {
     const questionId = this.ids.next('question');
     const timeoutMs = run.limits.questionTimeoutMs;
     const deadline = new Date(Date.parse(this.clock.nowIso()) + timeoutMs).toISOString();
-    const responder = this.prepareExecution(run, {
-      nodeId: targetNodeId,
-      iterationId: run.projection.executions[executionId]?.iterationId ?? null,
-      parentExecutionId: executionId,
-      depth: input.depth + 1,
-      assignment: { kind: 'question', questionId, body, askerExecutionId: executionId },
-      given: [
-        { name: 'question', kind: 'run_input', artifactVersionId: null, text: body },
-        ...artifactRefs.map((id) => ({
-          name: 'reference',
-          kind: 'explicit_version' as const,
-          artifactVersionId: id,
-          text: this.store.getArtifactText(run.runId, id) ?? '',
-        })),
-      ],
-    });
+    const responder = parent
+      ? null
+      : this.prepareExecution(run, {
+          nodeId: targetNodeId,
+          iterationId: run.projection.executions[executionId]?.iterationId ?? null,
+          parentExecutionId: executionId,
+          depth: input.depth + 1,
+          assignment: { kind: 'question', questionId, body, askerExecutionId: executionId },
+          given: [
+            { name: 'question', kind: 'run_input', artifactVersionId: null, text: body },
+            ...artifactRefs.map((id) => ({
+              name: 'reference',
+              kind: 'explicit_version' as const,
+              artifactVersionId: id,
+              text: this.store.getArtifactText(run.runId, id) ?? '',
+            })),
+          ],
+        });
     const role = run.snapshot.definition.nodes.find((n) => n.id === targetNodeId);
 
     const logicalDeadline = new LogicalDeadline(this.clock, this.timers, timeoutMs, () =>
@@ -7508,8 +8133,11 @@ export class Coordinator {
     );
     const answer = new Promise<Record<string, unknown>>((resolve) => {
       run.questions.set(questionId, {
+        ...(parent ? { delivery: 'parent' as const } : {}),
         askerExecutionId: executionId,
-        responderExecutionId: responder.input.executionId,
+        askerAttemptNo: input.attemptNo,
+        responderExecutionId: parent?.executionId ?? responder!.input.executionId,
+        responderAttemptNo: parent?.attemptNo ?? responder!.input.attemptNo,
         wake: resolve,
         cancelTimer: () => logicalDeadline.cancel(),
         deadline: logicalDeadline,
@@ -7523,7 +8151,8 @@ export class Coordinator {
         executionId,
         payload: {
           questionId,
-          taskId: responder.input.taskId,
+          taskId: parent?.taskId ?? responder!.input.taskId,
+          ...(parent ? { delivery: 'parent' as const, targetExecutionId: parent.executionId } : {}),
           senderExecutionId: executionId,
           targetRoleId: role?.type === 'agent' ? role.roleId : targetNodeId,
           targetNodeId,
@@ -7532,7 +8161,7 @@ export class Coordinator {
           deadline,
         },
       },
-      ...responder.drafts,
+      ...(responder?.drafts ?? []),
       {
         type: 'execution.state_changed',
         executionId,
@@ -7552,7 +8181,8 @@ export class Coordinator {
         },
       },
     ]);
-    void this.launch(run, responder);
+    if (responder) void this.launch(run, responder);
+    this.wake(run);
     const result = await answer;
     const closed = result.outcome === 'answered' ? questionId : null;
     this.commit(run, tool.closing(closed, closed ? null : `question ${result.outcome}`));
@@ -7598,7 +8228,8 @@ export class Coordinator {
       return;
     }
     // The responder's work is no longer wanted; a reply it still sends is only audited.
-    this.requestCancel(run, question.responderExecutionId, 'the question timed out');
+    if (question.delivery !== 'parent')
+      this.requestCancel(run, question.responderExecutionId, 'the question timed out');
     question.wake({ questionId, outcome: 'timed_out' });
   }
 
@@ -7611,7 +8242,12 @@ export class Coordinator {
   ): Promise<ToolOutcome> {
     const questionId = proposal.args.questionId as string;
     const question = run.questions.get(questionId);
-    if (!question) {
+    if (
+      !question ||
+      !this.questionCurrent(run, question) ||
+      question.responderExecutionId !== input.executionId ||
+      question.responderAttemptNo !== input.attemptNo
+    ) {
       // Closed between authorization and execution (a timeout won the race).
       this.commit(run, tool.closing(null, 'the question already closed'));
       return {
@@ -7640,16 +8276,28 @@ export class Coordinator {
           evidenceRefs,
         },
       },
-      {
-        type: 'task.completed',
-        taskId: input.taskId,
-        payload: { taskId: input.taskId, completionEvidence: `answered question ${questionId}` },
-      },
+      ...(question.delivery === 'parent'
+        ? []
+        : [
+            {
+              type: 'task.completed',
+              taskId: input.taskId,
+              payload: {
+                taskId: input.taskId,
+                completionEvidence: `answered question ${questionId}`,
+              },
+            } satisfies EventDraft,
+          ]),
       ...this.askerResumes(run, question.askerExecutionId, questionId, 'answered', questionId),
       ...tool.closing(questionId),
     ]);
     question.wake({ questionId, outcome: 'answered', body, evidenceRefs });
-    return { ok: true, toolCallId: tool.toolCallId, result: { questionId } };
+    this.wake(run);
+    return {
+      ok: true,
+      toolCallId: tool.toolCallId,
+      result: { questionId, terminal: question.delivery !== 'parent' },
+    };
   }
 
   /** Returns a version's text and records who read it (C-024). */
@@ -7661,6 +8309,29 @@ export class Coordinator {
   ): Promise<ToolOutcome> {
     const id = proposal.args.artifactVersionId as string;
     const text = this.store.getArtifactText(run.runId, id) ?? '';
+    let images: ImageInput[] = [];
+    try {
+      images = generatedImageInputs(
+        run.runId,
+        [{ artifactVersionId: id }],
+        run.projection.artifacts,
+        input.model,
+        this.imageGeneration?.read,
+      );
+    } catch {
+      this.commit(run, [
+        ...tool.opening,
+        ...tool.closing(null, 'original image is unavailable or exceeds this model vision limits'),
+      ]);
+      return {
+        ok: false,
+        toolCallId: tool.toolCallId,
+        error: {
+          code: 'CAPABILITY_DENIED',
+          message: 'original image is unavailable or exceeds this model vision limits',
+        },
+      };
+    }
     this.commit(run, [
       ...tool.opening,
       {
@@ -7674,7 +8345,253 @@ export class Coordinator {
       },
       ...tool.closing(id),
     ]);
-    return { ok: true, toolCallId: tool.toolCallId, result: { artifactVersionId: id, text } };
+    return {
+      ok: true,
+      toolCallId: tool.toolCallId,
+      result: {
+        artifactVersionId: id,
+        text,
+        ...(images.length ? { images } : {}),
+        ...(run.projection.artifacts[id]?.media
+          ? { media: run.projection.artifacts[id]?.media }
+          : {}),
+      },
+    };
+  }
+
+  private async generateImageTool(
+    run: LiveRun,
+    input: AgentStartInput,
+    proposal: ToolProposal,
+    tool: ToolFrame,
+  ): Promise<ToolOutcome> {
+    const profile = run.snapshot.imageProfiles?.[input.role.id];
+    const backend = this.imageGeneration;
+    const refuse = (message: string): ToolOutcome => {
+      if (!run.projection.effects[tool.effectId])
+        this.commit(run, [
+          {
+            type: 'tool.blocked',
+            executionId: input.executionId,
+            payload: {
+              executionId: input.executionId,
+              toolCallId: tool.toolCallId,
+              reason: message,
+            },
+          },
+        ]);
+      return {
+        ok: false,
+        toolCallId: tool.toolCallId,
+        error: { code: 'CAPABILITY_DENIED', message },
+      };
+    };
+    if (!profile || !backend) return refuse('image profile is unavailable');
+    const imageArgs = GenerateImageArgs.parse(proposal.args);
+    const referenceImages: ImageInput[] = [];
+    try {
+      const readable = this.readable(run, input);
+      for (const id of imageArgs.references ?? []) {
+        const attached = input.images?.find((image) => image.imageId === id);
+        if (attached) {
+          referenceImages.push(attached);
+          continue;
+        }
+        if (!readable.has(id) || !run.projection.artifacts[id]?.media)
+          return refuse('image reference is outside this execution');
+        referenceImages.push(
+          ...generatedImageInputs(
+            run.runId,
+            [{ artifactVersionId: id }],
+            run.projection.artifacts,
+            { imageInput: true },
+            backend.read,
+          ),
+        );
+      }
+    } catch {
+      return refuse('image reference is unavailable or exceeds image input limits');
+    }
+    const admitted = admitImageRequest(run.projection.budget, run.limits, profile);
+    if (!admitted.ok) return refuse('image generation call/cost limit reached');
+    const reservationId = tool.effectId;
+    // Admission is durable before any awaited operation. Unknown attempts retain their cost bound.
+    this.commit(run, [
+      {
+        type: 'budget.reserved',
+        executionId: input.executionId,
+        payload: {
+          reservationId,
+          modelCallId: null,
+          scope: input.executionId,
+          amount: {
+            outputTokens: 0,
+            modelCalls: 1,
+            image: {
+              profileId: profile.profileId,
+              costMicros: admitted.costMicros,
+            },
+          },
+        },
+      },
+      ...tool.opening.map((draft) =>
+        draft.type === 'effect.admitted'
+          ? { ...draft, payload: { ...draft.payload, reservationId } }
+          : draft,
+      ),
+    ]);
+    const listeners = run.cancelListeners.get(input.executionId) ?? new Set<() => void>();
+    run.cancelListeners.set(input.executionId, listeners);
+    let timedOut = false,
+      acquired = false;
+    let dispatched = false,
+      actualCostMicros: number | null = null;
+    let imageUsage: ImageGenerationResult['usage'] | undefined;
+    const cancellation: ToolCancellation = {
+      get aborted() {
+        return (
+          timedOut ||
+          run.cancelRequested.has(input.executionId) ||
+          run.closingExecutions.has(input.executionId) ||
+          Boolean(tool.parentCancellation?.aborted)
+        );
+      },
+      onCancel(fn) {
+        listeners.add(fn);
+        const off = tool.parentCancellation?.onCancel(fn);
+        if (this.aborted) fn();
+        return () => {
+          listeners.delete(fn);
+          off?.();
+        };
+      },
+    };
+    const cancelTimer = this.timers.after(profile.timeoutMs, () => {
+      timedOut = true;
+      for (const listener of [...listeners]) listener();
+    });
+    try {
+      await this.acquireSlot(run, input.executionId);
+      acquired = true;
+      if (cancellation.aborted || !tool.stillAuthorized?.()) throw new Error('image scope ended');
+      const artifactVersionId = this.ids.next('artifact_version');
+      dispatched = true;
+      const result = await backend.generate(
+        {
+          runId: run.runId,
+          executionId: input.executionId,
+          attemptNo: input.attemptNo,
+          effectId: tool.effectId,
+          artifactVersionId,
+        },
+        imageArgs,
+        profile,
+        cancellation,
+        admitted.costMicros / 1_000_000,
+        referenceImages,
+      );
+      if (
+        typeof result.costUsd === 'number' &&
+        Number.isFinite(result.costUsd) &&
+        result.costUsd >= 0
+      )
+        actualCostMicros = Math.ceil(result.costUsd * 1_000_000);
+      imageUsage = result.usage;
+      const media = BinaryArtifact.parse(result.media);
+      if (cancellation.aborted || TERMINAL_RUN_STATUSES.has(run.projection.status))
+        throw new Error('late image result');
+      const text = canonicalJson({
+        media,
+        profileId: profile.profileId,
+        reservedCostUsd: profile.maxCostUsdPerCall,
+        costUsd: result.costUsd,
+        usage: result.usage,
+      });
+      this.commit(
+        run,
+        [
+          {
+            type: 'budget.settled',
+            executionId: input.executionId,
+            payload: settlementFor(
+              run.projection.budget,
+              reservationId,
+              0,
+              actualCostMicros,
+              imageUsage,
+            )!,
+          },
+          {
+            type: 'artifact.version_created',
+            executionId: input.executionId,
+            taskId: input.taskId,
+            payload: {
+              artifactId: this.ids.next('artifact'),
+              artifactVersionId,
+              version: 1,
+              parentVersionId: null,
+              name: outputNameOf(run.snapshot.definition, input.nodeId),
+              contract: input.role.outputContract,
+              contentHash: hashOf(JSON.parse(text)),
+              byteLength: utf8ToBytes(text).length,
+              authorExecutionId: input.executionId,
+              modelCallId: null,
+              contextSnapshotId: null,
+              media,
+            },
+          },
+          ...tool.closing(artifactVersionId),
+        ],
+        () => this.store.putArtifactText(run.runId, artifactVersionId, text),
+      );
+      return { ok: true, toolCallId: tool.toolCallId, result: { artifactVersionId, media } };
+    } catch (error) {
+      const knownNotStarted =
+        !dispatched ||
+        (typeof error === 'object' &&
+          error !== null &&
+          'outcome' in error &&
+          error.outcome === 'not_started');
+      const settlement = settlementFor(
+        run.projection.budget,
+        reservationId,
+        0,
+        knownNotStarted ? 0 : actualCostMicros,
+        imageUsage,
+      );
+      if (settlement)
+        this.commit(run, [
+          { type: 'budget.settled', executionId: input.executionId, payload: settlement },
+        ]);
+      if (run.projection.effects[tool.effectId]?.status === 'admitted')
+        this.commit(run, [
+          {
+            type: 'tool.finished',
+            executionId: input.executionId,
+            payload: {
+              executionId: input.executionId,
+              toolCallId: tool.toolCallId,
+              resultRef: null,
+              error: knownNotStarted
+                ? 'image generation unavailable'
+                : 'image generation outcome unknown',
+            },
+          },
+          {
+            type: 'effect.settled',
+            executionId: input.executionId,
+            payload: { effectId: tool.effectId, outcome: knownNotStarted ? 'failed' : 'unknown' },
+          },
+        ]);
+      return refuse(
+        knownNotStarted
+          ? 'image generation unavailable'
+          : 'image generation outcome unknown; no automatic retry',
+      );
+    } finally {
+      cancelTimer();
+      if (acquired) this.releaseSlot(run);
+    }
   }
 
   private async externalTool(
@@ -7688,6 +8605,7 @@ export class Coordinator {
     run.cancelListeners.set(executionId, scopeListeners);
     const listeners = new Set<() => void>();
     let timedOut = false;
+    let launchDispatched = false;
     const abort = () => {
       for (const listener of listeners) listener();
     };
@@ -7727,9 +8645,90 @@ export class Coordinator {
       const fileTool =
         (FILE_TOOLS as readonly string[]).includes(proposal.name) ||
         proposal.name === 'edit' ||
+        proposal.name === 'read_hashline' ||
+        proposal.name === 'edit_hashline' ||
         proposal.name === 'write';
       let result: Record<string, unknown>;
-      if (proposal.name === 'run_check' || proposal.name === 'lsp_query') {
+      if (['preview_file', 'preview_app', 'preview_action'].includes(proposal.name)) {
+        if (!this.previewTools)
+          throw new ToolRefusal('CAPABILITY_DENIED', 'workspace preview unavailable');
+        this.previewRuns.add(run);
+        result = await this.previewTools.execute(
+          {
+            runId: input.runId,
+            executionId,
+            attemptNo: input.attemptNo,
+            effectId: tool.effectId,
+            name: proposal.name as PreviewToolName,
+            args: proposal.args,
+          },
+          cancellation,
+        );
+      } else if (proposal.name === 'run_command') {
+        const files = this.files;
+        const harness = input.harness;
+        const descriptor = tool.descriptor;
+        if (!files?.planCommand || !files.runCommand || !harness || !descriptor)
+          throw new ToolRefusal('CAPABILITY_DENIED', 'worktree command runner unavailable');
+        const command: CommandExecution = {
+          runId: input.runId,
+          executionId,
+          attemptNo: input.attemptNo,
+          effectId: tool.effectId,
+          request: RunCommandArgs.parse(proposal.args),
+        };
+        const plan = CommandPlan.parse(await files.planCommand(command, cancellation));
+        if (plan.mode === 'service' && !files.stopRunServices)
+          throw new ToolRefusal('CAPABILITY_DENIED', 'run-owned service cleanup is unavailable');
+        if (cancellation.aborted) throw new ToolRefusal('TARGET_TERMINAL', 'launch cancelled');
+        cancelTimer();
+        const decision = toolPermission(
+          harness.permissionPolicies,
+          proposal,
+          hashOf(descriptor),
+          run.snapshot.permissionMode ?? 'ask',
+          descriptor,
+        );
+        if (decision === 'deny')
+          throw new ToolRefusal('CAPABILITY_DENIED', 'command permission denied');
+        let approved: string | null = null;
+        if (decision === 'ask') {
+          const approval = toolPermissionPlan(harness, descriptor, {
+            ...plan,
+            request: command.request,
+          });
+          if (
+            !(await this.requestToolApproval(
+              run,
+              input,
+              { toolCallId: tool.toolCallId },
+              approval,
+              cancellation,
+            ))
+          ) {
+            if (cancellation.aborted)
+              throw new ToolRefusal('TARGET_TERMINAL', 'command launch cancelled');
+            throw new ToolRefusal('CAPABILITY_DENIED', 'command launch was not approved');
+          }
+          approved = plan.fingerprint;
+        }
+        await this.boundary(run, executionId);
+        if (cancellation.aborted) throw new ToolRefusal('TARGET_TERMINAL', 'launch cancelled');
+        if (!tool.stillAuthorized?.())
+          throw new ToolRefusal(
+            'CAPABILITY_DENIED',
+            'command registration changed while awaiting approval',
+          );
+        cancelTimer = this.timers.after(plan.timeoutMs + 120000, timeout);
+        if (plan.mode === 'service') {
+          await this.stoppingServices.get(run);
+          if (cancellation.aborted || run.projection.status !== 'running')
+            throw new ToolRefusal('TARGET_TERMINAL', 'service launch cancelled');
+          this.serviceRuns.add(run);
+        }
+        launchDispatched = true;
+        result = CommandReport.parse(await files.runCommand(command, plan, approved, cancellation));
+      } else if (proposal.name === 'run_check' || proposal.name === 'lsp_query') {
         const files = this.files,
           selection = input.harness?.projectTools;
         if (!files || !selection)
@@ -7762,13 +8761,17 @@ export class Coordinator {
         cancelTimer();
         let approved: string | null = null;
         if (!plan.trusted) {
-          if (!(await this.requestToolApproval(run, input, tool, plan, cancellation)))
+          if (!(await this.requestToolApproval(run, input, tool, plan, cancellation))) {
+            if (cancellation.aborted)
+              throw new ToolRefusal('TARGET_TERMINAL', 'tool launch cancelled');
             throw new ToolRefusal('CAPABILITY_DENIED', 'tool launch was not approved');
+          }
           approved = plan.fingerprint;
         }
         await this.boundary(run, executionId);
         if (cancellation.aborted) throw new ToolRefusal('TARGET_TERMINAL', 'launch cancelled');
         cancelTimer = this.timers.after(plan.timeoutMs + 120000, timeout);
+        launchDispatched = true;
         result = await execute(approved);
       } else if (proposal.name === 'read') {
         const path = String(proposal.args.path);
@@ -7784,6 +8787,7 @@ export class Coordinator {
               args: { path },
               runId: run.runId,
               executionId,
+              attemptNo: input.attemptNo,
               toolCallId: tool.toolCallId,
             },
             cancellation,
@@ -7804,6 +8808,7 @@ export class Coordinator {
             args: proposal.args,
             runId: run.runId,
             executionId,
+            attemptNo: input.attemptNo,
             toolCallId: tool.toolCallId,
           },
           cancellation,
@@ -7822,7 +8827,11 @@ export class Coordinator {
           cancellation,
         );
       }
-      if (proposal.name === 'run_check' && result.cleanupConfirmed === false)
+      if (
+        ['run_check', 'run_command'].includes(proposal.name) &&
+        result.state !== 'running' &&
+        result.cleanupConfirmed === false
+      )
         throw new ToolTerminationUnconfirmed();
       const execution = run.projection.executions[executionId];
       if (
@@ -7834,8 +8843,21 @@ export class Coordinator {
         run.projection.tasks[input.taskId]?.activeExecutionId !== executionId ||
         run.projection.effects[tool.effectId]?.status !== 'admitted'
       ) {
+        // The broker's settled report proves cleanup. Scope cancellation alone cannot turn
+        // a failed, timed-out or uncertain process into a confirmed cancellation.
+        const cancelledProcess =
+          ['run_command', 'run_check'].includes(proposal.name) &&
+          result.state === 'cancelled' &&
+          result.cleanupConfirmed === true &&
+          result.timedOut !== true &&
+          !timedOut;
         this.commit(run, [
-          ...tool.closing(null, 'scope cancelled'),
+          ...(cancelledProcess
+            ? tool.closing(null, null, 'cancelled')
+            : tool.closing(
+                null,
+                timedOut || result.timedOut === true ? 'tool timed out' : 'scope cancelled',
+              )),
           {
             type: 'observation.late',
             executionId,
@@ -7917,7 +8939,19 @@ export class Coordinator {
             },
           ]);
         this.terminationUnconfirmed = true;
+        if (!this.files?.acquireRun || !this.files.available(run.runId))
+          this.hostTerminationUnconfirmed = true;
         this.failRun(run, 'termination_unconfirmed');
+      } else if (
+        !launchDispatched &&
+        ['run_command', 'run_check', 'lsp_query'].includes(proposal.name) &&
+        refusal?.code === 'TARGET_TERMINAL' &&
+        cancellation.aborted &&
+        !timedOut
+      ) {
+        // No process call was dispatched: cancelling its approval cannot be an execution
+        // failure. An explicit rejection or approval timeout still takes the failure path.
+        this.commit(run, tool.closing(null, null, 'cancelled'));
       } else this.commit(run, tool.closing(null, message));
       return {
         ok: false,

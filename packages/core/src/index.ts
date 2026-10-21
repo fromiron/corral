@@ -44,6 +44,15 @@ export * from './fuzzy.ts';
 export * from './history.ts';
 export * from './interactions.ts';
 export * from './limits.ts';
+export {
+  type AgentImportDraft,
+  type AgentImportProfile,
+  importMarkdownAgent,
+  MAX_AGENT_MARKDOWN_BYTES,
+  type MarkdownAgent,
+  parseMarkdownAgent,
+  toolTargets,
+} from './markdown-agent-import.ts';
 export * from './profile-context.ts';
 export * from './projection.ts';
 export { fixedReasoning } from './reasoning.ts';

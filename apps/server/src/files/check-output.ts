@@ -65,10 +65,15 @@ export class CheckOutput {
       if (stream.oversized) this.keep('[oversized line omitted]\n');
       else if (stream.line) this.keep(stream.line + stream.decoder.end());
     }
+    return this.snapshot();
+  }
+
+  /** Current complete lines, bounded/redacted exactly like the final report. */
+  snapshot(): VerificationReport['output'] {
     return {
       text: this.head + (this.keptBytes > 32768 ? '\n[output omitted]\n' : '') + this.tail,
       bytes: this.bytes,
-      hash: this.digest.digest('hex'),
+      hash: this.digest.copy().digest('hex'),
       truncated: this.truncated,
     };
   }

@@ -1,4 +1,10 @@
-import { type Clock, CorralDefinition, CorralDefinitionDraft } from '@corral/contracts';
+import { createHash } from 'node:crypto';
+import {
+  type Clock,
+  CorralDefinition,
+  CorralDefinitionDraft,
+  canonicalJson,
+} from '@corral/contracts';
 import {
   type CorralRecord,
   type CorralRepository,
@@ -87,6 +93,12 @@ export class SqliteCorralRepository implements CorralRepository, DefinitionSourc
          VALUES (?, ?, ?, ?)`,
       ),
       remove: db.prepare('DELETE FROM corrals WHERE id = ?'),
+      operationReceipt: db.prepare(
+        'SELECT request_hash, result_json FROM corral_operations WHERE operation_id = ?',
+      ),
+      insertOperation: db.prepare(
+        'INSERT INTO corral_operations (operation_id, request_hash, result_json) VALUES (?, ?, ?)',
+      ),
       projects: db.prepare(
         `SELECT id, name, description, revision, created_at, updated_at, archived_at
          FROM projects`,
@@ -152,16 +164,83 @@ export class SqliteCorralRepository implements CorralRepository, DefinitionSourc
   }
 
   async save(request: SaveRequest): Promise<SaveResult> {
-    return this.db.transaction(() => {
-      if (request.expectedDefinitionRevision === null) {
-        const projectId = request.projectId ?? DEFAULT_PROJECT_ID;
-        const refused = projectRefusal(this.project(projectId), projectId);
-        if (refused) return refused;
-      }
-      const current =
-        request.expectedDefinitionRevision === null ? null : this.read(request.definition.id);
-      return this.persist(planSave(current, request, this.context()), current);
-    })();
+    return this.db.transaction(() => this.saveRequest(request))();
+  }
+
+  /**
+   * Apply a reviewed import to an existing Corral. Its durable receipt closes the crash
+   * window between committing this revision and updating the caller's import journal.
+   */
+  async saveOperation(
+    request: SaveRequest,
+    operationId: string,
+    expectedLayoutRevision: number,
+  ): Promise<SaveResult> {
+    if (!operationId.trim() || operationId.length > 1024)
+      throw new Error('A Corral operation requires an operation ID of 1 to 1024 characters.');
+    const fingerprint = createHash('sha256')
+      .update(canonicalJson({ request, expectedLayoutRevision }))
+      .digest('hex');
+    return this.db
+      .transaction((): SaveResult => {
+        const receipt = this.readOperation(operationId);
+        if (receipt) {
+          if (receipt.request_hash !== fingerprint) {
+            return {
+              ok: false,
+              error: 'revision_conflict',
+              message: 'This operation ID already belongs to a different Corral save.',
+            };
+          }
+          return readJson<SaveResult>(receipt.result_json, operationId);
+        }
+        const current = this.read(request.definition.id);
+        let result: SaveResult;
+        if (
+          request.expectedDefinitionRevision === null ||
+          !Number.isInteger(expectedLayoutRevision) ||
+          expectedLayoutRevision < 1
+        ) {
+          result = {
+            ok: false,
+            error: 'revision_conflict',
+            message: 'A Corral import requires the reviewed definition and layout revisions.',
+          };
+        } else if (current && current.layoutRevision !== expectedLayoutRevision) {
+          result = {
+            ok: false,
+            error: 'revision_conflict',
+            message: `This Corral layout was saved elsewhere (revision ${current.layoutRevision}). Reload before importing.`,
+          };
+        } else {
+          result = this.persist(planSave(current, request, this.context()), current);
+        }
+        this.sql.insertOperation.run(operationId, fingerprint, JSON.stringify(result));
+        return result;
+      })
+      .immediate();
+  }
+
+  async operationReceipt(operationId: string): Promise<SaveResult | null> {
+    const receipt = this.readOperation(operationId);
+    return receipt ? readJson<SaveResult>(receipt.result_json, operationId) : null;
+  }
+
+  private readOperation(operationId: string) {
+    return this.sql.operationReceipt.get(operationId) as
+      | { request_hash: string; result_json: string }
+      | undefined;
+  }
+
+  private saveRequest(request: SaveRequest): SaveResult {
+    if (request.expectedDefinitionRevision === null) {
+      const projectId = request.projectId ?? DEFAULT_PROJECT_ID;
+      const refused = projectRefusal(this.project(projectId), projectId);
+      if (refused) return refused;
+    }
+    const current =
+      request.expectedDefinitionRevision === null ? null : this.read(request.definition.id);
+    return this.persist(planSave(current, request, this.context()), current);
   }
 
   async duplicate(corralId: string, name: string): Promise<SaveResult> {

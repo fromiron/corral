@@ -92,7 +92,7 @@ export function noProgressReached(state: ProgressState): boolean {
 export function applyProgressEvent(
   state: ProgressState,
   event: RunEvent,
-  projection: Pick<RunProjection, 'artifacts'>,
+  projection: Pick<RunProjection, 'artifacts' | 'questions'>,
 ): ProgressState {
   switch (event.type) {
     case 'model.finished':
@@ -124,6 +124,13 @@ export function applyProgressEvent(
       return state.reviewSignatures.includes(signature)
         ? state
         : { ...state, turns: 0, reviewSignatures: [...state.reviewSignatures, signature] };
+    }
+    case 'message.answer_committed': {
+      const question = projection.questions[event.payload.questionId];
+      return question?.delivery === 'parent' &&
+        question.targetExecutionId === event.payload.responderExecutionId
+        ? { ...state, turns: 0 }
+        : state;
     }
     case 'task.completed':
     case 'approval.resolved':

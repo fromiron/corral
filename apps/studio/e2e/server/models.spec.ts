@@ -14,6 +14,7 @@ async function openModels(page: Page) {
 test.use({ live: true });
 
 async function agentToOutput(page: Page) {
+  await page.getByRole('tab', { name: /^Teams/ }).click();
   await page.getByRole('button', { name: 'New team' }).click();
   await page.getByRole('button', { name: 'Add Agent' }).click();
   await page.getByRole('button', { name: 'Add Output' }).click();
@@ -240,6 +241,7 @@ test('[TC-UX-003-H] asks the signed-in model for a team draft once and opens it 
     });
   }, FAKE_REDIRECT_OK);
   await page.reload();
+  await page.getByRole('tab', { name: /^Teams/ }).click();
   await page.getByRole('button', { name: 'Draft from a goal' }).click();
   const dialog = page.getByRole('dialog', { name: 'Draft a team from a goal' });
   await dialog.getByLabel('What should the team do?').fill('Announce the new API');

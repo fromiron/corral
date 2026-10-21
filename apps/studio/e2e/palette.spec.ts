@@ -6,7 +6,10 @@ test('[TC-UX-001-H] Ctrl+K opens the command palette; typing filters and Enter r
   page,
 }) => {
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Teams' })).toBeVisible();
+  await expect(page.getByRole('tab', { name: /^Sessions/ })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
   await page.keyboard.press('Control+k');
   const palette = page.getByRole('dialog', { name: 'Command palette' });
   await expect(palette).toBeVisible();
@@ -24,7 +27,7 @@ test('[TC-UX-001-N] the palette closes with Escape, and an IME composition Enter
   page,
 }) => {
   await page.goto('/');
-  const opener = page.getByRole('button', { name: 'New team' });
+  const opener = page.getByRole('button', { name: 'Start chat', exact: true });
   await opener.focus();
   // CR-010: `/` opens the current project; the page must stay exactly where it is.
   const before = page.url();

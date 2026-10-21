@@ -1,10 +1,11 @@
-import { execFileSync, spawn } from 'node:child_process';
+import { execFileSync, type spawn } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { FakeClock } from '@corral/testkit';
 import { afterEach, describe, expect, it } from 'vitest';
 import { VerificationRunner } from '../src/files/verification.ts';
+import { spawnOwnedProcess } from '../src/processes/owned-process.ts';
 import { systemTimers } from '../src/runtime.ts';
 
 const dirs: string[] = [];
@@ -48,7 +49,7 @@ function fixture(script: string) {
         id: 'check',
         name: 'Check',
         argv: [process.execPath, 'check.mjs'],
-        timeoutMs: 5000,
+        timeoutMs: 20000,
       },
     },
   };
@@ -69,7 +70,7 @@ function cancellation() {
   };
 }
 
-describe('owned verification runner', () => {
+describe('owned verification runner', { timeout: 25000 }, () => {
   it('[TC-HAR-013-N] a check that changes its own candidate cannot establish a pass', async () => {
     const f = fixture(
       "import fs from 'node:fs'; fs.writeFileSync('a.txt','changed during verification');",
@@ -107,7 +108,7 @@ describe('owned verification runner', () => {
       timers: systemTimers,
       spawn: (...args: Parameters<typeof spawn>) => {
         f.clock.advance(250.75);
-        return spawn(...args);
+        return (spawnOwnedProcess as typeof spawn)(...args);
       },
     });
     const report = await runner.run(f.input, cancellation().signal, (r) => updates.push(r.state));
@@ -154,7 +155,7 @@ describe('owned verification runner', () => {
       clock: f.clock,
       timers: systemTimers,
       spawn: (...args: Parameters<typeof spawn>) => {
-        const child = spawn(...args);
+        const child = (spawnOwnedProcess as typeof spawn)(...args);
         child.stdout?.on('data', (chunk) => {
           const match = /READY:(\d+)/.exec(String(chunk));
           if (match) {
@@ -168,6 +169,10 @@ describe('owned verification runner', () => {
     const report = await runner.run(f.input, cancel.signal);
     expect(descendant).toBeGreaterThan(0);
     expect(report).toMatchObject({ state: 'cancelled', verdict: 'not_evaluated' });
+    expect(report.cleanupConfirmed).toBe(true);
+    if (process.platform === 'win32') {
+      expect(() => process.kill(descendant, 0)).toThrow();
+    }
     // A killed orphan may remain as a zombie until init reaps it; it cannot keep writing.
     const state = (() => {
       try {
@@ -187,6 +192,7 @@ describe('owned verification runner', () => {
       state: 'error',
       verdict: 'inconclusive',
       timedOut: true,
+      cleanupConfirmed: true,
     });
     const cancel = cancellation();
     cancel.cancel();

@@ -47,6 +47,7 @@ import { type Db, SqliteHarnessStore, SqliteProjectToolStore } from '@corral/sto
 import builtinManifest from '../../resources/builtin/manifest.json' with { type: 'json' };
 import { managedHookSource } from './managed-hook.ts';
 import type { McpService } from './mcp-service.ts';
+import { inspectPackageManifest } from './package-manifest.ts';
 
 interface ResourceReview {
   reviewId: string;
@@ -54,6 +55,7 @@ interface ResourceReview {
   directory: string;
   expiresAt: number;
   previous?: HarnessEntryKey;
+  previousPackageHash?: string;
   display?: { entry: string; kind: HarnessEntryKey['kind']; name: string };
 }
 const MAX_RESOURCE_BYTES = 128 * 1024 * 1024;
@@ -86,6 +88,9 @@ export class HarnessService {
     this.root = resolve(options.root);
     this.newId = options.newId ?? randomUUID;
     this.mcp = options.mcp;
+    this.mcp?.setPackageVerifier((hash) => {
+      if (!this.verify(hash).trustedAt) throw new Error('package requires trust before MCP launch');
+    });
     this.db = options.db;
     this.clock = options.clock;
     this.inspect = options.inspect ?? inspectPiPackage;
@@ -98,42 +103,108 @@ export class HarnessService {
 
   entries(): HarnessEntryView[] {
     const profiles = this.store.referencedProfiles();
-    return this.store.listResources().flatMap((resource) =>
-      [
-        ...resource.skills.map((skill) => ({
-          entry: skill.entry,
-          kind: 'skill' as const,
-          name: skill.name,
-          description: skill.description,
-        })),
-        ...resource.extensions.map((entry) => ({
-          entry,
-          kind: 'extension' as const,
-          name: entry.split('/').at(-1) ?? resource.name,
-          description: '',
-        })),
-      ].map((entry) => {
-        const key = { resourceHash: resource.hash, entry: entry.entry, kind: entry.kind };
-        const { files, ...bundle } = resource;
-        return {
-          ...entry,
-          ...key,
-          ...this.store.entryManagement(key),
-          resource: { ...bundle, fileCount: files.length },
-          name: this.store.entryManagement(key).displayName ?? entry.name,
-          profiles: profiles
-            .filter((profile) =>
-              profile.resources.some(
-                (ref) =>
-                  ref.resourceHash === key.resourceHash &&
-                  ref.entry === key.entry &&
-                  ref.kind === key.kind,
-              ),
-            )
-            .map(({ profileId, revision, name }) => ({ profileId, revision, name })),
-        };
-      }),
-    );
+    return this.store
+      .listResources()
+      .filter((resource) => this.store.packageManagement(resource.hash).status !== 'removed')
+      .flatMap((resource) =>
+        [
+          ...resource.skills.map((skill) => ({
+            entry: skill.entry,
+            kind: 'skill' as const,
+            name: skill.name,
+            description: skill.description,
+          })),
+          ...resource.extensions.map((entry) => ({
+            entry,
+            kind: 'extension' as const,
+            name: entry.split('/').at(-1) ?? resource.name,
+            description: '',
+          })),
+        ].map((entry) => {
+          const key = { resourceHash: resource.hash, entry: entry.entry, kind: entry.kind };
+          const { files, ...bundle } = resource;
+          return {
+            ...entry,
+            ...key,
+            ...this.store.entryManagement(key),
+            resource: { ...bundle, fileCount: files.length },
+            name: this.store.entryManagement(key).displayName ?? entry.name,
+            profiles: profiles
+              .filter((profile) =>
+                profile.resources.some(
+                  (ref) =>
+                    ref.resourceHash === key.resourceHash &&
+                    ref.entry === key.entry &&
+                    ref.kind === key.kind,
+                ),
+              )
+              .map(({ profileId, revision, name }) => ({ profileId, revision, name })),
+          };
+        }),
+      );
+  }
+
+  packages() {
+    const profiles = this.store.referencedProfiles();
+    return this.store.listResources().map((resource) => ({
+      resource,
+      manifest: inspectPackageManifest(this.directory(resource.hash), resource.packagePath),
+      ...this.store.packageManagement(resource.hash),
+      profiles: profiles
+        .filter((profile) => profile.resources.some((ref) => ref.resourceHash === resource.hash))
+        .map(({ profileId, revision, name }) => ({ profileId, revision, name })),
+    }));
+  }
+
+  async reviewPackage(kind: 'local' | 'package', source: string, previousHash?: string) {
+    const previous = previousHash ? this.verify(previousHash) : undefined;
+    const review =
+      kind === 'local' ? await this.discoverLocal(source) : await this.discoverPackage(source);
+    try {
+      const retained = this.reviews.get(review.reviewId);
+      if (!retained) throw new Error('resource review expired or already installed');
+      if (previous && previous.name !== review.resource.name)
+        throw new Error('package name changed');
+      if (previous) retained.previousPackageHash = previous.hash;
+      const oldFiles = new Map(previous?.files.map((file) => [file.path, file.hash]) ?? []);
+      const newFiles = new Map(review.resource.files.map((file) => [file.path, file.hash]));
+      return {
+        ...review,
+        manifest: inspectPackageManifest(retained.directory, review.resource.packagePath),
+        ...(previous
+          ? {
+              previous: { hash: previous.hash, name: previous.name, version: previous.version },
+              changes: {
+                added: [...newFiles.keys()].filter((path) => !oldFiles.has(path)),
+                removed: [...oldFiles.keys()].filter((path) => !newFiles.has(path)),
+                changed: [...newFiles.keys()].filter(
+                  (path) => oldFiles.has(path) && oldFiles.get(path) !== newFiles.get(path),
+                ),
+              },
+            }
+          : {}),
+      };
+    } catch (error) {
+      this.cancelReview(review.reviewId);
+      throw error;
+    }
+  }
+
+  async managePackage(
+    hash: string,
+    expectedRevision: number,
+    status: 'enabled' | 'disabled' | 'removed',
+    operationId: string,
+  ) {
+    const result = this.store.receipt(operationId, { hash, expectedRevision, status }, () => {
+      if (status === 'enabled') this.verify(hash);
+      this.store.managePackage(hash, expectedRevision, status);
+      const result = this.packages().find((entry) => entry.resource.hash === hash);
+      if (!result) throw new Error('resource not installed');
+      return result;
+    });
+    if (status !== 'enabled') await this.mcp?.cancelPackageProbe(hash);
+    return result;
   }
 
   readEntry(raw: HarnessEntryKey): { content: string; hook: ManagedHook | null } {
@@ -310,6 +381,7 @@ export class HarnessService {
     operationId: string,
     raw: McpServerDraft,
     serverId?: string,
+    sourcePackageHash?: string,
   ) {
     const draft = McpServerDraft.parse(raw);
     if (!this.mcp) throw new Error('MCP runtime unavailable');
@@ -317,11 +389,19 @@ export class HarnessService {
       projectId,
       expectedRevision,
       () => {
+        if (
+          sourcePackageHash &&
+          this.store.packageManagement(sourcePackageHash).status !== 'enabled'
+        )
+          throw new Error('package is disabled or removed');
         const config = this.projectTools.latest(projectId);
         const previous = config?.mcpServers?.find((server) => server.id === serverId);
         if (serverId && !previous) throw new Error('no such registered tool');
         const server = RegisteredMcpServer.parse({
           ...draft,
+          ...(sourcePackageHash || previous?.sourcePackageHash
+            ? { sourcePackageHash: sourcePackageHash ?? previous?.sourcePackageHash }
+            : {}),
           id: serverId ?? `mcp_${randomUUID().replaceAll('-', '').slice(0, 20)}`,
           ...(draft.transport === 'http' && draft.auth.kind !== 'none'
             ? {
@@ -346,9 +426,50 @@ export class HarnessService {
       },
       {
         operationId,
-        input: { projectId, expectedRevision, draft, ...(serverId ? { serverId } : {}) },
+        input: {
+          projectId,
+          expectedRevision,
+          draft,
+          ...(serverId ? { serverId } : {}),
+          ...(sourcePackageHash ? { sourcePackageHash } : {}),
+        },
       },
     );
+  }
+
+  registerPackageMcp(
+    hash: string,
+    contributionId: string,
+    projectId: string,
+    expectedRevision: number,
+    operationId: string,
+  ) {
+    const resource = this.verify(hash);
+    const root = this.directory(hash);
+    const contribution = inspectPackageManifest(root, resource.packagePath)?.mcpServers.find(
+      (entry) => entry.id === contributionId,
+    );
+    if (!contribution) throw new Error('package MCP contribution not found');
+    const base = {
+      name: contribution.name,
+      enabled: false,
+      exposure: 'direct' as const,
+      timeoutMs: 30000,
+    };
+    const draft: McpServerDraft =
+      contribution.transport === 'http'
+        ? { ...base, transport: 'http', url: contribution.url, auth: { kind: 'none' } }
+        : {
+            ...base,
+            transport: 'stdio',
+            argv: contribution.argv.map((arg) => {
+              const path = [resource.packagePath, arg.replace(/^\.\//, '')]
+                .filter(Boolean)
+                .join('/');
+              return resource.files.some((file) => file.path === path) ? join(root, path) : arg;
+            }),
+          };
+    return this.saveMcp(projectId, expectedRevision, operationId, draft, undefined, hash);
   }
 
   removeMcp(
@@ -495,7 +616,8 @@ export class HarnessService {
   }
 
   private retainReview(directory: string, resource: HarnessResource) {
-    this.checkEntries(resource);
+    const manifest = inspectPackageManifest(directory, resource.packagePath);
+    this.checkEntries(resource, Boolean(manifest?.mcpServers.length || manifest?.ui.length));
     const reviewId = `review_${this.newId()}`;
     this.reviews.set(reviewId, {
       reviewId,
@@ -677,6 +799,33 @@ export class HarnessService {
           { ...review.previous, resourceHash: installed.hash },
         );
       }
+      if (review.previousPackageHash && review.previousPackageHash !== installed.hash) {
+        const previous = this.store.getResource(review.previousPackageHash);
+        const links = [
+          ...(previous?.skills ?? []).flatMap((skill) => {
+            const successor = installed.skills.find((next) => next.name === skill.name);
+            return successor
+              ? [{ entry: skill.entry, next: successor.entry, kind: 'skill' as const }]
+              : [];
+          }),
+          ...(previous?.extensions ?? [])
+            .filter((entry) => installed.extensions.includes(entry))
+            .map((entry) => ({ entry, next: entry, kind: 'extension' as const })),
+        ];
+        for (const link of links) {
+          const key = {
+            resourceHash: review.previousPackageHash,
+            entry: link.entry,
+            kind: link.kind,
+          };
+          const current = this.store.entryManagement(key);
+          this.store.manageEntry(key, current.managementRevision, current.archivedAt !== null, {
+            resourceHash: installed.hash,
+            entry: link.next,
+            kind: link.kind,
+          });
+        }
+      }
       this.reviews.delete(reviewId);
       return installed;
     });
@@ -800,9 +949,20 @@ export class HarnessService {
         mcpServerIds.some((id) => !config.mcpServers?.some((server) => server.id === id))
       )
         throw new Error('selected project tool is not registered');
-      const enabled = mcpServerIds.filter(
-        (id) => config.mcpServers?.find((server) => server.id === id)?.enabled !== false,
-      );
+      const enabled = mcpServerIds.filter((id) => {
+        const server = config.mcpServers?.find((server) => server.id === id);
+        const available =
+          server?.enabled !== false &&
+          (!server?.sourcePackageHash ||
+            this.store.packageManagement(server.sourcePackageHash).status === 'enabled');
+        if (
+          available &&
+          server?.sourcePackageHash &&
+          !this.verify(server.sourcePackageHash).trustedAt
+        )
+          throw new Error('package requires trust before MCP launch');
+        return available;
+      });
       disabledMcp = enabled.length !== mcpServerIds.length;
       mcpServerIds = enabled;
       projectTools = {
@@ -838,6 +998,12 @@ export class HarnessService {
     if (disabledMcp) diagnostics.push('mcp_server_disabled');
     let mandatoryBytes = 0;
     for (const selectedResource of selected.values()) {
+      if (this.store.packageManagement(selectedResource.resourceHash).status !== 'enabled') {
+        if (selectedResource.required || selectedResource.skillMode === 'mandatory')
+          throw new Error('required package is disabled or removed');
+        diagnostics.push('package_disabled');
+        continue;
+      }
       const resource = this.verify(selectedResource.resourceHash);
       if (!resource.trustedAt) throw new Error('resource requires trust before binding');
       if (selectedResource.kind === 'extension') {
@@ -916,7 +1082,8 @@ export class HarnessService {
     try {
       if (treeHash(scan(this.directory(resourceHash))) !== resourceHash)
         throw new Error('resource changed');
-      this.checkEntries(resource);
+      const manifest = inspectPackageManifest(this.directory(resourceHash), resource.packagePath);
+      this.checkEntries(resource, Boolean(manifest?.mcpServers.length || manifest?.ui.length));
     } catch {
       this.store.trustResource(resourceHash, false);
       throw new Error('resource integrity changed; review and trust the new content');
@@ -924,13 +1091,13 @@ export class HarnessService {
     return resource;
   }
 
-  private checkEntries(resource: HarnessResource) {
+  private checkEntries(resource: HarnessResource, hasDeclarations = false) {
     const paths = new Set(resource.files.map((file) => file.path));
     for (const path of [...resource.extensions, ...resource.skills.map((skill) => skill.entry)]) {
       ResourcePath.parse(path);
       if (!paths.has(path)) throw new Error('resource entry is missing');
     }
-    if (!resource.extensions.length && !resource.skills.length)
+    if (!resource.extensions.length && !resource.skills.length && !hasDeclarations)
       throw new Error('package contains no supported skills or extensions');
   }
 

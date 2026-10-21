@@ -3,6 +3,12 @@ import { randomUUID } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
+import {
+  installHostProcessCapacityBroker,
+  isProcessCapacityFrame,
+  reserveHostProcessGroup,
+} from './processes/capacity.ts';
 import { recordWorkerLease, recoverSdkWorkers } from './worker-leases.ts';
 
 // The transport between host and one worker (ADR-017: one child process per execution,
@@ -68,25 +74,34 @@ export function processChannel(
   } = {},
 ): Channel {
   const processOwner = randomUUID();
-  const child: ChildProcess = fork(entry, [], {
-    stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
-    serialization: 'json',
-    detached: process.platform !== 'win32',
-    // Parent eval/debug/preload flags do not describe the standalone worker entry.
-    execArgv: [],
-    ...options.launch,
-    // The worker needs no secrets from the environment: credentials arrive per request.
-    env: {
-      NODE_ENV: process.env.NODE_ENV ?? 'production',
-      PATH: process.env.PATH ?? '',
-      ...(process.platform === 'win32' ? {} : { CORRAL_WORKER_GROUP: '1' }),
-      ...options.env,
-      CORRAL_PROCESS_OWNER: processOwner,
-    },
-  });
+  const reservation = reserveHostProcessGroup();
+  let child: ChildProcess;
+  try {
+    child = fork(entry, [], {
+      stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
+      serialization: 'json',
+      detached: process.platform !== 'win32',
+      // Parent eval/debug/preload flags do not describe the standalone worker entry.
+      execArgv: [],
+      ...options.launch,
+      // The worker needs no secrets from the environment: credentials arrive per request.
+      env: {
+        NODE_ENV: process.env.NODE_ENV ?? 'production',
+        PATH: process.env.PATH ?? '',
+        ...(process.platform === 'win32' ? {} : { CORRAL_WORKER_GROUP: '1' }),
+        ...options.env,
+        CORRAL_PROCESS_OWNER: processOwner,
+        CORRAL_PROCESS_CAPACITY_BROKER: '1',
+      },
+    });
+  } catch (error) {
+    reservation.releaseConfirmed();
+    throw error;
+  }
+  const capacity = installHostProcessCapacityBroker(child);
   child.stderr?.on('data', () => {});
   let exited = false;
-  let releaseLease = () => {};
+  let releaseLease: ReturnType<typeof recordWorkerLease> | undefined;
   const exitHandlers: ((code: number | null, cleanupConfirmed?: boolean) => void)[] = [];
   const stopChildren = () => {
     if (process.platform !== 'win32' && child.pid) {
@@ -99,26 +114,43 @@ export function processChannel(
   };
   const ended = (code: number | null) => {
     if (exited) return;
+    capacity.stop();
     stopChildren();
     exited = true;
     const confirmed = (cleanupConfirmed = true) => {
       try {
-        if (cleanupConfirmed) releaseLease();
+        if (cleanupConfirmed) {
+          reservation.releaseConfirmed();
+        }
       } catch {
         /* Remaining records are rechecked at startup. */
       }
       for (const handler of exitHandlers) handler(code, cleanupConfirmed);
     };
-    if (options.childLeaseDirectory) {
-      void recoverSdkWorkers(options.childLeaseDirectory)
-        .then(() => {
-          rmSync(options.childLeaseDirectory!, { recursive: true, force: true });
-          confirmed();
-        })
-        .catch(() => {
-          confirmed(false);
-        });
-    } else confirmed();
+    void (async () => {
+      if (releaseLease) await releaseLease.reap();
+      else if (child.pid) {
+        let gone = false;
+        for (let attempt = 0; attempt < 100; attempt++) {
+          try {
+            process.kill(process.platform === 'win32' ? child.pid : -child.pid, 0);
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error;
+            gone = true;
+            break;
+          }
+          await delay(20);
+        }
+        if (!gone) throw new Error('Worker group cleanup is unconfirmed');
+      }
+      if (options.childLeaseDirectory) {
+        await recoverSdkWorkers(options.childLeaseDirectory);
+        rmSync(options.childLeaseDirectory, { recursive: true, force: true });
+      }
+    })().then(
+      () => confirmed(),
+      () => confirmed(false),
+    );
   };
   child.on('exit', ended);
   child.on('error', () => {
@@ -141,7 +173,10 @@ export function processChannel(
     send: (frame) => {
       if (!exited && child.connected) child.send(frame as never, () => {});
     },
-    onFrame: (handler) => void child.on('message', handler),
+    onFrame: (handler) =>
+      void child.on('message', (frame: unknown) => {
+        if (!isProcessCapacityFrame(frame)) handler(frame);
+      }),
     onExit: (handler) => void exitHandlers.push(handler),
     kill: () => {
       if (!exited) {

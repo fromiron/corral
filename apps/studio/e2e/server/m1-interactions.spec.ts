@@ -1,5 +1,5 @@
 import { fauxAssistantMessage, fauxToolCall } from '@corral/server/testing';
-import { requestBox } from '../workbench.ts';
+import { closeRequestOptions, openRequestOptions, requestBox } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test.use({ live: true, codexLogin: true, reasoningApi: true, imageInput: true });
@@ -75,14 +75,16 @@ test('[TC-IMAGE-001-H] [TC-STATUS-001-H] [TC-CHAT-001-H] [TC-CHAT-001-N] attachm
       ),
   ]);
   await corral.open('/');
-  await page.getByRole('button', { name: 'Start session', exact: true }).click();
+  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
   await expect(page).toHaveURL(/\/sessions\/session_/);
   const url = page.url();
   await page.getByRole('button', { name: 'Model', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Reasoning effort', exact: true }).hover();
   await page.getByRole('menuitemradio', { name: 'Low', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Model', exact: true })).toContainText('Low');
+  await openRequestOptions(page);
   await page.getByRole('checkbox', { name: 'Review only · no file changes' }).check();
+  await closeRequestOptions(page);
   await requestBox(page).fill('Read the attachment and use my chosen format');
   await page
     .getByLabel('Attach text files', { exact: true })
@@ -102,7 +104,9 @@ test('[TC-IMAGE-001-H] [TC-STATUS-001-H] [TC-CHAT-001-H] [TC-CHAT-001-N] attachm
   await page.goto(url);
   await expect(requestBox(page)).toHaveValue('Read the attachment and use my chosen format');
   await expect(page.getByRole('button', { name: 'Remove notes.txt' })).toBeVisible();
+  await openRequestOptions(page);
   await expect(page.getByRole('checkbox', { name: 'Review only · no file changes' })).toBeChecked();
+  await closeRequestOptions(page);
   await expect(page.getByRole('button', { name: 'Remove image pixel.png' })).toBeVisible();
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(page.getByTestId('action-required')).toBeVisible();

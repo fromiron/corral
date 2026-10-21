@@ -16,13 +16,14 @@ import {
   ScriptedAgentAdapter,
   SequentialIdFactory,
 } from '@corral/testkit';
+import Database from 'better-sqlite3';
 import { expect, it } from 'vitest';
-import { openDatabase, SqliteRunStore } from '../src/index.ts';
+import { MIGRATIONS, openDatabase, SqliteRunStore } from '../src/index.ts';
 
 it('[TC-AUTO-003-H] [TC-AUTO-003-N] replays an exact legacy auto command after migration and rejects changed requests', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'corral-auto-legacy-'));
   const file = join(directory, 'workspace.db');
-  let db = openDatabase(file);
+  let db = openDatabase(':memory:');
   try {
     const open = () => {
       const coordinator = new Coordinator({
@@ -117,10 +118,33 @@ it('[TC-AUTO-003-H] [TC-AUTO-003-N] replays an exact legacy auto command after m
       commandId: refusal.commandId,
       references: refusal.references,
     });
-    db.exec(
-      'DROP TABLE web_source_evidence; DROP TABLE message_branches; DROP TABLE session_search_v1; DROP TABLE session_search_state_v1; DROP TABLE checkpoint_restores; DROP TABLE file_checkpoints; DROP TABLE input_images; ALTER TABLE commands DROP COLUMN original_request_hash',
-    );
-    db.pragma('user_version = 13');
+    // Copy the run history into a genuine schema-13 file. Relabeling today's database
+    // as schema 13 leaves later tables behind and does not exercise a valid upgrade.
+    const legacy = new Database(file);
+    try {
+      for (const migration of MIGRATIONS.slice(0, 13)) {
+        legacy.exec(migration.sql);
+        migration.data?.(legacy);
+      }
+      legacy.pragma('user_version = 13');
+      for (const table of ['runs', 'run_events', 'artifact_texts', 'commands', 'effect_intents']) {
+        const columns = (legacy.pragma(`table_info(${table})`) as { name: string }[]).map(
+          (column) => column.name,
+        );
+        const insert = legacy.prepare(
+          `INSERT INTO ${table} (${columns.join(',')}) VALUES (${columns.map(() => '?').join(',')})`,
+        );
+        for (const row of db.prepare(`SELECT * FROM ${table}`).all() as Record<string, unknown>[]) {
+          insert.run(...columns.map((column) => row[column]));
+        }
+      }
+      expect(legacy.pragma('user_version', { simple: true })).toBe(13);
+      expect(
+        (legacy.pragma('table_info(commands)') as { name: string }[]).map((column) => column.name),
+      ).not.toContain('original_request_hash');
+    } finally {
+      legacy.close();
+    }
     db.close();
     db = openDatabase(file);
     const restarted = open();

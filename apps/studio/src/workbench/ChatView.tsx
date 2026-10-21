@@ -12,6 +12,7 @@ export function ChatView({
   items,
   composer,
   header,
+  centerEmpty = false,
 }: {
   sessionId: string;
   messageId?: string | undefined;
@@ -19,8 +20,10 @@ export function ChatView({
   items: { id: string; content: ReactNode }[];
   composer: ReactNode;
   header?: ReactNode;
+  centerEmpty?: boolean;
 }) {
   const t = useTranslations('Desktop');
+  const centered = centerEmpty && items.length === 0;
   const timeline = useRef<HTMLElement>(null);
   const content = useRef<HTMLDivElement>(null);
   const follow = useRef(true);
@@ -157,7 +160,8 @@ export function ChatView({
   return (
     <div
       data-chat-view
-      className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+      data-empty-centered={centered || undefined}
+      className={`relative flex h-full min-h-0 min-w-0 flex-1 flex-col ${centered ? 'overflow-y-auto' : 'overflow-hidden'}`}
     >
       {header ? (
         <div className="shrink-0 px-5 pt-3">
@@ -170,7 +174,7 @@ export function ChatView({
         // biome-ignore lint/a11y/noNoninteractiveTabindex: the scrolling conversation must be keyboard reachable
         tabIndex={0}
         aria-label={t('conversation')}
-        className="chat-timeline min-h-0 flex-1 overflow-y-auto overscroll-contain"
+        className={`chat-timeline min-h-0 overscroll-contain ${centered ? 'mt-auto flex-none' : 'flex-1 overflow-y-auto'}`}
         onWheel={stopRestoring}
         onPointerDown={stopRestoring}
         onKeyDown={(event) => {
@@ -196,7 +200,7 @@ export function ChatView({
       >
         <div
           ref={content}
-          className="mx-auto w-full max-w-(--chat-content-max-width) px-5 pt-4 pb-6"
+          className={`mx-auto w-full max-w-(--chat-content-max-width) px-5 pt-4 ${centered ? 'pb-2' : 'pb-6'}`}
         >
           {items.length ? (
             <ol
@@ -246,7 +250,7 @@ export function ChatView({
       </section>
       <div
         data-testid="chat-composer"
-        className="chat-composer relative shrink-0 px-4 pt-2 pb-4 sm:px-5"
+        className={`chat-composer relative shrink-0 px-4 pt-2 pb-4 sm:px-5 ${centered ? 'mb-auto' : ''}`}
       >
         {!atEnd ? (
           <div className="pointer-events-none absolute right-5 bottom-full z-20 pb-3">

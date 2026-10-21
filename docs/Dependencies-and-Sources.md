@@ -375,3 +375,9 @@ H1에서 검증한 `@earendil-works/pi-coding-agent@1.3.0`을 H2에서 adapter-p
 parse5 설치 크기는 약 444 KiB이며 기존 전이 의존성 `entities@8.1.0`(BSD-2-Clause)을 재사용한다. Studio 번들에 넣지 않고 서버의 제한된 Worker에서만 실행한다. DOM/스크립트 실행이나 하위 리소스 fetch는 없다. 입력/출력 1 MiB, 노드 30,000개, 동시 4개, 5초·메모리 상한을 적용하며 취소 시 Worker 종료를 기다린다. 플랫폼 API는 [Node 24.19.0 Worker 문서](https://nodejs.org/download/release/v24.19.0/docs/api/worker_threads.html)를 확인했다. 이 Worker는 응답성·용량 경계이며 OS sandbox라는 보장은 하지 않는다.
 
 registry integrity/배포일/라이선스는 dependency-lock에 기록했다. production audit는 이번 조회에서 알려진 취약점 0건이다. 라이브 HTML/CSS 렌더링과 본문 품질 점수는 제공하지 않으며 발행/수정 시각은 페이지가 선언한 비신뢰 metadata다.
+
+### CR-042 설정 금고와 S3 서명 (2026-10-20)
+
+이미 lockfile에 있던 `@smithy/signature-v4@5.7.4`를 서버의 직접 의존성으로 정확히 고정했다. 설치된 배포의 Apache-2.0, Node >=18, TypeScript 선언, 의존성 `@smithy/core`/`@smithy/types`/`tslib`와 공개 `SignatureV4.sign` API를 확인했다. 현재 Node 24.19.0에서 사용하며 Studio 번들에는 넣지 않는다. 요청 정규화와 AWS 서명은 Smithy가 수행하고 Node SHA-256/HMAC은 얇은 어댑터로 제공한다. 설치 스크립트는 실행하지 않았다. [Smithy 공식 소스 위치](https://github.com/smithy-lang/smithy-typescript/tree/main/packages/signature-v4), [S3 조건부 쓰기](https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-writes.html).
+
+금고 암호화는 [Node 24.19.0의 crypto](https://nodejs.org/download/release/v24.19.0/docs/api/crypto.html)를 사용한다. AES-256-GCM, 매 암호화마다 새 32-byte salt와 12-byte nonce, 16-byte 인증 태그, 고정 scrypt N=32768/r=8/p=1 및 64 MiB 메모리 한도를 적용한다. 버전·알고리즘·KDF 값은 AAD와 strict schema에 결합한다. 암호는 보관하지 않으며 중단된 적용 journal과 S3 연결 정보도 암호화한다. 실제 loopback HTTP에서 SigV4 헤더, If-Match/If-None-Match, 412 충돌, 업로드 뒤 GET readback을 검증한다. 외부 S3 계정과 실제 cloud write는 이번 검증에 포함하지 않았다.

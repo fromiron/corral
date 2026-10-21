@@ -1,8 +1,9 @@
 import { Link } from '@tanstack/react-router';
-import { type ReactNode, useEffect, useId, useState } from 'react';
+import { type ReactNode, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
+import { useModelProfiles } from '../workbench/useModels.ts';
 
 // Roadmap 17: the first steps, checked off from what has actually happened. Kept in browser
 // storage only for the viewer's conveniences: "hidden" and "a run page was read".
@@ -30,43 +31,21 @@ export function markRunReviewed() {
   store(REVIEWED);
 }
 
-export function GettingStarted({
-  corrals,
-  runs,
-  onDraft,
-}: {
-  corrals: number;
-  runs: number;
-  onDraft: () => void;
-}) {
+export function GettingStarted({ runs, projectId }: { runs: number; projectId: string }) {
   const t = useTranslations('GettingStarted');
   const navigation = useSettingsNavigation();
   const headingId = useId();
   const { mode, live, models } = useServices();
   const [hidden, setHidden] = useState(() => stored(HIDDEN));
-  const [signedIn, setSignedIn] = useState<boolean | null>(null);
+  const profiles = useModelProfiles();
   const needsModel = mode === 'server' && live && models !== null;
-
-  useEffect(() => {
-    if (!needsModel || !models) return;
-    let active = true;
-    models
-      .auth()
-      .then((providers) => {
-        if (active) setSignedIn(providers.some((p) => p.signedIn));
-      })
-      .catch(() => {});
-    return () => {
-      active = false;
-    };
-  }, [needsModel, models]);
 
   const steps: { id: string; done: boolean; title: string; action: ReactNode }[] = [
     ...(needsModel
       ? [
           {
             id: 'model',
-            done: signedIn === true,
+            done: Boolean(profiles?.some((profile) => profile.available)),
             title: t('model'),
             action: (
               <Link to="/settings/models" search={navigation.search} className="underline">
@@ -76,19 +55,6 @@ export function GettingStarted({
           },
         ]
       : []),
-    {
-      id: 'corral',
-      done: corrals > 0,
-      title: t('corral'),
-      action: (
-        <>
-          <button type="button" onClick={onDraft} className="underline">
-            {t('corralAction')}
-          </button>{' '}
-          {t('corralOr')}
-        </>
-      ),
-    },
     { id: 'run', done: runs > 0, title: t('run'), action: t('runAction') },
     { id: 'review', done: stored(REVIEWED), title: t('review'), action: t('reviewAction') },
   ];
@@ -132,6 +98,12 @@ export function GettingStarted({
           </li>
         ))}
       </ol>
+      <p className="text-xs text-muted">
+        {t('optionalCorral')}{' '}
+        <Link to="/projects/$projectId" params={{ projectId }} hash="corrals" className="underline">
+          {t('customizeCorral')}
+        </Link>
+      </p>
     </section>
   );
 }

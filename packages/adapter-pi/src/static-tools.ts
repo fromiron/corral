@@ -30,12 +30,23 @@ export function describeTool(
     ...(annotations ? { annotations } : {}),
     exposure: tool.exposure ?? 'direct',
     sideEffect:
-      source === 'corral' && ['run_check', 'lsp_query'].includes(tool.name)
+      source === 'corral' &&
+      [
+        'run_check',
+        'lsp_query',
+        'run_command',
+        'generate_image',
+        'preview_app',
+        'preview_action',
+      ].includes(tool.name)
         ? 'external'
         : source === 'corral' &&
-            ['edit', 'write', 'write_file', 'delete_file', 'move_file'].includes(tool.name)
+            ['edit', 'edit_hashline', 'write', 'write_file', 'delete_file', 'move_file'].includes(
+              tool.name,
+            )
           ? 'workspace'
-          : annotations?.readOnlyHint === true && annotations.openWorldHint === false
+          : (source === 'corral' && ['read_hashline', 'preview_file'].includes(tool.name)) ||
+              (annotations?.readOnlyHint === true && annotations.openWorldHint === false)
             ? 'none'
             : 'unknown',
   });

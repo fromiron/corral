@@ -30,6 +30,7 @@ import {
   type RunnerCallbacks,
   type RunProjection,
   type RunStore,
+  SPEC_HARD_CAPS,
   waitForProjection,
 } from '../src/index.ts';
 
@@ -266,17 +267,190 @@ describe('Coordinator over a RunStore: restart', () => {
   });
 });
 
-describe('Coordinator: one active run, pinned snapshot', () => {
-  it('rejects a second active run with RUN_ALREADY_ACTIVE and no effect', async () => {
+describe('Coordinator: concurrent runs, pinned snapshot', () => {
+  it('[TC-ABS-006-N] an unconfirmed worker retains its host model slot', async () => {
+    const entered = new Gate(),
+      finish = new Gate();
+    let starts = 0;
+    const { transport } = coordinator({
+      policy: { ...SPEC_HARD_CAPS, maxModelConcurrency: 1 },
+      files: { acquireRun: () => {}, available: () => true, execute: async () => ({}) },
+      agents: {
+        start: async (_input, host) => {
+          const first = starts++ === 0;
+          const work = (async () => {
+            try {
+              await host.prepareModelRequest();
+              if (first) {
+                entered.open();
+                await finish.wait();
+              }
+              return { outcome: 'failed' as const, terminationMode: 'unconfirmed' as const };
+            } catch {
+              return { outcome: 'cancelled' as const };
+            }
+          })();
+          return { cancel: async () => {}, waitForSettlement: () => work };
+        },
+      },
+    });
+    const definition = linearCorral(['writer']);
+    definition.limits.maxModelConcurrency = 1;
+    const first = await transport.startRun(start(definition, 'unknown'));
+    await entered.wait();
+    finish.open();
+    await waitForProjection(transport, first.runId ?? '', settled);
+    const second = await transport.startRun(start(definition, 'independent'));
+    expect(second.runId).not.toBeNull();
+    await drain();
+    expect(
+      Object.keys((await transport.getSnapshot(second.runId ?? '')).projection.modelCalls),
+    ).toHaveLength(0);
+    await transport.sendCommand({
+      schemaVersion: '0.1',
+      commandId: 'cancel_waiter',
+      runId: second.runId ?? '',
+      type: 'cancel',
+      payload: { scope: { kind: 'run' }, reason: 'capacity unavailable' },
+    });
+    await waitForProjection(transport, second.runId ?? '', settled);
+  });
+  it('[TC-ABS-006-N] file restore reserves the canonical target while unrelated sessions run', async () => {
+    const entered = new Gate();
+    const finish = new Gate();
+    const { instance, transport } = coordinator({
+      files: {
+        worktreeScope: (sessionId) => (sessionId === 'session_alias' ? 'copy_a' : sessionId),
+        available: () => false,
+        execute: async () => ({}),
+      },
+    });
+    const restoring = instance.withFileRestore(async () => {
+      entered.open();
+      await finish.wait();
+    }, 'copy_a');
+    await entered.wait();
+    const blocked = await transport.startRun({
+      ...start(linearCorral(['writer']), 'same'),
+      sessionId: 'session_alias',
+    });
+    expect(blocked.receipt.error?.code).toBe('RUN_ALREADY_ACTIVE');
+    const other = await transport.startRun({
+      ...start(linearCorral(['writer']), 'other'),
+      sessionId: 'copy_b',
+    });
+    expect(other.runId).not.toBeNull();
+    await expect(instance.withFileRestore(async () => {}, 'session_alias')).rejects.toThrow(
+      /idle target/,
+    );
+    await waitForProjection(transport, other.runId ?? '', settled);
+    finish.open();
+    await restoring;
+    const after = await transport.startRun({
+      ...start(linearCorral(['writer']), 'after'),
+      sessionId: 'session_alias',
+    });
+    expect(after.runId).not.toBeNull();
+    await waitForProjection(transport, after.runId ?? '', settled);
+  });
+  it('[TC-ABS-006-H] [TC-ABS-006-N] host model slots stay bounded across runs and wake the next run', async () => {
+    const hold = new Gate();
+    const observed: string[] = [];
+    const agents = new ScriptedAgentAdapter({
+      turns: 1,
+      beforeReply: async (_turn, input) => {
+        observed.push(input.runId);
+        if (observed.length === 1) await hold.wait();
+      },
+    });
+    const { transport } = coordinator({
+      agents,
+      policy: { ...SPEC_HARD_CAPS, maxModelConcurrency: 1 },
+    });
+    const definition = linearCorral(['writer']);
+    definition.limits.maxModelConcurrency = 1;
+    const first = await transport.startRun(start(definition, 'first'));
+    const second = await transport.startRun(start(definition, 'second'));
+    await drain();
+    expect(observed).toEqual([first.runId]);
+    hold.open();
+    await Promise.all(
+      [first, second].map(({ runId }) => waitForProjection(transport, runId ?? '', settled)),
+    );
+    expect(observed).toEqual([first.runId, second.runId]);
+  });
+
+  it('[TC-ABS-006-H] [TC-ABS-006-N] worker starts only after its file snapshot has been pinned', async () => {
+    const ready = new Gate();
+    const released: string[] = [];
+    const { transport, agents } = coordinator({
+      files: {
+        acquireRun: () => {},
+        prepareRun: () => ready.wait(),
+        releaseRun: (id, confirmed) => {
+          if (confirmed) released.push(id);
+        },
+        available: () => true,
+        execute: async () => ({}),
+      },
+    });
+    const { runId } = await transport.startRun(start(linearCorral(['writer'])));
+    await drain();
+    expect((agents as CountingAdapter).started).toHaveLength(0);
+    ready.open();
+    await waitForProjection(transport, runId ?? '', settled);
+    expect((agents as CountingAdapter).started).toHaveLength(1);
+    expect(released).toContain(runId);
+  });
+
+  it('[TC-ABS-006-H] [TC-ABS-006-N] cancelling a queued host request neither cancels nor starves other runs', async () => {
+    const hold = new Gate();
+    const observed: string[] = [];
+    const agents = new ScriptedAgentAdapter({
+      turns: 1,
+      beforeReply: async (_turn, input) => {
+        observed.push(input.runId);
+        if (observed.length === 1) await hold.wait();
+      },
+    });
+    const { transport } = coordinator({
+      agents,
+      policy: { ...SPEC_HARD_CAPS, maxModelConcurrency: 1 },
+    });
+    const definition = linearCorral(['writer']);
+    definition.limits.maxModelConcurrency = 1;
+    const first = await transport.startRun(start(definition, 'first'));
+    const cancelled = await transport.startRun(start(definition, 'middle'));
+    const last = await transport.startRun(start(definition, 'last'));
+    await drain();
+    await transport.sendCommand({
+      schemaVersion: '0.1',
+      commandId: 'cancel_middle',
+      runId: cancelled.runId ?? '',
+      type: 'cancel',
+      payload: { scope: { kind: 'run' }, reason: 'cancel queued request' },
+    });
+    await waitForProjection(transport, cancelled.runId ?? '', settled);
+    expect(observed).toEqual([first.runId]);
+    hold.open();
+    await Promise.all(
+      [first, last].map(({ runId }) => waitForProjection(transport, runId ?? '', settled)),
+    );
+    expect(observed).toEqual([first.runId, last.runId]);
+  });
+
+  it('[TC-ABS-006-H] [TC-ABS-006-N] admits independent runs without replacing the first run', async () => {
     const gate = new Gate();
     const { transport, agents } = coordinator({ gates: [gate] });
     const first = await transport.startRun(start(linearCorral(['research'])));
     const second = await transport.startRun(start(linearCorral(['writer']), 'cmd_second'));
-    expect(second.runId).toBeNull();
-    expect(second.receipt.error?.code).toBe('RUN_ALREADY_ACTIVE');
+    expect(second.runId).not.toBeNull();
+    expect(second.receipt.status).toBe('applied');
     gate.open();
     await waitForProjection(transport, first.runId ?? '', settled);
-    expect((agents as CountingAdapter).started.map((s) => s.nodeId)).toEqual(['research']);
+    await waitForProjection(transport, second.runId ?? '', settled);
+    expect((agents as CountingAdapter).started.map((s) => s.nodeId)).toContain('research');
+    expect((agents as CountingAdapter).started.map((s) => s.nodeId)).toContain('writer');
 
     const third = await transport.startRun(start(linearCorral(['writer']), 'cmd_third'));
     expect(third.receipt.status).toBe('applied');

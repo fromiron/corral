@@ -37,6 +37,7 @@ it('[DW-07] external navigation and restored routes cannot execute native scheme
 // CR-017: native menu commands, theme, notifications and recent workspaces.
 import {
   DESKTOP_COMMANDS,
+  desktopAccelerators,
   desktopCommand,
   notificationText,
   recentWorkspaces,
@@ -47,6 +48,21 @@ it('[CR-017] the menu sends only known command names to the page', () => {
   for (const id of DESKTOP_COMMANDS) expect(desktopCommand(id)).toBe(id);
   for (const value of ['run.stop', 'eval', '', null, 42, { id: 'palette' }, 'palette '])
     expect(desktopCommand(value)).toBeNull();
+});
+
+it('[TC-ABS-007-N] native shortcuts cannot bind unknown commands, edit keys or duplicate chords', () => {
+  expect(desktopAccelerators({ palette: { mod: true, shift: true, key: 'k' } })).toEqual({
+    palette: 'CommandOrControl+Shift+K',
+  });
+  expect(desktopAccelerators({})).toEqual({});
+  for (const value of [
+    { quit: { mod: true, key: 'b' } },
+    { palette: { key: 'k' } },
+    { palette: { mod: true, key: 'q' } },
+    { palette: { mod: true, alt: true, key: 'v' } },
+    { palette: { mod: true, key: 'k' }, help: { mod: true, key: 'k' } },
+  ])
+    expect(() => desktopAccelerators(value)).toThrow();
 });
 
 it('[CR-017] the theme sets colours only from a boolean', () => {

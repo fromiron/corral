@@ -1,6 +1,6 @@
 import { TIDY_EVENT } from '@corral/react';
-import { Kbd } from '@corral/react/ui';
-import { useNavigate } from '@tanstack/react-router';
+import { Button, Kbd } from '@corral/react/ui';
+import { useNavigate, useRouterState } from '@tanstack/react-router';
 import {
   type KeyboardEvent,
   useCallback,
@@ -23,7 +23,20 @@ import { rankCommands } from './commands.ts';
 import { desktop } from './desktop.tsx';
 import { currentProject, projectName } from './projects.ts';
 import { useServices } from './services.tsx';
-import { LOCAL_KEYS, SHORTCUTS, type ShortcutId, shortcutFor, shortcutLabel } from './shortcuts.ts';
+import {
+  bindingError,
+  readShortcutBindings,
+  useShortcutBindings,
+  writeShortcutBindings,
+} from './shortcutBindings.ts';
+import {
+  effectiveShortcuts,
+  LOCAL_KEYS,
+  SHORTCUTS,
+  type ShortcutId,
+  shortcutFor,
+  shortcutLabel,
+} from './shortcuts.ts';
 import { createFromTemplate, WORKSPACE_TEMPLATES } from './templates.ts';
 import { useSettingsNavigation } from './workbench/navigation.ts';
 import { changePreferences, preferences, usePreferences } from './workbench/preferences.ts';
@@ -43,6 +56,7 @@ function typing(event: globalThis.KeyboardEvent): boolean {
  * Modal, keyboard first, IME safe; focus returns where it was on close.
  */
 export function CommandLayer() {
+  const bindings = useShortcutBindings();
   const [palette, setPalette] = useState(false);
   const [help, setHelp] = useState(false);
   const returnTo = useRef<HTMLElement | null>(null);
@@ -58,6 +72,11 @@ export function CommandLayer() {
     queueMicrotask(() => target?.focus());
   }, []);
   useEffect(() => {
+    const show = () => open('palette');
+    window.addEventListener('corral:open-palette', show);
+    return () => window.removeEventListener('corral:open-palette', show);
+  }, [open]);
+  useEffect(() => {
     const onKey = (event: globalThis.KeyboardEvent) => {
       if (event.isComposing || event.keyCode === 229) return;
       if (help && event.key === 'Escape') {
@@ -66,6 +85,11 @@ export function CommandLayer() {
         return;
       }
       const hit = shortcutFor(event);
+      if (
+        typing(event) &&
+        !['palette', 'help', 'composer.focus', 'run.stop'].includes(hit?.id ?? '')
+      )
+        return;
       if (hit?.id === 'palette') {
         event.preventDefault();
         if (palette) close();
@@ -82,6 +106,31 @@ export function CommandLayer() {
     return () => window.removeEventListener('keydown', onKey);
   }, [palette, help, open, close]);
   useGlobalCommands(() => open('help'));
+  useEffect(() => {
+    const sync = () => {
+      const field = document.activeElement as HTMLElement | null;
+      const capturing = document.querySelector('[data-shortcut-capture="true"]');
+      const editing =
+        field?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(field?.tagName ?? '');
+      const map = Object.fromEntries(
+        Object.entries(effectiveShortcuts(bindings)).filter(
+          ([id]) =>
+            !capturing &&
+            (!editing || ['palette', 'help', 'composer.focus', 'run.stop'].includes(id)),
+        ),
+      );
+      void desktop?.shortcuts(map).catch(() => {});
+    };
+    sync();
+    document.addEventListener('focusin', sync);
+    document.addEventListener('focusout', sync);
+    window.addEventListener('corral:shortcut-context', sync);
+    return () => {
+      document.removeEventListener('focusin', sync);
+      document.removeEventListener('focusout', sync);
+      window.removeEventListener('corral:shortcut-context', sync);
+    };
+  }, [bindings]);
   // The desktop menu asks for commands by name; they run like their shortcuts (CR-017).
   useEffect(
     () =>
@@ -114,7 +163,33 @@ function useGlobalCommands(showHelp: () => void) {
   const t = useTranslations('Commands');
   const th = useTranslations('Harness');
   const navigate = useNavigate();
-  const { repository, session } = useServices();
+  const { transport, runFor, sessionFor } = useServices();
+  const location = useRouterState({ select: (state) => state.location });
+  const sessionId = /^\/sessions\/([^/]+)/.exec(location.pathname)?.[1];
+  const explicitRun =
+    /^\/runs\/([^/]+)/.exec(location.pathname)?.[1] ??
+    (typeof location.search.run === 'string' ? location.search.run : null);
+  const [latest, setLatest] = useState<{ sessionId: string; runId: string } | null>(null);
+  useEffect(() => {
+    if (!sessionId || explicitRun) return;
+    let current = true;
+    const refresh = () =>
+      void transport.listRuns().then(
+        (runs) => {
+          const run = runs.find((run) => run.sessionId === sessionId);
+          if (current) setLatest(run ? { sessionId, runId: run.runId } : null);
+        },
+        () => {},
+      );
+    refresh();
+    const timer = setInterval(refresh, 2000);
+    return () => {
+      current = false;
+      clearInterval(timer);
+    };
+  }, [transport, sessionId, explicitRun]);
+  const runId = explicitRun ?? (latest?.sessionId === sessionId ? latest?.runId : null);
+  const session = runId ? runFor(runId) : sessionFor(sessionId ?? 'navigation');
   const events = useStore(session, (state) => state.events);
   useRegisterCommands(
     'extensions',
@@ -135,26 +210,6 @@ function useGlobalCommands(showHelp: () => void) {
           to: '/projects/$projectId',
           params: { projectId: currentProject() },
           search: { newSession: true },
-        }),
-    },
-    {
-      id: 'session:jump',
-      title: t('jump'),
-      group: go,
-      shortcutId: 'session.jump',
-      shortcut: shortcutLabel('session.jump'),
-      run: () => {},
-      jump: (digit) =>
-        void repository.listSessions(currentProject()).then((list) => {
-          const ordered = list
-            .filter((s) => !s.archivedAt)
-            .sort(
-              (a, b) =>
-                Number(b.pinned) - Number(a.pinned) || b.updatedAt.localeCompare(a.updatedAt),
-            );
-          const target = ordered[digit - 1];
-          if (target)
-            void navigate({ to: '/sessions/$sessionId', params: { sessionId: target.sessionId } });
         }),
     },
     {
@@ -540,14 +595,64 @@ const LABEL: Record<ShortcutId, string> = {
 };
 
 /** Every shortcut that works here, from the one table the key handler uses. */
-export function ShortcutTable() {
+export function ShortcutTable({ editable = false }: { editable?: boolean }) {
+  useShortcutBindings();
+  const [capture, setCapture] = useState<ShortcutId | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const t = useTranslations('Shortcuts');
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('corral:shortcut-context', { detail: { capture } }));
+    return () => {
+      queueMicrotask(() => window.dispatchEvent(new Event('corral:shortcut-context')));
+    };
+  }, [capture]);
+  const record = (event: KeyboardEvent<HTMLButtonElement>, id: ShortcutId) => {
+    event.stopPropagation();
+    event.preventDefault();
+    if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+    if (event.key === 'Escape') {
+      setCapture(null);
+      setError(null);
+      return;
+    }
+    if (['Control', 'Meta', 'Alt', 'Shift'].includes(event.key)) return;
+    const mac = /Mac|iPhone|iPad/.test(navigator.platform);
+    const key =
+      id === 'session.jump' && /^[1-9]$/.test(event.key)
+        ? 'Digit'
+        : /^Key[A-Z]$/.test(event.code)
+          ? event.code.slice(3).toLowerCase()
+          : event.key.toLowerCase();
+    const chord = {
+      key,
+      mod: mac ? event.metaKey : event.ctrlKey,
+      alt: event.altKey,
+      shift: event.shiftKey,
+    };
+    const invalid =
+      (mac ? event.ctrlKey : event.metaKey) || event.getModifierState('AltGraph')
+        ? 'reserved'
+        : bindingError(id, chord, effectiveShortcuts(), Boolean(desktop));
+    if (invalid) {
+      setError(t(invalid));
+      return;
+    }
+    try {
+      writeShortcutBindings({ ...readShortcutBindings(), [id]: chord });
+      setError(null);
+      setCapture(null);
+    } catch {
+      setError(t('saveFailed'));
+    }
+  };
   const { sendKey } = usePreferences();
   const sessionIds = new Set(['session.new', 'session.jump', 'run.stop']);
-  const commands = (session: boolean): [string, string][] =>
+  const commands = (session: boolean): [string, string, ShortcutId?][] =>
     SHORTCUTS.flatMap((s) => {
       const keys = shortcutLabel(s.id);
-      return keys && sessionIds.has(s.id) === session ? [[t(LABEL[s.id] as 'palette'), keys]] : [];
+      return keys && sessionIds.has(s.id) === session
+        ? [[t(LABEL[s.id] as 'palette'), keys, s.id]]
+        : [];
     });
   const local = (ids: string[]): [string, string][] =>
     LOCAL_KEYS.filter((k) => ids.includes(k.id)).map((k) => [t(k.id), k.keys(sendKey === 'enter')]);
@@ -559,15 +664,60 @@ export function ShortcutTable() {
   ] as const;
   return (
     <div className="flex flex-col gap-5">
+      {editable ? (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-ui text-muted">{t('editHint')}</p>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              try {
+                writeShortcutBindings({});
+                setCapture(null);
+                setError(null);
+              } catch {
+                setError(t('saveFailed'));
+              }
+            }}
+          >
+            {t('reset')}
+          </Button>
+        </div>
+      ) : null}
+      {error ? (
+        <p role="alert" className="text-ui text-danger">
+          {error}
+        </p>
+      ) : null}
       {groups.map((group) => (
         <section key={group.id}>
           <h3 className="mb-2 text-sm font-semibold">{t(`groups.${group.id}`)}</h3>
           <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-6 gap-y-1.5">
-            {group.rows.map(([what, keys]) => (
+            {group.rows.map(([what, keys, id]) => (
               <div key={what} className="contents">
                 <dt className="text-ui">{what}</dt>
                 <dd className="text-right">
-                  <Kbd>{keys}</Kbd>
+                  {editable && id ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      aria-label={t('edit', { command: what })}
+                      aria-pressed={capture === id}
+                      data-shortcut-capture={capture === id ? 'true' : undefined}
+                      onClick={() => {
+                        setError(null);
+                        setCapture(id as ShortcutId);
+                      }}
+                      onBlur={() => setCapture(null)}
+                      onKeyDown={
+                        capture === id ? (event) => record(event, id as ShortcutId) : undefined
+                      }
+                    >
+                      <Kbd>{capture === id ? t('capture') : keys}</Kbd>
+                    </Button>
+                  ) : (
+                    <Kbd>{keys}</Kbd>
+                  )}
                 </dd>
               </div>
             ))}

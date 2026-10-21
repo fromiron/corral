@@ -1,4 +1,4 @@
-import { type ChildProcess, spawn } from 'node:child_process';
+import type { ChildProcess, spawn } from 'node:child_process';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import {
@@ -10,6 +10,7 @@ import {
   VerificationReport,
 } from '@corral/contracts';
 import type { ToolCancellation } from '@corral/core';
+import { HostProcessCapacityError, spawnOwnedProcess } from '../processes/owned-process.ts';
 import { CheckOutput } from './check-output.ts';
 import { git, gitText } from './git.ts';
 import { killProcessGroup, processGroupGone } from './process-group.ts';
@@ -40,7 +41,7 @@ export class VerificationRunner {
   }) {
     this.clock = options.clock;
     this.timers = options.timers;
-    this.spawn = options.spawn ?? spawn;
+    this.spawn = options.spawn ?? (spawnOwnedProcess as typeof spawn);
   }
 
   async run(
@@ -149,7 +150,7 @@ export class VerificationRunner {
             else cancelled = true;
             kill();
             cancelCleanup();
-            cancelCleanup = this.timers.after(3000, () => finish(null, null, false));
+            cancelCleanup = this.timers.after(8000, () => finish(null, null, false));
           };
           try {
             child = this.spawn(executable, command.argv.slice(1), {
@@ -180,8 +181,10 @@ export class VerificationRunner {
             off = cancellation.onCancel(() => stop(false));
             cancelDeadline = this.timers.after(command.timeoutMs, () => stop(true));
             if (cancellation.aborted) stop(false);
-          } catch {
+          } catch (error) {
             failed = true;
+            if (error instanceof HostProcessCapacityError)
+              output.add('stderr', Buffer.from(error.message));
             finish(null, null, true);
           }
         });

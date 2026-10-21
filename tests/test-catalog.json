@@ -2837,7 +2837,9 @@
   },
   {
     "id": "TC-WIDGET-001-H",
-    "requirements": ["CRL-WIDGET-001"],
+    "requirements": [
+      "CRL-WIDGET-001"
+    ],
     "suite": "unit+browser",
     "scenario": "SURFACE-01 PLAN-02 PLAN-05 PLAN-07 ACTION-01. 상단 위젯과 입력창 위 계획이 현재 실행을 보여 주고, 수동 펼침과 승인 대기는 접힘에 숨지 않는다.",
     "status": "planned",
@@ -2846,7 +2848,9 @@
   },
   {
     "id": "TC-WIDGET-001-N",
-    "requirements": ["CRL-WIDGET-001"],
+    "requirements": [
+      "CRL-WIDGET-001"
+    ],
     "suite": "unit+browser",
     "scenario": "PLAN-03 PLAN-04 PLAN-06 PLAN-09 PLAN-10 PLAN-11 SURFACE-02 TOOL-02. 늦은 본문·다른 실행·끝난 팀 계획·좁은 폭·불명확 도구가 현재 화면을 덮거나 0으로 숨지 않는다.",
     "status": "planned",
@@ -2855,7 +2859,9 @@
   },
   {
     "id": "TC-WIDGET-002-H",
-    "requirements": ["CRL-WIDGET-001"],
+    "requirements": [
+      "CRL-WIDGET-001"
+    ],
     "suite": "unit",
     "scenario": "CTX-02. 요청에 포함된 메시지·시스템·스킬·도구만 같은 chars/4 기준으로 한 번 합산한다.",
     "status": "planned",
@@ -2864,11 +2870,305 @@
   },
   {
     "id": "TC-WIDGET-002-N",
-    "requirements": ["CRL-WIDGET-001"],
+    "requirements": [
+      "CRL-WIDGET-001"
+    ],
     "suite": "unit",
     "scenario": "CTX-01 CTX-03 CTX-04 CTX-05 CTX-06 CTX-07. 메시지 전용·부분 측정·공급자 usage·압축 대기·Ultra 분모·다음 모델 선택은 전체 비율로 섞지 않는다.",
     "status": "planned",
     "adapter": "deterministic fixtures; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-ABS-001-H",
+    "requirements": ["CRL-ABS-001"],
+    "suite": "integration+browser+os",
+    "scenario": "ABS-01: 일반 세션 요청→권한 확인/승인→임의 명령이 실제 관리 사본을 변경→출력·exit·diff readback. service 목록에서 중단하고 OS 소유 후손 종료와 lease 해제를 확인한다.",
+    "status": "planned",
+    "adapter": "production entry with deterministic provider; actual local processes/files; Windows and POSIX evidence separately; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-ABS-001-N",
+    "requirements": ["CRL-ABS-001"],
+    "suite": "integration+browser+os",
+    "scenario": "ABS-01: 승인 전 실행, 동일 command/effect의 duplicate spawn, 승인 후 cwd/root/인자 교체, 취소 후 후손 잔존을 성공 처리하거나 lease를 조기 해제하는 동작, 재시작 자동 replay를 거절한다.",
+    "status": "planned",
+    "adapter": "real local process ownership with injected IDs/time and cancellation races; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-ABS-002-H",
+    "requirements": ["CRL-ABS-002"],
+    "suite": "unit+integration+browser",
+    "scenario": "ABS-02: 컴포저의 Ask/Accept edits/Auto가 다음 Run snapshot에 고정되고 관리 사본 편집과 셸/외부 효과에 각 승인 정책을 적용한다. 기존 필드 없는 자료와 현재 Run 정책은 유지한다.",
+    "status": "planned",
+    "adapter": "production composer/Coordinator/broker with deterministic provider and real local effects; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-ABS-002-N",
+    "requirements": ["CRL-ABS-002"],
+    "suite": "unit+integration+browser",
+    "scenario": "ABS-02: Auto의 capability/deny/strict/review-only 우회, 변경된 인자·정책 revision·사본에 승인 재사용, 중복 클릭, 승인 직후 파일 변경, 취소 뒤 늦은 승인과 현재 대기에 소급 모드 적용을 거절한다.",
+    "status": "planned",
+    "adapter": "injected approval/timeout/cancellation races through existing receipts; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-ABS-003-H",
+    "requirements": ["CRL-ABS-003"],
+    "suite": "unit+integration+browser",
+    "scenario": "ABS-03: 선택한 Hashline 방식으로 실제 read→PUT/CUT/REM/MV→broker 원자 반영→diff를 확인한다. 기존 Pi edit 의미와 UTF-8 BOM/CRLF/마지막 개행, 실행별 읽기 근거를 보존한다.",
+    "status": "planned",
+    "adapter": "production tool registration and broker with actual managed files; deterministic provider; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-ABS-003-N",
+    "requirements": ["CRL-ABS-003"],
+    "suite": "unit+integration+browser",
+    "scenario": "ABS-03: 짧은 태그 충돌, stale full hash, 읽지 않은/잘린 줄, 다른 host/run/execution/attempt의 근거, 목적지 충돌, 계산 후 원본 변경, 부분 쓰기와 미지원 encoding을 거절한다.",
+    "status": "planned",
+    "adapter": "actual file mutations and injected lease/attempt races; existing Pi edit regression; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-ABS-004-H",
+    "requirements": ["CRL-ABS-004"],
+    "suite": "integration+browser+os",
+    "scenario": "ABS-04: 기존 파일 패널에서 실제 HTML/로컬 앱 preview를 시작하고 수정·상대 asset·HMR 반영을 확인한다. 사람과 에이전트 browser가 같은 lease를 관찰·조작·assert하고 종료 후 정리한다.",
+    "status": "planned",
+    "adapter": "actual managed worktree and loopback service/browser; OS launcher evidence separately; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-ABS-004-N",
+    "requirements": ["CRL-ABS-004"],
+    "suite": "integration+browser+os",
+    "scenario": "ABS-04: 다른 root/session/port, 임의 file/origin, redirect/WS 탈출, Corral cookie/API/preload 권한 공유, 허가 없는 업로드/다운로드/새 창, 종료 preview lease 재사용을 거절한다.",
+    "status": "planned",
+    "adapter": "isolated real browser origins and loopback failure fixtures; no external uploads or paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-ABS-005-H",
+    "requirements": ["CRL-ABS-005"],
+    "suite": "unit+integration+browser",
+    "scenario": "ABS-05: Claude Code/Codex/OpenCode/Pi 네 소스 설정을 preview·항목 선택·revision 확인 후 원자 저장하고 목록 readback한다. 카탈로그 정상 cache와 기존 모델/사고 강도 선택을 실제 provider 요청 payload까지 연결한다.",
+    "status": "planned",
+    "adapter": "redacted local config fixtures and deterministic provider endpoint through normal settings flow; paid live opt-in separate",
+    "evidence": null
+  },
+  {
+    "id": "TC-ABS-005-N",
+    "requirements": ["CRL-ABS-005"],
+    "suite": "unit+integration+browser",
+    "scenario": "ABS-05: secret 노출, env/command 참조 실행, OAuth 토큰의 다른 provider 키 복사, revision 충돌 overwrite, metadata를 capability로 오인, 미지원 reasoning clamp를 거절한다. malformed/대용량 설정·cache 실패·endpoint 변경에서도 과거 snapshot을 보존한다.",
+    "status": "planned",
+    "adapter": "local malformed/redacted fixtures and injected cache/storage conflicts; no real secrets or paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-ABS-006-H",
+    "requirements": ["CRL-ABS-006"],
+    "suite": "integration+browser",
+    "scenario": "ABS-06: 동일 admission을 거쳐 writer A+고정 snapshot reader B+다른 사본 writer C를 병행하고 각각의 산출물·예산·SSE 재열람을 확인한다. B의 승인·취소가 A/C에 영향을 주지 않는다.",
+    "status": "planned",
+    "adapter": "real worktrees/SQLite and primary API/CLI/queue/Studio entry points; deterministic providers; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-ABS-006-N",
+    "requirements": ["CRL-ABS-006"],
+    "suite": "integration+browser",
+    "scenario": "ABS-06: 같은 사본 동시 writer, host 총 모델/worker/process 상한 초과, reader 사후 writer 승격, 승인·취소·plan·cursor의 타 host/run 혼선, 종료 미확인 lease 재할당을 거절한다. 사본별 장애가 무관한 실행을 중단하지 않는다.",
+    "status": "planned",
+    "adapter": "injected admission/lease/slot races and actual persisted restart/readback; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-ABS-007-H",
+    "requirements": ["CRL-ABS-007"],
+    "suite": "unit+os+e2e",
+    "scenario": "ABS-07: 검증 OS/arch의 실제 설치 산출물에서 개발 서버 없이 프로젝트→명령→취소→종료→재실행한다. Windows 설치형/portable, macOS dmg/zip, Linux AppImage의 tray/awake/update/사용자 단축키 수명을 각각 기록한다.",
+    "status": "planned",
+    "adapter": "actual packaged application in isolated app-data on each claimed OS/arch; no public release or paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-ABS-007-N",
+    "requirements": ["CRL-ABS-007"],
+    "suite": "unit+os+e2e",
+    "scenario": "ABS-07: 개발 경로/runtime 의존, 활성 Run·미저장 문서 중 강제 설치, 서명/channel/schema 불일치, orphan sidecar/후손, 종료 후 awake 잔존, 키 바인딩 충돌·예약 OS 키·IME 오전송을 거절한다.",
+    "status": "planned",
+    "adapter": "isolated packaged-app failure/restart/update fixtures; native behavior verified per OS; no public release",
+    "evidence": null
+  },
+  {
+    "id": "TC-ABS-008-H",
+    "requirements": ["CRL-ABS-008"],
+    "suite": "unit+integration+browser",
+    "scenario": "ABS-08: 일정 설정을 영속 저장하고 예정 occurrence를 한 번 claim하여 일반 요청/auto-team/Coordinator Run을 시작한다. 필요한 승인과 알림·실행 기록·재시작 readback, 명시 지금 실행을 확인한다.",
+    "status": "planned",
+    "adapter": "injected clock with real SQLite claims and normal start/approval paths; deterministic providers; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-ABS-008-N",
+    "requirements": ["CRL-ABS-008"],
+    "suite": "unit+integration+browser",
+    "scenario": "ABS-08: 중복 tick/창/reconnect, 응답 유실, DST 중복·없는 시각, 숨은 catch-up/overlap, 비활성화 뒤 늦은 시작, 재시작 occurrence 재실행과 unattended 자동 승인을 거절한다.",
+    "status": "planned",
+    "adapter": "injected timezone/clock and durable claim/cancellation races; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-ABS-009-H",
+    "requirements": ["CRL-ABS-009"],
+    "suite": "unit+integration+browser",
+    "scenario": "ABS-09: 프로젝트 open/관리 clone→폴더 연결·명시 신뢰→사본을 제공하고 진행률·취소·부분 디렉터리 복구를 확인한다. 선택한 지침/메모리는 요청 snapshot/hash에 포함되며 원문 편집·삭제 후에도 과거 readback이 같다.",
+    "status": "planned",
+    "adapter": "actual local Git fixture repositories and versioned documents through normal project/composer flow; no external clone needed",
+    "evidence": null
+  },
+  {
+    "id": "TC-ABS-009-N",
+    "requirements": ["CRL-ABS-009"],
+    "suite": "unit+integration+browser",
+    "scenario": "ABS-09: 기존 destination 덮기, credential URL 노출, clone 후 hook 실행·자동 신뢰·git init/commit, 문서의 자동 prompt 주입·권한 상승, 편집/삭제로 과거 context 변경을 거절한다.",
+    "status": "planned",
+    "adapter": "actual filesystem and local Git with cancellation/path/trust fixtures; no secrets or external side effects",
+    "evidence": null
+  },
+  {
+    "id": "TC-ABS-010-H",
+    "requirements": ["CRL-ABS-010"],
+    "suite": "integration+browser+live-opt-in",
+    "scenario": "ABS-10: 명시 image profile의 지원 operation을 effect/예산으로 실행하고 실제 bytes·metadata를 불변 버전에 저장하여 viewer·검토·export readback까지 확인한다. 로컬 protocol 검증과 승인된 provider의 실제 생성 증거를 구분한다.",
+    "status": "planned",
+    "adapter": "deterministic provider plus immutable binary storage; real provider only explicit opt-in with cost limit",
+    "evidence": null
+  },
+  {
+    "id": "TC-ABS-010-N",
+    "requirements": ["CRL-ABS-010"],
+    "suite": "unit+integration+browser",
+    "scenario": "ABS-10: review-only 생성, 미설정/미지원 provider의 몰래 대체, bytes 없는 성공, 임의 참조 URL/path, 불허 MIME/크기, 취소 후 unknown을 성공 처리하거나 늦은 결과를 이중 정산하는 동작을 거절한다. partial/orphan을 복구한다.",
+    "status": "planned",
+    "adapter": "injected provider responses/billing races and real immutable blob/metadata journal; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-ABS-011-H",
+    "requirements": ["CRL-ABS-011"],
+    "suite": "unit+integration+browser",
+    "scenario": "ABS-11: Markdown 후보의 frontmatter/prompt/tool/model을 preview하고 명시 매핑·선택으로 callable Agent와 capability link를 저장한다. 기존 spawn/ask/reply 경로에서 자식이 현재 부모에게 질문하고 답변 후 같은 실행을 계속해 결과를 제출한다. 병렬·순차 items와 기존 수동 팀의 의미를 보존한다.",
+    "status": "planned",
+    "adapter": "local Markdown fixtures and production definition/compiler/Coordinator paths; deterministic provider; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-ABS-011-N",
+    "requirements": ["CRL-ABS-011"],
+    "suite": "unit+integration+browser",
+    "scenario": "ABS-11: 알 수 없는 도구의 조용한 허용, 부모보다 넓은 capability, depth/spawn/예산 우회, 자식 직접 ask_user/Run 제어, 실행 중 임의 역할 생성과 별도 위임 큐를 거절한다. 다른 부모·과거 attempt·취소/재시작 후 늦은 답변, 열린 질문·수락한 items의 유실과 중복 답변 효과를 거절한다.",
+    "status": "planned",
+    "adapter": "malformed/unsupported local definitions and existing capability/depth/budget refusal paths; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-ABS-012-H",
+    "requirements": ["CRL-ABS-012"],
+    "suite": "unit+integration+browser",
+    "scenario": "ABS-12: 기존 harness 경로에서 package manifest/라이선스/출처/권한 diff 검토→명시 설치→실제 managed tool→upgrade/disable/uninstall을 확인한다. 활성 Run의 버전과 MCP/process/UI slot 소유 수명을 보존한다.",
+    "status": "planned",
+    "adapter": "local versioned package fixtures and existing trust/managed broker paths; no external install or paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-ABS-012-N",
+    "requirements": ["CRL-ABS-012"],
+    "suite": "unit+integration+browser",
+    "scenario": "ABS-12: 설치만으로 실행·신뢰 확대, 활성 resource 버전 삭제, 별도 권한 원장, renderer DB/filesystem 직접 접근, trusted-native를 strict 격리로 오표시하는 동작을 거절한다.",
+    "status": "planned",
+    "adapter": "local invalid manifests and upgrade/disable/resource ownership races; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-ABS-013-H",
+    "requirements": ["CRL-ABS-013"],
+    "suite": "unit+integration+browser+live-opt-in",
+    "scenario": "ABS-13: 9개 설정 도메인을 capture·암호화하고 두 장치의 revision/ETag를 검증하여 diff·명시 병합·원자 적용한다. 실패 journal/rollback과 tombstone·migration·복구를 readback한다.",
+    "status": "planned",
+    "adapter": "local encrypted fixtures and isolated S3-compatible test endpoint; real remote storage only explicit opt-in",
+    "evidence": null
+  },
+  {
+    "id": "TC-ABS-013-N",
+    "requirements": ["CRL-ABS-013"],
+    "suite": "unit+integration+browser",
+    "scenario": "ABS-13: 잘못된 키, 위조/오래된 ciphertext, credential 무단 포함, trust/secret 마지막 저장 승리, 자동화/MCP/플러그인 자동 활성화, partial apply와 대화/Run/산출물 포함을 거절한다.",
+    "status": "planned",
+    "adapter": "tampered ciphertext and injected revision/storage/migration failures; no real secrets or external uploads",
+    "evidence": null
+  },
+  {
+    "id": "TC-ABS-014-H",
+    "requirements": ["CRL-ABS-014"],
+    "suite": "integration+browser+live-opt-in",
+    "scenario": "ABS-14: 인증된 host 등록→같은 API/SSE의 원격 실행/preview→끊김→commandId receipt·cursor 복구를 확인한다. 원격 데이터/credential 원본과 host별 route/cache/알림 identity를 유지한다.",
+    "status": "planned",
+    "adapter": "isolated authenticated host transport tests; actual remote host only explicit authorized target",
+    "evidence": null
+  },
+  {
+    "id": "TC-ABS-014-N",
+    "requirements": ["CRL-ABS-014"],
+    "suite": "unit+integration+browser",
+    "scenario": "ABS-14: 타 host command/cursor/preview 혼선, 로컬 command/files fallback, 인증/TLS/Origin/CSRF 우회, 재접속 중복 실행, 로컬 DB 이중 기록과 등록 해제를 원격 실행/데이터 삭제로 처리하는 동작을 거절한다.",
+    "status": "planned",
+    "adapter": "two isolated host fixtures with disconnect/auth/version/receipt races; no production remote mutation",
+    "evidence": null
+  },
+  {
+    "id": "TC-ABS-015-H",
+    "requirements": ["CRL-ABS-015"],
+    "suite": "unit+integration+browser+live-opt-in",
+    "scenario": "ABS-15: 실제 장치·지원 provider에서 양방향 live call과 끼어들기/복구를 수행하고 고정 host/session/Run에 final transcript를 next/steer로 보내 receipt를 확인한다. 종료 후 마이크/socket/buffer 정리를 확인한다.",
+    "status": "planned",
+    "adapter": "deterministic audio/transport lifecycle tests; actual microphone/provider only explicit opt-in with time/cost limit",
+    "evidence": null
+  },
+  {
+    "id": "TC-ABS-015-N",
+    "requirements": ["CRL-ABS-015"],
+    "suite": "unit+integration+browser",
+    "scenario": "ABS-15: partial/reconnect 중복 제출, 탭 전환에 따른 다른 대상 전송, 승인 대기 중 임의 steer, 원본 녹음 저장, 권한 철회/호스트 전환/종료 뒤 마이크·socket 잔존과 녹음 업로드로 live 대체를 거절한다.",
+    "status": "planned",
+    "adapter": "injected utterance/device/transport/cancellation events through normal next/steer receipts; no real audio retention or paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-UX-005-H",
+    "requirements": [
+      "CRL-UX-005"
+    ],
+    "suite": "unit+server+e2e",
+    "scenario": "기본 대화·선택적 Corral·옵션 요약과 모델/초안 저장, 실제 요청 결과·재로드를 제품 UI에서 확인한다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-UX-005-N",
+    "requirements": [
+      "CRL-UX-005"
+    ],
+    "suite": "unit+server+e2e",
+    "scenario": "명시 Corral 유실·저장 경합·실패/취소·큐·늦은 응답·좁은 화면·키보드에서 초안/대상/권한을 잃거나 숨겨진 옵션이 예기치 않은 효과를 만들면 실패한다.",
+    "status": "planned",
+    "adapter": "mock unless explicitly live",
     "evidence": null
   }
 ]

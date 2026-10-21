@@ -31,6 +31,26 @@ const CHOICE: AutoModelChoice = {
 const WRITERS = new Set(['worker', 'writer']);
 
 describe('auto templates (CR-024)', () => {
+  it('[TC-ABS-001-H] [TC-ABS-002-N] explicit Auto work style binds every role and keeps missing style unchanged', () => {
+    const base = {
+      id: 'auto_style',
+      template: 'write_review' as const,
+      brief: 'Update and verify the app',
+      choice: CHOICE,
+      fileTools: true,
+    };
+    const before = autoDefinition(base);
+    const harness = { profileId: 'trusted_tools', revision: 3 };
+    const selected = autoDefinition({ ...base, harness, commandTools: true });
+    expect(
+      selected.roles.every(
+        (role) => role.harness?.profileId === harness.profileId && role.harness.revision === 3,
+      ),
+    ).toBe(true);
+    expect(before.roles.every((role) => role.harness === undefined)).toBe(true);
+    expect(before.roles.every((role) => !role.allowedWorkTools.includes('run_command'))).toBe(true);
+    expect(autoDefinition(base)).toEqual(before);
+  });
   it('[TC-AUTO-002-H] every template compiles, uses the chosen model and reasoning, and gets file tools with a working copy', () => {
     for (const template of AUTO_TEMPLATES) {
       const definition = autoDefinition({
@@ -128,6 +148,7 @@ describe('reading the start model’s answer (CR-024)', () => {
     for (const text of [
       '{"template":"shell","reason":"x"}',
       '{"template":"single","reason":"x","tools":["shell"]}',
+      '{"template":"single","reason":"x","harness":{"profileId":"trusted_tools","revision":1}}',
       `{"template":"single","reason":"${'x'.repeat(201)}"}`,
       '{"template":"single"}',
       'I would pick the single agent.',

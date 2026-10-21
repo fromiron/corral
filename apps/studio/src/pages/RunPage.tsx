@@ -84,13 +84,13 @@ export function RunDetail({
   sessionStore?: RunSessionStore;
 }) {
   const t = useTranslations('RunPage');
-  const { session: sharedSession, editorSessions, transport, repository } = useServices();
+  const { runFor, retainRun, editorSessions, transport, repository } = useServices();
   const session = useMemo(
     () =>
       sessionStore ??
       [...editorSessions.values()].find((view) => view.getState().runId === runId) ??
-      sharedSession,
-    [sessionStore, editorSessions, sharedSession, runId],
+      runFor(runId),
+    [sessionStore, editorSessions, runFor, runId],
   );
   const activeRunId = useStore(session, (s) => s.runId);
   const missing = useStore(session, (s) => s.missingRunId === runId);
@@ -99,8 +99,10 @@ export function RunDetail({
 
   // A direct link or a reload: follow the run from the runtime's record.
   useEffect(() => {
+    const release = retainRun(runId);
     void session.getState().open(runId);
-  }, [session, runId]);
+    return release;
+  }, [session, runId, retainRun]);
 
   // CR-010: the header shows the project this run started in.
   useEffect(() => {

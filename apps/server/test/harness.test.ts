@@ -85,6 +85,77 @@ function setup(
 }
 
 describe('resource discovery, trust and resolution (H3)', () => {
+  it('rejects unsupported package manifests during every review path without executing them', async () => {
+    const s = setup();
+    const file = join(s.source, 'package.json');
+    const manifest = JSON.parse(readFileSync(file, 'utf8'));
+    writeFileSync(
+      file,
+      JSON.stringify({ ...manifest, corral: { version: 1, rendererJavaScript: 'alert(1)' } }),
+    );
+    await expect(s.service.discoverLocal(s.source)).rejects.toThrow();
+    expect(existsSync(s.marker)).toBe(false);
+    expect(s.service.store.listResources()).toHaveLength(0);
+  });
+  it('keeps pinned bytes usable while package disable and removal affect future bindings only', async () => {
+    const s = setup();
+    const review = await s.service.reviewPackage('local', s.source);
+    const installed = s.service.install(review.reviewId);
+    expect(installed.trustedAt).toBeNull();
+    s.service.trust(installed.hash, true);
+    const profile = s.service.saveProfile('package-test', 0, s.profile(installed.hash));
+    const binding = { profileId: profile.profileId, revision: profile.revision };
+    const pinned = s.service.preview(binding, 'default').snapshot;
+    const disabled = await s.service.managePackage(
+      installed.hash,
+      0,
+      'disabled',
+      'disable_package',
+    );
+    expect(disabled.status).toBe('disabled');
+    expect(() => s.service.preview(binding, 'default')).toThrow(
+      'required package is disabled or removed',
+    );
+    expect(await s.service.runtimeResources({ harness: pinned, inputs: [] })).toMatchObject({
+      extensions: [expect.objectContaining({ hash: installed.hash })],
+    });
+    expect(await s.service.managePackage(installed.hash, 0, 'disabled', 'disable_package')).toEqual(
+      disabled,
+    );
+    await expect(
+      s.service.managePackage(installed.hash, 0, 'enabled', 'stale_package'),
+    ).rejects.toThrow('management revision changed');
+    const removed = await s.service.managePackage(installed.hash, 1, 'removed', 'remove_package');
+    expect(removed.status).toBe('removed');
+    expect(s.service.entries()).toHaveLength(0);
+    expect(s.service.store.getResource(installed.hash)).not.toBeNull();
+    expect(await s.service.runtimeResources({ harness: pinned, inputs: [] })).toMatchObject({
+      extensions: [expect.objectContaining({ hash: installed.hash })],
+    });
+    await s.service.managePackage(installed.hash, 2, 'enabled', 'restore_package');
+    expect(s.service.preview(binding, 'default').snapshot.resources).toEqual(pinned.resources);
+    expect(existsSync(s.marker)).toBe(false);
+  });
+  it('reviews an upgrade by immutable file diff and never carries trust into changed bytes', async () => {
+    const s = setup();
+    const original = s.service.install((await s.service.reviewPackage('local', s.source)).reviewId);
+    s.service.trust(original.hash, true);
+    writeFileSync(join(s.source, 'extensions/echo.ts'), 'export default () => {};');
+    const updated = await s.service.reviewPackage('local', s.source, original.hash);
+    expect(updated.previous?.hash).toBe(original.hash);
+    expect(updated.changes).toEqual({ added: [], removed: [], changed: ['extensions/echo.ts'] });
+    const saved = s.service.install(updated.reviewId);
+    expect(saved.hash).not.toBe(original.hash);
+    expect(saved.trustedAt).toBeNull();
+    expect(s.service.store.getResource(original.hash)?.trustedAt).not.toBeNull();
+    expect(
+      s.service.store.entryManagement({
+        resourceHash: original.hash,
+        entry: 'extensions/echo.ts',
+        kind: 'extension',
+      }).successor,
+    ).toEqual({ resourceHash: saved.hash, entry: 'extensions/echo.ts', kind: 'extension' });
+  });
   it('[TC-MGR-001-N] cancellation belongs to a review operation, not shared content', async () => {
     const s = setup();
     const a = await s.service.discoverLocal(s.source);
@@ -130,6 +201,7 @@ describe('resource discovery, trust and resolution (H3)', () => {
     expect(service.store.listProfiles()).toHaveLength(0);
     expect(service.store.getDefault('project', 'default').revision).toBe(0);
   });
+  // Several real inspection workers run sequentially; keep the product's per-worker bound.
   it('[TC-MGR-001-N] validates actual standalone documents and round-trips generated hooks without executing source', async () => {
     const s = setup();
     const service = new HarnessService({ root: s.resourceRoot, db: s.db, clock: new FakeClock() });
@@ -176,7 +248,7 @@ describe('resource discovery, trust and resolution (H3)', () => {
       'unknown resource entry',
     );
     expect(existsSync(s.marker)).toBe(false);
-  });
+  }, 30_000);
   it('[TC-MGR-001-H] edits a copied entry without changing old snapshots, trust or sibling files', async () => {
     const s = setup();
     const review = await s.service.discoverLocal(s.source);
@@ -662,4 +734,4 @@ it('[TC-BPACK-002-H] [TC-BPACK-002-N] bundled content is reviewed and pinned, on
     );
   }
   await expect(service.discoverBuiltin('../private')).rejects.toThrow();
-});
+}, 30_000);

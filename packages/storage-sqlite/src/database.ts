@@ -1,5 +1,10 @@
 import Database from 'better-sqlite3';
+import { COMMAND_MIGRATION } from './command-migration.ts';
+import { CORRAL_OPERATION_MIGRATION } from './corral-operation-migration.ts';
+import { MEDIA_ARTIFACT_MIGRATION } from './media-migration.ts';
+import { PACKAGE_MIGRATION } from './package-migration.ts';
 import { SqliteProjectToolStore } from './project-tool-store.ts';
+import { SCHEDULE_MIGRATION } from './schedule-migration.ts';
 
 // One SQLite file per workspace (C-011, C-062). Durable settings follow the C-052 spike:
 // WAL, foreign keys, FULL sync. Schema changes are numbered migrations recorded in
@@ -502,6 +507,22 @@ CREATE TABLE checkpoint_restores (
       document_id TEXT PRIMARY KEY REFERENCES imported_inputs(id), metadata_json TEXT NOT NULL, raw_body BLOB NOT NULL
     ) STRICT;${IMMUTABLE('web_source_evidence')}`,
   },
+  {
+    name: '0021_run_access',
+    sql: `CREATE TABLE run_access (
+      run_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, worktree_key TEXT NOT NULL,
+      writer INTEGER NOT NULL CHECK(writer IN (0,1)),
+      state TEXT NOT NULL CHECK(state IN ('active','released','uncertain')),
+      tree TEXT
+    ) STRICT;
+    CREATE UNIQUE INDEX run_access_writer ON run_access(worktree_key)
+      WHERE writer=1 AND state IN ('active','uncertain');`,
+  },
+  SCHEDULE_MIGRATION,
+  COMMAND_MIGRATION,
+  MEDIA_ARTIFACT_MIGRATION,
+  PACKAGE_MIGRATION,
+  CORRAL_OPERATION_MIGRATION,
 ];
 
 /** History queries must neither recover active runs nor migrate the workspace. */

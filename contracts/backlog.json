@@ -2307,8 +2307,12 @@
     "id": "C-121",
     "phase": "M4",
     "title": "채팅 위젯과 실시간 작업 계획",
-    "dependsOn": ["C-120"],
-    "requirements": ["CRL-WIDGET-001"],
+    "dependsOn": [
+      "C-120"
+    ],
+    "requirements": [
+      "CRL-WIDGET-001"
+    ],
     "files": [
       "apps/studio/src/workbench/widgets/",
       "apps/studio/src/pages/SessionPage.tsx",
@@ -2317,5 +2321,276 @@
     ],
     "done": "상단 위젯·입력창 위 계획·요청 측정이 현재 실행에 연결되고 과거 탐색과 승인 경계가 유지된다.",
     "status": "implemented"
+  },
+  {
+    "id": "C-122",
+    "phase": "M1",
+    "title": "ABS-01 실제 관리 사본의 명령·service 실행",
+    "dependsOn": ["C-123"],
+    "requirements": ["CRL-ABS-001"],
+    "files": [
+      "packages/contracts/src/command-execution.ts",
+      "packages/core/src/coordinator.ts",
+      "apps/server/src/processes/",
+      "packages/adapter-pi/src/",
+      "apps/studio/src/pages/SessionPage.tsx"
+    ],
+    "done": "I01/I03: OS별 프로세스 소유·후손 종료 확인을 전제로 제품 요청→승인→실제 사본 수정→출력/exit/diff readback과 service stop을 검증한다. 중복 spawn·자동 replay·불확실 cleanup 성공 처리가 없어야 한다.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/Desktop-Capabilities-Implementation-Progress.md"
+  },
+  {
+    "id": "C-123",
+    "phase": "M1",
+    "title": "ABS-02 Ask·Accept edits·Auto 권한 프리셋",
+    "dependsOn": [],
+    "requirements": ["CRL-ABS-002"],
+    "files": [
+      "packages/contracts/src/definition.ts",
+      "packages/contracts/src/harness.ts",
+      "packages/core/src/tool-policy.ts",
+      "apps/studio/src/pages/SessionPage.tsx"
+    ],
+    "done": "I02: 컴포저 선택→Run snapshot→실제 파일/명령 승인·거절을 검증한다. 기존 deny/strict/review-only와 이전 hash를 보존하고 인자 교체·취소 뒤 늦은 승인·중복 결정 반례를 확인한다.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/Desktop-Capabilities-Implementation-Progress.md"
+  },
+  {
+    "id": "C-124",
+    "phase": "M2",
+    "title": "ABS-03 읽기 근거에 결합된 Hashline 편집",
+    "dependsOn": ["C-123"],
+    "requirements": ["CRL-ABS-003"],
+    "files": [
+      "packages/contracts/src/coding.ts",
+      "apps/server/src/files/service.ts",
+      "packages/adapter-pi/src/worker-tools.ts",
+      "packages/adapter-pi/src/sdk-worker.ts"
+    ],
+    "done": "I05: 실제 제품 read→PUT/CUT/REM/MV→broker 적용→diff를 확인하고 full hash·읽은 구간·attempt·lease 검사를 검증한다. Pi edit와 BOM/EOL을 보존하며 stale·태그 충돌·목적지 충돌·부분 쓰기는 거절한다.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/Desktop-Capabilities-Implementation-Progress.md"
+  },
+  {
+    "id": "C-125",
+    "phase": "M2",
+    "title": "ABS-04 파일·HTML·로컬 앱 미리보기",
+    "dependsOn": ["C-122"],
+    "requirements": ["CRL-ABS-004"],
+    "files": [
+      "apps/server/src/",
+      "apps/studio/src/workbench/FilePanel.tsx",
+      "apps/studio/src/pages/FilesViews.tsx",
+      "apps/desktop/src/"
+    ],
+    "done": "I06: 기존 파일 패널에서 실제 HTML/앱을 열고 수정 반영하며 사람과 browser 도구가 같은 lease를 관찰·조작·assert한다. root/origin/WS/process 격리와 종료 후 재사용 거절을 확인한다.",
+    "status": "in_progress",
+    "evidence": "docs/evaluation/Desktop-Capabilities-Implementation-Progress.md"
+  },
+  {
+    "id": "C-126",
+    "phase": "M2",
+    "title": "ABS-05 모델 카탈로그·설정 import·사고 강도",
+    "dependsOn": [],
+    "requirements": ["CRL-ABS-005"],
+    "files": [
+      "apps/server/src/models/",
+      "packages/client/src/",
+      "apps/studio/src/pages/ModelSettingsPage.tsx",
+      "apps/studio/src/pages/ModelConfigEditor.tsx"
+    ],
+    "done": "I07: Claude Code/Codex/OpenCode/Pi 네 소스의 preview→명시 선택→revision 원자 저장→모델 목록 readback→실제 reasoning payload를 검증한다. 비밀 노출·실행 참조·미지원 capability·cache 및 저장 경합을 확인한다.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/Desktop-Capabilities-Implementation-Progress.md"
+  },
+  {
+    "id": "C-127",
+    "phase": "M2",
+    "title": "ABS-06 동시 Run과 worktree별 단일 writer",
+    "dependsOn": ["C-122"],
+    "requirements": ["CRL-ABS-006"],
+    "files": [
+      "packages/core/src/coordinator.ts",
+      "packages/core/src/store/run-store.ts",
+      "packages/storage-sqlite/src/",
+      "packages/client/src/",
+      "apps/studio/src/services.tsx",
+      "apps/studio/src/pages/SessionPage.tsx"
+    ],
+    "done": "I08: writer A+고정 snapshot reader B+다른 사본 writer C의 병행과 같은 사본 writer 거절을 제품 입구에서 검증한다. host 총량, queue/복구, (hostId,runId)별 SSE·예산·승인·취소·계획·산출물 readback이 일치해야 한다.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/Desktop-Capabilities-Implementation-Progress.md"
+  },
+  {
+    "id": "C-128",
+    "phase": "M3",
+    "title": "ABS-07 OS별 패키지·트레이·업데이트·절전 방지·단축키",
+    "dependsOn": ["C-122", "C-127"],
+    "requirements": ["CRL-ABS-007"],
+    "files": [
+      "apps/desktop/package.json",
+      "apps/desktop/scripts/",
+      "apps/desktop/src/",
+      "apps/studio/src/shortcuts.ts"
+    ],
+    "done": "I04/I09: Windows 배포를 M1에 먼저 제공하고 전체 OS/arch matrix는 실제 설치 산출물에서 검증한다. 개발 서버 없는 실행·취소·종료·재열람, tray/awake/업데이트 유예/복구와 단축키·IME를 확인한다.",
+    "status": "in_progress",
+    "evidence": "docs/evaluation/Desktop-Capabilities-Implementation-Progress.md"
+  },
+  {
+    "id": "C-129",
+    "phase": "M3",
+    "title": "ABS-08 영속 예약 실행",
+    "dependsOn": ["C-123", "C-127"],
+    "requirements": ["CRL-ABS-008"],
+    "files": [
+      "packages/contracts/src/",
+      "apps/server/src/",
+      "packages/storage-sqlite/src/",
+      "packages/client/src/",
+      "apps/studio/src/"
+    ],
+    "done": "I10: 일정 저장→unique occurrence claim→일반 요청/Coordinator→필요 승인→재열람을 확인한다. 확정된 timezone/DST/overlap/놓침 정책, 중복 tick·재접속·비활성화·재시작에서 발화 및 효과가 중복되지 않아야 한다.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/Desktop-Capabilities-Implementation-Progress.md"
+  },
+  {
+    "id": "C-130",
+    "phase": "M3",
+    "title": "ABS-09 프로젝트 열기·복제와 지침·메모리",
+    "dependsOn": ["C-122", "C-123"],
+    "requirements": ["CRL-ABS-009"],
+    "files": [
+      "apps/server/src/",
+      "packages/storage-sqlite/src/",
+      "packages/client/src/",
+      "apps/studio/src/pages/ProjectsPage.tsx",
+      "apps/studio/src/workbench/"
+    ],
+    "done": "I11: clone/open→연결·명시 신뢰→사본과 지침/메모리의 선택 참조→불변 요청 snapshot을 검증한다. overwrite·자동 init/commit/후크·권한 상승을 거절하고 취소/부분 clone 복구·자료 편집/삭제 후 과거 readback을 확인한다.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/Desktop-Capabilities-Implementation-Progress.md"
+  },
+  {
+    "id": "C-131",
+    "phase": "M3",
+    "title": "ABS-10 이미지 생성과 불변 바이너리 산출물",
+    "dependsOn": ["C-123", "C-126"],
+    "requirements": ["CRL-ABS-010"],
+    "files": [
+      "packages/contracts/src/",
+      "packages/core/src/coordinator.ts",
+      "apps/server/src/",
+      "packages/storage-sqlite/src/",
+      "packages/react/src/components/"
+    ],
+    "done": "I12: 명시 provider operation→effect/예산→실제 immutable bytes·metadata→viewer/검토/export를 검증한다. 기존 text 자료, MIME/크기 정책, 취소 후 unknown·중복/늦은 완료·orphan 복구를 확인하며 유료 외부 검증은 별도 opt-in으로 기록한다.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/Desktop-Capabilities-Implementation-Progress.md"
+  },
+  {
+    "id": "C-132",
+    "phase": "M3",
+    "title": "ABS-11 Markdown 서브에이전트 정의 import",
+    "dependsOn": ["C-122", "C-124", "C-126"],
+    "requirements": ["CRL-ABS-011"],
+    "files": [
+      "packages/contracts/src/definition.ts",
+      "packages/core/src/",
+      "apps/server/src/",
+      "apps/studio/src/"
+    ],
+    "done": "I13: 정의 preview→지원 tool/model 매핑→callable graph 저장→기존 spawn→부모 질문/답변→같은 자식의 계속 실행·결과를 확인한다. 기존 수동 팀의 의미를 유지하며 부모 capability·현재 execution/attempt·depth/spawn/예산 경계, 순차 items·취소/재시작·늦은 답변을 검증한다. 미지원 도구·자식의 ask_user/Run 제어·별도 위임 경로를 거절한다.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/Desktop-Capabilities-Implementation-Progress.md"
+  },
+  {
+    "id": "C-133",
+    "phase": "M4",
+    "title": "ABS-12 스킬·MCP·서버 확장 패키지",
+    "dependsOn": ["C-123", "C-127", "C-132"],
+    "requirements": ["CRL-ABS-012"],
+    "files": [
+      "apps/server/src/harness/",
+      "packages/contracts/src/harness.ts",
+      "packages/client/src/",
+      "apps/studio/src/workbench/harness/"
+    ],
+    "done": "I14: manifest/출처/권한 diff 검토→명시 설치→실제 managed tool→upgrade/disable/uninstall을 검증한다. 활성 버전·소유 resource를 보존하고 설치만으로 실행·신뢰 확대·renderer DB/fs 접근·strict 오표시가 없어야 한다.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/Desktop-Capabilities-Implementation-Progress.md"
+  },
+  {
+    "id": "C-134",
+    "phase": "M4",
+    "title": "ABS-13 9개 도메인의 암호화 설정 금고",
+    "dependsOn": ["C-126", "C-129", "C-130", "C-132", "C-133"],
+    "requirements": ["CRL-ABS-013"],
+    "files": [
+      "packages/contracts/src/",
+      "apps/server/src/",
+      "packages/storage-sqlite/src/",
+      "packages/client/src/",
+      "apps/studio/src/pages/"
+    ],
+    "done": "I16: 확정된 키/복구/endpoint 정책으로 9개 도메인 capture→암호화→두 장치 충돌/diff/명시 병합→원자 적용·journal 복구를 검증한다. 위조·오래된 ciphertext·무단 secret 포함·자동 실행/신뢰 활성화·부분 적용을 거절한다.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/Desktop-Capabilities-Implementation-Progress.md"
+  },
+  {
+    "id": "C-135",
+    "phase": "M4",
+    "title": "ABS-14 원격 Corral 호스트와 host namespace",
+    "dependsOn": ["C-127", "C-128"],
+    "requirements": ["CRL-ABS-014"],
+    "files": [
+      "packages/contracts/src/",
+      "packages/client/src/",
+      "apps/desktop/src/",
+      "apps/studio/src/services.tsx",
+      "apps/server/src/"
+    ],
+    "done": "I15: 인증된 host 등록→원격 실행/preview→연결 끊김→receipt/SSE cursor 복구를 실제 허용된 호스트에서 검증한다. 원격 원본·credential 소유, host별 키와 미지원 version 표시를 유지하며 로컬 fallback·타 host 명령/삭제를 거절한다.",
+    "status": "in_progress",
+    "evidence": "docs/evaluation/Desktop-Capabilities-Implementation-Progress.md"
+  },
+  {
+    "id": "C-136",
+    "phase": "M4",
+    "title": "ABS-15 대상 고정 라이브 음성",
+    "dependsOn": ["C-123", "C-126", "C-127"],
+    "requirements": ["CRL-ABS-015"],
+    "files": [
+      "packages/contracts/src/",
+      "apps/server/src/",
+      "apps/desktop/src/",
+      "packages/client/src/",
+      "apps/studio/src/"
+    ],
+    "done": "I17: 실제 장치·지원 provider의 양방향 call/끼어들기→고정 대상 next/steer→receipt→종료를 검증한다. 확정 발화만 한 번 전송하고 탭 전환·재접속·권한 철회·취소 시 오발송/녹음 저장/마이크·socket 잔존이 없어야 한다.",
+    "status": "in_progress",
+    "evidence": "docs/evaluation/Desktop-Capabilities-Implementation-Progress.md"
+  },
+  {
+    "id": "C-137",
+    "phase": "P12",
+    "title": "CR-043 기본 대화와 선택적 Corral UX",
+    "dependsOn": [],
+    "requirements": [
+      "CRL-UX-005"
+    ],
+    "files": [
+      "apps/studio/src/pages/SessionPage.tsx",
+      "apps/studio/src/pages/WorkspacePage.tsx",
+      "apps/studio/src/pages/GettingStarted.tsx",
+      "apps/studio/src/workbench/ChatView.tsx",
+      "apps/studio/src/workbench/AutoModelMenu.tsx",
+      "apps/studio/src/workbench/ProjectDocuments.tsx",
+      "packages/react/src/messages/",
+      "apps/studio/e2e/"
+    ],
+    "done": "새 대화→요청→Coordinator 결과→재로드를 사용자 Corral 없이 수행하고, 옵션·명시 Corral·초안·권한·키보드·390px 복구를 실제 UI에서 확인한다.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/Chat-First-UX-Review.md"
   }
 ]

@@ -8,6 +8,7 @@ test('[TC-RUN-004-H] [TC-COL-002-H] one run shows two delegated helpers and a qu
   corral,
 }) => {
   await corral.open('/');
+  await page.getByRole('tab', { name: /^Teams/ }).click();
   await page
     .locator('input[type=file]')
     .setInputFiles([

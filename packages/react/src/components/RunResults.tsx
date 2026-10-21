@@ -4,6 +4,7 @@ import { useStore } from 'zustand';
 import { diffLines } from '../artifacts/diff.ts';
 import { type ResultItem, runResults } from '../run/results.ts';
 import type { RunSessionStore } from '../run/session.ts';
+import { GeneratedImage } from './ArtifactViewer.tsx';
 import { SafeMarkdown } from './SafeMarkdown.tsx';
 
 /** A whole HTML document, as models sometimes write; only these get a preview (CR-009). */
@@ -227,11 +228,12 @@ export function ResultReader({
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
+    if (item.media) return;
     void session
       .getState()
       .loadArtifact(id)
       .catch(() => setFailed(true));
-  }, [session, id]);
+  }, [session, id, item.media]);
   useEffect(() => {
     if (comparing && item.parentVersionId)
       void session.getState().loadArtifact(item.parentVersionId);
@@ -302,50 +304,54 @@ export function ResultReader({
           </li>
         </ul>
         <div className="flex flex-wrap items-center gap-2 text-xs">
-          <fieldset className="flex gap-1">
-            <legend className="sr-only">{t('format')}</legend>
-            {formats.map((value) => (
-              <label
-                key={value}
-                className={`cursor-pointer rounded px-2 py-1 focus-within:outline-2 focus-within:outline-accent ${format === value ? 'bg-accent text-on-accent' : 'fill-control'}`}
+          {!item.media ? (
+            <>
+              <fieldset className="flex gap-1">
+                <legend className="sr-only">{t('format')}</legend>
+                {formats.map((value) => (
+                  <label
+                    key={value}
+                    className={`cursor-pointer rounded px-2 py-1 focus-within:outline-2 focus-within:outline-accent ${format === value ? 'bg-accent text-on-accent' : 'fill-control'}`}
+                  >
+                    <input
+                      type="radio"
+                      name={`${headingId}-format`}
+                      value={value}
+                      checked={format === value}
+                      onChange={() => setFormat(value)}
+                      className="sr-only"
+                    />
+                    {t(`formats.${value}`)}
+                  </label>
+                ))}
+              </fieldset>
+              <button
+                type="button"
+                disabled={text === undefined}
+                onClick={() => void copy()}
+                className="rounded fill-control px-2 py-1"
               >
-                <input
-                  type="radio"
-                  name={`${headingId}-format`}
-                  value={value}
-                  checked={format === value}
-                  onChange={() => setFormat(value)}
-                  className="sr-only"
-                />
-                {t(`formats.${value}`)}
-              </label>
-            ))}
-          </fieldset>
-          <button
-            type="button"
-            disabled={text === undefined}
-            onClick={() => void copy()}
-            className="rounded fill-control px-2 py-1"
-          >
-            {copied ? t('copied') : t('copy')}
-          </button>
-          <button
-            type="button"
-            disabled={text === undefined}
-            onClick={download}
-            className="rounded fill-control px-2 py-1"
-          >
-            {t('download')}
-          </button>
-          {item.parentVersionId ? (
-            <button
-              type="button"
-              aria-pressed={comparing}
-              onClick={() => setComparing(!comparing)}
-              className="rounded fill-control px-2 py-1"
-            >
-              {comparing ? ta('hideCompare') : t('comparePrevious')}
-            </button>
+                {copied ? t('copied') : t('copy')}
+              </button>
+              <button
+                type="button"
+                disabled={text === undefined}
+                onClick={download}
+                className="rounded fill-control px-2 py-1"
+              >
+                {t('download')}
+              </button>
+              {item.parentVersionId ? (
+                <button
+                  type="button"
+                  aria-pressed={comparing}
+                  onClick={() => setComparing(!comparing)}
+                  className="rounded fill-control px-2 py-1"
+                >
+                  {comparing ? ta('hideCompare') : t('comparePrevious')}
+                </button>
+              ) : null}
+            </>
           ) : null}
           {onStartFrom && runId ? (
             <button
@@ -364,7 +370,9 @@ export function ResultReader({
         tabIndex={0}
         className="px-4 py-4 @3xl:min-h-0 @3xl:flex-1 @3xl:overflow-auto"
       >
-        {text === undefined ? (
+        {item.media && runId ? (
+          <GeneratedImage runId={runId} versionId={id} name={item.name} media={item.media} />
+        ) : text === undefined ? (
           <p className="text-sm text-muted">{failed ? t('unavailable') : ta('loading')}</p>
         ) : diff ? (
           <pre className="mx-auto max-w-4xl whitespace-pre-wrap break-words font-mono text-ui">

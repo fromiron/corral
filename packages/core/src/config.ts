@@ -22,7 +22,7 @@ export interface InstallationPolicy {
   runDeadlineMs: number;
   maxLoopIterations: number;
   maxArtifactBytes: number;
-  /** Executions alive at once in a run, waiting ones included (Technical-Design §8.1). */
+  /** Executions alive at once on this host, including waiting workers. */
   maxResidentExecutions: number;
 }
 
@@ -123,6 +123,17 @@ export const WorkspaceConfig = z.strictObject({
     .optional(),
   /** OpenAI-compatible endpoints the profiles may name (CR-005). Keys are not configuration. */
   modelProviders: z.array(ModelProviderConfig).max(10).optional(),
+  /** Internal settings-owner checkpoint; never included in portable model configuration. */
+  modelSettingsOperation: z
+    .strictObject({
+      id: z.string().min(1).max(200),
+      requestHash: z.string().regex(/^[a-f0-9]{64}$/),
+      modelHash: z.string().regex(/^[a-f0-9]{64}$/),
+      beforeHash: z.string().regex(/^[a-f0-9]{64}$/),
+      afterHash: z.string().regex(/^[a-f0-9]{64}$/),
+      resultRevision: z.string().regex(/^[a-f0-9]{64}$/),
+    })
+    .optional(),
   /** reasoning_effort judgments (CR-003): observe only, off unless asked for. */
   decisions: z
     .strictObject({

@@ -706,5 +706,101 @@
     "requirement": "CR-041: 채팅 상단 위젯과 입력창 위 작업 계획은 현재 실행의 update_plan·요청 측정으로 갱신된다. 메시지 추정과 전체 요청 추정을 구분하고, 과거 패널 탐색·다음 요청·승인 대기는 서로 덮지 않는다.",
     "owner": "studio",
     "phase": "M4"
+  },
+  {
+    "id": "CRL-ABS-001",
+    "requirement": "CR-042 ABS-01: 임의 명령과 service는 Coordinator 승인·effect·예산을 거쳐 실제 관리 작업 사본에서 실행한다. host/session/run/execution/attempt/effect와 사본 identity에 묶인 process lease, 제한된 출력·exit·diff readback, 후손 종료 확인과 중복·재시작 비재실행을 제공한다. 기존 run_check의 등록 argv·고정 검증 사본 의미는 보존한다.",
+    "owner": "server",
+    "phase": "M1"
+  },
+  {
+    "id": "CRL-ABS-002",
+    "requirement": "CR-042 ABS-02: Ask·Accept edits·Auto 선택은 컴포저에서 다음 Run snapshot에 고정하며 파일 편집과 셸·외부 효과의 승인 범위를 구분한다. 역할 capability·프로젝트 신뢰·harness·strict·review-only·기존 정책의 deny를 프리셋으로 넓히지 않고 최종 인자·정책 revision·사본 identity에 승인 효력을 묶는다. 필드 없는 기존 자료의 의미와 hash는 유지한다.",
+    "owner": "core",
+    "phase": "M1"
+  },
+  {
+    "id": "CRL-ABS-003",
+    "requirement": "CR-042 ABS-03: 기존 Pi edit를 보존하면서 명시 선택한 버전의 Hashline read·edit_hashline을 제품 도구로 제공한다. PUT/CUT/REM/MV는 execution/attempt별 full-byte hash·읽은 줄·encoding/EOL과 broker lease를 검사하여 원자 반영하며 짧은 태그는 쓰기 권한이 아니다. CR-019의 평가 전용 범위는 이 추가 계약에 한해 확장한다.",
+    "owner": "server",
+    "phase": "M2"
+  },
+  {
+    "id": "CRL-ABS-004",
+    "requirement": "CR-042 ABS-04: 기존 파일 패널에서 실제 관리 사본의 이미지·HTML·로컬 앱을 열고 수정 반영·시작·종료를 제공한다. 사람과 browser 도구는 동일 PreviewLease의 root·origin·WS·process를 참조하고 격리된 렌더링을 사용하며 Corral API·cookie·preload·임의 file/port 접근을 공유하지 않는다.",
+    "owner": "studio",
+    "phase": "M2"
+  },
+  {
+    "id": "CRL-ABS-005",
+    "requirement": "CR-042 ABS-05: 기존 ModelRegistry에 검증된 카탈로그 cache와 Claude Code·Codex·OpenCode·Pi 설정의 preview·선택·revision 확인·원자 import·readback을 연결한다. 비밀값과 실행 참조는 노출·실행하지 않으며 metadata를 provider capability로 오인하지 않는다. 모델·사고 강도는 기존 override/patch와 실제 요청 payload를 통해 적용하고 과거 snapshot을 보존한다.",
+    "owner": "server",
+    "phase": "M2"
+  },
+  {
+    "id": "CRL-ABS-006",
+    "requirement": "CR-042 ABS-06: 초기 MVP의 활성 Run 1개 제한을 고정 snapshot reader 병행과 worktree별 단일 writer admission으로 확장한다. 모든 시작 입구는 host 전체 모델·worker·process 상한과 사본 lease를 공유하고 (hostId, runId)별 store/SSE/receipt 소유를 유지한다. reader 사후 writer 승격 및 세션 간 승인·취소·계획 대상 혼선을 허용하지 않는다.",
+    "owner": "core",
+    "phase": "M2"
+  },
+  {
+    "id": "CRL-ABS-007",
+    "requirement": "CR-042 ABS-07: Windows 설치형/portable, macOS dmg/zip, Linux AppImage를 OS/arch별 bundled runtime·native 의존성·실제 시작/종료로 검증한다. 트레이·종료 확인·활성 Run별 절전 방지·사용자 단축키와 확인/다운로드/준비/명시 재시작 업데이트를 제공하며 활성 작업·미저장 문서·호환 schema·서명 경계를 보존한다.",
+    "owner": "desktop",
+    "phase": "M3"
+  },
+  {
+    "id": "CRL-ABS-008",
+    "requirement": "CR-042 ABS-08: timezone·대상·설정 revision·권한·예산을 가진 일정과 occurrence를 서버에 영속 저장하고 unique claim·안정된 commandId로 일반 요청/Coordinator 경로를 한 번 시작한다. overlap·놓친 실행·DST 정책을 명시하고 승인 대기는 유지하며 비활성화/삭제·중복 tick·재접속·재시작이 숨은 재실행을 만들지 않는다.",
+    "owner": "server",
+    "phase": "M3"
+  },
+  {
+    "id": "CRL-ABS-009",
+    "requirement": "CR-042 ABS-09: 기존 프로젝트/폴더 연결에 open·취소 가능한 관리 Git clone과 명시 신뢰를 연결한다. 기존 경로 덮기·자동 init/commit·후크 실행·신뢰 승격을 금지한다. 프로젝트 지침·메모리는 버전 있는 문서이며 사용자가 @/첨부로 선택한 내용만 요청 snapshot/hash에 고정하고 편집·삭제로 과거 요청이나 실행 권한을 바꾸지 않는다.",
+    "owner": "server",
+    "phase": "M3"
+  },
+  {
+    "id": "CRL-ABS-010",
+    "requirement": "CR-042 ABS-10: 명시 image profile의 지원 provider operation을 Coordinator effect·예산 예약/정산으로 실행한다. 생성 bytes와 MIME·크기·dimensions·hash·blobRef·author/run/effect를 불변 바이너리 버전으로 저장하고 viewer·검토·export를 연결한다. 기존 text 산출물, 취소 후 unknown 정산, 중복/늦은 응답과 orphan 복구를 보존한다.",
+    "owner": "server",
+    "phase": "M3"
+  },
+  {
+    "id": "CRL-ABS-011",
+    "requirement": "CR-042 ABS-11: Markdown 위임 정의를 frontmatter·prompt·tool/model 지원 여부 preview와 명시 선택을 거쳐 기존 Corral callable Agent·capability link로 가져온다. 자식 권한은 부모의 부분집합이고 기존 depth/spawn/예산을 지킨다. 명시된 부모 질문 권한으로 현재 부모 실행에 ask/reply하고 답변 후 같은 자식 작업을 계속한다. 알 수 없는 도구 허용, 실행 중 역할 생성, 별도 위임 큐, 자식의 직접 ask_user/Run 제어를 만들지 않는다.",
+    "owner": "core",
+    "phase": "M3"
+  },
+  {
+    "id": "CRL-ABS-012",
+    "requirement": "CR-042 ABS-12: 기존 harness package·resource·permission 경로에서 스킬/MCP/확장 manifest의 버전·hash·라이선스·출처·capability를 검토하여 설치·upgrade·disable·uninstall한다. 활성 Run의 고정 resource를 보존하고 managed 효과는 Coordinator broker를 거치며 trusted-native와 strict를 구분한다. UI 기여는 선언적/격리 방식으로 DB·filesystem 직접 권한을 얻지 않는다.",
+    "owner": "server",
+    "phase": "M4"
+  },
+  {
+    "id": "CRL-ABS-013",
+    "requirement": "CR-042 ABS-13: application/providers/mcp/skills/subagents/instructions/plugins/automation/memory 9개 설정 도메인의 버전 있는 암호화 금고를 제공한다. portable 값과 로컬 binding/trust/secret을 구분하고 명시 secret 선택, AEAD/KDF/nonce, ETag 충돌·검증·diff/병합·적용 journal/rollback을 사용한다. 대화·Run·산출물·원본 프로젝트를 포함하거나 import로 실행 권한/예약을 자동 활성화하지 않는다.",
+    "owner": "server",
+    "phase": "M4"
+  },
+  {
+    "id": "CRL-ABS-014",
+    "requirement": "CR-042 ABS-14: 안정된 hostId와 인증된 transport로 원격 Corral을 등록하고 같은 typed API/SSE로 조작한다. 원격 host가 세션·Run·파일·credential 원본이며 route/cache/command/cursor/preview/알림을 host별로 격리한다. 재연결은 receipt/cursor로 복구하고 로컬 실행 fallback·DB 이중 기록·Origin/CSRF 우회·등록 해제 시 원격 자료 삭제를 하지 않는다.",
+    "owner": "client",
+    "phase": "M4"
+  },
+  {
+    "id": "CRL-ABS-015",
+    "requirement": "CR-042 ABS-15: 지원 provider와 실제 장치의 양방향 라이브 음성에 연결·듣기·응답·끼어들기·복구·종료 수명을 제공한다. 시작 시 고정한 host/session/Run에 확정 transcript만 안정된 utterance/commandId로 일반 next 또는 명시 steer 경로로 전달하고 receipt 의미를 유지한다. 원본 오디오는 저장하지 않으며 종료·권한 철회·호스트 전환 시 마이크/socket/buffer를 정리한다.",
+    "owner": "studio",
+    "phase": "M4"
+  },
+  {
+    "id": "CRL-UX-005",
+    "requirement": "CR-043 기본 대화는 Corral 제작 없이 시작하고, 선택적 실행 구성을 명시적으로 노출하며 기존 승인·초안·복구·접근성을 보존한다.",
+    "owner": "studio",
+    "phase": "P12"
   }
 ]

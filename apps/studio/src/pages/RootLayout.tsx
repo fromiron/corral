@@ -30,6 +30,7 @@ import { CommandLayer } from '../CommandPalette.tsx';
 import { desktop, onTopbarDoubleClick } from '../desktop.tsx';
 import { projectName } from '../projects.ts';
 import { useServices } from '../services.tsx';
+import { useShortcutBindings } from '../shortcutBindings.ts';
 import { shortcutLabel } from '../shortcuts.ts';
 import { hasUnsavedEditorCopy } from '../workbench/editorDraft.ts';
 import {
@@ -44,6 +45,8 @@ import { Sidebar, useCorralSidebar } from '../workbench/Sidebar.tsx';
 import { TopbarSlotContext } from '../workbench/TopbarSlot.tsx';
 
 export function RootLayout() {
+  useShortcutBindings();
+  const navigate = useNavigate();
   const { repository } = useServices();
   useBlocker({
     shouldBlockFn: () => false,
@@ -136,7 +139,7 @@ export function RootLayout() {
             : location.pathname === '/demo'
               ? tn('demo')
               : ''));
-  const activeRun = sidebar.runs.find(
+  const activeRuns = sidebar.runs.filter(
     (run) => !['succeeded', 'failed', 'cancelled', 'interrupted'].includes(run.status),
   );
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -290,14 +293,29 @@ export function RootLayout() {
                   <h2 className="sr-only">{pageTitle}</h2>
                 )}
                 <SessionTabs sessions={sidebar.sessions} />
-                {settings && activeRun ? (
-                  <Link
-                    to="/runs/$runId"
-                    params={{ runId: activeRun.runId }}
-                    className="ml-auto shrink-0 text-xs text-accent"
-                  >
-                    {tn('activeRun')}
-                  </Link>
+                {settings && activeRuns.length ? (
+                  <Menu>
+                    <MenuTrigger render={<Button variant="ghost" size="sm" />}>
+                      {tn('activeRun')} ({activeRuns.length})
+                    </MenuTrigger>
+                    <MenuPopup>
+                      {activeRuns.map((run) => (
+                        <MenuItem
+                          key={run.runId}
+                          onClick={() =>
+                            void navigate({
+                              to: '/runs/$runId',
+                              params: { runId: run.runId },
+                            })
+                          }
+                        >
+                          {sidebar.sessions.find((session) => session.sessionId === run.sessionId)
+                            ?.title ?? run.runId}{' '}
+                          · {run.runId}
+                        </MenuItem>
+                      ))}
+                    </MenuPopup>
+                  </Menu>
                 ) : null}
                 <div ref={setSlot} className="ml-auto flex shrink-0 items-center gap-1" />
                 <Tooltip content={tp('button')} shortcut={shortcutLabel('palette')}>
@@ -305,11 +323,7 @@ export function RootLayout() {
                     variant="ghost"
                     size="icon-sm"
                     aria-label={tp('button')}
-                    onClick={() =>
-                      window.dispatchEvent(
-                        new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }),
-                      )
-                    }
+                    onClick={() => window.dispatchEvent(new Event('corral:open-palette'))}
                   >
                     <Search />
                   </Button>

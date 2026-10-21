@@ -1,6 +1,7 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { type CorralServer, startCorralServer } from '@corral/server';
 import { FAKE_PROFILES, fakeOpenAI } from '@corral/server/testing';
 import { ScriptedAgentAdapter } from '@corral/testkit';
@@ -12,6 +13,24 @@ import { test as base, expect, type Page } from '@playwright/test';
 // kept for failures (playwright.config.ts).
 
 const STUDIO = join(import.meta.dirname, '..', '..', 'dist');
+
+async function removeTestWorkspace(workspace: string, configDir?: string) {
+  const generatedRoot = resolve(workspace);
+  if (
+    dirname(generatedRoot) !== resolve(tmpdir()) ||
+    !basename(generatedRoot).startsWith('corral-e2e-')
+  )
+    throw new Error('E2E cleanup target is outside the generated temporary workspace');
+  const cleanupPaths = [generatedRoot, `${generatedRoot}-worktrees`];
+  if (configDir) {
+    if (resolve(configDir) !== `${generatedRoot}-config`)
+      throw new Error('E2E config cleanup target differs from its generated workspace');
+    cleanupPaths.push(resolve(configDir));
+  }
+  // Chromium's Windows profile handles can settle just after the owned process exits.
+  for (const path of cleanupPaths)
+    await rm(path, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+}
 
 export interface Harness {
   readonly server: CorralServer;
@@ -162,9 +181,7 @@ export const test = base.extend<{
     } finally {
       await server.close();
       await endpoint?.close();
-      rmSync(workspace, { recursive: true, force: true });
-      rmSync(`${workspace}-worktrees`, { recursive: true, force: true });
-      if (fake) rmSync(fake.configDir, { recursive: true, force: true });
+      await removeTestWorkspace(workspace, fake?.configDir);
     }
     expect(external, 'requests to hosts other than the local server').toEqual([]);
   },

@@ -1,10 +1,18 @@
-import type { AutoCancelResult, AutoRunStart, FileChangeView } from '@corral/client';
+import type {
+  AutoCancelResult,
+  AutoRunStart,
+  FileChangeView,
+  VoiceTranscript,
+  VoiceTranscriptReceipt,
+} from '@corral/client';
 import type { AutoModelChoice, RoleRunOverrides, TextAttachment } from '@corral/contracts';
 import {
+  HarnessBindingRef,
   type HarnessOverrides,
   IMAGE_MAX_COUNT,
   type ImageAttachment,
   ImageAttachments,
+  PermissionMode,
   type RunReference,
   TERMINAL_EXECUTION_STATUSES,
   TERMINAL_RUN_STATUSES,
@@ -29,9 +37,11 @@ import {
   Ellipsis,
   FileDiff,
   FileText,
+  FolderOpen,
   MessageSquare,
   PanelRight,
   Plus,
+  Settings,
   Square,
   X,
 } from '@corral/react/icons';
@@ -55,6 +65,11 @@ import {
   MenuSubPopup,
   MenuSubTrigger,
   MenuTrigger,
+  Popover,
+  PopoverClose,
+  PopoverPopup,
+  PopoverTitle,
+  PopoverTrigger,
   Select,
   Tooltip,
 } from '@corral/react/ui';
@@ -71,17 +86,19 @@ import {
 } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { type AppCommand, useRegisterCommands, useRegisteredCommands } from '../commandRegistry.ts';
+import { createPendingSessionCommands } from '../pendingCommands.ts';
 import { projectsChanged, setCurrentProject } from '../projects.ts';
 import { type SessionSearch, sessionRoute, validateSessionSearch } from '../router.tsx';
 import { useServices } from '../services.tsx';
+import { useShortcutBindings } from '../shortcutBindings.ts';
 import { sendKeyLabel, shortcutLabel } from '../shortcuts.ts';
+import { AutoHarnessPicker } from '../workbench/AutoHarnessPicker.tsx';
 import { AutoModelMenu } from '../workbench/AutoModelMenu.tsx';
 import {
   autoChoiceFor,
   autoCommandSeed,
   autoNotReady,
   autoReasoningUnsupported,
-  reasoningValue,
   sessionRunMode,
 } from '../workbench/autoChoice.ts';
 import { ChatView } from '../workbench/ChatView.tsx';
@@ -91,8 +108,11 @@ import { type IntentLock, resolveIntent } from '../workbench/composerIntent.ts';
 import { type MentionItem, mentionToken, pickedReferences } from '../workbench/composerMenu.ts';
 import { FilePanel, type FileReference } from '../workbench/FilePanel.tsx';
 import { ImageAttachmentList, ImageAttachmentPicker } from '../workbench/ImageAttachments.tsx';
+import { LiveVoice } from '../workbench/LiveVoice.tsx';
 import { MessageBranch } from '../workbench/MessageBranch.tsx';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
+import { PermissionModePicker } from '../workbench/PermissionModePicker.tsx';
+import { ProjectDocumentPicker } from '../workbench/ProjectDocuments.tsx';
 import { isSendKey, usePreferences } from '../workbench/preferences.ts';
 import { EDIT_REQUEST, editRequest, RefusalHelp } from '../workbench/RefusalHelp.tsx';
 import { RunChanges } from '../workbench/RunChanges.tsx';
@@ -157,13 +177,16 @@ function useSessionRuns(sessionId: string, selectedRunId?: string) {
       live = false;
     };
   }, [transport, tick, sessionId, selectedRunId]);
-  const active = all.find((r) => !TERMINAL_RUN_STATUSES.has(r.status)) ?? null;
+  const runs = all
+    .filter((r) => r.sessionId === sessionId)
+    .reverse()
+    .sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+  const active = runs.findLast((r) => !TERMINAL_RUN_STATUSES.has(r.status)) ?? null;
   useEffect(() => {
     if (!active && !lost) return;
     const timer = setInterval(refresh, 1500);
     return () => clearInterval(timer);
   }, [active, lost, refresh]);
-  const runs = all.filter((r) => r.sessionId === sessionId).reverse();
   return { runs, active, refresh, lost };
 }
 
@@ -205,6 +228,14 @@ export function SessionPage() {
   const team = corrals.find((c) => c.corralId === session.corralId) ?? null;
   const ts = useTranslations('Sessions');
   const panel = search.panel;
+  const [rememberedPanel, rememberPanel] = useRemembered<SessionPanel>(
+    `corral:session-panel:v1:${session.sessionId}`,
+    'changes',
+  );
+  useEffect(() => {
+    if (panel) rememberPanel(panel);
+  }, [panel, rememberPanel]);
+  const reopenPanel = PANELS.includes(rememberedPanel) ? rememberedPanel : 'changes';
   const [pendingReference, setReference] = useState<{
     sessionId: string;
     value: FileReference;
@@ -225,9 +256,14 @@ export function SessionPage() {
   const sessionRuns = runs.filter(
     (run) => run.sessionId === session.sessionId || linkedRunIds.includes(run.runId),
   );
-  const liveRun = sessionRuns.find((run) => !TERMINAL_RUN_STATUSES.has(run.status)) ?? null;
-  const presentationRunId =
-    liveRun?.runId ?? sessionRuns.at(-1)?.runId ?? linkedRunIds.at(-1) ?? null;
+  const presentedRun =
+    sessionRuns.find((run) => run.runId === search.run) ??
+    sessionRuns.findLast((run) => !TERMINAL_RUN_STATUSES.has(run.status)) ??
+    sessionRuns.at(-1) ??
+    null;
+  const liveRun =
+    presentedRun && !TERMINAL_RUN_STATUSES.has(presentedRun.status) ? presentedRun : null;
+  const presentationRunId = presentedRun?.runId ?? linkedRunIds.at(-1) ?? null;
 
   return (
     <>
@@ -237,7 +273,19 @@ export function SessionPage() {
         team={team}
         changes={changes}
         panel={panel}
+        reopenPanel={reopenPanel}
         onPanel={(value) => setSearch({ panel: value })}
+        runs={runs}
+        selectedRunId={presentationRunId}
+        onSelectRun={(run) =>
+          setSearch({
+            run,
+            view: 'run',
+            execution: undefined,
+            artifact: undefined,
+            result: undefined,
+          })
+        }
       />
       <ChatWidgetProvider
         sessionId={session.sessionId}
@@ -282,6 +330,7 @@ export function SessionPage() {
                 runs={runs}
                 active={active}
                 liveRunId={liveRun?.runId ?? null}
+                selectedRunId={presentationRunId}
                 onChange={refresh}
                 reference={reference}
                 onReferenceUsed={() => setReference(null)}
@@ -373,18 +422,28 @@ function SessionActions({
   team,
   changes,
   panel,
+  reopenPanel,
   onPanel,
+  runs,
+  selectedRunId,
+  onSelectRun,
 }: {
   session: WorkSession;
   corrals: CorralSummary[];
   team: CorralSummary | null;
   changes: FileChangeView[] | null;
   panel: SessionPanel | undefined;
+  reopenPanel: SessionPanel;
   onPanel: (panel: SessionPanel | undefined) => void;
+  runs: RunSummary[];
+  selectedRunId: string | null;
+  onSelectRun: (runId: string) => void;
 }) {
+  useShortcutBindings();
   const t = useTranslations('Sessions');
   const tw = useTranslations('Workbench');
   const td = useTranslations('Desktop');
+  const status = useTranslations('Status');
   const { repository } = useServices();
   const router = useRouter();
   const navigate = useNavigate();
@@ -420,7 +479,7 @@ function SessionActions({
       group: panelGroup,
       shortcutId: 'view.panel',
       shortcut: shortcutLabel('view.panel'),
-      run: () => onPanel(panel ? undefined : 'changes'),
+      run: () => onPanel(panel ? undefined : reopenPanel),
     },
     ...(
       [
@@ -493,6 +552,25 @@ function SessionActions({
   ]);
   return (
     <TopbarActions>
+      {runs.length > 1 ? (
+        <Select
+          variant="chip"
+          className="max-w-32 sm:max-w-60"
+          label={t('selectedRun')}
+          value={selectedRunId}
+          onValueChange={onSelectRun}
+          options={runs.map((run) => ({
+            value: run.runId,
+            label: (
+              <span className="block max-w-[min(26rem,70vw)] truncate">
+                {session.entries.find((entry) => entry.runId === run.runId)?.text.slice(0, 55) ||
+                  run.runId}{' '}
+                · {status(run.status)}
+              </span>
+            ),
+          }))}
+        />
+      ) : null}
       {error ? (
         <p role="alert" className="max-w-64 truncate text-xs text-danger" title={error}>
           {error}
@@ -519,7 +597,7 @@ function SessionActions({
           size="icon-sm"
           aria-label={panel ? tw('collapsePanel') : tw('expandPanel')}
           aria-pressed={Boolean(panel)}
-          onClick={() => onPanel(panel ? undefined : 'changes')}
+          onClick={() => onPanel(panel ? undefined : reopenPanel)}
         >
           <PanelRight />
         </Button>
@@ -629,6 +707,7 @@ function WorkTab({
   runs,
   active,
   liveRunId,
+  selectedRunId,
   onChange,
   reference,
   onReferenceUsed,
@@ -640,17 +719,22 @@ function WorkTab({
   runs: RunSummary[];
   active: RunSummary | null;
   liveRunId: string | null;
+  selectedRunId: string | null;
   onChange: () => void;
   reference: FileReference | null;
   onReferenceUsed: () => void;
   onPanel: (panel: SessionPanel, run?: Partial<SessionSearch>) => void;
 }) {
   const t = useTranslations('Sessions');
-  const { session: liveSession } = useServices();
+  const { runFor, sessionFor, retainRun, workspaces } = useServices();
+  const liveSession = liveRunId ? runFor(liveRunId) : sessionFor(session.sessionId);
   const messageId = sessionRoute.useSearch().message;
   useEffect(() => {
-    if (liveRunId) void liveSession.getState().open(liveRunId);
-  }, [liveSession, liveRunId]);
+    if (!liveRunId) return;
+    const release = retainRun(liveRunId);
+    void liveSession.getState().open(liveRunId);
+    return release;
+  }, [liveSession, liveRunId, retainRun]);
   // Entries in order; runs that no entry names (started elsewhere) are shown after them.
   const named = new Set(session.entries.flatMap((e) => (e.runId ? [e.runId] : [])));
   const loose = runs.filter((r) => !named.has(r.runId));
@@ -660,6 +744,7 @@ function WorkTab({
   return (
     <RunChecks.Provider value={runChecks}>
       <ChatView
+        centerEmpty
         key={session.sessionId}
         sessionId={session.sessionId}
         messageId={messageId}
@@ -690,6 +775,7 @@ function WorkTab({
             corrals={corrals}
             runs={runs}
             active={active}
+            selectedRunId={selectedRunId}
             queued={queued}
             onChange={onChange}
             reference={reference}
@@ -699,12 +785,18 @@ function WorkTab({
       >
         <section aria-label={t('heading')}>
           {session.entries.length === 0 && loose.length === 0 ? (
-            <div className="flex min-h-48 flex-col items-center justify-center gap-3 py-10 text-center">
+            <div className="flex flex-col items-center justify-center gap-3 py-5 text-center">
               <MessageSquare size={28} strokeWidth={1.25} className="text-muted" />
               <h3 className="text-xl font-medium tracking-tight">{td('noRequests')}</h3>
               <p className="max-w-md text-sm text-muted">
                 {session.objective ? session.objective : td('startHint')}
               </p>
+              {workspaces ? (
+                <Button variant="ghost-muted" size="sm" onClick={() => onPanel('changes')}>
+                  <FolderOpen />
+                  {td('workFolder')}
+                </Button>
+              ) : null}
             </div>
           ) : null}
         </section>
@@ -1059,6 +1151,8 @@ function EntryCard({
           message={entry.detail}
           onEdit={() =>
             editRequest(entry.text, {
+              permissionMode: entry.permissionMode,
+              harness: entry.harness,
               attachments: entry.attachments,
               images: entry.images,
               qualityPreset: entry.qualityPreset ?? entry.auto?.qualityPreset,
@@ -1167,7 +1261,7 @@ function RunCard({
       className={`flex min-w-0 flex-col gap-3 ${nested ? '' : 'mb-8'}`}
     >
       <div className="flex min-h-7 flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-        {ended ? <StatusBadge status={run.status} /> : null}
+        <StatusBadge status={run.status} />
         <span className="sr-only">{run.runId}</span>
         {ended && checks.known ? (
           <span className="text-muted" data-testid="run-check">
@@ -1282,10 +1376,10 @@ function finalResultId(projection: RunProjection): string | null {
 }
 
 // Keep uncertain requests across SPA navigation, never request controllers.
-const pendingSessionCommands = new Map<
-  string,
-  { key: string; commandId: string; autoRequest?: AutoRunStart }
->();
+const pendingSessionCommands = createPendingSessionCommands(
+  typeof window !== 'undefined' && window.corralRemote ? window.localStorage : undefined,
+  typeof window !== 'undefined' ? window.corralRemote?.hostId : undefined,
+);
 
 function Composer({
   session,
@@ -1293,6 +1387,7 @@ function Composer({
   corrals,
   runs,
   active,
+  selectedRunId,
   queued,
   onChange,
   reference,
@@ -1303,16 +1398,17 @@ function Composer({
   corrals: CorralSummary[];
   runs: RunSummary[];
   active: RunSummary | null;
+  selectedRunId: string | null;
   queued: SessionEntry[];
   onChange: () => void;
   reference: FileReference | null;
   onReferenceUsed: () => void;
 }) {
+  useShortcutBindings();
   const t = useTranslations('Sessions');
   const tc = useTranslations('Composer');
   const navigation = useSettingsNavigation();
   const tr = useTranslations('Reins');
-  const tq = useTranslations('Reasoning');
   const services = useServices();
   const { repository, transport, mode, live } = services;
   const prefs = usePreferences();
@@ -1320,8 +1416,14 @@ function Composer({
   // UX-02: the draft comes back with its intent, target and exact references.
   const [restored] = useState(() => readComposerDraft(session.sessionId));
   const [text, setText] = useState(restored.text);
+  const [autoHarness, setAutoHarness] = useState<HarnessBindingRef | undefined>(restored.harness);
+  const [permissionMode, setPermissionMode] = useState<PermissionMode | undefined>(
+    restored.permissionMode,
+  );
   const [attachments, setAttachments] = useState<TextAttachment[]>(restored.attachments ?? []);
   const [attachmentsBusy, setAttachmentsBusy] = useState(false);
+  const [projectDocumentsBusy, setProjectDocumentsBusy] = useState(false);
+  const [projectDocumentError, setProjectDocumentError] = useState<string | null>(null);
   const [images, setImages] = useState<ImageAttachment[]>(restored.images ?? []);
   const [imagesBusy, setImagesBusy] = useState(false);
   const textFiles = useRef<HTMLInputElement>(null);
@@ -1357,6 +1459,8 @@ function Composer({
   // the team editor.
   const runMode = sessionRunMode(mode, live);
   const [busy, setBusy] = useState(false);
+  const voiceSubmitting = useRef(false);
+  const voiceSubmissions = useRef(new Map<string, () => Promise<VoiceTranscriptReceipt>>());
   const [choosingAuto, setChoosingAuto] = useState(false);
   const autoRequest = useRef<{
     controller: AbortController;
@@ -1410,6 +1514,8 @@ function Composer({
     ),
   );
   const [confirmStop, setConfirmStop] = useState(false);
+  const stopTarget = useRef<string | null>(null);
+  const [requestOptionsOpen, setRequestOptionsOpen] = useState(false);
   const [teamOpen, setTeamOpen] = useState(false);
   const [autoModelOpen, setAutoModelOpen] = useState(false);
   const [modelsOpen, setModelsOpen] = useState(false);
@@ -1451,7 +1557,12 @@ function Composer({
   const harnessOverrides = runStyles?.key === harnessKey ? runStyles.value : {};
   const [recall, setRecall] = useState(-1);
   const input = useRef<HTMLTextAreaElement>(null);
-  const ownActive = active && active.sessionId === session.sessionId ? active : null;
+  useEffect(() => {
+    if (session.entries.length === 0) input.current?.focus();
+  }, [session.entries.length]);
+  const ownActive =
+    runs.find((run) => run.runId === selectedRunId && !TERMINAL_RUN_STATUSES.has(run.status)) ??
+    null;
   const latest = useLatestResult(runs);
   const searchMentions = useMentionSearch({
     projectId: session.projectId,
@@ -1476,13 +1587,16 @@ function Composer({
   };
   const [autoStart, setAutoStart] = useRemembered(`corral:auto-queue:${session.sessionId}`, false);
 
-  // What may be sent now: one run at a time, so a busy runtime only takes a queue entry or,
-  // for this session's run, an instruction.
+  // A writer keeps the working copy. Explicit read-only work can start alongside it;
+  // other work queues, or sends an instruction to this session's current execution.
   // An instruction needs an execution that can still take one (none while a decision waits).
   const allowed: SessionIntent[] = active
-    ? ownActive && targets.length > 0
-      ? ['steer', 'queue']
-      : ['queue']
+    ? [
+        ...(reviewOnly ? ['next' as const] : []),
+        ...(ownActive && targets.length > 0 ? ['steer' as const] : []),
+        'queue',
+        ...(latest ? ['explain' as const] : []),
+      ]
     : latest
       ? ['next', 'explain']
       : ['next'];
@@ -1567,8 +1681,22 @@ function Composer({
       ...(reviewOnly ? { taskScope: 'review_only' as const } : {}),
       ...(verificationScope === 'release' ? { verificationScope } : {}),
       ...(qualityPreset === 'ultra' ? { qualityPreset, ultra } : {}),
+      ...(permissionMode ? { permissionMode } : {}),
+      ...(autoHarness ? { harness: autoHarness } : {}),
     }),
-    [text, lock, picked, attachments, images, reviewOnly, verificationScope, qualityPreset, ultra],
+    [
+      text,
+      lock,
+      picked,
+      attachments,
+      images,
+      reviewOnly,
+      verificationScope,
+      qualityPreset,
+      ultra,
+      permissionMode,
+      autoHarness,
+    ],
   );
   const draftRevision = useRef(0);
   useEffect(() => {
@@ -1592,6 +1720,8 @@ function Composer({
       setReviewOnly(false);
       setVerificationScope('targeted');
       setQualityPreset('default');
+      setPermissionMode(undefined);
+      setAutoHarness(undefined);
       setChosen(null);
       setLock(null);
       setText('');
@@ -1678,6 +1808,8 @@ function Composer({
     overrides: HarnessOverrides = {},
     roleChoices: RoleRunOverrides = {},
     scope: { taskScope?: 'review_only'; verificationScope?: 'release' } = {},
+    requestPermissionMode?: PermissionMode,
+    requestHarness?: HarnessBindingRef,
   ): Promise<{
     runId: string | null;
     detail: string | null;
@@ -1688,7 +1820,7 @@ function Composer({
   }> => {
     if (!team)
       return isAuto
-        ? startAuto(brief, commandId, refs, scope)
+        ? startAuto(brief, commandId, refs, scope, requestPermissionMode, requestHarness)
         : { runId: null, detail: t('selectedTeamMissing') };
     const corral = await repository.get(team.corralId);
     if (!corral) return { runId: null, detail: t('noTeamYet') };
@@ -1698,6 +1830,7 @@ function Composer({
       commandId,
       mode: runMode,
       sessionId: session.sessionId,
+      ...(requestPermissionMode ? { permissionMode: requestPermissionMode } : {}),
       ...(latest ? { startFrom: { runId: latest.runId, artifactVersionId: latest.id } } : {}),
       ...(refs.length ? { references: refs } : {}),
       ...(Object.keys(overrides).length ? { harnessOverrides: overrides } : {}),
@@ -1726,6 +1859,8 @@ function Composer({
     commandId: string,
     refs: RunReference[],
     scope: { taskScope?: 'review_only'; verificationScope?: 'release' },
+    requestPermissionMode?: PermissionMode,
+    requestHarness?: HarnessBindingRef,
   ) => {
     if (
       qualityPreset === 'ultra' &&
@@ -1736,6 +1871,8 @@ function Composer({
     const controller = new AbortController();
     const proposed: AutoRunStart = {
       ...scope,
+      ...(requestPermissionMode ? { permissionMode: requestPermissionMode } : {}),
+      ...(requestHarness ? { harness: requestHarness } : {}),
       commandId,
       sessionId: session.sessionId,
       brief,
@@ -1750,6 +1887,7 @@ function Composer({
     let body = proposed;
     if (command?.commandId === commandId) {
       command.autoRequest ??= structuredClone(proposed);
+      pendingSessionCommands.set(session.sessionId, command);
       body = command.autoRequest;
     }
     const request: NonNullable<typeof autoRequest.current> = {
@@ -1783,6 +1921,7 @@ function Composer({
         auto: result.autoRoute
           ? {
               template: result.autoRoute.template,
+              ...(result.autoRoute.harness ? { harness: result.autoRoute.harness } : {}),
               ...(result.autoRoute.ultra ? { ultra: result.autoRoute.ultra } : {}),
               ...(result.autoRoute.qualityPreset
                 ? { qualityPreset: result.autoRoute.qualityPreset }
@@ -1858,6 +1997,145 @@ function Composer({
     onChange();
   };
 
+  const performVoice = async (utterance: VoiceTranscript): Promise<VoiceTranscriptReceipt> => {
+    if (
+      utterance.target.hostId !== window.location.origin ||
+      utterance.target.sessionId !== session.sessionId
+    )
+      return {
+        status: 'rejected',
+        message: 'The voice destination changed. Reconnect explicitly.',
+      };
+    if (voiceSubmitting.current || autoSaving.current)
+      return {
+        status: 'rejected',
+        message: 'Another request is being submitted. Retry this same utterance.',
+      };
+    if (
+      !utterance.delivery &&
+      utterance.target.runId &&
+      (ownActive?.runId !== utterance.target.runId ||
+        !utterance.target.executionId ||
+        !targets.some((item) => item.id === utterance.target.executionId))
+    )
+      return {
+        status: 'rejected',
+        message:
+          'The pinned execution cannot receive an instruction (it ended or is waiting for a decision). Choose queue or next request explicitly.',
+        alternatives: ['queue', 'next'],
+      };
+    if (!utterance.delivery && !utterance.target.runId && ownActive)
+      return {
+        status: 'rejected',
+        message:
+          'A run started after this call was connected. Queue this utterance or reconnect to select its execution.',
+        alternatives: ['queue'],
+      };
+    voiceSubmitting.current = true;
+    setBusy(true);
+    try {
+      if (utterance.delivery === 'queue') {
+        await record({
+          intent: 'queue',
+          text: utterance.text,
+          state: 'queued',
+          commandId: utterance.commandId,
+          ...(permissionMode ? { permissionMode } : {}),
+          ...(isAuto && autoHarness ? { harness: autoHarness } : {}),
+        });
+        onChange();
+        return { status: 'queued' };
+      }
+      if (!utterance.delivery && utterance.target.runId && utterance.target.executionId) {
+        const receipt = await transport.sendCommand({
+          schemaVersion: '0.1',
+          commandId: utterance.commandId,
+          runId: utterance.target.runId,
+          type: 'steer',
+          payload: {
+            targetExecutionId: utterance.target.executionId,
+            text: utterance.text,
+            delivery: 'next_request',
+          },
+        });
+        await record({
+          intent: 'steer',
+          text: utterance.text,
+          state: receipt.error ? 'refused' : 'sent',
+          runId: utterance.target.runId,
+          executionId: utterance.target.executionId,
+          detail: receipt.error?.message ?? null,
+          commandId: utterance.commandId,
+        });
+        onChange();
+        return receipt.error
+          ? { status: 'rejected', message: receipt.error.message }
+          : {
+              status: 'accepted',
+              message: 'Accepted for the next request boundary; not yet delivered.',
+            };
+      }
+      const scope = {
+        ...(reviewOnly ? { taskScope: 'review_only' as const } : {}),
+        ...(verificationScope === 'release' ? { verificationScope } : {}),
+      };
+      const result = await startNext(
+        utterance.text,
+        utterance.commandId,
+        [],
+        harnessOverrides,
+        roleOverrides,
+        scope,
+        permissionMode,
+        isAuto ? autoHarness : undefined,
+      );
+      await record({
+        ...scope,
+        ...(permissionMode ? { permissionMode } : {}),
+        ...(isAuto && autoHarness ? { harness: autoHarness } : {}),
+        intent: 'next',
+        text: utterance.text,
+        state: result.runId ? 'started' : 'refused',
+        runId: result.runId,
+        detail: result.detail,
+        commandId: utterance.commandId,
+        ...(result.auto ? { auto: result.auto } : {}),
+      });
+      await router.invalidate();
+      onChange();
+      return result.runId
+        ? { status: 'accepted' }
+        : { status: 'rejected', message: result.detail ?? 'The request was not accepted.' };
+    } finally {
+      voiceSubmitting.current = false;
+      if (mounted.current) setBusy(false);
+    }
+  };
+
+  const submitVoice = (utterance: VoiceTranscript): Promise<VoiceTranscriptReceipt> => {
+    if (
+      utterance.target.hostId !== window.location.origin ||
+      utterance.target.sessionId !== session.sessionId
+    )
+      return Promise.resolve({
+        status: 'rejected',
+        message: 'The voice destination changed. Reconnect explicitly.',
+      });
+    if (busy || autoSaving.current)
+      return Promise.resolve({
+        status: 'rejected',
+        message: 'Another request is being submitted. Retry this same utterance.',
+      });
+    // Keep the original request closure (model, policy, execution and startFrom) across a
+    // lost receipt. New renders may already show the run started by this very command.
+    let submit = voiceSubmissions.current.get(utterance.commandId);
+    if (!submit) {
+      submit = () => performVoice(utterance);
+      voiceSubmissions.current.set(utterance.commandId, submit);
+    }
+    return submit();
+  };
+
   const send = async () => {
     const body = text.trim();
     if (!body || busy || autoSaving.current || unavailable) return;
@@ -1874,7 +2152,7 @@ function Composer({
           ...(verificationScope === 'release' ? { verificationScope } : {}),
         };
         const commandId = commandFor(
-          team
+          (team
             ? `next\u0000${body}\u0000${JSON.stringify([refs, harnessOverrides, roleOverrides, runMode, scope])}`
             : autoCommandSeed(
                 body,
@@ -1883,7 +2161,9 @@ function Composer({
                 scope,
                 qualityPreset,
                 qualityPreset === 'ultra' ? ultra : undefined,
-              ),
+              )) +
+            (permissionMode ? `\u0000permission:${permissionMode}` : '') +
+            (isAuto && autoHarness ? `\u0000harness:${JSON.stringify(autoHarness)}` : ''),
         );
         const { runId, detail, code, auto, cancelled, cancelError } = await startNext(
           body,
@@ -1892,6 +2172,8 @@ function Composer({
           harnessOverrides,
           roleOverrides,
           scope,
+          permissionMode,
+          isAuto ? autoHarness : undefined,
         );
         if (runId) {
           setRunStyles(null);
@@ -1899,6 +2181,8 @@ function Composer({
         }
         await record({
           ...scope,
+          ...(permissionMode ? { permissionMode } : {}),
+          ...(isAuto && autoHarness ? { harness: autoHarness } : {}),
           ...(isAuto && !team && qualityPreset === 'ultra' ? { qualityPreset, ultra } : {}),
           intent,
           text: body,
@@ -1919,7 +2203,13 @@ function Composer({
         }
         if (!runId) return await refused(detail ?? t('failed', { message: '' }), code);
       } else if (intent === 'queue') {
-        await record({ intent, text: body, state: 'queued' });
+        await record({
+          intent,
+          text: body,
+          state: 'queued',
+          ...(permissionMode ? { permissionMode } : {}),
+          ...(isAuto && autoHarness ? { harness: autoHarness } : {}),
+        });
       } else if (intent === 'steer' && ownActive && steerTarget) {
         const commandId = commandFor(`steer\u0000${steerTarget}\u0000${body}`);
         const receipt = await transport.sendCommand({
@@ -2000,6 +2290,8 @@ function Composer({
           | string
           | {
               text: string;
+              permissionMode?: PermissionMode;
+              harness?: HarnessBindingRef;
               attachments?: TextAttachment[];
               images?: ImageAttachment[];
               taskScope?: string;
@@ -2014,11 +2306,16 @@ function Composer({
         (typeof value !== 'object' ||
           !value ||
           typeof value.text !== 'string' ||
+          (value.harness !== undefined && !HarnessBindingRef.safeParse(value.harness).success) ||
+          (value.permissionMode !== undefined &&
+            !PermissionMode.safeParse(value.permissionMode).success) ||
           (value.attachments !== undefined && !validTextAttachments(value.attachments)) ||
           (value.images !== undefined && !ImageAttachments.safeParse(value.images).success))
       )
         return;
       setText(typeof value === 'string' ? value : value.text);
+      setPermissionMode(typeof value === 'string' ? undefined : value.permissionMode);
+      setAutoHarness(typeof value === 'string' ? undefined : value.harness);
       setAttachmentEpoch((epoch) => epoch + 1);
       setAttachmentsBusy(false);
       setImagesBusy(false);
@@ -2044,22 +2341,26 @@ function Composer({
     return () => window.removeEventListener(EDIT_REQUEST, take);
   }, []);
 
-  const runCommand = async (type: 'pause' | 'resume' | 'cancel') => {
-    if (!ownActive) return;
+  const requestStop = () => {
+    stopTarget.current = ownActive?.runId ?? null;
+    setConfirmStop(stopTarget.current !== null);
+  };
+  const runCommand = async (type: 'pause' | 'resume' | 'cancel', runId = ownActive?.runId) => {
+    if (!runId) return;
     const receipt = await transport
       .sendCommand(
         type === 'cancel'
           ? {
               schemaVersion: '0.1',
               commandId: newCommandId(),
-              runId: ownActive.runId,
+              runId,
               type,
               payload: { scope: { kind: 'run' }, reason: 'User cancelled the run' },
             }
           : {
               schemaVersion: '0.1',
               commandId: newCommandId(),
-              runId: ownActive.runId,
+              runId,
               type,
               payload: { scope: 'run' },
             },
@@ -2075,9 +2376,18 @@ function Composer({
     setBusy(true);
     try {
       const commandId = commandFor(
-        `queue\u0000${entry.entryId}\u0000${team?.corralId ?? autoCommandSeed(entry.text, [], autoChoice)}`,
+        `queue\u0000${entry.entryId}\u0000${team?.corralId ?? autoCommandSeed(entry.text, [], autoChoice)}\u0000${entry.permissionMode ?? ''}\u0000${JSON.stringify(entry.harness ?? null)}`,
       );
-      const { runId, detail, auto, cancelError } = await startNext(entry.text, commandId);
+      const { runId, detail, auto, cancelError } = await startNext(
+        entry.text,
+        commandId,
+        [],
+        {},
+        {},
+        {},
+        entry.permissionMode,
+        entry.harness,
+      );
       const saved = await repository.updateSessionEntry(session.sessionId, entry.entryId, {
         state: runId ? 'started' : 'refused',
         runId,
@@ -2109,6 +2419,8 @@ function Composer({
     setAttachmentsBusy(false);
     setImagesBusy(false);
     setText(entry.text);
+    setPermissionMode(entry.permissionMode);
+    setAutoHarness(entry.harness);
     setAttachments(entry.attachments ?? []);
     setImages(entry.images ?? []);
     setReviewOnly(false);
@@ -2124,11 +2436,11 @@ function Composer({
   };
 
   // Auto-start, when switched on: only on a run's end seen by this page, never on load.
-  const wasActive = useRef(Boolean(ownActive));
+  const wasActive = useRef(Boolean(active));
   // biome-ignore lint/correctness/useExhaustiveDependencies: reacts to the run ending only
   useEffect(() => {
     const ended = wasActive.current && !active;
-    wasActive.current = Boolean(ownActive);
+    wasActive.current = Boolean(active);
     const next = queued[0];
     if (ended && autoStart && next) void startQueued(next);
   }, [active, ownActive]);
@@ -2174,6 +2486,8 @@ function Composer({
       const recalledEntry =
         next === -1 ? undefined : session.entries.findLast((entry) => entry.text === history[next]);
       setAttachments(recalledEntry?.attachments ?? []);
+      setPermissionMode(recalledEntry?.permissionMode);
+      setAutoHarness(recalledEntry?.harness);
       setImages(recalledEntry?.images ?? []);
       setUltraDraft(
         UltraSelection.strip().safeParse(recalledEntry?.ultra ?? recalledEntry?.auto?.ultra).data ??
@@ -2236,8 +2550,11 @@ function Composer({
   const unavailable =
     liveUnavailable ||
     attachmentsBusy ||
+    projectDocumentsBusy ||
     imagesBusy ||
-    ((reviewOnly || verificationScope === 'release') && intent !== 'next') ||
+    ((reviewOnly || verificationScope === 'release') &&
+      intent !== 'next' &&
+      intent !== 'explain') ||
     autoBlocked ||
     reasoningBlocked ||
     ultraBlocked ||
@@ -2293,7 +2610,7 @@ function Composer({
       shortcut: shortcutLabel('run.stop'),
       disabled: !ownActive,
       hint: why(Boolean(ownActive)),
-      run: () => setConfirmStop(true),
+      run: requestStop,
     },
     {
       id: 'composer:ultra',
@@ -2312,7 +2629,10 @@ function Composer({
       group: tc('groupRequest'),
       slash: 'team',
       keywords: [t('autoTeam'), ...corrals.map((c) => c.name)],
-      run: () => setTeamOpen(true),
+      run: () => {
+        setRequestOptionsOpen(true);
+        setTeamOpen(true);
+      },
     },
     {
       id: 'composer:models',
@@ -2331,6 +2651,177 @@ function Composer({
     },
   ]);
   const commands = useRegisteredCommands();
+  const optionSummary = [
+    ...(session.corralId ? [team?.name ?? t('selectedTeamUnavailable')] : []),
+    ...(isAuto && qualityPreset === 'ultra' ? [tc('qualityUltra')] : []),
+    ...(reviewOnly ? [tc('reviewOnly')] : []),
+    ...(verificationScope === 'release' ? [tc('releaseScope')] : []),
+    ...(isAuto && autoHarness ? [tc('customWorkStyle')] : []),
+    ...(Object.keys(roleOverrides).length || Object.keys(harnessOverrides).length
+      ? [tc('customRoles')]
+      : []),
+  ];
+  const advancedOptions = (
+    <div className="flex flex-col gap-4">
+      <fieldset className="flex min-w-0 flex-col gap-2">
+        <legend className="mb-2 text-xs font-medium text-muted">{tc('executionOptions')}</legend>
+        {intent === 'next' || intent === 'explain' ? (
+          <Select
+            variant="chip"
+            label={t('teamLabel')}
+            value={session.corralId ?? ''}
+            open={teamOpen}
+            onOpenChange={setTeamOpen}
+            onValueChange={(value) => void updateTeam(value)}
+            options={[
+              { value: '', label: t('autoTeam') },
+              ...(missingTeam && session.corralId
+                ? [
+                    {
+                      value: session.corralId,
+                      label: t('selectedTeamUnavailable'),
+                      disabled: true,
+                    },
+                  ]
+                : []),
+              ...corrals.map((c) => ({ value: c.corralId, label: c.name })),
+            ]}
+          />
+        ) : null}
+        <p className="text-xs text-muted">{tc('optionalCorralHint')}</p>
+        <Link
+          to="/projects/$projectId"
+          params={{ projectId: session.projectId }}
+          hash="corrals"
+          className="self-start text-xs underline underline-offset-4"
+        >
+          {tc('manageCorrals')}
+        </Link>
+        {isAuto && (intent === 'next' || intent === 'queue') ? (
+          <AutoHarnessPicker value={autoHarness} onChange={setAutoHarness} disabled={busy} />
+        ) : null}
+        {intent === 'next' ? (
+          <>
+            <RunRoleOverrides
+              roles={roles}
+              profiles={profiles}
+              value={roleOverrides}
+              onChange={(value) => setRoleChoices({ key: harnessKey, value })}
+            />
+            <RunHarnessOverrides
+              roles={roles}
+              projectId={session.projectId}
+              value={harnessOverrides}
+              onChange={(value) => setRunStyles({ key: harnessKey, value })}
+              disabled={busy}
+            />
+          </>
+        ) : null}
+      </fieldset>
+      {intent !== 'explain' ? (
+        <div className="flex flex-wrap items-center gap-3 text-xs">
+          {isAuto && !team ? (
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <span className="text-muted">{tc('qualityPreset')}</span>
+              <Select
+                label={tc('qualityPreset')}
+                value={qualityPreset}
+                disabled={busy || intent !== 'next'}
+                onValueChange={setQualityPreset}
+                options={[
+                  { value: 'default', label: tc('qualityDefault') },
+                  { value: 'ultra', label: tc('qualityUltra') },
+                ]}
+              />
+            </div>
+          ) : null}
+          {isAuto && !team && qualityPreset === 'ultra' ? (
+            <UltraModels
+              primary={autoChoice.modelProfile}
+              profiles={ultraProfiles}
+              value={ultra}
+              onChange={setUltraDraft}
+              disabled={busy || intent !== 'next'}
+            />
+          ) : null}
+          <label className="flex items-center gap-1">
+            <input
+              type="checkbox"
+              checked={reviewOnly}
+              disabled={busy}
+              onChange={(event) => setReviewOnly(event.target.checked)}
+            />
+            {tc('reviewOnly')}
+          </label>
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <span className="text-muted">{tc('verificationScope')}</span>
+            <Select
+              label={tc('verificationScope')}
+              value={verificationScope}
+              disabled={busy}
+              onValueChange={setVerificationScope}
+              options={[
+                { value: 'targeted', label: tc('targetedScope') },
+                { value: 'release', label: tc('releaseScope') },
+              ]}
+            />
+          </div>
+        </div>
+      ) : null}
+      <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3">
+        {intent === 'next' ? (
+          <ProjectDocumentPicker
+            key={`documents:${attachmentEpoch}`}
+            projectId={session.projectId}
+            value={attachments}
+            onChange={setAttachments}
+            onBusyChange={setProjectDocumentsBusy}
+            onErrorChange={setProjectDocumentError}
+            disabled={busy || attachmentsBusy || imagesBusy}
+          />
+        ) : null}
+        <Menu>
+          <MenuTrigger
+            render={
+              <Button
+                variant="ghost-muted"
+                size="sm"
+                aria-label={tc('templateActions')}
+                disabled={busy}
+              />
+            }
+          >
+            <FileText />
+            <span>{tc('templateActions')}</span>
+          </MenuTrigger>
+          <MenuPopup align="start">
+            {['audit', 'tokens', 'verify'].map((value) => (
+              <MenuItem
+                key={value}
+                onClick={() =>
+                  write((current) =>
+                    [
+                      current.trim(),
+                      tc(`designTemplates.${value}.prompt`, {
+                        askTool: 'ask_user',
+                        skill: 'verify-changes',
+                        reviewContract:
+                          'write_artifact → review JSON design: {reportVersionId, preferences: [], tokenProposalVersionId?}; actual user answers: {origin: user_answer, requestId, questionId, appliedTo}; AI proposals: {origin: ai_delegated, appliedTo}',
+                      }),
+                    ]
+                      .filter(Boolean)
+                      .join('\n\n'),
+                  )
+                }
+              >
+                {tc(`designTemplates.${value}.name`)}
+              </MenuItem>
+            ))}
+          </MenuPopup>
+        </Menu>
+      </div>
+    </div>
+  );
 
   return (
     <ComposerSurface.Shell>
@@ -2380,33 +2871,11 @@ function Composer({
           </ul>
         </section>
       ) : null}
-      {intent === 'next' ? (
-        <>
-          <RunRoleOverrides
-            roles={roles}
-            profiles={profiles}
-            value={roleOverrides}
-            onChange={(value) => setRoleChoices({ key: harnessKey, value })}
-          />
-          <RunHarnessOverrides
-            roles={roles}
-            projectId={session.projectId}
-            value={harnessOverrides}
-            onChange={(value) => setRunStyles({ key: harnessKey, value })}
-            disabled={busy}
-          />
-        </>
-      ) : null}
       <ComposerDock />
-      <div className="mx-auto w-full max-w-(--chat-content-max-width) overflow-hidden rounded-2xl border border-line bg-raised shadow-composer">
+      <div className="mx-auto w-full max-w-(--chat-content-max-width) rounded-2xl border border-line bg-raised shadow-composer">
         <ComposerPlan />
         <ComposerSurface.Host className="rounded-none border-0 bg-transparent shadow-none">
           <section aria-label={t('requestLabel')} className="flex flex-col gap-1 px-3 pt-2.5 pb-2">
-            {active && !ownActive ? (
-              <p role="note" className="text-xs text-warning">
-                {t('busyElsewhere', { runId: active.runId })}
-              </p>
-            ) : null}
             {resolved.blocked ? (
               <div
                 role="alert"
@@ -2492,6 +2961,14 @@ function Composer({
                 {tc('missingReferences', { count: missingChips.length })}
               </p>
             ) : null}
+            {projectDocumentError ? (
+              <div role="alert" className="flex flex-wrap items-center gap-2 text-xs text-danger">
+                <span>{projectDocumentError}</span>
+                <Button variant="outline" size="xs" onClick={() => setRequestOptionsOpen(true)}>
+                  {tc('retryAttachment')}
+                </Button>
+              </div>
+            ) : null}
             {chips.length && intent !== 'next' ? (
               <p className="text-2xs text-muted">{tc('referencesNextOnly')}</p>
             ) : null}
@@ -2524,51 +3001,6 @@ function Composer({
                 ))}
               </ul>
             ) : null}
-            <div className="flex flex-wrap items-center gap-3 text-xs">
-              {isAuto && !team ? (
-                <Select
-                  label={tc('qualityPreset')}
-                  value={qualityPreset}
-                  disabled={busy || intent !== 'next'}
-                  onValueChange={setQualityPreset}
-                  options={[
-                    { value: 'default', label: tc('qualityDefault') },
-                    { value: 'ultra', label: tc('qualityUltra') },
-                  ]}
-                />
-              ) : null}
-              {isAuto && !team && qualityPreset === 'ultra' ? (
-                <UltraModels
-                  primary={autoChoice.modelProfile}
-                  profiles={ultraProfiles}
-                  value={ultra}
-                  onChange={setUltraDraft}
-                  disabled={busy || intent !== 'next'}
-                />
-              ) : null}
-              <label className="flex items-center gap-1">
-                <input
-                  type="checkbox"
-                  checked={reviewOnly}
-                  disabled={busy}
-                  onChange={(event) => setReviewOnly(event.target.checked)}
-                />
-                {tc('reviewOnly')}
-              </label>
-              <Select
-                label={tc('verificationScope')}
-                value={verificationScope}
-                disabled={busy}
-                onValueChange={setVerificationScope}
-                options={[
-                  { value: 'targeted', label: tc('targetedScope') },
-                  { value: 'release', label: tc('releaseScope') },
-                ]}
-              />
-              {(reviewOnly || verificationScope === 'release') && intent !== 'next' ? (
-                <span role="status">{tc('scopeNextOnly')}</span>
-              ) : null}
-            </div>
             <ImageAttachmentPicker
               key={`images:${attachmentEpoch}`}
               inputRef={imageFiles}
@@ -2593,6 +3025,25 @@ function Composer({
               disabled={busy}
               enabled={intent === 'next'}
             />
+            {optionSummary.length ? (
+              <fieldset
+                aria-label={tc('activeOptions')}
+                className="flex min-w-0 flex-wrap gap-1 pb-1"
+              >
+                {optionSummary.map((label) => (
+                  <Button
+                    key={label}
+                    variant="outline"
+                    size="xs"
+                    className="max-w-full rounded-full"
+                    onClick={() => setRequestOptionsOpen(true)}
+                    title={label}
+                  >
+                    <span className="truncate">{label}</span>
+                  </Button>
+                ))}
+              </fieldset>
+            ) : null}
             <ComposerInput
               inputRef={input}
               label={t('requestLabel')}
@@ -2635,7 +3086,13 @@ function Composer({
                       variant="ghost-muted"
                       size="icon-sm"
                       aria-label={tc('attachmentActions')}
-                      disabled={busy || attachmentsBusy || imagesBusy || intent !== 'next'}
+                      disabled={
+                        busy ||
+                        attachmentsBusy ||
+                        projectDocumentsBusy ||
+                        imagesBusy ||
+                        intent !== 'next'
+                      }
                     />
                   }
                 >
@@ -2658,44 +3115,7 @@ function Composer({
                   </MenuItem>
                 </MenuPopup>
               </Menu>
-              <Menu>
-                <MenuTrigger
-                  render={
-                    <Button
-                      variant="ghost-muted"
-                      size="icon-sm"
-                      aria-label={tc('templateActions')}
-                      disabled={busy}
-                    />
-                  }
-                >
-                  <FileText />
-                </MenuTrigger>
-                <MenuPopup align="start">
-                  {['audit', 'tokens', 'verify'].map((value) => (
-                    <MenuItem
-                      key={value}
-                      onClick={() =>
-                        write((current) =>
-                          [
-                            current.trim(),
-                            tc(`designTemplates.${value}.prompt`, {
-                              askTool: 'ask_user',
-                              skill: 'verify-changes',
-                              reviewContract:
-                                'write_artifact → review JSON design: {reportVersionId, preferences: [], tokenProposalVersionId?}; actual user answers: {origin: user_answer, requestId, questionId, appliedTo}; AI proposals: {origin: ai_delegated, appliedTo}',
-                            }),
-                          ]
-                            .filter(Boolean)
-                            .join('\n\n'),
-                        )
-                      }
-                    >
-                      {tc(`designTemplates.${value}.name`)}
-                    </MenuItem>
-                  ))}
-                </MenuPopup>
-              </Menu>
+
               {allowed.length > 1 && !resolved.blocked ? (
                 <Select
                   variant="chip"
@@ -2733,29 +3153,6 @@ function Composer({
                   disabled={targets.length === 0}
                 />
               ) : null}
-              {intent === 'next' || intent === 'explain' ? (
-                <Select
-                  variant="chip"
-                  label={t('teamLabel')}
-                  value={session.corralId ?? ''}
-                  open={teamOpen}
-                  onOpenChange={setTeamOpen}
-                  onValueChange={(value) => void updateTeam(value)}
-                  options={[
-                    { value: '', label: t('autoTeam') },
-                    ...(missingTeam && session.corralId
-                      ? [
-                          {
-                            value: session.corralId,
-                            label: t('selectedTeamUnavailable'),
-                            disabled: true,
-                          },
-                        ]
-                      : []),
-                    ...corrals.map((c) => ({ value: c.corralId, label: c.name })),
-                  ]}
-                />
-              ) : null}
               {isAuto && (intent === 'next' || intent === 'explain') && profiles ? (
                 <AutoModelMenu
                   value={autoChoice}
@@ -2774,7 +3171,63 @@ function Composer({
                   onChange={(value) => void updateAuto(value)}
                 />
               ) : null}
+              {intent === 'next' || intent === 'queue' ? (
+                <PermissionModePicker
+                  value={permissionMode}
+                  onChange={setPermissionMode}
+                  disabled={busy}
+                />
+              ) : null}
+              <Popover open={requestOptionsOpen} onOpenChange={setRequestOptionsOpen}>
+                <PopoverTrigger
+                  render={
+                    <Button
+                      variant="ghost-muted"
+                      size="sm"
+                      aria-label={tc('requestOptions')}
+                      className="rounded-full"
+                    />
+                  }
+                >
+                  <Settings className="size-4" />
+                  <span>{tc('optionsShort')}</span>
+                </PopoverTrigger>
+                <PopoverPopup
+                  side="top"
+                  align="end"
+                  width="lg"
+                  keepMounted
+                  aria-label={tc('requestOptions')}
+                >
+                  <div className="mb-4 flex items-center justify-between gap-2">
+                    <PopoverTitle>{tc('requestOptions')}</PopoverTitle>
+                    <PopoverClose
+                      render={
+                        <Button
+                          variant="ghost-muted"
+                          size="icon-xs"
+                          aria-label={tc('closeOptions')}
+                        />
+                      }
+                    >
+                      <X />
+                    </PopoverClose>
+                  </div>
+                  {advancedOptions}
+                </PopoverPopup>
+              </Popover>
               <div className="ml-auto flex items-center gap-1">
+                <LiveVoice
+                  api={services.voice ?? null}
+                  target={{
+                    hostId: window.location.origin,
+                    sessionId: session.sessionId,
+                    ...(ownActive ? { runId: ownActive.runId } : {}),
+                    ...(ownActive && steerTarget ? { executionId: steerTarget } : {}),
+                  }}
+                  targetLabel={session.title}
+                  onTranscript={submitVoice}
+                />
                 {choosingAuto ? (
                   <Tooltip content={t('cancelAutoChoice')}>
                     <Button
@@ -2794,7 +3247,7 @@ function Composer({
                       size="icon-sm"
                       aria-label={tr('cancelRun')}
                       className="rounded-full"
-                      onClick={() => setConfirmStop(true)}
+                      onClick={requestStop}
                     >
                       <Square className="fill-current" />
                     </Button>
@@ -2825,6 +3278,16 @@ function Composer({
           <span className="text-warning">{t('noResult')}</span>
         ) : null}
         {liveUnavailable ? <p role="alert">{tc('liveUnavailable')}</p> : null}
+        {(reviewOnly || verificationScope === 'release') &&
+        intent !== 'next' &&
+        intent !== 'explain' ? (
+          <div role="status" className="flex flex-wrap items-center gap-2 text-warning">
+            <span>{tc('scopeNextOnly')}</span>
+            <Button variant="outline" size="xs" onClick={() => setRequestOptionsOpen(true)}>
+              {tc('changeScope')}
+            </Button>
+          </div>
+        ) : null}
         {ultraBlocked ? <p role="status">{tc('ultraNeedsModels')}</p> : null}
         {reasoningBlocked ? (
           <p role="status" data-testid="reasoning-not-supported" className="text-warning">
@@ -2904,7 +3367,7 @@ function Composer({
               variant="destructive"
               onClick={() => {
                 setConfirmStop(false);
-                void runCommand('cancel');
+                if (stopTarget.current) void runCommand('cancel', stopTarget.current);
               }}
             >
               {tr('confirmCancelRun')}

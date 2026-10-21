@@ -120,11 +120,18 @@ export const WorkerTool = z.enum([
   'search',
   'read_document',
   'write_artifact',
+  'generate_image',
+  'preview_file',
+  'preview_app',
+  'preview_action',
   'list_files',
   'read_file',
   'write_file',
   'delete_file',
   'move_file',
+  'run_command',
+  'read_hashline',
+  'edit_hashline',
   'submit_result',
   'ask_user',
   'update_plan',
@@ -152,6 +159,7 @@ export const StartFrame = z.strictObject({
     name: z.string().min(1),
     prompt: z.string().min(1),
     outputContract: z.string().min(1),
+    imageProfile: Identifier.optional(),
   }),
   inputs: z.array(
     z.strictObject({
@@ -178,7 +186,14 @@ export const StartFrame = z.strictObject({
   ]),
   /** Callable nodes it may delegate to or ask, as named in the definition. */
   delegateTo: z.array(z.strictObject({ nodeId: Identifier, label: z.string() })),
-  askTo: z.array(z.strictObject({ nodeId: Identifier, label: z.string() })),
+  askTo: z.array(
+    z.strictObject({
+      nodeId: Identifier,
+      label: z.string(),
+      delivery: z.literal('parent').optional(),
+    }),
+  ),
+  replyToChildren: z.boolean().optional(),
 });
 
 export const HostFrame = z.discriminatedUnion('type', [
@@ -211,6 +226,17 @@ export const HostFrame = z.discriminatedUnion('type', [
     modelCallId: Identifier,
     maxOutputTokens: z.int().min(1),
     directives: z.array(z.strictObject({ directiveId: Identifier, text: Text })),
+    parentQuestions: z
+      .array(
+        z.strictObject({
+          questionId: Identifier,
+          senderExecutionId: Identifier,
+          body: Text,
+          artifactRefs: z.array(Identifier),
+          deadline: z.string().min(1),
+        }),
+      )
+      .optional(),
     /** Access token for this request only; refresh tokens never leave the host. */
     apiKey: z.string().min(1).nullable(),
   }),

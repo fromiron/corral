@@ -4,6 +4,7 @@ import { expect, test } from './harness.ts';
 
 async function importTeam(page: Page, id: string) {
   await page.getByRole('link', { name: 'Project home', exact: true }).click();
+  await page.getByRole('tab', { name: /^Teams/ }).click();
   const definition = linearCorral(['writer'], id);
   definition.name = id;
   await page.locator('input[type=file]').setInputFiles({

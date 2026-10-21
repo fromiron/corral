@@ -1,8 +1,9 @@
 import { TERMINAL_EXECUTION_STATUSES, TERMINAL_RUN_STATUSES } from '@corral/contracts';
-import type { RunProjection } from '@corral/core';
+import { pendingInteractions, type RunProjection } from '@corral/core';
 import {
   ApprovalPanel,
   ExecutionTranscript,
+  GeneratedImage,
   ReasoningSummary,
   type ResultItem,
   ReviewSummary,
@@ -39,6 +40,7 @@ export function RunMessage({
 }) {
   const t = useTranslations('Desktop');
   const trun = useTranslations('Run');
+  const tw = useTranslations('Widgets');
   const [expanded, setExpanded] = useState(false);
   const [resultError, setResultError] = useState(false);
   const [retry, setRetry] = useState(0);
@@ -52,7 +54,10 @@ export function RunMessage({
     : results?.kind === 'partial'
       ? results.intermediate.map((g) => g.latest)
       : [];
-  const ids = visible.map((x) => x.artifactVersionId).join(',');
+  const ids = visible
+    .filter((item) => !item.media)
+    .map((x) => x.artifactVersionId)
+    .join(',');
   useEffect(() => {
     void retry;
     let current = true;
@@ -82,6 +87,11 @@ export function RunMessage({
       <div className="h-4 w-24 animate-pulse rounded bg-line/30" />
     );
   const working = !TERMINAL_RUN_STATUSES.has(projection.status);
+  const interactions = sessionId ? pendingInteractions(state.events, projection) : [];
+  const requiredLabel =
+    interactions.length === 1
+      ? tw(interactions[0]?.kind === 'approval' ? 'actionApproval' : 'actionQuestion')
+      : tw('actionMixed', { count: interactions.length });
   const label = (nodeId: string) =>
     state.definition?.nodes.find((n) => n.id === nodeId)?.label ?? nodeId;
   const executions = projection.executionOrder.flatMap((id) => projection.executions[id] ?? []);
@@ -152,6 +162,22 @@ export function RunMessage({
   );
   return (
     <div className="flex min-w-0 flex-col gap-3">
+      {sessionId && interactions.length ? (
+        <div
+          data-testid="run-required-action"
+          className="flex flex-wrap items-center gap-2 rounded-lg bg-warning/10 px-3 py-2 text-xs"
+        >
+          <span>{requiredLabel}</span>
+          <Link
+            to="/sessions/$sessionId"
+            params={{ sessionId }}
+            search={{ panel: 'run', run: runId, view: 'run' }}
+            className="ml-auto rounded px-2 py-1 font-medium hover:bg-subtle focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {tw('actionOpen')}
+          </Link>
+        </div>
+      ) : null}
       {working && !sessionId ? <RunActions session={store} compact /> : null}
       {sessionId ? null : <ApprovalPanel session={store} onOpenArtifact={onOpenArtifact} />}
       {attention.length ? (
@@ -168,7 +194,6 @@ export function RunMessage({
         </ul>
       ) : null}
       {projection.statusReason &&
-      (!sessionId || !working) &&
       projection.status !== 'running' &&
       projection.status !== 'succeeded' ? (
         <p data-testid="run-reason" className="text-xs text-muted">
@@ -312,8 +337,8 @@ function ChatResult({
   );
   // Reading a result in the conversation is the checklist's last step (UX-09).
   useEffect(() => {
-    if (open === true && text !== undefined) markRunReviewed();
-  }, [open, text]);
+    if (open === true && (text !== undefined || result.media)) markRunReviewed();
+  }, [open, text, result.media]);
   const author = projection.executions[result.authorExecutionId];
   const review = projection.reviews[result.artifactVersionId];
   const target = review ? projection.artifacts[review.targetVersionId] : null;
@@ -345,7 +370,14 @@ function ChatResult({
       </summary>
       {open === true ? (
         <>
-          {review ? (
+          {result.media ? (
+            <GeneratedImage
+              runId={projection.runId}
+              versionId={result.artifactVersionId}
+              name={result.name}
+              media={result.media}
+            />
+          ) : review ? (
             <ReviewSummary
               review={review}
               artifactLink={(id) => (

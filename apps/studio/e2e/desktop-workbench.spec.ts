@@ -6,8 +6,8 @@ async function openSession(page: Page, blank = false) {
   await page.goto('/?delay=50');
   await teamFromTemplate(page);
   if (blank) {
-    await expect(page.getByRole('button', { name: 'Start session', exact: true })).toBeEnabled();
-    await page.getByRole('button', { name: 'Start session', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Start chat', exact: true })).toBeEnabled();
+    await page.getByRole('button', { name: 'Start chat', exact: true }).click();
     await expect(page).toHaveURL(/\/sessions\/session_/);
     await expect(requestBox(page)).toHaveValue('');
     await expect(page.getByTestId('chat-timeline').getByRole('article')).toHaveCount(0);

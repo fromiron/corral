@@ -19,8 +19,10 @@ import { HookSettingsPage, SkillSettingsPage } from './pages/ResourceSettingsPag
 import { ReviewPage } from './pages/ReviewPage.tsx';
 import { ErrorView, NotFoundView, RootLayout } from './pages/RootLayout.tsx';
 import { RunPage } from './pages/RunPage.tsx';
+import { ScheduledPage } from './pages/ScheduledPage.tsx';
 import { SessionPage } from './pages/SessionPage.tsx';
 import { SettingsPage } from './pages/SettingsPage.tsx';
+import { VaultSettingsPage } from './pages/VaultSettingsPage.tsx';
 import { WorkspacePage } from './pages/WorkspacePage.tsx';
 import { currentProject, projectOfRun } from './projects.ts';
 import type { StudioServices } from './services.tsx';
@@ -55,6 +57,12 @@ const indexRoute = createRoute({
       replace: true,
     });
   },
+});
+
+const schedulesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/schedules',
+  component: ScheduledPage,
 });
 
 /** One project's Corrals and runs (CR-010): what `/` showed before projects. */
@@ -312,6 +320,13 @@ export const mcpSettingsRoute = createRoute({
   component: McpSettingsPage,
 });
 
+export const vaultSettingsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/settings/vault',
+  validateSearch: validateSettingsSearch,
+  component: VaultSettingsPage,
+});
+
 export const modelSettingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/settings/models',
@@ -359,6 +374,7 @@ export function createStudioRouter(services: StudioServices) {
   return createRouter({
     routeTree: rootRoute.addChildren([
       indexRoute,
+      schedulesRoute,
       projectsRoute,
       workspaceRoute,
       sessionRoute,
@@ -367,6 +383,7 @@ export function createStudioRouter(services: StudioServices) {
       editorRoute,
       runRoute,
       modelSettingsRoute,
+      vaultSettingsRoute,
       harnessSettingsRoute,
       personalDefaultsRoute,
       projectDefaultsRoute,

@@ -7,8 +7,12 @@ import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useRemembered } from '../pages/Workbench.tsx';
 import { useServices } from '../services.tsx';
+import { canPreviewFile, FilePreview } from './FilePreview.tsx';
 import { useSettingsNavigation } from './navigation.ts';
+import { PreviewLeases } from './PreviewLeases.tsx';
+import { ServicePreview } from './ServicePreview.tsx';
 import { useWorkspaceFiles } from './useWorkspaceFiles.ts';
+import { WorktreeCommandPanel } from './WorktreeCommandPanel.tsx';
 
 const SourceCode = lazy(() =>
   import('./PierreCode.tsx').then((module) => ({ default: module.SourceCode })),
@@ -34,7 +38,7 @@ export function FilePanel({
   const t = useTranslations('Desktop');
   const tf = useTranslations('Files');
   const navigation = useSettingsNavigation();
-  const { workspaces } = useServices();
+  const { workspaces, mode } = useServices();
   const [savedSource, setSource] = useRemembered<'project' | 'session' | null>(
     `corral:file-source:v1:${sessionId}`,
     null,
@@ -110,6 +114,9 @@ export function FilePanel({
   const lineCount = content?.kind === 'text' ? content.text.split('\n').length : 1;
   return (
     <div className="flex min-h-0 flex-col gap-2" data-testid="file-panel">
+      {scopeKind === 'session' ? <PreviewLeases key={sessionId} sessionId={sessionId} /> : null}
+      {scopeKind === 'session' ? <WorktreeCommandPanel sessionId={sessionId} /> : null}
+      {scopeKind === 'session' ? <ServicePreview key={sessionId} sessionId={sessionId} /> : null}
       <div className="flex items-center gap-2">
         <Select
           label={t('fileSource')}
@@ -229,6 +236,9 @@ export function FilePanel({
       ) : null}
       {active && !content && !readError ? (
         <p className="text-xs text-muted">{t('loadingFile')}</p>
+      ) : null}
+      {active && canPreviewFile(active) && scopeKind === 'session' && mode === 'server' ? (
+        <FilePreview key={`${sessionId}:${active}`} sessionId={sessionId} path={active} />
       ) : null}
       {content?.kind === 'text' && active ? (
         <>

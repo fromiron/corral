@@ -40,6 +40,7 @@ export {
   LoaderCircle,
   Maximize2,
   MessageSquare,
+  Mic,
   Minimize2,
   Monitor,
   Moon,

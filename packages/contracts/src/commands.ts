@@ -7,7 +7,7 @@ import {
 } from './attachments.ts';
 import { AutoRoute } from './auto-team.ts';
 import { CorralDefinition, RunInput } from './definition.ts';
-import { ContentHash, ExtensionUiValue, HarnessOverrides } from './harness.ts';
+import { ContentHash, ExtensionUiValue, HarnessOverrides, PermissionMode } from './harness.ts';
 import { Identifier, SchemaVersion } from './ids.ts';
 import { ReasoningPolicy, RoleRunOverrides } from './reasoning.ts';
 import { UserAnswers } from './user-input.ts';
@@ -235,6 +235,7 @@ export const RunReferences = z
   );
 
 export const StartRunRequest = z.strictObject({
+  permissionMode: PermissionMode.optional(),
   schemaVersion: SchemaVersion,
   commandId: Identifier,
   definition: CorralDefinition,
@@ -255,6 +256,7 @@ export type StartRunRequest = z.infer<typeof StartRunRequest>;
  * runtime resolves and snapshots the definition; `input` replaces the saved brief and criteria.
  */
 export const CreateRunRequest = z.strictObject({
+  permissionMode: PermissionMode.optional(),
   schemaVersion: SchemaVersion,
   commandId: Identifier,
   corralId: Identifier,

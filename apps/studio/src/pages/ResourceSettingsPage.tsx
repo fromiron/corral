@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
 import { useManagementConfirmation } from '../workbench/harness/ConfirmAction.tsx';
+import { PackageManager } from '../workbench/harness/PackageManager.tsx';
 import { ResourceEditor } from '../workbench/harness/ResourceEditor.tsx';
 import { field, operationId } from '../workbench/harness/Target.tsx';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
@@ -314,6 +315,9 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
             add.current?.focus();
           }}
         />
+      ) : null}
+      {kind === 'extension' ? (
+        <PackageManager api={api} onChanged={() => refresh((n) => n + 1)} />
       ) : null}
       {confirmation.dialog}
     </main>

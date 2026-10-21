@@ -11,7 +11,7 @@ import {
 } from 'node:fs';
 import { rename, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { openDatabase, SqliteProjectToolStore } from '@corral/storage-sqlite';
 import { FakeClock, Gate } from '@corral/testkit';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -19,6 +19,10 @@ import { ReviewService } from '../src/files/review.ts';
 import { safeRelative, WorkspaceService } from '../src/files/service.ts';
 
 // The file broker's rules (CR-012): paths, the read-before-change rule, and what a stop leaves.
+// These integration cases create real Git worktrees and capture multiple trees
+// (including 52 checkpoints for retention). Keep their outer deadline separate
+// from the explicit command and LSP deadlines exercised by the broker.
+vi.setConfig({ testTimeout: 30000 });
 
 const dirs: string[] = [];
 const temp = () => {
@@ -39,6 +43,9 @@ async function setup(
   const git = (...args: string[]) =>
     execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@e', ...args], { cwd: original });
   git('init', '-q');
+  // Fixtures assert exact bytes; developer-global checkout conversion must not
+  // rewrite their LF baseline when the broker creates the managed worktree.
+  git('config', 'core.autocrlf', 'false');
   writeFileSync(join(original, 'a.txt'), 'one\n');
   git('add', '.');
   git('commit', '-q', '-m', 'first');
@@ -522,7 +529,10 @@ describe('file broker (CR-012)', () => {
           id: 'fixture',
           name: 'Fixture LSP',
           argv: [process.execPath, 'server.mjs', mode],
-          timeoutMs: 1000,
+          // The owned Windows transport starts its native Job helper before
+          // the real LSP server. These cases test URI scope and read evidence,
+          // rather than intentionally timing out during transport startup.
+          timeoutMs: process.platform === 'win32' ? 10000 : 1000,
           languageIds: ['plaintext'],
           fileExtensions: ['.txt'],
         },
@@ -786,7 +796,7 @@ describe('file broker (CR-012)', () => {
   it('[TC-HAR-018-N] preserves partial writes and recovers uncertain files without replaying them', async () => {
     const s = await proposalSetup({
       rename: async (from, to) => {
-        if (String(to).endsWith('/b.txt')) throw new Error('injected IO failure');
+        if (basename(String(to)) === 'b.txt') throw new Error('injected IO failure');
         await rename(from, to);
       },
     });

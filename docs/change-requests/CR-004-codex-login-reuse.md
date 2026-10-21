@@ -40,6 +40,14 @@ CR-001 §3의 "Corral store에만 둔다"는 Corral이 **발급받은** 토큰�
 - worker 요청 토큰 store: OAuth 전용 provider가 요청 토큰으로 호출되고 갱신하지 않음, store 없이는 "not configured"로 실패.
 - E2E: 모델 화면이 "Codex CLI 로그인(읽기 전용)"과 만료 시각을 보이고 로그아웃 버튼은 없으며, live Run이 Codex 토큰으로 실행되고 페이지에 토큰·`auth.json`이 없음.
 
+### Windows 권한 검증 (CR-042 통합 검증)
+
+Windows의 Node `chmod`/`stat.mode`는 사용자·그룹 접근 제어를 나타내지 않는다. 자체 자격 파일은 Windows ACL로 현재 사용자·SYSTEM·Administrators만 허용하고, 새 파일을 쓰기 전에 부모 디렉터리도 제한한다. 이전 버전이 만든 자체 자격 파일은 읽기 전에 같은 권한으로 보호한다. POSIX의 0700 디렉터리·0600 파일 요구는 유지한다.
+
+빌린 Codex 파일은 ACL을 읽기만 한다. `permissionsOk`는 현재 플랫폼에서 비공개 접근을 확인했을 때만 true이며, 넓은 접근 권한 또는 검증 실패는 false다. 경고는 권한을 확인하라고 안내하며 검증 실패를 실제 타 사용자 접근의 증거로 단정하지 않는다. Windows 반례는 실제 Everyone 읽기 허용 ACL로 구성하고, 정상 저장 결과는 운영체제 ACL을 별도로 읽어 확인한다.
+
+근거: [Node 파일 모드의 Windows 제약](https://nodejs.org/api/fs.html#file-modes), [Windows FileSecurity API](https://learn.microsoft.com/en-us/dotnet/api/system.security.accesscontrol.filesecurity?view=netframework-4.8.1).
+
 ## 진행 결과 (2026-10-16)
 
 - 구현: `apps/server/src/models/codex-login.ts`, `registry.ts`(`source`·`permissionsOk`), `live-models.ts`, `packages/adapter-pi/src/request-credentials.ts`, 모델 설정 화면과 en/ko 메시지.

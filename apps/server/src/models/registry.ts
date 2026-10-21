@@ -101,7 +101,7 @@ export interface ProviderAuthView {
    * or a key in the server environment (which the page cannot remove).
    */
   source: 'corral' | 'codex-cli' | 'environment' | null;
-  /** False when the borrowed Codex login file is readable by other users. */
+  /** True only when borrowed login permissions are verified private; false includes unknown. */
   permissionsOk: boolean;
 }
 

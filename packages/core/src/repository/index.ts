@@ -7,9 +7,11 @@ import {
   type Clock,
   type CorralDefinition,
   CorralDefinitionDraft,
+  HarnessBindingRef,
   type ImageAttachment,
   ImageAttachments,
   type NodeLayout,
+  PermissionMode,
   QualityPreset,
   RunInput,
   type TextAttachment,
@@ -66,6 +68,8 @@ export type SessionEntryState =
   | 'dismissed';
 
 export interface SessionEntry {
+  harness?: HarnessBindingRef;
+  permissionMode?: PermissionMode;
   ultra?: UltraSelection;
   qualityPreset?: 'default' | 'ultra';
   images?: ImageAttachment[];
@@ -90,6 +94,7 @@ export interface SessionEntry {
 }
 
 export const SessionEntryAuto = AutoRoute.pick({
+  harness: true,
   ultra: true,
   qualityPreset: true,
   template: true,
@@ -101,6 +106,7 @@ export const SessionEntryAuto = AutoRoute.pick({
   // Older entries only saved the template and chosen level.
   .partial({ reason: true, modelProfile: true })
   .extend({
+    permissionMode: PermissionMode.optional(),
     reasoning: AutoRouteLevel.optional(),
     requestedReasoning: AutoReasoning.optional(),
     reasoningSource: z.enum(['model', 'local', 'fallback']).optional(),
@@ -150,6 +156,8 @@ export type SessionResult =
     };
 
 export interface NewSessionEntry {
+  harness?: HarnessBindingRef;
+  permissionMode?: PermissionMode;
   ultra?: UltraSelection;
   qualityPreset?: 'default' | 'ultra';
   images?: ImageAttachment[];
@@ -325,6 +333,22 @@ export function planSessionEntry(
   if (!current)
     return { ok: false, error: 'not_found', message: `Session ${sessionId} does not exist.` };
   if (
+    entry.harness !== undefined &&
+    (!HarnessBindingRef.safeParse(entry.harness).success ||
+      !['next', 'queue'].includes(entry.intent))
+  )
+    return {
+      ok: false,
+      error: 'invalid',
+      message: 'work style requires a next request and a pinned revision',
+    };
+  if (
+    entry.permissionMode !== undefined &&
+    (!PermissionMode.safeParse(entry.permissionMode).success ||
+      !['next', 'queue'].includes(entry.intent))
+  )
+    return { ok: false, error: 'invalid', message: 'permission mode requires a next request' };
+  if (
     entry.images &&
     (!ImageAttachments.safeParse(entry.images).success || entry.intent !== 'next')
   )
@@ -377,6 +401,8 @@ export function planSessionEntry(
           attachments: value.attachments ?? [],
           images: value.images ?? [],
           qualityPreset: value.qualityPreset ?? null,
+          ...(value.permissionMode ? { permissionMode: value.permissionMode } : {}),
+          ...(value.harness ? { harness: value.harness } : {}),
           ...(value.ultra ? { ultra: value.ultra } : {}),
           taskScope: value.taskScope ?? null,
           verificationScope: value.verificationScope ?? null,
@@ -410,6 +436,8 @@ export function planSessionEntry(
           detail: entry.detail ?? null,
           commandId: entry.commandId ?? null,
           ...(entry.auto ? { auto: entry.auto } : {}),
+          ...(entry.permissionMode ? { permissionMode: entry.permissionMode } : {}),
+          ...(entry.harness ? { harness: HarnessBindingRef.parse(entry.harness) } : {}),
           ...(entry.qualityPreset ? { qualityPreset: entry.qualityPreset } : {}),
           ...(entry.ultra ? { ultra: UltraSelection.parse(entry.ultra) } : {}),
           ...(entry.taskScope ? { taskScope: entry.taskScope } : {}),

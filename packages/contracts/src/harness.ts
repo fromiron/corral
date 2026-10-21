@@ -2,6 +2,10 @@ import { z } from 'zod';
 import { Identifier } from './ids.ts';
 import { ReasoningWire } from './reasoning.ts';
 
+/** A Run-scoped restriction, never an expansion of capability or existing policies. */
+export const PermissionMode = z.enum(['ask', 'accept_edits', 'auto']);
+export type PermissionMode = z.infer<typeof PermissionMode>;
+
 /** An immutable profile revision, never a path or a mutable "latest" alias (CR-018). */
 export const HarnessBindingRef = z.strictObject({
   profileId: Identifier,

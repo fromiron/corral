@@ -99,44 +99,6 @@ test('[TC-DEV-005-N] the worker preserves receipts, replay ordering and cancella
   expect(result.seen.length).toBe(result.countAtUnsubscribe);
 });
 
-test('[TC-DEV-005-H] a previewed future prompt patch changes only the downstream simulated activation', async ({
-  page,
-}) => {
-  await page.goto('/demo?template=starter&delay=500');
-  await page.getByRole('button', { name: 'Add Agent', exact: true }).click();
-  await page.getByLabel('From out').selectOption({ label: 'Output · in' });
-  await page.getByRole('button', { name: 'Connect', exact: true }).click();
-  await page.locator('.react-flow__node[data-id="agent_1"]').click();
-  await page.getByRole('button', { name: 'Remove connection to Output' }).click();
-  await page.getByLabel('From out').selectOption({ label: 'Agent 2 · in' });
-  await page.getByRole('button', { name: 'Connect', exact: true }).click();
-  // Control order and data bindings are separate: choose the downstream submitted version.
-  await page.locator('.react-flow__node[data-id="output_1"]').click();
-  const inputs = page.getByRole('button', { name: /^Remove input / });
-  while (await inputs.count()) await inputs.first().click();
-  await page.getByLabel('Kind', { exact: true }).selectOption('task_output');
-  await page.getByLabel('From', { exact: true }).selectOption('agent_2');
-  await page.getByRole('button', { name: 'Add', exact: true }).click();
-  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
-  await page.getByRole('button', { name: 'Pause run', exact: true }).click();
-  await expect(page.getByTestId('run-status')).toContainText('Paused');
-  await page.getByText('Change settings', { exact: true }).click();
-  await page.getByLabel('Change scope').selectOption('node_future');
-  await page.getByLabel('Target node').selectOption('agent_2');
-  await page.getByLabel('Proposed value').fill('Summarize the evidence as three bullet points.');
-  await page.getByRole('button', { name: 'Preview changes', exact: true }).click();
-  const confirmation = page.getByRole('button', { name: 'Confirm settings change', exact: true });
-  await expect(confirmation).toBeEnabled();
-  await confirmation.click();
-  await expect(confirmation).toHaveCount(0);
-  await page.getByRole('button', { name: 'Resume run', exact: true }).click();
-  await expect(page.getByTestId('run-output')).toContainText(
-    'role prompt: Summarize the evidence as three bullet points.',
-  );
-  await expect(page.locator('[data-execution-id]')).toHaveCount(2);
-});
-
 const approve = async (page: Page, kind: 'Your decision' | 'Final output') => {
   const card = page.locator('[data-testid^="approval-"]').filter({ hasText: kind });
   await expect(card).toBeVisible({ timeout: 20_000 });

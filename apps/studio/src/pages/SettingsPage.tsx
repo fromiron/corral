@@ -155,7 +155,7 @@ export function SettingsPage() {
           ) : null
         ) : section === 'shortcuts' ? (
           <section className="rounded-xl bg-raised p-5">
-            <ShortcutTable />
+            <ShortcutTable editable />
           </section>
         ) : (
           <>

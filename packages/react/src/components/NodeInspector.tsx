@@ -221,6 +221,34 @@ function NodeProperties({
               <span className="block text-muted">{t('fileToolsHint')}</span>
             </span>
           </label>
+          {role.allowedWorkTools.includes('write_file') ? (
+            <label htmlFor={`${id}-editing`} className="flex flex-col gap-1 text-xs font-medium">
+              {t('editingMode')}
+              <select
+                id={`${id}-editing`}
+                value={role.editingMode ?? 'pi'}
+                onChange={(e) =>
+                  update(node.id, { editingMode: e.target.value as 'pi' | 'hashline' })
+                }
+                className={field}
+              >
+                <option value="pi">{t('editingModePi')}</option>
+                <option value="hashline">{t('editingModeHashline')}</option>
+              </select>
+              <span className="font-normal text-muted">{t('editingModeHint')}</span>
+            </label>
+          ) : null}
+          <label className="flex items-start gap-2 text-xs">
+            <input
+              type="checkbox"
+              checked={role.allowedWorkTools.includes('run_command')}
+              onChange={(e) => update(node.id, { runCommand: e.target.checked })}
+            />
+            <span>
+              <span className="font-medium">{t('runCommand')}</span>
+              <span className="block text-muted">{t('runCommandHint')}</span>
+            </span>
+          </label>
           <label className="flex items-start gap-2 text-xs">
             <input
               type="checkbox"
@@ -230,6 +258,58 @@ function NodeProperties({
             />
             <span>{t('teamPlanOwner')}</span>
           </label>
+          <label className="flex items-start gap-2 text-xs">
+            <input
+              type="checkbox"
+              checked={role.allowedWorkTools.includes('generate_image')}
+              onChange={(event) => update(node.id, { generateImage: event.target.checked })}
+            />
+            <span>
+              <span className="font-medium">{t('generateImage')}</span>
+              <span className="block text-muted">{t('generateImageHint')}</span>
+            </span>
+          </label>
+          {role.allowedWorkTools.includes('generate_image') ? (
+            <div className="flex flex-col gap-1 text-xs font-medium">
+              <label htmlFor={`${id}-image-profile`}>{t('imageProfile')}</label>
+              <input
+                id={`${id}-image-profile`}
+                value={role.imageProfile ?? ''}
+                onChange={(event) => update(node.id, { imageProfile: event.target.value || null })}
+                {...session}
+                className={field}
+                required
+                aria-describedby={`${id}-image-profile-hint`}
+              />
+              <span id={`${id}-image-profile-hint`} className="font-normal text-muted">
+                {t('imageProfileHint')}
+              </span>
+            </div>
+          ) : null}
+          <details className="text-xs">
+            <summary className="cursor-pointer font-medium text-muted">{t('previews')}</summary>
+            <div className="mt-2 flex flex-col gap-3">
+              {(
+                [
+                  ['previewFile', 'preview_file'],
+                  ['previewApp', 'preview_app'],
+                  ['previewAction', 'preview_action'],
+                ] as const
+              ).map(([key, tool]) => (
+                <label key={key} className="flex items-start gap-2 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={role.allowedWorkTools.includes(tool)}
+                    onChange={(event) => update(node.id, { [key]: event.target.checked })}
+                  />
+                  <span>
+                    <span className="font-medium">{t(key)}</span>
+                    <span className="block text-muted">{t(`${key}Hint`)}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </details>
           <details className="text-xs">
             <summary className="cursor-pointer font-medium text-muted">{t('advanced')}</summary>
             <div className="mt-2 flex flex-col gap-3">

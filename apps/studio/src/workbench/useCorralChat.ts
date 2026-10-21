@@ -6,17 +6,21 @@ import { readRunView } from './readRunView.ts';
 
 /** Reading another turn must not replace the active run's command/retry state. */
 export function useCorralRun(runId: string, live: boolean, details: boolean) {
-  const { transport, readHistory, session: shared } = useServices();
+  const { transport, readHistory, runFor, retainRun } = useServices();
   const own = useMemo(() => {
     void runId;
     return createRunSession(transport);
   }, [transport, runId]);
   // WorkTab owns the live store and its transport. A card may mount before that owner's
   // open() resolves; starting an independent subscription during that gap duplicates it.
-  const store = live ? shared : own;
+  const store = live ? runFor(runId) : own;
   const readDetails = !live && details;
   useEffect(() => {
-    if (live) return;
+    if (live) {
+      const release = retainRun(runId);
+      void store.getState().open(runId);
+      return release;
+    }
     let current = true;
     void readRunView(transport, readHistory, runId, readDetails).then(
       (view) => {
@@ -38,7 +42,7 @@ export function useCorralRun(runId: string, live: boolean, details: boolean) {
       current = false;
       own.getState().dispose();
     };
-  }, [own, runId, transport, readHistory, live, readDetails]);
+  }, [own, store, runId, transport, readHistory, live, readDetails, retainRun]);
   useEffect(() => () => own.getState().dispose(), [own]);
   const state = useStore(store);
   return {

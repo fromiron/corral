@@ -26,6 +26,7 @@ import { workspaceRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
 import { TeamDraftDialog } from '../TeamDraftDialog.tsx';
 import { createFromTemplate, WORKSPACE_TEMPLATES } from '../templates.ts';
+import { ProjectDocuments } from '../workbench/ProjectDocuments.tsx';
 import { isSendKey, usePreferences } from '../workbench/preferences.ts';
 import { writeDraft } from '../workbench/sessionDraft.ts';
 import { InboxSection, WorkFolderSection } from './FilesViews.tsx';
@@ -170,11 +171,7 @@ export function WorkspacePage() {
             : t('notPersistent')}{' '}
         {t('importHint')}
       </p>
-      <GettingStarted
-        corrals={totals.corrals}
-        runs={totals.runs}
-        onDraft={() => setDrafting(true)}
-      />
+      <p className="text-sm text-muted">{t('optionalCorralsHint')}</p>
       {corrals.length === 0 ? (
         <div className="flex flex-col gap-1 rounded-lg border border-dashed border-line p-4">
           <p className="text-sm font-medium">{t('empty')}</p>
@@ -364,12 +361,15 @@ export function WorkspacePage() {
           <div className="mx-auto flex max-w-3xl flex-col gap-6 px-6 pt-10 pb-12">
             <ProjectHeader project={project} onError={(message) => setErrors([message])} />
             {archived ? null : (
-              <StartSession
-                key={`${projectId}:${newSession ? 'new' : 'start'}`}
-                focus={Boolean(newSession)}
-                projectId={projectId}
-                corrals={corrals}
-              />
+              <>
+                <StartSession
+                  key={`${projectId}:${newSession ? 'new' : 'start'}`}
+                  focus={Boolean(newSession)}
+                  projectId={projectId}
+                  corrals={corrals}
+                />
+                <GettingStarted runs={totals.runs} projectId={projectId} />
+              </>
             )}
             <InboxSection projectId={projectId} />
             {errors.length > 0 ? (
@@ -388,7 +388,12 @@ export function WorkspacePage() {
             <ProjectTabs
               sessions={<SessionList sessions={sessions} runs={runs} />}
               teams={teamsPanel}
-              folder={<WorkFolderSection projectId={projectId} />}
+              folder={
+                <>
+                  <WorkFolderSection projectId={projectId} />
+                  <ProjectDocuments key={projectId} projectId={projectId} />
+                </>
+              }
               runs={runsPanel}
               counts={{
                 sessions: sessions.filter((x) => !x.archivedAt).length,
@@ -425,18 +430,18 @@ function ProjectTabs({
 }) {
   const t = useTranslations('Projects');
   const location = useRouterState({ select: (s) => s.location.hash });
+  const navigate = useNavigate({ from: '/projects/$projectId' });
   const tabs: ProjectTab[] = ['sessions', 'teams', 'folder', 'runs'];
   const [saved, setTab] = useRemembered<ProjectTab | null>(`corral:project-tab:${projectId}`, null);
-  // A link to #corrals (the team library) opens the teams tab. Until the person picks a tab,
-  // a project without sessions opens on its teams: setting one up is the next step there.
+  // A saved tab or an explicit library link is an intentional choice. First visits start
+  // with conversations; designing a Corral is never a prerequisite for sending a request.
   const tab: ProjectTab =
-    location === 'corrals'
-      ? 'teams'
-      : saved && tabs.includes(saved)
-        ? saved
-        : counts.sessions > 0
-          ? 'sessions'
-          : 'teams';
+    location === 'corrals' ? 'teams' : saved && tabs.includes(saved) ? saved : 'sessions';
+  const chooseTab = (value: ProjectTab) => {
+    setTab(value);
+    if (location === 'corrals')
+      void navigate({ hash: '', search: (search) => search, replace: true });
+  };
   const refs = useRef<Partial<Record<ProjectTab, HTMLButtonElement | null>>>({});
   const count = (value: ProjectTab) =>
     value === 'folder' ? null : counts[value as 'sessions' | 'teams' | 'runs'];
@@ -455,13 +460,13 @@ function ProjectTabs({
             aria-selected={tab === value}
             aria-controls={`project-panel-${value}`}
             tabIndex={tab === value ? 0 : -1}
-            onClick={() => setTab(value)}
+            onClick={() => chooseTab(value)}
             onKeyDown={(event) => {
               const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
               if (!step) return;
               event.preventDefault();
               const next = tabs[(index + step + tabs.length) % tabs.length] as ProjectTab;
-              setTab(next);
+              chooseTab(next);
               refs.current[next]?.focus();
             }}
             className={`-mb-px flex items-center gap-1.5 border-b-2 px-2 pb-2 text-ui transition-colors ${tab === value ? 'border-text font-medium text-text' : 'border-transparent text-muted hover:text-text'}`}
@@ -633,8 +638,8 @@ function MoveCorral({
 }
 
 /**
- * Starting work (Workbench polish P1): one box for what the session is for, and its team.
- * The purpose becomes the first request's draft; nothing runs until it is sent there.
+ * Start a conversation directly. Optional details preserve the previous draft and selected
+ * Corral; the purpose becomes an editable first request and nothing runs until it is sent.
  */
 function StartSession({
   focus,
@@ -666,7 +671,7 @@ function StartSession({
   draftRef.current = draft;
   const objective = typeof draft?.objective === 'string' ? draft.objective : '';
   const corralId = typeof draft?.corralId === 'string' ? draft.corralId : '';
-  const [detailsOpen, setDetailsOpen] = useState(Boolean(title || objective));
+  const [detailsOpen, setDetailsOpen] = useState(Boolean(title || objective || corralId));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // UX-09: a suggested team (a template) can be chosen here; it is made when the session starts,
@@ -678,6 +683,9 @@ function StartSession({
   const chooseTeam = (available: CorralSummary[]) =>
     available.some((c) => c.corralId === corralId) || isSuggested(corralId) ? corralId : '';
   const team = chooseTeam(corrals);
+  const selectedTeamName = isSuggested(team)
+    ? tw(`template.${team.slice(9) as (typeof suggested)[number]}.name`)
+    : corrals.find((corral) => corral.corralId === team)?.name;
   useEffect(() => {
     active.current = true;
     return () => {
@@ -690,6 +698,7 @@ function StartSession({
       if (creating.current) return;
       const id = (event as CustomEvent<string>).detail;
       saveDraft({ title, objective, corralId: `template:${id}` });
+      setDetailsOpen(true);
       startButton.current?.scrollIntoView({ block: 'center' });
       startButton.current?.focus();
     };
@@ -755,36 +764,40 @@ function StartSession({
       aria-label={t('new')}
       className="flex flex-col gap-4 rounded-xl fill-group p-4"
     >
-      <div>
-        <h2 className="text-sm font-semibold">{t('new')}</h2>
-        <p className="mt-1 text-xs text-muted">{n('firstRequestHint')}</p>
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <Select
-          variant="chip"
-          disabled={saving}
-          label={t('teamLabel')}
-          value={team}
-          onValueChange={(value) => {
-            if (!creating.current) saveDraft({ title, objective, corralId: value });
-          }}
-          options={[
-            { value: '', label: t('autoTeam') },
-            ...corrals.map((c) => ({ value: c.corralId, label: c.name })),
-            ...suggested.map((id) => ({
-              value: `template:${id}`,
-              label: tw('suggestedTeam', { name: tw(`template.${id}.name`) }),
-              hint: tw(`template.${id}.body`),
-            })),
-          ]}
-        />
-        <Button ref={startButton} type="submit" size="sm" className="ml-auto" disabled={saving}>
-          {t('create')}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <h2 className="text-base font-semibold">{tw('chatHeading')}</h2>
+          <p className="mt-1 text-sm text-muted">{tw('chatHint')}</p>
+        </div>
+        <Button ref={startButton} type="submit" size="sm" disabled={saving}>
+          {tw('startChat')}
         </Button>
       </div>
       <details open={detailsOpen} onToggle={(event) => setDetailsOpen(event.currentTarget.open)}>
-        <summary className="cursor-pointer text-xs text-muted">{n('sessionDetails')}</summary>
+        <summary className="cursor-pointer text-xs text-muted">
+          <span>{n('sessionDetails')}</span>
+          {selectedTeamName ? <span className="ml-2 text-text">{selectedTeamName}</span> : null}
+        </summary>
         <div className="mt-3 flex flex-col gap-2">
+          <p className="text-xs text-muted">{tw('optionalCorralsHint')}</p>
+          <Select
+            variant="chip"
+            disabled={saving}
+            label={t('teamLabel')}
+            value={team}
+            onValueChange={(value) => {
+              if (!creating.current) saveDraft({ title, objective, corralId: value });
+            }}
+            options={[
+              { value: '', label: t('autoTeam') },
+              ...corrals.map((c) => ({ value: c.corralId, label: c.name })),
+              ...suggested.map((id) => ({
+                value: `template:${id}`,
+                label: tw('suggestedTeam', { name: tw(`template.${id}.name`) }),
+                hint: tw(`template.${id}.body`),
+              })),
+            ]}
+          />
           <label
             htmlFor={`new-session-title-${projectId}`}
             className="flex flex-col gap-1 text-xs text-muted"

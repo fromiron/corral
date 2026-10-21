@@ -1,4 +1,4 @@
-import { ImageInput } from '@corral/contracts';
+import { type BinaryArtifact, ImageInput } from '@corral/contracts';
 import { artifactLineage, type RunProjection } from '@corral/core';
 import { type ReactNode, useEffect, useId, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -73,8 +73,9 @@ export function ArtifactViewer({
         Object.values(projection.toolCalls).some((value) => value.resultRef === shownId)),
   );
   const canLoad = Boolean(artifact) || knownReference;
+  const binary = artifact?.media;
   useEffect(() => {
-    if (!canLoad) return;
+    if (!canLoad || binary) return;
     let active = true;
     void session
       .getState()
@@ -86,7 +87,7 @@ export function ArtifactViewer({
     return () => {
       active = false;
     };
-  }, [session, shownId, canLoad]);
+  }, [session, shownId, canLoad, binary]);
   useEffect(() => {
     if (comparing && parentId) void session.getState().loadArtifact(parentId);
   }, [session, comparing, parentId]);
@@ -261,7 +262,7 @@ export function ArtifactViewer({
       {review ? (
         <ReviewSummary review={review} target={link(review.targetVersionId)} artifactLink={link} />
       ) : null}
-      {parentId ? (
+      {parentId && !binary ? (
         <button
           type="button"
           onClick={() => setComparingId(comparing ? null : shownId)}
@@ -270,7 +271,15 @@ export function ArtifactViewer({
           {comparing ? t('hideCompare') : t('compare', { version: parentId })}
         </button>
       ) : null}
-      {comparing ? (
+      {binary && projection ? (
+        <GeneratedImage
+          key={shownId}
+          runId={projection.runId}
+          versionId={shownId}
+          name={artifact.name}
+          media={binary}
+        />
+      ) : comparing ? (
         diff === null ? (
           <p className="text-xs text-muted">{t('loading')}</p>
         ) : (
@@ -301,6 +310,63 @@ export function ArtifactViewer({
         <SafeMarkdown text={text} />
       )}
     </section>
+  );
+}
+
+export function GeneratedImage({
+  runId,
+  versionId,
+  name,
+  media,
+}: {
+  runId: string;
+  versionId: string;
+  name: string;
+  media: BinaryArtifact;
+}) {
+  const t = useTranslations('Artifact');
+  const [failed, setFailed] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const url = `/api/v1/runs/${encodeURIComponent(runId)}/artifact-versions/${encodeURIComponent(versionId)}/media`;
+  return (
+    <figure className="flex min-w-0 flex-col gap-2" data-testid="generated-image">
+      {failed ? (
+        <p role="alert" className="text-sm text-danger">
+          {t('imageUnavailable')}
+        </p>
+      ) : (
+        <img
+          src={url}
+          alt={name}
+          width={media.width}
+          height={media.height}
+          className="max-h-[70vh] max-w-full self-center object-contain"
+          onLoad={() => setLoaded(true)}
+          onError={() => setFailed(true)}
+        />
+      )}
+      {!failed && !loaded ? (
+        <p role="status" className="text-xs text-muted">
+          {t('loading')}
+        </p>
+      ) : null}
+      <figcaption className="flex flex-wrap items-center justify-between gap-2 text-xs">
+        <span>
+          {media.width} × {media.height} · {media.mime} · {media.bytes.toLocaleString()} B
+        </span>
+        <a
+          href={`${url}?download=1`}
+          download={`${versionId}.png`}
+          className="rounded fill-control px-2 py-1"
+        >
+          {t('downloadImage')}
+        </a>
+      </figcaption>
+      <details className="text-xs text-muted">
+        <summary className="cursor-pointer">{t('imageIntegrity')}</summary>
+        <p className="break-all font-mono">SHA-256: {media.sha256}</p>
+      </details>
+    </figure>
   );
 }
 

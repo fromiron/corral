@@ -55,9 +55,18 @@ import {
   withProtectedContext,
 } from './request-record.ts';
 import { brokerParameters, describeTool } from './static-tools.ts';
+import { corralToolResultContent } from './tool-result-content.ts';
 import { normalizeUsage } from './usage.ts';
 import type { WorkerDeps } from './worker.ts';
-import { parametersOf, promptSections, TOOL_TEXT, textOf, userPrompt } from './worker-tools.ts';
+import {
+  parametersOf,
+  parentQuestionsText,
+  promptSections,
+  replyCompletesAssignment,
+  TOOL_TEXT,
+  textOf,
+  userPrompt,
+} from './worker-tools.ts';
 
 export interface SdkWorkerDeps extends WorkerDeps {
   /** Private execution directory; the process launcher also isolates HOME and jiti here. */
@@ -443,6 +452,21 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
               }
               if (permit.type !== 'permit' || cancelled || options?.signal?.aborted)
                 throw new Error('request refused');
+              if (
+                (requestPurpose === 'turn' || requestPurpose === 'retry') &&
+                permit.parentQuestions?.length
+              )
+                requestContext = {
+                  ...requestContext,
+                  messages: [
+                    ...requestContext.messages,
+                    {
+                      role: 'user',
+                      content: parentQuestionsText(permit.parentQuestions),
+                      timestamp: deps.now(),
+                    },
+                  ],
+                };
               preparingRequest = false;
               for (const [id, directive] of deferredSteers) {
                 if (!preparedDirectiveIds.includes(id)) steer(directive);
@@ -694,13 +718,10 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
             // Only the Coordinator's successful tool reply establishes completion.
             if (
               name === 'submit_result' ||
-              (name === 'reply' && start.assignment.kind === 'question')
+              (name === 'reply' && replyCompletesAssignment(start.assignment, reply.result ?? {}))
             )
               completionAccepted = true;
-            return {
-              content: [{ type: 'text', text: JSON.stringify(reply.result ?? {}) }],
-              details: reply.result ?? {},
-            };
+            return corralToolResultContent(name, reply.result ?? {});
           },
         };
       });
@@ -914,7 +935,11 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
                     !start.harness.allowedTools.includes(event.toolName))
                 )
                   return { block: true, reason: 'tool is not bound to this role' };
-                if (event.toolName === 'reply' && start.assignment.kind === 'question')
+                if (
+                  event.toolName === 'reply' &&
+                  start.assignment.kind === 'question' &&
+                  event.input.questionId === undefined
+                )
                   event.input.questionId = start.assignment.questionId;
                 try {
                   const args = cleanJson(event.input);

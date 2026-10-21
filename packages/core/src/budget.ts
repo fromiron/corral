@@ -1,6 +1,12 @@
-import type { EventPayload, RunEvent, RunLimits } from '@corral/contracts';
+import type { EventPayload, ImageGenerationProfile, RunEvent, RunLimits } from '@corral/contracts';
 
 export interface BudgetReservation {
+  image?: {
+    profileId: string;
+    reservedMicros: number;
+    actualMicros: number | null;
+    usage?: { inputTokens: number | null; outputTokens: number | null };
+  };
   modelCallId: string | null;
   scope: string;
   reserved: number;
@@ -9,6 +15,9 @@ export interface BudgetReservation {
 }
 
 export interface BudgetState {
+  imageSpentMicros?: number;
+  imageReservedMicros?: number;
+  imageUnknownOutstandingMicros?: number;
   spent: number;
   reserved: number;
   unknownOutstanding: number;
@@ -28,6 +37,13 @@ export function applyBudgetEvent(state: BudgetState, event: RunEvent): BudgetSta
       ...state,
       reserved: state.reserved + amount.outputTokens,
       modelCalls: state.modelCalls + amount.modelCalls,
+      ...(amount.image
+        ? {
+            imageSpentMicros: state.imageSpentMicros ?? 0,
+            imageReservedMicros: (state.imageReservedMicros ?? 0) + amount.image.costMicros,
+            imageUnknownOutstandingMicros: state.imageUnknownOutstandingMicros ?? 0,
+          }
+        : {}),
       reservations: {
         ...state.reservations,
         [reservationId]: {
@@ -36,6 +52,15 @@ export function applyBudgetEvent(state: BudgetState, event: RunEvent): BudgetSta
           reserved: amount.outputTokens,
           actual: null,
           status: 'reserved',
+          ...(amount.image
+            ? {
+                image: {
+                  profileId: amount.image.profileId,
+                  reservedMicros: amount.image.costMicros,
+                  actualMicros: null,
+                },
+              }
+            : {}),
         },
       },
     };
@@ -46,10 +71,15 @@ export function applyBudgetEvent(state: BudgetState, event: RunEvent): BudgetSta
   if (
     !row ||
     row.status === 'settled' ||
-    (row.status === 'unknown' && actual.outputTokens === null)
+    (row.status === 'unknown' &&
+      (row.image
+        ? actual.imageCostMicros == null &&
+          (!actual.imageUsage ||
+            JSON.stringify(actual.imageUsage) === JSON.stringify(row.image.usage))
+        : actual.outputTokens === null))
   )
     return state;
-  const unknown = actual.outputTokens === null;
+  const unknown = row.image ? actual.imageCostMicros == null : actual.outputTokens === null;
   return {
     ...state,
     spent: state.spent + (actual.outputTokens ?? 0),
@@ -58,12 +88,33 @@ export function applyBudgetEvent(state: BudgetState, event: RunEvent): BudgetSta
       state.unknownOutstanding +
       (unknown ? row.reserved : 0) -
       (row.status === 'unknown' ? row.reserved : 0),
+    ...(row.image
+      ? {
+          imageSpentMicros: (state.imageSpentMicros ?? 0) + (actual.imageCostMicros ?? 0),
+          imageReservedMicros:
+            (state.imageReservedMicros ?? 0) -
+            (row.status === 'reserved' ? row.image.reservedMicros : 0),
+          imageUnknownOutstandingMicros:
+            (state.imageUnknownOutstandingMicros ?? 0) +
+            (unknown ? row.image.reservedMicros : 0) -
+            (row.status === 'unknown' ? row.image.reservedMicros : 0),
+        }
+      : {}),
     reservations: {
       ...state.reservations,
       [reservationId]: {
         ...row,
         actual: actual.outputTokens,
         status: unknown ? 'unknown' : 'settled',
+        ...(row.image
+          ? {
+              image: {
+                ...row.image,
+                actualMicros: actual.imageCostMicros ?? null,
+                ...(actual.imageUsage ? { usage: actual.imageUsage } : {}),
+              },
+            }
+          : {}),
       },
     },
   };
@@ -73,17 +124,64 @@ export function settlementFor(
   state: BudgetState,
   reservationId: string,
   actual: number | null,
+  imageCostMicros?: number | null,
+  imageUsage?: { inputTokens: number | null; outputTokens: number | null },
 ): EventPayload<'budget.settled'> | null {
   if (actual !== null && (!Number.isSafeInteger(actual) || actual < 0))
     throw new RangeError('output usage must be a non-negative integer or null');
   const row = state.reservations[reservationId];
-  if (!row || row.status === 'settled' || (row.status === 'unknown' && actual === null))
+  if (imageCostMicros != null && (!Number.isSafeInteger(imageCostMicros) || imageCostMicros < 0))
+    throw new RangeError('image cost must be non-negative integer microdollars or null');
+  if (
+    imageUsage &&
+    Object.values(imageUsage).some(
+      (value) => value !== null && (!Number.isSafeInteger(value) || value < 0),
+    )
+  )
+    throw new RangeError('image usage must be non-negative integers or null');
+  if (
+    !row ||
+    row.status === 'settled' ||
+    (row.status === 'unknown' &&
+      (row.image
+        ? imageCostMicros == null &&
+          (!imageUsage || JSON.stringify(imageUsage) === JSON.stringify(row.image.usage))
+        : actual === null))
+  )
     return null;
   return {
     reservationId,
-    actual: { outputTokens: actual },
+    actual: {
+      outputTokens: actual,
+      ...(row.image
+        ? {
+            imageCostMicros: imageCostMicros ?? null,
+            ...(imageUsage ? { imageUsage } : {}),
+          }
+        : {}),
+    },
     unknownOutstanding: actual === null ? row.reserved : 0,
   };
+}
+
+export function admitImageRequest(
+  state: BudgetState,
+  limits: RunLimits,
+  profile: ImageGenerationProfile,
+): { ok: true; costMicros: number } | { ok: false } {
+  if (state.modelCalls >= limits.maxModelCalls) return { ok: false };
+  const costMicros = Math.ceil(profile.maxCostUsdPerCall * 1_000_000);
+  const rows = Object.values(state.reservations).filter(
+    (row) => row.image?.profileId === profile.profileId,
+  );
+  const charged = rows.reduce(
+    (sum, row) => sum + (row.image?.actualMicros ?? row.image?.reservedMicros ?? 0),
+    0,
+  );
+  return rows.length < profile.maxCallsPerRun &&
+    charged + costMicros <= costMicros * profile.maxCallsPerRun
+    ? { ok: true, costMicros }
+    : { ok: false };
 }
 
 export function admitModelRequest(

@@ -197,7 +197,7 @@
             ]
           },
           "allowedWorkTools": {
-            "maxItems": 8,
+            "maxItems": 13,
             "type": "array",
             "items": {
               "type": "string",
@@ -209,9 +209,25 @@
                 "read_file",
                 "write_file",
                 "delete_file",
-                "move_file"
+                "move_file",
+                "run_command",
+                "generate_image",
+                "preview_file",
+                "preview_app",
+                "preview_action"
               ]
             }
+          },
+          "imageProfile": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+          },
+          "editingMode": {
+            "type": "string",
+            "enum": [
+              "pi",
+              "hashline"
+            ]
           },
           "allowedCollaborationTools": {
             "maxItems": 8,
@@ -728,6 +744,10 @@
           "targetNodeId": {
             "type": "string",
             "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+          },
+          "parentQuestions": {
+            "type": "boolean",
+            "const": true
           }
         },
         "required": [

@@ -42,6 +42,11 @@ export const WorkTool = z.enum([
   'write_file',
   'delete_file',
   'move_file',
+  'run_command',
+  'generate_image',
+  'preview_file',
+  'preview_app',
+  'preview_action',
 ]);
 export const FILE_TOOLS = [
   'list_files',
@@ -74,7 +79,9 @@ export const AgentRole = z.strictObject({
   prompt: z.string().min(1).max(20000),
   modelProfile: Identifier,
   reasoning: ReasoningPolicy.optional(),
-  allowedWorkTools: z.array(WorkTool).max(8),
+  allowedWorkTools: z.array(WorkTool).max(13),
+  imageProfile: Identifier.optional(),
+  editingMode: z.enum(['pi', 'hashline']).optional(),
   allowedCollaborationTools: z.array(CollaborationTool).max(8),
   outputContract: OutputContract,
   harness: HarnessBindingRef.optional(),
@@ -162,6 +169,8 @@ export const CapabilityLink = z.strictObject({
   kind: z.enum(['delegate', 'question']),
   sourceNodeId: Identifier,
   targetNodeId: Identifier,
+  /** Delegate-only opt-in: its child may ask the existing current parent execution. */
+  parentQuestions: z.literal(true).optional(),
 });
 export type CapabilityLink = z.infer<typeof CapabilityLink>;
 

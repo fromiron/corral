@@ -45,6 +45,11 @@ export function AutoModelMenu({
       : value.reasoning?.mode === 'route'
         ? t('reasoningRoute')
         : tq(value.reasoning?.mode ?? 'legacy');
+  const visibleEffort =
+    showReasoning && (ultra || value.reasoning) ? (ultra ? tc('ultraMaximumShort') : effort) : null;
+  const description = [profile?.label ?? value.modelProfile, visibleEffort]
+    .filter(Boolean)
+    .join(' · ');
   const options = [
     { value: '', label: tq('legacy') },
     {
@@ -84,13 +89,15 @@ export function AutoModelMenu({
             className="min-w-0 max-w-full rounded-full"
             disabled={disabled}
             aria-label={t('autoModel')}
+            aria-description={description}
+            title={description}
           />
         }
       >
-        <span className="truncate">
+        <span className="max-w-48 truncate sm:max-w-72">
           {profile?.label ?? value.modelProfile}
-          {showReasoning ? ` · ${ultra ? tc('ultraMaximumShort') : effort}` : ''}
         </span>
+        {visibleEffort ? <span className="shrink-0"> · {visibleEffort}</span> : null}
         <ChevronDown className="size-3.5 shrink-0" />
       </MenuTrigger>
       <MenuPopup align="start">

@@ -37,6 +37,7 @@ import {
 } from '../workbench/editorDraft.ts';
 import { HarnessRoleSettings } from '../workbench/HarnessRoleSettings.tsx';
 import { LoopRecipeSettings } from '../workbench/LoopRecipeSettings.tsx';
+import { MarkdownAgentImport } from '../workbench/MarkdownAgentImport.tsx';
 import { RunHarnessOverrides } from '../workbench/RunHarnessOverrides.tsx';
 import { RunRoleOverrides } from '../workbench/RunRoleOverrides.tsx';
 import { TabRow } from '../workbench/TabRow.tsx';
@@ -342,6 +343,11 @@ function Editor({
               <EditorToolbar />
               {toolbar}
               <div className="ml-auto flex items-center gap-2">
+                <MarkdownAgentImport
+                  editor={editor}
+                  profiles={profiles}
+                  projectId={record.projectId}
+                />
                 <button
                   type="button"
                   onClick={exportFiles}

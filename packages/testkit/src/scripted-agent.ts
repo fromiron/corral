@@ -4,6 +4,7 @@ import type {
   AgentHost,
   AgentSettlement,
   AgentStartInput,
+  ParentQuestionMessage,
   RequestPermit,
 } from '@corral/contracts';
 
@@ -138,12 +139,28 @@ export class ScriptedAgentAdapter implements AgentAdapter {
           });
           if (!spawned.ok) return failed(spawned.error);
           checkpoint();
-          const awaited = await host.invokeTool({
-            name: 'await_tasks',
-            args: { taskIds: spawned.result.taskIds as string[] },
-          });
-          if (!awaited.ok) return failed(awaited.error);
-          const children = awaited.result.tasks as { artifactVersionIds: string[] }[];
+          let children: { artifactVersionIds: string[] }[];
+          for (;;) {
+            const awaited = await host.invokeTool({
+              name: 'await_tasks',
+              args: { taskIds: spawned.result.taskIds as string[] },
+            });
+            if (!awaited.ok) return failed(awaited.error);
+            const questions = (awaited.result.parentQuestions ?? []) as ParentQuestionMessage[];
+            if (!questions.length) {
+              children = awaited.result.tasks as { artifactVersionIds: string[] }[];
+              break;
+            }
+            for (const question of questions) {
+              const answer = await request(1, [`Child question (agent data): ${question.body}`]);
+              checkpoint();
+              const answered = await host.invokeTool({
+                name: 'reply',
+                args: { questionId: question.questionId, body: answer, evidenceRefs: [] },
+              });
+              if (!answered.ok) return failed(answered.error);
+            }
+          }
           for (const versionId of children.flatMap((c) => c.artifactVersionIds)) {
             const read = await host.invokeTool({
               name: 'read_artifact',

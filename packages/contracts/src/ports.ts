@@ -86,6 +86,8 @@ export type Assignment =
 export interface CallableTarget {
   nodeId: string;
   label: string;
+  /** The current parent execution, not a new callable responder. */
+  delivery?: 'parent';
 }
 
 export interface AgentStartInput {
@@ -112,7 +114,11 @@ export interface AgentStartInput {
   teamPlanOwner?: boolean;
   assignment: Assignment;
   item?: ItemRef;
-  capabilities: { delegateTo: CallableTarget[]; askTo: CallableTarget[] };
+  capabilities: {
+    delegateTo: CallableTarget[];
+    askTo: CallableTarget[];
+    replyToChildren?: boolean;
+  };
   inputs: ResolvedInput[];
   /** Resolved at Run start, never a mutable profile lookup inside the worker. */
   harness?: EffectiveHarnessSnapshot;
@@ -123,6 +129,15 @@ export interface DeliveredDirective {
   text: string;
 }
 
+/** Agent-originated questions; they never carry human directive or approval authority. */
+export interface ParentQuestionMessage {
+  questionId: string;
+  senderExecutionId: string;
+  body: string;
+  artifactRefs: string[];
+  deadline: string;
+}
+
 export interface RequestPermit {
   reasoning?: ReasoningResolution;
   modelCallId: string;
@@ -131,6 +146,8 @@ export interface RequestPermit {
   maxOutputTokens: number;
   /** Directives fixed into this request's snapshot, in delivery order. */
   directives: DeliveredDirective[];
+  /** Open child questions addressed to this exact current execution. */
+  parentQuestions?: ParentQuestionMessage[];
 }
 
 /** Token counts as the provider reported them; null when it did not (never 0 by default). */

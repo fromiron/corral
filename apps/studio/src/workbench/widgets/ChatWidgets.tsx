@@ -753,7 +753,8 @@ function WorkPlanStatusIcon({
 function RunActivity({ model }: { model: ChatWidgetModel }) {
   const t = useTranslations('Widgets');
   const ts = useTranslations('Status');
-  const { session } = useServices();
+  const { runFor, sessionFor } = useServices();
+  const session = model.runId ? runFor(model.runId) : sessionFor(model.sessionId);
   const sharedRunId = useStore(session, (state) => state.runId);
   const text = model.action.visible
     ? ''
@@ -765,7 +766,9 @@ function RunActivity({ model }: { model: ChatWidgetModel }) {
           ? t('activityUser')
           : model.activity.text === 'elapsed' || model.activity.text === 'record'
             ? ''
-            : ['paused', 'pausing', 'cancelling'].includes(model.activity.text)
+            : ['paused', 'pausing', 'cancelling', 'cancelled', 'interrupted'].includes(
+                  model.activity.text,
+                )
               ? ts(model.activity.text)
               : model.activity.text;
   const elapsed =

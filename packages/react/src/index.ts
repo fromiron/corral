@@ -1,6 +1,6 @@
 export { type DiffLine, diffLines } from './artifacts/diff.ts';
 export { ApprovalPanel } from './components/ApprovalPanel.tsx';
-export { ArtifactViewer, ReviewSummary } from './components/ArtifactViewer.tsx';
+export { ArtifactViewer, GeneratedImage, ReviewSummary } from './components/ArtifactViewer.tsx';
 export { BudgetInspector } from './components/BudgetInspector.tsx';
 export { CorralCanvas, NODE_DRAG_TYPE } from './components/CorralCanvas.tsx';
 export { EditorToolbar, isTextEditingEvent, TIDY_EVENT } from './components/EditorToolbar.tsx';
@@ -45,6 +45,7 @@ export {
   type RunCostEstimate,
 } from './run/cost.ts';
 export { type RunCanvasLayout, runCanvasLayout } from './run/layout.ts';
+export { createRunRecovery, type RecoveryStorage, type RunRecovery } from './run/recovery.ts';
 export {
   type ResultGroup,
   type ResultItem,

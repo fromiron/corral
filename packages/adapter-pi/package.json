@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./worker": "./src/worker.ts",
+    "./processes": "./src/processes/owned-process.ts",
     "./sdk-worker": "./src/sdk-worker.ts"
   },
   "scripts": {
