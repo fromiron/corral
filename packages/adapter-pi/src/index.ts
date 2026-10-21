@@ -36,5 +36,5 @@ export { createPreviewBrowserTransport, type PreviewBrowserOptions } from './mcp
 export { type ModelBroker, modelBridgeChannel } from './model-bridge.ts';
 export { modelReasoningCapabilities, reasoningRequest } from './reasoning.ts';
 
-export { sandboxChannel } from './sandbox-channel.ts';
+export { linuxSystemMounts, sandboxChannel } from './sandbox-channel.ts';
 export { staticToolDescriptors } from './static-tools.ts';

@@ -159,12 +159,14 @@ describe('owned verification runner', { timeout: 25000 }, () => {
         join(f.root, 'check.mjs'),
         `
       import assert from 'node:assert/strict';
+      import {execFileSync} from 'node:child_process';
       import fs from 'node:fs';
       import os from 'node:os';
       assert.equal(fs.existsSync(${JSON.stringify(privateFile)}), false);
       assert.equal(fs.existsSync(${JSON.stringify(join(f.root, '.git'))}), false);
       try { assert.equal(fs.readFileSync('.git', 'utf8'), ''); } catch (error) { assert.equal(error.code, 'EACCES'); }
       assert.equal(process.env.CORRAL_CHECK_SECRET, undefined);
+      assert.equal(execFileSync('node', ['-p', 'process.version'], {encoding:'utf8'}).trim(), process.version);
       assert.ok(Object.values(os.networkInterfaces()).flat().every((nic) => nic.internal));
       console.log('isolated fixture passed');
     `,

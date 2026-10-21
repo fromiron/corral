@@ -62,6 +62,8 @@ Gemini는 설치된 Pi 1.3.0에서 custom fetch를 거절하는 것을 네트워
 
 ## 남은 경계
 
+PR 준비 중 Ubuntu 24.04에서도 격리 검사를 실행했다. 시스템 `/usr/bin/node`가 없는 설치와 Arch와 다른 `/lib64` loader 경로를 가정한 문제가 재현됐다. 검사·Pi worker가 같은 시스템 mount 구성을 사용하고 실제 배포판의 library 경로를 보존하도록 수정했다. 검사 Node는 비어 있는 격리 전용 `/usr/local/bin`에 둔다. Ubuntu와 Arch에서 실제 namespace·Pi core/SDK worker·호스트 파일/네트워크 차단·종료 및 file broker 회귀 5개 파일 79개를 각각 통과했다. CI에는 bubblewrap 설치를 추가했다. 로컬 act에는 init·중첩 namespace·빠른 임시 파일시스템을 제공하고 CI worker 제한을 적용한다. 테스트를 skip하거나 timeout을 늘려 통과시키지 않았다.
+
 1. Gemini 단일 dispatch 지원은 상류 adapter 제약으로 남는다. Anthropic 실제 계정 호출·미지원 API 계열·Windows/macOS 실기는 별도 검증 대상이다.
 2. 외부 SSH·S3·실제 마이크/음성·이미지 생성은 사용할 대상·지원 인증/장치가 준비되면 검증한다. 코드 부재나 검증 성공으로 표시하지 않는다.
 3. C-114 후보 비교, 서명·업데이트 채널·전체 출시 게이트와 push/PR/merge는 이번 구현·커밋 범위에 포함하지 않았다.
