@@ -362,7 +362,6 @@ function ContextUsageChip({ model }: { model: ChatWidgetModel }) {
     </Popover>
   );
 }
-// Adapted from open-claude-ui gauge geometry; ratio is Corral's recorded request measurement.
 function ContextGauge({ percent, size = 16 }: { percent: number | null; size?: number }) {
   const radius = 7;
   const length = 2 * Math.PI * radius;
@@ -807,7 +806,6 @@ function RunActivity({ model }: { model: ChatWidgetModel }) {
     </div>
   );
 }
-// QuietDotsWave's staggered rhythm, with Corral colors and a reduced-motion stop.
 function QuietActivity() {
   return (
     <span

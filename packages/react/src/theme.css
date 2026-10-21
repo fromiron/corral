@@ -44,7 +44,7 @@
   }
 }
 
-/* T3's semantic control tokens mapped to Corral's palette; one theme for every surface. */
+/* Semantic control tokens on Corral's palette; one theme for every surface. */
 :root {
   --radius: 0.625rem;
   --control-radius: 0.5rem;

@@ -2,7 +2,7 @@
 
 - 태스크: C-048, C-049, C-050. 공개 데모와 접근성 동작은 C-046, C-047에 연결된다.
 - 요구: CRL-UX-002, CRL-DEV-003, CRL-DEV-004, CRL-DX-002.
-- 기준: [제품 스펙](../../Corral-Spec-v0.1.md) §10.3, [구현 플랜](../../Corral-Implementation-Plan-v0.1.md) §6 P9·§8.
+- 기준: [제품 스펙](../../docs/current/product-contract.md) §10.3, 구현 플랜 (Git `373764467a52:Corral-Implementation-Plan-v0.1.md`) §6 P9·§8.
 - 비목표: 자동 공개 배포, 비용 발생 공급자 호출 자동화, v0.2 DecisionProvider, v0.3 중첩 Corral, crash resume.
 
 ## 수용 조건

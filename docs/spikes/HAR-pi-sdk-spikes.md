@@ -1,7 +1,7 @@
 # H1 스파이크: Pi coding-agent SDK 경계 확인
 
 - 작성: Claude / 2026-10-17. 기준 브랜치는 `feat/harness-h1`(main `f17338f` 뒤)이다.
-- 관련 문서: [CR-018](../change-requests/CR-018-pi-standard-harness.md), ADR-027(제안), [구현 플랜 §6 H1](../plans/Personal-Harness-Implementation-Plan.md).
+- 관련 문서: [CR-018](../change-requests/CR-018-pi-standard-harness.md), ADR-027(제안), 구현 플랜 §6 H1 (Git `373764467a52:docs/plans/Personal-Harness-Implementation-Plan.md`).
 - 대상 버전: `@earendil-works/pi-coding-agent`·`pi-agent-core`·`pi-ai` **1.3.0**(정확 고정). `pi-coding-agent`는 `packages/adapter-pi`의 devDependency이고, 제품 실행 경로에는 아직 없다.
 - 실행 환경
   - fake provider: pi-ai `createFauxCore`

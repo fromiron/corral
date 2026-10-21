@@ -1,5 +1,7 @@
 # CR-019: broker 코딩 도구·자동 검증·제한된 개선 (R2)
 
+현재 상세 기준: [하네스 상세 계약](../current/harness-contract.md). 아래 원래 계획의 Git 참조는 승인 경위이며 현재 작업 목록은 [활성 계획](../plans/README.md)이다.
+
 - 상태: 구현·로컬 검증 완료, 2026-10-18. [검증 보고서](../evaluation/Personal-Harness-Validation-2026-10-18.md).
 - 기준: 개인 하네스 구현 플랜 H4–H6, CR-018, CR-012·013.
 - Pi `read/edit/write`의 공개 계약을 기존 파일 broker에 연결한다. 읽은 근거는 execution별로 보관하며 다른 실행의 읽기가 쓰기 권한을 대신하지 않는다. symlink·범위 밖 경로·변경된 hash는 거절한다.

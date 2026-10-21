@@ -1,5 +1,7 @@
 # CR-020: 항목 반복·MCP·codemode·LSP 변경 제안 (R3)
 
+현재 상세 기준: [하네스 상세 계약](../current/harness-contract.md). 아래 원래 계획의 Git 참조는 승인 경위이며 현재 작업 목록은 [활성 계획](../plans/README.md)이다.
+
 - 상태: 구현·로컬 검증 완료, 2026-10-18. [검증 보고서](../evaluation/Personal-Harness-Validation-2026-10-18.md).
 - 기준: 개인 하네스 구현 플랜 H7–H8, CR-018·019.
 - 항목별 작업은 분리된 입력과 부모 Run 예산·취소를 사용한다. 중첩 Loop 금지와 기존 위임 깊이를 보존한다. 같은 작업 복사본의 병렬 변경은 허용하지 않는다.

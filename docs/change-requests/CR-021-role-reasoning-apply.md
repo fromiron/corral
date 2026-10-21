@@ -1,7 +1,7 @@
 # CR-021: 역할별 추론 설정과 로컬 자동 판정의 실제 적용
 
 - 상태: 승인 — Bell의 2026-10-18 Oracle 플랜 전체 구현·실계정 검증·PR 병합 요청.
-- 기준: main `6ada359`, Oracle Pro 계획과 T3 `16918b57d675`, DeepSeek Harness `687f282e8625`, PI Desktop `e219a3e4c0e4`, Mixdog `81558aa42307`.
+- 기준: main `6ada359`, Oracle Pro 계획, DeepSeek Harness `687f282e8625`, Mixdog `81558aa42307`.
 - 추적: C-084, CRL-RSN-001~004, TC-RSN-001-H/N~004-H/N.
 
 ## 계약
@@ -20,4 +20,4 @@
 
 ## 검증과 완료
 
-문서·계약 → 실패 반례 실행 → 구현 → 관련 회귀 → 전체 gate → 실제 패키지 UI 검증 순서다. 수동 low/high와 실제 ONNX turn/tool-step auto가 Sol/Luna wire까지 도달해야 한다. 실계정 검증은 이번 사용자 opt-in과 초기 최대 48회에서 시작했으며, 스킬·hook 실사용 결함 재검증 중 사용자가 배치 호출 한도를 폐지했다. 필요한 확인만 수행하고 제품의 Run별 예산 제한은 유지한다. 모델 내부 추론량·판정 정확도·비용 절감은 배선 성공만으로 주장하지 않는다. 변경 계획과 진행은 `docs/plans/Reasoning-Implementation-Plan.md`에 기록한다.
+문서·계약 → 실패 반례 실행 → 구현 → 관련 회귀 → 전체 gate → 실제 패키지 UI 검증 순서다. 수동 low/high와 실제 ONNX turn/tool-step auto가 Sol/Luna wire까지 도달해야 한다. 실계정 검증은 이번 사용자 opt-in과 초기 최대 48회에서 시작했으며, 스킬·hook 실사용 결함 재검증 중 사용자가 배치 호출 한도를 폐지했다. 필요한 확인만 수행하고 제품의 Run별 예산 제한은 유지한다. 모델 내부 추론량·판정 정확도·비용 절감은 배선 성공만으로 주장하지 않는다. 변경 계획과 진행은 Git `373764467a52:docs/plans/Reasoning-Implementation-Plan.md`에 기록한다.

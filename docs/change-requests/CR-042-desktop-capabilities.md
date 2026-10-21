@@ -1,7 +1,9 @@
 # CR-042: Corral 데스크톱 기능 확장
 
+현재 상세 기준: [Desktop 상세 계약](../current/desktop-contract.md). 아래 원래 계획의 Git 참조는 승인 경위이며 현재 작업 목록은 [활성 계획](../plans/README.md)이다.
+
 - 상태: 구현 승인 — 2026-10-20, 사용자가 구현 계획을 검토한 대화에서 “구현해”라고 요청.
-- 기준: `ad0bb6d`; [구현 계획](../plans/Desktop-Capabilities-Implementation-Plan.md)의 ABS-01–15, I00–I17.
+- 기준: `ad0bb6d`; 구현 계획 (Git `373764467a52:docs/plans/Desktop-Capabilities-Implementation-Plan.md`)의 ABS-01–15, I00–I17.
 - 구현·검증 완료는 기능별 증거로 별도 기록한다. 이 CR은 완료 선언이 아니다.
 
 ## 확장 계약

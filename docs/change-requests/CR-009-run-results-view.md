@@ -3,8 +3,8 @@
 - 변경 ID / 제안자 / 날짜: CR-009 / Bell(제안 `CR-WB-001`), Claude(저장소 적용) / 2026-10-16
 - 상태: **승인**(Bell: "출력 패널에서 출력물을 확인하기 힘든 것 … 개선플랜을 작성 후 개선해", 2026-10-16. 로드맵 21번)
 - 연결 문서:
-  - [Workbench 개선 플랜](../plans/Workbench-Improvement-Plan.md) §3.1.
-  - 제안 [01 §6](../proposals/workbench-v0.1/01-Improvement-Spec.md)과 [02 §3](../proposals/workbench-v0.1/02-UX-Spec.md).
+  - Workbench 개선 플랜 (Git `373764467a52:docs/plans/Workbench-Improvement-Plan.md`) §3.1.
+  - 제안 01 §6 (Git `373764467a52:docs/proposals/workbench-v0.1/01-Improvement-Spec.md`)과 02 §3 (Git `373764467a52:docs/proposals/workbench-v0.1/02-UX-Spec.md`).
   - 스펙 §4.3 Run 화면, §10.2 안전한 표시(C-025).
 
 ## 기존 문구

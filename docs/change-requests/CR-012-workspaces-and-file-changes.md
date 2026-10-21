@@ -3,8 +3,8 @@
 - 변경 ID / 제안자 / 날짜: CR-012 / Bell(제안 `CR-WB-001`), Claude(저장소 적용) / 2026-10-16
 - 상태: **승인**(Bell /goal "개선플랜의 완성까지", 2026-10-16. Workbench 플랜 W3 = 제안 U2)
 - 연결 문서:
-  - [Workbench 개선 플랜](../plans/Workbench-Improvement-Plan.md).
-  - 제안 [01 §7–§8](../proposals/workbench-v0.1/01-Improvement-Spec.md), [03 §8–§9](../proposals/workbench-v0.1/03-Technical-Design.md).
+  - Workbench 개선 플랜 (Git `373764467a52:docs/plans/Workbench-Improvement-Plan.md`).
+  - 제안 01 §7–§8 (Git `373764467a52:docs/proposals/workbench-v0.1/01-Improvement-Spec.md`), 03 §8–§9 (Git `373764467a52:docs/proposals/workbench-v0.1/03-Technical-Design.md`).
   - ADR-019(자격 증명 격리), CR-010·CR-011.
 
 ## 기존 문구

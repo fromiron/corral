@@ -1,6 +1,6 @@
 # 개인 하네스 H2–H8 로컬 검증
 
-대상은 [구현 플랜](../plans/Personal-Harness-Implementation-Plan.md)의 R1·R2·R3다. H1 뒤 제품 경로를 연결했으며 Coordinator의 소유권·예산·승인·취소가 실행 완료를 결정한다. 이 문서는 이전 체크포인트와 최종 검증을 구별한다.
+대상은 구현 플랜 (Git `373764467a52:docs/plans/Personal-Harness-Implementation-Plan.md`)의 R1·R2·R3다. H1 뒤 제품 경로를 연결했으며 Coordinator의 소유권·예산·승인·취소가 실행 완료를 결정한다. 이 문서는 이전 체크포인트와 최종 검증을 구별한다.
 
 ## 구현 범위
 

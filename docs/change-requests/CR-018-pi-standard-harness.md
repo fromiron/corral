@@ -1,7 +1,9 @@
 # CR-018: 역할별 Pi 표준 스킬·확장 실행
 
-- 요청: Bell, 2026-10-17. 원안은 [Corral Personal Harness 구현 계획](../proposals/personal-harness-2026-10-17.md)이다.
-- 구현 플랜: [Personal-Harness-Implementation-Plan](../plans/Personal-Harness-Implementation-Plan.md).
+현재 상세 기준: [하네스 상세 계약](../current/harness-contract.md). 아래 원래 계획의 Git 참조는 승인 경위이며 현재 작업 목록은 [활성 계획](../plans/README.md)이다.
+
+- 요청: Bell, 2026-10-17. 원안은 Corral Personal Harness 구현 계획 (Git `373764467a52:docs/proposals/personal-harness-2026-10-17.md`)이다.
+- 구현 플랜: Personal-Harness-Implementation-Plan (Git `373764467a52:docs/plans/Personal-Harness-Implementation-Plan.md`).
 - 기준: `f17338f`(PR #54 병합).
 - 관련: ADR-005(agent-core worker), ADR-024(admission gate), C-052(worker 규칙), CR-012(파일 broker), CR-016(명령 레지스트리).
 - 결정: [ADR-027](../Decisions.md#adr-027-pi-coding-agent-sdk를-역할별-실행-방식으로-추가한다).
@@ -42,11 +44,11 @@ R2(검증·개선)와 R3(MCP·codemode·항목 반복)는 이 CR 범위가 아�
 
 | 문서 | 바꿀 내용 |
 |---|---|
-| `Corral-Spec-v0.1.md` §범위(111행) | "역할에 바인딩한 Pi 표준 스킬·확장(R1)"을 범위에 넣는다. MCP 확장 로딩, 셸/코딩, 파일 동시 수정은 계속 제외한다 |
+| `docs/current/product-contract.md` §범위(111행) | "역할에 바인딩한 Pi 표준 스킬·확장(R1)"을 범위에 넣는다. MCP 확장 로딩, 셸/코딩, 파일 동시 수정은 계속 제외한다 |
 | `docs/Technical-Design.md` 233행 | coding-agent SDK를 `pi-sdk` 실행 방식으로 쓴다. 자동 리소스 로더와 내장 셸·파일 도구는 쓰지 않는다 |
 | `docs/Decisions.md` ADR-005 | "ADR-027이 부분 대체"로 표시한다 |
 | `docs/Decisions.md` ADR-024 | Corral gate는 닫혀 있다. Pi 확장 hook은 worker 안에서만 돈다. 이 사실을 결과·제약에 덧붙인다 |
-| `docs/Dependencies-and-Sources.md` | coding-agent와 전이 의존의 버전·라이선스를 기록한다(H1에서 devDependency로 먼저 기록) |
+| Git `4881b6377963:docs/Dependencies-and-Sources.md` | coding-agent와 전이 의존의 버전·라이선스를 기록한다(H1에서 devDependency로 먼저 기록) |
 
 ## 반례 (플랜 §7의 TC-HAR)
 

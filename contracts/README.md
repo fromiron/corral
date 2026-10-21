@@ -1,16 +1,14 @@
-# 계약 초안 사용법
+# 계약·태스크 원장
 
-JSON Schema 4개는 **구현 전 seed contract**다. 현재 도구로 schema 문법과 첨부 fixture를 검사할 수 있지만, Corral의 실행기/권한/전이 검증을 구현한 것은 아니다.
+| 경로 | 역할 | 상태 해석 |
+|---|---|---|
+| `requirements.json` | 제품 요구 ID의 원장 | 요구 등록은 구현 완료가 아님 |
+| `backlog.json` | 태스크·의존성·완료 조건·구현 상태·증거 연결 | planned / in_progress / implemented. 환경별 실행 결과와 구분 |
+| `*.schema.json` | 초기 문서팩의 seed schema·예제 검사 입력 | 현재 runtime DTO나 생성 스키마의 정본이 아님 |
+| `event-catalog.json` | 초기 이벤트 설계 목록 | 현재 payload union 전체를 대신하지 않음 |
 
-- `corral-definition.schema.json`: 4종 노드와 역할·control/capability·기본 상한.
-- `command.schema.json`: Steer, pause/resume, cancel, 미래 patch, 승인, 조건부 restart.
-- `review.schema.json`: 검토 산출물의 구조. 대상/기준 ID의 실제 일치는 런타임이 검사.
-- `event-envelope.schema.json`: 봉투만 검사. 모든 event payload의 discriminated union은 C-005에서 구현.
-- `requirements.json`: 구현 요구의 원본 ID 목록.
-- `backlog.json`: 구현해야 할 태스크. 전부 planned.
+현재 도메인 타입과 검증의 원본은 [packages/contracts/src](../packages/contracts/src/), 생성 JSON Schema는 [packages/contracts/generated](../packages/contracts/generated/)다. `pnpm contracts:check`가 생성 결과 일치를 확인한다. 이 디렉터리의 seed schema와 별도로 손으로 맞추지 않는다.
 
-실행 전 compiler는 역할/포트/Loop/입력의 의미 검증을 추가해야 한다. JSON Schema만 통과했다고 실행 가능한 것으로 판정하지 않는다. `tools/validate_pack.py`의 구조 검사는 문서 팩 내부 예제의 일관성만 점검하며 제품 compiler를 대체하지 않는다.
+[테스트 카탈로그](../tests/test-catalog.json)의 `planned`와 `evidence: null`은 시나리오 선언 형식이다. 구현/실행 결과를 뜻하지 않으며, 모든 제품 테스트가 미구현이라는 의미도 아니다. [traceability](../tests/traceability.json)는 요구→태스크→TC 연결이다. 실행 PASS/FAIL과 mock/live·OS·commit은 [증거](../docs/evaluation/README.md)에 기록한다.
 
-P1에서 Zod를 계약의 canonical source로 만들고 JSON Schema를 생성한다. TypeScript DTO를 별도 손으로 재작성해서 세 가지 명세가 드리프트하지 않게 한다.
-
-`modelProfile`은 서버가 설정한 프로필 이름이다. 예제 `model-a/model-b`는 실제 provider model ID가 아니며 키·단가·도구 지원 정보를 제공하지 않는다. 실모델ID는 P0의 호환성 검사에서 선택한다.
+`pnpm spec:check`는 ID·의존 순환·schema/예제·문서 링크·TC 태그를 검사한다. 제품 compiler·권한·취소·E2E 통과를 대신하지 않는다. 현재 구현과 남은 일은 [상태표](../docs/status.md)에서 고른다.

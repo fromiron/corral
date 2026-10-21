@@ -1171,7 +1171,10 @@ describe('workspace configuration (C-062)', () => {
   });
 
   it('matches the Spec §9 table: defaults and hard caps', () => {
-    const spec = readFileSync(join(import.meta.dirname, '../../../Corral-Spec-v0.1.md'), 'utf-8');
+    const spec = readFileSync(
+      join(import.meta.dirname, '../../../docs/current/product-contract.md'),
+      'utf-8',
+    );
     const section = spec.slice(spec.indexOf('## 9.'), spec.indexOf('## 10.'));
     const row = (label: string) => {
       const line = section.split('\n').find((l) => l.startsWith(`| ${label}`));

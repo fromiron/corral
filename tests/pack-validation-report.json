@@ -3,7 +3,7 @@
   "requirements": 118,
   "tasks": 118,
   "plannedTestScenarios": 261,
-  "checksPassed": 1841,
+  "checksPassed": 1839,
   "result": "PASS",
   "checks": [
     "requirement IDs unique",
@@ -1201,8 +1201,6 @@
     "templates\\change-request.md code fences paired",
     "templates\\feature-spec.md code fences paired",
     "templates\\pull-request.md code fences paired",
-    "THIRD-PARTY-NOTICES\\Open-Claude-UI.md table separator at 19",
-    "THIRD-PARTY-NOTICES\\Open-Claude-UI.md code fences paired",
     "tools\\evaluation\\README.md code fences paired",
     "tools\\evaluation\\README.md link ../../docs/evaluation/Personal-Harness-Local-Fixture-Results.md",
     "specs\\001-canvas\\plan.md table separator at 5",

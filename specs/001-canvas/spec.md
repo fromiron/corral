@@ -4,7 +4,7 @@
 - 연결 요구: CRL-CAN-001–005, CRL-RUN-003(Loop 구조), CRL-DEV-001(명령·이벤트 계약), CRL-UX-001(키보드·IME), CRL-OBS-001(작업 공간)
 - 태스크: P0 C-001–C-004, C-051–C-054 (완료, [evidence/P0.md](evidence/P0.md)) · P1 C-005–C-010, C-056
 - 상태: accepted (2026-10-15)
-- 기준: [스펙](../../Corral-Spec-v0.1.md) §4.1–4.2, §5, [기술 설계](../../docs/Technical-Design.md) §4, §13
+- 기준: [스펙](../../docs/current/product-contract.md) §4.1–4.2, §5, [기술 설계](../../docs/Technical-Design.md) §4, §13
 - 비목표: Loop·Decision의 **실행**(P2 GraphRunner, P5 검토 루프), 서버 저장(P2), 실행 중 구조 변경, 자동 레이아웃
 
 ## 사용자 관측 동작

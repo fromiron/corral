@@ -8,7 +8,7 @@ import { useTranslations } from 'use-intl';
 import { usePreferences } from './preferences.ts';
 import { reviewSelection } from './reviewSelection.ts';
 
-// Public Pierre API only; T3's private package patch is intentionally not a dependency.
+// Public Pierre API only.
 const poolOptions = { workerFactory: () => new HighlightWorker(), poolSize: 2 };
 const highlighterOptions = {
   preferredHighlighter: 'shiki-js' as const,

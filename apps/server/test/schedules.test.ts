@@ -98,7 +98,7 @@ function setup() {
   };
 }
 
-describe('TC-ABS-08 schedules', () => {
+describe('[TC-ABS-008-H] [TC-ABS-008-N] schedules', () => {
   it('claims one due occurrence across duplicate pollers and saves the normal session entry', async () => {
     const f = setup();
     const schedule = await f.service.create(draft);

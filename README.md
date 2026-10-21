@@ -1,8 +1,8 @@
 # Corral
 
-**D&D로 설계하고, 자율 협업을 관찰하며, Reins로 실행 중인 팀을 조율하는 로컬 우선 AI 도구.**
+**대화로 작업을 시작하고, 필요한 팀을 D&D로 설계하며, Reins로 실행을 조율하는 로컬 우선 AI 도구.**
 
-React Studio, 명령·이벤트 Coordinator, SQLite 기록, 격리된 Pi worker, 모의 공개 데모를 포함한 TypeScript 모노레포다. 설계 자료와 실행된 검증 증거를 함께 관리한다. 테스트 목록은 통과 결과가 아니며, 현재 후보의 준비 상태는 [release gate](docs/Release.md)로 확인한다.
+React Studio, 명령·이벤트 Coordinator, SQLite 기록, Pi worker와 Electron Desktop을 포함한 TypeScript 모노레포다. 일반 대화에 Corral 제작을 먼저 요구하지 않으며, 직접 설계한 Corral도 선택해 사용할 수 있다. 승인 계약·구현·환경별 검증 상태는 구분한다.
 
 ## 실행
 
@@ -15,12 +15,29 @@ pnpm serve        # production Studio + 로컬 서버, 출력된 bootstrap 링�
 pnpm storybook    # 상태별 component와 접근성 검사
 ```
 
-`/demo`는 키나 로컬 서버 없이 모의 에이전트를 실행한다. 실제 모델 연결은 로컬 서버의 Models 설정에서 사용자가 완료한다(로그인, API 키, Codex CLI 로그인, Ollama 같은 OpenAI 호환 엔드포인트: [모델 연결](docs/Models.md)). provider credential은 서버 측 설정에 보관하며 Corral 정의나 이벤트에 포함하지 않는다. 공개 호스팅이나 npm 발행은 이 저장소에 포함된 실행 사실이 아니다.
+`/demo`는 키나 로컬 서버 없이 모의 에이전트를 실행한다. 실제 모델 연결은 사용자가 [모델 설정](docs/Models.md)에서 완료한다. credential은 서버 측 설정에 보관하며 Corral 정의나 이벤트에 포함하지 않는다. Desktop 실행·패키징 절차는 [Desktop 안내](apps/desktop/README.md)를 따른다. 공개 배포나 모든 플랫폼·공급자의 검증 완료를 뜻하지 않는다.
+
+## 문서
+
+개발 에이전트는 [공통 작업 규칙](AGENTS.md)을 먼저 읽고 [문서 지도](docs/README.md)에서 작업 범위를 고른다. `CLAUDE.md`는 공통 규칙을 가져오기만 한다.
+
+| 질문 | 읽을 문서 |
+|---|---|
+| 현재 제품 계약과 기본 흐름은? | [제품](docs/current/product.md), [Workbench](docs/current/workbench.md) |
+| 상태·실행·권한을 누가 소유하는가? | [구조](docs/current/architecture.md), [실행과 안전](docs/current/execution-and-safety.md) |
+| 모델·추론·Skill·API를 바꾸려면? | [모델과 리소스](docs/current/models-and-resources.md), [API](docs/current/api.md) |
+| 구현된 기능과 남은 일은? | [상태표](docs/status.md), [활성 계획](docs/plans/README.md) |
+| 장기 제안과 실제 검사 결과는? | [제안 지도](docs/proposals/README.md), [검증 기록 안내](docs/evaluation/README.md) |
+
+현재 문서만 작업 트리에 유지한다. 완료·대체된 계획과 초기 패키지는 Git 이력에서 조회하며 기본 개발 지침으로 읽지 않는다.
 
 ## 검증
 
 ```sh
 python -m pip install -r tools/requirements.txt
+pnpm spec:check
+pnpm contracts:check
+pnpm deps:check
 pnpm --filter @corral/studio exec playwright install --with-deps chromium firefox
 pnpm test
 pnpm build
@@ -29,32 +46,17 @@ pnpm test:performance
 pnpm release:gate
 ```
 
-일반 테스트·release gate는 유료 모델/검색을 호출하지 않는다. 실제 공급자 smoke에는 별도 opt-in과 상한이 있으며, `release:check`는 같은 후보의 live 증거가 없으면 실패한다. 자세한 절차는 [출시 증거](docs/Release.md), 장비·build hash·원본 sample은 [성능 측정](docs/Performance.md), 설계 판단과 미구현 범위는 [사례 문서](docs/Case-Study.md)를 참고한다.
+위 명령은 실행 절차이지 이 commit에서의 통과 증거가 아니다. 일반 테스트·release gate는 유료 모델/검색을 호출하지 않는다. 실제 공급자 smoke에는 별도 opt-in과 상한이 필요하며, `release:check`는 같은 후보의 live 증거를 요구한다. [테스트 전략](docs/Test-Strategy.md), [출시 절차](docs/Release.md), [성능 측정](docs/Performance.md)을 참고한다.
 
-## 구조와 명세
+## 구조와 라이선스
 
 | 위치 | 역할 |
 |---|---|
-| `apps/studio`, `packages/react` | 그래프 편집, 실행/산출물/지시 패널, 번역 메시지, Storybook |
-| `apps/server`, `packages/client` | loopback session, REST/SSE, 안전한 외부 입력 |
-| `packages/core`, `packages/contracts` | Coordinator, 예산·취소·version 규칙, Zod/JSON Schema |
-| `packages/storage-sqlite`, `packages/adapter-pi` | 기록·재열람, 실제 모델 worker |
-| `packages/cli`, `packages/testkit` | CLI와 결정적인 모의 agent/clock/ID |
-| `tools/release`, `tests/live` | 후보별 gate·라이선스·SPDX와 opt-in live 증거 |
+| `apps/studio`, `packages/react` | 프로젝트·세션·대화, 그래프 편집, Reins와 결과 UI |
+| `apps/desktop` | Electron 셸과 로컬 runtime 패키징 |
+| `apps/server`, `packages/client` | 설정·서비스, REST/SSE와 클라이언트 |
+| `packages/core`, `packages/contracts` | Coordinator와 계약·검증 |
+| `packages/storage-sqlite`, `packages/adapter-pi`, `packages/runner-langgraph` | 저장과 실행 어댑터 |
+| `packages/cli`, `packages/testkit`, `tools/release`, `tests/live` | CLI·테스트 도구·출시 검사 |
 
-- [제품·실행 스펙](Corral-Spec-v0.1.md), [구현 플랜](Corral-Implementation-Plan-v0.1.md), [추가 태스크와 의존](docs/plans/Corral-Implementation-Plan-v0.2-Supplement.md)
-- [기술 설계](docs/Technical-Design.md), [API 계약](docs/API-Contract.md), [ADR](docs/Decisions.md)
-- [테스트 전략](docs/Test-Strategy.md), [추적 매트릭스](tests/traceability.json), [P6–P9 셀프 리뷰 수정 근거](specs/001-canvas/evidence/review-fixes.md)
-- [선정 근거](docs/Dependencies-and-Sources.md), [고정 버전 기록](docs/dependency-lock.json), [MIT 라이선스](LICENSE)
-
-MVP 범위는 D&D·협업·제한된 Loop·subagents·Reins다. v0.2에서 추가된 기능:
-
-- 모델 연결: ChatGPT 로그인, Codex CLI 로그인 읽기 전용 재사용, 화면에서 넣는 API 키, Ollama 같은 OpenAI 호환 엔드포인트 ([모델 연결](docs/Models.md))
-- 목표 한 줄에서 팀 초안 만들기([CR-006](docs/change-requests/CR-006-goal-team-draft.md)), 이전 결과·버전에서 새 Run 시작([CR-007](docs/change-requests/CR-007-new-run-from-version.md))
-- Run 결과 화면: 모든 최종 결과·중간 산출물·부분 결과를 넓게 읽고 복사·내려받기, HTML 결과는 격리된 미리보기([CR-009](docs/change-requests/CR-009-run-results-view.md))
-- 프로젝트: 팀과 Run을 일별로 나누고 헤더에서 전환, 팀 이동·보관([CR-010](docs/change-requests/CR-010-projects.md))
-- 실행별 대화 보기, 문장으로 읽는 Timeline, 명령 팔레트(⌘K), 한국어 UI
-- `corral exec`·`corral eval`로 Studio 없이 실행·비교 ([평가](docs/Evaluation.md))
-- 추론 강도(reasoning_effort) 판정 관찰 모드: 로컬 규칙과 로컬 ONNX 모델, 요청에는 적용하지 않음 ([CR-003](docs/change-requests/CR-003-admission-hooks-effort-observe.md))
-
-Corral 중첩, 판정 적용, crash resume은 후속 범위이며 현재 기능으로 표시하지 않는다. 진행 상황은 [v0.2 실행 로드맵](docs/plans/Roadmap-v0.2-Execution.md)에 있다.
+[MIT 라이선스](LICENSE)를 사용한다. 실제 의존성 기록은 [dependency lock](docs/dependency-lock.json), 차용물의 고지는 [THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES) 및 각 번들 디렉터리에 있다. 과거 참고 제품의 동작을 Corral의 현재 계약으로 취급하지 않는다.

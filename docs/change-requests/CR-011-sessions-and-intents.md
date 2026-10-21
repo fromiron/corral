@@ -3,8 +3,8 @@
 - 변경 ID / 제안자 / 날짜: CR-011 / Bell(제안 `CR-WB-001`), Claude(저장소 적용) / 2026-10-16
 - 상태: **승인**(Bell /goal: "개선플랜의 완성까지 … 바로 머지해버려도 됨", 2026-10-16. 로드맵 23·24번)
 - 연결 문서:
-  - [Workbench 개선 플랜](../plans/Workbench-Improvement-Plan.md) W2.
-  - 제안 [01 §5.2–§5.5](../proposals/workbench-v0.1/01-Improvement-Spec.md)과 [02 §6](../proposals/workbench-v0.1/02-UX-Spec.md).
+  - Workbench 개선 플랜 (Git `373764467a52:docs/plans/Workbench-Improvement-Plan.md`) W2.
+  - 제안 01 §5.2–§5.5 (Git `373764467a52:docs/proposals/workbench-v0.1/01-Improvement-Spec.md`)과 02 §6 (Git `373764467a52:docs/proposals/workbench-v0.1/02-UX-Spec.md`).
   - [CR-007](CR-007-new-run-from-version.md)(이전 결과에서 새 Run), [CR-010](CR-010-projects.md)(프로젝트).
 
 ## 제안

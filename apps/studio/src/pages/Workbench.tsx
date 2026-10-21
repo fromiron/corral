@@ -103,7 +103,7 @@ function Resizer({
 type Area = 'main' | 'panel';
 
 /**
- * T3's main-column / docked-panel composition. App navigation is owned by RootLayout; the page
+ * Main column and docked panel. App navigation is owned by RootLayout; the page
  * owns whether the panel is open (it is closed until asked for) and its tabs, shown as the
  * panel's only header row.
  */
