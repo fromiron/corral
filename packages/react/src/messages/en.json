@@ -522,6 +522,8 @@
     "none": "Choose an event to see its details."
   },
   "Models": {
+    "loadFailed": "Could not load model settings. Check the connection and try again.",
+    "loading": "Loading model settings…",
     "heading": "Models",
     "intro": "Corral signs in through the provider’s own page. Your sign-in is kept on this computer, outside the workspace. Corral never shows, logs or exports the token.",
     "browserOnly": "Model settings need the local server. The in-browser demo always uses simulated agents.",

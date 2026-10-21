@@ -274,7 +274,7 @@ export const settingsRoute = createRoute({
       ? { section: search.section as 'general' | 'workspace' | 'shortcuts' | 'about' }
       : {}),
   }),
-  component: SettingsPage,
+  component: () => <SettingsPage section={settingsRoute.useSearch().section} />,
 });
 
 export const harnessSettingsRoute = createRoute({
@@ -331,18 +331,6 @@ export const modelSettingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/settings/models',
   validateSearch: validateSettingsSearch,
-  loader: async ({ context }) => {
-    const api = context.services.models;
-    if (!api) return { profiles: [], providers: [], catalog: [], config: null };
-    const [profiles, providers, catalog, config] = await Promise.all([
-      api.profiles(),
-      api.auth(),
-      api.catalog(),
-      // Simulated-only servers have no model config to edit.
-      api.config().catch(() => null),
-    ]);
-    return { profiles, providers, catalog, config };
-  },
   component: ModelSettingsPage,
 });
 

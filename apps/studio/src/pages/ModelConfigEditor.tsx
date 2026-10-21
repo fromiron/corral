@@ -6,10 +6,10 @@ import {
   type ProfileConfig,
 } from '@corral/client';
 import { Button, Select } from '@corral/react/ui';
-import { useRouter } from '@tanstack/react-router';
 import { useEffect, useId, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
+import { useModelSettingsRefresh } from '../workbench/modelSettings.tsx';
 import { ProfileContextDetails } from '../workbench/ProfileContextDetails.tsx';
 import { ApiKeyInput } from './ApiKeyInput.tsx';
 
@@ -28,7 +28,7 @@ export function ModelConfigEditor({
 }) {
   const t = useTranslations('ModelConfig');
   const { models } = useServices();
-  const router = useRouter();
+  const refresh = useModelSettingsRefresh();
   const headingId = useId();
   // Auth polling may refresh the parent while this draft still belongs to the earlier config.
   const [config, setConfig] = useState(initialConfig);
@@ -124,7 +124,7 @@ export function ModelConfigEditor({
         setEndpointKeys((keys) => ({ ...keys, [endpoint.uid]: '' }));
       }
       stage = 'refresh';
-      await router.invalidate();
+      await refresh();
       onDone();
     } catch (failure) {
       setError(

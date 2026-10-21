@@ -1,14 +1,14 @@
 import type { ModelCatalogMetadata, ModelImportPreview, ModelImportSource } from '@corral/client';
 import { Button, Select } from '@corral/react/ui';
-import { useRouter } from '@tanstack/react-router';
 import { useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
+import { useModelSettingsRefresh } from '../workbench/modelSettings.tsx';
 
 export function ModelImportPanel() {
   const t = useTranslations('ModelImport');
   const { models } = useServices();
-  const router = useRouter();
+  const refresh = useModelSettingsRefresh();
   const heading = useId();
   const [source, setSource] = useState<ModelImportSource>('claude-code');
   const [path, setPath] = useState('');
@@ -172,7 +172,7 @@ export function ModelImportPanel() {
                   setSelected({});
                   setCopyKeys({});
                   setMessage(result.keyFailures.length ? t('keyFailure') : t('saved'));
-                  await router.invalidate();
+                  await refresh();
                 })
               }
             >
