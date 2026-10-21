@@ -2266,7 +2266,7 @@
     ],
     "done": "명시 모델 배정·필수 교차 검토·제한된 병렬 위임·최대 추론 wire와 공유 예산·취소를 검증하고 UI/API/CLI 및 과거 snapshot을 보존한다.",
     "status": "in_progress",
-    "evidence": "docs/evaluation/Integrated-Improvement-M4-2026-10-19.md"
+    "evidence": "docs/evaluation/Quality-Completion-2026-10-21.md"
   },
   {
     "id": "C-119",

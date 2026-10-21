@@ -210,3 +210,5 @@ remain environment-specific verification limits.
 ## 2026-10-21 Linux candidate
 
 `8349579` runtime의 Linux unpacked recovery smoke와 실제 AppImage native flow가 통과했다. 해시·환경·반례·검증 범위는 [품질 작업 실행 기록](Quality-Completion-2026-10-21.md)에 있다. 이전 Windows 수치나 미검증 NSIS/macOS 항목을 이 결과로 대체하지 않는다.
+
+Skill 평가·채택·롤백 구현(`f7e233c`)을 포함한 `0a29ecb` 패키지도 다시 빌드하고 같은 두 smoke를 통과했다. 최신 AppImage SHA-256은 `074f22793d53ac522bd16a8cdc688f3822d70b09587fa8037ea7d71814e06492`다. 전체 출시 게이트·공개 배포 증거와 구별한다.

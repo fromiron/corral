@@ -41,7 +41,27 @@ Gemini는 설치된 Pi 1.3.0에서 custom fetch를 거절하는 것을 네트워
 
 서버/CLI/저장소/클라이언트 회귀 13개 파일 110개 통과. Linux Chromium production build E2E 3개 통과: 기존 Skill 설치/편집/기본값, SDK 확장 입력, 평가→본문 비교→검토→채택 응답 유실→같은 ID 재시도→새로고침→롤백. 평가 패널의 axe 검사 위반 0개. 전체 workspace TypeScript 검사 통과. 실제 모델 Skill 품질은 이 mock E2E와 별개다.
 
-## 남은 순서
+추가 파일 비교 경계까지 Skill service 9개 테스트 통과. `spec:check` 2,241개 검사·TC 297/297, `contracts:check`, `deps:check` 통과. 새 의존성은 추가하지 않았다. 구현 커밋은 `f7e233c`다.
 
-1. Gemini 단일 dispatch 지원은 상류 adapter 제약으로 남는다. Windows/macOS 실기는 별도 후속 작업.
-2. 사용 가능한 인증·외부 대상으로 실제 연동 검증. 준비되지 않은 환경은 명시한다.
+## 최종 실제 연결·패키지 검증
+
+이번 실행에서 기존 GPT OAuth·Hive API 연결 사용을 승인받았다. 사용자 비용 상한은 없으나 fixture 자체의 호출·시간 제한은 유지했다. 기본 자격 증명 저장소와 현재 workspace 설정을 값 노출 없이 확인했으며 SSH 등록 0개·S3 연결 0개·이미지 생성 프로필 없음이었다. OpenAI 인증은 OAuth이고 현재 Corral 음성/이미지 생성 경로가 요구하는 OpenAI API 키는 없었다. Hive의 등록 모델은 텍스트 모델이다. 임의 SSH/S3 대상이나 이미지/음성 endpoint를 만들지 않았다.
+
+| 실행 | 후보·결과 | 경계 |
+|---|---|---|
+| GPT Ultra | `0a29ecb`, 후보 SHA-256 `fdcf80d90f336b1ed5b5172561d16aacbcd124ef5a4872bc2587d66476441f0c`: 요청 9회, 종합·교차 검토 성공, 같은 후보 확인 | 텍스트 fixture이며 전체 코딩 품질 비교가 아님 |
+| Hive | 같은 후보, DeepSeek `deepseek-ai/deepseek-v4.1-flash-1017`, high wire·요청 2회·출력 249토큰·미확정 0, 설정 identity와 무작위 marker 일치 | provider 내부 모델 구현을 독립 증명하지 않음 |
+| GPT 기본 실행·취소 | `da363d2`, 후보 SHA-256 `e0e12baae67535103658aac167a1106ba089d60e29792e8980edbadca20d888e`: 두 모델 각 2회 성공, 1회 요청의 text chunk 3개 뒤 Coordinator 취소, payload 기록 1개 | 취소 응답의 미확정 256토큰은 비용 확정으로 바꾸지 않고 유지 |
+| GPT Skill 평가·채택·롤백 | 같은 후보: 4개 case·요청 9회·모두 성공·정답 일치·미확정 0. 한국어 positive에서 후보 Skill 전달, 일본어 negative에서 불필요 전달 없음. 실제 SDK worker/API 채택·롤백 통과 | Skill 없는 baseline의 positive 전달 실패는 예상된 결과. 이 작은 표본으로 일반 품질 향상이나 절차 준수를 주장하지 않음 |
+
+첫 live 묶음에서 GPT 기본 실행·Ultra·Hive는 성공했으나 기존 취소 테스트의 수동 host가 필수 provider payload 기록 기능을 제공하지 않아 요청 전 거절됐고, 신규 Skill 테스트는 bootstrap Origin 헤더 누락으로 403을 받았다. 보안 경계는 유지하고 취소 테스트를 실제 Coordinator 경로로 바꾸고 Origin을 보충했다. 후속 live 실행은 2개 파일 4개 테스트 통과, opt-in 안내용 비활성 테스트 1개 skip(52.76초). 실패를 제품 성공으로 재분류하지 않고 재실행 결과로 구별한다.
+
+최신 제품 소스(`f7e233c`, `0a29ecb`에서 패키징)의 Studio/runtime을 다시 빌드했다. 모듈 570개·SQLite/ONNX·두 worker handshake, 물리 파일 26,587개·링크 0개 확인. Linux unpacked DW-07 복구 smoke와 AppImage TC-ABS-007-H/004-H native smoke 모두 재통과했다. `0a29ecb`·`da363d2`의 변경은 live 테스트 코드이며 제품 런타임은 같다. 최신 AppImage는 343,197,853 bytes, SHA-256 `074f22793d53ac522bd16a8cdc688f3822d70b09587fa8037ea7d71814e06492`다. 파일은 `apps/desktop/release/Corral-0.1.0-x86_64.AppImage`이며 공개 배포하지 않았다.
+
+로컬 결과 파일: `tests/live/test-results/{ultra,skill-quality}.json`, `tests/live/.last-run.json`, `test-results/live/hive-endpoint.json`. 실행 후보와 완료 시 후보 일치를 확인했으며 이후 증거 문서 수정은 제품 코드 변경이 아니다. 브라우저 trace의 평가/채택/롤백 화면을 직접 확인했다.
+
+## 남은 경계
+
+1. Gemini 단일 dispatch 지원은 상류 adapter 제약으로 남는다. Anthropic 실제 계정 호출·미지원 API 계열·Windows/macOS 실기는 별도 검증 대상이다.
+2. 외부 SSH·S3·실제 마이크/음성·이미지 생성은 사용할 대상·지원 인증/장치가 준비되면 검증한다. 코드 부재나 검증 성공으로 표시하지 않는다.
+3. C-114 후보 비교, 서명·업데이트 채널·전체 출시 게이트와 push/PR/merge는 이번 구현·커밋 범위에 포함하지 않았다.
