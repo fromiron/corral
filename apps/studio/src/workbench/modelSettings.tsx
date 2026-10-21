@@ -53,8 +53,18 @@ export function useModelSettings(api: ModelsApi | null) {
   const pending = data.providers.some((p) => p.login && p.login.state !== 'failed');
   useEffect(() => {
     if (!pending) return;
-    const timer = setInterval(() => void refresh().catch(() => {}), 1500);
-    return () => clearInterval(timer);
+    let active = true;
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      await refresh().catch(() => {});
+      if (active) timer = setTimeout(() => void poll(), 1500);
+    };
+    // Schedule after settlement so a slow response cannot be invalidated by the next poll.
+    timer = setTimeout(() => void poll(), 1500);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
   }, [pending, refresh]);
   return { ...data, refresh, error, loading };
 }
