@@ -67,3 +67,11 @@ Bell의 후속 지시에 따라 다른 제공자도 Pi의 모델 카탈로그·`
 Bell이 지정한 [Hive DeepSeek V4.1 Flash](https://docs.thehive.ai/docs/deepseek-v41-flash)를 기존 사용자 정의 엔드포인트로 추가한다. 공식 CDN/VA1의 `/api/v3` 주소와 정확한 모델 ID에만 공개 모델 기본값·Pi 호환 metadata를 적용한다. 모델 이름만 같거나 다른 gateway 주소이면 추측하지 않는다. 명시한 context/output/reasoning/image 설정은 보존한다.
 
 Hive의 `reasoning_effort=none|low|high|max`, `max_completion_tokens`, SSE Accept를 사용한다. DeepSeek 직접 API의 `thinking`·`max_tokens`를 복사하지 않는다. 다른 endpoint/내장 provider·origin에 묶인 키·기존 config 형식은 유지하며 새 의존성/키 저장 경로는 만들지 않는다. 모델 기본값→실제 Pi 요청→SSE 사용량과 잘못된 cap/effort 거절을 필요한 실패 시험으로 확인한다. Hive의 실제 도구 호출·과금·접근 권한은 키와 한도를 정한 별도 live 시험 전까지 미검증이다.
+
+## C-118 코딩 검사 연결 (2026-10-21)
+
+새 version 1 Ultra에서 작업 사본이 있는 요청은 시작 시 종합 역할의 effective harness에 선택된 등록 검사를 recipe에 고정한다. 검사가 없거나 host가 격리 검사를 제공하지 않으면 모델 호출 전에 거절한다. 저장소 없는 텍스트 요청과 legacy Ultra는 기존 계약을 유지한다. writer 완료 후 서비스 정리를 마치고 종합 시작 전에 후보 tree를 고정한다. 각 종합본 제출에 Coordinator가 이 tree를 expectedTree로 검사에 전달하고, 고정 tree·config revision·실행 fingerprint·소유 execution/attempt/effect와 Linux 격리 증거를 확인한 뒤 별도 모델 검토에 전달한다. 실패는 수정, 오류/취소/불확정/오래된 tree/격리 증거 누락은 완료 차단이다.
+
+검사는 기존 worktree runner의 수명·취소·프로세스 정리를 재사용하며 bubblewrap의 별도 mount/network/PID namespace에서 실행한다. Git snapshot·checkout·status의 외부 filter를 비활성화한다. Git 사본과 읽기 전용 시스템 실행 파일만 노출하고 host home·키·Git 관리 디렉터리·네트워크를 제공하지 않는다. 의존성은 고정 tree에 포함된 것만 사용하며 host 프로젝트 node_modules를 암묵적으로 가져오거나 네트워크로 설치하지 않는다. 지원하지 않는 OS/실행 파일/의존성은 명시적 실패이고 비격리 fallback은 없다. 이 단계는 C-114 후보 병렬 구현 승인이 아니다.
+
+격리 fingerprint는 기존 등록 명령 identity에 bwrap·Node 바이너리 hash와 버전 있는 실제 mount/argv/env 정책을 포함한다. 실행 파일은 사본 내부·시스템 toolchain·현재 Node로 제한한다. bubblewrap의 전용 JSON 상태 채널에서 exec 이후 종료를 확인해야 pass/fail이 가능하며, PID namespace init 소멸을 확인하기 전에는 cleanup을 확정하지 않는다. 최종 tree 확인은 서비스 정리와 pause 경계 뒤에 수행한다. 외부 프로세스의 직접 쓰기를 완전히 잠그는 계약은 아니며, 검토/검사 증거의 정본은 기록된 후보 tree다.

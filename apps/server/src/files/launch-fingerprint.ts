@@ -3,6 +3,7 @@ import { constants } from 'node:fs';
 import { access, open, realpath, stat } from 'node:fs/promises';
 import { delimiter, isAbsolute, join, relative, resolve } from 'node:path';
 import { canonicalJson, type RegisteredCheck } from '@corral/contracts';
+import { isolatedCheckLaunch } from './check-isolation.ts';
 
 const LOCKFILES = [
   'package.json',
@@ -110,6 +111,32 @@ export async function launchFingerprint(
       files,
       ...(external.length ? { external } : {}),
       nodeVersion: process.version,
+    }),
+  };
+}
+
+export async function checkLaunchFingerprint(
+  directory: string,
+  revision: number,
+  command: RegisteredCheck,
+  isolation?: 'linux-bwrap',
+) {
+  const launch = await launchFingerprint(
+    directory,
+    revision,
+    command,
+    isolation ? ['/usr/bin/bwrap', process.execPath] : [],
+  );
+  if (!isolation) return launch;
+  const sandbox = await isolatedCheckLaunch(directory, launch.executable, command.argv.slice(1));
+  return {
+    ...launch,
+    fingerprint: hash({
+      launch: launch.fingerprint,
+      isolation,
+      policy: 1,
+      executable: sandbox.executable,
+      args: sandbox.args.map((arg) => (arg === resolve(directory) ? '<captured-tree>' : arg)),
     }),
   };
 }

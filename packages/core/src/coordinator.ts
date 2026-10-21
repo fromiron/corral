@@ -237,7 +237,8 @@ export interface FileTools {
   available(runId: string): boolean;
   pinCriteria?(runId: string, files: ReviewRecipeRevision['criteriaFiles']): Promise<void>;
   validateCriteria?(runId: string): Promise<boolean>;
-  currentTreeForRun?(runId: string): Promise<string | null>;
+  currentTreeForRun?(runId: string, isolation?: 'linux-bwrap'): Promise<string | null>;
+  isolatedChecksAvailable?(): boolean;
   planLsp?(
     input: import('@corral/contracts').LspExecution,
     cancellation: ToolCancellation,
@@ -396,12 +397,14 @@ interface Subscriber {
 }
 
 interface RecipeCandidate {
+  tree?: string;
   artifactVersionId: string;
   contentHash: string;
   checks: VerificationReport[];
   resultRefs: string[];
 }
 interface RecipeRun {
+  candidateTree?: string;
   recipe: ReviewRecipeRevision;
   cancelDeadline(): void;
   candidates: Map<string, RecipeCandidate>;
@@ -1690,6 +1693,17 @@ export class Coordinator {
         (candidate) => candidate.id === recipe.candidateNodeId,
       );
       const harness = candidate?.type === 'agent' ? harnesses[candidate.roleId] : undefined;
+      if (
+        autoRoute?.ultra &&
+        planned.definition.roles.some((role) => role.allowedWorkTools.includes('read_file'))
+      ) {
+        if (!this.files?.isolatedChecksAvailable?.() || !harness?.projectTools?.checkIds.length)
+          return refuse({
+            code: 'CAPABILITY_DENIED',
+            message: 'Repository Ultra requires selected project checks and Linux check isolation',
+          });
+        recipe.checkIds = [...harness.projectTools.checkIds];
+      }
       if (
         recipe.checkIds.length &&
         (!this.files?.planCheck ||
@@ -3936,6 +3950,7 @@ export class Coordinator {
     )
       return 'repeated_output';
     state.candidates.set(input.executionId, {
+      ...(state.candidateTree ? { tree: state.candidateTree } : {}),
       artifactVersionId: artifact.artifactVersionId,
       contentHash: artifact.contentHash,
       checks: [],
@@ -3966,7 +3981,14 @@ export class Coordinator {
     if (candidate.checks.length !== state.recipe.checkIds.length) return 'check_error';
     const tree = candidate.checks[0]?.tree;
     try {
-      if (tree && (await this.files?.currentTreeForRun?.(run.runId)) !== tree) return 'check_stale';
+      if (
+        tree &&
+        (await this.files?.currentTreeForRun?.(
+          run.runId,
+          run.snapshot.autoRoute?.ultra ? 'linux-bwrap' : undefined,
+        )) !== tree
+      )
+        return 'check_stale';
     } catch {
       return 'check_stale';
     }
@@ -4015,10 +4037,15 @@ export class Coordinator {
         report.owner.attemptNo !== input.attemptNo
       )
         return 'check_error';
-      if (stale !== false || candidate.checks.some((check) => check.tree !== report.tree))
+      if (
+        stale !== false ||
+        (candidate.tree && report.tree !== candidate.tree) ||
+        candidate.checks.some((check) => check.tree !== report.tree)
+      )
         return 'check_stale';
       if (
         report.state !== 'completed' ||
+        (run.snapshot.autoRoute?.ultra && report.isolation !== 'linux-bwrap') ||
         !report.cleanupConfirmed ||
         report.targetUnchanged !== true ||
         !['pass', 'fail'].includes(report.verdict)
@@ -4029,7 +4056,14 @@ export class Coordinator {
     }
     if (!(await this.recipeCriteriaValid(run, state))) return 'criteria_changed';
     const tree = candidate.checks[0]?.tree;
-    if (tree && (await this.files?.currentTreeForRun?.(run.runId)) !== tree) return 'check_stale';
+    if (
+      tree &&
+      (await this.files?.currentTreeForRun?.(
+        run.runId,
+        run.snapshot.autoRoute?.ultra ? 'linux-bwrap' : undefined,
+      )) !== tree
+    )
+      return 'check_stale';
     if (
       tree &&
       [...state.candidates.entries()].some(
@@ -4104,6 +4138,19 @@ export class Coordinator {
     iterationId: string | null,
   ): Promise<StepOutcome> {
     await this.boundary(run);
+    const loopId = iterationId ? run.projection.iterations[iterationId]?.loopNodeId : undefined;
+    const recipe = loopId ? run.recipes.get(loopId) : undefined;
+    if (
+      run.snapshot.autoRoute?.ultra &&
+      recipe?.recipe.candidateNodeId === nodeId &&
+      recipe.recipe.checkIds.length
+    ) {
+      await this.stopOwnedServices(run);
+      await this.boundary(run);
+      const tree = await this.files?.currentTreeForRun?.(run.runId, 'linux-bwrap');
+      if (!tree) throw new Error('Ultra candidate tree is unavailable');
+      recipe.candidateTree = tree;
+    }
     const prepared = this.prepareExecution(run, {
       nodeId,
       iterationId,
@@ -4224,6 +4271,13 @@ export class Coordinator {
       (node.id === recipe.recipe.candidateNodeId || role.id === recipe.recipe.evaluatorRoleId)
     ) {
       const candidate = [...recipe.candidates.values()].at(-1);
+      if (recipe.candidateTree)
+        input.inputs.push({
+          name: 'candidate_tree',
+          kind: 'explicit_version',
+          artifactVersionId: null,
+          text: recipe.candidateTree,
+        });
       for (const [index, check] of (candidate?.checks ?? []).entries())
         input.inputs.push({
           name: `recipe_check_${check.commandId}`,
@@ -4733,6 +4787,8 @@ export class Coordinator {
     }
     if (run.stop.aborted || TERMINAL_RUN_STATUSES.has(run.projection.status)) return;
     await this.boundary(run);
+    await this.stopOwnedServices(run);
+    await this.boundary(run);
     for (const [loopId, state] of run.recipes) {
       const candidate = [...state.candidates.values()].at(-1);
       if (!candidate || !versions.includes(candidate.artifactVersionId)) continue;
@@ -4742,8 +4798,6 @@ export class Coordinator {
         return;
       }
     }
-    await this.stopOwnedServices(run);
-    await this.boundary(run);
     // The output and the run's success are one fact: readers never see one without the other.
     this.commit(run, [
       {
@@ -5886,7 +5940,10 @@ export class Coordinator {
       }
       let tree: string | null | undefined;
       try {
-        tree = await this.files?.currentTreeForRun?.(run.runId);
+        tree = await this.files?.currentTreeForRun?.(
+          run.runId,
+          run.snapshot.autoRoute?.ultra ? 'linux-bwrap' : undefined,
+        );
       } catch {
         return refuse('current verification target is unavailable');
       }
@@ -8745,7 +8802,15 @@ export class Coordinator {
         if (proposal.name === 'run_check') {
           if (!files.planCheck || !files.runCheck)
             throw new ToolRefusal('CAPABILITY_DENIED', 'check runner unavailable');
-          const check = { ...owner, commandId: String(proposal.args.commandId) };
+          const recipe = this.recipeForExecution(run, executionId)?.state;
+          const check = {
+            ...owner,
+            commandId: String(proposal.args.commandId),
+            ...(run.snapshot.autoRoute?.ultra ? { isolation: 'linux-bwrap' as const } : {}),
+            ...(recipe?.recipe.candidateNodeId === input.nodeId && recipe.candidateTree
+              ? { expectedTree: recipe.candidateTree }
+              : {}),
+          };
           plan = CheckPlan.parse(await files.planCheck(check, cancellation));
           const runCheck = files.runCheck.bind(files);
           execute = (approved) => runCheck(check, plan, approved, cancellation);

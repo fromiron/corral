@@ -24,7 +24,7 @@
 | 추적 | 구현 상태 | 남은 일 | 근거 |
 |---|---|---|---|
 | C-114 | 계획, 예산 helper만 준비 | 격리 후보별 실행·검사·비교·취소·정확한 하나의 승격 | [Ultra 잔여 계획](plans/ultra-and-quality.md), CR-031 |
-| C-118 | 부분 구현 | 복수 모델 pool·협업·추론·UI/API/CLI 위에 고정 tree의 격리 검사 연결, provider conformance 확대 | [M4 기록](evaluation/Integrated-Improvement-M4-2026-10-19.md) |
+| C-118 | 부분 구현 | Linux 격리 검사 연결 구현, provider conformance·현재 후보 live 검증 진행 | [현재 실행 기록](evaluation/Quality-Completion-2026-10-21.md) |
 | C-125 / ABS-04 | 부분 구현 | macOS 로컬 앱 TCP 소유권 구현. Linux/OS별 preview 실제 검증 | [Desktop 잔여 계획](plans/desktop-completion.md) |
 | C-128 / ABS-07 | 구현 있음, 플랫폼 검증 진행 | NSIS 실제 설치, macOS·지원 arch, 서명·업데이트 채널 등 | [배포 기록](evaluation/Desktop-Delivery-Verification.md) |
 | C-135 / ABS-14 | 구현 있음, 외부 통합 검증 대기 | 허용된 SSH host의 실제 연결·실행·끊김·복구 | [Desktop 잔여 계획](plans/desktop-completion.md) |

@@ -2775,7 +2775,7 @@
       "CRL-ULTRA-003"
     ],
     "suite": "integration+browser",
-    "scenario": "실제 Pi serializer/fake HTTP의 복수 provider routing·최대 추론·공유 예산과 교차 검토",
+    "scenario": "실제 Pi serializer/fake HTTP의 복수 provider routing·최대 추론·공유 예산과 교차 검토, 선택된 프로젝트 검사와 고정 tree의 Linux 격리 증거 연결",
     "status": "planned",
     "adapter": "actual Pi serializers and deterministic local provider HTTP; no paid calls",
     "evidence": null
@@ -2786,7 +2786,7 @@
       "CRL-ULTRA-003"
     ],
     "suite": "integration+browser",
-    "scenario": "legacy와 요청 identity 보존, 변조·추가 dispatch·잘못된 wire·필수 모델 부재·취소/unknown 경계 차단",
+    "scenario": "legacy와 요청 identity 보존, 변조·추가 dispatch·잘못된 wire·필수 모델 부재·취소/unknown 경계 차단, 필수 검사 부재/미지원 격리/호스트 접근/검사 오류 및 stale 결과의 완료 차단",
     "status": "planned",
     "adapter": "actual Pi serializers and deterministic local provider HTTP; no paid calls",
     "evidence": null

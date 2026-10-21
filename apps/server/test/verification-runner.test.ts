@@ -3,13 +3,14 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { FakeClock } from '@corral/testkit';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { VerificationRunner } from '../src/files/verification.ts';
 import { spawnOwnedProcess } from '../src/processes/owned-process.ts';
 import { systemTimers } from '../src/runtime.ts';
 
 const dirs: string[] = [];
 afterEach(() => {
+  vi.unstubAllEnvs();
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 function fixture(script: string) {
@@ -71,6 +72,134 @@ function cancellation() {
 }
 
 describe('owned verification runner', { timeout: 25000 }, () => {
+  it.skipIf(process.platform !== 'linux').each([false, true])(
+    '[TC-ULTRA-003-N] namespace cleanup owns detached descendants (cancel=%s)',
+    async (cancelled) => {
+      const f = fixture(
+        `import {spawn} from 'node:child_process'; spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{detached:true,stdio:'ignore'}).unref(); console.log('READY'); ${cancelled ? 'setInterval(()=>{},1000);' : ''}`,
+      );
+      const cancel = cancellation();
+      const runner = new VerificationRunner({
+        clock: f.clock,
+        timers: systemTimers,
+        spawn: (...args: Parameters<typeof spawn>) => {
+          const child = (spawnOwnedProcess as typeof spawn)(...args);
+          if (cancelled) child.stdout?.on('data', () => cancel.cancel());
+          return child;
+        },
+      });
+      const report = await runner.run({ ...f.input, isolation: 'linux-bwrap' }, cancel.signal);
+      expect(report, report.output.text).toMatchObject({
+        state: cancelled ? 'cancelled' : 'completed',
+        verdict: cancelled ? 'not_evaluated' : 'pass',
+        cleanupConfirmed: true,
+      });
+      expect(existsSync(join(f.input.copyRoot, f.input.verificationId))).toBe(false);
+    },
+  );
+  it.skipIf(process.platform !== 'linux')(
+    '[TC-ULTRA-003-N] sandbox exec failures are inconclusive even after the namespace started',
+    async () => {
+      const f = fixture('');
+      const report = await new VerificationRunner({ clock: f.clock, timers: systemTimers }).run(
+        {
+          ...f.input,
+          isolation: 'linux-bwrap',
+          beforeLaunch: async (directory) => join(directory, 'a.txt'),
+        },
+        cancellation().signal,
+      );
+      expect(report).toMatchObject({
+        state: 'error',
+        verdict: 'inconclusive',
+        cleanupConfirmed: true,
+      });
+      expect(report.isolation).toBeUndefined();
+    },
+  );
+  it.skipIf(process.platform !== 'linux')(
+    '[TC-ULTRA-003-N] isolated snapshot checkout and status never execute repository filters on the host',
+    async () => {
+      const f = fixture(
+        "import fs from 'node:fs'; if(fs.readFileSync('a.txt','utf8') !== 'original') process.exit(1);",
+      );
+      const marker = join(f.root, '..', 'filter-ran');
+      writeFileSync(join(f.root, '.gitattributes'), '*.txt filter=probe\n');
+      execFileSync('git', ['add', '.'], { cwd: f.root });
+      f.input.tree = execFileSync('git', ['write-tree'], { cwd: f.root }).toString().trim();
+      for (const name of ['clean', 'smudge'])
+        execFileSync('git', ['config', `filter.probe.${name}`, `tee '${marker}'`], { cwd: f.root });
+      const report = await new VerificationRunner({ clock: f.clock, timers: systemTimers }).run(
+        { ...f.input, isolation: 'linux-bwrap' },
+        cancellation().signal,
+      );
+      expect(existsSync(marker)).toBe(false);
+      expect(report, report.output.text).toMatchObject({ verdict: 'pass', targetUnchanged: true });
+    },
+  );
+  it('[TC-ULTRA-003-N] exit zero without sandbox attestation is inconclusive', async () => {
+    const f = fixture('');
+    const report = await new VerificationRunner({
+      clock: f.clock,
+      timers: systemTimers,
+      spawn: ((_exe, _args, options) =>
+        spawnOwnedProcess(process.execPath, ['-e', ''], options)) as typeof spawn,
+    }).run({ ...f.input, isolation: 'linux-bwrap' }, cancellation().signal);
+    expect(report).toMatchObject({ state: 'error', verdict: 'inconclusive' });
+    expect(report.isolation).toBeUndefined();
+  });
+  it.skipIf(process.platform !== 'linux')(
+    '[TC-ULTRA-003-N] isolated checks cannot read the host, Git administration or inherited secrets',
+    async () => {
+      const f = fixture('');
+      vi.stubEnv('CORRAL_CHECK_SECRET', 'fixture-secret');
+      const privateFile = join(f.input.copyRoot, '..', 'private.txt');
+      writeFileSync(privateFile, 'host-only');
+      writeFileSync(
+        join(f.root, 'check.mjs'),
+        `
+      import assert from 'node:assert/strict';
+      import fs from 'node:fs';
+      import os from 'node:os';
+      assert.equal(fs.existsSync(${JSON.stringify(privateFile)}), false);
+      assert.equal(fs.existsSync(${JSON.stringify(join(f.root, '.git'))}), false);
+      try { assert.equal(fs.readFileSync('.git', 'utf8'), ''); } catch (error) { assert.equal(error.code, 'EACCES'); }
+      assert.equal(process.env.CORRAL_CHECK_SECRET, undefined);
+      assert.ok(Object.values(os.networkInterfaces()).flat().every((nic) => nic.internal));
+      console.log('isolated fixture passed');
+    `,
+      );
+      execFileSync('git', ['add', '.'], { cwd: f.root });
+      f.input.tree = execFileSync('git', ['write-tree'], { cwd: f.root }).toString().trim();
+      const report = await new VerificationRunner({ clock: f.clock, timers: systemTimers }).run(
+        { ...f.input, isolation: 'linux-bwrap' },
+        cancellation().signal,
+      );
+      expect(report, report.output.text).toMatchObject({
+        state: 'completed',
+        verdict: 'pass',
+        isolation: 'linux-bwrap',
+        cleanupConfirmed: true,
+        targetUnchanged: true,
+      });
+      expect(report.output.text).toContain('isolated fixture passed');
+      expect(readFileSync(privateFile, 'utf8')).toBe('host-only');
+    },
+  );
+  it('[TC-ULTRA-003-N] a failed sandbox launch never falls back to the registered host command', async () => {
+    const f = fixture('');
+    const launched: string[] = [];
+    const report = await new VerificationRunner({
+      clock: f.clock,
+      timers: systemTimers,
+      spawn: ((executable: string) => {
+        launched.push(executable);
+        throw new Error('sandbox unavailable');
+      }) as typeof spawn,
+    }).run({ ...f.input, isolation: 'linux-bwrap' }, cancellation().signal);
+    expect(report).toMatchObject({ state: 'error', verdict: 'inconclusive' });
+    expect(launched).toEqual(process.platform === 'linux' ? ['/usr/bin/bwrap'] : []);
+  });
   it('[TC-HAR-013-N] a check that changes its own candidate cannot establish a pass', async () => {
     const f = fixture(
       "import fs from 'node:fs'; fs.writeFileSync('a.txt','changed during verification');",

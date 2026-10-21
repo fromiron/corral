@@ -685,7 +685,7 @@
   },
   {
     "id": "CRL-ULTRA-003",
-    "requirement": "CR-031 C-118: 새 Ultra는 명시 pool의 복수 모델에 역할을 고정하고 최대 지원 추론과 필수 교차 검토를 수행한다. 실제 provider wire/한 번의 dispatch/공유 예산/취소를 검증하고 legacy snapshot과 승인한 입력 범위를 보존한다.",
+    "requirement": "CR-031 C-118: 새 Ultra는 명시 pool의 복수 모델에 역할을 고정하고 최대 지원 추론과 필수 교차 검토를 수행한다. 실제 provider wire/한 번의 dispatch/공유 예산/취소를 검증하고 legacy snapshot과 승인한 입력 범위를 보존한다. 저장소가 있는 새 Ultra는 선택된 등록 검사를 고정 tree의 host 소유 OS 격리에서 실행하고 격리/소유권/신선도 증거 없는 완료를 거절한다.",
     "owner": "core",
     "phase": "M4"
   },

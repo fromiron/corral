@@ -78,3 +78,37 @@ export function git(
 export async function gitText(cwd: string, args: string[], env?: Record<string, string>) {
   return (await git(cwd, args, env ? { env } : {})).stdout.toString('utf8').trim();
 }
+
+/** Check snapshots must not run repository clean/smudge/process filters on the host. */
+export async function checkGitEnvironment(cwd: string): Promise<Record<string, string>> {
+  const env: Record<string, string> = { GIT_CONFIG_GLOBAL: '/dev/null', GIT_ATTR_NOSYSTEM: '1' };
+  let keys: string[];
+  try {
+    keys = (
+      await git(
+        cwd,
+        [
+          'config',
+          '--null',
+          '--name-only',
+          '--get-regexp',
+          '^filter\\..*\\.(clean|smudge|process|required)$',
+        ],
+        { env },
+      )
+    ).stdout
+      .toString()
+      .split('\0')
+      .filter(Boolean);
+  } catch (error) {
+    if (!(error instanceof GitError) || error.code !== 1) throw error;
+    keys = [];
+  }
+  const overrides = new Map(keys.map((key) => [key, key.endsWith('.required') ? 'false' : '']));
+  env.GIT_CONFIG_COUNT = String(overrides.size);
+  [...overrides].forEach(([key, value], index) => {
+    env[`GIT_CONFIG_KEY_${index}`] = key;
+    env[`GIT_CONFIG_VALUE_${index}`] = value;
+  });
+  return env;
+}
