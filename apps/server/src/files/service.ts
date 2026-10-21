@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { constants, existsSync, realpathSync } from 'node:fs';
 import {
+  chmod,
   link,
   lstat,
   mkdir,
@@ -31,9 +32,13 @@ import {
   CommandPlan,
   CommandReport,
   canonicalJson,
+  DocumentCommand,
+  type DocumentMutationIntent,
+  type DocumentOperation,
   type EditTextRequest,
   type EditTextResult,
   type FileCheckpoint,
+  type FileDocument,
   HashlineEditInput,
   HunkPlanRequest,
   HunkRequest,
@@ -55,6 +60,7 @@ import {
   type Scheduler,
   type VerificationOwner,
   VerificationReport,
+  type WorkspaceTarget,
 } from '@corral/contracts';
 import {
   type FileTools,
@@ -345,6 +351,7 @@ export class WorkspaceService implements FileTools {
   private readonly db: Db;
   private readonly clock: Clock;
   private readonly worktreeRoot: string;
+  private readonly hostId: string;
   /** Folders that may never be linked: Corral's own data and credentials. */
   private readonly forbidden: string[];
   /** Per-worktree write lease: one Corral write at a time (WB-WSP-003). */
@@ -363,6 +370,7 @@ export class WorkspaceService implements FileTools {
     clock: Clock;
     worktreeRoot: string;
     forbidden: string[];
+    hostId?: string;
     timers?: Scheduler;
     newVerificationId?: () => string;
     newLspProposalId?: () => string;
@@ -371,6 +379,7 @@ export class WorkspaceService implements FileTools {
     edit?: (request: EditTextRequest, cancellation: ToolCancellation) => Promise<EditTextResult>;
   }) {
     this.db = options.db;
+    this.hostId = options.hostId ?? 'local';
     this.runAccess = new RunAccessStore(this.db);
     this.workspaceAccess = new WorkspaceAccessStore(this.db);
     this.workbenchOperations = new WorkbenchOperations(this.db, options.clock);
@@ -951,6 +960,297 @@ export class WorkspaceService implements FileTools {
     } finally {
       this.removingWorktrees.delete(sessionId);
     }
+  }
+
+  private documentTarget(sessionId: string, expected?: WorkspaceTarget, write = false) {
+    const row = this.worktree(sessionId);
+    const session = this.db
+      .prepare('SELECT project_id FROM work_sessions WHERE id=?')
+      .get(sessionId) as { project_id: string } | undefined;
+    if (!row || !session)
+      throw new WorkspaceError('TARGET_NOT_FOUND', 'the working copy is unavailable');
+    const binding = this.binding(session.project_id);
+    if (!binding || binding.id !== row.binding_id)
+      throw new WorkspaceError('REVISION_CONFLICT', 'the working copy binding changed');
+    const target: WorkspaceTarget = {
+      hostId: this.hostId,
+      projectId: session.project_id,
+      bindingId: row.binding_id,
+      sessionId,
+      copyGeneration: row.copy_generation,
+    };
+    if (expected && canonicalJson(expected) !== canonicalJson(target))
+      throw new WorkspaceError('REVISION_CONFLICT', 'the document target changed');
+    if (write) {
+      if (this.disposing || this.removingWorktrees.has(sessionId))
+        throw new ToolRefusal('TARGET_TERMINAL', 'the working copy is closing or being removed');
+      if (!binding.trusted)
+        throw new WorkspaceError('CAPABILITY_DENIED', 'trust the repository before changing files');
+    }
+    return { row, binding, target };
+  }
+
+  async readDocument(sessionId: string, input: string): Promise<FileDocument> {
+    const path = safeRelative(input);
+    const { row, target } = this.documentTarget(sessionId);
+    return this.lease(row.worktree_path, async () => {
+      const current = this.documentTarget(sessionId, target);
+      if ((await realpath(row.worktree_path)) !== resolve(row.worktree_path))
+        throw new WorkspaceError('REVISION_CONFLICT', 'the working copy identity changed');
+      const writable =
+        Boolean(current.binding.trusted) &&
+        !this.disposing &&
+        !this.removingWorktrees.has(sessionId) &&
+        !this.hasUnsafeWorktreeOwner(sessionId);
+      const kind = await assertPlainPath(row.worktree_path, path);
+      if (kind === 'missing')
+        return { target, path, content: { kind: 'absent' }, version: null, writable };
+      if (kind !== 'file')
+        throw new WorkspaceError('CAPABILITY_DENIED', 'documents must be plain files');
+      const { bytes, size } = await boundedFile(row.worktree_path, path);
+      if (!bytes)
+        return {
+          target,
+          path,
+          content: { kind: 'too_large', bytes: size },
+          version: null,
+          writable: false,
+        };
+      const text = decodeText(bytes, true);
+      if (text === null)
+        return {
+          target,
+          path,
+          content: { kind: 'binary', bytes: size },
+          version: null,
+          writable: false,
+        };
+      const endings = new Set(
+        (text.match(/\r\n|\r|\n/g) ?? []).map((ending) =>
+          ending === '\r\n'
+            ? ('crlf' as const)
+            : ending === '\r'
+              ? ('cr' as const)
+              : ('lf' as const),
+        ),
+      );
+      return {
+        target,
+        path,
+        content: { kind: 'text', text },
+        writable,
+        version: {
+          sha256: sha256(bytes),
+          bytes: size,
+          encoding: 'utf-8',
+          bom: text.startsWith('\ufeff'),
+          eol: endings.size > 1 ? 'mixed' : (endings.values().next().value ?? 'none'),
+        },
+      };
+    });
+  }
+
+  documentOperation(sessionId: string, operationId: string): DocumentOperation {
+    const receipt = this.workbenchOperations.get(operationId);
+    if (
+      !receipt ||
+      receipt.target.sessionId !== sessionId ||
+      !['document.save', 'document.rename', 'document.delete'].includes(receipt.kind)
+    )
+      throw new WorkspaceError('TARGET_NOT_FOUND', 'the document operation is unavailable');
+    const owner = this.workspaceAccess.get({ kind: 'user', id: operationId });
+    return {
+      ...receipt,
+      ...(owner?.state === 'uncertain' ? { state: 'uncertain' as const } : {}),
+    } as DocumentOperation;
+  }
+
+  async changeDocument(sessionId: string, raw: DocumentCommand): Promise<DocumentOperation> {
+    const command = DocumentCommand.parse(raw);
+    command.path = safeRelative(command.path);
+    if (command.kind === 'rename') command.toPath = safeRelative(command.toPath);
+    const request =
+      command.kind === 'save'
+        ? { ...command, text: sha256(Buffer.from(command.text, 'utf8')) }
+        : command;
+    const requestHash = sha256(Buffer.from(canonicalJson(request)));
+    const kind = `document.${command.kind}` as DocumentOperation['kind'];
+    const checkpointId = `checkpoint_${sha256(Buffer.from(command.operationId)).slice(0, 32)}`;
+    const intent: DocumentMutationIntent = {
+      path: command.path,
+      baseHash: command.baseHash,
+      ...(command.kind === 'save'
+        ? {
+            submittedHash: sha256(Buffer.from(command.text, 'utf8')),
+            editVersion: command.editVersion,
+          }
+        : command.kind === 'rename'
+          ? { toPath: command.toPath }
+          : {
+              checkpointId: `checkpoint_${sha256(Buffer.from(command.operationId)).slice(0, 32)}`,
+            }),
+    };
+    const prior = this.workbenchOperations.get(command.operationId);
+    if (prior) {
+      if (prior.requestHash !== requestHash || prior.kind !== kind)
+        throw new WorkspaceError('REVISION_CONFLICT', 'operation request changed');
+      return this.documentOperation(sessionId, command.operationId);
+    }
+    const { row } = this.documentTarget(sessionId, command.target, true);
+    return this.lease(row.worktree_path, async () => {
+      if ((await realpath(row.worktree_path)) !== resolve(row.worktree_path))
+        throw new WorkspaceError('REVISION_CONFLICT', 'the working copy identity changed');
+      this.documentTarget(sessionId, command.target, true);
+      const admitted = this.workbenchOperations.admit(
+        {
+          operationId: command.operationId,
+          target: command.target,
+          kind,
+          requestHash,
+        },
+        row.worktree_path,
+        { kind: 'pending', intent },
+      );
+      if (!admitted.admitted) return this.documentOperation(sessionId, command.operationId);
+      const owner = { kind: 'user', id: command.operationId } as const;
+      let attempted = false;
+      let temporary: string | undefined;
+      try {
+        await expectFile(row.worktree_path, command.path, command.baseHash);
+        if (
+          command.baseHash !== null &&
+          decodeText(await textBytes(row.worktree_path, command.path), true) === null
+        )
+          throw new ToolRefusal('CAPABILITY_DENIED', 'documents must be UTF-8 text');
+        const tree = await this.snapshotTree(row.worktree_path);
+        this.workspaceAccess.pin(owner, tree);
+        const source = join(row.worktree_path, command.path);
+        let result: DocumentOperation['result'];
+        if (command.kind === 'save') {
+          const bytes = Buffer.from(command.text, 'utf8');
+          if (bytes.length > MAX_TEXT)
+            throw new ToolRefusal('LIMIT_REACHED', 'documents are at most 1 MiB');
+          if (decodeText(bytes, true) === null)
+            throw new ToolRefusal('CAPABILITY_DENIED', 'documents must be UTF-8 text');
+          const mode = command.baseHash === null ? 0o644 : (await stat(source)).mode & 0o777;
+          await mkdir(dirname(source), { recursive: true });
+          await assertPlainPath(row.worktree_path, command.path);
+          temporary = join(dirname(source), `.${basename(source)}.corral-${randomUUID()}`);
+          await this.io.writeFile(temporary, bytes, { mode, flag: 'wx', flush: true });
+          if (command.baseHash !== null) await chmod(temporary, mode);
+          await expectFile(row.worktree_path, command.path, command.baseHash);
+          this.documentTarget(sessionId, command.target, true);
+          attempted = true;
+          if (command.baseHash === null) await this.io.link(temporary, source);
+          else await this.io.rename(temporary, source);
+          const saved = await textBytes(row.worktree_path, command.path);
+          if (sha256(saved) !== sha256(bytes))
+            throw new ToolRefusal('REVISION_CONFLICT', 'the document changed during save');
+          result = {
+            kind: 'saved',
+            intent,
+            path: command.path,
+            sha256: sha256(saved),
+            bytes: saved.length,
+            editVersion: command.editVersion,
+          };
+        } else if (command.kind === 'rename') {
+          await expectFile(row.worktree_path, command.toPath, null);
+          const destination = join(row.worktree_path, command.toPath);
+          await mkdir(dirname(destination), { recursive: true });
+          await expectFile(row.worktree_path, command.path, command.baseHash);
+          await expectFile(row.worktree_path, command.toPath, null);
+          this.documentTarget(sessionId, command.target, true);
+          attempted = true;
+          // Hard-link creation refuses a destination that appeared after the preflight.
+          await this.io.link(source, destination);
+          await expectFile(row.worktree_path, command.path, command.baseHash);
+          await expectFile(row.worktree_path, command.toPath, command.baseHash);
+          this.documentTarget(sessionId, command.target, true);
+          await this.io.unlink(source);
+          await expectFile(row.worktree_path, command.path, null);
+          await expectFile(row.worktree_path, command.toPath, command.baseHash);
+          result = {
+            kind: 'renamed',
+            intent,
+            path: command.path,
+            toPath: command.toPath,
+            sha256: command.baseHash,
+          };
+        } else {
+          const checkpoint = await this.checkpointAt(row, {
+            checkpointId,
+            label: 'Before document deletion',
+            kind: 'manual',
+            tree,
+            pinned: true,
+          });
+          if (!checkpoint.tree)
+            throw new ToolRefusal('CAPABILITY_DENIED', 'the recovery checkpoint is incomplete');
+          await this.requireLspSnapshot(
+            row.worktree_path,
+            checkpoint.tree,
+            command.path,
+            command.baseHash,
+          ).catch(() => {
+            throw new ToolRefusal(
+              'CAPABILITY_DENIED',
+              'the recovery checkpoint does not retain the original document bytes',
+            );
+          });
+          await expectFile(row.worktree_path, command.path, command.baseHash);
+          this.documentTarget(sessionId, command.target, true);
+          attempted = true;
+          await this.io.unlink(source);
+          await expectFile(row.worktree_path, command.path, null);
+          result = {
+            kind: 'deleted',
+            intent,
+            path: command.path,
+            checkpointId: checkpoint.checkpointId,
+          };
+        }
+        this.workbenchOperations.finish(command.operationId, 'succeeded', result);
+        return this.documentOperation(sessionId, command.operationId);
+      } catch (error) {
+        let unchanged = !attempted;
+        if (attempted) {
+          try {
+            await expectFile(row.worktree_path, command.path, command.baseHash);
+            if (command.kind === 'rename')
+              await expectFile(row.worktree_path, command.toPath, null);
+            unchanged = true;
+          } catch {
+            /* A partial or unconfirmed effect retains its writer reservation. */
+          }
+        }
+        const state = unchanged ? 'failed' : 'uncertain';
+        const result = {
+          kind: 'error' as const,
+          intent,
+          code:
+            error instanceof ToolRefusal || error instanceof WorkspaceError
+              ? error.code
+              : ('STORAGE_UNAVAILABLE' as const),
+          message:
+            error instanceof ToolRefusal || error instanceof WorkspaceError
+              ? error.message
+              : 'The document change could not be confirmed.',
+        };
+        try {
+          this.workbenchOperations.finish(command.operationId, state, result);
+        } catch {
+          this.workspaceAccess.release(owner, false);
+          throw new ToolRefusal(
+            'STORAGE_UNAVAILABLE',
+            'The document result could not be recorded; read the original operation again.',
+          );
+        }
+        return this.documentOperation(sessionId, command.operationId);
+      } finally {
+        if (temporary) await rm(temporary, { force: true }).catch(() => undefined);
+      }
+    });
   }
 
   /** A restore target is always a trusted session-owned copy or its linked original repository. */
@@ -3231,14 +3531,17 @@ export class WorkspaceService implements FileTools {
     const pending = this.preparingRuns.get(runId);
     if (pending) return pending;
     const access = this.runAccess.get(runId);
-    if (!access || access.tree) return Promise.resolve();
+    if (!access || (access.tree && this.runTree(runId, 'start'))) return Promise.resolve();
     const row = this.worktree(access.session_id);
     if (!row)
       return Promise.reject(new ToolRefusal('TARGET_NOT_FOUND', 'working copy is unavailable'));
     const work = this.lease(row.worktree_path, async () => {
       const writer = this.runAccess.writerAt(access.worktree_key);
       // A concurrent reader observes the writer's pinned input, never partially written files.
-      const tree = (!access.writer && writer?.tree) || (await this.snapshotTree(row.worktree_path));
+      const tree =
+        this.runAccess.get(runId)?.tree ||
+        (!access.writer && writer?.tree) ||
+        (await this.snapshotTree(row.worktree_path));
       await this.pin(
         row.worktree_path,
         `refs/corral/${access.session_id}/runs/${runId}/start`,

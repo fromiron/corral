@@ -10,7 +10,7 @@ baseline: 071276873dee4bb51491bf608e604fbb4e123475
 
 입력은 `Corral-Workbench-Ecosystem-Plan-v2-2026-10-21.md`이며 SHA-256은 `11087e6b6b940bdbca89792e5a8efd84764b326ec42664ff1d289c4d65ae4451`이다. 원문을 수정하거나 전체 제품 조사를 복제하지 않는다. 기준 코드는 PR #68을 포함하는 위 commit이며, 계획 작성 시 소스·계약·manifest를 대조했다. 이후 실행 결과는 별도 검증 기록에 남긴다.
 
-현재 진행: C-143/P03의 공통 예약·receipt·사본 generation은 구현하고 관련 회귀를 확인했다. C-142의 엔진 비교는 격리 fixture 근거를 수집 중이며, 제품 편집·PTY·도킹 연결은 아직 남아 있다. [실행 기록](../evaluation/Development-Workbench-Foundation-2026-10-21.md)을 참조한다.
+현재 진행: C-143/P03의 공통 예약·receipt·사본 generation은 구현하고 관련 회귀를 확인했다. C-142의 A/B 비교와 대상/owner 계약을 완료하고 ADR-040에 따라 기존 셸+A 엔진 연결을 선택했다. C-144/P04 문서 API는 [구현·관련 회귀](../evaluation/Development-Workbench-Documents-2026-10-21.md)를 완료했으며, 편집 UI·PTY·도킹 연결은 남아 있다. [실행 기록](../evaluation/Development-Workbench-Foundation-2026-10-21.md)을 참조한다.
 
 ## 1. 구현 순서와 제품 경계
 
@@ -64,7 +64,7 @@ baseline: 071276873dee4bb51491bf608e604fbb4e123475
 
 | 결정 | 권고안 | 대안과 선택 조건 | 확정 시점 |
 |---|---|---|---|
-| D1 앱 기반 | 기존 React/Electron + Dockview/Monaco/xterm 후보 | Theia는 동일 수용 시나리오에서 통합 비용이 실제로 작을 때. Code-OSS는 VS Code 확장 호환이 필수 제품 요구가 됐을 때 | WB-P01 후, 대규모 UI 이관 전 |
+| D1 앱 기반 | ADR-040: 기존 React/Electron + 공개 Dockview/Monaco/xterm 연결 | Theia는 동일 수용 시나리오에서 통합 비용이 실제로 작을 때. Code-OSS는 VS Code 확장 호환이 필수 제품 요구가 됐을 때 | WB-P01 후, 대규모 UI 이관 전 |
 | D2 사람과 프로세스의 쓰기 | G1/Alpha는 strict 단일 writer와 명시 handoff | Daily Driver에는 선택적 shared-development를 별도 승인하거나 OS 격리안을 선택. 개발 서버를 read-only로 분류하지 않음 | WB-P02에서 기본 규칙, WB-P22 착수 전 확장 승인 |
 | D3 편집 대상 | session의 기존 관리 사본을 첫 writable 대상으로 사용 | 원본 직접 편집·비Git 폴더·session과 독립된 여러 사본은 별도 범위. 원본은 현재 보호 유지 | WB-P02 |
 | D4 재시작 | renderer 재연결은 살아 있는 host PTY에 재attach. host 재시작은 process 상태 재확인 | 앱 종료 뒤에도 PTY를 유지하는 독립 daemon은 후속. 명령 자동 replay는 제외 | WB-P02 |
@@ -174,7 +174,7 @@ PTY는 host에 위치한다. renderer에는 xterm view만 둔다. `CommandRuntim
 - 산출물: 현행 재사용 manifest와 회귀 목록. 제품 원장 상태는 증거 없이 변경하지 않는다.
 - 완료: 각 신규 요구가 “재사용/확장/신규/결정 대기” 중 하나로 분류되고 중복 owner가 없다. 선행 없음.
 
-**WB-P01 기반과 엔진 실험 — L, W2-01**
+**WB-P01 기반과 엔진 실험 — L, W2-01, C-142 qualification 완료**
 
 - 작업: §3.1의 A/B 비교, Dockview 공개 기능, Monaco URI/worker/CSP, xterm/node-pty 조합을 작은 독립 fixture로 검증한다. native code가 Electron main인지 sidecar Node인지 실제 로딩 위치/ABI를 확인한다.
 - 반례: pane reparent 후 dirty 유실, IME Enter 오작동, native module 로딩 실패, terminal resize/부하, 회수되지 않는 model/process.
@@ -193,7 +193,7 @@ PTY는 host에 위치한다. renderer에는 xterm view만 둔다. `CommandRuntim
 - 작업: 인간/에이전트 owner를 구분한 durable reservation·receipt, 재시작 recover, idempotency hash, target generation을 추가한다. 기존 Run acquire/release와 effect permit은 그대로 연결한다.
 - 반례/완료: 인간 save와 agent start 동시 진입, 예약 후 crash, 중복 ID/다른 payload, 종료 불확실·늦은 완료에서 한 writer만 인정. 이전 DB fixture upgrade/backup rollback 증거. 선행 P02 승인.
 
-**WB-P04 파일 읽기 버전과 사용자 저장 API — L, W2-04**
+**WB-P04 파일 읽기 버전과 사용자 저장 API — L, W2-04, C-144 구현**
 
 - 위치: WorkspaceService·`packages/client/src/index.ts`, 새 `files/documents.ts` 후보. 큰 기존 서비스에서 필요한 함수만 분리하고 전체 리팩터링하지 않는다.
 - 작업: full-hash read, guarded atomic save, create/rename의 대상 precondition. 원본/snapshot은 읽기 전용. delete는 복구 가능한 journal/checkpoint와 명시 확인 후 제공한다.

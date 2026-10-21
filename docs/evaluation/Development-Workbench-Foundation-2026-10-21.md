@@ -80,3 +80,7 @@ WorktreeView와 demo/client에 bindingId·copyGeneration을 연결했고 재생�
 첫 구현은 기존 셸의 권한·설정 수명을 재사용하는 A를 우선 검토한다. B의 실행 가능성을 확인했지만 엔진 자체가 Corral의 owner 계약을 대신하지는 못한다. G0 전체 통과·최종 dependency 채택은 아직 선언하지 않는다.
 
 실제 사용자 파일 save UI, PTY 복구/후손 종료 통합, 도킹 전체 이관, 물리 IME·screen reader, Windows/macOS/ARM64, 설치판·remote-host·외부 Git·유료 provider는 미검증이다. 기존 제품 서버를 재시작하지 않았으며 push/PR/merge도 하지 않았다. DB rollback은 서버를 종료한 뒤 업그레이드 전 backup과 호환 binary를 함께 복구하는 절차다.
+
+## 기반 결정 후속 — ADR-040
+
+A/B qualification을 위 pass/fail/unknown 근거로 마무리하고 기존 셸에 공개 엔진을 연결하는 A를 선택했다. C-142는 기반 비교/계약 결정 태스크로 완료하며 실제 편집/PTY/도킹 기능 또는 모든 플랫폼 지원의 완료로 취급하지 않는다. P07의 ANSI parser·후손 종료, P06의 worker/보안 inventory·지연 로딩, P10의 키보드 배치 및 P29의 설치판 검증은 그대로 남아 있다. 결정 이유는 [ADR-040](../Decisions.md)에 기록했다.

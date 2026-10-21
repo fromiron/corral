@@ -52,6 +52,9 @@
 | GET /projects/:id/workspace/files · GET /sessions/:id/worktree/files | `path?` 상대 폴더 | 읽기 전용 파일 목록 `{files:[{path,bytes}],truncated}`. Git ignore 적용, 최대 500개. `.git`·`.corral`·symlink 제외(CR-014 DW-05) |
 | GET /projects/:id/workspace/search · GET /sessions/:id/worktree/search | `q?`(≤200자), `limit?`(1–50, 기본 20) | `@` 참조용 이름 검색 `{items:[{path,kind:'file'\|'folder'}],truncated}`. fuzzy 순위(파일명 우선), Git ignore 적용, 후보 5만 개, 내용은 읽지 않음, symlink 제외 (CR-016) |
 | GET /projects/:id/workspace/file · GET /sessions/:id/worktree/file | `path` 상대 파일 | `{path,content}`. content는 text/binary/too_large. UTF-8·1 MiB 제한. 원본·복사본은 등록된 scope로만 선택하며 agent read ledger·권한을 바꾸지 않음 |
+| GET /sessions/:id/worktree/document | `path` 상대 파일 | CR-046 관리 사본 문서 `{target,path,content,version,writable}`. target은 host의 workspace identity·project/binding/session/copyGeneration. UTF-8 ≤1MiB는 BOM 포함 text와 full SHA-256·bytes·BOM/EOL, binary/too_large는 version:null·writable:false. 새 파일 경로는 absent. 기존 원본 browse는 읽기 전용 유지 |
+| POST /sessions/:id/worktree/documents | `DocumentCommand` | save/create(`baseHash:null`), rename(빈 목적지만), delete(`confirmed:true`·원본 hash·복구 checkpoint). 공통 writer와 기존 lease 사용. 접수 후 `DocumentOperation` receipt, 접수 전 잘못된 target/권한/owner는 기존 오류 코드. JSON 표현은 route별 7MiB, 실제 파일은 UTF-8 1MiB 제한 |
+| GET /sessions/:id/worktree/document-operations/:operationId | — | 원래 대상과 operation ID의 receipt. pending·완료·실패 모두 상대 path/precondition/제출 hash의 intent를 보존하며 원문 text는 저장하지 않는다. 현재 사본 삭제/재생성 후에도 완료 receipt를 조회한다. 같은 ID/다른 내용은 conflict, uncertain을 자동 재실행하지 않는다 |
 | GET /sessions/:id/changes?scope=session\|review\|run&runId= | — | 비교 범위의 from·to tree와 파일 목록(상태·줄 수·바이너리·출처) |
 | GET /sessions/:id/changes/file?from&to&path | — | 두 tree의 파일 내용(text·binary·too_large·absent) |
 | POST /sessions/:id/reviewed | — | 지금 상태를 "마지막 검토"로 기록(승인 아님) |

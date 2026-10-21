@@ -25,6 +25,9 @@ export function createDemoWorkspaces(
   const noCheckpoints = async (): Promise<never> => {
     throw new Error('File checkpoints require the local server.');
   };
+  const noDocuments = async (): Promise<never> => {
+    throw new Error('File editing requires the local server.');
+  };
   return {
     commands: async () => [],
     commandReport: noCheckpoints,
@@ -71,6 +74,9 @@ export function createDemoWorkspaces(
     listFiles: (scope, path) => as(call('listFiles', scope, path)),
     searchFiles: (scope, query, limit) => as(call('searchFiles', scope, query, limit)),
     readFile: (scope, path) => as(call('readFile', scope, path)),
+    readDocument: noDocuments,
+    changeDocument: noDocuments,
+    documentOperation: noDocuments,
     binding: (projectId) => as(call('binding', projectId)),
     bind: (projectId, path) => as(call('bind', projectId, path)),
     configure: (projectId, change) => as(call('configure', projectId, change)),

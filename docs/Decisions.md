@@ -372,3 +372,10 @@ Pi SDK는 카탈로그 복사본과 proxy 모델에 같은 컨텍스트를 적�
 - owner kind/ID를 분리하고 active/uncertain writer의 unique key는 canonical worktree path다. generation은 대상 검증용이며 unique key에 넣지 않는다. 기존 pinned tree·state는 보존한다.
 - 사용자 operation 접수+예약 및 완료 receipt+해제는 각각 SQLite transaction이다. 재시작은 uncertain, 응답 유실은 원래 ID readback이며 자동 replay하지 않는다. Run worker recovery는 사용자 owner를 해제하지 않는다.
 - 사본 generation은 기존 session 행의 정수 하나로 충분하다. 새 history 서비스·dual-write·별도 lock engine은 추가하지 않는다. strict writer가 초기 기본이고 사용자 PTY 동시 쓰기는 P22에서 결정한다.
+
+## ADR-040: 기존 셸에 편집기·터미널을 단계적으로 연결한다
+
+- CR-046 / C-142의 A/B qualification과 기존 구현 보존 요구에 따라 A(현재 React/Electron·Coordinator + 공개 Dockview/Monaco/xterm 계열)를 선택한다. 실제 의존성 추가는 해당 작업에서 exact version·notice·보안 inventory를 다시 확인한다. 현재 계약/권한을 다른 IDE backend로 옮기지 않는다.
+- A fixture에서 shared model·dirty/undo·panel 이동/복원·실제 TypeScript worker를 인앱 브라우저로 확인했다. Node sidecar의 stable PTY도 실제 stdin/resize/종료를 검증했다. Theia B에서는 실제 Corral React 컴포넌트·파일 저장·PTY·Node DAP를 확인했으므로 실행 불가능한 후보로 기각하지 않는다.
+- B를 현재 단계에 채택하면 기본 filesystem/terminal/pluginhost의 쓰기·실행 경로, 공유 React context/설정 수명, Electron 42.8.1 peer를 동시에 조정해야 한다. A는 기존 소유권·route·설정/그래프/Reins를 유지하며 한 경로씩 검증할 수 있다. 이 통합 변경량이 선택 이유이며 최적화 전 번들 크기만으로 우열을 판정하지 않는다.
+- Dockview 공개 move/focus API로 키보드 명령을 제공하고 Enterprise package는 채택하지 않는다. Monaco bundled sanitizer advisory·지연 로딩, PTY 미완료 ANSI replay·후손 종료는 각 후속 작업의 명시 조건이다. qualification은 전체 제품 통합·설치판·타 OS 완료가 아니다. [실제 근거와 미검증 경계](evaluation/Development-Workbench-Foundation-2026-10-21.md).

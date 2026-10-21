@@ -106,3 +106,24 @@ it('[TC-WBD-001-F] admission and release join an enclosing receipt transaction',
   ).toThrow('receipt failed');
   expect(access.get(human)?.state).toBe('active');
 });
+
+it.each(['before', 'after'] as const)(
+  '[TC-WBD-001-N] a reader admitted %s writer pin retains its input after writer release',
+  (timing) => {
+    const { db, path } = setup();
+    const access = new WorkspaceAccessStore(db);
+    const writer = { kind: 'user', id: 'save' } as const;
+    const reader = { kind: 'run', id: 'reader' } as const;
+    access.acquire(writer, 'session_one', path, true, 1);
+    if (timing === 'after') access.pin(writer, 'before_tree');
+    access.acquire(reader, 'session_one', path, false, 1);
+    if (timing === 'before') access.pin(writer, 'before_tree');
+    access.release(writer, true);
+    expect(access.get(reader)?.tree).toBe('before_tree');
+
+    const next = { kind: 'user', id: 'next_save' } as const;
+    access.acquire(next, 'session_one', path, true, 1);
+    access.pin(next, 'after_tree');
+    expect(access.get(reader)?.tree).toBe('before_tree');
+  },
+);

@@ -81,21 +81,39 @@ export class WorkspaceAccessStore {
         this.db
           .prepare(`INSERT INTO workspace_access
             (owner_kind,owner_id,session_id,worktree_key,copy_generation,writer,state,tree)
-            VALUES(?,?,?,?,?,?,'active',NULL)`)
-          .run(owner.kind, owner.id, sessionId, key, copyGeneration, Number(writer));
+            VALUES(?,?,?,?,?,?,'active',?)`)
+          .run(
+            owner.kind,
+            owner.id,
+            sessionId,
+            key,
+            copyGeneration,
+            Number(writer),
+            !writer && held?.copy_generation === copyGeneration ? held.tree : null,
+          );
       })
       .immediate();
   }
 
   pin(owner: WorkspaceOwner, tree: string) {
-    const access = this.get(owner);
-    if (access?.state !== 'active')
-      throw new ToolRefusal('TARGET_TERMINAL', 'working copy access is no longer active');
-    if (access.tree && access.tree !== tree)
-      throw new ToolRefusal('REVISION_CONFLICT', 'working copy input tree is already pinned');
     this.db
-      .prepare('UPDATE workspace_access SET tree=? WHERE owner_kind=? AND owner_id=?')
-      .run(tree, owner.kind, owner.id);
+      .transaction(() => {
+        const access = this.get(owner);
+        if (access?.state !== 'active')
+          throw new ToolRefusal('TARGET_TERMINAL', 'working copy access is no longer active');
+        if (access.tree && access.tree !== tree)
+          throw new ToolRefusal('REVISION_CONFLICT', 'working copy input tree is already pinned');
+        this.db
+          .prepare('UPDATE workspace_access SET tree=? WHERE owner_kind=? AND owner_id=?')
+          .run(tree, owner.kind, owner.id);
+        // Readers waiting for the mutation lease must not lose this tree when its writer finishes.
+        if (access.writer)
+          this.db
+            .prepare(`UPDATE workspace_access SET tree=?
+              WHERE worktree_key=? AND copy_generation=? AND writer=0 AND state='active' AND tree IS NULL`)
+            .run(tree, access.worktree_key, access.copy_generation);
+      })
+      .immediate();
   }
 
   release(owner: WorkspaceOwner, confirmed: boolean) {

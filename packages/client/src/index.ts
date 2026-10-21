@@ -1,7 +1,10 @@
 import type {
   CheckpointRestore,
   CheckpointRestorePlan,
+  DocumentCommand,
+  DocumentOperation,
   FileCheckpoint,
+  FileDocument,
   ProfileContextOverrides,
   ProfileContextPolicy,
   ProfileContextResolution,
@@ -20,6 +23,13 @@ import { canonicalJson } from '@corral/core';
 import type { CommandRecovery, StartRecovery } from './recovery.ts';
 import { VaultClient } from './vault-api.ts';
 
+export type {
+  DocumentCommand,
+  DocumentOperation,
+  DocumentVersion,
+  FileDocument,
+  WorkspaceTarget,
+} from '@corral/contracts';
 export type {
   ModelCatalogMetadata,
   ModelImportCommit,
@@ -1663,6 +1673,23 @@ export class WorkspacesApi {
   }
   readFile(scope: FileBrowseScope, path: string): Promise<{ path: string; content: FileSideView }> {
     return this.send(`${this.browsePath(scope)}/file?${new URLSearchParams({ path })}`);
+  }
+  readDocument(sessionId: string, path: string): Promise<FileDocument> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/document?${new URLSearchParams({ path })}`,
+    );
+  }
+  changeDocument(sessionId: string, command: DocumentCommand): Promise<DocumentOperation> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/documents`,
+      'POST',
+      command,
+    );
+  }
+  documentOperation(sessionId: string, operationId: string): Promise<DocumentOperation> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/document-operations/${encodeURIComponent(operationId)}`,
+    );
   }
   async bind(projectId: string, path: string): Promise<WorkspaceBindingView> {
     const p = encodeURIComponent(projectId);

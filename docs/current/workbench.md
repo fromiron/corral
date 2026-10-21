@@ -51,3 +51,7 @@ baseline: 4bde876
 Composer 상태·접힌 계획 수·변경 요약은 기존 데이터의 알약으로 표시한다. 변경 요약은 오른쪽 카드와 중복하지 않는다. Todo 본문·대응 필요 조치·Reins와 기존 컨텍스트 상세 팝오버는 유지한다. 모델 선택은 다음 요청임을 표시하며 현재 실행 snapshot·Ultra 의미를 바꾸지 않는다.
 
 C-140의 구현과 이번 Linux 검증은 [실행 기록](../evaluation/Contextual-Settings-UI-2026-10-21.md)에서 확인한다. Windows/macOS·실제 IME·스크린리더 검증과 전체 릴리스 판정은 별도다.
+
+## 관리 사본의 수동 파일 변경
+
+[CR-046 P04](../change-requests/CR-046-development-workbench.md)는 모델 연결 없이 관리 session 사본의 버전 있는 파일 읽기와 save/create/rename/delete를 제공한다. 현재 대상과 전체 content hash를 확인하고 사용자 작업 receipt를 사용하며 원본·snapshot 읽기 경로는 유지한다. 삭제는 체크포인트의 원래 bytes 포함을 확인한 뒤 수행한다. 정확한 HTTP/type 계약은 [API 계약](../API-Contract.md)·`packages/contracts/src/workbench.ts`, 구현 상태는 C-144와 [활성 계획](../plans/workbench-development-implementation-plan-2026-10-21.md)을 따른다. 편집 UI·dirty 복구·Monaco view는 P05–06의 후속 범위다.

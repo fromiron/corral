@@ -3,7 +3,7 @@
 - 승인: 2026-10-21. 상세 구현 계획 후 사용자가 “플랜대로 구현하고 적절한 타이밍에 커밋”하도록 요청했다.
 - 기준: `071276873dee4bb51491bf608e604fbb4e123475`. [활성 계획](../plans/workbench-development-implementation-plan-2026-10-21.md)의 P00–P03 첫 묶음.
 - 추적: CRL-WBD-001 / C-142·143 / TC-WBD-001-H,N,F. 결정: ADR-039.
-- C-143/P03 기반 구현 완료, C-142 엔진 비교 진행. [검증 기록](../evaluation/Development-Workbench-Foundation-2026-10-21.md). 구현 상태는 backlog, 실제 결과는 evaluation에 기록한다. 엔진 qualification을 제품 기능 완료로 간주하지 않는다.
+- C-143/P03 기반 구현 완료, C-142 엔진 비교/ADR-040 결정 완료. [검증 기록](../evaluation/Development-Workbench-Foundation-2026-10-21.md). 구현 상태는 backlog, 실제 결과는 evaluation에 기록한다. 엔진 qualification을 제품 기능 완료로 간주하지 않는다.
 
 ## 계약
 
@@ -24,3 +24,16 @@ CR·요구·실패 테스트를 먼저 등록하고 실제로 red를 확인한 �
 - F: 접수/완료 transaction 실패의 원자성, 재시작과 늦은 완료의 uncertain 보존.
 
 파일 save/PTY/Git의 사용자 공개 API는 후속 작업별로 계약과 검증을 확장한다. 이번 기반만으로 해당 기능 지원을 선언하지 않는다. 유료 호출·외부 push/deploy/merge는 이번 구현 승인에 포함하지 않는다.
+
+## P04: 버전 있는 파일 문서와 사용자 변경
+
+추적: CRL-WBD-002 / C-144 / TC-WBD-002-H,N,F. 같은 승인 계획의 P04를 구체화한다. C-144 구현과 Linux 관련 회귀를 완료했다. [검증 기록](../evaluation/Development-Workbench-Documents-2026-10-21.md).
+
+- 기존 원본/사본 browse·Run 파일 API는 유지한다. 관리 session 사본 전용 document read는 host의 안정된 workspace identity, project/binding/session/generation, 정규화 path와 전체 UTF-8 bytes hash·BOM/EOL·bytes를 제공한다. binary/1MiB 초과는 편집 불가이고 원본/snapshot 저장 endpoint는 추가하지 않는다.
+- save/create는 operationId·target·path·baseHash(null은 새 파일)·제출 text·editVersion을 받는다. text의 BOM/줄바꿈/마지막 개행을 임의 정규화하지 않으며 기존 파일 mode를 보존한다. 공통 writer 예약과 기존 lease 안에서 신뢰·현재 사본·path·baseHash를 확인하고 같은 폴더 temp write/flush→원자 replace 또는 exclusive create→disk readback으로 완료한다.
+- rename은 원본 hash와 빈 목적지를 확인하며 기존 목적지를 덮지 않는다. delete는 confirmed:true와 원본 hash를 요구하고 복구 checkpoint의 해당 원본 bytes가 실제 보존된 뒤에만 삭제한다. tracked_and_unignored checkpoint에 포함되지 않는 파일은 복구가능 삭제라고 표시하지 않는다. 초기 변경 범위는 최대 1MiB UTF-8 일반 파일이다.
+- 접수 transaction에 상대 path·baseHash, save의 submittedHash/editVersion, rename 목적지, delete checkpoint ID를 pending intent로 함께 저장하고 모든 결과에도 보존한다. 원문 text는 원장에 중복 저장하지 않는다. renderer 원요청이 사라져도 해당 파일과 precondition을 조회할 수 있어야 한다.
+- admitted 이후 결과는 원래 operation receipt로 조회한다. 동일 ID 요청은 같은 효과를 재실행하지 않으며 다른 내용은 conflict다. 적용/기록/응답이 불확실하면 uncertain과 예약을 보존한다. readback은 제출 editVersion을 돌려주며 UI는 더 새로운 편집을 clean으로 만들지 않는다.
+- Corral 내부 예약은 외부 writer에 대한 OS 원자 CAS가 아니다. 직전 hash 확인과 원자 교체 사이 외부 변경 경합 한계를 숨기지 않는다. 파일 내용과 절대 경로를 오류/receipt에 복사하지 않는다.
+
+H는 실제 임시 Git/SQLite에서 read→save/create→disk hash/형식/mode, rename·삭제 checkpoint·receipt 재조회다. N은 stale hash/다른 target/generation·Run writer·symlink/경로이탈·binary/크기·기존 rename 목적지다. F는 IO/receipt 실패와 duplicate/늦은 응답·원자성·uncertain 보존이다. 별도 UI E2E를 먼저 추가하지 않는다.

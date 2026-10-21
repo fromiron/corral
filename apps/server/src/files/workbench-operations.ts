@@ -1,26 +1,16 @@
-import type { Clock } from '@corral/contracts';
+import type { Clock, WorkbenchOperation, WorkspaceTarget } from '@corral/contracts';
+
+export type { WorkbenchOperation, WorkspaceTarget } from '@corral/contracts';
+
 import { ToolRefusal } from '@corral/core';
 import type { Db } from '@corral/storage-sqlite';
 import { WorkspaceAccessStore } from './workspace-access.ts';
 
-export interface WorkspaceTarget {
-  hostId: string;
-  projectId: string;
-  bindingId: string;
-  sessionId: string;
-  copyGeneration: number;
-}
 interface OperationRequest {
   operationId: string;
   target: WorkspaceTarget;
   kind: string;
   requestHash: string;
-}
-export interface WorkbenchOperation extends OperationRequest {
-  state: 'running' | 'succeeded' | 'failed' | 'cancelled' | 'uncertain';
-  result: unknown;
-  createdAt: string;
-  updatedAt: string;
 }
 interface OperationRow {
   operation_id: string;
@@ -65,6 +55,7 @@ export class WorkbenchOperations {
   admit(
     request: OperationRequest,
     path: string,
+    initialResult: unknown = null,
   ): { admitted: boolean; receipt: WorkbenchOperation } {
     return this.db
       .transaction(() => {
@@ -94,12 +85,13 @@ export class WorkbenchOperations {
         this.db
           .prepare(`INSERT INTO workbench_operations
         (operation_id,request_hash,target_json,kind,state,result_json,created_at,updated_at)
-        VALUES(?,?,?,?,'running',NULL,?,?)`)
+        VALUES(?,?,?,?,'running',?,?,?)`)
           .run(
             request.operationId,
             request.requestHash,
             JSON.stringify(request.target),
             request.kind,
+            initialResult === null ? null : JSON.stringify(initialResult),
             now,
             now,
           );

@@ -3291,5 +3291,38 @@
     "status": "planned",
     "adapter": "temporary SQLite/Git and deterministic clock; engine browser/native qualification recorded separately",
     "evidence": null
+  },
+  {
+    "id": "TC-WBD-002-H",
+    "requirements": [
+      "CRL-WBD-002"
+    ],
+    "suite": "unit+integration",
+    "scenario": "관리 문서 read/save/create/rename/delete와 형식·mode·checkpoint·동일 ID receipt 보존",
+    "status": "planned",
+    "adapter": "temporary Git/SQLite, injected file IO, real HTTP client; no paid providers or new E2E",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-002-N",
+    "requirements": [
+      "CRL-WBD-002"
+    ],
+    "suite": "unit+integration",
+    "scenario": "stale target/hash/generation·Run writer·symlink/경로·기존 rename 목적지·편집불가 형식 거절",
+    "status": "planned",
+    "adapter": "temporary Git/SQLite, injected file IO, real HTTP client; no paid providers or new E2E",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-002-F",
+    "requirements": [
+      "CRL-WBD-002"
+    ],
+    "suite": "unit+integration",
+    "scenario": "IO와 receipt 실패·응답 유실·중복/늦은 완료에서 실제 내용과 uncertain 예약 보존",
+    "status": "planned",
+    "adapter": "temporary Git/SQLite, injected file IO, real HTTP client; no paid providers or new E2E",
+    "evidence": null
   }
 ]

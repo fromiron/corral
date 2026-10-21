@@ -16,6 +16,7 @@ import {
   CreateRunRequest,
   canonicalJson,
   type DecisionProvider,
+  DocumentCommand,
   type ErrorCode,
   HarnessBindingRef,
   HunkPlanRequest,
@@ -436,6 +437,7 @@ async function createCorralServer(
   const files = new WorkspaceService({
     db,
     clock,
+    hostId: workspace.id,
     worktreeRoot: options.worktreeRoot ?? defaultWorktreeRoot(),
     forbidden: [join(workspace.root, '.corral'), userConfigDir()],
     timers: options.timers ?? systemTimers,
@@ -659,9 +661,9 @@ async function createCorralServer(
       }
     }
     if (error.statusCode === 413)
-      return reply
-        .code(413)
-        .send({ error: { code: 'SCHEMA_INVALID', message: 'request body exceeds 2 MiB' } });
+      return reply.code(413).send({
+        error: { code: 'SCHEMA_INVALID', message: 'request body exceeds its size limit' },
+      });
     if (error.statusCode && error.statusCode < 500) {
       return fail(reply, 'SCHEMA_INVALID', 'the request body could not be read');
     }
@@ -1788,6 +1790,52 @@ async function createCorralServer(
       return workspaceFail(reply, error);
     }
   });
+  const documentFail = (reply: FastifyReply, error: unknown) => {
+    if (error instanceof WorkspaceError || error instanceof ToolRefusal)
+      return fail(reply, error.code, error.message);
+    return fail(reply, 'STORAGE_UNAVAILABLE', 'the document operation failed');
+  };
+  app.get<SessionParams>(
+    '/api/v1/sessions/:sessionId/worktree/document',
+    async (request, reply) => {
+      const query = z.strictObject({ path: z.string().min(1).max(4096) }).safeParse(request.query);
+      if (!query.success) return fail(reply, 'SCHEMA_INVALID', 'path is required');
+      if (!(await sessionOr404(reply, request.params.sessionId))) return reply;
+      try {
+        return await files.readDocument(request.params.sessionId, query.data.path);
+      } catch (error) {
+        return documentFail(reply, error);
+      }
+    },
+  );
+  app.post<SessionParams>(
+    '/api/v1/sessions/:sessionId/worktree/documents',
+    // One MiB of UTF-8 text may require six MiB after JSON escaping, plus the envelope.
+    { bodyLimit: 7 * 1024 * 1024 },
+    async (request, reply) => {
+      const command = DocumentCommand.safeParse(request.body);
+      if (!command.success) return fail(reply, 'SCHEMA_INVALID', 'invalid document command');
+      if (command.data.target.sessionId !== request.params.sessionId)
+        return fail(reply, 'SCHEMA_INVALID', 'document target does not match the session');
+      if (!(await sessionOr404(reply, request.params.sessionId))) return reply;
+      try {
+        return await files.changeDocument(request.params.sessionId, command.data);
+      } catch (error) {
+        return documentFail(reply, error);
+      }
+    },
+  );
+  app.get<{ Params: { sessionId: string; operationId: string } }>(
+    '/api/v1/sessions/:sessionId/worktree/document-operations/:operationId',
+    async (request, reply) => {
+      if (!(await sessionOr404(reply, request.params.sessionId))) return reply;
+      try {
+        return files.documentOperation(request.params.sessionId, request.params.operationId);
+      } catch (error) {
+        return documentFail(reply, error);
+      }
+    },
+  );
   const ScopeQuery = z.object({
     scope: z.enum(['session', 'review', 'run']).default('session'),
     runId: Identifier.optional(),

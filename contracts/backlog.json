@@ -2766,8 +2766,8 @@
       "docs/evaluation/"
     ],
     "done": "기존 기능/테스트 지도, A/B 엔진 실제 fixture, 버전/라이선스/native/CSP 한계와 대상·owner 계약을 기록한다.",
-    "status": "in_progress",
-    "evidence": null
+    "status": "implemented",
+    "evidence": "docs/evaluation/Development-Workbench-Foundation-2026-10-21.md"
   },
   {
     "id": "C-143",
@@ -2787,5 +2787,26 @@
     "done": "기존 예약을 보존해 인간/Run writer 경합·idempotency·restart uncertain·늦은 완료·사본 재생성·reader 보호를 필요한 단위/통합 시험으로 확인한다.",
     "status": "implemented",
     "evidence": "docs/evaluation/Development-Workbench-Foundation-2026-10-21.md"
+  },
+  {
+    "id": "C-144",
+    "phase": "M1",
+    "title": "CR-046 관리 사본 문서 버전과 사용자 파일 변경 API (P04)",
+    "dependsOn": [
+      "C-143"
+    ],
+    "requirements": [
+      "CRL-WBD-002"
+    ],
+    "files": [
+      "packages/contracts/src/workbench.ts",
+      "apps/server/src/files/",
+      "apps/server/src/app.ts",
+      "packages/client/src/index.ts",
+      "apps/studio/src/demo/workspaces-client.ts"
+    ],
+    "done": "실제 임시 파일/SQLite에서 full-hash read·원자 save/create·목적지 보존 rename·복구가능 delete·target/hash/owner 충돌·idempotency/uncertain과 client HTTP 경로를 검증한다.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/Development-Workbench-Documents-2026-10-21.md"
   }
 ]
