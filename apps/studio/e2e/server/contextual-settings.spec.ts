@@ -213,3 +213,155 @@ test.describe('active work and credentials', () => {
     }
   });
 });
+
+test.describe('settings layout and keyboard', () => {
+  test.use({ live: true, codexLogin: true });
+  test('[TC-UX-006-H] keyboard, light/dark, narrow reflow and explicit empty project scope', async ({
+    page,
+    corral,
+  }) => {
+    await corral.open('/projects/default');
+    const trigger = page.getByRole('button', { name: 'Settings', exact: true });
+    // Reach the entry by keyboard and keep its exact DOM node for focus restoration.
+    for (
+      let step = 0;
+      step < 80 && !(await trigger.evaluate((node) => node === document.activeElement));
+      step++
+    )
+      await page.keyboard.press('Tab');
+    await expect(trigger).toBeFocused();
+    await page.keyboard.press('Enter');
+    const dialog = page.getByRole('dialog', { name: 'Settings', exact: true });
+    await expect(dialog).toBeVisible();
+    for (let step = 0; step < 20; step++) {
+      await page.keyboard.press('Tab');
+      expect(await dialog.evaluate((node) => node.contains(document.activeElement))).toBe(true);
+    }
+    await dialog.getByRole('radio', { name: 'Light', exact: true }).check();
+    await dialog.getByRole('link', { name: 'Models', exact: true }).click();
+    await expect(dialog.getByTestId('provider-openai')).toBeVisible();
+    await page.screenshot({ path: test.info().outputPath('settings-wide-light.png') });
+    const { default: AxeBuilder } = await import('@axe-core/playwright');
+    expect(
+      (await new AxeBuilder({ page }).analyze()).violations
+        .filter((v) => v.impact === 'serious' || v.impact === 'critical')
+        .map((v) => v.id),
+    ).toEqual([]);
+    await page.keyboard.press('Escape');
+    await expect(trigger).toBeFocused();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.keyboard.press('Control+,');
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('combobox', { name: 'Language', exact: true }).click();
+    await page.getByRole('option', { name: '한국어', exact: true }).click();
+    const korean = page.getByRole('dialog', { name: '설정', exact: true });
+    await expect(korean).toBeVisible();
+    await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
+    await korean.getByRole('radio', { name: '다크', exact: true }).check();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await page.screenshot({ path: test.info().outputPath('settings-narrow-korean-dark.png') });
+    expect(await korean.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+    await expect(korean.getByRole('button', { name: '설정 닫기', exact: true })).toBeInViewport();
+    for (let step = 0; step < 15; step++) {
+      await page.keyboard.press('Tab');
+      await expect
+        .poll(() =>
+          korean.evaluate((node) =>
+            node.contains(document.activeElement)
+              ? 'inside'
+              : (document.activeElement?.getAttribute('data-slot') ??
+                document.activeElement?.tagName),
+          ),
+        )
+        .toBe('inside');
+    }
+    await page.keyboard.press('Escape');
+    await page.goto(`${corral.server.url}/projects?settings=workspace`);
+    const empty = page.getByRole('dialog');
+    await expect(empty.locator('.settings-content button')).toHaveCount(0);
+    await expect(empty.getByRole('combobox').last()).toContainText('프로젝트');
+    expect(corral.errors).toEqual([]);
+  });
+});
+
+test('[TC-UX-006-N] a late profile save cannot erase another profile lost-response receipt', async ({
+  page,
+  corral,
+}) => {
+  await corral.open('/projects/default');
+  await page.evaluate(async () => {
+    const { csrfToken } = await (await fetch('/api/v1/session')).json();
+    for (const id of ['a', 'b']) {
+      const response = await fetch(`/api/v1/harness/profiles/modal-${id}`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json', 'x-corral-csrf': csrfToken },
+        body: JSON.stringify({
+          expectedRevision: 0,
+          profile: {
+            name: `Style ${id}`,
+            policy: 'strict',
+            resources: [],
+            allowedTools: ['submit_result'],
+            startupCommands: [],
+          },
+        }),
+      });
+      if (!response.ok) throw new Error('fixture profile failed');
+    }
+  });
+  let finishA!: () => void, finishB!: () => void;
+  const pendingA = new Promise<void>((resolve) => {
+    finishA = resolve;
+  });
+  const pendingB = new Promise<void>((resolve) => {
+    finishB = resolve;
+  });
+  let aStarted = false,
+    bApplied = false;
+  const bCommands: string[] = [];
+  await page.route('**/harness/publish', async (route) => {
+    const body = route.request().postDataJSON();
+    if (body.profileId === 'modal-a') {
+      aStarted = true;
+      await pendingA;
+      return route.continue();
+    }
+    bCommands.push(body.operationId);
+    if (bCommands.length !== 1) return route.continue();
+    const response = await route.fetch();
+    expect(response.ok()).toBe(true);
+    bApplied = true;
+    await pendingB;
+    await route.abort('failed');
+  });
+  const dialog = page.getByRole('dialog', { name: 'Settings', exact: true });
+  const open = async (id: string) => {
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await dialog.getByRole('link', { name: 'Work styles', exact: true }).click();
+    await dialog.getByRole('button', { name: `Style ${id} · r1`, exact: true }).click();
+    await dialog.getByLabel('Work style name', { exact: true }).fill(`Updated ${id}`);
+    await dialog.getByRole('button', { name: 'Save work style', exact: true }).click();
+  };
+  try {
+    await open('a');
+    await expect.poll(() => aStarted).toBe(true);
+    await dialog.getByRole('button', { name: 'Close settings', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await open('b');
+    await expect.poll(() => bApplied).toBe(true);
+    finishA();
+    await expect(page.getByTestId('settings-operations')).toContainText('completed');
+    finishB();
+    await expect(dialog.getByRole('alert')).toBeVisible();
+    await dialog.getByRole('button', { name: 'Save work style', exact: true }).click();
+    await expect(dialog.getByTestId('harness-status')).toContainText('Saved revision 2');
+    expect(bCommands).toHaveLength(2);
+    expect(bCommands[1]).toBe(bCommands[0]);
+  } finally {
+    finishA();
+    finishB();
+  }
+});

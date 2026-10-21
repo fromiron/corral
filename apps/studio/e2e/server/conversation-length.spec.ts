@@ -51,8 +51,9 @@ test('[TC-CONTINUITY-001-H] [TC-CHAT-002-H] [TC-CHAT-002-N] a long conversation 
     return { id: item.dataset.chatItem!, offset: item.getBoundingClientRect().top - top };
   });
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await expect(page).toHaveURL(/\/settings/);
-  await page.goto(url);
+  await expect(page).toHaveURL(/settings=general/);
+  await page.getByRole('button', { name: 'Close settings', exact: true }).click();
+  await expect(page).toHaveURL(url);
   await expect.poll(() => timeline.locator(`[data-chat-item="${anchor.id}"]`).count()).toBe(1);
   await expect
     .poll(async () =>

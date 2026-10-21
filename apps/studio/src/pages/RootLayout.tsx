@@ -131,8 +131,10 @@ function RootFrame() {
     const state = location.state as typeof location.state & {
       settingsOwner?: string;
       settingsOrigin?: number;
+      settingsOneShot?: boolean;
     };
     if (
+      !state.settingsOneShot &&
       state.settingsOwner === settingsOwner &&
       typeof state.settingsOrigin === 'number' &&
       state.__TSR_index === state.settingsOrigin + 1
@@ -141,7 +143,7 @@ function RootFrame() {
     } else {
       void navigate({
         to: location.pathname,
-        search: withoutSettings(location.search),
+        search: { ...withoutSettings(location.search), newSession: undefined, draft: undefined },
         hash: location.hash,
         replace: true,
         resetScroll: false,
@@ -149,8 +151,13 @@ function RootFrame() {
           const {
             settingsOwner: _owner,
             settingsOrigin: _origin,
+            settingsOneShot: _oneShot,
             ...rest
-          } = previous as typeof previous & { settingsOwner?: string; settingsOrigin?: number };
+          } = previous as typeof previous & {
+            settingsOwner?: string;
+            settingsOrigin?: number;
+            settingsOneShot?: boolean;
+          };
           return rest;
         },
       });
@@ -177,7 +184,10 @@ function RootFrame() {
         replace: overlay,
         resetScroll: false as const,
         state: (previous: typeof location.state) =>
-          overlay ? previous : { ...previous, settingsOwner, settingsOrigin: previous.__TSR_index },
+          overlay ? previous : {
+            ...previous, settingsOwner, settingsOrigin: previous.__TSR_index,
+            settingsOneShot: Boolean(location.search.newSession || location.search.draft),
+          },
       };
     },
     selectProject: overlay

@@ -75,8 +75,6 @@ export const workspaceRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/projects/$projectId',
   validateSearch: draftSearch,
-  // Search-only settings/panel navigation keeps loaded work; explicit invalidation still reloads.
-  shouldReload: ({ cause }) => (cause === 'stay' ? false : undefined),
   loader: async ({ context, params }) => {
     const [projects, allCorrals, allRuns] = await Promise.all([
       context.services.repository.listProjects(),
@@ -155,8 +153,6 @@ export const sessionRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/sessions/$sessionId',
   validateSearch: validateSessionSearch,
-  // Search-only settings/panel navigation keeps loaded work; explicit invalidation still reloads.
-  shouldReload: ({ cause }) => (cause === 'stay' ? false : undefined),
   loader: async ({ context, params }) => {
     const session = await context.services.repository.getSession(params.sessionId);
     if (!session) throw notFound();
@@ -189,8 +185,6 @@ export const reviewRoute = createRoute({
     ...(typeof search.runId === 'string' ? { runId: search.runId } : {}),
     ...(typeof search.file === 'string' ? { file: search.file } : {}),
   }),
-  // Search-only settings/panel navigation keeps loaded work; explicit invalidation still reloads.
-  shouldReload: ({ cause }) => (cause === 'stay' ? false : undefined),
   loader: async ({ context, params }) => {
     const session = await context.services.repository.getSession(params.sessionId);
     if (!session) throw notFound();
@@ -202,8 +196,6 @@ export const reviewRoute = createRoute({
 export const projectsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/projects',
-  // Search-only settings/panel navigation keeps loaded work; explicit invalidation still reloads.
-  shouldReload: ({ cause }) => (cause === 'stay' ? false : undefined),
   loader: async ({ context }) => {
     const [projects, corrals, runs] = await Promise.all([
       context.services.repository.listProjects(),
@@ -221,8 +213,6 @@ export const demoRoute = createRoute({
   validateSearch: (search: Record<string, unknown>): { template?: DemoTemplateId } =>
     search.template === 'starter' ? { template: 'starter' } : {},
   loaderDeps: ({ search }) => ({ template: search.template }),
-  // Search-only settings/panel navigation keeps loaded work; explicit invalidation still reloads.
-  shouldReload: ({ cause }) => (cause === 'stay' ? false : undefined),
   loader: async ({ context, deps }) => {
     const template = demoTemplate(deps.template);
     // Switching back to a template opened earlier in this tab keeps what was saved there.
@@ -255,8 +245,6 @@ export const editorRoute = createRoute({
       ? { fromSession: search.fromSession }
       : {}),
   }),
-  // Search-only settings/panel navigation keeps loaded work; explicit invalidation still reloads.
-  shouldReload: ({ cause }) => (cause === 'stay' ? false : undefined),
   loader: async ({ context, params }) => {
     const record = await context.services.repository.get(params.corralId);
     if (!record) throw notFound();

@@ -96,7 +96,7 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
   };
 
   return (
-    <div className="flex flex-col gap-6">
+    <fieldset disabled={pending} className="flex min-w-0 flex-col gap-6">
       <p className="text-sm text-muted">{t('folderIntro')}</p>
       {mode === 'browser' ? <p className="text-sm text-warning">{t('demoFolder')}</p> : null}
       {!binding ? (
@@ -239,7 +239,7 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
           {error}
         </p>
       ) : null}
-    </div>
+    </fieldset>
   );
 }
 

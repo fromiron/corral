@@ -134,7 +134,7 @@ export function VaultSettingsPage() {
   });
   const runSettingsTask = useSettingsTask('vault');
   useSettingsForm({
-    dirty: Boolean(password || preview || s3.secretAccessKey || s3.sessionToken),
+    dirty: Boolean(preview || s3.secretAccessKey || s3.sessionToken),
     pending: busy,
   });
   async function act(action: () => Promise<void>) {

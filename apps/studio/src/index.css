@@ -370,6 +370,17 @@
 }
 [data-settings-dialog] {
   grid-row-start: 1;
+  background: var(--surface);
+  backdrop-filter: none;
+}
+[data-settings-dialog] [data-slot="select-trigger"] {
+  min-height: 36px;
+}
+@media (pointer: coarse) {
+  [data-settings-dialog] button,
+  [data-settings-dialog] a {
+    min-height: 44px;
+  }
 }
 @media (max-width: 639px) {
   [data-slot="dialog-viewport"]:has(> [data-settings-dialog]) {

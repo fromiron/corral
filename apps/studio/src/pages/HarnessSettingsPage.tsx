@@ -148,13 +148,15 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
   const [entries, setEntries] = useState<HarnessEntryView[]>([]);
   const [search, setSearch] = useState(''),
     [archived, setArchived] = useState(false);
-  const pendingOperation = useSettingsCommand<{ json: string; id: string }>('harness-publish');
   const [toolsState, setToolsState] = useState<{
     projectId: string | undefined;
     value: ProjectToolConfigRevision | null;
   } | null>(null);
   const projectTools = toolsState && toolsState.projectId === projectId ? toolsState.value : null;
   const [selected, setSelected] = useState<HarnessProfileRevision | null>(null);
+  const pendingOperation = useSettingsCommand<{ json: string; id: string }>(
+    `harness-publish:${selected?.profileId ?? 'new'}`,
+  );
   const [profile, setProfile] = useState<HarnessProfile>(emptyProfile);
   const [toolNames, setToolNames] = useState(emptyProfile().allowedTools.join(', '));
   const [commands, setCommands] = useState('');

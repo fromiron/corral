@@ -79,8 +79,8 @@ for (const stop of ['cancel', 'navigate'] as const) {
       if (stop === 'cancel') {
         await page.getByRole('button', { name: 'Cancel team selection', exact: true }).click();
       } else {
-        await page.getByRole('button', { name: 'Settings', exact: true }).click();
-        await expect(page).toHaveURL(/\/settings/);
+        await page.getByRole('link', { name: 'All projects', exact: true }).click();
+        await expect(page).toHaveURL(/\/projects$/);
       }
       await expect.poll(() => signal?.aborted).toBe(true);
     } finally {
@@ -389,7 +389,7 @@ for (const stop of ['cancel', 'navigate'] as const) {
     try {
       if (stop === 'cancel')
         await page.getByRole('button', { name: 'Cancel team selection', exact: true }).click();
-      else await page.getByRole('button', { name: 'Settings', exact: true }).click();
+      else await page.getByRole('link', { name: 'All projects', exact: true }).click();
       await expect
         .poll(() =>
           ['cancelling', 'cancelled'].includes(
@@ -650,8 +650,9 @@ test.describe('quality presets', () => {
     await verifier.check();
     await closeRequestOptions(page);
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
-    await expect(page).toHaveURL(/\/settings/);
-    await page.goto(url);
+    await expect(page).toHaveURL(/settings=general/);
+    await page.getByRole('button', { name: 'Close settings', exact: true }).click();
+    await expect(page).toHaveURL(url);
     await expect(requestBox(page)).toHaveValue('Hello from the fixed quality fixture');
     await openRequestOptions(page);
     await expect(page.getByRole('combobox', { name: 'Quality preset', exact: true })).toContainText(

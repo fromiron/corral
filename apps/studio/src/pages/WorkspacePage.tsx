@@ -656,6 +656,7 @@ function StartSession({
   const { repository } = useServices();
   const { sendKey } = usePreferences();
   const navigate = useNavigate();
+  const router = useRouter();
   const box = useRef<HTMLTextAreaElement>(null);
   const startButton = useRef<HTMLButtonElement>(null);
   const creating = useRef(false);
@@ -734,7 +735,8 @@ function StartSession({
       if (!result.ok) return setError(result.message);
       writeDraft(result.session.sessionId, objective);
       projectsChanged();
-      if (!active.current) return;
+      // A completed background creation must not dismiss the person's settings or retarget work.
+      if (!active.current || router.state.location.search.settings) return;
       if (JSON.stringify(draftRef.current) === submittedDraft)
         saveDraft({ title: '', objective: '', corralId: '' });
       await navigate({

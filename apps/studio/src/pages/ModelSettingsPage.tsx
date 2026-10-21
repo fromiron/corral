@@ -111,15 +111,21 @@ function ProviderCard({
   const ownKey = provider.method === 'api_key' && provider.source === 'corral';
 
   const runSettingsTask = useSettingsTask(`provider:${provider.providerId}`);
-  useSettingsForm({ dirty: Boolean(apiKey || redirect), pending: busy });
+  useSettingsForm({
+    dirty: Boolean(apiKey || redirect),
+    pending: busy,
+    ...(!redirect && apiKey.trim() ? { save: persistKey } : {}),
+  });
   const act = async (action: () => Promise<unknown>) => {
     setBusy(true);
     setError(null);
     try {
       await runSettingsTask(action);
       await refresh();
+      return true;
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : String(failure));
+      return false;
     } finally {
       setBusy(false);
     }
@@ -133,14 +139,17 @@ function ProviderCard({
     });
   };
 
-  const saveKey = (event: FormEvent) => {
-    event.preventDefault();
+  async function persistKey() {
     const key = apiKey.trim();
-    if (!key) return;
-    void act(async () => {
-      await models?.setApiKey(provider.providerId, key, revision);
+    if (!key || !models || busy) return false;
+    return act(async () => {
+      await models.setApiKey(provider.providerId, key, revision);
       setApiKey('');
     });
+  }
+  const saveKey = (event: FormEvent) => {
+    event.preventDefault();
+    void persistKey();
   };
 
   return (
