@@ -26,12 +26,17 @@ import { VaultSettingsPage } from './pages/VaultSettingsPage.tsx';
 import { WorkspacePage } from './pages/WorkspacePage.tsx';
 import { currentProject, projectOfRun } from './projects.ts';
 import type { StudioServices } from './services.tsx';
-import { type SettingsSearch, validateSettingsSearch } from './workbench/navigation.ts';
+import {
+  type SettingsSearch,
+  validateSettingsOverlay,
+  validateSettingsSearch,
+} from './workbench/navigation.ts';
 
 // Routes from Spec §4.1.
 
 const rootRoute = createRootRouteWithContext<{ services: StudioServices }>()({
   component: RootLayout,
+  validateSearch: validateSettingsOverlay,
   notFoundComponent: NotFoundView,
   errorComponent: ErrorView,
 });
@@ -274,7 +279,7 @@ export const settingsRoute = createRoute({
       ? { section: search.section as 'general' | 'workspace' | 'shortcuts' | 'about' }
       : {}),
   }),
-  component: SettingsPage,
+  component: () => <SettingsPage section={settingsRoute.useSearch().section} />,
 });
 
 export const harnessSettingsRoute = createRoute({
@@ -331,18 +336,6 @@ export const modelSettingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/settings/models',
   validateSearch: validateSettingsSearch,
-  loader: async ({ context }) => {
-    const api = context.services.models;
-    if (!api) return { profiles: [], providers: [], catalog: [], config: null };
-    const [profiles, providers, catalog, config] = await Promise.all([
-      api.profiles(),
-      api.auth(),
-      api.catalog(),
-      // Simulated-only servers have no model config to edit.
-      api.config().catch(() => null),
-    ]);
-    return { profiles, providers, catalog, config };
-  },
   component: ModelSettingsPage,
 });
 

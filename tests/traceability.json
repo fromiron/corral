@@ -1406,5 +1406,25 @@
     "tasks": [
       "C-139"
     ]
+  },
+  {
+    "requirementId": "CRL-UX-006",
+    "tasks": [
+      "C-140"
+    ],
+    "tests": [
+      "TC-UX-006-H",
+      "TC-UX-006-N"
+    ]
+  },
+  {
+    "requirementId": "CRL-UX-007",
+    "tasks": [
+      "C-141"
+    ],
+    "tests": [
+      "TC-UX-007-H",
+      "TC-UX-007-N"
+    ]
   }
 ]

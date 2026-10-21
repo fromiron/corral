@@ -120,10 +120,19 @@ test('[TC-WIDGET-001-H] [TC-WIDGET-002-H] live plans, context, manual collapse a
 
   try {
     await session(page, corral);
+    await expect(
+      page.getByTestId('chat-composer').getByRole('button', { name: 'Model', exact: true }),
+    ).toContainText('Next request');
     await send(page, 'Review and update the chat layout in several steps.');
     const plan = page.getByTestId('composer-work-plan');
     const toggle = plan.getByRole('button', { name: /Work plan/ });
     await expect(toggle).toContainText('0/7 done');
+    const pills = page.getByTestId('composer-status-pills');
+    await expect(pills).toBeVisible();
+    await expect(pills.getByRole('link').first()).toHaveAttribute(
+      'href',
+      new RegExp(`run=${current(corral).runId}`),
+    );
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
     await expect(plan.getByRole('listitem')).toHaveCount(5);
     await expect(page.getByTestId('compact-run')).toHaveCount(0);

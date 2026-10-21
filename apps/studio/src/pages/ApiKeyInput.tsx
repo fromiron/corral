@@ -25,7 +25,7 @@ export function ApiKeyInput({
       <label htmlFor={id} className="text-xs text-muted">
         {t('apiKeyLabel')}
       </label>
-      <div className="flex items-center gap-1">
+      <div className="flex items-stretch gap-2">
         <Input
           nativeInput
           id={id}
@@ -44,6 +44,7 @@ export function ApiKeyInput({
           type="button"
           variant="ghost"
           size="icon"
+          className="h-auto sm:h-auto"
           disabled={disabled}
           aria-label={t(visible ? 'hideKey' : 'showKey')}
           title={t(visible ? 'hideKey' : 'showKey')}

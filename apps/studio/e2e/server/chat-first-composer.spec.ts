@@ -40,6 +40,7 @@ test('[TC-UX-005-H] a default chat starts without a saved Corral or advanced cho
   const path = await startChat(page, corral);
   expect(await savedCorrals(page)).toEqual([]);
   expect((await session(page)).corralId).toBeNull();
+  expect((await session(page)).autoTitle).toBe(true);
 
   await expect(optionsButton(page)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Attachments', exact: true })).toBeVisible();
@@ -82,6 +83,13 @@ test('[TC-UX-005-H] a default chat starts without a saved Corral or advanced cho
   );
   await expect.poll(async () => (await session(page)).entries[0]?.state).toBe('started');
   const persisted = await session(page);
+  expect(persisted).toMatchObject({ title: prompt, autoTitle: false });
+  await expect(
+    page.getByRole('navigation', { name: 'Projects and sessions', exact: true }),
+  ).toContainText(prompt);
+  await expect(page.getByRole('navigation', { name: 'Session tabs', exact: true })).toContainText(
+    prompt,
+  );
   expect(persisted.corralId).toBeNull();
   expect(persisted.entries[0]).toMatchObject({ text: prompt, state: 'started', intent: 'next' });
   expect(persisted.entries[0]?.runId).toBe(corral.server.coordinator.listRuns()[0]?.runId);
@@ -90,6 +98,7 @@ test('[TC-UX-005-H] a default chat starts without a saved Corral or advanced cho
   await page.reload();
   await expect(page).toHaveURL(new RegExp(`${path}$`));
   await expect(page.getByTestId('chat-timeline')).toContainText(prompt);
+  expect((await session(page)).title).toBe(prompt);
   await expect(page.getByTestId('chat-result')).toContainText(
     'Start by writing what you want to accomplish.',
   );

@@ -11,6 +11,7 @@ import { useTranslations } from 'use-intl';
 import { desktop } from '../desktop.tsx';
 import { useServices } from '../services.tsx';
 import { CheckpointPanel } from '../workbench/CheckpointPanel.tsx';
+import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
 
 // Work folders and working copies in Studio (CR-012), on the local server or the demo's
 // in-memory example folder.
@@ -67,17 +68,26 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
   const [path, setPath] = useState(mode === 'browser' ? 'demo://example-repo' : '');
   const [checks, setChecks] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+  const runSettingsTask = useSettingsTask(`work-folder:${projectId}`);
+  useSettingsForm({
+    dirty: (mode === 'server' && !binding && Boolean(path)) || checks !== null,
+    pending,
+  });
   if (!workspaces || binding === undefined) return null;
   const act = async (work: () => Promise<unknown>) => {
+    setPending(true);
     setError(null);
     try {
-      await work();
+      await runSettingsTask(work);
       await reload();
       window.dispatchEvent(new Event(WORKSPACE_CHANGED));
     } catch (failure) {
       setError(
         t('failed', { message: failure instanceof Error ? failure.message : String(failure) }),
       );
+    } finally {
+      setPending(false);
     }
   };
   const link = (event: FormEvent) => {
@@ -86,7 +96,7 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
   };
 
   return (
-    <div className="flex flex-col gap-6">
+    <fieldset disabled={pending} className="flex min-w-0 flex-col gap-6">
       <p className="text-sm text-muted">{t('folderIntro')}</p>
       {mode === 'browser' ? <p className="text-sm text-warning">{t('demoFolder')}</p> : null}
       {!binding ? (
@@ -213,7 +223,7 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
                     await workspaces.configure(projectId, {
                       verifyCommands: parseChecks(checks ?? ''),
                     });
-                    setChecks(null);
+                    setChecks((current) => (current === checks ? null : current));
                   })
                 }
                 className="self-start"
@@ -229,7 +239,7 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
           {error}
         </p>
       ) : null}
-    </div>
+    </fieldset>
   );
 }
 

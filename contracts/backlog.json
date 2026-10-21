@@ -2706,5 +2706,49 @@
     "done": "전체 파일/권한/source/license diff, 이전 버전 평가, 명시 업데이트와 CAS 롤백 및 기존 snapshot 보존을 검증한다.",
     "status": "implemented",
     "evidence": "docs/evaluation/Quality-Completion-2026-10-21.md"
+  },
+  {
+    "id": "C-140",
+    "phase": "P12",
+    "title": "CR-044 문맥형 설정과 Composer UI 정돈",
+    "dependsOn": [
+      "C-137"
+    ],
+    "requirements": [
+      "CRL-UX-006"
+    ],
+    "files": [
+      "apps/studio/src/",
+      "apps/studio/e2e/",
+      "apps/desktop/scripts/",
+      "packages/react/src/messages/"
+    ],
+    "done": "설정 왕복에서 작업/구독/초안/선택을 보존하고 저장·미저장·history·포커스·늦은 응답/비밀값 반례와 Composer 상태/요청 구분을 실제 UI로 검증한다.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/Contextual-Settings-UI-2026-10-21.md"
+  },
+  {
+    "id": "C-141",
+    "phase": "P12",
+    "title": "CR-045 Workbench 식별성과 안내 개선",
+    "dependsOn": [
+      "C-140"
+    ],
+    "requirements": [
+      "CRL-UX-007"
+    ],
+    "files": [
+      "apps/studio/src/",
+      "apps/studio/e2e/",
+      "packages/react/src/",
+      "packages/core/src/repository/",
+      "packages/core/src/testing/",
+      "packages/storage-sqlite/",
+      "apps/server/src/app.ts",
+      "packages/client/src/index.ts"
+    ],
+    "done": "입력 포커스 대비·설정 경계/높이 일치·첫 요청 제목과 수동 이름 보존·320/390px 모델/추론·검색 범위·가져오기 안내·역할별 테두리를 실제 화면과 정상/실패/중복/늦은 이벤트 회귀로 검증한다.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/Workbench-Identification-2026-10-21.md"
   }
 ]

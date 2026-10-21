@@ -8,10 +8,10 @@ import {
   DialogTitle,
   Select,
 } from '@corral/react/ui';
-import { useBlocker } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { desktop } from '../../desktop.tsx';
+import { useSettingsForm, useSettingsTask } from '../SettingsLifecycle.tsx';
 import { field } from './Target.tsx';
 
 const EXTENSION_TEMPLATE = `export default function (pi) {
@@ -57,10 +57,11 @@ export function ResourceEditor({
   reviewRef.current = review;
   const dirtyRef = useRef(dirty);
   dirtyRef.current = dirty;
-  useBlocker({
-    shouldBlockFn: () => dirtyRef.current && !window.confirm(t('leaveUnsaved')),
-    enableBeforeUnload: () => dirtyRef.current,
-  });
+  const runSettingsTask = useSettingsTask(
+    `resource-editor:${kind}:${entry?.resourceHash ?? 'new'}`,
+  );
+  const confirmLeave = useSettingsForm({ dirty, pending: busy });
+  const installing = useRef(false);
   useEffect(() => {
     alive.current = true;
     if (entry) {
@@ -76,11 +77,15 @@ export function ResourceEditor({
           },
           (e) => alive.current && setError(e.message),
         )
-        .finally(() => alive.current && setBusy(false));
+        .finally(() => {
+          installing.current = false;
+          if (alive.current) setBusy(false);
+        });
     }
     return () => {
       alive.current = false;
-      if (reviewRef.current) void api.cancelReview(reviewRef.current.reviewId).catch(() => {});
+      if (reviewRef.current && !installing.current)
+        void api.cancelReview(reviewRef.current.reviewId).catch(() => {});
     };
   }, [api, entry]);
   function change(action: () => void) {
@@ -90,8 +95,8 @@ export function ResourceEditor({
     setDirty(true);
     action();
   }
-  function close() {
-    if (!busy && (!dirty || window.confirm(t('leaveUnsaved')))) onClose();
+  async function close() {
+    if (await confirmLeave()) onClose();
   }
   async function inspect() {
     setBusy(true);
@@ -209,7 +214,10 @@ export function ResourceEditor({
                       .catch(() => {
                         if (alive.current) setError(t('fileFailed'));
                       })
-                      .finally(() => alive.current && setBusy(false));
+                      .finally(() => {
+                        installing.current = false;
+                        if (alive.current) setBusy(false);
+                      });
                   }}
                 />
                 <span className="text-xs text-muted">{t('fileHint')}</span>
@@ -421,8 +429,8 @@ export function ResourceEditor({
                   onClick={() => {
                     setBusy(true);
                     setError('');
-                    void api
-                      .install(review.reviewId)
+                    installing.current = true;
+                    void runSettingsTask(() => api.install(review.reviewId))
                       .then(
                         (resource) => {
                           if (alive.current) {
@@ -433,7 +441,10 @@ export function ResourceEditor({
                         },
                         (e) => alive.current && setError(e.message),
                       )
-                      .finally(() => alive.current && setBusy(false));
+                      .finally(() => {
+                        installing.current = false;
+                        if (alive.current) setBusy(false);
+                      });
                   }}
                 >
                   {t('saveLibrary')}

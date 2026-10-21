@@ -1,10 +1,14 @@
 import type { ModelProfileView, ProviderAuthView, ReasoningSettings } from '@corral/client';
 import { Button } from '@corral/react/ui';
-import { useRouter } from '@tanstack/react-router';
 import { type FormEvent, useEffect, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
-import { modelSettingsRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
+import {
+  ModelSettingsRefresh,
+  useModelSettings,
+  useModelSettingsRefresh,
+} from '../workbench/modelSettings.tsx';
+import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
 import { ApiKeyInput } from './ApiKeyInput.tsx';
 import { ImageProfileSettings } from './ImageProfileSettings.tsx';
 import { ModelConfigEditor } from './ModelConfigEditor.tsx';
@@ -18,70 +22,71 @@ import { SettingsLayout } from './SettingsPage.tsx';
 export function ModelSettingsPage() {
   const t = useTranslations('Models');
   const { models, mode, live } = useServices();
-  const { profiles, providers, catalog, config } = modelSettingsRoute.useLoaderData();
+  const { profiles, providers, catalog, config, refresh, error, loading } =
+    useModelSettings(models);
   const [editing, setEditing] = useState(false);
-  const router = useRouter();
-  const pending = providers.some((p) => p.login && p.login.state !== 'failed');
-
-  // While a sign-in is open in another tab, follow its progress.
-  useEffect(() => {
-    if (!pending) return;
-    const timer = setInterval(() => void router.invalidate(), 1500);
-    return () => clearInterval(timer);
-  }, [pending, router]);
 
   return (
-    <SettingsLayout active="models">
-      <main className="settings-content">
-        <h2 className="text-2xl font-semibold">{t('heading')}</h2>
-        {mode !== 'server' || !models ? (
-          <p className="text-sm text-muted">{t('browserOnly')}</p>
-        ) : !live ? (
-          <p className="text-sm text-muted">{t('noLive')}</p>
-        ) : (
-          <>
-            <p className="text-sm text-muted">{t('intro')}</p>
-            {editing && config ? (
-              <ModelConfigEditor
-                config={config}
-                catalog={catalog}
-                onDone={() => setEditing(false)}
-              />
-            ) : (
-              <>
-                <ProfilesTable profiles={profiles} />
-                {config ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    type="button"
-                    onClick={() => setEditing(true)}
-                    className="self-start"
-                  >
-                    {t('editModels')}
-                  </Button>
-                ) : null}
-              </>
-            )}
-            <section aria-labelledby="providers-heading" className="flex flex-col gap-2">
-              <h3 id="providers-heading" className="text-sm font-semibold">
-                {t('providers')}
-              </h3>
-              {providers.map((provider) => (
-                <ProviderCard
-                  key={`${provider.providerId}:${config?.modelProviders.find((endpoint) => endpoint.id === provider.providerId)?.baseUrl ?? ''}`}
-                  provider={provider}
-                  revision={config?.revision}
+    <ModelSettingsRefresh value={refresh}>
+      <SettingsLayout active="models">
+        <main className="settings-content">
+          <h2 className="text-2xl font-semibold">{t('heading')}</h2>
+          {error ? (
+            <p role="alert" className="text-danger">
+              {t('loadFailed')}{' '}
+              <Button onClick={() => void refresh().catch(() => {})}>{t('tryAgain')}</Button>
+            </p>
+          ) : null}
+          {loading ? <p role="status">{t('loading')}</p> : null}
+          {mode !== 'server' || !models ? (
+            <p className="text-sm text-muted">{t('browserOnly')}</p>
+          ) : !live ? (
+            <p className="text-sm text-muted">{t('noLive')}</p>
+          ) : (
+            <>
+              <p className="text-sm text-muted">{t('intro')}</p>
+              {editing && config ? (
+                <ModelConfigEditor
+                  config={config}
+                  catalog={catalog}
+                  onDone={() => setEditing(false)}
                 />
-              ))}
-            </section>
-            <ModelImportPanel />
-            <ImageProfileSettings modelProfiles={profiles} />
-            <ReasoningSettingsPanel key={config?.revision} />
-          </>
-        )}
-      </main>
-    </SettingsLayout>
+              ) : (
+                <>
+                  <ProfilesTable profiles={profiles} />
+                  {config ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      type="button"
+                      onClick={() => setEditing(true)}
+                      className="self-start"
+                    >
+                      {t('editModels')}
+                    </Button>
+                  ) : null}
+                </>
+              )}
+              <section aria-labelledby="providers-heading" className="flex flex-col gap-2">
+                <h3 id="providers-heading" className="text-sm font-semibold">
+                  {t('providers')}
+                </h3>
+                {providers.map((provider) => (
+                  <ProviderCard
+                    key={`${provider.providerId}:${config?.modelProviders.find((endpoint) => endpoint.id === provider.providerId)?.baseUrl ?? ''}`}
+                    provider={provider}
+                    revision={config?.revision}
+                  />
+                ))}
+              </section>
+              <ModelImportPanel />
+              <ImageProfileSettings modelProfiles={profiles} />
+              <ReasoningSettingsPanel key={config?.revision} />
+            </>
+          )}
+        </main>
+      </SettingsLayout>
+    </ModelSettingsRefresh>
   );
 }
 
@@ -95,7 +100,7 @@ function ProviderCard({
   const t = useTranslations('Models');
   const format = useFormatter();
   const { models } = useServices();
-  const router = useRouter();
+  const refresh = useModelSettingsRefresh();
   const [redirect, setRedirect] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [busy, setBusy] = useState(false);
@@ -105,14 +110,22 @@ function ProviderCard({
   // A key the page can remove: one entered here, not one from the server environment.
   const ownKey = provider.method === 'api_key' && provider.source === 'corral';
 
+  const runSettingsTask = useSettingsTask(`provider:${provider.providerId}`);
+  useSettingsForm({
+    dirty: Boolean(apiKey || redirect),
+    pending: busy,
+    ...(!redirect && apiKey.trim() ? { save: persistKey } : {}),
+  });
   const act = async (action: () => Promise<unknown>) => {
     setBusy(true);
     setError(null);
     try {
-      await action();
-      await router.invalidate();
+      await runSettingsTask(action);
+      await refresh();
+      return true;
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : String(failure));
+      return false;
     } finally {
       setBusy(false);
     }
@@ -126,14 +139,17 @@ function ProviderCard({
     });
   };
 
-  const saveKey = (event: FormEvent) => {
-    event.preventDefault();
+  async function persistKey() {
     const key = apiKey.trim();
-    if (!key) return;
-    void act(async () => {
-      await models?.setApiKey(provider.providerId, key, revision);
+    if (!key || !models || busy) return false;
+    return act(async () => {
+      await models.setApiKey(provider.providerId, key, revision);
       setApiKey('');
     });
+  }
+  const saveKey = (event: FormEvent) => {
+    event.preventDefault();
+    void persistKey();
   };
 
   return (
@@ -215,13 +231,7 @@ function ProviderCard({
         <form onSubmit={saveKey} className="flex flex-col gap-1">
           <div className="flex items-end gap-2">
             <ApiKeyInput value={apiKey} onChange={setApiKey} disabled={busy} />
-            <Button
-              variant="outline"
-              size="sm"
-              type="submit"
-              disabled={busy || !apiKey.trim()}
-              className="self-start"
-            >
+            <Button variant="outline" size="sm" type="submit" disabled={busy || !apiKey.trim()}>
               {t('saveKey')}
             </Button>
           </div>
@@ -255,6 +265,7 @@ function ProviderCard({
             <div className="flex gap-2">
               <input
                 id={`redirect-${provider.providerId}`}
+                disabled={busy}
                 value={redirect}
                 onChange={(e) => setRedirect(e.target.value)}
                 autoComplete="off"
@@ -349,9 +360,10 @@ function ProfilesTable({ profiles }: { profiles: ModelProfileView[] }) {
 }
 
 function ReasoningSettingsPanel() {
+  const runSettingsTask = useSettingsTask('model-config');
   const t = useTranslations('Reasoning');
   const { models } = useServices();
-  const router = useRouter();
+  const refresh = useModelSettingsRefresh();
   const [settings, setSettings] = useState<ReasoningSettings | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
@@ -397,8 +409,11 @@ function ReasoningSettingsPanel() {
             setBusy(true);
             setError(false);
             try {
-              setSettings(await models.setReasoning(event.target.checked, settings.revision));
-              await router.invalidate();
+              const apply = event.target.checked;
+              setSettings(
+                await runSettingsTask(() => models.setReasoning(apply, settings.revision)),
+              );
+              await refresh();
             } catch {
               setError(true);
             } finally {

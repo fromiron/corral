@@ -14,7 +14,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { _electron, expect } from '@playwright/test';
-import { startSession, teamFromTemplate } from '../../studio/e2e/workbench.ts';
+import { selectSessionTeam, startSession, teamFromTemplate } from '../../studio/e2e/workbench.ts';
 
 // An isolated app-data directory: this test never opens a person's Corral workspace.
 const desktop = resolve(import.meta.dirname, '..');
@@ -185,6 +185,7 @@ try {
   await page.keyboard.press('Escape');
   await teamFromTemplate(page);
   await startSession(page, 'Desktop packaged smoke');
+  await selectSessionTeam(page, 'Single agent');
   await page
     .getByRole('combobox', { name: 'Request', exact: true })
     .fill('Write a short desktop smoke note.');
@@ -224,7 +225,51 @@ try {
       ),
     )
     .toBe('#151615');
-  await page.getByRole('link', { name: 'Back to work', exact: true }).click();
+  // CR-044: native zoom and menu shortcuts respect the settings modal.
+  await page.getByRole('link', { name: 'Shortcuts', exact: true }).click();
+  const settingsUrl = page.url();
+  await page.keyboard.press('Control+n');
+  assert.equal(page.url(), settingsUrl);
+  const unzoomedWidth = await page.evaluate(() => innerWidth);
+  await application.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()[0]?.webContents.setZoomFactor(2),
+  );
+  await expect.poll(() => page.evaluate(() => innerWidth)).toBeLessThan(unzoomedWidth * 0.6);
+  assert.equal(
+    await application.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0]?.webContents.getZoomFactor(),
+    ),
+    2,
+  );
+  const settingsDialog = page.getByRole('dialog', { name: 'Settings', exact: true });
+  await expect(
+    settingsDialog.getByRole('button', { name: 'Close settings', exact: true }),
+  ).toBeInViewport();
+  assert(await settingsDialog.evaluate((node) => node.scrollWidth <= node.clientWidth));
+  mkdirSync(join(desktop, 'release'), { recursive: true });
+  console.log(
+    'Settings zoom viewport:',
+    await page.evaluate(() => ({
+      width: innerWidth,
+      height: innerHeight,
+      scale: devicePixelRatio,
+    })),
+  );
+  const zoomCapture = await application.evaluate(async ({ BrowserWindow }) => {
+    const window = BrowserWindow.getAllWindows()[0];
+    if (!window) throw new Error('Missing native window');
+    return (await window.webContents.capturePage()).toPNG().toString('base64');
+  });
+  writeFileSync(
+    join(desktop, 'release/settings-200-percent.png'),
+    Buffer.from(zoomCapture, 'base64'),
+  );
+  await application.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()[0]?.webContents.setZoomFactor(1),
+  );
+  await expect.poll(() => page.evaluate(() => innerWidth)).toBe(unzoomedWidth);
+  await page.getByRole('button', { name: 'Close settings', exact: true }).click();
+  console.log('Settings modal: native 200% zoom, shortcut boundary and work return passed');
   await page
     .getByRole('combobox', { name: 'Request', exact: true })
     .fill('A draft preserved across restart');

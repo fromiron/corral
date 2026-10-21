@@ -10,6 +10,7 @@ import { useManagementConfirmation } from '../workbench/harness/ConfirmAction.ts
 import { McpEditor, mcpDraft } from '../workbench/harness/McpEditor.tsx';
 import { field, operationId } from '../workbench/harness/Target.tsx';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
+import { useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
 import { McpConnection } from './McpSettings.tsx';
 import { SettingsLayout } from './SettingsPage.tsx';
 
@@ -86,11 +87,13 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
       owned = false;
     };
   }, [api, projectId, selection, config?.revision]);
+  const runSettingsTask = useSettingsTask(`project-tools:${projectId}`);
+
   async function work(action: () => Promise<ProjectToolConfigRevision>) {
     setBusy(true);
     setError('');
     try {
-      const saved = await action();
+      const saved = await runSettingsTask(action);
       if (active.current) {
         setConfig(saved);
         setProbe(null);
@@ -135,11 +138,7 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
       {error ? (
         <p role="alert" className="text-sm text-danger">
           {error}{' '}
-          <Link
-            to="/settings"
-            search={{ ...navigation.search, section: 'workspace' }}
-            className="text-accent"
-          >
+          <Link {...navigation.link('workspace')} className="text-accent">
             {h('manageChecks')}
           </Link>
         </p>
@@ -199,10 +198,7 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
                 >
                   {t('edit')}
                 </Button>
-                <Button
-                  variant="outline"
-                  render={<Link to="/settings/harness" search={navigation.search} />}
-                >
+                <Button variant="outline" render={<Link {...navigation.link('harness')} />}>
                   {n('connectWorkStyle')}
                 </Button>
               </div>

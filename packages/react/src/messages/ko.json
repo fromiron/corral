@@ -1,4 +1,20 @@
 {
+  "SettingsDialog": {
+    "unsaved": "저장하지 않은 설정",
+    "unsavedHint": "변경을 저장하고 이동하거나, 버리거나, 계속 편집할 수 있습니다.",
+    "explicitHint": "저장하려면 폼에서 검토 또는 확인을 마쳐야 합니다. 초안을 버리거나 계속 편집할 수 있습니다.",
+    "saveFailed": "변경을 저장하지 못했습니다. 편집으로 돌아가 입력 또는 연결 오류를 확인하세요.",
+    "saveLeave": "저장하고 계속",
+    "discard": "변경 버리기",
+    "keepEditing": "계속 편집",
+    "pending": "설정 작업 처리 중입니다. 창을 닫아도 취소되지 않습니다.",
+    "saved": "설정 작업을 완료했습니다.",
+    "uncertain": "설정 작업 결과를 확인하지 못했습니다. 대상을 다시 열어 저장값을 확인한 뒤 재시도하세요. 비밀 입력은 다시 입력해야 합니다.",
+    "reviewTarget": "설정 대상 열기",
+    "dismiss": "닫기",
+    "title": "설정",
+    "close": "설정 닫기"
+  },
   "Processes": {
     "title": "명령 실행",
     "history": "명령 실행 기록",
@@ -66,12 +82,10 @@
     "sessionMissing": "이 탭에는 로컬 서버 세션이 없습니다. Corral 서버가 시작할 때 출력한 링크를 여세요.",
     "navModels": "모델",
     "liveBadge": "로컬 서버 / 시뮬레이션 또는 실제 에이전트",
-    "liveNote": "실제 모델을 고르지 않으면 실행은 시뮬레이션입니다. 실제 실행은 본인 로그인을 사용합니다.",
     "language": "언어",
-    "liveShort": "로컬 · 실제 모델",
     "serverShort": "로컬 · 시뮬레이션",
     "demoShort": "데모 · 시뮬레이션",
-    "liveNoModel": "로컬 · 모델 미연결",
+    "liveNoModel": "모델 연결 필요",
     "liveNoModelNote": "실제 모델을 쓸 수 있지만 아직 연결된 모델이 없어요. 설정 › 모델에서 로그인하세요. 그 전까지 실행은 시뮬레이션이에요.",
     "connectionFailed": "서버에 연결하지 못했습니다. 연결 상태를 확인한 뒤 다시 시도해 주세요.",
     "retryConnection": "다시 시도"
@@ -522,6 +536,8 @@
     "none": "이벤트를 고르면 상세가 보입니다."
   },
   "Models": {
+    "loadFailed": "모델 설정을 불러오지 못했습니다. 연결을 확인한 뒤 다시 시도하세요.",
+    "loading": "모델 설정을 불러오는 중…",
     "heading": "모델",
     "intro": "Corral은 공급자의 로그인 페이지로 로그인합니다. 로그인 정보는 작업 공간 밖, 이 컴퓨터에 보관합니다. Corral은 토큰을 보여 주거나 기록하거나 내보내지 않습니다.",
     "browserOnly": "모델 설정은 로컬 서버가 필요합니다. 브라우저 데모는 항상 시뮬레이션 에이전트를 씁니다.",
@@ -1608,7 +1624,7 @@
     "expandPanel": "패널 보이기",
     "resizeSidebar": "사이드바 너비",
     "resizePanel": "패널 너비",
-    "searchSessions": "전체 세션 검색",
+    "searchSessions": "대화 목록 필터",
     "sessions": "세션",
     "newSession": "새 세션",
     "needsYou": "확인 필요 {count}",
@@ -1785,6 +1801,8 @@
     "workFolder": "작업 폴더"
   },
   "Composer": {
+    "nextRequest": "다음 요청",
+    "nextUltraRequest": "다음 Ultra 요청",
     "commands": "명령",
     "references": "참조",
     "noCommand": "맞는 명령이 없어요.",
@@ -2701,6 +2719,8 @@
     }
   },
   "Widgets": {
+    "runUnavailable": "실행 상태 확인 불가",
+    "runLoading": "실행 상태 확인 중",
     "context": "컨텍스트",
     "contextPending": "컨텍스트 · 측정 전",
     "contextPercent": "컨텍스트 약 {percent}%",

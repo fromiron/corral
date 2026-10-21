@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
 import { field, operationId } from '../workbench/harness/Target.tsx';
+import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
 
 export function McpConnection({
   api,
@@ -121,11 +122,13 @@ export function McpConnection({
       void api.cancelMcpLogin(login.loginId).catch(() => {});
     };
   }, [api, projectId, server.id, login, t]);
+  useSettingsForm({ dirty: Boolean(token), pending: busy });
+  const runSettingsTask = useSettingsTask(`mcp-auth:${projectId}:${server.id}`);
   async function work(task: () => Promise<void>) {
     setBusy(true);
     setError('');
     try {
-      await task();
+      await runSettingsTask(task);
     } catch (error) {
       setError(error instanceof Error ? error.message : t('error'));
     } finally {

@@ -40,7 +40,7 @@
 | PUT /corrals/:id/project | `{projectId}` | 팀을 다른 프로젝트로 이동(revision 그대로). 지난 Run은 원래 프로젝트에 남음. 없거나 보관한 프로젝트는 `TARGET_NOT_FOUND` |
 | GET /projects | — | 프로젝트 목록: 기본 프로젝트 먼저, 보관 포함(`archivedAt`) |
 | GET /sessions?projectId= | — | 프로젝트의 작업 세션(고정 먼저, 최근 활동 순), 각 `entries` 포함(CR-011) |
-| POST /sessions | `{projectId, title, objective?, corralId?}` | 새 세션. 제목이 비면 목적 첫 줄 |
+| POST /sessions | `{projectId, title, objective?, corralId?, autoTitle?}` | 새 세션. 제목이 비면 목적 첫 줄. `autoTitle:true`는 표시용 임시 제목을 첫 저장된 next/queue 요청으로 한 번 확정하며 수동 제목 저장 시 해제한다. 기본 false로 기존 호출을 보존한다(CR-045). |
 | GET·PATCH /sessions/:id | `{title?, objective?, corralId?, auto?, pinned?, archived?, expectedRevision}` | 세션 읽기·수정(revision 검사). `corralId:null`은 auto이며 명시 팀 조회 실패와 구별한다. `auto`는 모델 프로필·추론 설정(CR-024) |
 | POST /sessions/:id/entries | `{intent, text, state, runId?, executionId?, detail?, auto?}` | 요청 기록 추가(본문은 이후 불변). `auto`에는 실행별 템플릿·선택 사유·모델·추론·대체 정보를 보존 |
 | PATCH /sessions/:id/entries/:entryId | `{state, runId?, detail?, auto?}` | 기록 상태와 선택 결과 갱신(대기 → 시작 등) |

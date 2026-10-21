@@ -38,6 +38,7 @@ import {
 import { HarnessRoleSettings } from '../workbench/HarnessRoleSettings.tsx';
 import { LoopRecipeSettings } from '../workbench/LoopRecipeSettings.tsx';
 import { MarkdownAgentImport } from '../workbench/MarkdownAgentImport.tsx';
+import { settingsInteractionBlocked, settingsOnlyTransition } from '../workbench/navigation.ts';
 import { RunHarnessOverrides } from '../workbench/RunHarnessOverrides.tsx';
 import { RunRoleOverrides } from '../workbench/RunRoleOverrides.tsx';
 import { TabRow } from '../workbench/TabRow.tsx';
@@ -216,8 +217,13 @@ function Editor({
   dirtyRef.current = dirty;
 
   useBlocker({
-    shouldBlockFn: ({ next }) => {
-      if (!dirtyRef.current || next.pathname.startsWith('/settings')) return false;
+    shouldBlockFn: ({ current, next }) => {
+      if (
+        !dirtyRef.current ||
+        next.pathname.startsWith('/settings') ||
+        settingsOnlyTransition(current, next)
+      )
+        return false;
       if (!window.confirm(t('leaveUnsaved'))) return true;
       discardEditorCopy(repository, record);
       return false;
@@ -279,6 +285,7 @@ function Editor({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (settingsInteractionBlocked()) return;
       if (event.isComposing || !(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 's')
         return;
       event.preventDefault();

@@ -48,7 +48,7 @@ export function GettingStarted({ runs, projectId }: { runs: number; projectId: s
             done: Boolean(profiles?.some((profile) => profile.available)),
             title: t('model'),
             action: (
-              <Link to="/settings/models" search={navigation.search} className="underline">
+              <Link {...navigation.link('models')} className="underline">
                 {t('modelAction')}
               </Link>
             ),

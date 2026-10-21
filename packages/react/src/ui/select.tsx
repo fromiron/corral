@@ -65,9 +65,10 @@ export function Select<T extends string>({
         aria-label={label}
         data-slot="select-trigger"
         className={cn(
-          'inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-md text-foreground outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60 data-popup-open:bg-subtle [&_svg]:shrink-0',
+          'inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-[var(--control-radius)] text-foreground outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60 data-popup-open:bg-subtle [&_svg]:shrink-0',
           size === 'xs' ? 'h-6 px-1.5 text-xs' : 'h-7 px-2 text-ui',
-          variant === 'outline' && 'fill-control hover:bg-subtle',
+          variant === 'outline' &&
+            'border border-input fill-control hover:bg-subtle focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24',
           variant === 'ghost' && 'text-muted-foreground hover:bg-subtle hover:text-foreground',
           variant === 'chip' &&
             'rounded-full text-muted-foreground hover:bg-subtle hover:text-foreground',

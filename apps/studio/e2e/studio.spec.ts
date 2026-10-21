@@ -77,7 +77,7 @@ test('[TC-CAN-002-H] saving a layout move bumps only the layout revision, and su
   // Settings is a detour, not an instruction to discard an unsaved graph.
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await expect(page.getByTestId('settings-sidebar')).toBeVisible();
-  await page.getByRole('link', { name: 'Back to work', exact: true }).click();
+  await page.getByRole('button', { name: 'Close settings', exact: true }).click();
   await expect(page.locator('.react-flow__node')).toHaveCount(2);
   await expect(page.getByText('● Unsaved changes', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Save' }).click();

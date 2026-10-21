@@ -122,7 +122,7 @@ test.describe('a borrowed Codex CLI login (CR-004)', () => {
     expect(content).not.toContain('secret');
     expect(content).not.toContain('auth.json');
 
-    await page.getByRole('link', { name: 'Back to work', exact: true }).click();
+    await page.getByRole('button', { name: 'Close settings', exact: true }).click();
     await agentToOutput(page);
     await page.getByLabel('Agents').selectOption({ label: 'Live models (uses your sign-in)' });
     await page.getByRole('tab', { name: 'Test run', exact: true }).click();
@@ -155,7 +155,7 @@ test('[TC-SEC-002-H] an API key typed under Models runs live, is never shown, an
   await expect(page.getByTestId('profile-model-a')).toContainText('Ready');
   expect(await page.content()).not.toContain('sk-e2e-entered-secret');
 
-  await page.getByRole('link', { name: 'Back to work', exact: true }).click();
+  await page.getByRole('button', { name: 'Close settings', exact: true }).click();
   await agentToOutput(page);
   await page.getByLabel('Agents').selectOption({ label: 'Live models (uses your sign-in)' });
   await page.getByRole('tab', { name: 'Test run', exact: true }).click();
@@ -199,7 +199,7 @@ test.describe('a keyless OpenAI-compatible endpoint (CR-005)', () => {
     await expect(local.getByRole('button', { name: 'Sign in' })).toHaveCount(0);
     await expect(page.getByTestId('profile-model-a')).toContainText('Ready');
 
-    await page.getByRole('link', { name: 'Back to work', exact: true }).click();
+    await page.getByRole('button', { name: 'Close settings', exact: true }).click();
     await agentToOutput(page);
     await page.getByLabel('Agents').selectOption({ label: 'Live models (uses your sign-in)' });
     await page.getByRole('tab', { name: 'Test run', exact: true }).click();
@@ -547,4 +547,42 @@ test('[TC-CONTEXT-001-H] endpoint renaming keeps original model metadata', async
       },
     ],
   });
+});
+
+test('[TC-UX-006-N] slow OAuth status reads do not overlap or starve the completed login', async ({
+  page,
+  corral,
+}) => {
+  await corral.open('/settings/models');
+  const provider = page.getByTestId('provider-openai');
+  await provider.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await expect(provider.getByRole('link', { name: 'Open the sign-in page' })).toBeVisible();
+  let pending = 0,
+    peak = 0;
+  await page.route('**/api/v1/model-auth', async (route) => {
+    pending++;
+    peak = Math.max(peak, pending);
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 1900));
+      const response = await route.fetch();
+      await route.fulfill({ response });
+    } catch {
+      /* The test context may close while an old broken poll is still outstanding. */
+    } finally {
+      pending--;
+    }
+  });
+  await page.evaluate(async (redirect) => {
+    const { csrfToken } = await (await fetch('/api/v1/session')).json();
+    const response = await fetch('/api/v1/model-auth/openai/login/callback', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-corral-csrf': csrfToken },
+      body: JSON.stringify({ url: redirect }),
+    });
+    if (!response.ok) throw new Error('fixture OAuth callback failed');
+  }, FAKE_REDIRECT_OK);
+  await expect(provider.getByTestId('auth-status')).toContainText('Signed in (subscription)', {
+    timeout: 9000,
+  });
+  expect(peak).toBe(1);
 });

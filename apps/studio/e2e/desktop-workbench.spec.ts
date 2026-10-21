@@ -43,7 +43,7 @@ test('[TC-UX-001-H] DW-08 narrow navigation contains focus and Escape restores i
   await expect(trigger).toBeFocused();
 });
 
-test('[TC-UX-004-H] DW-02/03 settings replace navigation and return to the same work and draft', async ({
+test('[TC-UX-004-H] DW-02/03 settings overlay keeps the same mounted work and draft', async ({
   page,
 }) => {
   await openSession(page, true);
@@ -60,19 +60,16 @@ test('[TC-UX-004-H] DW-02/03 settings replace navigation and return to the same 
   await input.fill('Preserve this follow-up draft');
   await panelTab(page, 'Execution');
   const workUrl = page.url();
-  // Away from the session and back: the draft is still there.
+  const originalInput = await input.elementHandle();
+  await input.evaluate((element: HTMLTextAreaElement) => element.setSelectionRange(4, 4));
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await expect(page).toHaveURL(/\/settings/);
-  await expect(page.getByTestId('app-sidebar')).toHaveCount(0);
-  await expect(page.getByTestId('settings-sidebar')).toBeVisible();
-  await expect(
-    page.getByRole('banner').getByRole('button', { name: 'Project', exact: true }),
-  ).toHaveCount(0);
-  await page.getByRole('link', { name: 'Shortcuts', exact: true }).click();
-  await page.getByRole('button', { name: 'Hide the sidebar', exact: true }).click();
-  await expect(page.getByTestId('settings-sidebar')).toBeHidden();
-  await page.getByRole('button', { name: 'Show the sidebar', exact: true }).click();
-  await page.getByRole('link', { name: 'Back to work', exact: true }).click();
+  const settings = page.getByRole('dialog', { name: 'Settings', exact: true });
+  await expect(page).toHaveURL(/settings=general/);
+  await expect(page.getByTestId('app-sidebar')).toHaveCount(1);
+  expect(await originalInput?.evaluate((node) => node.isConnected)).toBe(true);
+  await settings.getByRole('link', { name: 'Shortcuts', exact: true }).click();
+  await settings.getByRole('button', { name: 'Close settings', exact: true }).click();
+  expect(await originalInput?.evaluate((node: HTMLTextAreaElement) => node.selectionStart)).toBe(4);
   await expect(page).toHaveURL(workUrl);
   await expect(page.getByRole('tab', { name: 'Execution', exact: true })).toHaveAttribute(
     'aria-selected',
@@ -116,7 +113,7 @@ test('[TC-UX-001-H] DW-05 a file opens in a remembered tab and its line referenc
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('link', { name: 'Folders & tools', exact: true }).click();
   await page.getByRole('button', { name: 'Link the example folder', exact: true }).click();
-  await page.getByRole('link', { name: 'Back to work', exact: true }).click();
+  await page.getByRole('button', { name: 'Close settings', exact: true }).click();
   await expect(page.getByRole('tab', { name: 'Files', exact: true })).toHaveAttribute(
     'aria-selected',
     'true',

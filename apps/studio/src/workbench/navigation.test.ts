@@ -29,3 +29,35 @@ describe('[TC-UX-004-N] settings navigation boundaries', () => {
     });
   });
 });
+
+describe('[TC-UX-006-N] contextual settings navigation', () => {
+  it('validates settings independently of work selection and strips only settings navigation values', async () => {
+    const { validateSettingsOverlay, withoutSettings, settingsOnlyTransition } = await import(
+      './navigation.ts'
+    );
+    expect(
+      validateSettingsOverlay({ settings: 'models', settingsProject: 'a', run: 'old' }),
+    ).toEqual({ settings: 'models', settingsProject: 'a' });
+    expect(validateSettingsOverlay({ settings: 'bad', settingsProject: 'a' })).toEqual({});
+    expect(
+      withoutSettings({ settings: 'models', settingsProject: 'a', run: 'old', panel: 'changes' }),
+    ).toEqual({ run: 'old', panel: 'changes' });
+    const current = { pathname: '/corrals/a/edit', search: { fromSession: 'session_a' } };
+    expect(
+      settingsOnlyTransition(current, {
+        ...current,
+        search: { ...current.search, settings: 'models' },
+      }),
+    ).toBe(true);
+    expect(
+      settingsOnlyTransition(current, {
+        ...current,
+        pathname: '/corrals/b/edit',
+        search: { settings: 'models' },
+      }),
+    ).toBe(false);
+    expect(workHref('/sessions/a?settings=models&settingsProject=b&run=old#result')).toBe(
+      '/sessions/a?run=old#result',
+    );
+  });
+});

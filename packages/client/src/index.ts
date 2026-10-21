@@ -730,6 +730,7 @@ export class RestCorralRepository implements CorralRepository {
   createSession(input: {
     projectId: string;
     title: string;
+    autoTitle?: boolean;
     objective?: string;
     corralId?: string | null;
   }): Promise<SessionResult> {

@@ -101,8 +101,11 @@ test('[TC-UX-004-H] [TC-UX-004-N] defaults have independent routes and save only
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('default revision changed');
   await expect(personal).toContainText('Settings test');
-  page.once('dialog', (dialog) => void dialog.dismiss());
   await page.getByRole('link', { name: 'Back to work', exact: true }).click();
+  await page
+    .getByRole('dialog', { name: 'Unsaved settings' })
+    .getByRole('button', { name: 'Keep editing' })
+    .click();
   await expect(page).toHaveURL(/settings\/defaults/);
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
   expect((await read())[1].binding).toBeNull();

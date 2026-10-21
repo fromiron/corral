@@ -1,10 +1,11 @@
 import type { HarnessDefault, HarnessProfileView } from '@corral/contracts';
 import { Button, Select } from '@corral/react/ui';
-import { Link, useBlocker } from '@tanstack/react-router';
+import { Link } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
+import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
 import { SettingsLayout } from './SettingsPage.tsx';
 
 const bindingKey = (value: HarnessDefault) =>
@@ -40,10 +41,8 @@ function DefaultsEditor({ scope, scopeId }: { scope: 'personal' | 'project'; sco
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
   const dirty = current !== null && draft !== bindingKey(current);
-  useBlocker({
-    shouldBlockFn: () => dirty && !window.confirm(r('leaveUnsaved')),
-    enableBeforeUnload: () => dirty,
-  });
+  const run = useSettingsTask(`default:${scope}:${scopeId}`);
+  useSettingsForm({ dirty, pending: busy, save });
   useEffect(() => {
     if (!api) return;
     let active = true;
@@ -61,22 +60,26 @@ function DefaultsEditor({ scope, scopeId }: { scope: 'personal' | 'project'; sco
     };
   }, [api, scope, scopeId, t]);
   async function save() {
-    if (!api || !current || busy || !dirty) return;
+    if (!api || !current || busy || !dirty) return false;
     const picked = profiles.find((p) => `${p.profileId}:${p.revision}` === draft);
     setBusy(true);
     setError('');
     setNotice('');
     try {
-      const value = await api.setDefault(
-        current,
-        picked ? { profileId: picked.profileId, revision: picked.revision } : null,
+      const value = await run(() =>
+        api.setDefault(
+          current,
+          picked ? { profileId: picked.profileId, revision: picked.revision } : null,
+        ),
       );
       setCurrent(value);
       setDraft(bindingKey(value));
       setNotice(t('defaultSaved'));
       window.dispatchEvent(new Event('corral:harness-changed'));
+      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : t('error'));
+      return false;
     } finally {
       setBusy(false);
     }
@@ -152,7 +155,7 @@ function DefaultsEditor({ scope, scopeId }: { scope: 'personal' | 'project'; sco
       <Button
         variant="outline"
         className="self-start"
-        render={<Link to="/settings/harness" search={navigation.search} />}
+        render={<Link {...navigation.link('harness')} />}
       >
         {r('manageProfiles')}
       </Button>

@@ -1,4 +1,20 @@
 {
+  "SettingsDialog": {
+    "unsaved": "Unsaved settings",
+    "unsavedHint": "Save these changes before leaving, discard them, or keep editing.",
+    "explicitHint": "Finish the explicit review or confirmation in this form before saving. You can discard the draft or keep editing.",
+    "saveFailed": "Changes could not be saved. Keep editing to review the validation or connection error.",
+    "saveLeave": "Save and continue",
+    "discard": "Discard changes",
+    "keepEditing": "Keep editing",
+    "pending": "Settings operation pending. Closing does not cancel it.",
+    "saved": "Settings operation completed.",
+    "uncertain": "Settings operation could not be confirmed. Reopen the target and check its saved state before retrying. Secret inputs must be entered again.",
+    "reviewTarget": "Open settings target",
+    "dismiss": "Dismiss",
+    "title": "Settings",
+    "close": "Close settings"
+  },
   "Processes": {
     "title": "Commands",
     "history": "Command history",
@@ -66,12 +82,10 @@
     "sessionMissing": "This tab has no session with the local server. Open the link the Corral server printed when it started.",
     "navModels": "Models",
     "liveBadge": "Local server / Simulated or live agents",
-    "liveNote": "Runs are simulated unless you choose live models; live runs use your own sign-in.",
     "language": "Language",
-    "liveShort": "Local · live models",
     "serverShort": "Local · simulated",
     "demoShort": "Demo · simulated",
-    "liveNoModel": "Local · no model connected",
+    "liveNoModel": "Connect a model",
     "liveNoModelNote": "Live models are possible here, but no model is connected yet. Open Settings › Models to sign in; until then runs are simulated.",
     "connectionFailed": "Corral could not connect to this server. Check the connection, then try again.",
     "retryConnection": "Try again"
@@ -522,6 +536,8 @@
     "none": "Choose an event to see its details."
   },
   "Models": {
+    "loadFailed": "Could not load model settings. Check the connection and try again.",
+    "loading": "Loading model settings…",
     "heading": "Models",
     "intro": "Corral signs in through the provider’s own page. Your sign-in is kept on this computer, outside the workspace. Corral never shows, logs or exports the token.",
     "browserOnly": "Model settings need the local server. The in-browser demo always uses simulated agents.",
@@ -1608,7 +1624,7 @@
     "expandPanel": "Show the panel",
     "resizeSidebar": "Sidebar width",
     "resizePanel": "Panel width",
-    "searchSessions": "Search all sessions",
+    "searchSessions": "Filter conversations",
     "sessions": "Sessions",
     "newSession": "New session",
     "needsYou": "Needs you ({count})",
@@ -1785,6 +1801,8 @@
     "workFolder": "Work folder"
   },
   "Composer": {
+    "nextRequest": "Next request",
+    "nextUltraRequest": "Next Ultra request",
     "commands": "Commands",
     "references": "References",
     "noCommand": "No matching command.",
@@ -2701,6 +2719,8 @@
     }
   },
   "Widgets": {
+    "runUnavailable": "Run state unavailable",
+    "runLoading": "Loading run state",
     "context": "Context",
     "contextPending": "Context · awaiting request",
     "contextPercent": "Context about {percent}%",

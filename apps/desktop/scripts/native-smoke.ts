@@ -171,7 +171,7 @@ try {
     await page.getByRole('button', { name: '설정', exact: true }).click();
     await page.getByRole('combobox', { name: '언어', exact: true }).click();
     await page.getByRole('option', { name: 'English', exact: true }).click();
-    await page.getByRole('link', { name: 'Back to work', exact: true }).click();
+    await page.getByRole('button', { name: 'Close settings', exact: true }).click();
   }
   // Exercise the real permission callback with Chromium's synthetic device. No
   // microphone audio is captured and no provider connection is opened by this check.
@@ -350,6 +350,12 @@ try {
   await edit.click();
   await edit.press('Control+Shift+k');
   await expect(edit).toHaveText('Ctrl+Shift+K');
+  // Settings owns keyboard focus; native and web shortcuts cannot open background UI.
+  await page.keyboard.press('Control+k');
+  await page.keyboard.press('Control+Shift+k');
+  await expect(page.getByRole('dialog', { name: 'Settings', exact: true })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Command palette' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Close settings', exact: true }).click();
   await expect
     .poll(() =>
       application?.evaluate(({ Menu }) => {
@@ -361,12 +367,9 @@ try {
       }),
     )
     .toBe('CommandOrControl+Shift+K');
-  await page.keyboard.press('Control+k');
-  await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.keyboard.press('Control+Shift+k');
   await expect(page.getByRole('dialog', { name: 'Command palette' })).toBeVisible();
   await closePalette(page);
-  await page.getByRole('link', { name: 'Back to work', exact: true }).click();
   const managerOpened = application.waitForEvent('window');
   await nativeMenu('Remote hosts…');
   const manager = await managerOpened;
@@ -423,10 +426,10 @@ try {
   await restored.getByRole('button', { name: 'Settings', exact: true }).click();
   await restored.getByRole('link', { name: 'Shortcuts', exact: true }).click();
   await restored.getByRole('button', { name: 'Reset shortcuts', exact: true }).click();
+  await restored.getByRole('button', { name: 'Close settings', exact: true }).click();
   await restored.keyboard.press('Control+k');
   await expect(restored.getByRole('dialog', { name: 'Command palette' })).toBeVisible();
   await closePalette(restored);
-  await restored.getByRole('link', { name: 'Back to work', exact: true }).click();
   assert.deepEqual(errors, []);
   // A WebContentsView's blank native parent must not stall the unsaved-edit probe.
   await panelTab(restored, 'Files');

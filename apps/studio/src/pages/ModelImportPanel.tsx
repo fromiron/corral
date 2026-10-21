@@ -1,14 +1,15 @@
 import type { ModelCatalogMetadata, ModelImportPreview, ModelImportSource } from '@corral/client';
-import { Button, Select } from '@corral/react/ui';
-import { useRouter } from '@tanstack/react-router';
+import { Button, Input, Select } from '@corral/react/ui';
 import { useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
+import { useModelSettingsRefresh } from '../workbench/modelSettings.tsx';
+import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
 
 export function ModelImportPanel() {
   const t = useTranslations('ModelImport');
   const { models } = useServices();
-  const router = useRouter();
+  const refresh = useModelSettingsRefresh();
   const heading = useId();
   const [source, setSource] = useState<ModelImportSource>('claude-code');
   const [path, setPath] = useState('');
@@ -21,12 +22,14 @@ export function ModelImportPanel() {
   const [metadata, setMetadata] = useState<ModelCatalogMetadata | null>(null);
   const [catalogVisible, setCatalogVisible] = useState(false);
   const [query, setQuery] = useState('');
+  const runSettingsTask = useSettingsTask('models-import');
+  useSettingsForm({ dirty: Boolean(path || preview), pending: busy });
   async function act(action: () => Promise<void>) {
     setBusy(true);
     setError(null);
     setMessage(null);
     try {
-      await action();
+      await runSettingsTask(action);
     } catch (error) {
       setError(error instanceof Error ? error.message : t('failed'));
     } finally {
@@ -77,10 +80,14 @@ export function ModelImportPanel() {
             ]}
           />
         </div>
-        <label className="flex min-w-0 flex-1 flex-col gap-1 text-sm">
+        <label
+          htmlFor={`${heading}-path`}
+          className="flex min-w-0 basis-full flex-col gap-1 text-sm sm:flex-1 sm:basis-auto"
+        >
           {t('path')}
-          <input
-            className="min-w-0 rounded border border-line bg-surface px-2 py-1.5"
+          <Input
+            id={`${heading}-path`}
+            size="sm"
             value={path}
             disabled={busy}
             placeholder={t('defaultPath')}
@@ -172,7 +179,7 @@ export function ModelImportPanel() {
                   setSelected({});
                   setCopyKeys({});
                   setMessage(result.keyFailures.length ? t('keyFailure') : t('saved'));
-                  await router.invalidate();
+                  await refresh();
                 })
               }
             >
@@ -222,10 +229,11 @@ export function ModelImportPanel() {
               {metadata.error}
             </p>
           ) : null}
-          <label className="flex flex-col gap-1 text-sm">
+          <label htmlFor={`${heading}-filter`} className="flex flex-col gap-1 text-sm">
             {t('filter')}
-            <input
-              className="rounded border border-line bg-surface px-2 py-1.5"
+            <Input
+              id={`${heading}-filter`}
+              size="sm"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
             />

@@ -4,6 +4,7 @@ import { Link } from '@tanstack/react-router';
 import { useEffect, useId, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useSettingsNavigation } from '../navigation.ts';
+import { useSettingsCommand, useSettingsForm, useSettingsTask } from '../SettingsLifecycle.tsx';
 import { useManagementConfirmation } from './ConfirmAction.tsx';
 import { operationId } from './Target.tsx';
 
@@ -29,18 +30,22 @@ export function PackageManager({ api, onChanged }: { api: HarnessApi; onChanged:
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
   const [revision, setRevision] = useState(0);
-  const pendingManagement = useRef<{ key: string; operationId: string } | null>(null);
-  const pendingRegistration = useRef<{
+  const pendingManagement = useSettingsCommand<{ key: string; operationId: string }>(
+    'package-management',
+  );
+  const pendingRegistration = useSettingsCommand<{
     key: string;
     expectedRevision: number;
     operationId: string;
-  } | null>(null);
+  }>('package-registration');
   const alive = useRef(true);
+  const working = useRef(false);
   useEffect(() => {
     alive.current = true;
     return () => {
       alive.current = false;
-      if (reviewId.current) void api.cancelReview(reviewId.current).catch(() => {});
+      if (reviewId.current && !working.current)
+        void api.cancelReview(reviewId.current).catch(() => {});
     };
   }, [api]);
   useEffect(() => {
@@ -59,16 +64,20 @@ export function PackageManager({ api, onChanged }: { api: HarnessApi; onChanged:
     };
   }, [api, revision]);
 
+  const runSettingsTask = useSettingsTask('packages');
+  useSettingsForm({ dirty: Boolean(source || review), pending: busy });
   async function work(action: () => Promise<void>) {
     if (busy) return;
+    working.current = true;
     setBusy(true);
     setError('');
     setNotice('');
     try {
-      await action();
+      await runSettingsTask(action);
     } catch (failure) {
       if (alive.current) setError(failure instanceof Error ? failure.message : String(failure));
     } finally {
+      working.current = false;
       if (alive.current) setBusy(false);
     }
   }
@@ -345,14 +354,14 @@ export function PackageManager({ api, onChanged }: { api: HarnessApi; onChanged:
       <Button
         variant="outline"
         className="self-start"
-        render={<Link to="/settings/harness" search={navigation.search} />}
+        render={<Link {...navigation.link('harness')} />}
       >
         {n('addToWorkStyle')}
       </Button>
       {notice ? (
         <p role="status" className="text-sm">
           {notice}{' '}
-          <Link to="/settings/mcp" search={navigation.search} className="underline">
+          <Link {...navigation.link('mcp')} className="underline">
             {t('mcpSettings')}
           </Link>
         </p>

@@ -5,7 +5,6 @@ import { useTranslations } from 'use-intl';
 import { ShortcutTable } from '../CommandPalette.tsx';
 import { DesktopAbout, DesktopWorkspace, desktop } from '../desktop.tsx';
 import { LOCALES, useLocale } from '../locale.tsx';
-import { settingsRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
 import { formatChord, sendKeyLabel } from '../shortcuts.ts';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
@@ -40,10 +39,13 @@ export function SettingsLayout({ children, active }: { children: ReactNode; acti
   );
 }
 
-export function SettingsPage() {
+export function SettingsPage({
+  section = 'general',
+}: {
+  section?: 'general' | 'workspace' | 'shortcuts' | 'about';
+}) {
   const t = useTranslations('Desktop');
   const { serverVersion } = useServices();
-  const { section = 'general' } = settingsRoute.useSearch();
   const { theme, sendKey, notify } = usePreferences();
   const { locale, setLocale } = useLocale();
   const { projectId: project } = useSettingsNavigation();
@@ -124,7 +126,6 @@ export function SettingsPage() {
                 label={t('language')}
                 value={locale}
                 onValueChange={setLocale}
-                className="h-9"
                 options={LOCALES.map((l) => ({ value: l.id, label: l.name }))}
               />
             </section>

@@ -100,8 +100,9 @@ test('[TC-IMAGE-001-H] [TC-STATUS-001-H] [TC-CHAT-001-H] [TC-CHAT-001-N] attachm
   });
   await expect(page.getByRole('button', { name: 'Remove image pixel.png' })).toBeVisible();
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await expect(page).toHaveURL(/\/settings/);
-  await page.goto(url);
+  await expect(page).toHaveURL(/settings=general/);
+  await page.getByRole('button', { name: 'Close settings', exact: true }).click();
+  await expect(page).toHaveURL(url);
   await expect(requestBox(page)).toHaveValue('Read the attachment and use my chosen format');
   await expect(page.getByRole('button', { name: 'Remove notes.txt' })).toBeVisible();
   await openRequestOptions(page);

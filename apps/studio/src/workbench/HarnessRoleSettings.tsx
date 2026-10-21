@@ -99,11 +99,7 @@ export function HarnessRoleSettings({
           }}
         />
       </div>
-      <Link
-        to="/settings/harness"
-        search={{ ...navigation.search, projectId }}
-        className="text-xs text-accent underline"
-      >
+      <Link {...navigation.link('harness', projectId)} className="text-xs text-accent underline">
         {t('manage')}
       </Link>
       {role.harness ? (

@@ -1798,6 +1798,7 @@ function Composer({
   const record = async (entry: Parameters<typeof repository.addSessionEntry>[1]) => {
     const saved = await repository.addSessionEntry(session.sessionId, entry);
     if (!saved.ok) throw new Error(t('failed', { message: saved.message }));
+    if (saved.session.title !== session.title) projectsChanged();
   };
 
   /** Starts a follow-up with the team; returns the run or why not. */
@@ -2826,10 +2827,7 @@ function Composer({
   return (
     <ComposerSurface.Shell>
       {queued.length > 0 ? (
-        <section
-          aria-label={t('queueHeading')}
-          className="mx-3 rounded-t-xl border border-b-0 border-line bg-surface px-3 py-2"
-        >
+        <section aria-label={t('queueHeading')} className="mx-3 rounded-t-xl bg-raised px-3 py-2">
           <div className="flex items-center justify-between gap-2">
             <h3 className="text-xs font-medium text-muted">
               {t('queueHeading')} · {queued.length}
@@ -2872,9 +2870,9 @@ function Composer({
         </section>
       ) : null}
       <ComposerDock />
-      <div className="mx-auto w-full max-w-(--chat-content-max-width) rounded-2xl border border-line bg-raised shadow-composer">
+      <div className="mx-auto w-full max-w-(--chat-content-max-width) rounded-2xl bg-raised shadow-composer">
         <ComposerPlan />
-        <ComposerSurface.Host className="rounded-none border-0 bg-transparent shadow-none">
+        <ComposerSurface.Host className="border-0 bg-transparent shadow-none">
           <section aria-label={t('requestLabel')} className="flex flex-col gap-1 px-3 pt-2.5 pb-2">
             {resolved.blocked ? (
               <div
@@ -2914,10 +2912,7 @@ function Composer({
                     roles: notReady.map((r) => `${r.name} (${r.profileId})`).join(', '),
                   })}
                 </span>
-                <Button
-                  size="xs"
-                  render={<Link to="/settings/models" search={navigation.search} />}
-                >
+                <Button size="xs" render={<Link {...navigation.link('models')} />}>
                   {tc('models.connect')}
                 </Button>
               </div>
@@ -2931,10 +2926,7 @@ function Composer({
                 <span className="min-w-0 flex-1">
                   {t('autoNotReady', { model: autoProfile?.label ?? autoChoice.modelProfile })}
                 </span>
-                <Button
-                  size="xs"
-                  render={<Link to="/settings/models" search={navigation.search} />}
-                >
+                <Button size="xs" render={<Link {...navigation.link('models')} />}>
                   {tc('models.connect')}
                 </Button>
               </div>
@@ -3346,7 +3338,7 @@ function Composer({
               </Button>
             ) : null}
             {mode === 'server' ? (
-              <Button render={<Link to="/settings/models" search={navigation.search} />}>
+              <Button render={<Link {...navigation.link('models')} />}>
                 {tc('models.settings')}
               </Button>
             ) : null}
