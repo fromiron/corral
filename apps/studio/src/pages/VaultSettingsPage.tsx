@@ -15,6 +15,7 @@ import {
   applyPortablePreferences,
   portablePreferences,
 } from '../workbench/portable-preferences.ts';
+import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
 import { SettingsLayout } from './SettingsPage.tsx';
 
 type Choice = { value: string; label: string };
@@ -131,13 +132,18 @@ export function VaultSettingsPage() {
     bindings,
     includeSecrets,
   });
+  const runSettingsTask = useSettingsTask('vault');
+  useSettingsForm({
+    dirty: Boolean(password || preview || s3.secretAccessKey || s3.sessionToken),
+    pending: busy,
+  });
   async function act(action: () => Promise<void>) {
     if (busy) return;
     setBusy(true);
     setError(null);
     setMessage(null);
     try {
-      await action();
+      await runSettingsTask(action);
     } catch (error) {
       setError(error instanceof Error ? error.message : t('failed'));
     } finally {

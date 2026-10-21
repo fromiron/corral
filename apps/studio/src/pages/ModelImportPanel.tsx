@@ -4,6 +4,7 @@ import { useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
 import { useModelSettingsRefresh } from '../workbench/modelSettings.tsx';
+import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
 
 export function ModelImportPanel() {
   const t = useTranslations('ModelImport');
@@ -21,12 +22,14 @@ export function ModelImportPanel() {
   const [metadata, setMetadata] = useState<ModelCatalogMetadata | null>(null);
   const [catalogVisible, setCatalogVisible] = useState(false);
   const [query, setQuery] = useState('');
+  const runSettingsTask = useSettingsTask('models-import');
+  useSettingsForm({ dirty: Boolean(path || preview), pending: busy });
   async function act(action: () => Promise<void>) {
     setBusy(true);
     setError(null);
     setMessage(null);
     try {
-      await action();
+      await runSettingsTask(action);
     } catch (error) {
       setError(error instanceof Error ? error.message : t('failed'));
     } finally {

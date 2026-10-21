@@ -4,6 +4,7 @@ import { Button } from '@corral/react/ui';
 import { useEffect, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
+import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
 import { WORKSPACE_CHANGED } from './FilesViews.tsx';
 
 const field = 'settings-field';
@@ -29,14 +30,22 @@ export function ProjectToolSettings({
   const [launches, setLaunches] = useState<
     Record<string, Awaited<ReturnType<HarnessApi['inspectProjectTool']>>>
   >({});
+  const runSettingsTask = useSettingsTask(`project-tools:${projectId}`);
+  useSettingsForm({
+    dirty: JSON.stringify(draft) !== JSON.stringify(empty),
+    pending: busy,
+    save: saveDraft,
+  });
   async function work(task: () => Promise<void>) {
     setBusy(true);
     setError('');
     setNotice('');
     try {
-      await task();
+      await runSettingsTask(task);
+      return true;
     } catch (error) {
       setError(error instanceof Error ? error.message : t('error'));
+      return false;
     } finally {
       setBusy(false);
     }
@@ -52,6 +61,26 @@ export function ProjectToolSettings({
     setEditing(null);
     setDraft(empty);
     setNotice(t('toolsSaved', { revision: saved.revision }));
+  }
+  async function saveDraft() {
+    if (busy) return false;
+    return work(async () => {
+      const parsed = RegisteredLspServer.safeParse({
+        id: draft.id.trim(),
+        name: draft.name,
+        argv: draft.argv.split('\n').map((value) => value.trim()),
+        languageIds: draft.languages.split(/[\s,]+/).filter(Boolean),
+        fileExtensions: draft.extensions.split(/[\s,]+/).filter(Boolean),
+        timeoutMs: Number(draft.seconds) * 1000,
+      });
+      if (!parsed.success) throw new Error(t('invalidLsp'));
+      if (!editing && config?.lspServers.some((server) => server.id === parsed.data.id))
+        throw new Error(t('duplicateLsp'));
+      await save([
+        ...(config?.lspServers ?? []).filter((server) => server.id !== editing),
+        parsed.data,
+      ]);
+    });
   }
   return (
     <section className="flex flex-col gap-4" aria-labelledby={heading}>
@@ -227,25 +256,7 @@ export function ProjectToolSettings({
               !draft.languages.trim() ||
               !draft.extensions.trim()
             }
-            onClick={() =>
-              void work(async () => {
-                const parsed = RegisteredLspServer.safeParse({
-                  id: draft.id.trim(),
-                  name: draft.name,
-                  argv: draft.argv.split('\n').map((value) => value.trim()),
-                  languageIds: draft.languages.split(/[\s,]+/).filter(Boolean),
-                  fileExtensions: draft.extensions.split(/[\s,]+/).filter(Boolean),
-                  timeoutMs: Number(draft.seconds) * 1000,
-                });
-                if (!parsed.success) throw new Error(t('invalidLsp'));
-                if (!editing && config?.lspServers.some((server) => server.id === parsed.data.id))
-                  throw new Error(t('duplicateLsp'));
-                await save([
-                  ...(config?.lspServers ?? []).filter((server) => server.id !== editing),
-                  parsed.data,
-                ]);
-              })
-            }
+            onClick={() => void saveDraft()}
           >
             {t('saveLsp')}
           </Button>

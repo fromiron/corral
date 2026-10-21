@@ -4,6 +4,7 @@ import { Button } from '@corral/react/ui';
 import { useEffect, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { type ImageProfilesView, imageProfilesApi } from '../image-profiles-api.ts';
+import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
 
 const field = 'min-w-0 rounded border border-line bg-surface px-2 py-1.5 text-sm';
 
@@ -32,18 +33,37 @@ export function ImageProfileSettings({ modelProfiles }: { modelProfiles: ModelPr
       active = false;
     };
   }, [t]);
+  const runSettingsTask = useSettingsTask('image-profiles');
+  useSettingsForm({ dirty: draft !== null, pending: busy, save: saveDraft });
   async function act(action: () => Promise<void>) {
     setBusy(true);
     setError(null);
     setSaved(false);
     try {
-      await action();
+      await runSettingsTask(action);
+      return true;
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : t('failed'));
+      return false;
     } finally {
       setBusy(false);
     }
   }
+  async function saveDraft() {
+    if (!draft || busy) return false;
+    return act(async () => {
+      const parsed = ImageGenerationProfile.safeParse(draft);
+      if (!parsed.success) throw new Error(t('invalid'));
+      if (!editingId && data?.profiles.some((profile) => profile.profileId === draft.profileId))
+        throw new Error(t('duplicate'));
+      await imageProfilesApi.save(parsed.data);
+      setData(await imageProfilesApi.list());
+      setDraft(null);
+      setEditingId(null);
+      setSaved(true);
+    });
+  }
+
   return (
     <section aria-labelledby={heading} className="settings-surface flex flex-col gap-3">
       <h3 id={heading} className="text-sm font-semibold">
@@ -138,20 +158,7 @@ export function ImageProfileSettings({ modelProfiles }: { modelProfiles: ModelPr
           className="flex flex-col gap-3"
           onSubmit={(event) => {
             event.preventDefault();
-            void act(async () => {
-              const parsed = ImageGenerationProfile.safeParse(draft);
-              if (!parsed.success) throw new Error(t('invalid'));
-              if (
-                !editingId &&
-                data?.profiles.some((profile) => profile.profileId === draft.profileId)
-              )
-                throw new Error(t('duplicate'));
-              await imageProfilesApi.save(parsed.data);
-              setData(await imageProfilesApi.list());
-              setDraft(null);
-              setEditingId(null);
-              setSaved(true);
-            });
+            void saveDraft();
           }}
         >
           <div className="grid gap-3 sm:grid-cols-2">

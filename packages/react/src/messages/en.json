@@ -1,4 +1,26 @@
 {
+  "SettingsDialog": {
+    "unsaved": "Unsaved settings",
+    "unsavedHint": "Save these changes before leaving, discard them, or keep editing.",
+    "explicitHint": "Finish the explicit review or confirmation in this form before saving. You can discard the draft or keep editing.",
+    "saveFailed": "Changes could not be saved. Keep editing to review the validation or connection error.",
+    "saveLeave": "Save and continue",
+    "discard": "Discard changes",
+    "keepEditing": "Keep editing",
+    "pending": "Settings operation pending. Closing does not cancel it.",
+    "saved": "Settings operation completed.",
+    "uncertain": "Settings operation could not be confirmed. Reopen the target and check its saved state before retrying. Secret inputs must be entered again.",
+    "reviewTarget": "Open settings target",
+    "dismiss": "Dismiss",
+    "title": "Settings",
+    "close": "Close settings",
+    "scopeServer": "This server · changes apply to subsequent requests",
+    "scopeDevice": "This device · preferences apply immediately",
+    "scopeProject": "Selected project · changes apply to subsequent requests",
+    "scopeProfile": "Selected work style · publish a new revision; active runs keep their snapshot",
+    "scopeVault": "This server · restore only after preview and explicit confirmation",
+    "scopeRead": "Current connection · read only"
+  },
   "Processes": {
     "title": "Commands",
     "history": "Command history",

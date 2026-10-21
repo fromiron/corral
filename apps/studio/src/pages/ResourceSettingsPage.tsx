@@ -12,6 +12,7 @@ import { ResourceEditor } from '../workbench/harness/ResourceEditor.tsx';
 import { SkillQualityPanel } from '../workbench/harness/SkillQualityPanel.tsx';
 import { field, operationId } from '../workbench/harness/Target.tsx';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
+import { useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
 import { SettingsLayout } from './SettingsPage.tsx';
 
 const keyOf = (entry: HarnessEntryKey) => `${entry.resourceHash}:${entry.entry}`;
@@ -91,11 +92,13 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
         .toLocaleLowerCase()
         .includes(search.toLocaleLowerCase()),
   );
+  const runSettingsTask = useSettingsTask(`resources:${kind}`);
+
   async function work(action: () => Promise<unknown>) {
     setBusy(true);
     setError('');
     try {
-      await action();
+      await runSettingsTask(action);
       if (alive.current) refresh((n) => n + 1);
     } catch (e) {
       if (alive.current) setError(e instanceof Error ? e.message : String(e));

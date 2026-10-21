@@ -10,8 +10,8 @@ import type {
 import { canonicalJson, WorkTool } from '@corral/contracts';
 import { toolDescriptorHash } from '@corral/core';
 import { Button, Select } from '@corral/react/ui';
-import { Link, useBlocker } from '@tanstack/react-router';
-import { useEffect, useRef, useState } from 'react';
+import { Link } from '@tanstack/react-router';
+import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
 import { useManagementConfirmation } from '../workbench/harness/ConfirmAction.tsx';
@@ -19,6 +19,11 @@ import { PermissionPolicyEditor } from '../workbench/harness/PermissionPolicyEdi
 import { updateResourceSelection } from '../workbench/harness/selection.ts';
 import { operationId, profileInput } from '../workbench/harness/Target.tsx';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
+import {
+  useSettingsCommand,
+  useSettingsForm,
+  useSettingsTask,
+} from '../workbench/SettingsLifecycle.tsx';
 import { SettingsProjectPicker } from '../workbench/SettingsNavigation.tsx';
 import { HarnessMcpTools } from './HarnessMcpTools.tsx';
 import { SettingsLayout } from './SettingsPage.tsx';
@@ -143,7 +148,7 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
   const [entries, setEntries] = useState<HarnessEntryView[]>([]);
   const [search, setSearch] = useState(''),
     [archived, setArchived] = useState(false);
-  const pendingOperation = useRef<{ json: string; id: string } | null>(null);
+  const pendingOperation = useSettingsCommand<{ json: string; id: string }>('harness-publish');
   const [toolsState, setToolsState] = useState<{
     projectId: string | undefined;
     value: ProjectToolConfigRevision | null;
@@ -189,20 +194,23 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
       active = false;
     };
   }, [api, projectId, t]);
+  const runSettingsTask = useSettingsTask(`harness:${selected?.profileId ?? 'new'}`);
   async function work(task: () => Promise<void>) {
     setBusy(true);
     setError('');
     setNotice('');
     try {
-      await task();
+      await runSettingsTask(task);
+      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : t('error'));
+      return false;
     } finally {
       setBusy(false);
     }
   }
-  function choose(next: HarnessProfileRevision | null, saved = false) {
-    if (!saved && dirty && !window.confirm(r('leaveUnsaved'))) return;
+  async function choose(next: HarnessProfileRevision | null, saved = false) {
+    if (!saved && !(await confirmLeave())) return;
     setSelected(next);
     setProfile(next ?? emptyProfile());
     setToolNames((next ?? emptyProfile()).allowedTools.join(', '));
@@ -271,15 +279,51 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
   };
   const dirty =
     canonicalJson(pendingProfile) !== canonicalJson(profileInput(selected ?? emptyProfile()));
-  const dirtyRef = useRef(dirty);
-  dirtyRef.current = dirty;
-  useBlocker({
-    shouldBlockFn: ({ next }) =>
-      next.pathname !== '/settings/harness' &&
-      dirtyRef.current &&
-      !window.confirm(r('leaveUnsaved')),
-    enableBeforeUnload: () => dirtyRef.current,
-  });
+  const confirmLeave = useSettingsForm({ dirty, pending: busy, save: saveProfile });
+  async function saveProfile() {
+    if (!api || !profile.name.trim() || busy) return false;
+    return work(async () => {
+      const input = {
+        profileId: selected?.profileId ?? `harness_${crypto.randomUUID().replaceAll('-', '')}`,
+        expectedRevision: selected?.revision ?? 0,
+        profile: pendingProfile,
+      };
+      const json = canonicalJson({
+        ...input,
+        profileId: selected?.profileId ?? 'new',
+      });
+      if (pendingOperation.current?.json !== json)
+        pendingOperation.current = { json, id: operationId() };
+      // A retry must retain the generated profile ID as well as the operation ID.
+      if (!selected) input.profileId = `harness_${pendingOperation.current.id}`;
+      const { profile: saved } = await api.publish({
+        ...input,
+        operationId: pendingOperation.current.id,
+      });
+      pendingOperation.current = null;
+      choose(saved, true);
+      setProfiles((current) => {
+        const prior = current.find((value) => value.profileId === saved.profileId);
+        return [
+          ...current.filter((value) => value.profileId !== saved.profileId),
+          {
+            ...saved,
+            managementRevision: prior?.managementRevision ?? 0,
+            archivedAt: prior?.archivedAt ?? null,
+            usages: prior?.usages ?? [],
+          },
+        ];
+      });
+      setNotice(t('saved', { revision: saved.revision }));
+      window.dispatchEvent(new Event('corral:harness-changed'));
+      try {
+        setProfiles(await api.profileManagement());
+        setRefreshFailed(false);
+      } catch {
+        setRefreshFailed(true);
+      }
+    });
+  }
   const meta = selected ? profiles.find((p) => p.profileId === selected.profileId) : null;
   const visibleEntry = (hash: string, entry: string) =>
     !entries.find((e) => e.resourceHash === hash && e.entry === entry)?.archivedAt ||
@@ -853,51 +897,7 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
               <div className="flex flex-wrap gap-2">
                 <Button
                   disabled={!profile.name.trim() || (selected !== null && !dirty)}
-                  onClick={() =>
-                    void work(async () => {
-                      const input = {
-                        profileId:
-                          selected?.profileId ??
-                          `harness_${crypto.randomUUID().replaceAll('-', '')}`,
-                        expectedRevision: selected?.revision ?? 0,
-                        profile: pendingProfile,
-                      };
-                      const json = canonicalJson({
-                        ...input,
-                        profileId: selected?.profileId ?? 'new',
-                      });
-                      if (pendingOperation.current?.json !== json)
-                        pendingOperation.current = { json, id: operationId() };
-                      // A retry must retain the generated profile ID as well as the operation ID.
-                      if (!selected) input.profileId = `harness_${pendingOperation.current.id}`;
-                      const { profile: saved } = await api.publish({
-                        ...input,
-                        operationId: pendingOperation.current.id,
-                      });
-                      pendingOperation.current = null;
-                      choose(saved, true);
-                      setProfiles((current) => {
-                        const prior = current.find((value) => value.profileId === saved.profileId);
-                        return [
-                          ...current.filter((value) => value.profileId !== saved.profileId),
-                          {
-                            ...saved,
-                            managementRevision: prior?.managementRevision ?? 0,
-                            archivedAt: prior?.archivedAt ?? null,
-                            usages: prior?.usages ?? [],
-                          },
-                        ];
-                      });
-                      setNotice(t('saved', { revision: saved.revision }));
-                      window.dispatchEvent(new Event('corral:harness-changed'));
-                      try {
-                        setProfiles(await api.profileManagement());
-                        setRefreshFailed(false);
-                      } catch {
-                        setRefreshFailed(true);
-                      }
-                    })
-                  }
+                  onClick={() => void saveProfile()}
                 >
                   {t('save')}
                 </Button>

@@ -8,6 +8,7 @@ import {
   useModelSettings,
   useModelSettingsRefresh,
 } from '../workbench/modelSettings.tsx';
+import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
 import { ApiKeyInput } from './ApiKeyInput.tsx';
 import { ImageProfileSettings } from './ImageProfileSettings.tsx';
 import { ModelConfigEditor } from './ModelConfigEditor.tsx';
@@ -109,11 +110,13 @@ function ProviderCard({
   // A key the page can remove: one entered here, not one from the server environment.
   const ownKey = provider.method === 'api_key' && provider.source === 'corral';
 
+  const runSettingsTask = useSettingsTask(`provider:${provider.providerId}`);
+  useSettingsForm({ dirty: Boolean(apiKey || redirect), pending: busy });
   const act = async (action: () => Promise<unknown>) => {
     setBusy(true);
     setError(null);
     try {
-      await action();
+      await runSettingsTask(action);
       await refresh();
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : String(failure));
@@ -259,6 +262,7 @@ function ProviderCard({
             <div className="flex gap-2">
               <input
                 id={`redirect-${provider.providerId}`}
+                disabled={busy}
                 value={redirect}
                 onChange={(e) => setRedirect(e.target.value)}
                 autoComplete="off"
@@ -353,6 +357,7 @@ function ProfilesTable({ profiles }: { profiles: ModelProfileView[] }) {
 }
 
 function ReasoningSettingsPanel() {
+  const runSettingsTask = useSettingsTask('model-config');
   const t = useTranslations('Reasoning');
   const { models } = useServices();
   const refresh = useModelSettingsRefresh();
@@ -401,7 +406,10 @@ function ReasoningSettingsPanel() {
             setBusy(true);
             setError(false);
             try {
-              setSettings(await models.setReasoning(event.target.checked, settings.revision));
+              const apply = event.target.checked;
+              setSettings(
+                await runSettingsTask(() => models.setReasoning(apply, settings.revision)),
+              );
               await refresh();
             } catch {
               setError(true);

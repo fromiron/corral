@@ -15,6 +15,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../../services.tsx';
 import { useSettingsNavigation } from '../navigation.ts';
+import { useSettingsCommand, useSettingsTask } from '../SettingsLifecycle.tsx';
 import { operationId } from './Target.tsx';
 
 const keyOf = (entry: { resourceHash: string; entry: string }) =>
@@ -80,7 +81,9 @@ export function SkillQualityPanel({
   const [busy, setBusy] = useState(false),
     [error, setError] = useState('');
   const active = useRef(true);
-  const operation = useRef<{ kind: string; signature: string; id: string } | null>(null);
+  const operation = useSettingsCommand<{ kind: string; signature: string; id: string }>(
+    `skill-quality:${entry.resourceHash}:${entry.entry}`,
+  );
   const previous = entries.find((item) => keyOf(item) === baseline);
   const running = view?.status === 'running';
   const runningId = running ? view.id : null;
@@ -95,11 +98,13 @@ export function SkillQualityPanel({
       operation.current = { kind, signature, id: operationId() };
     return operation.current.id;
   }
+  const runSettingsTask = useSettingsTask(`skill-quality:${entry.resourceHash}:${entry.entry}`);
+
   async function work(action: () => Promise<void>) {
     setBusy(true);
     setError('');
     try {
-      await action();
+      await runSettingsTask(action);
     } catch (failure) {
       if (active.current) setError(failure instanceof Error ? failure.message : t('failed'));
     } finally {

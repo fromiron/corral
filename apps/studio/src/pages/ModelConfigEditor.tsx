@@ -11,6 +11,7 @@ import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
 import { useModelSettingsRefresh } from '../workbench/modelSettings.tsx';
 import { ProfileContextDetails } from '../workbench/ProfileContextDetails.tsx';
+import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
 import { ApiKeyInput } from './ApiKeyInput.tsx';
 
 /**
@@ -40,6 +41,11 @@ export function ModelConfigEditor({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
+  const runSettingsTask = useSettingsTask('model-config');
+  const initialDraft = useRef(JSON.stringify({ profiles, endpoints }));
+  const dirty =
+    JSON.stringify({ profiles, endpoints }) !== initialDraft.current ||
+    Object.values(endpointKeys).some(Boolean);
   const [preview, setPreview] = useState(initialConfig.effectiveProfiles);
   const [previewError, setPreviewError] = useState<string | null>(null);
   useEffect(() => {
@@ -98,34 +104,37 @@ export function ModelConfigEditor({
   };
 
   const save = async () => {
-    if (!models || savingRef.current) return;
+    if (!models || savingRef.current) return false;
     savingRef.current = true;
     setSaving(true);
     setError(null);
     let stage: 'config' | 'keys' | 'refresh' = 'config';
     try {
-      let modelProfiles: ProfileConfig[];
-      try {
-        modelProfiles = profiles.map(fromProfile);
-      } catch {
-        throw new Error(t('invalidNumber'));
-      }
-      const saved = await models.saveConfig({
-        revision: config.revision,
-        modelProfiles,
-        modelProviders: endpoints.map(fromDraft),
+      await runSettingsTask(async () => {
+        let modelProfiles: ProfileConfig[];
+        try {
+          modelProfiles = profiles.map(fromProfile);
+        } catch {
+          throw new Error(t('invalidNumber'));
+        }
+        const saved = await models.saveConfig({
+          revision: config.revision,
+          modelProfiles,
+          modelProviders: endpoints.map(fromDraft),
+        });
+        setConfig(saved);
+        stage = 'keys';
+        for (const endpoint of endpoints) {
+          const key = endpointKeys[endpoint.uid]?.trim();
+          if (endpoint.access !== 'api_key' || !key) continue;
+          await models.setApiKey(endpoint.id.trim(), key, saved.revision);
+          setEndpointKeys((keys) => ({ ...keys, [endpoint.uid]: '' }));
+        }
+        stage = 'refresh';
+        await refresh();
       });
-      setConfig(saved);
-      stage = 'keys';
-      for (const endpoint of endpoints) {
-        const key = endpointKeys[endpoint.uid]?.trim();
-        if (endpoint.access !== 'api_key' || !key) continue;
-        await models.setApiKey(endpoint.id.trim(), key, saved.revision);
-        setEndpointKeys((keys) => ({ ...keys, [endpoint.uid]: '' }));
-      }
-      stage = 'refresh';
-      await refresh();
       onDone();
+      return true;
     } catch (failure) {
       setError(
         t(stage === 'config' ? 'refused' : stage === 'keys' ? 'keysFailed' : 'refreshFailed', {
@@ -137,12 +146,14 @@ export function ModelConfigEditor({
                 : String(failure),
         }),
       );
+      return false;
     } finally {
       savingRef.current = false;
       setSaving(false);
     }
   };
 
+  useSettingsForm({ dirty, pending: saving, save });
   const field = 'settings-field';
   return (
     <section aria-labelledby={headingId} className="settings-surface flex flex-col gap-4">

@@ -12,9 +12,9 @@ import {
   DialogTitle,
   Select,
 } from '@corral/react/ui';
-import { useBlocker } from '@tanstack/react-router';
 import { useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
+import { useSettingsCommand, useSettingsForm, useSettingsTask } from '../SettingsLifecycle.tsx';
 import { field, operationId } from './Target.tsx';
 
 export function mcpDraft(server: RegisteredMcpServer): McpServerDraft {
@@ -90,15 +90,15 @@ export function McpEditor({
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
     [dirty, setDirty] = useState(false);
-  const retry = useRef<{ json: string; id: string } | null>(null),
+  const retry = useSettingsCommand<{ json: string; id: string }>(
+      `mcp-edit:${projectId}:${server?.id ?? 'new'}`,
+    ),
     dirtyRef = useRef(false);
   dirtyRef.current = dirty;
-  useBlocker({
-    shouldBlockFn: () => dirtyRef.current && !window.confirm(t('leaveUnsaved')),
-    enableBeforeUnload: () => dirtyRef.current,
-  });
-  const close = () => {
-    if (!busy && (!dirty || window.confirm(t('leaveUnsaved')))) onClose();
+  const runSettingsTask = useSettingsTask(`project-tools:${projectId}`);
+  const confirmLeave = useSettingsForm({ dirty, pending: busy, save });
+  const close = async () => {
+    if (await confirmLeave()) onClose();
   };
   async function save() {
     const parsed = McpServerDraft.safeParse({
@@ -132,24 +132,24 @@ export function McpEditor({
     });
     if (!parsed.success) {
       setError(h('invalidMcp'));
-      return;
+      return false;
     }
     const json = JSON.stringify(parsed.data);
     if (retry.current?.json !== json) retry.current = { json, id: operationId() };
+    const commandId = retry.current.id;
     setBusy(true);
     setError('');
     try {
-      const config = await api.saveMcp(
-        projectId,
-        revision,
-        retry.current.id,
-        parsed.data,
-        server?.id,
+      const config = await runSettingsTask(() =>
+        api.saveMcp(projectId, revision, commandId, parsed.data, server?.id),
       );
+      setDirty(false);
       dirtyRef.current = false;
       onSaved(config);
+      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+      return false;
     } finally {
       setBusy(false);
     }

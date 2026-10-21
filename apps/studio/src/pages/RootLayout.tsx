@@ -40,11 +40,24 @@ import {
 } from '../workbench/navigation.ts';
 import { applyTheme, changePreferences, usePreferences } from '../workbench/preferences.ts';
 import { SessionTabs } from '../workbench/SessionTabs.tsx';
+import {
+  SettingsLeavePrompt,
+  SettingsLifecycle,
+  SettingsOperationStatus,
+} from '../workbench/SettingsLifecycle.tsx';
 import { SettingsNavigation, settingsSection } from '../workbench/SettingsNavigation.tsx';
 import { Sidebar, useCorralSidebar } from '../workbench/Sidebar.tsx';
 import { TopbarSlotContext } from '../workbench/TopbarSlot.tsx';
 
 export function RootLayout() {
+  return (
+    <SettingsLifecycle>
+      <RootFrame />
+    </SettingsLifecycle>
+  );
+}
+
+function RootFrame() {
   useShortcutBindings();
   const navigate = useNavigate();
   const { repository } = useServices();
@@ -329,8 +342,10 @@ export function RootLayout() {
                   </Button>
                 </Tooltip>
               </header>
+              <SettingsOperationStatus />
               <div className="app-outlet">
                 <Outlet />
+                <SettingsLeavePrompt />
               </div>
             </div>
             <CommandLayer />
