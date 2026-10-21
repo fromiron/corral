@@ -1541,7 +1541,8 @@
       "inconclusive": "판정 불가",
       "not_evaluated": "미평가"
     },
-    "checkTargetChanged": "검사가 후보 파일을 변경했으므로 통과 근거로 사용할 수 없습니다."
+    "checkTargetChanged": "검사가 후보 파일을 변경했으므로 통과 근거로 사용할 수 없습니다.",
+    "attachCheckOutput": "검사 출력 첨부"
   },
   "Review": {
     "commentLine": "{line}번째 줄에 의견",
@@ -1798,7 +1799,11 @@
     "version": "버전",
     "schedules": "예약 실행",
     "vault": "설정 금고",
-    "workFolder": "작업 폴더"
+    "workFolder": "작업 폴더",
+    "chatDensity": "대화 표시",
+    "densityResults": "결과",
+    "densityBasic": "기본",
+    "densityDetailed": "상세 활동"
   },
   "Composer": {
     "nextRequest": "다음 요청",
@@ -1860,7 +1865,7 @@
     "removeAttachment": "{name} 첨부 제거",
     "attachments": "첨부한 텍스트 파일",
     "attachmentError": "UTF-8 텍스트 파일을 최대 5개, 각각 64 KiB까지 첨부할 수 있습니다. 바이너리 또는 잘못된 파일은 첨부할 수 없습니다.",
-    "attachmentsNextOnly": "텍스트 파일은 이번 메시지에서 제외하고 새 요청의 초안에 보관합니다.",
+    "attachmentsNextOnly": "텍스트 첨부는 새 요청이나 대기열 요청에 포함됩니다.",
     "reviewOnly": "검토만 · 파일 변경 안 함",
     "verificationScope": "요청할 검증 범위",
     "targetedScope": "변경 범위 검증",
@@ -2620,7 +2625,8 @@
       "partial": "일부만 변경되었을 수 있습니다. 파일과 복구용 체크포인트를 확인하세요.",
       "uncertain": "결과를 확인하지 못했습니다. 다음 변경 전에 파일을 확인하세요.",
       "refused": "변경하지 않았습니다. 새 미리보기를 준비하세요."
-    }
+    },
+    "attachSelected": "선택한 변경 첨부"
   },
   "RuntimeRecovery": {
     "title": "실행 복구",
@@ -3112,7 +3118,14 @@
     "retrySave": "기존 저장 요청 다시 시도",
     "otherSessionReference": "이 문서의 대화에서 줄 참조를 추가할 수 있습니다.",
     "staleDock": "이 탭은 이전 작업 사본의 문서입니다. 현재 사본으로 자동 연결하지 않습니다.",
-    "openConversation": "이 문서의 대화 열기"
+    "openConversation": "이 문서의 대화 열기",
+    "attachSelection": "선택한 코드 첨부",
+    "capturingSelection": "선택 내용 캡처 중…",
+    "confirmDraftTitle": "미저장 선택 내용을 첨부할까요?",
+    "confirmDraftHint": "캡처한 선택 내용에 미저장 편집이 포함되어 있습니다. 첨부해도 파일을 저장하거나 요청을 보내지 않습니다.",
+    "attachSnapshot": "캡처한 내용 추가",
+    "selectedSnapshot": "캡처한 선택 내용",
+    "captureFailed": "선택 내용을 첨부하지 못했습니다. 캡처한 내용을 보존했습니다. 다시 시도하거나 선택 범위를 줄이세요."
   },
   "Terminals": {
     "title": "터미널",
@@ -3164,7 +3177,13 @@
     "keyboardHint": "Shift+Escape를 누르면 터미널 입력에서 나와 터미널 새로고침 버튼으로 이동합니다. 복사할 텍스트를 선택할 수 있습니다.",
     "actionFailed": "터미널 작업 결과를 확인하지 못했습니다. 다시 시도하기 전에 상태를 새로고침하세요.",
     "scopeHint": "명령은 이 대화의 작업 사본에서 실행됩니다.",
-    "acceptedInput": "호스트가 마지막으로 접수한 입력 순서: {sequence}"
+    "acceptedInput": "호스트가 마지막으로 접수한 입력 순서: {sequence}",
+    "attachSelection": "선택 내용 첨부",
+    "capturing": "선택 내용 가져오는 중…",
+    "selectOutput": "첨부할 터미널 출력을 먼저 선택하세요.",
+    "attachSelectionError": "선택을 첨부하지 못했습니다. 선택 크기와 연결 상태를 확인하세요.",
+    "sourceStale": "터미널 출력이 변경되어 이전 선택을 복원하지 않았습니다.",
+    "sourceUnavailable": "이 터미널 출처를 현재 화면에서 열 수 없습니다."
   },
   "Docking": {
     "title": "작업 공간 배치",
@@ -3215,5 +3234,31 @@
     "runDisconnected": "실행 연결이 끊겨 현재 상태를 확인할 수 없습니다.",
     "layoutControls": "패널 배치 조정",
     "savedLayout": "사용자 배치"
+  },
+  "Context": {
+    "attachFailed": "캡처한 내용을 첨부하지 못했습니다. 원본에서 다시 시도하세요.",
+    "attached": "요청 초안에 첨부했습니다.",
+    "attachments": "캡처한 첨부",
+    "preview": "캡처 내용",
+    "checking": "원본 확인 중…",
+    "current": "캡처와 원본이 일치함",
+    "stale": "원본이 변경됨 · 캡처 내용은 유지됨",
+    "unavailable": "원본을 확인할 수 없음 · 캡처 내용은 유지됨",
+    "openSource": "원본 열기",
+    "replaceCapture": "첨부 교체",
+    "removeCapture": "{name} 첨부 삭제",
+    "replacementFailed": "캡처를 교체하지 못했습니다. 기존 내용은 유지됩니다.",
+    "savedCode": "저장된 코드",
+    "draftCode": "저장하지 않은 코드",
+    "terminalSource": "터미널 출력",
+    "hunkSource": "파일 변경",
+    "checkSource": "검사 결과",
+    "nextOrQueue": "캡처한 텍스트는 새 요청이나 대기열 요청에 포함됩니다.",
+    "sourcePreview": "원본 스냅샷",
+    "replacementPreview": "교체 내용 확인",
+    "confirmReplacement": "캡처 교체",
+    "cancel": "취소",
+    "close": "닫기",
+    "readonlySnapshot": "읽기 전용 스냅샷입니다. 열어도 파일을 변경하거나 요청을 보내지 않습니다."
   }
 }

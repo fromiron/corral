@@ -9,6 +9,42 @@ import {
   validateSessionSearch,
 } from './routes.ts';
 
+it('[TC-WBD-007-H] composer links override remembered history without making composer focus sticky', () => {
+  const remembered = { panel: 'run', run: 'run_old', view: 'run', execution: 'old_call' };
+  const compose = validateSessionSearch({ compose: true });
+  expect(compose).toEqual({ compose: true });
+  expect(validateSessionSearch({ compose: false })).toEqual({});
+  expect(resolveSessionSearch(compose, remembered)).toEqual({ compose: true });
+  expect(resolveSessionSearch({}, { ...remembered, compose: true })).toEqual(remembered);
+  expect(patchSessionSearch(compose, { panel: 'files' })).toEqual({ panel: 'files' });
+  expect(patchSessionSearch(compose, { panel: undefined })).toEqual({});
+  expect(patchSessionSearch(compose, { view: 'results' })).toEqual({ view: 'results' });
+  expect(patchSessionSearch(compose, { message: 'entry' })).toEqual({
+    compose: true,
+    message: 'entry',
+  });
+});
+
+it('[TC-WBD-007-N] an explicit target in a merged widget link takes precedence over composer focus', () => {
+  const destination = { panel: 'run', run: 'run_target', view: 'run' };
+  expect(validateSessionSearch({ compose: true, ...destination })).toEqual(destination);
+  expect(
+    resolveSessionSearch({ compose: true, panel: 'run', run: 'run_target', view: 'run' }, {}),
+  ).toEqual(destination);
+  for (const target of [
+    { panel: 'files' },
+    { run: 'run_target' },
+    { view: 'results' },
+    { execution: 'exec_target' },
+    { artifact: 'artifact_target' },
+    { result: 'result_target' },
+  ])
+    expect(validateSessionSearch({ compose: true, ...target })).toEqual(target);
+  expect(validateSessionSearch({ compose: true, panel: 'unknown', run: '' })).toEqual({
+    compose: true,
+  });
+});
+
 it('[TC-WBD-005-H] existing session links and remembered views keep their current precedence', () => {
   const remembered = {
     panel: 'files',

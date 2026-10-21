@@ -4,7 +4,11 @@ import { createRoot } from 'react-dom/client';
 import { afterEach, expect, it, vi } from 'vitest';
 import { createStore } from 'zustand/vanilla';
 import { type DocumentStore, documentKey } from '../documents/store.ts';
-import { DockWorkbench, type DockWorkbenchHandle } from './DockWorkbench.tsx';
+import {
+  DockWorkbench,
+  type DockWorkbenchHandle,
+  type DockWorkbenchProps,
+} from './DockWorkbench.tsx';
 import { layoutStorageKey } from './layout.ts';
 
 vi.mock('use-intl', () => {
@@ -24,7 +28,9 @@ afterEach(async () => {
   vi.unstubAllGlobals();
   localStorage.clear();
 });
-async function fixture() {
+async function fixture(
+  props: Partial<Pick<DockWorkbenchProps, 'selectedPanel' | 'renderDocument'>> = {},
+) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal(
     'ResizeObserver',
@@ -61,6 +67,7 @@ async function fixture() {
         documentOwner={owner}
         renderContext={(view) => <span>{view}</span>}
         renderDocument={(descriptor) => <span data-testid="document">{descriptor.path}</span>}
+        {...props}
       />,
     );
   });
@@ -180,4 +187,53 @@ it('[TC-WBD-006-H] restores the active document and labels a saved layout withou
     restored.container.querySelector('button[aria-label="activePane"]')?.textContent,
   ).toContain('file.ts');
   expect(restored.closeView).not.toHaveBeenCalled();
+});
+
+it('[TC-WBD-007-H] an explicit chat selection takes precedence over a restored active document', async () => {
+  const original = await fixture();
+  await act(async () => {
+    original.ref.current?.openDocument({ documentKey: original.key, target, path: 'file.ts' });
+  });
+  await disposals.pop()?.();
+  const restored = await fixture({ selectedPanel: null });
+  expect(
+    restored.container.querySelector('button[aria-label="activePane"]')?.textContent,
+  ).toContain('chat');
+  expect(restored.container.querySelector('[data-testid="document"]')).not.toBeNull();
+  expect(restored.closeView).not.toHaveBeenCalled();
+});
+
+it('[TC-WBD-007-H] source ranges reach only the opened document view and are not saved in the layout', async () => {
+  const f = await fixture({
+    renderDocument: (descriptor, panelId, selection) => (
+      <span data-testid="document" data-view={panelId} data-selection={JSON.stringify(selection)}>
+        {descriptor.path}
+      </span>
+    ),
+  });
+  const range = { startLine: 2, startColumn: 1, endLine: 3, endColumn: 5 };
+  await act(async () => {
+    expect(
+      f.ref.current?.openDocument({ documentKey: f.key, target, path: 'file.ts' }, range),
+    ).toBe(true);
+  });
+  const first = f.container.querySelector('[data-testid="document"]');
+  expect(first?.getAttribute('data-selection')).toBe(JSON.stringify(range));
+  await act(async () => f.container.querySelector('summary')?.click());
+  const split = [...f.container.querySelectorAll('button')].find(
+    (button) => button.textContent === 'split',
+  );
+  await act(async () => split?.click());
+  const views = [...f.container.querySelectorAll('[data-testid="document"]')];
+  expect(views).toHaveLength(2);
+  expect(views.find((view) => view !== first)?.getAttribute('data-selection')).toBeNull();
+  const nextRange = { ...range, startColumn: 2 };
+  await act(async () => {
+    f.ref.current?.openDocument({ documentKey: f.key, target, path: 'file.ts' }, nextRange);
+  });
+  expect(first?.getAttribute('data-selection')).toBe(JSON.stringify(nextRange));
+  expect(localStorage.getItem(layoutStorageKey('host', 'project') ?? '')).not.toContain(
+    'startLine',
+  );
+  expect(f.closeView).not.toHaveBeenCalled();
 });

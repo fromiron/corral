@@ -1,9 +1,10 @@
-import type { WorkspaceTarget } from '@corral/contracts';
+import type { TextAttachment, TextRange, WorkspaceTarget } from '@corral/contracts';
 import { Button, Textarea } from '@corral/react/ui';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
+import type { AttachmentCapture } from './context/bridge.ts';
 import { DocumentPanel } from './DocumentPanel.tsx';
 import type { RecoveryDraft } from './documents/recovery.ts';
 import { type DocumentStore, documentKey } from './documents/store.ts';
@@ -16,7 +17,11 @@ export function DockDocumentPanel({
   path,
   viewId,
   onReference,
+  onAttach,
+  revealSelection,
 }: {
+  onAttach?: (attachment: TextAttachment, capture: AttachmentCapture) => void | Promise<void>;
+  revealSelection?: TextRange;
   owner: DocumentStore;
   target: WorkspaceTarget;
   path: string;
@@ -133,6 +138,8 @@ export function DockDocumentPanel({
           documentKey={key}
           viewId={viewId}
           onReference={onReference}
+          onAttach={onAttach}
+          revealSelection={revealSelection}
           readOnlyTarget={stale || Boolean(state.error)}
           manageView={false}
           referencePending={state.pending}

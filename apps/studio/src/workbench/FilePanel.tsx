@@ -1,5 +1,5 @@
 import type { FileSideView } from '@corral/client';
-import type { WorkspaceTarget } from '@corral/contracts';
+import type { TextAttachment, WorkspaceTarget } from '@corral/contracts';
 import { FileText, RefreshCw, X } from '@corral/react/icons';
 import {
   Button,
@@ -25,6 +25,7 @@ import {
 import { useTranslations } from 'use-intl';
 import { useRemembered } from '../pages/Workbench.tsx';
 import { useServices } from '../services.tsx';
+import type { AttachmentCapture } from './context/bridge.ts';
 import { DocumentPanel } from './DocumentPanel.tsx';
 import type { RecoveryDraft } from './documents/recovery.ts';
 import { type CloseChoice, type DocumentBuffer, documentStore } from './documents/store.ts';
@@ -67,12 +68,14 @@ export function FilePanel({
   projectId,
   sessionId,
   onReference,
+  onAttach,
   onOpenDocument,
   showTools = true,
 }: {
   projectId: string;
   sessionId: string;
   onReference: (reference: FileReference) => void;
+  onAttach?: (attachment: TextAttachment, capture: AttachmentCapture) => void | Promise<void>;
   onOpenDocument?: (document: OpenDocumentRequest) => boolean;
   showTools?: boolean;
 }) {
@@ -457,6 +460,7 @@ export function FilePanel({
             documentKey={retainedKey}
             viewId={fileViewId(sessionId, documents[retainedKey]?.path ?? '')}
             onReference={onReference}
+            onAttach={onAttach}
             readOnlyTarget
           />
         ) : null}
@@ -652,6 +656,7 @@ export function FilePanel({
           documentKey={documentKey}
           viewId={fileViewId(sessionId, documents[documentKey].path)}
           onReference={onReference}
+          onAttach={onAttach}
           readOnlyTarget={!currentCopy(documents[documentKey])}
         />
       ) : displayContent?.kind === 'text' && active ? (

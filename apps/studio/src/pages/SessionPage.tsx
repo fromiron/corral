@@ -17,6 +17,7 @@ import {
   TERMINAL_EXECUTION_STATUSES,
   TERMINAL_RUN_STATUSES,
   TEXT_ATTACHMENT_MAX_COUNT,
+  type TextAttachmentProvenance,
   UltraSelection,
 } from '@corral/contracts';
 import type {
@@ -117,11 +118,22 @@ import { ComposerInput } from '../workbench/ComposerInput.tsx';
 import { ComposerSurface } from '../workbench/ComposerSurface.tsx';
 import { type IntentLock, resolveIntent } from '../workbench/composerIntent.ts';
 import { type MentionItem, mentionToken, pickedReferences } from '../workbench/composerMenu.ts';
+import {
+  type AttachmentCapture,
+  type AttachmentRequest,
+  appendComposerAttachment,
+  COMPOSER_ATTACH,
+  mergeComposerAttachment,
+} from '../workbench/context/bridge.ts';
+import {
+  SourceAttachments,
+  SourceNavigationContext,
+} from '../workbench/context/SourceAttachments.tsx';
 import { DockDocumentPanel } from '../workbench/DockDocumentPanel.tsx';
 import { DockRunControls } from '../workbench/DockRunControls.tsx';
 import { DockWorkbench, type DockWorkbenchHandle } from '../workbench/docking/DockWorkbench.tsx';
 import type { DockContextView } from '../workbench/docking/layout.ts';
-import { documentStore } from '../workbench/documents/store.ts';
+import { documentKey, documentStore } from '../workbench/documents/store.ts';
 import { FilePanel, type FileReference } from '../workbench/FilePanel.tsx';
 import { ImageAttachmentList, ImageAttachmentPicker } from '../workbench/ImageAttachments.tsx';
 import { LiveVoice } from '../workbench/LiveVoice.tsx';
@@ -226,7 +238,11 @@ export function SessionPage() {
   );
   const search = resolveSessionSearch(urlSearch, savedView);
   const viewKey = JSON.stringify(search);
-  useEffect(() => rememberView(JSON.parse(viewKey)), [viewKey, rememberView]);
+  useEffect(() => {
+    const remembered = JSON.parse(viewKey);
+    delete remembered.compose;
+    rememberView(remembered);
+  }, [viewKey, rememberView]);
   const navigate = useNavigate({ from: '/sessions/$sessionId' });
   const { runs, active, refresh, lost } = useSessionRuns(session.sessionId, search.run);
   useEffect(() => setCurrentProject(session.projectId), [session.projectId]);
@@ -249,12 +265,36 @@ export function SessionPage() {
     pendingReference?.sessionId === session.sessionId ? pendingReference.value : null;
   const setSearch = (patch: Partial<typeof search>) => {
     const next = patchSessionSearch(search, patch);
-    rememberView({ ...next });
+    rememberView({ ...next, compose: undefined });
     void navigate({ search: () => next });
   };
   const showPanel = (patch: Partial<typeof search>) => {
     dock.current?.openContext(patch.panel ?? 'chat');
     setSearch(patch);
+  };
+  const currentTarget = useRef({
+    hostId: services.workspaceId,
+    projectId: session.projectId,
+    sessionId: session.sessionId,
+  });
+  currentTarget.current = {
+    hostId: services.workspaceId,
+    projectId: session.projectId,
+    sessionId: session.sessionId,
+  };
+  const contextMessages = useTranslations('Context');
+  const [terminalSource, setTerminalSource] =
+    useState<Extract<TextAttachmentProvenance, { kind: 'terminal' }>>();
+  const handleAttachment = (attachment: TextAttachment, capture: AttachmentCapture) => {
+    if (capture.target.hostId !== currentTarget.current.hostId)
+      throw new Error(contextMessages('attachFailed'));
+    const result = appendComposerAttachment(capture, attachment);
+    if (!result.ok) throw new Error(contextMessages('attachFailed'));
+    if (
+      capture.target.sessionId === currentTarget.current.sessionId &&
+      capture.target.projectId === currentTarget.current.projectId
+    )
+      showPanel({ panel: undefined });
   };
   const handleReference = (value: FileReference) => {
     setReference({ sessionId: session.sessionId, value });
@@ -279,6 +319,7 @@ export function SessionPage() {
         projectId={session.projectId}
         sessionId={session.sessionId}
         onReference={handleReference}
+        onAttach={handleAttachment}
         onOpenDocument={(document) => dock.current?.openDocument(document) ?? false}
         showTools={false}
       />
@@ -290,7 +331,7 @@ export function SessionPage() {
         onOpen={(runId, result) => showPanel({ panel: 'run', run: runId, view: 'results', result })}
       />
     ),
-    checks: () => <ChecksPanel session={session} />,
+    checks: () => <ChecksPanel session={session} onAttach={handleAttachment} />,
     run: () => <RunPanel runs={runs} search={search} setSearch={setSearch} />,
   };
   const renderContext = (view: DockContextView) => {
@@ -334,6 +375,10 @@ export function SessionPage() {
           key={session.sessionId}
           sessionId={session.sessionId}
           projectId={session.projectId}
+          onAttach={handleAttachment}
+          revealSource={
+            terminalSource?.target.sessionId === session.sessionId ? terminalSource : undefined
+          }
         />
       );
     if (view === 'tools')
@@ -377,59 +422,82 @@ export function SessionPage() {
           })
         }
       />
-      <ChatWidgetProvider
-        sessionId={session.sessionId}
-        presentationRunId={presentationRunId}
-        live={Boolean(liveRun)}
+      <SourceNavigationContext.Provider
+        value={{
+          openDocument: (target, path, range) =>
+            dock.current?.openDocument(
+              { target, path, documentKey: documentKey(target, path) },
+              range,
+            ) ?? false,
+          openTerminal: (source) => {
+            if (
+              source.target.sessionId !== session.sessionId ||
+              source.target.projectId !== session.projectId
+            )
+              throw new Error(contextMessages('unavailable'));
+            setTerminalSource(source);
+            dock.current?.openContext('terminal');
+          },
+        }}
       >
-        <DockWorkbench
-          key={`${services.workspaceId ?? services.mode}:${session.projectId}`}
-          ref={dock}
-          hostId={services.workspaceId}
-          projectId={session.projectId}
+        <ChatWidgetProvider
           sessionId={session.sessionId}
-          selectedPanel={panel}
-          selectionKey={`${session.sessionId}:${viewKey}`}
-          documentOwner={documents}
-          renderContext={renderContext}
-          renderDocument={(descriptor) =>
-            documents ? (
-              <DockDocumentPanel
-                owner={documents}
-                target={descriptor.target}
-                path={descriptor.path}
-                viewId={descriptor.viewId}
-                onReference={
-                  descriptor.target.sessionId === session.sessionId ? handleReference : undefined
-                }
-              />
-            ) : null
-          }
-          onActiveContext={(view) => {
-            const next =
-              view === 'chat' ? undefined : SESSION_PANELS.find((value) => value === view);
-            if ((view === 'chat' || next) && next !== panel) setSearch({ panel: next });
-          }}
-          controls={
-            active ? (
-              <DockRunControls
-                key={active.runId}
-                runId={active.runId}
-                onOpen={(run) =>
-                  showPanel({
-                    panel: 'run',
-                    run,
-                    view: 'run',
-                    execution: undefined,
-                    artifact: undefined,
-                    result: undefined,
-                  })
-                }
-              />
-            ) : null
-          }
-        />
-      </ChatWidgetProvider>
+          presentationRunId={presentationRunId}
+          live={Boolean(liveRun)}
+        >
+          <DockWorkbench
+            key={`${services.workspaceId ?? services.mode}:${session.projectId}`}
+            ref={dock}
+            hostId={services.workspaceId}
+            projectId={session.projectId}
+            sessionId={session.sessionId}
+            selectedPanel={search.compose ? null : panel}
+            selectionKey={`${session.sessionId}:${viewKey}`}
+            documentOwner={documents}
+            renderContext={renderContext}
+            renderDocument={(descriptor, _panelId, selection) =>
+              documents ? (
+                <DockDocumentPanel
+                  owner={documents}
+                  target={descriptor.target}
+                  path={descriptor.path}
+                  viewId={descriptor.viewId}
+                  revealSelection={selection}
+                  onAttach={
+                    descriptor.target.sessionId === session.sessionId ? handleAttachment : undefined
+                  }
+                  onReference={
+                    descriptor.target.sessionId === session.sessionId ? handleReference : undefined
+                  }
+                />
+              ) : null
+            }
+            onActiveContext={(view) => {
+              const next =
+                view === 'chat' ? undefined : SESSION_PANELS.find((value) => value === view);
+              if ((view === 'chat' || next) && next !== panel) setSearch({ panel: next });
+            }}
+            controls={
+              active ? (
+                <DockRunControls
+                  key={active.runId}
+                  runId={active.runId}
+                  onOpen={(run) =>
+                    showPanel({
+                      panel: 'run',
+                      run,
+                      view: 'run',
+                      execution: undefined,
+                      artifact: undefined,
+                      result: undefined,
+                    })
+                  }
+                />
+              ) : null
+            }
+          />
+        </ChatWidgetProvider>
+      </SourceNavigationContext.Provider>
     </>
   );
 }
@@ -1085,14 +1153,26 @@ function ArtifactsPanel({
 }
 
 /** Checks: the agreed commands and their results, as on the review screen. */
-function ChecksPanel({ session }: { session: WorkSession }) {
+function ChecksPanel({
+  session,
+  onAttach,
+}: {
+  session: WorkSession;
+  onAttach: (attachment: TextAttachment, capture: AttachmentCapture) => void;
+}) {
   const tw = useTranslations('Workbench');
   const { workspaces } = useServices();
   const { binding } = useBinding(session.projectId);
   if (!workspaces) return <p className="text-xs text-muted">{tw('serverOnly')}</p>;
   return (
     <>
-      <Checks sessionId={session.sessionId} binding={binding ?? null} changed={0} />
+      <Checks
+        sessionId={session.sessionId}
+        projectId={session.projectId}
+        binding={binding ?? null}
+        changed={0}
+        onAttach={onAttach}
+      />
       <Button
         variant="outline"
         size="sm"
@@ -1424,7 +1504,7 @@ const pendingSessionCommands = createPendingSessionCommands(
   typeof window !== 'undefined' ? window.corralRemote?.hostId : undefined,
 );
 
-function Composer({
+export function Composer({
   session,
   team,
   corrals,
@@ -1450,6 +1530,7 @@ function Composer({
   useShortcutBindings();
   const t = useTranslations('Sessions');
   const tc = useTranslations('Composer');
+  const contextMessages = useTranslations('Context');
   const navigation = useSettingsNavigation();
   const tr = useTranslations('Reins');
   const services = useServices();
@@ -1742,21 +1823,58 @@ function Composer({
     ],
   );
   const draftRevision = useRef(0);
+  const currentDraft = useRef({ draft: composerDraft, busy: false });
+  currentDraft.current = {
+    draft: composerDraft,
+    busy: busy || attachmentsBusy || projectDocumentsBusy || imagesBusy,
+  };
+  useEffect(() => {
+    const attach = (event: Event) => {
+      const request = (event as CustomEvent<AttachmentRequest>).detail;
+      const destination = request.capture.target;
+      if (
+        destination.hostId !== services.workspaceId ||
+        destination.projectId !== session.projectId ||
+        destination.sessionId !== session.sessionId
+      )
+        return;
+      if (currentDraft.current.busy) {
+        request.result = { ok: false, reason: 'busy' };
+        return;
+      }
+      const merged = mergeComposerAttachment(currentDraft.current.draft.attachments ?? [], request);
+      if (!Array.isArray(merged)) {
+        request.result = merged;
+        return;
+      }
+      const draft = { ...currentDraft.current.draft, attachments: merged };
+      currentDraft.current.draft = draft;
+      draftRevision.current = writeComposerDraft(session.sessionId, draft);
+      setAttachments(merged);
+      request.result = { ok: true };
+      requestAnimationFrame(() => input.current?.focus());
+    };
+    window.addEventListener(COMPOSER_ATTACH, attach);
+    return () => window.removeEventListener(COMPOSER_ATTACH, attach);
+  }, [services.workspaceId, session.projectId, session.sessionId]);
   useEffect(() => {
     draftRevision.current = writeComposerDraft(session.sessionId, composerDraft);
   }, [session.sessionId, composerDraft]);
   useEffect(() => {
     const sent = (event: Event) => {
       const detail = (
-        event as CustomEvent<{ sessionId: string; revision: number; preserveAttachments?: boolean }>
+        event as CustomEvent<{
+          sessionId: string;
+          revision: number;
+          preserveAttachments?: boolean;
+          preserveImages?: boolean;
+        }>
       ).detail;
       if (detail.sessionId !== session.sessionId || detail.revision !== draftRevision.current)
         return;
       setPicked([]);
-      if (!detail.preserveAttachments) {
-        setAttachments([]);
-        setImages([]);
-      }
+      if (!detail.preserveAttachments) setAttachments([]);
+      if (!detail.preserveImages) setImages([]);
       setAttachmentEpoch((epoch) => epoch + 1);
       setAttachmentsBusy(false);
       setImagesBusy(false);
@@ -2251,6 +2369,7 @@ function Composer({
           intent,
           text: body,
           state: 'queued',
+          ...(attachments.length ? { attachments } : {}),
           ...(permissionMode ? { permissionMode } : {}),
           ...(isAuto && autoHarness ? { harness: autoHarness } : {}),
         });
@@ -2307,7 +2426,12 @@ function Composer({
         return;
       }
       clearPending();
-      clearSentComposerDraft(session.sessionId, submittedRevision, intent !== 'next');
+      clearSentComposerDraft(
+        session.sessionId,
+        submittedRevision,
+        intent !== 'next' && intent !== 'queue',
+        intent !== 'next',
+      );
       await router.invalidate();
       onChange();
     } catch (failure) {
@@ -2418,14 +2542,15 @@ function Composer({
 
   const startQueued = async (entry: SessionEntry) => {
     setBusy(true);
+    const queuedReferences = entry.attachments ?? [];
     try {
       const commandId = commandFor(
-        `queue\u0000${entry.entryId}\u0000${team?.corralId ?? autoCommandSeed(entry.text, [], autoChoice)}\u0000${entry.permissionMode ?? ''}\u0000${JSON.stringify(entry.harness ?? null)}`,
+        `queue\u0000${entry.entryId}\u0000${team ? `${team.corralId}\u0000${JSON.stringify(queuedReferences)}` : autoCommandSeed(entry.text, queuedReferences, autoChoice)}\u0000${entry.permissionMode ?? ''}\u0000${JSON.stringify(entry.harness ?? null)}`,
       );
       const { runId, detail, auto, cancelError } = await startNext(
         entry.text,
         commandId,
-        [],
+        queuedReferences,
         {},
         {},
         {},
@@ -2596,6 +2721,7 @@ function Composer({
     attachmentsBusy ||
     projectDocumentsBusy ||
     imagesBusy ||
+    (attachments.length > 0 && intent !== 'next' && intent !== 'queue') ||
     ((reviewOnly || verificationScope === 'release') &&
       intent !== 'next' &&
       intent !== 'explain') ||
@@ -2813,7 +2939,7 @@ function Composer({
         </div>
       ) : null}
       <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3">
-        {intent === 'next' ? (
+        {intent === 'next' || intent === 'queue' ? (
           <ProjectDocumentPicker
             key={`documents:${attachmentEpoch}`}
             projectId={session.projectId}
@@ -2890,9 +3016,14 @@ function Composer({
           <ul className="mt-1 flex flex-col">
             {queued.map((entry) => (
               <li key={entry.entryId} className="group/queued flex items-center gap-1 text-ui">
-                <span className="min-w-0 flex-1 truncate" title={entry.text}>
-                  {entry.text}
-                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate" title={entry.text}>
+                    {entry.text}
+                  </p>
+                  {entry.attachments?.length ? (
+                    <TextAttachmentList attachments={entry.attachments} />
+                  ) : null}
+                </div>
                 <Button
                   variant="ghost"
                   size="xs"
@@ -3058,8 +3189,31 @@ function Composer({
               onChange={setAttachments}
               onLoading={setAttachmentsBusy}
               disabled={busy}
-              enabled={intent === 'next'}
+              enabled={intent === 'next' || intent === 'queue'}
+              hideList
             />
+            <SourceAttachments
+              value={attachments}
+              onChange={setAttachments}
+              disabled={busy || attachmentsBusy || projectDocumentsBusy}
+            />
+            {attachments.length > 0 && intent !== 'next' && intent !== 'queue' ? (
+              <div role="status" className="flex flex-wrap items-center gap-2 text-xs text-muted">
+                <span>{contextMessages('nextOrQueue')}</span>
+                {allowed
+                  .filter((value) => value === 'next' || value === 'queue')
+                  .map((value) => (
+                    <Button
+                      key={value}
+                      variant="outline"
+                      size="xs"
+                      onClick={() => chooseIntent(value)}
+                    >
+                      {tc(`switchTo.${value}`)}
+                    </Button>
+                  ))}
+              </div>
+            ) : null}
             {optionSummary.length ? (
               <fieldset
                 aria-label={tc('activeOptions')}
@@ -3126,7 +3280,7 @@ function Composer({
                         attachmentsBusy ||
                         projectDocumentsBusy ||
                         imagesBusy ||
-                        intent !== 'next'
+                        (intent !== 'next' && intent !== 'queue')
                       }
                     />
                   }
@@ -3136,7 +3290,7 @@ function Composer({
                 <MenuPopup align="start">
                   {mode === 'server' ? (
                     <MenuItem
-                      disabled={images.length >= IMAGE_MAX_COUNT}
+                      disabled={intent !== 'next' || images.length >= IMAGE_MAX_COUNT}
                       onClick={() => imageFiles.current?.click()}
                     >
                       {tc('attachImages')}

@@ -1,6 +1,7 @@
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 
+export type ChatDensity = 'results' | 'basic' | 'detailed';
 export type Theme = 'system' | 'light' | 'dark';
 export interface Preferences {
   version: 1;
@@ -11,6 +12,7 @@ export interface Preferences {
   sendKey: 'enter' | 'mod-enter';
   /** Desktop app: a system notification when something needs the person (off by default). */
   notify: boolean;
+  chatDensity: ChatDensity;
 }
 
 export const PREFERENCES_KEY = 'corral:workbench:v1';
@@ -21,6 +23,7 @@ const defaults: Preferences = {
   sidebarWidth: 256,
   sendKey: 'enter',
   notify: false,
+  chatDensity: 'basic',
 };
 
 export function parsePreferences(raw: string | null): Preferences {
@@ -37,6 +40,10 @@ export function parsePreferences(raw: string | null): Preferences {
           : 256,
       sendKey: value.sendKey === 'mod-enter' ? 'mod-enter' : 'enter',
       notify: value.notify === true,
+      chatDensity:
+        value.chatDensity === 'results' || value.chatDensity === 'detailed'
+          ? value.chatDensity
+          : 'basic',
     };
   } catch {
     return { ...defaults };

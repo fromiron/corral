@@ -92,3 +92,19 @@ H는 실제 임시 Git/SQLite에서 read→save/create→disk hash/형식/mode, 
 - graph 전용 문서 탭 통합은 P18에서 다룬다. P10은 기존 graph/review route·deep link·설정 왕복·D&D·Reins의 의미를 보존하며 이를 조용히 대체하거나 제거하지 않는다.
 
 H는 문서 이동·preset·reload 뒤 같은 문서 ID/모델과 문맥 대상, 명시 닫기, 실제 키보드/390px의 승인·중지 접근이다. N은 다른 workspace/project/사본 참조 구분, 잘못된 descriptor, 상한에서 기존 문서 보존이다. F는 grid/저장 metadata 손상, 저장 중 이동·늦은 receipt·PTY 출력 중 숨김에서 초안과 프로세스 보존이다. 의미 있는 실패 테스트를 먼저 확인하고 기존 관련 회귀를 재사용한다. 새 E2E는 인앱 브라우저에서 실제 필요성을 확인한 뒤에만 추가한다.
+
+## P11: 캡처한 컨텍스트와 대화 표시 밀도
+
+추적: CRL-WBD-007 / C-151 / TC-WBD-007-H,N,F. 승인 계획 P11을 구체화하며 등록 시점에는 구현 전이다. 기존 TextAttachment에 optional provenance를 더하고 첨부·세션 요청·큐·원래 command ID 복구 경로를 재사용한다. 새 RunReference kind나 실행 원장은 추가하지 않는다.
+
+- 사용자가 선택한 코드, 터미널 출력/오류, 파일 hunk, 검사 결과를 캡처 시점의 본문과 출처·version·range로 첨부한다. 첨부의 text/bytes/sha256는 실제 전달할 선택 본문을 검증한다. 기존 64KiB/5개 텍스트 첨부 상한을 유지하고 초과 내용을 조용히 자르지 않는다. provenance 없는 기존 첨부도 계속 유효하다.
+- provenance는 사용자가 제공한 읽기 전용 캡처 출처이며 파일 권한·서버가 증명한 최신 상태·쓰기 허가가 아니다. 모델 입력에도 캡처 출처와 source data라는 구분을 전달한다. 같은 본문이라도 출처가 다른 첨부는 합치지 않으며 동일성·중복 검사는 본문 hash와 provenance를 함께 사용한다.
+- 코드는 full WorkspaceTarget·상대 path·saved/draft 구분·baseHash·캡처한 전체 bufferHash/editVersion과 1-based line/UTF-16 column, end-exclusive 범위를 보존한다. dirty 선택은 저장된 파일 내용과 구분해 명시 확인 후 전달한다. 확인 대기 중 편집이 바뀌어도 처음 보여준 캡처를 자동 교체하지 않는다.
+- 터미널은 full WorkspaceTarget·terminalId/generation·적용 완료 output sequence와 0-based/end-exclusive 셀 범위·cols/rows·normal/alternate buffer를 보존한다. 선택한 평문만 첨부하며 새 출력 로그/serializer를 만들지 않는다. scrollback 제거·resize·buffer 전환으로 원래 위치를 재현할 수 없으면 그 한계를 표시한다.
+- hunk와 검사는 writable WorkspaceTarget과 다른 읽기 전용 snapshot 출처다. 실제로 있는 host/project/session과 고정 from/to tree·상대 path·patchHash/hunk IDs 또는 verificationId·tree·fingerprint/configRevision/outputHash 등을 사용한다. 역사 자료에 현재 사본 generation을 붙이거나 이를 위해 report target API를 추가하지 않는다. 검사 outputHash는 redaction 전 원본 stream/report version이고 첨부 sha256는 표시된 선택 본문 hash이며, 범위는 표시된 출력 기준이다.
+- 칩은 캡처 내용 확인·원본 이동·명시 교체·삭제와 stale/원본 불가 상태를 제공한다. 원본 변경이나 조회 실패로 캡처 본문을 자동 갱신·삭제하지 않는다. 원본 이동에서 다른 generation·tree·terminal을 같은 출처처럼 바꾸지 않으며 위치 재현이 불가능해도 캡처 본문은 읽을 수 있다. stale 표시는 UI 상태이고 이미 고정한 요청 payload를 바꾸지 않는다.
+- 텍스트 첨부는 next와 queue에 보존한다. queued next의 미리보기·편집·수동/자동 시작은 entry에 고정한 첨부를 사용하고 command seed/원래 요청 identity에 전체 metadata를 포함한다. queue 전송 뒤 소비한 텍스트 첨부를 별도 draft에 남겨 혼동시키지 않는다. 이미지는 기존 next-only 경계를 유지한다. steer/explain은 이 첨부를 조용히 누락한 채 전송하지 않으며 다음 요청용임을 알리고 명시 선택을 요구한다.
+- source 캡처·교체와 전송 완료는 원래 session/대상·draft revision에 귀속된다. 늦은 응답이 새 초안이나 다른 세션을 지우지 않으며 retry는 원래 command ID·고정 본문을 재사용한다. 현재 Run의 입력·prompt snapshot이나 이미 접수된 queue entry를 소급 변경하지 않는다. 기존 조합 입력/IME·보내기 키 동작을 유지한다.
+- 결과/기본/상세 활동의 세 가지 밀도는 기존 projection을 보여주는 선택이다. 원본 이벤트·prompt 기록·도구 결과를 삭제하거나 실행 모드·예산·Reins 대상을 바꾸지 않는다. 승인·실패와 필요한 조치는 접힌 상세 밖에서도 발견하고 접근할 수 있어야 한다.
+
+H는 선택 snapshot→칩→next/queued next→실제 prompt, 원본 이동/교체/삭제와 세 표시 밀도다. N은 다른 출처의 동일 본문 구분, saved/dirty·UTF-16/terminal 좌표·고정 snapshot 범위, 잘못된 hash/상한·조용한 누락 거절이다. F는 늦은 캡처/확인/전송·원래 ID retry·원본 소실과 queue 자동 시작에서 원래 본문/초안/대상 보존이다. 먼저 의미 있는 실패를 확인하고 기존 compose/queue/late/IME 회귀를 재사용한다. 실제 인앱에서 확인하기 전에 새 E2E를 추가하지 않으며 유료 모델을 검증의 기본값으로 사용하지 않는다.

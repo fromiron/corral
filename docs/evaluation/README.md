@@ -7,6 +7,7 @@
 | Desktop 기능·플랫폼 한계 | [전체 진행](Desktop-Capabilities-Implementation-Progress.md), [배포](Desktop-Delivery-Verification.md), [preview](Desktop-Preview-Verification.md), [동시 실행](Desktop-Concurrency-Verification.md), 나머지 Desktop 기능별 보고서 |
 | 문맥형 설정·Composer | [CR-044 구현·Linux 검증](Contextual-Settings-UI-2026-10-21.md) |
 | Workbench 식별·테두리 일관성 | [CR-045 구현·Linux 검증](Workbench-Identification-2026-10-21.md) |
+| 캡처한 컨텍스트·대화 표시 밀도 | [CR-046 P11 구현·Linux 인앱 검증](Development-Workbench-Context-2026-10-21.md) |
 | 도킹 배치·문서 수명·키보드·복구 | [CR-046 P10 구현·Linux 인앱 검증](Development-Workbench-Docking-2026-10-21.md) |
 | 패널 대상·경로·Run view 수명 | [CR-046 P09 구현·인앱 검증](Development-Workbench-Panels-2026-10-21.md) |
 | 사용자 PTY·터미널 | [CR-046 P07–08 구현·Linux 인앱/native runtime 검증](Development-Workbench-Terminal-2026-10-21.md) |

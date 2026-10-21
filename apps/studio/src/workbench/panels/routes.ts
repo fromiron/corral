@@ -8,6 +8,7 @@ export interface RunDetailSearch {
 }
 export interface SessionSearch extends RunDetailSearch {
   message?: string | undefined;
+  compose?: true | undefined;
   /** Old links only (`tab=run`); read into `panel`. */
   tab?: 'work' | 'team' | 'run' | undefined;
   panel?: SessionPanel | undefined;
@@ -36,6 +37,11 @@ export function validateSessionSearch(search: Record<string, unknown>): SessionS
     const value = text(search[key]);
     if (value) out[key] = value;
   }
+  if (
+    search.compose === true &&
+    !(out.panel || out.run || out.view || out.execution || out.artifact || out.result)
+  )
+    out.compose = true;
   return out;
 }
 
@@ -73,20 +79,25 @@ export function validateEditorSearch(search: Record<string, unknown>): EditorSea
   };
 }
 
-/** An explicit Run/result link cannot inherit another target's remembered selection. */
+/** An explicit target cannot inherit another target's remembered selection. */
 export function resolveSessionSearch(url: SessionSearch, remembered: unknown): SessionSearch {
+  // TanStack merges validated fields with raw parent search; normalize that merged view.
+  const selection = validateSessionSearch({ ...url });
   const explicitTarget = Boolean(
-    url.run || url.view || url.artifact || url.result || url.execution,
+    selection.compose ||
+      selection.run ||
+      selection.view ||
+      selection.artifact ||
+      selection.result ||
+      selection.execution,
   );
+  const saved = validateSessionSearch(
+    remembered && typeof remembered === 'object' ? (remembered as Record<string, unknown>) : {},
+  );
+  delete saved.compose;
   return {
-    ...(!explicitTarget
-      ? validateSessionSearch(
-          remembered && typeof remembered === 'object'
-            ? (remembered as Record<string, unknown>)
-            : {},
-        )
-      : {}),
-    ...url,
+    ...(!explicitTarget ? saved : {}),
+    ...selection,
   };
 }
 
@@ -97,6 +108,7 @@ export function patchSessionSearch(
   return validateSessionSearch({
     ...current,
     ...patch,
+    ...('panel' in patch || 'view' in patch ? { compose: undefined } : {}),
     ...(patch.view === 'results' ? { artifact: undefined } : {}),
   });
 }

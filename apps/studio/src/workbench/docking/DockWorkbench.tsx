@@ -1,4 +1,4 @@
-import type { WorkspaceTarget } from '@corral/contracts';
+import type { TextRange, WorkspaceTarget } from '@corral/contracts';
 import {
   Button,
   Dialog,
@@ -54,7 +54,7 @@ export interface DockOpenDocument {
   path: string;
 }
 export interface DockWorkbenchHandle {
-  openDocument(input: DockOpenDocument): boolean;
+  openDocument(input: DockOpenDocument, selection?: TextRange): boolean;
   openContext(view: DockContextView): void;
 }
 export interface DockWorkbenchProps {
@@ -64,7 +64,11 @@ export interface DockWorkbenchProps {
   selectedPanel?: SessionPanel | null;
   selectionKey?: string;
   renderContext(view: DockContextView): ReactNode;
-  renderDocument(descriptor: DockDocumentDescriptor, panelId: string): ReactNode;
+  renderDocument(
+    descriptor: DockDocumentDescriptor,
+    panelId: string,
+    selection?: TextRange,
+  ): ReactNode;
   documentOwner?: DocumentStore;
   controls?: ReactNode;
   onActiveContext?: (view: DockContextView) => void;
@@ -73,6 +77,7 @@ type PanelParams = { descriptor: DockPanelDescriptor };
 const RendererContext = createContext<{
   renderContext: DockWorkbenchProps['renderContext'];
   renderDocument: DockWorkbenchProps['renderDocument'];
+  selection: { panelId: string; range: TextRange } | null;
   close: (id: string) => void;
 } | null>(null);
 const theme = { name: 'corral', className: 'corral-dock-theme', gap: 4 };
@@ -101,7 +106,11 @@ function DockPanel({ params, api }: IDockviewPanelProps<PanelParams>) {
       data-dock-panel-id={api.id}
     >
       {descriptor.kind === 'document' ? (
-        renderer?.renderDocument(descriptor, api.id)
+        renderer?.renderDocument(
+          descriptor,
+          api.id,
+          renderer.selection?.panelId === api.id ? renderer.selection.range : undefined,
+        )
       ) : descriptor.kind === 'context' ? (
         renderer?.renderContext(descriptor.view)
       ) : (
@@ -140,6 +149,7 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
     const cleanup = useRef<(() => void)[]>([]);
     const [panels, setPanels] = useState<{ id: string; title: string }[]>([]);
     const [active, setActive] = useState('');
+    const [selection, setSelection] = useState<{ panelId: string; range: TextRange } | null>(null);
     const [preset, setPreset] = useState<DockPreset | null>('conversation');
     const [destination, setDestination] = useState<string>('main1');
     const [message, setMessage] = useState<string | null>(null);
@@ -243,7 +253,7 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
       focus(panel, notify);
       saveLayout();
     }
-    function openDocument(input: DockOpenDocument) {
+    function openDocument(input: DockOpenDocument, range?: TextRange) {
       const api = apiRef.current;
       const { hostId, projectId, documentOwner } = current.current;
       if (
@@ -261,6 +271,7 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
         return d.kind === 'document' && documentKey(d.target, d.path) === input.documentKey;
       });
       if (existing) {
+        setSelection(range ? { panelId: existing.id, range: { ...range } } : null);
         focus(existing);
         return true;
       }
@@ -296,6 +307,7 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
         renderer: 'always',
         ...(group ? { position: { referenceGroup: group, direction: 'within' } } : {}),
       });
+      setSelection(range ? { panelId: id, range: { ...range } } : null);
       setMessage(null);
       focus(panel);
       saveLayout();
@@ -510,7 +522,7 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
       cleanup.current.push(api.onWillShowOverlay(allowDrop).dispose);
       cleanup.current.push(api.onWillDrop(allowDrop).dispose);
       refresh();
-      if (current.current.selectedPanel || !loaded?.layout)
+      if (current.current.selectedPanel !== undefined || !loaded?.layout)
         openContext(current.current.selectedPanel ?? 'chat');
       const measure = () => {
         const width = host.current?.getBoundingClientRect().width ?? 0;
@@ -544,7 +556,8 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
         previous.selectionKey === props.selectionKey
       )
         return;
-      actions.current.openContext(props.selectedPanel ?? 'chat');
+      if (props.selectedPanel !== undefined)
+        actions.current.openContext(props.selectedPanel ?? 'chat');
     }, [props.selectedPanel, props.selectionKey, props.sessionId]);
     useEffect(
       () => props.documentOwner?.subscribe(() => actions.current.refresh()),
@@ -565,6 +578,7 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
         value={{
           renderContext: props.renderContext,
           renderDocument: props.renderDocument,
+          selection,
           close: (id) => void closePanel(id),
         }}
       >

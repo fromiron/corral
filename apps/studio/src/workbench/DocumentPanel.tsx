@@ -1,7 +1,19 @@
-import { Button, Input, Select, Textarea } from '@corral/react/ui';
-import { lazy, Suspense, useEffect, useId, useState } from 'react';
+import { type TextAttachment, TextRange } from '@corral/contracts';
+import {
+  Button,
+  Dialog,
+  DialogDescription,
+  DialogPopup,
+  DialogTitle,
+  Input,
+  Select,
+  Textarea,
+} from '@corral/react/ui';
+import { lazy, Suspense, useEffect, useId, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
+import { type AttachmentCapture, beginAttachmentCapture } from './context/bridge.ts';
+import { captureDocumentAttachment } from './context/documents.ts';
 import type { DocumentStore } from './documents/store.ts';
 import type { FileReference } from './FilePanel.tsx';
 
@@ -18,6 +30,8 @@ export function DocumentPanel({
   manageView = true,
   fill = false,
   referencePending = false,
+  onAttach,
+  revealSelection,
 }: {
   owner: DocumentStore;
   documentKey: string;
@@ -27,6 +41,8 @@ export function DocumentPanel({
   manageView?: boolean;
   fill?: boolean;
   referencePending?: boolean;
+  onAttach?: (attachment: TextAttachment, capture: AttachmentCapture) => void | Promise<void>;
+  revealSelection?: TextRange;
 }) {
   const entry = useStore(owner, (state) => state.documents[documentKey]);
   const t = useTranslations('Documents');
@@ -36,6 +52,26 @@ export function DocumentPanel({
   const [revealRange, setRevealRange] = useState<{ startLine: number; endLine: number }>();
   const [editorFailed, setEditorFailed] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [selection, setSelection] = useState<TextRange | null>(null);
+  const [capturing, setCapturing] = useState(false);
+  const [captured, setCaptured] = useState<{
+    attachment: TextAttachment;
+    capture: AttachmentCapture;
+  } | null>(null);
+  const [captureError, setCaptureError] = useState(false);
+  const captureButton = useRef<HTMLButtonElement>(null);
+  const restoreCaptureFocus = useRef(true);
+  const mounted = useRef(true);
+  const captureAccess = useRef({ onAttach, blocked: readOnlyTarget || referencePending });
+  useEffect(() => {
+    captureAccess.current = { onAttach, blocked: readOnlyTarget || referencePending };
+  });
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   useEffect(
     () => (manageView ? owner.retainView(documentKey, viewId) : undefined),
     [owner, documentKey, viewId, manageView],
@@ -61,6 +97,65 @@ export function DocumentPanel({
     !entry.dirty &&
     !entry.saving &&
     !pending;
+  const canAttach =
+    Boolean(onAttach) &&
+    !referencePending &&
+    !readOnlyTarget &&
+    !capturing &&
+    !captured &&
+    Boolean(selection && TextRange.safeParse(selection).success);
+  const selectLines = (next: typeof range) => {
+    setRange(next);
+    const lines = entry.text.replace(/^\uFEFF/, '').split(/\r\n|\r|\n/);
+    const selected = TextRange.safeParse({
+      startLine: next.start,
+      startColumn: 1,
+      endLine: next.end,
+      endColumn: (lines[next.end - 1]?.length ?? 0) + 1,
+    });
+    setSelection(selected.success ? selected.data : null);
+  };
+  const attachCaptured = async (candidate: NonNullable<typeof captured>) => {
+    setCapturing(true);
+    setCaptureError(false);
+    try {
+      const access = captureAccess.current;
+      if (!access.onAttach || access.blocked) throw new Error('Document target is unavailable');
+      await access.onAttach(candidate.attachment, candidate.capture);
+      if (mounted.current) {
+        restoreCaptureFocus.current = false;
+        setCaptured(null);
+      }
+    } catch {
+      if (mounted.current) {
+        setCaptured(candidate);
+        setCaptureError(true);
+      }
+    } finally {
+      if (mounted.current) setCapturing(false);
+    }
+  };
+  const captureSelection = async () => {
+    if (!canAttach || !selection) return;
+    const capture = beginAttachmentCapture(entry.target);
+    const range = { ...selection };
+    setCapturing(true);
+    setActionError(null);
+    setCaptureError(false);
+    restoreCaptureFocus.current = true;
+    try {
+      const attachment = await captureDocumentAttachment(entry, range);
+      if (!mounted.current) return;
+      const candidate = { attachment, capture };
+      if (attachment.provenance?.kind === 'code' && attachment.provenance.snapshot === 'draft')
+        setCaptured(candidate);
+      else await attachCaptured(candidate);
+    } catch {
+      if (mounted.current) setActionError(t('captureFailed'));
+    } finally {
+      if (mounted.current) setCapturing(false);
+    }
+  };
   const perform = (work: () => Promise<unknown>) => {
     setActionError(null);
     void work().catch(() => setActionError(t('operationFailed')));
@@ -230,9 +325,7 @@ export function DocumentPanel({
             min={1}
             max={lineCount}
             value={range.start}
-            onChange={(event) =>
-              setRange((value) => ({ ...value, start: event.target.valueAsNumber || 1 }))
-            }
+            onChange={(event) => selectLines({ ...range, start: event.target.valueAsNumber || 1 })}
             className="w-16"
           />
         </label>
@@ -246,9 +339,7 @@ export function DocumentPanel({
             min={range.start}
             max={lineCount}
             value={range.end}
-            onChange={(event) =>
-              setRange((value) => ({ ...value, end: event.target.valueAsNumber || 1 }))
-            }
+            onChange={(event) => selectLines({ ...range, end: event.target.valueAsNumber || 1 })}
             className="w-16"
           />
         </label>
@@ -268,6 +359,17 @@ export function DocumentPanel({
         >
           {td('referenceLines')}
         </Button>
+        {onAttach ? (
+          <Button
+            ref={captureButton}
+            size="sm"
+            variant="outline"
+            disabled={!canAttach}
+            onClick={() => void captureSelection()}
+          >
+            {t(capturing ? 'capturingSelection' : 'attachSelection')}
+          </Button>
+        ) : null}
       </div>
       {!onReference ? <p className="text-xs text-muted">{t('otherSessionReference')}</p> : null}
       {referencePending ? (
@@ -304,8 +406,12 @@ export function DocumentPanel({
                 ariaLabel={t('editorLabel', { path: entry.path })}
                 saveLabel={t('save')}
                 onSave={() => perform(save)}
-                onSelection={(start, end) => setRange({ start, end })}
+                onSelection={(start, end, selected) => {
+                  setRange({ start, end });
+                  setSelection(selected);
+                }}
                 revealRange={revealRange}
+                revealSelection={revealSelection}
                 onError={() => setEditorFailed(true)}
                 className="h-full min-h-0 min-w-0"
               />
@@ -317,6 +423,66 @@ export function DocumentPanel({
       </section>
       <p className="text-2xs text-muted">{t('keyboardHint')}</p>
       <p className="text-2xs text-muted">{td('referencePermission')}</p>
+      {captured ? (
+        <Dialog
+          open
+          onOpenChange={(open) => {
+            if (!open && !capturing) setCaptured(null);
+          }}
+        >
+          <DialogPopup
+            showCloseButton={false}
+            bottomStickOnMobile={false}
+            finalFocus={() =>
+              restoreCaptureFocus.current ? (captureButton.current ?? false) : false
+            }
+            className="flex max-h-[85dvh] flex-col gap-3 overflow-auto p-6"
+          >
+            <DialogTitle>
+              {t(
+                captured.attachment.provenance?.kind === 'code' &&
+                  captured.attachment.provenance.snapshot === 'draft'
+                  ? 'confirmDraftTitle'
+                  : 'selectedSnapshot',
+              )}
+            </DialogTitle>
+            <DialogDescription>
+              {captured.attachment.provenance?.kind === 'code' &&
+              captured.attachment.provenance.snapshot === 'draft'
+                ? t('confirmDraftHint')
+                : captured.attachment.name}
+            </DialogDescription>
+            <Textarea
+              readOnly
+              aria-label={t('selectedSnapshot')}
+              value={captured.attachment.text}
+              className="max-h-80 font-mono text-xs"
+            />
+            {captureError ? (
+              <p role="alert" className="text-xs text-danger">
+                {t('captureFailed')}
+              </p>
+            ) : null}
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                disabled={capturing || !onAttach || readOnlyTarget || referencePending}
+                onClick={() => void attachCaptured(captured)}
+              >
+                {t('attachSnapshot')}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={capturing}
+                onClick={() => setCaptured(null)}
+              >
+                {t('cancel')}
+              </Button>
+            </div>
+          </DialogPopup>
+        </Dialog>
+      ) : null}
     </div>
   );
 }

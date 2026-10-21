@@ -44,6 +44,12 @@ function setup() {
   const callbacks: (() => void)[] = [];
   const write = vi.fn((_data: string, callback: () => void) => callbacks.push(callback));
   const resize = vi.fn();
+  let selectionChanged = () => {};
+  const selection = {
+    text: 'selected 한글',
+    range: { start: { x: 0, y: 2 }, end: { x: 8, y: 2 } },
+  };
+  const select = vi.fn();
   const runtime = {
     terminal: {
       write,
@@ -52,6 +58,17 @@ function setup() {
       cols: 80,
       rows: 24,
       attachCustomKeyEventHandler: vi.fn(),
+      hasSelection: () => Boolean(selection.text),
+      getSelection: () => selection.text,
+      getSelectionPosition: () => (selection.text ? selection.range : undefined),
+      onSelectionChange: (listener: () => void) => {
+        selectionChanged = listener;
+        return { dispose: vi.fn() };
+      },
+      buffer: { active: { type: 'normal', length: 24 } },
+      select,
+      scrollToLine: vi.fn(),
+      focus: vi.fn(),
     } as unknown as Terminal,
     host: { remove: vi.fn() },
     fit: { proposeDimensions: () => undefined },
@@ -115,6 +132,9 @@ function setup() {
     client,
     runtime,
     callbacks,
+    selection,
+    selectionChanged: () => selectionChanged(),
+    select,
     write,
     resize,
     container,
@@ -277,5 +297,81 @@ it('[TC-WBD-004-N] retries creation only after an explicit missing receipt check
   await f.store.retryCreate('session');
   expect(f.client.create).toHaveBeenCalledTimes(2);
   expect(f.client.create.mock.calls[1]?.[1]).toEqual(f.client.create.mock.calls[0]?.[1]);
+  f.store.dispose();
+});
+
+it('[TC-WBD-007-H] captures only the explicit selection after its pending output is applied', async () => {
+  const f = setup();
+  await f.store.refresh('session');
+  await f.store.mount('terminal', f.container, 'Terminal');
+  const writing = f.emit({ type: 'output', generation: 'process', sequence: 1, data: 'output' });
+  const captured = f.store.captureSelection('terminal');
+  let completed = false;
+  void captured.then(() => {
+    completed = true;
+  });
+  await Promise.resolve();
+  expect(completed).toBe(false);
+  const applied = f.callbacks.shift();
+  assert(applied);
+  applied();
+  await writing;
+  const result = await captured;
+  expect(result).toEqual({
+    text: 'selected 한글',
+    provenance: {
+      kind: 'terminal',
+      target,
+      terminalId: 'terminal',
+      generation: 'process',
+      outputSequence: 1,
+      buffer: 'normal',
+      cols: 80,
+      rows: 24,
+      range: { startRow: 2, startColumn: 0, endRow: 2, endColumn: 8 },
+    },
+  });
+  assert(result);
+  expect(f.store.inspectSelection(result.provenance)).toBe('current');
+  expect(
+    f.store.inspectSelection({
+      ...result.provenance,
+      range: { startRow: 10_000, startColumn: 0, endRow: 10_000, endColumn: 8 },
+    }),
+  ).toBe('unavailable');
+  expect(await f.store.revealSelection(result.provenance)).toBe(true);
+  expect(f.select).toHaveBeenCalledWith(0, 2, 8);
+  f.store.dispose();
+});
+
+it('[TC-WBD-007-N] does not reinterpret an old range after output or another target changes', async () => {
+  const f = setup();
+  await f.store.refresh('session');
+  await f.store.mount('terminal', f.container, 'Terminal');
+  const result = await f.store.captureSelection('terminal');
+  assert(result);
+  await f.emit({ type: 'resize', generation: 'process', sequence: 1, cols: 100, rows: 30 });
+  expect(f.store.inspectSelection(result.provenance)).toBe('stale');
+  expect(await f.store.revealSelection(result.provenance)).toBe(false);
+  expect(f.select).not.toHaveBeenCalled();
+  expect(
+    f.store.inspectSelection({ ...result.provenance, target: { ...target, hostId: 'other' } }),
+  ).toBe('unavailable');
+  f.store.dispose();
+});
+
+it('[TC-WBD-007-N] keeps only selection availability in state and refuses an oversized selection without truncating', async () => {
+  const f = setup();
+  await f.store.refresh('session');
+  await f.store.mount('terminal', f.container, 'Terminal');
+  expect(f.store.getState().terminals.terminal?.hasSelection).toBe(true);
+  expect(JSON.stringify(f.store.getState())).not.toContain('selected 한글');
+  f.selection.text = '';
+  f.selectionChanged();
+  expect(f.store.getState().terminals.terminal?.hasSelection).toBe(false);
+  expect(await f.store.captureSelection('terminal')).toBeNull();
+  f.selection.text = '한'.repeat(30_000);
+  await expect(f.store.captureSelection('terminal')).rejects.toThrow('64 KiB');
+  expect(f.selection.text.length).toBe(30_000);
   f.store.dispose();
 });

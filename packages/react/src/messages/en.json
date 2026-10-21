@@ -1541,7 +1541,8 @@
       "inconclusive": "Inconclusive",
       "not_evaluated": "Not evaluated"
     },
-    "checkTargetChanged": "The check changed its own target; it cannot prove a pass."
+    "checkTargetChanged": "The check changed its own target; it cannot prove a pass.",
+    "attachCheckOutput": "Attach check output"
   },
   "Review": {
     "commentLine": "Comment on line {line}",
@@ -1798,7 +1799,11 @@
     "version": "Version",
     "schedules": "Schedules",
     "vault": "Settings vault",
-    "workFolder": "Work folder"
+    "workFolder": "Work folder",
+    "chatDensity": "Conversation detail",
+    "densityResults": "Results",
+    "densityBasic": "Basic",
+    "densityDetailed": "Detailed activity"
   },
   "Composer": {
     "nextRequest": "Next request",
@@ -1860,7 +1865,7 @@
     "removeAttachment": "Remove {name}",
     "attachments": "Attached text files",
     "attachmentError": "Choose up to 5 UTF-8 text files, each at most 64 KiB. Binary or invalid files cannot be attached.",
-    "attachmentsNextOnly": "Text files are excluded from this message and kept in your draft for a new request.",
+    "attachmentsNextOnly": "Text attachments are sent with a new or queued request.",
     "reviewOnly": "Review only · no file changes",
     "verificationScope": "Verification scope",
     "targetedScope": "Targeted checks",
@@ -2620,7 +2625,8 @@
       "partial": "Only part may have changed. Inspect the files and recovery checkpoint.",
       "uncertain": "The outcome is unknown. Inspect the files before another change.",
       "refused": "No change was applied. Prepare a fresh preview."
-    }
+    },
+    "attachSelected": "Attach selected changes"
   },
   "RuntimeRecovery": {
     "title": "Runtime recovery",
@@ -3112,7 +3118,14 @@
     "retrySave": "Retry original save request",
     "otherSessionReference": "Open this document’s conversation to reference its lines.",
     "staleDock": "This tab belongs to a previous working copy. Its saved location will not be redirected to the current copy.",
-    "openConversation": "Open document conversation"
+    "openConversation": "Open document conversation",
+    "attachSelection": "Attach selected code",
+    "capturingSelection": "Capturing selection…",
+    "confirmDraftTitle": "Attach unsaved selection?",
+    "confirmDraftHint": "This captured selection includes unsaved edits. Adding it does not save the file or send a request.",
+    "attachSnapshot": "Add captured text",
+    "selectedSnapshot": "Captured selection",
+    "captureFailed": "The selection could not be attached. The captured text is kept; retry or choose a smaller selection."
   },
   "Terminals": {
     "title": "Terminal",
@@ -3164,7 +3177,13 @@
     "keyboardHint": "Press Shift+Escape to leave terminal input and focus Refresh terminals. Select text to copy it.",
     "actionFailed": "The terminal action could not be confirmed. Refresh its status before trying again.",
     "scopeHint": "Commands run in this session’s working copy.",
-    "acceptedInput": "Host last accepted input sequence: {sequence}"
+    "acceptedInput": "Host last accepted input sequence: {sequence}",
+    "attachSelection": "Attach selection",
+    "capturing": "Capturing selection…",
+    "selectOutput": "Select terminal output to attach first.",
+    "attachSelectionError": "Could not attach the selection. Check its size and connection.",
+    "sourceStale": "Terminal output has changed; the previous selection was not restored.",
+    "sourceUnavailable": "This terminal source cannot be opened here."
   },
   "Docking": {
     "title": "Workbench layout",
@@ -3215,5 +3234,31 @@
     "runDisconnected": "Run connection lost; its state is unconfirmed.",
     "layoutControls": "Arrange panes",
     "savedLayout": "Custom layout"
+  },
+  "Context": {
+    "attachFailed": "Could not attach this capture. Retry from the source.",
+    "attached": "Added to the request draft.",
+    "attachments": "Captured attachments",
+    "preview": "Captured content",
+    "checking": "Checking source…",
+    "current": "Source matches capture",
+    "stale": "Source has changed; captured content is kept",
+    "unavailable": "Source unavailable; captured content is kept",
+    "openSource": "Open source",
+    "replaceCapture": "Replace capture",
+    "removeCapture": "Remove {name}",
+    "replacementFailed": "Could not replace this capture. The original is kept.",
+    "savedCode": "Saved code",
+    "draftCode": "Unsaved code",
+    "terminalSource": "Terminal output",
+    "hunkSource": "File changes",
+    "checkSource": "Check result",
+    "nextOrQueue": "Captured text is sent with a new request or a queued request.",
+    "sourcePreview": "Source snapshot",
+    "replacementPreview": "Review replacement",
+    "confirmReplacement": "Replace capture",
+    "cancel": "Cancel",
+    "close": "Close",
+    "readonlySnapshot": "This snapshot is read-only. Opening it does not change files or send a request."
   }
 }

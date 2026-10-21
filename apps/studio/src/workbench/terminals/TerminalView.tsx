@@ -1,6 +1,6 @@
 import { cn } from '@corral/react/ui';
 import { useEffect, useRef } from 'react';
-import type { TerminalStore } from './store.ts';
+import type { TerminalProvenance, TerminalSourceState, TerminalStore } from './store.ts';
 
 export interface TerminalViewProps {
   store: TerminalStore;
@@ -9,6 +9,8 @@ export interface TerminalViewProps {
   'aria-describedby'?: string;
   className?: string;
   onExit?: () => void;
+  revealSource?: TerminalProvenance;
+  onReveal?: (state: TerminalSourceState) => void;
 }
 
 export function TerminalView({
@@ -17,12 +19,16 @@ export function TerminalView({
   ariaLabel,
   className,
   onExit,
+  revealSource,
+  onReveal,
   ...aria
 }: TerminalViewProps) {
   const container = useRef<HTMLElement>(null);
   const exit = useRef(onExit);
+  const reportReveal = useRef(onReveal);
   useEffect(() => {
     exit.current = onExit;
+    reportReveal.current = onReveal;
   });
   useEffect(() => {
     let disposed = false;
@@ -38,14 +44,28 @@ export function TerminalView({
         )
         .then((release) => {
           if (disposed) release();
-          else detach = release;
+          else {
+            detach = release;
+            if (revealSource)
+              void store.revealSelection(revealSource).then(
+                (found) => {
+                  if (!disposed)
+                    reportReveal.current?.(
+                      found ? 'current' : store.inspectSelection(revealSource),
+                    );
+                },
+                () => {
+                  if (!disposed) reportReveal.current?.('unavailable');
+                },
+              );
+          }
         });
     }
     return () => {
       disposed = true;
       detach();
     };
-  }, [store, terminalId, ariaLabel, aria['aria-describedby']]);
+  }, [store, terminalId, ariaLabel, revealSource, aria['aria-describedby']]);
   return (
     <section
       ref={container}

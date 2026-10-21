@@ -75,3 +75,13 @@ Run 상세는 Run ID별 root store를 사용하고 그래프 편집기나 pane�
 [CR-046 P10](../change-requests/CR-046-development-workbench.md)은 URL의 세션/Run 문맥 pane과 full WorkspaceTarget·path·viewId로 유지되는 문서 pane을 구분한다. workspaceId/project별 versioned layout은 배치 metadata만 저장하며, 잘못된 descriptor는 placeholder로, 손상된 grid는 유효한 문서 참조를 보존하는 기본 배치로 복구한다. 이동·preset·숨김은 문서 닫기나 프로세스 종료가 아니다. 명시 문서 닫기는 기존 저장/버리기/취소를 유지한다.
 
 문서 최대 20개와 중앙 1~2 문서 그룹·보조 그룹·하단 도크를 기준으로 키보드 배치 조작과 390px의 한 활성 그룹, Run 승인·중지 접근을 제공한다. graph 전용 탭 통합은 P18이며 기존 graph/review 경로를 유지한다. C-150의 구현과 Linux 인앱·관련 회귀는 [P10 기록](../evaluation/Development-Workbench-Docking-2026-10-21.md)을 따른다. 실제 OS IME·스크린리더·설치판 GUI와 다른 OS의 검증은 별도다.
+
+## 캡처한 컨텍스트와 대화 표시 밀도
+
+[CR-046 P11](../change-requests/CR-046-development-workbench.md)은 선택한 코드·터미널 출력·hunk·검사 결과를 불변 텍스트 첨부로 다룬다. 본문·hash와 캡처 시점의 출처·version·범위를 함께 보존하며, provenance는 사용자가 제공한 출처 정보이지 최신 상태의 증명이나 읽기·쓰기 권한이 아니다. 미저장 코드 선택은 저장된 내용과 구분해 본문을 확인한 뒤 명시적으로 첨부한다. 확인 대기나 재시도 중 원래 캡처를 새 편집 내용으로 바꾸지 않는다.
+
+텍스트 첨부는 `next`와 `queue`에 보존하고 이미지는 기존 `next` 전용 경계를 유지한다. queued next의 미리보기·편집·시작도 고정된 첨부와 원래 요청 identity를 사용한다. 원본 이동·교체·삭제는 명시 동작이며, 원본 변경·소실·조회 실패를 표시해도 첨부 본문은 유지한다. 다른 host·사본 generation·tree·terminal을 원래 출처로 간주해 자동 변경하지 않는다. 늦은 캡처·전송 결과는 원래 대상과 초안 revision에 귀속된다.
+
+결과·기본·상세 활동 밀도는 표시 선택이다. 원본 이벤트·prompt·도구 결과와 실행 모드·예산·Reins 대상은 보존하며, 승인·실패·중지 등 필요한 조치는 접힌 상세 밖에서도 접근할 수 있어야 한다. 세부 범위는 같은 CR을, 구현 상태는 C-151과 [활성 계획](../plans/workbench-development-implementation-plan-2026-10-21.md)을 따른다. 실제 화면 검증 결과와 환경별 한계는 별도 실행 기록으로 구분한다.
+
+P11의 구현과 Linux 인앱·관련 회귀 범위는 [C-151 검증 기록](../evaluation/Development-Workbench-Context-2026-10-21.md)을 따른다.

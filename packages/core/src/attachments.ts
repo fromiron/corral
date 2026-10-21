@@ -1,4 +1,4 @@
-import { TextAttachment, TextAttachments } from '@corral/contracts';
+import { TextAttachment, type TextAttachmentProvenance, TextAttachments } from '@corral/contracts';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js';
 
@@ -6,6 +6,7 @@ export function createTextAttachment(
   name: string,
   mime: TextAttachment['mime'],
   text: string,
+  provenance?: TextAttachmentProvenance,
 ): TextAttachment {
   const bytes = utf8ToBytes(text);
   return TextAttachment.parse({
@@ -15,6 +16,7 @@ export function createTextAttachment(
     text,
     bytes: bytes.length,
     sha256: bytesToHex(sha256(bytes)),
+    ...(provenance ? { provenance } : {}),
   });
 }
 

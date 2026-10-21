@@ -21,7 +21,7 @@
   flex: 1;
   min-height: 300px;
   min-width: 0;
-  overflow: hidden;
+  overflow: clip;
 }
 .corral-dock-area > div {
   height: 100%;
@@ -37,7 +37,7 @@
 .corral-dock-content-fixed {
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: clip;
 }
 .corral-dock-theme {
   --dv-background-color: var(--color-surface);

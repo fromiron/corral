@@ -2934,5 +2934,28 @@
     "done": "문서 최대20개와 중앙1~2그룹·보조/하단 배치의 이동/preset/reload에서 full target/viewId·모델·dirty·PTY/Run 수명을 보존한다. 손상 descriptor/grid 복구, 명시 닫기, 키보드 이동/resize/preset/close와 실제390px 승인/중지 접근을 검증하며 기존 graph/review route를 유지한다.",
     "status": "implemented",
     "evidence": "docs/evaluation/Development-Workbench-Docking-2026-10-21.md"
+  },
+  {
+    "id": "C-151",
+    "phase": "M2",
+    "title": "CR-046 출처 있는 컨텍스트 칩과 대화 표시 밀도 (P11)",
+    "dependsOn": [
+      "C-150"
+    ],
+    "requirements": [
+      "CRL-WBD-007"
+    ],
+    "files": [
+      "packages/contracts/src/attachments.ts",
+      "packages/core/src/attachments.ts",
+      "packages/core/src/coordinator.ts",
+      "packages/core/src/repository/",
+      "apps/studio/src/workbench/",
+      "apps/studio/src/pages/",
+      "packages/react/src/messages/"
+    ],
+    "done": "코드/터미널/고정 hunk·검사 snapshot의 출처·본문 검증과 명시 dirty 확인, 칩 원본 이동/교체/삭제·stale 표시, next/queue/재시도의 고정 첨부와 늦은 완료·IME 보존을 검증한다. 결과/기본/상세 밀도에서도 승인·실패 접근과 현재 Run 입력·원본 이벤트를 유지한다.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/Development-Workbench-Context-2026-10-21.md"
   }
 ]

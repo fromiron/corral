@@ -862,5 +862,11 @@
     "requirement": "CR-046 P10: URL의 세션/Run 문맥과 full WorkspaceTarget/path/viewId의 문서를 구분해 Dockview 배치·preset·키보드 조작·복구를 제공한다. workspaceId/project별 metadata만 저장하고 문서 ID/모델·dirty 초안·PTY/Run 수명을 보존하며 손상 복구·20문서 상한·390px 승인/중지 접근과 기존 graph/review 경로를 유지한다.",
     "owner": "studio",
     "phase": "M2"
+  },
+  {
+    "id": "CRL-WBD-007",
+    "requirement": "CR-046 P11: 선택 코드·터미널·hunk·검사 결과를 실제 source identity/version/range와 함께 불변 TextAttachment snapshot으로 next/queue에 전달한다. dirty 확인·원본 이동/명시 교체/삭제·stale 표시·원래 command 복구와 late/IME 경계를 유지하며 결과/기본/상세 밀도에서 승인·실패 접근과 원본 이벤트/현재 Run 입력을 보존한다.",
+    "owner": "studio",
+    "phase": "M2"
   }
 ]

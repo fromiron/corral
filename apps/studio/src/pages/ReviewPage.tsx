@@ -11,16 +11,21 @@ import type {
   VerificationResultView,
   WorkspaceBindingView,
 } from '@corral/client';
-import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
-import type { RunSummary, WorkSession } from '@corral/core';
+import { TERMINAL_RUN_STATUSES, type TextAttachment } from '@corral/contracts';
+import { createTextAttachment, type RunSummary, type WorkSession } from '@corral/core';
 import { Button } from '@corral/react/ui';
 import type { FileDiffMetadata } from '@pierre/diffs';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { reviewRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
 import { latestResult, startFollowUp, steer, steerTargets } from '../sessionActions.ts';
+import {
+  type AttachmentCapture,
+  appendComposerAttachment,
+  beginAttachmentCapture,
+} from '../workbench/context/bridge.ts';
 import { HunkActions } from '../workbench/HunkActions.tsx';
 import { panelKey } from '../workbench/panels/registry.ts';
 import { useBinding } from './FilesViews.tsx';
@@ -47,11 +52,43 @@ const scopeFromSearch = (search: { scope?: string; runId?: string }): ReviewScop
 
 export function ReviewPage() {
   const t = useTranslations('Files');
+  const tc = useTranslations('Context');
   const { session } = reviewRoute.useLoaderData();
   const search = reviewRoute.useSearch();
   const navigate = useNavigate({ from: '/sessions/$sessionId/review' });
   const services = useServices();
   const { workspaces, transport, mode } = services;
+  const mounted = useRef(false);
+  const current = useRef({ services, session });
+  current.current = { services, session };
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const onAttach = async (attachment: TextAttachment, capture: AttachmentCapture) => {
+    const isCurrent = () =>
+      mounted.current &&
+      current.current.services === services &&
+      current.current.session.sessionId === session.sessionId &&
+      current.current.session.projectId === session.projectId;
+    if (
+      !isCurrent() ||
+      capture.target.hostId !== services.workspaceId ||
+      capture.target.projectId !== session.projectId ||
+      capture.target.sessionId !== session.sessionId
+    )
+      throw new Error(tc('attachFailed'));
+    const result = appendComposerAttachment(capture, attachment);
+    if (!result.ok) throw new Error(tc('attachFailed'));
+    if (isCurrent())
+      await navigate({
+        to: '/sessions/$sessionId',
+        params: { sessionId: session.sessionId },
+        search: { compose: true },
+      });
+  };
   const scope = scopeFromSearch(search);
   const scopeKey = scope.kind === 'run' ? `run:${scope.runId}` : scope.kind;
   const [changes, setChanges] = useState<ChangeSetView | null>(null);
@@ -290,11 +327,13 @@ export function ReviewPage() {
                 <HunkActions
                   key={`${session.sessionId}:${selected}:${changes.from}:${changes.to}`}
                   sessionId={session.sessionId}
+                  projectId={session.projectId}
                   from={changes.from}
                   to={changes.to}
                   path={selected}
                   active={runs.some((run) => !TERMINAL_RUN_STATUSES.has(run.status))}
                   onApplied={() => setVersion((value) => value + 1)}
+                  onAttach={onAttach}
                 />
               ) : null}
             </section>
@@ -340,7 +379,13 @@ export function ReviewPage() {
                   active={runs.some((run) => !TERMINAL_RUN_STATUSES.has(run.status))}
                 />
               ) : null}
-              <Checks sessionId={session.sessionId} binding={binding ?? null} changed={version} />
+              <Checks
+                sessionId={session.sessionId}
+                projectId={session.projectId}
+                binding={binding ?? null}
+                changed={version}
+                onAttach={onAttach}
+              />
               <Operations sessionId={session.sessionId} />
             </aside>
           </div>
@@ -512,29 +557,60 @@ function FileDiff({
 
 export function Checks({
   sessionId,
+  projectId,
   binding,
   changed,
+  onAttach,
 }: {
   sessionId: string;
+  projectId?: string;
   binding: WorkspaceBindingView | null;
   changed: number;
+  onAttach?(attachment: TextAttachment, capture: AttachmentCapture): void | Promise<void>;
 }) {
   const t = useTranslations('Files');
-  const { workspaces, mode } = useServices();
-  const [results, setResults] = useState<VerificationResultView[]>([]);
+  const tc = useTranslations('Context');
+  const { workspaces, mode, workspaceId } = useServices();
+  const source = useMemo(
+    () => ({ workspaces, workspaceId, projectId, sessionId }),
+    [workspaces, workspaceId, projectId, sessionId],
+  );
+  const currentSource = useRef(source);
+  currentSource.current = source;
+  const mounted = useRef(false);
+  const readRevision = useRef(0);
+  const [loaded, setLoaded] = useState<{
+    source: typeof source;
+    results: VerificationResultView[];
+  }>({ source, results: [] });
+  const results = loaded.source === source ? loaded.results : [];
   const [error, setError] = useState<string | null>(null);
+  const [attaching, setAttaching] = useState(false);
+  const [attached, setAttached] = useState<string | null>(null);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      readRevision.current += 1;
+    };
+  }, []);
+  const isCurrent = () => mounted.current && currentSource.current === source;
   const checkAction = async (action: Promise<unknown>) => {
     setError(null);
     try {
       await action;
-      await reload();
+      if (isCurrent()) await reload();
     } catch (error) {
-      setError(error instanceof Error ? error.message : String(error));
+      if (isCurrent()) setError(error instanceof Error ? error.message : String(error));
     }
   };
   const reload = useCallback(async () => {
-    if (workspaces) setResults(await workspaces.verifications(sessionId).catch(() => []));
-  }, [workspaces, sessionId]);
+    if (!source.workspaces) return;
+    const revision = ++readRevision.current;
+    const value = await source.workspaces.verifications(source.sessionId).catch(() => []);
+    if (mounted.current && currentSource.current === source && readRevision.current === revision)
+      setLoaded({ source, results: value });
+  }, [source]);
   useEffect(() => {
     void changed;
     void reload();
@@ -546,6 +622,53 @@ export function Checks({
     return () => clearInterval(timer);
   }, [running, reload]);
   const commands = binding?.verifyCommands ?? [];
+  const canAttach = (result: VerificationResultView) =>
+    Boolean(
+      onAttach &&
+        workspaceId &&
+        projectId &&
+        mode === 'server' &&
+        result.output &&
+        result.state !== 'running' &&
+        (!result.report ||
+          (result.report.sessionId === sessionId &&
+            result.report.verificationId === result.verificationId &&
+            result.report.state !== 'queued' &&
+            result.report.state !== 'running')),
+    );
+  const attach = async (result: VerificationResultView) => {
+    if (!canAttach(result) || !workspaceId || !projectId || !onAttach || attaching) return;
+    setAttaching(true);
+    setAttached(null);
+    setError(null);
+    try {
+      const capture = beginAttachmentCapture({ hostId: workspaceId, projectId, sessionId });
+      const report = result.report;
+      const attachment = createTextAttachment('check-output.txt', 'text/plain', result.output, {
+        kind: 'check',
+        hostId: workspaceId,
+        projectId,
+        sessionId,
+        verificationId: result.verificationId,
+        commandId: result.commandId,
+        tree: result.tree,
+        ...(report
+          ? {
+              fingerprint: report.fingerprint,
+              configRevision: report.configRevision,
+              outputHash: report.output.hash,
+              outputTruncated: report.output.truncated,
+            }
+          : {}),
+      });
+      await onAttach(attachment, capture);
+      if (isCurrent()) setAttached(result.verificationId);
+    } catch {
+      if (isCurrent()) setError(tc('attachFailed'));
+    } finally {
+      if (mounted.current) setAttaching(false);
+    }
+  };
   return (
     <section aria-labelledby="checks-heading" className="flex flex-col gap-2">
       <h3 id="checks-heading" className="text-sm font-semibold">
@@ -613,6 +736,17 @@ export function Checks({
               ) : null}
               {r.timedOut ? <span className="text-danger">{t('timedOut')}</span> : null}
               {r.stale ? <span className="text-warning">{t('stale')}</span> : null}
+              {onAttach && workspaceId && projectId ? (
+                <Button
+                  size="xs"
+                  variant="outline"
+                  disabled={attaching || !canAttach(r)}
+                  onClick={() => void attach(r)}
+                >
+                  {t('attachCheckOutput')}
+                </Button>
+              ) : null}
+              {attached === r.verificationId ? <span role="status">{tc('attached')}</span> : null}
             </div>
             {r.report ? (
               <details className="text-muted">

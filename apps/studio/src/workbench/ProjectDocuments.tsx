@@ -1,4 +1,9 @@
-import { TEXT_ATTACHMENT_MAX_COUNT, type TextAttachment } from '@corral/contracts';
+import {
+  TEXT_ATTACHMENT_MAX_COUNT,
+  type TextAttachment,
+  textAttachmentKey,
+} from '@corral/contracts';
+import { validTextAttachments } from '@corral/core';
 import { Button, Select } from '@corral/react/ui';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocale } from 'use-intl';
@@ -119,11 +124,16 @@ export function ProjectDocumentPicker({
               alive.current &&
               latest.current.projectId === projectId &&
               latest.current.value === value &&
-              !value.some(
-                (item) => item.name === attachment.name && item.sha256 === attachment.sha256,
-              )
-            )
+              !value.some((item) => textAttachmentKey(item) === textAttachmentKey(attachment))
+            ) {
+              if (!validTextAttachments([...value, attachment]))
+                throw new Error(
+                  ko
+                    ? '텍스트 첨부의 크기나 개수를 확인하세요.'
+                    : 'Check the text attachment size and count.',
+                );
               onChange([...value, attachment]);
+            }
           } catch (e) {
             if (alive.current)
               setError(e instanceof Error ? e.message : 'Could not attach document.');

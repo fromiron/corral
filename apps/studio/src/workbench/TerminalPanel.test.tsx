@@ -1,18 +1,21 @@
 // @vitest-environment jsdom
 import assert from 'node:assert/strict';
 import type { TerminalList, TerminalView } from '@corral/contracts';
+import { Gate } from '@corral/testkit';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { IntlProvider } from 'use-intl';
 import { expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import { composerDraftRevision, writeComposerDraft } from './sessionDraft.ts';
 import { TerminalPanel } from './TerminalPanel.tsx';
-import type { TerminalStore } from './terminals/store.ts';
+import type { TerminalSelection, TerminalStore } from './terminals/store.ts';
 
 const fixture = vi.hoisted(() => ({
   state: {} as ReturnType<TerminalStore['getState']>,
   workspaceId: undefined as string | undefined,
+  captureSelection: vi.fn<(id: string) => Promise<TerminalSelection | null>>(),
 }));
 vi.mock('../services.tsx', () => ({
   useServices: () => ({ mode: 'server', terminals: {}, workspaceId: fixture.workspaceId }),
@@ -23,6 +26,7 @@ vi.mock('./terminals/store.ts', () => ({
     getInitialState: () => fixture.state,
     subscribe: () => () => {},
     refresh: async () => {},
+    captureSelection: (id: string) => fixture.captureSelection(id),
   }),
 }));
 vi.mock('./terminals/TerminalView.tsx', () => ({
@@ -87,6 +91,7 @@ function render(current: TerminalView, pendingCreate = false, loading = false) {
         error: null,
         busy: false,
         appliedSequence: 0,
+        hasSelection: false,
       },
     },
   };
@@ -178,5 +183,71 @@ it('[TC-WBD-006-H] reopening the terminal pane restores only the selection for i
   } finally {
     fixture.workspaceId = undefined;
     localStorage.removeItem(selectionKey);
+  }
+});
+
+it('[TC-WBD-007-H] attaches only the explicit selected text with its captured source target', async () => {
+  render(terminal);
+  const value = fixture.state.terminals.terminal;
+  assert(value);
+  value.hasSelection = true;
+  const source = {
+    kind: 'terminal' as const,
+    target,
+    terminalId: 'terminal',
+    generation: 'generation',
+    outputSequence: 2,
+    buffer: 'normal' as const,
+    cols: 80,
+    rows: 24,
+    range: { startRow: 0, startColumn: 0, endRow: 0, endColumn: 5 },
+  };
+  const capturedRevision = composerDraftRevision('session');
+  const gate = new Gate();
+  fixture.captureSelection.mockImplementation(async () => {
+    await gate.wait();
+    return { text: 'error', provenance: source };
+  });
+  const attached = vi.fn();
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () =>
+      root.render(
+        <IntlProvider locale="en" messages={messages} timeZone="UTC">
+          <TerminalPanel sessionId="session" onAttach={attached} />
+        </IntlProvider>,
+      ),
+    );
+    const button = Array.from(container.querySelectorAll('button')).find(
+      (element) => element.textContent === 'Attach selection',
+    );
+    assert(button);
+    expect(attached).not.toHaveBeenCalled();
+    await act(async () => button.click());
+    expect(fixture.captureSelection).toHaveBeenCalledWith('terminal');
+    expect(attached).not.toHaveBeenCalled();
+    writeComposerDraft('session', {
+      text: 'later typing',
+      intent: null,
+      target: null,
+      targetLabel: null,
+      references: [],
+    });
+    await act(async () => gate.open());
+    expect(attached).toHaveBeenCalledTimes(1);
+    expect(attached.mock.calls[0]?.[0]).toMatchObject({
+      kind: 'text_attachment',
+      text: 'error',
+      provenance: source,
+    });
+    expect(attached.mock.calls[0]?.[1]).toMatchObject({ target, revision: capturedRevision });
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+    vi.unstubAllGlobals();
+    fixture.captureSelection.mockReset();
   }
 });

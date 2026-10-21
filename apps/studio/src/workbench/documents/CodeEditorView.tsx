@@ -1,3 +1,4 @@
+import type { TextRange } from '@corral/contracts';
 import { cn } from '@corral/react/ui';
 import type { editor } from 'monaco-editor/editor';
 import { useEffect, useRef } from 'react';
@@ -10,8 +11,9 @@ export interface CodeEditorViewProps {
   ariaLabel: string;
   saveLabel: string;
   onSave: () => unknown;
-  onSelection?: (startLine: number, endLine: number) => void;
+  onSelection?: (startLine: number, endLine: number, selection: TextRange | null) => void;
   revealRange?: { startLine: number; endLine: number };
+  revealSelection?: TextRange;
   onError?: () => void;
   className?: string;
 }
@@ -22,13 +24,17 @@ function revealLines(
   instance: editor.IStandaloneCodeEditor,
   range: { startLine: number; endLine: number },
 ) {
+  revealTextSelection(instance, { ...range, startColumn: 1, endColumn: Number.MAX_SAFE_INTEGER });
+}
+
+function revealTextSelection(instance: editor.IStandaloneCodeEditor, range: TextRange) {
   const model = instance.getModel();
   if (!model) return;
   const selection = model.validateRange({
     startLineNumber: range.startLine,
-    startColumn: 1,
+    startColumn: range.startColumn,
     endLineNumber: range.endLine,
-    endColumn: Number.MAX_SAFE_INTEGER,
+    endColumn: range.endColumn,
   });
   instance.setSelection(selection);
   instance.revealRangeInCenter(selection);
@@ -60,7 +66,16 @@ function applyEditorTheme(monaco: Monaco) {
 
 /** A view owns selection and scroll; the document store owns text, undo and model lifetime. */
 export function CodeEditorView(props: CodeEditorViewProps) {
-  const { model, viewId, readOnly = false, ariaLabel, saveLabel, revealRange, className } = props;
+  const {
+    model,
+    viewId,
+    readOnly = false,
+    ariaLabel,
+    saveLabel,
+    revealRange,
+    revealSelection,
+    className,
+  } = props;
   const container = useRef<HTMLElement>(null);
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const callbacks = useRef(props);
@@ -89,9 +104,23 @@ export function CodeEditorView(props: CodeEditorViewProps) {
         editorRef.current = instance;
         const saved = viewStates.get(model)?.get(viewId);
         if (saved) instance.restoreViewState(saved);
-        const selected = instance.onDidChangeCursorSelection(({ selection }) => {
-          callbacks.current.onSelection?.(selection.startLineNumber, selection.endLineNumber);
-        });
+        const select = (selection: ReturnType<typeof instance.getSelection>) => {
+          if (!selection) return;
+          callbacks.current.onSelection?.(
+            selection.startLineNumber,
+            selection.endLineNumber,
+            selection.isEmpty()
+              ? null
+              : {
+                  startLine: selection.startLineNumber,
+                  startColumn: selection.startColumn,
+                  endLine: selection.endLineNumber,
+                  endColumn: selection.endColumn,
+                },
+          );
+        };
+        const selected = instance.onDidChangeCursorSelection(({ selection }) => select(selection));
+        select(instance.getSelection());
         const save = instance.addAction({
           id: 'corral.document.save',
           label: saveLabel,
@@ -120,8 +149,10 @@ export function CodeEditorView(props: CodeEditorViewProps) {
           instance.dispose();
           editorRef.current = null;
         };
+        const selection = callbacks.current.revealSelection;
         const range = callbacks.current.revealRange;
-        if (range) revealLines(instance, range);
+        if (selection) revealTextSelection(instance, selection);
+        else if (range) revealLines(instance, range);
       })
       .catch(() => {
         if (!cancelled) callbacks.current.onError?.();
@@ -141,6 +172,11 @@ export function CodeEditorView(props: CodeEditorViewProps) {
     if (!instance || !revealRange) return;
     revealLines(instance, revealRange);
   }, [revealRange]);
+
+  useEffect(() => {
+    const instance = editorRef.current;
+    if (instance && revealSelection) revealTextSelection(instance, revealSelection);
+  }, [revealSelection]);
 
   return (
     <section

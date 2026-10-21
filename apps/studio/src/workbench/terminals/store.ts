@@ -1,12 +1,15 @@
 import { ApiError, type TerminalsApi } from '@corral/client';
 import {
+  canonicalJson,
   MAX_TERMINAL_INPUT_BYTES,
   MAX_TERMINAL_QUEUED_INPUT_BYTES,
+  TEXT_ATTACHMENT_MAX_BYTES,
   type TerminalCreate,
   type TerminalIdentity,
   type TerminalList,
   type TerminalStreamMessage,
   type TerminalView,
+  type TextAttachmentProvenance,
 } from '@corral/contracts';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import { WORKSPACE_CHANGED } from '../workspaceEvents.ts';
@@ -16,6 +19,13 @@ export type TerminalClient = Pick<
   TerminalsApi,
   'list' | 'create' | 'read' | 'control' | 'input' | 'resize' | 'stop' | 'subscribe'
 >;
+export type TerminalProvenance = Extract<TextAttachmentProvenance, { kind: 'terminal' }>;
+export type TerminalSourceState = 'current' | 'stale' | 'unavailable';
+export interface TerminalSelection {
+  text: string;
+  provenance: TerminalProvenance;
+}
+
 export interface TerminalBuffer {
   terminal: TerminalView;
   connection: 'idle' | 'connecting' | 'connected' | 'disconnected' | 'unavailable';
@@ -25,6 +35,7 @@ export interface TerminalBuffer {
   error: string | null;
   busy: boolean;
   appliedSequence: number;
+  hasSelection: boolean;
 }
 export interface TerminalSession {
   list: TerminalList | null;
@@ -56,6 +67,9 @@ export interface TerminalStore
     onExit?: () => void,
     descriptionId?: string,
   ): Promise<() => void>;
+  captureSelection(id: string): Promise<TerminalSelection | null>;
+  inspectSelection(source: TerminalProvenance): TerminalSourceState;
+  revealSelection(source: TerminalProvenance): Promise<boolean>;
   dispose(): void;
 }
 interface Options {
@@ -91,6 +105,7 @@ export function terminalStore(client: TerminalClient, options: Options = {}): Te
   const claimOnStart = new Set<string>();
   const mounts = new Map<string, symbol>();
   const applying = new Map<string, Promise<void>>();
+  const selectionListeners = new Map<string, { dispose(): void }>();
   type Frame = { kind: 'input'; data: string } | { kind: 'resize'; cols: number; rows: number };
   const queues = new Map<string, { frames: Frame[]; bytes: number; running: boolean }>();
   let disposed = false;
@@ -180,6 +195,7 @@ export function terminalStore(client: TerminalClient, options: Options = {}): Te
             error: null,
             busy: false,
             appliedSequence: 0,
+            hasSelection: false,
           },
         },
       });
@@ -310,6 +326,42 @@ export function terminalStore(client: TerminalClient, options: Options = {}): Te
       streams.delete(id);
     }
   }
+  function afterOutput<T>(id: string, work: () => T | Promise<T>): Promise<T> {
+    const result = (applying.get(id) ?? Promise.resolve()).then(work);
+    applying.set(
+      id,
+      result.then(
+        () => {},
+        () => {},
+      ),
+    );
+    return result;
+  }
+  function inspectSelection(source: TerminalProvenance): TerminalSourceState {
+    const value = get(source.terminalId);
+    const runtime = runtimes.get(source.terminalId);
+    if (
+      !value ||
+      !runtime ||
+      value.terminal.generation !== source.generation ||
+      canonicalJson(value.terminal.target) !== canonicalJson(source.target)
+    )
+      return 'unavailable';
+    const terminal = runtime.terminal;
+    if (
+      value.appliedSequence !== source.outputSequence ||
+      terminal.cols !== source.cols ||
+      terminal.rows !== source.rows ||
+      terminal.buffer.active.type !== source.buffer
+    )
+      return 'stale';
+    const length = terminal.buffer.active.length;
+    return source.range.startRow < length &&
+      (source.range.endRow < length ||
+        (source.range.endRow === length && source.range.endColumn === 0))
+      ? 'current'
+      : 'unavailable';
+  }
   async function apply(id: string, message: TerminalStreamMessage) {
     const value = get(id);
     const runtime = runtimes.get(id);
@@ -364,12 +416,7 @@ export function terminalStore(client: TerminalClient, options: Options = {}): Te
         { generation: value.terminal.generation, after: value.appliedSequence },
         {
           onEvent(message) {
-            const work = (applying.get(id) ?? Promise.resolve()).then(() => apply(id, message));
-            applying.set(
-              id,
-              work.catch(() => {}),
-            );
-            return work;
+            return afterOutput(id, () => apply(id, message));
           },
           onError(error) {
             const pending = queues.get(id)?.running ?? false;
@@ -552,6 +599,14 @@ export function terminalStore(client: TerminalClient, options: Options = {}): Te
           }
           runtimes.set(id, runtime);
         }
+        if (!selectionListeners.has(id)) {
+          const instance = runtime.terminal;
+          selectionListeners.set(
+            id,
+            instance.onSelectionChange(() => patch(id, { hasSelection: instance.hasSelection() })),
+          );
+        }
+        patch(id, { hasSelection: runtime.terminal.hasSelection() });
         container.append(runtime.host);
         runtime.terminal.textarea?.setAttribute('aria-label', label);
         if (descriptionId)
@@ -596,8 +651,58 @@ export function terminalStore(client: TerminalClient, options: Options = {}): Te
         return () => {};
       }
     },
+    captureSelection(id) {
+      return afterOutput<TerminalSelection | null>(id, () => {
+        const value = get(id);
+        const terminal = runtimes.get(id)?.terminal;
+        const range = terminal?.getSelectionPosition();
+        if (!value || !terminal || !range) return null;
+        const text = terminal.getSelection();
+        if (!text) return null;
+        if (byteLength(text) > TEXT_ATTACHMENT_MAX_BYTES)
+          throw new Error('Terminal selection exceeds 64 KiB.');
+        return {
+          text,
+          provenance: {
+            kind: 'terminal',
+            target: { ...value.terminal.target },
+            terminalId: id,
+            generation: value.terminal.generation,
+            outputSequence: value.appliedSequence,
+            buffer: terminal.buffer.active.type,
+            cols: terminal.cols,
+            rows: terminal.rows,
+            range: {
+              startRow: range.start.y,
+              startColumn: range.start.x,
+              endRow: range.end.y,
+              endColumn: range.end.x,
+            },
+          },
+        };
+      });
+    },
+    inspectSelection,
+    revealSelection(source) {
+      return afterOutput(source.terminalId, () => {
+        if (inspectSelection(source) !== 'current') return false;
+        const terminal = runtimes.get(source.terminalId)?.terminal;
+        if (!terminal) return false;
+        const { startRow, startColumn, endRow, endColumn } = source.range;
+        terminal.select(
+          startColumn,
+          startRow,
+          (endRow - startRow) * source.cols + endColumn - startColumn,
+        );
+        terminal.scrollToLine(startRow);
+        terminal.focus();
+        return true;
+      });
+    },
     dispose() {
       disposed = true;
+      for (const listener of selectionListeners.values()) listener.dispose();
+      selectionListeners.clear();
       for (const stop of streams.values()) stop();
       for (const runtime of runtimes.values()) runtime.dispose();
       streams.clear();

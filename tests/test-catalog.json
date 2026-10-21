@@ -3456,5 +3456,38 @@
     "status": "planned",
     "adapter": "Dockview public APIs and existing root stores with versioned layout fixtures; real in-app keyboard/390px observation before any new E2E; no paid models",
     "evidence": null
+  },
+  {
+    "id": "TC-WBD-007-H",
+    "requirements": [
+      "CRL-WBD-007"
+    ],
+    "suite": "unit+integration",
+    "scenario": "코드·터미널·hunk·검사 선택 snapshot→칩→next/queued next prompt 전달, 원본 이동/교체/삭제와 세 가지 표시 밀도",
+    "status": "planned",
+    "adapter": "existing attachment/repository/Coordinator and composer draft fixtures with public Monaco/xterm selection APIs; real in-app observation before any new E2E; no paid models",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-007-N",
+    "requirements": [
+      "CRL-WBD-007"
+    ],
+    "suite": "unit+integration",
+    "scenario": "동일 본문/다른 출처 분리, saved/dirty·UTF-16/terminal 범위·고정 snapshot 식별, hash/상한과 조용한 첨부 누락 거절",
+    "status": "planned",
+    "adapter": "existing attachment/repository/Coordinator and composer draft fixtures with public Monaco/xterm selection APIs; real in-app observation before any new E2E; no paid models",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-007-F",
+    "requirements": [
+      "CRL-WBD-007"
+    ],
+    "suite": "unit+integration",
+    "scenario": "늦은 캡처/확인/전송·원래 ID retry·원본 소실·queue 자동 시작에서 고정 첨부/새 초안/대상 보존과 IME 회귀",
+    "status": "planned",
+    "adapter": "existing attachment/repository/Coordinator and composer draft fixtures with public Monaco/xterm selection APIs; real in-app observation before any new E2E; no paid models",
+    "evidence": null
   }
 ]

@@ -1,3 +1,5 @@
+import type { TextAttachment } from '@corral/contracts';
+import { createTextAttachment } from '@corral/core';
 import { RefreshCw } from '@corral/react/icons';
 import { Button, Select } from '@corral/react/ui';
 import { lazy, Suspense, useEffect, useId, useRef, useState } from 'react';
@@ -6,14 +8,29 @@ import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { useRemembered } from '../pages/Workbench.tsx';
 import { useServices } from '../services.tsx';
+import { type AttachmentCapture, beginAttachmentCapture } from './context/bridge.ts';
 import { panelKey } from './panels/registry.ts';
-import { type TerminalStore, terminalStore } from './terminals/store.ts';
+import {
+  type TerminalProvenance,
+  type TerminalSourceState,
+  type TerminalStore,
+  terminalStore,
+} from './terminals/store.ts';
 
 const TerminalView = lazy(() =>
   import('./terminals/TerminalView.tsx').then((module) => ({ default: module.TerminalView })),
 );
 
-export function TerminalPanel({ sessionId, projectId }: { sessionId: string; projectId?: string }) {
+interface TerminalContextProps {
+  onAttach?: (attachment: TextAttachment, capture: AttachmentCapture) => void | Promise<void>;
+  revealSource?: TerminalProvenance;
+}
+
+export function TerminalPanel({
+  sessionId,
+  projectId,
+  ...context
+}: { sessionId: string; projectId?: string } & TerminalContextProps) {
   const { terminals, mode, workspaceId } = useServices();
   if (!terminals || mode !== 'server') return null;
   const store = terminalStore(terminals);
@@ -25,34 +42,40 @@ export function TerminalPanel({ sessionId, projectId }: { sessionId: string; pro
         sessionId={sessionId}
         store={store}
         selectionKey={selectionKey}
+        {...context}
       />
     );
   }
-  return <SessionTerminals key={sessionId} sessionId={sessionId} store={store} />;
+  return <SessionTerminals key={sessionId} sessionId={sessionId} store={store} {...context} />;
 }
 
 function RememberedTerminals({
   sessionId,
   store,
   selectionKey,
+  ...context
 }: {
   sessionId: string;
   store: TerminalStore;
   selectionKey: string;
-}) {
+} & TerminalContextProps) {
   const selection = useRemembered(selectionKey, '');
-  return <SessionTerminals sessionId={sessionId} store={store} selection={selection} />;
+  return (
+    <SessionTerminals sessionId={sessionId} store={store} selection={selection} {...context} />
+  );
 }
 
 function SessionTerminals({
   sessionId,
   store,
   selection,
+  onAttach,
+  revealSource,
 }: {
   sessionId: string;
   store: TerminalStore;
   selection?: [string, (value: string) => void];
-}) {
+} & TerminalContextProps) {
   const t = useTranslations('Terminals');
   const session = useStore(store, (state) => state.sessions[sessionId]);
   const list = session?.list;
@@ -60,6 +83,15 @@ function SessionTerminals({
   const [selected, select] = selection ?? memorySelection;
   const [shell, setShell] = useState('');
   const [actionError, setActionError] = useState(false);
+  const [capturing, setCapturing] = useState(false);
+  const [captureError, setCaptureError] = useState<'selectOutput' | 'attachSelectionError' | null>(
+    null,
+  );
+  const [sourceState, setSourceState] = useState<TerminalSourceState | null>(null);
+  useEffect(() => {
+    setSourceState(null);
+    if (revealSource?.target.sessionId === sessionId) select(revealSource.terminalId);
+  }, [revealSource, sessionId, select]);
   const hintId = useId();
   const refreshButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -82,6 +114,7 @@ function SessionTerminals({
             inputOverflow: value.inputOverflow,
             error: value.error,
             busy: value.busy,
+            hasSelection: value.hasSelection,
           }
         : undefined;
     }),
@@ -98,6 +131,35 @@ function SessionTerminals({
   };
   const mayStop = current && !['exited', 'failed'].includes(current.state);
   const mayControl = current?.state === 'running' && entry?.connection !== 'unavailable';
+  const sourceUnavailable =
+    revealSource &&
+    !session?.loading &&
+    (revealSource.target.sessionId !== sessionId ||
+      !items.some((item) => item.terminalId === revealSource.terminalId));
+  async function attachSelection() {
+    if (!current || !onAttach || capturing) return;
+    const capture = beginAttachmentCapture(current.target);
+    setCapturing(true);
+    setCaptureError(null);
+    try {
+      const selected = await store.captureSelection(current.terminalId);
+      if (!selected) {
+        setCaptureError('selectOutput');
+        return;
+      }
+      const attachment = createTextAttachment(
+        `terminal-${current.shellId}-${selected.provenance.outputSequence}.txt`,
+        'text/plain',
+        selected.text,
+        selected.provenance,
+      );
+      await onAttach(attachment, capture);
+    } catch {
+      setCaptureError('attachSelectionError');
+    } finally {
+      setCapturing(false);
+    }
+  }
   return (
     <section
       aria-label={t('title')}
@@ -309,6 +371,26 @@ function SessionTerminals({
               </Button>
             ) : null}
           </div>
+          {onAttach ? (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={capturing || !entry.hasSelection}
+              onClick={() => void attachSelection()}
+            >
+              {t(capturing ? 'capturing' : 'attachSelection')}
+            </Button>
+          ) : null}
+          {captureError ? (
+            <p role="alert" className="text-xs text-danger">
+              {t(captureError)}
+            </p>
+          ) : null}
+          {sourceState === 'stale' ? (
+            <p role="status" className="text-xs text-muted">
+              {t('sourceStale')}
+            </p>
+          ) : null}
           {entry.connection !== 'unavailable' ? (
             <Suspense
               fallback={
@@ -321,6 +403,8 @@ function SessionTerminals({
                 key={panelKey(store, { kind: 'terminal', sessionId, terminalId: selectedId })}
                 store={store}
                 terminalId={selectedId}
+                revealSource={revealSource?.terminalId === selectedId ? revealSource : undefined}
+                onReveal={setSourceState}
                 ariaLabel={t('content')}
                 aria-describedby={hintId}
                 onExit={() => refreshButton.current?.focus()}
@@ -337,6 +421,11 @@ function SessionTerminals({
             </p>
           ) : null}
         </>
+      ) : null}
+      {sourceState === 'unavailable' || sourceUnavailable ? (
+        <p role="status" className="text-xs text-muted">
+          {t('sourceUnavailable')}
+        </p>
       ) : null}
       {actionError || session?.error ? (
         <p role="alert" className="break-words text-xs text-danger">
