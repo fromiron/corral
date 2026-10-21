@@ -84,6 +84,8 @@ import { stageLspEdit } from './lsp-edits.ts';
 import { lspResults, validateLspPosition } from './lsp-results.ts';
 import { RunAccessStore } from './run-access.ts';
 import { VerificationRunner } from './verification.ts';
+import { WorkbenchOperations } from './workbench-operations.ts';
+import { WorkspaceAccessStore } from './workspace-access.ts';
 
 // Work folders and file changes (CR-012). A project may link one folder, which is only
 // observed. A session gets its own git worktree outside that folder; agents change files
@@ -109,6 +111,8 @@ export interface BindingView {
 
 export interface WorktreeView {
   sessionId: string;
+  bindingId: string;
+  copyGeneration: number;
   baseCommit: string;
   createdAt: string;
   removedAt: string | null;
@@ -302,6 +306,7 @@ interface BindingRow {
 interface WorktreeRow {
   session_id: string;
   binding_id: string;
+  copy_generation: number;
   worktree_path: string;
   base_commit: string;
   base_tree: string;
@@ -322,6 +327,9 @@ export class WorkspaceService implements FileTools {
   private readonly pendingCommandRuns = new Map<string, string>();
   private disposing = false;
   private readonly runAccess: RunAccessStore;
+  private readonly workspaceAccess: WorkspaceAccessStore;
+  private readonly workbenchOperations: WorkbenchOperations;
+  private readonly removingWorktrees = new Set<string>();
   private readonly preparingRuns = new Map<string, Promise<void>>();
   private readonly criteria = new Map<string, ReviewRecipeRevision['criteriaFiles']>();
   private readonly lsp: Pick<LspRunner, 'query'>;
@@ -364,7 +372,9 @@ export class WorkspaceService implements FileTools {
   }) {
     this.db = options.db;
     this.runAccess = new RunAccessStore(this.db);
-    this.runAccess.recover();
+    this.workspaceAccess = new WorkspaceAccessStore(this.db);
+    this.workbenchOperations = new WorkbenchOperations(this.db, options.clock);
+    this.workbenchOperations.recover();
     this.db
       .prepare(`UPDATE checkpoint_restores SET result_json=json_set(result_json, '$.state', 'uncertain')
       WHERE json_extract(result_json, '$.state')='applying'`)
@@ -834,6 +844,8 @@ export class WorkspaceService implements FileTools {
     return row
       ? {
           sessionId,
+          bindingId: row.binding_id,
+          copyGeneration: row.copy_generation,
           baseCommit: row.base_commit,
           createdAt: row.created_at,
           removedAt: row.removed_at,
@@ -897,10 +909,11 @@ export class WorkspaceService implements FileTools {
     this.db
       .prepare(
         `INSERT OR REPLACE INTO session_worktrees (session_id, binding_id, worktree_path,
-           base_commit, base_tree, reviewed_tree, created_at, removed_at)
-         VALUES (?, ?, ?, ?, ?, NULL, ?, NULL)`,
+           base_commit, base_tree, reviewed_tree, created_at, removed_at, copy_generation)
+         VALUES (?, ?, ?, ?, ?, NULL, ?, NULL,
+           COALESCE((SELECT copy_generation+1 FROM session_worktrees WHERE session_id=?),1))`,
       )
-      .run(sessionId, binding.id, path, head, tree, this.clock.nowIso());
+      .run(sessionId, binding.id, path, head, tree, this.clock.nowIso(), sessionId);
     return this.worktreeView(sessionId) as WorktreeView;
   }
 
@@ -908,20 +921,36 @@ export class WorkspaceService implements FileTools {
   async removeWorktree(sessionId: string) {
     const row = this.worktree(sessionId);
     if (!row) return;
+    if (this.removingWorktrees.has(sessionId))
+      throw new WorkspaceError('REVISION_CONFLICT', 'the working copy is being removed');
     const binding = this.db
       .prepare('SELECT * FROM workspace_bindings WHERE id = ?')
       .get(row.binding_id) as BindingRow | undefined;
-    await this.lease(row.worktree_path, async () => {
-      if (binding) {
-        await git(binding.root_path, ['worktree', 'remove', '--force', row.worktree_path]).catch(
-          () => rm(row.worktree_path, { recursive: true, force: true }),
-        );
-        await git(binding.root_path, ['worktree', 'prune']).catch(() => undefined);
-      }
-    });
-    this.db
-      .prepare('UPDATE session_worktrees SET removed_at = ? WHERE session_id = ?')
-      .run(this.clock.nowIso(), sessionId);
+    this.removingWorktrees.add(sessionId);
+    try {
+      await this.lease(row.worktree_path, async () => {
+        const path = existsSync(row.worktree_path)
+          ? realpathSync.native(row.worktree_path)
+          : resolve(row.worktree_path);
+        const key = process.platform === 'win32' ? path.toLowerCase() : path;
+        if (this.workspaceAccess.ownersAt(key).length)
+          throw new WorkspaceError(
+            'REVISION_CONFLICT',
+            'working copy access has active or uncertain owners',
+          );
+        if (binding) {
+          await git(binding.root_path, ['worktree', 'remove', '--force', row.worktree_path]).catch(
+            () => rm(row.worktree_path, { recursive: true, force: true }),
+          );
+          await git(binding.root_path, ['worktree', 'prune']).catch(() => undefined);
+        }
+        this.db
+          .prepare('UPDATE session_worktrees SET removed_at = ? WHERE session_id = ?')
+          .run(this.clock.nowIso(), sessionId);
+      });
+    } finally {
+      this.removingWorktrees.delete(sessionId);
+    }
   }
 
   /** A restore target is always a trusted session-owned copy or its linked original repository. */
@@ -1997,10 +2026,21 @@ export class WorkspaceService implements FileTools {
     const config = this.projectTools.latest(projectId);
     const command = config?.checks.find((c) => c.id === commandId);
     if (!config || !command) throw new WorkspaceError('TARGET_NOT_FOUND', 'no such check');
-    const { tree, launch } = await this.lease(row.worktree_path, async () => ({
-      tree: await this.snapshotTree(row.worktree_path),
-      launch: await launchFingerprint(row.worktree_path, config.revision, command),
-    }));
+    const { tree, launch } = await this.lease(row.worktree_path, async () => {
+      if (this.hasUnsafeWorktreeOwner(sessionId))
+        throw new WorkspaceError(
+          'REVISION_CONFLICT',
+          'finish the working copy writer before checking',
+        );
+      const tree = await this.snapshotTree(row.worktree_path);
+      const launch = await launchFingerprint(row.worktree_path, config.revision, command);
+      if (this.hasUnsafeWorktreeOwner(sessionId))
+        throw new WorkspaceError(
+          'REVISION_CONFLICT',
+          'working copy writer ownership changed while preparing the check',
+        );
+      return { tree, launch };
+    });
     return this.startCheck(
       sessionId,
       projectId,
@@ -2414,6 +2454,7 @@ export class WorkspaceService implements FileTools {
         return this.lspProposal(sessionId, id);
       };
       const active = () =>
+        this.hasUnsafeWorktreeOwner(sessionId) ||
         !!this.db
           .prepare(
             "SELECT 1 FROM runs WHERE session_id=? AND status NOT IN ('succeeded','failed','cancelled','interrupted') LIMIT 1",
@@ -2422,7 +2463,7 @@ export class WorkspaceService implements FileTools {
       if (active())
         throw new WorkspaceError(
           'REVISION_CONFLICT',
-          'finish or cancel the session Run before applying this proposal',
+          'finish or cancel the session Run or working copy writer before applying this proposal',
         );
       const trusted = () =>
         !!this.db
@@ -2470,7 +2511,7 @@ export class WorkspaceService implements FileTools {
       if (active())
         throw new WorkspaceError(
           'REVISION_CONFLICT',
-          'a Run started while the proposal was being checked',
+          'a Run or working copy writer acquired ownership while the proposal was being checked',
         );
       const cancellation: ToolCancellation = {
         get aborted() {
@@ -2762,7 +2803,8 @@ export class WorkspaceService implements FileTools {
       this.pendingCommands.size ||
       this.pendingSnapshots.size ||
       this.preparingRuns.size ||
-      this.leases.size
+      this.leases.size ||
+      this.workbenchOperations.hasPending()
     )
       return true;
     return Boolean(
@@ -3166,8 +3208,11 @@ export class WorkspaceService implements FileTools {
   }
 
   acquireRun(runId: string, sessionId: string | undefined, writer: boolean): void {
+    if (sessionId && this.removingWorktrees.has(sessionId))
+      throw new ToolRefusal('REVISION_CONFLICT', 'the working copy is being removed');
     const row = sessionId ? this.worktree(sessionId) : null;
-    if (row) this.runAccess.acquire(runId, row.session_id, row.worktree_path, writer);
+    if (row)
+      this.runAccess.acquire(runId, row.session_id, row.worktree_path, writer, row.copy_generation);
   }
 
   worktreeScope(sessionId: string): string | null {
@@ -3265,14 +3310,14 @@ export class WorkspaceService implements FileTools {
   /** Call only after the adapter has positively recovered every prior worker/process group. */
   confirmWorkerRecovery(): void {
     this.db
-      .prepare(`UPDATE run_access SET state='released'
-      WHERE state='uncertain'
+      .prepare(`UPDATE workspace_access SET state='released'
+      WHERE owner_kind='run' AND state='uncertain'
         AND NOT EXISTS (SELECT 1 FROM command_operations c
-          WHERE c.run_id=run_access.run_id AND c.state IN ('running','uncertain'))
+          WHERE c.run_id=workspace_access.owner_id AND c.state IN ('running','uncertain'))
         AND NOT EXISTS (SELECT 1 FROM file_operations f
-          WHERE f.session_id=run_access.session_id AND f.state IN ('planned','uncertain'))
+          WHERE f.session_id=workspace_access.session_id AND f.state IN ('planned','uncertain'))
         AND NOT EXISTS (SELECT 1 FROM checkpoint_restores r
-          WHERE r.session_id=run_access.session_id
+          WHERE r.session_id=workspace_access.session_id
             AND json_extract(r.result_json,'$.state') IN ('applying','partial','uncertain'))`)
       .run();
   }

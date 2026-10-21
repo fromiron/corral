@@ -16,6 +16,7 @@
 | Skill 평가·채택·업데이트·롤백 | CR-036-C/D | C-138/139, [현재 실행 기록](evaluation/Quality-Completion-2026-10-21.md) | 텍스트 fixture 비교. 품질 자동 승인이나 모든 공급자의 품질 향상 증거가 아님 |
 | 통합 개선 M0–M3 | CR-025–036, C-088–112 | [M0](evaluation/Integrated-Improvement-M0-2026-10-19.md), [M1](evaluation/Integrated-Improvement-M1-2026-10-19.md), [M2](evaluation/Integrated-Improvement-M2-2026-10-19.md), [M3](evaluation/Integrated-Improvement-M3-2026-10-19.md) | 격리 등 OS 제한과 실제 모델 품질 미측정은 각 기록 참조 |
 | 문맥형 설정·Composer 정돈 | CR-044, [Workbench](current/workbench.md) | C-140, [이번 구현·검증](evaluation/Contextual-Settings-UI-2026-10-21.md) | Linux 브라우저·staged Electron 검증. Windows/macOS·실제 IME·스크린리더는 별도 |
+| 개발 Workbench 소유권 기반 | CR-046, [계획](plans/workbench-development-implementation-plan-2026-10-21.md) | C-143 구현, C-142 비교 진행 · [증거](evaluation/Development-Workbench-Foundation-2026-10-21.md) | 사용자 파일 save/PTY/Git API·화면은 후속. 엔진 fixture와 제품 통합은 구분 |
 | 입력·대화·모델 식별과 테두리 일관성 | CR-045, [Workbench](current/workbench.md) | C-141, [구현·검증](evaluation/Workbench-Identification-2026-10-21.md) | Linux 브라우저·격리 DB 검증. 기존 서버 재시작·패키지·외부 공급자·스크린리더는 별도 |
 | 컴포저·컨텍스트·채팅 위젯 | CR-037–041, C-119–121 | [M4 기록](evaluation/Integrated-Improvement-M4-2026-10-19.md), [위젯 계약·증거](change-requests/CR-041-chat-widgets.md) | native IME·외부 provider 미검증 범위 유지 |
 | Desktop 확장 | CR-042, C-122–136, [상세 계약](current/desktop-contract.md) | [기능별 구현·검증](evaluation/Desktop-Capabilities-Implementation-Progress.md) | 부분 구현과 환경 대기를 아래에서 분리 |

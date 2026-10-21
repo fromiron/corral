@@ -10,6 +10,8 @@ baseline: 071276873dee4bb51491bf608e604fbb4e123475
 
 입력은 `Corral-Workbench-Ecosystem-Plan-v2-2026-10-21.md`이며 SHA-256은 `11087e6b6b940bdbca89792e5a8efd84764b326ec42664ff1d289c4d65ae4451`이다. 원문을 수정하거나 전체 제품 조사를 복제하지 않는다. 기준 코드는 PR #68을 포함하는 위 commit이며, 계획 작성 시 소스·계약·manifest를 대조했다. 이후 실행 결과는 별도 검증 기록에 남긴다.
 
+현재 진행: C-143/P03의 공통 예약·receipt·사본 generation은 구현하고 관련 회귀를 확인했다. C-142의 엔진 비교는 격리 fixture 근거를 수집 중이며, 제품 편집·PTY·도킹 연결은 아직 남아 있다. [실행 기록](../evaluation/Development-Workbench-Foundation-2026-10-21.md)을 참조한다.
+
 ## 1. 구현 순서와 제품 경계
 
 권고 순서는 **현재 기능 지도 → 기반 비교와 쓰기 계약 → 파일 편집·PTY·Diff의 실제 연결 → 도킹 이관 → Git·개발 작업 → 검토·언어·디버깅 → 설치판 검증**이다. 도킹부터 크게 바꾸면 파일/프로세스 수명 문제와 레이아웃 문제를 함께 디버깅해야 한다. 따라서 파일 하나를 실제 저장하고 PTY 하나를 실행하는 경로를 기존 화면에서 먼저 증명한다.
@@ -153,6 +155,7 @@ PTY는 host에 위치한다. renderer에는 xterm view만 둔다. `CommandRuntim
 
 - transport는 기존 HTTP 인증에 연결한다. WebSocket을 선택하면 Fastify 5와 호환되는 `@fastify/websocket` 등 성숙한 경로를 심사한다. URL query에 영구 token을 넣지 않고 Origin·host·target·attach lease를 검사한다.
 - output은 generation/sequence와 byte 상한을 갖는다. 느린 viewer의 backpressure와 UTF-8/ANSI chunk 분할을 시험한다. 입력은 ack/sequence로 중복을 막되 재접속 시 과거 키 입력·명령을 자동 replay하지 않는다. keystroke 원문을 영속 operation 로그에 남기지 않는다.
+- Linux qualification에서 xterm serialize는 미완료 escape parser 상태를 보존하지 못했고, interactive shell의 별도 process group job은 기존 group kill 뒤에도 남았다. P07은 이 두 실제 반례를 해결하거나 정확한 제한을 표시해야 한다.
 - scrollback이 잘린 상태에서 임의 중간 ANSI부터 재생하면 화면 상태가 깨질 수 있다. xterm의 headless/serialize 계열처럼 기존 기능으로 복구 snapshot을 만들 수 있는지 WB-P07에서 검증한다. 불가능한 상태는 재attach 성공으로 속이지 않고 명시적 제한/새 터미널 경로를 제공한다.
 - clipboard escape, 링크, terminal title, OSC는 비신뢰 입력이다. 명령·링크를 자동 실행하지 않는다. preview는 기존 별도 origin/partition을 유지한다. [xterm 보안 지침](https://xtermjs.org/docs/guides/security/)
 - host가 재시작하면 PTY 자체가 복원된다고 가정하지 않는다. 이전 process identity·종료 결과를 재확인하며 불명확한 프로세스는 orphan/uncertain으로 표시한다. renderer reload와 host restart 테스트를 따로 둔다.
@@ -184,7 +187,7 @@ PTY는 host에 위치한다. renderer에는 xterm view만 둔다. `CommandRuntim
 
 ### M1 기존 화면에서 실제 파일과 터미널 연결
 
-**WB-P03 공통 예약과 인간 operation 원장 — L, W2-02**
+**WB-P03 공통 예약과 인간 operation 원장 — L, W2-02, C-143 구현**
 
 - 위치: `apps/server/src/files/run-access.ts`, `processes/`, `packages/contracts`, `packages/storage-sqlite`; 새 `apps/server/src/workbench/operations.ts` 후보.
 - 작업: 인간/에이전트 owner를 구분한 durable reservation·receipt, 재시작 recover, idempotency hash, target generation을 추가한다. 기존 Run acquire/release와 effect permit은 그대로 연결한다.

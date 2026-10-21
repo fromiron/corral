@@ -1478,6 +1478,8 @@ export interface WorkspaceBindingView {
 
 export interface WorktreeView {
   sessionId: string;
+  bindingId: string;
+  copyGeneration: number;
   baseCommit: string;
   createdAt: string;
   removedAt: string | null;

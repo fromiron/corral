@@ -12,11 +12,13 @@ import {
 import { rename, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
+import { ToolRefusal } from '@corral/core';
 import { openDatabase, SqliteProjectToolStore } from '@corral/storage-sqlite';
 import { FakeClock, Gate } from '@corral/testkit';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ReviewService } from '../src/files/review.ts';
 import { safeRelative, WorkspaceService } from '../src/files/service.ts';
+import { WorkspaceAccessStore } from '../src/files/workspace-access.ts';
 
 // The file broker's rules (CR-012): paths, the read-before-change rule, and what a stop leaves.
 // These integration cases create real Git worktrees and capture multiple trees
@@ -84,6 +86,53 @@ async function setup(
 }
 
 describe('file broker (CR-012)', () => {
+  it('[TC-WBD-001-H] identifies the binding and advances the copy generation after recreation', async () => {
+    const s = await setup();
+    try {
+      const first = s.service.worktreeView('session_1');
+      expect(first).toMatchObject({ bindingId: expect.any(String), copyGeneration: 1 });
+      await s.service.removeWorktree('session_1');
+      const second = await s.service.createWorktree('session_1', 'default');
+      expect(second).toMatchObject({ bindingId: first?.bindingId, copyGeneration: 2 });
+      s.service.acquireRun('run_1', 'session_1', true);
+      expect(
+        s.db
+          .prepare(
+            "SELECT copy_generation FROM workspace_access WHERE owner_kind='run' AND owner_id='run_1'",
+          )
+          .get(),
+      ).toEqual({ copy_generation: 2 });
+    } finally {
+      await s.service.dispose();
+      s.db.close();
+    }
+  });
+
+  it('[TC-WBD-001-N] protects active and uncertain readers from removal and rejects acquisition during removal', async () => {
+    const s = await setup();
+    try {
+      const copy = s.service.copyOf('session_1');
+      if (!copy) throw new Error('working copy missing');
+      const path = copy.worktree;
+      s.service.acquireRun('run_1', 'session_1', false);
+      await expect(s.service.removeWorktree('session_1')).rejects.toThrow(/owner|access/);
+      expect(existsSync(path)).toBe(true);
+      s.service.releaseRun('run_1', false);
+      await expect(s.service.removeWorktree('session_1')).rejects.toThrow(/owner|access/);
+      rmSync(path, { recursive: true, force: true });
+      await expect(s.service.removeWorktree('session_1')).rejects.toThrow(/owner|access/);
+      s.service.confirmWorkerRecovery();
+      const removal = s.service.removeWorktree('session_1');
+      expect(() => s.service.acquireRun('late_reader', 'session_1', false)).toThrow(ToolRefusal);
+      await removal;
+      expect(s.service.worktreeView('session_1')).toBeNull();
+      expect(existsSync(path)).toBe(false);
+    } finally {
+      await s.service.dispose();
+      s.db.close();
+    }
+  });
+
   it('[TC-CONTINUITY-001-N] [TC-RESUME-001-N] runtime file identity refuses changed, foreign and uncertain trees', async () => {
     const s = await setup();
     const root = s.service.copyOf('session_1')!.worktree;
@@ -686,7 +735,7 @@ describe('file broker (CR-012)', () => {
     expect(review.inbox(sessions, []).some((item) => item.kind === 'lsp_proposal')).toBe(false);
     s.db.close();
   });
-  it('[TC-HAR-018-H] persists a pinned proposal, waits for explicit idle-session apply and never writes twice', async () => {
+  it('[TC-HAR-018-H] [TC-WBD-001-N] persists a pinned proposal, waits for explicit idle-session apply and never writes twice', async () => {
     const s = await proposalSetup();
     expect(s.proposal.state).toBe('pending');
     expect(s.service.lspProposals('session_1')).toHaveLength(1);
@@ -696,6 +745,14 @@ describe('file broker (CR-012)', () => {
       s.service.applyLspProposal('session_1', s.proposal.proposalId, s.proposal.hash),
     ).rejects.toThrow(/run|Run/);
     s.db.prepare("UPDATE runs SET status='succeeded' WHERE id='run_1'").run();
+    const access = new WorkspaceAccessStore(s.db);
+    const owner = { kind: 'user', id: 'human_save' } as const;
+    access.acquire(owner, 'session_1', s.root, true, 1);
+    await expect(
+      s.service.applyLspProposal('session_1', s.proposal.proposalId, s.proposal.hash),
+    ).rejects.toThrow(/writer|ownership/);
+    expect(s.service.lspProposal('session_1', s.proposal.proposalId).state).toBe('pending');
+    access.release(owner, true);
     await expect(
       s.service.applyLspProposal('session_1', s.proposal.proposalId, '0'.repeat(64)),
     ).rejects.toThrow(/hash|changed/);
@@ -1129,7 +1186,7 @@ describe('file broker (CR-012)', () => {
       );
     },
   );
-  it('[TC-HAR-013-H] manual checks use owned frozen copies and retain separate state and verdict', async () => {
+  it('[TC-HAR-013-H] [TC-WBD-001-N] manual checks use owned frozen copies and retain separate state and verdict', async () => {
     const { service, call, db } = await setup();
     await service.configure('default', {
       verifyCommands: [
@@ -1145,6 +1202,16 @@ describe('file broker (CR-012)', () => {
         },
       ],
     });
+    const access = new WorkspaceAccessStore(db);
+    const owner = { kind: 'user', id: 'human_save' } as const;
+    const copy = service.copyOf('session_1');
+    if (!copy) throw new Error('working copy missing');
+    access.acquire(owner, 'session_1', copy.worktree, true, 1);
+    await expect(service.verify('session_1', 'default', 'copy')).rejects.toThrow(
+      /writer|ownership/,
+    );
+    expect(db.prepare('SELECT id FROM verifications').all()).toEqual([]);
+    access.release(owner, true);
     const id = await service.verify('session_1', 'default', 'copy');
     const report = await service.waitVerification(id);
     expect(report).toMatchObject({
@@ -1552,6 +1619,8 @@ describe('missing folders (02-UX-Spec §8)', () => {
     if (!copy) throw new Error('no copy');
     rmSync(copy.worktree, { recursive: true, force: true });
     expect(service.worktreeView('session_1')?.missing).toBe(true);
+    await service.removeWorktree('session_1');
+    expect(service.worktreeView('session_1')).toBeNull();
     rmSync(original, { recursive: true, force: true });
     expect((await service.view('default'))?.missing).toBe(true);
   });

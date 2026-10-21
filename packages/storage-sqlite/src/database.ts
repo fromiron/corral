@@ -5,6 +5,7 @@ import { MEDIA_ARTIFACT_MIGRATION } from './media-migration.ts';
 import { PACKAGE_MIGRATION } from './package-migration.ts';
 import { SqliteProjectToolStore } from './project-tool-store.ts';
 import { SCHEDULE_MIGRATION } from './schedule-migration.ts';
+import { WORKBENCH_MIGRATION } from './workbench-migration.ts';
 
 // One SQLite file per workspace (C-011, C-062). Durable settings follow the C-052 spike:
 // WAL, foreign keys, FULL sync. Schema changes are numbered migrations recorded in
@@ -536,6 +537,7 @@ BEGIN SELECT RAISE(ABORT, 'finished evaluations are immutable'); END;
     name: '0028_session_auto_title',
     sql: 'ALTER TABLE work_sessions ADD COLUMN auto_title INTEGER NOT NULL DEFAULT 0 CHECK(auto_title IN (0,1));',
   },
+  WORKBENCH_MIGRATION,
 ];
 
 /** History queries must neither recover active runs nor migrate the workspace. */
