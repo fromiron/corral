@@ -23,9 +23,16 @@ Anthropic adaptive thinking의 기본 effort와 message-level effort를 API key/
 
 Gemini는 설치된 Pi 1.3.0에서 custom fetch를 거절하는 것을 네트워크 0회로 재현했다. Ultra permit 경계를 지킬 수 없어 미지원 상태를 유지한다. 구형 Anthropic budget-thinking도 이 conformance 범위 밖이다.
 
+## GPT OAuth와 Linux 패키지 검증
+
+- `8349579` 소스의 GPT OAuth Ultra 텍스트 fixture: 요청 10회, 61.56초, 성공, 미확정 사용량 0. 두 실제 GPT 모델이 종합·교차 검토를 완료했다. 코드 저장소 검사나 품질 비교 시험은 아니다. 실행 후보 SHA-256: `76472edaad91e170e4fc139b55c0c458865767ef813bc15f5350716479f2af2d`.
+- Studio build → Desktop prepare → AppImage package 완료. runtime 격리 검사에서 모듈 570개, SQLite/ONNX, 두 Pi worker handshake, 물리 파일 26,582개·링크 0개를 확인했다.
+- Linux unpacked `smoke.ts`: DW-07 통과. host Node/pnpm 없는 PATH에서 SQLite history·draft/theme/route·단일 instance·quit·renderer/sidecar recovery·startup retry·workspace reopening을 확인했다. 첫 실행은 과거 `Start session`/template 선택 경로에서 실패했고, 공용 `teamFromTemplate`/`startSession` 절차로 수정 후 통과했다.
+- 실제 AppImage를 `native-smoke.ts`로 실행: TC-ABS-007-H/004-H 통과. native 창·요청·interactive preview JS/CSS·cookie 분리·외부 이동 차단·lease 종료·단축키·원격 호스트 **등록 폼**·history/draft·tray·second-instance·restart. 합성 오디오 장치 동의와 카메라 거절도 확인했다. 외부 SSH 연결·실제 음성 기기 시험으로 집계하지 않는다.
+- 산출물: `apps/desktop/release/Corral-0.1.0-x86_64.AppImage`, 343,177,388 bytes, SHA-256 `5f94e25114d5125a820f92f2194f146816281425136ac41454211794cc46c174`. 게시/배포하지 않았다. Windows portable/NSIS·macOS·서명·실제 업데이트 피드 검증은 별도다.
+
 ## 남은 순서
 
-1. Provider/API conformance와 현재 후보 GPT live 검증.
-2. 현재 Linux 패키지 검증. Windows/macOS는 별도 후속 작업.
-3. 기존 Skill draft에 fixture/eval/명시 채택을 연결한 뒤 update/rollback.
-4. 사용 가능한 인증·외부 대상으로 실제 연동 검증. 준비되지 않은 환경은 명시한다.
+1. Gemini 단일 dispatch 지원은 상류 adapter 제약으로 남는다. Windows/macOS 실기는 별도 후속 작업.
+2. 기존 Skill draft에 fixture/eval/명시 채택을 연결한 뒤 update/rollback.
+3. 사용 가능한 인증·외부 대상으로 실제 연동 검증. 준비되지 않은 환경은 명시한다.

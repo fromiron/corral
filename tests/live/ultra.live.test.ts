@@ -138,8 +138,9 @@ it.skipIf(process.env.CORRAL_ULTRA_LIVE !== '1')(
       clearTimeout(deadline);
       cancel();
       off();
+      mkdirSync(join(import.meta.dirname, 'test-results'), { recursive: true });
       writeFileSync(
-        join(import.meta.dirname, '.ultra-last-run.json'),
+        join(import.meta.dirname, 'test-results/ultra.json'),
         JSON.stringify(
           {
             candidate,

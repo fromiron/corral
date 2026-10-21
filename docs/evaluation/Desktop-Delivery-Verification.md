@@ -206,3 +206,7 @@ signed release channel, actual voice provider or model decision quality.
 NSIS installation, macOS execution/notarization, Linux execution of these new features,
 real microphone privacy prompts, actual SSH success and live update download/signature/install
 remain environment-specific verification limits.
+
+## 2026-10-21 Linux candidate
+
+`8349579` runtime의 Linux unpacked recovery smoke와 실제 AppImage native flow가 통과했다. 해시·환경·반례·검증 범위는 [품질 작업 실행 기록](Quality-Completion-2026-10-21.md)에 있다. 이전 Windows 수치나 미검증 NSIS/macOS 항목을 이 결과로 대체하지 않는다.

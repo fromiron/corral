@@ -27,3 +27,5 @@ change_requests: [CR-042, CR-033]
 OTel 외부 export와 CLI browser 비교는 원래의 opt-in 후속 범위다. 기본 tracing·기존 browser 도구를 대체하거나 새 의존성을 설치할 근거가 아니다.
 
 완료 판정은 OS·빌드 identity·mock/live·실행한 흐름·실패/skip을 구분한다. Windows 성공, Linux 단위 회귀, macOS 미지원은 서로 대체할 수 없다.
+
+2026-10-21 Linux unpacked recovery와 AppImage native 흐름은 [현재 실행 기록](../evaluation/Quality-Completion-2026-10-21.md)으로 검증했다. 해당 candidate 이후 변경과 Windows/macOS 실기는 구분한다. 사용자는 현재 환경에서 불가능한 Windows/macOS 검증을 별도 후속 작업으로 지정했다.
