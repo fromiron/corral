@@ -30,6 +30,7 @@ export * from './review-recipe.ts';
 export * from './runtime-checkpoints.ts';
 export * from './schedules.ts';
 export * from './session-continuity.ts';
+export * from './skill-quality.ts';
 export * from './states.ts';
 export * from './team-plan.ts';
 export * from './user-input.ts';

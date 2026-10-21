@@ -82,6 +82,8 @@ import { McpCredentials } from './harness/mcp-credentials.ts';
 import { McpService } from './harness/mcp-service.ts';
 import { registerHarnessRoutes } from './harness/routes.ts';
 import { HarnessService } from './harness/service.ts';
+import { SkillQualityService } from './harness/skill-quality.ts';
+import { registerSkillQualityRoutes } from './harness/skill-quality-routes.ts';
 import { createHarnessVaultAdapters } from './harness/vault.ts';
 import { ImageStore } from './images.ts';
 import { ImageProfileStore } from './images-generation/profiles.ts';
@@ -864,6 +866,15 @@ async function createCorralServer(
   });
 
   registerHarnessRoutes(app, harnesses, files);
+  const skillQuality = new SkillQualityService({
+    db,
+    clock,
+    harness: harnesses,
+    coordinator,
+    timers: options.timers ?? systemTimers,
+  });
+  resources.defer(() => skillQuality.close());
+  registerSkillQualityRoutes(app, skillQuality);
 
   // ── models (C-058) ─────────────────────────────────────────────────────────
   // Status and expiry only; tokens never appear in these answers (ADR-019).

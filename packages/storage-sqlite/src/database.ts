@@ -523,6 +523,15 @@ CREATE TABLE checkpoint_restores (
   MEDIA_ARTIFACT_MIGRATION,
   PACKAGE_MIGRATION,
   CORRAL_OPERATION_MIGRATION,
+  {
+    name: '0027_skill_evaluations',
+    sql: `
+CREATE TABLE skill_evaluations (id TEXT PRIMARY KEY, request_hash TEXT NOT NULL, view_json TEXT NOT NULL) STRICT;
+CREATE TRIGGER skill_evaluations_terminal_immutable BEFORE UPDATE ON skill_evaluations
+WHEN json_extract(OLD.view_json, '$.status') <> 'running'
+BEGIN SELECT RAISE(ABORT, 'finished evaluations are immutable'); END;
+`,
+  },
 ];
 
 /** History queries must neither recover active runs nor migrate the workspace. */

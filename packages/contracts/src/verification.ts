@@ -38,6 +38,9 @@ export const CheckPlan = z
   );
 export type CheckPlan = z.infer<typeof CheckPlan>;
 export interface CheckExecution {
+  /** Host-selected policy; never supplied by model tool arguments. */
+  isolation?: 'linux-bwrap';
+  expectedTree?: string;
   runId: string;
   executionId: string;
   attemptNo: number;
@@ -46,6 +49,7 @@ export interface CheckExecution {
   commandId: string;
 }
 export const VerificationReport = z.strictObject({
+  isolation: z.literal('linux-bwrap').optional(),
   verificationId: Identifier,
   owner: VerificationOwner,
   sessionId: Identifier,

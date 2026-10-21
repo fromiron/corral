@@ -685,7 +685,7 @@
   },
   {
     "id": "CRL-ULTRA-003",
-    "requirement": "CR-031 C-118: 새 Ultra는 명시 pool의 복수 모델에 역할을 고정하고 최대 지원 추론과 필수 교차 검토를 수행한다. 실제 provider wire/한 번의 dispatch/공유 예산/취소를 검증하고 legacy snapshot과 승인한 입력 범위를 보존한다.",
+    "requirement": "CR-031 C-118: 새 Ultra는 명시 pool의 복수 모델에 역할을 고정하고 최대 지원 추론과 필수 교차 검토를 수행한다. 실제 provider wire/한 번의 dispatch/공유 예산/취소를 검증하고 legacy snapshot과 승인한 입력 범위를 보존한다. 저장소가 있는 새 Ultra는 선택된 등록 검사를 고정 tree의 host 소유 OS 격리에서 실행하고 격리/소유권/신선도 증거 없는 완료를 거절한다.",
     "owner": "core",
     "phase": "M4"
   },
@@ -802,5 +802,17 @@
     "requirement": "CR-043 기본 대화는 Corral 제작 없이 시작하고, 선택적 실행 구성을 명시적으로 노출하며 기존 승인·초안·복구·접근성을 보존한다.",
     "owner": "studio",
     "phase": "P12"
+  },
+  {
+    "id": "CRL-QEVAL-003",
+    "requirement": "CR-036-C: 불변 Skill draft를 고정 fixture와 같은 모델/정책/예산으로 기존 eval 경로에서 비교하고 완료된 mock/live/unknown 근거를 사람이 검토한 뒤 선택한 기본값에만 CAS 채택한다. 취소·중복·stale·grader 자기수정을 차단한다.",
+    "owner": "harness",
+    "phase": "M4"
+  },
+  {
+    "id": "CRL-QEVAL-004",
+    "requirement": "CR-036-D: 이전/후보 Skill의 source/license/reference/script/권한 및 모든 파일 변경·호환성·평가를 확인한 명시 업데이트와 CAS 롤백을 제공하고 사용자 수정·현재 Run·불변 revision을 보존한다.",
+    "owner": "harness",
+    "phase": "M4"
   }
 ]

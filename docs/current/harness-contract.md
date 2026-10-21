@@ -48,6 +48,7 @@ baseline: 373764467a52a7c6978de1272ac8253c73a27077
 - 기준 파일/hash와 산출물 버전을 고정하고 모델이 바꾼 기준으로 자기 결과를 승인하지 못하게 한다. 실제 검사 실패가 모델의 긍정적 검토보다 우선한다.
 - 수정 횟수·시간·호출·토큰 상한, 같은 실패/출력 반복·무진전·예산 소진 중단과 이유를 유지한다.
 - `personal_harness`의 다섯 비교군과 calibration/holdout을 보존한다. fixture 성공은 실제 모델 품질 향상 증거가 아니다. [Evaluation](../Evaluation.md)을 따른다.
+- Skill 관리 화면의 고정 fixture 비교·사람 채택·업데이트 검토·CAS 롤백은 [CR-036 C-138/139](../change-requests/CR-036-quality-evaluation.md)를 따른다. CLI와 같은 평가 경로를 사용하며 기존 Run snapshot은 변경하지 않는다. 텍스트 fixture와 mock/live 증거를 구분한다.
 
 ## H7–H8 반복·MCP·codemode
 

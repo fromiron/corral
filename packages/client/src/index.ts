@@ -7,6 +7,14 @@ import type {
   ProfileContextResolution,
   ReasoningCapabilities,
   RestoreCheckpoint,
+  SkillAdoption,
+  SkillAdoptRequest,
+  SkillEvaluationRequest,
+  SkillEvaluationView,
+  SkillFileComparison,
+  SkillKey,
+  SkillRollbackRequest,
+  SkillUpdatePreview,
 } from '@corral/contracts';
 import { canonicalJson } from '@corral/core';
 import type { CommandRecovery, StartRecovery } from './recovery.ts';
@@ -1243,6 +1251,60 @@ export class HarnessApi {
   cancelMcpProbe(operationId: string): Promise<{ ok: boolean }> {
     return this.http.json(`/harness/mcp-probes/${encodeURIComponent(operationId)}`, {
       method: 'DELETE',
+    });
+  }
+  skillPreview(candidate: SkillKey, baseline?: SkillKey): Promise<SkillUpdatePreview> {
+    return this.http.json('/harness/skill-quality/preview', {
+      method: 'POST',
+      body: JSON.stringify({ candidate, baseline }),
+    });
+  }
+  skillAdoptions(candidate: SkillKey): Promise<SkillAdoption[]> {
+    return this.http.json('/harness/skill-quality/adoptions', {
+      method: 'POST',
+      body: JSON.stringify(candidate),
+    });
+  }
+  skillFile(
+    candidate: SkillKey,
+    baseline: SkillKey | undefined,
+    path: string,
+  ): Promise<SkillFileComparison> {
+    return this.http.json('/harness/skill-quality/file', {
+      method: 'POST',
+      body: JSON.stringify({ candidate, baseline, path }),
+    });
+  }
+  skillEvaluations(candidate: SkillKey): Promise<SkillEvaluationView[]> {
+    return this.http.json('/harness/skill-quality/history', {
+      method: 'POST',
+      body: JSON.stringify(candidate),
+    });
+  }
+  evaluateSkill(request: SkillEvaluationRequest): Promise<SkillEvaluationView> {
+    return this.http.json('/harness/skill-quality/evaluations', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
+  }
+  skillEvaluation(id: string): Promise<SkillEvaluationView> {
+    return this.http.json(`/harness/skill-quality/evaluations/${encodeURIComponent(id)}`);
+  }
+  cancelSkillEvaluation(id: string): Promise<SkillEvaluationView> {
+    return this.http.json(`/harness/skill-quality/evaluations/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+  }
+  adoptSkill(request: SkillAdoptRequest): Promise<SkillAdoption> {
+    return this.http.json('/harness/skill-quality/adopt', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
+  }
+  rollbackSkill(request: SkillRollbackRequest): Promise<HarnessDefault> {
+    return this.http.json('/harness/skill-quality/rollback', {
+      method: 'POST',
+      body: JSON.stringify(request),
     });
   }
   readEntry(key: HarnessEntryKey): Promise<{ content: string; hook: ManagedHook | null }> {

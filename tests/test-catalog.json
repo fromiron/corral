@@ -2775,7 +2775,7 @@
       "CRL-ULTRA-003"
     ],
     "suite": "integration+browser",
-    "scenario": "실제 Pi serializer/fake HTTP의 복수 provider routing·최대 추론·공유 예산과 교차 검토",
+    "scenario": "실제 Pi serializer/fake HTTP의 복수 provider routing·최대 추론·공유 예산과 교차 검토, 선택된 프로젝트 검사와 고정 tree의 Linux 격리 증거 연결",
     "status": "planned",
     "adapter": "actual Pi serializers and deterministic local provider HTTP; no paid calls",
     "evidence": null
@@ -2786,7 +2786,7 @@
       "CRL-ULTRA-003"
     ],
     "suite": "integration+browser",
-    "scenario": "legacy와 요청 identity 보존, 변조·추가 dispatch·잘못된 wire·필수 모델 부재·취소/unknown 경계 차단",
+    "scenario": "legacy와 요청 identity 보존, 변조·추가 dispatch·잘못된 wire·필수 모델 부재·취소/unknown 경계 차단, 필수 검사 부재/미지원 격리/호스트 접근/검사 오류 및 stale 결과의 완료 차단",
     "status": "planned",
     "adapter": "actual Pi serializers and deterministic local provider HTTP; no paid calls",
     "evidence": null
@@ -3169,6 +3169,50 @@
     "scenario": "명시 Corral 유실·저장 경합·실패/취소·큐·늦은 응답·좁은 화면·키보드에서 초안/대상/권한을 잃거나 숨겨진 옵션이 예기치 않은 효과를 만들면 실패한다.",
     "status": "planned",
     "adapter": "mock unless explicitly live",
+    "evidence": null
+  },
+  {
+    "id": "TC-QEVAL-003-H",
+    "requirements": [
+      "CRL-QEVAL-003"
+    ],
+    "suite": "integration+browser",
+    "scenario": "Skill 불변 사본의 고정 fixture 기준/후보 평가와 사람 검토·선택 기본값 채택",
+    "status": "planned",
+    "adapter": "existing eval runtime, deterministic Coordinator workers and actual browser; live opt-in separate",
+    "evidence": null
+  },
+  {
+    "id": "TC-QEVAL-003-N",
+    "requirements": [
+      "CRL-QEVAL-003"
+    ],
+    "suite": "integration+browser",
+    "scenario": "평가 취소·중복·응답 유실·재시작·늦은 결과·stale revision·그레이더 변경 및 unknown 품질 과장 거절",
+    "status": "planned",
+    "adapter": "existing eval runtime, deterministic Coordinator workers and actual browser; live opt-in separate",
+    "evidence": null
+  },
+  {
+    "id": "TC-QEVAL-004-H",
+    "requirements": [
+      "CRL-QEVAL-004"
+    ],
+    "suite": "integration+browser",
+    "scenario": "Skill 전체 변경/호환성/기준 버전 평가 후 명시 업데이트와 이전 기본값 롤백",
+    "status": "planned",
+    "adapter": "existing eval runtime, deterministic Coordinator workers and actual browser; live opt-in separate",
+    "evidence": null
+  },
+  {
+    "id": "TC-QEVAL-004-N",
+    "requirements": [
+      "CRL-QEVAL-004"
+    ],
+    "suite": "integration+browser",
+    "scenario": "사용자 수정·신뢰 철회·다른 Skill·불일치 baseline·중복 롤백·진행 Run snapshot 변경 거절",
+    "status": "planned",
+    "adapter": "existing eval runtime, deterministic Coordinator workers and actual browser; live opt-in separate",
     "evidence": null
   }
 ]

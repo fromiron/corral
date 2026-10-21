@@ -20,6 +20,7 @@ export function modelReasoningCapabilities(model: Model<Api> | undefined): Reaso
     !model ||
     !(
       ['openai-responses', 'openai-codex-responses'].includes(model.api) ||
+      (hasApi(model, 'anthropic-messages') && model.compat?.forceAdaptiveThinking === true) ||
       (hasApi(model, 'openai-completions') &&
         ((model.compat?.thinkingFormat === 'deepseek' &&
           model.compat.supportsReasoningEffort !== false) ||
@@ -73,6 +74,7 @@ export function reasoningRequest(
     if (resolution.resolved !== 'off') next.reasoning = resolution.resolved;
     return { model, options: next };
   }
+  if (hasApi(model, 'anthropic-messages')) return { model, options: next };
   // Pi Codex adds `none` for omission unless off maps to null. Never mutate the catalog model.
   return {
     model: { ...model, thinkingLevelMap: { ...model.thinkingLevelMap, off: null } },
@@ -95,6 +97,8 @@ export function verifyReasoningWire(
     reasoning?: { effort?: unknown };
     reasoning_effort?: unknown;
     thinking?: { type?: unknown };
+    output_config?: { effort?: unknown };
+    messages?: { role?: unknown; output_config?: { effort?: unknown } }[];
     input?: { type?: unknown; reasoning?: { effort?: unknown } }[];
     max_output_tokens?: unknown;
     max_tokens?: unknown;
@@ -120,6 +124,33 @@ export function verifyReasoningWire(
       : model.thinkingLevelMap?.[level] === null
         ? null
         : (model.thinkingLevelMap?.[level] ?? (level === 'off' ? 'none' : level));
+  if (hasApi(model, 'anthropic-messages')) {
+    actual = body.output_config?.effort;
+    const managed =
+      model.compat?.supportsMidConvoEffort === true &&
+      ((level !== 'off' && level !== null) || model.thinkingLevelMap?.off === null);
+    if (managed) {
+      if (body.output_config?.effort !== 'high')
+        throw new Error('provider reasoning differs from the Coordinator permit');
+      const last = body.messages?.at(-1);
+      actual = last?.role === 'system' ? last.output_config?.effort : undefined;
+    }
+    const enabled = level !== null && level !== 'off';
+    expected = enabled
+      ? (model.thinkingLevelMap?.[level] ?? (level === 'minimal' ? 'low' : level))
+      : managed
+        ? 'high'
+        : null;
+    if (
+      body.thinking?.type !==
+      (enabled || managed
+        ? 'adaptive'
+        : model.thinkingLevelMap?.off === null
+          ? undefined
+          : 'disabled')
+    )
+      throw new Error('provider thinking differs from the Coordinator permit');
+  }
   if (hasApi(model, 'openai-completions') && model.compat?.thinkingFormat === 'deepseek') {
     const thinking = level === null ? undefined : level === 'off' ? 'disabled' : 'enabled';
     if (body.thinking?.type !== thinking)
@@ -131,11 +162,13 @@ export function verifyReasoningWire(
   if (maxOutputTokens !== undefined) {
     if (body.model !== model.id)
       throw new Error('provider model differs from the Coordinator permit');
-    const cap = hasApi(model, 'openai-completions')
-      ? model.compat?.maxTokensField === 'max_tokens'
-        ? body.max_tokens
-        : body.max_completion_tokens
-      : body.max_output_tokens;
+    const cap = hasApi(model, 'anthropic-messages')
+      ? body.max_tokens
+      : hasApi(model, 'openai-completions')
+        ? model.compat?.maxTokensField === 'max_tokens'
+          ? body.max_tokens
+          : body.max_completion_tokens
+        : body.max_output_tokens;
     const unsupported =
       model.api === 'openai-codex-responses' ||
       (hasApi(model, 'openai-responses') &&

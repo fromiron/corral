@@ -3,6 +3,20 @@ import { existsSync, readdirSync, realpathSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { type Channel, processChannel } from './channel.ts';
 
+/** Preserve the distribution's loader paths, including Debian's separate /usr/lib64. */
+export function linuxSystemMounts(): string[] {
+  return [
+    '--ro-bind',
+    '/usr',
+    '/usr',
+    ...['/bin', '/lib', '/lib64'].flatMap((path) => {
+      if (!existsSync(path)) return [];
+      const target = realpathSync(path);
+      return target.startsWith('/usr/') ? ['--symlink', target, path] : ['--ro-bind', path, path];
+    }),
+  ];
+}
+
 /** Application assets only; never bind the repository root or its .git/private state. */
 function applicationMounts(entry: string): string[] {
   const marker = `${process.platform === 'win32' ? '\\' : '/'}node_modules/`;
@@ -53,18 +67,7 @@ export function sandboxChannel(
     '--cap-drop',
     'ALL',
     '--clearenv',
-    '--ro-bind',
-    '/usr',
-    '/usr',
-    '--symlink',
-    'usr/bin',
-    '/bin',
-    '--symlink',
-    'usr/lib',
-    '/lib',
-    '--symlink',
-    'usr/lib',
-    '/lib64',
+    ...linuxSystemMounts(),
     '--proc',
     '/proc',
     '--dev',

@@ -1386,5 +1386,25 @@
       "TC-UX-005-H",
       "TC-UX-005-N"
     ]
+  },
+  {
+    "requirementId": "CRL-QEVAL-003",
+    "tests": [
+      "TC-QEVAL-003-H",
+      "TC-QEVAL-003-N"
+    ],
+    "tasks": [
+      "C-138"
+    ]
+  },
+  {
+    "requirementId": "CRL-QEVAL-004",
+    "tests": [
+      "TC-QEVAL-004-H",
+      "TC-QEVAL-004-N"
+    ],
+    "tasks": [
+      "C-139"
+    ]
   }
 ]

@@ -14,6 +14,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { _electron, expect } from '@playwright/test';
+import { startSession, teamFromTemplate } from '../../studio/e2e/workbench.ts';
 
 // An isolated app-data directory: this test never opens a person's Corral workspace.
 const desktop = resolve(import.meta.dirname, '..');
@@ -182,16 +183,8 @@ try {
   });
   await expect(page.getByRole('dialog', { name: 'Command palette' })).toBeVisible();
   await page.keyboard.press('Escape');
-  await page
-    .getByRole('region', { name: 'Start from a template' })
-    .getByRole('article')
-    .filter({ hasText: 'Single agent' })
-    .getByRole('button', { name: 'Edit this team' })
-    .click();
-  await page.getByRole('link', { name: 'Project home', exact: true }).click();
-  await page.getByText('Session details (optional)', { exact: true }).click();
-  await page.getByLabel('Purpose').fill('Desktop packaged smoke');
-  await page.getByRole('button', { name: 'Start session' }).click();
+  await teamFromTemplate(page);
+  await startSession(page, 'Desktop packaged smoke');
   await page
     .getByRole('combobox', { name: 'Request', exact: true })
     .fill('Write a short desktop smoke note.');

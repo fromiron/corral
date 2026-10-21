@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
 import { execFile, execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
@@ -64,6 +72,14 @@ const env: Record<string, string> = Object.fromEntries(
 delete env.ELECTRON_RUN_AS_NODE;
 if (process.platform === 'win32')
   env.PATH = `${join(process.env.SystemRoot ?? 'C:/Windows', 'System32')};${dirname(gitPath)}`;
+if (process.platform === 'linux') {
+  const hostTools = join(data, 'host-tools');
+  mkdirSync(hostTools);
+  const excluded = new Set(['node', 'nodejs', 'npm', 'npx', 'pnpm', 'pnpx', 'corepack', 'fnm']);
+  for (const name of readdirSync('/usr/bin'))
+    if (!excluded.has(name)) symlinkSync(join('/usr/bin', name), join(hostTools, name));
+  env.PATH = hostTools;
+}
 const launch = () =>
   _electron.launch({
     executablePath: binary,
@@ -388,7 +404,7 @@ try {
     )
     .toBe(true);
   mkdirSync(join(desktop, 'release'), { recursive: true });
-  await page.screenshot({ path: join(desktop, 'release/native-smoke-windows.png') });
+  await page.screenshot({ path: join(desktop, `release/native-smoke-${process.platform}.png`) });
   const closed = application.waitForEvent('close', { timeout: 20000 });
   await nativeMenu('Quit');
   await waitForQuit(closed);

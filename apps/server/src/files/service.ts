@@ -67,8 +67,9 @@ import { type Db, SqliteHarnessStore, SqliteProjectToolStore } from '@corral/sto
 import { CommandCapacityError, CommandRuntime } from '../processes/runtime.ts';
 import { commandEnvironment, listShells, resolveShellCommand } from '../processes/shells.ts';
 import { systemTimers } from '../runtime.ts';
+import { isolatedChecksAvailable } from './check-isolation.ts';
 import { redactToolText } from './check-output.ts';
-import { GitError, git, gitText } from './git.ts';
+import { checkGitEnvironment, GitError, git, gitText } from './git.ts';
 import {
   applyHashline,
   HashlineError,
@@ -77,7 +78,7 @@ import {
   mergeHashlineEvidence,
   readHashline,
 } from './hashline.ts';
-import { launchFingerprint } from './launch-fingerprint.ts';
+import { checkLaunchFingerprint, launchFingerprint } from './launch-fingerprint.ts';
 import { LspRunner } from './lsp.ts';
 import { stageLspEdit } from './lsp-edits.ts';
 import { lspResults, validateLspPosition } from './lsp-results.ts';
@@ -1488,9 +1489,12 @@ export class WorkspaceService implements FileTools {
   }
 
   /** The worktree as a git tree, from a temporary index; .gitignore'd files are left out. */
-  private async snapshotTree(worktree: string): Promise<string> {
+  private async snapshotTree(worktree: string, isolation?: 'linux-bwrap'): Promise<string> {
     const index = join(tmpdir(), `corral-index-${randomUUID()}`);
-    const env = { GIT_INDEX_FILE: index };
+    const env = {
+      ...(isolation ? await checkGitEnvironment(worktree) : {}),
+      GIT_INDEX_FILE: index,
+    };
     try {
       await git(worktree, ['read-tree', 'HEAD'], { env });
       await git(worktree, ['add', '-A', '--', '.'], { env });
@@ -1976,10 +1980,10 @@ export class WorkspaceService implements FileTools {
   }
 
   /** The worktree's tree now, without pinning it. */
-  async currentTree(sessionId: string): Promise<string | null> {
+  async currentTree(sessionId: string, isolation?: 'linux-bwrap'): Promise<string | null> {
     const row = this.worktree(sessionId);
     if (!row) return null;
-    return this.lease(row.worktree_path, () => this.snapshotTree(row.worktree_path));
+    return this.lease(row.worktree_path, () => this.snapshotTree(row.worktree_path, isolation));
   }
 
   /** A manual click authorizes this one launch; automatic callers require fingerprint trust. */
@@ -2523,8 +2527,15 @@ export class WorkspaceService implements FileTools {
     const { row, config, command } = this.checkContext(input);
     if (cancellation.aborted) throw new ToolRefusal('TARGET_TERMINAL', 'check cancelled');
     const plan = await this.lease(row.worktree_path, async () => {
-      const tree = await this.snapshotTree(row.worktree_path);
-      const launch = await launchFingerprint(row.worktree_path, config.revision, command);
+      const tree = await this.snapshotTree(row.worktree_path, input.isolation);
+      if (input.expectedTree && tree !== input.expectedTree)
+        throw new ToolRefusal('REVISION_CONFLICT', 'Ultra candidate tree changed before its check');
+      const launch = await checkLaunchFingerprint(
+        row.worktree_path,
+        config.revision,
+        command,
+        input.isolation,
+      );
       return {
         commandId: command.id,
         name: command.name,
@@ -2545,6 +2556,8 @@ export class WorkspaceService implements FileTools {
     if (cancellation.aborted) throw new ToolRefusal('TARGET_TERMINAL', 'check cancelled');
     return CheckPlan.parse(plan);
   }
+
+  isolatedChecksAvailable = isolatedChecksAvailable;
 
   async runCheck(
     input: CheckExecution,
@@ -2591,9 +2604,13 @@ export class WorkspaceService implements FileTools {
       owner,
       cancellation,
       approvedFingerprint,
+      input.isolation,
     );
     const report = await this.waitVerification(id);
-    return { ...report, stale: (await this.currentTree(sessionId)) !== report.tree };
+    return {
+      ...report,
+      stale: (await this.currentTree(sessionId, input.isolation)) !== report.tree,
+    };
   }
 
   private startCheck(
@@ -2607,6 +2624,7 @@ export class WorkspaceService implements FileTools {
     owner: VerificationOwner,
     parentCancellation?: ToolCancellation,
     approvedFingerprint?: string | null,
+    isolation?: 'linux-bwrap',
   ): string {
     const id = this.newVerificationId();
     this.db
@@ -2630,6 +2648,7 @@ export class WorkspaceService implements FileTools {
       .run(
         {
           verificationId: id,
+          ...(isolation ? { isolation } : {}),
           owner,
           sessionId,
           sourceDirectory,
@@ -2640,7 +2659,12 @@ export class WorkspaceService implements FileTools {
           command,
           beforeLaunch: async (directory) => {
             if (!this.binding(projectId)?.trusted) throw new Error('repository trust was revoked');
-            const current = await launchFingerprint(directory, configRevision, command);
+            const current = await checkLaunchFingerprint(
+              directory,
+              configRevision,
+              command,
+              isolation,
+            );
             if (current.fingerprint !== fingerprint) throw new Error('launch fingerprint changed');
             if (
               owner.kind === 'execution' &&
@@ -3482,11 +3506,11 @@ export class WorkspaceService implements FileTools {
     });
   }
 
-  async currentTreeForRun(runId: string): Promise<string | null> {
+  async currentTreeForRun(runId: string, isolation?: 'linux-bwrap'): Promise<string | null> {
     const access = this.runAccess.get(runId);
     if (access?.writer === 0) return this.startBaseline(runId);
     const found = this.worktreeOfRun(runId);
-    return found ? this.currentTree(found.sessionId) : null;
+    return found ? this.currentTree(found.sessionId, isolation) : null;
   }
 
   async pinCriteria(runId: string, raw: ReviewRecipeRevision['criteriaFiles']) {

@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PiAgentAdapter, processChannel, WORKER_ENTRY } from '@corral/adapter-pi';
-import type { AgentHost, AgentStartInput, RunEvent } from '@corral/contracts';
+import { type RunEvent, TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import { Coordinator, InProcessTransport, waitForProjection } from '@corral/core';
 import {
   DEFAULT_PROFILES,
@@ -135,85 +135,93 @@ describe.skipIf(!enabled)('OpenAI sign-in live smoke (C-020)', () => {
 
   it('an aborted request settles as cancelled; its usage is recorded as the provider left it', async () => {
     await registry.refreshStatus();
-    const resolution = registry.resolve('model-a', 'live');
-    if (!resolution.ok) throw new Error(resolution.reason);
-    const observed: unknown[] = [];
     let streamed = 0;
-    let call = 0;
-    let handle: Awaited<ReturnType<PiAgentAdapter['start']>> | null = null;
-    const host: AgentHost = {
-      prepareModelRequest: async () => {
-        if (++call > 1) throw new Error('Live abort smoke allows one model request');
-        return {
-          modelCallId: `call_${call}`,
-          contextSnapshotId: `ctx_${call}`,
-          profile: 'model-a',
-          maxOutputTokens: 256,
-          directives: [],
-        };
-      },
-      invokeTool: async () => ({
-        ok: false,
-        toolCallId: 'tool_x',
-        error: { code: 'CAPABILITY_DENIED', message: 'smoke' },
-      }),
-      authorizeTool: async () => ({
-        ok: false,
-        toolCallId: 'tool_x',
-        error: { code: 'CAPABILITY_DENIED', message: 'smoke' },
-      }),
-      executeTool: async () => ({
-        ok: false,
-        toolCallId: 'tool_x',
-        error: { code: 'CAPABILITY_DENIED', message: 'smoke' },
-      }),
-      observe: async (o) => void observed.push(o.usage),
-      streamText: () => {
-        streamed += 1;
-        if (streamed === 3) void handle?.cancel('live smoke abort');
-      },
-    };
-    const definition = linearCorral(['writer']);
-    const role = definition.roles[0];
-    if (!role) throw new Error('no role');
-    const input: AgentStartInput = {
-      runId: 'run_live',
-      executionId: 'exec_live',
-      taskId: 'task_live',
-      nodeId: 'writer',
-      attemptNo: 1,
-      role: {
-        ...role,
-        prompt: 'Count slowly from one to two hundred, one number per line.',
-        // The cancellation trigger observes text, not tool-argument deltas.
-        allowedWorkTools: [],
-        allowedCollaborationTools: [],
-      },
-      modelProfile: 'model-a',
-      mode: 'live',
-      model: resolution.snapshot,
-      depth: 0,
-      round: null,
-      criteriaVersionId: 'crit_0001',
-      assignment: { kind: 'scheduled' },
-      capabilities: { delegateTo: [], askTo: [] },
-      inputs: [
-        { name: 'brief', kind: 'run_input', artifactVersionId: null, text: 'Start counting.' },
-      ],
-    };
-    handle = await new PiAgentAdapter({
+    let calls = 0;
+    const events: RunEvent[] = [];
+    const adapter = new PiAgentAdapter({
       spawn: () => processChannel(WORKER_ENTRY),
       credentials: (model) => registry.credentials(model),
-    }).start(input, host);
-    const settlement = await handle.waitForSettlement();
-    report('abort settlement', settlement);
-    report('abort usage', observed);
-    report('abort trigger', { modelRequests: call, textChunks: streamed });
-    expect(call).toBe(1);
-    expect(streamed).toBeGreaterThanOrEqual(3);
-    expect(settlement.outcome).toBe('cancelled');
-    passedAbort = true;
-  }, 120_000);
+    });
+    const coordinator = new Coordinator({
+      clock: systemClock,
+      ids: new RandomIdFactory(),
+      models: registry,
+      agents: {
+        start: (input, host) =>
+          adapter.start(input, {
+            ...host,
+            prepareModelRequest(...args) {
+              if (++calls > 1) throw new Error('Live abort smoke allows one model request');
+              return host.prepareModelRequest(...args);
+            },
+            streamText(chunk) {
+              host.streamText?.(chunk);
+              if (++streamed === 3)
+                coordinator.submit({
+                  schemaVersion: '0.1',
+                  commandId: 'live_abort_on_stream',
+                  runId: input.runId,
+                  type: 'cancel',
+                  payload: { scope: { kind: 'run' }, reason: 'live stream cancellation fixture' },
+                });
+            },
+          }),
+      },
+    });
+    const transport = new InProcessTransport(coordinator);
+    const definition = linearCorral(['writer'], 'live-abort');
+    definition.input.brief =
+      'Count slowly from one to two hundred, one number per line. Respond as plain text.';
+    definition.roles[0]!.modelProfile = 'model-a';
+    definition.roles[0]!.allowedWorkTools = [];
+    definition.roles[0]!.allowedCollaborationTools = [];
+    definition.limits = {
+      ...definition.limits,
+      maxModelCalls: 1,
+      maxOutputTokensPerCall: 256,
+      runDeadlineMs: 60000,
+    };
+    const started = await transport.startRun({
+      schemaVersion: '0.1',
+      commandId: 'live_abort_start',
+      definition,
+      mode: 'live',
+    });
+    if (!started.runId) throw new Error('Abort fixture could not start');
+    const runId = started.runId;
+    const off = transport.subscribe(runId, 0, { onEvent: (event) => events.push(event) });
+    const deadline = setTimeout(
+      () =>
+        coordinator.submit({
+          schemaVersion: '0.1',
+          commandId: 'live_abort_deadline',
+          runId,
+          type: 'cancel',
+          payload: { scope: { kind: 'run' }, reason: 'live abort fixture deadline' },
+        }),
+      65000,
+    );
+    try {
+      const final = await waitForProjection(transport, runId, (projection) =>
+        TERMINAL_RUN_STATUSES.has(projection.status),
+      );
+      report('abort', {
+        status: final.status,
+        modelRequests: calls,
+        textChunks: streamed,
+        payloads: events.filter((event) => event.type === 'model.payload_recorded').length,
+        unknown: final.budget.unknownOutstanding,
+      });
+      expect(calls).toBe(1);
+      expect(streamed).toBeGreaterThanOrEqual(3);
+      expect(events.some((event) => event.type === 'model.payload_recorded')).toBe(true);
+      expect(final.status).toBe('cancelled');
+      passedAbort = true;
+    } finally {
+      clearTimeout(deadline);
+      off();
+    }
+  }, 90000);
 });
 
 describe.runIf(!enabled)('live smoke', () => {

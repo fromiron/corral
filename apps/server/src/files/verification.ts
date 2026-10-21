@@ -11,11 +11,13 @@ import {
 } from '@corral/contracts';
 import type { ToolCancellation } from '@corral/core';
 import { HostProcessCapacityError, spawnOwnedProcess } from '../processes/owned-process.ts';
+import { checkNamespaceGone, isolatedCheckLaunch } from './check-isolation.ts';
 import { CheckOutput } from './check-output.ts';
-import { git, gitText } from './git.ts';
+import { checkGitEnvironment, git, gitText } from './git.ts';
 import { killProcessGroup, processGroupGone } from './process-group.ts';
 
 export interface VerificationInput {
+  isolation?: 'linux-bwrap';
   verificationId: string;
   owner: VerificationOwner;
   sessionId: string;
@@ -77,17 +79,23 @@ export class VerificationRunner {
       output: { text: '', bytes: 0, hash: '0'.repeat(64), truncated: false },
     });
     update(report);
+    let checkEnv: Record<string, string> = {};
+    let sandboxPid: number | undefined;
+    let sandboxNamespace: number | undefined;
+    let sandboxExit: number | undefined;
     let copied = false;
     let processClosed = true;
     let groupGone = true;
     let executable = command.argv[0] as string;
     try {
       if (!cancellation.aborted) {
+        if (input.isolation) checkEnv = await checkGitEnvironment(input.sourceDirectory);
         await mkdir(input.copyRoot, { recursive: true, mode: 0o700 });
         const commit = await gitText(
           input.sourceDirectory,
           ['commit-tree', report.tree, '-m', 'Corral verification snapshot'],
           {
+            ...checkEnv,
             GIT_AUTHOR_NAME: 'Corral',
             GIT_AUTHOR_EMAIL: 'corral@localhost',
             GIT_COMMITTER_NAME: 'Corral',
@@ -97,7 +105,9 @@ export class VerificationRunner {
           },
         );
         if (!cancellation.aborted) {
-          await git(input.sourceDirectory, ['worktree', 'add', '--detach', directory, commit]);
+          await git(input.sourceDirectory, ['worktree', 'add', '--detach', directory, commit], {
+            env: checkEnv,
+          });
           copied = true;
           home = await mkdtemp(join(input.copyRoot, `${id}-home-`));
           executable = (await input.beforeLaunch?.(directory)) ?? executable;
@@ -105,6 +115,9 @@ export class VerificationRunner {
       }
       if (cancellation.aborted) report = { ...report, state: 'cancelled' };
       else {
+        const launch = input.isolation
+          ? await isolatedCheckLaunch(directory, executable, command.argv.slice(1))
+          : { executable, args: command.argv.slice(1) };
         report = { ...report, state: 'running' };
         update(report);
         const outcome = await new Promise<{
@@ -153,11 +166,13 @@ export class VerificationRunner {
             cancelCleanup = this.timers.after(8000, () => finish(null, null, false));
           };
           try {
-            child = this.spawn(executable, command.argv.slice(1), {
+            child = this.spawn(launch.executable, launch.args, {
               cwd: directory,
               shell: false,
               detached: process.platform !== 'win32',
-              stdio: ['ignore', 'pipe', 'pipe'],
+              stdio: input.isolation
+                ? ['ignore', 'pipe', 'pipe', 'pipe']
+                : ['ignore', 'pipe', 'pipe'],
               env: {
                 PATH: process.env.PATH ?? '/usr/bin:/bin',
                 HOME: home,
@@ -170,6 +185,39 @@ export class VerificationRunner {
                 NPM_CONFIG_GLOBALCONFIG: join(home as string, 'global-npmrc'),
               },
             });
+            if (input.isolation) {
+              let info = '';
+              child.stdio[3]?.on('data', (chunk: Buffer) => {
+                info = (info + chunk.toString()).slice(0, 4096);
+                while (info.includes('\n')) {
+                  const newline = info.indexOf('\n');
+                  const line = info.slice(0, newline);
+                  info = info.slice(newline + 1);
+                  try {
+                    const value = JSON.parse(line);
+                    if (
+                      Number.isSafeInteger(value['child-pid']) &&
+                      value['child-pid'] > 0 &&
+                      Number.isSafeInteger(value['pid-namespace'])
+                    ) {
+                      sandboxPid = value['child-pid'];
+                      sandboxNamespace = value['pid-namespace'];
+                    }
+                    if (
+                      sandboxPid &&
+                      Number.isSafeInteger(value['exit-code']) &&
+                      value['exit-code'] >= 0 &&
+                      value['exit-code'] < 128
+                    ) {
+                      sandboxExit = value['exit-code'];
+                      report = { ...report, isolation: input.isolation };
+                    }
+                  } catch {
+                    /* Missing terminal attestation cannot produce a usable check. */
+                  }
+                }
+              });
+            }
             child.stdout?.on('data', (chunk: Buffer) => output.add('stdout', chunk));
             child.stderr?.on('data', (chunk: Buffer) => output.add('stderr', chunk));
             child.once('error', () => {
@@ -190,12 +238,20 @@ export class VerificationRunner {
         });
         processClosed = outcome.closed;
         groupGone = !outcome.pid || (await processGroupGone(outcome.pid, this.timers));
+        if (input.isolation && outcome.pid)
+          groupGone =
+            groupGone &&
+            !!sandboxPid &&
+            sandboxNamespace !== undefined &&
+            (await checkNamespaceGone(sandboxPid, sandboxNamespace, this.timers));
         const cancelled = outcome.cancelled || cancellation.aborted;
         const error =
           outcome.failed ||
           outcome.timedOut ||
           !processClosed ||
           !groupGone ||
+          (input.isolation !== undefined &&
+            (report.isolation !== input.isolation || sandboxExit !== outcome.code)) ||
           outcome.signal !== null;
         report = {
           ...report,
@@ -213,12 +269,11 @@ export class VerificationRunner {
         };
         if (processClosed && groupGone && report.state === 'completed') {
           const targetUnchanged =
-            (await gitText(directory, [
-              'status',
-              '--porcelain=v1',
-              '-z',
-              '--untracked-files=all',
-            ])) === '';
+            (await gitText(
+              directory,
+              ['status', '--porcelain=v1', '-z', '--untracked-files=all'],
+              checkEnv,
+            )) === '';
           report = {
             ...report,
             targetUnchanged,
@@ -236,7 +291,9 @@ export class VerificationRunner {
       if (processClosed && groupGone) {
         try {
           if (copied)
-            await git(input.sourceDirectory, ['worktree', 'remove', '--force', directory]);
+            await git(input.sourceDirectory, ['worktree', 'remove', '--force', directory], {
+              env: checkEnv,
+            });
           if (home) await rm(home, { recursive: true, force: true });
           report = { ...report, cleanupConfirmed: true };
         } catch {

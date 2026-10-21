@@ -2266,7 +2266,7 @@
     ],
     "done": "명시 모델 배정·필수 교차 검토·제한된 병렬 위임·최대 추론 wire와 공유 예산·취소를 검증하고 UI/API/CLI 및 과거 snapshot을 보존한다.",
     "status": "in_progress",
-    "evidence": "docs/evaluation/Integrated-Improvement-M4-2026-10-19.md"
+    "evidence": "docs/evaluation/Quality-Completion-2026-10-21.md"
   },
   {
     "id": "C-119",
@@ -2327,8 +2327,12 @@
     "id": "C-122",
     "phase": "M1",
     "title": "ABS-01 실제 관리 사본의 명령·service 실행",
-    "dependsOn": ["C-123"],
-    "requirements": ["CRL-ABS-001"],
+    "dependsOn": [
+      "C-123"
+    ],
+    "requirements": [
+      "CRL-ABS-001"
+    ],
     "files": [
       "packages/contracts/src/command-execution.ts",
       "packages/core/src/coordinator.ts",
@@ -2345,7 +2349,9 @@
     "phase": "M1",
     "title": "ABS-02 Ask·Accept edits·Auto 권한 프리셋",
     "dependsOn": [],
-    "requirements": ["CRL-ABS-002"],
+    "requirements": [
+      "CRL-ABS-002"
+    ],
     "files": [
       "packages/contracts/src/definition.ts",
       "packages/contracts/src/harness.ts",
@@ -2360,8 +2366,12 @@
     "id": "C-124",
     "phase": "M2",
     "title": "ABS-03 읽기 근거에 결합된 Hashline 편집",
-    "dependsOn": ["C-123"],
-    "requirements": ["CRL-ABS-003"],
+    "dependsOn": [
+      "C-123"
+    ],
+    "requirements": [
+      "CRL-ABS-003"
+    ],
     "files": [
       "packages/contracts/src/coding.ts",
       "apps/server/src/files/service.ts",
@@ -2376,8 +2386,12 @@
     "id": "C-125",
     "phase": "M2",
     "title": "ABS-04 파일·HTML·로컬 앱 미리보기",
-    "dependsOn": ["C-122"],
-    "requirements": ["CRL-ABS-004"],
+    "dependsOn": [
+      "C-122"
+    ],
+    "requirements": [
+      "CRL-ABS-004"
+    ],
     "files": [
       "apps/server/src/",
       "apps/studio/src/workbench/FilePanel.tsx",
@@ -2393,7 +2407,9 @@
     "phase": "M2",
     "title": "ABS-05 모델 카탈로그·설정 import·사고 강도",
     "dependsOn": [],
-    "requirements": ["CRL-ABS-005"],
+    "requirements": [
+      "CRL-ABS-005"
+    ],
     "files": [
       "apps/server/src/models/",
       "packages/client/src/",
@@ -2408,8 +2424,12 @@
     "id": "C-127",
     "phase": "M2",
     "title": "ABS-06 동시 Run과 worktree별 단일 writer",
-    "dependsOn": ["C-122"],
-    "requirements": ["CRL-ABS-006"],
+    "dependsOn": [
+      "C-122"
+    ],
+    "requirements": [
+      "CRL-ABS-006"
+    ],
     "files": [
       "packages/core/src/coordinator.ts",
       "packages/core/src/store/run-store.ts",
@@ -2426,8 +2446,13 @@
     "id": "C-128",
     "phase": "M3",
     "title": "ABS-07 OS별 패키지·트레이·업데이트·절전 방지·단축키",
-    "dependsOn": ["C-122", "C-127"],
-    "requirements": ["CRL-ABS-007"],
+    "dependsOn": [
+      "C-122",
+      "C-127"
+    ],
+    "requirements": [
+      "CRL-ABS-007"
+    ],
     "files": [
       "apps/desktop/package.json",
       "apps/desktop/scripts/",
@@ -2442,8 +2467,13 @@
     "id": "C-129",
     "phase": "M3",
     "title": "ABS-08 영속 예약 실행",
-    "dependsOn": ["C-123", "C-127"],
-    "requirements": ["CRL-ABS-008"],
+    "dependsOn": [
+      "C-123",
+      "C-127"
+    ],
+    "requirements": [
+      "CRL-ABS-008"
+    ],
     "files": [
       "packages/contracts/src/",
       "apps/server/src/",
@@ -2459,8 +2489,13 @@
     "id": "C-130",
     "phase": "M3",
     "title": "ABS-09 프로젝트 열기·복제와 지침·메모리",
-    "dependsOn": ["C-122", "C-123"],
-    "requirements": ["CRL-ABS-009"],
+    "dependsOn": [
+      "C-122",
+      "C-123"
+    ],
+    "requirements": [
+      "CRL-ABS-009"
+    ],
     "files": [
       "apps/server/src/",
       "packages/storage-sqlite/src/",
@@ -2476,8 +2511,13 @@
     "id": "C-131",
     "phase": "M3",
     "title": "ABS-10 이미지 생성과 불변 바이너리 산출물",
-    "dependsOn": ["C-123", "C-126"],
-    "requirements": ["CRL-ABS-010"],
+    "dependsOn": [
+      "C-123",
+      "C-126"
+    ],
+    "requirements": [
+      "CRL-ABS-010"
+    ],
     "files": [
       "packages/contracts/src/",
       "packages/core/src/coordinator.ts",
@@ -2493,8 +2533,14 @@
     "id": "C-132",
     "phase": "M3",
     "title": "ABS-11 Markdown 서브에이전트 정의 import",
-    "dependsOn": ["C-122", "C-124", "C-126"],
-    "requirements": ["CRL-ABS-011"],
+    "dependsOn": [
+      "C-122",
+      "C-124",
+      "C-126"
+    ],
+    "requirements": [
+      "CRL-ABS-011"
+    ],
     "files": [
       "packages/contracts/src/definition.ts",
       "packages/core/src/",
@@ -2509,8 +2555,14 @@
     "id": "C-133",
     "phase": "M4",
     "title": "ABS-12 스킬·MCP·서버 확장 패키지",
-    "dependsOn": ["C-123", "C-127", "C-132"],
-    "requirements": ["CRL-ABS-012"],
+    "dependsOn": [
+      "C-123",
+      "C-127",
+      "C-132"
+    ],
+    "requirements": [
+      "CRL-ABS-012"
+    ],
     "files": [
       "apps/server/src/harness/",
       "packages/contracts/src/harness.ts",
@@ -2525,8 +2577,16 @@
     "id": "C-134",
     "phase": "M4",
     "title": "ABS-13 9개 도메인의 암호화 설정 금고",
-    "dependsOn": ["C-126", "C-129", "C-130", "C-132", "C-133"],
-    "requirements": ["CRL-ABS-013"],
+    "dependsOn": [
+      "C-126",
+      "C-129",
+      "C-130",
+      "C-132",
+      "C-133"
+    ],
+    "requirements": [
+      "CRL-ABS-013"
+    ],
     "files": [
       "packages/contracts/src/",
       "apps/server/src/",
@@ -2542,8 +2602,13 @@
     "id": "C-135",
     "phase": "M4",
     "title": "ABS-14 원격 Corral 호스트와 host namespace",
-    "dependsOn": ["C-127", "C-128"],
-    "requirements": ["CRL-ABS-014"],
+    "dependsOn": [
+      "C-127",
+      "C-128"
+    ],
+    "requirements": [
+      "CRL-ABS-014"
+    ],
     "files": [
       "packages/contracts/src/",
       "packages/client/src/",
@@ -2559,8 +2624,14 @@
     "id": "C-136",
     "phase": "M4",
     "title": "ABS-15 대상 고정 라이브 음성",
-    "dependsOn": ["C-123", "C-126", "C-127"],
-    "requirements": ["CRL-ABS-015"],
+    "dependsOn": [
+      "C-123",
+      "C-126",
+      "C-127"
+    ],
+    "requirements": [
+      "CRL-ABS-015"
+    ],
     "files": [
       "packages/contracts/src/",
       "apps/server/src/",
@@ -2593,5 +2664,47 @@
     "done": "새 대화→요청→Coordinator 결과→재로드를 사용자 Corral 없이 수행하고, 옵션·명시 Corral·초안·권한·키보드·390px 복구를 실제 UI에서 확인한다.",
     "status": "implemented",
     "evidence": "docs/evaluation/Chat-First-UX-Review.md"
+  },
+  {
+    "id": "C-138",
+    "phase": "M4",
+    "title": "CR-036-C Skill fixture 평가와 명시 채택",
+    "dependsOn": [
+      "C-105"
+    ],
+    "requirements": [
+      "CRL-QEVAL-003"
+    ],
+    "files": [
+      "apps/server/src/harness/",
+      "apps/studio/src/workbench/harness/",
+      "packages/core/src/evaluation.ts",
+      "packages/contracts/src/",
+      "packages/storage-sqlite/src/"
+    ],
+    "done": "고정 fixture·기준/후보·동일 모델 정책·실제 Run 근거와 사람 채택, 취소/중복/stale 반례를 검증한다.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/Quality-Completion-2026-10-21.md"
+  },
+  {
+    "id": "C-139",
+    "phase": "M4",
+    "title": "CR-036-D Skill 업데이트 검토와 롤백",
+    "dependsOn": [
+      "C-138"
+    ],
+    "requirements": [
+      "CRL-QEVAL-004"
+    ],
+    "files": [
+      "apps/server/src/harness/",
+      "apps/studio/src/workbench/harness/",
+      "packages/core/src/evaluation.ts",
+      "packages/contracts/src/",
+      "packages/storage-sqlite/src/"
+    ],
+    "done": "전체 파일/권한/source/license diff, 이전 버전 평가, 명시 업데이트와 CAS 롤백 및 기존 snapshot 보존을 검증한다.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/Quality-Completion-2026-10-21.md"
   }
 ]
