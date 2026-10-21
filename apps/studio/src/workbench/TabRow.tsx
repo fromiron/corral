@@ -11,7 +11,7 @@ export function TabRow<T extends string>({
 }: {
   id: string;
   label: string;
-  values: T[];
+  values: readonly T[];
   current: T;
   text: (value: T) => string;
   onChoose: (value: T) => void;

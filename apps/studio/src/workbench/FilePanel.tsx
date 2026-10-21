@@ -30,6 +30,7 @@ import { type CloseChoice, type DocumentBuffer, documentStore } from './document
 import { canPreviewFile, FilePreview } from './FilePreview.tsx';
 import { useSettingsNavigation } from './navigation.ts';
 import { PreviewLeases } from './PreviewLeases.tsx';
+import { panelKey } from './panels/registry.ts';
 import { ServicePreview } from './ServicePreview.tsx';
 import { TerminalPanel } from './TerminalPanel.tsx';
 import { useWorkspaceFiles } from './useWorkspaceFiles.ts';
@@ -69,7 +70,8 @@ export function FilePanel({
   const tf = useTranslations('Files');
   const te = useTranslations('Documents');
   const navigation = useSettingsNavigation();
-  const { workspaces, mode, workspaceId } = useServices();
+  const services = useServices();
+  const { workspaces, mode, workspaceId } = services;
   const owner = workspaces && mode === 'server' ? documentStore(workspaces) : null;
   const { documents } = useSyncExternalStore(
     owner?.subscribe ?? noSubscription,
@@ -446,7 +448,10 @@ export function FilePanel({
       {scopeKind === 'session' ? <WorktreeCommandPanel sessionId={sessionId} /> : null}
       <TerminalPanel sessionId={sessionId} />
       {scopeKind === 'session' ? (
-        <ServicePreview key={`service:${sessionId}`} sessionId={sessionId} />
+        <ServicePreview
+          key={panelKey(services, { kind: 'service-preview', sessionId })}
+          sessionId={sessionId}
+        />
       ) : null}
       <div className="flex items-center gap-2">
         <Select
@@ -580,7 +585,11 @@ export function FilePanel({
         <p className="text-xs text-muted">{t('loadingFile')}</p>
       ) : null}
       {active && canPreviewFile(active) && scopeKind === 'session' && mode === 'server' ? (
-        <FilePreview key={`${sessionId}:${active}`} sessionId={sessionId} path={active} />
+        <FilePreview
+          key={panelKey(services, { kind: 'file-preview', sessionId, path: active })}
+          sessionId={sessionId}
+          path={active}
+        />
       ) : null}
       {scopeKind === 'session' &&
       owner &&

@@ -5,6 +5,7 @@ import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { useServices } from '../services.tsx';
+import { panelKey } from './panels/registry.ts';
 import { type TerminalStore, terminalStore } from './terminals/store.ts';
 
 const TerminalView = lazy(() =>
@@ -283,6 +284,7 @@ function SessionTerminals({ sessionId, store }: { sessionId: string; store: Term
               }
             >
               <TerminalView
+                key={panelKey(store, { kind: 'terminal', sessionId, terminalId: selectedId })}
                 store={store}
                 terminalId={selectedId}
                 ariaLabel={t('content')}

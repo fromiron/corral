@@ -106,6 +106,7 @@ export function createRunSession(
 ): RunSessionStore {
   let unsubscribe: (() => void) | null = null;
   let generation = 0;
+  let opening: { runId: string; generation: number; promise: Promise<void> } | null = null;
   const receiptRefreshes = new Map<
     string,
     { version: number; dirty: boolean; promise: Promise<void> }
@@ -309,7 +310,6 @@ export function createRunSession(
 
     const transmit = async (command: RunCommand, recover = false): Promise<Receipt> => {
       const { commandId, runId } = command;
-      const version = generation;
       set({ commandError: null, pendingCommandIds: [...get().pendingCommandIds, commandId] });
       try {
         recovery?.pending(command);
@@ -320,7 +320,7 @@ export function createRunSession(
         const unconfirmedCommands = { ...get().unconfirmedCommands };
         delete unconfirmedCommands[commandId];
         set({ unconfirmedCommands });
-        if (generation === version && get().runId === runId) {
+        if (get().runId === runId) {
           set({ receipts: { ...get().receipts, [commandId]: receipt } });
           if (receipt.status === 'queued' || receipt.status === 'accepted')
             void get()
@@ -336,11 +336,10 @@ export function createRunSession(
             [commandId]: { command, error: message },
           },
         });
-        if (generation === version) set({ commandError: message });
+        if (get().runId === runId) set({ commandError: message });
         throw error;
       } finally {
-        if (generation === version)
-          set({ pendingCommandIds: get().pendingCommandIds.filter((id) => id !== commandId) });
+        set({ pendingCommandIds: get().pendingCommandIds.filter((id) => id !== commandId) });
       }
     };
 
@@ -436,27 +435,41 @@ export function createRunSession(
       },
 
       async open(runId) {
+        if (opening?.runId === runId && opening.generation === generation) return opening.promise;
         if (get().runId === runId && unsubscribe && !get().streamError) {
           if (!get().definition) await refreshDefinition(runId, generation);
           return;
         }
-        reset();
+        if (get().runId === runId) {
+          generation++;
+          unsubscribe?.();
+          unsubscribe = null;
+          set({ definition: null, definitionError: null, streamError: null, missingRunId: null });
+        } else reset();
         // The requested identity owns loading, missing and failed states too. Keeping it
         // here lets consumers display this request's error without accepting a prior run's.
         set({ runId });
         const version = generation;
-        try {
-          const definition = await transport.getRunDefinition(runId);
-          if (generation !== version) return;
-          if (!definition) {
-            set({ missingRunId: runId });
-            return;
+        const promise = (async () => {
+          try {
+            const definition = await transport.getRunDefinition(runId);
+            if (generation !== version) return;
+            if (!definition) {
+              set({ missingRunId: runId });
+              return;
+            }
+            set({ runId, definition });
+            await follow(runId, version);
+            await recoverCommands(runId, version);
+          } catch (error) {
+            if (generation === version) set({ streamError: String(error) });
           }
-          set({ runId, definition });
-          await follow(runId, version);
-          await recoverCommands(runId, version);
-        } catch (error) {
-          if (generation === version) set({ streamError: String(error) });
+        })();
+        opening = { runId, generation: version, promise };
+        try {
+          await promise;
+        } finally {
+          if (opening?.promise === promise) opening = null;
         }
       },
 

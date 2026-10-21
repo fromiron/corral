@@ -65,3 +65,15 @@ H는 실제 임시 Git/SQLite에서 read→save/create→disk hash/형식/mode, 
 - xterm은 자체 terminal parser를 대체한다. Unicode/ANSI/alt-screen·resize·선택/복사·접근성을 사용하고 OSC clipboard/title/link를 이유로 명령·URL을 자동 실행하지 않는다. 상태/종료/입력 권한은 터미널 밖의 공용 control에서도 발견 가능해야 한다.
 
 먼저 실제 발견된 별도 PGID 후손·split escape와 핵심 상태 경합의 red를 확인한다. 시간은 runaway 상한만 사용하며 불필요한 exhaustive matrix나 새 E2E를 추가하지 않는다. 새 E2E가 필요하면 먼저 인앱 브라우저에서 실제 흐름을 관찰한다. 유료 모델·원격 push·배포·merge는 이 구현에 포함하지 않는다.
+
+
+## P09: 패널 대상과 경로 연결
+
+추적: CRL-WBD-005 / C-149 / TC-WBD-005-H,N,F. 기존 화면을 도킹으로 옮기기 전 대상 참조와 view 수명의 계약을 한곳에 모은다. P10의 배치/도킹/저장은 이 단계에서 추가하지 않는다.
+
+- 현재 chat·graph·Run·파일·변경/검토·산출물·검사·preview의 typed descriptor와 안정적인 view key를 등록한다. key는 해당 host 서비스 범위에서 실제 session/Corral/Run/file/preview 대상을 식별하고 설정 query·패널 위치·일시 UI 상태를 도메인 identity에 넣지 않는다. descriptor는 실행·파일·권한의 새로운 원장이 아니다.
+- 현재 URL·deep link·`tab=run` 호환·패널 순서와 기억한 view 우선순위를 보존한다. 명시한 Run/execution/artifact/result 링크는 다른 기억된 대상과 합치지 않는다. URL과 view 사이 변환은 순수 함수로 두고 상호 effect로 URL을 반복 갱신하지 않는다.
+- panel mount/unmount는 root/services 소유 Run store·문서 모델·PTY·graph draft를 새로 만들거나 다른 대상으로 돌리지 않는다. 현재 Run과 과거 Run은 각자의 store를 사용한다. SettingsLifecycle·늦은 저장 receipt·queue/초안·Reins 대상은 기존 소유자에 남긴다.
+- 파일/preview의 기존 scope·격리 origin·lease 종료 의미와 graph revision/draft key는 유지한다. 새로운 route·원본 쓰기·독립 window·preview 실행 권한은 추가하지 않는다.
+
+대상 변환·다른 host/세션의 key·명시한 과거 Run·반복 mount 구독의 의미 있는 실패를 먼저 확인한다. 기존 navigation/settings/editor/Reins 회귀와 실제 인앱의 deep link·back/forward·설정 왕복을 확인한다. 새 E2E는 먼저 실제 화면을 관찰한 뒤 필요한 경우에만 추가한다.

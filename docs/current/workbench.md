@@ -62,3 +62,10 @@ C-140의 구현과 이번 Linux 검증은 [실행 기록](../evaluation/Contextu
 [CR-046 P07–08](../change-requests/CR-046-development-workbench.md)의 터미널은 관리 사본에서 모델 연결 없이 실행하는 사용자 PTY다. 기존 명령 기록·Run 제어와 별도로 표시하며, 생성·입력 권한 인계·명시 종료와 불확실 상태 재확인을 제공한다. 화면/설정 이동은 detach이며 프로세스를 종료하지 않는다. 같은 사본의 파일 저장은 터미널 종료 확인 후 다시 가능하다.
 
 xterm view와 parser는 화면 밖 store가 소유한다. 두 번째 renderer는 읽기 전용으로 연결하고 입력은 명시적으로 가져온다. 응답이 불확실한 stdin은 재전송하지 않는다. 출력 이력 상한을 넘어 새 화면 복구가 불가능하면 그 제한을 표시한다. Shift+Escape는 터미널 새로고침 버튼으로 포커스를 옮긴다. OSC clipboard/link와 title은 실행 경로로 사용하지 않는다. Linux 구현·실제 화면·번들 runtime 검증은 [P07–08 실행 기록](../evaluation/Development-Workbench-Terminal-2026-10-21.md), HTTP와 복구 한도는 [API 계약](../API-Contract.md)을 따른다.
+
+
+## 패널 대상과 Run view 수명
+
+[CR-046 P09](../change-requests/CR-046-development-workbench.md)는 현재 chat/graph/Run/files/review/preview의 대상 참조와 URL 변환을 `workbench/panels`로 모은다. 명시 Run/result 링크는 기억한 다른 대상과 섞지 않으며 설정 query는 view identity가 아니다. renderer의 서비스별 view key는 영속 layout ID를 대신하지 않는다.
+
+Run 상세는 Run ID별 root store를 사용하고 그래프 편집기나 pane별 임시 store를 재사용하지 않는다. 같은 렌더 단계의 view 인계는 구독을 유지하며, 실제 마지막 view가 떠나면 구독을 해제한다. 명령 응답은 원래 Run에 보존하고 같은 Run 재진입에서 receipt/cache를 유지한다. 그래프·문서·PTY·SettingsLifecycle의 소유권은 기존 root에 남는다. 현재 배치와 URL을 유지한 구현·환경 검증은 [P09 기록](../evaluation/Development-Workbench-Panels-2026-10-21.md)을 따른다.

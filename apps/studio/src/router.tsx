@@ -31,6 +31,14 @@ import {
   validateSettingsOverlay,
   validateSettingsSearch,
 } from './workbench/navigation.ts';
+import {
+  validateEditorSearch,
+  validateReviewSearch,
+  validateRunSearch,
+  validateSessionSearch,
+} from './workbench/panels/routes.ts';
+
+export { type SessionSearch, validateSessionSearch } from './workbench/panels/routes.ts';
 
 // Routes from Spec §4.1.
 
@@ -113,42 +121,6 @@ export const workspaceRoute = createRoute({
 });
 
 /** One work session (CR-011): its requests, runs, queue and the input box. */
-/** The session workbench's tabs and choices (02-UX-Spec §9: view state in the address). */
-export interface SessionSearch {
-  message?: string | undefined;
-  /** Old links only (`tab=run`); read into `panel`. */
-  tab?: 'work' | 'team' | 'run' | undefined;
-  /** The open side panel tab; none means the panel is closed. */
-  panel?: 'files' | 'changes' | 'artifacts' | 'checks' | 'run' | undefined;
-  run?: string | undefined;
-  execution?: string | undefined;
-  artifact?: string | undefined;
-  view?: 'results' | 'run' | undefined;
-  result?: string | undefined;
-}
-
-const text = (value: unknown) => (typeof value === 'string' && value ? value : undefined);
-
-export function validateSessionSearch(search: Record<string, unknown>): SessionSearch {
-  const out: SessionSearch = {};
-  if (
-    search.panel === 'files' ||
-    search.panel === 'changes' ||
-    search.panel === 'artifacts' ||
-    search.panel === 'checks' ||
-    search.panel === 'run'
-  )
-    out.panel = search.panel;
-  // Run detail used to be a main tab; old links open it in the panel.
-  if (search.tab === 'run') out.panel = 'run';
-  if (search.view === 'results' || search.view === 'run') out.view = search.view;
-  for (const key of ['run', 'execution', 'artifact', 'result', 'message'] as const) {
-    const value = text(search[key]);
-    if (value) out[key] = value;
-  }
-  return out;
-}
-
 export const sessionRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/sessions/$sessionId',
@@ -173,18 +145,7 @@ export const sessionRoute = createRoute({
 export const reviewRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/sessions/$sessionId/review',
-  validateSearch: (
-    search: Record<string, unknown>,
-  ): { scope?: 'session' | 'review' | 'run' | 'git'; runId?: string; file?: string } => ({
-    ...(search.scope === 'session' ||
-    search.scope === 'review' ||
-    search.scope === 'run' ||
-    search.scope === 'git'
-      ? { scope: search.scope }
-      : {}),
-    ...(typeof search.runId === 'string' ? { runId: search.runId } : {}),
-    ...(typeof search.file === 'string' ? { file: search.file } : {}),
-  }),
+  validateSearch: validateReviewSearch,
   loader: async ({ context, params }) => {
     const session = await context.services.repository.getSession(params.sessionId);
     if (!session) throw notFound();
@@ -234,17 +195,7 @@ export const editorRoute = createRoute({
   path: '/corrals/$corralId/edit',
   // A version of an earlier run the next run starts from (CR-007), from the Run page.
   // `fromSession`: opened from a session's menu, so the editor offers the way back (UX-10).
-  validateSearch: (
-    search: Record<string, unknown>,
-  ): { fromRun?: string; fromVersion?: string; fromSession?: string } => ({
-    ...(typeof search.fromRun === 'string' && typeof search.fromVersion === 'string'
-      ? { fromRun: search.fromRun, fromVersion: search.fromVersion }
-      : {}),
-    ...(typeof search.fromSession === 'string' &&
-    /^session_[A-Za-z0-9_-]+$/.test(search.fromSession)
-      ? { fromSession: search.fromSession }
-      : {}),
-  }),
+  validateSearch: validateEditorSearch,
   loader: async ({ context, params }) => {
     const record = await context.services.repository.get(params.corralId);
     if (!record) throw notFound();
@@ -257,14 +208,7 @@ export const runRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/runs/$runId',
   // `view` and `result` keep the Results view and its chosen version in the address (CR-009).
-  validateSearch: (
-    search: Record<string, unknown>,
-  ): { execution?: string; artifact?: string; view?: 'results' | 'run'; result?: string } => ({
-    ...(typeof search.execution === 'string' ? { execution: search.execution } : {}),
-    ...(typeof search.artifact === 'string' ? { artifact: search.artifact } : {}),
-    ...(search.view === 'results' || search.view === 'run' ? { view: search.view } : {}),
-    ...(typeof search.result === 'string' ? { result: search.result } : {}),
-  }),
+  validateSearch: validateRunSearch,
   component: RunPage,
 });
 

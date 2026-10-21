@@ -30,7 +30,7 @@ import type {
   WorkSession,
 } from '@corral/core';
 import { validTextAttachments } from '@corral/core';
-import { createRunSession, runResults, StatusBadge } from '@corral/react';
+import { runResults, StatusBadge } from '@corral/react';
 import {
   ArrowUp,
   AtSign,
@@ -77,6 +77,7 @@ import { Link, useNavigate, useRouter } from '@tanstack/react-router';
 import {
   createContext,
   type KeyboardEvent,
+  type ReactNode,
   useCallback,
   useContext,
   useEffect,
@@ -88,7 +89,17 @@ import { useFormatter, useTranslations } from 'use-intl';
 import { type AppCommand, useRegisterCommands, useRegisteredCommands } from '../commandRegistry.ts';
 import { createPendingSessionCommands } from '../pendingCommands.ts';
 import { projectsChanged, setCurrentProject } from '../projects.ts';
-import { type SessionSearch, sessionRoute, validateSessionSearch } from '../router.tsx';
+import { sessionRoute } from '../router.tsx';
+import { panelKey, SESSION_PANELS, type SessionPanel } from '../workbench/panels/registry.ts';
+import {
+  patchSessionSearch,
+  resolveSessionSearch,
+  type SessionSearch,
+  sessionPanelDescriptor,
+} from '../workbench/panels/routes.ts';
+
+export type { SessionPanel } from '../workbench/panels/registry.ts';
+
 import { useServices } from '../services.tsx';
 import { useShortcutBindings } from '../shortcutBindings.ts';
 import { sendKeyLabel, shortcutLabel } from '../shortcuts.ts';
@@ -190,9 +201,6 @@ function useSessionRuns(sessionId: string, selectedRunId?: string) {
   return { runs, active, refresh, lost };
 }
 
-export type SessionPanel = 'files' | 'changes' | 'artifacts' | 'checks' | 'run';
-const PANELS: SessionPanel[] = ['changes', 'files', 'artifacts', 'checks', 'run'];
-
 /**
  * A session as a workbench (02-UX-Spec §2–§3; Workbench polish P1): the conversation in the
  * middle and, only when asked for, one side panel with Changes / Files / Results / Checks / Run.
@@ -201,25 +209,14 @@ const PANELS: SessionPanel[] = ['changes', 'files', 'artifacts', 'checks', 'run'
  */
 export function SessionPage() {
   const tw = useTranslations('Workbench');
+  const services = useServices();
   const { session, corrals } = sessionRoute.useLoaderData();
   const urlSearch = sessionRoute.useSearch();
   const [savedView, rememberView] = useRemembered<Record<string, unknown>>(
     `corral:session-view:v1:${session.sessionId}`,
     {},
   );
-  const explicitTarget = Boolean(
-    urlSearch.run ||
-      urlSearch.view ||
-      urlSearch.artifact ||
-      urlSearch.result ||
-      urlSearch.execution,
-  );
-  const search = {
-    ...(!explicitTarget
-      ? validateSessionSearch(savedView && typeof savedView === 'object' ? savedView : {})
-      : {}),
-    ...urlSearch,
-  };
+  const search = resolveSessionSearch(urlSearch, savedView);
   const viewKey = JSON.stringify(search);
   useEffect(() => rememberView(JSON.parse(viewKey)), [viewKey, rememberView]);
   const navigate = useNavigate({ from: '/sessions/$sessionId' });
@@ -235,7 +232,7 @@ export function SessionPage() {
   useEffect(() => {
     if (panel) rememberPanel(panel);
   }, [panel, rememberPanel]);
-  const reopenPanel = PANELS.includes(rememberedPanel) ? rememberedPanel : 'changes';
+  const reopenPanel = SESSION_PANELS.includes(rememberedPanel) ? rememberedPanel : 'changes';
   const [pendingReference, setReference] = useState<{
     sessionId: string;
     value: FileReference;
@@ -243,11 +240,7 @@ export function SessionPage() {
   const reference =
     pendingReference?.sessionId === session.sessionId ? pendingReference.value : null;
   const setSearch = (patch: Partial<typeof search>) => {
-    const next = validateSessionSearch({
-      ...search,
-      ...patch,
-      ...(patch.view === 'results' ? { artifact: undefined } : {}),
-    });
+    const next = patchSessionSearch(search, patch);
     rememberView({ ...next });
     void navigate({ search: () => next });
   };
@@ -264,6 +257,30 @@ export function SessionPage() {
   const liveRun =
     presentedRun && !TERMINAL_RUN_STATUSES.has(presentedRun.status) ? presentedRun : null;
   const presentationRunId = presentedRun?.runId ?? linkedRunIds.at(-1) ?? null;
+  const selectedPanel = sessionPanelDescriptor(
+    session.projectId,
+    session.sessionId,
+    panel,
+    search.run ?? runs.at(-1)?.runId,
+  );
+  const panelViews: Record<SessionPanel, () => ReactNode> = {
+    files: () => (
+      <FilePanel
+        projectId={session.projectId}
+        sessionId={session.sessionId}
+        onReference={(value) => setReference({ sessionId: session.sessionId, value })}
+      />
+    ),
+    changes: () => <ChangesPanel session={session} files={changes} />,
+    artifacts: () => (
+      <ArtifactsPanel
+        runs={runs}
+        onOpen={(runId, result) => setSearch({ panel: 'run', run: runId, view: 'results', result })}
+      />
+    ),
+    checks: () => <ChecksPanel session={session} />,
+    run: () => <RunPanel runs={runs} search={search} setSearch={setSearch} />,
+  };
 
   return (
     <>
@@ -303,7 +320,7 @@ export function SessionPage() {
               <TabRow
                 id="session-panels"
                 label={tw('panelTabs')}
-                values={PANELS}
+                values={SESSION_PANELS}
                 current={panel}
                 text={(value) => tw(`panel.${value}`)}
                 onChoose={(value) => setSearch({ panel: value })}
@@ -324,6 +341,11 @@ export function SessionPage() {
                 </div>
               ) : null}
               <WorkTab
+                key={panelKey(services, {
+                  kind: 'chat',
+                  projectId: session.projectId,
+                  sessionId: session.sessionId,
+                })}
                 session={session}
                 team={team}
                 corrals={corrals}
@@ -341,6 +363,7 @@ export function SessionPage() {
           panel={
             panel ? (
               <div
+                key={selectedPanel ? panelKey(services, selectedPanel) : panel}
                 role="tabpanel"
                 id={`session-panels-${panel}-panel`}
                 aria-labelledby={`session-panels-${panel}-tab`}
@@ -349,32 +372,7 @@ export function SessionPage() {
                   panel === 'run' ? 'flex h-full min-h-0 flex-col' : 'flex flex-col gap-3 p-3'
                 }
               >
-                {panel === 'files' ? (
-                  <FilePanel
-                    key={session.sessionId}
-                    projectId={session.projectId}
-                    sessionId={session.sessionId}
-                    onReference={(value) => setReference({ sessionId: session.sessionId, value })}
-                  />
-                ) : panel === 'changes' ? (
-                  <ChangesPanel session={session} files={changes} />
-                ) : panel === 'artifacts' ? (
-                  <ArtifactsPanel
-                    runs={runs}
-                    onOpen={(runId, result) =>
-                      setSearch({ panel: 'run', run: runId, view: 'results', result })
-                    }
-                  />
-                ) : panel === 'checks' ? (
-                  <ChecksPanel session={session} />
-                ) : (
-                  <RunPanel
-                    runs={runs}
-                    search={search}
-                    setSearch={setSearch}
-                    presentationRunId={presentationRunId}
-                  />
-                )}
+                {panelViews[panel]()}
               </div>
             ) : null
           }
@@ -810,21 +808,15 @@ function RunPanel({
   runs,
   search,
   setSearch,
-  presentationRunId,
 }: {
   runs: RunSummary[];
   search: SessionSearch;
   setSearch: (patch: Partial<SessionSearch>) => void;
-  presentationRunId: string | null;
 }) {
   const tw = useTranslations('Workbench');
   const ts = useTranslations('Status');
-  const { transport } = useServices();
-  const dedicated = useMemo(() => createRunSession(transport), [transport]);
-  useEffect(() => () => dedicated.getState().dispose(), [dedicated]);
   const runId = search.run ?? runs.at(-1)?.runId;
   if (!runId) return <p className="p-4 text-sm text-muted">{tw('noRuns')}</p>;
-  const share = runId === presentationRunId;
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-center gap-2 border-b border-line/50 px-3 py-1.5">
@@ -854,7 +846,6 @@ function RunPanel({
           key={runId}
           sessionId={runs.find((run) => run.runId === runId)?.sessionId ?? null}
           runId={runId}
-          sessionStore={share ? undefined : dedicated}
           embedded
           compact
           search={{

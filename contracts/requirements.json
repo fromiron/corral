@@ -850,5 +850,11 @@
     "requirement": "CR-046 P07–08: 관리 사본의 사용자 PTY를 Run과 구분된 owner로 실행하며 공통 writer와 host process capacity를 유지한다. 인증된 attach/input/resize/stop, 단일 입력 controller, 제한된 output 재생과 원래 receipt 복구를 제공하고 실제 터미널→파일/Diff 여정을 검증한다.",
     "owner": "server",
     "phase": "M1"
+  },
+  {
+    "id": "CRL-WBD-005",
+    "requirement": "CR-046 P09: 기존 Workbench 화면의 typed panel 대상과 URL 변환을 등록하고 명시 deep link·기억한 선택·설정 왕복을 보존한다. 패널 수명과 root 소유 Run·문서·PTY·graph draft를 분리하며 과거 Run/다른 대상의 상태가 섞이지 않는다.",
+    "owner": "studio",
+    "phase": "M2"
   }
 ]

@@ -39,6 +39,7 @@ import { HarnessRoleSettings } from '../workbench/HarnessRoleSettings.tsx';
 import { LoopRecipeSettings } from '../workbench/LoopRecipeSettings.tsx';
 import { MarkdownAgentImport } from '../workbench/MarkdownAgentImport.tsx';
 import { settingsInteractionBlocked, settingsOnlyTransition } from '../workbench/navigation.ts';
+import { panelKey } from '../workbench/panels/registry.ts';
 import { RunHarnessOverrides } from '../workbench/RunHarnessOverrides.tsx';
 import { RunRoleOverrides } from '../workbench/RunRoleOverrides.tsx';
 import { TabRow } from '../workbench/TabRow.tsx';
@@ -47,14 +48,15 @@ import { useRunMode } from '../workbench/useRunMode.ts';
 
 export function EditorPage() {
   const record = editorRoute.useLoaderData();
-  const { repository } = useServices();
+  const services = useServices();
+  const { repository } = services;
   const { fromRun, fromVersion, fromSession } = editorRoute.useSearch();
   // CR-010: the header shows the Corral's project, and `/` returns to it.
   useEffect(() => setCurrentProject(record.projectId), [record.projectId]);
   const copy = useMemo(() => editorWorkingCopy(repository, record), [repository, record]);
   return (
     <Editor
-      key={`${record.projectId}:${record.corralId}:${record.definitionRevision}:${record.layoutRevision}`}
+      key={`${panelKey(services, { kind: 'graph', projectId: record.projectId, corralId: record.corralId })}:${record.definitionRevision}:${record.layoutRevision}`}
       record={record}
       workingCopy={copy}
       startFrom={
@@ -73,7 +75,8 @@ export function EditorPage() {
  */
 export function TeamDesign({ corralId }: { corralId: string }) {
   const t = useTranslations('Workbench');
-  const { repository } = useServices();
+  const services = useServices();
+  const { repository } = services;
   const [record, setRecord] = useState<CorralRecord | null | undefined>(undefined);
   useEffect(() => {
     let live = true;
@@ -93,7 +96,11 @@ export function TeamDesign({ corralId }: { corralId: string }) {
   if (!record || !copy) return <p className="p-4 text-sm text-muted">{t('noTeam')}</p>;
   return (
     <Editor
-      key={record.corralId}
+      key={panelKey(services, {
+        kind: 'graph',
+        projectId: record.projectId,
+        corralId: record.corralId,
+      })}
       record={record}
       workingCopy={copy}
       inSession
@@ -104,11 +111,16 @@ export function TeamDesign({ corralId }: { corralId: string }) {
 
 export function DemoPage() {
   const { record, template } = demoRoute.useLoaderData();
-  const { repository } = useServices();
+  const services = useServices();
+  const { repository } = services;
   const copy = useMemo(() => editorWorkingCopy(repository, record), [repository, record]);
   return (
     <Editor
-      key={record.corralId}
+      key={panelKey(services, {
+        kind: 'graph',
+        projectId: record.projectId,
+        corralId: record.corralId,
+      })}
       record={record}
       workingCopy={copy}
       toolbar={<TemplatePicker current={template} />}

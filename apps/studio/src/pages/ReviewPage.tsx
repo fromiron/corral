@@ -22,6 +22,7 @@ import { reviewRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
 import { latestResult, startFollowUp, steer, steerTargets } from '../sessionActions.ts';
 import { HunkActions } from '../workbench/HunkActions.tsx';
+import { panelKey } from '../workbench/panels/registry.ts';
 import { useBinding } from './FilesViews.tsx';
 import { LspProposals } from './LspProposals.tsx';
 import { WorkbenchLayout } from './Workbench.tsx';
@@ -49,7 +50,8 @@ export function ReviewPage() {
   const { session } = reviewRoute.useLoaderData();
   const search = reviewRoute.useSearch();
   const navigate = useNavigate({ from: '/sessions/$sessionId/review' });
-  const { workspaces, transport, mode } = useServices();
+  const services = useServices();
+  const { workspaces, transport, mode } = services;
   const scope = scopeFromSearch(search);
   const scopeKey = scope.kind === 'run' ? `run:${scope.runId}` : scope.kind;
   const [changes, setChanges] = useState<ChangeSetView | null>(null);
@@ -118,6 +120,11 @@ export function ReviewPage() {
 
   return (
     <WorkbenchLayout
+      key={panelKey(services, {
+        kind: 'review',
+        projectId: session.projectId,
+        sessionId: session.sessionId,
+      })}
       main={
         <main className="flex h-full min-h-0 flex-1 flex-col">
           <header className="flex flex-wrap items-center gap-3 border-b border-line px-4 py-2">

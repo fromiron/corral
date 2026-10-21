@@ -36,24 +36,22 @@ import { projectOfRun, setCurrentProject } from '../projects.ts';
 import { runRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
 import { MessageBranch } from '../workbench/MessageBranch.tsx';
+import { panelKey } from '../workbench/panels/registry.ts';
+import type { RunDetailSearch } from '../workbench/panels/routes.ts';
 import { RunStatusCards } from '../workbench/RunStatusCards.tsx';
 import { markRunReviewed } from './GettingStarted.tsx';
 
-/** What a run's detail keeps in the address: the view, chosen execution, version and result. */
-export interface RunDetailSearch {
-  execution?: string | undefined;
-  artifact?: string | undefined;
-  view?: 'results' | 'run' | undefined;
-  result?: string | undefined;
-}
+export type { RunDetailSearch } from '../workbench/panels/routes.ts';
 
 /** /runs/$runId?execution=…&artifact=… — one run: graph, call tree, details and Reins (C-066). */
 export function RunPage() {
+  const services = useServices();
   const { runId } = runRoute.useParams();
   const search = runRoute.useSearch();
   const navigate = useNavigate({ from: '/runs/$runId' });
   return (
     <RunDetail
+      key={panelKey(services, { kind: 'run', runId })}
       runId={runId}
       search={search}
       setSearch={(patch) => void navigate({ search: (s) => ({ ...s, ...patch }) })}
@@ -72,7 +70,6 @@ export function RunDetail({
   embedded = false,
   compact = false,
   sessionId = null,
-  sessionStore,
 }: {
   sessionId?: string | null;
   runId: string;
@@ -80,18 +77,10 @@ export function RunDetail({
   setSearch: (patch: RunDetailSearch) => void;
   embedded?: boolean;
   compact?: boolean;
-  /** When set, this detail must not retarget the session's live run store. */
-  sessionStore?: RunSessionStore;
 }) {
   const t = useTranslations('RunPage');
-  const { runFor, retainRun, editorSessions, transport, repository } = useServices();
-  const session = useMemo(
-    () =>
-      sessionStore ??
-      [...editorSessions.values()].find((view) => view.getState().runId === runId) ??
-      runFor(runId),
-    [sessionStore, editorSessions, runFor, runId],
-  );
+  const { runFor, retainRun, transport, repository } = useServices();
+  const session = runFor(runId);
   const activeRunId = useStore(session, (s) => s.runId);
   const missing = useStore(session, (s) => s.missingRunId === runId);
   const error = useStore(session, (s) => s.streamError ?? s.definitionError);

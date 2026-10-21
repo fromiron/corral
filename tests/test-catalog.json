@@ -3390,5 +3390,38 @@
     "status": "planned",
     "adapter": "real temporary Git/SQLite/Linux PTY with injected gates and bounded replay; in-app browser before any new E2E; no paid models",
     "evidence": null
+  },
+  {
+    "id": "TC-WBD-005-H",
+    "requirements": [
+      "CRL-WBD-005"
+    ],
+    "suite": "unit+integration",
+    "scenario": "typed panel 대상과 기존 URL 왕복·root Run store 공유·실제 설정/패널 복귀",
+    "status": "planned",
+    "adapter": "existing root services and pure route fixtures; real in-app observation before any new E2E; no paid models",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-005-N",
+    "requirements": [
+      "CRL-WBD-005"
+    ],
+    "suite": "unit+integration",
+    "scenario": "명시 Run/execution에 기억한 다른 대상이 섞이지 않고 host/session/graph key가 구분됨",
+    "status": "planned",
+    "adapter": "existing root services and pure route fixtures; real in-app observation before any new E2E; no paid models",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-005-F",
+    "requirements": [
+      "CRL-WBD-005"
+    ],
+    "suite": "unit+integration",
+    "scenario": "늦은 상태/설정 완료·panel 재마운트·back/forward에도 현재 Run/dirty 초안과 구독 소유가 보존됨",
+    "status": "planned",
+    "adapter": "existing root services and pure route fixtures; real in-app observation before any new E2E; no paid models",
+    "evidence": null
   }
 ]
