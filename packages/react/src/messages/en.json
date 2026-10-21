@@ -1809,6 +1809,8 @@
     "workFolder": "Work folder"
   },
   "Composer": {
+    "nextRequest": "Next request",
+    "nextUltraRequest": "Next Ultra request",
     "commands": "Commands",
     "references": "References",
     "noCommand": "No matching command.",
@@ -2725,6 +2727,8 @@
     }
   },
   "Widgets": {
+    "runUnavailable": "Run state unavailable",
+    "runLoading": "Loading run state",
     "context": "Context",
     "contextPending": "Context · awaiting request",
     "contextPercent": "Context about {percent}%",

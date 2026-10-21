@@ -1809,6 +1809,8 @@
     "workFolder": "작업 폴더"
   },
   "Composer": {
+    "nextRequest": "다음 요청",
+    "nextUltraRequest": "다음 Ultra 요청",
     "commands": "명령",
     "references": "참조",
     "noCommand": "맞는 명령이 없어요.",
@@ -2725,6 +2727,8 @@
     }
   },
   "Widgets": {
+    "runUnavailable": "실행 상태 확인 불가",
+    "runLoading": "실행 상태 확인 중",
     "context": "컨텍스트",
     "contextPending": "컨텍스트 · 측정 전",
     "contextPercent": "컨텍스트 약 {percent}%",

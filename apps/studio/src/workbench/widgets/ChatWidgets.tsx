@@ -48,7 +48,7 @@ const CATEGORY_FILL: Record<string, string> = {
   other: 'bg-text/45',
 };
 const chipClass =
-  'inline-flex h-8 min-w-0 max-w-full shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs text-muted outline-none transition-colors hover:bg-subtle hover:text-text focus-visible:ring-2 focus-visible:ring-ring';
+  'inline-flex min-h-9 pointer-coarse:min-h-11 min-w-0 max-w-full shrink-0 items-center gap-1.5 rounded-full px-2.5 text-xs text-muted outline-none transition-colors hover:bg-subtle hover:text-text focus-visible:ring-2 focus-visible:ring-ring';
 const number = (value: number) => value.toLocaleString();
 const compactNumber = (value: number) =>
   value >= 1000 ? `${(value / 1000).toFixed(value < 10_000 ? 1 : 0)}k` : number(value);
@@ -91,9 +91,11 @@ export function SessionWidgetCard() {
         <ArrowRight size={13} />
       </RunLink>
       <div className="space-y-1">
-        {model.chips.map((chip) => (
-          <Chip key={chip} chip={chip} model={model} />
-        ))}
+        {model.chips
+          .filter((chip) => chip !== 'changes')
+          .map((chip) => (
+            <Chip key={chip} chip={chip} model={model} />
+          ))}
       </div>
       {model.tools.length ? (
         <div className="mt-5">
@@ -155,7 +157,7 @@ function SessionWidgetAccess() {
   const t = useTranslations('Widgets');
   if (!model?.runId) return null;
   return (
-    <div className="session-widget-access mb-2 justify-end">
+    <div className="session-widget-access ml-auto justify-end">
       <Popover>
         <PopoverTrigger data-testid="session-summary-trigger" className={chipClass}>
           <Bot size={14} />
@@ -527,7 +529,16 @@ function RunLink({
     <Link
       to="/sessions/$sessionId"
       params={{ sessionId: model.sessionId }}
-      search={{ panel: 'run', run: model.runId ?? undefined, view: 'run' }}
+      search={(previous) => ({
+        ...previous,
+        ...(previous.run !== model.runId
+          ? { execution: undefined, artifact: undefined, result: undefined, message: undefined }
+          : {}),
+        panel: 'run',
+        run: model.runId ?? undefined,
+        view: 'run',
+      })}
+      resetScroll={false}
       className={className}
     >
       {children}
@@ -538,6 +549,7 @@ function RunLink({
 export function ComposerDock() {
   const model = useChatWidget();
   const t = useTranslations('Widgets');
+  const ts = useTranslations('Status');
   if (!model?.runId) return null;
   const actionLabel =
     model.action.summary === 'approval'
@@ -557,7 +569,41 @@ export function ComposerDock() {
       data-testid="composer-dock"
       className="mx-auto flex w-full max-w-(--chat-content-max-width) flex-col"
     >
-      <SessionWidgetAccess />
+      <div
+        data-testid="composer-status-pills"
+        className="mb-2 flex min-w-0 flex-wrap items-center gap-1"
+      >
+        <RunLink model={model} className={`${chipClass} bg-raised`}>
+          <Circle
+            size={12}
+            aria-hidden="true"
+            className={model.action.visible ? 'text-warning' : 'text-muted'}
+          />
+          <span>
+            {model.readState === 'error'
+              ? t('runUnavailable')
+              : model.readState === 'loading'
+                ? t('runLoading')
+                : model.plan.runStatus
+                  ? ts(model.plan.runStatus)
+                  : t('runUnavailable')}
+          </span>
+          {model.lastRun ? <span className="text-2xs">{t('lastRun')}</span> : null}
+        </RunLink>
+        {!model.plan.open && 'completed' in status ? (
+          <Button
+            variant="ghost"
+            className={chipClass}
+            onClick={() => model.plan.setOpen(true)}
+            aria-expanded={false}
+          >
+            <CircleCheck size={13} aria-hidden="true" />
+            {countNotice}
+          </Button>
+        ) : null}
+        {model.chips.includes('changes') ? <ChangesChip model={model} /> : null}
+        <SessionWidgetAccess />
+      </div>
       {model.action.visible ? (
         <div
           data-testid="action-required"

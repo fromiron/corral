@@ -47,7 +47,7 @@ export function AutoModelMenu({
         : tq(value.reasoning?.mode ?? 'legacy');
   const visibleEffort =
     showReasoning && (ultra || value.reasoning) ? (ultra ? tc('ultraMaximumShort') : effort) : null;
-  const description = [profile?.label ?? value.modelProfile, visibleEffort]
+  const description = [tc('nextRequest'), profile?.label ?? value.modelProfile, visibleEffort]
     .filter(Boolean)
     .join(' · ');
   const options = [
@@ -86,7 +86,7 @@ export function AutoModelMenu({
           <Button
             variant="ghost-muted"
             size="sm"
-            className="min-w-0 max-w-full rounded-full"
+            className="min-h-9 pointer-coarse:min-h-11 min-w-0 max-w-full rounded-full"
             disabled={disabled}
             aria-label={t('autoModel')}
             aria-description={description}
@@ -94,7 +94,10 @@ export function AutoModelMenu({
           />
         }
       >
-        <span className="max-w-48 truncate sm:max-w-72">
+        <span className="shrink-0 text-2xs text-muted">
+          {tc(ultra ? 'nextUltraRequest' : 'nextRequest')}
+        </span>
+        <span className="min-w-0 max-w-48 truncate sm:max-w-72">
           {profile?.label ?? value.modelProfile}
         </span>
         {visibleEffort ? <span className="shrink-0"> · {visibleEffort}</span> : null}
