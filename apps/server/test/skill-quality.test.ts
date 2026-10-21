@@ -331,7 +331,10 @@ it('[TC-QEVAL-004-H] reviews license, references, scripts, permissions and binar
       mkdirSync(join(source, folder), { recursive: true });
     for (const path of ['LICENSE', 'references/guide.md', 'scripts/check.sh'])
       writeFileSync(join(source, path), String(version));
-    writeFileSync(join(source, 'package.json'), JSON.stringify({ name: 'writing', version: `${version}.0.0` }));
+    writeFileSync(
+      join(source, 'package.json'),
+      JSON.stringify({ name: 'writing', version: `${version}.0.0` }),
+    );
     writeFileSync(
       join(source, 'skills/SKILL.md'),
       '---\nname: writing\ndescription: Write clearly\n---\nKeep it short.',
