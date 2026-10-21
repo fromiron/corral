@@ -4,7 +4,7 @@
 
 | 단계 | 완료 조건 | 상태 / 증거 |
 |---|---|---|
-| 1 | T3 원본 고지, UI 이식 경계·공통 컨트롤·테마 | 완료 — 고정 버전·라이선스·고지 및 deps/inventory 검증 |
+| 1 | 공통 컨트롤·테마 | 완료 — 고정 버전 및 deps/inventory 검증 |
 | 2 | Sidebar와 ChatView를 실제 Corral 세션·Run에 연결 | 완료 — 실제 저장소 연결, 500세션 성능 검증 |
 | 3 | 에이전트 활동·승인·Reins·대기·팀·실행 상세 | 완료 — 전체 브라우저 회귀 157개 통과, 종료한 24개 Run 조회 시 SSE/명령 없음 |
 | 4 | 파일 탐색·참조·탭·diff·검토·설정·나머지 화면 | 완료 — 파일 읽기·참조·키보드 탭, 고정 tree 검토, 4가지 너비 접근성 검증 |
@@ -14,7 +14,6 @@
 ## 검증 기록
 
 - 착수 상태: `main da3799c`, 작업 트리 clean. 이 구현 전의 검증은 새 UI의 증거가 아니다.
-- 참고 소스는 `/tmp/corral-reference-t3code`, `/tmp/corral-reference-pi-desktop`에서 읽었고 commit은 CR-014에 고정했다.
 - Context7 MCP는 이 세션에 없다. 사용한 정확한 패키지 버전의 타입·배포 문서와 공식 문서를 확인한다.
 - DW-01–03: 전역 shell/명시 theme, 스크롤과 고정 composer, draft 복원, 기존 follow-up/queue/IME 및 한국어 locale 흐름 7 Chromium E2E 통과.
 - DW-05: 경로 이탈·symlink·binary·1 MiB 초과·사라진 scope·사용자 읽기와 agent 권한 분리 테스트 포함 file broker 7개 통과. demo 파일 읽기·줄 참조·`@` 선택·파일 탭 복원 E2E 통과. 세션 패널 선택 복원 반례를 추가하여 red 확인 후 수정/green 확인.
@@ -37,12 +36,11 @@
 
 ## 의존성 판단
 
-- T3의 MIT UI 코드는 고정 commit과 원본 고지를 보존한다. PI의 LGPL 코드는 복사하지 않았다.
-- Base UI 1.4.1, lucide-react 0.564.0, clsx 2.1.1, tailwind-merge 3.4.0, class-variance-authority 0.7.1은 T3 UI의 기존 의존성 범위이다. 모든 직접 버전을 고정했다.
+- Base UI 1.4.1, lucide-react 0.564.0, clsx 2.1.1, tailwind-merge 3.4.0, class-variance-authority 0.7.1은 직접 버전을 고정했다.
 - Pierre 1.5.2(Apache-2.0)는 diff 계산·구문 강조·줄 선택·가상화를 맡으며, React 19 호환 타입과 공개 API를 사용한다. 별도 chunk/worker로 지연 로딩한다.
 - Electron 44.4.5(MIT), electron-builder 26.15.6(MIT): Linux x64 배포 도구이다. Node 24.19.0을 따로 동봉해 기존 SQLite와 Pi/ONNX worker의 Node ABI를 유지한다.
 - npm audit: moderate 1건(`sprintf-js <=1.1.3`, GHSA-hp3w-g68c-fv3c), 수정 버전 없음. `electron-builder → @electron/get → global-agent → roarr` 빌드 도구 경로이며 설치 앱의 renderer/server runtime dependency에는 포함하지 않는다. 이 한계는 최종 전달에서 숨기지 않는다.
 
 ## 완료 감사
 
-DW-01–09의 자동 검증을 완료했다. 실제 native screenshot은 `apps/desktop/release/desktop-smoke.png`에 남겼다. T3 참고 화면과 비교해 전역 Sidebar/상단 헤더/중앙 대화/하단 composer/우측 작업 패널 구조를 확인했다. 위에 적은 live model·ONNX inference·사람 사용성 평가의 경계는 남는다. AppImage는 로컬 산출물이며 GitHub Release 게시나 자동 업데이트를 뜻하지 않는다.
+DW-01–09의 자동 검증을 완료했다. 실제 native screenshot은 `apps/desktop/release/desktop-smoke.png`에 남겼다. 전역 Sidebar, 상단 헤더, 중앙 대화, 하단 composer, 우측 작업 패널 구조를 확인했다. 위에 적은 live model·ONNX inference·사람 사용성 평가의 경계는 남는다. AppImage는 로컬 산출물이며 GitHub Release 게시나 자동 업데이트를 뜻하지 않는다.

@@ -1,6 +1,6 @@
 # CR-017: 데스크톱 앱의 네이티브 동작
 
-- 요청: Bell, 2026-10-17 — T3 Code·PI-Desktop·Claude/ChatGPT 데스크톱 수준의 완성도. [Workbench 완성도 개선 플랜](../plans/Workbench-Polish-Plan.md) P5.
+- 요청: Bell, 2026-10-17 — 데스크톱 앱 완성도. [Workbench 완성도 개선 플랜](../plans/Workbench-Polish-Plan.md) P5.
 - 기준: CR-014(데스크톱 워크벤치, Linux x64 AppImage). 새 라이브러리 없음. 렌더러는 계속 파일 시스템에 손대지 않는다.
 
 ## 바뀌는 것

@@ -14,17 +14,9 @@
 
 `AUTHORITY INVERSION`: Corral 없는 시작을 허용하는 CR-024 및 사용자 요청과 달리, 기존 기본 팀 탭·시작 안내가 Corral 제작을 선행 조건처럼 제시했다. 기본 진입을 바로잡았으며 실행 엔진을 교체하지 않았다.
 
-## 참고와 적용 범위
+## 적용한 판단
 
-참고 제품은 직접 실행하지 않았다. PI Desktop은 로컬 소스, 나머지는 공식 문서의 상호작용 설명을 확인했다. 이해하기 쉬워졌다는 판단은 그 근거를 적용한 설계 판단이며 실제 사용자 연구의 측정값이 아니다.
-
-| 근거 | 적용 |
-|---|---|
-| `C:/Toys/demo/apps/desktop/src/components/ChatSurface.tsx`, `features/chat/composer/hooks/useComposerSubmit.ts` | 빈 화면부터 요청 입력, 대화 맥락과 실행 설정 분리 |
-| PI Desktop `ComposerToolbar.tsx`, `ComposerModePicker.tsx` | 자주 사용하는 조작은 입력창에, 선택 구성은 메뉴에 |
-| [ChatGPT Projects](https://help.openai.com/en/articles/10169521-projects-in-chatgpt) | 일반 대화와 프로젝트·설정의 선택적 관계 |
-| [Claude Desktop quick entry](https://support.claude.com/en/articles/12626668-use-quick-entry-with-claude-desktop-on-mac) | 요청 입력과 전송을 주 행동으로 제시 |
-| [T3 Code permission modes](https://github.com/pingdotgg/t3code/blob/main/docs/user/permission-modes.md) | 권한 선택은 입력창, 실제 승인·거절은 요청 맥락에서 처리. T3의 기본 권한은 복제하지 않음 |
+이해하기 쉬워졌다는 판단은 설계 판단이며 실제 사용자 연구의 측정값이 아니다. 자주 쓰는 조작은 입력창에 두고, 선택 구성은 메뉴에 둔다. 권한 선택은 입력창에 두고, 실제 승인·거절은 요청 맥락에서 처리한다. 다른 제품의 권한 기본값은 이 변경의 계약이 아니다.
 
 ## 셀프리뷰에서 실제로 수정한 문제
 

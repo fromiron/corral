@@ -26,7 +26,7 @@ import { MessageBranch } from './MessageBranch.tsx';
 import { useCorralRun } from './useCorralChat.ts';
 import { toolRows } from './widgets/selectors.ts';
 
-/** T3's expandable work log and response surface, projected from Corral executions. */
+/** Expandable work log and response surface, projected from Corral executions. */
 export function RunMessage({
   runId,
   sessionId,

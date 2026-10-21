@@ -1,17 +1,14 @@
 ---
 name: Corral chat widgets and live work plan v2
-overview: 오른쪽 패널 접기 대신 채팅 상단의 상황별 정보 위젯, 입력창 위의 실제 WorkPlan, 단일 활동 표시를 구현한다. open-claude-ui에서 이식할 표현 코드와 Corral 데이터 공급 경로를 필수 납품물로 고정한다.
+overview: 오른쪽 패널 접기 대신 채팅 상단의 상황별 정보 위젯, 입력창 위의 실제 WorkPlan, 단일 활동 표시를 구현한다. 화면 표현과 Corral 데이터 공급 경로를 필수 납품물로 고정한다.
 status: proposed
 review_date: 2026-10-19
 corral_baseline: e160c6411955193bd92e44f3088a0dce07cc5f0c
-upstream_repository: Caho1/open-claude-ui
-upstream_commit: 4045ce76afdcb7dccef1b7e6417b04c4c6046e9c
 supersedes_plan: Corral-Chat-View-Improvement-Plan.md
 must_ship:
   - 채팅 타임라인 외부 상단에 실제 마운트된 상황별 위젯 바
   - 컨텍스트 게이지와 구성별 상세 팝오버 및 측정 데이터 공급
   - 입력창 바로 위에 실제 update_plan으로 갱신되는 Todo
-  - open-claude-ui 원본과 적용 컴포넌트 및 동작을 연결하는 출처 기록
   - 중복을 줄인 단일 실행 활동 표시와 항상 접근 가능한 사용자 대응 정보
   - 실행 중/갱신/종료/오류/좁은 화면의 브라우저 증거
 not_completion:
@@ -24,7 +21,7 @@ not_completion:
   - 위젯과 Todo를 선택 기능 또는 후속 작업으로 미룸
 todos:
   - id: requirements-and-origin-map
-    content: 필수 UI 계약·원본 적용표·결정적 fixture·실패 테스트를 등록한다.
+    content: 필수 UI 계약·결정적 fixture·실패 테스트를 등록한다.
     status: pending
   - id: session-surface-and-store
     content: 현재 실행/패널 탐색/다음 요청을 분리하고 위젯·Todo·활성 카드의 공유 읽기 계층과 실제 슬롯을 연결한다.
@@ -35,8 +32,8 @@ todos:
   - id: context-measurement
     content: 메시지 추정과 전체 요청 추정을 구별하고 구성별 컨텍스트 측정·참조·선택자를 추가한다.
     status: pending
-  - id: upstream-widget-adaptation
-    content: upstream 게이지·상태 표시·접힘 표현을 Corral 토큰과 공용 컨트롤로 이식해 실제 화면에 연결한다.
+  - id: widget-presentation
+    content: 게이지·상태 표시·접힘 표현을 Corral 토큰과 공용 컨트롤로 실제 화면에 연결한다.
     status: pending
   - id: unified-activity-and-actions
     content: 일상적인 도구 기록을 통합하고 승인·질문·실패·불명확 효과를 접힘에 묻히지 않게 한다.
@@ -55,11 +52,11 @@ todos:
 
 다른 에이전트의 안은 선택한 산출물을 먼저 읽게 만드는 오른쪽 패널 개선이다. 이 안만 구현하면 상단 위젯, 입력창 위 Todo, 그 갱신 데이터 경로는 생기지 않는다. 패널 개선은 이 플랜의 후반부 하위 작업으로 편입한다.
 
-이번 플랜은 **보여줄 위치, 이식할 upstream 표현, 데이터를 만드는 경로, 실행별 표시 상태, 완료 증거**를 하나의 납품 범위로 묶는다. 위젯을 특정 기존 컴포넌트의 이름으로 부르는 것이 아니라 실제 사용자 화면에 나타나는 동작으로 검증한다.
+이번 플랜은 **보여줄 위치, 화면 표현, 데이터를 만드는 경로, 실행별 표시 상태, 완료 증거**를 하나의 납품 범위로 묶는다. 위젯을 특정 기존 컴포넌트의 이름으로 부르는 것이 아니라 실제 사용자 화면에 나타나는 동작으로 검증한다.
 
-검토 시 GitHub의 Corral main은 e160c641, open-claude-ui main은 4045ce76이었다. 두 저장소의 아래 소스들을 다시 읽었다. 사용자가 제시한 화면 상태를 로컬에서 직접 재현하거나 앱을 빌드·테스트한 결과는 아니다. 작업 트리의 미커밋 변경은 확인하지 않았다. 구현 착수 시 현재 diff를 먼저 확인하고 이미 구현된 항목은 이 계약의 인수 기준으로 검증한다.
+검토 시 GitHub의 Corral main은 e160c641이었다. 사용자가 제시한 화면 상태를 로컬에서 직접 재현하거나 앱을 빌드·테스트한 결과는 아니다. 작업 트리의 미커밋 변경은 확인하지 않았다. 구현 착수 시 현재 diff를 먼저 확인하고 이미 구현된 항목은 이 계약의 인수 기준으로 검증한다.
 
-스크린샷은 원하는 정보 계층과 Todo 배치의 근거다. open-claude-ui는 제3자 재구현이며, Claude 공식 소스 또는 스크린샷에 나온 최신 기능의 완성 구현이라고 취급하지 않는다. 확인한 src/index.ts에는 전용 WorkPlan/Todo export가 없다.
+스크린샷은 원하는 정보 계층과 Todo 배치의 근거다.
 
 ### 다른 에이전트 안의 처리
 
@@ -136,41 +133,16 @@ RightPanel                                ← 기존 보조 패널, 제3열 추�
 
 위젯 종류·표시 여부는 Corral의 검증된 이벤트와 selector가 정한다. 모델이 HTML/JSX를 생성해 실행하거나 임의 UI 명령으로 권한을 변경하는 구조가 아니다. 사용자에게 적절한 위젯이 보인다는 것은 현재 데이터와 작업 상태에 맞는 미리 정의된 표현이 활성화된다는 뜻이다.
 
-## 2. open-claude-ui의 실제 적용 범위
+## 2. 표현 경계
 
-원본 경로의 공통 접두사는 code-examples/이며 기준 커밋은 4045ce76이다. 아래 신규 Corral 파일명은 제안 이름이지 현재 존재하는 파일이라는 뜻이 아니다.
+아래 파일명은 제안 이름이지 현재 존재하는 파일이라는 뜻이 아니다.
 
-| 원본 | 적용할 표현·코드 | Corral 신규/수정 대상 | 필수 동작 증거 |
-|---|---|---|---|
-| ModelSwitcherWithTokenGauge.tsx | SVG 원형 게이지, 분절 막대, 요약 트리거와 상세 계층을 선별 이식 | ContextUsageChip.tsx, ContextInspector.tsx | 실제 동일 요청의 추정값으로 링·범례가 갱신되고 트리거로 상세가 열림 |
-| ThinkingAccordion.tsx | 간결한 활동 헤더, 펼침 화살표, 0fr/1fr 접힘 표현을 수정 이식 | RunActivityWidget.tsx, WorkPlanDisclosure.tsx | 진행 중에도 사용자가 접을 수 있고 완료 후 auto만 축약됨 |
-| StatusIndicators.tsx | QuietDotsWave/StatusDot의 작은 활동 표시를 로컬 토큰으로 이식 | QuietActivityIndicator.tsx, WorkPlanStatusIcon.tsx | 실행 상태에 따라 정지·진행 표현이 바뀌고 reduced motion에서 정적 표시 |
-| ChatComposerChin.tsx | 컴포저와 얕은 보조영역의 연결 방식 참고 | ComposerDock.tsx, ComposerSurface.tsx | Todo가 입력창 위의 형제 영역이며 입력 DOM과 다음 요청 컨트롤은 그대로 유지 |
-| ContainerResponsiveBar.tsx | named container 기준 정보 축약 구조 참고 | SessionWidgetBar.tsx, ComposerDock.tsx | 보조 패널 리사이즈로 채팅 폭이 바뀔 때 표현이 변함 |
-| useClaudeScrollPinning.ts | 사용자 스크롤 우선·최신 추적 해제 원칙과 경계 시험 참고 | ChatView.tsx의 기존 스크롤 소유자 | Todo/헤더 높이 변경 중 과거 anchor와 최신 추적이 각각 유지됨 |
-
-### 2.1 그대로 가져오지 않을 것
-
-원본 ModelSwitcherWithTokenGauge는 고정 Claude 모델 목록·200k 창·샘플 토큰 값이 있고 input/output/cache read/cache write를 더해 비율을 계산한다. Corral에서는 이 합산식과 모델 목록을 사용하지 않는다. 게이지 컴포넌트는 표시 전용으로 분리하고 기존 모델 선택 컨트롤을 대체하지 않는다.
-
-원본 ThinkingAccordion은 isThinkingLive일 때 open을 강제하고 toggle을 막는다. Corral은 auto/open/closed 선호와 실제 실행 상태를 분리한다. 헤더의 클릭 가능한 div는 공용 Button과 접근 가능한 disclosure로 바꾼다. 접힌 본문이 키보드·접근성 트리에 남지 않도록 처리한다. 비공개 추론 원문을 생성·요구하는 기능은 추가하지 않는다.
-
-원본 ChatComposerChin은 입력창 하단의 보조행이지 Todo 컴포넌트가 아니다. 이를 위에 뒤집어 붙이는 대신 시각적 연결을 차용한 새 ComposerDock을 만든다. 샘플 retry·localStorage queue·전송 shortcut은 가져오지 않는다.
-
-원본의 전역 CSS 변수·Claude 브랜딩·전역 Tailwind 설정은 로드하지 않는다. 필요한 keyframe만 Corral 이름 공간과 motion 토큰에 맞게 옮긴다. 기존 공용 Button/Popover/Dialog와 Corral의 색·타이포그래피를 사용한다. 새로운 폰트·음원·Electron 코드·전체 패키지는 이번 범위에 포함하지 않는다.
-
-### 2.2 출처 기록은 구현과 연결
-
-THIRD-PARTY-NOTICES/Open-Claude-UI.md에 다음을 기록한다.
-
-- 원본 저장소, 고정 커밋, 사용 파일 및 사용한 부분.
-- 실제 이식된 Corral 파일, 이식 방식(code adaptation / pattern reference).
-- 제거한 가정, 수정한 접근성·상태 동작, 관련 테스트 ID.
-- MIT 및 Copyright (c) 2026 Caho1 고지 보존. 기존 T3-Code 고지도 유지.
-
-라이선스 파일이 MIT라는 사실을 전체 자산·브랜드·역분석 과정에 대한 무조건적 법적 보증으로 확대하지 않는다. 원본 README의 품질·안전성 주장도 독립 검증 결과로 취급하지 않는다.
-
-README에 링크만 넣거나 source 파일을 unused 상태로 보관하는 것으로 완료할 수 없다. 원본 → 실제 적용 diff → 동작 증거가 연결되어야 한다.
+- 게이지와 분절 막대는 표시 전용이다. 고정 모델 목록, 고정 창 크기, 샘플 토큰, input/output/cache 합산으로 비율을 만들지 않는다. 기존 모델 선택 컨트롤을 대체하지 않는다. 같은 요청의 추정값으로 링·범례가 갱신되고 트리거로 상세가 열린다.
+- 진행 중에도 사용자가 접을 수 있다. auto/open/closed 선호와 실행 상태를 분리하고, 완료 후 auto만 축약한다. 헤더는 공용 Button과 disclosure다. 접힌 본문은 키보드·접근성 트리에 남지 않는다. 비공개 추론 원문을 요구하지 않는다.
+- 활동 표시는 Corral 토큰을 쓴다. 실행 상태에 따라 정지·진행이 바뀌고 reduced motion에서는 정적이다.
+- Todo는 입력창 위의 형제 영역이다. 입력 DOM과 다음 요청 컨트롤은 유지한다. 샘플 retry, localStorage queue, 별도 전송 shortcut은 넣지 않는다.
+- 좁은 폭은 채팅 컨테이너 기준이다. 스크롤 소유자는 기존 ChatView다. Todo나 헤더 높이가 바뀌어도 과거 anchor와 최신 추적을 각각 유지한다.
+- 기존 Button, Popover, Dialog와 Corral의 색·타이포그래피·reduced motion을 쓴다. 새 폰트, 음원, Electron 코드, 패키지는 추가하지 않는다.
 
 ## 3. 현재 실행·오른쪽 탐색·다음 요청 분리
 
@@ -251,7 +223,7 @@ README에 링크만 넣거나 source 파일을 unused 상태로 보관하는 것
 - usedTokens는 동일 요청·같은 측정 기준에서 서로 겹치지 않는 범주를 합한 값이어야 한다.
 - 대화 안에 이미 들어 있는 스킬·지침을 system prompt 전체와 다시 합산하지 않는다.
 - 누적 usage나 여러 모델 호출의 토큰 합을 단일 컨텍스트 점유량으로 쓰지 않는다.
-- input/output/cache 토큰을 upstream 샘플처럼 무조건 합산하지 않는다.
+- input/output/cache 토큰을 무조건 합산하지 않는다.
 - 출력 예약은 점유한 입력과 분리해 표시한다. 예약의 정의·적용 범위가 확인되지 않으면 free space 계산에서 빼지 않는다.
 - 전체 범위가 추정 가능하고 유효 창이 알려졌을 때만 약 N%와 추정 잔여 공간을 표시한다. 막대 렌더는 범위를 제한하되 수치 초과 자체를 숨기지 않는다.
 - context window는 해당 Run/호출의 고정 snapshot에 따른다. 다음 요청의 모델 선택을 바꿔 과거 요청 분모를 바꾸지 않는다.
@@ -412,23 +384,22 @@ SafeMarkdown에 role prompt 등 문자열 삭제 정규식을 넣지 않는다. 
 | SessionWidgetBar.tsx, ContextUsageChip.tsx, ContextInspector.tsx | 신규 제안 | 상단 위젯과 상세 |
 | ComposerDock.tsx, ComposerWorkPlan.tsx | 신규 제안 | 실제 입력창 위 작업 계획 |
 | RunActivityWidget.tsx, ActionRequiredBar.tsx | 신규 제안 | 단일 활동 표시와 중요한 대응 |
-| QuietActivityIndicator.tsx, WorkPlanDisclosure.tsx | 신규 제안 또는 공용화 | upstream에서 선별 이식한 표현 |
+| QuietActivityIndicator.tsx, WorkPlanDisclosure.tsx | 신규 제안 또는 공용화 | 활동 표시와 계획 접힘 |
 | useWorkPlanSnapshot.ts, contextUsage.ts, widgetVisibility.ts | 신규 제안 | 조회·검증·표시용 순수 selector |
 | apps/studio/src/workbench/RunMessage.tsx | 기존 | 독립 완료 도구 목록 제거·기록 진입점 연결 |
 | packages/react/src/components/ExecutionTranscript.tsx | 기존 | compact 원문 기본 접힘, 기록 보존 |
 | apps/studio/src/pages/RunPage.tsx | 기존 | CompactRunWorkspace 결과 우선 및 핵심 대응 보존 |
 | packages/react/src/components/RunResults.tsx | 기존 | embedded/standalone 실행 맥락 분리 |
 | apps/studio/src/demo/script.ts 및 데모 adapter 설정 | 기존 | 진단 출력 분리·실제 도구 경로 fixture |
-| THIRD-PARTY-NOTICES/Open-Claude-UI.md | 신규 | upstream → 적용 파일 → 테스트 추적 |
 
 ## 10. 구현 순서: 기능을 먼저 화면에 납품
 
 | 단계 | 작업 | 눈으로 확인할 산출물 | 단계 완료 조건 |
 |---|---|---|---|
-| M0 | 짧은 CR, 원본 적용표, 현재 재현 및 실패 fixture | 목표 슬롯과 상태별 기대 화면을 기록한 기준 문서 | 요구 누락을 검출하는 테스트가 먼저 실패. 기존 테스트 삭제/완화 금지 |
+| M0 | 짧은 CR, 현재 재현 및 실패 fixture | 목표 슬롯과 상태별 기대 화면을 기록한 기준 문서 | 요구 누락을 검출하는 테스트가 먼저 실패. 기존 테스트 삭제/완화 금지 |
 | M1 | SessionPage/ChatView/ComposerDock 슬롯과 공유 대상 연결 | 실제 세션 화면의 상단 위젯 슬롯·입력창 위 계획 영역 | 과거 패널 탐색 독립, 입력 DOM 유지, 추가 중복 구독 없음 |
 | M2 | WorkPlan 로딩·아이콘·접힘·계획 발행의 end-to-end 연결 | 실제 Coordinator 경로로 0/7 → 1/7 → 2/7 → 종료가 갱신되는 Todo | 새로고침/패널 열기 없이 단계 갱신. 단순 요청은 계획 없음. team 정적 소유자 반례 확인 |
-| M3 | 컨텍스트 계측·참조와 upstream 게이지/분절 표현 적용 | 실제 요청 기록 기반 링·범례·상세 팝오버 | 전체/부분/미측정 구분, tool schema 포함 여부 명시, 두 runtime 검사 |
+| M3 | 컨텍스트 계측·참조와 게이지/분절 표현 적용 | 실제 요청 기록 기반 링·범례·상세 팝오버 | 전체/부분/미측정 구분, tool schema 포함 여부 명시, 두 runtime 검사 |
 | M4 | 상황별 Agent/Changes/Environment 위젯과 단일 활동·대응 연결 | 실행 상태에 따라 필요한 위젯만 보이고 승인 대응이 노출됨 | 기존 성공 도구 목록과 중복 없음, 중요한 대기/오류를 접을 수 없음 |
 | M5 | 선택 결과 우선 패널·원문·상태·설정·데모 정리 | 채팅은 요청과 결과 중심, 패널은 선택 산출물 중심 | 기존 결과·제어·시작 기준·검증·파일 탭 회귀 통과 |
 | M6 | 반응형·스크롤·IME·접근성·성능·종합 증거 | 실제 브라우저 상태별 캡처와 전환 기록 | 아래 필수 인수 기준 및 검사 수행 상태 기록 |
@@ -445,7 +416,6 @@ ID는 계획용 임시 식별자이며 저장소 카탈로그 등록 시 충돌�
 |---|---|---|
 | SURFACE-01 | 보조 패널을 닫은 채 다단계 실행 | 상단 위젯과 입력창 바로 위 Todo가 접근 가능하며 갱신됨 |
 | SURFACE-02 | 채팅 열이 좁아짐 | 컨테이너 기준 축약, 가로 overflow 없음, 전체 정보 접근 유지 |
-| ORIGIN-01 | upstream 이식 검토 | 원본 파일·고정 커밋·실제 적용 코드·시험 연결. 단순 README 링크로 통과 불가 |
 | PLAN-01 | 실제 update_plan 발행 | Coordinator 이벤트·bodyRef를 거쳐 화면에 목록 생성 |
 | PLAN-02 | 동일 항목 in_progress→completed와 다음 항목 시작 | 상태 원·제목·완료 수가 새로고침 없이 갱신 |
 | PLAN-03 | revision 3 뒤 revision 2 본문 지연 도착 | 이전 계획으로 되돌아가지 않음 |
@@ -459,7 +429,7 @@ ID는 계획용 임시 식별자이며 저장소 카탈로그 등록 시 충돌�
 | PLAN-11 | 계획 없음/부분 로딩/잘못된 bodyRef/hash/criteria | 숨김·로딩·오류·이전 기준 구분 |
 | CTX-01 | messages-only 과거 request record | 전체 점유율 아닌 메시지 추정으로 표시 |
 | CTX-02 | 시스템·스킬·메모·내장/MCP tool schema 포함 | 실제 포함 범주만 단일 집계하고 같은 기준의 합계 사용 |
-| CTX-03 | provider input usage와 cache usage가 함께 존재 | upstream식 무조건 합산·과거 누적 합산 없음 |
+| CTX-03 | provider input usage와 cache usage가 함께 존재 | input/output/cache 무조건 합산·과거 누적 합산 없음 |
 | CTX-04 | unsupported payload 또는 미측정 이미지 | 부분 측정 명시, 가짜 전체 비율/free space 없음 |
 | CTX-05 | 압축 완료 후 새 측정 전 | 이전 요청 기준 및 갱신 대기 유지 |
 | CTX-06 | Ultra 모델별 context window 차이 | execution별 분모 유지, 가상 총용량 없음 |
@@ -498,22 +468,11 @@ ID는 계획용 임시 식별자이며 저장소 카탈로그 등록 시 충돌�
 
 ## 13. 구현 에이전트 전달용 요약
 
-> 목표는 CompactRunWorkspace의 접힘 정리가 아니다. open-claude-ui의 게이지·분절 막대·활동 표시·disclosure를 Corral 토큰으로 선별 이식하고, 채팅 상단 SessionWidgetBar와 입력창 바로 위 ComposerWorkPlan을 실제 SessionPage에 연결한다. 기존 update_plan/WorkPlan 이벤트로 Todo가 갱신되어야 하며, messages-only contextEstimate를 전체 컨텍스트로 오표시하지 않도록 요청 계측도 연결한다. 패널 정리는 이 기능들의 후속 단계다. 상단 위젯과 Todo가 보조 패널을 닫아도 작동하고 실제 이벤트로 갱신되는 브라우저 증거, 원본→적용 diff→시험 출처 기록이 없으면 전체 완료로 보고하지 않는다. 현재 실행·과거 패널 탐색·다음 요청 설정, 승인/Reins/compact의 대상과 receipt 경계는 보존한다. 임의 범위 축소가 필요하면 구현 전에 누락 항목을 명시하고 승인을 받는다.
+> 목표는 CompactRunWorkspace의 접힘 정리가 아니다. 채팅 상단 SessionWidgetBar와 입력창 바로 위 ComposerWorkPlan을 실제 SessionPage에 연결한다. 게이지, 분절 막대, 활동 표시, disclosure는 Corral 토큰과 공용 컨트롤을 쓴다. 기존 update_plan/WorkPlan 이벤트로 Todo가 갱신되어야 하며, messages-only contextEstimate를 전체 컨텍스트로 오표시하지 않도록 요청 계측도 연결한다. 패널 정리는 이 기능들의 후속 단계다. 상단 위젯과 Todo가 보조 패널을 닫아도 작동하고 실제 이벤트로 갱신되는 브라우저 증거가 없으면 전체 완료로 보고하지 않는다. 현재 실행·과거 패널 탐색·다음 요청 설정, 승인/Reins/compact의 대상과 receipt 경계는 보존한다. 임의 범위 축소가 필요하면 구현 전에 누락 항목을 명시하고 승인을 받는다.
 
 ## 14. 고정 소스와 근거
 
-아래 링크는 이번에 읽은 근거를 다시 열기 위한 고정 커밋 링크다. 줄 번호를 넣지 않은 문서는 파일 단위 참조이며 구현 자체의 검증 완료를 의미하지 않는다.
-
-### open-claude-ui
-
-- [공개 export — 전용 Todo export 여부](https://github.com/Caho1/open-claude-ui/blob/4045ce76afdcb7dccef1b7e6417b04c4c6046e9c/src/index.ts)
-- [ModelSwitcherWithTokenGauge — 링, 분절 막대, 고정 모델/샘플 및 합산식](https://github.com/Caho1/open-claude-ui/blob/4045ce76afdcb7dccef1b7e6417b04c4c6046e9c/code-examples/ModelSwitcherWithTokenGauge.tsx)
-- [ThinkingAccordion — 헤더, CSS Grid 접힘, live 강제 펼침](https://github.com/Caho1/open-claude-ui/blob/4045ce76afdcb7dccef1b7e6417b04c4c6046e9c/code-examples/ThinkingAccordion.tsx)
-- [StatusIndicators — StatusDot, QuietDotsWave](https://github.com/Caho1/open-claude-ui/blob/4045ce76afdcb7dccef1b7e6417b04c4c6046e9c/code-examples/StatusIndicators.tsx)
-- [ChatComposerChin — 입력 하단 보조행](https://github.com/Caho1/open-claude-ui/blob/4045ce76afdcb7dccef1b7e6417b04c4c6046e9c/code-examples/ChatComposerChin.tsx)
-- [ContainerResponsiveBar — 채팅 컨테이너 기반 축약](https://github.com/Caho1/open-claude-ui/blob/4045ce76afdcb7dccef1b7e6417b04c4c6046e9c/code-examples/ContainerResponsiveBar.tsx)
-- [useClaudeScrollPinning — 사용자 스크롤과 추적 분리](https://github.com/Caho1/open-claude-ui/blob/4045ce76afdcb7dccef1b7e6417b04c4c6046e9c/code-examples/useClaudeScrollPinning.ts)
-- [LICENSE — MIT, Caho1](https://github.com/Caho1/open-claude-ui/blob/4045ce76afdcb7dccef1b7e6417b04c4c6046e9c/LICENSE)
+아래 링크는 Corral 기준선의 파일 단위 참조다. 구현 자체의 검증 완료를 의미하지 않는다.
 
 ### Corral
 
@@ -533,4 +492,4 @@ ID는 계획용 임시 식별자이며 저장소 카탈로그 등록 시 충돌�
 - 사용자가 제공한 두 번의 성공 실행·동일 산출물·원문·도구 목록 중복 재현 기록.
 - 사용자가 첨부한 Context 상세 및 입력창 부근 Todo 화면.
 - 사용자가 붙여 넣은 다른 에이전트의 CompactRunWorkspace 개선 제안.
-- 이전 플랜 Corral-Chat-View-Improvement-Plan.md. v2는 위젯/계획의 납품 의무, 실제 계측, 출처 구현 추적, 팀 계획의 정적 소유자 반례를 강화한다.
+- 이전 플랜 Corral-Chat-View-Improvement-Plan.md. v2는 위젯/계획의 납품 의무, 실제 계측, 팀 계획의 정적 소유자 반례를 강화한다.

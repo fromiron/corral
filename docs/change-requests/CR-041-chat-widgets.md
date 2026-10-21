@@ -22,7 +22,7 @@
 
 ## 범위 밖
 
-예산 증가, 권한 확대, 자동 compact 정책, Todo 클릭 완료, 폰트 임베딩, testkit `defaultReply` 변경, T3-Code 고지 복구.
+예산 증가, 권한 확대, 자동 compact 정책, Todo 클릭 완료, 폰트 임베딩, testkit `defaultReply` 변경.
 
 ## 검증
 

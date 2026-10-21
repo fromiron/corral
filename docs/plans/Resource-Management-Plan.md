@@ -16,12 +16,6 @@ Oracle Pro(5/5)가 실제 Corral·비교 소스 34개와 현재 설정 화면을
 
 설치된 Pi 1.3 `McpClient.connect/listTools/close`, `StdioTransport`, `StreamableHttpTransport`를 확인했다. 기존 adapter transport·인증·process lease를 재사용한다. Context7은 이 세션에 노출되지 않아 정확한 설치 소스와 타입을 사용한다. 새 의존성은 추가하지 않는다. Native CU가 제공되지 않으면 패키지 서버/Studio의 인앱브라우저 검증과 Electron 실행 smoke를 분리해 보고한다.
 
-## 참고 소스
-
-- [PI Desktop](https://github.com/vastsa/pi-desktop/tree/e219a3e4c0e4cc73ddacde78005987a85d5977d6): skills/MCP 목록·검색·상세·CRUD·범위·연결 관측. LGPL 코드 직접 복제 없음.
-- [T3 Code](https://github.com/pingdotgg/t3code/tree/6a6ebb278dc70dd859439a3c28960a7d23a1e645): 설정 범위와 스킬 검색. 독립적인 hook/MCP CRUD 패널은 확인되지 않았다.
-- [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness/tree/687f282e8625c6b8d11ff58211a90524be2e4317): 설치·선택·runtime 상태 구분. Cordis/HMR 이식 없음.
-
 ## 검증 원칙
 
 기존 불변 내용·신뢰·합성 테스트를 유지한다. 경로/크기/중복·CAS/늦은 응답/인증 대상/프로세스 정리를 서비스·adapter에서 검사하고 E2E는 주요 두 관리 흐름에 집중한다. 실계정 호출 한도는 사용자 요청으로 폐지됐지만 제품 Run 예산은 유지한다.

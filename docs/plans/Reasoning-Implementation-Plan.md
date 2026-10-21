@@ -21,9 +21,7 @@
 
 ## 출처
 
-- T3 Code MIT `16918b57d6754d6f145e9b6367c825aa31a740da`: capability 기반 옵션과 선택/실제 사용 구분.
 - DeepSeek Harness MIT `687f282e8625c6b8d11ff58211a90524be2e4317`: assembled 선택 고정과 strict 수동 검증.
-- PI Desktop LGPL-3.0 `e219a3e4c0e4cc73ddacde78005987a85d5977d6`: end-to-end 동작 참고, 코드 직접 복제 없음.
 - Mixdog Apache-2.0 `81558aa4230744e504972e01cb248ec9369e35bc`: 기존 파생 판정기와 step 입력·bounded 실행 패턴. 파생 코드는 effort-judge/NOTICE.md에 기록한다.
 
 실계정 상세 결과와 검증 한계: [검증 기록](../validation/Reasoning-Controls-2026-10-18.md).

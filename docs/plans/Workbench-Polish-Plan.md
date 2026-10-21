@@ -2,7 +2,7 @@
 
 - 작성: Claude / 2026-10-17, 기준 `c6bc29d`
 - 요청: Bell — "사이드바+챗뷰 UI는 만들었지만 세부 품질이 부족하고 전체 완성도가 떨어짐. `/`·`@` 명령어셋, 파일·폴더 지정이 많이 부족. UI가 복잡하고 지저분함. 개선 플랜을 만들어줘. leeskills 스킬 사용."
-- 목표 수준: [T3 Code](https://github.com/pingdotgg/t3code), [PI-Desktop](https://github.com/vastsa/pi-desktop), Claude desktop, ChatGPT desktop.
+- 목표: 데스크톱에서 바로 쓸 수 있는 완성도.
 - 진행 규칙: [AGENTS.md](../../AGENTS.md) 그대로다(CR 먼저, 실패 테스트 먼저, 테스트 완화 금지, 검증 못 한 것은 그대로 보고). E2E는 고친 부분만 핀포인트로 둔다.
 
 ## 0. 근거와 증거 수준
@@ -14,14 +14,6 @@ leeskills `design-workflow`의 증거 라벨을 쓴다.
 - **추론**: 관찰에서 이끈 판단. 그렇다고 적는다.
 - **미확인**: 이번에 확인하지 못한 것.
 
-참조 앱의 근거:
-
-| 대상 | 확인한 것 | 수준 |
-|---|---|---|
-| T3 Code | `main` 브랜치의 docs(keybindings, composer, thread-sidebar, appearance)와 `DesktopWindow.ts`·`DesktopApplicationMenu.ts`·`ComposerCommandMenu.tsx` | 관찰. Corral이 가져온 `70d60e03`과 다를 수 있음 |
-| PI-Desktop | README와 `docs/guide/screenshots.md`의 설명(이미지 자체는 못 봄) | 관찰(문서) |
-| Claude desktop, ChatGPT desktop | 이번 세션에서 직접 열어 보지 않음 | 일반적인 패턴만 참고(추론). 수치·세부 동작은 미확인 |
-
 ## 1. 진단
 
 ### 1.1 복잡하고 지저분한 인상
@@ -29,7 +21,7 @@ leeskills `design-workflow`의 증거 라벨을 쓴다.
 | ID | 관찰 | 위치 |
 |---|---|---|
 | D-01 | 같은 정보가 여러 곳에 반복된다: Run 상태 약 8곳, 런타임 모드 4곳, 팀 6곳, 세션 제목 3곳, 검토 진입점 5곳, 결과 4곳 | `SessionPage.tsx`, `RootLayout.tsx`, `RunMessage.tsx`, `Sidebar.tsx` |
-| D-02 | 컨트롤 모양이 두 벌이다: T3에서 가져온 `ui/button`(cva)과 손으로 만든 테두리 `text-xs` 버튼, 밑줄 링크, 네이티브 `<select>`. 세션 화면에만 버튼·select 15개, 밑줄 링크 9개가 있다. 예: `FilesViews.tsx`의 버튼은 전부 손으로 만든 것 | `SessionPage.tsx`, `FilesViews.tsx` |
+| D-02 | 컨트롤 모양이 두 벌이다: cva `ui/button`과 손으로 만든 테두리 `text-xs` 버튼, 밑줄 링크, 네이티브 `<select>`. 세션 화면에만 버튼·select 15개, 밑줄 링크 9개가 있다. 예: `FilesViews.tsx`의 버튼은 전부 손으로 만든 것 | `SessionPage.tsx`, `FilesViews.tsx` |
 | D-03 | 토큰이 부족하다: 색 10개, 그림자 1개, 글자 크기 단계 없음. `text-xs` 78회에 10·11·13·14px 임의 크기가 섞이고, radius 8가지 이상, 아이콘 11–28px. 정의되지 않은 토큰(`--contrast-muted-foreground`, warning-surface, destructive-foreground, surface-glass, `--radius-sm/md`)을 참조한다 | `packages/react/src/theme.css`, `apps/studio/src/index.css` |
 | D-04 | 문장형 안내가 많다. 세션 행마다 "시작할 준비가 됐어요", 컴포저 위 메타 정보 세 줄과 10px 힌트, 의도 선택 버튼이 문장 길이 | 데모 화면, `SessionPage.tsx` `Composer` |
 | D-05 | 선택 상태 모양이 5가지이고, ghost 버튼에 마우스를 올리면 강조색(초록)이 쓰여 화면 곳곳에 초록이 생긴다 | `ui/button.tsx`, 각 화면 |
@@ -124,7 +116,7 @@ leeskills `design-workflow`의 증거 라벨을 쓴다.
   - "결정 필요"는 개수 필터로 둔다.
   - 아래쪽에는 설정만 둔다.
 - **프로젝트 홈**:
-  - 히어로 + 컴포저 하나인 "새 세션" 화면으로 바꾼다(PI-Desktop, ChatGPT의 첫 화면 패턴).
+  - 히어로 + 컴포저 하나인 "새 세션" 화면으로 바꾼다.
   - 폴더 연결·검사·팀 관리는 "프로젝트 설정"으로 옮긴다.
 - **마무리**: 바꾸기 전과 후를 `audit-design`으로 같은 기준(1280×720, ko, 다크/라이트)에서 비교한다.
 
@@ -148,7 +140,7 @@ leeskills `design-workflow`의 증거 라벨을 쓴다.
 | `/help` | 명령·단축키 목록 | 레지스트리 |
 
 **`@` 참조**:
-- 종류: 파일, 폴더, 결과(산출물, 버전 포함), Run, 역할(에이전트). 한 메뉴에 그룹으로 보이며, T3 `ComposerCommandMenu` 패턴을 따른다.
+- 종류: 파일, 폴더, 결과(산출물, 버전 포함), Run, 역할(에이전트). 한 메뉴에 그룹으로 보인다.
 - 메뉴 행: 16px 아이콘, 굵은 이름, 흐린 설명. 빈 결과 문구와 ↑↓·Enter·Tab·Esc 키, IME 조합 중 무시는 기존 동작을 유지한다.
 - **검색 API**: `GET /api/v1/{projects|sessions}/:id/workspace/search?q=&limit=`(이름은 CR에서 확정).
   - 범위: git 추적 파일 + 무시되지 않은 새 파일, 그리고 그 폴더들.
@@ -209,7 +201,7 @@ leeskills `design-workflow`의 증거 라벨을 쓴다.
 - **제목 표시줄**:
   - `titleBarStyle:'hidden'` + `titleBarOverlay`로 바꾸고, 높이를 위쪽 바 52px에 맞춘다.
   - 직접 그린 창 버튼은 지운다. 오버레이를 못 쓰는 환경에서만 대체로 남긴다.
-  - Linux 투명색 제약(T3 주석의 `#01000000`)과 Wayland/X11 동작은 미확인이므로 smoke로 확인한다.
+  - Linux 투명색 제약(`#01000000`)과 Wayland/X11 동작은 미확인이므로 smoke로 확인한다.
 - **테마**:
   - `nativeTheme`과 Studio 테마를 따른다.
   - 창 배경색, 오버레이 색, 시작 화면이 함께 바뀐다.
@@ -268,7 +260,7 @@ leeskills `design-workflow`의 증거 라벨을 쓴다.
 
 권장안대로 진행하며, 다르게 원하면 착수 전에 알려주면 된다.
 
-1. **보내기 키**: Enter 전송 / Shift+Enter 줄바꿈으로 바꾸고(T3·Claude·ChatGPT와 같음), 설정에서 지금 방식(Ctrl/⌘+Enter)으로 되돌릴 수 있게 한다. **권장.**
+1. **보내기 키**: Enter 전송 / Shift+Enter 줄바꿈으로 바꾸고, 설정에서 지금 방식(Ctrl/⌘+Enter)으로 되돌릴 수 있게 한다. **권장.**
 2. **Run 상세와 팀 설계의 위치**: Run 상세는 오른쪽 패널 탭, 팀 설계는 기존 편집 화면으로 연다. **권장.**
 3. **참조의 의미**: 가리키기만 하고 권한은 주지 않으며, 결과는 버전을 고정한다(CR-014 연장). **권장.**
 4. **데스크톱 OS 알림·배지**: 포함하되 기본은 꺼 둔다. **권장.**

@@ -7,18 +7,14 @@
 
 Corral에서 프로젝트를 열고, 모델을 고르고, 파일을 수정하고, 명령과 테스트를 실행하고, 결과를 미리 보고 검토하는 일을 끝낼 수 있게 한다. 실행 상태·권한·예산·산출물은 Corral Coordinator가 관리한다. D&D, 협업, Reins를 제거하거나 별도 제품으로 분리하지 않는다.
 
-최초 계획 작성 요청의 산출물은 이 문서였으며 당시 원본 데모·제품 코드·계약 레지스트리를 변경하지 않았다. 후속 구현 승인으로 Corral 코드와 계약 등록을 진행했다. 아래 새 타입·파일·테스트 ID는 계획 당시의 제안 이름이며, 실제 등록은 CR-042와 통합 기록에 연결한다. 원본 데모는 참고 자료로 유지한다.
+최초 계획 작성 요청의 산출물은 이 문서였으며 당시 제품 코드·계약 레지스트리를 변경하지 않았다. 후속 구현 승인으로 Corral 코드와 계약 등록을 진행했다. 아래 새 타입·파일·테스트 ID는 계획 당시의 제안 이름이며, 실제 등록은 CR-042와 통합 기록에 연결한다.
 
 | 근거 | 확인한 상태 |
 |---|---|
-| 사용자 첨부 | `C:/Toys/Absorb-PI-Desktop demo.md` |
-| Corral | `C:/Toys/corral`, `main`, `ad0bb6da6f20ca685e58b619e4e311464102a0b9`, desktop `0.1.0` |
-| PI-Desktop | `C:/Toys/demo`, desktop `0.21.0-beta.4`; 해당 디렉터리는 Git 체크아웃이 아니어서 commit은 확인 불가 |
-| 조사 방식 | 로컬 문서·타입·구현·테스트 파일의 정적 대조. 이번 조사에서 데모 앱, 유료 모델, 원격 서비스는 실행하지 않음 |
-| 소스 추적 | 첨부 SHA-256 `647a1f141ef8aaa177d819c3be273201b894237fbfe280fe72aaa74305591258` |
-| 데모 버전 추적 | `apps/desktop/package.json` SHA-256 `3333fa3a78232ee6eeaef8d1910c13c0c06d8174fad067b1b3e44f71d24b4b99` |
+| Corral | `main`, `ad0bb6da6f20ca685e58b619e4e311464102a0b9`, desktop `0.1.0` |
+| 조사 방식 | 이 저장소의 문서·타입·구현·테스트 파일의 정적 대조. 이번 조사에서 유료 모델, 원격 서비스는 실행하지 않음 |
 
-첨부의 줄 번호는 탐색 힌트로만 사용했다. 구현할 때는 아래 심볼과 경로를 현재 checkout에서 다시 확인한다. 데모 루트의 LICENSE 파일은 이번 조사에서 발견하지 못했다. 직접 코드를 복사하는 작업은 해당 파일의 출처·재사용 권한·필요 고지를 확인한 뒤 진행하고, 그 전에는 동작과 계약을 참고해 Corral 구조로 구현한다.
+구현할 때는 아래 심볼과 경로를 현재 checkout에서 다시 확인한다. 외부 저장소의 파일을 복사하지 않고 Corral 계약으로 구현한다.
 
 기준 문서:
 
@@ -32,21 +28,21 @@ Corral에서 프로젝트를 열고, 모델을 고르고, 파일을 수정하고
 |---|---|---|
 | `VerificationRunner.spawn`을 넓혀 임의 명령 실행 | runner는 고정 tree를 별도 검증 worktree로 복사한다. 실제 세션 작업 사본을 고치는 셸과 의미가 다르다 | `run_check`는 그대로 유지. 세션 사본에서 실행하는 별도 명령 계약을 추가하고 프로세스 소유·종료·출력 수집만 필요한 범위에서 공유 |
 | Windows 셸 지원 추가 | `files/process-group.ts`는 Windows에서 자식 트리 종료를 확인하지 못해 `processGroupGone()`이 항상 false | Windows 프로세스 트리 소유·종료 확인을 첫 기능의 전제 조건으로 구현 |
-| Hashline을 Pi `edit`로 교체하거나 병행 | CR-019는 공식 Pi `oldText/newText` 의미와 기존 자료를 보존한다. 데모는 개별 줄 hash가 아닌 **파일 태그 + 줄 번호 + 읽은 줄 근거**를 사용 | 기존 `edit` 유지. 버전 있는 Hashline 편집 방식을 추가하고 역할/Run에서 명시 선택 |
-| 태그가 맞으면 편집 | 데모 태그는 SHA-256의 16비트 표시값이며 일부 머리/꼬리 연산은 stale tag도 허용한다 | 짧은 태그를 쓰기 권한으로 취급하지 않는다. Corral의 원본 bytes hash·execution별 읽기 근거·lease를 항상 재검사. stale 완화는 가져오지 않음 |
+| Hashline을 Pi `edit`로 교체하거나 병행 | CR-019는 공식 Pi `oldText/newText` 의미와 기존 자료를 보존한다. Hashline은 **파일 태그 + 줄 번호 + 읽은 줄 근거**를 사용 | 기존 `edit` 유지. 버전 있는 Hashline 편집 방식을 추가하고 역할/Run에서 명시 선택 |
+| 태그가 맞으면 편집 | 짧은 태그는 SHA-256의 16비트 표시값이다. 머리/꼬리 연산의 stale tag 허용은 쓰지 않는다 | 짧은 태그를 쓰기 권한으로 취급하지 않는다. Corral의 원본 bytes hash·execution별 읽기 근거·lease를 항상 재검사. stale 완화는 하지 않음 |
 | Auto를 allow/ask/deny에 같은 이름으로 올림 | Corral은 다층 deny 우선, descriptor/인자/정책 revision 승인이다 | 모드는 사용자용 프리셋이며 별도 권한 원장이 아니다. 기존 deny와 strict, review-only, 도구 capability를 넓히지 않음 |
 | 활성 Run 검사 두 곳 수정 | Coordinator에 `live: Map`은 있지만 모델 슬롯은 Run별이고 Studio 서비스는 단일 `RunSessionStore`, 컴포저는 전역 busy를 가정 | 시작 입구·host 용량·사본 lease·복구·세션별 UI·구독을 하나의 변경 범위로 다룸 |
 | 파일 미리보기 추가 | Corral에 파일 패널·diff·산출물 보기가 이미 있다 | 기존 패널을 확장. 탐색기나 검토함을 중복 생성하지 않음 |
-| 로컬 fixture origin 검사 확장 | 브라우저 launcher 자체가 Linux 전용이다. 데모의 일반 브라우저 파일 열기는 에이전트용 `resolveLocalFile`보다 넓다 | 승인된 작업 사본/preview lease 기반 origin으로 확장하고 OS별 launcher를 검증. 임의 로컬 파일 열기를 그대로 복사하지 않음 |
+| 로컬 fixture origin 검사 확장 | 브라우저 launcher 자체가 Linux 전용이다 | 승인된 작업 사본/preview lease 기반 origin으로 확장하고 OS별 launcher를 검증. 임의 로컬 파일 열기는 넣지 않음 |
 | 모델 목록·사고 강도 추가 | 프로필, 모델 선택, 추론 override/patch가 이미 있음 | 새 카탈로그·import만 추가하고 기존 reasoning 경로에 연결 |
 | 원격 주소를 기존 API로 호출 | 현재 서버·Electron은 loopback/동일 origin/로컬 bootstrap 경계를 가짐 | transport, 인증, 호스트 ID, SSE 복구를 설계한 뒤 연결. 단순 CORS 허용이나 `0.0.0.0` bind로 해결하지 않음 |
 | 이미지 결과를 산출물로 저장 | 현재 산출물 이벤트는 text 계열 output contract와 1 MiB 상한을 사용. 입력 이미지 저장소가 출력 이미지 계약을 대신하지 못함 | 바이너리 산출물 버전·검토·export·용량·취소 후 정산을 먼저 정의 |
 
-기존 스펙의 “활성 Run 1개”, “임의 셸 제외”, CR-019의 “Hashline은 평가 전용”은 현재 기능 범위다. 이를 새 목표의 영구 제한으로 삼지 않는다. 구현 착수 시 해당 조항을 새 CR로 명시적으로 확장한다. 제한을 그대로 둔 데모 전용 우회 경로를 새 제품 기능으로 만들지 않는다.
+기존 스펙의 “활성 Run 1개”, “임의 셸 제외”, CR-019의 “Hashline은 평가 전용”은 현재 기능 범위다. 이를 새 목표의 영구 제한으로 삼지 않는다. 구현 착수 시 해당 조항을 새 CR로 명시적으로 확장한다. 기존 제한을 우회하는 경로를 새 제품 기능으로 만들지 않는다.
 
 ## 3. 전체 범위와 재사용
 
-| ID | 가져올 기능 | Corral에서 재사용 | 새로 필요한 핵심 |
+| ID | 기능 | Corral에서 재사용 | 새로 필요한 핵심 |
 |---|---|---|---|
 | ABS-01 | 워크트리 명령 실행 | effect intent, 승인, 파일 snapshot, Reins | 임의 명령 계약, OS 셸, process lease, 출력 조회 |
 | ABS-02 | Ask / Accept edits / Auto | tool-policy, PermissionPolicyEditor, 승인 UI | 컴포저 프리셋과 Run snapshot |
@@ -139,7 +135,7 @@ flowchart LR
 유효 권한은 역할 capability ∩ harness/strict ∩ 프로젝트 신뢰 ∩ 기존 permissionPolicies ∩ 모드 프리셋이다. 어느 층의 deny도 Auto가 뒤집지 않는다. review-only에는 편집·명령 쓰기·이미지 생성 권한을 붙이지 않는다. “테스트 명령”이라는 이름만으로 셸을 읽기 전용 분류하지 않는다.
 
 - 승인 카드는 실제 최종 대상·명령/변경·범위·승인 수명을 표시한다. 기본 승인은 이번 호출 한 번이다.
-- 데모의 “세션 허용”을 무제한 tool-name grant로 복사하지 않는다. 반복 허용은 좁은 조건·수명을 가진 명시 정책으로 저장하며 기존 원칙대로 다음 Run부터 적용한다.
+- 세션 허용을 무제한 tool-name grant로 두지 않는다. 반복 허용은 좁은 조건·수명을 가진 명시 정책으로 저장하며 기존 원칙대로 다음 Run부터 적용한다.
 - 실행 중 모드 변경 UI는 적용 대상을 분명히 표시한다. 이 계획의 기본은 다음 Run 적용이며 현재 승인 대기 중인 효과를 소급 승인하지 않는다. 즉시 변경이 필요하면 정책 revision과 pending approval 무효화를 포함한 별도 Reins 계약으로 확장한다.
 - 승인·거절·타임아웃·중복 클릭·승인 직후 파일 변경·취소 뒤 늦은 승인까지 검증한다.
 
@@ -147,11 +143,11 @@ flowchart LR
 
 `edit`의 기존 Pi schema와 동작을 보존한다. `edit_hashline`과 그에 맞는 읽기 출력 형식을 별도 버전으로 제공한다. 동일 역할에 두 편집 문법을 혼합 노출하지 않고, 기존 자료는 Pi 방식, 새 역할은 선택한 편집 방식을 Run 시작에 고정한다.
 
-- 데모 `hashline/{tag,parse,apply,store}.rs`의 파일 태그, 줄 번호, PUT/CUT/REM/MV 의미를 정리한 계약부터 만든다. Corral용 순수 TypeScript 변환기를 우선 제안한다. 엔진 선택 때문에 Rust host 전체를 들이지 않는다.
+- 파일 태그, 줄 번호, PUT/CUT/REM/MV 의미를 정리한 계약부터 만든다. Corral용 순수 TypeScript 변환기를 우선 제안한다. 엔진 선택 때문에 Rust host 전체를 들이지 않는다.
 - `ReadEvidence`는 host/run/execution/attempt/path·전체 bytes hash·읽은 줄 구간·encoding/EOL에 결합한다. 다른 실행의 읽기나 잘린 줄은 편집 권한이 아니다.
 - 4자리 태그는 표시/참조용이다. full hash 일치와 읽기 근거를 함께 검사하고, lease 안에서 계산 후 적용 직전 재검사한다. 충돌 시 다시 읽게 한다.
 - PUT/CUT은 한 파일 내 원자 변환. REM/MV도 실제 삭제/이동 capability, 목적지 충돌, 다중 경로 사전검사와 복구 journal을 탄다. 문자열 변환기로 삭제·이동 권한을 우회하지 않는다.
-- 초기 파일 범위는 Corral의 UTF-8·크기 계약을 유지한다. BOM/CRLF/마지막 개행을 보존한다. 데모가 처리하는 UTF-16 등은 지원 여부를 명시하고 변환 손실을 숨기지 않는다.
+- 초기 파일 범위는 Corral의 UTF-8·크기 계약을 유지한다. BOM/CRLF/마지막 개행을 보존한다. UTF-16 등은 지원 여부를 명시하고 변환 손실을 숨기지 않는다.
 - 기존 `evaluation-edits` 비교 driver는 참고 증거다. 제품 도구 등록→실제 read→모델 tool args→broker 반영→diff 흐름이 완료 기준이다. 네 연산과 stale/collision/부분읽기/실행 간 혼선 반례를 모두 포함한다.
 
 ### ABS-04 — 기존 파일 패널 확장과 로컬 브라우저
@@ -237,7 +233,7 @@ flowchart LR
 - explorer/code-reviewer/test-runner/fixer/ui-designer를 포함한 문서 후보를 preview한다. parser는 frontmatter의 이름·설명·prompt·tool·model을 읽고 오류/미지원 필드를 표시한다.
 - `Read/Glob/Grep/Bash/Edit/Write/Task…`를 Corral의 실제 capability와 매핑한다. 이름만 비슷한 도구를 자동 동등 취급하지 않는다. 없는 도구를 선택한 정의는 import 단계에서 알려 준다.
 - 저장 결과는 Corral definition의 callable Agent와 명시한 capability link다. 실행 중 임의 역할 생성이나 별도 sidecar 위임 큐를 만들지 않는다.
-- 자식은 부모 capability의 부분집합과 기존 depth/spawn/예산 상한을 따른다. 데모 상한 10을 Corral에 그대로 적용하지 않는다.
+- 자식은 부모 capability의 부분집합과 기존 depth/spawn/예산 상한을 따른다. 고정 상한 10을 그대로 두지 않는다.
 - `ask_user`와 Run 제어는 자식이 직접 행사하지 않도록 import된 역할에서 제외하고, 필요한 질문은 부모에게 기존 ask/reply 경로로 보낸다. 기존 수동 팀의 계약을 몰래 바꾸지 않는다.
 
 ### ABS-12 — 스킬·MCP·서버 확장 패키지
@@ -280,7 +276,7 @@ flowchart LR
 - 발화 ID·최종 transcript·commandId를 결합해 partial transcript/재연결 중복 제출을 막는다. Reins의 accepted/delivered 의미를 그대로 쓴다.
 - 원본 오디오를 파일·로그·DB에 저장하지 않는다. 마이크 buffer는 종료 시 폐기한다. 확정된 사용자 텍스트는 일반 세션 기록이 된다는 점을 UI에 표시한다.
 - 앱 종료/호스트 전환/권한 철회 시 장치와 socket을 정리한다. 음성 token/비용·시간 상한도 운영 예산에 표시한다.
-- provider 종류와 계정 사용 가능 여부는 실제 지원 API로 확인한다. 데모의 비공개 endpoint/하드코딩 model ID를 지원 근거로 복사하지 않는다.
+- provider 종류와 계정 사용 가능 여부는 실제 지원 API로 확인한다. 비공개 endpoint나 하드코딩 model ID를 지원 근거로 두지 않는다.
 
 ## 6. 구현 순서와 PR 단위
 
@@ -355,7 +351,7 @@ I05/I07, I09/I11/I12/I13처럼 의존 관계가 없는 작업은 별개 진행�
 1. **계약/단위:** parser·state reducer·policy·fingerprint·migration. 시간·ID·외부 호출을 주입한다.
 2. **실제 로컬 효과 통합:** 실제 subprocess/파일/SQLite/loopback HTTP를 사용한다. 모델은 결정적 provider로 제어할 수 있지만 제품 prompt·도구 schema·권한·Coordinator·broker 경로는 바꾸지 않는다.
 3. **Studio E2E:** 기존 `server/files`, `harness-checks`, `harness-resources`, `models`, `reasoning-scope`, `chat-widgets`, `conversation-length` 및 desktop-workbench 흐름을 확장한다. 새 테스트 전용 입구를 만들지 않는다.
-4. **실제 화면:** 인앱 브라우저에서 시작→승인→실행→결과, 좁은 폭, 키보드/IME, 긴 출력과 오류를 확인한다. 데모 대조는 같은 사용자 과제/viewport/state로 한다.
+4. **실제 화면:** 인앱 브라우저에서 시작→승인→실행→결과, 좁은 폭, 키보드/IME, 긴 출력과 오류를 확인한다. 같은 사용자 과제, viewport, state로 확인한다.
 5. **OS 앱:** Windows 설치 산출물에서 subprocess tree·파일 잠금·PowerShell 인코딩·tray·마이크·업데이트를 확인한다. Linux CI 통과는 Windows/macOS 증거가 아니다.
 6. **외부 capability:** 이미지/voice/remote/S3는 승인된 계정·대상·호출 상한이 있는 opt-in 검증을 따로 한다. 가짜 provider 통과만으로 외부 기능 완료나 품질 향상을 주장하지 않는다.
 
@@ -390,28 +386,26 @@ I05/I07, I09/I11/I12/I13처럼 의존 관계가 없는 작업은 별개 진행�
 | 카탈로그·이미지·음성 provider | 실제 지원 API와 계정 확인, 종류별 명시 profile, 유료 검증 상한 설정 | I07/I12/I17 |
 | 금고 비밀값·복구키 | 비밀값 기본 제외, 명시 선택한 항목만 암호화 포함; 복구키 방식 별도 확정 | I16 |
 | 원격 첫 transport | SSH tunnel + 원격 loopback Corral; HTTPS 직접 연결은 같은 host 계약의 후속 transport | I15 |
-| 코드 재사용 | demo 파일별 출처/라이선스 확인 후 고지 포함, 불명확하면 동작을 Corral에서 구현 | 복사할 파일 착수 전 |
+| 구현 출처 | 이 저장소의 계약과 코드. 외부 파일을 복사하지 않음 | 착수 전 |
 
-## 부록: 구현자가 먼저 열 소스
+## 부록: 구현자가 먼저 열 Corral 소스
 
-경로의 `demo:`는 `C:/Toys/demo`, `corral:`은 이 저장소다. 데모 파일은 참고 구현이고 제품 계약의 확정자는 아니다.
+| 영역 | 소스 |
+|---|---|
+| 명령 | `core/coordinator.ts::externalTool`, `server/files/verification.ts::VerificationRunner`, `files/process-group.ts` |
+| 모드 | `core/tool-policy.ts`, `core/admission/index.ts`, `PermissionPolicyEditor.tsx`, `SessionPage.tsx` |
+| Hashline | `contracts/src/coding.ts`, `server/files/service.ts::execute/change`, `server/evaluation-edits.ts` |
+| 미리보기 | `workbench/FilePanel.tsx`, `FilesViews.tsx`, `adapter-pi/src/browser-{policy,launcher}.ts` |
+| 모델 | `server/models/registry.ts`, `credential-store.ts`, `ModelSettingsPage.tsx`, `RunRoleOverrides.tsx` |
+| 동시성 | `core/coordinator.ts::startRunWithRecovery/startRefusal/acquireSlot`, `react/src/run/session.ts`, Studio `services.tsx` |
+| 앱 | desktop `package.json`, `scripts/prepare.ts`, `src/main.ts`, Studio `commandRegistry` |
+| 예약 | `server/runtime.ts`, `server/app.ts`, Coordinator 시작 경로 |
+| 프로젝트 | `ProjectsPage.tsx`, `FilesViews.tsx`, 서버 workspace/inputs |
+| 이미지 | `server/images.ts`, `contracts/src/events.ts::ArtifactVersionCreated`, `react/ArtifactViewer.tsx` |
+| 위임 | `contracts/src/definition.ts`, core compiler/delegation, `adapter-pi/src/worker-tools.ts` |
+| 패키지 | `server/harness/service.ts`, `mcp-service.ts`, `contracts/src/harness-management.ts` |
+| 금고 | model/harness/project 설정 stores와 새 domain adapters |
+| 원격 | `server/security.ts`, desktop `main.ts`, client `index.ts`, Studio `services.tsx` |
+| 음성 | Session composer, `server/app.ts` 요청 경로, Reins 계약 |
 
-| 영역 | demo 소스 | corral 소스 |
-|---|---|---|
-| 명령 | `crates/host-core/src/tools/mod.rs::tool_bash`, `tools/shell.rs::build_invocation_for_platform` | `core/coordinator.ts::externalTool`, `server/files/verification.ts::VerificationRunner`, `files/process-group.ts` |
-| 모드 | `crates/host-core/src/permissions.rs::evaluate_auto_with_permission_mode_and_risk_and_path`, `ComposerPermissionPicker.tsx`, `mode-tool-access.ts` | `core/tool-policy.ts`, `core/admission/index.ts`, `PermissionPolicyEditor.tsx`, `SessionPage.tsx` |
-| Hashline | `crates/host-core/src/tools/hashline/{mod,tag,parse,apply,store}.rs` | `contracts/src/coding.ts`, `server/files/service.ts::execute/change`, `server/evaluation-edits.ts` |
-| 미리보기 | `components/workpanel/FilesTab.tsx`, `electron/main/browser-view.ts::resolveLocalFile`, `browser-host.ts` | `workbench/FilePanel.tsx`, `FilesViews.tsx`, `adapter-pi/src/browser-{policy,launcher}.ts` |
-| 모델 | `electron/main/models-dev-catalog.ts`, `features/settings/imports/ModelConfigImportPanel.tsx`, `ThinkingLevelSlider.tsx` | `server/models/registry.ts`, `credential-store.ts`, `ModelSettingsPage.tsx`, `RunRoleOverrides.tsx` |
-| 동시성 | `agent-runtime/src/runtime.ts::buildSubagentTool` (실행 형태 참고) | `core/coordinator.ts::startRunWithRecovery/startRefusal/acquireSlot`, `react/src/run/session.ts`, Studio `services.tsx` |
-| 앱 | desktop `package.json`, `electron/main/bootstrap/app-lifecycle.ts`, `updater.ts`, `keep-awake.ts`, `tray-sessions.ts` | desktop `package.json`, `scripts/prepare.ts`, `src/main.ts`, Studio `commandRegistry` |
-| 예약 | `electron/main/runtime/scheduled-runner.ts`, `crates/host-core/src/scheduled.rs` | `server/runtime.ts`, `server/app.ts`, Coordinator 시작 경로 |
-| 프로젝트 | `ProjectCreateDialog.tsx`, `HomeProjectSwitcher.tsx`, `ProjectInstructionsDialog.tsx`, `ProjectMemoryDialog.tsx` | `ProjectsPage.tsx`, `FilesViews.tsx`, 서버 workspace/inputs |
-| 이미지 | `electron/main/services/image-generation-service.ts`, `agent-runtime/src/image-generation/tool.ts` | `server/images.ts`, `contracts/src/events.ts::ArtifactVersionCreated`, `react/ArtifactViewer.tsx` |
-| 위임 | `agent-runtime/src/subagent-definitions.ts`, `shared/src/subagent-definition.ts` | `contracts/src/definition.ts`, core compiler/delegation, `adapter-pi/src/worker-tools.ts` |
-| 패키지 | `pages/PluginsPage.tsx`, `plugin-sdk/src/index.ts::PLUGIN_PERMISSIONS` | `server/harness/service.ts`, `mcp-service.ts`, `contracts/src/harness-management.ts` |
-| 금고 | `crates/host-core/src/config_sync/{domains,apply}.rs`, `ConfigSyncPage.tsx` | model/harness/project 설정 stores와 새 domain adapters |
-| 원격 | `RemoteHostsPage.tsx`, `electron/main/bootstrap/remote-hosts.ts` | `server/security.ts`, desktop `main.ts`, client `index.ts`, Studio `services.tsx` |
-| 음성 | `features/voice/live/LiveVoiceWidget.tsx`, `electron/main/live-voice/`, `voice-runtime` | Session composer, `server/app.ts` 요청 경로, Reins 계약 |
-
-> 부록의 패키지 접두어 축약은 설명용이다. 실제 변경 목록은 각 태스크 착수 시 `rg --files`와 심볼 검색으로 확정하고, 없는 경로를 기존 파일인 것처럼 인용하지 않는다.
+> 패키지 접두어 축약은 설명용이다. 실제 변경 목록은 각 태스크 착수 시 `rg --files`와 심볼 검색으로 확정하고, 없는 경로를 기존 파일인 것처럼 인용하지 않는다.

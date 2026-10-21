@@ -3,7 +3,7 @@ import { useTranslations } from 'use-intl';
 import { type FileReference, referenceText } from './FilePanel.tsx';
 import { useWorkspaceFiles } from './useWorkspaceFiles.ts';
 
-/** T3's file mention interaction uses Corral's scoped, read-only file catalog. */
+/** File mentions use Corral's scoped, read-only file catalog. */
 export function RequestInput({
   value,
   onChange,

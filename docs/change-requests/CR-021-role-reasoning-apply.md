@@ -1,7 +1,7 @@
 # CR-021: 역할별 추론 설정과 로컬 자동 판정의 실제 적용
 
 - 상태: 승인 — Bell의 2026-10-18 Oracle 플랜 전체 구현·실계정 검증·PR 병합 요청.
-- 기준: main `6ada359`, Oracle Pro 계획과 T3 `16918b57d675`, DeepSeek Harness `687f282e8625`, PI Desktop `e219a3e4c0e4`, Mixdog `81558aa42307`.
+- 기준: main `6ada359`, Oracle Pro 계획, DeepSeek Harness `687f282e8625`, Mixdog `81558aa42307`.
 - 추적: C-084, CRL-RSN-001~004, TC-RSN-001-H/N~004-H/N.
 
 ## 계약

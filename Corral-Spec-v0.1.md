@@ -1,5 +1,8 @@
 # Corral — 제품·실행 스펙 v0.1
 
+> **문서 역할 안내:** 이 문서는 초기 기준과 후속 CR가 함께 있는 상세 자료다. 현재 작업은 [문서 지도](docs/README.md)에서 시작한다. 아래 초기 상태·권위·제외 설명을 모든 후속 변경에 그대로 적용하지 않는다. 특히 대화 시작은 CR-043, 명령·Hashline·병행 Run은 CR-042의 해당 범위를 함께 확인한다. 대체되지 않은 상세 계약은 유지하며, 이 표시는 기능 승인이나 전체 이관 완료가 아니다.
+
+
 > **Controlled autonomy. Visible collaboration. Deliberate steering.**  
 > D&D로 AI 팀을 설계하고, 규칙 안에서 자율 협업하게 하며, 진행 중에도 적용 범위와 시점을 확인하면서 개입하는 로컬 우선 도구.
 
@@ -10,7 +13,7 @@
 | 소유자 | Bell |
 | 개발 방식 | SDD(Spec-Driven Development) + TDD(Test-Driven Development) |
 | 기준 자료 | 리뷰어 MVP v1.1 PDF [B1] + 대화에서 확정한 D&D·포트폴리오·실시간 개입 요구 |
-| 관련 문서 | [구현 플랜](Corral-Implementation-Plan-v0.1.md), [기술 설계](docs/Technical-Design.md), [의존성과 출처](docs/Dependencies-and-Sources.md), [ADR](docs/Decisions.md) |
+| 관련 문서 | [구현 플랜](Corral-Implementation-Plan-v0.1.md), [기술 설계](docs/Technical-Design.md), [ADR](docs/Decisions.md) |
 
 ## 0. 이 문서의 결정 권한과 읽는 순서
 
