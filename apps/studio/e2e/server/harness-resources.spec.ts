@@ -189,7 +189,7 @@ test('[TC-HAR-004-H] [TC-UX-004-N] install, trust, save and preview a mandatory 
     ).toBe(1);
     await page.getByRole('button', { name: 'Preview effective settings', exact: true }).click();
     await expect(page.getByTestId('harness-preview')).toContainText('Always cite the source.');
-    await page.getByRole('link', { name: 'Default work style', exact: true }).click();
+    await page.getByRole('link', { name: 'Project default work style', exact: true }).click();
     await page.getByRole('combobox', { name: 'Project default', exact: true }).click();
     await page.getByRole('option', { name: 'Evidence writer · r1', exact: true }).click();
     await page.getByRole('button', { name: 'Save', exact: true }).click();

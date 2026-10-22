@@ -5,7 +5,7 @@ test('[TC-UX-004-N] project settings share an explicit empty state and keep thei
   corral,
 }) => {
   await corral.open('/settings?section=workspace');
-  for (const name of ['Folders & tools', 'MCP servers', 'Default work style']) {
+  for (const name of ['Folders & tools', 'MCP servers', 'Project default work style']) {
     await page.getByTestId('settings-sidebar').getByRole('link', { name, exact: true }).click();
     const body = page.locator('.settings-layout');
     await expect(body.getByRole('heading', { name, exact: true })).toHaveCount(1);

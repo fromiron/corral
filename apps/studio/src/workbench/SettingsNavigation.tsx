@@ -137,6 +137,13 @@ export function SettingsProjectPicker({
   const navigate = useNavigate();
   return (
     <div className={className}>
+      {/* A visible scope, so choosing here reads as a settings target, not navigation (#80). */}
+      {label ? null : (
+        <p className="mb-1.5 text-xs text-muted">
+          <span className="font-medium text-foreground">{t('settingsTarget')}</span> ·{' '}
+          {t('settingsTargetHint')}
+        </p>
+      )}
       <Select
         label={label ?? t('appliesToProject')}
         disabled={disabled}

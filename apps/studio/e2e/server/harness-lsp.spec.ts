@@ -64,7 +64,10 @@ test('[TC-HAR-010-H] registers and selects a language server, approves an SDK qu
     await expect(page.getByText('Saved project tools revision 1', { exact: true })).toBeVisible();
     await page.goto(`${corral.server.url}/settings/harness?projectId=default`);
     await page.getByLabel('Work style name', { exact: true }).fill('LSP writer');
-    await page.getByLabel('Select language servers for this style', { exact: true }).check();
+    await page
+      .getByRole('combobox', { name: 'Select language servers for this style', exact: true })
+      .click();
+    await page.getByRole('option', { name: 'Choose below', exact: true }).click();
     await page.getByLabel('Use language server Fixture server', { exact: true }).check();
     await page.getByRole('button', { name: 'Save work style', exact: true }).click();
     await expect(page.getByTestId('harness-status')).toContainText('Saved revision 1');

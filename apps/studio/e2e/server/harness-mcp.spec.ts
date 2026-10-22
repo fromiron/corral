@@ -85,7 +85,10 @@ test('[TC-HAR-016-H] reviews an MCP server, completes local OAuth and pins its r
     await page.getByRole('button', { name: /^Local docs/ }).click();
     await page.getByRole('link', { name: 'Connect a work style', exact: true }).click();
     await page.getByRole('button', { name: 'MCP writer · r1', exact: true }).click();
-    await page.getByLabel('Select MCP servers for this style', { exact: true }).check();
+    await page
+      .getByRole('combobox', { name: 'Select MCP servers for this style', exact: true })
+      .click();
+    await page.getByRole('option', { name: 'Choose below', exact: true }).click();
     await page.getByLabel('Use MCP server Local docs', { exact: true }).check();
     await page
       .getByRole('button', { name: 'Test connection & discover tools', exact: true })

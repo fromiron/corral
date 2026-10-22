@@ -74,3 +74,29 @@ test('#79 without a default, adoption points to the chosen scope defaults screen
   await expect(defaults).toHaveAttribute('href', /project-defaults/);
   expect(corral.errors).toEqual([]);
 });
+
+test('#80 settings say which project they target, that work styles are shared, and three selection states', async ({
+  page,
+  corral,
+}) => {
+  await corral.open('/settings/harness');
+  await expect(page.getByTestId('shared-scope')).toContainText('Shared work style');
+  const checks = page.getByRole('combobox', {
+    name: 'Select registered checks for this style',
+    exact: true,
+  });
+  await expect(checks).toHaveText(/Follow the parent setting/);
+  await checks.click();
+  await page.getByRole('option', { name: 'Use none', exact: true }).click();
+  await expect(checks).toHaveText(/Use none/);
+  expect(corral.errors).toEqual([]);
+});
+
+test('#80 a project settings page shows its target project as a visible scope', async ({
+  page,
+  corral,
+}) => {
+  await corral.open('/settings/mcp');
+  await expect(page.getByText('Settings apply to project', { exact: true })).toBeVisible();
+  expect(corral.errors).toEqual([]);
+});

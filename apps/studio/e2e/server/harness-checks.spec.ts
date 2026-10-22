@@ -50,7 +50,10 @@ test('[TC-HAR-012-H] selects a registered check, approves its SDK call and reads
     }, source);
     await page.reload();
     await page.getByLabel('Work style name', { exact: true }).fill('Checked writer');
-    await page.getByLabel('Select registered checks for this style', { exact: true }).check();
+    await page
+      .getByRole('combobox', { name: 'Select registered checks for this style', exact: true })
+      .click();
+    await page.getByRole('option', { name: 'Choose below', exact: true }).click();
     await page.getByLabel('Use check Types', { exact: true }).check();
     await page.getByRole('button', { name: 'Save work style', exact: true }).click();
     await expect(page.getByRole('status')).toContainText('Saved revision 1');
