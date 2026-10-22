@@ -189,6 +189,7 @@ function CompactRunWorkspace({
   const n = useTranslations('Navigation');
   const navigate = useNavigate();
   const projection = useStore(session, (state) => state.projection);
+  const savedTeam = useSavedTeam(projection?.corralId);
   const target = useSteerTarget(session, search.execution ?? null);
   const controls = useRef<HTMLDivElement>(null);
   const response = useRef<HTMLDivElement>(null);
@@ -230,7 +231,7 @@ function CompactRunWorkspace({
           (item) => item.artifactVersionId === version,
         )
       : null;
-  const startFrom = projection.corralId
+  const startFrom = savedTeam
     ? (from: { runId: string; artifactVersionId: string }) =>
         void navigate({
           to: '/corrals/$corralId/edit',
@@ -446,11 +447,12 @@ function RunWorkspace({
     chosenView ??
     (execution || artifact ? 'run' : openedEnded === null ? null : openedEnded ? 'results' : 'run');
   const chooseView = (next: RunPageView) => setSearch({ view: next });
-  const startFrom = projection?.corralId
+  const savedTeam = useSavedTeam(projection?.corralId);
+  const startFrom = savedTeam
     ? (from: { runId: string; artifactVersionId: string }) =>
         void navigate({
           to: '/corrals/$corralId/edit',
-          params: { corralId: projection.corralId ?? '' },
+          params: { corralId: projection?.corralId ?? '' },
           search: { fromRun: from.runId, fromVersion: from.artifactVersionId },
         })
     : null;
@@ -600,6 +602,28 @@ function RunWorkspace({
   );
 }
 
+/**
+ * Whether the run's team is a saved team that can be edited: an automatically composed team
+ * records its inline id as corralId but has no saved record (#73). null while looking it up.
+ */
+function useSavedTeam(corralId: string | null | undefined) {
+  const { repository } = useServices();
+  const [saved, setSaved] = useState<{ id: string; exists: boolean } | null>(null);
+  useEffect(() => {
+    if (!corralId) return;
+    let live = true;
+    repository.get(corralId).then(
+      (record) => live && setSaved({ id: corralId, exists: Boolean(record) }),
+      () => live && setSaved({ id: corralId, exists: false }),
+    );
+    return () => {
+      live = false;
+    };
+  }, [repository, corralId]);
+  if (!corralId) return false;
+  return saved?.id === corralId ? saved.exists : null;
+}
+
 /** The Corral's saved layout, once looked up; null while loading (avoids a layout jump). */
 function useSavedLayout(definition: CorralDefinition, corralId: string | null) {
   const { repository } = useServices();
@@ -642,6 +666,7 @@ function RunSummary({
   const t = useTranslations('RunPage');
   const tr = useTranslations('Run');
   const projection = useStore(session, (s) => s.projection);
+  const savedTeam = useSavedTeam(projection?.corralId);
   if (!projection) return null;
   const labelOf = (nodeId: string) =>
     definition.nodes.find((n) => n.id === nodeId)?.label ?? nodeId;
@@ -682,10 +707,12 @@ function RunSummary({
           <span aria-live="polite" data-testid="run-status">
             <StatusBadge status={projection.status} />
           </span>
-          {corralId && !compact ? (
+          {corralId && savedTeam && !compact ? (
             <Link to="/corrals/$corralId/edit" params={{ corralId }} className="text-xs underline">
               {t('openCorral')}
             </Link>
+          ) : corralId && savedTeam === false && !compact ? (
+            <span className="text-xs text-muted">{t('unsavedTeam')}</span>
           ) : null}
           {projection.startedFrom && !compact ? (
             <span className="text-xs text-muted">

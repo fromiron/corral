@@ -482,6 +482,7 @@
     "heading": "Run {runId}",
     "missing": "This run is not available here. Runs of the in-browser demo end when the page reloads.",
     "openCorral": "Edit team",
+    "unsavedTeam": "Team composed for this run · not a saved team",
     "loading": "Loading the run…",
     "summary": "Execution summary",
     "working": "Working now: {labels}",

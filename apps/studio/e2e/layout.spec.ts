@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
-import { requestBox, teamFromTemplate } from './workbench.ts';
+import { requestBox, startSession, teamFromTemplate } from './workbench.ts';
 
 // Layout regressions from the workbench audit (#93–#95): a control that is in the DOM but
 // clipped by a scroller or replaced by another pane still fails a person.
@@ -207,4 +207,34 @@ test('#72 an older finished run is labelled as the selected run, not the last ru
   await page.getByRole('option', { name: /First request/ }).click();
   await expect(page.getByText('Selected run · 1 of 2').first()).toBeAttached();
   await expect(page.getByText('Last run')).toHaveCount(0);
+});
+
+async function finishedRunPage(page: Page) {
+  const timeline = page.getByTestId('chat-timeline');
+  await requestBox(page).fill('Summarise the plan');
+  await requestBox(page).press('Control+Enter');
+  await expect(timeline.getByText('Succeeded')).toBeVisible({ timeout: 20_000 });
+  // The demo keeps runs in this page's worker, so the run page is reached in-app.
+  await page.locator('a[href*="/runs/run_"]').first().dispatchEvent('click');
+  await expect(page).toHaveURL(/\/runs\/run_/);
+  await expect(page.getByTestId('run-status')).toContainText('Succeeded');
+}
+
+test('#73 an automatically composed team offers no edit link to a team that was never saved', async ({
+  page,
+}) => {
+  await blankSession(page);
+  await finishedRunPage(page);
+  await expect(page.getByText('Team composed for this run · not a saved team')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Edit team', exact: true })).toHaveCount(0);
+});
+
+test('#73 a saved team keeps its edit link on the run page', async ({ page }) => {
+  await page.goto('/?delay=50');
+  await teamFromTemplate(page);
+  await startSession(page, 'Saved team run');
+  await finishedRunPage(page);
+  await page.getByRole('link', { name: 'Edit team', exact: true }).click();
+  await expect(page).toHaveURL(/\/corrals\/[^/]+\/edit/);
+  await expect(page.getByText('not found', { exact: false })).toHaveCount(0);
 });

@@ -482,6 +482,7 @@
     "heading": "실행 {runId}",
     "missing": "여기에는 이 실행이 없습니다. 브라우저 데모의 실행은 페이지를 새로고침하면 사라집니다.",
     "openCorral": "팀 편집",
+    "unsavedTeam": "이 실행을 위해 구성한 팀 · 저장된 팀 아님",
     "loading": "실행을 불러오는 중…",
     "summary": "실행 요약",
     "working": "진행 중: {labels}",
