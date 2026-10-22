@@ -892,5 +892,11 @@
     "requirement": "CR-046 P15: 관리 사본의 package.json scripts와 등록 검사를 실행하지 않고 후보로 보여 주며, 사람이 명시해 시작한 개발 task를 사용자 owner의 소유 process group으로 실행하고 출력·중지·정리 확인·재시작 정리를 제공한다. 사용자 task의 포트를 기존 preview lease와 연결 소유 증명으로 미리 보고, 검사·task 출력의 사본 내부 위치를 Problems로 모아 출처 tree와 stale을 표시하며 문서 위치로 이동한다. strict 모드에서 task·터미널이 writer인 동안 같은 사본 저장은 거절하고 중지→정리 확인→저장→명시 재시작 경로를 제공하며, 검사는 고정 snapshot에서 계속 실행할 수 있다.",
     "owner": "server",
     "phase": "M3"
+  },
+  {
+    "id": "CRL-WBD-012",
+    "requirement": "CR-046 P16 Alpha: 모델 미연결 수동 흐름(세션 사본 → 문서 탭 편집·저장 → 개발 task·preview → 검사 → 변경 확인 → 선택 stage → commit → 로컬 원격 push)과 같은 사본에서 결정적 agent 요청 1회의 결과를 사람이 commit·push하는 흐름이 실제 앱에서 끝까지 이어진다. 설정 대화상자 왕복, 디스크 충돌, 잘못된 branch 이름, 실패한 검사, Git 응답 유실과 renderer reload에서 초안·receipt·원본 폴더가 보존되고 같은 ID로만 다시 읽는다.",
+    "owner": "studio",
+    "phase": "M3"
   }
 ]

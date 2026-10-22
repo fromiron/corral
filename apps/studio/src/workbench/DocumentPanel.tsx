@@ -266,8 +266,9 @@ export function DocumentPanel({
               variant="outline"
               disabled={readOnlyTarget || pending || entry.saving}
               onClick={() => {
-                if (!owner.resolveConflict(documentKey, 'ours'))
-                  setActionError(t('conflictUnavailable'));
+                setActionError(
+                  owner.resolveConflict(documentKey, 'ours') ? null : t('conflictUnavailable'),
+                );
               }}
             >
               {t('keepDraft')}
@@ -277,8 +278,9 @@ export function DocumentPanel({
               variant="ghost"
               disabled={readOnlyTarget || pending || entry.saving}
               onClick={() => {
-                if (!owner.resolveConflict(documentKey, 'theirs'))
-                  setActionError(t('conflictUnavailable'));
+                setActionError(
+                  owner.resolveConflict(documentKey, 'theirs') ? null : t('conflictUnavailable'),
+                );
               }}
             >
               {t('useDisk')}

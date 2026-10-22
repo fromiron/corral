@@ -3621,5 +3621,38 @@
     "status": "planned",
     "adapter": "temporary real Git repositories and managed worktrees with real child processes; restart by a new service over the same SQLite database",
     "evidence": null
+  },
+  {
+    "id": "TC-WBD-012-H",
+    "requirements": [
+      "CRL-WBD-012"
+    ],
+    "suite": "e2e",
+    "scenario": "모델 미연결 수동 흐름과 결정적 agent 요청 결과를 실제 앱에서 편집·task·preview·검사·stage·commit·로컬 bare remote push까지 진행",
+    "status": "planned",
+    "adapter": "server build with Playwright Chromium, temporary real Git repository and local bare remote, real node task process, scripted agent adapter; no paid models",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-012-N",
+    "requirements": [
+      "CRL-WBD-012"
+    ],
+    "suite": "e2e",
+    "scenario": "설정 대화상자 왕복 뒤 commit 초안 유지, 디스크 충돌 표시와 초안 보존, 잘못된 branch 이름 거절, 실패한 검사의 Problems 위치와 편집 뒤 이전 상태 표시",
+    "status": "planned",
+    "adapter": "server build with Playwright Chromium and a temporary real Git repository",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-012-F",
+    "requirements": [
+      "CRL-WBD-012"
+    ],
+    "suite": "e2e",
+    "scenario": "Git 쓰기 응답을 잃은 뒤 renderer reload에서 같은 operation ID로 receipt를 읽어 한 번만 반영되고 새 요청을 보내지 않음",
+    "status": "planned",
+    "adapter": "server build with Playwright Chromium; the response is dropped by a browser route after the host handled the request",
+    "evidence": null
   }
 ]

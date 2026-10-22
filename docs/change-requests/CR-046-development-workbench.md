@@ -166,3 +166,13 @@ H는 detached 사본의 branch 생성·연결과 전환, 로컬 bare remote의 f
 - 도구 창 이름은 "Tasks & preview"(작업·미리보기)로 바꾸고 창 목록의 반복 설명(`toolsHint`)을 없앤다.
 
 H는 fixture의 실제 node http server를 후보에서 시작해 출력·preview 프록시 응답·중지를 확인하고, 검사·task 출력의 위치를 Problems에서 열어 문서의 줄로 이동하는 것이다. N은 발견만으로 실행되지 않음, 다른 프로세스의 포트 거절, 없는 script, task 실행 중 저장 거절과 중지 뒤 저장이다. F는 task 실행 중 검사의 snapshot 실행, 재시작 뒤 사라진 process group의 정리와 writer 반환, 이전 tree의 결과 표시다.
+
+## P16: Alpha 통합 인수
+
+추적: CRL-WBD-012 / C-156 / TC-WBD-012-H,N,F. 승인 계획 P16을 실제 앱에서 확인한다. 새 제품 계약은 없다. 인수 중 찾은 결함 두 건만 고친다. 하나는 사본이 없을 때 task 후보 조회가 404를 내던 것이고, 다른 하나는 디스크 충돌을 해결한 뒤에도 저장 실패 안내가 남던 것이다.
+
+- 정상 흐름 두 가지를 확인한다. 첫째는 모델 없이 사본 생성 → 문서 탭 편집·저장 → task 시작과 preview 응답 → 검사 → Git 창의 변경 확인 → 선택 stage → commit → 새 branch → 로컬 bare remote push다. 둘째는 결정적 agent 요청 1회가 사본을 바꾸고 사람이 그 결과를 commit·push하는 흐름이다.
+- 반례는 실패한 검사의 Problems 위치와 편집 뒤 이전 상태 표시, 디스크 충돌의 초안 보존, 설정 대화상자 왕복 뒤 commit 초안 유지, 잘못된 branch 이름이다. 응답 유실 반례에서는 host가 처리한 commit의 응답을 잃은 뒤 reload하면 같은 ID로 receipt만 읽는다.
+- 모든 흐름에서 원본 폴더의 HEAD·작업 트리·index는 바뀌지 않는다.
+
+통과는 Linux·Chromium·server build의 결과다. 설치판·다른 OS·외부 원격·서명 commit의 qualification이 아니다.

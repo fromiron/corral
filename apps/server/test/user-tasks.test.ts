@@ -224,3 +224,10 @@ it('[TC-WBD-011-F] after a restart, a task whose process group is gone is settle
   await s.output('task_again', 'listening');
   await s.service.stopTask('s1', 'task_again');
 });
+
+it('[TC-WBD-011-N] a session without a working copy has no task candidates, not an error', async () => {
+  const s = await setup();
+  await s.service.removeWorktree('s1');
+  expect(await s.service.taskCandidates('s1')).toEqual({ packageManager: null, scripts: [] });
+  expect(await s.service.tasks('s1')).toEqual([]);
+});

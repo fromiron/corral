@@ -10,15 +10,19 @@ baseline: 071276873dee4bb51491bf608e604fbb4e123475
 
 입력은 `Corral-Workbench-Ecosystem-Plan-v2-2026-10-21.md`이며 SHA-256은 `11087e6b6b940bdbca89792e5a8efd84764b326ec42664ff1d289c4d65ae4451`이다. 원문을 수정하거나 전체 제품 조사를 복제하지 않는다. 기준 코드는 PR #68을 포함하는 위 commit이며, 계획 작성 시 소스·계약·manifest를 대조했다. 이후 실행 결과는 별도 검증 기록에 남긴다.
 
-현재 진행: C-143/P03의 공통 예약·receipt·사본 generation은 구현하고 관련 회귀를 확인했다. C-142의 A/B 비교와 대상/owner 계약을 완료하고 ADR-040에 따라 기존 셸+A 엔진 연결을 선택했다. C-144/P04 문서 API는 [구현·관련 회귀](../evaluation/Development-Workbench-Documents-2026-10-21.md)를 완료했으며, [C-145·146/P05–06 편집·복구](../evaluation/Development-Workbench-Editor-2026-10-21.md)는 구현하고 Linux 인앱 흐름을 확인했다. [C-147·148/P07–08 PTY](../evaluation/Development-Workbench-Terminal-2026-10-21.md)는 구현하고 Linux 인앱의 파일→PTY→Diff 흐름을 확인했다. [C-149/P09 패널 대상·경로 연결](../evaluation/Development-Workbench-Panels-2026-10-21.md)을 구현하고 Linux 인앱에서 과거 결과·설정·초안 왕복을 확인했다. [C-150/P10 도킹·배치·복구](../evaluation/Development-Workbench-Docking-2026-10-21.md)를 구현하고 Linux 인앱에서 문서/PTY 수명·키보드·390px 승인/중지 접근을 확인했다. [C-151/P11 컨텍스트 참조·대화 밀도](../evaluation/Development-Workbench-Context-2026-10-21.md)를 구현하고 Linux 인앱에서 코드/검사/hunk→queue→scripted Run 및 실제 PTY 선택, 미저장 확인·원본/교체/삭제·표시 밀도·390px를 확인했다. [C-152/P12 읽기 전용 Git 관찰](../evaluation/Development-Workbench-Git-Observation-2026-10-21.md)을 구현하고 Linux 인앱에서 실제 index·작업 파일 구분, 원본/사본 전환, stale 새로고침과 unborn 원본을 확인했다. 다음 구현은 P13 stage/unstage·commit이며 Git 쓰기·개발 여정, 실제 OS IME·스크린리더와 지원 플랫폼/설치판 GUI qualification은 남아 있다. [실행 기록](../evaluation/Development-Workbench-Foundation-2026-10-21.md)을 참조한다.
+현재 진행: C-143/P03의 공통 예약·receipt·사본 generation은 구현하고 관련 회귀를 확인했다. C-142의 A/B 비교와 대상/owner 계약을 완료하고 ADR-040에 따라 기존 셸+A 엔진 연결을 선택했다. C-144/P04 문서 API는 [구현·관련 회귀](../evaluation/Development-Workbench-Documents-2026-10-21.md)를 완료했으며, [C-145·146/P05–06 편집·복구](../evaluation/Development-Workbench-Editor-2026-10-21.md)는 구현하고 Linux 인앱 흐름을 확인했다. [C-147·148/P07–08 PTY](../evaluation/Development-Workbench-Terminal-2026-10-21.md)는 구현하고 Linux 인앱의 파일→PTY→Diff 흐름을 확인했다. [C-149/P09 패널 대상·경로 연결](../evaluation/Development-Workbench-Panels-2026-10-21.md)을 구현하고 Linux 인앱에서 과거 결과·설정·초안 왕복을 확인했다. [C-150/P10 도킹·배치·복구](../evaluation/Development-Workbench-Docking-2026-10-21.md)를 구현하고 Linux 인앱에서 문서/PTY 수명·키보드·390px 승인/중지 접근을 확인했다. [C-151/P11 컨텍스트 참조·대화 밀도](../evaluation/Development-Workbench-Context-2026-10-21.md)를 구현하고 Linux 인앱에서 코드/검사/hunk→queue→scripted Run 및 실제 PTY 선택, 미저장 확인·원본/교체/삭제·표시 밀도·390px를 확인했다. [C-152/P12 읽기 전용 Git 관찰](../evaluation/Development-Workbench-Git-Observation-2026-10-21.md)을 구현하고 Linux 인앱에서 실제 index·작업 파일 구분, 원본/사본 전환, stale 새로고침과 unborn 원본을 확인했다. 이어서 [C-153/P13 stage·commit](../evaluation/Development-Workbench-Git-Write-2026-10-22.md), [C-154/P14 branch·원격](../evaluation/Development-Workbench-Git-Remote-2026-10-22.md), [C-155/P15 task·preview·Problems](../evaluation/Development-Workbench-Tasks-2026-10-22.md)를 구현했다. [C-156/P16 Alpha 인수](../evaluation/Development-Workbench-Alpha-2026-10-22.md)는 Linux 인앱에서 수동·결정적 agent 흐름을 로컬 bare remote push까지 확인했다. 실제 OS IME·스크린리더·외부 원격·지원 플랫폼/설치판 GUI qualification은 남아 있다. [실행 기록](../evaluation/Development-Workbench-Foundation-2026-10-21.md)을 참조한다.
 
-## P12 완료 시점의 재개 메모
+## P16 완료 시점의 재개 메모
 
-사용자의 중지 요청에 따라 P12 검증·로컬 커밋 후 일시정지한다. 작업 브랜치는 `feat/development-workbench`이며 P00–P12는 구현됐다. 이 메모만으로 자동 재개하지 않는다. 다음 사용자 재개 요청은 P13부터 처리한다.
+작업 브랜치 `feat/development-workbench`에서 P00–P16이 구현됐다. 2026-10-22 사용자 결정으로 이번 범위는 P16 Alpha까지였다. 이 메모만으로 P17 이후를 자동 재개하지 않는다.
 
-P13 착수 전 같은 CR-046에 stage/unstage·commit의 사용자 operation/receipt와 HEAD/index precondition, D5의 trusted hook·signer 실행 정책을 구체화해야 한다. P12의 비실행 읽기 정책은 해당 실행 권한의 승인이 아니다. 기존 WorkbenchOperations·공통 writer·safe Git runner를 재사용하며 원본은 계속 읽기 전용이다. P14 remote, P22 shared-development와 P30 선택적 harness를 미리 구현하지 않는다.
-
-직전 구현·실행 로그·환경 한계는 [P12 기록](../evaluation/Development-Workbench-Git-Observation-2026-10-21.md), 구현 상태 원장은 `contracts/backlog.json`의 C-152다. 임시 fixture는 `/tmp/corral-p12-preview.ts`이며 실제 사용자 데이터 없이 재현한다. Node 24.19.0·pnpm 10.30.3, spec Python은 `/tmp/corral-spec-venv/bin/python`을 사용했다. 다음 작업도 필요한 실패 테스트부터 시작하고 이 기록을 전체 release gate 통과로 해석하지 않는다.
+- **D5 결정:** hook은 신뢰 프로젝트에서만 실행한다. 서명은 저장소 설정대로 하고, 실패하면 거절한다. 작성자는 Git 설정의 허용 키만 읽는다. 원격 작업은 신뢰 프로젝트에서 사용자 credential helper를 쓴다. 상세는 CR-046 P13·P14 절에 있다.
+- **계획과 달라진 점**
+  - 사용자 task는 별도 테이블 없이 인간 operation 원장을 쓴다.
+  - Git 조작은 Git 창 한 곳에 있다.
+  - 도구 창 이름은 "Tasks & preview"다.
+- **다음 사용자 재개 요청은 P17 변경 검토와 근거 연결부터 처리한다.** P18 D&D·Reins 연결을 사용자 승인 없이 미루거나 제거하지 않는다.
+- 직전 실행·환경 한계는 [P16 기록](../evaluation/Development-Workbench-Alpha-2026-10-22.md)에 있다. 상태 원장은 `contracts/backlog.json`의 C-153–156이다. 이 기록을 전체 release gate 통과로 해석하지 않는다.
 
 ## 1. 구현 순서와 제품 경계
 

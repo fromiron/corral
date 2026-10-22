@@ -3971,8 +3971,9 @@ export class WorkspaceService implements FileTools {
 
   /** Scripts a person may start; reading them runs nothing (CR-046 P15). */
   async taskCandidates(sessionId: string): Promise<TaskCandidates> {
+    // Without a copy there is nothing to discover; panes poll this before a copy exists.
     const row = this.worktree(sessionId);
-    if (!row) throw new WorkspaceError('TARGET_NOT_FOUND', 'the working copy is unavailable');
+    if (!row) return { packageManager: null, scripts: [] };
     const root = row.worktree_path;
     if ((await assertPlainPath(root, 'package.json')) !== 'file')
       return { packageManager: null, scripts: [] };

@@ -3047,5 +3047,23 @@
     "done": "fixture의 실제 node http server를 script 후보에서 명시 시작해 출력·preview 프록시 응답·중지와 정리 확인을 확인한다. 발견만으로 실행되지 않음, 다른 프로세스의 포트 가로채기 거절, task 실행 중 같은 사본 저장 거절과 중지 뒤 저장, 재시작 뒤 사라진 process group의 receipt 정리, 검사 출력의 Problems 위치·stale 표시와 문서 이동을 확인한다.",
     "status": "implemented",
     "evidence": "docs/evaluation/Development-Workbench-Tasks-2026-10-22.md"
+  },
+  {
+    "id": "C-156",
+    "phase": "M3",
+    "title": "CR-046 Workbench Alpha 통합 인수 (P16)",
+    "dependsOn": [
+      "C-155"
+    ],
+    "requirements": [
+      "CRL-WBD-012"
+    ],
+    "files": [
+      "apps/studio/e2e/server/",
+      "docs/evaluation/"
+    ],
+    "done": "server build와 Chromium으로 수동 흐름과 결정적 agent 흐름이 로컬 bare remote push까지 끝나고, 설정 대화상자 왕복 뒤 commit 초안 유지, 디스크 충돌 표시와 초안 보존, 잘못된 branch 이름 거절, 실패한 검사의 Problems 위치와 편집 뒤 이전 상태 표시, Git 응답 유실 뒤 reload에서 같은 receipt 조회와 중복 없는 반영을 확인한다. 원본 폴더의 작업 트리와 index는 바뀌지 않는다.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/Development-Workbench-Alpha-2026-10-22.md"
   }
 ]
