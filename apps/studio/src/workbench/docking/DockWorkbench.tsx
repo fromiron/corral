@@ -475,13 +475,20 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
       setPreset(null);
       saveLayout();
     }
-    function allowDrop(event: DockviewWillDropEvent | DockviewWillShowOverlayLocationEvent) {
+    /** Why a drop is refused, or null when it is allowed. */
+    function dropRefusal(
+      event: DockviewWillDropEvent | DockviewWillShowOverlayLocationEvent,
+    ):
+      | 'dropNarrow'
+      | 'dropDocumentMain'
+      | 'dropDocumentsOnly'
+      | 'dropAreaLimit'
+      | 'refused'
+      | null {
       const api = apiRef.current;
       const data = event.getData();
-      if (!api || !data || narrow.current) {
-        event.preventDefault();
-        return;
-      }
+      if (!api || !data) return 'refused';
+      if (narrow.current) return 'dropNarrow';
       const source = api.groups.find((group) => group.id === data.groupId);
       const moving = data.panelId
         ? [api.getPanel(data.panelId)].filter((panel): panel is IDockviewPanel => Boolean(panel))
@@ -490,19 +497,22 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
       const destinationGroup = event.group;
       const isMain =
         destinationGroup && mainGroups(api).some((group) => group.id === destinationGroup.id);
-      if (event.position === 'center') {
-        if (hasDocument && !isMain) event.preventDefault();
-        return;
-      }
+      if (event.position === 'center') return hasDocument && !isMain ? 'dropDocumentMain' : null;
       const removesSource = Boolean(source && moving.length === source.panels.length);
       const addedGroups = removesSource ? 0 : 1;
-      if (
-        !hasDocument ||
-        !isMain ||
-        api.groups.length + addedGroups > 4 ||
-        mainGroups(api).length + addedGroups > 2
-      )
-        event.preventDefault();
+      if (!hasDocument) return 'dropDocumentsOnly';
+      if (!isMain) return 'dropDocumentMain';
+      if (api.groups.length + addedGroups > 4 || mainGroups(api).length + addedGroups > 2)
+        return 'dropAreaLimit';
+      return null;
+    }
+    function allowDrop(event: DockviewWillDropEvent | DockviewWillShowOverlayLocationEvent) {
+      const refusal = dropRefusal(event);
+      // While dragging, a refused spot says why (#90); an allowed one clears that reason.
+      setMessage((current) =>
+        refusal && refusal !== 'refused' ? refusal : current?.startsWith('drop') ? null : current,
+      );
+      if (refusal) event.preventDefault();
     }
     function onReady({ api }: DockviewReadyEvent) {
       apiRef.current = api;
@@ -703,19 +713,6 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
                     )}
                   />
                 </div>
-                <div className="corral-dock-select">
-                  <span>{t('activePane')}</span>
-                  <Select
-                    label={t('activePane')}
-                    size="sm"
-                    value={active}
-                    onValueChange={(id) => {
-                      const panel = apiRef.current?.getPanel(id);
-                      if (panel) focus(panel, true);
-                    }}
-                    options={panels.map((panel) => ({ value: panel.id, label: panel.title }))}
-                  />
-                </div>
                 <Select
                   label={t('openPane')}
                   placeholder={t('openPane')}
@@ -728,7 +725,22 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
                 />
                 <details className="corral-dock-actions">
                   <summary>{t('layoutControls')}</summary>
-                  <div className="flex flex-wrap gap-1">
+                  <p className="px-1 pb-1 text-xs text-muted">{t('savedWhere')}</p>
+                  <div className="flex flex-wrap items-center gap-1">
+                    <div className="corral-dock-select">
+                      <span>{t('activePane')}</span>
+                      <Select
+                        label={t('activePane')}
+                        size="sm"
+                        value={active}
+                        onValueChange={(id) => {
+                          const panel = apiRef.current?.getPanel(id);
+                          if (panel) focus(panel, true);
+                        }}
+                        options={panels.map((panel) => ({ value: panel.id, label: panel.title }))}
+                      />
+                    </div>
+
                     <Button
                       size="sm"
                       variant="ghost"

@@ -435,3 +435,26 @@ test('#84 the desktop shell hears the chosen language, and General says where na
     .toContainEqual(['locale', 'ko']);
   await expect(page.getByTestId('desktop-native-options')).toContainText('백그라운드');
 });
+
+test('#90 the dock toolbar shows layout and panes; arranging tools, groups and the save rule are folded', async ({
+  page,
+}) => {
+  await blankSession(page);
+  const toolbar = page.getByTestId('dock-toolbar');
+  await expect(toolbar.getByRole('combobox', { name: 'Layout', exact: true })).toBeVisible();
+  await expect(toolbar.getByRole('combobox', { name: 'Open pane', exact: true })).toBeVisible();
+  await expect(toolbar.getByRole('combobox', { name: 'Active pane', exact: true })).toBeHidden();
+  await toolbar.getByText('Arrange panes', { exact: true }).click();
+  await expect(toolbar.getByRole('combobox', { name: 'Active pane', exact: true })).toBeVisible();
+  await expect(toolbar).toContainText('saved for this project in this browser');
+  await toolbar.getByRole('combobox', { name: 'Move to group', exact: true }).click();
+  await expect(page.getByRole('option', { name: 'Side area', exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+  // Splitting a non-document pane is refused with its reason.
+  const files = page.getByRole('tab', { name: 'Files', exact: true });
+  const chat = page.locator('[data-dock-panel-id="context:chat"]');
+  const box = await chat.boundingBox();
+  if (!box) throw new Error('no chat pane');
+  await files.dragTo(chat, { targetPosition: { x: box.width - 8, y: box.height / 2 } });
+  await expect(page.getByText('Only documents can be split into a new area.')).toBeVisible();
+});
