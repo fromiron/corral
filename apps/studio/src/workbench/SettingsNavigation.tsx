@@ -142,10 +142,7 @@ export function SettingsProjectPicker({
     <div className={className}>
       {/* A visible scope, so choosing here reads as a settings target, not navigation (#80). */}
       {label ? null : (
-        <p className="mb-1.5 text-xs text-muted">
-          <span className="font-medium text-foreground">{t('settingsTarget')}</span> ·{' '}
-          {t('settingsTargetHint')}
-        </p>
+        <p className="mb-1.5 text-xs font-medium text-foreground">{t('settingsTarget')}</p>
       )}
       <Select
         label={label ?? t('appliesToProject')}

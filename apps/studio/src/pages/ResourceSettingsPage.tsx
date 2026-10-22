@@ -271,12 +271,13 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
                 </p>
               </div>
               {/* One way there, named for what happens: nothing is added from here (#79). */}
-              <div className="flex flex-col items-start gap-1 sm:items-end">
-                <Button variant="outline" render={<Link {...navigation.link('harness')} />}>
-                  {n('addToWorkStyle')}
-                </Button>
-                <p className="text-xs text-muted">{t('connectHint')}</p>
-              </div>
+              <Button
+                variant="outline"
+                className="self-start sm:self-end"
+                render={<Link {...navigation.link('harness')} />}
+              >
+                {n('addToWorkStyle')}
+              </Button>
             </section>
             {kind === 'skill' && !selected.archivedAt ? (
               <SkillQualityPanel

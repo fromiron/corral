@@ -1490,7 +1490,6 @@
     "after": "After",
     "markReviewed": "Set the session as reviewed up to now",
     "reviewedNote": "Records the session's whole current working copy as read, so later changes show as new. It is not an approval.",
-    "reviewedOtherScope": "Applies to the whole current session working copy, not only the comparison shown.",
     "runCheck": "Run {name}",
     "checkState": {
       "running": "Running…",
@@ -2439,7 +2438,6 @@
     "usages": "Versions referenced by settings",
     "unused": "No work style references this item.",
     "usedBy": "Used by work styles",
-    "connectHint": "Opens Work styles. Select this item in a style there; nothing is added from here.",
     "newCopy": "An edited copy is available.",
     "viewCopy": "View new copy",
     "advanced": "Advanced · files and content hash",
@@ -2520,7 +2518,6 @@
     "backToWork": "Back to work",
     "appliesToProject": "Applies to project",
     "settingsTarget": "Settings apply to project",
-    "settingsTargetHint": "Changes which project these settings apply to; your work stays where it is.",
     "onThisPage": "On this page",
     "chooseProject": "Choose a project",
     "projectRequired": "Choose the project whose settings you want to manage.",

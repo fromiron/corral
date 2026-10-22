@@ -1490,7 +1490,6 @@
     "after": "이후",
     "markReviewed": "지금까지의 세션 변경을 검토함으로 설정",
     "reviewedNote": "세션 작업 사본 전체의 현재 상태를 읽음으로 기록해 이후 변경만 새 변경으로 보여 줍니다. 승인이 아닙니다.",
-    "reviewedOtherScope": "보이는 비교 범위가 아니라 현재 세션 사본 전체에 적용됩니다.",
     "runCheck": "{name} 실행",
     "checkState": {
       "running": "실행 중…",
@@ -2439,7 +2438,6 @@
     "usages": "설정에서 사용 중인 버전",
     "unused": "참조하는 작업 방식이 없습니다.",
     "usedBy": "사용 중인 작업 방식",
-    "connectHint": "작업 방식 설정을 엽니다. 여기서는 추가되지 않으며, 그곳에서 이 항목을 선택하세요.",
     "newCopy": "편집한 후속 버전이 있습니다.",
     "viewCopy": "새 사본 보기",
     "advanced": "고급 상세 · 파일과 내용 해시",
@@ -2520,7 +2518,6 @@
     "backToWork": "작업으로 돌아가기",
     "appliesToProject": "적용 프로젝트",
     "settingsTarget": "설정 대상 프로젝트",
-    "settingsTargetHint": "설정을 적용할 프로젝트만 바꿉니다. 작업 위치는 그대로입니다.",
     "onThisPage": "이 화면에서",
     "chooseProject": "프로젝트 선택",
     "projectRequired": "설정을 관리할 프로젝트를 선택하세요.",

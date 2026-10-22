@@ -213,11 +213,10 @@ export function ReviewPage() {
             >
               {t('markReviewed')}
             </button>
-            {/* The baseline always covers the whole current copy (#78 IA-07). */}
-            <span id={reviewedHint} className="w-full text-right text-2xs text-muted">
-              {scope.kind === 'session' || scope.kind === 'review'
-                ? t('reviewedNote')
-                : t('reviewedOtherScope')}
+            {/* The baseline always covers the whole current copy (#78 IA-07); the button names
+                it, so the longer note is its description and tooltip only. */}
+            <span id={reviewedHint} className="sr-only">
+              {t('reviewedNote')}
             </span>
           </header>
           {noCopy ? (
