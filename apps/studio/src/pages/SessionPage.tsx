@@ -312,6 +312,7 @@ export function SessionPage() {
   const sessionRuns = runs.filter(
     (run) => run.sessionId === session.sessionId || linkedRunIds.includes(run.runId),
   );
+  const sessionRunIds = sessionRuns.map((run) => run.runId);
   const presentedRun =
     sessionRuns.find((run) => run.runId === search.run) ??
     sessionRuns.findLast((run) => !TERMINAL_RUN_STATUSES.has(run.status)) ??
@@ -453,6 +454,7 @@ export function SessionPage() {
           sessionId={session.sessionId}
           presentationRunId={presentationRunId}
           live={Boolean(liveRun)}
+          runIds={sessionRunIds}
         >
           <DockWorkbench
             key={`${services.workspaceId ?? services.mode}:${session.projectId}`}
@@ -492,6 +494,10 @@ export function SessionPage() {
                 <DockRunControls
                   key={active.runId}
                   runId={active.runId}
+                  request={session.entries
+                    .find((entry) => entry.runId === active.runId)
+                    ?.text.slice(0, 80)}
+                  viewingOther={presentationRunId !== active.runId}
                   onOpen={(run) =>
                     showPanel({
                       panel: 'run',

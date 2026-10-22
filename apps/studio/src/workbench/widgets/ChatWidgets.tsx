@@ -50,6 +50,16 @@ const CATEGORY_FILL: Record<string, string> = {
 const chipClass =
   'inline-flex min-h-9 pointer-coarse:min-h-11 min-w-0 max-w-full shrink-0 items-center gap-1.5 rounded-full px-2.5 text-xs text-muted outline-none transition-colors hover:bg-subtle hover:text-text focus-visible:ring-2 focus-visible:ring-ring';
 const number = (value: number) => value.toLocaleString();
+/** "Last run" only for the newest finished run; an older one names its position (#72). */
+function viewedLabel(
+  viewed: NonNullable<ChatWidgetModel['viewed']>,
+  t: ReturnType<typeof useTranslations<'Widgets'>>,
+) {
+  if (viewed.latest) return t('lastRun');
+  return viewed.number
+    ? t('selectedRun', { number: viewed.number, total: viewed.total })
+    : t('selectedRunUnordered');
+}
 const compactNumber = (value: number) =>
   value >= 1000 ? `${(value / 1000).toFixed(value < 10_000 ? 1 : 0)}k` : number(value);
 
@@ -75,8 +85,8 @@ export function SessionWidgetCard() {
         <div className="min-w-0">
           <h3 className="text-sm font-medium">{t('summaryHeading')}</h3>
           <p className="mt-1 truncate text-xs text-muted">
-            {model.lastRun
-              ? t('lastRun')
+            {model.viewed
+              ? viewedLabel(model.viewed, t)
               : model.plan.runStatus
                 ? ts(model.plan.runStatus)
                 : t('rail')}
@@ -225,7 +235,11 @@ function ContextUsageChip({ model }: { model: ChatWidgetModel }) {
               </span>
             </div>
             <p className="mt-1.5 break-words text-xs text-muted">
-              {[model.lastRun ? t('lastRun') : t('rail'), context.roleLabel, context.modelLabel]
+              {[
+                model.viewed ? viewedLabel(model.viewed, t) : t('rail'),
+                context.roleLabel,
+                context.modelLabel,
+              ]
                 .filter(Boolean)
                 .join(' · ')}
             </p>
@@ -588,7 +602,7 @@ export function ComposerDock() {
                   ? ts(model.plan.runStatus)
                   : t('runUnavailable')}
           </span>
-          {model.lastRun ? <span className="text-2xs">{t('lastRun')}</span> : null}
+          {model.viewed ? <span className="text-2xs">{viewedLabel(model.viewed, t)}</span> : null}
         </RunLink>
         {!model.plan.open && 'completed' in status ? (
           <Button

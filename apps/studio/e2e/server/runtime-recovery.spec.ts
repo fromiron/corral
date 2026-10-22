@@ -101,10 +101,10 @@ test.describe('runtime continuation', () => {
     await expect(branch).toContainText('Continue with the captured context');
     await page.setViewportSize({ width: 390, height: 844 });
     expect(await branch.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
-    await expect(branch.getByRole('button', { name: 'Create branch and start' })).toBeInViewport();
+    await expect(branch.getByRole('button', { name: 'Start a new session from here' })).toBeInViewport();
     await page.setViewportSize({ width: 1280, height: 800 });
     corral.fake!.answerWith('A separate branch result.');
-    await branch.getByRole('button', { name: 'Create branch and start' }).click();
+    await branch.getByRole('button', { name: 'Start a new session from here' }).click();
     await expect
       .poll(() => new URL(page.url()).pathname)
       .not.toBe(`/sessions/${started.sessionId}`);
@@ -121,7 +121,7 @@ test.describe('runtime continuation', () => {
     await expect(page.getByRole('dialog')).toContainText('before any model response');
     corral.fake!.answerWith('Original request branch.');
     const priorSession = new URL(page.url()).pathname;
-    await page.getByRole('dialog').getByRole('button', { name: 'Create branch and start' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Start a new session from here' }).click();
     await expect.poll(() => new URL(page.url()).pathname).not.toBe(priorSession);
     await expect(page.getByTestId('compact-run')).toContainText('Succeeded');
     expect(corral.errors).toEqual([]);

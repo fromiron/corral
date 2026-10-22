@@ -28,6 +28,7 @@ import {
   presentContext,
   selectPresentedPlan,
   toolRows,
+  viewedRun,
   visibleWidgets,
   widgetReadState,
   workPlanOpen,
@@ -38,7 +39,8 @@ export interface ChatWidgetModel {
   sessionId: string;
   runId: string | null;
   live: boolean;
-  lastRun: boolean;
+  /** The finished run on screen and its place among the session's runs. */
+  viewed: ReturnType<typeof viewedRun>;
   simulated: boolean;
   readState: 'empty' | 'loading' | 'ready' | 'error';
   retryRead: () => void;
@@ -81,14 +83,17 @@ export function ChatWidgetProvider({
   sessionId,
   presentationRunId,
   live,
+  runIds,
   children,
 }: {
   sessionId: string;
   presentationRunId: string | null;
   live: boolean;
+  /** The session's runs, oldest first. */
+  runIds: readonly string[];
   children: ReactNode;
 }) {
-  const model = useChatWidgetState(sessionId, presentationRunId, live);
+  const model = useChatWidgetState(sessionId, presentationRunId, live, runIds);
   return <ChatWidgetContext.Provider value={model}>{children}</ChatWidgetContext.Provider>;
 }
 
@@ -96,6 +101,7 @@ function useChatWidgetState(
   sessionId: string,
   presentationRunId: string | null,
   live: boolean,
+  runIds: readonly string[],
 ): ChatWidgetModel {
   const { runFor, sessionFor, retainRun, transport, readHistory, workspaces, mode } = useServices();
   const session = presentationRunId ? runFor(presentationRunId) : sessionFor(sessionId);
@@ -428,7 +434,7 @@ function useChatWidgetState(
     sessionId,
     runId: presentationRunId,
     live,
-    lastRun: Boolean(presentationRunId) && !live,
+    viewed: viewedRun({ runIds, presentationRunId, live }),
     simulated: Boolean(simulated),
     readState,
     retryRead: retryCurrentRead,

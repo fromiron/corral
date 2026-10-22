@@ -190,3 +190,21 @@ test('#71 hiding the panel hides the side and bottom panes, and showing brings t
   await expect(banner.getByRole('button', { name: 'Hide the panel', exact: true })).toBeVisible();
   await expectReachable(requestBox(page));
 });
+
+test('#72 an older finished run is labelled as the selected run, not the last run', async ({
+  page,
+}) => {
+  await blankSession(page);
+  const timeline = page.getByTestId('chat-timeline');
+  for (const [index, text] of ['First request', 'Second request'].entries()) {
+    await requestBox(page).fill(text);
+    await requestBox(page).press('Control+Enter');
+    await expect(timeline.getByText('Succeeded')).toHaveCount(index + 1, { timeout: 20_000 });
+  }
+  await expect(page.getByText('Last run').first()).toBeAttached();
+  const picker = page.getByRole('banner').getByRole('combobox', { name: 'Selected run' });
+  await picker.click();
+  await page.getByRole('option', { name: /First request/ }).click();
+  await expect(page.getByText('Selected run · 1 of 2').first()).toBeAttached();
+  await expect(page.getByText('Last run')).toHaveCount(0);
+});
