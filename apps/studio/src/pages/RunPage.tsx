@@ -612,8 +612,11 @@ function useSavedTeam(corralId: string | null | undefined) {
   useEffect(() => {
     if (!corralId) return;
     let live = true;
-    repository.get(corralId).then(
-      (record) => live && setSaved({ id: corralId, exists: Boolean(record) }),
+    // The saved list, not a lookup by id: an unsaved id is an expected answer, not a failed
+    // request.
+    repository.list().then(
+      (corrals) =>
+        live && setSaved({ id: corralId, exists: corrals.some((c) => c.corralId === corralId) }),
       () => live && setSaved({ id: corralId, exists: false }),
     );
     return () => {
