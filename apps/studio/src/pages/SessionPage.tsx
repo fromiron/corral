@@ -263,6 +263,7 @@ export function SessionPage() {
     if (panel) rememberPanel(panel);
   }, [panel, rememberPanel]);
   const reopenPanel = SESSION_PANELS.includes(rememberedPanel) ? rememberedPanel : 'changes';
+  const [panesHidden, setPanesHidden] = useState(false);
   const [pendingReference, setReference] = useState<{
     sessionId: string;
     value: FileReference;
@@ -415,8 +416,9 @@ export function SessionPage() {
         team={team}
         changes={changes}
         panel={panel}
-        reopenPanel={reopenPanel}
         onPanel={(value) => showPanel({ panel: value })}
+        panesHidden={panesHidden}
+        onPanesHidden={(hidden) => dock.current?.setPanesHidden(hidden, panel ?? reopenPanel)}
         runs={runs}
         selectedRunId={presentationRunId}
         onSelectRun={(run) =>
@@ -479,6 +481,7 @@ export function SessionPage() {
                 />
               ) : null
             }
+            onPanesHiddenChange={setPanesHidden}
             onActiveContext={(view) => {
               const next =
                 view === 'chat' ? undefined : SESSION_PANELS.find((value) => value === view);
@@ -547,8 +550,9 @@ function SessionActions({
   team,
   changes,
   panel,
-  reopenPanel,
   onPanel,
+  panesHidden,
+  onPanesHidden,
   runs,
   selectedRunId,
   onSelectRun,
@@ -558,8 +562,10 @@ function SessionActions({
   team: CorralSummary | null;
   changes: FileChangeView[] | null;
   panel: SessionPanel | undefined;
-  reopenPanel: SessionPanel;
   onPanel: (panel: SessionPanel | undefined) => void;
+  /** Only the conversation is on screen; the toggle names what it will do (#71). */
+  panesHidden: boolean;
+  onPanesHidden: (hidden: boolean) => void;
   runs: RunSummary[];
   selectedRunId: string | null;
   onSelectRun: (runId: string) => void;
@@ -605,7 +611,7 @@ function SessionActions({
       group: panelGroup,
       shortcutId: 'view.panel',
       shortcut: shortcutLabel('view.panel'),
-      run: () => onPanel(panel ? undefined : reopenPanel),
+      run: () => onPanesHidden(!panesHidden),
     },
     // Every pane from the one catalog: its dock name, its `/` name and the words other screens
     // use for it (#70, #86).
@@ -710,15 +716,15 @@ function SessionActions({
         </Button>
       ) : null}
       <Tooltip
-        content={panel ? tw('collapsePanel') : tw('expandPanel')}
+        content={panesHidden ? tw('expandPanel') : tw('collapsePanel')}
         shortcut={shortcutLabel('view.panel')}
       >
         <Button
           variant="ghost"
           size="icon-sm"
-          aria-label={panel ? tw('collapsePanel') : tw('expandPanel')}
-          aria-pressed={Boolean(panel)}
-          onClick={() => onPanel(panel ? undefined : reopenPanel)}
+          aria-label={panesHidden ? tw('expandPanel') : tw('collapsePanel')}
+          aria-pressed={!panesHidden}
+          onClick={() => onPanesHidden(!panesHidden)}
         >
           <PanelRight />
         </Button>

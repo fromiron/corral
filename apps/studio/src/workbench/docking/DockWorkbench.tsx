@@ -57,6 +57,11 @@ export interface DockOpenDocument {
 export interface DockWorkbenchHandle {
   openDocument(input: DockOpenDocument, selection?: TextRange): boolean;
   openContext(view: DockContextView): void;
+  /**
+   * Hides every pane but the conversation, or shows them again with `view` active. Hiding
+   * keeps documents, processes and the saved arrangement (#71).
+   */
+  setPanesHidden(hidden: boolean, view?: DockContextView): void;
 }
 export interface DockWorkbenchProps {
   hostId?: string;
@@ -73,6 +78,8 @@ export interface DockWorkbenchProps {
   documentOwner?: DocumentStore;
   controls?: ReactNode;
   onActiveContext?: (view: DockContextView) => void;
+  /** Whether only the conversation is on screen now. */
+  onPanesHiddenChange?: (hidden: boolean) => void;
 }
 type PanelParams = { descriptor: DockPanelDescriptor };
 const RendererContext = createContext<{
@@ -134,6 +141,7 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
     const host = useRef<HTMLDivElement>(null);
     const mutating = useRef(false);
     const narrow = useRef(false);
+    const panesHidden = useRef(false);
     const lastSelection = useRef({
       sessionId: props.sessionId,
       selectedPanel: props.selectedPanel,
@@ -188,6 +196,13 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
         }
       setPanels(api.panels.map((panel) => ({ id: panel.id, title: title(panel) })));
       setActive(api.activePanel?.id ?? '');
+      const activeDescriptor = api.activePanel ? descriptorOf(api.activePanel) : null;
+      const onChat = activeDescriptor?.kind === 'context' && activeDescriptor.view === 'chat';
+      const hidden = narrow.current ? onChat : onChat && api.hasMaximizedGroup();
+      if (hidden !== panesHidden.current) {
+        panesHidden.current = hidden;
+        current.current.onPanesHiddenChange?.(hidden);
+      }
     }
     function saveLayout() {
       const api = apiRef.current;
@@ -217,6 +232,9 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
     function focus(panel: IDockviewPanel, notify = false) {
       panel.api.setActive();
       if (narrow.current) panel.api.maximize();
+      // A pane chosen while the others are hidden is shown, not activated off screen.
+      else if (apiRef.current?.hasMaximizedGroup() && !panel.api.isMaximized())
+        apiRef.current.exitMaximizedGroup();
       const descriptor = descriptorOf(panel);
       if (notify && descriptor.kind === 'context')
         current.current.onActiveContext?.(descriptor.view);
@@ -311,7 +329,23 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
       saveLayout();
       return true;
     }
-    useImperativeHandle(ref, () => ({ openDocument, openContext: (view) => openContext(view) }));
+    function setPanesHidden(hidden: boolean, view: DockContextView = 'chat') {
+      const api = apiRef.current;
+      if (!api) return;
+      if (hidden) {
+        openContext('chat', true);
+        if (!narrow.current) api.getPanel('context:chat')?.api.maximize();
+      } else {
+        if (!narrow.current) api.exitMaximizedGroup();
+        openContext(view, true);
+      }
+      refresh();
+    }
+    useImperativeHandle(ref, () => ({
+      openDocument,
+      openContext: (view) => openContext(view),
+      setPanesHidden,
+    }));
 
     async function closePanel(id: string, choice?: CloseChoice) {
       const api = apiRef.current;
@@ -519,6 +553,13 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
       refresh();
       if (event.panel && narrow.current && !event.panel.api.isMaximized())
         event.panel.api.maximize();
+      else if (
+        event.panel &&
+        !narrow.current &&
+        apiRef.current?.hasMaximizedGroup() &&
+        !event.panel.api.isMaximized()
+      )
+        apiRef.current.exitMaximizedGroup();
       if (event.origin === 'user' && event.panel) {
         const descriptor = descriptorOf(event.panel);
         if (descriptor.kind === 'context') current.current.onActiveContext?.(descriptor.view);
@@ -536,6 +577,7 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
           handlers.current.saveLayout();
         }),
         dockApi.onDidActivePanelChange((event) => handlers.current.onActivePanel(event)),
+        dockApi.onDidMaximizedGroupChange(() => handlers.current.refresh()),
         dockApi.onDidMovePanel(() => {
           if (!mutating.current) setPreset(null);
         }),

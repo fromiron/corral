@@ -158,3 +158,35 @@ test('#70 #86 Git, Terminal and running commands open from the palette, / and th
     page.getByRole('tab', { name: 'Running commands & preview', exact: true }),
   ).toHaveAttribute('aria-selected', 'true');
 });
+
+/** Whether a pointer at the element's centre would reach it (a hidden dock group is not painted). */
+const painted = (target: Locator) =>
+  target.evaluate((node) => {
+    const box = node.getBoundingClientRect();
+    if (!box.width || !box.height) return false;
+    const top = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+    return top !== null && (top === node || node.contains(top));
+  });
+
+test('#71 hiding the panel hides the side and bottom panes, and showing brings them back', async ({
+  page,
+}) => {
+  await blankSession(page);
+  const banner = page.getByRole('banner');
+  const files = page.getByRole('tab', { name: 'Files', exact: true });
+  const checks = page.getByRole('tab', { name: 'Checks', exact: true });
+  expect(await painted(files)).toBe(true);
+  // Panes are on screen, so the toggle offers to hide them.
+  const hide = banner.getByRole('button', { name: 'Hide the panel', exact: true });
+  await expect(hide).toHaveAttribute('aria-pressed', 'true');
+  await hide.click();
+  await expect.poll(() => painted(files)).toBe(false);
+  await expect.poll(() => painted(checks)).toBe(false);
+  await expectReachable(requestBox(page));
+  const show = banner.getByRole('button', { name: 'Show the panel', exact: true });
+  await expect(show).toHaveAttribute('aria-pressed', 'false');
+  await show.click();
+  await expect.poll(() => painted(checks)).toBe(true);
+  await expect(banner.getByRole('button', { name: 'Hide the panel', exact: true })).toBeVisible();
+  await expectReachable(requestBox(page));
+});

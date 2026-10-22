@@ -107,8 +107,7 @@ test('[TC-UX-001-H] DW-05 a file opens in a remembered tab and its line referenc
     if (message.text().includes('same key')) keyWarnings.push(message.text());
   });
   await openSession(page);
-  await page.getByRole('button', { name: 'Show the panel', exact: true }).click();
-  await page.getByRole('tab', { name: 'Files', exact: true }).click();
+  await panelTab(page, 'Files');
   await expect(page.getByText('Link a work folder to browse files.')).toBeVisible();
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('link', { name: 'Folders & tools', exact: true }).click();
