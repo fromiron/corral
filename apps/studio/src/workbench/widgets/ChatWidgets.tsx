@@ -1,4 +1,3 @@
-import { RunActions } from '@corral/react';
 import {
   ArrowRight,
   Bot,
@@ -22,8 +21,6 @@ import {
 import { Link } from '@tanstack/react-router';
 import { type ReactNode, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { useStore } from 'zustand';
-import { useServices } from '../../services.tsx';
 import type { WidgetChip } from './selectors.ts';
 import { type ChatWidgetModel, useChatWidget } from './useChatWidgets.tsx';
 
@@ -812,9 +809,6 @@ function WorkPlanStatusIcon({
 function RunActivity({ model }: { model: ChatWidgetModel }) {
   const t = useTranslations('Widgets');
   const ts = useTranslations('Status');
-  const { runFor, sessionFor } = useServices();
-  const session = model.runId ? runFor(model.runId) : sessionFor(model.sessionId);
-  const sharedRunId = useStore(session, (state) => state.runId);
   const text = model.action.visible
     ? ''
     : model.activity.text === 'working'
@@ -853,9 +847,7 @@ function RunActivity({ model }: { model: ChatWidgetModel }) {
       {elapsed ? (
         <span className="shrink-0 tabular-nums">{t('activityElapsed', { time: elapsed })}</span>
       ) : null}
-      {model.live && sharedRunId === model.runId ? (
-        <RunActions session={session} compact showCancel={false} />
-      ) : null}
+      {/* Pause, resume and cancel live in the dock's active run controls, one place (#91). */}
       <RunLink
         model={model}
         className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-sm hover:text-text focus-visible:ring-2 focus-visible:ring-ring"

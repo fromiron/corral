@@ -479,3 +479,36 @@ test('#90 the dock toolbar shows layout and panes; arranging tools, groups and t
   await files.dragTo(chat, { targetPosition: { x: box.width - 8, y: box.height / 2 } });
   await expect(page.getByText('Only documents can be split into a new area.')).toBeVisible();
 });
+
+test('#91 a running run is paused from one place, the active run controls, at any width', async ({
+  page,
+}) => {
+  await page.goto('/?delay=3000');
+  await teamFromTemplate(page);
+  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+  await expect(page).toHaveURL(/\/sessions\/session_/);
+  await requestBox(page).fill('Do the thing');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  const controls = page.getByRole('region', { name: 'Active run controls', exact: true });
+  await expect(controls.getByRole('button', { name: 'Pause run', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Pause run', exact: true })).toHaveCount(1);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expectReachable(controls.getByRole('button', { name: 'Pause run', exact: true }));
+  await expect(page.getByRole('button', { name: 'Pause run', exact: true })).toHaveCount(1);
+});
+
+test('#91 Git changes have one home: an old review Git address opens the Git pane', async ({
+  page,
+}) => {
+  await blankSession(page);
+  const url = page.url().split('?')[0] as string;
+  await page.goto(`${url}/review?scope=git`);
+  await expect(page).toHaveURL(/\/sessions\/session_[^/]+\?(?:.*&)?panel=git/);
+  await expect(page.getByRole('tab', { name: 'Git', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  // The review screen offers its change scopes, not a second Git view.
+  await page.goto(`${url}/review`);
+  await expect(page.locator('option[value="git"]')).toHaveCount(0);
+});

@@ -39,16 +39,15 @@ const DiffCode = lazy(() =>
   import('../workbench/PierreCode.tsx').then((module) => ({ default: module.DiffCode })),
 );
 
-type ReviewScope = ChangeScopeQuery | { kind: 'git' };
+// Git state has one home, the Git pane; an old `scope=git` address is redirected there (#91).
+type ReviewScope = ChangeScopeQuery;
 
 const scopeFromSearch = (search: { scope?: string; runId?: string }): ReviewScope =>
-  search.scope === 'git'
-    ? { kind: 'git' }
-    : search.scope === 'run' && search.runId
-      ? { kind: 'run', runId: search.runId }
-      : search.scope === 'review'
-        ? { kind: 'review' }
-        : { kind: 'session' };
+  search.scope === 'run' && search.runId
+    ? { kind: 'run', runId: search.runId }
+    : search.scope === 'review'
+      ? { kind: 'review' }
+      : { kind: 'session' };
 
 export function ReviewPage() {
   const t = useTranslations('Files');
@@ -125,13 +124,9 @@ export function ReviewPage() {
       runId: scopeKey.split(':')[1],
     });
     void (async () => {
-      if (chosen.kind !== 'git') {
-        const copy = await workspaces.worktree(session.sessionId).catch(() => null);
-        if (!copy || copy.missing) return live && setNoCopy(true);
-      }
-      const result = await (chosen.kind === 'git'
-        ? workspaces.folderChanges(session.projectId)
-        : workspaces.changes(session.sessionId, chosen));
+      const copy = await workspaces.worktree(session.sessionId).catch(() => null);
+      if (!copy || copy.missing) return live && setNoCopy(true);
+      const result = await workspaces.changes(session.sessionId, chosen);
       if (live) setChanges(result);
     })().catch(
       (failure: unknown) =>
@@ -149,7 +144,7 @@ export function ReviewPage() {
     void navigate({
       search: (s) => ({
         ...s,
-        scope: kind as 'session' | 'review' | 'run' | 'git',
+        scope: kind as 'session' | 'review' | 'run',
         runId,
         file: undefined,
       }),
@@ -183,7 +178,6 @@ export function ReviewPage() {
               >
                 <option value="session">{t('scopes.session')}</option>
                 <option value="review">{t('scopes.review')}</option>
-                {binding?.isGit ? <option value="git">{t('scopes.git')}</option> : null}
                 {[...runs].reverse().map((r) => (
                   <option key={r.runId} value={`run:${r.runId}`}>
                     {t('scopes.run', { runId: r.runId })}
@@ -286,25 +280,17 @@ export function ReviewPage() {
               />
             </nav>
             <section aria-label={selected ?? t('chooseFile')} className="min-h-0 overflow-auto p-3">
-              {scope.kind === 'git' ? (
-                <p className="mb-2 text-xs text-muted">{t('gitScopeNote')}</p>
-              ) : null}
-              {selected && changes?.from && (changes.to || scope.kind === 'git') ? (
+              {selected && changes?.from && changes.to ? (
                 <FileDiff
                   path={selected}
                   loadKey={`${scopeKey}:${changes.from}:${changes.to}:${selected}`}
                   load={() =>
-                    scope.kind === 'git'
-                      ? (workspaces as NonNullable<typeof workspaces>).folderFileVersions(
-                          session.projectId,
-                          selected,
-                        )
-                      : (workspaces as NonNullable<typeof workspaces>).fileVersions(
-                          session.sessionId,
-                          changes.from as string,
-                          changes.to as string,
-                          selected,
-                        )
+                    (workspaces as NonNullable<typeof workspaces>).fileVersions(
+                      session.sessionId,
+                      changes.from as string,
+                      changes.to as string,
+                      selected,
+                    )
                   }
                   reviewedKey={fileKey(
                     changes.files.find((f) => f.path === selected),
@@ -314,24 +300,20 @@ export function ReviewPage() {
                   comments={comments.filter(
                     (c) => c.from === changes.from && c.to === changes.to && c.path === selected,
                   )}
-                  {...(scope.kind === 'git' || !changes.to
-                    ? {}
-                    : {
-                        onComment: async (comment: NewComment) => {
-                          await workspaces?.addComment(session.sessionId, {
-                            ...comment,
-                            from: changes.from as string,
-                            to: changes.to as string,
-                            path: selected,
-                          });
-                          await reloadComments();
-                        },
-                      })}
+                  onComment={async (comment: NewComment) => {
+                    await workspaces?.addComment(session.sessionId, {
+                      ...comment,
+                      from: changes.from as string,
+                      to: changes.to as string,
+                      path: selected,
+                    });
+                    await reloadComments();
+                  }}
                 />
               ) : (
                 <p className="text-sm text-muted">{t('chooseFile')}</p>
               )}
-              {scope.kind !== 'git' && selected && changes?.from && changes.to ? (
+              {selected && changes?.from && changes.to ? (
                 <HunkActions
                   key={`${session.sessionId}:${selected}:${changes.from}:${changes.to}`}
                   sessionId={session.sessionId}
@@ -1250,8 +1232,6 @@ function FileList({
       (!unreviewedOnly || !reviewed.has(fileKey(f, f.path))),
   );
   const folded = matches.filter((f) => GENERATED.test(f.path) && f.status !== 'deleted');
-  // Only the linked folder's Git state has a staged list.
-  const staged = new Set((changes as ChangeSetView & { staged?: string[] }).staged ?? []);
   const main = matches.filter((f) => !folded.includes(f));
   const row = (file: FileChangeView) => (
     <li key={file.path}>
@@ -1271,7 +1251,6 @@ function FileList({
           {t(`status.${file.status}`)}
           {file.additions !== null ? ` · +${file.additions} −${file.deletions ?? 0}` : ''}
           {file.binary ? ' · bin' : ''} · {t(`provenance.${file.provenance}`)}
-          {staged.has(file.path) ? ` · ${t('staged')}` : ''}
         </span>
       </button>
     </li>

@@ -88,6 +88,8 @@ Run 상세는 Run ID별 root store를 사용하고 그래프 편집기나 pane�
 
 P11의 구현과 Linux 인앱·관련 회귀 범위는 [C-151 검증 기록](../evaluation/Development-Workbench-Context-2026-10-21.md)을 따른다.
 
+세션 화면에서 실행의 일시정지·재개·취소는 도킹 상단 "실행 조작" 한 곳에서 한다. 입력창 위 진행 줄은 상태와 기록 링크만 보여 준다(#91). Git 상태는 Git 창의 staged/unstaged/untracked 모델 하나로만 보이며 검토 화면의 예전 `scope=git` 주소는 세션의 Git 창으로 replace 이동한다.
+
 ## 읽기 전용 Git 관찰
 
 [CR-046 P12](../change-requests/CR-046-development-workbench.md)의 Git 패널은 기존 Corral snapshot 변경 검토와 별도로 실제 사용자 HEAD/index/작업 파일을 관찰한다. 원본과 세션 사본을 명시적으로 선택하며 패널 진입은 사본을 만들지 않는다. staged는 HEAD→index, unstaged는 index→디스크, untracked는 없음→디스크를 비교한다. detached/unborn/shallow, upstream과 앞섬/뒤처짐, rename·binary·미지원 비교를 구분한다.

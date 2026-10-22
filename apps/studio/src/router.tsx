@@ -147,6 +147,16 @@ export const reviewRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/sessions/$sessionId/review',
   validateSearch: validateReviewSearch,
+  beforeLoad: ({ params, search }) => {
+    // Git state has one home, the session's Git pane (#91).
+    if (search.scope === 'git')
+      throw redirect({
+        to: '/sessions/$sessionId',
+        params,
+        search: { panel: 'git' },
+        replace: true,
+      });
+  },
   loader: async ({ context, params }) => {
     const session = await context.services.repository.getSession(params.sessionId);
     if (!session) throw notFound();
