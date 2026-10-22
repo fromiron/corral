@@ -135,6 +135,16 @@ export function SettingsPage({
                 options={LOCALES.map((l) => ({ value: l.id, label: l.name }))}
               />
             </section>
+            {/* Native-only controls stay in the app menu; say where (#84). Desktop shell only:
+                remote windows never get local desktop controls. */}
+            {desktop ? (
+              <section className="settings-row" data-testid="desktop-native-options">
+                <div>
+                  <h3>{t('nativeHeading')}</h3>
+                  <p>{t('nativeHint')}</p>
+                </div>
+              </section>
+            ) : null}
             {desktop ? (
               <section className="settings-row">
                 <div>

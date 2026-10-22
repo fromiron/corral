@@ -388,3 +388,50 @@ test('#74 a narrow run that waits for a decision points to where it is answered'
   ).toBeVisible();
   await expect(waiting).toHaveCount(0);
 });
+
+test('#84 the desktop shell hears the chosen language, and General says where native options are', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const calls: unknown[][] = [];
+    Object.assign(window, {
+      __desktopCalls: calls,
+      corralDesktop: {
+        info: async () => ({
+          version: '0.0.0',
+          platform: 'linux',
+          overlay: false,
+          status: 'ready',
+          gitAvailable: true,
+          workspace: '/tmp/workspace',
+          node: '24',
+        }),
+        window: async () => {},
+        pickFolder: async () => null,
+        openWorkspace: async () => {},
+        shortcuts: async () => {},
+        revealWorkspace: async () => {},
+        openExternal: async () => {},
+        openPreview: async () => {},
+        retry: async () => {},
+        theme: async () => {},
+        notify: async () => false,
+        badge: async () => {},
+        locale: async (value: string) => {
+          calls.push(['locale', value]);
+        },
+        onCommand: () => () => {},
+      },
+    });
+  });
+  await page.goto('/settings');
+  await expect(page.getByTestId('desktop-native-options')).toContainText('Background');
+  await page.getByRole('combobox', { name: 'Language', exact: true }).click();
+  await page.getByRole('option', { name: '한국어', exact: true }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => (window as unknown as { __desktopCalls: unknown[][] }).__desktopCalls),
+    )
+    .toContainEqual(['locale', 'ko']);
+  await expect(page.getByTestId('desktop-native-options')).toContainText('백그라운드');
+});

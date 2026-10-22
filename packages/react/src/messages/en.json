@@ -1703,6 +1703,8 @@
     "settings": "Settings",
     "general": "General",
     "savesAutomatically": "Changes on this page apply and save right away.",
+    "nativeHeading": "Desktop app options",
+    "nativeHint": "Close to tray and keep awake are in the app menu under Background; remote hosts and update backups under File; updates under Help. They follow the language chosen here.",
     "workspace": "Folders & tools",
     "shortcuts": "Shortcuts",
     "about": "About",

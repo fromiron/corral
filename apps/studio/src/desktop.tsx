@@ -28,6 +28,8 @@ interface DesktopBridge {
   openPreview(sessionId: string, leaseId: string): Promise<void>;
   retry(): Promise<void>;
   theme(dark: boolean): Promise<void>;
+  /** Native menus and dialogs follow the app's language (#84); absent in older shells. */
+  locale?(value: 'en' | 'ko'): Promise<void>;
   notify(title: string, body: string): Promise<boolean>;
   badge(count: number): Promise<void>;
   /** Menu commands by name; returns the unsubscribe function. */

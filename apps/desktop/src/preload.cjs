@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld(
     openExternal: (url) => ipcRenderer.invoke('desktop:external', url),
     retry: () => ipcRenderer.invoke('desktop:retry'),
     theme: (dark) => ipcRenderer.invoke('desktop:theme', dark === true),
+    locale: (value) => ipcRenderer.invoke('desktop:locale', String(value)),
     notify: (title, body) =>
       ipcRenderer.invoke('desktop:notify', { title: String(title), body: String(body) }),
     badge: (count) => ipcRenderer.invoke('desktop:badge', Number(count)),

@@ -1703,6 +1703,8 @@
     "settings": "설정",
     "general": "일반",
     "savesAutomatically": "이 화면의 변경은 바로 적용되고 저장됩니다.",
+    "nativeHeading": "데스크톱 앱 옵션",
+    "nativeHint": "트레이로 닫기·절전 방지는 앱 메뉴의 백그라운드에, 원격 호스트·업데이트 백업은 파일에, 업데이트는 도움말에 있습니다. 여기서 고른 언어로 표시됩니다.",
     "workspace": "폴더 및 도구",
     "shortcuts": "단축키",
     "about": "앱 정보",
