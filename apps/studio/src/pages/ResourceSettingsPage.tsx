@@ -137,12 +137,10 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
           onChange={(e) => setSearch(e.target.value)}
         />
       </section>
-      <section className="settings-row">
-        <div>
-          <h3>{t('showArchived')}</h3>
-        </div>
+      <label className="settings-row">
+        <span className="text-sm font-medium">{t('showArchived')}</span>
         <input type="checkbox" checked={archived} onChange={(e) => setArchived(e.target.checked)} />
-      </section>
+      </label>
       {error ? (
         <p role="alert" className="text-sm text-danger">
           {error}

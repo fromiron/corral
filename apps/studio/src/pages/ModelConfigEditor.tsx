@@ -5,6 +5,7 @@ import {
   type ModelConfig,
   type ProfileConfig,
 } from '@corral/client';
+import { X } from '@corral/react/icons';
 import { Button, Select } from '@corral/react/ui';
 import { useEffect, useId, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -172,41 +173,59 @@ export function ModelConfigEditor({
           const label = profile.id || t('newProfile', { n: index + 1 });
           return (
             <div key={profile.uid} className="flex flex-wrap items-center gap-3">
-              <input
-                aria-label={t('profileId', { n: index + 1 })}
-                value={profile.id}
-                readOnly={index < config.modelProfiles.length}
-                onChange={(e) => setProfile(index, { id: e.target.value })}
-                className={`${field} w-32 font-mono`}
-              />
-              <Select
-                label={t('providerOf', { profile: label })}
-                value={profile.provider}
-                disabled={saving}
-                className="h-9"
-                onValueChange={(value) => {
-                  const next = choices.find((c) => c.id === value);
-                  setProfile(index, { provider: value, model: next?.models[0]?.id ?? '' });
-                }}
-                options={[
-                  ...(provider ? [] : [{ value: profile.provider, label: profile.provider }]),
-                  ...choices.map((c) => ({ value: c.id, label: c.name })),
-                ]}
-              />
-              <Select
-                label={t('modelOf', { profile: label })}
-                value={profile.model}
-                disabled={saving}
-                className="h-9 min-w-0 flex-1"
-                onValueChange={(value) => setProfile(index, { model: value })}
-                options={[
-                  ...(known || !profile.model
-                    ? []
-                    : [{ value: profile.model, label: t('notInCatalog', { id: profile.model }) }]),
-                  ...(provider?.models.map((m) => ({ value: m.id, label: m.name })) ?? []),
-                ]}
-              />
-              <label className="flex items-center gap-1 text-xs">
+              {/* Persistent field titles: the accessible names stay on the controls (#75). */}
+              <div className="flex flex-col gap-1">
+                <span aria-hidden="true" className="text-2xs text-muted">
+                  {t('fieldName')}
+                </span>
+                <input
+                  aria-label={t('profileId', { n: index + 1 })}
+                  value={profile.id}
+                  readOnly={index < config.modelProfiles.length}
+                  onChange={(e) => setProfile(index, { id: e.target.value })}
+                  className={`${field} w-32 font-mono`}
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <span aria-hidden="true" className="text-2xs text-muted">
+                  {t('fieldProvider')}
+                </span>
+                <Select
+                  label={t('providerOf', { profile: label })}
+                  value={profile.provider}
+                  disabled={saving}
+                  className="h-9"
+                  onValueChange={(value) => {
+                    const next = choices.find((c) => c.id === value);
+                    setProfile(index, { provider: value, model: next?.models[0]?.id ?? '' });
+                  }}
+                  options={[
+                    ...(provider ? [] : [{ value: profile.provider, label: profile.provider }]),
+                    ...choices.map((c) => ({ value: c.id, label: c.name })),
+                  ]}
+                />
+              </div>
+              <div className="flex min-w-0 flex-1 flex-col gap-1">
+                <span aria-hidden="true" className="text-2xs text-muted">
+                  {t('fieldModel')}
+                </span>
+                <Select
+                  label={t('modelOf', { profile: label })}
+                  value={profile.model}
+                  disabled={saving}
+                  className="h-9 min-w-0"
+                  onValueChange={(value) => setProfile(index, { model: value })}
+                  options={[
+                    ...(known || !profile.model
+                      ? []
+                      : [
+                          { value: profile.model, label: t('notInCatalog', { id: profile.model }) },
+                        ]),
+                    ...(provider?.models.map((m) => ({ value: m.id, label: m.name })) ?? []),
+                  ]}
+                />
+              </div>
+              <label className="flex h-9 items-center gap-1 self-end text-xs">
                 <input
                   type="checkbox"
                   checked={profile.workerIsolation === 'linux-bwrap'}
@@ -224,9 +243,10 @@ export function ModelConfigEditor({
                 type="button"
                 aria-label={t('removeProfile', { profile: label })}
                 onClick={() => setProfiles(profiles.filter((_, i) => i !== index))}
-                className="self-start"
+                className="self-end"
               >
-                ✕
+                <X aria-hidden="true" />
+                {t('removeShort')}
               </Button>
               <div className="grid w-full gap-2 sm:grid-cols-3">
                 {(['contextWindow', 'reserveTokens', 'keepRecentTokens'] as const).map((key) => (
