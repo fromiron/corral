@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
+import { ScopeLadder } from '../workbench/ScopeLadder.tsx';
 import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
 import { SettingsLayout } from './SettingsPage.tsx';
 
@@ -21,6 +22,7 @@ export function HarnessDefaultsPage({ scope }: { scope: 'personal' | 'project' }
         <h2 className="text-2xl font-semibold">
           {n(scope === 'personal' ? 'personalDefaults' : 'projectDefaults')}
         </h2>
+        <ScopeLadder current={scope} />
         {scopeId ? (
           <DefaultsEditor key={`${scope}:${scopeId}`} scope={scope} scopeId={scopeId} />
         ) : null}
@@ -101,7 +103,6 @@ function DefaultsEditor({ scope, scopeId }: { scope: 'personal' | 'project'; sco
           <section className="settings-row">
             <div>
               <h3>{t(scope)}</h3>
-              <p>{t('defaultsHint')}</p>
             </div>
             <Select
               label={t(scope)}

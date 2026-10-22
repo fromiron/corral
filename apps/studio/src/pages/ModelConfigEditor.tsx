@@ -44,6 +44,14 @@ export function ModelConfigEditor({
   const savingRef = useRef(false);
   const runSettingsTask = useSettingsTask('model-config');
   const initialDraft = useRef(JSON.stringify({ profiles, endpoints }));
+  // A key saved before this edit lives on its endpoint's sign-in card, its one home (#88).
+  const keyedOnCard = useRef(
+    new Set(
+      initialConfig.modelProviders
+        .filter((endpoint) => endpoint.access === 'api_key')
+        .map((endpoint) => endpoint.id),
+    ),
+  );
   const dirty =
     JSON.stringify({ profiles, endpoints }) !== initialDraft.current ||
     Object.values(endpointKeys).some(Boolean);
@@ -371,7 +379,25 @@ export function ModelConfigEditor({
               >
                 {t('removeEndpoint')}
               </Button>
-              {endpoint.access === 'api_key' ? (
+              {endpoint.access === 'api_key' && keyedOnCard.current.has(endpoint.id.trim()) ? (
+                <div className="flex flex-col items-start gap-1 sm:col-span-2">
+                  <p className="text-xs text-muted">{t('endpointKeyOnCardHint')}</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    type="button"
+                    onClick={() => {
+                      const card = document.querySelector<HTMLElement>(
+                        `[data-testid="provider-${CSS.escape(endpoint.id.trim())}"]`,
+                      );
+                      card?.scrollIntoView({ block: 'nearest' });
+                      card?.focus();
+                    }}
+                  >
+                    {t('endpointKeyOnCard', { name: endpoint.name.trim() || endpoint.id.trim() })}
+                  </Button>
+                </div>
+              ) : endpoint.access === 'api_key' ? (
                 <div className="flex flex-col gap-1 sm:col-span-2">
                   <ApiKeyInput
                     value={endpointKeys[endpoint.uid] ?? ''}

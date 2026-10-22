@@ -122,7 +122,7 @@ test('[TC-WIDGET-001-H] [TC-WIDGET-002-H] live plans, context, manual collapse a
     await session(page, corral);
     await expect(
       page.getByTestId('chat-composer').getByRole('button', { name: 'Model', exact: true }),
-    ).toContainText('Next request');
+    ).toContainText('From next request');
     await send(page, 'Review and update the chat layout in several steps.');
     const plan = page.getByTestId('composer-work-plan');
     const toggle = plan.getByRole('button', { name: /Work plan/ });

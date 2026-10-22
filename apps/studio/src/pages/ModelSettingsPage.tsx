@@ -187,7 +187,9 @@ function ProviderCard({
 
   return (
     <article
-      className="settings-surface flex flex-col gap-3"
+      tabIndex={-1}
+      aria-label={provider.name}
+      className="settings-surface flex flex-col gap-3 outline-none focus-visible:outline-2 focus-visible:outline-accent"
       data-testid={`provider-${provider.providerId}`}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">

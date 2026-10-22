@@ -312,6 +312,14 @@ test.describe('editing models on the Models page (CR-008)', () => {
       'Using the API key you entered',
     );
     expect(await page.content()).not.toContain('fixture-inline-key');
+    // #88: once saved, the key has one home, the endpoint's sign-in card.
+    await page.getByRole('button', { name: 'Edit models' }).click();
+    await expect(editor.getByLabel('Endpoint id 1')).toHaveValue('hive');
+    await expect(editor.getByLabel('API key', { exact: true })).toHaveCount(0);
+    await editor
+      .getByRole('button', { name: 'Change the key on the Hive card', exact: true })
+      .click();
+    await expect(page.getByTestId('provider-hive')).toBeFocused();
     expect(corral.errors.filter((e) => !e.includes('503'))).toEqual([]);
   });
 
@@ -321,7 +329,7 @@ test.describe('editing models on the Models page (CR-008)', () => {
   }) => {
     await corral.open('/settings/models');
     const apply = page.getByRole('checkbox', {
-      name: 'Allow automatic reasoning in all projects on this server',
+      name: 'Let the local judge choose reasoning effort in all projects on this server',
     });
     await expect(apply).toBeEnabled();
     const changed = page.waitForResponse(
@@ -477,7 +485,9 @@ test('[TC-CONTEXT-001-H] [TC-CONTEXT-001-N] profile context preview, explicit ze
     (r) => r.url().endsWith('/models/reasoning') && r.request().method() === 'PUT',
   );
   await page
-    .getByRole('checkbox', { name: 'Allow automatic reasoning in all projects on this server' })
+    .getByRole('checkbox', {
+      name: 'Let the local judge choose reasoning effort in all projects on this server',
+    })
     .click();
   expect((await changed).status()).toBe(200);
   await editor.getByRole('button', { name: 'Save models' }).click();

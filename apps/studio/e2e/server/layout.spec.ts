@@ -156,7 +156,7 @@ test.describe('long settings pages', () => {
       'Sign-in',
       'Import model settings',
       'Image generation',
-      'Automatic reasoning · server-wide',
+      'Automatic effort choice · server-wide',
     ]);
     await index.getByRole('button', { name: 'Image generation', exact: true }).click();
     await expect(page.locator('#models-images')).toBeFocused();
@@ -168,4 +168,38 @@ test.describe('long settings pages', () => {
     ).toBeVisible();
     expect(corral.errors).toEqual([]);
   });
+});
+
+test('#88 both default screens show the same four-step ladder and mark which step is edited', async ({
+  page,
+  corral,
+}) => {
+  await corral.open('/settings/defaults');
+  for (const [path, here] of [
+    ['/settings/defaults', 'Personal default'],
+    ['/settings/project-defaults?projectId=default', 'Project default'],
+  ] as const) {
+    // The bootstrap token is redeemed once; later pages reuse the session cookie.
+    await page.goto(`${corral.server.url}${path}`);
+    const ladder = page.getByRole('list', { name: 'Which work style a run uses', exact: true });
+    await expect(ladder.getByRole('listitem')).toHaveCount(4);
+    await expect(ladder.getByRole('listitem').locator('h4')).toHaveText([
+      'Personal default',
+      'Project default',
+      'Team role',
+      'This run',
+    ]);
+    await expect(ladder.locator('[aria-current="step"] h4')).toHaveText(here);
+  }
+  // The other default is one link away instead of in another settings group.
+  await page
+    .getByRole('list', { name: 'Which work style a run uses', exact: true })
+    .getByRole('link', { name: 'Personal default', exact: true })
+    .click();
+  await expect(
+    page
+      .getByRole('main')
+      .getByRole('heading', { name: 'Personal default work style', exact: true }),
+  ).toBeVisible();
+  expect(corral.errors).toEqual([]);
 });
