@@ -120,6 +120,27 @@ test('#94 at 390px a session opens on the conversation and other panes open and 
   await expectReachable(requestBox(page));
 });
 
+test('[TC-WIDGET-001-H] at 390px opening another pane and coming back keeps the same draft box', async ({
+  page,
+}) => {
+  // The narrow dock replaced WorkbenchLayout's side panel (#90); the draft must survive it.
+  await blankSession(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await requestBox(page).fill('Preserved draft');
+  await requestBox(page).evaluate((node) => {
+    (node as HTMLElement & { marked?: boolean }).marked = true;
+  });
+  const toolbar = page.getByTestId('dock-toolbar');
+  await toolbar.getByRole('combobox', { name: 'Panes', exact: true }).click();
+  await page.getByRole('option', { name: 'Files', exact: true }).click();
+  await expect(requestBox(page)).toBeHidden();
+  await toolbar.getByRole('button', { name: 'Back to conversation', exact: true }).click();
+  await expect(requestBox(page)).toHaveValue('Preserved draft');
+  expect(
+    await requestBox(page).evaluate((node) => (node as HTMLElement & { marked?: boolean }).marked),
+  ).toBe(true);
+});
+
 test('#94 shrinking an open session to 390px keeps the conversation reachable', async ({
   page,
 }) => {
