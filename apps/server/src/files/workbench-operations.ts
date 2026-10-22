@@ -81,17 +81,30 @@ export class WorkbenchOperations {
 
   /** Called only after explicit OS identity reconciliation proves the PTY session is gone. */
   reconcileTerminal(operationId: string, result: unknown): WorkbenchOperation {
+    return this.reconcile(operationId, ['terminal'], 'cancelled', result);
+  }
+
+  /**
+   * Settles a running or uncertain receipt once its effect was read back from the host (a gone
+   * process group, or Git HEAD/index), and returns the working copy.
+   */
+  reconcile(
+    operationId: string,
+    kinds: readonly string[],
+    state: Exclude<WorkbenchOperation['state'], 'running' | 'uncertain'>,
+    result: unknown,
+  ): WorkbenchOperation {
     return this.db
       .transaction(() => {
         const prior = this.get(operationId);
-        if (prior?.kind !== 'terminal')
-          throw new ToolRefusal('TARGET_NOT_FOUND', 'terminal receipt is unavailable');
+        if (!prior || !kinds.includes(prior.kind))
+          throw new ToolRefusal('TARGET_NOT_FOUND', 'operation receipt is unavailable');
         if (prior.state !== 'uncertain' && prior.state !== 'running') return prior;
         this.db
           .prepare(
-            "UPDATE workbench_operations SET state='cancelled',result_json=?,updated_at=? WHERE operation_id=?",
+            'UPDATE workbench_operations SET state=?,result_json=?,updated_at=? WHERE operation_id=?',
           )
-          .run(JSON.stringify(result), this.clock.nowIso(), operationId);
+          .run(state, JSON.stringify(result), this.clock.nowIso(), operationId);
         this.db
           .prepare(
             "UPDATE workspace_access SET state='released' WHERE owner_kind='user' AND owner_id=? AND state IN ('active','uncertain')",

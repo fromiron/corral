@@ -1980,7 +1980,8 @@
     "restore": "Restore session",
     "makeCopy": "Make a working copy",
     "copyExists": "This session already has a working copy",
-    "noFolder": "Link a work folder first"
+    "noFolder": "Link a work folder first",
+    "gitCommit": "Commit staged changes"
   },
   "Refusal": {
     "signin": "The team's model is not connected. Sign in under Settings › Models, or send it with simulated agents.",
@@ -3326,7 +3327,6 @@
     "unavailable": "Git is unavailable for this source.",
     "noSessionCopy": "This conversation has no working copy yet. Choose the project original, or make a copy from Changes.",
     "noChanges": "No changes.",
-    "selectFile": "Select a change to compare its contents.",
     "staged": "Staged",
     "unstaged": "Unstaged",
     "untracked": "Untracked",
@@ -3349,7 +3349,26 @@
     },
     "stateChanged": "Git changed after this view was loaded. Refresh to select the current change.",
     "unsupported": "This file type cannot be compared here.",
-    "submodule": "Submodule"
+    "submodule": "Submodule",
+    "stage": "Stage {path}",
+    "unstage": "Unstage {path}",
+    "stageAll": "Stage all",
+    "unstageAll": "Unstage all",
+    "commitMessage": "Commit message",
+    "commit": "Commit {count, plural, one {# file} other {# files}}",
+    "committing": "Committing…",
+    "cancel": "Cancel",
+    "runHooks": "Run hooks",
+    "authorName": "Author name",
+    "authorEmail": "Author email",
+    "unconfirmed": "The last Git change has no confirmed result yet.",
+    "checkAgain": "Check again",
+    "writeLocked": "Another Git process holds the index (index.lock). Let it finish or remove the lock, then try again.",
+    "hookFailed": "A hook stopped the commit.",
+    "signingUnavailable": "This repository requires a signed commit, and signing failed.",
+    "authorMissing": "Git has no author for this commit. Enter a name and email.",
+    "writeCancelled": "The Git change was cancelled.",
+    "writeFailed": "The Git change failed."
   },
   "Materials": {
     "heading": "Instructions & memory",

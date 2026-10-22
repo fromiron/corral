@@ -2979,5 +2979,27 @@
     "done": "원본과 관리 사본의 실제 HEAD/branch/upstream·staged/unstaged/untracked·rename/binary diff 및 detached/unborn/shallow를 구분한다. 공백/한글/개행 경로, full target·HEAD/index 전후 검증, 외부 index 변경·출력 상한·비지원 형식과 filtersDisabled 표시를 확인하고 읽기만으로 hook/filter/외부 helper 실행이나 index·원본·내부 snapshot refs 변경이 없음을 검증한다.",
     "status": "implemented",
     "evidence": "docs/evaluation/Development-Workbench-Git-Observation-2026-10-21.md"
+  },
+  {
+    "id": "C-153",
+    "phase": "M3",
+    "title": "CR-046 관리 사본의 파일 stage/unstage와 commit (P13)",
+    "dependsOn": [
+      "C-152"
+    ],
+    "requirements": [
+      "CRL-WBD-009"
+    ],
+    "files": [
+      "packages/contracts/src/",
+      "packages/client/src/index.ts",
+      "apps/server/src/files/",
+      "apps/server/src/app.ts",
+      "apps/studio/src/workbench/",
+      "packages/react/src/messages/"
+    ],
+    "done": "관리 사본에서 파일 단위 stage/unstage와 확인한 staged 목록의 commit을 receipt로 수행한다. 외부 stage·HEAD 변경·다른 payload·원본 target을 거절하고, 신뢰/비신뢰 hook 정책과 서명 요구·signer 부재, hook 실패·취소, index.lock 충돌, commit 후 응답 유실·재시작에서 중복 commit 없이 결과를 판정한다. 비선택 변경과 원본·내부 snapshot index가 보존됨을 실제 임시 저장소로 확인한다.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/Development-Workbench-Git-Write-2026-10-22.md"
   }
 ]

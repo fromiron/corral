@@ -3,11 +3,15 @@ import {
   canonicalJson,
   type GitDiff,
   type GitDiffRequest,
+  type GitOperation,
   type GitStatus,
   type GitStatusEntry,
+  type GitWriteCommand,
+  type GitWriteResult,
 } from '@corral/contracts';
-import { Button, Select } from '@corral/react/ui';
-import { useEffect, useId, useMemo, useState } from 'react';
+import { Minus, Plus } from '@corral/react/icons';
+import { Button, Input, Select, Textarea } from '@corral/react/ui';
+import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { FileDiff } from '../pages/ReviewPage.tsx';
 import { useServices } from '../services.tsx';
@@ -22,12 +26,104 @@ const belongs = (entry: GitStatusEntry, side: Side) =>
       entry.kind !== 'unmerged' &&
       changed(side === 'staged' ? entry.indexStatus : entry.worktreeStatus);
 
-/** User Git observations are separate from Corral's internal snapshot comparisons. */
+type Pending = { operationId: string; kind: GitWriteCommand['kind'] };
+const pendingKey = (sessionId: string) => `corral:git-operation:v1:${sessionId}`;
+function readPending(sessionId: string): Pending | null {
+  try {
+    const value = JSON.parse(sessionStorage.getItem(pendingKey(sessionId)) ?? 'null');
+    return value && typeof value.operationId === 'string' ? value : null;
+  } catch {
+    return null;
+  }
+}
+function writePending(sessionId: string, value: Pending | null) {
+  try {
+    if (value) sessionStorage.setItem(pendingKey(sessionId), JSON.stringify(value));
+    else sessionStorage.removeItem(pendingKey(sessionId));
+  } catch {
+    /* The receipt is still on the host; only the reopen shortcut is lost. */
+  }
+}
+const FAILURE_KEYS = {
+  locked: 'writeLocked',
+  hook_failed: 'hookFailed',
+  signing_unavailable: 'signingUnavailable',
+  author_missing: 'authorMissing',
+} as const;
+
+/**
+ * User Git observations are separate from Corral's internal snapshot comparisons. In a trusted
+ * session copy the same view stages, unstages and commits with a receipt (CR-046 P13).
+ */
 export function GitPanel({ sessionId, projectId }: { sessionId: string; projectId: string }) {
   const t = useTranslations('Git');
   const { workspaces, workspaceId, mode } = useServices();
   const [source, setSource] = useState<'session' | 'project'>('session');
   const [revision, setRevision] = useState(0);
+  const [trusted, setTrusted] = useState(false);
+  const [busy, setBusy] = useState<Pending | null>(null);
+  const [unconfirmed, setUnconfirmed] = useState<Pending | null>(null);
+  const [failure, setFailure] = useState<{ key: string; detail?: string } | null>(null);
+  const [message, setMessage] = useState('');
+  const [runHooks, setRunHooks] = useState(true);
+  const [author, setAuthor] = useState<{ name: string; email: string } | null>(null);
+  useEffect(() => {
+    let live = true;
+    if (!workspaces?.binding) return;
+    void workspaces.binding(projectId).then(
+      (binding) => live && setTrusted(Boolean(binding?.trusted)),
+      () => live && setTrusted(false),
+    );
+    return () => {
+      live = false;
+    };
+  }, [workspaces, projectId]);
+  const settle = useCallback(
+    (receipt: GitOperation, pending: Pending) => {
+      if (receipt.state === 'running' || receipt.state === 'uncertain') {
+        setUnconfirmed(pending);
+        return;
+      }
+      writePending(sessionId, null);
+      setUnconfirmed(null);
+      const result = receipt.result as GitWriteResult | null;
+      if (receipt.state === 'succeeded') {
+        setFailure(null);
+        if (pending.kind === 'commit') setMessage('');
+      } else if (result?.kind === 'error') {
+        if (result.reason === 'author_missing')
+          setAuthor((value) => value ?? { name: '', email: '' });
+        setFailure(
+          receipt.state === 'cancelled'
+            ? { key: 'writeCancelled' }
+            : result.reason
+              ? { key: FAILURE_KEYS[result.reason], detail: result.message }
+              : result.code === 'REVISION_CONFLICT'
+                ? { key: 'stateChanged' }
+                : { key: 'writeFailed', detail: result.message },
+        );
+      }
+      setRevision((value) => value + 1);
+    },
+    [sessionId],
+  );
+  const check = useCallback(
+    async (pending: Pending) => {
+      if (!workspaces?.gitOperation) return;
+      try {
+        settle(await workspaces.gitOperation(sessionId, pending.operationId), pending);
+      } catch {
+        setUnconfirmed(pending);
+      }
+    },
+    [workspaces, sessionId, settle],
+  );
+  // A change whose answer never arrived is read back by its own ID, never sent again.
+  useEffect(() => {
+    const pending = readPending(sessionId);
+    setUnconfirmed(null);
+    if (pending) void check(pending);
+  }, [sessionId, check]);
   const query = useMemo(
     () => ({
       client: workspaces,
@@ -139,6 +235,56 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
     return { before: response.before, after: response.after };
   };
   const conflicts = status?.entries.filter((entry) => entry.kind === 'unmerged') ?? [];
+  const writable =
+    trusted &&
+    source === 'session' &&
+    status?.target.kind === 'session' &&
+    Boolean(workspaces?.gitChange);
+  const staged = status?.entries.filter((entry) => belongs(entry, 'staged')) ?? [];
+  const change = async (
+    body:
+      | { kind: 'stage' | 'unstage'; paths: string[] }
+      | { kind: 'commit'; message: string; staged: string[]; runHooks: boolean },
+  ) => {
+    if (
+      !status ||
+      status.target.kind !== 'session' ||
+      !workspaces?.gitChange ||
+      busy ||
+      unconfirmed
+    )
+      return;
+    const { kind: _kind, ...target } = status.target;
+    const pending: Pending = {
+      operationId: `git_${crypto.randomUUID().replaceAll('-', '')}`,
+      kind: body.kind,
+    };
+    const command = {
+      ...body,
+      operationId: pending.operationId,
+      target,
+      expect: { head: status.head.oid, indexHash: status.indexHash },
+      ...(body.kind === 'commit' && author?.name && author.email ? { author } : {}),
+    } as GitWriteCommand;
+    writePending(sessionId, pending);
+    setBusy(pending);
+    setFailure(null);
+    try {
+      settle(await workspaces.gitChange(sessionId, command), pending);
+    } catch (error) {
+      if (error instanceof ApiError && error.status < 500 && error.status !== 0) {
+        writePending(sessionId, null);
+        setFailure(
+          error.status === 409
+            ? { key: 'stateChanged' }
+            : { key: 'writeFailed', detail: error.message },
+        );
+        setRevision((value) => value + 1);
+      } else setUnconfirmed(pending);
+    } finally {
+      setBusy(null);
+    }
+  };
   return (
     <section aria-label={t('title')} className="flex min-w-0 flex-col gap-3">
       <div className="flex flex-wrap items-end gap-2">
@@ -210,24 +356,130 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
               {t('truncated')}
             </p>
           ) : null}
+          {unconfirmed ? (
+            <div role="status" className="flex flex-wrap items-center gap-2 text-xs text-warning">
+              <span>{t('unconfirmed')}</span>
+              <Button size="xs" variant="outline" onClick={() => void check(unconfirmed)}>
+                {t('checkAgain')}
+              </Button>
+            </div>
+          ) : null}
+          {failure ? (
+            <div role="alert" className="flex flex-col gap-1 text-xs text-danger">
+              <span>{t(failure.key)}</span>
+              {failure.detail && failure.key !== 'stateChanged' ? (
+                <pre className="whitespace-pre-wrap break-words font-mono text-2xs text-muted">
+                  {failure.detail}
+                </pre>
+              ) : null}
+            </div>
+          ) : null}
+          {writable && staged.length ? (
+            <form
+              className="flex flex-col gap-2"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void change({
+                  kind: 'commit',
+                  message,
+                  staged: staged.map((entry) => entry.path),
+                  runHooks,
+                });
+              }}
+            >
+              <Textarea
+                id="git-commit-message"
+                aria-label={t('commitMessage')}
+                placeholder={t('commitMessage')}
+                rows={2}
+                value={message}
+                onChange={(event) => setMessage(event.target.value)}
+              />
+              {author ? (
+                <div className="flex flex-wrap gap-2">
+                  <Input
+                    aria-label={t('authorName')}
+                    placeholder={t('authorName')}
+                    value={author.name}
+                    onChange={(event) => setAuthor({ ...author, name: event.target.value })}
+                  />
+                  <Input
+                    type="email"
+                    aria-label={t('authorEmail')}
+                    placeholder={t('authorEmail')}
+                    value={author.email}
+                    onChange={(event) => setAuthor({ ...author, email: event.target.value })}
+                  />
+                </div>
+              ) : null}
+              <div className="flex flex-wrap items-center gap-3">
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={!message.trim() || Boolean(busy) || Boolean(unconfirmed)}
+                >
+                  {busy?.kind === 'commit'
+                    ? t('committing')
+                    : t('commit', { count: staged.length })}
+                </Button>
+                {busy?.kind === 'commit' ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      void workspaces?.cancelGitOperation?.(sessionId, busy.operationId)
+                    }
+                  >
+                    {t('cancel')}
+                  </Button>
+                ) : null}
+                <label className="flex items-center gap-1.5 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={runHooks}
+                    onChange={(event) => setRunHooks(event.target.checked)}
+                  />
+                  {t('runHooks')}
+                </label>
+              </div>
+            </form>
+          ) : null}
           {!status.entries.length ? <p className="text-xs text-muted">{t('noChanges')}</p> : null}
           {sides.map((side) => {
             const entries = status.entries.filter((entry) => belongs(entry, side));
             return (
               <section key={side} aria-labelledby={`${id}-${side}`} className="flex flex-col gap-1">
-                <h3 id={`${id}-${side}`} className="text-xs font-semibold">
-                  {t(side)} · {entries.length}
-                </h3>
+                <div className="flex items-center justify-between gap-2">
+                  <h3 id={`${id}-${side}`} className="text-xs font-semibold">
+                    {t(side)} · {entries.length}
+                  </h3>
+                  {writable && entries.length > 1 ? (
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      disabled={Boolean(busy || unconfirmed)}
+                      onClick={() =>
+                        void change({
+                          kind: side === 'staged' ? 'unstage' : 'stage',
+                          paths: entries.map((entry) => entry.path),
+                        })
+                      }
+                    >
+                      {t(side === 'staged' ? 'unstageAll' : 'stageAll')}
+                    </Button>
+                  ) : null}
+                </div>
                 <ul className="flex flex-col gap-0.5">
                   {entries.map((entry) => (
-                    <li key={entry.path}>
+                    <li key={entry.path} className="flex items-start gap-1">
                       <button
                         type="button"
                         data-git-side={side}
                         data-path={entry.path}
                         aria-pressed={selected?.side === side && selected.path === entry.path}
                         onClick={() => setSelection({ query, side, path: entry.path })}
-                        className={`flex w-full flex-wrap items-baseline gap-x-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-subtle ${selected?.side === side && selected.path === entry.path ? 'bg-subtle' : ''}`}
+                        className={`flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-subtle ${selected?.side === side && selected.path === entry.path ? 'bg-subtle' : ''}`}
                       >
                         <span className="whitespace-pre-wrap break-all font-mono">
                           {entry.originalPath ? `${entry.originalPath} → ` : ''}
@@ -238,6 +490,25 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
                           {entry.submodule ? ` · ${t('submodule')}` : ''}
                         </span>
                       </button>
+                      {writable ? (
+                        <Button
+                          size="icon-xs"
+                          variant="ghost"
+                          aria-label={t(side === 'staged' ? 'unstage' : 'stage', {
+                            path: entry.path,
+                          })}
+                          title={t(side === 'staged' ? 'unstage' : 'stage', { path: entry.path })}
+                          disabled={Boolean(busy || unconfirmed)}
+                          onClick={() =>
+                            void change({
+                              kind: side === 'staged' ? 'unstage' : 'stage',
+                              paths: [entry.path],
+                            })
+                          }
+                        >
+                          {side === 'staged' ? <Minus /> : <Plus />}
+                        </Button>
+                      ) : null}
                     </li>
                   ))}
                 </ul>
@@ -267,9 +538,7 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
               <h3 className="text-xs font-semibold">{t(`comparison.${selected.side}`)}</h3>
               <FileDiff key={loadKey} path={selected.path} loadKey={loadKey} load={loadDiff} />
             </section>
-          ) : (
-            <p className="text-xs text-muted">{t('selectFile')}</p>
-          )}
+          ) : null}
         </>
       ) : null}
     </section>

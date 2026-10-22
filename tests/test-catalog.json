@@ -3522,5 +3522,38 @@
     "status": "planned",
     "adapter": "temporary real Git repositories and managed worktrees with existing SQLite/authenticated client fixtures; bounded process failure doubles where needed; real in-app observation before new E2E; no paid models or remote writes",
     "evidence": null
+  },
+  {
+    "id": "TC-WBD-009-H",
+    "requirements": [
+      "CRL-WBD-009"
+    ],
+    "suite": "unit+integration",
+    "scenario": "관리 사본에서 파일 stage→unstage→stage→commit, 같은 operationId 재요청의 원래 receipt, runHooks에 따른 hook 실행과 미실행, 설정된 SSH 서명 commit과 결과 HEAD·index readback",
+    "status": "planned",
+    "adapter": "temporary real Git repositories and managed worktrees with existing SQLite/authenticated client fixtures; temporary SSH signing key; no paid models or remote writes",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-009-N",
+    "requirements": [
+      "CRL-WBD-009"
+    ],
+    "suite": "unit+integration",
+    "scenario": "실행 직전 외부 stage·HEAD 변경, 같은 ID의 다른 payload, 원본 target, 비신뢰 프로젝트, 서명 요구와 signer 부재를 각각 원래 상태 보존과 명시 사유로 거절",
+    "status": "planned",
+    "adapter": "temporary real Git repositories and managed worktrees with existing SQLite/authenticated client fixtures; no paid models or remote writes",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-009-F",
+    "requirements": [
+      "CRL-WBD-009"
+    ],
+    "suite": "unit+integration",
+    "scenario": "hook 실패·실행 중 취소·index.lock 충돌에서 HEAD 불변과 프로세스 정리, commit 후 receipt 기록 실패·응답 유실·재시작 뒤 재조회에서 중복 commit 없이 결과 판정, 기존 hunk 작업이 관리 사본 index를 바꾸지 않음",
+    "status": "planned",
+    "adapter": "temporary real Git repositories and managed worktrees with injected failure points; no paid models or remote writes",
+    "evidence": null
   }
 ]

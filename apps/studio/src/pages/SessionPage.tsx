@@ -631,6 +631,25 @@ function SessionActions({
       }),
     ),
     {
+      id: 'git:commit',
+      title: tcmd('gitCommit'),
+      group: sessionGroup,
+      keywords: ['git', 'commit', 'stage'],
+      disabled: !workspaces,
+      hint: workspaces ? undefined : tw('serverOnly'),
+      run: () => {
+        onPanel('git');
+        // The commit box appears once the Git pane has read the index.
+        let tries = 0;
+        const focus = () => {
+          const box = document.getElementById('git-commit-message');
+          if (box) box.focus();
+          else if (++tries < 40) window.setTimeout(focus, 50);
+        };
+        focus();
+      },
+    },
+    {
       id: 'session:review',
       title: tcmd('review'),
       group: sessionGroup,

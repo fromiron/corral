@@ -22,6 +22,8 @@
 | 실행 일시정지·재개·취소 | Active run controls / 진행 중 실행 제어 | `DockRunControls` | — |
 | 모델의 사고량 | Reasoning effort / 추론 노력 | `reasoning` | — |
 | 로컬 판정기가 추론 노력을 고르는 설정 | Automatic effort choice / 추론 노력 자동 선택 | `ReasoningSettingsPanel` | Automatic reasoning |
+| Git index에 올리기 / 내리기 | Stage / 스테이지, Unstage / 스테이지 해제 | `git.stage`, `git.unstage` | add, 추가(화면 문구) |
+| Git 기록 만들기 | Commit / 커밋 | `git.commit` | 저장(문서 저장과 구분) |
 | 현재 의도가 싣지 않는 항목 | Applies to a new request only / 새 요청에만 적용 | `heldForNew` | 항목별 개별 안내 |
 
 ## 파일명

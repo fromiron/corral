@@ -19,6 +19,7 @@ import {
   DocumentCommand,
   type ErrorCode,
   GitDiffRequest,
+  GitWriteCommand,
   HarnessBindingRef,
   HunkPlanRequest,
   HunkRequest,
@@ -1655,7 +1656,7 @@ async function createCorralServer(
   const gitFail = (reply: FastifyReply, error: unknown) => {
     if (error instanceof WorkspaceError || error instanceof ToolRefusal)
       return fail(reply, error.code, error.message);
-    return fail(reply, 'STORAGE_UNAVAILABLE', 'the Git read failed');
+    return fail(reply, 'STORAGE_UNAVAILABLE', 'the Git request failed');
   };
   const GitDiffQuery = GitDiffRequest.omit({ target: true, head: true }).extend({
     target: z.string().max(4096),
@@ -1884,6 +1885,47 @@ async function createCorralServer(
         return files.documentOperation(request.params.sessionId, request.params.operationId);
       } catch (error) {
         return documentFail(reply, error);
+      }
+    },
+  );
+  // CR-046 P13: stage, unstage and commit in a session's managed copy, with a receipt.
+  app.post<{ Params: { sessionId: string } }>(
+    '/api/v1/sessions/:sessionId/worktree/git/operations',
+    async (request, reply) => {
+      const command = GitWriteCommand.safeParse(request.body);
+      if (!command.success) return fail(reply, 'SCHEMA_INVALID', 'invalid Git command');
+      if (command.data.target.sessionId !== request.params.sessionId)
+        return fail(reply, 'SCHEMA_INVALID', 'Git target does not match the session');
+      if (!(await sessionOr404(reply, request.params.sessionId))) return reply;
+      try {
+        return await files.changeGit(request.params.sessionId, command.data);
+      } catch (error) {
+        return gitFail(reply, error);
+      }
+    },
+  );
+  app.get<{ Params: { sessionId: string; operationId: string } }>(
+    '/api/v1/sessions/:sessionId/worktree/git/operations/:operationId',
+    async (request, reply) => {
+      if (!(await sessionOr404(reply, request.params.sessionId))) return reply;
+      try {
+        return await files.resolveGitOperation(
+          request.params.sessionId,
+          request.params.operationId,
+        );
+      } catch (error) {
+        return gitFail(reply, error);
+      }
+    },
+  );
+  app.post<{ Params: { sessionId: string; operationId: string } }>(
+    '/api/v1/sessions/:sessionId/worktree/git/operations/:operationId/cancel',
+    async (request, reply) => {
+      if (!(await sessionOr404(reply, request.params.sessionId))) return reply;
+      try {
+        return files.cancelGitOperation(request.params.sessionId, request.params.operationId);
+      } catch (error) {
+        return gitFail(reply, error);
       }
     },
   );

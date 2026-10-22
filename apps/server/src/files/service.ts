@@ -41,7 +41,11 @@ import {
   type FileDocument,
   type GitDiff,
   type GitDiffRequest,
+  type GitOperation,
   type GitStatus,
+  GitWriteCommand,
+  type GitWriteIntent,
+  type GitWriteResult,
   HashlineEditInput,
   HunkPlanRequest,
   HunkRequest,
@@ -96,6 +100,17 @@ import { stageLspEdit } from './lsp-edits.ts';
 import { lspResults, validateLspPosition } from './lsp-results.ts';
 import { RunAccessStore } from './run-access.ts';
 import { readUserGitDiff, readUserGitStatus } from './user-git.ts';
+import {
+  commitFacts,
+  GitWriteError,
+  type GitWriteRun,
+  gitIdentity,
+  gitWriteFailure,
+  indexLocked,
+  lockFailure,
+  planGitWrite,
+  startGitWrite,
+} from './user-git-write.ts';
 import { VerificationRunner } from './verification.ts';
 import { WorkbenchOperations } from './workbench-operations.ts';
 import { WorkspaceAccessStore } from './workspace-access.ts';
@@ -199,6 +214,8 @@ export class WorkspaceError extends Error {
 const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 
 /** A relative path inside the worktree, or a refusal. Never `..`, absolute, or into `.git`. */
+const GIT_KINDS = ['git.stage', 'git.unstage', 'git.commit'];
+
 export function safeRelative(input: string): string {
   if (!input || input.includes('\0') || input.includes('\\') || isAbsolute(input))
     throw new ToolRefusal('SCHEMA_INVALID', 'use a relative path with / separators');
@@ -358,6 +375,9 @@ export class WorkspaceService implements FileTools {
   >();
   private readonly db: Db;
   private readonly clock: Clock;
+  private readonly timers: Scheduler;
+  /** Git writes in flight on this host, so a person can cancel one (hooks included). */
+  private readonly liveGit = new Map<string, GitWriteRun>();
   private readonly worktreeRoot: string;
   private readonly hostId: string;
   /** Folders that may never be linked: Corral's own data and credentials. */
@@ -399,6 +419,7 @@ export class WorkspaceService implements FileTools {
       .run();
     this.io = { writeFile, rename, unlink, link, ...options.io };
     this.clock = options.clock;
+    this.timers = options.timers ?? systemTimers;
     this.db
       .prepare("UPDATE command_operations SET state='uncertain',updated_at=? WHERE state='running'")
       .run(this.clock.nowIso());
@@ -2292,6 +2313,235 @@ export class WorkspaceService implements FileTools {
       if ((await this.userGitRoot(scope)) !== root)
         throw new WorkspaceError('REVISION_CONFLICT', 'the Git folder changed');
       return { ...diff, target };
+    });
+  }
+
+  gitOperation(sessionId: string, operationId: string): GitOperation {
+    const receipt = this.workbenchOperations.get(operationId);
+    if (!receipt || receipt.target.sessionId !== sessionId || !GIT_KINDS.includes(receipt.kind))
+      throw new WorkspaceError('TARGET_NOT_FOUND', 'the Git operation is unavailable');
+    const owner = this.workspaceAccess.get({ kind: 'user', id: operationId });
+    return {
+      ...receipt,
+      ...(owner?.state === 'uncertain' ? { state: 'uncertain' as const } : {}),
+    } as GitOperation;
+  }
+
+  /**
+   * Reads Git back for an unconfirmed receipt (a lost response, a failed receipt write or a
+   * restart) and settles it only when HEAD/index prove what happened (CR-046 P13).
+   */
+  async resolveGitOperation(sessionId: string, operationId: string): Promise<GitOperation> {
+    const receipt = this.gitOperation(sessionId, operationId);
+    if (
+      (receipt.state !== 'uncertain' && receipt.state !== 'running') ||
+      this.liveGit.has(operationId)
+    )
+      return receipt;
+    const intent = (receipt.result as GitWriteResult | null)?.intent;
+    const row = this.worktree(sessionId);
+    if (!intent || !row) return receipt;
+    return this.lease(row.worktree_path, async () => {
+      const outcome = await this.judgeGit(row.worktree_path, intent).catch(() => ({
+        kind: 'unknown' as const,
+      }));
+      if (outcome.kind === 'unknown') return this.gitOperation(sessionId, operationId);
+      this.workbenchOperations.reconcile(
+        operationId,
+        GIT_KINDS,
+        outcome.kind === 'applied' ? 'succeeded' : 'failed',
+        outcome.kind === 'applied'
+          ? outcome.result
+          : {
+              kind: 'error',
+              intent,
+              code: 'STORAGE_UNAVAILABLE',
+              message: 'The Git change did not happen; HEAD and the index are unchanged.',
+            },
+      );
+      return this.gitOperation(sessionId, operationId);
+    });
+  }
+
+  cancelGitOperation(sessionId: string, operationId: string): GitOperation {
+    const receipt = this.gitOperation(sessionId, operationId);
+    this.liveGit.get(operationId)?.cancel();
+    return receipt;
+  }
+
+  private async judgeGit(
+    root: string,
+    intent: GitWriteIntent,
+    ownProcessGone = false,
+  ): Promise<
+    { kind: 'applied'; result: GitWriteResult } | { kind: 'unchanged' } | { kind: 'unknown' }
+  > {
+    // After a restart a Git process may still hold the index; nothing is concluded yet. Once our
+    // own process group is confirmed gone, another holder's lock does not make our attempt open.
+    if (!ownProcessGone && (await indexLocked(root))) return { kind: 'unknown' };
+    const status = await readUserGitStatus(root);
+    const applied = (extra: Partial<Extract<GitWriteResult, { kind: 'applied' }>> = {}) => ({
+      kind: 'applied' as const,
+      result: {
+        kind: 'applied' as const,
+        intent,
+        head: status.head.oid,
+        indexHash: status.indexHash,
+        ...extra,
+      },
+    });
+    if (intent.kind === 'commit') {
+      if (status.head.oid === intent.expect.head) return { kind: 'unchanged' };
+      if (!status.head.oid) return { kind: 'unknown' };
+      const facts = await commitFacts(root, status.head.oid);
+      // A commit made from the confirmed HEAD; hooks may have changed the tree it recorded.
+      return facts.parent === intent.expect.head
+        ? applied({
+            commit: status.head.oid,
+            signed: facts.signed,
+            hooksRan: intent.hooks ?? false,
+          })
+        : { kind: 'unknown' };
+    }
+    if (status.head.oid !== intent.expect.head) return { kind: 'unknown' };
+    if (status.indexHash === intent.expect.indexHash) return { kind: 'unchanged' };
+    const done = intent.paths.every((path) => {
+      const entries = status.entries.filter(
+        (entry) => entry.path === path || entry.path.startsWith(`${path}/`),
+      );
+      return intent.kind === 'stage'
+        ? entries.every((entry) => entry.kind !== 'untracked' && entry.worktreeStatus === '.')
+        : entries.every((entry) => entry.kind === 'untracked' || entry.indexStatus === '.');
+    });
+    return done ? applied() : { kind: 'unknown' };
+  }
+
+  /** Stage, unstage or commit in a session's managed copy (CR-046 P13). */
+  async changeGit(sessionId: string, raw: GitWriteCommand): Promise<GitOperation> {
+    const command = GitWriteCommand.parse(raw);
+    const paths = (command.kind === 'commit' ? command.staged : command.paths).map(safeRelative);
+    const requestHash = sha256(Buffer.from(canonicalJson(command)));
+    const kind = `git.${command.kind}` as GitOperation['kind'];
+    const prior = this.workbenchOperations.get(command.operationId);
+    if (prior) {
+      if (prior.requestHash !== requestHash || prior.kind !== kind)
+        throw new WorkspaceError('REVISION_CONFLICT', 'operation request changed');
+      return this.resolveGitOperation(sessionId, command.operationId);
+    }
+    const { row } = this.documentTarget(sessionId, command.target, true);
+    const root = row.worktree_path;
+    const intent: GitWriteIntent = {
+      kind: command.kind,
+      expect: command.expect,
+      paths,
+      ...(command.kind === 'commit' ? { hooks: command.runHooks } : {}),
+    };
+    return this.lease(root, async () => {
+      if ((await realpath(root)) !== resolve(root))
+        throw new WorkspaceError('REVISION_CONFLICT', 'the working copy identity changed');
+      this.documentTarget(sessionId, command.target, true);
+      const admitted = this.workbenchOperations.admit(
+        { operationId: command.operationId, target: command.target, kind, requestHash },
+        root,
+        { kind: 'pending', intent },
+      );
+      if (!admitted.admitted) return this.gitOperation(sessionId, command.operationId);
+      const owner = { kind: 'user', id: command.operationId } as const;
+      let attempted = false;
+      let cleaned = true;
+      try {
+        const status = await readUserGitStatus(root);
+        if (
+          status.head.oid !== command.expect.head ||
+          status.indexHash !== command.expect.indexHash
+        )
+          throw new ToolRefusal(
+            'REVISION_CONFLICT',
+            'Git HEAD or index changed; refresh the Git view',
+          );
+        if (command.kind === 'commit') {
+          if (status.entries.some((entry) => entry.kind === 'unmerged'))
+            throw new ToolRefusal(
+              'CAPABILITY_DENIED',
+              'resolve the unmerged files before committing',
+            );
+          const staged = status.entries
+            .filter((entry) => entry.kind !== 'untracked' && entry.indexStatus !== '.')
+            .map((entry) => entry.path)
+            .sort();
+          if (canonicalJson(staged) !== canonicalJson([...paths].sort()))
+            throw new ToolRefusal(
+              'REVISION_CONFLICT',
+              'the staged files changed; review them again',
+            );
+          intent.tree = await gitText(root, ['write-tree']);
+          this.workbenchOperations.updateRunning(command.operationId, { kind: 'pending', intent });
+        }
+        const plan = planGitWrite(
+          command,
+          command.kind === 'commit' ? await gitIdentity(root) : {},
+          status.head.oid,
+        );
+        this.documentTarget(sessionId, command.target, true);
+        attempted = true;
+        const live = startGitWrite(root, command, plan, this.timers);
+        this.liveGit.set(command.operationId, live);
+        const outcome = await live.done.finally(() => this.liveGit.delete(command.operationId));
+        cleaned = outcome.cleaned;
+        const failure = gitWriteFailure(outcome, plan);
+        if (failure) throw failure;
+        const judged = await this.judgeGit(root, intent, cleaned);
+        if (judged.kind !== 'applied')
+          throw new ToolRefusal('REVISION_CONFLICT', 'Git did not record the expected change');
+        this.workbenchOperations.finish(
+          command.operationId,
+          cleaned ? 'succeeded' : 'uncertain',
+          judged.result,
+        );
+        return this.gitOperation(sessionId, command.operationId);
+      } catch (caught) {
+        const error = lockFailure(caught) ?? caught;
+        let state: 'succeeded' | 'failed' | 'cancelled' | 'uncertain' = 'failed';
+        let result: GitWriteResult = {
+          kind: 'error',
+          intent,
+          code:
+            error instanceof ToolRefusal || error instanceof WorkspaceError
+              ? error.code
+              : 'STORAGE_UNAVAILABLE',
+          message:
+            error instanceof ToolRefusal || error instanceof WorkspaceError
+              ? error.message
+              : 'The Git change could not be confirmed.',
+          ...(error instanceof GitWriteError && error.reason ? { reason: error.reason } : {}),
+        };
+        if (attempted) {
+          const judged = await this.judgeGit(root, intent, cleaned).catch(() => ({
+            kind: 'unknown' as const,
+          }));
+          if (judged.kind === 'applied' && cleaned) {
+            // The change happened; only its confirmation (e.g. the receipt write) failed.
+            state = 'succeeded';
+            result = judged.result;
+          } else
+            state =
+              judged.kind === 'unchanged' && cleaned
+                ? error instanceof ToolRefusal && error.code === 'TARGET_TERMINAL'
+                  ? 'cancelled'
+                  : 'failed'
+                : 'uncertain';
+        }
+        try {
+          this.workbenchOperations.finish(command.operationId, state, result);
+        } catch {
+          this.workspaceAccess.release(owner, false);
+          throw new ToolRefusal(
+            'STORAGE_UNAVAILABLE',
+            'The Git result could not be recorded; read the original operation again.',
+          );
+        }
+        return this.gitOperation(sessionId, command.operationId);
+      }
     });
   }
 

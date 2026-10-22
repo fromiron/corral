@@ -42,6 +42,7 @@ export {
   MessageSquare,
   Mic,
   Minimize2,
+  Minus,
   Monitor,
   Moon,
   PanelLeft,

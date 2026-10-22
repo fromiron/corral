@@ -7,7 +7,9 @@ import type {
   FileDocument,
   GitDiff,
   GitDiffRequest,
+  GitOperation,
   GitStatus,
+  GitWriteCommand,
   ProfileContextOverrides,
   ProfileContextPolicy,
   ProfileContextResolution,
@@ -43,8 +45,10 @@ export type {
   GitDiffRequest,
   GitFileSide,
   GitHead,
+  GitOperation,
   GitStatus,
   GitStatusEntry,
+  GitWriteCommand,
   TerminalAck,
   TerminalControllerChange,
   TerminalCreate,
@@ -1874,6 +1878,25 @@ export class WorkspacesApi {
   readDocument(sessionId: string, path: string): Promise<FileDocument> {
     return this.send(
       `/sessions/${encodeURIComponent(sessionId)}/worktree/document?${new URLSearchParams({ path })}`,
+    );
+  }
+  /** Stage, unstage or commit in a managed copy; a retry reads the same receipt (P13). */
+  gitChange(sessionId: string, command: GitWriteCommand): Promise<GitOperation> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/git/operations`,
+      'POST',
+      command,
+    );
+  }
+  gitOperation(sessionId: string, operationId: string): Promise<GitOperation> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/git/operations/${encodeURIComponent(operationId)}`,
+    );
+  }
+  cancelGitOperation(sessionId: string, operationId: string): Promise<GitOperation> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/git/operations/${encodeURIComponent(operationId)}/cancel`,
+      'POST',
     );
   }
   changeDocument(sessionId: string, command: DocumentCommand): Promise<DocumentOperation> {

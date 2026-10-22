@@ -98,7 +98,19 @@ async function fixture() {
     expect(result.status).toBe(200);
     return result.json();
   };
-  return { root, original, prefix, copies, binding, request, status, diff };
+  return {
+    root,
+    original,
+    prefix,
+    copies,
+    binding,
+    request,
+    status,
+    diff,
+    workspaces,
+    call,
+    server,
+  };
 }
 
 it('[TC-WBD-008-H] discovers the original and two copies and reads each real index and worktree separately', async () => {
@@ -232,4 +244,44 @@ it('[TC-WBD-008-F] refuses parent repository discovery after the bound original 
   const response = await s.request(`${s.prefix}/status`);
   expect(response.status).toBe(409);
   expect(await response.json()).toMatchObject({ error: { code: 'REVISION_CONFLICT' } });
+});
+
+it('[TC-WBD-009-H] [TC-WBD-009-N] stages through the client with a readable receipt, only in the addressed copy', async () => {
+  const f = await fixture();
+  const [a, b] = f.copies;
+  assert(a && b);
+  writeFileSync(join(a.path, 'a.txt'), 'changed in A\n');
+  writeFileSync(join(b.path, 'a.txt'), 'changed in B\n');
+  const before = await f.status(a.prefix);
+  assert(before.target.kind === 'session');
+  const { kind: _kind, ...target } = before.target;
+  const command = {
+    kind: 'stage' as const,
+    operationId: 'http_stage',
+    target,
+    expect: { head: before.head.oid, indexHash: before.indexHash },
+    paths: ['a.txt'],
+  };
+  const receipt = await f.workspaces.gitChange(a.sessionId, command);
+  expect(receipt).toMatchObject({ kind: 'git.stage', state: 'succeeded' });
+  expect(await f.workspaces.gitOperation(a.sessionId, 'http_stage')).toEqual(receipt);
+  expect((await f.status(a.prefix)).entries[0]).toMatchObject({ path: 'a.txt', indexStatus: 'M' });
+  // The other copy and the original keep their own index.
+  expect((await f.status(b.prefix)).entries[0]).toMatchObject({
+    indexStatus: '.',
+    worktreeStatus: 'M',
+  });
+  expect(indexHash(f.original)).toBe((await f.status(f.prefix)).indexHash);
+  const post = (path: string, body: unknown) =>
+    f.call(`${f.server.url}${path}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  expect(
+    (await post(`${b.prefix}/operations`, { ...command, operationId: 'wrong_session' })).status,
+  ).toBe(400);
+  expect((await post(`${a.prefix}/operations`, { ...command, paths: [] })).status).toBe(400);
+  // The linked original has no write route.
+  expect((await post(`${f.prefix}/operations`, command)).status).toBe(404);
 });

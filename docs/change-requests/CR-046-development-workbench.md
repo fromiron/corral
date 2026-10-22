@@ -123,3 +123,18 @@ H는 선택 snapshot→칩→next/queued next→실제 prompt, 원본 이동/교
 - status 출력은 64MiB, 반환 목록은 2,000개, 파일 본문은 기존 1MiB 한도를 유지한다. 목록 제한은 truncated로 알리고 출력 실패·초과나 binary/미지원 형식을 부분적으로 정상인 clean 결과처럼 표시하지 않는다. 모델 연결 없이 읽기를 사용할 수 있다.
 
 H는 실제 임시 Git 원본과 두 관리 사본에서 status discovery·선택 diff·새로고침, staged/unstaged/untracked·rename/binary와 HEAD/branch/upstream의 구분이다. N은 raw 공백/한글/개행 경로, detached/unborn/shallow·미지원 형식·필터 제한과 다른 target/HEAD/index 거절이다. F는 조회 중 외부 index·HEAD·대상 변경, 늦은 응답·Git 실패·출력 상한에서 원래 선택과 명시 실패를 보존하고 hook/filter 등 실행 및 index·원본·내부 snapshot refs 변경이 없음을 확인한다. 의미 있는 실패 테스트를 먼저 실행하고 기존 인증/client/원본 browse·snapshot 회귀를 재사용한다. 실제 인앱 확인 전 새 E2E를 추가하지 않으며 원격 쓰기·유료 호출은 검증에 사용하지 않는다.
+
+## P13: 관리 사본의 파일 stage/unstage와 commit
+
+추적: CRL-WBD-009 / C-153 / TC-WBD-009-H,N,F. 승인 계획 P13과 D5의 쓰기 정책을 구체화한다. D5는 2026-10-22 사용자 결정으로 확정했다: hook은 신뢰 프로젝트에서만 실행하고, 서명 요구는 사용자 signer로 충족하며 실패하면 거절하고, 작성자·서명 설정은 Git 설정의 허용 키만 읽는다. P14 branch·remote와 credential helper는 이 묶음에 포함하지 않는다.
+
+- 대상은 세션 관리 사본(`WorkspaceTarget`)뿐이다. 원본 폴더 target은 `CAPABILITY_DENIED`로 거절한다. 관리 사본은 원본과 object store·refs를 공유하므로 commit object는 공유 저장소에 쓰이지만 원본의 작업 트리·index·checkout branch는 바꾸지 않는다.
+- `GitWriteCommand`는 `operationId`, `target`, `expect:{head, indexHash}`와 kind별 내용을 가진다. `stage`/`unstage`는 literal 상대 경로 목록, `commit`은 메시지, 확인 화면에 보인 `staged` 목록, `runHooks`, 선택적 작성자다. commit은 현재 index를 그대로 기록하며 `staged`가 실제 staged 집합과 다르면 `REVISION_CONFLICT`로 거절한다. unstaged·untracked 변경은 보존한다.
+- 모든 쓰기는 기존 `WorkbenchOperations.admit`으로 접수해 공통 writer를 잡는다. kind는 `git.stage`/`git.unstage`/`git.commit`이다. 같은 ID·같은 요청은 원래 receipt를 돌려주고 다른 요청은 `REVISION_CONFLICT`다. 응답 유실 뒤 새 ID로 재실행하지 않는다.
+- 효과 직전 HEAD·indexHash·staged 집합을 다시 확인한다. commit은 효과 전에 예상 tree를 계산해 intent에 기록한다. 오류·응답 유실·재시작 뒤 판정은 HEAD의 첫 parent가 예상 HEAD이고 tree가 예상 tree면 `succeeded`, HEAD가 그대로면 `failed`, 그 외는 `uncertain`이다. uncertain은 writer를 풀지 않는다.
+- 쓰기 runner는 snapshot용 hooks-off helper와 분리한다. 실행은 소유 process group으로 하고 취소·timeout에서 group 종료를 확인한다. Git 쓰기는 문서 저장과 같이 신뢰 프로젝트에서만 접수하므로 비신뢰 프로젝트에서는 hook·filter가 실행될 경로가 없다. 신뢰 프로젝트에서 hook은 `runHooks`가 참일 때만 저장소 설정 그대로 실행하고 그 외에는 `--no-verify`와 비활성 hooksPath로 실행한다. stage는 저장소에 설정된 clean filter를 그대로 쓴다.
+- 작성자·서명은 local·global Git 설정에서 `user.name`, `user.email`, `commit.gpgsign`, `gpg.format`, `user.signingkey`, `gpg.program`, `gpg.ssh.program`만 읽어 명시 전달한다. 그 밖의 전역 설정은 계속 읽지 않는다. 작성자가 없으면 요청의 작성자를 쓰고 그것도 없으면 거절한다. 서명이 요구됐는데 signer가 실패하면 `CAPABILITY_DENIED`(signing)로 거절하고 서명 없는 commit을 자동으로 만들지 않는다.
+- 실패 결과는 기존 ErrorCode와 `reason`(`locked`, `hook_failed`, `signing_unavailable`, `author_missing`)을 함께 기록한다.
+- HTTP는 `POST /api/v1/sessions/:id/worktree/git/operations`와 `GET …/git/operations/:operationId`다. client는 `gitChange`, `gitOperation`이다. Git 창은 관리 사본 source에서만 쓰기 조작을 보이며 진행 중 operationId를 보존해 다시 열면 같은 ID로 조회한다.
+
+H는 실제 임시 저장소와 관리 사본에서 stage→unstage→commit, 같은 ID 재요청, `runHooks`에 따른 hook 실행/미실행과 SSH 서명 commit이다. N은 외부 stage·HEAD 변경, 다른 payload, 원본 target, 비신뢰 프로젝트, 서명 요구와 signer 부재 거절이다. F는 hook 실패·취소, index.lock 충돌, commit 후 receipt 기록 실패·응답 유실·재시작에서 중복 commit 없는 판정과 기존 hunk 작업이 관리 사본 index를 바꾸지 않음이다. 원격 쓰기·유료 호출은 쓰지 않는다.

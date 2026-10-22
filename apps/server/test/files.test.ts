@@ -179,7 +179,7 @@ describe('file broker (CR-012)', () => {
       s.db.close();
     }
   });
-  it('[TC-HUNK-001-H] [TC-HUNK-001-N] selected hunks preserve other changes and the index, checkpoint the correct target and reject stale edits', async () => {
+  it('[TC-HUNK-001-H] [TC-HUNK-001-N] [TC-WBD-009-F] selected hunks preserve other changes and the index, checkpoint the correct target and reject stale edits', async () => {
     const s = await setup();
     const root = s.service.copyOf('session_1')!.worktree;
     try {
@@ -189,6 +189,9 @@ describe('file broker (CR-012)', () => {
       writeFileSync(join(s.original, 'a.txt'), baseline);
       writeFileSync(join(s.original, 'unrelated.txt'), 'keep');
       const indexBefore = readFileSync(join(s.original, '.git/index'));
+      // The managed copy has its own index (CR-046 P13); hunk work must not stage into it.
+      const copyIndex = () => execFileSync('git', ['ls-files', '--stage', '-z'], { cwd: root });
+      const copyIndexBefore = copyIndex();
       const before = await s.service.captureCheckpoint('session_1', {
         checkpointId: 'before_hunks',
         label: 'Before hunks',
@@ -261,6 +264,7 @@ describe('file broker (CR-012)', () => {
       expect(readFileSync(join(root, 'a.txt'), 'utf8')).toBe(
         baseline.replace('line 2\n', 'first change\n'),
       );
+      expect(copyIndex()).toEqual(copyIndexBefore);
       await expect(
         s.service.planHunks('session_1', { ...planInput, hunkIds: [hunks.hunks[1]!.id] }),
       ).rejects.toThrow(/identity/);

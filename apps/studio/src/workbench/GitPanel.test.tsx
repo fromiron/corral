@@ -227,3 +227,90 @@ it('[TC-WBD-008-F] a late diff cannot cross a session target change', async () =
   expect(f.container.textContent).not.toContain('OLD SESSION CONTENT');
   expect(gitDiff.mock.calls[1]?.[1].target).toEqual(nextTarget);
 });
+
+const control = (container: HTMLElement, label: string) =>
+  [...container.querySelectorAll<HTMLButtonElement>('button')].filter(
+    (element) => element.getAttribute('aria-label') === label || element.textContent === label,
+  );
+
+it('[TC-WBD-009-H] a trusted copy stages a row and commits the confirmed staged list with one receipt each', async () => {
+  sessionStorage.clear();
+  const gitStatus = vi.fn(async () => status());
+  const gitChange = vi.fn(
+    async (_session: string, command: { operationId: string; kind: string }) => ({
+      operationId: command.operationId,
+      kind: `git.${command.kind}`,
+      state: 'succeeded',
+      result: { kind: 'applied' },
+    }),
+  );
+  const f = await mount({ gitStatus, gitChange, binding: vi.fn(async () => ({ trusted: true })) });
+  const { kind: _kind, ...copy } = target;
+  // The untracked row offers Stage; the staged row offers Unstage.
+  const stage = control(f.container, 'Git.stage');
+  expect(stage.length).toBeGreaterThan(0);
+  expect(control(f.container, 'Git.unstage').length).toBe(1);
+  await act(async () => stage.at(-1)?.click());
+  expect(gitChange).toHaveBeenLastCalledWith('session', {
+    kind: 'stage',
+    operationId: expect.stringMatching(/^git_/),
+    target: copy,
+    expect: { head: 'a'.repeat(40), indexHash: 'b'.repeat(64) },
+    paths: ['new\nfile.ts'],
+  });
+  expect(gitStatus).toHaveBeenCalledTimes(2);
+  const message = f.container.querySelector<HTMLTextAreaElement>(
+    'textarea[aria-label="Git.commitMessage"]',
+  );
+  expect(message).not.toBeNull();
+  await act(async () => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+    setter?.call(message, 'Explain the change');
+    message?.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await act(async () => control(f.container, 'Git.commit')[0]?.click());
+  expect(gitChange).toHaveBeenLastCalledWith('session', {
+    kind: 'commit',
+    operationId: expect.stringMatching(/^git_/),
+    target: copy,
+    expect: { head: 'a'.repeat(40), indexHash: 'b'.repeat(64) },
+    message: 'Explain the change',
+    staged: [path],
+    runHooks: true,
+  });
+});
+
+it('[TC-WBD-009-N] the linked original and an untrusted copy offer no Git writes', async () => {
+  sessionStorage.clear();
+  const gitStatus = vi.fn(async () => status());
+  const f = await mount({ gitStatus, binding: vi.fn(async () => ({ trusted: false })) });
+  expect(control(f.container, 'Git.stage')).toHaveLength(0);
+  expect(f.container.querySelector('textarea')).toBeNull();
+});
+
+it('[TC-WBD-009-F] an unconfirmed operation is read back by its own ID after reopening, never resent', async () => {
+  sessionStorage.clear();
+  sessionStorage.setItem(
+    'corral:git-operation:v1:session',
+    JSON.stringify({ operationId: 'git_pending', kind: 'commit' }),
+  );
+  const gitStatus = vi.fn(async () => status());
+  const gitChange = vi.fn();
+  const gitOperation = vi.fn(async () => ({
+    operationId: 'git_pending',
+    kind: 'git.commit',
+    state: 'uncertain',
+    result: { kind: 'pending' },
+  }));
+  const f = await mount({
+    gitStatus,
+    gitChange,
+    gitOperation,
+    binding: vi.fn(async () => ({ trusted: true })),
+  });
+  expect(gitOperation).toHaveBeenCalledWith('session', 'git_pending');
+  expect(f.container.textContent).toContain('Git.unconfirmed');
+  await act(async () => control(f.container, 'Git.checkAgain')[0]?.click());
+  expect(gitOperation).toHaveBeenCalledTimes(2);
+  expect(gitChange).not.toHaveBeenCalled();
+});

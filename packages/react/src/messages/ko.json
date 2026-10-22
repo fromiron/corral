@@ -1980,7 +1980,8 @@
     "restore": "세션 복원",
     "makeCopy": "작업 복사본 만들기",
     "copyExists": "이미 작업 복사본이 있어요",
-    "noFolder": "먼저 작업 폴더를 연결하세요"
+    "noFolder": "먼저 작업 폴더를 연결하세요",
+    "gitCommit": "스테이지한 변경 커밋"
   },
   "Refusal": {
     "signin": "팀이 쓰는 모델이 연결되어 있지 않아요. 설정 › 모델에서 로그인하거나 시뮬레이션으로 보내세요.",
@@ -3326,7 +3327,6 @@
     "unavailable": "이 위치의 Git 상태를 읽을 수 없습니다.",
     "noSessionCopy": "이 대화에는 아직 작업 사본이 없습니다. 프로젝트 원본을 선택하거나 변경 패널에서 사본을 만드세요.",
     "noChanges": "변경 사항이 없습니다.",
-    "selectFile": "변경 파일을 선택하면 내용을 비교할 수 있습니다.",
     "staged": "스테이징됨",
     "unstaged": "스테이징되지 않음",
     "untracked": "추적되지 않음",
@@ -3343,13 +3343,32 @@
     "truncated": "처음 2,000개 변경만 표시합니다.",
     "rawContent": "변환 필터를 실행하지 않고 저장된 원문을 비교합니다.",
     "comparison": {
-      "staged": "HEAD → index",
-      "unstaged": "index → 작업 파일",
+      "staged": "HEAD → 인덱스",
+      "unstaged": "인덱스 → 작업 파일",
       "untracked": "새 파일 → 작업 파일"
     },
     "stateChanged": "조회 후 Git 상태가 변경되었습니다. 새로고침한 뒤 현재 변경을 선택하세요.",
     "unsupported": "이 파일 형식은 여기서 비교할 수 없습니다.",
-    "submodule": "하위 모듈"
+    "submodule": "하위 모듈",
+    "stage": "{path} 스테이지",
+    "unstage": "{path} 스테이지 해제",
+    "stageAll": "모두 스테이지",
+    "unstageAll": "모두 스테이지 해제",
+    "commitMessage": "커밋 메시지",
+    "commit": "{count}개 파일 커밋",
+    "committing": "커밋 중…",
+    "cancel": "취소",
+    "runHooks": "훅 실행",
+    "authorName": "작성자 이름",
+    "authorEmail": "작성자 이메일",
+    "unconfirmed": "마지막 Git 변경의 결과가 아직 확인되지 않았습니다.",
+    "checkAgain": "다시 확인",
+    "writeLocked": "다른 Git 프로세스가 인덱스를 잡고 있습니다. 끝나기를 기다리거나 인덱스 잠금 파일을 지운 뒤 다시 시도하세요.",
+    "hookFailed": "훅이 커밋을 멈췄습니다.",
+    "signingUnavailable": "이 저장소는 서명된 커밋을 요구하지만 서명에 실패했습니다.",
+    "authorMissing": "이 커밋의 작성자가 Git 설정에 없습니다. 이름과 이메일을 입력하세요.",
+    "writeCancelled": "Git 변경을 취소했습니다.",
+    "writeFailed": "Git 변경에 실패했습니다."
   },
   "Materials": {
     "heading": "지침·메모리",
