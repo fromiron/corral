@@ -37,7 +37,7 @@ test('[TC-HAR-016-H] reviews an MCP server, completes local OAuth and pins its r
     await expect(page.getByRole('button', { name: 'Add', exact: true })).toHaveCount(0);
     await page.getByRole('combobox', { name: 'Applies to project', exact: true }).click();
     await page.getByRole('option', { name: 'My project', exact: true }).click();
-    await expect(page).toHaveURL(/\/settings\/mcp\?projectId=default/);
+    await expect(page).toHaveURL(/settings=mcp&settingsProject=default/);
     await page.evaluate(async (source) => {
       const { csrfToken } = await (await fetch('/api/v1/session')).json();
       for (const [method, body] of [
@@ -60,7 +60,7 @@ test('[TC-HAR-016-H] reviews an MCP server, completes local OAuth and pins its r
     await page.getByRole('option', { name: 'OAuth', exact: true }).click();
     await page.getByLabel('OAuth scopes', { exact: true }).fill('docs:read');
     await page.getByRole('button', { name: 'Save', exact: true }).click();
-    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.locator('[role="dialog"]:not([data-settings-dialog])')).toHaveCount(0);
     await page.getByLabel('Enabled for this project', { exact: true }).check();
     await page.getByRole('button', { name: 'Review launch for Local docs', exact: true }).click();
     await page.getByRole('button', { name: 'Trust this launch', exact: true }).click();

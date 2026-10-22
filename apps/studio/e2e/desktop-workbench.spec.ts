@@ -99,7 +99,7 @@ test('[TC-UX-004-H] DW-02/03 settings overlay keeps the same mounted work and dr
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
-test('[TC-UX-001-H] DW-05 a file opens in a remembered tab and its line reference enters the draft', async ({
+test('[TC-UX-001-H] DW-05 a file opens in a remembered preview and its line reference enters the draft', async ({
   page,
 }) => {
   const keyWarnings: string[] = [];
@@ -130,18 +130,12 @@ test('[TC-UX-001-H] DW-05 a file opens in a remembered tab and its line referenc
   await expect(page.getByRole('list', { name: 'References' })).toContainText('README.md:L1');
   await page.getByRole('tab', { name: 'Changes', exact: true }).click();
   await page.getByRole('tab', { name: 'Files', exact: true }).click();
-  await expect(page.getByRole('tab', { name: 'README.md', exact: true })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  );
+  // #87: an original-folder file has one read-only preview in Files, kept across panes; the
+  // dock's document tabs are the only tab strip.
+  await expect(page.getByRole('region', { name: 'README.md', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Open src/version.ts', exact: true }).click();
-  await page.getByRole('tab', { name: 'src/version.ts', exact: true }).focus();
-  await page.keyboard.press('ArrowLeft');
-  await expect(page.getByRole('tab', { name: 'README.md', exact: true })).toBeFocused();
-  await expect(page.getByRole('tab', { name: 'README.md', exact: true })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  );
+  await expect(page.getByRole('region', { name: 'src/version.ts', exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'README.md', exact: true })).toHaveCount(0);
   const request = requestBox(page);
   await request.fill('@version');
   await expect(page.getByRole('listbox', { name: 'References' })).toBeVisible();

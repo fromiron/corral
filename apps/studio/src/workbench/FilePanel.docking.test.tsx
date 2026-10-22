@@ -171,7 +171,6 @@ it('[TC-WBD-006-H] a session-copy file opens as a document tab whatever it holds
     });
     expect(container.querySelector('[role="tablist"]')).toBeNull();
     expect(container.querySelector('[data-inline-editor]')).toBeNull();
-    expect(container.textContent).toContain(messages.Files.openRule);
   });
 });
 

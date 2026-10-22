@@ -35,10 +35,7 @@ export function ScopeLadder({ current }: { current: 'personal' | 'project' }) {
               aria-current={here ? 'step' : undefined}
               className={`flex flex-col gap-1 rounded-lg p-3 text-xs ${here ? 'bg-raised shadow-sm' : 'fill-group'}`}
             >
-              <span className="text-2xs text-muted">
-                {index + 1}
-                {here ? ` · ${t('ladderHere')}` : ''}
-              </span>
+              <span className="text-2xs text-muted">{index + 1}</span>
               <h4 className="text-sm font-medium">
                 {target ? (
                   <Link {...target} className="text-accent underline">

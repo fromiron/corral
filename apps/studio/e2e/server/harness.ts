@@ -168,8 +168,11 @@ export const test = base.extend<{
       async open(path = '/') {
         const token = server.bootstrapUrl.split('#')[1];
         await page.goto(`${server.url}${path}#${token}`);
-        // Studio mounts only after redeeming the bootstrap cookie and checking the session.
-        await expect(page.getByRole('banner')).toBeVisible();
+        // Studio mounts only after redeeming the bootstrap cookie and checking the session. A
+        // settings address opens the modal settings dialog, which hides the banner (#88).
+        await expect(
+          page.getByRole('banner').or(page.locator('[data-settings-dialog]')).first(),
+        ).toBeVisible();
       },
       async restart() {
         await server.close();

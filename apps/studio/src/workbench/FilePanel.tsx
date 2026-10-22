@@ -452,7 +452,6 @@ export function FilePanel({
           <RefreshCw />
         </Button>
       </div>
-      {onOpenDocument ? <p className="text-2xs text-muted">{tf('openRule')}</p> : null}
       <Input
         aria-label={t('filterFiles')}
         placeholder={t('filterFiles')}

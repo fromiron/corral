@@ -30,6 +30,7 @@ import {
   type SettingsSearch,
   validateSettingsOverlay,
   validateSettingsSearch,
+  workHref,
 } from './workbench/navigation.ts';
 import {
   validateEditorSearch,
@@ -212,6 +213,18 @@ export const runRoute = createRoute({
   component: RunPage,
 });
 
+/**
+ * Every settings screen opens one way: the settings dialog over a work page (#88). A settings
+ * address lands on the page it names in `returnTo`, else Projects, with its target project, so
+ * URL, Back and closing behave the same however the screen was reached.
+ */
+function settingsDialog(section: string, search: SettingsSearch) {
+  const url = new URL(workHref(search.returnTo) ?? '/projects', 'http://corral.local');
+  url.searchParams.set('settings', section);
+  if (search.projectId) url.searchParams.set('settingsProject', search.projectId);
+  return redirect({ href: `${url.pathname}${url.search}${url.hash}`, replace: true });
+}
+
 export const settingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/settings',
@@ -223,6 +236,9 @@ export const settingsRoute = createRoute({
       ? { section: search.section as 'general' | 'workspace' | 'shortcuts' | 'about' }
       : {}),
   }),
+  beforeLoad: ({ search }) => {
+    throw settingsDialog(search.section ?? 'general', search);
+  },
   component: () => <SettingsPage section={settingsRoute.useSearch().section} />,
 });
 
@@ -231,8 +247,10 @@ export const harnessSettingsRoute = createRoute({
   path: '/settings/harness',
   validateSearch: validateSettingsSearch,
   beforeLoad: ({ location, search }) => {
-    if (location.hash.replace(/^#/, '') === 'project-defaults')
-      throw redirect({ to: '/settings/project-defaults', search, replace: true });
+    throw settingsDialog(
+      location.hash.replace(/^#/, '') === 'project-defaults' ? 'project-defaults' : 'harness',
+      search,
+    );
   },
   component: HarnessSettingsPage,
 });
@@ -241,12 +259,18 @@ export const personalDefaultsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/settings/defaults',
   validateSearch: validateSettingsSearch,
+  beforeLoad: ({ search }) => {
+    throw settingsDialog('defaults', search);
+  },
   component: () => <HarnessDefaultsPage scope="personal" />,
 });
 export const projectDefaultsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/settings/project-defaults',
   validateSearch: validateSettingsSearch,
+  beforeLoad: ({ search }) => {
+    throw settingsDialog('project-defaults', search);
+  },
   component: () => <HarnessDefaultsPage scope="project" />,
 });
 
@@ -254,18 +278,27 @@ export const skillSettingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/settings/skills',
   validateSearch: validateSettingsSearch,
+  beforeLoad: ({ search }) => {
+    throw settingsDialog('skills', search);
+  },
   component: SkillSettingsPage,
 });
 export const hookSettingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/settings/hooks',
   validateSearch: validateSettingsSearch,
+  beforeLoad: ({ search }) => {
+    throw settingsDialog('hooks', search);
+  },
   component: HookSettingsPage,
 });
 export const mcpSettingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/settings/mcp',
   validateSearch: validateSettingsSearch,
+  beforeLoad: ({ search }) => {
+    throw settingsDialog('mcp', search);
+  },
   component: McpSettingsPage,
 });
 
@@ -273,6 +306,9 @@ export const vaultSettingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/settings/vault',
   validateSearch: validateSettingsSearch,
+  beforeLoad: ({ search }) => {
+    throw settingsDialog('vault', search);
+  },
   component: VaultSettingsPage,
 });
 
@@ -280,6 +316,9 @@ export const modelSettingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/settings/models',
   validateSearch: validateSettingsSearch,
+  beforeLoad: ({ search }) => {
+    throw settingsDialog('models', search);
+  },
   component: ModelSettingsPage,
 });
 

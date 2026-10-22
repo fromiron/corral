@@ -381,7 +381,6 @@ export function ModelConfigEditor({
               </Button>
               {endpoint.access === 'api_key' && keyedOnCard.current.has(endpoint.id.trim()) ? (
                 <div className="flex flex-col items-start gap-1 sm:col-span-2">
-                  <p className="text-xs text-muted">{t('endpointKeyOnCardHint')}</p>
                   <Button
                     variant="outline"
                     size="sm"

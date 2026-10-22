@@ -203,3 +203,29 @@ test('#88 both default screens show the same four-step ladder and mark which ste
   ).toBeVisible();
   expect(corral.errors).toEqual([]);
 });
+
+test('#88 a settings address opens the same settings dialog over work, and closing it leaves no settings page', async ({
+  page,
+  corral,
+}) => {
+  await corral.open('/settings/skills');
+  // Entering by address shows the dialog form, not a separate page with its own back rules.
+  await expect(page).toHaveURL(/\/projects\?(?:.*&)?settings=skills/);
+  const dialog = page.getByRole('dialog', { name: 'Settings', exact: true });
+  await expect(
+    dialog.getByRole('checkbox', { name: 'Show archived items', exact: true }),
+  ).toBeVisible();
+  await dialog.getByRole('button', { name: 'Close settings', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page).not.toHaveURL(/settings/);
+  // A project section keeps its project.
+  await page.goto(`${corral.server.url}/settings/project-defaults?projectId=default`);
+  await expect(page).toHaveURL(/\/projects\?(?:.*&)?settings=project-defaults/);
+  await expect(page).toHaveURL(/settingsProject=default/);
+  await expect(
+    page
+      .getByRole('dialog', { name: 'Settings', exact: true })
+      .getByRole('list', { name: 'Which work style a run uses', exact: true }),
+  ).toBeVisible();
+  expect(corral.errors).toEqual([]);
+});

@@ -1143,7 +1143,6 @@
     "endpointNameHint": "Optional display name. Leave blank to use the connection ID.",
     "endpointKeyHint": "Save models also saves this key separately on this computer. Leave blank to keep a saved key. Stored keys are never loaded here.",
     "endpointKeyOnCard": "Change the key on the {name} card",
-    "endpointKeyOnCardHint": "This endpoint's key is saved. Replace or remove it on its card under Sign-in, the one place keys are kept.",
     "keysFailed": "Settings saved, but API key saving failed: {message}. Your remaining entries are kept; save again to retry.",
     "refreshFailed": "Settings and keys saved, but the screen could not refresh: {message}. Reload the page.",
     "endpointAddress": "Address of endpoint {n}",
@@ -1565,7 +1564,6 @@
     },
     "checkTargetChanged": "The check changed its own target; it cannot prove a pass.",
     "attachCheckOutput": "Attach check output",
-    "openRule": "Files in the session copy open as document tabs. Files in the original folder preview here, read-only.",
     "readOnlyPreview": "Read-only preview"
   },
   "Review": {
@@ -2215,7 +2213,6 @@
     "personalDefaultHint": "Applies to future runs across projects on this server.",
     "projectDefaultHint": "Applies to future runs in the selected project.",
     "ladderTitle": "Which work style a run uses",
-    "ladderHere": "editing here",
     "ladder": {
       "personal": "Personal default",
       "personalHint": "Every project on this server.",
@@ -2226,7 +2223,7 @@
       "run": "This run",
       "runHint": "Chosen when sending a request; applies to that run only."
     },
-    "ladderRule": "A later step replaces an earlier step’s choice. Stricter policy and tool restrictions and required resources from any step stay applied. Roles with no work style use the basic runtime."
+    "ladderRule": "Later steps replace earlier choices. Stricter restrictions and required resources always stay."
   },
   "Recipe": {
     "heading": "Review recipe",

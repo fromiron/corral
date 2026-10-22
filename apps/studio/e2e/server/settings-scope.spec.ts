@@ -23,7 +23,7 @@ test('[TC-UX-004-N] project settings share an explicit empty state and keep thei
     .getByTestId('settings-sidebar')
     .getByRole('link', { name: 'Folders & tools', exact: true })
     .click();
-  await expect(page).toHaveURL(/projectId=default/);
+  await expect(page).toHaveURL(/settingsProject=default/);
   await expect(
     page.getByRole('link', { name: 'Register commands in work folder settings', exact: true }),
   ).toHaveCount(0);
@@ -56,7 +56,7 @@ test('[TC-UX-004-H] [TC-UX-004-N] defaults have independent routes and save only
   await page.goto(
     `${corral.server.url}/settings/harness?projectId=default&returnTo=%2Fprojects%2Fdefault#project-defaults`,
   );
-  await expect(page).toHaveURL(/\/settings\/project-defaults\?/);
+  await expect(page).toHaveURL(/\/projects\/default\?(?:.*&)?settings=project-defaults/);
   await expect(page.getByLabel('Work style name', { exact: true })).toHaveCount(0);
   await expect(page.getByTestId('settings-sidebar').locator('[aria-current="page"]')).toHaveCount(
     1,
@@ -101,12 +101,12 @@ test('[TC-UX-004-H] [TC-UX-004-N] defaults have independent routes and save only
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('default revision changed');
   await expect(personal).toContainText('Settings test');
-  await page.getByRole('link', { name: 'Back to work', exact: true }).click();
+  await page.getByRole('button', { name: 'Close settings', exact: true }).click();
   await page
     .getByRole('dialog', { name: 'Unsaved settings' })
     .getByRole('button', { name: 'Keep editing' })
     .click();
-  await expect(page).toHaveURL(/settings\/defaults/);
+  await expect(page).toHaveURL(/settings=defaults/);
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
   expect((await read())[1].binding).toBeNull();
   await page.screenshot({ path: test.info().outputPath('settings-defaults-light.png') });
@@ -119,7 +119,7 @@ test('[TC-UX-004-H] [TC-UX-004-N] defaults have independent routes and save only
   await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
   await page.screenshot({ path: test.info().outputPath('settings-defaults-narrow-dark.png') });
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.getByRole('link', { name: 'Back to work', exact: true }).click();
+  await page.getByRole('button', { name: 'Close settings', exact: true }).click();
   await expect(page).toHaveURL(/\/projects\/default$/);
   expect(corral.errors).toHaveLength(1);
   expect(corral.errors[0]).toContain('409');
