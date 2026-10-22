@@ -129,3 +129,32 @@ test('#94 shrinking an open session to 390px keeps the conversation reachable', 
   await expect(toolbar.getByRole('combobox', { name: 'Panes', exact: true })).toBeVisible();
   await expect(toolbar.getByRole('combobox', { name: 'Layout', exact: true })).toHaveCount(0);
 });
+
+test('#70 #86 Git, Terminal and running commands open from the palette, / and the URL', async ({
+  page,
+}) => {
+  await blankSession(page);
+  await page.keyboard.press('Control+k');
+  const palette = page.getByRole('dialog', { name: 'Command palette' });
+  const input = palette.getByRole('combobox', { name: 'Search commands' });
+  await input.fill('terminal');
+  await expect(palette.getByRole('option').first()).toHaveText(/Open Terminal/);
+  await input.press('Enter');
+  await expect(page.getByRole('tab', { name: 'Terminal', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(page).toHaveURL(/panel=terminal/);
+  await requestBox(page).fill('/git');
+  await expect(page.getByRole('listbox', { name: 'Commands' })).toBeVisible();
+  await requestBox(page).press('Enter');
+  await expect(page.getByRole('tab', { name: 'Git', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  const url = page.url().split('?')[0] as string;
+  await page.goto(`${url}?panel=tools`);
+  await expect(
+    page.getByRole('tab', { name: 'Running commands & preview', exact: true }),
+  ).toHaveAttribute('aria-selected', 'true');
+});

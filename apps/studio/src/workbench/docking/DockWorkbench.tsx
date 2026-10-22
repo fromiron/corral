@@ -31,7 +31,7 @@ import {
 } from 'react';
 import { useTranslations } from 'use-intl';
 import { type CloseChoice, type DocumentStore, documentKey } from '../documents/store.ts';
-import type { SessionPanel } from '../panels/registry.ts';
+import { PANE_CATALOG, type SessionPanel } from '../panels/registry.ts';
 import {
   addDocumentPanel,
   createPresetLayout,
@@ -82,17 +82,7 @@ const RendererContext = createContext<{
   close: (id: string) => void;
 } | null>(null);
 const theme = { name: 'corral', className: 'corral-dock-theme', gap: 4 };
-const contexts: DockContextView[] = [
-  'chat',
-  'files',
-  'changes',
-  'git',
-  'artifacts',
-  'checks',
-  'run',
-  'terminal',
-  'tools',
-];
+const groupLabel = { develop: 'groupDevelop', verify: 'groupVerify', run: 'groupRun' } as const;
 const groupNames = ['main1', 'main2', 'aux', 'bottom'] as const;
 // At or below this host width one pane shows at a time.
 const NARROW = 600;
@@ -593,6 +583,13 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
     const selected = apiRef.current?.getPanel(active);
     const activeDescriptor = selected ? descriptorOf(selected) : null;
     const activeView = activeDescriptor?.kind === 'context' ? activeDescriptor.view : null;
+    // Opening a pane lists every pane once, under what it is for (#70 IA-04).
+    const paneOptions = PANE_CATALOG.map((entry) => ({
+      value: `context:${entry.view}`,
+      label: t(entry.view),
+      group: t(groupLabel[entry.group]),
+      ...(entry.view === 'tools' ? { hint: t('toolsHint') } : {}),
+    }));
     return (
       <RendererContext.Provider
         value={{
@@ -629,9 +626,7 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
                       openContext(id.slice('context:'.length) as DockContextView, true);
                   }}
                   options={[
-                    ...contexts
-                      .filter((view) => view !== 'chat')
-                      .map((view) => ({ value: `context:${view}`, label: t(view) })),
+                    ...paneOptions,
                     ...panels
                       .filter((panel) => panel.id.startsWith('document:'))
                       .map((panel) => ({ value: panel.id, label: panel.title })),
@@ -674,8 +669,10 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
                   placeholder={t('openPane')}
                   size="sm"
                   value=""
-                  onValueChange={(value) => openContext(value as DockContextView, true)}
-                  options={contexts.map((value) => ({ value, label: t(value) }))}
+                  onValueChange={(value) =>
+                    openContext(value.slice('context:'.length) as DockContextView, true)
+                  }
+                  options={[{ value: 'context:chat', label: t('chat') }, ...paneOptions]}
                 />
                 <details className="corral-dock-actions">
                   <summary>{t('layoutControls')}</summary>

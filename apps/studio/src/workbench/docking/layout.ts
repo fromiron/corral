@@ -2,18 +2,10 @@ import { canonicalJson, WorkspaceTarget } from '@corral/contracts';
 import type { SerializedDockview } from 'dockview-react';
 import { z } from 'zod';
 
-const CONTEXT_VIEWS = [
-  'chat',
-  'files',
-  'changes',
-  'git',
-  'artifacts',
-  'checks',
-  'run',
-  'terminal',
-  'tools',
-] as const;
-export type DockContextView = (typeof CONTEXT_VIEWS)[number];
+import { DOCK_VIEWS, type DockView } from '../panels/registry.ts';
+
+const CONTEXT_VIEWS = DOCK_VIEWS;
+export type DockContextView = DockView;
 export type DockPreset = 'conversation' | 'implementation' | 'review';
 export const MAX_DOCUMENTS = 20;
 

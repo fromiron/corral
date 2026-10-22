@@ -91,7 +91,12 @@ import { type AppCommand, useRegisterCommands, useRegisteredCommands } from '../
 import { createPendingSessionCommands } from '../pendingCommands.ts';
 import { projectsChanged, setCurrentProject } from '../projects.ts';
 import { sessionRoute } from '../router.tsx';
-import { panelKey, SESSION_PANELS, type SessionPanel } from '../workbench/panels/registry.ts';
+import {
+  PANE_CATALOG,
+  panelKey,
+  SESSION_PANELS,
+  type SessionPanel,
+} from '../workbench/panels/registry.ts';
 import {
   patchSessionSearch,
   resolveSessionSearch,
@@ -314,7 +319,7 @@ export function SessionPage() {
   const liveRun =
     presentedRun && !TERMINAL_RUN_STATUSES.has(presentedRun.status) ? presentedRun : null;
   const presentationRunId = presentedRun?.runId ?? linkedRunIds.at(-1) ?? null;
-  const panelViews: Record<SessionPanel, () => ReactNode> = {
+  const panelViews: Record<Exclude<SessionPanel, 'terminal' | 'tools'>, () => ReactNode> = {
     files: () => (
       <FilePanel
         projectId={session.projectId}
@@ -589,6 +594,7 @@ function SessionActions({
     return true;
   };
   const tcmd = useTranslations('Commands');
+  const tdock = useTranslations('Docking');
   const { workspaces } = useServices();
   const panelGroup = tcmd('groups.panel');
   const sessionGroup = tcmd('groups.session');
@@ -601,21 +607,16 @@ function SessionActions({
       shortcut: shortcutLabel('view.panel'),
       run: () => onPanel(panel ? undefined : reopenPanel),
     },
-    ...(
-      [
-        ['changes', 'changes'],
-        ['files', 'files'],
-        ['artifacts', 'results'],
-        ['checks', 'checks'],
-        ['run', 'run'],
-      ] as const
-    ).map(
-      ([value, slash]): AppCommand => ({
-        id: `panel:${value}`,
-        title: tcmd('openPanel', { panel: tw(`panel.${value}`) }),
+    // Every pane from the one catalog: its dock name, its `/` name and the words other screens
+    // use for it (#70, #86).
+    ...PANE_CATALOG.map(
+      (entry): AppCommand => ({
+        id: `panel:${entry.view}`,
+        title: tcmd('openPanel', { panel: tdock(entry.view) }),
         group: panelGroup,
-        slash,
-        run: () => onPanel(value),
+        keywords: [...entry.aliases, entry.slash],
+        slash: entry.slash,
+        run: () => onPanel(entry.view),
       }),
     ),
     {

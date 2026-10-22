@@ -121,5 +121,7 @@ export function sessionPanelDescriptor(
 ): PanelDescriptor | null {
   if (!panel) return null;
   if (panel === 'run') return runId ? { kind: 'run', runId } : null;
+  // Terminals and running commands are keyed by their own owners, not by the pane.
+  if (panel === 'terminal' || panel === 'tools') return null;
   return { kind: panel, projectId, sessionId };
 }
