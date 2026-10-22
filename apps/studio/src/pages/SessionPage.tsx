@@ -2853,6 +2853,12 @@ export function Composer({
     <div className="flex flex-col gap-4">
       <fieldset className="flex min-w-0 flex-col gap-2">
         <legend className="mb-2 text-xs font-medium text-muted">{tc('executionOptions')}</legend>
+        {/* Each group says whom it applies to and when (#77 IA-06). */}
+        {intent === 'next' || intent === 'explain' ? (
+          <p data-testid="applies-session" className="text-2xs text-muted">
+            {tc('appliesSession')}
+          </p>
+        ) : null}
         {intent === 'next' || intent === 'explain' ? (
           <Select
             variant="chip"
@@ -2890,6 +2896,9 @@ export function Composer({
         ) : null}
         {intent === 'next' ? (
           <>
+            {roles.length ? (
+              <p className="mt-1 text-2xs text-muted">{tc('appliesNext')}</p>
+            ) : null}
             <RunRoleOverrides
               roles={roles}
               profiles={profiles}
@@ -2907,7 +2916,10 @@ export function Composer({
         ) : null}
       </fieldset>
       {intent !== 'explain' ? (
-        <div className="flex flex-wrap items-center gap-3 text-xs">
+        <fieldset className="flex min-w-0 flex-wrap items-center gap-3 text-xs">
+          <legend className="mb-2 text-xs font-medium text-muted">
+            {tc('scopeOptions')} · {tc('appliesNext')}
+          </legend>
           {isAuto && !team ? (
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               <span className="text-muted">{tc('qualityPreset')}</span>
@@ -2954,9 +2966,13 @@ export function Composer({
               ]}
             />
           </div>
-        </div>
+        </fieldset>
       ) : null}
-      <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3">
+      <fieldset className="flex flex-wrap items-center gap-2 border-t border-line pt-3">
+        <legend className="sr-only">{tc('addToRequest')}</legend>
+        <p aria-hidden="true" className="w-full text-xs font-medium text-muted">
+          {tc('addToRequest')}
+        </p>
         {intent === 'next' || intent === 'queue' ? (
           <ProjectDocumentPicker
             key={`documents:${attachmentEpoch}`}
@@ -3007,7 +3023,7 @@ export function Composer({
             ))}
           </MenuPopup>
         </Menu>
-      </div>
+      </fieldset>
     </div>
   );
 

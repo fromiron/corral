@@ -293,3 +293,28 @@ test('#76 dragging a step across a Loop boundary says it changes the team, and U
     'Moves boxes only; the team does not change',
   );
 });
+
+test('#77 request options say what is kept for the conversation and what is for the next request', async ({
+  page,
+}) => {
+  await blankSession(page);
+  await page.getByRole('button', { name: 'Request options', exact: true }).click();
+  const options = page.getByRole('dialog', { name: 'Request options', exact: true });
+  await expect(options.getByTestId('applies-session')).toHaveText(
+    'Saved for this conversation; later requests use it too',
+  );
+  await expect(options.getByRole('group', { name: 'Scope · Next request only' })).toBeVisible();
+  await expect(options.getByRole('group', { name: 'Add to the request' })).toBeVisible();
+  await page.screenshot({
+    path: `${process.env.SHOTS ?? 'test-results'}/77-options.png`,
+  });
+});
+
+test('#77 a test run says it starts a separate run outside any conversation', async ({ page }) => {
+  await page.goto('/?delay=50');
+  await teamFromTemplate(page);
+  await page.getByRole('tab', { name: /^Teams/ }).click();
+  await page.getByRole('button', { name: 'Edit this team' }).first().click();
+  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
+  await expect(page.getByTestId('run-scope')).toContainText('It is not added to a conversation.');
+});
