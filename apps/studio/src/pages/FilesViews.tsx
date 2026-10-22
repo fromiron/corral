@@ -11,6 +11,7 @@ import { useTranslations } from 'use-intl';
 import { desktop } from '../desktop.tsx';
 import { useServices } from '../services.tsx';
 import { CheckpointPanel } from '../workbench/CheckpointPanel.tsx';
+import { useSettingsNavigation } from '../workbench/navigation.ts';
 import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
 import { WORKSPACE_CHANGED } from '../workbench/workspaceEvents.ts';
 
@@ -56,6 +57,10 @@ export function useBinding(projectId: string | null) {
   }, [workspaces, projectId]);
   useEffect(() => {
     void reload();
+    // Linking, unlinking or trusting elsewhere (settings overlay) changes what this shows.
+    const changed = () => void reload();
+    window.addEventListener(WORKSPACE_CHANGED, changed);
+    return () => window.removeEventListener(WORKSPACE_CHANGED, changed);
   }, [reload]);
   return { binding, reload };
 }
@@ -254,6 +259,7 @@ export function WorkingCopyPanel({
   const t = useTranslations('Files');
   const { workspaces } = useServices();
   const { binding } = useBinding(projectId);
+  const navigation = useSettingsNavigation();
   const [worktree, setWorktree] = useState<WorktreeView | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -319,9 +325,28 @@ export function WorkingCopyPanel({
           </button>
         </div>
       ) : !binding ? (
-        <p className="text-xs text-muted">{t('noFolder')}</p>
+        <div className="flex flex-col items-start gap-1.5">
+          <p className="text-xs text-muted">{t('noFolder')}</p>
+          <Button
+            variant="outline"
+            size="xs"
+            render={<Link {...navigation.link('workspace', projectId)} />}
+          >
+            {t('openFolderSettings')}
+          </Button>
+        </div>
       ) : !binding.trusted ? (
-        <p className="text-xs text-warning">{t('notTrusted')}</p>
+        // The next step is an action, not a note: trust lives with the project's folder settings.
+        <div className="flex flex-col items-start gap-1.5">
+          <p className="text-xs text-warning">{t('notTrusted')}</p>
+          <Button
+            variant="outline"
+            size="xs"
+            render={<Link {...navigation.link('workspace', projectId)} />}
+          >
+            {t('openTrust')}
+          </Button>
+        </div>
       ) : (
         <div className="flex flex-col gap-1">
           <p className="text-xs text-muted">{t('copyIntro')}</p>

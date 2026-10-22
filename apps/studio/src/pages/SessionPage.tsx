@@ -847,6 +847,7 @@ function WorkTab({
 }) {
   const t = useTranslations('Sessions');
   const { runFor, sessionFor, retainRun, workspaces } = useServices();
+  const { binding } = useBinding(session.projectId);
   const liveSession = liveRunId ? runFor(liveRunId) : sessionFor(session.sessionId);
   const messageId = sessionRoute.useSearch().message;
   useEffect(() => {
@@ -909,9 +910,11 @@ function WorkTab({
               <MessageSquare size={28} strokeWidth={1.25} className="text-muted" />
               <h3 className="text-xl font-medium tracking-tight">{td('noRequests')}</h3>
               <p className="max-w-md text-sm text-muted">
-                {session.objective ? session.objective : td('startHint')}
+                {session.objective
+                  ? session.objective
+                  : td(workspaces && binding ? 'startHintLinked' : 'startHint')}
               </p>
-              {workspaces ? (
+              {workspaces && binding === null ? (
                 <Button variant="ghost-muted" size="sm" onClick={() => onPanel('changes')}>
                   <FolderOpen />
                   {td('workFolder')}

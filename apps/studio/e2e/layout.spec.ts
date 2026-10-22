@@ -56,3 +56,39 @@ test('#93 the @ reference menu is not clipped by the composer scroller', async (
     await expectReachable(options.last());
   } else await expectReachable(menu);
 });
+
+test('#95 every pane tab is selected by a click on it and none closes', async ({ page }) => {
+  await blankSession(page);
+  const tabs = page.locator('[data-tab-panel-id]');
+  const before = await tabs.evaluateAll((list) =>
+    list.map((node) => node.getAttribute('data-tab-panel-id')),
+  );
+  for (const name of ['Git', 'Changes', 'Run', 'Results', 'Files', 'Terminal', 'Checks']) {
+    const tab = page.getByRole('tab', { name, exact: true });
+    await tab.hover();
+    await tab.click();
+    await expect(tab).toHaveAttribute('aria-selected', 'true');
+  }
+  await expect(tabs).toHaveCount(before.length);
+});
+
+test('#95 an untrusted folder offers its trust settings, and a linked folder drops the link hint', async ({
+  page,
+}) => {
+  await blankSession(page);
+  const empty = page.getByTestId('chat-timeline');
+  await expect(empty.getByRole('button', { name: 'Work folder', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('link', { name: 'Folders & tools', exact: true }).click();
+  await page.getByRole('button', { name: 'Link the example folder', exact: true }).click();
+  await page.getByRole('button', { name: 'Close settings', exact: true }).click();
+  await expect(
+    empty.getByText('Ask a question or describe a task.', { exact: true }),
+  ).toBeVisible();
+  await expect(empty.getByRole('button', { name: 'Work folder', exact: true })).toHaveCount(0);
+  await page.getByRole('tab', { name: 'Changes', exact: true }).click();
+  await expect(page.getByText("Trust the project's repository first.")).toBeVisible();
+  await page.getByRole('link', { name: 'Open trust settings', exact: true }).click();
+  const settings = page.getByRole('dialog', { name: 'Settings', exact: true });
+  await expect(settings.getByRole('checkbox', { name: 'Trust this repository' })).toBeVisible();
+});
