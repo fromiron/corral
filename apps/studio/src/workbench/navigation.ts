@@ -83,6 +83,15 @@ export const SETTINGS_SECTIONS = [
   'project-defaults',
 ] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
+/**
+ * Settings sections in the order and groups every width shows them (#83): the sidebar and the
+ * narrow menu read this one list, so a section keeps its place and scope at any width.
+ */
+export const SETTINGS_GROUPS = [
+  { id: 'app', items: ['general', 'shortcuts', 'vault', 'about'] },
+  { id: 'agents', items: ['models', 'harness', 'defaults', 'skills', 'hooks'] },
+  { id: 'project', items: ['workspace', 'mcp', 'project-defaults'] },
+] as const satisfies readonly { id: string; items: readonly SettingsSection[] }[];
 export type SettingsOverlaySearch = { settings?: SettingsSection; settingsProject?: string };
 export function validateSettingsOverlay(search: Record<string, unknown>): SettingsOverlaySearch {
   if (!SETTINGS_SECTIONS.includes(search.settings as SettingsSection)) return {};

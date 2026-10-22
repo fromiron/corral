@@ -3,7 +3,7 @@ import { Button, Select } from '@corral/react/ui';
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
 import { projectName } from '../projects.ts';
-import { useSettingsNavigation } from './navigation.ts';
+import { SETTINGS_GROUPS, type SettingsSection, useSettingsNavigation } from './navigation.ts';
 import { changePreferences } from './preferences.ts';
 
 export function settingsSection(path: string, section?: unknown): string {
@@ -36,32 +36,12 @@ export function SettingsNavigation({
 }) {
   const t = useTranslations('Navigation');
   const td = useTranslations('Desktop');
-  const h = useTranslations('Harness');
-  const r = useTranslations('Resources');
   const w = useTranslations('Workbench');
-  const v = useTranslations('Vault');
   const navigation = useSettingsNavigation();
   const location = useRouterState({ select: (state) => state.location });
   const active = navigation.section ?? settingsSection(location.pathname, location.search.section);
-  const sections = [
-    { title: t('app'), items: ['general', 'shortcuts', 'vault', 'about'] },
-    { title: t('agents'), items: ['models', 'harness', 'defaults', 'skills', 'hooks'] },
-    { title: t('project'), items: ['workspace', 'mcp', 'project-defaults'] },
-  ] as const;
-  const label = (key: string) =>
-    key === 'vault'
-      ? v('heading')
-      : key === 'project-defaults'
-        ? t('projectDefaults')
-        : key === 'defaults'
-          ? t('personalDefaults')
-          : key === 'harness'
-            ? h('heading')
-            : key === 'workspace'
-              ? t('projectFolder')
-              : ['skills', 'hooks', 'mcp'].includes(key)
-                ? r(key)
-                : td(key);
+  const label = useSettingsSectionLabel();
+  const sections = SETTINGS_GROUPS.map((group) => ({ title: t(group.id), items: group.items }));
   return (
     <nav
       data-testid="settings-sidebar"
@@ -119,6 +99,29 @@ export function SettingsNavigation({
       ) : null}
     </nav>
   );
+}
+
+/** A settings section's name, the same in the sidebar, the narrow menu and the page. */
+export function useSettingsSectionLabel() {
+  const t = useTranslations('Navigation');
+  const td = useTranslations('Desktop');
+  const h = useTranslations('Harness');
+  const r = useTranslations('Resources');
+  const v = useTranslations('Vault');
+  return (key: SettingsSection) =>
+    key === 'vault'
+      ? v('heading')
+      : key === 'project-defaults'
+        ? t('projectDefaults')
+        : key === 'defaults'
+          ? t('personalDefaults')
+          : key === 'harness'
+            ? h('heading')
+            : key === 'workspace'
+              ? t('projectFolder')
+              : key === 'skills' || key === 'hooks' || key === 'mcp'
+                ? r(key)
+                : td(key);
 }
 
 /** This changes the settings target, not the current work location. */

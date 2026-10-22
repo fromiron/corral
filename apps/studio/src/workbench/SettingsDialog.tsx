@@ -3,10 +3,10 @@ import { Button, Dialog, DialogPopup, DialogTitle, Select, Tooltip } from '@corr
 import { useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { SETTINGS_SECTIONS, type SettingsSection, useSettingsNavigation } from './navigation.ts';
+import { SETTINGS_GROUPS, type SettingsSection, useSettingsNavigation } from './navigation.ts';
 import { SettingsContent } from './SettingsContent.tsx';
 import { SettingsLeavePrompt } from './SettingsLifecycle.tsx';
-import { SettingsNavigation } from './SettingsNavigation.tsx';
+import { SettingsNavigation, useSettingsSectionLabel } from './SettingsNavigation.tsx';
 
 export function SettingsDialog({
   section,
@@ -20,27 +20,10 @@ export function SettingsDialog({
   const navigation = useSettingsNavigation();
   const navigate = useNavigate();
   const t = useTranslations('SettingsDialog');
-  const td = useTranslations('Desktop');
   const n = useTranslations('Navigation');
-  const r = useTranslations('Resources');
-  const h = useTranslations('Harness');
-  const v = useTranslations('Vault');
   const [trigger] = useState(() => document.activeElement as HTMLElement | null);
   const projectScope = ['workspace', 'mcp', 'project-defaults'].includes(section);
-  const label = (key: string) =>
-    key === 'vault'
-      ? v('heading')
-      : key === 'defaults'
-        ? n('personalDefaults')
-        : key === 'project-defaults'
-          ? n('projectDefaults')
-          : key === 'harness'
-            ? h('heading')
-            : key === 'workspace'
-              ? n('projectFolder')
-              : ['skills', 'hooks', 'mcp'].includes(key)
-                ? r(key)
-                : td(key);
+  const label = useSettingsSectionLabel();
   return (
     <Dialog
       open
@@ -94,7 +77,9 @@ export function SettingsDialog({
           <Select
             label={t('title')}
             value={section}
-            options={SETTINGS_SECTIONS.map((value) => ({ value, label: label(value) }))}
+            options={SETTINGS_GROUPS.flatMap((group) =>
+              group.items.map((value) => ({ value, label: label(value), group: n(group.id) })),
+            )}
             onValueChange={(value) => void navigate(navigation.link(value))}
           />
         </div>

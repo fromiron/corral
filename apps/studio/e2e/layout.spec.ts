@@ -325,3 +325,30 @@ test('#81 settings that save as you change them say so', async ({ page }) => {
     'Changes on this page apply and save right away.',
   );
 });
+
+test('#83 the narrow settings menu keeps the desktop groups and order', async ({ page }) => {
+  await blankSession(page);
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Settings', exact: true });
+  const desktop = await dialog
+    .getByTestId('settings-sidebar')
+    .locator('section')
+    .evaluateAll((groups) =>
+      groups.map((group) => [
+        group.getAttribute('aria-label'),
+        [...group.querySelectorAll('a')].map((link) => link.textContent?.trim()),
+      ]),
+    );
+  await page.setViewportSize({ width: 500, height: 757 });
+  await dialog.getByRole('combobox', { name: 'Settings', exact: true }).click();
+  const narrow = await page
+    .locator('[data-slot="select-popup"] [role="group"]')
+    .evaluateAll((groups) =>
+      groups.map((group) => [
+        group.querySelector('[id]')?.textContent?.trim() ?? group.firstElementChild?.textContent,
+        [...group.querySelectorAll('[role="option"]')].map((option) => option.textContent?.trim()),
+      ]),
+    );
+  expect(desktop).toHaveLength(3);
+  expect(narrow).toEqual(desktop);
+});
