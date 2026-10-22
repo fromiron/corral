@@ -3197,6 +3197,8 @@
     "review": "검토",
     "activePane": "활성 패널",
     "openPane": "패널 열기",
+    "panes": "패널",
+    "backToChat": "대화로 돌아가기",
     "open": "열기",
     "moveTo": "이동할 그룹",
     "move": "이동",

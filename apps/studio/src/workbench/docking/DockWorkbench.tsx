@@ -1,4 +1,5 @@
 import type { TextRange, WorkspaceTarget } from '@corral/contracts';
+import { ArrowLeft } from '@corral/react/icons';
 import {
   Button,
   Dialog,
@@ -93,6 +94,8 @@ const contexts: DockContextView[] = [
   'tools',
 ];
 const groupNames = ['main1', 'main2', 'aux', 'bottom'] as const;
+// At or below this host width one pane shows at a time.
+const NARROW = 600;
 const descriptorOf = (panel: IDockviewPanel) => (panel.params as PanelParams).descriptor;
 const records = (api: DockviewApi) =>
   api.panels.map((panel) => ({ id: panel.id, descriptor: descriptorOf(panel) }));
@@ -147,7 +150,6 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
       selectionKey: props.selectionKey,
     });
     const retention = useRef(new Map<string, () => void>());
-    const cleanup = useRef<(() => void)[]>([]);
     const [panels, setPanels] = useState<{ id: string; title: string }[]>([]);
     const [active, setActive] = useState('');
     const [selection, setSelection] = useState<{ panelId: string; range: TextRange } | null>(null);
@@ -158,6 +160,11 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
     const [closeBusy, setCloseBusy] = useState(false);
     const closeInFlight = useRef(false);
     const [closeFailed, setCloseFailed] = useState(false);
+    // The Dockview API once ready; subscriptions live in an effect so a remount (StrictMode,
+    // a re-attached tree) subscribes again instead of keeping disposed listeners.
+    const [dockApi, setDockApi] = useState<DockviewApi | null>(null);
+    // Narrow hosts (a phone) show one pane at a time, the conversation first (#94).
+    const [compact, setCompact] = useState(false);
 
     function title(panel: IDockviewPanel) {
       const descriptor = descriptorOf(panel);
@@ -497,47 +504,66 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
       if (loaded?.layout) setPreset(null);
       if (loaded?.recovered) setMessage('layoutRecovered');
       mutating.current = false;
-      cleanup.current.push(
-        api.onDidLayoutChange(() => {
-          refresh();
-          saveLayout();
-        }).dispose,
-      );
-      cleanup.current.push(
-        api.onDidActivePanelChange((event) => {
-          if (mutating.current) return;
-          refresh();
-          if (event.panel && narrow.current && !event.panel.api.isMaximized())
-            event.panel.api.maximize();
-          if (event.origin === 'user' && event.panel) {
-            const descriptor = descriptorOf(event.panel);
-            if (descriptor.kind === 'context') current.current.onActiveContext?.(descriptor.view);
-          }
-        }).dispose,
-      );
-      cleanup.current.push(
-        api.onDidMovePanel(() => {
-          if (!mutating.current) setPreset(null);
-        }).dispose,
-      );
-      cleanup.current.push(api.onWillShowOverlay(allowDrop).dispose);
-      cleanup.current.push(api.onWillDrop(allowDrop).dispose);
       refresh();
-      if (current.current.selectedPanel !== undefined || !loaded?.layout)
+      const width = host.current?.getBoundingClientRect().width ?? 0;
+      narrow.current = width > 0 && width <= NARROW;
+      setCompact(narrow.current);
+      // On a phone the conversation comes first, even when a side pane was remembered.
+      if (narrow.current) openContext('chat', current.current.selectedPanel != null);
+      else if (current.current.selectedPanel !== undefined || !loaded?.layout)
         openContext(current.current.selectedPanel ?? 'chat');
-      const measure = () => {
-        const width = host.current?.getBoundingClientRect().width ?? 0;
-        const next = width > 0 && width <= 600;
-        if (next === narrow.current) return;
-        narrow.current = next;
-        if (next && api.activePanel) api.activePanel.api.maximize();
-        else if (!next) api.exitMaximizedGroup();
-      };
-      const observer = new ResizeObserver(measure);
-      if (host.current) observer.observe(host.current);
-      measure();
-      cleanup.current.push(() => observer.disconnect());
+      setDockApi(api);
     }
+    function measure() {
+      const api = apiRef.current;
+      const width = host.current?.getBoundingClientRect().width ?? 0;
+      const next = width > 0 && width <= NARROW;
+      if (!api || next === narrow.current) return;
+      narrow.current = next;
+      setCompact(next);
+      if (next && api.activePanel) api.activePanel.api.maximize();
+      else if (!next) api.exitMaximizedGroup();
+    }
+    function onActivePanel(event: { panel?: IDockviewPanel; origin?: string }) {
+      if (mutating.current) return;
+      refresh();
+      if (event.panel && narrow.current && !event.panel.api.isMaximized())
+        event.panel.api.maximize();
+      if (event.origin === 'user' && event.panel) {
+        const descriptor = descriptorOf(event.panel);
+        if (descriptor.kind === 'context') current.current.onActiveContext?.(descriptor.view);
+      }
+    }
+    const handlers = useRef({ refresh, saveLayout, allowDrop, measure, onActivePanel });
+    handlers.current = { refresh, saveLayout, allowDrop, measure, onActivePanel };
+    useEffect(() => {
+      if (!dockApi) return;
+      apiRef.current = dockApi;
+      const on = handlers.current;
+      const disposables = [
+        dockApi.onDidLayoutChange(() => {
+          handlers.current.refresh();
+          handlers.current.saveLayout();
+        }),
+        dockApi.onDidActivePanelChange((event) => handlers.current.onActivePanel(event)),
+        dockApi.onDidMovePanel(() => {
+          if (!mutating.current) setPreset(null);
+        }),
+        dockApi.onWillShowOverlay((event) => handlers.current.allowDrop(event)),
+        dockApi.onWillDrop((event) => handlers.current.allowDrop(event)),
+      ];
+      const observer = new ResizeObserver(() => handlers.current.measure());
+      if (host.current) observer.observe(host.current);
+      on.measure();
+      on.refresh();
+      return () => {
+        for (const item of disposables) item.dispose();
+        observer.disconnect();
+        // refresh() retains the views again if this tree is mounted again.
+        for (const release of retention.current.values()) release();
+        retention.current.clear();
+      };
+    }, [dockApi]);
     const actions = useRef({ openContext, refresh });
     actions.current = { openContext, refresh };
     useEffect(() => {
@@ -564,16 +590,9 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
       () => props.documentOwner?.subscribe(() => actions.current.refresh()),
       [props.documentOwner],
     );
-    useEffect(
-      () => () => {
-        for (const dispose of cleanup.current.splice(0)) dispose();
-        for (const release of retention.current.values()) release();
-        retention.current.clear();
-        apiRef.current = null;
-      },
-      [],
-    );
     const selected = apiRef.current?.getPanel(active);
+    const activeDescriptor = selected ? descriptorOf(selected) : null;
+    const activeView = activeDescriptor?.kind === 'context' ? activeDescriptor.view : null;
     return (
       <RendererContext.Provider
         value={{
@@ -589,102 +608,137 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
           className="corral-dock-workbench"
           data-testid="dock-workbench"
         >
-          <div className="corral-dock-toolbar">
-            <div className="corral-dock-select">
-              <span>{t('preset')}</span>
-              <Select
-                label={t('preset')}
-                placeholder={t('savedLayout')}
-                size="sm"
-                value={preset}
-                onValueChange={(value) => applyPreset(value as DockPreset)}
-                options={(['conversation', 'implementation', 'review'] as const).map((value) => ({
-                  value,
-                  label: t(value),
-                }))}
-              />
-            </div>
-            <div className="corral-dock-select">
-              <span>{t('activePane')}</span>
-              <Select
-                label={t('activePane')}
-                size="sm"
-                value={active}
-                onValueChange={(id) => {
-                  const panel = apiRef.current?.getPanel(id);
-                  if (panel) focus(panel, true);
-                }}
-                options={panels.map((panel) => ({ value: panel.id, label: panel.title }))}
-              />
-            </div>
-            <Select
-              label={t('openPane')}
-              placeholder={t('openPane')}
-              size="sm"
-              value=""
-              onValueChange={(value) => openContext(value as DockContextView, true)}
-              options={contexts.map((value) => ({ value, label: t(value) }))}
-            />
-            <details className="corral-dock-actions">
-              <summary>{t('layoutControls')}</summary>
-              <div className="flex flex-wrap gap-1">
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => apiRef.current?.activatePrevious({ includePanel: true })}
-                >
-                  {t('previousPane')}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => apiRef.current?.activateNext({ includePanel: true })}
-                >
-                  {t('nextPane')}
-                </Button>
+          <div className="corral-dock-toolbar" data-testid="dock-toolbar">
+            {compact ? (
+              <>
+                {activeView !== 'chat' ? (
+                  <Button size="sm" variant="ghost" onClick={() => openContext('chat', true)}>
+                    <ArrowLeft />
+                    {t('backToChat')}
+                  </Button>
+                ) : null}
                 <Select
-                  label={t('moveTo')}
+                  label={t('panes')}
+                  placeholder={t('panes')}
                   size="sm"
-                  value={destination}
-                  onValueChange={setDestination}
-                  options={groupNames.map((value) => ({ value, label: t(value) }))}
+                  value={activeView === 'chat' ? '' : active}
+                  onValueChange={(id) => {
+                    const panel = apiRef.current?.getPanel(id);
+                    if (panel) focus(panel, true);
+                    else if (id.startsWith('context:'))
+                      openContext(id.slice('context:'.length) as DockContextView, true);
+                  }}
+                  options={[
+                    ...contexts
+                      .filter((view) => view !== 'chat')
+                      .map((view) => ({ value: `context:${view}`, label: t(view) })),
+                    ...panels
+                      .filter((panel) => panel.id.startsWith('document:'))
+                      .map((panel) => ({ value: panel.id, label: panel.title })),
+                  ]}
                 />
-                <Button size="sm" variant="ghost" disabled={!selected} onClick={move}>
-                  {t('move')}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  disabled={!selected || descriptorOf(selected).kind !== 'document'}
-                  onClick={split}
-                >
-                  {t('split')}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  disabled={!selected}
-                  aria-label={t('close')}
-                  onClick={() => selected && void closePanel(selected.id)}
-                >
-                  {t('close')}
-                </Button>
-                <div className="flex gap-1">
-                  <Button size="sm" variant="ghost" onClick={() => resize('width', -80)}>
-                    {t('narrower')}
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => resize('width', 80)}>
-                    {t('wider')}
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => resize('height', -60)}>
-                    {t('shorter')}
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => resize('height', 60)}>
-                    {t('taller')}
-                  </Button>
+              </>
+            ) : (
+              <>
+                <div className="corral-dock-select">
+                  <span>{t('preset')}</span>
+                  <Select
+                    label={t('preset')}
+                    placeholder={t('savedLayout')}
+                    size="sm"
+                    value={preset}
+                    onValueChange={(value) => applyPreset(value as DockPreset)}
+                    options={(['conversation', 'implementation', 'review'] as const).map(
+                      (value) => ({
+                        value,
+                        label: t(value),
+                      }),
+                    )}
+                  />
                 </div>
-              </div>
-            </details>
+                <div className="corral-dock-select">
+                  <span>{t('activePane')}</span>
+                  <Select
+                    label={t('activePane')}
+                    size="sm"
+                    value={active}
+                    onValueChange={(id) => {
+                      const panel = apiRef.current?.getPanel(id);
+                      if (panel) focus(panel, true);
+                    }}
+                    options={panels.map((panel) => ({ value: panel.id, label: panel.title }))}
+                  />
+                </div>
+                <Select
+                  label={t('openPane')}
+                  placeholder={t('openPane')}
+                  size="sm"
+                  value=""
+                  onValueChange={(value) => openContext(value as DockContextView, true)}
+                  options={contexts.map((value) => ({ value, label: t(value) }))}
+                />
+                <details className="corral-dock-actions">
+                  <summary>{t('layoutControls')}</summary>
+                  <div className="flex flex-wrap gap-1">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => apiRef.current?.activatePrevious({ includePanel: true })}
+                    >
+                      {t('previousPane')}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => apiRef.current?.activateNext({ includePanel: true })}
+                    >
+                      {t('nextPane')}
+                    </Button>
+                    <Select
+                      label={t('moveTo')}
+                      size="sm"
+                      value={destination}
+                      onValueChange={setDestination}
+                      options={groupNames.map((value) => ({ value, label: t(value) }))}
+                    />
+                    <Button size="sm" variant="ghost" disabled={!selected} onClick={move}>
+                      {t('move')}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={!selected || descriptorOf(selected).kind !== 'document'}
+                      onClick={split}
+                    >
+                      {t('split')}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={!selected}
+                      aria-label={t('close')}
+                      onClick={() => selected && void closePanel(selected.id)}
+                    >
+                      {t('close')}
+                    </Button>
+                    <div className="flex gap-1">
+                      <Button size="sm" variant="ghost" onClick={() => resize('width', -80)}>
+                        {t('narrower')}
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => resize('width', 80)}>
+                        {t('wider')}
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => resize('height', -60)}>
+                        {t('shorter')}
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => resize('height', 60)}>
+                        {t('taller')}
+                      </Button>
+                    </div>
+                  </div>
+                </details>
+              </>
+            )}
           </div>
           {props.controls ? <div className="corral-dock-controls">{props.controls}</div> : null}
           {message ? (

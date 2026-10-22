@@ -92,3 +92,40 @@ test('#95 an untrusted folder offers its trust settings, and a linked folder dro
   const settings = page.getByRole('dialog', { name: 'Settings', exact: true });
   await expect(settings.getByRole('checkbox', { name: 'Trust this repository' })).toBeVisible();
 });
+
+test('#94 at 390px a session opens on the conversation and other panes open and close over it', async ({
+  page,
+}) => {
+  await blankSession(page);
+  const url = page.url().split('?')[0] as string;
+  // A remembered side pane (here: Run) must not replace the conversation on a phone.
+  await page.goto(`${url}?panel=run`);
+  await expect(page.getByRole('tab', { name: 'Run', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(url);
+  await expectReachable(requestBox(page));
+  const toolbar = page.getByTestId('dock-toolbar');
+  expect((await toolbar.boundingBox())?.height ?? 0).toBeLessThanOrEqual(52);
+  // Another pane opens from the one switcher, then closes back to the conversation.
+  const panes = toolbar.getByRole('combobox', { name: 'Panes', exact: true });
+  await panes.click();
+  await page.getByRole('option', { name: 'Files', exact: true }).click();
+  await expect(page.getByText('Link a work folder to browse files.')).toBeVisible();
+  await expect(requestBox(page)).toBeHidden();
+  await toolbar.getByRole('button', { name: 'Back to conversation', exact: true }).click();
+  await expectReachable(requestBox(page));
+});
+
+test('#94 shrinking an open session to 390px keeps the conversation reachable', async ({
+  page,
+}) => {
+  await blankSession(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expectReachable(requestBox(page));
+  const toolbar = page.getByTestId('dock-toolbar');
+  await expect(toolbar.getByRole('combobox', { name: 'Panes', exact: true })).toBeVisible();
+  await expect(toolbar.getByRole('combobox', { name: 'Layout', exact: true })).toHaveCount(0);
+});
