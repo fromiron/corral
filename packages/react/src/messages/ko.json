@@ -989,7 +989,7 @@
   "CommandPalette": {
     "label": "명령 팔레트",
     "search": "명령 검색",
-    "placeholder": "명령·팀·실행 또는 이 프로젝트의 세션 찾기…",
+    "placeholder": "명령·창·설정·팀·실행 또는 이 프로젝트의 세션 찾기…",
     "results": "명령",
     "none": "맞는 명령이 없습니다.",
     "openCorral": "팀 열기: {name}",
@@ -1697,7 +1697,6 @@
     "ready": "시작할 준비가 됐어요",
     "sessionActions": "{title} 메뉴",
     "rename": "세션 이름 바꾸기",
-    "renameHint": "나중에 찾기 쉬운 이름을 입력하세요.",
     "sessionTitle": "세션 이름",
     "save": "저장",
     "settings": "설정",
@@ -1969,7 +1968,8 @@
       "go": "이동",
       "view": "보기",
       "help": "도움말",
-      "panel": "패널"
+      "panel": "패널",
+      "settings": "설정"
     },
     "togglePanel": "사이드 패널 보이기/숨기기",
     "openPanel": "{panel} 열기",

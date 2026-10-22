@@ -53,6 +53,7 @@ export {
   RefreshCw,
   Search,
   Send,
+  TextSearch,
   Settings,
   Shield,
   Slash,

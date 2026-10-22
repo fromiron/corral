@@ -55,7 +55,6 @@ import {
   DialogPanel,
   DialogPopup,
   DialogTitle,
-  Input,
   Menu,
   MenuItem,
   MenuPopup,
@@ -149,6 +148,7 @@ import { PermissionModePicker } from '../workbench/PermissionModePicker.tsx';
 import { ProjectMaterialPicker } from '../workbench/ProjectMaterials.tsx';
 import { isSendKey, usePreferences } from '../workbench/preferences.ts';
 import { EDIT_REQUEST, editRequest, RefusalHelp } from '../workbench/RefusalHelp.tsx';
+import { RenameSessionDialog } from '../workbench/RenameSessionDialog.tsx';
 import { RunChanges } from '../workbench/RunChanges.tsx';
 import { RunHarnessOverrides } from '../workbench/RunHarnessOverrides.tsx';
 import { RunMessage } from '../workbench/RunMessage.tsx';
@@ -798,35 +798,11 @@ function SessionActions({
           </MenuItem>
         </MenuPopup>
       </Menu>
-      <Dialog open={renaming !== null} onOpenChange={(open) => !open && setRenaming(null)}>
-        <DialogPopup>
-          <DialogHeader>
-            <DialogTitle>{td('rename')}</DialogTitle>
-            <DialogDescription>{td('renameHint')}</DialogDescription>
-          </DialogHeader>
-          <DialogPanel>
-            <Input
-              aria-label={td('sessionTitle')}
-              value={renaming ?? ''}
-              onChange={(e) => setRenaming(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.nativeEvent.isComposing && renaming?.trim())
-                  void update({ title: renaming }).then((ok) => ok && setRenaming(null));
-              }}
-            />
-          </DialogPanel>
-          <DialogFooter>
-            <Button
-              disabled={!renaming?.trim()}
-              onClick={() =>
-                void update({ title: renaming ?? '' }).then((ok) => ok && setRenaming(null))
-              }
-            >
-              {td('save')}
-            </Button>
-          </DialogFooter>
-        </DialogPopup>
-      </Dialog>
+      <RenameSessionDialog
+        title={renaming}
+        onSave={(title) => update({ title })}
+        onClose={() => setRenaming(null)}
+      />
     </TopbarActions>
   );
 }

@@ -11,7 +11,7 @@ import { McpEditor, mcpDraft } from '../workbench/harness/McpEditor.tsx';
 import { field, operationId } from '../workbench/harness/Target.tsx';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
 import { useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
-import { McpConnection } from './McpSettings.tsx';
+import { McpConnection } from './McpConnection.tsx';
 import { SettingsLayout } from './SettingsPage.tsx';
 
 export function McpSettingsPage() {

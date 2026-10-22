@@ -512,3 +512,47 @@ test('#91 Git changes have one home: an old review Git address opens the Git pan
   await page.goto(`${url}/review`);
   await expect(page.locator('option[value="git"]')).toHaveCount(0);
 });
+
+test('#92 the sidebar and the session menu rename through the same dialog', async ({ page }) => {
+  await blankSession(page);
+  const dialog = page.getByTestId('rename-session-dialog');
+  const actions = page.getByRole('button', { name: /^Actions for / });
+  // Session header menu.
+  await actions.last().click();
+  await page.getByRole('menuitem', { name: 'Rename session', exact: true }).click();
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('textbox', { name: 'Session title', exact: true }).fill('Header name');
+  await dialog.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  // Sidebar row menu.
+  const row = page.getByTestId('app-sidebar').getByRole('button', {
+    name: 'Actions for Header name',
+    exact: true,
+  });
+  await row.click();
+  await page.getByRole('menuitem', { name: 'Rename session', exact: true }).click();
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('textbox', { name: 'Session title', exact: true })).toHaveValue(
+    'Header name',
+  );
+  await dialog.getByRole('textbox', { name: 'Session title', exact: true }).fill('Sidebar name');
+  await dialog.getByRole('textbox', { name: 'Session title', exact: true }).press('Enter');
+  await expect(dialog).toHaveCount(0);
+  await expect(
+    page.getByTestId('app-sidebar').getByRole('button', {
+      name: 'Actions for Sidebar name',
+      exact: true,
+    }),
+  ).toHaveCount(1);
+});
+
+test('#92 the palette finds a settings section by name and opens it', async ({ page }) => {
+  await blankSession(page);
+  await page.keyboard.press('Control+k');
+  const palette = page.getByRole('dialog', { name: 'Command palette' });
+  await palette.getByRole('combobox', { name: 'Search commands' }).fill('personal default');
+  await expect(palette.getByRole('option').first()).toHaveText(/Personal default work style/);
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(/settings=defaults/);
+  await expect(page.locator('[data-settings-dialog]')).toBeVisible();
+});

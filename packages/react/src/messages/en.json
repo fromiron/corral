@@ -989,7 +989,7 @@
   "CommandPalette": {
     "label": "Command palette",
     "search": "Search commands",
-    "placeholder": "Find commands, teams, executions or this project’s sessions…",
+    "placeholder": "Find commands, panes, settings, teams, executions or this project’s sessions…",
     "results": "Commands",
     "none": "No matching commands.",
     "openCorral": "Open team: {name}",
@@ -1490,7 +1490,7 @@
     "after": "After",
     "markReviewed": "Set the session as reviewed up to now",
     "reviewedNote": "Records the session's whole current working copy as read, so later changes show as new. It is not an approval.",
-    "reviewedOtherScope": "Applies to the whole current session copy, not only the comparison shown.",
+    "reviewedOtherScope": "Applies to the whole current session working copy, not only the comparison shown.",
     "runCheck": "Run {name}",
     "checkState": {
       "running": "Running…",
@@ -1697,7 +1697,6 @@
     "ready": "Ready to start",
     "sessionActions": "Actions for {title}",
     "rename": "Rename session",
-    "renameHint": "Choose a name that is easy to find later.",
     "sessionTitle": "Session title",
     "save": "Save",
     "settings": "Settings",
@@ -1969,7 +1968,8 @@
       "go": "Go to",
       "view": "View",
       "help": "Help",
-      "panel": "Panel"
+      "panel": "Panel",
+      "settings": "Settings"
     },
     "togglePanel": "Show or hide the side panel",
     "openPanel": "Open {panel}",
