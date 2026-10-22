@@ -24,6 +24,7 @@
 | 로컬 판정기가 추론 노력을 고르는 설정 | Automatic effort choice / 추론 노력 자동 선택 | `ReasoningSettingsPanel` | Automatic reasoning |
 | Git index에 올리기 / 내리기 | Stage / 스테이지, Unstage / 스테이지 해제 | `git.stage`, `git.unstage` | add, 추가(화면 문구) |
 | Git 기록 만들기 | Commit / 커밋 | `git.commit` | 저장(문서 저장과 구분) |
+| 원격에서 받기 / 반영 / 보내기 | Fetch / 가져오기, Pull / 당겨오기, Push / 올리기 | `git.fetch`, `git.pull`, `git.push` | 동기화(범위가 다름) |
 | 현재 의도가 싣지 않는 항목 | Applies to a new request only / 새 요청에만 적용 | `heldForNew` | 항목별 개별 안내 |
 
 ## 파일명

@@ -3555,5 +3555,38 @@
     "status": "planned",
     "adapter": "temporary real Git repositories and managed worktrees with injected failure points; no paid models or remote writes",
     "evidence": null
+  },
+  {
+    "id": "TC-WBD-010-H",
+    "requirements": [
+      "CRL-WBD-010"
+    ],
+    "suite": "unit+integration",
+    "scenario": "detached 관리 사본에 branch 생성·연결과 기존 branch 전환, 로컬 bare remote에서 fetch·fast-forward pull·push와 결과 ref readback",
+    "status": "planned",
+    "adapter": "temporary real Git repositories, managed worktrees and a local bare remote with existing SQLite fixtures; no network, paid models or external pushes",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-010-N",
+    "requirements": [
+      "CRL-WBD-010"
+    ],
+    "suite": "unit+integration",
+    "scenario": "remote 이동 뒤 non-fast-forward pull·push 거절, 잘못된 branch 이름, 원본에서 checkout 중인 branch 전환, 없는 remote와 거절하는 remote, 추적 변경이 있는 전환 거절",
+    "status": "planned",
+    "adapter": "temporary real Git repositories, managed worktrees and a local bare remote; no network or external pushes",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-010-F",
+    "requirements": [
+      "CRL-WBD-010"
+    ],
+    "suite": "unit+integration",
+    "scenario": "push 후 receipt 기록 실패·재시작 뒤 ls-remote readback으로 중복 push 없이 판정, 활성 사용자 writer가 있으면 전환 거절, 미저장 문서가 있으면 Git 창이 전환을 보내지 않음",
+    "status": "planned",
+    "adapter": "temporary real Git repositories and a local bare remote with injected receipt failure; jsdom Git pane with a document store double",
+    "evidence": null
   }
 ]

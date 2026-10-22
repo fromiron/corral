@@ -109,6 +109,7 @@ import {
   indexLocked,
   lockFailure,
   planGitWrite,
+  remoteBranch,
   startGitWrite,
 } from './user-git-write.ts';
 import { VerificationRunner } from './verification.ts';
@@ -214,7 +215,16 @@ export class WorkspaceError extends Error {
 const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 
 /** A relative path inside the worktree, or a refusal. Never `..`, absolute, or into `.git`. */
-const GIT_KINDS = ['git.stage', 'git.unstage', 'git.commit'];
+const GIT_KINDS = [
+  'git.stage',
+  'git.unstage',
+  'git.commit',
+  'git.branch',
+  'git.switch',
+  'git.fetch',
+  'git.pull',
+  'git.push',
+];
 
 export function safeRelative(input: string): string {
   if (!input || input.includes('\0') || input.includes('\\') || isAbsolute(input))
@@ -2403,6 +2413,36 @@ export class WorkspaceService implements FileTools {
           })
         : { kind: 'unknown' };
     }
+    // A fetch changes no user files; read back later it counts as done, and our own attempt that
+    // exited with an error counts as not done.
+    if (intent.kind === 'fetch') return ownProcessGone ? { kind: 'unchanged' } : applied();
+    if (intent.kind === 'branch' || intent.kind === 'switch') {
+      if (status.head.branch === intent.branch) return applied();
+      return status.head.oid === intent.expect.head &&
+        (intent.kind === 'branch' || status.head.branch === intent.fromBranch)
+        ? { kind: 'unchanged' }
+        : { kind: 'unknown' };
+    }
+    if (intent.kind === 'pull') {
+      if (status.head.oid === intent.expect.head) return { kind: 'unchanged' };
+      if (!status.head.oid || !intent.expect.head) return { kind: 'unknown' };
+      const ancestor = await git(root, [
+        'merge-base',
+        '--is-ancestor',
+        intent.expect.head,
+        status.head.oid,
+      ]).then(
+        () => true,
+        () => false,
+      );
+      return ancestor ? applied() : { kind: 'unknown' };
+    }
+    if (intent.kind === 'push') {
+      if (!intent.remote || !intent.branch) return { kind: 'unknown' };
+      const now = await remoteBranch(root, intent.remote, intent.branch);
+      if (now && now === status.head.oid) return applied();
+      return now === (intent.remoteBefore ?? null) ? { kind: 'unchanged' } : { kind: 'unknown' };
+    }
     if (status.head.oid !== intent.expect.head) return { kind: 'unknown' };
     if (status.indexHash === intent.expect.indexHash) return { kind: 'unchanged' };
     const done = intent.paths.every((path) => {
@@ -2416,10 +2456,16 @@ export class WorkspaceService implements FileTools {
     return done ? applied() : { kind: 'unknown' };
   }
 
-  /** Stage, unstage or commit in a session's managed copy (CR-046 P13). */
+  /** Stage, unstage, commit (P13), branch, switch, fetch, pull or push (P14) in a managed copy. */
   async changeGit(sessionId: string, raw: GitWriteCommand): Promise<GitOperation> {
     const command = GitWriteCommand.parse(raw);
-    const paths = (command.kind === 'commit' ? command.staged : command.paths).map(safeRelative);
+    const paths = (
+      command.kind === 'commit'
+        ? command.staged
+        : command.kind === 'stage' || command.kind === 'unstage'
+          ? command.paths
+          : []
+    ).map(safeRelative);
     const requestHash = sha256(Buffer.from(canonicalJson(command)));
     const kind = `git.${command.kind}` as GitOperation['kind'];
     const prior = this.workbenchOperations.get(command.operationId);
@@ -2434,7 +2480,14 @@ export class WorkspaceService implements FileTools {
       kind: command.kind,
       expect: command.expect,
       paths,
-      ...(command.kind === 'commit' ? { hooks: command.runHooks } : {}),
+      ...(command.kind === 'commit' || command.kind === 'push' ? { hooks: command.runHooks } : {}),
+      ...(command.kind === 'branch' ? { branch: command.name } : {}),
+      ...(command.kind === 'switch' || command.kind === 'pull' || command.kind === 'push'
+        ? { branch: command.branch }
+        : {}),
+      ...(command.kind === 'fetch' || command.kind === 'pull' || command.kind === 'push'
+        ? { remote: command.remote }
+        : {}),
     };
     return this.lease(root, async () => {
       if ((await realpath(root)) !== resolve(root))
@@ -2477,6 +2530,41 @@ export class WorkspaceService implements FileTools {
           intent.tree = await gitText(root, ['write-tree']);
           this.workbenchOperations.updateRunning(command.operationId, { kind: 'pending', intent });
         }
+        if (command.kind === 'branch') {
+          try {
+            await git(root, ['check-ref-format', '--branch', command.name]);
+          } catch {
+            throw new ToolRefusal('SCHEMA_INVALID', 'that is not a valid branch name');
+          }
+          if (status.branches?.includes(command.name))
+            throw new ToolRefusal('REVISION_CONFLICT', 'a branch with that name already exists');
+        }
+        if (command.kind === 'switch') {
+          if (status.entries.some((entry) => entry.kind !== 'untracked'))
+            throw new GitWriteError(
+              'CAPABILITY_DENIED',
+              'commit or unstage the tracked changes before switching branch',
+              'dirty_tree',
+            );
+          if (!status.branches?.includes(command.branch))
+            throw new ToolRefusal('TARGET_NOT_FOUND', 'that branch does not exist here');
+          intent.fromBranch = status.head.branch;
+          this.workbenchOperations.updateRunning(command.operationId, { kind: 'pending', intent });
+        }
+        if (command.kind === 'push') {
+          if (status.head.branch !== command.branch)
+            throw new ToolRefusal('REVISION_CONFLICT', 'push the branch this copy is on');
+          intent.remoteBefore = await remoteBranch(root, command.remote, command.branch).catch(
+            (error: unknown) => {
+              throw new GitWriteError(
+                'CAPABILITY_DENIED',
+                error instanceof Error ? error.message : 'the remote is unavailable',
+                'remote_unavailable',
+              );
+            },
+          );
+          this.workbenchOperations.updateRunning(command.operationId, { kind: 'pending', intent });
+        }
         const plan = planGitWrite(
           command,
           command.kind === 'commit' ? await gitIdentity(root) : {},
@@ -2490,7 +2578,10 @@ export class WorkspaceService implements FileTools {
         cleaned = outcome.cleaned;
         const failure = gitWriteFailure(outcome, plan);
         if (failure) throw failure;
-        const judged = await this.judgeGit(root, intent, cleaned);
+        const judged =
+          command.kind === 'fetch'
+            ? await this.judgeGit(root, intent, false)
+            : await this.judgeGit(root, intent, cleaned);
         if (judged.kind !== 'applied')
           throw new ToolRefusal('REVISION_CONFLICT', 'Git did not record the expected change');
         this.workbenchOperations.finish(

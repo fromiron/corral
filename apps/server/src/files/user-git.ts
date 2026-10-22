@@ -173,14 +173,21 @@ export async function readUserGitStatus(root: string): Promise<Omit<GitStatus, '
     status(root, env),
     gitText(root, ['rev-parse', '--is-shallow-repository'], env),
   ]);
+  const [branches, remotes] = await Promise.all([
+    gitText(root, ['for-each-ref', '--count=200', '--format=%(refname:short)', 'refs/heads'], env),
+    gitText(root, ['remote'], env),
+  ]);
   const [lastHead, lastIndex] = await Promise.all([headOid(root, env), indexHash(root, env)]);
   if (lastHead !== observed.head.oid || lastIndex !== hash) throw conflict();
+  const lines = (text: string) => text.split('\n').filter(Boolean);
   return {
     head: { ...observed.head, shallow: shallow === 'true' },
     indexHash: hash,
     entries: observed.entries.slice(0, MAX_ENTRIES).map((entry) => entry.value),
     truncated: observed.entries.length > MAX_ENTRIES,
     filtersDisabled: filtersDisabled(env),
+    branches: lines(branches),
+    remotes: lines(remotes),
   };
 }
 

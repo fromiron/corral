@@ -49,6 +49,9 @@ export interface GitStatus {
   entries: GitStatusEntry[];
   truncated: boolean;
   filtersDisabled: boolean;
+  /** Local branch names (at most 200) and configured remotes (CR-046 P14). */
+  branches?: string[];
+  remotes?: string[];
 }
 
 export type GitFileSide =
@@ -77,6 +80,17 @@ export const GitAuthor = z.strictObject({
   email: z.string().trim().min(3).max(320),
 });
 export type GitAuthor = z.infer<typeof GitAuthor>;
+/** Names are checked again by Git itself; this only keeps argv free of options. */
+const RefName = z
+  .string()
+  .min(1)
+  .max(250)
+  .regex(/^[^-\s][^\s]*$/);
+const RemoteName = z
+  .string()
+  .min(1)
+  .max(100)
+  .regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/);
 export const GitWriteCommand = z.discriminatedUnion('kind', [
   GitWriteBase.extend({ kind: z.literal('stage'), paths: GitPaths }),
   GitWriteBase.extend({ kind: z.literal('unstage'), paths: GitPaths }),
@@ -88,10 +102,28 @@ export const GitWriteCommand = z.discriminatedUnion('kind', [
     runHooks: z.boolean(),
     author: GitAuthor.optional(),
   }),
+  GitWriteBase.extend({ kind: z.literal('branch'), name: RefName }),
+  GitWriteBase.extend({ kind: z.literal('switch'), branch: RefName }),
+  GitWriteBase.extend({ kind: z.literal('fetch'), remote: RemoteName }),
+  GitWriteBase.extend({ kind: z.literal('pull'), remote: RemoteName, branch: RefName }),
+  GitWriteBase.extend({
+    kind: z.literal('push'),
+    remote: RemoteName,
+    branch: RefName,
+    runHooks: z.boolean(),
+  }),
 ]);
 export type GitWriteCommand = z.infer<typeof GitWriteCommand>;
 
-export type GitWriteFailure = 'locked' | 'hook_failed' | 'signing_unavailable' | 'author_missing';
+export type GitWriteFailure =
+  | 'locked'
+  | 'hook_failed'
+  | 'signing_unavailable'
+  | 'author_missing'
+  | 'branch_in_use'
+  | 'dirty_tree'
+  | 'non_fast_forward'
+  | 'remote_unavailable';
 export interface GitWriteIntent {
   kind: GitWriteCommand['kind'];
   expect: GitWriteCommand['expect'];
@@ -99,6 +131,12 @@ export interface GitWriteIntent {
   /** For a commit: the tree the index held when it was confirmed. */
   tree?: GitOid;
   hooks?: boolean;
+  /** branch/switch/pull/push: the branch acted on; switch also records where it came from. */
+  branch?: string;
+  fromBranch?: string | null;
+  remote?: string;
+  /** push: the remote branch before the push, read with ls-remote (null when absent). */
+  remoteBefore?: GitOid | null;
 }
 export type GitWriteResult = (
   | { kind: 'pending' }
@@ -113,7 +151,7 @@ export type GitWriteResult = (
   | { kind: 'error'; code: ErrorCode; message: string; reason?: GitWriteFailure }
 ) & { intent: GitWriteIntent };
 export interface GitOperation extends WorkbenchOperation {
-  kind: 'git.stage' | 'git.unstage' | 'git.commit';
+  kind: `git.${GitWriteCommand['kind']}`;
   result: GitWriteResult | null;
 }
 

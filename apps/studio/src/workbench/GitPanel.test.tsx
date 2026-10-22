@@ -10,6 +10,10 @@ const fixture = vi.hoisted(() => ({ services: {} }));
 vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
 vi.mock('../router.tsx', () => ({ reviewRoute: {} }));
 vi.mock('@tanstack/react-router', () => ({ Link: () => null, useNavigate: () => () => {} }));
+const documents = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
+vi.mock('./documents/store.ts', () => ({
+  documentStore: () => ({ getState: () => ({ documents: documents.value }) }),
+}));
 vi.mock('use-intl', () => ({
   useTranslations: (namespace: string) => (key: string) => `${namespace}.${key}`,
 }));
@@ -313,4 +317,67 @@ it('[TC-WBD-009-F] an unconfirmed operation is read back by its own ID after reo
   await act(async () => control(f.container, 'Git.checkAgain')[0]?.click());
   expect(gitOperation).toHaveBeenCalledTimes(2);
   expect(gitChange).not.toHaveBeenCalled();
+});
+
+function branchStatus(): GitStatus {
+  return {
+    ...status(),
+    entries: [],
+    head: { ...status().head, branch: 'feature', detached: false },
+    branches: ['feature', 'main'],
+    remotes: ['origin'],
+  };
+}
+
+it('[TC-WBD-010-H] the branch section creates a branch, fetches and pushes the current branch', async () => {
+  sessionStorage.clear();
+  documents.value = {};
+  const gitStatus = vi.fn(async () => branchStatus());
+  const gitChange = vi.fn(
+    async (_session: string, command: { operationId: string; kind: string }) => ({
+      operationId: command.operationId,
+      kind: `git.${command.kind}`,
+      state: 'succeeded',
+      result: { kind: 'applied' },
+    }),
+  );
+  const f = await mount({ gitStatus, gitChange, binding: vi.fn(async () => ({ trusted: true })) });
+  const name = f.container.querySelector<HTMLInputElement>('input[aria-label="Git.newBranch"]');
+  expect(name).not.toBeNull();
+  await act(async () => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    setter?.call(name, 'topic');
+    name?.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await act(async () => control(f.container, 'Git.createBranch')[0]?.click());
+  expect(gitChange).toHaveBeenLastCalledWith(
+    'session',
+    expect.objectContaining({ kind: 'branch', name: 'topic' }),
+  );
+  await act(async () => control(f.container, 'Git.fetch')[0]?.click());
+  expect(gitChange).toHaveBeenLastCalledWith(
+    'session',
+    expect.objectContaining({ kind: 'fetch', remote: 'origin' }),
+  );
+  await act(async () => control(f.container, 'Git.push')[0]?.click());
+  expect(gitChange).toHaveBeenLastCalledWith(
+    'session',
+    expect.objectContaining({ kind: 'push', remote: 'origin', branch: 'feature', runHooks: true }),
+  );
+  // No force, reset or clean controls exist.
+  expect(f.container.textContent).not.toMatch(/force|reset|clean/i);
+});
+
+it('[TC-WBD-010-F] a switch is not sent while this copy has an unsaved document', async () => {
+  sessionStorage.clear();
+  documents.value = {
+    doc: { target: { sessionId: 'session' }, path: 'a.ts', dirty: true },
+  };
+  const gitStatus = vi.fn(async () => branchStatus());
+  const gitChange = vi.fn();
+  const f = await mount({ gitStatus, gitChange, binding: vi.fn(async () => ({ trusted: true })) });
+  await act(async () => control(f.container, 'Git.switchTo')[0]?.click());
+  expect(gitChange).not.toHaveBeenCalled();
+  expect(f.container.textContent).toContain('Git.unsavedDocuments');
+  documents.value = {};
 });

@@ -138,3 +138,16 @@ H는 실제 임시 Git 원본과 두 관리 사본에서 status discovery·선�
 - HTTP는 `POST /api/v1/sessions/:id/worktree/git/operations`와 `GET …/git/operations/:operationId`다. client는 `gitChange`, `gitOperation`이다. Git 창은 관리 사본 source에서만 쓰기 조작을 보이며 진행 중 operationId를 보존해 다시 열면 같은 ID로 조회한다.
 
 H는 실제 임시 저장소와 관리 사본에서 stage→unstage→commit, 같은 ID 재요청, `runHooks`에 따른 hook 실행/미실행과 SSH 서명 commit이다. N은 외부 stage·HEAD 변경, 다른 payload, 원본 target, 비신뢰 프로젝트, 서명 요구와 signer 부재 거절이다. F는 hook 실패·취소, index.lock 충돌, commit 후 receipt 기록 실패·응답 유실·재시작에서 중복 commit 없는 판정과 기존 hunk 작업이 관리 사본 index를 바꾸지 않음이다. 원격 쓰기·유료 호출은 쓰지 않는다.
+
+## P14: 관리 사본의 branch 연결·전환과 remote
+
+추적: CRL-WBD-010 / C-154 / TC-WBD-010-H,N,F. 승인 계획 P14를 구체화한다. merge/rebase 충돌 해결, force push, reset, clean은 포함하지 않는다. 실제 외부 push는 검증에 쓰지 않으며 로컬 bare remote로만 확인한다.
+
+- 명령은 P13의 `GitWriteCommand`에 더한다: `branch{name}`은 현재 HEAD에서 새 branch를 만들고 사본을 그 branch에 연결하며 작업 파일은 바꾸지 않는다. `switch{branch}`는 기존 local branch로 전환한다. `fetch{remote}`, `pull{remote, branch}`는 fast-forward만 허용한다. `push{remote, branch, runHooks}`는 현재 branch를 같은 이름의 remote branch로 force 없이 보낸다. 모두 같은 receipt·공통 writer·HEAD/index 사전조건을 쓴다.
+- 원본 보호는 원본의 작업 트리·index·checkout branch를 바꾸지 않는다는 뜻이다. 관리 사본은 원본과 refs를 공유하므로 새 branch ref와 remote-tracking ref는 공유 저장소에 생긴다. 원본이나 다른 사본에서 checkout 중인 branch로의 전환은 Git의 거절을 `branch_in_use`로 보여 준다.
+- 전환은 추적 변경(staged·unstaged)이 있으면 `dirty_tree`로 거절하고, 활성 writer(터미널·Run·다른 operation)가 있으면 기존 writer 규칙으로 거절한다. 같은 사본의 미저장 문서는 Git 창이 먼저 확인해 전환을 보내지 않는다.
+- 원격 작업은 신뢰 프로젝트에서만 접수되므로 사용자 Git 설정의 credential helper·`SSH_AUTH_SOCK`과 전역 설정을 그대로 쓴다. prompt는 끈다. hook은 `runHooks`를 켠 push(pre-push)에서만 실행하고 branch·switch·fetch·pull에서는 끈다.
+- 판정: branch·switch는 현재 branch와 HEAD, pull은 HEAD가 확인한 HEAD의 후손인지, push는 `ls-remote`의 remote ref가 현재 HEAD인지로 한다. fetch는 사용자 파일을 바꾸지 않으므로 응답 유실 뒤 결과를 적용됨으로 정리한다. non-fast-forward는 `non_fast_forward`, 인증 실패·없는 remote는 `remote_unavailable`, 잘못된 이름은 `SCHEMA_INVALID`로 거절한다.
+- `GitStatus`에 읽기 전용 `branches`(local branch 이름, 최대 200)와 `remotes`를 더한다. Git 창은 branch 메뉴에서 branch 만들기·전환과 fetch/pull/push를 제공하며 force·reset·clean·자동 재시도는 없다.
+
+H는 detached 사본의 branch 생성·연결과 전환, 로컬 bare remote의 fetch·fast-forward pull·push다. N은 remote 이동 뒤 non-fast-forward, 잘못된 이름, 원본에서 checkout 중인 branch, 없는 remote와 거절하는 remote, 추적 변경이 있는 전환이다. F는 push 후 receipt 기록 실패·재시작 뒤 ls-remote 판정, 활성 writer와 미저장 문서가 있을 때의 전환 차단이다.

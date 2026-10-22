@@ -15,6 +15,7 @@ import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { FileDiff } from '../pages/ReviewPage.tsx';
 import { useServices } from '../services.tsx';
+import { documentStore } from './documents/store.ts';
 
 type Side = GitDiffRequest['side'];
 const sides: Side[] = ['staged', 'unstaged', 'untracked'];
@@ -49,6 +50,10 @@ const FAILURE_KEYS = {
   hook_failed: 'hookFailed',
   signing_unavailable: 'signingUnavailable',
   author_missing: 'authorMissing',
+  branch_in_use: 'branchInUse',
+  dirty_tree: 'dirtyTree',
+  non_fast_forward: 'nonFastForward',
+  remote_unavailable: 'remoteUnavailable',
 } as const;
 
 /**
@@ -90,6 +95,7 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
       if (receipt.state === 'succeeded') {
         setFailure(null);
         if (pending.kind === 'commit') setMessage('');
+        if (pending.kind === 'branch') setBranchName('');
       } else if (result?.kind === 'error') {
         if (result.reason === 'author_missing')
           setAuthor((value) => value ?? { name: '', email: '' });
@@ -241,11 +247,35 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
     status?.target.kind === 'session' &&
     Boolean(workspaces?.gitChange);
   const staged = status?.entries.filter((entry) => belongs(entry, 'staged')) ?? [];
+  const [branchName, setBranchName] = useState('');
+  // The pane re-reads Git after each change; the section stays as the person left it.
+  const [branchOpen, setBranchOpen] = useState(false);
+  const remote =
+    status?.head.upstream?.name.split('/')[0] ??
+    (status?.remotes?.includes('origin') ? 'origin' : status?.remotes?.[0]);
+  const upstreamBranch = status?.head.upstream?.name.split('/').slice(1).join('/');
+  const others = status?.branches?.filter((branch) => branch !== status.head.branch) ?? [];
+  /** Unsaved documents of this copy stay unsaved; switching would read the other branch. */
+  const unsaved = () =>
+    workspaces
+      ? Object.values(documentStore(workspaces).getState().documents).some(
+          (entry) => entry.target.sessionId === sessionId && entry.dirty,
+        )
+      : false;
   const change = async (
     body:
       | { kind: 'stage' | 'unstage'; paths: string[] }
-      | { kind: 'commit'; message: string; staged: string[]; runHooks: boolean },
+      | { kind: 'commit'; message: string; staged: string[]; runHooks: boolean }
+      | { kind: 'branch'; name: string }
+      | { kind: 'switch'; branch: string }
+      | { kind: 'fetch'; remote: string }
+      | { kind: 'pull'; remote: string; branch: string }
+      | { kind: 'push'; remote: string; branch: string; runHooks: boolean },
   ) => {
+    if (body.kind === 'switch' && unsaved()) {
+      setFailure({ key: 'unsavedDocuments' });
+      return;
+    }
     if (
       !status ||
       status.target.kind !== 'session' ||
@@ -350,6 +380,97 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
               </span>
             ) : null}
           </div>
+          {writable ? (
+            <details
+              className="text-xs"
+              open={branchOpen}
+              onToggle={(event) => setBranchOpen(event.currentTarget.open)}
+            >
+              <summary className="cursor-pointer select-none py-1 font-medium">
+                {t('branchActions')}
+              </summary>
+              <div className="flex flex-col gap-2 pt-1">
+                <form
+                  className="flex flex-wrap items-center gap-2"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    if (branchName.trim()) void change({ kind: 'branch', name: branchName.trim() });
+                  }}
+                >
+                  <Input
+                    aria-label={t('newBranch')}
+                    placeholder={t('newBranch')}
+                    value={branchName}
+                    onChange={(event) => setBranchName(event.target.value)}
+                    className="w-48"
+                  />
+                  <Button
+                    type="submit"
+                    size="xs"
+                    variant="outline"
+                    disabled={!branchName.trim() || Boolean(busy || unconfirmed)}
+                  >
+                    {t('createBranch')}
+                  </Button>
+                </form>
+                {others.length ? (
+                  <ul className="flex flex-wrap gap-1">
+                    {others.slice(0, 20).map((branch) => (
+                      <li key={branch}>
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          aria-label={t('switchTo', { branch })}
+                          title={t('switchTo', { branch })}
+                          disabled={Boolean(busy || unconfirmed)}
+                          onClick={() => void change({ kind: 'switch', branch })}
+                        >
+                          <span className="font-mono">{branch}</span>
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                {remote ? (
+                  <div className="flex flex-wrap gap-1">
+                    <Button
+                      size="xs"
+                      variant="outline"
+                      disabled={Boolean(busy || unconfirmed)}
+                      onClick={() => void change({ kind: 'fetch', remote })}
+                    >
+                      {t('fetch')}
+                    </Button>
+                    <Button
+                      size="xs"
+                      variant="outline"
+                      disabled={!status.head.branch || Boolean(busy || unconfirmed)}
+                      onClick={() =>
+                        void change({
+                          kind: 'pull',
+                          remote,
+                          branch: upstreamBranch || (status.head.branch ?? ''),
+                        })
+                      }
+                    >
+                      {t('pull')}
+                    </Button>
+                    <Button
+                      size="xs"
+                      variant="outline"
+                      disabled={!status.head.branch || Boolean(busy || unconfirmed)}
+                      onClick={() =>
+                        status.head.branch &&
+                        void change({ kind: 'push', remote, branch: status.head.branch, runHooks })
+                      }
+                    >
+                      {t('push')}
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
+            </details>
+          ) : null}
           {status.filtersDisabled ? <p className="text-xs text-muted">{t('rawContent')}</p> : null}
           {status.truncated ? (
             <p role="status" className="text-xs text-warning">

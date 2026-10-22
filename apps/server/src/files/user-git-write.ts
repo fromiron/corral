@@ -25,7 +25,18 @@ const BASE_CONFIG = [
   'diff.external=',
   'gc.auto=0',
 ];
-const TIMEOUT = { stage: 2 * 60_000, unstage: 2 * 60_000, commit: 10 * 60_000 } as const;
+const TIMEOUT: Record<GitWriteCommand['kind'], number> = {
+  stage: 2 * 60_000,
+  unstage: 2 * 60_000,
+  commit: 10 * 60_000,
+  branch: 60_000,
+  switch: 2 * 60_000,
+  fetch: 5 * 60_000,
+  pull: 5 * 60_000,
+  push: 10 * 60_000,
+};
+const REMOTE_KINDS = new Set<GitWriteCommand['kind']>(['fetch', 'pull', 'push']);
+const HOOKS_OFF = `core.hooksPath=${process.platform === 'win32' ? 'NUL' : '/dev/null'}`;
 
 export class GitWriteError extends ToolRefusal {
   readonly reason: GitWriteFailure | undefined;
@@ -57,7 +68,28 @@ export function signingRequired(identity: Record<string, string>) {
   return /^(true|yes|on|1)$/i.test(identity['commit.gpgsign'] ?? '');
 }
 
-function environment(signing: boolean): NodeJS.ProcessEnv {
+function environment(signing: boolean, remote = false): NodeJS.ProcessEnv {
+  if (remote) {
+    // Remote work in a trusted project uses the person's own Git setup: credential helpers,
+    // SSH agent and global config. Prompts stay off; nothing waits for input.
+    const env: NodeJS.ProcessEnv = {
+      PATH: process.env.PATH ?? '/usr/bin:/bin',
+      HOME: process.env.HOME ?? '',
+      LANG: 'C.UTF-8',
+      GIT_TERMINAL_PROMPT: '0',
+      GCM_INTERACTIVE: 'never',
+      GIT_NO_LAZY_FETCH: '1',
+    };
+    for (const key of [
+      'SSH_AUTH_SOCK',
+      'USERPROFILE',
+      'APPDATA',
+      'LOCALAPPDATA',
+      'XDG_CONFIG_HOME',
+    ])
+      if (process.env[key]) env[key] = process.env[key];
+    return env;
+  }
   const env: NodeJS.ProcessEnv = {
     PATH: process.env.PATH ?? '/usr/bin:/bin',
     HOME: process.env.HOME ?? '',
@@ -127,6 +159,16 @@ function failure(stderr: string, signing: boolean, hooks: boolean): GitWriteErro
     return new GitWriteError('RESOURCE_CAPACITY', message, 'locked');
   if (signing && /sign|gpg|ssh-keygen/i.test(stderr))
     return new GitWriteError('CAPABILITY_DENIED', message, 'signing_unavailable');
+  if (/already (?:checked out|used by worktree)/i.test(stderr))
+    return new GitWriteError('CAPABILITY_DENIED', message, 'branch_in_use');
+  if (/non-fast-forward|not possible to fast-forward|fetch first|diverg/i.test(stderr))
+    return new GitWriteError('REVISION_CONFLICT', message, 'non_fast_forward');
+  if (
+    /does not appear to be a git repository|could not read from remote|authentication failed|permission denied|could not read username|repository not found|could not resolve host/i.test(
+      stderr,
+    )
+  )
+    return new GitWriteError('CAPABILITY_DENIED', message, 'remote_unavailable');
   if (hooks) return new GitWriteError('POLICY_ERROR', message, 'hook_failed');
   return new GitWriteError('POLICY_ERROR', message);
 }
@@ -153,10 +195,27 @@ export function planGitWrite(
   head: string | null,
 ): GitWritePlan {
   const paths = Buffer.from(
-    command.kind === 'commit' ? '' : `${command.paths.join('\0')}\0`,
+    command.kind === 'stage' || command.kind === 'unstage' ? `${command.paths.join('\0')}\0` : '',
     'utf8',
   );
   const pathspec = ['--pathspec-from-file=-', '--pathspec-file-nul'];
+  const plain = (args: string[], hooks = false): GitWritePlan => ({
+    args,
+    config: hooks ? [] : [HOOKS_OFF],
+    input: Buffer.alloc(0),
+    signing: false,
+    hooks,
+  });
+  if (command.kind === 'branch') return plain(['switch', '-c', command.name]);
+  if (command.kind === 'switch') return plain(['switch', command.branch]);
+  if (command.kind === 'fetch') return plain(['fetch', command.remote]);
+  if (command.kind === 'pull')
+    return plain(['pull', '--ff-only', '--no-rebase', command.remote, command.branch]);
+  if (command.kind === 'push')
+    return plain(
+      ['push', command.remote, `refs/heads/${command.branch}:refs/heads/${command.branch}`],
+      command.runHooks,
+    );
   if (command.kind === 'stage')
     return {
       args: ['add', '-A', ...pathspec],
@@ -189,8 +248,7 @@ export function planGitWrite(
       (key) => key !== 'user.name' && key !== 'user.email' && identity[key] !== undefined,
     ).map((key) => `${key}=${identity[key]}`),
   ];
-  if (!command.runHooks)
-    config.push(`core.hooksPath=${process.platform === 'win32' ? 'NUL' : '/dev/null'}`);
+  if (!command.runHooks) config.push(HOOKS_OFF);
   return {
     args: [
       'commit',
@@ -224,7 +282,7 @@ export function startGitWrite(
     plan.args,
     {
       config: plan.config,
-      env: environment(plan.signing),
+      env: environment(plan.signing, REMOTE_KINDS.has(command.kind)),
       input: plan.input,
       timeout: TIMEOUT[command.kind],
     },
@@ -253,6 +311,22 @@ export async function indexLocked(root: string) {
 }
 
 /** A commit's first parent and whether it carries a signature, read back after the effect. */
+/** The remote branch as the remote reports it now (null when it does not exist). */
+export async function remoteBranch(root: string, remote: string, branch: string) {
+  const { stdout } = await gitRemoteRead(root, [
+    'ls-remote',
+    '--heads',
+    remote,
+    `refs/heads/${branch}`,
+  ]);
+  return stdout.toString('utf8').split(/\s/)[0] || null;
+}
+
+/** A remote read with the same environment as fetch/pull/push. */
+export function gitRemoteRead(root: string, args: string[]) {
+  return git(root, args, { env: environment(false, true) as Record<string, string> });
+}
+
 export async function commitFacts(root: string, oid: string) {
   const { stdout } = await git(root, ['cat-file', 'commit', oid]);
   const text = stdout.toString('utf8');

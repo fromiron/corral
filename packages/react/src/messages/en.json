@@ -3368,7 +3368,19 @@
     "signingUnavailable": "This repository requires a signed commit, and signing failed.",
     "authorMissing": "Git has no author for this commit. Enter a name and email.",
     "writeCancelled": "The Git change was cancelled.",
-    "writeFailed": "The Git change failed."
+    "writeFailed": "The Git change failed.",
+    "branchActions": "Branch & remote",
+    "newBranch": "New branch name",
+    "createBranch": "Create branch",
+    "switchTo": "Switch to {branch}",
+    "fetch": "Fetch",
+    "pull": "Pull",
+    "push": "Push",
+    "branchInUse": "That branch is checked out in another copy or the original folder.",
+    "dirtyTree": "Commit or unstage the tracked changes before switching branch.",
+    "nonFastForward": "The branches have diverged. Only fast-forward is done here; nothing was forced.",
+    "remoteUnavailable": "The remote could not be reached or refused the sign-in.",
+    "unsavedDocuments": "Save or close this copy’s unsaved documents before switching branch."
   },
   "Materials": {
     "heading": "Instructions & memory",

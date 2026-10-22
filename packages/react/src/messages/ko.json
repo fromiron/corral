@@ -3368,7 +3368,19 @@
     "signingUnavailable": "이 저장소는 서명된 커밋을 요구하지만 서명에 실패했습니다.",
     "authorMissing": "이 커밋의 작성자가 Git 설정에 없습니다. 이름과 이메일을 입력하세요.",
     "writeCancelled": "Git 변경을 취소했습니다.",
-    "writeFailed": "Git 변경에 실패했습니다."
+    "writeFailed": "Git 변경에 실패했습니다.",
+    "branchActions": "브랜치·원격",
+    "newBranch": "새 브랜치 이름",
+    "createBranch": "브랜치 만들기",
+    "switchTo": "{branch}(으)로 전환",
+    "fetch": "가져오기",
+    "pull": "당겨오기",
+    "push": "올리기",
+    "branchInUse": "그 브랜치는 다른 사본이나 원본 폴더에서 사용 중입니다.",
+    "dirtyTree": "브랜치를 바꾸기 전에 추적 중인 변경을 커밋하거나 스테이지 해제하세요.",
+    "nonFastForward": "브랜치가 갈라졌습니다. 여기서는 빨리 감기만 하며 강제로 덮어쓰지 않았습니다.",
+    "remoteUnavailable": "원격 저장소에 연결하지 못했거나 인증이 거절됐습니다.",
+    "unsavedDocuments": "브랜치를 바꾸기 전에 이 사본의 저장하지 않은 문서를 저장하거나 닫으세요."
   },
   "Materials": {
     "heading": "지침·메모리",

@@ -880,5 +880,11 @@
     "requirement": "CR-046 P13: 관리 사본의 사용자 index에서 파일 단위 stage/unstage와 확인한 staged 목록 그대로의 commit을 인간 operation receipt로 수행한다. 정확한 target·HEAD·index 기준을 확인하고 같은 ID 재조회로 중복 commit을 막으며, hook은 신뢰 프로젝트에서 명시 선택 시에만 실행하고 서명 요구를 충족하지 못하면 거절한다. 원본 폴더와 unstaged·untracked 변경, 내부 snapshot index는 바꾸지 않는다.",
     "owner": "server",
     "phase": "M3"
+  },
+  {
+    "id": "CRL-WBD-010",
+    "requirement": "CR-046 P14: 관리 사본에서 detached HEAD에 명시 branch를 만들어 연결하고 local branch로 전환하며, 신뢰 프로젝트의 사용자 인증으로 fetch, fast-forward 전용 pull, force 없는 push를 인간 operation receipt로 수행한다. 미저장 문서·추적 변경·활성 writer가 있으면 전환하지 않고, 원본의 작업 트리·index·checkout branch를 바꾸지 않으며, 응답 유실 뒤에는 실제 ref를 다시 읽어 중복 push 없이 판정한다.",
+    "owner": "server",
+    "phase": "M3"
   }
 ]
