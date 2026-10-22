@@ -250,7 +250,7 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
             </section>
             <section className="settings-row">
               <div>
-                <h3>{n('addToWorkStyle')}</h3>
+                <h3>{t('usedBy')}</h3>
                 <p>
                   {selected.profiles.length
                     ? selected.profiles
@@ -259,13 +259,12 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
                     : t('unused')}
                 </p>
               </div>
-              <div className="flex flex-wrap gap-2">
+              {/* One way there, named for what happens: nothing is added from here (#79). */}
+              <div className="flex flex-col items-start gap-1 sm:items-end">
                 <Button variant="outline" render={<Link {...navigation.link('harness')} />}>
                   {n('addToWorkStyle')}
                 </Button>
-                <Button variant="outline" render={<Link {...navigation.link('harness')} />}>
-                  {t('manageProfiles')}
-                </Button>
+                <p className="text-xs text-muted">{t('connectHint')}</p>
               </div>
             </section>
             {kind === 'skill' && !selected.archivedAt ? (

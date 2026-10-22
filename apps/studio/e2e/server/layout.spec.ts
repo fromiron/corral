@@ -33,3 +33,44 @@ test('#75 the archived resources filter is named by its visible text', async ({ 
   await expect(filter).toBeChecked();
   expect(corral.errors).toEqual([]);
 });
+
+test('#79 without a default, adoption points to the chosen scope defaults screen', async ({
+  page,
+  corral,
+}) => {
+  await corral.open('/settings/skills');
+  await page.evaluate(async () => {
+    const { csrfToken } = await (await fetch('/api/v1/session')).json();
+    const call = async (path: string, body: unknown, method = 'POST') => {
+      const response = await fetch(`/api/v1/harness${path}`, {
+        method,
+        headers: { 'content-type': 'application/json', 'x-corral-csrf': csrfToken },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) throw new Error(`setup failed: ${path} ${response.status}`);
+      return response.json();
+    };
+    const review = await call('/documents/review', {
+      kind: 'skill',
+      name: 'Writing',
+      content: '---\nname: writing\ndescription: Layout fixture writer\n---\nAnswer briefly.',
+    });
+    const saved = await call('/resources', { reviewId: review.reviewId });
+    await call(`/resources/${saved.hash}/trust`, { trusted: true }, 'PUT');
+  });
+  await page.reload();
+  await page.getByRole('button', { name: /Layout fixture writer/ }).click();
+  // One way to Work styles, named for what happens there.
+  await expect(page.getByRole('link', { name: 'Connect in Work styles', exact: true })).toHaveCount(
+    1,
+  );
+  await expect(page.getByRole('link', { name: 'Manage work styles', exact: true })).toHaveCount(0);
+  const panel = page.getByTestId('skill-quality');
+  await panel.getByText('Evaluate, adopt and roll back', { exact: true }).click();
+  const defaults = panel.getByRole('link', { name: /default work style/ });
+  await expect(defaults).toHaveAttribute('href', /settings\/defaults|settings=defaults/);
+  await panel.getByRole('combobox', { name: 'Apply to', exact: true }).click();
+  await page.getByRole('option').nth(1).click();
+  await expect(defaults).toHaveAttribute('href', /project-defaults/);
+  expect(corral.errors).toEqual([]);
+});

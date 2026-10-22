@@ -227,7 +227,7 @@ test('[TC-HAR-004-H] [TC-UX-004-N] install, trust, save and preview a mandatory 
     await page.getByRole('button', { name: 'Save to library', exact: true }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await page.getByRole('button', { name: 'Trust this content', exact: true }).click();
-    await page.getByRole('link', { name: 'Add to a work style', exact: true }).click();
+    await page.getByRole('link', { name: 'Connect in Work styles', exact: true }).click();
     await expect(page).toHaveURL(/settings\/harness/);
     await page.getByRole('button', { name: 'Evidence writer · r1', exact: true }).click();
     const replacement = page

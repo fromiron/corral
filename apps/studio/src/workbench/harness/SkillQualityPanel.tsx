@@ -515,7 +515,13 @@ export function SkillQualityPanel({
           disabled={busy || running}
         />
         {!target?.binding ? (
-          <Link className="text-sm underline" {...navigation.link('harness')}>
+          // The chosen scope's own defaults screen, not the shared work style editor (#79).
+          <Link
+            className="text-sm underline"
+            {...(scope.startsWith('project:')
+              ? navigation.link('project-defaults', scope.slice('project:'.length))
+              : navigation.link('defaults'))}
+          >
             {t('configureDefaults')}
           </Link>
         ) : (
