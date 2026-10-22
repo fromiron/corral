@@ -352,3 +352,39 @@ test('#83 the narrow settings menu keeps the desktop groups and order', async ({
   expect(desktop).toHaveLength(3);
   expect(narrow).toEqual(desktop);
 });
+
+test('#74 a narrow run that waits for a decision points to where it is answered', async ({
+  page,
+}) => {
+  await page.goto('/?delay=50');
+  await page.getByRole('tab', { name: /^Teams/ }).click();
+  const examples = join(import.meta.dirname, '..', '..', '..', 'examples');
+  await page
+    .locator('input[type=file]')
+    .setInputFiles([
+      join(examples, 'research-team.corral.json'),
+      join(examples, 'research-team.layout.json'),
+    ]);
+  await expect(page).toHaveURL(/\/edit$/);
+  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
+  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await expect(
+    page.locator('[data-testid^="approval-"]').filter({ hasText: 'Your decision' }),
+  ).toBeVisible({ timeout: 15_000 });
+  await page.getByRole('link', { name: 'Open execution page' }).click();
+  await expect(page).toHaveURL(/\/runs\//);
+  await page.setViewportSize({ width: 501, height: 757 });
+  const views = page.getByRole('tablist', { name: 'Run view' });
+  await expect(views.getByRole('tab', { name: 'Graph' })).toHaveAttribute('aria-selected', 'true');
+  const waiting = page.getByTestId('decision-waiting');
+  await expect(waiting).toContainText('A decision is waiting for you');
+  await waiting.getByRole('button', { name: 'Open the response', exact: true }).click();
+  await expect(views.getByRole('tab', { name: 'Conversation & Reins' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(
+    page.getByRole('button', { name: 'Continue with this version' }).first(),
+  ).toBeVisible();
+  await expect(waiting).toHaveCount(0);
+});

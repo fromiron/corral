@@ -490,6 +490,8 @@
     "missing": "This run is not available here. Runs of the in-browser demo end when the page reloads.",
     "openCorral": "Edit team",
     "unsavedTeam": "Team composed for this run · not a saved team",
+    "decisionWaiting": "{count, plural, one {A decision is waiting for you} other {# decisions are waiting for you}}",
+    "openResponse": "Open the response",
     "loading": "Loading the run…",
     "summary": "Execution summary",
     "working": "Working now: {labels}",

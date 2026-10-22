@@ -27,6 +27,7 @@ import {
   useSteerTarget,
   WorkPlanPanel,
 } from '@corral/react';
+import { Button } from '@corral/react/ui';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -465,6 +466,12 @@ function RunWorkspace({
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   // Below 768px one panel shows at a time (roadmap 19); wider screens show them all.
   const [panel, setPanel] = useState<NarrowPanel>('canvas');
+  const sideRef = useRef<HTMLElement>(null);
+  const waitingDecisions = useStore(
+    session,
+    (s) =>
+      Object.values(s.projection?.approvals ?? {}).filter((a) => a.status === 'pending').length,
+  );
   // UX-03: the run view follows its own width (a side panel is narrow on any screen).
   const shown = (name: NarrowPanel) => (panel === name ? '' : '@max-3xl:hidden');
 
@@ -518,6 +525,31 @@ function RunWorkspace({
     <div className="@container flex h-full min-h-0 flex-col">
       <RunSummary session={session} definition={definition} view={view} onView={chooseView} />
       <NarrowViews panel={panel} onChoose={setPanel} />
+      {/* On a narrow run the answer lives in another view: point to it, never jump (#74). */}
+      {waitingDecisions && panel !== 'side' ? (
+        <div
+          data-testid="decision-waiting"
+          className="flex flex-wrap items-center gap-2 border-b border-line bg-warning/10 px-3 py-1.5 text-xs text-warning @3xl:hidden"
+        >
+          <span>{t('decisionWaiting', { count: waitingDecisions })}</span>
+          <Button
+            variant="outline"
+            size="xs"
+            onClick={() => {
+              setPanel('side');
+              requestAnimationFrame(() => {
+                const card = sideRef.current?.querySelector<HTMLElement>(
+                  '[data-testid^="approval-"]',
+                );
+                card?.scrollIntoView({ block: 'nearest' });
+                (card?.querySelector<HTMLElement>('button') ?? sideRef.current)?.focus();
+              });
+            }}
+          >
+            {t('openResponse')}
+          </Button>
+        </div>
+      ) : null}
       <Main className="run-layout min-h-0 flex-1">
         <aside
           aria-labelledby="run-executions-heading"
@@ -547,7 +579,9 @@ function RunWorkspace({
           ) : null}
         </div>
         <aside
-          className={`flex min-h-0 flex-col gap-4 overflow-auto border-l border-line p-3 [grid-area:side] ${shown('side')}`}
+          ref={sideRef}
+          tabIndex={-1}
+          className={`flex min-h-0 flex-col gap-4 overflow-auto border-l border-line p-3 outline-none [grid-area:side] ${shown('side')}`}
         >
           {unknownExecution ? (
             <p role="alert" className="rounded border border-warning p-2 text-xs text-warning">
