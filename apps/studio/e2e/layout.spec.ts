@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { requestBox, startSession, teamFromTemplate } from './workbench.ts';
 
@@ -243,7 +244,10 @@ test('#75 a tooltip shortcut is drawn on the tooltip surface, not on a light key
   page,
 }) => {
   await blankSession(page);
-  await page.getByRole('banner').getByRole('button', { name: 'Hide the panel', exact: true }).hover();
+  await page
+    .getByRole('banner')
+    .getByRole('button', { name: 'Hide the panel', exact: true })
+    .hover();
   const key = page.locator('[data-tone="inverse"]');
   await expect(key).toBeVisible();
   const colours = await key.evaluate((node) => {
@@ -256,4 +260,36 @@ test('#75 a tooltip shortcut is drawn on the tooltip surface, not on a light key
   });
   expect(colours.keyBackground).toMatch(/rgba\(0, 0, 0, 0\)|transparent/);
   expect(colours.keyText).toBe(colours.popupText);
+});
+
+test('#76 dragging a step across a Loop boundary says it changes the team, and Undo restores it', async ({
+  page,
+}) => {
+  await page.goto('/?delay=50');
+  await page.getByRole('tab', { name: /^Teams/ }).click();
+  const examples = join(import.meta.dirname, '..', '..', '..', 'examples');
+  await page
+    .locator('input[type=file]')
+    .setInputFiles([
+      join(examples, 'research-team.corral.json'),
+      join(examples, 'research-team.layout.json'),
+    ]);
+  await expect(page).toHaveURL(/\/edit$/);
+  const write = page.locator('.react-flow__node[data-id="write"]');
+  const box = await write.boundingBox();
+  if (!box) throw new Error('no node');
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  // Out of the Loop, below it: the preview names the change before the drop.
+  await page.mouse.move(box.x + box.width / 2, box.y + 420, { steps: 12 });
+  const notice = page.getByTestId('loop-notice');
+  await expect(notice).toContainText('stop repeating');
+  await page.mouse.up();
+  await expect(notice).toContainText('no longer repeats');
+  await page.keyboard.press('Control+z');
+  await expect(page.getByText('Ready to run.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Arrange graph', exact: true })).toHaveAttribute(
+    'title',
+    'Moves boxes only; the team does not change',
+  );
 });

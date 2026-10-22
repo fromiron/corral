@@ -206,7 +206,7 @@ test('[TC-ART-003-N] a reviewer without the criteria is flagged, and one click g
   await expect(warnings).toContainText('does not get the criteria');
   // The Corral still runs; the warning says what the review will miss.
   await expect(page.getByText('Ready to run.')).toBeVisible();
-  await warnings.getByRole('button', { name: 'Give it the criteria' }).click();
+  await warnings.getByRole('button', { name: 'Add a criteria input' }).click();
   await expect(warnings).toHaveCount(0);
   await page.locator('.react-flow__node[data-id="review"]').click();
   await expect(page.getByText('criteria · Run input')).toBeVisible();

@@ -106,6 +106,10 @@
   "Canvas": {
     "label": "Corral canvas",
     "empty": "Drop an Agent and an Output here, then connect them.",
+    "loopEnterPreview": "Drop to add {node} to {loop}: it will repeat with the Loop.",
+    "loopLeavePreview": "Drop to take {node} out of {loop}: it will stop repeating.",
+    "loopEntered": "{node} now repeats in {loop}. Undo with Ctrl+Z.",
+    "loopLeft": "{node} no longer repeats in {loop}. Undo with Ctrl+Z.",
     "connected": "Connected {source} to {target}.",
     "callableAgent": "Callable agent",
     "ports": {
@@ -220,7 +224,7 @@
     "calls": "May call",
     "callKind": "Kind",
     "callTarget": "Callable agent",
-    "addCall": "Allow",
+    "addCall": "Add call link",
     "removeCall": "Remove link to {target}",
     "noCallableAgents": "Add an agent and set it to Only when called.",
     "fileTools": "Can change files",
@@ -270,7 +274,7 @@
       "REVIEW_WITHOUT_CRITERIA": "{node} does not get the criteria, so its review cannot check them."
     },
     "warningsHeading": "Worth a look",
-    "giveCriteria": "Give it the criteria"
+    "giveCriteria": "Add a criteria input"
   },
   "Run": {
     "heading": "Run",
@@ -408,7 +412,8 @@
     "undo": "Undo",
     "redo": "Redo",
     "shortcuts": "Undo: Ctrl+Z · Redo: Ctrl+Shift+Z",
-    "tidy": "Tidy up"
+    "tidy": "Arrange graph",
+    "tidyHint": "Moves boxes only; the team does not change"
   },
   "Workspace": {
     "heading": "Teams",
@@ -1006,7 +1011,7 @@
       "sessions": "Open a session"
     },
     "draftTeam": "Draft a team from a goal",
-    "tidy": "Tidy up the canvas"
+    "tidy": "Arrange the graph layout"
   },
   "Shortcuts": {
     "edit": "Change shortcut for {command}",

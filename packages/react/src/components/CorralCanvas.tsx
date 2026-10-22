@@ -12,7 +12,7 @@ import {
   ReactFlow,
   useReactFlow,
 } from '@xyflow/react';
-import { type DragEvent, useCallback, useMemo } from 'react';
+import { type DragEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { useStudioStores } from '../context.tsx';
@@ -250,25 +250,77 @@ export function CorralCanvas({ onNodeSelect }: { onNodeSelect?: () => void } = {
     [editor],
   );
 
-  const onNodeDragStart = useCallback(() => editor.getState().beginBatch(), [editor]);
-  const onNodeDragStop = useCallback(
-    (_event: unknown, node: Node) => {
+  // Crossing a Loop boundary changes the team, not only the drawing (#76 GA-02): say so while
+  // dragging, and say what changed after the drop. Undo restores both.
+  const [loopNotice, setLoopNotice] = useState<{ text: string; preview: boolean } | null>(null);
+  const loopChange = useCallback(
+    (node: Node) => {
       const state = editor.getState();
       const current = findNode(state.draft, node.id);
       if (
-        current &&
-        (current.type === 'agent' || current.type === 'decision') &&
-        !(current.type === 'agent' && current.invocation === 'callable')
-      ) {
-        const width = node.measured?.width ?? 160;
-        const height = node.measured?.height ?? 60;
-        const center = { x: node.position.x + width / 2, y: node.position.y + height / 2 };
-        const inside = loopAt(state.draft, center);
-        if (inside !== (current.loopId ?? null)) state.setLoopMembership(node.id, inside);
-      }
-      state.endBatch();
+        !current ||
+        (current.type !== 'agent' && current.type !== 'decision') ||
+        (current.type === 'agent' && current.invocation === 'callable')
+      )
+        return null;
+      const width = node.measured?.width ?? 160;
+      const height = node.measured?.height ?? 60;
+      const center = { x: node.position.x + width / 2, y: node.position.y + height / 2 };
+      const inside = loopAt(state.draft, center);
+      const from = current.loopId ?? null;
+      if (inside === from) return null;
+      const loopId = (inside ?? from) as string;
+      return {
+        nodeId: node.id,
+        inside,
+        node: current.label,
+        loop: findNode(state.draft, loopId)?.label ?? loopId,
+      };
     },
     [editor],
+  );
+  useEffect(() => {
+    if (!loopNotice || loopNotice.preview) return;
+    const timer = setTimeout(() => setLoopNotice(null), 6000);
+    return () => clearTimeout(timer);
+  }, [loopNotice]);
+  const onNodeDragStart = useCallback(() => editor.getState().beginBatch(), [editor]);
+  const onNodeDrag = useCallback(
+    (_event: unknown, node: Node) => {
+      const change = loopChange(node);
+      setLoopNotice(
+        change
+          ? {
+              preview: true,
+              text: t(change.inside ? 'loopEnterPreview' : 'loopLeavePreview', {
+                node: change.node,
+                loop: change.loop,
+              }),
+            }
+          : null,
+      );
+    },
+    [loopChange, t],
+  );
+  const onNodeDragStop = useCallback(
+    (_event: unknown, node: Node) => {
+      const state = editor.getState();
+      const change = loopChange(node);
+      if (change) state.setLoopMembership(change.nodeId, change.inside);
+      state.endBatch();
+      setLoopNotice(
+        change
+          ? {
+              preview: false,
+              text: t(change.inside ? 'loopEntered' : 'loopLeft', {
+                node: change.node,
+                loop: change.loop,
+              }),
+            }
+          : null,
+      );
+    },
+    [editor, loopChange, t],
   );
 
   const onDragOver = useCallback((event: DragEvent) => {
@@ -305,6 +357,7 @@ export function CorralCanvas({ onNodeSelect }: { onNodeSelect?: () => void } = {
         onConnectEnd={onConnectEnd}
         isValidConnection={isValidConnection}
         onNodeDragStart={onNodeDragStart}
+        onNodeDrag={onNodeDrag}
         onNodeDragStop={onNodeDragStop}
         onPaneClick={() => editor.getState().select(null)}
         onDragOver={onDragOver}
@@ -318,6 +371,16 @@ export function CorralCanvas({ onNodeSelect }: { onNodeSelect?: () => void } = {
         <Background />
         <Controls />
       </ReactFlow>
+      {loopNotice ? (
+        <p
+          role="status"
+          data-testid="loop-notice"
+          data-preview={loopNotice.preview || undefined}
+          className={`pointer-events-none absolute top-3 left-1/2 z-10 max-w-[90%] -translate-x-1/2 rounded-md px-3 py-1.5 text-xs shadow-popup ${loopNotice.preview ? 'bg-warning/15 text-warning' : 'bg-raised text-foreground'}`}
+        >
+          {loopNotice.text}
+        </p>
+      ) : null}
       {definition.nodes.length === 0 ? (
         <p className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-muted">
           {t('empty')}

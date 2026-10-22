@@ -52,7 +52,7 @@ test('[TC-CAN-002-H] Tidy up rearranges a messy canvas, and one Undo puts it bac
   const messy = await boxes(page, ['research', 'output']);
   expect(apart(messy('research'), messy('output'))).toBe(false);
 
-  await page.getByRole('button', { name: 'Tidy up' }).click();
+  await page.getByRole('button', { name: 'Arrange graph' }).click();
   // The view eases to fit the result; measure once it has settled.
   const overlaps = async () => {
     const tidy = await boxes(page, TOP);

@@ -106,6 +106,10 @@
   "Canvas": {
     "label": "Corral 캔버스",
     "empty": "에이전트와 출력을 여기 놓고 연결하세요.",
+    "loopEnterPreview": "놓으면 {node}이(가) {loop}에 들어가 반복 단계가 됩니다.",
+    "loopLeavePreview": "놓으면 {node}이(가) {loop}에서 빠져 반복하지 않습니다.",
+    "loopEntered": "{node}이(가) 이제 {loop}에서 반복합니다. Ctrl+Z로 되돌릴 수 있습니다.",
+    "loopLeft": "{node}이(가) 더 이상 {loop}에서 반복하지 않습니다. Ctrl+Z로 되돌릴 수 있습니다.",
     "connected": "{source}을(를) {target}에 연결했습니다.",
     "callableAgent": "호출형 에이전트",
     "ports": {
@@ -220,7 +224,7 @@
     "calls": "호출 가능",
     "callKind": "종류",
     "callTarget": "호출형 에이전트",
-    "addCall": "허용",
+    "addCall": "호출 연결 추가",
     "removeCall": "{target}로의 링크 제거",
     "noCallableAgents": "에이전트를 추가하고 '호출될 때만'으로 바꾸세요.",
     "fileTools": "파일을 바꿀 수 있음",
@@ -270,7 +274,7 @@
       "REVIEW_WITHOUT_CRITERIA": "{node}에 완료 기준이 전달되지 않아 기준대로 검토할 수 없습니다."
     },
     "warningsHeading": "확인해 볼 점",
-    "giveCriteria": "기준 전달하기"
+    "giveCriteria": "검토 기준 입력 추가"
   },
   "Run": {
     "heading": "실행",
@@ -408,7 +412,8 @@
     "undo": "실행 취소",
     "redo": "다시 실행",
     "shortcuts": "실행 취소: Ctrl+Z · 다시 실행: Ctrl+Shift+Z",
-    "tidy": "정리하기"
+    "tidy": "그래프 자동 배치",
+    "tidyHint": "상자 위치만 바꾸며 팀 정의는 바뀌지 않습니다"
   },
   "Workspace": {
     "heading": "팀",
@@ -1006,7 +1011,7 @@
       "sessions": "세션 열기"
     },
     "draftTeam": "목표에서 팀 초안 만들기",
-    "tidy": "캔버스 정리하기"
+    "tidy": "그래프 배치 자동 정리"
   },
   "Shortcuts": {
     "edit": "{command} 단축키 변경",

@@ -72,6 +72,7 @@ export function EditorToolbar() {
         type="button"
         onClick={tidy}
         disabled={empty}
+        title={t('tidyHint')}
         className="rounded-md fill-control px-2 py-1 text-xs disabled:opacity-40"
       >
         {t('tidy')}
