@@ -1859,7 +1859,6 @@
     },
     "missingReferences": "{count, plural, one {A reference no longer exists.} other {# references no longer exist.}} Remove it before sending.",
     "referenceGone": "(no longer exists)",
-    "referencesNextOnly": "References travel with follow-ups only; here they stay as text in the request.",
     "models": {
       "title": "Models of this team",
       "liveNote": "Live models are chosen: each role calls the model below.",
@@ -1883,12 +1882,10 @@
     "removeAttachment": "Remove {name}",
     "attachments": "Attached text files",
     "attachmentError": "Choose up to 5 UTF-8 text files, each at most 64 KiB. Binary or invalid files cannot be attached.",
-    "attachmentsNextOnly": "Text attachments are sent with a new or queued request.",
     "reviewOnly": "Review only · no file changes",
     "verificationScope": "Verification scope",
     "targetedScope": "Targeted checks",
     "releaseScope": "Release checks",
-    "scopeNextOnly": "These scope choices apply to a new request. Choose Next or reset the scope.",
     "designTemplate": "Design task template",
     "designTemplates": {
       "audit": {
@@ -1910,7 +1907,6 @@
     "imageUploading": "Uploading image…",
     "imageLimit": "Attach up to 3 images per request.",
     "imageFailed": "Image upload failed. Use PNG, JPEG or WebP up to 10 MiB and 16 million pixels; the normalized PNG must fit 1 MiB. The session also needs available image storage.",
-    "imagesNextOnly": "Images are excluded from this message and kept in your draft for a new request.",
     "qualityPreset": "Quality preset",
     "qualityDefault": "Default",
     "qualityUltra": "Ultra · plan, work and review",
@@ -1933,9 +1929,9 @@
       "accept_edits": "Accept edits",
       "auto": "Auto",
       "legacyHint": "Use the saved approval policy. Existing runs keep their permissions.",
-      "askHint": "Ask before edits and commands. Applies to the next request.",
-      "accept_editsHint": "Allow permitted file edits; ask before commands. Applies to the next request.",
-      "autoHint": "Allow actions within the existing tool policy and budget. Applies to the next request."
+      "askHint": "Ask before edits and commands.",
+      "accept_editsHint": "Allow permitted file edits; ask before commands.",
+      "autoHint": "Allow actions within the existing tool policy and budget."
     },
     "autoHarnessLabel": "Work style for next request",
     "autoHarnessDefault": "Use defaults · project over personal",
@@ -1953,7 +1949,14 @@
     "optionalCorralHint": "Start with a message. Choose a saved Corral when you want a reusable workflow.",
     "manageCorrals": "Create or manage Corrals",
     "customWorkStyle": "Custom work style",
-    "customRoles": "Custom role settings"
+    "customRoles": "Custom role settings",
+    "heldForNew": "Applies to a new request only: {items}",
+    "held": {
+      "references": "references",
+      "images": "images",
+      "attachments": "text attachments",
+      "scope": "review scope"
+    }
   },
   "Commands": {
     "newSession": "New session",

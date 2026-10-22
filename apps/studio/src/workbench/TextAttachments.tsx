@@ -138,11 +138,6 @@ export function TextAttachmentPicker({
           {t('attachmentError')}
         </p>
       ) : null}
-      {!hideList && value.length && !enabled ? (
-        <p role="status" className="text-xs text-warning">
-          {t('attachmentsNextOnly')}
-        </p>
-      ) : null}
     </div>
   );
 }

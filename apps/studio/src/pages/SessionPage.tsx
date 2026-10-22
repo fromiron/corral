@@ -1547,6 +1547,7 @@ export function Composer({
   useShortcutBindings();
   const t = useTranslations('Sessions');
   const tc = useTranslations('Composer');
+  const format = useFormatter();
   const contextMessages = useTranslations('Context');
   const navigation = useSettingsNavigation();
   const tr = useTranslations('Reins');
@@ -2752,6 +2753,19 @@ export function Composer({
     (intent === 'explain' && !latest) ||
     (intent === 'steer' && !steerTarget);
   const stopping = Boolean(ownActive) && !text.trim();
+  // What Send does now, said where it is pressed (#89).
+  const sendMeaning = intent === 'next' ? t('send') : `${t('send')} · ${t(`intent.${intent}`)}`;
+  // Items this intent does not carry share one notice and one wording (#89).
+  const heldScope =
+    (reviewOnly || verificationScope === 'release') && intent !== 'next' && intent !== 'explain';
+  const heldForNew = [
+    ...(chips.length && intent !== 'next' ? (['references'] as const) : []),
+    ...(images.length > 0 && intent !== 'next' ? (['images'] as const) : []),
+    ...(attachments.length > 0 && intent !== 'next' && intent !== 'queue'
+      ? (['attachments'] as const)
+      : []),
+    ...(heldScope ? (['scope'] as const) : []),
+  ];
   const why = (allowedHere: boolean) => (allowedHere ? undefined : tc('notNow'));
 
   useRegisterCommands('composer', [
@@ -3166,9 +3180,6 @@ export function Composer({
                 </Button>
               </div>
             ) : null}
-            {chips.length && intent !== 'next' ? (
-              <p className="text-2xs text-muted">{tc('referencesNextOnly')}</p>
-            ) : null}
             {chips.length ? (
               <ul aria-label={tc('references')} className="flex flex-wrap gap-1">
                 {chips.map((item) => (
@@ -3208,11 +3219,6 @@ export function Composer({
               onBusyChange={setImagesBusy}
               disabled={busy}
             />
-            {images.length > 0 && intent !== 'next' ? (
-              <p role="status" className="text-xs text-muted">
-                {tc('imagesNextOnly')}
-              </p>
-            ) : null}
             <TextAttachmentPicker
               key={`text:${attachmentEpoch}`}
               inputRef={textFiles}
@@ -3473,10 +3479,11 @@ export function Composer({
                     </Button>
                   </Tooltip>
                 ) : (
-                  <Tooltip content={t('send')} shortcut={sendKeyLabel(prefs.sendKey)}>
+                  <Tooltip content={sendMeaning} shortcut={sendKeyLabel(prefs.sendKey)}>
                     <Button
                       size="icon-sm"
                       aria-label={t('send')}
+                      aria-description={sendMeaning}
                       disabled={busy || !text.trim() || unavailable}
                       className="rounded-full"
                       onClick={() => void send()}
@@ -3498,14 +3505,18 @@ export function Composer({
           <span className="text-warning">{t('noResult')}</span>
         ) : null}
         {liveUnavailable ? <p role="alert">{tc('liveUnavailable')}</p> : null}
-        {(reviewOnly || verificationScope === 'release') &&
-        intent !== 'next' &&
-        intent !== 'explain' ? (
+        {heldForNew.length ? (
           <div role="status" className="flex flex-wrap items-center gap-2 text-warning">
-            <span>{tc('scopeNextOnly')}</span>
-            <Button variant="outline" size="xs" onClick={() => setRequestOptionsOpen(true)}>
-              {tc('changeScope')}
-            </Button>
+            <span>
+              {tc('heldForNew', {
+                items: format.list(heldForNew.map((item) => tc(`held.${item}`))),
+              })}
+            </span>
+            {heldScope ? (
+              <Button variant="outline" size="xs" onClick={() => setRequestOptionsOpen(true)}>
+                {tc('changeScope')}
+              </Button>
+            ) : null}
           </div>
         ) : null}
         {ultraBlocked ? <p role="status">{tc('ultraNeedsModels')}</p> : null}

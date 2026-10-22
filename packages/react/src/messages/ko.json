@@ -1859,7 +1859,6 @@
     },
     "missingReferences": "더 이상 없는 참조가 {count}개 있어요. 빼고 보내세요.",
     "referenceGone": "(더 이상 없음)",
-    "referencesNextOnly": "참조는 후속 작업에만 함께 전달돼요. 지금은 요청 글자로만 남아요.",
     "models": {
       "title": "이 팀의 모델",
       "liveNote": "실제 모델이 선택되어 있어요. 각 역할은 아래 모델을 불러요.",
@@ -1883,12 +1882,10 @@
     "removeAttachment": "{name} 첨부 제거",
     "attachments": "첨부한 텍스트 파일",
     "attachmentError": "UTF-8 텍스트 파일을 최대 5개, 각각 64 KiB까지 첨부할 수 있습니다. 바이너리 또는 잘못된 파일은 첨부할 수 없습니다.",
-    "attachmentsNextOnly": "텍스트 첨부는 새 요청이나 대기열 요청에 포함됩니다.",
     "reviewOnly": "검토만 · 파일 변경 안 함",
     "verificationScope": "요청할 검증 범위",
     "targetedScope": "변경 범위 검증",
     "releaseScope": "릴리스 검증",
-    "scopeNextOnly": "이 범위 선택은 새 요청에 적용됩니다. 새 요청을 선택하거나 범위를 초기화하세요.",
     "designTemplate": "디자인 작업 템플릿",
     "designTemplates": {
       "audit": {
@@ -1910,7 +1907,6 @@
     "imageUploading": "이미지 업로드 중…",
     "imageLimit": "요청당 이미지는 최대 3개입니다.",
     "imageFailed": "이미지 업로드에 실패했습니다. 10 MiB·1,600만 픽셀 이하 PNG/JPEG/WebP를 사용하세요. 변환한 PNG는 1 MiB 이하여야 하며 세션 이미지 저장 공간이 남아 있어야 합니다.",
-    "imagesNextOnly": "이미지는 이번 메시지에서 제외하고 새 요청의 초안에 보관합니다.",
     "qualityPreset": "품질 프리셋",
     "qualityDefault": "기본",
     "qualityUltra": "Ultra · 계획·작업·검토",
@@ -1933,9 +1929,9 @@
       "accept_edits": "편집 허용",
       "auto": "자동",
       "legacyHint": "저장된 승인 규칙을 사용합니다. 진행 중인 실행의 권한은 바뀌지 않습니다.",
-      "askHint": "편집과 명령 실행 전에 확인합니다. 다음 요청에 적용됩니다.",
-      "accept_editsHint": "허용된 파일 편집은 진행하고 명령 실행 전에 확인합니다. 다음 요청에 적용됩니다.",
-      "autoHint": "기존 도구 정책과 예산 안에서 실행합니다. 다음 요청에 적용됩니다."
+      "askHint": "편집과 명령 실행 전에 확인합니다.",
+      "accept_editsHint": "허용된 파일 편집은 진행하고 명령 실행 전에 확인합니다.",
+      "autoHint": "기존 도구 정책과 예산 안에서 실행합니다."
     },
     "autoHarnessLabel": "다음 요청의 작업 방식",
     "autoHarnessDefault": "기본값 사용 · 프로젝트가 개인보다 우선",
@@ -1953,7 +1949,14 @@
     "optionalCorralHint": "기본 대화는 바로 시작할 수 있습니다. 반복 작업에는 저장한 Corral을 선택하세요.",
     "manageCorrals": "Corral 만들기·관리",
     "customWorkStyle": "작업 방식 지정됨",
-    "customRoles": "역할별 설정 변경됨"
+    "customRoles": "역할별 설정 변경됨",
+    "heldForNew": "새 요청에만 적용: {items}",
+    "held": {
+      "references": "참조",
+      "images": "이미지",
+      "attachments": "텍스트 첨부",
+      "scope": "검증 범위"
+    }
   },
   "Commands": {
     "newSession": "새 세션",
