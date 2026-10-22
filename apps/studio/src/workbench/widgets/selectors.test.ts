@@ -6,6 +6,7 @@ import {
   changesPresentation,
   fileChangeSignals,
   planBodyStatus,
+  planItemTransitions,
   presentContext,
   selectPresentedPlan,
   toolRows,
@@ -639,5 +640,73 @@ describe('chat widget selectors', () => {
     });
     expect(vague.text).toBe('working');
     expect(vague.elapsedMs).toBeNull();
+  });
+});
+
+describe('planItemTransitions', () => {
+  const items = (...statuses: ('pending' | 'in_progress' | 'completed')[]) =>
+    statuses.map((status, index) => ({
+      id: `step_${index + 1}`,
+      title: `Step ${index + 1}`,
+      status,
+    }));
+  const seen = (key: string, ...statuses: ('pending' | 'in_progress' | 'completed')[]) => ({
+    key,
+    statuses: Object.fromEntries(items(...statuses).map((item) => [item.id, item.status])),
+  });
+
+  it('marks only rows whose status changed while the same plan was in view', () => {
+    expect(
+      planItemTransitions({
+        previous: seen('run_1:exec_a:1', 'completed', 'in_progress', 'pending', 'pending'),
+        key: 'run_1:exec_a:1',
+        items: items('completed', 'completed', 'in_progress', 'pending'),
+        watching: true,
+      }),
+    ).toEqual({ completed: ['step_2'], started: ['step_3'] });
+    // A skipped step, a reopened step and an item new to this revision.
+    expect(
+      planItemTransitions({
+        previous: seen('k', 'completed', 'pending'),
+        key: 'k',
+        items: [
+          ...items('in_progress', 'completed'),
+          { id: 'step_9', title: 'New', status: 'completed' },
+        ],
+        watching: true,
+      }),
+    ).toEqual({ completed: ['step_2'], started: ['step_1'] });
+  });
+
+  it('does not replay history on first view, after a target switch, or while collapsed', () => {
+    const next = items('completed', 'in_progress');
+    expect(planItemTransitions({ previous: null, key: 'k', items: next, watching: true })).toEqual({
+      completed: [],
+      started: [],
+    });
+    expect(
+      planItemTransitions({
+        previous: seen('run_1:exec_a:1', 'pending', 'pending'),
+        key: 'run_2:exec_a:1',
+        items: next,
+        watching: true,
+      }),
+    ).toEqual({ completed: [], started: [] });
+    expect(
+      planItemTransitions({
+        previous: seen('k', 'pending', 'pending'),
+        key: 'k',
+        items: next,
+        watching: false,
+      }),
+    ).toEqual({ completed: [], started: [] });
+    expect(
+      planItemTransitions({
+        previous: seen('k', 'completed', 'in_progress'),
+        key: 'k',
+        items: next,
+        watching: true,
+      }),
+    ).toEqual({ completed: [], started: [] });
   });
 });

@@ -172,6 +172,14 @@ test('[TC-WIDGET-001-H] [TC-WIDGET-002-H] live plans, context, manual collapse a
     });
     next.release();
     await expect(toggle).toContainText('1/7 done');
+    // The row that just finished and the next one are marked once for the completion cue.
+    await expect(plan.locator('[data-plan-item="step_1"]')).toHaveAttribute(
+      'data-just',
+      'completed',
+    );
+    await expect(plan.locator('[data-plan-item="step_2"]')).toHaveAttribute('data-just', 'started');
+    await expect(plan.locator('[data-just]')).toHaveCount(2);
+    await expect(plan.getByTestId('work-plan-progress')).toHaveAttribute('style', /scaleX\(0\.14/);
     expect(await originalInput?.evaluate((element) => element.isConnected)).toBe(true);
     await expect(input).toHaveValue('다음 요청 日本語');
     expect(await input.evaluate((element: HTMLTextAreaElement) => element.selectionStart)).toBe(3);
@@ -192,6 +200,15 @@ test('[TC-WIDGET-001-H] [TC-WIDGET-002-H] live plans, context, manual collapse a
     await expect(plan.getByRole('listitem')).toHaveCount(0);
     later.release();
     await expect(toggle).toContainText('2/7 done');
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    // A revision that arrived while collapsed does not replay as a cue when reopened.
+    await toggle.click();
+    await expect(plan.locator('[data-plan-item="step_2"]')).toHaveAttribute(
+      'data-status',
+      'completed',
+    );
+    await expect(plan.locator('[data-just]')).toHaveCount(0);
+    await toggle.click();
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     ask.release();
     const question = page.getByRole('form', { name: 'Waiting for your answer' });

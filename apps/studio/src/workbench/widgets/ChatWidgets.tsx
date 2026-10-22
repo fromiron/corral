@@ -20,11 +20,16 @@ import {
   Select,
 } from '@corral/react/ui';
 import { Link } from '@tanstack/react-router';
-import { type ReactNode, useId, useState } from 'react';
+import { type ReactNode, useId, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { useServices } from '../../services.tsx';
-import type { WidgetChip } from './selectors.ts';
+import {
+  type PlanBody,
+  planItemTransitions,
+  type SeenPlanItems,
+  type WidgetChip,
+} from './selectors.ts';
 import { type ChatWidgetModel, useChatWidget } from './useChatWidgets.tsx';
 
 const CATEGORIES = [
@@ -631,12 +636,14 @@ export function ComposerPlan() {
   const ts = useTranslations('Status');
   const panelId = useId();
   const [allKey, setAllKey] = useState<string | null>(null);
-  if (!model?.runId) return null;
-  const status = model.plan.status;
-  const plan = 'plan' in status ? status.plan : null;
+  const status = model?.plan.status;
+  const plan = status && 'plan' in status ? status.plan : null;
+  const key = `${model?.runId}:${model?.plan.selectedKey}`;
+  const moved = usePlanTransitions(key, plan, Boolean(model?.plan.open));
+  if (!model?.runId || !status) return null;
   const selection = model.plan.selectedChoice;
-  const key = `${model.runId}:${model.plan.selectedKey}`;
   const showAll = allKey === key;
+  const progress = 'completed' in status && status.total > 0 ? status.completed / status.total : 0;
   const count =
     'completed' in status
       ? t(
@@ -700,6 +707,15 @@ export function ComposerPlan() {
             ) : null}
             <span className="ml-auto shrink-0 tabular-nums text-muted">{count}</span>
           </Button>
+          {'completed' in status ? (
+            <div aria-hidden="true" className="mx-4 h-0.5 overflow-hidden rounded-full bg-line/40">
+              <div
+                data-testid="work-plan-progress"
+                className="h-full origin-left rounded-full bg-accent/70 transition-transform duration-500 ease-out motion-reduce:transition-none"
+                style={{ transform: `scaleX(${progress})` }}
+              />
+            </div>
+          ) : null}
           <div id={panelId} hidden={!model.plan.open} className="work-plan-disclosure">
             {model.plan.open ? (
               <div
@@ -734,16 +750,24 @@ export function ComposerPlan() {
                   </div>
                 ) : null}
                 {plan ? (
-                  <ol className="flex flex-col">
+                  <ol className="flex flex-col pt-1">
                     {(showAll ? plan.items : plan.items.slice(0, 5)).map((item) => (
                       <li
                         key={item.id}
                         data-plan-item={item.id}
-                        className="flex min-h-8 items-start gap-2.5 py-1.5 text-ui leading-5"
+                        data-status={item.status}
+                        data-just={
+                          moved.completed.includes(item.id)
+                            ? 'completed'
+                            : moved.started.includes(item.id)
+                              ? 'started'
+                              : undefined
+                        }
+                        className={`work-plan-item -mx-2 flex min-h-8 items-start gap-2.5 rounded-md px-2 py-1.5 text-ui leading-5 transition-colors duration-300 motion-reduce:transition-none ${item.status === 'in_progress' ? 'bg-accent/8' : ''}`}
                       >
                         <WorkPlanStatusIcon status={item.status} label={t(item.status)} />
                         <span
-                          className={`min-w-0 break-words ${item.status === 'completed' ? 'text-muted' : item.status === 'in_progress' ? 'font-medium' : ''}`}
+                          className={`work-plan-title min-w-0 break-words transition-colors duration-300 motion-reduce:transition-none ${item.status === 'completed' ? 'text-muted line-through decoration-muted/50' : item.status === 'in_progress' ? 'font-medium' : ''}`}
                         >
                           {item.title}
                         </span>
@@ -771,6 +795,30 @@ export function ComposerPlan() {
     </div>
   );
 }
+/** Which rows just changed in the open plan, kept for one revision so a later render does not cut the cue short. */
+function usePlanTransitions(key: string, plan: PlanBody | null, watching: boolean) {
+  const seen = useRef<SeenPlanItems | null>(null);
+  const shown = useRef<{ at: string; moved: ReturnType<typeof planItemTransitions> } | null>(null);
+  if (!plan) return { completed: [], started: [] };
+  const owner = `${key}:${plan.executionId}:${plan.attemptNo}:${plan.scope}`;
+  const at = `${owner}:${plan.revision}:${watching}`;
+  if (shown.current?.at !== at) {
+    shown.current = {
+      at,
+      moved: planItemTransitions({
+        previous: seen.current,
+        key: owner,
+        items: plan.items,
+        watching,
+      }),
+    };
+    seen.current = {
+      key: owner,
+      statuses: Object.fromEntries(plan.items.map((item) => [item.id, item.status])),
+    };
+  }
+  return shown.current.moved;
+}
 function WorkPlanStatusIcon({
   status,
   label,
@@ -781,7 +829,7 @@ function WorkPlanStatusIcon({
   return (
     <span
       role="img"
-      className={`mt-0.5 inline-flex shrink-0 ${status === 'in_progress' ? 'text-accent' : 'text-muted'}`}
+      className={`work-plan-icon mt-0.5 inline-flex shrink-0 ${status === 'in_progress' ? 'text-accent' : 'text-muted'}`}
       title={label}
       aria-label={label}
     >

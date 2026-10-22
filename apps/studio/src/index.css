@@ -210,8 +210,30 @@
     transform: translateY(-2px);
   }
 }
+/* A plan row that just finished confirms once; the static state is the check icon, its label and the count. */
+.work-plan-item[data-just="completed"] .work-plan-icon {
+  animation: corral-plan-check 900ms ease-out;
+}
+@keyframes corral-plan-check {
+  0% {
+    color: var(--success);
+    transform: scale(0.6);
+  }
+  35% {
+    color: var(--success);
+    transform: scale(1.15);
+  }
+  70% {
+    color: var(--success);
+    transform: scale(1);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
 @media (prefers-reduced-motion: reduce) {
-  .corral-quiet-activity > span {
+  .corral-quiet-activity > span,
+  .work-plan-item[data-just="completed"] .work-plan-icon {
     animation: none;
   }
 }

@@ -133,6 +133,31 @@ export function planBodyStatus(input: {
   };
 }
 
+export interface SeenPlanItems {
+  key: string;
+  statuses: Record<string, PlanItem['status']>;
+}
+
+/** Rows that changed between two revisions of the same plan while it was open. Display only; the first view, a target switch or a collapsed list replays nothing. */
+export function planItemTransitions(input: {
+  previous: SeenPlanItems | null;
+  key: string;
+  items: readonly PlanItem[];
+  watching: boolean;
+}) {
+  const completed: string[] = [];
+  const started: string[] = [];
+  if (!input.watching || !input.previous || input.previous.key !== input.key)
+    return { completed, started };
+  for (const item of input.items) {
+    const before = input.previous.statuses[item.id];
+    if (!before || before === item.status) continue;
+    if (item.status === 'completed') completed.push(item.id);
+    else if (item.status === 'in_progress') started.push(item.id);
+  }
+  return { completed, started };
+}
+
 export function workPlanPreferenceKey(input: {
   sessionId: string;
   runId: string;
