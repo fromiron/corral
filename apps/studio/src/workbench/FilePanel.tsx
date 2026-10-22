@@ -1,16 +1,7 @@
 import type { FileSideView } from '@corral/client';
 import type { TextAttachment, WorkspaceTarget } from '@corral/contracts';
 import { FileText, RefreshCw, X } from '@corral/react/icons';
-import {
-  Button,
-  Dialog,
-  DialogDescription,
-  DialogPopup,
-  DialogTitle,
-  Input,
-  Select,
-  Textarea,
-} from '@corral/react/ui';
+import { Button, Input, Select, Textarea } from '@corral/react/ui';
 import { Link } from '@tanstack/react-router';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
@@ -27,16 +18,11 @@ import { useRemembered } from '../pages/Workbench.tsx';
 import { useServices } from '../services.tsx';
 import type { AttachmentCapture } from './context/bridge.ts';
 import { DocumentPanel } from './DocumentPanel.tsx';
+import { DocumentCloseDialog } from './documents/DocumentCloseDialog.tsx';
 import type { RecoveryDraft } from './documents/recovery.ts';
 import { type CloseChoice, type DocumentBuffer, documentStore } from './documents/store.ts';
-import { canPreviewFile, FilePreview } from './FilePreview.tsx';
 import { useSettingsNavigation } from './navigation.ts';
-import { PreviewLeases } from './PreviewLeases.tsx';
-import { panelKey } from './panels/registry.ts';
-import { ServicePreview } from './ServicePreview.tsx';
-import { TerminalPanel } from './TerminalPanel.tsx';
 import { useWorkspaceFiles } from './useWorkspaceFiles.ts';
-import { WorktreeCommandPanel } from './WorktreeCommandPanel.tsx';
 
 const SourceCode = lazy(() =>
   import('./PierreCode.tsx').then((module) => ({ default: module.SourceCode })),
@@ -45,11 +31,6 @@ const noDocuments = { documents: {} as Record<string, DocumentBuffer> };
 const noSubscription = () => () => {};
 const emptyDocuments = () => noDocuments;
 const fileViewId = (sessionId: string, path: string) => JSON.stringify(['files', sessionId, path]);
-
-export function openedFilePaths(paths: string[], path: string): string[] | null {
-  if (paths.includes(path)) return paths;
-  return paths.length < 20 ? [...paths, path] : null;
-}
 
 export interface FileReference {
   path: string;
@@ -64,24 +45,27 @@ export interface OpenDocumentRequest {
 export const referenceText = ({ path, start, end }: FileReference) =>
   `@${path.includes(' ') ? JSON.stringify(path) : path}:L${start}${end === start ? '' : `-L${end}`}`;
 
+/**
+ * The file browser. Session-copy files open in the dock's document tabs, the one tab
+ * strip; an original-folder file shows a single read-only preview here (#87).
+ */
 export function FilePanel({
   projectId,
   sessionId,
   onReference,
   onAttach,
   onOpenDocument,
-  showTools = true,
 }: {
   projectId: string;
   sessionId: string;
   onReference: (reference: FileReference) => void;
   onAttach?: (attachment: TextAttachment, capture: AttachmentCapture) => void | Promise<void>;
   onOpenDocument?: (document: OpenDocumentRequest) => boolean;
-  showTools?: boolean;
 }) {
   const t = useTranslations('Desktop');
   const tf = useTranslations('Files');
   const te = useTranslations('Documents');
+  const td = useTranslations('Docking');
   const navigation = useSettingsNavigation();
   const services = useServices();
   const { workspaces, mode, workspaceId } = services;
@@ -101,15 +85,11 @@ export function FilePanel({
     sessionId,
     source,
   );
-  const [saved, save] = useRemembered<{ paths: string[]; active: string | null }>(
-    `corral:file-tabs:v1:${sessionId}:${scope?.kind ?? 'project'}`,
-    { paths: [], active: null },
+  const [saved, setPreview] = useRemembered<string | null>(
+    `corral:file-preview:v1:${sessionId}:${scope?.kind ?? 'project'}`,
+    null,
   );
-  const paths = Array.isArray(saved?.paths)
-    ? saved.paths.filter((p): p is string => typeof p === 'string').slice(0, 20)
-    : [];
-  const active =
-    typeof saved?.active === 'string' && paths.includes(saved.active) ? saved.active : null;
+  const active = typeof saved === 'string' ? saved : null;
   const [query, setQuery] = useState('');
   const [content, setContent] = useState<FileSideView | null>(null);
   const [readError, setReadError] = useState<string | null>(null);
@@ -150,18 +130,8 @@ export function FilePanel({
     estimateSize: () => 30,
     overscan: 6,
   });
-  const openInline = (path: string) => {
-    const next = openedFilePaths(paths, path);
-    if (!next) {
-      setTabMessage(te('tabLimit'));
-      return;
-    }
-    setTabMessage(null);
-    save({ paths: next, active: path });
-  };
   const removeTab = (path: string) => {
-    const next = paths.filter((p) => p !== path);
-    save({ paths: next, active: active === path ? (next.at(-1) ?? null) : active });
+    if (active === path) setPreview(null);
     setTabMessage(null);
   };
   const scopeKind = scope?.kind;
@@ -183,17 +153,11 @@ export function FilePanel({
         const key = await owner.open(sessionId, path);
         if (openEpoch.current !== epoch) return;
         const entry = owner.getState().documents[key];
-        if (
-          entry &&
-          (entry.file.content.kind === 'text' ||
-            entry.dirty ||
-            entry.pendingSave ||
-            entry.recoveries.length)
-        ) {
-          if (onOpenDocument({ documentKey: key, target: entry.target, path: entry.path })) {
-            setTabMessage(null);
-            if (paths.includes(path)) removeTab(path);
-          } else setTabMessage(te('tabLimit'));
+        // Whatever the file holds, a session-copy file has one home: its document tab.
+        if (entry) {
+          if (onOpenDocument({ documentKey: key, target: entry.target, path: entry.path }))
+            removeTab(path);
+          else setTabMessage(td('tabLimit'));
           return;
         }
       } catch (failure) {
@@ -202,7 +166,8 @@ export function FilePanel({
         return;
       }
     }
-    openInline(path);
+    setTabMessage(null);
+    setPreview(path);
   };
   const retained = Object.values(documents).filter(
     (entry) =>
@@ -304,59 +269,26 @@ export function FilePanel({
     copy?.bindingId,
     copy?.copyGeneration,
   ]);
-  const closeDialog = closing ? (
-    <Dialog
-      open
-      onOpenChange={(open) => {
-        if (!open && !closeBusy) setClosing(null);
-      }}
-    >
-      <DialogPopup
-        finalFocus={() =>
-          panel.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]') ??
-          panel.current?.querySelector<HTMLElement>('button') ??
-          false
-        }
-        showCloseButton={false}
-        bottomStickOnMobile={false}
-        className="flex flex-col gap-4 p-6"
-      >
-        <DialogTitle>{te('closeTitle', { path: closing.path })}</DialogTitle>
-        <DialogDescription>{te('closeHint')}</DialogDescription>
-        {closeError || documents[closing.key]?.pendingSave ? (
-          <p role="alert" className="text-sm text-danger">
-            {te('closeFailed')}
-          </p>
-        ) : null}
-        <div className="flex flex-wrap gap-2">
-          <Button
-            disabled={
-              closeBusy ||
-              !currentCopy(documents[closing.key]) ||
-              Boolean(documents[closing.key]?.pendingSave && !documents[closing.key]?.canRetrySave)
-            }
-            onClick={() => void close(closing.path, 'save', closing.key)}
-          >
-            {te('saveClose')}
-          </Button>
-          <Button
-            variant="outline"
-            disabled={closeBusy || Boolean(documents[closing.key]?.pendingSave)}
-            onClick={() => void close(closing.path, 'discard', closing.key)}
-          >
-            {te('discard')}
-          </Button>
-          <Button
-            variant="ghost"
-            disabled={closeBusy}
-            onClick={() => void close(closing.path, 'cancel', closing.key)}
-          >
-            {te('cancel')}
-          </Button>
-        </div>
-      </DialogPopup>
-    </Dialog>
-  ) : null;
+  const closingEntry = closing ? documents[closing.key] : undefined;
+  const closeDialog = (
+    <DocumentCloseDialog
+      path={closing?.path ?? null}
+      busy={closeBusy}
+      failed={closeError || Boolean(closingEntry?.pendingSave)}
+      saveDisabled={
+        !currentCopy(closingEntry) ||
+        Boolean(closingEntry?.pendingSave && !closingEntry?.canRetrySave)
+      }
+      discardDisabled={Boolean(closingEntry?.pendingSave)}
+      finalFocus={() =>
+        panel.current?.querySelector<HTMLElement>('[data-testid="file-preview-pane"] button') ??
+        panel.current?.querySelector<HTMLElement>('button') ??
+        false
+      }
+      onChoose={(choice) => closing && void close(closing.path, choice, closing.key)}
+      onDismiss={() => setClosing(null)}
+    />
+  );
   const candidates = sessionRecoveries.filter(
     (candidate) =>
       !retained.some(
@@ -469,7 +401,6 @@ export function FilePanel({
   if (!scope && !loading)
     return (
       <div ref={panel} className="space-y-2 p-3 text-xs text-muted">
-        {showTools ? <TerminalPanel projectId={projectId} sessionId={sessionId} /> : null}
         {retainedDrafts}
         {recoveryCandidates}
         {recoveryReadError ? <p role="alert">{te('recoveryReadFailed')}</p> : null}
@@ -484,6 +415,17 @@ export function FilePanel({
   const displayContent =
     scopeKind === 'session' && owner ? (currentDocument?.file.content ?? content) : content;
   const lineCount = displayContent?.kind === 'text' ? displayContent.text.split('\n').length : 1;
+  // Only a session copy without the dock edits in place; the dock owns those documents.
+  const inlineEditor = Boolean(
+    scopeKind === 'session' &&
+      owner &&
+      documentKey &&
+      documents[documentKey] &&
+      (documents[documentKey].file.content.kind === 'text' ||
+        documents[documentKey].dirty ||
+        documents[documentKey].pendingSave ||
+        documents[documentKey].recoveries.length),
+  );
   return (
     <div ref={panel} className="flex min-h-0 flex-col gap-2" data-testid="file-panel">
       {retainedDrafts}
@@ -492,17 +434,6 @@ export function FilePanel({
         <p role="alert" className="text-xs text-danger">
           {te('recoveryReadFailed')}
         </p>
-      ) : null}
-      {showTools && scopeKind === 'session' ? (
-        <PreviewLeases key={`previews:${sessionId}`} sessionId={sessionId} />
-      ) : null}
-      {showTools && scopeKind === 'session' ? <WorktreeCommandPanel sessionId={sessionId} /> : null}
-      {showTools ? <TerminalPanel projectId={projectId} sessionId={sessionId} /> : null}
-      {showTools && scopeKind === 'session' ? (
-        <ServicePreview
-          key={panelKey(services, { kind: 'service-preview', sessionId })}
-          sessionId={sessionId}
-        />
       ) : null}
       <div className="flex items-center gap-2">
         <Select
@@ -521,6 +452,7 @@ export function FilePanel({
           <RefreshCw />
         </Button>
       </div>
+      {onOpenDocument ? <p className="text-2xs text-muted">{tf('openRule')}</p> : null}
       <Input
         aria-label={t('filterFiles')}
         placeholder={t('filterFiles')}
@@ -568,149 +500,102 @@ export function FilePanel({
           {tabMessage}
         </p>
       ) : null}
-      <div
-        role="tablist"
-        aria-label={t('openFiles')}
-        className="flex overflow-x-auto border-b border-line"
-      >
-        {paths.map((path) => (
-          <div
-            key={path}
-            className={`flex shrink-0 items-center border-r border-line ${active === path ? 'bg-raised' : ''}`}
-          >
-            <button
-              type="button"
-              role="tab"
-              aria-selected={active === path}
-              tabIndex={active === path ? 0 : -1}
-              onClick={() => open(path)}
-              onKeyDown={(event) => {
-                const index = paths.indexOf(path);
-                const next =
-                  event.key === 'ArrowRight'
-                    ? (index + 1) % paths.length
-                    : event.key === 'ArrowLeft'
-                      ? (index + paths.length - 1) % paths.length
-                      : event.key === 'Home'
-                        ? 0
-                        : event.key === 'End'
-                          ? paths.length - 1
-                          : -1;
-                const nextPath = paths[next];
-                if (nextPath === undefined) return;
-                event.preventDefault();
-                open(nextPath);
-                event.currentTarget
-                  .closest('[role="tablist"]')
-                  ?.querySelectorAll<HTMLButtonElement>('[role="tab"]')
-                  [next]?.focus();
-              }}
-              className="max-w-40 truncate px-2 py-2 text-xs"
-              title={path}
-              aria-label={
-                scopeKind === 'session' && buffered(path)?.dirty ? te('dirtyTab', { path }) : path
-              }
-            >
-              {path}
-              {scopeKind === 'session' && buffered(path)?.dirty ? (
-                <span aria-hidden="true"> ●</span>
-              ) : null}
-            </button>
+      {active ? (
+        <section
+          data-testid="file-preview-pane"
+          aria-label={active}
+          className="flex min-w-0 flex-col gap-2 border-t border-line pt-2"
+        >
+          <div className="flex min-w-0 items-center gap-2 text-xs">
+            <p className="min-w-0 flex-1 truncate font-medium" title={active}>
+              {active}
+            </p>
+            {inlineEditor ? null : (
+              <span className="text-2xs text-muted">{tf('readOnlyPreview')}</span>
+            )}
             <Button
               size="icon-xs"
               variant="ghost"
-              aria-label={t('closeFile', { path })}
-              onClick={() => void close(path)}
+              aria-label={t('closeFile', { path: active })}
+              onClick={() => void close(active)}
             >
               <X />
             </Button>
           </div>
-        ))}
-      </div>
-      {readError ? (
-        <p role="alert" className="text-xs text-danger">
-          {readError}
-        </p>
-      ) : null}
-      {active && !displayContent && !readError ? (
-        <p className="text-xs text-muted">{t('loadingFile')}</p>
-      ) : null}
-      {active && canPreviewFile(active) && scopeKind === 'session' && mode === 'server' ? (
-        <FilePreview
-          key={panelKey(services, { kind: 'file-preview', sessionId, path: active })}
-          sessionId={sessionId}
-          path={active}
-        />
-      ) : null}
-      {scopeKind === 'session' &&
-      owner &&
-      documentKey &&
-      documents[documentKey] &&
-      (documents[documentKey].file.content.kind === 'text' ||
-        documents[documentKey].dirty ||
-        documents[documentKey].pendingSave ||
-        documents[documentKey].recoveries.length) ? (
-        <DocumentPanel
-          key={documentKey}
-          owner={owner}
-          documentKey={documentKey}
-          viewId={fileViewId(sessionId, documents[documentKey].path)}
-          onReference={onReference}
-          onAttach={onAttach}
-          readOnlyTarget={!currentCopy(documents[documentKey])}
-        />
-      ) : displayContent?.kind === 'text' && active ? (
-        <>
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <label>
-              {t('fromLine')}{' '}
-              <input
-                type="number"
-                min={1}
-                max={lineCount}
-                value={range.start}
-                onChange={(e) => setRange((r) => ({ ...r, start: e.target.valueAsNumber || 1 }))}
-                className="w-14 rounded fill-control px-1"
-              />
-            </label>
-            <label>
-              {t('toLine')}{' '}
-              <input
-                type="number"
-                min={range.start}
-                max={lineCount}
-                value={range.end}
-                onChange={(e) => setRange((r) => ({ ...r, end: e.target.valueAsNumber || 1 }))}
-                className="w-14 rounded fill-control px-1"
-              />
-            </label>
-            <Button
-              size="xs"
-              variant="outline"
-              disabled={range.start < 1 || range.end < range.start || range.end > lineCount}
-              onClick={() => onReference({ path: active, ...range })}
-            >
-              {t('referenceLines')}
-            </Button>
-          </div>
-          <section
-            aria-label={t('fileContent')}
-            className="max-h-[45vh] overflow-auto rounded fill-group"
-          >
-            <Suspense fallback={<p className="p-3 text-xs text-muted">{t('loadingFile')}</p>}>
-              <SourceCode path={active} text={displayContent.text} onSelect={setRange} />
-            </Suspense>
-          </section>
-          <p className="text-2xs text-muted">{t('referencePermission')}</p>
-        </>
-      ) : displayContent ? (
-        <p className="text-xs text-muted">
-          {displayContent.kind === 'too_large'
-            ? tf('tooLarge')
-            : displayContent.kind === 'binary'
-              ? tf('binary')
-              : t('fileUnavailable')}
-        </p>
+          {readError ? (
+            <p role="alert" className="text-xs text-danger">
+              {readError}
+            </p>
+          ) : null}
+          {!displayContent && !readError ? (
+            <p className="text-xs text-muted">{t('loadingFile')}</p>
+          ) : null}
+          {inlineEditor && owner && documentKey && documents[documentKey] ? (
+            <DocumentPanel
+              key={documentKey}
+              owner={owner}
+              documentKey={documentKey}
+              viewId={fileViewId(sessionId, documents[documentKey].path)}
+              onReference={onReference}
+              onAttach={onAttach}
+              readOnlyTarget={!currentCopy(documents[documentKey])}
+            />
+          ) : displayContent?.kind === 'text' ? (
+            <>
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <label>
+                  {t('fromLine')}{' '}
+                  <input
+                    type="number"
+                    min={1}
+                    max={lineCount}
+                    value={range.start}
+                    onChange={(e) =>
+                      setRange((r) => ({ ...r, start: e.target.valueAsNumber || 1 }))
+                    }
+                    className="w-14 rounded fill-control px-1"
+                  />
+                </label>
+                <label>
+                  {t('toLine')}{' '}
+                  <input
+                    type="number"
+                    min={range.start}
+                    max={lineCount}
+                    value={range.end}
+                    onChange={(e) => setRange((r) => ({ ...r, end: e.target.valueAsNumber || 1 }))}
+                    className="w-14 rounded fill-control px-1"
+                  />
+                </label>
+                <Button
+                  size="xs"
+                  variant="outline"
+                  disabled={range.start < 1 || range.end < range.start || range.end > lineCount}
+                  onClick={() => onReference({ path: active, ...range })}
+                >
+                  {t('referenceLines')}
+                </Button>
+              </div>
+              <section
+                aria-label={t('fileContent')}
+                className="max-h-[45vh] overflow-auto rounded fill-group"
+              >
+                <Suspense fallback={<p className="p-3 text-xs text-muted">{t('loadingFile')}</p>}>
+                  <SourceCode path={active} text={displayContent.text} onSelect={setRange} />
+                </Suspense>
+              </section>
+              <p className="text-2xs text-muted">{t('referencePermission')}</p>
+            </>
+          ) : displayContent ? (
+            <p className="text-xs text-muted">
+              {displayContent.kind === 'too_large'
+                ? tf('tooLarge')
+                : displayContent.kind === 'binary'
+                  ? tf('binary')
+                  : t('fileUnavailable')}
+            </p>
+          ) : null}
+        </section>
       ) : null}
       {closeDialog}
     </div>

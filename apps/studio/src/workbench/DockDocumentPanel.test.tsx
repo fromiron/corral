@@ -26,6 +26,12 @@ vi.mock('@tanstack/react-router', () => ({
   ),
 }));
 
+vi.mock('./FilePreview.tsx', async (actual) => ({
+  ...(await actual<typeof import('./FilePreview.tsx')>()),
+  FilePreview: ({ path }: { path: string }) => <div data-file-preview={path} />,
+}));
+vi.mock('../services.tsx', () => ({ useServices: () => ({ mode: 'server' }) }));
+
 const target: WorkspaceTarget = {
   hostId: 'local',
   projectId: 'project',
@@ -164,4 +170,26 @@ it('[TC-WBD-006-N] a retained file cannot reference the current copy until targe
   } finally {
     finish(key);
   }
+});
+
+it('[TC-WBD-006-H] a previewable file keeps its preview with its document tab, the one place it opens (#87)', async () => {
+  const htmlKey = documentKey(target, 'index.html');
+  const store = owner(
+    { [htmlKey]: { ...buffer(), key: htmlKey, path: 'index.html', dirty: false } },
+    htmlKey,
+  );
+  await mounted(
+    <DockDocumentPanel owner={store} target={target} path="index.html" viewId="dock-tab" />,
+    (container) => {
+      expect(
+        container.querySelector('[data-file-preview]')?.getAttribute('data-file-preview'),
+      ).toBe('index.html');
+    },
+  );
+  await mounted(
+    <DockDocumentPanel owner={store} target={target} path="note.txt" viewId="dock-tab" />,
+    (container) => {
+      expect(container.querySelector('[data-file-preview]')).toBeNull();
+    },
+  );
 });

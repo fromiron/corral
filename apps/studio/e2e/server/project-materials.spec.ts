@@ -45,18 +45,23 @@ test('[TC-ABS-009-H] clone and link through Projects; save and explicitly attach
   await expect(
     page.getByRole('checkbox', { name: 'Trust this repository', exact: true }),
   ).toBeChecked();
-  await page.getByRole('textbox', { name: 'Document name', exact: true }).fill('Project guide');
+  // Instructions and memory are project records, not folder files, so they have their own tab (#87).
+  await expect(page.getByRole('textbox', { name: 'Name', exact: true })).toBeHidden();
+  await page.getByRole('tab', { name: 'Instructions & memory', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Project guide');
   await page
     .getByRole('textbox', { name: 'Contents', exact: true })
     .fill('Keep the original public API.');
-  await page.getByRole('button', { name: 'Add document', exact: true }).click();
+  await page.getByRole('button', { name: 'Add entry', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Project guide · v1', exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByRole('button', { name: 'Project guide · v1', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Start chat', exact: true }).click();
   await expect(page).toHaveURL(/\/sessions\/session_/);
   await openRequestOptions(page);
-  await page.getByRole('combobox', { name: 'Attach project document to this request' }).click();
+  await page
+    .getByRole('combobox', { name: 'Attach project instructions or memory to this request' })
+    .click();
   await page.getByRole('option', { name: 'Project guide · v1', exact: true }).click();
   await closeRequestOptions(page);
   await expect(

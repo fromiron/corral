@@ -4,11 +4,14 @@ import { Link } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
+import { useServices } from '../services.tsx';
 import type { AttachmentCapture } from './context/bridge.ts';
 import { DocumentPanel } from './DocumentPanel.tsx';
 import type { RecoveryDraft } from './documents/recovery.ts';
 import { type DocumentStore, documentKey } from './documents/store.ts';
 import type { FileReference } from './FilePanel.tsx';
+import { canPreviewFile, FilePreview } from './FilePreview.tsx';
+import { panelKey } from './panels/registry.ts';
 import { WORKSPACE_CHANGED } from './workspaceEvents.ts';
 
 export function DockDocumentPanel({
@@ -28,6 +31,7 @@ export function DockDocumentPanel({
   viewId: string;
   onReference?: (reference: FileReference) => void;
 }) {
+  const services = useServices();
   const key = documentKey(target, path);
   const entry = useStore(owner, (state) => state.documents[key]);
   const t = useTranslations('Documents');
@@ -131,6 +135,14 @@ export function DockDocumentPanel({
             {t('refresh')}
           </Button>
         </div>
+      ) : null}
+      {/* A previewable file previews where it opens: its document tab (#87). */}
+      {canPreviewFile(path) && services.mode === 'server' ? (
+        <FilePreview
+          key={panelKey(services, { kind: 'file-preview', sessionId: target.sessionId, path })}
+          sessionId={target.sessionId}
+          path={path}
+        />
       ) : null}
       {showEditor ? (
         <DocumentPanel

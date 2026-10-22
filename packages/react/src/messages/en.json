@@ -1300,6 +1300,7 @@
       "sessions": "Sessions",
       "teams": "Teams",
       "folder": "Project folder",
+      "materials": "Instructions & memory",
       "runs": "Runs"
     },
     "actions": "Actions for {name}"
@@ -1561,7 +1562,9 @@
       "not_evaluated": "Not evaluated"
     },
     "checkTargetChanged": "The check changed its own target; it cannot prove a pass.",
-    "attachCheckOutput": "Attach check output"
+    "attachCheckOutput": "Attach check output",
+    "openRule": "Files in the session copy open as document tabs. Files in the original folder preview here, read-only.",
+    "readOnlyPreview": "Read-only preview"
   },
   "Review": {
     "commentLine": "Comment on line {line}",
@@ -1747,7 +1750,6 @@
     "openFile": "Open {path}",
     "noFiles": "No files found.",
     "filesTruncated": "Showing the first 500 files.",
-    "openFiles": "Open files",
     "closeFile": "Close {path}",
     "loadingFile": "Loading file…",
     "fromLine": "From line",
@@ -3114,8 +3116,6 @@
     "editorFailed": "The editor could not load. Your draft is preserved below.",
     "dirtyReference": "Save the document before referencing its lines.",
     "goToLines": "Go to lines",
-    "tabLimit": "20 files are open. Close a file tab before opening another.",
-    "dirtyTab": "{path}, unsaved changes",
     "closeTitle": "Save changes to {path}?",
     "closeHint": "Save the document, discard its draft, or keep editing.",
     "saveClose": "Save and close",
@@ -3263,12 +3263,6 @@
     "splitLimit": "At most two document groups can be open.",
     "unknownPanel": "This saved pane is unavailable. You can close it or open another pane.",
     "otherSession": "other conversation {id}",
-    "closeTitle": "Close document?",
-    "closeDescription": "Save changes to {path} before closing?",
-    "save": "Save and close",
-    "discard": "Discard and close",
-    "cancel": "Keep open",
-    "closeFailed": "The document could not be closed. Check its save or recovery state.",
     "chat": "Conversation",
     "files": "Files",
     "changes": "Changes",
@@ -3348,5 +3342,27 @@
     "stateChanged": "Git changed after this view was loaded. Refresh to select the current change.",
     "unsupported": "This file type cannot be compared here.",
     "submodule": "Submodule"
+  },
+  "Materials": {
+    "heading": "Instructions & memory",
+    "hint": "Only entries you pick in the composer are attached to a request. Editing or archiving an entry keeps what earlier requests received.",
+    "name": "Name",
+    "kind": "Kind",
+    "instructions": "Instructions",
+    "memory": "Memory",
+    "contents": "Contents",
+    "add": "Add entry",
+    "saveVersion": "Save new version",
+    "cancelEdit": "Cancel edit",
+    "archive": "Archive",
+    "version": "{name} · v{revision}",
+    "attach": "Attach project instructions or memory to this request",
+    "attachPlaceholder": "Attach instructions or memory",
+    "empty": "Add entries in the project’s Instructions & memory tab",
+    "attachInvalid": "Check the text attachment size and count.",
+    "loadFailed": "Could not load instructions and memory.",
+    "saveFailed": "Could not save the entry.",
+    "archiveFailed": "Could not archive the entry.",
+    "attachFailed": "Could not attach the entry."
   }
 }

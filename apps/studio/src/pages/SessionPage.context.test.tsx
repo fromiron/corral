@@ -50,7 +50,7 @@ vi.mock('../workbench/widgets/ChatWidgets.tsx', () => ({
 }));
 vi.mock('../workbench/RunHarnessOverrides.tsx', () => ({ RunHarnessOverrides: () => null }));
 vi.mock('../workbench/RunRoleOverrides.tsx', () => ({ RunRoleOverrides: () => null }));
-vi.mock('../workbench/ProjectDocuments.tsx', () => ({ ProjectDocumentPicker: () => null }));
+vi.mock('../workbench/ProjectMaterials.tsx', () => ({ ProjectMaterialPicker: () => null }));
 vi.mock('../workbench/ImageAttachments.tsx', () => ({
   ImageAttachmentPicker: () => null,
   ImageAttachmentList: () => null,

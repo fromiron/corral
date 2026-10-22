@@ -75,7 +75,7 @@ it('[TC-WBD-006-H] all presets and reload preserve twenty exact document referen
   }
 });
 
-it('[TC-WBD-006-N] a twenty-first document or retarget of an existing ID is refused without eviction', () => {
+it('[TC-WBD-003-N] [TC-WBD-006-N] a twenty-first document or retarget of an existing ID is refused without eviction', () => {
   const panels = Array.from({ length: MAX_DOCUMENTS }, (_, index) => document(index));
   expect(addDocumentPanel(panels, document(MAX_DOCUMENTS))).toBeNull();
   expect(addDocumentPanel(panels, document(0))).toBe(panels);

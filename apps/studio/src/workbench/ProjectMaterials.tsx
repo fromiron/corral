@@ -6,11 +6,12 @@ import {
 import { validTextAttachments } from '@corral/core';
 import { Button, Select } from '@corral/react/ui';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useLocale } from 'use-intl';
+import { useTranslations } from 'use-intl';
 import { type ProjectMaterial, projectRequest } from '../projects-api.ts';
 import { useServices } from '../services.tsx';
 
 function useMaterials(projectId: string) {
+  const t = useTranslations('Materials');
   const [materials, setMaterials] = useState<ProjectMaterial[]>([]);
   const [error, setError] = useState('');
   const { mode } = useServices();
@@ -27,10 +28,9 @@ function useMaterials(projectId: string) {
       if (currentProject.current === projectId && request.current === requestId)
         setMaterials(result.materials);
     } catch (e) {
-      if (request.current === requestId)
-        setError(e instanceof Error ? e.message : 'Could not load documents.');
+      if (request.current === requestId) setError(e instanceof Error ? e.message : t('loadFailed'));
     }
-  }, [projectId, mode]);
+  }, [projectId, mode, t]);
   useEffect(() => {
     void reload();
     return () => {
@@ -40,8 +40,12 @@ function useMaterials(projectId: string) {
   return { materials, error, setError, reload, mode };
 }
 
-/** Explicit selection only; immutable attachment contents are submitted through the existing request path. */
-export function ProjectDocumentPicker({
+/**
+ * Project materials are server records (instructions and memory), not workspace files (#87).
+ * Explicit selection only; immutable attachment contents are submitted through the existing
+ * request path.
+ */
+export function ProjectMaterialPicker({
   projectId,
   value,
   onChange,
@@ -57,7 +61,7 @@ export function ProjectDocumentPicker({
   onErrorChange?(message: string | null): void;
   disabled?: boolean;
 }) {
-  const ko = useLocale().startsWith('ko');
+  const t = useTranslations('Materials');
   const { materials, error, setError, reload, mode } = useMaterials(projectId);
   const [busy, setBusy] = useState(false);
   const latest = useRef({ projectId, value });
@@ -83,26 +87,24 @@ export function ProjectDocumentPicker({
   return (
     <div className="flex flex-col gap-1 text-xs">
       <Select
-        label={ko ? '이번 요청에 프로젝트 자료 첨부' : 'Attach project document to this request'}
+        label={t('attach')}
         className="max-w-52"
         variant="chip"
         size="xs"
         disabled={disabled || busy || value.length >= TEXT_ATTACHMENT_MAX_COUNT}
         value={null}
-        placeholder={ko ? '프로젝트 자료 첨부' : 'Attach project document'}
+        placeholder={t('attachPlaceholder')}
         options={
           materials.length
             ? materials.map((item) => ({
                 value: item.id,
-                label: `${item.name} · v${item.revision}`,
+                label: t('version', { name: item.name, revision: item.revision }),
               }))
             : [
                 {
                   value: '',
                   disabled: true,
-                  label: ko
-                    ? '프로젝트 폴더 탭에서 자료를 추가하세요'
-                    : 'Add documents in the Project folder tab',
+                  label: t('empty'),
                 },
               ]
         }
@@ -127,16 +129,11 @@ export function ProjectDocumentPicker({
               !value.some((item) => textAttachmentKey(item) === textAttachmentKey(attachment))
             ) {
               if (!validTextAttachments([...value, attachment]))
-                throw new Error(
-                  ko
-                    ? '텍스트 첨부의 크기나 개수를 확인하세요.'
-                    : 'Check the text attachment size and count.',
-                );
+                throw new Error(t('attachInvalid'));
               onChange([...value, attachment]);
             }
           } catch (e) {
-            if (alive.current)
-              setError(e instanceof Error ? e.message : 'Could not attach document.');
+            if (alive.current) setError(e instanceof Error ? e.message : t('attachFailed'));
           } finally {
             if (alive.current) setBusy(false);
             onBusyChange?.(false);
@@ -152,8 +149,9 @@ export function ProjectDocumentPicker({
   );
 }
 
-export function ProjectDocuments({ projectId }: { projectId: string }) {
-  const ko = useLocale().startsWith('ko');
+/** The project's instructions and memory entries: server records, kept apart from folder files. */
+export function ProjectMaterials({ projectId }: { projectId: string }) {
+  const t = useTranslations('Materials');
   const { materials, error, setError, reload, mode } = useMaterials(projectId);
   const [editing, setEditing] = useState<ProjectMaterial | null>(null);
   const [name, setName] = useState('');
@@ -167,16 +165,11 @@ export function ProjectDocuments({ projectId }: { projectId: string }) {
     setText('');
   };
   return (
-    <section
-      className="mt-4 flex flex-col gap-3 border-t border-line pt-4"
-      aria-label={ko ? '프로젝트 자료' : 'Project documents'}
-    >
-      <h3 className="text-sm font-semibold">{ko ? '지침과 메모리' : 'Instructions and memory'}</h3>
-      <p className="text-xs text-muted">
-        {ko
-          ? '요청 입력창에서 직접 선택한 자료만 첨부됩니다. 수정하거나 삭제해도 이전 요청의 자료는 유지됩니다.'
-          : 'Only documents you select in the composer are attached. Editing or deleting preserves earlier request snapshots.'}
-      </p>
+    <section className="flex flex-col gap-3" aria-labelledby="project-materials-heading">
+      <h3 id="project-materials-heading" className="text-sm font-semibold">
+        {t('heading')}
+      </h3>
+      <p className="text-xs text-muted">{t('hint')}</p>
       <ul className="flex flex-col gap-2">
         {materials.map((item) => (
           <li key={item.id} className="flex items-center gap-2 text-sm">
@@ -190,7 +183,7 @@ export function ProjectDocuments({ projectId }: { projectId: string }) {
                 setKind(item.kind);
               }}
             >
-              {item.name} · v{item.revision}
+              {t('version', { name: item.name, revision: item.revision })}
             </button>
             <Button
               size="sm"
@@ -206,13 +199,13 @@ export function ProjectDocuments({ projectId }: { projectId: string }) {
                   if (editing?.id === item.id) clear();
                   await reload();
                 } catch (e) {
-                  setError(e instanceof Error ? e.message : 'Could not remove document.');
+                  setError(e instanceof Error ? e.message : t('archiveFailed'));
                 } finally {
                   setBusy(false);
                 }
               }}
             >
-              {ko ? '보관' : 'Archive'}
+              {t('archive')}
             </Button>
           </li>
         ))}
@@ -233,14 +226,14 @@ export function ProjectDocuments({ projectId }: { projectId: string }) {
             clear();
             await reload();
           } catch (e) {
-            setError(e instanceof Error ? e.message : 'Could not save document.');
+            setError(e instanceof Error ? e.message : t('saveFailed'));
           } finally {
             setBusy(false);
           }
         }}
       >
         <label className="flex flex-col gap-1 text-xs">
-          {ko ? '자료 이름' : 'Document name'}
+          {t('name')}
           <input
             required
             maxLength={90}
@@ -250,20 +243,20 @@ export function ProjectDocuments({ projectId }: { projectId: string }) {
           />
         </label>
         <div className="flex flex-col gap-1 text-xs">
-          <span>{ko ? '종류' : 'Kind'}</span>
+          <span>{t('kind')}</span>
           <Select<'instructions' | 'memory'>
-            label={ko ? '종류' : 'Kind'}
+            label={t('kind')}
             value={kind}
             onValueChange={setKind}
             options={[
-              { value: 'instructions', label: ko ? '지침' : 'Instructions' },
-              { value: 'memory', label: ko ? '메모리' : 'Memory' },
+              { value: 'instructions', label: t('instructions') },
+              { value: 'memory', label: t('memory') },
             ]}
             className="self-start"
           />
         </div>
         <label className="flex flex-col gap-1 text-xs">
-          {ko ? '내용' : 'Contents'}
+          {t('contents')}
           <textarea
             required
             rows={5}
@@ -275,17 +268,11 @@ export function ProjectDocuments({ projectId }: { projectId: string }) {
         </label>
         <div className="flex gap-2">
           <Button type="submit" size="sm" disabled={busy}>
-            {ko
-              ? editing
-                ? '새 버전 저장'
-                : '자료 추가'
-              : editing
-                ? 'Save new version'
-                : 'Add document'}
+            {editing ? t('saveVersion') : t('add')}
           </Button>
           {editing ? (
             <Button type="button" variant="ghost" size="sm" onClick={clear}>
-              {ko ? '편집 취소' : 'Cancel edit'}
+              {t('cancelEdit')}
             </Button>
           ) : null}
         </div>

@@ -26,8 +26,13 @@ const fixture = vi.hoisted(() => ({
     refresh() {},
   },
 }));
+const readFile = vi.hoisted(() =>
+  vi.fn(async (_scope: unknown, path: string) => ({
+    content: { kind: 'text', text: `body of ${path}` },
+  })),
+);
 vi.mock('../services.tsx', () => {
-  const services = { mode: 'server', workspaces: {} };
+  const services = { mode: 'server', workspaces: { readFile } };
   return { useServices: () => services };
 });
 vi.mock('../pages/Workbench.tsx', () => ({
@@ -39,12 +44,9 @@ vi.mock('./documents/store.ts', () => {
   return { documentStore: () => owner };
 });
 vi.mock('./DocumentPanel.tsx', () => ({ DocumentPanel: () => <div data-inline-editor /> }));
-vi.mock('./TerminalPanel.tsx', () => ({ TerminalPanel: () => <div data-tool="terminal" /> }));
-vi.mock('./PreviewLeases.tsx', () => ({ PreviewLeases: () => <div data-tool="preview" /> }));
-vi.mock('./WorktreeCommandPanel.tsx', () => ({
-  WorktreeCommandPanel: () => <div data-tool="command" />,
+vi.mock('./PierreCode.tsx', () => ({
+  SourceCode: ({ text }: { text: string }) => <pre data-source>{text}</pre>,
 }));
-vi.mock('./ServicePreview.tsx', () => ({ ServicePreview: () => <div data-tool="service" /> }));
 vi.mock('./navigation.ts', () => ({
   useSettingsNavigation: () => ({ link: () => ({ to: '/' }) }),
 }));
@@ -83,14 +85,12 @@ it('[TC-WBD-006-H] a user selection opens the canonical document once and backgr
             sessionId="session"
             onReference={() => {}}
             onOpenDocument={onOpenDocument}
-            showTools={false}
           />
         </IntlProvider>,
       );
     });
   try {
     await render();
-    expect(container.querySelector('[data-tool]')).toBeNull();
     await act(async () => {
       container.querySelector<HTMLButtonElement>('button[title="note.txt"]')?.click();
     });
@@ -110,4 +110,94 @@ it('[TC-WBD-006-H] a user selection opens the canonical document once and backgr
     container.remove();
     vi.unstubAllGlobals();
   }
+});
+
+const sessionFiles = fixture.files;
+async function panel(
+  onOpenDocument: () => boolean,
+  check: (container: HTMLDivElement) => Promise<void>,
+) {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => {
+      root.render(
+        <IntlProvider locale="en" messages={messages} timeZone="UTC">
+          <FilePanel
+            projectId="project"
+            sessionId="session"
+            onReference={() => {}}
+            onOpenDocument={onOpenDocument}
+          />
+        </IntlProvider>,
+      );
+    });
+    await check(container);
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+    vi.unstubAllGlobals();
+  }
+}
+const click = (container: HTMLElement, title: string) =>
+  act(async () => {
+    container.querySelector<HTMLButtonElement>(`button[title="${title}"]`)?.click();
+  });
+
+it('[TC-WBD-006-H] a session-copy file opens as a document tab whatever it holds, so Files keeps no tab strip of its own (#87)', async () => {
+  fixture.files = sessionFiles;
+  fixture.open.mockClear();
+  fixture.state = {
+    documents: {
+      'canonical-key': {
+        target: fixture.target,
+        path: 'note.txt',
+        file: { content: { kind: 'binary' } },
+        dirty: false,
+        pendingSave: null,
+        recoveries: [],
+      },
+    },
+  };
+  const onOpenDocument = vi.fn(() => true);
+  await panel(onOpenDocument, async (container) => {
+    await click(container, 'note.txt');
+    expect(onOpenDocument).toHaveBeenCalledWith({
+      documentKey: 'canonical-key',
+      target: fixture.target,
+      path: 'note.txt',
+    });
+    expect(container.querySelector('[role="tablist"]')).toBeNull();
+    expect(container.querySelector('[data-inline-editor]')).toBeNull();
+    expect(container.textContent).toContain(messages.Files.openRule);
+  });
+});
+
+it('[TC-WBD-006-N] an original-folder file previews read-only inside Files, one at a time (#87)', async () => {
+  fixture.files = {
+    ...sessionFiles,
+    scope: { kind: 'project', id: 'project' },
+    list: { files: [{ path: 'a.md' }], truncated: false },
+    hasCopy: false,
+    copy: null,
+  } as unknown as typeof sessionFiles;
+  fixture.open.mockClear();
+  const onOpenDocument = vi.fn(() => true);
+  await panel(onOpenDocument, async (container) => {
+    await click(container, 'a.md');
+    expect(onOpenDocument).not.toHaveBeenCalled();
+    expect(fixture.open).not.toHaveBeenCalled();
+    expect(container.querySelector('[role="tablist"]')).toBeNull();
+    const preview = container.querySelector('[data-testid="file-preview-pane"]');
+    expect(preview?.textContent).toContain('a.md');
+    expect(preview?.textContent).toContain(messages.Files.readOnlyPreview);
+    expect(preview?.querySelector('[data-source]')?.textContent).toBe('body of a.md');
+    await act(async () => {
+      preview?.querySelector<HTMLButtonElement>('button[aria-label="Close a.md"]')?.click();
+    });
+    expect(container.querySelector('[data-testid="file-preview-pane"]')).toBeNull();
+  });
+  fixture.files = sessionFiles;
 });

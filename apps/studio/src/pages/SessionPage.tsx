@@ -146,7 +146,7 @@ import { LiveVoice } from '../workbench/LiveVoice.tsx';
 import { MessageBranch } from '../workbench/MessageBranch.tsx';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
 import { PermissionModePicker } from '../workbench/PermissionModePicker.tsx';
-import { ProjectDocumentPicker } from '../workbench/ProjectDocuments.tsx';
+import { ProjectMaterialPicker } from '../workbench/ProjectMaterials.tsx';
 import { isSendKey, usePreferences } from '../workbench/preferences.ts';
 import { EDIT_REQUEST, editRequest, RefusalHelp } from '../workbench/RefusalHelp.tsx';
 import { RunChanges } from '../workbench/RunChanges.tsx';
@@ -329,7 +329,6 @@ export function SessionPage() {
         onReference={handleReference}
         onAttach={handleAttachment}
         onOpenDocument={(document) => dock.current?.openDocument(document) ?? false}
-        showTools={false}
       />
     ),
     changes: () => <ChangesPanel session={session} files={changes} />,
@@ -1564,8 +1563,8 @@ export function Composer({
   );
   const [attachments, setAttachments] = useState<TextAttachment[]>(restored.attachments ?? []);
   const [attachmentsBusy, setAttachmentsBusy] = useState(false);
-  const [projectDocumentsBusy, setProjectDocumentsBusy] = useState(false);
-  const [projectDocumentError, setProjectDocumentError] = useState<string | null>(null);
+  const [projectMaterialsBusy, setProjectMaterialsBusy] = useState(false);
+  const [projectMaterialError, setProjectMaterialError] = useState<string | null>(null);
   const [images, setImages] = useState<ImageAttachment[]>(restored.images ?? []);
   const [imagesBusy, setImagesBusy] = useState(false);
   const textFiles = useRef<HTMLInputElement>(null);
@@ -1844,7 +1843,7 @@ export function Composer({
   const currentDraft = useRef({ draft: composerDraft, busy: false });
   currentDraft.current = {
     draft: composerDraft,
-    busy: busy || attachmentsBusy || projectDocumentsBusy || imagesBusy,
+    busy: busy || attachmentsBusy || projectMaterialsBusy || imagesBusy,
   };
   useEffect(() => {
     const attach = (event: Event) => {
@@ -2737,7 +2736,7 @@ export function Composer({
   const unavailable =
     liveUnavailable ||
     attachmentsBusy ||
-    projectDocumentsBusy ||
+    projectMaterialsBusy ||
     imagesBusy ||
     (attachments.length > 0 && intent !== 'next' && intent !== 'queue') ||
     ((reviewOnly || verificationScope === 'release') &&
@@ -2972,13 +2971,13 @@ export function Composer({
           {tc('addToRequest')}
         </p>
         {intent === 'next' || intent === 'queue' ? (
-          <ProjectDocumentPicker
+          <ProjectMaterialPicker
             key={`documents:${attachmentEpoch}`}
             projectId={session.projectId}
             value={attachments}
             onChange={setAttachments}
-            onBusyChange={setProjectDocumentsBusy}
-            onErrorChange={setProjectDocumentError}
+            onBusyChange={setProjectMaterialsBusy}
+            onErrorChange={setProjectMaterialError}
             disabled={busy || attachmentsBusy || imagesBusy}
           />
         ) : null}
@@ -3159,9 +3158,9 @@ export function Composer({
                 {tc('missingReferences', { count: missingChips.length })}
               </p>
             ) : null}
-            {projectDocumentError ? (
+            {projectMaterialError ? (
               <div role="alert" className="flex flex-wrap items-center gap-2 text-xs text-danger">
-                <span>{projectDocumentError}</span>
+                <span>{projectMaterialError}</span>
                 <Button variant="outline" size="xs" onClick={() => setRequestOptionsOpen(true)}>
                   {tc('retryAttachment')}
                 </Button>
@@ -3227,7 +3226,7 @@ export function Composer({
             <SourceAttachments
               value={attachments}
               onChange={setAttachments}
-              disabled={busy || attachmentsBusy || projectDocumentsBusy}
+              disabled={busy || attachmentsBusy || projectMaterialsBusy}
             />
             {attachments.length > 0 && intent !== 'next' && intent !== 'queue' ? (
               <div role="status" className="flex flex-wrap items-center gap-2 text-xs text-muted">
@@ -3310,7 +3309,7 @@ export function Composer({
                       disabled={
                         busy ||
                         attachmentsBusy ||
-                        projectDocumentsBusy ||
+                        projectMaterialsBusy ||
                         imagesBusy ||
                         (intent !== 'next' && intent !== 'queue')
                       }

@@ -1,13 +1,6 @@
 import type { TextRange, WorkspaceTarget } from '@corral/contracts';
 import { ArrowLeft } from '@corral/react/icons';
-import {
-  Button,
-  Dialog,
-  DialogDescription,
-  DialogPopup,
-  DialogTitle,
-  Select,
-} from '@corral/react/ui';
+import { Button, Select } from '@corral/react/ui';
 import {
   type DockviewApi,
   DockviewDefaultTab,
@@ -30,6 +23,7 @@ import {
   useState,
 } from 'react';
 import { useTranslations } from 'use-intl';
+import { DocumentCloseDialog } from '../documents/DocumentCloseDialog.tsx';
 import { type CloseChoice, type DocumentStore, documentKey } from '../documents/store.ts';
 import { PANE_CATALOG, type SessionPanel } from '../panels/registry.ts';
 import {
@@ -818,45 +812,13 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
             />
           </div>
         </section>
-        <Dialog
-          open={Boolean(closing)}
-          onOpenChange={(open) => {
-            if (!open && !closeBusy) setClosing(null);
-          }}
-        >
-          <DialogPopup showCloseButton={false} className="flex flex-col gap-4 p-6">
-            <DialogTitle>{t('closeTitle')}</DialogTitle>
-            <DialogDescription>
-              {t('closeDescription', { path: closing?.path ?? '' })}
-            </DialogDescription>
-            {closeFailed ? (
-              <p role="alert" className="text-sm text-danger">
-                {t('closeFailed')}
-              </p>
-            ) : null}
-            <div className="flex flex-wrap justify-end gap-2">
-              <Button
-                disabled={closeBusy}
-                onClick={() => closing && void closePanel(closing.id, 'cancel')}
-              >
-                {t('cancel')}
-              </Button>
-              <Button
-                disabled={closeBusy}
-                onClick={() => closing && void closePanel(closing.id, 'discard')}
-              >
-                {t('discard')}
-              </Button>
-              <Button
-                variant="default"
-                disabled={closeBusy}
-                onClick={() => closing && void closePanel(closing.id, 'save')}
-              >
-                {t('save')}
-              </Button>
-            </div>
-          </DialogPopup>
-        </Dialog>
+        <DocumentCloseDialog
+          path={closing?.path ?? null}
+          busy={closeBusy}
+          failed={closeFailed}
+          onChoose={(choice) => closing && void closePanel(closing.id, choice)}
+          onDismiss={() => setClosing(null)}
+        />
       </RendererContext.Provider>
     );
   },

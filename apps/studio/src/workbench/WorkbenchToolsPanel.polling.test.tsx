@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import { FilePanel } from './FilePanel.tsx';
+import { WorkbenchToolsPanel } from './WorkbenchToolsPanel.tsx';
 
 const fixture = vi.hoisted(() => ({
   workspaces: { previews: vi.fn(async () => []), commands: vi.fn(async () => []) },
@@ -36,7 +36,7 @@ vi.mock('@tanstack/react-virtual', () => ({
   useVirtualizer: () => ({ getVirtualItems: () => [], getTotalSize: () => 0 }),
 }));
 
-it('[TC-WBD-004-N] keeps one preview poller through file-panel rerenders and releases it on unmount', async () => {
+it('[TC-WBD-004-N] keeps one preview poller through tools-pane rerenders and releases it on unmount', async () => {
   vi.useFakeTimers();
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   const container = document.createElement('div');
@@ -46,7 +46,7 @@ it('[TC-WBD-004-N] keeps one preview poller through file-panel rerenders and rel
     act(async () => {
       root.render(
         <IntlProvider locale="en" messages={messages} timeZone="UTC">
-          <FilePanel projectId="default" sessionId="session" onReference={() => {}} />
+          <WorkbenchToolsPanel sessionId="session" />
         </IntlProvider>,
       );
     });

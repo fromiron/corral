@@ -6,12 +6,12 @@ test('[TC-UX-005-N] an attachment failure stays visible after request options cl
   corral,
 }) => {
   await corral.open('/');
-  await page.getByRole('tab', { name: 'Project folder', exact: true }).click();
-  await page.getByRole('textbox', { name: 'Document name', exact: true }).fill('Review guide');
+  await page.getByRole('tab', { name: 'Instructions & memory', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Review guide');
   await page
     .getByRole('textbox', { name: 'Contents', exact: true })
     .fill('Preserve the documented public API.');
-  await page.getByRole('button', { name: 'Add document', exact: true }).click();
+  await page.getByRole('button', { name: 'Add entry', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Review guide · v1', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Start chat', exact: true }).click();
   await expect(page).toHaveURL(/\/sessions\/session_/);
@@ -39,7 +39,9 @@ test('[TC-UX-005-N] an attachment failure stays visible after request options cl
   });
 
   await openRequestOptions(page);
-  await page.getByRole('combobox', { name: 'Attach project document to this request' }).click();
+  await page
+    .getByRole('combobox', { name: 'Attach project instructions or memory to this request' })
+    .click();
   await page.getByRole('option', { name: 'Review guide · v1', exact: true }).click();
   await requested;
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
@@ -54,7 +56,9 @@ test('[TC-UX-005-N] an attachment failure stays visible after request options cl
 
   await page.unroute(attachmentUrl);
   await openRequestOptions(page);
-  await page.getByRole('combobox', { name: 'Attach project document to this request' }).click();
+  await page
+    .getByRole('combobox', { name: 'Attach project instructions or memory to this request' })
+    .click();
   await page.getByRole('option', { name: 'Review guide · v1', exact: true }).click();
   await closeRequestOptions(page);
   await expect(

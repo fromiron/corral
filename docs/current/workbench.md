@@ -57,6 +57,8 @@ C-140의 구현과 이번 Linux 검증은 [실행 기록](../evaluation/Contextu
 [CR-046 P04](../change-requests/CR-046-development-workbench.md)는 모델 연결 없이 관리 session 사본의 버전 있는 파일 읽기와 save/create/rename/delete를 제공한다. 현재 대상과 전체 content hash를 확인하고 사용자 작업 receipt를 사용하며 원본·snapshot 읽기 경로는 유지한다. 삭제는 체크포인트의 원래 bytes 포함을 확인한 뒤 수행한다. 정확한 HTTP/type 계약은 [API 계약](../API-Contract.md)·`packages/contracts/src/workbench.ts`, 구현 상태는 C-144와 [활성 계획](../plans/workbench-development-implementation-plan-2026-10-21.md)을 따른다. 편집 UI·dirty 복구·Monaco view의 승인 계약은 같은 CR의 P05–06, 구현 상태는 C-145·146으로 추적한다. 문서당 단일 모델은 화면 밖에서 유지하고 저장·닫기·복구는 명시적으로 수행한다. mixed/CR 줄바꿈은 원문을 보존한 상태에서 사용자가 LF/CRLF 변환을 선택한 뒤 편집한다. 구현·화면 검증 여부는 backlog와 실행 기록에서 확인한다.
 
 
+파일 열기의 위치는 출처 하나로 정해진다. 세션 사본의 파일은 내용 종류와 무관하게 도킹 문서 탭으로 열리고 미리보기 가능한 파일의 미리보기도 그 탭에 둔다. 원본 폴더의 파일은 Files 창 안에서 한 번에 하나만 읽기 전용으로 미리 보며 Files 창은 자체 탭 줄을 두지 않는다. 미저장 문서 닫기 확인은 어디서 닫든 같은 질문·같은 세 선택지(계속 편집/변경 버리기/저장 후 닫기)를 쓴다. 프로젝트 지침·메모리(서버 materials 기록)는 폴더 파일이 아니므로 프로젝트의 별도 탭에서 관리한다.
+
 ## 사용자 터미널
 
 [CR-046 P07–08](../change-requests/CR-046-development-workbench.md)의 터미널은 관리 사본에서 모델 연결 없이 실행하는 사용자 PTY다. 기존 명령 기록·Run 제어와 별도로 표시하며, 생성·입력 권한 인계·명시 종료와 불확실 상태 재확인을 제공한다. 화면/설정 이동은 detach이며 프로세스를 종료하지 않는다. 같은 사본의 파일 저장은 터미널 종료 확인 후 다시 가능하다.

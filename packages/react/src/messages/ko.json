@@ -1300,6 +1300,7 @@
       "sessions": "세션",
       "teams": "팀",
       "folder": "프로젝트 폴더",
+      "materials": "지침·메모리",
       "runs": "실행"
     },
     "actions": "{name} 작업"
@@ -1561,7 +1562,9 @@
       "not_evaluated": "미평가"
     },
     "checkTargetChanged": "검사가 후보 파일을 변경했으므로 통과 근거로 사용할 수 없습니다.",
-    "attachCheckOutput": "검사 출력 첨부"
+    "attachCheckOutput": "검사 출력 첨부",
+    "openRule": "세션 복사본의 파일은 문서 탭으로 열립니다. 원본 폴더의 파일은 여기에서 읽기 전용으로 미리 봅니다.",
+    "readOnlyPreview": "읽기 전용 미리보기"
   },
   "Review": {
     "commentLine": "{line}번째 줄에 의견",
@@ -1747,7 +1750,6 @@
     "openFile": "{path} 열기",
     "noFiles": "파일이 없습니다.",
     "filesTruncated": "처음 500개 파일을 표시합니다.",
-    "openFiles": "열린 파일",
     "closeFile": "{path} 닫기",
     "loadingFile": "파일 읽는 중…",
     "fromLine": "시작 줄",
@@ -3114,8 +3116,6 @@
     "editorFailed": "편집기를 불러오지 못했습니다. 초안은 아래에 보존되어 있습니다.",
     "dirtyReference": "줄을 참조하려면 먼저 문서를 저장하세요.",
     "goToLines": "줄로 이동",
-    "tabLimit": "파일 20개가 열려 있습니다. 다른 파일을 열려면 먼저 파일 탭을 닫으세요.",
-    "dirtyTab": "{path}, 저장하지 않은 변경",
     "closeTitle": "{path}의 변경을 저장할까요?",
     "closeHint": "문서를 저장하거나, 초안을 버리거나, 계속 편집할 수 있습니다.",
     "saveClose": "저장하고 닫기",
@@ -3263,12 +3263,6 @@
     "splitLimit": "문서 그룹은 최대 두 개까지 열 수 있습니다.",
     "unknownPanel": "복원할 수 없는 패널입니다. 닫거나 다른 패널을 열 수 있습니다.",
     "otherSession": "다른 대화 {id}",
-    "closeTitle": "문서를 닫을까요?",
-    "closeDescription": "{path}의 변경을 저장한 뒤 닫을까요?",
-    "save": "저장 후 닫기",
-    "discard": "버리고 닫기",
-    "cancel": "계속 열어두기",
-    "closeFailed": "문서를 닫지 못했습니다. 저장 또는 복구 상태를 확인하세요.",
     "chat": "대화",
     "files": "파일",
     "changes": "변경",
@@ -3348,5 +3342,27 @@
     "stateChanged": "조회 후 Git 상태가 변경되었습니다. 새로고침한 뒤 현재 변경을 선택하세요.",
     "unsupported": "이 파일 형식은 여기서 비교할 수 없습니다.",
     "submodule": "하위 모듈"
+  },
+  "Materials": {
+    "heading": "지침·메모리",
+    "hint": "요청 입력창에서 직접 고른 항목만 요청에 첨부됩니다. 항목을 고치거나 보관해도 이전 요청이 받은 내용은 그대로입니다.",
+    "name": "이름",
+    "kind": "종류",
+    "instructions": "지침",
+    "memory": "메모리",
+    "contents": "내용",
+    "add": "항목 추가",
+    "saveVersion": "새 버전 저장",
+    "cancelEdit": "편집 취소",
+    "archive": "보관",
+    "version": "{name} · v{revision}",
+    "attach": "이번 요청에 프로젝트 지침·메모리 첨부",
+    "attachPlaceholder": "지침·메모리 첨부",
+    "empty": "프로젝트의 지침·메모리 탭에서 항목을 추가하세요",
+    "attachInvalid": "텍스트 첨부의 크기나 개수를 확인하세요.",
+    "loadFailed": "지침·메모리를 불러오지 못했습니다.",
+    "saveFailed": "항목을 저장하지 못했습니다.",
+    "archiveFailed": "항목을 보관하지 못했습니다.",
+    "attachFailed": "항목을 첨부하지 못했습니다."
   }
 }

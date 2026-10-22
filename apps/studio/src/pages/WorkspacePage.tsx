@@ -26,7 +26,7 @@ import { workspaceRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
 import { TeamDraftDialog } from '../TeamDraftDialog.tsx';
 import { createFromTemplate, WORKSPACE_TEMPLATES } from '../templates.ts';
-import { ProjectDocuments } from '../workbench/ProjectDocuments.tsx';
+import { ProjectMaterials } from '../workbench/ProjectMaterials.tsx';
 import { isSendKey, usePreferences } from '../workbench/preferences.ts';
 import { writeDraft } from '../workbench/sessionDraft.ts';
 import { InboxSection, WorkFolderSection } from './FilesViews.tsx';
@@ -392,12 +392,8 @@ export function WorkspacePage() {
             <ProjectTabs
               sessions={<SessionList sessions={sessions} runs={runs} />}
               teams={teamsPanel}
-              folder={
-                <>
-                  <WorkFolderSection projectId={projectId} />
-                  <ProjectDocuments key={projectId} projectId={projectId} />
-                </>
-              }
+              folder={<WorkFolderSection projectId={projectId} />}
+              materials={<ProjectMaterials key={projectId} projectId={projectId} />}
               runs={runsPanel}
               counts={{
                 sessions: sessions.filter((x) => !x.archivedAt).length,
@@ -414,13 +410,14 @@ export function WorkspacePage() {
   );
 }
 
-type ProjectTab = 'sessions' | 'teams' | 'folder' | 'runs';
+type ProjectTab = 'sessions' | 'teams' | 'folder' | 'materials' | 'runs';
 
 /** The project's lists and settings, one at a time; the choice is remembered per project. */
 function ProjectTabs({
   sessions,
   teams,
   folder,
+  materials,
   runs,
   counts,
   projectId,
@@ -428,6 +425,7 @@ function ProjectTabs({
   sessions: React.ReactNode;
   teams: React.ReactNode;
   folder: React.ReactNode;
+  materials: React.ReactNode;
   runs: React.ReactNode;
   counts: { sessions: number; teams: number; runs: number };
   projectId: string;
@@ -435,7 +433,7 @@ function ProjectTabs({
   const t = useTranslations('Projects');
   const location = useRouterState({ select: (s) => s.location.hash });
   const navigate = useNavigate({ from: '/projects/$projectId' });
-  const tabs: ProjectTab[] = ['sessions', 'teams', 'folder', 'runs'];
+  const tabs: ProjectTab[] = ['sessions', 'teams', 'folder', 'materials', 'runs'];
   const [saved, setTab] = useRemembered<ProjectTab | null>(`corral:project-tab:${projectId}`, null);
   // A saved tab or an explicit library link is an intentional choice. First visits start
   // with conversations; designing a Corral is never a prerequisite for sending a request.
@@ -448,7 +446,9 @@ function ProjectTabs({
   };
   const refs = useRef<Partial<Record<ProjectTab, HTMLButtonElement | null>>>({});
   const count = (value: ProjectTab) =>
-    value === 'folder' ? null : counts[value as 'sessions' | 'teams' | 'runs'];
+    value === 'folder' || value === 'materials'
+      ? null
+      : counts[value as 'sessions' | 'teams' | 'runs'];
   return (
     <div className="flex flex-col gap-4">
       <div role="tablist" aria-label={t('sections')} className="flex gap-1 border-b border-line/60">
@@ -481,7 +481,15 @@ function ProjectTabs({
         ))}
       </div>
       <div role="tabpanel" id={`project-panel-${tab}`} aria-labelledby={`project-tab-${tab}`}>
-        {tab === 'sessions' ? sessions : tab === 'teams' ? teams : tab === 'folder' ? folder : runs}
+        {tab === 'sessions'
+          ? sessions
+          : tab === 'teams'
+            ? teams
+            : tab === 'folder'
+              ? folder
+              : tab === 'materials'
+                ? materials
+                : runs}
       </div>
     </div>
   );

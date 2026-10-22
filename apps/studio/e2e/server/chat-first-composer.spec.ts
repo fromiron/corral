@@ -66,7 +66,10 @@ test('[TC-UX-005-H] a default chat starts without a saved Corral or advanced cho
   ).toBeHidden();
   await expect(page.getByRole('button', { name: 'Templates', exact: true })).toBeHidden();
   await expect(
-    page.getByRole('combobox', { name: 'Attach project document to this request', exact: true }),
+    page.getByRole('combobox', {
+      name: 'Attach project instructions or memory to this request',
+      exact: true,
+    }),
   ).toBeHidden();
 
   await expect(requestBox(page)).toBeInViewport();
