@@ -144,10 +144,7 @@ function run(
     clearTimeout(timeout);
     // Hooks may leave children behind; the receipt waits for the whole group.
     killProcessGroup(child);
-    // Orphaned hook children are reaped by the host's init, which can take a few seconds.
-    let cleaned = !child.pid;
-    for (let attempt = 0; child.pid && !cleaned && attempt < 10; attempt += 1)
-      cleaned = await processGroupGone(child.pid, timers);
+    const cleaned = child.pid ? await processGroupGone(child.pid, timers) : true;
     return { code, stderr: stderr.trim(), cancelled, cleaned };
   });
   return { cancel, done };

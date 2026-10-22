@@ -24,7 +24,9 @@ export async function processGroupGone(pid: number, timers: Scheduler): Promise<
     if (gone) confirmOwnedProcessCleanup(pid);
     return gone;
   }
-  for (let attempt = 0; attempt < 20; attempt++) {
+  // Orphaned descendants stay in the group as zombies until the host's init reaps them, which
+  // can take seconds in containers; this bounds the wait, not the expected time.
+  for (let attempt = 0; attempt < 100; attempt++) {
     try {
       process.kill(-pid, 0);
     } catch (error) {
