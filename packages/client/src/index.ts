@@ -23,6 +23,8 @@ import type {
   SkillKey,
   SkillRollbackRequest,
   SkillUpdatePreview,
+  TaskCandidates,
+  TaskStart,
   TerminalAck,
   TerminalControllerChange,
   TerminalCreate,
@@ -31,6 +33,7 @@ import type {
   TerminalList,
   TerminalResize,
   TerminalView,
+  UserTaskView,
 } from '@corral/contracts';
 import { canonicalJson } from '@corral/core';
 import type { CommandRecovery, StartRecovery } from './recovery.ts';
@@ -49,6 +52,8 @@ export type {
   GitStatus,
   GitStatusEntry,
   GitWriteCommand,
+  TaskCandidates,
+  TaskStart,
   TerminalAck,
   TerminalControllerChange,
   TerminalCreate,
@@ -59,6 +64,7 @@ export type {
   TerminalStreamMessage,
   TerminalView,
   UserGitTarget,
+  UserTaskView,
   WorkspaceTarget,
 } from '@corral/contracts';
 export type {
@@ -1878,6 +1884,28 @@ export class WorkspacesApi {
   readDocument(sessionId: string, path: string): Promise<FileDocument> {
     return this.send(
       `/sessions/${encodeURIComponent(sessionId)}/worktree/document?${new URLSearchParams({ path })}`,
+    );
+  }
+  /** Package scripts a person may start, and the session's tasks (CR-046 P15). */
+  tasks(sessionId: string): Promise<{ candidates: TaskCandidates; tasks: UserTaskView[] }> {
+    return this.send(`/sessions/${encodeURIComponent(sessionId)}/worktree/tasks`);
+  }
+  startTask(sessionId: string, input: TaskStart): Promise<UserTaskView> {
+    return this.send(`/sessions/${encodeURIComponent(sessionId)}/worktree/tasks`, 'POST', input);
+  }
+  taskOutput(
+    sessionId: string,
+    operationId: string,
+    offset = 0,
+  ): Promise<{ text: string; nextOffset: number; bytes: number; truncated: boolean }> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/tasks/${encodeURIComponent(operationId)}/output?offset=${offset}`,
+    );
+  }
+  stopTask(sessionId: string, operationId: string): Promise<UserTaskView> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/tasks/${encodeURIComponent(operationId)}/stop`,
+      'POST',
     );
   }
   /** Stage, unstage or commit in a managed copy; a retry reads the same receipt (P13). */

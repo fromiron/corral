@@ -86,3 +86,28 @@ export interface DocumentOperation extends WorkbenchOperation {
   kind: 'document.save' | 'document.rename' | 'document.delete';
   result: DocumentMutationResult | null;
 }
+
+/** CR-046 P15: a development task a person starts explicitly from the copy's package scripts. */
+export const TaskStart = z.strictObject({
+  operationId: Identifier,
+  target: WorkspaceTarget,
+  script: z.string().min(1).max(200),
+});
+export type TaskStart = z.infer<typeof TaskStart>;
+export interface TaskCandidates {
+  /** Chosen from the copy's lockfile; null when there is no package.json. */
+  packageManager: 'pnpm' | 'yarn' | 'npm' | null;
+  scripts: { name: string; command: string }[];
+}
+export interface UserTaskView {
+  operationId: string;
+  script: string;
+  command: string;
+  packageManager: 'pnpm' | 'yarn' | 'npm';
+  state: WorkbenchOperation['state'];
+  pid?: number;
+  exitCode?: number | null;
+  cleanupConfirmed?: boolean;
+  createdAt: string;
+  updatedAt: string;
+}

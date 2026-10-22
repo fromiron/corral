@@ -1,4 +1,4 @@
-import type { WorkspacePreview, WorktreeCommandView } from '@corral/client';
+import type { UserTaskView, WorkspacePreview, WorktreeCommandView } from '@corral/client';
 import { Button, Input, Select } from '@corral/react/ui';
 import { useEffect, useId, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -10,7 +10,7 @@ export function ServicePreview({ sessionId }: { sessionId: string }) {
   const t = useTranslations('Preview');
   const portId = useId();
   const { workspaces, mode } = useServices();
-  const [commands, setCommands] = useState<WorktreeCommandView[]>([]);
+  const [commands, setCommands] = useState<{ id: string; label: string }[]>([]);
   const [operationId, select] = useState('');
   const [port, setPort] = useState('5173');
   const [lease, setLease] = useState<WorkspacePreview | null>(null);
@@ -26,15 +26,33 @@ export function ServicePreview({ sessionId }: { sessionId: string }) {
   useEffect(() => {
     if (!workspaces || mode !== 'server') return;
     let live = true;
+    // A Run's command or a task a person started (CR-046 P15); a terminal's server is not owned.
     const refresh = () =>
-      void workspaces.commands(sessionId).then(
-        (items) => {
-          if (live) setCommands(items.filter((item) => item.state === 'running'));
-        },
-        () => {
-          if (live) setCommands([]);
-        },
-      );
+      void Promise.all([
+        workspaces.commands(sessionId).catch(() => [] as WorktreeCommandView[]),
+        workspaces.tasks
+          ? workspaces.tasks(sessionId).then(
+              (value) => value.tasks,
+              () => [] as UserTaskView[],
+            )
+          : Promise.resolve([] as UserTaskView[]),
+      ]).then(([items, tasks]) => {
+        if (!live) return;
+        setCommands([
+          ...tasks
+            .filter((task) => task.state === 'running')
+            .map((task) => ({
+              id: task.operationId,
+              label: `${task.packageManager} run ${task.script}`,
+            })),
+          ...items
+            .filter((item) => item.state === 'running')
+            .map((item) => ({
+              id: item.id,
+              label: `${item.command ?? item.shellId} · ${item.cwd}`,
+            })),
+        ]);
+      });
     refresh();
     const interval = setInterval(refresh, 3000);
     return () => {
@@ -58,10 +76,7 @@ export function ServicePreview({ sessionId }: { sessionId: string }) {
         size="xs"
         value={selected}
         onValueChange={select}
-        options={commands.map((item) => ({
-          value: item.id,
-          label: `${item.command ?? item.shellId} · ${item.cwd}`,
-        }))}
+        options={commands.map((item) => ({ value: item.id, label: item.label }))}
       />
       <label htmlFor={portId} className="flex items-center gap-2 text-xs">
         {t('port')}

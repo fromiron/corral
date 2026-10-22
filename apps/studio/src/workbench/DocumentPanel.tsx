@@ -15,6 +15,7 @@ import { useStore } from 'zustand';
 import { type AttachmentCapture, beginAttachmentCapture } from './context/bridge.ts';
 import { captureDocumentAttachment } from './context/documents.ts';
 import type { DocumentStore } from './documents/store.ts';
+import { WriterHeld } from './documents/WriterHeld.tsx';
 import type { FileReference } from './FilePanel.tsx';
 
 const CodeEditorView = lazy(() =>
@@ -235,7 +236,9 @@ export function DocumentPanel({
           {t('eolHint')}
         </p>
       ) : null}
-      {entry.error || actionError ? (
+      {entry.writerBusy ? (
+        <WriterHeld sessionId={entry.target.sessionId} />
+      ) : entry.error || actionError ? (
         <p role="alert" className="text-xs text-danger">
           {entry.error || actionError}
         </p>

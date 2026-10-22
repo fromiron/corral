@@ -176,9 +176,10 @@ test('#70 #86 Git, Terminal and running commands open from the palette, / and th
   );
   const url = page.url().split('?')[0] as string;
   await page.goto(`${url}?panel=tools`);
-  await expect(
-    page.getByRole('tab', { name: 'Running commands & preview', exact: true }),
-  ).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('tab', { name: 'Tasks & preview', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
 });
 
 /** Whether a pointer at the element's centre would reach it (a hidden dock group is not painted). */

@@ -145,6 +145,7 @@ import { LiveVoice } from '../workbench/LiveVoice.tsx';
 import { MessageBranch } from '../workbench/MessageBranch.tsx';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
 import { PermissionModePicker } from '../workbench/PermissionModePicker.tsx';
+import { ProblemsPanel } from '../workbench/ProblemsPanel.tsx';
 import { ProjectMaterialPicker } from '../workbench/ProjectMaterials.tsx';
 import { isSendKey, usePreferences } from '../workbench/preferences.ts';
 import { EDIT_REQUEST, editRequest, RefusalHelp } from '../workbench/RefusalHelp.tsx';
@@ -340,6 +341,7 @@ export function SessionPage() {
       />
     ),
     checks: () => <ChecksPanel session={session} onAttach={handleAttachment} />,
+    problems: () => <ProblemsPanel sessionId={session.sessionId} />,
     run: () => <RunPanel runs={runs} search={search} setSearch={setSearch} />,
   };
   const renderContext = (view: DockContextView) => {
@@ -390,7 +392,13 @@ export function SessionPage() {
         />
       );
     if (view === 'tools')
-      return <WorkbenchToolsPanel key={session.sessionId} sessionId={session.sessionId} />;
+      return (
+        <WorkbenchToolsPanel
+          key={session.sessionId}
+          sessionId={session.sessionId}
+          projectId={session.projectId}
+        />
+      );
     const target = sessionPanelDescriptor(
       session.projectId,
       session.sessionId,

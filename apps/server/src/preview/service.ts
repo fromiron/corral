@@ -64,7 +64,10 @@ export class PreviewService {
   >();
   private readonly resolveRoot: (sessionId: string, runId?: string) => Promise<string>;
   private readonly attest?: SessionConnectionAttestation;
-  private readonly operationRun?: (sessionId: string, operationId: string) => Promise<string>;
+  private readonly operationRun?: (
+    sessionId: string,
+    operationId: string,
+  ) => Promise<string | undefined>;
   private readonly readSnapshot?: (
     sessionId: string,
     runId: string,
@@ -83,7 +86,7 @@ export class PreviewService {
   constructor(options: {
     resolveRoot: (sessionId: string, runId?: string) => Promise<string>;
     attestConnection?: SessionConnectionAttestation;
-    operationRun?: (sessionId: string, operationId: string) => Promise<string>;
+    operationRun?: (sessionId: string, operationId: string) => Promise<string | undefined>;
     readSnapshot?: (sessionId: string, runId: string, path: string) => Promise<Buffer | null>;
     now?: () => number;
   }) {

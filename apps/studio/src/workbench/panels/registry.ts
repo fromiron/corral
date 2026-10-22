@@ -8,6 +8,7 @@ export const DOCK_VIEWS = [
   'git',
   'artifacts',
   'checks',
+  'problems',
   'run',
   'terminal',
   'tools',
@@ -21,6 +22,7 @@ export const SESSION_PANELS = [
   'files',
   'artifacts',
   'checks',
+  'problems',
   'run',
   'terminal',
   'tools',
@@ -71,6 +73,9 @@ export const PANE_CATALOG: readonly PaneEntry[] = [
     slash: 'preview',
     aliases: [
       'tools',
+      'tasks',
+      'scripts',
+      'dev server',
       'commands',
       'running',
       'process',
@@ -78,6 +83,8 @@ export const PANE_CATALOG: readonly PaneEntry[] = [
       'service',
       'server',
       '도구',
+      '작업',
+      '스크립트',
       '명령',
       '실행 중',
       '프로세스',
@@ -90,6 +97,12 @@ export const PANE_CATALOG: readonly PaneEntry[] = [
     group: 'verify',
     slash: 'checks',
     aliases: ['checks', 'verify', 'verification', 'tests', 'lint', '검사', '검증', '테스트'],
+  },
+  {
+    view: 'problems',
+    group: 'verify',
+    slash: 'problems',
+    aliases: ['problems', 'errors', 'warnings', 'diagnostics', '문제', '오류', '경고'],
   },
   {
     view: 'artifacts',
@@ -108,7 +121,7 @@ export const PANE_CATALOG: readonly PaneEntry[] = [
 /** View references only; document, process and Run owners stay in their existing stores. */
 export type PanelDescriptor =
   | {
-      kind: 'chat' | 'files' | 'changes' | 'git' | 'artifacts' | 'checks' | 'review';
+      kind: 'chat' | 'files' | 'changes' | 'git' | 'artifacts' | 'checks' | 'problems' | 'review';
       projectId: string;
       sessionId: string;
     }
@@ -136,6 +149,7 @@ export function panelKey(services: object, panel: PanelDescriptor): string {
     case 'git':
     case 'artifacts':
     case 'checks':
+    case 'problems':
     case 'review':
       return key(panel.projectId, panel.sessionId);
     case 'graph':

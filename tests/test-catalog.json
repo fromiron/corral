@@ -3588,5 +3588,38 @@
     "status": "planned",
     "adapter": "temporary real Git repositories and a local bare remote with injected receipt failure; jsdom Git pane with a document store double",
     "evidence": null
+  },
+  {
+    "id": "TC-WBD-011-H",
+    "requirements": [
+      "CRL-WBD-011"
+    ],
+    "suite": "unit+integration",
+    "scenario": "package.json scripts 후보에서 실제 node http server task를 명시 시작해 출력과 사용자 task preview 프록시 응답을 확인하고 중지·정리 확인, 검사 출력의 Problems가 문서 위치로 이동",
+    "status": "planned",
+    "adapter": "temporary real Git repositories and managed worktrees, real node child processes and loopback ports with existing SQLite/preview fixtures; no paid models",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-011-N",
+    "requirements": [
+      "CRL-WBD-011"
+    ],
+    "suite": "unit+integration",
+    "scenario": "후보 조회는 아무것도 실행하지 않음, 없는 script 거절, 다른 프로세스가 연 포트의 preview 거절, task 실행 중 같은 사본 저장 거절과 중지 뒤 저장, 사본 밖 경로는 Problems에 넣지 않음",
+    "status": "planned",
+    "adapter": "temporary real Git repositories and managed worktrees with real loopback listeners; jsdom panes",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-011-F",
+    "requirements": [
+      "CRL-WBD-011"
+    ],
+    "suite": "unit+integration",
+    "scenario": "재시작 뒤 uncertain task의 process group이 사라졌음을 확인해 receipt 정리, 소스가 바뀐 뒤 검사 결과의 Problems stale 표시, task writer 중에도 고정 snapshot 검사 실행",
+    "status": "planned",
+    "adapter": "temporary real Git repositories and managed worktrees with real child processes; restart by a new service over the same SQLite database",
+    "evidence": null
   }
 ]

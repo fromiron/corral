@@ -256,7 +256,7 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
             api,
             view === 'chat'
               ? 'main1'
-              : ['terminal', 'tools', 'checks'].includes(view)
+              : ['terminal', 'tools', 'checks', 'problems'].includes(view)
                 ? 'bottom'
                 : 'aux',
           ) ?? api.activeGroup;
@@ -644,7 +644,6 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
       value: `context:${entry.view}`,
       label: t(entry.view),
       group: t(groupLabel[entry.group]),
-      ...(entry.view === 'tools' ? { hint: t('toolsHint') } : {}),
     }));
     return (
       <RendererContext.Provider

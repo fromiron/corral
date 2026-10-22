@@ -153,7 +153,7 @@ export function createPresetLayout(
       groups[preset === 'implementation' ? 'main1' : 'main2'].push(id);
     else if (
       descriptor.kind === 'context' &&
-      ['terminal', 'checks', 'tools'].includes(descriptor.view)
+      ['terminal', 'checks', 'problems', 'tools'].includes(descriptor.view)
     )
       groups.bottom.push(id);
     else if (

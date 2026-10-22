@@ -3172,7 +3172,9 @@
     "confirmDraftHint": "This captured selection includes unsaved edits. Adding it does not save the file or send a request.",
     "attachSnapshot": "Add captured text",
     "selectedSnapshot": "Captured selection",
-    "captureFailed": "The selection could not be attached. The captured text is kept; retry or choose a smaller selection."
+    "captureFailed": "The selection could not be attached. The captured text is kept; retry or choose a smaller selection.",
+    "writerHeld": "A running task or terminal is using this copy.",
+    "writerReleased": "Stopped. Save again to write the file."
   },
   "Terminals": {
     "title": "Terminal",
@@ -3277,10 +3279,10 @@
     "changes": "Changes",
     "artifacts": "Results",
     "checks": "Checks",
+    "problems": "Problems",
     "run": "Run",
     "terminal": "Terminal",
-    "tools": "Running commands & preview",
-    "toolsHint": "Watch or stop commands a run started; not a shell",
+    "tools": "Tasks & preview",
     "activeRun": "Active run controls",
     "openActiveRun": "Open active run",
     "activeRunTarget": "In progress: {request}",
@@ -3403,5 +3405,35 @@
     "saveFailed": "Could not save the entry.",
     "archiveFailed": "Could not archive the entry.",
     "attachFailed": "Could not attach the entry."
+  },
+  "DevTasks": {
+    "title": "Tasks",
+    "scripts": "Package scripts",
+    "run": "Run {script}",
+    "stop": "Stop {script}",
+    "output": "Output of {script}",
+    "empty": "No package scripts",
+    "noCopy": "This session has no working copy.",
+    "state": {
+      "running": "Running",
+      "succeeded": "Exited",
+      "failed": "Failed",
+      "cancelled": "Stopped",
+      "uncertain": "Unconfirmed"
+    }
+  },
+  "Problems": {
+    "title": "Problems",
+    "refresh": "Refresh problems",
+    "check": "Check",
+    "task": "Task",
+    "stale": "Outdated",
+    "empty": "No problems",
+    "unavailable": "Problems could not be read.",
+    "severity": {
+      "error": "Error",
+      "warning": "Warning"
+    },
+    "openFailed": "{path} could not be opened."
   }
 }

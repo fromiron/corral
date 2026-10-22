@@ -31,8 +31,15 @@ export function createDemoWorkspaces(
   const noGit = async (): Promise<never> => {
     throw new Error('Git inspection requires the local server.');
   };
+  const noTasks = async (): Promise<never> => {
+    throw new Error('Development tasks require the local server.');
+  };
   return {
     commands: async () => [],
+    tasks: async () => ({ candidates: { packageManager: null, scripts: [] }, tasks: [] }),
+    startTask: noTasks,
+    taskOutput: noTasks,
+    stopTask: noTasks,
     commandReport: noCheckpoints,
     commandOutput: noCheckpoints,
     stopCommand: noCheckpoints,

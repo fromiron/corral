@@ -25,6 +25,9 @@
 | Git index에 올리기 / 내리기 | Stage / 스테이지, Unstage / 스테이지 해제 | `git.stage`, `git.unstage` | add, 추가(화면 문구) |
 | Git 기록 만들기 | Commit / 커밋 | `git.commit` | 저장(문서 저장과 구분) |
 | 원격에서 받기 / 반영 / 보내기 | Fetch / 가져오기, Pull / 당겨오기, Push / 올리기 | `git.fetch`, `git.pull`, `git.push` | 동기화(범위가 다름) |
+| 사람이 시작한 package script 실행 | Task / 작업 | 메시지 `DevTasks`, operation `task` | 명령(Run이 실행한 명령과 구분) |
+| task·미리보기를 다루는 창 | Tasks & preview / 작업·미리보기 | 패널 `tools`, 슬래시 `/preview` | Running commands & preview, 도구 |
+| 검사·task 출력의 위치 목록 | Problems / 문제 | 패널 `problems`, 슬래시 `/problems` | Diagnostics, 진단 |
 | 현재 의도가 싣지 않는 항목 | Applies to a new request only / 새 요청에만 적용 | `heldForNew` | 항목별 개별 안내 |
 
 ## 파일명

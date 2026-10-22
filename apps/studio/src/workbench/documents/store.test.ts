@@ -476,3 +476,28 @@ it('[TC-WBD-003-F] recovery writes one in-flight snapshot and only the latest pe
   unsubscribe();
   s.store.dispose();
 });
+
+it('[TC-WBD-011-N] a save refused because a task or terminal holds the copy keeps the draft and says who holds it', async () => {
+  const s = setup();
+  s.changeDocument.mockRejectedValueOnce(
+    new ApiError(
+      409,
+      'RUN_ALREADY_ACTIVE',
+      'working copy writer task_1 has not released ownership',
+    ),
+  );
+  const key = await s.store.open('session', 'example.txt');
+  modelOf(s.store, key).setValue('draft');
+  expect(await s.store.save(key)).toBe(false);
+  expect(s.store.getState().documents[key]).toMatchObject({
+    text: 'draft',
+    dirty: true,
+    pendingSave: null,
+    writerBusy: true,
+  });
+  // Once the holder is gone, the same draft saves with a new command; nothing replays on its own.
+  expect(s.changeDocument).toHaveBeenCalledTimes(1);
+  expect(await s.store.save(key)).toBe(true);
+  expect(s.store.getState().documents[key]).toMatchObject({ dirty: false, writerBusy: false });
+  s.store.dispose();
+});

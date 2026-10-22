@@ -3172,7 +3172,9 @@
     "confirmDraftHint": "캡처한 선택 내용에 미저장 편집이 포함되어 있습니다. 첨부해도 파일을 저장하거나 요청을 보내지 않습니다.",
     "attachSnapshot": "캡처한 내용 추가",
     "selectedSnapshot": "캡처한 선택 내용",
-    "captureFailed": "선택 내용을 첨부하지 못했습니다. 캡처한 내용을 보존했습니다. 다시 시도하거나 선택 범위를 줄이세요."
+    "captureFailed": "선택 내용을 첨부하지 못했습니다. 캡처한 내용을 보존했습니다. 다시 시도하거나 선택 범위를 줄이세요.",
+    "writerHeld": "실행 중인 작업이나 터미널이 이 사본을 쓰고 있습니다.",
+    "writerReleased": "중지했습니다. 다시 저장하면 파일에 씁니다."
   },
   "Terminals": {
     "title": "터미널",
@@ -3277,10 +3279,10 @@
     "changes": "변경",
     "artifacts": "결과",
     "checks": "검사",
+    "problems": "문제",
     "run": "실행",
     "terminal": "터미널",
-    "tools": "실행 중 명령·미리보기",
-    "toolsHint": "실행이 시작한 명령을 보거나 멈춥니다(셸 입력 아님)",
+    "tools": "작업·미리보기",
     "activeRun": "진행 중 실행 제어",
     "openActiveRun": "진행 중 실행 열기",
     "activeRunTarget": "진행 중: {request}",
@@ -3403,5 +3405,35 @@
     "saveFailed": "항목을 저장하지 못했습니다.",
     "archiveFailed": "항목을 보관하지 못했습니다.",
     "attachFailed": "항목을 첨부하지 못했습니다."
+  },
+  "DevTasks": {
+    "title": "작업",
+    "scripts": "패키지 스크립트",
+    "run": "{script} 실행",
+    "stop": "{script} 중지",
+    "output": "{script} 출력",
+    "empty": "패키지 스크립트 없음",
+    "noCopy": "이 세션에는 작업 사본이 없습니다.",
+    "state": {
+      "running": "실행 중",
+      "succeeded": "종료됨",
+      "failed": "실패",
+      "cancelled": "중지됨",
+      "uncertain": "확인 안 됨"
+    }
+  },
+  "Problems": {
+    "title": "문제",
+    "refresh": "문제 새로고침",
+    "check": "검사",
+    "task": "작업",
+    "stale": "이전 상태",
+    "empty": "문제 없음",
+    "unavailable": "문제를 읽을 수 없습니다.",
+    "severity": {
+      "error": "오류",
+      "warning": "경고"
+    },
+    "openFailed": "{path}을(를) 열 수 없습니다."
   }
 }

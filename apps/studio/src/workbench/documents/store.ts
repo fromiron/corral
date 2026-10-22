@@ -38,6 +38,8 @@ export interface DocumentBuffer {
   recoveryError: string | null;
   modelError: string | null;
   error: string | null;
+  /** The last save was refused because a task, terminal or Run holds the copy's writer (P15). */
+  writerBusy?: boolean;
 }
 
 export type CloseChoice = 'save' | 'discard' | 'cancel';
@@ -454,7 +456,13 @@ export function documentStore(
         text: entry.text,
         editVersion: entry.editVersion,
       };
-      patch(key, { pendingSave: command, saving: true, canRetrySave: false, error: null });
+      patch(key, {
+        pendingSave: command,
+        saving: true,
+        canRetrySave: false,
+        error: null,
+        writerBusy: false,
+      });
       const work = (async () => {
         await persist(key);
         if (disposed) return false;
@@ -470,6 +478,7 @@ export function documentStore(
             saving: false,
             pendingSave: rejected ? null : command,
             error: message(error),
+            writerBusy: error instanceof ApiError && error.code === 'RUN_ALREADY_ACTIVE',
           });
           await persist(key);
           if (error instanceof ApiError && error.code === 'REVISION_CONFLICT')

@@ -44,6 +44,7 @@ import {
   SchemaVersion,
   SessionSearchRequest,
   StartFrom,
+  TaskStart,
   TERMINAL_RUN_STATUSES,
   TextAttachments,
   UltraSelection,
@@ -455,11 +456,12 @@ async function createCorralServer(
     readSnapshot: (_sessionId, runId, path) => files.readPreviewSnapshot(runId, path),
     attestConnection: (sessionId, operationId, port, peerPort) =>
       files.attestCommandConnection(sessionId, operationId, port, peerPort),
+    // A Run's command, or a person's development task (CR-046 P15), which has no Run.
     operationRun: async (sessionId, operationId) => {
       const operation = files.listCommands(sessionId).find((item) => item.id === operationId);
-      if (!operation || operation.state !== 'running')
-        throw new WorkspaceError('TARGET_NOT_FOUND', 'the preview process is not running');
-      return operation.run_id;
+      if (operation?.state === 'running') return operation.run_id;
+      if (files.userTaskRunning(sessionId, operationId)) return undefined;
+      throw new WorkspaceError('TARGET_NOT_FOUND', 'the preview process is not running');
     },
     resolveRoot: async (sessionId, runId) => {
       if (
@@ -1885,6 +1887,69 @@ async function createCorralServer(
         return files.documentOperation(request.params.sessionId, request.params.operationId);
       } catch (error) {
         return documentFail(reply, error);
+      }
+    },
+  );
+  // CR-046 P15: development tasks a person starts from the copy's package scripts.
+  app.get<{ Params: { sessionId: string } }>(
+    '/api/v1/sessions/:sessionId/worktree/tasks',
+    async (request, reply) => {
+      if (!(await sessionOr404(reply, request.params.sessionId))) return reply;
+      try {
+        const sessionId = request.params.sessionId;
+        return {
+          candidates: await files.taskCandidates(sessionId),
+          tasks: await files.tasks(sessionId),
+        };
+      } catch (error) {
+        return gitFail(reply, error);
+      }
+    },
+  );
+  app.post<{ Params: { sessionId: string } }>(
+    '/api/v1/sessions/:sessionId/worktree/tasks',
+    async (request, reply) => {
+      const input = TaskStart.safeParse(request.body);
+      if (!input.success) return fail(reply, 'SCHEMA_INVALID', 'invalid task');
+      if (input.data.target.sessionId !== request.params.sessionId)
+        return fail(reply, 'SCHEMA_INVALID', 'task target does not match the session');
+      if (!(await sessionOr404(reply, request.params.sessionId))) return reply;
+      try {
+        return await files.startTask(request.params.sessionId, input.data);
+      } catch (error) {
+        return gitFail(reply, error);
+      }
+    },
+  );
+  app.get<{ Params: { sessionId: string; operationId: string }; Querystring: { offset?: string } }>(
+    '/api/v1/sessions/:sessionId/worktree/tasks/:operationId/output',
+    async (request, reply) => {
+      if (!(await sessionOr404(reply, request.params.sessionId))) return reply;
+      const offset = Number(request.query.offset ?? 0);
+      if (!Number.isSafeInteger(offset) || offset < 0)
+        return fail(reply, 'SCHEMA_INVALID', 'invalid output offset');
+      try {
+        return (
+          files.taskOutput(request.params.sessionId, request.params.operationId, offset) ?? {
+            text: '',
+            nextOffset: offset,
+            bytes: 0,
+            truncated: false,
+          }
+        );
+      } catch (error) {
+        return gitFail(reply, error);
+      }
+    },
+  );
+  app.post<{ Params: { sessionId: string; operationId: string } }>(
+    '/api/v1/sessions/:sessionId/worktree/tasks/:operationId/stop',
+    async (request, reply) => {
+      if (!(await sessionOr404(reply, request.params.sessionId))) return reply;
+      try {
+        return await files.stopTask(request.params.sessionId, request.params.operationId);
+      } catch (error) {
+        return gitFail(reply, error);
       }
     },
   );

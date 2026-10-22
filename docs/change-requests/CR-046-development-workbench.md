@@ -151,3 +151,18 @@ H는 실제 임시 저장소와 관리 사본에서 stage→unstage→commit, �
 - `GitStatus`에 읽기 전용 `branches`(local branch 이름, 최대 200)와 `remotes`를 더한다. Git 창은 branch 메뉴에서 branch 만들기·전환과 fetch/pull/push를 제공하며 force·reset·clean·자동 재시도는 없다.
 
 H는 detached 사본의 branch 생성·연결과 전환, 로컬 bare remote의 fetch·fast-forward pull·push다. N은 remote 이동 뒤 non-fast-forward, 잘못된 이름, 원본에서 checkout 중인 branch, 없는 remote와 거절하는 remote, 추적 변경이 있는 전환이다. F는 push 후 receipt 기록 실패·재시작 뒤 ls-remote 판정, 활성 writer와 미저장 문서가 있을 때의 전환 차단이다.
+
+## P15: 개발 task·preview·검사와 Problems
+
+추적: CRL-WBD-011 / C-155 / TC-WBD-011-H,N,F. 승인 계획 P15를 구체화한다. PTY에서 띄운 서버의 preview, 등록 검사의 자동 실행, task 출력의 tree 고정은 포함하지 않는다.
+
+- 발견은 실행이 아니다. 사본 최상위 `package.json`의 `scripts`만 읽어 후보로 보여 주며 lifecycle script(`prepare` 등)를 실행하지 않는다. 패키지 매니저는 lockfile로 pnpm → yarn → npm 순으로 고른다.
+- 시작은 사람이 script를 눌렀을 때만 한다. `TaskStart{operationId, target, script}`를 인간 operation(`task`)으로 접수해 사본 writer를 수명 동안 보유하고, `CommandRuntime`의 사용자 owner(`{kind:'user', hostId, sessionId, operationId}`)로 소유 process group을 만든다. 계획은 별도 `workbench_tasks` 테이블을 예상했으나 기존 human operation 원장과 receipt로 충분해 새 테이블을 만들지 않았다.
+- 중지는 process group을 끝내고 정리를 확인한 뒤 `cancelled`로 기록한다. 재시작 뒤 열린 receipt는 `uncertain`이 되며 기록된 process group이 사라진 것을 확인해야 정리하고 writer를 돌려준다. 다시 시작은 명시 클릭으로만 한다.
+- preview는 Run의 명령과 사용자 task의 operationId를 모두 받는다. 연결 소유 증명은 사용자 task의 process group에도 적용하므로 다른 프로세스가 연 포트는 거절한다. Studio의 preview 선택은 실행 중인 task를 함께 나열한다.
+- 검사는 사용자 task·터미널 writer를 이유로 거절하지 않고 그 시점 tree의 snapshot에서 실행한다. Run writer와 다른 사람 operation은 지금처럼 막는다. 결과는 기존 `tree`·`stale`을 그대로 쓴다.
+- Problems 창(`/problems`, 검증 그룹)은 검사 출력과 최근 task 출력에서 사본 내부 상대 경로만 위치로 모은다(tsc `path(l,c)`, `path:l:c`). 절대·상위·`node_modules`·`.git`·`.corral` 경로는 버린다. 이전 tree의 검사 결과는 "이전 상태"로 표시하고, 행은 문서 탭의 정확한 줄·열을 연다.
+- strict 저장: task·터미널·Run이 writer인 동안 연 문서는 읽기 전용이다. 그 전에 연 문서를 저장하면 409 `RUN_ALREADY_ACTIVE`를 원문 오류 대신 "실행 중인 작업이나 터미널이 이 사본을 쓰고 있습니다"로 보이고 실행 중 task의 중지 버튼을 둔다. 정리가 확인된 뒤의 저장은 사람이 다시 누른다. 터미널과 Run은 각자의 창에서 멈춘다.
+- 도구 창 이름은 "Tasks & preview"(작업·미리보기)로 바꾸고 창 목록의 반복 설명(`toolsHint`)을 없앤다.
+
+H는 fixture의 실제 node http server를 후보에서 시작해 출력·preview 프록시 응답·중지를 확인하고, 검사·task 출력의 위치를 Problems에서 열어 문서의 줄로 이동하는 것이다. N은 발견만으로 실행되지 않음, 다른 프로세스의 포트 거절, 없는 script, task 실행 중 저장 거절과 중지 뒤 저장이다. F는 task 실행 중 검사의 snapshot 실행, 재시작 뒤 사라진 process group의 정리와 writer 반환, 이전 tree의 결과 표시다.

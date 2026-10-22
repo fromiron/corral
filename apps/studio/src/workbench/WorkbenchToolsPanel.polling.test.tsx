@@ -46,7 +46,7 @@ it('[TC-WBD-004-N] keeps one preview poller through tools-pane rerenders and rel
     act(async () => {
       root.render(
         <IntlProvider locale="en" messages={messages} timeZone="UTC">
-          <WorkbenchToolsPanel sessionId="session" />
+          <WorkbenchToolsPanel sessionId="session" projectId="project" />
         </IntlProvider>,
       );
     });

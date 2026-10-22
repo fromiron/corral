@@ -65,10 +65,14 @@ import {
   ReviewRecipeRevision,
   RunCommandArgs,
   type Scheduler,
+  type TaskCandidates,
+  TaskStart,
   type TerminalCreate,
   type UserGitTarget,
+  type UserTaskView,
   type VerificationOwner,
   VerificationReport,
+  type WorkbenchOperation,
   type WorkspaceTarget,
 } from '@corral/contracts';
 import {
@@ -80,7 +84,7 @@ import {
 } from '@corral/core';
 import { type Db, SqliteHarnessStore, SqliteProjectToolStore } from '@corral/storage-sqlite';
 import { PtyRuntime, type PtyRuntimeOptions } from '../processes/pty.ts';
-import { CommandCapacityError, CommandRuntime } from '../processes/runtime.ts';
+import { CommandCapacityError, CommandRuntime, type UserTaskOwner } from '../processes/runtime.ts';
 import { commandEnvironment, listShells, resolveShellCommand } from '../processes/shells.ts';
 import { systemTimers } from '../runtime.ts';
 import { isolatedChecksAvailable } from './check-isolation.ts';
@@ -358,6 +362,8 @@ interface WorktreeRow {
 export class WorkspaceService implements FileTools {
   readonly terminals: PtyRuntime;
   private readonly commandRuntime = new CommandRuntime();
+  /** Development tasks people start (CR-046 P15); the host process cap is still shared. */
+  private readonly taskRuntime = new CommandRuntime<UserTaskOwner>();
   private readonly pendingCommands = new Map<string, Promise<CommandReport>>();
   private readonly pendingCommandHashes = new Map<string, string>();
   private readonly commandServices = new Map<
@@ -2780,14 +2786,14 @@ export class WorkspaceService implements FileTools {
     const command = config?.checks.find((c) => c.id === commandId);
     if (!config || !command) throw new WorkspaceError('TARGET_NOT_FOUND', 'no such check');
     const { tree, launch } = await this.lease(row.worktree_path, async () => {
-      if (this.hasUnsafeWorktreeOwner(sessionId))
+      if (this.writerBlocksCheck(sessionId))
         throw new WorkspaceError(
           'REVISION_CONFLICT',
           'finish the working copy writer before checking',
         );
       const tree = await this.snapshotTree(row.worktree_path);
       const launch = await launchFingerprint(row.worktree_path, config.revision, command);
-      if (this.hasUnsafeWorktreeOwner(sessionId))
+      if (this.writerBlocksCheck(sessionId))
         throw new WorkspaceError(
           'REVISION_CONFLICT',
           'working copy writer ownership changed while preparing the check',
@@ -3534,6 +3540,7 @@ export class WorkspaceService implements FileTools {
     this.disposing = true;
     await this.terminals.close();
     await this.commandRuntime.close();
+    await this.taskRuntime.close();
     await Promise.allSettled([...this.pendingCommands.values()]);
     await Promise.allSettled(
       [...this.commandServices.values()].map((service) => service.completion),
@@ -3945,9 +3952,188 @@ export class WorkspaceService implements FileTools {
     const row = this.db
       .prepare("SELECT id FROM command_operations WHERE id=? AND session_id=? AND state='running'")
       .get(operationId, sessionId);
-    return row
-      ? this.commandRuntime.attestConnection(operationId, port, peerPort)
+    if (row) return this.commandRuntime.attestConnection(operationId, port, peerPort);
+    return this.userTaskRunning(sessionId, operationId)
+      ? this.taskRuntime.attestConnection(operationId, port, peerPort)
       : Promise.resolve(false);
+  }
+
+  /** A person's development task that is running now on this host (preview owner, P15). */
+  userTaskRunning(sessionId: string, operationId: string): boolean {
+    const receipt = this.workbenchOperations.get(operationId);
+    return (
+      receipt?.kind === 'task' &&
+      receipt.target.sessionId === sessionId &&
+      receipt.state === 'running' &&
+      this.taskRuntime.pid(operationId) !== undefined
+    );
+  }
+
+  /** Scripts a person may start; reading them runs nothing (CR-046 P15). */
+  async taskCandidates(sessionId: string): Promise<TaskCandidates> {
+    const row = this.worktree(sessionId);
+    if (!row) throw new WorkspaceError('TARGET_NOT_FOUND', 'the working copy is unavailable');
+    const root = row.worktree_path;
+    if ((await assertPlainPath(root, 'package.json')) !== 'file')
+      return { packageManager: null, scripts: [] };
+    const { bytes } = await boundedFile(root, 'package.json');
+    let manifest: unknown;
+    try {
+      manifest = bytes ? JSON.parse(bytes.toString('utf8')) : null;
+    } catch {
+      manifest = null;
+    }
+    const scripts =
+      manifest && typeof manifest === 'object' && 'scripts' in manifest
+        ? (manifest as { scripts: unknown }).scripts
+        : null;
+    const lock = async (name: string) => (await assertPlainPath(root, name)) === 'file';
+    return {
+      packageManager: (await lock('pnpm-lock.yaml'))
+        ? 'pnpm'
+        : (await lock('yarn.lock'))
+          ? 'yarn'
+          : 'npm',
+      scripts:
+        scripts && typeof scripts === 'object'
+          ? Object.entries(scripts as Record<string, unknown>)
+              .filter(
+                (entry): entry is [string, string] =>
+                  typeof entry[1] === 'string' && entry[0].length > 0 && entry[0].length <= 200,
+              )
+              .slice(0, 100)
+              .map(([name, command]) => ({ name, command }))
+          : [],
+    };
+  }
+
+  private taskView(receipt: WorkbenchOperation): UserTaskView {
+    const result = (receipt.result ?? {}) as Partial<UserTaskView>;
+    const owner = this.workspaceAccess.get({ kind: 'user', id: receipt.operationId });
+    return {
+      operationId: receipt.operationId,
+      script: result.script ?? '',
+      command: result.command ?? '',
+      packageManager: result.packageManager ?? 'npm',
+      state: owner?.state === 'uncertain' ? 'uncertain' : receipt.state,
+      ...(result.pid ? { pid: result.pid } : {}),
+      ...(result.exitCode !== undefined ? { exitCode: result.exitCode } : {}),
+      ...(result.cleanupConfirmed !== undefined
+        ? { cleanupConfirmed: result.cleanupConfirmed }
+        : {}),
+      createdAt: receipt.createdAt,
+      updatedAt: receipt.updatedAt,
+    };
+  }
+
+  private taskReceipt(sessionId: string, operationId: string) {
+    const receipt = this.workbenchOperations.get(operationId);
+    if (!receipt || receipt.kind !== 'task' || receipt.target.sessionId !== sessionId)
+      throw new WorkspaceError('TARGET_NOT_FOUND', 'the task is unavailable');
+    return receipt;
+  }
+
+  /** Starts one package script as the person's own task; it holds the copy's writer (strict). */
+  async startTask(sessionId: string, raw: TaskStart): Promise<UserTaskView> {
+    const input = TaskStart.parse(raw);
+    const requestHash = sha256(Buffer.from(canonicalJson(input)));
+    const prior = this.workbenchOperations.get(input.operationId);
+    if (prior) {
+      if (prior.kind !== 'task' || prior.requestHash !== requestHash)
+        throw new WorkspaceError('REVISION_CONFLICT', 'operation request changed');
+      return this.taskView(prior);
+    }
+    const { row } = this.documentTarget(sessionId, input.target, true);
+    const candidates = await this.taskCandidates(sessionId);
+    const script = candidates.scripts.find((item) => item.name === input.script);
+    if (!script || !candidates.packageManager)
+      throw new WorkspaceError('TARGET_NOT_FOUND', 'that script is not in package.json');
+    const base = {
+      script: script.name,
+      command: script.command,
+      packageManager: candidates.packageManager,
+    };
+    this.workbenchOperations.admit(
+      { operationId: input.operationId, target: input.target, kind: 'task', requestHash },
+      row.worktree_path,
+      base,
+    );
+    let started: ReturnType<CommandRuntime<UserTaskOwner>['startService']>;
+    try {
+      started = this.taskRuntime.startService(
+        {
+          operationId: input.operationId,
+          owner: { kind: 'user', hostId: this.hostId, sessionId, operationId: input.operationId },
+          directory: row.worktree_path,
+          command: { executable: candidates.packageManager, args: ['run', script.name] },
+          // The runtime's longest bound; a dev server is restarted explicitly after it.
+          timeoutMs: 3_600_000,
+        },
+        { aborted: false, onCancel: () => () => {} },
+      );
+    } catch (error) {
+      this.workbenchOperations.finish(input.operationId, 'failed', {
+        ...base,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+    let pid: number | undefined;
+    void started.completion.then((report) => {
+      this.workbenchOperations.finish(
+        input.operationId,
+        report.state === 'uncertain'
+          ? 'uncertain'
+          : report.state === 'completed'
+            ? 'succeeded'
+            : report.state,
+        { ...base, pid, exitCode: report.exitCode, cleanupConfirmed: report.cleanupConfirmed },
+      );
+    });
+    await started.started;
+    pid = this.taskRuntime.pid(input.operationId);
+    if (pid) this.workbenchOperations.updateRunning(input.operationId, { ...base, pid });
+    return this.taskView(this.taskReceipt(sessionId, input.operationId));
+  }
+
+  /**
+   * The session's tasks. A task left running or uncertain by an earlier host process is settled
+   * only once its process group is gone.
+   */
+  async tasks(sessionId: string): Promise<UserTaskView[]> {
+    for (const receipt of this.workbenchOperations.list('task', sessionId)) {
+      const pid = (receipt.result as { pid?: number } | null)?.pid;
+      const open = receipt.state === 'running' || receipt.state === 'uncertain';
+      if (!open || this.taskRuntime.pid(receipt.operationId) !== undefined || !pid) continue;
+      let alive = true;
+      try {
+        process.kill(-pid, 0);
+      } catch (error) {
+        alive = (error as NodeJS.ErrnoException).code !== 'ESRCH';
+      }
+      if (!alive)
+        this.workbenchOperations.reconcile(receipt.operationId, ['task'], 'cancelled', {
+          ...(receipt.result as object),
+          cleanupConfirmed: true,
+        });
+    }
+    return this.workbenchOperations
+      .list('task', sessionId)
+      .map((receipt) => this.taskView(receipt))
+      .reverse()
+      .slice(0, 20);
+  }
+
+  taskOutput(sessionId: string, operationId: string, offset = 0) {
+    this.taskReceipt(sessionId, operationId);
+    return this.taskRuntime.read(operationId, offset);
+  }
+
+  /** Stops the task's process group and waits for its cleanup to be confirmed. */
+  async stopTask(sessionId: string, operationId: string): Promise<UserTaskView> {
+    this.taskReceipt(sessionId, operationId);
+    await this.taskRuntime.stop(operationId);
+    return this.taskView(this.taskReceipt(sessionId, operationId));
   }
 
   private worktreeOfRun(runId: string): { row: WorktreeRow; sessionId: string } | null {
@@ -3974,6 +4160,19 @@ export class WorkspaceService implements FileTools {
     if (!row) return null;
     const path = realpathSync.native(row.worktree_path);
     return process.platform === 'win32' ? path.toLowerCase() : path;
+  }
+
+  /**
+   * A check copies a snapshot of the tree. A long-lived development task or terminal may keep
+   * writing meanwhile (CR-046 P15); a Run or a short human change in progress may not.
+   */
+  private writerBlocksCheck(sessionId: string): boolean {
+    const key = this.worktreeScope(sessionId);
+    const writer = key === null ? undefined : this.workspaceAccess.writerAt(key);
+    if (!writer) return false;
+    if (writer.owner_kind !== 'user') return true;
+    const kind = this.workbenchOperations.get(writer.owner_id)?.kind;
+    return kind !== 'task' && kind !== 'terminal';
   }
 
   hasUnsafeWorktreeOwner(sessionId: string): boolean {

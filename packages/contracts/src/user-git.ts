@@ -96,7 +96,11 @@ export const GitWriteCommand = z.discriminatedUnion('kind', [
   GitWriteBase.extend({ kind: z.literal('unstage'), paths: GitPaths }),
   GitWriteBase.extend({
     kind: z.literal('commit'),
-    message: z.string().trim().min(1).max(64 * 1024),
+    message: z
+      .string()
+      .trim()
+      .min(1)
+      .max(64 * 1024),
     /** The staged list the person confirmed; the commit records exactly the index. */
     staged: GitPaths,
     runHooks: z.boolean(),
