@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   type MentionItem,
   mentionToken,
+  menuPlacement,
   pickedReferences,
   replaceTrigger,
   triggerAt,
@@ -74,5 +75,27 @@ describe('composer triggers (CR-016)', () => {
     expect(pickedReferences('see @"report v2"', picked)).toEqual([result.reference]);
     // A longer path that only starts with the token is not the same reference.
     expect(pickedReferences('see @a.tsx', picked)).toEqual([]);
+  });
+});
+
+describe('composer menu placement (#93)', () => {
+  const input = { top: 600, bottom: 660, left: 40, width: 500 };
+  it('opens above the input with its full height when the window has room', () => {
+    expect(menuPlacement(input, 800)).toEqual({
+      position: 'fixed',
+      left: 40,
+      width: 500,
+      maxHeight: 288,
+      bottom: 208,
+    });
+  });
+  it('opens below a high input and shrinks to the room it has', () => {
+    const placed = menuPlacement({ ...input, top: 60, bottom: 120 }, 400);
+    expect(placed.top).toBe(128);
+    expect(placed.bottom).toBeUndefined();
+    expect(placed.maxHeight).toBe(264);
+  });
+  it('never collapses to nothing in a tiny window', () => {
+    expect(menuPlacement({ ...input, top: 40, bottom: 80 }, 100).maxHeight).toBe(96);
   });
 });
