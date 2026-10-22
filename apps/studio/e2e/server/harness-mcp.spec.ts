@@ -68,7 +68,7 @@ test('[TC-HAR-016-H] reviews an MCP server, completes local OAuth and pins its r
     const popup = page.waitForEvent('popup');
     await page.getByRole('link', { name: 'Continue sign-in', exact: true }).click();
     const callback = await popup;
-    await expect(page.getByText('Credentials saved', { exact: true })).toBeVisible();
+    await expect(page.getByText(/Sign-in: Credentials saved/)).toBeVisible();
     await callback.close();
     await page
       .getByRole('button', { name: 'Test connection & discover tools', exact: true })
@@ -148,7 +148,7 @@ test('[TC-HAR-016-H] reviews an MCP server, completes local OAuth and pins its r
 
     await page.getByRole('button', { name: 'Revoke launch trust', exact: true }).click();
     await page.getByRole('button', { name: 'Sign out of Local docs', exact: true }).click();
-    await expect(page.getByText('Sign-in required', { exact: true })).toBeVisible();
+    await expect(page.getByText(/Sign-in: Sign-in required/)).toBeVisible();
     expect(corral.errors).toEqual([]);
   } finally {
     await fixture.close();

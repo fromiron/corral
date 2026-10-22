@@ -1,10 +1,12 @@
 import type { HarnessApi, McpProbeResult } from '@corral/client';
 import type { RegisteredMcpServer } from '@corral/contracts';
 import { Button, Select } from '@corral/react/ui';
+import { Link } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
 import { field, operationId } from '../workbench/harness/Target.tsx';
+import { useSettingsNavigation } from '../workbench/navigation.ts';
 import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
 
 export function McpConnection({
@@ -23,7 +25,9 @@ export function McpConnection({
   disabled?: boolean;
 }) {
   const t = useTranslations('Harness'),
-    r = useTranslations('Resources');
+    r = useTranslations('Resources'),
+    n = useTranslations('Navigation');
+  const navigation = useSettingsNavigation();
   const { repository, workspaces } = useServices();
   const [copies, setCopies] = useState<{ id: string; name: string }[]>([]);
   useEffect(() => {
@@ -221,17 +225,39 @@ export function McpConnection({
                   {t(launch.trustedAt ? 'revokeCheckTrust' : 'trustCheck')}
                 </Button>
               </section>
-              {status ? (
-                <p role="status" className="text-sm">
-                  {t(
-                    status.state === 'ready'
-                      ? 'mcpReady'
-                      : status.state === 'missing'
-                        ? 'mcpMissing'
-                        : 'mcpNoAuth',
-                  )}
-                </p>
-              ) : null}
+              {/* Each state on its own line with its next step; none implies another (#82). */}
+              <section aria-label={t('mcpStatusHeading')} className="settings-surface text-sm">
+                <h3 className="text-xs font-medium text-muted">{t('mcpStatusHeading')}</h3>
+                <ul className="mt-1 flex flex-col gap-0.5">
+                  <li>✓ {t('mcpStepRegistered')}</li>
+                  <li className={launch.trustedAt ? undefined : 'text-warning'}>
+                    {launch.trustedAt ? `✓ ${t('mcpStepTrust')}` : `• ${t('mcpStepTrustNeeded')}`}
+                  </li>
+                  {status ? (
+                    <li
+                      role="status"
+                      className={status.state === 'missing' ? 'text-warning' : undefined}
+                    >
+                      {status.state === 'missing' ? '•' : '✓'}{' '}
+                      {t('mcpStepAuth', {
+                        state: t(
+                          status.state === 'ready'
+                            ? 'mcpReady'
+                            : status.state === 'missing'
+                              ? 'mcpMissing'
+                              : 'mcpNoAuth',
+                        ),
+                      })}
+                    </li>
+                  ) : null}
+                  <li>
+                    • {t('mcpStepStyle')}{' '}
+                    <Link {...navigation.link('harness')} className="underline">
+                      {n('addToWorkStyle')}
+                    </Link>
+                  </li>
+                </ul>
+              </section>
               {server.transport === 'http' && server.auth.kind !== 'none' ? (
                 <>
                   {server.auth.kind === 'bearer' ? (

@@ -145,3 +145,27 @@ test('#81 typed evaluation requests survive switching Skills and leaving asks fi
   await expect(page.getByRole('alertdialog').or(page.getByRole('dialog'))).toBeVisible();
   expect(corral.errors).toEqual([]);
 });
+
+test.describe('long settings pages', () => {
+  test.use({ live: true });
+  test('#82 Models and Hooks list what they manage at the top', async ({ page, corral }) => {
+    await corral.open('/settings/models');
+    const index = page.getByRole('navigation', { name: 'On this page', exact: true });
+    await expect(index.getByRole('button')).toHaveText([
+      'Model profiles',
+      'Sign-in',
+      'Import model settings',
+      'Image generation',
+      'Automatic reasoning · server-wide',
+    ]);
+    await index.getByRole('button', { name: 'Image generation', exact: true }).click();
+    await expect(page.locator('#models-images')).toBeFocused();
+    await page.getByRole('link', { name: 'Hooks & extensions', exact: true }).click();
+    await expect(
+      page
+        .getByRole('navigation', { name: 'On this page', exact: true })
+        .getByRole('button', { name: 'Packages', exact: true }),
+    ).toBeVisible();
+    expect(corral.errors).toEqual([]);
+  });
+});
