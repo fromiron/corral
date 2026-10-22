@@ -40,6 +40,7 @@ import {
   type DockDocumentDescriptor,
   type DockPanelDescriptor,
   type DockPreset,
+  documentTabLabel,
   layoutStorageKey,
   MAX_DOCUMENTS,
   parseLayout,
@@ -164,6 +165,14 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
     // Narrow hosts (a phone) show one pane at a time, the conversation first (#94).
     const [compact, setCompact] = useState(false);
 
+    function documentLabel(descriptor: DockDocumentDescriptor) {
+      return documentTabLabel(
+        descriptor,
+        (apiRef.current?.panels ?? []).map(descriptorOf),
+        current.current.sessionId,
+        (id) => labels.current('otherSession', { id }),
+      );
+    }
     function title(panel: IDockviewPanel) {
       const descriptor = descriptorOf(panel);
       if (descriptor.kind === 'context') return labels.current(descriptor.view);
@@ -172,7 +181,7 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
         current.current.documentOwner?.getState().documents[
           documentKey(descriptor.target, descriptor.path)
         ];
-      return `${entry?.dirty || entry?.pendingSave ? '● ' : ''}${descriptor.path.split('/').at(-1) ?? descriptor.path}`;
+      return `${entry?.dirty || entry?.pendingSave ? '● ' : ''}${documentLabel(descriptor)}`;
     }
     function refresh() {
       const api = apiRef.current;
@@ -600,8 +609,9 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
     actions.current = { openContext, refresh };
     useEffect(() => {
       void t;
+      void props.sessionId;
       actions.current.refresh();
-    }, [t]);
+    }, [t, props.sessionId]);
     useEffect(() => {
       const previous = lastSelection.current;
       lastSelection.current = {

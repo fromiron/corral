@@ -92,7 +92,12 @@ async function mount(workspaces: object, sessionId = 'session') {
       terminate() {}
     },
   );
-  fixture.services = { mode: 'server', workspaceId: 'host', workspaces };
+  fixture.services = {
+    mode: 'server',
+    workspaceId: 'host',
+    // A session has a working copy unless the test says otherwise.
+    workspaces: { worktree: vi.fn(async () => ({ missing: false })), ...workspaces },
+  };
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
@@ -175,8 +180,10 @@ it('[TC-WBD-008-H] a missing session copy can explicitly switch to an unborn pro
     return project;
   });
   const createWorktree = vi.fn();
-  const f = await mount({ gitStatus, createWorktree });
-  expect(f.container.textContent).toContain('Git.unavailable');
+  // Without a copy the session's Git state is not requested at all (no failed request).
+  const worktree = vi.fn(async () => null);
+  const f = await mount({ gitStatus, createWorktree, worktree });
+  expect(f.container.textContent).toContain('Git.noSessionCopy');
   await act(async () => f.container.querySelector<HTMLButtonElement>('[role=combobox]')?.click());
   const option = [...document.querySelectorAll<HTMLElement>('[role=option]')].find(
     (item) => item.textContent === 'Git.projectSource',
@@ -186,10 +193,7 @@ it('[TC-WBD-008-H] a missing session copy can explicitly switch to an unborn pro
   await act(async () =>
     option?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })),
   );
-  expect(gitStatus.mock.calls.map((call) => call[0])).toEqual([
-    { kind: 'session', id: 'session' },
-    { kind: 'project', id: 'project' },
-  ]);
+  expect(gitStatus.mock.calls.map((call) => call[0])).toEqual([{ kind: 'project', id: 'project' }]);
   expect(f.container.textContent).toContain('Git.unborn');
   expect(f.container.textContent).toContain('Git.noUpstream');
   expect(createWorktree).not.toHaveBeenCalled();

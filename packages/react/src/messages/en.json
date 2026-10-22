@@ -1483,8 +1483,9 @@
     "split": "Side by side",
     "before": "Before",
     "after": "After",
-    "markReviewed": "Mark all as reviewed",
-    "reviewedNote": "Marking as reviewed is reading, not approval.",
+    "markReviewed": "Set the session as reviewed up to now",
+    "reviewedNote": "Records the session's whole current working copy as read, so later changes show as new. It is not an approval.",
+    "reviewedOtherScope": "Applies to the whole current session copy, not only the comparison shown.",
     "runCheck": "Run {name}",
     "checkState": {
       "running": "Running…",
@@ -1582,7 +1583,7 @@
     "deleteDraft": "Delete",
     "decisionHeading": "Decision",
     "approve": "Approve these changes",
-    "requestChanges": "Request changes",
+    "requestChanges": "Mark as needing changes",
     "decisionState": {
       "approved": "Approved",
       "changes_requested": "Changes requested"
@@ -3233,6 +3234,7 @@
     "invalidTarget": "This document belongs to a different workspace or project.",
     "splitLimit": "At most two document groups can be open.",
     "unknownPanel": "This saved pane is unavailable. You can close it or open another pane.",
+    "otherSession": "other conversation {id}",
     "closeTitle": "Close document?",
     "closeDescription": "Save changes to {path} before closing?",
     "save": "Save and close",
@@ -3292,6 +3294,7 @@
     "refresh": "Refresh",
     "loading": "Reading Git state…",
     "unavailable": "Git is unavailable for this source.",
+    "noSessionCopy": "This conversation has no working copy yet. Choose the project original, or make a copy from Changes.",
     "noChanges": "No changes.",
     "selectFile": "Select a change to compare its contents.",
     "staged": "Staged",

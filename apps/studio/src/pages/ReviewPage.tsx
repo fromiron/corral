@@ -16,7 +16,7 @@ import { createTextAttachment, type RunSummary, type WorkSession } from '@corral
 import { Button } from '@corral/react/ui';
 import type { FileDiffMetadata } from '@pierre/diffs';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { reviewRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
@@ -53,6 +53,7 @@ const scopeFromSearch = (search: { scope?: string; runId?: string }): ReviewScop
 export function ReviewPage() {
   const t = useTranslations('Files');
   const tc = useTranslations('Context');
+  const reviewedHint = useId();
   const { session } = reviewRoute.useLoaderData();
   const search = reviewRoute.useSearch();
   const navigate = useNavigate({ from: '/sessions/$sessionId/review' });
@@ -213,10 +214,17 @@ export function ReviewPage() {
                   .then(() => setVersion((n) => n + 1))
               }
               title={t('reviewedNote')}
+              aria-describedby={reviewedHint}
               className="ml-auto rounded fill-control px-2 py-1 text-xs"
             >
               {t('markReviewed')}
             </button>
+            {/* The baseline always covers the whole current copy (#78 IA-07). */}
+            <span id={reviewedHint} className="w-full text-right text-2xs text-muted">
+              {scope.kind === 'session' || scope.kind === 'review'
+                ? t('reviewedNote')
+                : t('reviewedOtherScope')}
+            </span>
           </header>
           {noCopy ? (
             <section

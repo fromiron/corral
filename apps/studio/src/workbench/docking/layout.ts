@@ -49,6 +49,32 @@ const object = (value: unknown): Record<string, unknown> | null =>
 const panelId = (value: unknown): value is string =>
   typeof value === 'string' && value.length > 0 && value.length <= 512 && !value.includes('\0');
 
+/**
+ * A document tab names its file; when another open document shares that name it adds the
+ * folder, and when the same path is open from another conversation, which one (#78 IA-05).
+ */
+export function documentTabLabel(
+  descriptor: DockDocumentDescriptor,
+  open: readonly DockPanelDescriptor[],
+  currentSessionId: string,
+  otherSession: (shortId: string) => string,
+): string {
+  const name = (path: string) => path.split('/').at(-1) ?? path;
+  const base = name(descriptor.path);
+  const others = open.filter(
+    (other): other is DockDocumentDescriptor =>
+      other.kind === 'document' && other.viewId !== descriptor.viewId && name(other.path) === base,
+  );
+  if (!others.length) return base;
+  const folder = descriptor.path.split('/').slice(0, -1).join('/');
+  const samePath = others.some((other) => other.path === descriptor.path);
+  const owner =
+    samePath && descriptor.target.sessionId !== currentSessionId
+      ? ` · ${otherSession(descriptor.target.sessionId.slice(-6))}`
+      : '';
+  return `${base}${folder && !samePath ? ` — ${folder}` : ''}${owner}`;
+}
+
 export function layoutStorageKey(hostId: string | undefined, projectId: string): string | null {
   return hostId ? `corral:docking:v1:${JSON.stringify([hostId, projectId])}` : null;
 }

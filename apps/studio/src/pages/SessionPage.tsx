@@ -2896,9 +2896,7 @@ export function Composer({
         ) : null}
         {intent === 'next' ? (
           <>
-            {roles.length ? (
-              <p className="mt-1 text-2xs text-muted">{tc('appliesNext')}</p>
-            ) : null}
+            {roles.length ? <p className="mt-1 text-2xs text-muted">{tc('appliesNext')}</p> : null}
             <RunRoleOverrides
               roles={roles}
               profiles={profiles}

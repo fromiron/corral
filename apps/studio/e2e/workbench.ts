@@ -75,10 +75,9 @@ export async function slash(page: Page, command: string) {
   await box.press('Enter');
 }
 
-/** Opens the session's side panel on a tab (it is closed until asked for). */
+/** Opens a session pane by its tab, showing the side panes first when they are hidden. */
 export async function panelTab(page: Page, name: string) {
-  const tab = page.getByRole('tab', { name, exact: true });
-  if (!(await tab.isVisible()))
-    await page.getByRole('banner').getByRole('button', { name: 'Show the panel' }).click();
-  await tab.click();
+  const show = page.getByRole('banner').getByRole('button', { name: 'Show the panel' });
+  if (await show.isVisible()) await show.click();
+  await page.getByRole('tab', { name, exact: true }).click();
 }

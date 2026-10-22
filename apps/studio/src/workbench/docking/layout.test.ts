@@ -5,7 +5,9 @@ import {
   addDocumentPanel,
   createPresetLayout,
   DEFAULT_PANELS,
+  type DockDocumentDescriptor,
   type DockPanel,
+  documentTabLabel,
   layoutStorageKey,
   MAX_DOCUMENTS,
   parseLayout,
@@ -247,4 +249,24 @@ it('[TC-WBD-006-N] duplicate document view IDs and context roles cannot share on
     target.projectId,
   );
   expect(differentCopy.panels).toEqual([document(0), otherDocument]);
+});
+
+it('#78 document tabs with the same file name say which folder or conversation they belong to', () => {
+  const doc = (path: string, viewId: string, sessionId = 'session_a'): DockDocumentDescriptor => ({
+    kind: 'document',
+    target: { ...target, sessionId },
+    path,
+    viewId,
+  });
+  const other = (id: string) => `other conversation ${id}`;
+  const alone = doc('src/main.ts', 'v1');
+  expect(documentTabLabel(alone, [alone], 'session_a', other)).toBe('main.ts');
+  const app = doc('app/main.ts', 'v2');
+  expect(documentTabLabel(alone, [alone, app], 'session_a', other)).toBe('main.ts — src');
+  expect(documentTabLabel(app, [alone, app], 'session_a', other)).toBe('main.ts — app');
+  const fromOther = doc('src/main.ts', 'v3', 'session_b12345');
+  expect(documentTabLabel(fromOther, [alone, fromOther], 'session_a', other)).toBe(
+    'main.ts · other conversation b12345',
+  );
+  expect(documentTabLabel(alone, [alone, fromOther], 'session_a', other)).toBe('main.ts');
 });

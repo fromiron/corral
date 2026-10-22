@@ -43,6 +43,8 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
     query: typeof query;
     data: GitStatus | null;
     error: boolean;
+    /** The session has no working copy: nothing to read, which is not an error. */
+    noCopy?: boolean;
   } | null>(null);
   const [selection, setSelection] = useState<{
     query: typeof query;
@@ -60,23 +62,39 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
       setLoaded({ query, data: null, error: true });
       return;
     }
-    void client.gitStatus(query.scope).then(
-      (data) => {
-        if (!live) return;
-        const target = data.target;
-        const matches =
-          target.kind === query.scope.kind &&
-          target.hostId === query.hostId &&
-          target.projectId === query.projectId &&
-          (target.kind === 'project'
-            ? target.projectId === query.scope.id
-            : target.sessionId === query.scope.id);
-        setLoaded({ query, data: matches ? data : null, error: !matches });
-      },
-      () => {
-        if (live) setLoaded({ query, data: null, error: true });
-      },
-    );
+    const readStatus = () =>
+      void client.gitStatus(query.scope).then(
+        (data) => {
+          if (!live) return;
+          const target = data.target;
+          const matches =
+            target.kind === query.scope.kind &&
+            target.hostId === query.hostId &&
+            target.projectId === query.projectId &&
+            (target.kind === 'project'
+              ? target.projectId === query.scope.id
+              : target.sessionId === query.scope.id);
+          setLoaded({ query, data: matches ? data : null, error: !matches });
+        },
+        () => {
+          if (live) setLoaded({ query, data: null, error: true });
+        },
+      );
+    const copy =
+      query.scope.kind === 'session'
+        ? client.worktree(query.scope.id).then(
+            (view) => Boolean(view && !view.missing),
+            () => true,
+          )
+        : Promise.resolve(true);
+    void copy.then((present) => {
+      if (!live) return;
+      if (!present) {
+        setLoaded({ query, data: null, error: false, noCopy: true });
+        return;
+      }
+      readStatus();
+    });
     return () => {
       live = false;
     };
@@ -146,6 +164,10 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
       {!result ? (
         <p role="status" className="text-xs text-muted">
           {t('loading')}
+        </p>
+      ) : result.noCopy ? (
+        <p role="status" className="text-xs text-muted">
+          {t('noSessionCopy')}
         </p>
       ) : result.error ? (
         <p role="alert" className="text-xs text-muted">
