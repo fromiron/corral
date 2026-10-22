@@ -53,6 +53,12 @@ export function SettingsPage({
     <SettingsLayout active={section}>
       <main className="settings-content">
         <h2 className="text-2xl font-semibold tracking-tight">{t(section)}</h2>
+        {/* How this form saves, said where it applies (#81 SET-S10). */}
+        {section === 'general' || section === 'shortcuts' ? (
+          <p data-testid="settings-save-mode" className="text-sm text-muted">
+            {t('savesAutomatically')}
+          </p>
+        ) : null}
         {section === 'general' ? (
           <>
             <section className="settings-row">

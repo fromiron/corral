@@ -318,3 +318,10 @@ test('#77 a test run says it starts a separate run outside any conversation', as
   await page.getByRole('tab', { name: 'Test run', exact: true }).click();
   await expect(page.getByTestId('run-scope')).toContainText('It is not added to a conversation.');
 });
+
+test('#81 settings that save as you change them say so', async ({ page }) => {
+  await page.goto('/settings/general');
+  await expect(page.getByTestId('settings-save-mode')).toHaveText(
+    'Changes on this page apply and save right away.',
+  );
+});

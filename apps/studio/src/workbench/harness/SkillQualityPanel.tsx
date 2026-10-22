@@ -15,7 +15,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../../services.tsx';
 import { useSettingsNavigation } from '../navigation.ts';
-import { useSettingsCommand, useSettingsTask } from '../SettingsLifecycle.tsx';
+import { useSettingsCommand, useSettingsForm, useSettingsTask } from '../SettingsLifecycle.tsx';
 import { operationId } from './Target.tsx';
 
 const keyOf = (entry: { resourceHash: string; entry: string }) =>
@@ -33,6 +33,13 @@ const emptyFixture = (positive: boolean): Fixture => ({
   shouldActivate: positive,
   phase: positive ? 'calibration' : 'holdout',
 });
+
+// Test requests typed but not yet evaluated, per Skill version. Choosing another resource
+// remounts the panel; coming back restores them instead of losing them (#81 SET-S05).
+const drafts = new Map<string, Fixture[]>();
+const fixtureText = (list: readonly Fixture[]) =>
+  JSON.stringify(list.map((f) => [f.brief, f.expected, f.shouldActivate, f.phase]));
+const blankText = fixtureText([emptyFixture(true), emptyFixture(false)]);
 
 export function SkillQualityPanel({
   api,
@@ -57,10 +64,11 @@ export function SkillQualityPanel({
     );
     return previous ? keyOf(previous) : 'none';
   });
-  const [fixtures, setFixtures] = useState<Fixture[]>(() => [
-    emptyFixture(true),
-    emptyFixture(false),
-  ]);
+  const draftKey = `${entry.resourceHash}:${entry.entry}`;
+  const [restoredDraft] = useState(() => drafts.has(draftKey));
+  const [fixtures, setFixtures] = useState<Fixture[]>(
+    () => drafts.get(draftKey) ?? [emptyFixture(true), emptyFixture(false)],
+  );
   const [history, setHistory] = useState<SkillEvaluationView[]>([]);
   const [view, setView] = useState<SkillEvaluationView | null>(null);
   const [preview, setPreview] = useState<SkillUpdatePreview | null>(null);
@@ -117,14 +125,22 @@ export function SkillQualityPanel({
     setError('');
     action();
   }
-  const restore = useCallback((value: SkillEvaluationView) => {
+  const restore = useCallback((value: SkillEvaluationView, keepDraft = false) => {
     setView(value);
     setMode(value.request.mode);
     setModel(value.request.modelProfile);
     setBaseline(value.request.baseline ? keyOf(value.request.baseline) : 'none');
-    setFixtures(value.request.fixtures);
+    if (!keepDraft) setFixtures(value.request.fixtures);
     setReviewed(false);
   }, []);
+  const savedText = view ? fixtureText(view.request.fixtures) : blankText;
+  const draftDirty = fixtureText(fixtures) !== savedText;
+  useEffect(() => {
+    if (draftDirty) drafts.set(draftKey, fixtures);
+    else drafts.delete(draftKey);
+  }, [draftDirty, draftKey, fixtures]);
+  // Leaving Settings with typed requests asks first, like other unsaved settings forms.
+  useSettingsForm({ dirty: draftDirty, pending: busy });
   useEffect(() => {
     active.current = true;
     let current = true;
@@ -133,7 +149,7 @@ export function SkillQualityPanel({
       .then((values) => {
         if (current) {
           setHistory(values);
-          if (values[0]) restore(values[0]);
+          if (values[0]) restore(values[0], drafts.has(draftKey));
         }
       })
       .catch((failure) => current && setError(failure.message));
@@ -151,7 +167,7 @@ export function SkillQualityPanel({
       current = false;
       active.current = false;
     };
-  }, [api, candidateHash, candidateEntry, models, restore]);
+  }, [api, candidateHash, candidateEntry, models, restore, draftKey]);
   useEffect(() => {
     let current = true;
     setTarget(null);
@@ -219,6 +235,11 @@ export function SkillQualityPanel({
       <summary className="cursor-pointer font-semibold">{t('title')}</summary>
       <div className="mt-4 flex flex-col gap-4">
         <p className="text-sm text-muted">{t('intro')}</p>
+        {restoredDraft && draftDirty ? (
+          <p role="status" className="text-xs text-muted">
+            {t('draftKept')}
+          </p>
+        ) : null}
         {!entry.resource.trustedAt ? <p className="text-sm">{t('trustFirst')}</p> : null}
         {error ? (
           <p role="alert" className="text-sm text-danger">

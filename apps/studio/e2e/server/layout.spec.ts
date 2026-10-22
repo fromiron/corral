@@ -100,3 +100,48 @@ test('#80 a project settings page shows its target project as a visible scope', 
   await expect(page.getByText('Settings apply to project', { exact: true })).toBeVisible();
   expect(corral.errors).toEqual([]);
 });
+
+test('#81 typed evaluation requests survive switching Skills and leaving asks first', async ({
+  page,
+  corral,
+}) => {
+  await corral.open('/settings/skills');
+  await page.evaluate(async () => {
+    const { csrfToken } = await (await fetch('/api/v1/session')).json();
+    const call = async (path: string, body: unknown, method = 'POST') => {
+      const response = await fetch(`/api/v1/harness${path}`, {
+        method,
+        headers: { 'content-type': 'application/json', 'x-corral-csrf': csrfToken },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) throw new Error(`setup failed: ${path} ${response.status}`);
+      return response.json();
+    };
+    for (const [name, description] of [
+      ['first', 'First draft writer'],
+      ['second', 'Second draft writer'],
+    ]) {
+      const review = await call('/documents/review', {
+        kind: 'skill',
+        name,
+        content: `---\nname: ${name}\ndescription: ${description}\n---\nAnswer briefly.`,
+      });
+      const saved = await call('/resources', { reviewId: review.reviewId });
+      await call(`/resources/${saved.hash}/trust`, { trusted: true }, 'PUT');
+    }
+  });
+  await page.reload();
+  await page.getByRole('button', { name: /First draft writer/ }).click();
+  const panel = page.getByTestId('skill-quality');
+  await panel.getByText('Evaluate, adopt and roll back', { exact: true }).click();
+  const request = panel.getByRole('textbox', { name: 'Test request', exact: true }).first();
+  await request.fill('Keep this unsent request');
+  await page.getByRole('button', { name: /Second draft writer/ }).click();
+  await page.getByRole('button', { name: /First draft writer/ }).click();
+  await panel.getByText('Evaluate, adopt and roll back', { exact: true }).click();
+  await expect(request).toHaveValue('Keep this unsent request');
+  await expect(panel.getByText('Your unsent test requests were kept from before.')).toBeVisible();
+  await page.getByRole('link', { name: 'Models', exact: true }).click();
+  await expect(page.getByRole('alertdialog').or(page.getByRole('dialog'))).toBeVisible();
+  expect(corral.errors).toEqual([]);
+});

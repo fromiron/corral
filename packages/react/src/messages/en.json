@@ -1698,6 +1698,7 @@
     "save": "Save",
     "settings": "Settings",
     "general": "General",
+    "savesAutomatically": "Changes on this page apply and save right away.",
     "workspace": "Folders & tools",
     "shortcuts": "Shortcuts",
     "about": "About",
@@ -3014,6 +3015,7 @@
   "SkillQuality": {
     "title": "Evaluate, adopt and roll back",
     "intro": "Compare this saved Skill with a baseline before applying it to a work style. Existing runs keep their original version.",
+    "draftKept": "Your unsent test requests were kept from before.",
     "trustFirst": "Trust this saved copy above before evaluating it.",
     "failed": "The action could not be completed.",
     "baseline": "Baseline Skill",

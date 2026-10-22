@@ -1698,6 +1698,7 @@
     "save": "저장",
     "settings": "설정",
     "general": "일반",
+    "savesAutomatically": "이 화면의 변경은 바로 적용되고 저장됩니다.",
     "workspace": "폴더 및 도구",
     "shortcuts": "단축키",
     "about": "앱 정보",
@@ -3014,6 +3015,7 @@
   "SkillQuality": {
     "title": "평가·채택·롤백",
     "intro": "저장된 Skill을 기준 버전과 비교한 뒤 작업 방식에 적용합니다. 진행 중인 실행은 기존 버전을 유지합니다.",
+    "draftKept": "보내지 않은 시험 요청을 이전 상태 그대로 보존했습니다.",
     "trustFirst": "평가하려면 위에서 이 사본을 먼저 신뢰해 주세요.",
     "failed": "작업을 완료하지 못했습니다.",
     "baseline": "비교할 기준 Skill",
