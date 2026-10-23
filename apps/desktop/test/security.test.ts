@@ -98,3 +98,25 @@ it('[CR-017] recent workspaces keep five absolute, distinct paths, newest first'
   ]);
   expect(recentWorkspaces(['relative', 42, '/ok'] as unknown[], '/new')).toEqual(['/new', '/ok']);
 });
+
+it('[TC-DESK-010-N] notification destinations accept identities only, without URLs or host selectors', async () => {
+  const { notificationTarget } = await import('../src/security.ts');
+  const target = { kind: 'decision', sessionId: 'session_a', runId: 'run_a' };
+  expect(notificationTarget(target)).toEqual(target);
+  for (const value of [
+    null,
+    {},
+    '/sessions/session_a',
+    { ...target, url: 'https://example.com' },
+    { ...target, hostId: 'remote' },
+    { ...target, sessionId: '../other' },
+    { ...target, runId: null },
+    { ...target, kind: 'unknown' },
+  ])
+    expect(notificationTarget(value)).toBeNull();
+  expect(notificationTarget({ kind: 'queued', sessionId: 'session_a', runId: null })).toEqual({
+    kind: 'queued',
+    sessionId: 'session_a',
+    runId: null,
+  });
+});

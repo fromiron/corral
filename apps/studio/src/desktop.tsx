@@ -2,6 +2,7 @@ import { FolderOpen } from '@corral/react/icons';
 import { Button } from '@corral/react/ui';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
+import type { NotificationTarget } from './workbench/notifications.ts';
 
 interface DesktopInfo {
   version: string;
@@ -38,7 +39,8 @@ interface DesktopBridge extends PreviewBridge {
   theme(dark: boolean): Promise<void>;
   /** Native menus and dialogs follow the app's language (#84); absent in older shells. */
   locale?(value: 'en' | 'ko'): Promise<void>;
-  notify(title: string, body: string): Promise<boolean>;
+  notify(title: string, body: string, target?: NotificationTarget): Promise<boolean>;
+  onNotification?(callback: (target: NotificationTarget) => void): () => void;
   badge(count: number): Promise<void>;
   /** Menu commands by name; returns the unsubscribe function. */
   onCommand(callback: (id: string) => void): () => void;

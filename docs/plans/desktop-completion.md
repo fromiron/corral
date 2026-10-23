@@ -24,7 +24,7 @@ change_requests: [CR-042, CR-033]
 
 ## CR-033-B / M4-5의 중첩 범위
 
-[CR-033](../change-requests/CR-033-desktop-quality.md)의 density·알림 deep link/중복 억제·tray/dock·editor 열기·온보딩은 CR-042 기존 구현과 먼저 대조한다. 충족한 항목은 중복 구현하지 않고 남은 세부 수용 기준만 다음 태스크로 좁힌다. 전체 M4-5를 완료했다고 간주하지 않는다.
+[CR-033](../change-requests/CR-033-desktop-quality.md)의 알림 대상 이동·중복 억제는 C-171로 구현했다. 현재 계약은 [Desktop](../current/desktop-contract.md), Linux Electron의 정확한 Run·승인 이동과 늦은 클릭·재시작 경계는 [실행 기록](../evaluation/Desktop-Notification-Targets-2026-10-23.md)을 따른다. density·tray/dock·editor 열기·온보딩은 CR-042 기존 구현과 먼저 대조하고 충족한 항목을 중복 구현하지 않는다. 전체 M4-5나 모든 OS 알림 전달을 완료했다고 간주하지 않는다.
 
 OTel 외부 export와 CLI browser 비교는 원래의 opt-in 후속 범위다. 기본 tracing·기존 browser 도구를 대체하거나 새 의존성을 설치할 근거가 아니다.
 

@@ -3358,5 +3358,25 @@
     "done": "현재 Linux 번들 runtime·실제 앱 복구·프로세스 상한과 초안/키보드/좁은 화면 코어를 확인하고 시작/복구 오류를 수정하며 미검증 OS·장치·부하·외부 환경을 별도 조건으로 보존한다.",
     "status": "implemented",
     "evidence": "docs/evaluation/Development-Workbench-Qualification-2026-10-23.md"
+  },
+  {
+    "id": "C-171",
+    "phase": "M4",
+    "title": "CR-033-B 시스템 알림의 정확한 작업 대상 이동",
+    "dependsOn": [
+      "C-128"
+    ],
+    "requirements": [
+      "CRL-ABS-007"
+    ],
+    "files": [
+      "apps/desktop/src/",
+      "apps/desktop/test/",
+      "apps/desktop/scripts/",
+      "apps/studio/src/"
+    ],
+    "done": "시스템 알림을 클릭하면 해당 세션/Run/승인 대상으로 기존 SPA 경로를 통해 이동하고 미저장 문서·현재 host/workspace 경계·오래된 알림과 기존 title/body 호출을 보존한다.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/Desktop-Notification-Targets-2026-10-23.md"
   }
 ]

@@ -24,6 +24,7 @@
 | 입력·대화·모델 식별과 테두리 일관성 | CR-045, [Workbench](current/workbench.md) | C-141, [구현·검증](evaluation/Workbench-Identification-2026-10-21.md) | Linux 브라우저·격리 DB 검증. 기존 서버 재시작·패키지·외부 공급자·스크린리더는 별도 |
 | 컴포저·컨텍스트·채팅 위젯 | CR-037–041, C-119–121 | [M4 기록](evaluation/Integrated-Improvement-M4-2026-10-19.md), [위젯 계약·증거](change-requests/CR-041-chat-widgets.md) | native IME·외부 provider 미검증 범위 유지 |
 | Desktop 확장 | CR-042, C-122–136, [상세 계약](current/desktop-contract.md) | [기능별 구현·검증](evaluation/Desktop-Capabilities-Implementation-Progress.md) | 부분 구현과 환경 대기를 아래에서 분리 |
+| 알림 대상 이동 | CR-033-B, C-171, [현재 계약](current/desktop-contract.md) | [Linux Electron 정확한 Run·승인 이동, 중복·늦은 클릭·재시작 경계](evaluation/Desktop-Notification-Targets-2026-10-23.md) | OS 알림 표시/전달·다른 OS·설치판 전체 여정은 별도 |
 
 ## 남은 구현·검증
 
@@ -37,7 +38,7 @@
 | C-128 / ABS-07 | 구현 있음, 플랫폼 검증 진행 | NSIS 실제 설치, macOS·지원 arch, 서명·업데이트 채널 등 | [배포 기록](evaluation/Desktop-Delivery-Verification.md) |
 | C-135 / ABS-14 | 구현 있음, 외부 통합 검증 대기 | 허용된 SSH host의 실제 연결·실행·끊김·복구 | [Desktop 잔여 계획](plans/desktop-completion.md) |
 | C-136 / ABS-15 | 구현 있음, 장치·provider 검증 대기 | 실제 마이크·양방향 음성·끼어들기·종료·대상 고정 | [음성 기록](evaluation/Desktop-Voice-Verification.md) |
-| CR-033-B / M4-5 | 기존 기능과 중첩, 잔여 대조 필요 | density·알림 deep link·editor 열기·온보딩 등 중 CR-042 충족 범위를 먼저 제외. opt-in 조사 분리 | [Desktop 잔여 계획](plans/desktop-completion.md) |
+| CR-033-B / M4-5 | 알림 대상 이동 C-171 구현, 나머지 기존 기능과 중첩 | density·editor 열기·온보딩 등 중 CR-042 충족 범위를 먼저 제외. opt-in 조사 분리 | [Desktop 잔여 계획](plans/desktop-completion.md) |
 
 유료 이미지·외부 모델·S3와 실제 사용성/품질 평가는 해당 기록의 미검증 경계다. 코드가 없다는 뜻으로 새 구현 목록에 자동 추가하지 않는다. 실행하려면 이번 작업의 외부 호출·비용 승인 범위를 확인한다.
 

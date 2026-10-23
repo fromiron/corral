@@ -29,6 +29,7 @@ import {
   desktopAccelerators,
   externalUrl,
   localRoute,
+  notificationTarget,
   notificationText,
   recentWorkspaces,
   themeColors,
@@ -1002,11 +1003,28 @@ else {
     });
     handle('notify', (value) => {
       const text = notificationText(value);
-      if (!text || !window || window.isFocused() || !Notification.isSupported()) return false;
+      const rawTarget = (value as { target?: unknown } | null)?.target;
+      const target = rawTarget === undefined ? undefined : notificationTarget(rawTarget);
+      if (!text || target === null || !window || window.isFocused() || !Notification.isSupported())
+        return false;
+      const source = { window, origin, workspace: saved.workspace, generation };
       const note = new Notification({ ...text, silent: false });
       note.on('click', () => {
-        window?.show();
-        window?.focus();
+        showWindow();
+        // A native notification may outlive a workspace switch or sidecar restart.
+        if (
+          target &&
+          window === source.window &&
+          origin &&
+          origin === source.origin &&
+          saved.workspace === source.workspace &&
+          generation === source.generation &&
+          status === 'ready' &&
+          !closing &&
+          !switching &&
+          new URL(window.webContents.getURL()).origin === origin
+        )
+          window.webContents.send('desktop:notification', target);
       });
       note.show();
       return true;

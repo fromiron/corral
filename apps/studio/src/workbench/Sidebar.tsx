@@ -29,6 +29,11 @@ import { useServices } from '../services.tsx';
 import { useShortcutBindings } from '../shortcutBindings.ts';
 import { shortcutLabel } from '../shortcuts.ts';
 import { useSettingsNavigation, workHref } from './navigation.ts';
+import {
+  inboxNotificationTargets,
+  type NotificationTarget,
+  notificationDestination,
+} from './notifications.ts';
 import { changePreferences, preferences } from './preferences.ts';
 import { RenameSessionDialog } from './RenameSessionDialog.tsx';
 import { SessionSearchDialog } from './SessionSearchDialog.tsx';
@@ -37,7 +42,7 @@ import { useModelProfiles } from './useModels.ts';
 export function useCorralSidebar() {
   const { repository, transport, workspaces } = useServices();
   const td = useTranslations('Desktop');
-  const seen = useRef<number | null>(null);
+  const navigate = useNavigate();
   const href = useRouterState({ select: (s) => workHref(s.location.href) ?? s.location.href });
   const version = useProjectsVersion();
   const current = useCurrentProject();
@@ -92,33 +97,37 @@ export function useCorralSidebar() {
   }, [repository, current, href, version]);
   useEffect(() => {
     let live = true;
+    let loading = false;
+    let seen: NotificationTarget[] | null = null;
     const refresh = () => {
+      if (loading) return;
+      loading = Boolean(workspaces);
       void transport.listRuns().then(
         (r) => {
           if (live) setRuns(r);
         },
         () => {},
       );
-      void workspaces?.inbox(current).then(
-        (r) => {
-          if (!live) return;
-          setInbox(r.length);
-          // Desktop: the taskbar shows the count; a notification only for new items, only when
-          // the window is in the background, and only if the person turned it on (CR-017).
-          void desktop?.badge(r.length).catch(() => {});
-          if (
-            seen.current !== null &&
-            r.length > seen.current &&
-            preferences.getState().notify &&
-            !document.hasFocus()
-          )
-            void desktop
-              ?.notify(td('notifyTitle'), td('notifyBody', { count: r.length }))
-              .catch(() => {});
-          seen.current = r.length;
-        },
-        () => {},
-      );
+      void workspaces
+        ?.inbox(current)
+        .then(
+          (r) => {
+            if (!live) return;
+            setInbox(r.length);
+            const added = inboxNotificationTargets(r, seen ?? r);
+            // First load is the baseline; equal counts can still contain a new decision.
+            seen = inboxNotificationTargets(r);
+            void desktop?.badge(r.length).catch(() => {});
+            if (added[0] && preferences.getState().notify && !document.hasFocus())
+              void desktop
+                ?.notify(td('notifyTitle'), td('notifyBody', { count: r.length }), added[0])
+                .catch(() => {});
+          },
+          () => {},
+        )
+        .finally(() => {
+          loading = false;
+        });
     };
     refresh();
     const timer = setInterval(refresh, 2000);
@@ -127,6 +136,29 @@ export function useCorralSidebar() {
       clearInterval(timer);
     };
   }, [transport, workspaces, current, td]);
+  useEffect(() => {
+    if (!desktop?.onNotification || !workspaces) return;
+    let version = 0;
+    const off = desktop.onNotification((target) => {
+      const request = ++version;
+      void notificationDestination(target, {
+        getSession: (id) => repository.getSession(id),
+        inbox: (id) => workspaces.inbox(id),
+      })
+        .then(async (to) => {
+          if (!to || request !== version) return;
+          await navigate({ to });
+          if (request !== version || target.kind !== 'decision' || !target.runId) return;
+          // Existing compact run views own the response form and its initial focus.
+          document.querySelector<HTMLElement>(`[data-run-response="${target.runId}"]`)?.focus();
+        })
+        .catch(() => {});
+    });
+    return () => {
+      version++;
+      off();
+    };
+  }, [repository, workspaces, navigate]);
   return { projects, corrals, sessions, runs, inbox, error, current };
 }
 

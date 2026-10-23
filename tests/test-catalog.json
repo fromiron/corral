@@ -4116,5 +4116,38 @@
     "status": "planned",
     "adapter": "isolated Linux Git/SQLite/runtime and actual app UI; focused acceptance; no paid calls or external deployment",
     "evidence": null
+  },
+  {
+    "id": "TC-DESK-010-H",
+    "requirements": [
+      "CRL-ABS-007"
+    ],
+    "suite": "unit+integration+browser+os",
+    "scenario": "현재 시스템 알림의 session/run/승인 대상으로 이동하며 기존 미저장 편집과 title/body 호출을 유지",
+    "status": "planned",
+    "adapter": "isolated desktop notification click fixture and core regressions; no external messages",
+    "evidence": null
+  },
+  {
+    "id": "TC-DESK-010-N",
+    "requirements": [
+      "CRL-ABS-007"
+    ],
+    "suite": "unit+integration+browser+os",
+    "scenario": "임의 URL·잘못된 target·다른 host/workspace·사라진 대상·본문 노출과 중복 알림을 거절",
+    "status": "planned",
+    "adapter": "isolated desktop notification click fixture and core regressions; no external messages",
+    "evidence": null
+  },
+  {
+    "id": "TC-DESK-010-F",
+    "requirements": [
+      "CRL-ABS-007"
+    ],
+    "suite": "unit+integration+browser+os",
+    "scenario": "늦은 클릭·세대 교체·reload/재연결에서 현재 대상 검증 후에만 이동하고 오래된 알림이 현재 작업을 덮지 않음",
+    "status": "planned",
+    "adapter": "isolated desktop notification click fixture and core regressions; no external messages",
+    "evidence": null
   }
 ]

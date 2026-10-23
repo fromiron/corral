@@ -1334,8 +1334,17 @@
   },
   {
     "requirementId": "CRL-ABS-007",
-    "tests": ["TC-ABS-007-H", "TC-ABS-007-N"],
-    "tasks": ["C-128"]
+    "tests": [
+      "TC-ABS-007-H",
+      "TC-ABS-007-N",
+      "TC-DESK-010-H",
+      "TC-DESK-010-N",
+      "TC-DESK-010-F"
+    ],
+    "tasks": [
+      "C-128",
+      "C-171"
+    ]
   },
   {
     "requirementId": "CRL-ABS-008",

@@ -32,8 +32,14 @@ contextBridge.exposeInMainWorld(
     retry: () => ipcRenderer.invoke('desktop:retry'),
     theme: (dark) => ipcRenderer.invoke('desktop:theme', dark === true),
     locale: (value) => ipcRenderer.invoke('desktop:locale', String(value)),
-    notify: (title, body) =>
-      ipcRenderer.invoke('desktop:notify', { title: String(title), body: String(body) }),
+    notify: (title, body, target) =>
+      ipcRenderer.invoke('desktop:notify', { title: String(title), body: String(body), target }),
+    onNotification: (callback) => {
+      if (typeof callback !== 'function') return () => {};
+      const listener = (_event, target) => callback(target);
+      ipcRenderer.on('desktop:notification', listener);
+      return () => ipcRenderer.removeListener('desktop:notification', listener);
+    },
     badge: (count) => ipcRenderer.invoke('desktop:badge', Number(count)),
     onCommand: (callback) => {
       if (typeof callback !== 'function') return () => {};
