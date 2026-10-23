@@ -173,9 +173,10 @@ export function ProjectMaterials({ projectId }: { projectId: string }) {
       <ul className="flex flex-col gap-2">
         {materials.map((item) => (
           <li key={item.id} className="flex items-center gap-2 text-sm">
-            <button
-              type="button"
-              className="min-w-0 flex-1 truncate text-left underline"
+            <Button
+              variant="ghost"
+              size="compact"
+              className="min-w-0 flex-1 justify-start"
               onClick={() => {
                 setEditing(item);
                 setName(item.name);
@@ -183,8 +184,10 @@ export function ProjectMaterials({ projectId }: { projectId: string }) {
                 setKind(item.kind);
               }}
             >
-              {t('version', { name: item.name, revision: item.revision })}
-            </button>
+              <span className="truncate">
+                {t('version', { name: item.name, revision: item.revision })}
+              </span>
+            </Button>
             <Button
               size="compact"
               variant="ghost"

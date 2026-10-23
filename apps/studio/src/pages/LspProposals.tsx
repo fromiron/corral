@@ -6,6 +6,7 @@ import {
   DialogDescription,
   DialogPopup,
   DialogTitle,
+  Select,
 } from '@corral/react/design-kit';
 import { RefreshCw } from '@corral/react/icons';
 import { type ReactNode, useEffect, useState } from 'react';
@@ -147,25 +148,21 @@ export function LspProposals({
                   {detail.hash.slice(0, 12)}
                 </span>
               </p>
-              <label className="flex flex-col gap-1 text-sm">
-                {t('file')}
-                <select
-                  aria-label={t('file')}
+              <div className="flex flex-col gap-1 text-sm">
+                <span aria-hidden="true">{t('file')}</span>
+                <Select
+                  label={t('file')}
                   disabled={busy}
-                  className="rounded fill-group p-2"
                   value={path}
-                  onChange={(event) => setPath(event.target.value)}
-                >
-                  {detail.files.map((file) => (
-                    <option key={file.path} value={file.path}>
-                      {file.path} ·{' '}
-                      {t(
-                        `outcomes.${detail.outcomes.find((outcome) => outcome.path === file.path)?.state ?? 'pending'}`,
-                      )}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  onValueChange={setPath}
+                  options={detail.files.map((file) => ({
+                    value: file.path,
+                    label: `${file.path} · ${t(
+                      `outcomes.${detail.outcomes.find((outcome) => outcome.path === file.path)?.state ?? 'pending'}`,
+                    )}`,
+                  }))}
+                />
+              </div>
               {file ? renderFile(detail, file) : null}
               <div className="flex flex-wrap gap-2">
                 <Button

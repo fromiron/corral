@@ -175,13 +175,14 @@ function Tasks({ sessionId, projectId }: { sessionId: string; projectId: string 
             const last = live ?? tasks.find((task) => task.script === script.name);
             return (
               <li key={script.name} className="flex min-w-0 items-center gap-2 rounded px-1 py-0.5">
-                <button
-                  type="button"
+                <Button
+                  variant={last && last.operationId === selected ? 'secondary' : 'ghost'}
+                  size="compact"
                   disabled={!last}
                   aria-pressed={Boolean(last) && last?.operationId === selected}
                   onClick={() => last && select(last.operationId)}
                   title={script.command}
-                  className={`flex min-w-0 flex-1 items-baseline gap-2 rounded px-1 py-1 text-left text-xs hover:bg-raised disabled:hover:bg-transparent ${last && last.operationId === selected ? 'bg-sidebar-selected' : ''}`}
+                  className="min-w-0 flex-1 justify-start gap-2 text-left"
                 >
                   <span className="shrink-0 font-mono">{script.name}</span>
                   <span className="min-w-0 flex-1 truncate text-muted-foreground">
@@ -192,7 +193,7 @@ function Tasks({ sessionId, projectId }: { sessionId: string; projectId: string 
                       {t(`state.${last.state}`)}
                     </span>
                   ) : null}
-                </button>
+                </Button>
                 {live ? (
                   <Button
                     size="icon-compact"

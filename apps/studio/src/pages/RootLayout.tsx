@@ -14,7 +14,7 @@ import {
   Tooltip,
   TooltipProvider,
 } from '@corral/react/design-kit';
-import { ChevronDown, PanelLeft, Search } from '@corral/react/icons';
+import { ChevronDown, PanelLeft, RefreshCw, Search } from '@corral/react/icons';
 import {
   type ErrorComponentProps,
   Link,
@@ -503,9 +503,9 @@ export function NotFoundView() {
   return (
     <main className="flex flex-col items-start gap-3 p-6">
       <h2 className="text-lg font-semibold">{t('notFound')}</h2>
-      <Link to="/" className="text-sm underline">
+      <Button variant="ghost" size="compact" render={<Link to="/" />}>
         {t('backToCorrals')}
-      </Link>
+      </Button>
     </main>
   );
 }
@@ -518,16 +518,15 @@ export function ErrorView({ error }: ErrorComponentProps) {
       <h2 className="text-lg font-semibold">
         {t('error', { message: error instanceof Error ? error.message : String(error) })}
       </h2>
-      <button
-        type="button"
-        onClick={() => router.invalidate()}
-        className="rounded fill-control px-2 py-1 text-sm"
-      >
-        ↻
-      </button>
-      <Link to="/" className="text-sm underline">
-        {t('backToCorrals')}
-      </Link>
+      <div className="flex gap-2">
+        <Button variant="tertiary" size="compact" onClick={() => router.invalidate()}>
+          <RefreshCw />
+          {t('retry')}
+        </Button>
+        <Button variant="ghost" size="compact" render={<Link to="/" />}>
+          {t('backToCorrals')}
+        </Button>
+      </div>
     </main>
   );
 }

@@ -1,8 +1,8 @@
 import type { Schedule, ScheduleDraft, ScheduledOccurrence } from '@corral/contracts';
 import type { ProjectSummary, WorkSession } from '@corral/core';
-import { Button } from '@corral/react/design-kit';
+import { Button, Input, Select, Switch, Textarea } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
-import { type FormEvent, useEffect, useRef, useState } from 'react';
+import { type FormEvent, useEffect, useId, useRef, useState } from 'react';
 import { useLocale } from 'use-intl';
 import { schedulesApi } from '../schedules-api.ts';
 import { useServices } from '../services.tsx';
@@ -148,7 +148,8 @@ export function ScheduledPage() {
       edit(saved);
     });
   };
-  const field = 'rounded fill-control border border-line px-3 py-2 text-sm';
+  const ids = useId();
+  const labelClass = 'flex min-w-0 flex-col gap-1.5 text-caption text-muted-foreground';
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-col gap-5 p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -187,30 +188,33 @@ export function ScheduledPage() {
           {error}
         </p>
       ) : null}
-      <ul className="divide-y divide-line">
+      <ul className="flex flex-col gap-0.5">
         {schedules.map((schedule) => (
-          <li key={schedule.id} className="flex flex-wrap items-center gap-3 py-3">
-            <button
-              type="button"
-              className="min-w-0 flex-1 text-left"
+          <li key={schedule.id} className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              aria-pressed={selected?.id === schedule.id}
+              className="h-auto min-w-0 flex-1 justify-start py-2 text-left"
               onClick={() => edit(schedule)}
             >
-              <span className="block font-medium">{schedule.title}</span>
-              <span className="text-xs text-muted-foreground">
-                {schedule.enabled ? text('Enabled', '활성') : text('Disabled', '비활성')}
-                {' · '}
-                {schedule.nextAt
-                  ? new Date(schedule.nextAt).toLocaleString()
-                  : text('No upcoming run', '다음 실행 없음')}
+              <span className="flex min-w-0 flex-col">
+                <span className="truncate font-medium">{schedule.title}</span>
+                <span className="truncate text-xs text-muted-foreground">
+                  {schedule.enabled ? text('Enabled', '활성') : text('Disabled', '비활성')}
+                  {' · '}
+                  {schedule.nextAt
+                    ? new Date(schedule.nextAt).toLocaleString()
+                    : text('No upcoming run', '다음 실행 없음')}
+                </span>
               </span>
-            </button>
-            <Link
-              to="/sessions/$sessionId"
-              params={{ sessionId: schedule.sessionId }}
-              className="text-sm underline"
+            </Button>
+            <Button
+              variant="ghost"
+              size="compact"
+              render={<Link to="/sessions/$sessionId" params={{ sessionId: schedule.sessionId }} />}
             >
               {text('Session', '세션')}
-            </Link>
+            </Button>
           </li>
         ))}
       </ul>
@@ -220,73 +224,68 @@ export function ScheduledPage() {
           className="flex flex-col gap-4 border-t border-line pt-4"
           aria-label={text('Schedule settings', '예약 설정')}
         >
-          <label className="flex flex-col gap-1 text-sm">
+          <label htmlFor={`${ids}-title`} className={labelClass}>
             {text('Title', '이름')}
-            <input
+            <Input
+              id={`${ids}-title`}
               required
               maxLength={120}
-              className={field}
               value={draft.title}
               onChange={(e) => setDraft({ ...draft, title: e.target.value })}
             />
           </label>
-          <label className="flex flex-col gap-1 text-sm">
-            {text('Project', '프로젝트')}
-            <select
-              className={field}
-              value={draft.projectId}
-              onChange={(e) => {
-                const session = sessions.find((s) => s.projectId === e.target.value);
-                if (session)
-                  setDraft({
-                    ...draft,
-                    projectId: session.projectId,
-                    sessionId: session.sessionId,
-                  });
-              }}
-            >
-              {projects
-                .filter((project) =>
-                  sessions.some((session) => session.projectId === project.projectId),
-                )
-                .map((project) => (
-                  <option key={project.projectId} value={project.projectId}>
-                    {project.name || text('Default project', '기본 프로젝트')}
-                  </option>
-                ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            {text('Session', '세션')}
-            <select
-              className={field}
-              value={draft.sessionId}
-              onChange={(e) => {
-                const session = sessions.find((s) => s.sessionId === e.target.value);
-                if (session)
-                  setDraft({
-                    ...draft,
-                    sessionId: session.sessionId,
-                    projectId: session.projectId,
-                  });
-              }}
-            >
-              {sessions
-                .filter((session) => session.projectId === draft.projectId)
-                .map((session) => (
-                  <option key={session.sessionId} value={session.sessionId}>
-                    {session.title}
-                  </option>
-                ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className={labelClass}>
+              <span aria-hidden="true">{text('Project', '프로젝트')}</span>
+              <Select
+                label={text('Project', '프로젝트')}
+                value={draft.projectId}
+                onValueChange={(projectId) => {
+                  const session = sessions.find((s) => s.projectId === projectId);
+                  if (session)
+                    setDraft({
+                      ...draft,
+                      projectId: session.projectId,
+                      sessionId: session.sessionId,
+                    });
+                }}
+                options={projects
+                  .filter((project) =>
+                    sessions.some((session) => session.projectId === project.projectId),
+                  )
+                  .map((project) => ({
+                    value: project.projectId,
+                    label: project.name || text('Default project', '기본 프로젝트'),
+                  }))}
+              />
+            </div>
+            <div className={labelClass}>
+              <span aria-hidden="true">{text('Session', '세션')}</span>
+              <Select
+                label={text('Session', '세션')}
+                value={draft.sessionId}
+                onValueChange={(sessionId) => {
+                  const session = sessions.find((s) => s.sessionId === sessionId);
+                  if (session)
+                    setDraft({
+                      ...draft,
+                      sessionId: session.sessionId,
+                      projectId: session.projectId,
+                    });
+                }}
+                options={sessions
+                  .filter((session) => session.projectId === draft.projectId)
+                  .map((session) => ({ value: session.sessionId, label: session.title }))}
+              />
+            </div>
+          </div>
+          <label htmlFor={`${ids}-request`} className={labelClass}>
             {text('Request', '요청')}
-            <textarea
+            <Textarea
+              id={`${ids}-request`}
               required
               maxLength={20000}
               rows={4}
-              className={field}
               value={draft.request.brief}
               onChange={(e) =>
                 setDraft({ ...draft, request: { ...draft.request, brief: e.target.value } })
@@ -294,35 +293,37 @@ export function ScheduledPage() {
             />
           </label>
           <div className="grid gap-3 sm:grid-cols-3">
-            <label className="flex flex-col gap-1 text-sm">
-              {text('Repeat', '반복')}
-              <select
-                className={field}
+            <div className={labelClass}>
+              <span aria-hidden="true">{text('Repeat', '반복')}</span>
+              <Select
+                label={text('Repeat', '반복')}
                 value={draft.rule.kind}
-                onChange={(e) =>
+                onValueChange={(kind) =>
                   setDraft({
                     ...draft,
                     rule:
-                      e.target.value === 'once'
+                      kind === 'once'
                         ? { kind: 'once', at: new Date(Date.now() + 3600000).toISOString() }
-                        : e.target.value === 'weekly'
+                        : kind === 'weekly'
                           ? { kind: 'weekly', time: '09:00', weekdays: [1] }
                           : { kind: 'daily', time: '09:00' },
                   })
                 }
-              >
-                <option value="once">{text('Once', '한 번')}</option>
-                <option value="daily">{text('Daily', '매일')}</option>
-                <option value="weekly">{text('Weekly', '매주')}</option>
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
+                options={[
+                  { value: 'once', label: text('Once', '한 번') },
+                  { value: 'daily', label: text('Daily', '매일') },
+                  { value: 'weekly', label: text('Weekly', '매주') },
+                ]}
+              />
+            </div>
+            <label htmlFor={`${ids}-time`} className={labelClass}>
               {draft.rule.kind === 'once'
                 ? text('UTC date and time', 'UTC 날짜와 시각')
                 : text('Local time', '현지 시각')}
-              <input
+              <Input
+                id={`${ids}-time`}
                 required
-                className={field}
+                nativeInput
                 type={draft.rule.kind === 'once' ? 'datetime-local' : 'time'}
                 value={draft.rule.kind === 'once' ? draft.rule.at.slice(0, 16) : draft.rule.time}
                 onChange={(e) => {
@@ -337,110 +338,109 @@ export function ScheduledPage() {
                 }}
               />
             </label>
-            <label className="flex flex-col gap-1 text-sm">
+            <label htmlFor={`${ids}-zone`} className={labelClass}>
               {text('Time zone', '시간대')}
-              <input
+              <Input
+                id={`${ids}-zone`}
                 required
-                className={field}
                 value={draft.timezone}
                 onChange={(e) => setDraft({ ...draft, timezone: e.target.value })}
               />
             </label>
           </div>
           {draft.rule.kind === 'weekly' ? (
-            <fieldset className="flex flex-wrap gap-3">
-              <legend className="mb-2 text-sm">{text('Days', '요일')}</legend>
-              {(ko
-                ? ['일', '월', '화', '수', '목', '금', '토']
-                : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-              ).map((day, index) => (
-                <label key={day} className="flex items-center gap-1 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={draft.rule.kind === 'weekly' && draft.rule.weekdays.includes(index)}
-                    onChange={(e) => {
-                      if (draft.rule.kind === 'weekly')
-                        setDraft({
-                          ...draft,
-                          rule: {
-                            ...draft.rule,
-                            weekdays: e.target.checked
-                              ? [...draft.rule.weekdays, index]
-                              : draft.rule.weekdays.filter((d) => d !== index),
-                          },
-                        });
-                    }}
-                  />
-                  {day}
-                </label>
-              ))}
+            <fieldset className="flex flex-col gap-1.5">
+              <legend className="mb-1.5 text-caption text-muted-foreground">
+                {text('Days', '요일')}
+              </legend>
+              <div className="flex flex-wrap gap-1">
+                {(ko
+                  ? ['일', '월', '화', '수', '목', '금', '토']
+                  : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+                ).map((day, index) => {
+                  const on = draft.rule.kind === 'weekly' && draft.rule.weekdays.includes(index);
+                  return (
+                    <Button
+                      key={day}
+                      size="compact"
+                      variant={on ? 'secondary' : 'ghost'}
+                      aria-pressed={on}
+                      onClick={() => {
+                        if (draft.rule.kind === 'weekly')
+                          setDraft({
+                            ...draft,
+                            rule: {
+                              ...draft.rule,
+                              weekdays: on
+                                ? draft.rule.weekdays.filter((d) => d !== index)
+                                : [...draft.rule.weekdays, index],
+                            },
+                          });
+                      }}
+                    >
+                      {day}
+                    </Button>
+                  );
+                })}
+              </div>
             </fieldset>
           ) : null}
           <div className="grid gap-3 sm:grid-cols-3">
-            <label className="flex flex-col gap-1 text-sm">
-              {text('Model profile', '모델 프로필')}
-              <select
-                className={field}
+            <div className={labelClass}>
+              <span aria-hidden="true">{text('Model profile', '모델 프로필')}</span>
+              <Select
+                label={text('Model profile', '모델 프로필')}
                 value={draft.request.choice.modelProfile}
-                onChange={(e) =>
+                onValueChange={(modelProfile) =>
                   setDraft({
                     ...draft,
-                    request: { ...draft.request, choice: { modelProfile: e.target.value } },
+                    request: { ...draft.request, choice: { modelProfile } },
                   })
                 }
-              >
-                {[...new Set([...profiles, draft.request.choice.modelProfile])].map((profile) => (
-                  <option key={profile}>{profile}</option>
-                ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
-              {text('Execution', '실행 방식')}
-              <select
-                className={field}
+                options={[...new Set([...profiles, draft.request.choice.modelProfile])].map(
+                  (profile) => ({ value: profile, label: profile }),
+                )}
+              />
+            </div>
+            <div className={labelClass}>
+              <span aria-hidden="true">{text('Execution', '실행 방식')}</span>
+              <Select
+                label={text('Execution', '실행 방식')}
                 value={draft.request.mode}
-                onChange={(e) =>
-                  setDraft({
-                    ...draft,
-                    request: { ...draft.request, mode: e.target.value as 'mock' | 'live' },
-                  })
+                onValueChange={(value) =>
+                  setDraft({ ...draft, request: { ...draft.request, mode: value } })
                 }
-              >
-                <option value="mock">{text('Simulation', '시뮬레이션')}</option>
-                <option disabled={!live} value="live">
-                  {text('Connected model', '연결된 모델')}
-                </option>
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
-              {text('Permissions', '권한')}
-              <select
-                className={field}
+                options={[
+                  { value: 'mock' as const, label: text('Simulation', '시뮬레이션') },
+                  {
+                    value: 'live' as const,
+                    label: text('Connected model', '연결된 모델'),
+                    disabled: !live,
+                  },
+                ]}
+              />
+            </div>
+            <div className={labelClass}>
+              <span aria-hidden="true">{text('Permissions', '권한')}</span>
+              <Select
+                label={text('Permissions', '권한')}
                 value={draft.request.permissionMode}
-                onChange={(e) =>
-                  setDraft({
-                    ...draft,
-                    request: {
-                      ...draft.request,
-                      permissionMode: e.target.value as ScheduleDraft['request']['permissionMode'],
-                    },
-                  })
+                onValueChange={(permissionMode) =>
+                  setDraft({ ...draft, request: { ...draft.request, permissionMode } })
                 }
-              >
-                <option value="ask">Ask</option>
-                <option value="accept_edits">Accept edits</option>
-                <option value="auto">Auto</option>
-              </select>
-            </label>
+                options={[
+                  { value: 'ask' as const, label: 'Ask' },
+                  { value: 'accept_edits' as const, label: 'Accept edits' },
+                  { value: 'auto' as const, label: 'Auto' },
+                ]}
+              />
+            </div>
           </div>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={draft.enabled}
-              onChange={(e) => setDraft({ ...draft, enabled: e.target.checked })}
-            />
-            {text('Enable scheduled runs', '예약 실행 활성화')}
-          </label>
+          <Switch
+            label={text('Enable scheduled runs', '예약 실행 활성화')}
+            checked={draft.enabled}
+            onToggle={() => setDraft({ ...draft, enabled: !draft.enabled })}
+          />
           <div className="flex flex-wrap gap-2">
             <Button disabled={busy} type="submit">
               {text('Save schedule', '예약 저장')}
@@ -524,14 +524,20 @@ export function ScheduledPage() {
                   <p className="text-xs text-muted-foreground">{entry.detail}</p>
                 ) : null}
                 {entry.runId ? (
-                  <Link
-                    className="underline"
-                    to="/sessions/$sessionId"
-                    params={{ sessionId: selected.sessionId }}
-                    search={{ view: 'run', run: entry.runId }}
+                  <Button
+                    variant="ghost"
+                    size="compact"
+                    className="-ml-2"
+                    render={
+                      <Link
+                        to="/sessions/$sessionId"
+                        params={{ sessionId: selected.sessionId }}
+                        search={{ view: 'run', run: entry.runId }}
+                      />
+                    }
                   >
                     {text('Open run / respond', '실행 열기 / 응답')}
-                  </Link>
+                  </Button>
                 ) : null}
               </li>
             ))}

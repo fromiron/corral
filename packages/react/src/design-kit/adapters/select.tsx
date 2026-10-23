@@ -9,6 +9,7 @@ import {
   SelectLabel,
   SelectTrigger,
 } from '../components/ui/select.tsx';
+import { cn } from '../lib/utils.ts';
 
 export type SelectOption<T extends string> = {
   value: T;
@@ -71,7 +72,8 @@ export function Select<T extends string>({
       value={value ?? ''}
       onValueChange={(next) => onValueChange(next as T)}
       items={options.map(({ value, label }) => ({ value, label }))}
-      size={size === 'xs' ? 'compact' : 'default'}
+      // A chip sits among compact buttons (the composer, the top bar) and hugs its value.
+      size={size === 'xs' || variant === 'chip' ? 'compact' : 'default'}
       disabled={disabled}
       open={open}
       onOpenChange={onOpenChange}
@@ -82,7 +84,7 @@ export function Select<T extends string>({
         placeholder={placeholder}
         leadingContent={icon}
         variant={variant === 'outline' ? 'bordered' : 'borderless'}
-        className={className}
+        className={cn(variant !== 'outline' && 'min-w-0 max-w-full', className)}
         data-slot="select-trigger"
       />
       <SelectContent align={align}>

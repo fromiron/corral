@@ -69,12 +69,7 @@ export function MessageBranch({
   if (mode !== 'server') return null;
   return (
     <>
-      <Button
-        size="compact"
-        variant="ghost-muted"
-        disabled={disabled}
-        onClick={() => setOpen(true)}
-      >
+      <Button size="compact" variant="ghost" disabled={disabled} onClick={() => setOpen(true)}>
         {t(requestStart ? 'requestOpen' : 'open')}
       </Button>
       <Dialog

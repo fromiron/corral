@@ -19,7 +19,7 @@ import {
   useStudioStores,
   ValidationPanel,
 } from '@corral/react';
-import { Button } from '@corral/react/design-kit';
+import { Button, Select } from '@corral/react/design-kit';
 import { Link, useBlocker, useNavigate } from '@tanstack/react-router';
 import { ReactFlowProvider } from '@xyflow/react';
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -151,27 +151,24 @@ function TemplatePicker({ current }: { current: DemoTemplateId }) {
   const t = useTranslations('Demo');
   const navigate = useNavigate();
   return (
-    <label className="flex items-center gap-2 text-xs">
-      <span className="text-muted-foreground">{t('template')}</span>
-      <select
+    <div className="flex items-center gap-2 text-xs">
+      <span aria-hidden="true" className="text-muted-foreground">
+        {t('template')}
+      </span>
+      <Select
+        variant="chip"
+        label={t('template')}
         value={current}
-        onChange={(event) => {
-          const template = event.target.value as DemoTemplateId;
+        onValueChange={(template) => {
           void navigate({
             to: '/demo',
             search: (search) =>
               template === 'starter' ? { ...search, template } : { ...search, template: undefined },
           });
         }}
-        className="rounded-md fill-control px-2 py-1"
-      >
-        {DEMO_TEMPLATE_IDS.map((id) => (
-          <option key={id} value={id}>
-            {t(`templates.${id}`)}
-          </option>
-        ))}
-      </select>
-    </label>
+        options={DEMO_TEMPLATE_IDS.map((id) => ({ value: id, label: t(`templates.${id}`) }))}
+      />
+    </div>
   );
 }
 

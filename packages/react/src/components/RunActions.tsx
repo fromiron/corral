@@ -53,8 +53,8 @@ export function RunActions({
       {!terminal ? (
         <div className="flex flex-wrap gap-1">
           <Button
-            variant="outline"
-            size="xs"
+            variant="tertiary"
+            size="compact"
             disabled={
               pending || projection.status === 'pausing' || projection.status === 'cancelling'
             }
@@ -70,7 +70,7 @@ export function RunActions({
           {showCancel ? (
             <Button
               variant="ghost-destructive"
-              size="xs"
+              size="compact"
               disabled={pending || projection.status === 'cancelling'}
               onClick={() => setConfirmCancel(projection.runId)}
             >
@@ -85,7 +85,7 @@ export function RunActions({
           <div className="flex flex-wrap gap-1">
             <Button
               variant="destructive"
-              size="xs"
+              size="compact"
               disabled={pending}
               onClick={() => {
                 const chosen = confirmCancel;
@@ -99,7 +99,7 @@ export function RunActions({
             >
               {t('confirmCancelRun')}
             </Button>
-            <Button variant="outline" size="xs" onClick={() => setConfirmCancel(null)}>
+            <Button variant="tertiary" size="compact" onClick={() => setConfirmCancel(null)}>
               {t('keepRunning')}
             </Button>
           </div>

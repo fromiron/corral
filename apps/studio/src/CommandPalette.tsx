@@ -590,14 +590,9 @@ function ShortcutHelp({ onClose }: { onClose: () => void }) {
       <div className="flex max-h-[70vh] flex-col text-sm">
         <div className="flex shrink-0 items-center justify-between gap-2 border-b border-line px-4 py-3">
           <h2 className="font-semibold">{t('label')}</h2>
-          <button
-            ref={closeRef}
-            type="button"
-            onClick={onClose}
-            className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-subtle hover:text-text"
-          >
+          <Button ref={closeRef} variant="ghost" size="compact" onClick={onClose}>
             {t('closeButton')}
-          </button>
+          </Button>
         </div>
         <div className="min-h-0 overflow-auto px-4 py-3">
           <ShortcutTable />

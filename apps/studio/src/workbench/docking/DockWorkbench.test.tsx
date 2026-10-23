@@ -83,6 +83,21 @@ async function fixture(
   return { ref, container, owner, closeView, key };
 }
 
+/** Opens the pane actions menu of the group that shows `node`; its rows render in a portal. */
+async function paneActions(node: Element | null | undefined) {
+  // Rendered panes sit in an overlay; their group is the one holding their tab.
+  const id = node?.closest<HTMLElement>('[data-dock-panel-id]')?.dataset.dockPanelId;
+  const trigger = document
+    .querySelector(`[data-tab-panel-id="${id}"]`)
+    ?.closest('.dv-groupview')
+    ?.querySelector<HTMLButtonElement>('button[aria-label="paneActions"]');
+  expect(trigger).toBeDefined();
+  await act(async () => trigger?.click());
+  return [...document.querySelectorAll<HTMLElement>('[role="menuitem"], [role="menuitemradio"]')];
+}
+const activePane = (container: HTMLElement) =>
+  container.querySelector('.dv-active-group [role="tab"][aria-selected="true"]')?.textContent;
+
 it('[TC-WBD-006-F] [TC-WBD-026-F] leaves a dirty document open until its close decision succeeds', async () => {
   const f = await fixture();
   await act(async () => {
@@ -156,16 +171,13 @@ it('[TC-WBD-006-H] moving a document between presets reuses its rendered view an
   await act(async () => {
     f.ref.current?.openDocument({ documentKey: f.key, target, path: 'file.ts' });
   });
-  expect(f.container.querySelector('button[aria-label="openPane"]')?.textContent).toContain(
-    'openPane',
-  );
+  expect(f.container.querySelector('button[aria-label="openPane"]')).not.toBeNull();
   const documentView = document.querySelector('[data-testid="document"]');
-  const preset = f.container.querySelector<HTMLButtonElement>(
-    'button[role="combobox"][aria-label="preset"]',
-  );
-  expect(preset).not.toBeNull();
-  await act(async () => preset?.click());
-  const implementation = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(
+  const rows = await paneActions(documentView);
+  const layout = rows.find((row) => row.textContent?.startsWith('preset'));
+  expect(layout?.textContent).toContain('conversation');
+  await act(async () => layout?.click());
+  const implementation = [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find(
     (option) => option.textContent?.includes('implementation'),
   );
   expect(implementation).toBeDefined();
@@ -173,13 +185,13 @@ it('[TC-WBD-006-H] moving a document between presets reuses its rendered view an
   expect(document.querySelector('[data-testid="document"]')).toBe(documentView);
   expect(f.owner.retainView).toHaveBeenCalledTimes(1);
   expect(f.closeView).not.toHaveBeenCalled();
-  await act(async () => f.container.querySelector('summary')?.click());
-  const split = [...f.container.querySelectorAll('button')].find(
-    (button) => button.textContent === 'split',
+  const split = (await paneActions(documentView)).find((row) =>
+    row.textContent?.startsWith('split'),
   );
   await act(async () => split?.click());
   expect(document.querySelectorAll('[data-testid="document"]')).toHaveLength(2);
-  expect(f.container.querySelector('button[aria-label="preset"]')?.textContent).toContain(
+  const after = await paneActions(documentView);
+  expect(after.find((row) => row.textContent?.startsWith('preset'))?.textContent).toContain(
     'savedLayout',
   );
   const retained = vi.mocked(f.owner.retainView).mock.calls;
@@ -192,7 +204,7 @@ it('[TC-WBD-006-N] recreates a document group after the last central context tab
   const f = await fixture();
   await act(async () => f.ref.current?.openContext('chat'));
   await act(async () =>
-    f.container.querySelector<HTMLButtonElement>('button[aria-label="close"]')?.click(),
+    f.container.querySelector<HTMLButtonElement>('button[aria-label="close: chat"]')?.click(),
   );
   await act(async () => {
     expect(f.ref.current?.openDocument({ documentKey: f.key, target, path: 'file.ts' })).toBe(true);
@@ -221,12 +233,11 @@ it('[TC-WBD-006-H] restores the active document and labels a saved layout withou
   });
   await disposals.pop()?.();
   const restored = await fixture();
-  expect(restored.container.querySelector('button[aria-label="preset"]')?.textContent).toContain(
+  expect(activePane(restored.container)).toContain('file.ts');
+  const rows = await paneActions(restored.container.querySelector('[data-testid="document"]'));
+  expect(rows.find((row) => row.textContent?.startsWith('preset'))?.textContent).toContain(
     'savedLayout',
   );
-  expect(
-    restored.container.querySelector('button[aria-label="activePane"]')?.textContent,
-  ).toContain('file.ts');
   expect(restored.closeView).not.toHaveBeenCalled();
 });
 
@@ -237,9 +248,7 @@ it('[TC-WBD-007-H] an explicit chat selection takes precedence over a restored a
   });
   await disposals.pop()?.();
   const restored = await fixture({ selectedPanel: null });
-  expect(
-    restored.container.querySelector('button[aria-label="activePane"]')?.textContent,
-  ).toContain('chat');
+  expect(activePane(restored.container)).toContain('chat');
   expect(restored.container.querySelector('[data-testid="document"]')).not.toBeNull();
   expect(restored.closeView).not.toHaveBeenCalled();
 });
@@ -260,10 +269,8 @@ it('[TC-WBD-007-H] source ranges reach only the opened document view and are not
   });
   const first = f.container.querySelector('[data-testid="document"]');
   expect(first?.getAttribute('data-selection')).toBe(JSON.stringify(range));
-  await act(async () => f.container.querySelector('summary')?.click());
-  const split = [...f.container.querySelectorAll('button')].find(
-    (button) => button.textContent === 'split',
-  );
+  // A menu row repeats its label once more to reserve its bold width.
+  const split = (await paneActions(first)).find((row) => row.textContent?.startsWith('split'));
   await act(async () => split?.click());
   const views = [...f.container.querySelectorAll('[data-testid="document"]')];
   expect(views).toHaveLength(2);
@@ -299,7 +306,9 @@ it('[TC-WBD-014-H] [TC-WBD-014-N] opens a saved team once as a tab of its own an
         (panel as { params: { descriptor: { kind: string } } }).params.descriptor.kind === 'graph',
     ),
   ).toBe(true);
-  const close = f.container.querySelector<HTMLButtonElement>('button[aria-label="close"]');
+  const close = f.container.querySelector<HTMLButtonElement>(
+    'button[aria-label="close: Team corral_a"]',
+  );
   await act(async () => close?.click());
   expect(f.closeView).not.toHaveBeenCalled();
   expect(document.querySelector('[data-testid="graph"]')).toBeNull();

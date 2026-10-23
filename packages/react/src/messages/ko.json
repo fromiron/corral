@@ -88,7 +88,8 @@
     "liveNoModel": "모델 연결 필요",
     "liveNoModelNote": "실제 모델을 쓸 수 있지만 아직 연결된 모델이 없어요. 설정 › 모델에서 로그인하세요. 그 전까지 실행은 시뮬레이션이에요.",
     "connectionFailed": "서버에 연결하지 못했습니다. 연결 상태를 확인한 뒤 다시 시도해 주세요.",
-    "retryConnection": "다시 시도"
+    "retryConnection": "다시 시도",
+    "retry": "다시 시도"
   },
   "Palette": {
     "heading": "노드",
@@ -3329,7 +3330,9 @@
     "savedLayout": "사용자 배치",
     "git": "Git",
     "team": "팀",
-    "debug": "디버깅"
+    "debug": "디버깅",
+    "paneActions": "창 동작",
+    "size": "크기"
   },
   "Context": {
     "previewSource": "미리보기 캡처",

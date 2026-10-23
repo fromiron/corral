@@ -84,7 +84,7 @@ export function AutoModelMenu({
       <MenuTrigger
         render={
           <Button
-            variant="ghost-muted"
+            variant="ghost"
             size="compact"
             className="h-auto min-h-9 pointer-coarse:min-h-11 min-w-0 max-w-full rounded-xl py-1 text-left whitespace-normal sm:rounded-full"
             disabled={disabled}

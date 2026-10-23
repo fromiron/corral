@@ -4336,5 +4336,27 @@
     "status": "planned",
     "adapter": "Local browser demo; no paid calls",
     "evidence": null
+  },
+  {
+    "id": "TC-SWS-001-H",
+    "requirements": [
+      "CRL-UX-010"
+    ],
+    "suite": "browser",
+    "scenario": "A new session shows no separate dock toolbar; each area header opens panes and folds layout presets, area moves and the save rule into one keyboard-reachable menu; splitting a non-document pane is refused with its reason.",
+    "status": "planned",
+    "adapter": "Local browser demo; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-SWS-001-N",
+    "requirements": [
+      "CRL-UX-010"
+    ],
+    "suite": "browser",
+    "scenario": "Opening a pane whose area is closed, from the conversation's own menu or the palette, recreates that area beside the conversation instead of covering the request input.",
+    "status": "planned",
+    "adapter": "Local browser demo; no paid calls",
+    "evidence": null
   }
 ]

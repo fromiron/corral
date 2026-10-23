@@ -56,6 +56,33 @@ export const DEFAULT_PANELS: DockPanel[] = CONTEXT_VIEWS.map((view) => ({
   id: `context:${view}`,
   descriptor: { kind: 'context', view },
 }));
+const contextPanels = (views: readonly DockContextView[]): DockPanel[] =>
+  views.map((view) => ({ id: `context:${view}`, descriptor: { kind: 'context', view } }));
+/**
+ * A new project's dock opens with the conversation and the panes its replies link to. The
+ * others open on demand from a group's + menu, the palette, `/` or the URL, so a first screen
+ * is not a wall of empty tabs.
+ */
+export const INITIAL_PANELS: DockPanel[] = contextPanels([
+  'chat',
+  'files',
+  'changes',
+  'artifacts',
+  'run',
+]);
+const PRESET_VIEWS: Record<DockPreset, readonly DockContextView[]> = {
+  conversation: [],
+  implementation: ['files', 'terminal', 'problems'],
+  review: ['changes', 'checks'],
+};
+/** The open panes plus the ones a preset is for; existing panes keep their IDs and order. */
+export function presetPanels(preset: DockPreset, open: DockPanel[]): DockPanel[] {
+  const present = new Set(open.map((panel) => panel.id));
+  return [
+    ...open,
+    ...contextPanels(PRESET_VIEWS[preset]).filter((panel) => !present.has(panel.id)),
+  ];
+}
 const unavailable = (): DockPanelDescriptor => ({ kind: 'unknown', label: 'Unavailable panel' });
 const object = (value: unknown): Record<string, unknown> | null =>
   value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -197,7 +224,18 @@ export function createPresetLayout(
     groups.main1.push(groups.aux.shift() as string);
   const top = (['main1', 'main2', 'aux'] as const).filter((id) => groups[id].length);
   const topHeight = groups.bottom.length ? 580 : 800;
-  const columns = top.map((id) => leaf(id, groups[id], 1200 / top.length));
+  // The conversation keeps the larger share beside one side group.
+  const columns = top.map((id) =>
+    leaf(
+      id,
+      groups[id],
+      top.length === 2 && preset === 'conversation'
+        ? id === 'aux'
+          ? 480
+          : 720
+        : 1200 / top.length,
+    ),
+  );
   const root: GridNode = {
     type: 'branch',
     size: 1200,

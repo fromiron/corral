@@ -432,15 +432,15 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                     )
                     .map((p) => (
                       <li key={p.profileId}>
-                        <button
-                          type="button"
+                        <Button
+                          variant={selected?.profileId === p.profileId ? 'secondary' : 'ghost'}
                           aria-pressed={selected?.profileId === p.profileId}
-                          className={`w-full rounded-lg px-3 py-2 text-left text-sm ${selected?.profileId === p.profileId ? 'bg-sidebar-selected' : 'hover:bg-surface'}`}
+                          className="w-full justify-start"
                           onClick={() => choose(p)}
                         >
                           {p.name} · r{p.revision}
                           {p.archivedAt ? ` · ${r('archived')}` : ''}
-                        </button>
+                        </Button>
                       </li>
                     ))}
                 </ul>

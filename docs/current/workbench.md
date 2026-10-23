@@ -84,7 +84,7 @@ Run 상세는 Run ID별 root store를 사용하고 그래프 편집기나 pane�
 
 [CR-046 P10](../change-requests/CR-046-development-workbench.md)은 URL의 세션/Run 문맥 pane과 full WorkspaceTarget·path·viewId로 유지되는 문서 pane을 구분한다. workspaceId/project별 versioned layout은 배치 metadata만 저장하며, 잘못된 descriptor는 placeholder로, 손상된 grid는 유효한 문서 참조를 보존하는 기본 배치로 복구한다. 이동·preset·숨김은 문서 닫기나 프로세스 종료가 아니다. 명시 문서 닫기는 기존 저장/버리기/취소를 유지한다.
 
-문서 최대 20개와 중앙 1~2 문서 그룹·보조 그룹·하단 도크를 기준으로 키보드 배치 조작과 390px의 한 활성 그룹, Run 승인·중지 접근을 제공한다. 600px 이하 폭은 대화부터 열고(기억한 보조 pane이 대화를 대신하지 않는다), 배치 도구 대신 한 줄의 pane 전환기와 대화로 돌아가기를 제공한다. graph 전용 탭 통합은 P18이며 기존 graph/review 경로를 유지한다. C-150의 구현과 Linux 인앱·관련 회귀는 [P10 기록](../evaluation/Development-Workbench-Docking-2026-10-21.md)을 따른다. 실제 OS IME·스크린리더·설치판 GUI와 다른 OS의 검증은 별도다.
+문서 최대 20개와 중앙 1~2 문서 그룹·보조 그룹·하단 도크를 기준으로 키보드 배치 조작과 390px의 한 활성 그룹, Run 승인·중지 접근을 제공한다. 600px 이하 폭은 대화부터 열고(기억한 보조 pane이 대화를 대신하지 않는다), 배치 도구 대신 한 줄의 pane 전환기와 대화로 돌아가기를 제공한다. graph 전용 탭 통합은 P18이며 기존 graph/review 경로를 유지한다. [CR-051](../change-requests/CR-051-session-workspace-simplification.md)부터 넓은 화면에는 별도 도킹 툴바 줄이 없다. 각 영역 머리글의 창 열기 메뉴와 창 동작 메뉴(배치 프리셋·영역 이동·크기·문서 분할·이전/다음 창·저장 범위 안내)와 활성 창 닫기가 같은 키보드 배치 조작을 제공한다. 창은 메뉴·팔레트·`/`·URL 어디서 열든 자기 영역(대화는 중앙, 터미널·작업·검사·문제는 하단, 나머지는 보조)에 열리며, 닫힌 영역은 네 영역 상한 안에서 다시 만들고 대화를 덮지 않는다. 저장 배치가 없는 프로젝트는 대화와 Files·Changes·Results·Run만 열고, 프리셋은 필요한 창(구현: Files·Terminal·Problems, 검토: Changes·Checks)을 더한다. C-150의 구현과 Linux 인앱·관련 회귀는 [P10 기록](../evaluation/Development-Workbench-Docking-2026-10-21.md)을 따른다. 실제 OS IME·스크린리더·설치판 GUI와 다른 OS의 검증은 별도다.
 
 ## 캡처한 컨텍스트와 대화 표시 밀도
 
@@ -92,7 +92,7 @@ Run 상세는 Run ID별 root store를 사용하고 그래프 편집기나 pane�
 
 텍스트 첨부는 `next`와 `queue`에 보존하고 이미지는 기존 `next` 전용 경계를 유지한다. queued next의 미리보기·편집·시작도 고정된 첨부와 원래 요청 identity를 사용한다. 원본 이동·교체·삭제는 명시 동작이며, 원본 변경·소실·조회 실패를 표시해도 첨부 본문은 유지한다. 다른 host·사본 generation·tree·terminal을 원래 출처로 간주해 자동 변경하지 않는다. 늦은 캡처·전송 결과는 원래 대상과 초안 revision에 귀속된다.
 
-결과·기본·상세 활동 밀도는 표시 선택이다. 원본 이벤트·prompt·도구 결과와 실행 모드·예산·Reins 대상은 보존하며, 승인·실패·중지 등 필요한 조치는 접힌 상세 밖에서도 접근할 수 있어야 한다. 세부 범위는 같은 CR을, 구현 상태는 C-151과 [활성 계획](../plans/workbench-development-implementation-plan-2026-10-21.md)을 따른다. 실제 화면 검증 결과와 환경별 한계는 별도 실행 기록으로 구분한다.
+결과·기본·상세 활동 밀도는 표시 선택이며 세션·회의 화면의 상단 페이지 메뉴에서 바꾼다(CR-051). 원본 이벤트·prompt·도구 결과와 실행 모드·예산·Reins 대상은 보존하며, 승인·실패·중지 등 필요한 조치는 접힌 상세 밖에서도 접근할 수 있어야 한다. 세부 범위는 같은 CR을, 구현 상태는 C-151과 [활성 계획](../plans/workbench-development-implementation-plan-2026-10-21.md)을 따른다. 실제 화면 검증 결과와 환경별 한계는 별도 실행 기록으로 구분한다.
 
 P11의 구현과 Linux 인앱·관련 회귀 범위는 [C-151 검증 기록](../evaluation/Development-Workbench-Context-2026-10-21.md)을 따른다.
 
@@ -102,7 +102,7 @@ P11의 구현과 Linux 인앱·관련 회귀 범위는 [C-151 검증 기록](../
 
 [CR-046 P21-A](../change-requests/CR-046-development-workbench.md)부터 세션 보관은 작업 사본을 지우지 않는다. 사본 삭제는 먼저 잃을 것을 보여 준다. 이 브라우저의 미저장 문서·복구 초안, 사본의 Git 변경, 보내지 않은 의견, 결과를 모르는 쓰기, 끝나지 않은 Run이다. task·터미널·Run이 잡은 사본은 지우지 않는다. 삭제는 확인한 copy generation에만 적용되고, 폴더가 남으면 삭제로 기록하지 않는다. 구현·검증 범위는 [C-160 기록](../evaluation/Development-Workbench-Copy-Lifecycle-2026-10-23.md)을 따른다.
 
-세션 화면에서 실행의 일시정지·재개·취소는 도킹 상단 "실행 조작" 한 곳에서 한다. 입력창 위 진행 줄은 상태와 기록 링크만 보여 준다(#91). Git 상태는 Git 창의 staged/unstaged/untracked 모델 하나로만 보이며 검토 화면의 예전 `scope=git` 주소는 세션의 Git 창으로 replace 이동한다.
+세션 화면에서 실행의 일시정지·재개·취소는 도킹 상단 "실행 조작" 한 곳에서 한다. 입력창 위 진행 줄은 상태와 기록 링크만 보여 주며, 끝난 실행은 같은 기록으로 이어지는 상태 알약 하나만 남긴다(#91, CR-051). 대화에서 옆 패널을 여는 링크는 같은 패널 표시를 쓴다. Git 상태는 Git 창의 staged/unstaged/untracked 모델 하나로만 보이며 검토 화면의 예전 `scope=git` 주소는 세션의 Git 창으로 replace 이동한다.
 
 [CR-047](../change-requests/CR-047-review-comparison-layout.md)의 검토·비교 화면은 workbench 가용 폭에 따라 중앙 diff를 우선하고 파일·검사·의견을 재배치하되 초안을 유지한다. 실행 비교의 수치는 열 방향으로 정렬하고 축약 ID는 키보드로 펼쳐 확인한다. 후보 비교는 본문과 명령/결과 영역을 분리하고 동일한 카드 구조에서 상태·사용량·검사를 비교한다. 기존 대상·명령·원본 보존 경계는 유지하며 [C-172 기록](../evaluation/Review-Comparison-Layout-2026-10-23.md)에 현재 화면·핵심 회귀와 남은 초기 조회 404를 구분했다.
 

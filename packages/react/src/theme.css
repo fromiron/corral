@@ -117,6 +117,57 @@
   }
 }
 
+/*
+ * Native disclosures keep <details> semantics (toggle state, find-in-page, nested folds) and take
+ * the kit Accordion trigger's look: a trailing chevron that turns when open, muted until hovered
+ * or open, and the control radius. A summary that draws its own marker opts out with list-none.
+ */
+@layer components {
+  summary:not(.list-none) {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    width: fit-content;
+    max-width: 100%;
+    list-style: none;
+    cursor: pointer;
+    border-radius: var(--control-radius);
+    color: var(--muted-foreground);
+    transition: color 80ms ease;
+  }
+
+  summary:not(.list-none)::-webkit-details-marker {
+    display: none;
+  }
+
+  summary:not(.list-none)::after {
+    content: "";
+    flex: none;
+    width: 0.875rem;
+    height: 0.875rem;
+    background: currentColor;
+    mask:
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E")
+      center / contain no-repeat;
+    transition: transform 120ms ease;
+  }
+
+  summary:not(.list-none):hover,
+  details[open] > summary:not(.list-none) {
+    color: var(--foreground);
+  }
+
+  details[open] > summary:not(.list-none)::after {
+    transform: rotate(90deg);
+  }
+
+  @media (forced-colors: active) {
+    summary:not(.list-none)::after {
+      background: CanvasText;
+    }
+  }
+}
+
 @media (forced-colors: active) {
   [data-slot="input-control"]:has(:focus-visible),
   [data-slot="textarea-control"]:has(:focus-visible),

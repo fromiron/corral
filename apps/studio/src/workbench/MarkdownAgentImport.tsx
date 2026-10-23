@@ -92,10 +92,9 @@ export function MarkdownAgentImport({
   };
   return (
     <>
-      <button
+      <Button
         ref={trigger}
-        type="button"
-        className="rounded-md fill-control px-3 py-1.5 text-sm"
+        variant="tertiary"
         onClick={() => {
           suffix.current = crypto.randomUUID();
           setConfirmed(false);
@@ -104,7 +103,7 @@ export function MarkdownAgentImport({
         }}
       >
         {text('Import Markdown agent', 'Markdown 에이전트 가져오기')}
-      </button>
+      </Button>
       {status ? (
         <span role="status" className="text-xs text-muted-foreground">
           {status}
@@ -122,13 +121,9 @@ export function MarkdownAgentImport({
               <DialogTitle className="text-base font-semibold">
                 {text('Import a callable agent', '위임할 에이전트 가져오기')}
               </DialogTitle>
-              <button
-                type="button"
-                className="rounded fill-control px-2 py-1 text-sm"
-                onClick={close}
-              >
+              <Button variant="ghost" size="compact" onClick={close}>
                 {text('Close', '닫기')}
-              </button>
+              </Button>
             </div>
             <p className="text-xs text-muted-foreground">
               {text(

@@ -36,6 +36,7 @@ vi.mock('../workbench/MeetingEvidence.tsx', () => ({
   ),
 }));
 vi.mock('../workbench/ChatView.tsx', () => ({
+  ChatDensityMenu: () => null,
   ChatView: ({ items, composer, header, children }: any) => (
     <div>
       {header}
@@ -53,7 +54,8 @@ vi.mock('@tanstack/react-router', () => ({
   Link: ({ children }: any) => <a href="#run">{children}</a>,
 }));
 vi.mock('@corral/react', () => ({ SafeMarkdown: ({ text }: any) => <p>{text}</p> }));
-vi.mock('@corral/react/design-kit', () => ({
+vi.mock('@corral/react/design-kit', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@corral/react/design-kit')>()),
   Button: ({ children, variant: _v, size: _s, ...props }: any) => (
     <button {...props}>{children}</button>
   ),

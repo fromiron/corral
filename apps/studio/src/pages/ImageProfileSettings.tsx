@@ -1,17 +1,16 @@
 import type { ModelProfileView } from '@corral/client';
 import { ImageGenerationProfile } from '@corral/contracts';
-import { Button } from '@corral/react/design-kit';
+import { Button, Input, Select } from '@corral/react/design-kit';
 import { useEffect, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { type ImageProfilesView, imageProfilesApi } from '../image-profiles-api.ts';
 import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
 
-const field = 'min-w-0 rounded border border-line bg-surface px-2 py-1.5 text-sm';
-
 /** Image operations have their own explicit provider model and spend limits. */
 export function ImageProfileSettings({ modelProfiles }: { modelProfiles: ModelProfileView[] }) {
   const t = useTranslations('ImageProfiles');
   const heading = useId();
+  const ids = useId();
   const [data, setData] = useState<ImageProfilesView | null>(null);
   const [draft, setDraft] = useState<ImageGenerationProfile | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -169,10 +168,11 @@ export function ImageProfileSettings({ modelProfiles }: { modelProfiles: ModelPr
           }}
         >
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className="flex flex-col gap-1 text-xs">
+            <label htmlFor={`${ids}-id`} className="flex flex-col gap-1 text-xs">
               {t('id')}
-              <input
-                className={field}
+              <Input
+                nativeInput
+                id={`${ids}-id`}
                 value={draft.profileId}
                 disabled={busy || editingId !== null}
                 required
@@ -180,33 +180,36 @@ export function ImageProfileSettings({ modelProfiles }: { modelProfiles: ModelPr
                 onChange={(event) => setDraft({ ...draft, profileId: event.target.value })}
               />
             </label>
-            <label className="flex flex-col gap-1 text-xs">
-              {t('providerProfile')}
-              <select
-                className={field}
-                value={draft.modelProfileId}
+            <div className="flex flex-col gap-1 text-xs">
+              <span aria-hidden="true">{t('providerProfile')}</span>
+              <Select
+                label={t('providerProfile')}
+                value={draft.modelProfileId || null}
+                placeholder={t('selectProfile')}
                 disabled={busy}
-                required
-                onChange={(event) => setDraft({ ...draft, modelProfileId: event.target.value })}
-              >
-                <option value="">{t('selectProfile')}</option>
-                {draft.modelProfileId &&
-                !modelProfiles.some((profile) => profile.profileId === draft.modelProfileId) ? (
-                  <option value={draft.modelProfileId}>
-                    {draft.modelProfileId} ({t('unavailable')})
-                  </option>
-                ) : null}
-                {modelProfiles.map((profile) => (
-                  <option key={profile.profileId} value={profile.profileId}>
-                    {profile.profileId}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 text-xs">
+                onValueChange={(modelProfileId) => setDraft({ ...draft, modelProfileId })}
+                options={[
+                  ...(draft.modelProfileId &&
+                  !modelProfiles.some((profile) => profile.profileId === draft.modelProfileId)
+                    ? [
+                        {
+                          value: draft.modelProfileId,
+                          label: `${draft.modelProfileId} (${t('unavailable')})`,
+                        },
+                      ]
+                    : []),
+                  ...modelProfiles.map((profile) => ({
+                    value: profile.profileId,
+                    label: profile.profileId,
+                  })),
+                ]}
+              />
+            </div>
+            <label htmlFor={`${ids}-model`} className="flex flex-col gap-1 text-xs">
               {t('model')}
-              <input
-                className={field}
+              <Input
+                nativeInput
+                id={`${ids}-model`}
                 value={draft.modelId}
                 disabled={busy}
                 required
@@ -214,10 +217,11 @@ export function ImageProfileSettings({ modelProfiles }: { modelProfiles: ModelPr
                 onChange={(event) => setDraft({ ...draft, modelId: event.target.value })}
               />
             </label>
-            <label className="flex flex-col gap-1 text-xs">
+            <label htmlFor={`${ids}-timeout`} className="flex flex-col gap-1 text-xs">
               {t('timeout')}
-              <input
-                className={field}
+              <Input
+                nativeInput
+                id={`${ids}-timeout`}
                 type="number"
                 min={1}
                 max={600}
@@ -230,10 +234,11 @@ export function ImageProfileSettings({ modelProfiles }: { modelProfiles: ModelPr
                 }
               />
             </label>
-            <label className="flex flex-col gap-1 text-xs">
+            <label htmlFor={`${ids}-calls`} className="flex flex-col gap-1 text-xs">
               {t('calls')}
-              <input
-                className={field}
+              <Input
+                nativeInput
+                id={`${ids}-calls`}
                 type="number"
                 min={1}
                 max={16}
@@ -246,10 +251,11 @@ export function ImageProfileSettings({ modelProfiles }: { modelProfiles: ModelPr
                 }
               />
             </label>
-            <label className="flex flex-col gap-1 text-xs">
+            <label htmlFor={`${ids}-cost`} className="flex flex-col gap-1 text-xs">
               {t('cost')}
-              <input
-                className={field}
+              <Input
+                nativeInput
+                id={`${ids}-cost`}
                 type="number"
                 min={0.000001}
                 max={100}

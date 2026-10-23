@@ -159,20 +159,20 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
                 )
                 .map((server) => (
                   <li key={server.id}>
-                    <button
-                      type="button"
+                    <Button
+                      variant={selection === server.id ? 'secondary' : 'ghost'}
                       aria-pressed={selection === server.id}
                       onClick={() => {
                         setSelection(server.id);
                       }}
-                      className={`flex w-full flex-col gap-2 p-4 text-left hover:bg-surface ${selection === server.id ? 'bg-sidebar-selected' : ''}`}
+                      className="h-auto w-full flex-col items-start gap-1.5 whitespace-normal p-3 text-left"
                     >
                       <span className="font-medium">{server.name}</span>
                       <span className="text-xs text-muted-foreground">
                         {server.transport === 'http' ? 'HTTP' : h('mcpStdio')} ·{' '}
                         {t(server.enabled === false ? 'disabled' : 'enabled')}
                       </span>
-                    </button>
+                    </Button>
                   </li>
                 ))}
             </ul>

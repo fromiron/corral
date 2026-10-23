@@ -13,7 +13,7 @@ import type {
 } from '@corral/client';
 import { TERMINAL_RUN_STATUSES, type TextAttachment } from '@corral/contracts';
 import { createTextAttachment, type RunSummary, type WorkSession } from '@corral/core';
-import { Button } from '@corral/react/design-kit';
+import { Button, Input, Select, Switch } from '@corral/react/design-kit';
 import { Check, Eye } from '@corral/react/icons';
 import type { FileDiffMetadata } from '@pierre/diffs';
 import { Link, useNavigate } from '@tanstack/react-router';
@@ -195,22 +195,20 @@ export function ReviewPage() {
             </Link>
             <h2 className="text-base font-semibold">{t('reviewHeading')}</h2>
             {/* The options name what they compare; the label stays for assistive technology. */}
-            <label className="flex min-w-0 max-w-full items-center gap-1 text-xs">
-              <span className="sr-only">{t('scope')}</span>
-              <select
-                value={scopeKey}
-                onChange={(e) => setScope(e.target.value)}
-                className="min-w-0 rounded fill-control px-1 py-0.5"
-              >
-                <option value="session">{t('scopes.session')}</option>
-                <option value="review">{t('scopes.review')}</option>
-                {[...runs].reverse().map((r) => (
-                  <option key={r.runId} value={`run:${r.runId}`}>
-                    {t('scopes.run', { runId: r.runId })}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <Select
+              variant="chip"
+              label={t('scope')}
+              value={scopeKey}
+              onValueChange={setScope}
+              options={[
+                { value: 'session', label: t('scopes.session') },
+                { value: 'review', label: t('scopes.review') },
+                ...[...runs].reverse().map((r) => ({
+                  value: `run:${r.runId}`,
+                  label: t('scopes.run', { runId: r.runId }),
+                })),
+              ]}
+            />
             {changes?.from && changes.to ? (
               <span
                 className="font-mono text-xs text-muted-foreground"
@@ -226,8 +224,9 @@ export function ReviewPage() {
                   : t('files', { count: changes.files.length })}
               </span>
             ) : null}
-            <button
-              type="button"
+            <Button
+              variant="tertiary"
+              size="compact"
               onClick={() =>
                 void workspaces
                   ?.markReviewed(session.sessionId)
@@ -235,10 +234,10 @@ export function ReviewPage() {
               }
               title={t('reviewedNote')}
               aria-describedby={reviewedHint}
-              className="ml-auto rounded fill-control px-2 py-1 text-xs"
+              className="ml-auto"
             >
               {t('markReviewed')}
-            </button>
+            </Button>
             {/* The baseline always covers the whole current copy (#78 IA-07); the button names
                 it, so the longer note is its description and tooltip only. */}
             <span id={reviewedHint} className="sr-only">
@@ -539,27 +538,34 @@ export function FileDiff({
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="break-all font-mono text-sm">{path}</h3>
         {mark ? (
-          <button
-            type="button"
+          <Button
+            variant={mark.pressed ? 'secondary' : 'tertiary'}
+            size="compact"
             aria-pressed={mark.pressed}
             onClick={mark.toggle}
             title={t('changeReviewNote')}
-            className={`rounded px-2 py-0.5 text-xs ${mark.pressed ? 'bg-success/20' : 'fill-control'}`}
           >
-            {mark.pressed ? `✓ ${t('reviewedFile')}` : t('markFileReviewed')}
-          </button>
+            {mark.pressed ? (
+              <>
+                <Check className="text-success" />
+                {t('reviewedFile')}
+              </>
+            ) : (
+              t('markFileReviewed')
+            )}
+          </Button>
         ) : null}
-        <fieldset className="ml-auto flex gap-1 text-xs">
+        <fieldset className="ml-auto flex gap-0.5">
           {(['unified', 'split', 'raw'] as const).map((value) => (
-            <button
+            <Button
               key={value}
-              type="button"
+              variant={layout === value ? 'secondary' : 'ghost'}
+              size="compact"
               aria-pressed={layout === value}
               onClick={() => setLayout(value)}
-              className={`rounded px-2 py-0.5 ${layout === value ? 'bg-primary text-primary-foreground' : 'fill-control'}`}
             >
               {t(value)}
-            </button>
+            </Button>
           ))}
         </fieldset>
       </div>
@@ -577,13 +583,9 @@ export function FileDiff({
         </p>
       ) : layout === 'raw' ? (
         <div className="flex flex-col gap-1">
-          <button
-            type="button"
-            onClick={download}
-            className="self-start rounded fill-control px-2 py-0.5 text-xs"
-          >
+          <Button variant="tertiary" size="compact" onClick={download} className="self-start">
             {t('downloadFile')}
-          </button>
+          </Button>
           <pre className="overflow-auto whitespace-pre-wrap break-all rounded fill-group p-2 font-mono text-ui">
             {source}
           </pre>
@@ -969,35 +971,32 @@ function CommentsPanel({
                   </span>{' '}
                   {c.body}
                 </span>
-                <button
-                  type="button"
+                <Button
+                  variant="ghost"
+                  size="compact"
                   onClick={() =>
                     void workspaces
                       ?.setCommentState(session.sessionId, c.commentId, 'deleted')
                       .then(onChange)
                   }
-                  className="rounded fill-control px-1"
                 >
                   {t('deleteDraft')}
-                </button>
+                </Button>
               </li>
             ))}
           </ul>
-          <label className="flex flex-col gap-1 text-xs">
-            {t('sendTo')}
-            <select
+          <div className="flex flex-col gap-1 text-xs">
+            <span aria-hidden="true">{t('sendTo')}</span>
+            <Select
+              label={t('sendTo')}
               value={active ? target : 'next'}
-              onChange={(e) => setTarget(e.target.value)}
-              className="rounded fill-control px-1 py-0.5"
-            >
-              {active ? null : <option value="next">{t('sendNext')}</option>}
-              {targets.map((x) => (
-                <option key={x.id} value={x.id}>
-                  {t('sendSteer', { label: x.label })}
-                </option>
-              ))}
-            </select>
-          </label>
+              onValueChange={setTarget}
+              options={[
+                ...(active ? [] : [{ value: 'next', label: t('sendNext') }]),
+                ...targets.map((x) => ({ value: x.id, label: t('sendSteer', { label: x.label }) })),
+              ]}
+            />
+          </div>
           <Button
             variant="primary"
             size="compact"
@@ -1034,18 +1033,18 @@ function CommentsPanel({
                   {c.state === 'submitted' ? (
                     <div className="flex gap-1">
                       {(['addressed', 'obsolete'] as const).map((state) => (
-                        <button
+                        <Button
                           key={state}
-                          type="button"
+                          variant="ghost"
+                          size="compact"
                           onClick={() =>
                             void workspaces
                               ?.setCommentState(session.sessionId, c.commentId, state)
                               .then(onChange)
                           }
-                          className="rounded fill-control px-1"
                         >
                           {state === 'addressed' ? t('markAddressed') : t('markObsolete')}
-                        </button>
+                        </Button>
                       ))}
                     </div>
                   ) : null}
@@ -1144,31 +1143,32 @@ export function DecisionPanel({
         >
           {t('approve')}
         </Button>
-        <button
-          type="button"
+        <Button
+          variant="tertiary"
+          size="compact"
           disabled={busy}
           onClick={() => void act(() => decide('changes_requested'))}
-          className="rounded fill-control px-2 py-0.5"
         >
           {t('requestChanges')}
-        </button>
+        </Button>
       </div>
       {approved && linked ? (
         <div className="flex flex-col gap-1 rounded fill-group p-2 text-xs">
           <h4 className="font-semibold">{t('integrateHeading')}</h4>
           <p className="text-muted-foreground">{t('integrateNote')}</p>
-          <button
-            type="button"
+          <Button
+            variant="tertiary"
+            size="compact"
             onClick={() =>
               void act(async () => {
                 if (workspaces)
                   setPlan(await workspaces.integrationPlan(sessionId, approved.decisionId));
               })
             }
-            className="self-start rounded fill-control px-2 py-0.5"
+            className="self-start"
           >
             {t('plan')}
-          </button>
+          </Button>
           {plan ? (
             <>
               <ul data-testid="integration-plan">
@@ -1213,8 +1213,9 @@ export function DecisionPanel({
             ))}
           </ul>
           {integration.files.some((f) => f.outcome === 'applied') ? (
-            <button
-              type="button"
+            <Button
+              variant="tertiary"
+              size="compact"
               title={t('revertNote')}
               disabled={busy || active}
               onClick={() =>
@@ -1223,10 +1224,10 @@ export function DecisionPanel({
                   await reload();
                 })
               }
-              className="self-start rounded fill-control px-2 py-0.5"
+              className="self-start"
             >
               {t('revert')}
-            </button>
+            </Button>
           ) : null}
         </div>
       ))}
@@ -1280,13 +1281,11 @@ function FileList({
   const main = matches.filter((f) => !folded.includes(f));
   const row = (file: FileChangeView) => (
     <li key={file.path}>
-      <button
-        type="button"
+      <Button
+        variant={selected === file.path ? 'secondary' : 'ghost'}
         aria-current={selected === file.path ? 'true' : undefined}
         onClick={() => onChoose(file.path)}
-        className={`flex w-full flex-col rounded border px-2 py-1 text-left text-xs ${
-          selected === file.path ? 'border-primary bg-raised' : 'border-transparent fill-group'
-        }`}
+        className="h-auto w-full flex-col items-start gap-0.5 whitespace-normal py-1.5 text-left text-xs"
       >
         <span className="flex items-start gap-1 break-all font-mono">
           {reviewed.changeReviewed(file) ? (
@@ -1307,41 +1306,38 @@ function FileList({
           {file.additions !== null ? ` · +${file.additions} −${file.deletions ?? 0}` : ''}
           {file.binary ? ' · bin' : ''} · {t(`provenance.${file.provenance}`)}
         </span>
-      </button>
+      </Button>
     </li>
   );
   return (
     <div className="flex flex-col gap-2">
-      <input
+      <Input
         type="search"
+        size="compact"
         aria-label={t('filterSearch')}
         placeholder={t('filterSearch')}
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        className="rounded fill-control px-2 py-1 text-xs"
       />
       <div className="flex flex-wrap items-center gap-2 text-xs">
-        <select
-          aria-label={t('kindAll')}
+        <Select
+          variant="chip"
+          label={t('kindAll')}
           value={kind}
-          onChange={(e) => setKind(e.target.value as typeof kind)}
-          className="rounded fill-control px-1 py-0.5"
-        >
-          <option value="all">{t('kindAll')}</option>
-          {(['added', 'modified', 'deleted', 'type_changed'] as const).map((value) => (
-            <option key={value} value={value}>
-              {t(`status.${value}`)}
-            </option>
-          ))}
-        </select>
-        <label className="flex items-center gap-1">
-          <input
-            type="checkbox"
-            checked={unreviewedOnly}
-            onChange={(e) => setUnreviewedOnly(e.target.checked)}
-          />
-          {t('unreviewedOnly')}
-        </label>
+          onValueChange={setKind}
+          options={[
+            { value: 'all' as const, label: t('kindAll') },
+            ...(['added', 'modified', 'deleted', 'type_changed'] as const).map((value) => ({
+              value,
+              label: t(`status.${value}`),
+            })),
+          ]}
+        />
+        <Switch
+          label={t('unreviewedOnly')}
+          checked={unreviewedOnly}
+          onToggle={() => setUnreviewedOnly((value) => !value)}
+        />
       </div>
       {changes.files.length === 0 ? (
         <p className="text-xs text-muted-foreground">{t('noChanges')}</p>

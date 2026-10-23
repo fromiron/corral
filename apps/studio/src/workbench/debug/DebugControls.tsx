@@ -444,10 +444,12 @@ export function DebugControls({ api, target, copy, store }: Props) {
             <ul className="max-h-52 overflow-y-auto">
               {(stack?.key === pauseKey ? stack.result.frames : [])?.map((value) => (
                 <li key={value.id}>
-                  <button
-                    type="button"
+                  <Button
+                    variant={
+                      frame?.key === pauseKey && frame.value.id === value.id ? 'secondary' : 'ghost'
+                    }
                     aria-pressed={frame?.key === pauseKey && frame.value.id === value.id}
-                    className="flex w-full flex-col gap-0.5 rounded px-2 py-1.5 text-left text-xs hover:bg-subtle"
+                    className="h-auto w-full flex-col items-start gap-0.5 whitespace-normal py-1.5 text-left text-xs"
                     onClick={() => void chooseFrame(value)}
                   >
                     <span className="break-words font-medium">{value.name}</span>
@@ -458,7 +460,7 @@ export function DebugControls({ api, target, copy, store }: Props) {
                     {!value.source.mapped ? (
                       <span className="text-muted-foreground">{t('unmapped')}</span>
                     ) : null}
-                  </button>
+                  </Button>
                 </li>
               ))}
             </ul>

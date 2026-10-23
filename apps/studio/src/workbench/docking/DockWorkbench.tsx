@@ -1,6 +1,20 @@
 import type { TextRange, WorkspaceTarget } from '@corral/contracts';
-import { Button, Select } from '@corral/react/design-kit';
-import { ArrowLeft, X } from '@corral/react/icons';
+import {
+  Button,
+  Menu,
+  MenuGroup,
+  MenuItem,
+  MenuPopup,
+  MenuRadioGroup,
+  MenuRadioItem,
+  MenuSeparator,
+  MenuSub,
+  MenuSubPopup,
+  MenuSubTrigger,
+  MenuTrigger,
+  Select,
+} from '@corral/react/design-kit';
+import { ArrowLeft, Ellipsis, Plus, X } from '@corral/react/icons';
 import {
   type DockviewApi,
   DockviewDefaultTab,
@@ -31,17 +45,18 @@ import {
   addDocumentPanel,
   addGraphPanel,
   createPresetLayout,
-  DEFAULT_PANELS,
   type DockContextView,
   type DockDocumentDescriptor,
   type DockGraphDescriptor,
   type DockPanelDescriptor,
   type DockPreset,
   documentTabLabel,
+  INITIAL_PANELS,
   isEditorPanel,
   layoutStorageKey,
   MAX_DOCUMENTS,
   parseLayout,
+  presetPanels,
   serializeLayout,
 } from './layout.ts';
 import 'dockview-react/dist/styles/dockview.css';
@@ -89,16 +104,30 @@ export interface DockWorkbenchProps {
   onPanesHiddenChange?: (hidden: boolean) => void;
 }
 type PanelParams = { descriptor: DockPanelDescriptor };
+const groupNames = ['main1', 'main2', 'aux', 'bottom'] as const;
+const presets = ['conversation', 'implementation', 'review'] as const;
+type GroupName = (typeof groupNames)[number];
+/** What a group header's pane menus can do; each acts on that group's active pane. */
+interface PaneActions {
+  compact: boolean;
+  preset: DockPreset | null;
+  openContext(view: DockContextView): void;
+  applyPreset(preset: DockPreset): void;
+  move(panelId: string, destination: GroupName): void;
+  split(panelId: string): void;
+  resize(groupId: string, axis: 'width' | 'height', amount: number): void;
+  step(direction: 'previous' | 'next'): void;
+}
 const RendererContext = createContext<{
   renderContext: DockWorkbenchProps['renderContext'];
   renderDocument: DockWorkbenchProps['renderDocument'];
   renderGraph: DockWorkbenchProps['renderGraph'];
   selection: { panelId: string; range: TextRange } | null;
   close: (id: string) => void;
+  actions: PaneActions;
 } | null>(null);
 const theme = { name: 'corral', className: 'corral-dock-theme', gap: 4 };
 const groupLabel = { develop: 'groupDevelop', verify: 'groupVerify', run: 'groupRun' } as const;
-const groupNames = ['main1', 'main2', 'aux', 'bottom'] as const;
 // At or below this host width one pane shows at a time.
 const NARROW = 600;
 const descriptorOf = (panel: IDockviewPanel) => (panel.params as PanelParams).descriptor;
@@ -164,19 +193,127 @@ function DockTab(props: IDockviewPanelHeaderProps<PanelParams>) {
     />
   );
 }
-function DockHeaderActions({ activePanel }: IDockviewHeaderActionsProps) {
+/**
+ * Each group's header carries the pane controls (#90 follow-up): open a pane in its own area,
+ * arrange the active pane, and close it. Narrow screens use the one pane switcher instead.
+ */
+function DockHeaderActions({ activePanel, group }: IDockviewHeaderActionsProps) {
   const renderer = useContext(RendererContext);
   const t = useTranslations('Docking');
-  if (!activePanel) return null;
-  return (
+  if (!renderer || !activePanel) return null;
+  const { actions } = renderer;
+  const descriptor = descriptorOf(activePanel);
+  const editor = isEditorPanel(descriptor);
+  const close = (
     <Button
       variant="ghost"
       size="icon-compact"
       aria-label={`${t('close')}: ${activePanel.title}`}
-      onClick={() => renderer?.close(activePanel.id)}
+      onClick={() => renderer.close(activePanel.id)}
     >
       <X />
     </Button>
+  );
+  if (actions.compact) return close;
+  const paneGroups = (['develop', 'verify', 'run'] as const).map((name) =>
+    PANE_CATALOG.filter((entry) => entry.group === name),
+  );
+  return (
+    <div className="corral-dock-header-actions">
+      <Menu>
+        <MenuTrigger
+          render={<Button variant="ghost" size="icon-compact" aria-label={t('openPane')} />}
+        >
+          <Plus />
+        </MenuTrigger>
+        <MenuPopup align="end" className="min-w-48">
+          {/* Every pane opens in its own area, as from the palette, `/` or the URL. */}
+          <MenuItem onClick={() => actions.openContext('chat')}>{t('chat')}</MenuItem>
+          {paneGroups.map((entries) => (
+            <MenuGroup key={entries[0]?.group}>
+              <MenuSeparator />
+              {entries.map((entry) => (
+                <MenuItem key={entry.view} onClick={() => actions.openContext(entry.view)}>
+                  {t(entry.view)}
+                </MenuItem>
+              ))}
+            </MenuGroup>
+          ))}
+        </MenuPopup>
+      </Menu>
+      <Menu>
+        <MenuTrigger
+          render={<Button variant="ghost" size="icon-compact" aria-label={t('paneActions')} />}
+        >
+          <Ellipsis />
+        </MenuTrigger>
+        <MenuPopup align="end" className="w-64">
+          <MenuSub>
+            <MenuSubTrigger>
+              {t('preset')}
+              <span className="ml-auto truncate pl-3 text-xs text-muted-foreground">
+                {actions.preset ? t(actions.preset) : t('savedLayout')}
+              </span>
+            </MenuSubTrigger>
+            <MenuSubPopup>
+              <MenuRadioGroup
+                value={actions.preset ?? ''}
+                onValueChange={(value) => actions.applyPreset(value as DockPreset)}
+              >
+                {presets.map((value) => (
+                  <MenuRadioItem key={value} value={value} closeOnClick>
+                    {t(value)}
+                  </MenuRadioItem>
+                ))}
+              </MenuRadioGroup>
+            </MenuSubPopup>
+          </MenuSub>
+          <MenuSub>
+            <MenuSubTrigger>{t('moveTo')}</MenuSubTrigger>
+            <MenuSubPopup>
+              {groupNames.map((name) => (
+                <MenuItem
+                  key={name}
+                  disabled={editor && name !== 'main1' && name !== 'main2'}
+                  onClick={() => actions.move(activePanel.id, name)}
+                >
+                  {t(name)}
+                </MenuItem>
+              ))}
+            </MenuSubPopup>
+          </MenuSub>
+          <MenuSub>
+            <MenuSubTrigger>{t('size')}</MenuSubTrigger>
+            <MenuSubPopup>
+              <MenuItem closeOnClick={false} onClick={() => actions.resize(group.id, 'width', -80)}>
+                {t('narrower')}
+              </MenuItem>
+              <MenuItem closeOnClick={false} onClick={() => actions.resize(group.id, 'width', 80)}>
+                {t('wider')}
+              </MenuItem>
+              <MenuItem
+                closeOnClick={false}
+                onClick={() => actions.resize(group.id, 'height', -60)}
+              >
+                {t('shorter')}
+              </MenuItem>
+              <MenuItem closeOnClick={false} onClick={() => actions.resize(group.id, 'height', 60)}>
+                {t('taller')}
+              </MenuItem>
+            </MenuSubPopup>
+          </MenuSub>
+          {descriptor.kind === 'document' ? (
+            <MenuItem onClick={() => actions.split(activePanel.id)}>{t('split')}</MenuItem>
+          ) : null}
+          <MenuSeparator />
+          <MenuItem onClick={() => actions.step('previous')}>{t('previousPane')}</MenuItem>
+          <MenuItem onClick={() => actions.step('next')}>{t('nextPane')}</MenuItem>
+          <MenuSeparator />
+          <p className="px-2 py-1.5 text-xs text-muted-foreground">{t('savedWhere')}</p>
+        </MenuPopup>
+      </Menu>
+      {close}
+    </div>
   );
 }
 const components = { workbench: DockPanel };
@@ -203,7 +340,6 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
     const [active, setActive] = useState('');
     const [selection, setSelection] = useState<{ panelId: string; range: TextRange } | null>(null);
     const [preset, setPreset] = useState<DockPreset | null>('conversation');
-    const [destination, setDestination] = useState<string>('main1');
     const [message, setMessage] = useState<string | null>(null);
     const [closing, setClosing] = useState<{ id: string; path: string } | null>(null);
     const [closeBusy, setCloseBusy] = useState(false);
@@ -324,14 +460,24 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
         return descriptor.kind === 'context' && descriptor.view === view;
       });
       if (!panel) {
-        const group =
-          findGroup(
-            api,
-            view === 'chat'
-              ? 'main1'
-              : ['terminal', 'tools', 'checks', 'problems'].includes(view)
-                ? 'bottom'
-                : 'aux',
+        const home =
+          view === 'chat'
+            ? 'main1'
+            : ['terminal', 'tools', 'checks', 'problems'].includes(view)
+              ? 'bottom'
+              : 'aux';
+        let group = findGroup(api, home);
+        // A pane whose area is not open gets that area back instead of replacing the tab in
+        // front, which is usually the conversation (at most four areas).
+        if (!group && home !== 'main1' && api.groups.length < 4)
+          group = api.addGroup({ id: home, direction: home === 'bottom' ? 'below' : 'right' });
+        group ??=
+          api.groups.find(
+            (item) =>
+              !item.panels.some((other) => {
+                const descriptor = descriptorOf(other);
+                return descriptor.kind === 'context' && descriptor.view === 'chat';
+              }),
           ) ?? api.activeGroup;
         panel = api.addPanel({
           id: `context:${view}`,
@@ -486,7 +632,10 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
       if (!api) return;
       mutating.current = true;
       try {
-        api.fromJSON(createPresetLayout(value, records(api)), { reuseExistingPanels: true });
+        // A preset brings in the panes it is for (Implementation: Files, Terminal, Problems).
+        api.fromJSON(createPresetLayout(value, presetPanels(value, records(api))), {
+          reuseExistingPanels: true,
+        });
         setPreset(value);
       } finally {
         mutating.current = false;
@@ -495,9 +644,9 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
       refresh();
       saveLayout();
     }
-    function move() {
+    function move(panelId: string, destination: GroupName) {
       const api = apiRef.current;
-      const panel = api?.activePanel;
+      const panel = api?.getPanel(panelId);
       if (!api || !panel) return;
       const doc = isEditorPanel(descriptorOf(panel));
       if (doc && !['main1', 'main2'].includes(destination)) {
@@ -523,9 +672,9 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
       focus(panel);
       saveLayout();
     }
-    function split() {
+    function split(panelId: string) {
       const api = apiRef.current;
-      const panel = api?.activePanel;
+      const panel = api?.getPanel(panelId);
       if (!api || !panel) return;
       const descriptor = descriptorOf(panel);
       if (descriptor.kind !== 'document') return;
@@ -556,8 +705,8 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
       focus(created);
       saveLayout();
     }
-    function resize(axis: 'width' | 'height', amount: number) {
-      const group = apiRef.current?.activeGroup;
+    function resize(groupId: string, axis: 'width' | 'height', amount: number) {
+      const group = apiRef.current?.groups.find((item) => item.id === groupId);
       if (!group || narrow.current) return;
       group.api.setSize({
         [axis]: Math.max(120, (axis === 'width' ? group.width : group.height) + amount),
@@ -620,7 +769,7 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
           loaded?.layout ??
             createPresetLayout(
               'conversation',
-              loaded?.panels.length ? loaded.panels : DEFAULT_PANELS,
+              loaded?.panels.length ? loaded.panels : INITIAL_PANELS,
             ),
           { reuseExistingPanels: true },
         );
@@ -628,7 +777,7 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
         api.fromJSON(
           createPresetLayout(
             'conversation',
-            loaded?.panels.length ? loaded.panels : DEFAULT_PANELS,
+            loaded?.panels.length ? loaded.panels : INITIAL_PANELS,
           ),
           { reuseExistingPanels: true },
         );
@@ -753,6 +902,19 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
           renderGraph: props.renderGraph,
           selection,
           close: (id) => void closePanel(id),
+          actions: {
+            compact,
+            preset,
+            openContext: (view) => openContext(view, true),
+            applyPreset,
+            move,
+            split,
+            resize,
+            step: (direction) =>
+              direction === 'previous'
+                ? apiRef.current?.activatePrevious({ includePanel: true })
+                : apiRef.current?.activateNext({ includePanel: true }),
+          },
         }}
       >
         <section
@@ -781,143 +943,36 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
             });
           }}
         >
-          <div className="corral-dock-toolbar" data-testid="dock-toolbar">
-            {compact ? (
-              <>
-                {activeView !== 'chat' ? (
-                  <Button size="compact" variant="ghost" onClick={() => openContext('chat', true)}>
-                    <ArrowLeft />
-                    {t('backToChat')}
-                  </Button>
-                ) : null}
-                <Select
-                  label={t('panes')}
-                  placeholder={t('panes')}
-                  size="sm"
-                  value={activeView === 'chat' ? '' : active}
-                  onValueChange={(id) => {
-                    const panel = apiRef.current?.getPanel(id);
-                    if (panel) focus(panel, true);
-                    else if (id.startsWith('context:'))
-                      openContext(id.slice('context:'.length) as DockContextView, true);
-                  }}
-                  options={[
-                    ...paneOptions,
-                    ...panels
-                      .filter(
-                        (panel) =>
-                          panel.id.startsWith('document:') || panel.id.startsWith('graph:'),
-                      )
-                      .map((panel) => ({ value: panel.id, label: panel.title })),
-                  ]}
-                />
-              </>
-            ) : (
-              <>
-                <div className="corral-dock-select">
-                  <span>{t('preset')}</span>
-                  <Select
-                    label={t('preset')}
-                    placeholder={t('savedLayout')}
-                    size="sm"
-                    value={preset}
-                    onValueChange={(value) => applyPreset(value as DockPreset)}
-                    options={(['conversation', 'implementation', 'review'] as const).map(
-                      (value) => ({
-                        value,
-                        label: t(value),
-                      }),
-                    )}
-                  />
-                </div>
-                <Select
-                  label={t('openPane')}
-                  placeholder={t('openPane')}
-                  size="sm"
-                  value=""
-                  onValueChange={(value) =>
-                    openContext(value.slice('context:'.length) as DockContextView, true)
-                  }
-                  options={[{ value: 'context:chat', label: t('chat') }, ...paneOptions]}
-                />
-                <details className="corral-dock-actions">
-                  <summary>{t('layoutControls')}</summary>
-                  <p className="px-1 pb-1 text-xs text-muted-foreground">{t('savedWhere')}</p>
-                  <div className="flex flex-wrap items-center gap-1">
-                    <div className="corral-dock-select">
-                      <span>{t('activePane')}</span>
-                      <Select
-                        label={t('activePane')}
-                        size="sm"
-                        value={active}
-                        onValueChange={(id) => {
-                          const panel = apiRef.current?.getPanel(id);
-                          if (panel) focus(panel, true);
-                        }}
-                        options={panels.map((panel) => ({ value: panel.id, label: panel.title }))}
-                      />
-                    </div>
-
-                    <Button
-                      size="compact"
-                      variant="ghost"
-                      onClick={() => apiRef.current?.activatePrevious({ includePanel: true })}
-                    >
-                      {t('previousPane')}
-                    </Button>
-                    <Button
-                      size="compact"
-                      variant="ghost"
-                      onClick={() => apiRef.current?.activateNext({ includePanel: true })}
-                    >
-                      {t('nextPane')}
-                    </Button>
-                    <Select
-                      label={t('moveTo')}
-                      size="sm"
-                      value={destination}
-                      onValueChange={setDestination}
-                      options={groupNames.map((value) => ({ value, label: t(value) }))}
-                    />
-                    <Button size="compact" variant="ghost" disabled={!selected} onClick={move}>
-                      {t('move')}
-                    </Button>
-                    <Button
-                      size="compact"
-                      variant="ghost"
-                      disabled={!selected || descriptorOf(selected).kind !== 'document'}
-                      onClick={split}
-                    >
-                      {t('split')}
-                    </Button>
-                    <Button
-                      size="compact"
-                      variant="ghost"
-                      disabled={!selected}
-                      aria-label={t('close')}
-                      onClick={() => selected && void closePanel(selected.id)}
-                    >
-                      {t('close')}
-                    </Button>
-                    <div className="flex gap-1">
-                      <Button size="compact" variant="ghost" onClick={() => resize('width', -80)}>
-                        {t('narrower')}
-                      </Button>
-                      <Button size="compact" variant="ghost" onClick={() => resize('width', 80)}>
-                        {t('wider')}
-                      </Button>
-                      <Button size="compact" variant="ghost" onClick={() => resize('height', -60)}>
-                        {t('shorter')}
-                      </Button>
-                      <Button size="compact" variant="ghost" onClick={() => resize('height', 60)}>
-                        {t('taller')}
-                      </Button>
-                    </div>
-                  </div>
-                </details>
-              </>
-            )}
-          </div>
+          {compact ? (
+            <div className="corral-dock-toolbar" data-testid="dock-toolbar">
+              {activeView !== 'chat' ? (
+                <Button size="compact" variant="ghost" onClick={() => openContext('chat', true)}>
+                  <ArrowLeft />
+                  {t('backToChat')}
+                </Button>
+              ) : null}
+              <Select
+                label={t('panes')}
+                placeholder={t('panes')}
+                size="sm"
+                value={activeView === 'chat' ? '' : active}
+                onValueChange={(id) => {
+                  const panel = apiRef.current?.getPanel(id);
+                  if (panel) focus(panel, true);
+                  else if (id.startsWith('context:'))
+                    openContext(id.slice('context:'.length) as DockContextView, true);
+                }}
+                options={[
+                  ...paneOptions,
+                  ...panels
+                    .filter(
+                      (panel) => panel.id.startsWith('document:') || panel.id.startsWith('graph:'),
+                    )
+                    .map((panel) => ({ value: panel.id, label: panel.title })),
+                ]}
+              />
+            </div>
+          ) : null}
           {props.controls ? <div className="corral-dock-controls">{props.controls}</div> : null}
           {message ? (
             <p role="status" className="px-3 py-1 text-xs text-muted-foreground">

@@ -376,7 +376,7 @@ export const Sidebar = memo(function Sidebar({
             {mode === 'server' ? (
               <Tooltip content={searchText('title')}>
                 <Button
-                  variant="ghost-muted"
+                  variant="ghost"
                   size="icon-compact"
                   aria-label={searchText('title')}
                   className="absolute top-1/2 right-1 -translate-y-1/2"

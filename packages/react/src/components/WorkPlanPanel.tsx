@@ -79,7 +79,7 @@ function WorkPlanDetails({ session, view }: { session: RunSessionStore; view: Wo
                       <div key={ref} className="mt-1">
                         <Button
                           type="button"
-                          size="xs"
+                          size="compact"
                           variant="ghost"
                           onClick={() => {
                             setFailedEvidence(null);
@@ -123,7 +123,7 @@ function WorkPlanDetails({ session, view }: { session: RunSessionStore; view: Wo
         <p role="status">{t(status.state === 'loading' ? 'loading' : 'unavailable')}</p>
       )}
       {status.state === 'error' || status.state === 'mismatch' ? (
-        <Button type="button" variant="outline" size="sm" onClick={retry}>
+        <Button type="button" variant="tertiary" size="compact" onClick={retry}>
           {t('retry')}
         </Button>
       ) : null}

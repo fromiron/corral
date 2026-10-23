@@ -58,8 +58,21 @@ test('#93 the @ reference menu is not clipped by the composer scroller', async (
   } else await expectReachable(menu);
 });
 
+/** Opens a pane, in its own area, from the + menu of the area that shows `beside`. */
+async function openFromMenu(page: Page, name: string, beside = 'Files') {
+  const header = page
+    .locator('.dv-groupview')
+    .filter({ has: page.getByRole('tab', { name: beside, exact: true }) });
+  await header.getByRole('button', { name: 'Open pane', exact: true }).click();
+  await page.getByRole('menuitem', { name, exact: true }).click();
+}
+
 test('#95 every pane tab is selected by a click on it and none closes', async ({ page }) => {
   await blankSession(page);
+  // A new session shows the panes its replies link to; the rest open from an area's + menu.
+  await openFromMenu(page, 'Git');
+  await openFromMenu(page, 'Terminal');
+  await openFromMenu(page, 'Checks');
   const tabs = page.locator('[data-tab-panel-id]');
   const before = await tabs.evaluateAll((list) =>
     list.map((node) => node.getAttribute('data-tab-panel-id')),
@@ -195,6 +208,7 @@ test('#71 hiding the panel hides the side and bottom panes, and showing brings t
   page,
 }) => {
   await blankSession(page);
+  await openFromMenu(page, 'Checks');
   const banner = page.getByRole('banner');
   const files = page.getByRole('tab', { name: 'Files', exact: true });
   const checks = page.getByRole('tab', { name: 'Checks', exact: true });
@@ -447,19 +461,27 @@ test('#84 the desktop shell hears the chosen language, and General says where na
   await expect(page.getByTestId('desktop-native-options')).toContainText('백그라운드');
 });
 
-test('#90 the dock toolbar shows layout and panes; arranging tools, groups and the save rule are folded', async ({
+test('[TC-SWS-001-H] #90 each area offers its panes and folds layout, groups and the save rule into one menu', async ({
   page,
 }) => {
   await blankSession(page);
-  const toolbar = page.getByTestId('dock-toolbar');
-  await expect(toolbar.getByRole('combobox', { name: 'Layout', exact: true })).toBeVisible();
-  await expect(toolbar.getByRole('combobox', { name: 'Open pane', exact: true })).toBeVisible();
-  await expect(toolbar.getByRole('combobox', { name: 'Active pane', exact: true })).toBeHidden();
-  await toolbar.getByText('Arrange panes', { exact: true }).click();
-  await expect(toolbar.getByRole('combobox', { name: 'Active pane', exact: true })).toBeVisible();
-  await expect(toolbar).toContainText('saved for this project in this browser');
-  await toolbar.getByRole('combobox', { name: 'Move to group', exact: true }).click();
-  await expect(page.getByRole('option', { name: 'Side area', exact: true })).toBeVisible();
+  // No second header row: the areas' own headers carry the pane controls.
+  await expect(page.getByTestId('dock-toolbar')).toHaveCount(0);
+  const side = page
+    .locator('.dv-groupview')
+    .filter({ has: page.getByRole('tab', { name: 'Files', exact: true }) });
+  await side.getByRole('button', { name: 'Open pane', exact: true }).click();
+  await expect(page.getByRole('menuitem', { name: 'Terminal', exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await side.getByRole('button', { name: 'Pane actions', exact: true }).click();
+  const menu = page.getByRole('menu');
+  await expect(menu).toContainText('saved for this project in this browser');
+  await page.getByRole('menuitem', { name: /^Layout/ }).click();
+  await expect(page.getByRole('menuitemradio', { name: 'Implementation' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.getByRole('menuitem', { name: 'Move to group', exact: true }).click();
+  await expect(page.getByRole('menuitem', { name: 'Side area', exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
   // Splitting a non-document pane is refused with its reason.
   const files = page.getByRole('tab', { name: 'Files', exact: true });
@@ -468,6 +490,28 @@ test('#90 the dock toolbar shows layout and panes; arranging tools, groups and t
   if (!box) throw new Error('no chat pane');
   await files.dragTo(chat, { targetPosition: { x: box.width - 8, y: box.height / 2 } });
   await expect(page.getByText('Only documents can be split into a new area.')).toBeVisible();
+});
+
+test('[TC-SWS-001-N] #90 a pane whose area is closed opens beside the conversation, not over it', async ({
+  page,
+}) => {
+  await blankSession(page);
+  // From the conversation's own + menu too: the pane goes to its area, not over the request.
+  await openFromMenu(page, 'Checks', 'Conversation');
+  await expectReachable(requestBox(page));
+  await expect(page.getByRole('tab', { name: 'Checks', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await page.keyboard.press('Control+k');
+  const palette = page.getByRole('dialog', { name: 'Command palette' });
+  await palette.getByRole('combobox', { name: 'Search commands' }).fill('terminal');
+  await palette.getByRole('combobox', { name: 'Search commands' }).press('Enter');
+  await expect(page.getByRole('tab', { name: 'Terminal', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expectReachable(requestBox(page));
 });
 
 test('#91 a running run is paused from one place, the active run controls, at any width', async ({
@@ -500,7 +544,9 @@ test('#91 Git changes have one home: an old review Git address opens the Git pan
   );
   // The review screen offers its change scopes, not a second Git view.
   await page.goto(`${url}/review`);
-  await expect(page.locator('option[value="git"]')).toHaveCount(0);
+  await page.getByRole('combobox', { name: 'Compare', exact: true }).click();
+  await expect(page.getByRole('option')).not.toHaveCount(0);
+  await expect(page.getByRole('option', { name: /Git/ })).toHaveCount(0);
 });
 
 test('#92 the sidebar and the session menu rename through the same dialog', async ({ page }) => {
