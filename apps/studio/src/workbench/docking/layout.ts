@@ -1,4 +1,4 @@
-import { canonicalJson, WorkspaceTarget } from '@corral/contracts';
+import { canonicalJson, Identifier, WorkspaceTarget } from '@corral/contracts';
 import type { SerializedDockview } from 'dockview-react';
 import { z } from 'zod';
 
@@ -29,10 +29,25 @@ const DocumentDescriptor = z.object({
 export type DockDocumentDescriptor = z.infer<typeof DocumentDescriptor>;
 const documentViewKey = (descriptor: DockDocumentDescriptor) =>
   canonicalJson([descriptor.target, descriptor.path, descriptor.viewId]);
+/**
+ * A saved team's graph (CR-046 P18): a view of the team's existing working copy, never a file
+ * document. One tab per team; the draft, undo and revisions stay with the working copy.
+ */
+const GraphDescriptor = z.object({
+  kind: z.literal('graph'),
+  projectId: Identifier,
+  corralId: Identifier,
+  viewId: z.string().min(1).max(512),
+});
+export type DockGraphDescriptor = z.infer<typeof GraphDescriptor>;
 export type DockPanelDescriptor =
   | { kind: 'context'; view: DockContextView }
   | DockDocumentDescriptor
+  | DockGraphDescriptor
   | { kind: 'unknown'; label: string };
+/** Documents and team graphs are edited in the central groups; context panes go around them. */
+export const isEditorPanel = (descriptor: DockPanelDescriptor) =>
+  descriptor.kind === 'document' || descriptor.kind === 'graph';
 export interface DockPanel {
   id: string;
   descriptor: DockPanelDescriptor;
@@ -104,6 +119,19 @@ export function addDocumentPanel(panels: DockPanel[], panel: DockPanel): DockPan
     : null;
 }
 
+/** A team opens once; another view would share one undo history and selection. */
+export function addGraphPanel(panels: DockPanel[], panel: DockPanel): DockPanel[] | null {
+  const parsed = GraphDescriptor.safeParse(panel.descriptor);
+  if (!parsed.success || panels.some((candidate) => candidate.id === panel.id)) return null;
+  return panels.some(
+    (candidate) =>
+      candidate.descriptor.kind === 'graph' &&
+      candidate.descriptor.corralId === parsed.data.corralId,
+  )
+    ? null
+    : [...panels, panel];
+}
+
 function serializedPanels(panels: DockPanel[]): SerializedDockview['panels'] {
   return Object.fromEntries(
     panels.map(({ id, descriptor }) => [
@@ -117,7 +145,9 @@ function serializedPanels(panels: DockPanel[]): SerializedDockview['panels'] {
             ? descriptor.path.split('/').at(-1)
             : descriptor.kind === 'context'
               ? descriptor.view
-              : 'Unavailable panel',
+              : descriptor.kind === 'graph'
+                ? 'graph'
+                : 'Unavailable panel',
         params: { descriptor },
       },
     ]),
@@ -147,10 +177,9 @@ export function createPresetLayout(
     aux: [] as string[],
     bottom: [] as string[],
   };
-  const hasDocuments = panels.some((panel) => panel.descriptor.kind === 'document');
+  const hasDocuments = panels.some((panel) => isEditorPanel(panel.descriptor));
   for (const { id, descriptor } of panels) {
-    if (descriptor.kind === 'document')
-      groups[preset === 'implementation' ? 'main1' : 'main2'].push(id);
+    if (isEditorPanel(descriptor)) groups[preset === 'implementation' ? 'main1' : 'main2'].push(id);
     else if (
       descriptor.kind === 'context' &&
       ['terminal', 'checks', 'problems', 'tools'].includes(descriptor.view)
@@ -218,6 +247,7 @@ export function parseLayout(raw: unknown, hostId: string, projectId: string): Pa
   let documents = 0;
   const contextViews = new Set<DockContextView>();
   const documentViews = new Set<string>();
+  const graphs = new Set<string>();
   const panels: DockPanel[] = [];
   for (const [id, value] of Object.entries(sourcePanels)) {
     if (!panelId(id)) {
@@ -250,6 +280,16 @@ export function parseLayout(raw: unknown, hostId: string, projectId: string): Pa
         documentViews.add(documentViewKey(parsed.data));
         documents += 1;
       } else recovered = true;
+    } else if (rawDescriptor?.kind === 'graph') {
+      const parsed = GraphDescriptor.safeParse(rawDescriptor);
+      if (
+        parsed.success &&
+        parsed.data.projectId === projectId &&
+        !graphs.has(parsed.data.corralId)
+      ) {
+        descriptor = parsed.data;
+        graphs.add(parsed.data.corralId);
+      } else recovered = true;
     } else if (rawDescriptor?.kind !== 'unknown') recovered = true;
     if (panel?.id !== id) recovered = true;
     panels.push({ id, descriptor });
@@ -260,7 +300,7 @@ export function parseLayout(raw: unknown, hostId: string, projectId: string): Pa
     typeof value === 'number' && Number.isFinite(value) && value > 0;
   const ids = new Set(panels.map((panel) => panel.id));
   const documentIds = new Set(
-    panels.filter((panel) => panel.descriptor.kind === 'document').map((panel) => panel.id),
+    panels.filter((panel) => isEditorPanel(panel.descriptor)).map((panel) => panel.id),
   );
   const used = new Set<string>();
   const groups = new Set<string>();

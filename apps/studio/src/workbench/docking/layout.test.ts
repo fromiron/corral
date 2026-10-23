@@ -3,6 +3,7 @@ import type { SerializedDockview } from 'dockview-react';
 import { expect, it } from 'vitest';
 import {
   addDocumentPanel,
+  addGraphPanel,
   createPresetLayout,
   DEFAULT_PANELS,
   type DockDocumentDescriptor,
@@ -269,4 +270,68 @@ it('#78 document tabs with the same file name say which folder or conversation t
     'main.ts · other conversation b12345',
   );
   expect(documentTabLabel(alone, [alone, fromOther], 'session_a', other)).toBe('main.ts');
+});
+
+const graph = (corralId: string, id = `graph:${corralId}`): DockPanel => ({
+  id,
+  descriptor: { kind: 'graph', projectId: target.projectId, corralId, viewId: id },
+});
+
+type GridNode = SerializedDockview['grid']['root'];
+const groupOf = (node: GridNode, id: string): string | undefined =>
+  node.type === 'leaf'
+    ? (node.data as { id: string; views: string[] }).views.includes(id)
+      ? (node.data as { id: string }).id
+      : undefined
+    : (node.data as GridNode[]).map((child) => groupOf(child, id)).find(Boolean);
+
+it('[TC-WBD-014-H] a team graph is its own dock kind, opens beside documents and survives a reload', () => {
+  const panels = [...DEFAULT_PANELS, document(0), graph('corral_a')];
+  for (const preset of ['conversation', 'implementation', 'review'] as const) {
+    const layout = createPresetLayout(preset, panels);
+    expect(groupOf(layout.grid.root, 'graph:corral_a')).toBe(
+      groupOf(layout.grid.root, 'document_0'),
+    );
+    const restored = parseLayout(
+      serializeLayout(layout, target.hostId, target.projectId),
+      target.hostId,
+      target.projectId,
+    );
+    expect(restored.recovered).toBe(false);
+    expect(restored.panels).toEqual(panels);
+  }
+});
+
+it('[TC-WBD-014-N] [TC-WBD-014-F] one tab per team, only for this project, and never a file document in disguise', () => {
+  expect(addGraphPanel([graph('corral_a')], graph('corral_a', 'graph:other'))).toBeNull();
+  expect(addGraphPanel([graph('corral_a')], graph('corral_b'))).toHaveLength(2);
+  expect(
+    addGraphPanel([], {
+      id: 'graph:x',
+      descriptor: { kind: 'graph', projectId: target.projectId, corralId: '', viewId: 'graph:x' },
+    }),
+  ).toBeNull();
+  expect(addDocumentPanel([], graph('corral_a'))).toBeNull();
+  const layout = createPresetLayout('implementation', [
+    ...DEFAULT_PANELS,
+    graph('corral_a'),
+    graph('corral_a', 'graph:again'),
+    {
+      id: 'graph:foreign',
+      descriptor: {
+        kind: 'graph',
+        projectId: 'project_b',
+        corralId: 'corral_c',
+        viewId: 'graph:foreign',
+      },
+    },
+  ]);
+  const restored = parseLayout(envelope(layout), target.hostId, target.projectId);
+  expect(restored.recovered).toBe(true);
+  expect(restored.panels.filter((entry) => entry.descriptor.kind === 'graph')).toEqual([
+    graph('corral_a'),
+  ]);
+  expect(restored.panels.find((entry) => entry.id === 'graph:foreign')?.descriptor.kind).toBe(
+    'unknown',
+  );
 });

@@ -1676,8 +1676,6 @@
     },
     "live": "실제 모델 사용 가능",
     "simulated": "시뮬레이션 에이전트",
-    "noTeam": "작업 탭에서 이 세션의 팀을 고르세요.",
-    "teamNote": "저장한 팀을 편집합니다. 세션의 다음 실행이 저장한 revision을 쓰며, 이미 시작한 실행은 그대로입니다.",
     "chooseRun": "실행",
     "noRuns": "이 세션에는 아직 실행이 없습니다.",
     "artifactsEmpty": "아직 결과가 없습니다.",
@@ -3293,7 +3291,8 @@
     "runDisconnected": "실행 연결이 끊겨 현재 상태를 확인할 수 없습니다.",
     "layoutControls": "패널 배치 조정",
     "savedLayout": "사용자 배치",
-    "git": "Git"
+    "git": "Git",
+    "team": "팀"
   },
   "Context": {
     "attachFailed": "캡처한 내용을 첨부하지 못했습니다. 원본에서 다시 시도하세요.",

@@ -28,13 +28,16 @@ import { type CloseChoice, type DocumentStore, documentKey } from '../documents/
 import { PANE_CATALOG, type SessionPanel } from '../panels/registry.ts';
 import {
   addDocumentPanel,
+  addGraphPanel,
   createPresetLayout,
   DEFAULT_PANELS,
   type DockContextView,
   type DockDocumentDescriptor,
+  type DockGraphDescriptor,
   type DockPanelDescriptor,
   type DockPreset,
   documentTabLabel,
+  isEditorPanel,
   layoutStorageKey,
   MAX_DOCUMENTS,
   parseLayout,
@@ -43,7 +46,7 @@ import {
 import 'dockview-react/dist/styles/dockview.css';
 import './docking.css';
 
-export type { DockContextView, DockDocumentDescriptor } from './layout.ts';
+export type { DockContextView, DockDocumentDescriptor, DockGraphDescriptor } from './layout.ts';
 export interface DockOpenDocument {
   documentKey: string;
   target: WorkspaceTarget;
@@ -52,6 +55,8 @@ export interface DockOpenDocument {
 export interface DockWorkbenchHandle {
   openDocument(input: DockOpenDocument, selection?: TextRange): boolean;
   openContext(view: DockContextView): void;
+  /** Opens this project's saved team graph as a tab, or shows the one already open. */
+  openGraph(corralId: string): boolean;
   /**
    * Hides every pane but the conversation, or shows them again with `view` active. Hiding
    * keeps documents, processes and the saved arrangement (#71).
@@ -71,6 +76,12 @@ export interface DockWorkbenchProps {
     selection?: TextRange,
   ): ReactNode;
   documentOwner?: DocumentStore;
+  /** A saved team's graph editor; without it, team tabs show as unavailable. */
+  renderGraph?(descriptor: DockGraphDescriptor, panelId: string): ReactNode;
+  /** The tab title of a team, with its unsaved mark. */
+  graphTitle?(corralId: string): string;
+  /** Called with a listener that refreshes graph tab titles; returns the unsubscribe. */
+  subscribeGraphs?(listener: () => void): () => void;
   controls?: ReactNode;
   onActiveContext?: (view: DockContextView) => void;
   /** Whether only the conversation is on screen now. */
@@ -80,6 +91,7 @@ type PanelParams = { descriptor: DockPanelDescriptor };
 const RendererContext = createContext<{
   renderContext: DockWorkbenchProps['renderContext'];
   renderDocument: DockWorkbenchProps['renderDocument'];
+  renderGraph: DockWorkbenchProps['renderGraph'];
   selection: { panelId: string; range: TextRange } | null;
   close: (id: string) => void;
 } | null>(null);
@@ -98,6 +110,7 @@ function DockPanel({ params, api }: IDockviewPanelProps<PanelParams>) {
   const descriptor = params.descriptor;
   return (
     <div
+      // A team graph stacks its palette, canvas and inspector in a narrow tab, so it scrolls.
       className={`corral-dock-content ${descriptor.kind === 'document' || (descriptor.kind === 'context' && descriptor.view === 'chat') ? 'corral-dock-content-fixed' : ''}`}
       data-dock-panel-id={api.id}
     >
@@ -109,9 +122,11 @@ function DockPanel({ params, api }: IDockviewPanelProps<PanelParams>) {
         )
       ) : descriptor.kind === 'context' ? (
         renderer?.renderContext(descriptor.view)
+      ) : descriptor.kind === 'graph' && renderer?.renderGraph ? (
+        renderer.renderGraph(descriptor, api.id)
       ) : (
         <p role="status" className="p-4 text-sm text-muted">
-          {t('unknownPanel')} {descriptor.label}
+          {t('unknownPanel')} {descriptor.kind === 'unknown' ? descriptor.label : ''}
         </p>
       )}
     </div>
@@ -171,6 +186,8 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
       const descriptor = descriptorOf(panel);
       if (descriptor.kind === 'context') return labels.current(descriptor.view);
       if (descriptor.kind === 'unknown') return descriptor.label || labels.current('unknownPanel');
+      if (descriptor.kind === 'graph')
+        return current.current.graphTitle?.(descriptor.corralId) ?? labels.current('team');
       const entry =
         current.current.documentOwner?.getState().documents[
           documentKey(descriptor.target, descriptor.path)
@@ -223,8 +240,23 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
         (group) =>
           group.id === 'main1' ||
           group.id === 'main2' ||
-          group.panels.some((panel) => descriptorOf(panel).kind === 'document'),
+          group.panels.some((panel) => isEditorPanel(descriptorOf(panel))),
       );
+    }
+    /** The central group to add an editor tab to, created when every one was closed. */
+    function editorGroup(api: DockviewApi) {
+      const group =
+        mainGroups(api).find((item) => item.id === api.activeGroup?.id) ?? mainGroups(api)[0];
+      if (group) return group;
+      if (api.groups.length >= 4) {
+        setMessage('splitLimit');
+        return null;
+      }
+      return api.addGroup({
+        id: 'main1',
+        direction: 'left',
+        ...(api.activeGroup ? { referenceGroup: api.activeGroup } : {}),
+      });
     }
     function findGroup(api: DockviewApi, name: string) {
       return (
@@ -305,28 +337,50 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
         setMessage('tabLimit');
         return false;
       }
-      let group =
-        mainGroups(api).find((item) => item.id === api.activeGroup?.id) ?? mainGroups(api)[0];
-      if (!group) {
-        if (api.groups.length >= 4) {
-          setMessage('splitLimit');
-          return false;
-        }
-        group = api.addGroup({
-          id: 'main1',
-          direction: 'left',
-          ...(api.activeGroup ? { referenceGroup: api.activeGroup } : {}),
-        });
-      }
+      const group = editorGroup(api);
+      if (!group) return false;
       const panel = api.addPanel({
         id,
         component: 'workbench',
         params: { descriptor },
         title: input.path,
         renderer: 'always',
-        ...(group ? { position: { referenceGroup: group, direction: 'within' } } : {}),
+        position: { referenceGroup: group, direction: 'within' },
       });
       setSelection(range ? { panelId: id, range: { ...range } } : null);
+      setMessage(null);
+      focus(panel);
+      saveLayout();
+      return true;
+    }
+    function openGraph(corralId: string) {
+      const api = apiRef.current;
+      const { projectId, renderGraph } = current.current;
+      if (!api || !renderGraph) return false;
+      const existing = api.panels.find((panel) => {
+        const descriptor = descriptorOf(panel);
+        return descriptor.kind === 'graph' && descriptor.corralId === corralId;
+      });
+      if (existing) {
+        focus(existing);
+        return true;
+      }
+      const id = `graph:${crypto.randomUUID()}`;
+      const descriptor: DockGraphDescriptor = { kind: 'graph', projectId, corralId, viewId: id };
+      if (!addGraphPanel(records(api), { id, descriptor })) {
+        setMessage('invalidTarget');
+        return false;
+      }
+      const group = editorGroup(api);
+      if (!group) return false;
+      const panel = api.addPanel({
+        id,
+        component: 'workbench',
+        params: { descriptor },
+        title: current.current.graphTitle?.(corralId) ?? labels.current('team'),
+        renderer: 'always',
+        position: { referenceGroup: group, direction: 'within' },
+      });
       setMessage(null);
       focus(panel);
       saveLayout();
@@ -347,6 +401,7 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
     useImperativeHandle(ref, () => ({
       openDocument,
       openContext: (view) => openContext(view),
+      openGraph,
       setPanesHidden,
     }));
 
@@ -403,7 +458,7 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
       const api = apiRef.current;
       const panel = api?.activePanel;
       if (!api || !panel) return;
-      const doc = descriptorOf(panel).kind === 'document';
+      const doc = isEditorPanel(descriptorOf(panel));
       if (doc && !['main1', 'main2'].includes(destination)) {
         setMessage('invalidTarget');
         return;
@@ -487,7 +542,7 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
       const moving = data.panelId
         ? [api.getPanel(data.panelId)].filter((panel): panel is IDockviewPanel => Boolean(panel))
         : (source?.panels ?? []);
-      const hasDocument = moving.some((panel) => descriptorOf(panel).kind === 'document');
+      const hasDocument = moving.some((panel) => isEditorPanel(descriptorOf(panel)));
       const destinationGroup = event.group;
       const isMain =
         destinationGroup && mainGroups(api).some((group) => group.id === destinationGroup.id);
@@ -636,6 +691,10 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
       () => props.documentOwner?.subscribe(() => actions.current.refresh()),
       [props.documentOwner],
     );
+    useEffect(
+      () => props.subscribeGraphs?.(() => actions.current.refresh()),
+      [props.subscribeGraphs],
+    );
     const selected = apiRef.current?.getPanel(active);
     const activeDescriptor = selected ? descriptorOf(selected) : null;
     const activeView = activeDescriptor?.kind === 'context' ? activeDescriptor.view : null;
@@ -650,6 +709,7 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
         value={{
           renderContext: props.renderContext,
           renderDocument: props.renderDocument,
+          renderGraph: props.renderGraph,
           selection,
           close: (id) => void closePanel(id),
         }}
@@ -683,7 +743,10 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
                   options={[
                     ...paneOptions,
                     ...panels
-                      .filter((panel) => panel.id.startsWith('document:'))
+                      .filter(
+                        (panel) =>
+                          panel.id.startsWith('document:') || panel.id.startsWith('graph:'),
+                      )
                       .map((panel) => ({ value: panel.id, label: panel.title })),
                   ]}
                 />

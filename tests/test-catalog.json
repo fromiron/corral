@@ -3687,5 +3687,38 @@
     "status": "planned",
     "adapter": "stubbed workspace client responses",
     "evidence": null
+  },
+  {
+    "id": "TC-WBD-014-H",
+    "requirements": [
+      "CRL-WBD-014"
+    ],
+    "suite": "unit",
+    "scenario": "저장 팀을 도킹 탭으로 한 번만 열고 문서와 같은 가운데 영역에 두며, 저장·복원 뒤 같은 descriptor, 초안 변경에 따른 탭 제목",
+    "status": "planned",
+    "adapter": "jsdom Dockview and in-memory corral repository",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-014-N",
+    "requirements": [
+      "CRL-WBD-014"
+    ],
+    "suite": "unit",
+    "scenario": "중복·빈 ID·다른 프로젝트 그래프와 문서로 위장한 그래프 거절, 세션 안 편집기의 앱 내 이동 확인 생략과 Ctrl+S 포커스 범위, 그래프 닫기에서 문서 닫기 결정을 부르지 않음",
+    "status": "planned",
+    "adapter": "jsdom Dockview and pure helpers",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-014-F",
+    "requirements": [
+      "CRL-WBD-014"
+    ],
+    "suite": "unit",
+    "scenario": "저장 layout의 잘못된 그래프 pane만 안내로 바꾸고 나머지 pane·문서 참조를 보존",
+    "status": "planned",
+    "adapter": "layout parser fixtures",
+    "evidence": null
   }
 ]

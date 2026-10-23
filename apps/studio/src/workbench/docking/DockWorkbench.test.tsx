@@ -29,7 +29,9 @@ afterEach(async () => {
   localStorage.clear();
 });
 async function fixture(
-  props: Partial<Pick<DockWorkbenchProps, 'selectedPanel' | 'renderDocument'>> = {},
+  props: Partial<
+    Pick<DockWorkbenchProps, 'selectedPanel' | 'renderDocument' | 'renderGraph' | 'graphTitle'>
+  > = {},
 ) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal(
@@ -236,4 +238,30 @@ it('[TC-WBD-007-H] source ranges reach only the opened document view and are not
     'startLine',
   );
   expect(f.closeView).not.toHaveBeenCalled();
+});
+
+it('[TC-WBD-014-H] [TC-WBD-014-N] opens a saved team once as a tab of its own and closes it without a document decision', async () => {
+  const renderGraph = vi.fn((descriptor: { corralId: string }) => (
+    <span data-testid="graph">{descriptor.corralId}</span>
+  ));
+  const f = await fixture({ renderGraph, graphTitle: (corralId) => `Team ${corralId}` });
+  await act(async () => {
+    expect(f.ref.current?.openGraph('corral_a')).toBe(true);
+  });
+  await act(async () => {
+    expect(f.ref.current?.openGraph('corral_a')).toBe(true);
+  });
+  expect(document.querySelectorAll('[data-testid="graph"]')).toHaveLength(1);
+  expect(f.container.textContent).toContain('Team corral_a');
+  const saved = JSON.parse(localStorage.getItem(layoutStorageKey('host', 'project') ?? '') ?? '{}');
+  expect(
+    Object.values(saved.layout.panels).some(
+      (panel) =>
+        (panel as { params: { descriptor: { kind: string } } }).params.descriptor.kind === 'graph',
+    ),
+  ).toBe(true);
+  const close = f.container.querySelector<HTMLButtonElement>('button[aria-label="close"]');
+  await act(async () => close?.click());
+  expect(f.closeView).not.toHaveBeenCalled();
+  expect(document.querySelector('[data-testid="graph"]')).toBeNull();
 });

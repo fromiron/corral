@@ -138,6 +138,7 @@ import { DockRunControls } from '../workbench/DockRunControls.tsx';
 import { DockWorkbench, type DockWorkbenchHandle } from '../workbench/docking/DockWorkbench.tsx';
 import type { DockContextView } from '../workbench/docking/layout.ts';
 import { documentKey, documentStore } from '../workbench/documents/store.ts';
+import { editorCopyDirty, subscribeEditorCopies } from '../workbench/editorDraft.ts';
 import { FilePanel, type FileReference } from '../workbench/FilePanel.tsx';
 import { GitPanel } from '../workbench/GitPanel.tsx';
 import { ImageAttachmentList, ImageAttachmentPicker } from '../workbench/ImageAttachments.tsx';
@@ -178,6 +179,7 @@ import {
   SessionWidgetCard,
 } from '../workbench/widgets/ChatWidgets.tsx';
 import { ChatWidgetProvider } from '../workbench/widgets/useChatWidgets.tsx';
+import { TeamDesign } from './EditorPage.tsx';
 import { useBinding, WORKSPACE_CHANGED, WorkingCopyPanel } from './FilesViews.tsx';
 import { Checks } from './ReviewPage.tsx';
 import { RunDetail } from './RunPage.tsx';
@@ -291,6 +293,11 @@ export function SessionPage() {
     sessionId: session.sessionId,
   };
   const contextMessages = useTranslations('Context');
+  const tdock = useTranslations('Docking');
+  const subscribeGraphs = useCallback(
+    (listener: () => void) => subscribeEditorCopies(services.repository, listener),
+    [services.repository],
+  );
   const [terminalSource, setTerminalSource] =
     useState<Extract<TextAttachmentProvenance, { kind: 'terminal' }>>();
   const handleAttachment = (attachment: TextAttachment, capture: AttachmentCapture) => {
@@ -438,6 +445,7 @@ export function SessionPage() {
             result: undefined,
           })
         }
+        onEditTeam={(corralId) => dock.current?.openGraph(corralId) ?? false}
       />
       <SourceNavigationContext.Provider
         value={{
@@ -490,6 +498,13 @@ export function SessionPage() {
                 />
               ) : null
             }
+            renderGraph={(descriptor) => <TeamDesign corralId={descriptor.corralId} />}
+            graphTitle={(corralId) =>
+              `${editorCopyDirty(services.repository, session.projectId, corralId) ? '● ' : ''}${
+                corrals.find((c) => c.corralId === corralId)?.name ?? tdock('team')
+              }`
+            }
+            subscribeGraphs={subscribeGraphs}
             onPanesHiddenChange={setPanesHidden}
             onActiveContext={(view) => {
               const next =
@@ -569,10 +584,13 @@ function SessionActions({
   runs,
   selectedRunId,
   onSelectRun,
+  onEditTeam,
 }: {
   session: WorkSession;
   corrals: CorralSummary[];
   team: CorralSummary | null;
+  /** Opens the saved team as a dock tab; false when it could not, so the route opens it. */
+  onEditTeam: (corralId: string) => boolean;
   changes: FileChangeView[] | null;
   panel: SessionPanel | undefined;
   onPanel: (panel: SessionPanel | undefined) => void;
@@ -805,13 +823,14 @@ function SessionActions({
           </MenuSub>
           {team ? (
             <MenuItem
-              onClick={() =>
-                void navigate({
-                  to: '/corrals/$corralId/edit',
-                  params: { corralId: team.corralId },
-                  search: { fromSession: session.sessionId },
-                })
-              }
+              onClick={() => {
+                if (!onEditTeam(team.corralId))
+                  void navigate({
+                    to: '/corrals/$corralId/edit',
+                    params: { corralId: team.corralId },
+                    search: { fromSession: session.sessionId },
+                  });
+              }}
             >
               {t('editTeam')}
             </MenuItem>

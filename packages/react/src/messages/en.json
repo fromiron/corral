@@ -1676,8 +1676,6 @@
     },
     "live": "live models available",
     "simulated": "simulated agents",
-    "noTeam": "Choose a team for this session on the Work tab.",
-    "teamNote": "Edits the saved team. The session's next run uses the saved revision; runs already started keep theirs.",
     "chooseRun": "Run",
     "noRuns": "No runs in this session yet.",
     "artifactsEmpty": "No results yet.",
@@ -3293,7 +3291,8 @@
     "runDisconnected": "Run connection lost; its state is unconfirmed.",
     "layoutControls": "Arrange panes",
     "savedLayout": "Custom layout",
-    "git": "Git"
+    "git": "Git",
+    "team": "Team"
   },
   "Context": {
     "attachFailed": "Could not attach this capture. Retry from the source.",

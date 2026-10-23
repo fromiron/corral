@@ -90,6 +90,8 @@ P11의 구현과 Linux 인앱·관련 회귀 범위는 [C-151 검증 기록](../
 
 [CR-046 P17](../change-requests/CR-046-development-workbench.md)의 변경 검토는 네 가지를 나눈다. **읽음**은 파일 내용에, **변경 검토**는 같은 host의 경로와 이전/이후 내용 쌍에 귀속하는 이 브라우저의 표시다. 같은 최종 파일을 다른 기준으로 비교하면 읽음만 남고 검토는 다시 한다. **판단**(승인·수정 요청)은 서버가 정확한 비교 tree 쌍에 기록하며 다른 비교의 판단은 이전 것으로 보인다. **반영**·stage·commit은 각각 별도 행동이다. 파일 출처는 Corral의 마지막 쓰기 그대로인지(`managed_agent`), 그 뒤 다른 쓰기가 섞였는지(`mixed`), Corral이 바꾸지 않았는지로 나눈다. 첨부 확인은 고정 출처가 온전한지와 지금 사본에 그대로 해당하는지를 따로 보이고, 검사는 tree뿐 아니라 자기 명령 정의가 바뀌어도 현재 유효성을 잃는다. task 출력 위치는 버전이 없어 최신으로 표시하지 않는다. 구현·검증 범위는 [C-157 기록](../evaluation/Development-Workbench-Review-Evidence-2026-10-23.md)을 따른다.
 
+[CR-046 P18](../change-requests/CR-046-development-workbench.md)부터 세션 메뉴의 “팀 설계 열기”는 저장 팀의 그래프를 도킹 탭으로 연다. 탭은 route 편집기와 같은 working copy를 써서 탭을 옮기거나 닫았다 다시 열어도 초안·undo가 남고, 탭 조작은 저장이 아니다. 팀마다 탭은 하나이며 세션 안에서는 시험 실행 없이 정의만 고친다. 실행 제어는 도킹 상단 한 곳이다. 구현·검증 범위는 [C-158 기록](../evaluation/Development-Workbench-Team-Dock-2026-10-23.md)을 따른다.
+
 세션 화면에서 실행의 일시정지·재개·취소는 도킹 상단 "실행 조작" 한 곳에서 한다. 입력창 위 진행 줄은 상태와 기록 링크만 보여 준다(#91). Git 상태는 Git 창의 staged/unstaged/untracked 모델 하나로만 보이며 검토 화면의 예전 `scope=git` 주소는 세션의 Git 창으로 replace 이동한다.
 
 ## 읽기 전용 Git 관찰

@@ -1,7 +1,15 @@
 import { createKeyValueCorralRepository } from '@corral/core';
 import { emptyDraft } from '@corral/react';
-import { expect, it } from 'vitest';
-import { discardEditorCopy, editorWorkingCopy, hasUnsavedEditorCopy } from './editorDraft.ts';
+import { expect, it, vi } from 'vitest';
+import {
+  blocksLeaving,
+  discardEditorCopy,
+  editorCopyDirty,
+  editorWorkingCopy,
+  hasUnsavedEditorCopy,
+  ownsSaveShortcut,
+  subscribeEditorCopies,
+} from './editorDraft.ts';
 
 async function setup() {
   const data = new Map<string, string>();
@@ -61,4 +69,34 @@ it('isolates repository/project owners and discards only the confirmed copy', as
   expect(hasUnsavedEditorCopy(repository)).toBe(true);
   discardEditorCopy(repository, record);
   expect(hasUnsavedEditorCopy(repository)).toBe(false);
+});
+
+it('[TC-WBD-014-N] a docked team keeps its draft through moves in the app and saves only from its own view', () => {
+  // A route editor asks before leaving; a docked one keeps the same working copy, so it never asks.
+  expect(blocksLeaving(true, false)).toBe(true);
+  expect(blocksLeaving(true, true)).toBe(false);
+  expect(blocksLeaving(false, false)).toBe(false);
+  const view = { contains: (node: unknown) => node === 'inside' } as unknown as Element;
+  // Other dock tabs stay mounted beside it, so Ctrl+S in a code document is not a team save.
+  expect(ownsSaveShortcut(false, null, null)).toBe(true);
+  expect(ownsSaveShortcut(true, view, 'inside' as unknown as Element)).toBe(true);
+  expect(ownsSaveShortcut(true, view, 'outside' as unknown as Element)).toBe(false);
+  expect(ownsSaveShortcut(true, null, 'inside' as unknown as Element)).toBe(false);
+});
+
+it('[TC-WBD-014-H] tab titles follow a team draft becoming dirty and clean again', async () => {
+  const { repository, record } = await setup();
+  const listener = vi.fn();
+  const stop = subscribeEditorCopies(repository, listener);
+  const copy = editorWorkingCopy(repository, record);
+  expect(editorCopyDirty(repository, record.projectId, record.corralId)).toBe(false);
+  copy.getState().editor.getState().setName('Draft name');
+  expect(listener).toHaveBeenCalled();
+  expect(editorCopyDirty(repository, record.projectId, record.corralId)).toBe(true);
+  copy.getState().editor.getState().undo();
+  expect(editorCopyDirty(repository, record.projectId, record.corralId)).toBe(false);
+  stop();
+  listener.mockClear();
+  copy.getState().editor.getState().setName('Unheard');
+  expect(listener).not.toHaveBeenCalled();
 });
