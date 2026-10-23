@@ -38,6 +38,7 @@ export function UltraModels({
   disabled: boolean;
 }) {
   const t = useTranslations('Composer');
+  const comparisonModels = value.comparison?.modelProfiles;
   const changePool = (id: string, checked: boolean) => {
     const pool = checked
       ? [...value.modelProfiles, id]
@@ -45,6 +46,15 @@ export function UltraModels({
     onChange({
       ...value,
       modelProfiles: pool,
+      ...(value.comparison
+        ? {
+            comparison: {
+              modelProfiles: value.comparison.modelProfiles.map((id) =>
+                pool.includes(id) ? id : primary,
+              ),
+            },
+          }
+        : {}),
       verifierProfile:
         pool.includes(value.verifierProfile) && value.verifierProfile !== primary
           ? value.verifierProfile
@@ -110,6 +120,84 @@ export function UltraModels({
         ]}
       />
       <p className="text-muted">{t('ultraMaximum')}</p>
+      <label className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          aria-label={t('ultraCompareCandidates')}
+          checked={Boolean(value.comparison)}
+          onChange={(event) => {
+            const { comparison: _comparison, ...selection } = value;
+            onChange(
+              event.target.checked
+                ? {
+                    ...selection,
+                    comparison: {
+                      modelProfiles: Array.from(
+                        { length: 3 },
+                        (_, index) =>
+                          value.modelProfiles[index % value.modelProfiles.length] ?? primary,
+                      ),
+                    },
+                  }
+                : selection,
+            );
+          }}
+        />
+        {t('ultraCompareCandidates')}
+      </label>
+      {value.comparison ? (
+        <div className="flex min-w-0 flex-col gap-2">
+          <p className="text-muted">{t('ultraComparisonScope')}</p>
+          <span>{t('ultraCandidateCount')}</span>
+          <Select
+            label={t('ultraCandidateCount')}
+            value={String(value.comparison.modelProfiles.length)}
+            disabled={disabled}
+            options={[2, 3, 4, 5].map((count) => ({ value: String(count), label: String(count) }))}
+            onValueChange={(count) =>
+              onChange({
+                ...value,
+                comparison: {
+                  modelProfiles: Array.from(
+                    { length: Number(count) },
+                    (_, index) =>
+                      value.comparison?.modelProfiles[index] ??
+                      value.modelProfiles[index % value.modelProfiles.length] ??
+                      primary,
+                  ),
+                },
+              })
+            }
+          />
+          <div className="flex flex-wrap gap-2">
+            {value.comparison.modelProfiles.map((profileId, index) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: Candidate slots retain their position when their assigned model changes.
+              <div key={index} className="flex min-w-0 flex-col gap-1">
+                <span>{t('ultraCandidateModel', { number: index + 1 })}</span>
+                <Select
+                  label={t('ultraCandidateModel', { number: index + 1 })}
+                  value={profileId}
+                  disabled={disabled}
+                  options={value.modelProfiles.map((id) => ({
+                    value: id,
+                    label: profiles?.find((profile) => profile.profileId === id)?.label ?? id,
+                  }))}
+                  onValueChange={(chosen) =>
+                    onChange({
+                      ...value,
+                      comparison: {
+                        modelProfiles: (comparisonModels ?? []).map((id, position) =>
+                          position === index ? chosen : id,
+                        ),
+                      },
+                    })
+                  }
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </fieldset>
   );
 }

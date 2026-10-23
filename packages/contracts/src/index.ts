@@ -1,5 +1,6 @@
 export * from './attachments.ts';
 export * from './auto-team.ts';
+export * from './candidates.ts';
 export { canonicalJson } from './canonical-json.ts';
 export * from './checkpoints.ts';
 export * from './coding.ts';

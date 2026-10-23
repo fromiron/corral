@@ -4118,6 +4118,17 @@
     "evidence": null
   },
   {
+    "id": "TC-ULTRA-002-F",
+    "requirements": [
+      "CRL-ULTRA-002"
+    ],
+    "suite": "unit+integration+browser",
+    "scenario": "후보별 취소와 Run 취소·전원 실패·늦은 결과·unknown 비용·응답 유실/재시작에서 원래 owner/receipt를 보존하고 자동 승격·중복 효과를 막는다.",
+    "status": "planned",
+    "adapter": "isolated deterministic Coordinator/Git/worker and UI fixtures; no paid provider calls",
+    "evidence": null
+  },
+  {
     "id": "TC-DESK-010-H",
     "requirements": [
       "CRL-ABS-007"

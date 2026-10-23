@@ -23,6 +23,107 @@
         },
         "type": {
           "type": "string",
+          "const": "select_candidate"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "candidateId": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+            },
+            "tree": {
+              "type": "string",
+              "pattern": "^(?:[a-f0-9]{40}|[a-f0-9]{64})$"
+            }
+          },
+          "required": [
+            "candidateId",
+            "tree"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "commandId",
+        "runId",
+        "expectedControlRevision",
+        "type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "const": "0.1"
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+        },
+        "runId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+        },
+        "expectedControlRevision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "type": {
+          "type": "string",
+          "const": "cancel_candidate"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "candidateId": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+            }
+          },
+          "required": [
+            "candidateId"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "commandId",
+        "runId",
+        "expectedControlRevision",
+        "type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "const": "0.1"
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+        },
+        "runId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+        },
+        "expectedControlRevision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "type": {
+          "type": "string",
           "const": "compact_context"
         },
         "payload": {

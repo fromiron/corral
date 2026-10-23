@@ -1977,7 +1977,11 @@
       "images": "images",
       "attachments": "text attachments",
       "scope": "review scope"
-    }
+    },
+    "ultraCompareCandidates": "Compare isolated candidates",
+    "ultraComparisonScope": "Each candidate works in its own copy with the same request and budget. Review their changes and checks, then explicitly apply one candidate to this session. Requires a supported host and registered checks.",
+    "ultraCandidateCount": "Number of candidates",
+    "ultraCandidateModel": "Candidate {number} model"
   },
   "Commands": {
     "newSession": "New session",
@@ -3912,5 +3916,66 @@
     },
     "sourceMismatch": "This file differs from the debugged source. Locations are unverified.",
     "selectFrame": "Select a frame in the call stack before evaluating an expression."
+  },
+  "Candidates": {
+    "heading": "Ultra candidate comparison",
+    "open": "Compare candidates",
+    "hint": "Inspect each isolated candidate’s changes, checks and usage. Applying one replaces this session’s working copy with that exact candidate; the linked project folder is unchanged.",
+    "run": "Run {runId}",
+    "baseline": "Shared baseline {tree}",
+    "refresh": "Refresh",
+    "choose": "Candidate to inspect",
+    "candidate": "Candidate {number}",
+    "chosen": "Selected",
+    "usage": "{calls} model calls · {tokens} reported output tokens",
+    "unknownUsage": "Unconfirmed usage remains ({tokens} output tokens reserved); total cost is unknown.",
+    "checks": "Checks: {passed}/{count} passed",
+    "noCheckOutput": "No check output.",
+    "file": "Changed file",
+    "noChanges": "No file changes.",
+    "loading": "Loading fixed candidate changes…",
+    "notReady": "This candidate has not produced a fixed result yet.",
+    "apply": "Apply only this candidate to the session",
+    "cancel": "Cancel this candidate",
+    "pending": "Waiting for the command result. No additional application will be sent.",
+    "recover": "Check command result",
+    "receiptMissing": "No receipt is available yet. Check again; the command has not been resent.",
+    "loadFailed": "Could not load candidate comparison.",
+    "status": {
+      "running": "Candidates are working",
+      "awaiting_selection": "Ready for your selection",
+      "promoting": "Applying the selected candidate",
+      "selected": "One candidate has been applied",
+      "no_acceptable_candidate": "No candidate passed all required checks",
+      "interrupted": "Comparison interrupted"
+    },
+    "state": {
+      "pending": "Waiting",
+      "running": "Working",
+      "acceptable": "Required checks passed",
+      "failed": "Not eligible",
+      "cancelled": "Cancelled"
+    },
+    "check": {
+      "pass": "Passed",
+      "fail": "Failed",
+      "inconclusive": "Inconclusive",
+      "not_evaluated": "Not evaluated",
+      "queued": "Queued",
+      "running": "Running",
+      "error": "Could not complete",
+      "cancelled": "Cancelled"
+    },
+    "receipt": {
+      "accepted": "Command accepted; completion is pending.",
+      "queued": "Command queued.",
+      "applied": "Command applied.",
+      "rejected": "Command refused.",
+      "superseded": "Command superseded.",
+      "expired": "Command expired.",
+      "cancelled": "Command cancelled."
+    },
+    "executionFailed": "The candidate could not complete its work or required checks.",
+    "budgetReserved": "This candidate was not started because the remaining budget is reserved for completion."
   }
 }

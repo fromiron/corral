@@ -10,6 +10,7 @@ import { CorralDefinition, RunInput } from './definition.ts';
 import { ContentHash, ExtensionUiValue, HarnessOverrides, PermissionMode } from './harness.ts';
 import { Identifier, SchemaVersion } from './ids.ts';
 import { ReasoningPolicy, RoleRunOverrides } from './reasoning.ts';
+import { GitOid } from './user-git.ts';
 import { UserAnswers } from './user-input.ts';
 
 // Commands from contracts/command.schema.json. A command is an intent; the Coordinator
@@ -167,7 +168,22 @@ export const CompactContextCommand = z.strictObject({
 });
 export type CompactContextCommand = z.infer<typeof CompactContextCommand>;
 
+export const SelectCandidateCommand = z.strictObject({
+  ...requiredRevision,
+  type: z.literal('select_candidate'),
+  payload: z.strictObject({ candidateId: Identifier, tree: GitOid }),
+});
+export type SelectCandidateCommand = z.infer<typeof SelectCandidateCommand>;
+export const CancelCandidateCommand = z.strictObject({
+  ...requiredRevision,
+  type: z.literal('cancel_candidate'),
+  payload: z.strictObject({ candidateId: Identifier }),
+});
+export type CancelCandidateCommand = z.infer<typeof CancelCandidateCommand>;
+
 export const RunCommand = z.discriminatedUnion('type', [
+  SelectCandidateCommand,
+  CancelCandidateCommand,
   CompactContextCommand,
   AnswerExtensionUiCommand,
   AnswerUserCommand,

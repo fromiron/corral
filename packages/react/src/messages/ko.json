@@ -1977,7 +1977,11 @@
       "images": "이미지",
       "attachments": "텍스트 첨부",
       "scope": "검증 범위"
-    }
+    },
+    "ultraCompareCandidates": "격리된 후보 비교",
+    "ultraComparisonScope": "같은 요청과 예산으로 후보마다 별도의 사본에서 작업합니다. 변경과 검사 결과를 비교한 뒤 하나를 선택해 이 세션에 반영합니다. 지원되는 호스트와 등록된 검사가 필요합니다.",
+    "ultraCandidateCount": "후보 수",
+    "ultraCandidateModel": "후보 {number} 모델"
   },
   "Commands": {
     "newSession": "새 세션",
@@ -3912,5 +3916,66 @@
     },
     "sourceMismatch": "현재 파일이 디버깅 중인 소스와 다릅니다. 실행 위치는 확인되지 않습니다.",
     "selectFrame": "식을 평가하려면 호출 스택에서 프레임을 선택하세요."
+  },
+  "Candidates": {
+    "heading": "Ultra 후보 비교",
+    "open": "후보 비교하기",
+    "hint": "후보별 변경·검사·사용량을 확인하세요. 하나를 선택하면 해당 후보의 고정된 결과로 이 세션의 작업 사본을 바꿉니다. 연결된 프로젝트 원본에는 반영하지 않습니다.",
+    "run": "실행 {runId}",
+    "baseline": "공통 시작점 {tree}",
+    "refresh": "새로고침",
+    "choose": "살펴볼 후보",
+    "candidate": "후보 {number}",
+    "chosen": "선택됨",
+    "usage": "모델 호출 {calls}회 · 보고된 출력 {tokens}토큰",
+    "unknownUsage": "미확정 사용량이 남아 있습니다(출력 {tokens}토큰 예약). 총비용은 알 수 없습니다.",
+    "checks": "검사 {count}개 중 {passed}개 통과",
+    "noCheckOutput": "검사 출력이 없습니다.",
+    "file": "변경 파일",
+    "noChanges": "변경된 파일이 없습니다.",
+    "loading": "고정된 후보 변경을 불러오는 중…",
+    "notReady": "아직 고정된 후보 결과가 없습니다.",
+    "apply": "이 후보만 세션에 반영",
+    "cancel": "이 후보 취소",
+    "pending": "명령 결과를 확인하고 있습니다. 추가 반영 요청은 보내지 않습니다.",
+    "recover": "명령 결과 확인",
+    "receiptMissing": "아직 처리 기록을 확인하지 못했습니다. 다시 확인하세요. 명령은 재전송하지 않았습니다.",
+    "loadFailed": "후보 비교를 불러오지 못했습니다.",
+    "status": {
+      "running": "후보 작업 중",
+      "awaiting_selection": "후보를 선택할 수 있습니다",
+      "promoting": "선택한 후보 반영 중",
+      "selected": "후보 하나를 반영했습니다",
+      "no_acceptable_candidate": "필수 검사를 모두 통과한 후보가 없습니다",
+      "interrupted": "후보 비교가 중단되었습니다"
+    },
+    "state": {
+      "pending": "대기 중",
+      "running": "작업 중",
+      "acceptable": "필수 검사 통과",
+      "failed": "선택 불가",
+      "cancelled": "취소됨"
+    },
+    "check": {
+      "pass": "통과",
+      "fail": "실패",
+      "inconclusive": "판정 불가",
+      "not_evaluated": "미실행",
+      "queued": "대기 중",
+      "running": "실행 중",
+      "error": "검사 오류",
+      "cancelled": "취소됨"
+    },
+    "receipt": {
+      "accepted": "명령을 받았습니다. 완료를 기다리고 있습니다.",
+      "queued": "명령이 대기 중입니다.",
+      "applied": "명령을 적용했습니다.",
+      "rejected": "명령이 거절되었습니다.",
+      "superseded": "명령이 대체되었습니다.",
+      "expired": "명령이 만료되었습니다.",
+      "cancelled": "명령이 취소되었습니다."
+    },
+    "executionFailed": "후보 작업이나 필수 검사를 완료하지 못했습니다.",
+    "budgetReserved": "마무리 예산을 남겨 두기 위해 이 후보는 시작하지 않았습니다."
   }
 }

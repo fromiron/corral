@@ -238,7 +238,7 @@ export const CorralDefinition = z.strictObject({
   entryNodeId: Identifier,
   input: RunInput,
   roles: z.array(AgentRole).min(1).max(20),
-  nodes: z.array(CorralNode).min(2).max(20),
+  nodes: z.array(CorralNode).min(2).max(27),
   controlEdges: z.array(ControlEdge).min(1).max(40),
   capabilityLinks: z.array(CapabilityLink).max(40),
   limits: RunLimits,
@@ -253,7 +253,7 @@ export type CorralDefinition = z.infer<typeof CorralDefinition>;
 export const CorralDefinitionDraft = CorralDefinition.extend({
   entryNodeId: z.union([Identifier, z.literal('')]),
   roles: z.array(AgentRole).max(20),
-  nodes: z.array(CorralNode).max(20),
+  nodes: z.array(CorralNode).max(27),
   controlEdges: z.array(ControlEdge).max(40),
 });
 export type CorralDefinitionDraft = z.infer<typeof CorralDefinitionDraft>;

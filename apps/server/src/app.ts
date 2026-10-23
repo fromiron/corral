@@ -21,6 +21,7 @@ import {
   DocumentCommand,
   type ErrorCode,
   GitDiffRequest,
+  GitOid,
   GitWriteCommand,
   HarnessBindingRef,
   HunkPlanRequest,
@@ -41,6 +42,7 @@ import {
   PermissionMode,
   QualityPreset,
   type Receipt,
+  ResourcePath,
   RestoreCheckpoint,
   ResumeRuntimeRequest,
   type RunEvent,
@@ -2623,6 +2625,50 @@ async function createCorralServer(
   });
 
   type RunParams = { Params: { runId: string } };
+  app.get<RunParams>('/api/v1/runs/:runId/candidates', async (request, reply) => {
+    if (!coordinator.getRunSnapshot(request.params.runId))
+      return fail(reply, 'TARGET_NOT_FOUND', 'no such run');
+    return reply
+      .header('cache-control', 'private, no-store')
+      .send(coordinator.candidateComparison(request.params.runId));
+  });
+  for (const kind of ['changes', 'files'] as const)
+    app.get<{ Params: { runId: string; candidateId: string } }>(
+      `/api/v1/runs/:runId/candidates/:candidateId/${kind}`,
+      async (request, reply) => {
+        const query = z
+          .strictObject({
+            tree: GitOid,
+            path: kind === 'files' ? ResourcePath : z.never().optional(),
+          })
+          .safeParse(request.query);
+        if (!query.success)
+          return fail(
+            reply,
+            'SCHEMA_INVALID',
+            'an exact candidate tree and relative file path are required',
+          );
+        const { runId, candidateId } = request.params;
+        const candidate = coordinator
+          .candidateComparison(runId)
+          ?.candidates.find((item) => item.candidateId === candidateId);
+        if (!candidate) return fail(reply, 'TARGET_NOT_FOUND', 'no such candidate in this run');
+        try {
+          const result =
+            kind === 'files'
+              ? await files.candidateFileVersions(
+                  runId,
+                  candidateId,
+                  query.data.tree,
+                  query.data.path!,
+                )
+              : await files.candidateChanges(runId, candidateId, query.data.tree);
+          return reply.header('cache-control', 'private, no-store').send(result);
+        } catch (error) {
+          return documentFail(reply, error);
+        }
+      },
+    );
   app.get<RunParams>('/api/v1/runs/:runId/runtime-checkpoints', async (request, reply) => {
     try {
       return await coordinator.runtimeCheckpoints(request.params.runId);

@@ -22,9 +22,8 @@ C-138/139(M4-3/4)는 기존 Skill 관리 화면에 고정 fixture 비교·명시
 | 추적 | 남은 변경 | 완료 조건 |
 |---|---|---|
 | C-118 | 미지원 API 계열 확대와 별도 계정/OS 검증. Linux 격리·Anthropic adaptive 결정적 conformance·현재 GPT live 완료 | Gemini Pi 1.3.0 custom fetch 제약은 해소 전 미지원. Anthropic 실제 호출은 별도. 미지원·실패·stale를 성공으로 표시하지 않으며 과거 recipe/hash 및 일반 추론 설정 보존 |
-| C-114 | 격리 후보별 실행·검사·예산·비교와 명시 단일 승격 | CR-031의 후보 수/동시성·80% admission·마무리 예약·unknown 비용·후보 취소·전원 실패·선택 tree 재검증 충족. 자동 merge/replay 없음 |
 
-C-114의 `candidate-budget.ts` helper는 전체 후보 실행 기능이 아니다. 선택적 후보 비교는 이번 C-118·M4-3/4 작업의 범위 밖이다. 존재하지 않는 C-115–117을 완료 태스크로 취급하지 않는다.
+C-114(P19)는 같은 Run의 격리 후보 실행·검사·예산·취소와 기존 검토 화면의 비교·명시 단일 반영까지 구현했다. 현재 동작은 [모델 안내](../Models.md#선택적-후보-비교), Linux 로컬 핵심 회귀·화면의 근거와 외부 모델/환경 미검증 범위는 [P19 기록](../evaluation/Development-Workbench-Candidates-2026-10-23.md)을 따른다. 존재하지 않는 C-115–117을 완료 태스크로 취급하지 않는다.
 
 ## 검증과 미결정
 

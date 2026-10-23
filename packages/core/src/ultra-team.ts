@@ -104,7 +104,9 @@ export function applyUltraTeam(base: CorralDefinition, ultra: UltraTeamSnapshot)
     allowedWorkTools: ['write_artifact'],
     allowedCollaborationTools: ['read_artifact', 'submit_result'],
   });
-  const helpers = ultra.modelProfiles.filter((profile) => profile !== primary);
+  const helpers = ultra.comparison
+    ? []
+    : ultra.modelProfiles.filter((profile) => profile !== primary);
   for (const [index, profile] of helpers.entries())
     roles.push({
       id: `specialist_${index}`,
@@ -118,7 +120,7 @@ export function applyUltraTeam(base: CorralDefinition, ultra: UltraTeamSnapshot)
       outputContract: 'notes',
     });
   for (const role of roles)
-    if (role.id === 'planner' || role.id === 'writer') {
+    if (helpers.length && (role.id === 'planner' || role.id === 'writer')) {
       role.allowedCollaborationTools.push('spawn_subagents', 'await_tasks');
       role.prompt +=
         ' Use the selected specialists for independent parallel analysis when useful. At most two children may run at once and four delegations total. Supply only the task and necessary evidence; no raw conversations or private reasoning. Continue honestly if an optional specialist fails. Synthesis and cross-model verification remain mandatory.';

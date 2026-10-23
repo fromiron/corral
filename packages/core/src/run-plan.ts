@@ -1,5 +1,5 @@
 import type { CorralDefinition } from '@corral/contracts';
-import { type CompiledPlan, compileDefinition } from './compiler/index.ts';
+import { type CompiledPlan, type CompileOptions, compileDefinition } from './compiler/index.ts';
 
 // What the runtime executes: the same compiler as the editor (the editor is not a trust
 // boundary). Since P5 every step the compiler accepts can run, Decisions and approvals included.
@@ -16,8 +16,8 @@ export type RunPlan =
   | { ok: true; definition: CorralDefinition; plan: CompiledPlan }
   | { ok: false; issues: PlanIssue[] };
 
-export function planRun(definition: unknown): RunPlan {
-  const compiled = compileDefinition(definition);
+export function planRun(definition: unknown, options?: CompileOptions): RunPlan {
+  const compiled = compileDefinition(definition, options);
   if (!compiled.ok) {
     return {
       ok: false,

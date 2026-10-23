@@ -25,6 +25,7 @@
 | 컴포저·컨텍스트·채팅 위젯 | CR-037–041, C-119–121 | [M4 기록](evaluation/Integrated-Improvement-M4-2026-10-19.md), [위젯 계약·증거](change-requests/CR-041-chat-widgets.md) | native IME·외부 provider 미검증 범위 유지 |
 | Desktop 확장 | CR-042, C-122–136, [상세 계약](current/desktop-contract.md) | [기능별 구현·검증](evaluation/Desktop-Capabilities-Implementation-Progress.md) | 부분 구현과 환경 대기를 아래에서 분리 |
 | 알림 대상 이동 | CR-033-B, C-171, [현재 계약](current/desktop-contract.md) | [Linux Electron 정확한 Run·승인 이동, 중복·늦은 클릭·재시작 경계](evaluation/Desktop-Notification-Targets-2026-10-23.md) | OS 알림 표시/전달·다른 OS·설치판 전체 여정은 별도 |
+| Ultra 후보 비교 | CR-031, C-114, [모델 안내](Models.md#선택적-후보-비교) | [P19 같은 Run·격리 사본·검사·단일 반영의 핵심 회귀와 실제 화면](evaluation/Development-Workbench-Candidates-2026-10-23.md) | 검증된 Linux 격리·등록 검사 필요. 외부 모델 품질/비용·다른 OS는 별도 |
 
 ## 남은 구현·검증
 
@@ -32,7 +33,6 @@
 
 | 추적 | 구현 상태 | 남은 일 | 근거 |
 |---|---|---|---|
-| C-114 | 계획, 예산 helper만 준비 | 격리 후보별 실행·검사·비교·취소·정확한 하나의 승격 | [Ultra 잔여 계획](plans/ultra-and-quality.md), CR-031 |
 | C-118 | 지원 범위 구현·검증, 미지원 계열 잔여 | Linux 격리·Anthropic adaptive conformance·GPT live 완료. Gemini transport 제약, 다른 계정/OS 검증 별도 | [현재 실행 기록](evaluation/Quality-Completion-2026-10-21.md) |
 | C-125 / ABS-04 | 부분 구현 | Linux AppImage preview 검증 완료. macOS 로컬 앱 TCP 소유권 구현·실기 별도 | [Desktop 잔여 계획](plans/desktop-completion.md) |
 | C-128 / ABS-07 | 구현 있음, 플랫폼 검증 진행 | NSIS 실제 설치, macOS·지원 arch, 서명·업데이트 채널 등 | [배포 기록](evaluation/Desktop-Delivery-Verification.md) |

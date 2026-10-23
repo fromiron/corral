@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import { CANDIDATE_MIGRATION } from './candidate-migration.ts';
 import { COMMAND_MIGRATION } from './command-migration.ts';
 import { CORRAL_OPERATION_MIGRATION } from './corral-operation-migration.ts';
 import { MEDIA_ARTIFACT_MIGRATION } from './media-migration.ts';
@@ -576,6 +577,7 @@ DROP TABLE project_tool_trust;
 ALTER TABLE project_tool_trust_next RENAME TO project_tool_trust;
 `,
   },
+  CANDIDATE_MIGRATION,
 ];
 
 /** History queries must neither recover active runs nor migrate the workspace. */

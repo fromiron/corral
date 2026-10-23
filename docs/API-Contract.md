@@ -15,6 +15,9 @@
 | POST /corrals/validate | 현재 draft definition | diagnostics + executable IR summary; side effect 없음 |
 | POST /runs | commandId,corralId,definitionRevision,input,mode,startFrom?,references? | runId+receipt; validation 완료 전 모델 호출 없음. `startFrom {runId, artifactVersionId}`는 그 버전 본문을 브리프 뒤에 붙이고 `run.started.startedFrom`에 남김. 없는 Run·다른 Run의 버전은 `TARGET_NOT_FOUND`, 산출물 크기 한도 초과는 `LIMIT_REACHED` (CR-007). `references`(최대 20)는 file·folder·run·role을 포인터로 나열하고(권한 없음) result는 그 버전 본문을 복사. 없는 대상 `TARGET_NOT_FOUND`, 결과 합계 초과 `LIMIT_REACHED` (CR-016) |
 | GET /runs/:id/snapshot | — | read model + snapshotSeq |
+| GET /runs/:id/candidates | — | C-114 `CandidateComparisonView`, 일반 Run은 `null`, 없는 Run은 404. 후보별 상태·정확한 tree·검사·사용량; private/no-store |
+| GET /runs/:id/candidates/:candidateId/changes | `tree` | 해당 Run 후보의 현재 고정 tree와 기준 사이 파일 목록. 다른 후보·오래된 tree 거절 |
+| GET /runs/:id/candidates/:candidateId/files | `tree,path` | 같은 후보의 상대 경로에 대한 기존 `FileVersions`. 임의 ref·경로 이탈 거절 |
 | GET /runs/:id/events?after=N | cursor | commit된 domain events의 SSE; token frames 별도 type |
 | POST /runs/:id/commands | `packages/contracts/generated/command.schema.json` | accepted receipt 또는 4xx; HTTP202는 적용 완료가 아님 |
 | GET /runs/:id/commands/:commandId | — | command 상태·관련 events·적용 scope |
@@ -213,6 +216,7 @@ provider/network error는 사용자 키 원문·응답 헤더를 포함하지 �
 | `run.state_changed` | from,to,reasonCode |
 | `run.interrupted` | previousStatus,backendSessionId |
 | `execution.created` | parentExecutionId,nodeId,taskId,attemptNo,depth,iterationId |
+| `candidate.comparison_changed` | C-114 같은 Run의 baselineTree·status·selectedCandidateId·2–5개 후보 상태와 검사/usage. `execution.created.candidateId`는 후보 소속을 고정하는 선택 필드 |
 | `execution.state_changed` | from,to,activity,waitingOn |
 | `execution.settled` | outcome,terminationMode,error |
 | `task.created` | role,node,contract,dependencies |
@@ -287,11 +291,13 @@ SSE의 일반 미전송 데이터는 다음 UTF-8 frame을 포함해 1 MiB로 �
 인증된 `GET /api/v1/documents/:documentId/source`는 `{ metadata, rawText }` JSON을 반환한다. `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`를 사용하고 HTML로 렌더링하지 않는다. 형식이 잘못된 ID는 400, 등록 출처가 없는 문서는 404다. 원문까지 포함한 workspace 입력의 저장 용량은 기존 32 MiB 상한 안에서 계산한다.
 
 
-## Ultra 기본 프리셋 (CR-031 / C-113)
+## Ultra 프리셋과 후보 비교 (CR-031 / C-113·118·114)
 
 `POST /api/v1/runs/auto`의 optional `qualityPreset: default | ultra`는 mode와 별개다. 미지정은 기존 경로이며 Ultra는 고정 planner→writer→reviewer 팀과 최대 두 번 수정하는 review recipe를 사용한다. 실제 선택은 시작 snapshot/event의 `autoRoute.qualityPreset`에 고정한다. 모델/effort·기본 예산·정책은 유지한다. custom 팀이나 역할 override를 Ultra로 변환하지 않는다.
 
-Composer 선택과 `/ultra`는 같은 요청을 만든다. CLI는 `corral exec auto --ultra --input brief.txt [--model-profile id] [--effort low] [--demo] [--json]`이며 `exec --ultra`도 auto와 같다. CLI auto는 로컬 템플릿 선택과 같은 Coordinator 시작 경로를 사용한다. `--ultra`를 사용자 정의 Corral 파일에 적용하면 거절하며, headless auto는 파일 도구 없는 콘텐츠 작업 범위다. 명시하지 않은 모델 profile은 기존 기본 `model-a`를 사용한다.
+Composer 선택과 `/ultra`는 같은 요청을 만든다. 현재 복수 모델 선택·최고 추론·CLI 인자는 [모델 안내](Models.md#복수-모델-ultra)를 따른다. CLI auto는 같은 Coordinator 시작 경로를 사용한다. `--ultra`를 사용자 정의 Corral 파일에 적용하면 거절하며, headless auto는 파일 도구 없는 콘텐츠 작업 범위다. 과거 선택 필드가 없는 단일 모델 기록은 기존 방식으로 해석한다.
+
+선택적 `ultra.comparison: {modelProfiles: Identifier[]}`는 선택 pool에 포함된 2–5개 후보 모델을 고정한다. 같은 모델을 반복할 수 있으며 일반 Ultra에는 이 필드를 보내지 않는다. 비교 결과는 위 후보 조회 경로에서 읽고, 선택·취소는 기존 Run command/receipt를 사용한다: `select_candidate {candidateId,tree}`, `cancel_candidate {candidateId}`. `expectedControlRevision`을 확인하고 응답 유실은 원래 command ID를 조회한다. `accepted`는 반영 완료가 아니며 `promoting` 동안 취소/정지를 거절한다. 최종 `selected`와 command 결과를 확인해야 한다.
 
 
 ## 사용자 PTY 전송과 복구 (CR-046 P07–08)

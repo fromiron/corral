@@ -2239,14 +2239,17 @@
       "CRL-ULTRA-002"
     ],
     "files": [
-      "packages/core/src/coordinator.ts",
-      "packages/core/src/candidate-budget.ts",
-      "apps/server/src/files/service.ts",
-      "packages/storage-sqlite/src/database.ts",
-      "apps/studio/src/pages/SessionPage.tsx"
+      "packages/core/src/",
+      "packages/contracts/src/",
+      "packages/storage-sqlite/src/",
+      "apps/server/src/",
+      "apps/studio/src/",
+      "packages/client/src/",
+      "packages/adapter-pi/src/"
     ],
     "done": "후보 최대5/동시3, 사본/검사/취소 소유권, 80% admission과 마무리 예약, 전원 실패 및 정확한 후보 단일 승격을 확인한다.",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "docs/evaluation/Development-Workbench-Candidates-2026-10-23.md"
   },
   {
     "id": "C-118",

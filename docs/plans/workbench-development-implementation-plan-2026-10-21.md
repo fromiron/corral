@@ -10,11 +10,13 @@ baseline: 071276873dee4bb51491bf608e604fbb4e123475
 
 입력은 `Corral-Workbench-Ecosystem-Plan-v2-2026-10-21.md`이며 SHA-256은 `11087e6b6b940bdbca89792e5a8efd84764b326ec42664ff1d289c4d65ae4451`이다. 원문을 수정하거나 전체 제품 조사를 복제하지 않는다. 기준 코드는 PR #68을 포함하는 위 commit이며, 계획 작성 시 소스·계약·manifest를 대조했다. 이후 실행 결과는 별도 검증 기록에 남긴다.
 
-현재 구현: P00–P18·P20·P21-A·P22·P23·P24-A·P24-B·P25·P26·P27(C-142–168). 완료 항목의 계약은 [현재 Workbench](../current/workbench.md)·[CR-046](../change-requests/CR-046-development-workbench.md), 각 환경의 실행 증거는 [상태표](../status.md)와 [증거 지도](../evaluation/README.md)에 연결한다. P19·P21-B·P28 이후는 이 완료 범위에 포함하지 않는다.
+현재 구현: P00–P20·P21-A·P22·P23·P24-A·P24-B·P25·P26·P27(C-114, C-142–168). 완료 항목의 계약은 [현재 Workbench](../current/workbench.md)·[CR-046](../change-requests/CR-046-development-workbench.md), 각 환경의 실행 증거는 [상태표](../status.md)와 [증거 지도](../evaluation/README.md)에 연결한다. P28 로컬 코어와 P29 Linux 코어 인수도 완료했다. P21-B·P29의 다른 환경과 P30은 이 완료 범위에 포함하지 않는다.
 
-## 현재 상태: P28·P29 로컬 코어 인수 완료, 환경별 qualification 잔여
+## 현재 상태: P19 후보 비교 구현, P28·P29 코어 인수 완료
 
 `a3711bc`까지 P26·P27을 구현한 뒤 사용자가 P28·P29의 핵심 검증·실제 화면·커밋과 병렬 진행을 요청했다. P28은 같은 사본의 편집·검사·Git·로컬 배포 결과 연결을, P29는 현재 Linux unpacked runtime·복구·편집기 worker·좁은 화면을 확인했다. 검증 중 제보된 잘못된 재설치 안내는 `1553d37`에서 수정했다. 범위와 증거는 [P28 코어 여정](../evaluation/Development-Workbench-Daily-Driver-2026-10-23.md)·[P29 Linux 코어](../evaluation/Development-Workbench-Qualification-2026-10-23.md)에 있다. 전체 OS·장치·실제 외부 배포/업데이트·부하 qualification은 이번 코어 인수 완료와 구분한다.
+
+P19(C-114)는 같은 Run의 후보별 사본·검사·예산·취소·명시 단일 반영을 구현했다. 현재 계약은 [모델 안내](../Models.md#선택적-후보-비교)·[CR-031](../change-requests/CR-031-ultra-quality.md), 실제 파일·Linux 검사와 화면 결과는 [P19 실행 기록](../evaluation/Development-Workbench-Candidates-2026-10-23.md)을 따른다.
 
 기존 task·Git·문서·공통 owner를 재사용한다. P24-B의 불변 제안은 전용 저장 기록으로 보존하고 적용 상태는 공통 operation receipt를 따른다. 상태 원장은 `contracts/backlog.json`이며 전체 release gate 통과를 뜻하지 않는다.
 
@@ -35,7 +37,7 @@ baseline: 071276873dee4bb51491bf608e604fbb4e123475
 
 여러 문맥의 링크가 같은 기능·대상·상태로 도착하면 중복이 아니다.
 
-**현재 상태:** R6 P26·P27 구현, R7 P28 로컬 코어 여정과 P29 Linux 코어 인수 완료. **후속 계획:** P29 환경별 qualification. P17·P18·P20·P21-A·P22·P23·P24-A·P24-B·P25·P26·P27은 구현됐고 R0 코어 검증은 아래 기록으로 회수했다. P19/C-114, P21-B/C-135, P30은 독립 조건을 유지한다.
+**현재 상태:** R6 P26·P27 구현, R7 P28 로컬 코어 여정과 P29 Linux 코어 인수 완료. **후속 계획:** P29 환경별 qualification. P17·P18·P20·P21-A·P22·P23·P24-A·P24-B·P25·P26·P27은 구현됐고 R0 코어 검증은 아래 기록으로 회수했다. P19/C-114 구현은 별도 기록으로 회수했고, P21-B/C-135·P30은 독립 조건을 유지한다.
 
 **R0 코어 검증 완료:** [코어 실행 기록](../evaluation/Development-Workbench-Core-2026-10-23.md)에서 preview HTTP/HMR 소유권·종료, 실제 PTY viewer 재접속 후 셸 상태·입력 제어, dirty 문서→Git→설정 왕복·저장을 확인했다. Desktop 프레임의 후속 코어 확인은 [P20 기록](../evaluation/Development-Workbench-Preview-Feedback-2026-10-23.md)에 있다. 사용자 요청에 따라 다음 기능마다 전체 여정을 반복하지 않고 변경한 코어 회귀와 실제 화면만 확인한다. 전체 설치판·좁은 화면 인수는 P29, 원격 host는 P21-B에 남긴다. PR #69/#85의 설명·감사 목록 갱신은 별도 외부 게시 작업이다.
 
@@ -83,7 +85,7 @@ baseline: 071276873dee4bb51491bf608e604fbb4e123475
 | C-140·141 | implemented | 설정·초안·컨트롤·자동 제목·모델 표시 회귀. 다시 만들지 않음 |
 | C-125·128·135·136 | in_progress | [Desktop 잔여 계획](../plans/desktop-completion.md)의 플랫폼/원격/장치 검증과 연결. 전부 미구현으로 집계하지 않음 |
 | C-118 | in_progress | 복수 모델 Ultra의 기존 협업을 패널에 연결. 미지원 provider는 그대로 표시 |
-| C-114 | planned | [Ultra 잔여 계획](../plans/ultra-and-quality.md)의 격리 후보 비교·명시 단일 승격으로 통합 |
+| C-114 | implemented | [P19 실행 기록](../evaluation/Development-Workbench-Candidates-2026-10-23.md). 기존 Run/검토 화면에 후보 비교·단일 반영 연결 |
 
 ## 3. 확정한 결정과 남은 조건
 
@@ -119,12 +121,7 @@ P00–P18(C-142–159)·P21-A(C-160)·P22(C-161)·P23(C-162)·P24-A(C-163)·P20(
 
 ### M4 남은 검토·preview·원격 연결
 
-**WB-P19 Ultra 후보 비교 연결 — L, W2-09**
-
-- 작업: C-114의 후보 workspace·예산 예약·검사·비교·명시한 하나의 승격을 기존 원장에 구현/연결한다. C-118 복수 모델 협업을 새로 만드는 항목이 아니다.
-- 완료: 선택 tree 재검증, 후보 취소·전원 실패·unknown 비용·늦은 결과·명시 단일 승격 반례. provider/OS 격리가 없는 경로는 시작 차단. 자동 승격/자동 merge 없음.
-- 선행 P03·17와 [CR-031](../change-requests/CR-031-ultra-quality.md). Alpha의 독립 선행 조건으로 묶지 않지만 이미 승인된 잔여 기능을 폐기하지 않는다.
-- 2026-10-23: P17의 검토 identity와 P18의 대상 탐색을 재사용하고 기존 검토 surface의 비교 보기로 시작한다. 별도 멀티에이전트 대시보드·실행 원장을 추가하지 않으며 검증되지 않은 퍼센트·품질 점수를 만들지 않는다. 첫 일상 개발 루프의 선행 조건이 아니며, 격리 실패가 남은 플랫폼에서는 후보 실행을 차단한다.
+P19(C-114)은 구현됐다. 같은 Run에서 2–5개 후보를 최대 3개씩 격리 실행하고 기존 검토 화면에서 검사·변경·사용량을 비교해 하나만 세션 사본에 반영한다. 현재 계약은 [모델 안내](../Models.md#선택적-후보-비교)·[CR-031](../change-requests/CR-031-ultra-quality.md), 핵심 회귀·실제 화면·환경 경계는 [실행 기록](../evaluation/Development-Workbench-Candidates-2026-10-23.md)을 따른다. 일반 Ultra·D&D·Reins를 대체하지 않으며 검증된 격리·등록 검사가 없는 환경은 계속 거절한다.
 
 P20(C-164)은 구현됐다. 현재 동작은 [미리보기 요소 피드백](../current/workbench.md#미리보기-요소-피드백), 실제 Desktop 선택·첨부·동일 화면 갱신과 환경 경계는 [실행 기록](../evaluation/Development-Workbench-Preview-Feedback-2026-10-23.md)을 따른다. 전체 설치판/OS·원격 capture와 실제 이미지 지원 모델은 이번 증거에 포함하지 않는다.
 

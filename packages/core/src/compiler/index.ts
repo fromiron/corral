@@ -124,6 +124,8 @@ export type CompileResult =
 export interface CompileOptions {
   /** Profiles the runtime can resolve; omitted in the editor before profiles are known. */
   knownModelProfiles?: readonly string[];
+  /** Coordinator-only admission of the fixed, snapshotted candidate recipe. */
+  candidateComparison?: boolean;
 }
 
 export function compileDefinition(input: unknown, options: CompileOptions = {}): CompileResult {
@@ -132,7 +134,9 @@ export function compileDefinition(input: unknown, options: CompileOptions = {}):
   const definition = parsed.data;
 
   const context = new Context(definition);
-  checkIdentity(context);
+  if (!options.candidateComparison && definition.nodes.length > 20)
+    context.error('SCHEMA_INVALID', 'this version supports at most 20 nodes per Corral');
+  checkIdentity(context, options);
   if (context.hasErrors()) return fail(context.diagnostics);
   checkStructure(context);
   // Problems that make graph analysis meaningless stop here; the rest are reported together.
@@ -345,7 +349,7 @@ function schemaDiagnostics(
 
 // ── identity and references ─────────────────────────────────────────────────
 
-function checkIdentity(c: Context) {
+function checkIdentity(c: Context, options: CompileOptions) {
   const { definition } = c;
   const seen = new Set<string>();
   for (const node of definition.nodes) {
@@ -417,8 +421,14 @@ function checkIdentity(c: Context) {
     }
   }
   const loops = definition.nodes.filter((node) => node.type === 'loop');
-  for (const extra of loops.slice(1)) {
-    c.error('TOO_MANY_LOOPS', 'this version supports one Loop per Corral', { nodeId: extra.id });
+  for (const extra of loops.slice(options.candidateComparison ? 5 : 1)) {
+    c.error(
+      'TOO_MANY_LOOPS',
+      options.candidateComparison
+        ? 'candidate comparison supports at most five Loops'
+        : 'this version supports one Loop per Corral',
+      { nodeId: extra.id },
+    );
   }
 }
 

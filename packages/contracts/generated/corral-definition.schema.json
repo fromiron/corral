@@ -289,7 +289,7 @@
     },
     "nodes": {
       "minItems": 2,
-      "maxItems": 20,
+      "maxItems": 27,
       "type": "array",
       "items": {
         "oneOf": [

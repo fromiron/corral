@@ -11,14 +11,23 @@ import { TEAM_PATTERNS } from './team-plan.ts';
 export const QualityPreset = z.enum(['default', 'ultra']);
 export type QualityPreset = z.infer<typeof QualityPreset>;
 
-export const UltraSelection = z.strictObject({
-  version: z.literal(1),
-  modelProfiles: z.array(Identifier).min(2).max(5),
-  verifierProfile: Identifier,
-});
+export const UltraSelection = z
+  .strictObject({
+    version: z.literal(1),
+    modelProfiles: z.array(Identifier).min(2).max(5),
+    verifierProfile: Identifier,
+    comparison: z.strictObject({ modelProfiles: z.array(Identifier).min(2).max(5) }).optional(),
+  })
+  .refine(
+    (selection) =>
+      selection.comparison?.modelProfiles.every((profile) =>
+        selection.modelProfiles.includes(profile),
+      ) ?? true,
+    'Candidate models must belong to the selected Ultra pool',
+  );
 export type UltraSelection = z.infer<typeof UltraSelection>;
 /** Requested pool plus the highest verified control for each model, fixed before execution. */
-export const UltraTeamSnapshot = UltraSelection.extend({
+export const UltraTeamSnapshot = UltraSelection.safeExtend({
   reasoning: z.record(Identifier, ReasoningLevel),
 });
 export type UltraTeamSnapshot = z.infer<typeof UltraTeamSnapshot>;

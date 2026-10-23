@@ -27,6 +27,7 @@ import {
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js';
 import { z } from 'zod';
+import { applyCandidateTeam } from './candidate-team.ts';
 import { canonicalJson } from './canonical-json.ts';
 import type { StartRunResult } from './coordinator.ts';
 import { reviewCriteriaHash } from './review-recipe.ts';
@@ -192,7 +193,9 @@ export function autoDefinition(input: AutoDefinitionInput): CorralDefinition {
     nodes,
     ...(roles.some((role) => role.id === 'planner') ? { planOwnerRoleId: 'planner' } : {}),
   };
-  return input.ultra ? applyUltraTeam(result, input.ultra) : result;
+  return input.ultra
+    ? applyCandidateTeam(applyUltraTeam(result, input.ultra), input.ultra)
+    : result;
 }
 
 export const AUTO_ROUTE_MAX_OUTPUT_TOKENS = 256;

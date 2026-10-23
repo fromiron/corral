@@ -79,3 +79,9 @@ Hive의 `reasoning_effort=none|low|high|max`, `max_completion_tokens`, SSE Accep
 ### Provider conformance 확대
 
 Pi 1.3.0의 Anthropic Messages adaptive-thinking 계열을 API key/OAuth의 실제 serializer와 결정적 HTTP로 검증한다. payload의 최대 추론·model·출력 cap, SDK의 beta header 이동, 1회 dispatch·취소·변조 거절을 함께 확인한 계열만 선택 가능하다. 구형 budget-thinking과 Google 계열을 검증 없이 활성화하지 않는다. 특히 설치된 Google Generative AI adapter는 per-request custom fetch를 거절하므로 현재 단일 HTTP permit을 강제할 수 없다. 이 상류 제약을 우회하기 위한 전역 fetch 교체나 SDK fork는 이번 범위에 넣지 않는다.
+
+## P19 / C-114 구현 승인과 연결 (2026-10-23)
+
+사용자가 P19와 알림 대상 이동을 구현하고 기존 동작 보존·핵심 회귀·실제 화면 확인·단위별 커밋을 요청했다. 독립 영역은 병렬로 진행하며 전체 플랫폼/유료 provider 검증은 반복하지 않는다. 이 요청으로 기존 C-114를 진행하며 요구 CRL-ULTRA-002와 TC-ULTRA-002-H/N을 유지하고 취소·늦은 응답·중복/복구 반례 TC-ULTRA-002-F를 추가한다.
+
+기존 UltraSelection에 선택적인 비교 모델 목록을 두고 명시 비교를 켰을 때 기본 3개·최대 5개 후보를 고정한다. 후보 모델은 선택한 기존 pool 안에서 배정하고 같은 모델의 여러 후보도 허용한다. 같은 Run의 기존 execution/permit/budget 경로를 사용하며 UI는 기존 요청 설정과 변경 검토에 연결한다. 선택과 후보 취소는 기존 command ID·expectedRevision·receipt를 사용한다. 후보별 사본·고정 tree·필수 검사와 명시 단일 승격은 위 C-114 계약을 그대로 따른다.
