@@ -32,6 +32,8 @@ import {
   CommandPlan,
   CommandReport,
   canonicalJson,
+  DevelopmentStart,
+  type DevelopmentState,
   DocumentCommand,
   type DocumentMutationIntent,
   type DocumentOperation,
@@ -425,6 +427,7 @@ export class WorkspaceService implements FileTools {
   private readonly liveGit = new Map<string, GitWriteRun>();
   private readonly worktreeRoot: string;
   private readonly hostId: string;
+  private readonly allowSharedDevelopment: boolean;
   /** Folders that may never be linked: Corral's own data and credentials. */
   private readonly forbidden: string[];
   /** Per-worktree write lease: one Corral write at a time (WB-WSP-003). */
@@ -444,6 +447,7 @@ export class WorkspaceService implements FileTools {
     worktreeRoot: string;
     forbidden: string[];
     hostId?: string;
+    allowSharedDevelopment?: boolean;
     timers?: Scheduler;
     newVerificationId?: () => string;
     newLspProposalId?: () => string;
@@ -454,6 +458,7 @@ export class WorkspaceService implements FileTools {
   }) {
     this.db = options.db;
     this.hostId = options.hostId ?? 'local';
+    this.allowSharedDevelopment = options.allowSharedDevelopment === true;
     this.runAccess = new RunAccessStore(this.db);
     this.workspaceAccess = new WorkspaceAccessStore(this.db);
     this.workbenchOperations = new WorkbenchOperations(this.db, options.clock);
@@ -1159,6 +1164,51 @@ export class WorkspaceService implements FileTools {
     return { row, binding, target };
   }
 
+  developmentState(sessionId: string): DevelopmentState {
+    const { row, binding, target } = this.documentTarget(sessionId);
+    return {
+      target,
+      available: this.allowSharedDevelopment && Boolean(binding.trusted) && !this.disposing,
+      operation: this.workbenchOperations.development(row.worktree_path) ?? null,
+    };
+  }
+
+  async startDevelopment(sessionId: string, raw: DevelopmentStart): Promise<DevelopmentState> {
+    const input = DevelopmentStart.parse(raw);
+    if (!this.allowSharedDevelopment)
+      throw new WorkspaceError(
+        'CAPABILITY_DENIED',
+        'shared development is not enabled on this host',
+      );
+    const { row } = this.documentTarget(sessionId, input.target, true);
+    return this.lease(row.worktree_path, async () => {
+      this.documentTarget(sessionId, input.target, true);
+      await this.userGitRoot({ kind: 'session', id: sessionId });
+      this.workbenchOperations.admit(
+        {
+          ...input,
+          kind: 'development',
+          requestHash: sha256(Buffer.from(canonicalJson(input))),
+        },
+        row.worktree_path,
+      );
+      return this.developmentState(sessionId);
+    });
+  }
+
+  async finishDevelopment(
+    sessionId: string,
+    operationId: string,
+    target: WorkspaceTarget,
+  ): Promise<DevelopmentState> {
+    const { row } = this.documentTarget(sessionId, target);
+    return this.lease(row.worktree_path, async () => {
+      this.documentTarget(sessionId, target);
+      this.workbenchOperations.finishDevelopment(operationId, target, row.worktree_path);
+      return this.developmentState(sessionId);
+    });
+  }
+
   private async prepareTerminal(input: TerminalCreate): Promise<string> {
     const { row } = this.documentTarget(input.target.sessionId, input.target, true);
     return this.lease(row.worktree_path, async () => {
@@ -1188,7 +1238,8 @@ export class WorkspaceService implements FileTools {
         Boolean(current.binding.trusted) &&
         !this.disposing &&
         !this.removingWorktrees.has(sessionId) &&
-        !this.hasUnsafeWorktreeOwner(sessionId);
+        (!this.hasUnsafeWorktreeOwner(sessionId) ||
+          this.workbenchOperations.canShare(target, row.worktree_path));
       const kind = await assertPlainPath(row.worktree_path, path);
       if (kind === 'missing')
         return { target, path, content: { kind: 'absent' }, version: null, writable };
@@ -4316,7 +4367,10 @@ export class WorkspaceService implements FileTools {
     if (!writer) return false;
     if (writer.owner_kind !== 'user') return true;
     const kind = this.workbenchOperations.get(writer.owner_id)?.kind;
-    return kind !== 'task' && kind !== 'terminal';
+    return (
+      writer.state === 'uncertain' ||
+      (kind !== 'task' && kind !== 'terminal' && kind !== 'development')
+    );
   }
 
   hasUnsafeWorktreeOwner(sessionId: string): boolean {

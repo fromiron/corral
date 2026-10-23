@@ -1,6 +1,8 @@
 import type {
   CheckpointRestore,
   CheckpointRestorePlan,
+  DevelopmentStart,
+  DevelopmentState,
   DocumentCommand,
   DocumentOperation,
   FileCheckpoint,
@@ -34,12 +36,15 @@ import type {
   TerminalResize,
   TerminalView,
   UserTaskView,
+  WorkspaceTarget,
 } from '@corral/contracts';
 import { canonicalJson } from '@corral/core';
 import type { CommandRecovery, StartRecovery } from './recovery.ts';
 import { VaultClient } from './vault-api.ts';
 
 export type {
+  DevelopmentStart,
+  DevelopmentState,
   DocumentCommand,
   DocumentOperation,
   DocumentVersion,
@@ -1908,6 +1913,27 @@ export class WorkspacesApi {
   readDocument(sessionId: string, path: string): Promise<FileDocument> {
     return this.send(
       `/sessions/${encodeURIComponent(sessionId)}/worktree/document?${new URLSearchParams({ path })}`,
+    );
+  }
+  developmentState(sessionId: string): Promise<DevelopmentState> {
+    return this.send(`/sessions/${encodeURIComponent(sessionId)}/worktree/development`);
+  }
+  startDevelopment(sessionId: string, input: DevelopmentStart): Promise<DevelopmentState> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/development`,
+      'POST',
+      input,
+    );
+  }
+  finishDevelopment(
+    sessionId: string,
+    operationId: string,
+    target: WorkspaceTarget,
+  ): Promise<DevelopmentState> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/development/${encodeURIComponent(operationId)}/finish`,
+      'POST',
+      { target },
     );
   }
   /** Package scripts a person may start, and the session's tasks (CR-046 P15). */

@@ -16,6 +16,7 @@ import {
   CreateRunRequest,
   canonicalJson,
   type DecisionProvider,
+  DevelopmentStart,
   DocumentCommand,
   type ErrorCode,
   GitDiffRequest,
@@ -48,6 +49,7 @@ import {
   TERMINAL_RUN_STATUSES,
   TextAttachments,
   UltraSelection,
+  WorkspaceTarget,
 } from '@corral/contracts';
 import {
   autoDefinition,
@@ -180,6 +182,8 @@ export interface ServerOptions {
   inputs?: InputOptions;
   /** Where sessions' git worktrees live (CR-012); outside every linked folder. */
   worktreeRoot?: string;
+  /** Opt-in only for a local launcher; remote and generic servers leave this off. */
+  allowSharedDevelopment?: boolean;
 }
 
 export interface LiveModels {
@@ -443,6 +447,7 @@ async function createCorralServer(
     db,
     clock,
     hostId: workspace.id,
+    allowSharedDevelopment: options.allowSharedDevelopment,
     worktreeRoot: options.worktreeRoot ?? defaultWorktreeRoot(),
     forbidden: [join(workspace.root, '.corral'), userConfigDir()],
     timers: options.timers ?? systemTimers,
@@ -1862,6 +1867,44 @@ async function createCorralServer(
       return fail(reply, error.code, error.message);
     return fail(reply, 'STORAGE_UNAVAILABLE', 'the document operation failed');
   };
+  app.get<SessionParams>(
+    '/api/v1/sessions/:sessionId/worktree/development',
+    async (request, reply) => {
+      try {
+        return files.developmentState(request.params.sessionId);
+      } catch (error) {
+        return documentFail(reply, error);
+      }
+    },
+  );
+  app.post<SessionParams>(
+    '/api/v1/sessions/:sessionId/worktree/development',
+    async (request, reply) => {
+      const input = DevelopmentStart.safeParse(request.body);
+      if (!input.success) return fail(reply, 'SCHEMA_INVALID', 'invalid development request');
+      try {
+        return await files.startDevelopment(request.params.sessionId, input.data);
+      } catch (error) {
+        return documentFail(reply, error);
+      }
+    },
+  );
+  app.post<{ Params: { sessionId: string; operationId: string } }>(
+    '/api/v1/sessions/:sessionId/worktree/development/:operationId/finish',
+    async (request, reply) => {
+      const input = z.strictObject({ target: WorkspaceTarget }).safeParse(request.body);
+      if (!input.success) return fail(reply, 'SCHEMA_INVALID', 'invalid development target');
+      try {
+        return await files.finishDevelopment(
+          request.params.sessionId,
+          request.params.operationId,
+          input.data.target,
+        );
+      } catch (error) {
+        return documentFail(reply, error);
+      }
+    },
+  );
   app.get<SessionParams>(
     '/api/v1/sessions/:sessionId/worktree/document',
     async (request, reply) => {

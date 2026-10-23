@@ -3786,5 +3786,38 @@
     "status": "planned",
     "adapter": "permission-locked folder in a real worktree (non-root POSIX); jsdom dialog",
     "evidence": null
+  },
+  {
+    "id": "TC-WBD-017-H",
+    "requirements": [
+      "CRL-WBD-017"
+    ],
+    "suite": "unit+integration",
+    "scenario": "공유 owner 진입·실제 task 실행 중 저장/Git/검사·명시 종료와 live preview 갱신",
+    "status": "planned",
+    "adapter": "temporary real Git/SQLite/tasks; jsdom and isolated in-app preview",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-017-N",
+    "requirements": [
+      "CRL-WBD-017"
+    ],
+    "suite": "unit+integration",
+    "scenario": "원격·원본·stale target 거절, agent writer/PTY/branch/switch/pull 차단과 외부 쓰기 CAS 보존",
+    "status": "planned",
+    "adapter": "temporary real Git/SQLite/tasks; jsdom and isolated in-app preview",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-017-F",
+    "requirements": [
+      "CRL-WBD-017"
+    ],
+    "suite": "unit+integration",
+    "scenario": "중복 요청 receipt와 재시작 uncertain·하위 사람 owner 정리 전 종료 거절·늦은 UI 응답 무시",
+    "status": "planned",
+    "adapter": "temporary real Git/SQLite/tasks; jsdom and isolated in-app preview",
+    "evidence": null
   }
 ]

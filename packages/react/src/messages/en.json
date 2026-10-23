@@ -3469,5 +3469,16 @@
     "openFailed": "{path} could not be opened.",
     "configChanged": "Earlier settings",
     "versionUnknown": "Version unknown"
+  },
+  "Development": {
+    "label": "Working copy mode",
+    "blocked": "Stop and reconcile the tasks and unconfirmed changes in this copy first.",
+    "strict": "Strict mode",
+    "shared": "Shared development",
+    "uncertain": "Development mode needs recovery",
+    "start": "Start shared development",
+    "finish": "End development mode",
+    "sharedNote": "External changes are possible. Your saves and development tasks share this copy; agent writes and terminals are blocked.",
+    "recoveryNote": "The host restarted. Stop and reconcile remaining tasks before ending this mode. Sharing is not active."
   }
 }

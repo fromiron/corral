@@ -501,3 +501,20 @@ it('[TC-WBD-011-N] a save refused because a task or terminal holds the copy keep
   expect(s.store.getState().documents[key]).toMatchObject({ dirty: false, writerBusy: false });
   s.store.dispose();
 });
+
+it('[TC-WBD-017-H] refreshing after shared mode starts clears writer refusal without changing the draft', async () => {
+  const s = setup();
+  const key = await s.store.open('session', 'example.txt');
+  s.store.getState().documents[key]?.model?.setValue('draft\n');
+  s.changeDocument.mockRejectedValueOnce(new ApiError(409, 'RUN_ALREADY_ACTIVE', 'writer held'));
+  expect(await s.store.save(key)).toBe(false);
+  expect(s.store.getState().documents[key]?.writerBusy).toBe(true);
+  await s.store.refresh(key);
+  expect(s.store.getState().documents[key]).toMatchObject({
+    writerBusy: false,
+    error: null,
+    text: 'draft\n',
+    dirty: true,
+  });
+  s.store.dispose();
+});

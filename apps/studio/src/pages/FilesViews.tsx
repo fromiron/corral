@@ -12,6 +12,7 @@ import { desktop } from '../desktop.tsx';
 import { useServices } from '../services.tsx';
 import { CheckpointPanel } from '../workbench/CheckpointPanel.tsx';
 import { CopyRemovalDialog } from '../workbench/CopyRemovalDialog.tsx';
+import { DevelopmentMode } from '../workbench/DevelopmentMode.tsx';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
 import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
 import { WORKSPACE_CHANGED } from '../workbench/workspaceEvents.ts';
@@ -302,6 +303,7 @@ export function WorkingCopyPanel({
           {t('copyMissing')}
         </p>
       ) : null}
+      {worktree && !worktree.missing ? <DevelopmentMode sessionId={sessionId} /> : null}
       {worktree ? (
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs text-muted">

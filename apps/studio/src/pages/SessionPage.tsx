@@ -133,6 +133,7 @@ import {
   SourceAttachments,
   SourceNavigationContext,
 } from '../workbench/context/SourceAttachments.tsx';
+import { DevelopmentMode } from '../workbench/DevelopmentMode.tsx';
 import { DockDocumentPanel } from '../workbench/DockDocumentPanel.tsx';
 import { DockRunControls } from '../workbench/DockRunControls.tsx';
 import { DockWorkbench, type DockWorkbenchHandle } from '../workbench/docking/DockWorkbench.tsx';
@@ -3193,6 +3194,9 @@ export function Composer({
               <p role="alert" className="text-xs text-danger">
                 {tc('missingReferences', { count: missingChips.length })}
               </p>
+            ) : null}
+            {refusal?.code === 'RUN_ALREADY_ACTIVE' ? (
+              <DevelopmentMode sessionId={session.sessionId} onlyActive />
             ) : null}
             {projectMaterialError ? (
               <div role="alert" className="flex flex-wrap items-center gap-2 text-xs text-danger">

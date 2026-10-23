@@ -4,7 +4,7 @@
 
 | 계획 | 승인 근거 | 남은 범위 |
 |---|---|---|
-| [개발 Workbench](workbench-development-implementation-plan-2026-10-21.md) | 사용자 구현 승인, CR-046 | P00–P18·P21-A 구현(2026-10-23 재검토 반영). P22는 D2 결정 대기, 다음 독립 작업 P23·P24-A. R0 잔여 통합 여정·P22 결정·플랫폼 qualification은 계획 참조 |
+| [개발 Workbench](workbench-development-implementation-plan-2026-10-21.md) | 사용자 구현 승인, CR-046 | P00–P18·P21-A·P22 구현(2026-10-23 재검토 반영). P22 B안 C-161 완료, 다음 독립 작업 P23·P24-A. R0 잔여 통합 여정·플랫폼 qualification은 계획 참조 |
 | [Ultra와 Skill 품질](ultra-and-quality.md) | CR-031·036 | C-118 미지원 provider/API 계열과 환경 검증, C-114 후보 비교. M4-3/4 구현 완료 |
 | [Desktop 완료 조건](desktop-completion.md) | CR-042·033 | C-125·128·135·136 구현/환경 검증, M4-5 중복 범위 대조 |
 

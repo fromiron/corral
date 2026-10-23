@@ -24,7 +24,7 @@ baseline: 373764467a52a7c6978de1272ac8253c73a27077
 
 작업 폴더 연결·신뢰·관리 사본·검토·원본 적용은 별개의 경계다. 파일 diff를 보거나 검토 체크를 했다는 이유만으로 원본 적용을 승인하지 않는다. 대상 tree가 바뀌면 검증·검토의 유효성을 다시 확인한다.
 
-[CR-046](../change-requests/CR-046-development-workbench.md)은 이 단일 writer 경계를 사용자 작업으로 확장한다. 사용자 operation은 Run과 구분한 owner/receipt를 가지며 공통 예약을 사용한다. 사본 generation과 요청 hash를 확인하고 재시작/불확실 효과를 자동 재실행하지 않는다. 구현 범위는 C-142·143과 [활성 계획](../plans/workbench-development-implementation-plan-2026-10-21.md)을 따른다.
+[CR-046](../change-requests/CR-046-development-workbench.md)은 이 단일 writer 경계를 사용자 작업으로 확장한다. 사용자 operation은 Run과 구분한 owner/receipt를 가지며 공통 예약을 사용한다. 사본 generation과 요청 hash를 확인하고 재시작/불확실 효과를 자동 재실행하지 않는다. P22의 명시적 공유 개발은 하나의 development writer 아래 허용된 사람 효과만 공유하며 agent writer·PTY·구조 변경은 차단한다. 재시작 시 uncertain이고 자동 재개하지 않는다. 상세는 [현재 Workbench](workbench.md#공유-개발-모드)와 CR-046 P22를 따른다.
 
 ## 명령·편집·미리보기
 

@@ -390,7 +390,7 @@ export async function runCli(args: string[], io: CliIO): Promise<number> {
       return projection.status === 'succeeded' ? 0 : projection.status === 'cancelled' ? 130 : 1;
     }
     if (command === 'dev') {
-      server = await startServer(values, workspace, io);
+      server = await startServer(values, workspace, io, true);
       io.write(`Studio session: ${server.bootstrapUrl}`);
       if (!io.signal.aborted)
         await new Promise<void>((done) =>
@@ -576,6 +576,7 @@ async function startServer(
   values: { demo?: boolean; port?: string; static?: string },
   workspace: string,
   io: CliIO,
+  allowSharedDevelopment = false,
 ) {
   const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
   const staticDir = resolve(io.cwd, values.static ?? join(root, 'apps/studio/dist'));
@@ -604,6 +605,7 @@ async function startServer(
     workspace,
     port,
     staticDir,
+    allowSharedDevelopment,
     decisionProviders: defaultDecisionProviders(),
     agents: new ScriptedAgentAdapter({ turns: 2 }),
     ...(values.demo ? {} : { live: createLiveModels() }),

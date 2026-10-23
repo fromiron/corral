@@ -21,6 +21,7 @@ const options = {
   staticDir,
   worktreeRoot,
   host: '127.0.0.1',
+  allowSharedDevelopment: true,
   port: Number(port),
   agents: new ScriptedAgentAdapter({
     turns: 2,

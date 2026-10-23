@@ -1,4 +1,10 @@
-import type { Clock, WorkbenchOperation, WorkspaceTarget } from '@corral/contracts';
+import { realpathSync } from 'node:fs';
+import {
+  type Clock,
+  canonicalJson,
+  type WorkbenchOperation,
+  type WorkspaceTarget,
+} from '@corral/contracts';
 
 export type { WorkbenchOperation, WorkspaceTarget } from '@corral/contracts';
 
@@ -22,6 +28,22 @@ interface OperationRow {
   created_at: string;
   updated_at: string;
 }
+
+const sharedKinds = new Set([
+  'document.save',
+  'document.rename',
+  'document.delete',
+  'task',
+  'git.stage',
+  'git.unstage',
+  'git.commit',
+  'git.fetch',
+  'git.push',
+]);
+const pathKey = (path: string) => {
+  const real = realpathSync.native(path);
+  return process.platform === 'win32' ? real.toLowerCase() : real;
+};
 
 /** The caller resolves trust, target identity and path before admitting an effect. */
 export class WorkbenchOperations {
@@ -50,6 +72,44 @@ export class WorkbenchOperations {
         updatedAt: row.updated_at,
       }
     );
+  }
+
+  development(path: string): WorkbenchOperation | undefined {
+    const writer = this.access.writerAt(pathKey(path));
+    const operation = writer?.owner_kind === 'user' ? this.get(writer.owner_id) : undefined;
+    return operation?.kind === 'development' ? operation : undefined;
+  }
+
+  canShare(target: WorkspaceTarget, path: string): boolean {
+    const owner = this.development(path);
+    return (
+      owner?.state === 'running' &&
+      canonicalJson(owner.target) === canonicalJson(target) &&
+      this.access.get({ kind: 'user', id: owner.operationId })?.state === 'active'
+    );
+  }
+
+  finishDevelopment(operationId: string, target: WorkspaceTarget, path: string) {
+    return this.db
+      .transaction(() => {
+        const receipt = this.get(operationId);
+        if (!receipt || receipt.kind !== 'development')
+          throw new ToolRefusal('TARGET_NOT_FOUND', 'the development owner is unavailable');
+        if (canonicalJson(receipt.target) !== canonicalJson(target))
+          throw new ToolRefusal('REVISION_CONFLICT', 'the development target changed');
+        if (receipt.state !== 'running' && receipt.state !== 'uncertain') return;
+        if (
+          this.access
+            .ownersAt(pathKey(path))
+            .some((owner) => owner.owner_kind === 'user' && owner.owner_id !== operationId)
+        )
+          throw new ToolRefusal(
+            'RUN_ALREADY_ACTIVE',
+            'stop and reconcile the shared development tasks and pending effects first',
+          );
+        this.reconcile(operationId, ['development'], 'succeeded', null);
+      })
+      .immediate();
   }
 
   list(kind: string, sessionId?: string): WorkbenchOperation[] {
@@ -137,11 +197,20 @@ export class WorkbenchOperations {
             throw new ToolRefusal('REVISION_CONFLICT', 'operation request changed');
           return { admitted: false, receipt: prior };
         }
+        const shared = sharedKinds.has(request.kind) && this.canShare(request.target, path);
+        if (
+          shared &&
+          this.access.ownersAt(pathKey(path)).some((owner) => owner.state === 'uncertain')
+        )
+          throw new ToolRefusal(
+            'RESOURCE_CAPACITY',
+            'shared development has an unconfirmed effect',
+          );
         this.access.acquire(
           { kind: 'user', id: request.operationId },
           request.target.sessionId,
           path,
-          true,
+          !shared,
           request.target.copyGeneration,
         );
         const now = this.clock.nowIso();

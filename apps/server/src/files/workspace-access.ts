@@ -71,11 +71,21 @@ export class WorkspaceAccessStore {
           return;
         }
         const held = this.writerAt(key);
-        if (writer && held)
+        if (writer && held) {
+          const development =
+            held.owner_kind === 'user' &&
+            this.db
+              .prepare(
+                "SELECT 1 FROM workbench_operations WHERE operation_id=? AND kind='development'",
+              )
+              .get(held.owner_id);
           throw new ToolRefusal(
             'RUN_ALREADY_ACTIVE',
-            `working copy writer ${held.owner_id} has not released ownership`,
+            development
+              ? 'finish shared development before starting this exclusive writer'
+              : `working copy writer ${held.owner_id} has not released ownership`,
           );
+        }
         if (held?.state === 'uncertain')
           throw new ToolRefusal('RESOURCE_CAPACITY', 'working copy termination is unconfirmed');
         this.db

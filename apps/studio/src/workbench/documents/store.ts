@@ -274,6 +274,7 @@ export function documentStore(
   const applyFile = (key: string, file: FileDocument, start: DocumentBuffer) => {
     const entry = get(key);
     if (!entry || entry.baseHash !== start.baseHash) return;
+    if (entry.writerBusy && file.writable) patch(key, { writerBusy: false, error: null });
     const changed =
       documentKey(file.target, file.path) !== key ||
       (file.version?.sha256 ?? null) !== entry.baseHash;

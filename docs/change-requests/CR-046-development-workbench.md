@@ -234,13 +234,18 @@ H는 Git 변경·미제출 의견·열린 Run이 있는 사본의 요약과, 보
 
 ## P22: 공유 개발 owner (D2 승인)
 
-- 승인: 2026-10-23. 사용자가 [D2 결정 자료](../proposals/P22-shared-development-D2.md)의 **B안(공유 개발 owner)**과 §3의 의미를 문서 그대로 승인했다. 구현은 아직 시작하지 않았다. 구현 전까지 계약 6의 strict 동작이 유지된다.
-- 구현 착수 메모(코드 대조 결과)
-  - 사람 operation은 모두 `WorkbenchOperations.admit`에서 사본 writer를 잡는다(`document.*`, `git.*`, `task`, `terminal`).
+- 승인: 2026-10-23. 사용자가 `00d19ff`의 D2 결정 자료에서 **B안(공유 개발 owner)**과 §3의 의미를 문서 그대로 승인했다. C-161로 구현했다. strict가 기본이며 명시적으로 공유 개발 모드를 켠 관리 사본만 아래 확장을 적용한다.
+- 구현 방식
+  - 사람 operation은 `WorkbenchOperations.admit`의 공통 예약으로 접수한다(`document.*`, `git.*`, `task`, `terminal`).
   - 공유 모드는 `development` 사람 operation 하나가 writer를 잡는 방식으로 구현한다. 그 아래에서 문서 저장, 사람이 시작한 task, `git.stage/unstage/commit/fetch/push`는 비-writer access로 접수한다.
   - `terminal`, `git.branch/switch/pull`, agent writer(Run)는 기존처럼 writer 충돌로 거절한다. 거절 문구에는 공유 모드를 밝힌다.
   - 모드는 별도 열을 두지 않고 원장의 running/uncertain `development` operation으로 판정한다. host 재시작 뒤에는 uncertain이 되어 자동으로 되살아나지 않는다.
   - strict 복귀는 그 사본의 다른 사람 owner가 없을 때만 한다.
-  - 원격 host 제외: 서버는 자신이 원격인지 모른다. host 단위 opt-in(`ServerOptions`)을 두고 로컬 실행 경로(desktop sidecar, `corral dev`)만 켜는 방식을 검토한다.
+  - 원격 host 제외: 서버는 자신이 원격인지 모른다. host 단위 opt-in(`ServerOptions`)을 두고 로컬 실행 경로(desktop sidecar, `corral dev`)만 켠다.
   - 검사의 snapshot 허용(`writerBlocksCheck`)에는 `development`를 더한다.
-- 추적 ID(CRL-WBD-017 / C-161 / TC-WBD-017)는 구현 시작 때 red 시험과 함께 등록한다.
+- 추적: CRL-WBD-017 / C-161 / TC-WBD-017-H,N,F. 계약 등록 뒤 의미 있는 red 시험을 확인했으며 [C-161 실행 기록](../evaluation/Development-Workbench-Shared-Development-2026-10-23.md)에 결과·환경·한계를 남겼다.
+
+- 승인된 B안의 나머지 의미: 파일 저장은 기존 base hash CAS를 유지하고 task의 외부 쓰기와 충돌하면 초안을 보존한다. 감시로 모든 쓰기를 포착했다고 주장하지 않으며 공유 중에는 외부 변경 가능을 표시한다. P17의 external_observed/mixed·검사/검토 snapshot·stale 기준을 유지한다. copyGeneration은 사본 재생성 때만 증가한다.
+- 원장과 API: `GET .../worktree/development`는 현재 target·지원 여부·development receipt를 읽는다. `POST`는 `{operationId,target}`로 명시 진입하며 같은 ID/본문은 새로 접수하지 않고 현재 모드 상태를 돌려준다. 원래 receipt는 원장에 보존하며 종료된 ID로 다시 켜지 않는다. `POST .../development/:operationId/finish`는 `{target}`으로 그 owner만 끝낸다. 재시작으로 uncertain인 owner도 하위 사람 owner가 모두 정리돼야 명시 종료할 수 있다. 종료/진입 응답이 유실되면 기존 ID·상태를 다시 읽고 자동으로 모드를 켜지 않는다.
+- host opt-in은 `allowSharedDevelopment`이며 기본 false다. 로컬 desktop sidecar와 `corral dev`만 true로 시작한다. 일반 server/원격 진입은 꺼져 있으며 브라우저 입력으로 바꿀 수 없다.
+- H: 실제 task 실행 중 저장·Git stage/commit·검사 snapshot과 strict 복귀. N: agent writer·터미널·branch/switch/pull·다른 generation·원격/원본 거절, task 외부 수정의 CAS 충돌. F: 중복/늦은 요청·host 재시작 uncertain, 하위 task/불확실 효과 정리 전 종료 거절. UI는 기존 사본/작업 머리에 같은 모드 컨트롤을 사용하고 새 관리창은 만들지 않는다.

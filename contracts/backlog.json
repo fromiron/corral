@@ -3151,5 +3151,27 @@
     "done": "보관한 세션의 사본이 남는다. 삭제 대화상자는 사본의 Git 변경·미제출 의견·결과 모르는 쓰기·끝나지 않은 Run과 이 브라우저의 미저장 문서·복구 초안을 보여 주고, task·터미널·Run이 잡고 있으면 삭제를 막는다. 다시 만든 사본은 이전 generation의 삭제 요청으로 지워지지 않고, 폴더가 남은 삭제는 완료로 기록되지 않는다.",
     "status": "implemented",
     "evidence": "docs/evaluation/Development-Workbench-Copy-Lifecycle-2026-10-23.md"
+  },
+  {
+    "id": "C-161",
+    "phase": "M5",
+    "title": "CR-046 공유 개발 owner와 live edit (P22 B안)",
+    "dependsOn": [
+      "C-160"
+    ],
+    "requirements": [
+      "CRL-WBD-017"
+    ],
+    "files": [
+      "apps/server/src/",
+      "packages/contracts/src/workbench.ts",
+      "packages/client/src/",
+      "apps/studio/src/workbench/",
+      "apps/desktop/src/sidecar.mjs",
+      "packages/cli/src/"
+    ],
+    "done": "실제 개발 task 실행 중 저장과 미리보기 갱신, 외부 파일 변경 CAS·초안 보존, 허용 Git·snapshot 검사, agent writer/PTY/구조 변경 거절, 정확 target·중복 receipt·host 재시작 uncertain·하위 owner 정리 뒤 strict 복귀를 검증한다.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/Development-Workbench-Shared-Development-2026-10-23.md"
   }
 ]

@@ -35,6 +35,9 @@ export function createDemoWorkspaces(
     throw new Error('Development tasks require the local server.');
   };
   return {
+    developmentState: noTasks,
+    startDevelopment: noTasks,
+    finishDevelopment: noTasks,
     commands: async () => [],
     tasks: async () => ({ candidates: { packageManager: null, scripts: [] }, tasks: [] }),
     startTask: noTasks,
