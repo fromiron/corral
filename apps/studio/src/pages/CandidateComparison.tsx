@@ -180,161 +180,198 @@ export function CandidateComparison({
         {t('open')}
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogPopup className="flex max-h-[90vh] w-[min(95vw,1100px)] max-w-[1100px] flex-col gap-3 overflow-auto p-5">
-          <DialogTitle>{t('heading')}</DialogTitle>
-          <DialogDescription>{t('hint')}</DialogDescription>
-          <p role="status" className="text-sm font-medium">
-            {t(`status.${comparison.status}`)}
-          </p>
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <span>{t('run', { runId })}</span>
-            <span title={comparison.baselineTree}>
-              {t('baseline', { tree: comparison.baselineTree.slice(0, 12) })}
-            </span>
-            <Button size="xs" variant="outline" disabled={busy} onClick={() => void refresh()}>
-              {t('refresh')}
-            </Button>
+        <DialogPopup className="flex max-h-[90dvh] w-[min(95vw,1100px)] max-w-[1100px] flex-col gap-3 overflow-hidden p-5">
+          <div className="flex shrink-0 flex-col gap-3 pr-8">
+            <DialogTitle>{t('heading')}</DialogTitle>
+            <DialogDescription>{t('hint')}</DialogDescription>
+            <p role="status" className="text-sm font-medium">
+              {t(`status.${comparison.status}`)}
+            </p>
           </div>
-          <fieldset
-            className="grid min-w-0 gap-2 sm:grid-cols-2 lg:grid-cols-3"
-            disabled={busy || Boolean(pending)}
-          >
-            <legend className="mb-2 text-sm font-medium">{t('choose')}</legend>
-            {comparison.candidates.map((item, index) => (
-              <label
-                key={item.candidateId}
-                className="flex min-w-0 cursor-pointer flex-col gap-1 rounded-lg fill-group p-3 text-xs"
-              >
-                <span className="flex items-center gap-2 font-medium">
-                  <input
-                    type="radio"
-                    name={`candidate-${runId}`}
-                    value={item.candidateId}
-                    checked={selected === item.candidateId}
-                    onChange={() => {
-                      setSelected(item.candidateId);
-                      setError('');
-                    }}
-                  />
-                  {t('candidate', { number: index + 1 })} · {item.modelProfile}
-                </span>
-                <span>
-                  {t(`state.${item.state}`)}
-                  {comparison.selectedCandidateId === item.candidateId ? ` · ${t('chosen')}` : ''}
-                </span>
-                <span>
-                  {t('usage', { calls: item.usage.modelCalls, tokens: item.usage.outputTokens })}
-                </span>
-                {item.usage.unknownOutputTokens > 0 ? (
-                  <span className="text-muted">
-                    {t('unknownUsage', { tokens: item.usage.unknownOutputTokens })}
-                  </span>
-                ) : null}
-                <span>
-                  {t('checks', {
-                    passed: item.checks.filter(
-                      (check) => check.verdict === 'pass' && check.state === 'completed',
-                    ).length,
-                    count: item.checks.length,
-                  })}
-                </span>
-                {item.reason ? (
-                  <span className="text-danger wrap-anywhere">
-                    {item.reason === 'candidate_execution_failed'
-                      ? t('executionFailed')
-                      : item.reason === 'completion_budget_reserved'
-                        ? t('budgetReserved')
-                        : item.reason}
-                  </span>
-                ) : null}
-              </label>
-            ))}
-          </fieldset>
-          {candidate ? (
-            <>
-              {candidate.checks.map((check) => (
-                <details key={check.verificationId} className="text-xs">
-                  <summary>
-                    {check.commandId} ·{' '}
-                    {t(`check.${check.state === 'completed' ? check.verdict : check.state}`)}
-                  </summary>
-                  <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded fill-group p-2">
-                    {check.output.text || t('noCheckOutput')}
-                  </pre>
-                </details>
-              ))}
-              {changes ? (
-                changes.files.length ? (
-                  <>
-                    <label className="flex flex-col gap-1 text-xs">
-                      {t('file')}
-                      <select
-                        aria-label={t('file')}
-                        value={path}
-                        className="rounded fill-control px-2 py-1"
-                        onChange={(event) => setPath(event.target.value)}
-                      >
-                        {changes.files.map((file) => (
-                          <option key={file.path} value={file.path}>
-                            {file.path}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    {path ? renderFile(candidate, path) : null}
-                  </>
-                ) : (
-                  <p className="text-xs text-muted">{t('noChanges')}</p>
-                )
-              ) : (
-                <p className="text-xs text-muted">{tree ? t('loading') : t('notReady')}</p>
-              )}
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  size="sm"
-                  disabled={
-                    busy ||
-                    Boolean(pending) ||
-                    !selectable ||
-                    candidate.state !== 'acceptable' ||
-                    !tree ||
-                    changes?.to !== tree
-                  }
-                  onClick={() => void act('select_candidate')}
-                >
-                  {t('apply')}
-                </Button>
-                {candidate.state === 'pending' || candidate.state === 'running' ? (
-                  <Button
-                    size="sm"
-                    variant="ghost-destructive"
-                    disabled={busy || Boolean(pending)}
-                    onClick={() => void act('cancel_candidate')}
-                  >
-                    {t('cancel')}
-                  </Button>
-                ) : null}
-              </div>
-            </>
-          ) : null}
-          {pending ? (
-            <div role="status" className="flex flex-wrap items-center gap-2 text-xs">
-              <span>{t('pending')}</span>
-              <Button size="xs" variant="outline" disabled={busy} onClick={() => void recover()}>
-                {t('recover')}
+          <div className="-mx-1 flex min-h-0 flex-col gap-4 overflow-auto px-1 py-1">
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span>{t('run', { runId })}</span>
+              <span title={comparison.baselineTree}>
+                {t('baseline', { tree: comparison.baselineTree.slice(0, 12) })}
+              </span>
+              <Button size="xs" variant="outline" disabled={busy} onClick={() => void refresh()}>
+                {t('refresh')}
               </Button>
             </div>
-          ) : null}
-          {receipt &&
-          !(comparison.status === 'selected' && ['accepted', 'queued'].includes(receipt.status)) ? (
-            <p role="status" className="text-xs">
-              {t(`receipt.${receipt.status}`)}
-            </p>
-          ) : null}
-          {error ? (
-            <p role="alert" className="text-sm text-danger">
-              {error}
-            </p>
+            <fieldset
+              className="grid min-w-0 gap-2 sm:grid-cols-2 lg:grid-cols-3"
+              disabled={busy || Boolean(pending)}
+            >
+              <legend className="mb-2 text-sm font-medium">{t('choose')}</legend>
+              {comparison.candidates.map((item, index) => (
+                <label
+                  key={item.candidateId}
+                  className="flex min-w-0 cursor-pointer flex-col gap-3 rounded-lg fill-group p-3 text-xs has-[:checked]:ring-1 has-[:checked]:ring-accent"
+                >
+                  <span className="flex items-start gap-2">
+                    <input
+                      className="mt-1"
+                      type="radio"
+                      name={`candidate-${runId}`}
+                      value={item.candidateId}
+                      checked={selected === item.candidateId}
+                      onChange={() => {
+                        setSelected(item.candidateId);
+                        setError('');
+                      }}
+                    />
+                    <span className="min-w-0">
+                      <span className="block text-sm font-semibold">
+                        {t('candidate', { number: index + 1 })}
+                      </span>
+                      <span className="block text-muted wrap-anywhere">{item.modelProfile}</span>
+                    </span>
+                  </span>
+                  <span>
+                    {t(`state.${item.state}`)}
+                    {comparison.selectedCandidateId === item.candidateId ? ` · ${t('chosen')}` : ''}
+                  </span>
+                  <span className="grid grid-cols-2 gap-3">
+                    <span className="flex flex-col gap-1">
+                      <span className="text-lg font-semibold tabular-nums">
+                        {item.usage.modelCalls}
+                      </span>
+                      <span className="text-muted">{t('modelCalls')}</span>
+                    </span>
+                    <span className="flex flex-col gap-1">
+                      <span className="text-lg font-semibold tabular-nums">
+                        {item.usage.outputTokens}
+                      </span>
+                      <span className="text-muted">{t('outputTokens')}</span>
+                    </span>
+                  </span>
+                  <span>
+                    {t('checks', {
+                      passed: item.checks.filter(
+                        (check) => check.verdict === 'pass' && check.state === 'completed',
+                      ).length,
+                      count: item.checks.length,
+                    })}
+                  </span>
+                  {item.usage.unknownOutputTokens > 0 ? (
+                    <span className="text-muted">
+                      {t('unknownUsage', { tokens: item.usage.unknownOutputTokens })}
+                    </span>
+                  ) : null}
+                  {item.reason ? (
+                    <span className="text-danger wrap-anywhere">
+                      {item.reason === 'candidate_execution_failed'
+                        ? t('executionFailed')
+                        : item.reason === 'completion_budget_reserved'
+                          ? t('budgetReserved')
+                          : item.reason}
+                    </span>
+                  ) : null}
+                </label>
+              ))}
+            </fieldset>
+            {candidate ? (
+              <>
+                {candidate.checks.map((check) => (
+                  <details key={check.verificationId} className="text-xs">
+                    <summary>
+                      {check.commandId} ·{' '}
+                      {t(`check.${check.state === 'completed' ? check.verdict : check.state}`)}
+                    </summary>
+                    <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded fill-group p-2">
+                      {check.output.text || t('noCheckOutput')}
+                    </pre>
+                  </details>
+                ))}
+                {changes ? (
+                  changes.files.length ? (
+                    <>
+                      <label className="flex flex-col gap-1 text-xs">
+                        {t('file')}
+                        <select
+                          aria-label={t('file')}
+                          value={path}
+                          className="rounded fill-control px-2 py-1"
+                          onChange={(event) => setPath(event.target.value)}
+                        >
+                          {changes.files.map((file) => (
+                            <option key={file.path} value={file.path}>
+                              {file.path}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      {path ? renderFile(candidate, path) : null}
+                    </>
+                  ) : (
+                    <p className="text-xs text-muted">{t('noChanges')}</p>
+                  )
+                ) : (
+                  <p className="text-xs text-muted">{tree ? t('loading') : t('notReady')}</p>
+                )}
+              </>
+            ) : null}
+          </div>
+          {candidate || pending || receipt || error ? (
+            <div className="flex shrink-0 flex-col gap-2 border-t border-line pt-3">
+              {candidate ? (
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    disabled={
+                      busy ||
+                      Boolean(pending) ||
+                      !selectable ||
+                      candidate.state !== 'acceptable' ||
+                      !tree ||
+                      changes?.to !== tree
+                    }
+                    onClick={() => void act('select_candidate')}
+                  >
+                    {t('apply')}
+                  </Button>
+                  {candidate.state === 'pending' || candidate.state === 'running' ? (
+                    <Button
+                      size="sm"
+                      variant="ghost-destructive"
+                      disabled={busy || Boolean(pending)}
+                      onClick={() => void act('cancel_candidate')}
+                    >
+                      {t('cancel')}
+                    </Button>
+                  ) : null}
+                </div>
+              ) : null}
+              {pending ? (
+                <div role="status" className="flex flex-wrap items-center gap-2 text-xs">
+                  <span>{t('pending')}</span>
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => void recover()}
+                  >
+                    {t('recover')}
+                  </Button>
+                </div>
+              ) : null}
+              {receipt &&
+              !(
+                comparison.status === 'selected' && ['accepted', 'queued'].includes(receipt.status)
+              ) ? (
+                <p role="status" className="text-xs">
+                  {t(`receipt.${receipt.status}`)}
+                </p>
+              ) : null}
+              {error ? (
+                <p
+                  role="alert"
+                  className="max-h-24 overflow-auto wrap-anywhere text-sm text-danger"
+                >
+                  {error}
+                </p>
+              ) : null}
+            </div>
           ) : null}
         </DialogPopup>
       </Dialog>

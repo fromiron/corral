@@ -259,6 +259,53 @@
   }
 }
 
+/* Keep review panels mounted as their available workbench width changes, preserving drafts. */
+.review-layout {
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  overflow: auto;
+}
+.review-files {
+  max-height: 12rem;
+  border-bottom-width: 1px;
+}
+.review-diff {
+  min-height: 20rem;
+}
+.review-details {
+  border-top-width: 1px;
+}
+@container workbench (min-width: 48rem) {
+  .review-layout {
+    grid-template-columns: 12rem minmax(0, 1fr);
+  }
+  .review-files {
+    max-height: 65dvh;
+    border-bottom-width: 0;
+    border-right-width: 1px;
+  }
+  .review-details {
+    grid-column: 1 / -1;
+  }
+}
+@container workbench (min-width: 75rem) {
+  .review-layout {
+    grid-template-columns: 14rem minmax(0, 1fr) 20rem;
+    align-content: stretch;
+    overflow: hidden;
+  }
+  .review-layout > * {
+    min-height: 0;
+    max-height: none;
+    overflow: auto;
+  }
+  .review-details {
+    grid-column: auto;
+    border-top-width: 0;
+    border-left-width: 1px;
+  }
+}
+
 /* Run page (C-066): graph in the middle, call tree beside it, details docked below, and the
    selected item's context on the right. Below 1280px the tree moves under the graph. */
 .run-layout {

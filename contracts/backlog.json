@@ -3381,5 +3381,26 @@
     "done": "시스템 알림을 클릭하면 해당 세션/Run/승인 대상으로 기존 SPA 경로를 통해 이동하고 미저장 문서·현재 host/workspace 경계·오래된 알림과 기존 title/body 호출을 보존한다.",
     "status": "implemented",
     "evidence": "docs/evaluation/Desktop-Notification-Targets-2026-10-23.md"
+  },
+  {
+    "id": "C-172",
+    "phase": "P12",
+    "title": "CR-047 검토·후보·실행 비교의 공간과 정보 위계 개선",
+    "dependsOn": [
+      "C-114",
+      "C-141",
+      "C-157"
+    ],
+    "requirements": [
+      "CRL-UX-008"
+    ],
+    "files": [
+      "apps/studio/src/",
+      "apps/studio/e2e/",
+      "packages/react/src/components/RunComparison.tsx"
+    ],
+    "done": "390/1024/1280px의 비교 영역·표 정렬·후보 행동 노출과 카드 위계·중복 제목을 개선하고 기존 대상/receipt·검토 초안·키보드 이름을 보존한다.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/Review-Comparison-Layout-2026-10-23.md"
   }
 ]

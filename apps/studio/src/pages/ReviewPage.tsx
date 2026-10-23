@@ -184,7 +184,7 @@ export function ReviewPage() {
         sessionId: session.sessionId,
       })}
       main={
-        <main className="flex h-full min-h-0 flex-1 flex-col">
+        <main className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
           <header className="flex flex-wrap items-center gap-3 border-b border-line px-4 py-2">
             <Link
               to="/sessions/$sessionId"
@@ -195,12 +195,12 @@ export function ReviewPage() {
             </Link>
             <h2 className="text-base font-semibold">{t('reviewHeading')}</h2>
             {/* The options name what they compare; the label stays for assistive technology. */}
-            <label className="flex items-center gap-1 text-xs">
+            <label className="flex min-w-0 max-w-full items-center gap-1 text-xs">
               <span className="sr-only">{t('scope')}</span>
               <select
                 value={scopeKey}
                 onChange={(e) => setScope(e.target.value)}
-                className="rounded fill-control px-1 py-0.5"
+                className="min-w-0 rounded fill-control px-1 py-0.5"
               >
                 <option value="session">{t('scopes.session')}</option>
                 <option value="review">{t('scopes.review')}</option>
@@ -288,12 +288,10 @@ export function ReviewPage() {
               </Button>
             </div>
           ) : null}
-          <div
-            className={`${noCopy || error ? 'hidden' : 'grid'} min-h-0 flex-1 grid-cols-1 md:grid-cols-[16rem_minmax(0,1fr)_20rem]`}
-          >
+          <div className={`${noCopy || error ? 'hidden' : 'grid'} review-layout min-h-0 flex-1`}>
             <nav
               aria-label={t('reviewHeading')}
-              className="min-h-0 overflow-auto border-line p-2 md:border-r"
+              className="review-files min-w-0 overflow-auto border-line p-2"
             >
               <FileList
                 sessionId={session.sessionId}
@@ -304,7 +302,7 @@ export function ReviewPage() {
                 scopeIsRun={scope.kind === 'run'}
               />
             </nav>
-            <section aria-label={selected ?? t('chooseFile')} className="min-h-0 overflow-auto p-3">
+            <section aria-label={selected ?? t('chooseFile')} className="review-diff min-w-0 p-3">
               {selected && changes?.from && changes.to ? (
                 <FileDiff
                   path={selected}
@@ -351,7 +349,7 @@ export function ReviewPage() {
                 />
               ) : null}
             </section>
-            <aside className="flex min-h-0 flex-col gap-3 overflow-auto border-line p-3 md:border-l">
+            <aside className="review-details flex min-w-0 flex-col gap-3 border-line p-3">
               {workspaces && mode === 'server' && comparisonRunId ? (
                 <CandidateComparison
                   key={`${session.sessionId}:${comparisonRunId}`}

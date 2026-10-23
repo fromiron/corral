@@ -215,7 +215,7 @@ export function DiffCode({
       ) : null}
       <CodeFrame>
         <CodeView
-          className={viewerClass}
+          className="max-h-[min(65vh,600px)] min-h-24 overflow-auto rounded fill-group"
           style={{ fontSize: 12, lineHeight: '20px' }}
           items={items}
           renderGutterUtility={

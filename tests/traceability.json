@@ -1725,5 +1725,15 @@
       "TC-WBD-026-N",
       "TC-WBD-026-F"
     ]
+  },
+  {
+    "requirementId": "CRL-UX-008",
+    "tasks": [
+      "C-172"
+    ],
+    "tests": [
+      "TC-WBUI-003-H",
+      "TC-WBUI-003-N"
+    ]
   }
 ]
