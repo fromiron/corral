@@ -5,7 +5,7 @@ import type { Page } from '@playwright/test';
 import { requestBox } from '../workbench.ts';
 import { expect, type Harness, test } from './harness.ts';
 
-// CR-049: only model replies are simulated. Creation, rounds, decisions and handoffs
+// CR-049: only model replies are simulated. Creation, conversation, decisions and handoffs
 // use the production Studio, HTTP API, persisted session and Coordinator.
 test.use({
   agentReply: {
@@ -15,7 +15,7 @@ test.use({
           ? 'Keep the API, but measure latency before release.'
           : 'Keep one service and preserve the API.';
       const brief = input.inputs.map((item) => item.text).join('\n');
-      const roundId = /Round 1 \[roundId=([^\]]+)\]/.exec(brief)?.[1];
+      const roundId = /Message 1 \[roundId=([^\]]+)\]/.exec(brief)?.[1];
       if (!roundId) throw new Error('Secretary needs the actual prior round reference.');
       return JSON.stringify({
         issues: ['Whether to split the service'],
@@ -54,14 +54,20 @@ test.use({
   },
 });
 
-async function createMeeting(page: Page, corral: Harness) {
+async function createMeeting(page: Page, corral: Harness, development = true) {
   await page.goto(`${corral.server.url}/projects/default`);
   await page.getByRole('button', { name: 'New meeting', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Create a meeting' });
-  await dialog.getByLabel('Meeting name', { exact: true }).fill('Release discussion');
+  await dialog
+    .getByLabel('Meeting name', { exact: true })
+    .fill(development ? 'Release discussion' : 'Dinner chat');
+  if (development)
+    await dialog.getByRole('button', { name: 'Apply development roles', exact: true }).click();
   await dialog.getByRole('button', { name: 'Remove participant 3', exact: true }).click();
-  await dialog.getByRole('combobox', { name: 'Participant 1 model', exact: true }).click();
-  await page.getByRole('option', { name: 'model-b', exact: true }).click();
+  if (development) {
+    await dialog.getByRole('combobox', { name: 'Participant 1 model', exact: true }).click();
+    await page.getByRole('option', { name: 'model-b', exact: true }).click();
+  }
   await dialog.getByRole('button', { name: 'Create meeting', exact: true }).click();
   await expect(page).toHaveURL(/\/sessions\/session_/);
   await expect(page.getByRole('textbox', { name: 'Meeting message' })).toBeVisible();
@@ -87,7 +93,7 @@ async function send(page: Page, text: string) {
   await page.getByRole('button', { name: 'Send', exact: true }).click();
 }
 
-async function finishRound(page: Page, id: string, index: number) {
+async function finishReplies(page: Page, id: string, index: number) {
   await expect
     .poll(async () =>
       (await meeting(page, id)).rounds[index]?.answers.every(
@@ -95,18 +101,18 @@ async function finishRound(page: Page, id: string, index: number) {
       ),
     )
     .toBe(true);
-  await expect(page.getByRole('button', { name: 'Stop round', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Stop answering', exact: true })).toHaveCount(0);
 }
 
 async function adoptDecision(page: Page, id: string) {
   await send(page, 'Should we split the service?');
-  await finishRound(page, id, 0);
-  await page.getByRole('button', { name: 'Summarise meeting', exact: true }).click();
-  await finishRound(page, id, 1);
+  await finishReplies(page, id, 0);
+  await page.getByRole('button', { name: 'Ask secretary for a plan', exact: true }).click();
+  await finishReplies(page, id, 1);
   await expect
     .poll(async () => (await meeting(page, id)).minutes?.[0]?.document?.candidates.length)
     .toBe(1);
-  await page.getByText('Minutes, decisions and handoffs', { exact: true }).click();
+  await page.getByText('Minutes, plan and handoff', { exact: true }).click();
   await expect(page.getByRole('button', { name: 'Hand off to work', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Review and adopt', exact: true }).click();
   await page.locator('textarea[name="goal"]').fill('Measure before releasing');
@@ -124,44 +130,141 @@ test('[TC-MEET-001-H] role and secretary selection survive reopening without mor
   expect((await meeting(page, id)).config.participants[0]?.modelProfile).toBe('model-b');
   expect(corral.server.coordinator.listRuns()).toHaveLength(0);
   await send(page, 'Should we split the service?');
-  await finishRound(page, id, 0);
-  const all = page.getByRole('region', { name: 'Should we split the service?', exact: true });
-  await expect(all.getByRole('article')).toHaveCount(2);
-  await expect(all.getByRole('article').nth(0)).toHaveAttribute('aria-label', 'Architect');
-  await expect(all.getByRole('article').nth(1)).toHaveAttribute('aria-label', 'Builder');
+  await finishReplies(page, id, 0);
+  const conversation = page.getByTestId('chat-timeline');
+  await expect(conversation.getByRole('article')).toHaveCount(2);
+  const first = await meeting(page, id);
+  for (const [index, answer] of first.rounds[0]!.answers.entries())
+    await expect(conversation.getByRole('article').nth(index)).toHaveAttribute(
+      'aria-label',
+      first.config.participants.find(
+        (participant) => participant.participantId === answer.participantId,
+      )!.name,
+    );
   await page.screenshot({ path: test.info().outputPath('meeting-room-desktop.png') });
 
   await page.setViewportSize({ width: 390, height: 844 });
   await send(page, '@Builder clarify the measurement');
-  await finishRound(page, id, 1);
-  const mentioned = page.getByRole('region', {
-    name: '@Builder clarify the measurement',
-    exact: true,
-  });
-  await expect(mentioned.getByRole('article')).toHaveCount(1);
-  await expect(mentioned.getByRole('article')).toHaveAttribute('aria-label', 'Builder');
+  await finishReplies(page, id, 1);
+  await expect(conversation.getByRole('article')).toHaveCount(3);
+  await expect(conversation.getByRole('article').last()).toHaveAttribute('aria-label', 'Builder');
   await page.screenshot({ path: test.info().outputPath('meeting-room-narrow.png') });
   const secretary = page.getByRole('button', { name: '@Secretary', exact: true });
   await secretary.focus();
   await page.keyboard.press('Space');
   await expect(secretary).toHaveAttribute('aria-pressed', 'true');
   await send(page, 'Record the remaining disagreement');
-  await finishRound(page, id, 2);
-  await expect(
-    page
-      .getByRole('region', { name: 'Record the remaining disagreement', exact: true })
-      .getByRole('article'),
-  ).toHaveAttribute('aria-label', 'Secretary');
+  await finishReplies(page, id, 2);
+  await expect(conversation.getByRole('article').last()).toHaveAttribute('aria-label', 'Secretary');
   await page.screenshot({ path: test.info().outputPath('meeting-room-minutes.png') });
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   const runs = corral.server.coordinator.listRuns().map((run) => run.runId);
   await page.reload();
-  await expect(
-    page.getByRole('region', { name: 'Record the remaining disagreement', exact: true }),
-  ).toBeVisible();
+  await expect(page.getByText('Record the remaining disagreement', { exact: true })).toBeVisible();
   expect(corral.server.coordinator.listRuns().map((run) => run.runId)).toEqual(runs);
   expect((await meeting(page, id)).rounds).toHaveLength(3);
   expect(corral.errors).toEqual([]);
+});
+
+test.describe('general chat', () => {
+  test.use({
+    agentReply: {
+      reply: (_turn, input) => {
+        const brief = input.inputs.map((item) => item.text).join('\n');
+        const latest = [...brief.matchAll(/Message \d+ \[roundId=[^\]]+\] — Person: ([^\n]*)/g)].at(
+          -1,
+        )?.[1];
+        if (input.role.name === 'Secretary') {
+          const roundId = /Message 1 \[roundId=([^\]]+)\]/.exec(brief)?.[1];
+          if (!roundId) throw new Error('The secretary needs the dinner conversation.');
+          return JSON.stringify({
+            issues: ['Choosing a light dinner'],
+            claims: [{ roundId, participantId: 'p1', text: 'Initially suggested kimchi stew.' }],
+            agreements: [],
+            remainingDissent: [],
+            unverifiedFacts: [],
+            candidates: [],
+          });
+        }
+        if (latest === 'What should I eat for dinner?')
+          return input.role.name === 'model-a'
+            ? 'I would have kimchi stew.'
+            : 'I would have potato soup.';
+        if (latest === '@model-b Why potato soup?') {
+          if (
+            !brief.includes('I would have kimchi stew.') ||
+            !brief.includes('I would have potato soup.')
+          )
+            throw new Error('The follow-up must include both earlier opinions.');
+          return 'Potato soup is filling and easy to share.';
+        }
+        if (latest === 'I want something light today.') {
+          if (
+            !brief.includes('Why potato soup?') ||
+            !brief.includes('Potato soup is filling and easy to share.')
+          )
+            throw new Error('The preference must follow the earlier question and explanation.');
+          return input.role.name === 'model-a'
+            ? 'Then I would choose tofu soup.'
+            : 'I would switch to a light vegetable soup.';
+        }
+        throw new Error(`Unexpected chat message: ${latest}`);
+      },
+    },
+  });
+  test('[TC-MEET-001-H] default participants continue an everyday conversation before any requested minutes', async ({
+    page,
+    corral,
+  }) => {
+    await corral.open('/');
+    const id = await createMeeting(page, corral, false);
+    expect((await meeting(page, id)).config.participants).toMatchObject([
+      { name: 'model-a', prompt: '', modelProfile: 'model-a' },
+      { name: 'model-b', prompt: '', modelProfile: 'model-b' },
+    ]);
+    const conversation = page.getByTestId('chat-timeline');
+    await expect(page.getByText('Minutes, plan and handoff', { exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /round|rebuttal/i })).toHaveCount(0);
+    await send(page, 'What should I eat for dinner?');
+    await finishReplies(page, id, 0);
+    await expect(conversation.getByRole('article', { name: 'model-a', exact: true })).toContainText(
+      'I would have kimchi stew.',
+    );
+    await expect(conversation.getByRole('article', { name: 'model-b', exact: true })).toContainText(
+      'I would have potato soup.',
+    );
+
+    await send(page, '@model-b Why potato soup?');
+    await finishReplies(page, id, 1);
+    await expect(conversation.getByRole('article')).toHaveCount(3);
+    await expect(conversation.getByRole('article').last()).toContainText(
+      'Potato soup is filling and easy to share.',
+    );
+
+    await send(page, 'I want something light today.');
+    await finishReplies(page, id, 2);
+    await expect(
+      conversation.getByRole('article', { name: 'model-a', exact: true }).last(),
+    ).toContainText('Then I would choose tofu soup.');
+    await expect(
+      conversation.getByRole('article', { name: 'model-b', exact: true }).last(),
+    ).toContainText('I would switch to a light vegetable soup.');
+    await expect(page.getByText('Minutes, plan and handoff', { exact: true })).toHaveCount(0);
+    await expect(conversation.getByRole('article', { name: 'Secretary', exact: true })).toHaveCount(
+      0,
+    );
+    expect(corral.server.coordinator.listRuns()).toHaveLength(5);
+
+    await page.getByRole('button', { name: 'Ask secretary for a plan', exact: true }).click();
+    await finishReplies(page, id, 3);
+    await expect(page.getByText('Minutes, plan and handoff', { exact: true })).toBeVisible();
+    await expect(
+      conversation.getByRole('article', { name: 'Secretary', exact: true }),
+    ).toBeVisible();
+    expect((await meeting(page, id)).minutes?.[0]?.document?.candidates).toEqual([]);
+    expect(corral.server.coordinator.listRuns()).toHaveLength(6);
+    expect(corral.errors).toEqual([]);
+  });
 });
 
 test.describe('active meeting', () => {
@@ -175,55 +278,73 @@ test.describe('active meeting', () => {
   test.afterEach(() => {
     replies.open();
   });
-  test('[TC-MEET-001-N] [TC-MEET-001-F] edits one waiting message and stops both rounds', async ({
+  test('[TC-MEET-001-N] [TC-MEET-001-F] posts several messages during a reply and stops active and pending speakers', async ({
     page,
     corral,
   }) => {
     await corral.open('/');
     const id = await createMeeting(page, corral);
     await send(page, 'Take time to consider this');
-    await expect(page.getByRole('button', { name: 'Stop round', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Stop answering', exact: true })).toBeVisible();
     await send(page, '@Architect original follow-up');
-    await page.getByRole('button', { name: 'Edit queued message', exact: true }).click();
-    await page
-      .getByRole('textbox', { name: 'Waiting message', exact: true })
-      .fill('@Architect corrected follow-up');
-    await page.getByRole('button', { name: 'Save changes', exact: true }).click();
-    await expect
-      .poll(async () => (await meeting(page, id)).queued?.text)
-      .toBe('@Architect corrected follow-up');
+    await expect(
+      page.getByTestId('chat-timeline').getByText('@Architect original follow-up', { exact: true }),
+    ).toBeVisible();
+    await send(page, '@Builder another follow-up');
+    await expect(
+      page.getByTestId('chat-timeline').getByText('@Builder another follow-up', { exact: true }),
+    ).toBeVisible();
+    expect((await meeting(page, id)).queued).toBeNull();
+    expect(corral.server.coordinator.listRuns()).toHaveLength(1);
     await page
       .getByRole('textbox', { name: 'Meeting message', exact: true })
-      .fill('Cannot replace the queued message');
-    await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
-    await page.getByRole('textbox', { name: 'Meeting message', exact: true }).press('Enter');
-    expect((await meeting(page, id)).queued?.text).toBe('@Architect corrected follow-up');
-    await page.getByRole('button', { name: 'Stop round', exact: true }).click();
-    const firstReplies = replies;
-    replies = new Gate();
-    firstReplies.open();
-    const next = page.getByRole('region', { name: '@Architect corrected follow-up', exact: true });
-    await expect(next.getByRole('article')).toHaveCount(1);
-    await next.getByRole('button', { name: 'Stop round', exact: true }).click();
+      .fill('Still able to type');
+    await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeEnabled();
+    await page.getByRole('button', { name: 'Stop answering', exact: true }).click();
     replies.open();
     await expect
-      .poll(async () =>
-        (await meeting(page, id)).rounds.every(
-          (round) => !round.active && Boolean(round.stoppedAt),
-        ),
-      )
+      .poll(async () => (await meeting(page, id)).rounds.every((round) => !round.active))
       .toBe(true);
     await page.reload();
-    await expect(
-      page.getByText('You stopped this round. Answers already received stay in the record.', {
-        exact: true,
-      }),
-    ).toHaveCount(2);
     expect((await meeting(page, id)).rounds.map((round) => round.message)).toEqual([
       'Take time to consider this',
-      '@Architect corrected follow-up',
+      '@Architect original follow-up',
+      '@Builder another follow-up',
     ]);
-    expect(corral.server.coordinator.listRuns()).toHaveLength(3);
+    expect(corral.server.coordinator.listRuns()).toHaveLength(1);
+    expect(corral.errors).toEqual([]);
+  });
+});
+
+test.describe('agent mentions', () => {
+  test.use({
+    agentReply: {
+      reply: (_turn, input) =>
+        input.role.name === 'Architect'
+          ? '@Builder what do you think about soup?'
+          : 'Soup sounds good to me.',
+    },
+  });
+  test('[TC-MEET-001-H] an agent tag gets a reply without another human message', async ({
+    page,
+    corral,
+  }) => {
+    await corral.open('/');
+    const id = await createMeeting(page, corral);
+    await send(page, '@Architect suggest dinner and ask Builder');
+    await expect(
+      page.getByTestId('chat-timeline').getByText('Soup sounds good to me.', { exact: true }),
+    ).toBeVisible();
+    const view = await meeting(page, id);
+    expect(view.rounds).toHaveLength(2);
+    expect(view.rounds[1]?.replyTo?.participantId).toBe('p1');
+    expect(view.rounds[1]?.message).toBeNull();
+    expect(corral.server.coordinator.listRuns()).toHaveLength(2);
+    await page.reload();
+    await expect(
+      page.getByTestId('chat-timeline').getByText('Soup sounds good to me.', { exact: true }),
+    ).toBeVisible();
+    expect(corral.server.coordinator.listRuns()).toHaveLength(2);
     expect(corral.errors).toEqual([]);
   });
 });
@@ -259,7 +380,7 @@ test('[TC-MEET-002-H] [TC-MEET-002-N] minutes retain dissent and only a human ad
     .poll(async () => (await meeting(page, id)).decisionWithdrawals?.[0]?.reason)
     .toBe('Need another measurement first');
   await page.reload();
-  await page.getByText('Minutes, decisions and handoffs', { exact: true }).click();
+  await page.getByText('Minutes, plan and handoff', { exact: true }).click();
   await expect(page.getByRole('button', { name: 'Hand off to work', exact: true })).toHaveCount(0);
   expect((await meeting(page, id)).decisions).toHaveLength(1);
   expect(corral.server.coordinator.listRuns()).toHaveLength(3);
@@ -300,7 +421,7 @@ test('[TC-MEET-003-H] [TC-MEET-003-N] handoffs preserve existing input and start
   ).toHaveAttribute('href', `/sessions/${id}`);
 
   await page.goto(`${corral.server.url}/sessions/${id}`);
-  await page.getByText('Minutes, decisions and handoffs', { exact: true }).click();
+  await page.getByText('Minutes, plan and handoff', { exact: true }).click();
   await page.getByRole('button', { name: 'Hand off to work', exact: true }).click();
   await page.getByRole('textbox', { name: 'New session name', exact: true }).fill('Saved handoff');
   await page.getByRole('button', { name: 'Hand off as draft', exact: true }).click();

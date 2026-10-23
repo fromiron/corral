@@ -264,6 +264,23 @@ const tick = async () => {
 };
 
 describe('worker lifecycle and protocol checks (C-017)', () => {
+  it('[TC-MEET-001-H] forwards only host meeting provenance into the worker start frame', async () => {
+    const { adapter, worker, received } = scriptedWorker();
+    const input = startInput();
+    input.meeting = {
+      sessionId: 'session_chat',
+      roundId: 'message_1',
+      participantId: 'participant_1',
+    };
+    const handle = await adapter.start(input, recordingHost().host);
+    worker.send({ type: 'ready', protocolVersion: PROTOCOL_VERSION });
+    await tick();
+    const frame = StartFrame.parse(received.find((message) => message.type === 'start'));
+    expect(frame.meeting).toEqual(input.meeting);
+    worker.kill();
+    await handle.waitForSettlement();
+  });
+
   it('[TC-ABS-004-N] file previews require read permission and app/browser tools require a trusted harness', async () => {
     for (const readable of [false, true]) {
       const { adapter, worker, received } = scriptedWorker();

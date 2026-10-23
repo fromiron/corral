@@ -20,6 +20,7 @@ import type {
   ProtectedContext,
   ProviderPayloadRecord,
 } from './harness.ts';
+import type { MeetingRunOrigin } from './meeting.ts';
 import type { McpChallenge } from './project-tools.ts';
 import type { ReasoningInput, ReasoningResolution } from './reasoning.ts';
 import type {
@@ -91,6 +92,8 @@ export interface CallableTarget {
 }
 
 export interface AgentStartInput {
+  /** Host-owned provenance for a conversational response, never inferred from the role. */
+  meeting?: MeetingRunOrigin;
   candidateId?: string;
   candidateComparison?: true;
   resumeContext?: RuntimeCheckpointState;

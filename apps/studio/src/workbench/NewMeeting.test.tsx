@@ -75,6 +75,95 @@ const profile = (profileId: string, available = true): ProfileInfo => ({
   available,
 });
 
+async function submit(f: Awaited<ReturnType<typeof mount>>) {
+  await act(async () =>
+    f.container
+      .querySelector('form')!
+      .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })),
+  );
+  return f.createSession.mock.calls.at(-1)?.[0].meeting;
+}
+
+it('[TC-MEET-001-N] starts a general chat with distinct model names and optional blank roles', async () => {
+  const f = await mount([
+    { ...profile('gpt'), label: 'OpenAI · GPT' },
+    { ...profile('deepseek'), label: 'Hive · DeepSeek' },
+  ]);
+  const roles = [...f.container.querySelectorAll('textarea')];
+  expect(roles.map((role) => role.value)).toEqual(['', '', '']);
+  expect(roles.every((role) => !role.required)).toBe(true);
+  const meeting = await submit(f);
+  expect(
+    meeting?.participants.map(({ name, prompt, modelProfile }) => ({ name, prompt, modelProfile })),
+  ).toEqual([
+    { name: 'OpenAI · GPT', prompt: '', modelProfile: 'gpt' },
+    { name: 'Hive · DeepSeek', prompt: '', modelProfile: 'deepseek' },
+    { name: 'OpenAI · GPT (2)', prompt: '', modelProfile: 'gpt' },
+  ]);
+});
+
+it('[TC-MEET-001-N] development roles are explicit and stay editable', async () => {
+  const f = await mount([profile('connected')]);
+  expect(f.button('applyDevelopmentRoles')).toBeDefined();
+  await act(async () => f.button('applyDevelopmentRoles')!.click());
+  const names = [...f.container.querySelectorAll<HTMLInputElement>('fieldset input')];
+  expect(names.map((input) => input.value)).toEqual([
+    'template.architect.name',
+    'template.builder.name',
+    'template.tester.name',
+  ]);
+  const role = f.container.querySelector('textarea')!;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(
+      names[0],
+      'Designer',
+    );
+    names[0]!.dispatchEvent(new Event('input', { bubbles: true }));
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(
+      role,
+      'Discuss user needs.',
+    );
+    role.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  const meeting = await submit(f);
+  expect(meeting?.participants[0]).toMatchObject({
+    name: 'Designer',
+    prompt: 'Discuss user needs.',
+  });
+  expect(meeting?.participants[1]?.prompt).toBe('template.builder.role');
+  expect(meeting?.participants[2]?.prompt).toBe('template.tester.role');
+});
+
+it('[TC-MEET-001-N] changing models updates only automatic names', async () => {
+  const f = await mount([profile('first'), profile('second')]);
+  const names = [...f.container.querySelectorAll<HTMLInputElement>('fieldset input')];
+  const models = [...f.container.querySelectorAll<HTMLSelectElement>('fieldset select')];
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(
+      names[1],
+      'Partner',
+    );
+    names[1]!.dispatchEvent(new Event('input', { bubbles: true }));
+    models[0]!.value = 'second';
+    models[0]!.dispatchEvent(new Event('change', { bubbles: true }));
+    models[1]!.value = 'first';
+    models[1]!.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  const meeting = await submit(f);
+  expect(meeting?.participants.map((item) => item.name)).toEqual(['second', 'Partner', 'first']);
+});
+
+it('[TC-MEET-001-N] repeated long model labels fit the distinct participant name contract', async () => {
+  const f = await mount([
+    { ...profile('connected'), label: 'Provider · very-long-model-name'.repeat(3) },
+  ]);
+  await act(async () => f.button('addParticipant')!.click());
+  const names = (await submit(f))!.participants.map((item) => item.name);
+  expect(names).toHaveLength(4);
+  expect(new Set(names).size).toBe(names.length);
+  expect(names.every((name) => name.length > 0 && name.length <= 40)).toBe(true);
+});
+
 it('[TC-MEET-001-N] live creation waits for real profiles and fills them when loading finishes', async () => {
   const f = await mount(null);
   expect(f.button('create')?.disabled).toBe(true);

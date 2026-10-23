@@ -4015,15 +4015,16 @@
     "heading": "Meeting",
     "new": "New meeting",
     "newTitle": "Create a meeting",
-    "newHint": "Discuss with agents that each take a role. Participants never change project files or run commands.",
+    "newHint": "Chat freely with multiple models. Assign roles when they help the conversation.",
     "title": "Meeting name",
     "defaultTitle": "Meeting",
     "participants": "Participants",
     "participantName": "Participant {number} name",
-    "participantRole": "Participant {number} role",
+    "participantRole": "Participant {number} role (optional)",
     "participantModel": "Participant {number} model",
     "removeParticipant": "Remove participant {number}",
     "addParticipant": "Add participant",
+    "applyDevelopmentRoles": "Apply development roles",
     "secretaryModel": "Secretary model",
     "create": "Create meeting",
     "cancel": "Cancel",
@@ -4031,20 +4032,19 @@
     "template": {
       "architect": {
         "name": "Architect",
-        "role": "Judges structure, boundaries and long-term maintenance."
+        "role": "In development discussions, suggest alternatives for architecture, boundaries and long-term maintenance. Respond to the current question and other participants' ideas."
       },
       "builder": {
         "name": "Builder",
-        "role": "Weighs how to build it, its difficulty, schedule and risks."
+        "role": "In development discussions, explain practical implementation options, effort and trade-offs. Respond to the current question and other participants' ideas."
       },
       "tester": {
         "name": "Tester",
-        "role": "Looks for failures, counterexamples and the checks to run."
+        "role": "In development discussions, raise relevant failure cases and ways to test them. Respond to the current question and other participants' ideas."
       }
     },
     "secretary": "Secretary",
     "you": "You",
-    "rebuttalRound": "Rebuttal round {number}",
     "to": "To: {names}",
     "status": {
       "running": "Answering…",
@@ -4052,40 +4052,40 @@
       "failed": "Answer failed",
       "stopped": "Stopped",
       "refused": "Not started",
+      "waiting": "Waiting to speak",
       "not_started": "Not started",
       "interrupted": "Interrupted"
     },
     "usage": "{tokens, number} output tokens · {calls, number} calls",
     "usageUnknown": "Some usage was not reported",
     "openRun": "Open run",
-    "stopRound": "Stop round",
+    "stopRound": "Stop answering",
     "message": "Meeting message",
     "placeholder": "Write a message · @name to ask only some participants",
     "mentions": "To",
     "everyone": "Without a mention, every participant except the secretary answers.",
     "send": "Send",
-    "rebuttal": "Rebuttal round",
-    "rebuttalHint": "Everyone reads the last round’s answers and answers once more. At most two per message.",
-    "summarise": "Summarise meeting",
-    "summaryRequest": "Please summarise the meeting so far.",
+    "summarise": "Ask secretary for a plan",
+    "summaryRequest": "Please organise our conversation into meeting minutes and an implementation plan based on the conclusions we have reached. Keep unresolved questions separate from agreed work.",
     "queued": "Waiting message",
-    "queuedHint": "Sent when the current round ends.",
-    "queuedIdle": "Send starts a new round with this message.",
+    "queuedHint": "Sent when the current answers finish.",
+    "queuedIdle": "Send this message to continue the conversation.",
     "sendQueued": "Send now",
     "dropQueued": "Remove",
-    "noLimits": "Meetings have no usage limit. Each participant answers once per round, and you can stop an active round at any time.",
     "empty": "Ask the participants a question or bring up a topic.",
     "loadFailed": "Could not load the meeting.",
     "retry": "Reload",
     "editQueued": "Edit queued message",
     "saveQueued": "Save changes",
-    "roundStopped": "You stopped this round. Answers already received stay in the record.",
+    "roundStopped": "You stopped the replies. Answers already received remain in the conversation.",
     "modelUnavailable": "Not connected",
     "modelsLoading": "Checking model connections…",
     "noConnectedModels": "No models are connected. Connect a model in settings before creating a meeting.",
     "unavailableParticipants": "{names}: models are not connected. Choose another model or remove these participants.",
     "removeUnavailable": "Remove disconnected participants",
     "secretaryUnavailable": "Choose a connected model for the secretary.",
+    "evidence": "Attach evidence",
+    "evidenceSelected": "Selected evidence ({count, number})",
     "evidenceResults": "Attach result or artifact",
     "evidenceRuns": "Choose a run",
     "evidenceArtifacts": "Choose an artifact version",
@@ -4093,9 +4093,9 @@
     "evidenceFailed": "Could not capture this result. Choose a text result no larger than 64 KiB and try again.",
     "evidenceHint": "Only selected captures are shared. Links are not fetched.",
     "evidenceLoading": "Loading results…",
-    "records": "Minutes, decisions and handoffs",
-    "minutesReady": "The meeting minutes are ready.",
-    "viewMinutes": "View minutes"
+    "records": "Minutes, plan and handoff",
+    "minutesReady": "The secretary has prepared the minutes and plan.",
+    "viewMinutes": "Review minutes and plan"
   },
   "MeetingsDecisions": {
     "heading": "Minutes and decisions",
@@ -4132,6 +4132,7 @@
     "confirmWithdraw": "Record withdrawal",
     "noneRecorded": "None recorded",
     "answer": {
+      "waiting": "Waiting to speak",
       "not_started": "Not started",
       "refused": "Not started",
       "running": "Awaiting answer",

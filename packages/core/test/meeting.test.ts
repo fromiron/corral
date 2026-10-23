@@ -16,8 +16,8 @@ import {
   meetingAnswerDefinition,
 } from '../src/index.ts';
 
-// CR-049 rules 1–17: only a person opens a round; no mention means everyone answers once;
-// answers in a round are independent; rebuttals are opened by the person, at most two.
+// CR-049 chat correction: user messages carry the conversation; legacy request IDs and
+// reply batches still preserve cancellation, replay and saved answer references.
 
 const CONFIG: MeetingConfig = {
   version: 1,
@@ -59,6 +59,7 @@ async function fixture(
     onStart?: (input: AgentStartInput) => Promise<void> | void;
     reply?: (input: AgentStartInput) => string;
     config?: MeetingConfig;
+    random?: () => number;
   } = {},
 ) {
   const clock = new FakeClock();
@@ -92,7 +93,13 @@ async function fixture(
   });
   let rounds = 0;
   const service = () =>
-    new MeetingService({ repository, transport, clock, newRoundId: () => `round_${++rounds}` });
+    new MeetingService({
+      repository,
+      transport,
+      clock,
+      newRoundId: () => `round_${++rounds}`,
+      random: options.random ?? (() => 0.999),
+    });
   const meetings = service();
   const created = await meetings.create({
     projectId: 'default',
@@ -133,51 +140,160 @@ async function fixture(
 const brief = (input: AgentStartInput) =>
   input.inputs.find((item) => item.name === 'brief')?.text ?? '';
 
-describe('CR-049 meeting rounds', () => {
-  it('[TC-MEET-001-H] no mention asks every participant once, independently, shown in participant order', async () => {
-    let testerStarted!: () => void;
-    const tester = new Promise<void>((resolve) => {
-      testerStarted = resolve;
+describe('CR-049 meeting messages', () => {
+  it('[TC-MEET-001-H] neutral participants carry dinner suggestions into ordinary follow-up questions', async () => {
+    const f = await fixture({
+      config: {
+        ...CONFIG,
+        participants: CONFIG.participants.map((participant) => ({ ...participant, prompt: '' })),
+      },
+      reply: () => '김치찌개가 좋겠어요.',
+    });
+    await f.send('dinner', '오늘 저녁 뭐 먹을까?');
+    await f.meetings.idle(f.sessionId);
+    expect((await f.meetings.view(f.sessionId))!.minutes).toEqual([]);
+    await f.send('why', '왜 그 메뉴를 추천해?', ['builder']);
+    await f.meetings.idle(f.sessionId);
+    const input = f.seen.at(-1)!;
+    expect(input.role.name).toBe('Builder');
+    expect(brief(input)).toContain('오늘 저녁 뭐 먹을까?');
+    expect(brief(input)).toContain('김치찌개가 좋겠어요.');
+    expect(brief(input)).toContain('왜 그 메뉴를 추천해?');
+    const count = f.seen.length;
+    await f.meetings.view(f.sessionId);
+    expect(f.seen).toHaveLength(count);
+    expect((await f.meetings.view(f.sessionId))!.minutes).toEqual([]);
+  });
+
+  it('[TC-MEET-001-H] one participant speaks at a time and each next speaker reads the actual preceding messages', async () => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
     });
     const f = await fixture({
-      // The tester answers before the others; the meeting still shows the configured order.
       onStart: async (input) => {
-        if (input.role.name === 'Tester') testerStarted();
-        else await tester;
+        if (input.role.name === 'Architect') await held;
       },
     });
-    const started = await f.send('c1', 'Should we split the service?');
-    expect(started).toMatchObject({ ok: true, outcome: 'started' });
-    await f.meetings.idle(f.sessionId);
-    const first = (await f.meetings.view(f.sessionId))!;
-    expect(first.rounds).toHaveLength(1);
-    expect(first.rounds[0]).toMatchObject({
-      kind: 'all',
-      active: false,
-      message: 'Should we split the service?',
-    });
-    expect(first.rounds[0]!.answers.map((a) => [a.participantId, a.status, a.text])).toEqual([
-      ['architect', 'answered', 'Architect answers'],
-      ['builder', 'answered', 'Builder answers'],
-      ['tester', 'answered', 'Tester answers'],
-    ]);
-    expect(f.seen).toHaveLength(3);
-    // A second round sees the first round's answers, never its own round's.
-    await f.send('c2', 'And the database?');
-    await f.meetings.idle(f.sessionId);
-    const second = f.seen.slice(3);
-    expect(second).toHaveLength(3);
-    for (const input of second) {
-      expect(brief(input)).toContain('Architect answers');
-      expect(brief(input)).toContain('And the database?');
+    try {
+      expect(await f.send('c1', '니들 배고프냐')).toMatchObject({ ok: true });
+      expect(f.seen.map((input) => input.role.name)).toEqual(['Architect']);
+      const waiting = (await f.meetings.view(f.sessionId))!.rounds[0]!;
+      expect(waiting.active).toBe(true);
+      expect(waiting.answers.map((item) => item.status)).toEqual(['running', 'waiting', 'waiting']);
+      expect(waiting.answers.slice(1).every((item) => item.runId === null)).toBe(true);
+      expect(await f.send('c1', '니들 배고프냐')).toMatchObject({ ok: true });
+      expect(f.seen).toHaveLength(1);
+    } finally {
+      release();
     }
-    // Participants work only with an artifact and a submission: no files, commands or checks.
+    await f.meetings.idle(f.sessionId);
+    expect(f.seen.map((input) => input.role.name)).toEqual(['Architect', 'Builder', 'Tester']);
+    expect(brief(f.seen[0]!)).not.toContain('Builder answers');
+    expect(brief(f.seen[1]!)).toContain('Architect answers');
+    expect(brief(f.seen[1]!)).not.toContain('Tester answers');
+    expect(brief(f.seen[2]!)).toContain('Architect answers');
+    expect(brief(f.seen[2]!)).toContain('Builder answers');
     for (const input of f.seen) {
       expect(input.role.allowedWorkTools).toEqual(['write_artifact']);
       expect(input.role.allowedCollaborationTools).toEqual(['submit_result']);
     }
-    const runId = first.rounds[0]!.answers[0]!.runId!;
-    expect((await f.transport.getSnapshot(runId)).projection.usageLimits).toBe('none');
+    const first = (await f.meetings.view(f.sessionId))!.rounds[0]!;
+    expect(first.answers.map((item) => item.status)).toEqual(['answered', 'answered', 'answered']);
+    expect((await f.transport.getSnapshot(first.answers[0]!.runId!)).projection.usageLimits).toBe(
+      'none',
+    );
+  });
+
+  it('[TC-MEET-001-H] shuffles each message once and keeps the saved order on replay and reopen', async () => {
+    const random = vi.fn().mockReturnValueOnce(0).mockReturnValueOnce(0).mockReturnValue(0.999);
+    const f = await fixture({ random });
+    await f.send('c1', 'First');
+    await f.meetings.idle(f.sessionId);
+    expect(f.seen.map((input) => input.role.name)).toEqual(['Builder', 'Tester', 'Architect']);
+    const first = (await f.meetings.view(f.sessionId))!.rounds[0]!;
+    expect(first.participantIds).toEqual(['builder', 'tester', 'architect']);
+    expect(await f.send('c1', 'First')).toMatchObject({ ok: true, roundId: first.roundId });
+    expect((await f.service().view(f.sessionId))!.rounds[0]!.participantIds).toEqual(
+      first.participantIds,
+    );
+    expect(random).toHaveBeenCalledTimes(2);
+    expect(f.seen).toHaveLength(3);
+    await f.send('c2', 'Second');
+    await f.meetings.idle(f.sessionId);
+    expect(f.seen.slice(3).map((input) => input.role.name)).toEqual([
+      'Architect',
+      'Builder',
+      'Tester',
+    ]);
+    expect(random).toHaveBeenCalledTimes(4);
+  });
+
+  it('[TC-MEET-001-N] only the speaking participant receives its role instructions', async () => {
+    const f = await fixture();
+    await f.send('c1', 'How are you?');
+    await f.meetings.idle(f.sessionId);
+    for (const input of f.seen) {
+      const own = CONFIG.participants.find((participant) => participant.name === input.role.name)!;
+      expect(input.role.prompt).toContain(own.prompt);
+      for (const other of CONFIG.participants.filter((participant) => participant !== own)) {
+        expect(brief(input)).not.toContain(other.prompt);
+        expect(input.role.prompt).not.toContain(other.prompt);
+      }
+    }
+  });
+
+  it('[TC-MEET-001-F] stopping the current speaker prevents every waiting participant from starting', async () => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const f = await fixture({ onStart: () => held });
+    await f.send('c1', 'Pause before anyone else speaks');
+    const id = (await f.meetings.view(f.sessionId))!.rounds[0]!.roundId;
+    await f.meetings.stop(f.sessionId, id);
+    release();
+    await f.meetings.idle(f.sessionId);
+    expect(f.seen).toHaveLength(1);
+    const after = (await f.meetings.view(f.sessionId))!.rounds[0]!;
+    expect(after.answers.map((item) => item.status)).toEqual(['stopped', 'stopped', 'stopped']);
+    expect(after.active).toBe(false);
+  });
+
+  it('[TC-MEET-001-F] reopening pending speakers after restart never calls them automatically', async () => {
+    const f = await fixture();
+    await f.send('c1', 'Saved conversation');
+    await f.meetings.idle(f.sessionId);
+    const session = (await f.repository.getSession(f.sessionId))!;
+    const first = session.meeting!.rounds[0]!;
+    await f.repository.updateSession(f.sessionId, {
+      expectedRevision: session.revision,
+      meeting: {
+        ...session.meeting!,
+        rounds: [
+          {
+            ...first,
+            answers: first.answers.map((answer, index) =>
+              index === 0
+                ? answer
+                : {
+                    ...answer,
+                    state: 'queued',
+                    runId: null,
+                  },
+            ),
+          },
+        ],
+      },
+    });
+    const reopened = await f.service().view(f.sessionId);
+    expect(reopened!.rounds[0]!.answers.map((answer) => answer.status)).toEqual([
+      'answered',
+      'not_started',
+      'not_started',
+    ]);
+    expect(reopened!.rounds[0]!.active).toBe(false);
+    expect(f.seen).toHaveLength(3);
   });
 
   it('[TC-MEET-001-H] @mentions narrow a round, and the secretary is called on its own', async () => {
@@ -203,7 +319,7 @@ describe('CR-049 meeting rounds', () => {
     });
   });
 
-  it('[TC-MEET-001-H] a rebuttal round answers the round before; at most two per message', async () => {
+  it('[TC-MEET-001-H] legacy reply requests preserve context without a two-reply product limit', async () => {
     const f = await fixture();
     expect(await f.rebut('r0')).toMatchObject({ ok: false, error: 'invalid' });
     await f.send('c1', 'Monolith or services?', ['architect', 'builder']);
@@ -219,11 +335,12 @@ describe('CR-049 meeting rounds', () => {
     for (const input of rebuttal) {
       expect(brief(input)).toContain('Architect answers');
       expect(brief(input)).toContain('Builder answers');
-      expect(brief(input)).toMatch(/rebuttal/i);
+      expect(brief(input)).toMatch(/respond.*messages/i);
     }
     expect(await f.rebut('r2', ['builder'])).toMatchObject({ ok: true });
     await f.meetings.idle(f.sessionId);
-    expect(await f.rebut('r3')).toMatchObject({ ok: false, error: 'invalid' });
+    expect(await f.rebut('r3')).toMatchObject({ ok: true });
+    await f.meetings.idle(f.sessionId);
     const view = (await f.meetings.view(f.sessionId))!;
     expect(
       view.rounds.map((round) => [round.kind, round.rebuttalNo, round.participantIds]),
@@ -231,48 +348,141 @@ describe('CR-049 meeting rounds', () => {
       ['mention', null, ['architect', 'builder']],
       ['rebuttal', 1, ['architect', 'builder']],
       ['rebuttal', 2, ['builder']],
+      ['rebuttal', 3, ['builder']],
     ]);
-    expect(view.rebuttal).toBeNull();
+    expect(view.rebuttal?.rebuttalNo).toBe(4);
   });
 
-  it('[TC-MEET-001-N] an agent naming who speaks next opens nothing, and rebuttals cannot add people', async () => {
+  it('[TC-MEET-001-H] agent mentions call the named participant, including a previous speaker, once per posted answer', async () => {
+    let architectReplies = 0;
     const f = await fixture({
-      reply: () => '@Tester should answer next. @비서 please write minutes.',
+      reply: (input) =>
+        input.role.name === 'Architect'
+          ? ++architectReplies === 1
+            ? '@Tester what do you think? @Tester'
+            : 'Agreed.'
+          : '@Architect I prefer soup. @Unknown @Tester @비서',
+    });
+    const first = await f.send('c1', 'Pick dinner', ['architect']);
+    await f.meetings.idle(f.sessionId);
+    expect(f.seen.map((input) => input.role.name)).toEqual(['Architect', 'Tester', 'Architect']);
+    expect(brief(f.seen[1]!)).toContain('@Tester what do you think?');
+    expect(brief(f.seen[2]!)).toContain('I prefer soup.');
+    const view = (await f.meetings.view(f.sessionId))!;
+    expect(view.rounds[1]).toMatchObject({
+      message: null,
+      replyTo: { roundId: view.rounds[0]!.roundId, participantId: 'architect' },
+    });
+    expect(view.minutes).toEqual([]);
+    expect(await f.send('c1', 'Pick dinner', ['architect'])).toEqual(first);
+    await f.service().view(f.sessionId);
+    expect(f.seen).toHaveLength(3);
+  });
+
+  it('[TC-MEET-001-N] a mention moves a waiting participant next without duplicating its scheduled reply', async () => {
+    const f = await fixture({
+      reply: (input) =>
+        input.role.name === 'Architect' ? '@Tester please weigh in.' : 'My opinion.',
+    });
+    await f.send('c1', 'Dinner?');
+    await f.meetings.idle(f.sessionId);
+    expect(f.seen.map((input) => input.role.name)).toEqual(['Architect', 'Tester', 'Builder']);
+    expect(brief(f.seen[2]!)).toContain('My opinion.');
+  });
+
+  it('[TC-MEET-001-H] a formatted mention still addresses the named participant', async () => {
+    const f = await fixture({
+      reply: (input) => (input.role.name === 'Architect' ? '**@Tester**, do you agree?' : 'Yes.'),
     });
     await f.send('c1', 'Go', ['architect']);
     await f.meetings.idle(f.sessionId);
-    const view = (await f.meetings.view(f.sessionId))!;
-    expect(view.rounds).toHaveLength(1);
-    expect(f.seen).toHaveLength(1);
-    expect(await f.rebut('r1', ['tester'])).toMatchObject({ ok: false, error: 'invalid' });
+    expect(f.seen.map((input) => input.role.name)).toEqual(['Architect', 'Tester']);
   });
 
-  it('[TC-MEET-001-F] a message during a round waits once, starts when the round ends, and a second one is refused', async () => {
+  it('[TC-MEET-001-N] plain names, quoted tags, code and self tags do not call participants or the secretary', async () => {
+    const f = await fixture({
+      reply: () => 'Tester could help. @Architect @비서 @Unknown\n> @Tester quoted\n`@Builder`',
+    });
+    await f.send('c1', 'Go', ['architect']);
+    await f.meetings.idle(f.sessionId);
+    expect(f.seen).toHaveLength(1);
+  });
+
+  it('[TC-MEET-001-F] multiple human messages post immediately and replace unstarted replies after the current speaker finishes', async () => {
     let release!: () => void;
     const held = new Promise<void>((resolve) => {
       release = resolve;
     });
-    const f = await fixture({
-      onStart: async (input) => {
-        if (brief(input).includes('first question')) await held;
-      },
+    const f = await fixture({ onStart: () => held, reply: () => 'I heard you.' });
+    try {
+      await f.send('c1', 'first question');
+      expect(await f.send('c2', 'second question')).toMatchObject({ ok: true, outcome: 'started' });
+      expect(await f.send('c3', 'third question', ['builder'])).toMatchObject({ ok: true });
+      expect(await f.send('c3', 'third question', ['builder'])).toMatchObject({ ok: true });
+      const pending = (await f.meetings.view(f.sessionId))!;
+      expect(pending.rounds.map((round) => round.message)).toEqual([
+        'first question',
+        'second question',
+        'third question',
+      ]);
+      expect(pending.queued).toBeNull();
+      expect(f.seen).toHaveLength(1);
+    } finally {
+      release();
+    }
+    await f.meetings.idle(f.sessionId);
+    expect(f.seen.map((input) => input.role.name)).toEqual(['Architect', 'Builder']);
+    expect(brief(f.seen[1]!)).toContain('second question');
+    expect(brief(f.seen[1]!)).toContain('third question');
+    expect(brief(f.seen[1]!)).toContain('I heard you.');
+  });
+
+  it('[TC-MEET-001-F] a new human message supersedes late agent mentions and stop cancels pending replies too', async () => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
     });
-    await f.send('c1', 'first question');
-    expect(await f.send('c2', 'second question')).toMatchObject({ ok: true, outcome: 'queued' });
-    expect(await f.send('c3', 'third question')).toMatchObject({ ok: false, error: 'busy' });
-    expect(await f.rebut('r1')).toMatchObject({ ok: false, error: 'busy' });
-    // The same command again is the same answer, not another message.
-    expect(await f.send('c2', 'second question')).toMatchObject({ ok: true, outcome: 'queued' });
-    expect((await f.meetings.view(f.sessionId))!.queued?.text).toBe('second question');
+    const f = await fixture({ onStart: () => held, reply: () => '@Tester answer me.' });
+    await f.send('c1', 'First', ['architect']);
+    await f.send('c2', 'Latest', ['builder']);
+    const current = (await f.meetings.view(f.sessionId))!;
+    await f.meetings.stop(f.sessionId, current.rounds[0]!.roundId);
     release();
     await f.meetings.idle(f.sessionId);
-    const view = (await f.meetings.view(f.sessionId))!;
-    expect(view.rounds.map((round) => round.message)).toEqual([
-      'first question',
-      'second question',
-    ]);
-    expect(view.queued).toBeNull();
-    expect(f.seen).toHaveLength(6);
+    expect(f.seen).toHaveLength(1);
+    expect((await f.meetings.view(f.sessionId))!.rounds.every((round) => !round.active)).toBe(true);
+  });
+
+  it('[TC-MEET-001-F] a late mention yields to newer human input, and a stale stop cannot cancel that input', async () => {
+    let release!: () => void;
+    let releaseBuilder!: () => void;
+    const architect = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const builder = new Promise<void>((resolve) => {
+      releaseBuilder = resolve;
+    });
+    const f = await fixture({
+      onStart: (input) => (input.role.name === 'Architect' ? architect : builder),
+      reply: (input) =>
+        input.role.name === 'Architect' ? '@Tester please respond.' : 'New message received.',
+    });
+    try {
+      await f.send('c1', 'First', ['architect']);
+      const first = (await f.meetings.view(f.sessionId))!.rounds[0]!;
+      await f.send('c2', 'Latest', ['builder']);
+      release();
+      await vi.waitFor(() => expect(f.seen).toHaveLength(2));
+      expect(f.seen[1]!.role.name).toBe('Builder');
+      await f.meetings.stop(f.sessionId, first.roundId);
+      expect((await f.meetings.view(f.sessionId))!.rounds[1]!.active).toBe(true);
+    } finally {
+      release();
+      releaseBuilder();
+    }
+    await f.meetings.idle(f.sessionId);
+    expect(f.seen).toHaveLength(2);
+    expect((await f.meetings.view(f.sessionId))!.rounds[1]!.answers[0]!.status).toBe('answered');
   });
 
   it('[TC-MEET-001-F] stopping a round cancels every answer, keeps what arrived, and a late answer stays out', async () => {
@@ -455,7 +665,14 @@ describe('CR-049 meeting rounds', () => {
     });
     try {
       await f.send('c1', 'first question');
-      await f.send('c2', 'old question');
+      const session = (await f.repository.getSession(f.sessionId))!;
+      await f.repository.updateSession(f.sessionId, {
+        expectedRevision: session.revision,
+        meeting: {
+          ...session.meeting!,
+          queued: { commandId: 'c2', mode: 'mock', text: 'old question', mentions: [] },
+        },
+      });
       expect(
         await f.meetings.editQueued(f.sessionId, {
           commandId: 'c2',
@@ -472,7 +689,7 @@ describe('CR-049 meeting rounds', () => {
           mentions: [],
         }),
       ).toMatchObject({ ok: false, error: 'conflict' });
-      expect(f.seen).toHaveLength(3);
+      expect(f.seen).toHaveLength(1);
     } finally {
       release();
     }
@@ -505,7 +722,7 @@ describe('CR-049 meeting rounds', () => {
         error: 'storage_unavailable',
       });
       const runs = await f.coordinator.listRuns();
-      expect(runs).toHaveLength(3);
+      expect(runs).toHaveLength(1);
       release();
       await vi.waitFor(async () => {
         for (const run of runs)
@@ -527,8 +744,9 @@ describe('CR-049 meeting rounds', () => {
       .spyOn(f.transport, 'getSnapshot')
       .mockRejectedValue(new Error('Temporarily unavailable'));
     try {
-      expect(await f.send('c2', 'second question')).toMatchObject({ ok: true, outcome: 'queued' });
-      expect((await f.meetings.view(f.sessionId))!.rounds).toHaveLength(1);
+      expect(await f.send('c2', 'second question')).toMatchObject({ ok: true, outcome: 'started' });
+      expect((await f.meetings.view(f.sessionId))!.rounds).toHaveLength(2);
+      expect(f.seen).toHaveLength(1);
     } finally {
       snapshot.mockRestore();
       release();
@@ -536,20 +754,16 @@ describe('CR-049 meeting rounds', () => {
     await f.meetings.idle(f.sessionId);
   });
 
-  it('[TC-MEET-001-H] /반론 opens a rebuttal with typed mentions and the same two-round limit', async () => {
+  it('[TC-MEET-001-H] /반론 remains ordinary message text and does not require a prior discussion', async () => {
     const f = await fixture();
-    await f.send('c1', 'question', ['architect', 'builder']);
+    expect(await f.send('r1', '/반론 @Builder 이 의견은 어때?')).toMatchObject({ ok: true });
     await f.meetings.idle(f.sessionId);
-    await f.send('r1', '/반론 @Builder');
-    await f.meetings.idle(f.sessionId);
-    expect((await f.meetings.view(f.sessionId))!.rounds[1]).toMatchObject({
-      kind: 'rebuttal',
-      rebuttalNo: 1,
+    expect((await f.meetings.view(f.sessionId))!.rounds[0]).toMatchObject({
+      kind: 'mention',
+      message: '/반론 @Builder 이 의견은 어때?',
+      rebuttalNo: null,
       participantIds: ['builder'],
     });
-    await f.send('r2', '/반론');
-    await f.meetings.idle(f.sessionId);
-    expect(await f.send('r3', '/반론')).toMatchObject({ ok: false, error: 'invalid' });
   });
 
   it('[TC-MEET-001-N] selected evidence is captured in every participant input and immutable for retries', async () => {

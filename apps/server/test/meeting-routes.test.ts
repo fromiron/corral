@@ -154,9 +154,11 @@ it('[TC-MEET-001-H] [TC-MEET-001-N] a meeting is created, answers a round over H
     await vi.waitFor(
       async () => {
         const view = (await (await call('GET', path)).json()) as MeetingView;
-        expect(view.rounds[0]?.answers.map((a) => [a.status, a.text])).toEqual([
-          ['answered', 'Architect: noted'],
-          ['answered', 'Builder: noted'],
+        expect(
+          view.rounds[0]?.answers.map((a) => [a.participantId, a.status, a.text]).sort(),
+        ).toEqual([
+          ['architect', 'answered', 'Architect: noted'],
+          ['builder', 'answered', 'Builder: noted'],
         ]);
       },
       { timeout: 10_000 },

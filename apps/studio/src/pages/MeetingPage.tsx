@@ -13,6 +13,7 @@ import { Button } from '@corral/react/ui';
 import { Link } from '@tanstack/react-router';
 import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
+import { useStore } from 'zustand';
 import { useServices } from '../services.tsx';
 import { newCommandId } from '../sessionActions.ts';
 import { sessionRunMode } from '../workbench/autoChoice.ts';
@@ -20,7 +21,9 @@ import { ChatView } from '../workbench/ChatView.tsx';
 import { MeetingDecisions } from '../workbench/MeetingDecisions.tsx';
 import { MeetingEvidencePicker } from '../workbench/MeetingEvidence.tsx';
 import { MeetingHandoffLinks } from '../workbench/MeetingHandoff.tsx';
+import { preferences } from '../workbench/preferences.ts';
 import { TextAttachmentList } from '../workbench/TextAttachments.tsx';
+import { useCorralRun } from '../workbench/useCorralChat.ts';
 import { useModelProfiles } from '../workbench/useModels.ts';
 
 type RoundView = MeetingView['rounds'][number];
@@ -31,7 +34,7 @@ const nameOf = (config: MeetingConfig, id: string, secretary: string) =>
     ? secretary
     : (config.participants.find((p) => p.participantId === id)?.name ?? id);
 
-/** CR-049: a meeting is a chat; only the person's message or rebuttal opens a round. */
+/** Stored response groups retain their command identities; the conversation shows messages. */
 export function MeetingPage({ session }: { session: WorkSession }) {
   const services = useServices();
   const { meetings } = services;
@@ -100,6 +103,10 @@ export function MeetingPage({ session }: { session: WorkSession }) {
       </div>
     );
   const mode = sessionRunMode(services.mode, services.live);
+  const active = view.rounds.find((round) => round.active);
+  const hasRecords = Boolean(
+    view.minutes?.length || view.decisions?.length || view.decisionWithdrawals?.length,
+  );
   return (
     <ChatView
       centerEmpty
@@ -107,36 +114,75 @@ export function MeetingPage({ session }: { session: WorkSession }) {
       header={
         <>
           <MeetingHeader title={session.title} config={view.config} />
-          <details ref={recordsPanel} className="pb-2 text-sm">
-            <summary className="cursor-pointer rounded py-1 font-medium focus-visible:outline-2 focus-visible:outline-ring">
-              {t('records')}
-            </summary>
-            <div className="flex max-h-[40dvh] flex-col gap-4 overflow-y-auto py-3">
-              <MeetingDecisions session={session} view={view} onChange={refresh} />
-              <MeetingHandoffLinks sessionId={sessionId} meeting={view} onRediscuss={refresh} />
-            </div>
-          </details>
+          {hasRecords ? (
+            <details ref={recordsPanel} aria-label={t('records')} className="pb-2 text-sm">
+              <summary className="cursor-pointer rounded py-1 font-medium focus-visible:outline-2 focus-visible:outline-ring">
+                {t('records')}
+              </summary>
+              <div className="flex max-h-[40dvh] flex-col gap-4 overflow-y-auto py-3">
+                <MeetingDecisions session={session} view={view} onChange={refresh} />
+                <MeetingHandoffLinks sessionId={sessionId} meeting={view} onRediscuss={refresh} />
+              </div>
+            </details>
+          ) : null}
         </>
       }
-      items={view.rounds.map((round) => ({
-        id: round.roundId,
-        content: (
-          <RoundCard
-            round={round}
-            config={view.config}
-            onStop={() => void act(() => meetings.stop(sessionId, round.roundId))}
-            onOpenMinutes={
-              view.minutes?.some((minutes) => minutes.roundId === round.roundId && minutes.document)
-                ? () => {
-                    if (!recordsPanel.current) return;
-                    recordsPanel.current.open = true;
-                    recordsPanel.current.querySelector('summary')?.focus();
-                  }
-                : undefined
-            }
-          />
-        ),
-      }))}
+      items={view.rounds
+        .flatMap((round, index) => [
+          ...(round.message === null
+            ? []
+            : [
+                {
+                  id: `${round.roundId}:message`,
+                  order: round.order ?? index * 7,
+                  content: <MeetingMessage round={round} config={view.config} />,
+                },
+              ]),
+          ...round.answers.map((answer, n) => ({
+            id: `${round.roundId}:${answer.participantId}`,
+            order:
+              answer.order ??
+              (answer.status === 'waiting'
+                ? Number.MAX_SAFE_INTEGER
+                : (round.order ?? index * 7) + n + 1),
+            content: (
+              <AnswerCard
+                answer={answer}
+                name={nameOf(view.config, answer.participantId, t('secretary'))}
+                onOpenMinutes={
+                  answer.participantId === SECRETARY_ID &&
+                  view.minutes?.some(
+                    (minutes) => minutes.roundId === round.roundId && minutes.document,
+                  )
+                    ? () => {
+                        if (!recordsPanel.current) return;
+                        recordsPanel.current.open = true;
+                        recordsPanel.current.querySelector('summary')?.focus();
+                      }
+                    : undefined
+                }
+              />
+            ),
+          })),
+          ...(round.stoppedAt
+            ? [
+                {
+                  id: `${round.roundId}:stopped`,
+                  order:
+                    Math.max(
+                      round.order ?? index * 7,
+                      ...round.answers.map((answer) => answer.order ?? 0),
+                    ) + 0.5,
+                  content: (
+                    <p role="status" className="mb-5 text-xs text-muted">
+                      {t('roundStopped')}
+                    </p>
+                  ),
+                },
+              ]
+            : []),
+        ])
+        .sort((a, b) => a.order - b.order)}
       composer={
         <MeetingComposer
           key={sessionId}
@@ -144,6 +190,9 @@ export function MeetingPage({ session }: { session: WorkSession }) {
           view={view}
           mode={mode}
           error={error || loadError}
+          onStop={
+            active ? () => void act(() => meetings.stop(sessionId, active.roundId)) : undefined
+          }
           send={(request) => act(() => meetings.send(sessionId, request))}
           sendQueued={() => act(() => meetings.sendQueued(sessionId))}
           dropQueued={() => act(() => meetings.dropQueued(sessionId))}
@@ -187,17 +236,7 @@ function MeetingHeader({ title, config }: { title: string; config: MeetingConfig
   );
 }
 
-function RoundCard({
-  round,
-  config,
-  onStop,
-  onOpenMinutes,
-}: {
-  round: RoundView;
-  config: MeetingConfig;
-  onStop: () => void;
-  onOpenMinutes?: (() => void) | undefined;
-}) {
+function MeetingMessage({ round, config }: { round: RoundView; config: MeetingConfig }) {
   const t = useTranslations('Meetings');
   const secretary = t('secretary');
   const addressed =
@@ -205,50 +244,14 @@ function RoundCard({
       ? round.participantIds.map((id) => nameOf(config, id, secretary)).join(', ')
       : null;
   return (
-    <section
-      className="flex flex-col gap-3"
-      aria-label={round.message ?? t('rebuttalRound', { number: round.rebuttalNo ?? 1 })}
-    >
-      {round.message === null ? (
-        <p className="text-xs font-medium text-muted">
-          {t('rebuttalRound', { number: round.rebuttalNo ?? 1 })}
-        </p>
-      ) : (
-        <div className="ml-auto flex max-w-[85%] flex-col gap-1 rounded-lg fill-group px-3 py-2 text-sm">
-          <span className="text-xs text-muted">
-            {t('you')}
-            {addressed ? ` · ${t('to', { names: addressed })}` : ''}
-          </span>
-          <p className="whitespace-pre-wrap wrap-anywhere">{round.message}</p>
-          {round.attachments?.length ? (
-            <TextAttachmentList attachments={round.attachments} />
-          ) : null}
-        </div>
-      )}
-      <div className="flex flex-col gap-2">
-        {round.answers.map((answer) => (
-          <AnswerCard
-            key={answer.participantId}
-            answer={answer}
-            name={nameOf(config, answer.participantId, secretary)}
-            onOpenMinutes={answer.participantId === SECRETARY_ID ? onOpenMinutes : undefined}
-          />
-        ))}
-      </div>
-      {round.stoppedAt ? (
-        <p role="status" className="text-xs text-muted">
-          {t('roundStopped')}
-        </p>
-      ) : null}
-      {round.active ? (
-        <div>
-          <Button size="xs" variant="outline" onClick={onStop}>
-            <Square size={12} aria-hidden />
-            {t('stopRound')}
-          </Button>
-        </div>
-      ) : null}
-    </section>
+    <div className="mb-5 ml-auto flex max-w-[85%] flex-col gap-1 rounded-lg fill-group px-3 py-2 text-sm">
+      <span className="text-xs text-muted">
+        {t('you')}
+        {addressed ? ` · ${t('to', { names: addressed })}` : ''}
+      </span>
+      <p className="whitespace-pre-wrap wrap-anywhere">{round.message}</p>
+      {round.attachments?.length ? <TextAttachmentList attachments={round.attachments} /> : null}
+    </div>
   );
 }
 
@@ -262,21 +265,21 @@ function AnswerCard({
   onOpenMinutes?: (() => void) | undefined;
 }) {
   const t = useTranslations('Meetings');
+  const detailed = useStore(preferences, (state) => state.chatDensity === 'detailed');
   const failed = ['failed', 'refused', 'interrupted', 'not_started'].includes(answer.status);
   return (
-    <article
-      aria-label={name}
-      className="flex min-w-0 flex-col gap-1.5 border-l-2 border-line pl-3"
-    >
+    <article aria-label={name} className="mb-5 flex min-w-0 flex-col gap-1.5">
       <header className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
         <span className="text-sm font-semibold">{name}</span>
-        <span
-          role={answer.status === 'running' ? 'status' : undefined}
-          className={failed ? 'text-danger' : 'text-muted'}
-        >
-          {t(`status.${answer.status}`)}
-        </span>
-        {answer.runId ? (
+        {answer.status !== 'answered' ? (
+          <span
+            role={answer.status === 'running' ? 'status' : undefined}
+            className={failed ? 'text-danger' : 'text-muted'}
+          >
+            {t(`status.${answer.status}`)}
+          </span>
+        ) : null}
+        {detailed && answer.runId ? (
           <Link to="/runs/$runId" params={{ runId: answer.runId }} className="text-muted underline">
             {t('openRun')}
           </Link>
@@ -291,11 +294,13 @@ function AnswerCard({
         </div>
       ) : answer.text ? (
         <SafeMarkdown text={answer.text} />
+      ) : answer.status === 'running' && answer.runId && answer.participantId !== SECRETARY_ID ? (
+        <StreamingAnswer runId={answer.runId} />
       ) : null}
       {failed && answer.detail ? (
         <p className="text-xs text-danger wrap-anywhere">{answer.detail}</p>
       ) : null}
-      {answer.usage ? (
+      {detailed && answer.usage ? (
         <p className="text-xs text-muted tabular-nums">
           {t('usage', { tokens: answer.usage.outputTokens, calls: answer.usage.modelCalls })}
           {answer.usage.unknown ? ` · ${t('usageUnknown')}` : ''}
@@ -305,11 +310,23 @@ function AnswerCard({
   );
 }
 
+function StreamingAnswer({ runId }: { runId: string }) {
+  const { state } = useCorralRun(runId, true, false);
+  const text = Object.entries(state.streams)
+    .filter(([id, stream]) => {
+      const call = state.projection?.modelCalls[id];
+      return call && !call.finished && !stream.broken && !stream.completed;
+    })
+    .at(-1)?.[1].text;
+  return text ? <SafeMarkdown text={text} /> : null;
+}
+
 function MeetingComposer({
   projectId,
   view,
   mode,
   error,
+  onStop,
   send,
   sendQueued,
   dropQueued,
@@ -319,6 +336,7 @@ function MeetingComposer({
   view: MeetingView;
   mode: 'mock' | 'live';
   error: string;
+  onStop?: (() => void) | undefined;
   send(request: MeetingRoundRequest): Promise<MeetingResult | null>;
   sendQueued(): Promise<MeetingResult | null>;
   dropQueued(): Promise<MeetingResult | null>;
@@ -335,13 +353,10 @@ function MeetingComposer({
   const pending = useRef<{ key: string; commandId: string } | null>(null);
   const active = view.rounds.some((round) => round.active);
   const dispatch = async (
-    request:
-      | Omit<Extract<MeetingRoundRequest, { kind: 'message' }>, 'commandId' | 'mode'>
-      | Omit<Extract<MeetingRoundRequest, { kind: 'rebuttal' }>, 'commandId' | 'mode'>,
+    request: Omit<Extract<MeetingRoundRequest, { kind: 'message' }>, 'commandId' | 'mode'>,
   ) => {
-    if (inFlight.current || attachmentLoading || view.queued) return;
-    if (request.kind === 'rebuttal' && !view.rebuttal) return;
-    const key = JSON.stringify([request, mode, request.kind === 'rebuttal' ? view.rebuttal : null]);
+    if (inFlight.current || attachmentLoading) return;
+    const key = JSON.stringify([request, mode]);
     if (pending.current?.key !== key) pending.current = { key, commandId: newCommandId() };
     inFlight.current = true;
     setSending(true);
@@ -356,7 +371,7 @@ function MeetingComposer({
   };
   const submit = async (message: string, chosen: string[]) => {
     const trimmed = message.trim();
-    if (!trimmed || (/^\/반론(?:\s|$)/u.test(trimmed) && !view.rebuttal)) return;
+    if (!trimmed) return;
     const result = await dispatch({
       kind: 'message',
       text: trimmed,
@@ -364,9 +379,9 @@ function MeetingComposer({
       ...(attachments.length ? { attachments } : {}),
     });
     if (result?.ok) {
-      setText('');
-      setMentions([]);
-      setAttachments([]);
+      setText((current) => (current === message ? '' : current));
+      setMentions((current) => (current === chosen ? [] : current));
+      setAttachments((current) => (current === attachments ? [] : current));
     }
   };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -409,54 +424,52 @@ function MeetingComposer({
         aria-label={t('message')}
         placeholder={t('placeholder')}
         value={text}
-        rows={3}
+        rows={2}
         maxLength={20000}
-        disabled={sending}
         className="w-full resize-y rounded fill-control px-2 py-1.5"
         onChange={(event) => setText(event.target.value)}
         onKeyDown={onKeyDown}
       />
       <p className="text-xs text-muted">{mentions.length ? null : t('everyone')}</p>
-      <MeetingEvidencePicker
-        projectId={projectId}
-        value={attachments}
-        onChange={setAttachments}
-        onLoading={setAttachmentLoading}
-        disabled={sending}
-      />
+      <details
+        aria-label={t('evidence')}
+        open={attachments.length ? true : undefined}
+        className="text-xs"
+      >
+        <summary className="cursor-pointer rounded py-1 text-muted focus-visible:outline-2 focus-visible:outline-ring">
+          {attachments.length
+            ? t('evidenceSelected', { count: attachments.length })
+            : t('evidence')}
+        </summary>
+        <div className="pt-1">
+          <MeetingEvidencePicker
+            projectId={projectId}
+            value={attachments}
+            onChange={setAttachments}
+            onLoading={setAttachmentLoading}
+            disabled={sending}
+          />
+        </div>
+      </details>
       <div className="flex flex-wrap items-center gap-2">
         <Button
           size="sm"
-          disabled={
-            sending ||
-            attachmentLoading ||
-            !text.trim() ||
-            Boolean(view.queued) ||
-            (/^\/반론(?:\s|$)/u.test(text.trim()) && !view.rebuttal)
-          }
+          disabled={sending || attachmentLoading || !text.trim()}
           onClick={() => void submit(text, mentions)}
         >
           <Send size={14} aria-hidden />
           {t('send')}
         </Button>
+        {onStop ? (
+          <Button size="sm" variant="outline" onClick={onStop}>
+            <Square size={12} aria-hidden />
+            {t('stopRound')}
+          </Button>
+        ) : null}
         <Button
           size="sm"
           variant="outline"
-          title={t('rebuttalHint')}
-          disabled={sending || attachmentLoading || !view.rebuttal || Boolean(view.queued)}
-          onClick={() =>
-            void dispatch({
-              kind: 'rebuttal',
-              ...(mentions.length && !mentions.includes(SECRETARY_ID) ? { mentions } : {}),
-            })
-          }
-        >
-          {t('rebuttal')}
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={sending || attachmentLoading || active || Boolean(view.queued)}
+          disabled={sending || attachmentLoading || view.rounds.length === 0}
           onClick={() =>
             void dispatch({ kind: 'message', text: t('summaryRequest'), mentions: [SECRETARY_ID] })
           }
@@ -464,7 +477,6 @@ function MeetingComposer({
           {t('summarise')}
         </Button>
       </div>
-      <p className="text-xs text-muted">{t('noLimits')}</p>
       {error ? (
         <p role="alert" className="text-xs text-danger wrap-anywhere">
           {error}

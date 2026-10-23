@@ -275,6 +275,7 @@ class WorkerExecution {
       const { role } = this.input;
       this.send({
         type: 'start',
+        ...(this.input.meeting ? { meeting: this.input.meeting } : {}),
         model: this.model,
         ...(this.input.model.reasoning
           ? { reasoningCapabilities: this.input.model.reasoning }
