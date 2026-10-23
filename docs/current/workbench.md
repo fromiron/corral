@@ -117,6 +117,14 @@ P11의 구현과 Linux 인앱·관련 회귀 범위는 [C-151 검증 기록](../
 
 사본과 작업 창에서 모드를 표시·전환한다. agent writer·터미널·branch 생성/전환·pull은 공유 모드를 끝내기 전 거절한다. 다른 사람 owner의 종료·미확인 효과가 정리돼야 단독 쓰기로 돌아간다. 읽기 전용 Run과 검사는 각자 고정 snapshot을 사용한다. host 재시작은 uncertain이고 공유를 자동 복원하지 않는다. 일반 서버는 기본 비활성이고 로컬 Desktop sidecar·`corral dev`만 opt-in한다. 구현·환경 검증·미검증 범위는 [C-161 기록](../evaluation/Development-Workbench-Shared-Development-2026-10-23.md)을 따른다.
 
+## 미리보기 요소 피드백
+
+[CR-046 P20](../change-requests/CR-046-development-workbench.md#p20-미리보기-요소-피드백)은 Desktop의 실행 중인 개발 앱 미리보기에서 사람이 선택한 요소를 대화 자료로 연결한다. 작업·미리보기 창에서 캡처를 시작하고 실제 preview에서 요소를 우클릭하거나 키보드 문맥 메뉴로 선택한다. Esc 또는 취소로 중단할 수 있다. 입력값이나 전체 DOM을 자동으로 첨부하지 않으며 스크린샷·대기 중 콘솔 포함 여부를 따로 고른다.
+
+검토 화면은 선택 요소의 텍스트·한정된 스타일·URL·lease·관측 시간·화면 범위를 표시한다. URL의 인증/query 데이터와 preview 권한 토큰을 제외하고 source revision은 확인 불가로 표시한다. 캡처 전후 lease·실제 view·탐색 세대가 바뀌면 거절한다. 현재 화면이 특정 Git tree와 원자적으로 같다고 보장하지 않는다.
+
+명시 첨부를 누르면 기존 Composer에 텍스트와 선택한 이미지가 함께 들어간다. host/copy·대화 전송 세대가 바뀌거나 첨부 한도를 넘으면 둘 중 일부만 추가하지 않는다. 첨부는 고정된 사용자 제공 자료이며 실행 지시·권한이나 현재 화면의 증명이 아니다. preview에 preload·앱 cookie·host API를 주지 않으며 기존 agent browser의 실행/근거 수명과 분리한다. 이 기능이 없는 이전 Desktop·원격 bridge에서는 기존 미리보기 열기를 유지한다.
+
 
 ## 프로젝트 언어 지원
 

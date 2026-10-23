@@ -1638,5 +1638,38 @@
       "TC-WBD-019-N",
       "TC-WBD-019-F"
     ]
+  },
+  {
+    "requirementId": "CRL-WBD-020",
+    "tasks": [
+      "C-164"
+    ],
+    "tests": [
+      "TC-WBD-020-H",
+      "TC-WBD-020-N",
+      "TC-WBD-020-F"
+    ]
+  },
+  {
+    "requirementId": "CRL-WBD-021",
+    "tasks": [
+      "C-165"
+    ],
+    "tests": [
+      "TC-WBD-021-H",
+      "TC-WBD-021-N",
+      "TC-WBD-021-F"
+    ]
+  },
+  {
+    "requirementId": "CRL-WBD-022",
+    "tasks": [
+      "C-166"
+    ],
+    "tests": [
+      "TC-WBD-022-H",
+      "TC-WBD-022-N",
+      "TC-WBD-022-F"
+    ]
   }
 ]

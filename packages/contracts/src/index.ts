@@ -21,6 +21,7 @@ export * from './lsp.ts';
 export * from './media-artifact.ts';
 export * from './package-management.ts';
 export type * from './ports.ts';
+export * from './preview-observation.ts';
 export * from './preview-tools.ts';
 export * from './profile-context.ts';
 export * from './project-tools.ts';

@@ -268,3 +268,24 @@ H는 Git 변경·미제출 의견·열린 Run이 있는 사본의 요약과, 보
 - 기존 관리 사본의 파일 열거·ignore·안전한 파일 읽기를 재사용한다. 검색 범위·결과/bytes 상한·취소를 명시하고 binary·대용량·보호 경로는 읽지 않는다. 실행 파일·새 검색 엔진 의존성은 필요가 입증되기 전 추가하지 않는다.
 - 결과는 디스크 기준임을 표시한다. 미저장 초안을 검색에 몰래 섞거나 덮지 않으며, 결과는 기존 문서 열기/줄 이동으로 연결한다. 대상·generation·파일 hash가 바뀐 결과는 현재 위치로 단정하지 않고 새 검색을 요구한다. 늦은 쿼리가 새 검색 결과를 덮지 않는다.
 - 핵심 확인: 여러 파일의 내용 검색·결과 이동, ignore/binary/한도, 취소·이전 응답·변경된 파일과 dirty 초안 보존. 새 전체 E2E 묶음은 만들지 않는다.
+
+## P20: 미리보기 요소 피드백
+
+- 승인: 사용자가 P20 → P24-B → P25 순서의 구현·기존 동작 보존·핵심 회귀와 실제 화면·단위별 로컬 커밋을 요청했다. 추적 CRL-WBD-020/C-164/TC-WBD-020-H,N,F. 전체 플랫폼·부하·외부 게시 검증은 반복하지 않는다.
+- 실제 Desktop preview view를 관측한다. 기존 agent browser는 별도 실행 문맥이므로 사용자가 보고 선택한 화면으로 대체하지 않는다. 새 범용 브라우저·임의 script/CDP API를 renderer에 노출하지 않는다.
+- trusted Studio에서 캡처를 시작하고 실제 preview의 요소를 명시 선택한다. 선택 요소의 한정된 텍스트·스타일·화면 영역만 반환한다. 스크린샷과 콘솔 포함은 사람이 고르며, 콘솔은 캡처 대기 중 한정된 항목만 포함한다. 입력값·전체 DOM·앱 인증·preview 권한 토큰을 자동 수집하지 않는다.
+- 캡처 전후 lease·동일 view·탐색 세대를 확인한다. 화면을 바꾸거나 닫거나 lease를 폐기하면 늦은 캡처는 거절한다. Esc/명시 취소로 종료할 수 있으며 preview에는 계속 preload·host IPC·앱 cookie를 주지 않는다.
+- Studio의 기존 UI에서 내용을 검토하고 명시적으로 대화에 첨부한다. 관측 URL·lease·시간·선택 범위를 표시하고 source revision은 확인 불가로 남긴다. 가변 개발 화면과 Git tree의 원자적 일치를 주장하지 않는다. 대상 host/copy·대화 초안 세대가 바뀌면 첨부하지 않는다. 페이지 내용은 지시가 아닌 사용자 제공 자료다.
+
+## P24-B: 다중 파일 교체와 refactor
+
+- 위 요청으로 P20 이후 진행한다. CRL-WBD-021/C-165/TC-WBD-021-H,N,F. 기존 P24-A 검색과 P23 언어 세션, 파일의 안전한 읽기/CAS·공통 writer를 재사용한다. 사람 효과에 가짜 Run/execution을 만들지 않는다.
+- literal replace-all, symbol rename, edit-only code action을 저장된 파일의 불변 before/after diff로 검토하고 명시 적용한다. 미저장/pending 문서를 자동 저장하거나 덮지 않는다. 언어 세대·문서 버전·대상과 파일별 hash를 확인한다. 서버 command나 미지원 파일 동작은 실행하지 않는다.
+- 적용은 공통 사람 writer와 안정된 command ID/receipt를 사용한다. 사전 검사 실패는 쓰기 전에 거절하고 부분 실패는 성공으로 숨기지 않는다. 이미 바뀐 외부 파일을 rollback으로 덮지 않으며 실제 적용/보존/불확실 상태를 보고한다. 응답 유실은 같은 ID로만 조회한다. proposal 작성은 쓰기가 아니다.
+
+## P25: 고급 Git와 충돌 해결
+
+- 위 요청으로 P24-B 이후 진행한다. CRL-WBD-022/C-166/TC-WBD-022-H,N,F. 기존 Git 창·writer·receipt·hook/signer/credential 정책을 유지한다.
+- index hunk는 실제 HEAD/index/working 파일과 patch identity에 고정하고 stage/unstage 후 index를 다시 판별한다. checkpoint hunk 승인과 혼동하지 않는다. binary·rename/mode/filter 등 안전하게 표현할 수 없는 경우는 미지원 이유와 기존 파일 전체 작업을 유지한다.
+- 충돌은 base/ours/theirs와 현재 파일을 보여 주며 기존 편집기로 해결한다. merge/rebase 진행·continue/abort는 sequencer identity와 현재 index/HEAD를 재검증한다. continue에서 hook/signer·commit 정책을 우회하거나 todo의 exec를 몰래 실행하지 않는다. 지원하지 않는 interactive/autostash/외부 실행 상태는 거절한다.
+- abort의 변경 손실 가능을 구체적으로 확인하고 dirty 초안을 보호한다. 자동 merge·force push·destructive reset/clean은 추가하지 않는다. 중복/유실·재시작·실패 후 상태를 다시 읽으며 불확실 상태를 완료로 바꾸지 않는다.

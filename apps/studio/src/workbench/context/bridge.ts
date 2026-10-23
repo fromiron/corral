@@ -1,6 +1,13 @@
-import { canonicalJson, type TextAttachment, textAttachmentKey } from '@corral/contracts';
+import {
+  canonicalJson,
+  ImageAttachment,
+  ImageAttachments,
+  type TextAttachment,
+  textAttachmentKey,
+} from '@corral/contracts';
 import { validTextAttachments } from '@corral/core';
 import {
+  type ComposerDraft,
   composerDraftRevision,
   isComposerCaptureCurrent,
   readComposerDraft,
@@ -23,6 +30,7 @@ export const COMPOSER_ATTACH = 'corral:composer-attach';
 export interface AttachmentRequest {
   capture: AttachmentCapture;
   attachment: TextAttachment;
+  image?: ImageAttachment;
   replaceKey?: string;
   result?: AttachmentResult;
 }
@@ -48,19 +56,34 @@ export function mergeComposerAttachment(
       : [...value, request.attachment];
   return validTextAttachments(next) ? next : { ok: false, reason: 'limit' };
 }
+export function mergeComposerCapture(
+  draft: ComposerDraft,
+  request: AttachmentRequest,
+): ComposerDraft | AttachmentResult {
+  const attachments = mergeComposerAttachment(draft.attachments ?? [], request);
+  if (!Array.isArray(attachments)) return attachments;
+  if (request.image === undefined) return { ...draft, attachments };
+  if (!ImageAttachment.safeParse(request.image).success)
+    return { ok: false, reason: 'unavailable' };
+  const images = draft.images?.some((image) => image.imageId === request.image?.imageId)
+    ? draft.images
+    : [...(draft.images ?? []), request.image];
+  return ImageAttachments.safeParse(images).success
+    ? { ...draft, attachments, images }
+    : { ok: false, reason: 'limit' };
+}
 /** The mounted Composer owns current state; review routes fall back to its stored draft. */
 export function appendComposerAttachment(
   capture: AttachmentCapture,
   attachment: TextAttachment,
-  options?: { replaceKey?: string },
+  options?: { replaceKey?: string; image?: ImageAttachment },
 ): AttachmentResult {
   const request: AttachmentRequest = { capture, attachment, ...options };
   window.dispatchEvent(new CustomEvent(COMPOSER_ATTACH, { detail: request }));
   if (request.result) return request.result;
   const draft = readComposerDraft(capture.target.sessionId);
-  const merged = mergeComposerAttachment(draft.attachments ?? [], request);
-  if (!Array.isArray(merged)) return merged;
-  const next = { ...draft, attachments: merged };
+  const next = mergeComposerCapture(draft, request);
+  if ('ok' in next) return next;
   writeComposerDraft(capture.target.sessionId, next);
   // Without a mounted Composer, successful storage is the handoff to the next view.
   return canonicalJson(readComposerDraft(capture.target.sessionId)) === canonicalJson(next)

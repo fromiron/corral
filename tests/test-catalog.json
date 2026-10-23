@@ -3885,5 +3885,104 @@
     "status": "planned",
     "adapter": "temporary managed Git copy; protocol fixture and jsdom; focused real UI",
     "evidence": null
+  },
+  {
+    "id": "TC-WBD-020-H",
+    "requirements": [
+      "CRL-WBD-020"
+    ],
+    "suite": "unit+integration",
+    "scenario": "실제 preview 렌더·조작·재열기와 선택 관측 검토·명시 첨부",
+    "status": "planned",
+    "adapter": "isolated real Git/SQLite and desktop or in-app fixture; focused core regressions; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-020-N",
+    "requirements": [
+      "CRL-WBD-020"
+    ],
+    "suite": "unit+integration",
+    "scenario": "타 origin·폐기 lease·page/host 변경 거절과 preview의 API/credential 격리",
+    "status": "planned",
+    "adapter": "isolated real Git/SQLite and desktop or in-app fixture; focused core regressions; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-020-F",
+    "requirements": [
+      "CRL-WBD-020"
+    ],
+    "suite": "unit+integration",
+    "scenario": "취소·늦은 캡처·대화 전송 후 첨부 거절과 원래 초안 보존",
+    "status": "planned",
+    "adapter": "isolated real Git/SQLite and desktop or in-app fixture; focused core regressions; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-021-H",
+    "requirements": [
+      "CRL-WBD-021"
+    ],
+    "suite": "unit+integration",
+    "scenario": "literal 다중 교체·symbol rename·edit-only code action의 preview와 명시 적용",
+    "status": "planned",
+    "adapter": "isolated real Git/SQLite and desktop or in-app fixture; focused core regressions; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-021-N",
+    "requirements": [
+      "CRL-WBD-021"
+    ],
+    "suite": "unit+integration",
+    "scenario": "dirty·stale target/version/hash·보호 경로·서버 command 거절",
+    "status": "planned",
+    "adapter": "isolated real Git/SQLite and desktop or in-app fixture; focused core regressions; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-021-F",
+    "requirements": [
+      "CRL-WBD-021"
+    ],
+    "suite": "unit+integration",
+    "scenario": "취소·중복·응답 유실·부분 쓰기 실패 후 결과 판별과 복구",
+    "status": "planned",
+    "adapter": "isolated real Git/SQLite and desktop or in-app fixture; focused core regressions; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-022-H",
+    "requirements": [
+      "CRL-WBD-022"
+    ],
+    "suite": "unit+integration",
+    "scenario": "index hunk stage/unstage·3-way 충돌 해결·merge/rebase 계속/중단",
+    "status": "planned",
+    "adapter": "isolated real Git/SQLite and desktop or in-app fixture; focused core regressions; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-022-N",
+    "requirements": [
+      "CRL-WBD-022"
+    ],
+    "suite": "unit+integration",
+    "scenario": "외부 index/HEAD 변경·dirty·binary/rename·실행 위험 sequencer 거절",
+    "status": "planned",
+    "adapter": "isolated real Git/SQLite and desktop or in-app fixture; focused core regressions; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-022-F",
+    "requirements": [
+      "CRL-WBD-022"
+    ],
+    "suite": "unit+integration",
+    "scenario": "중복·응답 유실·재시작·실패한 continue/abort에서 상태와 작업 보존",
+    "status": "planned",
+    "adapter": "isolated real Git/SQLite and desktop or in-app fixture; focused core regressions; no paid calls",
+    "evidence": null
   }
 ]

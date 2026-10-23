@@ -1024,6 +1024,16 @@ else {
         throw new Error('Invalid preview identity');
       return previews.open(sessionId, leaseId);
     });
+    handle('capture-preview', (sessionId, leaseId, options) => {
+      if (typeof sessionId !== 'string' || typeof leaseId !== 'string')
+        throw new Error('Invalid preview identity');
+      return previews.capture(sessionId, leaseId, options);
+    });
+    handle('cancel-preview-capture', (sessionId, leaseId) => {
+      if (typeof sessionId !== 'string' || typeof leaseId !== 'string')
+        throw new Error('Invalid preview identity');
+      previews.cancelCapture(sessionId, leaseId);
+    });
     handle('reveal-workspace', () => {
       if (existsSync(saved.workspace)) shell.showItemInFolder(saved.workspace);
     });

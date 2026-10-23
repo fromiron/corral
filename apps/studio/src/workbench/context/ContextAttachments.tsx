@@ -33,6 +33,9 @@ export function AttachmentSource({ source }: { source: TextAttachmentProvenance 
   const t = useTranslations('Context');
   let label: string;
   switch (source.kind) {
+    case 'preview':
+      label = `${t('previewSource')} · ${source.url} · ${source.leaseId} · #${source.pageRevision} · ${source.capturedAt} · ${t('previewSourceUnknown')}`;
+      break;
     case 'code':
       label = `${t(source.snapshot === 'draft' ? 'draftCode' : 'savedCode')} · ${source.path} · L${source.range.startLine}:${source.range.startColumn}–L${source.range.endLine}:${source.range.endColumn} · ${source.bufferHash.slice(0, 8)}`;
       break;
@@ -169,10 +172,12 @@ function CaptureRow({
     }
   };
   const applies = 'applies' in status ? status.applies : undefined;
-  const label =
-    applies && applies !== 'yes'
-      ? `${t(status.state)} · ${t(`applies.${applies}`)}`
+  const stateLabel =
+    item.provenance?.kind === 'preview' && status.state === 'current'
+      ? t('previewCurrent')
       : t(status.state);
+  const label =
+    applies && applies !== 'yes' ? `${stateLabel} · ${t(`applies.${applies}`)}` : stateLabel;
   return (
     <li className="flex min-w-0 flex-col gap-0.5 rounded fill-group px-2 py-1">
       <div className="flex min-w-0 items-start gap-1">
@@ -219,16 +224,20 @@ function CaptureRow({
                 >
                   {t('openSource')}
                 </Button>
-                <Button
-                  type="button"
-                  size="xs"
-                  variant="ghost"
-                  disabled={disabled || busy}
-                  aria-label={`${t('replaceCapture')}: ${item.name}`}
-                  onClick={() => void replace()}
-                >
-                  {t('replaceCapture')}
-                </Button>
+                {item.provenance.kind === 'preview' ? (
+                  <p className="text-xs text-muted">{t('previewRecapture')}</p>
+                ) : (
+                  <Button
+                    type="button"
+                    size="xs"
+                    variant="ghost"
+                    disabled={disabled || busy}
+                    aria-label={`${t('replaceCapture')}: ${item.name}`}
+                    onClick={() => void replace()}
+                  >
+                    {t('replaceCapture')}
+                  </Button>
+                )}
               </div>
             </div>
           ) : null}

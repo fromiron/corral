@@ -23,6 +23,10 @@ contextBridge.exposeInMainWorld(
     shortcuts: (bindings) => ipcRenderer.invoke('desktop:shortcuts', bindings),
     openPreview: (sessionId, leaseId) =>
       ipcRenderer.invoke('desktop:open-preview', sessionId, leaseId),
+    capturePreview: (sessionId, leaseId, options) =>
+      ipcRenderer.invoke('desktop:capture-preview', sessionId, leaseId, options),
+    cancelPreviewCapture: (sessionId, leaseId) =>
+      ipcRenderer.invoke('desktop:cancel-preview-capture', sessionId, leaseId),
     revealWorkspace: () => ipcRenderer.invoke('desktop:reveal-workspace'),
     openExternal: (url) => ipcRenderer.invoke('desktop:external', url),
     retry: () => ipcRenderer.invoke('desktop:retry'),

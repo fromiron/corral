@@ -96,6 +96,36 @@ export async function readAttachmentSource(
         : unavailable();
     const client = services.workspaces;
     if (!client) return unavailable();
+    if (source.kind === 'preview') {
+      const [copy, binding, leases] = await Promise.all([
+        client.worktree(source.target.sessionId),
+        client.binding(source.target.projectId),
+        client.previews(source.target.sessionId),
+      ]);
+      if (
+        !copy ||
+        copy.missing ||
+        copy.removedAt ||
+        copy.sessionId !== source.target.sessionId ||
+        copy.bindingId !== source.target.bindingId ||
+        copy.copyGeneration !== source.target.copyGeneration ||
+        !binding ||
+        binding.missing ||
+        binding.projectId !== source.target.projectId ||
+        binding.bindingId !== source.target.bindingId
+      )
+        return unavailable();
+      const lease = leases.find((entry) => entry.leaseId === source.leaseId);
+      if (
+        lease?.state !== 'ready' ||
+        lease.sessionId !== source.target.sessionId ||
+        lease.operationId !== source.operationId ||
+        new URL(lease.url).origin !== lease.origin ||
+        new URL(source.url).origin !== lease.origin
+      )
+        return unavailable();
+      return { state: 'current', applies: 'unknown', current: item };
+    }
     if (source.kind === 'hunk') {
       const hunks = await client.hunks(source.sessionId, {
         from: source.from,
@@ -180,6 +210,7 @@ export async function recaptureAttachmentSource(
 ): Promise<TextAttachment | null> {
   const source = item.provenance;
   if (!source || !ownsSource(services, source)) return null;
+  if (source.kind === 'preview') return null;
   if (source.kind === 'code') {
     if (!services.workspaces) return null;
     const file = await services.workspaces.readDocument(source.target.sessionId, source.path);

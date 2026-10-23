@@ -84,3 +84,26 @@ it('[TC-WBD-007-N] refuses reversed ranges, traversal, invalid snapshot hashes a
   ])
     expect(TextAttachmentProvenance.safeParse(provenance).success).toBe(false);
 });
+
+it('[TC-WBD-020-H] [TC-WBD-020-N] retains preview identity without claiming a source revision or carrying authentication', () => {
+  const source = {
+    kind: 'preview',
+    target,
+    leaseId: 'preview_one',
+    operationId: 'task_one',
+    url: 'http://127.0.0.2:4321/page',
+    capturedAt: '2026-10-23T12:00:00.000Z',
+    pageRevision: 2,
+    sourceRevision: null,
+    screenshotHash: digest,
+  };
+  expect(TextAttachmentProvenance.safeParse(source).success).toBe(true);
+  for (const extra of [
+    { sourceRevision: digest },
+    { headers: { authorization: 'not-allowed' } },
+    { url: 'http://user:password@127.0.0.2:4321/page' },
+    { url: 'http://127.0.0.2:4321/page?token=private' },
+    { url: 'http://127.0.0.1:4317/api/v1/session' },
+  ])
+    expect(TextAttachmentProvenance.safeParse({ ...source, ...extra }).success).toBe(false);
+});

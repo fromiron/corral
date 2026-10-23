@@ -92,6 +92,33 @@ it('[TC-WBD-007-F] stale sources open the unchanged read-only capture and replac
     );
     await click('Context.confirmReplacement');
     expect(onChange).toHaveBeenCalledTimes(1);
+    const preview = createTextAttachment('preview.txt', 'text/plain', 'frozen preview', {
+      kind: 'preview',
+      target: {
+        hostId: 'host',
+        projectId: 'project',
+        sessionId: 'session',
+        bindingId: 'binding',
+        copyGeneration: 1,
+      },
+      leaseId: 'preview',
+      url: 'http://127.0.0.2:4318/page',
+      capturedAt: '2026-10-23T00:00:00.000Z',
+      pageRevision: 2,
+      sourceRevision: null,
+    });
+    fixture.read.mockResolvedValue({ state: 'current', applies: 'unknown', current: preview });
+    fixture.recapture.mockClear();
+    await act(async () => root.render(<SourceAttachments value={[preview]} onChange={onChange} />));
+    expect(container.textContent).toContain('Context.applies.unknown');
+    expect(container.textContent).toContain('Context.previewRecapture');
+    expect(container.textContent).toContain('http://127.0.0.2:4318/page');
+    expect(container.textContent).not.toContain('Context.replaceCapture');
+    expect(container.querySelector('a')).toBeNull();
+    await click('Context.openSource');
+    expect(document.querySelector('[role=dialog]')?.textContent).toContain('frozen preview');
+    expect(fixture.recapture).not.toHaveBeenCalled();
+    expect(onChange).toHaveBeenCalledTimes(1);
   } finally {
     await act(async () => root.unmount());
     container.remove();

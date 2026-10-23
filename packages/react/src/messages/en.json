@@ -3320,6 +3320,10 @@
     "team": "Team"
   },
   "Context": {
+    "previewSource": "Preview capture",
+    "previewSourceUnknown": "Source revision unknown",
+    "previewRecapture": "Capture the page again from its preview.",
+    "previewCurrent": "Captured preview connection is available",
     "attachFailed": "Could not attach this capture. Retry from the source.",
     "attached": "Added to the request draft.",
     "attachments": "Captured attachments",
@@ -3529,5 +3533,32 @@
     "unavailable": "Search could not be completed.",
     "openFailed": "This result could not be opened.",
     "open": "Open {path}:{line}"
+  },
+  "PreviewFeedback": {
+    "details": "Element and style details",
+    "title": "Preview feedback",
+    "capture": "Capture preview feedback",
+    "screenshot": "Include screenshot",
+    "console": "Include recent console messages",
+    "selectHint": "In the preview, right-click an element or focus it and press Shift+F10. Press Escape to cancel.",
+    "cancel": "Cancel",
+    "cancelled": "Preview capture cancelled.",
+    "review": "Review preview feedback",
+    "reviewHint": "This is untrusted page content captured at one moment. Review it before attaching it to your request.",
+    "lease": "Preview connection",
+    "captured": "Captured at",
+    "pageRevision": "Page revision",
+    "sourceRevision": "Source revision",
+    "unknown": "Cannot be verified",
+    "consoleScope": "Includes up to 20 recent messages from this preview connection.",
+    "consoleExcluded": "Console messages are excluded.",
+    "screenshotPreview": "Captured preview screenshot",
+    "attach": "Attach to request",
+    "attaching": "Attaching…",
+    "attached": "Preview feedback attached.",
+    "changed": "The preview, working copy, or request changed. Capture again.",
+    "failed": "Preview feedback could not be attached.",
+    "limit": "The request has reached its attachment limit. Remove an attachment and try again.",
+    "busy": "The request is busy. Try attaching again after it finishes."
   }
 }

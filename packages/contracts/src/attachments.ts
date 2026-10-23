@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { canonicalJson } from './canonical-json.ts';
 import { ContentHash } from './harness.ts';
 import { Identifier } from './ids.ts';
+import { PreviewObservationUrl } from './preview-observation.ts';
 import { WorkspaceTarget } from './workbench.ts';
 
 /** Monaco lines and UTF-16 columns are 1-based; the end is exclusive. */
@@ -59,6 +60,17 @@ const TerminalRange = z
 
 /** Captured, user-supplied source metadata; never authority or proof of the current source. */
 export const TextAttachmentProvenance = z.discriminatedUnion('kind', [
+  z.strictObject({
+    kind: z.literal('preview'),
+    target: WorkspaceTarget,
+    leaseId: Identifier,
+    operationId: Identifier.optional(),
+    url: PreviewObservationUrl,
+    capturedAt: z.iso.datetime(),
+    pageRevision: z.int().min(0),
+    sourceRevision: z.null(),
+    screenshotHash: ContentHash.optional(),
+  }),
   z.strictObject({
     kind: z.literal('code'),
     target: WorkspaceTarget,

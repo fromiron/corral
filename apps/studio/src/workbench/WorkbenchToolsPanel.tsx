@@ -23,6 +23,7 @@ export function WorkbenchToolsPanel({
       <ServicePreview
         key={panelKey(services, { kind: 'service-preview', sessionId })}
         sessionId={sessionId}
+        projectId={projectId}
       />
     </div>
   );

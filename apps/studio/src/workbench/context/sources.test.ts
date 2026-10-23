@@ -1,5 +1,5 @@
 import { webcrypto } from 'node:crypto';
-import type { FileDocument } from '@corral/contracts';
+import type { FileDocument, TextAttachmentProvenance } from '@corral/contracts';
 import { createTextAttachment } from '@corral/core';
 import { afterEach, expect, it, vi } from 'vitest';
 import { captureDocumentAttachment } from './documents.ts';
@@ -41,6 +41,57 @@ const target = {
   bindingId: 'binding',
   copyGeneration: 1,
 };
+
+it('[TC-WBD-020-H] preview captures retain frozen bytes while checking only the live lease and exact copy', async () => {
+  const source: TextAttachmentProvenance = {
+    kind: 'preview',
+    target,
+    leaseId: 'preview',
+    operationId: 'task',
+    url: 'http://127.0.0.2:4318/nested/page',
+    capturedAt: '2026-10-23T00:00:00.000Z',
+    pageRevision: 2,
+    sourceRevision: null,
+  };
+  const item = createTextAttachment('preview.txt', 'text/plain', 'frozen page observation', source);
+  const copy = { ...target, missing: false, removedAt: null };
+  const lease = {
+    leaseId: 'preview',
+    sessionId: target.sessionId,
+    operationId: 'task',
+    url: 'http://127.0.0.2:4318/',
+    origin: 'http://127.0.0.2:4318',
+    state: 'ready',
+  };
+  const workspaces = {
+    worktree: vi.fn(async () => copy),
+    binding: vi.fn(async () => ({
+      bindingId: target.bindingId,
+      projectId: target.projectId,
+      missing: false,
+    })),
+    previews: vi.fn(async () => [lease]),
+  };
+  const services = { workspaceId: 'host', mode: 'server', workspaces } as never;
+  expect(await readAttachmentSource(services, item)).toEqual({
+    state: 'current',
+    applies: 'unknown',
+    current: item,
+  });
+  copy.copyGeneration = 2;
+  expect((await readAttachmentSource(services, item)).state).toBe('unavailable');
+  copy.copyGeneration = 1;
+  workspaces.previews.mockResolvedValueOnce([]);
+  expect((await readAttachmentSource(services, item)).state).toBe('unavailable');
+  lease.origin = 'http://127.0.0.2:4319';
+  expect((await readAttachmentSource(services, item)).state).toBe('unavailable');
+  vi.clearAllMocks();
+  expect(await recaptureAttachmentSource(services, item)).toBeNull();
+  expect(workspaces.worktree).not.toHaveBeenCalled();
+  expect(workspaces.binding).not.toHaveBeenCalled();
+  expect(workspaces.previews).not.toHaveBeenCalled();
+  expect(item.text).toBe('frozen page observation');
+});
 
 it('[TC-WBD-007-N] inspection uses an exact target and dirty buffer bytes, never an old generation as a substitute', async () => {
   vi.stubGlobal('crypto', webcrypto);

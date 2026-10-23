@@ -87,6 +87,7 @@ export function SourceAttachments(props: {
   };
   const replace = async (item: TextAttachment): Promise<TextAttachment | null> => {
     if (current.current.props.disabled) return null;
+    if (item.provenance?.kind === 'preview') throw new Error(t('previewRecapture'));
     const candidate = await recaptureAttachmentSource(services, item);
     if (!isCurrent() || current.current.props.disabled) return null;
     if (!candidate) throw new Error(t('replacementFailed'));
@@ -100,7 +101,7 @@ export function SourceAttachments(props: {
     <>
       <ContextAttachments
         {...props}
-        inspect={async (item) => ({ state: (await readAttachmentSource(services, item)).state })}
+        inspect={(item) => readAttachmentSource(services, item)}
         onOpen={open}
         onReplace={replace}
       />
@@ -120,7 +121,11 @@ export function SourceAttachments(props: {
               ) : null}
               {preview.state ? (
                 <p role="status" className="text-xs text-muted">
-                  {t(preview.state)}
+                  {t(
+                    preview.item.provenance?.kind === 'preview' && preview.state === 'current'
+                      ? 'previewCurrent'
+                      : preview.state,
+                  )}
                 </p>
               ) : null}
               <section aria-label={t('preview')}>

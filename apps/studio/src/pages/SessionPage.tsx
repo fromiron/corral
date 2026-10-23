@@ -127,7 +127,7 @@ import {
   type AttachmentRequest,
   appendComposerAttachment,
   COMPOSER_ATTACH,
-  mergeComposerAttachment,
+  mergeComposerCapture,
 } from '../workbench/context/bridge.ts';
 import {
   SourceAttachments,
@@ -1883,15 +1883,15 @@ export function Composer({
         request.result = { ok: false, reason: 'busy' };
         return;
       }
-      const merged = mergeComposerAttachment(currentDraft.current.draft.attachments ?? [], request);
-      if (!Array.isArray(merged)) {
-        request.result = merged;
+      const draft = mergeComposerCapture(currentDraft.current.draft, request);
+      if ('ok' in draft) {
+        request.result = draft;
         return;
       }
-      const draft = { ...currentDraft.current.draft, attachments: merged };
       currentDraft.current.draft = draft;
       draftRevision.current = writeComposerDraft(session.sessionId, draft);
-      setAttachments(merged);
+      setAttachments(draft.attachments ?? []);
+      if (request.image !== undefined) setImages(draft.images ?? []);
       request.result = { ok: true };
       requestAnimationFrame(() => input.current?.focus());
     };

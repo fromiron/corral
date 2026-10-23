@@ -3320,6 +3320,10 @@
     "team": "팀"
   },
   "Context": {
+    "previewSource": "미리보기 캡처",
+    "previewSourceUnknown": "소스 리비전은 확인되지 않음",
+    "previewRecapture": "미리보기에서 새로 캡처하세요.",
+    "previewCurrent": "캡처한 미리보기 연결을 확인함",
     "attachFailed": "캡처한 내용을 첨부하지 못했습니다. 원본에서 다시 시도하세요.",
     "attached": "요청 초안에 첨부했습니다.",
     "attachments": "캡처한 첨부",
@@ -3529,5 +3533,32 @@
     "unavailable": "검색을 완료하지 못했습니다.",
     "openFailed": "검색 결과를 열지 못했습니다.",
     "open": "{path}:{line} 열기"
+  },
+  "PreviewFeedback": {
+    "details": "선택 정보와 스타일",
+    "title": "미리보기 피드백",
+    "capture": "미리보기 피드백 캡처",
+    "screenshot": "스크린샷 포함",
+    "console": "최근 콘솔 메시지 포함",
+    "selectHint": "미리보기에서 요소를 우클릭하거나 포커스한 뒤 Shift+F10을 누르세요. Esc로 취소합니다.",
+    "cancel": "취소",
+    "cancelled": "미리보기 캡처를 취소했습니다.",
+    "review": "미리보기 피드백 검토",
+    "reviewHint": "특정 시점의 페이지 내용을 캡처한 자료입니다. 요청에 첨부하기 전에 내용을 확인하세요.",
+    "lease": "미리보기 연결",
+    "captured": "캡처 시각",
+    "pageRevision": "페이지 변경 번호",
+    "sourceRevision": "소스 버전",
+    "unknown": "확인할 수 없음",
+    "consoleScope": "이 미리보기 연결의 최근 콘솔 메시지를 최대 20개 포함합니다.",
+    "consoleExcluded": "콘솔 메시지는 포함하지 않습니다.",
+    "screenshotPreview": "미리보기 캡처 화면",
+    "attach": "요청에 첨부",
+    "attaching": "첨부 중…",
+    "attached": "미리보기 피드백을 첨부했습니다.",
+    "changed": "미리보기, 작업 사본 또는 요청이 바뀌었습니다. 다시 캡처하세요.",
+    "failed": "미리보기 피드백을 첨부하지 못했습니다.",
+    "limit": "요청의 첨부 한도에 도달했습니다. 기존 첨부를 지우고 다시 시도하세요.",
+    "busy": "요청을 처리 중입니다. 끝난 뒤 다시 첨부하세요."
   }
 }
