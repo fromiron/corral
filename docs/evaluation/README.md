@@ -4,6 +4,7 @@
 
 | 범위 | 증거 |
 |---|---|
+| 회의실·결정·일반 세션 인계 | [CR-049 라운드·회의록·채택·인계·복구](Meeting-Room-2026-10-23.md) |
 | 검토·실행·후보 비교 배치 | [CR-047 중앙 폭·수치 정렬·반영 버튼·카드 위계](Review-Comparison-Layout-2026-10-23.md) |
 | Desktop 기능·플랫폼 한계 | [전체 진행](Desktop-Capabilities-Implementation-Progress.md), [배포](Desktop-Delivery-Verification.md), [preview](Desktop-Preview-Verification.md), [동시 실행](Desktop-Concurrency-Verification.md), 나머지 Desktop 기능별 보고서 |
 | 알림 대상 이동 | [C-171 정확한 Run·승인, 늦은 클릭·재시작·SPA 보존](Desktop-Notification-Targets-2026-10-23.md) |

@@ -24,6 +24,8 @@ export * from './language-session.ts';
 export * from './layout.ts';
 export * from './lsp.ts';
 export * from './media-artifact.ts';
+export * from './meeting.ts';
+export * from './meeting-handoff.ts';
 export * from './package-management.ts';
 export type * from './ports.ts';
 export * from './preview-observation.ts';

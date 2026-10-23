@@ -54,7 +54,6 @@ export {
   RefreshCw,
   Search,
   Send,
-  TextSearch,
   Settings,
   Shield,
   Slash,
@@ -63,7 +62,9 @@ export {
   SquarePen,
   Sun,
   Terminal,
+  TextSearch,
   Trash2,
   Undo2,
+  Users,
   X,
 } from 'lucide-react';

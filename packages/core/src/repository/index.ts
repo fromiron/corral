@@ -10,6 +10,9 @@ import {
   HarnessBindingRef,
   type ImageAttachment,
   ImageAttachments,
+  MeetingConfig,
+  MeetingHandoffOrigin,
+  MeetingState,
   type NodeLayout,
   PermissionMode,
   QualityPreset,
@@ -68,6 +71,8 @@ export type SessionEntryState =
   | 'dismissed';
 
 export interface SessionEntry {
+  /** A handoff can only be launched through its pinned receipt, never generic entry retry. */
+  meetingHandoff?: MeetingHandoffOrigin;
   harness?: HarnessBindingRef;
   permissionMode?: PermissionMode;
   ultra?: UltraSelection;
@@ -137,6 +142,8 @@ export interface WorkSession {
   updatedAt: string;
   archivedAt: string | null;
   entries: SessionEntry[];
+  /** CR-049: present only for a meeting; changed only by the meeting service. */
+  meeting?: MeetingState;
 }
 
 export interface SessionChange {
@@ -146,6 +153,8 @@ export interface SessionChange {
   auto?: AutoModelChoice | null;
   pinned?: boolean;
   archived?: boolean;
+  /** CR-049: the meeting service's next state; a work session cannot become a meeting. */
+  meeting?: MeetingState;
   expectedRevision: number;
 }
 
@@ -158,6 +167,7 @@ export type SessionResult =
     };
 
 export interface NewSessionEntry {
+  meetingHandoff?: MeetingHandoffOrigin;
   harness?: HarnessBindingRef;
   permissionMode?: PermissionMode;
   ultra?: UltraSelection;
@@ -236,6 +246,8 @@ export interface CorralRepository {
     autoTitle?: boolean;
     objective?: string;
     corralId?: string | null;
+    /** CR-049: creates a meeting with these participants. */
+    meeting?: MeetingConfig;
   }): Promise<SessionResult>;
   updateSession(sessionId: string, change: SessionChange): Promise<SessionResult>;
   addSessionEntry(sessionId: string, entry: NewSessionEntry): Promise<SessionResult>;
@@ -258,6 +270,7 @@ export function planSessionCreate(
     autoTitle?: boolean;
     objective?: string;
     corralId?: string | null;
+    meeting?: MeetingConfig;
   },
   context: { now: string; sessionId: string },
 ): SessionResult {
@@ -272,6 +285,11 @@ export function planSessionCreate(
     };
   if (objective.length > ENTRY_MAX)
     return { ok: false, error: 'invalid', message: 'The session purpose is too long.' };
+  const meeting = input.meeting === undefined ? undefined : MeetingConfig.safeParse(input.meeting);
+  if (meeting && !meeting.success)
+    return { ok: false, error: 'invalid', message: 'The meeting participants are not valid.' };
+  if (meeting && input.corralId)
+    return { ok: false, error: 'invalid', message: 'A meeting does not run a chosen team.' };
   return {
     ok: true,
     session: {
@@ -288,6 +306,7 @@ export function planSessionCreate(
       updatedAt: context.now,
       archivedAt: null,
       entries: [],
+      ...(meeting ? { meeting: { config: meeting.data, rounds: [], queued: null } } : {}),
     },
   };
 }
@@ -308,6 +327,13 @@ export function planSessionUpdate(
     };
   if (change.auto && !AutoModelChoice.safeParse(change.auto).success)
     return { ok: false, error: 'invalid', message: 'The auto model choice is not valid.' };
+  if (
+    change.meeting !== undefined &&
+    (!current.meeting || !MeetingState.safeParse(change.meeting).success)
+  )
+    return { ok: false, error: 'invalid', message: 'Only a meeting keeps a valid meeting state.' };
+  if (current.meeting && change.corralId)
+    return { ok: false, error: 'invalid', message: 'A meeting does not run a chosen team.' };
   const title = change.title?.trim();
   if (title !== undefined && (!title || title.length > TITLE_MAX))
     return {
@@ -324,6 +350,7 @@ export function planSessionUpdate(
       ...(change.corralId !== undefined ? { corralId: change.corralId } : {}),
       ...(change.auto !== undefined ? { auto: change.auto } : {}),
       ...(change.pinned !== undefined ? { pinned: change.pinned } : {}),
+      ...(change.meeting !== undefined ? { meeting: MeetingState.parse(change.meeting) } : {}),
       ...(change.archived === undefined
         ? {}
         : { archivedAt: change.archived ? (current.archivedAt ?? now) : null }),
@@ -342,6 +369,17 @@ export function planSessionEntry(
 ): SessionResult {
   if (!current)
     return { ok: false, error: 'not_found', message: `Session ${sessionId} does not exist.` };
+  if (current.meeting)
+    return { ok: false, error: 'invalid', message: 'A meeting takes messages through its rounds.' };
+  if (
+    entry.meetingHandoff &&
+    (!MeetingHandoffOrigin.safeParse(entry.meetingHandoff).success || entry.intent !== 'next')
+  )
+    return {
+      ok: false,
+      error: 'invalid',
+      message: 'A handoff requires a valid source and next intent.',
+    };
   if (
     entry.harness !== undefined &&
     (!HarnessBindingRef.safeParse(entry.harness).success ||
@@ -419,6 +457,7 @@ export function planSessionEntry(
           ...(value.ultra ? { ultra: value.ultra } : {}),
           taskScope: value.taskScope ?? null,
           verificationScope: value.verificationScope ?? null,
+          meetingHandoff: value.meetingHandoff ?? null,
         });
       return identity(previous) === identity(entry)
         ? { ok: true, session: current }
@@ -460,6 +499,9 @@ export function planSessionEntry(
           executionId: entry.executionId ?? null,
           detail: entry.detail ?? null,
           commandId: entry.commandId ?? null,
+          ...(entry.meetingHandoff
+            ? { meetingHandoff: MeetingHandoffOrigin.parse(entry.meetingHandoff) }
+            : {}),
           ...(entry.auto ? { auto: entry.auto } : {}),
           ...(entry.permissionMode ? { permissionMode: entry.permissionMode } : {}),
           ...(entry.harness ? { harness: HarnessBindingRef.parse(entry.harness) } : {}),

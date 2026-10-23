@@ -5,6 +5,7 @@ import { createRoot } from 'react-dom/client';
 import { afterEach, expect, it, vi } from 'vitest';
 import { createStore } from 'zustand/vanilla';
 import { DeploymentTasks } from './DeploymentTasks.tsx';
+import { WORKSPACE_CHANGED } from './workspaceEvents.ts';
 
 const fixture = vi.hoisted(() => ({ api: {} as Record<string, unknown> }));
 vi.mock('../services.tsx', () => ({
@@ -57,7 +58,7 @@ afterEach(async () => {
   documents.setState({ documents: {} });
   vi.unstubAllGlobals();
 });
-async function mount() {
+async function mount(overrides: Record<string, unknown> = {}) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   fixture.api = {
     deployments: vi.fn(async () => ({ profiles: [profile], deployments: [] })),
@@ -83,6 +84,7 @@ async function mount() {
       },
     })),
     stopDeployment: vi.fn(),
+    ...overrides,
   };
   const container = document.createElement('div');
   document.body.append(container);
@@ -216,4 +218,18 @@ it('[TC-WBD-024-N] a definitive admission refusal requires a fresh review instea
   expect(f.button('review')?.disabled).toBe(false);
   expect(f.button('start')).toBeUndefined();
   expect(fixture.api.startDeployment).toHaveBeenCalledTimes(1);
+});
+
+it('[TC-WBD-024-N] a session without a working copy does not read deployments until a copy is created', async () => {
+  let hasCopy = false;
+  const f = await mount({
+    worktree: async () =>
+      hasCopy ? { bindingId: 'binding', copyGeneration: 1, missing: false } : null,
+  });
+  expect(fixture.api.deployments).not.toHaveBeenCalled();
+  expect(f.container.querySelector('[data-testid="deployment-tasks"]')).toBeNull();
+  hasCopy = true;
+  await act(async () => window.dispatchEvent(new Event(WORKSPACE_CHANGED)));
+  expect(fixture.api.deployments).toHaveBeenCalledExactlyOnceWith('session');
+  expect(f.button('review')).toBeDefined();
 });

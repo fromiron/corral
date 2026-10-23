@@ -4775,6 +4775,29 @@
                 "usage"
               ],
               "additionalProperties": false
+            },
+            "meeting": {
+              "type": "object",
+              "properties": {
+                "sessionId": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                },
+                "roundId": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                },
+                "participantId": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                }
+              },
+              "required": [
+                "sessionId",
+                "roundId",
+                "participantId"
+              ],
+              "additionalProperties": false
             }
           },
           "required": [

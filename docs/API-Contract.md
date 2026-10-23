@@ -43,10 +43,23 @@
 | PUT /corrals/:id/project | `{projectId}` | 팀을 다른 프로젝트로 이동(revision 그대로). 지난 Run은 원래 프로젝트에 남음. 없거나 보관한 프로젝트는 `TARGET_NOT_FOUND` |
 | GET /projects | — | 프로젝트 목록: 기본 프로젝트 먼저, 보관 포함(`archivedAt`) |
 | GET /sessions?projectId= | — | 프로젝트의 작업 세션(고정 먼저, 최근 활동 순), 각 `entries` 포함(CR-011) |
-| POST /sessions | `{projectId, title, objective?, corralId?, autoTitle?}` | 새 세션. 제목이 비면 목적 첫 줄. `autoTitle:true`는 표시용 임시 제목을 첫 저장된 next/queue 요청으로 한 번 확정하며 수동 제목 저장 시 해제한다. 기본 false로 기존 호출을 보존한다(CR-045). |
+| POST /sessions | `{projectId, title, objective?, corralId?, autoTitle?, meeting?:MeetingConfig}` | 새 세션. `meeting`이 있으면 CR-049 회의, 없으면 기존 work 세션이며 이후 종류 변환은 하지 않는다. 제목이 비면 목적 첫 줄. `autoTitle:true`는 표시용 임시 제목을 첫 저장된 next/queue 요청으로 한 번 확정하며 수동 제목 저장 시 해제한다. 기본 false로 기존 호출을 보존한다(CR-045). |
 | GET·PATCH /sessions/:id | `{title?, objective?, corralId?, auto?, pinned?, archived?, expectedRevision}` | 세션 읽기·수정(revision 검사). `corralId:null`은 auto이며 명시 팀 조회 실패와 구별한다. `auto`는 모델 프로필·추론 설정(CR-024) |
 | POST /sessions/:id/entries | `{intent, text, state, runId?, executionId?, detail?, auto?}` | 요청 기록 추가(본문은 이후 불변). `auto`에는 실행별 템플릿·선택 사유·모델·추론·대체 정보를 보존 |
 | PATCH /sessions/:id/entries/:entryId | `{state, runId?, detail?, auto?}` | 기록 상태와 선택 결과 갱신(대기 → 시작 등) |
+| GET /sessions/:id/meeting | — | CR-049 `MeetingView`: 저장된 라운드·답·사용량·대기 메시지·회의록·결정. 조회·재열기는 모델을 호출하지 않는다 |
+| POST /sessions/:id/meeting/rounds | `MeetingRoundRequest` | 사람의 메시지/반론. 메시지는 선택한 `TextAttachments`만 고정해 전달한다. 동일 명령·본문·대상·모드는 기존 라운드, 내용 변경은 conflict |
+| POST /sessions/:id/meeting/rounds/:roundId/stop | — | 해당 라운드의 모든 진행 중 답을 취소. 이미 확정한 답은 보존 |
+| PATCH·DELETE /sessions/:id/meeting/queued | PATCH: `QueuedMeetingMessage` | 하나뿐인 대기 메시지 수정/삭제. 수정은 현재 queued command ID를 확인 |
+| POST /sessions/:id/meeting/queued/send | — | 진행 중 라운드가 없을 때 저장된 대기 메시지를 명시 전송 |
+| POST /sessions/:id/meeting/decisions | `MeetingAdoptDecisionRequest` | 회의록 후보를 사람이 채택한 불변 버전으로 저장. 수정은 `supersedesVersionId`가 있는 새 버전 |
+| POST /sessions/:id/meeting/decisions/withdraw | `MeetingWithdrawDecisionRequest` | 사람의 철회 사유를 별도 기록. 후보·철회/대체된 버전은 새 실행 인계 불가 |
+| POST /sessions/:id/meeting/handoffs | `MeetingHandoffRequest` | 채택한 결정의 초안/시작. 같은 프로젝트 일반 세션만 대상, 실행 구성·완료 기준 고정. `{handoff:MeetingHandoffReceipt}` |
+| GET /sessions/:id/meeting/handoffs/:commandId | — | 저장된 receipt와 기존 시작 결과를 대조. 새 실행은 하지 않음 |
+| GET /sessions/:id/meeting-handoffs | — | 출처/대상 양방향 인계 이력 `{handoffs}`와 Run·결과 상태 |
+| POST /sessions/:id/meeting/handoffs/:commandId/start | `MeetingHandoffStartRequest` | 저장된 초안의 동일 항목·실행 구성으로 명시 시작. 대상의 미전송 입력·진행 중 작업을 다시 확인 |
+| POST /sessions/:id/meeting/handoffs/:commandId/cancel | — | 취소 의도를 저장하고 시작/Run 취소를 확인. 확인 실패는 uncertain으로 남겨 같은 인계에서 재확인 |
+| POST /sessions/:id/meeting/handoffs/:commandId/rediscuss | `{commandId,mode}` | 종료된 결과·출처 ID를 고정해 새 사람 라운드를 연다. 자동 토론 없음 |
 | POST /runs/explain | `{commandId, sessionId, question, modelProfile, mode, startFrom?}` | 결과 질문 Run(에이전트 하나). 세션의 프로젝트에 기록 |
 | POST /runs/auto | `{schemaVersion, commandId, sessionId, brief, choice, mode, startFrom?, references?}` | 모델이 기본 템플릿을 고른 뒤 `{runId,receipt,autoRoute}`. 같은 ID·같은 내용은 재사용하고 다른 내용은 409. 선택 비용은 실행 예산에 포함 |
 | POST /runs/auto/:commandId/cancel | `{sessionId,cancelCommandId}` | 시작 전 취소는 세션 범위의 영구 명령으로 저장하고 선택을 중단한다. 원래 시작 명령을 확인한다. 이미 시작됐으면 기존 Coordinator cancel 경로를 사용하며 `{start,cancellation}` receipt를 돌려줘 UI가 확정된 실행을 놓치지 않게 한다 |

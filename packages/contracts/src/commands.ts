@@ -9,6 +9,7 @@ import { AutoRoute } from './auto-team.ts';
 import { CorralDefinition, RunInput } from './definition.ts';
 import { ContentHash, ExtensionUiValue, HarnessOverrides, PermissionMode } from './harness.ts';
 import { Identifier, SchemaVersion } from './ids.ts';
+import { MeetingRunOrigin } from './meeting.ts';
 import { ReasoningPolicy, RoleRunOverrides } from './reasoning.ts';
 import { GitOid } from './user-git.ts';
 import { UserAnswers } from './user-input.ts';
@@ -264,6 +265,8 @@ export const StartRunRequest = z.strictObject({
   roleOverrides: RoleRunOverrides.optional(),
   /** The auto choice this run's definition came from (CR-024); set by the runtime's starter. */
   autoRoute: AutoRoute.optional(),
+  /** CR-049: one meeting answer. Only the meeting service sets it; HTTP starts refuse it. */
+  meeting: MeetingRunOrigin.optional(),
 });
 export type StartRunRequest = z.infer<typeof StartRunRequest>;
 

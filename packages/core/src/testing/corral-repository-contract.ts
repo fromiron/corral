@@ -440,6 +440,70 @@ export function describeCorralRepositoryContract(
         expect(team.ok && team.session).toMatchObject({ corralId: 'corral_x', auto: null });
       });
 
+      it('[TC-MEET-001-H] [TC-MEET-001-N] a meeting keeps its participants and rounds; a work session never becomes one', async () => {
+        const repo = makeRepository();
+        const config = {
+          version: 1 as const,
+          participants: [
+            { participantId: 'a', name: 'A', prompt: 'One view.', modelProfile: 'model-a' },
+            { participantId: 'b', name: 'B', prompt: 'Another view.', modelProfile: 'model-b' },
+          ],
+          secretary: { modelProfile: 'model-a' },
+        };
+        const made = await repo.createSession({
+          projectId: 'default',
+          title: 'Meet',
+          meeting: config,
+        });
+        if (!made.ok) throw new Error(made.message);
+        expect(made.session.meeting).toEqual({ config, rounds: [], queued: null });
+        const round = {
+          roundId: 'round_1',
+          commandId: 'c1',
+          kind: 'all' as const,
+          message: 'Hello',
+          basedOnRoundId: null,
+          rebuttalNo: null,
+          participantIds: ['a', 'b'],
+          answers: [
+            { participantId: 'a', runId: 'run_1', state: 'started' as const, detail: null },
+            { participantId: 'b', runId: null, state: 'refused' as const, detail: 'no model' },
+          ],
+          createdAt: '2026-10-23T00:00:00.000Z',
+          stoppedAt: null,
+        };
+        const meeting = { config, rounds: [round], queued: null };
+        const saved = await repo.updateSession(made.session.sessionId, {
+          meeting,
+          expectedRevision: 1,
+        });
+        expect(saved.ok).toBe(true);
+        expect((await repo.getSession(made.session.sessionId))?.meeting).toEqual(meeting);
+        expect(
+          await repo.updateSession(made.session.sessionId, { meeting, expectedRevision: 1 }),
+        ).toMatchObject({ ok: false, error: 'revision_conflict' });
+        expect(
+          await repo.addSessionEntry(made.session.sessionId, {
+            intent: 'next',
+            text: 'x',
+            state: 'started',
+          }),
+        ).toMatchObject({ ok: false, error: 'invalid' });
+        const work = await repo.createSession({ projectId: 'default', title: 'Work' });
+        if (!work.ok) throw new Error(work.message);
+        expect(work.session.meeting).toBeUndefined();
+        expect(
+          await repo.updateSession(work.session.sessionId, { meeting, expectedRevision: 1 }),
+        ).toMatchObject({ ok: false, error: 'invalid' });
+        expect(
+          await repo.createSession({
+            projectId: 'default',
+            title: 'Bad',
+            meeting: { ...config, participants: [config.participants[0]!] },
+          }),
+        ).toMatchObject({ ok: false, error: 'invalid' });
+      });
+
       it('[TC-AUTO-001-N] a stale revision or a malformed auto choice saves nothing', async () => {
         const repo = makeRepository();
         const created = await repo.createSession({ projectId: 'default', title: 'S' });

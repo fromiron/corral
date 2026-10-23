@@ -4,6 +4,7 @@ import {
   CorralDefinition,
   CorralDefinitionDraft,
   canonicalJson,
+  type MeetingConfig,
 } from '@corral/contracts';
 import {
   type CorralRecord,
@@ -118,19 +119,20 @@ export class SqliteCorralRepository implements CorralRepository, DefinitionSourc
       moveCorral: db.prepare('UPDATE corrals SET project_id = ?, updated_at = ? WHERE id = ?'),
       sessions: db.prepare(
         `SELECT id, project_id, corral_id, title, objective, pinned, revision, created_at,
-           updated_at, archived_at, entries_json, auto_json, auto_title FROM work_sessions WHERE project_id = ?`,
+           updated_at, archived_at, entries_json, auto_json, auto_title, meeting_json FROM work_sessions WHERE project_id = ?`,
       ),
       session: db.prepare(
         `SELECT id, project_id, corral_id, title, objective, pinned, revision, created_at,
-           updated_at, archived_at, entries_json, auto_json, auto_title FROM work_sessions WHERE id = ?`,
+           updated_at, archived_at, entries_json, auto_json, auto_title, meeting_json FROM work_sessions WHERE id = ?`,
       ),
       upsertSession: db.prepare(
         `INSERT INTO work_sessions (id, project_id, corral_id, title, objective, pinned, revision,
-           created_at, updated_at, archived_at, entries_json, auto_json, auto_title)
+           created_at, updated_at, archived_at, entries_json, auto_json, auto_title, meeting_json)
          VALUES (@sessionId, @projectId, @corralId, @title, @objective, @pinned, @revision,
-           @createdAt, @updatedAt, @archivedAt, @entries, @auto, @autoTitle)
+           @createdAt, @updatedAt, @archivedAt, @entries, @auto, @autoTitle, @meetingJson)
          ON CONFLICT (id) DO UPDATE SET corral_id = excluded.corral_id, title = excluded.title,
            auto_json = excluded.auto_json, auto_title = excluded.auto_title,
+           meeting_json = excluded.meeting_json,
            objective = excluded.objective, pinned = excluded.pinned,
            revision = excluded.revision, updated_at = excluded.updated_at,
            archived_at = excluded.archived_at, entries_json = excluded.entries_json`,
@@ -303,6 +305,7 @@ export class SqliteCorralRepository implements CorralRepository, DefinitionSourc
     autoTitle?: boolean;
     objective?: string;
     corralId?: string | null;
+    meeting?: MeetingConfig;
   }): Promise<SessionResult> {
     return this.db.transaction((): SessionResult => {
       const refused = projectRefusal(this.project(input.projectId), input.projectId);
@@ -355,7 +358,8 @@ export class SqliteCorralRepository implements CorralRepository, DefinitionSourc
     return `${prefix}_${globalThis.crypto.randomUUID().slice(0, 8)}`;
   }
 
-  private saveSession(result: SessionResult): SessionResult {
+  /** Synchronous for services that atomically bind a session change to a durable receipt. */
+  saveSession(result: SessionResult): SessionResult {
     if (!result.ok) return result;
     const s = result.session;
     this.sql.upsertSession.run({
@@ -364,11 +368,13 @@ export class SqliteCorralRepository implements CorralRepository, DefinitionSourc
       autoTitle: s.autoTitle ? 1 : 0,
       entries: JSON.stringify(s.entries),
       auto: s.auto ? JSON.stringify(s.auto) : null,
+      meetingJson: s.meeting ? JSON.stringify(s.meeting) : null,
     });
     return result;
   }
 
-  private session(sessionId: string): WorkSession | null {
+  /** Synchronous read for the same database transaction as saveSession. */
+  session(sessionId: string): WorkSession | null {
     const row = this.sql.session.get(sessionId) as SessionRow | undefined;
     return row ? sessionFromRow(row) : null;
   }
@@ -479,6 +485,7 @@ interface SessionRow {
   entries_json: string;
   auto_json: string | null;
   auto_title: number;
+  meeting_json: string | null;
 }
 
 function sessionFromRow(row: SessionRow): WorkSession {
@@ -496,6 +503,7 @@ function sessionFromRow(row: SessionRow): WorkSession {
     archivedAt: row.archived_at,
     entries: readJson(row.entries_json, row.id),
     auto: row.auto_json === null ? null : readJson(row.auto_json, row.id),
+    ...(row.meeting_json === null ? {} : { meeting: readJson(row.meeting_json, row.id) }),
   };
 }
 

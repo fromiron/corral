@@ -578,6 +578,24 @@ ALTER TABLE project_tool_trust_next RENAME TO project_tool_trust;
 `,
   },
   CANDIDATE_MIGRATION,
+  {
+    name: '0033_session_meeting',
+    sql: 'ALTER TABLE work_sessions ADD COLUMN meeting_json TEXT;',
+  },
+  {
+    name: '0034_meeting_handoffs',
+    sql: `
+CREATE TABLE meeting_handoffs (
+  source_session_id TEXT NOT NULL REFERENCES work_sessions(id),
+  command_id TEXT NOT NULL,
+  target_session_id TEXT NOT NULL REFERENCES work_sessions(id),
+  request_hash TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  PRIMARY KEY (source_session_id, command_id)
+) STRICT;
+CREATE INDEX meeting_handoffs_target ON meeting_handoffs(target_session_id);
+`,
+  },
 ];
 
 /** History queries must neither recover active runs nor migrate the workspace. */

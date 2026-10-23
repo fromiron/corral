@@ -3444,7 +3444,8 @@
       "packages/client/src/"
     ],
     "done": "라운드 시작·멘션 범위·독립 답·반론 2회·라운드 중 대기·실패/중지/늦은 답·재열기 무호출과 읽기 전용 참가자를 확인한다.",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "docs/evaluation/Meeting-Room-2026-10-23.md"
   },
   {
     "id": "C-175",
@@ -3465,7 +3466,8 @@
       "packages/client/src/"
     ],
     "done": "이견 보존 회의록·미응답 비찬성·채택 전 실행 불가·결정 버전 변경/철회를 확인한다.",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "docs/evaluation/Meeting-Room-2026-10-23.md"
   },
   {
     "id": "C-176",
@@ -3486,6 +3488,7 @@
       "packages/client/src/"
     ],
     "done": "기존/새 세션 인계·대상 거절·실행 중 대상과 입력 보존·요청별 실행 구성·receipt 중복/유실/취소 경합을 확인한다.",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "docs/evaluation/Meeting-Room-2026-10-23.md"
   }
 ]

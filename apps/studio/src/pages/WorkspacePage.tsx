@@ -26,6 +26,7 @@ import { workspaceRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
 import { TeamDraftDialog } from '../TeamDraftDialog.tsx';
 import { createFromTemplate, WORKSPACE_TEMPLATES } from '../templates.ts';
+import { StartMeeting } from '../workbench/NewMeeting.tsx';
 import { ProjectMaterials } from '../workbench/ProjectMaterials.tsx';
 import { isSendKey, usePreferences } from '../workbench/preferences.ts';
 import { writeDraft } from '../workbench/sessionDraft.ts';
@@ -372,6 +373,7 @@ export function WorkspacePage() {
                   projectId={projectId}
                   corrals={corrals}
                 />
+                <StartMeeting projectId={projectId} />
                 <GettingStarted runs={totals.runs} projectId={projectId} />
               </>
             )}

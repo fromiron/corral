@@ -37,10 +37,15 @@ import {
   LanguageQuery,
   LanguageScope,
   LanguageStart,
+  MeetingAdoptDecisionRequest,
+  MeetingConfig,
+  MeetingRoundRequest,
+  MeetingWithdrawDecisionRequest,
   MessageBranchPoint,
   MessageBranchRequest,
   PermissionMode,
   QualityPreset,
+  QueuedMeetingMessage,
   type Receipt,
   ResourcePath,
   RestoreCheckpoint,
@@ -66,9 +71,13 @@ import {
   createAutoStarter,
   explainDefinition,
   exportRunArchive,
+  InProcessTransport,
   type InstallationPolicy,
   judgmentSettings,
   LocalHeuristicProvider,
+  MeetingDecisionsService,
+  type MeetingResult,
+  MeetingService,
   openRunArchive,
   type ProjectResult,
   parseWorkspaceConfig,
@@ -107,6 +116,7 @@ import { ImageStore } from './images.ts';
 import { ImageProfileStore } from './images-generation/profiles.ts';
 import { ImageGenerationService } from './images-generation/service.ts';
 import { ImportInput, type InputOptions, InputRegistry } from './inputs.ts';
+import { MeetingHandoffService, registerMeetingHandoffRoutes } from './meeting-handoffs.ts';
 import { registerModelImportRoutes } from './models/import-routes.ts';
 import {
   assertOutsideWorkspace,
@@ -294,6 +304,8 @@ const CreateSession = z.strictObject({
   autoTitle: z.boolean().optional(),
   objective: z.string().max(20_000).optional(),
   corralId: Identifier.nullable().optional(),
+  /** CR-049: creates a meeting with these participants. */
+  meeting: MeetingConfig.optional(),
 });
 const UpdateSession = z.strictObject({
   title: z.string().max(200).optional(),
@@ -616,6 +628,18 @@ async function createCorralServer(
     policy: workspace.policy,
     sessionId: backendSessionId,
     judgments: judgmentConfig,
+  });
+  // CR-049: meeting rounds start each answer as its own Run through the same Coordinator.
+  const meetings = new MeetingService({
+    repository: corrals,
+    transport: new InProcessTransport(coordinator),
+    clock,
+    newRoundId: () => `round_${globalThis.crypto.randomUUID().replaceAll('-', '').slice(0, 16)}`,
+  });
+  const meetingDecisions = new MeetingDecisionsService({
+    repository: corrals,
+    clock,
+    newDecisionId: () => `decision_${crypto.randomUUID().replaceAll('-', '')}`,
   });
 
   const token = options.bootstrapToken ?? newBootstrapToken();
@@ -1221,10 +1245,26 @@ async function createCorralServer(
         receipt: refusedStart(request.body, { code: 'SCHEMA_INVALID', message }),
       });
     }
+    if (parsed.data.commandId.startsWith('meeting_'))
+      return reply.code(403).send({
+        runId: null,
+        receipt: refusedStart(request.body, {
+          code: 'CAPABILITY_DENIED',
+          message: 'Meeting start commands belong to the meeting service.',
+        }),
+      });
     const resend = coordinator.hasStartCommand(parsed.data.commandId);
     // CR-011: a run joins a session of its Corral's project only.
     if (parsed.data.sessionId && !resend) {
       const session = await corrals.getSession(parsed.data.sessionId);
+      if (session?.meeting)
+        return reply.code(403).send({
+          runId: null,
+          receipt: refusedStart(request.body, {
+            code: 'CAPABILITY_DENIED',
+            message: 'A meeting starts answers through its rounds only.',
+          }),
+        });
       const corral = await corrals.get(parsed.data.corralId);
       if (!session || (corral && corral.projectId !== session.projectId)) {
         const message = 'the session does not exist in this Corral’s project';
@@ -1246,9 +1286,22 @@ async function createCorralServer(
   app.post('/api/v1/runs/explain', async (request, reply) => {
     const body = parse(ExplainRequest, request, reply);
     if (!body) return reply;
+    if (body.commandId.startsWith('meeting_'))
+      return fail(
+        reply,
+        'CAPABILITY_DENIED',
+        'Meeting start commands belong to the meeting service.',
+      );
     const resend = coordinator.hasStartCommand(body.commandId);
-    if (!resend && !(await corrals.getSession(body.sessionId))) {
-      return fail(reply, 'TARGET_NOT_FOUND', 'no such session');
+    if (!resend) {
+      const session = await corrals.getSession(body.sessionId);
+      if (!session) return fail(reply, 'TARGET_NOT_FOUND', 'no such session');
+      if (session.meeting)
+        return fail(
+          reply,
+          'CAPABILITY_DENIED',
+          'A meeting starts answers through its rounds only.',
+        );
     }
     const explainTree = resend ? null : await files.currentTree(body.sessionId);
     const result = coordinator.startRun({
@@ -1270,6 +1323,11 @@ async function createCorralServer(
 
   // An auto session's request (CR-024): one capped choice request, then one run of the chosen
   // template. A resend returns the first start; a dropped connection while choosing starts none.
+  const handoffStarts = new Map<string, AbortController>();
+  const activeSessionRun = (sessionId: string) =>
+    coordinator
+      .listRuns()
+      .some((run) => run.sessionId === sessionId && !TERMINAL_RUN_STATUSES.has(run.status));
   const autoStarter = createAutoStarter<AbortSignal>({
     prepareModels: (request) =>
       coordinator.prepareModels(
@@ -1282,6 +1340,18 @@ async function createCorralServer(
       // Choosing can take 30 seconds; edits before the run belong to its starting tree.
       const startTree = request.sessionId ? await files.currentTree(request.sessionId) : null;
       if (signal?.aborted) throw new Error('the auto request was cancelled before a run started');
+      if (
+        handoffStarts.has(request.commandId) &&
+        request.sessionId &&
+        activeSessionRun(request.sessionId)
+      )
+        return {
+          runId: null,
+          receipt: refusedStart(request, {
+            code: 'RUN_ALREADY_ACTIVE',
+            message: 'The target session is already running.',
+          }),
+        };
       const route = request.autoRoute;
       const result = coordinator.startRun(
         route
@@ -1367,6 +1437,94 @@ async function createCorralServer(
         }
       : null;
   };
+  const meetingHandoffs = new MeetingHandoffService(db, corrals, {
+    clock,
+    activeRun: activeSessionRun,
+    previous: recordedAuto,
+    start: async (input) => {
+      const controller = new AbortController();
+      handoffStarts.set(input.commandId, controller);
+      try {
+        if (input.execution.kind === 'auto')
+          return await autoStarter.start(
+            {
+              commandId: input.commandId,
+              sessionId: input.sessionId,
+              brief: input.brief,
+              criteria: input.criteria,
+              mode: input.mode,
+              choice: input.execution.choice,
+              ...(input.execution.qualityPreset
+                ? { qualityPreset: input.execution.qualityPreset }
+                : {}),
+              ...(input.execution.ultra ? { ultra: input.execution.ultra } : {}),
+            },
+            { fileTools: false, signal: controller.signal },
+          );
+        const startTree = await files.currentTree(input.sessionId);
+        if (controller.signal.aborted)
+          throw new Error('The handoff was cancelled before starting.');
+        if (activeSessionRun(input.sessionId))
+          return {
+            runId: null,
+            receipt: refusedStart(input, {
+              code: 'RUN_ALREADY_ACTIVE',
+              message: 'The target session is already running.',
+            }),
+          };
+        if (!input.definition) throw new Error('The pinned Corral definition is missing.');
+        const result = coordinator.startRun({
+          schemaVersion: SCHEMA_VERSION,
+          commandId: input.commandId,
+          sessionId: input.sessionId,
+          mode: input.mode,
+          definition: {
+            ...input.definition,
+            input: { ...input.definition.input, brief: input.brief, criteria: input.criteria },
+          },
+        });
+        if (result.runId && startTree)
+          await trackRunFiles(result.runId, input.sessionId, startTree);
+        return result;
+      } finally {
+        if (handoffStarts.get(input.commandId) === controller)
+          handoffStarts.delete(input.commandId);
+      }
+    },
+    cancelStart: async (commandId, sessionId) => {
+      const result = coordinator.cancelAutoStart(commandId, sessionId);
+      handoffStarts.get(commandId)?.abort();
+      if (result.receipt.error) throw new Error(result.receipt.error.message);
+      if (
+        result.runId &&
+        !TERMINAL_RUN_STATUSES.has(coordinator.getSnapshot(result.runId).projection.status)
+      ) {
+        const cancellation = coordinator.submit({
+          schemaVersion: SCHEMA_VERSION,
+          commandId: `${commandId}_cancel`,
+          runId: result.runId,
+          type: 'cancel',
+          payload: { scope: { kind: 'run' }, reason: 'User cancelled the meeting handoff' },
+        });
+        if (cancellation.error) throw new Error(cancellation.error.message);
+      }
+    },
+    runResult: (runId) => {
+      if (!coordinator.listRuns().some((run) => run.runId === runId)) return null;
+      const { projection } = coordinator.getSnapshot(runId);
+      const artifactVersionId = projection.output?.artifactVersionIds[0] ?? null;
+      return {
+        status: projection.status,
+        artifactVersionId,
+        text: artifactVersionId ? coordinator.getArtifactText(runId, artifactVersionId) : null,
+      };
+    },
+    discuss: (sessionId, request) => meetings.send(sessionId, request),
+  });
+  registerMeetingHandoffRoutes(app, meetingHandoffs);
+  resources.defer(() => {
+    for (const controller of handoffStarts.values()) controller.abort();
+  });
   const schedules = new ScheduleService(new ScheduleStore(db), {
     now: () => clock.nowIso(),
     id: () => `schedule_${crypto.randomUUID().replaceAll('-', '')}`,
@@ -1422,6 +1580,12 @@ async function createCorralServer(
   app.post('/api/v1/runs/auto', async (request, reply) => {
     const body = parse(AutoRunRequest, request, reply);
     if (!body) return reply;
+    if (body.commandId.startsWith('meeting_'))
+      return fail(
+        reply,
+        'CAPABILITY_DENIED',
+        'Meeting start commands belong to the meeting service.',
+      );
     const dropped = new AbortController();
     const onClose = () => {
       if (!reply.raw.writableEnded) dropped.abort();
@@ -1430,8 +1594,16 @@ async function createCorralServer(
     if (reply.raw.destroyed || request.raw.aborted) dropped.abort();
     try {
       const resend = coordinator.hasStartCommand(body.commandId);
-      if (!resend && !(await corrals.getSession(body.sessionId)))
-        return fail(reply, 'TARGET_NOT_FOUND', 'no such session');
+      if (!resend) {
+        const session = await corrals.getSession(body.sessionId);
+        if (!session) return fail(reply, 'TARGET_NOT_FOUND', 'no such session');
+        if (session.meeting)
+          return fail(
+            reply,
+            'CAPABILITY_DENIED',
+            'A meeting starts answers through its rounds only.',
+          );
+      }
       const work = autoStarter.start(
         {
           commandId: body.commandId,
@@ -1485,6 +1657,12 @@ async function createCorralServer(
       const { commandId } = request.params;
       if (!Identifier.safeParse(commandId).success)
         return fail(reply, 'SCHEMA_INVALID', 'invalid start command');
+      if (commandId.startsWith('meeting_'))
+        return fail(
+          reply,
+          'CAPABILITY_DENIED',
+          'Meeting start commands belong to the meeting service.',
+        );
       if (body.cancelCommandId === commandId)
         return fail(reply, 'SCHEMA_INVALID', 'cancellation needs its own command ID');
       if (!(await corrals.getSession(body.sessionId)))
@@ -2538,6 +2716,91 @@ async function createCorralServer(
       );
     },
   );
+  // ── Meetings (CR-049) ──────────────────────────────────────────────────────
+  const meetingReply = async (
+    reply: FastifyReply,
+    sessionId: string,
+    result: { ok: true } | Extract<MeetingResult, { ok: false }>,
+  ) => {
+    if (!result.ok)
+      return fail(
+        reply,
+        result.error === 'not_found'
+          ? 'TARGET_NOT_FOUND'
+          : result.error === 'busy'
+            ? 'RUN_ALREADY_ACTIVE'
+            : result.error === 'conflict'
+              ? 'IDEMPOTENCY_CONFLICT'
+              : result.error === 'storage_unavailable'
+                ? 'STORAGE_UNAVAILABLE'
+                : 'SCHEMA_INVALID',
+        result.message,
+      );
+    return reply.send({ ...result, view: await meetings.view(sessionId) });
+  };
+  app.get<{ Params: { sessionId: string } }>(
+    '/api/v1/sessions/:sessionId/meeting',
+    async (request, reply) =>
+      (await meetings.view(request.params.sessionId)) ??
+      fail(reply, 'TARGET_NOT_FOUND', 'no such meeting'),
+  );
+  app.post<{ Params: { sessionId: string } }>(
+    '/api/v1/sessions/:sessionId/meeting/rounds',
+    async (request, reply) => {
+      const body = parse(MeetingRoundRequest, request, reply);
+      if (!body) return reply;
+      const { sessionId } = request.params;
+      return meetingReply(reply, sessionId, await meetings.send(sessionId, body));
+    },
+  );
+  app.post<{ Params: { sessionId: string; roundId: string } }>(
+    '/api/v1/sessions/:sessionId/meeting/rounds/:roundId/stop',
+    async (request, reply) => {
+      const { sessionId, roundId } = request.params;
+      return meetingReply(reply, sessionId, await meetings.stop(sessionId, roundId));
+    },
+  );
+  app.post<{ Params: { sessionId: string } }>(
+    '/api/v1/sessions/:sessionId/meeting/queued/send',
+    async (request, reply) => {
+      const { sessionId } = request.params;
+      return meetingReply(reply, sessionId, await meetings.sendQueued(sessionId));
+    },
+  );
+  app.delete<{ Params: { sessionId: string } }>(
+    '/api/v1/sessions/:sessionId/meeting/queued',
+    async (request, reply) => {
+      const { sessionId } = request.params;
+      return meetingReply(reply, sessionId, await meetings.dropQueued(sessionId));
+    },
+  );
+  app.patch<{ Params: { sessionId: string } }>(
+    '/api/v1/sessions/:sessionId/meeting/queued',
+    async (request, reply) => {
+      const body = parse(QueuedMeetingMessage, request, reply);
+      if (!body) return reply;
+      const { sessionId } = request.params;
+      return meetingReply(reply, sessionId, await meetings.editQueued(sessionId, body));
+    },
+  );
+  app.post<{ Params: { sessionId: string } }>(
+    '/api/v1/sessions/:sessionId/meeting/decisions',
+    async (request, reply) => {
+      const body = parse(MeetingAdoptDecisionRequest, request, reply);
+      if (!body) return reply;
+      const { sessionId } = request.params;
+      return meetingReply(reply, sessionId, await meetingDecisions.adopt(sessionId, body));
+    },
+  );
+  app.post<{ Params: { sessionId: string } }>(
+    '/api/v1/sessions/:sessionId/meeting/decisions/withdraw',
+    async (request, reply) => {
+      const body = parse(MeetingWithdrawDecisionRequest, request, reply);
+      if (!body) return reply;
+      const { sessionId } = request.params;
+      return meetingReply(reply, sessionId, await meetingDecisions.withdraw(sessionId, body));
+    },
+  );
   app.post<{ Params: { sessionId: string } }>(
     '/api/v1/sessions/:sessionId/entries',
     async (request, reply) => {
@@ -2575,6 +2838,15 @@ async function createCorralServer(
   app.post('/api/v1/runs/branch', async (request, reply) => {
     const body = parse(MessageBranchRequest, request, reply);
     if (!body) return reply;
+    if (
+      body.commandId.startsWith('meeting_') ||
+      coordinator.getRunSnapshot(body.sourceRunId)?.meeting
+    )
+      return fail(
+        reply,
+        'CAPABILITY_DENIED',
+        'Meeting answers and start commands belong to the meeting service.',
+      );
     const resend = coordinator.hasStartCommand(body.commandId);
     const result = await coordinator.branchRun(body, (plan) =>
       prepareBranchSession(db, clock, files, images, body, plan),
@@ -2680,6 +2952,12 @@ async function createCorralServer(
     const body = parse(ResumeRuntimeRequest.omit({ sourceRunId: true }), request, reply);
     if (!body) return reply;
     const source = store.getRun(request.params.runId);
+    if (body.commandId.startsWith('meeting_') || source?.snapshot.meeting)
+      return fail(
+        reply,
+        'CAPABILITY_DENIED',
+        'Meeting answers and start commands belong to the meeting service.',
+      );
     const resend = coordinator.hasStartCommand(body.commandId);
     const tree = source?.sessionId && !resend ? await files.currentTree(source.sessionId) : null;
     const result = await coordinator.resumeRuntime({ ...body, sourceRunId: request.params.runId });

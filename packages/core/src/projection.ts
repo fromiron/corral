@@ -345,7 +345,9 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
         startedAt: event.recordedAt,
         modelProfiles: Object.fromEntries(event.payload.modelProfiles.map((m) => [m.profile, m])),
         limits: event.payload.limits,
-        ...(event.payload.autoRoute?.ultra?.version === 2 ? { usageLimits: 'none' as const } : {}),
+        ...(event.payload.autoRoute?.ultra?.version === 2 || event.payload.meeting
+          ? { usageLimits: 'none' as const }
+          : {}),
         currentCriteriaVersionId: event.payload.criteriaVersionId ?? null,
         decisionSettings: event.payload.decisions ?? null,
       };

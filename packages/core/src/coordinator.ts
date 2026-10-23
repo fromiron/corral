@@ -1562,6 +1562,28 @@ export class Coordinator {
       });
     const resolved = this.resolveDefinition(request);
     if ('error' in resolved) return refuse(resolved.error);
+    const meeting = 'meeting' in request ? request.meeting : undefined;
+    if (meeting) {
+      // CR-049: only a read-only, single-answer Run in its own meeting is exempt from limits.
+      const parsed = CorralDefinition.safeParse(resolved.definition);
+      if (
+        !parsed.success ||
+        request.sessionId !== meeting.sessionId ||
+        ('autoRoute' in request && request.autoRoute) ||
+        parsed.data.roles.length !== 1 ||
+        parsed.data.capabilityLinks.length ||
+        parsed.data.roles.some(
+          (role) =>
+            role.harness ||
+            role.allowedWorkTools.some((tool) => tool !== 'write_artifact') ||
+            role.allowedCollaborationTools.some((tool) => tool !== 'submit_result'),
+        )
+      )
+        return refuse({
+          code: 'CAPABILITY_DENIED',
+          message: 'A meeting answer is one read-only role in its own meeting session',
+        });
+    }
     const autoRoute = 'autoRoute' in request ? request.autoRoute : undefined;
     if (autoRoute?.ultra) {
       if (autoRoute.qualityPreset !== 'ultra' || autoRoute.reasoning)
@@ -2008,6 +2030,7 @@ export class Coordinator {
       ...(Object.keys(harnesses).length ? { harnesses } : {}),
       ...(Object.keys(imageProfiles).length ? { imageProfiles } : {}),
       ...('autoRoute' in request && request.autoRoute ? { autoRoute: request.autoRoute } : {}),
+      ...('meeting' in request && request.meeting ? { meeting: request.meeting } : {}),
       ...(this.judgments?.settings.reasoning_effort.apply
         ? {
             reasoningApply: {
@@ -2037,7 +2060,9 @@ export class Coordinator {
       handles: new Map(),
       rounds: new Map(),
       recipes: new Map(),
-      ...(snapshot.autoRoute?.ultra?.version === 2 ? { usageLimits: 'none' as const } : {}),
+      ...(snapshot.autoRoute?.ultra?.version === 2 || snapshot.meeting
+        ? { usageLimits: 'none' as const }
+        : {}),
       extraInputs: new Map(),
       slots: { free: definition.limits.maxModelConcurrency, waiters: [], held: new Map() },
       ultraDraining: false,
@@ -2097,6 +2122,7 @@ export class Coordinator {
           ...(snapshot.reasoningApply ? { reasoningApply: snapshot.reasoningApply } : {}),
           ...(request.startFrom ? { startedFrom: request.startFrom } : {}),
           ...(snapshot.autoRoute ? { autoRoute: snapshot.autoRoute } : {}),
+          ...(snapshot.meeting ? { meeting: snapshot.meeting } : {}),
           ...(snapshot.resumedFrom ? { resumedFrom: snapshot.resumedFrom } : {}),
           ...(snapshot.branchedFrom ? { branchedFrom: snapshot.branchedFrom } : {}),
           ...(this.judgments
@@ -5395,10 +5421,12 @@ export class Coordinator {
             throw new Error('candidate is no longer running');
           this.files!.bindCandidateExecution!(run.runId, input.candidateId, input.executionId);
         }
-        const handle = await this.agents.start(input, this.hostFor(run, input));
+        const host = this.hostFor(run, input);
+        const handle = await this.agents.start(input, host);
         run.handles.set(input.executionId, handle);
         if (run.cancelRequested.has(input.executionId)) await handle.cancel('cancelled');
         settlement = await handle.waitForSettlement();
+        await host.submitMeetingAnswer(settlement);
       } catch (error) {
         settlement = { outcome: 'failed', error: String(error) };
       } finally {
@@ -7013,7 +7041,10 @@ export class Coordinator {
     };
   }
 
-  private hostFor(run: LiveRun, input: AgentStartInput): AgentHost {
+  private hostFor(
+    run: LiveRun,
+    input: AgentStartInput,
+  ): AgentHost & { submitMeetingAnswer(settlement: AgentSettlement): Promise<void> } {
     const { executionId, harness } = input;
     const agent: Actor = { kind: 'agent', id: executionId };
     let lastCall: { modelCallId: string; contextSnapshotId: string; effectId: string } | null =
@@ -8579,6 +8610,40 @@ export class Coordinator {
           if (responseRef) this.store.putArtifactText(run.runId, responseRef, observation.text);
         });
         this.maybePaused(run);
+      },
+
+      // CR-049: plain speech needs no extra model call; runtime tool requests retain provenance.
+      submitMeetingAnswer: async (settlement) => {
+        const callId = settlement.finalTextModelCallId;
+        const call = callId ? run.projection.modelCalls[callId] : null;
+        if (
+          !run.snapshot.meeting ||
+          settlement.outcome !== 'succeeded' ||
+          (settlement.terminationMode && settlement.terminationMode !== 'normal') ||
+          !call?.finished ||
+          !call.responseRef ||
+          call.executionId !== executionId ||
+          lastCall?.modelCallId !== callId ||
+          run.cancelRequested.has(executionId) ||
+          TERMINAL_RUN_STATUSES.has(run.projection.status) ||
+          run.projection.tasks[input.taskId]?.status === 'completed' ||
+          Object.values(run.projection.toolCalls).some((tool) => tool.executionId === executionId)
+        )
+          return;
+        const text = this.store.getArtifactText(run.runId, call.responseRef);
+        if (!text?.trim()) return;
+        const write = await authorizeTool({ name: 'write_artifact', args: { text } }, true);
+        if (!write.ok) return;
+        const written = await trackedExecute(write.toolCallId);
+        if (!written.ok) return;
+        const submit = await authorizeTool(
+          {
+            name: 'submit_result',
+            args: { artifactVersionIds: [written.result.artifactVersionId] },
+          },
+          true,
+        );
+        if (submit.ok) await trackedExecute(submit.toolCallId);
       },
 
       invokeTool: async (proposal: ToolProposal): Promise<ToolOutcome> => {

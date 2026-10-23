@@ -145,6 +145,7 @@ import { FilePanel, type FileReference } from '../workbench/FilePanel.tsx';
 import { GitPanel } from '../workbench/GitPanel.tsx';
 import { ImageAttachmentList, ImageAttachmentPicker } from '../workbench/ImageAttachments.tsx';
 import { LiveVoice } from '../workbench/LiveVoice.tsx';
+import { MeetingHandoffLinks } from '../workbench/MeetingHandoff.tsx';
 import { MessageBranch } from '../workbench/MessageBranch.tsx';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
 import { PermissionModePicker } from '../workbench/PermissionModePicker.tsx';
@@ -188,6 +189,7 @@ import {
 import { ChatWidgetProvider } from '../workbench/widgets/useChatWidgets.tsx';
 import { TeamDesign } from './EditorPage.tsx';
 import { useBinding, WORKSPACE_CHANGED, WorkingCopyPanel } from './FilesViews.tsx';
+import { MeetingPage } from './MeetingPage.tsx';
 import { Checks } from './ReviewPage.tsx';
 import { RunDetail } from './RunPage.tsx';
 import { useRemembered } from './Workbench.tsx';
@@ -239,7 +241,17 @@ function useSessionRuns(sessionId: string, selectedRunId?: string) {
  * Context panes follow the session URL; document tabs keep their explicit workspace target.
  * Stores own editing and execution state independently of dock placement.
  */
+/** CR-049: a meeting has its own chat; every other session keeps the work view. */
 export function SessionPage() {
+  const { session } = sessionRoute.useLoaderData();
+  return session.meeting ? (
+    <MeetingPage key={session.sessionId} session={session} />
+  ) : (
+    <WorkSessionPage />
+  );
+}
+
+function WorkSessionPage() {
   const services = useServices();
   const dock = useRef<DockWorkbenchHandle>(null);
   const documents =
@@ -911,6 +923,7 @@ function WorkTab({
         key={session.sessionId}
         sessionId={session.sessionId}
         messageId={messageId}
+        header={<MeetingHandoffLinks key={session.sessionId} sessionId={session.sessionId} />}
         items={[
           ...session.entries
             .filter((e) => e.state !== 'queued' && e.state !== 'dismissed')
@@ -1316,7 +1329,7 @@ function EntryCard({
           disabled={!TERMINAL_RUN_STATUSES.has(run.status)}
         />
       ) : null}
-      {entry.detail && entry.state === 'refused' ? (
+      {entry.detail && entry.state === 'refused' && !entry.meetingHandoff ? (
         <RefusalHelp
           message={entry.detail}
           onEdit={() =>

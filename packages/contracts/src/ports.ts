@@ -225,6 +225,8 @@ export interface AgentHost {
 }
 
 export interface AgentSettlement {
+  /** Clean final text with no attempted tools; the Coordinator may accept it for a meeting. */
+  finalTextModelCallId?: string;
   outcome: 'succeeded' | 'failed' | 'cancelled';
   error?: string;
   terminationMode?: 'normal' | 'forced' | 'unconfirmed';

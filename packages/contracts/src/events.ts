@@ -25,6 +25,7 @@ import {
 } from './harness.ts';
 import { Identifier, SchemaVersion } from './ids.ts';
 import { BinaryArtifact, ImageGenerationProfile } from './media-artifact.ts';
+import { MeetingRunOrigin } from './meeting.ts';
 import { ReasoningApplySettings, ReasoningCapabilities, ReasoningResolution } from './reasoning.ts';
 import { DesignReviewEvidence, ReviewIssue } from './review.ts';
 import { RecipeStopReason } from './review-recipe.ts';
@@ -113,6 +114,8 @@ export const RunStarted = event(
     harnesses: z.record(Identifier, EffectiveHarnessSnapshot).optional(),
     /** The auto choice the definition came from (CR-024). */
     autoRoute: AutoRoute.optional(),
+    /** CR-049: the meeting answer this Run is; such Runs have no Corral usage limits. */
+    meeting: MeetingRunOrigin.optional(),
   }),
 );
 export const RunStateChanged = event(
