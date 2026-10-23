@@ -3,6 +3,22 @@ import type {
   CheckpointRestorePlan,
   ContentSearch,
   ContentSearchResult,
+  DebugBreakpoints,
+  DebugCommand,
+  DebugCommandResult,
+  DebugInspect,
+  DebugInspection,
+  DebugQuery,
+  DebugQueryResult,
+  DebugSession,
+  DebugStart,
+  DebugState,
+  DeploymentAction,
+  DeploymentInspect,
+  DeploymentList,
+  DeploymentPlan,
+  DeploymentStart,
+  DeploymentView,
   DevelopmentStart,
   DevelopmentState,
   DocumentCommand,
@@ -75,6 +91,25 @@ export type {
   ContentSearch,
   ContentSearchMatch,
   ContentSearchResult,
+  DebugBreakpoint,
+  DebugBreakpoints,
+  DebugCommand,
+  DebugCommandResult,
+  DebugInspect,
+  DebugInspection,
+  DebugQuery,
+  DebugQueryResult,
+  DebugScope,
+  DebugSession,
+  DebugSource,
+  DebugStart,
+  DebugState,
+  DeploymentAction,
+  DeploymentInspect,
+  DeploymentList,
+  DeploymentPlan,
+  DeploymentStart,
+  DeploymentView,
   DevelopmentStart,
   DevelopmentState,
   DocumentCommand,
@@ -2118,6 +2153,50 @@ export class WorkspacesApi {
       { target },
     );
   }
+  deployments(sessionId: string): Promise<DeploymentList> {
+    return this.send(`/sessions/${encodeURIComponent(sessionId)}/worktree/deployments`);
+  }
+  inspectDeployment(sessionId: string, input: DeploymentInspect): Promise<DeploymentPlan> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/deployments/inspect`,
+      'POST',
+      input,
+    );
+  }
+  startDeployment(sessionId: string, input: DeploymentStart): Promise<DeploymentView> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/deployments`,
+      'POST',
+      input,
+    );
+  }
+  deployment(sessionId: string, operationId: string): Promise<DeploymentView> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/deployments/${encodeURIComponent(operationId)}`,
+    );
+  }
+  checkDeployment(
+    sessionId: string,
+    operationId: string,
+    input: DeploymentAction,
+  ): Promise<DeploymentView> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/deployments/${encodeURIComponent(operationId)}/check`,
+      'POST',
+      input,
+    );
+  }
+  stopDeployment(
+    sessionId: string,
+    operationId: string,
+    input: DeploymentAction,
+  ): Promise<DeploymentView> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/deployments/${encodeURIComponent(operationId)}/stop`,
+      'POST',
+      input,
+    );
+  }
   /** Package scripts a person may start, and the session's tasks (CR-046 P15). */
   tasks(sessionId: string): Promise<{ candidates: TaskCandidates; tasks: UserTaskView[] }> {
     return this.send(`/sessions/${encodeURIComponent(sessionId)}/worktree/tasks`);
@@ -2216,6 +2295,53 @@ export class WorkspacesApi {
       `/sessions/${encodeURIComponent(sessionId)}/worktree/git/advanced-operations/${encodeURIComponent(operationId)}/cancel`,
       'POST',
       {},
+    );
+  }
+  debugState(sessionId: string): Promise<DebugState> {
+    return this.send(`/sessions/${encodeURIComponent(sessionId)}/worktree/debug`);
+  }
+  inspectDebug(sessionId: string, input: DebugInspect): Promise<DebugInspection> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/debug/inspect`,
+      'POST',
+      input,
+    );
+  }
+  startDebug(sessionId: string, input: DebugStart): Promise<DebugSession> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/debug/start`,
+      'POST',
+      input,
+    );
+  }
+  setDebugBreakpoints(sessionId: string, input: DebugBreakpoints): Promise<DebugCommandResult> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/debug/breakpoints`,
+      'POST',
+      input,
+    );
+  }
+  queryDebug(sessionId: string, input: DebugQuery): Promise<DebugQueryResult> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/debug/query`,
+      'POST',
+      input,
+    );
+  }
+  commandDebug(sessionId: string, input: DebugCommand): Promise<DebugCommandResult> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/debug/commands`,
+      'POST',
+      input,
+    );
+  }
+  debugCommand(
+    sessionId: string,
+    generation: string,
+    commandId: string,
+  ): Promise<DebugCommandResult> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/debug/commands/${encodeURIComponent(generation)}/${encodeURIComponent(commandId)}`,
     );
   }
   changeDocument(sessionId: string, command: DocumentCommand): Promise<DocumentOperation> {

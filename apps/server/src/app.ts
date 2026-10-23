@@ -88,6 +88,8 @@ import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import packageJson from '../package.json' with { type: 'json' };
+import { registerDebugRoutes } from './files/debug-routes.ts';
+import { registerDeploymentRoutes } from './files/deployment-routes.ts';
 import { registerFileEditRoutes } from './files/edit-routes.ts';
 import { registerGitAdvancedRoutes } from './files/git-advanced-routes.ts';
 import { ReviewService } from './files/review.ts';
@@ -115,6 +117,7 @@ import {
   registerEndpoints,
   userConfigDir,
 } from './models/index.ts';
+import { prepareDebugBrowser } from './preview/debug-browser.ts';
 import { registerPreviewRoutes } from './preview/routes.ts';
 import { PreviewService } from './preview/service.ts';
 import { PreviewToolsBroker } from './preview/tools.ts';
@@ -451,7 +454,7 @@ async function createCorralServer(
   const store = new SqliteRunStore(db);
   const inputs = new InputRegistry(db, { ...options.inputs, clock });
   // CR-012: linked folders, session worktrees and the file broker.
-  const files = new WorkspaceService({
+  const files: WorkspaceService = new WorkspaceService({
     db,
     clock,
     hostId: workspace.id,
@@ -459,13 +462,40 @@ async function createCorralServer(
     worktreeRoot: options.worktreeRoot ?? defaultWorktreeRoot(),
     forbidden: [join(workspace.root, '.corral'), userConfigDir()],
     timers: options.timers ?? systemTimers,
+    debugPreview: async (sessionId, leaseId, target, open) => {
+      const current = () =>
+        canonicalJson(files.developmentState(sessionId).target) === canonicalJson(target);
+      const lease = previews.list(sessionId).find((item) => item.leaseId === leaseId);
+      if (!current() || !lease || lease.runId || lease.state !== 'ready')
+        throw new WorkspaceError('REVISION_CONFLICT', 'the managed preview target changed');
+      const privateTarget = await previews.desktopTarget(sessionId, leaseId);
+      if (!privateTarget || !current())
+        throw new WorkspaceError('TARGET_NOT_FOUND', 'the managed preview is unavailable');
+      return {
+        url: privateTarget.url,
+        ...(open
+          ? {
+              prepare: (endpoint: string) =>
+                prepareDebugBrowser(endpoint, privateTarget, async () => {
+                  if (!current()) return false;
+                  const live = await previews.desktopTarget(sessionId, leaseId);
+                  return (
+                    current() &&
+                    live?.url === privateTarget.url &&
+                    live.origin === privateTarget.origin
+                  );
+                }),
+            }
+          : {}),
+      };
+    },
   });
   // Startup has already confirmed termination of recovered SDK workers above. Only leases
   // without unresolved file, command, or checkpoint effects may now be released.
   files.confirmWorkerRecovery();
   resources.defer(() => files.dispose());
 
-  const previews = new PreviewService({
+  const previews: PreviewService = new PreviewService({
     readSnapshot: (_sessionId, runId, path) => files.readPreviewSnapshot(runId, path),
     attestConnection: (sessionId, operationId, port, peerPort) =>
       files.attestCommandConnection(sessionId, operationId, port, peerPort),
@@ -486,6 +516,10 @@ async function createCorralServer(
     },
   });
   resources.defer(() => previews.dispose());
+  const removeDebugPreviewListener = previews.onStop((leaseId) => files.stopDebugPreview(leaseId));
+  resources.defer(() => {
+    removeDebugPreviewListener();
+  });
   const previewTools = new PreviewToolsBroker(previews, {
     sessionOfRun: (runId) => files.sessionOfRun(runId),
     directory: join(workspace.root, '.corral', 'previews'),
@@ -1877,6 +1911,8 @@ async function createCorralServer(
     return fail(reply, 'STORAGE_UNAVAILABLE', 'the document operation failed');
   };
   registerFileEditRoutes(app, files, documentFail);
+  registerDebugRoutes(app, files, documentFail);
+  registerDeploymentRoutes(app, files, documentFail);
   app.post<SessionParams>(
     '/api/v1/sessions/:sessionId/worktree/search-contents',
     async (request, reply) => {

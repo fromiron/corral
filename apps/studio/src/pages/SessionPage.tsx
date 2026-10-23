@@ -133,6 +133,7 @@ import {
   SourceAttachments,
   SourceNavigationContext,
 } from '../workbench/context/SourceAttachments.tsx';
+import { DebuggerPanel } from '../workbench/DebuggerPanel.tsx';
 import { DevelopmentMode } from '../workbench/DevelopmentMode.tsx';
 import { DockDocumentPanel } from '../workbench/DockDocumentPanel.tsx';
 import { DockRunControls } from '../workbench/DockRunControls.tsx';
@@ -342,6 +343,7 @@ export function SessionPage() {
     ),
     changes: () => <ChangesPanel session={session} files={changes} />,
     git: () => <GitPanel sessionId={session.sessionId} projectId={session.projectId} />,
+    debug: () => <DebuggerPanel sessionId={session.sessionId} projectId={session.projectId} />,
     artifacts: () => (
       <ArtifactsPanel
         runs={runs}

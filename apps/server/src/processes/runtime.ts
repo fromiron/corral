@@ -36,6 +36,9 @@ export type OwnedCommandInput<Owner extends { sessionId: string } = CommandOwner
   directory: string;
   command: Omit<ShellCommand, 'shellId'> & { shellId?: ShellCommand['shellId'] };
   timeoutMs?: number;
+  /** Broker-resolved references only; never populated directly from a renderer request. */
+  environment?: Record<string, string>;
+  secrets?: string[];
 };
 export type OwnedCommandReport = {
   operationId: string;
@@ -119,7 +122,7 @@ export class CommandRuntime<Owner extends { sessionId: string } = CommandOwner> 
       resolveStarted,
       input,
       key,
-      output: new CheckOutput([input.directory]),
+      output: new CheckOutput([input.directory], input.secrets),
       completion: Promise.resolve(null as unknown as OwnedCommandReport),
       stop: () => {},
     };
@@ -236,7 +239,7 @@ export class CommandRuntime<Owner extends { sessionId: string } = CommandOwner> 
           finish = resolve;
           child = spawnOwnedProcess(input.command.executable, input.command.args, {
             cwd: directory,
-            env: commandEnvironment(home as string),
+            env: { ...commandEnvironment(home as string), ...input.environment },
             shell: false,
             stdio: ['ignore', 'pipe', 'pipe'],
           });

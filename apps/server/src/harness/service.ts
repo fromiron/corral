@@ -443,6 +443,11 @@ export class HarnessService {
         return {
           checks: config?.checks ?? [],
           lspServers: config?.lspServers ?? [],
+          ...(config?.debugAdapters ? { debugAdapters: config.debugAdapters } : {}),
+          ...(config?.debugConfigurations
+            ? { debugConfigurations: config.debugConfigurations }
+            : {}),
+          ...(config?.deployments ? { deployments: config.deployments } : {}),
           mcpServers: [
             ...(config?.mcpServers ?? []).filter((item) => item.id !== server.id),
             server,
@@ -523,6 +528,11 @@ export class HarnessService {
         return {
           checks: config?.checks ?? [],
           lspServers: config?.lspServers ?? [],
+          ...(config?.debugAdapters ? { debugAdapters: config.debugAdapters } : {}),
+          ...(config?.debugConfigurations
+            ? { debugConfigurations: config.debugConfigurations }
+            : {}),
+          ...(config?.deployments ? { deployments: config.deployments } : {}),
           mcpServers: servers,
         };
       },

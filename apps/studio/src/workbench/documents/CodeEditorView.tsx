@@ -8,6 +8,13 @@ export type LanguageSelection = {
   position: Extract<LanguageRefactor, { kind: 'rename' }>['position'];
   range: Extract<LanguageRefactor, { kind: 'code_actions' }>['range'];
 };
+export interface EditorDebugState {
+  breakpoints: { line: number; verified: boolean }[];
+  pausedLine: number | null;
+  canToggle: boolean;
+  toggleLabel: string;
+  onToggle(line: number): void;
+}
 export interface CodeEditorViewProps {
   model: editor.ITextModel;
   viewId: string;
@@ -21,6 +28,7 @@ export interface CodeEditorViewProps {
   revealSelection?: TextRange;
   onError?: () => void;
   onOpenResource?: (resource: string, range: TextRange) => Promise<boolean>;
+  debug?: EditorDebugState;
   className?: string;
 }
 
@@ -81,9 +89,11 @@ export function CodeEditorView(props: CodeEditorViewProps) {
     revealRange,
     revealSelection,
     className,
+    debug,
   } = props;
   const container = useRef<HTMLElement>(null);
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
+  const updateDebug = useRef(() => {});
   const callbacks = useRef(props);
   useEffect(() => {
     callbacks.current = props;
@@ -108,6 +118,81 @@ export function CodeEditorView(props: CodeEditorViewProps) {
           padding: { top: 12, bottom: 12 },
         });
         editorRef.current = instance;
+        const decorations = instance.createDecorationsCollection();
+        const canDebug = instance.createContextKey<boolean>('corralDebugCanToggle', false);
+        let debugAction: { dispose(): void } | undefined;
+        let actionLabel: string | undefined;
+        let sourceChanged = false;
+        const validLine = (line: number) =>
+          Number.isInteger(line) && line > 0 && line <= model.getLineCount();
+        const toggle = (line: number) => {
+          const state = callbacks.current.debug;
+          if (state?.canToggle && !sourceChanged && !instance.inComposition && validLine(line))
+            state.onToggle(line);
+        };
+        updateDebug.current = () => {
+          const state = callbacks.current.debug;
+          sourceChanged = false;
+          instance.updateOptions({ glyphMargin: Boolean(state) });
+          canDebug.set(Boolean(state?.canToggle));
+          if (actionLabel !== state?.toggleLabel) {
+            debugAction?.dispose();
+            actionLabel = state?.toggleLabel;
+            debugAction = state
+              ? instance.addAction({
+                  id: 'corral.debug.toggle-breakpoint',
+                  label: state.toggleLabel,
+                  keybindings: [monaco.KeyCode.F9],
+                  precondition: 'corralDebugCanToggle',
+                  contextMenuGroupId: 'navigation',
+                  run: () => {
+                    const position = instance.getPosition();
+                    if (position) toggle(position.lineNumber);
+                  },
+                })
+              : undefined;
+          }
+          const lines: editor.IModelDeltaDecoration[] = [];
+          const range = (line: number) => ({
+            startLineNumber: line,
+            startColumn: 1,
+            endLineNumber: line,
+            endColumn: 1,
+          });
+          for (const breakpoint of state?.breakpoints ?? [])
+            if (validLine(breakpoint.line))
+              lines.push({
+                range: range(breakpoint.line),
+                options: {
+                  glyphMarginClassName: `corral-debug-breakpoint${breakpoint.verified ? '' : ' corral-debug-breakpoint-unverified'}`,
+                  stickiness: monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
+                },
+              });
+          if (state?.pausedLine && validLine(state.pausedLine))
+            lines.push({
+              range: range(state.pausedLine),
+              options: {
+                isWholeLine: true,
+                className: 'corral-debug-paused',
+                stickiness: monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
+              },
+            });
+          decorations.set(lines);
+        };
+        updateDebug.current();
+        const debugMouse = instance.onMouseDown((event) => {
+          if (
+            event.event.leftButton &&
+            event.target.type === monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN &&
+            !event.target.detail.isAfterLines
+          )
+            toggle(event.target.position.lineNumber);
+        });
+        const debugChanged = instance.onDidChangeModelContent(() => {
+          sourceChanged = true;
+          canDebug.set(false);
+          decorations.clear();
+        });
         const saved = viewStates.get(model)?.get(viewId);
         if (saved) instance.restoreViewState(saved);
         const select = (selection: ReturnType<typeof instance.getSelection>) => {
@@ -180,6 +265,12 @@ export function CodeEditorView(props: CodeEditorViewProps) {
             viewStates.set(model, states);
           }
           opener.dispose();
+          debugMouse.dispose();
+          debugChanged.dispose();
+          debugAction?.dispose();
+          canDebug.reset();
+          decorations.clear();
+          updateDebug.current = () => {};
           selected.dispose();
           save.dispose();
           stopWorkerErrors();
@@ -204,6 +295,11 @@ export function CodeEditorView(props: CodeEditorViewProps) {
   useEffect(() => {
     editorRef.current?.updateOptions({ readOnly, ariaLabel });
   }, [readOnly, ariaLabel]);
+
+  useEffect(() => {
+    void debug;
+    updateDebug.current();
+  }, [debug]);
 
   useEffect(() => {
     const instance = editorRef.current;

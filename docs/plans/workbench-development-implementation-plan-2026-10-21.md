@@ -10,11 +10,11 @@ baseline: 071276873dee4bb51491bf608e604fbb4e123475
 
 입력은 `Corral-Workbench-Ecosystem-Plan-v2-2026-10-21.md`이며 SHA-256은 `11087e6b6b940bdbca89792e5a8efd84764b326ec42664ff1d289c4d65ae4451`이다. 원문을 수정하거나 전체 제품 조사를 복제하지 않는다. 기준 코드는 PR #68을 포함하는 위 commit이며, 계획 작성 시 소스·계약·manifest를 대조했다. 이후 실행 결과는 별도 검증 기록에 남긴다.
 
-현재 구현: P00–P18·P20·P21-A·P22·P23·P24-A·P24-B·P25(C-142–166). 완료 항목의 계약은 [현재 Workbench](../current/workbench.md)·[CR-046](../change-requests/CR-046-development-workbench.md), 각 환경의 실행 증거는 [상태표](../status.md)와 [증거 지도](../evaluation/README.md)에 연결한다. P19·P21-B·P26 이후는 이 완료 범위에 포함하지 않는다.
+현재 구현: P00–P18·P20·P21-A·P22·P23·P24-A·P24-B·P25·P26·P27(C-142–168). 완료 항목의 계약은 [현재 Workbench](../current/workbench.md)·[CR-046](../change-requests/CR-046-development-workbench.md), 각 환경의 실행 증거는 [상태표](../status.md)와 [증거 지도](../evaluation/README.md)에 연결한다. P19·P21-B·P28 이후는 이 완료 범위에 포함하지 않는다.
 
-## 이번 요청 완료: P20·P24-B·P25
+## 현재 상태: P26·P27 구현 완료, 후속 여정·환경 인수
 
-`d658830`까지 코어 잔여 검증과 P23 언어 세션(C-162), P24-A 읽기 전용 파일 검색(C-163)을 마쳤고 `8f44489`에서 P20 preview 피드백(C-164), `1b84186`에서 P24-B 교체/refactor(C-165)를 커밋했다. P25 고급 Git(C-166)도 구현해 이번 P20 → P24-B → P25 요청 범위를 마쳤다. 환경별 결과와 한계는 [preview 피드백](../evaluation/Development-Workbench-Preview-Feedback-2026-10-23.md), [파일 변경](../evaluation/Development-Workbench-File-Edits-2026-10-23.md), [고급 Git 기록](../evaluation/Development-Workbench-Advanced-Git-2026-10-23.md)을 따른다. P26·P27 이후는 후속 계획이며 이번 요청에서 자동으로 착수하지 않는다. 전체 플랫폼/부하 검증이나 외부 게시·배포도 이번 완료 범위에 포함하지 않는다.
+`d658830`의 P23·P24-A, `8f44489`의 P20, `1b84186`의 P24-B, `83c7897`의 P25 이후 사용자가 P26·P27 구현을 승인하고 독립 영역의 병렬 진행을 요청했다. P26 디버깅(C-167)과 P27 배포 작업(C-168)을 구현했으며 기존 동작 보존·핵심 회귀·실제 화면을 확인했다. 범위와 환경 한계는 [디버깅](../evaluation/Development-Workbench-Debugging-2026-10-23.md)·[배포 결과 확인](../evaluation/Development-Workbench-Deployment-2026-10-23.md) 기록을 따른다. P28 통합 여정, P29 설치판·플랫폼 검증과 실제 외부 provider 배포는 이번 기능 구현 완료와 구분한다.
 
 기존 task·Git·문서·공통 owner를 재사용한다. P24-B의 불변 제안은 전용 저장 기록으로 보존하고 적용 상태는 공통 operation receipt를 따른다. 상태 원장은 `contracts/backlog.json`이며 전체 release gate 통과를 뜻하지 않는다.
 
@@ -35,7 +35,7 @@ baseline: 071276873dee4bb51491bf608e604fbb4e123475
 
 여러 문맥의 링크가 같은 기능·대상·상태로 도착하면 중복이 아니다.
 
-**후속 계획(이번 요청 밖):** R6 P26·P27 → R7 P28·설치판 P29. P17·P18·P20·P21-A·P22·P23·P24-A·P24-B·P25는 구현됐고 R0 코어 검증은 아래 기록으로 회수했다. P19/C-114, P21-B/C-135, P30은 독립 조건을 유지한다.
+**현재 상태:** R6 P26·P27 구현과 코어 검증 완료. **후속 계획:** R7 P28·설치판 P29. P17·P18·P20·P21-A·P22·P23·P24-A·P24-B·P25·P26·P27은 구현됐고 R0 코어 검증은 아래 기록으로 회수했다. P19/C-114, P21-B/C-135, P30은 독립 조건을 유지한다.
 
 **R0 코어 검증 완료:** [코어 실행 기록](../evaluation/Development-Workbench-Core-2026-10-23.md)에서 preview HTTP/HMR 소유권·종료, 실제 PTY viewer 재접속 후 셸 상태·입력 제어, dirty 문서→Git→설정 왕복·저장을 확인했다. Desktop 프레임의 후속 코어 확인은 [P20 기록](../evaluation/Development-Workbench-Preview-Feedback-2026-10-23.md)에 있다. 사용자 요청에 따라 다음 기능마다 전체 여정을 반복하지 않고 변경한 코어 회귀와 실제 화면만 확인한다. 전체 설치판·좁은 화면 인수는 P29, 원격 host는 P21-B에 남긴다. PR #69/#85의 설명·감사 목록 갱신은 별도 외부 게시 작업이다.
 
@@ -56,14 +56,14 @@ baseline: 071276873dee4bb51491bf608e604fbb4e123475
 
 ## 2. 현재 코드와 재사용 지도
 
-아래는 2026-10-23 P20·P23·P24-A/B·P25 구현까지 반영한 재사용 지도다. 기존 테스트가 있다는 사실과 해당 후보·환경에서 그 테스트가 통과했다는 사실은 구분하며 실행 결과는 각 증거 기록을 따른다.
+아래는 2026-10-23 P20·P23·P24-A/B·P25·P26·P27 구현까지 반영한 재사용 지도다. 기존 테스트가 있다는 사실과 해당 후보·환경에서 그 테스트가 통과했다는 사실은 구분하며 실행 결과는 각 증거 기록을 따른다.
 
 | 영역 | 현재 코드·계약 | 구현 시 재사용과 추가할 부분 |
 |---|---|---|
 | 작업 셸·설정 | [DockWorkbench](../../apps/studio/src/workbench/docking/DockWorkbench.tsx), [패널 목록](../../apps/studio/src/workbench/panels/registry.ts), [설정 수명](../../apps/studio/src/workbench/SettingsLifecycle.tsx) | P09–10 도킹·URL·배치 복구와 단일 설정 모달 구현. 기존 owner와 진입점을 확장 |
 | 문서 편집 | [DocumentPanel](../../apps/studio/src/workbench/DocumentPanel.tsx), [문서 store](../../apps/studio/src/workbench/documents/store.ts), [WorkspaceService](../../apps/server/src/files/service.ts) | P04–06 save/create/rename/delete·hash CAS·receipt·Monaco 공유 모델·dirty 복구 구현. P22에서도 그대로 사용 |
 | 사본·공통 소유권 | [WorkbenchOperations](../../apps/server/src/files/workbench-operations.ts), [WorkspaceAccessStore](../../apps/server/src/files/workspace-access.ts) | Run/사람 writer 예약·generation·uncertain 복구 구현. P22는 기존 원장에 development owner와 허용된 하위 효과를 연결 |
-| 터미널·개발 task | [PTY](../../apps/server/src/processes/pty.ts), [CommandRuntime](../../apps/server/src/processes/runtime.ts), [작업 UI](../../apps/studio/src/workbench/WorkbenchTasks.tsx) | P07–08 실제 PTY·입력 소유권, P15 명시 task·프로세스 정리 구현. 공유 허용은 task만, 임의 터미널은 제외 |
+| 터미널·개발 task | [PTY](../../apps/server/src/processes/pty.ts), [CommandRuntime](../../apps/server/src/processes/runtime.ts), [작업 UI](../../apps/studio/src/workbench/WorkbenchTasks.tsx) | P07–08 실제 PTY·입력 소유권, P15 명시 task·프로세스 정리 구현. 공유 허용은 task와 P26의 명시 debug, 임의 터미널·P27 배포는 제외 |
 | Git·검토 | [Git 쓰기](../../apps/server/src/files/user-git-write.ts), [index hunk](../../apps/server/src/files/user-git-hunks.ts), [sequence](../../apps/server/src/files/user-git-sequence.ts), [GitPanel](../../apps/studio/src/workbench/GitPanel.tsx), [ReviewPage](../../apps/studio/src/pages/ReviewPage.tsx) | P12–14 실제 index·commit·branch/remote·receipt, P17 읽음/검토/승인 분리, P25 선택 stage/unstage·충돌 편집·지원 merge/rebase·결과 재확인 구현. 내부 snapshot과 사용자 Git 정책을 유지 |
 | 팀·execution | [EditorPage](../../apps/studio/src/pages/EditorPage.tsx), [ExecutionEvidence](../../apps/studio/src/workbench/ExecutionEvidence.tsx) | P18 그래프 도킹·초안/undo·실행 근거·Reins 대상 고정 구현. 별도 그래프/Run store를 만들지 않음 |
 | 사본 수명 | [CopyRemovalDialog](../../apps/studio/src/workbench/CopyRemovalDialog.tsx), WorkspaceService | P21-A 보관/삭제 분리·삭제 전 요약·generation 고정 구현. P21-B 원격 재접속은 별도 |
@@ -72,7 +72,7 @@ baseline: 071276873dee4bb51491bf608e604fbb4e123475
 | preview | [PreviewService](../../apps/server/src/preview/service.ts), [ServicePreview](../../apps/studio/src/workbench/ServicePreview.tsx), [Desktop preview](../../apps/desktop/src/preview.ts) | 사용자 task owner·포트 증명·proxy 연결 구현. P22 live edit·P20 선택 관측/첨부 구현. 실제 Desktop 코어와 전체 설치판/OS qualification을 구분 |
 | 원격·Desktop | [remote hosts](../../apps/desktop/src/remote-hosts.ts), [sidecar](../../apps/desktop/src/sidecar.mjs) | 기존 host namespace·패키지 경계 유지. Linux native PTY smoke와 전체 설치판/지원 OS 검증을 구분 |
 
-현재 직접 의존성은 Monaco 0.57.0, Dockview 8.6.1, xterm 6.0.0/addon-fit 0.11.0, node-pty 1.1.0이다. Theia는 비교 후 채택하지 않았다(ADR-040). 정확 버전·고지는 package manifest·lockfile·THIRD-PARTY-NOTICES를 따른다. Node 요구는 `^24.15.0`, pnpm은 10.30.3이다.
+현재 직접 의존성은 Monaco 0.57.0, Dockview 8.6.1, xterm 6.0.0/addon-fit 0.11.0, node-pty 1.1.0이며 P26 server에서 기존 Playwright Core 1.64.1을 재사용한다. Theia는 비교 후 채택하지 않았다(ADR-040). 정확 버전·고지는 package manifest·lockfile·THIRD-PARTY-NOTICES를 따른다. Node 요구는 `^24.15.0`, pnpm은 10.30.3이다.
 
 기존 추적 항목은 중복 생성하지 않는다.
 
@@ -104,7 +104,7 @@ baseline: 071276873dee4bb51491bf608e604fbb4e123475
 
 - 대상·공통 예약·receipt·고정 snapshot: [CR-046](../change-requests/CR-046-development-workbench.md), [실행과 안전](../current/execution-and-safety.md), `packages/contracts/src/workbench.ts`.
 - 문서 모델·dirty 복구·도킹·D&D·Reins·Git·task: [현재 Workbench](../current/workbench.md), [API 계약](../API-Contract.md), §2의 기존 구현.
-- P23 상시 LSP의 host process 상한·owner·종료 확인·target/version 계약을 유지한다. 후속 DAP도 이 공통 경계를 재사용한다.
+- P23 상시 LSP의 host process 상한·owner·종료 확인·target/version 계약을 유지한다. P26 DAP도 이 공통 경계를 재사용한다.
 - P22는 로컬 명시 opt-in이다. 원본·원격·임의 PTY·여러 agent의 동시 쓰기까지 확장하지 않는다.
 
 ## 5. 작업 묶음과 PR 완료 조건
@@ -115,7 +115,7 @@ baseline: 071276873dee4bb51491bf608e604fbb4e123475
 
 ### 완료 항목의 연결
 
-P00–P18(C-142–159)·P21-A(C-160)·P22(C-161)·P23(C-162)·P24-A(C-163)·P20(C-164)·P24-B(C-165)·P25(C-166)는 구현됐다. 초기 구현 지시와 비교 실험 계획은 제거했으며 요구·테스트 ID, 승인 CR, 해당 commit·환경의 결과는 원장과 증거에 보존한다. 현재 동작은 Workbench와 CR-046을 따른다. 코어 여정의 확인 범위는 위 R0에 회수했으며 P29 설치판·접근성·복구 조건은 아래에 남긴다.
+P00–P18(C-142–159)·P21-A(C-160)·P22(C-161)·P23(C-162)·P24-A(C-163)·P20(C-164)·P24-B(C-165)·P25(C-166)·P26(C-167)·P27(C-168)는 구현됐다. 초기 구현 지시와 비교 실험 계획은 제거했으며 요구·테스트 ID, 승인 CR, 해당 commit·환경의 결과는 원장과 증거에 보존한다. 현재 동작은 Workbench와 CR-046을 따른다. 코어 여정의 확인 범위는 위 R0에 회수했으며 P29 설치판·접근성·복구 조건은 아래에 남긴다.
 
 ### M4 남은 검토·preview·원격 연결
 
@@ -147,19 +147,9 @@ P24-B 다중 파일 교체·refactor(C-165)는 구현됐다. 저장된 파일의
 
 P25 고급 Git와 충돌 해결(C-166/CRL-WBD-022/TC-WBD-022-H,N,F)은 구현됐다. 현재 지원 범위와 안전 경계는 [Git hunk와 충돌 해결](../current/workbench.md#git-hunk와-충돌-해결)·[CR-046 P25](../change-requests/CR-046-development-workbench.md#p25-고급-git와-충돌-해결), 환경별 결과와 미검증 범위는 [실행 기록](../evaluation/Development-Workbench-Advanced-Git-2026-10-23.md)을 따른다. ordinary text hunk와 지원 merge/rebase의 구현을 모든 Git 상태·외부 host·서명 장치·설치판 검증 완료로 확대하지 않는다.
 
-**WB-P26 DAP 디버깅 — L, W2-12**
+P26 DAP 디버깅(C-167/CRL-WBD-023/TC-WBD-023-H,N,F)은 구현됐다. 현재 계약은 [Node·Chromium 디버깅](../current/workbench.md#nodechromium-디버깅), standalone adapter qualification·실제 Node/Chromium 원본 중단점·step·변수·평가·종료와 미검증 범위는 [실행 기록](../evaluation/Development-Workbench-Debugging-2026-10-23.md)을 따른다.
 
-- 작업: 먼저 Node/TypeScript, 이어 Chromium/browser의 검증된 debug adapter를 연결한다. launch/attach 설정·env 참조·cwd·source map·breakpoint·step·stack·variables·terminate를 지원한다.
-- 권한: launch configuration, debug console evaluate, adapter가 시작하는 terminal도 실행 효과다. privileged 기본값이나 임의 외부 debug port 접속을 만들지 않는다. browser adapter는 extension host 없이 배포/실행 가능한지 P01에서 확인한다.
-- 완료: unmapped breakpoint, source map 변경, child/debuggee 잔존, adapter crash, disconnect와 terminate 구분. process owner/host cap 사용. 선행 P07·23. [DAP 개요](https://microsoft.github.io/debug-adapter-protocol/overview)
-- 2026-10-23: 첫 묶음은 Node/TypeScript, 다음 묶음이 browser/Chromium과 실제 preview 대상이다. Node만 검증한 상태를 browser까지 완료로 기록하지 않으며, P28에서 browser를 빼려면 별도 제품 범위 결정이 필요하다. debugging pane 닫기가 debuggee를 조용히 끝내거나 orphan을 남기지 않는다.
-
-**WB-P27 배포 task와 결과 readback — M, W2-13**
-
-- 작업: provider별 거대 설정 UI 대신 기존 task에 환경·source commit/tree·credential 참조·명시 확인·결과 URL을 연결한다. dirty source 배포 여부를 숨기지 않는다.
-- 완료: mock 성공은 로컬 통합 증거, 실제 승인된 테스트 배포는 provider readback 증거로 분리. timeout/응답 유실에서 자동 재배포하지 않고 불확실 상태 확인. 출력 URL은 신뢰·프로토콜 정책 확인 후 링크로 표시한다.
-- 선행 P14·15·17. 실제 외부 계정·비용·대상은 이 계획 승인만으로 허용되지 않는다.
-- 2026-10-23: 별도 배포 catalog·credential 저장소를 먼저 만들지 않고 기존 인간 operation 원장과 task 경로에 환경·commit/tree·dirty·승인·credential 참조·readback을 연결한다. exit code와 배포 성공 확인을 구분하고, 확인이 안 되면 uncertain이다.
+P27 배포 task와 결과 확인(C-168/CRL-WBD-024/TC-WBD-024-H,N,F)은 구현됐다. 현재 계약은 [배포 작업](../current/workbench.md#배포-작업과-결과-확인), 로컬 명시 배포·분리된 결과 확인과 한계는 [실행 기록](../evaluation/Development-Workbench-Deployment-2026-10-23.md)을 따른다. 실제 provider 계정·비용·대상 승인은 별도이며 로컬 fixture는 외부 배포 증거가 아니다.
 
 **WB-P28 Daily Driver 인수 — M, W2-11–13**
 
@@ -186,10 +176,7 @@ P25 고급 Git와 충돌 해결(C-166/CRL-WBD-022/TC-WBD-022-H,N,F)은 구현됐
 
 ```mermaid
 flowchart TD
-  DONE[구현됨 P00-P18 P20 P21-A P22 P23 P24-A/B P25] --> DEBUG[DAP P26]
-  DONE --> DEPLOY[배포 task P27]
-  DEBUG --> G4[일상 개발 인수 P28]
-  DEPLOY --> G4
+  DONE[구현됨 P00-P18 P20 P21-A P22 P23 P24-A/B P25-P27] --> G4[일상 개발 인수 P28]
   G4 --> G5[설치판과 운영 검증 P29]
 ```
 

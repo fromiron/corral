@@ -3984,5 +3984,71 @@
     "status": "planned",
     "adapter": "isolated real Git/SQLite and desktop or in-app fixture; focused core regressions; no paid calls",
     "evidence": null
+  },
+  {
+    "id": "TC-WBD-023-H",
+    "requirements": [
+      "CRL-WBD-023"
+    ],
+    "suite": "unit+integration",
+    "scenario": "실제 Node/TypeScript와 Chromium adapter의 launch/소유 대상 attach·중단점·step·stack/variables·명시 evaluate와 편집기 이동",
+    "status": "planned",
+    "adapter": "isolated real Git/SQLite/process and in-app fixture; core regressions only; no paid calls or external deployment",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-023-N",
+    "requirements": [
+      "CRL-WBD-023"
+    ],
+    "suite": "unit+integration",
+    "scenario": "다른 target/generation/정지 세대·미저장/stale source·신뢰/설정 변경·외부 디버그 주소·미지원 reverse request 거절",
+    "status": "planned",
+    "adapter": "isolated real Git/SQLite/process and in-app fixture; core regressions only; no paid calls or external deployment",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-023-F",
+    "requirements": [
+      "CRL-WBD-023"
+    ],
+    "suite": "unit+integration",
+    "scenario": "중복/늦은 응답·adapter crash·host 재시작·disconnect/terminate 이후 소유 프로세스와 초안 보존",
+    "status": "planned",
+    "adapter": "isolated real Git/SQLite/process and in-app fixture; core regressions only; no paid calls or external deployment",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-024-H",
+    "requirements": [
+      "CRL-WBD-024"
+    ],
+    "suite": "unit+integration",
+    "scenario": "검토한 환경·source·credential 참조의 배포 task 시작과 별도 결과 확인·안전한 URL 표시",
+    "status": "planned",
+    "adapter": "isolated real Git/SQLite/process and in-app fixture; core regressions only; no paid calls or external deployment",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-024-N",
+    "requirements": [
+      "CRL-WBD-024"
+    ],
+    "suite": "unit+integration",
+    "scenario": "오래된 source/config/대상·누락 credential·확인 없는 시작·잘못된 결과/URL 거절과 기존 task 보존",
+    "status": "planned",
+    "adapter": "isolated real Git/SQLite/process and in-app fixture; core regressions only; no paid calls or external deployment",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-024-F",
+    "requirements": [
+      "CRL-WBD-024"
+    ],
+    "suite": "unit+integration",
+    "scenario": "취소·중복·응답 유실·host 재시작·확인 실패에서 같은 receipt를 조회하고 불확실 결과를 자동 재배포하지 않음",
+    "status": "planned",
+    "adapter": "isolated real Git/SQLite/process and in-app fixture; core regressions only; no paid calls or external deployment",
+    "evidence": null
   }
 ]

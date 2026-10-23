@@ -5,7 +5,10 @@ import { useEffect, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
 import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
+import { DebuggerSettings } from './DebuggerSettings.tsx';
+import { DeploymentSettings } from './DeploymentSettings.tsx';
 import { WORKSPACE_CHANGED } from './FilesViews.tsx';
+import { projectToolValues } from './projectToolValues.ts';
 
 const field = 'settings-field';
 const empty = { id: '', name: '', argv: '', languages: '', extensions: '', seconds: '30' };
@@ -52,9 +55,8 @@ export function ProjectToolSettings({
   }
   async function save(servers: RegisteredLspServer[]) {
     const saved = await api.saveProjectTools(projectId, config?.revision ?? 0, {
-      checks: config?.checks ?? [],
+      ...projectToolValues(config),
       lspServers: servers,
-      ...(config?.mcpServers ? { mcpServers: config.mcpServers } : {}),
     });
     onChange(saved);
     setLaunches({});
@@ -273,6 +275,8 @@ export function ProjectToolSettings({
           ) : null}
         </div>
       </fieldset>
+      <DebuggerSettings api={api} projectId={projectId} config={config} onChange={onChange} />
+      <DeploymentSettings api={api} projectId={projectId} config={config} onChange={onChange} />
     </section>
   );
 }

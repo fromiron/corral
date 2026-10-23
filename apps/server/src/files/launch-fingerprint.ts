@@ -23,11 +23,11 @@ const missing = (error: unknown) =>
     (error as NodeJS.ErrnoException).code ?? '',
   );
 
-async function fileHash(path: string) {
+export async function fileHash(path: string, maxBytes = 256 * 1024 * 1024) {
   const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     const info = await handle.stat();
-    if (!info.isFile() || info.size > 256 * 1024 * 1024)
+    if (!info.isFile() || info.size > maxBytes)
       throw new Error('launch file exceeds supported size');
     const digest = createHash('sha256');
     for await (const chunk of handle.createReadStream({ autoClose: false })) digest.update(chunk);
@@ -44,7 +44,7 @@ async function fileHash(path: string) {
   }
 }
 
-async function executablePath(command: string, root: string) {
+export async function executablePath(command: string, root: string) {
   const candidates =
     command.includes('/') || command.includes('\\') || isAbsolute(command)
       ? [resolve(root, command)]

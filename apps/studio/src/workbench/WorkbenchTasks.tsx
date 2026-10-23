@@ -4,6 +4,7 @@ import { Button } from '@corral/react/ui';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
+import { DeploymentTasks } from './DeploymentTasks.tsx';
 
 const OUTPUT_LIMIT = 64 * 1024;
 const open = (task: UserTaskView) => task.state === 'running' || task.state === 'uncertain';
@@ -13,7 +14,12 @@ const open = (task: UserTaskView) => task.state === 'running' || task.state === 
  * when a person starts it, and holds the copy's writer until its process group is gone.
  */
 export function WorkbenchTasks({ sessionId, projectId }: { sessionId: string; projectId: string }) {
-  return <Tasks key={sessionId} sessionId={sessionId} projectId={projectId} />;
+  return (
+    <>
+      <Tasks key={sessionId} sessionId={sessionId} projectId={projectId} />
+      <DeploymentTasks sessionId={sessionId} projectId={projectId} />
+    </>
+  );
 }
 
 function Tasks({ sessionId, projectId }: { sessionId: string; projectId: string }) {

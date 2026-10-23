@@ -958,5 +958,17 @@
     "requirement": "CR-046 실제 index 기준 hunk stage/unstage와 base/ours/theirs 충돌 편집·merge/rebase continue/abort를 기존 Git writer·정책·receipt에 연결하고 HEAD/index/sequencer 변경과 초안을 보존한다.",
     "owner": "server",
     "phase": "M5"
+  },
+  {
+    "id": "CRL-WBD-023",
+    "requirement": "CR-046 신뢰한 관리 사본에서 등록된 Node/TypeScript·Chromium 디버그 어댑터의 명시 launch/소유 대상 attach와 중단점·step·stack·variables·evaluate를 제공하고 대상·세대·정지 상태·프로세스 소유권·초안 및 disconnect/terminate 구분을 보존한다.",
+    "owner": "server",
+    "phase": "M5"
+  },
+  {
+    "id": "CRL-WBD-024",
+    "requirement": "CR-046 기존 사람 task와 operation 원장에 환경·source commit/tree·dirty·credential 참조·명시 확인·결과 URL과 배포 결과 재확인을 연결하고 응답 유실/중복 시 재배포하지 않으며 프로세스 종료와 배포 완료를 구분한다.",
+    "owner": "server",
+    "phase": "M5"
   }
 ]

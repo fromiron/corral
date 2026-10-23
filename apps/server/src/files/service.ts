@@ -38,6 +38,14 @@ import {
   ContentSearch,
   type ContentSearchResult,
   canonicalJson,
+  type DebugBreakpoints,
+  type DebugCommand,
+  type DebugInspect,
+  type DebugQuery,
+  type DebugStart,
+  type DeploymentAction,
+  type DeploymentInspect,
+  type DeploymentStart,
   DevelopmentStart,
   type DevelopmentState,
   DocumentCommand,
@@ -131,6 +139,8 @@ import { commandEnvironment, listShells, resolveShellCommand } from '../processe
 import { systemTimers } from '../runtime.ts';
 import { isolatedChecksAvailable } from './check-isolation.ts';
 import { redactToolText } from './check-output.ts';
+import { type DebugOptions, DebugSessions } from './debug-sessions.ts';
+import { DeploymentTasks } from './deployment-tasks.ts';
 import { FileEditProposals } from './file-edit-proposals.ts';
 import { checkGitEnvironment, GitError, git, gitText } from './git.ts';
 import {
@@ -472,6 +482,8 @@ export class WorkspaceService implements FileTools {
   private readonly criteria = new Map<string, ReviewRecipeRevision['criteriaFiles']>();
   private readonly lsp: Pick<LspRunner, 'query'>;
   private readonly language: LanguageSessions;
+  private readonly debugger: DebugSessions;
+  private readonly deploymentTasks: DeploymentTasks;
   private readonly fileEdits: FileEditProposals;
   private readonly io: MutationIo;
   readonly projectTools: SqliteProjectToolStore;
@@ -519,6 +531,8 @@ export class WorkspaceService implements FileTools {
     pty?: Pick<PtyRuntimeOptions, 'spawn' | 'capture' | 'cleanup' | 'shells' | 'newGeneration'>;
     lsp?: Pick<LspRunner, 'query'>;
     language?: LanguageTransport;
+    debug?: Pick<DebugOptions, 'transport' | 'bridge'>;
+    debugPreview?: DebugOptions['preview'];
     edit?: (request: EditTextRequest, cancellation: ToolCancellation) => Promise<EditTextResult>;
   }) {
     this.db = options.db;
@@ -578,6 +592,69 @@ export class WorkspaceService implements FileTools {
           throw new ToolRefusal('CAPABILITY_DENIED', 'language documents require UTF-8 text');
         return text;
       },
+    });
+    this.debugger = new DebugSessions({
+      clock: this.clock,
+      timers: this.timers,
+      tools: this.projectTools,
+      operations: this.workbenchOperations,
+      ...options.debug,
+      context: (sessionId, expected) => {
+        const current = this.documentTarget(sessionId, expected);
+        return {
+          target: current.target,
+          path: current.row.worktree_path,
+          trusted: Boolean(current.binding.trusted),
+          closing: this.disposing || this.removingWorktrees.has(sessionId),
+        };
+      },
+      safePath: safeRelative,
+      plainPath: assertPlainPath,
+      read: async (root, path) => {
+        const text = decodeText(await textBytes(root, path), true);
+        if (text === null)
+          throw new ToolRefusal('CAPABILITY_DENIED', 'debug source requires UTF-8 text');
+        return text;
+      },
+      sources: async (root) => {
+        // Generated source maps can be Git-ignored. Include them without scanning dependency trees.
+        const scan = await this.folderPaths(root, '', true);
+        const paths = scan.paths.slice(0, 500);
+        const sources: Record<string, string> = {};
+        let bytes = 0;
+        let complete = !scan.truncated;
+        for (const path of paths) {
+          try {
+            const { bytes: content, size } = await boundedFile(root, path, 1024 * 1024);
+            bytes += size;
+            if (bytes > 8 * 1024 * 1024) {
+              complete = false;
+              break;
+            }
+            if (content && decodeText(content, true) !== null) sources[path] = sha256(content);
+            else if (path.endsWith('.map')) complete = false;
+          } catch {
+            if (path.endsWith('.map')) complete = false;
+          }
+        }
+        return { hashes: sources, complete };
+      },
+      task: (sessionId, operationId, target) =>
+        this.userTaskRunning(sessionId, operationId) &&
+        canonicalJson(this.workbenchOperations.get(operationId)?.target) === canonicalJson(target),
+      attest: (sessionId, operationId, port, peerPort) =>
+        this.attestCommandConnection(sessionId, operationId, port, peerPort),
+      preview: options.debugPreview,
+    });
+    this.deploymentTasks = new DeploymentTasks({
+      db: this.db,
+      operations: this.workbenchOperations,
+      runtime: this.taskRuntime,
+      resolveTarget: (sessionId, target) =>
+        this.documentTarget(sessionId, target, true).row.worktree_path,
+      config: (projectId) => this.projectTools.latest(projectId),
+      snapshot: (root) => this.snapshotTree(root, 'linux-bwrap'),
+      lease: (root, work) => this.lease(root, work),
     });
     this.verificationRunner = new VerificationRunner({
       clock: options.clock,
@@ -759,6 +836,11 @@ export class WorkspaceService implements FileTools {
           checks: change.verifyCommands,
           lspServers: previous?.lspServers ?? [],
           ...(previous?.mcpServers ? { mcpServers: previous.mcpServers } : {}),
+          ...(previous?.debugAdapters ? { debugAdapters: previous.debugAdapters } : {}),
+          ...(previous?.debugConfigurations
+            ? { debugConfigurations: previous.debugConfigurations }
+            : {}),
+          ...(previous?.deployments ? { deployments: previous.deployments } : {}),
         });
       }
       this.db
@@ -772,7 +854,10 @@ export class WorkspaceService implements FileTools {
           row.id,
         );
     })();
-    if (!trusted || change.verifyCommands) this.language.invalidate(projectId);
+    if (!trusted || change.verifyCommands) {
+      this.language.invalidate(projectId);
+      this.debugger.invalidate(projectId);
+    }
     return (await this.view(projectId)) as BindingView;
   }
 
@@ -844,6 +929,7 @@ export class WorkspaceService implements FileTools {
       return saved;
     })();
     this.language.invalidate(projectId);
+    this.debugger.invalidate(projectId);
     return saved;
   }
 
@@ -1212,6 +1298,7 @@ export class WorkspaceService implements FileTools {
     this.removingWorktrees.add(sessionId);
     try {
       await this.language.stopCopy(sessionId);
+      await this.debugger.stopCopy(sessionId);
       await this.lease(row.worktree_path, async () => {
         const path = existsSync(row.worktree_path)
           ? realpathSync.native(row.worktree_path)
@@ -1273,6 +1360,48 @@ export class WorkspaceService implements FileTools {
 
   languageState(sessionId: string) {
     return this.language.state(sessionId);
+  }
+  debugState(sessionId: string) {
+    return this.debugger.state(sessionId);
+  }
+  stopDebugPreview(leaseId: string) {
+    return this.debugger.previewStopped(leaseId);
+  }
+  inspectDebug(sessionId: string, input: DebugInspect) {
+    return this.debugger.inspect(sessionId, input);
+  }
+  startDebug(sessionId: string, input: DebugStart) {
+    return this.debugger.start(sessionId, input);
+  }
+  setDebugBreakpoints(sessionId: string, input: DebugBreakpoints) {
+    return this.debugger.breakpoints(sessionId, input);
+  }
+  queryDebug(sessionId: string, input: DebugQuery, cancellation?: ToolCancellation) {
+    return this.debugger.query(sessionId, input, cancellation);
+  }
+  commandDebug(sessionId: string, input: DebugCommand) {
+    return this.debugger.command(sessionId, input);
+  }
+  debugCommand(sessionId: string, generation: string, commandId: string) {
+    return this.debugger.commandReceipt(sessionId, generation, commandId);
+  }
+  inspectDeployment(sessionId: string, input: DeploymentInspect) {
+    return this.deploymentTasks.inspect(sessionId, input);
+  }
+  startDeployment(sessionId: string, input: DeploymentStart) {
+    return this.deploymentTasks.start(sessionId, input);
+  }
+  deployments(sessionId: string) {
+    return this.deploymentTasks.list(sessionId, this.documentTarget(sessionId).target.projectId);
+  }
+  deployment(sessionId: string, operationId: string) {
+    return this.deploymentTasks.get(sessionId, operationId);
+  }
+  checkDeployment(sessionId: string, operationId: string, input: DeploymentAction) {
+    return this.deploymentTasks.check(sessionId, operationId, input);
+  }
+  stopDeployment(sessionId: string, operationId: string, input: DeploymentAction) {
+    return this.deploymentTasks.stop(sessionId, operationId, input);
   }
   inspectLanguage(sessionId: string, input: LanguageInspect) {
     return this.language.inspect(sessionId, input);
@@ -4851,10 +4980,13 @@ export class WorkspaceService implements FileTools {
     for (const operation of pendingGit) operation.cancel();
     await Promise.allSettled(pendingGit.map((operation) => operation.done));
     const languageClosing = this.language.dispose();
+    const debugClosing = this.debugger.dispose();
+    void debugClosing.catch(() => {});
     void languageClosing.catch(() => {});
     await this.terminals.close();
     await this.commandRuntime.close();
     await this.taskRuntime.close();
+    await this.deploymentTasks.dispose();
     await Promise.allSettled([...this.pendingCommands.values()]);
     await Promise.allSettled(
       [...this.commandServices.values()].map((service) => service.completion),
@@ -4870,12 +5002,14 @@ export class WorkspaceService implements FileTools {
       ...this.leases.values(),
     ]);
     await languageClosing;
+    await debugClosing;
   }
 
   /** Updating the desktop must wait for file checkpoints as well as owned processes. */
   hasPendingProcesses(): boolean {
     if (
       this.language.hasPending() ||
+      this.debugger.hasPending() ||
       this.checks.size ||
       this.pendingCommands.size ||
       this.pendingSnapshots.size ||
@@ -6143,7 +6277,7 @@ export class WorkspaceService implements FileTools {
   }
 
   /** Non-Git folders have the same bounded picker and never follow directory symlinks. */
-  private async folderPaths(root: string, folder: string) {
+  private async folderPaths(root: string, folder: string, excludeDependencies = false) {
     const pending = [folder];
     const paths: string[] = [];
     let visited = 0;
@@ -6151,6 +6285,7 @@ export class WorkspaceService implements FileTools {
       const rel = pending.shift() as string;
       const dir = await opendir(join(root, rel));
       for await (const entry of dir) {
+        if (excludeDependencies && entry.name === 'node_modules') continue;
         if (++visited >= 2000) break;
         const path = rel ? `${rel}/${entry.name}` : entry.name;
         try {

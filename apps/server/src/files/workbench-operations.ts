@@ -35,6 +35,7 @@ const sharedKinds = new Set([
   'document.rename',
   'document.delete',
   'task',
+  'debug',
   'git.stage',
   'git.stage_hunks',
   'git.unstage_hunks',
@@ -142,6 +143,17 @@ export class WorkbenchOperations {
       this.db
         .prepare(
           "UPDATE workbench_operations SET result_json=?,updated_at=? WHERE operation_id=? AND state='running'",
+        )
+        .run(JSON.stringify(result), this.clock.nowIso(), operationId).changes === 1
+    );
+  }
+
+  /** Command receipts may complete after their debugger has released its process owner. */
+  updateDebugResult(operationId: string, result: unknown): boolean {
+    return (
+      this.db
+        .prepare(
+          "UPDATE workbench_operations SET result_json=?,updated_at=? WHERE operation_id=? AND kind='debug'",
         )
         .run(JSON.stringify(result), this.clock.nowIso(), operationId).changes === 1
     );

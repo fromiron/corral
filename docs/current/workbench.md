@@ -123,9 +123,9 @@ merge/rebase는 깨끗한 관리 사본의 local branch에서 사람이 선택�
 
 ## 공유 개발 모드
 
-[CR-046 P22](../change-requests/CR-046-development-workbench.md#p22-공유-개발-owner-d2-승인)의 B안은 로컬 관리 사본에서 사람이 명시적으로 켜는 선택 모드다. 하나의 `development` operation이 writer를 보유하고 문서 변경·명시 task·stage/unstage/commit/fetch/push는 그 아래의 비-writer access로 접수한다. stage/unstage에는 P25의 선택 hunk 조작도 포함하며 각각의 index·patch 재검증을 유지한다. 개발 서버를 켠 채 저장할 수 있지만 외부 쓰기를 격리하지는 않는다. 기존 hash 충돌·초안 보존, P17 귀속·검사/검토 유효성 기준을 유지한다.
+[CR-046 P22](../change-requests/CR-046-development-workbench.md#p22-공유-개발-owner-d2-승인)의 B안은 로컬 관리 사본에서 사람이 명시적으로 켜는 선택 모드다. 하나의 `development` operation이 writer를 보유하고 문서 변경·명시 task·P26 디버깅·stage/unstage/commit/fetch/push는 그 아래의 비-writer access로 접수한다. stage/unstage에는 P25의 선택 hunk 조작도 포함하며 각각의 index·patch 재검증을 유지한다. 개발 서버를 켠 채 저장할 수 있지만 외부 쓰기를 격리하지는 않는다. 기존 hash 충돌·초안 보존, P17 귀속·검사/검토 유효성 기준을 유지한다.
 
-사본과 작업 창에서 모드를 표시·전환한다. agent writer·터미널·branch 생성/전환·pull·merge/rebase 시작·continue/abort는 공유 모드를 끝내기 전 거절한다. 다른 사람 owner의 종료·미확인 효과가 정리돼야 단독 쓰기로 돌아간다. 읽기 전용 Run과 검사는 각자 고정 snapshot을 사용한다. host 재시작은 uncertain이고 공유를 자동 복원하지 않는다. 일반 서버는 기본 비활성이고 로컬 Desktop sidecar·`corral dev`만 opt-in한다. 구현·환경 검증·미검증 범위는 [C-161 기록](../evaluation/Development-Workbench-Shared-Development-2026-10-23.md)을 따른다.
+사본과 작업 창에서 모드를 표시·전환한다. agent writer·터미널·branch 생성/전환·pull·merge/rebase 시작·continue/abort·P27 배포는 공유 모드를 끝내기 전 거절한다. 다른 사람 owner의 종료·미확인 효과가 정리돼야 단독 쓰기로 돌아간다. 읽기 전용 Run과 검사는 각자 고정 snapshot을 사용한다. host 재시작은 uncertain이고 공유를 자동 복원하지 않는다. 일반 서버는 기본 비활성이고 로컬 Desktop sidecar·`corral dev`만 opt-in한다. 구현·환경 검증·미검증 범위는 [C-161 기록](../evaluation/Development-Workbench-Shared-Development-2026-10-23.md)을 따른다.
 
 ## 미리보기 요소 피드백
 
@@ -160,3 +160,24 @@ merge/rebase는 깨끗한 관리 사본의 local branch에서 사람이 선택�
 파일 전체를 사전 검사한 뒤 적용하고 파일별 적용·보존·불확실 결과를 receipt에 남긴다. 여러 파일을 하나의 파일 시스템 트랜잭션으로 취급하지 않으며 부분 실패 뒤 외부 변경을 rollback으로 덮지 않는다. 응답을 잃으면 원래 operation ID로 결과를 확인한다. 불확실 결과의 명시 재확인은 현재 저장 내용이 제안의 before/after 중 하나로 확인될 때만 소유권을 정리한다. 되돌리기는 적용이 확인된 파일의 현재 내용이 after와 같은지 확인한 후 역방향 proposal을 만들며, 그 diff에도 별도 적용이 필요하다.
 
 구현과 해당 환경의 검증 범위는 [C-165 실행 기록](../evaluation/Development-Workbench-File-Edits-2026-10-23.md)을 따른다. 기존 단발 LSP 제안·문서 저장·읽기 전용 검색·미저장 초안 복구 경로는 유지한다.
+
+
+## Node·Chromium 디버깅
+
+[CR-046 P26](../change-requests/CR-046-development-workbench.md#p26-dap-디버깅)은 기존 작업 사본·도킹·문서 편집기에 디버깅을 연결한다. 프로젝트 도구 설정에 DAP adapter와 Node 또는 Chromium 구성을 등록하고, 현재 사본·실행 파일·인자·환경 변수 참조·설정 revision·fingerprint를 검토해 명시적으로 시작한다. adapter 설치나 프로젝트 코드 실행을 자동으로 하지 않는다. 현재 실행 가용 범위는 신뢰한 Linux 관리 사본이다. 다른 OS·원격 host의 실행과 설치판 검증은 별도이며 구현 여부와 혼동하지 않는다.
+
+Node launch는 등록된 사본 내부 프로그램을 실행한다. Chromium launch는 같은 사본의 소유된 preview를 별도 프로필에서 열며 앱 인증 cookie나 개인 브라우저 프로필을 공유하지 않는다. attach는 같은 호스트·사본에서 Corral이 소유한 실행 중인 task와 확인한 포트로 한정한다. 임의 PID·외부 debug port·CDP 주소를 UI에서 전달해 접속하지 않는다. 기본 모드에서는 debug operation이 공통 writer와 process 예약을 사용하고, 명시 공유 개발 모드에서는 허용된 사람 효과로 실행한다.
+
+중단점·정지·계속·step·stack·variables와 명시적인 표현식 평가를 지원한다. 평가는 상태를 바꿀 수 있는 실행 효과이며 자동 watch나 hover로 실행하지 않는다. 명령과 조회는 전체 target·debug generation에 고정한다. 정지 상태의 제어는 현재 revision·정지 세대도 확인하며 stack·variables 조회는 정지 세대를 확인한다. 편집기 중단점은 저장된 파일 hash를 확인하고, source map 결과도 관리 사본 안의 확인된 파일만 탐색한다. 바뀌었거나 가상·외부인 소스를 현재 파일 위치로 표시하지 않으며 미저장 초안을 덮지 않는다. Chromium 최초 페이지 로드 전에 모든 중단점이 설치된다고 보장하지 않는다.
+
+패널 닫기는 실행 종료가 아니다. Corral이 시작한 대상은 **중지**, 기존 task에 붙은 디버거는 **연결 해제**로 끝낸다. 연결 해제는 원래 task를 종료하지 않는다. 중복·응답 유실은 원래 command ID의 receipt를 확인하고 자동으로 평가·step·시작을 재실행하지 않는다. adapter 실패나 host 재시작 후 정리가 확인되지 않은 프로세스는 uncertain으로 남으며 소유권과 상한을 임의로 해제하지 않는다.
+
+## 배포 작업과 결과 확인
+
+[CR-046 P27](../change-requests/CR-046-development-workbench.md#p27-배포-task와-결과-확인)은 기존 작업 패널과 프로젝트 도구 설정을 사용한다. 구성은 이름·대상 환경·배포 명령·별도 결과 확인 명령·제한 시간·호스트 환경 변수 이름을 저장한다. 별도 provider catalog나 credential 저장소를 만들지 않으며 secret 값은 UI·receipt·출력에 넣지 않는다.
+
+검토는 실행하지 않는다. 현재 host/project/binding/session/copy generation, 구성 revision·명령 fingerprint, source commit·tree와 dirty 여부를 고정해 보여 준다. 미저장·저장 중·미확인 저장·충돌 버퍼가 있으면 시작을 막고, 저장된 파일에 미커밋 변경이 있으면 이를 포함한다는 명시 확인을 요구한다. 시작 직전 서버에서 소스·명령·credential 참조 값을 다시 확인한다. 배포는 strict writer를 사용하므로 공유 개발을 종료해야 한다. 원본 폴더나 다른 사본의 결과로 대체하지 않는다.
+
+**배포 명령의 exit 0은 배포 성공이 아니다.** 명령 종료와 로컬 프로세스 정리가 확인돼도 외부 결과가 없으면 uncertain이다. 사람이 누른 별도 결과 확인 명령만 원래 operation·환경·source commit/tree·배포 ID와 일치하는 응답을 읽어 pending/succeeded/failed를 판정한다. 결과 URL은 HTTPS 또는 loopback HTTP이며 URL 자격 증명·query·fragment를 허용하지 않는다. 읽기 전용 상태 조회가 재배포나 결과 확인 명령을 자동 실행하지 않는다.
+
+응답 유실·timeout·host 재시작은 원래 operation의 상태를 확인하며 자동 재배포하지 않는다. **로컬 작업 중지/확인 종료는 외부 배포의 취소나 rollback이 아니다.** 소유 프로세스 정리를 확인하면 사본 예약을 해제하고 terminal cancelled와 외부 결과 미확인을 남긴다. 종료한 operation의 앱 내 결과 확인은 다시 실행하지 않으며 대상 서비스에서 수동으로 확인한다. 로컬 mock 검증은 실제 외부 provider 배포·readback의 실증을 대신하지 않는다. 결과 확인 명령의 데이터 계약은 [API 계약](../API-Contract.md)을 따른다.

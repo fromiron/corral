@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DeploymentEnvRef, RegisteredDeployment } from './deployment.ts';
 import { ContentHash } from './harness.ts';
 import { Identifier } from './ids.ts';
 
@@ -34,6 +35,41 @@ export const RegisteredLspServer = z.strictObject({
     .max(40),
 });
 export type RegisteredLspServer = z.infer<typeof RegisteredLspServer>;
+export const RegisteredDebugAdapter = z.strictObject(Launch);
+export type RegisteredDebugAdapter = z.infer<typeof RegisteredDebugAdapter>;
+const DebugCommon = {
+  id: Identifier,
+  name: Launch.name,
+  adapterId: Identifier,
+  cwd: z.string().min(1).max(1000),
+  sourceMaps: z.boolean().optional(),
+  outFiles: z.array(z.string().min(1).max(500)).max(16).optional(),
+};
+const EnvRefs = z.array(DeploymentEnvRef).max(64);
+export const RegisteredDebugConfiguration = z.union([
+  z.strictObject({
+    ...DebugCommon,
+    runtime: z.literal('node'),
+    request: z.literal('launch'),
+    program: z.string().min(1).max(1000),
+    args: z.array(z.string().max(1000)).max(64).optional(),
+    runtimeExecutable: z.string().min(1).max(4096).optional(),
+    envRefs: EnvRefs.optional(),
+  }),
+  z.strictObject({
+    ...DebugCommon,
+    runtime: z.literal('chromium'),
+    request: z.literal('launch'),
+    executablePath: z.string().min(1).max(4096),
+    envRefs: EnvRefs.optional(),
+  }),
+  z.strictObject({
+    ...DebugCommon,
+    runtime: z.enum(['node', 'chromium']),
+    request: z.literal('attach'),
+  }),
+]);
+export type RegisteredDebugConfiguration = z.infer<typeof RegisteredDebugConfiguration>;
 const McpCommon = {
   id: z
     .string()
@@ -108,12 +144,20 @@ export const ProjectToolConfig = z
     checks: z.array(RegisteredCheck).max(64),
     lspServers: z.array(RegisteredLspServer).max(16),
     mcpServers: z.array(RegisteredMcpServer).max(16).optional(),
+    debugAdapters: z.array(RegisteredDebugAdapter).max(8).optional(),
+    debugConfigurations: z.array(RegisteredDebugConfiguration).max(32).optional(),
+    deployments: z.array(RegisteredDeployment).max(16).optional(),
   })
   .refine(
     (config) =>
-      [config.checks, config.lspServers, config.mcpServers ?? []].every(
-        (items) => new Set(items.map((item) => item.id)).size === items.length,
-      ),
+      [
+        config.checks,
+        config.lspServers,
+        config.mcpServers ?? [],
+        config.debugAdapters ?? [],
+        config.debugConfigurations ?? [],
+        config.deployments ?? [],
+      ].every((items) => new Set(items.map((item) => item.id)).size === items.length),
     'duplicate tool ID',
   );
 export type ProjectToolConfig = z.infer<typeof ProjectToolConfig>;
@@ -126,7 +170,7 @@ export const ProjectToolConfigRevision = ProjectToolConfig.safeExtend({
 export type ProjectToolConfigRevision = z.infer<typeof ProjectToolConfigRevision>;
 export const ProjectToolTrustTarget = z.strictObject({
   projectId: Identifier,
-  kind: z.enum(['check', 'lsp', 'mcp']),
+  kind: z.enum(['check', 'lsp', 'mcp', 'debug']),
   id: Identifier,
   fingerprint: ContentHash,
 });

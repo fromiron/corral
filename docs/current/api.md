@@ -30,6 +30,12 @@ HTTP·이벤트·오류의 상세 의미는 [API-Contract](../API-Contract.md)�
 
 과거 snapshot/hash를 새 기본값으로 덮지 않는다. 새 필드는 optional 또는 명시한 schema version 등 승인된 호환 방식으로 추가하며, 과거 기록의 해석은 읽기 계층에서 구분한다.
 
+## 디버깅·배포의 효과 경계
+
+CR-046 P26/P27의 요청·응답 원본은 각각 `packages/contracts/src/debug.ts`와 `deployment.ts`, 등록 구성은 `project-tools.ts`다. 상세 경로는 [API-Contract](../API-Contract.md)를 따른다. 디버깅의 generation·정지 세대·command ID와 배포의 operation·환경·source identity를 구분하며, 상태 조회와 명시 실행을 같은 효과로 처리하지 않는다.
+
+배포 명령의 종료 코드와 외부 결과 확인은 별개의 기록이다. 결과가 불확실하면 같은 receipt를 조회하고 재배포하지 않는다. 명시 중지로 소유 프로세스 정리와 예약 해제가 끝난 배포는 terminal이며, 외부 배포 결과가 미확인이라는 사실을 보존한다. 사용자 흐름과 지원 경계는 [Workbench](workbench.md#배포-작업과-결과-확인)에 둔다.
+
 ## 검사와 추적
 
 계약 변경은 `pnpm contracts:check`, 추적·문서 변경은 `pnpm spec:check`와 관련 실제 시험을 실행한다. 생성 결과 일치, TC 태그 존재, schema 통과와 제품 동작 통과는 별개의 증거다.

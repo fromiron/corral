@@ -6,6 +6,7 @@ export const DOCK_VIEWS = [
   'files',
   'changes',
   'git',
+  'debug',
   'artifacts',
   'checks',
   'problems',
@@ -19,6 +20,7 @@ export type DockView = (typeof DOCK_VIEWS)[number];
 export const SESSION_PANELS = [
   'changes',
   'git',
+  'debug',
   'files',
   'artifacts',
   'checks',
@@ -60,6 +62,21 @@ export const PANE_CATALOG: readonly PaneEntry[] = [
     group: 'develop',
     slash: 'git',
     aliases: ['git', 'staged', 'unstaged', 'index', 'branch', '깃', '브랜치', '스테이징'],
+  },
+  {
+    view: 'debug',
+    group: 'develop',
+    slash: 'debug',
+    aliases: [
+      'debug',
+      'debugger',
+      'breakpoint',
+      'stack',
+      '디버깅',
+      '디버거',
+      '중단점',
+      '호출 스택',
+    ],
   },
   {
     view: 'terminal',
@@ -121,7 +138,16 @@ export const PANE_CATALOG: readonly PaneEntry[] = [
 /** View references only; document, process and Run owners stay in their existing stores. */
 export type PanelDescriptor =
   | {
-      kind: 'chat' | 'files' | 'changes' | 'git' | 'artifacts' | 'checks' | 'problems' | 'review';
+      kind:
+        | 'chat'
+        | 'files'
+        | 'changes'
+        | 'git'
+        | 'debug'
+        | 'artifacts'
+        | 'checks'
+        | 'problems'
+        | 'review';
       projectId: string;
       sessionId: string;
     }
@@ -147,6 +173,7 @@ export function panelKey(services: object, panel: PanelDescriptor): string {
     case 'files':
     case 'changes':
     case 'git':
+    case 'debug':
     case 'artifacts':
     case 'checks':
     case 'problems':

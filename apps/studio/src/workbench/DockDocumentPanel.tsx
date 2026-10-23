@@ -7,6 +7,7 @@ import { useStore } from 'zustand';
 import { useServices } from '../services.tsx';
 import type { AttachmentCapture } from './context/bridge.ts';
 import { DocumentPanel } from './DocumentPanel.tsx';
+import { debugStore } from './debug/store.ts';
 import type { RecoveryDraft } from './documents/recovery.ts';
 import { type DocumentStore, documentKey } from './documents/store.ts';
 import type { FileReference } from './FilePanel.tsx';
@@ -148,6 +149,11 @@ export function DockDocumentPanel({
       {showEditor ? (
         <DocumentPanel
           owner={owner}
+          debugOwner={
+            services.mode === 'server' && services.workspaces?.debugState
+              ? debugStore(services.workspaces, owner)
+              : undefined
+          }
           language={
             services.mode === 'server' && services.workspaces?.languageState
               ? languageStore(services.workspaces, owner)

@@ -291,3 +291,19 @@ H는 Git 변경·미제출 의견·열린 Run이 있는 사본의 요약과, 보
 - index hunk는 실제 HEAD/index/working 파일과 patch identity에 고정하고 stage/unstage 후 index를 다시 판별한다. checkpoint hunk 승인과 혼동하지 않는다. binary·rename/mode/filter 등 안전하게 표현할 수 없는 경우는 미지원 이유와 기존 파일 전체 작업을 유지한다.
 - 충돌은 base/ours/theirs와 현재 파일을 보여 주며 기존 편집기로 해결한다. merge/rebase 진행·continue/abort는 sequencer identity와 현재 index/HEAD를 재검증한다. continue에서 hook/signer·commit 정책을 우회하거나 todo의 exec를 몰래 실행하지 않는다. 지원하지 않는 interactive/autostash/외부 실행 상태는 거절한다.
 - abort의 변경 손실 가능을 구체적으로 확인하고 dirty 초안을 보호한다. 자동 merge·force push·destructive reset/clean은 추가하지 않는다. 중복/유실·재시작·실패 후 상태를 다시 읽으며 불확실 상태를 완료로 바꾸지 않는다.
+
+## P26: DAP 디버깅
+
+- 승인: 2026-10-23 사용자가 P26 → P27 순서의 구현·기존 동작 보존·핵심 회귀·실제 화면·기능 단위 로컬 커밋을 요청했다. 과도한 전체 검증을 반복하지 않는다. CRL-WBD-023/C-167/TC-WBD-023-H,N,F.
+- 기존 셸·도킹·문서 모델·공통 process capacity/owner를 재사용하며 별도 IDE backend나 실행 원장을 만들지 않는다. 등록된 성숙한 독립 DAP adapter를 명시적으로 검토·실행한다. 처음 범위는 Node/TypeScript와 Chromium이며 어느 하나만으로 전체 P26 완료를 선언하지 않는다. 설치·프로젝트 코드 실행은 자동으로 시작하지 않는다.
+- launch/attach 구성·cwd·인자·환경 변수 참조와 현재 target/config fingerprint를 검토한다. attach는 이 호스트가 소유한 작업/디버그 대상에 한정하고 renderer가 임의 PID·외부 debug port·CDP 주소를 전달해 접속할 수 없게 한다. 브라우저는 별도 프로필과 소유된 preview 대상을 사용하며 앱 인증 cookie·개인 브라우저 프로필을 공유하지 않는다.
+- 디버깅과 console evaluate는 사람 실행 효과다. strict에서는 사본 writer를 예약하고, 명시 P22 공유 개발에서는 정확한 debug 효과만 기존 task와 같은 사람 공유 범위로 허용한다. agent writer나 미지원 외부 프로세스 허용으로 확대하지 않는다. pane 닫기는 debuggee 종료가 아니며 disconnect와 terminate를 별도 명시 조작으로 제공한다. 분리 뒤 살아 있는 소유 프로세스와 불확실 정리는 계속 원장/상한에 남긴다.
+- 중단점·정지 위치·stack·variables·step·평가 요청은 현재 사본/generation과 정지 세대에 고정한다. source map/경로를 안전한 관리 사본 파일로 검증하고 미확인 위치를 현재 소스에 거짓 표시하지 않는다. 미저장 초안은 저장된 실행 소스로 덮지 않는다. adapter의 reverse startDebugging/runInTerminal 같은 요청은 소유 실행 경계 안에서만 처리하고 임의 외부 실행으로 전달하지 않는다.
+- 같은 command ID의 중복·유실은 receipt를 조회하며 재실행하지 않는다. 늦은 이벤트·adapter 종료·host 재시작에 세대와 프로세스 정리를 확인하고 자동 재시작하지 않는다. 핵심 정상/거절/취소·복구와 실제 Node/브라우저 화면만 확인한다.
+
+## P27: 배포 task와 결과 확인
+
+- 위 요청과 번호 순서에 얽매이지 않는 병렬 작업 허용에 따라 P26과 독립 영역을 병렬 구현한다. CRL-WBD-024/C-168/TC-WBD-024-H,N,F. 기존 task·사람 operation·설정/credential 참조를 재사용하며 별도 provider catalog나 credential 저장소를 만들지 않는다.
+- 배포 구성·환경·source commit/tree·dirty 여부·credential 참조·명령과 확인 방식을 고정해 검토하고 명시 시작한다. secret 값은 UI·receipt·로그에 넣지 않는다. 배포 실행과 확인 작업은 원래 target/operation에 귀속하고 다른 사본의 결과로 대체하지 않는다.
+- command exit 0과 실제 배포 완료를 구분한다. 별도 결과 확인은 명시된 대상/배포 ID/상태와 안전한 URL을 판별하며 확인할 수 없으면 uncertain을 유지한다. 취소·timeout·응답 유실·host 재시작 뒤에는 같은 receipt를 조회하고 자동 재배포하지 않는다.
+- 이번 요청은 제품 구현과 격리 local fixture 검증을 승인한 것이다. 실제 외부 계정·비용·대상으로의 배포는 이 요청에서 수행하지 않으며, provider 통합 실증과 mock/local 결과를 구분한다. UI는 기존 작업·미리보기 흐름에 연결하고 핵심 실패·중복·불확실 결과만 회귀로 확인한다.

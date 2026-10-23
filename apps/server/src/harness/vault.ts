@@ -342,6 +342,11 @@ export function createHarnessVaultAdapters(options: {
           {
             checks: current?.checks ?? [],
             lspServers: current?.lspServers ?? [],
+            ...(current?.debugAdapters ? { debugAdapters: current.debugAdapters } : {}),
+            ...(current?.debugConfigurations
+              ? { debugConfigurations: current.debugConfigurations }
+              : {}),
+            ...(current?.deployments ? { deployments: current.deployments } : {}),
             mcpServers: [
               ...(current?.mcpServers ?? []).filter((server) => !ids.has(server.id)),
               ...data.servers.map((server) => ({ ...server, enabled: false })),
@@ -367,6 +372,11 @@ export function createHarnessVaultAdapters(options: {
           {
             checks: config?.checks ?? [],
             lspServers: config?.lspServers ?? [],
+            ...(config?.debugAdapters ? { debugAdapters: config.debugAdapters } : {}),
+            ...(config?.debugConfigurations
+              ? { debugConfigurations: config.debugConfigurations }
+              : {}),
+            ...(config?.deployments ? { deployments: config.deployments } : {}),
             mcpServers: config?.mcpServers ?? [],
           },
           expected,

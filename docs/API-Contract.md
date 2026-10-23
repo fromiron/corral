@@ -65,6 +65,19 @@
 | POST /sessions/:id/worktree/git/advanced-operations/reconcile | `GitAdvancedReconcile`: target·operationId | P25 불확실 효과의 명시 재확인. 현재 상태에서 증명할 수 없는 결과는 불확실로 유지 |
 | POST /sessions/:id/worktree/git/advanced-operations/:operationId/cancel | `{}` | P25 소유한 Git 작업의 취소 요청. 실제 효과와 정리는 같은 receipt에서 확인 |
 | GET /sessions/:id/worktree/tasks | — | CR-046 P15 `{candidates:TaskCandidates, tasks:UserTaskView[]}`. 후보는 사본 최상위 `package.json` scripts와 lockfile로 고른 `packageManager`(pnpm\|yarn\|npm\|null)이며 읽기만 한다. 사본이 없으면 빈 후보다. 열린 receipt의 process group이 사라졌으면 이때 정리한다 |
+| GET /sessions/:id/worktree/debug | — | CR-046 P26 `DebugState`: 현재 target, Linux·신뢰에 따른 availability, 등록 구성, debug session의 generation/revision/pauseId·상태·중단점·한정된 출력. 조회나 패널 열기로 실행하지 않음 |
+| POST /sessions/:id/worktree/debug/inspect | `DebugInspect` | target·configId와 선택한 소유 task/port 또는 preview lease를 검토해 `DebugInspection` 반환. 등록 adapter/config·configRevision·fingerprint·trust를 확인하며 실행은 하지 않음. 임의 PID·외부 주소는 받지 않음 |
+| POST /sessions/:id/worktree/debug/start | `DebugStart` | 검토한 target/configRevision/fingerprint, requestId/clientId와 명시 `trust`로 시작. 같은 requestId/본문은 기존 `DebugSession` 반환. 공통 debug owner·process 예약 사용; P22 공유 개발의 허용된 사람 효과. launch는 소유 Node/Chromium, attach는 확인한 같은 사본의 task |
+| POST /sessions/:id/worktree/debug/breakpoints | `DebugBreakpoints` | target/generation·commandId·상대 path·저장 파일 sha256·1-based lines. 파일과 세션을 재확인하고 설치 결과의 verified/line을 `DebugCommandResult`에 반환. 현재 실행 전에 모두 설치됐다고 보장하지 않음 |
+| POST /sessions/:id/worktree/debug/query | `DebugQuery` | 현재 target/generation/pauseId의 threads/stack/scopes/variables. 연결별 frame/variable 참조를 확인하고 `DebugQueryResult` 반환. source map·경로·저장 hash가 확인된 사본 파일만 탐색 가능 |
+| POST /sessions/:id/worktree/debug/commands | `DebugCommand` | commandId·target/generation·revision/pauseId를 고정한 pause/continue/next/stepIn/stepOut/evaluate/disconnect/stop. evaluate는 명시 표현식 실행 효과. launch는 stop, attach는 disconnect를 사용하며 후자는 원래 task를 종료하지 않음. 응답 유실은 같은 command receipt 조회 |
+| GET /sessions/:id/worktree/debug/commands/:generation/:commandId | — | 해당 debug generation의 `DebugCommandResult`. 재시작·늦은 응답·불확실 명령을 새 ID로 재실행하지 않음 |
+| GET /sessions/:id/worktree/deployments | — | CR-046 P27 `DeploymentList`: 현재 등록 profiles와 세션 deployment receipt. 등록 목록과 과거 결과를 읽기만 함 |
+| POST /sessions/:id/worktree/deployments/inspect | `DeploymentInspect` | target/profileId → `DeploymentPlan`: 환경·명령·credential 환경 변수 이름, configRevision, source commit/tree/dirty, fingerprint. 원래 source/명령/참조를 검토하며 외부 배포하지 않음 |
+| POST /sessions/:id/worktree/deployments | `DeploymentStart` | operationId·target/profileId·검토 fingerprint·allowDirty. source/실행 파일/명령/credential 값을 재검증한 strict writer와 소유 process로 실행. 공유 개발 중 거절. `DeploymentView`의 phase/exitCode/cleanupConfirmed와 외부 readback은 별개이며 exit 0도 결과 미확인이면 uncertain |
+| GET /sessions/:id/worktree/deployments/:operationId | — | 원래 target/plan의 `DeploymentView` 조회. 실행·결과 확인·재배포를 자동으로 하지 않음 |
+| POST /sessions/:id/worktree/deployments/:operationId/check | `DeploymentAction`: `{target}` | uncertain이고 소유 프로세스 정리가 확인된 operation에 한해 등록된 결과 확인 명령 실행. 원래 command/credential fingerprint와 응답의 operation/environment/source/deployment identity를 확인. 유효한 결과만 pending/succeeded/failed로 구분하며 미확인은 uncertain 유지 |
+| POST /sessions/:id/worktree/deployments/:operationId/stop | `DeploymentAction`: `{target}` | 소유 로컬 프로세스를 중지하고 정리 확인 뒤 예약 해제·terminal cancelled. 외부 배포는 취소하거나 rollback하지 않으며 외부 결과 미확인을 보존. 이후 이 operation의 앱 내 check는 실행하지 않고 대상 서비스에서 수동 확인 |
 | POST /sessions/:id/worktree/search-contents | `ContentSearch` | CR-046 P24-A. Exact managed-copy target·queryId·literal single-line query·caseSensitive. Disk-only `ContentSearchResult`: bounded matches with byte SHA-256 and 1-based UTF-16 range, scanned/skipped counts, truncated. Existing ignore/protected-path/read policy, 500 files/1 MiB per file/8 MiB total/200 matches. HTTP disconnect cancels work; no original-folder/index/draft writes |
 | GET /sessions/:id/worktree/edit-proposals | — | CR-046 P24-B. 현재 세션의 저장된 변경 제안 요약. 조회는 파일을 적용하거나 uncertain 예약을 해제하지 않음 |
 | POST /sessions/:id/worktree/edit-proposals | `FileEditPreview` | `replace`, `rename`, `code_actions` → `{proposals,unavailable}`. 안정된 requestId·exact target, 저장된 파일만 불변 before/after/hash로 검토. 32파일·합계 8 MiB, 잘린 검색·명령/파일 resource operation 자동 실행 없음. HTTP 연결 종료는 제안 계산 취소 |
@@ -148,6 +161,14 @@ SSE는 영속 이벤트(`event: domain`, `id: runSeq`) 외에 모델 출력 조�
 `POST /runs`는 `CreateRunRequest`만 받는다(정의 본문을 직접 보내면 400). 같은 commandId의 재전송은 200과 처음 receipt, 새 Run은 201이다. 두 번째 활성 Run은 409 `RUN_ALREADY_ACTIVE`다. `PUT /corrals/:id`는 `If-Match`에 기준 definition revision이 없으면 400, 다르면 409 `REVISION_CONFLICT`다. 명령 응답의 HTTP 상태는 receipt를 따른다: 거절은 오류 코드의 상태, `accepted`·`queued`는 202, 그 밖은 200이다.
 
 SSE event는 `id: runSeq`, `event: domain`을 가진다. SnapshotSeq 이하 event는 재적용하지 않는다. Last-Event-ID와 after가 충돌하면 서버 계약으로 하나를 선택하고 오류/우선순위를 문서화한다. 첫 구현은 Last-Event-ID가 유효하면 우선한다. 범위 밖 cursor·다른 Run cursor는 400이다.
+
+### P26/P27 등록 구성과 결과 확인
+
+기존 `ProjectToolConfig`에 optional `debugAdapters`, `debugConfigurations`, `deployments`를 추가한다. 한 설정 폼이 저장할 때 다른 도구 family를 지우지 않으며 기존 config revision 검사를 유지한다. DAP 구성과 배포 명령의 환경 설정은 호스트 변수의 **이름 참조**이며 값을 클라이언트에 돌려주거나 별도 credential 저장소에 복사하지 않는다.
+
+P27 배포·결과 확인 명령에는 원래 `CORRAL_DEPLOYMENT_OPERATION`, `CORRAL_DEPLOYMENT_ENVIRONMENT`, `CORRAL_DEPLOYMENT_COMMIT`(unborn이면 빈 문자열), `CORRAL_DEPLOYMENT_TREE`를 전달한다. 결과 확인 명령은 출력 한도 안의 단일 JSON `DeploymentReadback`을 반환한다: `operationId`, `environment`, `sourceCommit`(unborn이면 null), `sourceTree`, `deploymentId`, `status`(`pending`/`succeeded`/`failed`), `url`(또는 null). command exit 0·출력 잘림 없음·프로세스 정리와 원래 operation/환경/source의 일치를 모두 확인해야 결과로 채택한다. 한 번 확인된 deploymentId가 다른 값으로 바뀐 응답은 대체하지 않는다. URL은 자격 증명·query·fragment가 없는 HTTPS 또는 loopback HTTP만 허용한다.
+
+배포 명령의 로그나 URL처럼 보이는 텍스트만으로 성공을 판정하지 않는다. 명시 종료로 예약을 해제한 뒤에는 같은 operation에서 확인 명령을 재시작하지 않는다. 외부 배포 결과 미확인은 남으며 실제 provider 검증과 로컬 fixture 결과는 별도 증거다.
 
 ## 2. Receipt
 

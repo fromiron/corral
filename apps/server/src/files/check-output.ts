@@ -15,8 +15,13 @@ export class CheckOutput {
     { decoder: StringDecoder; line: string; oversized: boolean }
   >();
   private readonly paths: string[];
-  constructor(paths: string[]) {
+  private readonly secrets: string[];
+  constructor(paths: string[], secrets: string[] = []) {
     this.paths = paths.filter(Boolean).sort((a, b) => b.length - a.length);
+    this.secrets = secrets
+      .flatMap((secret) => secret.split(/\r?\n/))
+      .filter(Boolean)
+      .sort((a, b) => b.length - a.length);
   }
 
   add(source: string, chunk: Buffer) {
@@ -47,6 +52,7 @@ export class CheckOutput {
   }
 
   private keep(raw: string) {
+    for (const secret of this.secrets) raw = raw.split(secret).join('[redacted]');
     const text = redactToolText(raw, this.paths);
     const bytes = Buffer.from(text);
     const headRemaining = Math.max(0, 16384 - Buffer.byteLength(this.head));

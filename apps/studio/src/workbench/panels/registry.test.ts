@@ -45,4 +45,6 @@ it('#70 a pane is found by the words other screens and languages use for it', as
   expect(found('미리보기')).toBe('tools');
   expect(found('git')).toBe('git');
   expect(found('staged')).toBe('git');
+  expect(found('debug')).toBe('debug');
+  expect(found('중단점')).toBe('debug');
 });

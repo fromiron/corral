@@ -15,7 +15,7 @@ afterEach(async () => {
   for (const close of cleanups.splice(0)) await close();
 });
 
-it('[TC-WBD-018-N] [TC-WBD-019-H] [TC-WBD-021-H] [TC-WBD-021-N] language, search and edit HTTP endpoints preserve the managed-copy boundary', async () => {
+it('[TC-WBD-018-N] [TC-WBD-019-H] [TC-WBD-021-H] [TC-WBD-021-N] [TC-WBD-023-N] [TC-WBD-024-N] workbench HTTP endpoints preserve the managed-copy boundary', async () => {
   const root = mkdtempSync(join(tmpdir(), 'corral-language-http-'));
   const original = join(root, 'original');
   execFileSync('git', ['init', '-q', original]);
@@ -142,4 +142,60 @@ it('[TC-WBD-018-N] [TC-WBD-019-H] [TC-WBD-021-H] [TC-WBD-021-N] language, search
     `${server.url}/api/v1/sessions/${sessionId}/worktree/edit-operations/apply_http`,
   );
   expect(await receipt.json()).toMatchObject({ operationId: 'apply_http', state: 'succeeded' });
+  const debug = `${server.url}/api/v1/sessions/${sessionId}/worktree/debug`;
+  const debugState = await call(debug);
+  expect(debugState.status).toBe(200);
+  expect(await debugState.json()).toMatchObject({
+    target: state.target,
+    configurations: [],
+    session: null,
+  });
+  expect((await fetch(debug)).status).toBe(401);
+  expect(
+    (
+      await post(`${debug}/inspect`, {
+        target: { ...state.target, sessionId: 'foreign' },
+        configId: 'node',
+      })
+    ).status,
+  ).toBe(400);
+  expect(
+    (
+      await post(`${debug}/inspect`, {
+        target: { ...state.target, hostId: 'foreign' },
+        configId: 'node',
+      })
+    ).status,
+  ).toBe(409);
+  expect(
+    (
+      await post(`${debug}/start`, {
+        target: state.target,
+        processId: 1,
+        url: 'http://localhost:9222',
+      })
+    ).status,
+  ).toBe(400);
+  const deployments = `${server.url}/api/v1/sessions/${sessionId}/worktree/deployments`;
+  const listing = await call(deployments);
+  expect(listing.status).toBe(200);
+  expect(await listing.json()).toMatchObject({ profiles: [], deployments: [] });
+  expect((await fetch(deployments)).status).toBe(401);
+  expect(
+    (
+      await post(`${deployments}/inspect`, {
+        target: { ...state.target, sessionId: 'foreign' },
+        profileId: 'preview',
+      })
+    ).status,
+  ).toBe(400);
+  expect(
+    (
+      await post(deployments, {
+        target: state.target,
+        operationId: 'deploy_http',
+        profileId: 'preview',
+      })
+    ).status,
+  ).toBe(400);
 });

@@ -9,12 +9,22 @@ import {
   Select,
   Textarea,
 } from '@corral/react/ui';
-import { lazy, Suspense, useContext, useEffect, useId, useRef, useState } from 'react';
+import {
+  lazy,
+  Suspense,
+  useContext,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { type AttachmentCapture, beginAttachmentCapture } from './context/bridge.ts';
 import { captureDocumentAttachment } from './context/documents.ts';
 import { SourceNavigationContext } from './context/SourceAttachments.tsx';
+import { type DebugStore, debugCopyKey } from './debug/store.ts';
 import type { LanguageSelection } from './documents/CodeEditorView.tsx';
 import type { DocumentStore } from './documents/store.ts';
 import { WriterHeld } from './documents/WriterHeld.tsx';
@@ -25,6 +35,7 @@ import type { LanguageStore } from './language/store.ts';
 const CodeEditorView = lazy(() =>
   import('./documents/CodeEditorView.tsx').then((module) => ({ default: module.CodeEditorView })),
 );
+const withoutDebug = () => () => {};
 
 export function DocumentPanel({
   owner,
@@ -38,9 +49,11 @@ export function DocumentPanel({
   onAttach,
   revealSelection,
   language,
+  debugOwner,
 }: {
   owner: DocumentStore;
   language?: LanguageStore;
+  debugOwner?: DebugStore;
   documentKey: string;
   viewId: string;
   onReference?: (reference: FileReference) => void;
@@ -52,9 +65,14 @@ export function DocumentPanel({
   revealSelection?: TextRange;
 }) {
   const entry = useStore(owner, (state) => state.documents[documentKey]);
+  const debugTarget = entry?.target;
+  const debugCopy = useSyncExternalStore(debugOwner?.subscribe ?? withoutDebug, () =>
+    entry && debugOwner ? (debugOwner.getState().copies[debugCopyKey(entry.target)] ?? null) : null,
+  );
   const navigation = useContext(SourceNavigationContext);
   const t = useTranslations('Documents');
   const td = useTranslations('Desktop');
+  const debuggerMessages = useTranslations('Debugger');
   const rangeId = useId();
   const [range, setRange] = useState({ start: 1, end: 1 });
   const [revealRange, setRevealRange] = useState<{ startLine: number; endLine: number }>();
@@ -85,10 +103,37 @@ export function DocumentPanel({
     () => (manageView ? owner.retainView(documentKey, viewId) : undefined),
     [owner, documentKey, viewId, manageView],
   );
+  useEffect(
+    () => (debugTarget && debugOwner ? debugOwner.retain(debugTarget) : undefined),
+    [debugOwner, debugTarget],
+  );
   if (!entry) return null;
   const lineCount = entry.text.split(/\r\n|\r|\n/).length;
   const validRange = range.start >= 1 && range.end >= range.start && range.end <= lineCount;
   const pending = Boolean(entry.pendingSave);
+  const debugSession = debugCopy?.state?.session;
+  const debugActive =
+    debugSession && (debugSession.state === 'running' || debugSession.state === 'paused');
+  const debugClean = !entry.dirty && !entry.saving && !pending && !entry.conflict;
+  const sourceMismatch =
+    debugSession?.breakpoints.some(
+      (point) => point.path === entry.path && point.sha256 !== entry.baseHash,
+    ) ||
+    (debugCopy?.frame?.source.path === entry.path &&
+      debugCopy.frame.source.sha256 !== entry.baseHash);
+  const paused = debugCopy?.frame;
+  const pausedLine =
+    debugClean &&
+    debugSession?.state === 'paused' &&
+    paused?.generation === debugSession.generation &&
+    paused.pauseId === debugSession.pauseId &&
+    paused.revision === debugSession.revision &&
+    paused.source.mapped &&
+    paused.source.reason === null &&
+    paused.source.path === entry.path &&
+    paused.source.sha256 === entry.baseHash
+      ? paused.source.line
+      : null;
   const canSave =
     !entry.saving &&
     (pending
@@ -238,6 +283,11 @@ export function DocumentPanel({
       </div>
       {language && !readOnlyTarget ? (
         <LanguageSupport owner={owner} documentKey={documentKey} selection={languageSelection} />
+      ) : null}
+      {debugActive && (!debugClean || sourceMismatch) ? (
+        <p className="text-xs text-warning">
+          {debuggerMessages(debugClean ? 'sourceMismatch' : 'dirtySource')}
+        </p>
       ) : null}
       {readOnlyTarget || !entry.file.writable ? (
         <p className="text-xs text-muted">{t('readOnly')}</p>
@@ -417,6 +467,38 @@ export function DocumentPanel({
             <Suspense fallback={<p className="p-3 text-xs text-muted">{t('loading')}</p>}>
               <CodeEditorView
                 onLanguageSelection={setLanguageSelection}
+                debug={
+                  debugActive && debugOwner && !readOnlyTarget
+                    ? {
+                        breakpoints: debugSession.breakpoints
+                          .filter((point) => point.path === entry.path)
+                          .map((point) => ({
+                            line:
+                              debugClean && point.sha256 === entry.baseHash
+                                ? point.line
+                                : point.requestedLine,
+                            verified:
+                              debugClean && point.sha256 === entry.baseHash && point.verified,
+                          })),
+                        pausedLine,
+                        canToggle: Boolean(
+                          debugCopy?.state?.available &&
+                            debugClean &&
+                            !referencePending &&
+                            !debugCopy.busy &&
+                            !debugCopy.pendingCommandId,
+                        ),
+                        toggleLabel: debuggerMessages('toggleBreakpoint'),
+                        onToggle: (line) => {
+                          void debugOwner.toggleBreakpoint(
+                            documentKey,
+                            line,
+                            debugSession.generation,
+                          );
+                        },
+                      }
+                    : undefined
+                }
                 onOpenResource={
                   language && navigation
                     ? (resource, range) =>
