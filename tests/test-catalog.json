@@ -4182,5 +4182,38 @@
     "status": "planned",
     "adapter": "isolated existing Studio runtime; focused layout and behavior regression; no paid providers",
     "evidence": null
+  },
+  {
+    "id": "TC-ULTRA-004-H",
+    "requirements": [
+      "CRL-ULTRA-004"
+    ],
+    "suite": "integration+browser",
+    "scenario": "검사 통과 후보의 익명 판정 → 고도화 라운드 수용/폐기 → 확인 없는 자동 반영과 체크포인트 복원",
+    "status": "planned",
+    "adapter": "deterministic workers and judge, temporary Git worktrees and actual Linux isolation; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-ULTRA-004-N",
+    "requirements": [
+      "CRL-ULTRA-004"
+    ],
+    "suite": "integration+browser",
+    "scenario": "판정 형식 오류·검사 실패 후보 우승 시도·Run 중 세션 사본 변경·전원 실패·예산 80%·자동 반영 끔에서 반영 없음 또는 보류",
+    "status": "planned",
+    "adapter": "deterministic workers and judge, temporary Git worktrees and actual Linux isolation; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-ULTRA-004-F",
+    "requirements": [
+      "CRL-ULTRA-004"
+    ],
+    "suite": "integration",
+    "scenario": "후보/Run 취소·늦은 판정과 라운드 결과·서버 재시작·같은 반영 command 중복에서 자동 반영이 반복되거나 최신 결과를 덮지 않음",
+    "status": "planned",
+    "adapter": "deterministic workers and judge, temporary Git worktrees and actual Linux isolation; no paid calls",
+    "evidence": null
   }
 ]

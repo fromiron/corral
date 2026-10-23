@@ -1735,5 +1735,16 @@
       "TC-WBUI-003-H",
       "TC-WBUI-003-N"
     ]
+  },
+  {
+    "requirementId": "CRL-ULTRA-004",
+    "tests": [
+      "TC-ULTRA-004-H",
+      "TC-ULTRA-004-N",
+      "TC-ULTRA-004-F"
+    ],
+    "tasks": [
+      "C-173"
+    ]
   }
 ]

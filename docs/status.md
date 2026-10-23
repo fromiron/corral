@@ -34,6 +34,7 @@
 
 | 추적 | 구현 상태 | 남은 일 | 근거 |
 |---|---|---|---|
+| C-173 / CR-048 | 작성 승인, 미착수 | Ultra 기본 후보 경쟁·자동 판정·고도화·확인 없는 자동 반영. 현재 Ultra 동작은 바뀌지 않음 | [Ultra 계획](plans/ultra-and-quality.md) |
 | C-118 | 지원 범위 구현·검증, 미지원 계열 잔여 | Linux 격리·Anthropic adaptive conformance·GPT live 완료. Gemini transport 제약, 다른 계정/OS 검증 별도 | [현재 실행 기록](evaluation/Quality-Completion-2026-10-21.md) |
 | C-125 / ABS-04 | 부분 구현 | Linux AppImage preview 검증 완료. macOS 로컬 앱 TCP 소유권 구현·실기 별도 | [Desktop 잔여 계획](plans/desktop-completion.md) |
 | C-128 / ABS-07 | 구현 있음, 플랫폼 검증 진행 | NSIS 실제 설치, macOS·지원 arch, 서명·업데이트 채널 등 | [배포 기록](evaluation/Desktop-Delivery-Verification.md) |

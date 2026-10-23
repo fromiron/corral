@@ -3402,5 +3402,28 @@
     "done": "390/1024/1280px의 비교 영역·표 정렬·후보 행동 노출과 카드 위계·중복 제목을 개선하고 기존 대상/receipt·검토 초안·키보드 이름을 보존한다.",
     "status": "implemented",
     "evidence": "docs/evaluation/Review-Comparison-Layout-2026-10-23.md"
+  },
+  {
+    "id": "C-173",
+    "phase": "M4",
+    "title": "CR-048 Ultra 후보 경쟁·자동 판정·고도화·자동 반영",
+    "dependsOn": [
+      "C-114",
+      "C-118"
+    ],
+    "requirements": [
+      "CRL-ULTRA-004"
+    ],
+    "files": [
+      "packages/contracts/src/",
+      "packages/core/src/",
+      "packages/storage-sqlite/src/",
+      "apps/server/src/",
+      "apps/studio/src/",
+      "packages/client/src/",
+      "packages/cli/src/"
+    ],
+    "done": "selection version 2의 기본 후보 경쟁, 검사 통과 후보의 익명 판정과 host 검증, 우승 사본의 고도화 라운드 수용/폐기, 재검증·체크포인트 뒤 확인 없는 단일 자동 반영과 보류 사유, 같은 Run 예산·취소·늦은 결과·재시작 경계를 확인한다.",
+    "status": "planned"
   }
 ]
