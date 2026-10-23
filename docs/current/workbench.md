@@ -96,6 +96,8 @@ P11의 구현과 Linux 인앱·관련 회귀 범위는 [C-151 검증 기록](../
 
 세션 화면에서 실행의 일시정지·재개·취소는 도킹 상단 "실행 조작" 한 곳에서 한다. 입력창 위 진행 줄은 상태와 기록 링크만 보여 준다(#91). Git 상태는 Git 창의 staged/unstaged/untracked 모델 하나로만 보이며 검토 화면의 예전 `scope=git` 주소는 세션의 Git 창으로 replace 이동한다.
 
+[CR-047](../change-requests/CR-047-review-comparison-layout.md)의 검토·비교 화면은 workbench 가용 폭에 따라 중앙 diff를 우선하고 파일·검사·의견을 재배치하되 초안을 유지한다. 실행 비교의 수치는 열 방향으로 정렬하고 축약 ID는 키보드로 펼쳐 확인한다. 후보 비교는 본문과 명령/결과 영역을 분리하고 동일한 카드 구조에서 상태·사용량·검사를 비교한다. 기존 대상·명령·원본 보존 경계는 유지하며 [C-172 기록](../evaluation/Review-Comparison-Layout-2026-10-23.md)에 현재 화면·핵심 회귀와 남은 초기 조회 404를 구분했다.
+
 ## 읽기 전용 Git 관찰
 
 [CR-046 P12](../change-requests/CR-046-development-workbench.md)의 Git 패널은 기존 Corral snapshot 변경 검토와 별도로 실제 사용자 HEAD/index/작업 파일을 관찰한다. 원본과 세션 사본을 명시적으로 선택하며 패널 진입은 사본을 만들지 않는다. staged는 HEAD→index, unstaged는 index→디스크, untracked는 없음→디스크를 비교한다. detached/unborn/shallow, upstream과 앞섬/뒤처짐, rename·binary·미지원 비교를 구분한다.

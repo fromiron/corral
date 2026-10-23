@@ -234,11 +234,9 @@ function RootFrame() {
         ? projectsText('allProjects')
         : selectedRun
           ? tn('runDetails')
-          : location.pathname === '/compare'
-            ? tn('compare')
-            : location.pathname === '/demo'
-              ? tn('demo')
-              : ''));
+          : location.pathname === '/demo'
+            ? tn('demo')
+            : ''));
   const activeRuns = sidebar.runs.filter(
     (run) => !['succeeded', 'failed', 'cancelled', 'interrupted'].includes(run.status),
   );

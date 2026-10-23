@@ -79,7 +79,7 @@ function writerWithFiles(dir: string) {
   return path;
 }
 
-test('[TC-HUNK-001-H] [TC-CKPT-001-H] [TC-CHAT-002-H] [WBTST-016] a session works in its own copy, and its changes are reviewed and checked', async ({
+test('[TC-HUNK-001-H] [TC-CKPT-001-H] [TC-CHAT-002-H] [TC-WBUI-003-H] [TC-WBUI-003-N] [WBTST-016] a session works in its own copy, and its changes are reviewed and checked', async ({
   page,
   corral,
 }) => {
@@ -163,7 +163,29 @@ test('[TC-HUNK-001-H] [TC-CKPT-001-H] [TC-CHAT-002-H] [WBTST-016] a session work
 
     // CR-013: a comment on a line goes out as a request for changes, as a new run.
     await page.getByRole('button', { name: 'Comment on line 1' }).first().click();
-    await page.getByRole('textbox', { name: 'Comment on line 1' }).fill('Start with a title.');
+    const draft = page.getByRole('textbox', { name: 'Comment on line 1' });
+    await draft.fill('Start with a title.');
+
+    await page.setViewportSize({ width: 1024, height: 800 });
+    const diff = page.getByRole('region', { name: 'notes/writer.md', exact: true });
+    await expect
+      .poll(async () => (await diff.boundingBox())?.width ?? 0)
+      .toBeGreaterThanOrEqual(400);
+    await expect(file).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Run Notes exist' })).toBeVisible();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        ),
+      )
+      .toBe(0);
+    await expect(file).toBeVisible();
+    await expect(diff).toBeVisible();
+    await expect(draft).toHaveValue('Start with a title.');
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await expect(draft).toHaveValue('Start with a title.');
     await page
       .getByTestId('pierre-diff')
       .locator('form')

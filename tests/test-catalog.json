@@ -4160,5 +4160,27 @@
     "status": "planned",
     "adapter": "isolated desktop notification click fixture and core regressions; no external messages",
     "evidence": null
+  },
+  {
+    "id": "TC-WBUI-003-H",
+    "requirements": [
+      "CRL-UX-008"
+    ],
+    "suite": "browser+unit",
+    "scenario": "가용 폭에 맞는 검토 중앙 영역·실행 비교 수치 정렬·후보 행동 노출·카드 위계와 단일 페이지 제목을 실제 화면에서 확인한다.",
+    "status": "planned",
+    "adapter": "isolated existing Studio runtime; focused layout and behavior regression; no paid providers",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBUI-003-N",
+    "requirements": [
+      "CRL-UX-008"
+    ],
+    "suite": "browser+unit",
+    "scenario": "좁은 화면·긴 이름/ID·긴 diff·실패/미확정 후보에서도 정보·키보드 이름·검토 초안·정확한 단일 후보 명령을 유지한다.",
+    "status": "planned",
+    "adapter": "isolated existing Studio runtime; focused layout and behavior regression; no paid providers",
+    "evidence": null
   }
 ]

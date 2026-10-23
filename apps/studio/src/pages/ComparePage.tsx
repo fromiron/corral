@@ -45,7 +45,7 @@ export function ComparePage() {
   }, [a, b, transport, repository]);
 
   return (
-    <main className="mx-auto flex max-w-6xl flex-col gap-4 p-6">
+    <main className="mx-auto flex w-full min-w-0 max-w-6xl flex-col gap-4 p-4 sm:p-6">
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-lg font-semibold">{t('heading')}</h2>
         <Link to="/" className="text-xs underline">

@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 
 // Roadmap 16: two runs of a Corral side by side, picked from the workspace's run list.
 
-test('[TC-OBS-004-H] compares two runs: figures, models and the outputs with their differences', async ({
+test('[TC-OBS-004-H][TC-WBUI-003-H][TC-WBUI-003-N] compares runs with readable narrow figures and accessible identities', async ({
   page,
 }) => {
   await page.goto('/?delay=50');
@@ -39,4 +39,24 @@ test('[TC-OBS-004-H] compares two runs: figures, models and the outputs with the
   await expect(outputs).toContainText('Compare three pens.');
   await outputs.getByRole('button', { name: 'Show differences' }).click();
   await expect(outputs.locator('[data-diff="added"]').first()).toBeVisible();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const bounds = await table.boundingBox();
+  if (!bounds) throw new Error('Comparison table is not visible');
+  expect(bounds.x + bounds.width).toBeLessThanOrEqual(390);
+  const calls = table.getByRole('row', { name: /Model calls/ });
+  await expect(calls.getByRole('cell').first()).toHaveCSS('text-align', 'right');
+  await expect(calls.getByRole('cell').first()).toHaveCSS('font-variant-numeric', 'tabular-nums');
+  await expect(page.getByRole('heading', { name: 'Compare runs', exact: true })).toHaveCount(1);
+
+  const fullRunId = new URL(page.url()).searchParams.get('a');
+  if (!fullRunId) throw new Error('Comparison run is missing');
+  const identity = table.locator('thead details').first();
+  await identity.locator('summary').focus();
+  await page.keyboard.press('Enter');
+  await expect(identity.locator('code')).toHaveText(fullRunId);
+  await expect(identity.locator('code')).toBeVisible();
+  const expandedBounds = await table.boundingBox();
+  if (!expandedBounds) throw new Error('Expanded comparison table is not visible');
+  expect(expandedBounds.x + expandedBounds.width).toBeLessThanOrEqual(390);
 });

@@ -61,43 +61,54 @@ export function RunComparison({
   };
 
   return (
-    <div className="flex flex-col gap-4">
-      <table aria-labelledby={tableId} className="w-full text-left text-sm">
-        <caption id={tableId} className="text-left text-sm font-semibold">
+    <div className="flex min-w-0 flex-col gap-4">
+      <table aria-labelledby={tableId} className="w-full table-fixed text-left text-sm">
+        <caption id={tableId} className="pb-2 text-left text-sm font-semibold">
           {t('figures')}
         </caption>
         <thead className="text-xs text-muted">
           <tr>
-            <th className="py-1" />
-            <th>
-              {a.name ?? '—'} <span className="font-mono">{a.projection.runId}</span>
-            </th>
-            <th>
-              {b.name ?? '—'} <span className="font-mono">{b.projection.runId}</span>
-            </th>
+            <th className="w-1/3" />
+            {[a, b].map((run) => (
+              <th key={run.projection.runId} scope="col" className="px-2 pb-2 align-top">
+                <div className="break-words font-medium text-text">{run.name ?? '—'}</div>
+                <details className="mt-1 font-normal">
+                  <summary className="cursor-pointer font-mono hover:text-text">
+                    {run.projection.runId.length > 12
+                      ? `${run.projection.runId.slice(0, 4)}…${run.projection.runId.slice(-6)}`
+                      : run.projection.runId}
+                  </summary>
+                  <code className="mt-1 block break-all">{run.projection.runId}</code>
+                </details>
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
-            <tr
-              key={row.key}
-              className={`border-t border-line ${row.differs ? 'bg-accent/10' : ''}`}
-              data-differs={row.differs}
-            >
-              <th scope="row" className="py-1 pr-3 font-normal text-muted">
-                {t(`row.${row.key}`)}
-              </th>
-              <td className="break-words">{value(row.key, row.a)}</td>
-              <td className="break-words">{value(row.key, row.b)}</td>
-            </tr>
-          ))}
+          {rows.map((row) => {
+            const numeric = !['status', 'mode', 'models'].includes(row.key);
+            const cellClass = `break-words px-2 py-2 align-top ${numeric ? 'text-right tabular-nums' : ''}`;
+            return (
+              <tr
+                key={row.key}
+                className={`border-t border-line ${row.differs ? 'bg-accent/10' : ''}`}
+                data-differs={row.differs}
+              >
+                <th scope="row" className="break-keep py-2 pr-3 align-top font-normal text-muted">
+                  {t(`row.${row.key}`)}
+                </th>
+                <td className={cellClass}>{value(row.key, row.a)}</td>
+                <td className={cellClass}>{value(row.key, row.b)}</td>
+              </tr>
+            );
+          })}
           {prices ? (
             <tr className="border-t border-line">
-              <th scope="row" className="py-1 pr-3 font-normal text-muted">
+              <th scope="row" className="break-keep py-2 pr-3 align-top font-normal text-muted">
                 {t('row.cost')}
               </th>
-              <td>{cost(a)}</td>
-              <td>{cost(b)}</td>
+              <td className="break-words px-2 py-2 text-right align-top tabular-nums">{cost(a)}</td>
+              <td className="break-words px-2 py-2 text-right align-top tabular-nums">{cost(b)}</td>
             </tr>
           ) : null}
         </tbody>
