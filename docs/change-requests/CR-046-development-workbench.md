@@ -231,3 +231,16 @@ H는 같은 팀 탭을 한 번만 열고 문서와 같은 영역에 두며 다�
 - `.env`·키 자동 복사와 setup 자동 실행은 추가하지 않는다. 복구는 지금처럼 명시 동작이다.
 
 H는 Git 변경·미제출 의견·열린 Run이 있는 사본의 요약과, 보관 뒤에도 사본이 남는 것이다. N은 owner가 있으면 삭제 거절, 요약에 owner 종류 표시, 이전 generation 삭제 요청 거절과 새 사본 보존이다. F는 일부만 지워진 사본을 삭제됨으로 기록하지 않는 것과, 읽지 못한 Git 상태를 모름으로 보이는 것이다.
+
+## P22: 공유 개발 owner (D2 승인)
+
+- 승인: 2026-10-23. 사용자가 [D2 결정 자료](../proposals/P22-shared-development-D2.md)의 **B안(공유 개발 owner)**과 §3의 의미를 문서 그대로 승인했다. 구현은 아직 시작하지 않았다. 구현 전까지 계약 6의 strict 동작이 유지된다.
+- 구현 착수 메모(코드 대조 결과)
+  - 사람 operation은 모두 `WorkbenchOperations.admit`에서 사본 writer를 잡는다(`document.*`, `git.*`, `task`, `terminal`).
+  - 공유 모드는 `development` 사람 operation 하나가 writer를 잡는 방식으로 구현한다. 그 아래에서 문서 저장, 사람이 시작한 task, `git.stage/unstage/commit/fetch/push`는 비-writer access로 접수한다.
+  - `terminal`, `git.branch/switch/pull`, agent writer(Run)는 기존처럼 writer 충돌로 거절한다. 거절 문구에는 공유 모드를 밝힌다.
+  - 모드는 별도 열을 두지 않고 원장의 running/uncertain `development` operation으로 판정한다. host 재시작 뒤에는 uncertain이 되어 자동으로 되살아나지 않는다.
+  - strict 복귀는 그 사본의 다른 사람 owner가 없을 때만 한다.
+  - 원격 host 제외: 서버는 자신이 원격인지 모른다. host 단위 opt-in(`ServerOptions`)을 두고 로컬 실행 경로(desktop sidecar, `corral dev`)만 켜는 방식을 검토한다.
+  - 검사의 snapshot 허용(`writerBlocksCheck`)에는 `development`를 더한다.
+- 추적 ID(CRL-WBD-017 / C-161 / TC-WBD-017)는 구현 시작 때 red 시험과 함께 등록한다.

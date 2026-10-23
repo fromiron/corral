@@ -1,6 +1,6 @@
 # P22 D2 결정 자료 — 개발 서버를 켠 채 저장하기
 
-- 작성: 2026-10-23. **결정 요청 자료이며 승인 기록이 아니다.** 사용자가 아래 선택지 중 하나를 명시적으로 승인하기 전에는 구현하지 않는다. 승인 전에는 strict 동작을 유지한다.
+- 작성: 2026-10-23. **2026-10-23 사용자가 B안과 §3을 그대로 승인했다. 승인 기록은 [CR-046 P22](../change-requests/CR-046-development-workbench.md#p22-공유-개발-owner-d2-승인)에 있다.** 아래는 결정 당시의 자료다. 사용자가 아래 선택지 중 하나를 명시적으로 승인하기 전에는 구현하지 않는다. 승인 전에는 strict 동작을 유지한다.
 - 근거: [활성 계획](../plans/workbench-development-implementation-plan-2026-10-21.md)의 D2·WB-P22와 “2026-10-23 P17 이후 재검토 반영”, [CR-046](../change-requests/CR-046-development-workbench.md) 계약 6과 P15.
 - 이 문서는 정본이 아니다. 승인되면 CR-046(또는 새 CR)·요구·backlog·test catalog에 옮긴 뒤 이 문서를 지운다.
 
