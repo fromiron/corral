@@ -400,15 +400,24 @@ async function startServer() {
   origin = null;
   const own = ++generation;
   const fail = () => {
-    if (own !== generation || closing) return;
+    if (own !== generation || closing || status === 'failed') return;
     status = 'failed';
     origin = null;
-    if (window && !window.isDestroyed())
-      void window.loadURL(STARTUP).catch(() => {
-        dialog.showErrorBox(
-          'Corral could not start',
-          'The recovery screen is unavailable. Reinstall Corral; workspace files have been kept.',
-        );
+    const recovering = window;
+    if (recovering && !recovering.isDestroyed())
+      void recovering.loadURL(STARTUP).catch(() => {
+        // A retry or workspace switch can supersede this recovery navigation.
+        if (
+          own === generation &&
+          !closing &&
+          status === 'failed' &&
+          window === recovering &&
+          !recovering.isDestroyed()
+        )
+          dialog.showErrorBox(
+            'Corral could not start',
+            'The recovery screen is unavailable. Reinstall Corral; workspace files have been kept.',
+          );
       });
   };
   try {

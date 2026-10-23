@@ -34,14 +34,21 @@ assert(!existsSync(join(hostTools, 'node')) && !existsSync(join(hostTools, 'pnpm
 env.PATH = hostTools;
 env.LANG = 'en_US.UTF-8';
 delete env.ELECTRON_RUN_AS_NODE;
-const launch = () =>
-  _electron.launch({
+const launch = async () => {
+  const instance = await _electron.launch({
     ...(binary ? { executablePath: resolve(binary) } : {}),
     args: [...(binary ? [] : [desktop]), `--data-dir=${data}`, '--mock-only'],
     env,
     chromiumSandbox: true,
     timeout: 30000,
   });
+  await instance.evaluate(({ dialog }) => {
+    const state = globalThis as unknown as { desktopSmokeErrors: string[] };
+    state.desktopSmokeErrors = [];
+    dialog.showErrorBox = (title, message) => state.desktopSmokeErrors.push(`${title}: ${message}`);
+  });
+  return instance;
+};
 let application: Awaited<ReturnType<typeof launch>> | null = null;
 try {
   console.log('Launching isolated app');
@@ -368,6 +375,14 @@ try {
   ).toBeVisible({
     timeout: 30000,
   });
+  // TC-WBD-026-F: an obsolete recovery load must not report that the installation is broken.
+  assert.deepEqual(
+    await application.evaluate(
+      () => (globalThis as unknown as { desktopSmokeErrors: string[] }).desktopSmokeErrors,
+    ),
+    [],
+    'Retrying and switching workspaces must not report a missing recovery screen',
+  );
   await recovery
     .getByTestId('app-sidebar')
     .getByRole('link', { name: /^Desktop packaged smoke/ })
