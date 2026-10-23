@@ -631,6 +631,7 @@ async function createCorralServer(
   });
   // CR-049: meeting rounds start each answer as its own Run through the same Coordinator.
   const meetings = new MeetingService({
+    random: Math.random,
     repository: corrals,
     transport: new InProcessTransport(coordinator),
     clock,

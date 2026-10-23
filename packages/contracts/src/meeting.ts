@@ -2,8 +2,8 @@ import { z } from 'zod';
 import { TextAttachments } from './attachments.ts';
 import { Identifier } from './ids.ts';
 
-// CR-049: a meeting is a work session with role agents. Only a person's message opens a round;
-// each answer is its own read-only Run. The state is changed only by the meeting service.
+// CR-049: a meeting is a group chat with optional roles. Legacy reply batches keep their
+// persisted IDs for history, cancellation and replay; they are not a conversation limit.
 
 /** The participant ID that addresses the secretary in mentions and answers. */
 export const SECRETARY_ID = 'secretary';
@@ -11,8 +11,8 @@ export const SECRETARY_ID = 'secretary';
 export const MeetingParticipant = z.strictObject({
   participantId: Identifier,
   name: z.string().trim().min(1).max(40),
-  /** The role: what this agent looks at and argues for. */
-  prompt: z.string().trim().min(1).max(4000),
+  /** Optional role guidance; an empty string means an ordinary chat participant. */
+  prompt: z.string().trim().max(4000),
   modelProfile: Identifier,
 });
 export type MeetingParticipant = z.infer<typeof MeetingParticipant>;
@@ -47,8 +47,10 @@ export type MeetingConfig = z.infer<typeof MeetingConfig>;
 export const MeetingAnswer = z.strictObject({
   participantId: Identifier,
   runId: Identifier.nullable(),
-  /** started: the Run exists; refused: the runtime said no; not_started: never dispatched. */
-  state: z.enum(['started', 'refused', 'not_started']),
+  /** Position in the shared transcript when this speaker starts. Absent in legacy records. */
+  order: z.int().min(0).optional(),
+  /** queued: waiting for its turn; started: Run exists; refused: rejected; not_started: legacy. */
+  state: z.enum(['queued', 'started', 'refused', 'not_started']),
   detail: z.string().max(2000).nullable(),
 });
 export type MeetingAnswer = z.infer<typeof MeetingAnswer>;
@@ -62,9 +64,12 @@ export const MeetingRound = z.strictObject({
   kind: z.enum(['all', 'mention', 'rebuttal', 'secretary']),
   /** The person's message; null for a rebuttal round, which has none. */
   message: z.string().min(1).max(20000).nullable(),
-  /** For a rebuttal: the round whose answers it responds to, and which rebuttal it is (1–2). */
+  order: z.int().min(0).optional(),
+  /** An agent's explicit mention; no additional human message is fabricated. */
+  replyTo: z.strictObject({ roundId: Identifier, participantId: Identifier }).optional(),
+  /** Legacy reply-request lineage, retained for existing records and command replay. */
   basedOnRoundId: Identifier.nullable(),
-  rebuttalNo: z.int().min(1).max(2).nullable(),
+  rebuttalNo: z.int().min(1).nullable(),
   participantIds: z.array(Identifier).min(1).max(6),
   answers: z.array(MeetingAnswer).max(6),
   createdAt: z.string(),
@@ -172,7 +177,7 @@ export type MeetingWithdrawDecisionRequest = z.infer<typeof MeetingWithdrawDecis
 export const MeetingState = z.strictObject({
   config: MeetingConfig,
   rounds: z.array(MeetingRound),
-  /** At most one message waits while a round runs (CR-049 rule 2). */
+  /** Legacy unsent draft, retained for older clients. New human messages post immediately. */
   queued: QueuedMeetingMessage.nullable(),
   minutes: z.array(MeetingMinutes).optional(),
   decisions: z.array(MeetingDecisionVersion).optional(),
@@ -188,7 +193,7 @@ export const MeetingRunOrigin = z.strictObject({
 });
 export type MeetingRunOrigin = z.infer<typeof MeetingRunOrigin>;
 
-/** A person's message, or a rebuttal round they opened. */
+/** A person's message, with the legacy reply-request form retained for old clients. */
 export const MeetingRoundRequest = z.discriminatedUnion('kind', [
   z.strictObject({
     kind: z.literal('message'),
@@ -212,7 +217,9 @@ export type MeetingRoundRequest = z.infer<typeof MeetingRoundRequest>;
 export const MeetingAnswerView = z.strictObject({
   participantId: Identifier,
   runId: Identifier.nullable(),
+  order: z.int().min(0).optional(),
   status: z.enum([
+    'waiting',
     'not_started',
     'refused',
     'running',
@@ -248,9 +255,7 @@ export const MeetingView = z.strictObject({
   minutes: z.array(MeetingMinutes).optional(),
   decisions: z.array(MeetingDecisionVersion).optional(),
   decisionWithdrawals: z.array(MeetingDecisionWithdrawal).optional(),
-  /** What the next rebuttal round would answer, or null when one cannot be opened now. */
-  rebuttal: z
-    .strictObject({ basedOnRoundId: Identifier, rebuttalNo: z.int().min(1).max(2) })
-    .nullable(),
+  /** Legacy reply-request metadata; new chat clients send ordinary follow-up messages. */
+  rebuttal: z.strictObject({ basedOnRoundId: Identifier, rebuttalNo: z.int().min(1) }).nullable(),
 });
 export type MeetingView = z.infer<typeof MeetingView>;

@@ -47,11 +47,11 @@
 | GET·PATCH /sessions/:id | `{title?, objective?, corralId?, auto?, pinned?, archived?, expectedRevision}` | 세션 읽기·수정(revision 검사). `corralId:null`은 auto이며 명시 팀 조회 실패와 구별한다. `auto`는 모델 프로필·추론 설정(CR-024) |
 | POST /sessions/:id/entries | `{intent, text, state, runId?, executionId?, detail?, auto?}` | 요청 기록 추가(본문은 이후 불변). `auto`에는 실행별 템플릿·선택 사유·모델·추론·대체 정보를 보존 |
 | PATCH /sessions/:id/entries/:entryId | `{state, runId?, detail?, auto?}` | 기록 상태와 선택 결과 갱신(대기 → 시작 등) |
-| GET /sessions/:id/meeting | — | CR-049 `MeetingView`: 저장된 라운드·답·사용량·대기 메시지·회의록·결정. 조회·재열기는 모델을 호출하지 않는다 |
-| POST /sessions/:id/meeting/rounds | `MeetingRoundRequest` | 사람의 메시지/반론. 메시지는 선택한 `TextAttachments`만 고정해 전달한다. 동일 명령·본문·대상·모드는 기존 라운드, 내용 변경은 conflict |
-| POST /sessions/:id/meeting/rounds/:roundId/stop | — | 해당 라운드의 모든 진행 중 답을 취소. 이미 확정한 답은 보존 |
-| PATCH·DELETE /sessions/:id/meeting/queued | PATCH: `QueuedMeetingMessage` | 하나뿐인 대기 메시지 수정/삭제. 수정은 현재 queued command ID를 확인 |
-| POST /sessions/:id/meeting/queued/send | — | 진행 중 라운드가 없을 때 저장된 대기 메시지를 명시 전송 |
+| GET /sessions/:id/meeting | — | CR-049 `MeetingView`: 저장된 메시지·답·사용량·대기 메시지·회의록·결정. 내부 `rounds`는 기존 기록/실행 소유권을 위한 응답 묶음이며 UI의 진행 단계가 아니다. 새 레코드의 `order`로 메시지·발언 순서를 표현하며 `replyTo`는 에이전트 멘션의 실제 출처다. 조회·재열기는 모델을 호출하지 않는다 |
+| POST /sessions/:id/meeting/rounds | `MeetingRoundRequest` | 사람의 대화 메시지를 즉시 게시한다. 진행 중 답변은 전송을 막지 않고 다음 발언부터 최신 사용자 메시지를 반영한다. 선택한 `TextAttachments`만 고정해 전달한다. 동일 명령·본문·대상·모드는 기존 응답 묶음, 내용 변경은 conflict. legacy 반론 명령/기록은 호환성을 유지하되 새 UI는 사용하지 않으며 횟수 상한도 요구하지 않는다 |
+| POST /sessions/:id/meeting/rounds/:roundId/stop | — | 현재 응답 중인 메시지를 중지하면 진행 중·대기 중 발언과 멘션 응답을 함께 취소. 완료된 과거 메시지에 대한 늦은 중지 요청은 새 대화를 취소하지 않는다. 이미 확정한 답은 보존 |
+| PATCH·DELETE /sessions/:id/meeting/queued | PATCH: `QueuedMeetingMessage` | 이전 버전에서 저장한 미전송 대기 초안 수정/삭제. 새 메시지는 이 슬롯을 사용하지 않는다. 수정은 현재 queued command ID를 확인 |
+| POST /sessions/:id/meeting/queued/send | — | 진행 중 답변이 없을 때 저장된 대기 메시지를 명시 전송 |
 | POST /sessions/:id/meeting/decisions | `MeetingAdoptDecisionRequest` | 회의록 후보를 사람이 채택한 불변 버전으로 저장. 수정은 `supersedesVersionId`가 있는 새 버전 |
 | POST /sessions/:id/meeting/decisions/withdraw | `MeetingWithdrawDecisionRequest` | 사람의 철회 사유를 별도 기록. 후보·철회/대체된 버전은 새 실행 인계 불가 |
 | POST /sessions/:id/meeting/handoffs | `MeetingHandoffRequest` | 채택한 결정의 초안/시작. 같은 프로젝트 일반 세션만 대상, 실행 구성·완료 기준 고정. `{handoff:MeetingHandoffReceipt}` |
@@ -59,7 +59,7 @@
 | GET /sessions/:id/meeting-handoffs | — | 출처/대상 양방향 인계 이력 `{handoffs}`와 Run·결과 상태 |
 | POST /sessions/:id/meeting/handoffs/:commandId/start | `MeetingHandoffStartRequest` | 저장된 초안의 동일 항목·실행 구성으로 명시 시작. 대상의 미전송 입력·진행 중 작업을 다시 확인 |
 | POST /sessions/:id/meeting/handoffs/:commandId/cancel | — | 취소 의도를 저장하고 시작/Run 취소를 확인. 확인 실패는 uncertain으로 남겨 같은 인계에서 재확인 |
-| POST /sessions/:id/meeting/handoffs/:commandId/rediscuss | `{commandId,mode}` | 종료된 결과·출처 ID를 고정해 새 사람 라운드를 연다. 자동 토론 없음 |
+| POST /sessions/:id/meeting/handoffs/:commandId/rediscuss | `{commandId,mode}` | 종료된 결과·출처 ID를 고정해 새 대화 메시지로 보낸다. 자동 토론 없음 |
 | POST /runs/explain | `{commandId, sessionId, question, modelProfile, mode, startFrom?}` | 결과 질문 Run(에이전트 하나). 세션의 프로젝트에 기록 |
 | POST /runs/auto | `{schemaVersion, commandId, sessionId, brief, choice, mode, startFrom?, references?}` | 모델이 기본 템플릿을 고른 뒤 `{runId,receipt,autoRoute}`. 같은 ID·같은 내용은 재사용하고 다른 내용은 409. 선택 비용은 실행 예산에 포함 |
 | POST /runs/auto/:commandId/cancel | `{sessionId,cancelCommandId}` | 시작 전 취소는 세션 범위의 영구 명령으로 저장하고 선택을 중단한다. 원래 시작 명령을 확인한다. 이미 시작됐으면 기존 Coordinator cancel 경로를 사용하며 `{start,cancellation}` receipt를 돌려줘 UI가 확정된 실행을 놓치지 않게 한다 |

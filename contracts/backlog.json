@@ -3430,7 +3430,7 @@
   {
     "id": "C-174",
     "phase": "M7",
-    "title": "CR-049 회의 세션·참가자·발언 규칙과 회의 화면",
+    "title": "CR-049 그룹 채팅·선택 역할과 회의 화면",
     "dependsOn": [],
     "requirements": [
       "CRL-MEET-001"
@@ -3443,14 +3443,14 @@
       "apps/studio/src/",
       "packages/client/src/"
     ],
-    "done": "라운드 시작·멘션 범위·독립 답·반론 2회·라운드 중 대기·실패/중지/늦은 답·재열기 무호출과 읽기 전용 참가자를 확인한다.",
+    "done": "기본 모델 이름·역할 없음, 일상 질문과 후속 질문의 대화 문맥, 명시 역할·멘션, 라운드/반론 절차 없는 메시지, 대기·실패/중지/늦은 답·재열기 무호출과 읽기 전용 참가자를 확인한다. 무작위 순차 발언·자신의 역할만 전달·사용자 연속 메시지 즉시 게시·최신 요청 우선·에이전트 @멘션 응답과 중지 경합을 확인한다.",
     "status": "implemented",
-    "evidence": "docs/evaluation/Meeting-Room-2026-10-23.md"
+    "evidence": "docs/evaluation/Meeting-Chat-2026-10-23.md"
   },
   {
     "id": "C-175",
     "phase": "M7",
-    "title": "CR-049 비서 회의록과 결정 버전 채택",
+    "title": "CR-049 요청 시 비서 회의록·플랜과 결정 버전 채택",
     "dependsOn": [
       "C-174"
     ],
@@ -3465,9 +3465,9 @@
       "apps/studio/src/",
       "packages/client/src/"
     ],
-    "done": "이견 보존 회의록·미응답 비찬성·채택 전 실행 불가·결정 버전 변경/철회를 확인한다.",
+    "done": "요청 전 비서 무개입, 대화에 근거한 회의록·플랜과 이견 보존, 미응답 비찬성, 사람 검토·채택 전 실행 불가, 결정 버전 변경/철회를 확인한다.",
     "status": "implemented",
-    "evidence": "docs/evaluation/Meeting-Room-2026-10-23.md"
+    "evidence": "docs/evaluation/Meeting-Chat-2026-10-23.md"
   },
   {
     "id": "C-176",

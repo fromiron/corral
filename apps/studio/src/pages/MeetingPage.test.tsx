@@ -7,9 +7,13 @@ import { afterEach, expect, it, vi } from 'vitest';
 
 const translate = vi.hoisted(() => (key: string) => key);
 const services = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
+const liveAnswer = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
 vi.mock('use-intl', () => ({ useTranslations: () => translate }));
 vi.mock('../services.tsx', () => ({ useServices: () => services.current }));
 vi.mock('../workbench/useModels.ts', () => ({ useModelProfiles: () => null }));
+vi.mock('../workbench/useCorralChat.ts', () => ({
+  useCorralRun: () => ({ state: { projection: null, streams: {}, ...liveAnswer.current } }),
+}));
 vi.mock('../workbench/MeetingEvidence.tsx', () => ({
   MeetingEvidencePicker: ({ value, onChange }: any) => (
     <button
@@ -37,7 +41,9 @@ vi.mock('../workbench/ChatView.tsx', () => ({
       {header}
       {children}
       {items.map((item: any) => (
-        <div key={item.id}>{item.content}</div>
+        <div key={item.id} data-chat-item={item.id}>
+          {item.content}
+        </div>
       ))}
       {composer}
     </div>
@@ -54,6 +60,7 @@ vi.mock('@corral/react/ui', () => ({
 }));
 
 const { MeetingPage } = await import('./MeetingPage.tsx');
+const { preferences } = await import('../workbench/preferences.ts');
 
 const config = {
   version: 1 as const,
@@ -102,6 +109,8 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0)) await cleanup();
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  preferences.setState({ chatDensity: 'basic' });
+  liveAnswer.current = {};
 });
 
 async function mount(current: MeetingView) {
@@ -139,7 +148,7 @@ async function mount(current: MeetingView) {
   return { container, meetings, button, box, type };
 }
 
-it('[TC-MEET-001-H] shows each answer in participant order with its state and usage, and sends with mentions', async () => {
+it('[TC-MEET-001-H] shows each answer in participant order and sends a conversational follow-up with mentions', async () => {
   const f = await mount(view());
   const articles = [...f.container.querySelectorAll('article')].map((a) =>
     a.getAttribute('aria-label'),
@@ -148,7 +157,7 @@ it('[TC-MEET-001-H] shows each answer in participant order with its state and us
   expect(f.container.textContent).toContain('p1 says yes');
   expect(f.container.textContent).toContain('status.failed');
   expect(f.container.textContent).toContain('provider unavailable');
-  expect(f.container.textContent).toContain('usageUnknown');
+  expect(f.container.textContent).not.toContain('usageUnknown');
   await act(async () => f.button('@Builder')?.click());
   expect(f.button('@Builder')?.getAttribute('aria-pressed')).toBe('true');
   // The secretary is called on its own.
@@ -161,10 +170,132 @@ it('[TC-MEET-001-H] shows each answer in participant order with its state and us
     'session_1',
     expect.objectContaining({ kind: 'message', text: 'What would it cost?', mentions: ['p2'] }),
   );
-  await act(async () => f.button('rebuttal')?.click());
+  expect(f.button('rebuttal')).toBeUndefined();
+  await f.type('Why do you think that?');
+  await act(async () => f.button('send')?.click());
   expect(f.meetings.send).toHaveBeenLastCalledWith(
     'session_1',
-    expect.objectContaining({ kind: 'rebuttal' }),
+    expect.objectContaining({ kind: 'message', text: 'Why do you think that?' }),
+  );
+});
+
+it('[TC-MEET-001-H] a participant waiting for its turn is shown without a failed response or Run link', async () => {
+  const current = view();
+  current.rounds[0]!.active = true;
+  current.rounds[0]!.answers[0] = answer('p1', 'running');
+  current.rounds[0]!.answers[1] = {
+    ...answer('p2', 'running'),
+    status: 'waiting',
+    runId: null,
+    usage: null,
+  };
+  const f = await mount(current);
+  const waiting = f.container.querySelector('article[aria-label="Builder"]')!;
+  expect(waiting.textContent).toContain('status.waiting');
+  expect(waiting.querySelector('.text-danger')).toBeNull();
+  expect(waiting.querySelector('a')).toBeNull();
+});
+
+it('[TC-MEET-001-H] exposes individual chat messages without a work panel or round controls', async () => {
+  const f = await mount(view());
+  const items = [...f.container.querySelectorAll('[data-chat-item]')];
+  expect(items).toHaveLength(3);
+  expect(items[0]?.textContent).toContain('Ship it?');
+  expect(items[1]?.textContent).toContain('p1 says yes');
+  expect(items[2]?.textContent).toContain('provider unavailable');
+  expect(f.container.querySelector('details[aria-label="records"]')).toBeNull();
+  expect(f.button('rebuttal')).toBeUndefined();
+  expect(f.container.textContent).not.toContain('noLimits');
+  expect(f.container.textContent).not.toContain('openRun');
+  await act(async () => preferences.setState({ chatDensity: 'detailed' }));
+  expect(f.container.textContent).toContain('openRun');
+  expect(f.container.textContent).toContain('usageUnknown');
+});
+
+it('[TC-MEET-001-H] shows in-progress model text before the completed answer arrives', async () => {
+  liveAnswer.current = {
+    projection: { modelCalls: { call_1: { finished: false } } },
+    streams: { call_1: { text: 'I would choose kimchi stew', broken: false, completed: false } },
+  };
+  const f = await mount(
+    view({ rounds: [{ ...view().rounds[0]!, active: true, answers: [answer('p1', 'running')] }] }),
+  );
+  expect(f.container.textContent).toContain('I would choose kimchi stew');
+  expect(f.container.textContent).toContain('status.running');
+});
+
+it('[TC-MEET-001-F] does not present a broken stream as a complete answer', async () => {
+  liveAnswer.current = {
+    projection: { modelCalls: { call_1: { finished: false } } },
+    streams: { call_1: { text: 'Missing a middle chunk', broken: true, completed: false } },
+  };
+  const f = await mount(
+    view({ rounds: [{ ...view().rounds[0]!, active: true, answers: [answer('p1', 'running')] }] }),
+  );
+  expect(f.container.textContent).not.toContain('Missing a middle chunk');
+});
+
+it('[TC-MEET-001-F] only shows stream text associated with the current answer run', async () => {
+  liveAnswer.current = {
+    projection: { modelCalls: {} },
+    streams: { old_call: { text: 'Another run response', broken: false, completed: false } },
+  };
+  const f = await mount(
+    view({ rounds: [{ ...view().rounds[0]!, active: true, answers: [answer('p1', 'running')] }] }),
+  );
+  expect(f.container.textContent).not.toContain('Another run response');
+});
+
+it('[TC-MEET-001-H] interleaved human messages and agent mentions display in their posted order', async () => {
+  const first = view().rounds[0]!;
+  const f = await mount(
+    view({
+      rounds: [
+        {
+          ...first,
+          order: 0,
+          answers: [
+            { ...answer('p1', 'answered'), order: 1 },
+            { ...answer('p2', 'answered'), order: 4 },
+          ],
+        },
+        {
+          ...first,
+          roundId: 'mention',
+          message: null,
+          replyTo: { roundId: first.roundId, participantId: 'p1' },
+          order: 2,
+          answers: [{ ...answer('p1', 'answered'), text: 'Tagged reply', order: 3 }],
+        },
+      ],
+    }),
+  );
+  expect(
+    [...f.container.querySelectorAll('[data-chat-item]')].map((item) =>
+      item.getAttribute('data-chat-item'),
+    ),
+  ).toEqual(['round_1:message', 'round_1:p1', 'mention:p1', 'round_1:p2']);
+});
+
+it('[TC-MEET-001-N] typing while a send receipt is pending preserves the next draft', async () => {
+  const f = await mount(view());
+  let finish!: (result: any) => void;
+  f.meetings.send.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  await f.type('First');
+  await act(async () => f.button('send')?.click());
+  expect(f.box.disabled).toBe(false);
+  await f.type('Second');
+  await act(async () => finish({ ok: true, outcome: 'started' }));
+  expect(f.box.value).toBe('Second');
+  await act(async () => f.button('send')?.click());
+  expect(f.meetings.send).toHaveBeenLastCalledWith(
+    'session_1',
+    expect.objectContaining({ text: 'Second' }),
   );
 });
 
@@ -199,7 +330,7 @@ it('[TC-MEET-001-F] a running round can be stopped and a waiting message is show
     rebuttal: null,
   });
   const f = await mount(running);
-  expect(f.button('rebuttal')?.disabled).toBe(true);
+  expect(f.button('rebuttal')).toBeUndefined();
   expect(f.button('sendQueued')).toBeUndefined();
   expect(f.container.textContent).toContain('next question');
   await act(async () => f.button('stopRound')?.click());
@@ -220,7 +351,7 @@ it('[TC-MEET-001-N] /반론 is sent to the round service and an uncertain retry 
   expect(requests[1]?.commandId).toBe(requests[0]?.commandId);
 });
 
-it('[TC-MEET-001-N] a full queue blocks Enter and editing updates that queued command only', async () => {
+it('[TC-MEET-001-N] active replies and a legacy draft never block new messages; editing preserves that draft identity', async () => {
   const current = view({
     rounds: [{ ...view().rounds[0]!, active: true }],
     queued: { commandId: 'queued_1', mode: 'mock', text: 'First draft', mentions: ['p1'] },
@@ -231,7 +362,14 @@ it('[TC-MEET-001-N] a full queue blocks Enter and editing updates that queued co
   await act(async () =>
     f.box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })),
   );
-  expect(f.meetings.send).not.toHaveBeenCalled();
+  expect(f.meetings.send).toHaveBeenCalledWith(
+    'session_1',
+    expect.objectContaining({ text: 'Keep my next draft' }),
+  );
+  await f.type('Another message while models answer');
+  await act(async () => f.button('send')?.click());
+  expect(f.meetings.send).toHaveBeenCalledTimes(2);
+  await f.type('Keep my next draft');
   expect(f.button('editQueued')).toBeDefined();
   await act(async () => f.button('editQueued')?.click());
   const queuedBox = f.container.querySelector<HTMLTextAreaElement>(
@@ -293,6 +431,31 @@ it('[TC-MEET-001-H] only explicitly attached evidence is sent, and a failed send
   await f.type('Now without the evidence');
   await act(async () => f.button('send')?.click());
   expect(f.meetings.send.mock.calls.at(-1)?.[1]).not.toHaveProperty('attachments');
+});
+
+it('[TC-MEET-001-H] starts with a compact composer and keeps selected evidence reviewable', async () => {
+  const f = await mount(view());
+  const disclosure = f.container.querySelector<HTMLDetailsElement>(
+    'details[aria-label="evidence"]',
+  );
+  expect(disclosure).not.toBeNull();
+  expect(disclosure?.open).toBe(false);
+  expect(f.button('attachEvidence')?.closest('details')).toBe(disclosure);
+  expect(f.box.rows).toBe(2);
+  await act(async () => disclosure!.querySelector('summary')!.click());
+  expect(disclosure?.open).toBe(true);
+  await act(async () => f.button('attachEvidence')?.click());
+  expect(disclosure?.querySelector('summary')?.textContent).toBe('evidenceSelected');
+  await f.type('Review this');
+  f.meetings.send.mockRejectedValueOnce(new Error('connection lost'));
+  await act(async () => f.button('send')?.click());
+  expect(disclosure?.open).toBe(true);
+  expect(disclosure?.querySelector('summary')?.textContent).toBe('evidenceSelected');
+  await act(async () => f.button('send')?.click());
+  expect(f.meetings.send.mock.calls.at(-1)?.[1]).toMatchObject({
+    attachments: [{ name: 'brief.txt' }],
+  });
+  expect(disclosure?.querySelector('summary')?.textContent).toBe('evidence');
 });
 
 it('[TC-MEET-001-F] a late refresh cannot replace a newer round view', async () => {
@@ -369,7 +532,9 @@ it('[TC-MEET-002-H] parsed secretary minutes open the records panel instead of d
   );
   expect(f.button('viewMinutes')).toBeDefined();
   await act(async () => f.button('viewMinutes')?.click());
-  expect(f.container.querySelector('details')?.open).toBe(true);
+  expect(f.container.querySelector<HTMLDetailsElement>('details[aria-label="records"]')?.open).toBe(
+    true,
+  );
   expect(document.activeElement?.tagName).toBe('SUMMARY');
 });
 

@@ -32,7 +32,13 @@ async function start(transport: ReturnType<typeof liveRuntime>['transport'], mee
 }
 
 it('[TC-MEET-001-H] commits a clean plain meeting answer through Coordinator tools without another model request', async () => {
-  const { transport, credentialCalls } = liveRuntime([fauxAssistantMessage('Keep one service.')]);
+  let prompt: string | undefined;
+  const { transport, credentialCalls } = liveRuntime([
+    (context) => {
+      prompt = JSON.stringify(context.messages.filter((message) => message.role === 'system'));
+      return fauxAssistantMessage('Keep one service.');
+    },
+  ]);
   const runId = await start(transport);
   const events: RunEvent[] = [];
   transport.subscribe(runId, 0, { onEvent: (event) => events.push(event) });
@@ -54,6 +60,9 @@ it('[TC-MEET-001-H] commits a clean plain meeting answer through Coordinator too
   ]);
   const artifact = final.artifacts[final.output!.artifactVersionIds[0]!];
   expect(artifact?.modelCallId).toBe(Object.keys(final.modelCalls)[0]);
+  expect(prompt).toContain('Your display name in this shared conversation');
+  expect(prompt).not.toContain('Complete the requested work');
+  expect(prompt).not.toContain('When your work is complete, call write_artifact');
 });
 
 it.each([

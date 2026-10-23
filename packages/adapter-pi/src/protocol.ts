@@ -12,6 +12,7 @@ import {
   ImageInput,
   ItemRef,
   McpChallenge,
+  MeetingRunOrigin,
   ModelRequestRecord,
   ProtectedContext,
   ProviderPayloadRecord,
@@ -147,6 +148,7 @@ export type WorkerTool = z.infer<typeof WorkerTool>;
 export const StartFrame = z.strictObject({
   type: z.literal('start'),
   ...head,
+  meeting: MeetingRunOrigin.optional(),
   reasoningCapabilities: ReasoningCapabilities.optional(),
   model: z.strictObject({
     contextWindow: z.int().min(1).max(10_000_000).optional(),

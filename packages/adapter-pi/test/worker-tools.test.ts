@@ -21,6 +21,48 @@ const start = {
   askTo: [],
 } satisfies Parameters<typeof systemPrompt>[0];
 
+it('[TC-MEET-001-H] a marked meeting response is a conversation instead of a work report', () => {
+  const input = {
+    ...start,
+    meeting: { sessionId: 'session_chat', roundId: 'message_1', participantId: 'participant_1' },
+    role: { name: 'GPT', prompt: 'Give your own opinion.', outputContract: 'text' },
+    tools: [...start.tools, 'update_plan'],
+  };
+  const prompt = systemPrompt(input);
+  expect(prompt).toContain('Your display name in this shared conversation');
+  expect(prompt).toContain('Respond to the latest posted messages');
+  expect(prompt).toContain('Return your answer directly as the final response');
+  expect(prompt).not.toContain('Complete the requested work');
+  expect(prompt).not.toContain('Report what was observed, inferred, and not checked');
+  expect(prompt).not.toContain('Perform the scheduled task');
+  expect(prompt).not.toContain('call update_plan before');
+  expect(prompt).not.toContain('When your work is complete, call write_artifact');
+  expect(prompt).toContain('host permissions remain authoritative');
+  expect(prompt).toContain('Honor cancellation');
+
+  const ordinary = systemPrompt({ ...input, meeting: undefined });
+  expect(ordinary).toContain('Complete the requested work');
+  expect(ordinary).toContain('When your work is complete, call write_artifact');
+  expect(ordinary).not.toContain('Your display name in this shared conversation');
+});
+
+it('[TC-MEET-002-H] a secretary keeps its explicit structured format without a work submission prompt', () => {
+  const prompt = systemPrompt({
+    ...start,
+    meeting: { sessionId: 'session_chat', roundId: 'message_2', participantId: 'secretary' },
+    role: {
+      name: 'Secretary',
+      prompt: 'Summarize the supplied conversation as JSON with summary and decisions.',
+      outputContract: 'text',
+    },
+  });
+  expect(prompt).toContain(
+    'Summarize the supplied conversation as JSON with summary and decisions.',
+  );
+  expect(prompt).toContain('Follow any explicit output format in your role instructions');
+  expect(prompt).not.toContain('When your work is complete, call write_artifact');
+});
+
 it('[TC-ABS-010-H] supplies the configured image profile and structured generator schema to the model', () => {
   const prompt = systemPrompt({
     ...start,

@@ -221,6 +221,7 @@ export async function createStudioServices(): Promise<StudioServices> {
   });
   const workspaces = createDemoWorkspaces(workspace, repository, transport);
   const meetings = new MeetingService({
+    random: Math.random,
     repository,
     transport,
     clock: systemClock,

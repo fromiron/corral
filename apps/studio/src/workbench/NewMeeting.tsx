@@ -20,12 +20,12 @@ const TEMPLATE = ['architect', 'builder', 'tester'] as const;
 
 interface Draft {
   key: string;
-  name: string;
+  name: string | null;
   prompt: string;
   modelProfile: string;
 }
 
-/** CR-049: opens a meeting with role agents; nothing runs until the person sends a message. */
+/** CR-049: opens a group chat; nothing runs until the person sends a message. */
 export function StartMeeting({ projectId }: { projectId: string }) {
   const t = useTranslations('Meetings');
   const [open, setOpen] = useState(false);
@@ -65,15 +65,33 @@ function NewMeetingDialog({ projectId, onClose }: { projectId: string; onClose()
   const [draftParticipants, setParticipants] = useState<Draft[]>(() =>
     TEMPLATE.map((id, index) => ({
       key: id,
-      name: t(`template.${id}.name`),
-      prompt: t(`template.${id}.role`),
+      name: null,
+      prompt: '',
       modelProfile: pick(index),
     })),
   );
-  const participants = draftParticipants.map((item, index) => ({
-    ...item,
-    modelProfile: item.modelProfile || pick(index),
-  }));
+  const usedNames = new Set([
+    'secretary',
+    '비서',
+    ...draftParticipants.map((_, index) => `p${index + 1}`),
+    ...draftParticipants.flatMap((item) =>
+      item.name === null ? [] : [item.name.trim().toLowerCase()],
+    ),
+  ]);
+  const participants = draftParticipants.map((item, index) => {
+    const modelProfile = item.modelProfile || pick(index);
+    const label = profiles?.find((profile) => profile.profileId === modelProfile)?.label;
+    const base = (label || modelProfile || t('participantName', { number: index + 1 })).trim();
+    let name = item.name ?? base.slice(0, 40);
+    if (item.name === null) {
+      for (let duplicate = 2; usedNames.has(name.toLowerCase()); duplicate++) {
+        const suffix = ` (${duplicate})`;
+        name = `${base.slice(0, 40 - suffix.length)}${suffix}`;
+      }
+      usedNames.add(name.toLowerCase());
+    }
+    return { ...item, name, modelProfile };
+  });
   const [secretaryChoice, setSecretary] = useState(() => pick(0));
   const secretary = secretaryChoice || pick(0);
   const [error, setError] = useState('');
@@ -143,6 +161,29 @@ function NewMeetingDialog({ projectId, onClose }: { projectId: string; onClose()
           </label>
           <fieldset className="flex flex-col gap-3">
             <legend className="mb-1 font-medium">{t('participants')}</legend>
+            <div>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  setParticipants((current) =>
+                    current.map((item, index) => {
+                      const role = TEMPLATE[index];
+                      return role
+                        ? {
+                            ...item,
+                            name: t(`template.${role}.name`),
+                            prompt: t(`template.${role}.role`),
+                          }
+                        : item;
+                    }),
+                  )
+                }
+              >
+                {t('applyDevelopmentRoles')}
+              </Button>
+            </div>
             {participants.map((item, index) => (
               <div key={item.key} className="flex flex-col gap-2 rounded fill-group p-3">
                 <div className="flex flex-wrap items-end gap-2">
@@ -183,7 +224,6 @@ function NewMeetingDialog({ projectId, onClose }: { projectId: string; onClose()
                   <textarea
                     value={item.prompt}
                     maxLength={4000}
-                    required
                     rows={2}
                     className="resize-y rounded fill-control px-2 py-1"
                     onChange={(event) => change(item.key, { prompt: event.target.value })}
@@ -202,7 +242,7 @@ function NewMeetingDialog({ projectId, onClose }: { projectId: string; onClose()
                       ...current,
                       {
                         key: `extra_${globalThis.crypto.randomUUID()}`,
-                        name: '',
+                        name: null,
                         prompt: '',
                         modelProfile: pick(current.length),
                       },

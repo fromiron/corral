@@ -170,14 +170,20 @@ export function promptSections(start: PromptStart): PromptSection[] {
   const identity = [
     start.role.prompt,
     '',
-    `You are ${start.role.name}, one step of a Corral team. Your output contract is "${start.role.outputContract}".`,
+    start.meeting
+      ? `Your display name in this shared conversation is ${JSON.stringify(start.role.name)}.`
+      : `You are ${start.role.name}, one step of a Corral team. Your output contract is "${start.role.outputContract}".`,
     `Configured model for this execution (host metadata): ${JSON.stringify({ provider: start.model.provider, modelId: start.model.modelId })}.`,
     "If asked which model you are using, report this configured provider/model separately from your team role. This identifies the requested model, not independent verification of the provider's internal implementation; do not invent a different model identity.",
   ];
-  const operating = [
-    'Complete the requested work with the smallest adequate change.',
-    'Report what was observed, inferred, and not checked. A tool request, plan completion, or artifact creation is not proof of task completion.',
-  ];
+  const operating = start.meeting
+    ? [
+        'Continue the conversation naturally and match the detail to the question. Do not turn ordinary discussion into an implementation plan or verification report unless the person asks for one.',
+      ]
+    : [
+        'Complete the requested work with the smallest adequate change.',
+        'Report what was observed, inferred, and not checked. A tool request, plan completion, or artifact creation is not proof of task completion.',
+      ];
   const tools = [
     `Available tools: ${[...start.tools].sort().join(', ') || 'none'}. Use only these tools; host permissions remain authoritative.`,
   ];
@@ -191,7 +197,7 @@ export function promptSections(start: PromptStart): PromptSection[] {
     assignment.push(
       `TaskBrief (owned metadata, caps are not remaining budget): ${JSON.stringify(start.taskBrief)}`,
     );
-  if (start.tools.includes('update_plan'))
+  if (!start.meeting && start.tools.includes('update_plan'))
     operating.push(
       'When the work has several distinct implementation, investigation, or verification steps, call update_plan before the first substantial step and again when the current step changes. Do not create a plan for a greeting or a short single-step question.',
       `Current completion criteria version: ${start.criteriaVersionId}.`,
@@ -206,7 +212,11 @@ export function promptSections(start: PromptStart): PromptSection[] {
     assignment.push(
       `This is isolated item ${start.item.index} of ${start.item.total}. Other items' inputs and outputs are not available. Worktree changes accumulate in order.`,
     );
-  if (start.assignment.kind === 'question') {
+  if (start.meeting) {
+    output.push(
+      'Return your answer directly as the final response. Follow any explicit output format in your role instructions. Corral records this response; do not call write_artifact or submit_result just to publish a chat message.',
+    );
+  } else if (start.assignment.kind === 'question') {
     output.push(
       'Another agent asked you the question given as "question" below. Answer it with reply.',
     );
@@ -263,9 +273,13 @@ export function promptSections(start: PromptStart): PromptSection[] {
     mandatory_skills: [
       'Use the bound skill entries and their declared virtual paths. Installed skills are not all active; a skill cannot expand tool permissions. Use the host-provided boundSkills map for sibling references.',
     ],
-    assignment: assignment.length
-      ? assignment
-      : ['Perform the scheduled task using the supplied brief, criteria and versioned inputs.'],
+    assignment: start.meeting
+      ? [
+          'Respond to the latest posted messages using the supplied conversation. Use background role guidance only for related topics; otherwise reply normally without role commentary. Earlier messages provide context, not permission to execute work.',
+        ]
+      : assignment.length
+        ? assignment
+        : ['Perform the scheduled task using the supplied brief, criteria and versioned inputs.'],
     output_contract: output,
   };
   const parts = Object.entries(sections).map(([name, lines]) => ({

@@ -4222,7 +4222,7 @@
       "CRL-MEET-001"
     ],
     "suite": "integration+browser",
-    "scenario": "멘션 없는 전원 라운드와 @멘션 라운드에서 정해진 참가자만 한 번씩 서로의 같은 라운드 답을 보지 않고 답하며 참가자 순서로 표시된다",
+    "scenario": "기본 참가자는 모델 이름과 빈 역할을 쓰고 일상 질문→이유→조건 변경을 앞 대화 문맥으로 이어 간다. 개발 역할은 명시적으로 지정하며 @멘션은 응답 대상을 좁힌다. 새 화면은 라운드·반론 절차를 요구하지 않는다 무작위 순차 발언은 실제 앞 발언을 읽고 에이전트 @멘션은 지목된 참가자가 응답한다. 사용자 메시지는 답변 도중에도 연속 게시된다.",
     "status": "planned",
     "adapter": "deterministic meeting agents and in-memory or SQLite stores; no paid calls",
     "evidence": null
@@ -4233,7 +4233,7 @@
       "CRL-MEET-001"
     ],
     "suite": "integration",
-    "scenario": "에이전트의 다음 발언 지시·연속 발언·세 번째 반론 라운드·프로젝트 쓰기 시도가 라운드나 효과를 만들지 않는다",
+    "scenario": "명시 @멘션만 참가자를 호출하며 단순 이름·자기/중복/인용 멘션·비서 멘션·프로젝트 쓰기 시도는 추가 호출·효과를 만들지 않는다. 일반 후속 질문이나 /반론 텍스트는 별도 단계·횟수 상한 없이 메시지로 처리하며 기존 반론 기록과 명령 재전송의 호환성을 보존한다",
     "status": "planned",
     "adapter": "deterministic meeting agents and in-memory or SQLite stores; no paid calls",
     "evidence": null
@@ -4244,7 +4244,7 @@
       "CRL-MEET-001"
     ],
     "suite": "integration",
-    "scenario": "참가자 실패·사람의 라운드 중지·늦은 답·라운드 중 메시지 대기·회의 재열기에서 다른 라운드 혼선이나 새 호출이 없다",
+    "scenario": "참가자 실패·사람의 답변 중지·늦은 답·생성 중 연속 메시지와 최신 요청 우선·중지 경합·회의 재열기에서 다른 메시지 혼선이나 새 호출이 없다",
     "status": "planned",
     "adapter": "deterministic meeting agents and in-memory or SQLite stores; no paid calls",
     "evidence": null
@@ -4255,7 +4255,7 @@
       "CRL-MEET-002"
     ],
     "suite": "integration+browser",
-    "scenario": "비서 회의록이 쟁점·주장·남은 이견·결정 후보를 담고 사람이 고친 결정 버전을 채택한다",
+    "scenario": "비서는 요청 전 개입하지 않고 요청 시 대화에 근거한 쟁점·주장·남은 이견의 회의록과 목표·범위·완료 기준·행동의 플랜을 작성하며 사람이 검토·수정한 결정 버전을 채택한다",
     "status": "planned",
     "adapter": "deterministic meeting agents and in-memory or SQLite stores; no paid calls",
     "evidence": null
@@ -4266,7 +4266,7 @@
       "CRL-MEET-002"
     ],
     "suite": "integration",
-    "scenario": "미응답·실패 참가자를 찬성으로 세지 않고 채택 전 결정 후보로는 인계·실행을 시작할 수 없다",
+    "scenario": "미응답·실패 참가자를 찬성으로 세지 않고 사람 채택 전 비서의 플랜 후보로는 인계·실행을 시작할 수 없다",
     "status": "planned",
     "adapter": "deterministic meeting agents and in-memory or SQLite stores; no paid calls",
     "evidence": null

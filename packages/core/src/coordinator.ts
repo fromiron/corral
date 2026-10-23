@@ -5211,6 +5211,7 @@ export class Coordinator {
     const contextRef =
       run.snapshot.resumedFrom?.contextRef ?? run.snapshot.branchedFrom?.contextRef;
     const input: AgentStartInput = {
+      ...(run.snapshot.meeting ? { meeting: run.snapshot.meeting } : {}),
       ...(contextRef
         ? {
             resumeContext: RuntimeCheckpointState.parse(
