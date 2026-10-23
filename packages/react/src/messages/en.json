@@ -1466,7 +1466,7 @@
     "ready": "Working copy from commit {commit}",
     "review": "Review changes",
     "remove": "Remove working copy",
-    "removeConfirm": "Remove the working copy? Its files are deleted; your folder and the recorded changes stay.",
+    "removeConfirm": "Its files are deleted. Your original folder and the recorded changes stay. Archiving a session never does this.",
     "reviewHeading": "Review changes",
     "scope": "Compare",
     "scopes": {
@@ -1569,7 +1569,26 @@
     "readOnlyPreview": "Read-only preview",
     "changeReviewNote": "Marks this file's change in this comparison as reviewed, in this browser. Another comparison of the same file is reviewed on its own. It is not an approval.",
     "readElsewhere": "Read in another comparison",
-    "configChanged": "for earlier check settings"
+    "configChanged": "for earlier check settings",
+    "removalTitle": "Remove this session's working copy?",
+    "removalLoading": "Checking what the copy holds…",
+    "removeCopy": "Remove copy",
+    "removalKeep": "Keep the copy",
+    "removalHeld": "In use: {what}. Stop it first.",
+    "removalOwner": {
+      "run": "a run",
+      "task": "a task",
+      "terminal": "a terminal",
+      "other": "another operation"
+    },
+    "removalUnsaved": "{count, plural, one {# unsaved document} other {# unsaved documents}}",
+    "removalRecovery": "{count, plural, one {# recovery draft} other {# recovery drafts}}",
+    "removalGit": "Not committed: {staged} staged · {unstaged} unstaged · {untracked} untracked",
+    "removalUnmerged": "{count} with conflicts",
+    "removalGitUnknown": "The copy's Git changes could not be read.",
+    "removalComments": "{count, plural, one {# review comment not sent} other {# review comments not sent}}",
+    "removalUncertain": "{count, plural, one {# file write with unknown outcome} other {# file writes with unknown outcome}}",
+    "removalRuns": "{count, plural, one {# run not finished} other {# runs not finished}}"
   },
   "Review": {
     "commentLine": "Comment on line {line}",

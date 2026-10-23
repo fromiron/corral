@@ -92,6 +92,8 @@ P11의 구현과 Linux 인앱·관련 회귀 범위는 [C-151 검증 기록](../
 
 [CR-046 P18](../change-requests/CR-046-development-workbench.md)부터 세션 메뉴의 “팀 설계 열기”는 저장 팀의 그래프를 도킹 탭으로 연다. 탭은 route 편집기와 같은 working copy를 써서 탭을 옮기거나 닫았다 다시 열어도 초안·undo가 남고, 탭 조작은 저장이 아니다. 팀마다 탭은 하나이며 세션 안에서는 시험 실행 없이 정의만 고친다. 실행 제어는 도킹 상단 한 곳이다. 구현·검증 범위는 [C-158 기록](../evaluation/Development-Workbench-Team-Dock-2026-10-23.md)을 따른다.
 
+[CR-046 P21-A](../change-requests/CR-046-development-workbench.md)부터 세션 보관은 작업 사본을 지우지 않는다. 사본 삭제는 먼저 잃을 것을 보여 준다. 이 브라우저의 미저장 문서·복구 초안, 사본의 Git 변경, 보내지 않은 의견, 결과를 모르는 쓰기, 끝나지 않은 Run이다. task·터미널·Run이 잡은 사본은 지우지 않는다. 삭제는 확인한 copy generation에만 적용되고, 폴더가 남으면 삭제로 기록하지 않는다. 구현·검증 범위는 [C-160 기록](../evaluation/Development-Workbench-Copy-Lifecycle-2026-10-23.md)을 따른다.
+
 세션 화면에서 실행의 일시정지·재개·취소는 도킹 상단 "실행 조작" 한 곳에서 한다. 입력창 위 진행 줄은 상태와 기록 링크만 보여 준다(#91). Git 상태는 Git 창의 staged/unstaged/untracked 모델 하나로만 보이며 검토 화면의 예전 `scope=git` 주소는 세션의 Git 창으로 replace 이동한다.
 
 ## 읽기 전용 Git 관찰

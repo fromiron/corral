@@ -100,6 +100,7 @@ export function createDemoWorkspaces(
     createWorktree: async (sessionId) =>
       as(call('createWorktree', sessionId, await projectOf(sessionId))),
     removeWorktree: (sessionId) => as(call('removeWorktree', sessionId)),
+    removalPlan: (sessionId) => as(call('removalPlan', sessionId)),
     changes: (sessionId, scope) => as(call('changes', sessionId, scope)),
     fileVersions: (sessionId, from, to, path) =>
       as(call('fileVersions', sessionId, from, to, path)),

@@ -1835,10 +1835,23 @@ async function createCorralServer(
       return workspaceFail(reply, error);
     }
   });
-  app.delete<SessionParams>('/api/v1/sessions/:sessionId/worktree', async (request, reply) => {
+  app.get<SessionParams>('/api/v1/sessions/:sessionId/worktree/removal', async (request, reply) => {
     if (!(await sessionOr404(reply, request.params.sessionId))) return reply;
     try {
-      await files.removeWorktree(request.params.sessionId);
+      return await files.removalPlan(request.params.sessionId);
+    } catch (error) {
+      return workspaceFail(reply, error);
+    }
+  });
+  app.delete<SessionParams>('/api/v1/sessions/:sessionId/worktree', async (request, reply) => {
+    const query = z
+      .strictObject({ generation: z.coerce.number().int().min(1).optional() })
+      .safeParse(request.query);
+    if (!query.success)
+      return fail(reply, 'SCHEMA_INVALID', 'generation must be a copy generation');
+    if (!(await sessionOr404(reply, request.params.sessionId))) return reply;
+    try {
+      await files.removeWorktree(request.params.sessionId, query.data.generation);
       return reply.code(204).send();
     } catch (error) {
       return workspaceFail(reply, error);

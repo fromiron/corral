@@ -8,6 +8,7 @@
 | 외부 AgentAdapter/A2A, LiteLLM | 초기 확장 후보. 현재 Pi 연결 경로를 대체하지 않음 | 실제 사용자 요구, 권한/credential 경계, 의존성과 비용 |
 | crash resume·외부 효과 자동 재실행 | 현재 미승인. 재접속·기록 읽기·checkpoint에서 새 Run 시작과 다름 | 멱등성·불확실 효과·비용·복구 계약 |
 | Hybrid/자동 정책 최적화 | 초기 후보. 기존 observe·역할별 reasoning apply와 다름 | 평가 기준·호출/비용 한도·적용 권한 |
+| [개발 서버를 켠 채 저장(P22 D2)](P22-shared-development-D2.md) | 결정 대기. 승인 전 strict 유지 | A strict 유지·B 공유 개발 owner(권고)·C 실행용 사본 중 선택과 의미 승인 |
 
 일반 대화의 자동 팀 선택(CR-024/043), 역할별 추론 적용(CR-021), 복수 모델 Ultra(CR-031), Desktop 확장(CR-042)은 단순 장기 아이디어가 아니다. 해당 현재 계약과 잔여 계획을 따른다.
 

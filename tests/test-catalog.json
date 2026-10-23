@@ -3753,5 +3753,38 @@
     "status": "planned",
     "adapter": "jsdom with delayed workspace responses",
     "evidence": null
+  },
+  {
+    "id": "TC-WBD-016-H",
+    "requirements": [
+      "CRL-WBD-016"
+    ],
+    "suite": "unit+integration",
+    "scenario": "Git 변경·미제출 의견·열린 Run이 있는 사본의 삭제 전 요약, 보관 뒤 사본 유지, 대화상자의 미저장 문서·복구 초안 표시와 보인 generation으로 삭제",
+    "status": "planned",
+    "adapter": "temporary real Git repositories and managed worktrees over HTTP; jsdom dialog with stubbed client",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-016-N",
+    "requirements": [
+      "CRL-WBD-016"
+    ],
+    "suite": "unit+integration",
+    "scenario": "owner가 잡은 사본의 삭제 거절과 종류 표시, 이전 copy generation 삭제 요청 거절과 새 사본 보존, 늦은 거절 이유 표시",
+    "status": "planned",
+    "adapter": "temporary real Git repositories and managed worktrees; jsdom dialog",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-016-F",
+    "requirements": [
+      "CRL-WBD-016"
+    ],
+    "suite": "unit+integration",
+    "scenario": "일부만 지워진 사본을 삭제됨으로 기록하지 않음, 읽지 못한 Git 상태를 모름으로 표시",
+    "status": "planned",
+    "adapter": "permission-locked folder in a real worktree (non-root POSIX); jsdom dialog",
+    "evidence": null
   }
 ]

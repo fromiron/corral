@@ -1691,6 +1691,25 @@ export interface WorktreeView {
   missing: boolean;
 }
 
+export interface CopyRemovalPlan {
+  sessionId: string;
+  bindingId: string;
+  copyGeneration: number;
+  missing: boolean;
+  /** Changes in the copy's own Git state; null when they could not be read. */
+  git: { staged: number; unstaged: number; untracked: number; unmerged: number } | null;
+  owners: {
+    kind: 'run' | 'user';
+    id: string;
+    state: 'active' | 'uncertain';
+    writer: boolean;
+    operation?: string;
+  }[];
+  draftComments: number;
+  uncertainWrites: number;
+  openRuns: string[];
+}
+
 export type ChangeScopeQuery =
   | { kind: 'session' }
   | { kind: 'review' }
@@ -1977,8 +1996,16 @@ export class WorkspacesApi {
     return (await this.send<{ worktree: WorktreeView }>(`/sessions/${s}/worktree`, 'POST'))
       .worktree;
   }
-  removeWorktree(sessionId: string): Promise<null> {
-    return this.send(`/sessions/${encodeURIComponent(sessionId)}/worktree`, 'DELETE');
+  /** Removes the copy; with `generation`, only that copy, never one made again since. */
+  removeWorktree(sessionId: string, generation?: number): Promise<null> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree${generation === undefined ? '' : `?generation=${generation}`}`,
+      'DELETE',
+    );
+  }
+  /** What removing the copy would lose (CR-046 P21-A); reads only. */
+  removalPlan(sessionId: string): Promise<CopyRemovalPlan> {
+    return this.send(`/sessions/${encodeURIComponent(sessionId)}/worktree/removal`);
   }
   changes(sessionId: string, scope: ChangeScopeQuery): Promise<ChangeSetView> {
     const query =

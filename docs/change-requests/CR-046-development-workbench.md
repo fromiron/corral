@@ -213,3 +213,21 @@ P18-A 보완: 다른 탭 뒤에 숨은 팀 그래프 탭은 렌더링에서 뺀�
 H는 execution의 파일·결과·검사만 각 화면으로 연결되는 것, N은 다른 Run을 따라간 뒤 Run·execution 취소 확인이 보내지지 않는 것, F는 세션을 바꾼 뒤 이전 세션의 늦은 기록이 표시되지 않는 것이다. host 전환은 services마다 다른 Run store를 쓰는 기존 구조를 따르며 이번에 따로 시험하지 않았다.
 
 H는 같은 팀 탭을 한 번만 열고 문서와 같은 영역에 두며 다시 열어도 그대로 복원하는 것, 초안 변경에 따른 탭 제목이다. N은 중복·빈 ID·다른 프로젝트 팀 거절, 문서 descriptor로의 위장 거절, 세션 안에서 이동 확인과 Ctrl+S 범위다. F는 잘못된 그래프 pane만 안내로 바꾸고 나머지 layout을 보존하는 것이다.
+
+## P21-A: 작업 사본의 보관과 삭제
+
+추적: CRL-WBD-016 / C-160 / TC-WBD-016-H,N,F. 2026-10-23 재검토의 P21-A(로컬 수명)다. 원격 복귀(P21-B)는 C-135와 함께 승인된 실제 host에서 따로 검증한다.
+
+- **보관은 삭제가 아니다.** 세션 보관(`archived`)은 사본·터미널·task를 건드리지 않는다. 사본 삭제는 Changes의 “작업 사본 지우기”에서만 한다.
+- **삭제 전 요약.** `GET /sessions/:id/worktree/removal`는 아무것도 바꾸지 않고 다음을 돌려준다.
+  - 사본 identity(`bindingId`, `copyGeneration`)와 폴더 존재 여부.
+  - 사본 자신의 Git 변경 수(staged·unstaged·untracked·unmerged). 읽지 못하면 `null`이며 깨끗함으로 보이지 않는다.
+  - 사본을 잡은 active·uncertain owner. 사람 operation이면 그 종류(task, terminal 등)도 준다.
+  - 보내지 않은 검토 의견 수, planned·uncertain 파일 쓰기 수, 끝나지 않은 Run.
+  - 저장하지 않은 문서와 복구 초안은 브라우저에 있으므로 Studio가 문서 store에서 더한다.
+- 대화상자는 항목이 있을 때만 그 줄을 보인다. owner가 있으면 무엇이 쓰는지 밝히고 삭제 버튼을 잠근다. 서버도 지금처럼 거절한다.
+- **generation 고정.** 삭제는 대화상자가 보여 준 `copyGeneration`으로 보낸다(`DELETE …/worktree?generation=N`). 그 사이 사본을 다시 만들었으면 `REVISION_CONFLICT`로 거절하고 새 사본은 그대로 둔다. generation 없는 요청은 기존 호환으로 남긴다.
+- **불확실한 정리는 완료가 아니다.** Git worktree 제거와 폴더 삭제 뒤에도 폴더가 남아 있으면 `removed_at`을 기록하지 않고 거절한다. 사람은 그 사본을 “폴더가 사라짐” 또는 남은 상태로 보고 다시 처리한다.
+- `.env`·키 자동 복사와 setup 자동 실행은 추가하지 않는다. 복구는 지금처럼 명시 동작이다.
+
+H는 Git 변경·미제출 의견·열린 Run이 있는 사본의 요약과, 보관 뒤에도 사본이 남는 것이다. N은 owner가 있으면 삭제 거절, 요약에 owner 종류 표시, 이전 generation 삭제 요청 거절과 새 사본 보존이다. F는 일부만 지워진 사본을 삭제됨으로 기록하지 않는 것과, 읽지 못한 Git 상태를 모름으로 보이는 것이다.

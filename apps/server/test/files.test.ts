@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -1669,6 +1670,91 @@ describe('change review evidence (CR-046 P17)', () => {
       await service.dispose();
     }
   });
+});
+
+describe('working copy lifecycle (CR-046 P21-A)', () => {
+  it('[TC-WBD-016-H] lists what removing the copy would lose before anything is removed', async () => {
+    const { db, service, call, clock } = await setup();
+    try {
+      await call('read_file', { path: 'a.txt' });
+      await call('write_file', { path: 'a.txt', text: 'two\n' });
+      const root = service.copyOf('session_1')?.worktree as string;
+      writeFileSync(join(root, 'new.txt'), 'untracked\n');
+      execFileSync('git', ['add', 'a.txt'], { cwd: root });
+      writeFileSync(join(root, 'a.txt'), 'three\n');
+      const review = new ReviewService({ db, clock, files: service });
+      const to = (await service.latestTree('session_1')) as string;
+      review.addComment('session_1', {
+        from: service.copyOf('session_1')?.baseTree as string,
+        to,
+        path: 'a.txt',
+        side: 'after',
+        startLine: 1,
+        endLine: 1,
+        quote: 'three',
+        body: 'not sent yet',
+      });
+      const plan = await service.removalPlan('session_1');
+      expect(plan).toMatchObject({
+        sessionId: 'session_1',
+        copyGeneration: 1,
+        missing: false,
+        git: { staged: 1, unstaged: 1, untracked: 1, unmerged: 0 },
+        draftComments: 1,
+        uncertainWrites: 0,
+        openRuns: ['run_1'],
+        owners: [],
+      });
+      expect(existsSync(join(root, 'new.txt'))).toBe(true);
+    } finally {
+      await service.dispose();
+    }
+  });
+
+  it('[TC-WBD-016-N] a removal confirmed for one copy generation never removes the copy made after it', async () => {
+    const { db, service } = await setup();
+    try {
+      const access = new WorkspaceAccessStore(db);
+      const owner = { kind: 'user', id: 'terminal_op' } as const;
+      const copy = service.copyOf('session_1');
+      if (!copy) throw new Error('working copy missing');
+      access.acquire(owner, 'session_1', copy.worktree, true, 1);
+      expect((await service.removalPlan('session_1')).owners).toEqual([
+        { kind: 'user', id: 'terminal_op', state: 'active', writer: true },
+      ]);
+      await expect(service.removeWorktree('session_1', 1)).rejects.toThrow(/owner/);
+      access.release(owner, true);
+      await service.removeWorktree('session_1', 1);
+      await service.createWorktree('session_1', 'default');
+      // A dialog opened for generation 1 is late now: generation 2 stays.
+      await expect(service.removeWorktree('session_1', 1)).rejects.toThrow(/generation/);
+      expect(service.worktreeView('session_1')).toMatchObject({
+        copyGeneration: 2,
+        removedAt: null,
+      });
+    } finally {
+      await service.dispose();
+    }
+  });
+
+  it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+    '[TC-WBD-016-F] a copy that could not be fully deleted is not recorded as removed',
+    async () => {
+      const { service } = await setup();
+      const root = service.copyOf('session_1')?.worktree as string;
+      const locked = join(root, 'locked');
+      try {
+        mkdirSync(locked);
+        writeFileSync(join(locked, 'kept.txt'), 'x');
+        chmodSync(locked, 0o555);
+        await expect(service.removeWorktree('session_1', 1)).rejects.toThrow();
+        expect(service.worktreeView('session_1')).toMatchObject({ removedAt: null });
+      } finally {
+        chmodSync(locked, 0o755);
+        await service.dispose();
+      }
+    },
+  );
 });
 
 describe('missing folders (02-UX-Spec §8)', () => {

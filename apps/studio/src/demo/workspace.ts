@@ -1,6 +1,7 @@
 import type {
   ChangeScopeQuery,
   ChangeSetView,
+  CopyRemovalPlan,
   FileBrowseScope,
   FileChangeView,
   FileOperationView,
@@ -214,6 +215,23 @@ export class DemoWorkspace implements FileTools {
   removeWorktree(sessionId: string) {
     this.copies.delete(sessionId);
     return null;
+  }
+
+  /** The demo keeps its copy in memory: no Git state, owners or runs of its own to report. */
+  removalPlan(sessionId: string): CopyRemovalPlan {
+    const c = this.copy(sessionId);
+    return {
+      sessionId,
+      bindingId: c.bindingId,
+      copyGeneration: 1,
+      missing: false,
+      git: null,
+      owners: [],
+      draftComments: this.listComments(sessionId).filter((comment) => comment.state === 'draft')
+        .length,
+      uncertainWrites: 0,
+      openRuns: [],
+    };
   }
 
   private copy(sessionId: string): Copy {

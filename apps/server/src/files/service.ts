@@ -67,6 +67,7 @@ import {
   type Scheduler,
   type TaskCandidates,
   TaskStart,
+  TERMINAL_RUN_STATUSES,
   type TerminalCreate,
   type UserGitTarget,
   type UserTaskView,
@@ -213,6 +214,27 @@ export interface VerificationView {
   /** The project's registered command with this id is no longer the one that ran (CR-046 P17). */
   configChanged: boolean;
   report: VerificationReport | null;
+}
+
+export interface CopyRemovalPlan {
+  sessionId: string;
+  bindingId: string;
+  copyGeneration: number;
+  missing: boolean;
+  /** Changes in the copy's own Git state; null when they could not be read. */
+  git: { staged: number; unstaged: number; untracked: number; unmerged: number } | null;
+  owners: {
+    kind: 'run' | 'user';
+    id: string;
+    state: 'active' | 'uncertain';
+    writer: boolean;
+    /** The human operation kind (task, terminal…) when the owner is one. */
+    operation?: string;
+  }[];
+  draftComments: number;
+  uncertainWrites: number;
+  /** This session's runs that have not finished, including ones waiting for a person. */
+  openRuns: string[];
 }
 
 export class WorkspaceError extends Error {
@@ -997,9 +1019,80 @@ export class WorkspaceService implements FileTools {
   }
 
   /** Removes the working copy (its files only); the original folder is not touched. */
-  async removeWorktree(sessionId: string) {
+  /**
+   * What removing this copy would lose (CR-046 P21-A), read without changing anything: Git
+   * changes in it, owners still holding it, unsent review comments, writes of unknown outcome and
+   * runs not yet finished. Unsaved editor buffers and recovery drafts live in the client and are
+   * added there. Removal is then confirmed for this exact copy generation.
+   */
+  async removalPlan(sessionId: string): Promise<CopyRemovalPlan> {
+    const row = this.worktree(sessionId);
+    if (!row) throw new WorkspaceError('TARGET_NOT_FOUND', 'this session has no working copy');
+    const missing = !existsSync(row.worktree_path);
+    let git: CopyRemovalPlan['git'] = null;
+    if (!missing)
+      try {
+        const status = await this.lease(row.worktree_path, () =>
+          readUserGitStatus(row.worktree_path),
+        );
+        git = { staged: 0, unstaged: 0, untracked: 0, unmerged: 0 };
+        for (const entry of status.entries) {
+          if (entry.kind === 'untracked') git.untracked += 1;
+          else if (entry.kind === 'unmerged') git.unmerged += 1;
+          else {
+            if (entry.indexStatus !== '.') git.staged += 1;
+            if (entry.worktreeStatus !== '.') git.unstaged += 1;
+          }
+        }
+      } catch {
+        // Unknown is shown as unknown, never as clean.
+      }
+    const path = missing ? resolve(row.worktree_path) : realpathSync.native(row.worktree_path);
+    const key = process.platform === 'win32' ? path.toLowerCase() : path;
+    const owners = this.workspaceAccess.ownersAt(key).map((access) => {
+      const operation =
+        access.owner_kind === 'user' ? this.workbenchOperations.get(access.owner_id) : undefined;
+      return {
+        kind: access.owner_kind,
+        id: access.owner_id,
+        state: access.state as 'active' | 'uncertain',
+        writer: access.writer === 1,
+        ...(operation ? { operation: operation.kind } : {}),
+      };
+    });
+    const count = (sql: string) => (this.db.prepare(sql).get(sessionId) as { n: number }).n;
+    return {
+      sessionId,
+      bindingId: row.binding_id,
+      copyGeneration: row.copy_generation,
+      missing,
+      git,
+      owners,
+      draftComments: count(
+        "SELECT COUNT(*) AS n FROM review_comments WHERE session_id = ? AND state = 'draft'",
+      ),
+      uncertainWrites: count(
+        "SELECT COUNT(*) AS n FROM file_operations WHERE session_id = ? AND state IN ('planned','uncertain')",
+      ),
+      openRuns: (
+        this.db.prepare('SELECT id, status FROM runs WHERE session_id = ?').all(sessionId) as {
+          id: string;
+          status: string;
+        }[]
+      )
+        .filter((run) => !TERMINAL_RUN_STATUSES.has(run.status as never))
+        .map((run) => run.id),
+    };
+  }
+
+  async removeWorktree(sessionId: string, expectedGeneration?: number) {
     const row = this.worktree(sessionId);
     if (!row) return;
+    if (expectedGeneration !== undefined && row.copy_generation !== expectedGeneration)
+      throw new WorkspaceError(
+        'REVISION_CONFLICT',
+        'the working copy was made again since removal was confirmed (copy generation changed)',
+      );
     if (this.removingWorktrees.has(sessionId))
       throw new WorkspaceError('REVISION_CONFLICT', 'the working copy is being removed');
     const binding = this.db
@@ -1023,6 +1116,12 @@ export class WorkspaceService implements FileTools {
           );
           await git(binding.root_path, ['worktree', 'prune']).catch(() => undefined);
         }
+        // A partly deleted copy is not recorded as removed; the person sees it as missing.
+        if (existsSync(row.worktree_path))
+          throw new WorkspaceError(
+            'REVISION_CONFLICT',
+            'the working copy folder could not be fully deleted',
+          );
         this.db
           .prepare('UPDATE session_worktrees SET removed_at = ? WHERE session_id = ?')
           .run(this.clock.nowIso(), sessionId);

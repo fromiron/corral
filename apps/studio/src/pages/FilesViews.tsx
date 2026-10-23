@@ -11,6 +11,7 @@ import { useTranslations } from 'use-intl';
 import { desktop } from '../desktop.tsx';
 import { useServices } from '../services.tsx';
 import { CheckpointPanel } from '../workbench/CheckpointPanel.tsx';
+import { CopyRemovalDialog } from '../workbench/CopyRemovalDialog.tsx';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
 import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
 import { WORKSPACE_CHANGED } from '../workbench/workspaceEvents.ts';
@@ -263,6 +264,7 @@ export function WorkingCopyPanel({
   const [worktree, setWorktree] = useState<WorktreeView | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const reload = useCallback(async () => {
     if (!workspaces) return setWorktree(null);
     setWorktree(await workspaces.worktree(sessionId).catch(() => null));
@@ -315,14 +317,21 @@ export function WorkingCopyPanel({
           <button
             type="button"
             disabled={busy}
-            onClick={() => {
-              if (window.confirm(t('removeConfirm')))
-                void act(() => workspaces.removeWorktree(sessionId));
-            }}
+            onClick={() => setRemoving(true)}
             className="rounded fill-control px-2 py-1 text-xs"
           >
             {t('remove')}
           </button>
+          <CopyRemovalDialog
+            open={removing}
+            sessionId={sessionId}
+            projectId={projectId}
+            onClose={() => setRemoving(false)}
+            onRemoved={() => {
+              setRemoving(false);
+              void act(async () => {});
+            }}
+          />
         </div>
       ) : !binding ? (
         <div className="flex flex-col items-start gap-1.5">

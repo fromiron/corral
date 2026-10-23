@@ -72,6 +72,8 @@
 | POST /sessions/:id/terminals/:terminalId/resize | `TerminalResize` | controller의 공통 순서로 cols 2–500, rows 1–500. 성공한 resize도 output sequence에 포함 |
 | POST /sessions/:id/terminals/:terminalId/stop | `TerminalIdentity` | target/generation 확인 후 OS 세션 종료 증거에 따라 상태/예약 정리. 불명확하면 uncertain 유지 |
 | GET /sessions/:id/terminals/:terminalId/events | generation, after 또는 Last-Event-ID | 인증된 SSE. sequenced output/resize와 unsequenced 현재 status. 화면 detach는 구독 해제만 하며 PTY를 종료하지 않음 |
+| GET /sessions/:id/worktree/removal | — | 사본 삭제 전 요약(읽기 전용): bindingId·copyGeneration·missing, 사본의 Git 변경 수(읽지 못하면 null), active/uncertain owner(사람 operation 종류), 미제출 검토 의견·planned/uncertain 쓰기 수, 끝나지 않은 Run |
+| DELETE /sessions/:id/worktree?generation= | — | 사본 삭제. generation이 지금 사본과 다르면 `REVISION_CONFLICT`. owner가 있거나 폴더가 남으면 거절하고 삭제로 기록하지 않음 |
 | GET /sessions/:id/changes?scope=session\|review\|run&runId= | — | 비교 범위의 from·to tree와 파일 목록(상태·줄 수·바이너리·출처·이전/이후 blob). 출처는 `managed_agent`(Corral의 마지막 적용 쓰기 그대로)·`mixed`(Corral이 바꾼 뒤 다른 쓰기가 섞임)·`external_observed`(Corral이 바꾸지 않음) |
 | GET /sessions/:id/changes/file?from&to&path | — | 두 tree의 파일 내용(text·binary·too_large·absent) |
 | POST /sessions/:id/reviewed | — | 지금 사본 전체를 읽음 기록으로 남김("읽음 기록 이후" 범위의 기준). 파일 검토·승인 아님 |

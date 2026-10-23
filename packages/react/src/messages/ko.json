@@ -1466,7 +1466,7 @@
     "ready": "커밋 {commit}에서 만든 작업 복사본",
     "review": "변경 검토",
     "remove": "작업 복사본 지우기",
-    "removeConfirm": "작업 복사본을 지울까요? 그 파일만 지워지고, 원본 폴더와 기록된 변경은 남습니다.",
+    "removeConfirm": "사본의 파일이 지워집니다. 원본 폴더와 기록된 변경은 남습니다. 세션 보관은 사본을 지우지 않습니다.",
     "reviewHeading": "변경 검토",
     "scope": "비교 범위",
     "scopes": {
@@ -1569,7 +1569,26 @@
     "readOnlyPreview": "읽기 전용 미리보기",
     "changeReviewNote": "이 비교에서 이 파일의 변경을 검토했다고 이 브라우저에 표시합니다. 같은 파일이라도 다른 비교는 따로 검토합니다. 승인이 아닙니다.",
     "readElsewhere": "다른 비교에서 읽음",
-    "configChanged": "이전 검사 설정 기준"
+    "configChanged": "이전 검사 설정 기준",
+    "removalTitle": "이 세션의 작업 사본을 지울까요?",
+    "removalLoading": "사본에 남은 것을 확인하는 중…",
+    "removeCopy": "사본 지우기",
+    "removalKeep": "사본 유지",
+    "removalHeld": "사용 중: {what} · 먼저 멈추세요.",
+    "removalOwner": {
+      "run": "실행",
+      "task": "작업",
+      "terminal": "터미널",
+      "other": "다른 작업"
+    },
+    "removalUnsaved": "저장하지 않은 문서 {count, plural, other {#개}}",
+    "removalRecovery": "복구 초안 {count, plural, other {#개}}",
+    "removalGit": "커밋하지 않은 변경: 스테이지 {staged} · 미스테이지 {unstaged} · 추적 안 함 {untracked}",
+    "removalUnmerged": "충돌 {count}개",
+    "removalGitUnknown": "사본의 Git 변경을 읽지 못했습니다.",
+    "removalComments": "보내지 않은 검토 의견 {count, plural, other {#개}}",
+    "removalUncertain": "결과를 모르는 파일 쓰기 {count, plural, other {#개}}",
+    "removalRuns": "끝나지 않은 실행 {count, plural, other {#개}}"
   },
   "Review": {
     "commentLine": "{line}번째 줄에 의견",
