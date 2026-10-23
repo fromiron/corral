@@ -1,9 +1,11 @@
 import type { CandidateChanges, WorkspacesApi } from '@corral/client';
-import type {
-  CandidateComparisonView,
-  CandidateView,
-  Receipt,
-  RunCommand,
+import {
+  type CandidateComparisonView,
+  type CandidateView,
+  MANUAL_SELECTION_STATUSES,
+  type Receipt,
+  type RunCommand,
+  type TournamentView,
 } from '@corral/contracts';
 import type { RuntimeTransport } from '@corral/core';
 import { Button, Dialog, DialogDescription, DialogPopup, DialogTitle } from '@corral/react/ui';
@@ -168,7 +170,12 @@ export function CandidateComparison({
         </Button>
       </div>
     ) : null;
-  const selectable = comparison.status === 'awaiting_selection';
+  const selectable = MANUAL_SELECTION_STATUSES.has(comparison.status);
+  const winner = comparison.tournament?.winnerCandidateId ?? null;
+  const cancellable =
+    candidate?.state === 'pending' ||
+    candidate?.state === 'running' ||
+    (comparison.status === 'refining' && candidate?.candidateId === winner);
   return (
     <section
       aria-label={t('heading')}
@@ -187,6 +194,9 @@ export function CandidateComparison({
             <p role="status" className="text-sm font-medium">
               {t(`status.${comparison.status}`)}
             </p>
+            {comparison.tournament ? (
+              <TournamentSummary tournament={comparison.tournament} />
+            ) : null}
           </div>
           <div className="-mx-1 flex min-h-0 flex-col gap-4 overflow-auto px-1 py-1">
             <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -229,6 +239,7 @@ export function CandidateComparison({
                   </span>
                   <span>
                     {t(`state.${item.state}`)}
+                    {winner === item.candidateId ? ` · ${t('winner')}` : ''}
                     {comparison.selectedCandidateId === item.candidateId ? ` · ${t('chosen')}` : ''}
                   </span>
                   <span className="grid grid-cols-2 gap-3">
@@ -330,14 +341,14 @@ export function CandidateComparison({
                   >
                     {t('apply')}
                   </Button>
-                  {candidate.state === 'pending' || candidate.state === 'running' ? (
+                  {cancellable ? (
                     <Button
                       size="sm"
                       variant="ghost-destructive"
                       disabled={busy || Boolean(pending)}
                       onClick={() => void act('cancel_candidate')}
                     >
-                      {t('cancel')}
+                      {candidate.state === 'acceptable' ? t('cancelRefinement') : t('cancel')}
                     </Button>
                   ) : null}
                 </div>
@@ -376,5 +387,46 @@ export function CandidateComparison({
         </DialogPopup>
       </Dialog>
     </section>
+  );
+}
+
+const ROUND_REASONS = new Set([
+  'checks_failed',
+  'judged_worse',
+  'judged_equal',
+  'judgment_invalid',
+  'round_failed',
+  'user_cancelled',
+]);
+
+/** CR-048: how the judge decided and what each refinement round did. */
+function TournamentSummary({ tournament }: { tournament: TournamentView }) {
+  const t = useTranslations('Candidates');
+  const { judgment, rounds, held } = tournament;
+  return (
+    <div className="flex flex-col gap-1 text-xs">
+      <span className="font-medium">{t('tournament')}</span>
+      {judgment.state === 'skipped' ? <span>{t('judgmentSkipped')}</span> : null}
+      {judgment.state === 'invalid' ? (
+        <span className="text-danger wrap-anywhere">
+          {t('judgmentInvalid', { reason: judgment.reason ?? '' })}
+        </span>
+      ) : null}
+      {rounds.length ? (
+        <ol className="flex flex-col gap-0.5">
+          {rounds.map((round) => (
+            <li key={round.round}>
+              {t('round', { round: round.round, state: t(`roundState.${round.state}`) })}
+              {round.reason
+                ? ` · ${ROUND_REASONS.has(round.reason) ? t(`roundReason.${round.reason}`) : round.reason}`
+                : ''}
+            </li>
+          ))}
+        </ol>
+      ) : null}
+      {held ? (
+        <span className="text-danger wrap-anywhere">{t('held', { reason: held })}</span>
+      ) : null}
+    </div>
   );
 }

@@ -145,6 +145,7 @@ import { FilePanel, type FileReference } from '../workbench/FilePanel.tsx';
 import { GitPanel } from '../workbench/GitPanel.tsx';
 import { ImageAttachmentList, ImageAttachmentPicker } from '../workbench/ImageAttachments.tsx';
 import { LiveVoice } from '../workbench/LiveVoice.tsx';
+import { MeetingHandoffLinks } from '../workbench/MeetingHandoff.tsx';
 import { MessageBranch } from '../workbench/MessageBranch.tsx';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
 import { PermissionModePicker } from '../workbench/PermissionModePicker.tsx';
@@ -166,7 +167,12 @@ import {
 import { TerminalPanel } from '../workbench/TerminalPanel.tsx';
 import { TextAttachmentList, TextAttachmentPicker } from '../workbench/TextAttachments.tsx';
 import { TopbarActions } from '../workbench/TopbarSlot.tsx';
-import { defaultUltraSelection, UltraModels } from '../workbench/UltraModels.tsx';
+import {
+  currentUltraSelection,
+  defaultUltraSelection,
+  recalledUltraSelection,
+  UltraModels,
+} from '../workbench/UltraModels.tsx';
 import { useMentionSearch } from '../workbench/useMentionSearch.ts';
 import {
   type ProfileInfo,
@@ -183,6 +189,7 @@ import {
 import { ChatWidgetProvider } from '../workbench/widgets/useChatWidgets.tsx';
 import { TeamDesign } from './EditorPage.tsx';
 import { useBinding, WORKSPACE_CHANGED, WorkingCopyPanel } from './FilesViews.tsx';
+import { MeetingPage } from './MeetingPage.tsx';
 import { Checks } from './ReviewPage.tsx';
 import { RunDetail } from './RunPage.tsx';
 import { useRemembered } from './Workbench.tsx';
@@ -234,7 +241,17 @@ function useSessionRuns(sessionId: string, selectedRunId?: string) {
  * Context panes follow the session URL; document tabs keep their explicit workspace target.
  * Stores own editing and execution state independently of dock placement.
  */
+/** CR-049: a meeting has its own chat; every other session keeps the work view. */
 export function SessionPage() {
+  const { session } = sessionRoute.useLoaderData();
+  return session.meeting ? (
+    <MeetingPage key={session.sessionId} session={session} />
+  ) : (
+    <WorkSessionPage />
+  );
+}
+
+function WorkSessionPage() {
   const services = useServices();
   const dock = useRef<DockWorkbenchHandle>(null);
   const documents =
@@ -906,6 +923,7 @@ function WorkTab({
         key={session.sessionId}
         sessionId={session.sessionId}
         messageId={messageId}
+        header={<MeetingHandoffLinks key={session.sessionId} sessionId={session.sessionId} />}
         items={[
           ...session.entries
             .filter((e) => e.state !== 'queued' && e.state !== 'dismissed')
@@ -1311,7 +1329,7 @@ function EntryCard({
           disabled={!TERMINAL_RUN_STATUSES.has(run.status)}
         />
       ) : null}
-      {entry.detail && entry.state === 'refused' ? (
+      {entry.detail && entry.state === 'refused' && !entry.meetingHandoff ? (
         <RefusalHelp
           message={entry.detail}
           onEdit={() =>
@@ -1706,8 +1724,11 @@ export function Composer({
         : profiles,
     [runMode, profiles, autoChoice.modelProfile, t],
   );
-  const ultra = useMemo(
-    () => ultraDraft ?? defaultUltraSelection(autoChoice.modelProfile, ultraProfiles),
+  const ultra = useMemo<UltraSelection>(
+    () =>
+      ultraDraft
+        ? currentUltraSelection(ultraDraft)
+        : defaultUltraSelection(autoChoice.modelProfile, ultraProfiles),
     [ultraDraft, autoChoice.modelProfile, ultraProfiles],
   );
   const requestChoice =
@@ -2535,11 +2556,7 @@ export function Composer({
       setQualityPreset(
         typeof value === 'object' && value.qualityPreset === 'ultra' ? 'ultra' : 'default',
       );
-      setUltraDraft(
-        typeof value === 'object'
-          ? (UltraSelection.strip().safeParse(value.ultra).data ?? null)
-          : null,
-      );
+      setUltraDraft(typeof value === 'object' ? recalledUltraSelection(value.ultra) : null);
       setReviewOnly(typeof value === 'object' && value.taskScope === 'review_only');
       setVerificationScope(
         typeof value === 'object' && value.verificationScope === 'release' ? 'release' : 'targeted',
@@ -2701,10 +2718,7 @@ export function Composer({
       setPermissionMode(recalledEntry?.permissionMode);
       setAutoHarness(recalledEntry?.harness);
       setImages(recalledEntry?.images ?? []);
-      setUltraDraft(
-        UltraSelection.strip().safeParse(recalledEntry?.ultra ?? recalledEntry?.auto?.ultra).data ??
-          null,
-      );
+      setUltraDraft(recalledUltraSelection(recalledEntry?.ultra ?? recalledEntry?.auto?.ultra));
       setQualityPreset(
         (recalledEntry?.qualityPreset ?? recalledEntry?.auto?.qualityPreset) === 'ultra'
           ? 'ultra'

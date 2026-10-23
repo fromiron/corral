@@ -4182,5 +4182,137 @@
     "status": "planned",
     "adapter": "isolated existing Studio runtime; focused layout and behavior regression; no paid providers",
     "evidence": null
+  },
+  {
+    "id": "TC-ULTRA-004-H",
+    "requirements": [
+      "CRL-ULTRA-004"
+    ],
+    "suite": "integration+browser",
+    "scenario": "검사 통과 후보의 익명 판정 → 고도화 라운드 수용/폐기 → 확인 없는 자동 반영과 체크포인트 복원",
+    "status": "planned",
+    "adapter": "deterministic workers and judge, temporary Git worktrees and actual Linux isolation; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-ULTRA-004-N",
+    "requirements": [
+      "CRL-ULTRA-004"
+    ],
+    "suite": "integration+browser",
+    "scenario": "판정 형식 오류·검사 실패 후보 우승 시도·Run 중 세션 사본 변경·전원 실패·자동 반영 끔에서 반영 없음 또는 보류. 기존 기본 상한을 넘어도 version 2 Ultra는 중지되지 않고 일반 모드·version 1 예산은 유지",
+    "status": "planned",
+    "adapter": "deterministic workers and judge, temporary Git worktrees and actual Linux isolation; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-ULTRA-004-F",
+    "requirements": [
+      "CRL-ULTRA-004"
+    ],
+    "suite": "integration",
+    "scenario": "반복 중인 에이전트·응답 없는 호출을 포함한 후보/Run 취소·늦은 판정과 라운드 결과·서버 재시작·같은 반영 command 중복에서 자동 반영이 반복되거나 최신 결과를 덮지 않음",
+    "status": "planned",
+    "adapter": "deterministic workers and judge, temporary Git worktrees and actual Linux isolation; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-MEET-001-H",
+    "requirements": [
+      "CRL-MEET-001"
+    ],
+    "suite": "integration+browser",
+    "scenario": "멘션 없는 전원 라운드와 @멘션 라운드에서 정해진 참가자만 한 번씩 서로의 같은 라운드 답을 보지 않고 답하며 참가자 순서로 표시된다",
+    "status": "planned",
+    "adapter": "deterministic meeting agents and in-memory or SQLite stores; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-MEET-001-N",
+    "requirements": [
+      "CRL-MEET-001"
+    ],
+    "suite": "integration",
+    "scenario": "에이전트의 다음 발언 지시·연속 발언·세 번째 반론 라운드·프로젝트 쓰기 시도가 라운드나 효과를 만들지 않는다",
+    "status": "planned",
+    "adapter": "deterministic meeting agents and in-memory or SQLite stores; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-MEET-001-F",
+    "requirements": [
+      "CRL-MEET-001"
+    ],
+    "suite": "integration",
+    "scenario": "참가자 실패·사람의 라운드 중지·늦은 답·라운드 중 메시지 대기·회의 재열기에서 다른 라운드 혼선이나 새 호출이 없다",
+    "status": "planned",
+    "adapter": "deterministic meeting agents and in-memory or SQLite stores; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-MEET-002-H",
+    "requirements": [
+      "CRL-MEET-002"
+    ],
+    "suite": "integration+browser",
+    "scenario": "비서 회의록이 쟁점·주장·남은 이견·결정 후보를 담고 사람이 고친 결정 버전을 채택한다",
+    "status": "planned",
+    "adapter": "deterministic meeting agents and in-memory or SQLite stores; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-MEET-002-N",
+    "requirements": [
+      "CRL-MEET-002"
+    ],
+    "suite": "integration",
+    "scenario": "미응답·실패 참가자를 찬성으로 세지 않고 채택 전 결정 후보로는 인계·실행을 시작할 수 없다",
+    "status": "planned",
+    "adapter": "deterministic meeting agents and in-memory or SQLite stores; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-MEET-002-F",
+    "requirements": [
+      "CRL-MEET-002"
+    ],
+    "suite": "integration",
+    "scenario": "채택 뒤 변경은 새 버전이 되고 철회·대체된 결정은 자동 시작을 막는다",
+    "status": "planned",
+    "adapter": "deterministic meeting agents and in-memory or SQLite stores; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-MEET-003-H",
+    "requirements": [
+      "CRL-MEET-003"
+    ],
+    "suite": "integration+browser",
+    "scenario": "채택한 결정을 기존·새 일반 세션에 초안 또는 시작으로 인계하고 양방향 링크와 요청별 실행 구성을 남긴다",
+    "status": "planned",
+    "adapter": "deterministic meeting agents and in-memory or SQLite stores; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-MEET-003-N",
+    "requirements": [
+      "CRL-MEET-003"
+    ],
+    "suite": "integration",
+    "scenario": "회의 세션·다른 프로젝트·보관 세션 대상, 실행 중 대상, 미전송 입력이 있는 대상에서 끼어들기·덮어쓰기·오대상 실행이 없다",
+    "status": "planned",
+    "adapter": "deterministic meeting agents and in-memory or SQLite stores; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-MEET-003-F",
+    "requirements": [
+      "CRL-MEET-003"
+    ],
+    "suite": "integration",
+    "scenario": "같은 인계 명령 재전송·응답 유실 후 receipt 조회·취소와 시작 경합에서 세션·항목·Run이 중복되지 않는다",
+    "status": "planned",
+    "adapter": "deterministic meeting agents and in-memory or SQLite stores; no paid calls",
+    "evidence": null
   }
 ]

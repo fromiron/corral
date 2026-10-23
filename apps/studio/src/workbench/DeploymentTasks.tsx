@@ -12,6 +12,7 @@ import { useTranslations } from 'use-intl';
 import type { WorkspacesClient } from '../demo/workspaces-client.ts';
 import { useServices } from '../services.tsx';
 import { type DocumentBuffer, documentStore } from './documents/store.ts';
+import { WORKSPACE_CHANGED } from './workspaceEvents.ts';
 
 const sameTarget = (a: WorkspaceTarget, b: WorkspaceTarget) =>
   a.hostId === b.hostId &&
@@ -28,7 +29,33 @@ export function DeploymentTasks({
   projectId: string;
 }) {
   const { workspaces, workspaceId, mode } = useServices();
+  const query = useMemo(
+    () => ({ workspaces, workspaceId, sessionId }),
+    [workspaces, workspaceId, sessionId],
+  );
+  const [ready, setReady] = useState<typeof query | null>(null);
+  useEffect(() => {
+    if (!workspaces?.deployments || mode !== 'server' || !workspaceId) return;
+    let live = true;
+    let revision = 0;
+    const refresh = async () => {
+      const request = ++revision;
+      try {
+        const copy = await workspaces.worktree(sessionId);
+        if (live && request === revision) setReady(copy && !copy.missing ? query : null);
+      } catch {
+        if (live && request === revision) setReady(null);
+      }
+    };
+    void refresh();
+    window.addEventListener(WORKSPACE_CHANGED, refresh);
+    return () => {
+      live = false;
+      window.removeEventListener(WORKSPACE_CHANGED, refresh);
+    };
+  }, [workspaces, workspaceId, sessionId, mode, query]);
   if (!workspaces?.deployments || mode !== 'server' || !workspaceId) return null;
+  if (ready !== query) return null;
   return (
     <Tasks
       key={`${workspaceId}:${projectId}:${sessionId}`}

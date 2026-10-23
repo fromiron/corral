@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { type CorralServer, startCorralServer } from '@corral/server';
 import { FAKE_PROFILES, fakeOpenAI } from '@corral/server/testing';
-import { ScriptedAgentAdapter } from '@corral/testkit';
+import { ScriptedAgentAdapter, type ScriptedAgentOptions } from '@corral/testkit';
 import { type CompatibleEndpoint, startCompatibleEndpoint } from '@corral/testkit/endpoint';
 import { test as base, expect, type Page } from '@playwright/test';
 
@@ -48,13 +48,20 @@ export interface Harness {
 }
 
 type Fake = ReturnType<typeof fakeOpenAI>;
+type AgentReply =
+  | string
+  | {
+      reply: NonNullable<ScriptedAgentOptions['reply']>;
+      beforeReply?: ScriptedAgentOptions['beforeReply'];
+    }
+  | null;
 
 async function serve(
   workspace: string,
   replyDelayMs: number,
   fake: Fake | null,
   endpoint: CompatibleEndpoint | null,
-  agentReply: string | null,
+  agentReply: AgentReply,
 ) {
   if (!existsSync(join(STUDIO, 'index.html'))) {
     throw new Error('Studio is not built: run `pnpm build` before the server E2E tests.');
@@ -91,8 +98,15 @@ async function serve(
     ...(fake ? { live: fake.live } : {}),
     agents: new ScriptedAgentAdapter({
       turns: 2,
-      beforeReply: () => new Promise((done) => setTimeout(done, replyDelayMs)),
-      ...(agentReply === null ? {} : { reply: () => agentReply, appendNotes: false }),
+      beforeReply:
+        (typeof agentReply === 'object' && agentReply?.beforeReply) ||
+        (() => new Promise((done) => setTimeout(done, replyDelayMs))),
+      ...(agentReply === null
+        ? {}
+        : {
+            reply: typeof agentReply === 'string' ? () => agentReply : agentReply.reply,
+            appendNotes: false,
+          }),
     }),
   });
 }
@@ -113,7 +127,7 @@ export const test = base.extend<{
   reasoningApi: boolean;
   imageInput: boolean;
   compatibleEndpoint: boolean;
-  agentReply: string | null;
+  agentReply: AgentReply;
   corral: Harness;
 }>({
   replyDelayMs: [50, { option: true }],
@@ -124,7 +138,7 @@ export const test = base.extend<{
   imageInput: [false, { option: true }],
   /** Profiles on a keyless OpenAI-compatible endpoint instead of the fake OpenAI (CR-005). */
   compatibleEndpoint: [false, { option: true }],
-  /** Every simulated agent replies with exactly this text (CR-009 HTML results). */
+  /** Deterministic text or role-specific replies, without provider calls. */
   agentReply: [null, { option: true }],
   corral: async (
     {

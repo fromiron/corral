@@ -11,25 +11,63 @@ import { TEAM_PATTERNS } from './team-plan.ts';
 export const QualityPreset = z.enum(['default', 'ultra']);
 export type QualityPreset = z.infer<typeof QualityPreset>;
 
-export const UltraSelection = z
-  .strictObject({
-    version: z.literal(1),
-    modelProfiles: z.array(Identifier).min(2).max(5),
-    verifierProfile: Identifier,
-    comparison: z.strictObject({ modelProfiles: z.array(Identifier).min(2).max(5) }).optional(),
-  })
-  .refine(
-    (selection) =>
-      selection.comparison?.modelProfiles.every((profile) =>
-        selection.modelProfiles.includes(profile),
-      ) ?? true,
-    'Candidate models must belong to the selected Ultra pool',
-  );
-export type UltraSelection = z.infer<typeof UltraSelection>;
-/** Requested pool plus the highest verified control for each model, fixed before execution. */
-export const UltraTeamSnapshot = UltraSelection.safeExtend({
-  reasoning: z.record(Identifier, ReasoningLevel),
+const UltraPool = z.array(Identifier).min(2).max(5);
+const CandidateModels = z.strictObject({ modelProfiles: z.array(Identifier).min(2).max(5) });
+const UltraSelectionV1 = z.strictObject({
+  version: z.literal(1),
+  modelProfiles: UltraPool,
+  verifierProfile: Identifier,
+  comparison: CandidateModels.optional(),
 });
+/**
+ * CR-048: a candidate tournament with no Corral usage limits. Candidates default to one per
+ * pool model, the verifier judges, the winner is refined and applied unless `autoApply` is false.
+ */
+const UltraSelectionV2 = z.strictObject({
+  version: z.literal(2),
+  modelProfiles: UltraPool,
+  verifierProfile: Identifier,
+  candidates: z.array(Identifier).min(2).max(5).optional(),
+  refinementRounds: z.int().min(0).max(3).optional(),
+  autoApply: z.boolean().optional(),
+});
+const candidatesInPool = (selection: {
+  modelProfiles: string[];
+  comparison?: { modelProfiles: string[] };
+  candidates?: string[];
+}) =>
+  [...(selection.comparison?.modelProfiles ?? []), ...(selection.candidates ?? [])].every(
+    (profile) => selection.modelProfiles.includes(profile),
+  );
+export const UltraSelection = z
+  .discriminatedUnion('version', [UltraSelectionV1, UltraSelectionV2])
+  .refine(candidatesInPool, 'Candidate models must belong to the selected Ultra pool');
+export type UltraSelection = z.infer<typeof UltraSelection>;
+
+/**
+ * Why a version 2 request runs as collaboration instead of a tournament (CR-048 §1). Missing
+ * registered checks or a non-strict harness are refused before start, as C-114/C-118 do.
+ */
+export const UltraFallbackReason = z.enum(['no_working_copy', 'no_isolation']);
+export type UltraFallbackReason = z.infer<typeof UltraFallbackReason>;
+
+/** Requested pool plus the highest verified control for each model, fixed before execution. */
+export const UltraTeamSnapshot = z.discriminatedUnion('version', [
+  UltraSelectionV1.safeExtend({ reasoning: z.record(Identifier, ReasoningLevel) }),
+  z.strictObject({
+    version: z.literal(2),
+    modelProfiles: UltraPool,
+    verifierProfile: Identifier,
+    reasoning: z.record(Identifier, ReasoningLevel),
+    candidates: z.array(Identifier).min(2).max(5),
+    refinementRounds: z.int().min(0).max(3),
+    autoApply: z.boolean(),
+    mode: z.enum(['competition', 'collaboration']),
+    /** Present only in competition: the existing candidate paths key off it. */
+    comparison: CandidateModels.optional(),
+    fallbackReason: UltraFallbackReason.optional(),
+  }),
+]);
 export type UltraTeamSnapshot = z.infer<typeof UltraTeamSnapshot>;
 
 export const AUTO_TEMPLATES = TEAM_PATTERNS;

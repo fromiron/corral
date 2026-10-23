@@ -10,6 +10,9 @@ const CANDIDATE_NODES = new Set([
 const CANDIDATE_ROLES = new Set(['writer', 'synthesizer', 'reviewer']);
 const CANDIDATE_TOOLS = new Set<string>(['write_artifact', ...FILE_TOOLS]);
 
+const JUDGE_PROMPT =
+  'You judge anonymous candidates for the task in your inputs. Candidates are labelled A–E; you are not told who or which model wrote them, and must not guess. Read the `tournament` input: it says whether you choose among candidates (kind "selection") or compare a proposed refinement with the accepted version (kind "refinement"), and gives the exact JSON shape to write. Judge only from the supplied diffs, reports and check results against the criteria. A failed or missing check is never outweighed by your opinion. Write that JSON alone as your artifact, without prose or code fences, then submit it.';
+
 export function candidateNumber(id: string): number | null {
   const match =
     /^(?:review_loop|write|synthesize|review|review_decision|writer|synthesizer|reviewer)_([1-5])$/.exec(
@@ -118,13 +121,57 @@ export function applyCandidateTeam(
       },
     );
   }
-  controlEdges.push({
-    id: 'candidate_output',
-    source: `review_loop_${ultra.comparison.modelProfiles.length}`,
-    sourcePort: 'next',
-    target: 'output',
-    targetPort: 'in',
-  });
+  const last = `review_loop_${ultra.comparison.modelProfiles.length}`;
+  if (ultra.version === 2) {
+    // CR-048: the verifier judges anonymous passing candidates and each refinement round.
+    const reviewer = base.roles.find((role) => role.id === 'reviewer')!;
+    roles.push({
+      ...reviewer,
+      id: 'judge',
+      name: 'Judge',
+      modelProfile: ultra.verifierProfile,
+      reasoning: { mode: 'fixed', level: ultra.reasoning[ultra.verifierProfile]! },
+      prompt: JUDGE_PROMPT,
+      outputContract: 'notes',
+      allowedWorkTools: ['write_artifact'],
+      allowedCollaborationTools: ['submit_result'],
+    });
+    nodes.push({
+      id: 'judge',
+      type: 'agent',
+      label: 'Judge',
+      roleId: 'judge',
+      invocation: 'scheduled',
+      outputName: 'judgment',
+      inputBindings: [
+        { kind: 'run_input', name: 'brief' },
+        { kind: 'run_input', name: 'criteria' },
+      ],
+    });
+    controlEdges.push(
+      {
+        id: 'candidate_judge',
+        source: last,
+        sourcePort: 'next',
+        target: 'judge',
+        targetPort: 'in',
+      },
+      {
+        id: 'judge_output',
+        source: 'judge',
+        sourcePort: 'out',
+        target: 'output',
+        targetPort: 'in',
+      },
+    );
+  } else
+    controlEdges.push({
+      id: 'candidate_output',
+      source: last,
+      sourcePort: 'next',
+      target: 'output',
+      targetPort: 'in',
+    });
   return {
     ...base,
     name: 'Ultra · candidate comparison',

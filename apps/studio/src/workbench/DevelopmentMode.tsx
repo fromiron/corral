@@ -30,6 +30,12 @@ export function DevelopmentMode({
   const state = loaded?.query === query ? loaded.state : null;
   const read = useCallback(async () => {
     if (!query.workspaces?.developmentState || mode !== 'server') return;
+    const copy = await query.workspaces.worktree(query.sessionId);
+    if (current.current !== query) return;
+    if (!copy || copy.missing) {
+      setLoaded(null);
+      return;
+    }
     const next = await query.workspaces.developmentState(query.sessionId);
     if (
       current.current === query &&

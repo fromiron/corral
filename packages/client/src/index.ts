@@ -58,9 +58,19 @@ import type {
   LanguageSession,
   LanguageStart,
   LanguageState,
+  MeetingAdoptDecisionRequest,
+  MeetingConfig,
+  MeetingDecisionVersion,
+  MeetingDecisionWithdrawal,
+  MeetingHandoffReceipt,
+  MeetingHandoffRequest,
+  MeetingRoundRequest,
+  MeetingView,
+  MeetingWithdrawDecisionRequest,
   ProfileContextOverrides,
   ProfileContextPolicy,
   ProfileContextResolution,
+  QueuedMeetingMessage,
   ReasoningCapabilities,
   RestoreCheckpoint,
   SkillAdoption,
@@ -243,6 +253,7 @@ import type {
   CorralRecord,
   CorralRepository,
   CorralSummary,
+  MeetingResult,
   NewSessionEntry,
   ProjectChange,
   ProjectResult,
@@ -386,6 +397,156 @@ export class VoiceApi {
       method: 'DELETE',
     });
     if (!response.ok) throw await apiError(response);
+  }
+}
+
+/** CR-049 meeting rounds; the in-browser runtime passes its MeetingService instead. */
+export interface MeetingsClient {
+  view(sessionId: string): Promise<MeetingView | null>;
+  send(sessionId: string, request: MeetingRoundRequest): Promise<MeetingResult>;
+  stop(sessionId: string, roundId: string): Promise<MeetingResult>;
+  sendQueued(sessionId: string): Promise<MeetingResult>;
+  dropQueued(sessionId: string): Promise<MeetingResult>;
+  editQueued(sessionId: string, message: QueuedMeetingMessage): Promise<MeetingResult>;
+  adopt(
+    sessionId: string,
+    request: MeetingAdoptDecisionRequest,
+  ): Promise<MeetingMutationResult<{ decision: MeetingDecisionVersion }>>;
+  withdraw(
+    sessionId: string,
+    request: MeetingWithdrawDecisionRequest,
+  ): Promise<MeetingMutationResult<{ withdrawal: MeetingDecisionWithdrawal }>>;
+}
+
+type MeetingMutationResult<T> = ({ ok: true } & T) | Extract<MeetingResult, { ok: false }>;
+
+const MEETING_ERRORS: Partial<Record<string, Extract<MeetingResult, { ok: false }>['error']>> = {
+  TARGET_NOT_FOUND: 'not_found',
+  RUN_ALREADY_ACTIVE: 'busy',
+  IDEMPOTENCY_CONFLICT: 'conflict',
+  STORAGE_UNAVAILABLE: 'storage_unavailable',
+};
+
+export class MeetingsApi implements MeetingsClient {
+  private readonly http: Http;
+  constructor(options: HttpOptions) {
+    this.http = new Http(options);
+  }
+  async view(sessionId: string): Promise<MeetingView | null> {
+    const response = await this.http.request(this.path(sessionId));
+    if (response.status === 404) return null;
+    if (!response.ok) throw await apiError(response);
+    return (await response.json()) as MeetingView;
+  }
+  send(sessionId: string, request: MeetingRoundRequest) {
+    return this.write(`${this.path(sessionId)}/rounds`, 'POST', request);
+  }
+  stop(sessionId: string, roundId: string) {
+    return this.write(`${this.path(sessionId)}/rounds/${encodeURIComponent(roundId)}/stop`, 'POST');
+  }
+  sendQueued(sessionId: string) {
+    return this.write(`${this.path(sessionId)}/queued/send`, 'POST');
+  }
+  dropQueued(sessionId: string) {
+    return this.write(`${this.path(sessionId)}/queued`, 'DELETE');
+  }
+  editQueued(sessionId: string, message: QueuedMeetingMessage) {
+    return this.write(`${this.path(sessionId)}/queued`, 'PATCH', message);
+  }
+  adopt(sessionId: string, request: MeetingAdoptDecisionRequest) {
+    return this.write<{ decision: MeetingDecisionVersion }>(
+      `${this.path(sessionId)}/decisions`,
+      'POST',
+      request,
+    );
+  }
+  withdraw(sessionId: string, request: MeetingWithdrawDecisionRequest) {
+    return this.write<{ withdrawal: MeetingDecisionWithdrawal }>(
+      `${this.path(sessionId)}/decisions/withdraw`,
+      'POST',
+      request,
+    );
+  }
+  private path(sessionId: string) {
+    return `/sessions/${encodeURIComponent(sessionId)}/meeting`;
+  }
+  private async write<T = Omit<Extract<MeetingResult, { ok: true }>, 'ok'>>(
+    path: string,
+    method: string,
+    body?: unknown,
+  ): Promise<MeetingMutationResult<T>> {
+    const response = await this.http.request(path, {
+      method,
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+    if (response.ok) return (await response.json()) as MeetingMutationResult<T>;
+    const error = (await response.json().catch(() => null)) as {
+      error?: { code?: string; message?: string };
+    } | null;
+    return {
+      ok: false,
+      error: MEETING_ERRORS[error?.error?.code ?? ''] ?? 'invalid',
+      message: error?.error?.message ?? `HTTP ${response.status}`,
+    };
+  }
+}
+
+/** Saved decision handoffs use server receipts; reads never dispatch work. */
+export class MeetingHandoffsApi {
+  private readonly http: Http;
+  constructor(options: HttpOptions) {
+    this.http = new Http(options);
+  }
+  send(sessionId: string, request: MeetingHandoffRequest) {
+    return this.request<{ handoff: MeetingHandoffReceipt }>(this.path(sessionId), request);
+  }
+  async receipt(
+    sessionId: string,
+    commandId: string,
+  ): Promise<{ handoff: MeetingHandoffReceipt | null }> {
+    const response = await this.http.request(this.path(sessionId, commandId));
+    if (response.status === 404) return { handoff: null };
+    if (!response.ok) throw await apiError(response);
+    return (await response.json()) as { handoff: MeetingHandoffReceipt | null };
+  }
+  list(sessionId: string) {
+    return this.request<{ handoffs: MeetingHandoffReceipt[] }>(
+      `/sessions/${encodeURIComponent(sessionId)}/meeting-handoffs`,
+    );
+  }
+  cancel(sessionId: string, commandId: string) {
+    return this.request<{ handoff: MeetingHandoffReceipt }>(
+      `${this.path(sessionId, commandId)}/cancel`,
+      {},
+    );
+  }
+  start(
+    sessionId: string,
+    commandId: string,
+    request: { commandId: string; targetHasDraft: boolean },
+  ) {
+    return this.request<{ handoff: MeetingHandoffReceipt }>(
+      `${this.path(sessionId, commandId)}/start`,
+      request,
+    );
+  }
+  rediscuss(
+    sessionId: string,
+    commandId: string,
+    request: { commandId: string; mode: 'mock' | 'live' },
+  ) {
+    return this.request<MeetingResult>(`${this.path(sessionId, commandId)}/rediscuss`, request);
+  }
+  private path(sessionId: string, commandId?: string) {
+    return `/sessions/${encodeURIComponent(sessionId)}/meeting/handoffs${commandId ? `/${encodeURIComponent(commandId)}` : ''}`;
+  }
+  private async request<T>(path: string, body?: unknown): Promise<T> {
+    const response = await this.http.request(
+      path,
+      body === undefined ? undefined : { method: 'POST', body: JSON.stringify(body) },
+    );
+    if (!response.ok) throw await apiError(response);
+    return (await response.json()) as T;
   }
 }
 
@@ -1047,6 +1208,7 @@ export class RestCorralRepository implements CorralRepository {
     autoTitle?: boolean;
     objective?: string;
     corralId?: string | null;
+    meeting?: MeetingConfig;
   }): Promise<SessionResult> {
     return this.projectWrite('/sessions', 'POST', input) as Promise<SessionResult>;
   }

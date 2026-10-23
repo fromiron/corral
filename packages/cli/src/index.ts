@@ -310,8 +310,8 @@ export async function runCli(args: string[], io: CliIO): Promise<number> {
         {
           signal: io.signal,
           answers,
-          resolveUltra: (selection, primary, mode) =>
-            server!.coordinator.resolveUltra(selection, primary, mode),
+          resolveUltra: (selection, primary, mode, models, context) =>
+            server!.coordinator.resolveUltra(selection, primary, mode, models, context),
           ...(autoChoice
             ? {
                 auto: {
@@ -320,7 +320,7 @@ export async function runCli(args: string[], io: CliIO): Promise<number> {
                     ? {
                         qualityPreset: 'ultra' as const,
                         ultra: {
-                          version: 1 as const,
+                          version: 2 as const,
                           modelProfiles: values['ultra-models']!.split(',').map((profile) =>
                             profile.trim(),
                           ),

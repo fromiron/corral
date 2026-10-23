@@ -4,6 +4,7 @@ import type {
   CorralDefinition,
   EffectiveHarnessSnapshot,
   ImageGenerationProfile,
+  MeetingRunOrigin,
   ModelProfileSnapshot,
   PermissionMode,
   ReasoningApplySettings,
@@ -40,6 +41,8 @@ export interface RunSnapshot {
   reasoningApply?: ReasoningApplySettings;
   /** The auto choice the definition came from (CR-024); absent for chosen teams. */
   autoRoute?: AutoRoute;
+  /** CR-049: the meeting answer this Run is. */
+  meeting?: MeetingRunOrigin;
   startedAt: string;
 }
 

@@ -34,6 +34,8 @@
 
 | 추적 | 구현 상태 | 남은 일 | 근거 |
 |---|---|---|---|
+| C-174–176 / CR-049 | 구현, Linux 결정적/실제 연결 모델·서버·브라우저 검증 | 실제 3개 모델의 회의→채택→기존 관리 사본 실행→결과 재논의 통과(진행 확인 1회·호스트 테스트). 다른 OS·설치판·하네스 실행 및 추천/복제·생성은 별도 | [CR-049](change-requests/CR-049-meeting-room.md), [실행 기록](evaluation/Meeting-Room-2026-10-23.md) |
+| C-173 / CR-048 | 구현, 통합 검증 일부 | 실제 서버·사본·격리로 후보 경쟁 전체를 한 번에 실행하는 통합 검증, 실제 공급자 품질·비용, 시작 전 실행 방식 예측 표시 | [구현 기록](evaluation/Ultra-Tournament-2026-10-23.md) |
 | C-118 | 지원 범위 구현·검증, 미지원 계열 잔여 | Linux 격리·Anthropic adaptive conformance·GPT live 완료. Gemini transport 제약, 다른 계정/OS 검증 별도 | [현재 실행 기록](evaluation/Quality-Completion-2026-10-21.md) |
 | C-125 / ABS-04 | 부분 구현 | Linux AppImage preview 검증 완료. macOS 로컬 앱 TCP 소유권 구현·실기 별도 | [Desktop 잔여 계획](plans/desktop-completion.md) |
 | C-128 / ABS-07 | 구현 있음, 플랫폼 검증 진행 | NSIS 실제 설치, macOS·지원 arch, 서명·업데이트 채널 등 | [배포 기록](evaluation/Desktop-Delivery-Verification.md) |

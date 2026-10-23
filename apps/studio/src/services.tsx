@@ -6,6 +6,9 @@ import {
   HarnessApi,
   HttpSseTransport,
   hasSession,
+  MeetingHandoffsApi,
+  MeetingsApi,
+  type MeetingsClient,
   ModelsApi,
   openSession,
   probeServer,
@@ -24,6 +27,8 @@ import {
   createKeyValueCorralRepository,
   explainDefinition,
   type KeyValueStore,
+  MeetingDecisionsService,
+  MeetingService,
   type RunArchive,
   type RuntimeTransport,
   resolveUltraSelection,
@@ -73,6 +78,9 @@ export interface StudioServices {
   cancelAuto?: (request: AutoCancelRequest) => Promise<AutoCancelResult>;
   /** Work folders and file changes (CR-012); the browser demo has an in-memory one. */
   workspaces: WorkspacesClient | null;
+  /** CR-049 meeting rounds; the in-browser runtime runs the same service locally. */
+  meetings: MeetingsClient;
+  meetingHandoffs?: MeetingHandoffsApi;
   /** User PTYs exist only on the authenticated host, never in the browser demo. */
   terminals?: TerminalsApi | null;
   voice?: import('@corral/client').VoiceClient | null;
@@ -184,6 +192,8 @@ export async function createStudioServices(): Promise<StudioServices> {
       startAuto: (request, signal) => transport.startAuto(request, signal),
       cancelAuto: (request) => transport.cancelAuto(request),
       workspaces: new WorkspacesApi(http),
+      meetings: new MeetingsApi(http),
+      meetingHandoffs: new MeetingHandoffsApi(http),
       terminals: new TerminalsApi(http),
       voice: new VoiceApi(http),
       vault: new VaultApi(http),
@@ -195,14 +205,32 @@ export async function createStudioServices(): Promise<StudioServices> {
   // The demo's agents are simulated, so the local rule chooses and no model is called.
   const autoStarter = createAutoStarter({
     startRun: (request) => transport.startRun(request),
-    resolveUltra: (selection, primary, mode) =>
-      resolveUltraSelection(selection, primary, mode, SIMULATED_MODELS),
+    // The demo has no candidate copies, so a version 2 tournament runs as collaboration (CR-048).
+    resolveUltra: (selection, primary, mode, _models, context) =>
+      resolveUltraSelection(
+        selection,
+        primary,
+        mode,
+        SIMULATED_MODELS,
+        selection.version === 2 ? (context?.fileTools ? 'no_isolation' : 'no_working_copy') : null,
+      ),
   });
   const repository = createKeyValueCorralRepository(store, {
     clock: systemClock,
     newCorralId: () => `corral_${crypto.randomUUID().slice(0, 8)}`,
   });
   const workspaces = createDemoWorkspaces(workspace, repository, transport);
+  const meetings = new MeetingService({
+    repository,
+    transport,
+    clock: systemClock,
+    newRoundId: () => `round_${crypto.randomUUID().replaceAll('-', '').slice(0, 16)}`,
+  });
+  const meetingDecisions = new MeetingDecisionsService({
+    repository,
+    clock: systemClock,
+    newDecisionId: () => `decision_${crypto.randomUUID().replaceAll('-', '')}`,
+  });
   return {
     mode: 'browser',
     terminals: null,
@@ -223,6 +251,16 @@ export async function createStudioServices(): Promise<StudioServices> {
     saveRunMode: async () => {},
     // An in-memory example folder in the demo worker (02-UX-Spec §10).
     workspaces,
+    meetings: {
+      view: (id) => meetings.view(id),
+      send: (id, request) => meetings.send(id, request),
+      stop: (id, roundId) => meetings.stop(id, roundId),
+      sendQueued: (id) => meetings.sendQueued(id),
+      dropQueued: (id) => meetings.dropQueued(id),
+      editQueued: (id, request) => meetings.editQueued(id, request),
+      adopt: (id, request) => meetingDecisions.adopt(id, request),
+      withdraw: (id, request) => meetingDecisions.withdraw(id, request),
+    },
     startAuto: async (request, signal) => {
       const copy = await workspaces.worktree(request.sessionId).catch(() => null);
       return autoStarter.start(request, {

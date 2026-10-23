@@ -665,10 +665,13 @@ test.describe('quality presets', () => {
     const snapshot = corral.server.coordinator.getRunSnapshot(runId)!;
     expect(snapshot.mode).toBe('mock');
     expect(snapshot.autoRoute?.qualityPreset).toBe('ultra');
+    // CR-048: Studio sends version 2; without a working copy it runs as collaboration.
     expect(snapshot.autoRoute?.ultra).toMatchObject({
-      version: 1,
+      version: 2,
       modelProfiles: ['model-a', 'model-b'],
       verifierProfile: 'model-b',
+      mode: 'collaboration',
+      fallbackReason: 'no_working_copy',
     });
     expect(snapshot.definition.roles.find((role) => role.id === 'reviewer')?.modelProfile).toBe(
       'model-b',

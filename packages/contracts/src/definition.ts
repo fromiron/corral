@@ -223,6 +223,8 @@ export const TaskBrief = z.strictObject({
   verificationScope: z.enum(['targeted', 'release']),
   canModifyFiles: z.boolean(),
   limits: RunLimits,
+  /** CR-048: version 2 Ultra; `limits` are not applied to this run. */
+  usageLimits: z.literal('none').optional(),
   sourceRefs: z
     .array(z.strictObject({ name: z.string().min(1), artifactVersionId: Identifier.nullable() }))
     .max(1000),
@@ -238,7 +240,7 @@ export const CorralDefinition = z.strictObject({
   entryNodeId: Identifier,
   input: RunInput,
   roles: z.array(AgentRole).min(1).max(20),
-  nodes: z.array(CorralNode).min(2).max(27),
+  nodes: z.array(CorralNode).min(2).max(28),
   controlEdges: z.array(ControlEdge).min(1).max(40),
   capabilityLinks: z.array(CapabilityLink).max(40),
   limits: RunLimits,

@@ -11,7 +11,12 @@ import {
   LEGACY_PROTOCOL_VERSION as PROTOCOL_VERSION,
   type StartFrame,
 } from './protocol.ts';
-import { assertReasoningCapabilities, reasoningRequest, verifyReasoningWire } from './reasoning.ts';
+import {
+  assertReasoningCapabilities,
+  reasoningRequest,
+  requestOutputCap,
+  verifyReasoningWire,
+} from './reasoning.ts';
 import { requestReasoningInput } from './reasoning-input.ts';
 import { providerRequestFence } from './request-fence.ts';
 import {
@@ -102,8 +107,18 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
   async function execute(start: StartFrame) {
     executionId = start.executionId;
     const head = { protocolVersion: PROTOCOL_VERSION, executionId: start.executionId };
-    const settle = (outcome: 'succeeded' | 'failed' | 'cancelled', error?: string) => {
-      port.send({ type: 'settled', ...head, outcome, ...(error ? { error: safe(error) } : {}) });
+    const settle = (
+      outcome: 'succeeded' | 'failed' | 'cancelled',
+      error?: string,
+      finalTextModelCallId?: string,
+    ) => {
+      port.send({
+        type: 'settled',
+        ...head,
+        outcome,
+        ...(error ? { error: safe(error) } : {}),
+        ...(finalTextModelCallId ? { finalTextModelCallId } : {}),
+      });
       port.kill();
     };
     const call = (frame: Record<string, unknown>) =>
@@ -156,6 +171,8 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
       return;
     }
     let completionAccepted = false;
+    let attemptedTools = false;
+    let finalTextModelCallId: string | undefined;
     let measuredContext: ReturnType<typeof inspectContext> | null = null;
     let chunk = 0;
     const authorized = new Map<string, string>();
@@ -201,7 +218,7 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
           maxRetries: 0,
           ...(fence ? { fetch: fence.fetch, transport: 'sse' as const } : {}),
           ...(keyOf(permit?.apiKey) ? { apiKey: keyOf(permit?.apiKey) } : {}),
-          ...(permit ? { maxTokens: permit.maxOutputTokens } : {}),
+          ...(permit ? { maxTokens: requestOutputCap(chosen.model, permit.maxOutputTokens) } : {}),
           onPayload: async (payload, payloadModel) => {
             const actual = (await options?.onPayload?.(payload, payloadModel)) ?? payload;
             assertProtectedPayload(actual, protectedSections);
@@ -373,6 +390,11 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
       }
       if (event.type === 'message_end' && event.message.role === 'assistant') {
         const message = event.message as AssistantMessage;
+        attemptedTools ||= message.content.some((part) => part.type === 'toolCall');
+        finalTextModelCallId =
+          message.stopReason === 'stop' && textOf(message).trim() && !attemptedTools
+            ? permit.modelCallId
+            : undefined;
         const { usage, rawUsage } = normalizeUsage(message);
         port.send({
           type: 'observe',
@@ -399,6 +421,6 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
       .find((m): m is AssistantMessage => m.role === 'assistant');
     if (cancelled || last?.stopReason === 'aborted') settle('cancelled');
     else if (last?.stopReason === 'error') settle('failed', last.errorMessage ?? 'model error');
-    else settle('succeeded');
+    else settle('succeeded', undefined, finalTextModelCallId);
   }
 }

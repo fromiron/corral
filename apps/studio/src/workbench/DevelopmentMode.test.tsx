@@ -6,6 +6,7 @@ import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { DevelopmentMode } from './DevelopmentMode.tsx';
+import { WORKSPACE_CHANGED } from './workspaceEvents.ts';
 
 const fixture = vi.hoisted(() => ({ services: {} as Record<string, unknown> }));
 vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
@@ -37,7 +38,11 @@ const shared: DevelopmentState = {
 };
 async function mount(api: Record<string, unknown>) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
-  fixture.services = { workspaces: api, workspaceId: 'host', mode: 'server' };
+  fixture.services = {
+    workspaces: { worktree: async () => ({ missing: false }), ...api },
+    workspaceId: 'host',
+    mode: 'server',
+  };
   const element = document.createElement('div');
   document.body.append(element);
   const root = createRoot(element);
@@ -118,4 +123,19 @@ it('[TC-WBD-017-F] an old session response never activates the new session', asy
   await view.render('s2');
   await act(async () => resolve(shared));
   expect(view.element.textContent).not.toContain(messages.Development.sharedNote);
+});
+
+it('[TC-WBD-017-N] a session without a working copy waits until one is created before reading development state', async () => {
+  let hasCopy = false;
+  const developmentState = vi.fn(async () => strict);
+  const view = await mount({
+    worktree: async () => (hasCopy ? { missing: false } : null),
+    developmentState,
+  });
+  expect(developmentState).not.toHaveBeenCalled();
+  expect(view.button()).toBeNull();
+  hasCopy = true;
+  await act(async () => window.dispatchEvent(new Event(WORKSPACE_CHANGED)));
+  expect(developmentState).toHaveBeenCalledExactlyOnceWith('s1');
+  expect(view.button()).not.toBeNull();
 });

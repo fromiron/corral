@@ -54,6 +54,19 @@ export {
   parseMarkdownAgent,
   toolTargets,
 } from './markdown-agent-import.ts';
+export {
+  type MeetingResult,
+  MeetingService,
+  type MeetingServiceDeps,
+  meetingAnswerDefinition,
+} from './meeting.ts';
+export {
+  activeMeetingDecision,
+  type MeetingDecisionResult,
+  MeetingDecisionsService,
+  type MeetingDecisionsServiceDeps,
+  recordMeetingMinutes,
+} from './meeting-decisions.ts';
 export * from './profile-context.ts';
 export * from './projection.ts';
 export { fixedReasoning } from './reasoning.ts';

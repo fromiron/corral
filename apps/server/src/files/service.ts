@@ -5711,6 +5711,14 @@ export class WorkspaceService implements FileTools {
     return this.candidateCopies.tree(runId, candidateId);
   }
 
+  candidateDiff(runId: string, candidateId: string, tree: string, paths?: string[]) {
+    return this.candidateCopies.diff(runId, candidateId, tree, paths);
+  }
+
+  restoreCandidate(runId: string, candidateId: string, tree: string) {
+    return this.candidateCopies.restore(runId, candidateId, tree);
+  }
+
   async candidateChanges(runId: string, candidateId: string, expectedTree: string) {
     const copy = await this.candidateCopies.inspect(runId, candidateId, expectedTree);
     return {

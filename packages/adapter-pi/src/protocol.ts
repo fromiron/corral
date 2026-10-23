@@ -108,6 +108,7 @@ export const WorkerFrame = z.discriminatedUnion('type', [
   z.strictObject({
     type: z.literal('settled'),
     ...head,
+    finalTextModelCallId: Identifier.optional(),
     outcome: z.enum(['succeeded', 'failed', 'cancelled']),
     error: z.string().max(500).optional(),
   }),

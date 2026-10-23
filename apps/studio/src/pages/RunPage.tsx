@@ -471,7 +471,7 @@ function RunWorkspace({
     if (hasOutput) markRunReviewed();
   }, [hasOutput]);
   const target = useSteerTarget(session, execution ?? null);
-  const layout = useSavedLayout(definition, projection?.corralId ?? null);
+  const layout = useSavedLayout(definition, projection?.corralId ?? null, savedTeam);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   // Below 768px one panel shows at a time (roadmap 19); wider screens show them all.
   const [panel, setPanel] = useState<NarrowPanel>('canvas');
@@ -671,23 +671,32 @@ function useSavedTeam(corralId: string | null | undefined) {
 }
 
 /** The Corral's saved layout, once looked up; null while loading (avoids a layout jump). */
-function useSavedLayout(definition: CorralDefinition, corralId: string | null) {
+function useSavedLayout(
+  definition: CorralDefinition,
+  corralId: string | null,
+  savedTeam: boolean | null,
+) {
   const { repository } = useServices();
   const [saved, setSaved] = useState<{ nodes: Record<string, NodeLayout> | null } | null>(null);
-  const id = corralId ?? definition.id;
   useEffect(() => {
+    if (!savedTeam || !corralId) return;
     let live = true;
-    repository.get(id).then(
+    repository.get(corralId).then(
       (record) => live && setSaved({ nodes: record?.layout.nodes ?? null }),
       () => live && setSaved({ nodes: null }),
     );
     return () => {
       live = false;
     };
-  }, [repository, id]);
+  }, [repository, corralId, savedTeam]);
   return useMemo<RunCanvasLayout | null>(
-    () => (saved ? runCanvasLayout(definition, saved.nodes) : null),
-    [definition, saved],
+    () =>
+      savedTeam === false
+        ? runCanvasLayout(definition, null)
+        : saved
+          ? runCanvasLayout(definition, saved.nodes)
+          : null,
+    [definition, saved, savedTeam],
   );
 }
 

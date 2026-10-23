@@ -83,6 +83,14 @@ export function reasoningRequest(
 }
 
 /** Verify the final payload after extension hooks, before the provider can send it. */
+/**
+ * The output cap a request carries: the Coordinator's permit, lowered to the model's catalog
+ * maximum. CR-048 version 2 Ultra permits more than any model allows, so this is its real cap.
+ */
+export function requestOutputCap(model: { maxTokens?: number }, permitted: number): number {
+  return model.maxTokens && model.maxTokens > 0 ? Math.min(permitted, model.maxTokens) : permitted;
+}
+
 export function verifyReasoningWire(
   model: Model<Api>,
   payload: unknown,

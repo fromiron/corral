@@ -12,6 +12,7 @@ AI 에이전트의 문서 진입점이다. **이번 요청 → 관련 현재 계
 | 제품 범위·그래프·Reins·기본 상한 | [제품](current/product.md) | [제품 상세](current/product-contract.md), [기능 명세](../specs/README.md) |
 | 상태 소유·실행·취소·파일 효과 | [구조](current/architecture.md), [실행과 안전](current/execution-and-safety.md) | [기술 설계](Technical-Design.md), 관련 core/server/adapter |
 | 프로젝트·세션·컴포저·편집기 | [Workbench](current/workbench.md) | [위젯 상세](current/chat-widgets-contract.md), CR-043·044 |
+| 회의·참가자 발언·회의록·결정·작업 인계 | [Workbench](current/workbench.md), [CR-049](change-requests/CR-049-meeting-room.md) | C-174–176, [실행 기록](evaluation/Meeting-Room-2026-10-23.md) |
 | 화면·코드 용어 | [용어집](current/glossary.md) | 메시지 파일 `packages/react/src/messages/` |
 | Desktop·명령·preview·host·음성 | [Desktop 상세](current/desktop-contract.md) | CR-042, [잔여 조건](plans/desktop-completion.md) |
 | 모델·추론·Ultra·Skill·MCP | [모델과 리소스](current/models-and-resources.md) | [모델 안내](Models.md), [하네스 상세](current/harness-contract.md) |
@@ -36,7 +37,7 @@ AI 에이전트의 문서 진입점이다. **이번 요청 → 관련 현재 계
 | 전역 활성 Run 하나 | CR-042 ABS-06: snapshot reader 병행, 작업 사본별 단일 writer, host 상한·소유권 |
 | 임의 명령 제외·Hashline 평가 전용 | CR-042 ABS-01/03: 관리 사본 명령과 명시 편집 방식. 등록 검사·기존 Pi edit 경계 유지 |
 | 추론 판정은 관찰 전용 | CR-021: 기존 off/observe와 역할별 요청 적용을 구분 |
-| Ultra는 같은 모델 후보 비교 | CR-031/C-118: 복수 모델 협업. C-114는 별도 opt-in 후보 비교이며 같은 Run에서 하나만 명시 반영 |
+| Ultra는 같은 모델 후보 비교 | CR-031/C-118: 복수 모델 협업. C-114는 별도 opt-in 후보 비교이며 같은 Run에서 하나만 명시 반영. CR-048/C-173: 새 선택 형식(version 2)은 후보 경쟁 기본·자동 판정·고도화·자동 반영·사용량 한도 없음 |
 | 초기 RELEASE-INDEX가 현재 상태 | 초기 패키지는 Git 이력에만 유지. 현재 상태는 상태표와 해당 후보 증거 |
 
 ## 유지보수

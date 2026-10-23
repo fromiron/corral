@@ -307,6 +307,8 @@ export interface AutoStarterDeps<S extends AutoSignal = AutoSignal> {
     primary: string,
     mode: 'mock' | 'live',
     models?: Record<string, ModelProfileSnapshot>,
+    /** CR-048: whether the request works in a managed copy, for the tournament choice. */
+    context?: { fileTools: boolean },
   ): UltraResolution;
   /** The Coordinator itself, or a transport to it (the in-browser runtime). */
   startRun(
@@ -449,12 +451,9 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
                 'Multi-model Ultra uses maximum supported reasoning; remove a manual effort setting',
             },
           }
-        : (deps.resolveUltra?.(
-            request.ultra,
-            request.choice.modelProfile,
-            request.mode,
-            models,
-          ) ?? {
+        : (deps.resolveUltra?.(request.ultra, request.choice.modelProfile, request.mode, models, {
+            fileTools: context.fileTools,
+          }) ?? {
             ok: false as const,
             error: {
               code: 'CAPABILITY_DENIED' as const,

@@ -323,3 +323,43 @@ it('[TC-ULTRA-002-N] candidate promotion refuses checked configuration changes a
     await s.close();
   }
 });
+
+it('[TC-ULTRA-004-N] a candidate diff shows only its changes and a restore returns a settled copy to its accepted tree', async () => {
+  const s = await setup();
+  try {
+    await s.service.prepareCandidates('run_1', ['candidate_1', 'candidate_2']);
+    s.service.bindCandidateExecution('run_1', 'candidate_1', 'exec_a');
+    await s.call('exec_a', 'read_file', { path: 'a.txt' });
+    await s.call('exec_a', 'write_file', { path: 'a.txt', text: 'two\n' });
+    const accepted = (await s.service.currentCandidateTree('run_1', 'candidate_1'))!;
+    await s.call('exec_a', 'write_file', { path: 'b.txt', text: 'refined\n' });
+    const proposed = (await s.service.currentCandidateTree('run_1', 'candidate_1'))!;
+    expect(await s.service.candidateDiff('run_1', 'candidate_1', accepted)).toMatchObject({
+      files: ['a.txt'],
+      diff: expect.stringContaining('+two'),
+    });
+    const borrowed = await s.service.candidateDiff('run_1', 'candidate_1', proposed, ['b.txt']);
+    expect(borrowed.files).toEqual(['a.txt', 'b.txt']);
+    expect(borrowed.diff).toContain('+refined');
+    expect(borrowed.diff).not.toContain('a.txt');
+    // An active candidate execution could still be writing: no restore under it.
+    await expect(s.service.restoreCandidate('run_1', 'candidate_1', accepted)).rejects.toThrow(
+      /settle/,
+    );
+    for (const execution of Object.values(s.projection.executions)) execution.status = 'succeeded';
+    s.db
+      .prepare('UPDATE runs SET projection_json=? WHERE id=?')
+      .run(JSON.stringify(s.projection), 'run_1');
+    await s.service.restoreCandidate('run_1', 'candidate_1', accepted);
+    expect(await s.service.currentCandidateTree('run_1', 'candidate_1')).toBe(accepted);
+    const copy = s.db
+      .prepare("SELECT worktree_path FROM candidate_worktrees WHERE candidate_id='candidate_1'")
+      .get() as { worktree_path: string };
+    expect(readFileSync(join(copy.worktree_path, 'a.txt'), 'utf8')).toBe('two\n');
+    expect(() => readFileSync(join(copy.worktree_path, 'b.txt'))).toThrow();
+    // The other candidate is untouched.
+    expect(await s.service.currentCandidateTree('run_1', 'candidate_2')).not.toBe(accepted);
+  } finally {
+    await s.close();
+  }
+});

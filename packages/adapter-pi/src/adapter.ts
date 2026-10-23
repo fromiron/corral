@@ -630,6 +630,9 @@ class WorkerExecution {
       case 'settled':
         this.pendingSettlement = {
           outcome: frame.outcome,
+          ...(frame.finalTextModelCallId
+            ? { finalTextModelCallId: frame.finalTextModelCallId }
+            : {}),
           ...(frame.error ? { error: 'the model worker reported a request failure' } : {}),
         };
         this.waitForExit();
