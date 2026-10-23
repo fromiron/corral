@@ -23,6 +23,7 @@ import {
   History,
   LoaderCircle,
   Monitor,
+  PanelRight,
 } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
 import { type ComponentProps, useId, useState } from 'react';
@@ -67,7 +68,7 @@ const compactNumber = (value: number) =>
   value >= 1000 ? `${(value / 1000).toFixed(value < 10_000 ? 1 : 0)}k` : number(value);
 
 /** The reference places contextual widgets in an upper-right companion card. */
-export function SessionWidgetCard() {
+export function SessionWidgetCard({ results = true }: { results?: boolean }) {
   const model = useChatWidget();
   const t = useTranslations('Widgets');
   const ts = useTranslations('Status');
@@ -93,9 +94,9 @@ export function SessionWidgetCard() {
         </CardAction>
       </CardHeader>
       <CardContent className="space-y-4">
-        <Button render={<RunLink model={model} />} variant="secondary" className="w-full">
+        <Button render={<RunLink model={model} />} variant="tertiary" size="compact">
+          <PanelRight size={13} aria-hidden="true" />
           {t('openExecution')}
-          <ArrowRight size={13} />
         </Button>
         <div className="space-y-1">
           {model.chips
@@ -129,7 +130,8 @@ export function SessionWidgetCard() {
             </ul>
           </div>
         ) : null}
-        {model.results.length ? (
+        {/* The Results pane lists every result below this card; the popover keeps a few. */}
+        {results && model.results.length ? (
           <div>
             <h4 className="mb-1.5 text-xs text-muted-foreground">{t('resultsHeading')}</h4>
             <ul className="space-y-1">
@@ -831,6 +833,8 @@ function RunActivity({ model }: { model: ChatWidgetModel }) {
       : model.activity.elapsedMs < 60_000
         ? `${Math.max(0, Math.floor(model.activity.elapsedMs / 1000))}s`
         : `${Math.floor(model.activity.elapsedMs / 60_000)}m ${Math.floor((model.activity.elapsedMs % 60_000) / 1000)}s`;
+  // A finished run's status pill already links to its record; the line is for live work.
+  if (!model.live && !text) return null;
   return (
     <div
       data-testid="run-activity"
@@ -853,8 +857,8 @@ function RunActivity({ model }: { model: ChatWidgetModel }) {
         model={model}
         className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-sm hover:text-text focus-visible:ring-2 focus-visible:ring-ring"
       >
+        <PanelRight size={12} aria-hidden="true" />
         {t('activityRecord')}
-        <ArrowRight size={12} />
       </RunLink>
     </div>
   );

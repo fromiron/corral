@@ -79,5 +79,11 @@ export async function slash(page: Page, command: string) {
 export async function panelTab(page: Page, name: string) {
   const show = page.getByRole('banner').getByRole('button', { name: 'Show the panel' });
   if (await show.isVisible()) await show.click();
-  await page.getByRole('tab', { name, exact: true }).click();
+  const tab = page.getByRole('tab', { name, exact: true });
+  // A new layout opens only the conversation's linked panes; others open from an area's menu.
+  if (!(await tab.count())) {
+    await page.getByRole('button', { name: 'Open pane', exact: true }).first().click();
+    await page.getByRole('menuitem', { name, exact: true }).click();
+  }
+  await tab.click();
 }

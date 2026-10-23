@@ -88,7 +88,8 @@
     "liveNoModel": "Connect a model",
     "liveNoModelNote": "Live models are possible here, but no model is connected yet. Open Settings › Models to sign in; until then runs are simulated.",
     "connectionFailed": "Corral could not connect to this server. Check the connection, then try again.",
-    "retryConnection": "Try again"
+    "retryConnection": "Try again",
+    "retry": "Try again"
   },
   "Palette": {
     "heading": "Nodes",
@@ -3329,7 +3330,9 @@
     "savedLayout": "Custom layout",
     "git": "Git",
     "team": "Team",
-    "debug": "Debugger"
+    "debug": "Debugger",
+    "paneActions": "Pane actions",
+    "size": "Size"
   },
   "Context": {
     "previewSource": "Preview capture",

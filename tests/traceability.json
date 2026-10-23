@@ -1789,5 +1789,15 @@
       "TC-DKIT-001-H",
       "TC-DKIT-001-N"
     ]
+  },
+  {
+    "requirementId": "CRL-UX-010",
+    "tasks": [
+      "C-178"
+    ],
+    "tests": [
+      "TC-SWS-001-H",
+      "TC-SWS-001-N"
+    ]
   }
 ]

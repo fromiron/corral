@@ -1,4 +1,5 @@
 import type { WorkSession } from '@corral/core';
+import { Button } from '@corral/react/design-kit';
 import { X } from '@corral/react/icons';
 import { useNavigate, useRouterState } from '@tanstack/react-router';
 import { useEffect, useRef } from 'react';
@@ -106,9 +107,10 @@ export function SessionTabs({ sessions }: { sessions: WorkSession[] }) {
           >
             {tab.title}
           </a>
-          <button
-            type="button"
-            className="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:text-text"
+          <Button
+            variant="ghost"
+            size="icon-compact"
+            className="size-6 shrink-0"
             aria-label={t('close', { title: tab.title })}
             onClick={() => {
               setStored(tabs.filter((item) => item.sessionId !== tab.sessionId));
@@ -120,7 +122,7 @@ export function SessionTabs({ sessions }: { sessions: WorkSession[] }) {
             }}
           >
             <X size={12} />
-          </button>
+          </Button>
         </div>
       ))}
     </nav>

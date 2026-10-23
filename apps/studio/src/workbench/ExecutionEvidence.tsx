@@ -1,5 +1,6 @@
 import type { FileOperationView, VerificationResultView } from '@corral/client';
 import type { RunSessionStore } from '@corral/react';
+import { Button } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -98,13 +99,14 @@ export function ExecutionEvidence({
           <ul className="flex flex-col gap-0.5">
             {results.map((artifact) => (
               <li key={artifact.artifactVersionId}>
-                <button
-                  type="button"
-                  className="text-left hover:underline"
+                <Button
+                  variant="ghost"
+                  size="compact"
+                  className="-ml-2"
                   onClick={() => onOpenArtifact(artifact.artifactVersionId)}
                 >
                   {artifact.name} · v{artifact.version}
-                </button>
+                </Button>
               </li>
             ))}
           </ul>

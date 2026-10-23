@@ -1,10 +1,58 @@
-import { Button, Select } from '@corral/react/design-kit';
+import {
+  Button,
+  MenuRadioGroup,
+  MenuRadioItem,
+  MenuSub,
+  MenuSubPopup,
+  MenuSubTrigger,
+} from '@corral/react/design-kit';
 import { ArrowDown } from '@corral/react/icons';
 import { defaultRangeExtractor, useVirtualizer } from '@tanstack/react-virtual';
 import { type ReactNode, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { changePreferences, preferences } from './preferences.ts';
+
+/**
+ * How much of each reply the conversation shows; a display preference kept in the page's menu
+ * rather than above the messages, so the conversation starts at its first message.
+ */
+export function ChatDensityMenu() {
+  const t = useTranslations('Desktop');
+  const chatDensity = useStore(preferences, (state) => state.chatDensity);
+  return (
+    <MenuSub>
+      <MenuSubTrigger>
+        {t('chatDensity')}
+        <span className="ml-auto truncate pl-3 text-xs text-muted-foreground">
+          {t(
+            chatDensity === 'results'
+              ? 'densityResults'
+              : chatDensity === 'detailed'
+                ? 'densityDetailed'
+                : 'densityBasic',
+          )}
+        </span>
+      </MenuSubTrigger>
+      <MenuSubPopup>
+        <MenuRadioGroup
+          value={chatDensity}
+          onValueChange={(value) => changePreferences({ chatDensity: value as typeof chatDensity })}
+        >
+          <MenuRadioItem value="results" closeOnClick>
+            {t('densityResults')}
+          </MenuRadioItem>
+          <MenuRadioItem value="basic" closeOnClick>
+            {t('densityBasic')}
+          </MenuRadioItem>
+          <MenuRadioItem value="detailed" closeOnClick>
+            {t('densityDetailed')}
+          </MenuRadioItem>
+        </MenuRadioGroup>
+      </MenuSubPopup>
+    </MenuSub>
+  );
+}
 
 /** A session is the conversation; each child turn keeps its Corral Run/Execution identity. */
 export function ChatView({
@@ -25,7 +73,6 @@ export function ChatView({
   centerEmpty?: boolean;
 }) {
   const t = useTranslations('Desktop');
-  const chatDensity = useStore(preferences, (state) => state.chatDensity);
   const centered = centerEmpty && items.length === 0;
   const timeline = useRef<HTMLElement>(null);
   const content = useRef<HTMLDivElement>(null);
@@ -166,26 +213,11 @@ export function ChatView({
       data-empty-centered={centered || undefined}
       className={`relative flex h-full min-h-0 min-w-0 flex-1 flex-col ${centered ? 'overflow-y-auto' : 'overflow-clip'}`}
     >
-      <div className="shrink-0 px-5 pt-3">
-        <div className="mx-auto w-full max-w-(--chat-content-max-width)">
-          <div className="flex flex-wrap items-center justify-end gap-1.5 text-xs text-muted-foreground">
-            <span>{t('chatDensity')}</span>
-            <Select
-              label={t('chatDensity')}
-              size="xs"
-              variant="ghost"
-              value={chatDensity}
-              onValueChange={(value) => changePreferences({ chatDensity: value })}
-              options={[
-                { value: 'results', label: t('densityResults') },
-                { value: 'basic', label: t('densityBasic') },
-                { value: 'detailed', label: t('densityDetailed') },
-              ]}
-            />
-          </div>
-          {header}
+      {header ? (
+        <div className="shrink-0 px-5 pt-3 has-[>div:empty]:hidden">
+          <div className="mx-auto w-full max-w-(--chat-content-max-width)">{header}</div>
         </div>
-      </div>
+      ) : null}
       <section
         ref={timeline}
         data-testid="chat-timeline"

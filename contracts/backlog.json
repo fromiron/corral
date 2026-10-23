@@ -3508,5 +3508,27 @@
     "done": "Adopt copied kit tokens and actual components throughout Studio and packages/react/src/components, using direct kit components or composition before custom UI. Normalize English DESIGN.md and verify representative light/dark and narrow/desktop UI while preserving behavior, data, and accessibility rather than legacy appearance.",
     "status": "implemented",
     "evidence": "docs/evaluation/Design-Kit-Adoption-2026-10-23.md"
+  },
+  {
+    "id": "C-178",
+    "phase": "P12",
+    "title": "CR-051 session workspace simplification",
+    "dependsOn": [
+      "C-177"
+    ],
+    "requirements": [
+      "CRL-UX-010"
+    ],
+    "files": [
+      "apps/studio/src/workbench/docking/",
+      "apps/studio/src/workbench/ChatView.tsx",
+      "apps/studio/src/pages/",
+      "apps/studio/e2e/layout.spec.ts",
+      "packages/react/src/theme.css",
+      "DESIGN.md"
+    ],
+    "done": "Move dock controls into area headers with one placement rule, start new layouts with the conversation's linked panes, move display density to the page menu, show one status for a finished run, and replace the remaining visible native controls with kit components while preserving keyboard arrangement, narrow switching, documents, drafts and Run control.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/Session-Workspace-Simplification-2026-10-24.md"
   }
 ]

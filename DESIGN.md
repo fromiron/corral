@@ -109,6 +109,8 @@ Compact controls use the kit's 12 / 18px body scale. Headings use medium or semi
 
 Use one workspace grammar: sidebar, top bar, task content and contextual panels. Settings remain an overlay on the current work. Do not change task ownership or introduce a second navigation system as part of visual styling.
 
+A session's dock has no toolbar row of its own. Each area's header holds its pane controls: an open-pane menu, a pane-actions menu for layout, area, size and split, and a close action for the active pane. A pane opens in its own area (conversation in the main area, terminal, tasks and checks below, the rest beside it), so a control never covers the conversation it was opened from. A new layout opens only the conversation and the panes its replies link to. Page-level display preferences, such as conversation density, belong in the page menu rather than above the content. Links that open beside the conversation share the side-panel mark.
+
 Use Tailwind's existing 4px spacing unit: 4–8px for related controls, 12–16px within components, and 24px between sections. Let the page own outer padding; avoid stacking page padding with another full-size wrapper. Preserve the established 640px settings and 1024px sidebar boundaries, task-specific workbench container queries, and the 46rem conversation measure. Narrow layouts must keep primary actions and recovery controls reachable.
 
 Controls use an 8px radius; panels and popup containers use 12px. A menu item inset 4px inside a 12px popup uses 8px corners. Independent inputs inside a card keep their own 8px radius; do not treat them as concentric surfaces. Compact badges and keycaps may use 4px. Avatars, status dots and explicitly pill-shaped chips remain circular exceptions.
@@ -126,6 +128,8 @@ The source kit keeps all eight elevation levels. Menus rise two levels and dialo
 | Settings navigation | Use the kit's settings-dialog composition: 13rem grouped icon sidebar with its own title, scrolling section content, close action, and a narrow-screen section selector. |
 | `Dialog` | Rise four surface levels above the current context, capped at level 8, with the source shadow and scrim. Preserve close controls, focus trapping/return, unsaved-change handling and narrow-screen scrolling. |
 | `Menu`, `Popover`, select popup | Rise two surface levels above the current context, capped at level 8; use a 12px container and 8px inset items. Preserve keyboard navigation, selection, Escape and focus return. |
+| Disclosure | Native `<details>` keeps its toggle state, find-in-page and nested folds. The shared theme gives its summary the kit Accordion trigger's look: a trailing chevron that turns when open, muted until hovered or open, control radius. A summary that draws its own marker uses `list-none`. |
+| Chip select | `Select variant="chip"` is compact and hugs its value, for choices that sit among compact buttons such as the composer row or the top bar. |
 | `Badge`, status and tooltip | Use semantic status roles and concise content. Color supplements text or an accessible name. Tooltips never replace a required label. |
 | `ScrollArea` | Keep existing virtualized scrolling, keyboard access, edge fades and stored positions; use the kit's scrollbar treatment. |
 
@@ -135,7 +139,7 @@ Legacy Button `default` maps to `primary`, `outline`/`glass` to `tertiary`, and 
 
 Corral uses Base UI 1.9.0 and Motion 14.1.0, pinned from the kit's declared ranges, with Lucide icons and the kit's shape, size, surface and hover helpers. `DesignKitProvider` applies user-preferred reduced motion at the app and Storybook roots. Next.js routing, PDF support and alternate icon libraries are not imported. Adopt an additional kit component when a real screen needs it, checking its dependencies and interactions first.
 
-Corral-specific exceptions are functional, not alternative designs: graph handles and drag geometry, revision-bound Reins/approval commands, virtualized timelines, sanitized Markdown and isolated artifact previews, and schema question choices whose native disabled fieldset, form name/value and option descriptions are not expressed by the supplied CheckboxItem API. Their surrounding controls and content still compose the kit. Input/Textarea bridges preserve native events, refs and external labels where the kit's string-value InputField API cannot substitute directly.
+Selection inside a list uses the `secondary` Button treatment on the chosen row and `ghost` on the others, with `aria-pressed` or `aria-current`; segmented tabs use the same pair. Corral-specific exceptions are functional, not alternative designs: graph handles and drag geometry, revision-bound Reins/approval commands, virtualized timelines and file/search rows, listbox options inside the request input, sanitized Markdown and isolated artifact previews, and schema question choices whose native disabled fieldset, form name/value and option descriptions are not expressed by the supplied CheckboxItem API. Their surrounding controls and content still compose the kit. Input/Textarea bridges preserve native events, refs and external labels where the kit's string-value InputField API cannot substitute directly.
 
 ## Motion and Accessibility
 

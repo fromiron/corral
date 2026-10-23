@@ -8,8 +8,8 @@ import {
 } from '@corral/contracts';
 import type { MeetingResult, WorkSession } from '@corral/core';
 import { SafeMarkdown } from '@corral/react';
-import { Button } from '@corral/react/design-kit';
-import { Send, Square, Users } from '@corral/react/icons';
+import { Button, Menu, MenuPopup, MenuTrigger } from '@corral/react/design-kit';
+import { Ellipsis, Send, Square, Users } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
 import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -17,12 +17,13 @@ import { useStore } from 'zustand';
 import { useServices } from '../services.tsx';
 import { newCommandId } from '../sessionActions.ts';
 import { sessionRunMode } from '../workbench/autoChoice.ts';
-import { ChatView } from '../workbench/ChatView.tsx';
+import { ChatDensityMenu, ChatView } from '../workbench/ChatView.tsx';
 import { MeetingDecisions } from '../workbench/MeetingDecisions.tsx';
 import { MeetingEvidencePicker } from '../workbench/MeetingEvidence.tsx';
 import { MeetingHandoffLinks } from '../workbench/MeetingHandoff.tsx';
 import { preferences } from '../workbench/preferences.ts';
 import { TextAttachmentList } from '../workbench/TextAttachments.tsx';
+import { TopbarActions } from '../workbench/TopbarSlot.tsx';
 import { useCorralRun } from '../workbench/useCorralChat.ts';
 import { useModelProfiles } from '../workbench/useModels.ts';
 
@@ -108,106 +109,134 @@ export function MeetingPage({ session }: { session: WorkSession }) {
     view.minutes?.length || view.decisions?.length || view.decisionWithdrawals?.length,
   );
   return (
-    <ChatView
-      centerEmpty
-      sessionId={sessionId}
-      header={
-        <>
-          <MeetingHeader title={session.title} config={view.config} />
-          {hasRecords ? (
-            <details ref={recordsPanel} aria-label={t('records')} className="pb-2 text-sm">
-              <summary className="cursor-pointer rounded py-1 font-medium focus-visible:outline-2 focus-visible:outline-ring">
-                {t('records')}
-              </summary>
-              <div className="flex max-h-[40dvh] flex-col gap-4 overflow-y-auto py-3">
-                <MeetingDecisions session={session} view={view} onChange={refresh} />
-                <MeetingHandoffLinks sessionId={sessionId} meeting={view} onRediscuss={refresh} />
-              </div>
-            </details>
-          ) : null}
-        </>
-      }
-      items={view.rounds
-        .flatMap((round, index) => [
-          ...(round.message === null
-            ? []
-            : [
-                {
-                  id: `${round.roundId}:message`,
-                  order: round.order ?? index * 7,
-                  content: <MeetingMessage round={round} config={view.config} />,
-                },
-              ]),
-          ...round.answers.map((answer, n) => ({
-            id: `${round.roundId}:${answer.participantId}`,
-            order:
-              answer.order ??
-              (answer.status === 'waiting'
-                ? Number.MAX_SAFE_INTEGER
-                : (round.order ?? index * 7) + n + 1),
-            content: (
-              <AnswerCard
-                answer={answer}
-                name={nameOf(view.config, answer.participantId, t('secretary'))}
-                onOpenMinutes={
-                  answer.participantId === SECRETARY_ID &&
-                  view.minutes?.some(
-                    (minutes) => minutes.roundId === round.roundId && minutes.document,
-                  )
-                    ? () => {
-                        if (!recordsPanel.current) return;
-                        recordsPanel.current.open = true;
-                        recordsPanel.current.querySelector('summary')?.focus();
-                      }
-                    : undefined
-                }
-              />
-            ),
-          })),
-          ...(round.stoppedAt
-            ? [
-                {
-                  id: `${round.roundId}:stopped`,
-                  order:
-                    Math.max(
-                      round.order ?? index * 7,
-                      ...round.answers.map((answer) => answer.order ?? 0),
-                    ) + 0.5,
-                  content: (
-                    <p role="status" className="mb-5 text-xs text-muted-foreground">
-                      {t('roundStopped')}
-                    </p>
-                  ),
-                },
-              ]
-            : []),
-        ])
-        .sort((a, b) => a.order - b.order)}
-      composer={
-        <MeetingComposer
-          key={sessionId}
-          projectId={session.projectId}
-          view={view}
-          mode={mode}
-          error={error || loadError}
-          onStop={
-            active ? () => void act(() => meetings.stop(sessionId, active.roundId)) : undefined
+    <>
+      <MeetingActions title={session.title} />
+      <ChatView
+        centerEmpty
+        sessionId={sessionId}
+        header={
+          <>
+            <MeetingHeader title={session.title} config={view.config} />
+            {hasRecords ? (
+              <details ref={recordsPanel} aria-label={t('records')} className="pb-2 text-sm">
+                <summary className="cursor-pointer rounded py-1 font-medium focus-visible:outline-2 focus-visible:outline-ring">
+                  {t('records')}
+                </summary>
+                <div className="flex max-h-[40dvh] flex-col gap-4 overflow-y-auto py-3">
+                  <MeetingDecisions session={session} view={view} onChange={refresh} />
+                  <MeetingHandoffLinks sessionId={sessionId} meeting={view} onRediscuss={refresh} />
+                </div>
+              </details>
+            ) : null}
+          </>
+        }
+        items={view.rounds
+          .flatMap((round, index) => [
+            ...(round.message === null
+              ? []
+              : [
+                  {
+                    id: `${round.roundId}:message`,
+                    order: round.order ?? index * 7,
+                    content: <MeetingMessage round={round} config={view.config} />,
+                  },
+                ]),
+            ...round.answers.map((answer, n) => ({
+              id: `${round.roundId}:${answer.participantId}`,
+              order:
+                answer.order ??
+                (answer.status === 'waiting'
+                  ? Number.MAX_SAFE_INTEGER
+                  : (round.order ?? index * 7) + n + 1),
+              content: (
+                <AnswerCard
+                  answer={answer}
+                  name={nameOf(view.config, answer.participantId, t('secretary'))}
+                  onOpenMinutes={
+                    answer.participantId === SECRETARY_ID &&
+                    view.minutes?.some(
+                      (minutes) => minutes.roundId === round.roundId && minutes.document,
+                    )
+                      ? () => {
+                          if (!recordsPanel.current) return;
+                          recordsPanel.current.open = true;
+                          recordsPanel.current.querySelector('summary')?.focus();
+                        }
+                      : undefined
+                  }
+                />
+              ),
+            })),
+            ...(round.stoppedAt
+              ? [
+                  {
+                    id: `${round.roundId}:stopped`,
+                    order:
+                      Math.max(
+                        round.order ?? index * 7,
+                        ...round.answers.map((answer) => answer.order ?? 0),
+                      ) + 0.5,
+                    content: (
+                      <p role="status" className="mb-5 text-xs text-muted-foreground">
+                        {t('roundStopped')}
+                      </p>
+                    ),
+                  },
+                ]
+              : []),
+          ])
+          .sort((a, b) => a.order - b.order)}
+        composer={
+          <MeetingComposer
+            key={sessionId}
+            projectId={session.projectId}
+            view={view}
+            mode={mode}
+            error={error || loadError}
+            onStop={
+              active ? () => void act(() => meetings.stop(sessionId, active.roundId)) : undefined
+            }
+            send={(request) => act(() => meetings.send(sessionId, request))}
+            sendQueued={() => act(() => meetings.sendQueued(sessionId))}
+            dropQueued={() => act(() => meetings.dropQueued(sessionId))}
+            editQueued={(message) => act(() => meetings.editQueued(sessionId, message))}
+          />
+        }
+      >
+        {view.rounds.length === 0 ? (
+          <div className="flex flex-col items-center gap-3 py-5 text-center">
+            <Users size={28} strokeWidth={1.25} className="text-muted-foreground" aria-hidden />
+            <h3 className="text-xl font-medium tracking-tight">{session.title}</h3>
+            <p className="max-w-md text-sm text-muted-foreground">{t('empty')}</p>
+          </div>
+        ) : null}
+      </ChatView>
+    </>
+  );
+}
+
+/** The meeting's page menu in the top bar, like a session's. */
+function MeetingActions({ title }: { title: string }) {
+  const td = useTranslations('Desktop');
+  return (
+    <TopbarActions>
+      <Menu>
+        <MenuTrigger
+          render={
+            <Button
+              variant="ghost"
+              size="icon-compact"
+              aria-label={td('sessionActions', { title })}
+            />
           }
-          send={(request) => act(() => meetings.send(sessionId, request))}
-          sendQueued={() => act(() => meetings.sendQueued(sessionId))}
-          dropQueued={() => act(() => meetings.dropQueued(sessionId))}
-          editQueued={(message) => act(() => meetings.editQueued(sessionId, message))}
-        />
-      }
-    >
-      {view.rounds.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 py-5 text-center">
-          <Users size={28} strokeWidth={1.25} className="text-muted-foreground" aria-hidden />
-          <h3 className="text-xl font-medium tracking-tight">{session.title}</h3>
-          <p className="max-w-md text-sm text-muted-foreground">{t('empty')}</p>
-        </div>
-      ) : null}
-    </ChatView>
+        >
+          <Ellipsis />
+        </MenuTrigger>
+        <MenuPopup align="end" className="min-w-52">
+          <ChatDensityMenu />
+        </MenuPopup>
+      </Menu>
+    </TopbarActions>
   );
 }
 

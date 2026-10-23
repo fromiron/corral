@@ -1018,5 +1018,11 @@
     "requirement": "CR-050: Adopt the user-provided design kit as the shared visual system. Across Studio and packages/react/src/components, use kit components directly, compose them when needed, and use custom UI only when neither works. Document the normalized implemented tokens and composition rules in DESIGN.md. Preserve settings, composer, navigation, D&D, Reins, data, and accessibility behavior in light and dark themes; legacy appearance is not a preservation requirement.",
     "owner": "studio",
     "phase": "P12"
+  },
+  {
+    "id": "CRL-UX-010",
+    "requirement": "CR-051: Keep the session workspace understandable. Dock controls sit in each area's header and open every pane in its own area without covering the conversation; a new layout starts with the conversation and the panes it links to; display density lives in the page menu; a finished run shows one status with one link to its record; remaining visible native controls use the design kit. Preserve keyboard arrangement, the narrow pane switcher, documents, drafts, Run control and saved layouts.",
+    "owner": "studio",
+    "phase": "P12"
   }
 ]

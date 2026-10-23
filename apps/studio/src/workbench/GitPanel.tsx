@@ -819,13 +819,18 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
                 <ul className="flex flex-col gap-0.5">
                   {entries.map((entry) => (
                     <li key={entry.path} className="flex items-start gap-1">
-                      <button
-                        type="button"
+                      <Button
+                        variant={
+                          selected?.side === side && selected.path === entry.path
+                            ? 'secondary'
+                            : 'ghost'
+                        }
+                        size="compact"
                         data-git-side={side}
                         data-path={entry.path}
                         aria-pressed={selected?.side === side && selected.path === entry.path}
                         onClick={() => setSelection({ query, side, path: entry.path })}
-                        className={`flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-subtle ${selected?.side === side && selected.path === entry.path ? 'bg-subtle' : ''}`}
+                        className="h-auto min-w-0 flex-1 flex-wrap justify-start gap-x-2 whitespace-normal py-1.5 text-left"
                       >
                         <span className="whitespace-pre-wrap break-all font-mono">
                           {entry.originalPath ? `${entry.originalPath} → ` : ''}
@@ -835,7 +840,7 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
                           {side === 'staged' ? entry.indexStatus : entry.worktreeStatus}
                           {entry.submodule ? ` · ${t('submodule')}` : ''}
                         </span>
-                      </button>
+                      </Button>
                       {writable ? (
                         <Button
                           size="icon-compact"

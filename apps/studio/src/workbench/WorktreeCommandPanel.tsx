@@ -125,17 +125,18 @@ function CommandPanel({ sessionId }: { sessionId: string }) {
         <ul aria-label={t('history')} className="max-h-40 space-y-1 overflow-y-auto">
           {commands.map((item) => (
             <li key={item.id}>
-              <button
-                type="button"
+              <Button
+                variant={item.id === selected ? 'secondary' : 'ghost'}
+                size="compact"
                 aria-pressed={item.id === selected}
                 onClick={() => select(item.id)}
-                className={`flex w-full min-w-0 items-start justify-between gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-raised ${item.id === selected ? 'bg-sidebar-selected' : ''}`}
+                className="w-full justify-between text-left"
               >
                 <span className="min-w-0 flex-1 truncate" title={item.command ?? undefined}>
                   {item.command ?? t('unavailableCommand')}
                 </span>
                 <span className="shrink-0 text-muted-foreground">{t(`state.${item.state}`)}</span>
-              </button>
+              </Button>
             </li>
           ))}
         </ul>

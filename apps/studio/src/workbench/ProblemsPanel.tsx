@@ -177,10 +177,11 @@ export function ProblemsPanel({ sessionId }: { sessionId: string }) {
                   const location = `${problem.path}:${problem.line}:${problem.column}`;
                   return (
                     <li key={`${location}:${problem.message}`}>
-                      <button
-                        type="button"
+                      <Button
+                        variant="ghost"
+                        size="compact"
                         onClick={() => void reveal(problem)}
-                        className="flex w-full min-w-0 items-baseline gap-2 rounded px-1 py-1 text-left text-xs hover:bg-raised"
+                        className="h-auto w-full justify-start gap-2 py-1 text-left font-normal"
                       >
                         <span
                           aria-hidden
@@ -196,7 +197,7 @@ export function ProblemsPanel({ sessionId }: { sessionId: string }) {
                             {problem.message}
                           </span>
                         ) : null}
-                      </button>
+                      </Button>
                     </li>
                   );
                 })}

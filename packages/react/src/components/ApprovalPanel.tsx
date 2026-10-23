@@ -212,8 +212,8 @@ export function ApprovalPanel({
                 {approval.subjectVersionIds.map((id) => (
                   <Button
                     key={id}
-                    variant="outline"
-                    size="xs"
+                    variant="tertiary"
+                    size="compact"
                     title={id}
                     onClick={() => onOpenArtifact(id)}
                   >
@@ -234,7 +234,7 @@ export function ApprovalPanel({
             ) : null}
             <div className={`flex gap-2 ${compact ? 'ml-auto' : ''}`}>
               <Button
-                size="sm"
+                size="compact"
                 disabled={
                   busy ||
                   !!(
@@ -268,8 +268,8 @@ export function ApprovalPanel({
                   : t(`approveAs.${approval.kind}`)}
               </Button>
               <Button
-                variant="outline"
-                size="sm"
+                variant="tertiary"
+                size="compact"
                 disabled={busy}
                 onClick={() => void decide(approval.approvalId, 'reject')}
               >

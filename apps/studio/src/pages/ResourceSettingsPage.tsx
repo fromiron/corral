@@ -169,11 +169,11 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
             <ul className="flex flex-col">
               {filtered.map((entry) => (
                 <li key={keyOf(entry)}>
-                  <button
-                    type="button"
+                  <Button
+                    variant={selection === keyOf(entry) ? 'secondary' : 'ghost'}
                     aria-pressed={selection === keyOf(entry)}
                     onClick={() => setSelection(keyOf(entry))}
-                    className={`flex w-full flex-col gap-2 p-4 text-left hover:bg-surface ${selection === keyOf(entry) ? 'bg-sidebar-selected' : ''}`}
+                    className="h-auto w-full flex-col items-start gap-1.5 whitespace-normal p-3 text-left"
                   >
                     <span className="font-medium">{entry.name}</span>
                     {entry.description ? (
@@ -189,7 +189,7 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
                         <span>{t('profileCount', { count: entry.profiles.length })}</span>
                       ) : null}
                     </span>
-                  </button>
+                  </Button>
                 </li>
               ))}
             </ul>

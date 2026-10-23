@@ -1,3 +1,4 @@
+import { Button } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { type ReactNode, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -67,16 +68,16 @@ export function GettingStarted({ runs, projectId }: { runs: number; projectId: s
         <h2 id={headingId} className="text-sm font-semibold">
           {t('heading')}
         </h2>
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="compact"
           onClick={() => {
             store(HIDDEN);
             setHidden(true);
           }}
-          className="rounded fill-control px-2 py-0.5 text-xs"
         >
           {t('hide')}
-        </button>
+        </Button>
       </div>
       <ol className="flex flex-col gap-1 text-sm">
         {steps.map((step, index) => (

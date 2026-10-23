@@ -38,10 +38,6 @@ import {
   AccordionItem,
   AccordionTrigger,
   Button,
-  Card,
-  CardDescription,
-  CardHeader,
-  CardTitle,
   Dialog,
   DialogDescription,
   DialogFooter,
@@ -127,7 +123,7 @@ import {
   autoReasoningUnsupported,
   sessionRunMode,
 } from '../workbench/autoChoice.ts';
-import { ChatView } from '../workbench/ChatView.tsx';
+import { ChatDensityMenu, ChatView } from '../workbench/ChatView.tsx';
 import { ComposerInput } from '../workbench/ComposerInput.tsx';
 import { ComposerSurface } from '../workbench/ComposerSurface.tsx';
 import { type IntentLock, resolveIntent } from '../workbench/composerIntent.ts';
@@ -447,7 +443,7 @@ function WorkSessionPage() {
         key={target ? panelKey(services, target) : view}
         className={view === 'run' ? 'flex h-full min-h-0 flex-col' : 'flex flex-col gap-3 p-3'}
       >
-        {view === 'artifacts' && presentationRunId ? <SessionWidgetCard /> : null}
+        {view === 'artifacts' && presentationRunId ? <SessionWidgetCard results={false} /> : null}
         {panelViews[view]()}
       </div>
     );
@@ -866,6 +862,8 @@ function SessionActions({
             </MenuItem>
           ) : null}
           <MenuSeparator />
+          <ChatDensityMenu />
+          <MenuSeparator />
           <MenuItem onClick={() => void update({ pinned: !session.pinned })}>
             {session.pinned ? t('unpin') : t('pin')}
           </MenuItem>
@@ -980,7 +978,7 @@ function WorkTab({
                   : td(workspaces && binding ? 'startHintLinked' : 'startHint')}
               </p>
               {workspaces && binding === null ? (
-                <Button variant="ghost-muted" size="compact" onClick={() => onPanel('changes')}>
+                <Button variant="ghost" size="compact" onClick={() => onPanel('changes')}>
                   <FolderOpen />
                   {td('workFolder')}
                 </Button>
@@ -1116,6 +1114,7 @@ function ArtifactsPanel({
   const tr = useTranslations('Results');
   const td = useTranslations('Desktop');
   const ta = useTranslations('Artifact');
+  const tk = useTranslations('Docking');
   const { transport } = useServices();
   type Item = {
     runId: string;
@@ -1192,31 +1191,33 @@ function ArtifactsPanel({
       {items.length === 0 ? (
         <p className="text-xs text-muted-foreground">{tw('artifactsEmpty')}</p>
       ) : (
-        <ul className="flex flex-col gap-1 text-sm">
+        <ul aria-label={tk('artifacts')} className="flex flex-col gap-0.5">
           {items.map((item) => (
             <li key={`${item.runId}:${item.id}`}>
-              <Card
+              <Button
+                variant="ghost"
+                className="h-auto w-full justify-start gap-2.5 py-1.5 text-left"
+                aria-label={`${tr(item.kind)} ${item.label}`}
                 onClick={() => onOpen(item.runId, item.id)}
-                label={`${tr(item.kind)} ${item.label}`}
               >
-                <CardHeader>
-                  <CardDescription>{tr(item.kind)}</CardDescription>
-                  <CardTitle>{item.label}</CardTitle>
-                  <CardDescription className="max-w-full truncate font-mono" title={item.runId}>
+                <FileText className="text-muted-foreground" />
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className="truncate">{item.label}</span>
+                  <span
+                    className="truncate font-mono text-2xs text-muted-foreground"
+                    title={item.runId}
+                  >
                     {item.runId}
-                  </CardDescription>
-                </CardHeader>
-              </Card>
+                  </span>
+                </span>
+                <span className="shrink-0 text-xs text-muted-foreground">{tr(item.kind)}</span>
+              </Button>
             </li>
           ))}
         </ul>
       )}
       {ended.length > count ? (
-        <Button
-          variant="ghost-muted"
-          size="compact"
-          onClick={() => setCount((value) => value + 10)}
-        >
+        <Button variant="ghost" size="compact" onClick={() => setCount((value) => value + 10)}>
           {td('moreResults', { count: ended.length - count })}
         </Button>
       ) : null}
@@ -1372,7 +1373,7 @@ function EntryCard({
             executionId={entry.executionId ?? null}
           />
           <Button
-            variant="ghost-muted"
+            variant="ghost"
             size="compact"
             onClick={() =>
               onPanel('run', {
@@ -1467,11 +1468,13 @@ function RunCard({
           </span>
         ) : null}
         <Button
-          variant="ghost-muted"
+          variant="ghost"
           size="compact"
           className="ml-auto"
           onClick={() => onPanel('run', { run: run.runId, view: 'run' })}
         >
+          {/* The same mark on every link that opens beside the conversation. */}
+          <PanelRight />
           {t('openRun')}
         </Button>
       </div>
@@ -3052,7 +3055,7 @@ export function Composer({
           <MenuTrigger
             render={
               <Button
-                variant="ghost-muted"
+                variant="ghost"
                 size="compact"
                 aria-label={tc('templateActions')}
                 disabled={busy}
@@ -3125,14 +3128,10 @@ export function Composer({
                 >
                   {t('startNow')}
                 </Button>
-                <Button variant="ghost-muted" size="compact" onClick={() => void editQueued(entry)}>
+                <Button variant="ghost" size="compact" onClick={() => void editQueued(entry)}>
                   {t('editQueued')}
                 </Button>
-                <Button
-                  variant="ghost-muted"
-                  size="compact"
-                  onClick={() => void removeQueued(entry)}
-                >
+                <Button variant="ghost" size="compact" onClick={() => void removeQueued(entry)}>
                   {t('remove')}
                 </Button>
               </li>
@@ -3249,7 +3248,7 @@ export function Composer({
                     <span className="sr-only">{tc('referenceGone')}</span>
                   ) : null}
                   <Button
-                    variant="ghost-muted"
+                    variant="ghost"
                     size="icon-tiny"
                     aria-label={tc('removeReference', { label: item.label })}
                     onClick={() => {
@@ -3344,7 +3343,7 @@ export function Composer({
           <div className="flex flex-wrap items-center gap-0.5">
             <Tooltip content={tc('addReference')}>
               <Button
-                variant="ghost-muted"
+                variant="ghost"
                 size="icon-compact"
                 aria-label={tc('addReference')}
                 onClick={() => {
@@ -3366,7 +3365,7 @@ export function Composer({
               <MenuTrigger
                 render={
                   <Button
-                    variant="ghost-muted"
+                    variant="ghost"
                     size="icon-compact"
                     aria-label={tc('attachmentActions')}
                     disabled={
@@ -3463,9 +3462,7 @@ export function Composer({
             ) : null}
             <Popover open={requestOptionsOpen} onOpenChange={setRequestOptionsOpen}>
               <PopoverTrigger
-                render={
-                  <Button variant="ghost-muted" size="compact" aria-label={tc('requestOptions')} />
-                }
+                render={<Button variant="ghost" size="compact" aria-label={tc('requestOptions')} />}
               >
                 <Settings className="size-4" />
                 <span>{tc('optionsShort')}</span>
@@ -3481,11 +3478,7 @@ export function Composer({
                   <PopoverTitle>{tc('requestOptions')}</PopoverTitle>
                   <PopoverClose
                     render={
-                      <Button
-                        variant="ghost-muted"
-                        size="icon-compact"
-                        aria-label={tc('closeOptions')}
-                      />
+                      <Button variant="ghost" size="icon-compact" aria-label={tc('closeOptions')} />
                     }
                   >
                     <X />

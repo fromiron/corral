@@ -28,6 +28,7 @@ import {
   WorkPlanPanel,
 } from '@corral/react';
 import { Button } from '@corral/react/design-kit';
+import { ArrowRight } from '@corral/react/icons';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -134,13 +135,13 @@ export function RunDetail({
         </p>
         {activeRunId === runId ? <RunActions session={session} /> : null}
         {error ? (
-          <button
-            type="button"
-            className="rounded fill-control px-2 py-1 text-sm"
+          <Button
+            variant="tertiary"
+            size="compact"
             onClick={() => void session.getState().open(runId)}
           >
             {t('retry')}
-          </button>
+          </Button>
         ) : null}
         <Link to="/" className="text-sm underline">
           ←
@@ -271,13 +272,13 @@ function CompactRunWorkspace({
         {result ? (
           <div className="rounded-lg fill-group">
             <div className="flex justify-end p-2">
-              <button
-                type="button"
-                className="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-raised"
+              <Button
+                variant="ghost"
+                size="compact"
                 onClick={() => setSearch({ artifact: undefined, result: undefined })}
               >
                 {n('closeResult')}
-              </button>
+              </Button>
             </div>
             <ResultReader
               key={result.artifactVersionId}
@@ -320,16 +321,16 @@ function CompactRunWorkspace({
           className="rounded-lg fill-group p-3 outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
         >
           <div className="mb-3 flex justify-end">
-            <button
-              type="button"
-              className="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-raised"
+            <Button
+              variant="ghost"
+              size="compact"
               onClick={() => {
                 setSearch({ execution: undefined });
                 (trigger.current?.isConnected ? trigger.current : detailsLink.current)?.focus();
               }}
             >
               {n('closeControls')}
-            </button>
+            </Button>
           </div>
           {search.execution && !projection.executions[search.execution] ? (
             <p role="alert" className="mb-3 text-xs text-warning">
@@ -363,15 +364,22 @@ function CompactRunWorkspace({
         <details className="rounded-lg fill-group p-2 text-sm">
           <summary className="cursor-pointer text-xs font-medium">{t('executions')}</summary>
           <div className="mt-3 flex flex-col gap-3">
-            <Link
-              ref={detailsLink}
-              to="/runs/$runId"
-              params={{ runId: projection.runId }}
-              search={{ ...search, view: search.view ?? 'run' }}
-              className="rounded-md fill-control px-3 py-2 text-center text-sm hover:bg-sidebar-accent"
+            <Button
+              variant="tertiary"
+              size="compact"
+              className="self-start"
+              render={
+                <Link
+                  ref={detailsLink}
+                  to="/runs/$runId"
+                  params={{ runId: projection.runId }}
+                  search={{ ...search, view: search.view ?? 'run' }}
+                />
+              }
             >
               {n('openRunDetails')}
-            </Link>
+              <ArrowRight />
+            </Button>
             <RunStatusCards
               session={session}
               sessionId={sessionId}
@@ -415,14 +423,14 @@ function ResultChoices({
     <ul aria-label={t('label')} className="flex flex-col gap-1">
       {items.map((item) => (
         <li key={item.artifactVersionId}>
-          <button
-            type="button"
-            className="w-full rounded px-2 py-1 text-left text-sm hover:bg-raised"
+          <Button
+            variant="ghost"
+            className="w-full justify-start"
             onClick={() => onOpen(item.artifactVersionId)}
           >
             {t('itemName', { name: item.name, version: item.version })}
             {results.kind === 'partial' ? ` · ${t('partial')}` : ''}
-          </button>
+          </Button>
         </li>
       ))}
     </ul>
@@ -859,9 +867,9 @@ function NodeExecutions({
     >
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold">{t('nodeExecutions', { label })}</h2>
-        <button type="button" onClick={onClose} className="rounded fill-control px-1.5">
+        <Button variant="ghost" size="compact" onClick={onClose}>
           {t('closeNode')}
-        </button>
+        </Button>
       </div>
       {ids.length === 0 ? <p className="text-muted-foreground">{t('noNodeExecutions')}</p> : null}
       <ul className="flex flex-col gap-1">
@@ -871,15 +879,12 @@ function NodeExecutions({
           const round = e.iterationId ? projection.iterations[e.iterationId]?.no : null;
           return (
             <li key={id}>
-              <button
-                type="button"
+              <Button
+                variant={id === selectedExecutionId ? 'secondary' : 'ghost'}
+                size="compact"
                 aria-pressed={id === selectedExecutionId}
                 onClick={() => onChoose(id)}
-                className={`flex w-full items-center justify-between gap-2 rounded border px-2 py-1 text-left ${
-                  id === selectedExecutionId
-                    ? 'border-primary bg-raised'
-                    : 'border-transparent fill-group'
-                }`}
+                className="w-full justify-between"
               >
                 <span>
                   {round ? `${tr('round', { no: round })} · ` : ''}
@@ -887,7 +892,7 @@ function NodeExecutions({
                   <span className="font-mono">{id}</span>
                 </span>
                 <StatusBadge status={e.status} />
-              </button>
+              </Button>
             </li>
           );
         })}
@@ -913,23 +918,23 @@ function ViewSwitch({ view, onView }: { view: RunPageView; onView: (view: RunPag
     refs.current[next]?.focus();
   };
   return (
-    <div role="tablist" aria-label={t('label')} className="flex rounded-md fill-control p-0.5">
+    <div role="tablist" aria-label={t('label')} className="flex gap-0.5">
       {VIEWS.map((name, index) => (
-        <button
+        <Button
           key={name}
+          variant={view === name ? 'secondary' : 'ghost'}
+          size="compact"
           ref={(el) => {
             refs.current[name] = el;
           }}
-          type="button"
           role="tab"
           aria-selected={view === name}
           tabIndex={view === name ? 0 : -1}
           onClick={() => onView(name)}
           onKeyDown={(event) => move(event, index)}
-          className={`rounded px-2 py-0.5 text-xs ${view === name ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'}`}
         >
           {t(name)}
-        </button>
+        </Button>
       ))}
     </div>
   );
@@ -968,21 +973,22 @@ function NarrowViews({
       className="flex gap-1 overflow-x-auto border-b border-line px-2 py-1 @3xl:hidden"
     >
       {NARROW_PANELS.map((name, index) => (
-        <button
+        <Button
           key={name}
+          variant={panel === name ? 'secondary' : 'ghost'}
+          size="compact"
+          className="shrink-0"
           ref={(el) => {
             refs.current[name] = el;
           }}
-          type="button"
           role="tab"
           aria-selected={panel === name}
           tabIndex={panel === name ? 0 : -1}
           onClick={() => onChoose(name)}
           onKeyDown={(event) => move(event, index)}
-          className={`shrink-0 rounded px-2 py-1 text-xs ${panel === name ? 'bg-primary text-primary-foreground' : 'fill-control'}`}
         >
           {t(name)}
-        </button>
+        </Button>
       ))}
     </div>
   );
@@ -1025,15 +1031,16 @@ function RunDetails({
       <div
         role="tablist"
         aria-label={t('label')}
-        className="flex gap-1 border-b border-line px-2 pt-1"
+        className="flex gap-0.5 border-b border-line px-2 py-1"
       >
         {TABS.map((id, index) => (
-          <button
+          <Button
             key={id}
+            variant={tab === id ? 'secondary' : 'ghost'}
+            size="compact"
             ref={(el) => {
               refs.current[id] = el;
             }}
-            type="button"
             role="tab"
             id={`run-tab-${id}`}
             aria-selected={tab === id}
@@ -1041,14 +1048,9 @@ function RunDetails({
             tabIndex={tab === id ? 0 : -1}
             onClick={() => setChosen(id)}
             onKeyDown={(event) => move(event, index)}
-            className={`rounded-t px-3 py-1 text-xs ${
-              tab === id
-                ? 'border border-b-0 border-line bg-raised font-medium'
-                : 'text-muted-foreground'
-            }`}
           >
             {t(id)}
-          </button>
+          </Button>
         ))}
       </div>
       <div

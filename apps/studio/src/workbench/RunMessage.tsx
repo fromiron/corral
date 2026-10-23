@@ -15,7 +15,14 @@ import {
   WorkPlanPanel,
 } from '@corral/react';
 import { Button } from '@corral/react/design-kit';
-import { Activity, ChevronRight, FileText, LoaderCircle, Pause } from '@corral/react/icons';
+import {
+  Activity,
+  ChevronRight,
+  FileText,
+  LoaderCircle,
+  PanelRight,
+  Pause,
+} from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -430,8 +437,9 @@ function ChatResult({
             search={search(result.artifactVersionId)}
             className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-text"
           >
+            {sessionId ? <PanelRight size={12} aria-hidden="true" /> : null}
             {tr('openResults')}
-            <ChevronRight size={12} />
+            {sessionId ? null : <ChevronRight size={12} />}
           </Link>
           {sessionId ? (
             <MessageBranch

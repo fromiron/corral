@@ -2,13 +2,14 @@
 import type { RunEvent } from '@corral/contracts';
 import { emptyProjection, type RunProjection } from '@corral/core';
 import { createRunSession, type RunSessionStore } from '@corral/react';
+import { Menu, MenuPopup, MenuTrigger } from '@corral/react/design-kit';
 import { linearCorral } from '@corral/testkit';
 import { act, type ReactNode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import { ChatView } from './ChatView.tsx';
+import { ChatDensityMenu, ChatView } from './ChatView.tsx';
 import { parsePreferences, preferences } from './preferences.ts';
 import { RunMessage } from './RunMessage.tsx';
 
@@ -32,6 +33,7 @@ vi.mock('@corral/react', async (original) => ({
   ExecutionTranscript: () => <p data-testid="density-transcript">Full transcript</p>,
 }));
 const disposals: (() => Promise<void>)[] = [];
+Element.prototype.getAnimations ??= () => [];
 afterEach(async () => {
   for (const dispose of disposals.splice(0)) await dispose();
   preferences.setState(parsePreferences(null));
@@ -40,10 +42,16 @@ afterEach(async () => {
 });
 async function render() {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  vi.stubGlobal('matchMedia', () => ({
+    matches: false,
+    addEventListener() {},
+    removeEventListener() {},
+  }));
   vi.stubGlobal(
     'ResizeObserver',
     class {
       observe() {}
+      unobserve() {}
       disconnect() {}
     },
   );
@@ -135,6 +143,13 @@ async function render() {
   await act(async () =>
     root.render(
       <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        {/* The preference lives in the page menu, outside the conversation it changes. */}
+        <Menu>
+          <MenuTrigger aria-label="Page menu">…</MenuTrigger>
+          <MenuPopup>
+            <ChatDensityMenu />
+          </MenuPopup>
+        </Menu>
         <ChatView
           sessionId="session"
           composer={<textarea aria-label="Draft" defaultValue="Keep this draft" />}
@@ -199,19 +214,20 @@ it('[TC-WBD-007-F] changing the display preference keeps message and composer no
   const row = f.container.querySelector('[data-chat-item="entry"]');
   const composer = f.container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Draft"]');
   expect(composer?.value).toBe('Keep this draft');
-  const select = f.container.querySelector<HTMLButtonElement>(
-    'button[role="combobox"][aria-label="Conversation detail"]',
+  const trigger = f.container.querySelector<HTMLButtonElement>('[aria-label="Page menu"]');
+  expect(trigger).not.toBeNull();
+  await act(async () => trigger?.click());
+  // A menu row repeats its label once more to reserve its bold width.
+  const detail = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((row) =>
+    row.textContent?.startsWith('Conversation detail'),
   );
-  expect(select).not.toBeNull();
-  await act(async () => select?.click());
-  const results = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(
-    (option) => option.textContent === 'Results',
+  expect(detail).toBeDefined();
+  await act(async () => detail?.click());
+  const results = [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find(
+    (option) => option.textContent?.startsWith('Results'),
   );
   expect(results).toBeDefined();
-  await act(async () => results?.focus());
-  await act(async () =>
-    results?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })),
-  );
+  await act(async () => results?.click());
   expect(preferences.getState().chatDensity).toBe('results');
   expect(f.container.querySelector('[data-chat-item="entry"]')).toBe(row);
   expect(f.container.querySelector('textarea[aria-label="Draft"]')).toBe(composer);

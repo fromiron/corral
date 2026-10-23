@@ -10,16 +10,12 @@ test('[TC-ABS-010-H] image profile CRUD and role configuration persist through t
   const section = page.getByRole('region', { name: 'Image generation', exact: true });
   await section.getByRole('button', { name: 'Add image profile' }).click();
   await section.getByLabel('Image profile ID', { exact: true }).fill('illustration');
-  const profiles = await section
-    .getByLabel('Provider model profile')
-    .locator('option')
-    .evaluateAll((options) =>
-      options.map((option) => (option as HTMLOptionElement).value).filter(Boolean),
-    );
-  expect(profiles.length).toBeGreaterThan(0);
-  const profile = profiles[0];
+  await section.getByRole('combobox', { name: 'Provider model profile', exact: true }).click();
+  const options = page.getByRole('option');
+  await expect(options).not.toHaveCount(0);
+  const profile = (await options.first().textContent())?.trim();
   if (!profile) throw new Error('No provider profile available');
-  await section.getByLabel('Provider model profile').selectOption(profile);
+  await options.first().click();
   await section.getByLabel('Image model ID').fill('image-test');
   await section.getByLabel('Maximum cost per call (USD)').fill('0.25');
   await section.getByRole('button', { name: 'Save image profile' }).click();

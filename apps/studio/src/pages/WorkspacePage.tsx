@@ -228,7 +228,7 @@ export function WorkspacePage() {
                   onMove={(to) => void move(corral.corralId, to)}
                 />
                 <Button
-                  variant="ghost-muted"
+                  variant="ghost"
                   size="compact"
                   onClick={() => duplicate(corral.corralId, corral.name)}
                 >
@@ -243,11 +243,7 @@ export function WorkspacePage() {
                     >
                       {t('confirmDelete')}
                     </Button>
-                    <Button
-                      variant="ghost-muted"
-                      size="compact"
-                      onClick={() => setConfirming(null)}
-                    >
+                    <Button variant="ghost" size="compact" onClick={() => setConfirming(null)}>
                       {t('cancel')}
                     </Button>
                   </>
@@ -597,7 +593,7 @@ function ProjectHeader({
             <MenuTrigger
               render={
                 <Button
-                  variant="ghost-muted"
+                  variant="ghost"
                   size="icon-compact"
                   aria-label={t('actions', { name: shown })}
                 />
@@ -959,7 +955,7 @@ function SessionList({ sessions, runs }: { sessions: WorkSession[]; runs: RunSum
       )}
       {archivedCount > 0 ? (
         <Button
-          variant="ghost-muted"
+          variant="ghost"
           size="compact"
           className="self-start"
           aria-pressed={showArchived}

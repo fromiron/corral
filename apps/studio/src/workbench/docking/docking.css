@@ -42,43 +42,86 @@
 .corral-dock-theme {
   --dv-background-color: var(--color-surface);
   --dv-group-view-background-color: var(--color-surface);
-  --dv-tabs-and-actions-container-background-color: var(--color-raised);
-  --dv-tabs-and-actions-container-height: 36px;
+  --dv-tabs-and-actions-container-background-color: var(--color-surface);
+  --dv-tabs-and-actions-container-height: 40px;
   --dv-tabs-and-actions-container-font-size: var(--fs-caption);
-  --dv-activegroup-visiblepanel-tab-background-color: var(--color-surface);
+  --dv-activegroup-visiblepanel-tab-background-color: var(--tint);
   --dv-activegroup-hiddenpanel-tab-background-color: transparent;
-  --dv-inactivegroup-visiblepanel-tab-background-color: var(--color-surface);
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--hover);
   --dv-inactivegroup-hiddenpanel-tab-background-color: transparent;
   --dv-activegroup-visiblepanel-tab-color: var(--color-text);
   --dv-activegroup-hiddenpanel-tab-color: var(--color-muted-foreground);
   --dv-inactivegroup-visiblepanel-tab-color: var(--color-text);
   --dv-inactivegroup-hiddenpanel-tab-color: var(--color-muted-foreground);
+  --dv-tab-divider-color: transparent;
   --dv-separator-border: var(--color-line);
   --dv-drag-over-background-color: color-mix(in srgb, var(--color-primary) 14%, transparent);
   --dv-drag-over-border: 1px solid var(--color-primary);
 }
+/* Tabs read as the kit's compact segmented controls: a rounded tint for the shown pane. */
+.corral-dock-theme .dv-tabs-and-actions-container {
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0 0.375rem;
+  border-bottom: 1px solid var(--color-line);
+}
+.corral-dock-theme .dv-tabs-container {
+  gap: 0.125rem;
+}
+.corral-dock-theme .dv-tab {
+  height: 28px;
+  padding: 0 0.625rem;
+  border-radius: var(--control-radius);
+  font-weight: 500;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+.corral-dock-theme .dv-tab.dv-inactive-tab:hover {
+  background-color: var(--hover);
+  color: var(--color-text);
+}
 .corral-dock-theme .dv-default-tab-content {
-  min-width: 3.5rem;
+  min-width: 0;
 }
 .corral-dock-theme .dv-tab:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: -2px;
 }
+.corral-dock-theme .dv-tab:focus-visible::after,
+.corral-dock-theme .dv-tab:has(:focus-visible)::after {
+  display: none;
+}
+/* Tabs that do not fit fold into dockview's overflow list, drawn as a compact kit control. */
+.corral-dock-theme .dv-tabs-overflow-dropdown-default {
+  height: 28px;
+  padding: 0 0.5rem;
+  border-radius: var(--control-radius);
+  color: var(--color-muted-foreground);
+  font-size: var(--fs-caption);
+}
+.corral-dock-theme .dv-tabs-overflow-dropdown-default:hover {
+  background-color: var(--hover);
+  color: var(--color-text);
+}
+.corral-dock-theme .dv-tabs-overflow-container {
+  padding: 0.25rem;
+  border-radius: var(--panel-radius);
+  background: var(--surface-3);
+  box-shadow: var(--shadow-popup);
+}
+.corral-dock-theme .dv-tabs-overflow-container .dv-tab {
+  height: 32px;
+}
+.corral-dock-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+  color: var(--color-muted-foreground);
+}
 .corral-dock-controls {
   flex-shrink: 0;
   padding: 0.25rem 0.5rem;
-}
-.corral-dock-actions > summary {
-  cursor: pointer;
-  border-radius: var(--control-radius);
-  padding: 0.375rem 0.5rem;
-  font-size: var(--fs-caption);
-}
-.corral-dock-actions[open] {
-  flex-basis: 100%;
-}
-.corral-dock-actions > div {
-  padding: 0.25rem;
 }
 @media (max-width: 600px) {
   .corral-dock-toolbar [role="combobox"] {
@@ -91,16 +134,4 @@
     transition: none;
     animation: none;
   }
-}
-
-.corral-dock-select {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-  min-width: 0;
-}
-.corral-dock-select > span {
-  font-size: var(--fs-micro);
-  color: var(--muted-foreground);
-  white-space: nowrap;
 }
