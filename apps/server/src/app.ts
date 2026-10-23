@@ -88,6 +88,7 @@ import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import packageJson from '../package.json' with { type: 'json' };
+import { registerFileEditRoutes } from './files/edit-routes.ts';
 import { ReviewService } from './files/review.ts';
 import { type ChangeScope, WorkspaceError, WorkspaceService } from './files/service.ts';
 import { McpCredentials } from './harness/mcp-credentials.ts';
@@ -1873,6 +1874,7 @@ async function createCorralServer(
       return fail(reply, error.code, error.message);
     return fail(reply, 'STORAGE_UNAVAILABLE', 'the document operation failed');
   };
+  registerFileEditRoutes(app, files, documentFail);
   app.post<SessionParams>(
     '/api/v1/sessions/:sessionId/worktree/search-contents',
     async (request, reply) => {

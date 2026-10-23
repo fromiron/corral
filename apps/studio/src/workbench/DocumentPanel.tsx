@@ -15,6 +15,7 @@ import { useStore } from 'zustand';
 import { type AttachmentCapture, beginAttachmentCapture } from './context/bridge.ts';
 import { captureDocumentAttachment } from './context/documents.ts';
 import { SourceNavigationContext } from './context/SourceAttachments.tsx';
+import type { LanguageSelection } from './documents/CodeEditorView.tsx';
 import type { DocumentStore } from './documents/store.ts';
 import { WriterHeld } from './documents/WriterHeld.tsx';
 import type { FileReference } from './FilePanel.tsx';
@@ -60,6 +61,7 @@ export function DocumentPanel({
   const [editorFailed, setEditorFailed] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [selection, setSelection] = useState<TextRange | null>(null);
+  const [languageSelection, setLanguageSelection] = useState<LanguageSelection | null>(null);
   const [capturing, setCapturing] = useState(false);
   const [captured, setCaptured] = useState<{
     attachment: TextAttachment;
@@ -235,7 +237,7 @@ export function DocumentPanel({
         </span>
       </div>
       {language && !readOnlyTarget ? (
-        <LanguageSupport owner={owner} documentKey={documentKey} />
+        <LanguageSupport owner={owner} documentKey={documentKey} selection={languageSelection} />
       ) : null}
       {readOnlyTarget || !entry.file.writable ? (
         <p className="text-xs text-muted">{t('readOnly')}</p>
@@ -414,6 +416,7 @@ export function DocumentPanel({
           <div className={fill ? 'h-full min-h-56' : 'h-[min(45vh,28rem)] min-h-56'}>
             <Suspense fallback={<p className="p-3 text-xs text-muted">{t('loading')}</p>}>
               <CodeEditorView
+                onLanguageSelection={setLanguageSelection}
                 onOpenResource={
                   language && navigation
                     ? (resource, range) =>

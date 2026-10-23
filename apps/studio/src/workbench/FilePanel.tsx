@@ -483,6 +483,7 @@ export function FilePanel({
           <ContentSearch
             key={JSON.stringify(searchTarget)}
             api={workspaces}
+            edits={workspaces}
             owner={owner}
             target={searchTarget}
             onOpenDocument={onOpenDocument}

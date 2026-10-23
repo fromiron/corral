@@ -47,6 +47,8 @@ export interface LanguageCapabilities {
   completion: boolean;
   definition: boolean;
   references: boolean;
+  rename: boolean;
+  codeActions: boolean;
   diagnostics: boolean;
   diagnosticPull: boolean;
   triggerCharacters: string[];

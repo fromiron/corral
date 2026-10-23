@@ -1,9 +1,13 @@
-import type { TextRange } from '@corral/contracts';
+import type { LanguageRefactor, TextRange } from '@corral/contracts';
 import { cn } from '@corral/react/ui';
 import type { editor } from 'monaco-editor/editor';
 import { useEffect, useRef } from 'react';
 import { loadMonaco, type Monaco, onMonacoWorkerError } from './monaco.ts';
 
+export type LanguageSelection = {
+  position: Extract<LanguageRefactor, { kind: 'rename' }>['position'];
+  range: Extract<LanguageRefactor, { kind: 'code_actions' }>['range'];
+};
 export interface CodeEditorViewProps {
   model: editor.ITextModel;
   viewId: string;
@@ -11,6 +15,7 @@ export interface CodeEditorViewProps {
   ariaLabel: string;
   saveLabel: string;
   onSave: () => unknown;
+  onLanguageSelection?: (selection: LanguageSelection) => void;
   onSelection?: (startLine: number, endLine: number, selection: TextRange | null) => void;
   revealRange?: { startLine: number; endLine: number };
   revealSelection?: TextRange;
@@ -107,6 +112,16 @@ export function CodeEditorView(props: CodeEditorViewProps) {
         if (saved) instance.restoreViewState(saved);
         const select = (selection: ReturnType<typeof instance.getSelection>) => {
           if (!selection) return;
+          callbacks.current.onLanguageSelection?.({
+            position: {
+              line: selection.positionLineNumber - 1,
+              character: selection.positionColumn - 1,
+            },
+            range: {
+              start: { line: selection.startLineNumber - 1, character: selection.startColumn - 1 },
+              end: { line: selection.endLineNumber - 1, character: selection.endColumn - 1 },
+            },
+          });
           callbacks.current.onSelection?.(
             selection.startLineNumber,
             selection.endLineNumber,

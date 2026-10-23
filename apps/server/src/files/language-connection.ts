@@ -10,9 +10,13 @@ import {
   ApplyWorkspaceEditRequest,
   type CancellationToken,
   CancellationTokenSource,
+  CodeAction,
+  CodeActionRequest,
+  CodeActionResolveRequest,
   CompletionRequest,
   createProtocolConnection,
   DefinitionRequest,
+  Diagnostic,
   DidChangeTextDocumentNotification,
   DidCloseTextDocumentNotification,
   DidOpenTextDocumentNotification,
@@ -23,7 +27,9 @@ import {
   type Position,
   type ProtocolConnection,
   PublishDiagnosticsNotification,
+  type Range,
   ReferencesRequest,
+  RenameRequest,
   ShutdownRequest,
   type TextDocumentItem,
   TextDocumentSyncKind,
@@ -41,6 +47,27 @@ import {
 import { killProcessGroup, processGroupGone } from './process-group.ts';
 
 const failure = (message: string) => new ToolRefusal('CAPABILITY_DENIED', message);
+
+// The protocol validator requires an edit even for an unresolved literal action.
+function isAction(value: unknown): value is CodeAction {
+  if (value === null || typeof value !== 'object') return false;
+  return CodeAction.is({
+    ...value,
+    ...(!('edit' in value) && !('command' in value) ? { edit: { changes: {} } } : {}),
+  });
+}
+
+function hasResourceOperation(edit: unknown): boolean {
+  return (
+    edit !== null &&
+    typeof edit === 'object' &&
+    'documentChanges' in edit &&
+    Array.isArray(edit.documentChanges) &&
+    edit.documentChanges.some(
+      (change) => change && ['create', 'rename', 'delete'].includes(change.kind),
+    )
+  );
+}
 
 /** Validate framing before jsonrpc buffers a body; the budget resets for every message. */
 export class BoundedLspFrames extends Transform {
@@ -102,6 +129,8 @@ export interface LanguageCapabilities {
   references: boolean;
   diagnostics: boolean;
   diagnosticPull: boolean;
+  rename: boolean;
+  codeActions: boolean;
   triggerCharacters: string[];
 }
 interface LanguageConnectionOptions {
@@ -125,6 +154,8 @@ export class LanguageConnection {
     references: false,
     diagnostics: true,
     diagnosticPull: false,
+    rename: false,
+    codeActions: false,
     triggerCharacters: [],
   };
   private readonly options: LanguageConnectionOptions;
@@ -142,6 +173,7 @@ export class LanguageConnection {
   private failed: Error | undefined;
   private initialized = false;
   private syncKind: TextDocumentSyncKind = TextDocumentSyncKind.None;
+  private resolveCodeAction = false;
   private syncQueue: Promise<void> = Promise.resolve();
 
   private constructor(options: LanguageConnectionOptions, home: string) {
@@ -319,13 +351,29 @@ export class LanguageConnection {
           clientInfo: { name: 'Corral' },
           capabilities: {
             general: { positionEncodings: ['utf-16'] },
-            workspace: { applyEdit: false },
+            workspace: {
+              applyEdit: false,
+              workspaceEdit: {
+                documentChanges: true,
+                resourceOperations: [],
+                failureHandling: 'abort',
+              },
+            },
             textDocument: {
               synchronization: { dynamicRegistration: false },
               publishDiagnostics: { versionSupport: true },
               completion: { dynamicRegistration: false, completionItem: { snippetSupport: false } },
               definition: { linkSupport: true },
               references: { dynamicRegistration: false },
+              rename: { prepareSupport: false },
+              codeAction: {
+                dataSupport: true,
+                disabledSupport: true,
+                resolveSupport: { properties: ['edit'] },
+                codeActionLiteralSupport: {
+                  codeActionKind: { valueSet: ['quickfix', 'refactor', 'source'] },
+                },
+              },
               diagnostic: { dynamicRegistration: false },
             },
           },
@@ -347,10 +395,15 @@ export class LanguageConnection {
       definition: Boolean(result.capabilities.definitionProvider),
       references: Boolean(result.capabilities.referencesProvider),
       diagnosticPull: Boolean(result.capabilities.diagnosticProvider),
+      rename: Boolean(result.capabilities.renameProvider),
+      codeActions: Boolean(result.capabilities.codeActionProvider),
       triggerCharacters: (result.capabilities.completionProvider?.triggerCharacters ?? [])
         .filter((value) => typeof value === 'string' && value.length <= 8)
         .slice(0, 32),
     });
+    this.resolveCodeAction =
+      typeof result.capabilities.codeActionProvider === 'object' &&
+      result.capabilities.codeActionProvider.resolveProvider === true;
     await this.request(() => connection.sendNotification(InitializedNotification.type, {}));
     this.initialized = true;
   }
@@ -463,6 +516,96 @@ export class LanguageConnection {
         ),
       cancellation,
     );
+  }
+
+  async propose(
+    input:
+      | { kind: 'rename'; uri: string; position: Position; newName: string }
+      | { kind: 'code_actions'; uri: string; range: Range; diagnostics?: unknown[] },
+    cancellation?: ToolCancellation,
+  ): Promise<
+    {
+      title: string;
+      edit?: unknown;
+      unsupported?: 'command' | 'disabled' | 'no_edit' | 'resource_operation';
+    }[]
+  > {
+    await this.syncQueue;
+    this.assertOpen();
+    if (!this.documents.has(input.uri)) throw failure('language server document is not open');
+    const connection = this.connection as ProtocolConnection;
+    if (input.kind === 'rename') {
+      if (!this.capabilities.rename) throw failure('language server does not support rename');
+      if (!input.position) throw failure('language server position is required');
+      if (!input.newName || input.newName.length > 200 || /[\r\n\0]/.test(input.newName))
+        throw failure('invalid rename identifier');
+      const edit = await this.request(
+        (token) =>
+          connection.sendRequest(
+            RenameRequest.type,
+            { textDocument: { uri: input.uri }, position: input.position, newName: input.newName },
+            token,
+          ),
+        cancellation,
+      );
+      if (!edit) return [];
+      const title = `Rename to ${input.newName}`;
+      return [
+        hasResourceOperation(edit) ? { title, unsupported: 'resource_operation' } : { title, edit },
+      ];
+    }
+    if (!this.capabilities.codeActions)
+      throw failure('language server does not support code actions');
+    if (!input.range) throw failure('code action range is required');
+    const candidates =
+      (await this.request(
+        (token) =>
+          connection.sendRequest(
+            CodeActionRequest.type,
+            {
+              textDocument: { uri: input.uri },
+              range: input.range,
+              context: {
+                diagnostics: (input.diagnostics ?? []).filter(Diagnostic.is).slice(0, 256),
+              },
+            },
+            token,
+          ),
+        cancellation,
+      )) ?? [];
+    if (!Array.isArray(candidates) || candidates.length > 32)
+      throw failure('code action limit exceeded');
+    const actions: Awaited<ReturnType<LanguageConnection['propose']>> = [];
+    for (const candidate of candidates) {
+      if (typeof candidate?.title !== 'string' || candidate.title.length > 1000)
+        throw failure('invalid code action');
+      if (typeof candidate.command === 'string') {
+        actions.push({ title: candidate.title, unsupported: 'command' });
+        continue;
+      }
+      if (!isAction(candidate)) throw failure('invalid code action');
+      let action = candidate;
+      if (!action.edit && action.data !== undefined && this.resolveCodeAction) {
+        action = await this.request(
+          (token) => connection.sendRequest(CodeActionResolveRequest.type, action, token),
+          cancellation,
+        );
+        if (!isAction(action) || action.title.length > 1000)
+          throw failure('invalid resolved code action');
+      }
+      actions.push(
+        action.disabled
+          ? { title: action.title, unsupported: 'disabled' }
+          : action.command
+            ? { title: action.title, unsupported: 'command' }
+            : !action.edit
+              ? { title: action.title, unsupported: 'no_edit' }
+              : hasResourceOperation(action.edit)
+                ? { title: action.title, unsupported: 'resource_operation' }
+                : { title: action.title, edit: action.edit },
+      );
+    }
+    return actions;
   }
 
   private deadline<T>(promise: Promise<T>, ms: number): Promise<T> {

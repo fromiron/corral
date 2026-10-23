@@ -41,6 +41,7 @@ export async function stageLspEdit(
   raw: unknown,
   source: { uri: string; version: number },
   readUri: (uri: string) => Promise<LspDocument>,
+  versions: ReadonlyMap<string, number> = new Map([[source.uri, source.version]]),
 ): Promise<LspProposedFile[]> {
   if (raw === null) return [];
   const parsed = WorkspaceEdit.safeParse(raw);
@@ -61,7 +62,7 @@ export async function stageLspEdit(
   let total = 0;
   for (const change of changes) {
     const { uri, version } = change.textDocument;
-    if (version !== null && (uri !== source.uri || version !== source.version))
+    if (version !== null && versions.get(uri) !== version)
       throw new ToolRefusal(
         'REVISION_CONFLICT',
         'LSP document version is stale or was not synchronized',

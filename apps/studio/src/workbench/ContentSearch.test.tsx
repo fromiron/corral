@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import type { WorkspacesApi } from '@corral/client';
 import type { ContentSearchResult, FileDocument, WorkspaceTarget } from '@corral/contracts';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -8,6 +9,10 @@ import messages from '../../../../packages/react/src/messages/en.json' with { ty
 import { ContentSearch } from './ContentSearch.tsx';
 import type { DocumentStore } from './documents/store.ts';
 
+vi.mock('./EditProposalReview.tsx', () => ({
+  EditProposals: ({ proposal }: { proposal?: { title: string } }) =>
+    proposal ? <div data-edit-review>{proposal.title}</div> : null,
+}));
 vi.mock('@tanstack/react-virtual', () => ({
   useVirtualizer: ({ count }: { count: number }) => ({
     getVirtualItems: () =>
@@ -39,7 +44,7 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0)) await cleanup();
   vi.unstubAllGlobals();
 });
-async function mount() {
+async function mount(editing = false) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   const api = {
     searchContents: vi.fn(
@@ -59,6 +64,38 @@ async function mount() {
       }),
     ),
     readDocument: vi.fn(async () => file),
+  };
+  const edits = {
+    fileEditProposals: vi.fn(async () => []),
+    previewFileEdits: vi.fn(async (_session: string, input: { replacement: string }) => ({
+      proposals: [
+        {
+          proposalId: 'proposal_one',
+          target,
+          title: 'Replace greet',
+          source: {
+            kind: 'replace',
+            query: 'greet',
+            caseSensitive: false,
+            replacement: input.replacement,
+          },
+          files: [
+            {
+              path: match.path,
+              before: 'greet(name);',
+              beforeHash: match.sha256,
+              after: `${input.replacement}(name);`,
+              afterHash: 'b'.repeat(64),
+            },
+          ],
+          createdAt: '2026-10-24T00:00:00.000Z',
+          hash: 'c'.repeat(64),
+          dismissed: false,
+          operationId: null,
+        },
+      ],
+      unavailable: [],
+    })),
   };
   const entry = {
     key: 'document',
@@ -81,7 +118,13 @@ async function mount() {
     act(async () =>
       root.render(
         <IntlProvider locale="en" messages={messages} timeZone="UTC">
-          <ContentSearch api={api} owner={owner} target={value} onOpenDocument={open} />
+          <ContentSearch
+            api={api}
+            edits={editing ? (edits as unknown as WorkspacesApi) : undefined}
+            owner={owner}
+            target={value}
+            onOpenDocument={open}
+          />
         </IntlProvider>,
       ),
     );
@@ -108,7 +151,7 @@ async function mount() {
         .find((button) => button.textContent?.includes(match.path))
         ?.click();
     });
-  return { api, entry, owner, open, element, render, query, search, clickResult };
+  return { api, entry, owner, open, element, render, query, search, clickResult, edits };
 }
 it('[TC-WBD-019-H] searches saved content and opens the existing document with the exact range', async () => {
   const f = await mount();
@@ -185,4 +228,42 @@ it('[TC-WBD-019-N] rejects stale disk results and preserves unsaved drafts witho
   expect(f.element.textContent).toContain(messages.ContentSearch.draft);
   expect(f.entry.text).toBe('my unsaved draft');
   expect(f.open).not.toHaveBeenCalled();
+});
+
+it('[TC-WBD-021-H] previews literal replacement before applying and refuses affected unsaved drafts', async () => {
+  const f = await mount(true);
+  await f.query('greet');
+  await f.search();
+  const replacement = f.element.querySelector<HTMLInputElement>('input[aria-label="Replace with"]');
+  expect(replacement).not.toBeNull();
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(
+      replacement,
+      'welcome',
+    );
+    replacement?.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  const preview = () =>
+    [...f.element.querySelectorAll('button')].find(
+      (button) => button.textContent === 'Review replacement',
+    );
+  await act(async () => preview()?.click());
+  expect(f.edits.previewFileEdits).toHaveBeenCalledWith(
+    'session',
+    expect.objectContaining({
+      target,
+      kind: 'replace',
+      query: 'greet',
+      replacement: 'welcome',
+      caseSensitive: false,
+    }),
+    expect.any(AbortSignal),
+  );
+  expect(f.element.querySelector('[data-edit-review]')?.textContent).toBe('Replace greet');
+  expect(f.open).not.toHaveBeenCalled();
+  f.entry.dirty = true;
+  f.entry.text = 'my draft';
+  await act(async () => preview()?.click());
+  expect(f.edits.previewFileEdits).toHaveBeenCalledTimes(1);
+  expect(f.entry.text).toBe('my draft');
 });

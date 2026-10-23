@@ -43,6 +43,16 @@ import {
   type EditTextResult,
   type FileCheckpoint,
   type FileDocument,
+  FileEditApply,
+  FileEditDecision,
+  FileEditInverse,
+  type FileEditOperation,
+  FileEditPreview,
+  type FileEditPreviewResult,
+  type FileEditProposal,
+  FileEditProposalContent,
+  type FileEditProposalSummary,
+  FileEditReconcile,
   type GitDiff,
   type GitDiffRequest,
   type GitOperation,
@@ -99,6 +109,7 @@ import { commandEnvironment, listShells, resolveShellCommand } from '../processe
 import { systemTimers } from '../runtime.ts';
 import { isolatedChecksAvailable } from './check-isolation.ts';
 import { redactToolText } from './check-output.ts';
+import { FileEditProposals } from './file-edit-proposals.ts';
 import { checkGitEnvironment, GitError, git, gitText } from './git.ts';
 import {
   applyHashline,
@@ -421,6 +432,7 @@ export class WorkspaceService implements FileTools {
   private readonly criteria = new Map<string, ReviewRecipeRevision['criteriaFiles']>();
   private readonly lsp: Pick<LspRunner, 'query'>;
   private readonly language: LanguageSessions;
+  private readonly fileEdits: FileEditProposals;
   private readonly io: MutationIo;
   readonly projectTools: SqliteProjectToolStore;
   private readonly verificationRunner: VerificationRunner;
@@ -485,6 +497,7 @@ export class WorkspaceService implements FileTools {
       .prepare("UPDATE command_operations SET state='uncertain',updated_at=? WHERE state='running'")
       .run(this.clock.nowIso());
     this.projectTools = new SqliteProjectToolStore(options.db, options.clock);
+    this.fileEdits = new FileEditProposals(options.db);
     this.lsp =
       options.lsp ??
       new LspRunner({ clock: options.clock, timers: options.timers ?? systemTimers });
@@ -1411,7 +1424,6 @@ export class WorkspaceService implements FileTools {
       if (!admitted.admitted) return this.documentOperation(sessionId, command.operationId);
       const owner = { kind: 'user', id: command.operationId } as const;
       let attempted = false;
-      let temporary: string | undefined;
       try {
         await expectFile(row.worktree_path, command.path, command.baseHash);
         if (
@@ -1424,25 +1436,16 @@ export class WorkspaceService implements FileTools {
         const source = join(row.worktree_path, command.path);
         let result: DocumentOperation['result'];
         if (command.kind === 'save') {
-          const bytes = Buffer.from(command.text, 'utf8');
-          if (bytes.length > MAX_TEXT)
-            throw new ToolRefusal('LIMIT_REACHED', 'documents are at most 1 MiB');
-          if (decodeText(bytes, true) === null)
-            throw new ToolRefusal('CAPABILITY_DENIED', 'documents must be UTF-8 text');
-          const mode = command.baseHash === null ? 0o644 : (await stat(source)).mode & 0o777;
-          await mkdir(dirname(source), { recursive: true });
-          await assertPlainPath(row.worktree_path, command.path);
-          temporary = join(dirname(source), `.${basename(source)}.corral-${randomUUID()}`);
-          await this.io.writeFile(temporary, bytes, { mode, flag: 'wx', flush: true });
-          if (command.baseHash !== null) await chmod(temporary, mode);
-          await expectFile(row.worktree_path, command.path, command.baseHash);
-          this.documentTarget(sessionId, command.target, true);
-          attempted = true;
-          if (command.baseHash === null) await this.io.link(temporary, source);
-          else await this.io.rename(temporary, source);
-          const saved = await textBytes(row.worktree_path, command.path);
-          if (sha256(saved) !== sha256(bytes))
-            throw new ToolRefusal('REVISION_CONFLICT', 'the document changed during save');
+          const saved = await this.writeDocumentText(
+            row.worktree_path,
+            command.path,
+            command.baseHash,
+            command.text,
+            () => {
+              this.documentTarget(sessionId, command.target, true);
+              attempted = true;
+            },
+          );
           result = {
             kind: 'saved',
             intent,
@@ -1544,10 +1547,476 @@ export class WorkspaceService implements FileTools {
           );
         }
         return this.documentOperation(sessionId, command.operationId);
-      } finally {
-        if (temporary) await rm(temporary, { force: true }).catch(() => undefined);
       }
     });
+  }
+
+  private assertFileEditContent(files: FileEditProposalContent['files']) {
+    let bytes = 0;
+    if (!files.length || files.length > 32)
+      throw new ToolRefusal('LIMIT_REACHED', 'a proposal requires 1–32 files');
+    const paths = new Set<string>();
+    for (const file of files) {
+      const path = safeRelative(file.path);
+      const key = process.platform === 'win32' ? path.toLowerCase() : path;
+      if (paths.has(key)) throw new ToolRefusal('SCHEMA_INVALID', 'a proposal repeats a file');
+      paths.add(key);
+      for (const [text, hash] of [
+        [file.before, file.beforeHash],
+        [file.after, file.afterHash],
+      ]) {
+        const content = Buffer.from(text as string, 'utf8');
+        bytes += content.length;
+        if (content.length > MAX_TEXT || bytes > 8 * 1024 * 1024)
+          throw new ToolRefusal('LIMIT_REACHED', 'proposal text exceeds the supported limits');
+        if (decodeText(content, true) !== text || sha256(content) !== hash)
+          throw new ToolRefusal('SCHEMA_INVALID', 'proposal text or hash is invalid');
+      }
+    }
+  }
+
+  private async assertEditablePaths(root: string, paths: string[]) {
+    const listed = (
+      await git(root, [
+        'ls-files',
+        '-z',
+        '--cached',
+        '--others',
+        '--exclude-standard',
+        '--',
+        ...paths.map((path) => `:(literal)${safeRelative(path)}`),
+      ])
+    ).stdout
+      .toString('utf8')
+      .split('\0');
+    const allowed = new Set(listed);
+    if (paths.some((path) => !allowed.has(path)))
+      throw new ToolRefusal(
+        'CAPABILITY_DENIED',
+        'ignored or unavailable files cannot be changed by this proposal',
+      );
+  }
+
+  async previewFileEdits(
+    sessionId: string,
+    raw: FileEditPreview,
+    cancellation?: ToolCancellation,
+  ): Promise<FileEditPreviewResult> {
+    const input = FileEditPreview.parse(raw);
+    const { row } = this.documentTarget(sessionId, input.target);
+    const cancelled = () => {
+      if (cancellation?.aborted)
+        throw new ToolRefusal('TARGET_TERMINAL', 'file edit preview cancelled');
+    };
+    cancelled();
+    const requestHash = sha256(Buffer.from(canonicalJson(input)));
+    const existing = this.fileEdits.forRequest(sessionId, input.requestId, requestHash);
+    if (existing.length) return { proposals: existing, unavailable: [] };
+    let source: FileEditProposalContent['source'];
+    let actions: { title: string; files: FileEditProposalContent['files'] }[];
+    let unavailable: FileEditPreviewResult['unavailable'] = [];
+    if (input.kind === 'replace') {
+      const replacement = Buffer.from(input.replacement, 'utf8');
+      if (decodeText(replacement, true) !== input.replacement || replacement.length > MAX_TEXT)
+        throw new ToolRefusal('SCHEMA_INVALID', 'replacement must be bounded UTF-8 text');
+      const aborted = new AbortController();
+      const off = cancellation?.onCancel(() => aborted.abort());
+      let result: ContentSearchResult;
+      try {
+        result = await this.searchContents(
+          sessionId,
+          {
+            target: input.target,
+            queryId: input.requestId,
+            query: input.query,
+            caseSensitive: input.caseSensitive,
+          },
+          aborted.signal,
+        );
+      } finally {
+        off?.();
+      }
+      if (result.truncated)
+        throw new ToolRefusal(
+          'LIMIT_REACHED',
+          'search results are incomplete; narrow the search before replacing all matches',
+        );
+      const paths = [
+        ...new Map(result.matches.map((match) => [match.path, match.sha256])).entries(),
+      ];
+      if (paths.length > 32)
+        throw new ToolRefusal('LIMIT_REACHED', 'a proposal changes at most 32 files');
+      const matcher = new RegExp(
+        input.query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+        input.caseSensitive ? 'gu' : 'giu',
+      );
+      const files: FileEditProposalContent['files'] = [];
+      for (const [path, beforeHash] of paths) {
+        cancelled();
+        const bytes = await textBytes(row.worktree_path, path);
+        const before = decodeText(bytes, true);
+        if (before === null || sha256(bytes) !== beforeHash)
+          throw new ToolRefusal('REVISION_CONFLICT', 'a search result changed before its preview');
+        const after = before.replaceAll(matcher, () => input.replacement);
+        if (after !== before)
+          files.push({ path, before, beforeHash, after, afterHash: sha256(Buffer.from(after)) });
+      }
+      source = {
+        kind: 'replace',
+        query: input.query,
+        caseSensitive: input.caseSensitive,
+        replacement: input.replacement,
+      };
+      actions = files.length ? [{ title: `Replace “${input.query}”`, files }] : [];
+    } else {
+      const { requestId: _requestId, ...query } = input;
+      const result = await this.language.propose(sessionId, query, cancellation);
+      source = { kind: 'language', operation: input.kind, language: result.source };
+      actions = result.actions;
+      unavailable = result.unavailable;
+    }
+    let bytes = 0;
+    for (const action of actions) {
+      this.assertFileEditContent(action.files);
+      bytes += action.files.reduce(
+        (sum, file) => sum + Buffer.byteLength(file.before) + Buffer.byteLength(file.after),
+        0,
+      );
+      if (bytes > 8 * 1024 * 1024)
+        throw new ToolRefusal('LIMIT_REACHED', 'proposal batch exceeds text limits');
+      await this.assertEditablePaths(
+        row.worktree_path,
+        action.files.map((file) => file.path),
+      );
+      for (const file of action.files)
+        await expectFile(row.worktree_path, file.path, file.beforeHash);
+    }
+    this.documentTarget(sessionId, input.target);
+    cancelled();
+    const proposals = this.db
+      .transaction(() => {
+        const concurrent = this.fileEdits.forRequest(sessionId, input.requestId, requestHash);
+        if (concurrent.length) return concurrent;
+        return actions.map((action, index) =>
+          this.fileEdits.put(
+            FileEditProposalContent.parse({
+              proposalId: `edit_${sha256(Buffer.from(canonicalJson({ target: input.target, requestId: input.requestId, index }))).slice(0, 32)}`,
+              target: input.target,
+              title: action.title.slice(0, 400),
+              source,
+              files: action.files,
+              createdAt: this.clock.nowIso(),
+            }),
+            input.requestId,
+            requestHash,
+          ),
+        );
+      })
+      .immediate();
+    return { proposals, unavailable };
+  }
+
+  fileEditProposals(sessionId: string): FileEditProposalSummary[] {
+    return this.fileEdits.list(sessionId);
+  }
+  fileEditProposal(sessionId: string, id: string): FileEditProposal {
+    return this.fileEdits.get(sessionId, id);
+  }
+
+  private fileEditDecision(sessionId: string, id: string, input: FileEditDecision) {
+    const decision = FileEditDecision.parse(input);
+    const proposal = this.fileEdits.get(sessionId, id);
+    if (
+      proposal.hash !== decision.proposalHash ||
+      canonicalJson(proposal.target) !== canonicalJson(decision.target)
+    )
+      throw new ToolRefusal('REVISION_CONFLICT', 'the proposal target or reviewed content changed');
+    this.documentTarget(sessionId, decision.target);
+    return proposal;
+  }
+  dismissFileEdits(sessionId: string, id: string, input: FileEditDecision): FileEditProposal {
+    this.fileEditDecision(sessionId, id, input);
+    return this.fileEdits.dismiss(sessionId, id);
+  }
+  fileEditOperation(sessionId: string, operationId: string): FileEditOperation {
+    const receipt = this.workbenchOperations.get(operationId);
+    if (receipt?.kind !== 'document.batch' || receipt.target.sessionId !== sessionId)
+      throw new WorkspaceError('TARGET_NOT_FOUND', 'the file edit operation is unavailable');
+    const owner = this.workspaceAccess.get({ kind: 'user', id: operationId });
+    return {
+      ...receipt,
+      ...(owner?.state === 'uncertain' ? { state: 'uncertain' as const } : {}),
+    } as FileEditOperation;
+  }
+
+  async applyFileEdits(
+    sessionId: string,
+    id: string,
+    raw: FileEditApply,
+  ): Promise<FileEditOperation> {
+    const input = FileEditApply.parse(raw);
+    const requestHash = sha256(Buffer.from(canonicalJson({ proposalId: id, ...input })));
+    const prior = this.workbenchOperations.get(input.operationId);
+    if (prior) {
+      if (prior.kind !== 'document.batch' || prior.requestHash !== requestHash)
+        throw new ToolRefusal('REVISION_CONFLICT', 'the file edit command changed');
+      return this.fileEditOperation(sessionId, input.operationId);
+    }
+    const proposal = this.fileEditDecision(sessionId, id, {
+      target: input.target,
+      proposalHash: input.proposalHash,
+    });
+    const { row } = this.documentTarget(sessionId, input.target, true);
+    return this.lease(row.worktree_path, async () => {
+      this.documentTarget(sessionId, input.target, true);
+      if ((await realpath(row.worktree_path)) !== resolve(row.worktree_path))
+        throw new ToolRefusal('REVISION_CONFLICT', 'the working copy identity changed');
+      const result: FileEditOperation['result'] = {
+        proposalId: id,
+        proposalHash: proposal.hash,
+        outcomes: proposal.files.map((file) => ({ path: file.path, state: 'pending' })),
+        error: null,
+      };
+      const admitted = this.db
+        .transaction(() => {
+          this.fileEdits.claim(sessionId, id, input.operationId);
+          return this.workbenchOperations.admit(
+            {
+              operationId: input.operationId,
+              target: input.target,
+              kind: 'document.batch',
+              requestHash,
+            },
+            row.worktree_path,
+            result,
+          );
+        })
+        .immediate();
+      if (!admitted.admitted) return this.fileEditOperation(sessionId, input.operationId);
+      const owner = { kind: 'user' as const, id: input.operationId };
+      let completing = false;
+      try {
+        this.assertFileEditContent(proposal.files);
+        await this.assertEditablePaths(
+          row.worktree_path,
+          proposal.files.map((file) => file.path),
+        );
+        for (const file of proposal.files)
+          await expectFile(row.worktree_path, file.path, file.beforeHash);
+        const languageGuard =
+          proposal.source.kind === 'language'
+            ? await this.language.assertRefactorSource(
+                sessionId,
+                proposal.source.language,
+                input.target,
+                proposal.files.map((file) => file.path),
+              )
+            : () => {};
+        const tree = await this.snapshotTree(row.worktree_path);
+        this.workspaceAccess.pin(owner, tree);
+        languageGuard();
+        for (const [index, file] of proposal.files.entries()) {
+          let attempted = false;
+          result.outcomes[index] = { path: file.path, state: 'uncertain' };
+          if (!this.workbenchOperations.updateRunning(input.operationId, result))
+            throw new ToolRefusal('TARGET_TERMINAL', 'file edit ownership changed');
+          try {
+            await this.writeDocumentText(
+              row.worktree_path,
+              file.path,
+              file.beforeHash,
+              file.after,
+              () => {
+                this.documentTarget(sessionId, input.target, true);
+                languageGuard();
+                attempted = true;
+              },
+            );
+            result.outcomes[index] = { path: file.path, state: 'applied' };
+            if (!this.workbenchOperations.updateRunning(input.operationId, result))
+              throw new ToolRefusal(
+                'STORAGE_UNAVAILABLE',
+                'file edit progress could not be recorded',
+              );
+          } catch (error) {
+            let unchanged = !attempted;
+            if (attempted) {
+              try {
+                await expectFile(row.worktree_path, file.path, file.beforeHash);
+                unchanged = true;
+              } catch {}
+            }
+            result.outcomes[index] = {
+              path: file.path,
+              state: unchanged ? 'unchanged' : 'uncertain',
+            };
+            throw error;
+          }
+        }
+        completing = true;
+        this.workbenchOperations.finish(input.operationId, 'succeeded', result);
+      } catch (error) {
+        result.outcomes = result.outcomes.map((file) =>
+          file.state === 'pending' ? { ...file, state: 'unchanged' } : file,
+        );
+        result.error = {
+          code:
+            error instanceof ToolRefusal || error instanceof WorkspaceError
+              ? error.code
+              : 'STORAGE_UNAVAILABLE',
+          message:
+            error instanceof ToolRefusal || error instanceof WorkspaceError
+              ? error.message
+              : 'The file changes could not all be confirmed. Review each file outcome.',
+        };
+        const state =
+          completing || result.outcomes.some((file) => file.state === 'uncertain')
+            ? 'uncertain'
+            : 'failed';
+        try {
+          this.workbenchOperations.finish(input.operationId, state, result);
+        } catch {
+          this.workspaceAccess.release(owner, false);
+          throw new ToolRefusal(
+            'STORAGE_UNAVAILABLE',
+            'The file edit receipt could not be saved; check the original operation.',
+          );
+        }
+      }
+      return this.fileEditOperation(sessionId, input.operationId);
+    });
+  }
+
+  async reconcileFileEdits(sessionId: string, raw: FileEditReconcile): Promise<FileEditOperation> {
+    const input = FileEditReconcile.parse(raw),
+      receipt = this.fileEditOperation(sessionId, input.operationId);
+    if (canonicalJson(input.target) !== canonicalJson(receipt.target))
+      throw new ToolRefusal('REVISION_CONFLICT', 'file edit target changed');
+    const { row } = this.documentTarget(sessionId, input.target, true);
+    if (receipt.state !== 'uncertain') return receipt;
+    return this.lease(row.worktree_path, async () => {
+      this.documentTarget(sessionId, input.target, true);
+      const proposal = this.fileEdits.get(sessionId, receipt.result.proposalId);
+      const outcomes: FileEditOperation['result']['outcomes'] = [];
+      for (const file of proposal.files) {
+        let state: FileEditOperation['result']['outcomes'][number]['state'] = 'uncertain';
+        try {
+          const hash = sha256(await textBytes(row.worktree_path, file.path));
+          state =
+            hash === file.afterHash
+              ? 'applied'
+              : hash === file.beforeHash
+                ? 'unchanged'
+                : 'uncertain';
+        } catch {}
+        outcomes.push({ path: file.path, state });
+      }
+      this.documentTarget(sessionId, input.target, true);
+      if (outcomes.some((file) => file.state === 'uncertain'))
+        return this.fileEditOperation(sessionId, input.operationId);
+      const succeeded = outcomes.every((file) => file.state === 'applied');
+      this.workbenchOperations.reconcile(
+        input.operationId,
+        ['document.batch'],
+        succeeded ? 'succeeded' : 'failed',
+        { ...receipt.result, outcomes, error: succeeded ? null : receipt.result.error },
+      );
+      return this.fileEditOperation(sessionId, input.operationId);
+    });
+  }
+
+  async inverseFileEdits(
+    sessionId: string,
+    id: string,
+    raw: FileEditInverse,
+  ): Promise<FileEditProposal> {
+    const input = FileEditInverse.parse(raw);
+    const proposal = this.fileEditDecision(sessionId, id, {
+      target: input.target,
+      proposalHash: input.proposalHash,
+    });
+    const receipt = this.fileEditOperation(sessionId, input.operationId);
+    if (
+      receipt.result.proposalId !== id ||
+      receipt.result.proposalHash !== proposal.hash ||
+      receipt.state === 'running' ||
+      receipt.state === 'uncertain'
+    )
+      throw new ToolRefusal(
+        'REVISION_CONFLICT',
+        'confirm the original file edit outcome before preparing its inverse',
+      );
+    const requestHash = sha256(Buffer.from(canonicalJson({ inverseOf: id, ...input })));
+    const prior = this.fileEdits.forRequest(sessionId, input.requestId, requestHash)[0];
+    if (prior) return prior;
+    const { row } = this.documentTarget(sessionId, input.target);
+    const applied = new Set(
+      receipt.result.outcomes.filter((file) => file.state === 'applied').map((file) => file.path),
+    );
+    const files = proposal.files
+      .filter((file) => applied.has(file.path))
+      .map((file) => ({
+        path: file.path,
+        before: file.after,
+        beforeHash: file.afterHash,
+        after: file.before,
+        afterHash: file.beforeHash,
+      }));
+    if (!files.length)
+      throw new ToolRefusal('TARGET_TERMINAL', 'this operation has no confirmed changes to undo');
+    for (const file of files) await expectFile(row.worktree_path, file.path, file.beforeHash);
+    this.documentTarget(sessionId, input.target);
+    return this.db
+      .transaction(() => {
+        const concurrent = this.fileEdits.forRequest(sessionId, input.requestId, requestHash)[0];
+        if (concurrent) return concurrent;
+        return this.fileEdits.put(
+          {
+            proposalId: `edit_${sha256(Buffer.from(canonicalJson({ target: input.target, requestId: input.requestId }))).slice(0, 32)}`,
+            target: input.target,
+            title: `Undo: ${proposal.title}`.slice(0, 400),
+            source: { kind: 'inverse', proposalId: id, operationId: input.operationId },
+            files,
+            createdAt: this.clock.nowIso(),
+          },
+          input.requestId,
+          requestHash,
+        );
+      })
+      .immediate();
+  }
+
+  private async writeDocumentText(
+    root: string,
+    path: string,
+    baseHash: string | null,
+    text: string,
+    beforeReplace: () => void,
+  ): Promise<Buffer> {
+    const bytes = Buffer.from(text, 'utf8');
+    if (bytes.length > MAX_TEXT)
+      throw new ToolRefusal('LIMIT_REACHED', 'documents are at most 1 MiB');
+    if (decodeText(bytes, true) === null)
+      throw new ToolRefusal('CAPABILITY_DENIED', 'documents must be UTF-8 text');
+    const source = join(root, path);
+    const mode = baseHash === null ? 0o644 : (await stat(source)).mode & 0o777;
+    await mkdir(dirname(source), { recursive: true });
+    await assertPlainPath(root, path);
+    const temporary = join(dirname(source), `.${basename(source)}.corral-${randomUUID()}`);
+    try {
+      await this.io.writeFile(temporary, bytes, { mode, flag: 'wx', flush: true });
+      if (baseHash !== null) await chmod(temporary, mode);
+      await expectFile(root, path, baseHash);
+      beforeReplace();
+      if (baseHash === null) await this.io.link(temporary, source);
+      else await this.io.rename(temporary, source);
+      const saved = await textBytes(root, path);
+      if (sha256(saved) !== sha256(bytes))
+        throw new ToolRefusal('REVISION_CONFLICT', 'the document changed during save');
+      return saved;
+    } finally {
+      await rm(temporary, { force: true }).catch(() => undefined);
+    }
   }
 
   /** A restore target is always a trusted session-owned copy or its linked original repository. */

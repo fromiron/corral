@@ -3252,7 +3252,8 @@
       "packages/client/src/"
     ],
     "done": "저장된 파일의 다중 교체와 언어 서버 수정 제안을 불변 diff로 검토하고 파일별 사전 조건·공통 writer·receipt로 적용하며 미저장 초안·외부 변경·부분 실패를 보존한다.",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "docs/evaluation/Development-Workbench-File-Edits-2026-10-23.md"
   },
   {
     "id": "C-166",

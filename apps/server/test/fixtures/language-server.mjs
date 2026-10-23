@@ -1,5 +1,7 @@
 import {
   ApplyWorkspaceEditRequest,
+  CodeActionRequest,
+  CodeActionResolveRequest,
   CompletionRequest,
   createProtocolConnection,
   DefinitionRequest,
@@ -11,6 +13,7 @@ import {
   InitializeRequest,
   PublishDiagnosticsNotification,
   ReferencesRequest,
+  RenameRequest,
   ShutdownRequest,
 } from 'vscode-languageserver-protocol/node';
 
@@ -37,6 +40,8 @@ connection.onRequest(InitializeRequest.type, () => ({
     completionProvider: { triggerCharacters: ['.'] },
     definitionProvider: true,
     referencesProvider: mode !== 'unsupported',
+    renameProvider: mode !== 'unsupported',
+    codeActionProvider: mode !== 'unsupported' && { resolveProvider: true },
     ...(mode === 'pull'
       ? { diagnosticProvider: { interFileDependencies: false, workspaceDiagnostics: false } }
       : {}),
@@ -96,6 +101,39 @@ connection.onRequest(DocumentDiagnosticRequest.type, ({ textDocument }) => ({
   kind: 'full',
   items: diagnostics(documents.get(textDocument.uri)),
 }));
+connection.onRequest(RenameRequest.type, ({ textDocument, position, newName }) => ({
+  changes: {
+    [textDocument.uri]: [{ range: { start: position, end: position }, newText: newName }],
+  },
+}));
+connection.onRequest(CodeActionRequest.type, ({ textDocument, range, context }) => [
+  {
+    title: context.diagnostics.length
+      ? `Resolved edit (${context.diagnostics[0].code})`
+      : 'Resolved edit',
+    data: { uri: textDocument.uri, range },
+  },
+  { title: 'Legacy command', command: 'fixture.forbidden' },
+  {
+    title: 'Edit with command',
+    edit: { changes: {} },
+    command: { title: 'Forbidden', command: 'fixture.forbidden' },
+  },
+  { title: 'Disabled action', disabled: { reason: 'Unavailable' } },
+  { title: 'No edit' },
+  { title: 'Create file', edit: { documentChanges: [{ kind: 'create', uri: textDocument.uri }] } },
+]);
+connection.onRequest(CodeActionResolveRequest.type, (action) => ({
+  ...action,
+  edit: {
+    changes: {
+      [action.data.uri]: [
+        { range: action.data.range, newText: documents.get(action.data.uri).text },
+      ],
+    },
+  },
+}));
+connection.onRequest('workspace/executeCommand', () => process.exit(7));
 connection.onRequest(ShutdownRequest.type, () => null);
 connection.onNotification(ExitNotification.type, () => process.exit(0));
 connection.listen();

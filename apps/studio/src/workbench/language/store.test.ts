@@ -39,6 +39,8 @@ const session: LanguageSession = {
     references: true,
     diagnostics: true,
     diagnosticPull: false,
+    rename: false,
+    codeActions: false,
     triggerCharacters: ['.'],
   },
   diagnostics: [],
@@ -299,4 +301,31 @@ it('[TC-WBD-018-F] reopening a file advances its wire version and a late locatio
   finish(otherKey);
   expect(await moving).toBe(false);
   expect(open).not.toHaveBeenCalled();
+});
+
+it('[TC-WBD-021-N] prepares only saved language versions and never refreshes a dirty draft', async () => {
+  const f = setup();
+  f.owner.retain(target);
+  await settle();
+  await f.owner.inspect(target, server.id);
+  await f.owner.start(target, true);
+  await settle();
+  f.documents.refresh = vi.fn(async () => {});
+  const scope = await f.owner.editScope(f.key);
+  expect(scope).toEqual({
+    target,
+    generation: session.generation,
+    clientId: session.clientId,
+    path: 'main.ts',
+    version: 1,
+  });
+  f.documents.setState({
+    documents: {
+      [f.key]: { ...f.documents.getState().documents[f.key]!, dirty: true, text: 'unsaved change' },
+    },
+  });
+  f.documents.refresh = vi.fn(async () => {});
+  expect(await f.owner.editScope(f.key)).toBeNull();
+  expect(f.documents.refresh).not.toHaveBeenCalled();
+  expect(f.documents.getState().documents[f.key]?.text).toBe('unsaved change');
 });

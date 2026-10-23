@@ -37,6 +37,8 @@ async function setup() {
       completion: true,
       definition: true,
       references: true,
+      rename: true,
+      codeActions: true,
       diagnostics: true,
       diagnosticPull: true,
       triggerCharacters: ['.'],
@@ -44,6 +46,7 @@ async function setup() {
     sync: vi.fn(async () => {}),
     closeDocument: vi.fn(async () => {}),
     query: vi.fn(async () => [{ label: 'value', insertText: 'value' }]),
+    propose: vi.fn(async () => []),
     close: vi.fn(async () => {}),
   };
   let callbacks: Parameters<typeof LanguageConnection.start>[0];

@@ -111,6 +111,57 @@ it.skipIf(process.platform !== 'linux').each(['full', 'incremental'])(
 );
 
 it.skipIf(process.platform !== 'linux')(
+  '[TC-WBD-021-H] proposes rename and resolved edits without executing unsupported actions',
+  async () => {
+    const { connection, document, received } = await fixture();
+    expect(connection.capabilities).toMatchObject({ rename: true, codeActions: true });
+    const sync = connection.sync(document);
+    const position = { line: 0, character: 2 };
+    expect(
+      await connection.propose({ kind: 'rename', uri: document.uri, position, newName: 'renamed' }),
+    ).toMatchObject([
+      {
+        title: 'Rename to renamed',
+        edit: { changes: { [document.uri]: [{ newText: 'renamed' }] } },
+      },
+    ]);
+    await sync;
+    expect(
+      await connection.propose({
+        kind: 'code_actions',
+        uri: document.uri,
+        range: { start: position, end: position },
+        diagnostics: [
+          { range: { start: position, end: position }, message: 'Hint only', code: 2304 },
+        ],
+      }),
+    ).toEqual([
+      {
+        title: 'Resolved edit (2304)',
+        edit: {
+          changes: {
+            [document.uri]: [{ range: { start: position, end: position }, newText: document.text }],
+          },
+        },
+      },
+      { title: 'Legacy command', unsupported: 'command' },
+      { title: 'Edit with command', unsupported: 'command' },
+      { title: 'Disabled action', unsupported: 'disabled' },
+      { title: 'No edit', unsupported: 'no_edit' },
+      { title: 'Create file', unsupported: 'resource_operation' },
+    ]);
+    await expect(
+      connection.propose({ kind: 'rename', uri: document.uri, position, newName: 'invalid\nname' }),
+    ).rejects.toThrow(/identifier/);
+    await vi.waitFor(() =>
+      expect(received.at(-1)?.diagnostics).toMatchObject([
+        { message: expect.stringContaining('edit=true') },
+      ]),
+    );
+  },
+);
+
+it.skipIf(process.platform !== 'linux')(
   '[TC-WBD-018-N] exposes pull capabilities and rejects unsupported requests without a restart',
   async () => {
     const pull = await fixture('pull');

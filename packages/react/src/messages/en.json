@@ -3513,6 +3513,31 @@
     "references": "References",
     "diagnostics": "Diagnostics"
   },
+  "FileEdits": {
+    "unsupportedCount": "{count} unsupported suggestions",
+    "replacement": "Replace with",
+    "previewReplace": "Review replacement",
+    "savedOnly": "Only saved files are changed. Save or discard affected drafts first.",
+    "rename": "Rename symbol",
+    "newName": "New name",
+    "previewRename": "Review rename",
+    "actions": "Review code fixes",
+    "noActions": "No supported changes.",
+    "unsupported": "Unsupported: {title} ({reason})",
+    "reason": {
+      "command": "requires running a command",
+      "disabled": "disabled by the language server",
+      "no_edit": "no text changes",
+      "resource_operation": "creates, moves, or deletes files"
+    },
+    "dirty": "Save or discard affected drafts and resolve conflicts first.",
+    "changed": "The document or language session changed. Review again.",
+    "failed": "Changes could not be prepared.",
+    "selectSymbol": "Place the cursor on a symbol first.",
+    "cancel": "Cancel",
+    "previewing": "Preparing changes…",
+    "fullSearch": "Run an untruncated search before replacing."
+  },
   "ContentSearch": {
     "mode": "Search mode",
     "names": "Name",
@@ -3560,5 +3585,45 @@
     "failed": "Preview feedback could not be attached.",
     "limit": "The request has reached its attachment limit. Remove an attachment and try again.",
     "busy": "The request is busy. Try attaching again after it finishes."
+  },
+  "EditProposals": {
+    "history": "Edit proposals",
+    "hint": "Review the saved before and after text for each file. Applying changes writes only to this working copy; unsaved drafts are never included.",
+    "files": "Proposed files",
+    "busy": "Checking proposal…",
+    "failed": "The proposal could not be checked. Keep it open and check its status.",
+    "stale": "The working copy, proposal, or language session changed. Create a new proposal.",
+    "drafts": "Save or resolve the affected files first. Unsaved drafts, pending saves, and conflicts are preserved.",
+    "partial": "Some results are incomplete or uncertain. Check each file before creating a restore proposal.",
+    "apply": "Apply reviewed changes",
+    "dismiss": "Dismiss proposal",
+    "check": "Check apply status",
+    "reconcile": "Check files and reconcile",
+    "inverse": "Review restore proposal",
+    "back": "All proposals",
+    "close": "Close",
+    "empty": "No edit proposals yet.",
+    "hasOperation": "Apply started — open to check results",
+    "states": {
+      "pending": "Awaiting review",
+      "dismissed": "Dismissed",
+      "unconfirmed": "Apply result not confirmed",
+      "running": "Applying",
+      "succeeded": "Applied",
+      "failed": "Apply did not complete",
+      "cancelled": "Cancelled",
+      "uncertain": "Result needs reconciliation"
+    },
+    "outcomes": {
+      "pending": "Not applied",
+      "applied": "Applied",
+      "unchanged": "Unchanged",
+      "uncertain": "Unconfirmed"
+    },
+    "sources": {
+      "replace": "Text replacement",
+      "language": "Language refactor",
+      "inverse": "Restore proposal"
+    }
   }
 }

@@ -110,6 +110,8 @@ async function mount() {
               references: false,
               diagnostics: true,
               diagnosticPull: false,
+              rename: false,
+              codeActions: false,
               triggerCharacters: ['.'],
             },
             diagnostics: [],

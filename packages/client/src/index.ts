@@ -9,6 +9,15 @@ import type {
   DocumentOperation,
   FileCheckpoint,
   FileDocument,
+  FileEditApply,
+  FileEditDecision,
+  FileEditInverse,
+  FileEditOperation,
+  FileEditPreview,
+  FileEditPreviewResult,
+  FileEditProposal,
+  FileEditProposalSummary,
+  FileEditReconcile,
   GitDiff,
   GitDiffRequest,
   GitOperation,
@@ -63,6 +72,17 @@ export type {
   DocumentOperation,
   DocumentVersion,
   FileDocument,
+  FileEditApply,
+  FileEditDecision,
+  FileEditInverse,
+  FileEditOperation,
+  FileEditOutcome,
+  FileEditPreview,
+  FileEditPreviewResult,
+  FileEditProposal,
+  FileEditProposalContent,
+  FileEditProposalSummary,
+  FileEditReconcile,
   GitDiff,
   GitDiffRequest,
   GitFileSide,
@@ -76,10 +96,14 @@ export type {
   LanguageInspection,
   LanguageQuery,
   LanguageQueryResult,
+  LanguageRefactor,
+  LanguageRefactorResult,
+  LanguageRefactorSource,
   LanguageScope,
   LanguageSession,
   LanguageStart,
   LanguageState,
+  ProposedTextFile,
   TaskCandidates,
   TaskStart,
   TerminalAck,
@@ -91,6 +115,7 @@ export type {
   TerminalResize,
   TerminalStreamMessage,
   TerminalView,
+  UnsupportedFileEdit,
   UserGitTarget,
   UserTaskView,
   WorkspaceTarget,
@@ -1947,6 +1972,70 @@ export class WorkspacesApi {
   readDocument(sessionId: string, path: string): Promise<FileDocument> {
     return this.send(
       `/sessions/${encodeURIComponent(sessionId)}/worktree/document?${new URLSearchParams({ path })}`,
+    );
+  }
+  fileEditProposals(sessionId: string): Promise<FileEditProposalSummary[]> {
+    return this.send(`/sessions/${encodeURIComponent(sessionId)}/worktree/edit-proposals`);
+  }
+  previewFileEdits(
+    sessionId: string,
+    input: FileEditPreview,
+    signal?: AbortSignal,
+  ): Promise<FileEditPreviewResult> {
+    return this.http.json(`/sessions/${encodeURIComponent(sessionId)}/worktree/edit-proposals`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+      signal,
+    });
+  }
+  fileEditProposal(sessionId: string, proposalId: string): Promise<FileEditProposal> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/edit-proposals/${encodeURIComponent(proposalId)}`,
+    );
+  }
+  applyFileEdits(
+    sessionId: string,
+    proposalId: string,
+    input: FileEditApply,
+  ): Promise<FileEditOperation> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/edit-proposals/${encodeURIComponent(proposalId)}/apply`,
+      'POST',
+      input,
+    );
+  }
+  dismissFileEdits(
+    sessionId: string,
+    proposalId: string,
+    input: FileEditDecision,
+  ): Promise<FileEditProposal> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/edit-proposals/${encodeURIComponent(proposalId)}/dismiss`,
+      'POST',
+      input,
+    );
+  }
+  inverseFileEdits(
+    sessionId: string,
+    proposalId: string,
+    input: FileEditInverse,
+  ): Promise<FileEditProposal> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/edit-proposals/${encodeURIComponent(proposalId)}/inverse`,
+      'POST',
+      input,
+    );
+  }
+  fileEditOperation(sessionId: string, operationId: string): Promise<FileEditOperation> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/edit-operations/${encodeURIComponent(operationId)}`,
+    );
+  }
+  reconcileFileEdits(sessionId: string, input: FileEditReconcile): Promise<FileEditOperation> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/edit-operations/reconcile`,
+      'POST',
+      input,
     );
   }
   languageState(sessionId: string): Promise<LanguageState> {

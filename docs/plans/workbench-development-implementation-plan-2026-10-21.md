@@ -10,13 +10,13 @@ baseline: 071276873dee4bb51491bf608e604fbb4e123475
 
 입력은 `Corral-Workbench-Ecosystem-Plan-v2-2026-10-21.md`이며 SHA-256은 `11087e6b6b940bdbca89792e5a8efd84764b326ec42664ff1d289c4d65ae4451`이다. 원문을 수정하거나 전체 제품 조사를 복제하지 않는다. 기준 코드는 PR #68을 포함하는 위 commit이며, 계획 작성 시 소스·계약·manifest를 대조했다. 이후 실행 결과는 별도 검증 기록에 남긴다.
 
-현재 구현: P00–P18·P20·P21-A·P22·P23·P24-A(C-142–164). 완료 항목의 계약은 [현재 Workbench](../current/workbench.md)·[CR-046](../change-requests/CR-046-development-workbench.md), 각 환경의 실행 증거는 [상태표](../status.md)와 [증거 지도](../evaluation/README.md)에 연결한다. P19·P21-B·P24-B·P25는 이 완료 범위에 포함하지 않는다.
+현재 구현: P00–P18·P20·P21-A·P22·P23·P24-A·P24-B(C-142–165). 완료 항목의 계약은 [현재 Workbench](../current/workbench.md)·[CR-046](../change-requests/CR-046-development-workbench.md), 각 환경의 실행 증거는 [상태표](../status.md)와 [증거 지도](../evaluation/README.md)에 연결한다. P19·P21-B·P25는 이 완료 범위에 포함하지 않는다.
 
-## 현재 재개 지점: P24-B → P25
+## 현재 재개 지점: P25
 
-`d658830`까지 코어 잔여 검증과 P23 언어 세션(C-162), P24-A 읽기 전용 파일 검색(C-163)을 마쳤다. 핵심 검증과 한계는 [코어 기록](../evaluation/Development-Workbench-Core-2026-10-23.md), [언어 지원 기록](../evaluation/Development-Workbench-Language-2026-10-23.md), [파일 내용 검색 기록](../evaluation/Development-Workbench-Content-Search-2026-10-23.md)을 따른다. 이후 사용자가 P20 preview 피드백(C-164) → P24-B 교체/refactor(C-165) → P25 고급 Git(C-166) 순서의 구현·핵심 회귀·실제 화면·단위별 로컬 커밋을 승인했다. 이 순서로 진행하며 전체 플랫폼/부하 검증이나 외부 게시·배포는 자동 진행하지 않는다.
+`d658830`까지 코어 잔여 검증과 P23 언어 세션(C-162), P24-A 읽기 전용 파일 검색(C-163)을 마쳤고 `8f44489`에서 P20 preview 피드백(C-164)을 커밋했다. P24-B 교체/refactor(C-165)도 구현됐으며 범위와 환경별 결과는 [파일 변경 기록](../evaluation/Development-Workbench-File-Edits-2026-10-23.md)을 따른다. 사용자가 승인한 P20 → P24-B → P25 순서의 다음 작업은 P25 고급 Git(C-166)이다. 변경한 코어 회귀·실제 화면·단위별 로컬 커밋을 유지하고 전체 플랫폼/부하 검증이나 외부 게시·배포는 자동 진행하지 않는다.
 
-기존 task·Git·문서·공통 owner를 재사용했다. 별도 task 테이블·모드 열·관리창은 추가하지 않았다. 상태 원장은 `contracts/backlog.json`이며 전체 release gate 통과를 뜻하지 않는다.
+기존 task·Git·문서·공통 owner를 재사용한다. P24-B의 불변 제안은 전용 저장 기록으로 보존하고 적용 상태는 공통 operation receipt를 따른다. 상태 원장은 `contracts/backlog.json`이며 전체 release gate 통과를 뜻하지 않는다.
 
 ## 2026-10-23 P17 이후 재검토 반영
 
@@ -35,9 +35,9 @@ baseline: 071276873dee4bb51491bf608e604fbb4e123475
 
 여러 문맥의 링크가 같은 기능·대상·상태로 도착하면 중복이 아니다.
 
-**남은 순서:** R5 P24-B·P25 → R6 P26·P27 → R7 P28·설치판 P29. P17·P18·P21-A·P22·P23·P24-A는 구현됐고 R0 코어 검증은 아래 기록으로 회수했다. P19/C-114, P21-B/C-135, P30은 독립 조건을 유지한다.
+**남은 순서:** R5 P25 → R6 P26·P27 → R7 P28·설치판 P29. P17·P18·P20·P21-A·P22·P23·P24-A·P24-B는 구현됐고 R0 코어 검증은 아래 기록으로 회수했다. P19/C-114, P21-B/C-135, P30은 독립 조건을 유지한다.
 
-**R0 코어 검증 완료:** [코어 실행 기록](../evaluation/Development-Workbench-Core-2026-10-23.md)에서 preview HTTP/HMR 소유권·종료, 실제 PTY viewer 재접속 후 셸 상태·입력 제어, dirty 문서→Git→설정 왕복·저장을 확인했다. 사용자 요청에 따라 다음 기능마다 전체 여정을 반복하지 않고 변경한 코어 회귀와 실제 화면만 확인한다. Desktop 전용 프레임/설치판·전체 좁은 화면 인수는 P29, 원격 host는 P21-B에 남긴다. PR #69/#85의 설명·감사 목록 갱신은 별도 외부 게시 작업이다.
+**R0 코어 검증 완료:** [코어 실행 기록](../evaluation/Development-Workbench-Core-2026-10-23.md)에서 preview HTTP/HMR 소유권·종료, 실제 PTY viewer 재접속 후 셸 상태·입력 제어, dirty 문서→Git→설정 왕복·저장을 확인했다. Desktop 프레임의 후속 코어 확인은 [P20 기록](../evaluation/Development-Workbench-Preview-Feedback-2026-10-23.md)에 있다. 사용자 요청에 따라 다음 기능마다 전체 여정을 반복하지 않고 변경한 코어 회귀와 실제 화면만 확인한다. 전체 설치판·좁은 화면 인수는 P29, 원격 host는 P21-B에 남긴다. PR #69/#85의 설명·감사 목록 갱신은 별도 외부 게시 작업이다.
 
 ## 1. 구현 순서와 제품 경계
 
@@ -56,7 +56,7 @@ baseline: 071276873dee4bb51491bf608e604fbb4e123475
 
 ## 2. 현재 코드와 재사용 지도
 
-아래는 2026-10-23 P23·P24-A 구현까지 반영한 재사용 지도다. 기존 테스트가 있다는 사실과 해당 후보·환경에서 그 테스트가 통과했다는 사실은 구분하며 실행 결과는 각 증거 기록을 따른다.
+아래는 2026-10-23 P20·P23·P24-A/B 구현까지 반영한 재사용 지도다. 기존 테스트가 있다는 사실과 해당 후보·환경에서 그 테스트가 통과했다는 사실은 구분하며 실행 결과는 각 증거 기록을 따른다.
 
 | 영역 | 현재 코드·계약 | 구현 시 재사용과 추가할 부분 |
 |---|---|---|
@@ -67,8 +67,8 @@ baseline: 071276873dee4bb51491bf608e604fbb4e123475
 | Git·검토 | [Git 쓰기](../../apps/server/src/files/user-git-write.ts), [GitPanel](../../apps/studio/src/workbench/GitPanel.tsx), [ReviewPage](../../apps/studio/src/pages/ReviewPage.tsx) | P12–14 실제 index·commit·branch/remote·receipt, P17 읽음/검토/승인 분리 구현. 내부 snapshot과 사용자 Git 정책을 유지 |
 | 팀·execution | [EditorPage](../../apps/studio/src/pages/EditorPage.tsx), [ExecutionEvidence](../../apps/studio/src/workbench/ExecutionEvidence.tsx) | P18 그래프 도킹·초안/undo·실행 근거·Reins 대상 고정 구현. 별도 그래프/Run store를 만들지 않음 |
 | 사본 수명 | [CopyRemovalDialog](../../apps/studio/src/workbench/CopyRemovalDialog.tsx), WorkspaceService | P21-A 보관/삭제 분리·삭제 전 요약·generation 고정 구현. P21-B 원격 재접속은 별도 |
-| LSP·Problems | [LspRunner](../../apps/server/src/files/lsp.ts), [LanguageSessions](../../apps/server/src/files/language-sessions.ts), [ProblemsPanel](../../apps/studio/src/workbench/ProblemsPanel.tsx) | P23 상시 언어 세션·dirty 문서 동기화·구조화 진단·completion·정의/참조 이동 구현. 기존 query별 LSP·제안은 보존. 상시 세션의 수정 제안은 P24-B에서 확장 필요 |
-| 파일 내용 검색 | [WorkspaceService](../../apps/server/src/files/service.ts), [ContentSearch](../../apps/studio/src/workbench/ContentSearch.tsx), [FilePanel](../../apps/studio/src/workbench/FilePanel.tsx) | P24-A 저장된 파일의 읽기 전용 내용 검색·기존 문서 열기/위치 이동 구현. 미저장 초안 검색·다중 파일 교체는 포함하지 않음 |
+| LSP·Problems | [LspRunner](../../apps/server/src/files/lsp.ts), [LanguageSessions](../../apps/server/src/files/language-sessions.ts), [ProblemsPanel](../../apps/studio/src/workbench/ProblemsPanel.tsx) | P23 상시 언어 세션·dirty 진단·completion·정의/참조 이동과 P24-B 저장된 파일의 rename·edit-only code action 제안 구현. 기존 query별 LSP·제안 보존. 서버 applyEdit·command 자동 실행은 계속 거절 |
+| 파일 내용 검색·교체 | [WorkspaceService](../../apps/server/src/files/service.ts), [ContentSearch](../../apps/studio/src/workbench/ContentSearch.tsx), [EditProposalReview](../../apps/studio/src/workbench/EditProposalReview.tsx) | P24-A 읽기 전용 검색·위치 이동과 P24-B 불변 diff·명시 batch 적용·receipt 재확인·역방향 제안 구현. 미저장 초안 검색·자동 저장·파일 resource operation은 제외 |
 | preview | [PreviewService](../../apps/server/src/preview/service.ts), [ServicePreview](../../apps/studio/src/workbench/ServicePreview.tsx), [Desktop preview](../../apps/desktop/src/preview.ts) | 사용자 task owner·포트 증명·proxy 연결 구현. P22 live edit·P20 선택 관측/첨부 구현. 실제 Desktop 코어와 전체 설치판/OS qualification을 구분 |
 | 원격·Desktop | [remote hosts](../../apps/desktop/src/remote-hosts.ts), [sidecar](../../apps/desktop/src/sidecar.mjs) | 기존 host namespace·패키지 경계 유지. Linux native PTY smoke와 전체 설치판/지원 OS 검증을 구분 |
 
@@ -115,7 +115,7 @@ baseline: 071276873dee4bb51491bf608e604fbb4e123475
 
 ### 완료 항목의 연결
 
-P00–P18(C-142–159)·P21-A(C-160)·P22(C-161)·P23(C-162)·P24-A(C-163)는 구현됐다. 초기 구현 지시와 비교 실험 계획은 제거했으며 요구·테스트 ID, 승인 CR, 해당 commit·환경의 결과는 원장과 증거에 보존한다. 현재 동작은 Workbench와 CR-046을 따른다. 코어 여정의 확인 범위는 위 R0에 회수했으며 P29 설치판·접근성·복구 조건은 아래에 남긴다.
+P00–P18(C-142–159)·P21-A(C-160)·P22(C-161)·P23(C-162)·P24-A(C-163)·P20(C-164)·P24-B(C-165)는 구현됐다. 초기 구현 지시와 비교 실험 계획은 제거했으며 요구·테스트 ID, 승인 CR, 해당 commit·환경의 결과는 원장과 증거에 보존한다. 현재 동작은 Workbench와 CR-046을 따른다. 코어 여정의 확인 범위는 위 R0에 회수했으며 P29 설치판·접근성·복구 조건은 아래에 남긴다.
 
 ### M4 남은 검토·preview·원격 연결
 
@@ -139,15 +139,11 @@ P20(C-164)은 구현됐다. 현재 동작은 [미리보기 요소 피드백](../
 
 P22 공유 개발 owner는 C-161로 구현했다. 로컬 Vite live edit, CAS 충돌·초안 보존, writer 거절·재시작 복구·snapshot 회귀는 [실행 기록](../evaluation/Development-Workbench-Shared-Development-2026-10-23.md)에 있다. Desktop preview 프레임과 원격/지원 OS qualification은 이 결과에 포함하지 않는다.
 
-P23 상시 언어 세션(C-162)의 동작은 [CR-046 P23](../change-requests/CR-046-development-workbench.md#p23-프로젝트-언어-세션), 지원 환경과 핵심 검증은 [실행 기록](../evaluation/Development-Workbench-Language-2026-10-23.md)을 따른다. 버전 없는 진단을 현재 dirty 문서의 진단으로 확정하지 않으며 후속 언어/OS/수정 제안 확장은 별도다.
+P23 상시 언어 세션(C-162)의 동작은 [CR-046 P23](../change-requests/CR-046-development-workbench.md#p23-프로젝트-언어-세션), 지원 환경과 핵심 검증은 [실행 기록](../evaluation/Development-Workbench-Language-2026-10-23.md)을 따른다. 버전 없는 진단을 현재 dirty 문서의 진단으로 확정하지 않는다. 저장된 파일의 수정 제안은 P24-B에서 추가했으며 후속 언어/OS 확장은 별도다.
 
 P24-A 읽기 전용 파일 내용 검색(C-163)은 구현됐다. 저장된 파일만 검색하고 미저장 초안을 보존하는 계약은 [CR-046 P24-A](../change-requests/CR-046-development-workbench.md#p24-a-읽기-전용-파일-내용-검색), 핵심 검증과 한계는 [실행 기록](../evaluation/Development-Workbench-Content-Search-2026-10-23.md)을 따른다.
 
-**WB-P24-B 다중 파일 교체·refactor — L, W2-11**
-
-- 작업: P24-A 검색과 기존 단발 LSP의 수정 제안·P17 비교 근거·writer 정책을 재사용한다. P23 상시 세션에는 아직 edit proposal 경로가 없으므로 document version·server generation에 고정한 수정 제안 계약과 연결을 확장한다.
-- 연결: replace-all/rename/code action은 적용 전 diff preview와 파일별 precondition을 확인한다. dirty buffer 포함 정책을 명시하고 초안을 덮지 않으며 LSP가 요청한 명령을 자동 실행하지 않는다.
-- 완료: stale range, partial multi-file apply, 외부 변경, case-only rename, binary/대용량/ignored file, 취소 후 늦은 결과. 기존 P04·P23·P24-A의 보호 경계를 유지한다.
+P24-B 다중 파일 교체·refactor(C-165)는 구현됐다. 저장된 파일의 literal 교체·symbol rename·edit-only code action은 불변 diff로 검토하고 공통 writer·파일별 CAS·batch receipt로 명시 적용한다. 부분 실패의 결과 확인과 조건을 재검증하는 역방향 제안을 제공하며 서버 command·파일 resource operation은 실행하지 않는다. 현재 계약은 [다중 파일 교체와 refactor](../current/workbench.md#다중-파일-교체와-refactor), 환경별 결과와 미검증 범위는 [실행 기록](../evaluation/Development-Workbench-File-Edits-2026-10-23.md)을 따른다.
 
 **WB-P25 고급 Git와 충돌 해결 — L, W2-12**
 
@@ -194,12 +190,10 @@ P24-A 읽기 전용 파일 내용 검색(C-163)은 구현됐다. 저장된 파�
 
 ```mermaid
 flowchart TD
-  DONE[구현됨 P00-P18 P20 P21-A P22 P23 P24-A] --> EDIT[다중 파일 교체와 refactor P24-B]
-  DONE --> GIT[고급 Git P25]
+  DONE[구현됨 P00-P18 P20 P21-A P22 P23 P24-A/B] --> GIT[고급 Git P25]
   DONE --> DEBUG[DAP P26]
   DONE --> DEPLOY[배포 task P27]
-  EDIT --> G4[일상 개발 인수 P28]
-  GIT --> G4
+  GIT --> G4[일상 개발 인수 P28]
   DEBUG --> G4
   DEPLOY --> G4
   G4 --> G5[설치판과 운영 검증 P29]

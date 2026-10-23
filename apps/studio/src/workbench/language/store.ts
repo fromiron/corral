@@ -4,6 +4,7 @@ import type {
   LanguageLocation,
   LanguageQuery,
   LanguageQueryResult,
+  LanguageRefactor,
   LanguageSession,
   LanguageState,
   TextRange,
@@ -30,6 +31,10 @@ export interface LanguageCopy {
   busy: boolean;
 }
 export const languageCopyKey = (target: WorkspaceTarget) => documentKey(target, '');
+export type LanguageEditScope = Pick<
+  LanguageRefactor,
+  'target' | 'generation' | 'clientId' | 'path' | 'version'
+>;
 export interface LanguageStore extends StoreApi<{ copies: Record<string, LanguageCopy> }> {
   readonly clientId: string;
   retain(target: WorkspaceTarget): () => void;
@@ -48,6 +53,7 @@ export interface LanguageStore extends StoreApi<{ copies: Record<string, Languag
     range: TextRange,
     open: (target: WorkspaceTarget, path: string, range: TextRange) => boolean,
   ): Promise<boolean>;
+  editScope(key: string): Promise<LanguageEditScope | null>;
   documentVersion(key: string): number | null;
   dispose(): void;
 }
@@ -623,6 +629,44 @@ export function languageStore(
       )
         return false;
       return open(entry.target, entry.path, range);
+    },
+    async editScope(key: string) {
+      const entry = documents.getState().documents[key];
+      const session = entry && active(entry);
+      if (!entry || !session || entry.dirty || entry.saving || entry.pendingSave || entry.conflict)
+        return null;
+      const requestedVersion = version(entry);
+      await documents.refresh(key);
+      const current = documents.getState().documents[key];
+      if (
+        !current ||
+        current.dirty ||
+        current.saving ||
+        current.pendingSave ||
+        current.conflict ||
+        version(current) !== requestedVersion ||
+        active(current)?.generation !== session.generation
+      )
+        return null;
+      await sync(runtime(current.target));
+      const latest = documents.getState().documents[key];
+      if (
+        !latest ||
+        latest.dirty ||
+        latest.saving ||
+        latest.pendingSave ||
+        latest.conflict ||
+        version(latest) !== requestedVersion ||
+        active(latest)?.generation !== session.generation
+      )
+        return null;
+      return {
+        target: latest.target,
+        generation: session.generation,
+        clientId,
+        path: latest.path,
+        version: requestedVersion,
+      };
     },
     documentVersion(key: string) {
       const entry = documents.getState().documents[key];

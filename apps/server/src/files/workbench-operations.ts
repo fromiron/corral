@@ -31,6 +31,7 @@ interface OperationRow {
 
 const sharedKinds = new Set([
   'document.save',
+  'document.batch',
   'document.rename',
   'document.delete',
   'task',

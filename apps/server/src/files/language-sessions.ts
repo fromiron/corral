@@ -14,6 +14,9 @@ import {
   type LanguageInspection,
   LanguageQuery,
   LanguageQueryResult,
+  LanguageRefactor,
+  type LanguageRefactorResult,
+  LanguageRefactorSource,
   LanguageScope,
   type LanguageSession,
   LanguageStart,
@@ -29,12 +32,13 @@ import { cleanupPtySession, type PtySessionIdentity } from '../processes/pty-ses
 import { redactToolText } from './check-output.ts';
 import { LanguageConnection } from './language-connection.ts';
 import { launchFingerprint } from './launch-fingerprint.ts';
+import { stageLspEdit } from './lsp-edits.ts';
 import { type LspDocument, lspResults, validateLspPosition } from './lsp-results.ts';
 import type { WorkbenchOperations } from './workbench-operations.ts';
 
 type Connection = Pick<
   LanguageConnection,
-  'capabilities' | 'sync' | 'closeDocument' | 'query' | 'close'
+  'capabilities' | 'sync' | 'closeDocument' | 'query' | 'propose' | 'close'
 >;
 export interface LanguageTransport {
   start(input: Parameters<typeof LanguageConnection.start>[0]): Promise<Connection>;
@@ -81,6 +85,8 @@ const emptyCapabilities = () => ({
   completion: false,
   definition: false,
   references: false,
+  rename: false,
+  codeActions: false,
   diagnostics: false,
   diagnosticPull: false,
   triggerCharacters: [],
@@ -560,6 +566,123 @@ export class LanguageSessions {
       documentVersion: document.version,
       result,
     });
+  }
+  private async saved(entry: Entry, raw: string) {
+    const path = await this.path(entry, raw);
+    const text = await this.options.read(entry.path, path);
+    const opened = entry.documents.get(path);
+    if (opened && opened.text !== text)
+      throw refusal('REVISION_CONFLICT', 'save or reload affected language documents first');
+    return { path, text, sha256: hash(text) };
+  }
+  async assertRefactorSource(
+    sessionId: string,
+    raw: LanguageRefactorSource,
+    target: WorkspaceTarget,
+    paths: readonly string[] = [raw.path],
+  ) {
+    const source = LanguageRefactorSource.parse(raw);
+    const entry = await this.active(sessionId, { target, ...source });
+    if (
+      entry.view.serverId !== source.serverId ||
+      entry.view.configRevision !== source.configRevision ||
+      entry.view.fingerprint !== source.fingerprint ||
+      entry.documents.get(source.path)?.version !== source.version
+    )
+      throw refusal('REVISION_CONFLICT', 'language refactor source changed');
+    const revision = entry.revision;
+    for (const path of new Set([source.path, ...paths])) await this.saved(entry, path);
+    await this.active(sessionId, { target, ...source });
+    const guard = () => {
+      this.compatible(entry);
+      if (
+        this.entries.get(sessionId) !== entry ||
+        entry.stopped ||
+        entry.view.state !== 'running' ||
+        entry.revision !== revision ||
+        entry.documents.get(source.path)?.version !== source.version
+      )
+        throw refusal(
+          'REVISION_CONFLICT',
+          'language documents changed while checking the proposal',
+        );
+    };
+    guard();
+    return guard;
+  }
+  async propose(
+    sessionId: string,
+    raw: LanguageRefactor,
+    cancellation?: ToolCancellation,
+  ): Promise<LanguageRefactorResult> {
+    const input = LanguageRefactor.parse(raw);
+    const entry = await this.active(sessionId, input);
+    const path = this.options.safePath(input.path);
+    const document = entry.documents.get(path);
+    if (!document || document.version !== input.version)
+      throw refusal('REVISION_CONFLICT', 'synchronize the current document before refactoring');
+    if (input.kind === 'rename') validateLspPosition(input.position, document.text);
+    else {
+      validateLspPosition(input.range.start, document.text);
+      validateLspPosition(input.range.end, document.text);
+    }
+    const revision = entry.revision;
+    const versions = new Map([...entry.documents.values()].map((d) => [d.uri, d.version]));
+    await this.saved(entry, path);
+    if (cancellation?.aborted) throw refusal('TARGET_TERMINAL', 'language refactor cancelled');
+    // Unknown-version diagnostics remain hints; proposal bytes and versions are checked separately.
+    const diagnostics =
+      input.kind === 'code_actions'
+        ? entry.view.diagnostics
+            .filter(
+              (item) =>
+                item.path === path &&
+                (item.documentVersion === null || item.documentVersion === input.version),
+            )
+            .flatMap((item) => item.diagnostics)
+        : [];
+    const actions = await (entry.connection as Connection).propose(
+      { ...input, uri: document.uri, ...(input.kind === 'code_actions' ? { diagnostics } : {}) },
+      cancellation,
+    );
+    const result: LanguageRefactorResult = {
+      source: {
+        generation: entry.view.generation,
+        clientId: entry.view.clientId,
+        serverId: entry.view.serverId,
+        configRevision: entry.view.configRevision,
+        fingerprint: entry.view.fingerprint,
+        path,
+        version: document.version,
+      },
+      actions: [],
+      unavailable: [],
+    };
+    for (const action of actions) {
+      const title = redactToolText(action.title, [entry.path]).slice(0, 400);
+      if (action.unsupported) {
+        result.unavailable.push({ title, reason: action.unsupported });
+        continue;
+      }
+      const files = await stageLspEdit(
+        action.edit,
+        document,
+        async (uri) => this.saved(entry, (await this.readUri(entry, uri)).path),
+        versions,
+      );
+      if (files.length) result.actions.push({ title, files });
+      else result.unavailable.push({ title, reason: 'no_edit' });
+    }
+    await this.assertRefactorSource(
+      sessionId,
+      result.source,
+      input.target,
+      result.actions.flatMap((action) => action.files.map((file) => file.path)),
+    );
+    if (cancellation?.aborted) throw refusal('TARGET_TERMINAL', 'language refactor cancelled');
+    if (entry.revision !== revision)
+      throw refusal('REVISION_CONFLICT', 'language documents changed while refactoring');
+    return result;
   }
   private completions(
     raw: unknown,

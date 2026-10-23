@@ -3,27 +3,51 @@ import { Link } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
+import type { WorkspacesClient } from '../demo/workspaces-client.ts';
 import { useServices } from '../services.tsx';
+import type { LanguageSelection } from './documents/CodeEditorView.tsx';
 import type { DocumentBuffer, DocumentStore } from './documents/store.ts';
+import { RefactorActions } from './language/RefactorActions.tsx';
 import { type LanguageStore, languageCopyKey, languageStore } from './language/store.ts';
 import { useSettingsNavigation } from './navigation.ts';
 
 export function LanguageSupport({
   owner,
   documentKey,
+  selection = null,
 }: {
   owner: DocumentStore;
   documentKey: string;
+  selection?: LanguageSelection | null;
 }) {
   const { workspaces, mode } = useServices();
   const entry = useStore(owner, (state) => state.documents[documentKey]);
   if (!workspaces || mode !== 'server' || !entry) return null;
   return (
-    <LanguageControls key={documentKey} entry={entry} store={languageStore(workspaces, owner)} />
+    <LanguageControls
+      key={documentKey}
+      entry={entry}
+      store={languageStore(workspaces, owner)}
+      api={workspaces}
+      owner={owner}
+      selection={selection}
+    />
   );
 }
 
-function LanguageControls({ entry, store }: { entry: DocumentBuffer; store: LanguageStore }) {
+function LanguageControls({
+  entry,
+  store,
+  api,
+  owner,
+  selection,
+}: {
+  entry: DocumentBuffer;
+  store: LanguageStore;
+  api: WorkspacesClient;
+  owner: DocumentStore;
+  selection: LanguageSelection | null;
+}) {
   const t = useTranslations('Language');
   const navigation = useSettingsNavigation();
   const target = entry.target;
@@ -140,6 +164,15 @@ function LanguageControls({ entry, store }: { entry: DocumentBuffer; store: Lang
             .map((capability) => t(capability))
             .join(' · ')}
         </p>
+      ) : null}
+      {typeof api.previewFileEdits === 'function' ? (
+        <RefactorActions
+          api={api}
+          owner={owner}
+          entry={entry}
+          store={store}
+          selection={selection}
+        />
       ) : null}
       {error ? (
         <p role="alert" className="text-danger">

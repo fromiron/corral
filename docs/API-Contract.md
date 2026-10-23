@@ -59,6 +59,14 @@
 | POST /sessions/:id/worktree/git/operations/:operationId/cancel | — | 진행 중인 Git process group(hook 포함)을 종료한다. 결과는 같은 receipt로 조회 |
 | GET /sessions/:id/worktree/tasks | — | CR-046 P15 `{candidates:TaskCandidates, tasks:UserTaskView[]}`. 후보는 사본 최상위 `package.json` scripts와 lockfile로 고른 `packageManager`(pnpm\|yarn\|npm\|null)이며 읽기만 한다. 사본이 없으면 빈 후보다. 열린 receipt의 process group이 사라졌으면 이때 정리한다 |
 | POST /sessions/:id/worktree/search-contents | `ContentSearch` | CR-046 P24-A. Exact managed-copy target·queryId·literal single-line query·caseSensitive. Disk-only `ContentSearchResult`: bounded matches with byte SHA-256 and 1-based UTF-16 range, scanned/skipped counts, truncated. Existing ignore/protected-path/read policy, 500 files/1 MiB per file/8 MiB total/200 matches. HTTP disconnect cancels work; no original-folder/index/draft writes |
+| GET /sessions/:id/worktree/edit-proposals | — | CR-046 P24-B. 현재 세션의 저장된 변경 제안 요약. 조회는 파일을 적용하거나 uncertain 예약을 해제하지 않음 |
+| POST /sessions/:id/worktree/edit-proposals | `FileEditPreview` | `replace`, `rename`, `code_actions` → `{proposals,unavailable}`. 안정된 requestId·exact target, 저장된 파일만 불변 before/after/hash로 검토. 32파일·합계 8 MiB, 잘린 검색·명령/파일 resource operation 자동 실행 없음. HTTP 연결 종료는 제안 계산 취소 |
+| GET /sessions/:id/worktree/edit-proposals/:proposalId | — | 해당 세션의 고정된 제안 본문·hash·dismissed·operationId. 다른 사본의 제안을 현재 대상으로 승격하지 않음 |
+| POST /sessions/:id/worktree/edit-proposals/:proposalId/apply | `FileEditApply` | `{operationId,target,proposalHash}`. `document.batch` 사람 owner, 전체 사전 검사와 파일별 CAS/원자 교체. 동일 ID는 기존 receipt를 반환. 응답 유실 뒤 새 ID로 재적용하지 않음 |
+| POST /sessions/:id/worktree/edit-proposals/:proposalId/dismiss | `FileEditDecision` | 확인한 target/hash의 미접수 제안만 닫음. 실제 파일·이미 접수된 효과는 취소하지 않음 |
+| POST /sessions/:id/worktree/edit-proposals/:proposalId/inverse | `FileEditInverse` | 확인한 원래 operation의 applied 파일이 현재 afterHash와 같을 때만 역제안을 생성. 별도 diff 검토·적용이 필요하며 자동 rollback하지 않음 |
+| GET /sessions/:id/worktree/edit-operations/:operationId | — | `FileEditOperation`: 파일별 applied/unchanged/uncertain 결과. 일부 실패는 성공으로 숨기지 않고 불확실 writer를 조회만으로 풀지 않음 |
+| POST /sessions/:id/worktree/edit-operations/reconcile | `FileEditReconcile` | `{target,operationId}`. 불확실 효과의 현재 파일을 명시 재확인하고 모두 before/after 중 하나로 확인됐을 때만 예약을 정리. 파일 쓰기/재실행 없음 |
 | GET /sessions/:id/worktree/language | — | CR-046 P23 `LanguageState`: target, supported host/trust availability, registered server choices, active/failed/uncertain session + versioned or version-unknown diagnostics |
 | POST /sessions/:id/worktree/language/inspect | `LanguageInspect` | Current managed-copy argv/config revision/fingerprint and trust; no process execution |
 | POST /sessions/:id/worktree/language/start | `LanguageStart` | Exact target + reviewed fingerprint/revision + clientId/requestId; optional explicit `trust:true`. One passive language owner per copy. Same ID/contents never starts another process |

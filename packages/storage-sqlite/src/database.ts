@@ -538,6 +538,28 @@ BEGIN SELECT RAISE(ABORT, 'finished evaluations are immutable'); END;
     sql: 'ALTER TABLE work_sessions ADD COLUMN auto_title INTEGER NOT NULL DEFAULT 0 CHECK(auto_title IN (0,1));',
   },
   WORKBENCH_MIGRATION,
+  {
+    name: '0030_file_edit_proposals',
+    sql: `
+CREATE TABLE file_edit_proposals (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  request_id TEXT NOT NULL,
+  request_hash TEXT NOT NULL,
+  content_json TEXT NOT NULL,
+  content_hash TEXT NOT NULL,
+  dismissed INTEGER NOT NULL DEFAULT 0 CHECK(dismissed IN (0,1)),
+  operation_id TEXT,
+  created_at TEXT NOT NULL
+) STRICT;
+CREATE INDEX file_edit_proposals_by_session ON file_edit_proposals(session_id,created_at);
+CREATE INDEX file_edit_proposals_by_request ON file_edit_proposals(session_id,request_id);
+CREATE TRIGGER file_edit_proposals_content_immutable
+BEFORE UPDATE OF id,session_id,request_id,request_hash,content_json,content_hash,created_at
+ON file_edit_proposals
+BEGIN SELECT RAISE(ABORT, 'file edit proposal content is immutable'); END;
+`,
+  },
 ];
 
 /** History queries must neither recover active runs nor migrate the workspace. */
