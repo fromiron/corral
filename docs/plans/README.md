@@ -6,6 +6,7 @@
 |---|---|---|
 | [개발 Workbench](workbench-development-implementation-plan-2026-10-21.md) | 사용자 구현 승인, CR-046 | P00–P20·P21-A·P22·P23·P24-A/B·P25·P26(C-167)·P27(C-168) 구현. P28 로컬 코어 인수(C-169)·P29 Linux 설치판/복구 코어(C-170) 완료. P29의 다른 OS·장치·실제 업데이트·부하/외부 환경과 P21-B·P30의 별도 조건 유지. P19/C-114 후보 비교 구현 |
 | [Ultra와 Skill 품질](ultra-and-quality.md) | CR-031·036·048 | C-173(CR-048) Ultra 후보 경쟁 구현, 전체 통합 검증·시작 전 방식 표시 잔여. C-118 미지원 provider/API 계열과 환경 검증. C-114 후보 비교·M4-3/4 구현 완료 |
+| [CR-049 회의실](../change-requests/CR-049-meeting-room.md) | Bell 작성 요청(2026-10-23). 구현은 발언 규칙 확인 뒤 | C-174 회의·발언 규칙 → C-175 회의록·결정 → C-176 일반 세션 인계. 실행 Corral 추천·생성은 그 뒤 별도 태스크 |
 | [Desktop 완료 조건](desktop-completion.md) | CR-042·033 | C-125·128·135·136 구현/환경 검증, C-171 알림 대상 이동 구현, 나머지 M4-5 중복 범위 대조 |
 
 ## 갱신 규칙
