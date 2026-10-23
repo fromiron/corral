@@ -4200,7 +4200,7 @@
       "CRL-ULTRA-004"
     ],
     "suite": "integration+browser",
-    "scenario": "판정 형식 오류·검사 실패 후보 우승 시도·Run 중 세션 사본 변경·전원 실패·예산 80%·자동 반영 끔에서 반영 없음 또는 보류",
+    "scenario": "판정 형식 오류·검사 실패 후보 우승 시도·Run 중 세션 사본 변경·전원 실패·자동 반영 끔에서 반영 없음 또는 보류. 기존 기본 상한을 넘어도 version 2 Ultra는 중지되지 않고 일반 모드·version 1 예산은 유지",
     "status": "planned",
     "adapter": "deterministic workers and judge, temporary Git worktrees and actual Linux isolation; no paid calls",
     "evidence": null
@@ -4211,7 +4211,7 @@
       "CRL-ULTRA-004"
     ],
     "suite": "integration",
-    "scenario": "후보/Run 취소·늦은 판정과 라운드 결과·서버 재시작·같은 반영 command 중복에서 자동 반영이 반복되거나 최신 결과를 덮지 않음",
+    "scenario": "반복 중인 에이전트·응답 없는 호출을 포함한 후보/Run 취소·늦은 판정과 라운드 결과·서버 재시작·같은 반영 command 중복에서 자동 반영이 반복되거나 최신 결과를 덮지 않음",
     "status": "planned",
     "adapter": "deterministic workers and judge, temporary Git worktrees and actual Linux isolation; no paid calls",
     "evidence": null
