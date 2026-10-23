@@ -3418,7 +3418,10 @@
     "dirtyTree": "Commit or unstage the tracked changes before switching branch.",
     "nonFastForward": "The branches have diverged. Only fast-forward is done here; nothing was forced.",
     "remoteUnavailable": "The remote could not be reached or refused the sign-in.",
-    "unsavedDocuments": "Save or close this copy’s unsaved documents before switching branch."
+    "unsavedDocuments": "Save or close this copy’s unsaved documents before switching branch.",
+    "reconcile": "Check outcome and release lock",
+    "advancedRunning": "Applying the reviewed Git change…",
+    "sequenceConflicted": "Integration paused at conflicts. Edit and save the working files, stage them, then continue."
   },
   "Materials": {
     "heading": "Instructions & memory",
@@ -3512,6 +3515,36 @@
     "definition": "Definitions",
     "references": "References",
     "diagnostics": "Diagnostics"
+  },
+  "GitHunks": {
+    "reviewBasis": "Review basis",
+    "title": "Select changes",
+    "loading": "Reading changes…",
+    "stage": "Stage selected changes",
+    "unstage": "Unstage selected changes",
+    "empty": "No selectable changes.",
+    "changed": "The file or Git state changed. Refresh before selecting changes.",
+    "unavailable": "Changes could not be read.",
+    "unsupported": "Selected-change actions are unavailable: {reason}. Use the whole-file action.",
+    "head": "HEAD",
+    "index": "Index",
+    "working": "Working file",
+    "patch": "Patch",
+    "reason": {
+      "binary": "binary file",
+      "too_large": "file is too large",
+      "renamed": "renamed file",
+      "mode": "file mode changed",
+      "filter": "content filters or conversions",
+      "symlink": "symbolic link",
+      "gitlink": "submodule",
+      "unmerged": "unresolved conflict",
+      "untracked": "untracked file",
+      "added_deleted": "added or deleted file",
+      "path": "unsupported file name",
+      "no_hunks": "no supported change groups",
+      "other": "unsupported Git change"
+    }
   },
   "FileEdits": {
     "unsupportedCount": "{count} unsupported suggestions",
@@ -3624,6 +3657,72 @@
       "replace": "Text replacement",
       "language": "Language refactor",
       "inverse": "Restore proposal"
+    }
+  },
+  "GitConflicts": {
+    "title": "Resolve a conflict",
+    "description": "Compare the common base with each side, then edit the working file. Staging records the saved file as resolved.",
+    "rebaseSides": "During a rebase, “ours” is the branch being rebased onto; “theirs” is the commit being replayed.",
+    "sides": "Compare with the common base",
+    "ours": "Ours",
+    "theirs": "Theirs",
+    "current": "Working file",
+    "unsupported": "This conflict cannot be edited here",
+    "drafts": "Save or discard this file’s draft before staging the resolution.",
+    "stale": "This conflict changed. Refresh Git and review it again.",
+    "failed": "The conflict could not be opened.",
+    "loading": "Loading comparison…",
+    "close": "Close",
+    "openEditor": "Open in editor",
+    "stage": "Stage saved file"
+  },
+  "GitSequence": {
+    "title": "Merge and rebase",
+    "loading": "Checking merge and rebase state…",
+    "changed": "The working copy or Git state changed. Refresh and review again.",
+    "failed": "The Git operation could not be confirmed. Check its result in the Git panel.",
+    "external": "This operation was started outside Corral. Continue or abort it with the tool that started it.",
+    "unsupported": "This Git operation is not supported here.",
+    "branch": "Local branch",
+    "currentBranch": "Current branch",
+    "restoreHead": "Starting commit",
+    "unknown": "Not available",
+    "reviewMerge": "Review merge",
+    "reviewRebase": "Review rebase",
+    "reviewContinue": "Review continue",
+    "reviewAbort": "Review abort",
+    "resolveFirst": "Resolve and stage every conflicted file before continuing.",
+    "cleanFirst": "Start with a clean working copy on a local branch.",
+    "noBranches": "There is no other local branch to use.",
+    "runHooks": "Run hooks",
+    "drafts": "Save or resolve all drafts in this copy first. Pending saves and editor conflicts are preserved.",
+    "incomplete": "The Git status list is incomplete. Review all changes before continuing.",
+    "author": "Author",
+    "configuredAuthor": "Saved Git identity",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "signing": "The saved Git signing settings still apply.",
+    "affected": "Tracked files that may be restored",
+    "abortLoss": "Aborting restores the operation’s starting state. Staged changes and conflict resolutions in these tracked files may be lost. This is not an editor undo.",
+    "abortConfirm": "I understand that abort may discard these saved changes.",
+    "cancel": "Cancel",
+    "confirm": "Confirm and run",
+    "sending": "Running…",
+    "active": {
+      "merge": "Merge in progress",
+      "rebase": "Rebase in progress"
+    },
+    "review": {
+      "merge": "Review local merge",
+      "rebase": "Review local rebase",
+      "continue": "Review continuation",
+      "abort": "Review abort"
+    },
+    "hint": {
+      "merge": "Merge the reviewed local branch commit into this copy. The final merge commit is created when you continue.",
+      "rebase": "Replay this branch’s commits on the reviewed local commit. This changes local commit history.",
+      "continue": "Continue the current operation using the reviewed index and saved files.",
+      "abort": "Return to the state before this merge or rebase. Review what may be discarded first."
     }
   }
 }

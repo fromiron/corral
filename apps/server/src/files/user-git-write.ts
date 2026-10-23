@@ -116,7 +116,13 @@ export interface GitWriteRun {
 function run(
   root: string,
   args: string[],
-  options: { config: string[]; env: NodeJS.ProcessEnv; input?: Buffer; timeout: number },
+  options: {
+    config: string[];
+    env: NodeJS.ProcessEnv;
+    input?: Buffer;
+    timeout: number;
+    onSpawn?: (pid: number) => void;
+  },
   timers: Scheduler,
 ): GitWriteRun {
   const child: ChildProcess = spawnOwnedProcess(
@@ -147,6 +153,12 @@ function run(
     const cleaned = child.pid ? await processGroupGone(child.pid, timers) : true;
     return { code, stderr: stderr.trim(), cancelled, cleaned };
   });
+  try {
+    if (child.pid) options.onSpawn?.(child.pid);
+  } catch {
+    stderr = 'The Git process identity could not be recorded.';
+    cancel();
+  }
   return { cancel, done };
 }
 
@@ -230,6 +242,13 @@ export function planGitWrite(
       signing: false,
       hooks: false,
     };
+  return planGitCommit(command, identity);
+}
+
+export function planGitCommit(
+  command: { message: string; runHooks: boolean; author?: GitAuthor },
+  identity: Record<string, string>,
+): GitWritePlan {
   const author: GitAuthor | undefined = command.author ?? configuredAuthor(identity);
   if (!author)
     throw new GitWriteError(
@@ -282,6 +301,37 @@ export function startGitWrite(
       env: environment(plan.signing, REMOTE_KINDS.has(command.kind)),
       input: plan.input,
       timeout: TIMEOUT[command.kind],
+    },
+    timers,
+  );
+}
+
+/** Sequencer steps reuse the same owned process and signing policy; no editor may wait for input. */
+export interface GitPlanProcessOptions {
+  owner: string;
+  onSpawn(pid: number): void;
+}
+export function startGitPlan(
+  root: string,
+  plan: GitWritePlan,
+  timers: Scheduler,
+  processOptions?: GitPlanProcessOptions,
+): GitWriteRun {
+  return run(
+    root,
+    plan.args,
+    {
+      config: plan.config,
+      env: {
+        ...environment(plan.signing),
+        GIT_EDITOR: 'true',
+        GIT_SEQUENCE_EDITOR: 'false',
+        GIT_MERGE_AUTOEDIT: 'no',
+        ...(processOptions ? { CORRAL_PROCESS_OWNER: processOptions.owner } : {}),
+      },
+      input: plan.input,
+      timeout: 10 * 60_000,
+      onSpawn: processOptions?.onSpawn,
     },
     timers,
   );

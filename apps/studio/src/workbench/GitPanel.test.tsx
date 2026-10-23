@@ -243,6 +243,7 @@ it('[TC-WBD-009-H] a trusted copy stages a row and commits the confirmed staged 
   const gitChange = vi.fn(
     async (_session: string, command: { operationId: string; kind: string }) => ({
       operationId: command.operationId,
+      target: { ...target, kind: undefined },
       kind: `git.${command.kind}`,
       state: 'succeeded',
       result: { kind: 'applied' },
@@ -302,6 +303,7 @@ it('[TC-WBD-009-F] an unconfirmed operation is read back by its own ID after reo
   const gitChange = vi.fn();
   const gitOperation = vi.fn(async () => ({
     operationId: 'git_pending',
+    target: { ...target, kind: undefined },
     kind: 'git.commit',
     state: 'uncertain',
     result: { kind: 'pending' },
@@ -336,6 +338,7 @@ it('[TC-WBD-010-H] the branch section creates a branch, fetches and pushes the c
   const gitChange = vi.fn(
     async (_session: string, command: { operationId: string; kind: string }) => ({
       operationId: command.operationId,
+      target: { ...target, kind: undefined },
       kind: `git.${command.kind}`,
       state: 'succeeded',
       result: { kind: 'applied' },
@@ -366,6 +369,51 @@ it('[TC-WBD-010-H] the branch section creates a branch, fetches and pushes the c
   );
   // No force, reset or clean controls exist.
   expect(f.container.textContent).not.toMatch(/force|reset|clean/i);
+});
+
+it('[TC-WBD-022-F] reopens an uncertain advanced operation by the same ID and explicitly reconciles it without resending', async () => {
+  sessionStorage.clear();
+  documents.value = {};
+  const { kind: _kind, ...copy } = target;
+  const pending = {
+    operationId: 'git_hunk_pending',
+    kind: 'stage_hunks',
+    advanced: true,
+    target: copy,
+  };
+  sessionStorage.setItem('corral:git-operation:v1:session', JSON.stringify(pending));
+  const receipt = {
+    operationId: pending.operationId,
+    target: copy,
+    kind: 'git.stage_hunks',
+    state: 'uncertain',
+    result: { kind: 'pending' },
+  };
+  const gitAdvancedOperation = vi.fn(async () => receipt);
+  const gitOperation = vi.fn(),
+    changeGitHunks = vi.fn();
+  const reconcileGitAdvanced = vi.fn(async () => ({
+    ...receipt,
+    state: 'succeeded',
+    result: { kind: 'applied' },
+  }));
+  const f = await mount({
+    gitStatus: vi.fn(async () => status()),
+    gitOperation,
+    gitAdvancedOperation,
+    changeGitHunks,
+    reconcileGitAdvanced,
+    binding: vi.fn(async () => ({ trusted: true })),
+  });
+  expect(gitAdvancedOperation).toHaveBeenCalledWith('session', pending.operationId);
+  expect(gitOperation).not.toHaveBeenCalled();
+  await f.click('Git.reconcile');
+  expect(reconcileGitAdvanced).toHaveBeenCalledWith('session', {
+    target: copy,
+    operationId: pending.operationId,
+  });
+  expect(changeGitHunks).not.toHaveBeenCalled();
+  expect(sessionStorage.getItem('corral:git-operation:v1:session')).toBeNull();
 });
 
 it('[TC-WBD-010-F] a switch is not sent while this copy has an unsaved document', async () => {

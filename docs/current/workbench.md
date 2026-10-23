@@ -106,6 +106,16 @@ P11의 구현과 Linux 인앱·관련 회귀 범위는 [C-151 검증 기록](../
 
 [CR-046 P14](../change-requests/CR-046-development-workbench.md)의 "브랜치·원격" 접힘 영역은 detached 사본에 새 branch를 만들어 연결하고, 다른 local branch로 전환하며, fetch·fast-forward 전용 pull·force 없는 push를 같은 receipt 규칙으로 한다. 추적 변경·미저장 문서·활성 writer가 있으면 전환하지 않는다. 원본이나 다른 사본에서 checkout 중인 branch는 Git의 거절을 그대로 보인다. 원격 작업은 신뢰 프로젝트에서 사용자의 credential helper·SSH agent를 쓰며 prompt를 띄우지 않는다. push 응답을 잃으면 원격 ref를 다시 읽어 판정하고 다시 보내지 않는다. force·reset·clean은 없다. 검증과 한계는 [C-154 기록](../evaluation/Development-Workbench-Git-Remote-2026-10-22.md)을 따른다.
 
+## Git hunk와 충돌 해결
+
+[CR-046 P25](../change-requests/CR-046-development-workbench.md#p25-고급-git와-충돌-해결)의 hunk는 실제 사용자 index의 선택 stage/unstage다. Corral snapshot의 hunk 검토·반영과 구분한다. 관리 사본의 일반 텍스트 수정만 선택할 수 있고 추가·삭제·rename·mode 변경, binary·대용량·filter/줄바꿈 변환·symlink·gitlink 등 안전하게 표현할 수 없는 경우는 이유와 기존 파일 전체 stage/unstage를 유지한다. 선택은 전체 target·HEAD·semantic index hash·작업 파일과 patch/hunk identity에 고정한다. 실제 index lock을 소유한 상태에서 다시 확인한 뒤 준비한 index를 게시하고 결과 index를 읽어 판정한다. 다른 파일의 index 항목과 작업 파일은 변경하지 않으며 다른 Git 프로세스의 lock을 삭제하지 않는다.
+
+충돌 보기의 base/ours/theirs는 Git index의 stage 1/2/3이며 현재 디스크 파일을 별도로 비교한다. 지원되는 텍스트 충돌은 기존 문서 편집기로 열고 P04의 hash CAS 저장으로 해결한다. 미저장·저장 결과 미확인·충돌 초안을 자동 저장하거나 덮지 않는다. **충돌 파일의 stage는 P13의 파일 전체 stage와 같이 실행 시점의 디스크 내용을 index에 넣는 행동**이다. 화면에서 변경 여부를 다시 읽더라도 그 검사와 Git stage 사이의 외부 파일 쓰기를 원자적으로 잠그지는 않는다. 편집기의 CAS 저장이나 선택 hunk의 정확한 patch 적용과 같은 보장으로 표시하지 않는다.
+
+merge/rebase는 깨끗한 관리 사본의 local branch에서 사람이 선택한 다른 local branch commit을 대상으로 명시 시작한다. target·HEAD/index·작업 파일 hash·선택 branch OID와 sequencer identity를 확인하며 외부 원격 작업은 하지 않는다. continue/abort는 Corral이 시작하거나 이어서 실행한 소유 기록이 있는 지원 상태에만 제공한다. 지원 rebase는 `pick`만 있는 todo/done으로 제한하며 exec·편집 명령·squash/fixup·autostash·update-refs·사용자 지정 전략과 외부 sequencer는 이유를 표시하고 거절한다. Git의 `interactive` 표식 하나만으로 일반 merge-backend rebase를 interactive 작업으로 판정하지 않는다.
+
+시작·continue는 기존 작성자·서명·명시 hook 실행 정책과 소유 process group을 사용한다. 서명 정책이 맞지 않으면 서명 없이 계속하지 않는다. abort는 되돌릴 HEAD와 영향을 받는 파일을 확인하고 변경 손실에 명시 동의해야 하며 열린 dirty/pending 문서가 있으면 막는다. receipt는 command ID와 요청 내용에 고정하고 중복·응답 유실 때 같은 ID로 상태를 확인한다. 충돌로 멈춘 상태, 완료, 실패, 종료·결과 불확실을 구분하며 process 정리와 Git 재확인이 끝나기 전에 불확실 owner를 해제하지 않는다. 원본 폴더 쓰기·자동 merge·force push·범용 reset/clean은 추가하지 않는다.
+
 ## 개발 task와 Problems
 
 [CR-046 P15](../change-requests/CR-046-development-workbench.md)의 "Tasks & preview" 창은 세션 사본 `package.json`의 scripts를 읽기만 해서 보여 주고, 사람이 누른 script만 소유 process group으로 실행한다. 기본 단독 쓰기 모드에서 실행 중인 task는 사본 writer를 잡으므로 그동안 연 문서는 읽기 전용이고, 그 전에 연 문서의 저장은 거절되며 그 자리에서 task를 멈출 수 있다. 다시 저장·다시 시작은 사람이 누른다. 검사는 task·터미널이 실행 중이어도 그 시점 snapshot에서 돈다. preview는 Run의 명령과 실행 중인 task를 고를 수 있고 포트의 연결 소유를 확인한다. Problems 창은 검사·task 출력의 사본 내부 위치를 모아 이전 tree의 결과를 표시하고 문서의 해당 줄을 연다. 검증과 한계는 [C-155 기록](../evaluation/Development-Workbench-Tasks-2026-10-22.md)을 따른다.
@@ -113,9 +123,9 @@ P11의 구현과 Linux 인앱·관련 회귀 범위는 [C-151 검증 기록](../
 
 ## 공유 개발 모드
 
-[CR-046 P22](../change-requests/CR-046-development-workbench.md#p22-공유-개발-owner-d2-승인)의 B안은 로컬 관리 사본에서 사람이 명시적으로 켜는 선택 모드다. 하나의 `development` operation이 writer를 보유하고 문서 변경·명시 task·stage/unstage/commit/fetch/push는 그 아래의 비-writer access로 접수한다. 개발 서버를 켠 채 저장할 수 있지만 외부 쓰기를 격리하지는 않는다. 기존 hash 충돌·초안 보존, P17 귀속·검사/검토 유효성 기준을 유지한다.
+[CR-046 P22](../change-requests/CR-046-development-workbench.md#p22-공유-개발-owner-d2-승인)의 B안은 로컬 관리 사본에서 사람이 명시적으로 켜는 선택 모드다. 하나의 `development` operation이 writer를 보유하고 문서 변경·명시 task·stage/unstage/commit/fetch/push는 그 아래의 비-writer access로 접수한다. stage/unstage에는 P25의 선택 hunk 조작도 포함하며 각각의 index·patch 재검증을 유지한다. 개발 서버를 켠 채 저장할 수 있지만 외부 쓰기를 격리하지는 않는다. 기존 hash 충돌·초안 보존, P17 귀속·검사/검토 유효성 기준을 유지한다.
 
-사본과 작업 창에서 모드를 표시·전환한다. agent writer·터미널·branch 생성/전환·pull은 공유 모드를 끝내기 전 거절한다. 다른 사람 owner의 종료·미확인 효과가 정리돼야 단독 쓰기로 돌아간다. 읽기 전용 Run과 검사는 각자 고정 snapshot을 사용한다. host 재시작은 uncertain이고 공유를 자동 복원하지 않는다. 일반 서버는 기본 비활성이고 로컬 Desktop sidecar·`corral dev`만 opt-in한다. 구현·환경 검증·미검증 범위는 [C-161 기록](../evaluation/Development-Workbench-Shared-Development-2026-10-23.md)을 따른다.
+사본과 작업 창에서 모드를 표시·전환한다. agent writer·터미널·branch 생성/전환·pull·merge/rebase 시작·continue/abort는 공유 모드를 끝내기 전 거절한다. 다른 사람 owner의 종료·미확인 효과가 정리돼야 단독 쓰기로 돌아간다. 읽기 전용 Run과 검사는 각자 고정 snapshot을 사용한다. host 재시작은 uncertain이고 공유를 자동 복원하지 않는다. 일반 서버는 기본 비활성이고 로컬 Desktop sidecar·`corral dev`만 opt-in한다. 구현·환경 검증·미검증 범위는 [C-161 기록](../evaluation/Development-Workbench-Shared-Development-2026-10-23.md)을 따른다.
 
 ## 미리보기 요소 피드백
 

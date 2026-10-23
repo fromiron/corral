@@ -12,6 +12,7 @@ export * from './errors.ts';
 export * from './evaluation.ts';
 export * from './events.ts';
 export * from './file-edit.ts';
+export * from './git-advanced.ts';
 export * from './harness.ts';
 export * from './harness-management.ts';
 export * from './ids.ts';

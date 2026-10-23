@@ -1,21 +1,29 @@
 import { ApiError, type FileBrowseScope } from '@corral/client';
 import {
   canonicalJson,
+  type GitAdvancedCommand,
+  type GitAdvancedOperation,
   type GitDiff,
   type GitDiffRequest,
   type GitOperation,
+  type GitSequenceState,
   type GitStatus,
   type GitStatusEntry,
   type GitWriteCommand,
   type GitWriteResult,
+  type WorkspaceTarget,
 } from '@corral/contracts';
 import { Minus, Plus } from '@corral/react/icons';
 import { Button, Input, Select, Textarea } from '@corral/react/ui';
-import { useCallback, useEffect, useId, useMemo, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { FileDiff } from '../pages/ReviewPage.tsx';
 import { useServices } from '../services.tsx';
 import { documentStore } from './documents/store.ts';
+import { GitConflicts } from './GitConflicts.tsx';
+import { GitHunks } from './GitHunks.tsx';
+import { GitSequence } from './GitSequence.tsx';
+import { WORKSPACE_CHANGED } from './workspaceEvents.ts';
 
 type Side = GitDiffRequest['side'];
 const sides: Side[] = ['staged', 'unstaged', 'untracked'];
@@ -27,7 +35,15 @@ const belongs = (entry: GitStatusEntry, side: Side) =>
       entry.kind !== 'unmerged' &&
       changed(side === 'staged' ? entry.indexStatus : entry.worktreeStatus);
 
-type Pending = { operationId: string; kind: GitWriteCommand['kind'] };
+type WithoutId<T> = T extends unknown ? Omit<T, 'operationId'> : never;
+type GitInput = WithoutId<GitWriteCommand>;
+type AdvancedInput = WithoutId<GitAdvancedCommand>;
+type Pending = {
+  operationId: string;
+  kind: GitWriteCommand['kind'] | GitAdvancedCommand['kind'];
+  advanced?: true;
+  target?: WorkspaceTarget;
+};
 const pendingKey = (sessionId: string) => `corral:git-operation:v1:${sessionId}`;
 function readPending(sessionId: string): Pending | null {
   try {
@@ -72,6 +88,8 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
   const [message, setMessage] = useState('');
   const [runHooks, setRunHooks] = useState(true);
   const [author, setAuthor] = useState<{ name: string; email: string } | null>(null);
+  const context = useRef({ workspaces, sessionId, workspaceId });
+  context.current = { workspaces, sessionId, workspaceId };
   useEffect(() => {
     let live = true;
     if (!workspaces?.binding) return;
@@ -84,13 +102,58 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
     };
   }, [workspaces, projectId]);
   const settle = useCallback(
-    (receipt: GitOperation, pending: Pending) => {
+    (receipt: GitOperation | GitAdvancedOperation, pending: Pending) => {
+      if (context.current.workspaces !== workspaces || context.current.sessionId !== sessionId)
+        return;
+      if (
+        receipt.operationId !== pending.operationId ||
+        receipt.target.sessionId !== sessionId ||
+        receipt.target.hostId !== context.current.workspaceId ||
+        (pending.target && canonicalJson(receipt.target) !== canonicalJson(pending.target))
+      ) {
+        setUnconfirmed(pending);
+        setFailure({ key: 'stateChanged' });
+        return;
+      }
       if (receipt.state === 'running' || receipt.state === 'uncertain') {
         setUnconfirmed(pending);
         return;
       }
       writePending(sessionId, null);
       setUnconfirmed(null);
+      if (pending.advanced) {
+        const result = (receipt as GitAdvancedOperation).result;
+        setFailure(
+          result.kind === 'conflicted'
+            ? { key: 'sequenceConflicted' }
+            : result.kind === 'error'
+              ? {
+                  key: result.error?.code === 'REVISION_CONFLICT' ? 'stateChanged' : 'writeFailed',
+                  detail: result.error?.message,
+                }
+              : receipt.state === 'cancelled'
+                ? { key: 'writeCancelled' }
+                : null,
+        );
+        if (workspaces && (result.kind === 'applied' || result.kind === 'conflicted')) {
+          const owner = documentStore(workspaces);
+          void Promise.allSettled(
+            Object.values(owner.getState().documents)
+              .filter(
+                (entry) =>
+                  canonicalJson(entry.target) === canonicalJson(receipt.target) &&
+                  !entry.dirty &&
+                  !entry.saving &&
+                  !entry.pendingSave &&
+                  !entry.conflict,
+              )
+              .map((entry) => owner.refresh(entry.key)),
+          );
+          window.dispatchEvent(new Event(WORKSPACE_CHANGED));
+        }
+        setRevision((value) => value + 1);
+        return;
+      }
       const result = receipt.result as GitWriteResult | null;
       if (receipt.state === 'succeeded') {
         setFailure(null);
@@ -111,19 +174,50 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
       }
       setRevision((value) => value + 1);
     },
-    [sessionId],
+    [sessionId, workspaces],
   );
   const check = useCallback(
     async (pending: Pending) => {
       if (!workspaces?.gitOperation) return;
       try {
-        settle(await workspaces.gitOperation(sessionId, pending.operationId), pending);
+        settle(
+          await (pending.advanced
+            ? workspaces.gitAdvancedOperation(sessionId, pending.operationId)
+            : workspaces.gitOperation(sessionId, pending.operationId)),
+          pending,
+        );
       } catch {
-        setUnconfirmed(pending);
+        if (context.current.workspaces === workspaces && context.current.sessionId === sessionId)
+          setUnconfirmed(pending);
       }
     },
     [workspaces, sessionId, settle],
   );
+  const recoverAdvanced = async (pending: Pending, action: 'reconcile' | 'cancel') => {
+    if (!pending.advanced || !pending.target || !workspaces || busy) return;
+    setBusy(pending);
+    try {
+      const value =
+        action === 'cancel'
+          ? await workspaces.cancelGitAdvanced(sessionId, pending.operationId)
+          : await workspaces.reconcileGitAdvanced(sessionId, {
+              target: pending.target,
+              operationId: pending.operationId,
+            });
+      settle(value, pending);
+    } catch (error) {
+      if (context.current.workspaces === workspaces && context.current.sessionId === sessionId) {
+        setUnconfirmed(pending);
+        setFailure({
+          key: 'writeFailed',
+          detail: error instanceof Error ? error.message : undefined,
+        });
+      }
+    } finally {
+      if (context.current.workspaces === workspaces && context.current.sessionId === sessionId)
+        setBusy(null);
+    }
+  };
   // A change whose answer never arrived is read back by its own ID, never sent again.
   useEffect(() => {
     const pending = readPending(sessionId);
@@ -155,7 +249,34 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
   } | null>(null);
   const result = loaded?.query === query ? loaded : null;
   const status = result?.data ?? null;
+  const currentStatus = useRef(status);
+  currentStatus.current = status;
   const selected = selection?.query === query ? selection : null;
+  const [sequenceResult, setSequenceResult] = useState<{
+    status: GitStatus;
+    value: GitSequenceState;
+  } | null>(null);
+  const sequence = sequenceResult?.status === status ? sequenceResult.value : null;
+  useEffect(() => {
+    let live = true;
+    if (status?.target.kind !== 'session' || typeof workspaces?.gitSequence !== 'function') return;
+    const { kind: _kind, ...target } = status.target;
+    void workspaces.gitSequence(sessionId).then(
+      (value) => {
+        if (
+          live &&
+          canonicalJson(value.target) === canonicalJson(target) &&
+          value.head === status.head.oid &&
+          value.indexHash === status.indexHash
+        )
+          setSequenceResult({ status, value });
+      },
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+  }, [status, workspaces, sessionId]);
   const id = useId();
   useEffect(() => {
     let live = true;
@@ -262,6 +383,77 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
           (entry) => entry.target.sessionId === sessionId && entry.dirty,
         )
       : false;
+  const execute = async (input: GitInput | AdvancedInput, advanced = false) => {
+    if (
+      !status ||
+      currentStatus.current !== status ||
+      status.target.kind !== 'session' ||
+      !workspaces ||
+      !writable ||
+      busy ||
+      unconfirmed
+    )
+      return;
+    const { kind: _kind, ...target } = status.target;
+    if (
+      canonicalJson(input.target) !== canonicalJson(target) ||
+      input.expect.head !== status.head.oid ||
+      input.expect.indexHash !== status.indexHash
+    ) {
+      setFailure({ key: 'stateChanged' });
+      return;
+    }
+    if (
+      advanced &&
+      !['stage_hunks', 'unstage_hunks'].includes(input.kind) &&
+      Object.values(documentStore(workspaces).getState().documents).some(
+        (entry) =>
+          canonicalJson(entry.target) === canonicalJson(target) &&
+          (entry.dirty || entry.saving || entry.pendingSave || entry.conflict),
+      )
+    ) {
+      setFailure({ key: 'unsavedDocuments' });
+      return;
+    }
+    const pending: Pending = {
+      operationId: `git_${crypto.randomUUID().replaceAll('-', '')}`,
+      kind: input.kind,
+      ...(advanced ? { advanced: true, target } : {}),
+    };
+    const command = { ...input, operationId: pending.operationId };
+    writePending(sessionId, pending);
+    setBusy(pending);
+    setFailure(null);
+    try {
+      const receipt = advanced
+        ? await (command.kind === 'stage_hunks' || command.kind === 'unstage_hunks'
+            ? workspaces.changeGitHunks(
+                sessionId,
+                command as Extract<GitAdvancedCommand, { kind: 'stage_hunks' | 'unstage_hunks' }>,
+              )
+            : workspaces.changeGitSequence(
+                sessionId,
+                command as Exclude<GitAdvancedCommand, { kind: 'stage_hunks' | 'unstage_hunks' }>,
+              ))
+        : await workspaces.gitChange(sessionId, command as GitWriteCommand);
+      settle(receipt, pending);
+    } catch (error) {
+      if (context.current.workspaces !== workspaces || context.current.sessionId !== sessionId)
+        return;
+      if (error instanceof ApiError && error.status < 500 && error.status !== 0) {
+        writePending(sessionId, null);
+        setFailure(
+          error.status === 409
+            ? { key: 'stateChanged' }
+            : { key: 'writeFailed', detail: error.message },
+        );
+        setRevision((value) => value + 1);
+      } else setUnconfirmed(pending);
+    } finally {
+      if (context.current.workspaces === workspaces && context.current.sessionId === sessionId)
+        setBusy(null);
+    }
+  };
   const change = async (
     body:
       | { kind: 'stage' | 'unstage'; paths: string[] }
@@ -276,45 +468,30 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
       setFailure({ key: 'unsavedDocuments' });
       return;
     }
-    if (
-      !status ||
-      status.target.kind !== 'session' ||
-      !workspaces?.gitChange ||
-      busy ||
-      unconfirmed
-    )
-      return;
+    if (status?.target.kind !== 'session' || !workspaces?.gitChange || busy || unconfirmed) return;
     const { kind: _kind, ...target } = status.target;
-    const pending: Pending = {
-      operationId: `git_${crypto.randomUUID().replaceAll('-', '')}`,
-      kind: body.kind,
-    };
     const command = {
       ...body,
-      operationId: pending.operationId,
       target,
       expect: { head: status.head.oid, indexHash: status.indexHash },
       ...(body.kind === 'commit' && author?.name && author.email ? { author } : {}),
-    } as GitWriteCommand;
-    writePending(sessionId, pending);
-    setBusy(pending);
-    setFailure(null);
-    try {
-      settle(await workspaces.gitChange(sessionId, command), pending);
-    } catch (error) {
-      if (error instanceof ApiError && error.status < 500 && error.status !== 0) {
-        writePending(sessionId, null);
-        setFailure(
-          error.status === 409
-            ? { key: 'stateChanged' }
-            : { key: 'writeFailed', detail: error.message },
-        );
-        setRevision((value) => value + 1);
-      } else setUnconfirmed(pending);
-    } finally {
-      setBusy(null);
-    }
+    } as GitInput;
+    await execute(command);
   };
+  const sequenceControls =
+    writable && workspaces && sequence && status ? (
+      <GitSequence
+        sessionId={sessionId}
+        status={status}
+        state={sequence}
+        owner={documentStore(workspaces)}
+        disabled={Boolean(busy || unconfirmed)}
+        runHooks={runHooks}
+        onRunHooksChange={setRunHooks}
+        author={author?.name && author.email ? author : undefined}
+        onCommand={(command) => execute(command, true)}
+      />
+    ) : null;
   return (
     <section aria-label={t('title')} className="flex min-w-0 flex-col gap-3">
       <div className="flex flex-wrap items-end gap-2">
@@ -468,9 +645,11 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
                     </Button>
                   </div>
                 ) : null}
+                {!sequence?.sequence ? sequenceControls : null}
               </div>
             </details>
           ) : null}
+          {sequence?.sequence ? sequenceControls : null}
           {status.filtersDisabled ? <p className="text-xs text-muted">{t('rawContent')}</p> : null}
           {status.truncated ? (
             <p role="status" className="text-xs text-warning">
@@ -480,8 +659,50 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
           {unconfirmed ? (
             <div role="status" className="flex flex-wrap items-center gap-2 text-xs text-warning">
               <span>{t('unconfirmed')}</span>
-              <Button size="xs" variant="outline" onClick={() => void check(unconfirmed)}>
+              <Button
+                size="xs"
+                variant="outline"
+                disabled={Boolean(busy)}
+                onClick={() => void check(unconfirmed)}
+              >
                 {t('checkAgain')}
+              </Button>
+              {unconfirmed.advanced ? (
+                <>
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    disabled={Boolean(busy)}
+                    onClick={() => void recoverAdvanced(unconfirmed, 'reconcile')}
+                  >
+                    {t('reconcile')}
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    disabled={Boolean(busy)}
+                    onClick={() => void recoverAdvanced(unconfirmed, 'cancel')}
+                  >
+                    {t('cancel')}
+                  </Button>
+                </>
+              ) : null}
+            </div>
+          ) : null}
+          {busy?.advanced && !unconfirmed ? (
+            <div role="status" className="flex flex-wrap items-center gap-2 text-xs">
+              <span>{t('advancedRunning')}</span>
+              <Button
+                size="xs"
+                variant="outline"
+                onClick={() =>
+                  void workspaces
+                    ?.cancelGitAdvanced(sessionId, busy.operationId)
+                    .then((value) => settle(value, busy))
+                    .catch(() => setUnconfirmed(busy))
+                }
+              >
+                {t('cancel')}
               </Button>
             </div>
           ) : null}
@@ -495,7 +716,7 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
               ) : null}
             </div>
           ) : null}
-          {writable && staged.length ? (
+          {writable && staged.length && !sequence?.sequence ? (
             <form
               className="flex flex-col gap-2"
               onSubmit={(event) => {
@@ -641,14 +862,30 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
               <h3 id={`${id}-conflicts`} className="text-xs font-semibold">
                 {t('conflicts')} · {conflicts.length}
               </h3>
-              <p className="text-xs text-warning">{t('conflictUnavailable')}</p>
-              <ul>
-                {conflicts.map((entry) => (
-                  <li key={entry.path} className="whitespace-pre-wrap break-all font-mono text-xs">
-                    {entry.path}
-                  </li>
-                ))}
-              </ul>
+              {sequence && typeof workspaces?.gitConflict === 'function' ? (
+                <GitConflicts
+                  api={workspaces}
+                  owner={documentStore(workspaces)}
+                  state={sequence}
+                  writable={Boolean(writable)}
+                  disabled={Boolean(busy || unconfirmed)}
+                  onStage={(command) => execute(command)}
+                />
+              ) : (
+                <>
+                  <p className="text-xs text-warning">{t('conflictUnavailable')}</p>
+                  <ul>
+                    {conflicts.map((entry) => (
+                      <li
+                        key={entry.path}
+                        className="whitespace-pre-wrap break-all font-mono text-xs"
+                      >
+                        {entry.path}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
             </section>
           ) : null}
           {selected ? (
@@ -657,6 +894,24 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
               className="flex min-w-0 flex-col gap-2"
             >
               <h3 className="text-xs font-semibold">{t(`comparison.${selected.side}`)}</h3>
+              {writable &&
+              status.target.kind === 'session' &&
+              selected.side !== 'untracked' &&
+              typeof workspaces?.gitHunks === 'function' ? (
+                <GitHunks
+                  key={loadKey}
+                  sessionId={sessionId}
+                  request={{
+                    target: status.target,
+                    side: selected.side,
+                    path: selected.path,
+                    head: status.head.oid,
+                    indexHash: status.indexHash,
+                  }}
+                  disabled={Boolean(busy || unconfirmed)}
+                  onCommand={(command) => execute(command, true)}
+                />
+              ) : null}
               <FileDiff key={loadKey} path={selected.path} loadKey={loadKey} load={loadDiff} />
             </section>
           ) : null}

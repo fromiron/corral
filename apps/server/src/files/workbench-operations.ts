@@ -36,6 +36,8 @@ const sharedKinds = new Set([
   'document.delete',
   'task',
   'git.stage',
+  'git.stage_hunks',
+  'git.unstage_hunks',
   'git.unstage',
   'git.commit',
   'git.fetch',

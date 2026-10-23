@@ -285,3 +285,66 @@ it('[TC-WBD-009-H] [TC-WBD-009-N] stages through the client with a readable rece
   // The linked original has no write route.
   expect((await post(`${f.prefix}/operations`, command)).status).toBe(404);
 });
+
+it('[TC-WBD-022-H] [TC-WBD-022-N] reviews and stages one real index hunk through the scoped HTTP boundary', async () => {
+  const f = await fixture();
+  const [a, b] = f.copies;
+  assert(a && b);
+  const base = Array.from({ length: 30 }, (_, index) => `line ${index + 1}`).join('\n') + '\n';
+  writeFileSync(join(a.path, 'a.txt'), base);
+  git(a.path, 'add', '--', 'a.txt');
+  git(a.path, 'commit', '-qm', 'hunk base');
+  const edited = base.replace('line 3\n', 'first edit\n').replace('line 26\n', 'second edit\n');
+  writeFileSync(join(a.path, 'a.txt'), edited);
+  const before = await f.status(a.prefix);
+  assert(before.target.kind === 'session');
+  const input: GitDiffRequest = {
+    target: before.target,
+    side: 'unstaged',
+    path: 'a.txt',
+    head: before.head.oid,
+    indexHash: before.indexHash,
+  };
+  const response = await f.request(`${a.prefix}/hunks?${diffQuery(input)}`);
+  expect(response.status).toBe(200);
+  const hunks = await response.json();
+  expect(hunks).toMatchObject({ kind: 'hunks', target: before.target, path: 'a.txt' });
+  expect(hunks.hunks).toHaveLength(2);
+  const { kind: _kind, ...target } = before.target;
+  const command = {
+    kind: 'stage_hunks',
+    operationId: 'http_hunk',
+    target,
+    expect: { head: before.head.oid, indexHash: before.indexHash },
+    path: 'a.txt',
+    identity: hunks.identity,
+    hunkIds: [hunks.hunks[0].id],
+  };
+  const post = (path: string, body: unknown) =>
+    f.call(`${f.server.url}${path}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  expect((await post(`${b.prefix}/advanced-operations`, command)).status).toBe(400);
+  expect(
+    (await post(`${a.prefix}/advanced-operations`, { ...command, patch: 'untrusted' })).status,
+  ).toBe(400);
+  const applied = await post(`${a.prefix}/advanced-operations`, command);
+  expect(applied.status).toBe(200);
+  const receipt = await applied.json();
+  expect(receipt).toMatchObject({ state: 'succeeded', kind: 'git.stage_hunks' });
+  expect(await (await post(`${a.prefix}/advanced-operations`, command)).json()).toEqual(receipt);
+  expect(await (await f.request(`${a.prefix}/advanced-operations/http_hunk`)).json()).toEqual(
+    receipt,
+  );
+  expect(git(a.path, 'show', ':a.txt').toString()).toBe(base.replace('line 3\n', 'first edit\n'));
+  expect(readFileSync(join(a.path, 'a.txt'), 'utf8')).toBe(edited);
+  expect(readFileSync(join(b.path, 'a.txt'), 'utf8')).toBe('base\n');
+  expect(readFileSync(join(f.original, 'a.txt'), 'utf8')).toBe('base\n');
+  const sequence = await f.request(`${a.prefix}/sequence`);
+  expect(sequence.status).toBe(200);
+  expect(await sequence.json()).toMatchObject({ target, sequence: null, conflicts: [] });
+  expect((await f.request(`${a.prefix}/sequence?root=/tmp`)).status).toBe(400);
+  expect((await f.request(`${a.prefix}/conflict?target=broken`)).status).toBe(400);
+});

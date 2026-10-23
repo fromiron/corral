@@ -3272,6 +3272,7 @@
       "packages/client/src/"
     ],
     "done": "실제 index 기준 hunk stage/unstage와 base/ours/theirs 충돌 편집·merge/rebase continue/abort를 기존 Git writer·정책·receipt에 연결하고 HEAD/index/sequencer 변경과 초안을 보존한다.",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "docs/evaluation/Development-Workbench-Advanced-Git-2026-10-23.md"
   }
 ]

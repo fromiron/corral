@@ -18,9 +18,18 @@ import type {
   FileEditProposal,
   FileEditProposalSummary,
   FileEditReconcile,
+  GitAdvancedOperation,
+  GitAdvancedReconcile,
+  GitConflict,
+  GitConflictRequest,
   GitDiff,
   GitDiffRequest,
+  GitHunks,
+  GitHunksRequest,
+  GitHunkWrite,
   GitOperation,
+  GitSequenceCommand,
+  GitSequenceState,
   GitStatus,
   GitWriteCommand,
   LanguageDocumentChange,
@@ -83,11 +92,23 @@ export type {
   FileEditProposalContent,
   FileEditProposalSummary,
   FileEditReconcile,
+  GitAdvancedCommand,
+  GitAdvancedIntent,
+  GitAdvancedOperation,
+  GitAdvancedReconcile,
+  GitConflict,
+  GitConflictRequest,
   GitDiff,
   GitDiffRequest,
   GitFileSide,
   GitHead,
+  GitHunks,
+  GitHunksRequest,
+  GitHunkWrite,
   GitOperation,
+  GitSequence,
+  GitSequenceCommand,
+  GitSequenceState,
   GitStatus,
   GitStatusEntry,
   GitWriteCommand,
@@ -2136,6 +2157,65 @@ export class WorkspacesApi {
     return this.send(
       `/sessions/${encodeURIComponent(sessionId)}/worktree/git/operations/${encodeURIComponent(operationId)}/cancel`,
       'POST',
+    );
+  }
+  gitHunks(sessionId: string, input: GitHunksRequest): Promise<GitHunks> {
+    const query = new URLSearchParams({
+      target: JSON.stringify(input.target),
+      side: input.side,
+      path: input.path,
+      head: input.head ?? '',
+      indexHash: input.indexHash,
+    });
+    return this.send(`/sessions/${encodeURIComponent(sessionId)}/worktree/git/hunks?${query}`);
+  }
+  gitSequence(sessionId: string): Promise<GitSequenceState> {
+    return this.send(`/sessions/${encodeURIComponent(sessionId)}/worktree/git/sequence`);
+  }
+  gitConflict(sessionId: string, input: GitConflictRequest): Promise<GitConflict> {
+    const query = new URLSearchParams({
+      target: JSON.stringify(input.target),
+      path: input.path,
+      head: input.head ?? '',
+      indexHash: input.indexHash,
+      sequenceIdentity: input.sequenceIdentity ?? '',
+    });
+    return this.send(`/sessions/${encodeURIComponent(sessionId)}/worktree/git/conflict?${query}`);
+  }
+  changeGitHunks(sessionId: string, command: GitHunkWrite): Promise<GitAdvancedOperation> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/git/advanced-operations`,
+      'POST',
+      command,
+    );
+  }
+  changeGitSequence(sessionId: string, command: GitSequenceCommand): Promise<GitAdvancedOperation> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/git/advanced-operations`,
+      'POST',
+      command,
+    );
+  }
+  gitAdvancedOperation(sessionId: string, operationId: string): Promise<GitAdvancedOperation> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/git/advanced-operations/${encodeURIComponent(operationId)}`,
+    );
+  }
+  reconcileGitAdvanced(
+    sessionId: string,
+    input: GitAdvancedReconcile,
+  ): Promise<GitAdvancedOperation> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/git/advanced-operations/reconcile`,
+      'POST',
+      input,
+    );
+  }
+  cancelGitAdvanced(sessionId: string, operationId: string): Promise<GitAdvancedOperation> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/git/advanced-operations/${encodeURIComponent(operationId)}/cancel`,
+      'POST',
+      {},
     );
   }
   changeDocument(sessionId: string, command: DocumentCommand): Promise<DocumentOperation> {

@@ -89,6 +89,7 @@ import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import packageJson from '../package.json' with { type: 'json' };
 import { registerFileEditRoutes } from './files/edit-routes.ts';
+import { registerGitAdvancedRoutes } from './files/git-advanced-routes.ts';
 import { ReviewService } from './files/review.ts';
 import { type ChangeScope, WorkspaceError, WorkspaceService } from './files/service.ts';
 import { McpCredentials } from './harness/mcp-credentials.ts';
@@ -1676,6 +1677,7 @@ async function createCorralServer(
     target: z.string().max(4096),
     head: z.string().max(64),
   });
+  registerGitAdvancedRoutes(app, files, gitFail);
   // DW-05: the browser chooses a registered scope, never an absolute filesystem root.
   for (const [kind, base] of [
     ['project', '/api/v1/projects/:id/workspace'],

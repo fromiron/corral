@@ -191,7 +191,11 @@ export async function readUserGitStatus(root: string): Promise<Omit<GitStatus, '
   };
 }
 
-async function blob(root: string, object: string | null, env: Environment): Promise<GitFileSide> {
+export async function readGitBlob(
+  root: string,
+  object: string | null,
+  env: Environment,
+): Promise<GitFileSide> {
   if (!object) return { kind: 'absent' };
   const bytes = Number(await gitText(root, ['cat-file', '-s', object], env));
   if (bytes > MAX_TEXT) return { kind: 'too_large', bytes };
@@ -243,14 +247,14 @@ export async function readUserGitDiff(
   let result: WithoutTarget<GitDiff>;
   if (reason) result = { ...common, kind: 'unsupported', reason };
   else {
-    const before = await blob(
+    const before = await readGitBlob(
       root,
       request.side === 'staged' ? entry.headOid : entry.indexOid,
       env,
     );
     const after =
       request.side === 'staged'
-        ? await blob(root, entry.indexOid, env)
+        ? await readGitBlob(root, entry.indexOid, env)
         : await readWorktreeFile(request.path);
     result = { ...common, kind: 'diff', before, after };
   }

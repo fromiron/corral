@@ -20,6 +20,10 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'nod
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { editText, PiEditError } from '@corral/adapter-pi';
 import {
+  type HostProcessReservation,
+  restoreHostProcessGroupReservation,
+} from '@corral/adapter-pi/processes';
+import {
   type BrokerFileToolName,
   CaptureCheckpoint,
   type CheckExecution,
@@ -53,9 +57,21 @@ import {
   FileEditProposalContent,
   type FileEditProposalSummary,
   FileEditReconcile,
+  type GitAdvancedCommand,
+  type GitAdvancedOperation,
+  GitAdvancedReconcile,
+  type GitConflict,
+  GitConflictRequest,
   type GitDiff,
   type GitDiffRequest,
+  type GitFileSide,
+  type GitHunks,
+  GitHunksRequest,
+  GitHunkWrite,
   type GitOperation,
+  type GitSequence,
+  GitSequenceCommand,
+  type GitSequenceState,
   type GitStatus,
   GitWriteCommand,
   type GitWriteIntent,
@@ -103,7 +119,13 @@ import {
   ToolTerminationUnconfirmed,
 } from '@corral/core';
 import { type Db, SqliteHarnessStore, SqliteProjectToolStore } from '@corral/storage-sqlite';
+import { confirmOwnedProcessCleanup } from '../processes/owned-process.ts';
 import { PtyRuntime, type PtyRuntimeOptions } from '../processes/pty.ts';
+import {
+  capturePtySession,
+  cleanupPtySession,
+  type PtySessionIdentity,
+} from '../processes/pty-session.ts';
 import { CommandCapacityError, CommandRuntime, type UserTaskOwner } from '../processes/runtime.ts';
 import { commandEnvironment, listShells, resolveShellCommand } from '../processes/shells.ts';
 import { systemTimers } from '../runtime.ts';
@@ -126,6 +148,13 @@ import { stageLspEdit } from './lsp-edits.ts';
 import { lspResults, validateLspPosition } from './lsp-results.ts';
 import { RunAccessStore } from './run-access.ts';
 import { readUserGitDiff, readUserGitStatus } from './user-git.ts';
+import { applyGitHunks, readGitHunks } from './user-git-hunks.ts';
+import {
+  planGitSequence,
+  readGitConflict,
+  readGitSequence,
+  startGitSequence,
+} from './user-git-sequence.ts';
 import {
   commitFacts,
   GitWriteError,
@@ -148,6 +177,17 @@ import { WorkspaceAccessStore } from './workspace-access.ts';
 // Snapshots are git trees written from a temporary index, pinned under refs/corral/.
 
 const MAX_TEXT = 1024 * 1024;
+const ADVANCED_GIT_KINDS = [
+  'git.stage_hunks',
+  'git.unstage_hunks',
+  'git.merge',
+  'git.rebase',
+  'git.continue',
+  'git.abort',
+];
+type GitAdvancedPrivateResult = GitAdvancedOperation['result'] & {
+  processIdentity?: PtySessionIdentity;
+};
 
 export type VerifyCommand = RegisteredCheck;
 
@@ -447,6 +487,8 @@ export class WorkspaceService implements FileTools {
   private readonly timers: Scheduler;
   /** Git writes in flight on this host, so a person can cancel one (hooks included). */
   private readonly liveGit = new Map<string, GitWriteRun>();
+  private readonly advancedCancels = new Map<string, AbortController>();
+  private readonly advancedReservations = new Map<string, HostProcessReservation>();
   private readonly worktreeRoot: string;
   private readonly hostId: string;
   private readonly allowSharedDevelopment: boolean;
@@ -486,6 +528,18 @@ export class WorkspaceService implements FileTools {
     this.workspaceAccess = new WorkspaceAccessStore(this.db);
     this.workbenchOperations = new WorkbenchOperations(this.db, options.clock);
     this.workbenchOperations.recover();
+    for (const kind of ['git.merge', 'git.rebase', 'git.continue', 'git.abort']) {
+      for (const operation of this.workbenchOperations.list(kind)) {
+        if (
+          operation.state === 'uncertain' &&
+          (operation.result as GitAdvancedPrivateResult)?.cleanupConfirmed !== true
+        )
+          this.advancedReservations.set(
+            operation.operationId,
+            restoreHostProcessGroupReservation(),
+          );
+      }
+    }
     this.db
       .prepare(`UPDATE checkpoint_restores SET result_json=json_set(result_json, '$.state', 'uncertain')
       WHERE json_extract(result_json, '$.state')='applying'`)
@@ -3047,6 +3101,436 @@ export class WorkspaceService implements FileTools {
     });
   }
 
+  private async gitWorkingSide(root: string, input: string): Promise<GitFileSide> {
+    const path = safeRelative(input);
+    if ((await assertPlainPath(root, path)) === 'missing') return { kind: 'absent' };
+    const { bytes, size } = await boundedFile(root, path);
+    if (!bytes) return { kind: 'too_large', bytes: size };
+    const text = decodeText(bytes, true);
+    return text === null ? { kind: 'binary', bytes: size } : { kind: 'text', text };
+  }
+  async gitHunks(sessionId: string, raw: GitHunksRequest): Promise<GitHunks> {
+    const input = GitHunksRequest.parse(raw);
+    const { kind: _kind, ...target } = input.target;
+    this.documentTarget(sessionId, target);
+    const root = await this.userGitRoot({ kind: 'session', id: sessionId });
+    return this.lease(root, async () => {
+      this.documentTarget(sessionId, target);
+      const value = await readGitHunks(root, input, (path) => this.gitWorkingSide(root, path));
+      this.documentTarget(sessionId, target);
+      if ((await this.userGitRoot({ kind: 'session', id: sessionId })) !== root)
+        throw new WorkspaceError('REVISION_CONFLICT', 'the Git folder changed');
+      return { ...value, target: input.target };
+    });
+  }
+  private sequenceOwner(
+    sessionId: string,
+    target: WorkspaceTarget,
+    sequence: GitSequence | null,
+    excludeOperationId = '',
+  ): string | null {
+    if (!sequence) return null;
+    const row = this.db
+      .prepare(
+        `SELECT operation_id FROM workbench_operations WHERE kind IN ('git.merge','git.rebase','git.continue','git.abort') AND json_extract(target_json,'$.sessionId')=? AND operation_id<>? AND json_type(result_json,'$.sequence') IS NOT NULL ORDER BY rowid DESC LIMIT 1`,
+      )
+      .get(sessionId, excludeOperationId) as { operation_id: string } | undefined;
+    const prior = row ? this.workbenchOperations.get(row.operation_id) : undefined;
+    const observed = (prior?.result as GitAdvancedPrivateResult | undefined)?.sequence;
+    return prior &&
+      canonicalJson(prior.target) === canonicalJson(target) &&
+      observed &&
+      observed.kind === sequence.kind &&
+      observed.originalHead === sequence.originalHead &&
+      observed.onto === sequence.onto &&
+      observed.headName === sequence.headName
+      ? prior.operationId
+      : null;
+  }
+  async gitSequence(sessionId: string): Promise<GitSequenceState> {
+    const { target } = this.documentTarget(sessionId);
+    const root = await this.userGitRoot({ kind: 'session', id: sessionId });
+    return this.lease(root, async () => {
+      this.documentTarget(sessionId, target);
+      const state = await readGitSequence(root);
+      this.documentTarget(sessionId, target);
+      if ((await this.userGitRoot({ kind: 'session', id: sessionId })) !== root)
+        throw new WorkspaceError('REVISION_CONFLICT', 'the Git folder changed');
+      return {
+        ...state,
+        target,
+        ownerOperationId: this.sequenceOwner(sessionId, target, state.sequence),
+      };
+    });
+  }
+  async gitConflict(sessionId: string, raw: GitConflictRequest): Promise<GitConflict> {
+    const input = GitConflictRequest.parse(raw);
+    safeRelative(input.path);
+    this.documentTarget(sessionId, input.target);
+    const root = await this.userGitRoot({ kind: 'session', id: sessionId });
+    return this.lease(root, async () => {
+      this.documentTarget(sessionId, input.target);
+      const value = await readGitConflict(root, input, (path) => this.gitWorkingSide(root, path));
+      this.documentTarget(sessionId, input.target);
+      if ((await this.userGitRoot({ kind: 'session', id: sessionId })) !== root)
+        throw new WorkspaceError('REVISION_CONFLICT', 'the Git folder changed');
+      return { ...value, target: input.target };
+    });
+  }
+  gitAdvancedOperation(sessionId: string, operationId: string): GitAdvancedOperation {
+    const receipt = this.workbenchOperations.get(operationId);
+    if (
+      !receipt ||
+      receipt.target.sessionId !== sessionId ||
+      !ADVANCED_GIT_KINDS.includes(receipt.kind)
+    )
+      throw new WorkspaceError('TARGET_NOT_FOUND', 'the Git operation is unavailable');
+    const { processIdentity: _private, ...result } = receipt.result as GitAdvancedPrivateResult;
+    const owner = this.workspaceAccess.get({ kind: 'user', id: operationId });
+    return {
+      ...receipt,
+      result,
+      ...(owner?.state === 'uncertain' ? { state: 'uncertain' as const } : {}),
+    } as GitAdvancedOperation;
+  }
+  cancelGitAdvanced(sessionId: string, operationId: string): GitAdvancedOperation {
+    const receipt = this.gitAdvancedOperation(sessionId, operationId);
+    this.advancedCancels.get(operationId)?.abort();
+    this.liveGit.get(operationId)?.cancel();
+    return receipt;
+  }
+  changeGitHunks(sessionId: string, raw: GitHunkWrite) {
+    return this.changeAdvancedGit(sessionId, GitHunkWrite.parse(raw));
+  }
+  changeGitSequence(sessionId: string, raw: GitSequenceCommand) {
+    return this.changeAdvancedGit(sessionId, GitSequenceCommand.parse(raw));
+  }
+
+  private async changeAdvancedGit(
+    sessionId: string,
+    command: GitAdvancedCommand,
+  ): Promise<GitAdvancedOperation> {
+    const requestHash = sha256(Buffer.from(canonicalJson(command))),
+      kind = `git.${command.kind}` as GitAdvancedOperation['kind'];
+    const prior = this.workbenchOperations.get(command.operationId);
+    if (prior) {
+      if (prior.kind !== kind || prior.requestHash !== requestHash)
+        throw new ToolRefusal('REVISION_CONFLICT', 'the Git operation request changed');
+      return this.gitAdvancedOperation(sessionId, command.operationId);
+    }
+    const { row } = this.documentTarget(sessionId, command.target, true),
+      root = row.worktree_path;
+    if ('path' in command) safeRelative(command.path);
+    return this.lease(root, async () => {
+      this.documentTarget(sessionId, command.target, true);
+      if (
+        (await realpath(root)) !== resolve(root) ||
+        (await this.userGitRoot({ kind: 'session', id: sessionId })) !== root
+      )
+        throw new ToolRefusal('REVISION_CONFLICT', 'the Git repository root changed');
+      const result: GitAdvancedPrivateResult = {
+        kind: 'pending',
+        intent: { command },
+        cleanupConfirmed: true,
+      };
+      const admitted = this.workbenchOperations.admit(
+        { operationId: command.operationId, target: command.target, kind, requestHash },
+        root,
+        result,
+      );
+      if (!admitted.admitted) return this.gitAdvancedOperation(sessionId, command.operationId);
+      const owner = { kind: 'user' as const, id: command.operationId };
+      const cancelled = new AbortController();
+      this.advancedCancels.set(command.operationId, cancelled);
+      const guard = () => {
+        this.documentTarget(sessionId, command.target, true);
+        if (cancelled.signal.aborted)
+          throw new ToolRefusal('TARGET_TERMINAL', 'the Git operation was cancelled');
+      };
+      const record = () => {
+        if (!this.workbenchOperations.updateRunning(command.operationId, result))
+          throw new ToolRefusal(
+            'STORAGE_UNAVAILABLE',
+            'Git operation progress could not be recorded',
+          );
+      };
+      let attempted = false,
+        completing = false,
+        readBack = false;
+      try {
+        if (command.kind === 'stage_hunks' || command.kind === 'unstage_hunks') {
+          const applied = await applyGitHunks(
+            root,
+            {
+              ...command.expect,
+              path: command.path,
+              side: command.kind === 'stage_hunks' ? 'unstaged' : 'staged',
+              identity: command.identity,
+              hunkIds: command.hunkIds,
+            },
+            (path) => this.gitWorkingSide(root, path),
+            (expectedIndexHash) => {
+              guard();
+              result.intent.expectedIndexHash = expectedIndexHash;
+              record();
+              attempted = true;
+            },
+            cancelled.signal,
+          );
+          Object.assign(result, {
+            kind: 'applied',
+            head: applied.head,
+            indexHash: applied.indexHash,
+            cleanupConfirmed: true,
+          });
+        } else {
+          const planned = await planGitSequence(
+            root,
+            command,
+            command.kind === 'abort' ? {} : await gitIdentity(root),
+          );
+          if (
+            (command.kind === 'continue' || command.kind === 'abort') &&
+            !this.sequenceOwner(
+              sessionId,
+              command.target,
+              planned.before.sequence,
+              command.operationId,
+            )
+          )
+            throw new ToolRefusal(
+              'CAPABILITY_DENIED',
+              'This Git sequence was not started by Corral; finish it in its original tool.',
+            );
+          result.intent.sequenceBefore = planned.before.sequence;
+          result.intent.branchCommit = planned.branchCommit;
+          // Record the preceding state so a failed hook does not lose an existing sequence owner.
+          result.sequence = planned.before.sequence;
+          record();
+          guard();
+          // Planning performs IO. Recheck the reviewed state immediately before spawning Git.
+          const current = await readGitSequence(root);
+          if (
+            current.head !== command.expect.head ||
+            current.indexHash !== command.expect.indexHash ||
+            current.workingTreeHash !== command.workingTreeHash ||
+            (current.sequence?.identity ?? null) !== command.sequenceIdentity
+          )
+            throw new ToolRefusal('REVISION_CONFLICT', 'Git changed while preparing the operation');
+          guard();
+          result.cleanupConfirmed = false;
+          record();
+          attempted = true;
+          const live = startGitSequence(root, planned.plan, this.timers, {
+            owner: command.operationId,
+            onSpawn: (pid) => {
+              if (process.platform === 'linux') {
+                try {
+                  result.processIdentity = capturePtySession(pid, command.operationId);
+                } catch {
+                  /* A very short-lived Git process can exit before its identity is captured. */
+                }
+              }
+              record();
+            },
+          });
+          this.liveGit.set(command.operationId, live);
+          const outcome = await live.done.finally(() => this.liveGit.delete(command.operationId));
+          result.cleanupConfirmed = outcome.cleaned;
+          record();
+          if (!outcome.cleaned)
+            throw new ToolRefusal('STORAGE_UNAVAILABLE', 'Git process termination is unconfirmed');
+          const state = await readGitSequence(root);
+          readBack = true;
+          Object.assign(result, {
+            head: state.head,
+            indexHash: state.indexHash,
+            sequence: state.sequence,
+            workingTreeHash: state.workingTreeHash,
+          });
+          const expectedKind =
+            command.kind === 'merge' || command.kind === 'rebase'
+              ? command.kind
+              : planned.before.sequence?.kind;
+          const expectedOriginal =
+            command.kind === 'merge' || command.kind === 'rebase'
+              ? command.expect.head
+              : planned.before.sequence?.originalHead;
+          const expectedOnto = planned.branchCommit ?? planned.before.sequence?.onto;
+          const paused =
+            state.sequence !== null &&
+            state.sequence.kind === expectedKind &&
+            state.sequence.originalHead === expectedOriginal &&
+            state.sequence.onto === expectedOnto;
+          const failure = gitWriteFailure(outcome, planned.plan);
+          if (failure && !(paused && state.conflicts.length && !outcome.cancelled)) throw failure;
+          if (state.sequence && !paused)
+            throw new ToolRefusal('REVISION_CONFLICT', 'Git left an unexpected sequence state');
+          if (
+            command.kind === 'abort' &&
+            (state.sequence || !(await this.confirmsGitAbort(root, planned.before.sequence)))
+          ) {
+            readBack = false;
+            throw new ToolRefusal('REVISION_CONFLICT', 'Git abort could not be confirmed');
+          }
+          result.kind = state.conflicts.length ? 'conflicted' : 'applied';
+          record();
+        }
+        completing = true;
+        this.workbenchOperations.finish(command.operationId, 'succeeded', result);
+      } catch (caught) {
+        const error = lockFailure(caught) ?? caught;
+        result.kind = 'error';
+        result.error = {
+          code:
+            error instanceof ToolRefusal || error instanceof WorkspaceError
+              ? error.code
+              : 'STORAGE_UNAVAILABLE',
+          message:
+            error instanceof ToolRefusal || error instanceof WorkspaceError
+              ? error.message
+              : 'The Git operation could not be confirmed.',
+        };
+        let state: 'failed' | 'cancelled' | 'uncertain' = cancelled.signal.aborted
+          ? 'cancelled'
+          : 'failed';
+        if (attempted) {
+          if (command.kind === 'stage_hunks' || command.kind === 'unstage_hunks') {
+            const status = await readUserGitStatus(root).catch(() => null);
+            if (
+              !status ||
+              status.head.oid !== command.expect.head ||
+              status.indexHash !== command.expect.indexHash
+            )
+              state = 'uncertain';
+            result.cleanupConfirmed = true;
+          } else if (result.cleanupConfirmed !== true || !readBack) state = 'uncertain';
+        }
+        if (completing) state = 'uncertain';
+        try {
+          this.workbenchOperations.finish(command.operationId, state, result);
+        } catch {
+          this.workspaceAccess.release(owner, false);
+          throw new ToolRefusal(
+            'STORAGE_UNAVAILABLE',
+            'The Git receipt could not be recorded; inspect the original operation.',
+          );
+        }
+      } finally {
+        this.advancedCancels.delete(command.operationId);
+      }
+      return this.gitAdvancedOperation(sessionId, command.operationId);
+    });
+  }
+
+  private async confirmsGitAbort(
+    root: string,
+    before: GitSequence | null | undefined,
+  ): Promise<boolean> {
+    if (!before?.originalHead || !before.headName?.startsWith('refs/heads/')) return false;
+    const status = await readUserGitStatus(root);
+    return (
+      status.head.oid === before.originalHead &&
+      `refs/heads/${status.head.branch}` === before.headName &&
+      !status.truncated &&
+      status.entries.every((entry) => entry.kind === 'untracked')
+    );
+  }
+
+  async reconcileGitAdvanced(
+    sessionId: string,
+    raw: GitAdvancedReconcile,
+  ): Promise<GitAdvancedOperation> {
+    const input = GitAdvancedReconcile.parse(raw),
+      receipt = this.gitAdvancedOperation(sessionId, input.operationId);
+    if (canonicalJson(receipt.target) !== canonicalJson(input.target))
+      throw new ToolRefusal('REVISION_CONFLICT', 'Git operation target changed');
+    const { row } = this.documentTarget(sessionId, input.target, true);
+    if (
+      receipt.state !== 'uncertain' ||
+      this.liveGit.has(input.operationId) ||
+      this.advancedCancels.has(input.operationId)
+    )
+      return receipt;
+    return this.lease(row.worktree_path, async () => {
+      const stored = this.workbenchOperations.get(input.operationId)
+        ?.result as GitAdvancedPrivateResult;
+      const command = stored.intent.command;
+      if (
+        command.kind !== 'stage_hunks' &&
+        command.kind !== 'unstage_hunks' &&
+        stored.cleanupConfirmed !== true
+      ) {
+        if (
+          !stored.processIdentity ||
+          !(await cleanupPtySession(stored.processIdentity, this.timers))
+        )
+          return this.gitAdvancedOperation(sessionId, input.operationId);
+        confirmOwnedProcessCleanup(stored.processIdentity.pid);
+        this.advancedReservations.get(input.operationId)?.releaseConfirmed();
+        this.advancedReservations.delete(input.operationId);
+        stored.cleanupConfirmed = true;
+        this.db
+          .prepare(
+            "UPDATE workbench_operations SET result_json=?,updated_at=? WHERE operation_id=? AND state='uncertain'",
+          )
+          .run(JSON.stringify(stored), this.clock.nowIso(), input.operationId);
+      }
+      if (await indexLocked(row.worktree_path))
+        return this.gitAdvancedOperation(sessionId, input.operationId);
+      this.documentTarget(sessionId, input.target, true);
+      const now = await readGitSequence(row.worktree_path);
+      let applied = false,
+        unchanged = false;
+      if (command.kind === 'stage_hunks' || command.kind === 'unstage_hunks') {
+        applied =
+          now.head === command.expect.head && now.indexHash === stored.intent.expectedIndexHash;
+        unchanged = now.head === command.expect.head && now.indexHash === command.expect.indexHash;
+      } else {
+        unchanged =
+          now.head === command.expect.head &&
+          now.indexHash === command.expect.indexHash &&
+          now.workingTreeHash === command.workingTreeHash &&
+          (now.sequence?.identity ?? null) === command.sequenceIdentity;
+        applied =
+          stored.head !== undefined &&
+          now.head === stored.head &&
+          now.indexHash === stored.indexHash &&
+          (now.sequence?.identity ?? null) === (stored.sequence?.identity ?? null);
+        if (
+          (command.kind === 'merge' || command.kind === 'rebase') &&
+          now.sequence?.kind === command.kind &&
+          now.sequence.originalHead === command.expect.head &&
+          now.sequence.onto === stored.intent.branchCommit
+        )
+          applied = true;
+        if (command.kind === 'abort')
+          applied =
+            !now.sequence &&
+            (await this.confirmsGitAbort(row.worktree_path, stored.intent.sequenceBefore));
+      }
+      if (!applied && !unchanged) return this.gitAdvancedOperation(sessionId, input.operationId);
+      this.documentTarget(sessionId, input.target, true);
+      const result: GitAdvancedPrivateResult = {
+        ...stored,
+        kind: applied ? (now.conflicts.length ? 'conflicted' : 'applied') : 'error',
+        head: now.head,
+        indexHash: now.indexHash,
+        sequence: now.sequence,
+        workingTreeHash: now.workingTreeHash,
+        cleanupConfirmed: true,
+        ...(applied ? { error: undefined } : {}),
+      };
+      this.workbenchOperations.reconcile(
+        input.operationId,
+        ADVANCED_GIT_KINDS,
+        applied ? 'succeeded' : 'failed',
+        result,
+      );
+      return this.gitAdvancedOperation(sessionId, input.operationId);
+    });
+  }
+
   gitOperation(sessionId: string, operationId: string): GitOperation {
     const receipt = this.workbenchOperations.get(operationId);
     if (!receipt || receipt.target.sessionId !== sessionId || !GIT_KINDS.includes(receipt.kind))
@@ -4362,6 +4846,10 @@ export class WorkspaceService implements FileTools {
 
   async dispose() {
     this.disposing = true;
+    for (const controller of this.advancedCancels.values()) controller.abort();
+    const pendingGit = [...this.liveGit.values()];
+    for (const operation of pendingGit) operation.cancel();
+    await Promise.allSettled(pendingGit.map((operation) => operation.done));
     const languageClosing = this.language.dispose();
     void languageClosing.catch(() => {});
     await this.terminals.close();

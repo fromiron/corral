@@ -238,6 +238,7 @@ H는 Git 변경·미제출 의견·열린 Run이 있는 사본의 요약과, 보
 - 구현 방식
   - 사람 operation은 `WorkbenchOperations.admit`의 공통 예약으로 접수한다(`document.*`, `git.*`, `task`, `terminal`).
   - 공유 모드는 `development` 사람 operation 하나가 writer를 잡는 방식으로 구현한다. 그 아래에서 문서 저장, 사람이 시작한 task, `git.stage/unstage/commit/fetch/push`는 비-writer access로 접수한다.
+  - 후속 P25의 선택 stage/unstage는 같은 허용 의미의 `git.stage_hunks`·`git.unstage_hunks`만 추가한다. 정확한 index·patch 재검증을 유지하며 merge/rebase 시작·continue/abort를 공유 허용으로 확대하지 않는다.
   - `terminal`, `git.branch/switch/pull`, agent writer(Run)는 기존처럼 writer 충돌로 거절한다. 거절 문구에는 공유 모드를 밝힌다.
   - 모드는 별도 열을 두지 않고 원장의 running/uncertain `development` operation으로 판정한다. host 재시작 뒤에는 uncertain이 되어 자동으로 되살아나지 않는다.
   - strict 복귀는 그 사본의 다른 사람 owner가 없을 때만 한다.
