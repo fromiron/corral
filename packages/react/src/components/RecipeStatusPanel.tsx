@@ -1,7 +1,7 @@
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
+import { Button } from '../design-kit/index.ts';
 import type { RunSessionStore } from '../run/session.ts';
-import { Button } from '../ui/button.tsx';
 
 export function RecipeStatusPanel({
   session,
@@ -37,7 +37,7 @@ export function RecipeStatusPanel({
                 verdict: t(`verdict.${event.payload.verdict}`),
               })}
             </p>
-            <p className="text-muted">
+            <p className="text-muted-foreground">
               {t('evidence', {
                 revision: event.payload.revision,
                 checks: event.payload.checkReportIds.length,

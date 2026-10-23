@@ -1,7 +1,13 @@
 import type { WorkspacesApi } from '@corral/client';
 import type { LspProposal, LspProposalSummary } from '@corral/contracts';
+import {
+  Button,
+  Dialog,
+  DialogDescription,
+  DialogPopup,
+  DialogTitle,
+} from '@corral/react/design-kit';
 import { RefreshCw } from '@corral/react/icons';
-import { Button, Dialog, DialogDescription, DialogPopup, DialogTitle } from '@corral/react/ui';
 import { type ReactNode, useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 
@@ -90,7 +96,7 @@ export function LspProposals({
         <h3 className="text-sm font-semibold">{t('heading')}</h3>
         <Button
           variant="ghost"
-          size="icon-xs"
+          size="icon-compact"
           aria-label={t('refresh')}
           title={t('refresh')}
           onClick={() => setRefresh((current) => current + 1)}
@@ -99,13 +105,13 @@ export function LspProposals({
         </Button>
       </div>
       {/* What a proposal is matters once there is one; an empty list says so on its own. */}
-      <p className="text-xs text-muted">{items.length ? t('hint') : t('empty')}</p>
+      <p className="text-xs text-muted-foreground">{items.length ? t('hint') : t('empty')}</p>
       {items.map((item) => (
         <div key={item.proposalId} className="flex flex-col gap-1 border-b border-line pb-2">
-          <Button variant="outline" size="sm" onClick={() => setSelected(item.proposalId)}>
+          <Button variant="tertiary" size="compact" onClick={() => setSelected(item.proposalId)}>
             {t('review', { title: item.title })}
           </Button>
-          <p className="text-xs text-muted">
+          <p className="text-xs text-muted-foreground">
             {t(`states.${item.state}`)} · {t('files', { count: item.files.length })}
           </p>
         </div>
@@ -135,7 +141,7 @@ export function LspProposals({
               <p role="status" className="text-sm font-medium">
                 {t(`states.${detail.state}`)}
               </p>
-              <p className="text-xs text-muted">
+              <p className="text-xs text-muted-foreground">
                 {t('source', { server: detail.serverId, revision: detail.configRevision })} ·{' '}
                 <span className="font-mono" title={detail.hash}>
                   {detail.hash.slice(0, 12)}

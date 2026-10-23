@@ -1,5 +1,11 @@
 import type { CopyRemovalPlan } from '@corral/client';
-import { Button, Dialog, DialogDescription, DialogPopup, DialogTitle } from '@corral/react/ui';
+import {
+  Button,
+  Dialog,
+  DialogDescription,
+  DialogPopup,
+  DialogTitle,
+} from '@corral/react/design-kit';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';

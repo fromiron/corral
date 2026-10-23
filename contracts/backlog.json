@@ -3490,5 +3490,23 @@
     "done": "기존/새 세션 인계·대상 거절·실행 중 대상과 입력 보존·요청별 실행 구성·receipt 중복/유실/취소 경합을 확인한다.",
     "status": "implemented",
     "evidence": "docs/evaluation/Meeting-Room-2026-10-23.md"
+  },
+  {
+    "id": "C-177",
+    "phase": "P12",
+    "title": "CR-050 design kit adoption and token normalization",
+    "dependsOn": [],
+    "requirements": [
+      "CRL-UX-009"
+    ],
+    "files": [
+      "packages/react/src/",
+      "apps/studio/src/",
+      "apps/studio/e2e/design-kit.spec.ts",
+      "DESIGN.md"
+    ],
+    "done": "Adopt copied kit tokens and actual components throughout Studio and packages/react/src/components, using direct kit components or composition before custom UI. Normalize English DESIGN.md and verify representative light/dark and narrow/desktop UI while preserving behavior, data, and accessibility rather than legacy appearance.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/Design-Kit-Adoption-2026-10-23.md"
   }
 ]

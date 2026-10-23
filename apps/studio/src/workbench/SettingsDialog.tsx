@@ -1,5 +1,12 @@
+import {
+  Button,
+  Dialog,
+  DialogPopup,
+  Select,
+  SidebarProvider,
+  Tooltip,
+} from '@corral/react/design-kit';
 import { X } from '@corral/react/icons';
-import { Button, Dialog, DialogPopup, DialogTitle, Select, Tooltip } from '@corral/react/ui';
 import { useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -49,7 +56,8 @@ export function SettingsDialog({
     >
       <DialogPopup
         data-settings-dialog
-        className="settings-dialog flex h-[min(46rem,calc(100dvh-2rem))] w-full max-w-[65rem] flex-col overflow-hidden p-0 max-sm:h-[100dvh] max-sm:rounded-none"
+        aria-label={t('title')}
+        className="settings-dialog flex h-[min(640px,calc(100dvh-4rem))] w-full max-w-[880px] flex-col overflow-hidden p-0 max-sm:h-[100dvh] max-sm:rounded-none"
         bottomStickOnMobile={false}
         showCloseButton={false}
         finalFocus={() =>
@@ -60,40 +68,41 @@ export function SettingsDialog({
               ) ?? false)
         }
       >
-        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-line px-4 py-2">
-          <DialogTitle>{t('title')}</DialogTitle>
-          <Tooltip content={t('close')}>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label={t('close')}
-              onClick={() => navigation.close?.()}
-            >
-              <X />
-            </Button>
-          </Tooltip>
-        </div>
-        <div className="shrink-0 border-b border-line p-2 sm:hidden">
-          <Select
-            label={t('title')}
-            value={section}
-            options={SETTINGS_GROUPS.flatMap((group) =>
-              group.items.map((value) => ({ value, label: label(value), group: n(group.id) })),
-            )}
-            onValueChange={(value) => void navigate(navigation.link(value))}
-          />
-        </div>
-        <div className="flex min-h-0 flex-1">
-          <aside className="hidden w-56 shrink-0 border-r border-line sm:block">
+        <SidebarProvider persist={false} shortcut={null} width="13rem" className="h-full min-h-0">
+          <div className="hidden h-full shrink-0 sm:block">
             <SettingsNavigation inbox={inbox} currentProject={currentProject} />
-          </aside>
-          <div className="min-w-0 flex-1">
-            <SettingsContent
-              key={`${section}:${projectScope ? (navigation.projectId ?? '') : ''}`}
-              section={section}
-            />
           </div>
-        </div>
+          <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+            <Tooltip content={t('close')}>
+              <Button
+                variant="ghost"
+                size="icon-compact"
+                className="absolute top-3 right-3 z-10"
+                aria-label={t('close')}
+                onClick={() => navigation.close?.()}
+              >
+                <X />
+              </Button>
+            </Tooltip>
+            <div className="flex shrink-0 flex-col gap-3 px-6 pt-5 pb-3 pr-12 sm:hidden">
+              <h2 className="text-title">{t('title')}</h2>
+              <Select
+                label={t('title')}
+                value={section}
+                options={SETTINGS_GROUPS.flatMap((group) =>
+                  group.items.map((value) => ({ value, label: label(value), group: n(group.id) })),
+                )}
+                onValueChange={(value) => void navigate(navigation.link(value))}
+              />
+            </div>
+            <div className="min-h-0 min-w-0 flex-1">
+              <SettingsContent
+                key={`${section}:${projectScope ? (navigation.projectId ?? '') : ''}`}
+                section={section}
+              />
+            </div>
+          </div>
+        </SidebarProvider>
         <SettingsLeavePrompt />
       </DialogPopup>
     </Dialog>

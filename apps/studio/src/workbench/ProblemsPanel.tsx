@@ -1,5 +1,5 @@
+import { Button } from '@corral/react/design-kit';
 import { RefreshCw } from '@corral/react/icons';
-import { Button } from '@corral/react/ui';
 import { useContext, useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
@@ -142,7 +142,7 @@ export function ProblemsPanel({ sessionId }: { sessionId: string }) {
     >
       <div className="flex shrink-0 items-center justify-end border-b border-line px-2 py-1">
         <Button
-          size="icon-xs"
+          size="icon-compact"
           variant="ghost"
           aria-label={t('refresh')}
           onClick={() => refresh((value) => value + 1)}
@@ -165,11 +165,11 @@ export function ProblemsPanel({ sessionId }: { sessionId: string }) {
             <section key={source.key} aria-label={source.name} className="mb-3">
               <h3 className="flex items-baseline gap-2 px-1 text-xs font-medium">
                 <span className="truncate">{source.name}</span>
-                <span className="text-muted">{t(source.kind)}</span>
+                <span className="text-muted-foreground">{t(source.kind)}</span>
                 {source.freshness === 'stale' || source.freshness === 'configChanged' ? (
                   <span className="text-warning">{t(source.freshness)}</span>
                 ) : source.freshness === 'unknown' ? (
-                  <span className="text-muted">{t('versionUnknown')}</span>
+                  <span className="text-muted-foreground">{t('versionUnknown')}</span>
                 ) : null}
               </h3>
               <ul className="mt-1 space-y-0.5">
@@ -190,7 +190,7 @@ export function ProblemsPanel({ sessionId }: { sessionId: string }) {
                         <span className="shrink-0 font-mono">{location}</span>
                         {problem.message !== location ? (
                           <span
-                            className="min-w-0 flex-1 truncate text-muted"
+                            className="min-w-0 flex-1 truncate text-muted-foreground"
                             title={problem.message}
                           >
                             {problem.message}
@@ -204,7 +204,7 @@ export function ProblemsPanel({ sessionId }: { sessionId: string }) {
             </section>
           ))
         ) : (
-          <p className="px-1 text-xs text-muted">{t('empty')}</p>
+          <p className="px-1 text-xs text-muted-foreground">{t('empty')}</p>
         )}
       </div>
     </section>

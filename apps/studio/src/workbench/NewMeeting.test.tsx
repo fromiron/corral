@@ -18,7 +18,7 @@ vi.mock('../services.tsx', () => ({ useServices: () => state.services }));
 vi.mock('./useModels.ts', () => ({ useModelProfiles: () => state.profiles }));
 vi.mock('../projects.ts', () => ({ projectsChanged: vi.fn() }));
 vi.mock('@tanstack/react-router', () => ({ useNavigate: () => vi.fn() }));
-vi.mock('@corral/react/ui', () => ({
+vi.mock('@corral/react/design-kit', () => ({
   Button: ({ children, variant: _v, size: _s, ...props }: any) => (
     <button {...props}>{children}</button>
   ),

@@ -146,7 +146,8 @@ test('[TC-CAN-005-H] keyboard-only connection, duplicate, and one-step undo', as
   await page.getByRole('button', { name: 'Add Output' }).click();
   await page.locator('.react-flow__node[data-id="agent_1"]').click();
 
-  await page.getByLabel('From out').selectOption({ label: 'Output · in' });
+  await page.getByRole('combobox', { name: 'From out', exact: true }).click();
+  await page.getByRole('option', { name: 'Output · in', exact: true }).click();
   await page.getByRole('button', { name: 'Connect', exact: true }).click();
   await expect(page.locator('.react-flow__edge')).toHaveCount(1);
   await expect(page.getByText('Ready to run.')).toBeVisible();

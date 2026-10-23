@@ -1,5 +1,5 @@
 import type { PermissionMode } from '@corral/contracts';
-import { Select } from '@corral/react/ui';
+import { Select } from '@corral/react/design-kit';
 import { useTranslations } from 'use-intl';
 
 /** A request choice, never a mutation of a running task's approval policy. */

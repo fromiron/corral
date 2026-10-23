@@ -1,5 +1,6 @@
 import type { FitAddon } from '@xterm/addon-fit';
 import type { Terminal } from '@xterm/xterm';
+import { resolvedThemeColors } from '../theme-colors.ts';
 
 export interface XtermRuntime {
   terminal: Terminal;
@@ -43,13 +44,12 @@ export async function createXterm(
   terminal.open(host);
   const input = terminal.onData(onData);
   const theme = () => {
-    const style = getComputedStyle(document.documentElement);
-    const color = (name: string) => style.getPropertyValue(`--${name}`).trim();
+    const colors = resolvedThemeColors(['surface', 'text', 'primary']);
     terminal.options.theme = {
-      background: color('surface'),
-      foreground: color('text'),
-      cursor: color('accent'),
-      cursorAccent: color('surface'),
+      background: colors.surface,
+      foreground: colors.text,
+      cursor: colors.primary,
+      cursorAccent: colors.surface,
     };
   };
   theme();

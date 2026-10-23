@@ -1,5 +1,5 @@
 import type { TextAttachment, TextRange, WorkspaceTarget } from '@corral/contracts';
-import { Button, Textarea } from '@corral/react/ui';
+import { Button, Textarea } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -117,7 +117,7 @@ export function DockDocumentPanel({
             to="/sessions/$sessionId"
             params={{ sessionId: target.sessionId }}
             title={target.sessionId}
-            className="text-accent underline"
+            className="text-primary underline"
           >
             {t('openConversation')}
           </Link>
@@ -129,8 +129,8 @@ export function DockDocumentPanel({
             {stale ? t('staleDock') : state.error}
           </p>
           <Button
-            size="sm"
-            variant="outline"
+            size="compact"
+            variant="tertiary"
             disabled={state.pending}
             onClick={() => retry((value) => value + 1)}
           >
@@ -170,11 +170,11 @@ export function DockDocumentPanel({
           fill
         />
       ) : state.pending ? (
-        <p role="status" className="text-xs text-muted">
+        <p role="status" className="text-xs text-muted-foreground">
           {t('loading')}
         </p>
       ) : entry ? (
-        <p className="text-xs text-muted">
+        <p className="text-xs text-muted-foreground">
           {entry.file.content.kind === 'binary'
             ? tf('binary')
             : entry.file.content.kind === 'too_large'
@@ -190,7 +190,7 @@ export function DockDocumentPanel({
             aria-label={t('recovery')}
             className="min-w-0 space-y-2 rounded fill-group p-3"
           >
-            <p className="text-xs text-muted">{t('previousCopyHint')}</p>
+            <p className="text-xs text-muted-foreground">{t('previousCopyHint')}</p>
             <Textarea
               readOnly
               aria-label={t('draftContent')}
@@ -198,7 +198,7 @@ export function DockDocumentPanel({
               className="font-mono text-xs"
             />
             <Button
-              size="sm"
+              size="compact"
               variant="ghost"
               onClick={() => {
                 void owner

@@ -1,6 +1,16 @@
 import { useId } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
+import {
+  KitAccordion,
+  KitAccordionContent,
+  KitAccordionItem,
+  KitAccordionTrigger,
+  KitCard,
+  KitCardContent,
+  KitCardHeader,
+  KitCardTitle,
+} from '../design-kit/index.ts';
 import { estimateRunCost, type ModelPrices } from '../run/cost.ts';
 import type { RunSessionStore } from '../run/session.ts';
 
@@ -61,142 +71,152 @@ export function BudgetInspector({
     // CR-048: no allowance applies, so show what was used and what is still unknown.
     const rows = Object.values(budget.reservations);
     return (
-      <section
-        aria-labelledby={headingId}
-        className="flex flex-col gap-2 rounded fill-group p-2 text-xs"
-      >
-        <h3 id={headingId} className="font-semibold">
-          {t('heading')}
-        </h3>
-        <p role="note">{t('noLimits')}</p>
-        <dl className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-x-3 gap-y-1">
-          <dt>{t('confirmed')}</dt>
-          <dd>{t('tokens', { count: budget.spent })}</dd>
-          <dt>{t('callsMade')}</dt>
-          <dd>{budget.modelCalls}</dd>
-          <dt>{t('callsInFlight')}</dt>
-          <dd>{rows.filter((row) => row.status === 'reserved').length}</dd>
-          <dt>{t('callsUnknown')}</dt>
-          <dd>{rows.filter((row) => row.status === 'unknown').length}</dd>
-        </dl>
-        {prices ? <CostLine text={costText()} /> : null}
-        <p className="text-muted">{t('noLimitsNote')}</p>
-      </section>
+      <KitCard role="region" aria-labelledby={headingId}>
+        <KitCardHeader>
+          <h3 id={headingId}>
+            <KitCardTitle>{t('heading')}</KitCardTitle>
+          </h3>
+        </KitCardHeader>
+        <KitCardContent className="flex flex-col gap-3">
+          <p role="note">{t('noLimits')}</p>
+          <dl className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-x-3 gap-y-1">
+            <dt>{t('confirmed')}</dt>
+            <dd>{t('tokens', { count: budget.spent })}</dd>
+            <dt>{t('callsMade')}</dt>
+            <dd>{budget.modelCalls}</dd>
+            <dt>{t('callsInFlight')}</dt>
+            <dd>{rows.filter((row) => row.status === 'reserved').length}</dd>
+            <dt>{t('callsUnknown')}</dt>
+            <dd>{rows.filter((row) => row.status === 'unknown').length}</dd>
+          </dl>
+          {prices ? <CostLine text={costText()} /> : null}
+          <p className="text-muted-foreground">{t('noLimitsNote')}</p>
+        </KitCardContent>
+      </KitCard>
     );
   }
   return (
-    <section
-      aria-labelledby={headingId}
-      className="flex flex-col gap-2 rounded fill-group p-2 text-xs"
-    >
-      <h3 id={headingId} className="font-semibold">
-        {t('heading')}
-      </h3>
-      <Meter
-        label={t('meterTokens')}
-        value={budget.spent + budget.reserved + budget.unknownOutstanding}
-        max={limits.maxOutputTokens}
-        text={t('meterTokensText', {
-          used: budget.spent,
-          held: budget.reserved + budget.unknownOutstanding,
-          max: limits.maxOutputTokens,
-        })}
-        now={budget.spent}
-      />
-      <Meter
-        label={t('meterCalls')}
-        value={budget.modelCalls}
-        max={limits.maxModelCalls}
-        text={t('meterCallsText', { used: budget.modelCalls, max: limits.maxModelCalls })}
-        now={budget.modelCalls}
-      />
-      {prices ? <CostLine text={costText()} /> : null}
-      {imageFigures.some(([, value]) => value !== undefined) ? (
-        <>
-          <dl
-            aria-label={t('imageBudget')}
-            className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1"
-          >
-            {imageFigures.flatMap(([key, value]) =>
-              value === undefined
-                ? []
-                : [
-                    <dt key={`${key}-label`}>{t(key)}</dt>,
-                    <dd key={`${key}-amount`}>{imageUsd(value)}</dd>,
-                  ],
-            )}
-          </dl>
-          {budget.imageUnknownOutstandingMicros !== undefined ? (
-            <p className="text-muted">{t('imageUnknownNote')}</p>
+    <KitCard role="region" aria-labelledby={headingId}>
+      <KitCardHeader>
+        <h3 id={headingId}>
+          <KitCardTitle>{t('heading')}</KitCardTitle>
+        </h3>
+      </KitCardHeader>
+      <KitCardContent className="flex flex-col gap-3">
+        <Meter
+          label={t('meterTokens')}
+          value={budget.spent + budget.reserved + budget.unknownOutstanding}
+          max={limits.maxOutputTokens}
+          text={t('meterTokensText', {
+            used: budget.spent,
+            held: budget.reserved + budget.unknownOutstanding,
+            max: limits.maxOutputTokens,
+          })}
+          now={budget.spent}
+        />
+        <Meter
+          label={t('meterCalls')}
+          value={budget.modelCalls}
+          max={limits.maxModelCalls}
+          text={t('meterCallsText', { used: budget.modelCalls, max: limits.maxModelCalls })}
+          now={budget.modelCalls}
+        />
+        {prices ? <CostLine text={costText()} /> : null}
+        {imageFigures.some(([, value]) => value !== undefined) ? (
+          <>
+            <dl
+              aria-label={t('imageBudget')}
+              className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1"
+            >
+              {imageFigures.flatMap(([key, value]) =>
+                value === undefined
+                  ? []
+                  : [
+                      <dt key={`${key}-label`}>{t(key)}</dt>,
+                      <dd key={`${key}-amount`}>{imageUsd(value)}</dd>,
+                    ],
+              )}
+            </dl>
+            {budget.imageUnknownOutstandingMicros !== undefined ? (
+              <p className="text-muted-foreground">{t('imageUnknownNote')}</p>
+            ) : null}
+          </>
+        ) : null}
+        <KitAccordion type="multiple" className="w-full">
+          <KitAccordionItem value="figures">
+            <KitAccordionTrigger>{t('allFigures')}</KitAccordionTrigger>
+            <KitAccordionContent>
+              <dl className="mt-1 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-x-3 gap-y-1">
+                <dt>{t('confirmed')}</dt>
+                <dd>{t('tokens', { count: budget.spent })}</dd>
+                <dt>{t('reserved')}</dt>
+                <dd>{t('tokens', { count: budget.reserved })}</dd>
+                <dt>{t('unknownHeld')}</dt>
+                <dd>{t('tokens', { count: budget.unknownOutstanding })}</dd>
+                <dt>{t('remaining')}</dt>
+                <dd>{t('tokens', { count: remaining })}</dd>
+                <dt>{t('limit')}</dt>
+                <dd>{t('tokens', { count: limits.maxOutputTokens })}</dd>
+                <dt>{t('modelCalls')}</dt>
+                <dd>
+                  {budget.modelCalls} / {limits.maxModelCalls}
+                </dd>
+                <dt>{t('spawns')}</dt>
+                <dd>
+                  {
+                    projection.executionOrder.filter(
+                      (id) => projection.executions[id]?.parentExecutionId,
+                    ).length
+                  }{' '}
+                  / {limits.maxSpawns}
+                </dd>
+                <dt>{t('cost')}</dt>
+                <dd className="break-words">{prices ? costText() : t('costUnavailable')}</dd>
+              </dl>
+              <p className="text-muted-foreground">{t('unknownNote')}</p>
+              <p className="text-muted-foreground">{t('capNote')}</p>
+            </KitAccordionContent>
+          </KitAccordionItem>
+          {Object.keys(budget.reservations).length > 0 ? (
+            <KitAccordionItem value="requests">
+              <KitAccordionTrigger>{t('requests')}</KitAccordionTrigger>
+              <KitAccordionContent>
+                <ul className="mt-1 flex flex-col gap-1">
+                  {Object.entries(budget.reservations).map(([id, row]) => (
+                    <li key={id} data-testid={`budget-call-${row.modelCallId ?? id}`}>
+                      <span className="font-mono">{row.modelCallId ?? id}</span> ·{' '}
+                      <span>{t(`state.${row.status}`)}</span> ·{' '}
+                      {row.image ? (
+                        <>
+                          {row.image.actualMicros === null
+                            ? t('imageCostUnknown')
+                            : imageUsd(row.image.actualMicros)}
+                          {row.status !== 'settled' ? (
+                            <span>
+                              {' '}
+                              · {t('imageHeld', { usd: imageUsd(row.image.reservedMicros) })}
+                            </span>
+                          ) : null}
+                        </>
+                      ) : (
+                        <>
+                          {row.actual === null
+                            ? t('usageUnknown')
+                            : t('tokens', { count: row.actual })}
+                          {row.status !== 'settled' ? (
+                            <span> · {t('held', { count: row.reserved })}</span>
+                          ) : null}
+                        </>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </KitAccordionContent>
+            </KitAccordionItem>
           ) : null}
-        </>
-      ) : null}
-      <details>
-        <summary className="cursor-pointer">{t('allFigures')}</summary>
-        <dl className="mt-1 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-x-3 gap-y-1">
-          <dt>{t('confirmed')}</dt>
-          <dd>{t('tokens', { count: budget.spent })}</dd>
-          <dt>{t('reserved')}</dt>
-          <dd>{t('tokens', { count: budget.reserved })}</dd>
-          <dt>{t('unknownHeld')}</dt>
-          <dd>{t('tokens', { count: budget.unknownOutstanding })}</dd>
-          <dt>{t('remaining')}</dt>
-          <dd>{t('tokens', { count: remaining })}</dd>
-          <dt>{t('limit')}</dt>
-          <dd>{t('tokens', { count: limits.maxOutputTokens })}</dd>
-          <dt>{t('modelCalls')}</dt>
-          <dd>
-            {budget.modelCalls} / {limits.maxModelCalls}
-          </dd>
-          <dt>{t('spawns')}</dt>
-          <dd>
-            {
-              projection.executionOrder.filter((id) => projection.executions[id]?.parentExecutionId)
-                .length
-            }{' '}
-            / {limits.maxSpawns}
-          </dd>
-          <dt>{t('cost')}</dt>
-          <dd className="break-words">{prices ? costText() : t('costUnavailable')}</dd>
-        </dl>
-        <p className="text-muted">{t('unknownNote')}</p>
-        <p className="text-muted">{t('capNote')}</p>
-      </details>
-      {Object.keys(budget.reservations).length > 0 ? (
-        <details>
-          <summary className="cursor-pointer">{t('requests')}</summary>
-          <ul className="mt-1 flex flex-col gap-1">
-            {Object.entries(budget.reservations).map(([id, row]) => (
-              <li
-                key={id}
-                data-testid={`budget-call-${row.modelCallId ?? id}`}
-                className="rounded fill-group p-1"
-              >
-                <span className="font-mono">{row.modelCallId ?? id}</span> ·{' '}
-                <span>{t(`state.${row.status}`)}</span> ·{' '}
-                {row.image ? (
-                  <>
-                    {row.image.actualMicros === null
-                      ? t('imageCostUnknown')
-                      : imageUsd(row.image.actualMicros)}
-                    {row.status !== 'settled' ? (
-                      <span> · {t('imageHeld', { usd: imageUsd(row.image.reservedMicros) })}</span>
-                    ) : null}
-                  </>
-                ) : (
-                  <>
-                    {row.actual === null ? t('usageUnknown') : t('tokens', { count: row.actual })}
-                    {row.status !== 'settled' ? (
-                      <span> · {t('held', { count: row.reserved })}</span>
-                    ) : null}
-                  </>
-                )}
-              </li>
-            ))}
-          </ul>
-        </details>
-      ) : null}
-    </section>
+        </KitAccordion>
+      </KitCardContent>
+    </KitCard>
   );
 }
 
@@ -218,7 +238,7 @@ function Meter({
     <div className="flex flex-col gap-0.5">
       <div className="flex justify-between gap-2">
         <span id={id}>{label}</span>
-        <span className="text-muted">{text}</span>
+        <span className="text-muted-foreground">{text}</span>
       </div>
       <meter
         aria-labelledby={id}
@@ -234,7 +254,7 @@ function Meter({
 
 function CostLine({ text }: { text: string }) {
   return (
-    <p data-testid="cost-estimate" className="text-muted">
+    <p data-testid="cost-estimate" className="text-muted-foreground">
       {text}
     </p>
   );

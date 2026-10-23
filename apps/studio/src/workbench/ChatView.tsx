@@ -1,5 +1,5 @@
+import { Button, Select } from '@corral/react/design-kit';
 import { ArrowDown } from '@corral/react/icons';
-import { Button, Select } from '@corral/react/ui';
 import { defaultRangeExtractor, useVirtualizer } from '@tanstack/react-virtual';
 import { type ReactNode, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -168,7 +168,7 @@ export function ChatView({
     >
       <div className="shrink-0 px-5 pt-3">
         <div className="mx-auto w-full max-w-(--chat-content-max-width)">
-          <div className="flex flex-wrap items-center justify-end gap-1.5 text-xs text-muted">
+          <div className="flex flex-wrap items-center justify-end gap-1.5 text-xs text-muted-foreground">
             <span>{t('chatDensity')}</span>
             <Select
               label={t('chatDensity')}
@@ -274,8 +274,8 @@ export function ChatView({
           <div className="pointer-events-none absolute right-5 bottom-full z-20 pb-3">
             <Button
               aria-label={t('toLatest')}
-              size="icon-sm"
-              variant="outline"
+              size="icon-compact"
+              variant="tertiary"
               className="pointer-events-auto rounded-full"
               onClick={() => {
                 restoreTop.current = null;
@@ -289,7 +289,7 @@ export function ChatView({
             </Button>
           </div>
         ) : null}
-        <div className="min-h-0 overflow-y-auto overscroll-contain">{composer}</div>
+        <div className="-m-1 min-h-0 overflow-y-auto overscroll-contain p-1">{composer}</div>
       </div>
     </div>
   );

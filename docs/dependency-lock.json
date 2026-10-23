@@ -23,10 +23,10 @@
     },
     {
       "name": "@base-ui/react",
-      "version": "1.4.1",
+      "version": "1.9.0",
       "license": "MIT",
-      "integrity": "sha512-Ab5/LIhcmL8BQcsBUYiOfkSDRdLpvgUBzMK30cu684JPcLclYlztharvCZyNNgzJtbAiREzI9q0pI5erHCMgCw==",
-      "published": "2026-04-20T12:24:35.520Z",
+      "integrity": "sha512-S8CSYosASBKtpL8SWUfS78rFElfLijiCgA7oHOK22jCJ95FULsYyKwBNFOgudt0RA+/7yNc7F81bOvQnRgbBiQ==",
+      "published": "2026-10-09T08:52:43.788Z",
       "repository": "git+https://github.com/mui/base-ui.git",
       "gitHead": null,
       "engines": {
@@ -931,6 +931,24 @@
       "scope": "runtime",
       "usedBy": [
         "@corral/studio"
+      ]
+    },
+    {
+      "name": "motion",
+      "version": "14.1.0",
+      "license": "MIT",
+      "integrity": "sha512-lsCsW9uJ+iMJj8MSiLccpUC+ZUpoSspaX6Pm78KrnZKMioCPAPG6WeG1d1d/Ywg+z1mny+STP6VyEYW+3nAqNw==",
+      "published": "2026-10-09T19:38:43.711Z",
+      "repository": "git+https://github.com/motiondivision/motion.git",
+      "gitHead": "e6bf03ead39cae7a2c5f8fe902ce8a9c1a9a22e8",
+      "engines": null,
+      "peerDependencies": {
+        "react": "^18.0.0 || ^19.0.0",
+        "react-dom": "^18.0.0 || ^19.0.0"
+      },
+      "scope": "runtime",
+      "usedBy": [
+        "@corral/react"
       ]
     },
     {

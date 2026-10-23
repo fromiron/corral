@@ -4,7 +4,7 @@ import {
   RegisteredDebugAdapter,
   RegisteredDebugConfiguration,
 } from '@corral/contracts';
-import { Button, Select } from '@corral/react/ui';
+import { Button, Select } from '@corral/react/design-kit';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
@@ -171,14 +171,14 @@ export function DebuggerSettings({ api, projectId, config, onChange }: Props) {
   return (
     <section className="flex flex-col gap-3" aria-label={t('title')}>
       <h3 className="text-lg font-semibold">{t('title')}</h3>
-      <p className="text-xs text-muted">{t('hint')}</p>
+      <p className="text-xs text-muted-foreground">{t('hint')}</p>
       {error ? (
         <p role="alert" className="text-sm text-danger">
           {error}
         </p>
       ) : null}
       {notice ? (
-        <p role="status" className="text-xs text-muted">
+        <p role="status" className="text-xs text-muted-foreground">
           {notice}
         </p>
       ) : null}
@@ -189,8 +189,8 @@ export function DebuggerSettings({ api, projectId, config, onChange }: Props) {
             <div key={item.id} className="flex flex-wrap items-center gap-2 text-sm">
               <span>{item.name}</span>
               <Button
-                variant="outline"
-                size="sm"
+                variant="tertiary"
+                size="compact"
                 disabled={busy}
                 onClick={() => {
                   setEditingAdapter(item.id);
@@ -206,7 +206,7 @@ export function DebuggerSettings({ api, projectId, config, onChange }: Props) {
               </Button>
               <Button
                 variant="ghost"
-                size="sm"
+                size="compact"
                 disabled={
                   busy || config?.debugConfigurations?.some((value) => value.adapterId === item.id)
                 }
@@ -251,7 +251,7 @@ export function DebuggerSettings({ api, projectId, config, onChange }: Props) {
               true,
               'adapter',
             )}
-            <p className="text-xs text-muted">{t('argvHint')}</p>
+            <p className="text-xs text-muted-foreground">{t('argvHint')}</p>
             {field(
               'timeout',
               adapter.seconds,
@@ -271,8 +271,8 @@ export function DebuggerSettings({ api, projectId, config, onChange }: Props) {
               {item.name} · {item.runtime} · {t(item.request)}
             </span>
             <Button
-              size="sm"
-              variant="outline"
+              size="compact"
+              variant="tertiary"
               disabled={busy}
               onClick={() => {
                 setEditingConfiguration(item.id);
@@ -300,7 +300,7 @@ export function DebuggerSettings({ api, projectId, config, onChange }: Props) {
               {t('edit')}
             </Button>
             <Button
-              size="sm"
+              size="compact"
               variant="ghost"
               disabled={busy}
               onClick={() =>
@@ -367,7 +367,7 @@ export function DebuggerSettings({ api, projectId, config, onChange }: Props) {
           {field('cwd', configuration.cwd, (value) =>
             setConfiguration({ ...configuration, cwd: value }),
           )}
-          <p className="text-xs text-muted">{t('relativeHint')}</p>
+          <p className="text-xs text-muted-foreground">{t('relativeHint')}</p>
           {configuration.request === 'launch' ? (
             <>
               {configuration.runtime === 'node' ? (
@@ -396,10 +396,10 @@ export function DebuggerSettings({ api, projectId, config, onChange }: Props) {
                 false,
                 true,
               )}
-              <p className="text-xs text-muted">{t('envHint')}</p>
+              <p className="text-xs text-muted-foreground">{t('envHint')}</p>
             </>
           ) : (
-            <p className="text-xs text-muted">{t('attachHint')}</p>
+            <p className="text-xs text-muted-foreground">{t('attachHint')}</p>
           )}
           <label className="flex items-center gap-2 text-sm">
             <input

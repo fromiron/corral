@@ -47,7 +47,7 @@ test('[TC-ABS-010-H] image profile CRUD and role configuration persist through t
   await page.getByRole('tab', { name: /^Teams/ }).click();
   await page.getByRole('button', { name: 'New team', exact: true }).click();
   await page.getByRole('button', { name: 'Add Agent', exact: true }).click();
-  await page.getByRole('checkbox', { name: /Generate images/ }).check();
+  await page.getByRole('switch', { name: /Generate images/ }).check();
   await page.getByRole('textbox', { name: /^Image profile ID/ }).fill('illustration');
   await page.screenshot({ path: test.info().outputPath('image-role.png') });
   await page.getByRole('button', { name: 'Save', exact: true }).click();

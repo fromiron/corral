@@ -1,7 +1,7 @@
 import { type LoopNode, type RegisteredCheck, ReviewRecipeRevision } from '@corral/contracts';
 import { reviewCriteriaHash } from '@corral/core';
 import { useStudioStores } from '@corral/react';
-import { Button, Select } from '@corral/react/ui';
+import { Button, Select } from '@corral/react/design-kit';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
@@ -97,7 +97,7 @@ export function LoopRecipeSettings({ node, projectId }: { node: LoopNode; projec
   return (
     <fieldset disabled={busy} className="flex flex-col gap-2 border-y border-line py-3">
       <legend className="text-sm font-semibold">{t('heading')}</legend>
-      <p className="text-xs text-muted">{t('setupHint')}</p>
+      <p className="text-xs text-muted-foreground">{t('setupHint')}</p>
       {node.reviewRecipe ? (
         <p role="status" className="text-xs">
           {t('pinned', { revision: node.reviewRecipe.revision })}
@@ -173,7 +173,7 @@ export function LoopRecipeSettings({ node, projectId }: { node: LoopNode; projec
           />
         </label>
       ))}
-      <p className="text-xs text-muted">{t('limitsHint')}</p>
+      <p className="text-xs text-muted-foreground">{t('limitsHint')}</p>
       <p className="text-xs font-medium">{t('checks')}</p>
       {checks.map((check) => (
         <label key={check.id} className="flex items-center gap-2 text-xs">
@@ -209,7 +209,7 @@ export function LoopRecipeSettings({ node, projectId }: { node: LoopNode; projec
             {t('missingCheck', { id })}
           </label>
         ))}
-      <p className="text-xs text-muted">{t('checksHint')}</p>
+      <p className="text-xs text-muted-foreground">{t('checksHint')}</p>
       <label className="flex flex-col gap-1 text-xs">
         {t('files')}
         <textarea
@@ -219,14 +219,14 @@ export function LoopRecipeSettings({ node, projectId }: { node: LoopNode; projec
           onChange={(event) => setPaths(event.target.value)}
         />
       </label>
-      <p className="text-xs text-muted">{t('filesHint')}</p>
+      <p className="text-xs text-muted-foreground">{t('filesHint')}</p>
       {error ? (
         <p role="alert" className="text-xs text-danger">
           {error}
         </p>
       ) : null}
       <Button
-        size="sm"
+        size="compact"
         disabled={!values.candidateNodeId || !values.evaluatorRoleId}
         onClick={() => void save()}
       >
@@ -234,7 +234,7 @@ export function LoopRecipeSettings({ node, projectId }: { node: LoopNode; projec
       </Button>
       {node.reviewRecipe ? (
         <Button
-          size="sm"
+          size="compact"
           variant="ghost"
           onClick={() => editor.getState().updateNode(node.id, { reviewRecipe: null })}
         >

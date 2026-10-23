@@ -1,4 +1,4 @@
-import { Button } from '@corral/react/ui';
+import { Button } from '@corral/react/design-kit';
 import { useTranslations } from 'use-intl';
 
 export function StartupFailure() {

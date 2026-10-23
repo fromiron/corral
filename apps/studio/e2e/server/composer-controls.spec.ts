@@ -103,7 +103,7 @@ test('[TC-COMPOSER-001-N] independent choices preserve effort and block conflict
   );
   await chip.click();
   await page.getByRole('menuitemradio', { name: 'OpenAI · Test B', exact: true }).click();
-  await expect(page.getByRole('alert')).toContainText('Fixture save conflict');
+  await expect(page.getByRole('alert').filter({ hasText: 'Fixture save conflict' })).toBeVisible();
   await expect(chip).toContainText('Test A · Low');
   await expect(requestBox(page)).toHaveValue('Keep this request');
   await page.setViewportSize({ width: 390, height: 844 });

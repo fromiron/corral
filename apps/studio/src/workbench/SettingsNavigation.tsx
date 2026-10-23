@@ -1,5 +1,34 @@
-import { ArrowLeft, Inbox, PanelLeft } from '@corral/react/icons';
-import { Button, Select } from '@corral/react/ui';
+import {
+  Button,
+  DialogTitle,
+  Select,
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+} from '@corral/react/design-kit';
+import {
+  ArrowLeft,
+  BookOpen,
+  Bot,
+  FolderOpen,
+  GitBranch,
+  Inbox,
+  Info,
+  Keyboard,
+  LayoutGrid,
+  PanelLeft,
+  Settings,
+  Shield,
+  Terminal,
+  Users,
+} from '@corral/react/icons';
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
 import { projectName } from '../projects.ts';
@@ -27,6 +56,21 @@ export function settingsSection(path: string, section?: unknown): string {
     : 'general';
 }
 
+const SECTION_ICONS = {
+  general: Settings,
+  shortcuts: Keyboard,
+  about: Info,
+  workspace: FolderOpen,
+  models: Bot,
+  vault: Shield,
+  harness: Terminal,
+  skills: BookOpen,
+  hooks: GitBranch,
+  mcp: LayoutGrid,
+  defaults: Settings,
+  'project-defaults': Users,
+} satisfies Record<SettingsSection, typeof Settings>;
+
 export function SettingsNavigation({
   inbox,
   currentProject,
@@ -41,63 +85,91 @@ export function SettingsNavigation({
   const location = useRouterState({ select: (state) => state.location });
   const active = navigation.section ?? settingsSection(location.pathname, location.search.section);
   const label = useSettingsSectionLabel();
-  const sections = SETTINGS_GROUPS.map((group) => ({ title: t(group.id), items: group.items }));
-  return (
-    <nav
-      data-testid="settings-sidebar"
-      aria-label={td('settings')}
-      className="flex h-full min-h-0 flex-col bg-sidebar text-sm"
-    >
-      {!navigation.overlay ? (
-        <div className="flex h-[52px] shrink-0 items-center border-b border-line/50 px-4">
-          <Link
-            to={navigation.returnTo}
-            resetScroll={false}
-            className="mr-auto flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-ui hover:bg-sidebar-accent"
-          >
-            <ArrowLeft size={16} />
-            {t('backToWork')}
-          </Link>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={w('collapseSidebar')}
-            onClick={() => changePreferences({ sidebarOpen: false })}
-          >
-            <PanelLeft />
-          </Button>
-        </div>
-      ) : null}
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
-        {sections.map((group) => (
-          <section key={group.title} className="mb-5" aria-label={group.title}>
-            <h2 className="mb-2 px-3 text-2xs font-medium text-muted">{group.title}</h2>
-            {group.items.map((key) => (
-              <Link
-                key={key}
-                {...navigation.link(key)}
-                activeOptions={{ exact: true, includeSearch: true, includeHash: true }}
-                inactiveProps={{ 'aria-current': undefined }}
-                aria-current={active === key ? 'page' : undefined}
-                className={`mb-1 block rounded-md px-3 py-2 text-ui ${active === key ? 'bg-sidebar-selected font-medium text-text' : 'text-muted hover:bg-sidebar-accent hover:text-text'}`}
-              >
-                {label(key)}
-              </Link>
-            ))}
-          </section>
-        ))}
-      </div>
-      {inbox > 0 ? (
-        <Link
-          to="/projects/$projectId"
-          params={{ projectId: currentProject }}
-          className="flex items-center gap-2 border-t border-line/50 p-4 text-warning"
-        >
-          <Inbox size={16} />
-          {w('needsYou', { count: inbox })}
-        </Link>
-      ) : null}
+  const sidebar = (
+    <nav data-testid="settings-sidebar" aria-label={td('settings')} className="h-full min-h-0">
+      <Sidebar
+        collapsible="none"
+        rail={false}
+        bordered={false}
+        className="h-full bg-[rgb(var(--overlay)/0.03)]"
+      >
+        <SidebarHeader className="gap-3 px-4 pt-5 pb-2">
+          {navigation.overlay ? (
+            <DialogTitle className="text-title font-normal">{td('settings')}</DialogTitle>
+          ) : (
+            <>
+              <div className="flex items-center gap-2">
+                <Link
+                  to={navigation.returnTo}
+                  resetScroll={false}
+                  className="mr-auto flex min-w-0 items-center gap-2 rounded-md py-1 text-body text-muted-foreground hover:text-foreground"
+                >
+                  <ArrowLeft size={16} />
+                  {t('backToWork')}
+                </Link>
+                <Button
+                  variant="ghost"
+                  size="icon-compact"
+                  aria-label={w('collapseSidebar')}
+                  onClick={() => changePreferences({ sidebarOpen: false })}
+                >
+                  <PanelLeft />
+                </Button>
+              </div>
+              <h2 className="text-title">{td('settings')}</h2>
+            </>
+          )}
+        </SidebarHeader>
+        <SidebarContent>
+          {SETTINGS_GROUPS.map((group) => (
+            <SidebarGroup key={group.id} aria-label={t(group.id)}>
+              <SidebarGroupLabel>{t(group.id)}</SidebarGroupLabel>
+              <SidebarMenu focusRing={false}>
+                {group.items.map((key) => (
+                  <SidebarMenuItem key={key}>
+                    <SidebarMenuButton
+                      icon={SECTION_ICONS[key]}
+                      isActive={active === key}
+                      render={
+                        <Link
+                          {...navigation.link(key)}
+                          activeOptions={{ exact: true, includeSearch: true, includeHash: true }}
+                          inactiveProps={{ 'aria-current': undefined }}
+                        />
+                      }
+                    >
+                      {label(key)}
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroup>
+          ))}
+        </SidebarContent>
+        {inbox > 0 ? (
+          <SidebarFooter>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  icon={Inbox}
+                  className="text-warning"
+                  render={<Link to="/projects/$projectId" params={{ projectId: currentProject }} />}
+                >
+                  {w('needsYou', { count: inbox })}
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarFooter>
+        ) : null}
+      </Sidebar>
     </nav>
+  );
+  return navigation.overlay ? (
+    sidebar
+  ) : (
+    <SidebarProvider persist={false} shortcut={null} width="100%" className="h-full min-h-0">
+      {sidebar}
+    </SidebarProvider>
   );
 }
 

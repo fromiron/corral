@@ -8,7 +8,13 @@ import {
   type TournamentView,
 } from '@corral/contracts';
 import type { RuntimeTransport } from '@corral/core';
-import { Button, Dialog, DialogDescription, DialogPopup, DialogTitle } from '@corral/react/ui';
+import {
+  Button,
+  Dialog,
+  DialogDescription,
+  DialogPopup,
+  DialogTitle,
+} from '@corral/react/design-kit';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { newCommandId } from '../sessionActions.ts';
@@ -165,7 +171,7 @@ export function CandidateComparison({
     return error ? (
       <div role="alert" className="flex flex-col gap-2 text-xs">
         <p>{error}</p>
-        <Button size="xs" variant="outline" onClick={() => void refresh()}>
+        <Button size="compact" variant="tertiary" onClick={() => void refresh()}>
           {t('refresh')}
         </Button>
       </div>
@@ -183,7 +189,7 @@ export function CandidateComparison({
     >
       <h3 className="text-sm font-semibold">{t('heading')}</h3>
       <p role="status">{t(`status.${comparison.status}`)}</p>
-      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
+      <Button variant="tertiary" size="compact" onClick={() => setOpen(true)}>
         {t('open')}
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
@@ -204,7 +210,12 @@ export function CandidateComparison({
               <span title={comparison.baselineTree}>
                 {t('baseline', { tree: comparison.baselineTree.slice(0, 12) })}
               </span>
-              <Button size="xs" variant="outline" disabled={busy} onClick={() => void refresh()}>
+              <Button
+                size="compact"
+                variant="tertiary"
+                disabled={busy}
+                onClick={() => void refresh()}
+              >
                 {t('refresh')}
               </Button>
             </div>
@@ -216,7 +227,7 @@ export function CandidateComparison({
               {comparison.candidates.map((item, index) => (
                 <label
                   key={item.candidateId}
-                  className="flex min-w-0 cursor-pointer flex-col gap-3 rounded-lg fill-group p-3 text-xs has-[:checked]:ring-1 has-[:checked]:ring-accent"
+                  className="flex min-w-0 cursor-pointer flex-col gap-3 rounded-lg fill-group p-3 text-xs has-[:checked]:ring-1 has-[:checked]:ring-primary"
                 >
                   <span className="flex items-start gap-2">
                     <input
@@ -234,7 +245,9 @@ export function CandidateComparison({
                       <span className="block text-sm font-semibold">
                         {t('candidate', { number: index + 1 })}
                       </span>
-                      <span className="block text-muted wrap-anywhere">{item.modelProfile}</span>
+                      <span className="block text-muted-foreground wrap-anywhere">
+                        {item.modelProfile}
+                      </span>
                     </span>
                   </span>
                   <span>
@@ -247,13 +260,13 @@ export function CandidateComparison({
                       <span className="text-lg font-semibold tabular-nums">
                         {item.usage.modelCalls}
                       </span>
-                      <span className="text-muted">{t('modelCalls')}</span>
+                      <span className="text-muted-foreground">{t('modelCalls')}</span>
                     </span>
                     <span className="flex flex-col gap-1">
                       <span className="text-lg font-semibold tabular-nums">
                         {item.usage.outputTokens}
                       </span>
-                      <span className="text-muted">{t('outputTokens')}</span>
+                      <span className="text-muted-foreground">{t('outputTokens')}</span>
                     </span>
                   </span>
                   <span>
@@ -265,7 +278,7 @@ export function CandidateComparison({
                     })}
                   </span>
                   {item.usage.unknownOutputTokens > 0 ? (
-                    <span className="text-muted">
+                    <span className="text-muted-foreground">
                       {t('unknownUsage', { tokens: item.usage.unknownOutputTokens })}
                     </span>
                   ) : null}
@@ -315,10 +328,12 @@ export function CandidateComparison({
                       {path ? renderFile(candidate, path) : null}
                     </>
                   ) : (
-                    <p className="text-xs text-muted">{t('noChanges')}</p>
+                    <p className="text-xs text-muted-foreground">{t('noChanges')}</p>
                   )
                 ) : (
-                  <p className="text-xs text-muted">{tree ? t('loading') : t('notReady')}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {tree ? t('loading') : t('notReady')}
+                  </p>
                 )}
               </>
             ) : null}
@@ -328,7 +343,7 @@ export function CandidateComparison({
               {candidate ? (
                 <div className="flex flex-wrap gap-2">
                   <Button
-                    size="sm"
+                    size="compact"
                     disabled={
                       busy ||
                       Boolean(pending) ||
@@ -343,7 +358,7 @@ export function CandidateComparison({
                   </Button>
                   {cancellable ? (
                     <Button
-                      size="sm"
+                      size="compact"
                       variant="ghost-destructive"
                       disabled={busy || Boolean(pending)}
                       onClick={() => void act('cancel_candidate')}
@@ -357,8 +372,8 @@ export function CandidateComparison({
                 <div role="status" className="flex flex-wrap items-center gap-2 text-xs">
                   <span>{t('pending')}</span>
                   <Button
-                    size="xs"
-                    variant="outline"
+                    size="compact"
+                    variant="tertiary"
                     disabled={busy}
                     onClick={() => void recover()}
                   >

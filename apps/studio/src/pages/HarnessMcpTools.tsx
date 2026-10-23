@@ -65,13 +65,17 @@ function ServerTools({
       {verified ? (
         <fieldset className="flex flex-col gap-2">
           <legend className="mb-2 text-sm font-medium">{t('selectTools')}</legend>
-          {!verified.tools.length ? <p className="text-sm text-muted">{t('probeEmpty')}</p> : null}
+          {!verified.tools.length ? (
+            <p className="text-sm text-muted-foreground">{t('probeEmpty')}</p>
+          ) : null}
           {verified.tools.map((tool) => (
             <label key={tool.name} className="settings-row">
               <span>
                 <span className="text-sm font-medium">{tool.title || tool.name}</span>
                 {tool.description ? (
-                  <span className="mt-1 block text-xs text-muted">{tool.description}</span>
+                  <span className="mt-1 block text-xs text-muted-foreground">
+                    {tool.description}
+                  </span>
                 ) : null}
               </span>
               <input
@@ -87,7 +91,7 @@ function ServerTools({
               />
             </label>
           ))}
-          <p className="text-xs text-muted">{t('nextRun')}</p>
+          <p className="text-xs text-muted-foreground">{t('nextRun')}</p>
         </fieldset>
       ) : null}
     </section>

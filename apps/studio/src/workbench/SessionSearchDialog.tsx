@@ -8,7 +8,7 @@ import {
   DialogPopup,
   DialogTitle,
   Input,
-} from '@corral/react/ui';
+} from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -110,7 +110,7 @@ export function SessionSearchDialog({
             </label>
           </div>
           {result ? (
-            <p role="status" className="text-xs text-muted">
+            <p role="status" className="text-xs text-muted-foreground">
               {t(result.scope)} · {t('count', { count: result.total })}
             </p>
           ) : null}
@@ -136,11 +136,11 @@ export function SessionSearchDialog({
                   className="block rounded fill-group p-2 hover:bg-subtle"
                 >
                   <span className="text-sm font-medium">{hit.title}</span>{' '}
-                  <span className="text-xs text-muted">
+                  <span className="text-xs text-muted-foreground">
                     {t(`kind.${hit.kind}`)}
                     {hit.archived ? ` · ${t('archived')}` : ''}
                   </span>
-                  <p className="whitespace-pre-wrap break-words text-xs text-muted">
+                  <p className="whitespace-pre-wrap break-words text-xs text-muted-foreground">
                     {hit.excerpt}
                   </p>
                 </Link>
@@ -149,23 +149,23 @@ export function SessionSearchDialog({
           </ul>
           <div className="flex gap-2">
             <Button
-              size="xs"
-              variant="outline"
+              size="compact"
+              variant="tertiary"
               disabled={!offset}
               onClick={() => setOffset(Math.max(0, offset - 50))}
             >
               {t('previous')}
             </Button>
             <Button
-              size="xs"
-              variant="outline"
+              size="compact"
+              variant="tertiary"
               disabled={!result || offset + 50 >= result.total}
               onClick={() => setOffset(offset + 50)}
             >
               {t('next')}
             </Button>
             <Button
-              size="xs"
+              size="compact"
               variant="ghost"
               disabled={busy}
               onClick={() => {

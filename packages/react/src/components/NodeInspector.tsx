@@ -12,6 +12,25 @@ import { type ReactNode, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { useStudioStores } from '../context.tsx';
+import {
+  KitButton as Button,
+  KitCard as Card,
+  KitCardContent as CardContent,
+  KitCardDescription as CardDescription,
+  KitCardHeader as CardHeader,
+  KitCardTitle as CardTitle,
+  KitAccordion,
+  KitAccordionContent,
+  KitAccordionItem,
+  KitAccordionTrigger,
+  KitInputField,
+  KitInputGroup,
+  KitRadioGroup,
+  KitRadioItem,
+  KitSwitch,
+  Select,
+  Textarea,
+} from '../design-kit/index.ts';
 import { checkConnection, connectCapability, type EditorDraft, findNode } from '../editor/model.ts';
 import { ReasoningSelect } from './ReasoningSelect.tsx';
 
@@ -23,8 +42,6 @@ const BINDING_KINDS: InputBindingKind[] = [
   'explicit_version',
   'question_answer',
 ];
-const field = 'rounded-md fill-control p-2 text-sm';
-const smallButton = 'rounded fill-control px-2 py-1 text-xs';
 
 /** One focus session of a field is one undo step. */
 function useEditSession() {
@@ -69,24 +86,27 @@ export function NodeInspector({
 
   return (
     <section aria-labelledby={`${id}-heading`} className="flex flex-col gap-4">
-      <h2 id={`${id}-heading`} className="text-sm font-semibold">
+      <h2 id={`${id}-heading`} className="text-subtitle">
         {t('heading')}
       </h2>
-      <div className="flex flex-col gap-1 rounded-lg bg-subtle/60 p-2.5">
-        <p className="text-2xs font-medium text-muted">{t('teamDefaults')}</p>
-        <label htmlFor={`${id}-brief`} className="text-xs font-medium">
-          {t('brief')}
-        </label>
-        <p className="text-2xs text-muted">{t('briefHint')}</p>
-        <textarea
-          id={`${id}-brief`}
-          value={brief}
-          onChange={(e) => editor.getState().setBrief(e.target.value)}
-          {...session}
-          rows={2}
-          className={field}
-        />
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>{t('teamDefaults')}</CardTitle>
+          <CardDescription>{t('briefHint')}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <label htmlFor={`${id}-brief`} className="text-caption">
+            {t('brief')}
+          </label>
+          <Textarea
+            id={`${id}-brief`}
+            value={brief}
+            onChange={(e) => editor.getState().setBrief(e.target.value)}
+            {...session}
+            rows={2}
+          />
+        </CardContent>
+      </Card>
       {node ? (
         <NodeProperties
           node={node}
@@ -95,7 +115,7 @@ export function NodeInspector({
           loopSettings={loopSettings}
         />
       ) : (
-        <p className="text-sm text-muted">{t('none')}</p>
+        <p className="text-sm text-muted-foreground">{t('none')}</p>
       )}
     </section>
   );
@@ -130,79 +150,82 @@ function NodeProperties({
 
   return (
     <div className="flex flex-col gap-3" data-inspector-node={node.id}>
-      <label htmlFor={`${id}-label`} className="flex flex-col gap-1 text-xs font-medium">
-        {t('label')}
-        <input
-          id={`${id}-label`}
+      <KitInputGroup className="w-full" {...session}>
+        <KitInputField
+          index={0}
+          label={t('label')}
           value={node.label}
-          onChange={(e) => update(node.id, { label: e.target.value })}
-          {...session}
-          className={field}
+          onChange={(label) => update(node.id, { label })}
         />
-      </label>
+      </KitInputGroup>
 
       {node.type === 'agent' && role ? (
         <>
-          <fieldset className="flex flex-col gap-1 text-xs">
-            <legend className="font-medium">{t('invocation')}</legend>
-            {(['scheduled', 'callable'] as const).map((value) => (
-              <label key={value} className="flex items-center gap-2">
-                <input
-                  type="radio"
-                  name={`${id}-invocation`}
-                  checked={node.invocation === value}
-                  onChange={() => update(node.id, { invocation: value })}
-                />
-                {t(value)}
-              </label>
-            ))}
+          <fieldset>
+            <legend className="text-caption">{t('invocation')}</legend>
+            <KitRadioGroup
+              aria-label={t('invocation')}
+              value={node.invocation}
+              onValueChange={(value) =>
+                update(node.id, { invocation: value as typeof node.invocation })
+              }
+            >
+              {(['scheduled', 'callable'] as const).map((value, index) => (
+                <KitRadioItem key={value} index={index} value={value} label={t(value)} />
+              ))}
+            </KitRadioGroup>
           </fieldset>
-          <label htmlFor={`${id}-prompt`} className="flex flex-col gap-1 text-xs font-medium">
+          <label htmlFor={`${id}-prompt`} className="flex flex-col gap-1 text-caption">
             {t('prompt')}
-            <textarea
+            <Textarea
               id={`${id}-prompt`}
               value={role.prompt}
               onChange={(e) => update(node.id, { prompt: e.target.value })}
               {...session}
               rows={8}
-              className={`${field} min-h-32 resize-y leading-6`}
+              className="resize-y"
             />
           </label>
           {sharedBy > 1 ? (
-            <p className="text-xs text-warning">{t('sharedRole', { count: sharedBy })}</p>
+            <p className="text-caption text-warning">{t('sharedRole', { count: sharedBy })}</p>
           ) : null}
           {roleSettings?.(role, node.id)}
-          <label htmlFor={`${id}-profile`} className="flex flex-col gap-1 text-xs font-medium">
-            {t('modelProfile')}
-            {profiles?.length ? (
-              <select
+          {profiles?.length ? (
+            <div className="flex flex-col gap-1">
+              <label htmlFor={`${id}-profile`} className="text-caption">
+                {t('modelProfile')}
+              </label>
+              <Select
                 id={`${id}-profile`}
+                label={t('modelProfile')}
                 value={role.modelProfile}
-                onChange={(e) => update(node.id, { modelProfile: e.target.value })}
-                className={field}
-              >
-                {profiles.some((p) => p.profileId === role.modelProfile) ? null : (
-                  <option value={role.modelProfile}>
-                    {t('profileMissing', { profile: role.modelProfile })}
-                  </option>
-                )}
-                {profiles.map((p) => (
-                  <option key={p.profileId} value={p.profileId}>
-                    {p.profileId} — {p.label}
-                    {p.available ? '' : ` (${t('profileSignIn')})`}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <input
-                id={`${id}-profile`}
-                value={role.modelProfile}
-                onChange={(e) => update(node.id, { modelProfile: e.target.value })}
-                {...session}
-                className={field}
+                onValueChange={(modelProfile) => update(node.id, { modelProfile })}
+                options={[
+                  ...(profiles.some((p) => p.profileId === role.modelProfile)
+                    ? []
+                    : [
+                        {
+                          value: role.modelProfile,
+                          label: t('profileMissing', { profile: role.modelProfile }),
+                        },
+                      ]),
+                  ...profiles.map((p) => ({
+                    value: p.profileId,
+                    label: `${p.profileId} — ${p.label}${p.available ? '' : ` (${t('profileSignIn')})`}`,
+                  })),
+                ]}
               />
-            )}
-          </label>
+            </div>
+          ) : (
+            <KitInputGroup className="w-full" {...session}>
+              <KitInputField
+                index={0}
+                label={t('modelProfile')}
+                value={role.modelProfile}
+                onChange={(modelProfile) => update(node.id, { modelProfile })}
+              />
+            </KitInputGroup>
+          )}
           <ReasoningSelect
             value={role.reasoning}
             capabilities={
@@ -210,200 +233,190 @@ function NodeProperties({
             }
             onChange={(reasoning) => update(node.id, { reasoning })}
           />
-          <label className="flex items-start gap-2 text-xs">
-            <input
-              type="checkbox"
+          <div className="flex flex-col gap-1">
+            <KitSwitch
+              label={t('fileTools')}
               checked={role.allowedWorkTools.includes('write_file')}
-              onChange={(e) => update(node.id, { fileTools: e.target.checked })}
+              onToggle={() =>
+                update(node.id, { fileTools: !role.allowedWorkTools.includes('write_file') })
+              }
             />
-            <span>
-              <span className="font-medium">{t('fileTools')}</span>
-              <span className="block text-muted">{t('fileToolsHint')}</span>
-            </span>
-          </label>
+            <p className="text-caption text-muted-foreground">{t('fileToolsHint')}</p>
+          </div>
           {role.allowedWorkTools.includes('write_file') ? (
-            <label htmlFor={`${id}-editing`} className="flex flex-col gap-1 text-xs font-medium">
+            <label htmlFor={`${id}-editing`} className="flex flex-col gap-1 text-caption">
               {t('editingMode')}
-              <select
+              <Select
                 id={`${id}-editing`}
+                label={t('editingMode')}
                 value={role.editingMode ?? 'pi'}
-                onChange={(e) =>
-                  update(node.id, { editingMode: e.target.value as 'pi' | 'hashline' })
-                }
-                className={field}
-              >
-                <option value="pi">{t('editingModePi')}</option>
-                <option value="hashline">{t('editingModeHashline')}</option>
-              </select>
-              <span className="font-normal text-muted">{t('editingModeHint')}</span>
+                onValueChange={(editingMode) => update(node.id, { editingMode })}
+                options={[
+                  { value: 'pi', label: t('editingModePi') },
+                  { value: 'hashline', label: t('editingModeHashline') },
+                ]}
+              />
+              <span className="font-normal text-muted-foreground">{t('editingModeHint')}</span>
             </label>
           ) : null}
-          <label className="flex items-start gap-2 text-xs">
-            <input
-              type="checkbox"
+          <div className="flex flex-col gap-1">
+            <KitSwitch
+              label={t('runCommand')}
               checked={role.allowedWorkTools.includes('run_command')}
-              onChange={(e) => update(node.id, { runCommand: e.target.checked })}
+              onToggle={() =>
+                update(node.id, { runCommand: !role.allowedWorkTools.includes('run_command') })
+              }
             />
-            <span>
-              <span className="font-medium">{t('runCommand')}</span>
-              <span className="block text-muted">{t('runCommandHint')}</span>
-            </span>
-          </label>
-          <label className="flex items-start gap-2 text-xs">
-            <input
-              type="checkbox"
-              disabled={sharedBy > 1}
-              checked={draft.definition.planOwnerRoleId === role.id}
-              onChange={(e) => update(node.id, { teamPlanOwner: e.target.checked })}
-            />
-            <span>{t('teamPlanOwner')}</span>
-          </label>
-          <label className="flex items-start gap-2 text-xs">
-            <input
-              type="checkbox"
+            <p className="text-caption text-muted-foreground">{t('runCommandHint')}</p>
+          </div>
+          <KitSwitch
+            label={t('teamPlanOwner')}
+            checked={draft.definition.planOwnerRoleId === role.id}
+            disabled={sharedBy > 1}
+            onToggle={() =>
+              update(node.id, { teamPlanOwner: !(draft.definition.planOwnerRoleId === role.id) })
+            }
+          />
+          <div className="flex flex-col gap-1">
+            <KitSwitch
+              label={t('generateImage')}
               checked={role.allowedWorkTools.includes('generate_image')}
-              onChange={(event) => update(node.id, { generateImage: event.target.checked })}
+              onToggle={() =>
+                update(node.id, {
+                  generateImage: !role.allowedWorkTools.includes('generate_image'),
+                })
+              }
             />
-            <span>
-              <span className="font-medium">{t('generateImage')}</span>
-              <span className="block text-muted">{t('generateImageHint')}</span>
-            </span>
-          </label>
+            <p className="text-caption text-muted-foreground">{t('generateImageHint')}</p>
+          </div>
           {role.allowedWorkTools.includes('generate_image') ? (
-            <div className="flex flex-col gap-1 text-xs font-medium">
-              <label htmlFor={`${id}-image-profile`}>{t('imageProfile')}</label>
-              <input
-                id={`${id}-image-profile`}
-                value={role.imageProfile ?? ''}
-                onChange={(event) => update(node.id, { imageProfile: event.target.value || null })}
-                {...session}
-                className={field}
-                required
-                aria-describedby={`${id}-image-profile-hint`}
-              />
-              <span id={`${id}-image-profile-hint`} className="font-normal text-muted">
+            <div className="flex flex-col gap-1 text-caption">
+              <KitInputGroup className="w-full" {...session}>
+                <KitInputField
+                  index={0}
+                  label={t('imageProfile')}
+                  value={role.imageProfile ?? ''}
+                  onChange={(value) => update(node.id, { imageProfile: value || null })}
+                  required
+                  aria-describedby={`${id}-image-profile-hint`}
+                />
+              </KitInputGroup>
+              <span id={`${id}-image-profile-hint`} className="font-normal text-muted-foreground">
                 {t('imageProfileHint')}
               </span>
             </div>
           ) : null}
-          <details className="text-xs">
-            <summary className="cursor-pointer font-medium text-muted">{t('previews')}</summary>
-            <div className="mt-2 flex flex-col gap-3">
-              {(
-                [
-                  ['previewFile', 'preview_file'],
-                  ['previewApp', 'preview_app'],
-                  ['previewAction', 'preview_action'],
-                ] as const
-              ).map(([key, tool]) => (
-                <label key={key} className="flex items-start gap-2 text-xs">
-                  <input
-                    type="checkbox"
-                    checked={role.allowedWorkTools.includes(tool)}
-                    onChange={(event) => update(node.id, { [key]: event.target.checked })}
-                  />
-                  <span>
-                    <span className="font-medium">{t(key)}</span>
-                    <span className="block text-muted">{t(`${key}Hint`)}</span>
-                  </span>
-                </label>
-              ))}
-            </div>
-          </details>
-          <details className="text-xs">
-            <summary className="cursor-pointer font-medium text-muted">{t('advanced')}</summary>
-            <div className="mt-2 flex flex-col gap-3">
-              <label htmlFor={`${id}-contract`} className="flex flex-col gap-1 text-xs font-medium">
-                {t('contract')}
-                <select
-                  id={`${id}-contract`}
-                  value={role.outputContract}
-                  onChange={(e) =>
-                    update(node.id, { outputContract: e.target.value as OutputContract })
-                  }
-                  className={field}
-                >
-                  {CONTRACTS.map((c) => (
-                    <option key={c} value={c}>
-                      {t(`contracts.${c}`)}
-                    </option>
+          <KitAccordion className="w-full">
+            <KitAccordionItem value="previews">
+              <KitAccordionTrigger>{t('previews')}</KitAccordionTrigger>
+              <KitAccordionContent>
+                <div className="mt-2 flex flex-col gap-3">
+                  {(
+                    [
+                      ['previewFile', 'preview_file'],
+                      ['previewApp', 'preview_app'],
+                      ['previewAction', 'preview_action'],
+                    ] as const
+                  ).map(([key, tool]) => (
+                    <div key={key} className="flex flex-col gap-1">
+                      <KitSwitch
+                        label={t(key)}
+                        checked={role.allowedWorkTools.includes(tool)}
+                        onToggle={() =>
+                          update(node.id, { [key]: !role.allowedWorkTools.includes(tool) })
+                        }
+                      />
+                      <p className="text-caption text-muted-foreground">{t(`${key}Hint`)}</p>
+                    </div>
                   ))}
-                </select>
-              </label>
-            </div>
-          </details>
+                </div>
+              </KitAccordionContent>
+            </KitAccordionItem>
+          </KitAccordion>
+          <KitAccordion className="w-full">
+            <KitAccordionItem value="advanced">
+              <KitAccordionTrigger>{t('advanced')}</KitAccordionTrigger>
+              <KitAccordionContent>
+                <div className="mt-2 flex flex-col gap-3">
+                  <label htmlFor={`${id}-contract`} className="flex flex-col gap-1 text-caption">
+                    {t('contract')}
+                    <Select
+                      id={`${id}-contract`}
+                      label={t('contract')}
+                      value={role.outputContract}
+                      onValueChange={(outputContract) => update(node.id, { outputContract })}
+                      options={CONTRACTS.map((value) => ({
+                        value,
+                        label: t(`contracts.${value}`),
+                      }))}
+                    />
+                  </label>
+                </div>
+              </KitAccordionContent>
+            </KitAccordionItem>
+          </KitAccordion>
         </>
       ) : null}
 
       {node.type === 'decision' ? (
-        <label htmlFor={`${id}-mode`} className="flex flex-col gap-1 text-xs font-medium">
+        <label htmlFor={`${id}-mode`} className="flex flex-col gap-1 text-caption">
           {t('mode')}
-          <select
+          <Select
             id={`${id}-mode`}
+            label={t('mode')}
             value={node.mode}
-            onChange={(e) => update(node.id, { mode: e.target.value as typeof node.mode })}
-            className={field}
-          >
-            {(['review', 'approval', 'rule'] as const).map((mode) => (
-              <option key={mode} value={mode}>
-                {t(`modes.${mode}`)}
-              </option>
-            ))}
-          </select>
+            onValueChange={(mode) => update(node.id, { mode })}
+            options={(['review', 'approval', 'rule'] as const).map((value) => ({
+              value,
+              label: t(`modes.${value}`),
+            }))}
+          />
         </label>
       ) : null}
 
       {node.type === 'loop' ? (
-        <label htmlFor={`${id}-max`} className="flex flex-col gap-1 text-xs font-medium">
-          {t('maxIterations')}
-          <input
-            id={`${id}-max`}
+        <KitInputGroup className="w-full" {...session}>
+          <KitInputField
+            index={0}
+            label={t('maxIterations')}
             type="number"
             min={1}
             max={10}
-            value={node.maxIterations}
-            onChange={(e) => {
-              const value = Number(e.target.value);
+            value={String(node.maxIterations)}
+            onChange={(input) => {
+              const value = Number(input);
               if (Number.isInteger(value) && value >= 1 && value <= 10)
                 update(node.id, { maxIterations: value });
             }}
-            {...session}
-            className={field}
           />
-        </label>
+        </KitInputGroup>
       ) : null}
 
       {node.type === 'loop' ? loopSettings?.(node) : null}
       {node.type === 'output' ? (
         <>
-          <label className="flex items-center gap-2 text-xs">
-            <input
-              type="checkbox"
-              checked={node.requireApproval}
-              onChange={(e) => update(node.id, { requireApproval: e.target.checked })}
-            />
-            {t('requireApproval')}
-          </label>
-          <p className="text-xs text-muted">{t('outputNote')}</p>
+          <KitSwitch
+            label={t('requireApproval')}
+            checked={node.requireApproval}
+            onToggle={() => update(node.id, { requireApproval: !node.requireApproval })}
+          />
+          <p className="text-caption text-muted-foreground">{t('outputNote')}</p>
         </>
       ) : null}
 
       {canJoinLoop && loops.length > 0 ? (
-        <label htmlFor={`${id}-loop`} className="flex flex-col gap-1 text-xs font-medium">
+        <label htmlFor={`${id}-loop`} className="flex flex-col gap-1 text-caption">
           {t('loopMembership')}
-          <select
+          <Select
             id={`${id}-loop`}
+            label={t('loopMembership')}
             value={('loopId' in node && node.loopId) || ''}
-            onChange={(e) => editor.getState().setLoopMembership(node.id, e.target.value || null)}
-            className={field}
-          >
-            <option value="">{t('notInLoop')}</option>
-            {loops.map((loop) => (
-              <option key={loop.id} value={loop.id}>
-                {loop.label}
-              </option>
-            ))}
-          </select>
+            onValueChange={(value) => editor.getState().setLoopMembership(node.id, value || null)}
+            options={[
+              { value: '', label: t('notInLoop') },
+              ...loops.map((loop) => ({ value: loop.id, label: loop.label })),
+            ]}
+          />
         </label>
       ) : null}
 
@@ -412,20 +425,21 @@ function NodeProperties({
       {node.type === 'agent' ? <Calls nodeId={node.id} draft={draft} /> : null}
 
       <div className="flex gap-2">
-        <button
+        <Button
+          variant="tertiary"
           type="button"
           onClick={() => editor.getState().duplicateNode(node.id)}
-          className={smallButton}
         >
           {t('duplicate')}
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="tertiary"
+          className="text-destructive"
           type="button"
           onClick={() => editor.getState().removeNode(node.id)}
-          className="rounded border border-danger px-2 py-1 text-xs text-danger"
         >
           {t('delete')}
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -463,9 +477,11 @@ function InputsEditor({
   };
 
   return (
-    <fieldset className="flex flex-col gap-1 text-xs">
-      <legend className="font-medium">{t('inputs')}</legend>
-      {node.inputBindings.length === 0 ? <p className="text-muted">{t('noInputs')}</p> : null}
+    <fieldset className="flex flex-col gap-1 text-caption">
+      <legend>{t('inputs')}</legend>
+      {node.inputBindings.length === 0 ? (
+        <p className="text-muted-foreground">{t('noInputs')}</p>
+      ) : null}
       <ul className="flex flex-col gap-1">
         {node.inputBindings.map((binding, index) => (
           <li
@@ -473,18 +489,17 @@ function InputsEditor({
             className="flex items-center justify-between gap-2"
           >
             <span>
-              <span className="font-medium">{binding.name}</span> ·{' '}
-              {t(`inputKinds.${binding.kind}`)}
+              <span>{binding.name}</span> · {t(`inputKinds.${binding.kind}`)}
               {binding.sourceNodeId ? ` · ${labelOf(binding.sourceNodeId)}` : ''}
             </span>
-            <button
+            <Button
+              variant="tertiary"
               type="button"
               aria-label={t('removeInput', { name: binding.name })}
               onClick={() => setBindings(node.inputBindings.filter((_, i) => i !== index))}
-              className={smallButton}
             >
               ✕
-            </button>
+            </Button>
           </li>
         ))}
       </ul>
@@ -492,47 +507,39 @@ function InputsEditor({
         <label htmlFor={`${id}-kind`} className="sr-only">
           {t('inputKind')}
         </label>
-        <select
+        <Select
           id={`${id}-kind`}
+          label={t('inputKind')}
           value={kind}
-          onChange={(e) => setKind(e.target.value as InputBindingKind)}
-          className={field}
-        >
-          {BINDING_KINDS.map((k) => (
-            <option key={k} value={k}>
-              {t(`inputKinds.${k}`)}
-            </option>
-          ))}
-        </select>
+          onValueChange={setKind}
+          options={BINDING_KINDS.map((value) => ({ value, label: t(`inputKinds.${value}`) }))}
+        />
         <label htmlFor={`${id}-source`} className="sr-only">
           {t('inputSource')}
         </label>
-        <select
+        <Select
           id={`${id}-source`}
+          label={t('inputSource')}
           value={source}
-          onChange={(e) => setSource(e.target.value)}
-          className={field}
-        >
-          <option value="">{t('inputSource')}</option>
-          {agents.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.label}
-            </option>
-          ))}
-        </select>
-        <label htmlFor={`${id}-name`} className="sr-only">
-          {t('inputName')}
-        </label>
-        <input
-          id={`${id}-name`}
-          placeholder={t('inputName')}
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          className={field}
+          onValueChange={setSource}
+          options={[
+            { value: '', label: t('inputSource') },
+            ...agents.map((a) => ({ value: a.id, label: a.label })),
+          ]}
         />
-        <button type="button" onClick={add} className={smallButton}>
+        <KitInputGroup className="w-full">
+          <KitInputField
+            index={0}
+            label={t('inputName')}
+            labelHidden
+            placeholder={t('inputName')}
+            value={name}
+            onChange={setName}
+          />
+        </KitInputGroup>
+        <Button variant="tertiary" type="button" onClick={add}>
           {t('add')}
-        </button>
+        </Button>
       </div>
     </fieldset>
   );
@@ -551,8 +558,8 @@ function NextSteps({ node, draft }: { node: CorralNode; draft: EditorDraft }) {
     draft.definition.nodes.find((n) => n.id === nodeId)?.label ?? nodeId;
 
   return (
-    <fieldset className="flex flex-col gap-2 text-xs">
-      <legend className="font-medium">{t('connections')}</legend>
+    <fieldset className="flex flex-col gap-2 text-caption">
+      <legend>{t('connections')}</legend>
       {ports.map((port) => {
         const existing = draft.definition.controlEdges.find(
           (e) => e.source === node.id && e.sourcePort === port,
@@ -564,14 +571,14 @@ function NextSteps({ node, draft }: { node: CorralNode; draft: EditorDraft }) {
                 {t('connectFrom', { port: tPorts(port) })} → {labelOf(existing.target)} (
                 {tPorts(existing.targetPort)})
               </span>
-              <button
+              <Button
+                variant="tertiary"
                 type="button"
                 aria-label={t('removeConnection', { target: labelOf(existing.target) })}
                 onClick={() => editor.getState().removeEdge(existing.id)}
-                className={smallButton}
               >
                 ✕
-              </button>
+              </Button>
             </div>
           );
         }
@@ -597,20 +604,16 @@ function NextSteps({ node, draft }: { node: CorralNode; draft: EditorDraft }) {
             <label htmlFor={`${id}-${port}`} className="w-16 shrink-0">
               {t('connectFrom', { port: tPorts(port) })}
             </label>
-            <select
+            <Select
               id={`${id}-${port}`}
+              label={t('connectFrom', { port: tPorts(port) })}
+              className="min-w-0 flex-1"
               value={selected}
-              onChange={(e) => setChoice({ ...choice, [port]: e.target.value })}
-              className={`${field} min-w-0 flex-1`}
-            >
-              <option value="">{t('chooseTarget')}</option>
-              {options.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-            <button
+              onValueChange={(value) => setChoice({ ...choice, [port]: value })}
+              options={[{ value: '', label: t('chooseTarget') }, ...options]}
+            />
+            <Button
+              variant="tertiary"
               type="button"
               disabled={!selected}
               onClick={() => {
@@ -620,10 +623,9 @@ function NextSteps({ node, draft }: { node: CorralNode; draft: EditorDraft }) {
                   .connect({ source: node.id, sourcePort: port, target, targetPort });
                 setChoice({ ...choice, [port]: '' });
               }}
-              className={`${smallButton} disabled:opacity-40`}
             >
               {t('connect')}
-            </button>
+            </Button>
           </div>
         );
       })}
@@ -648,22 +650,22 @@ function Calls({ nodeId, draft }: { nodeId: string; draft: EditorDraft }) {
   );
 
   return (
-    <fieldset className="flex flex-col gap-1 text-xs">
-      <legend className="font-medium">{t('calls')}</legend>
+    <fieldset className="flex flex-col gap-1 text-caption">
+      <legend>{t('calls')}</legend>
       <ul className="flex flex-col gap-1">
         {links.map((link) => (
           <li key={link.id} className="flex items-center justify-between gap-2">
             <span>
               {tLinks(link.kind)} {labelOf(link.targetNodeId)}
             </span>
-            <button
+            <Button
+              variant="tertiary"
               type="button"
               aria-label={t('removeCall', { target: labelOf(link.targetNodeId) })}
               onClick={() => editor.getState().removeLink(link.id)}
-              className={smallButton}
             >
               ✕
-            </button>
+            </Button>
           </li>
         ))}
       </ul>
@@ -672,45 +674,44 @@ function Calls({ nodeId, draft }: { nodeId: string; draft: EditorDraft }) {
           <label htmlFor={`${id}-kind`} className="sr-only">
             {t('callKind')}
           </label>
-          <select
+          <Select
             id={`${id}-kind`}
+            label={t('callKind')}
             value={kind}
-            onChange={(e) => setKind(e.target.value as never)}
-            className={field}
-          >
-            <option value="delegate">{tLinks('delegate')}</option>
-            <option value="question">{tLinks('question')}</option>
-          </select>
+            onValueChange={setKind}
+            options={(['delegate', 'question'] as const).map((value) => ({
+              value,
+              label: tLinks(value),
+            }))}
+          />
           <label htmlFor={`${id}-target`} className="sr-only">
             {t('callTarget')}
           </label>
-          <select
+          <Select
             id={`${id}-target`}
+            label={t('callTarget')}
             value={target}
-            onChange={(e) => setTarget(e.target.value)}
-            className={`${field} min-w-0 flex-1`}
-          >
-            <option value="">{t('callTarget')}</option>
-            {callables.map((n) => (
-              <option key={n.id} value={n.id}>
-                {n.label}
-              </option>
-            ))}
-          </select>
-          <button
+            onValueChange={setTarget}
+            className="min-w-0 flex-1"
+            options={[
+              { value: '', label: t('callTarget') },
+              ...callables.map((n) => ({ value: n.id, label: n.label })),
+            ]}
+          />
+          <Button
+            variant="tertiary"
             type="button"
             disabled={!target}
             onClick={() => {
               editor.getState().connectCapability(nodeId, target, kind);
               setTarget('');
             }}
-            className={`${smallButton} disabled:opacity-40`}
           >
             {t('addCall')}
-          </button>
+          </Button>
         </div>
       ) : (
-        <p className="text-muted">{t('noCallableAgents')}</p>
+        <p className="text-muted-foreground">{t('noCallableAgents')}</p>
       )}
     </fieldset>
   );

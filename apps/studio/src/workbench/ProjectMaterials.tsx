@@ -4,7 +4,7 @@ import {
   textAttachmentKey,
 } from '@corral/contracts';
 import { validTextAttachments } from '@corral/core';
-import { Button, Select } from '@corral/react/ui';
+import { Button, Select } from '@corral/react/design-kit';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { type ProjectMaterial, projectRequest } from '../projects-api.ts';
@@ -169,7 +169,7 @@ export function ProjectMaterials({ projectId }: { projectId: string }) {
       <h3 id="project-materials-heading" className="text-sm font-semibold">
         {t('heading')}
       </h3>
-      <p className="text-xs text-muted">{t('hint')}</p>
+      <p className="text-xs text-muted-foreground">{t('hint')}</p>
       <ul className="flex flex-col gap-2">
         {materials.map((item) => (
           <li key={item.id} className="flex items-center gap-2 text-sm">
@@ -186,7 +186,7 @@ export function ProjectMaterials({ projectId }: { projectId: string }) {
               {t('version', { name: item.name, revision: item.revision })}
             </button>
             <Button
-              size="sm"
+              size="compact"
               variant="ghost"
               disabled={busy}
               onClick={async () => {
@@ -267,11 +267,11 @@ export function ProjectMaterials({ projectId }: { projectId: string }) {
           />
         </label>
         <div className="flex gap-2">
-          <Button type="submit" size="sm" disabled={busy}>
+          <Button type="submit" size="compact" disabled={busy}>
             {editing ? t('saveVersion') : t('add')}
           </Button>
           {editing ? (
-            <Button type="button" variant="ghost" size="sm" onClick={clear}>
+            <Button type="button" variant="ghost" size="compact" onClick={clear}>
               {t('cancelEdit')}
             </Button>
           ) : null}

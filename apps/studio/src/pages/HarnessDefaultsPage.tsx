@@ -1,5 +1,5 @@
 import type { HarnessDefault, HarnessProfileView } from '@corral/contracts';
-import { Button, Select } from '@corral/react/ui';
+import { Button, Select } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -88,7 +88,7 @@ function DefaultsEditor({ scope, scopeId }: { scope: 'personal' | 'project'; sco
   }
   return (
     <>
-      <p className="text-sm text-muted">
+      <p className="text-sm text-muted-foreground">
         {t(scope === 'personal' ? 'personalDefaultHint' : 'projectDefaultHint')}
       </p>
       {!api ? (
@@ -138,7 +138,7 @@ function DefaultsEditor({ scope, scopeId }: { scope: 'personal' | 'project'; sco
               {r('save')}
             </Button>
             <Button
-              variant="outline"
+              variant="tertiary"
               disabled={!dirty || busy}
               onClick={() => {
                 if (current) setDraft(bindingKey(current));
@@ -154,7 +154,7 @@ function DefaultsEditor({ scope, scopeId }: { scope: 'personal' | 'project'; sco
         </>
       )}
       <Button
-        variant="outline"
+        variant="tertiary"
         className="self-start"
         render={<Link {...navigation.link('harness')} />}
       >

@@ -1,6 +1,6 @@
 import type { Schedule, ScheduleDraft, ScheduledOccurrence } from '@corral/contracts';
 import type { ProjectSummary, WorkSession } from '@corral/core';
-import { Button } from '@corral/react/ui';
+import { Button } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { useLocale } from 'use-intl';
@@ -157,13 +157,13 @@ export function ScheduledPage() {
           {text('New schedule', '새 예약')}
         </Button>
       </div>
-      <p className="text-sm text-muted">
+      <p className="text-sm text-muted-foreground">
         {text(
           'Runs while this server is open. Missed times and overlapping runs are skipped and recorded. A repeated daylight-saving time runs once, at its earlier instant; nonexistent times are skipped.',
           '서버가 켜져 있을 때 실행합니다. 놓친 시각과 이전 실행 중의 예약은 건너뛰고 기록합니다. 일광 절약 시간으로 시각이 반복되면 첫 시각에 한 번 실행하며, 존재하지 않는 시각은 건너뜁니다.',
         )}
       </p>
-      <p className="text-sm text-muted">
+      <p className="text-sm text-muted-foreground">
         {text(
           'Requests use the normal Auto team, its model and budget limits, and your selected permission mode. Approval requests wait in the session. Disabling or deleting a schedule does not cancel an already started run.',
           '일반 Auto 팀과 해당 모델·예산 한도, 선택한 권한 모드를 사용합니다. 승인이 필요하면 세션에서 기다립니다. 예약 비활성화·삭제는 이미 시작한 실행을 취소하지 않습니다.',
@@ -196,7 +196,7 @@ export function ScheduledPage() {
               onClick={() => edit(schedule)}
             >
               <span className="block font-medium">{schedule.title}</span>
-              <span className="text-xs text-muted">
+              <span className="text-xs text-muted-foreground">
                 {schedule.enabled ? text('Enabled', '활성') : text('Disabled', '비활성')}
                 {' · '}
                 {schedule.nextAt
@@ -458,7 +458,7 @@ export function ScheduledPage() {
             {selected ? (
               <>
                 <Button
-                  variant="outline"
+                  variant="tertiary"
                   disabled={busy || !!dirty}
                   type="button"
                   onClick={() => {
@@ -499,7 +499,7 @@ export function ScheduledPage() {
             ) : null}
           </div>
           {dirty ? (
-            <p className="text-xs text-muted">
+            <p className="text-xs text-muted-foreground">
               {text(
                 'Save changes before running this schedule.',
                 '지금 실행하려면 변경 사항을 먼저 저장하세요.',
@@ -520,7 +520,9 @@ export function ScheduledPage() {
                 <span>
                   {new Date(entry.dueAt).toLocaleString()} · {entry.status}
                 </span>
-                {entry.detail ? <p className="text-xs text-muted">{entry.detail}</p> : null}
+                {entry.detail ? (
+                  <p className="text-xs text-muted-foreground">{entry.detail}</p>
+                ) : null}
                 {entry.runId ? (
                   <Link
                     className="underline"

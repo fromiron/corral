@@ -5,7 +5,7 @@ import {
   textAttachmentKey,
 } from '@corral/contracts';
 import { createTextAttachment, validTextAttachments } from '@corral/core';
-import { Button } from '@corral/react/ui';
+import { Button } from '@corral/react/design-kit';
 import { type RefObject, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { AttachmentSource } from './context/ContextAttachments.tsx';
@@ -106,7 +106,7 @@ export function TextAttachmentPicker({
         {!inputRef ? (
           <Button
             type="button"
-            size="xs"
+            size="compact"
             variant="ghost"
             disabled={disabled || !enabled || loading || value.length >= TEXT_ATTACHMENT_MAX_COUNT}
             onClick={() => input.current?.click()}
@@ -119,8 +119,8 @@ export function TextAttachmentPicker({
             <Button
               key={textAttachmentKey(item)}
               type="button"
-              size="xs"
-              variant="outline"
+              size="compact"
+              variant="tertiary"
               disabled={disabled || loading}
               aria-label={t('removeAttachment', { name: item.name })}
               onClick={() =>

@@ -5,7 +5,13 @@ import {
   type GitSequenceState,
   type GitWriteCommand,
 } from '@corral/contracts';
-import { Button, Dialog, DialogDescription, DialogPopup, DialogTitle } from '@corral/react/ui';
+import {
+  Button,
+  Dialog,
+  DialogDescription,
+  DialogPopup,
+  DialogTitle,
+} from '@corral/react/design-kit';
 import {
   lazy,
   Suspense,
@@ -170,7 +176,7 @@ function Conflicts({ api, owner, state, writable, disabled, onStage }: Props) {
           <li key={file}>
             <Button
               variant="ghost"
-              size="sm"
+              size="compact"
               className="max-w-full justify-start font-mono"
               onClick={() => void select(file)}
             >
@@ -190,7 +196,7 @@ function Conflicts({ api, owner, state, writable, disabled, onStage }: Props) {
           <DialogDescription>{t('description')}</DialogDescription>
           <p className="shrink-0 whitespace-pre-wrap break-all font-mono text-sm">{path}</p>
           {state.sequence?.kind === 'rebase' ? (
-            <p className="shrink-0 text-xs text-muted">{t('rebaseSides')}</p>
+            <p className="shrink-0 text-xs text-muted-foreground">{t('rebaseSides')}</p>
           ) : null}
           {value ? (
             <>
@@ -201,7 +207,7 @@ function Conflicts({ api, owner, state, writable, disabled, onStage }: Props) {
                 {(['ours', 'theirs', 'current'] as const).map((item) => (
                   <Button
                     key={item}
-                    size="sm"
+                    size="compact"
                     variant={side === item ? 'secondary' : 'ghost'}
                     aria-pressed={side === item}
                     onClick={() => setSide(item)}
@@ -236,12 +242,12 @@ function Conflicts({ api, owner, state, writable, disabled, onStage }: Props) {
             </p>
           ) : null}
           <div className="flex shrink-0 flex-wrap justify-end gap-2">
-            <Button size="sm" variant="ghost" onClick={close}>
+            <Button size="compact" variant="ghost" onClick={close}>
               {t('close')}
             </Button>
             <Button
-              size="sm"
-              variant="outline"
+              size="compact"
+              variant="tertiary"
               disabled={
                 !value ||
                 busy ||
@@ -255,7 +261,7 @@ function Conflicts({ api, owner, state, writable, disabled, onStage }: Props) {
             </Button>
             {writable ? (
               <Button
-                size="sm"
+                size="compact"
                 disabled={!value || busy || disabled || drafts || Boolean(value.unsupported)}
                 onClick={() => void stage()}
               >

@@ -1012,5 +1012,11 @@
     "requirement": "CR-049 4절: 채택한 결정 버전만 같은 프로젝트의 기존·새 일반 세션으로 인계한다. 작업 요청서와 요청별 실행 구성을 고정하고, 초안은 실행하지 않으며 시작은 기존 경로만 쓴다. 실행 중 대상·미전송 입력을 덮지 않고 같은 명령 재전송·응답 유실·취소 경합에서 중복·오대상 실행이 없다.",
     "owner": "core",
     "phase": "M7"
+  },
+  {
+    "id": "CRL-UX-009",
+    "requirement": "CR-050: Adopt the user-provided design kit as the shared visual system. Across Studio and packages/react/src/components, use kit components directly, compose them when needed, and use custom UI only when neither works. Document the normalized implemented tokens and composition rules in DESIGN.md. Preserve settings, composer, navigation, D&D, Reins, data, and accessibility behavior in light and dark themes; legacy appearance is not a preservation requirement.",
+    "owner": "studio",
+    "phase": "P12"
   }
 ]

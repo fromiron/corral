@@ -1,5 +1,6 @@
 import { TEAM_SLOTS, TeamPlan } from '@corral/contracts';
 import { draftFromPlan, planFromGoal, type TeamWording } from '@corral/react';
+import { Button, Input, Select, Textarea } from '@corral/react/design-kit';
 import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useId, useRef, useState } from 'react';
 import { useMessages, useTranslations } from 'use-intl';
@@ -87,7 +88,7 @@ export function TeamDraftDialog({
             <label htmlFor={goalId} className="text-sm font-medium">
               {t('goalLabel')}
             </label>
-            <textarea
+            <Textarea
               id={goalId}
               ref={goalRef}
               value={goal}
@@ -95,31 +96,34 @@ export function TeamDraftDialog({
               rows={4}
               onChange={(e) => setGoal(e.target.value)}
               placeholder={t('goalPlaceholder')}
-              className="rounded fill-control px-2 py-1 text-sm"
             />
             <div className="flex flex-wrap items-start gap-3">
               <div className="flex flex-col gap-1">
-                <button
+                <Button
+                  variant="primary"
+                  size="compact"
                   type="button"
                   disabled={!goal.trim() || busy}
                   onClick={suggest}
-                  className="self-start rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent disabled:opacity-50"
+                  className="self-start"
                 >
                   {t('suggest')}
-                </button>
-                <span className="text-xs text-muted">{t('suggestHint')}</span>
+                </Button>
+                <span className="text-xs text-muted-foreground">{t('suggestHint')}</span>
               </div>
               {live && models ? (
                 <div className="flex flex-col gap-1">
-                  <button
+                  <Button
+                    variant="tertiary"
+                    size="compact"
                     type="button"
                     disabled={!goal.trim() || busy}
                     onClick={() => void ask()}
-                    className="self-start rounded-md border border-accent px-3 py-1.5 text-sm text-accent disabled:opacity-50"
+                    className="self-start"
                   >
                     {busy ? t('asking') : t('ask')}
-                  </button>
-                  <span className="text-xs text-muted">{t('askHint')}</span>
+                  </Button>
+                  <span className="text-xs text-muted-foreground">{t('askHint')}</span>
                 </div>
               ) : null}
             </div>
@@ -135,30 +139,23 @@ export function TeamDraftDialog({
         {checked && !checked.success ? <p className="text-xs text-danger">{t('invalid')}</p> : null}
         <div className="flex justify-end gap-2 border-t border-line pt-3">
           {plan ? (
-            <button
-              type="button"
-              onClick={() => setPlan(null)}
-              className="rounded fill-control px-3 py-1.5 text-sm"
-            >
+            <Button type="button" onClick={() => setPlan(null)} variant="tertiary">
               {t('back')}
-            </button>
+            </Button>
           ) : null}
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded fill-control px-3 py-1.5 text-sm"
-          >
+          <Button type="button" onClick={onClose} variant="tertiary">
             {t('cancel')}
-          </button>
+          </Button>
           {plan ? (
-            <button
+            <Button
+              variant="primary"
+              size="compact"
               type="button"
               disabled={!checked?.success || busy}
               onClick={() => void open()}
-              className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent disabled:opacity-50"
             >
               {t('open')}
-            </button>
+            </Button>
           ) : null}
         </div>
       </div>
@@ -171,7 +168,6 @@ function PlanEditor({ plan, onChange }: { plan: TeamPlan; onChange(plan: TeamPla
   const id = useId();
   // The raw text, so a new empty line can be typed; the plan keeps the non-empty lines.
   const [criteria, setCriteria] = useState(plan.criteria.join('\n'));
-  const field = 'rounded fill-control px-2 py-1 text-sm';
   const ordered = TEAM_SLOTS[plan.pattern].map((slot) => plan.roles.find((r) => r.slot === slot));
   const setRole = (index: number, patch: { name?: string; duty?: string }) =>
     onChange({
@@ -187,23 +183,23 @@ function PlanEditor({ plan, onChange }: { plan: TeamPlan; onChange(plan: TeamPla
           {t(`patterns.${plan.pattern}`)}
         </span>
       </p>
-      <label className="flex flex-col gap-1 text-sm">
+      <label htmlFor={`${id}-name`} className="flex flex-col gap-1 text-sm">
         {t('nameLabel')}
-        <input
+        <Input
+          id={`${id}-name`}
           value={plan.name}
           maxLength={80}
           onChange={(e) => onChange({ ...plan, name: e.target.value })}
-          className={field}
         />
       </label>
-      <label className="flex flex-col gap-1 text-sm">
+      <label htmlFor={`${id}-brief`} className="flex flex-col gap-1 text-sm">
         {t('briefLabel')}
-        <textarea
+        <Textarea
+          id={`${id}-brief`}
           value={plan.brief}
           rows={3}
           maxLength={2000}
           onChange={(e) => onChange({ ...plan, brief: e.target.value })}
-          className={field}
         />
       </label>
       <fieldset className="flex flex-col gap-2">
@@ -214,31 +210,31 @@ function PlanEditor({ plan, onChange }: { plan: TeamPlan; onChange(plan: TeamPla
               <label htmlFor={`${id}-name-${index}`} className="sr-only">
                 {t('roleName', { n: index + 1 })}
               </label>
-              <input
+              <Input
                 id={`${id}-name-${index}`}
                 value={role.name}
                 maxLength={40}
                 onChange={(e) => setRole(index, { name: e.target.value })}
-                className={`${field} font-medium`}
+                className="font-medium"
               />
               <label htmlFor={`${id}-duty-${index}`} className="sr-only">
                 {t('roleDuty', { n: index + 1 })}
               </label>
-              <textarea
+              <Textarea
                 id={`${id}-duty-${index}`}
                 value={role.duty}
                 rows={2}
                 maxLength={400}
                 onChange={(e) => setRole(index, { duty: e.target.value })}
-                className={field}
               />
             </div>
           ) : null,
         )}
       </fieldset>
-      <label className="flex flex-col gap-1 text-sm">
+      <label htmlFor={`${id}-criteria`} className="flex flex-col gap-1 text-sm">
         {t('criteriaLabel')}
-        <textarea
+        <Textarea
+          id={`${id}-criteria`}
           value={criteria}
           rows={3}
           onChange={(e) => {
@@ -251,25 +247,19 @@ function PlanEditor({ plan, onChange }: { plan: TeamPlan; onChange(plan: TeamPla
                 .filter(Boolean),
             });
           }}
-          className={field}
         />
       </label>
       <div className="flex flex-wrap items-center gap-4 text-sm">
         {plan.pattern !== 'single' ? (
-          <label className="flex items-center gap-2">
-            {t('rounds')}
-            <select
-              value={plan.reviewRounds ?? 2}
-              onChange={(e) => onChange({ ...plan, reviewRounds: Number(e.target.value) })}
-              className={field}
-            >
-              {[1, 2, 3].map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="flex items-center gap-2">
+            <span>{t('rounds')}</span>
+            <Select
+              label={t('rounds')}
+              value={String(plan.reviewRounds ?? 2)}
+              onValueChange={(value) => onChange({ ...plan, reviewRounds: Number(value) })}
+              options={[1, 2, 3].map((value) => ({ value: String(value), label: String(value) }))}
+            />
+          </div>
         ) : null}
         <label className="flex items-center gap-2">
           <input

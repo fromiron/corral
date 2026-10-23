@@ -15,9 +15,10 @@ test('[TC-ABS-013-H] encrypted file restores actual browser preferences through 
   if (!path) throw new Error('Encrypted settings file was not downloaded.');
   // Change the actual setting through its ordinary UI, then restore the saved value.
   await page.getByRole('link', { name: 'General', exact: true }).click();
-  const previous = await page.getByRole('radio', { name: 'System', exact: true }).isChecked();
-  expect(previous).toBe(true);
-  await page.getByRole('radio', { name: 'Dark', exact: true }).check();
+  const appearance = page.getByRole('combobox', { name: 'Appearance', exact: true });
+  await expect(appearance).toHaveText('System');
+  await appearance.click();
+  await page.getByRole('option', { name: 'Dark', exact: true }).click();
   await page.getByRole('link', { name: 'Settings vault', exact: true }).click();
   await page.getByLabel('Vault password', { exact: true }).fill('local test vault password');
   await page.getByLabel('Encrypted settings file', { exact: true }).setInputFiles(path);
@@ -28,7 +29,9 @@ test('[TC-ABS-013-H] encrypted file restores actual browser preferences through 
   await expect(page.getByRole('status')).toContainText('Selected settings applied and read back.');
   await page.reload();
   await page.getByRole('link', { name: 'General', exact: true }).click();
-  await expect(page.getByRole('radio', { name: 'System', exact: true })).toBeChecked();
+  await expect(page.getByRole('combobox', { name: 'Appearance', exact: true })).toHaveText(
+    'System',
+  );
   expect(corral.errors).toEqual([]);
 });
 

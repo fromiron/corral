@@ -1,6 +1,6 @@
 import type { HarnessApi } from '@corral/client';
 import { type ProjectToolConfigRevision, RegisteredLspServer } from '@corral/contracts';
-import { Button } from '@corral/react/ui';
+import { Button } from '@corral/react/design-kit';
 import { useEffect, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
@@ -89,7 +89,7 @@ export function ProjectToolSettings({
       <h3 id={heading} className="text-lg font-semibold">
         {t('projectTools')}
       </h3>
-      <p className="text-xs text-muted">{t('checkTrustHint')}</p>
+      <p className="text-xs text-muted-foreground">{t('checkTrustHint')}</p>
       {error ? (
         <p role="alert" className="text-sm text-danger">
           {error}
@@ -108,9 +108,11 @@ export function ProjectToolSettings({
       ).map(([kind, tools]) => (
         <div key={kind} className="flex flex-col gap-3">
           <h4 className="font-medium">{t(kind === 'check' ? 'projectChecks' : 'projectLsp')}</h4>
-          {kind === 'lsp' ? <p className="text-xs text-muted">{t('lspSetupHint')}</p> : null}
+          {kind === 'lsp' ? (
+            <p className="text-xs text-muted-foreground">{t('lspSetupHint')}</p>
+          ) : null}
           {!tools.length ? (
-            <p className="text-xs text-muted">
+            <p className="text-xs text-muted-foreground">
               {t(kind === 'check' ? 'noProjectChecks' : 'noProjectLsp')}
             </p>
           ) : null}
@@ -120,11 +122,11 @@ export function ProjectToolSettings({
             return (
               <div key={key} className="settings-surface flex flex-col gap-2">
                 <p className="text-sm font-medium">
-                  {tool.name} <span className="text-muted">{tool.id}</span>
+                  {tool.name} <span className="text-muted-foreground">{tool.id}</span>
                 </p>
                 <div className="flex flex-wrap gap-2">
                   <Button
-                    variant="outline"
+                    variant="tertiary"
                     disabled={busy}
                     onClick={() =>
                       void work(async () => {
@@ -138,7 +140,7 @@ export function ProjectToolSettings({
                   {kind === 'lsp' && 'languageIds' in tool ? (
                     <>
                       <Button
-                        variant="outline"
+                        variant="tertiary"
                         disabled={busy}
                         onClick={() => {
                           setEditing(tool.id);
@@ -173,11 +175,11 @@ export function ProjectToolSettings({
                 {launch ? (
                   <>
                     <code className="break-all text-xs">{JSON.stringify(launch.command.argv)}</code>
-                    <p className="break-all font-mono text-2xs text-muted">
+                    <p className="break-all font-mono text-2xs text-muted-foreground">
                       SHA-256 {launch.fingerprint}
                     </p>
                     <Button
-                      variant="outline"
+                      variant="tertiary"
                       disabled={busy}
                       onClick={() =>
                         void work(async () => {
@@ -235,7 +237,7 @@ export function ProjectToolSettings({
             onChange={(event) => setDraft((current) => ({ ...current, argv: event.target.value }))}
           />
         </label>
-        <p className="text-xs text-muted">{t('lspArgvHint')}</p>
+        <p className="text-xs text-muted-foreground">{t('lspArgvHint')}</p>
         <label className="flex flex-col gap-1 text-sm">
           {t('lspTimeout')}
           <input

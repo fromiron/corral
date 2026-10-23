@@ -20,7 +20,7 @@ export async function teamFromTemplate(page: Page, name = 'Single agent') {
 /** On a project page: starts a session with this purpose and its first team. */
 export async function startSession(page: Page, purpose: string) {
   if (!(await page.getByRole('textbox', { name: 'Purpose' }).isVisible()))
-    await page.getByText('Session details (optional)', { exact: true }).click();
+    await page.getByRole('button', { name: /^Session details \(optional\)/ }).click();
   await page.getByRole('textbox', { name: 'Purpose' }).fill(purpose);
   // CR-024: without a choice a session starts in auto mode; this helper keeps the first team.
   await page.getByRole('combobox', { name: 'Corral', exact: true }).click();

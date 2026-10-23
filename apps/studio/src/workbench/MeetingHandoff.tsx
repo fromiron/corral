@@ -9,7 +9,7 @@ import {
   type UltraSelection,
 } from '@corral/contracts';
 import { activeMeetingDecision, type CorralSummary, type WorkSession } from '@corral/core';
-import { Button, Select } from '@corral/react/ui';
+import { Button, Select } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -221,17 +221,22 @@ export function MeetingHandoff({
       setBusy(false);
     }
   };
-  if (!api) return <p className="text-muted">{t('serverRequired')}</p>;
+  if (!api) return <p className="text-muted-foreground">{t('serverRequired')}</p>;
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <div>
-        <Button size="sm" variant="outline" onClick={() => setOpen(!open)} aria-expanded={open}>
+        <Button
+          size="compact"
+          variant="tertiary"
+          onClick={() => setOpen(!open)}
+          aria-expanded={open}
+        >
           {t('open')}
         </Button>
       </div>
       {open ? (
         <div className="flex min-w-0 flex-col gap-3">
-          <p className="text-muted">{t('scopeHint')}</p>
+          <p className="text-muted-foreground">{t('scopeHint')}</p>
           <fieldset disabled={busy || !!pending} className="flex min-w-0 flex-col gap-3">
             <div className="flex flex-col gap-1">
               <span>{t('target')}</span>
@@ -321,7 +326,7 @@ export function MeetingHandoff({
               </>
             ) : null}
           </fieldset>
-          <p className="text-muted">{t('draftHint')}</p>
+          <p className="text-muted-foreground">{t('draftHint')}</p>
           {autoBlocked ? (
             <p className="text-warning" role="status">
               {t('modelUnavailable')}
@@ -331,8 +336,8 @@ export function MeetingHandoff({
             <div>
               <p role="status">{t('pending')}</p>
               <Button
-                size="sm"
-                variant="outline"
+                size="compact"
+                variant="tertiary"
                 disabled={busy}
                 onClick={() => void send(pending.action)}
               >
@@ -342,15 +347,15 @@ export function MeetingHandoff({
           ) : (
             <div className="flex flex-wrap gap-2">
               <Button
-                size="sm"
-                variant="outline"
+                size="compact"
+                variant="tertiary"
                 disabled={busy || !loaded || (target === 'new' && !title.trim()) || autoBlocked}
                 onClick={() => void send('draft')}
               >
                 {t('draft')}
               </Button>
               <Button
-                size="sm"
+                size="compact"
                 disabled={busy || !loaded || (target === 'new' && !title.trim()) || autoBlocked}
                 onClick={() => void send('start')}
               >
@@ -488,7 +493,7 @@ export function MeetingHandoffLinks({
           <p className="wrap-anywhere">
             {t('decisionVersion')}: {receipt.decisionVersionId} · {t(`state.${receipt.state}`)}
           </p>
-          <p className="text-muted wrap-anywhere">
+          <p className="text-muted-foreground wrap-anywhere">
             {t('execution')}:{' '}
             {receipt.execution.kind === 'auto'
               ? `${t('auto')} · ${receipt.execution.choice.modelProfile}${receipt.execution.qualityPreset === 'ultra' ? ' · Ultra' : ''}`
@@ -529,8 +534,8 @@ export function MeetingHandoffLinks({
           (!meeting || activeMeetingDecision(meeting, receipt.decisionVersionId)) ? (
             <div>
               <Button
-                size="sm"
-                variant="outline"
+                size="compact"
+                variant="tertiary"
                 disabled={busy}
                 onClick={() => void actOn(receipt, 'start')}
               >
@@ -545,8 +550,8 @@ export function MeetingHandoffLinks({
           ) ? (
             <div>
               <Button
-                size="sm"
-                variant="outline"
+                size="compact"
+                variant="tertiary"
                 disabled={busy}
                 onClick={() => void actOn(receipt, 'rediscuss')}
               >
@@ -561,7 +566,7 @@ export function MeetingHandoffLinks({
             )) ? (
             <div>
               <Button
-                size="sm"
+                size="compact"
                 variant="ghost-destructive"
                 disabled={busy}
                 onClick={() => void actOn(receipt, 'cancel')}

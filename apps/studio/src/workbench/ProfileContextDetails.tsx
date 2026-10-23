@@ -9,14 +9,14 @@ export function ProfileContextDetails({
   runtime?: 'pi-sdk' | 'pi-core' | 'mock';
 }) {
   const t = useTranslations('ProfileContext');
-  if (!policy) return <p className="text-xs text-muted">{t('unknown')}</p>;
+  if (!policy) return <p className="text-xs text-muted-foreground">{t('unknown')}</p>;
   const fields = ['contextWindow', 'reserveTokens', 'keepRecentTokens'] as const;
   return (
     <div className="space-y-1 text-xs">
       <dl className="flex flex-wrap gap-x-4 gap-y-1">
         {fields.map((key) => (
           <div key={key}>
-            <dt className="text-muted">{t(key)}</dt>
+            <dt className="text-muted-foreground">{t(key)}</dt>
             <dd>
               {policy[key].toLocaleString()} · {t(`source.${policy.sources[key]}`)}
             </dd>
@@ -24,7 +24,7 @@ export function ProfileContextDetails({
         ))}
       </dl>
       <p>{t('threshold', { value: policy.contextWindow - policy.reserveTokens })}</p>
-      <p className="text-muted">
+      <p className="text-muted-foreground">
         {t(
           runtime === 'pi-core'
             ? 'legacy'
@@ -36,7 +36,7 @@ export function ProfileContextDetails({
         )}
       </p>
       {policy.baseContextWindow !== null ? (
-        <p className="text-muted">
+        <p className="text-muted-foreground">
           {t('base', { value: policy.baseContextWindow, source: t(`source.${policy.baseSource}`) })}
         </p>
       ) : null}
@@ -45,7 +45,7 @@ export function ProfileContextDetails({
           {t(`warning.${warning}`)}
         </p>
       ))}
-      <p className="text-muted">
+      <p className="text-muted-foreground">
         {t('revision')} · <code>{policy.configRevision.slice(0, 12)}</code>
       </p>
     </div>

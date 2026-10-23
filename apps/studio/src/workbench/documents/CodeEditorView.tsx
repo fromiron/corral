@@ -1,7 +1,8 @@
 import type { LanguageRefactor, TextRange } from '@corral/contracts';
-import { cn } from '@corral/react/ui';
+import { cn } from '@corral/react/design-kit';
 import type { editor } from 'monaco-editor/editor';
 import { useEffect, useRef } from 'react';
+import { resolvedThemeColors } from '../theme-colors.ts';
 import { loadMonaco, type Monaco, onMonacoWorkerError } from './monaco.ts';
 
 export type LanguageSelection = {
@@ -56,23 +57,32 @@ function revealTextSelection(instance: editor.IStandaloneCodeEditor, range: Text
 
 function applyEditorTheme(monaco: Monaco) {
   const root = document.documentElement;
-  const style = getComputedStyle(root);
-  const color = (name: string) => style.getPropertyValue(`--${name}`).trim();
+  const colors = resolvedThemeColors([
+    'surface',
+    'text',
+    'muted-foreground',
+    'primary',
+    'raised',
+    'line',
+    'danger',
+    'warning',
+    'focus-ring',
+  ]);
   monaco.editor.defineTheme('corral', {
     base: root.classList.contains('dark') ? 'vs-dark' : 'vs',
     inherit: true,
     rules: [],
     colors: {
-      'editor.background': color('surface'),
-      'editor.foreground': color('text'),
-      'editorLineNumber.foreground': color('muted'),
-      'editorLineNumber.activeForeground': color('text'),
-      'editorCursor.foreground': color('accent'),
-      'editorWidget.background': color('raised'),
-      'editorWidget.border': color('line'),
-      'editorError.foreground': color('danger'),
-      'editorWarning.foreground': color('warning'),
-      focusBorder: color('accent'),
+      'editor.background': colors.surface,
+      'editor.foreground': colors.text,
+      'editorLineNumber.foreground': colors['muted-foreground'],
+      'editorLineNumber.activeForeground': colors.text,
+      'editorCursor.foreground': colors.primary,
+      'editorWidget.background': colors.raised,
+      'editorWidget.border': colors.line,
+      'editorError.foreground': colors.danger,
+      'editorWarning.foreground': colors.warning,
+      focusBorder: colors['focus-ring'],
     },
   });
   monaco.editor.setTheme('corral');

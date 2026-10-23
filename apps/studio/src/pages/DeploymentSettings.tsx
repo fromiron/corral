@@ -1,6 +1,6 @@
 import type { HarnessApi } from '@corral/client';
 import { type ProjectToolConfigRevision, RegisteredDeployment } from '@corral/contracts';
-import { Button } from '@corral/react/ui';
+import { Button } from '@corral/react/design-kit';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
@@ -86,7 +86,7 @@ export function DeploymentSettings({
   return (
     <section className="flex flex-col gap-3" aria-label={t('settingsTitle')}>
       <h4 className="font-medium">{t('settingsTitle')}</h4>
-      <p className="text-xs text-muted">{t('settingsHint')}</p>
+      <p className="text-xs text-muted-foreground">{t('settingsHint')}</p>
       {(config?.deployments ?? []).map((profile) => (
         <div key={profile.id} className="settings-surface flex flex-col gap-2">
           <p className="text-sm font-medium">
@@ -94,7 +94,7 @@ export function DeploymentSettings({
           </p>
           <div className="flex flex-wrap gap-2">
             <Button
-              variant="outline"
+              variant="tertiary"
               disabled={busy}
               onClick={() => {
                 setEditing(profile.id);
@@ -139,7 +139,7 @@ export function DeploymentSettings({
             />
           </label>
         ))}
-        <p className="text-xs text-muted">{t('envHint')}</p>
+        <p className="text-xs text-muted-foreground">{t('envHint')}</p>
         {(['argv', 'readbackArgv'] as const).map((key) => (
           <label key={key} className="flex flex-col gap-1 text-sm">
             {t(key)}
@@ -151,8 +151,8 @@ export function DeploymentSettings({
             />
           </label>
         ))}
-        <p className="text-xs text-muted">{t('argvHint')}</p>
-        <p className="text-xs text-muted">{t('readbackHint')}</p>
+        <p className="text-xs text-muted-foreground">{t('argvHint')}</p>
+        <p className="text-xs text-muted-foreground">{t('readbackHint')}</p>
         <label className="flex flex-col gap-1 text-sm">
           {t('timeout')}
           <input

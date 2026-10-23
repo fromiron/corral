@@ -1,5 +1,4 @@
 import type { AutoModelChoice } from '@corral/contracts';
-import { ChevronDown } from '@corral/react/icons';
 import {
   Button,
   Menu,
@@ -11,7 +10,8 @@ import {
   MenuSubPopup,
   MenuSubTrigger,
   MenuTrigger,
-} from '@corral/react/ui';
+} from '@corral/react/design-kit';
+import { ChevronDown } from '@corral/react/icons';
 import { useTranslations } from 'use-intl';
 import { reasoningFrom, reasoningValue } from './autoChoice.ts';
 import type { ProfileInfo } from './useModels.ts';
@@ -85,7 +85,7 @@ export function AutoModelMenu({
         render={
           <Button
             variant="ghost-muted"
-            size="sm"
+            size="compact"
             className="h-auto min-h-9 pointer-coarse:min-h-11 min-w-0 max-w-full rounded-xl py-1 text-left whitespace-normal sm:rounded-full"
             disabled={disabled}
             aria-label={t('autoModel')}
@@ -95,12 +95,12 @@ export function AutoModelMenu({
         }
       >
         <span className="min-w-0 [overflow-wrap:anywhere]">
-          <span className="block text-2xs text-muted sm:mr-1.5 sm:inline">
+          <span className="block text-2xs text-muted-foreground sm:mr-1.5 sm:inline">
             {tc(ultra ? 'nextUltraRequest' : 'nextRequest')}
           </span>
           <span>{profile?.label ?? value.modelProfile}</span>
           {visibleEffort ? (
-            <span className="block text-xs text-muted sm:inline sm:text-inherit">
+            <span className="block text-xs text-muted-foreground sm:inline sm:text-inherit">
               {' '}
               · {visibleEffort}
             </span>

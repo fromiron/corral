@@ -64,7 +64,7 @@ export function HarnessDetails({ session }: { session: RunSessionStore }) {
                 ))}
               </dl>
             ) : null}
-            <p className="break-words text-xs text-muted">
+            <p className="break-words text-xs text-muted-foreground">
               {t('allowedTools')}: {snapshot.allowedTools.join(', ') || t('noTools')}
             </p>
             {snapshot.policy === 'trusted-native' ? (
@@ -75,13 +75,15 @@ export function HarnessDetails({ session }: { session: RunSessionStore }) {
                 <p className="text-xs">
                   {resource.name} · {resource.version}
                 </p>
-                <p className="text-xs text-muted">
+                <p className="text-xs text-muted-foreground">
                   {resource.skillName} {resource.skillMode ? t(resource.skillMode) : ''}
                 </p>
                 <code className="break-all text-2xs">{resource.hash}</code>
               </div>
             ))}
-            <p className="break-all font-mono text-2xs text-muted">{snapshot.snapshotHash}</p>
+            <p className="break-all font-mono text-2xs text-muted-foreground">
+              {snapshot.snapshotHash}
+            </p>
           </section>
         ))}
         {loads.map((event) => (

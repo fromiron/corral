@@ -1,6 +1,7 @@
 import type { Preview } from '@storybook/react-vite';
 import { IntlProvider } from 'use-intl';
 import messages from '../src/messages/en.json' with { type: 'json' };
+import { DesignKitProvider } from '../src/ui/index.ts';
 import './preview.css';
 
 const preview: Preview = {
@@ -12,7 +13,9 @@ const preview: Preview = {
   decorators: [
     (Story) => (
       <IntlProvider locale="en" messages={messages} timeZone="UTC">
-        <Story />
+        <DesignKitProvider>
+          <Story />
+        </DesignKitProvider>
       </IntlProvider>
     ),
   ],

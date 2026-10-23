@@ -5,7 +5,7 @@ import type {
   TextAttachment,
   UltraSelection,
 } from '@corral/contracts';
-import { Button } from '@corral/react/ui';
+import { Button } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
 import { useSettingsNavigation } from './navigation.ts';
@@ -62,27 +62,27 @@ export function RefusalHelp({
       className="flex flex-col gap-1.5 rounded-lg border border-danger/40 bg-danger/5 px-3 py-2 text-xs"
     >
       <p className="text-danger">{t(kind)}</p>
-      <p className="text-muted wrap-anywhere" title={code}>
+      <p className="text-muted-foreground wrap-anywhere" title={code}>
         {message}
       </p>
       <div className="flex flex-wrap gap-1">
         {kind === 'signin' || kind === 'profile' ? (
-          <Button size="xs" render={<Link {...navigation.link('models')} />}>
+          <Button size="compact" render={<Link {...navigation.link('models')} />}>
             {t('connect')}
           </Button>
         ) : null}
         {kind === 'network' && onRetry ? (
-          <Button size="xs" onClick={onRetry}>
+          <Button size="compact" onClick={onRetry}>
             {t('retry')}
           </Button>
         ) : null}
         {kind === 'busy' && onQueue ? (
-          <Button size="xs" variant="outline" onClick={onQueue}>
+          <Button size="compact" variant="tertiary" onClick={onQueue}>
             {t('queue')}
           </Button>
         ) : null}
         {onEdit ? (
-          <Button size="xs" variant="outline" onClick={onEdit}>
+          <Button size="compact" variant="tertiary" onClick={onEdit}>
             {t('edit')}
           </Button>
         ) : null}

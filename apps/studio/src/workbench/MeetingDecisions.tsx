@@ -1,6 +1,6 @@
 import type { MeetingDecisionContent, MeetingView } from '@corral/contracts';
 import { activeMeetingDecision, type WorkSession } from '@corral/core';
-import { Button } from '@corral/react/ui';
+import { Button } from '@corral/react/design-kit';
 import { useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
@@ -94,8 +94,8 @@ export function MeetingDecisions({
   return (
     <section className="flex min-w-0 flex-col gap-4 text-sm" aria-label={t('heading')}>
       <h2 className="font-medium">{t('heading')}</h2>
-      <p className="text-muted">{t('candidateHint')}</p>
-      {!view.minutes?.length ? <p className="text-muted">{t('empty')}</p> : null}
+      <p className="text-muted-foreground">{t('candidateHint')}</p>
+      {!view.minutes?.length ? <p className="text-muted-foreground">{t('empty')}</p> : null}
       {view.minutes?.map((minutes) => {
         const doc = minutes.document;
         const index = view.rounds.findIndex((round) => round.roundId === minutes.roundId);
@@ -169,8 +169,8 @@ export function MeetingDecisions({
                     <DecisionContent content={candidate.content} />
                     <div>
                       <Button
-                        size="sm"
-                        variant="outline"
+                        size="compact"
+                        variant="tertiary"
                         disabled={busy}
                         onClick={() => {
                           setDraft({
@@ -200,7 +200,7 @@ export function MeetingDecisions({
           }}
         >
           <h3 className="font-medium">{t(draft.supersedesVersionId ? 'revise' : 'adopt')}</h3>
-          <p className="text-muted">{t('editHint')}</p>
+          <p className="text-muted-foreground">{t('editHint')}</p>
           <fieldset disabled={busy} className="flex flex-col gap-3">
             <label className="flex flex-col gap-1">
               {t('goal')}
@@ -238,7 +238,7 @@ export function MeetingDecisions({
             <Button type="submit" disabled={busy || !draft.content.goal.trim()}>
               {t('adopt')}
             </Button>
-            <Button type="button" variant="outline" disabled={busy} onClick={() => setDraft(null)}>
+            <Button type="button" variant="tertiary" disabled={busy} onClick={() => setDraft(null)}>
               {t('cancel')}
             </Button>
           </div>
@@ -269,8 +269,8 @@ export function MeetingDecisions({
               <>
                 <div className="flex flex-wrap gap-2">
                   <Button
-                    size="sm"
-                    variant="outline"
+                    size="compact"
+                    variant="tertiary"
                     disabled={busy}
                     onClick={() => {
                       setDraft({
@@ -285,7 +285,7 @@ export function MeetingDecisions({
                     {t('revise')}
                   </Button>
                   <Button
-                    size="sm"
+                    size="compact"
                     variant="ghost-destructive"
                     disabled={busy}
                     onClick={() => {
@@ -327,7 +327,7 @@ export function MeetingDecisions({
                         {t('confirmWithdraw')}
                       </Button>
                       <Button
-                        variant="outline"
+                        variant="tertiary"
                         type="button"
                         disabled={busy}
                         onClick={() => setWithdrawal(null)}
@@ -366,7 +366,7 @@ function TextList({ title, values }: { title: string; values: string[] }) {
           ))}
         </ul>
       ) : (
-        <p className="text-muted">{t('noneRecorded')}</p>
+        <p className="text-muted-foreground">{t('noneRecorded')}</p>
       )}
     </div>
   );

@@ -59,16 +59,16 @@ export function EffortJudgments({ session }: { session: RunSessionStore }) {
       ) : null}
       {applied.length ? <h4 className="font-medium">{tr('observeHeading')}</h4> : null}
       {settings?.mode !== 'observe' ? (
-        <p className="text-muted">{t('off')}</p>
+        <p className="text-muted-foreground">{t('off')}</p>
       ) : (
         <>
-          <p className="text-muted">{t('observeOnly')}</p>
+          <p className="text-muted-foreground">{t('observeOnly')}</p>
           {unavailable.map((p) => (
             <p key={p.id} className="text-warning">
               {p.id}: {p.reason}
             </p>
           ))}
-          {calls.length === 0 ? <p className="text-muted">{t('none')}</p> : null}
+          {calls.length === 0 ? <p className="text-muted-foreground">{t('none')}</p> : null}
           <ul className="flex flex-col gap-1">
             {calls.map((call) => {
               const decisions = byCall.get(call) ?? [];
@@ -81,7 +81,7 @@ export function EffortJudgments({ session }: { session: RunSessionStore }) {
                 >
                   <span>
                     <span className="font-medium">{labelOf(executionId)}</span>{' '}
-                    <span className="font-mono text-muted">{call}</span>
+                    <span className="font-mono text-muted-foreground">{call}</span>
                   </span>
                   {decisions.map((d) => (
                     <Judgment key={d.decisionId} decision={d} />
@@ -111,12 +111,14 @@ function Judgment({ decision: d }: { decision: Decision }) {
           {t('failed', { reason: t(`reason.${d.reason ?? 'provider_error'}`) })}
         </span>
       ) : null}
-      {d.status === 'requested' ? <span className="text-muted">{t('pending')}</span> : null}
+      {d.status === 'requested' ? (
+        <span className="text-muted-foreground">{t('pending')}</span>
+      ) : null}
       {d.status === 'not_collected' ? (
-        <span className="text-muted">{t('notCollected')}</span>
+        <span className="text-muted-foreground">{t('notCollected')}</span>
       ) : null}
       {d.probabilities ? (
-        <span className="text-muted">
+        <span className="text-muted-foreground">
           <span className="sr-only">{t('probabilities')}: </span>
           {LEVELS.map(
             (level) =>
@@ -124,11 +126,13 @@ function Judgment({ decision: d }: { decision: Decision }) {
           ).join(' · ')}
         </span>
       ) : null}
-      {d.evidenceLevel === 'rule' ? <span className="text-muted">({t('rule')})</span> : null}
-      {d.latencyMs !== null ? (
-        <span className="text-muted">{t('latency', { ms: d.latencyMs })}</span>
+      {d.evidenceLevel === 'rule' ? (
+        <span className="text-muted-foreground">({t('rule')})</span>
       ) : null}
-      {d.afterRequestFinished ? <span className="text-muted">{t('late')}</span> : null}
+      {d.latencyMs !== null ? (
+        <span className="text-muted-foreground">{t('latency', { ms: d.latencyMs })}</span>
+      ) : null}
+      {d.afterRequestFinished ? <span className="text-muted-foreground">{t('late')}</span> : null}
     </div>
   );
 }

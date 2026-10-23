@@ -1,4 +1,10 @@
-import { Button, Dialog, DialogDescription, DialogPopup, DialogTitle } from '@corral/react/ui';
+import {
+  Button,
+  Dialog,
+  DialogDescription,
+  DialogPopup,
+  DialogTitle,
+} from '@corral/react/design-kit';
 import { useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 
@@ -26,7 +32,7 @@ export function useManagementConfirmation() {
           <DialogTitle>{t('confirmChange')}</DialogTitle>
           <DialogDescription className="my-4">{pending?.message}</DialogDescription>
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setPending(null)}>
+            <Button variant="tertiary" onClick={() => setPending(null)}>
               {t('cancel')}
             </Button>
             <Button

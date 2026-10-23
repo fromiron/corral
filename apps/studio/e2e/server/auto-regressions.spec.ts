@@ -293,9 +293,7 @@ test('[TC-ABS-006-H] [TC-ABS-006-N] a question about an earlier result starts be
     expect(writer.status).toBe('running');
 
     await openRequestOptions(page);
-    await page
-      .getByRole('checkbox', { name: 'Review only · no file changes', exact: true })
-      .check();
+    await page.getByRole('switch', { name: 'Review only · no file changes', exact: true }).check();
     await closeRequestOptions(page);
     await page.getByRole('combobox', { name: 'What this is', exact: true }).click();
     const question = page.getByRole('option', { name: /^Question/ });

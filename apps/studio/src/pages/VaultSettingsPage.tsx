@@ -5,7 +5,7 @@ import type {
   VaultPreview,
   VaultStatus,
 } from '@corral/client';
-import { Button, Select } from '@corral/react/ui';
+import { Button, Select } from '@corral/react/design-kit';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useLocale } from '../locale.tsx';
@@ -181,10 +181,10 @@ export function VaultSettingsPage() {
       <main className="settings-content">
         <h2 className="text-2xl font-semibold">{t('heading')}</h2>
         {!vault ? (
-          <p className="text-sm text-muted">{t('serverOnly')}</p>
+          <p className="text-sm text-muted-foreground">{t('serverOnly')}</p>
         ) : (
           <>
-            <p className="text-sm text-muted">{t('intro')}</p>
+            <p className="text-sm text-muted-foreground">{t('intro')}</p>
             <label className="flex flex-col gap-1 text-sm">
               {t('password')}
               <input
@@ -197,7 +197,7 @@ export function VaultSettingsPage() {
                 disabled={busy}
               />
             </label>
-            <p id="vault-password-hint" className="text-xs text-muted">
+            <p id="vault-password-hint" className="text-xs text-muted-foreground">
               {t('passwordHint')}
             </p>
             <section className="settings-surface flex flex-col gap-3" aria-label={t('scope')}>
@@ -219,7 +219,7 @@ export function VaultSettingsPage() {
                     />
                     {t(domain)}
                     {!available ? (
-                      <span className="text-xs text-muted">{t('needsBinding')}</span>
+                      <span className="text-xs text-muted-foreground">{t('needsBinding')}</span>
                     ) : null}
                   </label>
                 ))}
@@ -256,8 +256,8 @@ export function VaultSettingsPage() {
                   onValueChange={(value) => bind('subagents', 'corralId', value)}
                 />
                 <Button
-                  size="sm"
-                  variant="outline"
+                  size="compact"
+                  variant="tertiary"
                   disabled={busy}
                   onClick={() =>
                     void act(async () => {
@@ -271,7 +271,7 @@ export function VaultSettingsPage() {
               {keys.length ? (
                 <details>
                   <summary className="cursor-pointer text-sm">{t('secretOptions')}</summary>
-                  <p className="my-2 text-xs text-muted">{t('secretHint')}</p>
+                  <p className="my-2 text-xs text-muted-foreground">{t('secretHint')}</p>
                   {keys.map((key) => (
                     <label key={key.value} className="flex items-center gap-2 text-sm">
                       <input
@@ -293,7 +293,7 @@ export function VaultSettingsPage() {
               ) : null}
               <Button
                 className="self-start"
-                size="sm"
+                size="compact"
                 disabled={!canAct || !selected.length}
                 onClick={() =>
                   void act(async () => {
@@ -335,8 +335,8 @@ export function VaultSettingsPage() {
               </label>
               <Button
                 className="self-start"
-                size="sm"
-                variant="outline"
+                size="compact"
+                variant="tertiary"
                 disabled={!canAct || !envelope}
                 onClick={() =>
                   void act(async () => {
@@ -373,7 +373,7 @@ export function VaultSettingsPage() {
                     {t(entry.domain)} · {t(entry.changed ? 'changed' : 'unchanged')}
                   </label>
                   {entry.warnings.map((warning) => (
-                    <p key={warning} className="mt-1 text-xs text-muted">
+                    <p key={warning} className="mt-1 text-xs text-muted-foreground">
                       {warning}
                     </p>
                   ))}
@@ -435,7 +435,7 @@ export function VaultSettingsPage() {
               {preview ? (
                 <Button
                   className="self-start"
-                  size="sm"
+                  size="compact"
                   disabled={!canAct || !selected.length || Boolean(pending) || previewDirty}
                   onClick={() =>
                     void act(async () => {
@@ -457,10 +457,10 @@ export function VaultSettingsPage() {
             {pending ? (
               <section className="settings-surface flex flex-col gap-2" aria-label={t('recovery')}>
                 <h3 className="text-sm font-semibold">{t('recovery')}</h3>
-                <p className="text-sm text-muted">{t('recoveryHint')}</p>
+                <p className="text-sm text-muted-foreground">{t('recoveryHint')}</p>
                 <div className="flex flex-wrap gap-2">
                   <Button
-                    size="sm"
+                    size="compact"
                     disabled={!canAct}
                     onClick={() =>
                       void act(async () => {
@@ -471,8 +471,8 @@ export function VaultSettingsPage() {
                     {t('resume')}
                   </Button>
                   <Button
-                    size="sm"
-                    variant="outline"
+                    size="compact"
+                    variant="tertiary"
                     disabled={!canAct}
                     onClick={() =>
                       void act(async () => {
@@ -487,7 +487,7 @@ export function VaultSettingsPage() {
             ) : null}
             <details className="settings-surface">
               <summary className="cursor-pointer text-sm font-semibold">{t('s3')}</summary>
-              <p className="my-2 text-xs text-muted">{t('s3Hint')}</p>
+              <p className="my-2 text-xs text-muted-foreground">{t('s3Hint')}</p>
               <div className="grid gap-2 sm:grid-cols-2">
                 {(
                   [
@@ -519,8 +519,8 @@ export function VaultSettingsPage() {
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
                 <Button
-                  size="sm"
-                  variant="outline"
+                  size="compact"
+                  variant="tertiary"
                   disabled={
                     !canAct || !s3.endpoint || !s3.bucket || !s3.accessKeyId || !s3.secretAccessKey
                   }
@@ -554,8 +554,8 @@ export function VaultSettingsPage() {
                   {t('saveConnection')}
                 </Button>
                 <Button
-                  size="sm"
-                  variant="outline"
+                  size="compact"
+                  variant="tertiary"
                   disabled={!canAct || !status?.s3Configured}
                   onClick={() =>
                     void act(async () => {
@@ -571,7 +571,7 @@ export function VaultSettingsPage() {
                   {t('download')}
                 </Button>
                 <Button
-                  size="sm"
+                  size="compact"
                   disabled={!canAct || !status?.s3Configured || !selected.length}
                   onClick={() =>
                     void act(async () => {
@@ -585,7 +585,7 @@ export function VaultSettingsPage() {
                 </Button>
               </div>
               {etag ? (
-                <p className="mt-2 break-all text-xs text-muted">
+                <p className="mt-2 break-all text-xs text-muted-foreground">
                   {t('remoteRevision', { revision: etag })}
                 </p>
               ) : null}

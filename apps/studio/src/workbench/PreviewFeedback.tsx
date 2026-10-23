@@ -7,7 +7,13 @@ import {
   type WorkspaceTarget,
 } from '@corral/contracts';
 import { createTextAttachment } from '@corral/core';
-import { Button, Dialog, DialogDescription, DialogPopup, DialogTitle } from '@corral/react/ui';
+import {
+  Button,
+  Dialog,
+  DialogDescription,
+  DialogPopup,
+  DialogTitle,
+} from '@corral/react/design-kit';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { previewDesktop as desktop } from '../desktop.tsx';
@@ -290,8 +296,8 @@ export function PreviewFeedback({
         </label>
       </div>
       <Button
-        size="xs"
-        variant="outline"
+        size="compact"
+        variant="tertiary"
         disabled={phase !== 'idle' || Boolean(review)}
         onClick={() => void begin()}
       >
@@ -299,16 +305,16 @@ export function PreviewFeedback({
       </Button>
       {phase === 'selecting' ? (
         <>
-          <p role="status" className="text-muted">
+          <p role="status" className="text-muted-foreground">
             {t('selectHint')}
           </p>
-          <Button size="xs" variant="ghost" onClick={cancel}>
+          <Button size="compact" variant="ghost" onClick={cancel}>
             {t('cancel')}
           </Button>
         </>
       ) : null}
       {notice ? (
-        <p role="status" className="text-muted">
+        <p role="status" className="text-muted-foreground">
           {notice}
         </p>
       ) : null}
@@ -332,7 +338,7 @@ export function PreviewFeedback({
           {review ? (
             <>
               <p className="max-h-24 overflow-auto whitespace-pre-wrap break-words text-sm">
-                <span className="mr-2 font-mono text-xs text-muted">
+                <span className="mr-2 font-mono text-xs text-muted-foreground">
                   {review.observation.element.tag}
                 </span>
                 {review.observation.element.text}
@@ -352,11 +358,13 @@ export function PreviewFeedback({
                 <dt>{t('sourceRevision')}</dt>
                 <dd>{t('unknown')}</dd>
               </dl>
-              <p className="text-xs text-muted">
+              <p className="text-xs text-muted-foreground">
                 {t(consoleMessages ? 'consoleScope' : 'consoleExcluded')}
               </p>
               <details className="min-w-0 text-xs">
-                <summary className="cursor-pointer rounded py-1 text-muted">{t('details')}</summary>
+                <summary className="cursor-pointer rounded py-1 text-muted-foreground">
+                  {t('details')}
+                </summary>
                 <pre className="max-h-52 overflow-auto whitespace-pre-wrap break-all rounded fill-group p-3">
                   {review.attachment.text}
                 </pre>
@@ -367,7 +375,7 @@ export function PreviewFeedback({
                 </p>
               ) : null}
               <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={cancel}>
+                <Button variant="tertiary" onClick={cancel}>
                   {t('cancel')}
                 </Button>
                 <Button disabled={phase === 'attaching'} onClick={() => void attach()}>

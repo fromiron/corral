@@ -12,7 +12,7 @@ import {
   DialogPopup,
   DialogTitle,
   Input,
-} from '@corral/react/ui';
+} from '@corral/react/design-kit';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
@@ -200,7 +200,7 @@ export function RefactorActions({
       <div className="flex flex-wrap items-center gap-2">
         {active && session.capabilities.rename ? (
           <Button
-            size="xs"
+            size="compact"
             variant="ghost"
             disabled={dirty || !selection || busy === context}
             onClick={() => {
@@ -215,7 +215,7 @@ export function RefactorActions({
         ) : null}
         {active && session.capabilities.codeActions ? (
           <Button
-            size="xs"
+            size="compact"
             variant="ghost"
             disabled={dirty || !selection || busy === context}
             onClick={() => {
@@ -226,7 +226,7 @@ export function RefactorActions({
           </Button>
         ) : null}
         {busy === context && !renaming ? (
-          <Button size="xs" variant="ghost" onClick={cancel}>
+          <Button size="compact" variant="ghost" onClick={cancel}>
             {t('cancel')}
           </Button>
         ) : null}
@@ -239,12 +239,12 @@ export function RefactorActions({
         />
       </div>
       {active && dirty ? (
-        <p className="text-xs text-muted">{t('dirty')}</p>
+        <p className="text-xs text-muted-foreground">{t('dirty')}</p>
       ) : active && !selection ? (
-        <p className="text-xs text-muted">{t('selectSymbol')}</p>
+        <p className="text-xs text-muted-foreground">{t('selectSymbol')}</p>
       ) : null}
       {busy === context ? (
-        <p role="status" className="text-xs text-muted">
+        <p role="status" className="text-xs text-muted-foreground">
           {t('previewing')}
         </p>
       ) : null}
@@ -259,8 +259,8 @@ export function RefactorActions({
             choices.proposals.map((proposal) => (
               <Button
                 key={proposal.proposalId}
-                size="xs"
-                variant="outline"
+                size="compact"
+                variant="tertiary"
                 className="self-start"
                 onClick={() => setReview({ context, proposal })}
               >
@@ -268,10 +268,10 @@ export function RefactorActions({
               </Button>
             ))
           ) : (
-            <p className="text-xs text-muted">{t('noActions')}</p>
+            <p className="text-xs text-muted-foreground">{t('noActions')}</p>
           )}
           {unavailable.length ? (
-            <details className="text-xs text-muted">
+            <details className="text-xs text-muted-foreground">
               <summary className="cursor-pointer rounded py-1">
                 {t('unsupportedCount', { count: unavailable.length })}
               </summary>
@@ -294,7 +294,7 @@ export function RefactorActions({
           <DialogTitle>{t('rename')}</DialogTitle>
           <DialogDescription>{t('savedOnly')}</DialogDescription>
           {renaming ? (
-            <p className="break-all text-xs text-muted">
+            <p className="break-all text-xs text-muted-foreground">
               {entry.path}:{renaming.selection.position.line + 1}:
               {renaming.selection.position.character + 1}
             </p>
@@ -315,7 +315,7 @@ export function RefactorActions({
             </p>
           ) : null}
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={cancel}>
+            <Button variant="tertiary" onClick={cancel}>
               {t('cancel')}
             </Button>
             <Button

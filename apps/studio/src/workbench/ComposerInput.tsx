@@ -1,8 +1,8 @@
 // The composer's text box with one menu for `/` commands and `@` references (CR-016), after
 // keyboard first, IME safe. The renderer only reads names; picking a file grants nothing.
 import { rankFuzzy } from '@corral/core';
+import { Kbd } from '@corral/react/design-kit';
 import { Bot, File, FileText, Folder, History, type LucideIcon, Slash } from '@corral/react/icons';
-import { Kbd } from '@corral/react/ui';
 import {
   type KeyboardEvent,
   type RefObject,
@@ -193,14 +193,14 @@ export function ComposerInput({
               className="dropdown-glass z-[130] overflow-auto rounded-xl p-1 shadow-popup"
             >
               {rows.length === 0 ? (
-                <p className="px-2 py-1.5 text-xs text-muted">
+                <p className="px-2 py-1.5 text-xs text-muted-foreground">
                   {kind === 'slash' ? t('noCommand') : t('noReference')}
                 </p>
               ) : null}
               {groups.map((group) => (
                 // biome-ignore lint/a11y/useSemanticElements: a listbox's option groups are ARIA groups
                 <div key={group.title} role="group" aria-label={group.title}>
-                  <p className="px-2 pt-1.5 pb-0.5 text-2xs font-medium text-muted">
+                  <p className="px-2 pt-1.5 pb-0.5 text-2xs font-medium text-muted-foreground">
                     {group.title}
                   </p>
                   {group.rows.map((row) => {
@@ -231,13 +231,18 @@ export function ComposerInput({
                         }}
                         className={`flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-xs ${selected === at ? 'bg-subtle' : ''} ${row.kind === 'command' && row.command.disabled ? 'opacity-50' : ''}`}
                       >
-                        <Icon className="size-4 shrink-0 text-muted" aria-hidden="true" />
+                        <Icon
+                          className="size-4 shrink-0 text-muted-foreground"
+                          aria-hidden="true"
+                        />
                         <span
                           className={`max-w-[45%] shrink-0 truncate font-medium ${row.kind === 'mention' && (row.item.kind === 'file' || row.item.kind === 'folder') ? 'font-mono' : ''}`}
                         >
                           {name}
                         </span>
-                        <span className="min-w-0 flex-1 truncate text-muted">{detail}</span>
+                        <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                          {detail}
+                        </span>
                         {row.kind === 'command' && row.command.shortcut ? (
                           <Kbd>{row.command.shortcut}</Kbd>
                         ) : null}
@@ -288,7 +293,7 @@ export function ComposerInput({
           }
           onKeyDown(e);
         }}
-        className="block max-h-60 min-h-11 w-full resize-none border-0 bg-transparent px-1 py-1 text-sm leading-6 outline-none placeholder:text-muted/80 focus-visible:outline-none"
+        className="block max-h-60 min-h-11 w-full resize-none rounded-none border-0 bg-transparent px-2 py-2 text-subtitle outline-none placeholder:text-muted-foreground focus-visible:outline-none"
       />
     </div>
   );

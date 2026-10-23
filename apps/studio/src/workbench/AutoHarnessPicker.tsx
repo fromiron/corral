@@ -1,5 +1,5 @@
 import type { HarnessBindingRef, HarnessProfileView } from '@corral/contracts';
-import { Select } from '@corral/react/ui';
+import { Select } from '@corral/react/design-kit';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';

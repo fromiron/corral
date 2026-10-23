@@ -39,7 +39,7 @@ vi.mock('@tanstack/react-router', () => ({
     <a href={`${to}:${Object.values(params).join('/')}`}>{children}</a>
   ),
 }));
-vi.mock('@corral/react/ui', () => ({
+vi.mock('@corral/react/design-kit', () => ({
   Button: ({ children, variant: _v, size: _s, ...props }: any) => (
     <button {...props}>{children}</button>
   ),

@@ -5,7 +5,7 @@ import type {
   TextAttachment,
 } from '@corral/contracts';
 import { createTextAttachment } from '@corral/core';
-import { Button } from '@corral/react/ui';
+import { Button } from '@corral/react/design-kit';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
@@ -81,8 +81,8 @@ export function HunkActions({
       <h3 className="font-medium">{t('heading')}</h3>
       {!hunks ? (
         <Button
-          size="xs"
-          variant="outline"
+          size="compact"
+          variant="tertiary"
           disabled={busy}
           onClick={() =>
             void act(async () => {
@@ -117,7 +117,9 @@ export function HunkActions({
                   {t('part', { number: index + 1 })} · <code>{hunk.id.slice(0, 8)}</code>
                 </label>
                 <details>
-                  <summary className="cursor-pointer text-muted">{t('showPatch')}</summary>
+                  <summary className="cursor-pointer text-muted-foreground">
+                    {t('showPatch')}
+                  </summary>
                   <pre className="max-h-64 overflow-auto whitespace-pre-wrap">{hunk.patch}</pre>
                 </details>
               </li>
@@ -126,8 +128,8 @@ export function HunkActions({
           <div className="flex flex-wrap gap-2">
             {onAttach && workspaceId ? (
               <Button
-                size="xs"
-                variant="outline"
+                size="compact"
+                variant="tertiary"
                 disabled={busy || !selected.length}
                 onClick={() =>
                   void act(async () => {
@@ -174,16 +176,16 @@ export function HunkActions({
               </Button>
             ) : null}
             <Button
-              size="xs"
-              variant="outline"
+              size="compact"
+              variant="tertiary"
               disabled={busy || active || !selected.length}
               onClick={() => void prepare('apply_original')}
             >
               {t('planOriginal')}
             </Button>
             <Button
-              size="xs"
-              variant="outline"
+              size="compact"
+              variant="tertiary"
               disabled={busy || active || !selected.length}
               onClick={() => void prepare('revert_working_copy')}
             >
@@ -202,7 +204,7 @@ export function HunkActions({
             {plan.expectedTree.slice(0, 12)} → {plan.targetTree.slice(0, 12)}
           </p>
           <Button
-            size="xs"
+            size="compact"
             disabled={busy || active}
             onClick={() =>
               void act(async () => {

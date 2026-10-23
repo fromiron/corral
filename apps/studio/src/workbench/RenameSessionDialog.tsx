@@ -7,7 +7,7 @@ import {
   DialogPopup,
   DialogTitle,
   Input,
-} from '@corral/react/ui';
+} from '@corral/react/design-kit';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 

@@ -1,5 +1,5 @@
 import type { CheckpointRestore, CheckpointRestorePlan, FileCheckpoint } from '@corral/contracts';
-import { Button, Input } from '@corral/react/ui';
+import { Button, Input } from '@corral/react/design-kit';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { WORKSPACE_CHANGED } from '../pages/FilesViews.tsx';
@@ -46,13 +46,13 @@ export function CheckpointPanel({ sessionId }: { sessionId: string }) {
     }
   };
   if (!workspaces) return null;
-  if (mode === 'browser') return <p className="text-xs text-muted">{t('localOnly')}</p>;
+  if (mode === 'browser') return <p className="text-xs text-muted-foreground">{t('localOnly')}</p>;
   return (
     <section aria-labelledby={id} className="flex flex-col gap-2 border-t border-line pt-3 text-xs">
       <h4 id={id} className="font-medium">
         {t('heading')}
       </h4>
-      <p className="text-muted">{t('scope')}</p>
+      <p className="text-muted-foreground">{t('scope')}</p>
       <label htmlFor={`${id}-label`} className="flex flex-col gap-1">
         {t('label')}
         <Input
@@ -64,8 +64,8 @@ export function CheckpointPanel({ sessionId }: { sessionId: string }) {
       </label>
       <div className="flex flex-wrap gap-2">
         <Button
-          size="xs"
-          variant="outline"
+          size="compact"
+          variant="tertiary"
           disabled={busy || !label.trim()}
           onClick={() =>
             void act(async () => {
@@ -82,11 +82,11 @@ export function CheckpointPanel({ sessionId }: { sessionId: string }) {
         >
           {t('capture')}
         </Button>
-        <Button size="xs" variant="ghost" disabled={busy} onClick={() => void act(reload)}>
+        <Button size="compact" variant="ghost" disabled={busy} onClick={() => void act(reload)}>
           {t('refresh')}
         </Button>
         <Button
-          size="xs"
+          size="compact"
           variant="ghost"
           disabled={busy}
           onClick={() => void act(() => workspaces.pruneCheckpoints(sessionId))}
@@ -94,7 +94,7 @@ export function CheckpointPanel({ sessionId }: { sessionId: string }) {
           {t('prune')}
         </Button>
       </div>
-      <p className="text-muted">{t('retention')}</p>
+      <p className="text-muted-foreground">{t('retention')}</p>
       <ul className="max-h-64 overflow-y-auto space-y-2">
         {items
           .filter((item) => item.state !== 'expired')
@@ -128,7 +128,7 @@ export function CheckpointPanel({ sessionId }: { sessionId: string }) {
                   {t('pin')}
                 </label>
                 <Button
-                  size="xs"
+                  size="compact"
                   variant="ghost"
                   disabled={busy || item.state !== 'ready'}
                   onClick={() =>
@@ -170,8 +170,8 @@ export function CheckpointPanel({ sessionId }: { sessionId: string }) {
           </ul>
           <div className="mt-2 flex gap-2">
             <Button
-              size="xs"
-              variant="outline"
+              size="compact"
+              variant="tertiary"
               disabled={busy}
               onClick={() =>
                 void act(async () => {
@@ -188,7 +188,7 @@ export function CheckpointPanel({ sessionId }: { sessionId: string }) {
             >
               {t(plan.target === 'original' ? 'restoreOriginal' : 'restore')}
             </Button>
-            <Button size="xs" variant="ghost" disabled={busy} onClick={() => setPlan(null)}>
+            <Button size="compact" variant="ghost" disabled={busy} onClick={() => setPlan(null)}>
               {t('close')}
             </Button>
           </div>

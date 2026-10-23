@@ -221,7 +221,7 @@ async function prepareSession(page: Page, capability: CapabilityFixture) {
   await page.locator('input[type="file"]').setInputFiles(definitionPath);
   await expect(page).toHaveURL(/\/edit$/);
   await page.getByRole('link', { name: 'Project home', exact: true }).click();
-  await page.getByText('Session details (optional)', { exact: true }).click();
+  await page.getByRole('button', { name: /^Session details \(optional\)/ }).click();
   await page.getByRole('textbox', { name: 'Purpose', exact: true }).fill('Native integration');
   await page.getByRole('combobox', { name: 'Corral', exact: true }).click();
   await page.getByRole('option', { name: 'Native integration team', exact: true }).click();
@@ -584,7 +584,7 @@ test('[TC-ABS-001-H] [TC-ABS-006-H] [TC-ABS-006-N] Auto writer and pinned reader
   ).toContain('run_command');
 
   await openRequestOptions(page);
-  await page.getByRole('checkbox', { name: 'Review only · no file changes', exact: true }).check();
+  await page.getByRole('switch', { name: 'Review only · no file changes', exact: true }).check();
   await closeRequestOptions(page);
   await page.getByRole('combobox', { name: 'What this is', exact: true }).click();
   await page.getByRole('option', { name: /^Follow-up / }).click();
@@ -616,7 +616,7 @@ test('[TC-ABS-001-H] [TC-ABS-006-H] [TC-ABS-006-N] Auto writer and pinned reader
   ).toBeVisible();
 
   await page.goto(`${capability.server.url}/projects/default`);
-  await page.getByText('Session details (optional)', { exact: true }).click();
+  await page.getByRole('button', { name: /^Session details \(optional\)/ }).click();
   await page.getByRole('textbox', { name: 'Purpose', exact: true }).fill('Independent writer C');
   await page.getByRole('button', { name: 'Start chat', exact: true }).click();
   await expect(page).toHaveURL(/\/sessions\/session_/);

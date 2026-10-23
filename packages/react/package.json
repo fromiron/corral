@@ -7,6 +7,7 @@
     ".": "./src/index.ts",
     "./theme.css": "./src/theme.css",
     "./diff": "./src/artifacts/diff.ts",
+    "./design-kit": "./src/design-kit/index.ts",
     "./ui": "./src/ui/index.ts",
     "./icons": "./src/ui/icons.ts"
   },
@@ -16,7 +17,7 @@
     "build-storybook": "storybook build"
   },
   "dependencies": {
-    "@base-ui/react": "1.4.1",
+    "@base-ui/react": "1.9.0",
     "@corral/contracts": "workspace:*",
     "@corral/core": "workspace:*",
     "@tanstack/react-virtual": "3.14.19",
@@ -24,6 +25,7 @@
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
     "lucide-react": "0.564.0",
+    "motion": "14.1.0",
     "react-markdown": "10.1.0",
     "remark-gfm": "4.0.1",
     "tailwind-merge": "3.4.0",

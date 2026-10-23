@@ -4,7 +4,13 @@ import type {
   TextRange,
   WorkspaceTarget,
 } from '@corral/contracts';
-import { Button, Dialog, DialogDescription, DialogPopup, DialogTitle } from '@corral/react/ui';
+import {
+  Button,
+  Dialog,
+  DialogDescription,
+  DialogPopup,
+  DialogTitle,
+} from '@corral/react/design-kit';
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { type StudioServices, useServices } from '../../services.tsx';
@@ -120,7 +126,7 @@ export function SourceAttachments(props: {
                 <AttachmentSource source={preview.item.provenance} />
               ) : null}
               {preview.state ? (
-                <p role="status" className="text-xs text-muted">
+                <p role="status" className="text-xs text-muted-foreground">
                   {t(
                     preview.item.provenance?.kind === 'preview' && preview.state === 'current'
                       ? 'previewCurrent'
@@ -134,7 +140,7 @@ export function SourceAttachments(props: {
                 </pre>
               </section>
               <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => close()}>
+                <Button variant="tertiary" onClick={() => close()}>
                   {t(preview.replace ? 'cancel' : 'close')}
                 </Button>
                 {preview.replace ? (

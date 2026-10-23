@@ -4,6 +4,19 @@ import { type ReactNode, useEffect, useId, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { diffLines } from '../artifacts/diff.ts';
+import {
+  KitAccordion as Accordion,
+  KitAccordionContent as AccordionContent,
+  KitAccordionItem as AccordionItem,
+  KitAccordionTrigger as AccordionTrigger,
+  KitButton as Button,
+  KitCard as Card,
+  KitCardAction as CardAction,
+  KitCardContent as CardContent,
+  KitCardDescription as CardDescription,
+  KitCardHeader as CardHeader,
+  KitCardTitle as CardTitle,
+} from '../design-kit/index.ts';
 import type { RunSessionStore } from '../run/session.ts';
 import { SafeMarkdown } from './SafeMarkdown.tsx';
 
@@ -110,206 +123,201 @@ export function ArtifactViewer({
   }
   if (!artifact)
     return (
-      <section
-        aria-labelledby={headingId}
-        data-testid="artifact-viewer"
-        className="flex flex-col gap-2 rounded-md fill-group p-2 text-xs"
-      >
-        <div className="flex items-center justify-between gap-2">
-          <h3 id={headingId} className="font-semibold">
-            {t('reference')} · {shownId}
+      <Card role="region" aria-labelledby={headingId} data-testid="artifact-viewer">
+        <CardHeader>
+          <h3 id={headingId}>
+            <CardTitle>
+              {t('reference')} · {shownId}
+            </CardTitle>
           </h3>
-          <button type="button" onClick={onClose} className="rounded fill-control px-1.5 py-0.5">
-            {t('close')}
-          </button>
-        </div>
-        {knownReference && text !== undefined ? (
-          image?.success ? (
-            <img
-              className="max-h-96 max-w-full object-contain"
-              alt={image.data.name}
-              src={`data:${image.data.mime};base64,${image.data.data}`}
-            />
+          <CardAction>
+            <Button variant="ghost" onClick={onClose}>
+              {t('close')}
+            </Button>
+          </CardAction>
+        </CardHeader>
+        <CardContent>
+          {knownReference && text !== undefined ? (
+            image?.success ? (
+              <img
+                className="max-h-96 max-w-full object-contain"
+                alt={image.data.name}
+                src={`data:${image.data.mime};base64,${image.data.data}`}
+              />
+            ) : (
+              <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words">{text}</pre>
+            )
           ) : (
-            <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words">{text}</pre>
-          )
-        ) : (
-          <p role="status" className="text-muted">
-            {canLoad && loadedId !== shownId ? t('loading') : t('unavailable')}
-          </p>
-        )}
-      </section>
+            <p role="status" className="text-muted-foreground">
+              {canLoad && loadedId !== shownId ? t('loading') : t('unavailable')}
+            </p>
+          )}
+        </CardContent>
+      </Card>
     );
   const label = definition?.nodes.find((n) => n.id === author?.nodeId)?.label ?? author?.nodeId;
   const link = (id: string) => (
-    <button
-      key={id}
-      type="button"
-      onClick={() => open(id)}
-      className="rounded fill-control px-1 font-mono"
-    >
+    <Button key={id} variant="ghost" onClick={() => open(id)} className="font-mono">
       {id}
-    </button>
+    </Button>
   );
   return (
-    <section
-      aria-labelledby={headingId}
-      data-testid="artifact-viewer"
-      className="flex flex-col gap-2 rounded-md fill-group p-2"
-    >
-      <div className="flex items-center justify-between gap-2">
-        <h3 id={headingId} className="text-xs font-semibold">
-          {artifact.name} · {t('version', { version: artifact.version })}
+    <Card role="region" aria-labelledby={headingId} data-testid="artifact-viewer">
+      <CardHeader>
+        <h3 id={headingId}>
+          <CardTitle>
+            {artifact.name} · {t('version', { version: artifact.version })}
+          </CardTitle>
         </h3>
-        {onStartFrom && projection ? (
-          <button
-            type="button"
-            onClick={() =>
-              onStartFrom({
-                runId: projection.runId,
-                artifactVersionId: artifact.artifactVersionId,
-                label: `${artifact.name} v${artifact.version}`,
-              })
-            }
-            className="ml-auto rounded fill-control px-1.5 py-0.5 text-xs"
-          >
-            {t('newRunFromVersion')}
-          </button>
-        ) : null}
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded fill-control px-1.5 py-0.5 text-xs"
-        >
-          {t('close')}
-        </button>
-      </div>
-      <p className="text-xs text-muted">
-        {t('meta', {
-          author: label ?? '—',
-          contract: artifact.contract,
-          bytes: artifact.byteLength,
-          submitted: String(artifact.submitted),
-        })}
-      </p>
-      {parentId || (madeFrom && madeFrom.length > 0) ? (
-        <dl className="flex flex-col gap-1 text-xs">
-          {parentId ? (
-            <div className="flex flex-wrap items-center gap-1">
-              <dt className="text-muted">{t('revises')}</dt>
-              <dd>{link(parentId)}</dd>
-            </div>
+        <CardAction className="flex flex-wrap items-center justify-end gap-2">
+          {onStartFrom && projection ? (
+            <Button
+              variant="secondary"
+              onClick={() =>
+                onStartFrom({
+                  runId: projection.runId,
+                  artifactVersionId: artifact.artifactVersionId,
+                  label: `${artifact.name} v${artifact.version}`,
+                })
+              }
+            >
+              {t('newRunFromVersion')}
+            </Button>
           ) : null}
-          {madeFrom && madeFrom.length > 0 ? (
-            <div className="flex flex-wrap items-center gap-1">
-              <dt className="text-muted">{t('madeFrom')}</dt>
-              <dd className="flex flex-wrap gap-1">{madeFrom.map(link)}</dd>
-            </div>
-          ) : null}
-        </dl>
-      ) : null}
-      {lineage ? (
-        <div
-          className="flex flex-col gap-1 rounded fill-group p-2 text-xs"
-          data-testid="artifact-lineage"
-        >
-          <h4 className="font-semibold">{t('lineage')}</h4>
-          <p>
-            {t('request', {
-              request: artifact.modelCallId ?? '—',
-              snapshot: artifact.contextSnapshotId ?? '—',
-            })}
-          </p>
-          <p>{t('configRevision', { revision: lineage.configRevision })}</p>
-          {lineage.criteriaVersionId ? (
-            <p>
-              {t('criteria')} {link(lineage.criteriaVersionId)}
-            </p>
-          ) : null}
-          <dl className="flex flex-col gap-1">
-            <dt className="font-medium">{t('direct')}</dt>
-            <dd>
-              {lineage.directDirectiveIds.length === 0 ? (
-                t('noDirectives')
-              ) : (
-                <ul>
-                  {lineage.directDirectiveIds.map((id) => (
-                    <li key={id}>
-                      <span className="font-mono">{id}</span> · {projection?.directives[id]?.text}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </dd>
-            <dt className="font-medium">{t('indirect')}</dt>
-            <dd>
-              {lineage.indirectDirectiveIds.length === 0 ? (
-                t('noDirectives')
-              ) : (
-                <ul>
-                  {lineage.indirectDirectiveIds.map((id) => (
-                    <li key={id}>
-                      <span className="font-mono">{id}</span> · {projection?.directives[id]?.text}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </dd>
-          </dl>
-          <p className="text-muted">{t('lineageNote')}</p>
-        </div>
-      ) : null}
-      {review ? (
-        <ReviewSummary review={review} target={link(review.targetVersionId)} artifactLink={link} />
-      ) : null}
-      {parentId && !binary ? (
-        <button
-          type="button"
-          onClick={() => setComparingId(comparing ? null : shownId)}
-          className="self-start rounded fill-control px-1.5 py-0.5 text-xs"
-        >
-          {comparing ? t('hideCompare') : t('compare', { version: parentId })}
-        </button>
-      ) : null}
-      {binary && projection ? (
-        <GeneratedImage
-          key={shownId}
-          runId={projection.runId}
-          versionId={shownId}
-          name={artifact.name}
-          media={binary}
-        />
-      ) : comparing ? (
-        diff === null ? (
-          <p className="text-xs text-muted">{t('loading')}</p>
-        ) : (
-          <pre className="overflow-x-auto rounded fill-group text-xs" data-testid="artifact-diff">
-            {diff.map((line, i) => (
-              <div
-                // Lines repeat; their position is their identity in this diff.
-                // biome-ignore lint/suspicious/noArrayIndexKey: positional diff rows
-                key={i}
-                data-diff={line.kind}
-                className={
-                  line.kind === 'added'
-                    ? 'bg-success/15'
-                    : line.kind === 'removed'
-                      ? 'bg-danger/15 line-through'
-                      : undefined
-                }
-              >
-                {line.kind === 'added' ? '+ ' : line.kind === 'removed' ? '- ' : '  '}
-                {line.text}
+          <Button variant="ghost" onClick={onClose}>
+            {t('close')}
+          </Button>
+        </CardAction>
+        <CardDescription>
+          {t('meta', {
+            author: label ?? '—',
+            contract: artifact.contract,
+            bytes: artifact.byteLength,
+            submitted: String(artifact.submitted),
+          })}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        {parentId || (madeFrom && madeFrom.length > 0) ? (
+          <dl className="flex flex-col gap-2 text-caption">
+            {parentId ? (
+              <div className="flex flex-wrap items-center gap-1">
+                <dt className="text-muted-foreground">{t('revises')}</dt>
+                <dd>{link(parentId)}</dd>
               </div>
-            ))}
-          </pre>
-        )
-      ) : text === undefined ? (
-        <p className="text-xs text-muted">{t('loading')}</p>
-      ) : review ? null : (
-        <SafeMarkdown text={text} />
-      )}
-    </section>
+            ) : null}
+            {madeFrom && madeFrom.length > 0 ? (
+              <div className="flex flex-wrap items-center gap-1">
+                <dt className="text-muted-foreground">{t('madeFrom')}</dt>
+                <dd className="flex flex-wrap gap-1">{madeFrom.map(link)}</dd>
+              </div>
+            ) : null}
+          </dl>
+        ) : null}
+        {lineage ? (
+          <div className="flex flex-col gap-2 text-caption" data-testid="artifact-lineage">
+            <h4 className="text-subtitle">{t('lineage')}</h4>
+            <p>
+              {t('request', {
+                request: artifact.modelCallId ?? '—',
+                snapshot: artifact.contextSnapshotId ?? '—',
+              })}
+            </p>
+            <p>{t('configRevision', { revision: lineage.configRevision })}</p>
+            {lineage.criteriaVersionId ? (
+              <p>
+                {t('criteria')} {link(lineage.criteriaVersionId)}
+              </p>
+            ) : null}
+            <dl className="flex flex-col gap-1">
+              <dt className="font-medium">{t('direct')}</dt>
+              <dd>
+                {lineage.directDirectiveIds.length === 0 ? (
+                  t('noDirectives')
+                ) : (
+                  <ul>
+                    {lineage.directDirectiveIds.map((id) => (
+                      <li key={id}>
+                        <span className="font-mono">{id}</span> · {projection?.directives[id]?.text}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </dd>
+              <dt className="font-medium">{t('indirect')}</dt>
+              <dd>
+                {lineage.indirectDirectiveIds.length === 0 ? (
+                  t('noDirectives')
+                ) : (
+                  <ul>
+                    {lineage.indirectDirectiveIds.map((id) => (
+                      <li key={id}>
+                        <span className="font-mono">{id}</span> · {projection?.directives[id]?.text}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </dd>
+            </dl>
+            <p className="text-muted-foreground">{t('lineageNote')}</p>
+          </div>
+        ) : null}
+        {review ? (
+          <ReviewSummary
+            review={review}
+            target={link(review.targetVersionId)}
+            artifactLink={link}
+          />
+        ) : null}
+        {parentId && !binary ? (
+          <Button
+            variant="tertiary"
+            onClick={() => setComparingId(comparing ? null : shownId)}
+            className="self-start"
+          >
+            {comparing ? t('hideCompare') : t('compare', { version: parentId })}
+          </Button>
+        ) : null}
+        {binary && projection ? (
+          <GeneratedImage
+            key={shownId}
+            runId={projection.runId}
+            versionId={shownId}
+            name={artifact.name}
+            media={binary}
+          />
+        ) : comparing ? (
+          diff === null ? (
+            <p className="text-caption text-muted-foreground">{t('loading')}</p>
+          ) : (
+            <pre className="overflow-x-auto text-body" data-testid="artifact-diff">
+              {diff.map((line, i) => (
+                <div
+                  // Lines repeat; their position is their identity in this diff.
+                  // biome-ignore lint/suspicious/noArrayIndexKey: positional diff rows
+                  key={i}
+                  data-diff={line.kind}
+                  className={
+                    line.kind === 'added'
+                      ? 'bg-success/15'
+                      : line.kind === 'removed'
+                        ? 'bg-danger/15 line-through'
+                        : undefined
+                  }
+                >
+                  {line.kind === 'added' ? '+ ' : line.kind === 'removed' ? '- ' : '  '}
+                  {line.text}
+                </div>
+              ))}
+            </pre>
+          )
+        ) : text === undefined ? (
+          <p className="text-caption text-muted-foreground">{t('loading')}</p>
+        ) : review ? null : (
+          <SafeMarkdown text={text} />
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -329,9 +337,9 @@ export function GeneratedImage({
   const [loaded, setLoaded] = useState(false);
   const url = `/api/v1/runs/${encodeURIComponent(runId)}/artifact-versions/${encodeURIComponent(versionId)}/media`;
   return (
-    <figure className="flex min-w-0 flex-col gap-2" data-testid="generated-image">
+    <figure className="flex min-w-0 flex-col gap-4" data-testid="generated-image">
       {failed ? (
-        <p role="alert" className="text-sm text-danger">
+        <p role="alert" className="text-caption text-danger">
           {t('imageUnavailable')}
         </p>
       ) : (
@@ -346,26 +354,29 @@ export function GeneratedImage({
         />
       )}
       {!failed && !loaded ? (
-        <p role="status" className="text-xs text-muted">
+        <p role="status" className="text-caption text-muted-foreground">
           {t('loading')}
         </p>
       ) : null}
-      <figcaption className="flex flex-wrap items-center justify-between gap-2 text-xs">
+      <figcaption className="flex flex-wrap items-center justify-between gap-2 text-caption">
         <span>
           {media.width} × {media.height} · {media.mime} · {media.bytes.toLocaleString()} B
         </span>
-        <a
-          href={`${url}?download=1`}
-          download={`${versionId}.png`}
-          className="rounded fill-control px-2 py-1"
+        <Button
+          variant="tertiary"
+          render={<a href={`${url}?download=1`} download={`${versionId}.png`} />}
         >
           {t('downloadImage')}
-        </a>
+        </Button>
       </figcaption>
-      <details className="text-xs text-muted">
-        <summary className="cursor-pointer">{t('imageIntegrity')}</summary>
-        <p className="break-all font-mono">SHA-256: {media.sha256}</p>
-      </details>
+      <Accordion>
+        <AccordionItem value="integrity" highlight="trigger">
+          <AccordionTrigger>{t('imageIntegrity')}</AccordionTrigger>
+          <AccordionContent>
+            <p className="break-all font-mono">SHA-256: {media.sha256}</p>
+          </AccordionContent>
+        </AccordionItem>
+      </Accordion>
     </figure>
   );
 }
@@ -382,10 +393,10 @@ export function ReviewSummary({
 }) {
   const t = useTranslations('Artifact');
   return (
-    <div className="flex flex-col gap-1 text-xs" data-testid="review-verdict">
+    <div className="flex flex-col gap-2 text-body" data-testid="review-verdict">
       <p>
         <span className="font-semibold">{t(`verdict.${review.verdict}`)}</span>
-        <span className="text-muted"> · {t('reviewOf')} </span>
+        <span className="text-muted-foreground"> · {t('reviewOf')} </span>
         {target}
       </p>
       {review.stale ? (
@@ -397,7 +408,7 @@ export function ReviewSummary({
         </p>
       ) : null}
       {review.design ? (
-        <div className="space-y-1 border-l border-line pl-2 text-muted">
+        <div className="space-y-1 border-l border-line pl-2 text-muted-foreground">
           <p>{t(review.design.scope === 'targeted' ? 'designTargeted' : 'designReleaseReport')}</p>
           <p>{t('designEvidenceNote')}</p>
           <p>
@@ -427,18 +438,18 @@ export function ReviewSummary({
       ) : null}
       {review.issues.length > 0 ? (
         <div>
-          <p className="text-muted">{t('issues')}</p>
+          <p className="text-muted-foreground">{t('issues')}</p>
           <ul className="list-disc pl-5">
             {review.issues.map((issue) => (
               <li key={`${issue.criterionId}:${issue.reason}`}>
-                <span className="text-muted">[{issue.severity}]</span> {issue.reason}
+                <span className="text-muted-foreground">[{issue.severity}]</span> {issue.reason}
               </li>
             ))}
           </ul>
         </div>
       ) : null}
       {review.verdict === 'inconclusive' && review.issues.length === 0 ? (
-        <p className="text-muted">{t('notAReview')}</p>
+        <p className="text-muted-foreground">{t('notAReview')}</p>
       ) : null}
     </div>
   );

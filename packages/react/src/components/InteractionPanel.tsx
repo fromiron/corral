@@ -10,9 +10,8 @@ import { pendingInteractions } from '@corral/core';
 import { useEffect, useRef, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
+import { Button, Input, Select } from '../design-kit/index.ts';
 import type { RunSessionStore } from '../run/session.ts';
-import { Button } from '../ui/button.tsx';
-import { Input } from '../ui/input.tsx';
 
 export function InteractionPanel({ session }: { session: RunSessionStore }) {
   const events = useStore(session, (s) => s.events);
@@ -100,7 +99,7 @@ export function InteractionPanel({ session }: { session: RunSessionStore }) {
           <p
             key={event.eventId}
             role="status"
-            className={`text-xs ${notice.level === 'info' ? 'text-muted' : 'text-warning'}`}
+            className={`text-xs ${notice.level === 'info' ? 'text-muted-foreground' : 'text-warning'}`}
           >
             {t('extensionNotice')} · {notice.text}
           </p>
@@ -162,21 +161,21 @@ function ExtensionPrompt({
       className="flex flex-col gap-2 rounded-lg border border-warning/50 bg-warning/5 p-3 text-sm"
       data-testid={`extension-ui-${event.payload.requestId}`}
     >
-      <p className="text-xs font-medium text-muted">{t('extensionUi')}</p>
+      <p className="text-xs font-medium text-muted-foreground">{t('extensionUi')}</p>
       <h3 className="font-medium">
         {request?.title ??
           t(loadFailed || text !== undefined ? 'promptUnavailable' : 'loadingPrompt')}
       </h3>
       {!request && loadFailed ? (
-        <Button size="sm" variant="outline" onClick={retry}>
+        <Button size="compact" variant="tertiary" onClick={retry}>
           {t('retryPrompt')}
         </Button>
       ) : null}
-      <p className="text-2xs text-muted">
+      <p className="text-2xs text-muted-foreground">
         {event.payload.executionId} · {t('attempt', { attempt: event.payload.attemptNo })} ·{' '}
         {event.payload.requestId}
       </p>
-      <p className="text-xs text-muted">
+      <p className="text-xs text-muted-foreground">
         {t('expires', {
           time: format.dateTime(new Date(event.payload.deadline), {
             hour: '2-digit',
@@ -189,27 +188,21 @@ function ExtensionPrompt({
         <p className="whitespace-pre-wrap break-words">{request.message}</p>
       ) : null}
       {request?.kind === 'select' ? (
-        <select
-          aria-label={request.title}
+        <Select
+          label={request.title}
           disabled={busy}
-          className="rounded fill-group p-2"
           value={value}
-          onChange={(e) => setValue(e.target.value)}
-        >
-          <option value="">{t('chooseOption')}</option>
-          {request.options.map((option, index) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: This request's options are immutable and may repeat labels.
-            <option key={`${index}:${option}`} value={option}>
-              {option}
-            </option>
-          ))}
-        </select>
+          onValueChange={setValue}
+          options={[
+            { value: '', label: t('chooseOption') },
+            ...request.options.map((option) => ({ value: option, label: option })),
+          ]}
+        />
       ) : null}
       {request?.kind === 'input' ? (
-        <input
+        <Input
           aria-label={request.title}
           disabled={busy}
-          className="rounded fill-group p-2"
           value={value}
           maxLength={12000}
           placeholder={request.placeholder}
@@ -219,23 +212,28 @@ function ExtensionPrompt({
       <div className="flex flex-wrap gap-2">
         {request?.kind === 'confirm' ? (
           <>
-            <Button size="sm" disabled={busy} onClick={() => void answer(true)}>
+            <Button size="compact" disabled={busy} onClick={() => void answer(true)}>
               {t('confirmYes')}
             </Button>
-            <Button size="sm" variant="outline" disabled={busy} onClick={() => void answer(false)}>
+            <Button
+              size="compact"
+              variant="tertiary"
+              disabled={busy}
+              onClick={() => void answer(false)}
+            >
               {t('confirmNo')}
             </Button>
           </>
         ) : request ? (
           <Button
-            size="sm"
+            size="compact"
             disabled={busy || (request.kind === 'select' && !value)}
             onClick={() => void answer(value)}
           >
             {t('sendAnswer')}
           </Button>
         ) : null}
-        <Button size="sm" variant="ghost" disabled={busy} onClick={() => void answer(null)}>
+        <Button size="compact" variant="ghost" disabled={busy} onClick={() => void answer(null)}>
           {t('dismissPrompt')}
         </Button>
       </div>
@@ -327,16 +325,16 @@ function UserQuestionPrompt({
       }}
       aria-label={t('userQuestions')}
     >
-      <p role="status" className="text-xs font-medium text-muted">
+      <p role="status" className="text-xs font-medium text-muted-foreground">
         {t('userQuestions')}
       </p>
-      <p className="text-2xs text-muted">
+      <p className="text-2xs text-muted-foreground">
         {event.payload.executionId} · {t('attempt', { attempt: event.payload.attemptNo })}
       </p>
       {!request ? (
         <>
           <p>{t(loadFailed || text !== undefined ? 'questionUnavailable' : 'loadingPrompt')}</p>
-          <Button type="button" size="sm" variant="outline" onClick={retry}>
+          <Button type="button" size="compact" variant="tertiary" onClick={retry}>
             {t('retryPrompt')}
           </Button>
         </>
@@ -347,7 +345,9 @@ function UserQuestionPrompt({
             <fieldset key={q.id} disabled={busy} className="flex flex-col gap-2">
               <legend className="font-medium">{q.prompt}</legend>
               {q.description ? (
-                <p className="whitespace-pre-wrap break-words text-muted">{q.description}</p>
+                <p className="whitespace-pre-wrap break-words text-muted-foreground">
+                  {q.description}
+                </p>
               ) : null}
               {q.options?.map((option) => (
                 <label
@@ -378,7 +378,9 @@ function UserQuestionPrompt({
                     {option.label}
                     {option.recommended ? ` (${t('recommended')})` : ''}
                     {option.description ? (
-                      <span className="block text-xs text-muted">{option.description}</span>
+                      <span className="block text-xs text-muted-foreground">
+                        {option.description}
+                      </span>
                     ) : null}
                   </span>
                 </label>
@@ -415,7 +417,7 @@ function UserQuestionPrompt({
         })
       )}
       {request ? (
-        <Button type="submit" size="sm" disabled={busy || !validUserAnswers(request, answers)}>
+        <Button type="submit" size="compact" disabled={busy || !validUserAnswers(request, answers)}>
           {t('sendAnswer')}
         </Button>
       ) : null}

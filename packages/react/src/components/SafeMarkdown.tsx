@@ -1,6 +1,14 @@
 import Markdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useTranslations } from 'use-intl';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../design-kit/index.ts';
 
 // Model output as Markdown, never as HTML (Spec §10.2, C-025). Raw HTML in the text is
 // dropped within Markdown; complete HTML documents stay readable as escaped source. Links
@@ -25,14 +33,16 @@ export function SafeMarkdown({
   const reader = size === 'reader';
   if (/^\s*(?:<!doctype\s+html\b|<html\b)/i.test(text)) {
     return (
-      <pre className="max-w-full overflow-auto rounded fill-group p-2 text-xs">
-        <code>{text}</code>
-      </pre>
+      <div className="typeset typeset-compact min-w-0 max-w-full">
+        <pre>
+          <code>{text}</code>
+        </pre>
+      </div>
     );
   }
   return (
     <div
-      className={`corral-markdown flex min-w-0 max-w-full flex-col wrap-anywhere ${reader ? 'gap-3 text-reader leading-7' : 'gap-2 text-sm leading-relaxed'}`}
+      className={`corral-markdown typeset min-w-0 max-w-full wrap-anywhere ${reader ? '[--typeset-body:var(--text-reader)] [--typeset-body-leading:var(--text-reader--line-height)]' : 'typeset-compact'}`}
     >
       <Markdown
         skipHtml
@@ -56,49 +66,21 @@ export function SafeMarkdown({
               }
             })();
             return (
-              <span className="rounded fill-control px-1 text-xs text-muted">
+              <span className="rounded fill-control px-1 text-xs text-muted-foreground">
                 {t('imageNotLoaded', { alt: alt || t('image'), host: host || '—' })}
               </span>
             );
           },
-          h1: ({ children }) => (
-            <h1 className={`${reader ? 'mt-2 text-2xl' : 'text-base'} font-semibold`}>
-              {children}
-            </h1>
-          ),
-          h2: ({ children }) => (
-            <h2 className={`${reader ? 'mt-2 text-xl' : 'text-sm'} font-semibold`}>{children}</h2>
-          ),
-          h3: ({ children }) => (
-            <h3 className={`${reader ? 'text-lg' : 'text-sm'} font-semibold`}>{children}</h3>
-          ),
-          blockquote: ({ children }) => (
-            <blockquote className="border-l-2 border-line pl-3 text-muted">{children}</blockquote>
-          ),
-          hr: () => <hr className="border-line" />,
           table: ({ children }) => (
-            <div className="max-w-full overflow-auto">
-              <table className="border-collapse text-left">{children}</table>
+            <div className="max-w-full overflow-x-auto">
+              <Table size="compact">{children}</Table>
             </div>
           ),
-          th: ({ children }) => (
-            <th className="border border-line bg-surface px-2 py-1 font-semibold">{children}</th>
-          ),
-          td: ({ children }) => <td className="border border-line px-2 py-1">{children}</td>,
-          ul: ({ children }) => <ul className="list-disc pl-5">{children}</ul>,
-          ol: ({ children }) => <ol className="list-decimal pl-5">{children}</ol>,
-          code: ({ children }) => (
-            <code className={`rounded bg-surface px-1 font-mono ${reader ? 'text-ui' : 'text-xs'}`}>
-              {children}
-            </code>
-          ),
-          pre: ({ children }) => (
-            <pre
-              className={`max-w-full overflow-auto rounded fill-group p-2 ${reader ? 'text-ui' : 'text-xs'}`}
-            >
-              {children}
-            </pre>
-          ),
+          thead: ({ children }) => <TableHeader>{children}</TableHeader>,
+          tbody: ({ children }) => <TableBody>{children}</TableBody>,
+          tr: ({ children }) => <TableRow>{children}</TableRow>,
+          th: ({ children }) => <TableHead>{children}</TableHead>,
+          td: ({ children }) => <TableCell>{children}</TableCell>,
         }}
       >
         {text}

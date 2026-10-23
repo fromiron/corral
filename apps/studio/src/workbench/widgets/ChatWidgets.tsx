@@ -1,4 +1,18 @@
 import {
+  Button,
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Popover,
+  PopoverPopup,
+  PopoverTitle,
+  PopoverTrigger,
+  Select,
+} from '@corral/react/design-kit';
+import {
   ArrowRight,
   Bot,
   ChevronDown,
@@ -10,16 +24,8 @@ import {
   LoaderCircle,
   Monitor,
 } from '@corral/react/icons';
-import {
-  Button,
-  Popover,
-  PopoverPopup,
-  PopoverTitle,
-  PopoverTrigger,
-  Select,
-} from '@corral/react/ui';
 import { Link } from '@tanstack/react-router';
-import { type ReactNode, useId, useState } from 'react';
+import { type ComponentProps, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import type { WidgetChip } from './selectors.ts';
 import { type ChatWidgetModel, useChatWidget } from './useChatWidgets.tsx';
@@ -35,8 +41,8 @@ const CATEGORIES = [
   'other',
 ] as const;
 const CATEGORY_FILL: Record<string, string> = {
-  messages: 'bg-accent',
-  system_prompt: 'bg-accent/65',
+  messages: 'bg-primary',
+  system_prompt: 'bg-primary/65',
   system_tools: 'bg-muted',
   mcp_tools: 'bg-muted/65',
   skills: 'bg-success',
@@ -45,7 +51,7 @@ const CATEGORY_FILL: Record<string, string> = {
   other: 'bg-text/45',
 };
 const chipClass =
-  'inline-flex min-h-9 pointer-coarse:min-h-11 min-w-0 max-w-full shrink-0 items-center gap-1.5 rounded-full px-2.5 text-xs text-muted outline-none transition-colors hover:bg-subtle hover:text-text focus-visible:ring-2 focus-visible:ring-ring';
+  'inline-flex min-h-9 pointer-coarse:min-h-11 min-w-0 max-w-full shrink-0 items-center gap-1.5 rounded-full px-2.5 text-xs text-muted-foreground outline-none transition-colors hover:bg-subtle hover:text-text focus-visible:ring-2 focus-visible:ring-ring';
 const number = (value: number) => value.toLocaleString();
 /** "Last run" only for the newest finished run; an older one names its position (#72). */
 function viewedLabel(
@@ -67,94 +73,94 @@ export function SessionWidgetCard() {
   const ts = useTranslations('Status');
   if (!model?.runId) return null;
   return (
-    <section
+    <Card
       data-testid="session-summary-card"
+      role="region"
       aria-label={t('summaryHeading')}
-      className="session-summary-card min-w-0 rounded-2xl bg-raised p-4"
+      className="session-summary-card"
     >
-      <div className="mb-4 flex items-center gap-3">
-        <span
-          className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-subtle text-muted"
-          aria-hidden="true"
-        >
+      <CardHeader>
+        <CardTitle>{t('summaryHeading')}</CardTitle>
+        <CardDescription>
+          {model.viewed
+            ? viewedLabel(model.viewed, t)
+            : model.plan.runStatus
+              ? ts(model.plan.runStatus)
+              : t('rail')}
+        </CardDescription>
+        <CardAction aria-hidden="true" className="text-muted-foreground">
           <Bot size={22} />
-        </span>
-        <div className="min-w-0">
-          <h3 className="text-sm font-medium">{t('summaryHeading')}</h3>
-          <p className="mt-1 truncate text-xs text-muted">
-            {model.viewed
-              ? viewedLabel(model.viewed, t)
-              : model.plan.runStatus
-                ? ts(model.plan.runStatus)
-                : t('rail')}
-          </p>
-        </div>
-      </div>
-      <RunLink
-        model={model}
-        className="mb-4 flex min-h-8 items-center justify-center gap-2 rounded-lg bg-subtle px-3 text-xs hover:bg-line/50 focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        {t('openExecution')}
-        <ArrowRight size={13} />
-      </RunLink>
-      <div className="space-y-1">
-        {model.chips
-          .filter((chip) => chip !== 'changes')
-          .map((chip) => (
-            <Chip key={chip} chip={chip} model={model} />
-          ))}
-      </div>
-      {model.tools.length ? (
-        <div className="mt-5">
-          <h4 className="mb-1.5 text-xs text-muted">{t('activityHeading')}</h4>
-          <ul className="space-y-1">
-            {model.tools.slice(-3).map((tool) => (
-              <li key={tool.id} className="flex min-h-7 items-center gap-2 text-xs">
-                {tool.tone === 'ok' ? (
-                  <CircleCheck size={13} className="shrink-0 text-muted" />
-                ) : tool.tone === 'running' ? (
-                  <LoaderCircle
-                    size={13}
-                    className="shrink-0 text-muted motion-safe:animate-spin"
-                  />
-                ) : (
-                  <CircleAlert size={13} className="shrink-0 text-warning" />
-                )}
-                <span className="min-w-0 flex-1 truncate" title={tool.name}>
-                  {tool.name}
-                </span>
-                <span className="text-2xs text-muted">{t(`tool.${tool.tone}`)}</span>
-              </li>
+        </CardAction>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <Button render={<RunLink model={model} />} variant="secondary" className="w-full">
+          {t('openExecution')}
+          <ArrowRight size={13} />
+        </Button>
+        <div className="space-y-1">
+          {model.chips
+            .filter((chip) => chip !== 'changes')
+            .map((chip) => (
+              <Chip key={chip} chip={chip} model={model} />
             ))}
-          </ul>
         </div>
-      ) : null}
-      {model.results.length ? (
-        <div className="mt-5">
-          <h4 className="mb-1.5 text-xs text-muted">{t('resultsHeading')}</h4>
-          <ul className="space-y-1">
-            {model.results.slice(0, 3).map((result) => (
-              <li key={result.id}>
-                <Link
-                  to="/sessions/$sessionId"
-                  params={{ sessionId: model.sessionId }}
-                  search={{
-                    panel: 'run',
-                    run: model.runId ?? undefined,
-                    view: 'results',
-                    result: result.id,
-                  }}
-                  className="flex min-h-7 items-center gap-2 rounded text-xs hover:bg-subtle focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <FileDiff size={13} className="shrink-0 text-muted" />
-                  <span className="truncate">{result.label}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-    </section>
+        {model.tools.length ? (
+          <div>
+            <h4 className="mb-1.5 text-xs text-muted-foreground">{t('activityHeading')}</h4>
+            <ul className="space-y-1">
+              {model.tools.slice(-3).map((tool) => (
+                <li key={tool.id} className="flex min-h-7 items-center gap-2 text-xs">
+                  {tool.tone === 'ok' ? (
+                    <CircleCheck size={13} className="shrink-0 text-muted-foreground" />
+                  ) : tool.tone === 'running' ? (
+                    <LoaderCircle
+                      size={13}
+                      className="shrink-0 text-muted-foreground motion-safe:animate-spin"
+                    />
+                  ) : (
+                    <CircleAlert size={13} className="shrink-0 text-warning" />
+                  )}
+                  <span className="min-w-0 flex-1 truncate" title={tool.name}>
+                    {tool.name}
+                  </span>
+                  <span className="text-2xs text-muted-foreground">{t(`tool.${tool.tone}`)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+        {model.results.length ? (
+          <div>
+            <h4 className="mb-1.5 text-xs text-muted-foreground">{t('resultsHeading')}</h4>
+            <ul className="space-y-1">
+              {model.results.slice(0, 3).map((result) => (
+                <li key={result.id}>
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start"
+                    render={
+                      <Link
+                        to="/sessions/$sessionId"
+                        params={{ sessionId: model.sessionId }}
+                        search={{
+                          panel: 'run',
+                          run: model.runId ?? undefined,
+                          view: 'results',
+                          result: result.id,
+                        }}
+                      />
+                    }
+                  >
+                    <FileDiff size={13} className="shrink-0 text-muted-foreground" />
+                    <span className="truncate">{result.label}</span>
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -221,7 +227,7 @@ function ContextUsageChip({ model }: { model: ChatWidgetModel }) {
           <div>
             <div className="flex items-center justify-between gap-3">
               <PopoverTitle>{t('context')}</PopoverTitle>
-              <span className="rounded-md bg-subtle px-2 py-0.5 text-2xs text-muted">
+              <span className="rounded-md bg-subtle px-2 py-0.5 text-2xs text-muted-foreground">
                 {complete
                   ? t('measurementFull')
                   : context.kind === 'messages'
@@ -231,7 +237,7 @@ function ContextUsageChip({ model }: { model: ChatWidgetModel }) {
                       : t('measurementPending')}
               </span>
             </div>
-            <p className="mt-1.5 break-words text-xs text-muted">
+            <p className="mt-1.5 break-words text-xs text-muted-foreground">
               {[
                 model.viewed ? viewedLabel(model.viewed, t) : t('rail'),
                 context.roleLabel,
@@ -241,7 +247,7 @@ function ContextUsageChip({ model }: { model: ChatWidgetModel }) {
                 .join(' · ')}
             </p>
             {context.recordedAt ? (
-              <p className="mt-1 text-2xs text-muted">
+              <p className="mt-1 text-2xs text-muted-foreground">
                 {t('lastRequest', {
                   time: new Date(context.recordedAt).toLocaleTimeString([], {
                     hour: '2-digit',
@@ -254,13 +260,13 @@ function ContextUsageChip({ model }: { model: ChatWidgetModel }) {
           </div>
           <div className="flex items-center justify-between gap-4">
             <div>
-              <p className="text-xs text-muted">
+              <p className="text-xs text-muted-foreground">
                 {t(measured ? 'estimatedInput' : 'contextPending')}
               </p>
               {context.tokens != null ? (
                 <p className="mt-1 text-lg font-medium tabular-nums">
                   {number(context.tokens)}
-                  <span className="ml-1.5 text-xs font-normal text-muted">
+                  <span className="ml-1.5 text-xs font-normal text-muted-foreground">
                     {context.windowTokens
                       ? `/ ${number(context.windowTokens)} ${t('tokens')}`
                       : t('tokens')}
@@ -291,7 +297,7 @@ function ContextUsageChip({ model }: { model: ChatWidgetModel }) {
                     />
                     {tc(category)}
                   </span>
-                  <span className="max-w-44 text-right tabular-nums text-muted">
+                  <span className="max-w-44 text-right tabular-nums text-muted-foreground">
                     {part
                       ? `${number(part.tokens)}${part.omission ? ` · ${t('measurementPartial')}` : ''}`
                       : t(complete ? 'notInRequest' : 'notMeasured')}
@@ -300,7 +306,7 @@ function ContextUsageChip({ model }: { model: ChatWidgetModel }) {
               );
             })}
             {context.freeTokens != null ? (
-              <li className="mt-1 flex justify-between gap-3 border-t border-line/60 pt-2 text-xs text-muted">
+              <li className="mt-1 flex justify-between gap-3 border-t border-line/60 pt-2 text-xs text-muted-foreground">
                 <span>{t(context.freeTokens < 0 ? 'estimatedOverage' : 'estimatedRemaining')}</span>
                 <span className={`tabular-nums ${context.freeTokens < 0 ? 'text-warning' : ''}`}>
                   {number(Math.abs(context.freeTokens))}
@@ -309,7 +315,7 @@ function ContextUsageChip({ model }: { model: ChatWidgetModel }) {
             ) : null}
           </ul>
           {model.simulated || !complete || context.awaitingRefresh || context.kind === 'highest' ? (
-            <div className="space-y-1 rounded-lg bg-subtle px-3 py-2 text-xs text-muted">
+            <div className="space-y-1 rounded-lg bg-subtle px-3 py-2 text-xs text-muted-foreground">
               {model.simulated ? <p>{t('simulatedNote')}</p> : null}
               {context.awaitingRefresh ? <p>{t('contextRefresh')}</p> : null}
               {!complete ? (
@@ -334,21 +340,21 @@ function ContextUsageChip({ model }: { model: ChatWidgetModel }) {
                 </p>
               ) : null}
               {model.readState === 'error' ? (
-                <Button size="xs" variant="outline" onClick={model.retryRead}>
+                <Button size="compact" variant="tertiary" onClick={model.retryRead}>
                   {t('retry')}
                 </Button>
               ) : null}
             </div>
           ) : null}
           {model.reserveTokens != null ? (
-            <p className="text-xs text-muted">
+            <p className="text-xs text-muted-foreground">
               {t('outputReserve', { count: number(model.reserveTokens) })}
             </p>
           ) : null}
           {context.providerInput != null ||
           context.providerCacheRead != null ||
           context.providerOutput != null ? (
-            <details className="text-xs text-muted">
+            <details className="text-xs text-muted-foreground">
               <summary className="cursor-pointer rounded-sm py-1 focus-visible:ring-2 focus-visible:ring-ring">
                 {t('providerUsage')}
               </summary>
@@ -365,7 +371,7 @@ function ContextUsageChip({ model }: { model: ChatWidgetModel }) {
           ) : null}
           <RunLink
             model={model}
-            className="flex items-center justify-between gap-2 border-t border-line/60 pt-3 text-xs text-muted hover:text-text"
+            className="flex items-center justify-between gap-2 border-t border-line/60 pt-3 text-xs text-muted-foreground hover:text-text"
           >
             {t('contextDetails')}
             <ArrowRight size={14} />
@@ -387,7 +393,7 @@ function ContextGauge({ percent, size = 16 }: { percent: number | null; size?: n
           cy="10"
           r={radius}
           fill="none"
-          className={percent >= 90 ? 'stroke-warning' : 'stroke-accent'}
+          className={percent >= 90 ? 'stroke-warning' : 'stroke-primary'}
           strokeWidth="2.5"
           strokeDasharray={length}
           strokeDashoffset={length * (1 - Math.min(100, Math.max(0, percent)) / 100)}
@@ -435,7 +441,7 @@ function AgentChip({ model }: { model: ChatWidgetModel }) {
       </PopoverTrigger>
       <PopoverPopup align="start" width="md">
         <PopoverTitle>{t('agentsHeading')}</PopoverTitle>
-        <p className="mt-2 text-xs text-muted">
+        <p className="mt-2 text-xs text-muted-foreground">
           {[
             t('agents', model.agents),
             t('agentsWaiting', { count: model.agents.waiting }),
@@ -447,7 +453,7 @@ function AgentChip({ model }: { model: ChatWidgetModel }) {
             {model.plan.choices.map((choice) => (
               <li key={choice.key}>
                 <Button
-                  size="sm"
+                  size="compact"
                   variant="ghost"
                   className="h-auto w-full justify-between gap-2 py-2"
                   onClick={() => model.plan.choose(choice.key)}
@@ -455,7 +461,7 @@ function AgentChip({ model }: { model: ChatWidgetModel }) {
                   <span className="truncate">
                     {choice.key === 'team' ? t('teamPlan') : choice.label}
                   </span>
-                  <span className="text-xs text-muted">
+                  <span className="text-xs text-muted-foreground">
                     {choice.lastTeam ? t('teamLast') : choice.status ? ts(choice.status) : ''}
                   </span>
                 </Button>
@@ -465,7 +471,7 @@ function AgentChip({ model }: { model: ChatWidgetModel }) {
         ) : null}
         <RunLink
           model={model}
-          className="mt-3 flex items-center justify-between border-t border-line/60 pt-3 text-xs text-muted hover:text-text"
+          className="mt-3 flex items-center justify-between border-t border-line/60 pt-3 text-xs text-muted-foreground hover:text-text"
         >
           {t('allAgents')}
           <ArrowRight size={14} />
@@ -512,7 +518,7 @@ function EnvironmentChip({ model }: { model: ChatWidgetModel }) {
       </PopoverTrigger>
       <PopoverPopup align="start" width="md">
         <PopoverTitle>{t('environmentHeading')}</PopoverTitle>
-        <p className="mt-2 text-xs leading-relaxed text-muted">
+        <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
           {t(
             model.environment === 'simulated'
               ? 'environmentSimulationDetail'
@@ -529,13 +535,10 @@ function EnvironmentChip({ model }: { model: ChatWidgetModel }) {
 }
 function RunLink({
   model,
-  children,
-  className,
+  ...props
 }: {
   model: ChatWidgetModel;
-  children: ReactNode;
-  className: string;
-}) {
+} & ComponentProps<'a'>) {
   return (
     <Link
       to="/sessions/$sessionId"
@@ -550,10 +553,8 @@ function RunLink({
         view: 'run',
       })}
       resetScroll={false}
-      className={className}
-    >
-      {children}
-    </Link>
+      {...props}
+    />
   );
 }
 /** One announcement and a scoped entry to the existing approval/interaction host. */
@@ -588,7 +589,7 @@ export function ComposerDock() {
           <Circle
             size={12}
             aria-hidden="true"
-            className={model.action.visible ? 'text-warning' : 'text-muted'}
+            className={model.action.visible ? 'text-warning' : 'text-muted-foreground'}
           />
           <span>
             {model.readState === 'error'
@@ -701,15 +702,15 @@ export function ComposerPlan() {
           >
             <ChevronDown
               size={14}
-              className={`shrink-0 text-muted transition-transform motion-reduce:transition-none ${model.plan.open ? '' : '-rotate-90'}`}
+              className={`shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none ${model.plan.open ? '' : '-rotate-90'}`}
             />
             <span className="font-medium">{t('planHeading')}</span>
             {selection && model.plan.multiple ? (
-              <span className="min-w-0 truncate text-muted">
+              <span className="min-w-0 truncate text-muted-foreground">
                 {selection.key === 'team' ? t('teamPlan') : selection.label}
               </span>
             ) : null}
-            <span className="ml-auto shrink-0 tabular-nums text-muted">{count}</span>
+            <span className="ml-auto shrink-0 tabular-nums text-muted-foreground">{count}</span>
           </Button>
           <div id={panelId} hidden={!model.plan.open} className="work-plan-disclosure">
             {model.plan.open ? (
@@ -723,7 +724,7 @@ export function ComposerPlan() {
                   </p>
                 ) : null}
                 {selection?.lastTeam ? (
-                  <p className="mb-2 text-xs text-muted">{t('teamLast')}</p>
+                  <p className="mb-2 text-xs text-muted-foreground">{t('teamLast')}</p>
                 ) : null}
                 {model.plan.runStatus &&
                 ['failed', 'cancelled', 'interrupted'].includes(model.plan.runStatus) ? (
@@ -732,14 +733,14 @@ export function ComposerPlan() {
                   </p>
                 ) : null}
                 {status.state === 'loading' ? (
-                  <p className="py-2 text-xs text-muted">{t('planLoading')}</p>
+                  <p className="py-2 text-xs text-muted-foreground">{t('planLoading')}</p>
                 ) : null}
                 {status.state === 'error' || status.state === 'mismatch' ? (
                   <div className="flex items-center justify-between gap-2 pb-2 text-xs">
                     <p className="text-warning">
                       {t(status.state === 'mismatch' ? 'planMismatch' : 'planError')}
                     </p>
-                    <Button size="xs" variant="outline" onClick={() => model.plan.retry()}>
+                    <Button size="compact" variant="tertiary" onClick={() => model.plan.retry()}>
                       {t('retry')}
                     </Button>
                   </div>
@@ -754,7 +755,7 @@ export function ComposerPlan() {
                       >
                         <WorkPlanStatusIcon status={item.status} label={t(item.status)} />
                         <span
-                          className={`min-w-0 break-words ${item.status === 'completed' ? 'text-muted' : item.status === 'in_progress' ? 'font-medium' : ''}`}
+                          className={`min-w-0 break-words ${item.status === 'completed' ? 'text-muted-foreground' : item.status === 'in_progress' ? 'font-medium' : ''}`}
                         >
                           {item.title}
                         </span>
@@ -765,9 +766,9 @@ export function ComposerPlan() {
                 {plan && plan.items.length > 5 ? (
                   <Button
                     type="button"
-                    size="xs"
+                    size="compact"
                     variant="ghost"
-                    className="ml-6 mt-1 text-muted"
+                    className="ml-6 mt-1 text-muted-foreground"
                     onClick={() => setAllKey(showAll ? null : key)}
                   >
                     {t(showAll ? 'planLess' : 'planAll', { total: plan.items.length })}
@@ -792,7 +793,7 @@ function WorkPlanStatusIcon({
   return (
     <span
       role="img"
-      className={`mt-0.5 inline-flex shrink-0 ${status === 'in_progress' ? 'text-accent' : 'text-muted'}`}
+      className={`mt-0.5 inline-flex shrink-0 ${status === 'in_progress' ? 'text-primary' : 'text-muted-foreground'}`}
       title={label}
       aria-label={label}
     >
@@ -833,7 +834,7 @@ function RunActivity({ model }: { model: ChatWidgetModel }) {
   return (
     <div
       data-testid="run-activity"
-      className="flex min-h-8 min-w-0 items-center gap-2 px-4 py-1.5 text-xs text-muted"
+      className="flex min-h-8 min-w-0 items-center gap-2 px-4 py-1.5 text-xs text-muted-foreground"
     >
       {model.live &&
       !model.activity.frozen &&

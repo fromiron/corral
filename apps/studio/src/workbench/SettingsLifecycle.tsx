@@ -1,4 +1,10 @@
-import { Button, Dialog, DialogDescription, DialogPopup, DialogTitle } from '@corral/react/ui';
+import {
+  Button,
+  Dialog,
+  DialogDescription,
+  DialogPopup,
+  DialogTitle,
+} from '@corral/react/design-kit';
 import { Link, useBlocker, useRouterState } from '@tanstack/react-router';
 import {
   createContext,
@@ -177,7 +183,7 @@ export function SettingsLeavePrompt() {
               {t('saveLeave')}
             </Button>
           ) : null}
-          <Button variant="outline" disabled={saving} onClick={() => context.finish(true)}>
+          <Button variant="tertiary" disabled={saving} onClick={() => context.finish(true)}>
             {t('discard')}
           </Button>
           <Button variant="ghost" disabled={saving} onClick={() => context.finish(false)}>
@@ -211,7 +217,7 @@ function OperationStatus({ tasks }: { tasks: ReturnType<typeof createSettingsTas
             {t('reviewTarget')}
           </Link>
           {op.state !== 'pending' ? (
-            <Button size="sm" variant="ghost" onClick={() => tasks.dismiss(op.target)}>
+            <Button size="compact" variant="ghost" onClick={() => tasks.dismiss(op.target)}>
               {t('dismiss')}
             </Button>
           ) : null}

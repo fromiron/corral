@@ -1,5 +1,5 @@
 import { TIDY_EVENT } from '@corral/react';
-import { Button, Kbd } from '@corral/react/ui';
+import { Button, Kbd } from '@corral/react/design-kit';
 import { useNavigate, useRouterState } from '@tanstack/react-router';
 import {
   type KeyboardEvent,
@@ -534,11 +534,13 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
         aria-label={t('results')}
         className="max-h-80 overflow-auto p-1"
       >
-        {shown.length === 0 ? <p className="px-2 py-1.5 text-sm text-muted">{t('none')}</p> : null}
+        {shown.length === 0 ? (
+          <p className="px-2 py-1.5 text-sm text-muted-foreground">{t('none')}</p>
+        ) : null}
         {[...grouped].map(([group, list]) => (
           // biome-ignore lint/a11y/useSemanticElements: a listbox's option groups are ARIA groups
           <div key={group} role="group" aria-label={group}>
-            <p className="px-2 pt-2 pb-1 text-2xs font-medium text-muted">{group}</p>
+            <p className="px-2 pt-2 pb-1 text-2xs font-medium text-muted-foreground">{group}</p>
             {list.map((command) => {
               const index = shown.indexOf(command);
               return (
@@ -561,9 +563,11 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
                 >
                   <span className="min-w-0 flex-1 truncate">{command.title}</span>
                   {command.disabled && command.hint ? (
-                    <span className="text-2xs text-muted">{command.hint}</span>
+                    <span className="text-2xs text-muted-foreground">{command.hint}</span>
                   ) : command.slash ? (
-                    <span className="font-mono text-2xs text-muted">/{command.slash}</span>
+                    <span className="font-mono text-2xs text-muted-foreground">
+                      /{command.slash}
+                    </span>
                   ) : null}
                   {command.shortcut ? <Kbd>{command.shortcut}</Kbd> : null}
                 </div>
@@ -590,7 +594,7 @@ function ShortcutHelp({ onClose }: { onClose: () => void }) {
             ref={closeRef}
             type="button"
             onClick={onClose}
-            className="rounded-md px-2 py-1 text-xs text-muted hover:bg-subtle hover:text-text"
+            className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-subtle hover:text-text"
           >
             {t('closeButton')}
           </button>
@@ -689,10 +693,10 @@ export function ShortcutTable({ editable = false }: { editable?: boolean }) {
     <div className="flex flex-col gap-5">
       {editable ? (
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-ui text-muted">{t('editHint')}</p>
+          <p className="text-ui text-muted-foreground">{t('editHint')}</p>
           <Button
             variant="ghost"
-            size="sm"
+            size="compact"
             onClick={() => {
               try {
                 writeShortcutBindings({});
@@ -723,7 +727,7 @@ export function ShortcutTable({ editable = false }: { editable?: boolean }) {
                   {editable && id ? (
                     <Button
                       variant="ghost"
-                      size="sm"
+                      size="compact"
                       aria-label={t('edit', { command: what })}
                       aria-pressed={capture === id}
                       data-shortcut-capture={capture === id ? 'true' : undefined}

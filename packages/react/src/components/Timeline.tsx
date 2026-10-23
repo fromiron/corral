@@ -3,6 +3,15 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
+import {
+  KitButton,
+  KitCard,
+  KitCardAction,
+  KitCardContent,
+  KitCardHeader,
+  KitCardTitle,
+  Select,
+} from '../design-kit/index.ts';
 import type { RunSessionStore } from '../run/session.ts';
 import { EventText } from './RunText.tsx';
 
@@ -10,7 +19,7 @@ import { EventText } from './RunText.tsx';
 // with 10,000 events costs the same as one with 50 (Spec §10.3). New events are appended
 // below: the selection and the scroll position stay where the reader left them.
 
-const ROW_HEIGHT = 28;
+const ROW_HEIGHT = 36;
 
 type ActorFilter = 'all' | RunEvent['actor']['kind'];
 
@@ -67,117 +76,126 @@ export function Timeline({ session }: { session: RunSessionStore }) {
     onChange: (v: string) => void,
     options: [string, string][],
   ) => (
-    <label className="flex flex-col gap-0.5 text-xs">
-      <span className="text-muted">{label}</span>
-      <select
+    <div className="flex flex-col gap-1">
+      <span className="text-muted-foreground">{label}</span>
+      <Select
+        label={label}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="rounded fill-control px-1 py-0.5"
-      >
-        <option value="all">{t('all')}</option>
-        {options.map(([v, text]) => (
-          <option key={v} value={v}>
-            {text}
-          </option>
-        ))}
-      </select>
-    </label>
+        onValueChange={onChange}
+        options={[
+          { value: 'all', label: t('all') },
+          ...options.map(([value, label]) => ({ value, label })),
+        ]}
+      />
+    </div>
   );
 
   return (
-    <section aria-labelledby="timeline-heading" className="flex flex-col gap-2">
-      <div className="flex items-baseline justify-between gap-2">
-        <h3 id="timeline-heading" className="text-xs font-semibold">
-          {t('heading')}
-        </h3>
-        <span className="text-xs text-muted" data-testid="timeline-count">
-          {t('count', { shown: shown.length, total: events.length })}
-        </span>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        {filter(t('actor'), actor, (v) => setActor(v as ActorFilter), [
-          ['user', t('actors.user')],
-          ['runtime', t('actors.runtime')],
-          ['agent', t('actors.agent')],
-        ])}
-        {filter(
-          t('kind'),
-          kind,
-          setKind,
-          kinds.map((k) => [k, k]),
-        )}
-        {filter(
-          t('execution'),
-          execution,
-          setExecution,
-          executions.map((id) => [id, id]),
-        )}
-      </div>
-      <div
-        ref={scrollRef}
-        data-testid="timeline-scroll"
-        className="h-80 overflow-auto rounded-md fill-group"
-      >
-        {shown.length === 0 ? (
-          <p className="p-2 text-xs text-muted">{t('empty')}</p>
-        ) : (
-          <ul
-            aria-label={t('heading')}
-            className="relative"
-            style={{ height: rows.getTotalSize() }}
-          >
-            {rows.getVirtualItems().map((item) => {
-              const event = shown[item.index];
-              if (!event) return null;
-              const isSelected = event.eventId === selectedId;
-              return (
-                <li
-                  key={item.key}
-                  data-testid="timeline-row"
-                  data-seq={event.runSeq}
-                  className="absolute left-0 w-full"
-                  style={{ height: ROW_HEIGHT, transform: `translateY(${item.start}px)` }}
-                >
-                  <button
-                    type="button"
-                    aria-pressed={isSelected}
-                    onClick={() => setSelectedId(event.eventId)}
-                    className={`flex h-full w-full items-center gap-2 px-2 text-left text-xs ${
-                      isSelected ? 'bg-accent/15' : 'hover:bg-surface'
-                    }`}
-                  >
-                    <span className="w-12 shrink-0 font-mono text-muted">#{event.runSeq}</span>
-                    <span className="w-16 shrink-0">{t(`actors.${event.actor.kind}`)}</span>
-                    <span className="truncate">
-                      <EventText event={event} labelOf={labelOf} nodeLabel={nodeLabel} />
-                    </span>
-                    <span className="ml-auto shrink-0 font-mono text-muted">{event.type}</span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </div>
-      <div className="rounded-md fill-group p-2 text-xs" data-testid="timeline-selected">
-        <h4 className="font-semibold">{t('selected')}</h4>
-        {selected ? (
-          <dl className="grid grid-cols-[6rem_1fr] gap-x-2">
-            <dt className="text-muted">#</dt>
-            <dd>{selected.runSeq}</dd>
-            <dt className="text-muted">type</dt>
-            <dd>{selected.type}</dd>
-            <dt className="text-muted">actor</dt>
-            <dd>
-              {selected.actor.kind}:{selected.actor.id}
-            </dd>
-            <dt className="text-muted">recordedAt</dt>
-            <dd>{selected.recordedAt}</dd>
-          </dl>
-        ) : (
-          <p className="text-muted">{t('none')}</p>
-        )}
-      </div>
+    <section aria-labelledby="timeline-heading" className="flex flex-col gap-4">
+      <KitCard>
+        <KitCardHeader>
+          <h3 id="timeline-heading">
+            <KitCardTitle>{t('heading')}</KitCardTitle>
+          </h3>
+          <KitCardAction>
+            <span className="text-muted-foreground" data-testid="timeline-count">
+              {t('count', { shown: shown.length, total: events.length })}
+            </span>
+          </KitCardAction>
+        </KitCardHeader>
+        <KitCardContent className="flex flex-col gap-3">
+          <div className="flex flex-wrap gap-2">
+            {filter(t('actor'), actor, (v) => setActor(v as ActorFilter), [
+              ['user', t('actors.user')],
+              ['runtime', t('actors.runtime')],
+              ['agent', t('actors.agent')],
+            ])}
+            {filter(
+              t('kind'),
+              kind,
+              setKind,
+              kinds.map((k) => [k, k]),
+            )}
+            {filter(
+              t('execution'),
+              execution,
+              setExecution,
+              executions.map((id) => [id, id]),
+            )}
+          </div>
+          <div ref={scrollRef} data-testid="timeline-scroll" className="h-80 overflow-auto">
+            {shown.length === 0 ? (
+              <p className="text-muted-foreground">{t('empty')}</p>
+            ) : (
+              <ul
+                aria-label={t('heading')}
+                className="relative"
+                style={{ height: rows.getTotalSize() }}
+              >
+                {rows.getVirtualItems().map((item) => {
+                  const event = shown[item.index];
+                  if (!event) return null;
+                  const isSelected = event.eventId === selectedId;
+                  return (
+                    <li
+                      key={item.key}
+                      data-testid="timeline-row"
+                      data-seq={event.runSeq}
+                      className="absolute left-0 w-full"
+                      style={{ height: ROW_HEIGHT, transform: `translateY(${item.start}px)` }}
+                    >
+                      <KitButton
+                        type="button"
+                        variant={isSelected ? 'secondary' : 'ghost'}
+                        size="default"
+                        aria-pressed={isSelected}
+                        onClick={() => setSelectedId(event.eventId)}
+                        className="w-full justify-start text-left [&>span:last-child]:contents [&>span:last-child>span]:contents"
+                      >
+                        <span className="w-12 shrink-0 font-mono text-muted-foreground">
+                          #{event.runSeq}
+                        </span>
+                        <span className="w-16 shrink-0">{t(`actors.${event.actor.kind}`)}</span>
+                        <span className="min-w-0 truncate">
+                          <EventText event={event} labelOf={labelOf} nodeLabel={nodeLabel} />
+                        </span>
+                        <span className="ml-auto shrink-0 font-mono text-muted-foreground">
+                          {event.type}
+                        </span>
+                      </KitButton>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        </KitCardContent>
+      </KitCard>
+      <KitCard data-testid="timeline-selected">
+        <KitCardHeader>
+          <h4>
+            <KitCardTitle>{t('selected')}</KitCardTitle>
+          </h4>
+        </KitCardHeader>
+        <KitCardContent>
+          {selected ? (
+            <dl className="grid grid-cols-[6rem_1fr] gap-x-2">
+              <dt className="text-muted-foreground">#</dt>
+              <dd>{selected.runSeq}</dd>
+              <dt className="text-muted-foreground">type</dt>
+              <dd>{selected.type}</dd>
+              <dt className="text-muted-foreground">actor</dt>
+              <dd>
+                {selected.actor.kind}:{selected.actor.id}
+              </dd>
+              <dt className="text-muted-foreground">recordedAt</dt>
+              <dd>{selected.recordedAt}</dd>
+            </dl>
+          ) : (
+            <p className="text-muted-foreground">{t('none')}</p>
+          )}
+        </KitCardContent>
+      </KitCard>
     </section>
   );
 }

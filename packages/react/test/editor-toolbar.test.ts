@@ -25,6 +25,15 @@ describe('isTextEditingEvent', () => {
     }
   });
 
+  it('leaves keys in kit form controls to their focused control', () => {
+    for (const role of ['combobox', 'listbox', 'option', 'radio', 'checkbox', 'switch']) {
+      const control = document.createElement('div');
+      control.setAttribute('role', role);
+      const label = control.appendChild(document.createElement('span'));
+      expect(isTextEditingEvent(keydown({ key: 'z', ctrlKey: true }, label))).toBe(true);
+    }
+  });
+
   it('lets canvas shortcuts through elsewhere', () => {
     expect(isTextEditingEvent(keydown({ key: 'z', ctrlKey: true }))).toBe(false);
   });

@@ -2,8 +2,8 @@ import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
+import { Button } from '../design-kit/index.ts';
 import type { RunSessionStore, SessionCommand } from '../run/session.ts';
-import { Button } from '../ui/button.tsx';
 import { CommandReceipts } from './CommandReceipts.tsx';
 
 /** Whole-run Pause/Resume and Cancel. `compact` drops the explanations (the Run page header). */
@@ -47,7 +47,7 @@ export function RunActions({
       {compact ? null : (
         <>
           <p>{t('runScope', { runId: projection.runId })}</p>
-          <p className="text-muted">{t('safeBoundary')}</p>
+          <p className="text-muted-foreground">{t('safeBoundary')}</p>
         </>
       )}
       {!terminal ? (

@@ -43,6 +43,10 @@
   },
   "overrides": [
     {
+      "includes": ["packages/react/src/design-kit/tokens.css"],
+      "formatter": { "enabled": false }
+    },
+    {
       "includes": ["packages/contracts/**", "packages/core/**"],
       "linter": {
         "rules": {

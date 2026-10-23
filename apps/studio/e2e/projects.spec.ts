@@ -14,7 +14,7 @@ const openProject = (page: Page, name: string) =>
 
 async function newProject(page: Page, name: string) {
   await page.goto('/projects');
-  await page.getByLabel('Name', { exact: true }).fill(name);
+  await page.getByRole('textbox', { name: 'Name', exact: true }).fill(name);
   await page.getByRole('button', { name: 'Create project' }).click();
   await expect(page).toHaveURL(/\/projects\/project_[a-z0-9]+$/);
   await expect(page.getByRole('heading', { level: 2, name })).toBeVisible();
@@ -93,7 +93,8 @@ test('[WBTST-001] two projects may share a name; a Corral moves; an archived pro
   await page.goBack();
   await expect(page).toHaveURL(new RegExp(`/projects/${second}$`));
   await tab(page, 'Teams');
-  await page.getByLabel('Move Untitled team to another project').selectOption(first);
+  await page.getByRole('combobox', { name: 'Move Untitled team to another project' }).click();
+  await page.getByRole('option', { name: 'Same', exact: true }).click();
   await expect(corralList(page)).toHaveCount(0);
   await page.goto(`/projects/${first}`);
   await tab(page, 'Teams');

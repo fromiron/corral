@@ -106,7 +106,7 @@ test('[TC-HUNK-001-H] [TC-CKPT-001-H] [TC-CHAT-002-H] [TC-WBUI-003-H] [TC-WBUI-0
     await page.locator('input[type=file]').setInputFiles([writerWithFiles(scratch)]);
     await expect(page).toHaveURL(/\/edit$/);
     await page.getByRole('link', { name: 'Project home', exact: true }).click();
-    await page.getByText('Session details (optional)', { exact: true }).click();
+    await page.getByRole('button', { name: /^Session details \(optional\)/ }).click();
     await page.getByLabel('Purpose').fill('Keep notes in the repository');
     // CR-024: a new session starts in auto mode; this journey runs the imported team.
     await page.getByRole('combobox', { name: 'Corral', exact: true }).click();

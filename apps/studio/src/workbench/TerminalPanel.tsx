@@ -1,7 +1,7 @@
 import type { TextAttachment } from '@corral/contracts';
 import { createTextAttachment } from '@corral/core';
+import { Button, Select } from '@corral/react/design-kit';
 import { RefreshCw } from '@corral/react/icons';
-import { Button, Select } from '@corral/react/ui';
 import { lazy, Suspense, useEffect, useId, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
@@ -170,7 +170,7 @@ function SessionTerminals({
         <h3 className="text-sm font-medium">{t('title')}</h3>
         <Button
           ref={refreshButton}
-          size="icon-sm"
+          size="icon-compact"
           variant="ghost"
           aria-label={t('refresh')}
           aria-disabled={session?.loading}
@@ -193,7 +193,7 @@ function SessionTerminals({
           disabled={Boolean(pending) || !list?.available || !shellId}
         />
         <Button
-          size="sm"
+          size="compact"
           disabled={
             Boolean(pending) ||
             hasWriter ||
@@ -212,10 +212,10 @@ function SessionTerminals({
           {t('create')}
         </Button>
       </div>
-      <p className="text-xs text-muted">{t('scopeHint')}</p>
-      {hasWriter ? <p className="text-xs text-muted">{t('writerHint')}</p> : null}
+      <p className="text-xs text-muted-foreground">{t('scopeHint')}</p>
+      {hasWriter ? <p className="text-xs text-muted-foreground">{t('writerHint')}</p> : null}
       {!list?.available && !session?.loading ? (
-        <p className="text-xs text-muted">{list?.reason || t('unavailable')}</p>
+        <p className="text-xs text-muted-foreground">{list?.reason || t('unavailable')}</p>
       ) : null}
       {pending ? (
         <div className="space-y-2">
@@ -224,8 +224,8 @@ function SessionTerminals({
           </p>
           <div className="flex flex-wrap gap-2">
             <Button
-              size="sm"
-              variant="outline"
+              size="compact"
+              variant="tertiary"
               disabled={session?.loading}
               onClick={() => run(() => store.checkCreate(sessionId))}
             >
@@ -233,8 +233,8 @@ function SessionTerminals({
             </Button>
             {session?.canRetryCreate ? (
               <Button
-                size="sm"
-                variant="outline"
+                size="compact"
+                variant="tertiary"
                 disabled={session.loading}
                 onClick={() => run(() => store.retryCreate(sessionId))}
               >
@@ -258,7 +258,7 @@ function SessionTerminals({
           }))}
         />
       ) : !session?.loading ? (
-        <p className="text-xs text-muted">{t('empty')}</p>
+        <p className="text-xs text-muted-foreground">{t('empty')}</p>
       ) : null}
       {entry && current ? (
         <>
@@ -289,16 +289,16 @@ function SessionTerminals({
               <p role="alert" className="text-xs text-danger">
                 {t('inputUnknown')}
               </p>
-              <p className="text-xs text-muted">{t('inputRecoveryHint')}</p>
+              <p className="text-xs text-muted-foreground">{t('inputRecoveryHint')}</p>
               {current.controller ? (
-                <p role="status" className="text-xs text-muted">
+                <p role="status" className="text-xs text-muted-foreground">
                   {t('acceptedInput', { sequence: current.controller.acceptedSequence })}
                 </p>
               ) : null}
               <div className="flex flex-wrap gap-2">
                 <Button
-                  size="sm"
-                  variant="outline"
+                  size="compact"
+                  variant="tertiary"
                   disabled={entry.busy}
                   onClick={() => run(() => store.checkInput(selectedId))}
                 >
@@ -306,8 +306,8 @@ function SessionTerminals({
                 </Button>
                 {mayControl ? (
                   <Button
-                    size="sm"
-                    variant="outline"
+                    size="compact"
+                    variant="tertiary"
                     disabled={entry.busy}
                     onClick={() => run(() => store.claim(selectedId, true))}
                   >
@@ -318,7 +318,7 @@ function SessionTerminals({
             </div>
           ) : null}
           {mayControl ? (
-            <p className="text-xs text-muted">
+            <p className="text-xs text-muted-foreground">
               {t(
                 entry.controlling
                   ? 'controlling'
@@ -332,8 +332,8 @@ function SessionTerminals({
             {mayControl && !entry.inputUnknown ? (
               entry.controlling ? (
                 <Button
-                  size="sm"
-                  variant="outline"
+                  size="compact"
+                  variant="tertiary"
                   disabled={entry.busy}
                   onClick={() => run(() => store.release(selectedId))}
                 >
@@ -341,8 +341,8 @@ function SessionTerminals({
                 </Button>
               ) : (
                 <Button
-                  size="sm"
-                  variant="outline"
+                  size="compact"
+                  variant="tertiary"
                   disabled={entry.busy}
                   onClick={() => run(() => store.claim(selectedId, Boolean(current.controller)))}
                 >
@@ -352,8 +352,8 @@ function SessionTerminals({
             ) : null}
             {entry.connection === 'disconnected' || entry.connection === 'idle' ? (
               <Button
-                size="sm"
-                variant="outline"
+                size="compact"
+                variant="tertiary"
                 disabled={entry.busy}
                 onClick={() => run(() => store.reconnect(selectedId))}
               >
@@ -362,8 +362,8 @@ function SessionTerminals({
             ) : null}
             {mayStop ? (
               <Button
-                size="sm"
-                variant="outline"
+                size="compact"
+                variant="tertiary"
                 disabled={entry.busy || current.state === 'stopping'}
                 onClick={() => run(() => store.stop(selectedId))}
               >
@@ -373,8 +373,8 @@ function SessionTerminals({
           </div>
           {onAttach ? (
             <Button
-              size="sm"
-              variant="outline"
+              size="compact"
+              variant="tertiary"
               disabled={capturing || !entry.hasSelection}
               onClick={() => void attachSelection()}
             >
@@ -387,14 +387,14 @@ function SessionTerminals({
             </p>
           ) : null}
           {sourceState === 'stale' ? (
-            <p role="status" className="text-xs text-muted">
+            <p role="status" className="text-xs text-muted-foreground">
               {t('sourceStale')}
             </p>
           ) : null}
           {entry.connection !== 'unavailable' ? (
             <Suspense
               fallback={
-                <p role="status" className="text-xs text-muted">
+                <p role="status" className="text-xs text-muted-foreground">
                   {t('loading')}
                 </p>
               }
@@ -412,7 +412,7 @@ function SessionTerminals({
               />
             </Suspense>
           ) : null}
-          <p id={hintId} className="text-xs text-muted">
+          <p id={hintId} className="text-xs text-muted-foreground">
             {t('keyboardHint')}
           </p>
           {entry.error || current.error ? (
@@ -423,7 +423,7 @@ function SessionTerminals({
         </>
       ) : null}
       {sourceState === 'unavailable' || sourceUnavailable ? (
-        <p role="status" className="text-xs text-muted">
+        <p role="status" className="text-xs text-muted-foreground">
           {t('sourceUnavailable')}
         </p>
       ) : null}

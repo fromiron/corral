@@ -1,6 +1,6 @@
 import type { EffectiveHarnessSnapshot } from '@corral/contracts';
 import type { EditorDraft, EditorStore } from '@corral/react';
-import { Dialog, DialogPopup, DialogTitle, Select } from '@corral/react/ui';
+import { Button, Dialog, DialogPopup, DialogTitle, Select } from '@corral/react/design-kit';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocale } from 'use-intl';
 import { useStore } from 'zustand';
@@ -106,7 +106,7 @@ export function MarkdownAgentImport({
         {text('Import Markdown agent', 'Markdown 에이전트 가져오기')}
       </button>
       {status ? (
-        <span role="status" className="text-xs text-muted">
+        <span role="status" className="text-xs text-muted-foreground">
           {status}
         </span>
       ) : null}
@@ -130,7 +130,7 @@ export function MarkdownAgentImport({
                 {text('Close', '닫기')}
               </button>
             </div>
-            <p className="text-xs text-muted">
+            <p className="text-xs text-muted-foreground">
               {text(
                 'Review the prompt, model and tool translations. Import adds a callable node and a delegation link to this team. Save the team to use it on the next run.',
                 '프롬프트·모델·도구 변환을 검토하세요. 현재 팀에 호출형 노드와 위임 연결을 추가합니다. 팀을 저장하면 다음 실행에 적용됩니다.',
@@ -180,7 +180,7 @@ export function MarkdownAgentImport({
                     {candidate.prompt}
                   </pre>
                 </details>
-                <p className="text-xs text-muted">
+                <p className="text-xs text-muted-foreground">
                   {text('Requested model', '문서에 지정된 모델')}:{' '}
                   {candidate.model || text('Not specified', '없음')}
                 </p>
@@ -202,7 +202,7 @@ export function MarkdownAgentImport({
               />
             </div>
             {role ? (
-              <p className="text-xs text-muted">
+              <p className="text-xs text-muted-foreground">
                 {text('Parent tools', '부모에게 허용된 도구')}: {role.allowedWorkTools.join(', ')}.{' '}
                 {text(
                   'To grant more tools, close this dialog and edit the parent’s capabilities in Properties.',
@@ -211,7 +211,7 @@ export function MarkdownAgentImport({
               </p>
             ) : null}
             {role?.harness ? (
-              <p className="text-xs text-muted">
+              <p className="text-xs text-muted-foreground">
                 {text('Inherited work style', '상속할 작업 방식')}: {role.harness.profileId} · r
                 {role.harness.revision}
                 {currentHarness?.snapshot
@@ -219,7 +219,7 @@ export function MarkdownAgentImport({
                   : ` · ${text('Verifying…', '확인 중…')}`}
               </p>
             ) : (
-              <p className="text-xs text-muted">
+              <p className="text-xs text-muted-foreground">
                 {text(
                   'No explicit parent work style. Shell tools require a verified trusted-native work style selected on the parent.',
                   '부모에 명시적으로 선택된 작업 방식이 없습니다. 셸 도구는 부모에게 선택된 trusted-native 작업 방식의 검증이 필요합니다.',
@@ -250,7 +250,7 @@ export function MarkdownAgentImport({
               />
             </div>
             {!available.length ? (
-              <p className="text-xs text-muted">
+              <p className="text-xs text-muted-foreground">
                 {text(
                   'Connect a model in Settings → Models before importing.',
                   '설정 → 모델에서 모델을 연결한 뒤 가져오세요.',
@@ -267,7 +267,7 @@ export function MarkdownAgentImport({
                 >
                   <span>{tool}</span>
                   {excluded ? (
-                    <span className="text-xs text-muted">
+                    <span className="text-xs text-muted-foreground">
                       {text('Excluded: handled by parent', '제외됨: 부모가 처리')}
                     </span>
                   ) : (
@@ -308,7 +308,7 @@ export function MarkdownAgentImport({
               );
             })}
             {candidate.tools.includes('Glob') ? (
-              <p className="text-xs text-muted">
+              <p className="text-xs text-muted-foreground">
                 {text(
                   'list_files lists paths under a folder; it does not implement glob patterns. The agent must inspect the returned paths.',
                   'list_files는 폴더 아래 경로를 나열하며 glob 패턴을 실행하지 않습니다. 에이전트가 반환된 경로를 확인해야 합니다.',
@@ -316,7 +316,7 @@ export function MarkdownAgentImport({
               </p>
             ) : null}
             {candidate.tools.includes('Edit') ? (
-              <p className="text-xs text-muted">
+              <p className="text-xs text-muted-foreground">
                 {text(
                   'Edit selects Hashline mode with the parent’s read_file and write_file permissions. The worker offers read_hashline and edit_hashline; read the current file before editing.',
                   'Edit는 부모의 read_file·write_file 권한으로 Hashline 모드를 선택합니다. 실행 중 read_hashline·edit_hashline이 제공되며 편집 전에 현재 파일을 읽어야 합니다.',
@@ -326,7 +326,7 @@ export function MarkdownAgentImport({
             {candidate.tools.some(
               (tool) => !toolTargets(tool).length && tool !== 'ask_user' && tool !== 'update_plan',
             ) ? (
-              <p className="text-xs text-muted">
+              <p className="text-xs text-muted-foreground">
                 {text(
                   'A tool with no supported equivalent must be explicitly excluded. Unknown tool names must be corrected in the document.',
                   '대응하는 도구가 없으면 명시적으로 제외해야 합니다. 알 수 없는 도구 이름은 문서에서 수정하세요.',
@@ -341,13 +341,13 @@ export function MarkdownAgentImport({
                 )}
               </p>
             ) : null}
-            <p className="text-xs text-muted">
+            <p className="text-xs text-muted-foreground">
               {text(
                 'Returning a result requires write_artifact and submit_result from the parent. Existing delegation depth, spawn and budget limits remain in force.',
                 '결과 반환에는 부모에게 허용된 write_artifact와 submit_result가 필요합니다. 기존 위임 깊이·호출 횟수·예산 한도를 따릅니다.',
               )}
             </p>
-            <p className="text-xs text-muted">
+            <p className="text-xs text-muted-foreground">
               {text(
                 'The child can ask this parent for clarification and continue after the reply. Questions do not finish either task or grant user approval.',
                 '자식은 이 부모에게 질문하고 답변을 받은 뒤 같은 작업을 이어갑니다. 질문·답변은 작업을 완료하거나 사용자 승인을 부여하지 않습니다.',
@@ -369,10 +369,12 @@ export function MarkdownAgentImport({
                 {fileError || error}
               </p>
             ) : null}
-            <button
+            <Button
+              variant="primary"
+              size="compact"
               type="button"
               disabled={!preview || !confirmed || !!fileError}
-              className="self-end rounded bg-accent px-3 py-2 text-sm font-medium text-on-accent disabled:opacity-50"
+              className="self-end"
               onClick={() => {
                 if (!preview || !confirmed) return;
                 editor.getState().applyDraft(preview);
@@ -388,7 +390,7 @@ export function MarkdownAgentImport({
               }}
             >
               {text('Add to team', '팀에 추가')}
-            </button>
+            </Button>
           </div>
         </DialogPopup>
       </Dialog>

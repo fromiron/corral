@@ -83,7 +83,7 @@ test('[TC-IMAGE-001-H] [TC-STATUS-001-H] [TC-CHAT-001-H] [TC-CHAT-001-N] attachm
   await page.getByRole('menuitemradio', { name: 'Low', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Model', exact: true })).toContainText('Low');
   await openRequestOptions(page);
-  await page.getByRole('checkbox', { name: 'Review only · no file changes' }).check();
+  await page.getByRole('switch', { name: 'Review only · no file changes' }).check();
   await closeRequestOptions(page);
   await requestBox(page).fill('Read the attachment and use my chosen format');
   await page
@@ -106,7 +106,7 @@ test('[TC-IMAGE-001-H] [TC-STATUS-001-H] [TC-CHAT-001-H] [TC-CHAT-001-N] attachm
   await expect(requestBox(page)).toHaveValue('Read the attachment and use my chosen format');
   await expect(page.getByRole('button', { name: 'Remove notes.txt' })).toBeVisible();
   await openRequestOptions(page);
-  await expect(page.getByRole('checkbox', { name: 'Review only · no file changes' })).toBeChecked();
+  await expect(page.getByRole('switch', { name: 'Review only · no file changes' })).toBeChecked();
   await closeRequestOptions(page);
   await expect(page.getByRole('button', { name: 'Remove image pixel.png' })).toBeVisible();
   await page.getByRole('button', { name: 'Send', exact: true }).click();

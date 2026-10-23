@@ -1,187 +1,120 @@
-/* Corral design tokens. Consumers add `@import "tailwindcss"` before this file. */
+/* Copy-in kit values stay in design-kit/tokens.css; Corral roles live here. */
+@import "./design-kit/tokens.css";
 
-:root {
-  --surface: #f7f7f5;
-  --raised: #ffffff;
-  --line: #d6d6d0;
-  --text: #1d1d1b;
-  --muted: #5c5c57;
-  --accent: #1f6f5c;
-  --on-accent: #ffffff;
-  --success: #1d7a3b;
-  --warning: #8a5a00;
-  --danger: #b42318;
-  color-scheme: light;
-}
+:root,
+.light,
+.dark {
+  /* Small status text and focus need stronger contrast on the light surfaces. */
+  --destructive: light-dark(#b91c1c, #fca5a5);
+  --destructive-contrast: light-dark(#ffffff, #171717);
+  --success: light-dark(#166534, #86efac);
+  --warning: light-dark(#92400e, #fcd34d);
+  --info: light-dark(#1d4ed8, #93c5fd);
+  --focus-ring: light-dark(#2563eb, #6b97ff);
+  --muted-foreground: light-dark(#737373, #b8b8b8);
 
-:root.dark {
-  --surface: #151615;
-  --raised: #1f201f;
-  --line: #3a3b39;
-  --text: #ececea;
-  --muted: #a8a8a2;
-  --accent: #5cc4a8;
-  --on-accent: #0b1f1a;
-  --success: #6fcf8f;
-  --warning: #f0b45c;
-  --danger: #ff8a80;
-  color-scheme: dark;
-}
+  --primary: var(--foreground);
+  --primary-foreground: var(--background);
+  --secondary: var(--tint);
+  --secondary-foreground: var(--foreground);
+  --popover: var(--surface-3);
+  --popover-foreground: var(--foreground);
+  --sidebar: var(--surface-2);
+  --sidebar-selected: var(--selected);
+  --subtle: var(--hover);
+  --danger: var(--destructive);
+  --contrast-muted-foreground: var(--muted-foreground);
+  --media-control-background: rgb(0 0 0 / 65%);
+  --dialog-scrim: light-dark(rgb(0 0 0 / 40%), rgb(0 0 0 / 80%));
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme]) {
-    --surface: #151615;
-    --raised: #1f201f;
-    --line: #3a3b39;
-    --text: #ececea;
-    --muted: #a8a8a2;
-    --accent: #5cc4a8;
-    --on-accent: #0b1f1a;
-    --success: #6fcf8f;
-    --warning: #f0b45c;
-    --danger: #ff8a80;
-    color-scheme: dark;
-  }
-}
+  /* Existing graph, editor and workbench consumers share the kit's values. */
+  --surface: var(--background);
+  --raised: var(--card);
+  --line: var(--border);
+  --text: var(--foreground);
+  --on-accent: var(--primary-foreground);
 
-/* Semantic control tokens on Corral's palette; one theme for every surface. */
-:root {
-  --radius: 0.625rem;
-  --control-radius: 0.5rem;
+  --radius: 8px;
+  --control-radius: 8px;
+  --panel-radius: 12px;
+  --shape-input-radius: var(--control-radius);
+  --shape-button-radius: var(--control-radius);
+  --shape-panel-radius: var(--panel-radius);
+  --control-height: 36px;
+  --control-height-compact: 28px;
   --chat-content-max-width: 46rem;
   --workspace-topbar-height: 52px;
-  --sidebar: color-mix(in srgb, var(--surface) 92%, var(--line));
-  --sidebar-selected: color-mix(in srgb, var(--surface) 85%, var(--text));
-  --background: var(--surface);
-  --foreground: var(--text);
-  --card: var(--raised);
-  --card-foreground: var(--text);
-  --popover: var(--raised);
-  --popover-foreground: var(--text);
-  --primary: var(--accent);
-  --primary-foreground: var(--on-accent);
-  --secondary: var(--sidebar-selected);
-  --secondary-foreground: var(--text);
-  --muted-foreground: var(--muted);
-  --accent-foreground: var(--on-accent);
-  --border: var(--line);
-  --input: var(--line);
-  --ring: var(--accent);
-  --destructive: var(--danger);
-  /* Neutral hover/highlight. The brand accent is kept for primary actions, focus and selection. */
-  --subtle: color-mix(in srgb, var(--text) 7%, transparent);
-  --contrast-muted-foreground: var(--muted);
   --thread-details-panel-width: 24rem;
-  --app-scrollbar-thumb: color-mix(in srgb, var(--text) 18%, transparent);
-  --app-scrollbar-thumb-hover: color-mix(in srgb, var(--text) 30%, transparent);
+  --app-scrollbar-thumb: color-mix(in srgb, var(--foreground) 18%, transparent);
+  --app-scrollbar-thumb-hover: color-mix(in srgb, var(--foreground) 30%, transparent);
 }
-
-@custom-variant dark (&:where(.dark, .dark *));
 
 @theme inline {
   --color-surface: var(--surface);
   --color-raised: var(--raised);
   --color-line: var(--line);
   --color-text: var(--text);
-  --color-muted: var(--muted);
-  --color-accent: var(--accent);
   --color-on-accent: var(--on-accent);
-  --color-success: var(--success);
-  --color-warning: var(--warning);
-  --color-danger: var(--danger);
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
-  --color-destructive: var(--destructive);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
   --color-sidebar: var(--sidebar);
   --color-sidebar-selected: var(--sidebar-selected);
+  --color-sidebar-accent: var(--hover);
   --color-subtle: var(--subtle);
-  --color-destructive-foreground: var(--danger);
+  --color-focus-ring: var(--focus-ring);
+  --color-danger: var(--destructive);
+  --color-destructive-foreground: var(--destructive);
+  --color-destructive-contrast: var(--destructive-contrast);
+  --color-success: var(--success);
   --color-success-foreground: var(--success);
+  --color-warning: var(--warning);
   --color-warning-foreground: var(--warning);
   --color-warning-surface: color-mix(in srgb, var(--warning) 10%, transparent);
-  /* Type scale (Workbench polish P0): 2xs 11 · xs 12 · ui 13 · sm 14 · reader 15 · base 16. */
-  --text-2xs: 0.6875rem;
-  --text-2xs--line-height: 1rem;
-  --text-ui: 0.8125rem;
-  --text-ui--line-height: 1.25rem;
-  --text-reader: 0.9375rem;
-  --text-reader--line-height: 1.75rem;
-  --shadow-popup: 0 8px 32px rgb(0 0 0 / 12%), 0 2px 6px rgb(0 0 0 / 8%);
-  --shadow-composer: 0 4px 24px rgb(0 0 0 / 5%), 0 1px 3px rgb(0 0 0 / 4%);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info);
+  --color-placeholder: var(--muted-foreground);
+  --color-secondary-label: var(--muted-foreground);
+  --text-2xs: var(--fs-micro);
+  --text-2xs--line-height: var(--lh-micro);
+  --text-ui: var(--fs-body);
+  --text-ui--line-height: var(--lh-body);
+  --text-reader: 15px;
+  --text-reader--line-height: 28px;
+  --radius-sm: 4px;
+  --radius-md: var(--control-radius);
+  --radius-lg: var(--control-radius);
+  --radius-xl: var(--panel-radius);
+  --radius-2xl: var(--panel-radius);
+  --shadow-sm: var(--shadow-2);
+  --shadow-md: var(--shadow-3);
+  --shadow-lg: var(--shadow-4);
+  --shadow-xl: var(--shadow-5);
+  --shadow-popup: var(--shadow-4);
+  --shadow-composer: var(--shadow-2);
 }
 
-@utility surface-glass {
-  background: color-mix(in srgb, var(--raised) 82%, transparent);
-  backdrop-filter: blur(12px);
-}
-
-/* Groups are a fill. Controls on the page use the raised fill; controls inside a group use the page fill. */
 @layer components {
   .fill-group {
-    background: var(--raised);
+    background: var(--surface-2);
+    border-radius: var(--panel-radius);
   }
 
   .fill-group .fill-group {
-    background: var(--surface);
+    background: var(--surface-3);
   }
 
   .fill-control {
-    background: var(--raised);
+    background: var(--surface-3);
+    border-radius: var(--control-radius);
   }
 
-  .fill-group .fill-control {
-    background: var(--surface);
+  [data-slot="dialog-popup"] .fill-group {
+    background: var(--surface-2);
   }
-
-  .fill-group .fill-group .fill-control {
-    background: var(--raised);
-  }
-
-  /* Dialogs are already a raised overlay, so groups step back to the page fill. */
-  [data-slot="dialog-popup"] .fill-group,
-  [data-slot="dialog-popup"] .fill-control {
-    background: var(--surface);
-  }
-
-  [data-slot="dialog-popup"] .fill-group .fill-control {
-    background: var(--raised);
-  }
-}
-
-/* Filled groups keep the same input boundary and focus/error states as standalone controls. */
-.fill-group [data-slot="input-control"],
-.fill-group [data-slot="textarea-control"] {
-  background: var(--surface);
-}
-
-.fill-group .fill-group [data-slot="input-control"],
-.fill-group .fill-group [data-slot="textarea-control"],
-[data-slot="dialog-popup"] .fill-group [data-slot="input-control"],
-[data-slot="dialog-popup"] .fill-group [data-slot="textarea-control"] {
-  background: var(--raised);
-}
-
-.fill-group [data-slot="input-control"]:not(:focus-within),
-.fill-group [data-slot="textarea-control"]:not(:focus-within) {
-  box-shadow: none;
-}
-
-.fill-group [data-slot="input-control"]:not(:focus-within)::before,
-.fill-group [data-slot="textarea-control"]:not(:focus-within)::before {
-  box-shadow: none;
 }
 
 @media (forced-colors: active) {
@@ -205,11 +138,13 @@
     margin: 0;
     background: var(--surface);
     color: var(--text);
-    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-family: var(--font-sans);
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
   }
 
   :focus-visible {
-    outline: 2px solid var(--accent);
+    outline: 2px solid var(--focus-ring);
     outline-offset: 2px;
   }
 

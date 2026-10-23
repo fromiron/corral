@@ -11,6 +11,8 @@ import {
 } from './DockWorkbench.tsx';
 import { layoutStorageKey } from './layout.ts';
 
+Element.prototype.getAnimations ??= () => [];
+
 vi.mock('use-intl', () => {
   const translate = (key: string) => key;
   return { useTranslations: () => translate };
@@ -34,6 +36,11 @@ async function fixture(
   > = {},
 ) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  vi.stubGlobal('matchMedia', () => ({
+    matches: false,
+    addEventListener() {},
+    removeEventListener() {},
+  }));
   vi.stubGlobal(
     'ResizeObserver',
     class {
@@ -81,8 +88,11 @@ it('[TC-WBD-006-F] [TC-WBD-026-F] leaves a dirty document open until its close d
   await act(async () => {
     expect(f.ref.current?.openDocument({ documentKey: f.key, target, path: 'file.ts' })).toBe(true);
   });
-  const close = f.container.querySelector<HTMLButtonElement>('button[aria-label="close"]');
-  expect(close).not.toBeNull();
+  const close = [...f.container.querySelectorAll<HTMLButtonElement>('button')].find((button) =>
+    button.getAttribute('aria-label')?.startsWith('close: ● file.ts'),
+  );
+  expect(close).toBeDefined();
+  expect(close?.closest('[role="tab"]')).toBeNull();
   await act(async () => close?.click());
   expect(f.closeView).toHaveBeenCalledTimes(1);
   expect(document.querySelector('[data-testid="document"]')).not.toBeNull();
@@ -93,6 +103,35 @@ it('[TC-WBD-006-F] [TC-WBD-026-F] leaves a dirty document open until its close d
   await act(async () => discard?.click());
   expect(document.querySelector('[data-testid="document"]')).toBeNull();
 });
+
+it.each(['Delete', 'Backspace', 'middle-click'])(
+  '[TC-WBD-006-F] %s on a document tab keeps the unsaved-change guard',
+  async (key) => {
+    const f = await fixture();
+    await act(async () => {
+      f.ref.current?.openDocument({ documentKey: f.key, target, path: 'file.ts' });
+    });
+    const tab = [...f.container.querySelectorAll<HTMLElement>('[role="tab"]')].find((node) =>
+      node.getAttribute('aria-label')?.includes('file.ts'),
+    );
+    expect(tab).toBeDefined();
+    await act(async () => {
+      tab?.focus();
+      if (key === 'middle-click') {
+        tab
+          ?.querySelector('.dv-default-tab')
+          ?.dispatchEvent(
+            new MouseEvent('auxclick', { button: 1, bubbles: true, cancelable: true }),
+          );
+      } else {
+        tab?.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+      }
+    });
+    expect(f.closeView).toHaveBeenCalledTimes(1);
+    expect(f.container.querySelector('[data-testid="document"]')).not.toBeNull();
+    expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+  },
+);
 
 it('[TC-WBD-006-N] rejects another host and keeps one document identity on repeated opens', async () => {
   const f = await fixture();

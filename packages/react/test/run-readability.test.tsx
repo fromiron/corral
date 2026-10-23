@@ -131,8 +131,10 @@ describe('budget meter (UX-A4)', () => {
     expect(tokens.value).toBe(16000);
     expect(tokens.max).toBe(definition.limits.maxOutputTokens);
     expect((screen.getByRole('meter', { name: 'Model calls' }) as HTMLMeterElement).value).toBe(10);
-    const details = screen.getByText('All budget figures').closest('details');
-    expect(details?.open).toBe(false);
+    expect(screen.getByRole('button', { name: 'All budget figures' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
   });
 
   it('[TC-OBS-004-H] shows the estimated cost at list prices, or says a subscription covers it (roadmap 15)', () => {

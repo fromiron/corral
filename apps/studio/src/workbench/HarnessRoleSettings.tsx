@@ -1,7 +1,7 @@
 import type { HarnessPreview } from '@corral/client';
 import type { AgentRole, HarnessProfileView } from '@corral/contracts';
 import { useStudioStores } from '@corral/react';
-import { Button, Select } from '@corral/react/ui';
+import { Button, Select } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -99,12 +99,14 @@ export function HarnessRoleSettings({
           }}
         />
       </div>
-      <Link {...navigation.link('harness', projectId)} className="text-xs text-accent underline">
+      <Link {...navigation.link('harness', projectId)} className="text-xs text-primary underline">
         {t('manage')}
       </Link>
       {role.harness ? (
         <>
-          <p className="text-xs text-muted">{t('pinned', { revision: role.harness.revision })}</p>
+          <p className="text-xs text-muted-foreground">
+            {t('pinned', { revision: role.harness.revision })}
+          </p>
           {profiles.some(
             (profile) =>
               profile.profileId === role.harness?.profileId &&
@@ -113,8 +115,8 @@ export function HarnessRoleSettings({
             <p className="text-xs text-warning">{r('profileOlder')}</p>
           ) : null}
           <Button
-            variant="outline"
-            size="sm"
+            variant="tertiary"
+            size="compact"
             disabled={busy}
             onClick={() => {
               if (!role.harness) return;

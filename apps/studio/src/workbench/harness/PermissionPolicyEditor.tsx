@@ -1,6 +1,6 @@
 import type { ToolDescriptor, ToolPermissionPolicy } from '@corral/contracts';
 import { toolDescriptorHash } from '@corral/core';
-import { Button, Input, Select } from '@corral/react/ui';
+import { Button, Input, Select } from '@corral/react/design-kit';
 import { useId } from 'react';
 import { useTranslations } from 'use-intl';
 
@@ -27,7 +27,7 @@ export function PermissionPolicyEditor({
   return (
     <fieldset className="settings-surface flex flex-col gap-3">
       <legend className="text-sm font-medium">{t('permissionPolicy')}</legend>
-      <p className="text-xs text-muted">{t('permissionPolicyHint')}</p>
+      <p className="text-xs text-muted-foreground">{t('permissionPolicyHint')}</p>
       <label className="flex items-center gap-2 text-sm">
         <input
           type="checkbox"
@@ -197,7 +197,7 @@ export function PermissionPolicyEditor({
                   <Button
                     type="button"
                     variant="ghost"
-                    size="sm"
+                    size="compact"
                     onClick={() =>
                       rule(index, {
                         arguments: Object.fromEntries(
@@ -213,8 +213,8 @@ export function PermissionPolicyEditor({
               <div className="flex flex-wrap gap-2">
                 <Button
                   type="button"
-                  size="sm"
-                  variant="outline"
+                  size="compact"
+                  variant="tertiary"
                   disabled={Object.keys(item.arguments ?? {}).length >= 16}
                   onClick={() => {
                     let n = 1;
@@ -227,7 +227,7 @@ export function PermissionPolicyEditor({
                 <Button
                   type="button"
                   variant="ghost"
-                  size="sm"
+                  size="compact"
                   onClick={() =>
                     onChange({ ...value, rules: value.rules.filter((_, i) => i !== index) })
                   }
@@ -239,8 +239,8 @@ export function PermissionPolicyEditor({
           ))}
           <Button
             type="button"
-            size="sm"
-            variant="outline"
+            size="compact"
+            variant="tertiary"
             disabled={value.rules.length >= 64}
             onClick={() =>
               onChange({

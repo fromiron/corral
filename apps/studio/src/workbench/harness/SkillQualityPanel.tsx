@@ -9,7 +9,7 @@ import type {
   SkillKey,
   SkillUpdatePreview,
 } from '@corral/contracts';
-import { Button, Select } from '@corral/react/ui';
+import { Button, Select } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -234,9 +234,9 @@ export function SkillQualityPanel({
     <details className="settings-surface" data-testid="skill-quality">
       <summary className="cursor-pointer font-semibold">{t('title')}</summary>
       <div className="mt-4 flex flex-col gap-4">
-        <p className="text-sm text-muted">{t('intro')}</p>
+        <p className="text-sm text-muted-foreground">{t('intro')}</p>
         {restoredDraft && draftDirty ? (
-          <p role="status" className="text-xs text-muted">
+          <p role="status" className="text-xs text-muted-foreground">
             {t('draftKept')}
           </p>
         ) : null}
@@ -371,7 +371,7 @@ export function SkillQualityPanel({
           ))}
           {fixtures.length < 10 ? (
             <Button
-              variant="outline"
+              variant="tertiary"
               onClick={() => edit(() => setFixtures([...fixtures, emptyFixture(true)]))}
             >
               {t('addFixture')}
@@ -401,7 +401,7 @@ export function SkillQualityPanel({
             }
             onValueChange={(value) => edit(() => setModel(value))}
           />
-          <p className="text-xs text-muted">
+          <p className="text-xs text-muted-foreground">
             {mode === 'mock' ? t('mockHint') : t('liveHint', { calls: fixtures.length * 8 })}
           </p>
           <Button
@@ -432,7 +432,7 @@ export function SkillQualityPanel({
         </fieldset>
         {running ? (
           <Button
-            variant="outline"
+            variant="tertiary"
             disabled={busy}
             onClick={() =>
               void work(async () => {
@@ -469,7 +469,7 @@ export function SkillQualityPanel({
               {view.request.fixtures.length * 2}
             </p>
             {view.request.mode === 'mock' ? (
-              <p className="text-xs text-muted">{t('mockHint')}</p>
+              <p className="text-xs text-muted-foreground">{t('mockHint')}</p>
             ) : null}
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
@@ -546,7 +546,7 @@ export function SkillQualityPanel({
             {t('configureDefaults')}
           </Link>
         ) : (
-          <p className="text-xs text-muted">
+          <p className="text-xs text-muted-foreground">
             {t('targetVersion', { revision: target.binding.revision })}
           </p>
         )}
@@ -600,7 +600,7 @@ export function SkillQualityPanel({
           <div className="flex flex-col gap-2">
             <p role="status">{t(rollbackCurrent ? 'adopted' : 'defaultChanged')}</p>
             <Button
-              variant="outline"
+              variant="tertiary"
               disabled={busy || !rollbackCurrent}
               onClick={() =>
                 void work(async () => {
@@ -671,7 +671,7 @@ function SkillFileReview({
                 {comparison[side]?.text ?? t(comparison[side] ? 'binaryFile' : 'absentFile')}
               </pre>
               {comparison[side] ? (
-                <p className="mt-1 text-muted">
+                <p className="mt-1 text-muted-foreground">
                   {comparison[side].bytes} B · SHA-256 {comparison[side].hash}
                 </p>
               ) : null}

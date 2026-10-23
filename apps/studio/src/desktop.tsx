@@ -1,5 +1,5 @@
+import { Button } from '@corral/react/design-kit';
 import { FolderOpen } from '@corral/react/icons';
-import { Button } from '@corral/react/ui';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import type { NotificationTarget } from './workbench/notifications.ts';
@@ -84,7 +84,7 @@ export function DesktopWorkspace() {
           </p>
         ) : null}
       </div>
-      <Button variant="outline" onClick={() => act(() => desktop.openWorkspace())}>
+      <Button variant="tertiary" onClick={() => act(() => desktop.openWorkspace())}>
         <FolderOpen />
         {t('openWorkspace')}
       </Button>
@@ -129,7 +129,7 @@ export function DesktopAbout({ serverVersion }: { serverVersion?: string }) {
             <h3>{t('appWorkspace')}</h3>
             <p className="break-all">{info.workspace}</p>
           </div>
-          <Button variant="outline" onClick={reveal}>
+          <Button variant="tertiary" onClick={reveal}>
             {t('revealWorkspace')}
           </Button>
         </section>

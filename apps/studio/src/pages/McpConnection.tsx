@@ -1,6 +1,6 @@
 import type { HarnessApi, McpProbeResult } from '@corral/client';
 import type { RegisteredMcpServer } from '@corral/contracts';
-import { Button, Select } from '@corral/react/ui';
+import { Button, Select } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -175,7 +175,7 @@ export function McpConnection({
               <h3>{t('reviewCheck', { name: server.name })}</h3>
             </div>
             <Button
-              variant="outline"
+              variant="tertiary"
               disabled={disabled || busy || !!probeId}
               onClick={() =>
                 void work(async () => {
@@ -201,7 +201,7 @@ export function McpConnection({
                   <p className="break-all font-mono">{launch.fingerprint}</p>
                 </div>
                 <Button
-                  variant="outline"
+                  variant="tertiary"
                   disabled={disabled || busy || !!probeId}
                   onClick={() =>
                     void work(async () => {
@@ -227,7 +227,9 @@ export function McpConnection({
               </section>
               {/* Each state on its own line with its next step; none implies another (#82). */}
               <section aria-label={t('mcpStatusHeading')} className="settings-surface text-sm">
-                <h3 className="text-xs font-medium text-muted">{t('mcpStatusHeading')}</h3>
+                <h3 className="text-xs font-medium text-muted-foreground">
+                  {t('mcpStatusHeading')}
+                </h3>
                 <ul className="mt-1 flex flex-col gap-0.5">
                   <li>✓ {t('mcpStepRegistered')}</li>
                   <li className={launch.trustedAt ? undefined : 'text-warning'}>
@@ -329,13 +331,13 @@ export function McpConnection({
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <Button
-                          variant="outline"
+                          variant="tertiary"
                           render={<a href={login.url} target="_blank" rel="noreferrer" />}
                         >
                           {t('mcpContinue')}
                         </Button>
                         <Button
-                          variant="outline"
+                          variant="tertiary"
                           onClick={() =>
                             void work(async () => {
                               await api.cancelMcpLogin(login.loginId);
@@ -354,7 +356,7 @@ export function McpConnection({
                         <h3>{t('mcpSignOut', { name: server.name })}</h3>
                       </div>
                       <Button
-                        variant="outline"
+                        variant="tertiary"
                         disabled={disabled || busy || !!probeId}
                         onClick={() =>
                           void work(async () => {
@@ -380,7 +382,7 @@ export function McpConnection({
           ) : null}
         </>
       ) : (
-        <p className="text-xs text-muted">{r('configureMcpFirst')}</p>
+        <p className="text-xs text-muted-foreground">{r('configureMcpFirst')}</p>
       )}
       <section className="settings-row">
         <div>
@@ -388,7 +390,7 @@ export function McpConnection({
         </div>
         <div className="flex flex-wrap gap-2">
           <Button
-            variant="outline"
+            variant="tertiary"
             disabled={
               disabled ||
               busy ||

@@ -6,18 +6,32 @@ import {
   type WorkSession,
 } from '@corral/core';
 import { arrangeDraft, draftLayout, emptyDraft, importDocuments, StatusBadge } from '@corral/react';
-import { Ellipsis } from '@corral/react/icons';
 import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
   Button,
-  Input,
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  InputField,
+  InputGroup,
+  KitButton,
+  KitCardTitle,
   Menu,
   MenuItem,
   MenuPopup,
   MenuSeparator,
   MenuTrigger,
   Select,
+  Textarea,
   Tooltip,
-} from '@corral/react/ui';
+} from '@corral/react/design-kit';
+import { Ellipsis } from '@corral/react/icons';
 import { Link, useNavigate, useRouter, useRouterState } from '@tanstack/react-router';
 import { type ChangeEvent, type FormEvent, useEffect, useRef, useState } from 'react';
 import { useFormatter, useNow, useTranslations } from 'use-intl';
@@ -143,8 +157,7 @@ export function WorkspacePage() {
         <div className={`flex items-center gap-2 ${archived ? 'hidden' : ''}`}>
           <Tooltip content={t('importHint')} className="max-w-xs">
             <Button
-              variant="outline"
-              size="sm"
+              variant="tertiary"
               onClick={() => importInput.current?.click()}
               aria-description={t('importHint')}
             >
@@ -162,15 +175,13 @@ export function WorkspacePage() {
             tabIndex={-1}
             className="hidden"
           />
-          <Button variant="outline" size="sm" onClick={() => setDrafting(true)}>
+          <Button variant="tertiary" onClick={() => setDrafting(true)}>
             {t('draftFromGoal')}
           </Button>
-          <Button size="sm" onClick={openNew}>
-            {t('new')}
-          </Button>
+          <Button onClick={openNew}>{t('new')}</Button>
         </div>
       </div>
-      <p className="text-xs text-muted">
+      <p className="text-xs text-muted-foreground">
         {mode === 'server'
           ? t('storedOnServer')
           : persistent
@@ -180,7 +191,7 @@ export function WorkspacePage() {
       {corrals.length === 0 ? (
         <div className="flex flex-col gap-1 rounded-lg border border-dashed border-line p-4">
           <p className="text-sm font-medium">{t('empty')}</p>
-          <p className="text-sm text-muted">{t('emptyHint')}</p>
+          <p className="text-sm text-muted-foreground">{t('emptyHint')}</p>
         </div>
       ) : (
         <ul className="flex flex-col" aria-label={t('heading')}>
@@ -197,7 +208,7 @@ export function WorkspacePage() {
                 >
                   {corral.name}
                 </Link>
-                <span className="text-xs text-muted">
+                <span className="text-xs text-muted-foreground">
                   {t('revisions', {
                     definition: corral.definitionRevision,
                     layout: corral.layoutRevision,
@@ -218,7 +229,7 @@ export function WorkspacePage() {
                 />
                 <Button
                   variant="ghost-muted"
-                  size="xs"
+                  size="compact"
                   onClick={() => duplicate(corral.corralId, corral.name)}
                 >
                   {t('duplicate')}
@@ -227,19 +238,23 @@ export function WorkspacePage() {
                   <>
                     <Button
                       variant="destructive-outline"
-                      size="xs"
+                      size="compact"
                       onClick={() => remove(corral.corralId)}
                     >
                       {t('confirmDelete')}
                     </Button>
-                    <Button variant="ghost-muted" size="xs" onClick={() => setConfirming(null)}>
+                    <Button
+                      variant="ghost-muted"
+                      size="compact"
+                      onClick={() => setConfirming(null)}
+                    >
                       {t('cancel')}
                     </Button>
                   </>
                 ) : (
                   <Button
                     variant="ghost-destructive"
-                    size="xs"
+                    size="compact"
                     onClick={() => setConfirming(corral.corralId)}
                   >
                     {t('delete')}
@@ -260,41 +275,44 @@ export function WorkspacePage() {
         </h3>
         <div className="grid gap-2 sm:grid-cols-3">
           {WORKSPACE_TEMPLATES.map((id) => (
-            <article
-              key={id}
-              aria-labelledby={`template-${id}`}
-              className="flex flex-col gap-2 rounded-lg fill-group p-3"
-            >
-              <h4 id={`template-${id}`} className="text-ui font-medium">
-                {t(`template.${id}.name`)}
-              </h4>
-              <p className="flex-1 text-xs text-muted">{t(`template.${id}.body`)}</p>
-              {id === 'blank' ? null : (
-                <Button
-                  size="xs"
-                  className="self-start"
-                  onClick={() =>
-                    window.dispatchEvent(new CustomEvent(START_WITH_TEMPLATE, { detail: id }))
-                  }
-                >
-                  {t('startWithTemplate')}
-                </Button>
-              )}
-              <Button
-                variant="outline"
-                size="xs"
-                className="self-start"
-                onClick={async () => {
-                  const created = await createFromTemplate(repository, id, t('newName'), projectId);
-                  if (!created.ok) return setErrors([created.message]);
-                  await navigate({
-                    to: '/corrals/$corralId/edit',
-                    params: { corralId: created.corralId },
-                  });
-                }}
-              >
-                {t('useTemplate')}
-              </Button>
+            <article key={id} aria-labelledby={`template-${id}`}>
+              <Card className="h-full">
+                <CardHeader>
+                  <h4 id={`template-${id}`}>
+                    <KitCardTitle>{t(`template.${id}.name`)}</KitCardTitle>
+                  </h4>
+                  <CardDescription>{t(`template.${id}.body`)}</CardDescription>
+                </CardHeader>
+                <CardFooter className="mt-auto">
+                  {id === 'blank' ? null : (
+                    <Button
+                      onClick={() =>
+                        window.dispatchEvent(new CustomEvent(START_WITH_TEMPLATE, { detail: id }))
+                      }
+                    >
+                      {t('startWithTemplate')}
+                    </Button>
+                  )}
+                  <Button
+                    variant="tertiary"
+                    onClick={async () => {
+                      const created = await createFromTemplate(
+                        repository,
+                        id,
+                        t('newName'),
+                        projectId,
+                      );
+                      if (!created.ok) return setErrors([created.message]);
+                      await navigate({
+                        to: '/corrals/$corralId/edit',
+                        params: { corralId: created.corralId },
+                      });
+                    }}
+                  >
+                    {t('useTemplate')}
+                  </Button>
+                </CardFooter>
+              </Card>
             </article>
           ))}
         </div>
@@ -310,8 +328,8 @@ export function WorkspacePage() {
         </h2>
         {picked.length === 2 ? (
           <Button
-            variant="outline"
-            size="sm"
+            variant="tertiary"
+            size="compact"
             onClick={() =>
               void navigate({ to: '/compare', search: { a: picked[0], b: picked[1] } })
             }
@@ -321,7 +339,7 @@ export function WorkspacePage() {
         ) : null}
       </div>
       {runs.length === 0 ? (
-        <p className="text-sm text-muted">{t('runsEmpty')}</p>
+        <p className="text-sm text-muted-foreground">{t('runsEmpty')}</p>
       ) : (
         <ul className="flex flex-col" aria-labelledby="runs-heading">
           {runs.map((run) => {
@@ -345,7 +363,7 @@ export function WorkspacePage() {
                 >
                   {run.runId}
                 </Link>
-                <span className="text-xs text-muted">
+                <span className="text-xs text-muted-foreground">
                   {corral?.name ?? run.corralId} ·{' '}
                   {t('runStarted', {
                     time: format.relativeTime(new Date(run.startedAt), now),
@@ -453,10 +471,13 @@ function ProjectTabs({
       : counts[value as 'sessions' | 'teams' | 'runs'];
   return (
     <div className="flex flex-col gap-4">
-      <div role="tablist" aria-label={t('sections')} className="flex gap-1 border-b border-line/60">
+      <div role="tablist" aria-label={t('sections')} className="flex flex-wrap gap-1">
         {tabs.map((value, index) => (
-          <button
+          <KitButton
             key={value}
+            variant="ghost"
+            size="compact"
+            active={tab === value}
             ref={(el) => {
               refs.current[value] = el;
             }}
@@ -475,11 +496,12 @@ function ProjectTabs({
               chooseTab(next);
               refs.current[next]?.focus();
             }}
-            className={`-mb-px flex items-center gap-1.5 border-b-2 px-2 pb-2 text-ui transition-colors ${tab === value ? 'border-text font-medium text-text' : 'border-transparent text-muted hover:text-text'}`}
           >
             {t(`tab.${value}`)}
-            {count(value) ? <span className="text-2xs text-muted">{count(value)}</span> : null}
-          </button>
+            {count(value) ? (
+              <span className="ml-1.5 text-caption text-muted-foreground">{count(value)}</span>
+            ) : null}
+          </KitButton>
         ))}
       </div>
       <div role="tabpanel" id={`project-panel-${tab}`} aria-labelledby={`project-tab-${tab}`}>
@@ -532,32 +554,29 @@ function ProjectHeader({
     <section aria-labelledby="project-heading" className="flex flex-col gap-1">
       {editing ? (
         <form onSubmit={submit} className="flex flex-wrap items-end gap-2">
-          <label htmlFor="project-name" className="flex flex-col gap-1 text-xs">
-            {t('nameLabel')}
-            <Input
+          <InputGroup className="w-full flex-1 sm:flex-row">
+            <InputField
+              index={0}
+              label={t('nameLabel')}
               id="project-name"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={setName}
               maxLength={80}
               required
+              className="min-w-0 sm:w-48"
             />
-          </label>
-          <label
-            htmlFor="project-description"
-            className="flex min-w-48 flex-1 flex-col gap-1 text-xs"
-          >
-            {t('descriptionLabel')}
-            <Input
+            <InputField
+              index={1}
+              label={t('descriptionLabel')}
               id="project-description"
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              onChange={setDescription}
               maxLength={500}
+              className="min-w-0 flex-1"
             />
-          </label>
-          <Button type="submit" size="sm">
-            {t('save')}
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => setEditing(false)}>
+          </InputGroup>
+          <Button type="submit">{t('save')}</Button>
+          <Button variant="ghost" onClick={() => setEditing(false)}>
             {t('cancel')}
           </Button>
         </form>
@@ -570,7 +589,7 @@ function ProjectHeader({
             {shown}
           </h2>
           {project.archivedAt ? (
-            <span className="rounded-full bg-subtle px-2 py-0.5 text-xs text-muted">
+            <span className="rounded-full bg-subtle px-2 py-0.5 text-xs text-muted-foreground">
               {t('archived')}
             </span>
           ) : null}
@@ -579,7 +598,7 @@ function ProjectHeader({
               render={
                 <Button
                   variant="ghost-muted"
-                  size="icon-sm"
+                  size="icon-compact"
                   aria-label={t('actions', { name: shown })}
                 />
               }
@@ -608,7 +627,7 @@ function ProjectHeader({
         </div>
       )}
       {project.description && !editing ? (
-        <p className="text-sm text-muted">{project.description}</p>
+        <p className="text-sm text-muted-foreground">{project.description}</p>
       ) : null}
       {project.archivedAt ? (
         <p role="note" className="text-sm text-warning">
@@ -635,19 +654,17 @@ function MoveCorral({
   const targets = projects.filter((p) => p.projectId !== current && !p.archivedAt);
   if (targets.length === 0) return null;
   return (
-    <select
-      aria-label={t('moveTo', { name })}
+    <Select
+      label={t('moveTo', { name })}
       value=""
-      onChange={(event) => event.target.value && onMove(event.target.value)}
-      className="rounded border border-input fill-control px-1 py-1"
-    >
-      <option value="">{t('moveChoose')}</option>
-      {targets.map((p) => (
-        <option key={p.projectId} value={p.projectId}>
-          {projectName(p, t('defaultName'))}
-        </option>
-      ))}
-    </select>
+      variant="ghost"
+      size="xs"
+      onValueChange={(value) => value && onMove(value)}
+      options={[
+        { value: '', label: t('moveChoose') },
+        ...targets.map((p) => ({ value: p.projectId, label: projectName(p, t('defaultName')) })),
+      ]}
+    />
   );
 }
 
@@ -776,86 +793,100 @@ function StartSession({
   }, [focus]);
 
   return (
-    <form
-      onSubmit={create}
-      aria-label={t('new')}
-      className="flex flex-col gap-4 rounded-xl fill-group p-4"
-    >
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="min-w-0 flex-1">
-          <h2 className="text-base font-semibold">{tw('chatHeading')}</h2>
-          <p className="mt-1 text-sm text-muted">{tw('chatHint')}</p>
-        </div>
-        <Button ref={startButton} type="submit" size="sm" disabled={saving}>
-          {tw('startChat')}
-        </Button>
-      </div>
-      <details open={detailsOpen} onToggle={(event) => setDetailsOpen(event.currentTarget.open)}>
-        <summary className="cursor-pointer text-xs text-muted">
-          <span>{n('sessionDetails')}</span>
-          {selectedTeamName ? <span className="ml-2 text-text">{selectedTeamName}</span> : null}
-        </summary>
-        <div className="mt-3 flex flex-col gap-2">
-          <p className="text-xs text-muted">{tw('optionalCorralsHint')}</p>
-          <Select
-            variant="chip"
-            disabled={saving}
-            label={t('teamLabel')}
-            value={team}
-            onValueChange={(value) => {
-              if (!creating.current) saveDraft({ title, objective, corralId: value });
-            }}
-            options={[
-              { value: '', label: t('autoTeam') },
-              ...corrals.map((c) => ({ value: c.corralId, label: c.name })),
-              ...suggested.map((id) => ({
-                value: `template:${id}`,
-                label: tw('suggestedTeam', { name: tw(`template.${id}.name`) }),
-                hint: tw(`template.${id}.body`),
-              })),
-            ]}
-          />
-          <label
-            htmlFor={`new-session-title-${projectId}`}
-            className="flex flex-col gap-1 text-xs text-muted"
+    <form onSubmit={create} aria-label={t('new')}>
+      <Card>
+        <CardHeader>
+          <h2>
+            <KitCardTitle>{tw('chatHeading')}</KitCardTitle>
+          </h2>
+          <CardDescription>{tw('chatHint')}</CardDescription>
+          <CardAction>
+            <Button ref={startButton} type="submit" disabled={saving}>
+              {tw('startChat')}
+            </Button>
+          </CardAction>
+        </CardHeader>
+        <CardContent>
+          <Accordion
+            value={detailsOpen ? 'details' : ''}
+            onValueChange={(value: string) => setDetailsOpen(value === 'details')}
+            className="w-full"
           >
-            {n('sessionName')}
-            <Input
-              id={`new-session-title-${projectId}`}
-              disabled={saving}
-              aria-label={n('sessionName')}
-              value={title}
-              onChange={(event) => saveDraft({ title: event.target.value, objective, corralId })}
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-xs text-muted">
-            {t('objectiveLabel')}
-            <textarea
-              ref={box}
-              disabled={saving}
-              aria-label={t('objectiveLabel')}
-              placeholder={t('objectivePlaceholder')}
-              value={objective}
-              rows={3}
-              onChange={(e) => saveDraft({ title, objective: e.target.value, corralId })}
-              onKeyDown={(e) => {
-                if (e.nativeEvent.isComposing || e.keyCode === 229) return;
-                if (isSendKey(e, sendKey)) {
-                  e.preventDefault();
-                  void create();
-                }
-              }}
-              className="min-h-20 w-full resize-y rounded-md border border-input fill-control px-2 py-1 text-sm leading-6 outline-none focus-visible:ring-2 focus-visible:ring-accent placeholder:text-muted/80"
-            />
-          </label>
-          <p className="text-2xs text-muted">{n('optionalPurposeHint')}</p>
-        </div>
-      </details>
-      {error ? (
-        <p role="alert" className="text-sm text-danger">
-          {error}
-        </p>
-      ) : null}
+            <AccordionItem value="details" highlight="trigger">
+              <AccordionTrigger>
+                <span>{n('sessionDetails')}</span>
+                {selectedTeamName ? (
+                  <span className="ml-2 text-foreground">{selectedTeamName}</span>
+                ) : null}
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="flex flex-col gap-3">
+                  <p className="text-caption text-muted-foreground">{tw('optionalCorralsHint')}</p>
+                  <Select
+                    variant="chip"
+                    disabled={saving}
+                    label={t('teamLabel')}
+                    value={team}
+                    onValueChange={(value) => {
+                      if (!creating.current) saveDraft({ title, objective, corralId: value });
+                    }}
+                    options={[
+                      { value: '', label: t('autoTeam') },
+                      ...corrals.map((c) => ({ value: c.corralId, label: c.name })),
+                      ...suggested.map((id) => ({
+                        value: `template:${id}`,
+                        label: tw('suggestedTeam', { name: tw(`template.${id}.name`) }),
+                        hint: tw(`template.${id}.body`),
+                      })),
+                    ]}
+                  />
+                  <InputGroup className="w-full">
+                    <InputField
+                      index={0}
+                      label={n('sessionName')}
+                      id={`new-session-title-${projectId}`}
+                      disabled={saving}
+                      value={title}
+                      onChange={(value) => saveDraft({ title: value, objective, corralId })}
+                    />
+                  </InputGroup>
+                  <label
+                    htmlFor={`new-session-objective-${projectId}`}
+                    className="flex flex-col gap-1 text-caption text-muted-foreground"
+                  >
+                    <span className="pl-2.5">{t('objectiveLabel')}</span>
+                    <Textarea
+                      id={`new-session-objective-${projectId}`}
+                      ref={box}
+                      disabled={saving}
+                      aria-label={t('objectiveLabel')}
+                      placeholder={t('objectivePlaceholder')}
+                      value={objective}
+                      rows={3}
+                      onChange={(e) => saveDraft({ title, objective: e.target.value, corralId })}
+                      onKeyDown={(e) => {
+                        if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+                        if (isSendKey(e, sendKey)) {
+                          e.preventDefault();
+                          void create();
+                        }
+                      }}
+                    />
+                  </label>
+                  <p className="text-caption text-muted-foreground">{n('optionalPurposeHint')}</p>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+        </CardContent>
+        {error ? (
+          <CardFooter>
+            <p role="alert" className="text-body text-destructive">
+              {error}
+            </p>
+          </CardFooter>
+        ) : null}
+      </Card>
     </form>
   );
 }
@@ -884,18 +915,21 @@ function SessionList({ sessions, runs }: { sessions: WorkSession[]; runs: RunSum
           {t('heading')}
         </h2>
         {sessions.length > 0 ? (
-          <Input
-            type="search"
-            aria-label={t('search')}
-            placeholder={t('search')}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            className="max-w-64"
-          />
+          <InputGroup className="max-w-64">
+            <InputField
+              index={0}
+              type="search"
+              label={t('search')}
+              labelHidden
+              placeholder={t('search')}
+              value={query}
+              onChange={setQuery}
+            />
+          </InputGroup>
         ) : null}
       </div>
       {sessions.length === 0 ? (
-        <p className="text-sm text-muted">{t('empty')}</p>
+        <p className="text-sm text-muted-foreground">{t('empty')}</p>
       ) : (
         <ul aria-label={t('heading')} className="flex flex-col">
           {shown.map((x) => (
@@ -906,7 +940,7 @@ function SessionList({ sessions, runs }: { sessions: WorkSession[]; runs: RunSum
                 className="flex items-baseline justify-between gap-3 rounded-md px-2 py-2 hover:bg-subtle"
               >
                 <span className="min-w-0 truncate text-sm font-medium">{x.title}</span>
-                <span className="shrink-0 text-xs text-muted">
+                <span className="shrink-0 text-xs text-muted-foreground">
                   {[
                     x.pinned ? t('pinned') : null,
                     x.archivedAt ? t('archived') : null,
@@ -926,7 +960,7 @@ function SessionList({ sessions, runs }: { sessions: WorkSession[]; runs: RunSum
       {archivedCount > 0 ? (
         <Button
           variant="ghost-muted"
-          size="xs"
+          size="compact"
           className="self-start"
           aria-pressed={showArchived}
           onClick={() => setShowArchived(!showArchived)}

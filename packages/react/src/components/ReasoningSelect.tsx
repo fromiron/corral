@@ -4,7 +4,7 @@ import {
   type ReasoningPolicy,
 } from '@corral/contracts';
 import { useTranslations } from 'use-intl';
-import { Select } from '../ui/select.tsx';
+import { Select } from '../design-kit/index.ts';
 
 export function ReasoningSelect({
   value,
@@ -55,7 +55,7 @@ export function ReasoningSelect({
         ]}
       />
       {value?.mode === 'auto' ? (
-        <a className="text-muted underline" href="/settings/models">
+        <a className="text-muted-foreground underline" href="/settings/models">
           {t('autoHint')}
         </a>
       ) : null}

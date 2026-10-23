@@ -8,7 +8,7 @@ export function ReasoningSummary({
 }) {
   const t = useTranslations('Reasoning');
   const resolution = call.reasoning;
-  if (!resolution) return <span className="text-muted">{t('unrecorded')}</span>;
+  if (!resolution) return <span className="text-muted-foreground">{t('unrecorded')}</span>;
   const requested =
     resolution.requested.mode === 'fixed'
       ? resolution.requested.level
@@ -16,7 +16,7 @@ export function ReasoningSummary({
   return (
     <span
       data-testid="reasoning-summary"
-      className="text-xs text-muted"
+      className="text-xs text-muted-foreground"
       title={[resolution.preparationId, resolution.judgeVersion, resolution.inputHash]
         .filter(Boolean)
         .join(' · ')}

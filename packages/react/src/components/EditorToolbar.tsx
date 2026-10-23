@@ -3,13 +3,22 @@ import { useCallback, useEffect } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { useStudioStores } from '../context.tsx';
+import { KitButton as Button } from '../design-kit/index.ts';
 
 /** True when a key press belongs to text editing or an IME composition, not to the canvas. */
 export function isTextEditingEvent(event: KeyboardEvent): boolean {
   if (event.isComposing || event.keyCode === 229) return true;
   const target = event.target as HTMLElement | null;
   if (!target) return false;
-  return target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
+  return (
+    target.isContentEditable ||
+    ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) ||
+    Boolean(
+      target.closest(
+        '[role="combobox"], [role="listbox"], [role="option"], [role="radio"], [role="checkbox"], [role="switch"]',
+      ),
+    )
+  );
 }
 
 /** Dispatched on `window` to tidy up the open editor's canvas (the command palette uses it). */
@@ -52,31 +61,31 @@ export function EditorToolbar() {
 
   return (
     <div role="toolbar" aria-label={t('shortcuts')} className="flex items-center gap-1">
-      <button
+      <Button
+        variant="tertiary"
         type="button"
         onClick={() => editor.getState().undo()}
         disabled={!canUndo}
-        className="rounded-md fill-control px-2 py-1 text-xs disabled:opacity-40"
       >
         {t('undo')}
-      </button>
-      <button
+      </Button>
+      <Button
+        variant="tertiary"
         type="button"
         onClick={() => editor.getState().redo()}
         disabled={!canRedo}
-        className="rounded-md fill-control px-2 py-1 text-xs disabled:opacity-40"
       >
         {t('redo')}
-      </button>
-      <button
+      </Button>
+      <Button
+        variant="tertiary"
         type="button"
         onClick={tidy}
         disabled={empty}
         title={t('tidyHint')}
-        className="rounded-md fill-control px-2 py-1 text-xs disabled:opacity-40"
       >
         {t('tidy')}
-      </button>
+      </Button>
     </div>
   );
 }

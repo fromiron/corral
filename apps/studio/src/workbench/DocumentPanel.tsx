@@ -8,7 +8,7 @@ import {
   Input,
   Select,
   Textarea,
-} from '@corral/react/ui';
+} from '@corral/react/design-kit';
 import {
   lazy,
   Suspense,
@@ -231,13 +231,13 @@ export function DocumentPanel({
       data-testid="document-panel"
     >
       <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" disabled={!canSave} onClick={() => perform(save)}>
+        <Button size="compact" disabled={!canSave} onClick={() => perform(save)}>
           {t(entry.saving ? 'saving' : pending && entry.canRetrySave ? 'retrySave' : 'save')}
         </Button>
         {pending ? (
           <Button
-            size="sm"
-            variant="outline"
+            size="compact"
+            variant="tertiary"
             disabled={entry.saving}
             onClick={() => perform(() => owner.checkSave(documentKey))}
           >
@@ -245,7 +245,7 @@ export function DocumentPanel({
           </Button>
         ) : null}
         <Button
-          size="sm"
+          size="compact"
           variant="ghost"
           disabled={readOnlyTarget || entry.saving}
           onClick={() => perform(() => owner.refresh(documentKey))}
@@ -273,11 +273,11 @@ export function DocumentPanel({
             className="h-8 sm:h-7"
           />
         ) : (
-          <span className="text-xs text-muted">
+          <span className="text-xs text-muted-foreground">
             {entry.model?.getEOL() === '\r\n' ? t('eolCrlf') : t('eolLf')}
           </span>
         )}
-        <span role="status" className="text-xs text-muted">
+        <span role="status" className="text-xs text-muted-foreground">
           {t(entry.saving ? 'saving' : pending ? 'pending' : entry.dirty ? 'dirty' : 'saved')}
         </span>
       </div>
@@ -290,7 +290,7 @@ export function DocumentPanel({
         </p>
       ) : null}
       {readOnlyTarget || !entry.file.writable ? (
-        <p className="text-xs text-muted">{t('readOnly')}</p>
+        <p className="text-xs text-muted-foreground">{t('readOnly')}</p>
       ) : null}
       {entry.formatBlocked ? (
         <p role="status" className="text-xs">
@@ -317,14 +317,14 @@ export function DocumentPanel({
           <p role="alert" className="text-sm font-medium">
             {t('conflict')}
           </p>
-          <p className="text-xs text-muted">{t('conflictHint')}</p>
+          <p className="text-xs text-muted-foreground">{t('conflictHint')}</p>
           <DocumentText label={t('base')} text={entry.baseText} />
           <DocumentText label={t('ours')} text={entry.text} />
           <DocumentText label={t('theirs')} text={versionText(entry.conflict)} />
           <div className="flex flex-wrap gap-2">
             <Button
-              size="sm"
-              variant="outline"
+              size="compact"
+              variant="tertiary"
               disabled={readOnlyTarget || pending || entry.saving}
               onClick={() => {
                 setActionError(
@@ -335,7 +335,7 @@ export function DocumentPanel({
               {t('keepDraft')}
             </Button>
             <Button
-              size="sm"
+              size="compact"
               variant="ghost"
               disabled={readOnlyTarget || pending || entry.saving}
               onClick={() => {
@@ -356,22 +356,22 @@ export function DocumentPanel({
           aria-label={t('recovery')}
         >
           <p className="text-sm font-medium">{t('recovery')}</p>
-          <p className="text-xs text-muted">{t('recoveryHint')}</p>
+          <p className="text-xs text-muted-foreground">{t('recoveryHint')}</p>
           <DocumentText label={t('draftContent')} text={recovery.text} />
           {entry.dirty || pending ? (
-            <p className="text-xs text-muted">{t('recoveryBlocked')}</p>
+            <p className="text-xs text-muted-foreground">{t('recoveryBlocked')}</p>
           ) : null}
           <div className="flex flex-wrap gap-2">
             <Button
-              size="sm"
-              variant="outline"
+              size="compact"
+              variant="tertiary"
               disabled={readOnlyTarget || entry.dirty || pending || entry.saving}
               onClick={() => perform(() => owner.restoreRecovery(documentKey, recovery.id))}
             >
               {t('restoreRecovery')}
             </Button>
             <Button
-              size="sm"
+              size="compact"
               variant="ghost"
               onClick={() => perform(() => owner.discardRecovery(documentKey, recovery.id))}
             >
@@ -410,7 +410,7 @@ export function DocumentPanel({
           />
         </label>
         <Button
-          size="sm"
+          size="compact"
           variant="ghost"
           disabled={!validRange || !entry.model || editorFailed}
           onClick={() => setRevealRange({ startLine: range.start, endLine: range.end })}
@@ -418,8 +418,8 @@ export function DocumentPanel({
           {t('goToLines')}
         </Button>
         <Button
-          size="sm"
-          variant="outline"
+          size="compact"
+          variant="tertiary"
           disabled={!canReference}
           onClick={() => onReference?.({ path: entry.path, ...range })}
         >
@@ -428,8 +428,8 @@ export function DocumentPanel({
         {onAttach ? (
           <Button
             ref={captureButton}
-            size="sm"
-            variant="outline"
+            size="compact"
+            variant="tertiary"
             disabled={!canAttach}
             onClick={() => void captureSelection()}
           >
@@ -437,13 +437,17 @@ export function DocumentPanel({
           </Button>
         ) : null}
       </div>
-      {!onReference ? <p className="text-xs text-muted">{t('otherSessionReference')}</p> : null}
+      {!onReference ? (
+        <p className="text-xs text-muted-foreground">{t('otherSessionReference')}</p>
+      ) : null}
       {referencePending ? (
-        <p role="status" className="text-xs text-muted">
+        <p role="status" className="text-xs text-muted-foreground">
           {t('loading')}
         </p>
       ) : null}
-      {entry.dirty || pending ? <p className="text-xs text-muted">{t('dirtyReference')}</p> : null}
+      {entry.dirty || pending ? (
+        <p className="text-xs text-muted-foreground">{t('dirtyReference')}</p>
+      ) : null}
       <section
         aria-label={td('fileContent')}
         className={`min-w-0 overflow-hidden rounded fill-group ${fill ? 'min-h-56 flex-1' : ''}`}
@@ -464,7 +468,9 @@ export function DocumentPanel({
           </>
         ) : entry.model ? (
           <div className={fill ? 'h-full min-h-56' : 'h-[min(45vh,28rem)] min-h-56'}>
-            <Suspense fallback={<p className="p-3 text-xs text-muted">{t('loading')}</p>}>
+            <Suspense
+              fallback={<p className="p-3 text-xs text-muted-foreground">{t('loading')}</p>}
+            >
               <CodeEditorView
                 onLanguageSelection={setLanguageSelection}
                 debug={
@@ -523,11 +529,11 @@ export function DocumentPanel({
             </Suspense>
           </div>
         ) : (
-          <p className="p-3 text-xs text-muted">{t('loading')}</p>
+          <p className="p-3 text-xs text-muted-foreground">{t('loading')}</p>
         )}
       </section>
-      <p className="text-2xs text-muted">{t('keyboardHint')}</p>
-      <p className="text-2xs text-muted">{td('referencePermission')}</p>
+      <p className="text-2xs text-muted-foreground">{t('keyboardHint')}</p>
+      <p className="text-2xs text-muted-foreground">{td('referencePermission')}</p>
       {captured ? (
         <Dialog
           open
@@ -570,14 +576,14 @@ export function DocumentPanel({
             ) : null}
             <div className="flex flex-wrap gap-2">
               <Button
-                size="sm"
+                size="compact"
                 disabled={capturing || !onAttach || readOnlyTarget || referencePending}
                 onClick={() => void attachCaptured(captured)}
               >
                 {t('attachSnapshot')}
               </Button>
               <Button
-                size="sm"
+                size="compact"
                 variant="ghost"
                 disabled={capturing}
                 onClick={() => setCaptured(null)}

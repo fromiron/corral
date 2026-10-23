@@ -77,6 +77,7 @@ export function applyTheme(theme: Theme): boolean {
     theme === 'dark' || (theme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
   document.documentElement.dataset.theme = theme;
   document.documentElement.classList.toggle('dark', dark);
+  document.documentElement.classList.toggle('light', !dark);
   document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
   return dark;
 }

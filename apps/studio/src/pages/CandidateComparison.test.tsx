@@ -7,7 +7,7 @@ import { CandidateComparison } from './CandidateComparison.tsx';
 
 const translate = vi.hoisted(() => (key: string) => key);
 vi.mock('use-intl', () => ({ useTranslations: () => translate }));
-vi.mock('@corral/react/ui', () => ({
+vi.mock('@corral/react/design-kit', () => ({
   Button: ({ children, variant: _variant, size: _size, ...props }: any) => (
     <button {...props}>{children}</button>
   ),

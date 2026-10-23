@@ -1,4 +1,4 @@
-import { Button } from '@corral/react/ui';
+import { Button } from '@corral/react/design-kit';
 import { useCallback, useEffect, useState } from 'react';
 import { useLocale } from 'use-intl';
 import { type CloneOperation, projectRequest } from '../projects-api.ts';
@@ -34,7 +34,7 @@ export function GitCloneFolder({ onSelect }: { onSelect(path: string): void }) {
         {ko ? 'Git 저장소 복제' : 'Clone Git repository'}
       </summary>
       <div className="mt-3 flex flex-col gap-2">
-        <p className="text-xs text-muted">
+        <p className="text-xs text-muted-foreground">
           {ko
             ? '새 폴더에 복제한 뒤 프로젝트에 연결하세요. 복제만으로 저장소가 신뢰되거나 코드가 실행되지는 않습니다.'
             : 'Clone into a new folder, then link it to the project. Cloning does not grant trust or execute repository code.'}
@@ -60,7 +60,7 @@ export function GitCloneFolder({ onSelect }: { onSelect(path: string): void }) {
         </label>
         <Button
           type="button"
-          size="sm"
+          size="compact"
           className="self-start"
           disabled={busy || !source.trim() || !destination.trim()}
           onClick={async () => {
@@ -95,7 +95,10 @@ export function GitCloneFolder({ onSelect }: { onSelect(path: string): void }) {
                   <div className="truncate" title={op.destination}>
                     {op.destination}
                   </div>
-                  <span role={op.state === 'running' ? 'status' : undefined} className="text-muted">
+                  <span
+                    role={op.state === 'running' ? 'status' : undefined}
+                    className="text-muted-foreground"
+                  >
                     {op.progress}
                   </span>
                 </div>
@@ -103,7 +106,7 @@ export function GitCloneFolder({ onSelect }: { onSelect(path: string): void }) {
                   <Button
                     type="button"
                     variant="ghost"
-                    size="sm"
+                    size="compact"
                     onClick={async () => {
                       try {
                         await projectRequest(`/project-clones/${op.id}/cancel`, {});
@@ -119,8 +122,8 @@ export function GitCloneFolder({ onSelect }: { onSelect(path: string): void }) {
                 {op.state === 'completed' ? (
                   <Button
                     type="button"
-                    variant="outline"
-                    size="sm"
+                    variant="tertiary"
+                    size="compact"
                     onClick={() => onSelect(op.destination)}
                   >
                     {ko ? '이 폴더 선택' : 'Use this folder'}
@@ -133,7 +136,7 @@ export function GitCloneFolder({ onSelect }: { onSelect(path: string): void }) {
                   <Button
                     type="button"
                     variant="ghost"
-                    size="sm"
+                    size="compact"
                     onClick={async () => {
                       try {
                         await projectRequest(`/project-clones/${op.id}/remove-partial`, {});

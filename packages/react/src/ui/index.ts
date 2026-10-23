@@ -1,13 +1,1 @@
-export * from './badge.tsx';
-export * from './button.tsx';
-export * from './dialog.tsx';
-export * from './input.tsx';
-export * from './menu.tsx';
-export * from './popover.tsx';
-export * from './scroll-area.tsx';
-export * from './select.tsx';
-export * from './separator.tsx';
-export * from './skeleton.tsx';
-export * from './textarea.tsx';
-export * from './tooltip.tsx';
-export { cn } from './utils.ts';
+export * from '../design-kit/index.ts';

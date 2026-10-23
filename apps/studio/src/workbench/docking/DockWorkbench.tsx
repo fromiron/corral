@@ -1,6 +1,6 @@
 import type { TextRange, WorkspaceTarget } from '@corral/contracts';
-import { ArrowLeft } from '@corral/react/icons';
-import { Button, Select } from '@corral/react/ui';
+import { Button, Select } from '@corral/react/design-kit';
+import { ArrowLeft, X } from '@corral/react/icons';
 import {
   type DockviewApi,
   DockviewDefaultTab,
@@ -8,6 +8,7 @@ import {
   type DockviewReadyEvent,
   type DockviewWillDropEvent,
   type DockviewWillShowOverlayLocationEvent,
+  type IDockviewHeaderActionsProps,
   type IDockviewPanel,
   type IDockviewPanelHeaderProps,
   type IDockviewPanelProps,
@@ -125,7 +126,7 @@ function DockPanel({ params, api }: IDockviewPanelProps<PanelParams>) {
       ) : descriptor.kind === 'graph' && renderer?.renderGraph ? (
         <GraphView api={api}>{renderer.renderGraph(descriptor, api.id)}</GraphView>
       ) : (
-        <p role="status" className="p-4 text-sm text-muted">
+        <p role="status" className="p-4 text-sm text-muted-foreground">
           {t('unknownPanel')} {descriptor.kind === 'unknown' ? descriptor.label : ''}
         </p>
       )}
@@ -152,7 +153,30 @@ function GraphView({ api, children }: { api: IDockviewPanelProps['api']; childre
 function DockTab(props: IDockviewPanelHeaderProps<PanelParams>) {
   const renderer = useContext(RendererContext);
   return (
-    <DockviewDefaultTab {...props} closeActionOverride={() => renderer?.close(props.api.id)} />
+    <DockviewDefaultTab
+      {...props}
+      hideClose
+      onAuxClick={(event) => {
+        if (event.button !== 1) return;
+        event.preventDefault();
+        renderer?.close(props.api.id);
+      }}
+    />
+  );
+}
+function DockHeaderActions({ activePanel }: IDockviewHeaderActionsProps) {
+  const renderer = useContext(RendererContext);
+  const t = useTranslations('Docking');
+  if (!activePanel) return null;
+  return (
+    <Button
+      variant="ghost"
+      size="icon-compact"
+      aria-label={`${t('close')}: ${activePanel.title}`}
+      onClick={() => renderer?.close(activePanel.id)}
+    >
+      <X />
+    </Button>
   );
 }
 const components = { workbench: DockPanel };
@@ -736,12 +760,32 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
           aria-label={t('title')}
           className="corral-dock-workbench"
           data-testid="dock-workbench"
+          onKeyDownCapture={(event) => {
+            if (event.key !== 'Delete' && event.key !== 'Backspace') return;
+            const tab = event.target;
+            if (!(tab instanceof HTMLElement) || tab.getAttribute('role') !== 'tab') return;
+            const id = tab.dataset.tabPanelId;
+            if (!id) return;
+            // Dockview's native delete path bypasses the unsaved-document decision.
+            event.preventDefault();
+            event.stopPropagation();
+            const tabList = tab.closest('[role="tablist"]');
+            void closePanel(id).then(() => {
+              if (tab.isConnected) return;
+              const next =
+                tabList?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]') ??
+                host.current?.querySelector<HTMLElement>(
+                  '.dv-active-group [role="tab"][aria-selected="true"]',
+                );
+              next?.focus();
+            });
+          }}
         >
           <div className="corral-dock-toolbar" data-testid="dock-toolbar">
             {compact ? (
               <>
                 {activeView !== 'chat' ? (
-                  <Button size="sm" variant="ghost" onClick={() => openContext('chat', true)}>
+                  <Button size="compact" variant="ghost" onClick={() => openContext('chat', true)}>
                     <ArrowLeft />
                     {t('backToChat')}
                   </Button>
@@ -798,7 +842,7 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
                 />
                 <details className="corral-dock-actions">
                   <summary>{t('layoutControls')}</summary>
-                  <p className="px-1 pb-1 text-xs text-muted">{t('savedWhere')}</p>
+                  <p className="px-1 pb-1 text-xs text-muted-foreground">{t('savedWhere')}</p>
                   <div className="flex flex-wrap items-center gap-1">
                     <div className="corral-dock-select">
                       <span>{t('activePane')}</span>
@@ -815,14 +859,14 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
                     </div>
 
                     <Button
-                      size="sm"
+                      size="compact"
                       variant="ghost"
                       onClick={() => apiRef.current?.activatePrevious({ includePanel: true })}
                     >
                       {t('previousPane')}
                     </Button>
                     <Button
-                      size="sm"
+                      size="compact"
                       variant="ghost"
                       onClick={() => apiRef.current?.activateNext({ includePanel: true })}
                     >
@@ -835,11 +879,11 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
                       onValueChange={setDestination}
                       options={groupNames.map((value) => ({ value, label: t(value) }))}
                     />
-                    <Button size="sm" variant="ghost" disabled={!selected} onClick={move}>
+                    <Button size="compact" variant="ghost" disabled={!selected} onClick={move}>
                       {t('move')}
                     </Button>
                     <Button
-                      size="sm"
+                      size="compact"
                       variant="ghost"
                       disabled={!selected || descriptorOf(selected).kind !== 'document'}
                       onClick={split}
@@ -847,7 +891,7 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
                       {t('split')}
                     </Button>
                     <Button
-                      size="sm"
+                      size="compact"
                       variant="ghost"
                       disabled={!selected}
                       aria-label={t('close')}
@@ -856,16 +900,16 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
                       {t('close')}
                     </Button>
                     <div className="flex gap-1">
-                      <Button size="sm" variant="ghost" onClick={() => resize('width', -80)}>
+                      <Button size="compact" variant="ghost" onClick={() => resize('width', -80)}>
                         {t('narrower')}
                       </Button>
-                      <Button size="sm" variant="ghost" onClick={() => resize('width', 80)}>
+                      <Button size="compact" variant="ghost" onClick={() => resize('width', 80)}>
                         {t('wider')}
                       </Button>
-                      <Button size="sm" variant="ghost" onClick={() => resize('height', -60)}>
+                      <Button size="compact" variant="ghost" onClick={() => resize('height', -60)}>
                         {t('shorter')}
                       </Button>
-                      <Button size="sm" variant="ghost" onClick={() => resize('height', 60)}>
+                      <Button size="compact" variant="ghost" onClick={() => resize('height', 60)}>
                         {t('taller')}
                       </Button>
                     </div>
@@ -876,7 +920,7 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
           </div>
           {props.controls ? <div className="corral-dock-controls">{props.controls}</div> : null}
           {message ? (
-            <p role="status" className="px-3 py-1 text-xs text-muted">
+            <p role="status" className="px-3 py-1 text-xs text-muted-foreground">
               {t(message)}
             </p>
           ) : null}
@@ -884,6 +928,7 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
             <DockviewReact
               components={components}
               defaultTabComponent={DockTab}
+              rightHeaderActionsComponent={DockHeaderActions}
               theme={theme}
               onReady={onReady}
               disableFloatingGroups

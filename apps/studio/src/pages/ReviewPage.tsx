@@ -13,8 +13,8 @@ import type {
 } from '@corral/client';
 import { TERMINAL_RUN_STATUSES, type TextAttachment } from '@corral/contracts';
 import { createTextAttachment, type RunSummary, type WorkSession } from '@corral/core';
+import { Button } from '@corral/react/design-kit';
 import { Check, Eye } from '@corral/react/icons';
-import { Button } from '@corral/react/ui';
 import type { FileDiffMetadata } from '@pierre/diffs';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
@@ -213,14 +213,14 @@ export function ReviewPage() {
             </label>
             {changes?.from && changes.to ? (
               <span
-                className="font-mono text-xs text-muted"
+                className="font-mono text-xs text-muted-foreground"
                 title={`${changes.from} → ${changes.to}`}
               >
                 {t('compareRange', { from: changes.from.slice(0, 8), to: changes.to.slice(0, 8) })}
               </span>
             ) : null}
             {changes ? (
-              <span className="text-xs text-muted">
+              <span className="text-xs text-muted-foreground">
                 {scope.kind === 'review'
                   ? t('newChanges', { count: changes.files.length })
                   : t('files', { count: changes.files.length })}
@@ -251,10 +251,10 @@ export function ReviewPage() {
               className="mx-auto flex max-w-lg flex-col items-start gap-3 p-8 text-sm"
             >
               <h3 className="text-base font-semibold">{t('noCopyTitle')}</h3>
-              <p className="text-muted">{t('noCopyBody')}</p>
+              <p className="text-muted-foreground">{t('noCopyBody')}</p>
               <div className="flex flex-wrap gap-2">
                 <Button
-                  size="sm"
+                  size="compact"
                   render={
                     <Link
                       to="/sessions/$sessionId"
@@ -266,8 +266,8 @@ export function ReviewPage() {
                   {t('openResults')}
                 </Button>
                 <Button
-                  variant="outline"
-                  size="sm"
+                  variant="tertiary"
+                  size="compact"
                   render={
                     <Link
                       to="/sessions/$sessionId"
@@ -283,7 +283,7 @@ export function ReviewPage() {
           ) : error ? (
             <div role="alert" className="flex flex-wrap items-center gap-2 p-3 text-sm text-danger">
               {t('failed', { message: error })}
-              <Button variant="outline" size="xs" onClick={() => setVersion((n) => n + 1)}>
+              <Button variant="tertiary" size="compact" onClick={() => setVersion((n) => n + 1)}>
                 {t('retry')}
               </Button>
             </div>
@@ -333,7 +333,7 @@ export function ReviewPage() {
                   }}
                 />
               ) : (
-                <p className="text-sm text-muted">{t('chooseFile')}</p>
+                <p className="text-sm text-muted-foreground">{t('chooseFile')}</p>
               )}
               {selected && changes?.from && changes.to ? (
                 <HunkActions
@@ -520,7 +520,7 @@ export function FileDiff({
         {error}
       </p>
     );
-  if (!sides) return <p className="text-sm text-muted">…</p>;
+  if (!sides) return <p className="text-sm text-muted-foreground">…</p>;
   const notText = (side: FileSideView) =>
     side.kind === 'binary' ? t('binary') : side.kind === 'too_large' ? t('tooLarge') : null;
   const before = sideText(sides.before);
@@ -556,7 +556,7 @@ export function FileDiff({
               type="button"
               aria-pressed={layout === value}
               onClick={() => setLayout(value)}
-              className={`rounded px-2 py-0.5 ${layout === value ? 'bg-accent text-on-accent' : 'fill-control'}`}
+              className={`rounded px-2 py-0.5 ${layout === value ? 'bg-primary text-primary-foreground' : 'fill-control'}`}
             >
               {t(value)}
             </button>
@@ -569,10 +569,12 @@ export function FileDiff({
         </p>
       ) : null}
       {diff === null && layout !== 'raw' && !notText(sides.before) && !notText(sides.after) ? (
-        <p className="text-xs text-muted">{t('computing')}</p>
+        <p className="text-xs text-muted-foreground">{t('computing')}</p>
       ) : null}
       {notText(sides.before) || notText(sides.after) ? (
-        <p className="text-sm text-muted">{notText(sides.after) ?? notText(sides.before)}</p>
+        <p className="text-sm text-muted-foreground">
+          {notText(sides.after) ?? notText(sides.before)}
+        </p>
       ) : layout === 'raw' ? (
         <div className="flex flex-col gap-1">
           <button
@@ -587,7 +589,7 @@ export function FileDiff({
           </pre>
         </div>
       ) : diff && diff !== 'stopped' ? (
-        <Suspense fallback={<p className="text-xs text-muted">{t('computing')}</p>}>
+        <Suspense fallback={<p className="text-xs text-muted-foreground">{t('computing')}</p>}>
           <DiffCode
             key={loadKey}
             diff={diff}
@@ -723,7 +725,7 @@ export function Checks({
         {t('checksHeading')}
       </h3>
       {mode !== 'browser' && commands.length ? (
-        <p className="text-xs text-muted">{t('isolatedChecksNote')}</p>
+        <p className="text-xs text-muted-foreground">{t('isolatedChecksNote')}</p>
       ) : null}
       {error ? (
         <p role="alert" className="text-xs text-danger">
@@ -731,21 +733,23 @@ export function Checks({
         </p>
       ) : null}
       {commands.length === 0 ? (
-        <p className="text-xs text-muted">
+        <p className="text-xs text-muted-foreground">
           {mode === 'browser' ? t('checksServerOnly') : t('noChecks')}
         </p>
       ) : null}
       <div className="flex flex-wrap gap-1">
         {commands.map((command) => (
-          <button
+          <Button
+            variant="tertiary"
+            size="compact"
             key={command.id}
             type="button"
             disabled={running}
             onClick={() => workspaces && void checkAction(workspaces.verify(sessionId, command.id))}
-            className="rounded border border-accent px-2 py-0.5 text-xs text-accent disabled:opacity-50"
+            className=""
           >
             {t('runCheck', { name: command.name })}
-          </button>
+          </Button>
         ))}
       </div>
       <ul className="flex flex-col gap-1">
@@ -767,8 +771,8 @@ export function Checks({
               {r.report ? <span>{t(`checkVerdict.${r.report.verdict}`)}</span> : null}
               {r.state === 'running' && r.report?.owner.kind === 'manual' ? (
                 <Button
-                  size="sm"
-                  variant="outline"
+                  size="compact"
+                  variant="tertiary"
                   onClick={() =>
                     workspaces &&
                     void checkAction(workspaces.cancelVerification(sessionId, r.verificationId))
@@ -778,7 +782,7 @@ export function Checks({
                 </Button>
               ) : null}
               {r.endedAt ? (
-                <span className="text-muted">
+                <span className="text-muted-foreground">
                   {t('checkMeta', { code: r.exitCode ?? '—', ms: r.durationMs ?? 0 })}
                 </span>
               ) : null}
@@ -789,8 +793,8 @@ export function Checks({
               ) : null}
               {onAttach && workspaceId && projectId ? (
                 <Button
-                  size="xs"
-                  variant="outline"
+                  size="compact"
+                  variant="tertiary"
                   disabled={attaching || !canAttach(r)}
                   onClick={() => void attach(r)}
                 >
@@ -800,7 +804,7 @@ export function Checks({
               {attached === r.verificationId ? <span role="status">{tc('attached')}</span> : null}
             </div>
             {r.report ? (
-              <details className="text-muted">
+              <details className="text-muted-foreground">
                 <summary>{t('checkEvidence')}</summary>
                 <p>
                   {t('checkFingerprint', {
@@ -820,7 +824,9 @@ export function Checks({
             ) : null}
             {r.output ? (
               <details>
-                <summary className="cursor-pointer text-muted">{r.argv.join(' ')}</summary>
+                <summary className="cursor-pointer text-muted-foreground">
+                  {r.argv.join(' ')}
+                </summary>
                 <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all">
                   {r.output}
                 </pre>
@@ -848,7 +854,10 @@ function Operations({ sessionId }: { sessionId: string }) {
       </h3>
       <ul className="flex flex-col gap-1 text-xs">
         {ops.slice(0, 50).map((op) => (
-          <li key={op.id} className={op.state === 'uncertain' ? 'text-warning' : 'text-muted'}>
+          <li
+            key={op.id}
+            className={op.state === 'uncertain' ? 'text-warning' : 'text-muted-foreground'}
+          >
             {op.kind}{' '}
             <span className="font-mono">{op.to_path ? `${op.path} → ${op.to_path}` : op.path}</span>{' '}
             · {op.state} · {op.run_id}
@@ -948,7 +957,7 @@ function CommentsPanel({
       <h3 id="comments-heading" className="text-sm font-semibold">
         {t('commentsHeading')}
       </h3>
-      <p className="text-xs text-muted">{t('draftCount', { count: drafts.length })}</p>
+      <p className="text-xs text-muted-foreground">{t('draftCount', { count: drafts.length })}</p>
       {drafts.length > 0 ? (
         <>
           <ul className="flex flex-col gap-1 text-xs">
@@ -989,14 +998,16 @@ function CommentsPanel({
               ))}
             </select>
           </label>
-          <button
+          <Button
+            variant="primary"
+            size="compact"
             type="button"
             disabled={busy || (Boolean(active) && !steerTo)}
             onClick={() => void send()}
-            className="self-start rounded-md bg-accent px-3 py-1 text-xs font-medium text-on-accent disabled:opacity-50"
+            className="self-start"
           >
             {t('sendReview')}
-          </button>
+          </Button>
         </>
       ) : null}
       {note ? (
@@ -1006,7 +1017,7 @@ function CommentsPanel({
       ) : null}
       {comments.filter((c) => c.state !== 'draft').length > 0 ? (
         <details open={earlier.length > 0}>
-          <summary className="cursor-pointer text-xs text-muted">{t('earlier')}</summary>
+          <summary className="cursor-pointer text-xs text-muted-foreground">{t('earlier')}</summary>
           <ul className="mt-1 flex flex-col gap-1 text-xs">
             {comments
               .filter((c) => c.state !== 'draft')
@@ -1016,7 +1027,7 @@ function CommentsPanel({
                     {c.path}:{c.startLine}
                   </span>{' '}
                   · {t(`commentState.${c.state}`)}
-                  <blockquote className="border-l-2 border-line pl-1 font-mono text-muted">
+                  <blockquote className="border-l-2 border-line pl-1 font-mono text-muted-foreground">
                     {c.quote}
                   </blockquote>
                   <p>{c.body}</p>
@@ -1110,7 +1121,7 @@ export function DecisionPanel({
       <h3 id="decision-heading" className="text-sm font-semibold">
         {t('decisionHeading')}
       </h3>
-      <p className="text-xs text-muted">{t('decisionScope')}</p>
+      <p className="text-xs text-muted-foreground">{t('decisionScope')}</p>
       {error ? (
         <p role="alert" className="text-xs text-danger">
           {error}
@@ -1123,14 +1134,16 @@ export function DecisionPanel({
         </p>
       ) : null}
       <div className="flex flex-wrap gap-1 text-xs">
-        <button
+        <Button
+          variant="tertiary"
+          size="compact"
           type="button"
           disabled={busy}
           onClick={() => void act(() => decide('approved'))}
-          className="rounded border border-accent px-2 py-0.5 text-accent"
+          className=""
         >
           {t('approve')}
-        </button>
+        </Button>
         <button
           type="button"
           disabled={busy}
@@ -1143,7 +1156,7 @@ export function DecisionPanel({
       {approved && linked ? (
         <div className="flex flex-col gap-1 rounded fill-group p-2 text-xs">
           <h4 className="font-semibold">{t('integrateHeading')}</h4>
-          <p className="text-muted">{t('integrateNote')}</p>
+          <p className="text-muted-foreground">{t('integrateNote')}</p>
           <button
             type="button"
             onClick={() =>
@@ -1165,7 +1178,9 @@ export function DecisionPanel({
                   </li>
                 ))}
               </ul>
-              <button
+              <Button
+                variant="primary"
+                size="compact"
                 type="button"
                 disabled={busy || active || applying === 0}
                 onClick={() => {
@@ -1175,10 +1190,10 @@ export function DecisionPanel({
                     await reload();
                   });
                 }}
-                className="self-start rounded-md bg-accent px-2 py-1 font-medium text-on-accent disabled:opacity-50"
+                className="self-start"
               >
                 {t('apply', { count: applying })}
-              </button>
+              </Button>
             </>
           ) : null}
         </div>
@@ -1245,11 +1260,12 @@ function FileList({
   const [kind, setKind] = useState<'all' | FileChangeView['status']>('all');
   const [unreviewedOnly, setUnreviewedOnly] = useState(false);
   void sessionId;
-  if (!changes) return <p className="text-xs text-muted">{t('preparing')}</p>;
-  if (changes.unavailable) return <p className="text-xs text-muted">{t('noBaseline')}</p>;
+  if (!changes) return <p className="text-xs text-muted-foreground">{t('preparing')}</p>;
+  if (changes.unavailable)
+    return <p className="text-xs text-muted-foreground">{t('noBaseline')}</p>;
   if (changes.files.length === 0)
     return (
-      <p data-testid="no-changes" className="text-xs text-muted">
+      <p data-testid="no-changes" className="text-xs text-muted-foreground">
         {scopeIsRun ? t('runChangedNothing') : t('nothingChanged')}
       </p>
     );
@@ -1269,7 +1285,7 @@ function FileList({
         aria-current={selected === file.path ? 'true' : undefined}
         onClick={() => onChoose(file.path)}
         className={`flex w-full flex-col rounded border px-2 py-1 text-left text-xs ${
-          selected === file.path ? 'border-accent bg-raised' : 'border-transparent fill-group'
+          selected === file.path ? 'border-primary bg-raised' : 'border-transparent fill-group'
         }`}
       >
         <span className="flex items-start gap-1 break-all font-mono">
@@ -1280,13 +1296,13 @@ function FileList({
             </>
           ) : reviewed.contentRead(file) ? (
             <span title={t('readElsewhere')} className="contents">
-              <Eye aria-hidden className="mt-0.5 size-3 shrink-0 text-muted" />
+              <Eye aria-hidden className="mt-0.5 size-3 shrink-0 text-muted-foreground" />
               <span className="sr-only">{t('readElsewhere')}</span>
             </span>
           ) : null}
           {file.path}
         </span>
-        <span className="text-muted">
+        <span className="text-muted-foreground">
           {t(`status.${file.status}`)}
           {file.additions !== null ? ` · +${file.additions} −${file.deletions ?? 0}` : ''}
           {file.binary ? ' · bin' : ''} · {t(`provenance.${file.provenance}`)}
@@ -1327,17 +1343,19 @@ function FileList({
           {t('unreviewedOnly')}
         </label>
       </div>
-      {changes.files.length === 0 ? <p className="text-xs text-muted">{t('noChanges')}</p> : null}
+      {changes.files.length === 0 ? (
+        <p className="text-xs text-muted-foreground">{t('noChanges')}</p>
+      ) : null}
       <ul className="flex flex-col gap-1">{main.map(row)}</ul>
       {folded.length > 0 ? (
         <details>
-          <summary className="cursor-pointer text-xs text-muted">
+          <summary className="cursor-pointer text-xs text-muted-foreground">
             {t('generatedGroup', { count: folded.length })}
           </summary>
           <ul className="mt-1 flex flex-col gap-1">{folded.map(row)}</ul>
         </details>
       ) : null}
-      <p className="text-xs text-muted">{t('ignoredNote')}</p>
+      <p className="text-xs text-muted-foreground">{t('ignoredNote')}</p>
     </div>
   );
 }

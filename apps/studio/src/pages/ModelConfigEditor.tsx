@@ -5,8 +5,8 @@ import {
   type ModelConfig,
   type ProfileConfig,
 } from '@corral/client';
+import { Button, Select } from '@corral/react/design-kit';
 import { X } from '@corral/react/icons';
-import { Button, Select } from '@corral/react/ui';
 import { useEffect, useId, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
@@ -169,12 +169,14 @@ export function ModelConfigEditor({
       <h3 id={headingId} className="text-sm font-semibold">
         {t('heading')}
       </h3>
-      {config.usingDefaults ? <p className="text-xs text-muted">{t('usingDefaults')}</p> : null}
+      {config.usingDefaults ? (
+        <p className="text-xs text-muted-foreground">{t('usingDefaults')}</p>
+      ) : null}
 
       <fieldset disabled={saving} className="flex flex-col gap-2">
         <legend className="text-sm font-medium">{t('profiles')}</legend>
-        <p className="text-xs text-muted">{t('profilesHint')}</p>
-        <p className="text-xs text-muted">{t('isolationHint')}</p>
+        <p className="text-xs text-muted-foreground">{t('profilesHint')}</p>
+        <p className="text-xs text-muted-foreground">{t('isolationHint')}</p>
         {profiles.map((profile, index) => {
           const provider = choices.find((c) => c.id === profile.provider);
           const known = provider?.models.some((m) => m.id === profile.model);
@@ -183,7 +185,7 @@ export function ModelConfigEditor({
             <div key={profile.uid} className="flex flex-wrap items-center gap-3">
               {/* Persistent field titles: the accessible names stay on the controls (#75). */}
               <div className="flex flex-col gap-1">
-                <span aria-hidden="true" className="text-2xs text-muted">
+                <span aria-hidden="true" className="text-2xs text-muted-foreground">
                   {t('fieldName')}
                 </span>
                 <input
@@ -195,7 +197,7 @@ export function ModelConfigEditor({
                 />
               </div>
               <div className="flex flex-col gap-1">
-                <span aria-hidden="true" className="text-2xs text-muted">
+                <span aria-hidden="true" className="text-2xs text-muted-foreground">
                   {t('fieldProvider')}
                 </span>
                 <Select
@@ -214,7 +216,7 @@ export function ModelConfigEditor({
                 />
               </div>
               <div className="flex min-w-0 flex-1 flex-col gap-1">
-                <span aria-hidden="true" className="text-2xs text-muted">
+                <span aria-hidden="true" className="text-2xs text-muted-foreground">
                   {t('fieldModel')}
                 </span>
                 <Select
@@ -246,8 +248,8 @@ export function ModelConfigEditor({
                 {t('isolateProfile', { profile: label })}
               </label>
               <Button
-                variant="outline"
-                size="sm"
+                variant="tertiary"
+                size="compact"
                 type="button"
                 aria-label={t('removeProfile', { profile: label })}
                 onClick={() => setProfiles(profiles.filter((_, i) => i !== index))}
@@ -280,15 +282,17 @@ export function ModelConfigEditor({
                     ) : null}
                   </>
                 ) : (
-                  <p className="text-xs text-muted">{previewError ?? t('previewPending')}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {previewError ?? t('previewPending')}
+                  </p>
                 )}
               </div>
             </div>
           );
         })}
         <Button
-          variant="outline"
-          size="sm"
+          variant="tertiary"
+          size="compact"
           type="button"
           onClick={() =>
             setProfiles([
@@ -312,7 +316,7 @@ export function ModelConfigEditor({
 
       <fieldset disabled={saving} className="flex flex-col gap-2">
         <legend className="text-sm font-medium">{t('endpoints')}</legend>
-        <p className="text-xs text-muted">{t('endpointsHint')}</p>
+        <p className="text-xs text-muted-foreground">{t('endpointsHint')}</p>
         {endpoints.map((endpoint, index) => {
           const n = index + 1;
           return (
@@ -326,7 +330,7 @@ export function ModelConfigEditor({
                   onChange={(e) => setEndpoint(index, { id: e.target.value })}
                   className={`${field} font-mono`}
                 />
-                <span className="text-muted">{t('endpointIdHint')}</span>
+                <span className="text-muted-foreground">{t('endpointIdHint')}</span>
               </label>
               <label className="flex flex-col gap-1 text-xs">
                 <span>{t('endpointName', { n })}</span>
@@ -337,7 +341,7 @@ export function ModelConfigEditor({
                   onChange={(e) => setEndpoint(index, { name: e.target.value })}
                   className={field}
                 />
-                <span className="text-muted">{t('endpointNameHint')}</span>
+                <span className="text-muted-foreground">{t('endpointNameHint')}</span>
               </label>
               <label className="flex flex-col gap-1 text-xs sm:col-span-2">
                 <span>{t('endpointAddress', { n })}</span>
@@ -364,8 +368,8 @@ export function ModelConfigEditor({
                 />
               </div>
               <Button
-                variant="outline"
-                size="sm"
+                variant="tertiary"
+                size="compact"
                 type="button"
                 onClick={() => {
                   setEndpointKeys((keys) => {
@@ -382,8 +386,8 @@ export function ModelConfigEditor({
               {endpoint.access === 'api_key' && keyedOnCard.current.has(endpoint.id.trim()) ? (
                 <div className="flex flex-col items-start gap-1 sm:col-span-2">
                   <Button
-                    variant="outline"
-                    size="sm"
+                    variant="tertiary"
+                    size="compact"
                     type="button"
                     onClick={() => {
                       const card = document.querySelector<HTMLElement>(
@@ -405,7 +409,7 @@ export function ModelConfigEditor({
                       setEndpointKeys((keys) => ({ ...keys, [endpoint.uid]: value }))
                     }
                   />
-                  <p className="text-xs text-muted">{t('endpointKeyHint')}</p>
+                  <p className="text-xs text-muted-foreground">{t('endpointKeyHint')}</p>
                 </div>
               ) : null}
               <label className="flex flex-col gap-1 text-xs sm:col-span-2">
@@ -421,8 +425,8 @@ export function ModelConfigEditor({
           );
         })}
         <Button
-          variant="outline"
-          size="sm"
+          variant="tertiary"
+          size="compact"
           type="button"
           onClick={() =>
             setEndpoints([
@@ -456,8 +460,8 @@ export function ModelConfigEditor({
       ) : null}
       <div className="flex justify-end gap-2">
         <Button
-          variant="outline"
-          size="sm"
+          variant="tertiary"
+          size="compact"
           type="button"
           onClick={onDone}
           disabled={saving}

@@ -85,7 +85,7 @@ export function ExecutionEvidence({
                 {op.state === 'uncertain' ? (
                   <span className="shrink-0 text-warning">{t('uncertainWrite')}</span>
                 ) : op.state !== 'applied' ? (
-                  <span className="shrink-0 text-muted">{op.state}</span>
+                  <span className="shrink-0 text-muted-foreground">{op.state}</span>
                 ) : null}
               </li>
             ))}

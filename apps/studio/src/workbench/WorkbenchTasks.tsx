@@ -1,6 +1,6 @@
 import type { TaskCandidates, UserTaskView } from '@corral/client';
+import { Button } from '@corral/react/design-kit';
 import { Play, Square } from '@corral/react/icons';
-import { Button } from '@corral/react/ui';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
@@ -184,14 +184,18 @@ function Tasks({ sessionId, projectId }: { sessionId: string; projectId: string 
                   className={`flex min-w-0 flex-1 items-baseline gap-2 rounded px-1 py-1 text-left text-xs hover:bg-raised disabled:hover:bg-transparent ${last && last.operationId === selected ? 'bg-sidebar-selected' : ''}`}
                 >
                   <span className="shrink-0 font-mono">{script.name}</span>
-                  <span className="min-w-0 flex-1 truncate text-muted">{script.command}</span>
+                  <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                    {script.command}
+                  </span>
                   {last ? (
-                    <span className="shrink-0 text-muted">{t(`state.${last.state}`)}</span>
+                    <span className="shrink-0 text-muted-foreground">
+                      {t(`state.${last.state}`)}
+                    </span>
                   ) : null}
                 </button>
                 {live ? (
                   <Button
-                    size="icon-xs"
+                    size="icon-compact"
                     variant="ghost"
                     aria-label={t('stop', { script: script.name })}
                     disabled={pending !== null || live.state !== 'running'}
@@ -201,7 +205,7 @@ function Tasks({ sessionId, projectId }: { sessionId: string; projectId: string 
                   </Button>
                 ) : (
                   <Button
-                    size="icon-xs"
+                    size="icon-compact"
                     variant="ghost"
                     aria-label={t('run', { script: script.name })}
                     disabled={pending !== null}
@@ -215,7 +219,7 @@ function Tasks({ sessionId, projectId }: { sessionId: string; projectId: string 
           })}
         </ul>
       ) : (
-        <p className="text-xs text-muted">{t('empty')}</p>
+        <p className="text-xs text-muted-foreground">{t('empty')}</p>
       )}
       {current ? (
         <pre

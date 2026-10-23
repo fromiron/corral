@@ -1,6 +1,14 @@
 import type { DragEvent } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStudioStores } from '../context.tsx';
+import {
+  KitButton as Button,
+  KitCard as Card,
+  KitCardDescription as CardDescription,
+  KitCardFooter as CardFooter,
+  KitCardHeader as CardHeader,
+  KitCardTitle as CardTitle,
+} from '../design-kit/index.ts';
 import type { EditorNodeType } from '../editor/model.ts';
 import { NODE_DRAG_TYPE } from './CorralCanvas.tsx';
 
@@ -24,10 +32,10 @@ export function NodePalette() {
 
   return (
     <section aria-labelledby="palette-heading" className="flex flex-col gap-2">
-      <h2 id="palette-heading" className="text-sm font-semibold">
+      <h2 id="palette-heading" className="text-subtitle">
         {t('heading')}
       </h2>
-      <p className="text-xs text-muted">{t('hint')}</p>
+      <p className="text-caption text-muted-foreground">{t('hint')}</p>
       <ul className="flex flex-col gap-2">
         {KINDS.map((kind) => (
           <li
@@ -35,17 +43,19 @@ export function NodePalette() {
             draggable
             onDragStart={(event) => onDragStart(event, kind)}
             data-palette-item={kind}
-            className="cursor-grab rounded-lg fill-group p-2 active:cursor-grabbing"
+            className="cursor-grab active:cursor-grabbing"
           >
-            <div className="text-sm font-medium">{t(kind)}</div>
-            <div className="text-xs text-muted">{t(`${kind}Description`)}</div>
-            <button
-              type="button"
-              onClick={() => add(kind)}
-              className="mt-2 rounded-md fill-control px-2 py-1 text-xs hover:bg-subtle"
-            >
-              {t('add', { kind: t(kind) })}
-            </button>
+            <Card>
+              <CardHeader>
+                <CardTitle>{t(kind)}</CardTitle>
+                <CardDescription>{t(`${kind}Description`)}</CardDescription>
+              </CardHeader>
+              <CardFooter>
+                <Button variant="tertiary" onClick={() => add(kind)}>
+                  {t('add', { kind: t(kind) })}
+                </Button>
+              </CardFooter>
+            </Card>
           </li>
         ))}
       </ul>

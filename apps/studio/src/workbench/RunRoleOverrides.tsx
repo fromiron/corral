@@ -1,6 +1,6 @@
 import type { RoleRunOverrides } from '@corral/contracts';
 import { ReasoningSelect } from '@corral/react';
-import { Select } from '@corral/react/ui';
+import { Select } from '@corral/react/design-kit';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import type { ProfileInfo, RoleModel } from './useModels.ts';
@@ -68,7 +68,7 @@ export function RunRoleOverrides({
                     update(next);
                   }}
                 />
-                <span className="text-muted">
+                <span className="text-muted-foreground">
                   {t('saved')}:{' '}
                   {role.reasoning?.mode === 'fixed'
                     ? role.reasoning.level

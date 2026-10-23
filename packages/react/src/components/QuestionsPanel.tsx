@@ -1,5 +1,6 @@
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
+import { Button } from '../design-kit/index.ts';
 import type { RunSessionStore } from '../run/session.ts';
 import { SafeMarkdown } from './SafeMarkdown.tsx';
 import { StatusBadge } from './StatusBadge.tsx';
@@ -38,20 +39,22 @@ export function QuestionsPanel({
               ?.executionId;
           const versions = (ids: string[]) =>
             ids.map((id) => (
-              <button
+              <Button
                 key={id}
                 type="button"
                 onClick={() => onOpenArtifact(id)}
-                className="rounded fill-control px-1 font-mono text-xs"
+                variant="ghost"
+                size="compact"
+                className="font-mono"
               >
                 {id}
-              </button>
+              </Button>
             ));
           return (
             <li
               key={question.questionId}
               data-testid={`question-${question.questionId}`}
-              className="flex flex-col gap-1 rounded-md fill-group p-2 text-xs"
+              className="flex flex-col gap-2 border-b border-border py-3 text-xs last:border-0"
             >
               <div className="flex flex-wrap items-center gap-2">
                 <a
@@ -72,21 +75,21 @@ export function QuestionsPanel({
               </div>
               <p className="whitespace-pre-wrap">{question.body}</p>
               {question.artifactRefs.length > 0 ? (
-                <div className="flex flex-wrap items-center gap-1 text-muted">
+                <div className="flex flex-wrap items-center gap-1 text-muted-foreground">
                   {t('about')} {versions(question.artifactRefs)}
                 </div>
               ) : null}
               {question.answer ? (
-                <div className="rounded fill-group p-2">
+                <div className="border-l border-border pl-3">
                   <SafeMarkdown text={question.answer.body} />
                   {question.answer.evidenceRefs.length > 0 ? (
-                    <div className="mt-1 flex flex-wrap items-center gap-1 text-muted">
+                    <div className="mt-1 flex flex-wrap items-center gap-1 text-muted-foreground">
                       {t('evidence')} {versions(question.answer.evidenceRefs)}
                     </div>
                   ) : null}
                 </div>
               ) : question.status === 'open' ? (
-                <p className="text-muted">
+                <p className="text-muted-foreground">
                   {projection.status === 'paused' || projection.status === 'pausing'
                     ? t('paused')
                     : t('waiting', { deadline: question.deadline })}

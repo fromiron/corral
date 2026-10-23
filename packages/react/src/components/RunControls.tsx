@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { useStudioStores } from '../context.tsx';
+import { Button, Select } from '../design-kit/index.ts';
 import { compileDraft } from '../editor/model.ts';
 import type { SavedRevision } from '../run/session.ts';
 
@@ -81,54 +82,53 @@ export function RunControls({
         <h2 id="run-heading" className="text-sm font-semibold">
           {t('heading')}
         </h2>
-        <button
+        <Button
           type="button"
           onClick={start}
           disabled={!compiled.runnable || running || starting || unavailable || startDisabled}
-          className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent disabled:opacity-50"
+          variant="primary"
+          size="compact"
         >
           {starting ? t('starting') : t('start')}
-        </button>
+        </Button>
       </div>
       {/* What a test run creates, before it starts (#77 GA-03). */}
-      <p data-testid="run-scope" className="text-xs text-muted">
+      <p data-testid="run-scope" className="text-xs text-muted-foreground">
         {t(beforeStart ? 'scopeSaved' : 'scopeDraft')}
       </p>
       {startFrom ? (
         <div
           data-testid="start-from"
-          className="flex flex-wrap items-center justify-between gap-2 rounded border border-accent/50 bg-accent/10 px-2 py-1 text-xs"
+          className="flex flex-wrap items-center justify-between gap-2 rounded border border-primary/50 bg-primary/10 px-2 py-1 text-xs"
         >
           <span>{t('startFrom', { label: startFrom.label, runId: startFrom.runId })}</span>
-          <button
-            type="button"
-            onClick={onClearStartFrom}
-            className="rounded fill-control px-1.5 py-0.5"
-          >
+          <Button type="button" onClick={onClearStartFrom} variant="ghost" size="compact">
             {t('clearStartFrom')}
-          </button>
+          </Button>
         </div>
       ) : null}
       {liveAvailable || mode === 'live' ? (
-        <label className="flex items-center gap-2 text-xs">
-          <span className="text-muted">{t('agents')}</span>
-          <select
+        <div className="flex items-center gap-2 text-xs">
+          <span className="text-muted-foreground">{t('agents')}</span>
+          <Select
+            label={t('agents')}
             value={mode}
-            onChange={(e) => setMode(e.target.value as 'mock' | 'live')}
-            className="rounded fill-control px-1 py-0.5"
-          >
-            <option value="mock">{t('modeMock')}</option>
-            <option value="live">{t('modeLive')}</option>
-          </select>
-        </label>
+            onValueChange={setMode}
+            size="xs"
+            options={[
+              { value: 'mock', label: t('modeMock') },
+              { value: 'live', label: t('modeLive') },
+            ]}
+          />
+        </div>
       ) : null}
       {unavailable ? (
-        <p role="alert" className="text-xs text-muted">
+        <p role="alert" className="text-xs text-muted-foreground">
           {t('liveUnavailable')}
         </p>
       ) : null}
       {!compiled.runnable ? (
-        <p className="text-xs text-muted">
+        <p className="text-xs text-muted-foreground">
           {compiled.definition ? t('notRunnableHere') : t('notRunnable')}
         </p>
       ) : null}

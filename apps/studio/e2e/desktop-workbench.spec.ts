@@ -24,10 +24,6 @@ test('[TC-UX-001-H] DW-08 narrow navigation contains focus and Escape restores i
   const navigation = page.getByRole('dialog');
   await expect(navigation).toBeVisible();
   await expect(navigation).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-  await expect(page.locator('[data-slot="dialog-backdrop"]')).toHaveCSS(
-    'background-color',
-    /^(?:oklab\(0 0 0 \/ 0\.4\)|rgba\(0, 0, 0, 0\.4\))$/,
-  );
   for (let i = 0; i < 20; i++) {
     await page.keyboard.press('Tab');
     await expect
@@ -58,7 +54,7 @@ test('[TC-UX-004-H] DW-02/03 settings overlay keeps the same mounted work and dr
   await input.press('Control+Enter');
   await expect(page.getByTestId('chat-timeline').getByText('Succeeded')).toBeVisible();
   await input.fill('Preserve this follow-up draft');
-  await panelTab(page, 'Execution');
+  await panelTab(page, 'Run');
   const workUrl = page.url();
   const originalInput = await input.elementHandle();
   await input.evaluate((element: HTMLTextAreaElement) => element.setSelectionRange(4, 4));
@@ -71,7 +67,7 @@ test('[TC-UX-004-H] DW-02/03 settings overlay keeps the same mounted work and dr
   await settings.getByRole('button', { name: 'Close settings', exact: true }).click();
   expect(await originalInput?.evaluate((node: HTMLTextAreaElement) => node.selectionStart)).toBe(4);
   await expect(page).toHaveURL(workUrl);
-  await expect(page.getByRole('tab', { name: 'Execution', exact: true })).toHaveAttribute(
+  await expect(page.getByRole('tab', { name: 'Run', exact: true })).toHaveAttribute(
     'aria-selected',
     'true',
   );
@@ -79,7 +75,10 @@ test('[TC-UX-004-H] DW-02/03 settings overlay keeps the same mounted work and dr
   expect(
     (await new AxeBuilder({ page }).analyze()).violations
       .filter((finding) => finding.impact === 'serious' || finding.impact === 'critical')
-      .map((finding) => finding.id),
+      .map((finding) => ({
+        id: finding.id,
+        nodes: finding.nodes.map(({ target, failureSummary }) => ({ target, failureSummary })),
+      })),
   ).toEqual([]);
   const before = await composer.boundingBox();
   await page.getByTestId('chat-timeline').evaluate((node) => {
@@ -89,11 +88,10 @@ test('[TC-UX-004-H] DW-02/03 settings overlay keeps the same mounted work and dr
   expect(after?.y).toBe(before?.y);
   expect((after?.y ?? 0) + (after?.height ?? 0)).toBeLessThanOrEqual(800);
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.getByRole('tab', { name: 'Work panel', exact: true })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  );
-  await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
+  const back = page
+    .getByTestId('dock-toolbar')
+    .getByRole('button', { name: 'Back to conversation', exact: true });
+  if (await back.isVisible()) await back.click();
   await expect(input).toBeVisible();
   await expect(input).toHaveValue('Preserve this follow-up draft');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

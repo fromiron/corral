@@ -33,7 +33,7 @@ function setup() {
 describe('future settings preview (C-035)', () => {
   it('shows spent usage and current → proposed before submitting the reviewed revision', () => {
     const { sendCommand } = setup();
-    fireEvent.click(screen.getByText('Change settings'));
+    fireEvent.click(screen.getByRole('button', { name: 'Change settings' }));
     fireEvent.change(screen.getByLabelText('Proposed value'), { target: { value: '80000' } });
     fireEvent.click(screen.getByRole('button', { name: 'Preview changes' }));
     expect(screen.getByTestId('patch-preview')).toHaveTextContent('64000');
@@ -51,7 +51,7 @@ describe('future settings preview (C-035)', () => {
   });
   it('requires a new preview when another control revision arrives', () => {
     const { session, sendCommand } = setup();
-    fireEvent.click(screen.getByText('Change settings'));
+    fireEvent.click(screen.getByRole('button', { name: 'Change settings' }));
     fireEvent.change(screen.getByLabelText('Proposed value'), { target: { value: '80000' } });
     fireEvent.click(screen.getByRole('button', { name: 'Preview changes' }));
     act(() =>

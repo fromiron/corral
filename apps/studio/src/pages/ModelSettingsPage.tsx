@@ -1,5 +1,5 @@
 import type { ModelProfileView, ProviderAuthView, ReasoningSettings } from '@corral/client';
-import { Button } from '@corral/react/ui';
+import { Button } from '@corral/react/design-kit';
 import { type FormEvent, useEffect, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
@@ -43,12 +43,12 @@ export function ModelSettingsPage() {
           ) : null}
           {loading ? <p role="status">{t('loading')}</p> : null}
           {mode !== 'server' || !models ? (
-            <p className="text-sm text-muted">{t('browserOnly')}</p>
+            <p className="text-sm text-muted-foreground">{t('browserOnly')}</p>
           ) : !live ? (
-            <p className="text-sm text-muted">{t('noLive')}</p>
+            <p className="text-sm text-muted-foreground">{t('noLive')}</p>
           ) : (
             <>
-              <p className="text-sm text-muted">{t('intro')}</p>
+              <p className="text-sm text-muted-foreground">{t('intro')}</p>
               <SectionIndex
                 sections={[
                   { id: 'models-profiles', label: t('profiles') },
@@ -78,8 +78,8 @@ export function ModelSettingsPage() {
                   />
                   {config ? (
                     <Button
-                      variant="outline"
-                      size="sm"
+                      variant="tertiary"
+                      size="compact"
                       type="button"
                       onClick={() => setEditing(true)}
                       className="self-start"
@@ -189,7 +189,7 @@ function ProviderCard({
     <article
       tabIndex={-1}
       aria-label={provider.name}
-      className="settings-surface flex flex-col gap-3 outline-none focus-visible:outline-2 focus-visible:outline-accent"
+      className="settings-surface flex flex-col gap-3 outline-none focus-visible:outline-2 focus-visible:outline-focus-ring"
       data-testid={`provider-${provider.providerId}`}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -197,8 +197,8 @@ function ProviderCard({
         <div className="flex items-center gap-2 text-xs">
           {(provider.method === 'oauth' && !borrowed) || ownKey ? (
             <Button
-              variant="outline"
-              size="sm"
+              variant="tertiary"
+              size="compact"
               type="button"
               disabled={busy}
               onClick={() =>
@@ -211,8 +211,8 @@ function ProviderCard({
           ) : null}
           {provider.methods.oauth && (!provider.signedIn || borrowed) && !login ? (
             <Button
-              variant="outline"
-              size="sm"
+              variant="tertiary"
+              size="compact"
               type="button"
               disabled={busy}
               onClick={() =>
@@ -238,7 +238,9 @@ function ProviderCard({
                 : t('notSignedIn')}
       </p>
       {provider.endpoint ? (
-        <p className="text-xs text-muted">{t('endpoint', { host: provider.endpoint })}</p>
+        <p className="text-xs text-muted-foreground">
+          {t('endpoint', { host: provider.endpoint })}
+        </p>
       ) : null}
       {provider.endpointChanged ? (
         <p role="alert" className="text-xs text-danger">
@@ -246,7 +248,7 @@ function ProviderCard({
         </p>
       ) : null}
       {provider.expiresAt && provider.method === 'oauth' ? (
-        <p className="text-xs text-muted">
+        <p className="text-xs text-muted-foreground">
           {t('expires', {
             time: format.dateTime(new Date(provider.expiresAt), {
               dateStyle: 'medium',
@@ -255,7 +257,7 @@ function ProviderCard({
           })}
         </p>
       ) : null}
-      {borrowed ? <p className="text-xs text-muted">{t('codexHint')}</p> : null}
+      {borrowed ? <p className="text-xs text-muted-foreground">{t('codexHint')}</p> : null}
       {borrowed && !provider.permissionsOk ? (
         <p role="alert" className="text-xs text-danger">
           {t('codexPermissions')}
@@ -266,11 +268,11 @@ function ProviderCard({
         <form onSubmit={saveKey} className="flex flex-col gap-1">
           <div className="flex items-end gap-2">
             <ApiKeyInput value={apiKey} onChange={setApiKey} disabled={busy} />
-            <Button variant="outline" size="sm" type="submit" disabled={busy || !apiKey.trim()}>
+            <Button variant="primary" type="submit" disabled={busy || !apiKey.trim()}>
               {t('saveKey')}
             </Button>
           </div>
-          <p className="text-xs text-muted">{t('keyHint')}</p>
+          <p className="text-xs text-muted-foreground">{t('keyHint')}</p>
         </form>
       ) : null}
 
@@ -290,11 +292,14 @@ function ProviderCard({
               {t('openSignIn')}
             </Button>
           ) : null}
-          <p className="text-xs text-muted">
+          <p className="text-xs text-muted-foreground">
             {login.state === 'exchanging' ? t('exchanging') : t('openHint')}
           </p>
           <form onSubmit={submitRedirect} className="flex flex-col gap-1">
-            <label htmlFor={`redirect-${provider.providerId}`} className="text-xs text-muted">
+            <label
+              htmlFor={`redirect-${provider.providerId}`}
+              className="text-xs text-muted-foreground"
+            >
               {t('pasteLabel')}
             </label>
             <div className="flex gap-2">
@@ -308,8 +313,8 @@ function ProviderCard({
                 className="settings-field min-w-0 flex-1 font-mono"
               />
               <Button
-                variant="outline"
-                size="sm"
+                variant="tertiary"
+                size="compact"
                 type="submit"
                 disabled={busy}
                 className="self-start"
@@ -317,8 +322,8 @@ function ProviderCard({
                 {t('paste')}
               </Button>
               <Button
-                variant="outline"
-                size="sm"
+                variant="tertiary"
+                size="compact"
                 type="button"
                 disabled={busy}
                 onClick={() =>
@@ -336,8 +341,8 @@ function ProviderCard({
         <div role="alert" className="flex items-center gap-2 text-sm text-danger">
           {t('failed', { message: login.error ?? '' })}
           <Button
-            variant="outline"
-            size="sm"
+            variant="tertiary"
+            size="compact"
             type="button"
             disabled={busy}
             onClick={() =>
@@ -391,7 +396,7 @@ function ProfilesTable({
               <div className="flex flex-col items-start gap-1.5 sm:items-end">
                 <p title={t('fileHint')}>{t('notWithSubscription')}</p>
                 {onEdit ? (
-                  <Button variant="outline" size="sm" type="button" onClick={onEdit}>
+                  <Button variant="tertiary" size="compact" type="button" onClick={onEdit}>
                     {t('changeModel')}
                   </Button>
                 ) : null}

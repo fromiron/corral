@@ -108,7 +108,7 @@ export function SessionTabs({ sessions }: { sessions: WorkSession[] }) {
           </a>
           <button
             type="button"
-            className="flex size-6 shrink-0 items-center justify-center rounded text-muted hover:text-text"
+            className="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:text-text"
             aria-label={t('close', { title: tab.title })}
             onClick={() => {
               setStored(tabs.filter((item) => item.sessionId !== tab.sessionId));

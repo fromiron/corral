@@ -1,6 +1,6 @@
 import type { ChangeSetView } from '@corral/client';
+import { Button } from '@corral/react/design-kit';
 import { FileDiff } from '@corral/react/icons';
-import { Button } from '@corral/react/ui';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -38,8 +38,8 @@ export function RunChanges({ sessionId, runId }: { sessionId: string; runId: str
   return (
     <div className="flex flex-wrap items-center gap-2 text-xs">
       <Button
-        variant="outline"
-        size="xs"
+        variant="tertiary"
+        size="compact"
         data-testid="run-change-summary"
         render={
           <Link
@@ -57,10 +57,10 @@ export function RunChanges({ sessionId, runId }: { sessionId: string; runId: str
             : ts('reviewChanges')}
       </Button>
       {unknown > 0 ? (
-        <span className="text-muted">{t('uncountedChanges', { count: unknown })}</span>
+        <span className="text-muted-foreground">{t('uncountedChanges', { count: unknown })}</span>
       ) : null}
       {error ? (
-        <Button variant="ghost" size="xs" onClick={() => setRetry((value) => value + 1)}>
+        <Button variant="ghost" size="compact" onClick={() => setRetry((value) => value + 1)}>
           {t('retryChanges')}
         </Button>
       ) : null}

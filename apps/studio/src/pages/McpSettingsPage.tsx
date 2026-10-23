@@ -1,7 +1,7 @@
 import type { HarnessApi, McpProbeResult } from '@corral/client';
 import type { ProjectToolConfigRevision, RegisteredMcpServer } from '@corral/contracts';
+import { Button } from '@corral/react/design-kit';
 import { Plus } from '@corral/react/icons';
-import { Button } from '@corral/react/ui';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -112,7 +112,7 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
     <main className="settings-content">
       <div>
         <h2 className="text-2xl font-semibold tracking-tight">{t('mcp')}</h2>
-        <p className="mt-2 text-sm text-muted">{t('mcpIntro')}</p>
+        <p className="mt-2 text-sm text-muted-foreground">{t('mcpIntro')}</p>
       </div>
       <section className="settings-row">
         <div>
@@ -138,7 +138,7 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
       {error ? (
         <p role="alert" className="text-sm text-danger">
           {error}{' '}
-          <Link {...navigation.link('workspace')} className="text-accent">
+          <Link {...navigation.link('workspace')} className="text-primary">
             {h('manageChecks')}
           </Link>
         </p>
@@ -150,7 +150,7 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
               {h('busy')}
             </p>
           ) : !config?.mcpServers?.length ? (
-            <p className="p-5 text-sm text-muted">{t('noServers')}</p>
+            <p className="p-5 text-sm text-muted-foreground">{t('noServers')}</p>
           ) : (
             <ul className="flex flex-col">
               {config.mcpServers
@@ -168,7 +168,7 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
                       className={`flex w-full flex-col gap-2 p-4 text-left hover:bg-surface ${selection === server.id ? 'bg-sidebar-selected' : ''}`}
                     >
                       <span className="font-medium">{server.name}</span>
-                      <span className="text-xs text-muted">
+                      <span className="text-xs text-muted-foreground">
                         {server.transport === 'http' ? 'HTTP' : h('mcpStdio')} ·{' '}
                         {t(server.enabled === false ? 'disabled' : 'enabled')}
                       </span>
@@ -192,13 +192,13 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button
-                  variant="outline"
+                  variant="tertiary"
                   disabled={busy}
                   onClick={() => setEditor({ server: selected })}
                 >
                   {t('edit')}
                 </Button>
-                <Button variant="outline" render={<Link {...navigation.link('harness')} />}>
+                <Button variant="tertiary" render={<Link {...navigation.link('harness')} />}>
                   {n('connectWorkStyle')}
                 </Button>
               </div>
@@ -206,7 +206,9 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
             <label className="settings-row">
               <span>
                 <span className="text-sm font-medium">{t('enabled')}</span>
-                <span className="mt-1 block text-xs text-muted">{t('mcpEnableHint')}</span>
+                <span className="mt-1 block text-xs text-muted-foreground">
+                  {t('mcpEnableHint')}
+                </span>
               </span>
               <input
                 type="checkbox"
@@ -249,18 +251,18 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
                   })}
                 </h3>
                 {!verified.tools.length ? (
-                  <p className="text-sm text-muted">{t('probeEmpty')}</p>
+                  <p className="text-sm text-muted-foreground">{t('probeEmpty')}</p>
                 ) : (
                   <ul className="flex flex-col gap-2 text-sm">
                     {verified.tools.map((tool) => (
                       <li key={tool.name}>
                         {tool.title}
-                        <p className="text-xs text-muted">{tool.description}</p>
+                        <p className="text-xs text-muted-foreground">{tool.description}</p>
                       </li>
                     ))}
                   </ul>
                 )}
-                <p className="text-xs text-muted">{t('toolDiscoveryHint')}</p>
+                <p className="text-xs text-muted-foreground">{t('toolDiscoveryHint')}</p>
               </section>
             ) : null}
             <section className="settings-row">
@@ -268,7 +270,7 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
                 <h3>{t('remove')}</h3>
               </div>
               <Button
-                variant="outline"
+                variant="tertiary"
                 disabled={busy}
                 onClick={() => {
                   confirmation.request(
@@ -285,14 +287,14 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
             </section>
           </section>
         ) : (
-          <p className="text-sm text-muted">{t('selectItem')}</p>
+          <p className="text-sm text-muted-foreground">{t('selectItem')}</p>
         )}
       </div>
       {history.length ? (
         <section className="flex flex-col gap-3">
           <div>
             <h3 className="text-sm font-medium">{t('removedServers')}</h3>
-            <p className="mt-1 text-xs text-muted">{t('mcpRestored')}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{t('mcpRestored')}</p>
           </div>
           <ul className="flex flex-col gap-3">
             {history.map((item) => (
@@ -306,7 +308,7 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
                 <div className="flex gap-2">
                   {item.canRestore ? (
                     <Button
-                      variant="outline"
+                      variant="tertiary"
                       disabled={busy}
                       onClick={() =>
                         void work(() =>

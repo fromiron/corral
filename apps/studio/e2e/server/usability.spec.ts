@@ -28,7 +28,7 @@ test('[WBTST-004] UX-015-01 new-session drafts survive team setup and become an 
   corral,
 }) => {
   await corral.open('/');
-  await page.getByText('Session details (optional)', { exact: true }).click();
+  await page.getByRole('button', { name: /^Session details \(optional\)/ }).click();
   await page.getByLabel('Purpose').fill('Keep this purpose through team setup');
   await page.getByRole('tab', { name: /^Teams/ }).click();
   await page
@@ -39,7 +39,7 @@ test('[WBTST-004] UX-015-01 new-session drafts survive team setup and become an 
   await expect(page).toHaveURL(/\/edit$/);
   await page.goBack();
   if (!(await page.getByLabel('Purpose').isVisible()))
-    await page.getByText('Session details (optional)', { exact: true }).click();
+    await page.getByRole('button', { name: /^Session details \(optional\)/ }).click();
   await expect(page.getByLabel('Purpose')).toHaveValue('Keep this purpose through team setup');
   let release!: () => void,
     entered!: () => void,

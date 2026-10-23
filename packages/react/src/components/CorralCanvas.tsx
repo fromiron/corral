@@ -382,7 +382,7 @@ export function CorralCanvas({ onNodeSelect }: { onNodeSelect?: () => void } = {
         </p>
       ) : null}
       {definition.nodes.length === 0 ? (
-        <p className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-muted">
+        <p className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
           {t('empty')}
         </p>
       ) : null}

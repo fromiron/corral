@@ -1,18 +1,40 @@
 import type { CorralSummary, ProjectSummary, RunSummary, WorkSession } from '@corral/core';
 import { StatusDot } from '@corral/react';
 import {
+  Button,
+  Sidebar as KitSidebar,
+  Menu,
+  MenuItem,
+  MenuPopup,
+  MenuTrigger,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuAction,
+  SidebarMenuActions,
+  SidebarMenuBadge,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarSearchField,
+  Tooltip,
+  WorkspaceTile,
+} from '@corral/react/design-kit';
+import {
   ChevronDown,
+  Clock3,
   Ellipsis,
+  Folder,
   FolderPlus,
   Inbox,
   PanelLeft,
   Pin,
-  Search,
   Settings,
   SquarePen,
   TextSearch,
 } from '@corral/react/icons';
-import { Button, Menu, MenuItem, MenuPopup, MenuTrigger, Tooltip } from '@corral/react/ui';
 import { Link, useNavigate, useRouter, useRouterState } from '@tanstack/react-router';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -291,314 +313,351 @@ export const Sidebar = memo(function Sidebar({
   };
 
   return (
-    <div data-testid="app-sidebar" className="flex h-full min-h-0 flex-col bg-sidebar text-sm">
-      <div className="flex h-[52px] shrink-0 items-center gap-1 px-3">
-        <Link
-          to="/"
-          aria-label={studio('nav')}
-          className="mr-auto flex items-center gap-2 px-1 font-semibold tracking-tight"
-        >
-          <span className="corral-mark">c</span>Corral
-        </Link>
-        <Tooltip content={tw('newSession')} shortcut={shortcutLabel('session.new')}>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={tw('newSession')}
-            render={
-              <Link
-                to="/projects/$projectId"
-                params={{ projectId: model.current }}
-                search={{ newSession: true }}
-              />
-            }
-          >
-            <SquarePen />
-          </Button>
-        </Tooltip>
-        <Tooltip content={tw('collapseSidebar')} shortcut={shortcutLabel('view.sidebar')}>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={tw('collapseSidebar')}
-            onClick={() => changePreferences({ sidebarOpen: false })}
-          >
-            <PanelLeft />
-          </Button>
-        </Tooltip>
-      </div>
-      <div className="px-3 pb-2">
-        {/* One entry for finding sessions (#92): the field filters titles as you type; its
-            trailing button or Enter carries the same text into the full search. */}
-        <div
-          data-testid="session-search-field"
-          className="flex h-8 items-center gap-2 rounded-md pr-0.5 pl-2 text-muted focus-within:bg-raised focus-within:ring-1 focus-within:ring-line"
-        >
-          <Search size={14} aria-hidden="true" />
-          <input
-            type="search"
-            aria-label={tw('searchSessions')}
-            placeholder={tw('searchSessions')}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (mode === 'server' && e.key === 'Enter' && !e.nativeEvent.isComposing)
-                setSearchOpen(true);
-            }}
-            className="min-w-0 flex-1 bg-transparent text-ui text-text outline-none placeholder:text-muted"
-          />
-          {mode === 'server' ? (
-            <Tooltip content={searchText('title')}>
-              <Button
-                variant="ghost-muted"
-                size="icon-xs"
-                aria-label={searchText('title')}
-                onClick={() => setSearchOpen(true)}
-              >
-                <TextSearch />
-              </Button>
-            </Tooltip>
-          ) : null}
-        </div>
-      </div>
-      {mode === 'server' ? (
-        <SessionSearchDialog open={searchOpen} onOpenChange={setSearchOpen} initialQuery={query} />
-      ) : null}
-      {model.inbox > 0 ? (
-        <Link
-          to="/projects/$projectId"
-          params={{ projectId: model.current }}
-          className="mx-3 mb-1 flex h-8 items-center gap-2 rounded-md px-2 text-ui text-warning hover:bg-warning/10"
-        >
-          <Inbox size={14} />
-          {tw('needsYou', { count: model.inbox })}
-        </Link>
-      ) : null}
-      <div className="flex flex-col gap-1 px-3 pt-2 pb-1 text-ui text-muted">
-        <Link
-          to="/schedules"
-          className="flex min-h-8 items-center rounded-md px-2 hover:bg-sidebar-accent hover:text-text"
-        >
-          {t('schedules')}
-        </Link>
-        <div className="flex items-center gap-1">
-          <Link
-            to="/projects"
-            className="flex min-h-8 flex-1 items-center rounded-md px-2 hover:bg-sidebar-accent hover:text-text"
-          >
-            {tw('allProjects')}
-          </Link>
-          <Tooltip content={t('newProject')}>
-            <Button
-              variant="ghost-muted"
-              size="icon-xs"
-              aria-label={t('newProject')}
-              render={<Link to="/projects" />}
-            >
-              <FolderPlus />
-            </Button>
-          </Tooltip>
-        </div>
-      </div>
-      {model.error ? (
-        <p role="alert" className="px-5 py-1 text-xs text-danger">
-          {model.error}
-        </p>
-      ) : null}
-      <nav
-        ref={scroll}
-        aria-label={tw('sidebar')}
-        className="min-h-0 flex-1 overflow-y-auto px-2"
-        onKeyDown={(event) => {
-          if (
-            !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key) ||
-            !(event.target instanceof HTMLElement)
-          )
-            return;
-          const current = event.target.closest<HTMLElement>('[data-sidebar-index]');
-          if (!current) return;
-          let index = Number(current.dataset.sidebarIndex) + (event.key === 'ArrowDown' ? 1 : -1);
-          if (event.key === 'Home') index = 0;
-          if (event.key === 'End') index = rows.length - 1;
-          const step = event.key === 'ArrowUp' || event.key === 'End' ? -1 : 1;
-          while (rows[index]?.kind === 'empty') index += step;
-          if (!rows[index]) return;
-          event.preventDefault();
-          virtual.scrollToIndex(index, { align: 'auto' });
-          requestAnimationFrame(() =>
-            scroll.current
-              ?.querySelector<HTMLElement>(`[data-sidebar-index="${index}"] a`)
-              ?.focus(),
-          );
-        }}
+    <SidebarProvider
+      persist={false}
+      shortcut={null}
+      mobileBreakpoint={0}
+      width="100%"
+      className="h-full min-h-0"
+    >
+      <KitSidebar
+        data-testid="app-sidebar"
+        collapsible="none"
+        rail={false}
+        bordered={false}
+        className="h-full min-h-0"
       >
-        <div style={{ height: virtual.getTotalSize(), position: 'relative' }}>
-          {virtual.getVirtualItems().map((item) => {
-            const row = rows[item.index];
-            if (!row) return null;
-            const position = {
-              position: 'absolute' as const,
-              top: item.start,
-              left: 0,
-              width: '100%',
-              height: item.size,
-            };
-            if (row.kind === 'empty')
-              return (
-                <p key={item.key} style={position} className="px-8 py-2 text-xs text-muted">
-                  {tw('noSessions')}
-                </p>
-              );
-            if (row.kind === 'project') {
-              const project = row.project;
-              const folded = !needle && collapsed?.[project.projectId] === true;
-              return (
-                <div
-                  key={item.key}
-                  data-sidebar-index={item.index}
-                  style={position}
-                  className="flex items-center gap-0.5 px-1 pt-1 text-ui font-medium text-muted"
-                >
-                  <Button
-                    variant="ghost-muted"
-                    size="icon-xs"
-                    aria-label={t('toggleProject', {
-                      name: projectName(project, tp('defaultName')),
-                    })}
-                    aria-expanded={!folded}
-                    onClick={() => setCollapsed({ ...collapsed, [project.projectId]: !folded })}
-                  >
-                    <ChevronDown className={`transition-transform ${folded ? '-rotate-90' : ''}`} />
-                  </Button>
-                  <Link
-                    to="/projects/$projectId"
-                    params={{ projectId: project.projectId }}
-                    className="flex min-w-0 flex-1 items-center rounded-md py-1 hover:text-text"
-                  >
-                    <span className="truncate">{projectName(project, tp('defaultName'))}</span>
-                  </Link>
-                </div>
-              );
-            }
-            const session = row.session;
-            const active = path.startsWith(`/sessions/${session.sessionId}`);
-            const run = model.runs.find((r) => r.sessionId === session.sessionId);
-            const working = Boolean(run && !ENDED.has(run.status));
-            // Only what needs attention shows a dot: working, waiting for a person, or failed.
-            const flagged = run && (working || run.status === 'failed');
-            return (
-              <div
-                key={item.key}
-                data-sidebar-index={item.index}
-                style={position}
-                className="group/sidebar-row relative py-px"
-              >
-                <Link
-                  to="/sessions/$sessionId"
-                  params={{ sessionId: session.sessionId }}
-                  aria-current={active ? 'page' : undefined}
-                  className={`flex h-8 min-w-0 items-center gap-2 rounded-md pr-2 pl-7 text-ui transition-colors ${active ? 'bg-sidebar-selected font-medium text-text' : 'text-text/85 hover:bg-subtle'}`}
-                >
-                  <span className="min-w-0 flex-1 truncate">{session.title}</span>
-                  {session.pinned ? <Pin size={12} className="shrink-0 text-muted" /> : null}
-                  {flagged ? (
-                    <StatusDot status={run.status} label={status(run.status)} />
-                  ) : (
-                    <span className="shrink-0 text-2xs text-muted group-focus-within/sidebar-row:invisible group-hover/sidebar-row:invisible">
-                      {ago(session.updatedAt)}
-                    </span>
-                  )}
-                </Link>
-                <Menu>
-                  <MenuTrigger
+        <SidebarHeader>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton render={<Link to="/" aria-label={studio('nav')} />}>
+                <WorkspaceTile>c</WorkspaceTile>
+                <span className="truncate text-foreground">Corral</span>
+              </SidebarMenuButton>
+              <SidebarMenuActions>
+                <Tooltip content={tw('newSession')} shortcut={shortcutLabel('session.new')}>
+                  <SidebarMenuAction
+                    aria-label={tw('newSession')}
                     render={
-                      <Button
-                        variant="ghost-muted"
-                        size="icon-xs"
-                        aria-label={t('sessionActions', { title: session.title })}
-                        className="absolute top-1 right-1 opacity-0 group-focus-within/sidebar-row:opacity-100 group-hover/sidebar-row:opacity-100 focus-visible:opacity-100 data-popup-open:opacity-100"
+                      <Link
+                        to="/projects/$projectId"
+                        params={{ projectId: model.current }}
+                        search={{ newSession: true }}
                       />
                     }
                   >
-                    <Ellipsis />
-                  </MenuTrigger>
-                  <MenuPopup align="start" side="right">
-                    <MenuItem onClick={() => setEditing(session)}>{t('rename')}</MenuItem>
-                    <MenuItem
-                      disabled={busy}
-                      onClick={() => void update(session, { pinned: !session.pinned })}
-                    >
-                      {session.pinned ? ts('unpin') : ts('pin')}
-                    </MenuItem>
-                    <MenuItem
-                      disabled={busy || working}
-                      onClick={() => void update(session, { archived: true })}
-                    >
-                      {ts('archive')}
-                    </MenuItem>
-                  </MenuPopup>
-                </Menu>
-              </div>
-            );
-          })}
-        </div>
-        {needle &&
-        !model.sessions.some((s) =>
-          `${s.title}\n${s.objective}`.toLocaleLowerCase().includes(needle),
-        ) ? (
-          <p className="p-3 text-xs text-muted">{t('noMatches')}</p>
+                    <SquarePen />
+                  </SidebarMenuAction>
+                </Tooltip>
+                <Tooltip content={tw('collapseSidebar')} shortcut={shortcutLabel('view.sidebar')}>
+                  <SidebarMenuAction
+                    aria-label={tw('collapseSidebar')}
+                    onClick={() => changePreferences({ sidebarOpen: false })}
+                  >
+                    <PanelLeft />
+                  </SidebarMenuAction>
+                </Tooltip>
+              </SidebarMenuActions>
+            </SidebarMenuItem>
+          </SidebarMenu>
+          <div data-testid="session-search-field" className="relative">
+            <SidebarSearchField
+              type="search"
+              shortcut={null}
+              aria-label={tw('searchSessions')}
+              placeholder={tw('searchSessions')}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (mode === 'server' && e.key === 'Enter' && !e.nativeEvent.isComposing)
+                  setSearchOpen(true);
+              }}
+            />
+            {mode === 'server' ? (
+              <Tooltip content={searchText('title')}>
+                <Button
+                  variant="ghost-muted"
+                  size="icon-compact"
+                  aria-label={searchText('title')}
+                  className="absolute top-1/2 right-1 -translate-y-1/2"
+                  onClick={() => setSearchOpen(true)}
+                >
+                  <TextSearch />
+                </Button>
+              </Tooltip>
+            ) : null}
+          </div>
+        </SidebarHeader>
+        {mode === 'server' ? (
+          <SessionSearchDialog
+            open={searchOpen}
+            onOpenChange={setSearchOpen}
+            initialQuery={query}
+          />
         ) : null}
-      </nav>
-      {error && !editing ? (
-        <p role="alert" className="px-3 text-xs text-danger">
-          {error}
-        </p>
-      ) : null}
-      <div className="flex shrink-0 items-center gap-1 border-t border-line/50 px-2 py-2">
-        <Button
-          variant="ghost-muted"
-          size="sm"
-          className="gap-2"
-          onClick={() => void navigate(settingsNavigation.link('general'))}
-        >
-          <Settings />
-          {t('settings')}
-        </Button>
-        {mode === 'server' && live && connected ? null : (
-          <Tooltip
-            side="top"
-            content={
-              mode === 'server'
-                ? live
-                  ? studio('liveNoModelNote')
-                  : studio('serverNote')
-                : studio('demoNote')
-            }
+        <SidebarGroup className="pt-0">
+          <SidebarMenu>
+            {model.inbox > 0 ? (
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  icon={Inbox}
+                  render={<Link to="/projects/$projectId" params={{ projectId: model.current }} />}
+                >
+                  {tw('needsYou', { count: model.inbox })}
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ) : null}
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                icon={Clock3}
+                isActive={path === '/schedules'}
+                render={<Link to="/schedules" />}
+              >
+                {t('schedules')}
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                icon={Folder}
+                isActive={path === '/projects'}
+                render={<Link to="/projects" />}
+              >
+                {tw('allProjects')}
+              </SidebarMenuButton>
+              <Tooltip content={t('newProject')}>
+                <SidebarMenuAction aria-label={t('newProject')} render={<Link to="/projects" />}>
+                  <FolderPlus />
+                </SidebarMenuAction>
+              </Tooltip>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroup>
+        {model.error ? (
+          <p role="alert" className="px-4 py-1 text-xs text-danger">
+            {model.error}
+          </p>
+        ) : null}
+        <nav aria-label={tw('sidebar')} className="flex min-h-0 flex-1 flex-col">
+          <SidebarContent
+            ref={(node) => {
+              scroll.current =
+                node?.closest<HTMLElement>('[data-slot="scroll-area-viewport"]') ?? null;
+            }}
           >
-            <button
-              type="button"
-              onClick={() =>
-                live && !connected ? void navigate(settingsNavigation.link('models')) : null
+            <SidebarGroup className="pt-0">
+              {/* Whole-list navigation must include rows the virtualizer has not mounted. */}
+              <SidebarMenu
+                style={{ height: virtual.getTotalSize() }}
+                onKeyDown={(event) => {
+                  if (
+                    !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key) ||
+                    !(event.target instanceof HTMLElement)
+                  )
+                    return;
+                  const current = event.target.closest<HTMLElement>('[data-sidebar-index]');
+                  if (!current) return;
+                  let index =
+                    Number(current.dataset.sidebarIndex) + (event.key === 'ArrowDown' ? 1 : -1);
+                  if (event.key === 'Home') index = 0;
+                  if (event.key === 'End') index = rows.length - 1;
+                  const step = event.key === 'ArrowUp' || event.key === 'End' ? -1 : 1;
+                  while (rows[index]?.kind === 'empty') index += step;
+                  if (!rows[index]) return;
+                  event.preventDefault();
+                  virtual.scrollToIndex(index, { align: 'auto' });
+                  requestAnimationFrame(() =>
+                    scroll.current
+                      ?.querySelector<HTMLElement>(`[data-sidebar-index="${index}"] a`)
+                      ?.focus(),
+                  );
+                }}
+              >
+                {virtual.getVirtualItems().map((item) => {
+                  const row = rows[item.index];
+                  if (!row) return null;
+                  const position = {
+                    position: 'absolute' as const,
+                    top: item.start,
+                    left: 0,
+                    width: '100%',
+                    height: item.size,
+                  };
+                  if (row.kind === 'empty')
+                    return (
+                      <li
+                        key={item.key}
+                        style={position}
+                        className="px-8 py-2 text-xs text-muted-foreground"
+                      >
+                        {tw('noSessions')}
+                      </li>
+                    );
+                  if (row.kind === 'project') {
+                    const project = row.project;
+                    const folded = !needle && collapsed?.[project.projectId] === true;
+                    return (
+                      <SidebarMenuItem
+                        key={item.key}
+                        data-sidebar-index={item.index}
+                        style={position}
+                        className="py-px"
+                      >
+                        <SidebarMenuButton
+                          icon={Folder}
+                          isActive={path === `/projects/${project.projectId}`}
+                          render={
+                            <Link
+                              to="/projects/$projectId"
+                              params={{ projectId: project.projectId }}
+                            />
+                          }
+                        >
+                          {projectName(project, tp('defaultName'))}
+                        </SidebarMenuButton>
+                        <SidebarMenuAction
+                          aria-label={t('toggleProject', {
+                            name: projectName(project, tp('defaultName')),
+                          })}
+                          aria-expanded={!folded}
+                          onClick={() =>
+                            setCollapsed({ ...collapsed, [project.projectId]: !folded })
+                          }
+                        >
+                          <ChevronDown className={folded ? '-rotate-90' : undefined} />
+                        </SidebarMenuAction>
+                      </SidebarMenuItem>
+                    );
+                  }
+                  const session = row.session;
+                  const active = path.startsWith(`/sessions/${session.sessionId}`);
+                  const run = model.runs.find((r) => r.sessionId === session.sessionId);
+                  const working = Boolean(run && !ENDED.has(run.status));
+                  // Only what needs attention shows a dot: working, waiting for a person, or failed.
+                  const flagged = run && (working || run.status === 'failed');
+                  return (
+                    <SidebarMenuItem
+                      key={item.key}
+                      data-sidebar-index={item.index}
+                      style={position}
+                      className="py-px"
+                    >
+                      <SidebarMenuButton
+                        isActive={active}
+                        className="pl-8"
+                        render={
+                          <Link
+                            to="/sessions/$sessionId"
+                            params={{ sessionId: session.sessionId }}
+                          />
+                        }
+                      >
+                        {session.title}
+                        <span className="ml-auto flex shrink-0 items-center gap-2">
+                          {session.pinned ? <Pin size={12} /> : null}
+                          {!flagged ? (
+                            <span className="text-2xs group-focus-within/menu-item:invisible group-hover/menu-item:invisible">
+                              {ago(session.updatedAt)}
+                            </span>
+                          ) : null}
+                        </span>
+                      </SidebarMenuButton>
+                      {flagged ? (
+                        <SidebarMenuBadge>
+                          <StatusDot status={run.status} label={status(run.status)} />
+                        </SidebarMenuBadge>
+                      ) : null}
+                      <Menu>
+                        <MenuTrigger
+                          render={
+                            <SidebarMenuAction
+                              showOnHover
+                              aria-label={t('sessionActions', { title: session.title })}
+                            />
+                          }
+                        >
+                          <Ellipsis />
+                        </MenuTrigger>
+                        <MenuPopup align="start" side="right">
+                          <MenuItem onClick={() => setEditing(session)}>{t('rename')}</MenuItem>
+                          <MenuItem
+                            disabled={busy}
+                            onClick={() => void update(session, { pinned: !session.pinned })}
+                          >
+                            {session.pinned ? ts('unpin') : ts('pin')}
+                          </MenuItem>
+                          <MenuItem
+                            disabled={busy || working}
+                            onClick={() => void update(session, { archived: true })}
+                          >
+                            {ts('archive')}
+                          </MenuItem>
+                        </MenuPopup>
+                      </Menu>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroup>
+            {needle &&
+            !model.sessions.some((s) =>
+              `${s.title}\n${s.objective}`.toLocaleLowerCase().includes(needle),
+            ) ? (
+              <p className="p-3 text-xs text-muted-foreground">{t('noMatches')}</p>
+            ) : null}
+          </SidebarContent>
+        </nav>
+        {error && !editing ? (
+          <p role="alert" className="px-3 text-xs text-danger">
+            {error}
+          </p>
+        ) : null}
+        <SidebarFooter>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                icon={Settings}
+                onClick={() => void navigate(settingsNavigation.link('general'))}
+              >
+                {t('settings')}
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+          {mode === 'server' && live && connected ? null : (
+            <Tooltip
+              side="top"
+              content={
+                mode === 'server'
+                  ? live
+                    ? studio('liveNoModelNote')
+                    : studio('serverNote')
+                  : studio('demoNote')
               }
-              className="ml-auto flex items-center gap-1.5 rounded px-1.5 py-1 text-2xs text-muted"
             >
-              <span aria-hidden="true" className="size-1.5 rounded-full bg-warning" />
-              {mode === 'server'
-                ? live
-                  ? studio('liveNoModel')
-                  : studio('serverShort')
-                : studio('demoShort')}
-            </button>
-          </Tooltip>
-        )}
-      </div>
-      <RenameSessionDialog
-        title={editing?.title ?? null}
-        busy={busy}
-        error={editing ? error : null}
-        onSave={(title) => (editing ? update(editing, { title }) : Promise.resolve(false))}
-        onClose={() => setEditing(null)}
-      />
-    </div>
+              <button
+                type="button"
+                onClick={() =>
+                  live && !connected ? void navigate(settingsNavigation.link('models')) : null
+                }
+                className="flex items-center gap-1.5 rounded px-2 py-1 text-2xs text-muted-foreground"
+              >
+                <span aria-hidden="true" className="size-1.5 rounded-full bg-warning" />
+                {mode === 'server'
+                  ? live
+                    ? studio('liveNoModel')
+                    : studio('serverShort')
+                  : studio('demoShort')}
+              </button>
+            </Tooltip>
+          )}
+        </SidebarFooter>
+        <RenameSessionDialog
+          title={editing?.title ?? null}
+          busy={busy}
+          error={editing ? error : null}
+          onSave={(title) => (editing ? update(editing, { title }) : Promise.resolve(false))}
+          onClose={() => setEditing(null)}
+        />
+      </KitSidebar>
+    </SidebarProvider>
   );
 });

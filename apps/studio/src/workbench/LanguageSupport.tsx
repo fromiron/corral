@@ -1,4 +1,4 @@
-import { Button, Select } from '@corral/react/ui';
+import { Button, Select } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -75,7 +75,7 @@ function LanguageControls({
   return (
     <section aria-label={t('label')} className="flex min-w-0 flex-col gap-1.5 text-xs">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-muted">{t('label')}</span>
+        <span className="text-muted-foreground">{t('label')}</span>
         {session ? (
           <>
             <span role="status">
@@ -85,8 +85,8 @@ function LanguageControls({
               {t(session.state)}
             </span>
             <Button
-              size="xs"
-              variant="outline"
+              size="compact"
+              variant="tertiary"
               disabled={copy?.busy}
               onClick={() => void store.stop(target)}
             >
@@ -94,7 +94,7 @@ function LanguageControls({
             </Button>
           </>
         ) : state && !state.available ? (
-          <span className="text-muted">
+          <span className="text-muted-foreground">
             {t(state.unavailableReason === 'platform' ? 'unsupportedPlatform' : 'untrustedCopy')}
           </span>
         ) : servers.length ? (
@@ -108,8 +108,8 @@ function LanguageControls({
               disabled={copy?.busy}
             />
             <Button
-              size="xs"
-              variant="outline"
+              size="compact"
+              variant="tertiary"
               disabled={copy?.busy}
               onClick={() => void store.inspect(target, serverId)}
             >
@@ -117,7 +117,7 @@ function LanguageControls({
             </Button>
             {inspection ? (
               <Button
-                size="xs"
+                size="compact"
                 disabled={copy?.busy}
                 onClick={() => void store.start(target, !inspection.trusted)}
               >
@@ -127,16 +127,16 @@ function LanguageControls({
           </>
         ) : state ? (
           <>
-            <span className="text-muted">{t('noServer')}</span>
+            <span className="text-muted-foreground">{t('noServer')}</span>
             <Link
               {...navigation.link('workspace', target.projectId)}
-              className="text-accent underline"
+              className="text-primary underline"
             >
               {t('settings')}
             </Link>
           </>
         ) : !error ? (
-          <span role="status" className="text-muted">
+          <span role="status" className="text-muted-foreground">
             {t('loading')}
           </span>
         ) : null}
@@ -146,19 +146,19 @@ function LanguageControls({
           <code className="break-all whitespace-pre-wrap">
             {JSON.stringify(inspection.server.argv)}
           </code>
-          <span className="break-all text-muted">
+          <span className="break-all text-muted-foreground">
             {t('fingerprint')}: {inspection.fingerprint}
           </span>
-          {!inspection.trusted ? <p className="text-muted">{t('trustNote')}</p> : null}
+          {!inspection.trusted ? <p className="text-muted-foreground">{t('trustNote')}</p> : null}
         </div>
       ) : null}
       {session?.state === 'running' && session.clientId !== store.clientId ? (
-        <p className="text-muted">{t('otherWindow')}</p>
+        <p className="text-muted-foreground">{t('otherWindow')}</p>
       ) : null}
       {session?.state === 'failed' || session?.state === 'uncertain' ? (
-        <p className="text-muted">{t('recoveryNote')}</p>
+        <p className="text-muted-foreground">{t('recoveryNote')}</p>
       ) : session?.state === 'running' && capabilities ? (
-        <p className="text-muted">
+        <p className="text-muted-foreground">
           {(['completion', 'definition', 'references', 'diagnostics'] as const)
             .filter((capability) => capabilities[capability])
             .map((capability) => t(capability))

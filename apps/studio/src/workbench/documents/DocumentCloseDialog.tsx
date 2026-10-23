@@ -1,4 +1,10 @@
-import { Button, Dialog, DialogDescription, DialogPopup, DialogTitle } from '@corral/react/ui';
+import {
+  Button,
+  Dialog,
+  DialogDescription,
+  DialogPopup,
+  DialogTitle,
+} from '@corral/react/design-kit';
 import type { ComponentProps } from 'react';
 import { useTranslations } from 'use-intl';
 import type { CloseChoice } from './store.ts';
@@ -53,7 +59,7 @@ export function DocumentCloseDialog({
             {t('cancel')}
           </Button>
           <Button
-            variant="outline"
+            variant="tertiary"
             disabled={busy || discardDisabled}
             onClick={() => onChoose('discard')}
           >

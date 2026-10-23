@@ -1,6 +1,15 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
+import {
+  KitAccordion as Accordion,
+  KitAccordionContent as AccordionContent,
+  KitAccordionItem as AccordionItem,
+  KitAccordionTrigger as AccordionTrigger,
+  KitBadge as Badge,
+  KitButton as Button,
+  KitChatMessage as ChatMessage,
+} from '../design-kit/index.ts';
 import type { RunSessionStore } from '../run/session.ts';
 import { buildTranscript, type TranscriptEntry } from '../run/transcript.ts';
 import { ReasoningSummary } from './ReasoningSummary.tsx';
@@ -58,9 +67,9 @@ export function ExecutionTranscript({
         const el = event.currentTarget;
         pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
       }}
-      className="flex min-h-0 flex-col gap-2 overflow-auto rounded-md fill-group p-2 text-xs"
+      className="flex min-h-0 flex-col gap-4 overflow-auto p-4 text-body"
     >
-      {entries.length === 0 ? <p className="text-muted">{t('empty')}</p> : null}
+      {entries.length === 0 ? <p className="text-muted-foreground">{t('empty')}</p> : null}
       {entries.map((entry) => (
         <Entry
           key={`${entry.kind}-${entry.seq}`}
@@ -89,7 +98,7 @@ function Entry({
   switch (entry.kind) {
     case 'started':
       return (
-        <p className="text-center text-muted">
+        <p className="text-center text-caption text-muted-foreground">
           {t('started', { label: labelOf(entry.nodeId) })}
           {entry.round ? ` · ${t('round', { no: entry.round })}` : ''}
           {entry.attemptNo > 1 ? ` · ${t('attempt', { no: entry.attemptNo })}` : ''}
@@ -97,106 +106,103 @@ function Entry({
       );
     case 'instruction':
       return (
-        <div
-          data-testid={`transcript-instruction-${entry.directiveId}`}
-          className="ml-8 self-end rounded-lg border border-accent/50 bg-accent/10 px-2 py-1"
-        >
+        <ChatMessage from="user" data-testid={`transcript-instruction-${entry.directiveId}`}>
           <p className="font-medium">{t('you')}</p>
           <p className="whitespace-pre-wrap">{entry.text}</p>
-          <p className="text-muted">{t(`instruction.${entry.status}`)}</p>
-        </div>
+          <p className="text-muted-foreground">{t(`instruction.${entry.status}`)}</p>
+        </ChatMessage>
       );
     case 'request':
       return (
-        <p className="flex flex-wrap items-center gap-1 text-muted">
+        <p className="flex flex-wrap items-center gap-2 text-caption text-muted-foreground">
           <span>{t('request', { no: entry.no })}</span>
           <ReasoningSummary call={entry} />
           {entry.directives.length > 0 ? (
-            <span className="rounded border border-accent/50 px-1 text-accent">
-              {t('withInstructions', { count: entry.directives.length })}
-            </span>
+            <Badge>{t('withInstructions', { count: entry.directives.length })}</Badge>
           ) : null}
           {entry.effort.map((e) =>
             e.answer ? (
-              <span key={e.provider} className="rounded fill-control px-1">
+              <Badge key={e.provider}>
                 {t('effort', { level: e.answer, provider: e.provider })}
-              </span>
+              </Badge>
             ) : null,
           )}
         </p>
       );
     case 'reply': {
       const body = (
-        <div className="mr-8 rounded-lg fill-control px-2 py-1">
+        <ChatMessage from="assistant">
           {entry.text ? (
             <SafeMarkdown text={entry.text} />
           ) : (
-            <p className="text-muted">{t(entry.live ? 'waiting' : 'emptyReply')}</p>
+            <p className="text-muted-foreground">{t(entry.live ? 'waiting' : 'emptyReply')}</p>
           )}
-          {entry.live ? <p className="text-muted">{t('streaming')}</p> : null}
+          {entry.live ? <p className="text-muted-foreground">{t('streaming')}</p> : null}
           {entry.broken ? <p className="text-warning">{t('gap')}</p> : null}
-        </div>
+        </ChatMessage>
       );
       if (!compact) return body;
       return (
-        <details>
-          <summary className="cursor-pointer text-muted">
-            {t('rawReply', { no: entry.seq })}
-          </summary>
-          {body}
-        </details>
+        <Accordion>
+          <AccordionItem value="reply" highlight="trigger">
+            <AccordionTrigger>{t('rawReply', { no: entry.seq })}</AccordionTrigger>
+            <AccordionContent>{body}</AccordionContent>
+          </AccordionItem>
+        </Accordion>
       );
     }
     case 'tool':
       return (
-        <p className="flex flex-wrap items-center gap-1">
-          <span className="rounded fill-control px-1 font-mono">{entry.name}</span>
+        <p className="flex flex-wrap items-center gap-2 text-caption">
+          <Badge className="font-mono">{entry.name}</Badge>
           <span
             className={
-              entry.status === 'blocked' || entry.status === 'failed' ? 'text-danger' : 'text-muted'
+              entry.status === 'blocked' || entry.status === 'failed'
+                ? 'text-danger'
+                : 'text-muted-foreground'
             }
           >
             {t(`tool.${entry.status}`)}
             {entry.detail ? `: ${entry.detail}` : ''}
           </span>
           {entry.resultRef?.startsWith('artv_') && onOpenArtifact ? (
-            <button
-              type="button"
+            <Button
+              variant="ghost"
               onClick={() => onOpenArtifact(entry.resultRef as string)}
-              className="font-mono underline"
+              className="font-mono"
             >
               {entry.resultRef}
-            </button>
+            </Button>
           ) : null}
         </p>
       );
     case 'question':
       return (
-        <div className="mr-8 rounded-lg fill-control px-2 py-1">
+        <ChatMessage from="assistant">
           <p className="font-medium">{t('asked', { target: labelOf(entry.targetNodeId) })}</p>
           <p className="whitespace-pre-wrap">{entry.body}</p>
           {entry.answer ? (
-            <div className="mt-1 border-l-2 border-accent pl-2">
-              <p className="text-muted">{t('answer')}</p>
+            <div className="mt-4 space-y-2">
+              <p className="text-muted-foreground">{t('answer')}</p>
               <SafeMarkdown text={entry.answer} />
             </div>
           ) : (
-            <p className="text-muted">{t(`question.${entry.status}`)}</p>
+            <p className="text-muted-foreground">{t(`question.${entry.status}`)}</p>
           )}
-        </div>
+        </ChatMessage>
       );
     case 'version':
       return (
-        <p className="text-muted">
+        <p className="text-caption text-muted-foreground">
           {t('wrote', { name: entry.name, version: entry.version })}{' '}
           {onOpenArtifact ? (
-            <button
-              type="button"
+            <Button
+              variant="ghost"
               onClick={() => onOpenArtifact(entry.artifactVersionId)}
-              className="font-mono underline"
+              className="font-mono"
             >
               {entry.artifactVersionId}
-            </button>
+            </Button>
           ) : (
             <span className="font-mono">{entry.artifactVersionId}</span>
           )}
@@ -205,7 +211,7 @@ function Entry({
     case 'settled':
       return (
         <p
-          className={`text-center ${entry.outcome === 'succeeded' ? 'text-success' : 'text-danger'}`}
+          className={`text-center text-caption ${entry.outcome === 'succeeded' ? 'text-success' : 'text-danger'}`}
         >
           {t(`settled.${entry.outcome}`)}
           {entry.error ? `: ${entry.error}` : ''}

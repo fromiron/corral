@@ -1,6 +1,6 @@
 import { pendingInteractions } from '@corral/core';
 import { RunActions, StatusBadge } from '@corral/react';
-import { Button } from '@corral/react/ui';
+import { Button } from '@corral/react/design-kit';
 import { useEffect } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
@@ -35,8 +35,8 @@ export function DockRunControls({
   return (
     <section aria-label={t('activeRun')} className="flex min-w-0 flex-wrap items-center gap-2">
       <Button
-        variant="outline"
-        size="sm"
+        variant="tertiary"
+        size="compact"
         data-testid="dock-open-active-run"
         onClick={() => onOpen(runId)}
       >
@@ -44,12 +44,12 @@ export function DockRunControls({
       </Button>
       {projection ? <StatusBadge status={projection.status} /> : null}
       {request ? (
-        <span className="min-w-0 max-w-64 truncate text-xs text-muted" title={request}>
+        <span className="min-w-0 max-w-64 truncate text-xs text-muted-foreground" title={request}>
           {t('activeRunTarget', { request })}
         </span>
       ) : null}
       {viewingOther ? (
-        <span role="note" className="text-xs text-muted">
+        <span role="note" className="text-xs text-muted-foreground">
           {t('activeRunNotViewed')}
         </span>
       ) : null}

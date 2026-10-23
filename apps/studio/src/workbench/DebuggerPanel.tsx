@@ -18,7 +18,7 @@ export function DebuggerPanel({ sessionId, projectId }: { sessionId: string; pro
     mode !== 'server' ||
     typeof workspaces.debugState !== 'function'
   )
-    return <p className="text-xs text-muted">{t('serverRequired')}</p>;
+    return <p className="text-xs text-muted-foreground">{t('serverRequired')}</p>;
   return (
     <SessionDebugger
       key={canonicalJson([workspaceId, projectId, sessionId])}
@@ -88,13 +88,13 @@ function SessionDebugger({
     );
   if (!loaded)
     return (
-      <p role="status" className="text-xs text-muted">
+      <p role="status" className="text-xs text-muted-foreground">
         {t('loading')}
       </p>
     );
   if (!target)
     return (
-      <p role="status" className="text-xs text-muted">
+      <p role="status" className="text-xs text-muted-foreground">
         {t('noCopy')}
       </p>
     );

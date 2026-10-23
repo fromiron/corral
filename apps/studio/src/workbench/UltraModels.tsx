@@ -1,5 +1,5 @@
 import { UltraSelection, UltraTeamSnapshot } from '@corral/contracts';
-import { Select } from '@corral/react/ui';
+import { Select } from '@corral/react/design-kit';
 import { useTranslations } from 'use-intl';
 import type { ProfileInfo } from './useModels.ts';
 
@@ -94,7 +94,7 @@ export function UltraModels({
       className="flex w-full min-w-0 flex-col gap-2 rounded fill-group p-3 text-xs"
     >
       <legend className="font-medium">{t('ultraModels')}</legend>
-      <p className="text-muted">{t('ultraModelScope')}</p>
+      <p className="text-muted-foreground">{t('ultraModelScope')}</p>
       <div className="flex flex-wrap gap-3">
         {[
           ...(profiles ?? []),
@@ -143,8 +143,8 @@ export function UltraModels({
             .map((id) => ({ value: id, label: labelOf(id) })),
         ]}
       />
-      <p className="text-muted">{t('ultraMaximum')}</p>
-      <p className="text-muted">{t('ultraTournamentScope')}</p>
+      <p className="text-muted-foreground">{t('ultraMaximum')}</p>
+      <p className="text-muted-foreground">{t('ultraTournamentScope')}</p>
       <span>{t('ultraCandidateCount')}</span>
       <Select
         label={t('ultraCandidateCount')}

@@ -1,4 +1,16 @@
 import { DEFAULT_PROJECT_ID, type ProjectSummary } from '@corral/core';
+import {
+  Badge,
+  Button,
+  Card,
+  CardAction,
+  CardDescription,
+  CardGroup,
+  CardHeader,
+  CardTitle,
+  InputField,
+  InputGroup,
+} from '@corral/react/design-kit';
 import { Link, useNavigate, useRouter } from '@tanstack/react-router';
 import { type FormEvent, useState } from 'react';
 import { useFormatter, useNow, useTranslations } from 'use-intl';
@@ -54,99 +66,89 @@ export function ProjectsPage() {
 
   return (
     <main className="mx-auto flex max-w-4xl flex-col gap-4 p-6">
-      <h2 className="text-lg font-semibold">{t('heading')}</h2>
-      <p className="text-sm text-muted">{t('intro')}</p>
+      <h2 className="text-title font-semibold">{t('heading')}</h2>
+      <p className="text-body text-muted-foreground">{t('intro')}</p>
       {mode === 'server' && workspaces ? <GitCloneFolder onSelect={setFolder} /> : null}
-      <form
-        onSubmit={create}
-        aria-label={t('new')}
-        className="flex flex-col gap-3 rounded-md fill-group p-3"
-      >
-        <label className="flex flex-col gap-1 text-xs">
-          {t('nameLabel')}
-          <input
+      <form onSubmit={create} aria-label={t('new')} className="flex flex-col gap-3">
+        <InputGroup className="w-full">
+          <InputField
+            index={0}
+            label={t('nameLabel')}
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={setName}
             maxLength={80}
             required
-            className="rounded fill-control px-2 py-1 text-sm"
           />
-        </label>
-        <label className="flex flex-col gap-1 text-xs">
-          {t('descriptionLabel')}
-          <input
+          <InputField
+            index={1}
+            label={t('descriptionLabel')}
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
+            onChange={setDescription}
             maxLength={500}
-            className="rounded fill-control px-2 py-1 text-sm"
           />
-        </label>
-        {workspaces ? (
-          <div className="flex flex-col gap-1 text-xs">
-            <span id="folder-label">{t('folderOptional')}</span>
-            {mode === 'server' && !desktop ? (
-              <input
-                value={folder}
-                onChange={(e) => setFolder(e.target.value)}
-                spellCheck={false}
-                aria-labelledby="folder-label"
-                aria-describedby="folder-hint"
-                className="rounded fill-control px-2 py-1 font-mono text-sm"
-              />
-            ) : (
-              <div className="flex items-center gap-2 rounded fill-control px-2 py-1 text-sm">
-                <output
-                  className="min-w-0 flex-1 truncate text-muted"
-                  title={mode === 'browser' ? undefined : folder || undefined}
-                  aria-labelledby="folder-label"
-                >
-                  {folder ? (mode === 'browser' ? t('exampleFolder') : folder) : t('noFolder')}
-                </output>
-                {mode === 'browser' && folder ? null : (
-                  <button
-                    type="button"
-                    className="shrink-0 font-medium text-accent"
-                    aria-describedby="folder-hint"
-                    onClick={() => {
-                      if (desktop) {
-                        void desktop.pickFolder().then((chosen) => {
-                          if (chosen) setFolder(chosen);
-                        });
-                        return;
-                      }
-                      setFolder('demo://example-repo');
-                    }}
-                  >
-                    {mode === 'browser' ? t('linkExample') : t('chooseFolder')}
-                  </button>
-                )}
-                {folder ? (
-                  <button
-                    type="button"
-                    className="shrink-0 text-muted"
-                    onClick={() => setFolder('')}
-                  >
-                    {t('clearFolder')}
-                  </button>
-                ) : null}
-              </div>
-            )}
-            <span id="folder-hint" className="text-muted">
-              {t('folderHint')}
-            </span>
-          </div>
-        ) : null}
-        <button
-          type="submit"
-          className="self-start rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent"
-        >
+          {workspaces ? (
+            <div className="flex flex-col gap-1 text-caption">
+              {mode === 'server' && !desktop ? (
+                <InputField
+                  index={2}
+                  label={t('folderOptional')}
+                  value={folder}
+                  onChange={setFolder}
+                  spellCheck={false}
+                  aria-describedby="folder-hint"
+                />
+              ) : (
+                <>
+                  <span id="folder-label">{t('folderOptional')}</span>
+                  <div className="flex min-w-0 items-center gap-2 text-body">
+                    <output
+                      className="min-w-0 flex-1 truncate text-muted-foreground"
+                      title={mode === 'browser' ? undefined : folder || undefined}
+                      aria-labelledby="folder-label"
+                    >
+                      {folder ? (mode === 'browser' ? t('exampleFolder') : folder) : t('noFolder')}
+                    </output>
+                    {mode === 'browser' && folder ? null : (
+                      <Button
+                        type="button"
+                        variant="tertiary"
+                        aria-describedby="folder-hint"
+                        onClick={() => {
+                          if (desktop) {
+                            void desktop.pickFolder().then((chosen) => {
+                              if (chosen) setFolder(chosen);
+                            });
+                            return;
+                          }
+                          setFolder('demo://example-repo');
+                        }}
+                      >
+                        {mode === 'browser' ? t('linkExample') : t('chooseFolder')}
+                      </Button>
+                    )}
+                    {folder ? (
+                      <Button type="button" variant="ghost" onClick={() => setFolder('')}>
+                        {t('clearFolder')}
+                      </Button>
+                    ) : null}
+                  </div>
+                </>
+              )}
+              <span id="folder-hint" className="text-muted-foreground">
+                {t('folderHint')}
+              </span>
+            </div>
+          ) : null}
+        </InputGroup>
+        <Button type="submit" variant="primary" className="self-start">
           {t('create')}
-        </button>
+        </Button>
       </form>
       {mode === 'browser' ? (
         <div className="flex flex-wrap items-center gap-2 text-xs">
-          <button
+          <Button
             type="button"
+            variant="tertiary"
             onClick={async () => {
               const first = await createDemoExamples(repository, workspaces, {
                 projects: [t('exampleProject1'), t('exampleProject2')],
@@ -164,11 +166,10 @@ export function ProjectsPage() {
               if (first)
                 await navigate({ to: '/projects/$projectId', params: { projectId: first } });
             }}
-            className="rounded border border-accent px-2 py-1 text-accent"
           >
             {t('examples')}
-          </button>
-          <span className="text-muted">{t('examplesHint')}</span>
+          </Button>
+          <span className="text-muted-foreground">{t('examplesHint')}</span>
         </div>
       ) : null}
       {error ? (
@@ -176,7 +177,7 @@ export function ProjectsPage() {
           {error}
         </p>
       ) : null}
-      <ul aria-label={t('heading')} className="flex flex-col gap-2">
+      <CardGroup orientation="inline" role="list" aria-label={t('heading')} fluidHover={false}>
         {shown.map((project) => {
           const label = projectName(project, t('defaultName'));
           const corralCount = corrals.filter((c) => c.projectId === project.projectId).length;
@@ -184,59 +185,57 @@ export function ProjectsPage() {
             (r) => projectOfRun(r, corrals) === project.projectId,
           ).length;
           return (
-            <li
+            <Card
               key={project.projectId}
+              role="listitem"
+              selected={project.projectId === current}
               aria-current={project.projectId === current ? 'true' : undefined}
-              className={`flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-raised p-3 ${
-                project.projectId === current ? 'border-accent' : 'border-transparent'
-              }`}
             >
-              <div className="flex min-w-0 flex-col">
-                <Link
-                  to="/projects/$projectId"
-                  params={{ projectId: project.projectId }}
-                  className="font-medium underline-offset-4 hover:underline"
-                >
-                  {label}
-                </Link>
+              <CardHeader className="pr-4">
+                <CardTitle>
+                  <Link
+                    to="/projects/$projectId"
+                    params={{ projectId: project.projectId }}
+                    className="font-medium underline-offset-4 hover:underline"
+                  >
+                    {label}
+                  </Link>
+                </CardTitle>
                 {project.description ? (
-                  <span className="text-xs text-muted">{project.description}</span>
+                  <CardDescription>{project.description}</CardDescription>
                 ) : null}
-                <span className="text-xs text-muted">
+                <CardDescription>
                   {t('counts', { corrals: corralCount, runs: runCount })} ·{' '}
                   {tw('updated', { time: format.relativeTime(new Date(project.updatedAt), now) })}
-                </span>
-              </div>
-              <div className="flex items-center gap-2 text-xs">
-                {project.archivedAt ? (
-                  <span className="rounded-full fill-control px-2 py-0.5 text-muted">
-                    {t('archived')}
-                  </span>
-                ) : null}
-                {project.projectId === DEFAULT_PROJECT_ID ? null : (
-                  <button
-                    type="button"
-                    aria-label={`${project.archivedAt ? t('restore') : t('archive')}: ${label}`}
-                    onClick={() => void setArchived(project, !project.archivedAt)}
-                    className="rounded fill-control px-2 py-1"
-                  >
-                    {project.archivedAt ? t('restore') : t('archive')}
-                  </button>
-                )}
-              </div>
-            </li>
+                </CardDescription>
+                <CardAction className="flex items-center gap-2">
+                  {project.archivedAt ? <Badge variant="secondary">{t('archived')}</Badge> : null}
+                  {project.projectId === DEFAULT_PROJECT_ID ? null : (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      aria-label={`${project.archivedAt ? t('restore') : t('archive')}: ${label}`}
+                      onClick={() => void setArchived(project, !project.archivedAt)}
+                    >
+                      {project.archivedAt ? t('restore') : t('archive')}
+                    </Button>
+                  )}
+                </CardAction>
+              </CardHeader>
+            </Card>
           );
         })}
-      </ul>
+      </CardGroup>
       {archivedCount > 0 ? (
-        <button
+        <Button
           type="button"
+          variant="ghost"
           aria-pressed={showArchived}
           onClick={() => setShowArchived(!showArchived)}
-          className="self-start text-xs underline"
+          className="self-start"
         >
           {showArchived ? t('hideArchived') : t('showArchived', { count: archivedCount })}
-        </button>
+        </Button>
       ) : null}
     </main>
   );

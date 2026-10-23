@@ -1,5 +1,6 @@
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
+import { Button } from '../design-kit/index.ts';
 import type { RunSessionStore } from '../run/session.ts';
 import { StatusBadge } from './StatusBadge.tsx';
 
@@ -28,10 +29,11 @@ export function CommandReceipts({ session, target }: { session: RunSessionStore;
               {command.type}
             </p>
             <p role="alert">{t('connectionUnknown', { message: error })}</p>
-            <button
+            <Button
               type="button"
               disabled={pending.includes(command.commandId)}
-              className="rounded fill-control px-2 py-1 disabled:opacity-50"
+              variant="tertiary"
+              size="compact"
               onClick={() =>
                 void session
                   .getState()
@@ -40,13 +42,13 @@ export function CommandReceipts({ session, target }: { session: RunSessionStore;
               }
             >
               {t('retrySameCommand')}
-            </button>
+            </Button>
           </div>
         ))}
       {matching.map((receipt) => (
         <div
           key={receipt.commandId}
-          className="rounded fill-group p-2"
+          className="border-b border-border py-2 last:border-0"
           data-testid={`receipt-${receipt.commandId}`}
         >
           <p>
@@ -56,7 +58,7 @@ export function CommandReceipts({ session, target }: { session: RunSessionStore;
             </span>{' '}
             · <StatusBadge status={receipt.status} />
           </p>
-          <p className="text-muted">{t(`boundary.${receipt.requestedBoundary}`)}</p>
+          <p className="text-muted-foreground">{t(`boundary.${receipt.requestedBoundary}`)}</p>
           {receipt.error ? (
             <p role="alert" className="text-danger">
               {receipt.error.code}: {receipt.error.message}

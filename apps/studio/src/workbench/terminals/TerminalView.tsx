@@ -1,4 +1,4 @@
-import { cn } from '@corral/react/ui';
+import { cn } from '@corral/react/design-kit';
 import { useEffect, useRef } from 'react';
 import type { TerminalProvenance, TerminalSourceState, TerminalStore } from './store.ts';
 
@@ -73,7 +73,7 @@ export function TerminalView({
       aria-label={ariaLabel}
       aria-describedby={aria['aria-describedby']}
       className={cn(
-        'h-80 min-h-64 min-w-0 overflow-hidden bg-surface p-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent',
+        'h-80 min-h-64 min-w-0 overflow-hidden bg-surface p-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus-ring',
         className,
       )}
     />

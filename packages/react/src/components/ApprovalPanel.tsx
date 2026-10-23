@@ -10,8 +10,8 @@ import { validToolPermissionPlan } from '@corral/core';
 import { useEffect, useId, useMemo, useState } from 'react';
 import { useLocale, useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
+import { Button } from '../design-kit/index.ts';
 import type { RunSessionStore } from '../run/session.ts';
-import { Button } from '../ui/button.tsx';
 import { InteractionPanel } from './InteractionPanel.tsx';
 import { RecipeStatusPanel } from './RecipeStatusPanel.tsx';
 import { WorkPlanPanel } from './WorkPlanPanel.tsx';
@@ -134,7 +134,7 @@ export function ApprovalPanel({
           <p
             key={approval.approvalId}
             data-testid={`approved-${approval.approvalId}`}
-            className="text-xs text-muted"
+            className="text-xs text-muted-foreground"
           >
             {t('done', {
               step: t(`kind.${approval.kind}`),
@@ -179,7 +179,7 @@ export function ApprovalPanel({
                     <code className="whitespace-pre-wrap break-all">
                       {checkPlans[approval.tool.bodyRef]?.argv.join(' ')}
                     </code>
-                    <p className="text-muted">
+                    <p className="text-muted-foreground">
                       {t('checkScope', {
                         execution: approval.tool.executionId,
                         attempt: approval.tool.attemptNo,
@@ -188,7 +188,7 @@ export function ApprovalPanel({
                         tree: approval.tool.targetTree?.slice(0, 12) ?? '—',
                       })}
                     </p>
-                    <p className="text-muted">
+                    <p className="text-muted-foreground">
                       {t(approval.tool.purpose === 'lsp' ? 'lspOnce' : 'checkOnce')}
                     </p>
                   </>
@@ -204,11 +204,11 @@ export function ApprovalPanel({
               </div>
             ) : null}
             {compact || approval.tool ? null : (
-              <p className="text-muted">{t(`explain.${approval.kind}`)}</p>
+              <p className="text-muted-foreground">{t(`explain.${approval.kind}`)}</p>
             )}
             {approval.tool ? null : (
               <div className="flex flex-wrap items-center gap-1">
-                <span className="text-muted">{t('subject')}</span>
+                <span className="text-muted-foreground">{t('subject')}</span>
                 {approval.subjectVersionIds.map((id) => (
                   <Button
                     key={id}
@@ -223,7 +223,7 @@ export function ApprovalPanel({
               </div>
             )}
             {criteria && !compact ? (
-              <div className="text-muted">
+              <div className="text-muted-foreground">
                 {t('criteria')}
                 <ul className="list-disc pl-5">
                   {criteria.split('\n').map((line) => (
@@ -318,7 +318,7 @@ function PermissionDetails({ plan }: { plan: ToolPermissionPlan | null | undefin
           </pre>
         </>
       )}
-      <p className="text-muted">{t('toolOnce')}</p>
+      <p className="text-muted-foreground">{t('toolOnce')}</p>
       <details>
         <summary className="cursor-pointer">{t('toolIdentity')}</summary>
         {summary ? (
@@ -365,9 +365,9 @@ function permissionSummary(plan: ToolPermissionPlan, ko: boolean) {
           {source}
         </pre>
         <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
-          <dt className="text-muted">{ko ? '셸' : 'Shell'}</dt>
+          <dt className="text-muted-foreground">{ko ? '셸' : 'Shell'}</dt>
           <dd>{shellNames[command.shellId]}</dd>
-          <dt className="text-muted">{ko ? '작업 폴더' : 'Working directory'}</dt>
+          <dt className="text-muted-foreground">{ko ? '작업 폴더' : 'Working directory'}</dt>
           <dd className="break-words font-mono">
             {command.cwd === '.'
               ? ko
@@ -375,7 +375,7 @@ function permissionSummary(plan: ToolPermissionPlan, ko: boolean) {
                 : 'Session working-copy root'
               : command.cwd}
           </dd>
-          <dt className="text-muted">{ko ? '실행 방식' : 'Mode'}</dt>
+          <dt className="text-muted-foreground">{ko ? '실행 방식' : 'Mode'}</dt>
           <dd>
             {command.mode === 'service'
               ? ko
@@ -385,7 +385,7 @@ function permissionSummary(plan: ToolPermissionPlan, ko: boolean) {
                 ? '완료까지 실행'
                 : 'Foreground'}
           </dd>
-          <dt className="text-muted">{ko ? '시간 제한' : 'Timeout'}</dt>
+          <dt className="text-muted-foreground">{ko ? '시간 제한' : 'Timeout'}</dt>
           <dd>{command.timeoutMs / 1000} s</dd>
         </dl>
       </div>

@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { useStudioStores } from '../context.tsx';
+import { Button, Card, CardContent, CardFooter } from '../design-kit/index.ts';
 import { compileDraft } from '../editor/model.ts';
 
 type Located = Pick<Diagnostic, 'nodeId' | 'edgeId' | 'linkId'>;
@@ -45,11 +46,11 @@ export function ValidationPanel() {
   };
   return (
     <section aria-labelledby="validation-heading" className="flex flex-col gap-2">
-      <h2 id="validation-heading" className="text-sm font-semibold">
+      <h2 id="validation-heading" className="text-subtitle">
         {t('heading')}
       </h2>
       {errors.length === 0 && runtimeLimits.length === 0 && definition ? (
-        <p className="text-xs text-success">✓ {t('ok')}</p>
+        <p className="text-caption text-success">✓ {t('ok')}</p>
       ) : null}
       {errors.length > 0 ? (
         <ul className="flex flex-col gap-1" aria-label={t('heading')} data-testid="diagnostics">
@@ -65,33 +66,32 @@ export function ValidationPanel() {
       ) : null}
       {warnings.length > 0 ? (
         <div className="flex flex-col gap-1" data-testid="warnings">
-          <h3 className="text-xs font-semibold">{t('warningsHeading')}</h3>
+          <h3 className="text-subtitle">{t('warningsHeading')}</h3>
           <ul className="flex flex-col gap-1">
             {warnings.map((d) => (
-              <li
-                key={`${d.code}:${d.nodeId ?? ''}`}
-                className="flex flex-col gap-1 rounded border border-warning/50 p-2 text-xs"
-              >
-                <span className="text-warning">
-                  {t.has(`codes.${d.code}`)
-                    ? t(`codes.${d.code}`, {
-                        message: d.message,
-                        node:
-                          draft.definition.nodes.find((n) => n.id === d.nodeId)?.label ??
-                          d.nodeId ??
-                          '',
-                      })
-                    : d.message}
-                </span>
-                {d.code === 'REVIEW_WITHOUT_CRITERIA' && d.nodeId ? (
-                  <button
-                    type="button"
-                    onClick={() => giveCriteria(d.nodeId ?? '')}
-                    className="self-start rounded fill-control px-2 py-0.5"
-                  >
-                    {t('giveCriteria')}
-                  </button>
-                ) : null}
+              <li key={`${d.code}:${d.nodeId ?? ''}`}>
+                <Card>
+                  <CardContent>
+                    <p className="text-warning">
+                      {t.has(`codes.${d.code}`)
+                        ? t(`codes.${d.code}`, {
+                            message: d.message,
+                            node:
+                              draft.definition.nodes.find((n) => n.id === d.nodeId)?.label ??
+                              d.nodeId ??
+                              '',
+                          })
+                        : d.message}
+                    </p>
+                  </CardContent>
+                  {d.code === 'REVIEW_WITHOUT_CRITERIA' && d.nodeId ? (
+                    <CardFooter>
+                      <Button variant="tertiary" onClick={() => giveCriteria(d.nodeId ?? '')}>
+                        {t('giveCriteria')}
+                      </Button>
+                    </CardFooter>
+                  ) : null}
+                </Card>
               </li>
             ))}
           </ul>
@@ -99,8 +99,8 @@ export function ValidationPanel() {
       ) : null}
       {errors.length === 0 && runtimeLimits.length > 0 ? (
         <div className="flex flex-col gap-1" data-testid="runtime-limits">
-          <h3 className="text-xs font-semibold">{t('runtimeHeading')}</h3>
-          <p className="text-xs text-muted">{t('runtimeNote')}</p>
+          <h3 className="text-subtitle">{t('runtimeHeading')}</h3>
+          <p className="text-caption text-muted-foreground">{t('runtimeNote')}</p>
           <ul className="flex flex-col gap-1">
             {runtimeLimits.map((issue) => (
               <Issue
@@ -121,20 +121,20 @@ function Issue({ text, at, onShow }: { text: string; at: Located; onShow: (at: L
   const t = useTranslations('Validation');
   const located = Boolean(at.nodeId || at.edgeId || at.linkId);
   return (
-    <li className="flex items-start justify-between gap-2 text-xs">
-      <span>
-        <span aria-hidden="true">! </span>
-        {text}
-      </span>
-      {located ? (
-        <button
-          type="button"
-          onClick={() => onShow(at)}
-          className="rounded fill-control px-1.5 py-0.5"
-        >
-          {t('show')}
-        </button>
-      ) : null}
+    <li>
+      <Card>
+        <CardContent>
+          <span aria-hidden="true">! </span>
+          {text}
+        </CardContent>
+        {located ? (
+          <CardFooter>
+            <Button variant="tertiary" onClick={() => onShow(at)}>
+              {t('show')}
+            </Button>
+          </CardFooter>
+        ) : null}
+      </Card>
     </li>
   );
 }

@@ -1,4 +1,5 @@
 import './csp.ts';
+import { DesignKitProvider } from '@corral/react/design-kit';
 import { RouterProvider } from '@tanstack/react-router';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -23,19 +24,23 @@ try {
   const router = createStudioRouter(services);
   renderer.render(
     <StrictMode>
-      <LocaleProvider>
-        <ServicesProvider services={services}>
-          {services.sessionMissing ? <SessionMissingView /> : <RouterProvider router={router} />}
-        </ServicesProvider>
-      </LocaleProvider>
+      <DesignKitProvider>
+        <LocaleProvider>
+          <ServicesProvider services={services}>
+            {services.sessionMissing ? <SessionMissingView /> : <RouterProvider router={router} />}
+          </ServicesProvider>
+        </LocaleProvider>
+      </DesignKitProvider>
     </StrictMode>,
   );
 } catch {
   renderer.render(
     <StrictMode>
-      <LocaleProvider>
-        <StartupFailure />
-      </LocaleProvider>
+      <DesignKitProvider>
+        <LocaleProvider>
+          <StartupFailure />
+        </LocaleProvider>
+      </DesignKitProvider>
     </StrictMode>,
   );
 }

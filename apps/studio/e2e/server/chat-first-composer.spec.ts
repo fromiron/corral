@@ -62,7 +62,7 @@ test('[TC-UX-005-H] a default chat starts without a saved Corral or advanced cho
     await expect(page.getByRole('combobox', { name: label, exact: true })).toBeHidden();
   }
   await expect(
-    page.getByRole('checkbox', { name: 'Review only · no file changes', exact: true }),
+    page.getByRole('switch', { name: 'Review only · no file changes', exact: true }),
   ).toBeHidden();
   await expect(page.getByRole('button', { name: 'Templates', exact: true })).toBeHidden();
   await expect(
@@ -118,9 +118,7 @@ test('[TC-UX-005-N] explicit request scope survives closing options and reload, 
   await optionsButton(page).click();
   const dialog = optionsDialog(page);
   await expect(dialog).toBeVisible();
-  await dialog
-    .getByRole('checkbox', { name: 'Review only · no file changes', exact: true })
-    .check();
+  await dialog.getByRole('switch', { name: 'Review only · no file changes', exact: true }).check();
   await dialog.getByRole('combobox', { name: 'Verification scope', exact: true }).click();
   await page.getByRole('option', { name: 'Release checks', exact: true }).click();
   await page.keyboard.press('Escape');
@@ -144,7 +142,7 @@ test('[TC-UX-005-N] explicit request scope survives closing options and reload, 
   await page.setViewportSize({ width: 390, height: 844 });
   await optionsButton(page).click();
   await expect(
-    dialog.getByRole('checkbox', { name: 'Review only · no file changes', exact: true }),
+    dialog.getByRole('switch', { name: 'Review only · no file changes', exact: true }),
   ).toBeChecked();
   await expect(
     dialog.getByRole('combobox', { name: 'Verification scope', exact: true }),
@@ -259,7 +257,7 @@ test('[TC-UX-005-N] a queue blocked by request scope explains why outside the cl
   await requestBox(page).fill(draft);
   await optionsButton(page).click();
   const dialog = optionsDialog(page);
-  const review = dialog.getByRole('checkbox', {
+  const review = dialog.getByRole('switch', {
     name: 'Review only · no file changes',
     exact: true,
   });

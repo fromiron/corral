@@ -1,5 +1,5 @@
 import type { UserTaskView, WorkspacePreview, WorktreeCommandView } from '@corral/client';
-import { Button, Input, Select } from '@corral/react/ui';
+import { Button, Input, Select } from '@corral/react/design-kit';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { previewDesktop as desktop } from '../desktop.tsx';
@@ -112,8 +112,8 @@ export function ServicePreview({ sessionId, projectId }: { sessionId: string; pr
       </label>
       {desktop ? (
         <Button
-          size="xs"
-          variant="outline"
+          size="compact"
+          variant="tertiary"
           disabled={
             pending ||
             !selected ||
@@ -150,11 +150,11 @@ export function ServicePreview({ sessionId, projectId }: { sessionId: string; pr
           {t('openInteractive')}
         </Button>
       ) : (
-        <p className="text-xs text-muted">{t('desktopOnly')}</p>
+        <p className="text-xs text-muted-foreground">{t('desktopOnly')}</p>
       )}
       {lease ? (
         <Button
-          size="xs"
+          size="compact"
           variant="ghost"
           onClick={async () => {
             try {

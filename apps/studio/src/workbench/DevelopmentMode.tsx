@@ -1,5 +1,5 @@
 import { ApiError, type DevelopmentState } from '@corral/client';
-import { Button } from '@corral/react/ui';
+import { Button } from '@corral/react/design-kit';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
@@ -103,15 +103,20 @@ export function DevelopmentMode({
   return (
     <section className="flex flex-col gap-1.5 text-xs" aria-label={t('label')}>
       <div className="flex flex-wrap items-center gap-2">
-        <span className={operation ? 'text-warning' : 'text-muted'}>
+        <span className={operation ? 'text-warning' : 'text-muted-foreground'}>
           {t(operation?.state === 'uncertain' ? 'uncertain' : operation ? 'shared' : 'strict')}
         </span>
-        <Button size="xs" variant="outline" disabled={busy === query} onClick={() => void change()}>
+        <Button
+          size="compact"
+          variant="tertiary"
+          disabled={busy === query}
+          onClick={() => void change()}
+        >
           {t(operation ? 'finish' : 'start')}
         </Button>
       </div>
       {operation ? (
-        <p className="text-muted">
+        <p className="text-muted-foreground">
           {t(operation.state === 'uncertain' ? 'recoveryNote' : 'sharedNote')}
         </p>
       ) : null}

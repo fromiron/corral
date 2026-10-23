@@ -1,6 +1,6 @@
 import type { WorkspacePreview } from '@corral/client';
+import { Button } from '@corral/react/design-kit';
 import { RefreshCw, X } from '@corral/react/icons';
-import { Button } from '@corral/react/ui';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { previewDesktop as desktop } from '../desktop.tsx';
@@ -42,7 +42,7 @@ export function FilePreview({ sessionId, path }: { sessionId: string; path: stri
   }, [requested, path, sessionId, workspaces]);
   if (!requested)
     return (
-      <Button size="xs" variant="outline" onClick={() => setRequested(true)}>
+      <Button size="compact" variant="tertiary" onClick={() => setRequested(true)}>
         {t('open')}
       </Button>
     );
@@ -54,8 +54,8 @@ export function FilePreview({ sessionId, path }: { sessionId: string; path: stri
         </span>
         {desktop && lease ? (
           <Button
-            size="xs"
-            variant="outline"
+            size="compact"
+            variant="tertiary"
             onClick={() => {
               void desktop
                 ?.openPreview(sessionId, lease.leaseId)
@@ -68,7 +68,7 @@ export function FilePreview({ sessionId, path }: { sessionId: string; path: stri
           </Button>
         ) : null}
         <Button
-          size="icon-xs"
+          size="icon-compact"
           variant="ghost"
           aria-label={t('refresh')}
           disabled={!lease}
@@ -77,7 +77,7 @@ export function FilePreview({ sessionId, path }: { sessionId: string; path: stri
           <RefreshCw />
         </Button>
         <Button
-          size="icon-xs"
+          size="icon-compact"
           variant="ghost"
           aria-label={t('close')}
           disabled={closing}
@@ -113,11 +113,11 @@ export function FilePreview({ sessionId, path }: { sessionId: string; path: stri
           data-testid="file-preview-frame"
         />
       ) : (
-        <p role="status" className="text-xs text-muted">
+        <p role="status" className="text-xs text-muted-foreground">
           {t('loading')}
         </p>
       )}
-      <p className="text-2xs text-muted">{t('staticOnly')}</p>
+      <p className="text-2xs text-muted-foreground">{t('staticOnly')}</p>
     </section>
   );
 }

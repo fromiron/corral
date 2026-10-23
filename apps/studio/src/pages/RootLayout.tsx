@@ -1,5 +1,4 @@
 import type { ProjectSummary } from '@corral/core';
-import { ChevronDown, PanelLeft, Search } from '@corral/react/icons';
 import {
   Button,
   Dialog,
@@ -14,7 +13,8 @@ import {
   MenuTrigger,
   Tooltip,
   TooltipProvider,
-} from '@corral/react/ui';
+} from '@corral/react/design-kit';
+import { ChevronDown, PanelLeft, Search } from '@corral/react/icons';
 import {
   type ErrorComponentProps,
   Link,
@@ -347,7 +347,7 @@ function RootFrame() {
                   <Button
                     ref={sidebarTrigger}
                     variant="ghost"
-                    size="icon-sm"
+                    size="icon-compact"
                     aria-label={tw('expandSidebar')}
                     className="app-sidebar-trigger"
                     onClick={() => {
@@ -364,14 +364,14 @@ function RootFrame() {
                     className="flex min-w-0 items-center gap-1.5 text-ui"
                   >
                     {settings ? (
-                      <span className="shrink-0 text-muted">{td('settings')}</span>
+                      <span className="shrink-0 text-muted-foreground">{td('settings')}</span>
                     ) : narrow || !prefs.sidebarOpen ? (
                       <ProjectSwitcher projects={sidebar.projects} projectId={projectId} />
                     ) : project ? (
                       <Link
                         to="/projects/$projectId"
                         params={{ projectId: project.projectId }}
-                        className="max-w-52 truncate text-muted hover:text-text"
+                        className="max-w-52 truncate text-muted-foreground hover:text-text"
                       >
                         {projectName(project, projectsText('defaultName'))}
                       </Link>
@@ -379,7 +379,7 @@ function RootFrame() {
                     {pageTitle ? (
                       <>
                         {settings || project ? (
-                          <span aria-hidden="true" className="text-muted/50">
+                          <span aria-hidden="true" className="text-muted-foreground/50">
                             /
                           </span>
                         ) : null}
@@ -393,7 +393,7 @@ function RootFrame() {
                 <SessionTabs sessions={sidebar.sessions} />
                 {settings && activeRuns.length ? (
                   <Menu>
-                    <MenuTrigger render={<Button variant="ghost" size="sm" />}>
+                    <MenuTrigger render={<Button variant="ghost" size="compact" />}>
                       {tn('activeRun')} ({activeRuns.length})
                     </MenuTrigger>
                     <MenuPopup>
@@ -419,7 +419,7 @@ function RootFrame() {
                 <Tooltip content={tp('button')} shortcut={shortcutLabel('palette')}>
                   <Button
                     variant="ghost"
-                    size="icon-sm"
+                    size="icon-compact"
                     aria-label={tp('button')}
                     onClick={() => window.dispatchEvent(new Event('corral:open-palette'))}
                   >
@@ -467,7 +467,7 @@ function ProjectSwitcher({
         render={
           <Button
             variant="ghost"
-            size="sm"
+            size="compact"
             aria-label={n('switchProject')}
             className="min-w-0 max-w-52 gap-1 px-2 font-medium"
           />
@@ -476,7 +476,7 @@ function ProjectSwitcher({
         <span className="truncate">
           {chosen ? projectName(chosen, t('defaultName')) : t('allProjects')}
         </span>
-        <ChevronDown className="size-3.5 text-muted" />
+        <ChevronDown className="size-3.5 text-muted-foreground" />
       </MenuTrigger>
       <MenuPopup align="start" className="min-w-56">
         <MenuRadioGroup

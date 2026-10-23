@@ -8,7 +8,7 @@ import { UltraModels } from './UltraModels.tsx';
 
 const translate = vi.hoisted(() => (key: string) => key);
 vi.mock('use-intl', () => ({ useTranslations: () => translate }));
-vi.mock('@corral/react/ui', () => ({
+vi.mock('@corral/react/design-kit', () => ({
   Select: ({ label, value, options, onValueChange, disabled }: any) => (
     <select
       aria-label={label}

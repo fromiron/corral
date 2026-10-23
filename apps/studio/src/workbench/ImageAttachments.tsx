@@ -1,5 +1,5 @@
 import { IMAGE_MAX_BYTES, IMAGE_MAX_COUNT, type ImageAttachment } from '@corral/contracts';
-import { Button } from '@corral/react/ui';
+import { Button } from '@corral/react/design-kit';
 import { type RefObject, useEffect, useId, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
@@ -136,7 +136,7 @@ export function ImageAttachmentPicker({
       />
       {!inputRef ? (
         <Button
-          size="xs"
+          size="compact"
           variant="ghost"
           disabled={disabled || busy || value.length >= IMAGE_MAX_COUNT}
           onClick={() => input.current?.click()}
@@ -147,8 +147,8 @@ export function ImageAttachmentPicker({
       {value.map((image) => (
         <Button
           key={image.imageId}
-          size="xs"
-          variant="outline"
+          size="compact"
+          variant="tertiary"
           disabled={disabled || busy}
           aria-label={t('removeImage', { name: image.name })}
           onClick={() => onChange(value.filter((item) => item.imageId !== image.imageId))}

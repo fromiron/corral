@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { diffLines } from '../artifacts/diff.ts';
+import { Button, RadioGroup, RadioItem } from '../design-kit/index.ts';
 import { type ResultItem, runResults } from '../run/results.ts';
 import type { RunSessionStore } from '../run/session.ts';
 import { GeneratedImage } from './ArtifactViewer.tsx';
@@ -67,7 +68,7 @@ export function RunResults({
           className="flex max-h-40 shrink-0 flex-col gap-3 overflow-auto border-b border-line p-3 @3xl:max-h-none @3xl:w-72 @3xl:border-r @3xl:border-b-0"
         >
           {results.kind === 'final' ? null : (
-            <p role="status" className="rounded fill-group p-2 text-xs text-muted">
+            <p role="status" className="rounded fill-group p-2 text-xs text-muted-foreground">
               {t(`kind.${results.kind}`, { status: projection.status })}
             </p>
           )}
@@ -102,7 +103,7 @@ export function RunResults({
                         (v, i) => i > 0 && v.artifactVersionId === chosen?.artifactVersionId,
                       )}
                     >
-                      <summary className="cursor-pointer text-muted">
+                      <summary className="cursor-pointer text-muted-foreground">
                         {t('earlier', { count: group.versions.length - 1 })}
                       </summary>
                       <ul className="mt-1 flex flex-col gap-1">
@@ -141,7 +142,7 @@ function ResultSection({ heading, children }: { heading: string; children: React
   const id = useId();
   return (
     <section aria-labelledby={id} className="flex flex-col gap-1">
-      <h3 id={id} className="text-xs font-semibold text-muted">
+      <h3 id={id} className="text-xs font-semibold text-muted-foreground">
         {heading}
       </h3>
       <ul className="flex flex-col gap-1">{children}</ul>
@@ -175,23 +176,25 @@ function ResultButton({
   const ta = useTranslations('Artifact');
   const author = useAuthorLabel(session, item.authorExecutionId);
   const button = (
-    <button
+    <Button
       type="button"
       aria-current={chosen ? 'true' : undefined}
       onClick={() => onSelect(item.artifactVersionId)}
-      className={`flex w-full flex-col items-start rounded border px-2 py-1 text-left text-sm ${
-        chosen ? 'border-accent bg-raised' : 'border-transparent fill-group'
-      }`}
+      variant={chosen ? 'secondary' : 'ghost'}
+      size="compact"
+      className="h-auto w-full justify-start py-2 text-left whitespace-normal"
     >
-      <span className="font-medium">
-        {t('itemName', { name: item.name, version: item.version })}
+      <span className="flex min-w-0 flex-col items-start">
+        <span className="font-medium">
+          {t('itemName', { name: item.name, version: item.version })}
+        </span>
+        <span className="text-xs text-muted-foreground">
+          {[author, item.review ? ta(`verdict.${item.review.verdict}`) : null]
+            .filter(Boolean)
+            .join(' · ')}
+        </span>
       </span>
-      <span className="text-xs text-muted">
-        {[author, item.review ? ta(`verdict.${item.review.verdict}`) : null]
-          .filter(Boolean)
-          .join(' · ')}
-      </span>
-    </button>
+    </Button>
   );
   return bare ? button : <li>{button}</li>;
 }
@@ -281,7 +284,7 @@ export function ResultReader({
           <h2 id={headingId} className="text-lg font-semibold">
             {label}
           </h2>
-          <span className="text-xs text-muted">
+          <span className="text-xs text-muted-foreground">
             {[author, item.contract, t('bytes', { bytes: item.byteLength })]
               .filter(Boolean)
               .join(' · ')}
@@ -306,61 +309,61 @@ export function ResultReader({
         <div className="flex flex-wrap items-center gap-2 text-xs">
           {!item.media ? (
             <>
-              <fieldset className="flex gap-1">
-                <legend className="sr-only">{t('format')}</legend>
-                {formats.map((value) => (
-                  <label
+              <RadioGroup
+                aria-label={t('format')}
+                value={format}
+                onValueChange={(value) => setFormat(value as Format)}
+                size="compact"
+              >
+                {formats.map((value, index) => (
+                  <RadioItem
                     key={value}
-                    className={`cursor-pointer rounded px-2 py-1 focus-within:outline-2 focus-within:outline-accent ${format === value ? 'bg-accent text-on-accent' : 'fill-control'}`}
-                  >
-                    <input
-                      type="radio"
-                      name={`${headingId}-format`}
-                      value={value}
-                      checked={format === value}
-                      onChange={() => setFormat(value)}
-                      className="sr-only"
-                    />
-                    {t(`formats.${value}`)}
-                  </label>
+                    value={value}
+                    index={index}
+                    label={t(`formats.${value}`)}
+                  />
                 ))}
-              </fieldset>
-              <button
+              </RadioGroup>
+              <Button
                 type="button"
                 disabled={text === undefined}
                 onClick={() => void copy()}
-                className="rounded fill-control px-2 py-1"
+                variant="tertiary"
+                size="compact"
               >
                 {copied ? t('copied') : t('copy')}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 disabled={text === undefined}
                 onClick={download}
-                className="rounded fill-control px-2 py-1"
+                variant="tertiary"
+                size="compact"
               >
                 {t('download')}
-              </button>
+              </Button>
               {item.parentVersionId ? (
-                <button
+                <Button
                   type="button"
                   aria-pressed={comparing}
                   onClick={() => setComparing(!comparing)}
-                  className="rounded fill-control px-2 py-1"
+                  variant="tertiary"
+                  size="compact"
                 >
                   {comparing ? ta('hideCompare') : t('comparePrevious')}
-                </button>
+                </Button>
               ) : null}
             </>
           ) : null}
           {onStartFrom && runId ? (
-            <button
+            <Button
               type="button"
               onClick={() => onStartFrom({ runId, artifactVersionId: id, label })}
-              className="rounded fill-control px-2 py-1"
+              variant="secondary"
+              size="compact"
             >
               {ta('newRunFromVersion')}
-            </button>
+            </Button>
           ) : null}
         </div>
       </header>
@@ -373,7 +376,9 @@ export function ResultReader({
         {item.media && runId ? (
           <GeneratedImage runId={runId} versionId={id} name={item.name} media={item.media} />
         ) : text === undefined ? (
-          <p className="text-sm text-muted">{failed ? t('unavailable') : ta('loading')}</p>
+          <p className="text-sm text-muted-foreground">
+            {failed ? t('unavailable') : ta('loading')}
+          </p>
         ) : diff ? (
           <pre className="mx-auto max-w-4xl whitespace-pre-wrap break-words font-mono text-ui">
             {diff.map((line, index) => (

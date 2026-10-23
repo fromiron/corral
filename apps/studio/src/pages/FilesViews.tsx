@@ -4,7 +4,7 @@ import type {
   WorkspaceBindingView,
   WorktreeView,
 } from '@corral/client';
-import { Button } from '@corral/react/ui';
+import { Button } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { type FormEvent, useCallback, useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -104,7 +104,7 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
 
   return (
     <fieldset disabled={pending} className="flex min-w-0 flex-col gap-6">
-      <p className="text-sm text-muted">{t('folderIntro')}</p>
+      <p className="text-sm text-muted-foreground">{t('folderIntro')}</p>
       {mode === 'browser' ? <p className="text-sm text-warning">{t('demoFolder')}</p> : null}
       {!binding ? (
         <form onSubmit={link} className="settings-row">
@@ -128,14 +128,14 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
             ) : null}
             <div className="flex gap-2">
               {mode === 'browser' ? (
-                <Button variant="outline" size="sm" type="submit">
+                <Button variant="tertiary" size="compact" type="submit">
                   {t('linkExample')}
                 </Button>
               ) : desktop ? (
                 <>
                   <Button
-                    variant="outline"
-                    size="sm"
+                    variant="tertiary"
+                    size="compact"
                     type="button"
                     onClick={() => {
                       if (!desktop) return;
@@ -146,12 +146,12 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
                   >
                     {t('chooseFolder')}
                   </Button>
-                  <Button variant="outline" size="sm" type="submit" disabled={!path.trim()}>
+                  <Button variant="tertiary" size="compact" type="submit" disabled={!path.trim()}>
                     {t('link')}
                   </Button>
                 </>
               ) : (
-                <Button variant="outline" size="sm" type="submit" disabled={!path.trim()}>
+                <Button variant="tertiary" size="compact" type="submit" disabled={!path.trim()}>
                   {t('link')}
                 </Button>
               )}
@@ -181,8 +181,8 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
               {!binding.isGit ? <p className="text-warning">{t('notGit')}</p> : null}
             </div>
             <Button
-              variant="outline"
-              size="sm"
+              variant="tertiary"
+              size="compact"
               type="button"
               onClick={() => void act(() => workspaces.unbind(projectId))}
             >
@@ -193,7 +193,7 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
             <label className="settings-row">
               <span>
                 <span className="text-sm font-medium">{t('trust')}</span>
-                <span className="mt-1 block text-xs text-muted">{t('trustHint')}</span>
+                <span className="mt-1 block text-xs text-muted-foreground">{t('trustHint')}</span>
               </span>
               <input
                 type="checkbox"
@@ -209,7 +209,7 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
             <section className="settings-surface flex flex-col gap-3">
               <div>
                 <h3 className="text-sm font-medium">{t('checksHeading')}</h3>
-                <p className="mt-1 text-xs text-muted">{t('checksHint')}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{t('checksHint')}</p>
               </div>
               <textarea
                 rows={3}
@@ -221,8 +221,8 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
                 className="settings-field font-mono"
               />
               <Button
-                variant="outline"
-                size="sm"
+                variant="tertiary"
+                size="compact"
                 type="button"
                 disabled={checks === null}
                 onClick={() =>
@@ -306,24 +306,25 @@ export function WorkingCopyPanel({
       {worktree && !worktree.missing ? <DevelopmentMode sessionId={sessionId} /> : null}
       {worktree ? (
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs text-muted">
+          <span className="text-xs text-muted-foreground">
             {t('ready', { commit: worktree.baseCommit.slice(0, 8) })}
           </span>
-          <Link
-            to="/sessions/$sessionId/review"
-            params={{ sessionId }}
-            className="rounded-md bg-accent px-3 py-1 text-xs font-medium text-on-accent"
+          <Button
+            variant="primary"
+            size="compact"
+            render={<Link to="/sessions/$sessionId/review" params={{ sessionId }} />}
           >
             {t('review')}
-          </Link>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="tertiary"
+            size="compact"
             disabled={busy}
             onClick={() => setRemoving(true)}
-            className="rounded fill-control px-2 py-1 text-xs"
           >
             {t('remove')}
-          </button>
+          </Button>
           <CopyRemovalDialog
             open={removing}
             sessionId={sessionId}
@@ -337,10 +338,10 @@ export function WorkingCopyPanel({
         </div>
       ) : !binding ? (
         <div className="flex flex-col items-start gap-1.5">
-          <p className="text-xs text-muted">{t('noFolder')}</p>
+          <p className="text-xs text-muted-foreground">{t('noFolder')}</p>
           <Button
-            variant="outline"
-            size="xs"
+            variant="tertiary"
+            size="compact"
             render={<Link {...navigation.link('workspace', projectId)} />}
           >
             {t('openFolderSettings')}
@@ -351,8 +352,8 @@ export function WorkingCopyPanel({
         <div className="flex flex-col items-start gap-1.5">
           <p className="text-xs text-warning">{t('notTrusted')}</p>
           <Button
-            variant="outline"
-            size="xs"
+            variant="tertiary"
+            size="compact"
             render={<Link {...navigation.link('workspace', projectId)} />}
           >
             {t('openTrust')}
@@ -360,18 +361,20 @@ export function WorkingCopyPanel({
         </div>
       ) : (
         <div className="flex flex-col gap-1">
-          <p className="text-xs text-muted">{t('copyIntro')}</p>
+          <p className="text-xs text-muted-foreground">{t('copyIntro')}</p>
           <p className="text-xs text-warning">
             {t('createHint', { changed: binding.status?.changed ?? 0 })}
           </p>
-          <button
+          <Button
+            variant="tertiary"
+            size="compact"
             type="button"
             disabled={busy}
             onClick={() => void act(() => workspaces.createWorktree(sessionId))}
-            className="self-start rounded-md border border-accent px-3 py-1 text-xs text-accent"
+            className="self-start"
           >
             {t('create', { head: binding.status?.head ?? 'HEAD' })}
-          </button>
+          </Button>
         </div>
       )}
       {worktree && !worktree.missing ? (

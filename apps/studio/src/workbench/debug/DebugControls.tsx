@@ -15,7 +15,7 @@ import {
   DialogTitle,
   Input,
   Select,
-} from '@corral/react/ui';
+} from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useContext, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -268,7 +268,7 @@ export function DebugControls({ api, target, copy, store }: Props) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-semibold">{t('title')}</h2>
         <Button
-          size="xs"
+          size="compact"
           variant="ghost"
           disabled={copy?.busy}
           onClick={() => {
@@ -280,11 +280,11 @@ export function DebugControls({ api, target, copy, store }: Props) {
         </Button>
       </div>
       {!state ? (
-        <p role="status" className="text-xs text-muted">
+        <p role="status" className="text-xs text-muted-foreground">
           {t('loading')}
         </p>
       ) : !state.available ? (
-        <p role="status" className="text-xs text-muted">
+        <p role="status" className="text-xs text-muted-foreground">
           {t(state.unavailableReason === 'platform' ? 'platform' : 'untrusted')}
         </p>
       ) : null}
@@ -347,11 +347,13 @@ export function DebugControls({ api, target, copy, store }: Props) {
                 />
               ) : null}
               {!hasTarget ? (
-                <p className="text-xs text-muted">{t(needsTask ? 'needTask' : 'needPreview')}</p>
+                <p className="text-xs text-muted-foreground">
+                  {t(needsTask ? 'needTask' : 'needPreview')}
+                </p>
               ) : null}
               <Button
-                size="sm"
-                variant="outline"
+                size="compact"
+                variant="tertiary"
                 className="self-start"
                 disabled={busy || !hasTarget}
                 onClick={() => void reviewStart()}
@@ -360,11 +362,11 @@ export function DebugControls({ api, target, copy, store }: Props) {
               </Button>
             </>
           ) : (
-            <p className="text-xs text-muted">{t('noConfigurations')}</p>
+            <p className="text-xs text-muted-foreground">{t('noConfigurations')}</p>
           )}
           <Link
             {...settings.link('workspace', target.projectId)}
-            className="self-start text-xs text-accent underline"
+            className="self-start text-xs text-primary underline"
           >
             {t('settings')}
           </Link>
@@ -374,7 +376,7 @@ export function DebugControls({ api, target, copy, store }: Props) {
         <>
           <div className="flex flex-wrap gap-2">
             {session.state === 'running' ? (
-              <Button size="sm" disabled={busy} onClick={() => void command('pause')}>
+              <Button size="compact" disabled={busy} onClick={() => void command('pause')}>
                 {t('pause')}
               </Button>
             ) : null}
@@ -382,7 +384,7 @@ export function DebugControls({ api, target, copy, store }: Props) {
               ? (['continue', 'next', 'stepIn', 'stepOut'] as const).map((kind) => (
                   <Button
                     key={kind}
-                    size="sm"
+                    size="compact"
                     variant={kind === 'continue' ? 'default' : 'outline'}
                     disabled={busy}
                     onClick={() => void command(kind)}
@@ -393,8 +395,8 @@ export function DebugControls({ api, target, copy, store }: Props) {
               : null}
             {session.canDisconnect ? (
               <Button
-                size="sm"
-                variant="outline"
+                size="compact"
+                variant="tertiary"
                 disabled={ending}
                 onClick={() => void command('disconnect')}
               >
@@ -403,8 +405,8 @@ export function DebugControls({ api, target, copy, store }: Props) {
             ) : null}
             {session.canStop ? (
               <Button
-                size="sm"
-                variant="outline"
+                size="compact"
+                variant="tertiary"
                 disabled={ending}
                 onClick={() => void command('stop')}
               >
@@ -412,7 +414,7 @@ export function DebugControls({ api, target, copy, store }: Props) {
               </Button>
             ) : null}
           </div>
-          <p className="text-xs text-muted">
+          <p className="text-xs text-muted-foreground">
             {t(session.ownership === 'attached' ? 'disconnectHint' : 'stopHint')}
           </p>
         </>
@@ -421,8 +423,8 @@ export function DebugControls({ api, target, copy, store }: Props) {
         <div role="status" className="flex flex-wrap items-center gap-2 text-xs text-warning">
           <span>{t('pending')}</span>
           <Button
-            size="sm"
-            variant="outline"
+            size="compact"
+            variant="tertiary"
             disabled={copy.busy}
             onClick={() => void store.checkCommand(target)}
           >
@@ -435,7 +437,7 @@ export function DebugControls({ api, target, copy, store }: Props) {
           <section className="flex flex-col gap-1" aria-label={t('stackFrames')}>
             <h3 className="text-xs font-semibold">{t('stackFrames')}</h3>
             {reading ? (
-              <p role="status" className="text-xs text-muted">
+              <p role="status" className="text-xs text-muted-foreground">
                 {t('reading')}
               </p>
             ) : null}
@@ -449,12 +451,12 @@ export function DebugControls({ api, target, copy, store }: Props) {
                     onClick={() => void chooseFrame(value)}
                   >
                     <span className="break-words font-medium">{value.name}</span>
-                    <span className="break-all font-mono text-muted">
+                    <span className="break-all font-mono text-muted-foreground">
                       {value.source.path ?? value.source.name}:{value.source.line}:
                       {value.source.column}
                     </span>
                     {!value.source.mapped ? (
-                      <span className="text-muted">{t('unmapped')}</span>
+                      <span className="text-muted-foreground">{t('unmapped')}</span>
                     ) : null}
                   </button>
                 </li>
@@ -468,8 +470,8 @@ export function DebugControls({ api, target, copy, store }: Props) {
                 {scopes.values.map((value) => (
                   <Button
                     key={value.variablesReference}
-                    size="xs"
-                    variant="outline"
+                    size="compact"
+                    variant="tertiary"
                     disabled={reading}
                     onClick={() => void readVariables(value.variablesReference, value.name)}
                   >
@@ -480,7 +482,7 @@ export function DebugControls({ api, target, copy, store }: Props) {
               </div>
               {variables?.key === pauseKey && variables.frameId === scopes.frameId ? (
                 <>
-                  <p className="text-xs text-muted">{variables.name}</p>
+                  <p className="text-xs text-muted-foreground">{variables.name}</p>
                   <ul className="max-h-56 overflow-y-auto text-xs">
                     {variables.values.map((value) => (
                       <li
@@ -492,7 +494,7 @@ export function DebugControls({ api, target, copy, store }: Props) {
                         </span>
                         {value.variablesReference ? (
                           <Button
-                            size="xs"
+                            size="compact"
                             variant="ghost"
                             className="self-start"
                             disabled={reading}
@@ -527,9 +529,9 @@ export function DebugControls({ api, target, copy, store }: Props) {
           <label className="text-xs font-semibold" htmlFor={`debug-expression-${target.sessionId}`}>
             {t('console')}
           </label>
-          <p className="text-xs text-muted">{t('evaluateHint')}</p>
+          <p className="text-xs text-muted-foreground">{t('evaluateHint')}</p>
           {paused && !currentFrame ? (
-            <p className="text-xs text-muted">{t('selectFrame')}</p>
+            <p className="text-xs text-muted-foreground">{t('selectFrame')}</p>
           ) : null}
           <div className="flex items-center gap-2">
             <Input
@@ -660,7 +662,7 @@ export function DebugControls({ api, target, copy, store }: Props) {
               {!inspected.trusted ? <p className="text-xs text-warning">{t('trustHint')}</p> : null}
               <div className="flex shrink-0 flex-wrap justify-end gap-2">
                 <Button
-                  size="sm"
+                  size="compact"
                   variant="ghost"
                   disabled={copy?.busy}
                   onClick={() => setReview(false)}
@@ -668,7 +670,7 @@ export function DebugControls({ api, target, copy, store }: Props) {
                   {t('cancel')}
                 </Button>
                 <Button
-                  size="sm"
+                  size="compact"
                   disabled={busy}
                   onClick={() =>
                     void store.start(target, !inspected.trusted).then(() => setReview(false))

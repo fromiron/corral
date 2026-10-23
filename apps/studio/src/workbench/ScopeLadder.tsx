@@ -35,22 +35,22 @@ export function ScopeLadder({ current }: { current: 'personal' | 'project' }) {
               aria-current={here ? 'step' : undefined}
               className={`flex flex-col gap-1 rounded-lg p-3 text-xs ${here ? 'bg-raised shadow-sm' : 'fill-group'}`}
             >
-              <span className="text-2xs text-muted">{index + 1}</span>
+              <span className="text-2xs text-muted-foreground">{index + 1}</span>
               <h4 className="text-sm font-medium">
                 {target ? (
-                  <Link {...target} className="text-accent underline">
+                  <Link {...target} className="text-primary underline">
                     {t(`ladder.${step}`)}
                   </Link>
                 ) : (
                   t(`ladder.${step}`)
                 )}
               </h4>
-              <p className="text-muted">{t(`ladder.${step}Hint`)}</p>
+              <p className="text-muted-foreground">{t(`ladder.${step}Hint`)}</p>
             </li>
           );
         })}
       </ol>
-      <p className="text-xs text-muted">{t('ladderRule')}</p>
+      <p className="text-xs text-muted-foreground">{t('ladderRule')}</p>
     </section>
   );
 }

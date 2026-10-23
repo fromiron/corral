@@ -7,7 +7,7 @@ import {
   DialogPanel,
   DialogPopup,
   DialogTitle,
-} from '@corral/react/ui';
+} from '@corral/react/design-kit';
 import { Link, useNavigate, useRouter } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -69,7 +69,12 @@ export function MessageBranch({
   if (mode !== 'server') return null;
   return (
     <>
-      <Button size="xs" variant="ghost-muted" disabled={disabled} onClick={() => setOpen(true)}>
+      <Button
+        size="compact"
+        variant="ghost-muted"
+        disabled={disabled}
+        onClick={() => setOpen(true)}
+      >
         {t(requestStart ? 'requestOpen' : 'open')}
       </Button>
       <Dialog

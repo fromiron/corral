@@ -1,5 +1,4 @@
-import { Monitor, Moon, Sun } from '@corral/react/icons';
-import { Button, Select } from '@corral/react/ui';
+import { Button, KitSwitch, ScrollArea, Select } from '@corral/react/design-kit';
 import type { ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
 import { ShortcutTable } from '../CommandPalette.tsx';
@@ -8,7 +7,7 @@ import { LOCALES, useLocale } from '../locale.tsx';
 import { useServices } from '../services.tsx';
 import { formatChord, sendKeyLabel } from '../shortcuts.ts';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
-import { changePreferences, type Theme, usePreferences } from '../workbench/preferences.ts';
+import { changePreferences, usePreferences } from '../workbench/preferences.ts';
 import { SettingsProjectPicker } from '../workbench/SettingsNavigation.tsx';
 import { WorkFolderSection } from './FilesViews.tsx';
 import { WorkspaceToolSettings } from './ProjectToolSettings.tsx';
@@ -21,20 +20,20 @@ export function SettingsLayout({ children, active }: { children: ReactNode; acti
   return (
     <div className="settings-layout flex h-full min-h-0 flex-col" data-settings-section={active}>
       {projectSection ? <SettingsProjectPicker /> : null}
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <ScrollArea className="min-h-0 flex-1" radius="none">
         {projectSection && !projectId ? (
           <main className="settings-content">
-            <h2 className="text-2xl font-semibold">
+            <h2 className="text-title">
               {active === 'mcp'
                 ? r('mcp')
                 : n(active === 'workspace' ? 'projectFolder' : 'projectDefaults')}
             </h2>
-            <p className="text-sm text-muted">{n('projectRequired')}</p>
+            <p className="text-sm text-muted-foreground">{n('projectRequired')}</p>
           </main>
         ) : (
           children
         )}
-      </div>
+      </ScrollArea>
     </div>
   );
 }
@@ -52,43 +51,28 @@ export function SettingsPage({
   return (
     <SettingsLayout active={section}>
       <main className="settings-content">
-        <h2 className="text-2xl font-semibold tracking-tight">{t(section)}</h2>
+        <h2 className="text-title">{t(section)}</h2>
         {/* How this form saves, said where it applies (#81 SET-S10). */}
         {section === 'general' || section === 'shortcuts' ? (
-          <p data-testid="settings-save-mode" className="text-sm text-muted">
+          <p data-testid="settings-save-mode" className="text-sm text-muted-foreground">
             {t('savesAutomatically')}
           </p>
         ) : null}
         {section === 'general' ? (
-          <>
+          <div className="flex flex-col">
             <section className="settings-row">
               <div>
                 <h3>{t('appearance')}</h3>
-                <p>{t('appearanceHint')}</p>
               </div>
-              <fieldset className="flex rounded-xl bg-surface p-1">
-                <legend className="sr-only">{t('appearance')}</legend>
-                {(['system', 'light', 'dark'] as Theme[]).map((value) => {
-                  const Icon = { system: Monitor, light: Sun, dark: Moon }[value];
-                  return (
-                    <label
-                      key={value}
-                      className={`relative flex cursor-pointer items-center gap-1.5 rounded-lg px-3 py-2 text-xs focus-within:outline-2 focus-within:outline-accent ${theme === value ? 'bg-raised text-text shadow-sm' : 'text-muted'}`}
-                    >
-                      <input
-                        type="radio"
-                        name="theme"
-                        className="absolute inset-0 size-full cursor-pointer opacity-0"
-                        value={value}
-                        checked={theme === value}
-                        onChange={() => changePreferences({ theme: value })}
-                      />
-                      <Icon size={14} />
-                      {t(value)}
-                    </label>
-                  );
-                })}
-              </fieldset>
+              <Select
+                label={t('appearance')}
+                value={theme}
+                onValueChange={(theme) => changePreferences({ theme })}
+                options={(['system', 'light', 'dark'] as const).map((value) => ({
+                  value,
+                  label: t(value),
+                }))}
+              />
             </section>
             <section className="settings-row">
               <div>
@@ -102,25 +86,15 @@ export function SettingsPage({
                   })}
                 </p>
               </div>
-              <fieldset className="flex rounded-xl bg-surface p-1">
-                <legend className="sr-only">{t('sendKey')}</legend>
-                {(['enter', 'mod-enter'] as const).map((value) => (
-                  <label
-                    key={value}
-                    className={`relative flex cursor-pointer items-center rounded-lg px-3 py-2 text-xs focus-within:outline-2 focus-within:outline-accent ${sendKey === value ? 'bg-raised text-text shadow-sm' : 'text-muted'}`}
-                  >
-                    <input
-                      type="radio"
-                      name="send-key"
-                      className="absolute inset-0 size-full cursor-pointer opacity-0"
-                      value={value}
-                      checked={sendKey === value}
-                      onChange={() => changePreferences({ sendKey: value })}
-                    />
-                    {value === 'enter' ? t('sendEnter') : t('sendModEnter')}
-                  </label>
-                ))}
-              </fieldset>
+              <Select
+                label={t('sendKey')}
+                value={sendKey}
+                onValueChange={(sendKey) => changePreferences({ sendKey })}
+                options={[
+                  { value: 'enter', label: t('sendEnter') },
+                  { value: 'mod-enter', label: t('sendModEnter') },
+                ]}
+              />
             </section>
 
             <section className="settings-row">
@@ -151,18 +125,16 @@ export function SettingsPage({
                   <h3>{t('notifySetting')}</h3>
                   <p>{t('notifyHint')}</p>
                 </div>
-                <label className="flex items-center gap-2 text-xs">
-                  <input
-                    type="checkbox"
-                    checked={notify}
-                    onChange={(e) => changePreferences({ notify: e.target.checked })}
-                  />
-                  {t('notifyOn')}
-                </label>
+                <KitSwitch
+                  label={t('notifyOn')}
+                  checked={notify}
+                  onToggle={() => changePreferences({ notify: !notify })}
+                  className="[&>span:last-child]:sr-only"
+                />
               </section>
             ) : null}
             <DesktopWorkspace />
-          </>
+          </div>
         ) : section === 'workspace' ? (
           project ? (
             <>
@@ -171,30 +143,26 @@ export function SettingsPage({
             </>
           ) : null
         ) : section === 'shortcuts' ? (
-          <section className="rounded-xl bg-raised p-5">
+          <section>
             <ShortcutTable editable />
           </section>
         ) : (
           <>
-            <p className="text-sm text-muted">{t('aboutText')}</p>
+            <p className="text-sm text-muted-foreground">{t('aboutText')}</p>
             <DesktopAbout serverVersion={serverVersion} />
-            <section className="settings-row">
-              <div>
-                <h3>{t('releases')}</h3>
-              </div>
-              <Button
-                variant="outline"
-                render={
-                  <a
-                    href="https://github.com/fromiron/corral/releases"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  />
-                }
-              >
-                {t('releases')}
-              </Button>
-            </section>
+            <Button
+              variant="tertiary"
+              className="self-start"
+              render={
+                <a
+                  href="https://github.com/fromiron/corral/releases"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                />
+              }
+            >
+              {t('releases')}
+            </Button>
           </>
         )}
       </main>

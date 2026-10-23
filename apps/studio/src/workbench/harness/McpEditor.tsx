@@ -11,7 +11,7 @@ import {
   DialogPopup,
   DialogTitle,
   Select,
-} from '@corral/react/ui';
+} from '@corral/react/design-kit';
 import { useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useSettingsCommand, useSettingsForm, useSettingsTask } from '../SettingsLifecycle.tsx';
@@ -214,7 +214,7 @@ export function McpEditor({
                 </label>
                 {localBrowser ? (
                   <>
-                    <p className="text-xs text-muted">{t('browserFixtureHint')}</p>
+                    <p className="text-xs text-muted-foreground">{t('browserFixtureHint')}</p>
                     <label className="flex flex-col gap-1 text-sm">
                       {t('browserOrigin')}
                       <input
@@ -262,7 +262,7 @@ export function McpEditor({
                     onChange={(e) => setArgs(e.target.value)}
                   />
                 </label>
-                <p className="text-xs text-muted">{t('argsHint')}</p>
+                <p className="text-xs text-muted-foreground">{t('argsHint')}</p>
               </>
             ) : (
               <>

@@ -15,7 +15,7 @@ test('[WBTST-003] a run stays in the project it started in when its Corral moves
   corral,
 }) => {
   await corral.open('/projects');
-  await page.getByLabel('Name', { exact: true }).fill('Client A');
+  await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Client A');
   await page.getByRole('button', { name: 'Create project' }).click();
   await expect(page).toHaveURL(/\/projects\/project_[a-z0-9]+$/);
   const projectPath = new URL(page.url()).pathname;
@@ -38,7 +38,8 @@ test('[WBTST-003] a run stays in the project it started in when its Corral moves
 
   // Move the Corral to the default project: it goes, its finished run stays.
   await tab('Teams');
-  await page.getByLabel('Move Untitled team to another project').selectOption('default');
+  await page.getByRole('combobox', { name: 'Move Untitled team to another project' }).click();
+  await page.getByRole('option', { name: 'My project', exact: true }).click();
   await expect(page.getByText('No teams yet.')).toBeVisible();
   await page.reload();
   await expect(page.getByRole('heading', { level: 2, name: 'Client A' })).toBeVisible();

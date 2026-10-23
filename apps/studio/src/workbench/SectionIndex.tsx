@@ -1,4 +1,4 @@
-import { Button } from '@corral/react/ui';
+import { Button } from '@corral/react/design-kit';
 import { useTranslations } from 'use-intl';
 
 /**
@@ -9,12 +9,12 @@ export function SectionIndex({ sections }: { sections: { id: string; label: stri
   const t = useTranslations('Navigation');
   return (
     <nav aria-label={t('onThisPage')} className="flex flex-wrap items-center gap-1 text-xs">
-      <span className="mr-1 text-muted">{t('onThisPage')}</span>
+      <span className="mr-1 text-muted-foreground">{t('onThisPage')}</span>
       {sections.map((section) => (
         <Button
           key={section.id}
           variant="ghost"
-          size="xs"
+          size="compact"
           onClick={() => {
             const target = document.getElementById(section.id);
             target?.scrollIntoView({ block: 'start', behavior: 'smooth' });

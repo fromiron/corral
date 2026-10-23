@@ -17,7 +17,7 @@ test('[TC-ABS-011-H] reviewed Markdown agent import survives save/reload and is 
   await page.getByRole('tab', { name: /^Teams/ }).click();
   await page.getByRole('button', { name: 'New team', exact: true }).click();
   await page.getByRole('button', { name: 'Add Agent', exact: true }).click();
-  await page.getByRole('checkbox', { name: /Can change files/ }).check();
+  await page.getByRole('switch', { name: /Can change files/ }).check();
   await page.getByRole('button', { name: 'Add Output', exact: true }).click();
   await page
     .locator('.react-flow__node[data-id="agent_1"] .react-flow__handle[data-handleid="out"]')
@@ -186,7 +186,7 @@ test('[TC-ABS-011-H] Markdown Edit imports a reviewed Hashline role with parent 
   await page.getByRole('tab', { name: /^Teams/ }).click();
   await page.getByRole('button', { name: 'New team', exact: true }).click();
   await page.getByRole('button', { name: 'Add Agent', exact: true }).click();
-  await page.getByRole('checkbox', { name: /Can change files/ }).check();
+  await page.getByRole('switch', { name: /Can change files/ }).check();
   await page.getByRole('button', { name: 'Import Markdown agent', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Import a callable agent' });
   await dialog.getByLabel('Markdown source', { exact: true }).fill(`---
@@ -253,7 +253,7 @@ test('[TC-ABS-011-H] Bash import inherits a verified local parent work style wit
   await page.getByRole('tab', { name: /^Teams/ }).click();
   await page.getByRole('button', { name: 'New team', exact: true }).click();
   await page.getByRole('button', { name: 'Add Agent', exact: true }).click();
-  await page.getByRole('checkbox', { name: /Run shell commands/ }).check();
+  await page.getByRole('switch', { name: /Run shell commands/ }).check();
   await page.getByRole('combobox', { name: 'Work styles', exact: true }).click();
   await page.getByRole('option', { name: 'Local shell style · r1', exact: true }).click();
   await page.getByRole('button', { name: 'Import Markdown agent', exact: true }).click();

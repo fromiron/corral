@@ -5,7 +5,6 @@ import type {
   VoiceTranscript,
   VoiceTranscriptReceipt,
 } from '@corral/client';
-import { Mic } from '@corral/react/icons';
 import {
   Button,
   Dialog,
@@ -13,7 +12,8 @@ import {
   DialogPopup,
   DialogTitle,
   Select,
-} from '@corral/react/ui';
+} from '@corral/react/design-kit';
+import { Mic } from '@corral/react/icons';
 import { useEffect, useRef, useState } from 'react';
 import { useLocale } from '../locale.tsx';
 import { LiveVoiceRuntime, type VoiceSnapshot } from './live-voice-runtime.ts';
@@ -122,7 +122,7 @@ export function LiveVoice({
       <Button
         ref={trigger}
         variant="ghost"
-        size="icon-sm"
+        size="icon-compact"
         aria-label={ko ? '라이브 음성' : 'Live voice'}
         onClick={() => setOpen(true)}
       >
@@ -195,7 +195,7 @@ export function LiveVoice({
                   {states[snapshot.state]} · {snapshot.elapsedSeconds}s /{' '}
                   {configuration?.maxDurationSeconds ?? 300}s
                 </p>
-                <p className="text-muted">
+                <p className="text-muted-foreground">
                   {ko ? '음성 사용량' : 'Voice usage'}: {snapshot.inputTokens}{' '}
                   {ko ? '입력' : 'input'} / {snapshot.outputTokens}{' '}
                   {ko ? '출력 토큰' : 'output tokens'} · {ko ? '응답당 최대' : 'Per-response cap'}{' '}
@@ -230,14 +230,14 @@ export function LiveVoice({
               {snapshot.utterances.map((utterance) => (
                 <div className="border-t border-line py-2" key={utterance.commandId}>
                   <p>{utterance.text}</p>
-                  <p className="text-muted">
+                  <p className="text-muted-foreground">
                     {utterance.receipt?.message ??
                       utterance.receipt?.status ??
                       (ko ? '접수 확인 중' : 'Confirming receipt')}
                   </p>
                   {utterance.receipt?.status === 'rejected' && (
                     <Button
-                      size="sm"
+                      size="compact"
                       variant="ghost"
                       onClick={() => void runtime.current?.retry(utterance.commandId)}
                     >
@@ -247,7 +247,7 @@ export function LiveVoice({
                   {utterance.receipt?.alternatives?.map((delivery) => (
                     <Button
                       key={delivery}
-                      size="sm"
+                      size="compact"
                       variant="ghost"
                       onClick={() => void runtime.current?.retry(utterance.commandId, delivery)}
                     >

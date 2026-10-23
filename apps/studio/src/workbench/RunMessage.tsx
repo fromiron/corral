@@ -14,8 +14,8 @@ import {
   StatusBadge,
   WorkPlanPanel,
 } from '@corral/react';
+import { Button } from '@corral/react/design-kit';
 import { Activity, ChevronRight, FileText, LoaderCircle, Pause } from '@corral/react/icons';
-import { Button } from '@corral/react/ui';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -163,7 +163,7 @@ export function RunMessage({
         <ReasoningSummary call={projection.modelCalls[execution.modelCallIds.at(-1)!]!} />
       ) : null}
       {execution.waitingOn ? (
-        <span className="text-muted">
+        <span className="text-muted-foreground">
           {trun(`waiting.${execution.waitingOn.kind}`, {
             count: execution.waitingOn.targetIds.length,
           })}
@@ -208,7 +208,7 @@ export function RunMessage({
       {projection.statusReason &&
       projection.status !== 'running' &&
       projection.status !== 'succeeded' ? (
-        <p data-testid="run-reason" className="text-xs text-muted">
+        <p data-testid="run-reason" className="text-xs text-muted-foreground">
           {trun('reasonPrefix')} <RunReason code={projection.statusReason} nodeLabel={label} />
         </p>
       ) : null}
@@ -219,7 +219,7 @@ export function RunMessage({
           ) : null}
           {busy.length ? (
             <details className="group/agents">
-              <summary className="flex cursor-pointer list-none items-center gap-2 py-0.5 text-muted hover:text-text">
+              <summary className="flex cursor-pointer list-none items-center gap-2 py-0.5 text-muted-foreground hover:text-text">
                 {summary.working > 0 && projection.status === 'running' ? (
                   <LoaderCircle size={13} className="animate-spin motion-reduce:animate-none" />
                 ) : (
@@ -245,7 +245,7 @@ export function RunMessage({
       ) : null}
       {writing && chatDensity !== 'results' ? (
         <div data-testid="live-text" aria-live="off" className="min-w-0">
-          <p className="mb-1 text-2xs text-muted">
+          <p className="mb-1 text-2xs text-muted-foreground">
             {t('writing', { name: writer ? name(writer) : '' })}
           </p>
           <p className="live-text max-h-40 overflow-hidden text-sm leading-6 whitespace-pre-wrap text-text/80 wrap-anywhere">
@@ -260,7 +260,7 @@ export function RunMessage({
       {resultError ? (
         <p role="alert" className="flex items-center gap-2 text-xs text-danger">
           {t('resultUnavailable')}
-          <Button variant="outline" size="xs" onClick={() => setRetry((value) => value + 1)}>
+          <Button variant="tertiary" size="compact" onClick={() => setRetry((value) => value + 1)}>
             {t('retryResult')}
           </Button>
         </p>
@@ -286,7 +286,7 @@ export function RunMessage({
             setDisclosure({ runId, density: chatDensity, open: e.currentTarget.open })
           }
         >
-          <summary className="flex w-fit cursor-pointer list-none items-center gap-1.5 rounded py-0.5 text-xs text-muted hover:text-text">
+          <summary className="flex w-fit cursor-pointer list-none items-center gap-1.5 rounded py-0.5 text-xs text-muted-foreground hover:text-text">
             <Activity size={13} />
             {t('activity')}
             <span className="tabular-nums">{projection.executionOrder.length}</span>
@@ -383,7 +383,7 @@ function ChatResult({
       className="min-w-0 space-y-3 text-sm leading-7 wrap-anywhere"
       data-testid="chat-result"
     >
-      <summary className="flex w-fit cursor-pointer list-none flex-wrap items-center gap-1.5 rounded text-xs text-muted hover:text-text">
+      <summary className="flex w-fit cursor-pointer list-none flex-wrap items-center gap-1.5 rounded text-xs text-muted-foreground hover:text-text">
         <FileText size={13} />
         {partial ? tr('partial') : t('result')} · {result.name} v{result.version}
         {author ? (
@@ -421,14 +421,14 @@ function ChatResult({
               }
             />
           ) : text === undefined ? (
-            <p className="text-xs text-muted">{ta('loading')}</p>
+            <p className="text-xs text-muted-foreground">{ta('loading')}</p>
           ) : (
             <SafeMarkdown text={text} />
           )}
           <Link
             {...location}
             search={search(result.artifactVersionId)}
-            className="inline-flex items-center gap-1 text-xs text-muted hover:text-text"
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-text"
           >
             {tr('openResults')}
             <ChevronRight size={12} />

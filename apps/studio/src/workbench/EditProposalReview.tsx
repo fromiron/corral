@@ -6,7 +6,13 @@ import {
   type FileEditProposalSummary,
   type WorkspaceTarget,
 } from '@corral/contracts';
-import { Button, Dialog, DialogDescription, DialogPopup, DialogTitle } from '@corral/react/ui';
+import {
+  Button,
+  Dialog,
+  DialogDescription,
+  DialogPopup,
+  DialogTitle,
+} from '@corral/react/design-kit';
 import { lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useTranslations } from 'use-intl';
 import type { DocumentBuffer, DocumentStore } from './documents/store.ts';
@@ -267,7 +273,7 @@ function ProposalReview({ api, owner, target, proposal, onConsumed }: Props) {
     operation.result.outcomes.some((outcome) => outcome.state !== 'applied');
   return (
     <>
-      <Button size="xs" variant="outline" disabled={busy} onClick={() => void history()}>
+      <Button size="compact" variant="tertiary" disabled={busy} onClick={() => void history()}>
         {t('history')}
       </Button>
       <Dialog
@@ -288,13 +294,13 @@ function ProposalReview({ api, owner, target, proposal, onConsumed }: Props) {
             </p>
           ) : null}
           {busy ? (
-            <p role="status" className="text-sm text-muted">
+            <p role="status" className="text-sm text-muted-foreground">
               {t('busy')}
             </p>
           ) : null}
           {detail ? (
             <>
-              <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                 <span role="status">{t(`states.${state}`)}</span>
                 <span>{t(`sources.${detail.source.kind}`)}</span>
                 <span className="font-mono" title={detail.hash}>
@@ -308,7 +314,7 @@ function ProposalReview({ api, owner, target, proposal, onConsumed }: Props) {
                 {detail.files.map((value) => (
                   <li key={value.path}>
                     <Button
-                      size="xs"
+                      size="compact"
                       variant="ghost"
                       aria-pressed={path === value.path}
                       className="max-w-full justify-start"
@@ -325,7 +331,7 @@ function ProposalReview({ api, owner, target, proposal, onConsumed }: Props) {
                 ))}
               </ul>
               {file ? (
-                <Suspense fallback={<p className="text-xs text-muted">{t('busy')}</p>}>
+                <Suspense fallback={<p className="text-xs text-muted-foreground">{t('busy')}</p>}>
                   <FileDiff
                     path={file.path}
                     loadKey={`${detail.hash}:${file.path}`}
@@ -356,19 +362,19 @@ function ProposalReview({ api, owner, target, proposal, onConsumed }: Props) {
                   </>
                 ) : null}
                 {operationId ? (
-                  <Button variant="outline" disabled={busy} onClick={() => void act('check')}>
+                  <Button variant="tertiary" disabled={busy} onClick={() => void act('check')}>
                     {t('check')}
                   </Button>
                 ) : null}
                 {operationId &&
                 (!operation || operation.state === 'uncertain' || operation.state === 'running') ? (
-                  <Button variant="outline" disabled={busy} onClick={() => void act('reconcile')}>
+                  <Button variant="tertiary" disabled={busy} onClick={() => void act('reconcile')}>
                     {t('reconcile')}
                   </Button>
                 ) : null}
                 {operation?.result.outcomes.some((outcome) => outcome.state === 'applied') ? (
                   <Button
-                    variant="outline"
+                    variant="tertiary"
                     disabled={
                       busy ||
                       !!blocked ||
@@ -391,13 +397,13 @@ function ProposalReview({ api, owner, target, proposal, onConsumed }: Props) {
                 items.map((value) => (
                   <li key={value.proposalId}>
                     <Button
-                      size="sm"
-                      variant="outline"
+                      size="compact"
+                      variant="tertiary"
                       onClick={() => void select(value.proposalId, value)}
                     >
                       {value.title}
                     </Button>
-                    <p className="text-xs text-muted">
+                    <p className="text-xs text-muted-foreground">
                       {t(
                         value.dismissed
                           ? 'states.dismissed'
@@ -410,7 +416,7 @@ function ProposalReview({ api, owner, target, proposal, onConsumed }: Props) {
                   </li>
                 ))
               ) : (
-                <li className="text-sm text-muted">{t('empty')}</li>
+                <li className="text-sm text-muted-foreground">{t('empty')}</li>
               )}
             </ul>
           ) : null}

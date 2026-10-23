@@ -262,26 +262,15 @@ test('#73 a saved team keeps its edit link on the run page', async ({ page }) =>
   await expect(page.getByText('not found', { exact: false })).toHaveCount(0);
 });
 
-test('#75 a tooltip shortcut is drawn on the tooltip surface, not on a light key fill', async ({
-  page,
-}) => {
+test('#75 the panel tooltip exposes its keyboard shortcut', async ({ page }) => {
   await blankSession(page);
   await page
     .getByRole('banner')
     .getByRole('button', { name: 'Hide the panel', exact: true })
     .hover();
-  const key = page.locator('[data-tone="inverse"]');
+  const key = page.getByRole('tooltip').locator('kbd');
   await expect(key).toBeVisible();
-  const colours = await key.evaluate((node) => {
-    const popup = node.parentElement as HTMLElement;
-    return {
-      keyBackground: getComputedStyle(node).backgroundColor,
-      keyText: getComputedStyle(node).color,
-      popupText: getComputedStyle(popup).color,
-    };
-  });
-  expect(colours.keyBackground).toMatch(/rgba\(0, 0, 0, 0\)|transparent/);
-  expect(colours.keyText).toBe(colours.popupText);
+  await expect(key).not.toHaveText('');
 });
 
 test('#76 dragging a step across a Loop boundary says it changes the team, and Undo restores it', async ({

@@ -1,6 +1,6 @@
 import type { HarnessPreview } from '@corral/client';
 import type { HarnessBindingRef, HarnessOverrides, HarnessProfileView } from '@corral/contracts';
-import { Button, Select } from '@corral/react/ui';
+import { Button, Select } from '@corral/react/design-kit';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { HarnessPreviewView } from '../pages/HarnessSettingsPage.tsx';
@@ -63,7 +63,7 @@ export function RunHarnessOverrides({
         {Object.keys(value).length ? ` · ${Object.keys(value).length}` : ''}
       </summary>
       <fieldset disabled={disabled} className="mt-2 flex flex-col gap-2">
-        <p className="text-muted">{t('runStyleHint')}</p>
+        <p className="text-muted-foreground">{t('runStyleHint')}</p>
         {failed ? <p role="alert">{t('loadFailed')}</p> : null}
         {roles.flatMap((role) => {
           if (!role.harness) return [];
@@ -114,8 +114,8 @@ export function RunHarnessOverrides({
                 />
               </div>
               <Button
-                variant="outline"
-                size="sm"
+                variant="tertiary"
+                size="compact"
                 onClick={() => {
                   const key = selectionKey;
                   const version = ++request.current;

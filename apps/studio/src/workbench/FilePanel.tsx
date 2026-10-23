@@ -1,7 +1,7 @@
 import type { FileSideView } from '@corral/client';
 import type { TextAttachment, TextRange, WorkspaceTarget } from '@corral/contracts';
+import { Button, Input, Select, Textarea } from '@corral/react/design-kit';
 import { FileText, RefreshCw, X } from '@corral/react/icons';
-import { Button, Input, Select, Textarea } from '@corral/react/ui';
 import { Link } from '@tanstack/react-router';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
@@ -319,7 +319,7 @@ export function FilePanel({
               <summary className="cursor-pointer break-all py-2 font-medium">
                 {candidate.path}
               </summary>
-              <p className="mb-2 text-muted">
+              <p className="mb-2 text-muted-foreground">
                 {te(sameCopy ? 'recoveryHint' : 'previousCopyHint')}
               </p>
               <Textarea
@@ -331,8 +331,8 @@ export function FilePanel({
               <div className="mt-2 flex flex-wrap gap-2">
                 {sameCopy ? (
                   <Button
-                    size="sm"
-                    variant="outline"
+                    size="compact"
+                    variant="tertiary"
                     onClick={() => {
                       setSource('session');
                       void open(candidate.path, true);
@@ -342,7 +342,7 @@ export function FilePanel({
                   </Button>
                 ) : null}
                 <Button
-                  size="sm"
+                  size="compact"
                   variant="ghost"
                   onClick={() => {
                     void owner
@@ -366,7 +366,7 @@ export function FilePanel({
         aria-label={te(scope ? 'previousCopy' : 'preservedDrafts')}
       >
         <p className="text-sm font-medium">{te(scope ? 'previousCopy' : 'preservedDrafts')}</p>
-        <p className="text-xs text-muted">
+        <p className="text-xs text-muted-foreground">
           {te(scope ? 'previousCopyHint' : 'unavailableDraftHint')}
         </p>
         {retained.map((entry) => (
@@ -381,7 +381,7 @@ export function FilePanel({
             </Button>
             <Button
               variant="ghost"
-              size="icon-sm"
+              size="icon-compact"
               aria-label={t('closeFile', { path: entry.path })}
               onClick={() => void close(entry.path, undefined, entry.key)}
             >
@@ -404,13 +404,13 @@ export function FilePanel({
     ) : null;
   if (!scope && !loading)
     return (
-      <div ref={panel} className="space-y-2 p-3 text-xs text-muted">
+      <div ref={panel} className="space-y-2 p-3 text-xs text-muted-foreground">
         {retainedDrafts}
         {recoveryCandidates}
         {recoveryReadError ? <p role="alert">{te('recoveryReadFailed')}</p> : null}
         {closeDialog}
         {error ? <p role="alert">{error}</p> : <p>{t('linkToBrowse')}</p>}
-        <Link {...navigation.link('workspace', projectId)} className="text-accent underline">
+        <Link {...navigation.link('workspace', projectId)} className="text-primary underline">
           {t('workspace')}
         </Link>
       </div>
@@ -474,7 +474,12 @@ export function FilePanel({
             ...(hasCopy ? [{ value: 'session' as const, label: t('sessionCopy') }] : []),
           ]}
         />
-        <Button size="icon-xs" variant="ghost" aria-label={t('refreshFiles')} onClick={refresh}>
+        <Button
+          size="icon-compact"
+          variant="ghost"
+          aria-label={t('refreshFiles')}
+          onClick={refresh}
+        >
           <RefreshCw />
         </Button>
       </div>
@@ -501,7 +506,7 @@ export function FilePanel({
                 className="min-w-0 flex-1"
               />
             </div>
-            <p className="text-xs text-muted">{ts('needsCopy')}</p>
+            <p className="text-xs text-muted-foreground">{ts('needsCopy')}</p>
           </div>
         )
       ) : (
@@ -540,25 +545,25 @@ export function FilePanel({
                     }}
                     className={`flex items-center gap-2 rounded px-2 text-left text-xs hover:bg-raised ${active === file.path ? 'bg-sidebar-selected' : ''}`}
                   >
-                    <FileText size={14} className="shrink-0 text-muted" />
+                    <FileText size={14} className="shrink-0 text-muted-foreground" />
                     <span className="truncate">{file.path}</span>
                   </button>
                 );
               })}
             </div>
             {!loading && !files.length ? (
-              <p className="p-2 text-xs text-muted">{t('noFiles')}</p>
+              <p className="p-2 text-xs text-muted-foreground">{t('noFiles')}</p>
             ) : null}
           </div>
           {list.truncated ? (
-            <p role="note" className="text-xs text-muted">
+            <p role="note" className="text-xs text-muted-foreground">
               {t('filesTruncated')}
             </p>
           ) : null}
         </>
       ) : null}
       {tabMessage ? (
-        <p role="status" className="text-xs text-muted">
+        <p role="status" className="text-xs text-muted-foreground">
           {tabMessage}
         </p>
       ) : null}
@@ -573,10 +578,10 @@ export function FilePanel({
               {active}
             </p>
             {inlineEditor ? null : (
-              <span className="text-2xs text-muted">{tf('readOnlyPreview')}</span>
+              <span className="text-2xs text-muted-foreground">{tf('readOnlyPreview')}</span>
             )}
             <Button
-              size="icon-xs"
+              size="icon-compact"
               variant="ghost"
               aria-label={t('closeFile', { path: active })}
               onClick={() => void close(active)}
@@ -590,7 +595,7 @@ export function FilePanel({
             </p>
           ) : null}
           {!displayContent && !readError ? (
-            <p className="text-xs text-muted">{t('loadingFile')}</p>
+            <p className="text-xs text-muted-foreground">{t('loadingFile')}</p>
           ) : null}
           {inlineEditor && owner && documentKey && documents[documentKey] ? (
             <DocumentPanel
@@ -635,8 +640,8 @@ export function FilePanel({
                   />
                 </label>
                 <Button
-                  size="xs"
-                  variant="outline"
+                  size="compact"
+                  variant="tertiary"
                   disabled={range.start < 1 || range.end < range.start || range.end > lineCount}
                   onClick={() => onReference({ path: active, ...range })}
                 >
@@ -647,14 +652,16 @@ export function FilePanel({
                 aria-label={t('fileContent')}
                 className="max-h-[45vh] overflow-auto rounded fill-group"
               >
-                <Suspense fallback={<p className="p-3 text-xs text-muted">{t('loadingFile')}</p>}>
+                <Suspense
+                  fallback={<p className="p-3 text-xs text-muted-foreground">{t('loadingFile')}</p>}
+                >
                   <SourceCode path={active} text={displayContent.text} onSelect={setRange} />
                 </Suspense>
               </section>
-              <p className="text-2xs text-muted">{t('referencePermission')}</p>
+              <p className="text-2xs text-muted-foreground">{t('referencePermission')}</p>
             </>
           ) : displayContent ? (
-            <p className="text-xs text-muted">
+            <p className="text-xs text-muted-foreground">
               {displayContent.kind === 'too_large'
                 ? tf('tooLarge')
                 : displayContent.kind === 'binary'

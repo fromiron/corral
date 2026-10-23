@@ -1,4 +1,5 @@
 import type { RunSessionStore } from '@corral/react';
+import { Button } from '@corral/react/design-kit';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
@@ -14,8 +15,8 @@ const MARK: Record<GuideStepState, string> = {
 const TONE: Record<GuideStepState, string> = {
   done: 'text-success',
   current: 'font-medium text-text',
-  pending: 'text-muted',
-  missed: 'text-muted line-through decoration-muted/60',
+  pending: 'text-muted-foreground',
+  missed: 'text-muted-foreground line-through decoration-muted/60',
 };
 
 /**
@@ -60,7 +61,7 @@ export function DemoGuide({
             {t('heading')}
           </h2>
         </summary>
-        <p className="mt-1 text-muted">{t('intro')}</p>
+        <p className="mt-1 text-muted-foreground">{t('intro')}</p>
         <ol className="mt-2 flex flex-col gap-1.5">
           {steps.map((step) => (
             <li
@@ -75,7 +76,7 @@ export function DemoGuide({
               </span>
               <span className="flex flex-col gap-1">
                 <span className={TONE[step.state]}>{t(`steps.${step.id}`)}</span>
-                <span className="text-muted">{t(`state.${step.state}`)}</span>
+                <span className="text-muted-foreground">{t(`state.${step.state}`)}</span>
                 {step.id === 'steer' &&
                 (step.state === 'pending' ||
                   (step.state === 'current' && pausedFor.current !== target)) ? (
@@ -89,13 +90,15 @@ export function DemoGuide({
                   </label>
                 ) : null}
                 {step.steerTarget ? (
-                  <button
+                  <Button
+                    variant="tertiary"
+                    size="compact"
                     type="button"
                     onClick={() => onSteer(step.steerTarget as string)}
-                    className="self-start rounded border border-accent px-2 py-0.5 text-accent"
+                    className="self-start"
                   >
                     {t('steerAction')}
-                  </button>
+                  </Button>
                 ) : null}
               </span>
             </li>

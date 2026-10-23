@@ -47,7 +47,7 @@ test('[TC-UX-005-N] an explicit optional Corral choice and draft survive project
   corral,
 }) => {
   await corral.open('/');
-  await page.getByText('Session details (optional)', { exact: true }).click();
+  await page.getByRole('button', { name: /^Session details \(optional\)/ }).click();
   await page.getByLabel('Purpose').fill('Keep the optional purpose.');
   await page.getByRole('tab', { name: /^Teams/ }).click();
   await page.reload();

@@ -13,8 +13,8 @@ import {
   type GitWriteResult,
   type WorkspaceTarget,
 } from '@corral/contracts';
+import { Button, Input, Select, Textarea } from '@corral/react/design-kit';
 import { Minus, Plus } from '@corral/react/icons';
-import { Button, Input, Select, Textarea } from '@corral/react/ui';
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { FileDiff } from '../pages/ReviewPage.tsx';
@@ -506,8 +506,8 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
           ]}
         />
         <Button
-          size="sm"
-          variant="outline"
+          size="compact"
+          variant="tertiary"
           disabled={!result}
           onClick={() => setRevision((value) => value + 1)}
         >
@@ -515,15 +515,15 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
         </Button>
       </div>
       {!result ? (
-        <p role="status" className="text-xs text-muted">
+        <p role="status" className="text-xs text-muted-foreground">
           {t('loading')}
         </p>
       ) : result.noCopy ? (
-        <p role="status" className="text-xs text-muted">
+        <p role="status" className="text-xs text-muted-foreground">
           {t('noSessionCopy')}
         </p>
       ) : result.error ? (
-        <p role="alert" className="text-xs text-muted">
+        <p role="alert" className="text-xs text-muted-foreground">
           {t('unavailable')}
         </p>
       ) : null}
@@ -583,8 +583,8 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
                   />
                   <Button
                     type="submit"
-                    size="xs"
-                    variant="outline"
+                    size="compact"
+                    variant="tertiary"
                     disabled={!branchName.trim() || Boolean(busy || unconfirmed)}
                   >
                     {t('createBranch')}
@@ -595,7 +595,7 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
                     {others.slice(0, 20).map((branch) => (
                       <li key={branch}>
                         <Button
-                          size="xs"
+                          size="compact"
                           variant="ghost"
                           aria-label={t('switchTo', { branch })}
                           title={t('switchTo', { branch })}
@@ -611,16 +611,16 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
                 {remote ? (
                   <div className="flex flex-wrap gap-1">
                     <Button
-                      size="xs"
-                      variant="outline"
+                      size="compact"
+                      variant="tertiary"
                       disabled={Boolean(busy || unconfirmed)}
                       onClick={() => void change({ kind: 'fetch', remote })}
                     >
                       {t('fetch')}
                     </Button>
                     <Button
-                      size="xs"
-                      variant="outline"
+                      size="compact"
+                      variant="tertiary"
                       disabled={!status.head.branch || Boolean(busy || unconfirmed)}
                       onClick={() =>
                         void change({
@@ -633,8 +633,8 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
                       {t('pull')}
                     </Button>
                     <Button
-                      size="xs"
-                      variant="outline"
+                      size="compact"
+                      variant="tertiary"
                       disabled={!status.head.branch || Boolean(busy || unconfirmed)}
                       onClick={() =>
                         status.head.branch &&
@@ -650,7 +650,9 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
             </details>
           ) : null}
           {sequence?.sequence ? sequenceControls : null}
-          {status.filtersDisabled ? <p className="text-xs text-muted">{t('rawContent')}</p> : null}
+          {status.filtersDisabled ? (
+            <p className="text-xs text-muted-foreground">{t('rawContent')}</p>
+          ) : null}
           {status.truncated ? (
             <p role="status" className="text-xs text-warning">
               {t('truncated')}
@@ -660,8 +662,8 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
             <div role="status" className="flex flex-wrap items-center gap-2 text-xs text-warning">
               <span>{t('unconfirmed')}</span>
               <Button
-                size="xs"
-                variant="outline"
+                size="compact"
+                variant="tertiary"
                 disabled={Boolean(busy)}
                 onClick={() => void check(unconfirmed)}
               >
@@ -670,15 +672,15 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
               {unconfirmed.advanced ? (
                 <>
                   <Button
-                    size="xs"
-                    variant="outline"
+                    size="compact"
+                    variant="tertiary"
                     disabled={Boolean(busy)}
                     onClick={() => void recoverAdvanced(unconfirmed, 'reconcile')}
                   >
                     {t('reconcile')}
                   </Button>
                   <Button
-                    size="xs"
+                    size="compact"
                     variant="ghost"
                     disabled={Boolean(busy)}
                     onClick={() => void recoverAdvanced(unconfirmed, 'cancel')}
@@ -693,8 +695,8 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
             <div role="status" className="flex flex-wrap items-center gap-2 text-xs">
               <span>{t('advancedRunning')}</span>
               <Button
-                size="xs"
-                variant="outline"
+                size="compact"
+                variant="tertiary"
                 onClick={() =>
                   void workspaces
                     ?.cancelGitAdvanced(sessionId, busy.operationId)
@@ -710,7 +712,7 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
             <div role="alert" className="flex flex-col gap-1 text-xs text-danger">
               <span>{t(failure.key)}</span>
               {failure.detail && failure.key !== 'stateChanged' ? (
-                <pre className="whitespace-pre-wrap break-words font-mono text-2xs text-muted">
+                <pre className="whitespace-pre-wrap break-words font-mono text-2xs text-muted-foreground">
                   {failure.detail}
                 </pre>
               ) : null}
@@ -757,7 +759,7 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
               <div className="flex flex-wrap items-center gap-3">
                 <Button
                   type="submit"
-                  size="sm"
+                  size="compact"
                   disabled={!message.trim() || Boolean(busy) || Boolean(unconfirmed)}
                 >
                   {busy?.kind === 'commit'
@@ -767,8 +769,8 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
                 {busy?.kind === 'commit' ? (
                   <Button
                     type="button"
-                    size="sm"
-                    variant="outline"
+                    size="compact"
+                    variant="tertiary"
                     onClick={() =>
                       void workspaces?.cancelGitOperation?.(sessionId, busy.operationId)
                     }
@@ -787,7 +789,9 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
               </div>
             </form>
           ) : null}
-          {!status.entries.length ? <p className="text-xs text-muted">{t('noChanges')}</p> : null}
+          {!status.entries.length ? (
+            <p className="text-xs text-muted-foreground">{t('noChanges')}</p>
+          ) : null}
           {sides.map((side) => {
             const entries = status.entries.filter((entry) => belongs(entry, side));
             return (
@@ -798,7 +802,7 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
                   </h3>
                   {writable && entries.length > 1 ? (
                     <Button
-                      size="xs"
+                      size="compact"
                       variant="ghost"
                       disabled={Boolean(busy || unconfirmed)}
                       onClick={() =>
@@ -827,14 +831,14 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
                           {entry.originalPath ? `${entry.originalPath} → ` : ''}
                           {entry.path}
                         </span>
-                        <span className="text-muted">
+                        <span className="text-muted-foreground">
                           {side === 'staged' ? entry.indexStatus : entry.worktreeStatus}
                           {entry.submodule ? ` · ${t('submodule')}` : ''}
                         </span>
                       </button>
                       {writable ? (
                         <Button
-                          size="icon-xs"
+                          size="icon-compact"
                           variant="ghost"
                           aria-label={t(side === 'staged' ? 'unstage' : 'stage', {
                             path: entry.path,

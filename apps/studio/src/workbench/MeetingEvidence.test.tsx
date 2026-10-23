@@ -8,7 +8,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 const fixture = vi.hoisted(() => ({ services: {} as Record<string, unknown> }));
 vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
 vi.mock('use-intl', () => ({ useTranslations: () => (key: string) => key }));
-vi.mock('@corral/react/ui', () => ({
+vi.mock('@corral/react/design-kit', () => ({
   Button: ({ children, variant: _v, size: _s, ...props }: any) => (
     <button {...props}>{children}</button>
   ),

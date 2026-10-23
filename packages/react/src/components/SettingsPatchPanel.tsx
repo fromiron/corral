@@ -2,6 +2,16 @@ import { PatchPayload, type ReasoningPolicy, TERMINAL_RUN_STATUSES } from '@corr
 import { useEffect, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+  Button,
+  Input,
+  Select,
+  Textarea,
+} from '../design-kit/index.ts';
 import type { RunSessionStore } from '../run/session.ts';
 import { ReasoningSelect } from './ReasoningSelect.tsx';
 import { StatusBadge } from './StatusBadge.tsx';
@@ -180,191 +190,186 @@ export function SettingsPatchPanel({
     );
   }).length;
   return (
-    <details className="rounded fill-group p-2 text-xs">
-      <summary className="cursor-pointer font-semibold">{t('heading')}</summary>
-      <div className="mt-2 flex flex-col gap-2">
-        {!terminal ? (
-          <>
-            <label htmlFor={`${id}-kind`}>{t('scope')}</label>
-            <select
-              id={`${id}-kind`}
-              value={kind}
-              onChange={(event) => changeKind(event.target.value as PatchKind)}
-              className="rounded fill-group p-1"
-            >
-              {(['run_limits', 'node_future', 'loop_limit', 'criteria'] as const).map((value) => (
-                <option key={value} value={value}>
-                  {t(`kind.${value}`)}
-                </option>
-              ))}
-            </select>
-            {kind === 'node_future' || kind === 'loop_limit' ? (
+    <Accordion>
+      <AccordionItem value="settings-patch">
+        <AccordionTrigger>{t('heading')}</AccordionTrigger>
+        <AccordionContent>
+          <div className="flex flex-col gap-2 text-xs">
+            {!terminal ? (
               <>
-                <label htmlFor={`${id}-node`}>{t('node')}</label>
-                <select
-                  id={`${id}-node`}
-                  value={node?.id ?? ''}
-                  onChange={(event) => {
-                    setSelectedNode(event.target.value);
+                <label htmlFor={`${id}-kind`}>{t('scope')}</label>
+                <Select
+                  id={`${id}-kind`}
+                  label={t('scope')}
+                  value={kind}
+                  onValueChange={changeKind}
+                  options={(['run_limits', 'node_future', 'loop_limit', 'criteria'] as const).map(
+                    (value) => ({ value, label: t(`kind.${value}`) }),
+                  )}
+                />
+                {kind === 'node_future' || kind === 'loop_limit' ? (
+                  <>
+                    <label htmlFor={`${id}-node`}>{t('node')}</label>
+                    <Select
+                      id={`${id}-node`}
+                      label={t('node')}
+                      value={node?.id ?? ''}
+                      onValueChange={(value) => {
+                        setSelectedNode(value);
+                        setPreview(null);
+                      }}
+                      options={nodes.map((candidate) => ({
+                        value: candidate.id,
+                        label: `${candidate.label} · ${candidate.id}`,
+                      }))}
+                    />
+                  </>
+                ) : null}
+                <label htmlFor={`${id}-field`}>{t('fieldLabel')}</label>
+                <Select
+                  id={`${id}-field`}
+                  label={t('fieldLabel')}
+                  value={field}
+                  onValueChange={(value) => {
+                    setField(value);
+                    setProposed('');
                     setPreview(null);
                   }}
-                  className="rounded fill-group p-1"
+                  options={fields.map((value) => ({ value, label: t(`field.${value}`) }))}
+                />
+                <p className="text-muted-foreground">
+                  {t('current')}: <span className="whitespace-pre-wrap break-words">{current}</span>
+                </p>
+                {field === 'reasoning' ? (
+                  <>
+                    <ReasoningSelect
+                      value={reasoning}
+                      onChange={(value) => {
+                        setReasoning(value);
+                        setProposed(value?.mode === 'fixed' ? value.level : (value?.mode ?? ''));
+                        setPreview(null);
+                      }}
+                    />
+                    <label htmlFor={`${id}-reasoning-model`} className="flex flex-col gap-1">
+                      {t('reasoningModel')}
+                      <Input
+                        id={`${id}-reasoning-model`}
+                        placeholder={String(nodeSettings.modelProfile ?? '')}
+                        value={reasoningModel}
+                        onChange={(event) => {
+                          setReasoningModel(event.target.value);
+                          setPreview(null);
+                        }}
+                      />
+                    </label>
+                  </>
+                ) : (
+                  <>
+                    <label htmlFor={`${id}-value`}>{t('proposed')}</label>
+                    <Textarea
+                      id={`${id}-value`}
+                      value={proposed}
+                      onChange={(event) => {
+                        setProposed(event.target.value);
+                        setPreview(null);
+                      }}
+                      rows={3}
+                    />
+                  </>
+                )}
+                <Button
+                  type="button"
+                  disabled={
+                    pending ||
+                    !proposed.trim() ||
+                    ((kind === 'node_future' || kind === 'loop_limit') && !node) ||
+                    (kind === 'criteria' && (!criteriaId || criteriaText === undefined))
+                  }
+                  onClick={prepare}
+                  variant="secondary"
+                  size="compact"
                 >
-                  {nodes.map((candidate) => (
-                    <option key={candidate.id} value={candidate.id}>
-                      {candidate.label} · {candidate.id}
-                    </option>
-                  ))}
-                </select>
-              </>
-            ) : null}
-            <label htmlFor={`${id}-field`}>{t('fieldLabel')}</label>
-            <select
-              id={`${id}-field`}
-              value={field}
-              onChange={(event) => {
-                setField(event.target.value as Field);
-                setProposed('');
-                setPreview(null);
-              }}
-              className="rounded fill-group p-1"
-            >
-              {fields.map((value) => (
-                <option key={value} value={value}>
-                  {t(`field.${value}`)}
-                </option>
-              ))}
-            </select>
-            <p className="text-muted">
-              {t('current')}: <span className="whitespace-pre-wrap break-words">{current}</span>
-            </p>
-            {field === 'reasoning' ? (
-              <>
-                <ReasoningSelect
-                  value={reasoning}
-                  onChange={(value) => {
-                    setReasoning(value);
-                    setProposed(value?.mode === 'fixed' ? value.level : (value?.mode ?? ''));
-                    setPreview(null);
-                  }}
-                />
-                <label className="flex flex-col gap-1">
-                  {t('reasoningModel')}
-                  <input
-                    className="rounded fill-group p-2"
-                    placeholder={String(nodeSettings.modelProfile ?? '')}
-                    value={reasoningModel}
-                    onChange={(event) => {
-                      setReasoningModel(event.target.value);
-                      setPreview(null);
-                    }}
-                  />
-                </label>
-              </>
-            ) : (
-              <>
-                <label htmlFor={`${id}-value`}>{t('proposed')}</label>
-                <textarea
-                  id={`${id}-value`}
-                  value={proposed}
-                  onChange={(event) => {
-                    setProposed(event.target.value);
-                    setPreview(null);
-                  }}
-                  rows={3}
-                  className="rounded fill-group p-2"
-                />
-              </>
-            )}
-            <button
-              type="button"
-              disabled={
-                pending ||
-                !proposed.trim() ||
-                ((kind === 'node_future' || kind === 'loop_limit') && !node) ||
-                (kind === 'criteria' && (!criteriaId || criteriaText === undefined))
-              }
-              onClick={prepare}
-              className="rounded fill-control px-2 py-1 disabled:opacity-50"
-            >
-              {t('preview')}
-            </button>
-            {error ? (
-              <p role="alert" className="text-danger">
-                {error}
-              </p>
-            ) : null}
-            {preview ? (
-              <div
-                className="flex flex-col gap-2 rounded border border-accent p-2"
-                data-testid="patch-preview"
-              >
-                <h4 className="font-semibold">{t('diff')}</h4>
-                <p>
-                  {t('target', { target: preview.target })} · {t(`field.${preview.field}`)}
-                </p>
-                <dl className="flex flex-col gap-1">
-                  <dt className="text-muted">{t('current')}</dt>
-                  <dd className="whitespace-pre-wrap break-words">{preview.before}</dd>
-                  <dt className="text-muted">{t('proposed')}</dt>
-                  <dd className="whitespace-pre-wrap break-words">{preview.after}</dd>
-                </dl>
-                <p>{t(`boundary.${preview.payload.kind}`)}</p>
-                <p>{t('futureNodes', { count: previewNodes.length })}</p>
-                <p className="text-muted">{t('dynamicCount')}</p>
-                <p>
-                  {preview.payload.kind === 'node_future'
-                    ? t('unchanged', { count: liveCount })
-                    : t('snapshotsUnchanged')}
-                </p>
-                <p>
-                  {t('spent', {
-                    spent: projection.budget.spent,
-                    held: projection.budget.reserved + projection.budget.unknownOutstanding,
-                  })}
-                </p>
-                {projection.controlRevision !== preview.revision ? (
-                  <p role="alert" className="text-warning">
-                    {t('stale')}
+                  {t('preview')}
+                </Button>
+                {error ? (
+                  <p role="alert" className="text-danger">
+                    {error}
                   </p>
                 ) : null}
-                <button
-                  type="button"
-                  disabled={pending || projection.controlRevision !== preview.revision}
-                  onClick={() => void confirm()}
-                  className="rounded bg-accent px-2 py-1 text-on-accent disabled:opacity-50"
-                >
-                  {t('confirm')}
-                </button>
+                {preview ? (
+                  <div
+                    className="flex flex-col gap-2 rounded border border-primary p-2"
+                    data-testid="patch-preview"
+                  >
+                    <h4 className="font-semibold">{t('diff')}</h4>
+                    <p>
+                      {t('target', { target: preview.target })} · {t(`field.${preview.field}`)}
+                    </p>
+                    <dl className="flex flex-col gap-1">
+                      <dt className="text-muted-foreground">{t('current')}</dt>
+                      <dd className="whitespace-pre-wrap break-words">{preview.before}</dd>
+                      <dt className="text-muted-foreground">{t('proposed')}</dt>
+                      <dd className="whitespace-pre-wrap break-words">{preview.after}</dd>
+                    </dl>
+                    <p>{t(`boundary.${preview.payload.kind}`)}</p>
+                    <p>{t('futureNodes', { count: previewNodes.length })}</p>
+                    <p className="text-muted-foreground">{t('dynamicCount')}</p>
+                    <p>
+                      {preview.payload.kind === 'node_future'
+                        ? t('unchanged', { count: liveCount })
+                        : t('snapshotsUnchanged')}
+                    </p>
+                    <p>
+                      {t('spent', {
+                        spent: projection.budget.spent,
+                        held: projection.budget.reserved + projection.budget.unknownOutstanding,
+                      })}
+                    </p>
+                    {projection.controlRevision !== preview.revision ? (
+                      <p role="alert" className="text-warning">
+                        {t('stale')}
+                      </p>
+                    ) : null}
+                    <Button
+                      type="button"
+                      disabled={pending || projection.controlRevision !== preview.revision}
+                      onClick={() => void confirm()}
+                      variant="primary"
+                      size="compact"
+                    >
+                      {t('confirm')}
+                    </Button>
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <p className="text-muted-foreground">{t('finished')}</p>
+            )}
+            {patches.length > 0 ? (
+              <div className="flex flex-col gap-1">
+                <h4 className="font-semibold">{t('history')}</h4>
+                {patches.map((patch) => (
+                  <div key={patch.patchId} className="border-b border-border py-2 last:border-0">
+                    <p>
+                      <span className="font-mono">{patch.patchId}</span> · {t(`kind.${patch.kind}`)}{' '}
+                      · <StatusBadge status="applied" />
+                    </p>
+                    <p>{t('target', { target: patch.scope.nodeId ?? projection.runId })}</p>
+                    <p>{t('committed', { revision: patch.controlRevision })}</p>
+                    <p>
+                      {patch.executionIds.length + patch.iterationIds.length > 0
+                        ? t('activated', {
+                            targets: [...patch.executionIds, ...patch.iterationIds].join(', '),
+                          })
+                        : t('notActivated')}
+                    </p>
+                  </div>
+                ))}
               </div>
             ) : null}
-          </>
-        ) : (
-          <p className="text-muted">{t('finished')}</p>
-        )}
-        {patches.length > 0 ? (
-          <div className="flex flex-col gap-1">
-            <h4 className="font-semibold">{t('history')}</h4>
-            {patches.map((patch) => (
-              <div key={patch.patchId} className="rounded fill-group p-1">
-                <p>
-                  <span className="font-mono">{patch.patchId}</span> · {t(`kind.${patch.kind}`)} ·{' '}
-                  <StatusBadge status="applied" />
-                </p>
-                <p>{t('target', { target: patch.scope.nodeId ?? projection.runId })}</p>
-                <p>{t('committed', { revision: patch.controlRevision })}</p>
-                <p>
-                  {patch.executionIds.length + patch.iterationIds.length > 0
-                    ? t('activated', {
-                        targets: [...patch.executionIds, ...patch.iterationIds].join(', '),
-                      })
-                    : t('notActivated')}
-                </p>
-              </div>
-            ))}
           </div>
-        ) : null}
-      </div>
-    </details>
+        </AccordionContent>
+      </AccordionItem>
+    </Accordion>
   );
 }

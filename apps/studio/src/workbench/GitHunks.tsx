@@ -5,7 +5,7 @@ import {
   type GitHunks as GitHunksView,
   type GitHunkWrite,
 } from '@corral/contracts';
-import { Button } from '@corral/react/ui';
+import { Button } from '@corral/react/design-kit';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
@@ -134,7 +134,7 @@ function HunkSelection({
     <section aria-label={t('title')} className="flex min-w-0 flex-col gap-2 text-xs">
       <h4 className="font-medium">{t('title')}</h4>
       {!view ? (
-        <p role="status" className="text-muted">
+        <p role="status" className="text-muted-foreground">
           {t('loading')}
         </p>
       ) : view.error ? (
@@ -143,7 +143,7 @@ function HunkSelection({
         </p>
       ) : null}
       {value?.kind === 'unsupported' ? (
-        <p className="text-muted">
+        <p className="text-muted-foreground">
           {t('unsupported', {
             reason: t(`reason.${reasons.has(value.reason) ? value.reason : 'other'}`),
           })}
@@ -151,7 +151,7 @@ function HunkSelection({
       ) : null}
       {value?.kind === 'hunks' ? (
         <>
-          <details className="text-muted">
+          <details className="text-muted-foreground">
             <summary className="cursor-pointer">{t('reviewBasis')}</summary>
             <p className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
               {(
@@ -193,11 +193,11 @@ function HunkSelection({
               ))}
             </ul>
           ) : (
-            <p className="text-muted">{t('empty')}</p>
+            <p className="text-muted-foreground">{t('empty')}</p>
           )}
           <Button
-            size="xs"
-            variant="outline"
+            size="compact"
+            variant="tertiary"
             className="self-start"
             disabled={disabled || submitting || !ids.length}
             onClick={() => void submit()}

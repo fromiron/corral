@@ -85,20 +85,25 @@ export function GettingStarted({ runs, projectId }: { runs: number; projectId: s
             data-testid={`step-${step.id}`}
             data-done={step.done}
             aria-current={step.id === current ? 'step' : undefined}
-            className={`flex flex-wrap items-baseline gap-x-2 ${step.done ? 'text-muted' : ''}`}
+            className={`flex flex-wrap items-baseline gap-x-2 ${step.done ? 'text-muted-foreground' : ''}`}
           >
-            <span aria-hidden="true" className={step.done ? 'text-success' : 'text-muted'}>
+            <span
+              aria-hidden="true"
+              className={step.done ? 'text-success' : 'text-muted-foreground'}
+            >
               {step.done ? '✓' : `${index + 1}.`}
             </span>
             <span className={step.id === current ? 'font-medium' : ''}>
               {step.title}
               <span className="sr-only">{step.done ? ` (${t('done')})` : ''}</span>
             </span>
-            {step.done ? null : <span className="text-xs text-muted">{step.action}</span>}
+            {step.done ? null : (
+              <span className="text-xs text-muted-foreground">{step.action}</span>
+            )}
           </li>
         ))}
       </ol>
-      <p className="text-xs text-muted">
+      <p className="text-xs text-muted-foreground">
         {t('optionalCorral')}{' '}
         <Link to="/projects/$projectId" params={{ projectId }} hash="corrals" className="underline">
           {t('customizeCorral')}

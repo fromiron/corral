@@ -6,7 +6,7 @@ import type {
   TextRange,
   WorkspaceTarget,
 } from '@corral/contracts';
-import { Button, Input } from '@corral/react/ui';
+import { Button, Input } from '@corral/react/design-kit';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -254,7 +254,7 @@ export function ContentSearch({
           />
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <label className="flex items-center gap-1.5 text-xs text-muted">
+          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <input
               type="checkbox"
               checked={caseSensitive}
@@ -264,26 +264,26 @@ export function ContentSearch({
           </label>
           <Button
             type="submit"
-            size="xs"
-            variant="outline"
+            size="compact"
+            variant="tertiary"
             disabled={!query || phase === 'searching' || phase === 'preparing'}
           >
             {t('search')}
           </Button>
           {phase === 'searching' || phase === 'preparing' ? (
-            <Button size="xs" type="button" variant="ghost" onClick={cancel}>
+            <Button size="compact" type="button" variant="ghost" onClick={cancel}>
               {phase === 'preparing' ? te('cancel') : t('cancel')}
             </Button>
           ) : null}
         </div>
       </form>
-      <p className="text-xs text-muted">{t('diskOnly')}</p>
+      <p className="text-xs text-muted-foreground">{t('diskOnly')}</p>
       {error ? (
         <p role="alert" className="text-xs text-danger">
           {error}
         </p>
       ) : null}
-      <p role="status" className="text-xs text-muted">
+      <p role="status" className="text-xs text-muted-foreground">
         {phase === 'preparing'
           ? te('previewing')
           : phase === 'searching'
@@ -321,10 +321,10 @@ export function ContentSearch({
               }}
             />
           </label>
-          <p className="text-xs text-muted">{te('savedOnly')}</p>
+          <p className="text-xs text-muted-foreground">{te('savedOnly')}</p>
           <Button
-            size="xs"
-            variant="outline"
+            size="compact"
+            variant="tertiary"
             disabled={result.truncated || phase === 'preparing'}
             onClick={() => void previewReplace()}
           >
@@ -365,14 +365,16 @@ export function ContentSearch({
                   <span className="w-full truncate">
                     {match.path}:{match.range.startLine}:{match.range.startColumn}
                   </span>
-                  <span className="w-full truncate whitespace-pre font-mono text-muted">
+                  <span className="w-full truncate whitespace-pre font-mono text-muted-foreground">
                     {match.preview}
                   </span>
                 </button>
               );
             })}
           </div>
-          {!result.matches.length ? <p className="p-2 text-xs text-muted">{t('empty')}</p> : null}
+          {!result.matches.length ? (
+            <p className="p-2 text-xs text-muted-foreground">{t('empty')}</p>
+          ) : null}
         </section>
       ) : null}
     </div>

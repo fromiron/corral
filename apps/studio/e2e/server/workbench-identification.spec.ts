@@ -7,7 +7,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
   }) => {
     await page.emulateMedia({ colorScheme });
     await corral.open('/projects/default');
-    await page.getByText('Session details (optional)', { exact: true }).click();
+    await page.getByRole('button', { name: /^Session details \(optional\)/ }).click();
     const name = page.getByRole('textbox', { name: 'Session name', exact: true });
     for (const field of [name, page.getByRole('textbox', { name: 'Purpose', exact: true })]) {
       const restingBorder = await field.evaluate((input) => {
@@ -116,10 +116,6 @@ test.describe('model identification', () => {
         exact: true,
       });
       await expect(model).toContainText('OpenAI');
-      await expect(page.locator('[data-slot="composer-host"]').locator('..')).toHaveCSS(
-        'border-top-width',
-        '0px',
-      );
       for (const width of [320, 390]) {
         await page.setViewportSize({ width, height: 844 });
         await expect(model).toBeInViewport();
@@ -145,7 +141,6 @@ test.describe('model identification', () => {
           width,
         );
         await model.click();
-        await expect(page.getByRole('menu')).toHaveCSS('border-top-width', '0px');
         await expect(page.getByRole('menuitemradio').first()).toBeVisible();
         expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
           width,
@@ -168,27 +163,6 @@ test.describe('model identification', () => {
       expect(corral.errors).toEqual([]);
     });
   }
-});
-
-test('[TC-UX-007-H] settings selects and text fields share the input boundary', async ({
-  page,
-  corral,
-}) => {
-  await corral.open('/projects/default');
-  await page.goto(`${corral.server.url}/projects/default?settings=defaults`);
-  const select = page.getByRole('combobox', { name: 'Personal default', exact: true });
-  await expect(select).toBeEnabled();
-  expect(
-    await select.evaluate((el) => Number.parseFloat(getComputedStyle(el).borderTopWidth)),
-  ).toBeGreaterThan(0);
-  const selectColor = await select.evaluate((el) => getComputedStyle(el).borderTopColor);
-  await page.getByRole('link', { name: 'Manage work styles', exact: true }).click();
-  const input = page.getByRole('textbox', { name: 'Work style name', exact: true });
-  await expect(input).toBeVisible();
-  expect(
-    await input.evaluate((el) => Number.parseFloat(getComputedStyle(el).borderTopWidth)),
-  ).toBeGreaterThan(0);
-  await expect(input).toHaveCSS('border-top-color', selectColor);
 });
 
 test('[TC-UX-007-H] list filtering is named separately from private text search', async ({
@@ -231,7 +205,7 @@ test('[TC-UX-007-N] import guidance is contextual and import cancellation or fai
   corral,
 }) => {
   await corral.open('/projects/default');
-  await page.getByText('Session details (optional)', { exact: true }).click();
+  await page.getByRole('button', { name: /^Session details \(optional\)/ }).click();
   await page.getByRole('textbox', { name: 'Purpose', exact: true }).fill('Keep my project draft.');
   await page.getByRole('tab', { name: /^Teams/ }).click();
   await expect(

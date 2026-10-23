@@ -1,7 +1,7 @@
 import type { HarnessApi } from '@corral/client';
 import type { HarnessEntryKey, HarnessEntryView, ManagedHook } from '@corral/contracts';
+import { Button } from '@corral/react/design-kit';
 import { Plus } from '@corral/react/icons';
-import { Button } from '@corral/react/ui';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -114,7 +114,7 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
         <h2 className="text-2xl font-semibold tracking-tight">
           {t(kind === 'skill' ? 'skills' : 'hooks')}
         </h2>
-        <p className="mt-2 text-sm text-muted">
+        <p className="mt-2 text-sm text-muted-foreground">
           {t(kind === 'skill' ? 'skillsIntro' : 'hooksIntro')}
         </p>
       </div>
@@ -160,11 +160,11 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
       <div className="flex flex-col gap-6">
         <section className="settings-list max-h-80 overflow-y-auto" aria-label={t('library')}>
           {!loaded ? (
-            <p role="status" className="p-5 text-sm text-muted">
+            <p role="status" className="p-5 text-sm text-muted-foreground">
               {h('busy')}
             </p>
           ) : !filtered.length ? (
-            <p className="p-5 text-sm text-muted">{t(search ? 'noMatches' : 'empty')}</p>
+            <p className="p-5 text-sm text-muted-foreground">{t(search ? 'noMatches' : 'empty')}</p>
           ) : (
             <ul className="flex flex-col">
               {filtered.map((entry) => (
@@ -177,9 +177,11 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
                   >
                     <span className="font-medium">{entry.name}</span>
                     {entry.description ? (
-                      <span className="line-clamp-2 text-sm text-muted">{entry.description}</span>
+                      <span className="line-clamp-2 text-sm text-muted-foreground">
+                        {entry.description}
+                      </span>
                     ) : null}
-                    <span className="flex flex-wrap gap-2 text-xs text-muted">
+                    <span className="flex flex-wrap gap-2 text-xs text-muted-foreground">
                       <span>{entry.resource.trustedAt ? h('trusted') : h('untrusted')}</span>
                       {entry.archivedAt ? <span>{t('archived')}</span> : null}
                       {entry.successor ? <span>{t('newCopy')}</span> : null}
@@ -212,7 +214,7 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
                 </p>
               </div>
               <Button
-                variant="outline"
+                variant="tertiary"
                 disabled={busy}
                 onClick={() => setEditor({ entry: selected })}
               >
@@ -226,7 +228,7 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
                 {kind === 'extension' ? <p className="text-warning">{h('nativeWarning')}</p> : null}
               </div>
               <Button
-                variant="outline"
+                variant="tertiary"
                 disabled={busy}
                 onClick={() =>
                   void work(() => api.trust(selected.resourceHash, !selected.resource.trustedAt))
@@ -240,7 +242,7 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
                 <h3>{t(selected.archivedAt ? 'restore' : 'archive')}</h3>
               </div>
               <Button
-                variant="outline"
+                variant="tertiary"
                 disabled={busy}
                 onClick={() => {
                   const save = () =>
@@ -272,7 +274,7 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
               </div>
               {/* One way there, named for what happens: nothing is added from here (#79). */}
               <Button
-                variant="outline"
+                variant="tertiary"
                 className="self-start sm:self-end"
                 render={<Link {...navigation.link('harness')} />}
               >
@@ -293,7 +295,7 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
                   <h3>{t('newCopy')}</h3>
                 </div>
                 <Button
-                  variant="outline"
+                  variant="tertiary"
                   onClick={() => {
                     setArchived(false);
                     setSelection(keyOf(selected.successor!));
@@ -308,7 +310,7 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
             </section>
           </section>
         ) : (
-          <p className="text-sm text-muted">{t('selectItem')}</p>
+          <p className="text-sm text-muted-foreground">{t('selectItem')}</p>
         )}
       </div>
       {editor ? (
@@ -368,12 +370,17 @@ function EntryContent({ api, entry }: { api: HarnessApi; entry: HarnessEntryView
         </p>
       ) : null}
       {entry.kind === 'extension' ? (
-        <p className="text-xs text-muted">{t(value?.hook ? 'managedHook' : 'externalExtension')}</p>
+        <p className="text-xs text-muted-foreground">
+          {t(value?.hook ? 'managedHook' : 'externalExtension')}
+        </p>
       ) : null}
       <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-subtle p-4 font-mono text-xs">
         {value?.content ?? t('loadingContent')}
       </pre>
-      <details className="text-xs text-muted" onToggle={(e) => setFilesOpen(e.currentTarget.open)}>
+      <details
+        className="text-xs text-muted-foreground"
+        onToggle={(e) => setFilesOpen(e.currentTarget.open)}
+      >
         <summary className="cursor-pointer">
           {t('advanced')} · {h('files', { count: entry.resource.fileCount })}
         </summary>

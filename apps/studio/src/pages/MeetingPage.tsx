@@ -8,8 +8,8 @@ import {
 } from '@corral/contracts';
 import type { MeetingResult, WorkSession } from '@corral/core';
 import { SafeMarkdown } from '@corral/react';
+import { Button } from '@corral/react/design-kit';
 import { Send, Square, Users } from '@corral/react/icons';
-import { Button } from '@corral/react/ui';
 import { Link } from '@tanstack/react-router';
 import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -96,7 +96,7 @@ export function MeetingPage({ session }: { session: WorkSession }) {
       <div role={loadError ? 'alert' : 'status'} className="flex flex-col gap-2 p-4 text-sm">
         <p>{loadError || '…'}</p>
         {loadError ? (
-          <Button size="sm" variant="outline" onClick={() => void refresh()}>
+          <Button size="compact" variant="tertiary" onClick={() => void refresh()}>
             {t('retry')}
           </Button>
         ) : null}
@@ -174,7 +174,7 @@ export function MeetingPage({ session }: { session: WorkSession }) {
                       ...round.answers.map((answer) => answer.order ?? 0),
                     ) + 0.5,
                   content: (
-                    <p role="status" className="mb-5 text-xs text-muted">
+                    <p role="status" className="mb-5 text-xs text-muted-foreground">
                       {t('roundStopped')}
                     </p>
                   ),
@@ -202,9 +202,9 @@ export function MeetingPage({ session }: { session: WorkSession }) {
     >
       {view.rounds.length === 0 ? (
         <div className="flex flex-col items-center gap-3 py-5 text-center">
-          <Users size={28} strokeWidth={1.25} className="text-muted" aria-hidden />
+          <Users size={28} strokeWidth={1.25} className="text-muted-foreground" aria-hidden />
           <h3 className="text-xl font-medium tracking-tight">{session.title}</h3>
-          <p className="max-w-md text-sm text-muted">{t('empty')}</p>
+          <p className="max-w-md text-sm text-muted-foreground">{t('empty')}</p>
         </div>
       ) : null}
     </ChatView>
@@ -225,10 +225,10 @@ function MeetingHeader({ title, config }: { title: string; config: MeetingConfig
         {config.participants.map((participant) => (
           <li key={participant.participantId} className="rounded fill-group px-2 py-0.5">
             <span className="font-medium">{participant.name}</span>
-            <span className="text-muted"> · {label(participant.modelProfile)}</span>
+            <span className="text-muted-foreground"> · {label(participant.modelProfile)}</span>
           </li>
         ))}
-        <li className="rounded fill-group px-2 py-0.5 text-muted">
+        <li className="rounded fill-group px-2 py-0.5 text-muted-foreground">
           {t('secretary')} · {label(config.secretary.modelProfile)}
         </li>
       </ul>
@@ -245,7 +245,7 @@ function MeetingMessage({ round, config }: { round: RoundView; config: MeetingCo
       : null;
   return (
     <div className="mb-5 ml-auto flex max-w-[85%] flex-col gap-1 rounded-lg fill-group px-3 py-2 text-sm">
-      <span className="text-xs text-muted">
+      <span className="text-xs text-muted-foreground">
         {t('you')}
         {addressed ? ` · ${t('to', { names: addressed })}` : ''}
       </span>
@@ -274,13 +274,17 @@ function AnswerCard({
         {answer.status !== 'answered' ? (
           <span
             role={answer.status === 'running' ? 'status' : undefined}
-            className={failed ? 'text-danger' : 'text-muted'}
+            className={failed ? 'text-danger' : 'text-muted-foreground'}
           >
             {t(`status.${answer.status}`)}
           </span>
         ) : null}
         {detailed && answer.runId ? (
-          <Link to="/runs/$runId" params={{ runId: answer.runId }} className="text-muted underline">
+          <Link
+            to="/runs/$runId"
+            params={{ runId: answer.runId }}
+            className="text-muted-foreground underline"
+          >
             {t('openRun')}
           </Link>
         ) : null}
@@ -288,7 +292,7 @@ function AnswerCard({
       {answer.status === 'answered' && onOpenMinutes ? (
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <p>{t('minutesReady')}</p>
-          <Button size="xs" variant="outline" onClick={onOpenMinutes}>
+          <Button size="compact" variant="tertiary" onClick={onOpenMinutes}>
             {t('viewMinutes')}
           </Button>
         </div>
@@ -301,7 +305,7 @@ function AnswerCard({
         <p className="text-xs text-danger wrap-anywhere">{answer.detail}</p>
       ) : null}
       {detailed && answer.usage ? (
-        <p className="text-xs text-muted tabular-nums">
+        <p className="text-xs text-muted-foreground tabular-nums">
           {t('usage', { tokens: answer.usage.outputTokens, calls: answer.usage.modelCalls })}
           {answer.usage.unknown ? ` · ${t('usageUnknown')}` : ''}
         </p>
@@ -401,14 +405,16 @@ function MeetingComposer({
             projectId={projectId}
             edit={editQueued}
           />
-          <span className="text-muted">{active ? t('queuedHint') : t('queuedIdle')}</span>
+          <span className="text-muted-foreground">
+            {active ? t('queuedHint') : t('queuedIdle')}
+          </span>
           <div className="flex gap-2">
             {active ? null : (
-              <Button size="xs" onClick={() => void sendQueued()}>
+              <Button size="compact" onClick={() => void sendQueued()}>
                 {t('sendQueued')}
               </Button>
             )}
-            <Button size="xs" variant="outline" onClick={() => void dropQueued()}>
+            <Button size="compact" variant="tertiary" onClick={() => void dropQueued()}>
               {t('dropQueued')}
             </Button>
           </div>
@@ -430,13 +436,13 @@ function MeetingComposer({
         onChange={(event) => setText(event.target.value)}
         onKeyDown={onKeyDown}
       />
-      <p className="text-xs text-muted">{mentions.length ? null : t('everyone')}</p>
+      <p className="text-xs text-muted-foreground">{mentions.length ? null : t('everyone')}</p>
       <details
         aria-label={t('evidence')}
         open={attachments.length ? true : undefined}
         className="text-xs"
       >
-        <summary className="cursor-pointer rounded py-1 text-muted focus-visible:outline-2 focus-visible:outline-ring">
+        <summary className="cursor-pointer rounded py-1 text-muted-foreground focus-visible:outline-2 focus-visible:outline-ring">
           {attachments.length
             ? t('evidenceSelected', { count: attachments.length })
             : t('evidence')}
@@ -453,7 +459,7 @@ function MeetingComposer({
       </details>
       <div className="flex flex-wrap items-center gap-2">
         <Button
-          size="sm"
+          size="compact"
           disabled={sending || attachmentLoading || !text.trim()}
           onClick={() => void submit(text, mentions)}
         >
@@ -461,14 +467,14 @@ function MeetingComposer({
           {t('send')}
         </Button>
         {onStop ? (
-          <Button size="sm" variant="outline" onClick={onStop}>
+          <Button size="compact" variant="tertiary" onClick={onStop}>
             <Square size={12} aria-hidden />
             {t('stopRound')}
           </Button>
         ) : null}
         <Button
-          size="sm"
-          variant="outline"
+          size="compact"
+          variant="tertiary"
           disabled={sending || attachmentLoading || view.rounds.length === 0}
           onClick={() =>
             void dispatch({ kind: 'message', text: t('summaryRequest'), mentions: [SECRETARY_ID] })
@@ -530,7 +536,7 @@ function QueuedMessage({
       />
       <div className="flex flex-wrap gap-2">
         <Button
-          size="xs"
+          size="compact"
           disabled={saving || attachmentLoading || !text.trim()}
           onClick={async () => {
             setSaving(true);
@@ -549,7 +555,12 @@ function QueuedMessage({
         >
           {t('saveQueued')}
         </Button>
-        <Button size="xs" variant="outline" disabled={saving} onClick={() => setEditing(false)}>
+        <Button
+          size="compact"
+          variant="tertiary"
+          disabled={saving}
+          onClick={() => setEditing(false)}
+        >
           {t('cancel')}
         </Button>
       </div>
@@ -567,8 +578,8 @@ function QueuedMessage({
       {queued.attachments?.length ? <TextAttachmentList attachments={queued.attachments} /> : null}
       <div>
         <Button
-          size="xs"
-          variant="outline"
+          size="compact"
+          variant="tertiary"
           onClick={() => {
             setText(queued.text);
             setMentions(queued.mentions);
@@ -605,17 +616,17 @@ function MeetingRecipients({
   return (
     <fieldset className="flex flex-wrap items-center gap-1.5 text-xs" disabled={disabled}>
       <legend className="sr-only">{t('mentions')}</legend>
-      <span aria-hidden className="text-muted">
+      <span aria-hidden className="text-muted-foreground">
         {t('mentions')}
       </span>
       {people.map((person) => (
         <Button
           key={person.id}
           type="button"
-          size="xs"
-          variant="outline"
+          size="compact"
+          variant="tertiary"
           aria-pressed={selected.includes(person.id)}
-          className="rounded-full aria-pressed:border-accent aria-pressed:text-accent"
+          className="rounded-full aria-pressed:border-primary aria-pressed:text-primary"
           onClick={() =>
             onChange(
               selected.includes(person.id)

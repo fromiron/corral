@@ -19,7 +19,7 @@ These rules apply to every development agent making changes to Corral. This file
 - Every cancellation or patch must check the current attempt, scope, and revision. Do not overwrite past context or artifacts. Do not blindly retry a lost response with a new command ID.
 - Do not expose provider keys, local paths, or user message bodies in logs, screenshots, or public exports. Do not execute raw HTML in generated UI. Keep the security boundaries of managed service previews and artifact HTML previews distinct.
 - When adding a library, record its version, license, official supporting sources, and Node/peer compatibility. Do not install an RC by default just because documentation uses it in an example.
-- For design or UI improvements, read and apply the relevant leeskills under `apps/server/resources/builtin/design/skills/`. Reuse existing tokens and shared components first, and check the actual UI and relevant regressions.
+- For design or UI improvements, read and apply the relevant leeskills under `apps/server/resources/builtin/design/skills/` and the kit-first composition rules in [DESIGN.md](DESIGN.md). Adopt the kit to improve the interface, preserving functionality and accessibility rather than the old appearance. Check the actual UI and relevant regressions.
 
 ## Documentation and Validation
 

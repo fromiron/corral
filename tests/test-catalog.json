@@ -4314,5 +4314,27 @@
     "status": "planned",
     "adapter": "deterministic meeting agents and in-memory or SQLite stores; no paid calls",
     "evidence": null
+  },
+  {
+    "id": "TC-DKIT-001-H",
+    "requirements": [
+      "CRL-UX-009"
+    ],
+    "suite": "browser",
+    "scenario": "Representative shared controls use adopted computed theme tokens in light and dark modes; desktop and narrow layouts preserve the primary task and accessible control names.",
+    "status": "planned",
+    "adapter": "Local browser demo; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-DKIT-001-N",
+    "requirements": [
+      "CRL-UX-009"
+    ],
+    "suite": "browser",
+    "scenario": "Theme and visual changes preserve keyboard focus, settings open/close and composer draft state; reduced motion remains respected.",
+    "status": "planned",
+    "adapter": "Local browser demo; no paid calls",
+    "evidence": null
   }
 ]

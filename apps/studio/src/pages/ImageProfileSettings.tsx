@@ -1,6 +1,6 @@
 import type { ModelProfileView } from '@corral/client';
 import { ImageGenerationProfile } from '@corral/contracts';
-import { Button } from '@corral/react/ui';
+import { Button } from '@corral/react/design-kit';
 import { useEffect, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { type ImageProfilesView, imageProfilesApi } from '../image-profiles-api.ts';
@@ -69,7 +69,7 @@ export function ImageProfileSettings({ modelProfiles }: { modelProfiles: ModelPr
       <h3 id={heading} className="text-sm font-semibold">
         {t('heading')}
       </h3>
-      <p className="text-sm text-muted">{t('intro')}</p>
+      <p className="text-sm text-muted-foreground">{t('intro')}</p>
       {error ? (
         <p role="alert" className="text-sm text-danger">
           {error}
@@ -81,11 +81,13 @@ export function ImageProfileSettings({ modelProfiles }: { modelProfiles: ModelPr
         </p>
       ) : null}
       {!data && !error ? (
-        <p role="status" className="text-sm text-muted">
+        <p role="status" className="text-sm text-muted-foreground">
           {t('loading')}
         </p>
       ) : null}
-      {data && !data.profiles.length ? <p className="text-sm text-muted">{t('empty')}</p> : null}
+      {data && !data.profiles.length ? (
+        <p className="text-sm text-muted-foreground">{t('empty')}</p>
+      ) : null}
       <ul className="flex flex-col gap-2">
         {data?.profiles.map((profile) => (
           <li
@@ -94,7 +96,7 @@ export function ImageProfileSettings({ modelProfiles }: { modelProfiles: ModelPr
           >
             <div className="min-w-0 flex-1">
               <p className="break-words font-medium">{profile.profileId}</p>
-              <p className="break-words text-xs text-muted">
+              <p className="break-words text-xs text-muted-foreground">
                 {profile.modelId} · {profile.modelProfileId}
               </p>
               {data.statuses?.[profile.profileId]?.available === false ? (
@@ -104,8 +106,8 @@ export function ImageProfileSettings({ modelProfiles }: { modelProfiles: ModelPr
               ) : null}
             </div>
             <Button
-              variant="outline"
-              size="sm"
+              variant="tertiary"
+              size="compact"
               disabled={busy}
               onClick={() => {
                 setDraft(profile);
@@ -119,8 +121,8 @@ export function ImageProfileSettings({ modelProfiles }: { modelProfiles: ModelPr
             {deleteId === profile.profileId ? (
               <>
                 <Button
-                  variant="outline"
-                  size="sm"
+                  variant="tertiary"
+                  size="compact"
                   disabled={busy}
                   onClick={() =>
                     void act(async () => {
@@ -136,14 +138,19 @@ export function ImageProfileSettings({ modelProfiles }: { modelProfiles: ModelPr
                 >
                   {t('confirmDelete')}
                 </Button>
-                <Button variant="ghost" size="sm" disabled={busy} onClick={() => setDeleteId(null)}>
+                <Button
+                  variant="ghost"
+                  size="compact"
+                  disabled={busy}
+                  onClick={() => setDeleteId(null)}
+                >
                   {t('cancel')}
                 </Button>
               </>
             ) : (
               <Button
                 variant="ghost"
-                size="sm"
+                size="compact"
                 disabled={busy}
                 onClick={() => setDeleteId(profile.profileId)}
               >
@@ -256,15 +263,15 @@ export function ImageProfileSettings({ modelProfiles }: { modelProfiles: ModelPr
               />
             </label>
           </div>
-          <p className="text-xs text-muted">{t('limitsHint')}</p>
+          <p className="text-xs text-muted-foreground">{t('limitsHint')}</p>
           <div className="flex gap-2">
-            <Button type="submit" variant="outline" size="sm" disabled={busy}>
+            <Button type="submit" variant="tertiary" size="compact" disabled={busy}>
               {busy ? t('saving') : t('save')}
             </Button>
             <Button
               type="button"
               variant="ghost"
-              size="sm"
+              size="compact"
               disabled={busy}
               onClick={() => {
                 setDraft(null);
@@ -277,8 +284,8 @@ export function ImageProfileSettings({ modelProfiles }: { modelProfiles: ModelPr
         </form>
       ) : (
         <Button
-          variant="outline"
-          size="sm"
+          variant="tertiary"
+          size="compact"
           className="self-start"
           disabled={busy || !data}
           onClick={() => {
@@ -299,7 +306,7 @@ export function ImageProfileSettings({ modelProfiles }: { modelProfiles: ModelPr
           {t('add')}
         </Button>
       )}
-      <p className="text-xs text-muted">{t('roleHint')}</p>
+      <p className="text-xs text-muted-foreground">{t('roleHint')}</p>
     </section>
   );
 }

@@ -1,5 +1,5 @@
 import type { UserTaskView } from '@corral/client';
-import { Button } from '@corral/react/ui';
+import { Button } from '@corral/react/design-kit';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../../services.tsx';
@@ -35,7 +35,7 @@ export function WriterHeld({
   }, [workspaces, sessionId]);
   return (
     <div role="alert" className="flex flex-wrap items-center gap-2 text-xs">
-      <span className={released ? 'text-muted' : 'text-danger'}>
+      <span className={released ? 'text-muted-foreground' : 'text-danger'}>
         {released ? t('writerReleased') : t('writerHeld')}
       </span>
       {released
@@ -43,8 +43,8 @@ export function WriterHeld({
         : tasks.map((task) => (
             <Button
               key={task.operationId}
-              size="xs"
-              variant="outline"
+              size="compact"
+              variant="tertiary"
               disabled={stopping}
               onClick={async () => {
                 if (!workspaces) return;

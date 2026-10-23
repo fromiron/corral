@@ -4,6 +4,7 @@ import type { CSSProperties } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { useStudioStores } from '../context.tsx';
+import { Card } from '../design-kit/index.ts';
 import { findNode } from '../editor/model.ts';
 import { decisionRunStatus, nodeExecutionCount, nodeRunStatus } from '../run/selectors.ts';
 
@@ -48,7 +49,7 @@ function RunOverlay({ nodeId }: { nodeId: string }) {
       {t(status)}
       {/* A node is not one execution: Loop rounds and calls each add one (Spec §4.3). */}
       {count > (unit === 'executions' ? 1 : 0) ? (
-        <span className="text-muted">· {t(unit, { count })}</span>
+        <span className="text-muted-foreground">· {t(unit, { count })}</span>
       ) : null}
     </span>
   );
@@ -56,7 +57,10 @@ function RunOverlay({ nodeId }: { nodeId: string }) {
 
 function PortLabel({ children, style }: { children: string; style: CSSProperties }) {
   return (
-    <span className="pointer-events-none absolute text-2xs leading-none text-muted" style={style}>
+    <span
+      className="pointer-events-none absolute text-2xs leading-none text-muted-foreground"
+      style={style}
+    >
       {children}
     </span>
   );
@@ -76,16 +80,18 @@ function Shell({
   children?: React.ReactNode;
 }) {
   return (
-    <div
-      className={`relative min-w-40 rounded-lg border bg-raised px-3 py-2 shadow-sm ${
-        selected ? 'border-accent ring-2 ring-accent/40' : 'border-line'
+    <Card
+      className={`min-w-40 border bg-card px-3 py-2 shadow-surface-3 ${
+        selected ? 'border-primary ring-2 ring-primary/40' : 'border-line'
       }`}
     >
-      <div className="text-2xs font-semibold uppercase tracking-wide text-muted">{kind}</div>
+      <div className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
+        {kind}
+      </div>
       <div className="text-sm font-medium">{label}</div>
       {children}
       <RunOverlay nodeId={id} />
-    </div>
+    </Card>
   );
 }
 
@@ -150,7 +156,7 @@ export function DecisionNodeView({ id, selected, isConnectable }: NodeProps<Node
   return (
     <>
       <Shell id={id} kind={t('Palette.decision')} label={node.label} selected={selected}>
-        <div className="text-xs text-muted">{t(`Inspector.modes.${node.mode}`)}</div>
+        <div className="text-xs text-muted-foreground">{t(`Inspector.modes.${node.mode}`)}</div>
       </Shell>
       <Handle isConnectable={isConnectable} type="target" position={Position.Left} id="in" />
       {ports.map((port, index) => {
@@ -216,15 +222,15 @@ export function LoopNodeView({ id, selected, isConnectable }: NodeProps<Node<Can
         onResizeEnd={() => editor.getState().endBatch()}
       />
       <div
-        className={`h-full w-full rounded-xl border-2 border-dashed bg-accent/5 p-2 ${
-          selected ? 'border-accent' : 'border-line'
+        className={`h-full w-full rounded-xl border-2 border-dashed bg-primary/5 p-2 ${
+          selected ? 'border-primary' : 'border-line'
         }`}
       >
-        <div className="text-2xs font-semibold uppercase tracking-wide text-muted">
+        <div className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
           {t('Palette.loop')}
         </div>
         <div className="text-sm font-medium">{node.label}</div>
-        <div className="text-xs text-muted">
+        <div className="text-xs text-muted-foreground">
           {t('Canvas.loopMembers', { count: members, max: node.maxIterations })}
         </div>
         <RunOverlay nodeId={id} />

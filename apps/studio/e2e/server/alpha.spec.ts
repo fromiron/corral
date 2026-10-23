@@ -277,7 +277,7 @@ test('[TC-WBD-012-H] one deterministic agent request changes the copy, and the p
     .setInputFiles([writerTeam(join(corral.workspace, 'team.corral.json'))]);
   await expect(page).toHaveURL(/\/edit$/);
   await page.getByRole('link', { name: 'Project home', exact: true }).click();
-  await page.getByText('Session details (optional)', { exact: true }).click();
+  await page.getByRole('button', { name: /^Session details \(optional\)/ }).click();
   await page.getByRole('combobox', { name: 'Corral', exact: true }).click();
   await page.getByRole('option', { name: 'Alpha writer', exact: true }).click();
   const { sessionId } = await startSession(page, false);

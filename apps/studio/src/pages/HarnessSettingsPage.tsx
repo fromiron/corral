@@ -9,7 +9,7 @@ import type {
 } from '@corral/contracts';
 import { canonicalJson, WorkTool } from '@corral/contracts';
 import { toolDescriptorHash } from '@corral/core';
-import { Button, Select } from '@corral/react/ui';
+import { Button, Select } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -72,7 +72,7 @@ export function HarnessPreviewView({ preview }: { preview: HarnessPreview }) {
           </dd>
         ))}
       </dl>
-      <p className="break-words text-xs text-muted">
+      <p className="break-words text-xs text-muted-foreground">
         {preview.snapshot.allowedTools.join(', ') || t('noTools')}
       </p>
       {preview.snapshot.tools.length ? (
@@ -80,13 +80,13 @@ export function HarnessPreviewView({ preview }: { preview: HarnessPreview }) {
           <summary className="cursor-pointer text-sm">
             {t('staticTools', { count: preview.snapshot.tools.length })}
           </summary>
-          <p className="my-2 text-xs text-muted">{t('staticToolsHint')}</p>
+          <p className="my-2 text-xs text-muted-foreground">{t('staticToolsHint')}</p>
           <ul className="flex flex-col gap-2 text-xs">
             {preview.snapshot.tools.map((tool) => (
               <li key={tool.name}>
                 <span className="font-mono">{tool.name}</span> · {tool.source} ·{' '}
                 {t(`toolEffects.${tool.sideEffect}`)}
-                <p className="break-all font-mono text-2xs text-muted">
+                <p className="break-all font-mono text-2xs text-muted-foreground">
                   {t('toolSchema', { hash: tool.schemaHash })}
                   <br />
                   {t('permissionDescriptor')}: {toolDescriptorHash(tool)}
@@ -102,7 +102,7 @@ export function HarnessPreviewView({ preview }: { preview: HarnessPreview }) {
           {resource.skillMode ? t(resource.skillMode) : resource.kind}
         </p>
       ))}
-      {preview.dynamic ? <p className="text-sm text-muted">{t('dynamic')}</p> : null}
+      {preview.dynamic ? <p className="text-sm text-muted-foreground">{t('dynamic')}</p> : null}
       {preview.sections.length ? (
         preview.sections.map((section) => (
           <details key={section.name} open>
@@ -113,9 +113,9 @@ export function HarnessPreviewView({ preview }: { preview: HarnessPreview }) {
           </details>
         ))
       ) : (
-        <p className="text-sm text-muted">{t('noSections')}</p>
+        <p className="text-sm text-muted-foreground">{t('noSections')}</p>
       )}
-      <p className="break-all font-mono text-2xs text-muted">
+      <p className="break-all font-mono text-2xs text-muted-foreground">
         SHA-256 {preview.snapshot.snapshotHash}
       </p>
       {preview.snapshot.projectTools ? (
@@ -349,7 +349,7 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
       <main className="settings-content">
         <div>
           <h2 className="text-2xl font-semibold">{t('heading')}</h2>
-          <p className="mt-2 text-sm text-muted">{t('intro')}</p>
+          <p className="mt-2 text-sm text-muted-foreground">{t('intro')}</p>
         </div>
         {api ? (
           <section id="project-context" className="settings-row">
@@ -380,7 +380,7 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
               <div role="alert" className="flex items-center gap-3 text-sm">
                 <span>{r('savedListFailed')}</span>
                 <Button
-                  variant="outline"
+                  variant="tertiary"
                   disabled={busy}
                   onClick={() =>
                     void work(async () => {
@@ -416,7 +416,7 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                     />
                     {r('showArchived')}
                   </label>
-                  <Button variant="outline" onClick={() => choose(null)}>
+                  <Button variant="tertiary" onClick={() => choose(null)}>
                     {t('newProfile')}
                   </Button>
                 </div>
@@ -449,7 +449,7 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                 <div className="flex flex-col gap-3">
                   <div className="flex flex-wrap gap-2">
                     <Button
-                      variant="outline"
+                      variant="tertiary"
                       onClick={() => {
                         setSelected(null);
                         setProfile({
@@ -483,7 +483,7 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                     </Button>
                   </div>
                   {meta?.usages.length ? (
-                    <div className="text-xs text-muted">
+                    <div className="text-xs text-muted-foreground">
                       <p>{r('usages')}</p>
                       {meta.usages.map((usage) => (
                         <p key={usage.id}>
@@ -528,13 +528,13 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                 <p className="text-sm text-warning">{t('nativeWarning')}</p>
               ) : null}
               <nav className="flex flex-wrap gap-2">
-                <Button variant="outline" render={<Link {...navigation.link('skills')} />}>
+                <Button variant="tertiary" render={<Link {...navigation.link('skills')} />}>
                   {r('skills')}
                 </Button>
-                <Button variant="outline" render={<Link {...navigation.link('hooks')} />}>
+                <Button variant="tertiary" render={<Link {...navigation.link('hooks')} />}>
                   {r('hooks')}
                 </Button>
-                <Button variant="outline" render={<Link {...navigation.link('mcp')} />}>
+                <Button variant="tertiary" render={<Link {...navigation.link('mcp')} />}>
                   {r('mcp')}
                 </Button>
               </nav>
@@ -573,7 +573,7 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                                       )?.name ?? skill.name,
                                   })}
                                 </span>
-                                <span className="mt-1 block text-xs text-muted">
+                                <span className="mt-1 block text-xs text-muted-foreground">
                                   {skill.description}
                                 </span>
                                 {entries.find(
@@ -726,7 +726,7 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                       })}
                   </div>
                 ))}
-              <p className="text-xs text-muted">{t('skillScripts')}</p>
+              <p className="text-xs text-muted-foreground">{t('skillScripts')}</p>
               {(
                 [
                   {
@@ -767,7 +767,9 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                   <div className="settings-row">
                     <span>
                       <span className="text-sm font-medium">{t(group.select)}</span>
-                      <span className="mt-1 block text-xs text-muted">{t(group.hint)}</span>
+                      <span className="mt-1 block text-xs text-muted-foreground">
+                        {t(group.hint)}
+                      </span>
                     </span>
                     <Select
                       label={t(group.select)}
@@ -838,7 +840,7 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                           </label>
                         ))}
                       {!group.items.length ? (
-                        <p className="text-xs text-muted">{t(group.empty)}</p>
+                        <p className="text-xs text-muted-foreground">{t(group.empty)}</p>
                       ) : null}
                     </div>
                   ) : null}
@@ -869,7 +871,9 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
               <label className="settings-row">
                 <span>
                   <span className="text-sm font-medium">{t('codemode')}</span>
-                  <span className="mt-1 block text-xs text-muted">{t('codemodeHint')}</span>
+                  <span className="mt-1 block text-xs text-muted-foreground">
+                    {t('codemodeHint')}
+                  </span>
                 </span>
                 <input
                   type="checkbox"
@@ -888,7 +892,7 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
               </label>
               <section className="settings-surface flex flex-col gap-2">
                 <h3 className="text-sm font-medium">{t('allowedTools')}</h3>
-                <p className="text-xs text-muted">{t('toolsHint')}</p>
+                <p className="text-xs text-muted-foreground">{t('toolsHint')}</p>
                 <textarea
                   className={field}
                   aria-label={t('allowedTools')}
@@ -899,7 +903,7 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
               </section>
               <section className="settings-surface flex flex-col gap-2">
                 <h3 className="text-sm font-medium">{t('commands')}</h3>
-                <p className="text-xs text-muted">{t('commandsHint')}</p>
+                <p className="text-xs text-muted-foreground">{t('commandsHint')}</p>
                 <textarea
                   className={field}
                   aria-label={t('commands')}
@@ -916,7 +920,7 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                   {t('save')}
                 </Button>
                 <Button
-                  variant="outline"
+                  variant="tertiary"
                   disabled={!canPreview}
                   onClick={() =>
                     selected &&
@@ -931,7 +935,7 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                 </Button>
               </div>
               {selected && !canPreview && projectId ? (
-                <p className="text-xs text-muted">{t('saveBeforePreview')}</p>
+                <p className="text-xs text-muted-foreground">{t('saveBeforePreview')}</p>
               ) : null}
               {preview && canPreview ? <HarnessPreviewView preview={preview} /> : null}
             </fieldset>

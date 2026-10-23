@@ -27,7 +27,7 @@ import {
   useSteerTarget,
   WorkPlanPanel,
 } from '@corral/react';
-import { Button } from '@corral/react/ui';
+import { Button } from '@corral/react/design-kit';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -129,7 +129,7 @@ export function RunDetail({
     return (
       <main className="flex flex-col items-start gap-3 p-6">
         <h2 className="text-lg font-semibold">{t('heading', { runId })}</h2>
-        <p role="status" className="text-sm text-muted">
+        <p role="status" className="text-sm text-muted-foreground">
           {error ?? (missing ? t('missing') : t('loading'))}
         </p>
         {activeRunId === runId ? <RunActions session={session} /> : null}
@@ -249,7 +249,7 @@ function CompactRunWorkspace({
           ref={response}
           data-run-response={projection.runId}
           tabIndex={-1}
-          className="rounded outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          className="rounded outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
         >
           <ApprovalPanel
             session={session}
@@ -273,7 +273,7 @@ function CompactRunWorkspace({
             <div className="flex justify-end p-2">
               <button
                 type="button"
-                className="rounded px-2 py-1 text-xs text-muted hover:bg-raised"
+                className="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-raised"
                 onClick={() => setSearch({ artifact: undefined, result: undefined })}
               >
                 {n('closeResult')}
@@ -317,12 +317,12 @@ function CompactRunWorkspace({
           ref={controls}
           tabIndex={-1}
           hidden={!search.execution}
-          className="rounded-lg fill-group p-3 outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          className="rounded-lg fill-group p-3 outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
         >
           <div className="mb-3 flex justify-end">
             <button
               type="button"
-              className="rounded px-2 py-1 text-xs text-muted hover:bg-raised"
+              className="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-raised"
               onClick={() => {
                 setSearch({ execution: undefined });
                 (trigger.current?.isConnected ? trigger.current : detailsLink.current)?.focus();
@@ -407,7 +407,7 @@ function ResultChoices({
     results.kind === 'partial' ? results.intermediate.map((group) => group.latest) : results.final;
   if (!items.length)
     return (
-      <p className="text-sm text-muted">
+      <p className="text-sm text-muted-foreground">
         {t(`kind.${results.kind === 'final' ? 'none' : results.kind}`)}
       </p>
     );
@@ -542,8 +542,8 @@ function RunWorkspace({
         >
           <span>{t('decisionWaiting', { count: waitingDecisions })}</span>
           <Button
-            variant="outline"
-            size="xs"
+            variant="tertiary"
+            size="compact"
             onClick={() => {
               setPanel('side');
               requestAnimationFrame(() => {
@@ -757,7 +757,7 @@ function RunSummary({
           {onView ? <ViewSwitch view={view} onView={onView} /> : null}
           <h2 className="text-base font-semibold">{definition.name}</h2>
           {!compact ? (
-            <span className="font-mono text-xs text-muted">{projection.runId}</span>
+            <span className="font-mono text-xs text-muted-foreground">{projection.runId}</span>
           ) : null}
           <span aria-live="polite" data-testid="run-status">
             <StatusBadge status={projection.status} />
@@ -767,10 +767,10 @@ function RunSummary({
               {t('openCorral')}
             </Link>
           ) : corralId && savedTeam === false && !compact ? (
-            <span className="text-xs text-muted">{t('unsavedTeam')}</span>
+            <span className="text-xs text-muted-foreground">{t('unsavedTeam')}</span>
           ) : null}
           {projection.startedFrom && !compact ? (
-            <span className="text-xs text-muted">
+            <span className="text-xs text-muted-foreground">
               {t('startedFrom')}:{' '}
               <Link
                 to="/runs/$runId"
@@ -787,7 +787,7 @@ function RunSummary({
           ) : null}
         </div>
         {compact && projection.status === 'succeeded' && working.length === 0 ? null : (
-          <p className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted">
+          <p className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
             <span>
               {working.length
                 ? t('working', { labels: working.join(', ') })
@@ -863,7 +863,7 @@ function NodeExecutions({
           {t('closeNode')}
         </button>
       </div>
-      {ids.length === 0 ? <p className="text-muted">{t('noNodeExecutions')}</p> : null}
+      {ids.length === 0 ? <p className="text-muted-foreground">{t('noNodeExecutions')}</p> : null}
       <ul className="flex flex-col gap-1">
         {ids.map((id) => {
           const e = projection.executions[id];
@@ -877,7 +877,7 @@ function NodeExecutions({
                 onClick={() => onChoose(id)}
                 className={`flex w-full items-center justify-between gap-2 rounded border px-2 py-1 text-left ${
                   id === selectedExecutionId
-                    ? 'border-accent bg-raised'
+                    ? 'border-primary bg-raised'
                     : 'border-transparent fill-group'
                 }`}
               >
@@ -926,7 +926,7 @@ function ViewSwitch({ view, onView }: { view: RunPageView; onView: (view: RunPag
           tabIndex={view === name ? 0 : -1}
           onClick={() => onView(name)}
           onKeyDown={(event) => move(event, index)}
-          className={`rounded px-2 py-0.5 text-xs ${view === name ? 'bg-accent text-on-accent' : 'text-muted'}`}
+          className={`rounded px-2 py-0.5 text-xs ${view === name ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'}`}
         >
           {t(name)}
         </button>
@@ -979,7 +979,7 @@ function NarrowViews({
           tabIndex={panel === name ? 0 : -1}
           onClick={() => onChoose(name)}
           onKeyDown={(event) => move(event, index)}
-          className={`shrink-0 rounded px-2 py-1 text-xs ${panel === name ? 'bg-accent text-on-accent' : 'fill-control'}`}
+          className={`shrink-0 rounded px-2 py-1 text-xs ${panel === name ? 'bg-primary text-primary-foreground' : 'fill-control'}`}
         >
           {t(name)}
         </button>
@@ -1042,7 +1042,9 @@ function RunDetails({
             onClick={() => setChosen(id)}
             onKeyDown={(event) => move(event, index)}
             className={`rounded-t px-3 py-1 text-xs ${
-              tab === id ? 'border border-b-0 border-line bg-raised font-medium' : 'text-muted'
+              tab === id
+                ? 'border border-b-0 border-line bg-raised font-medium'
+                : 'text-muted-foreground'
             }`}
           >
             {t(id)}

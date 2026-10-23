@@ -1,5 +1,5 @@
+import { Button, Input } from '@corral/react/design-kit';
 import { Eye, EyeOff } from '@corral/react/icons';
-import { Button, Input } from '@corral/react/ui';
 import { useEffect, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 
@@ -22,7 +22,7 @@ export function ApiKeyInput({
   }, [empty]);
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-1">
-      <label htmlFor={id} className="text-xs text-muted">
+      <label htmlFor={id} className="text-xs text-muted-foreground">
         {t('apiKeyLabel')}
       </label>
       <div className="flex items-stretch gap-2">

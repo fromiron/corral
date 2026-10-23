@@ -3,6 +3,7 @@ import type { RunProjection } from '@corral/core';
 import type { ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
+import { Button } from '../design-kit/index.ts';
 import type { ModelPrices } from '../run/cost.ts';
 import type { RunSessionStore, StreamText } from '../run/session.ts';
 import { BudgetInspector } from './BudgetInspector.tsx';
@@ -49,16 +50,17 @@ export function RunView({
       {definitionError ? (
         <p role="alert" className="text-xs text-warning">
           {t('definitionUnavailable')}{' '}
-          <button
+          <Button
             type="button"
-            className="underline"
+            variant="ghost"
+            size="compact"
             onClick={() => {
               const runId = session.getState().runId;
               if (runId) void session.getState().open(runId);
             }}
           >
             {t('retryDefinition')}
-          </button>
+          </Button>
         </p>
       ) : null}
       {streamError ? (
@@ -69,17 +71,19 @@ export function RunView({
       {projection ? (
         <>
           <RunActions key={projection.runId} session={session} />
-          {simulatedHarness ? <p className="text-xs text-muted">{t('harnessSimulation')}</p> : null}
+          {simulatedHarness ? (
+            <p className="text-xs text-muted-foreground">{t('harnessSimulation')}</p>
+          ) : null}
           <BudgetInspector session={session} prices={prices} />
           <HarnessDetails session={session} />
           <div className="flex items-center gap-2 text-xs">
-            <span className="text-muted">{t('status')}</span>
+            <span className="text-muted-foreground">{t('status')}</span>
             <span aria-live="polite" data-testid="run-status">
               <StatusBadge status={projection.status} />
             </span>
           </div>
           {projection.statusReason ? (
-            <p className="text-xs text-muted">
+            <p className="text-xs text-muted-foreground">
               {t('reasonPrefix')}{' '}
               <RunReason
                 code={projection.statusReason}
@@ -90,7 +94,7 @@ export function RunView({
           <div className="flex flex-col gap-1">
             <h3 className="text-xs font-semibold">{t('executions')}</h3>
             {projection.executionOrder.length === 0 ? (
-              <p className="text-xs text-muted">{t('noExecutions')}</p>
+              <p className="text-xs text-muted-foreground">{t('noExecutions')}</p>
             ) : (
               <ExecutionRows
                 projection={projection}
@@ -139,26 +143,29 @@ export function RunOutput({
       {onOpenResults && finals.length > 0 ? (
         <div className="flex flex-wrap items-center gap-2 text-xs">
           {finals.length > 1 ? (
-            <span className="text-muted">{tr('finalCount', { count: finals.length })}</span>
+            <span className="text-muted-foreground">
+              {tr('finalCount', { count: finals.length })}
+            </span>
           ) : null}
           {finals.map((artifact) => {
             const label = tr('itemName', { name: artifact.name, version: artifact.version });
             return (
-              <button
+              <Button
                 key={artifact.artifactVersionId}
                 type="button"
                 onClick={() => onOpenResults(artifact.artifactVersionId)}
                 aria-label={label}
-                className="rounded fill-control px-2 py-0.5"
+                variant="tertiary"
+                size="compact"
               >
                 {label} ↗
-              </button>
+              </Button>
             );
           })}
         </div>
       ) : null}
       {outputText === null ? (
-        <p className="text-xs text-muted">{t('outputPending')}</p>
+        <p className="text-xs text-muted-foreground">{t('outputPending')}</p>
       ) : (
         <div
           data-testid="run-output"
@@ -168,7 +175,7 @@ export function RunOutput({
         </div>
       )}
       {onStartFrom && runId && result && outputText !== null ? (
-        <button
+        <Button
           type="button"
           onClick={() =>
             onStartFrom({
@@ -177,10 +184,12 @@ export function RunOutput({
               label: `${result.name} v${result.version}`,
             })
           }
-          className="self-start rounded fill-control px-2 py-1 text-xs"
+          variant="secondary"
+          size="compact"
+          className="self-start"
         >
           {t('newRunFromResult')}
-        </button>
+        </Button>
       ) : null}
     </div>
   );
@@ -204,7 +213,7 @@ export function ExecutionTree({
   const streams = useStore(session, (s) => s.streams);
   if (!projection) return null;
   if (projection.executionOrder.length === 0)
-    return <p className="text-xs text-muted">{t('noExecutions')}</p>;
+    return <p className="text-xs text-muted-foreground">{t('noExecutions')}</p>;
   return (
     <ExecutionRows
       projection={projection}
@@ -300,7 +309,7 @@ function ExecutionRow({
       data-testid={`execution-${id}`}
       data-execution-id={id}
       aria-current={selected ? 'true' : undefined}
-      className={`rounded-md border p-2 text-xs ${selected ? 'border-accent bg-raised ring-1 ring-accent/40' : 'border-transparent fill-group'}`}
+      className={`rounded-md border p-2 text-xs ${selected ? 'border-primary bg-raised ring-1 ring-primary/40' : 'border-transparent fill-group'}`}
     >
       <div className="flex items-center justify-between gap-2">
         <span className="flex flex-col">
@@ -308,7 +317,7 @@ function ExecutionRow({
             {labelOf(execution.nodeId)}
             {compact ? '' : ` · ${id}`}
           </span>
-          <span className="text-muted">
+          <span className="text-muted-foreground">
             {execution.item ? `${t('item', execution.item)} · ` : ''}
             {round ? `${t('round', { no: round })} · ` : ''}
             {execution.attemptNo > 1 ? `${t('attempt', { no: execution.attemptNo })} · ` : ''}
@@ -317,20 +326,16 @@ function ExecutionRow({
         </span>
         <span className="flex items-center gap-2">
           <StatusBadge status={execution.status} />
-          <button
-            type="button"
-            onClick={() => onSteer(id)}
-            className="rounded fill-control px-1.5 py-0.5"
-          >
+          <Button type="button" onClick={() => onSteer(id)} variant="tertiary" size="compact">
             {t(compact ? 'openControls' : 'steerThis')}
-          </button>
+          </Button>
         </span>
       </div>
       {!compact && openCall && projection.modelCalls[openCall] ? (
         <ReasoningSummary call={projection.modelCalls[openCall]} />
       ) : null}
       {waiting ? (
-        <p className="mt-1 text-muted" data-testid="waiting-on">
+        <p className="mt-1 text-muted-foreground" data-testid="waiting-on">
           {t(`waiting.${waiting.kind}`, { count: waiting.targetIds.length })}:{' '}
           {waiting.targetIds.map((target, i) => (
             <span key={target}>
@@ -354,7 +359,7 @@ function ExecutionRow({
         <p
           data-testid="live-text"
           aria-live="off"
-          className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap rounded fill-group p-1 text-muted"
+          className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap rounded fill-group p-1 text-muted-foreground"
         >
           {live.text}
           {live.broken ? ` ${t('streamGap')}` : ''}

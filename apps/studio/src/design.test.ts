@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import { cn } from '@corral/react/ui';
+import { cn } from '@corral/react/design-kit';
 import { describe, expect, it } from 'vitest';
 
 // Workbench polish guard (CR-015): one type scale,

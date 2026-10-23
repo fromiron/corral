@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
+import { Button } from '../design-kit/index.ts';
 import type { RunSessionStore } from '../run/session.ts';
 import { useWorkPlanSnapshot, type WorkPlanRef } from '../run/work-plan-snapshot.ts';
-import { Button } from '../ui/button.tsx';
 
 export function WorkPlanPanel({ session }: { session: RunSessionStore }) {
   const t = useTranslations('WorkPlan');
@@ -52,7 +52,7 @@ function WorkPlanDetails({ session, view }: { session: RunSessionStore; view: Wo
       </summary>
       {plan ? (
         <>
-          <p className="my-2 text-xs text-muted">{t('scopeHint')}</p>
+          <p className="my-2 text-xs text-muted-foreground">{t('scopeHint')}</p>
           {status.state === 'stale-criteria' || status.state === 'stale-attempt' ? (
             <p role="status" className="text-warning">
               {t(status.state === 'stale-attempt' ? 'staleAttempt' : 'staleCriteria')}
@@ -61,12 +61,14 @@ function WorkPlanDetails({ session, view }: { session: RunSessionStore; view: Wo
           <ol className="flex flex-col gap-2">
             {plan.items.map((item) => (
               <li key={item.id} className="flex flex-wrap items-start gap-2">
-                <span className={item.status === 'completed' ? 'text-muted' : 'font-medium'}>
+                <span
+                  className={item.status === 'completed' ? 'text-muted-foreground' : 'font-medium'}
+                >
                   {t(item.status)}
                 </span>
                 <span className="min-w-0 flex-1 break-words">{item.title}</span>
                 {item.requiresVerification ? (
-                  <span className="text-xs text-muted">{t('verification')}</span>
+                  <span className="text-xs text-muted-foreground">{t('verification')}</span>
                 ) : null}
                 {item.evidenceRefs?.length ? (
                   <details className="w-full text-xs">

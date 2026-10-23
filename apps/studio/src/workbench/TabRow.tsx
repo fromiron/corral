@@ -42,7 +42,9 @@ export function TabRow<T extends string>({
           onClick={() => onChoose(value)}
           onKeyDown={(event) => move(event, index)}
           className={`h-7 shrink-0 rounded-md px-2.5 text-ui transition-colors ${
-            current === value ? 'bg-subtle font-medium text-text' : 'text-muted hover:text-text'
+            current === value
+              ? 'bg-subtle font-medium text-text'
+              : 'text-muted-foreground hover:text-text'
           }`}
         >
           {text(value)}

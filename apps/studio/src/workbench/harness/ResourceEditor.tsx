@@ -7,7 +7,7 @@ import {
   DialogPopup,
   DialogTitle,
   Select,
-} from '@corral/react/ui';
+} from '@corral/react/design-kit';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { desktop } from '../../desktop.tsx';
@@ -220,7 +220,7 @@ export function ResourceEditor({
                       });
                   }}
                 />
-                <span className="text-xs text-muted">{t('fileHint')}</span>
+                <span className="text-xs text-muted-foreground">{t('fileHint')}</span>
               </label>
             ) : null}
             {['local', 'package'].includes(mode) ? (
@@ -249,7 +249,7 @@ export function ResourceEditor({
                 {mode === 'local' && desktop ? (
                   <Button
                     type="button"
-                    variant="outline"
+                    variant="tertiary"
                     onClick={() => {
                       void desktop?.pickFolder().then((path) => {
                         if (path && alive.current) change(() => setSource(path));
@@ -270,7 +270,7 @@ export function ResourceEditor({
                     />
                   </label>
                 ) : (
-                  <p className="text-xs text-muted">{t('folderHint')}</p>
+                  <p className="text-xs text-muted-foreground">{t('folderHint')}</p>
                 )}
               </>
             ) : mode === 'builtin' ? (
@@ -284,10 +284,12 @@ export function ResourceEditor({
                     label: t(`builtinPacks.${value}`),
                   }))}
                 />
-                <p className="text-xs text-muted">{t('builtinHint')}</p>
+                <p className="text-xs text-muted-foreground">{t('builtinHint')}</p>
               </div>
             ) : mode === 'pi-home' ? (
-              <p className="text-sm text-muted">{h('piHomeHint', { folder: '~/.pi/agent' })}</p>
+              <p className="text-sm text-muted-foreground">
+                {h('piHomeHint', { folder: '~/.pi/agent' })}
+              </p>
             ) : (
               <>
                 <label className="flex flex-col gap-1 text-sm">
@@ -340,7 +342,7 @@ export function ResourceEditor({
                         }
                       />
                     </label>
-                    <p className="text-xs text-muted">{t('managedHookHint')}</p>
+                    <p className="text-xs text-muted-foreground">{t('managedHookHint')}</p>
                     <Button
                       type="button"
                       variant="ghost"
@@ -378,7 +380,7 @@ export function ResourceEditor({
                         onChange={(e) => change(() => setContent(e.target.value))}
                       />
                     </label>
-                    <p className="text-xs text-muted">{t('rawHint')}</p>
+                    <p className="text-xs text-muted-foreground">{t('rawHint')}</p>
                   </>
                 )}
               </>
@@ -406,7 +408,7 @@ export function ResourceEditor({
                     <li key={path}>{path}</li>
                   ))}
                 </ul>
-                <p className="mt-2 text-xs text-muted">{t('reviewHint')}</p>
+                <p className="mt-2 text-xs text-muted-foreground">{t('reviewHint')}</p>
                 <details className="mt-2">
                   <summary>{h('files', { count: review.resource.files.length })}</summary>
                   <ul className="max-h-32 overflow-auto text-xs">

@@ -4,8 +4,8 @@ import {
   textAttachmentKey,
 } from '@corral/contracts';
 import { validTextAttachments } from '@corral/core';
+import { Button } from '@corral/react/design-kit';
 import { ChevronRight, X } from '@corral/react/icons';
-import { Button } from '@corral/react/ui';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 
@@ -49,7 +49,7 @@ export function AttachmentSource({ source }: { source: TextAttachmentProvenance 
       label = `${t('checkSource')} · ${source.commandId} · ${source.tree.slice(0, 8)}`;
       break;
   }
-  return <p className="break-all text-xs text-muted">{label}</p>;
+  return <p className="break-all text-xs text-muted-foreground">{label}</p>;
 }
 
 /** Only an explicit replacement can change the frozen capture; inspection is presentation state. */
@@ -194,13 +194,13 @@ function CaptureRow({
                 <span className="min-w-0 flex-1 truncate" title={item.name}>
                   {item.name}
                 </span>
-                <span className="shrink-0 text-muted">{item.bytes} B</span>
+                <span className="shrink-0 text-muted-foreground">{item.bytes} B</span>
               </span>
               {item.provenance ? (
                 <span
                   role="status"
                   title={label}
-                  className={`truncate leading-4 ${status.state === 'current' && (!applies || applies === 'yes') ? 'text-muted' : 'text-warning'}`}
+                  className={`truncate leading-4 ${status.state === 'current' && (!applies || applies === 'yes') ? 'text-muted-foreground' : 'text-warning'}`}
                 >
                   {label}
                 </span>
@@ -211,12 +211,12 @@ function CaptureRow({
             <div className="mt-1 flex min-w-0 flex-col gap-1">
               <AttachmentSource source={item.provenance} />
               {'reason' in status && status.reason ? (
-                <p className="break-words text-xs text-muted">{status.reason}</p>
+                <p className="break-words text-xs text-muted-foreground">{status.reason}</p>
               ) : null}
               <div className="flex flex-wrap gap-1">
                 <Button
                   type="button"
-                  size="xs"
+                  size="compact"
                   variant="ghost"
                   disabled={disabled || busy}
                   aria-label={`${t('openSource')}: ${item.name}`}
@@ -225,11 +225,11 @@ function CaptureRow({
                   {t('openSource')}
                 </Button>
                 {item.provenance.kind === 'preview' ? (
-                  <p className="text-xs text-muted">{t('previewRecapture')}</p>
+                  <p className="text-xs text-muted-foreground">{t('previewRecapture')}</p>
                 ) : (
                   <Button
                     type="button"
-                    size="xs"
+                    size="compact"
                     variant="ghost"
                     disabled={disabled || busy}
                     aria-label={`${t('replaceCapture')}: ${item.name}`}
@@ -241,14 +241,14 @@ function CaptureRow({
               </div>
             </div>
           ) : null}
-          <p className="mt-1 text-xs text-muted">{t('preview')}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{t('preview')}</p>
           <pre className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap break-all rounded p-1 text-xs">
             {item.text}
           </pre>
         </details>
         <Button
           type="button"
-          size="icon-xs"
+          size="icon-compact"
           variant="ghost"
           aria-label={t('removeCapture', { name: item.name })}
           disabled={disabled}

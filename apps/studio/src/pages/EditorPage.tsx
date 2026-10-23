@@ -19,6 +19,7 @@ import {
   useStudioStores,
   ValidationPanel,
 } from '@corral/react';
+import { Button } from '@corral/react/design-kit';
 import { Link, useBlocker, useNavigate } from '@tanstack/react-router';
 import { ReactFlowProvider } from '@xyflow/react';
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -97,10 +98,10 @@ export function TeamDesign({ corralId }: { corralId: string }) {
     () => (record ? editorWorkingCopy(repository, record) : null),
     [repository, record],
   );
-  if (record === undefined) return <p className="p-4 text-sm text-muted">…</p>;
+  if (record === undefined) return <p className="p-4 text-sm text-muted-foreground">…</p>;
   if (!record || !copy)
     return (
-      <p role="status" className="p-4 text-sm text-muted">
+      <p role="status" className="p-4 text-sm text-muted-foreground">
         {t('unknownPanel')}
       </p>
     );
@@ -114,7 +115,7 @@ export function TeamDesign({ corralId }: { corralId: string }) {
       record={record}
       workingCopy={copy}
       inSession
-      toolbar={<span className="text-xs text-muted">{te('appliesNextRun')}</span>}
+      toolbar={<span className="text-xs text-muted-foreground">{te('appliesNextRun')}</span>}
     />
   );
 }
@@ -151,7 +152,7 @@ function TemplatePicker({ current }: { current: DemoTemplateId }) {
   const navigate = useNavigate();
   return (
     <label className="flex items-center gap-2 text-xs">
-      <span className="text-muted">{t('template')}</span>
+      <span className="text-muted-foreground">{t('template')}</span>
       <select
         value={current}
         onChange={(event) => {
@@ -357,7 +358,7 @@ function Editor({
                 >
                   ← {t('backToSession')}
                 </Link>
-                <span className="text-muted">{t('appliesNextRun')}</span>
+                <span className="text-muted-foreground">{t('appliesNextRun')}</span>
               </div>
             ) : null}
             <div className="flex flex-wrap items-center gap-3 border-b border-line px-3 py-2">
@@ -372,14 +373,14 @@ function Editor({
                   className="rounded-md fill-control px-2 py-1 font-medium"
                 />
               </label>
-              <span className="text-xs text-muted" data-testid="revisions">
+              <span className="text-xs text-muted-foreground" data-testid="revisions">
                 {t('revisions', {
                   definition: saved.record.definitionRevision,
                   layout: saved.record.layoutRevision,
                 })}
               </span>
               <span
-                className={`text-xs ${dirty ? 'text-warning' : 'text-muted'}`}
+                className={`text-xs ${dirty ? 'text-warning' : 'text-muted-foreground'}`}
                 aria-live="polite"
               >
                 {dirty ? `● ${t('unsaved')}` : t('saved')}
@@ -392,26 +393,23 @@ function Editor({
                   profiles={profiles}
                   projectId={record.projectId}
                 />
-                <button
-                  type="button"
-                  onClick={exportFiles}
-                  className="rounded-md fill-control px-3 py-1.5 text-sm"
-                >
+                <Button type="button" onClick={exportFiles} variant="tertiary" size="compact">
                   {t('export')}
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant="primary"
+                  size="compact"
                   type="button"
                   onClick={() => void save()}
                   disabled={saving}
-                  className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent disabled:opacity-50"
                 >
                   {saving ? t('saving') : t('save')}
-                </button>
+                </Button>
               </div>
               {message ? (
                 <p
                   role={message.error ? 'alert' : 'status'}
-                  className={`w-full text-xs ${message.error ? 'text-danger' : 'text-muted'}`}
+                  className={`w-full text-xs ${message.error ? 'text-danger' : 'text-muted-foreground'}`}
                 >
                   {message.text}
                 </p>
@@ -543,14 +541,14 @@ function RunSide({
   return (
     <section aria-labelledby="run-heading" className="flex flex-col gap-3">
       {guide?.(session, setChosen)}
-      <p className="text-xs text-muted">{n('directRunHint')}</p>
+      <p className="text-xs text-muted-foreground">{n('directRunHint')}</p>
       <details
         open={setupOpen}
         onToggle={(event) => setSetupOpen(event.currentTarget.open)}
         className="rounded-lg fill-group p-3"
       >
         <summary className="cursor-pointer text-sm font-medium">{n('prepareExecution')}</summary>
-        <p className="my-2 text-xs text-muted">{n('runOverridesHint')}</p>
+        <p className="my-2 text-xs text-muted-foreground">{n('runOverridesHint')}</p>
         <RunRoleOverrides
           roles={roles}
           profiles={profiles}

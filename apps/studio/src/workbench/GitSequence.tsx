@@ -12,7 +12,7 @@ import {
   DialogPopup,
   DialogTitle,
   Select,
-} from '@corral/react/ui';
+} from '@corral/react/design-kit';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useTranslations } from 'use-intl';
 import type { DocumentStore } from './documents/store.ts';
@@ -158,7 +158,7 @@ function SequenceControls({
   };
   if (!state)
     return (
-      <p role="status" className="text-xs text-muted">
+      <p role="status" className="text-xs text-muted-foreground">
         {t('loading')}
       </p>
     );
@@ -172,7 +172,7 @@ function SequenceControls({
     return (
       <section aria-label={t('title')} className="flex flex-col gap-1 text-xs">
         <p className="font-medium">{t('title')}</p>
-        <p role="status" className="text-muted">
+        <p role="status" className="text-muted-foreground">
           {sequence?.reason || t(state.ownerOperationId ? 'unsupported' : 'external')}
         </p>
       </section>
@@ -185,18 +185,25 @@ function SequenceControls({
           <p role="status">{t(`active.${sequence.kind}`)}</p>
           <div className="flex flex-wrap gap-2">
             <Button
-              size="xs"
-              variant="outline"
+              size="compact"
+              variant="tertiary"
               disabled={blocked || !!state.conflicts.length}
               onClick={() => prepare('continue')}
             >
               {t('reviewContinue')}
             </Button>
-            <Button size="xs" variant="outline" disabled={blocked} onClick={() => prepare('abort')}>
+            <Button
+              size="compact"
+              variant="tertiary"
+              disabled={blocked}
+              onClick={() => prepare('abort')}
+            >
               {t('reviewAbort')}
             </Button>
           </div>
-          {state.conflicts.length ? <p className="text-muted">{t('resolveFirst')}</p> : null}
+          {state.conflicts.length ? (
+            <p className="text-muted-foreground">{t('resolveFirst')}</p>
+          ) : null}
         </>
       ) : (
         <>
@@ -210,16 +217,16 @@ function SequenceControls({
           />
           <div className="flex flex-wrap gap-2">
             <Button
-              size="xs"
-              variant="outline"
+              size="compact"
+              variant="tertiary"
               disabled={blocked || !clean || !branch}
               onClick={() => prepare('merge')}
             >
               {t('reviewMerge')}
             </Button>
             <Button
-              size="xs"
-              variant="outline"
+              size="compact"
+              variant="tertiary"
               disabled={blocked || !clean || !branch}
               onClick={() => prepare('rebase')}
             >
@@ -227,9 +234,9 @@ function SequenceControls({
             </Button>
           </div>
           {!clean ? (
-            <p className="text-muted">{t('cleanFirst')}</p>
+            <p className="text-muted-foreground">{t('cleanFirst')}</p>
           ) : !branches.length ? (
-            <p className="text-muted">{t('noBranches')}</p>
+            <p className="text-muted-foreground">{t('noBranches')}</p>
           ) : null}
         </>
       )}
@@ -322,7 +329,7 @@ function SequenceControls({
                   </label>
                 </>
               ) : (
-                <p className="text-xs text-muted">{t('signing')}</p>
+                <p className="text-xs text-muted-foreground">{t('signing')}</p>
               )}
               {stale ? (
                 <p role="alert" className="text-sm text-warning">

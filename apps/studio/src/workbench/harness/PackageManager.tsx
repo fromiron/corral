@@ -1,5 +1,5 @@
 import type { HarnessApi } from '@corral/client';
-import { Button, Input, Select } from '@corral/react/ui';
+import { Button, Input, Select } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useId, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -130,7 +130,7 @@ export function PackageManager({ api, onChanged }: { api: HarnessApi; onChanged:
     <section className="flex flex-col gap-4 border-t border-line pt-6" aria-label={t('title')}>
       <div>
         <h3 className="text-lg font-semibold">{t('title')}</h3>
-        <p className="mt-1 text-sm text-muted">{t('intro')}</p>
+        <p className="mt-1 text-sm text-muted-foreground">{t('intro')}</p>
       </div>
       <form
         className="flex flex-col gap-3"
@@ -180,7 +180,7 @@ export function PackageManager({ api, onChanged }: { api: HarnessApi; onChanged:
           />
           <Button
             type="submit"
-            variant="outline"
+            variant="tertiary"
             disabled={busy || review !== null || !source.trim()}
           >
             {t('review')}
@@ -193,7 +193,7 @@ export function PackageManager({ api, onChanged }: { api: HarnessApi; onChanged:
             {t('reviewed')} · {review.resource.name} · {review.resource.version}
           </h4>
           {review.previous ? (
-            <p className="text-xs text-muted">
+            <p className="text-xs text-muted-foreground">
               {t('compare')}: {review.previous.name} · {review.previous.version}
             </p>
           ) : null}
@@ -236,7 +236,7 @@ export function PackageManager({ api, onChanged }: { api: HarnessApi; onChanged:
               {t('install')}
             </Button>
             <Button
-              variant="outline"
+              variant="tertiary"
               disabled={busy}
               onClick={() =>
                 void work(async () => {
@@ -253,11 +253,11 @@ export function PackageManager({ api, onChanged }: { api: HarnessApi; onChanged:
       ) : null}
       <section aria-label={t('installed')} className="flex flex-col gap-3">
         <h4 className="font-medium">{t('installed')}</h4>
-        <p className="text-xs text-muted">{t('nextRun')}</p>
+        <p className="text-xs text-muted-foreground">{t('nextRun')}</p>
         {packages === null ? (
           <p role="status">{t('busy')}</p>
         ) : packages.length === 0 ? (
-          <p className="text-sm text-muted">{t('empty')}</p>
+          <p className="text-sm text-muted-foreground">{t('empty')}</p>
         ) : (
           <ul className="settings-list divide-y divide-line">
             {packages.map((item) => (
@@ -266,15 +266,15 @@ export function PackageManager({ api, onChanged }: { api: HarnessApi; onChanged:
                   <span className="font-medium">
                     {item.resource.name} · {item.resource.version}
                   </span>
-                  <span className="text-xs text-muted">
+                  <span className="text-xs text-muted-foreground">
                     {t(item.status)} · {t(item.resource.trustedAt ? 'trusted' : 'untrusted')}
                   </span>
                   <div className="ml-auto flex flex-wrap gap-1">
                     {item.status !== 'removed' ? (
                       <>
                         <Button
-                          variant="outline"
-                          size="xs"
+                          variant="tertiary"
+                          size="compact"
                           disabled={busy}
                           onClick={() =>
                             void work(async () => {
@@ -286,8 +286,8 @@ export function PackageManager({ api, onChanged }: { api: HarnessApi; onChanged:
                           {h(item.resource.trustedAt ? 'revoke' : 'trust')}
                         </Button>
                         <Button
-                          variant="outline"
-                          size="xs"
+                          variant="tertiary"
+                          size="compact"
                           disabled={busy}
                           onClick={() =>
                             void manage(item, item.status === 'enabled' ? 'disabled' : 'enabled')
@@ -297,7 +297,7 @@ export function PackageManager({ api, onChanged }: { api: HarnessApi; onChanged:
                         </Button>
                         <Button
                           variant="ghost"
-                          size="xs"
+                          size="compact"
                           disabled={busy}
                           onClick={() =>
                             confirmation.request(
@@ -311,8 +311,8 @@ export function PackageManager({ api, onChanged }: { api: HarnessApi; onChanged:
                       </>
                     ) : (
                       <Button
-                        variant="outline"
-                        size="xs"
+                        variant="tertiary"
+                        size="compact"
                         disabled={busy}
                         onClick={() => void manage(item, 'disabled')}
                       >
@@ -322,7 +322,7 @@ export function PackageManager({ api, onChanged }: { api: HarnessApi; onChanged:
                   </div>
                 </div>
                 {item.resource.extensions.length && !item.resource.trustedAt ? (
-                  <p className="text-xs text-muted">{h('nativeWarning')}</p>
+                  <p className="text-xs text-muted-foreground">{h('nativeWarning')}</p>
                 ) : null}
                 <details>
                   <summary className="cursor-pointer text-xs">{t('declarations')}</summary>
@@ -334,10 +334,10 @@ export function PackageManager({ api, onChanged }: { api: HarnessApi; onChanged:
                       registerDisabled={busy || item.status !== 'enabled' || !navigation.projectId}
                     />
                     {item.manifest?.mcpServers.length && !navigation.projectId ? (
-                      <p className="mt-2 text-xs text-muted">{t('chooseProject')}</p>
+                      <p className="mt-2 text-xs text-muted-foreground">{t('chooseProject')}</p>
                     ) : null}
                   </div>
-                  <p className="mt-2 text-xs text-muted">
+                  <p className="mt-2 text-xs text-muted-foreground">
                     {t('profiles')}:{' '}
                     {item.profiles.length
                       ? item.profiles
@@ -352,7 +352,7 @@ export function PackageManager({ api, onChanged }: { api: HarnessApi; onChanged:
         )}
       </section>
       <Button
-        variant="outline"
+        variant="tertiary"
         className="self-start"
         render={<Link {...navigation.link('harness')} />}
       >
@@ -391,13 +391,13 @@ function PackageMetadata({
   return (
     <div className="flex flex-col gap-3">
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
-        <dt className="text-muted">{t('license')}</dt>
+        <dt className="text-muted-foreground">{t('license')}</dt>
         <dd>{resource.license ?? t('unknown')}</dd>
-        <dt className="text-muted">{t('skills')}</dt>
+        <dt className="text-muted-foreground">{t('skills')}</dt>
         <dd>{resource.skills.map((skill) => skill.name).join(', ') || '—'}</dd>
-        <dt className="text-muted">{t('extensions')}</dt>
+        <dt className="text-muted-foreground">{t('extensions')}</dt>
         <dd className="break-all">{resource.extensions.join(', ') || '—'}</dd>
-        <dt className="text-muted">{t('permissions')}</dt>
+        <dt className="text-muted-foreground">{t('permissions')}</dt>
         <dd className="break-all">
           {manifest ? manifest.requestedCapabilities.join(', ') || '—' : t('unknown')}
         </dd>
@@ -409,13 +409,13 @@ function PackageMetadata({
             {manifest.mcpServers.map((server) => (
               <li key={server.id}>
                 {server.name} · {server.transport}
-                <p className="break-all font-mono text-muted">
+                <p className="break-all font-mono text-muted-foreground">
                   {server.transport === 'http' ? server.url : server.argv.join(' ')}
                 </p>
                 {onRegisterMcp ? (
                   <Button
-                    variant="outline"
-                    size="xs"
+                    variant="tertiary"
+                    size="compact"
                     className="mt-1"
                     disabled={registerDisabled}
                     onClick={() => onRegisterMcp(server.id)}
@@ -431,7 +431,9 @@ function PackageMetadata({
       {manifest?.ui.map((detail) => (
         <section key={detail.id} className="text-xs">
           <h5 className="font-medium">{detail.title}</h5>
-          <p className="mt-1 whitespace-pre-wrap break-words text-muted">{detail.body}</p>
+          <p className="mt-1 whitespace-pre-wrap break-words text-muted-foreground">
+            {detail.body}
+          </p>
         </section>
       ))}
     </div>

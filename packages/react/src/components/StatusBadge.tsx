@@ -1,4 +1,5 @@
 import { useTranslations } from 'use-intl';
+import { KitBadge } from '../design-kit/index.ts';
 
 // Status is never conveyed by colour alone (Spec §10.3): every badge has a dot and text.
 
@@ -30,20 +31,20 @@ const TONE: Record<string, Tone> = {
 };
 
 const DOT: Record<Tone, string> = {
-  neutral: 'bg-muted/60',
-  active: 'bg-accent animate-pulse',
+  neutral: 'bg-muted-foreground/60',
+  active: 'bg-primary animate-pulse',
   success: 'bg-success',
   warning: 'bg-warning',
   danger: 'bg-danger',
 };
 
-const TEXT: Record<Tone, string> = {
-  neutral: 'text-muted',
-  active: 'text-accent',
-  success: 'text-success',
-  warning: 'text-warning',
-  danger: 'text-danger',
-};
+const COLOR = {
+  neutral: 'gray',
+  active: 'gray',
+  success: 'green',
+  warning: 'amber',
+  danger: 'red',
+} as const;
 
 export function statusTone(status: string): Tone {
   return TONE[status] ?? 'neutral';
@@ -66,11 +67,8 @@ export function StatusBadge({ status }: { status: string }) {
   const t = useTranslations('Status');
   const label = t.has(status) ? t(status) : status;
   return (
-    <span
-      className={`inline-flex items-center gap-1.5 text-xs font-medium ${TEXT[statusTone(status)]}`}
-    >
-      <StatusDot status={status} />
+    <KitBadge variant="dot" color={COLOR[statusTone(status)]} data-status={status}>
       {label}
-    </span>
+    </KitBadge>
   );
 }

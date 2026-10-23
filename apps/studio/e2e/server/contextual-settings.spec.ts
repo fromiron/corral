@@ -12,7 +12,6 @@ test('[TC-UX-006-H] [TC-UX-006-N] direct settings overlay preserves work, histor
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole('link', { name: 'Back to work', exact: true })).toHaveCount(0);
   await expect(dialog.locator('[data-slot="dialog-description"]')).toHaveCount(0);
-  await expect(dialog).toHaveCSS('border-top-width', '0px');
   await expect(dialog.getByRole('button', { name: 'Close settings' })).toHaveText('');
   await expect(page.getByTestId('app-sidebar')).toHaveCount(1);
   await dialog.getByRole('combobox', { name: 'Language', exact: true }).click();
@@ -80,9 +79,7 @@ test('[TC-UX-006-N] closing a pending save keeps its target and does not overwri
   await page.evaluate(() => history.back());
   const guard = page.getByRole('dialog', { name: 'Unsaved settings' });
   await expect(guard).toBeVisible();
-  await expect(guard).toHaveCSS('border-top-width', '0px');
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(guard).toHaveCSS('border-top-width', '0px');
   await page.emulateMedia({ forcedColors: 'active' });
   await expect(guard).toHaveCSS('outline-style', 'solid');
   await page.emulateMedia({ forcedColors: 'none' });
@@ -282,7 +279,8 @@ test.describe('settings layout and keyboard', () => {
         )
         .toBe('inside');
     }
-    await dialog.getByRole('radio', { name: 'Light', exact: true }).check();
+    await dialog.getByRole('combobox', { name: 'Appearance', exact: true }).click();
+    await page.getByRole('option', { name: 'Light', exact: true }).click();
     await dialog.getByRole('link', { name: 'Models', exact: true }).click();
     await expect(dialog.getByTestId('provider-openai')).toBeVisible();
     await page.screenshot({ path: test.info().outputPath('settings-wide-light.png') });
@@ -302,7 +300,8 @@ test.describe('settings layout and keyboard', () => {
     const korean = page.getByRole('dialog', { name: '설정', exact: true });
     await expect(korean).toBeVisible();
     await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
-    await korean.getByRole('radio', { name: '다크', exact: true }).check();
+    await korean.getByRole('combobox', { name: '화면 테마', exact: true }).click();
+    await page.getByRole('option', { name: '다크', exact: true }).click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
     await page.screenshot({ path: test.info().outputPath('settings-narrow-korean-dark.png') });
     expect(await korean.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);

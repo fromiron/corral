@@ -1,5 +1,4 @@
 import type { MeetingConfig } from '@corral/contracts';
-import { Users } from '@corral/react/icons';
 import {
   Button,
   Dialog,
@@ -7,7 +6,8 @@ import {
   DialogPopup,
   DialogTitle,
   Select,
-} from '@corral/react/ui';
+} from '@corral/react/design-kit';
+import { Users } from '@corral/react/icons';
 import { useNavigate } from '@tanstack/react-router';
 import { type FormEvent, useId, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -31,7 +31,7 @@ export function StartMeeting({ projectId }: { projectId: string }) {
   const [open, setOpen] = useState(false);
   return (
     <div>
-      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
+      <Button variant="tertiary" size="compact" onClick={() => setOpen(true)}>
         <Users size={14} aria-hidden />
         {t('new')}
       </Button>
@@ -164,8 +164,8 @@ function NewMeetingDialog({ projectId, onClose }: { projectId: string; onClose()
             <div>
               <Button
                 type="button"
-                size="sm"
-                variant="outline"
+                size="compact"
+                variant="tertiary"
                 onClick={() =>
                   setParticipants((current) =>
                     current.map((item, index) => {
@@ -209,7 +209,7 @@ function NewMeetingDialog({ projectId, onClose }: { projectId: string; onClose()
                   {participants.length > 2 ? (
                     <Button
                       type="button"
-                      size="xs"
+                      size="compact"
                       variant="ghost-destructive"
                       onClick={() =>
                         setParticipants((current) => current.filter((x) => x.key !== item.key))
@@ -235,8 +235,8 @@ function NewMeetingDialog({ projectId, onClose }: { projectId: string; onClose()
               <div>
                 <Button
                   type="button"
-                  size="sm"
-                  variant="outline"
+                  size="compact"
+                  variant="tertiary"
                   onClick={() =>
                     setParticipants((current) => [
                       ...current,
@@ -255,7 +255,7 @@ function NewMeetingDialog({ projectId, onClose }: { projectId: string; onClose()
             ) : null}
           </fieldset>
           {liveModels && profiles === null ? (
-            <p role="status" className="text-muted">
+            <p role="status" className="text-muted-foreground">
               {t('modelsLoading')}
             </p>
           ) : null}
@@ -275,8 +275,8 @@ function NewMeetingDialog({ projectId, onClose }: { projectId: string; onClose()
                 <div>
                   <Button
                     type="button"
-                    size="sm"
-                    variant="outline"
+                    size="compact"
+                    variant="tertiary"
                     onClick={() =>
                       setParticipants((current) =>
                         current.filter((item) => isAvailable(item.modelProfile)),
@@ -309,7 +309,7 @@ function NewMeetingDialog({ projectId, onClose }: { projectId: string; onClose()
             </p>
           ) : null}
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" disabled={saving} onClick={onClose}>
+            <Button type="button" variant="tertiary" disabled={saving} onClick={onClose}>
               {t('cancel')}
             </Button>
             <Button type="submit" disabled={saving || !ready}>

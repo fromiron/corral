@@ -1,0 +1,60 @@
+import { expect, test } from '@playwright/test';
+
+test('[TC-DKIT-001-H] the kit themes preserve project creation and explicit theme choice', async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.addInitScript(() => {
+    if (!localStorage.getItem('corral:workbench:v1'))
+      localStorage.setItem('corral:workbench:v1', JSON.stringify({ version: 1, theme: 'light' }));
+  });
+  await page.goto('/projects');
+  await expect(page.getByRole('textbox', { name: 'Name', exact: true })).toBeVisible();
+  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(250, 250, 250)');
+  await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Design kit');
+  await page.getByRole('button', { name: 'Create project', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Design kit', exact: true })).toBeVisible();
+  await page.evaluate(() => {
+    localStorage.setItem('corral:workbench:v1', JSON.stringify({ version: 1, theme: 'dark' }));
+  });
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.reload();
+  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(23, 23, 23)');
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(page.locator('[data-slot="dialog-backdrop"]').first()).toHaveCSS(
+    'background-color',
+    /^(rgba\(0, 0, 0, 0\.8\)|oklab\(0 0 0 \/ 0\.8\))$/,
+  );
+});
+
+test('[TC-DKIT-001-N] narrow forms retain names, keyboard focus and reduced motion', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'light' });
+  await page.goto('/projects');
+  const name = page.getByRole('textbox', { name: 'Name', exact: true });
+  await expect(name).toBeVisible();
+  await name.focus();
+  await page.keyboard.type('Keyboard project');
+  const create = page.getByRole('button', { name: 'Create project', exact: true });
+  for (let step = 0; step < 8; step++) {
+    await page.keyboard.press('Tab');
+    if (await create.evaluate((element) => element === document.activeElement)) break;
+  }
+  await expect(create).toBeFocused();
+  const focus = await create.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      visible: style.outlineStyle !== 'none' || style.boxShadow !== 'none',
+      duration: Math.max(...style.transitionDuration.split(',').map(Number.parseFloat)),
+    };
+  });
+  expect(focus.visible).toBe(true);
+  expect(focus.duration).toBeLessThanOrEqual(0.00001);
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('heading', { name: 'Keyboard project', exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+});

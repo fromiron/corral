@@ -6,7 +6,7 @@ import type {
 } from '@corral/client';
 import { ApiError } from '@corral/client';
 import { DeploymentReadback } from '@corral/contracts';
-import { Button, Select } from '@corral/react/ui';
+import { Button, Select } from '@corral/react/design-kit';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useTranslations } from 'use-intl';
 import type { WorkspacesClient } from '../demo/workspaces-client.ts';
@@ -267,8 +267,8 @@ function Tasks({
             size="xs"
           />
           <Button
-            size="xs"
-            variant="outline"
+            size="compact"
+            variant="tertiary"
             disabled={busy || unsaved || unresolved || !profileId}
             onClick={() => void review()}
           >
@@ -276,10 +276,10 @@ function Tasks({
           </Button>
         </div>
       ) : (
-        <p className="text-xs text-muted">{t('empty')}</p>
+        <p className="text-xs text-muted-foreground">{t('empty')}</p>
       )}
       {unsaved ? (
-        <p role="status" className="text-xs text-muted">
+        <p role="status" className="text-xs text-muted-foreground">
           {t('unsaved')}
         </p>
       ) : null}
@@ -297,7 +297,7 @@ function Tasks({
             <dd className="break-words">{selectedPlan.profile.envRefs.join(', ') || t('none')}</dd>
           </dl>
           <details>
-            <summary className="cursor-pointer text-muted">{t('commands')}</summary>
+            <summary className="cursor-pointer text-muted-foreground">{t('commands')}</summary>
             <dl className="mt-2 flex flex-col gap-1">
               <dt>{t('deployCommand')}</dt>
               <dd className="break-all font-mono">{JSON.stringify(selectedPlan.profile.argv)}</dd>
@@ -322,9 +322,9 @@ function Tasks({
                   {t('allowDirty')}
                 </label>
               ) : null}
-              <p className="text-muted">{t('startHint')}</p>
+              <p className="text-muted-foreground">{t('startHint')}</p>
               <Button
-                size="xs"
+                size="compact"
                 disabled={busy || unsaved || (plan.source.dirty && !allowDirty)}
                 onClick={() => void start()}
               >
@@ -357,14 +357,14 @@ function Tasks({
             </a>
           ) : null}
           {receipt?.reason ? (
-            <p className="text-muted">
+            <p className="text-muted-foreground">
               {t.has(`reason.${receipt.reason}`) ? t(`reason.${receipt.reason}`) : t('unverified')}
             </p>
           ) : null}
           <div className="flex flex-wrap gap-2">
             <Button
-              size="xs"
-              variant="outline"
+              size="compact"
+              variant="tertiary"
               disabled={busy}
               onClick={() =>
                 void work(async () =>
@@ -376,8 +376,8 @@ function Tasks({
             </Button>
             {receipt?.state === 'uncertain' && receipt.cleanupConfirmed ? (
               <Button
-                size="xs"
-                variant="outline"
+                size="compact"
+                variant="tertiary"
                 disabled={busy || unsaved}
                 onClick={() =>
                   void work(async () => {
@@ -397,8 +397,8 @@ function Tasks({
             ) : null}
             {receipt && ['running', 'uncertain'].includes(receipt.state) ? (
               <Button
-                size="xs"
-                variant="outline"
+                size="compact"
+                variant="tertiary"
                 disabled={busy}
                 onClick={() =>
                   void work(async () => {
@@ -418,18 +418,18 @@ function Tasks({
             ) : null}
           </div>
           {receipt && ['running', 'uncertain', 'cancelled'].includes(receipt.state) ? (
-            <p className="text-muted">{t('stopHint')}</p>
+            <p className="text-muted-foreground">{t('stopHint')}</p>
           ) : null}
         </div>
       ) : null}
       {list.deployments.length > 1 ? (
         <details>
-          <summary className="cursor-pointer text-xs text-muted">{t('history')}</summary>
+          <summary className="cursor-pointer text-xs text-muted-foreground">{t('history')}</summary>
           <ul className="mt-1 flex max-h-36 flex-col gap-1 overflow-auto">
             {list.deployments.map((item) => (
               <li key={item.operationId}>
                 <Button
-                  size="xs"
+                  size="compact"
                   variant="ghost"
                   disabled={busy || (unresolved && item.operationId !== attempt?.operationId)}
                   onClick={() => {
@@ -446,7 +446,7 @@ function Tasks({
         </details>
       ) : null}
       {busy ? (
-        <p role="status" className="text-xs text-muted">
+        <p role="status" className="text-xs text-muted-foreground">
           {t('processing')}
         </p>
       ) : null}

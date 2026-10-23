@@ -1,6 +1,6 @@
 import { TERMINAL_EXECUTION_STATUSES, TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import { BudgetInspector, HarnessDetails, type RunSessionStore } from '@corral/react';
-import { Button } from '@corral/react/ui';
+import { Button } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -85,7 +85,7 @@ export function RunStatusCards({
         <summary className="cursor-pointer font-medium">
           {t('environment')} · {t(projection.mode === 'mock' ? 'simulated' : 'live')}
         </summary>
-        <div className="mt-2 space-y-1 text-muted">
+        <div className="mt-2 space-y-1 text-muted-foreground">
           <p>{t(mode === 'browser' ? 'browser' : 'local')}</p>
           <p>{t(definition?.input.taskScope === 'review_only' ? 'readOnly' : 'rolePermissions')}</p>
           <p>
@@ -130,7 +130,7 @@ export function RunStatusCards({
                 : (record?.runtime ?? (role?.harness ? 'pi-sdk' : 'pi-core'))
             }
           />
-          <p className="text-muted">{t('estimateNote')}</p>
+          <p className="text-muted-foreground">{t('estimateNote')}</p>
           {record ? (
             <p>
               {record.contextBytes.toLocaleString()} B ·{' '}
@@ -161,7 +161,7 @@ export function RunStatusCards({
           {t('connections')} · {Object.keys(projection.modelProfiles).length}
         </summary>
         <div className="mt-2 space-y-2">
-          <p className="text-muted">{t('connectionNote')}</p>
+          <p className="text-muted-foreground">{t('connectionNote')}</p>
           <ul>
             {Object.values(projection.modelProfiles).map((profile) => (
               <li key={profile.profile}>
@@ -187,7 +187,7 @@ export function RunStatusCards({
         <div className="mt-2">
           {sessionId && copy ? (
             <>
-              <p className="mb-2 text-muted">
+              <p className="mb-2 text-muted-foreground">
                 {t(TERMINAL_RUN_STATUSES.has(projection.status) ? 'fixedRun' : 'changesSoFar')}
               </p>
               <RunChanges
@@ -236,10 +236,10 @@ function ContextCompaction({
     <div className="space-y-1">
       {supported ? (
         <>
-          <p className="text-muted">{t('compactHint')}</p>
+          <p className="text-muted-foreground">{t('compactHint')}</p>
           <Button
-            size="xs"
-            variant="outline"
+            size="compact"
+            variant="tertiary"
             disabled={busy || ended || pending}
             onClick={() => {
               if (!execution || !state.projection) return;
@@ -264,7 +264,7 @@ function ContextCompaction({
           </Button>
         </>
       ) : (
-        <p className="text-muted">{t('compactUnavailable')}</p>
+        <p className="text-muted-foreground">{t('compactUnavailable')}</p>
       )}
       {phase ? (
         <p role="status">

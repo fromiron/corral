@@ -1,5 +1,5 @@
 import type { ReviewCommentView } from '@corral/client';
-import { Button, Select } from '@corral/react/ui';
+import { Button, Select } from '@corral/react/design-kit';
 import type { CodeViewItem, FileDiffMetadata, SelectedLineRange } from '@pierre/diffs';
 import { CodeView, WorkerPoolContextProvider } from '@pierre/diffs/react';
 import HighlightWorker from '@pierre/diffs/worker/worker.js?worker';
@@ -160,7 +160,12 @@ export function DiffCode({
               className="w-14 rounded fill-control px-1"
             />
           </label>
-          <Button size="xs" variant="outline" disabled={!anchor} onClick={() => setOpen(true)}>
+          <Button
+            size="compact"
+            variant="tertiary"
+            disabled={!anchor}
+            onClick={() => setOpen(true)}
+          >
             {t('commentLine', { line: Math.min(range.start, range.end) })}
           </Button>
         </div>
@@ -185,7 +190,7 @@ export function DiffCode({
               .finally(() => setBusy(false));
           }}
         >
-          <p className="text-xs text-muted">
+          <p className="text-xs text-muted-foreground">
             {anchor.side === 'before' ? tf('before') : tf('after')} · {anchor.startLine}–
             {anchor.endLine}
           </p>
@@ -199,10 +204,10 @@ export function DiffCode({
             className="w-full rounded fill-group p-2 text-xs"
           />
           <div className="flex gap-2">
-            <Button type="submit" size="xs" disabled={busy || !body.trim()}>
+            <Button type="submit" size="compact" disabled={busy || !body.trim()}>
               {t('addComment')}
             </Button>
-            <Button type="button" size="xs" variant="ghost" onClick={() => setOpen(false)}>
+            <Button type="button" size="compact" variant="ghost" onClick={() => setOpen(false)}>
               {t('cancel')}
             </Button>
           </div>
@@ -258,10 +263,10 @@ export function DiffCode({
           renderAnnotation={({ metadata }) => (
             <p
               data-testid="inline-comment"
-              className="border-l-2 border-accent bg-raised px-3 py-2 font-sans text-xs"
+              className="border-l-2 border-primary bg-raised px-3 py-2 font-sans text-xs"
             >
               {metadata.body}{' '}
-              <span className="text-muted">· {t(`commentState.${metadata.state}`)}</span>
+              <span className="text-muted-foreground">· {t(`commentState.${metadata.state}`)}</span>
             </p>
           )}
         />

@@ -1,5 +1,6 @@
 import { type ExtensionUiRequest, type Receipt, RunEvent } from '@corral/contracts';
 import { act, fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { IntlProvider } from 'use-intl';
 import { expect, it, vi } from 'vitest';
 import { InteractionPanel } from '../src/components/InteractionPanel.tsx';
@@ -71,9 +72,8 @@ it('[TC-HAR-007-H] shows a scoped extension prompt, sends its exact attempt and 
     </IntlProvider>,
   );
   expect(screen.getByText('Choose a style')).toBeVisible();
-  fireEvent.change(screen.getByRole('combobox', { name: 'Choose a style' }), {
-    target: { value: 'Two' },
-  });
+  await userEvent.click(screen.getByRole('combobox', { name: 'Choose a style' }));
+  await userEvent.click(await screen.findByRole('option', { name: 'Two' }));
   fireEvent.click(screen.getByRole('button', { name: 'Send answer' }));
   await vi.waitFor(() =>
     expect(sendCommand).toHaveBeenCalledWith({

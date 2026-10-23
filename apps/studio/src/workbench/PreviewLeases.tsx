@@ -1,5 +1,5 @@
 import type { WorkspacePreview } from '@corral/client';
-import { Button } from '@corral/react/ui';
+import { Button } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
@@ -45,15 +45,15 @@ export function PreviewLeases({ sessionId }: { sessionId: string }) {
                 {lease.kind === 'service' ? `${t('service')} · ` : ''}
                 {lease.path}
               </span>
-              <time dateTime={lease.createdAt} className="shrink-0 text-muted">
+              <time dateTime={lease.createdAt} className="shrink-0 text-muted-foreground">
                 {format.dateTime(new Date(lease.createdAt), { timeStyle: 'short' })}
               </time>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {desktop || lease.kind === 'static' ? (
                 <Button
-                  variant="outline"
-                  size="xs"
+                  variant="tertiary"
+                  size="compact"
                   onClick={() => {
                     setError(null);
                     if (desktop)
@@ -68,10 +68,10 @@ export function PreviewLeases({ sessionId }: { sessionId: string }) {
                   {desktop ? t('openInteractive') : t('open')}
                 </Button>
               ) : (
-                <span className="text-muted">{t('desktopOnly')}</span>
+                <span className="text-muted-foreground">{t('desktopOnly')}</span>
               )}
               <Link
-                className="text-accent underline"
+                className="text-primary underline"
                 to="/sessions/$sessionId"
                 params={{ sessionId }}
                 search={{ panel: 'run', run: lease.runId, view: 'run' }}
@@ -80,7 +80,7 @@ export function PreviewLeases({ sessionId }: { sessionId: string }) {
               </Link>
               <Button
                 variant="ghost"
-                size="xs"
+                size="compact"
                 onClick={async () => {
                   try {
                     await workspaces?.stopPreview(sessionId, lease.leaseId);
@@ -102,7 +102,7 @@ export function PreviewLeases({ sessionId }: { sessionId: string }) {
                   referrerPolicy="no-referrer"
                   className="h-[45vh] min-h-64 w-full rounded border border-line bg-white"
                 />
-                <p className="text-2xs text-muted">{t('staticOnly')}</p>
+                <p className="text-2xs text-muted-foreground">{t('staticOnly')}</p>
               </>
             ) : null}
           </li>

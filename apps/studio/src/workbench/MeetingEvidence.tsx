@@ -4,7 +4,7 @@ import {
   textAttachmentKey,
 } from '@corral/contracts';
 import { type ArtifactVersionView, type RunSummary, validTextAttachments } from '@corral/core';
-import { Button } from '@corral/react/ui';
+import { Button } from '@corral/react/design-kit';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
@@ -129,7 +129,7 @@ export function MeetingEvidencePicker(props: {
       <div>
         <Button
           type="button"
-          size="xs"
+          size="compact"
           variant="ghost"
           disabled={blocked}
           onClick={() => void list()}
@@ -145,8 +145,8 @@ export function MeetingEvidencePicker(props: {
                 <Button
                   key={artifact.artifactVersionId}
                   type="button"
-                  size="xs"
-                  variant="outline"
+                  size="compact"
+                  variant="tertiary"
                   disabled={blocked}
                   onClick={() => void chooseArtifact(results.runId, artifact)}
                 >
@@ -157,8 +157,8 @@ export function MeetingEvidencePicker(props: {
                 <Button
                   key={run.runId}
                   type="button"
-                  size="xs"
-                  variant="outline"
+                  size="compact"
+                  variant="tertiary"
                   disabled={blocked}
                   onClick={() => void chooseRun(run.runId)}
                 >
@@ -174,7 +174,7 @@ export function MeetingEvidencePicker(props: {
           {t('evidenceFailed')}
         </p>
       ) : null}
-      <p className="text-muted">{t('evidenceHint')}</p>
+      <p className="text-muted-foreground">{t('evidenceHint')}</p>
     </div>
   );
 }

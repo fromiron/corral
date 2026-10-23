@@ -4,6 +4,7 @@
 
 | 범위 | 증거 |
 |---|---|
+| 디자인 킷 도입·토큰 정형화 | [CR-050 복사 출처·의존성·화면 및 회귀 검증 범위](Design-Kit-Adoption-2026-10-23.md) |
 | 회의실·결정·일반 세션 인계 | [CR-049 그룹 채팅·선택 역할·요청 시 플랜](Meeting-Chat-2026-10-23.md), [이전 회의록·채택·인계·복구](Meeting-Room-2026-10-23.md) |
 | 검토·실행·후보 비교 배치 | [CR-047 중앙 폭·수치 정렬·반영 버튼·카드 위계](Review-Comparison-Layout-2026-10-23.md) |
 | Desktop 기능·플랫폼 한계 | [전체 진행](Desktop-Capabilities-Implementation-Progress.md), [배포](Desktop-Delivery-Verification.md), [preview](Desktop-Preview-Verification.md), [동시 실행](Desktop-Concurrency-Verification.md), 나머지 Desktop 기능별 보고서 |
